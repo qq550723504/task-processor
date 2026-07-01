@@ -14,6 +14,7 @@ type adminModuleInput struct {
 	ProfitRuleRepository              listingadmin.ProfitRuleRepository
 	PricingRuleRepository             listingadmin.PricingRuleRepository
 	OperationStrategyRepository       listingadmin.OperationStrategyRepository
+	ScheduledTaskConfigRepository     listingadmin.ScheduledTaskConfigRepository
 	SensitiveWordRepository           listingadmin.SensitiveWordRepository
 	GenerationTopicOverrideRepository listingadmin.GenerationTopicOverrideRepository
 	GenerationTopicPolicyRepository   listingadmin.GenerationTopicPolicyRepository
@@ -36,6 +37,7 @@ func newAdminModuleInput(repos *builtRepositories) adminModuleInput {
 		ProfitRuleRepository:              repos.profitRuleRepository,
 		PricingRuleRepository:             repos.pricingRuleRepository,
 		OperationStrategyRepository:       repos.operationStrategyRepository,
+		ScheduledTaskConfigRepository:     repos.scheduledTaskConfigRepository,
 		SensitiveWordRepository:           repos.sensitiveWordRepository,
 		GenerationTopicOverrideRepository: repos.generationTopicOverrideRepository,
 		GenerationTopicPolicyRepository:   repos.generationTopicPolicyRepository,
@@ -56,6 +58,7 @@ func buildAdminModule(in adminModuleInput) adminModule {
 			ProfitRuleRepository:              in.ProfitRuleRepository,
 			PricingRuleRepository:             in.PricingRuleRepository,
 			OperationStrategyRepository:       in.OperationStrategyRepository,
+			ScheduledTaskConfigRepository:     in.ScheduledTaskConfigRepository,
 			SensitiveWordRepository:           in.SensitiveWordRepository,
 			GenerationTopicOverrideRepository: in.GenerationTopicOverrideRepository,
 			GenerationTopicPolicyRepository:   in.GenerationTopicPolicyRepository,

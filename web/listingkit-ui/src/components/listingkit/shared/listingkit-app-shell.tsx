@@ -18,6 +18,7 @@ import {
   PackageCheck,
   PackagePlus,
   PanelTop,
+  Timer,
   Settings,
   ShieldAlert,
   ShoppingBag,
@@ -114,9 +115,9 @@ const APP_UPDATE_POLL_INTERVAL_MS = resolveAppUpdatePollIntervalMs(
   process.env.NEXT_PUBLIC_LISTINGKIT_UPDATE_POLL_INTERVAL_MS,
 );
 
-const OPERATIONS_NAV_ITEMS = [
+const ADMIN_NAV_ITEMS = [
   {
-    label: "店铺运营",
+    label: "业务运营",
     icon: Store,
     requiresIdentity: true,
     children: [
@@ -125,6 +126,12 @@ const OPERATIONS_NAV_ITEMS = [
         label: "SHEIN 活动报名",
         href: "/listing-kits/shein-enrollment",
         icon: ShoppingBag,
+        match: "prefix",
+      },
+      {
+        label: "我的上架统计",
+        href: "/listing-kits/store-statistics",
+        icon: LayoutDashboard,
         match: "prefix",
       },
       {
@@ -141,25 +148,44 @@ const OPERATIONS_NAV_ITEMS = [
         match: "prefix",
         requiredRoles: MENU_ROLES.operator,
       },
+    ],
+  },
+  {
+    label: "调度与导入",
+    icon: Timer,
+    requiredRoles: MENU_ROLES.operator,
+    children: [
+      {
+        label: "定时任务配置",
+        href: "/listing-kits/admin/scheduled-task-configs",
+        icon: Timer,
+        match: "prefix",
+        requiredRoles: MENU_ROLES.admin,
+      },
       {
         label: "调度事件",
         href: "/listing-kits/admin/dispatch-events",
         icon: ListChecks,
         match: "prefix",
-        requiredRoles: MENU_ROLES.operator,
+      },
+      {
+        label: "任务导入",
+        href: "/listing-kits/admin/import-tasks",
+        icon: FileCog,
+        match: "prefix",
       },
     ],
   },
   {
-    label: "数据配置",
+    label: "数据字典",
     icon: Database,
     requiredRoles: MENU_ROLES.operator,
     children: [
       { label: "分类", href: "/listing-kits/admin/categories", icon: Tags, match: "prefix" },
       {
-        label: "任务导入",
-        href: "/listing-kits/admin/import-tasks",
-        icon: FileCog,
+        label: "商品数据",
+        href: "/listing-kits/admin/product-data",
+        icon: Database,
         match: "prefix",
       },
       {
@@ -168,22 +194,22 @@ const OPERATIONS_NAV_ITEMS = [
         icon: ListChecks,
         match: "prefix",
       },
-      {
-        label: "商品数据",
-        href: "/listing-kits/admin/product-data",
-        icon: Database,
-        match: "prefix",
-      },
     ],
   },
   {
-    label: "规则策略",
+    label: "策略规则",
     icon: SlidersHorizontal,
     requiredRoles: MENU_ROLES.admin,
     children: [
       {
         label: "筛选规则",
         href: "/listing-kits/admin/filter-rules",
+        icon: SlidersHorizontal,
+        match: "prefix",
+      },
+      {
+        label: "运营策略",
+        href: "/listing-kits/admin/operation-strategies",
         icon: SlidersHorizontal,
         match: "prefix",
       },
@@ -200,12 +226,6 @@ const OPERATIONS_NAV_ITEMS = [
         match: "prefix",
       },
       {
-        label: "运营策略",
-        href: "/listing-kits/admin/operation-strategies",
-        icon: SlidersHorizontal,
-        match: "prefix",
-      },
-      {
         label: "敏感词",
         href: "/listing-kits/admin/sensitive-words",
         icon: ShieldAlert,
@@ -217,27 +237,34 @@ const OPERATIONS_NAV_ITEMS = [
         icon: ShieldAlert,
         match: "prefix",
       },
+    ],
+  },
+  {
+    label: "账号与系统",
+    icon: Settings,
+    children: [
       {
         label: "SHEIN 登录",
         href: "/listing-kits/shein-login",
         icon: KeyRound,
         match: "prefix",
+        requiredRoles: MENU_ROLES.admin,
       },
       {
         label: "SDS 登录",
         href: "/listing-kits/sds-login",
         icon: KeyRound,
         match: "prefix",
+        requiredRoles: MENU_ROLES.admin,
       },
-    ],
-  },
-] as const satisfies readonly NavSection[];
-
-const SYSTEM_NAV_ITEMS = [
-  {
-    label: "订阅计费",
-    icon: PackageCheck,
-    children: [
+      {
+        label: "提示词",
+        href: "/listing-kits/prompts",
+        icon: FileCog,
+        match: "prefix",
+        requiredRoles: MENU_ROLES.admin,
+      },
+      { label: "设置", href: "/listing-kits/settings", icon: Settings, match: "prefix" },
       {
         label: "当前租户订阅",
         href: "/listing-kits/subscription",
@@ -258,20 +285,6 @@ const SYSTEM_NAV_ITEMS = [
         match: "prefix",
         requiredRoles: MENU_ROLES.admin,
       },
-    ],
-  },
-  {
-    label: "系统配置",
-    icon: Settings,
-    children: [
-      {
-        label: "提示词",
-        href: "/listing-kits/prompts",
-        icon: FileCog,
-        match: "prefix",
-        requiredRoles: MENU_ROLES.admin,
-      },
-      { label: "设置", href: "/listing-kits/settings", icon: Settings, match: "prefix" },
       ...(ZITADEL_CONSOLE_URL
         ? [{
             label: "用户管理",
@@ -287,8 +300,7 @@ const SYSTEM_NAV_ITEMS = [
 
 const NAV_GROUPS = [
   { label: "主流程", items: PRIMARY_NAV_ITEMS },
-  { label: "运营管理", items: OPERATIONS_NAV_ITEMS },
-  { label: "系统", items: SYSTEM_NAV_ITEMS },
+  { label: "管理后台", items: ADMIN_NAV_ITEMS },
 ] as const satisfies readonly { label: string; items: readonly NavTreeItem[] }[];
 
 const APP_RAIL_CLASS = "mx-auto w-full max-w-[1600px] px-4 sm:px-6 lg:px-8";

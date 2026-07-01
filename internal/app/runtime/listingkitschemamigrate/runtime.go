@@ -162,6 +162,9 @@ func autoMigrateListingKitRuntimeSchema(db *gorm.DB) error {
 	if err := listingadmin.AutoMigrateOperationStrategyRepository(db); err != nil {
 		return fmt.Errorf("migrate listingadmin operation strategy repository: %w", err)
 	}
+	if err := listingadmin.AutoMigrateScheduledTaskConfigRepository(db); err != nil {
+		return fmt.Errorf("migrate listingadmin scheduled task config repository: %w", err)
+	}
 	if err := listingadmin.AutoMigrateSensitiveWordRepository(db); err != nil {
 		return fmt.Errorf("migrate listingadmin sensitive word repository: %w", err)
 	}

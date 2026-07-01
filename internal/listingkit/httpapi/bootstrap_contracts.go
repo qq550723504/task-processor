@@ -103,6 +103,7 @@ type AdminRepositoryBuilders struct {
 	ProfitRule              func(*config.Config, *logrus.Logger) (listingadmin.ProfitRuleRepository, []func() error, error)
 	PricingRule             func(*config.Config, *logrus.Logger) (listingadmin.PricingRuleRepository, []func() error, error)
 	OperationStrategy       func(*config.Config, *logrus.Logger) (listingadmin.OperationStrategyRepository, []func() error, error)
+	ScheduledTaskConfig     func(*config.Config, *logrus.Logger) (listingadmin.ScheduledTaskConfigRepository, []func() error, error)
 	SensitiveWord           func(*config.Config, *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error)
 	GenerationTopicOverride func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicOverrideRepository, []func() error, error)
 	GenerationTopicPolicy   func(*config.Config, *logrus.Logger) (listingadmin.GenerationTopicPolicyRepository, []func() error, error)

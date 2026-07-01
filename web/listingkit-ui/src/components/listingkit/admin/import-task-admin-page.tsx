@@ -2,7 +2,7 @@
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
-import { FormEvent, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useMemo, useState } from "react";
 import { Plus, RefreshCw, Search, Trash2, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -28,7 +28,12 @@ import {
   type BatchCreateListingImportTaskInput,
   type ListingImportTask,
 } from "@/lib/api/admin-import-tasks";
-import { getSimpleListingStores } from "@/lib/api/admin-stores";
+import {
+  AdminStoreSelect,
+  formatAdminStoreName,
+  useAdminSimpleStores,
+} from "@/components/listingkit/admin/admin-store-select";
+import { SHEIN_SITE_OPTIONS } from "@/components/listingkit/stores/shein-site-options";
 
 const DEFAULT_FORM: BatchCreateListingImportTaskInput = {
   storeId: 0,
@@ -48,12 +53,22 @@ const STATUS_TEXT: Record<number, string> = {
   3: "失败",
 };
 
+const REGION_OPTIONS = [...SHEIN_SITE_OPTIONS];
+
+type ProductIdImportSummary = {
+  fileName: string;
+  importedCount: number;
+  duplicateCount: number;
+};
+
 export function ImportTaskAdminPage() {
   const [platform, setPlatform] = useState("");
   const [productId, setProductId] = useState("");
   const [form, setForm] =
     useState<BatchCreateListingImportTaskInput>(DEFAULT_FORM);
   const [productText, setProductText] = useState("");
+  const [productImportSummary, setProductImportSummary] =
+    useState<ProductIdImportSummary | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -71,10 +86,7 @@ export function ImportTaskAdminPage() {
     queryKey: ["listingkit-admin-import-tasks", query],
     queryFn: () => getListingImportTasks(query),
   });
-  const storesQuery = useQuery({
-    queryKey: ["listingkit-admin-simple-stores"],
-    queryFn: getSimpleListingStores,
-  });
+  const storesQuery = useAdminSimpleStores();
 
   const tasks: ListingImportTask[] = importTaskQuery.data?.items ?? [];
   const total = importTaskQuery.data?.total ?? 0;
@@ -92,13 +104,11 @@ export function ImportTaskAdminPage() {
     setSaving(true);
     setError("");
     try {
-      const productIds = productText
-        .split(/[\n,，\s]+/)
-        .map((value) => value.trim())
-        .filter(Boolean);
+      const productIds = uniqueProductIdsFromText(productText).values;
       await batchCreateListingImportTasks({ ...form, productIds });
       setForm({ ...DEFAULT_FORM, storeId: form.storeId });
       setProductText("");
+      setProductImportSummary(null);
       await importTaskQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
@@ -114,6 +124,34 @@ export function ImportTaskAdminPage() {
       await importTaskQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
+    }
+  }
+
+  async function handleProductFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    setError("");
+    try {
+      const text = await file.text();
+      const parsed = parseProductIdImportText(text);
+      if (parsed.values.length === 0) {
+        setError("文件中没有可导入的商品 ID");
+        setProductImportSummary(null);
+        return;
+      }
+      setProductText(parsed.values.join("\n"));
+      setProductImportSummary({
+        fileName: file.name,
+        importedCount: parsed.values.length,
+        duplicateCount: parsed.duplicateCount,
+      });
+    } catch (err) {
+      setError(formatSubscriptionApiError(err));
+      setProductImportSummary(null);
+    } finally {
+      event.target.value = "";
     }
   }
 
@@ -208,7 +246,7 @@ export function ImportTaskAdminPage() {
                         </div>
                       </TableCell>
                       <TableCell className="px-4 py-3 text-zinc-700">
-                        {storeName(stores, task.storeId)}
+                        {formatAdminStoreName(stores, task.storeId)}
                       </TableCell>
                       <TableCell className="px-4 py-3 text-zinc-700">
                         {task.platform}
@@ -257,23 +295,12 @@ export function ImportTaskAdminPage() {
             <Upload className="size-4 text-zinc-500" />
             <h2 className="text-base font-semibold text-zinc-950">批量导入</h2>
           </div>
-          <Label className="mb-3 block text-xs font-medium text-zinc-500">
-            店铺
-            <Select
-              value={form.storeId}
-              onChange={(event) =>
-                setForm({ ...form, storeId: Number(event.target.value) })
-              }
-              className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
-            >
-              <option value={0}>选择店铺</option>
-              {stores.map((store) => (
-                <option key={store.id} value={store.id}>
-                  {store.name}
-                </option>
-              ))}
-            </Select>
-          </Label>
+          <AdminStoreSelect
+            value={form.storeId}
+            onChange={(storeId) => setForm({ ...form, storeId })}
+            stores={stores}
+            emptyLabel="选择店铺"
+          />
           <div className="grid gap-3 sm:grid-cols-2">
             <ImportTaskInput
               label="类目 ID"
@@ -301,10 +328,11 @@ export function ImportTaskAdminPage() {
               }
               options={["Amazon", "SHEIN", "TEMU"]}
             />
-            <ImportTaskInput
+            <ImportTaskSelect
               label="地区"
               value={form.region ?? ""}
               onChange={(region) => setForm({ ...form, region })}
+              options={REGION_OPTIONS}
             />
           </div>
           <Label className="mb-3 block text-xs font-medium text-zinc-500">
@@ -316,6 +344,26 @@ export function ImportTaskAdminPage() {
               placeholder="每行一个商品 ID"
             />
           </Label>
+          <Label className="mb-3 block text-xs font-medium text-zinc-500">
+            批量导入文件
+            <Input
+              type="file"
+              accept=".csv,.txt,text/csv,text/plain"
+              onChange={(event) => void handleProductFileChange(event)}
+              className="mt-1 h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900"
+            />
+          </Label>
+          {productImportSummary ? (
+            <div className="mb-3 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+              <div className="font-medium text-zinc-800">
+                {productImportSummary.fileName}
+              </div>
+              <div>已读取 {productImportSummary.importedCount} 个商品 ID</div>
+              {productImportSummary.duplicateCount > 0 ? (
+                <div>已去重 {productImportSummary.duplicateCount} 个重复 ID</div>
+              ) : null}
+            </div>
+          ) : null}
           <Button
             type="submit"
             disabled={saving}
@@ -326,7 +374,7 @@ export function ImportTaskAdminPage() {
             ) : (
               <Plus className="size-4" />
             )}
-            创建任务
+            导入任务
           </Button>
         </form>
       </section>
@@ -384,14 +432,63 @@ function firstText(...values: unknown[]) {
   return "";
 }
 
-function storeName(
-  stores: Array<{ id: number; name: string }>,
-  storeId: number | undefined,
-) {
-  if (!storeId) {
-    return "-";
+function parseProductIdImportText(text: string) {
+  const rows = text
+    .split(/\r?\n/)
+    .map((row) => row.trim())
+    .filter(Boolean);
+  if (rows.length === 0) {
+    return { values: [] as string[], duplicateCount: 0 };
   }
-  return stores.find((store) => store.id === storeId)?.name ?? `#${storeId}`;
+
+  const firstColumns = splitDelimitedRow(rows[0]);
+  const productIdColumnIndex = firstColumns.findIndex((column) =>
+    isProductIdHeader(column),
+  );
+  const dataRows = productIdColumnIndex >= 0 ? rows.slice(1) : rows;
+  const rawValues = dataRows.flatMap((row) => {
+    if (productIdColumnIndex >= 0) {
+      return splitDelimitedRow(row)[productIdColumnIndex] ?? "";
+    }
+    return row.split(/[\t,，\s]+/);
+  });
+  return uniqueProductIds(rawValues);
+}
+
+function uniqueProductIdsFromText(text: string) {
+  return uniqueProductIds(text.split(/[\n,，\s]+/));
+}
+
+function uniqueProductIds(values: string[]) {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  let duplicateCount = 0;
+  for (const value of values) {
+    const productId = value.trim();
+    if (!productId) {
+      continue;
+    }
+    if (seen.has(productId)) {
+      duplicateCount += 1;
+      continue;
+    }
+    seen.add(productId);
+    out.push(productId);
+  }
+  return { values: out, duplicateCount };
+}
+
+function splitDelimitedRow(row: string) {
+  if (row.includes("\t")) {
+    return row.split("\t").map((column) => column.trim());
+  }
+  return row.split(/[，,]/).map((column) => column.trim());
+}
+
+function isProductIdHeader(value: string) {
+  return ["product_id", "productid", "product id", "商品id", "商品 ID"]
+    .map((header) => header.toLowerCase())
+    .includes(value.trim().toLowerCase());
 }
 
 function ImportTaskInput({

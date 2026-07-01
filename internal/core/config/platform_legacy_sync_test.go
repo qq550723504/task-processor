@@ -19,6 +19,19 @@ func TestBuildPlatformConfig_LegacySyncFallsBackToProductSync(t *testing.T) {
 	assert.Equal(t, 600, cfg.ProductSync.Interval)
 }
 
+func TestBuildPlatformConfig_LoadsScheduledTaskStoreIDs(t *testing.T) {
+	v := viper.New()
+	v.Set("platforms.shein.inventorySync.enabled", true)
+	v.Set("platforms.shein.inventorySync.interval", 43200)
+	v.Set("platforms.shein.inventorySync.storeIDs", []int64{398, 181})
+
+	cfg := BuildPlatformConfig(v, "platforms.shein")
+
+	assert.True(t, cfg.InventorySync.Enabled)
+	assert.Equal(t, 43200, cfg.InventorySync.Interval)
+	assert.Equal(t, []int64{398, 181}, cfg.InventorySync.StoreIDs)
+}
+
 func TestValidatePlatformConfig_RejectsConflictingLegacySync(t *testing.T) {
 	cfg := PlatformConfig{
 		ProductSync: ScheduledTaskConfig{

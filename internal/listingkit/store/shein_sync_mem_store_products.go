@@ -95,6 +95,21 @@ func (r *MemSheinSyncRepository) UpdateManualCostPrice(_ context.Context, produc
 	return gorm.ErrRecordNotFound
 }
 
+func (r *MemSheinSyncRepository) UpdateSyncedProductInventoryAttributes(_ context.Context, tenantID, storeID int64, skcName string, attributes string) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := sheinSyncedProductKey(tenantID, storeID, skcName)
+	row, ok := r.products[key]
+	if !ok {
+		return 0, nil
+	}
+	row.InventorySyncAttributes = attributes
+	row.UpdatedAt = time.Now().UTC()
+	r.products[key] = row
+	return 1, nil
+}
+
 func (r *MemSheinSyncRepository) MarkMissingSyncedProductsInactive(_ context.Context, tenantID, storeID int64, activeSKCNames []string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -3,6 +3,7 @@ package sheinsync
 import (
 	"context"
 
+	"task-processor/internal/listingadmin"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -22,11 +23,12 @@ type SheinSyncImmediateRefreshAware interface {
 }
 
 type sheinSyncService struct {
-	repo              SheinSyncRepository
-	productAPI        sheinproduct.ProductAPI
-	productAPIBuilder SheinSyncProductAPIBuilder
-	costResolver      SheinCostResolver
-	pageSize          int
+	repo                   SheinSyncRepository
+	productAPI             sheinproduct.ProductAPI
+	productAPIBuilder      SheinSyncProductAPIBuilder
+	costResolver           SheinCostResolver
+	inventoryMappingSource SheinInventoryMappingSource
+	pageSize               int
 }
 
 func NewSheinSyncService(repo SheinSyncRepository, productAPI sheinproduct.ProductAPI, costResolver SheinCostResolver) SheinSyncService {
@@ -54,10 +56,26 @@ func newSheinSyncService(repo SheinSyncRepository, productAPI sheinproduct.Produ
 	}
 }
 
+type SheinInventoryMappingSource interface {
+	FindLatest(ctx context.Context, query listingadmin.ProductImportMappingQuery) (*listingadmin.ProductImportMapping, error)
+}
+
+func NewSheinSyncServiceWithInventoryMappingSource(repo SheinSyncRepository, productAPI sheinproduct.ProductAPI, costResolver SheinCostResolver, mappingSource SheinInventoryMappingSource) SheinSyncService {
+	service := newSheinSyncService(repo, productAPI, nil, costResolver)
+	service.inventoryMappingSource = mappingSource
+	return service
+}
+
 type SheinSyncProductAPIBuilder interface {
 	BuildProductAPI(ctx context.Context, storeID int64) (sheinproduct.ProductAPI, string)
 }
 
 func NewSheinSyncServiceWithBuilder(repo SheinSyncRepository, productAPIBuilder SheinSyncProductAPIBuilder, costResolver SheinCostResolver) SheinSyncService {
 	return newSheinSyncService(repo, nil, productAPIBuilder, costResolver)
+}
+
+func NewSheinSyncServiceWithBuilderAndInventoryMappingSource(repo SheinSyncRepository, productAPIBuilder SheinSyncProductAPIBuilder, costResolver SheinCostResolver, mappingSource SheinInventoryMappingSource) SheinSyncService {
+	service := newSheinSyncService(repo, nil, productAPIBuilder, costResolver)
+	service.inventoryMappingSource = mappingSource
+	return service
 }

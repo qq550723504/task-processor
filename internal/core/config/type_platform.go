@@ -112,8 +112,9 @@ type ListingPricingConfig struct {
 
 // ScheduledTaskConfig 调度任务配置
 type ScheduledTaskConfig struct {
-	Enabled  bool `yaml:"enabled"`  // 是否启用
-	Interval int  `yaml:"interval"` // 执行间隔（秒）
+	Enabled  bool    `yaml:"enabled"`  // 是否启用
+	Interval int     `yaml:"interval"` // 执行间隔（秒）
+	StoreIDs []int64 `yaml:"storeIDs"` // 指定要启动该调度任务的店铺ID列表
 }
 
 // SyncProductConfig 旧版产品同步配置

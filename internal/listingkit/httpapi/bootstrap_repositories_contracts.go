@@ -24,6 +24,7 @@ type builtRepositories struct {
 	profitRuleRepository              listingadmin.ProfitRuleRepository
 	pricingRuleRepository             listingadmin.PricingRuleRepository
 	operationStrategyRepository       listingadmin.OperationStrategyRepository
+	scheduledTaskConfigRepository     listingadmin.ScheduledTaskConfigRepository
 	sensitiveWordRepository           listingadmin.SensitiveWordRepository
 	generationTopicOverrideRepository listingadmin.GenerationTopicOverrideRepository
 	generationTopicPolicyRepository   listingadmin.GenerationTopicPolicyRepository
@@ -88,6 +89,7 @@ type builtAdminRepositories struct {
 	profitRuleRepository              listingadmin.ProfitRuleRepository
 	pricingRuleRepository             listingadmin.PricingRuleRepository
 	operationStrategyRepository       listingadmin.OperationStrategyRepository
+	scheduledTaskConfigRepository     listingadmin.ScheduledTaskConfigRepository
 	sensitiveWordRepository           listingadmin.SensitiveWordRepository
 	generationTopicOverrideRepository listingadmin.GenerationTopicOverrideRepository
 	generationTopicPolicyRepository   listingadmin.GenerationTopicPolicyRepository
@@ -111,6 +113,7 @@ type adminRuleRepositories struct {
 	profitRuleRepository              listingadmin.ProfitRuleRepository
 	pricingRuleRepository             listingadmin.PricingRuleRepository
 	operationStrategyRepository       listingadmin.OperationStrategyRepository
+	scheduledTaskConfigRepository     listingadmin.ScheduledTaskConfigRepository
 	sensitiveWordRepository           listingadmin.SensitiveWordRepository
 	generationTopicOverrideRepository listingadmin.GenerationTopicOverrideRepository
 	generationTopicPolicyRepository   listingadmin.GenerationTopicPolicyRepository

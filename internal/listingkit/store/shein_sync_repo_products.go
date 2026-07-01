@@ -106,6 +106,20 @@ func (r *GormSheinSyncRepository) UpdateManualCostPrice(ctx context.Context, pro
 	return nil
 }
 
+func (r *GormSheinSyncRepository) UpdateSyncedProductInventoryAttributes(ctx context.Context, tenantID, storeID int64, skcName string, attributes string) (int, error) {
+	result := r.db.WithContext(ctx).
+		Model(&listingkit.SheinSyncedProductRecord{}).
+		Where("tenant_id = ? AND store_id = ? AND skc_name = ?", tenantID, storeID, skcName).
+		Updates(map[string]any{
+			"inventory_sync_attributes": attributes,
+			"updated_at":                time.Now().UTC(),
+		})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return int(result.RowsAffected), nil
+}
+
 func (r *GormSheinSyncRepository) MarkMissingSyncedProductsInactive(ctx context.Context, tenantID, storeID int64, activeSKCNames []string) error {
 	db := r.db.WithContext(ctx).
 		Model(&listingkit.SheinSyncedProductRecord{}).
@@ -121,34 +135,35 @@ func (r *GormSheinSyncRepository) MarkMissingSyncedProductsInactive(ctx context.
 
 func sheinSyncedProductAssignments(row listingkit.SheinSyncedProductRecord) map[string]any {
 	return map[string]any{
-		"tenant_id":            row.TenantID,
-		"store_id":             row.StoreID,
-		"spu_name":             row.SPUName,
-		"spu_code":             row.SPUCode,
-		"skc_name":             row.SKCName,
-		"skc_code":             row.SKCCode,
-		"supplier_code":        row.SupplierCode,
-		"category_id":          row.CategoryID,
-		"brand_name":           row.BrandName,
-		"product_name_multi":   row.ProductNameMulti,
-		"main_image_url":       row.MainImageURL,
-		"sale_name":            row.SaleName,
-		"business_model":       row.BusinessModel,
-		"shelf_status":         row.ShelfStatus,
-		"publish_time":         row.PublishTime,
-		"first_shelf_time":     row.FirstShelfTime,
-		"currency":             row.Currency,
-		"price_snapshot":       row.PriceSnapshot,
-		"inventory_snapshot":   row.InventorySnapshot,
-		"site_snapshot":        row.SiteSnapshot,
-		"auto_cost_price":      row.AutoCostPrice,
-		"manual_cost_price":    row.ManualCostPrice,
-		"effective_cost_price": row.EffectiveCostPrice,
-		"cost_price_source":    row.CostPriceSource,
-		"sync_version":         row.SyncVersion,
-		"last_sync_at":         row.LastSyncAt,
-		"is_active":            row.IsActive,
-		"created_at":           row.CreatedAt,
-		"updated_at":           row.UpdatedAt,
+		"tenant_id":                 row.TenantID,
+		"store_id":                  row.StoreID,
+		"spu_name":                  row.SPUName,
+		"spu_code":                  row.SPUCode,
+		"skc_name":                  row.SKCName,
+		"skc_code":                  row.SKCCode,
+		"supplier_code":             row.SupplierCode,
+		"category_id":               row.CategoryID,
+		"brand_name":                row.BrandName,
+		"product_name_multi":        row.ProductNameMulti,
+		"main_image_url":            row.MainImageURL,
+		"sale_name":                 row.SaleName,
+		"business_model":            row.BusinessModel,
+		"shelf_status":              row.ShelfStatus,
+		"publish_time":              row.PublishTime,
+		"first_shelf_time":          row.FirstShelfTime,
+		"currency":                  row.Currency,
+		"price_snapshot":            row.PriceSnapshot,
+		"inventory_snapshot":        row.InventorySnapshot,
+		"site_snapshot":             row.SiteSnapshot,
+		"inventory_sync_attributes": row.InventorySyncAttributes,
+		"auto_cost_price":           row.AutoCostPrice,
+		"manual_cost_price":         row.ManualCostPrice,
+		"effective_cost_price":      row.EffectiveCostPrice,
+		"cost_price_source":         row.CostPriceSource,
+		"sync_version":              row.SyncVersion,
+		"last_sync_at":              row.LastSyncAt,
+		"is_active":                 row.IsActive,
+		"created_at":                row.CreatedAt,
+		"updated_at":                row.UpdatedAt,
 	}
 }

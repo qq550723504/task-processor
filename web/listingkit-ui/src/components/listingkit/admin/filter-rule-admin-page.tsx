@@ -28,7 +28,11 @@ import {
   type ListingFilterRule,
   type ListingFilterRuleInput,
 } from "@/lib/api/admin-filter-rules";
-import { getSimpleListingStores } from "@/lib/api/admin-stores";
+import {
+  AdminStoreSelect,
+  formatAdminStoreName,
+  useAdminSimpleStores,
+} from "@/components/listingkit/admin/admin-store-select";
 
 const DEFAULT_FORM: ListingFilterRuleInput = {
   name: "",
@@ -69,10 +73,7 @@ export function FilterRuleAdminPage() {
     queryKey: ["listingkit-admin-filter-rules", query],
     queryFn: () => getListingFilterRules(query),
   });
-  const storesQuery = useQuery({
-    queryKey: ["listingkit-admin-simple-stores"],
-    queryFn: getSimpleListingStores,
-  });
+  const storesQuery = useAdminSimpleStores();
 
   const rules: ListingFilterRule[] = filterRuleQuery.data?.items ?? [];
   const stores = storesQuery.data ?? [];
@@ -213,7 +214,7 @@ export function FilterRuleAdminPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-zinc-700">
-                        {storeName(stores, rule.storeId)}
+                        {formatAdminStoreName(stores, rule.storeId, "全部店铺")}
                       </TableCell>
                       <TableCell className="text-zinc-700">
                         {rule.priceMin}-{rule.priceMax}
@@ -278,26 +279,14 @@ export function FilterRuleAdminPage() {
               setForm({ ...form, ruleCode: nextRuleCode })
             }
           />
-          <Label className="mb-3 block text-xs font-medium text-zinc-500">
-            店铺
-            <Select
-              className="mt-1 h-9"
-              value={form.storeId ?? 0}
-              onChange={(event) =>
-                setForm({
-                  ...form,
-                  storeId: Number(event.target.value) || undefined,
-                })
-              }
-            >
-              <option value={0}>全部店铺</option>
-              {stores.map((store) => (
-                <option key={store.id} value={store.id}>
-                  {store.name}
-                </option>
-              ))}
-            </Select>
-          </Label>
+          <AdminStoreSelect
+            value={form.storeId}
+            onChange={(storeId) =>
+              setForm({ ...form, storeId: storeId || undefined })
+            }
+            stores={stores}
+            emptyLabel="全部店铺"
+          />
           <div className="grid gap-3 sm:grid-cols-2">
             <RuleInput
               label="最低价格"
@@ -376,16 +365,6 @@ export function FilterRuleAdminPage() {
       </section>
     </div>
   );
-}
-
-function storeName(
-  stores: Array<{ id: number; name: string }>,
-  storeId: number | undefined,
-) {
-  if (!storeId) {
-    return "全部店铺";
-  }
-  return stores.find((store) => store.id === storeId)?.name ?? `#${storeId}`;
 }
 
 function RuleInput({

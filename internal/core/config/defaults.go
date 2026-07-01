@@ -288,14 +288,17 @@ func setTemuDefaults(v *viper.Viper, p *PlatformConfig) {
 	ps := p.ProductSync
 	v.SetDefault("platforms.temu.productSync.enabled", ps.Enabled)
 	v.SetDefault("platforms.temu.productSync.interval", ps.Interval)
+	v.SetDefault("platforms.temu.productSync.storeIDs", ps.StoreIDs)
 
 	is := p.InventorySync
 	v.SetDefault("platforms.temu.inventorySync.enabled", is.Enabled)
 	v.SetDefault("platforms.temu.inventorySync.interval", is.Interval)
+	v.SetDefault("platforms.temu.inventorySync.storeIDs", is.StoreIDs)
 
 	ar := p.ActivityRegistration
 	v.SetDefault("platforms.temu.activityRegistration.enabled", ar.Enabled)
 	v.SetDefault("platforms.temu.activityRegistration.interval", ar.Interval)
+	v.SetDefault("platforms.temu.activityRegistration.storeIDs", ar.StoreIDs)
 
 	m := p.Monitor
 	v.SetDefault("platforms.temu.monitor.enabled", m.Enabled)
@@ -346,14 +349,17 @@ func setSheinDefaults(v *viper.Viper, p *PlatformConfig) {
 	ps := p.ProductSync
 	v.SetDefault("platforms.shein.productSync.enabled", ps.Enabled)
 	v.SetDefault("platforms.shein.productSync.interval", ps.Interval)
+	v.SetDefault("platforms.shein.productSync.storeIDs", ps.StoreIDs)
 
 	is := p.InventorySync
 	v.SetDefault("platforms.shein.inventorySync.enabled", is.Enabled)
 	v.SetDefault("platforms.shein.inventorySync.interval", is.Interval)
+	v.SetDefault("platforms.shein.inventorySync.storeIDs", is.StoreIDs)
 
 	ar := p.ActivityRegistration
 	v.SetDefault("platforms.shein.activityRegistration.enabled", ar.Enabled)
 	v.SetDefault("platforms.shein.activityRegistration.interval", ar.Interval)
+	v.SetDefault("platforms.shein.activityRegistration.storeIDs", ar.StoreIDs)
 
 	m := p.Monitor
 	v.SetDefault("platforms.shein.monitor.enabled", m.Enabled)

@@ -45,6 +45,15 @@ type StoreInfo struct {
 	AuthorizedBrandName      string
 }
 
+type ScheduledTaskConfig struct {
+	TenantID        int64
+	StoreID         int64
+	Platform        string
+	TaskType        string
+	Enabled         bool
+	IntervalSeconds int
+}
+
 type StorePauseStatusDetail struct {
 	Paused     bool
 	PauseType  string

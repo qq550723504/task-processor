@@ -33,14 +33,17 @@ func BuildPlatformConfig(v *viper.Viper, prefix string) PlatformConfig {
 		ProductSync: ScheduledTaskConfig{
 			Enabled:  v.GetBool(prefix + ".productSync.enabled"),
 			Interval: v.GetInt(prefix + ".productSync.interval"),
+			StoreIDs: getInt64Slice(v, prefix+".productSync.storeIDs"),
 		},
 		InventorySync: ScheduledTaskConfig{
 			Enabled:  v.GetBool(prefix + ".inventorySync.enabled"),
 			Interval: v.GetInt(prefix + ".inventorySync.interval"),
+			StoreIDs: getInt64Slice(v, prefix+".inventorySync.storeIDs"),
 		},
 		ActivityRegistration: ScheduledTaskConfig{
 			Enabled:  v.GetBool(prefix + ".activityRegistration.enabled"),
 			Interval: v.GetInt(prefix + ".activityRegistration.interval"),
+			StoreIDs: getInt64Slice(v, prefix+".activityRegistration.storeIDs"),
 		},
 		SyncProduct: SyncProductConfig{
 			Enabled:   v.GetBool(prefix + ".sync.enabled"),

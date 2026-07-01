@@ -37,6 +37,7 @@ func applyAdminRepositories(repos *builtRepositories, admin *builtAdminRepositor
 	repos.profitRuleRepository = admin.profitRuleRepository
 	repos.pricingRuleRepository = admin.pricingRuleRepository
 	repos.operationStrategyRepository = admin.operationStrategyRepository
+	repos.scheduledTaskConfigRepository = admin.scheduledTaskConfigRepository
 	repos.sensitiveWordRepository = admin.sensitiveWordRepository
 	repos.generationTopicOverrideRepository = admin.generationTopicOverrideRepository
 	repos.generationTopicPolicyRepository = admin.generationTopicPolicyRepository

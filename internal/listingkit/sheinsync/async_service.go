@@ -25,6 +25,12 @@ func NewAsyncSheinSyncServiceWithBuilder(repo SheinSyncRepository, productAPIBui
 	}
 }
 
+func NewAsyncSheinSyncServiceWithBuilderAndInventoryMappingSource(repo SheinSyncRepository, productAPIBuilder SheinSyncProductAPIBuilder, costResolver SheinCostResolver, mappingSource SheinInventoryMappingSource) SheinSyncService {
+	sync := newSheinSyncService(repo, nil, productAPIBuilder, costResolver)
+	sync.inventoryMappingSource = mappingSource
+	return &asyncSheinSyncService{sync: sync}
+}
+
 func (s *asyncSheinSyncService) SyncSheinOnShelfProducts(ctx context.Context, tenantID, storeID int64, triggerMode SheinSyncTriggerMode) (*SheinSyncJobRecord, error) {
 	if s == nil || s.sync == nil {
 		return nil, fmt.Errorf("SHEIN sync service is required")

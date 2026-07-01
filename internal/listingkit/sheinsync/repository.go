@@ -77,6 +77,7 @@ type SheinSyncedProductRepository interface {
 	UpsertSyncedProducts(ctx context.Context, records []*SheinSyncedProductRecord) error
 	ListSyncedProducts(ctx context.Context, query *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error)
 	UpdateManualCostPrice(ctx context.Context, productID int64, manualCostPrice *float64) error
+	UpdateSyncedProductInventoryAttributes(ctx context.Context, tenantID, storeID int64, skcName string, attributes string) (int, error)
 	MarkMissingSyncedProductsInactive(ctx context.Context, tenantID, storeID int64, activeSKCNames []string) error
 }
 

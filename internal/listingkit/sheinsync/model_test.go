@@ -41,6 +41,10 @@ func (sheinSyncRepositoryStub) UpdateManualCostPrice(_ context.Context, _ int64,
 	return nil
 }
 
+func (sheinSyncRepositoryStub) UpdateSyncedProductInventoryAttributes(_ context.Context, _ int64, _ int64, _ string, _ string) (int, error) {
+	return 0, nil
+}
+
 func (sheinSyncRepositoryStub) MarkMissingSyncedProductsInactive(_ context.Context, _ int64, _ int64, _ []string) error {
 	return nil
 }

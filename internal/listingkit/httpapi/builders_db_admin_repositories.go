@@ -71,6 +71,14 @@ func newDBListingAdminOperationStrategyRepository(cfg *config.DatabaseConfig, lo
 	return listingadmin.NewGormOperationStrategyRepository(db), closer, nil
 }
 
+func newDBListingAdminScheduledTaskConfigRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingadmin.ScheduledTaskConfigRepository, func() error, error) {
+	db, closer, err := openListingKitRepositoryDB(cfg, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+	return listingadmin.NewGormScheduledTaskConfigRepository(db), closer, nil
+}
+
 func newDBListingAdminSensitiveWordRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (listingadmin.SensitiveWordRepository, func() error, error) {
 	db, closer, err := openListingKitRepositoryDB(cfg, logger)
 	if err != nil {

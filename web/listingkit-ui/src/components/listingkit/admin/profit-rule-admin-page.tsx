@@ -28,7 +28,11 @@ import {
   type ListingProfitRule,
   type ListingProfitRuleInput,
 } from "@/lib/api/admin-profit-rules";
-import { getSimpleListingStores } from "@/lib/api/admin-stores";
+import {
+  AdminStoreSelect,
+  formatAdminStoreName,
+  useAdminSimpleStores,
+} from "@/components/listingkit/admin/admin-store-select";
 
 const DEFAULT_FORM: ListingProfitRuleInput = {
   name: "",
@@ -63,10 +67,7 @@ export function ProfitRuleAdminPage() {
     queryKey: ["listingkit-admin-profit-rules", query],
     queryFn: () => getListingProfitRules(query),
   });
-  const storesQuery = useQuery({
-    queryKey: ["listingkit-admin-simple-stores"],
-    queryFn: getSimpleListingStores,
-  });
+  const storesQuery = useAdminSimpleStores();
 
   const rules: ListingProfitRule[] = profitRuleQuery.data?.items ?? [];
   const stores = storesQuery.data ?? [];
@@ -205,7 +206,7 @@ export function ProfitRuleAdminPage() {
                         </div>
                       </TableCell>
                       <TableCell className="px-4 py-3 text-zinc-700">
-                        {storeName(stores, rule.storeId)}
+                        {formatAdminStoreName(stores, rule.storeId, "全部店铺")}
                       </TableCell>
                       <TableCell className="px-4 py-3 text-zinc-700">
                         {rule.salePriceMultiplier}
@@ -264,26 +265,14 @@ export function ProfitRuleAdminPage() {
               setForm({ ...form, ruleCode: nextRuleCode })
             }
           />
-          <Label className="mb-3 block text-xs font-medium text-zinc-500">
-            店铺
-            <Select
-              value={form.storeId ?? 0}
-              onChange={(event) =>
-                setForm({
-                  ...form,
-                  storeId: Number(event.target.value) || undefined,
-                })
-              }
-              className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
-            >
-              <option value={0}>全部店铺</option>
-              {stores.map((store) => (
-                <option key={store.id} value={store.id}>
-                  {store.name}
-                </option>
-              ))}
-            </Select>
-          </Label>
+          <AdminStoreSelect
+            value={form.storeId}
+            onChange={(storeId) =>
+              setForm({ ...form, storeId: storeId || undefined })
+            }
+            stores={stores}
+            emptyLabel="全部店铺"
+          />
           <div className="grid gap-3 sm:grid-cols-2">
             <RuleInput
               label="售价系数"
@@ -325,16 +314,6 @@ export function ProfitRuleAdminPage() {
       </section>
     </div>
   );
-}
-
-function storeName(
-  stores: Array<{ id: number; name: string }>,
-  storeId: number | undefined,
-) {
-  if (!storeId) {
-    return "全部店铺";
-  }
-  return stores.find((store) => store.id === storeId)?.name ?? `#${storeId}`;
 }
 
 function RuleInput({

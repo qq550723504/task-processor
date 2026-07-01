@@ -7,9 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"task-processor/internal/app/scheduler"
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingkit"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/platformtask"
 	"task-processor/internal/product"
@@ -119,6 +121,32 @@ func (r *LocalRuntime) ListRuntimeAutoPricingStoreIDs(ctx context.Context, platf
 		pageNo++
 	}
 	return dedupeInt64s(storeIDs), nil
+}
+
+func (r *LocalRuntime) ListRuntimeScheduledTaskConfigs(ctx context.Context, platform string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error) {
+	if r == nil || r.provider == nil {
+		return nil, fmt.Errorf("local listing runtime is not initialized")
+	}
+	repo := r.provider.ScheduledTaskConfigRepository()
+	if repo == nil {
+		return nil, fmt.Errorf("scheduled task config repository is not configured")
+	}
+	items, err := repo.ListEnabledScheduledTaskConfigs(ctx, platform, string(taskType))
+	if err != nil {
+		return nil, err
+	}
+	result := make([]listingruntime.ScheduledTaskConfig, 0, len(items))
+	for _, item := range items {
+		result = append(result, listingruntime.ScheduledTaskConfig{
+			TenantID:        item.TenantID,
+			StoreID:         item.StoreID,
+			Platform:        item.Platform,
+			TaskType:        item.TaskType,
+			Enabled:         item.Enabled,
+			IntervalSeconds: item.IntervalSeconds,
+		})
+	}
+	return result, nil
 }
 
 func (r *LocalRuntime) GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error) {
@@ -351,6 +379,10 @@ func (r *LocalRuntime) GetProfitRuleClient() listingadmin.ProfitRuleAPI {
 
 func (r *LocalRuntime) GetLocalProductDataRepository() listingadmin.ProductDataRepository {
 	return r.provider.ProductDataRepository()
+}
+
+func (r *LocalRuntime) GetLocalSheinSyncRepository() listingkit.SheinSyncRepository {
+	return r.provider.SheinSyncRepository()
 }
 
 func (r *LocalRuntime) GetLocalPricingRuleRepository() *listingadmin.GormPricingRuleRepository {

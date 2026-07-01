@@ -385,20 +385,9 @@ func (s *sheinSyncService) fetchOnShelfProducts(
 				}
 
 				record := buildSyncedProductRecord(tenantID, storeID, product, skc, snapshots)
+				record.InventorySyncAttributes = s.buildInventorySyncAttributes(ctx, tenantID, storeID, skc, snapshots)
 				if existing, ok := existingProducts[skc.SkcName]; ok {
-					record.ID = existing.ID
-					record.ManualCostPrice = cloneSheinSyncFloat64(existing.ManualCostPrice)
-					record.AutoCostPrice = cloneSheinSyncFloat64(existing.AutoCostPrice)
-					record.CreatedAt = existing.CreatedAt
-					if existing.Currency != "" {
-						record.Currency = existing.Currency
-					}
-					if !snapshots.priceLoaded {
-						record.PriceSnapshot = existing.PriceSnapshot
-					}
-					if !snapshots.inventoryLoaded {
-						record.InventorySnapshot = existing.InventorySnapshot
-					}
+					applyExistingSheinSyncedProduct(record, existing, snapshots)
 				}
 				if resolved, ok := resolvedCosts[skc.SkcName]; ok {
 					record.AutoCostPrice = cloneSheinSyncFloat64(resolved.CostPrice)
@@ -469,6 +458,7 @@ func (s *sheinSyncService) fetchSourceSDSProducts(
 					continue
 				}
 				record := buildSyncedProductRecord(tenantID, storeID, filteredProduct, skc, snapshots)
+				record.InventorySyncAttributes = s.buildInventorySyncAttributes(ctx, tenantID, storeID, skc, snapshots)
 				if existing, ok := existingProducts[skc.SkcName]; ok {
 					applyExistingSheinSyncedProduct(record, existing, snapshots)
 				}
@@ -526,6 +516,9 @@ func applyExistingSheinSyncedProduct(record *SheinSyncedProductRecord, existing 
 	}
 	if !snapshots.inventoryLoaded {
 		record.InventorySnapshot = existing.InventorySnapshot
+	}
+	if record.InventorySyncAttributes == "" {
+		record.InventorySyncAttributes = existing.InventorySyncAttributes
 	}
 }
 

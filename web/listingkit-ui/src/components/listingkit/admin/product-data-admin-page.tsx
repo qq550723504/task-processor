@@ -253,6 +253,7 @@ export function ProductDataAdminPage() {
                         <div className="text-xs text-zinc-500">
                           库存 {item.stock || "-"}
                         </div>
+                        <ProductProfitPreview item={item} />
                       </TableCell>
                       <TableCell className="px-4 py-3">
                         <Button
@@ -435,6 +436,291 @@ function formatDate(value: string | undefined) {
     return value;
   }
   return date.toLocaleString();
+}
+
+function ProductProfitPreview({ item }: { item: ListingProductData }) {
+  const summary = getProfitSummary(item);
+  if (!summary) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 space-y-1.5 border-l-2 border-blue-200 pl-2">
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <span className="text-zinc-500">利润率</span>
+        <span
+          className={
+            summary.avgRate >= 0
+              ? "font-semibold text-emerald-600"
+              : "font-semibold text-red-600"
+          }
+        >
+          {summary.hasMultiple
+            ? `${formatRateValue(summary.minRate)} ~ ${formatRateValue(summary.maxRate)}`
+            : formatRateValue(summary.avgRate)}
+        </span>
+        {summary.hasMultiple ? (
+          <span className="text-zinc-400">(均 {formatRateValue(summary.avgRate)})</span>
+        ) : null}
+      </div>
+      <div className="flex max-w-[18rem] flex-wrap gap-1.5">
+        {summary.rows.slice(0, 3).map((row, index) => (
+          <span
+            key={`${row.skuCode}-${index}`}
+            className="inline-flex max-w-full items-center gap-1 rounded border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 text-[11px] text-zinc-600"
+          >
+            <span className="max-w-[7rem] truncate font-mono">{row.skuCode}</span>
+            <span
+              className={
+                row.profit >= 0
+                  ? "font-semibold text-emerald-600"
+                  : "font-semibold text-red-600"
+              }
+            >
+              {formatProfitValue(row.profit, row.currency)}
+            </span>
+            <span
+              className={
+                row.rate >= 0 ? "text-emerald-600" : "text-red-600"
+              }
+            >
+              {formatRateValue(row.rate)}
+            </span>
+          </span>
+        ))}
+        {summary.rows.length > 3 ? (
+          <span className="text-[11px] text-zinc-400">
+            +{summary.rows.length - 3} SKU
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+type UnknownRecord = Record<string, unknown>;
+
+type ProfitRow = {
+  skuCode: string;
+  profit: number;
+  rate: number;
+  currency: string;
+};
+
+type ProfitSummary = {
+  minRate: number;
+  maxRate: number;
+  avgRate: number;
+  hasMultiple: boolean;
+  rows: ProfitRow[];
+};
+
+function getProfitSummary(item: ListingProductData): ProfitSummary | null {
+  const skus = extractSkuRecords(item.attributes);
+  const rows = skus.flatMap((sku, index) => {
+    const salePrice = getSalePrice(sku);
+    const costPrice = getCostPrice(sku);
+    if (salePrice === null || costPrice === null || costPrice === 0) {
+      return [];
+    }
+    const profit = salePrice - costPrice;
+    return [
+      {
+        skuCode: getSkuCode(sku, index),
+        profit,
+        rate: (profit / costPrice) * 100,
+        currency: getSkuCurrency(sku, item.priceCurrency),
+      },
+    ];
+  });
+
+  if (rows.length === 0) {
+    return null;
+  }
+
+  const rates = rows.map((row) => row.rate);
+  const minRate = Math.min(...rates);
+  const maxRate = Math.max(...rates);
+  const avgRate = rates.reduce((sum, rate) => sum + rate, 0) / rates.length;
+
+  return {
+    minRate,
+    maxRate,
+    avgRate,
+    hasMultiple: rows.length > 1,
+    rows,
+  };
+}
+
+function extractSkuRecords(attributes: unknown): UnknownRecord[] {
+  const parsed = parseMaybeJSON(attributes);
+  const groups = Array.isArray(parsed) ? parsed : [parsed];
+  return groups.flatMap((group) => {
+    if (!isRecord(group)) {
+      return [];
+    }
+    const skuInfo = group.sku_info ?? group.skuInfo;
+    if (Array.isArray(skuInfo)) {
+      return skuInfo.filter(isRecord);
+    }
+    return isSkuLikeRecord(group) ? [group] : [];
+  });
+}
+
+function parseMaybeJSON(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function isSkuLikeRecord(value: UnknownRecord) {
+  return Boolean(
+    value.price_info_list ||
+      value.priceInfoList ||
+      value.cost_price_info ||
+      value.costPriceInfo ||
+      value.mapping_info ||
+      value.mappingInfo,
+  );
+}
+
+function getCostPrice(sku: UnknownRecord): number | null {
+  const amazonMonitorData = getRecord(sku, "amazon_monitor_data", "amazonMonitorData");
+  const monitorPrice = getNumber(amazonMonitorData, "price", "Price");
+  if (monitorPrice !== null) {
+    return monitorPrice;
+  }
+
+  const mappingInfo = getRecord(sku, "mapping_info", "mappingInfo");
+  return getNumber(mappingInfo, "costPrice", "CostPrice", "cost_price");
+}
+
+function getSalePrice(sku: UnknownRecord): number | null {
+  const priceInfoList = getArray(sku, "price_info_list", "priceInfoList");
+  const firstPriceInfo = priceInfoList.find(isRecord);
+  if (firstPriceInfo) {
+    const price = getNumber(
+      firstPriceInfo,
+      "special_price",
+      "specialPrice",
+      "shop_price",
+      "shopPrice",
+    );
+    if (price !== null) {
+      return price;
+    }
+  }
+
+  const costPriceInfo = getRecord(sku, "cost_price_info", "costPriceInfo");
+  return getNumber(costPriceInfo, "cost_price", "costPrice", "CostPrice");
+}
+
+function getSkuCurrency(sku: UnknownRecord, fallback?: string) {
+  const priceInfoList = getArray(sku, "price_info_list", "priceInfoList");
+  const firstPriceInfo = priceInfoList.find(isRecord);
+  const priceCurrency = getString(firstPriceInfo, "currency", "Currency");
+  if (priceCurrency) {
+    return priceCurrency;
+  }
+  const costPriceInfo = getRecord(sku, "cost_price_info", "costPriceInfo");
+  return getString(costPriceInfo, "currency", "Currency") || fallback || "USD";
+}
+
+function getSkuCode(sku: UnknownRecord, index: number) {
+  const mappingInfo = getRecord(sku, "mapping_info", "mappingInfo");
+  return (
+    getString(mappingInfo, "sku", "SKU", "Sku") ||
+    getString(sku, "sku_code", "skuCode", "SKUCode") ||
+    `SKU-${index + 1}`
+  );
+}
+
+function getRecord(
+  value: unknown,
+  ...keys: string[]
+): UnknownRecord | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  for (const key of keys) {
+    const next = value[key];
+    if (isRecord(next)) {
+      return next;
+    }
+  }
+  return undefined;
+}
+
+function getArray(value: unknown, ...keys: string[]): unknown[] {
+  if (!isRecord(value)) {
+    return [];
+  }
+  for (const key of keys) {
+    const next = value[key];
+    if (Array.isArray(next)) {
+      return next;
+    }
+  }
+  return [];
+}
+
+function getString(value: unknown, ...keys: string[]): string | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  for (const key of keys) {
+    const next = value[key];
+    if (typeof next === "string" && next.trim() !== "") {
+      return next.trim();
+    }
+  }
+  return undefined;
+}
+
+function getNumber(value: unknown, ...keys: string[]): number | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  for (const key of keys) {
+    const next = value[key];
+    const numberValue = numberFromUnknown(next);
+    if (numberValue !== null) {
+      return numberValue;
+    }
+  }
+  return null;
+}
+
+function numberFromUnknown(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value !== "string") {
+    return null;
+  }
+  const numberValue = Number.parseFloat(value.trim());
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function formatProfitValue(value: number, currency: string) {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)} ${currency}`;
+}
+
+function formatRateValue(value: number) {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function ProductDataInput({

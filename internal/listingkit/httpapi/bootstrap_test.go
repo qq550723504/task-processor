@@ -99,6 +99,9 @@ func buildServiceInputFixture() BuildServiceInput {
 				OperationStrategy: func(*config.Config, *logrus.Logger) (listingadmin.OperationStrategyRepository, []func() error, error) {
 					return nil, nil, nil
 				},
+				ScheduledTaskConfig: func(*config.Config, *logrus.Logger) (listingadmin.ScheduledTaskConfigRepository, []func() error, error) {
+					return nil, nil, nil
+				},
 				SensitiveWord: func(*config.Config, *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error) {
 					return nil, nil, nil
 				},
@@ -651,6 +654,10 @@ func TestAssembleRepositoriesBuildsAllRepositoryPhases(t *testing.T) {
 	t.Parallel()
 
 	input := buildSuccessfulServiceInputFixture()
+	scheduledTaskConfigRepo := &listingadmin.GormScheduledTaskConfigRepository{}
+	input.Repositories.Admin.ScheduledTaskConfig = func(*config.Config, *logrus.Logger) (listingadmin.ScheduledTaskConfigRepository, []func() error, error) {
+		return scheduledTaskConfigRepo, nil, nil
+	}
 	closers := &closerStack{}
 
 	assembly, err := assembleRepositories(input, closers)
@@ -674,6 +681,9 @@ func TestAssembleRepositoriesBuildsAllRepositoryPhases(t *testing.T) {
 	}
 	if assembly.merged.storeRepository != assembly.admin.storeRepository {
 		t.Fatal("expected merged repositories to preserve admin store repository")
+	}
+	if assembly.merged.scheduledTaskConfigRepository != scheduledTaskConfigRepo {
+		t.Fatal("expected merged repositories to preserve scheduled task config repository")
 	}
 	if assembly.merged.subscriptionService != assembly.lateCore.subscriptionService {
 		t.Fatal("expected merged repositories to preserve late core subscription service")
@@ -1492,6 +1502,35 @@ func TestBuildModuleWiresStoreAdminServiceIntoHandler(t *testing.T) {
 	}
 }
 
+func TestBuildModuleWiresScheduledTaskConfigRepositoryIntoHandler(t *testing.T) {
+	t.Parallel()
+
+	input := buildSuccessfulServiceInputFixture()
+	input.Repositories.Admin.ScheduledTaskConfig = func(*config.Config, *logrus.Logger) (listingadmin.ScheduledTaskConfigRepository, []func() error, error) {
+		return httpapiStubScheduledTaskConfigRepository{}, nil, nil
+	}
+
+	module, err := BuildModule(BuildModuleInput{ServiceInput: input})
+	if err != nil {
+		t.Fatalf("build module: %v", err)
+	}
+
+	engine := gin.New()
+	engine.GET("/api/v1/listing-kits/admin/scheduled-task-configs", module.Handler.ListAdminScheduledTaskConfigs)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/scheduled-task-configs?page=1&page_size=50&platform=shein&taskType=inventory", nil)
+	req.Header.Set("X-Tenant-ID", "18")
+	resp := httptest.NewRecorder()
+	engine.ServeHTTP(resp, req)
+
+	if resp.Code == http.StatusServiceUnavailable {
+		t.Fatalf("expected scheduled task config handler to be wired, got 503 body=%s", resp.Body.String())
+	}
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected scheduled task config list to succeed, got %d body=%s", resp.Code, resp.Body.String())
+	}
+}
+
 func TestBuildServiceComposesSubmitRegistrarThroughPublicEntryPoint(t *testing.T) {
 	t.Parallel()
 
@@ -1695,6 +1734,37 @@ type httpapiStubSheinAPIClientFactory struct{}
 
 func (httpapiStubSheinAPIClientFactory) NewSheinAPIClient(int64, *listingkit.SheinStoreInfo) *sheinclient.APIClient {
 	return nil
+}
+
+type httpapiStubScheduledTaskConfigRepository struct{}
+
+func (httpapiStubScheduledTaskConfigRepository) ListScheduledTaskConfigs(context.Context, listingadmin.ScheduledTaskConfigQuery) (*listingadmin.ScheduledTaskConfigPage, error) {
+	return &listingadmin.ScheduledTaskConfigPage{
+		Items:    []listingadmin.ScheduledTaskConfig{},
+		Total:    0,
+		Page:     1,
+		PageSize: 50,
+	}, nil
+}
+
+func (httpapiStubScheduledTaskConfigRepository) GetScheduledTaskConfig(context.Context, int64, int64) (*listingadmin.ScheduledTaskConfig, error) {
+	return nil, listingadmin.ErrScheduledTaskConfigNotFound
+}
+
+func (httpapiStubScheduledTaskConfigRepository) UpsertScheduledTaskConfig(context.Context, *listingadmin.ScheduledTaskConfig) (*listingadmin.ScheduledTaskConfig, error) {
+	return nil, nil
+}
+
+func (httpapiStubScheduledTaskConfigRepository) UpdateScheduledTaskConfigStatus(context.Context, int64, int64, bool, string) (*listingadmin.ScheduledTaskConfig, error) {
+	return nil, nil
+}
+
+func (httpapiStubScheduledTaskConfigRepository) DeleteScheduledTaskConfig(context.Context, int64, int64) error {
+	return nil
+}
+
+func (httpapiStubScheduledTaskConfigRepository) ListEnabledScheduledTaskConfigs(context.Context, string, string) ([]listingadmin.ScheduledTaskConfig, error) {
+	return nil, nil
 }
 
 type stubRouteHandlerWithGenerationTopicOverrides struct {

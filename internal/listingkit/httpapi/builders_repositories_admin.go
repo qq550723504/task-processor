@@ -63,6 +63,13 @@ func BuildListingAdminOperationStrategyRepository(cfg *config.Config, logger *lo
 	})
 }
 
+func BuildListingAdminScheduledTaskConfigRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.ScheduledTaskConfigRepository, []func() error, error) {
+	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminScheduledTaskConfigRepository, func(logger *logrus.Logger) (listingadmin.ScheduledTaskConfigRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit scheduled task config admin API disabled")
+		return nil, nil, nil
+	})
+}
+
 func BuildListingAdminSensitiveWordRepository(cfg *config.Config, logger *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error) {
 	return buildRepositoryWithFallback(cfg, logger, newDBListingAdminSensitiveWordRepository, func(logger *logrus.Logger) (listingadmin.SensitiveWordRepository, []func() error, error) {
 		logger.Warn("database not configured, ListingKit sensitive word admin API disabled")

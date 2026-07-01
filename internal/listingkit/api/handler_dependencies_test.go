@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingsubscription"
 )
@@ -51,6 +52,27 @@ func TestWithDependenciesConfiguresSubscriptionState(t *testing.T) {
 	}
 	if h.platformAdminRoles[0] != "platform-role" {
 		t.Fatalf("platform admin roles should be copied, got %#v", h.platformAdminRoles)
+	}
+}
+
+func TestWithDependenciesConfiguresScheduledTaskConfigHandler(t *testing.T) {
+	t.Parallel()
+
+	repo := &listingadmin.GormScheduledTaskConfigRepository{}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithDependencies(HandlerDependencies{
+		Admin: AdminHandlerDependencies{
+			ScheduledTaskConfigRepository: repo,
+		},
+	}))
+	if err != nil {
+		t.Fatalf("create handler: %v", err)
+	}
+
+	if h.scheduledTaskConfigRepository != repo {
+		t.Fatal("expected scheduled task config repository to be attached")
+	}
+	if h.scheduledTaskConfigHandler == nil {
+		t.Fatal("expected scheduled task config handler to be initialized")
 	}
 }
 

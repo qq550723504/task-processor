@@ -38,8 +38,7 @@ describe("ListingKitAppShell", () => {
     expect(sidebarNav).toBeInTheDocument();
     expect(sidebarNav.closest("[data-slot='sidebar']")).toBeInTheDocument();
     expect(screen.getByText("主流程")).toBeInTheDocument();
-    expect(screen.getByText("运营管理")).toBeInTheDocument();
-    expect(screen.getByText("系统")).toBeInTheDocument();
+    expect(screen.getByText("管理后台")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "首页" })).toHaveAttribute("href", "/");
     expect(screen.getByRole("link", { name: "新建任务" })).toHaveAttribute("href", "/listing-kits/new");
     expect(screen.getByRole("link", { name: "POD" })).toHaveAttribute("href", "/listing-kits/sds");
@@ -51,11 +50,11 @@ describe("ListingKitAppShell", () => {
       "href",
       "/listing-kits/canonical-products",
     );
-    expect(screen.getByRole("button", { name: "店铺运营" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "数据配置" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "规则策略" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "订阅计费" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "系统配置" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "业务运营" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "调度与导入" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "数据字典" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "策略规则" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "账号与系统" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "SHEIN 登录" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "SDS 登录" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "SHEIN 活动报名" })).not.toBeInTheDocument();
@@ -113,7 +112,7 @@ describe("ListingKitAppShell", () => {
 
     expect(screen.queryByRole("link", { name: "我的店铺配置" })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "店铺运营" }));
+    await user.click(screen.getByRole("button", { name: "业务运营" }));
 
     expect(screen.getByRole("link", { name: "我的店铺配置" })).toHaveAttribute(
       "href",
@@ -122,6 +121,10 @@ describe("ListingKitAppShell", () => {
     expect(screen.getByRole("link", { name: "SHEIN 活动报名" })).toHaveAttribute(
       "href",
       "/listing-kits/shein-enrollment",
+    );
+    expect(screen.getByRole("link", { name: "我的上架统计" })).toHaveAttribute(
+      "href",
+      "/listing-kits/store-statistics",
     );
     expect(screen.getByRole("link", { name: "平台店铺管理" })).toHaveAttribute(
       "href",
@@ -132,12 +135,65 @@ describe("ListingKitAppShell", () => {
       "/listing-kits/admin/store-statistics",
     );
 
-    await user.click(screen.getByRole("button", { name: "规则策略" }));
+    await user.click(screen.getByRole("button", { name: "调度与导入" }));
 
+    expect(screen.getByRole("link", { name: "定时任务配置" })).toHaveAttribute(
+      "href",
+      "/listing-kits/admin/scheduled-task-configs",
+    );
+    expect(screen.getByRole("link", { name: "调度事件" })).toHaveAttribute(
+      "href",
+      "/listing-kits/admin/dispatch-events",
+    );
+    expect(screen.getByRole("link", { name: "任务导入" })).toHaveAttribute(
+      "href",
+      "/listing-kits/admin/import-tasks",
+    );
+
+    await user.click(screen.getByRole("button", { name: "数据字典" }));
+
+    expect(screen.getByRole("link", { name: "分类" })).toHaveAttribute(
+      "href",
+      "/listing-kits/admin/categories",
+    );
+    expect(screen.getByRole("link", { name: "商品数据" })).toHaveAttribute(
+      "href",
+      "/listing-kits/admin/product-data",
+    );
+    expect(screen.getByRole("link", { name: "导入映射" })).toHaveAttribute(
+      "href",
+      "/listing-kits/admin/product-import-mappings",
+    );
+
+    await user.click(screen.getByRole("button", { name: "策略规则" }));
+
+    expect(screen.getByRole("link", { name: "筛选规则" })).toHaveAttribute(
+      "href",
+      "/listing-kits/admin/filter-rules",
+    );
     expect(screen.getByRole("link", { name: "运营策略" })).toHaveAttribute(
       "href",
       "/listing-kits/admin/operation-strategies",
     );
+    expect(screen.getByRole("link", { name: "利润规则" })).toHaveAttribute(
+      "href",
+      "/listing-kits/admin/profit-rules",
+    );
+    expect(screen.getByRole("link", { name: "核价规则" })).toHaveAttribute(
+      "href",
+      "/listing-kits/admin/pricing-rules",
+    );
+    expect(screen.getByRole("link", { name: "敏感词" })).toHaveAttribute(
+      "href",
+      "/listing-kits/admin/sensitive-words",
+    );
+    expect(screen.getByRole("link", { name: "生成禁用主题" })).toHaveAttribute(
+      "href",
+      "/listing-kits/admin/generation-topic-policies",
+    );
+
+    await user.click(screen.getByRole("button", { name: "账号与系统" }));
+
     expect(screen.getByRole("link", { name: "SHEIN 登录" })).toHaveAttribute(
       "href",
       "/listing-kits/shein-login",
@@ -146,9 +202,6 @@ describe("ListingKitAppShell", () => {
       "href",
       "/listing-kits/sds-login",
     );
-
-    await user.click(screen.getByRole("button", { name: "系统配置" }));
-
     expect(screen.getByRole("link", { name: "提示词" })).toHaveAttribute(
       "href",
       "/listing-kits/prompts",
@@ -156,6 +209,10 @@ describe("ListingKitAppShell", () => {
     expect(screen.getByRole("link", { name: "设置" })).toHaveAttribute(
       "href",
       "/listing-kits/settings",
+    );
+    expect(screen.getByRole("link", { name: "当前租户订阅" })).toHaveAttribute(
+      "href",
+      "/listing-kits/subscription",
     );
     expect(screen.queryByRole("link", { name: "用户管理" })).not.toBeInTheDocument();
   });
@@ -176,7 +233,7 @@ describe("ListingKitAppShell", () => {
       </ConfiguredShell>,
     );
 
-    await user.click(screen.getByRole("button", { name: "系统配置" }));
+    await user.click(screen.getByRole("button", { name: "账号与系统" }));
 
     expect(screen.getByRole("link", { name: "用户管理" })).toHaveAttribute(
       "href",
@@ -196,12 +253,12 @@ describe("ListingKitAppShell", () => {
     );
 
     expect(screen.getByRole("link", { name: "POD" })).toBeInTheDocument();
-    expect(screen.getByText("运营管理")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "店铺运营" })).toBeInTheDocument();
-    expect(screen.getByText("系统")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "系统配置" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "数据配置" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "规则策略" })).not.toBeInTheDocument();
+    expect(screen.getByText("管理后台")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "业务运营" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "账号与系统" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "调度与导入" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "数据字典" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "策略规则" })).not.toBeInTheDocument();
   });
 
   it("keeps privileged menu sections visible for administrators", () => {
@@ -211,8 +268,11 @@ describe("ListingKitAppShell", () => {
       </ListingKitAppShell>,
     );
 
-    expect(screen.getByRole("button", { name: "店铺运营" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "系统配置" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "业务运营" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "调度与导入" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "数据字典" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "策略规则" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "账号与系统" })).toBeInTheDocument();
   });
 
   it("renders main content in the sidebar inset layout", () => {
@@ -268,10 +328,11 @@ describe("ListingKitAppShell", () => {
       </ListingKitAppShell>,
     );
 
-    expect(screen.queryByRole("button", { name: "店铺运营" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "系统配置" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "数据配置" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "规则策略" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "业务运营" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "账号与系统" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "调度与导入" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "数据字典" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "策略规则" })).not.toBeInTheDocument();
   });
 
   it("hides platform store links for tenant users", async () => {
@@ -283,11 +344,15 @@ describe("ListingKitAppShell", () => {
       </ListingKitAppShell>,
     );
 
-    await user.click(screen.getByRole("button", { name: "店铺运营" }));
+    await user.click(screen.getByRole("button", { name: "业务运营" }));
 
     expect(screen.getByRole("link", { name: "我的店铺配置" })).toHaveAttribute(
       "href",
       "/listing-kits/stores",
+    );
+    expect(screen.getByRole("link", { name: "我的上架统计" })).toHaveAttribute(
+      "href",
+      "/listing-kits/store-statistics",
     );
     expect(screen.queryByRole("link", { name: "平台店铺管理" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "上架统计" })).not.toBeInTheDocument();

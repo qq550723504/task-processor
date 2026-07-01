@@ -12,6 +12,7 @@ type sheinProductSnapshots struct {
 	priceSnapshotBySKC    map[string]string
 	inventorySnapshot     string
 	inventorySKUInfoBySKC map[string][]sheinSiteSnapshotSKUInfo
+	inventoryInfoBySKC    map[string]map[string][]sheinproduct.WarehouseInventory
 	priceLoaded           bool
 	inventoryLoaded       bool
 }
@@ -36,9 +37,42 @@ func (s *sheinSyncService) fetchSupplementalSnapshots(
 		snapshots.inventoryLoaded = true
 		snapshots.inventorySnapshot = buildSheinInventorySnapshot(inventoryResp, product)
 		snapshots.inventorySKUInfoBySKC = buildSheinInventorySKUInfoBySKC(inventoryResp)
+		snapshots.inventoryInfoBySKC = buildSheinInventoryInfoBySKC(inventoryResp)
 	}
 
 	return snapshots
+}
+
+func (s sheinProductSnapshots) inventoryInfoBySKCAndSKU(skcName string) map[string][]sheinproduct.WarehouseInventory {
+	if s.inventoryInfoBySKC == nil {
+		return nil
+	}
+	return s.inventoryInfoBySKC[skcName]
+}
+
+func buildSheinInventoryInfoBySKC(
+	response *sheinproduct.InventoryQueryResponse,
+) map[string]map[string][]sheinproduct.WarehouseInventory {
+	if response == nil {
+		return nil
+	}
+	out := make(map[string]map[string][]sheinproduct.WarehouseInventory, len(response.Info.SkcInfo))
+	for _, skcInventory := range response.Info.SkcInfo {
+		if skcInventory.SkcName == "" {
+			continue
+		}
+		bySKU := make(map[string][]sheinproduct.WarehouseInventory, len(skcInventory.SkuInfo))
+		for _, skuInventory := range skcInventory.SkuInfo {
+			if skuInventory.SkuCode == "" {
+				continue
+			}
+			bySKU[skuInventory.SkuCode] = append([]sheinproduct.WarehouseInventory(nil), skuInventory.InventoryInfo...)
+		}
+		if len(bySKU) > 0 {
+			out[skcInventory.SkcName] = bySKU
+		}
+	}
+	return out
 }
 
 func (s sheinProductSnapshots) priceSnapshotForSKC(skcName string) string {

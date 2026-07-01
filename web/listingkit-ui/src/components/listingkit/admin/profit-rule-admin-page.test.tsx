@@ -47,6 +47,6 @@ describe("ProfitRuleAdminPage", () => {
       expect(screen.getByText("SHEIN margin")).toBeInTheDocument();
     });
     expect(screen.getByText("PR-SHEIN")).toBeInTheDocument();
-    expect(screen.getAllByText("SHEIN US").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("SHEIN US (#11)").length).toBeGreaterThan(0);
   });
 });

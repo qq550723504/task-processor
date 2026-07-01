@@ -51,6 +51,6 @@ describe("FilterRuleAdminPage", () => {
       expect(screen.getByText("Amazon basic")).toBeInTheDocument();
     });
     expect(screen.getByText("FR-AMZ")).toBeInTheDocument();
-    expect(screen.getAllByText("SHEIN US").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("SHEIN US (#11)").length).toBeGreaterThan(0);
   });
 });

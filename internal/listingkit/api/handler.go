@@ -28,6 +28,7 @@ type handler struct {
 	sheinEnrollmentService      listingkit.SheinEnrollmentService
 	sheinSyncRepository         listingkit.SheinSyncRepository
 	operationStrategyRepository listingadmin.OperationStrategyRepository
+	scheduledTaskConfigRepository listingadmin.ScheduledTaskConfigRepository
 	studioAsyncJobs             studioAsyncJobStoreService
 	initErr                     error
 	adminHandlers
@@ -47,6 +48,7 @@ type catalogAdminHandlers struct {
 	profitRuleHandler              *listingadmin.ProfitRuleHandler
 	pricingRuleHandler             *listingadmin.PricingRuleHandler
 	operationStrategyHandler       *listingadmin.OperationStrategyHandler
+	scheduledTaskConfigHandler     *listingadmin.ScheduledTaskConfigHandler
 	sensitiveWordHandler           *listingadmin.SensitiveWordHandler
 	generationTopicCatalogHandler  *listingadmin.GenerationTopicCatalogHandler
 	generationTopicPolicyHandler   *listingadmin.GenerationTopicPolicyHandler
@@ -120,6 +122,7 @@ type AdminHandlerDependencies struct {
 	ProfitRuleRepository              listingadmin.ProfitRuleRepository
 	PricingRuleRepository             listingadmin.PricingRuleRepository
 	OperationStrategyRepository       listingadmin.OperationStrategyRepository
+	ScheduledTaskConfigRepository     listingadmin.ScheduledTaskConfigRepository
 	SensitiveWordRepository           listingadmin.SensitiveWordRepository
 	GenerationTopicOverrideRepository listingadmin.GenerationTopicOverrideRepository
 	GenerationTopicPolicyRepository   listingadmin.GenerationTopicPolicyRepository

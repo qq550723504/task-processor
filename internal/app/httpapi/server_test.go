@@ -496,6 +496,26 @@ func (s *stubListingKitHandler) DeleteAdminOperationStrategy(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
 }
 
+func (s *stubListingKitHandler) ListAdminScheduledTaskConfigs(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
+}
+
+func (s *stubListingKitHandler) GetAdminScheduledTaskConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) UpsertAdminScheduledTaskConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": 1})
+}
+
+func (s *stubListingKitHandler) UpdateAdminScheduledTaskConfigStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"id": c.Param("id")})
+}
+
+func (s *stubListingKitHandler) DeleteAdminScheduledTaskConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
 func (s *stubListingKitHandler) ListAdminSensitiveWords(c *gin.Context) {
 	s.listAdminSensitiveWordsCalled = true
 	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})

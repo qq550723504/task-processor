@@ -18,6 +18,12 @@ import (
 type schedulerStoreRuntime interface {
 	GetStore(storeID int64) (*listingruntime.StoreInfo, error)
 	ListAutoPricingStoreIDs(ctx context.Context, platformName string) ([]int64, error)
+	ListScheduledTaskConfigs(ctx context.Context, platformName string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
+}
+
+type resolvedStoreTaskConfig struct {
+	StoreID  int64
+	Interval time.Duration
 }
 
 // startPlatformTasks 启动平台任务
@@ -36,10 +42,11 @@ func (s *schedulerServiceImpl) startPlatformTasks(
 	// 启动各类任务
 	totalTaskCount := 0
 
-	if platformConfig.AutoPricing.Enabled {
+	if s.shouldStartTasksByType(platformConfig.PlatformName, scheduler.TaskTypePricing, platformConfig.AutoPricing) {
 		count := s.startTasksByType(
 			platformConfig.PlatformName,
 			scheduler.TaskTypePricing,
+			platformConfig.AutoPricing.StoreIDs,
 			getDefaultInterval(platformConfig.AutoPricing.Interval),
 			cfg,
 		)
@@ -47,10 +54,11 @@ func (s *schedulerServiceImpl) startPlatformTasks(
 		s.logger.Infof("✅ 成功启动 %d 个%s核价任务", count, platformConfig.PlatformName)
 	}
 
-	if platformConfig.ProductSync.Enabled {
+	if s.shouldStartTasksByType(platformConfig.PlatformName, scheduler.TaskTypeProductSync, platformConfig.ProductSync) {
 		count := s.startTasksByType(
 			platformConfig.PlatformName,
 			scheduler.TaskTypeProductSync,
+			platformConfig.ProductSync.StoreIDs,
 			getDefaultInterval(platformConfig.ProductSync.Interval),
 			cfg,
 		)
@@ -58,10 +66,11 @@ func (s *schedulerServiceImpl) startPlatformTasks(
 		s.logger.Infof("✅ 成功启动 %d 个%s产品同步任务", count, platformConfig.PlatformName)
 	}
 
-	if platformConfig.InventorySync.Enabled {
+	if s.shouldStartTasksByType(platformConfig.PlatformName, scheduler.TaskTypeInventory, platformConfig.InventorySync) {
 		count := s.startTasksByType(
 			platformConfig.PlatformName,
 			scheduler.TaskTypeInventory,
+			platformConfig.InventorySync.StoreIDs,
 			getDefaultInterval(platformConfig.InventorySync.Interval),
 			cfg,
 		)
@@ -69,10 +78,11 @@ func (s *schedulerServiceImpl) startPlatformTasks(
 		s.logger.Infof("✅ 成功启动 %d 个%s库存同步任务", count, platformConfig.PlatformName)
 	}
 
-	if platformConfig.ActivityRegistration.Enabled {
+	if s.shouldStartTasksByType(platformConfig.PlatformName, scheduler.TaskTypeActivity, platformConfig.ActivityRegistration) {
 		count := s.startTasksByType(
 			platformConfig.PlatformName,
 			scheduler.TaskTypeActivity,
+			platformConfig.ActivityRegistration.StoreIDs,
 			getDefaultInterval(platformConfig.ActivityRegistration.Interval),
 			cfg,
 		)
@@ -89,20 +99,42 @@ func (s *schedulerServiceImpl) startPlatformTasks(
 	return nil
 }
 
+func (s *schedulerServiceImpl) shouldStartTasksByType(
+	platformName string,
+	taskType scheduler.TaskType,
+	taskConfig taskTypeConfig,
+) bool {
+	if taskConfig.Enabled {
+		return true
+	}
+	configs, err := listEnabledScheduledTaskConfigs(platformName, taskType, s.storeRuntime)
+	if err != nil {
+		s.logger.Warnf("%s平台%s任务读取后台配置失败: %v", platformName, taskType, err)
+		return false
+	}
+	if len(configs) == 0 {
+		return false
+	}
+	s.logger.Infof("%s平台%s任务静态开关未启用，但发现 %d 个后台启用配置",
+		platformName, taskType, len(configs))
+	return true
+}
+
 // startTasksByType 按类型启动任务
 func (s *schedulerServiceImpl) startTasksByType(
 	platformName string,
 	taskType scheduler.TaskType,
+	configuredStoreIDs []int64,
 	interval time.Duration,
 	cfg *config.Config,
 ) int {
 	taskCount := 0
-	storeIDs := resolveStoreIDsForTask(platformName, taskType, s.storeRuntime, s.logger)
+	storeConfigs := resolveStoreTaskConfigs(platformName, taskType, configuredStoreIDs, interval, s.storeRuntime, s.logger)
 
-	for _, storeID := range storeIDs {
-		if err := s.createStoreTask(platformName, storeID, taskType, interval); err != nil {
+	for _, storeConfig := range storeConfigs {
+		if err := s.createStoreTask(platformName, storeConfig.StoreID, taskType, storeConfig.Interval); err != nil {
 			s.logger.Debugf("创建%s任务失败 (店铺:%d, 类型:%s): %v",
-				platformName, storeID, taskType, err)
+				platformName, storeConfig.StoreID, taskType, err)
 			continue
 		}
 		taskCount++
@@ -114,28 +146,107 @@ func (s *schedulerServiceImpl) startTasksByType(
 func resolveStoreIDsForTask(
 	platformName string,
 	taskType scheduler.TaskType,
+	configuredStoreIDs []int64,
 	storeRuntime schedulerStoreRuntime,
 	logger *logrus.Logger,
 ) []int64 {
-	if taskType != scheduler.TaskTypePricing {
-		logger.Warnf("%s平台%s任务当前仅自动发现核价店铺，跳过动态建任务",
-			platformName, taskType)
-		return nil
+	configs := resolveStoreTaskConfigs(platformName, taskType, configuredStoreIDs, 0, storeRuntime, logger)
+	storeIDs := make([]int64, 0, len(configs))
+	for _, config := range configs {
+		storeIDs = append(storeIDs, config.StoreID)
+	}
+	return storeIDs
+}
+
+func resolveStoreTaskConfigs(
+	platformName string,
+	taskType scheduler.TaskType,
+	configuredStoreIDs []int64,
+	defaultInterval time.Duration,
+	storeRuntime schedulerStoreRuntime,
+	logger *logrus.Logger,
+) []resolvedStoreTaskConfig {
+	byStoreID := make(map[int64]resolvedStoreTaskConfig)
+	if len(configuredStoreIDs) > 0 {
+		storeIDs := dedupeAndSortStoreIDs(configuredStoreIDs)
+		if len(storeIDs) == 0 {
+			logger.Warnf("%s平台%s任务配置了店铺列表但没有有效店铺ID", platformName, taskType)
+		} else {
+			logger.Infof("%s平台%s任务使用配置的 %d 个店铺: %v",
+				platformName, taskType, len(storeIDs), storeIDs)
+			for _, storeID := range storeIDs {
+				byStoreID[storeID] = resolvedStoreTaskConfig{StoreID: storeID, Interval: defaultInterval}
+			}
+		}
 	}
 
-	discoveredStoreIDs, err := discoverAutoPricingStoreIDs(platformName, storeRuntime)
+	adminConfigs, err := listEnabledScheduledTaskConfigs(platformName, taskType, storeRuntime)
 	if err != nil {
-		logger.Warnf("%s平台自动发现已启用自动核价店铺失败: %v", platformName, err)
-		return nil
+		logger.Warnf("%s平台%s任务读取后台配置失败: %v", platformName, taskType, err)
+	} else if len(adminConfigs) > 0 {
+		logger.Infof("%s平台%s任务读取到 %d 个后台启用配置", platformName, taskType, len(adminConfigs))
+		for _, config := range adminConfigs {
+			if config.StoreID == 0 || !config.Enabled {
+				continue
+			}
+			if !strings.EqualFold(config.Platform, platformName) || config.TaskType != string(taskType) {
+				continue
+			}
+			interval := defaultInterval
+			if config.IntervalSeconds > 0 {
+				interval = time.Duration(config.IntervalSeconds) * time.Second
+			}
+			byStoreID[config.StoreID] = resolvedStoreTaskConfig{StoreID: config.StoreID, Interval: interval}
+		}
 	}
-	if len(discoveredStoreIDs) == 0 {
-		logger.Warnf("%s平台未发现已启用自动核价的店铺", platformName)
+
+	if len(byStoreID) == 0 && taskType == scheduler.TaskTypePricing {
+		discoveredStoreIDs, err := discoverAutoPricingStoreIDs(platformName, storeRuntime)
+		if err != nil {
+			logger.Warnf("%s平台自动发现已启用自动核价店铺失败: %v", platformName, err)
+			return nil
+		}
+		if len(discoveredStoreIDs) == 0 {
+			logger.Warnf("%s平台未发现已启用自动核价的店铺", platformName)
+			return nil
+		}
+
+		logger.Infof("%s平台自动发现到 %d 个已启用自动核价的店铺: %v",
+			platformName, len(discoveredStoreIDs), discoveredStoreIDs)
+		for _, storeID := range discoveredStoreIDs {
+			byStoreID[storeID] = resolvedStoreTaskConfig{StoreID: storeID, Interval: defaultInterval}
+		}
+	}
+
+	if len(byStoreID) == 0 {
+		logger.Warnf("%s平台%s任务未配置店铺列表，跳过动态建任务", platformName, taskType)
 		return nil
 	}
 
-	logger.Infof("%s平台自动发现到 %d 个已启用自动核价的店铺: %v",
-		platformName, len(discoveredStoreIDs), discoveredStoreIDs)
-	return discoveredStoreIDs
+	storeIDs := make([]int64, 0, len(byStoreID))
+	for storeID := range byStoreID {
+		storeIDs = append(storeIDs, storeID)
+	}
+	sort.Slice(storeIDs, func(i, j int) bool {
+		return storeIDs[i] < storeIDs[j]
+	})
+
+	result := make([]resolvedStoreTaskConfig, 0, len(storeIDs))
+	for _, storeID := range storeIDs {
+		result = append(result, byStoreID[storeID])
+	}
+	return result
+}
+
+func listEnabledScheduledTaskConfigs(
+	platformName string,
+	taskType scheduler.TaskType,
+	storeRuntime schedulerStoreRuntime,
+) ([]listingruntime.ScheduledTaskConfig, error) {
+	if storeRuntime == nil {
+		return nil, nil
+	}
+	return storeRuntime.ListScheduledTaskConfigs(context.Background(), platformName, taskType)
 }
 
 func discoverAutoPricingStoreIDs(platformName string, storeRuntime schedulerStoreRuntime) ([]int64, error) {
@@ -235,4 +346,11 @@ func (a schedulerStoreRuntimeAdapter) ListAutoPricingStoreIDs(ctx context.Contex
 		return nil, fmt.Errorf("scheduler runtime is not initialized")
 	}
 	return a.runtime.ListRuntimeAutoPricingStoreIDs(ctx, platformName)
+}
+
+func (a schedulerStoreRuntimeAdapter) ListScheduledTaskConfigs(ctx context.Context, platformName string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error) {
+	if a.runtime == nil {
+		return nil, fmt.Errorf("scheduler runtime is not initialized")
+	}
+	return a.runtime.ListRuntimeScheduledTaskConfigs(ctx, platformName, taskType)
 }

@@ -54,7 +54,7 @@ describe("OperationStrategyAdminPage", () => {
     await waitFor(() => {
       expect(screen.getByText("SHEIN stock guard")).toBeInTheDocument();
     });
-    expect(screen.getAllByText("SHEIN US").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("SHEIN US (#11)").length).toBeGreaterThan(0);
     expect(screen.getAllByText("SHEIN").length).toBeGreaterThan(0);
   });
 });

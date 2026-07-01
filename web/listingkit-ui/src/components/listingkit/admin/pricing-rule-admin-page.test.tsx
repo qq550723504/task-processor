@@ -50,6 +50,6 @@ describe("PricingRuleAdminPage", () => {
       expect(screen.getByText("SHEIN auto price")).toBeInTheDocument();
     });
     expect(screen.getByText("AR-SHEIN")).toBeInTheDocument();
-    expect(screen.getAllByText("SHEIN US").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("SHEIN US (#11)").length).toBeGreaterThan(0);
   });
 });

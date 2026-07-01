@@ -18,6 +18,7 @@ func buildAdminRepositories(input BuildServiceInput, closers *closerStack) (*bui
 		profitRuleRepository:              rules.profitRuleRepository,
 		pricingRuleRepository:             rules.pricingRuleRepository,
 		operationStrategyRepository:       rules.operationStrategyRepository,
+		scheduledTaskConfigRepository:     rules.scheduledTaskConfigRepository,
 		sensitiveWordRepository:           rules.sensitiveWordRepository,
 		generationTopicOverrideRepository: rules.generationTopicOverrideRepository,
 		generationTopicPolicyRepository:   rules.generationTopicPolicyRepository,
@@ -89,6 +90,10 @@ func buildAdminRuleRepositories(input BuildServiceInput, closers *closerStack) (
 	if err != nil {
 		return nil, err
 	}
+	scheduledTaskConfigRepository, err := buildNamedWithClosers("admin.scheduled_task_config", repoBuilders.ScheduledTaskConfig, input.Config, input.Logger, closers)
+	if err != nil {
+		return nil, err
+	}
 	sensitiveWordRepository, err := buildNamedWithClosers("admin.sensitive_word", repoBuilders.SensitiveWord, input.Config, input.Logger, closers)
 	if err != nil {
 		return nil, err
@@ -107,6 +112,7 @@ func buildAdminRuleRepositories(input BuildServiceInput, closers *closerStack) (
 		profitRuleRepository:              profitRuleRepository,
 		pricingRuleRepository:             pricingRuleRepository,
 		operationStrategyRepository:       operationStrategyRepository,
+		scheduledTaskConfigRepository:     scheduledTaskConfigRepository,
 		sensitiveWordRepository:           sensitiveWordRepository,
 		generationTopicOverrideRepository: generationTopicOverrideRepository,
 		generationTopicPolicyRepository:   generationTopicPolicyRepository,

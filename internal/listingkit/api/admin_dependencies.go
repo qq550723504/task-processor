@@ -24,6 +24,7 @@ func withCatalogAdminDependencies(deps AdminHandlerDependencies) HandlerOption {
 		WithProfitRuleRepository(deps.ProfitRuleRepository),
 		WithPricingRuleRepository(deps.PricingRuleRepository),
 		WithOperationStrategyRepository(deps.OperationStrategyRepository),
+		WithScheduledTaskConfigRepository(deps.ScheduledTaskConfigRepository),
 		WithSensitiveWordRepository(deps.SensitiveWordRepository),
 		WithGenerationTopicOverrideRepository(deps.GenerationTopicOverrideRepository),
 		WithGenerationTopicPolicyRepository(deps.GenerationTopicPolicyRepository),
@@ -93,6 +94,16 @@ func WithOperationStrategyRepository(repo listingadmin.OperationStrategyReposito
 		}
 		h.operationStrategyRepository = repo
 		h.adminHandlers.operationStrategyHandler = listingadmin.NewOperationStrategyHandler(repo)
+	})
+}
+
+func WithScheduledTaskConfigRepository(repo listingadmin.ScheduledTaskConfigRepository) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		if repo == nil {
+			return
+		}
+		h.scheduledTaskConfigRepository = repo
+		h.adminHandlers.scheduledTaskConfigHandler = listingadmin.NewScheduledTaskConfigHandler(repo)
 	})
 }
 

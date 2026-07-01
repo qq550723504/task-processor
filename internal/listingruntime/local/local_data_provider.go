@@ -12,6 +12,8 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/database"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingkit"
+	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/pkg/types"
 
@@ -31,10 +33,12 @@ type LocalDataProvider struct {
 	filterRuleRepo           *listingadmin.GormFilterRuleRepository
 	profitRuleRepo           *listingadmin.GormProfitRuleRepository
 	operationStrategyRepo    *listingadmin.GormOperationStrategyRepository
+	scheduledTaskConfigRepo  *listingadmin.GormScheduledTaskConfigRepository
 	pricingRuleRepo          *listingadmin.GormPricingRuleRepository
 	productImportMappingRepo *listingadmin.GormProductImportMappingRepository
 	productDataRepo          *listingadmin.GormProductDataRepository
 	inventoryRecordRepo      *listingadmin.GormInventoryRecordRepository
+	sheinSyncRepo            listingkit.SheinSyncRepository
 	rawJSONDataRepo          *listingadmin.GormRawJSONDataRepository
 	importTaskRepo           *listingadmin.GormImportTaskRepository
 }
@@ -119,6 +123,9 @@ func (p *LocalDataProvider) initRepositories() {
 	if p.operationStrategyRepo == nil {
 		p.operationStrategyRepo = listingadmin.NewGormOperationStrategyRepository(p.db)
 	}
+	if p.scheduledTaskConfigRepo == nil {
+		p.scheduledTaskConfigRepo = listingadmin.NewGormScheduledTaskConfigRepository(p.db)
+	}
 	if p.pricingRuleRepo == nil {
 		p.pricingRuleRepo = listingadmin.NewGormPricingRuleRepository(p.db)
 	}
@@ -130,6 +137,9 @@ func (p *LocalDataProvider) initRepositories() {
 	}
 	if p.inventoryRecordRepo == nil {
 		p.inventoryRecordRepo = listingadmin.NewGormInventoryRecordRepository(p.db)
+	}
+	if p.sheinSyncRepo == nil {
+		p.sheinSyncRepo = listingkitstore.NewSheinSyncRepository(p.db)
 	}
 	if p.rawJSONDataRepo == nil {
 		p.rawJSONDataRepo = listingadmin.NewGormRawJSONDataRepository(p.db)
@@ -187,6 +197,18 @@ func (p *LocalDataProvider) OperationStrategyRepository() *listingadmin.GormOper
 	return p.operationStrategyRepository()
 }
 
+func (p *LocalDataProvider) scheduledTaskConfigRepository() *listingadmin.GormScheduledTaskConfigRepository {
+	if p == nil {
+		return nil
+	}
+	p.initRepositories()
+	return p.scheduledTaskConfigRepo
+}
+
+func (p *LocalDataProvider) ScheduledTaskConfigRepository() *listingadmin.GormScheduledTaskConfigRepository {
+	return p.scheduledTaskConfigRepository()
+}
+
 func (p *LocalDataProvider) pricingRuleRepository() *listingadmin.GormPricingRuleRepository {
 	if p == nil {
 		return nil
@@ -221,6 +243,14 @@ func (p *LocalDataProvider) productDataRepository() *listingadmin.GormProductDat
 
 func (p *LocalDataProvider) ProductDataRepository() listingadmin.ProductDataRepository {
 	return p.productDataRepository()
+}
+
+func (p *LocalDataProvider) SheinSyncRepository() listingkit.SheinSyncRepository {
+	if p == nil {
+		return nil
+	}
+	p.initRepositories()
+	return p.sheinSyncRepo
 }
 
 func (p *LocalDataProvider) inventoryRecordRepository() *listingadmin.GormInventoryRecordRepository {

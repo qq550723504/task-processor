@@ -24,6 +24,13 @@ func (s *inventorySyncServiceImpl) updateInventoryProductAttributes(ctx context.
 	if prod == nil {
 		return 0, nil
 	}
+	if prod.Source == inventoryProductSourceSheinSyncedProduct && s.syncedProductSource != nil {
+		count, err := s.syncedProductSource.UpdateSyncedInventoryProductAttributes(ctx, prod.TenantID, prod.StoreID, prod.PlatformProductID, attributes)
+		if err != nil {
+			return 0, fmt.Errorf("通过SHEIN同步产品仓储更新库存同步attributes失败: %w", err)
+		}
+		return count, nil
+	}
 	if s.productDataRepo == nil {
 		return 0, fmt.Errorf("product data repository is not initialized")
 	}

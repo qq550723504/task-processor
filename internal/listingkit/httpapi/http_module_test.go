@@ -252,6 +252,11 @@ func (stubRouteHandler) CreateAdminOperationStrategy(*gin.Context)              
 func (stubRouteHandler) UpdateAdminOperationStrategy(*gin.Context)                {}
 func (stubRouteHandler) UpdateAdminOperationStrategyStatus(*gin.Context)          {}
 func (stubRouteHandler) DeleteAdminOperationStrategy(*gin.Context)                {}
+func (stubRouteHandler) ListAdminScheduledTaskConfigs(*gin.Context)               {}
+func (stubRouteHandler) GetAdminScheduledTaskConfig(*gin.Context)                 {}
+func (stubRouteHandler) UpsertAdminScheduledTaskConfig(*gin.Context)              {}
+func (stubRouteHandler) UpdateAdminScheduledTaskConfigStatus(*gin.Context)        {}
+func (stubRouteHandler) DeleteAdminScheduledTaskConfig(*gin.Context)              {}
 func (stubRouteHandler) ListAdminSensitiveWords(*gin.Context)                     {}
 func (stubRouteHandler) GetAdminSensitiveWord(*gin.Context)                       {}
 func (stubRouteHandler) CreateAdminSensitiveWord(*gin.Context)                    {}

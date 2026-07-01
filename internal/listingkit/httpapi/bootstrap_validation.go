@@ -53,6 +53,8 @@ func (b AdminRepositoryBuilders) Validate() error {
 		return fmt.Errorf("admin repository builder pricing rule is required")
 	case b.OperationStrategy == nil:
 		return fmt.Errorf("admin repository builder operation strategy is required")
+	case b.ScheduledTaskConfig == nil:
+		return fmt.Errorf("admin repository builder scheduled task config is required")
 	case b.SensitiveWord == nil:
 		return fmt.Errorf("admin repository builder sensitive word is required")
 	case b.GenerationTopicOverride == nil:

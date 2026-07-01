@@ -112,6 +112,7 @@ type SheinCandidateService = sheinsync.SheinCandidateService
 type SheinCandidateRefreshResult = sheinsync.SheinCandidateRefreshResult
 type SheinEnrollmentService = sheinsync.SheinEnrollmentService
 type SheinCostResolver = sheinsync.SheinCostResolver
+type SheinInventoryMappingSource = sheinsync.SheinInventoryMappingSource
 type SheinSyncScheduler = sheinsync.SheinSyncScheduler
 type SheinEnrollmentScheduler = sheinsync.SheinEnrollmentScheduler
 
@@ -147,6 +148,10 @@ func NewSheinSyncService(repo SheinSyncRepository, productAPI sheinproduct.Produ
 	return sheinsync.NewSheinSyncService(repo, productAPI, costResolver)
 }
 
+func NewSheinSyncServiceWithInventoryMappingSource(repo SheinSyncRepository, productAPI sheinproduct.ProductAPI, costResolver SheinCostResolver, mappingSource SheinInventoryMappingSource) SheinSyncService {
+	return sheinsync.NewSheinSyncServiceWithInventoryMappingSource(repo, productAPI, costResolver, mappingSource)
+}
+
 type sheinSyncProductAPIBuilder interface {
 	BuildProductAPI(ctx context.Context, storeID int64) (sheinproduct.ProductAPI, string)
 }
@@ -155,12 +160,20 @@ func NewSheinSyncServiceWithBuilder(repo SheinSyncRepository, productAPIBuilder 
 	return sheinsync.NewSheinSyncServiceWithBuilder(repo, sheinSyncProductAPIBuilderBridge{builder: productAPIBuilder}, costResolver)
 }
 
+func NewSheinSyncServiceWithBuilderAndInventoryMappingSource(repo SheinSyncRepository, productAPIBuilder sheinSyncProductAPIBuilder, costResolver SheinCostResolver, mappingSource SheinInventoryMappingSource) SheinSyncService {
+	return sheinsync.NewSheinSyncServiceWithBuilderAndInventoryMappingSource(repo, sheinSyncProductAPIBuilderBridge{builder: productAPIBuilder}, costResolver, mappingSource)
+}
+
 func NewAsyncSheinSyncService(repo SheinSyncRepository, productAPI sheinproduct.ProductAPI, costResolver SheinCostResolver) SheinSyncService {
 	return sheinsync.NewAsyncSheinSyncService(repo, productAPI, costResolver)
 }
 
 func NewAsyncSheinSyncServiceWithBuilder(repo SheinSyncRepository, productAPIBuilder sheinSyncProductAPIBuilder, costResolver SheinCostResolver) SheinSyncService {
 	return sheinsync.NewAsyncSheinSyncServiceWithBuilder(repo, sheinSyncProductAPIBuilderBridge{builder: productAPIBuilder}, costResolver)
+}
+
+func NewAsyncSheinSyncServiceWithBuilderAndInventoryMappingSource(repo SheinSyncRepository, productAPIBuilder sheinSyncProductAPIBuilder, costResolver SheinCostResolver, mappingSource SheinInventoryMappingSource) SheinSyncService {
+	return sheinsync.NewAsyncSheinSyncServiceWithBuilderAndInventoryMappingSource(repo, sheinSyncProductAPIBuilderBridge{builder: productAPIBuilder}, costResolver, mappingSource)
 }
 
 type sheinSyncProductAPIBuilderBridge struct {

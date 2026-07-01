@@ -38,6 +38,13 @@ func TestGormInventoryRecordRepositoryLifecycleHelpers(t *testing.T) {
 	if first == nil || first.ID <= 0 || first.CreateTime == nil {
 		t.Fatalf("CreateInventoryRecord(first) = %+v", first)
 	}
+	var storedAvailable int16
+	if err := db.Table("listing_inventory_record").Where("id = ?", first.ID).Select("is_available").Scan(&storedAvailable).Error; err != nil {
+		t.Fatalf("read stored is_available: %v", err)
+	}
+	if storedAvailable != 1 || !first.IsAvailable {
+		t.Fatalf("stored is_available = %d, returned = %v, want 1/true", storedAvailable, first.IsAvailable)
+	}
 
 	time.Sleep(5 * time.Millisecond)
 	if _, err := repo.CreateInventoryRecord(context.Background(), &InventoryRecord{

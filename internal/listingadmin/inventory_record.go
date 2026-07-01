@@ -37,7 +37,7 @@ type listingInventoryRecord struct {
 	Region             string     `gorm:"column:region;not null;index:idx_inventory_lookup,priority:3"`
 	Stock              *int       `gorm:"column:stock"`
 	StockStatus        string     `gorm:"column:stock_status"`
-	IsAvailable        bool       `gorm:"column:is_available;not null"`
+	IsAvailable        int16      `gorm:"column:is_available;not null"`
 	OriginalPrice      *float64   `gorm:"column:original_price"`
 	CurrentPrice       *float64   `gorm:"column:current_price"`
 	Currency           string     `gorm:"column:currency"`
@@ -59,7 +59,7 @@ func (r listingInventoryRecord) toInventoryRecord() InventoryRecord {
 		Region:             r.Region,
 		Stock:              r.Stock,
 		StockStatus:        r.StockStatus,
-		IsAvailable:        r.IsAvailable,
+		IsAvailable:        r.IsAvailable != 0,
 		OriginalPrice:      r.OriginalPrice,
 		CurrentPrice:       r.CurrentPrice,
 		Currency:           r.Currency,
@@ -81,7 +81,7 @@ func listingInventoryRecordFromInventoryRecord(record *InventoryRecord) listingI
 		Region:             record.Region,
 		Stock:              record.Stock,
 		StockStatus:        record.StockStatus,
-		IsAvailable:        record.IsAvailable,
+		IsAvailable:        inventoryRecordBoolToInt16(record.IsAvailable),
 		OriginalPrice:      record.OriginalPrice,
 		CurrentPrice:       record.CurrentPrice,
 		Currency:           record.Currency,
@@ -90,4 +90,11 @@ func listingInventoryRecordFromInventoryRecord(record *InventoryRecord) listingI
 		Remark:             record.Remark,
 		CreateTime:         record.CreateTime,
 	}
+}
+
+func inventoryRecordBoolToInt16(value bool) int16 {
+	if value {
+		return 1
+	}
+	return 0
 }

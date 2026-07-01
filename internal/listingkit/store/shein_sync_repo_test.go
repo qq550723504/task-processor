@@ -96,6 +96,45 @@ func TestSheinSyncRepositoryUpsertSyncedProductsByStoreAndSKC(t *testing.T) {
 	}
 }
 
+func TestSheinSyncRepositoryUpdateSyncedProductInventoryAttributes(t *testing.T) {
+	t.Parallel()
+
+	for _, harness := range sheinSyncRepositoryHarnesses(t) {
+		harness := harness
+		t.Run(harness.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			err := harness.repo.UpsertSyncedProducts(ctx, []*listingkit.SheinSyncedProductRecord{{
+				TenantID:                1,
+				StoreID:                 101,
+				SKCName:                 "skc-1",
+				InventorySyncAttributes: `{"before":true}`,
+				IsActive:                true,
+			}})
+			if err != nil {
+				t.Fatalf("seed synced product: %v", err)
+			}
+
+			count, err := harness.repo.UpdateSyncedProductInventoryAttributes(ctx, 1, 101, "skc-1", `{"after":true}`)
+			if err != nil {
+				t.Fatalf("UpdateSyncedProductInventoryAttributes() error = %v", err)
+			}
+			if count != 1 {
+				t.Fatalf("updated count = %d, want 1", count)
+			}
+
+			rows, _, err := harness.repo.ListSyncedProducts(ctx, &listingkit.SheinSyncedProductQuery{TenantID: 1, StoreID: 101, Page: 1, PageSize: 10})
+			if err != nil {
+				t.Fatalf("ListSyncedProducts() error = %v", err)
+			}
+			if len(rows) != 1 || rows[0].InventorySyncAttributes != `{"after":true}` {
+				t.Fatalf("unexpected synced product rows: %#v", rows)
+			}
+		})
+	}
+}
+
 func TestSheinSyncRepositoryListSyncedProductsSupportsFilteringAndPagination(t *testing.T) {
 	t.Parallel()
 

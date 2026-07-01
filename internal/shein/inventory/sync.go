@@ -53,6 +53,7 @@ type inventorySyncServiceImpl struct {
 	storeService        listingruntime.StoreService
 	storeRepo           sheinInventoryStoreFinder
 	productDataRepo     listingadmin.ProductDataRepository
+	syncedProductSource SyncedInventoryProductSource
 	monitorConfig       *config.MonitorConfig
 	costCalculator      *pricing.CostCalculator
 	logger              *logrus.Entry
@@ -77,6 +78,32 @@ func NewInventorySyncService(
 	storeRepo sheinInventoryStoreFinder,
 	productDataRepo listingadmin.ProductDataRepository,
 ) InventorySyncService {
+	return NewInventorySyncServiceWithSyncedProductSource(
+		strategyProvider,
+		productAPI,
+		productFetcher,
+		monitorConfig,
+		rawJsonDataClient,
+		inventoryRecordRepo,
+		storeService,
+		storeRepo,
+		productDataRepo,
+		nil,
+	)
+}
+
+func NewInventorySyncServiceWithSyncedProductSource(
+	strategyProvider pricing.OperationStrategyProvider,
+	productAPI shein_product.ProductAPI,
+	productFetcher fetcher.ProductFetcher,
+	monitorConfig *config.MonitorConfig,
+	rawJsonDataClient product.RawJsonDataClient,
+	inventoryRecordRepo listingadmin.InventoryRecordRepository,
+	storeService listingruntime.StoreService,
+	storeRepo sheinInventoryStoreFinder,
+	productDataRepo listingadmin.ProductDataRepository,
+	syncedProductSource SyncedInventoryProductSource,
+) InventorySyncService {
 	// 临时设置 Debug 级别以便调试映射问题
 	logger.SetGlobalLogLevel("debug")
 
@@ -94,6 +121,7 @@ func NewInventorySyncService(
 		storeService:        storeService,
 		storeRepo:           storeRepo,
 		productDataRepo:     productDataRepo,
+		syncedProductSource: syncedProductSource,
 		monitorConfig:       monitorConfig,
 		costCalculator:      costCalculator,
 		logger:              log,
@@ -106,6 +134,15 @@ func (s *inventorySyncServiceImpl) FetchProductsForInventorySync(ctx context.Con
 		"tenant_id": tenantID,
 		"store_id":  storeID,
 	}).Info("开始获取需要监控库存的产品")
+
+	if s.syncedProductSource != nil {
+		items, err := s.fetchSyncedProductsForInventorySync(ctx, tenantID, storeID)
+		if err != nil {
+			return nil, fmt.Errorf("通过SHEIN同步产品仓储获取库存同步产品列表失败: %w", err)
+		}
+		s.logger.WithField("count", len(items)).Info("通过SHEIN同步产品仓储获取需要监控库存的产品完成")
+		return items, nil
+	}
 
 	if s.productDataRepo != nil {
 		shelfStatus := sheinInventoryShelfStatusOnShelf

@@ -8,11 +8,13 @@ import (
 	"task-processor/internal/app/consumer"
 	"task-processor/internal/app/ports"
 	"task-processor/internal/app/runner"
+	"task-processor/internal/app/scheduler"
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/rabbitmq"
 	crawleramazon "task-processor/internal/integration/crawler/amazon"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingkit"
 	"task-processor/internal/listingruntime"
 	localruntime "task-processor/internal/listingruntime/local"
 	platformtask "task-processor/internal/platformtask"
@@ -160,6 +162,7 @@ type localProcessorRuntime struct {
 type schedulerRuntimeSource interface {
 	GetRuntimeStoreService() listingruntime.StoreService
 	ListRuntimeAutoPricingStoreIDs(ctx context.Context, platform string) ([]int64, error)
+	ListRuntimeScheduledTaskConfigs(ctx context.Context, platform string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
 	GetStoreAPI() listingadmin.StoreAPI
 	GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error)
 	GetRawJsonDataAdapter() product.RawJsonDataClient
@@ -211,6 +214,13 @@ func (r localSchedulerFactoryRuntime) ListRuntimeAutoPricingStoreIDs(ctx context
 		return nil, nil
 	}
 	return r.source.ListRuntimeAutoPricingStoreIDs(ctx, platform)
+}
+
+func (r localSchedulerFactoryRuntime) ListRuntimeScheduledTaskConfigs(ctx context.Context, platform string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error) {
+	if r.source == nil {
+		return nil, nil
+	}
+	return r.source.ListRuntimeScheduledTaskConfigs(ctx, platform, taskType)
 }
 
 func (r localSchedulerFactoryRuntime) GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error) {
@@ -267,6 +277,19 @@ func (r localSchedulerFactoryRuntime) GetLocalProductDataRepository() listingadm
 		return nil
 	}
 	return r.source.GetLocalProductDataRepository()
+}
+
+func (r localSchedulerFactoryRuntime) GetLocalSheinSyncRepository() listingkit.SheinSyncRepository {
+	if r.source == nil {
+		return nil
+	}
+	provider, ok := r.source.(interface {
+		GetLocalSheinSyncRepository() listingkit.SheinSyncRepository
+	})
+	if !ok {
+		return nil
+	}
+	return provider.GetLocalSheinSyncRepository()
 }
 
 func (r localSchedulerFactoryRuntime) PricingRuntime() temupricingruntime.PricingRuntime {

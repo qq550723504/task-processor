@@ -75,4 +75,46 @@ describe("StoreStatisticsAdminPage", () => {
     expect(container.querySelector(".sm\\:grid-cols-2")).not.toBeNull();
     expect(container.querySelector(".overflow-x-auto")).not.toBeNull();
   });
+
+  it("renders a tenant-facing statistics view without tenant IDs", async () => {
+    vi.spyOn(
+      adminStoreStatisticsApi,
+      "getListingStoreStatistics",
+    ).mockResolvedValue([
+      {
+        id: 1,
+        storeId: "SHEIN-US",
+        tenantId: 101,
+        name: "SHEIN US",
+        platform: "SHEIN",
+        dailyLimit: 10,
+        dailyLimitType: "fixed",
+        completedCount: 6,
+        remainingCount: 2,
+        holdCount: 1,
+        queuedCount: 3,
+        remainingQuota: 4,
+        progressPercentage: 60,
+        status: 0,
+      },
+    ]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <StoreStatisticsAdminPage variant="tenant" />
+      </QueryClientProvider>,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "我的上架统计" }),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("SHEIN US")).toBeInTheDocument();
+    });
+    expect(screen.getByText(/当前账号可见的自动上架店铺/)).toBeInTheDocument();
+    expect(screen.queryByText("租户 101")).not.toBeInTheDocument();
+  });
 });

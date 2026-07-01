@@ -26,6 +26,7 @@ func buildRuntimeSupportRepositories() BuildServiceRepositories {
 			ProfitRule:              BuildListingAdminProfitRuleRepository,
 			PricingRule:             BuildListingAdminPricingRuleRepository,
 			OperationStrategy:       BuildListingAdminOperationStrategyRepository,
+			ScheduledTaskConfig:     BuildListingAdminScheduledTaskConfigRepository,
 			SensitiveWord:           BuildListingAdminSensitiveWordRepository,
 			GenerationTopicOverride: BuildListingAdminGenerationTopicOverrideRepository,
 			GenerationTopicPolicy:   BuildListingAdminGenerationTopicPolicyRepository,

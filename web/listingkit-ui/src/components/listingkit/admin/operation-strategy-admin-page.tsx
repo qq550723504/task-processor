@@ -28,7 +28,11 @@ import {
   type ListingOperationStrategy,
   type ListingOperationStrategyInput,
 } from "@/lib/api/admin-operation-strategies";
-import { getSimpleListingStores } from "@/lib/api/admin-stores";
+import {
+  AdminStoreSelect,
+  formatAdminStoreName,
+  useAdminSimpleStores,
+} from "@/components/listingkit/admin/admin-store-select";
 
 const DEFAULT_FORM: ListingOperationStrategyInput = {
   storeId: 0,
@@ -67,10 +71,7 @@ export function OperationStrategyAdminPage() {
     queryKey: ["listingkit-admin-operation-strategies", query],
     queryFn: () => getListingOperationStrategies(query),
   });
-  const storesQuery = useQuery({
-    queryKey: ["listingkit-admin-simple-stores"],
-    queryFn: getSimpleListingStores,
-  });
+  const storesQuery = useAdminSimpleStores();
 
   const strategies: ListingOperationStrategy[] = strategyQuery.data?.items ?? [];
   const stores = storesQuery.data ?? [];
@@ -216,7 +217,7 @@ export function OperationStrategyAdminPage() {
                         </div>
                       </TableCell>
                       <TableCell className="px-4 py-3 text-zinc-700">
-                        {storeName(stores, strategy.storeId)}
+                        {formatAdminStoreName(stores, strategy.storeId)}
                       </TableCell>
                       <TableCell className="px-4 py-3 text-zinc-700">
                         {strategy.platform}
@@ -275,23 +276,12 @@ export function OperationStrategyAdminPage() {
             value={form.name}
             onChange={(name) => setForm({ ...form, name })}
           />
-          <Label className="mb-3 block text-xs font-medium text-zinc-500">
-            店铺
-            <Select
-              value={form.storeId}
-              onChange={(event) =>
-                setForm({ ...form, storeId: Number(event.target.value) || 0 })
-              }
-              className="mt-1 h-9 w-full rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
-            >
-              <option value={0}>请选择店铺</option>
-              {stores.map((store) => (
-                <option key={store.id} value={store.id}>
-                  {store.name}
-                </option>
-              ))}
-            </Select>
-          </Label>
+          <AdminStoreSelect
+            value={form.storeId}
+            onChange={(storeId) => setForm({ ...form, storeId })}
+            stores={stores}
+            emptyLabel="请选择店铺"
+          />
           <StrategySelect
             label="平台"
             value={form.platform}
@@ -385,16 +375,6 @@ export function OperationStrategyAdminPage() {
       </section>
     </div>
   );
-}
-
-function storeName(
-  stores: Array<{ id: number; name: string }>,
-  storeId: number | undefined,
-) {
-  if (!storeId) {
-    return "-";
-  }
-  return stores.find((store) => store.id === storeId)?.name ?? `#${storeId}`;
 }
 
 function formatPercent(value: number | undefined) {

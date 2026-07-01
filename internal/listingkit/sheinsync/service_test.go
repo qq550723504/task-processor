@@ -2,6 +2,7 @@ package sheinsync
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -9,7 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/listingadmin"
 	sheinproduct "task-processor/internal/shein/api/product"
+	"task-processor/internal/shein/productsync"
 
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -165,6 +168,78 @@ func TestSyncSheinOnShelfProductsUsesOnShelfRequestAndPersistsRows(t *testing.T)
 			{"sku_code":"SKU002","variant_label":"20*25cm","sale_name_info":[{"sale_attr_name":"尺寸","sale_name":"20*25cm"}]}
 		]
 	}`, rows[0].SiteSnapshot)
+}
+
+func TestSyncSheinOnShelfProductsPersistsInventorySyncAttributes(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	productAPI := &sheinSyncServiceProductAPIStub{
+		listResponses: []*sheinproduct.ProductListResponse{
+			makeProductListResponse([]sheinproduct.ProductListItem{{
+				SpuName:          "spu-1",
+				ProductNameMulti: "Product One",
+				ShelfStatus:      "ON_SHELF",
+				SkcInfoList: []sheinproduct.SkcInfoItem{{
+					SkcName: "skc-1",
+					SkcCode: "O1",
+					SkuInfo: []sheinproduct.SkuInfo{{SkuCode: "I1", SupplierSKU: "seller-sku-1"}},
+				}},
+			}}, 1),
+		},
+		queryInventoryResp: makeInventoryQueryResponse([]sheinproduct.SkcInventory{{
+			SkcName: "skc-1",
+			SkuInfo: []sheinproduct.SkuInventory{{
+				SkuCode: "I1",
+				InventoryInfo: []sheinproduct.WarehouseInventory{{
+					InventoryQuantity: 8,
+					UsableInventory:   5,
+				}},
+			}},
+		}}),
+	}
+	service := newSheinSyncService(repo, productAPI, nil, &sheinSyncServiceCostResolverStub{})
+	service.inventoryMappingSource = sheinInventoryMappingSourceStub{
+		expectedPlatform: "shein",
+		byPlatformProductID: map[string]listingadmin.ProductImportMapping{
+			"I1": {
+				ID:                100,
+				TenantID:          11,
+				StoreID:           22,
+				Platform:          "SHEIN",
+				Region:            "US",
+				ProductID:         "B0TEST",
+				SKU:               "seller-sku-1",
+				PlatformProductID: "I1",
+			},
+		},
+	}
+
+	_, err := service.SyncSheinOnShelfProducts(context.Background(), 11, 22, SheinSyncTriggerModeManual)
+	require.NoError(t, err)
+
+	rows, total, err := repo.ListSyncedProducts(context.Background(), &SheinSyncedProductQuery{TenantID: 11, StoreID: 22, Page: 1, PageSize: 10})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	var attributes []productsync.EnrichedSkcInfo
+	require.NoError(t, json.Unmarshal([]byte(rows[0].InventorySyncAttributes), &attributes))
+	require.Len(t, attributes, 1)
+	require.Equal(t, "skc-1", attributes[0].SkcName)
+	require.Equal(t, "O1", attributes[0].SkcCode)
+	require.Len(t, attributes[0].SkuInfo, 1)
+	require.Equal(t, "I1", attributes[0].SkuInfo[0].SkuCode)
+	require.Equal(t, "seller-sku-1", attributes[0].SkuInfo[0].SupplierSKU)
+	require.NotNil(t, attributes[0].SkuInfo[0].MappingInfo)
+	require.Equal(t, int64(100), attributes[0].SkuInfo[0].MappingInfo.ID)
+	require.Equal(t, "SHEIN", attributes[0].SkuInfo[0].MappingInfo.Platform)
+	require.Equal(t, "US", attributes[0].SkuInfo[0].MappingInfo.Region)
+	require.Equal(t, "B0TEST", attributes[0].SkuInfo[0].MappingInfo.ProductID)
+	require.NotNil(t, attributes[0].SkuInfo[0].MappingInfo.SKU)
+	require.Equal(t, "seller-sku-1", *attributes[0].SkuInfo[0].MappingInfo.SKU)
+	require.NotNil(t, attributes[0].SkuInfo[0].UsableInventory)
+	require.Equal(t, 5, *attributes[0].SkuInfo[0].UsableInventory)
+	require.NotNil(t, attributes[0].SkuInfo[0].InventoryQuantity)
+	require.Equal(t, 8, *attributes[0].SkuInfo[0].InventoryQuantity)
 }
 
 func TestSyncSheinSourceSDSProductRefreshesOnlyMatchingSourceProducts(t *testing.T) {
@@ -926,6 +1001,20 @@ func (r *sheinSyncServiceRepoStub) UpdateManualCostPrice(_ context.Context, prod
 	return gorm.ErrRecordNotFound
 }
 
+func (r *sheinSyncServiceRepoStub) UpdateSyncedProductInventoryAttributes(_ context.Context, tenantID, storeID int64, skcName string, attributes string) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	key := r.productKey(tenantID, storeID, skcName)
+	row, ok := r.products[key]
+	if !ok {
+		return 0, nil
+	}
+	row.InventorySyncAttributes = attributes
+	r.products[key] = row
+	return 1, nil
+}
+
 func (r *sheinSyncServiceRepoStub) UpsertSDSCostGroup(_ context.Context, record *SheinSDSCostGroupRecord) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -1231,6 +1320,25 @@ func (s *sheinSyncServiceCostResolverStub) ResolveAutoCosts(_ context.Context, p
 		}
 	}
 	return resolved, nil
+}
+
+type sheinInventoryMappingSourceStub struct {
+	expectedPlatform    string
+	byPlatformProductID map[string]listingadmin.ProductImportMapping
+}
+
+func (s sheinInventoryMappingSourceStub) FindLatest(_ context.Context, query listingadmin.ProductImportMappingQuery) (*listingadmin.ProductImportMapping, error) {
+	if s.expectedPlatform != "" && query.Platform != s.expectedPlatform {
+		return nil, nil
+	}
+	if s.byPlatformProductID == nil {
+		return nil, nil
+	}
+	row, ok := s.byPlatformProductID[query.PlatformProductID]
+	if !ok {
+		return nil, nil
+	}
+	return &row, nil
 }
 
 func makeProductListResponse(items []sheinproduct.ProductListItem, total int) *sheinproduct.ProductListResponse {

@@ -34,8 +34,17 @@ const LIMIT_TYPE_TEXT: Record<string, string> = {
   dynamic: "动态",
 };
 
-export function StoreStatisticsAdminPage() {
+type StoreStatisticsPageVariant = "admin" | "tenant";
+
+type StoreStatisticsAdminPageProps = {
+  variant?: StoreStatisticsPageVariant;
+};
+
+export function StoreStatisticsAdminPage({
+  variant = "admin",
+}: StoreStatisticsAdminPageProps = {}) {
   const [date, setDate] = useState(TODAY);
+  const isTenantView = variant === "tenant";
 
   const query = useMemo(() => ({ date }), [date]);
   const statisticsQuery = useQuery({
@@ -60,10 +69,15 @@ export function StoreStatisticsAdminPage() {
       <section className="rounded-lg border border-zinc-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold text-zinc-950">上架统计</h1>
+            <h1 className="text-2xl font-semibold text-zinc-950">
+              {isTenantView ? "我的上架统计" : "上架统计"}
+            </h1>
             <p className="mt-1 text-sm text-zinc-500">
-              共 {items.length} 个自动上架店铺，完成 {totals.completed} /{" "}
-              {totals.limit}，待处理 {totals.pending}。
+              {isTenantView
+                ? "当前账号可见的自动上架店铺"
+                : `共 ${items.length} 个自动上架店铺`}
+              {isTenantView ? `共 ${items.length} 个` : ""}，完成{" "}
+              {totals.completed} / {totals.limit}，待处理 {totals.pending}。
             </p>
           </div>
           <form
@@ -143,9 +157,11 @@ export function StoreStatisticsAdminPage() {
                       <div className="font-mono text-xs text-zinc-500">
                         {item.storeId || `#${item.id}`}
                       </div>
-                      <div className="text-xs text-zinc-500">
-                        租户 {item.tenantId}
-                      </div>
+                      {isTenantView ? null : (
+                        <div className="text-xs text-zinc-500">
+                          租户 {item.tenantId}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-zinc-700">
                       {item.platform || "-"}
