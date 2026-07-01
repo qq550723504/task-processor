@@ -6,6 +6,7 @@ import {
   executeItemizedBatchTaskCreation,
   executeStandaloneTaskCreation,
   groupTaskCreationSelectionsByStore,
+  resolveBatchTaskCreationStartValidation,
   resolveTaskCreationStartValidation,
 } from "@/lib/shein-studio/task-creation-controller";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
@@ -61,6 +62,27 @@ describe("SHEIN Studio task creation controller", () => {
     expect(
       resolveTaskCreationStartValidation({
         activeSelection: selection,
+        sheinStoreId: "869",
+        approvedCount: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("validates batch task creation without depending on active SDS baseline", () => {
+    expect(
+      resolveBatchTaskCreationStartValidation({
+        sheinStoreId: " ",
+        approvedCount: 1,
+      }),
+    ).toEqual({ error: "请先选择批次店铺。" });
+    expect(
+      resolveBatchTaskCreationStartValidation({
+        sheinStoreId: "869",
+        approvedCount: 0,
+      }),
+    ).toEqual({ error: "请至少批准 1 个款式后再创建 SHEIN 任务。" });
+    expect(
+      resolveBatchTaskCreationStartValidation({
         sheinStoreId: "869",
         approvedCount: 1,
       }),

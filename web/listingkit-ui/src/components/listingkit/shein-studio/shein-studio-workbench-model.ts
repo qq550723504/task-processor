@@ -12,7 +12,7 @@ import {
   DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
   DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
 } from "@/lib/shein-studio/storage-shared";
-import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/create-review-tasks";
+import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/constants";
 export { buildSheinStudioGenerateRequest } from "@/lib/shein-studio/generation-controller";
 import type { SubscriptionSummary } from "@/lib/api/subscription";
 import type {
@@ -738,12 +738,23 @@ export function summarizeSheinStudioSelection(
 export function getSheinStudioCreateActionDisabledReason({
   selection,
   galleryRatioCheck,
+  hasItemizedBatchContext = false,
+  itemizedApprovedCount,
   selectedIds,
 }: {
   selection?: SDSProductVariantSelection;
   galleryRatioCheck?: SDSRatioMatch | null;
+  hasItemizedBatchContext?: boolean;
+  itemizedApprovedCount?: number;
   selectedIds: string[];
 }) {
+  if (hasItemizedBatchContext) {
+    const approvedCount = itemizedApprovedCount ?? selectedIds.length;
+    if (approvedCount === 0) {
+      return "请至少批准 1 个款式后再生成 SHEIN 资料。";
+    }
+    return undefined;
+  }
   if (!selection?.variantId) {
     return "请先选择 SDS 商品变体。生成 SHEIN 资料前需要锁定商品模板。";
   }

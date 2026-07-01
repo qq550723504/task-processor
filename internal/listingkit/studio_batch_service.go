@@ -62,6 +62,7 @@ type SheinStudioRejectedTask struct {
 	DesignID    string `json:"design_id,omitempty"`
 	ItemID      string `json:"item_id,omitempty"`
 	SelectionID string `json:"selection_id,omitempty"`
+	Source      string `json:"source,omitempty"`
 	ReasonCode  string `json:"reason_code,omitempty"`
 	Message     string `json:"message,omitempty"`
 }

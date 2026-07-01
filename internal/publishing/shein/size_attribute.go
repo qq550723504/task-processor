@@ -33,13 +33,18 @@ func applyProductSizeAttributesWithResolver(pkg *Package, productSize string, re
 	if pkg == nil || pkg.DraftPayload == nil {
 		return false
 	}
+	sizeRefs := collectSizeSaleAttributeRefs(pkg)
+	if len(sizeRefs) == 0 {
+		pkg.DraftPayload.SizeAttributeList = nil
+		return false
+	}
 	templateAttrs := collectSizeChartTemplateAttributes(pkg)
 	headerResolution := resolveSDSSizeHeaderAttributeIDs(ctx, productSize, templateAttrs, resolver)
-	if len(headerResolution.ReviewNotes) > 0 {
+	attrs := sheinpublishing.BuildSizeAttributesFromProductSizeWithHeaderAttributeIDs(productSize, sizeRefs, templateAttrs, headerResolution.AttributeIDsByHeader)
+	pkg.DraftPayload.SizeAttributeList = attrs
+	if len(attrs) > 0 && len(headerResolution.ReviewNotes) > 0 {
 		pkg.ReviewNotes = dedupeStrings(append(pkg.ReviewNotes, headerResolution.ReviewNotes...))
 	}
-	attrs := sheinpublishing.BuildSizeAttributesFromProductSizeWithHeaderAttributeIDs(productSize, collectSizeSaleAttributeRefs(pkg), templateAttrs, headerResolution.AttributeIDsByHeader)
-	pkg.DraftPayload.SizeAttributeList = attrs
 	return len(attrs) > 0
 }
 

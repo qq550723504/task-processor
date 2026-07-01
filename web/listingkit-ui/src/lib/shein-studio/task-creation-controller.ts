@@ -160,6 +160,22 @@ export function resolveTaskCreationStartValidation({
   return null;
 }
 
+export function resolveBatchTaskCreationStartValidation({
+  approvedCount,
+  sheinStoreId,
+}: {
+  approvedCount: number;
+  sheinStoreId: string;
+}) {
+  if (!sheinStoreId.trim()) {
+    return { error: "请先选择批次店铺。" };
+  }
+  if (approvedCount === 0) {
+    return { error: "请至少批准 1 个款式后再创建 SHEIN 任务。" };
+  }
+  return null;
+}
+
 export function buildBatchTaskCreationFailureSummary(
   failedTasks: SheinStudioFailedTask[],
   rejectedTasks: SheinStudioRejectedTask[] = [],

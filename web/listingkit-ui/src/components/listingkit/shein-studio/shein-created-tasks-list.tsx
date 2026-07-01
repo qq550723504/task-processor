@@ -58,6 +58,11 @@ export function SheinCreatedTasksList({
                     <span className="rounded-full border border-emerald-200 bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">
                       {task.outcome === "reused" ? "已复用" : "新建"}
                     </span>
+                    {task.source ? (
+                      <span className="rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[11px] font-medium text-sky-700">
+                        {taskSourceLabel(task.source)}
+                      </span>
+                    ) : null}
                     {task.status ? (
                       <span className="rounded-full border border-zinc-200 bg-white px-2 py-0.5 text-[11px] font-medium text-zinc-600">
                         {task.status}
@@ -116,6 +121,19 @@ export function SheinCreatedTasksList({
       ) : null}
     </div>
   );
+}
+
+function taskSourceLabel(source: string) {
+  switch (source) {
+    case "batch_created":
+      return "批次创建";
+    case "legacy_session_backfilled":
+      return "旧任务回填";
+    case "rejected":
+      return "后端拒绝";
+    default:
+      return source;
+  }
 }
 
 function TaskMetadataLine({ task }: { task: SheinStudioCreatedTask }) {

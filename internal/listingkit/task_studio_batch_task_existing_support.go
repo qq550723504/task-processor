@@ -10,13 +10,16 @@ import (
 )
 
 const (
-	studioBatchTaskLinkStatusReserved = "reserved"
-	studioBatchTaskLinkStatusCreating = "creating"
-	studioBatchTaskLinkStatusCreated  = "created"
-	studioBatchTaskLinkStatusFailed   = "failed"
-	studioBatchCreatedTaskStatus      = "task_created"
-	studioBatchReusedTaskReasonCode   = "__studio_batch_reused"
-	studioBatchTaskCreatingWait       = 5 * time.Second
+	studioBatchTaskLinkStatusReserved                = "reserved"
+	studioBatchTaskLinkStatusCreating                = "creating"
+	studioBatchTaskLinkStatusCreated                 = "created"
+	studioBatchTaskLinkStatusFailed                  = "failed"
+	studioBatchTaskLinkSourceBatchCreated            = "batch_created"
+	studioBatchTaskLinkSourceLegacySessionBackfilled = "legacy_session_backfilled"
+	studioBatchTaskLinkSourceRejected                = "rejected"
+	studioBatchCreatedTaskStatus                     = "task_created"
+	studioBatchReusedTaskReasonCode                  = "__studio_batch_reused"
+	studioBatchTaskCreatingWait                      = 5 * time.Second
 )
 
 func (s *taskStudioBatchService) findExistingStudioBatchTask(
@@ -64,9 +67,10 @@ func (s *taskStudioBatchService) findLegacyStudioBatchTask(
 			created.Title = candidate.Title
 		}
 		created = normalizeStudioBatchCreatedTask(created, candidate)
-		if err := s.persistStudioBatchTaskLink(ctx, candidate, created.ID, studioBatchTaskLinkStatusCreated, "", ""); err != nil {
+		if err := s.persistStudioBatchTaskLink(ctx, candidate, created.ID, studioBatchTaskLinkStatusCreated, studioBatchTaskLinkSourceLegacySessionBackfilled, "", ""); err != nil {
 			return SheinStudioCreatedTask{}, false, err
 		}
+		created.Source = studioBatchTaskLinkSourceLegacySessionBackfilled
 		return created, true, nil
 	}
 	return SheinStudioCreatedTask{}, false, nil
@@ -140,11 +144,32 @@ func (s *taskStudioBatchService) createdTaskFromDurableLink(ctx context.Context,
 		SelectionID:              link.SelectionID,
 		CompatibilityFingerprint: link.CompatibilityFingerprint,
 		Status:                   studioBatchCreatedTaskStatus,
+		Source:                   resolveStudioBatchTaskLinkSource(link, task),
 		ReasonCode:               link.ReasonCode,
 		Message:                  link.Message,
 	}, candidate)
 	created = projectStudioBatchCreatedTaskFromListingTask(created, task)
 	return created, true
+}
+
+func resolveStudioBatchTaskLinkSource(link *StudioBatchTaskLinkRecord, task *Task) string {
+	if link == nil {
+		return ""
+	}
+	if source := strings.TrimSpace(link.Source); source != "" {
+		return source
+	}
+	if task == nil || task.Request == nil || task.Request.Options == nil || task.Request.Options.SheinStudio == nil {
+		return ""
+	}
+	styleID := strings.TrimSpace(task.Request.Options.SheinStudio.StyleID)
+	if styleID == "" {
+		return ""
+	}
+	if styleID == buildStudioBatchTaskStyleID(strings.TrimSpace(link.DesignID)) {
+		return studioBatchTaskLinkSourceBatchCreated
+	}
+	return studioBatchTaskLinkSourceLegacySessionBackfilled
 }
 
 func (s *taskStudioBatchService) studioBatchTaskLinkIsStale(link *StudioBatchTaskLinkRecord) bool {
@@ -186,7 +211,7 @@ func markStudioBatchReusedTask(task SheinStudioCreatedTask) SheinStudioCreatedTa
 	return task
 }
 
-func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context, candidate studioBatchTaskCandidate, taskID string, status string, reasonCode string, message string) error {
+func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context, candidate studioBatchTaskCandidate, taskID string, status string, source string, reasonCode string, message string) error {
 	if s == nil || s.batchTaskLinkRepo == nil {
 		return nil
 	}
@@ -202,6 +227,7 @@ func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context,
 		ListingKitTaskID:         strings.TrimSpace(taskID),
 		CandidateKey:             strings.TrimSpace(candidate.CandidateKey),
 		Status:                   strings.TrimSpace(status),
+		Source:                   strings.TrimSpace(source),
 		ReasonCode:               strings.TrimSpace(reasonCode),
 		Message:                  strings.TrimSpace(message),
 		CreatedAt:                now,
@@ -219,6 +245,9 @@ func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context,
 	}
 	existing.ListingKitTaskID = link.ListingKitTaskID
 	existing.Status = link.Status
+	if link.Source != "" {
+		existing.Source = link.Source
+	}
 	existing.ReasonCode = link.ReasonCode
 	existing.Message = link.Message
 	existing.UpdatedAt = now
@@ -312,6 +341,9 @@ func mergeStudioCreatedTaskMetadata(base SheinStudioCreatedTask, richer SheinStu
 	}
 	if strings.TrimSpace(base.LastSubmissionAction) == "" {
 		base.LastSubmissionAction = richer.LastSubmissionAction
+	}
+	if strings.TrimSpace(base.Source) == "" {
+		base.Source = richer.Source
 	}
 	if strings.TrimSpace(base.ReasonCode) == "" {
 		base.ReasonCode = richer.ReasonCode

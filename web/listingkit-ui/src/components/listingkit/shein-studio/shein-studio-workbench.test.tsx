@@ -1112,6 +1112,7 @@ describe("SheinStudioWorkbench", () => {
       buildHydratedBatch(
         {
           name: "Retro Cherries",
+          selection: undefined,
           updatedAt: "2026-05-26T10:00:00.000Z",
         },
         {
@@ -1499,7 +1500,10 @@ describe("SheinStudioWorkbench", () => {
     await waitFor(() =>
       expect(screen.getByText("created tasks: 2")).toBeInTheDocument(),
     );
-    expect(saveSheinStudioBatch).not.toHaveBeenCalled();
+    expect(saveSheinStudioBatch).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "batch-1" }),
+      expect.objectContaining({ makeActive: false }),
+    );
   });
 
   it("keeps the dedicated batch page busy when generate times out but the batch is still running", async () => {

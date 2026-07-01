@@ -288,6 +288,7 @@ func buildStudioBatchBackfillLink(candidate studioBatchTaskCandidate, created Sh
 		ListingKitTaskID:         strings.TrimSpace(taskID),
 		CandidateKey:             strings.TrimSpace(candidate.CandidateKey),
 		Status:                   studioBatchTaskLinkStatusCreated,
+		Source:                   studioBatchTaskLinkSourceLegacySessionBackfilled,
 		ReasonCode:               strings.TrimSpace(created.ReasonCode),
 		Message:                  strings.TrimSpace(created.Message),
 		CreatedAt:                now,

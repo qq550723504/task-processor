@@ -314,6 +314,7 @@ describe("parseSheinStudioBatchDetailResponse", () => {
           {
             id: "task-1",
             title: "Task 1",
+            source: "batch_created",
             design_id: "design-1",
             item_id: "item-1",
             selection_id: "selection-1",
@@ -327,6 +328,7 @@ describe("parseSheinStudioBatchDetailResponse", () => {
           {
             id: "task-2",
             title: "Task 2",
+            source: "legacy_session_backfilled",
             design_id: "design-2",
             item_id: "item-2",
             selection_id: "selection-2",
@@ -339,6 +341,7 @@ describe("parseSheinStudioBatchDetailResponse", () => {
         rejected_tasks: [
           {
             design_id: "design-3",
+            source: "rejected",
             item_id: "item-3",
             selection_id: "selection-3",
             compatibility_fingerprint: "fp-3",
@@ -350,6 +353,7 @@ describe("parseSheinStudioBatchDetailResponse", () => {
         failed_tasks: [
           {
             design_id: "design-4",
+            source: "batch_created",
             item_id: "item-4",
             selection_id: "selection-4",
             compatibility_fingerprint: "fp-4",
@@ -366,6 +370,7 @@ describe("parseSheinStudioBatchDetailResponse", () => {
           id: "task-1",
           title: "Task 1",
           designId: "design-1",
+          source: "batch_created",
           itemId: "item-1",
           selectionId: "selection-1",
           compatibilityFingerprint: "fp-1",
@@ -380,6 +385,7 @@ describe("parseSheinStudioBatchDetailResponse", () => {
           id: "task-2",
           title: "Task 2",
           designId: "design-2",
+          source: "legacy_session_backfilled",
           itemId: "item-2",
           selectionId: "selection-2",
           compatibilityFingerprint: "fp-2",
@@ -392,6 +398,7 @@ describe("parseSheinStudioBatchDetailResponse", () => {
       rejectedTasks: [
         {
           designId: "design-3",
+          source: "rejected",
           itemId: "item-3",
           selectionId: "selection-3",
           compatibilityFingerprint: "fp-3",
@@ -404,6 +411,7 @@ describe("parseSheinStudioBatchDetailResponse", () => {
       failedTasks: [
         {
           designId: "design-4",
+          source: "batch_created",
           itemId: "item-4",
           selectionId: "selection-4",
           compatibilityFingerprint: "fp-4",

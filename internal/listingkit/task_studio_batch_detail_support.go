@@ -143,6 +143,7 @@ func loadStudioBatchCreatedTasksFromLinks(
 			SelectionID:              strings.TrimSpace(link.SelectionID),
 			CompatibilityFingerprint: strings.TrimSpace(link.CompatibilityFingerprint),
 			Status:                   studioBatchCreatedTaskStatus,
+			Source:                   resolveStudioBatchTaskLinkSource(&link, task),
 			ReasonCode:               strings.TrimSpace(link.ReasonCode),
 			Message:                  strings.TrimSpace(link.Message),
 		}
@@ -186,6 +187,7 @@ func loadStudioBatchRejectedTasksFromLinks(
 			DesignID:    strings.TrimSpace(link.DesignID),
 			ItemID:      strings.TrimSpace(link.ItemID),
 			SelectionID: strings.TrimSpace(link.SelectionID),
+			Source:      firstNonEmptyString(strings.TrimSpace(link.Source), studioBatchTaskLinkSourceRejected),
 			ReasonCode:  strings.TrimSpace(link.ReasonCode),
 			Message:     strings.TrimSpace(link.Message),
 		})

@@ -24,6 +24,7 @@ type SheinStudioCreatedTask struct {
 	Status                   string `json:"status,omitempty"`
 	SubmissionState          string `json:"submission_state,omitempty"`
 	LastSubmissionAction     string `json:"last_submission_action,omitempty"`
+	Source                   string `json:"source,omitempty"`
 	ReasonCode               string `json:"reason_code,omitempty"`
 	Message                  string `json:"message,omitempty"`
 }

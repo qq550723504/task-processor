@@ -23,6 +23,39 @@ func TestGormStudioBatchTaskLinkRepositoryCreateAndLoadByCandidateKey(t *testing
 	testStudioBatchTaskLinkRepositoryCreateAndLoadByCandidateKey(t, newGormStudioBatchTaskLinkRepositoryForTest)
 }
 
+func TestGormStudioBatchTaskLinkRepositorySelfHealsMissingSourceColumn(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&legacyStudioBatchTaskLinkRecordWithoutSource{}); err != nil {
+		t.Fatalf("legacy AutoMigrate() error = %v", err)
+	}
+	if db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "Source") {
+		t.Fatal("legacy table unexpectedly has source column before repository write")
+	}
+
+	repo := NewGormStudioBatchTaskLinkRepository(db)
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	link := studioBatchTaskLinkRecordForTest("link-1", "batch-1", "item-1", "design-1", "selection-1", "candidate-1")
+	link.Source = studioBatchTaskLinkSourceBatchCreated
+	if err := repo.CreateStudioBatchTaskLink(ctx, link); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	if !db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "Source") {
+		t.Fatal("repository did not add missing source column")
+	}
+	loaded, err := repo.GetStudioBatchTaskLinkByCandidateKey(ctx, "candidate-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() error = %v", err)
+	}
+	if got := loaded.Source; got != studioBatchTaskLinkSourceBatchCreated {
+		t.Fatalf("source = %q, want %q", got, studioBatchTaskLinkSourceBatchCreated)
+	}
+}
+
 func TestMemStudioBatchTaskLinkRepositoryListByBatch(t *testing.T) {
 	t.Parallel()
 	testStudioBatchTaskLinkRepositoryListByBatch(t, func(t *testing.T) StudioBatchTaskLinkRepository {
@@ -521,6 +554,29 @@ func studioBatchTaskLinkRecordForTest(id string, batchID string, itemID string, 
 		CreatedAt:                now,
 		UpdatedAt:                now,
 	}
+}
+
+type legacyStudioBatchTaskLinkRecordWithoutSource struct {
+	ID                       string `gorm:"primaryKey;type:varchar(96)"`
+	TenantID                 string `gorm:"type:varchar(64);uniqueIndex:idx_listingkit_studio_batch_task_links_candidate,priority:1;uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:1;index"`
+	UserID                   string `gorm:"type:varchar(128);index"`
+	BatchID                  string `gorm:"type:varchar(64);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:2;index"`
+	ItemID                   string `gorm:"type:varchar(96);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:3"`
+	DesignID                 string `gorm:"type:varchar(96);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:4"`
+	SelectionID              string `gorm:"type:varchar(128);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:5"`
+	CompatibilityFingerprint string `gorm:"type:varchar(128);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:6"`
+	SheinStoreID             int64  `gorm:"uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:7;index"`
+	ListingKitTaskID         string `gorm:"column:listingkit_task_id;type:varchar(96);index"`
+	CandidateKey             string `gorm:"type:varchar(128);uniqueIndex:idx_listingkit_studio_batch_task_links_candidate,priority:2"`
+	Status                   string `gorm:"type:varchar(32);index"`
+	ReasonCode               string `gorm:"type:varchar(96)"`
+	Message                  string `gorm:"type:text"`
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+}
+
+func (legacyStudioBatchTaskLinkRecordWithoutSource) TableName() string {
+	return StudioBatchTaskLinkRecord{}.TableName()
 }
 
 func mustCreateStudioBatchTaskLinkForTest(t *testing.T, repo StudioBatchTaskLinkRepository, ctx context.Context, link *StudioBatchTaskLinkRecord) {

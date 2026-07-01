@@ -75,6 +75,7 @@ func (r *MemStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx context
 	row := existing
 	row.ListingKitTaskID = link.ListingKitTaskID
 	row.Status = link.Status
+	row.Source = link.Source
 	row.ReasonCode = link.ReasonCode
 	row.Message = link.Message
 	row.UpdatedAt = link.UpdatedAt

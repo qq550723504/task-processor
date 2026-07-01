@@ -8,6 +8,11 @@ export type SheinStudioTaskLifecycleStatus =
   | "unknown";
 
 export type SheinStudioTaskOutcome = "created" | "reused" | "rejected" | "failed";
+export type SheinStudioTaskSource =
+  | "batch_created"
+  | "legacy_session_backfilled"
+  | "rejected"
+  | string;
 
 export type SheinStudioTaskOutcomeBase = {
   designId: string;
@@ -17,6 +22,7 @@ export type SheinStudioTaskOutcomeBase = {
   status?: SheinStudioTaskLifecycleStatus | string;
   submissionState?: SheinStudioTaskLifecycleStatus | string;
   lastSubmissionAction?: string;
+  source?: SheinStudioTaskSource;
   reasonCode?: string;
   message?: string;
 };

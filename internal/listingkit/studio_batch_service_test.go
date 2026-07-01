@@ -3572,6 +3572,9 @@ func TestStudioBatchDetail_LoadsCreatedTasksFromDurableLinks(t *testing.T) {
 	if len(created.CreatedTasks) != 1 {
 		t.Fatalf("created tasks = %+v, want 1", created.CreatedTasks)
 	}
+	if got := created.CreatedTasks[0].Source; got != studioBatchTaskLinkSourceBatchCreated {
+		t.Fatalf("created task source = %q, want %q", got, studioBatchTaskLinkSourceBatchCreated)
+	}
 
 	detail, err := svc.GetStudioBatchDetail(ctx, "batch-1")
 	if err != nil {
@@ -3585,6 +3588,9 @@ func TestStudioBatchDetail_LoadsCreatedTasksFromDurableLinks(t *testing.T) {
 	}
 	if detail.CreatedTasks[0].Status != "task_created" {
 		t.Fatalf("detail task status = %q, want task_created", detail.CreatedTasks[0].Status)
+	}
+	if got := detail.CreatedTasks[0].Source; got != studioBatchTaskLinkSourceBatchCreated {
+		t.Fatalf("detail task source = %q, want %q", got, studioBatchTaskLinkSourceBatchCreated)
 	}
 }
 
@@ -3611,7 +3617,13 @@ func TestStudioBatchDetail_LoadsCreatedTasksPreservesLegacyMetadataFromDurableLi
 	}); err != nil {
 		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
 	}
-	taskRepo.tasks["task-1"] = &Task{ID: "task-1", Status: TaskStatusPending}
+	taskRepo.tasks["task-1"] = &Task{
+		ID:     "task-1",
+		Status: TaskStatusPending,
+		Request: &GenerateRequest{Options: &GenerateOptions{
+			SheinStudio: &SheinStudioOptions{StyleID: "legacy-style-1"},
+		}},
+	}
 	mustCreateStudioBatchTaskLinkForTest(t, linkRepo, ctx, &StudioBatchTaskLinkRecord{
 		ID:               "link-1",
 		BatchID:          "batch-1",
@@ -3662,6 +3674,9 @@ func TestStudioBatchDetail_LoadsCreatedTasksPreservesLegacyMetadataFromDurableLi
 	}
 	if got := detail.CreatedTasks[0].Message; got != "legacy message" {
 		t.Fatalf("message = %q, want richer legacy message", got)
+	}
+	if got := detail.CreatedTasks[0].Source; got != studioBatchTaskLinkSourceLegacySessionBackfilled {
+		t.Fatalf("inferred source = %q, want %q", got, studioBatchTaskLinkSourceLegacySessionBackfilled)
 	}
 }
 
@@ -4091,10 +4106,11 @@ func TestServiceCreateStudioBatchTasksReusesLegacyStyleIDTasks(t *testing.T) {
 		},
 	}
 
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
 	svc := &service{
 		repo: taskRepo,
 		studioDeps: studioDependencies{
-			sessionRepo: sessionRepo, batchRepo: batchRepo,
+			sessionRepo: sessionRepo, batchRepo: batchRepo, batchTaskLinkRepo: linkRepo,
 		},
 		taskDeps: taskDependencies{
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
@@ -4114,8 +4130,24 @@ func TestServiceCreateStudioBatchTasksReusesLegacyStyleIDTasks(t *testing.T) {
 	if got := resultTaskIDs[0]; got != "legacy-task-1" {
 		t.Fatalf("task id = %q, want legacy-task-1", got)
 	}
+	if len(result.ReusedTasks) != 1 {
+		t.Fatalf("reused tasks = %+v, want one legacy reused task", result.ReusedTasks)
+	}
+	if got := result.ReusedTasks[0].Source; got != studioBatchTaskLinkSourceLegacySessionBackfilled {
+		t.Fatalf("reused task source = %q, want %q", got, studioBatchTaskLinkSourceLegacySessionBackfilled)
+	}
 	if got := len(taskRepo.tasks); got != 1 {
 		t.Fatalf("persisted task count = %d, want 1 without duplicates", got)
+	}
+	links, err := linkRepo.ListStudioBatchTaskLinksByBatchID(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("ListStudioBatchTaskLinksByBatchID() error = %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("links = %+v, want one legacy backfill link", links)
+	}
+	if got := links[0].Source; got != studioBatchTaskLinkSourceLegacySessionBackfilled {
+		t.Fatalf("legacy link source = %q, want %q", got, studioBatchTaskLinkSourceLegacySessionBackfilled)
 	}
 }
 

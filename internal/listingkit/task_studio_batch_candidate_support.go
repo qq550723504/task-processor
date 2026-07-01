@@ -160,6 +160,7 @@ func (s *taskStudioBatchService) evaluateStudioBatchTaskCandidates(
 			failed = append(failed, SheinStudioFailedTask{
 				DesignID: strings.TrimSpace(candidate.Design.ID),
 				Title:    strings.TrimSpace(candidate.Title),
+				Source:   studioBatchTaskLinkSourceBatchCreated,
 				Message:  err.Error(),
 			})
 			continue
@@ -170,6 +171,7 @@ func (s *taskStudioBatchService) evaluateStudioBatchTaskCandidates(
 				candidate,
 				"",
 				studioBatchTaskLinkStatusFailed,
+				studioBatchTaskLinkSourceRejected,
 				result.ReasonCode,
 				result.Message,
 			)
@@ -177,6 +179,7 @@ func (s *taskStudioBatchService) evaluateStudioBatchTaskCandidates(
 				DesignID:    strings.TrimSpace(candidate.Design.ID),
 				ItemID:      strings.TrimSpace(candidate.Item.ID),
 				SelectionID: strings.TrimSpace(candidate.SelectionID),
+				Source:      studioBatchTaskLinkSourceRejected,
 				ReasonCode:  strings.TrimSpace(result.ReasonCode),
 				Message:     strings.TrimSpace(result.Message),
 			})

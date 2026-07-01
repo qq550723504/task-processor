@@ -100,6 +100,7 @@ import {
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-sections";
 import type { SheinStudioStepKey } from "@/components/listingkit/shein-studio/shein-studio-step-tabs";
 import {
+  getApprovedItemizedBatchDesignIDs,
   projectDefaultSelectedSDSImages,
   type SheinStudioWorkbenchHydratedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
@@ -421,11 +422,6 @@ export function SheinStudioWorkbench({
       cancelled = true;
     };
   }, [hydrateRecentBatchSelection, selectedPersistedRecentBatchIds]);
-  const createActionDisabledReason = useSheinStudioCreateActionDisabledReason({
-    galleryRatioCheck,
-    selectedIds,
-    selection: activeSelection,
-  });
   const draftPersistenceState = useMemo(
     () => buildSheinStudioDraftPersistenceState({
       activeSelection,
@@ -560,6 +556,15 @@ export function SheinStudioWorkbench({
     styleCount,
     transparentBackground,
     variationIntensity,
+  });
+  const createActionDisabledReason = useSheinStudioCreateActionDisabledReason({
+    galleryRatioCheck,
+    hasItemizedBatchContext: Boolean(itemizedBatchContext),
+    itemizedApprovedCount: itemizedBatchContext
+      ? getApprovedItemizedBatchDesignIDs(itemizedBatchContext.detail).length
+      : undefined,
+    selectedIds,
+    selection: activeSelection,
   });
   const handlePromptChange = useCallback(
     (value: string) => {

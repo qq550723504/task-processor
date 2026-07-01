@@ -115,7 +115,7 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				if task != nil {
 					taskID = task.ID
 				}
-				_ = s.persistStudioBatchTaskLink(ctx, taskCandidate, taskID, studioBatchTaskLinkStatusFailed, "task_create_failed", err.Error())
+				_ = s.persistStudioBatchTaskLink(ctx, taskCandidate, taskID, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, "task_create_failed", err.Error())
 				return SheinStudioCreatedTask{}, err
 			}
 			created := SheinStudioCreatedTask{
@@ -126,8 +126,9 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				SelectionID:              taskCandidate.SelectionID,
 				CompatibilityFingerprint: taskCandidate.CompatibilityFingerprint,
 				Status:                   studioBatchCreatedTaskStatus,
+				Source:                   studioBatchTaskLinkSourceBatchCreated,
 			}
-			if err := s.persistStudioBatchTaskLink(ctx, taskCandidate, task.ID, studioBatchTaskLinkStatusCreated, "", ""); err != nil {
+			if err := s.persistStudioBatchTaskLink(ctx, taskCandidate, task.ID, studioBatchTaskLinkStatusCreated, studioBatchTaskLinkSourceBatchCreated, "", ""); err != nil {
 				return SheinStudioCreatedTask{}, err
 			}
 			return created, nil
@@ -137,6 +138,7 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			return SheinStudioFailedTask{
 				DesignID: taskCandidate.Design.ID,
 				Title:    taskCandidate.Title,
+				Source:   studioBatchTaskLinkSourceBatchCreated,
 				Message:  err.Error(),
 			}
 		},

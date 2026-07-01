@@ -28,8 +28,8 @@ import type {
   SheinStudioSelectedSDSImage,
   SheinStudioVariantProductImageSet,
 } from "@/lib/types/shein-studio";
+export { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/constants";
 
-export const DEFAULT_SHEIN_STORE_ID = "";
 const DEFAULT_AI_PRODUCT_IMAGE_COUNT = 5;
 const MAX_AI_PRODUCT_IMAGE_COUNT = 9;
 

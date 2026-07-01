@@ -253,6 +253,72 @@ func TestAssemblerBuildUsesSizeAttributeHeaderResolverForUnknownSDSHeader(t *tes
 	}
 }
 
+func TestAssemblerBuildSkipsSizeHeaderResolverWhenNoSizeSaleAttributeExists(t *testing.T) {
+	t.Parallel()
+
+	resolver := &stubSizeAttributeHeaderResolver{
+		resolution: SizeAttributeHeaderResolution{
+			AttributeIDsByHeader: map[string]int{"长(cm/in)": 55},
+			ReviewNotes:          []string{"LLM 尺码表字段匹配: 长(cm/in) -> Length"},
+		},
+	}
+	assembler := NewAssembler(AssemblerConfig{
+		AttributeResolver: NewAttributeResolver(stubAttributeAPI{
+			templates: &sheinattribute.AttributeTemplateInfo{Data: []sheinattribute.AttributeTemplate{{
+				AttributeInfos: []sheinattribute.AttributeInfo{{
+					AttributeID:        55,
+					AttributeName:      "长度 (cm)",
+					AttributeNameEn:    "Length (cm)",
+					AttributeType:      2,
+					AttributeMode:      0,
+					DataDimension:      2,
+					AttributeStatus:    3,
+					SourceSystemIDList: []int{1, 2, 6, 7},
+				}},
+			}}},
+		}, nil),
+		CategoryResolver: assemblerStubCategoryResolver{
+			resolution: &CategoryResolution{Status: "resolved", CategoryID: 8218},
+		},
+		SaleAttributeResolver: assemblerStubSaleAttributeResolver{
+			resolution: &SaleAttributeResolution{
+				Status:                 "resolved",
+				PrimarySourceDimension: "Color",
+				PrimaryAttributeID:     27,
+			},
+		},
+		SizeAttributeHeaderResolver: resolver,
+	})
+	canonicalProduct := &canonical.Product{
+		Title: "Pillow Cover",
+		Images: []canonical.Image{
+			{URL: "https://example.com/main.jpg"},
+		},
+		Variants: []canonical.Variant{{
+			SKU:        "SKU-WHITE",
+			Attributes: map[string]canonical.Attribute{"Color": {Value: "white"}, "Size": {Value: `12 "×20 "`}},
+			Stock:      5,
+			IsDefault:  true,
+		}},
+	}
+	productSize := `[[{"content":"尺码","remark":""},{"content":"长(cm/in)","remark":""},{"content":"宽(cm/in)","remark":""}],[{"content":"12 \"×20 \"","remark":""},{"content":"50/20","remark":""},{"content":"30/12","remark":""}]]`
+
+	pkg := assembler.Build(&BuildRequest{Country: "US", Language: "en", ProductSize: productSize}, canonicalProduct, nil)
+
+	if resolver.calls != 0 {
+		t.Fatalf("resolver calls = %d, want 0 when no size sale attribute exists", resolver.calls)
+	}
+	if pkg == nil || pkg.PreviewPayload == nil {
+		t.Fatal("expected preview payload")
+	}
+	if got := pkg.PreviewPayload.SizeAttributeList; len(got) != 0 {
+		t.Fatalf("size_attribute_list = %#v, want empty", got)
+	}
+	if containsReviewNote(pkg.ReviewNotes, "LLM 尺码表字段匹配") {
+		t.Fatalf("review notes = %#v, want no LLM size header note", pkg.ReviewNotes)
+	}
+}
+
 type stubSizeAttributeHeaderResolver struct {
 	calls      int
 	lastInput  SizeAttributeHeaderResolutionInput

@@ -15,6 +15,7 @@ type StudioBatchTaskLinkRecord struct {
 	ListingKitTaskID         string    `json:"listingkit_task_id,omitempty" gorm:"column:listingkit_task_id;type:varchar(96);index"`
 	CandidateKey             string    `json:"candidate_key" gorm:"type:varchar(128);uniqueIndex:idx_listingkit_studio_batch_task_links_candidate,priority:2"`
 	Status                   string    `json:"status,omitempty" gorm:"type:varchar(32);index"`
+	Source                   string    `json:"source,omitempty" gorm:"type:varchar(64);index"`
 	ReasonCode               string    `json:"reason_code,omitempty" gorm:"type:varchar(96)"`
 	Message                  string    `json:"message,omitempty" gorm:"type:text"`
 	CreatedAt                time.Time `json:"created_at"`

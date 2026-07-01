@@ -47,6 +47,7 @@ type CreateStudioBatchTasksRequest struct {
 type SheinStudioFailedTask struct {
 	DesignID string `json:"design_id,omitempty"`
 	Title    string `json:"title,omitempty"`
+	Source   string `json:"source,omitempty"`
 	Message  string `json:"message,omitempty"`
 }
 

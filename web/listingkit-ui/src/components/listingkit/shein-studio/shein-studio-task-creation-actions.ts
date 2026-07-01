@@ -12,16 +12,11 @@ import {
   type SheinStudioBatchTaskCreationResult,
 } from "@/lib/api/shein-studio-batches";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
-import {
-  createGroupedSheinReviewTasks,
-  createSheinReviewTasks,
-} from "@/lib/shein-studio/create-review-tasks";
 import { hydrateSDSVariantSelection } from "@/lib/shein-studio/hydrate-sds-selection";
 import {
   buildBatchTaskCreationFailureSummary,
   executeItemizedBatchTaskCreation,
-  executeStandaloneTaskCreation,
-  resolveTaskCreationStartValidation,
+  resolveBatchTaskCreationStartValidation,
 } from "@/lib/shein-studio/task-creation-controller";
 import { useToast } from "@/components/providers/toast-provider";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
@@ -120,20 +115,22 @@ export function useSheinStudioTaskCreationAction({
   const toast = useToast();
 
   async function handleCreateTasks() {
-    const approvedDesignIdsForTaskCreation = itemizedBatchContext
-      ? getApprovedItemizedBatchDesignIDs(itemizedBatchContext.detail)
-      : selectedIds;
+    if (!itemizedBatchContext) {
+      const message = "当前批次资料尚未加载完成，请刷新批次后再创建 SHEIN 资料。";
+      setCreatingError(message);
+      setCreatingWarning("");
+      toast.error("无法创建 SHEIN 资料", message);
+      return;
+    }
+    const approvedDesignIdsForTaskCreation = getApprovedItemizedBatchDesignIDs(
+      itemizedBatchContext.detail,
+    );
     const approvedDesignIDSet = new Set(approvedDesignIdsForTaskCreation);
-    const candidateDesigns = itemizedBatchContext
-      ? flattenItemizedBatchDesigns(itemizedBatchContext.detail)
-      : designs;
+    const candidateDesigns = flattenItemizedBatchDesigns(itemizedBatchContext.detail);
     const approved = candidateDesigns.filter((design) =>
       approvedDesignIDSet.has(design.id),
     );
-    const startValidation = resolveTaskCreationStartValidation({
-      activeSelection,
-      activeSelectionBaselineReason,
-      activeSelectionBaselineStatus,
+    const startValidation = resolveBatchTaskCreationStartValidation({
       approvedCount: approved.length,
       sheinStoreId,
     });
@@ -144,20 +141,14 @@ export function useSheinStudioTaskCreationAction({
       return;
     }
     const taskCreationSelection = activeSelection;
-    if (!taskCreationSelection) {
+    const allowPartialWhileGenerating = hasInFlightItemizedBatchGeneration(
+      itemizedBatchContext.detail,
+    );
+    if (
+      allowPartialWhileGenerating &&
+      !window.confirm(buildInFlightTaskCreationConfirmation(approved.length))
+    ) {
       return;
-    }
-    let allowPartialWhileGenerating = false;
-    if (itemizedBatchContext) {
-      allowPartialWhileGenerating = hasInFlightItemizedBatchGeneration(
-        itemizedBatchContext.detail,
-      );
-      if (
-        allowPartialWhileGenerating &&
-        !window.confirm(buildInFlightTaskCreationConfirmation(approved.length))
-      ) {
-        return;
-      }
     }
     const latestRatioCheck = evaluateImportedGalleryDesigns(
       approved,
@@ -178,11 +169,14 @@ export function useSheinStudioTaskCreationAction({
     let keepCreatingState = false;
 
     try {
-      setCreatingMessage("正在刷新 SDS 商品资料...");
-      const hydratedTaskCreationSelection =
-        (await hydrateSDSVariantSelection(taskCreationSelection)) ??
-        taskCreationSelection;
-      if (itemizedBatchContext) {
+      let hydratedTaskCreationSelection = taskCreationSelection;
+      if (taskCreationSelection) {
+        setCreatingMessage("正在刷新 SDS 商品资料...");
+        hydratedTaskCreationSelection =
+          (await hydrateSDSVariantSelection(taskCreationSelection)) ??
+          taskCreationSelection;
+      }
+      if (hydratedTaskCreationSelection) {
         await persistDraft(
           { selection: hydratedTaskCreationSelection },
           {
@@ -197,59 +191,25 @@ export function useSheinStudioTaskCreationAction({
       let batchTaskFailures: SheinStudioFailedTask[] = [];
       let batchTaskRejections: SheinStudioRejectedTask[] = [];
 
-      if (itemizedBatchContext) {
-        const result = await executeItemizedBatchTaskCreation({
-          allowPartialWhileGenerating,
-          approvedDesignIds: approvedDesignIdsForTaskCreation,
-          batchId: itemizedBatchContext.batchId,
-          createBatchTasks: createSheinStudioBatchTasks,
-          onCreated: itemizedBatchContext.onCreated,
-          tenantId: itemizedBatchContext.tenantId,
-        });
-        created = result.created;
-        reused = result.reused;
-        batchTaskRejections = result.rejected;
-        batchTaskFailures = result.failed;
-        keepCreatingState = result.keepCreatingState;
-        if (keepCreatingState) {
-          setCreatingMessage("已开始在后台创建 SHEIN 资料，可离开当前页面，结果会自动刷新。");
-          setCreatingWarning("");
-          toast.info(
-            "已开始后台创建 SHEIN 资料",
-            "可离开当前页面，结果会自动刷新。",
-            7000,
-          );
-          return;
-        }
-      } else {
-        const result = await executeStandaloneTaskCreation({
-          activeSelection: hydratedTaskCreationSelection,
-          activeSelectionBaselineReason,
-          activeSelectionBaselineStatus,
-          approvedDesigns: approved,
-          createGroupedTasks: createGroupedSheinReviewTasks,
-          createTasks: createSheinReviewTasks,
-          groupedImageMode,
-          groupedSelections,
-          hasLocalWorkflowStateRef,
-          imageStrategy,
-          navigateToStep,
-          persistDraft,
-          productImageCount,
-          productImagePrompt,
-          productImagePrompts,
-          prompt,
-          promptMode,
-          renderSizeImagesWithSds,
-          selectedSdsImages,
-          setCreatedTasks,
-          setCreatingMessage,
-          setCreatingWarning,
-          sheinStoreId,
-        });
-        toast.success(
-          "SHEIN 资料创建完成",
-          `共生成或复用 ${result.availableTasks.length} 个任务。`,
+      const result = await executeItemizedBatchTaskCreation({
+        allowPartialWhileGenerating,
+        approvedDesignIds: approvedDesignIdsForTaskCreation,
+        batchId: itemizedBatchContext.batchId,
+        createBatchTasks: createSheinStudioBatchTasks,
+        onCreated: itemizedBatchContext.onCreated,
+        tenantId: itemizedBatchContext.tenantId,
+      });
+      created = result.created;
+      reused = result.reused;
+      batchTaskRejections = result.rejected;
+      batchTaskFailures = result.failed;
+      keepCreatingState = result.keepCreatingState;
+      if (keepCreatingState) {
+        setCreatingMessage("已开始在后台创建 SHEIN 资料，可离开当前页面，结果会自动刷新。");
+        setCreatingWarning("");
+        toast.info(
+          "已开始后台创建 SHEIN 资料",
+          "可离开当前页面，结果会自动刷新。",
           7000,
         );
         return;
@@ -299,15 +259,6 @@ export function useSheinStudioTaskCreationAction({
       }
 
       navigateToStep("tasks");
-      if (!itemizedBatchContext) {
-        void persistDraft(
-          { createdTasks: availableTasks },
-          {
-            navigationTriggered: true,
-            source: "task_creation_success",
-          },
-        ).catch(() => undefined);
-      }
     } catch (error) {
       const message = formatSubscriptionApiError(error);
       setCreatingError(message);

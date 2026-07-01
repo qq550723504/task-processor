@@ -12,19 +12,11 @@ type TaskCreationActionParams = Parameters<
 >[0];
 
 const createSheinStudioBatchTasks = vi.fn();
-const createGroupedSheinReviewTasks = vi.fn();
-const createSheinReviewTasks = vi.fn();
 const hydrateSDSVariantSelection = vi.fn();
 
 vi.mock("@/lib/api/shein-studio-batches", () => ({
   createSheinStudioBatchTasks: (...args: unknown[]) =>
     createSheinStudioBatchTasks(...args),
-}));
-
-vi.mock("@/lib/shein-studio/create-review-tasks", () => ({
-  createGroupedSheinReviewTasks: (...args: unknown[]) =>
-    createGroupedSheinReviewTasks(...args),
-  createSheinReviewTasks: (...args: unknown[]) => createSheinReviewTasks(...args),
 }));
 
 vi.mock("@/lib/shein-studio/hydrate-sds-selection", () => ({
@@ -184,8 +176,6 @@ function renderTaskCreationAction(overrides: Partial<TaskCreationActionParams> =
 describe("useSheinStudioTaskCreationAction", () => {
   beforeEach(() => {
     createSheinStudioBatchTasks.mockReset();
-    createGroupedSheinReviewTasks.mockReset();
-    createSheinReviewTasks.mockReset();
     hydrateSDSVariantSelection.mockReset();
     hydrateSDSVariantSelection.mockImplementation(
       async (nextSelection) => nextSelection,
@@ -367,6 +357,42 @@ describe("useSheinStudioTaskCreationAction", () => {
     );
   });
 
+  it("creates itemized batch tasks even when active SDS selection has not hydrated", async () => {
+    createSheinStudioBatchTasks.mockResolvedValue({
+      batch: {
+        id: "batch-1",
+        status: "tasks_created",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: 869,
+        createdAt: "2026-05-26T09:59:00.000Z",
+        updatedAt: "2026-05-26T10:06:00.000Z",
+      },
+      items: [],
+      createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+    });
+    const persistDraft = vi.fn().mockResolvedValue(undefined);
+    const { result } = renderTaskCreationAction({
+      activeSelection: undefined,
+      itemizedBatchContext: {
+        batchId: "batch-1",
+        detail: buildReviewReadyBatchDetail(),
+        onCreated: vi.fn(),
+      },
+      persistDraft,
+    });
+
+    await act(async () => {
+      await result.current.handleCreateTasks();
+    });
+
+    expect(hydrateSDSVariantSelection).not.toHaveBeenCalled();
+    expect(persistDraft).not.toHaveBeenCalled();
+    expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
+      "design-1",
+    ]);
+  });
+
   it("confirms before creating tasks while the itemized batch is still generating", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     const { result } = renderTaskCreationAction({
@@ -468,50 +494,46 @@ describe("useSheinStudioTaskCreationAction", () => {
     expect(navigateToStep).not.toHaveBeenCalledWith("tasks");
   });
 
-  it("blocks standalone task creation when an imported gallery image ratio mismatches the SDS ratio", async () => {
+  it("does not block batch task creation on stale active SDS baseline state", async () => {
     const navigateToStep = vi.fn();
-    const setCreatingError = vi.fn();
-    const setGalleryRatioCheck = vi.fn();
-    const { result } = renderTaskCreationAction({
-      designs: [
-        {
-          id: "gallery-style-1",
-          imageUrl: "https://example.com/gallery-style.png",
-          role: "gallery",
-          sourceHeight: 1000,
-          sourceWidth: 1400,
-        },
-      ],
-      itemizedBatchContext: undefined,
-      navigateToStep,
-      selectedIds: ["gallery-style-1"],
-      setCreatingError,
-      setGalleryRatioCheck,
+    createSheinStudioBatchTasks.mockResolvedValue({
+      batch: {
+        id: "batch-1",
+        status: "tasks_created",
+        prompt: "retro cherries",
+        styleCount: "1",
+        sheinStoreId: 869,
+        createdAt: "2026-05-26T09:59:00.000Z",
+        updatedAt: "2026-05-26T10:06:00.000Z",
+      },
+      items: [],
+      createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
     });
-
-    await act(async () => {
-      await result.current.handleCreateTasks();
-    });
-
-    expect(setGalleryRatioCheck).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: "blocking",
-      }),
-    );
-    expect(setCreatingError).toHaveBeenCalledWith(
-      "图库图片比例与 SDS 款式比例差异过大，请换图或更换 SDS 款式。",
-    );
-    expect(createSheinReviewTasks).not.toHaveBeenCalled();
-    expect(createGroupedSheinReviewTasks).not.toHaveBeenCalled();
-    expect(navigateToStep).not.toHaveBeenCalled();
-  });
-
-  it("blocks standalone task creation when the active SDS baseline is not ready", async () => {
-    const navigateToStep = vi.fn();
-    const setCreatingError = vi.fn();
     const { result } = renderTaskCreationAction({
       activeSelectionBaselineReason: "SDS credential bootstrap is missing merchant credentials.",
       activeSelectionBaselineStatus: "missing",
+      navigateToStep,
+      itemizedBatchContext: {
+        batchId: "batch-1",
+        detail: buildReviewReadyBatchDetail(),
+        onCreated: vi.fn(),
+      },
+    });
+
+    await act(async () => {
+      await result.current.handleCreateTasks();
+    });
+
+    expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
+      "design-1",
+    ]);
+    expect(navigateToStep).toHaveBeenCalledWith("tasks");
+  });
+
+  it("requires itemized batch context before creating tasks", async () => {
+    const navigateToStep = vi.fn();
+    const setCreatingError = vi.fn();
+    const { result } = renderTaskCreationAction({
       itemizedBatchContext: undefined,
       navigateToStep,
       setCreatingError,
@@ -522,58 +544,9 @@ describe("useSheinStudioTaskCreationAction", () => {
     });
 
     expect(setCreatingError).toHaveBeenCalledWith(
-      "SDS Baseline 未就绪：SDS credential bootstrap is missing merchant credentials.",
+      "当前批次资料尚未加载完成，请刷新批次后再创建 SHEIN 资料。",
     );
-    expect(createSheinReviewTasks).not.toHaveBeenCalled();
-    expect(createGroupedSheinReviewTasks).not.toHaveBeenCalled();
     expect(createSheinStudioBatchTasks).not.toHaveBeenCalled();
     expect(navigateToStep).not.toHaveBeenCalled();
-  });
-
-  it("enters tasks view after standalone task creation even when draft persistence fails", async () => {
-    createSheinReviewTasks.mockResolvedValue([
-      { id: "task-1", title: "Task 1", designId: "design-1" },
-    ]);
-    const navigateToStep = vi.fn();
-    const persistDraft = vi.fn().mockRejectedValue(new Error("draft save failed"));
-    const setCreatedTasks = vi.fn();
-    const setCreatingError = vi.fn();
-    const { result } = renderTaskCreationAction({
-      itemizedBatchContext: undefined,
-      navigateToStep,
-      persistDraft,
-      setCreatedTasks,
-      setCreatingError,
-    });
-
-    await act(async () => {
-      await result.current.handleCreateTasks();
-    });
-
-    expect(createSheinReviewTasks).toHaveBeenCalledWith(
-      expect.objectContaining({
-        approvedDesigns: [
-          { id: "design-1", imageUrl: "https://example.com/design-1.png" },
-        ],
-        prompt: "retro cherries",
-        sheinStoreId: "869",
-      }),
-    );
-    expect(setCreatedTasks).toHaveBeenCalledWith([
-      { id: "task-1", title: "Task 1", designId: "design-1" },
-    ]);
-    expect(navigateToStep).toHaveBeenCalledWith("tasks");
-    expect(persistDraft).toHaveBeenCalledWith(
-      {
-        createdTasks: [
-          { id: "task-1", title: "Task 1", designId: "design-1" },
-        ],
-      },
-      {
-        navigationTriggered: true,
-        source: "task_creation_success",
-      },
-    );
-    expect(setCreatingError).not.toHaveBeenCalledWith("draft save failed");
   });
 });

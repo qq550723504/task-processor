@@ -1206,6 +1206,25 @@ describe("shein studio workbench model", () => {
     ).toBe("比例不匹配");
   });
 
+  it("allows itemized batch task creation without an active SDS selection", () => {
+    expect(
+      getSheinStudioCreateActionDisabledReason({
+        galleryRatioCheck: { status: "blocking", message: "比例不匹配" },
+        hasItemizedBatchContext: true,
+        itemizedApprovedCount: 1,
+        selectedIds: [],
+      }),
+    ).toBeUndefined();
+
+    expect(
+      getSheinStudioCreateActionDisabledReason({
+        hasItemizedBatchContext: true,
+        itemizedApprovedCount: 0,
+        selectedIds: ["stale-local-id"],
+      }),
+    ).toBe("请至少批准 1 个款式后再生成 SHEIN 资料。");
+  });
+
   it("builds generation requests with transparent-background model override", () => {
     expect(
       buildSheinStudioGenerateRequest({

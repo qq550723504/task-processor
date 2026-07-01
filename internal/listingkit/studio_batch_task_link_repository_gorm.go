@@ -21,6 +21,9 @@ func AutoMigrateStudioBatchTaskLinkRepository(db *gorm.DB) error {
 	if err := db.AutoMigrate(&StudioBatchTaskLinkRecord{}); err != nil {
 		return err
 	}
+	if err := ensureStudioBatchTaskLinkSourceColumn(db); err != nil {
+		return err
+	}
 	return ensureStudioBatchTaskLinkTupleIndex(db)
 }
 
@@ -45,6 +48,13 @@ func (r *GormStudioBatchTaskLinkRepository) CreateStudioBatchTaskLink(ctx contex
 	if strings.TrimSpace(row.ID) == "" {
 		return fmt.Errorf("studio batch task link id is required")
 	}
+	err := r.db.WithContext(ctx).Create(&row).Error
+	if !isStudioBatchTaskLinkMissingSourceColumnError(err) {
+		return err
+	}
+	if migrateErr := ensureStudioBatchTaskLinkSourceColumn(r.db); migrateErr != nil {
+		return migrateErr
+	}
 	return r.db.WithContext(ctx).Create(&row).Error
 }
 
@@ -59,10 +69,34 @@ func (r *GormStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx contex
 		Updates(map[string]any{
 			"listingkit_task_id": link.ListingKitTaskID,
 			"status":             link.Status,
+			"source":             link.Source,
 			"reason_code":        link.ReasonCode,
 			"message":            link.Message,
 			"updated_at":         link.UpdatedAt,
 		})
+	if result.Error != nil {
+		if isStudioBatchTaskLinkMissingSourceColumnError(result.Error) {
+			if err := ensureStudioBatchTaskLinkSourceColumn(r.db); err != nil {
+				return err
+			}
+			result = applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
+				Model(&StudioBatchTaskLinkRecord{}).
+				Where("id = ?", link.ID).
+				Updates(map[string]any{
+					"listingkit_task_id": link.ListingKitTaskID,
+					"status":             link.Status,
+					"source":             link.Source,
+					"reason_code":        link.ReasonCode,
+					"message":            link.Message,
+					"updated_at":         link.UpdatedAt,
+				})
+			if result.Error != nil {
+				return result.Error
+			}
+		} else {
+			return result.Error
+		}
+	}
 	if result.Error != nil {
 		return result.Error
 	}
@@ -117,6 +151,34 @@ func (r *GormStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpdated
 		return nil, false, err
 	}
 	return link, result.RowsAffected > 0, nil
+}
+
+func ensureStudioBatchTaskLinkSourceColumn(db *gorm.DB) error {
+	if db == nil {
+		return nil
+	}
+	if !db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "Source") {
+		if err := db.Migrator().AddColumn(&StudioBatchTaskLinkRecord{}, "Source"); err != nil {
+			return err
+		}
+	}
+	if !db.Migrator().HasIndex(&StudioBatchTaskLinkRecord{}, "Source") {
+		if err := db.Migrator().CreateIndex(&StudioBatchTaskLinkRecord{}, "Source"); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func isStudioBatchTaskLinkMissingSourceColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "source") &&
+		(strings.Contains(message, "no column") ||
+			strings.Contains(message, "does not exist") ||
+			strings.Contains(message, "unknown column"))
 }
 
 func ensureStudioBatchTaskLinkTupleIndex(db *gorm.DB) error {

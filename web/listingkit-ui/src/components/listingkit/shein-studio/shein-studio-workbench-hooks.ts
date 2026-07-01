@@ -344,10 +344,14 @@ export function useSheinStudioSubscriptionGate(
 
 export function useSheinStudioCreateActionDisabledReason({
   galleryRatioCheck,
+  hasItemizedBatchContext,
+  itemizedApprovedCount,
   selectedIds,
   selection,
 }: {
   galleryRatioCheck?: SDSRatioMatch | null;
+  hasItemizedBatchContext?: boolean;
+  itemizedApprovedCount?: number;
   selectedIds: string[];
   selection?: SDSProductVariantSelection;
 }) {
@@ -355,10 +359,18 @@ export function useSheinStudioCreateActionDisabledReason({
     () =>
       getSheinStudioCreateActionDisabledReason({
         galleryRatioCheck,
+        hasItemizedBatchContext,
+        itemizedApprovedCount,
         selectedIds,
         selection,
       }),
-    [galleryRatioCheck, selectedIds, selection],
+    [
+      galleryRatioCheck,
+      hasItemizedBatchContext,
+      itemizedApprovedCount,
+      selectedIds,
+      selection,
+    ],
   );
 }
 
