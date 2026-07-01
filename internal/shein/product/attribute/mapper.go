@@ -126,6 +126,62 @@ func (m *AttributeMapper) mapSingleAttributeValues(ctx *sheinctx.TaskContext, ru
 			}
 		}
 
+		customAttempted := false
+		customResult := CustomAttributeResult{}
+		if shouldTryCustomBeforeFallbackForBeddingSize(attr.AttrID, attrValue.Value) {
+			customAttempted = true
+			customResult = m.processor.ProcessCustomAttributeValueWithRuntime(ctx, runtime, attr.AttrID, attrValue.Value, isRequired)
+			if customResult.Success {
+				attr.AttrValue[i].ID = types.FlexibleID(customResult.NewValueID)
+				relations = append(relations, customResult.Relations...)
+				continue
+			}
+			if customResult.PermissionDenied {
+				if platformID, resolvedValue := resolveBeddingSizePlatformValue(attr.AttrID, attrValue.Value, platformValues, m.valueMatcher); platformID > 0 {
+					categoryID := 0
+					if runtime != nil {
+						categoryID = runtime.CategoryID
+					}
+					logger.GetGlobalLogger("shein/product").Infof(
+						"resolved platform value via bedding size rule after custom permission denied: attrID=%d categoryID=%d original=%q resolved=%q platformID=%d",
+						attr.AttrID,
+						categoryID,
+						attrValue.Value,
+						resolvedValue,
+						platformID,
+					)
+					attr.AttrValue[i].ID = types.FlexibleID(platformID)
+					continue
+				}
+				if isKnownBeddingSizeLabel(attr.AttrID, attrValue.Value) {
+					categoryID := 0
+					if runtime != nil {
+						categoryID = runtime.CategoryID
+					}
+					logger.GetGlobalLogger("shein/product").Warnf(
+						"skip automatic bedding size fallback after custom permission denied: attrID=%d categoryID=%d value=%q reason=no_deterministic_platform_value",
+						attr.AttrID,
+						categoryID,
+						attrValue.Value,
+					)
+					continue
+				}
+				if shouldBlockRiskyBeddingSizeFallback(attr.AttrID, attrValue.Value) {
+					categoryID := 0
+					if runtime != nil {
+						categoryID = runtime.CategoryID
+					}
+					logger.GetGlobalLogger("shein/product").Warnf(
+						"skip automatic bedding size fallback after custom permission denied: attrID=%d categoryID=%d value=%q reason=requires_manual_review",
+						attr.AttrID,
+						categoryID,
+						attrValue.Value,
+					)
+					continue
+				}
+			}
+		}
+
 		fallbackPlatformValues := m.selectFallbackPlatformValues(attrInfo, runtime, valueDomain, attrValue.Value, platformValues)
 		if platformID, resolvedValue := m.resolvePlatformValueByFallback(ctx, runtime, valueDomain, attr.AttrID, attrValue.Value, fallbackPlatformValues); platformID > 0 {
 			logger.GetGlobalLogger("shein/product").Infof(
@@ -142,7 +198,10 @@ func (m *AttributeMapper) mapSingleAttributeValues(ctx *sheinctx.TaskContext, ru
 
 		m.logUnmatchedPlatformValue(attr.AttrID, attrValue.Value, valueDomain, platformValues)
 
-		result := m.processor.ProcessCustomAttributeValueWithRuntime(ctx, runtime, attr.AttrID, attrValue.Value, isRequired)
+		result := customResult
+		if !customAttempted {
+			result = m.processor.ProcessCustomAttributeValueWithRuntime(ctx, runtime, attr.AttrID, attrValue.Value, isRequired)
+		}
 		if !result.Success {
 			if result.PermissionDenied {
 				logger.GetGlobalLogger("shein/product").Warnf(
@@ -172,6 +231,82 @@ func (m *AttributeMapper) mapSingleAttributeValues(ctx *sheinctx.TaskContext, ru
 
 func shouldRemapSizeLikeAttributeValue(attrInfo *attribute.AttributeInfo) bool {
 	return isSizeLikeAttribute(attrInfo)
+}
+
+func resolveBeddingSizePlatformValue(attrID int, rawValue string, platformValues map[string]int, matcher *AttributeValueMatcher) (int, string) {
+	if attrID != 87 || matcher == nil {
+		return 0, ""
+	}
+	candidates, ok := beddingSizePlatformValueCandidates(rawValue)
+	if !ok {
+		return 0, ""
+	}
+	for _, candidate := range candidates {
+		if platformID := matcher.FindMatchingPlatformValue(candidate, platformValues); platformID > 0 {
+			return platformID, candidate
+		}
+	}
+	return 0, ""
+}
+
+func beddingSizePlatformValueCandidates(rawValue string) ([]string, bool) {
+	normalized := normalizeBeddingSizeLabel(rawValue)
+	switch normalized {
+	case "single", "twin", "twin size":
+		return []string{"99cm*190cm", "99*190"}, true
+	case "twin xl", "twin x long", "twin extra long", "extra long twin":
+		return []string{"105cm*200cm", "105*200", "100cm*200cm", "100*200"}, true
+	case "full", "double", "full size", "double size", "full double":
+		return []string{"138cm*190cm", "138*190", "140cm*190cm", "140*190"}, true
+	case "queen", "queen size", "standard queen":
+		return []string{"152cm*203cm", "152*203"}, true
+	case "king", "king size", "standard king", "eastern king":
+		return []string{"193cm*203cm", "193*203"}, true
+	case "california king", "cal king", "western king":
+		return []string{"183cm*213cm", "183*213"}, true
+	case "crib", "crib size", "toddler", "toddler bed":
+		return []string{"71cm*132cm", "71*132"}, true
+	default:
+		return nil, false
+	}
+}
+
+func shouldTryCustomBeforeFallbackForBeddingSize(attrID int, rawValue string) bool {
+	if attrID != 87 {
+		return false
+	}
+	if isKnownBeddingSizeLabel(attrID, rawValue) {
+		return true
+	}
+	return shouldBlockRiskyBeddingSizeFallback(attrID, rawValue)
+}
+
+func isKnownBeddingSizeLabel(attrID int, rawValue string) bool {
+	if attrID != 87 {
+		return false
+	}
+	_, ok := beddingSizePlatformValueCandidates(rawValue)
+	return ok
+}
+
+func shouldBlockRiskyBeddingSizeFallback(attrID int, rawValue string) bool {
+	if attrID != 87 {
+		return false
+	}
+	normalized := normalizeBeddingSizeLabel(rawValue)
+	switch normalized {
+	case "split king", "split california king", "split cal king", "oversized king", "oversize king", "rv queen", "short queen", "olympic queen":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeBeddingSizeLabel(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	replacer := strings.NewReplacer("-", " ", "_", " ", "/", " ", "(", " ", ")", " ")
+	normalized = replacer.Replace(normalized)
+	return strings.Join(strings.Fields(normalized), " ")
 }
 
 func (m *AttributeMapper) selectFallbackPlatformValues(attrInfo *attribute.AttributeInfo, runtime *MapperRuntimeInput, valueDomain platformValueDomain, rawValue string, platformValues map[string]int) map[string]int {

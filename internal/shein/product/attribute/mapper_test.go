@@ -23,6 +23,19 @@ func (s stubCustomAttributeValueProcessor) ProcessCustomAttributeValueWithRuntim
 	return CustomAttributeResult{}
 }
 
+type recordingCustomAttributeValueProcessor struct {
+	results   map[string]CustomAttributeResult
+	callCount int
+}
+
+func (s *recordingCustomAttributeValueProcessor) ProcessCustomAttributeValueWithRuntime(_ *sheinctx.TaskContext, _ *MapperRuntimeInput, _ int, attrValue string, _ bool) CustomAttributeResult {
+	s.callCount++
+	if result, ok := s.results[attrValue]; ok {
+		return result
+	}
+	return CustomAttributeResult{}
+}
+
 type stubPlatformValueFallbackResolver struct {
 	result    *PlatformValueFallbackResult
 	err       error
@@ -539,6 +552,547 @@ func TestMapSingleAttributeValues_UsesCachedFallbackResult(t *testing.T) {
 	}
 	if got := attr.AttrValue[0].ID.Int(); got != 12 {
 		t.Fatalf("mapped ID = %d, want 12", got)
+	}
+}
+
+func TestMapSingleAttributeValues_MapsBeddingSizeBeforeFallbackCache(t *testing.T) {
+	cache := aicache.New(nil)
+	runtime := &MapperRuntimeInput{
+		CategoryID:   2292,
+		ProductTitle: "Amazon Basics Cooling Sheets Set, King, Gray",
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{{
+				AttributeInfos: []sheinapi.AttributeInfo{{
+					AttributeID:   87,
+					AttributeName: "Size",
+					AttributeType: 2,
+					AttributeValueInfoList: []sheinapi.AttributeValue{
+						{AttributeValueID: 4584771, AttributeValue: "99cm*190cm"},
+						{AttributeValueID: 4584774, AttributeValue: "138cm*190cm"},
+						{AttributeValueID: 4721769, AttributeValue: "152cm*203cm"},
+						{AttributeValueID: 4721776, AttributeValue: "193cm*203cm"},
+					},
+				}},
+			}},
+		},
+		FallbackCache: cache,
+	}
+	cacheKey := runtime.buildFallbackCacheKey(platformValueDomainGeneric, 87, "King", map[string]int{
+		"99cm*190cm":  4584771,
+		"138cm*190cm": 4584774,
+		"152cm*203cm": 4721769,
+		"193cm*203cm": 4721776,
+	})
+	cache.Set(aicache.TypeAttrValueFallback, cacheKey, PlatformValueFallbackResult{
+		ResolvedValue: "152cm*203cm",
+		Confidence:    1.0,
+		Reason:        "stale fallback cache",
+	})
+
+	fallback := &stubPlatformValueFallbackResolver{
+		result: &PlatformValueFallbackResult{
+			ResolvedValue: "152cm*203cm",
+			Confidence:    1.0,
+			Reason:        "should not be used for bedding sizes",
+		},
+	}
+	runtime.FallbackValueResolver = fallback
+	processor := &recordingCustomAttributeValueProcessor{
+		results: map[string]CustomAttributeResult{
+			"Twin":  {Success: false, PermissionDenied: true, ShouldContinue: true},
+			"Full":  {Success: false, PermissionDenied: true, ShouldContinue: true},
+			"Queen": {Success: false, PermissionDenied: true, ShouldContinue: true},
+			"King":  {Success: false, PermissionDenied: true, ShouldContinue: true},
+		},
+	}
+
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    processor,
+	}
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "Twin"},
+			{ID: -1, Value: "Full"},
+			{ID: -1, Value: "Queen"},
+			{ID: -1, Value: "King"},
+		},
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, runtime, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if fallback.callCount != 0 {
+		t.Fatalf("fallback call count = %d, want 0 for deterministic bedding size mapping", fallback.callCount)
+	}
+	if processor.callCount != 4 {
+		t.Fatalf("custom processor call count = %d, want 4 before bedding size mapping", processor.callCount)
+	}
+	want := map[string]int{
+		"Twin":  4584771,
+		"Full":  4584774,
+		"Queen": 4721769,
+		"King":  4721776,
+	}
+	for _, value := range attr.AttrValue {
+		if got := value.ID.Int(); got != want[value.Value] {
+			t.Fatalf("%s mapped ID = %d, want %d", value.Value, got, want[value.Value])
+		}
+	}
+}
+
+func TestMapSingleAttributeValues_CreatesCustomBeddingSizeWhenCustomAllowed(t *testing.T) {
+	processor := &recordingCustomAttributeValueProcessor{
+		results: map[string]CustomAttributeResult{
+			"King": {
+				Success:    true,
+				NewValueID: 9001,
+				Relations: []sheinapi.CustomAttributeRelation{{
+					PreAttributeValueID: 7001,
+					AttributeValueID:    9001,
+				}},
+				ShouldContinue: true,
+			},
+		},
+	}
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    processor,
+	}
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "King"},
+		},
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, &MapperRuntimeInput{
+		CategoryID:   3000,
+		ProductTitle: "Bedding Set",
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{{
+				AttributeInfos: []sheinapi.AttributeInfo{{
+					AttributeID:   87,
+					AttributeName: "Size",
+					AttributeType: 2,
+					AttributeValueInfoList: []sheinapi.AttributeValue{
+						{AttributeValueID: 4721769, AttributeValue: "152cm*203cm"},
+						{AttributeValueID: 4721776, AttributeValue: "193cm*203cm"},
+					},
+				}},
+			}},
+		},
+	}, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if processor.callCount != 1 {
+		t.Fatalf("custom processor call count = %d, want 1 before bedding size mapping", processor.callCount)
+	}
+	if got := attr.AttrValue[0].ID.Int(); got != 9001 {
+		t.Fatalf("mapped ID = %d, want custom ID 9001 when custom bedding size is allowed", got)
+	}
+	if len(relations) != 1 {
+		t.Fatalf("relations = %d, want 1 custom relation", len(relations))
+	}
+}
+
+func TestMapSingleAttributeValues_MapsBeddingSizeAliasesBeforeFallback(t *testing.T) {
+	fallback := &stubPlatformValueFallbackResolver{
+		result: &PlatformValueFallbackResult{
+			ResolvedValue: "152cm*203cm",
+			Confidence:    1.0,
+			Reason:        "should not be used for bedding size aliases",
+		},
+	}
+	processor := &recordingCustomAttributeValueProcessor{
+		results: map[string]CustomAttributeResult{
+			"Single":       {Success: false, PermissionDenied: true, ShouldContinue: true},
+			"Twin Size":    {Success: false, PermissionDenied: true, ShouldContinue: true},
+			"Twin XL":      {Success: false, PermissionDenied: true, ShouldContinue: true},
+			"Double":       {Success: false, PermissionDenied: true, ShouldContinue: true},
+			"Queen Size":   {Success: false, PermissionDenied: true, ShouldContinue: true},
+			"Eastern King": {Success: false, PermissionDenied: true, ShouldContinue: true},
+			"Cal King":     {Success: false, PermissionDenied: true, ShouldContinue: true},
+		},
+	}
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    processor,
+	}
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "Single"},
+			{ID: -1, Value: "Twin Size"},
+			{ID: -1, Value: "Twin XL"},
+			{ID: -1, Value: "Double"},
+			{ID: -1, Value: "Queen Size"},
+			{ID: -1, Value: "Eastern King"},
+			{ID: -1, Value: "Cal King"},
+		},
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, &MapperRuntimeInput{
+		CategoryID:            2292,
+		ProductTitle:          "Cooling Sheets Set",
+		FallbackValueResolver: fallback,
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{{
+				AttributeInfos: []sheinapi.AttributeInfo{{
+					AttributeID:   87,
+					AttributeName: "Size",
+					AttributeType: 2,
+					AttributeValueInfoList: []sheinapi.AttributeValue{
+						{AttributeValueID: 4584771, AttributeValue: "99cm*190cm"},
+						{AttributeValueID: 4584774, AttributeValue: "138cm*190cm"},
+						{AttributeValueID: 32283364, AttributeValue: "105cm*200cm"},
+						{AttributeValueID: 4721769, AttributeValue: "152cm*203cm"},
+						{AttributeValueID: 4721774, AttributeValue: "183cm*213cm"},
+						{AttributeValueID: 4721776, AttributeValue: "193cm*203cm"},
+					},
+				}},
+			}},
+		},
+	}, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if fallback.callCount != 0 {
+		t.Fatalf("fallback call count = %d, want 0 for deterministic bedding size aliases", fallback.callCount)
+	}
+	if processor.callCount != 7 {
+		t.Fatalf("custom processor call count = %d, want 7 before bedding size alias mapping", processor.callCount)
+	}
+	want := map[string]int{
+		"Single":       4584771,
+		"Twin Size":    4584771,
+		"Twin XL":      32283364,
+		"Double":       4584774,
+		"Queen Size":   4721769,
+		"Eastern King": 4721776,
+		"Cal King":     4721774,
+	}
+	for _, value := range attr.AttrValue {
+		if got := value.ID.Int(); got != want[value.Value] {
+			t.Fatalf("%s mapped ID = %d, want %d", value.Value, got, want[value.Value])
+		}
+	}
+}
+
+func TestMapSingleAttributeValues_BlocksRiskyBeddingSizeFallback(t *testing.T) {
+	fallback := &stubPlatformValueFallbackResolver{
+		result: &PlatformValueFallbackResult{
+			ResolvedValue: "193cm*203cm",
+			Confidence:    1.0,
+			Reason:        "should not guess risky bedding size",
+		},
+	}
+	processor := &recordingCustomAttributeValueProcessor{
+		results: map[string]CustomAttributeResult{
+			"Split King":     {Success: false, PermissionDenied: true, ShouldContinue: true},
+			"Oversized King": {Success: false, PermissionDenied: true, ShouldContinue: true},
+			"RV Queen":       {Success: false, PermissionDenied: true, ShouldContinue: true},
+		},
+	}
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    processor,
+	}
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "Split King"},
+			{ID: -1, Value: "Oversized King"},
+			{ID: -1, Value: "RV Queen"},
+		},
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, &MapperRuntimeInput{
+		CategoryID:            2292,
+		ProductTitle:          "Cooling Sheets Set",
+		FallbackValueResolver: fallback,
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{{
+				AttributeInfos: []sheinapi.AttributeInfo{{
+					AttributeID:   87,
+					AttributeName: "Size",
+					AttributeType: 2,
+					AttributeValueInfoList: []sheinapi.AttributeValue{
+						{AttributeValueID: 4721769, AttributeValue: "152cm*203cm"},
+						{AttributeValueID: 4721776, AttributeValue: "193cm*203cm"},
+					},
+				}},
+			}},
+		},
+	}, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if fallback.callCount != 0 {
+		t.Fatalf("fallback call count = %d, want 0 for risky bedding sizes", fallback.callCount)
+	}
+	if processor.callCount != 3 {
+		t.Fatalf("custom processor call count = %d, want 3 before risky bedding size block", processor.callCount)
+	}
+	for _, value := range attr.AttrValue {
+		if got := value.ID.Int(); got != -1 {
+			t.Fatalf("%s mapped ID = %d, want unresolved for manual review", value.Value, got)
+		}
+	}
+}
+
+func TestMapSingleAttributeValues_MapsBeddingSizeForBeddingTemplateOutsideKnownCategory(t *testing.T) {
+	fallback := &stubPlatformValueFallbackResolver{
+		result: &PlatformValueFallbackResult{
+			ResolvedValue: "152cm*203cm",
+			Confidence:    1.0,
+			Reason:        "should not be used for bedding size aliases",
+		},
+	}
+	processor := &recordingCustomAttributeValueProcessor{
+		results: map[string]CustomAttributeResult{
+			"Twin":     {Success: false, PermissionDenied: true, ShouldContinue: true},
+			"King":     {Success: false, PermissionDenied: true, ShouldContinue: true},
+			"Cal King": {Success: false, PermissionDenied: true, ShouldContinue: true},
+		},
+	}
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    processor,
+	}
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "Twin"},
+			{ID: -1, Value: "King"},
+			{ID: -1, Value: "Cal King"},
+		},
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, &MapperRuntimeInput{
+		CategoryID:            3000,
+		ProductTitle:          "Bedding Set",
+		FallbackValueResolver: fallback,
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{{
+				AttributeInfos: []sheinapi.AttributeInfo{{
+					AttributeID:   87,
+					AttributeName: "Size",
+					AttributeType: 2,
+					AttributeValueInfoList: []sheinapi.AttributeValue{
+						{AttributeValueID: 4584771, AttributeValue: "99cm*190cm"},
+						{AttributeValueID: 4584774, AttributeValue: "138cm*190cm"},
+						{AttributeValueID: 32283364, AttributeValue: "105cm*200cm"},
+						{AttributeValueID: 4721769, AttributeValue: "152cm*203cm"},
+						{AttributeValueID: 4721774, AttributeValue: "183cm*213cm"},
+						{AttributeValueID: 4721776, AttributeValue: "193cm*203cm"},
+					},
+				}},
+			}},
+		},
+	}, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if fallback.callCount != 0 {
+		t.Fatalf("fallback call count = %d, want 0 for bedding size aliases outside category 2292", fallback.callCount)
+	}
+	if processor.callCount != 3 {
+		t.Fatalf("custom processor call count = %d, want 3 before bedding size alias mapping", processor.callCount)
+	}
+	want := map[string]int{
+		"Twin":     4584771,
+		"King":     4721776,
+		"Cal King": 4721774,
+	}
+	for _, value := range attr.AttrValue {
+		if got := value.ID.Int(); got != want[value.Value] {
+			t.Fatalf("%s mapped ID = %d, want %d", value.Value, got, want[value.Value])
+		}
+	}
+}
+
+func TestMapSingleAttributeValues_BlocksRiskyBeddingSizeFallbackForBeddingTemplateOutsideKnownCategory(t *testing.T) {
+	fallback := &stubPlatformValueFallbackResolver{
+		result: &PlatformValueFallbackResult{
+			ResolvedValue: "193cm*203cm",
+			Confidence:    1.0,
+			Reason:        "should not guess risky bedding size",
+		},
+	}
+	processor := &recordingCustomAttributeValueProcessor{
+		results: map[string]CustomAttributeResult{
+			"Split King": {Success: false, PermissionDenied: true, ShouldContinue: true},
+		},
+	}
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    processor,
+	}
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "Split King"},
+		},
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, &MapperRuntimeInput{
+		CategoryID:            3000,
+		ProductTitle:          "Bedding Set",
+		FallbackValueResolver: fallback,
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{{
+				AttributeInfos: []sheinapi.AttributeInfo{{
+					AttributeID:   87,
+					AttributeName: "Size",
+					AttributeType: 2,
+					AttributeValueInfoList: []sheinapi.AttributeValue{
+						{AttributeValueID: 4721769, AttributeValue: "152cm*203cm"},
+						{AttributeValueID: 4721776, AttributeValue: "193cm*203cm"},
+					},
+				}},
+			}},
+		},
+	}, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if fallback.callCount != 0 {
+		t.Fatalf("fallback call count = %d, want 0 for risky bedding sizes outside category 2292", fallback.callCount)
+	}
+	if processor.callCount != 1 {
+		t.Fatalf("custom processor call count = %d, want 1 before risky bedding size block", processor.callCount)
+	}
+	if got := attr.AttrValue[0].ID.Int(); got != -1 {
+		t.Fatalf("Split King mapped ID = %d, want unresolved for manual review", got)
+	}
+}
+
+func TestMapSingleAttributeValues_DoesNotGuessBeddingSizeAfterCustomPermissionDeniedWhenNoPlatformMatch(t *testing.T) {
+	fallback := &stubPlatformValueFallbackResolver{
+		result: &PlatformValueFallbackResult{
+			ResolvedValue: "152cm*203cm",
+			Confidence:    1.0,
+			Reason:        "should not guess bedding size when deterministic mapping is unavailable",
+		},
+	}
+	processor := &recordingCustomAttributeValueProcessor{
+		results: map[string]CustomAttributeResult{
+			"King": {Success: false, PermissionDenied: true, ShouldContinue: true},
+		},
+	}
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    processor,
+	}
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "King"},
+		},
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, &MapperRuntimeInput{
+		CategoryID:            3000,
+		ProductTitle:          "Bedding Set",
+		FallbackValueResolver: fallback,
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{{
+				AttributeInfos: []sheinapi.AttributeInfo{{
+					AttributeID:   87,
+					AttributeName: "Size",
+					AttributeType: 2,
+					AttributeValueInfoList: []sheinapi.AttributeValue{
+						{AttributeValueID: 4721769, AttributeValue: "152cm*203cm"},
+					},
+				}},
+			}},
+		},
+	}, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if processor.callCount != 1 {
+		t.Fatalf("custom processor call count = %d, want 1", processor.callCount)
+	}
+	if fallback.callCount != 0 {
+		t.Fatalf("fallback call count = %d, want 0 when bedding size cannot be mapped deterministically", fallback.callCount)
+	}
+	if got := attr.AttrValue[0].ID.Int(); got != -1 {
+		t.Fatalf("King mapped ID = %d, want unresolved when deterministic platform value is unavailable", got)
+	}
+}
+
+func TestMapSingleAttributeValues_UsesFallbackForNonBeddingSizeTemplate(t *testing.T) {
+	fallback := &stubPlatformValueFallbackResolver{
+		result: &PlatformValueFallbackResult{
+			ResolvedValue: "M",
+			Confidence:    0.96,
+			Reason:        "non-bedding template should use generic fallback",
+		},
+	}
+	mapper := &AttributeMapper{
+		valueMatcher: NewAttributeValueMatcher(),
+		processor:    stubCustomAttributeValueProcessor{},
+	}
+	attr := &ResultAttribute{
+		AttrID: 87,
+		AttrValue: []AttributeValue{
+			{ID: -1, Value: "King"},
+		},
+	}
+
+	relations, err := mapper.mapSingleAttributeValues(nil, &MapperRuntimeInput{
+		CategoryID:            8838,
+		ProductTitle:          "Costume",
+		FallbackValueResolver: fallback,
+		AttributeTemplates: &sheinapi.AttributeTemplateInfo{
+			Data: []sheinapi.AttributeTemplate{{
+				AttributeInfos: []sheinapi.AttributeInfo{{
+					AttributeID:   87,
+					AttributeName: "Size",
+					AttributeType: 2,
+					AttributeValueInfoList: []sheinapi.AttributeValue{
+						{AttributeValueID: 1, AttributeValue: "S"},
+						{AttributeValueID: 2, AttributeValue: "M"},
+						{AttributeValueID: 3, AttributeValue: "L"},
+					},
+				}},
+			}},
+		},
+	}, attr, false)
+	if err != nil {
+		t.Fatalf("mapSingleAttributeValues() error = %v", err)
+	}
+	if len(relations) != 0 {
+		t.Fatalf("relations = %d, want 0", len(relations))
+	}
+	if fallback.callCount != 1 {
+		t.Fatalf("fallback call count = %d, want 1 for non-bedding size template", fallback.callCount)
+	}
+	if got := attr.AttrValue[0].ID.Int(); got != 2 {
+		t.Fatalf("mapped ID = %d, want 2", got)
 	}
 }
 
