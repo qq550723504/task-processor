@@ -93,6 +93,43 @@ func UniqueNonEmptyImageURLs(values []string) []string {
 	return result
 }
 
+// OrderFinalDraftImages applies explicit image order and deletion filters to image URLs.
+func OrderFinalDraftImages(existing []string, order []string, deleted map[string]struct{}) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(existing)+len(order))
+	add := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		if _, ok := deleted[value]; ok {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	for _, image := range order {
+		add(image)
+	}
+	for _, image := range existing {
+		add(image)
+	}
+	return out
+}
+
+// FirstNonEmptyImageURL returns the first value with non-empty URL content.
+func FirstNonEmptyImageURL(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 // GalleryWithoutMain removes the main image from gallery URLs.
 func GalleryWithoutMain(images []string, main string) []string {
 	main = strings.TrimSpace(main)

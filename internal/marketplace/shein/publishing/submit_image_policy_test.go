@@ -114,6 +114,34 @@ func TestUniqueNonEmptyImageURLsTrimsAndDedupes(t *testing.T) {
 	}
 }
 
+func TestOrderFinalDraftImagesAppliesOrderDeletedAndDedupes(t *testing.T) {
+	t.Parallel()
+
+	got := OrderFinalDraftImages(
+		[]string{" existing-a.jpg ", "ordered.jpg", "deleted.jpg", "existing-a.jpg", ""},
+		[]string{" ordered.jpg ", "deleted.jpg", "ordered.jpg", "later.jpg"},
+		map[string]struct{}{"deleted.jpg": {}},
+	)
+	want := []string{"ordered.jpg", "later.jpg", "existing-a.jpg"}
+	if len(got) != len(want) {
+		t.Fatalf("OrderFinalDraftImages() = %#v, want %#v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("OrderFinalDraftImages()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestFirstNonEmptyImageURLPreservesReturnedValue(t *testing.T) {
+	t.Parallel()
+
+	got := FirstNonEmptyImageURL("", "   ", " https://cdn.example/image.jpg ", "later.jpg")
+	if got != " https://cdn.example/image.jpg " {
+		t.Fatalf("FirstNonEmptyImageURL() = %q, want original first non-empty value", got)
+	}
+}
+
 func TestGalleryWithoutMainTrimsAndFiltersMain(t *testing.T) {
 	t.Parallel()
 

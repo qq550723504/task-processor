@@ -165,29 +165,7 @@ func PreviewSKCImagesCoverDraft(existing []sheinproduct.ImageDetail, draft *Imag
 
 // OrderFinalDraftImages applies explicit image order and deletion filters to image URLs.
 func OrderFinalDraftImages(existing []string, order []string, deleted map[string]struct{}) []string {
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(existing)+len(order))
-	add := func(value string) {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			return
-		}
-		if _, ok := deleted[value]; ok {
-			return
-		}
-		if _, ok := seen[value]; ok {
-			return
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
-	}
-	for _, image := range order {
-		add(image)
-	}
-	for _, image := range existing {
-		add(image)
-	}
-	return out
+	return sheinmarketpub.OrderFinalDraftImages(existing, order, deleted)
 }
 
 // FinalDraftFallbackImages collects image fallbacks for final draft SKC images.
@@ -403,12 +381,7 @@ func NormalizeImageRoleOverrides(input map[string]string) map[string]string {
 }
 
 func firstNonEmptyFinalDraftString(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
+	return sheinmarketpub.FirstNonEmptyImageURL(values...)
 }
 
 func uniqueNonEmptyFinalDraftStrings(values []string) []string {
