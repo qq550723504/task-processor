@@ -111,6 +111,45 @@ func TestClientStartPlatformAdaptationUsesStableWorkflowIDAndAllowsManualRerun(t
 	}
 }
 
+func TestClientStartsWorkflowsOnConfiguredTaskQueue(t *testing.T) {
+	t.Setenv(EnvTaskQueue, " listingkit-local-test ")
+
+	raw := &stubTemporalClient{}
+	client := NewClient(raw)
+
+	if err := client.StartStandardProduct(context.Background(), listingkit.StandardProductWorkflowStartInput{
+		TaskID:      "task-standard",
+		RequestedAt: time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("start standard product: %v", err)
+	}
+	if raw.options.TaskQueue != "listingkit-local-test" {
+		t.Fatalf("standard task queue = %q, want configured local queue", raw.options.TaskQueue)
+	}
+
+	if err := client.StartPlatformAdaptation(context.Background(), listingkit.PlatformAdaptWorkflowStartInput{
+		TaskID:      "task-platform",
+		Platform:    "shein",
+		RequestedAt: time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("start platform adaptation: %v", err)
+	}
+	if raw.options.TaskQueue != "listingkit-local-test" {
+		t.Fatalf("platform task queue = %q, want configured local queue", raw.options.TaskQueue)
+	}
+
+	if err := client.StartSheinPublish(context.Background(), listingkit.SheinPublishWorkflowStartInput{
+		TaskID:      "task-publish",
+		RequestID:   "request-123",
+		RequestedAt: time.Date(2026, 7, 2, 0, 0, 0, 0, time.UTC),
+	}); err != nil {
+		t.Fatalf("start shein publish: %v", err)
+	}
+	if raw.options.TaskQueue != "listingkit-local-test" {
+		t.Fatalf("publish task queue = %q, want configured local queue", raw.options.TaskQueue)
+	}
+}
+
 func TestClientStartSheinPublishCarriesConfirmedFinal(t *testing.T) {
 	t.Parallel()
 

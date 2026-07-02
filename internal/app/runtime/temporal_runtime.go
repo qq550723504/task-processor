@@ -31,7 +31,7 @@ func DialListingKitSheinPublishTemporalClient(logger *logrus.Logger) (listingkit
 		logger.WithFields(logrus.Fields{
 			"address":   address,
 			"namespace": namespace,
-			"taskQueue": listingtemporal.TaskQueueSheinSubmitPublish,
+			"taskQueue": listingtemporal.TaskQueueSheinSubmitPublishName(),
 		}).Info("connected listingkit shein publish temporal client")
 	}
 	closeFn := func() error {
@@ -82,7 +82,7 @@ func StartListingKitSheinPublishTemporalWorker(svc listingKitTemporalWorkerServi
 		logger.WithFields(logrus.Fields{
 			"address":   address,
 			"namespace": namespace,
-			"taskQueue": listingtemporal.TaskQueueSheinSubmitPublish,
+			"taskQueue": listingtemporal.TaskQueueSheinSubmitPublishName(),
 		}).Info("started listingkit shein publish temporal worker")
 	}
 

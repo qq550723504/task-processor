@@ -44,8 +44,9 @@ func (s *Service) fetchRenderedImageURLsByProduct(ctx context.Context, input Pre
 	}
 
 	variantID := resolvedDesignVariantID(input, result)
-	expectedCount := expectedRenderedImageCount(result)
 	targetIDs := renderedTargetVariantIDs(input, variantID)
+	expectedCount := expectedRenderedImageCount(result)
+	var productDetail *sdstemplate.ProductDetail
 	maxAttempts := renderedImagePollAttempts(len(targetIDs))
 	var best map[int64][]string
 	bestObservations := make(map[int64]RenderedImageObservation, len(targetIDs))
@@ -93,11 +94,14 @@ func (s *Service) fetchRenderedImageURLsByProduct(ctx context.Context, input Pre
 		if expectedMaterialName != "" {
 			continue
 		}
-		detail, err := s.GetProductDetail(ctx, parentProductID)
-		if err != nil {
-			continue
+		if productDetail == nil {
+			detail, err := s.GetProductDetail(ctx, parentProductID)
+			if err != nil {
+				continue
+			}
+			productDetail = detail
 		}
-		urls := renderedImageURLsFromProduct(detail, variantID)
+		urls := renderedImageURLsFromProduct(productDetail, variantID)
 		if staleRenderedImageURLs(urls, result) {
 			continue
 		}
@@ -141,6 +145,7 @@ func (s *Service) fetchFinishedProductImageURLsByProduct(ctx context.Context, in
 	}
 	list, err := s.ListDesignProducts(ctx, ListDesignProductsRequest{
 		ParentProductID: parentProductID,
+		Search:          finishedProductMaterialName(result),
 		DesignType:      input.DesignType,
 		Page:            1,
 		Size:            50,
@@ -152,13 +157,14 @@ func (s *Service) fetchFinishedProductImageURLsByProduct(ctx context.Context, in
 	observations := collectRenderedImageObservations(list.Items, targetIDs)
 	sensitiveWords := s.fetchRenderedSensitiveWords(ctx, observations)
 	expectedMaterialName := finishedProductMaterialName(result)
+	includeStaticGalleryImages := true
 	accept := func(urls []string) bool {
 		return !s.renderedCandidateLooksBlank(ctx, urls, input.BlankDesignURL)
 	}
-	if urls := selectFinishedProductImageURLsByProductWithAccept(list.Items, targetIDs, expectedMaterialName, accept); len(urls) > 0 {
+	if urls := selectFinishedProductImageURLsByProductWithAcceptAndStaticGallery(list.Items, targetIDs, expectedMaterialName, accept, includeStaticGalleryImages); len(urls) > 0 {
 		return urls, observations, sensitiveWords
 	}
-	return selectFinishedProductImageURLsByProductWithAccept(list.Items, targetIDs, expectedMaterialName, nil), observations, sensitiveWords
+	return selectFinishedProductImageURLsByProductWithAcceptAndStaticGallery(list.Items, targetIDs, expectedMaterialName, nil, includeStaticGalleryImages), observations, sensitiveWords
 }
 
 func resolvedDesignVariantID(input PrepareSyncDesignInput, result *PrepareSyncDesignResult) int64 {
@@ -194,14 +200,22 @@ func selectFinishedProductImageURLs(items []DesignProductListItem, variantID int
 }
 
 func selectFinishedProductImageURLsWithAccept(items []DesignProductListItem, variantID int64, expectedMaterialName string, accept func([]string) bool) []string {
+	return selectFinishedProductImageURLsWithAcceptAndStaticGallery(items, variantID, expectedMaterialName, accept, false)
+}
+
+func selectFinishedProductImageURLsWithAcceptAndStaticGallery(items []DesignProductListItem, variantID int64, expectedMaterialName string, accept func([]string) bool, includeStaticGalleryImages bool) []string {
 	candidates := append([]DesignProductListItem(nil), items...)
 	sort.SliceStable(candidates, func(i, j int) bool {
 		return candidates[i].FinishTime > candidates[j].FinishTime
 	})
-	return selectFinishedProductImageURLsFromSortedCandidates(candidates, variantID, expectedMaterialName, accept)
+	return selectFinishedProductImageURLsFromSortedCandidates(candidates, variantID, expectedMaterialName, accept, includeStaticGalleryImages)
 }
 
 func selectFinishedProductImageURLsByProductWithAccept(items []DesignProductListItem, targetIDs []int64, expectedMaterialName string, accept func([]string) bool) map[int64][]string {
+	return selectFinishedProductImageURLsByProductWithAcceptAndStaticGallery(items, targetIDs, expectedMaterialName, accept, false)
+}
+
+func selectFinishedProductImageURLsByProductWithAcceptAndStaticGallery(items []DesignProductListItem, targetIDs []int64, expectedMaterialName string, accept func([]string) bool, includeStaticGalleryImages bool) map[int64][]string {
 	targetSet := make(map[int64]struct{}, len(targetIDs))
 	for _, id := range targetIDs {
 		if id > 0 {
@@ -223,7 +237,7 @@ func selectFinishedProductImageURLsByProductWithAccept(items []DesignProductList
 		if _, exists := result[item.ProductID]; exists {
 			continue
 		}
-		if urls := selectFinishedProductImageURLsFromSortedCandidates(candidates, item.ProductID, expectedMaterialName, accept); len(urls) > 0 {
+		if urls := selectFinishedProductImageURLsFromSortedCandidates(candidates, item.ProductID, expectedMaterialName, accept, includeStaticGalleryImages); len(urls) > 0 {
 			result[item.ProductID] = urls
 		}
 	}
@@ -233,12 +247,12 @@ func selectFinishedProductImageURLsByProductWithAccept(items []DesignProductList
 	return result
 }
 
-func selectFinishedProductImageURLsFromSortedCandidates(candidates []DesignProductListItem, variantID int64, expectedMaterialName string, accept func([]string) bool) []string {
+func selectFinishedProductImageURLsFromSortedCandidates(candidates []DesignProductListItem, variantID int64, expectedMaterialName string, accept func([]string) bool, includeStaticGalleryImages bool) []string {
 	for _, item := range candidates {
 		if !finishedProductItemMatches(item, variantID, expectedMaterialName) {
 			continue
 		}
-		urls := finishedProductItemImageURLs(item, variantID, expectedMaterialName)
+		urls := finishedProductItemImageURLs(item, variantID, expectedMaterialName, includeStaticGalleryImages)
 		if len(urls) == 0 {
 			continue
 		}
@@ -374,9 +388,14 @@ func (s *Service) repairSensitiveDesignProductExportNames(ctx context.Context, i
 	return true
 }
 
-func finishedProductItemImageURLs(item DesignProductListItem, variantID int64, expectedMaterialName string) []string {
+func finishedProductItemImageURLs(item DesignProductListItem, variantID int64, expectedMaterialName string, includeStaticGalleryImages bool) []string {
 	if !finishedProductItemMatches(item, variantID, expectedMaterialName) {
 		return nil
+	}
+	if includeStaticGalleryImages {
+		if urls := finishedProductStaticGalleryImageURLCandidates(item.ImageURLs); len(urls) > 0 {
+			return urls
+		}
 	}
 	urls := finishedProductImageURLCandidates(item.ImageURLs)
 	if len(urls) > 0 {
@@ -512,6 +531,20 @@ func finishedProductImageURLCandidates(values []string) []string {
 	return uniqueStrings(filtered)
 }
 
+func finishedProductStaticGalleryImageURLCandidates(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	filtered := make([]string, 0, len(values))
+	for _, value := range values {
+		if finishedProductStaticGalleryImageURLUnavailable(value) {
+			continue
+		}
+		filtered = append(filtered, value)
+	}
+	return uniqueStrings(filtered)
+}
+
 func expectedRenderedImageCount(result *PrepareSyncDesignResult) int {
 	if result == nil || result.Page == nil {
 		return 0
@@ -529,7 +562,13 @@ func renderedImageURLsReady(urls []string, expectedCount int) bool {
 	if len(urls) == 0 {
 		return false
 	}
-	return expectedCount <= 1 || len(urls) >= expectedCount
+	if expectedCount <= 1 {
+		return true
+	}
+	if outCount := finishedProductOutImageURLCount(urls); outCount > 0 {
+		return outCount >= expectedCount
+	}
+	return len(urls) >= expectedCount
 }
 
 func renderedImageURLsByProductReady(urlsByProduct map[int64][]string, targetIDs []int64, expectedCount int) bool {
@@ -564,6 +603,16 @@ func preferredRenderedImageURLsByProduct(current map[int64][]string, candidate m
 	return current
 }
 
+func finishedProductOutImageURLCount(values []string) int {
+	count := 0
+	for _, value := range values {
+		if strings.Contains(strings.ToLower(strings.TrimSpace(value)), "cdn.sdspod.com/out/") {
+			count++
+		}
+	}
+	return count
+}
+
 func renderedImageURLUnavailable(value string) bool {
 	value = strings.ToLower(strings.TrimSpace(value))
 	if value == "" {
@@ -572,11 +621,21 @@ func renderedImageURLUnavailable(value string) bool {
 	return strings.Contains(value, "shengchengzhong") ||
 		strings.Contains(value, "/output/generating") ||
 		strings.Contains(value, "/output/loading") ||
-		strings.Contains(value, "/output/placeholder") ||
-		strings.Contains(value, "cdn.sdspod.com/images/")
+		strings.Contains(value, "/output/placeholder")
 }
 
 func finishedProductImageURLUnavailable(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return true
+	}
+	return strings.Contains(value, "shengchengzhong") ||
+		strings.Contains(value, "/output/generating") ||
+		strings.Contains(value, "/output/loading") ||
+		strings.Contains(value, "/output/placeholder")
+}
+
+func finishedProductStaticGalleryImageURLUnavailable(value string) bool {
 	value = strings.ToLower(strings.TrimSpace(value))
 	if value == "" {
 		return true

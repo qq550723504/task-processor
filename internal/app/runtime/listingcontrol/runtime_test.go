@@ -80,6 +80,60 @@ listingControlPlane:
 	}
 }
 
+func TestRefreshableAMQPPublisherRetriesAfterClosedChannel(t *testing.T) {
+	closedErr := errors.New(`Exception (504) Reason: "channel/connection is not open"`)
+	first := &fakeRuntimeAMQPPublisher{err: closedErr}
+	second := &fakeRuntimeAMQPPublisher{}
+	refreshes := 0
+	publisher := newRefreshableAMQPPublisher(first, func() (controllib.AMQPPublisher, error) {
+		refreshes++
+		return second, nil
+	})
+
+	msg := amqp.Publishing{
+		ContentType: "application/json",
+		MessageId:   "task-1",
+		Body:        []byte(`{"taskId":"task-1"}`),
+	}
+	err := publisher.PublishWithContext(context.Background(), "", "shein.tasks.store.976", false, false, msg)
+	if err != nil {
+		t.Fatalf("PublishWithContext returned error: %v", err)
+	}
+
+	if refreshes != 1 {
+		t.Fatalf("expected one channel refresh, got %d", refreshes)
+	}
+	if first.calls != 1 {
+		t.Fatalf("expected first channel to be tried once, got %d", first.calls)
+	}
+	if second.calls != 1 {
+		t.Fatalf("expected refreshed channel to be tried once, got %d", second.calls)
+	}
+	if second.key != "shein.tasks.store.976" || second.msg.MessageId != "task-1" {
+		t.Fatalf("refreshed publish got key=%q messageId=%q", second.key, second.msg.MessageId)
+	}
+}
+
+type fakeRuntimeAMQPPublisher struct {
+	exchange  string
+	key       string
+	mandatory bool
+	immediate bool
+	msg       amqp.Publishing
+	err       error
+	calls     int
+}
+
+func (f *fakeRuntimeAMQPPublisher) PublishWithContext(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error {
+	f.calls++
+	f.exchange = exchange
+	f.key = key
+	f.mandatory = mandatory
+	f.immediate = immediate
+	f.msg = msg
+	return f.err
+}
+
 func TestRunMigratesImportTaskSchemaBeforeConnectingRedisAndRabbitMQ(t *testing.T) {
 	configPath := writeRuntimeConfig(t, `
 openai:

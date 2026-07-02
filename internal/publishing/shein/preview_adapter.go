@@ -380,7 +380,7 @@ func toSKUs(items []SKUDraft) []sheinproduct.SKU {
 			StopPurchase:      0,
 			MallState:         1,
 			PriceInfoList:     toPriceInfoList(item.SitePriceList),
-			ImageInfo:         toSKUImageInfo(item.MainImage),
+			ImageInfo:         toSKUImageInfoFromDraft(item),
 			StockInfoList:     toStockInfoList(item.StockInfoList),
 			PackageType:       3,
 		})
@@ -448,6 +448,33 @@ func toSKUImageInfo(image string) *sheinproduct.ImageInfo {
 			ImageURL:  image,
 		}},
 	}
+}
+
+func toSKUImageInfoFromDraft(item SKUDraft) *sheinproduct.ImageInfo {
+	if item.ImageInfo == nil {
+		return toSKUImageInfo(item.MainImage)
+	}
+	main := strings.TrimSpace(item.ImageInfo.MainImage)
+	if main == "" {
+		main = strings.TrimSpace(item.MainImage)
+	}
+	images := make([]sheinproduct.ImageDetail, 0, 1+len(item.ImageInfo.Gallery))
+	if main != "" {
+		images = append(images, sheinproduct.ImageDetail{ImageType: 1, ImageSort: 1, ImageURL: main})
+	}
+	for _, imageURL := range item.ImageInfo.Gallery {
+		if strings.TrimSpace(imageURL) == "" {
+			continue
+		}
+		images = append(images, sheinproduct.ImageDetail{ImageType: 2, ImageSort: len(images) + 1, ImageURL: imageURL})
+	}
+	if strings.TrimSpace(item.ImageInfo.WhiteBg) != "" {
+		images = append(images, sheinproduct.ImageDetail{ImageType: 2, ImageSort: len(images) + 1, ImageURL: item.ImageInfo.WhiteBg})
+	}
+	if len(images) == 0 {
+		return nil
+	}
+	return &sheinproduct.ImageInfo{ImageInfoList: images}
 }
 
 func derefImageInfo(info *sheinproduct.ImageInfo) sheinproduct.ImageInfo {

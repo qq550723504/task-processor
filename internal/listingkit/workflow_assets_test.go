@@ -2391,9 +2391,13 @@ func TestSyncSDSDesignVariantsSubmitsEachRepresentativeVariantAsPrimary(t *testi
 	}
 	if got := sdsSvc.lastRemoteInputs[0].Sync; got.VariantID != 101 || len(got.RelatedVariantIDs) != 0 {
 		t.Fatalf("first sds input = %+v, want variant 101 without related variants", got)
+	} else if got.LayerID != "layer-101" {
+		t.Fatalf("first sds layer = %q, want layer-101", got.LayerID)
 	}
 	if got := sdsSvc.lastRemoteInputs[1].Sync; got.VariantID != 102 || len(got.RelatedVariantIDs) != 0 {
 		t.Fatalf("second sds input = %+v, want variant 102 without related variants", got)
+	} else if got.LayerID != "layer-102" {
+		t.Fatalf("second sds layer = %q, want layer-102", got.LayerID)
 	}
 	if result.SDSSync == nil || result.SDSSync.Status != "completed" {
 		t.Fatalf("sds sync = %+v, want completed when all selected variants render", result.SDSSync)

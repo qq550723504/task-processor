@@ -37,7 +37,7 @@ func (c *Client) StartStandardProduct(ctx context.Context, in listingkit.Standar
 	in = listingkit.NormalizeStandardProductWorkflowStartInputForTemporal(in)
 	_, err := c.client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
 		ID:                                       WorkflowIDForStandardProduct(in.TaskID),
-		TaskQueue:                                TaskQueueStandardProduct,
+		TaskQueue:                                TaskQueueStandardProductName(),
 		WorkflowIDConflictPolicy:                 enumspb.WORKFLOW_ID_CONFLICT_POLICY_FAIL,
 		WorkflowIDReusePolicy:                    enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
 		WorkflowExecutionErrorWhenAlreadyStarted: true,
@@ -56,7 +56,7 @@ func (c *Client) StartPlatformAdaptation(ctx context.Context, in listingkit.Plat
 	in = listingkit.NormalizePlatformAdaptWorkflowStartInputForTemporal(in)
 	_, err := c.client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
 		ID:                                       WorkflowIDForPlatformAdapt(in.TaskID, in.Platform),
-		TaskQueue:                                TaskQueuePlatformAdapt,
+		TaskQueue:                                TaskQueuePlatformAdaptName(),
 		WorkflowIDConflictPolicy:                 enumspb.WORKFLOW_ID_CONFLICT_POLICY_FAIL,
 		WorkflowIDReusePolicy:                    enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
 		WorkflowExecutionErrorWhenAlreadyStarted: true,
@@ -76,7 +76,7 @@ func (c *Client) StartSheinPublish(ctx context.Context, in listingkit.SheinPubli
 	in = normalizeStartInput(in)
 	_, err := c.client.ExecuteWorkflow(ctx, sdkclient.StartWorkflowOptions{
 		ID:                                       WorkflowIDForSheinPublish(in.TaskID),
-		TaskQueue:                                TaskQueueSheinSubmitPublish,
+		TaskQueue:                                TaskQueueSheinSubmitPublishName(),
 		WorkflowIDConflictPolicy:                 enumspb.WORKFLOW_ID_CONFLICT_POLICY_FAIL,
 		WorkflowIDReusePolicy:                    enumspb.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE,
 		WorkflowExecutionErrorWhenAlreadyStarted: true,

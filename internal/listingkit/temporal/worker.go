@@ -23,7 +23,7 @@ func NewWorker(config WorkerConfig) (sdkworker.Worker, error) {
 	if config.Host == nil {
 		return nil, fmt.Errorf("shein publish activity host is required")
 	}
-	worker := sdkworker.New(config.Client, TaskQueueSheinSubmitPublish, sdkworker.Options{})
+	worker := sdkworker.New(config.Client, TaskQueueSheinSubmitPublishName(), sdkworker.Options{})
 	if err := RegisterWorker(worker, config.Host, config.LayerHost); err != nil {
 		return nil, err
 	}

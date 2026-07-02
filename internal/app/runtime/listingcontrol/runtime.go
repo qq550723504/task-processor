@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"task-processor/internal/core/config"
@@ -452,7 +453,7 @@ func pausedTaskRecoveryInterval(controlCfg config.ListingControlPlaneConfig) tim
 type realRabbitRuntime struct {
 	manager   *rabbitmq.ConnectionManager
 	client    *rabbitmq.Client
-	publisher *amqp.Channel
+	publisher controllib.AMQPPublisher
 }
 
 func openRabbitRuntime(ctx context.Context, cfg *config.RabbitMQConfig, logger *logrus.Logger) (*realRabbitRuntime, error) {
@@ -475,9 +476,11 @@ func openRabbitRuntime(ctx context.Context, cfg *config.RabbitMQConfig, logger *
 		return nil, err
 	}
 	return &realRabbitRuntime{
-		manager:   manager,
-		client:    client,
-		publisher: publisher,
+		manager: manager,
+		client:  client,
+		publisher: newRefreshableAMQPPublisher(publisher, func() (controllib.AMQPPublisher, error) {
+			return manager.CreateChannel()
+		}),
 	}, nil
 }
 
@@ -507,7 +510,9 @@ func (r *realRabbitRuntime) Close() error {
 	}
 	var err error
 	if r.publisher != nil {
-		err = errors.Join(err, r.publisher.Close())
+		if closer, ok := r.publisher.(interface{ Close() error }); ok {
+			err = errors.Join(err, closer.Close())
+		}
 	}
 	if r.client != nil {
 		err = errors.Join(err, r.client.Close())
@@ -515,4 +520,85 @@ func (r *realRabbitRuntime) Close() error {
 		err = errors.Join(err, r.manager.Close())
 	}
 	return err
+}
+
+type refreshableAMQPPublisher struct {
+	mu      sync.Mutex
+	current controllib.AMQPPublisher
+	refresh func() (controllib.AMQPPublisher, error)
+}
+
+func newRefreshableAMQPPublisher(initial controllib.AMQPPublisher, refresh func() (controllib.AMQPPublisher, error)) *refreshableAMQPPublisher {
+	return &refreshableAMQPPublisher{
+		current: initial,
+		refresh: refresh,
+	}
+}
+
+func (p *refreshableAMQPPublisher) PublishWithContext(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error {
+	if p == nil {
+		return errors.New("RabbitMQ publisher is nil")
+	}
+	firstErr := p.publish(ctx, exchange, key, mandatory, immediate, msg)
+	if firstErr == nil || !isClosedAMQPPublishError(firstErr) {
+		return firstErr
+	}
+	if err := p.refreshChannel(); err != nil {
+		return fmt.Errorf("%w; refresh RabbitMQ publish channel: %v", firstErr, err)
+	}
+	return p.publish(ctx, exchange, key, mandatory, immediate, msg)
+}
+
+func (p *refreshableAMQPPublisher) publish(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error {
+	p.mu.Lock()
+	current := p.current
+	p.mu.Unlock()
+	if current == nil {
+		return errors.New("RabbitMQ publisher channel is nil")
+	}
+	return current.PublishWithContext(ctx, exchange, key, mandatory, immediate, msg)
+}
+
+func (p *refreshableAMQPPublisher) refreshChannel() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.refresh == nil {
+		return errors.New("RabbitMQ publisher refresh function is nil")
+	}
+	next, err := p.refresh()
+	if err != nil {
+		return err
+	}
+	if next == nil {
+		return errors.New("RabbitMQ publisher refresh returned nil channel")
+	}
+	if closer, ok := p.current.(interface{ Close() error }); ok {
+		_ = closer.Close()
+	}
+	p.current = next
+	return nil
+}
+
+func (p *refreshableAMQPPublisher) Close() error {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if closer, ok := p.current.(interface{ Close() error }); ok {
+		return closer.Close()
+	}
+	return nil
+}
+
+func isClosedAMQPPublishError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "channel/connection is not open") ||
+		strings.Contains(message, "channel is closed") ||
+		strings.Contains(message, "connection is closed") ||
+		strings.Contains(message, "rabbitmq连接不可用") ||
+		strings.Contains(message, "rabbitmq通道不可用")
 }

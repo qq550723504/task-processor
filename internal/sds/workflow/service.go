@@ -143,16 +143,17 @@ func (s *Service) sync(ctx context.Context, input SyncInput, upload design.Uploa
 	}
 
 	result, err := s.design.PrepareAndSyncDesign(ctx, design.PrepareSyncDesignInput{
-		VariantID:         input.VariantID,
-		RelatedVariantIDs: append([]int64(nil), input.RelatedVariantIDs...),
-		ParentProductID:   input.ParentProductID,
-		PrototypeGroupID:  input.PrototypeGroupID,
-		MerchantResultID:  input.MerchantResultID,
-		DesignType:        input.DesignType,
-		LayerID:           input.LayerID,
-		FitLevel:          input.FitLevel,
-		ResizeMode:        input.ResizeMode,
-		BlankDesignURL:    input.BlankDesignURL,
+		VariantID:              input.VariantID,
+		RelatedVariantIDs:      append([]int64(nil), input.RelatedVariantIDs...),
+		RelatedVariantLayerIDs: cloneRelatedVariantLayerIDs(input.RelatedVariantLayerIDs),
+		ParentProductID:        input.ParentProductID,
+		PrototypeGroupID:       input.PrototypeGroupID,
+		MerchantResultID:       input.MerchantResultID,
+		DesignType:             input.DesignType,
+		LayerID:                input.LayerID,
+		FitLevel:               input.FitLevel,
+		ResizeMode:             input.ResizeMode,
+		BlankDesignURL:         input.BlankDesignURL,
 	}, upload)
 	if err != nil {
 		return nil, err
@@ -162,6 +163,17 @@ func (s *Service) sync(ctx context.Context, input SyncInput, upload design.Uploa
 		UploadRequest: upload,
 		DesignResult:  result,
 	}, nil
+}
+
+func cloneRelatedVariantLayerIDs(values map[int64]string) map[int64]string {
+	if len(values) == 0 {
+		return nil
+	}
+	cloned := make(map[int64]string, len(values))
+	for variantID, layerID := range values {
+		cloned[variantID] = layerID
+	}
+	return cloned
 }
 
 func (s *Service) readAssetContent(asset *productimage.ImageAsset) ([]byte, string, error) {

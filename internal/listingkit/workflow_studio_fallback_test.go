@@ -446,6 +446,9 @@ func TestApplySDSTemplateImagesToSheinUsesRenderedMockupsAcrossSheinPayload(t *t
 	if got := pkg.PreviewProduct.SKCList[0].SKUS[0].ImageInfo.ImageInfoList[0].ImageURL; got != rendered[0] {
 		t.Fatalf("preview sku main image = %q, want %q", got, rendered[0])
 	}
+	if got := len(pkg.PreviewProduct.SKCList[0].SKUS[0].ImageInfo.ImageInfoList); got != 7 {
+		t.Fatalf("preview sku image count = %d, want 7", got)
+	}
 	if pkg.PreviewProduct.ImageInfo.ImageInfoList[0].ImageURL == sourceImage {
 		t.Fatalf("preview product still uses source image: %q", sourceImage)
 	}

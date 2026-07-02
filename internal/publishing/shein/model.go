@@ -178,6 +178,7 @@ type SKUDraft struct {
 	Height         string                  `json:"height,omitempty"`
 	LengthUnit     string                  `json:"length_unit,omitempty"`
 	MainImage      string                  `json:"main_image,omitempty"`
+	ImageInfo      *ImageDraft             `json:"image_info,omitempty"`
 	Barcode        string                  `json:"barcode,omitempty"`
 	IsDefault      bool                    `json:"is_default,omitempty"`
 	SaleAttributes []ResolvedSaleAttribute `json:"sale_attributes,omitempty"`

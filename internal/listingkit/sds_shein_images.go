@@ -52,6 +52,7 @@ func applySelectedSDSImagesToShein(pkg *sheinpub.Package, req *GenerateRequest, 
 					skuImages = skcImages
 				}
 				pkg.DraftPayload.SKCList[skcIndex].SKUList[skuIndex].MainImage = skuImages.MainImage
+				pkg.DraftPayload.SKCList[skcIndex].SKUList[skuIndex].ImageInfo = sheinpub.BuildImageDraft(skuImages)
 			}
 		}
 	}
@@ -106,6 +107,7 @@ func applySDSTemplateImagesToSheinWithResult(pkg *sheinpub.Package, summary *SDS
 			pkg.DraftPayload.SKCList[skcIndex].ImageInfo = sheinpub.BuildImageDraft(images)
 			for skuIndex := range pkg.DraftPayload.SKCList[skcIndex].SKUList {
 				pkg.DraftPayload.SKCList[skcIndex].SKUList[skuIndex].MainImage = images.MainImage
+				pkg.DraftPayload.SKCList[skcIndex].SKUList[skuIndex].ImageInfo = sheinpub.BuildImageDraft(images)
 			}
 		}
 	}
@@ -183,6 +185,7 @@ func applySDSVariantTemplateImagesToShein(pkg *sheinpub.Package, summary *SDSSyn
 					skuImages = skcImages
 				}
 				pkg.DraftPayload.SKCList[skcIndex].SKUList[skuIndex].MainImage = skuImages.MainImage
+				pkg.DraftPayload.SKCList[skcIndex].SKUList[skuIndex].ImageInfo = sheinpub.BuildImageDraft(skuImages)
 			}
 		}
 	}

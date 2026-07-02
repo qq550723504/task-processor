@@ -452,7 +452,8 @@ func (s *Service) PrepareSyncDesign(ctx context.Context, input PrepareSyncDesign
 		if err != nil {
 			return nil, err
 		}
-		relatedLayer, err := selectLayer(relatedPage.Layers, "")
+		relatedLayerID := strings.TrimSpace(input.RelatedVariantLayerIDs[relatedVariantID])
+		relatedLayer, err := selectLayer(relatedPage.Layers, relatedLayerID)
 		if err != nil {
 			return nil, err
 		}
@@ -681,6 +682,9 @@ func (s *Service) ListDesignProducts(ctx context.Context, req ListDesignProducts
 	}
 	if req.ParentProductID > 0 {
 		query["product_parent_id"] = strconv.FormatInt(req.ParentProductID, 10)
+	}
+	if value := strings.TrimSpace(req.Search); value != "" {
+		query["search"] = value
 	}
 
 	result := new(DesignProductListResponse)

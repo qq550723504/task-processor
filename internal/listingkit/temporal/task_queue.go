@@ -1,6 +1,14 @@
 package temporal
 
+import (
+	"os"
+	"strings"
+)
+
 const (
+	// EnvTaskQueue overrides the ListingKit Temporal task queue. It is mainly
+	// used by local API processes so their workers do not race remote workers.
+	EnvTaskQueue = "LISTINGKIT_TEMPORAL_TASK_QUEUE"
 	// TaskQueueSheinSubmitPublish is the Temporal task queue for the SHEIN
 	// submit publish workflow PoC.
 	TaskQueueSheinSubmitPublish = "listingkit-shein-submit-publish"
@@ -15,6 +23,25 @@ const (
 	// SheinPublishSignalRetry is the signal name for retrying a failed publish.
 	SheinPublishSignalRetry = "retry"
 )
+
+func TaskQueueSheinSubmitPublishName() string {
+	return configuredTaskQueue(TaskQueueSheinSubmitPublish)
+}
+
+func TaskQueueStandardProductName() string {
+	return configuredTaskQueue(TaskQueueStandardProduct)
+}
+
+func TaskQueuePlatformAdaptName() string {
+	return configuredTaskQueue(TaskQueuePlatformAdapt)
+}
+
+func configuredTaskQueue(fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(EnvTaskQueue)); value != "" {
+		return value
+	}
+	return fallback
+}
 
 // WorkflowIDForSheinPublish builds the workflow ID for a SHEIN publish task.
 func WorkflowIDForSheinPublish(taskID string) string {

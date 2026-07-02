@@ -32,6 +32,7 @@ type FindMaterialsRequest struct {
 type ListDesignProductsRequest struct {
 	ProductID       int64
 	ParentProductID int64
+	Search          string
 	DesignType      string
 	Page            int
 	Size            int
@@ -82,16 +83,17 @@ type SyncDesignLayer struct {
 
 // PrepareSyncDesignInput 表示“上传素材并保存设计”的最小输入。
 type PrepareSyncDesignInput struct {
-	VariantID         int64
-	RelatedVariantIDs []int64
-	ParentProductID   int64
-	PrototypeGroupID  int64
-	MerchantResultID  int64
-	DesignType        string
-	LayerID           string
-	FitLevel          float64
-	ResizeMode        int
-	BlankDesignURL    string
+	VariantID              int64
+	RelatedVariantIDs      []int64
+	RelatedVariantLayerIDs map[int64]string
+	ParentProductID        int64
+	PrototypeGroupID       int64
+	MerchantResultID       int64
+	DesignType             string
+	LayerID                string
+	FitLevel               float64
+	ResizeMode             int
+	BlankDesignURL         string
 }
 
 // PrepareSyncDesignResult 表示默认构造出的保存设计请求上下文。

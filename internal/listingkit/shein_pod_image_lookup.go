@@ -103,10 +103,11 @@ func NormalizeSheinPODImageLookupQueryToken(value string) string {
 }
 
 func resolveSheinPODDraftIdentity(pkg *sheinpub.Package) (productName, supplierCode, sellerSKU string) {
-	for _, draft := range []*sheinpub.RequestDraft{pkg.RequestDraft, pkg.DraftPayload} {
-		if draft == nil {
-			continue
-		}
+	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
+	if pkg == nil {
+		return "", "", ""
+	}
+	if draft := pkg.DraftPayload; draft != nil {
 		if productName == "" {
 			productName = strings.TrimSpace(draft.SpuName)
 		}

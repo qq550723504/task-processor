@@ -106,6 +106,80 @@ func TestSyncDesignRequestUnmarshalRealFields(t *testing.T) {
 	}
 }
 
+func TestPrepareSyncDesignUsesRelatedVariantLayerIDs(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		switch r.URL.Path {
+		case "/ps/design/products/101":
+			_, _ = w.Write([]byte(`{
+				"product":{"id":101,"prototypeId":"prototype-primary"},
+				"prototypeGroup":{"id":15506},
+				"layers":[{"id":"layer-primary","prototypeId":"prototype-primary","name":"primary-print","printWidth":100,"printHeight":100}],
+				"psds":[{"id":"psd-primary","prototypeId":"prototype-primary","thumbnail_url":"https://cdn.sdspod.com/images/primary.jpg"}]
+			}`))
+		case "/ps/design/products/102":
+			_, _ = w.Write([]byte(`{
+				"product":{"id":102,"prototypeId":"prototype-related"},
+				"prototypeGroup":{"id":15506},
+				"layers":[
+					{"id":"layer-related-wrong","prototypeId":"prototype-related","name":"wrong-layer","printWidth":100,"printHeight":100},
+					{"id":"layer-related-correct","prototypeId":"prototype-related","name":"correct-layer","printWidth":200,"printHeight":120}
+				],
+				"psds":[{"id":"psd-related","prototypeId":"prototype-related","thumbnail_url":"https://cdn.sdspod.com/images/related.jpg"}]
+			}`))
+		default:
+			t.Fatalf("unexpected request %s %s", r.Method, r.URL.String())
+		}
+	}))
+	defer server.Close()
+
+	cfg := sdsclient.DefaultConfig()
+	cfg.BaseURL = server.URL
+	cfg.Endpoints.DesignProductPath = "/ps/design/products/%d"
+	cfg.AuthBootstrap = sdsclient.AuthBootstrapConfig{}
+	client, err := sdsclient.New(cfg)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	result, err := NewService(client).PrepareSyncDesign(context.Background(), PrepareSyncDesignInput{
+		VariantID:              101,
+		RelatedVariantIDs:      []int64{102},
+		RelatedVariantLayerIDs: map[int64]string{102: "layer-related-correct"},
+		PrototypeGroupID:       15506,
+		LayerID:                "layer-primary",
+		FitLevel:               1,
+	}, &UploadedMaterial{
+		Image: &UploadedImage{
+			Width:  50,
+			Height: 50,
+		},
+		Material: &Material{
+			ID:       460264499,
+			Width:    50,
+			Height:   50,
+			ImageURL: "https://cdn.sdspod.com/material.png",
+		},
+	})
+	if err != nil {
+		t.Fatalf("PrepareSyncDesign() error = %v", err)
+	}
+	if result == nil || result.Request == nil || len(result.Request.Prototypes) != 2 {
+		t.Fatalf("result request = %+v, want 2 prototypes", result)
+	}
+	relatedLayer := result.Request.Prototypes[1].Layers[0]
+	if relatedLayer.LayerID != "layer-related-correct" {
+		t.Fatalf("related layer id = %q, want layer-related-correct", relatedLayer.LayerID)
+	}
+	if relatedLayer.ImgWidth != 200 || relatedLayer.ImgHeight != 120 {
+		t.Fatalf("related layer dimensions = %dx%d, want selected related layer dimensions", relatedLayer.ImgWidth, relatedLayer.ImgHeight)
+	}
+}
+
 func TestDesignProductPageUnmarshalNumericPrototypeIDs(t *testing.T) {
 	t.Parallel()
 
@@ -372,7 +446,7 @@ func TestSelectFinishedProductImageURLsFallsBackToFinishedProductThumbnails(t *t
 	}
 }
 
-func TestSelectFinishedProductImageURLsUsesNewestFinishedProductItemImages(t *testing.T) {
+func TestSelectFinishedProductImageURLsPreservesSDSFinishedProductItemImages(t *testing.T) {
 	t.Parallel()
 
 	urls := selectFinishedProductImageURLs([]DesignProductListItem{
@@ -550,6 +624,33 @@ func TestBuildSaveDesignRequestUsesVariantPageThumbnails(t *testing.T) {
 	}
 }
 
+func TestSelectFinishedProductImageURLsKeepsStaticGalleryForSingleRenderableView(t *testing.T) {
+	t.Parallel()
+
+	urls := selectFinishedProductImageURLsWithAcceptAndStaticGallery([]DesignProductListItem{
+		{
+			ProductID:         101,
+			MaterialImageName: "single-print",
+			BuildFinish:       true,
+			FinishTime:        20,
+			ImageURLs: []string{
+				"https://cdn.sdspod.com/out/0/202604/front-rendered.jpg",
+				"https://cdn.sdspod.com/images/side.jpg",
+				"https://cdn.sdspod.com/images/back.jpg",
+			},
+		},
+	}, 101, "single-print", nil, true)
+
+	want := []string{
+		"https://cdn.sdspod.com/out/0/202604/front-rendered.jpg",
+		"https://cdn.sdspod.com/images/side.jpg",
+		"https://cdn.sdspod.com/images/back.jpg",
+	}
+	if strings.Join(urls, "|") != strings.Join(want, "|") {
+		t.Fatalf("unexpected single-renderable-view gallery urls: %+v", urls)
+	}
+}
+
 func TestSelectFinishedProductImageURLsSkipsRejectedCandidate(t *testing.T) {
 	t.Parallel()
 
@@ -674,6 +775,55 @@ func TestRenderedImageURLsReadyWaitsForExpectedPSDCount(t *testing.T) {
 		"https://cdn.sdspod.com/out/scene.jpg",
 	}, expected) {
 		t.Fatal("all expected renders should be ready")
+	}
+}
+
+func TestRenderedImageURLsByProductReadyUsesReturnedSDSImages(t *testing.T) {
+	t.Parallel()
+
+	urlsByProduct := map[int64][]string{
+		101: []string{"https://cdn.sdspod.com/out/front.jpg"},
+	}
+
+	if !renderedImageURLsByProductReady(urlsByProduct, []int64{101}, 1) {
+		t.Fatal("returned SDS image should be ready when no stricter PSD count is known")
+	}
+	if renderedImageURLsByProductReady(urlsByProduct, []int64{101}, 2) {
+		t.Fatal("single returned SDS image should not be ready when the PSD count explicitly expects two renders")
+	}
+}
+
+func TestRenderedImageURLsByProductReadyWaitsForExpectedOutRenders(t *testing.T) {
+	t.Parallel()
+
+	earlyURLsByProduct := map[int64][]string{
+		101: []string{
+			"https://cdn.sdspod.com/out/0/202607/front-rendered.jpg",
+			"https://cdn.sdspod.com/images/static-1.jpg",
+			"https://cdn.sdspod.com/images/static-2.jpg",
+			"https://cdn.sdspod.com/images/static-3.jpg",
+			"https://cdn.sdspod.com/images/static-4.jpg",
+			"https://cdn.sdspod.com/images/static-5.jpg",
+			"https://cdn.sdspod.com/images/static-6.jpg",
+		},
+	}
+	if renderedImageURLsByProductReady(earlyURLsByProduct, []int64{101}, 6) {
+		t.Fatal("static gallery images must not satisfy multi-PSD rendered image readiness")
+	}
+
+	readyURLsByProduct := map[int64][]string{
+		101: []string{
+			"https://cdn.sdspod.com/out/0/202607/front-rendered.jpg",
+			"https://cdn.sdspod.com/out/60678/202607/side-rendered.jpg",
+			"https://cdn.sdspod.com/out/60678/202607/back-rendered.jpg",
+			"https://cdn.sdspod.com/out/60678/202607/detail-rendered.jpg",
+			"https://cdn.sdspod.com/out/60678/202607/bottom-rendered.jpg",
+			"https://cdn.sdspod.com/out/60678/202607/top-rendered.jpg",
+			"https://cdn.sdspod.com/images/static-1.jpg",
+		},
+	}
+	if !renderedImageURLsByProductReady(readyURLsByProduct, []int64{101}, 6) {
+		t.Fatal("ready multi-PSD result should count rendered /out images and still allow static gallery images")
 	}
 }
 
@@ -880,7 +1030,12 @@ func TestPrepareAndSyncDesignCleansUpCreatedSDSArtifacts(t *testing.T) {
 		case r.Method == http.MethodPost && r.URL.Path == "/ps/design/add_and_design":
 			_, _ = w.Write([]byte(`{"ret":0,"msg":"SUCCESS"}`))
 		case r.Method == http.MethodGet && r.URL.Path == "/design_products":
+			if got := r.URL.Query().Get("search"); got != "cleanup" {
+				t.Fatalf("design_products search = %q, want cleanup", got)
+			}
 			_, _ = w.Write([]byte(`{"items":[{"id":"921516041142050816","product_id":82491,"buildFinish":true,"status":2,"finish_time":99,"material_img_name":"cleanup","img_urls":["https://cdn.sdspod.com/out/rendered.jpg"]}],"total_count":1}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/products/82490":
+			_, _ = w.Write([]byte(`{"id":82490,"subproducts":{"items":[{"id":82491,"designPrototype":{"prototypeResultGroups":[{"sort":1,"resultImage":"https://cdn.sdspod.com/out/rendered.jpg"}]}}]}}`))
 		case r.Method == http.MethodDelete && (r.URL.Path == "/ps/material/467483443" || r.URL.Path == "/ps/endproducts/921516041142050816"):
 			deleted = append(deleted, r.URL.Path)
 			_, _ = w.Write([]byte(`{"ret":0,"msg":"SUCCESS"}`))

@@ -21,13 +21,13 @@ func (s *service) ProcessStandardProductLayer(ctx context.Context, taskID string
 	if err != nil {
 		if state != nil && state.result != nil {
 			state.result.Status = string(TaskStatusProcessing)
-			_ = s.repo.SaveTaskResult(ctx, task.ID, state.result)
+			_ = s.repo.SaveTaskResult(ctx, task.ID, mergeStandardProductLayerResult(task.Result, state.result))
 		}
 		_ = s.repo.MarkFailed(ctx, task.ID, err.Error())
 		return nil, err
 	}
 	state.result.Status = string(TaskStatusProcessing)
-	if err := s.repo.SaveTaskResult(ctx, task.ID, state.result); err != nil {
+	if err := s.repo.SaveTaskResult(ctx, task.ID, mergeStandardProductLayerResult(task.Result, state.result)); err != nil {
 		return nil, err
 	}
 	if client, enabled := resolvePlatformAdaptWorkflowClient(s); enabled && client != nil {
