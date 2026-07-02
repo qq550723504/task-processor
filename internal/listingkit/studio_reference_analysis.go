@@ -28,9 +28,9 @@ var (
 var (
 	studioSafeDescriptorWords = map[string]struct{}{
 		"abstract": {}, "airy": {}, "allover": {}, "arched": {}, "art": {}, "artwork": {}, "balanced": {}, "badge": {}, "beach": {},
-		"black": {}, "block": {}, "blue": {}, "bold": {}, "border": {}, "botanical": {}, "brown": {}, "brush": {}, "centered": {}, "cherry": {},
+		"black": {}, "block": {}, "blue": {}, "bold": {}, "border": {}, "botanical": {}, "brown": {}, "brush": {}, "center": {}, "centered": {}, "cherry": {},
 		"clean": {}, "coastal": {}, "coral": {}, "cream": {}, "gray": {}, "green": {}, "grey": {}, "navy": {}, "old": {}, "orange": {},
-		"left": {}, "right": {}, "front": {}, "back": {}, "chest": {}, "sleeve": {}, "placement": {}, "mood": {}, "nostalgic": {},
+		"left": {}, "right": {}, "front": {}, "back": {}, "chest": {}, "large": {}, "sleeve": {}, "placement": {}, "mood": {}, "nostalgic": {},
 		"pink": {}, "red": {}, "silver": {}, "white": {}, "gold": {},
 		"collegiate": {}, "composition": {}, "crest": {}, "dense": {}, "distressed": {}, "drawn": {}, "dynamic": {},
 		"english": {}, "floral": {}, "flower": {}, "flowers": {}, "frame": {}, "framed": {}, "geometric": {}, "glass": {}, "gothic": {},
@@ -38,7 +38,7 @@ var (
 		"lettering": {}, "linework": {}, "mascot": {}, "medallion": {}, "minimal": {}, "minimalist": {}, "modern": {}, "ombre": {},
 		"ornamental": {}, "palette": {}, "pattern": {}, "playful": {}, "repeat": {}, "resort": {}, "retro": {}, "rounded": {},
 		"sans": {}, "sea": {}, "seal": {}, "serif": {}, "sky": {}, "sports": {}, "streetwear": {}, "sunset": {}, "teal": {},
-		"texture": {}, "tropical": {}, "vintage": {}, "watercolor": {}, "wave": {}, "wear": {}, "western": {},
+		"tan": {}, "texture": {}, "tropical": {}, "vintage": {}, "watercolor": {}, "wave": {}, "wear": {}, "western": {},
 	}
 	studioMotifPhraseVocabulary = []string{
 		"koi wave",
@@ -240,9 +240,20 @@ func normalizeStudioReferenceImageURLs(urls []string) ([]string, error) {
 		if trimmed == "" {
 			continue
 		}
+		if strings.HasPrefix(trimmed, "/") {
+			if key, ok := uploadedListingKitImageKeyFromURL(trimmed); !ok || strings.TrimSpace(key) == "" {
+				return nil, fmt.Errorf("invalid request: reference_image_urls must be absolute https urls or uploaded listingkit paths")
+			}
+			if _, ok := seen[trimmed]; ok {
+				continue
+			}
+			seen[trimmed] = struct{}{}
+			result = append(result, trimmed)
+			continue
+		}
 		parsed, err := url.ParseRequestURI(trimmed)
 		if err != nil || parsed == nil || !parsed.IsAbs() || !strings.EqualFold(parsed.Scheme, "https") || strings.TrimSpace(parsed.Host) == "" {
-			return nil, fmt.Errorf("invalid request: reference_image_urls must be absolute https urls")
+			return nil, fmt.Errorf("invalid request: reference_image_urls must be absolute https urls or uploaded listingkit paths")
 		}
 		normalized := parsed.String()
 		if _, ok := seen[normalized]; ok {
@@ -495,14 +506,14 @@ func abstractStudioReferenceAnalysis(item studioReferenceImageAnalysis) studioAb
 }
 
 func abstractStudioMotif(value string) string {
-	return sanitizeStudioStylePhrase(value)
+	return sanitizeStudioSafeDescriptorPhrase(value)
 }
 
 func abstractStudioPalette(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := map[string]struct{}{}
 	for _, value := range values {
-		abstracted := sanitizeStudioStylePhrase(value)
+		abstracted := sanitizeStudioSafeDescriptorPhrase(value)
 		if abstracted == "" {
 			continue
 		}
@@ -516,23 +527,53 @@ func abstractStudioPalette(values []string) []string {
 }
 
 func abstractStudioTypography(value string) string {
-	return sanitizeStudioStylePhrase(value)
+	return sanitizeStudioSafeDescriptorPhrase(value)
 }
 
 func abstractStudioDensity(value string) string {
-	return sanitizeStudioStylePhrase(value)
+	return sanitizeStudioSafeDescriptorPhrase(value)
 }
 
 func abstractStudioProductFit(value string) string {
-	return sanitizeStudioStylePhrase(value)
+	return sanitizeStudioSafeDescriptorPhrase(value)
 }
 
 func abstractStudioMood(value string) string {
-	return sanitizeStudioStylePhrase(value)
+	lower := strings.ToLower(sanitizeStudioDescriptorCandidate(value))
+	switch {
+	case strings.Contains(lower, "playful"):
+		return "playful mood"
+	case strings.Contains(lower, "airy"):
+		return "airy mood"
+	case strings.Contains(lower, "nostalgic"), strings.Contains(lower, "retro"), strings.Contains(lower, "vintage"):
+		return "nostalgic mood"
+	case strings.Contains(lower, "coastal"), strings.Contains(lower, "resort"), strings.Contains(lower, "beach"):
+		return "relaxed mood"
+	default:
+		return ""
+	}
 }
 
 func abstractStudioGarmentPlacement(value string) string {
-	return sanitizeStudioStylePhrase(value)
+	lower := strings.ToLower(sanitizeStudioDescriptorCandidate(value))
+	switch {
+	case strings.Contains(lower, "left") && strings.Contains(lower, "chest"):
+		return "left chest placement"
+	case strings.Contains(lower, "right") && strings.Contains(lower, "chest"):
+		return "right chest placement"
+	case strings.Contains(lower, "front") && strings.Contains(lower, "chest"):
+		return "front chest placement"
+	case strings.Contains(lower, "large") && (strings.Contains(lower, "center") || strings.Contains(lower, "front")):
+		return "large center placement"
+	case strings.Contains(lower, "center"):
+		return "center placement"
+	case strings.Contains(lower, "back"):
+		return "back placement"
+	case strings.Contains(lower, "sleeve"):
+		return "sleeve placement"
+	default:
+		return ""
+	}
 }
 
 func abstractStudioComposition(value string) []string {
@@ -548,9 +589,6 @@ func abstractStudioComposition(value string) []string {
 			}
 		}
 		result = append(result, label)
-	}
-	if literal := sanitizeStudioStylePhrase(value); literal != "" && !studioCompositionShouldSuppressLiteral(lower) {
-		add(literal)
 	}
 	if strings.Contains(lower, "center") {
 		add("centered composition")
@@ -583,6 +621,28 @@ func studioCompositionShouldSuppressLiteral(lower string) bool {
 }
 
 func sanitizeStudioStylePhrase(value string) string {
+	return sanitizeStudioSafeDescriptorPhrase(value)
+}
+
+func sanitizeStudioSafeDescriptorPhrase(value string) string {
+	cleaned := sanitizeStudioDescriptorCandidate(value)
+	if cleaned == "" {
+		return ""
+	}
+	tokens := studioWordPattern.FindAllString(cleaned, -1)
+	if len(tokens) == 0 {
+		return ""
+	}
+	filtered := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		if _, ok := studioSafeDescriptorWords[token]; ok {
+			filtered = append(filtered, token)
+		}
+	}
+	return strings.TrimSpace(studioRepeatedWhitespacePattern.ReplaceAllString(strings.Join(filtered, " "), " "))
+}
+
+func sanitizeStudioDescriptorCandidate(value string) string {
 	original := strings.TrimSpace(value)
 	if original == "" {
 		return ""

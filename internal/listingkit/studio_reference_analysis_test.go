@@ -74,7 +74,7 @@ func TestAnalyzeStudioReferenceStyleRejectsInvalidReferenceImageURLs(t *testing.
 		urls []string
 	}{
 		{name: "http url", urls: []string{"http://example.com/reference.png"}},
-		{name: "relative upload path", urls: []string{"/api/v1/listing-kits/uploads/files/folder/ref-a.png"}},
+		{name: "non upload relative path", urls: []string{"/images/reference.png"}},
 		{name: "malformed absolute url", urls: []string{"https://"}},
 		{name: "non absolute text", urls: []string{"example.com/reference.png"}},
 	}
@@ -93,6 +93,39 @@ func TestAnalyzeStudioReferenceStyleRejectsInvalidReferenceImageURLs(t *testing.
 				t.Fatalf("error = %v, want invalid request", err)
 			}
 		})
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleAcceptsUploadedReferencePathsUnchanged(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"retro flowers","palette":["cream"],"composition":"centered badge"}`,
+		`{"motif":"floral border","palette":["red"],"composition":"arched frame"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{
+			" /api/v1/listing-kits/uploads/files/folder/ref-a.png ",
+			"/api/v1/listing-kits/uploads/files/folder/ref-a.png",
+			"/api/v1/listing-kits/uploads/files/folder/ref-b.png",
+		},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	wantURLs := []string{
+		"/api/v1/listing-kits/uploads/files/folder/ref-a.png",
+		"/api/v1/listing-kits/uploads/files/folder/ref-b.png",
+	}
+	if len(completer.calls) != len(wantURLs) {
+		t.Fatalf("calls = %d, want %d", len(completer.calls), len(wantURLs))
+	}
+	for i, wantURL := range wantURLs {
+		gotURL := strings.SplitN(completer.calls[i], "|", 2)[0]
+		if gotURL != wantURL {
+			t.Fatalf("call[%d] imageURL = %q, want %q", i, gotURL, wantURL)
+		}
 	}
 }
 
@@ -336,7 +369,7 @@ func TestAnalyzeStudioReferenceStyleKeepsOrdinarySafeStylePhrases(t *testing.T) 
 		"minimalist coastal illustration",
 		"sunset ombre",
 		"sea glass teal",
-		"arched floral frame",
+		"framed composition",
 		"playful rounded lettering",
 		"airy balanced layout",
 	} {
@@ -413,7 +446,15 @@ func TestAnalyzeStudioReferenceStyleStripsLowercaseProtectedNamesAndKeepsSafeDes
 			t.Fatalf("reference style brief contains lowercase protected token %q: %q", unsafeToken, resp.ReferenceStyleBrief)
 		}
 	}
-	for _, safeSignal := range []string{"bow", "mascot", "cream", "clean serif"} {
+	for _, unsafeResidual := range []string{"bow", "mascot"} {
+		if strings.Contains(lowerPrompt, unsafeResidual) {
+			t.Fatalf("sanitized prompt contains protected residual %q: %q", unsafeResidual, resp.SanitizedPrompt)
+		}
+		if strings.Contains(lowerBrief, unsafeResidual) {
+			t.Fatalf("reference style brief contains protected residual %q: %q", unsafeResidual, resp.ReferenceStyleBrief)
+		}
+	}
+	for _, safeSignal := range []string{"cream", "clean serif"} {
 		if !strings.Contains(lowerPrompt, safeSignal) {
 			t.Fatalf("sanitized prompt = %q, want safe signal %q preserved", resp.SanitizedPrompt, safeSignal)
 		}
@@ -423,6 +464,39 @@ func TestAnalyzeStudioReferenceStyleStripsLowercaseProtectedNamesAndKeepsSafeDes
 	}
 	if !containsWarningFragment(resp.Warnings, "已移除品牌、Logo、原文案或过于接近原图的描述") {
 		t.Fatalf("warnings = %#v, want unsafe-removal warning for lowercase protected names", resp.Warnings)
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleDropsUnknownSuspiciousLowercaseNames(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"blorbo mascot illustration","composition":"zorplex badge layout","palette":["cream"],"typography":"clean serif","mood":"playful mood","garment_placement":"front chest placement"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/suspicious-lowercase.png"},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	lowerPrompt := strings.ToLower(resp.SanitizedPrompt)
+	lowerBrief := strings.ToLower(resp.ReferenceStyleBrief)
+	for _, unsafeToken := range []string{"blorbo", "zorplex", "badge layout"} {
+		if strings.Contains(lowerPrompt, unsafeToken) {
+			t.Fatalf("sanitized prompt contains suspicious token %q: %q", unsafeToken, resp.SanitizedPrompt)
+		}
+		if strings.Contains(lowerBrief, unsafeToken) {
+			t.Fatalf("reference style brief contains suspicious token %q: %q", unsafeToken, resp.ReferenceStyleBrief)
+		}
+	}
+	for _, safeSignal := range []string{"mascot", "illustration", "cream", "clean serif", "playful mood", "front chest placement"} {
+		if !strings.Contains(lowerPrompt, safeSignal) {
+			t.Fatalf("sanitized prompt = %q, want safe signal %q preserved", resp.SanitizedPrompt, safeSignal)
+		}
+		if !strings.Contains(lowerBrief, safeSignal) {
+			t.Fatalf("reference style brief = %q, want safe signal %q preserved", resp.ReferenceStyleBrief, safeSignal)
+		}
 	}
 }
 
@@ -448,7 +522,7 @@ func TestAnalyzeStudioReferenceStylePreservesMoodAndGarmentPlacement(t *testing.
 			t.Fatalf("analysis prompt = %q, want json key %q included", prompt, requiredKey)
 		}
 	}
-	for _, safeSignal := range []string{"playful resort mood", "left chest placement"} {
+	for _, safeSignal := range []string{"playful mood", "left chest placement"} {
 		if !strings.Contains(strings.ToLower(resp.SanitizedPrompt), safeSignal) {
 			t.Fatalf("sanitized prompt = %q, want %q preserved", resp.SanitizedPrompt, safeSignal)
 		}
