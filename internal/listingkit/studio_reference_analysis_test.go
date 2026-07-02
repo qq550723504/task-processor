@@ -296,6 +296,40 @@ func TestAnalyzeStudioReferenceStyleFallsBackForMalformedJSON(t *testing.T) {
 	}
 }
 
+func TestAnalyzeStudioReferenceStyleRecoversStructuredCuesFromSafeMalformedText(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{"distressed serif, clean layering, vintage streetwear"}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/a.png"},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	for _, expectedSection := range []string{
+		"typography feel: distressed serif.",
+		"visual density: clean layering.",
+		"product fit: vintage streetwear.",
+	} {
+		if !strings.Contains(strings.ToLower(resp.ReferenceStyleBrief), expectedSection) {
+			t.Fatalf("reference style brief = %q, want malformed safe cue section %q", resp.ReferenceStyleBrief, expectedSection)
+		}
+	}
+	for _, expectedSection := range []string{
+		"typography feel: distressed serif.",
+		"visual density: clean layering.",
+		"product fit: vintage streetwear.",
+	} {
+		if !strings.Contains(strings.ToLower(resp.SanitizedPrompt), expectedSection) {
+			t.Fatalf("sanitized prompt = %q, want malformed safe cue section %q", resp.SanitizedPrompt, expectedSection)
+		}
+	}
+	if !containsWarningFragment(resp.Warnings, "部分参考图返回了非结构化分析结果，仅保留可安全复用的风格提示。") {
+		t.Fatalf("warnings = %#v, want malformed fallback warning", resp.Warnings)
+	}
+}
+
 func TestAnalyzeStudioReferenceStyleUsesPartialSuccess(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{
 		responses: []string{`{"motif":"western floral","palette":["tan","red"],"composition":"center badge"}`},

@@ -551,6 +551,15 @@ func abstractStudioReferenceAnalysis(item studioReferenceImageAnalysis) studioAb
 		if len(abstracted.Composition) == 0 {
 			abstracted.Composition = abstractStudioComposition(item.Raw)
 		}
+		if !rawUnsafe && abstracted.Typography == "" {
+			abstracted.Typography = recoverMalformedStudioReferenceField(item.Raw, studioTypographyPhraseVocabulary, studioTypographyWordVocabulary, abstractStudioTypography)
+		}
+		if !rawUnsafe && abstracted.Density == "" {
+			abstracted.Density = recoverMalformedStudioReferenceField(item.Raw, studioDensityPhraseVocabulary, studioDensityWordVocabulary, abstractStudioDensity)
+		}
+		if !rawUnsafe && abstracted.ProductFit == "" {
+			abstracted.ProductFit = recoverMalformedStudioReferenceField(item.Raw, studioProductFitPhraseVocabulary, studioProductFitWordVocabulary, abstractStudioProductFit)
+		}
 		if !rawUnsafe && abstracted.Mood == "" {
 			abstracted.Mood = abstractStudioMood(item.Raw)
 		}
@@ -844,6 +853,56 @@ func abstractStudioVocabularyPhrase(value string, phrases []string, words map[st
 		i++
 	}
 	return studioRepeatedWhitespacePattern.ReplaceAllString(strings.Join(result, " "), " ")
+}
+
+func recoverMalformedStudioReferenceField(raw string, phrases []string, words map[string]string, abstract func(string) string) string {
+	for _, fragment := range splitMalformedStudioReferenceFragments(raw) {
+		if !studioFragmentMatchesFieldVocabulary(fragment, phrases, words) {
+			continue
+		}
+		if value := abstract(fragment); strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func splitMalformedStudioReferenceFragments(raw string) []string {
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		switch r {
+		case ',', ';', '\n', '\r':
+			return true
+		default:
+			return false
+		}
+	})
+	fragments := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		fragments = append(fragments, trimmed)
+	}
+	return fragments
+}
+
+func studioFragmentMatchesFieldVocabulary(fragment string, phrases []string, words map[string]string) bool {
+	lower := strings.ToLower(strings.TrimSpace(fragment))
+	if lower == "" {
+		return false
+	}
+	for _, phrase := range phrases {
+		if strings.Contains(lower, phrase) {
+			return true
+		}
+	}
+	for _, token := range studioWordPattern.FindAllString(lower, -1) {
+		if _, ok := words[token]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func containsStudioVocabularyPhrase(phrases []string, target string) bool {
