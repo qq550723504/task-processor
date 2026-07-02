@@ -769,6 +769,10 @@ func (s *stubListingKitHandler) GetTaskPreview(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "selected_platform": c.Query("platform")})
 }
 
+func (s *stubListingKitHandler) LookupSheinPODImages(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []gin.H{}, "total": 0})
+}
+
 func (s *stubListingKitHandler) GetTaskGenerationTasks(c *gin.Context) {
 	s.getGenerationCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "tasks": []any{}})
