@@ -124,3 +124,31 @@ func TestAnalyzeStudioReferenceStyleUsesPartialSuccess(t *testing.T) {
 		t.Fatalf("sanitized prompt = %q, want successful image analysis used", resp.SanitizedPrompt)
 	}
 }
+
+func TestAnalyzeStudioReferenceStyleKeepsSafeTitleCaseStyleSignals(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"Retro Flowers","palette":["Cream","Cherry Red"],"composition":"Centered Badge","typography":"Old English","density":"Clean Layering","product_fit":"Vintage Streetwear"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/a.png"},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	lowerPrompt := strings.ToLower(resp.SanitizedPrompt)
+	for _, safeSignal := range []string{
+		"retro flowers",
+		"cream",
+		"centered badge",
+		"old english",
+		"clean layering",
+		"vintage streetwear",
+	} {
+		if !strings.Contains(lowerPrompt, safeSignal) {
+			t.Fatalf("sanitized prompt = %q, want safe style signal %q preserved", resp.SanitizedPrompt, safeSignal)
+		}
+	}
+}

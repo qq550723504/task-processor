@@ -12,7 +12,6 @@ const maxStudioReferenceAnalysisImages = 5
 
 var (
 	studioQuotedTextPattern          = regexp.MustCompile(`["'][^"']+["']`)
-	studioProperNamePattern          = regexp.MustCompile(`\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}\b`)
 	studioBrandMarkPattern           = regexp.MustCompile(`\b(?:[a-z0-9]+(?:\s+[a-z0-9]+){0,3}\s+)?(?:logo|logos|brand mark|brand marks|wordmark|wordmarks|emblem|emblems|trefoil|swoosh)\b`)
 	studioExactTextPattern           = regexp.MustCompile(`\b(?:exact text|exact slogan|same wording|copy this exact|quote|quoted|slogan|tagline|catchphrase)\b`)
 	studioCharacterIdentityPattern   = regexp.MustCompile(`\b(?:characters?|face|faces|portrait|portraits|person|people|identity|identities|celebrity|celebrities|likeness)\b`)
@@ -250,7 +249,6 @@ func sanitizeStudioReferencePrompt(value string) string {
 		return ""
 	}
 	sanitized = studioQuotedTextPattern.ReplaceAllString(sanitized, " custom wording ")
-	sanitized = studioProperNamePattern.ReplaceAllString(sanitized, " ")
 	sanitized = strings.ToLower(sanitized)
 	sanitized = studioUniqueLayoutPattern.ReplaceAllString(sanitized, " balanced original composition ")
 	sanitized = studioBrandMarkPattern.ReplaceAllString(sanitized, " brand-neutral graphic accents ")
