@@ -293,6 +293,49 @@ func TestGormStudioBatchRepositoryCreatesDetailGraph(t *testing.T) {
 	}
 }
 
+func TestGormStudioBatchRepositoryReplaceGraphUpdatesHotStyleReferenceFields(t *testing.T) {
+	t.Parallel()
+
+	db := openStudioBatchSQLiteForTest(t)
+	if err := AutoMigrateStudioBatchRepository(db); err != nil {
+		t.Fatalf("AutoMigrateStudioBatchRepository() error = %v", err)
+	}
+
+	repo := NewGormStudioBatchRepository(db)
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+
+	initial := newStudioBatchRecordForTest("batch-1", now)
+	initial.HotStyleReferenceImageURLs = SheinStudioStringList{"https://cdn.example.com/old-ref.png"}
+	initial.HotStyleReferenceBrief = "old reference brief"
+	initial.HotStyleReferencePrompt = "old reference prompt"
+	if err := repo.CreateStudioBatchGraph(ctx, initial, newStudioBatchItemsForTest("batch-1", now), nil, nil); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	replacement := newStudioBatchRecordForTest("batch-1", now.Add(time.Minute))
+	replacement.HotStyleReferenceImageURLs = SheinStudioStringList{"https://cdn.example.com/new-ref.png"}
+	replacement.HotStyleReferenceBrief = "new reference brief"
+	replacement.HotStyleReferencePrompt = "new reference prompt"
+	if err := repo.ReplaceStudioBatchGenerationGraph(ctx, replacement, newStudioBatchItemsForTest("batch-1", now.Add(time.Minute))); err != nil {
+		t.Fatalf("ReplaceStudioBatchGenerationGraph() error = %v", err)
+	}
+
+	updated, err := repo.GetStudioBatch(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatch() error = %v", err)
+	}
+	if got := updated.HotStyleReferenceImageURLs; len(got) != 1 || got[0] != "https://cdn.example.com/new-ref.png" {
+		t.Fatalf("hot style reference urls = %#v", got)
+	}
+	if got, want := updated.HotStyleReferenceBrief, "new reference brief"; got != want {
+		t.Fatalf("hot style reference brief = %q, want %q", got, want)
+	}
+	if got, want := updated.HotStyleReferencePrompt, "new reference prompt"; got != want {
+		t.Fatalf("hot style reference prompt = %q, want %q", got, want)
+	}
+}
+
 func TestGormStudioBatchRepositoryRejectsOrphanAttemptAndDesign(t *testing.T) {
 	t.Parallel()
 

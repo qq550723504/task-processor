@@ -83,19 +83,22 @@ func (r *GormStudioBatchRepository) ReplaceStudioBatchGenerationGraph(ctx contex
 				Model(&StudioBatchRecord{}).
 				Where("id = ?", batchRow.ID).
 				Updates(map[string]any{
-					"status":                 batchRow.Status,
-					"prompt":                 batchRow.Prompt,
-					"prompt_mode":            batchRow.PromptMode,
-					"grouped_image_mode":     batchRow.GroupedImageMode,
-					"selection":              batchRow.Selection,
-					"grouped_selections":     batchRow.GroupedSelections,
-					"style_count":            batchRow.StyleCount,
-					"variation_intensity":    batchRow.VariationIntensity,
-					"artwork_model":          batchRow.ArtworkModel,
-					"selected_sds_images":    batchRow.SelectedSDSImages,
-					"transparent_background": batchRow.TransparentBackground,
-					"shein_store_id":         batchRow.SheinStoreID,
-					"updated_at":             batchRow.UpdatedAt,
+					"status":                         batchRow.Status,
+					"prompt":                         batchRow.Prompt,
+					"prompt_mode":                    batchRow.PromptMode,
+					"grouped_image_mode":             batchRow.GroupedImageMode,
+					"selection":                      batchRow.Selection,
+					"grouped_selections":             batchRow.GroupedSelections,
+					"style_count":                    batchRow.StyleCount,
+					"variation_intensity":            batchRow.VariationIntensity,
+					"artwork_model":                  batchRow.ArtworkModel,
+					"selected_sds_images":            batchRow.SelectedSDSImages,
+					"hot_style_reference_image_urls": batchRow.HotStyleReferenceImageURLs,
+					"hot_style_reference_brief":      batchRow.HotStyleReferenceBrief,
+					"hot_style_reference_prompt":     batchRow.HotStyleReferencePrompt,
+					"transparent_background":         batchRow.TransparentBackground,
+					"shein_store_id":                 batchRow.SheinStoreID,
+					"updated_at":                     batchRow.UpdatedAt,
 				}).Error; err != nil {
 				return err
 			}
