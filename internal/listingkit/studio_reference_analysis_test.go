@@ -173,6 +173,35 @@ func TestAnalyzeStudioReferenceStyleResolvesAbsoluteUploadedReferenceURLsToPubli
 	}
 }
 
+func TestAnalyzeStudioReferenceStyleTreatsRemoteUploadShapedHTTPSURLsAsExternal(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"retro flowers","palette":["cream"],"composition":"centered badge"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
+		promptDiversifier: completer,
+		resolveUploadedImagePublicURL: func(_ context.Context, key string) (string, error) {
+			t.Fatalf("resolveUploadedImagePublicURL should not be called for remote host key %q", key)
+			return "", nil
+		},
+	})
+
+	rawURL := "https://assets.example.com/api/v1/listing-kits/uploads/files/folder/reference.png"
+	_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{rawURL},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	if len(completer.calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(completer.calls))
+	}
+	gotURL := strings.SplitN(completer.calls[0], "|", 2)[0]
+	if gotURL != rawURL {
+		t.Fatalf("AnalyzeImage imageURL = %q, want unchanged remote HTTPS URL %q", gotURL, rawURL)
+	}
+}
+
 func TestAnalyzeStudioReferenceStyleRejectsUploadedReferencePathsWithoutPublicHTTPS(t *testing.T) {
 	testCases := []struct {
 		name       string
@@ -917,6 +946,49 @@ func TestUploadedListingKitImageKeyFromURL(t *testing.T) {
 			got, ok := uploadedListingKitImageKeyFromURL(tc.rawURL)
 			if got != tc.want || ok != tc.ok {
 				t.Fatalf("uploadedListingKitImageKeyFromURL(%q) = (%q, %v), want (%q, %v)", tc.rawURL, got, ok, tc.want, tc.ok)
+			}
+		})
+	}
+}
+
+func TestStudioReferenceUploadedImageKeyFromURL(t *testing.T) {
+	testCases := []struct {
+		name   string
+		rawURL string
+		want   string
+		ok     bool
+	}{
+		{
+			name:   "relative uploaded path",
+			rawURL: "/api/v1/listing-kits/uploads/files/folder/reference.png",
+			want:   "folder/reference.png",
+			ok:     true,
+		},
+		{
+			name:   "localhost uploaded url",
+			rawURL: "http://localhost:3000/api/v1/listing-kits/uploads/files/folder/reference.png",
+			want:   "folder/reference.png",
+			ok:     true,
+		},
+		{
+			name:   "remote host uploaded url rejected",
+			rawURL: "https://assets.example.com/api/v1/listing-kits/uploads/files/folder/reference.png",
+			want:   "",
+			ok:     false,
+		},
+		{
+			name:   "non upload path rejected",
+			rawURL: "https://example.com/reference.png",
+			want:   "",
+			ok:     false,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := studioReferenceUploadedImageKeyFromURL(tc.rawURL)
+			if got != tc.want || ok != tc.ok {
+				t.Fatalf("studioReferenceUploadedImageKeyFromURL(%q) = (%q, %v), want (%q, %v)", tc.rawURL, got, ok, tc.want, tc.ok)
 			}
 		})
 	}

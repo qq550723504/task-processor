@@ -329,6 +329,9 @@ func studioReferenceUploadedImageKeyFromURL(rawURL string) (string, bool) {
 	if err != nil || parsed == nil || !parsed.IsAbs() {
 		return "", false
 	}
+	if !isStudioReferenceLocalHost(parsed.Hostname()) {
+		return "", false
+	}
 	if !strings.HasPrefix(parsed.Path, prefix) {
 		return "", false
 	}
