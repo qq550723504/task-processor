@@ -142,6 +142,9 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	session.GroupedSelections = toStudioGroupedSelectionList(normalizedReq.GroupedSelections)
 	session.TransparentBackground = normalizedReq.TransparentBackground
 	session.RenderSizeImagesWithSDS = normalizedReq.RenderSizeImagesWithSDS
+	session.HotStyleReferenceImageURLs = append(SheinStudioStringList(nil), normalizedReq.HotStyleReferenceImageURLs...)
+	session.HotStyleReferenceBrief = strings.TrimSpace(normalizedReq.HotStyleReferenceBrief)
+	session.HotStyleReferencePrompt = strings.TrimSpace(normalizedReq.HotStyleReferencePrompt)
 	session.SheinStoreID = normalizedReq.SheinStoreID
 	session.ApprovedDesignIDs = append(SheinStudioStringList(nil), normalizedReq.ApprovedDesignIDs...)
 	session.CreatedTasks = toStudioCreatedTaskList(normalizedReq.CreatedTasks)

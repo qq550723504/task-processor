@@ -37,6 +37,9 @@ func (s *taskStudioBatchService) syncStudioBatchRetryExecutionConfigFromDraft(ct
 	batch.VariationIntensity = session.VariationIntensity
 	batch.ArtworkModel = session.ArtworkModel
 	batch.SelectedSDSImages = append(SheinStudioSelectedSDSImageList(nil), session.SelectedSDSImages...)
+	batch.HotStyleReferenceImageURLs = append(SheinStudioStringList(nil), session.HotStyleReferenceImageURLs...)
+	batch.HotStyleReferenceBrief = session.HotStyleReferenceBrief
+	batch.HotStyleReferencePrompt = session.HotStyleReferencePrompt
 	batch.TransparentBackground = session.TransparentBackground
 	if storeID, convErr := strconv.ParseInt(strings.TrimSpace(session.SheinStoreID), 10, 64); convErr == nil {
 		batch.SheinStoreID = storeID
@@ -113,20 +116,23 @@ func ensureStudioBatchGenerationGraphForResume(
 
 func buildStudioBatchRecordFromSessionDraft(session *SheinStudioSession, now time.Time) *StudioBatchRecord {
 	batch := &StudioBatchRecord{
-		ID:                    session.ID,
-		Status:                StudioBatchStatusGenerating,
-		Prompt:                session.Prompt,
-		PromptMode:            strings.TrimSpace(session.PromptMode),
-		GroupedImageMode:      strings.TrimSpace(session.GroupedImageMode),
-		Selection:             session.Selection,
-		GroupedSelections:     append(SheinStudioGroupedSelectionList(nil), session.GroupedSelections...),
-		StyleCount:            session.StyleCount,
-		VariationIntensity:    session.VariationIntensity,
-		ArtworkModel:          session.ArtworkModel,
-		SelectedSDSImages:     append(SheinStudioSelectedSDSImageList(nil), session.SelectedSDSImages...),
-		TransparentBackground: session.TransparentBackground,
-		CreatedAt:             now,
-		UpdatedAt:             now,
+		ID:                         session.ID,
+		Status:                     StudioBatchStatusGenerating,
+		Prompt:                     session.Prompt,
+		PromptMode:                 strings.TrimSpace(session.PromptMode),
+		GroupedImageMode:           strings.TrimSpace(session.GroupedImageMode),
+		Selection:                  session.Selection,
+		GroupedSelections:          append(SheinStudioGroupedSelectionList(nil), session.GroupedSelections...),
+		StyleCount:                 session.StyleCount,
+		VariationIntensity:         session.VariationIntensity,
+		ArtworkModel:               session.ArtworkModel,
+		SelectedSDSImages:          append(SheinStudioSelectedSDSImageList(nil), session.SelectedSDSImages...),
+		HotStyleReferenceImageURLs: append(SheinStudioStringList(nil), session.HotStyleReferenceImageURLs...),
+		HotStyleReferenceBrief:     session.HotStyleReferenceBrief,
+		HotStyleReferencePrompt:    session.HotStyleReferencePrompt,
+		TransparentBackground:      session.TransparentBackground,
+		CreatedAt:                  now,
+		UpdatedAt:                  now,
 	}
 	if storeID, convErr := strconv.ParseInt(strings.TrimSpace(session.SheinStoreID), 10, 64); convErr == nil {
 		batch.SheinStoreID = storeID

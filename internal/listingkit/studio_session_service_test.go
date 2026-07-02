@@ -487,6 +487,11 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 		},
 		ApprovedDesignIDs: []string{"design-1"},
 		BatchName:         "retro cherries",
+		HotStyleReferenceImageURLs: []string{
+			"https://cdn.example.com/hot-style-ref.png",
+		},
+		HotStyleReferenceBrief:  "embroidered cherry badge",
+		HotStyleReferencePrompt: "extract cherry badge print features",
 		GroupedSelections: []SheinStudioGroupedSelection{
 			{
 				SelectionID: "124110:18203:124200:layer-2:124200",
@@ -531,6 +536,15 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 	if got, want := list.Items[0].Status, string(detail.Batch.Status); got != want {
 		t.Fatalf("batch status = %q, want %q", got, want)
 	}
+	if got := list.Items[0].HotStyleReferenceImageURLs; len(got) != 1 || got[0] != "https://cdn.example.com/hot-style-ref.png" {
+		t.Fatalf("batch list hot style reference urls = %#v", got)
+	}
+	if got, want := list.Items[0].HotStyleReferenceBrief, "embroidered cherry badge"; got != want {
+		t.Fatalf("batch list hot style reference brief = %q, want %q", got, want)
+	}
+	if got, want := list.Items[0].HotStyleReferencePrompt, "extract cherry badge print features"; got != want {
+		t.Fatalf("batch list hot style reference prompt = %q, want %q", got, want)
+	}
 	repo := svc.studioDeps.sessionRepo.(*studioSessionRepoStub)
 	storedSession := repo.sessions[detail.Batch.ID]
 	if storedSession == nil {
@@ -559,6 +573,15 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 	}
 	if len(loaded.Batch.GroupedSelections) != 1 || loaded.Batch.GroupedSelections[0].SheinStoreID != "store-9" {
 		t.Fatalf("loaded grouped selections = %#v, want store-9", loaded.Batch.GroupedSelections)
+	}
+	if got := loaded.Batch.HotStyleReferenceImageURLs; len(got) != 1 || got[0] != "https://cdn.example.com/hot-style-ref.png" {
+		t.Fatalf("loaded hot style reference urls = %#v", got)
+	}
+	if got, want := loaded.Batch.HotStyleReferenceBrief, "embroidered cherry badge"; got != want {
+		t.Fatalf("loaded hot style reference brief = %q, want %q", got, want)
+	}
+	if got, want := loaded.Batch.HotStyleReferencePrompt, "extract cherry badge print features"; got != want {
+		t.Fatalf("loaded hot style reference prompt = %q, want %q", got, want)
 	}
 	if repo.listDesignsCalls != listDesignCallsBeforeGetBatch+1 {
 		t.Fatalf(

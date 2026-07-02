@@ -47,24 +47,27 @@ const (
 )
 
 type StudioBatchRecord struct {
-	ID                    string                          `json:"id" gorm:"primaryKey;type:varchar(64)"`
-	TenantID              string                          `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
-	UserID                string                          `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
-	Status                StudioBatchStatus               `json:"status" gorm:"type:varchar(32);index;not null"`
-	Prompt                string                          `json:"prompt,omitempty" gorm:"type:text"`
-	PromptMode            string                          `json:"prompt_mode,omitempty" gorm:"type:varchar(16)"`
-	GroupedImageMode      string                          `json:"grouped_image_mode,omitempty" gorm:"type:varchar(32)"`
-	Selection             SheinStudioSelectionSnapshot    `json:"selection,omitempty" gorm:"type:text"`
-	GroupedSelections     SheinStudioGroupedSelectionList `json:"grouped_selections,omitempty" gorm:"type:text"`
-	StyleCount            string                          `json:"style_count,omitempty" gorm:"type:varchar(32)"`
-	VariationIntensity    string                          `json:"variation_intensity,omitempty" gorm:"type:varchar(16)"`
-	ArtworkModel          string                          `json:"artwork_model,omitempty" gorm:"type:varchar(32)"`
-	SelectedSDSImages     SheinStudioSelectedSDSImageList `json:"selected_sds_images,omitempty" gorm:"type:text"`
-	TransparentBackground bool                            `json:"transparent_background"`
-	SheinStoreID          int64                           `json:"shein_store_id,omitempty" gorm:"index"`
-	DraftUpdatedAt        *time.Time                      `json:"draft_updated_at,omitempty" gorm:"-"`
-	CreatedAt             time.Time                       `json:"created_at"`
-	UpdatedAt             time.Time                       `json:"updated_at"`
+	ID                         string                          `json:"id" gorm:"primaryKey;type:varchar(64)"`
+	TenantID                   string                          `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
+	UserID                     string                          `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
+	Status                     StudioBatchStatus               `json:"status" gorm:"type:varchar(32);index;not null"`
+	Prompt                     string                          `json:"prompt,omitempty" gorm:"type:text"`
+	PromptMode                 string                          `json:"prompt_mode,omitempty" gorm:"type:varchar(16)"`
+	GroupedImageMode           string                          `json:"grouped_image_mode,omitempty" gorm:"type:varchar(32)"`
+	Selection                  SheinStudioSelectionSnapshot    `json:"selection,omitempty" gorm:"type:text"`
+	GroupedSelections          SheinStudioGroupedSelectionList `json:"grouped_selections,omitempty" gorm:"type:text"`
+	StyleCount                 string                          `json:"style_count,omitempty" gorm:"type:varchar(32)"`
+	VariationIntensity         string                          `json:"variation_intensity,omitempty" gorm:"type:varchar(16)"`
+	ArtworkModel               string                          `json:"artwork_model,omitempty" gorm:"type:varchar(32)"`
+	SelectedSDSImages          SheinStudioSelectedSDSImageList `json:"selected_sds_images,omitempty" gorm:"type:text"`
+	TransparentBackground      bool                            `json:"transparent_background"`
+	HotStyleReferenceImageURLs SheinStudioStringList           `json:"hot_style_reference_image_urls,omitempty" gorm:"type:text"`
+	HotStyleReferenceBrief     string                          `json:"hot_style_reference_brief,omitempty" gorm:"type:text"`
+	HotStyleReferencePrompt    string                          `json:"hot_style_reference_prompt,omitempty" gorm:"type:text"`
+	SheinStoreID               int64                           `json:"shein_store_id,omitempty" gorm:"index"`
+	DraftUpdatedAt             *time.Time                      `json:"draft_updated_at,omitempty" gorm:"-"`
+	CreatedAt                  time.Time                       `json:"created_at"`
+	UpdatedAt                  time.Time                       `json:"updated_at"`
 }
 
 func (StudioBatchRecord) TableName() string {

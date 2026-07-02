@@ -37,47 +37,50 @@ type SheinStudioGenerationJob struct {
 }
 
 type SheinStudioSession struct {
-	ID                      string                            `json:"id" gorm:"primaryKey;type:varchar(64)"`
-	TenantID                string                            `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
-	UserID                  string                            `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
-	SelectionKey            string                            `json:"selection_key" gorm:"type:varchar(255);index"`
-	Status                  SheinStudioSessionStatus          `json:"status" gorm:"type:varchar(32);index"`
-	ProductID               int64                             `json:"product_id,omitempty" gorm:"index"`
-	ParentProductID         int64                             `json:"parent_product_id,omitempty"`
-	VariantID               int64                             `json:"variant_id,omitempty" gorm:"index"`
-	PrototypeGroupID        int64                             `json:"prototype_group_id,omitempty"`
-	LayerID                 string                            `json:"layer_id,omitempty" gorm:"type:varchar(128)"`
-	PrintableWidth          int                               `json:"printable_width,omitempty"`
-	PrintableHeight         int                               `json:"printable_height,omitempty"`
-	SelectedVariantIDs      SheinStudioInt64List              `json:"selected_variant_ids,omitempty" gorm:"type:text"`
-	Selection               SheinStudioSelectionSnapshot      `json:"selection,omitempty" gorm:"type:text"`
-	Prompt                  string                            `json:"prompt,omitempty" gorm:"type:text"`
-	PromptMode              string                            `json:"prompt_mode,omitempty" gorm:"type:varchar(16)"`
-	StyleCount              string                            `json:"style_count,omitempty" gorm:"type:varchar(32)"`
-	VariationIntensity      string                            `json:"variation_intensity,omitempty" gorm:"type:varchar(16)"`
-	ProductImageCount       string                            `json:"product_image_count,omitempty" gorm:"type:varchar(32)"`
-	ProductImagePrompt      string                            `json:"product_image_prompt,omitempty" gorm:"type:text"`
-	ProductImagePrompts     SheinStudioProductImagePromptList `json:"product_image_prompts,omitempty" gorm:"type:text"`
-	ArtworkModel            string                            `json:"artwork_model,omitempty" gorm:"type:varchar(32)"`
-	ImageStrategy           string                            `json:"image_strategy,omitempty" gorm:"type:varchar(32)"`
-	GroupedImageMode        string                            `json:"grouped_image_mode,omitempty" gorm:"type:varchar(32)"`
-	SelectedSDSImages       SheinStudioSelectedSDSImageList   `json:"selected_sds_images,omitempty" gorm:"type:text"`
-	GroupedSelections       SheinStudioGroupedSelectionList   `json:"grouped_selections,omitempty" gorm:"type:text"`
-	TransparentBackground   bool                              `json:"transparent_background"`
-	RenderSizeImagesWithSDS bool                              `json:"render_size_images_with_sds"`
-	SheinStoreID            string                            `json:"shein_store_id,omitempty" gorm:"type:varchar(64)"`
-	GenerationJobID         string                            `json:"generation_job_id,omitempty" gorm:"type:varchar(64);index"`
-	GenerationJobs          SheinStudioGenerationJobList      `json:"generation_jobs,omitempty" gorm:"type:text"`
-	GenerationError         string                            `json:"generation_error,omitempty" gorm:"type:text"`
-	ApprovedDesignIDs       SheinStudioStringList             `json:"approved_design_ids,omitempty" gorm:"type:text"`
-	PendingTaskDesignIDs    SheinStudioStringList             `json:"pending_task_design_ids,omitempty" gorm:"type:text"`
-	CreatedTaskIDs          SheinStudioStringList             `json:"created_task_ids,omitempty" gorm:"type:text"`
-	CreatedTasks            SheinStudioCreatedTaskList        `json:"created_tasks,omitempty" gorm:"type:text"`
-	FailedTasks             SheinStudioFailedTaskList         `json:"failed_tasks,omitempty" gorm:"type:text"`
-	SavedAsBatch            bool                              `json:"saved_as_batch,omitempty" gorm:"index"`
-	BatchName               string                            `json:"batch_name,omitempty" gorm:"type:varchar(255)"`
-	CreatedAt               time.Time                         `json:"created_at"`
-	UpdatedAt               time.Time                         `json:"updated_at"`
+	ID                         string                            `json:"id" gorm:"primaryKey;type:varchar(64)"`
+	TenantID                   string                            `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
+	UserID                     string                            `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
+	SelectionKey               string                            `json:"selection_key" gorm:"type:varchar(255);index"`
+	Status                     SheinStudioSessionStatus          `json:"status" gorm:"type:varchar(32);index"`
+	ProductID                  int64                             `json:"product_id,omitempty" gorm:"index"`
+	ParentProductID            int64                             `json:"parent_product_id,omitempty"`
+	VariantID                  int64                             `json:"variant_id,omitempty" gorm:"index"`
+	PrototypeGroupID           int64                             `json:"prototype_group_id,omitempty"`
+	LayerID                    string                            `json:"layer_id,omitempty" gorm:"type:varchar(128)"`
+	PrintableWidth             int                               `json:"printable_width,omitempty"`
+	PrintableHeight            int                               `json:"printable_height,omitempty"`
+	SelectedVariantIDs         SheinStudioInt64List              `json:"selected_variant_ids,omitempty" gorm:"type:text"`
+	Selection                  SheinStudioSelectionSnapshot      `json:"selection,omitempty" gorm:"type:text"`
+	Prompt                     string                            `json:"prompt,omitempty" gorm:"type:text"`
+	PromptMode                 string                            `json:"prompt_mode,omitempty" gorm:"type:varchar(16)"`
+	StyleCount                 string                            `json:"style_count,omitempty" gorm:"type:varchar(32)"`
+	VariationIntensity         string                            `json:"variation_intensity,omitempty" gorm:"type:varchar(16)"`
+	ProductImageCount          string                            `json:"product_image_count,omitempty" gorm:"type:varchar(32)"`
+	ProductImagePrompt         string                            `json:"product_image_prompt,omitempty" gorm:"type:text"`
+	ProductImagePrompts        SheinStudioProductImagePromptList `json:"product_image_prompts,omitempty" gorm:"type:text"`
+	ArtworkModel               string                            `json:"artwork_model,omitempty" gorm:"type:varchar(32)"`
+	ImageStrategy              string                            `json:"image_strategy,omitempty" gorm:"type:varchar(32)"`
+	GroupedImageMode           string                            `json:"grouped_image_mode,omitempty" gorm:"type:varchar(32)"`
+	SelectedSDSImages          SheinStudioSelectedSDSImageList   `json:"selected_sds_images,omitempty" gorm:"type:text"`
+	GroupedSelections          SheinStudioGroupedSelectionList   `json:"grouped_selections,omitempty" gorm:"type:text"`
+	TransparentBackground      bool                              `json:"transparent_background"`
+	RenderSizeImagesWithSDS    bool                              `json:"render_size_images_with_sds"`
+	HotStyleReferenceImageURLs SheinStudioStringList             `json:"hot_style_reference_image_urls,omitempty" gorm:"type:text"`
+	HotStyleReferenceBrief     string                            `json:"hot_style_reference_brief,omitempty" gorm:"type:text"`
+	HotStyleReferencePrompt    string                            `json:"hot_style_reference_prompt,omitempty" gorm:"type:text"`
+	SheinStoreID               string                            `json:"shein_store_id,omitempty" gorm:"type:varchar(64)"`
+	GenerationJobID            string                            `json:"generation_job_id,omitempty" gorm:"type:varchar(64);index"`
+	GenerationJobs             SheinStudioGenerationJobList      `json:"generation_jobs,omitempty" gorm:"type:text"`
+	GenerationError            string                            `json:"generation_error,omitempty" gorm:"type:text"`
+	ApprovedDesignIDs          SheinStudioStringList             `json:"approved_design_ids,omitempty" gorm:"type:text"`
+	PendingTaskDesignIDs       SheinStudioStringList             `json:"pending_task_design_ids,omitempty" gorm:"type:text"`
+	CreatedTaskIDs             SheinStudioStringList             `json:"created_task_ids,omitempty" gorm:"type:text"`
+	CreatedTasks               SheinStudioCreatedTaskList        `json:"created_tasks,omitempty" gorm:"type:text"`
+	FailedTasks                SheinStudioFailedTaskList         `json:"failed_tasks,omitempty" gorm:"type:text"`
+	SavedAsBatch               bool                              `json:"saved_as_batch,omitempty" gorm:"index"`
+	BatchName                  string                            `json:"batch_name,omitempty" gorm:"type:varchar(255)"`
+	CreatedAt                  time.Time                         `json:"created_at"`
+	UpdatedAt                  time.Time                         `json:"updated_at"`
 }
 
 type SheinStudioDesign struct {

@@ -102,19 +102,22 @@ func (r *GormStudioBatchRepository) UpdateStudioBatch(ctx context.Context, batch
 		Model(&StudioBatchRecord{}).
 		Where("id = ?", row.ID).
 		Updates(map[string]any{
-			"status":                 row.Status,
-			"prompt":                 row.Prompt,
-			"prompt_mode":            row.PromptMode,
-			"grouped_image_mode":     row.GroupedImageMode,
-			"selection":              row.Selection,
-			"grouped_selections":     row.GroupedSelections,
-			"style_count":            row.StyleCount,
-			"variation_intensity":    row.VariationIntensity,
-			"artwork_model":          row.ArtworkModel,
-			"selected_sds_images":    row.SelectedSDSImages,
-			"transparent_background": row.TransparentBackground,
-			"shein_store_id":         row.SheinStoreID,
-			"updated_at":             row.UpdatedAt,
+			"status":                         row.Status,
+			"prompt":                         row.Prompt,
+			"prompt_mode":                    row.PromptMode,
+			"grouped_image_mode":             row.GroupedImageMode,
+			"selection":                      row.Selection,
+			"grouped_selections":             row.GroupedSelections,
+			"style_count":                    row.StyleCount,
+			"variation_intensity":            row.VariationIntensity,
+			"artwork_model":                  row.ArtworkModel,
+			"selected_sds_images":            row.SelectedSDSImages,
+			"hot_style_reference_image_urls": row.HotStyleReferenceImageURLs,
+			"hot_style_reference_brief":      row.HotStyleReferenceBrief,
+			"hot_style_reference_prompt":     row.HotStyleReferencePrompt,
+			"transparent_background":         row.TransparentBackground,
+			"shein_store_id":                 row.SheinStoreID,
+			"updated_at":                     row.UpdatedAt,
 		})
 	if result.Error != nil {
 		return result.Error

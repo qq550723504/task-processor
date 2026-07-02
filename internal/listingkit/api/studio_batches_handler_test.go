@@ -59,6 +59,10 @@ type stubStudioBatchActionService struct {
 	prepareCreateTasksReq     *listingkit.CreateStudioBatchTasksRequest
 	prepareCreateTasksResult  *listingkit.CreateStudioBatchTasksResult
 	prepareCreateTasksErr     error
+	upsertCtx                 context.Context
+	upsertReq                 *listingkit.UpsertStudioBatchRequest
+	upsertResult              *listingkit.StudioBatchDraftDetail
+	upsertErr                 error
 }
 
 func (s *stubStudioBatchActionService) ListStudioSessionGallery(context.Context, int) (*listingkit.StudioSessionGalleryResponse, error) {
@@ -109,8 +113,10 @@ func (s *stubStudioBatchActionService) ResumeStudioBatchGeneration(ctx context.C
 	return s.resumeResult, s.resumeErr
 }
 
-func (s *stubStudioBatchActionService) UpsertStudioBatch(context.Context, *listingkit.UpsertStudioBatchRequest) (*listingkit.StudioBatchDraftDetail, error) {
-	return nil, nil
+func (s *stubStudioBatchActionService) UpsertStudioBatch(ctx context.Context, req *listingkit.UpsertStudioBatchRequest) (*listingkit.StudioBatchDraftDetail, error) {
+	s.upsertCtx = ctx
+	s.upsertReq = req
+	return s.upsertResult, s.upsertErr
 }
 
 func (s *stubStudioBatchActionService) DeleteStudioBatch(context.Context, string) error {
@@ -250,6 +256,49 @@ func TestStudioBatchGetHandlerCoalescesConcurrentResumeLaunches(t *testing.T) {
 
 	if rec1.Code != http.StatusOK || rec2.Code != http.StatusOK {
 		t.Fatalf("statuses = %d/%d, want 200/200", rec1.Code, rec2.Code)
+	}
+}
+
+func TestStudioBatchUpsertHandlerBindsHotStyleReferenceFields(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubStudioBatchActionService{
+		upsertResult: &listingkit.StudioBatchDraftDetail{
+			Batch: &listingkit.StudioBatchDraft{ID: "batch-1"},
+		},
+	}
+	h := &studioSessionHandler{service: svc}
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/studio/batches", h.UpsertStudioBatch)
+
+	body := `{
+		"prompt":"retro cherries",
+		"style_count":"2",
+		"selection":{"product_id":1,"parent_product_id":1,"variant_id":100,"prototype_group_id":200,"layer_id":"layer-1"},
+		"hot_style_reference_image_urls":["https://cdn.example.com/hot-style-ref.png"],
+		"hot_style_reference_brief":"embroidered cherry badge",
+		"hot_style_reference_prompt":"extract cherry badge print features"
+	}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/batches", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	if svc.upsertReq == nil {
+		t.Fatal("upsert req = nil, want bound request")
+	}
+	if got := svc.upsertReq.HotStyleReferenceImageURLs; len(got) != 1 || got[0] != "https://cdn.example.com/hot-style-ref.png" {
+		t.Fatalf("hot style reference urls = %#v", got)
+	}
+	if got, want := svc.upsertReq.HotStyleReferenceBrief, "embroidered cherry badge"; got != want {
+		t.Fatalf("hot style reference brief = %q, want %q", got, want)
+	}
+	if got, want := svc.upsertReq.HotStyleReferencePrompt, "extract cherry badge print features"; got != want {
+		t.Fatalf("hot style reference prompt = %q, want %q", got, want)
 	}
 }
 
