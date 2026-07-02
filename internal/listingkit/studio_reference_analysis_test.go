@@ -50,7 +50,7 @@ func TestAnalyzeStudioReferenceStyleRejectsEmptyReferences(t *testing.T) {
 
 func TestAnalyzeStudioReferenceStyleLimitsReferencesAndSanitizesPrompt(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
-		`{"motif":"sports mascot","palette":["navy","cream"],"composition":"varsity badge","typography":"bold collegiate","avoid":["Adidas trefoil logo","exact slogan \"Just Do It\"","Mickey Mouse character","Taylor Swift face portrait","same diagonal split layout"]}`,
+		`{"motif":"Hello Kitty bow","palette":["navy","cream"],"composition":"diagonal split badge","typography":"Old English","density":"Clean Layering","product_fit":"Vintage Streetwear","avoid":["Adidas trefoil logo","exact slogan \"Just Do It\"","Mickey Mouse character","Taylor Swift face portrait","same diagonal split layout"]}`,
 		`{"motif":"floral border","palette":["red","cream"],"composition":"arched frame","typography":"distressed serif","avoid":["brand mark"]}`,
 	}}
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
@@ -68,22 +68,39 @@ func TestAnalyzeStudioReferenceStyleLimitsReferencesAndSanitizesPrompt(t *testin
 		t.Fatalf("calls = %d, want 5", len(completer.calls))
 	}
 	for _, unsafeToken := range []string{
-		"adidas", "trefoil", "just do it", "mickey", "taylor swift", "face portrait", "same diagonal split layout",
+		"hello kitty", "bow", "diagonal split badge", "adidas", "trefoil", "just do it", "mickey", "taylor swift", "face portrait", "same diagonal split layout",
 	} {
 		if strings.Contains(strings.ToLower(resp.SanitizedPrompt), unsafeToken) {
 			t.Fatalf("sanitized prompt contains unsafe token %q: %q", unsafeToken, resp.SanitizedPrompt)
+		}
+		if strings.Contains(strings.ToLower(resp.ReferenceStyleBrief), unsafeToken) {
+			t.Fatalf("reference style brief contains unsafe token %q: %q", unsafeToken, resp.ReferenceStyleBrief)
 		}
 	}
 	if !strings.Contains(strings.ToLower(resp.SanitizedPrompt), "original") {
 		t.Fatalf("sanitized prompt = %q, want originality instruction", resp.SanitizedPrompt)
 	}
+	for _, safeSignal := range []string{
+		"old english",
+		"clean layering",
+		"vintage streetwear",
+		"cream",
+		"framed composition",
+	} {
+		if !strings.Contains(strings.ToLower(resp.SanitizedPrompt), safeSignal) {
+			t.Fatalf("sanitized prompt = %q, want safe signal %q preserved", resp.SanitizedPrompt, safeSignal)
+		}
+	}
 	if len(resp.Warnings) == 0 {
 		t.Fatalf("warnings = nil, want warning for truncated reference list")
+	}
+	if !containsWarningFragment(resp.Warnings, "已移除品牌、Logo、原文案或过于接近原图的描述") {
+		t.Fatalf("warnings = %#v, want unsafe-signal warning", resp.Warnings)
 	}
 }
 
 func TestAnalyzeStudioReferenceStyleFallsBackForMalformedJSON(t *testing.T) {
-	completer := &stubReferenceAnalysisCompleter{responses: []string{`Use the Adidas trefoil logo, the quote "Just Do It", Elsa's face portrait, and the same split poster layout with retro cherry accents.`}}
+	completer := &stubReferenceAnalysisCompleter{responses: []string{`Use the Adidas trefoil logo, the quote "Just Do It", Elsa's face portrait, and the same split poster layout with Hello Kitty bow accents.`}}
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
 	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
@@ -92,15 +109,18 @@ func TestAnalyzeStudioReferenceStyleFallsBackForMalformedJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
 	}
-	if !strings.Contains(resp.ReferenceStyleBrief, "Adidas trefoil logo") {
-		t.Fatalf("brief = %q, want malformed text retained for diagnostics", resp.ReferenceStyleBrief)
-	}
 	for _, unsafeToken := range []string{
-		"adidas", "trefoil", "just do it", "elsa", "face portrait", "same split poster layout",
+		"adidas", "trefoil", "just do it", "elsa", "face portrait", "same split poster layout", "hello kitty", "bow",
 	} {
 		if strings.Contains(strings.ToLower(resp.SanitizedPrompt), unsafeToken) {
 			t.Fatalf("sanitized prompt contains unsafe malformed detail %q: %q", unsafeToken, resp.SanitizedPrompt)
 		}
+		if strings.Contains(strings.ToLower(resp.ReferenceStyleBrief), unsafeToken) {
+			t.Fatalf("reference style brief contains unsafe malformed detail %q: %q", unsafeToken, resp.ReferenceStyleBrief)
+		}
+	}
+	if !containsWarningFragment(resp.Warnings, "已移除品牌、Logo、原文案或过于接近原图的描述") {
+		t.Fatalf("warnings = %#v, want unsafe malformed warning", resp.Warnings)
 	}
 }
 
@@ -142,7 +162,8 @@ func TestAnalyzeStudioReferenceStyleKeepsSafeTitleCaseStyleSignals(t *testing.T)
 	for _, safeSignal := range []string{
 		"retro flowers",
 		"cream",
-		"centered badge",
+		"centered composition",
+		"badge composition",
 		"old english",
 		"clean layering",
 		"vintage streetwear",
@@ -151,4 +172,13 @@ func TestAnalyzeStudioReferenceStyleKeepsSafeTitleCaseStyleSignals(t *testing.T)
 			t.Fatalf("sanitized prompt = %q, want safe style signal %q preserved", resp.SanitizedPrompt, safeSignal)
 		}
 	}
+}
+
+func containsWarningFragment(warnings []string, fragment string) bool {
+	for _, warning := range warnings {
+		if strings.Contains(warning, fragment) {
+			return true
+		}
+	}
+	return false
 }
