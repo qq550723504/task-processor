@@ -8,6 +8,7 @@ import (
 
 func appendStudioGenerationRouteDescriptors(routes []httproute.Descriptor, handler StudioGenerationRouteHandler) []httproute.Descriptor {
 	routes = append(routes,
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/reference-style/analyze", Module: "listing-kit", Handler: handler.AnalyzeStudioReferenceStyle},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/designs", Module: "listing-kit", Handler: handler.GenerateStudioDesigns},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/product-images", Module: "listing-kit", Handler: handler.GenerateStudioProductImages},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/studio/async-jobs", Module: "listing-kit", Handler: handler.StartStudioAsyncJob},

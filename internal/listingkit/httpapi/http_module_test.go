@@ -26,6 +26,7 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 	keys := routeKeys(reg.Routes())
 	require.Contains(t, keys, "POST /api/v1/listing-kits/generate")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/settings-health")
+	require.Contains(t, keys, "POST /api/v1/listing-kits/studio/reference-style/analyze")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/tasks/requeue")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/sds/retirements")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/sds/retirements/:run_id")
@@ -130,6 +131,7 @@ func (stubRouteHandler) RetrySDSRetirementRun(*gin.Context)                     
 func (stubRouteHandler) UploadListingKitImages(*gin.Context)                      {}
 func (stubRouteHandler) GetUploadedListingKitImage(*gin.Context)                  {}
 func (stubRouteHandler) DeleteUploadedListingKitImage(*gin.Context)               {}
+func (stubRouteHandler) AnalyzeStudioReferenceStyle(*gin.Context)                 {}
 func (stubRouteHandler) GenerateStudioDesigns(*gin.Context)                       {}
 func (stubRouteHandler) GenerateStudioProductImages(*gin.Context)                 {}
 func (stubRouteHandler) StartStudioAsyncJob(*gin.Context)                         {}

@@ -15,6 +15,7 @@ type TaskActionRouteHandler interface {
 	UploadListingKitImages(c *gin.Context)
 	GetUploadedListingKitImage(c *gin.Context)
 	DeleteUploadedListingKitImage(c *gin.Context)
+	AnalyzeStudioReferenceStyle(c *gin.Context)
 	GenerateStudioDesigns(c *gin.Context)
 	GenerateStudioProductImages(c *gin.Context)
 	StartStudioAsyncJob(c *gin.Context)
@@ -52,6 +53,7 @@ type TaskRouteHandler interface {
 }
 
 type StudioGenerationRouteHandler interface {
+	AnalyzeStudioReferenceStyle(c *gin.Context)
 	GenerateStudioDesigns(c *gin.Context)
 	GenerateStudioProductImages(c *gin.Context)
 	StartStudioAsyncJob(c *gin.Context)

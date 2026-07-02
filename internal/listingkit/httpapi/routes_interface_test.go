@@ -31,6 +31,7 @@ func (taskOnlyRouteHandler) RetrySDSRetirementRun(c *gin.Context)            {}
 func (taskOnlyRouteHandler) UploadListingKitImages(c *gin.Context)           {}
 func (taskOnlyRouteHandler) GetUploadedListingKitImage(c *gin.Context)       {}
 func (taskOnlyRouteHandler) DeleteUploadedListingKitImage(c *gin.Context)    {}
+func (taskOnlyRouteHandler) AnalyzeStudioReferenceStyle(c *gin.Context)      {}
 func (taskOnlyRouteHandler) GenerateStudioDesigns(c *gin.Context)            {}
 func (taskOnlyRouteHandler) GenerateStudioProductImages(c *gin.Context)      {}
 func (taskOnlyRouteHandler) StartStudioAsyncJob(c *gin.Context)              {}
@@ -107,6 +108,7 @@ func (storeOnlyRouteHandler) ListSimpleTenantStores(c *gin.Context) {}
 
 type studioGenerationOnlyRouteHandler struct{}
 
+func (studioGenerationOnlyRouteHandler) AnalyzeStudioReferenceStyle(c *gin.Context) {}
 func (studioGenerationOnlyRouteHandler) GenerateStudioDesigns(c *gin.Context)       {}
 func (studioGenerationOnlyRouteHandler) GenerateStudioProductImages(c *gin.Context) {}
 func (studioGenerationOnlyRouteHandler) StartStudioAsyncJob(c *gin.Context)         {}
