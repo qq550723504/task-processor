@@ -90,12 +90,15 @@ export function pickActiveSheinStudioGroup(
     return null;
   }
   const explicit =
-    activeGroupId &&
-    groups.find((group) => group.id === activeGroupId);
+    activeGroupId && groups.find((group) => group.id === activeGroupId);
   if (explicit) {
     return explicit;
   }
-  return [...groups].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
+  return (
+    [...groups].sort((left, right) =>
+      right.updatedAt.localeCompare(left.updatedAt),
+    )[0] ?? null
+  );
 }
 
 export function selectActiveGroupPromptHistory({
@@ -105,7 +108,9 @@ export function selectActiveGroupPromptHistory({
   activeGroupId: string;
   groups: SheinStudioGroupedWorkspace[];
 }) {
-  return groups.find((group) => group.id === activeGroupId)?.promptHistory ?? [];
+  return (
+    groups.find((group) => group.id === activeGroupId)?.promptHistory ?? []
+  );
 }
 
 export function selectActiveGroupPrimarySelection({
@@ -129,6 +134,9 @@ export function projectGroupToWorkbench(group: SheinStudioGroupedWorkspace) {
       group.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
     productImagePrompt: group.productImagePrompt ?? "",
     productImagePrompts: group.productImagePrompts ?? [],
+    hotStyleReferenceImageUrls: group.hotStyleReferenceImageUrls ?? [],
+    hotStyleReferenceBrief: group.hotStyleReferenceBrief ?? "",
+    hotStyleReferencePrompt: group.hotStyleReferencePrompt ?? "",
     artworkModel: group.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground: group.transparentBackground ?? false,
     sheinStoreId: group.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
@@ -150,7 +158,9 @@ export type SheinStudioWorkbenchHydratedBatch = {
   detail: SheinStudioBatchDetail;
 };
 
-function projectSavedBatchCompatibilityFields(savedBatch: SheinStudioSavedBatch) {
+function projectSavedBatchCompatibilityFields(
+  savedBatch: SheinStudioSavedBatch,
+) {
   const compatibility = savedBatch.legacyCompatibilitySnapshot;
   return {
     designs:
@@ -195,6 +205,9 @@ function projectItemizedBatchCompatibilityFields(
         : undefined,
     groupedImageMode: detail.batch.groupedImageMode,
     selectedSdsImages: detail.batch.selectedSdsImages ?? [],
+    hotStyleReferenceImageUrls: detail.batch.hotStyleReferenceImageUrls ?? [],
+    hotStyleReferenceBrief: detail.batch.hotStyleReferenceBrief ?? "",
+    hotStyleReferencePrompt: detail.batch.hotStyleReferencePrompt ?? "",
     groupedSelections: detail.batch.groupedSelections ?? [],
   };
 }
@@ -298,7 +311,10 @@ export function updateFlatDesignReviewNote(
   );
 }
 
-export function toggleSelectedDesignId(selectedIds: string[], designId: string) {
+export function toggleSelectedDesignId(
+  selectedIds: string[],
+  designId: string,
+) {
   return selectedIds.includes(designId)
     ? selectedIds.filter((item) => item !== designId)
     : [...selectedIds, designId];
@@ -325,11 +341,9 @@ const ACTIVE_ITEMIZED_BATCH_STATUSES = new Set<SheinStudioBatchStatus>([
   "tasks_creating",
 ]);
 
-const ACTIVE_ITEMIZED_BATCH_ITEM_STATUSES = new Set<SheinStudioBatchItemStatus>([
-  "pending",
-  "generating",
-  "awaiting_materialization",
-]);
+const ACTIVE_ITEMIZED_BATCH_ITEM_STATUSES = new Set<SheinStudioBatchItemStatus>(
+  ["pending", "generating", "awaiting_materialization"],
+);
 
 export function hasInFlightItemizedBatchGeneration(
   detail?: SheinStudioBatchDetail | null,
@@ -347,7 +361,9 @@ export function hasInFlightItemizedBatchGeneration(
   return ACTIVE_ITEMIZED_BATCH_STATUSES.has(detail.batch.status);
 }
 
-export function projectSavedBatchToWorkbench(savedBatch: SheinStudioSavedBatch) {
+export function projectSavedBatchToWorkbench(
+  savedBatch: SheinStudioSavedBatch,
+) {
   const compatibility = projectSavedBatchCompatibilityFields(savedBatch);
 
   return {
@@ -361,8 +377,10 @@ export function projectSavedBatchToWorkbench(savedBatch: SheinStudioSavedBatch) 
       savedBatch.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
     productImagePrompt: savedBatch.productImagePrompt ?? "",
     productImagePrompts: savedBatch.productImagePrompts ?? [],
-    artworkModel:
-      savedBatch.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
+    hotStyleReferenceImageUrls: savedBatch.hotStyleReferenceImageUrls ?? [],
+    hotStyleReferenceBrief: savedBatch.hotStyleReferenceBrief ?? "",
+    hotStyleReferencePrompt: savedBatch.hotStyleReferencePrompt ?? "",
+    artworkModel: savedBatch.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground: savedBatch.transparentBackground ?? false,
     sheinStoreId: savedBatch.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
     imageStrategy:
@@ -394,7 +412,8 @@ export function projectHydratedBatchToWorkbench(
     detail.batch.draftUpdatedAt || detail.batch.updatedAt;
   const hasInFlightGeneration = hasInFlightItemizedBatchGeneration(detail);
   const shouldPreserveSavedGenerationError =
-    detail.batch.status === "failed" || detail.batch.status === "partially_failed";
+    detail.batch.status === "failed" ||
+    detail.batch.status === "partially_failed";
 
   return {
     selection: itemized.selection ?? saved.selection,
@@ -410,24 +429,26 @@ export function projectHydratedBatchToWorkbench(
       saved.variationIntensity ??
       DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
     productImageCount:
-      saved.productImageCount ??
-      DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
+      saved.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
     productImagePrompt: saved.productImagePrompt ?? "",
     productImagePrompts: saved.productImagePrompts ?? [],
+    hotStyleReferenceImageUrls:
+      itemized.hotStyleReferenceImageUrls.length > 0
+        ? itemized.hotStyleReferenceImageUrls
+        : saved.hotStyleReferenceImageUrls,
+    hotStyleReferenceBrief:
+      itemized.hotStyleReferenceBrief || saved.hotStyleReferenceBrief || "",
+    hotStyleReferencePrompt:
+      itemized.hotStyleReferencePrompt || saved.hotStyleReferencePrompt || "",
     artworkModel:
       itemized.artworkModel ??
       saved.artworkModel ??
       DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground:
-      itemized.transparentBackground ??
-      saved.transparentBackground ??
-      false,
+      itemized.transparentBackground ?? saved.transparentBackground ?? false,
     sheinStoreId:
-      itemized.sheinStoreId ||
-      saved.sheinStoreId ||
-      DEFAULT_SHEIN_STORE_ID,
-    imageStrategy:
-      saved.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
+      itemized.sheinStoreId || saved.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
+    imageStrategy: saved.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     groupedImageMode:
       itemized.groupedImageMode ??
       saved.groupedImageMode ??
@@ -451,9 +472,7 @@ export function projectHydratedBatchToWorkbench(
     createdTasks:
       detailCreatedTasks.length > 0 ? detailCreatedTasks : saved.createdTasks,
     persistedUpdatedAt:
-      itemizedDraftUpdatedAt ||
-      savedDraftUpdatedAt ||
-      savedBatch.updatedAt,
+      itemizedDraftUpdatedAt || savedDraftUpdatedAt || savedBatch.updatedAt,
     itemizedBatchDetail: detail,
   };
 }
@@ -467,6 +486,9 @@ type WorkbenchSavedBatchProjectionInput = {
   productImageCount: string;
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
+  hotStyleReferenceImageUrls: string[];
+  hotStyleReferenceBrief: string;
+  hotStyleReferencePrompt: string;
   artworkModel: SheinStudioArtworkModel;
   transparentBackground: boolean;
   sheinStoreId: string;
@@ -493,6 +515,9 @@ export function projectWorkbenchStateToSavedBatch({
   productImageCount,
   productImagePrompt,
   productImagePrompts,
+  hotStyleReferenceImageUrls,
+  hotStyleReferenceBrief,
+  hotStyleReferencePrompt,
   artworkModel,
   transparentBackground,
   sheinStoreId,
@@ -522,6 +547,9 @@ export function projectWorkbenchStateToSavedBatch({
     productImageCount,
     productImagePrompt,
     productImagePrompts,
+    hotStyleReferenceImageUrls,
+    hotStyleReferenceBrief,
+    hotStyleReferencePrompt,
     artworkModel,
     transparentBackground,
     sheinStoreId,
@@ -555,6 +583,9 @@ export function projectWorkbenchStateFallback(
     productImageCount: state.productImageCount,
     productImagePrompt: state.productImagePrompt,
     productImagePrompts: state.productImagePrompts,
+    hotStyleReferenceImageUrls: state.hotStyleReferenceImageUrls,
+    hotStyleReferenceBrief: state.hotStyleReferenceBrief,
+    hotStyleReferencePrompt: state.hotStyleReferencePrompt,
     prompt: state.prompt,
     promptMode: state.promptMode,
     renderSizeImagesWithSds: state.renderSizeImagesWithSds,
@@ -627,7 +658,8 @@ export function projectDefaultSelectedSDSImages({
   const nextDefaults = buildDefaultSelectedSDSImages(availableSdsImages, {
     includeSizeReferenceImages: renderSizeImagesWithSds,
   });
-  return JSON.stringify(currentSelectedSdsImages) === JSON.stringify(nextDefaults)
+  return JSON.stringify(currentSelectedSdsImages) ===
+    JSON.stringify(nextDefaults)
     ? null
     : nextDefaults;
 }
@@ -656,7 +688,8 @@ export function evaluateImportedGalleryDesigns(
   selection?: SDSProductVariantSelection,
 ): SDSRatioMatch | null {
   const imported = designs.find(
-    (design) => design.role === "gallery" && design.sourceWidth && design.sourceHeight,
+    (design) =>
+      design.role === "gallery" && design.sourceWidth && design.sourceHeight,
   );
   if (!imported) {
     return null;
@@ -778,7 +811,8 @@ export function mergeSheinStudioDraftState({
 }) {
   const draftDesigns = draft?.designs ?? [];
   const designs =
-    galleryDesign && !draftDesigns.some((design) => design.id === galleryDesign.id)
+    galleryDesign &&
+    !draftDesigns.some((design) => design.id === galleryDesign.id)
       ? [...draftDesigns, galleryDesign]
       : draftDesigns;
   const draftSelectedIds = draft?.selectedIds ?? [];
@@ -799,6 +833,9 @@ export function mergeSheinStudioDraftState({
       draft?.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
     productImagePrompt: draft?.productImagePrompt ?? "",
     productImagePrompts: draft?.productImagePrompts ?? [],
+    hotStyleReferenceImageUrls: draft?.hotStyleReferenceImageUrls ?? [],
+    hotStyleReferenceBrief: draft?.hotStyleReferenceBrief ?? "",
+    hotStyleReferencePrompt: draft?.hotStyleReferencePrompt ?? "",
     artworkModel: draft?.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground: draft?.transparentBackground ?? false,
     sheinStoreId: draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID,

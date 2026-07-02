@@ -42,6 +42,9 @@ export type SheinStudioWorkbenchState = {
   productImageCount: string;
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
+  hotStyleReferenceImageUrls: string[];
+  hotStyleReferenceBrief: string;
+  hotStyleReferencePrompt: string;
   artworkModel: SheinStudioArtworkModel;
   transparentBackground: boolean;
   sheinStoreId: string;
@@ -57,12 +60,10 @@ export type SheinStudioWorkbenchState = {
   generationJobs: SheinStudioGenerationJob[];
   generationError: string;
   generationWarning: string;
-  generationWarningAction:
-    | {
-        intent: "focus_generate" | "warm_baseline" | "open_sds_login";
-        label: string;
-      }
-    | null;
+  generationWarningAction: {
+    intent: "focus_generate" | "warm_baseline" | "open_sds_login";
+    label: string;
+  } | null;
   creatingError: string;
   creatingMessage: string;
   creatingWarning: string;
@@ -89,29 +90,34 @@ export type SheinStudioWorkbenchStateUpdater<
   | SheinStudioWorkbenchState[K]
   | ((current: SheinStudioWorkbenchState[K]) => SheinStudioWorkbenchState[K]);
 
-export type SheinStudioWorkbenchDraftPatch = Partial<Pick<
-  SheinStudioWorkbenchState,
-  | "prompt"
-  | "promptMode"
-  | "selection"
-  | "styleCount"
-  | "variationIntensity"
-  | "productImageCount"
-  | "productImagePrompt"
-  | "productImagePrompts"
-  | "artworkModel"
-  | "transparentBackground"
-  | "sheinStoreId"
-  | "imageStrategy"
-  | "groupedImageMode"
-  | "selectedSdsImages"
-  | "groups"
-  | "activeGroupId"
-  | "groupedSelections"
-  | "renderSizeImagesWithSds"
-  | "persistedUpdatedAt"
-  | "galleryRatioCheck"
->>;
+export type SheinStudioWorkbenchDraftPatch = Partial<
+  Pick<
+    SheinStudioWorkbenchState,
+    | "prompt"
+    | "promptMode"
+    | "selection"
+    | "styleCount"
+    | "variationIntensity"
+    | "productImageCount"
+    | "productImagePrompt"
+    | "productImagePrompts"
+    | "hotStyleReferenceImageUrls"
+    | "hotStyleReferenceBrief"
+    | "hotStyleReferencePrompt"
+    | "artworkModel"
+    | "transparentBackground"
+    | "sheinStoreId"
+    | "imageStrategy"
+    | "groupedImageMode"
+    | "selectedSdsImages"
+    | "groups"
+    | "activeGroupId"
+    | "groupedSelections"
+    | "renderSizeImagesWithSds"
+    | "persistedUpdatedAt"
+    | "galleryRatioCheck"
+  >
+>;
 
 export type SheinStudioWorkbenchController = {
   applyBatch: (batch: SheinStudioSavedBatch) => void;
@@ -159,6 +165,9 @@ export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchSta
     productImageCount: DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
     productImagePrompt: "",
     productImagePrompts: [],
+    hotStyleReferenceImageUrls: [],
+    hotStyleReferenceBrief: "",
+    hotStyleReferencePrompt: "",
     artworkModel: DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground: false,
     sheinStoreId: DEFAULT_SHEIN_STORE_ID,
@@ -215,12 +224,15 @@ export function buildSheinStudioWorkbenchSetters(
   setField: SheinStudioWorkbenchSetField,
 ) {
   return {
-    setArtworkModel: (value: SheinStudioWorkbenchStateUpdater<"artworkModel">) =>
-      setField("artworkModel", value),
-    setCreatedTasks: (value: SheinStudioWorkbenchStateUpdater<"createdTasks">) =>
-      setField("createdTasks", value),
-    setCreatingError: (value: SheinStudioWorkbenchStateUpdater<"creatingError">) =>
-      setField("creatingError", value),
+    setArtworkModel: (
+      value: SheinStudioWorkbenchStateUpdater<"artworkModel">,
+    ) => setField("artworkModel", value),
+    setCreatedTasks: (
+      value: SheinStudioWorkbenchStateUpdater<"createdTasks">,
+    ) => setField("createdTasks", value),
+    setCreatingError: (
+      value: SheinStudioWorkbenchStateUpdater<"creatingError">,
+    ) => setField("creatingError", value),
     setCreatingWarning: (
       value: SheinStudioWorkbenchStateUpdater<"creatingWarning">,
     ) => setField("creatingWarning", value),
@@ -229,8 +241,9 @@ export function buildSheinStudioWorkbenchSetters(
     ) => setField("creatingMessage", value),
     setDesigns: (value: SheinStudioWorkbenchStateUpdater<"designs">) =>
       setField("designs", value),
-    setDraftWarning: (value: SheinStudioWorkbenchStateUpdater<"draftWarning">) =>
-      setField("draftWarning", value),
+    setDraftWarning: (
+      value: SheinStudioWorkbenchStateUpdater<"draftWarning">,
+    ) => setField("draftWarning", value),
     setGalleryRatioCheck: (
       value: SheinStudioWorkbenchStateUpdater<"galleryRatioCheck">,
     ) => setField("galleryRatioCheck", value),
@@ -246,13 +259,15 @@ export function buildSheinStudioWorkbenchSetters(
     setGroupedImageMode: (
       value: SheinStudioWorkbenchStateUpdater<"groupedImageMode">,
     ) => setField("groupedImageMode", value),
-    setImageStrategy: (value: SheinStudioWorkbenchStateUpdater<"imageStrategy">) =>
-      setField("imageStrategy", value),
+    setImageStrategy: (
+      value: SheinStudioWorkbenchStateUpdater<"imageStrategy">,
+    ) => setField("imageStrategy", value),
     setIsCreatingTasks: (
       value: SheinStudioWorkbenchStateUpdater<"isCreatingTasks">,
     ) => setField("isCreatingTasks", value),
-    setIsGenerating: (value: SheinStudioWorkbenchStateUpdater<"isGenerating">) =>
-      setField("isGenerating", value),
+    setIsGenerating: (
+      value: SheinStudioWorkbenchStateUpdater<"isGenerating">,
+    ) => setField("isGenerating", value),
     setIsLoadingWorkspace: (
       value: SheinStudioWorkbenchStateUpdater<"isLoadingWorkspace">,
     ) => setField("isLoadingWorkspace", value),
@@ -265,6 +280,15 @@ export function buildSheinStudioWorkbenchSetters(
     setProductImagePrompts: (
       value: SheinStudioWorkbenchStateUpdater<"productImagePrompts">,
     ) => setField("productImagePrompts", value),
+    setHotStyleReferenceImageUrls: (
+      value: SheinStudioWorkbenchStateUpdater<"hotStyleReferenceImageUrls">,
+    ) => setField("hotStyleReferenceImageUrls", value),
+    setHotStyleReferenceBrief: (
+      value: SheinStudioWorkbenchStateUpdater<"hotStyleReferenceBrief">,
+    ) => setField("hotStyleReferenceBrief", value),
+    setHotStyleReferencePrompt: (
+      value: SheinStudioWorkbenchStateUpdater<"hotStyleReferencePrompt">,
+    ) => setField("hotStyleReferencePrompt", value),
     setPersistedUpdatedAt: (
       value: SheinStudioWorkbenchStateUpdater<"persistedUpdatedAt">,
     ) => setField("persistedUpdatedAt", value),
@@ -278,8 +302,9 @@ export function buildSheinStudioWorkbenchSetters(
       setField("prompt", value),
     setPromptMode: (value: SheinStudioWorkbenchStateUpdater<"promptMode">) =>
       setField("promptMode", value),
-    setQueueMessage: (value: SheinStudioWorkbenchStateUpdater<"queueMessage">) =>
-      setField("queueMessage", value),
+    setQueueMessage: (
+      value: SheinStudioWorkbenchStateUpdater<"queueMessage">,
+    ) => setField("queueMessage", value),
     setQueuedBatchIds: (
       value: SheinStudioWorkbenchStateUpdater<"queuedBatchIds">,
     ) => setField("queuedBatchIds", value),
@@ -292,8 +317,9 @@ export function buildSheinStudioWorkbenchSetters(
     setRenderSizeImagesWithSds: (
       value: SheinStudioWorkbenchStateUpdater<"renderSizeImagesWithSds">,
     ) => setField("renderSizeImagesWithSds", value),
-    setSavedBatches: (value: SheinStudioWorkbenchStateUpdater<"savedBatches">) =>
-      setField("savedBatches", value),
+    setSavedBatches: (
+      value: SheinStudioWorkbenchStateUpdater<"savedBatches">,
+    ) => setField("savedBatches", value),
     setSaveMessage: (value: SheinStudioWorkbenchStateUpdater<"saveMessage">) =>
       setField("saveMessage", value),
     setSelectedIds: (value: SheinStudioWorkbenchStateUpdater<"selectedIds">) =>
@@ -301,8 +327,9 @@ export function buildSheinStudioWorkbenchSetters(
     setSelectedSdsImages: (
       value: SheinStudioWorkbenchStateUpdater<"selectedSdsImages">,
     ) => setField("selectedSdsImages", value),
-    setSheinStoreId: (value: SheinStudioWorkbenchStateUpdater<"sheinStoreId">) =>
-      setField("sheinStoreId", value),
+    setSheinStoreId: (
+      value: SheinStudioWorkbenchStateUpdater<"sheinStoreId">,
+    ) => setField("sheinStoreId", value),
     setStyleCount: (value: SheinStudioWorkbenchStateUpdater<"styleCount">) =>
       setField("styleCount", value),
     setTransparentBackground: (
@@ -380,6 +407,9 @@ const ACTIVE_GROUP_SYNC_FIELDS = new Set<keyof SheinStudioWorkbenchState>([
   "productImageCount",
   "productImagePrompt",
   "productImagePrompts",
+  "hotStyleReferenceImageUrls",
+  "hotStyleReferenceBrief",
+  "hotStyleReferencePrompt",
   "artworkModel",
   "transparentBackground",
   "sheinStoreId",
@@ -405,10 +435,7 @@ function parseWorkbenchTimestamp(value?: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function isOlderWorkbenchTimestamp(
-  candidate?: string,
-  current?: string,
-) {
+function isOlderWorkbenchTimestamp(candidate?: string, current?: string) {
   const candidateTime = parseWorkbenchTimestamp(candidate);
   const currentTime = parseWorkbenchTimestamp(current);
   if (candidateTime == null || currentTime == null) {
@@ -421,9 +448,10 @@ function upsertSavedBatchSnapshot(
   batches: SheinStudioSavedBatch[],
   nextBatch: SheinStudioSavedBatch,
 ) {
-  return [nextBatch, ...batches.filter((batch) => batch.id !== nextBatch.id)].sort(
-    (left, right) => right.updatedAt.localeCompare(left.updatedAt),
-  );
+  return [
+    nextBatch,
+    ...batches.filter((batch) => batch.id !== nextBatch.id),
+  ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
 function syncActiveGroupFromState(
@@ -440,7 +468,9 @@ function syncActiveGroupFromState(
           currentPrompt:
             typeof patch.prompt === "string" ? patch.prompt : state.prompt,
           styleCount:
-            typeof patch.styleCount === "string" ? patch.styleCount : state.styleCount,
+            typeof patch.styleCount === "string"
+              ? patch.styleCount
+              : state.styleCount,
           variationIntensity:
             patch.variationIntensity ?? state.variationIntensity,
           productImageCount:
@@ -453,6 +483,17 @@ function syncActiveGroupFromState(
               : state.productImagePrompt,
           productImagePrompts:
             patch.productImagePrompts ?? state.productImagePrompts,
+          hotStyleReferenceImageUrls:
+            patch.hotStyleReferenceImageUrls ??
+            state.hotStyleReferenceImageUrls,
+          hotStyleReferenceBrief:
+            typeof patch.hotStyleReferenceBrief === "string"
+              ? patch.hotStyleReferenceBrief
+              : state.hotStyleReferenceBrief,
+          hotStyleReferencePrompt:
+            typeof patch.hotStyleReferencePrompt === "string"
+              ? patch.hotStyleReferencePrompt
+              : state.hotStyleReferencePrompt,
           artworkModel: patch.artworkModel ?? state.artworkModel,
           transparentBackground:
             patch.transparentBackground ?? state.transparentBackground,
@@ -461,12 +502,9 @@ function syncActiveGroupFromState(
               ? patch.sheinStoreId
               : state.sheinStoreId,
           imageStrategy: patch.imageStrategy ?? state.imageStrategy,
-          groupedImageMode:
-            patch.groupedImageMode ?? state.groupedImageMode,
-          selectedSdsImages:
-            patch.selectedSdsImages ?? state.selectedSdsImages,
-          groupedSelections:
-            patch.groupedSelections ?? state.groupedSelections,
+          groupedImageMode: patch.groupedImageMode ?? state.groupedImageMode,
+          selectedSdsImages: patch.selectedSdsImages ?? state.selectedSdsImages,
+          groupedSelections: patch.groupedSelections ?? state.groupedSelections,
           renderSizeImagesWithSds:
             patch.renderSizeImagesWithSds ?? state.renderSizeImagesWithSds,
           designs: patch.designs ?? state.designs,
@@ -530,8 +568,9 @@ export function sheinStudioWorkbenchReducer(
               [field]: next,
             } as Partial<SheinStudioWorkbenchState>)
           : state.groups,
-        itemizedBatchDetail:
-          ITEMIZED_OVERRIDE_FIELDS.has(field) ? null : state.itemizedBatchDetail,
+        itemizedBatchDetail: ITEMIZED_OVERRIDE_FIELDS.has(field)
+          ? null
+          : state.itemizedBatchDetail,
         [field]: next,
       };
     }
@@ -542,92 +581,92 @@ export function sheinStudioWorkbenchReducer(
           ...action.draft,
           itemizedBatchDetail: state.itemizedBatchDetail,
           persistedUpdatedAt:
-            "updatedAt" in action.draft && typeof action.draft.updatedAt === "string"
+            "updatedAt" in action.draft &&
+            typeof action.draft.updatedAt === "string"
               ? action.draft.updatedAt
               : state.persistedUpdatedAt,
         },
         action.draft.groups ?? state.groups,
         action.draft.activeGroupId ?? state.activeGroupId,
       );
-    case "apply-batch":
-      {
-        const batchPatch = projectSavedBatchToWorkbench(action.batch);
-        return projectActiveGroupIntoState(
-          {
-            ...state,
-            ...batchPatch,
-          },
-          action.batch.groups ?? state.groups,
-        );
-      }
-    case "apply-hydrated-batch":
-      {
-        if (
-          state.itemizedBatchDetail?.batch.id === action.batch.detail.batch.id &&
-          isOlderWorkbenchTimestamp(
-            action.batch.detail.batch.updatedAt,
-            state.itemizedBatchDetail.batch.updatedAt || state.persistedUpdatedAt,
-          )
-        ) {
-          return state;
-        }
-        const hydratedPatch = projectHydratedBatchToWorkbench(action.batch);
-        const hydratedGroups = action.batch.savedBatch.groups ?? state.groups;
-        const hydratedCompatibilitySnapshot = {
-          ...(action.batch.savedBatch.legacyCompatibilitySnapshot ?? {}),
-          designs: hydratedPatch.designs,
-          selectedIds: hydratedPatch.selectedIds,
-          createdTasks: hydratedPatch.createdTasks,
-          generationJobs: hydratedPatch.generationJobs,
-          generationError: hydratedPatch.generationError,
-          generationJobId:
-            hydratedPatch.generationJobs.length > 0
-              ? (action.batch.savedBatch.generationJobId ??
-                action.batch.savedBatch.legacyCompatibilitySnapshot?.generationJobId)
-              : "",
-        };
-        const hydratedSavedBatch: SheinStudioSavedBatch = {
-          ...action.batch.savedBatch,
-          designs: hydratedPatch.designs,
-          selectedIds: hydratedPatch.selectedIds,
-          createdTasks: hydratedPatch.createdTasks,
-          generationJobs: hydratedPatch.generationJobs,
-          legacyCompatibilitySnapshot: hydratedCompatibilitySnapshot,
-          generationError: hydratedPatch.generationError,
-          generationJobId: hydratedCompatibilitySnapshot.generationJobId,
-          batchStatus: action.batch.detail.batch.status,
-          draftUpdatedAt:
-            action.batch.detail.batch.draftUpdatedAt ??
-            action.batch.savedBatch.draftUpdatedAt ??
-            action.batch.savedBatch.updatedAt,
-          updatedAt: action.batch.savedBatch.updatedAt,
-        };
-        const baseState = {
+    case "apply-batch": {
+      const batchPatch = projectSavedBatchToWorkbench(action.batch);
+      return projectActiveGroupIntoState(
+        {
           ...state,
-          ...hydratedPatch,
-          groups: hydratedGroups,
-          savedBatches: upsertSavedBatchSnapshot(
-            state.savedBatches,
-            hydratedSavedBatch,
-          ),
-        };
-        const syncedGroups = syncActiveGroupFromState(baseState, hydratedPatch);
-        const projected = projectActiveGroupIntoState(
-          {
-            ...baseState,
-            groups: syncedGroups,
-          },
-          syncedGroups,
-        );
-        return {
-          ...projected,
-          itemizedBatchDetail: hydratedPatch.itemizedBatchDetail,
-          designs: hydratedPatch.designs,
-          selectedIds: hydratedPatch.selectedIds,
-          createdTasks: hydratedPatch.createdTasks,
-          persistedUpdatedAt: hydratedPatch.persistedUpdatedAt,
-        };
+          ...batchPatch,
+        },
+        action.batch.groups ?? state.groups,
+      );
+    }
+    case "apply-hydrated-batch": {
+      if (
+        state.itemizedBatchDetail?.batch.id === action.batch.detail.batch.id &&
+        isOlderWorkbenchTimestamp(
+          action.batch.detail.batch.updatedAt,
+          state.itemizedBatchDetail.batch.updatedAt || state.persistedUpdatedAt,
+        )
+      ) {
+        return state;
       }
+      const hydratedPatch = projectHydratedBatchToWorkbench(action.batch);
+      const hydratedGroups = action.batch.savedBatch.groups ?? state.groups;
+      const hydratedCompatibilitySnapshot = {
+        ...(action.batch.savedBatch.legacyCompatibilitySnapshot ?? {}),
+        designs: hydratedPatch.designs,
+        selectedIds: hydratedPatch.selectedIds,
+        createdTasks: hydratedPatch.createdTasks,
+        generationJobs: hydratedPatch.generationJobs,
+        generationError: hydratedPatch.generationError,
+        generationJobId:
+          hydratedPatch.generationJobs.length > 0
+            ? (action.batch.savedBatch.generationJobId ??
+              action.batch.savedBatch.legacyCompatibilitySnapshot
+                ?.generationJobId)
+            : "",
+      };
+      const hydratedSavedBatch: SheinStudioSavedBatch = {
+        ...action.batch.savedBatch,
+        designs: hydratedPatch.designs,
+        selectedIds: hydratedPatch.selectedIds,
+        createdTasks: hydratedPatch.createdTasks,
+        generationJobs: hydratedPatch.generationJobs,
+        legacyCompatibilitySnapshot: hydratedCompatibilitySnapshot,
+        generationError: hydratedPatch.generationError,
+        generationJobId: hydratedCompatibilitySnapshot.generationJobId,
+        batchStatus: action.batch.detail.batch.status,
+        draftUpdatedAt:
+          action.batch.detail.batch.draftUpdatedAt ??
+          action.batch.savedBatch.draftUpdatedAt ??
+          action.batch.savedBatch.updatedAt,
+        updatedAt: action.batch.savedBatch.updatedAt,
+      };
+      const baseState = {
+        ...state,
+        ...hydratedPatch,
+        groups: hydratedGroups,
+        savedBatches: upsertSavedBatchSnapshot(
+          state.savedBatches,
+          hydratedSavedBatch,
+        ),
+      };
+      const syncedGroups = syncActiveGroupFromState(baseState, hydratedPatch);
+      const projected = projectActiveGroupIntoState(
+        {
+          ...baseState,
+          groups: syncedGroups,
+        },
+        syncedGroups,
+      );
+      return {
+        ...projected,
+        itemizedBatchDetail: hydratedPatch.itemizedBatchDetail,
+        designs: hydratedPatch.designs,
+        selectedIds: hydratedPatch.selectedIds,
+        createdTasks: hydratedPatch.createdTasks,
+        persistedUpdatedAt: hydratedPatch.persistedUpdatedAt,
+      };
+    }
     case "select-group":
       return projectActiveGroupIntoState(
         {

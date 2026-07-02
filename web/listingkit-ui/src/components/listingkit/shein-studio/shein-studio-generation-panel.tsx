@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useState, type RefObject } from "react";
 
 import { SheinCreatedTasksList } from "@/components/listingkit/shein-studio/shein-created-tasks-list";
 import {
@@ -37,6 +37,9 @@ export type SheinStudioGenerationFormModel = {
   productImageCount: string;
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
+  hotStyleReferenceImageUrls: string[];
+  hotStyleReferenceBrief: string;
+  hotStyleReferencePrompt: string;
   renderSizeImagesWithSds: boolean;
   transparentBackground: boolean;
   prompt: string;
@@ -83,8 +86,19 @@ export type SheinStudioGenerationActions = {
   onLoadBatch: (batch: SheinStudioSavedBatch) => void;
   onRetryFailedItem?: (itemId: string) => void;
   onSaveBatch: () => void;
+  analyzeReferenceStyle: (input: {
+    basePrompt?: string;
+    referenceImageUrls: string[];
+  }) => Promise<{
+    referenceStyleBrief: string;
+    sanitizedPrompt: string;
+    warnings: string[];
+  }>;
   setImageStrategy: (value: SheinStudioImageStrategy) => void;
   setGroupedImageMode: (value: SheinStudioGroupedImageMode) => void;
+  setHotStyleReferenceImageUrls: (value: string[]) => void;
+  setHotStyleReferenceBrief: (value: string) => void;
+  setHotStyleReferencePrompt: (value: string) => void;
   setSelectedSdsImages: (value: SheinStudioSelectedSDSImage[]) => void;
   setArtworkModel: (value: SheinStudioArtworkModel) => void;
   setProductImageCount: (value: string) => void;
@@ -112,6 +126,9 @@ export function SheinStudioGenerationPanel({
     artworkModel,
     availableSdsImages,
     groupedImageMode,
+    hotStyleReferenceBrief,
+    hotStyleReferenceImageUrls,
+    hotStyleReferencePrompt,
     imageStrategy,
     productImageCount,
     productImagePrompt,
@@ -161,8 +178,12 @@ export function SheinStudioGenerationPanel({
     onRetryFailedItem,
     onRestorePrompt,
     onSaveBatch,
+    analyzeReferenceStyle,
     setArtworkModel,
     setGroupedImageMode,
+    setHotStyleReferenceBrief,
+    setHotStyleReferenceImageUrls,
+    setHotStyleReferencePrompt,
     setImageStrategy,
     setProductImageCount,
     setProductImagePrompt,
@@ -181,13 +202,42 @@ export function SheinStudioGenerationPanel({
   const showRenderSizeImagesWithSdsOption =
     hasSdsSizeReferenceImages && imageStrategy !== "sds_official";
   const showVariationIntensity = parsePositiveInteger(styleCount) > 1;
+  const [isAnalyzingReferenceStyle, setIsAnalyzingReferenceStyle] =
+    useState(false);
+  const handleAnalyzeReferenceStyle = async () => {
+    if (hotStyleReferenceImageUrls.length === 0 || isAnalyzingReferenceStyle) {
+      return;
+    }
+    setIsAnalyzingReferenceStyle(true);
+    try {
+      const result = await analyzeReferenceStyle({
+        referenceImageUrls: hotStyleReferenceImageUrls,
+        basePrompt: prompt,
+      });
+      setHotStyleReferenceBrief(result.referenceStyleBrief);
+      if (result.sanitizedPrompt.trim()) {
+        setHotStyleReferencePrompt(result.sanitizedPrompt);
+      }
+    } catch (error) {
+      console.error(
+        "shein studio reference style analysis failed",
+        error instanceof Error ? error.message : error,
+      );
+      setHotStyleReferenceBrief("热销款风格提取失败，请稍后重试。");
+    } finally {
+      setIsAnalyzingReferenceStyle(false);
+    }
+  };
   const generateActionLabel = isGenerating
     ? isRetryingFailedItems
       ? "重试中..."
       : "生成中..."
     : generateButtonLabel;
   const linkedTasks = [
-    ...createdTasks.map((task) => ({ ...task, outcome: task.outcome ?? "created" })),
+    ...createdTasks.map((task) => ({
+      ...task,
+      outcome: task.outcome ?? "created",
+    })),
     ...reusedTasks.map((task) => ({ ...task, outcome: "reused" as const })),
   ];
 
@@ -227,10 +277,10 @@ export function SheinStudioGenerationPanel({
                 ? "正在重试失败批次"
                 : "正在生成款式图"
               : !selectionReady
-              ? "请先选择商品"
-              : storeRequiredMessage
-                ? "需先设置批次店铺"
-                : "可以生成或创建任务"
+                ? "请先选择商品"
+                : storeRequiredMessage
+                  ? "需先设置批次店铺"
+                  : "可以生成或创建任务"
           }
         />
       </div>
@@ -276,6 +326,11 @@ export function SheinStudioGenerationPanel({
           artworkModel={artworkModel}
           disabled={isGenerating}
           groupedImageMode={groupedImageMode}
+          handleAnalyzeReferenceStyle={handleAnalyzeReferenceStyle}
+          hotStyleReferenceBrief={hotStyleReferenceBrief}
+          hotStyleReferenceImageUrls={hotStyleReferenceImageUrls}
+          hotStyleReferencePrompt={hotStyleReferencePrompt}
+          isAnalyzingReferenceStyle={isAnalyzingReferenceStyle}
           prompt={prompt}
           promptMode={promptMode}
           promptHistory={promptHistory}
@@ -283,6 +338,8 @@ export function SheinStudioGenerationPanel({
           restorePrompt={onRestorePrompt}
           setArtworkModel={setArtworkModel}
           setGroupedImageMode={setGroupedImageMode}
+          setHotStyleReferenceImageUrls={setHotStyleReferenceImageUrls}
+          setHotStyleReferencePrompt={setHotStyleReferencePrompt}
           setPrompt={setPrompt}
           setPromptMode={setPromptMode}
           setStyleCount={setStyleCount}
@@ -335,7 +392,12 @@ export function SheinStudioGenerationPanel({
           >
             {generateActionLabel}
           </Button>
-          <Button className="w-full sm:w-auto" disabled={isGenerating || isCreatingTasks} onClick={onSaveBatch} variant="ghost">
+          <Button
+            className="w-full sm:w-auto"
+            disabled={isGenerating || isCreatingTasks}
+            onClick={onSaveBatch}
+            variant="ghost"
+          >
             保存批次
           </Button>
           <Button
@@ -388,7 +450,9 @@ function FailedBatchItemsPanel({
   retryingItemId,
 }: {
   items: SheinStudioBatchItem[];
-  linkedTasks: Array<SheinStudioCreatedTask & { outcome: "created" | "reused" }>;
+  linkedTasks: Array<
+    SheinStudioCreatedTask & { outcome: "created" | "reused" }
+  >;
   onRetry?: (itemId: string) => void;
   retryingItemId?: string;
 }) {
@@ -404,11 +468,15 @@ function FailedBatchItemsPanel({
       </div>
       <div className="mt-3 space-y-3">
         {items.map((item) => {
-          const itemLabel = item.targetGroupLabel?.trim() || item.targetGroupKey;
+          const itemLabel =
+            item.targetGroupLabel?.trim() || item.targetGroupKey;
           const isRetrying = retryingItemId === item.id;
-          const linkedTask = linkedTasks.find((task) => task.itemId === item.id);
+          const linkedTask = linkedTasks.find(
+            (task) => task.itemId === item.id,
+          );
           const hasLinkedTask = Boolean(linkedTask);
-          const retryDisabled = hasLinkedTask || !onRetry || Boolean(retryingItemId);
+          const retryDisabled =
+            hasLinkedTask || !onRetry || Boolean(retryingItemId);
           const linkedTaskAction =
             linkedTask?.outcome === "reused" ? "已复用" : "已创建";
           return (
@@ -418,7 +486,9 @@ function FailedBatchItemsPanel({
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="space-y-1">
-                  <p className="text-sm font-semibold text-zinc-900">{itemLabel}</p>
+                  <p className="text-sm font-semibold text-zinc-900">
+                    {itemLabel}
+                  </p>
                   <p className="text-xs text-zinc-500">
                     {item.selectionCount} 款商品 · {item.targetGroupKey}
                   </p>
@@ -444,7 +514,11 @@ function FailedBatchItemsPanel({
                   type="button"
                   variant="secondary"
                 >
-                  {hasLinkedTask ? "已有 ListingKit 任务" : isRetrying ? "重试中..." : "重试此项"}
+                  {hasLinkedTask
+                    ? "已有 ListingKit 任务"
+                    : isRetrying
+                      ? "重试中..."
+                      : "重试此项"}
                 </Button>
               </div>
             </div>
@@ -491,13 +565,7 @@ function BatchStatusGroupsSummary({
   );
 }
 
-function ExecutionMetric({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}) {
+function ExecutionMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-2xl border border-white/80 bg-white px-3 py-3 shadow-sm">
       <div className="text-[10px] uppercase tracking-[0.2em] text-zinc-400">

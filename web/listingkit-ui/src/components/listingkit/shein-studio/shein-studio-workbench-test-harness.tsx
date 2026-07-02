@@ -2,6 +2,7 @@ import { vi } from "vitest";
 
 export const useQuery = vi.fn();
 export const generateSheinStudioDesigns = vi.fn();
+export const analyzeSheinStudioReferenceStyle = vi.fn();
 export const createSheinReviewTasks = vi.fn();
 export const getSDSBaselineReadiness = vi.fn();
 export const warmSDSBaselineForSelection = vi.fn();
@@ -32,226 +33,283 @@ vi.mock("@tanstack/react-query", () => ({
   useQuery: (...args: unknown[]) => useQuery(...args),
 }));
 
-vi.mock("@/components/listingkit/shein-studio/shein-studio-progress-strip", () => ({
-  SheinStudioProgressStrip: () => <div>progress strip</div>,
-}));
+vi.mock(
+  "@/components/listingkit/shein-studio/shein-studio-progress-strip",
+  () => ({
+    SheinStudioProgressStrip: () => <div>progress strip</div>,
+  }),
+);
 
-vi.mock("@/components/listingkit/shein-studio/shein-studio-batch-run-progress", () => ({
-  SheinStudioBatchRunProgress: ({
-    onBack,
-    runId,
-  }: {
-    onBack: () => void;
-    runId: string;
-  }) => (
-    <div>
-      <div>batch run progress: {runId}</div>
-      <button onClick={onBack} type="button">
-        back from batch run
-      </button>
-    </div>
-  ),
-}));
-
-vi.mock("@/components/listingkit/shein-studio/shein-created-tasks-list", () => ({
-  SheinCreatedTasksList: ({
-    failedTasks = [],
-    rejectedTasks = [],
-    reusedTasks = [],
-    tasks,
-  }: {
-    failedTasks?: Array<{ message?: string; reasonCode?: string }>;
-    rejectedTasks?: Array<{ message?: string; reasonCode?: string }>;
-    reusedTasks?: Array<{ id: string }>;
-    tasks: Array<{ id: string }>;
-  }) => (
-    <div>
-      <div>created tasks: {tasks.length}</div>
-      <div>reused tasks: {reusedTasks.length}</div>
-      <div>rejected tasks: {rejectedTasks.length}</div>
-      <div>failed tasks: {failedTasks.length}</div>
-      {rejectedTasks.map((task) => (
-        <div key={task.reasonCode ?? task.message}>
-          rejected reason: {task.reasonCode} {task.message}
-        </div>
-      ))}
-      {failedTasks.map((task) => (
-        <div key={task.reasonCode ?? task.message}>
-          failed reason: {task.reasonCode} {task.message}
-        </div>
-      ))}
-    </div>
-  ),
-}));
-
-vi.mock("@/components/listingkit/shein-studio/shein-design-preview-grid", () => ({
-  SheinDesignPreviewGrid: ({
-    designs,
-    selectedIds,
-    onToggle,
-    onNoteChange,
-    onCreateReviewTasks,
-  }: {
-    designs: Array<{ id: string }>;
-    selectedIds?: string[];
-    onToggle?: (designId: string) => void;
-    onNoteChange?: (designId: string, note: string) => void;
-    onCreateReviewTasks?: () => void;
-  }) => (
-    <div>
-      <div>review grid: {designs.length}</div>
-      <div>approved styles: {Array.isArray(selectedIds) ? selectedIds.length : 0}</div>
-      {designs.map((design) => (
-        <div key={design.id}>
-          {onToggle ? (
-            <button onClick={() => onToggle(design.id)} type="button">
-              toggle-{design.id}
-            </button>
-          ) : null}
-          {onNoteChange ? (
-            <button
-              onClick={() => onNoteChange(design.id, `note-${design.id}`)}
-              type="button"
-            >
-              note-{design.id}
-            </button>
-          ) : null}
-        </div>
-      ))}
-      {onCreateReviewTasks ? (
-        <button onClick={onCreateReviewTasks} type="button">
-          create review tasks
+vi.mock(
+  "@/components/listingkit/shein-studio/shein-studio-batch-run-progress",
+  () => ({
+    SheinStudioBatchRunProgress: ({
+      onBack,
+      runId,
+    }: {
+      onBack: () => void;
+      runId: string;
+    }) => (
+      <div>
+        <div>batch run progress: {runId}</div>
+        <button onClick={onBack} type="button">
+          back from batch run
         </button>
-      ) : null}
-    </div>
-  ),
-}));
+      </div>
+    ),
+  }),
+);
 
-vi.mock("@/components/listingkit/shein-studio/shein-studio-generation-panel", () => ({
-  SheinStudioGenerationPanel: (props: {
-    actions: {
-      onCreateTasks?: () => void;
-      onGenerate: () => void;
-      onRetryFailedItem?: (itemId: string) => void;
-      onRestorePrompt?: (value: string) => void;
-      setPrompt: (value: string) => void;
-    };
-    form: {
-      groupedImageMode?: string;
-      prompt: string;
-      promptHistory?: Array<{ prompt: string; createdAt: string }>;
-      selectedSdsImages?: Array<{
-        color?: string;
-        imageUrl: string;
-        variantSku?: string;
-      }>;
-    };
-    status: {
-      failedBatchItems?: Array<{
-        id: string;
-        lastError?: string;
-        targetGroupLabel?: string;
-        targetGroupKey: string;
-      }>;
-      generateButtonLabel?: string;
-      generationNotice?: string;
-      generationError?: string;
-      isGenerating?: boolean;
-      isRetryingFailedItems?: boolean;
-      retryingFailedItemId?: string;
-      showSavedBatches?: boolean;
-      subscriptionBlockedMessage?: string;
-      storeRequiredMessage?: string;
-    };
-  }) => {
-    const flatProps = {
-      ...props.form,
-      ...props.status,
-      ...props.actions,
-    };
-    lastGenerationPanelProps = flatProps as Record<string, unknown>;
-    const actionLabel =
-      flatProps.generateButtonLabel === "重试失败批次"
-        ? "重试失败批次"
-        : "generate styles";
-    return (
-      <div id="shein-studio-generator">
-        <label htmlFor="prompt">prompt</label>
-        <input
-          id="prompt"
-          onChange={(event) => flatProps.setPrompt(event.target.value)}
-          value={flatProps.prompt}
-        />
-        <button disabled={flatProps.isGenerating} onClick={flatProps.onGenerate} type="button">
-          {actionLabel}
-        </button>
-        {flatProps.onCreateTasks ? (
-          <button onClick={flatProps.onCreateTasks} type="button">
-            create tasks from panel
-          </button>
-        ) : null}
-        {(flatProps.promptHistory ?? []).map((entry) => (
-          <button
-            key={entry.createdAt}
-            onClick={() => flatProps.onRestorePrompt?.(entry.prompt)}
-            type="button"
-          >
-            restore-{entry.prompt}
-          </button>
+vi.mock(
+  "@/components/listingkit/shein-studio/shein-created-tasks-list",
+  () => ({
+    SheinCreatedTasksList: ({
+      failedTasks = [],
+      rejectedTasks = [],
+      reusedTasks = [],
+      tasks,
+    }: {
+      failedTasks?: Array<{ message?: string; reasonCode?: string }>;
+      rejectedTasks?: Array<{ message?: string; reasonCode?: string }>;
+      reusedTasks?: Array<{ id: string }>;
+      tasks: Array<{ id: string }>;
+    }) => (
+      <div>
+        <div>created tasks: {tasks.length}</div>
+        <div>reused tasks: {reusedTasks.length}</div>
+        <div>rejected tasks: {rejectedTasks.length}</div>
+        <div>failed tasks: {failedTasks.length}</div>
+        {rejectedTasks.map((task) => (
+          <div key={task.reasonCode ?? task.message}>
+            rejected reason: {task.reasonCode} {task.message}
+          </div>
         ))}
+        {failedTasks.map((task) => (
+          <div key={task.reasonCode ?? task.message}>
+            failed reason: {task.reasonCode} {task.message}
+          </div>
+        ))}
+      </div>
+    ),
+  }),
+);
+
+vi.mock(
+  "@/components/listingkit/shein-studio/shein-design-preview-grid",
+  () => ({
+    SheinDesignPreviewGrid: ({
+      designs,
+      selectedIds,
+      onToggle,
+      onNoteChange,
+      onCreateReviewTasks,
+    }: {
+      designs: Array<{ id: string }>;
+      selectedIds?: string[];
+      onToggle?: (designId: string) => void;
+      onNoteChange?: (designId: string, note: string) => void;
+      onCreateReviewTasks?: () => void;
+    }) => (
+      <div>
+        <div>review grid: {designs.length}</div>
         <div>
-          selected SDS images:{" "}
-          {Array.isArray(flatProps.selectedSdsImages) ? flatProps.selectedSdsImages.length : 0}
+          approved styles: {Array.isArray(selectedIds) ? selectedIds.length : 0}
         </div>
-        <div>saved batches visible: {flatProps.showSavedBatches === false ? "no" : "yes"}</div>
-        {flatProps.subscriptionBlockedMessage ? (
-          <div>{flatProps.subscriptionBlockedMessage}</div>
-        ) : null}
-        {flatProps.storeRequiredMessage ? <div>{flatProps.storeRequiredMessage}</div> : null}
-        {flatProps.generationNotice ? <div>{flatProps.generationNotice}</div> : null}
-        {flatProps.generationError ? <div>{flatProps.generationError}</div> : null}
-        {(flatProps.failedBatchItems ?? []).map((item) => (
-          <div key={item.id}>
-            <span>{item.targetGroupLabel ?? item.targetGroupKey}</span>
-            {item.lastError ? <span>{item.lastError}</span> : null}
-            {flatProps.onRetryFailedItem ? (
+        {designs.map((design) => (
+          <div key={design.id}>
+            {onToggle ? (
+              <button onClick={() => onToggle(design.id)} type="button">
+                toggle-{design.id}
+              </button>
+            ) : null}
+            {onNoteChange ? (
               <button
-                disabled={Boolean(flatProps.retryingFailedItemId)}
-                onClick={() => flatProps.onRetryFailedItem?.(item.id)}
+                onClick={() => onNoteChange(design.id, `note-${design.id}`)}
                 type="button"
               >
-                retry-item-{item.id}
+                note-{design.id}
               </button>
             ) : null}
           </div>
         ))}
-        {flatProps.retryingFailedItemId ? <div>retrying-item: {flatProps.retryingFailedItemId}</div> : null}
+        {onCreateReviewTasks ? (
+          <button onClick={onCreateReviewTasks} type="button">
+            create review tasks
+          </button>
+        ) : null}
       </div>
-    );
-  },
-}));
+    ),
+  }),
+);
+
+vi.mock(
+  "@/components/listingkit/shein-studio/shein-studio-generation-panel",
+  () => ({
+    SheinStudioGenerationPanel: (props: {
+      actions: {
+        onCreateTasks?: () => void;
+        onGenerate: () => void;
+        onRetryFailedItem?: (itemId: string) => void;
+        onRestorePrompt?: (value: string) => void;
+        onSaveBatch?: () => void;
+        analyzeReferenceStyle?: (input: {
+          basePrompt?: string;
+          referenceImageUrls: string[];
+        }) => Promise<unknown>;
+        setPrompt: (value: string) => void;
+        setHotStyleReferenceBrief?: (value: string) => void;
+        setHotStyleReferenceImageUrls?: (value: string[]) => void;
+        setHotStyleReferencePrompt?: (value: string) => void;
+      };
+      form: {
+        groupedImageMode?: string;
+        hotStyleReferenceBrief?: string;
+        hotStyleReferenceImageUrls?: string[];
+        hotStyleReferencePrompt?: string;
+        prompt: string;
+        promptHistory?: Array<{ prompt: string; createdAt: string }>;
+        selectedSdsImages?: Array<{
+          color?: string;
+          imageUrl: string;
+          variantSku?: string;
+        }>;
+      };
+      status: {
+        failedBatchItems?: Array<{
+          id: string;
+          lastError?: string;
+          targetGroupLabel?: string;
+          targetGroupKey: string;
+        }>;
+        generateButtonLabel?: string;
+        generationNotice?: string;
+        generationError?: string;
+        isGenerating?: boolean;
+        isRetryingFailedItems?: boolean;
+        retryingFailedItemId?: string;
+        showSavedBatches?: boolean;
+        subscriptionBlockedMessage?: string;
+        storeRequiredMessage?: string;
+      };
+    }) => {
+      const flatProps = {
+        ...props.form,
+        ...props.status,
+        ...props.actions,
+      };
+      lastGenerationPanelProps = flatProps as Record<string, unknown>;
+      const actionLabel =
+        flatProps.generateButtonLabel === "重试失败批次"
+          ? "重试失败批次"
+          : "generate styles";
+      return (
+        <div id="shein-studio-generator">
+          <label htmlFor="prompt">prompt</label>
+          <input
+            id="prompt"
+            onChange={(event) => flatProps.setPrompt(event.target.value)}
+            value={flatProps.prompt}
+          />
+          <button
+            disabled={flatProps.isGenerating}
+            onClick={flatProps.onGenerate}
+            type="button"
+          >
+            {actionLabel}
+          </button>
+          {flatProps.onSaveBatch ? (
+            <button onClick={flatProps.onSaveBatch} type="button">
+              save batch
+            </button>
+          ) : null}
+          {flatProps.onCreateTasks ? (
+            <button onClick={flatProps.onCreateTasks} type="button">
+              create tasks from panel
+            </button>
+          ) : null}
+          {(flatProps.promptHistory ?? []).map((entry) => (
+            <button
+              key={entry.createdAt}
+              onClick={() => flatProps.onRestorePrompt?.(entry.prompt)}
+              type="button"
+            >
+              restore-{entry.prompt}
+            </button>
+          ))}
+          <div>
+            selected SDS images:{" "}
+            {Array.isArray(flatProps.selectedSdsImages)
+              ? flatProps.selectedSdsImages.length
+              : 0}
+          </div>
+          <div>
+            saved batches visible:{" "}
+            {flatProps.showSavedBatches === false ? "no" : "yes"}
+          </div>
+          {flatProps.subscriptionBlockedMessage ? (
+            <div>{flatProps.subscriptionBlockedMessage}</div>
+          ) : null}
+          {flatProps.storeRequiredMessage ? (
+            <div>{flatProps.storeRequiredMessage}</div>
+          ) : null}
+          {flatProps.generationNotice ? (
+            <div>{flatProps.generationNotice}</div>
+          ) : null}
+          {flatProps.generationError ? (
+            <div>{flatProps.generationError}</div>
+          ) : null}
+          {(flatProps.failedBatchItems ?? []).map((item) => (
+            <div key={item.id}>
+              <span>{item.targetGroupLabel ?? item.targetGroupKey}</span>
+              {item.lastError ? <span>{item.lastError}</span> : null}
+              {flatProps.onRetryFailedItem ? (
+                <button
+                  disabled={Boolean(flatProps.retryingFailedItemId)}
+                  onClick={() => flatProps.onRetryFailedItem?.(item.id)}
+                  type="button"
+                >
+                  retry-item-{item.id}
+                </button>
+              ) : null}
+            </div>
+          ))}
+          {flatProps.retryingFailedItemId ? (
+            <div>retrying-item: {flatProps.retryingFailedItemId}</div>
+          ) : null}
+        </div>
+      );
+    },
+  }),
+);
 
 vi.mock("@/lib/api/shein-studio", () => ({
-  generateSheinStudioDesigns: (...args: unknown[]) => generateSheinStudioDesigns(...args),
+  analyzeSheinStudioReferenceStyle: (...args: unknown[]) =>
+    analyzeSheinStudioReferenceStyle(...args),
+  generateSheinStudioDesigns: (...args: unknown[]) =>
+    generateSheinStudioDesigns(...args),
 }));
 
 vi.mock("@/lib/shein-studio/create-review-tasks", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/shein-studio/create-review-tasks")>(
-    "@/lib/shein-studio/create-review-tasks",
-  );
+  const actual = await vi.importActual<
+    typeof import("@/lib/shein-studio/create-review-tasks")
+  >("@/lib/shein-studio/create-review-tasks");
   return {
     ...actual,
-    createSheinReviewTasks: (...args: unknown[]) => createSheinReviewTasks(...args),
+    createSheinReviewTasks: (...args: unknown[]) =>
+      createSheinReviewTasks(...args),
   };
 });
 
 vi.mock("@/lib/shein-studio/hydrate-sds-selection", () => ({
-  hydrateSDSVariantSelection: (...args: unknown[]) => hydrateSDSVariantSelection(...args),
+  hydrateSDSVariantSelection: (...args: unknown[]) =>
+    hydrateSDSVariantSelection(...args),
 }));
 
 vi.mock("@/lib/api/sds-baseline", () => ({
-  getSDSBaselineReadiness: (...args: unknown[]) => getSDSBaselineReadiness(...args),
-  warmSDSBaselineForSelection: (...args: unknown[]) => warmSDSBaselineForSelection(...args),
+  getSDSBaselineReadiness: (...args: unknown[]) =>
+    getSDSBaselineReadiness(...args),
+  warmSDSBaselineForSelection: (...args: unknown[]) =>
+    warmSDSBaselineForSelection(...args),
 }));
 
 vi.mock("@/lib/api/shein-studio-batches", () => ({
@@ -266,15 +324,18 @@ vi.mock("@/lib/api/shein-studio-batches", () => ({
 }));
 
 vi.mock("@/lib/api/shein-studio-batch-runs", () => ({
-  startSheinStudioBatchRun: (...args: unknown[]) => startSheinStudioBatchRun(...args),
+  startSheinStudioBatchRun: (...args: unknown[]) =>
+    startSheinStudioBatchRun(...args),
 }));
 
 vi.mock("@/lib/utils/shein-studio-batches", () => ({
-  deleteSheinStudioBatch: (...args: unknown[]) => deleteSheinStudioBatch(...args),
+  deleteSheinStudioBatch: (...args: unknown[]) =>
+    deleteSheinStudioBatch(...args),
   getSheinStudioBatch: (...args: unknown[]) => getSheinStudioBatch(...args),
   getSheinStudioHydratedBatch: (...args: unknown[]) =>
     getSheinStudioHydratedBatch(...args),
-  listSheinStudioBatches: (...args: unknown[]) => listSheinStudioBatches(...args),
+  listSheinStudioBatches: (...args: unknown[]) =>
+    listSheinStudioBatches(...args),
   loadSheinStudioDraft: (...args: unknown[]) => loadSheinStudioDraft(...args),
   saveSheinStudioBatch: (...args: unknown[]) => saveSheinStudioBatch(...args),
   saveSheinStudioDraftWithOptions: (...args: unknown[]) =>
@@ -407,6 +468,9 @@ export function buildDraft(overrides: Record<string, unknown> = {}) {
     productImageCount: "5",
     productImagePrompt: "",
     productImagePrompts: [],
+    hotStyleReferenceImageUrls: [],
+    hotStyleReferenceBrief: "",
+    hotStyleReferencePrompt: "",
     artworkModel: "nanobanana",
     transparentBackground: false,
     sheinStoreId: "1",
@@ -432,7 +496,6 @@ export function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
-
 export function resetSheinStudioWorkbenchHarness(
   resetDedicatedBatchPromptOverrides: () => void,
 ) {
@@ -441,6 +504,7 @@ export function resetSheinStudioWorkbenchHarness(
   resetDedicatedBatchPromptOverrides();
   lastGenerationPanelProps = null;
   useQuery.mockReturnValue({ data: undefined, error: null });
+  analyzeSheinStudioReferenceStyle.mockReset();
   generateSheinStudioDesigns.mockReset();
   createSheinReviewTasks.mockReset();
   getSDSBaselineReadiness.mockReset();

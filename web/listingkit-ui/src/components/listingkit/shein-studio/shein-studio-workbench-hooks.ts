@@ -94,6 +94,9 @@ type WorkbenchDraftState = {
   productImageCount: string;
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
+  hotStyleReferenceImageUrls: string[];
+  hotStyleReferenceBrief: string;
+  hotStyleReferencePrompt: string;
   prompt: string;
   promptMode: "managed" | "raw";
   regeneratingId: string;
@@ -157,7 +160,8 @@ export function useSheinStudioWorkbenchTraceContext({
   queuedBatchIds: string[];
   queuedBatchIndex: number;
 }) {
-  const traceBatchId = currentQueuedBatchId || activeBatchId || initialBatchId || "";
+  const traceBatchId =
+    currentQueuedBatchId || activeBatchId || initialBatchId || "";
   return useMemo(
     () =>
       projectWorkbenchTraceContext({
@@ -427,7 +431,7 @@ export function useHydratedSDSVariantSelection(
   }, [selection, selectionKey]);
 
   return hydratedSelection?.key === selectionKey
-    ? hydratedSelection.selection ?? selection
+    ? (hydratedSelection.selection ?? selection)
     : selection;
 }
 
@@ -459,7 +463,9 @@ export function useSheinStudioStepNavigation(activeStep: SheinStudioStepKey) {
     (step: SheinStudioStepKey) => {
       setEffectiveStep(step);
       try {
-        replaceBrowserHistory(buildSheinStudioStepHref(pathname, searchParams, step));
+        replaceBrowserHistory(
+          buildSheinStudioStepHref(pathname, searchParams, step),
+        );
       } catch (error) {
         console.warn(
           "shein studio step navigation failed",
@@ -501,6 +507,9 @@ export function useSheinStudioDraftPersistence(
         productImageCount: state.productImageCount,
         productImagePrompt: state.productImagePrompt,
         productImagePrompts: state.productImagePrompts,
+        hotStyleReferenceImageUrls: state.hotStyleReferenceImageUrls,
+        hotStyleReferenceBrief: state.hotStyleReferenceBrief,
+        hotStyleReferencePrompt: state.hotStyleReferencePrompt,
         artworkModel: state.artworkModel,
         transparentBackground: state.transparentBackground,
         sheinStoreId: state.sheinStoreId,
@@ -608,8 +617,7 @@ export function useSheinStudioPendingNavigationGuard({
         return;
       }
 
-      const target =
-        event.target instanceof Element ? event.target : null;
+      const target = event.target instanceof Element ? event.target : null;
       const anchor = target?.closest("a[href]") as HTMLAnchorElement | null;
       if (!anchor) {
         return;

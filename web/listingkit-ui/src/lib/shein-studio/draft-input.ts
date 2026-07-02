@@ -26,6 +26,9 @@ type BuildSheinStudioDraftInputArgs = {
   productImageCount: string;
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
+  hotStyleReferenceImageUrls?: string[];
+  hotStyleReferenceBrief?: string;
+  hotStyleReferencePrompt?: string;
   artworkModel: SheinStudioArtworkModel;
   transparentBackground: boolean;
   sheinStoreId: string;
@@ -81,6 +84,9 @@ function toPersistedGroupedWorkspace(
     productImageCount: group.productImageCount,
     productImagePrompt: group.productImagePrompt,
     productImagePrompts: group.productImagePrompts,
+    hotStyleReferenceImageUrls: group.hotStyleReferenceImageUrls,
+    hotStyleReferenceBrief: group.hotStyleReferenceBrief,
+    hotStyleReferencePrompt: group.hotStyleReferencePrompt,
     artworkModel: group.artworkModel,
     transparentBackground: group.transparentBackground,
     variationIntensity: group.variationIntensity,
@@ -156,6 +162,9 @@ export function buildSheinStudioDraftInput(
     productImageCount: args.productImageCount,
     productImagePrompt: args.productImagePrompt,
     productImagePrompts: args.productImagePrompts,
+    hotStyleReferenceImageUrls: args.hotStyleReferenceImageUrls ?? [],
+    hotStyleReferenceBrief: args.hotStyleReferenceBrief ?? "",
+    hotStyleReferencePrompt: args.hotStyleReferencePrompt ?? "",
     artworkModel: args.artworkModel,
     transparentBackground: args.transparentBackground,
     sheinStoreId: args.sheinStoreId,

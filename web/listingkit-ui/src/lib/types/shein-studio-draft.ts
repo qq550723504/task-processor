@@ -10,9 +10,7 @@ import type {
 import type { SheinStudioCreatedTask } from "@/lib/types/shein-studio-task";
 
 export type SheinStudioImageStrategy =
-  | "ai_generated"
-  | "sds_official"
-  | "hybrid";
+  "ai_generated" | "sds_official" | "hybrid";
 
 export type SheinStudioGroupedImageMode = "shared_by_size" | "per_product";
 export type SheinStudioBatchQueueMode = "generate" | "create_tasks";
@@ -67,6 +65,9 @@ export type SheinStudioGroupedWorkspace = {
   productImageCount?: string;
   productImagePrompt?: string;
   productImagePrompts?: SheinStudioProductImagePrompt[];
+  hotStyleReferenceImageUrls?: string[];
+  hotStyleReferenceBrief?: string;
+  hotStyleReferencePrompt?: string;
   artworkModel?: SheinStudioArtworkModel;
   transparentBackground?: boolean;
   variationIntensity?: SheinStudioVariationIntensity;

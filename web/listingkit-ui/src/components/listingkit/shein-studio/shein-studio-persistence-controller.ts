@@ -68,6 +68,9 @@ type DraftPersistenceProjectionParams = {
   groups: SheinStudioGroupedWorkspace[];
   groupedImageMode: SheinStudioGroupedImageMode;
   groupedSelections: GroupedSDSSelectionEligibility[];
+  hotStyleReferenceBrief: string;
+  hotStyleReferenceImageUrls: string[];
+  hotStyleReferencePrompt: string;
   imageStrategy: SheinStudioImageStrategy;
   isCreatingTasks: boolean;
   isGenerating: boolean;
@@ -103,6 +106,9 @@ export function buildSheinStudioDraftPersistenceState({
   groups,
   groupedImageMode,
   groupedSelections,
+  hotStyleReferenceBrief,
+  hotStyleReferenceImageUrls,
+  hotStyleReferencePrompt,
   imageStrategy,
   isCreatingTasks,
   isGenerating,
@@ -135,6 +141,9 @@ export function buildSheinStudioDraftPersistenceState({
     groups,
     groupedImageMode,
     groupedSelections,
+    hotStyleReferenceBrief,
+    hotStyleReferenceImageUrls,
+    hotStyleReferencePrompt,
     imageStrategy,
     isCreatingTasks,
     isGenerating,

@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 
@@ -110,18 +117,15 @@ import {
   buildSheinStudioWorkbenchSetters,
   sheinStudioWorkbenchReducer,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
-import {
-  buildSelectableSDSImages,
-} from "@/lib/shein-studio/sds-selectable-images";
-import {
-  type SheinStudioBatchQueueResumeState,
-} from "@/lib/shein-studio/batch-queue";
+import { buildSelectableSDSImages } from "@/lib/shein-studio/sds-selectable-images";
+import { type SheinStudioBatchQueueResumeState } from "@/lib/shein-studio/batch-queue";
 import {
   clearListingKitTraceContext,
   writeListingKitTraceContext,
 } from "@/lib/listingkit/request-trace";
 import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
 import { warmSDSBaselineForSelection } from "@/lib/api/sds-baseline";
+import { analyzeSheinStudioReferenceStyle } from "@/lib/api/shein-studio";
 import { startSheinStudioBatchRun } from "@/lib/api/shein-studio-batch-runs";
 import { getCurrentSubscription } from "@/lib/api/subscription";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
@@ -197,6 +201,9 @@ export function SheinStudioWorkbench({
     generationWarningAction,
     groups,
     groupedImageMode,
+    hotStyleReferenceBrief,
+    hotStyleReferenceImageUrls,
+    hotStyleReferencePrompt,
     imageStrategy,
     isCreatingTasks,
     isGenerating,
@@ -232,6 +239,9 @@ export function SheinStudioWorkbench({
     setDesigns,
     setDraftWarning,
     setGroupedImageMode,
+    setHotStyleReferenceBrief,
+    setHotStyleReferenceImageUrls,
+    setHotStyleReferencePrompt,
     setImageStrategy,
     setGroupedSelections,
     setPersistedUpdatedAt,
@@ -256,26 +266,28 @@ export function SheinStudioWorkbench({
   const promptInputRef = useRef<HTMLTextAreaElement>(null);
   const directSelection = useHydratedSDSVariantSelection(selection);
   const loadedBatchSelection = useHydratedSDSVariantSelection(loadedSelection);
-  const activeGroupPrimarySelection = useSheinStudioActiveGroupPrimarySelection({
-    activeGroupId,
-    groups,
-  });
+  const activeGroupPrimarySelection = useSheinStudioActiveGroupPrimarySelection(
+    {
+      activeGroupId,
+      groups,
+    },
+  );
   const activeGroupSelection = useHydratedSDSVariantSelection(
     activeGroupPrimarySelection,
   );
   const activeSelection =
     directSelection ?? activeGroupSelection ?? loadedBatchSelection;
   const [retryingFailedItemId, setRetryingFailedItemId] = useState("");
-  const [rawSelectedRecentBatchSummaryIds, setRawSelectedRecentBatchSummaryIds] = useState<
-    string[]
-  >([]);
+  const [
+    rawSelectedRecentBatchSummaryIds,
+    setRawSelectedRecentBatchSummaryIds,
+  ] = useState<string[]>([]);
   const [queueResumeState, setQueueResumeState] =
     useState<SheinStudioBatchQueueResumeState | null>(null);
   const [activeBatchRunId, setActiveBatchRunId] = useState("");
   const [batchRunError, setBatchRunError] = useState("");
-  const [selectedRecentBatchHydrations, setSelectedRecentBatchHydrations] = useState<
-    Record<string, SheinStudioWorkbenchHydratedBatch>
-  >({});
+  const [selectedRecentBatchHydrations, setSelectedRecentBatchHydrations] =
+    useState<Record<string, SheinStudioWorkbenchHydratedBatch>>({});
   const selectedRecentBatchHydrationRequestsRef = useRef(
     new Map<string, Promise<SheinStudioWorkbenchHydratedBatch | null>>(),
   );
@@ -298,12 +310,8 @@ export function SheinStudioWorkbench({
     queryKey: ["listingkit-subscription"],
     queryFn: getCurrentSubscription,
   });
-  const {
-    activeStepRef,
-    effectiveStep,
-    navigateToStep,
-    setEffectiveStep,
-  } = useSheinStudioStepNavigation(activeStep);
+  const { activeStepRef, effectiveStep, navigateToStep, setEffectiveStep } =
+    useSheinStudioStepNavigation(activeStep);
   const {
     activeSelectionKey,
     printableAreaLabel,
@@ -326,8 +334,9 @@ export function SheinStudioWorkbench({
       }),
     [activeGroupedSelectionID, activeSelection?.variantId, baselineStatuses],
   );
-  const { subscriptionBlockedMessage } =
-    useSheinStudioSubscriptionGate(subscriptionQuery.data);
+  const { subscriptionBlockedMessage } = useSheinStudioSubscriptionGate(
+    subscriptionQuery.data,
+  );
   const {
     currentStoreLabel,
     effectiveCurrentStoreId,
@@ -390,7 +399,8 @@ export function SheinStudioWorkbench({
       const hydratedEntries = await resolveRecentBatchHydrationEntries({
         batchIds,
         loadHydratedBatch: getSheinStudioHydratedBatch,
-        pendingHydrationRequests: selectedRecentBatchHydrationRequestsRef.current,
+        pendingHydrationRequests:
+          selectedRecentBatchHydrationRequestsRef.current,
         savedBatches,
         selectedRecentBatchHydrations,
       });
@@ -412,49 +422,55 @@ export function SheinStudioWorkbench({
       return;
     }
 
-    void hydrateRecentBatchSelection(selectedPersistedRecentBatchIds).then(() => {
-      if (cancelled) {
-        return;
-      }
-    });
+    void hydrateRecentBatchSelection(selectedPersistedRecentBatchIds).then(
+      () => {
+        if (cancelled) {
+          return;
+        }
+      },
+    );
 
     return () => {
       cancelled = true;
     };
   }, [hydrateRecentBatchSelection, selectedPersistedRecentBatchIds]);
   const draftPersistenceState = useMemo(
-    () => buildSheinStudioDraftPersistenceState({
-      activeSelection,
-      artworkModel,
-      createdTasks,
-      currentGenerationJobId: currentActiveBatch?.generationJobId,
-      designs,
-      generationError,
-      generationJobs,
-      groups,
-      groupedImageMode,
-      groupedSelections,
-      imageStrategy,
-      isCreatingTasks,
-      isGenerating,
-      isLoadingWorkspace,
-      persistedUpdatedAt,
-      productImageCount,
-      productImagePrompt,
-      productImagePrompts,
-      prompt,
-      promptMode,
-      regeneratingId,
-      renderSizeImagesWithSds,
-      selectedIds,
-      selectedSdsImages,
-      setDraftWarning,
-      setPersistedUpdatedAt,
-      sheinStoreId,
-      styleCount,
-      transparentBackground,
-      variationIntensity,
-    }),
+    () =>
+      buildSheinStudioDraftPersistenceState({
+        activeSelection,
+        artworkModel,
+        createdTasks,
+        currentGenerationJobId: currentActiveBatch?.generationJobId,
+        designs,
+        generationError,
+        generationJobs,
+        groups,
+        groupedImageMode,
+        groupedSelections,
+        hotStyleReferenceBrief,
+        hotStyleReferenceImageUrls,
+        hotStyleReferencePrompt,
+        imageStrategy,
+        isCreatingTasks,
+        isGenerating,
+        isLoadingWorkspace,
+        persistedUpdatedAt,
+        productImageCount,
+        productImagePrompt,
+        productImagePrompts,
+        prompt,
+        promptMode,
+        regeneratingId,
+        renderSizeImagesWithSds,
+        selectedIds,
+        selectedSdsImages,
+        setDraftWarning,
+        setPersistedUpdatedAt,
+        sheinStoreId,
+        styleCount,
+        transparentBackground,
+        variationIntensity,
+      }),
     [
       activeSelection,
       artworkModel,
@@ -465,6 +481,9 @@ export function SheinStudioWorkbench({
       generationJobs,
       groups,
       groupedImageMode,
+      hotStyleReferenceBrief,
+      hotStyleReferenceImageUrls,
+      hotStyleReferencePrompt,
       imageStrategy,
       isCreatingTasks,
       isGenerating,
@@ -575,6 +594,15 @@ export function SheinStudioWorkbench({
     },
     [saveDedicatedBatchDraftSnapshot, setPrompt],
   );
+  const analyzeReferenceStyle = useCallback(
+    (input: { referenceImageUrls: string[]; basePrompt?: string }) =>
+      analyzeSheinStudioReferenceStyle({
+        referenceImageUrls: input.referenceImageUrls,
+        basePrompt: input.basePrompt,
+        productName: activeSelection?.productName,
+      }),
+    [activeSelection?.productName],
+  );
 
   useEffect(() => {
     hasLocalWorkflowStateRef.current = false;
@@ -669,9 +697,12 @@ export function SheinStudioWorkbench({
     writeListingKitTraceContext(batchTraceContext);
   }, [batchTraceContext]);
 
-  useEffect(() => () => {
-    clearListingKitTraceContext();
-  }, []);
+  useEffect(
+    () => () => {
+      clearListingKitTraceContext();
+    },
+    [],
+  );
 
   const { handleCreateTasks, handleGenerate, handleRegenerate } =
     useSheinStudioDesignActions({
@@ -713,17 +744,16 @@ export function SheinStudioWorkbench({
     handleLoadBatch,
     handleLoadHydratedBatch,
     handleSaveBatch,
-  } =
-    useSheinStudioBatchActions({
-      activeBatchId,
-      activeStep,
-      buildDraftInput: buildResultBackedDraftInput,
-      hasCustomizedSdsSelectionRef,
-      hasLocalWorkflowStateRef,
-      setActiveBatchId,
-      setEffectiveStep,
-      workbench: workbenchController,
-    });
+  } = useSheinStudioBatchActions({
+    activeBatchId,
+    activeStep,
+    buildDraftInput: buildResultBackedDraftInput,
+    hasCustomizedSdsSelectionRef,
+    hasLocalWorkflowStateRef,
+    setActiveBatchId,
+    setEffectiveStep,
+    workbench: workbenchController,
+  });
   const handleLoadBatchRef = useRef(handleLoadBatch);
   const handleLoadHydratedBatchRef = useRef(handleLoadHydratedBatch);
   useEffect(() => {
@@ -842,7 +872,8 @@ export function SheinStudioWorkbench({
           recentBatchOpenRequestVersionRef.current = requestVersion;
           return requestVersion;
         },
-        getCurrentRequestVersion: () => recentBatchOpenRequestVersionRef.current,
+        getCurrentRequestVersion: () =>
+          recentBatchOpenRequestVersionRef.current,
         hasLocalDraft: Boolean(localDraftSnapshot),
         loadHydratedBatch: getSheinStudioHydratedBatch,
         openHydratedBatch: handleLoadHydratedBatch,
@@ -893,7 +924,9 @@ export function SheinStudioWorkbench({
         batchId,
         cacheHydratedBatch: (targetBatchId, hydratedBatch) => {
           setSelectedRecentBatchHydrations((current) =>
-            mergeRecentBatchHydrations(current, [[targetBatchId, hydratedBatch]]),
+            mergeRecentBatchHydrations(current, [
+              [targetBatchId, hydratedBatch],
+            ]),
           );
         },
         loadHydratedBatch: getSheinStudioHydratedBatch,
@@ -1118,13 +1151,14 @@ export function SheinStudioWorkbench({
       })();
       return;
     }
-    setSelectedIds((current) =>
-      projectItemizedSelectionToggle({
-        activeBatchId: "",
-        detail: null,
-        designId,
-        selectedIds: current,
-      }).selectedIds,
+    setSelectedIds(
+      (current) =>
+        projectItemizedSelectionToggle({
+          activeBatchId: "",
+          detail: null,
+          designId,
+          selectedIds: current,
+        }).selectedIds,
     );
   }
 
@@ -1228,7 +1262,9 @@ export function SheinStudioWorkbench({
             <Button
               onClick={() => {
                 setActiveSheinStudioBatchId(initialBatchId);
-                router.push(`/listing-kits/sds/new?targetBatchId=${initialBatchId}`);
+                router.push(
+                  `/listing-kits/sds/new?targetBatchId=${initialBatchId}`,
+                );
               }}
               size="sm"
               type="button"
@@ -1251,7 +1287,8 @@ export function SheinStudioWorkbench({
               </p>
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
-              当前正在继续处理批次 {initialBatchId}，可以在这里继续生成、审核和创建任务。
+              当前正在继续处理批次 {initialBatchId}
+              ，可以在这里继续生成、审核和创建任务。
             </p>
           </div>
 
@@ -1284,7 +1321,9 @@ export function SheinStudioWorkbench({
               type="button"
               variant="default"
             >
-              {isStartingDedicatedBatchRun ? "正在启动..." : dedicatedGenerateButtonLabel}
+              {isStartingDedicatedBatchRun
+                ? "正在启动..."
+                : dedicatedGenerateButtonLabel}
             </Button>
           )}
           <Button
@@ -1304,10 +1343,14 @@ export function SheinStudioWorkbench({
     return (
       <section className="relative space-y-6">
         <SheinStudioBatchRunProgress
-          onBack={initialBatchId ? handleReturnFromDedicatedBatchRun : () => {
-            setActiveBatchRunId("");
-            void refreshSavedBatches();
-          }}
+          onBack={
+            initialBatchId
+              ? handleReturnFromDedicatedBatchRun
+              : () => {
+                  setActiveBatchRunId("");
+                  void refreshSavedBatches();
+                }
+          }
           runId={activeBatchRunId}
         />
       </section>
@@ -1353,23 +1396,38 @@ export function SheinStudioWorkbench({
         />
       ) : null}
 
-      {!batchQueueMode && queueResumeState && resumableQueueBatchIds.length > 0 ? (
+      {!batchQueueMode &&
+      queueResumeState &&
+      resumableQueueBatchIds.length > 0 ? (
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 px-4 py-4 text-sm text-emerald-900">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
               <p className="font-medium">
-                已停在第 {queueResumeState.startIndex + 1} / {queueResumeState.total} 个批次；
-                当前还保留 {resumableQueueBatchIds.length} 个已勾选批次。
+                已停在第 {queueResumeState.startIndex + 1} /{" "}
+                {queueResumeState.total} 个批次； 当前还保留{" "}
+                {resumableQueueBatchIds.length} 个已勾选批次。
               </p>
               <p className="text-emerald-800/90">
-                可继续本轮{queueResumeState.mode === "create_tasks" ? "创建任务" : "继续生成"}处理，或清除这轮选择后重新开始。
+                可继续本轮
+                {queueResumeState.mode === "create_tasks"
+                  ? "创建任务"
+                  : "继续生成"}
+                处理，或清除这轮选择后重新开始。
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={handleResumeBatchQueue} type="button" variant="secondary">
+              <Button
+                onClick={handleResumeBatchQueue}
+                type="button"
+                variant="secondary"
+              >
                 继续本轮处理
               </Button>
-              <Button onClick={clearQueuedSelectionContext} type="button" variant="ghost">
+              <Button
+                onClick={clearQueuedSelectionContext}
+                type="button"
+                variant="ghost"
+              >
                 清除这轮选择
               </Button>
             </div>
@@ -1427,16 +1485,19 @@ export function SheinStudioWorkbench({
                     ? {
                         label:
                           isExecutingWarningAction &&
-                          activeSelectionBaselineHandoff.action === "warm_baseline"
+                          activeSelectionBaselineHandoff.action ===
+                            "warm_baseline"
                             ? "校验中..."
-                            : activeSelectionBaselineHandoff.actionLabel ??
-                              "处理 baseline",
+                            : (activeSelectionBaselineHandoff.actionLabel ??
+                              "处理 baseline"),
                         onClick:
-                          activeSelectionBaselineHandoff.action === "warm_baseline"
+                          activeSelectionBaselineHandoff.action ===
+                          "warm_baseline"
                             ? () => {
                                 void handleWarmBaselineAction();
                               }
-                            : activeSelectionBaselineHandoff.action === "open_sds_login"
+                            : activeSelectionBaselineHandoff.action ===
+                                "open_sds_login"
                               ? openSDSLoginStep
                               : focusGenerateStep,
                       }
@@ -1487,8 +1548,12 @@ export function SheinStudioWorkbench({
                   },
                   onRestorePrompt: handlePromptChange,
                   onSaveBatch: handleSaveBatch,
+                  analyzeReferenceStyle,
                   setArtworkModel,
                   setGroupedImageMode,
+                  setHotStyleReferenceBrief,
+                  setHotStyleReferenceImageUrls,
+                  setHotStyleReferencePrompt,
                   setImageStrategy,
                   setProductImageCount,
                   setProductImagePrompt,
@@ -1508,6 +1573,9 @@ export function SheinStudioWorkbench({
                   artworkModel,
                   availableSdsImages,
                   groupedImageMode,
+                  hotStyleReferenceBrief,
+                  hotStyleReferenceImageUrls,
+                  hotStyleReferencePrompt,
                   imageStrategy,
                   productImageCount,
                   productImagePrompt,
@@ -1539,9 +1607,9 @@ export function SheinStudioWorkbench({
                   creatingError,
                   creatingMessage,
                   failedBatchItems: hasRetryableFailedItems
-                    ? itemizedBatchDetail?.items
+                    ? (itemizedBatchDetail?.items
                         .filter((entry) => entry.item.status === "failed")
-                        .map((entry) => entry.item) ?? []
+                        .map((entry) => entry.item) ?? [])
                     : [],
                   failedTasks: itemizedBatchDetail?.failedTasks ?? [],
                   generateButtonLabel: hasRetryableFailedItems

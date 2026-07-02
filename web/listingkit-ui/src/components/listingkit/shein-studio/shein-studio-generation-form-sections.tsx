@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +29,11 @@ export function ArtworkGenerationSettings({
   artworkModel,
   disabled,
   groupedImageMode,
+  handleAnalyzeReferenceStyle,
+  hotStyleReferenceBrief,
+  hotStyleReferenceImageUrls,
+  hotStyleReferencePrompt,
+  isAnalyzingReferenceStyle,
   prompt,
   promptMode,
   promptHistory,
@@ -35,6 +41,8 @@ export function ArtworkGenerationSettings({
   restorePrompt,
   setArtworkModel,
   setGroupedImageMode,
+  setHotStyleReferenceImageUrls,
+  setHotStyleReferencePrompt,
   setPrompt,
   setPromptMode,
   setStyleCount,
@@ -48,6 +56,11 @@ export function ArtworkGenerationSettings({
   artworkModel: SheinStudioArtworkModel;
   disabled?: boolean;
   groupedImageMode: SheinStudioGroupedImageMode;
+  handleAnalyzeReferenceStyle: () => void;
+  hotStyleReferenceBrief: string;
+  hotStyleReferenceImageUrls: string[];
+  hotStyleReferencePrompt: string;
+  isAnalyzingReferenceStyle: boolean;
   prompt: string;
   promptMode: "managed" | "raw";
   promptHistory: SDSGroupedPromptHistoryEntry[];
@@ -55,6 +68,8 @@ export function ArtworkGenerationSettings({
   restorePrompt: (value: string) => void;
   setArtworkModel: (value: SheinStudioArtworkModel) => void;
   setGroupedImageMode: (value: SheinStudioGroupedImageMode) => void;
+  setHotStyleReferenceImageUrls: (value: string[]) => void;
+  setHotStyleReferencePrompt: (value: string) => void;
   setPrompt: (value: string) => void;
   setPromptMode: (value: "managed" | "raw") => void;
   setStyleCount: (value: string) => void;
@@ -85,7 +100,8 @@ export function ArtworkGenerationSettings({
           value={prompt}
         />
         <p className="text-xs leading-6 text-muted-foreground">
-          系统会优先生成适合 POD 印刷的图案：大面积形状、清晰对比、减少细线和过小文字。
+          系统会优先生成适合 POD
+          印刷的图案：大面积形状、清晰对比、减少细线和过小文字。
         </p>
         {promptHistory.length > 0 ? (
           <div className="rounded-2xl border border-emerald-200/80 bg-background/80 px-3 py-3 dark:border-emerald-500/20 dark:bg-card/90">
@@ -107,11 +123,60 @@ export function ArtworkGenerationSettings({
           </div>
         ) : null}
       </Label>
+      <div className="space-y-3 rounded-lg border border-border bg-background px-3 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-medium text-foreground">热销款参考</p>
+            <p className="text-xs leading-5 text-muted-foreground">
+              提取图案、配色和构图方向，生成相似风格的原创 POD 图案。
+            </p>
+          </div>
+          <Button
+            disabled={
+              disabled ||
+              hotStyleReferenceImageUrls.length === 0 ||
+              isAnalyzingReferenceStyle
+            }
+            onClick={handleAnalyzeReferenceStyle}
+            type="button"
+          >
+            {isAnalyzingReferenceStyle ? "提取中..." : "提取热销款风格"}
+          </Button>
+        </div>
+        <Textarea
+          className="min-h-20 rounded-lg px-3 py-2"
+          disabled={disabled}
+          onChange={(event) =>
+            setHotStyleReferenceImageUrls(
+              event.target.value
+                .split(/\r?\n/)
+                .map((value) => value.trim())
+                .filter(Boolean),
+            )
+          }
+          placeholder="每行一个热销款参考图 URL。"
+          value={hotStyleReferenceImageUrls.join("\n")}
+        />
+        <Textarea
+          className="min-h-24 rounded-lg px-3 py-2"
+          disabled={disabled}
+          onChange={(event) => setHotStyleReferencePrompt(event.target.value)}
+          placeholder="提取后可在这里微调风格要求。"
+          value={hotStyleReferencePrompt}
+        />
+        {hotStyleReferenceBrief ? (
+          <p className="text-xs leading-5 text-muted-foreground">
+            {hotStyleReferenceBrief}
+          </p>
+        ) : null}
+      </div>
       <Label className="space-y-2">
         <span className="text-sm font-medium text-foreground">提示词模式</span>
         <Select
           disabled={disabled}
-          onChange={(event) => setPromptMode(event.target.value as "managed" | "raw")}
+          onChange={(event) =>
+            setPromptMode(event.target.value as "managed" | "raw")
+          }
           value={promptMode}
         >
           <option value="managed">ListingKit 优化</option>
@@ -127,7 +192,9 @@ export function ArtworkGenerationSettings({
         value={styleCount}
       />
       <Label className="space-y-2">
-        <span className="text-sm font-medium text-foreground">分组出图策略</span>
+        <span className="text-sm font-medium text-foreground">
+          分组出图策略
+        </span>
         <Select
           className="h-11 rounded-2xl border-emerald-200 bg-background/90 px-4 py-2 leading-5 focus:border-emerald-900 focus:bg-background dark:border-emerald-500/25 dark:bg-background/80"
           disabled={disabled}
@@ -142,7 +209,8 @@ export function ArtworkGenerationSettings({
           <option value="per_product">每商品独立出图</option>
         </Select>
         <p className="text-xs leading-6 text-muted-foreground">
-          同尺寸共图会按 printable size 自动复用款式图；每商品独立出图会为每个 SDS 商品分别生成。
+          同尺寸共图会按 printable size 自动复用款式图；每商品独立出图会为每个
+          SDS 商品分别生成。
         </p>
       </Label>
       {showVariationIntensity ? (
@@ -169,7 +237,9 @@ export function ArtworkGenerationSettings({
       ) : null}
       <div className="grid gap-4 lg:grid-cols-2">
         <Label className="space-y-2">
-          <span className="text-sm font-medium text-foreground">款式图模型</span>
+          <span className="text-sm font-medium text-foreground">
+            款式图模型
+          </span>
           <Input
             className="rounded-2xl border-emerald-200 bg-background/90 px-4 py-3 focus:border-emerald-900 focus:bg-background dark:border-emerald-500/25 dark:bg-background/80"
             disabled={disabled}
@@ -191,7 +261,8 @@ export function ArtworkGenerationSettings({
             <option value="gpt-image-1" />
           </datalist>
           <p className="text-xs leading-6 text-muted-foreground">
-            不再固定为前端两个选项。留空时使用设置页里 `image` client 保存的默认模型，也可以直接手填覆盖。
+            不再固定为前端两个选项。留空时使用设置页里 `image` client
+            保存的默认模型，也可以直接手填覆盖。
           </p>
         </Label>
         <Label className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-background/80 px-4 py-3 dark:border-emerald-500/25 dark:bg-card/90">
@@ -284,8 +355,8 @@ export function ProductImageGenerationSettings({
           <option value="hybrid">混合：SDS 主图 + AI 图库</option>
         </Select>
         <p className="text-xs leading-6 text-muted-foreground">
-          AI 生成模式不调用 SDS 设计器；SDS 官方渲染会使用模板图；
-          混合模式先用 SDS 图，再追加 AI 商品图。
+          AI 生成模式不调用 SDS 设计器；SDS 官方渲染会使用模板图； 混合模式先用
+          SDS 图，再追加 AI 商品图。
         </p>
       </Label>
 
@@ -309,7 +380,8 @@ export function ProductImageGenerationSettings({
           <span className="text-sm leading-6 text-amber-950">
             <span className="block font-semibold">尺寸图也使用 SDS 渲染</span>
             <span className="block text-xs text-amber-800">
-              AI 或混合模式下会额外调用 SDS，只取尺寸图用于 SHEIN 尺寸图，不替换主图和场景图。
+              AI 或混合模式下会额外调用 SDS，只取尺寸图用于 SHEIN
+              尺寸图，不替换主图和场景图。
             </span>
           </span>
         </Label>
@@ -388,7 +460,9 @@ export function BatchStoreSettings({
           </div>
         ) : null}
         <Label className="space-y-2">
-          <span className="text-sm font-medium text-foreground">选择批次店铺</span>
+          <span className="text-sm font-medium text-foreground">
+            选择批次店铺
+          </span>
           <Select
             aria-label="批次店铺"
             className="h-11 rounded-2xl px-4 py-2 leading-5"
@@ -396,10 +470,15 @@ export function BatchStoreSettings({
             value={sheinStoreId}
           >
             <option value="">
-              {enabledProfiles.length > 0 ? "请选择批次店铺" : "当前没有已启用店铺配置"}
+              {enabledProfiles.length > 0
+                ? "请选择批次店铺"
+                : "当前没有已启用店铺配置"}
             </option>
             {enabledProfiles.map((item) => (
-              <option key={item.id ?? item.store_id} value={String(item.store_id)}>
+              <option
+                key={item.id ?? item.store_id}
+                value={String(item.store_id)}
+              >
                 {formatSheinStoreOptionLabel(item)}
               </option>
             ))}

@@ -1,5 +1,6 @@
 import type { ImgHTMLAttributes } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
 import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
@@ -12,13 +13,19 @@ import type {
 } from "@/lib/types/shein-studio";
 import type { ComponentProps } from "react";
 
-vi.mock("@/components/listingkit/shein-studio/shein-created-tasks-list", () => ({
-  SheinCreatedTasksList: () => <div>created tasks</div>,
-}));
+vi.mock(
+  "@/components/listingkit/shein-studio/shein-created-tasks-list",
+  () => ({
+    SheinCreatedTasksList: () => <div>created tasks</div>,
+  }),
+);
 
-vi.mock("@/components/listingkit/shein-studio/shein-saved-batches-panel", () => ({
-  SheinSavedBatchesPanel: () => <div>saved batches</div>,
-}));
+vi.mock(
+  "@/components/listingkit/shein-studio/shein-saved-batches-panel",
+  () => ({
+    SheinSavedBatchesPanel: () => <div>saved batches</div>,
+  }),
+);
 
 vi.mock("@/lib/query/use-shein-store-selector", () => ({
   useSheinStoreSelector: () => ({
@@ -30,7 +37,12 @@ vi.mock("@/lib/query/use-shein-store-selector", () => ({
 }));
 
 vi.mock("next/image", () => ({
-  default: (props: ImgHTMLAttributes<HTMLImageElement> & { fill?: boolean; src: string }) => {
+  default: (
+    props: ImgHTMLAttributes<HTMLImageElement> & {
+      fill?: boolean;
+      src: string;
+    },
+  ) => {
     const { fill, alt, src, ...rest } = props;
     void fill;
 
@@ -68,6 +80,9 @@ function buildPanelProps(options?: {
       availableSdsImages: options?.availableSdsImages ?? [],
       artworkModel: "nanobanana",
       groupedImageMode: "shared_by_size",
+      hotStyleReferenceBrief: "",
+      hotStyleReferenceImageUrls: [],
+      hotStyleReferencePrompt: "",
       imageStrategy: options?.imageStrategy ?? "ai_generated",
       productImageCount: "5",
       productImagePrompt: options?.isGenerating ? "暖色背景" : "",
@@ -112,11 +127,19 @@ function buildPanelProps(options?: {
       onDeleteBatch: () => undefined,
       onGenerate: () => undefined,
       onLoadBatch: () => undefined,
+      analyzeReferenceStyle: async () => ({
+        referenceStyleBrief: "",
+        sanitizedPrompt: "",
+        warnings: [],
+      }),
       onRetryFailedItem: options?.onRetryFailedItem,
       onRestorePrompt: options?.onRestorePrompt ?? (() => undefined),
       onSaveBatch: () => undefined,
       setArtworkModel: () => undefined,
       setGroupedImageMode: () => undefined,
+      setHotStyleReferenceBrief: () => undefined,
+      setHotStyleReferenceImageUrls: () => undefined,
+      setHotStyleReferencePrompt: () => undefined,
       setImageStrategy: () => undefined,
       setProductImageCount: () => undefined,
       setProductImagePrompt: () => undefined,
@@ -206,7 +229,9 @@ describe("SheinStudioGenerationPanel", () => {
 
     expect(screen.getAllByText("请先选择商品")).toHaveLength(2);
     expect(
-      screen.getByText("当前还不能生成或创建任务，请先回到第 1 步完成 SDS 商品选择。"),
+      screen.getByText(
+        "当前还不能生成或创建任务，请先回到第 1 步完成 SDS 商品选择。",
+      ),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "先选择商品" })).toBeDisabled();
   });
@@ -232,11 +257,11 @@ describe("SheinStudioGenerationPanel", () => {
           onRestorePrompt: restorePrompt,
           prompt: "current prompt",
           promptHistory: [
-          {
-            prompt: "prompt old",
-            groupedImageMode: "shared_by_size",
-            createdAt: "2026-05-26T01:00:00.000Z",
-          },
+            {
+              prompt: "prompt old",
+              groupedImageMode: "shared_by_size",
+              createdAt: "2026-05-26T01:00:00.000Z",
+            },
           ],
         })}
       />,
@@ -258,7 +283,9 @@ describe("SheinStudioGenerationPanel", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "生成款式图" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "生成 SHEIN 资料" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "生成 SHEIN 资料" }),
+    ).toBeDisabled();
   });
 
   it("blocks generation and task creation when the batch store is still missing", () => {
@@ -269,21 +296,45 @@ describe("SheinStudioGenerationPanel", () => {
     expect(screen.getByText("批次店铺")).toBeInTheDocument();
     expect(screen.getByText("未设置")).toBeInTheDocument();
     expect(screen.getByText("需先设置批次店铺")).toBeInTheDocument();
-    expect(screen.getByText("先回到上方选择批次店铺，再继续生成。")).toBeInTheDocument();
+    expect(
+      screen.getByText("先回到上方选择批次店铺，再继续生成。"),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "生成款式图" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "生成 SHEIN 资料" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "生成 SHEIN 资料" }),
+    ).toBeDisabled();
   });
 
   it("summarizes itemized batch status groups for mixed batch results", () => {
     renderPanel({
       statusGroups: {
         items: [
-          { key: "submittable", label: "可提交", count: 2, ids: ["item-1", "item-2"] },
+          {
+            key: "submittable",
+            label: "可提交",
+            count: 2,
+            ids: ["item-1", "item-2"],
+          },
           { key: "needs_fix", label: "需修复", count: 1, ids: ["item-3"] },
           { key: "processing", label: "处理中", count: 1, ids: ["item-4"] },
-          { key: "generation_failed", label: "生成失败", count: 1, ids: ["item-5"] },
-          { key: "submission_failed", label: "提交失败", count: 1, ids: ["design-6"] },
-          { key: "draft_saved", label: "已保存草稿", count: 3, ids: ["task-1", "task-2", "task-3"] },
+          {
+            key: "generation_failed",
+            label: "生成失败",
+            count: 1,
+            ids: ["item-5"],
+          },
+          {
+            key: "submission_failed",
+            label: "提交失败",
+            count: 1,
+            ids: ["design-6"],
+          },
+          {
+            key: "draft_saved",
+            label: "已保存草稿",
+            count: 3,
+            ids: ["task-1", "task-2", "task-3"],
+          },
           { key: "published", label: "已发布", count: 1, ids: ["task-4"] },
         ],
         byKey: {},
@@ -307,7 +358,9 @@ describe("SheinStudioGenerationPanel", () => {
         "当前批次有 2 个失败项。点击“重试失败批次”只会重试失败部分，不会重复生成已成功内容。",
     });
 
-    expect(screen.getByRole("button", { name: "重试失败批次" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "重试失败批次" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(
         "当前批次有 2 个失败项。点击“重试失败批次”只会重试失败部分，不会重复生成已成功内容。",
@@ -372,12 +425,16 @@ describe("SheinStudioGenerationPanel", () => {
       onRetryFailedItem,
     });
 
-    expect(screen.getByRole("button", { name: "已有 ListingKit 任务" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "已有 ListingKit 任务" }),
+    ).toBeDisabled();
     expect(screen.getByText(/task-created-1/)).toHaveTextContent(
       "已创建 ListingKit 任务 task-created-1，请前往下方已有任务继续处理，避免重新生成覆盖已建任务设计。",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "已有 ListingKit 任务" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "已有 ListingKit 任务" }),
+    );
     expect(onRetryFailedItem).not.toHaveBeenCalled();
   });
 
@@ -408,7 +465,9 @@ describe("SheinStudioGenerationPanel", () => {
       onRetryFailedItem: vi.fn(),
     });
 
-    expect(screen.getByRole("button", { name: "已有 ListingKit 任务" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "已有 ListingKit 任务" }),
+    ).toBeDisabled();
     expect(screen.getByText(/task-reused-1/)).toHaveTextContent(
       "已复用 ListingKit 任务 task-reused-1，请前往下方已有任务继续处理，避免重新生成覆盖已建任务设计。",
     );
@@ -495,7 +554,9 @@ describe("SheinStudioGenerationPanel", () => {
 
     expect(screen.getByRole("button", { name: "生成中..." })).toBeDisabled();
     expect(
-      screen.getByPlaceholderText("例如：美国国旗主题，复古学院风，线条清晰，适合印刷。"),
+      screen.getByPlaceholderText(
+        "例如：美国国旗主题，复古学院风，线条清晰，适合印刷。",
+      ),
     ).toBeDisabled();
     expect(screen.getByLabelText("款式数量")).toBeDisabled();
     expect(screen.getByDisplayValue("中变化")).toBeDisabled();
@@ -504,21 +565,21 @@ describe("SheinStudioGenerationPanel", () => {
 
     expect(screen.getByLabelText("商品图数量")).toBeEnabled();
     expect(
-      screen.getByPlaceholderText("可选。会应用到每一张商品图，例如：背景保持暖色、简洁。"),
+      screen.getByPlaceholderText(
+        "可选。会应用到每一张商品图，例如：背景保持暖色、简洁。",
+      ),
     ).toBeEnabled();
   });
 
   it("uses mobile-first metrics and action groups", () => {
     renderPanel();
 
-    const metricsGrid = screen
-      .getByText("批次店铺")
-      .closest("div")?.parentElement as HTMLDivElement | null;
+    const metricsGrid = screen.getByText("批次店铺").closest("div")
+      ?.parentElement as HTMLDivElement | null;
     expect(metricsGrid).not.toBeNull();
     expect(metricsGrid?.className).not.toContain("sm:grid-cols-3");
 
-    const actionGroup = screen
-      .getByRole("button", { name: "生成 SHEIN 资料" })
+    const actionGroup = screen.getByRole("button", { name: "生成 SHEIN 资料" })
       .parentElement as HTMLDivElement | null;
     expect(actionGroup).not.toBeNull();
     expect(actionGroup?.className).toContain("flex-col");
@@ -529,6 +590,50 @@ describe("SheinStudioGenerationPanel", () => {
 
     expect(screen.getByTestId("generation-settings-grid").className).toContain(
       "xl:grid-cols-[minmax(0,1.08fr)_minmax(24rem,0.92fr)]",
+    );
+  });
+
+  it("renders hot style reference controls and applies extracted prompt", async () => {
+    const user = userEvent.setup();
+    const analyzeReferenceStyle = vi.fn().mockResolvedValue({
+      referenceStyleBrief: "retro badge with cream and red palette",
+      sanitizedPrompt:
+        "Create an original retro badge with cream and red palette.",
+      warnings: [],
+    });
+    const setHotStyleReferenceBrief = vi.fn();
+    const setHotStyleReferencePrompt = vi.fn();
+    const panelProps = buildPanelProps({ prompt: "retro cherries" });
+
+    render(
+      <SheinStudioGenerationPanel
+        {...panelProps}
+        actions={{
+          ...panelProps.actions,
+          analyzeReferenceStyle,
+          setHotStyleReferenceBrief,
+          setHotStyleReferencePrompt,
+        }}
+        form={{
+          ...panelProps.form,
+          hotStyleReferenceBrief: "",
+          hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+          hotStyleReferencePrompt: "",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "提取热销款风格" }));
+
+    expect(analyzeReferenceStyle).toHaveBeenCalledWith({
+      referenceImageUrls: ["https://example.com/ref.png"],
+      basePrompt: "retro cherries",
+    });
+    expect(setHotStyleReferenceBrief).toHaveBeenCalledWith(
+      "retro badge with cream and red palette",
+    );
+    expect(setHotStyleReferencePrompt).toHaveBeenCalledWith(
+      expect.stringContaining("original retro badge"),
     );
   });
 });

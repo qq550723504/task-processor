@@ -1,8 +1,15 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   approveSheinStudioBatchDesigns,
+  analyzeSheinStudioReferenceStyle,
   buildDraft,
   buildHydratedBatch,
   buildReviewReadyHydratedBatchDetail,
@@ -71,7 +78,9 @@ describe("SheinStudioWorkbench", () => {
       updatedAt: "2026-04-29T00:00:00.000Z",
     });
 
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+    render(
+      <SheinStudioWorkbench activeStep="generate" selection={selection} />,
+    );
 
     await waitFor(() =>
       expect(screen.getByText("selected SDS images: 2")).toBeInTheDocument(),
@@ -326,7 +335,9 @@ describe("SheinStudioWorkbench", () => {
       },
     });
 
-    render(<SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />);
+    render(
+      <SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />,
+    );
 
     await waitFor(() =>
       expect(screen.getByText("review grid: 2")).toBeInTheDocument(),
@@ -349,7 +360,9 @@ describe("SheinStudioWorkbench", () => {
         groupedImageMode: "shared_by_size",
         selectedSdsImages: [],
         renderSizeImagesWithSds: true,
-        designs: [{ id: "legacy-design", imageUrl: "https://example.com/legacy.png" }],
+        designs: [
+          { id: "legacy-design", imageUrl: "https://example.com/legacy.png" },
+        ],
         selectedIds: ["legacy-design"],
         createdTasks: [],
         updatedAt: "2026-05-26T10:05:00.000Z",
@@ -408,7 +421,9 @@ describe("SheinStudioWorkbench", () => {
       ),
     );
 
-    render(<SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />);
+    render(
+      <SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />,
+    );
 
     await waitFor(() =>
       expect(screen.getByText("review grid: 2")).toBeInTheDocument(),
@@ -629,7 +644,9 @@ describe("SheinStudioWorkbench", () => {
       ],
     });
 
-    render(<SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />);
+    render(
+      <SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />,
+    );
 
     await waitFor(() =>
       expect(screen.getByText("approved styles: 1")).toBeInTheDocument(),
@@ -644,7 +661,9 @@ describe("SheinStudioWorkbench", () => {
       "design-1",
       "design-2",
     ]);
-    fireEvent.click(screen.getByRole("button", { name: "create review tasks" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "create review tasks" }),
+    );
 
     await waitFor(() =>
       expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
@@ -735,7 +754,9 @@ describe("SheinStudioWorkbench", () => {
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /Retro Cherries/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Retro Cherries/ }),
+    );
     await waitFor(() =>
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
     );
@@ -755,9 +776,14 @@ describe("SheinStudioWorkbench", () => {
       ),
     );
     await waitFor(() =>
-      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(
+        ["batch-1"],
+        "generate",
+      ),
     );
-    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(
+      await screen.findByText("batch run progress: run-default"),
+    ).toBeInTheDocument();
     expect(generateSheinStudioBatch).not.toHaveBeenCalled();
     expect(generateSheinStudioDesigns).not.toHaveBeenCalled();
   });
@@ -918,16 +944,23 @@ describe("SheinStudioWorkbench", () => {
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /Retro Cherries/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Retro Cherries/ }),
+    );
     await waitFor(() =>
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
     );
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
     await waitFor(() =>
-      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(
+        ["batch-1"],
+        "generate",
+      ),
     );
-    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(
+      await screen.findByText("batch run progress: run-default"),
+    ).toBeInTheDocument();
     expect(generateSheinStudioBatch).not.toHaveBeenCalled();
     expect(generateSheinStudioDesigns).not.toHaveBeenCalled();
   });
@@ -946,10 +979,14 @@ describe("SheinStudioWorkbench", () => {
 
     const promptInput = await screen.findByLabelText("prompt");
     const callCountBeforeEdit = getSheinStudioHydratedBatch.mock.calls.length;
-    fireEvent.change(promptInput, { target: { value: "vintage botanical clock" } });
+    fireEvent.change(promptInput, {
+      target: { value: "vintage botanical clock" },
+    });
 
     await waitFor(() =>
-      expect(screen.getByDisplayValue("vintage botanical clock")).toBeInTheDocument(),
+      expect(
+        screen.getByDisplayValue("vintage botanical clock"),
+      ).toBeInTheDocument(),
     );
     await waitFor(() =>
       expect(loadLocalSheinStudioDraftSnapshotDetail()).toMatchObject({
@@ -959,7 +996,9 @@ describe("SheinStudioWorkbench", () => {
         }),
       }),
     );
-    expect(getSheinStudioHydratedBatch).toHaveBeenCalledTimes(callCountBeforeEdit);
+    expect(getSheinStudioHydratedBatch).toHaveBeenCalledTimes(
+      callCountBeforeEdit,
+    );
   });
 
   it("surfaces dedicated batch hydration failures instead of silently leaving an empty shell", async () => {
@@ -994,13 +1033,14 @@ describe("SheinStudioWorkbench", () => {
     const promptInput = await screen.findByLabelText("prompt");
     fireEvent.change(promptInput, { target: { value: "updated prompt" } });
 
-    await waitFor(() =>
-      expect(loadLocalSheinStudioDraftSnapshotDetail()).toMatchObject({
-        batchId: "batch-1",
-        draft: expect.objectContaining({
-          prompt: "updated prompt",
+    await waitFor(
+      () =>
+        expect(loadLocalSheinStudioDraftSnapshotDetail()).toMatchObject({
+          batchId: "batch-1",
+          draft: expect.objectContaining({
+            prompt: "updated prompt",
+          }),
         }),
-      }),
       { timeout: 3000 },
     );
     expect(saveSheinStudioBatch).not.toHaveBeenCalled();
@@ -1101,9 +1141,14 @@ describe("SheinStudioWorkbench", () => {
       ),
     );
     await waitFor(() =>
-      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(
+        ["batch-1"],
+        "generate",
+      ),
     );
-    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(
+      await screen.findByText("batch run progress: run-default"),
+    ).toBeInTheDocument();
     expect(generateSheinStudioBatch).not.toHaveBeenCalled();
   });
 
@@ -1175,15 +1220,22 @@ describe("SheinStudioWorkbench", () => {
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
     );
 
-    expect(screen.getByRole("button", { name: "重试失败批次" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "重试失败批次" }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/当前批次有 1 个失败项/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "重试失败批次" }));
 
     await waitFor(() =>
-      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(
+        ["batch-1"],
+        "generate",
+      ),
     );
-    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(
+      await screen.findByText("batch run progress: run-default"),
+    ).toBeInTheDocument();
     expect(retrySheinStudioBatchItems).not.toHaveBeenCalled();
     expect(generateSheinStudioBatch).not.toHaveBeenCalled();
   });
@@ -1267,7 +1319,12 @@ describe("SheinStudioWorkbench", () => {
       failedTasks: [],
       statusGroups: {
         items: [
-          { key: "draft_saved", label: "已保存草稿", count: 1, ids: ["task-1"] },
+          {
+            key: "draft_saved",
+            label: "已保存草稿",
+            count: 1,
+            ids: ["task-1"],
+          },
         ],
         byKey: {
           draft_saved: {
@@ -1280,12 +1337,16 @@ describe("SheinStudioWorkbench", () => {
       },
     });
 
-    render(<SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />);
+    render(
+      <SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />,
+    );
 
     await waitFor(() =>
       expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole("button", { name: "create review tasks" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "create review tasks" }),
+    );
 
     await waitFor(() =>
       expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
@@ -1354,17 +1415,23 @@ describe("SheinStudioWorkbench", () => {
       ),
     );
 
-    render(<SheinStudioWorkbench activeStep="tasks" initialBatchId="batch-1" />);
+    render(
+      <SheinStudioWorkbench activeStep="tasks" initialBatchId="batch-1" />,
+    );
 
     await waitFor(() =>
       expect(screen.getByText("created tasks: 1")).toBeInTheDocument(),
     );
-    fireEvent.click(screen.getByRole("button", { name: "继续创建 SHEIN 资料" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "继续创建 SHEIN 资料" }),
+    );
 
     await waitFor(() =>
       expect(screen.getByText("review grid: 2")).toBeInTheDocument(),
     );
-    expect(screen.getByRole("button", { name: "create review tasks" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "create review tasks" }),
+    ).toBeInTheDocument();
   });
 
   it("creates missing SHEIN tasks from the dedicated batch recovery button", async () => {
@@ -1472,7 +1539,12 @@ describe("SheinStudioWorkbench", () => {
       failedTasks: [],
       statusGroups: {
         items: [
-          { key: "draft_saved", label: "已保存草稿", count: 2, ids: ["task-1", "task-2"] },
+          {
+            key: "draft_saved",
+            label: "已保存草稿",
+            count: 2,
+            ids: ["task-1", "task-2"],
+          },
         ],
         byKey: {
           draft_saved: {
@@ -1485,12 +1557,16 @@ describe("SheinStudioWorkbench", () => {
       },
     });
 
-    render(<SheinStudioWorkbench activeStep="tasks" initialBatchId="batch-1" />);
+    render(
+      <SheinStudioWorkbench activeStep="tasks" initialBatchId="batch-1" />,
+    );
 
     fireEvent.click(
       await screen.findByRole("button", { name: "补建 SHEIN 资料" }),
     );
-    expect(screen.queryByRole("button", { name: "继续生成" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "继续生成" }),
+    ).not.toBeInTheDocument();
     await waitFor(() =>
       expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
         "design-1",
@@ -1584,7 +1660,10 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
     await waitFor(() =>
-      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(
+        ["batch-1"],
+        "generate",
+      ),
     );
     expect(generateSheinStudioBatch).not.toHaveBeenCalled();
     await waitFor(() =>
@@ -1706,9 +1785,14 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试失败批次" }));
 
     await waitFor(() =>
-      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(
+        ["batch-1"],
+        "generate",
+      ),
     );
-    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(
+      await screen.findByText("batch run progress: run-default"),
+    ).toBeInTheDocument();
     expect(retrySheinStudioBatchItems).not.toHaveBeenCalled();
   });
 
@@ -1801,7 +1885,9 @@ describe("SheinStudioWorkbench", () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "retry-item-item-1" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("button", { name: "retry-item-item-1" }),
+      ).toBeInTheDocument(),
     );
 
     fireEvent.click(screen.getByRole("button", { name: "retry-item-item-1" }));
@@ -1847,8 +1933,7 @@ describe("SheinStudioWorkbench", () => {
 
     const onSaveBatch = await waitFor(() => {
       const handler = lastGenerationPanelProps?.onSaveBatch as
-        | (() => Promise<void> | void)
-        | undefined;
+        (() => Promise<void> | void) | undefined;
       expect(typeof handler).toBe("function");
       return handler;
     });
@@ -1932,37 +2017,40 @@ describe("SheinStudioWorkbench", () => {
       { batchId: "batch-1" },
     );
     getSheinStudioHydratedBatch.mockResolvedValue(
-      buildHydratedBatch({
-        name: "Retro Cherries",
-        prompt: "retro cherries",
-        groupedSelections: [
-          {
-            selectionId: "sel-hoodie",
-            sheinStoreId: "869",
-            selection: {
-              ...selection,
-              variantId: 101,
-              layerId: "layer-2",
-              productName: "hoodie",
-              variantLabel: "L / white",
-            },
-            baselineStatus: "ready",
-            baselineReason: "",
-            eligible: true,
-          },
-        ],
-        updatedAt: "2026-05-26T10:05:00.000Z",
-      }, {
-        batch: {
-          id: "batch-1",
-          status: "review_ready",
+      buildHydratedBatch(
+        {
+          name: "Retro Cherries",
           prompt: "retro cherries",
-          styleCount: "1",
-          sheinStoreId: 869,
-          createdAt: "2026-05-26T09:59:00.000Z",
+          groupedSelections: [
+            {
+              selectionId: "sel-hoodie",
+              sheinStoreId: "869",
+              selection: {
+                ...selection,
+                variantId: 101,
+                layerId: "layer-2",
+                productName: "hoodie",
+                variantLabel: "L / white",
+              },
+              baselineStatus: "ready",
+              baselineReason: "",
+              eligible: true,
+            },
+          ],
           updatedAt: "2026-05-26T10:05:00.000Z",
         },
-      }),
+        {
+          batch: {
+            id: "batch-1",
+            status: "review_ready",
+            prompt: "retro cherries",
+            styleCount: "1",
+            sheinStoreId: 869,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:05:00.000Z",
+          },
+        },
+      ),
     );
 
     render(
@@ -1999,23 +2087,26 @@ describe("SheinStudioWorkbench", () => {
       { batchId: "batch-1" },
     );
     getSheinStudioHydratedBatch.mockResolvedValue(
-      buildHydratedBatch({
-        name: "869全品类",
-        prompt: "retro cherries",
-        sheinStoreId: "869",
-        groupedSelections: [groupedSelection],
-        updatedAt: "2026-05-26T10:05:00.000Z",
-      }, {
-        batch: {
-          id: "batch-1",
-          status: "draft",
-          prompt: "",
-          styleCount: "",
-          sheinStoreId: 0,
-          createdAt: "2026-05-26T09:59:00.000Z",
+      buildHydratedBatch(
+        {
+          name: "869全品类",
+          prompt: "retro cherries",
+          sheinStoreId: "869",
+          groupedSelections: [groupedSelection],
           updatedAt: "2026-05-26T10:05:00.000Z",
         },
-      }),
+        {
+          batch: {
+            id: "batch-1",
+            status: "draft",
+            prompt: "",
+            styleCount: "",
+            sheinStoreId: 0,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:05:00.000Z",
+          },
+        },
+      ),
     );
 
     render(
@@ -2062,7 +2153,9 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.getByText("BATCH WORKBENCH")).toBeInTheDocument();
     expect(screen.getByText("当前批次 · 869全品类 副本")).toBeInTheDocument();
     expect(
-      screen.getByText("当前正在继续处理批次 batch-1，可以在这里继续生成、审核和创建任务。"),
+      screen.getByText(
+        "当前正在继续处理批次 batch-1，可以在这里继续生成、审核和创建任务。",
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "返回最近批次首页" }),
@@ -2082,9 +2175,7 @@ describe("SheinStudioWorkbench", () => {
     expect(
       screen.queryByRole("button", { name: "删除当前批次" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.queryByLabelText("当前批次名称"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("当前批次名称")).not.toBeInTheDocument();
     expect(saveSheinStudioBatch).not.toHaveBeenCalled();
     expect(deleteSheinStudioBatch).not.toHaveBeenCalled();
   });
@@ -2111,9 +2202,13 @@ describe("SheinStudioWorkbench", () => {
           id: "batch-1",
           name: "Fresh Batch",
           prompt: "retro cherries",
-          designs: [{ id: "design-1", imageUrl: "https://example.com/design-1.png" }],
+          designs: [
+            { id: "design-1", imageUrl: "https://example.com/design-1.png" },
+          ],
           selectedIds: ["design-1"],
-          createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+          createdTasks: [
+            { id: "task-1", title: "Task 1", designId: "design-1" },
+          ],
           generationJobs: [
             {
               id: "job-1",
@@ -2174,7 +2269,9 @@ describe("SheinStudioWorkbench", () => {
       styleCount: "1",
       sheinStoreId: "869",
       selection,
-      designs: [{ id: "design-1", imageUrl: "https://example.com/design-1.png" }],
+      designs: [
+        { id: "design-1", imageUrl: "https://example.com/design-1.png" },
+      ],
       selectedIds: ["design-1"],
       createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
       generationJobs: [
@@ -2194,7 +2291,9 @@ describe("SheinStudioWorkbench", () => {
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
-    fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: "select batch-1" }),
+    );
     await waitFor(() =>
       expect(getSheinStudioHydratedBatch).toHaveBeenCalledWith("batch-1"),
     );
@@ -2212,7 +2311,9 @@ describe("SheinStudioWorkbench", () => {
           name: "Renamed Batch",
           updatedAt: "2026-05-26T10:03:00.000Z",
           selectedIds: ["design-1"],
-          createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+          createdTasks: [
+            { id: "task-1", title: "Task 1", designId: "design-1" },
+          ],
           generationJobs: [
             expect.objectContaining({
               id: "job-1",
@@ -2308,9 +2409,7 @@ describe("SheinStudioWorkbench", () => {
   });
 
   it("lets the dedicated batch page jump to SDS selection for the current batch", async () => {
-    getSheinStudioHydratedBatch.mockResolvedValue(
-      buildHydratedBatch(),
-    );
+    getSheinStudioHydratedBatch.mockResolvedValue(buildHydratedBatch());
     listSheinStudioBatches.mockResolvedValue([
       {
         id: "batch-1",
@@ -2335,31 +2434,33 @@ describe("SheinStudioWorkbench", () => {
     );
 
     expect(setActiveSheinStudioBatchId).toHaveBeenCalledWith("batch-1");
-    expect(push).toHaveBeenCalledWith("/listing-kits/sds/new?targetBatchId=batch-1");
+    expect(push).toHaveBeenCalledWith(
+      "/listing-kits/sds/new?targetBatchId=batch-1",
+    );
   });
 
   it("lets the dedicated batch page jump back to generate step", async () => {
-    getSheinStudioHydratedBatch.mockResolvedValue(
-      buildHydratedBatch(),
-    );
+    getSheinStudioHydratedBatch.mockResolvedValue(buildHydratedBatch());
 
     render(
       <SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />,
     );
 
-    expect(screen.queryByRole("button", { name: "generate styles" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "generate styles" }),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(await screen.findByRole("button", { name: "前往生成区" }));
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "generate styles" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("button", { name: "generate styles" }),
+      ).toBeInTheDocument(),
     );
   });
 
   it("starts a server-side batch run from the dedicated batch page", async () => {
-    getSheinStudioHydratedBatch.mockResolvedValue(
-      buildHydratedBatch(),
-    );
+    getSheinStudioHydratedBatch.mockResolvedValue(buildHydratedBatch());
     startSheinStudioBatchRun.mockResolvedValue({
       run: {
         id: "run-dedicated-1",
@@ -2371,12 +2472,19 @@ describe("SheinStudioWorkbench", () => {
       <SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "继续生成剩余款式" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "继续生成剩余款式" }),
+    );
 
     await waitFor(() =>
-      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(
+        ["batch-1"],
+        "generate",
+      ),
     );
-    expect(await screen.findByText("batch run progress: run-dedicated-1")).toBeInTheDocument();
+    expect(
+      await screen.findByText("batch run progress: run-dedicated-1"),
+    ).toBeInTheDocument();
   });
 
   it("offers a baseline recovery action on the dedicated batch page when the active selection is abnormal", async () => {
@@ -2386,16 +2494,16 @@ describe("SheinStudioWorkbench", () => {
       reasonCode: "cache_unavailable",
       reason: "",
     });
-    getSheinStudioHydratedBatch.mockResolvedValue(
-      buildHydratedBatch(),
-    );
+    getSheinStudioHydratedBatch.mockResolvedValue(buildHydratedBatch());
 
     render(
       <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
     );
 
     await waitFor(() =>
-      expect(screen.getByText("当前 SDS 选择还没有可用的 baseline 缓存。")).toBeInTheDocument(),
+      expect(
+        screen.getByText("当前 SDS 选择还没有可用的 baseline 缓存。"),
+      ).toBeInTheDocument(),
     );
     expect(
       screen.getByRole("button", { name: "重试 baseline 校验" }),
@@ -2429,7 +2537,9 @@ describe("SheinStudioWorkbench", () => {
     expect(await screen.findByText("最近批次")).toBeInTheDocument();
     expect(screen.getByText("Retro Cherries")).toBeInTheDocument();
     expect(screen.queryByText("入口商品")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "generate styles" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "generate styles" }),
+    ).not.toBeInTheDocument();
   });
 
   it("loads the selected batch into the editor when clicking a recent batch card", async () => {
@@ -2462,7 +2572,9 @@ describe("SheinStudioWorkbench", () => {
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /Retro Cherries/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Retro Cherries/ }),
+    );
     await waitFor(() =>
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
     );
@@ -2498,7 +2610,9 @@ describe("SheinStudioWorkbench", () => {
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /Retro Cherries/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Retro Cherries/ }),
+    );
     await waitFor(() =>
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
     );
@@ -2508,8 +2622,7 @@ describe("SheinStudioWorkbench", () => {
     });
 
     const onSaveBatch = lastGenerationPanelProps?.onSaveBatch as
-      | (() => Promise<void> | void)
-      | undefined;
+      (() => Promise<void> | void) | undefined;
     expect(typeof onSaveBatch).toBe("function");
     await act(async () => {
       await onSaveBatch?.();
@@ -2517,15 +2630,14 @@ describe("SheinStudioWorkbench", () => {
 
     await waitFor(() =>
       expect(
-        saveSheinStudioBatch.mock.calls.some(
-          ([input]) => {
-            const candidate = input as { id?: string; prompt?: string } | undefined;
-            return (
-              candidate?.id === "batch-1" &&
-              candidate.prompt === "retro cherries updated"
-            );
-          },
-        ),
+        saveSheinStudioBatch.mock.calls.some(([input]) => {
+          const candidate = input as
+            { id?: string; prompt?: string } | undefined;
+          return (
+            candidate?.id === "batch-1" &&
+            candidate.prompt === "retro cherries updated"
+          );
+        }),
       ).toBe(true),
     );
   });
@@ -2539,7 +2651,9 @@ describe("SheinStudioWorkbench", () => {
         styleCount: "1",
         sheinStoreId: "869",
         selection,
-        designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+        designs: [
+          { id: "design-1", imageUrl: "https://example.com/design.png" },
+        ],
         selectedIds: ["design-1"],
         createdTasks: [],
         updatedAt: "2026-05-26T10:00:00.000Z",
@@ -2562,7 +2676,9 @@ describe("SheinStudioWorkbench", () => {
         styleCount: "1",
         sheinStoreId: "869",
         selection,
-        designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+        designs: [
+          { id: "design-1", imageUrl: "https://example.com/design.png" },
+        ],
         selectedIds: ["design-1"],
         createdTasks: [{ id: "task-1", title: "Task 1" }],
         updatedAt: "2026-05-26T10:00:00.000Z",
@@ -2612,14 +2728,21 @@ describe("SheinStudioWorkbench", () => {
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
-    fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: "select batch-1" }),
+    );
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
     fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
 
     await waitFor(() =>
-      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1", "batch-2"], "generate"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(
+        ["batch-1", "batch-2"],
+        "generate",
+      ),
     );
-    expect(await screen.findByText("batch run progress: run-1")).toBeInTheDocument();
+    expect(
+      await screen.findByText("batch run progress: run-1"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("最近批次")).not.toBeInTheDocument();
   });
 
@@ -2654,7 +2777,9 @@ describe("SheinStudioWorkbench", () => {
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
-    fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: "select batch-1" }),
+    );
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
     fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
 
@@ -2683,7 +2808,9 @@ describe("SheinStudioWorkbench", () => {
       buildHydratedBatch(
         {
           name: "Retro Cherries",
-          designs: [{ id: "design-1", imageUrl: "https://example.com/design.png" }],
+          designs: [
+            { id: "design-1", imageUrl: "https://example.com/design.png" },
+          ],
           selectedIds: ["design-1"],
         },
         {
@@ -2725,21 +2852,30 @@ describe("SheinStudioWorkbench", () => {
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
-    fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: "select batch-1" }),
+    );
     fireEvent.click(
       await screen.findByRole("button", { name: "批量去创建任务 1 个" }),
     );
 
     await waitFor(() =>
-      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "create_tasks"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(
+        ["batch-1"],
+        "create_tasks",
+      ),
     );
-    expect(await screen.findByText("batch run progress: run-tasks-1")).toBeInTheDocument();
+    expect(
+      await screen.findByText("batch run progress: run-tasks-1"),
+    ).toBeInTheDocument();
   });
 
   it("ignores stale recent-batch hydration when a newer batch selection wins", async () => {
     Element.prototype.scrollIntoView = vi.fn();
-    const batchADeferred = createDeferred<ReturnType<typeof buildHydratedBatch>>();
-    const batchBDeferred = createDeferred<ReturnType<typeof buildHydratedBatch>>();
+    const batchADeferred =
+      createDeferred<ReturnType<typeof buildHydratedBatch>>();
+    const batchBDeferred =
+      createDeferred<ReturnType<typeof buildHydratedBatch>>();
     listSheinStudioBatches.mockResolvedValue([
       {
         id: "batch-a",
@@ -2778,7 +2914,9 @@ describe("SheinStudioWorkbench", () => {
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
-    const batchACard = (await screen.findByText("Batch A")).closest('[role="button"]');
+    const batchACard = (await screen.findByText("Batch A")).closest(
+      '[role="button"]',
+    );
     const batchBCard = screen.getByText("Batch B").closest('[role="button"]');
     expect(batchACard).not.toBeNull();
     expect(batchBCard).not.toBeNull();
@@ -2881,7 +3019,9 @@ describe("SheinStudioWorkbench", () => {
 
     render(<SheinStudioWorkbench activeStep="generate" />);
 
-    fireEvent.click(await screen.findByRole("checkbox", { name: "select batch-1" }));
+    fireEvent.click(
+      await screen.findByRole("checkbox", { name: "select batch-1" }),
+    );
     fireEvent.click(screen.getByRole("checkbox", { name: "select batch-2" }));
     fireEvent.click(screen.getByRole("button", { name: "批量继续生成 2 个" }));
 
@@ -2904,10 +3044,14 @@ describe("SheinStudioWorkbench", () => {
     ]);
     const callsBeforeBack = listSheinStudioBatches.mock.calls.length;
 
-    fireEvent.click(screen.getByRole("button", { name: "back from batch run" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "back from batch run" }),
+    );
 
     await waitFor(() =>
-      expect(listSheinStudioBatches.mock.calls.length).toBeGreaterThan(callsBeforeBack),
+      expect(listSheinStudioBatches.mock.calls.length).toBeGreaterThan(
+        callsBeforeBack,
+      ),
     );
     expect(await screen.findByText("最近批次")).toBeInTheDocument();
   });
@@ -2985,7 +3129,9 @@ describe("SheinStudioWorkbench", () => {
       buildReviewReadyHydratedBatchDetail("batch-new"),
     );
 
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+    render(
+      <SheinStudioWorkbench activeStep="generate" selection={selection} />,
+    );
 
     await waitFor(() =>
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
@@ -2993,13 +3139,18 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
     await waitFor(() =>
-      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-new"], "generate"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(
+        ["batch-new"],
+        "generate",
+      ),
     );
     expect(saveSheinStudioBatch).toHaveBeenCalledWith(
       expect.not.objectContaining({ id: expect.anything() }),
       undefined,
     );
-    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(
+      await screen.findByText("batch run progress: run-default"),
+    ).toBeInTheDocument();
     expect(generateSheinStudioBatch).not.toHaveBeenCalled();
   });
 
@@ -3013,7 +3164,9 @@ describe("SheinStudioWorkbench", () => {
         }),
     );
 
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+    render(
+      <SheinStudioWorkbench activeStep="generate" selection={selection} />,
+    );
 
     await waitFor(() =>
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
@@ -3041,15 +3194,21 @@ describe("SheinStudioWorkbench", () => {
   });
 
   it("does not auto-resume an in-flight generation job after returning to the page", async () => {
-    loadSheinStudioDraft.mockResolvedValue(buildDraft({
-      generationError: "",
-      generationJobId: "job-123",
-      batchStatus: "generating",
-    }));
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+    loadSheinStudioDraft.mockResolvedValue(
+      buildDraft({
+        generationError: "",
+        generationJobId: "job-123",
+        batchStatus: "generating",
+      }),
+    );
+    render(
+      <SheinStudioWorkbench activeStep="generate" selection={selection} />,
+    );
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "generate styles" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("button", { name: "generate styles" }),
+      ).toBeInTheDocument(),
     );
     expect(screen.queryByText("review grid: 1")).not.toBeInTheDocument();
     expect(saveSheinStudioDraftWithOptions).not.toHaveBeenCalled();
@@ -3057,29 +3216,35 @@ describe("SheinStudioWorkbench", () => {
   });
 
   it("does not auto-resume multiple in-flight generation jobs after returning to the page", async () => {
-    loadSheinStudioDraft.mockResolvedValue(buildDraft({
-      generationError: "",
-      generationJobId: "job-123",
-      generationJobs: [
-        {
-          jobId: "job-123",
-          targetGroupKey: "primary",
-          targetGroupLabel: "当前商品",
-          status: "running",
-        },
-        {
-          jobId: "job-456",
-          targetGroupKey: "group-1",
-          targetGroupLabel: "分组商品 1",
-          status: "running",
-        },
-      ],
-      batchStatus: "generating",
-    }));
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+    loadSheinStudioDraft.mockResolvedValue(
+      buildDraft({
+        generationError: "",
+        generationJobId: "job-123",
+        generationJobs: [
+          {
+            jobId: "job-123",
+            targetGroupKey: "primary",
+            targetGroupLabel: "当前商品",
+            status: "running",
+          },
+          {
+            jobId: "job-456",
+            targetGroupKey: "group-1",
+            targetGroupLabel: "分组商品 1",
+            status: "running",
+          },
+        ],
+        batchStatus: "generating",
+      }),
+    );
+    render(
+      <SheinStudioWorkbench activeStep="generate" selection={selection} />,
+    );
 
     await waitFor(() =>
-      expect(screen.getByRole("button", { name: "generate styles" })).toBeInTheDocument(),
+      expect(
+        screen.getByRole("button", { name: "generate styles" }),
+      ).toBeInTheDocument(),
     );
     expect(screen.queryByText("review grid: 2")).not.toBeInTheDocument();
     expect(saveSheinStudioDraftWithOptions).not.toHaveBeenCalled();
@@ -3097,7 +3262,9 @@ describe("SheinStudioWorkbench", () => {
       buildReviewReadyHydratedBatchDetail("batch-unsaved"),
     );
 
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+    render(
+      <SheinStudioWorkbench activeStep="generate" selection={selection} />,
+    );
 
     await waitFor(() => expect(loadSheinStudioDraft).toHaveBeenCalled());
 
@@ -3109,7 +3276,9 @@ describe("SheinStudioWorkbench", () => {
         "generate",
       ),
     );
-    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(
+      await screen.findByText("batch run progress: run-default"),
+    ).toBeInTheDocument();
     expect(generateSheinStudioBatch).not.toHaveBeenCalled();
   });
 
@@ -3132,17 +3301,23 @@ describe("SheinStudioWorkbench", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
-    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(
+      await screen.findByText("batch run progress: run-default"),
+    ).toBeInTheDocument();
 
-    loadSheinStudioDraft.mockResolvedValue(buildDraft({
-      selectedIds: ["design-1"],
-    }));
+    loadSheinStudioDraft.mockResolvedValue(
+      buildDraft({
+        selectedIds: ["design-1"],
+      }),
+    );
 
     rendered.rerender(
       <SheinStudioWorkbench activeStep="review" selection={selection} />,
     );
 
-    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(
+      await screen.findByText("batch run progress: run-default"),
+    ).toBeInTheDocument();
   });
 
   it("does not surface a draft-save warning after successful batch generation", async () => {
@@ -3155,7 +3330,9 @@ describe("SheinStudioWorkbench", () => {
       buildReviewReadyHydratedBatchDetail(),
     );
 
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+    render(
+      <SheinStudioWorkbench activeStep="generate" selection={selection} />,
+    );
 
     await waitFor(() =>
       expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
@@ -3163,9 +3340,14 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "generate styles" }));
 
     await waitFor(() =>
-      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(["batch-1"], "generate"),
+      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(
+        ["batch-1"],
+        "generate",
+      ),
     );
-    expect(await screen.findByText("batch run progress: run-default")).toBeInTheDocument();
+    expect(
+      await screen.findByText("batch run progress: run-default"),
+    ).toBeInTheDocument();
     expect(
       screen.queryByText(
         "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。",
@@ -3185,7 +3367,9 @@ describe("SheinStudioWorkbench", () => {
       width: 1000,
     });
 
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+    render(
+      <SheinStudioWorkbench activeStep="generate" selection={selection} />,
+    );
 
     await waitFor(() =>
       expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
@@ -3205,7 +3389,9 @@ describe("SheinStudioWorkbench", () => {
       error: null,
     });
 
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+    render(
+      <SheinStudioWorkbench activeStep="generate" selection={selection} />,
+    );
 
     await waitFor(() =>
       expect(
@@ -3220,30 +3406,34 @@ describe("SheinStudioWorkbench", () => {
   });
 
   it("restores grouped selections from a saved draft even when they are not in recent variants", async () => {
-    loadSheinStudioDraft.mockResolvedValue(buildDraft({
-      imageStrategy: "sds_official",
-      selectedSdsImages: [],
-      groupedSelections: [
-        {
-          selectionId: "1:200:101:layer-2:101",
-          selection: {
-            productId: 1,
-            parentProductId: 1,
-            variantId: 101,
-            prototypeGroupId: 200,
-            layerId: "layer-2",
-            productName: "hoodie",
-            variantLabel: "L / white",
+    loadSheinStudioDraft.mockResolvedValue(
+      buildDraft({
+        imageStrategy: "sds_official",
+        selectedSdsImages: [],
+        groupedSelections: [
+          {
+            selectionId: "1:200:101:layer-2:101",
+            selection: {
+              productId: 1,
+              parentProductId: 1,
+              variantId: 101,
+              prototypeGroupId: 200,
+              layerId: "layer-2",
+              productName: "hoodie",
+              variantLabel: "L / white",
+            },
+            baselineStatus: "ready",
+            baselineReason: "",
+            sheinStoreId: "9",
+            eligible: true,
           },
-          baselineStatus: "ready",
-          baselineReason: "",
-          sheinStoreId: "9",
-          eligible: true,
-        },
-      ],
-    }));
+        ],
+      }),
+    );
 
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+    render(
+      <SheinStudioWorkbench activeStep="generate" selection={selection} />,
+    );
 
     await waitFor(() =>
       expect(screen.getByText(/已加入\s*1\s*款/)).toBeInTheDocument(),
@@ -3252,16 +3442,81 @@ describe("SheinStudioWorkbench", () => {
   });
 
   it("passes the grouped image mode into the generation panel", async () => {
-    loadSheinStudioDraft.mockResolvedValue(buildDraft({
-      imageStrategy: "sds_official",
-      groupedImageMode: "per_product",
-      selectedSdsImages: [],
-    }));
+    loadSheinStudioDraft.mockResolvedValue(
+      buildDraft({
+        imageStrategy: "sds_official",
+        groupedImageMode: "per_product",
+        selectedSdsImages: [],
+      }),
+    );
 
-    render(<SheinStudioWorkbench activeStep="generate" selection={selection} />);
+    render(
+      <SheinStudioWorkbench activeStep="generate" selection={selection} />,
+    );
 
     await waitFor(() => expect(loadSheinStudioDraft).toHaveBeenCalled());
     expect(lastGenerationPanelProps?.groupedImageMode).toBe("per_product");
   });
 
+  it("hydrates hot style reference state and persists it with the batch", async () => {
+    analyzeSheinStudioReferenceStyle.mockResolvedValue({
+      referenceStyleBrief: "analyzed reference brief",
+      sanitizedPrompt: "Create an original retro badge.",
+      warnings: [],
+    });
+    loadSheinStudioDraft.mockResolvedValue(
+      buildDraft({
+        hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+        hotStyleReferenceBrief: "saved reference brief",
+        hotStyleReferencePrompt: "saved reference prompt",
+      }),
+    );
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" selection={selection} />,
+    );
+
+    await waitFor(() =>
+      expect(lastGenerationPanelProps?.hotStyleReferenceImageUrls).toEqual([
+        "https://example.com/ref.png",
+      ]),
+    );
+    expect(lastGenerationPanelProps?.hotStyleReferenceBrief).toBe(
+      "saved reference brief",
+    );
+    expect(lastGenerationPanelProps?.hotStyleReferencePrompt).toBe(
+      "saved reference prompt",
+    );
+
+    await (
+      lastGenerationPanelProps?.analyzeReferenceStyle as (input: {
+        basePrompt?: string;
+        referenceImageUrls: string[];
+      }) => Promise<unknown>
+    )({
+      basePrompt: "retro cherries",
+      referenceImageUrls: ["https://example.com/ref.png"],
+    });
+
+    expect(analyzeSheinStudioReferenceStyle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        basePrompt: "retro cherries",
+        productName: "tee",
+        referenceImageUrls: ["https://example.com/ref.png"],
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "save batch" }));
+
+    await waitFor(() =>
+      expect(saveSheinStudioBatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+          hotStyleReferenceBrief: "saved reference brief",
+          hotStyleReferencePrompt: "saved reference prompt",
+        }),
+        { makeActive: undefined },
+      ),
+    );
+  });
 });

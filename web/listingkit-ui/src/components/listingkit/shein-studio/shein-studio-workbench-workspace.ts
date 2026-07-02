@@ -8,9 +8,7 @@ import {
   flattenItemizedBatchDesigns,
   type SheinStudioWorkbenchHydratedBatch,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
-import {
-  loadLocalSheinStudioDraftSnapshot,
-} from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
+import { loadLocalSheinStudioDraftSnapshot } from "@/components/listingkit/shein-studio/shein-studio-workbench-hooks";
 import type { SheinStudioWorkbenchController } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 import {
   consumeSheinStudioGalleryHandoff,
@@ -36,9 +34,13 @@ import {
 } from "@/lib/utils/shein-studio-batches";
 
 function pickRecentGroupedBatch(batches: SheinStudioSavedBatch[]) {
-  return [...batches]
-    .filter((batch) => (batch.groups?.length ?? 0) > 0)
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ?? null;
+  return (
+    [...batches]
+      .filter((batch) => (batch.groups?.length ?? 0) > 0)
+      .sort((left, right) =>
+        right.updatedAt.localeCompare(left.updatedAt),
+      )[0] ?? null
+  );
 }
 
 export function useSheinStudioWorkspaceLoader({
@@ -72,11 +74,12 @@ export function useSheinStudioWorkspaceLoader({
     let cancelled = false;
 
     async function loadWorkspaceState() {
-        workbench.setField("isLoadingWorkspace", true);
+      workbench.setField("isLoadingWorkspace", true);
       try {
-        const localDraft = !hasDedicatedBatchContext && !hasExplicitSelection
-          ? loadLocalSheinStudioDraftSnapshot()
-          : null;
+        const localDraft =
+          !hasDedicatedBatchContext && !hasExplicitSelection
+            ? loadLocalSheinStudioDraftSnapshot()
+            : null;
         const [draft, batches] = await Promise.all([
           !hasDedicatedBatchContext && hasExplicitSelection
             ? loadSheinStudioDraft(activeSelectionRef.current)
@@ -92,14 +95,13 @@ export function useSheinStudioWorkspaceLoader({
         let nextEffectiveCreatedTaskCount = 0;
         let importedGalleryDesign = false;
         let restoredGenerationError = "";
-        const effectiveDraft =
-          hasDedicatedBatchContext
-            ? null
-            : localDraft ??
-              draft ??
-              (!activeSelectionRef.current
-                ? pickRecentGroupedBatch(batches)
-                : null);
+        const effectiveDraft = hasDedicatedBatchContext
+          ? null
+          : (localDraft ??
+            draft ??
+            (!activeSelectionRef.current
+              ? pickRecentGroupedBatch(batches)
+              : null));
         const groupedCandidateHandoff = consumeSDSGroupedCandidateHandoff();
 
         if (effectiveDraft || !hasLocalWorkflowStateRef.current) {
@@ -126,6 +128,9 @@ export function useSheinStudioWorkspaceLoader({
             productImageCount: draftState.productImageCount,
             productImagePrompt: draftState.productImagePrompt,
             productImagePrompts: draftState.productImagePrompts,
+            hotStyleReferenceImageUrls: draftState.hotStyleReferenceImageUrls,
+            hotStyleReferenceBrief: draftState.hotStyleReferenceBrief,
+            hotStyleReferencePrompt: draftState.hotStyleReferencePrompt,
             artworkModel: draftState.artworkModel,
             transparentBackground: draftState.transparentBackground,
             sheinStoreId: draftState.sheinStoreId,
@@ -182,7 +187,6 @@ export function useSheinStudioWorkspaceLoader({
         workbench.setField("creatingMessage", "");
         workbench.setField("saveMessage", "");
         workbench.setField("draftWarning", "");
-
       } finally {
         if (!cancelled) {
           workbench.setField("isLoadingWorkspace", false);
@@ -262,61 +266,68 @@ export function useSheinStudioBatchActions({
     setActiveBatchId(saved.id);
   }, [activeBatchId, buildDraftInput, setActiveBatchId, workbench]);
 
-  const handleLoadBatch = useCallback((batch: SheinStudioSavedBatch) => {
-    hasLocalWorkflowStateRef.current = true;
-    setActiveBatchId(batch.id);
-    setActiveSheinStudioBatchId(batch.id);
-    workbench.applyBatch(batch);
-    hasCustomizedSdsSelectionRef.current =
-      (batch.selectedSdsImages?.length ?? 0) > 0;
-    setEffectiveStep(
-      resolveSheinStudioEffectiveStep({
-        activeStep,
-        createdTaskCount: batch.createdTasks.length,
-        designCount: batch.designs.length,
-      }),
-    );
-    workbench.setField("saveMessage", `已载入批次：${batch.name}`);
-  }, [
-    activeStep,
-    hasCustomizedSdsSelectionRef,
-    hasLocalWorkflowStateRef,
-    setActiveBatchId,
-    setEffectiveStep,
-    workbench,
-  ]);
+  const handleLoadBatch = useCallback(
+    (batch: SheinStudioSavedBatch) => {
+      hasLocalWorkflowStateRef.current = true;
+      setActiveBatchId(batch.id);
+      setActiveSheinStudioBatchId(batch.id);
+      workbench.applyBatch(batch);
+      hasCustomizedSdsSelectionRef.current =
+        (batch.selectedSdsImages?.length ?? 0) > 0;
+      setEffectiveStep(
+        resolveSheinStudioEffectiveStep({
+          activeStep,
+          createdTaskCount: batch.createdTasks.length,
+          designCount: batch.designs.length,
+        }),
+      );
+      workbench.setField("saveMessage", `已载入批次：${batch.name}`);
+    },
+    [
+      activeStep,
+      hasCustomizedSdsSelectionRef,
+      hasLocalWorkflowStateRef,
+      setActiveBatchId,
+      setEffectiveStep,
+      workbench,
+    ],
+  );
 
-  const handleLoadHydratedBatch = useCallback((
-    batch: SheinStudioWorkbenchHydratedBatch,
-  ) => {
-    const flattenedDesigns = flattenItemizedBatchDesigns(batch.detail);
-    hasLocalWorkflowStateRef.current = true;
-    setActiveBatchId(batch.savedBatch.id);
-    setActiveSheinStudioBatchId(batch.savedBatch.id);
-    workbench.applyHydratedBatch(batch);
-    hasCustomizedSdsSelectionRef.current =
-      (batch.savedBatch.selectedSdsImages?.length ?? 0) > 0;
-    setEffectiveStep(
-      resolveSheinStudioEffectiveStep({
-        activeStep,
-        createdTaskCount: batch.savedBatch.createdTasks.length,
-        designCount: flattenedDesigns.length,
-      }),
-    );
-    workbench.setField("saveMessage", `已载入批次：${batch.savedBatch.name}`);
-  }, [
-    activeStep,
-    hasCustomizedSdsSelectionRef,
-    hasLocalWorkflowStateRef,
-    setActiveBatchId,
-    setEffectiveStep,
-    workbench,
-  ]);
+  const handleLoadHydratedBatch = useCallback(
+    (batch: SheinStudioWorkbenchHydratedBatch) => {
+      const flattenedDesigns = flattenItemizedBatchDesigns(batch.detail);
+      hasLocalWorkflowStateRef.current = true;
+      setActiveBatchId(batch.savedBatch.id);
+      setActiveSheinStudioBatchId(batch.savedBatch.id);
+      workbench.applyHydratedBatch(batch);
+      hasCustomizedSdsSelectionRef.current =
+        (batch.savedBatch.selectedSdsImages?.length ?? 0) > 0;
+      setEffectiveStep(
+        resolveSheinStudioEffectiveStep({
+          activeStep,
+          createdTaskCount: batch.savedBatch.createdTasks.length,
+          designCount: flattenedDesigns.length,
+        }),
+      );
+      workbench.setField("saveMessage", `已载入批次：${batch.savedBatch.name}`);
+    },
+    [
+      activeStep,
+      hasCustomizedSdsSelectionRef,
+      hasLocalWorkflowStateRef,
+      setActiveBatchId,
+      setEffectiveStep,
+      workbench,
+    ],
+  );
 
-  const handleDeleteBatch = useCallback(async (batchID: string) => {
-    await deleteSheinStudioBatch(batchID);
-    workbench.setField("savedBatches", await listSheinStudioBatches());
-  }, [workbench]);
+  const handleDeleteBatch = useCallback(
+    async (batchID: string) => {
+      await deleteSheinStudioBatch(batchID);
+      workbench.setField("savedBatches", await listSheinStudioBatches());
+    },
+    [workbench],
+  );
 
   return {
     handleDeleteBatch,
