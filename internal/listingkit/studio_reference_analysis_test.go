@@ -174,6 +174,58 @@ func TestAnalyzeStudioReferenceStyleKeepsSafeTitleCaseStyleSignals(t *testing.T)
 	}
 }
 
+func TestAnalyzeStudioReferenceStyleDoesNotWarnForSafeStructuredJSONQuotes(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"Retro Flowers","palette":["Cream","Red"],"composition":"Centered Badge","typography":"Old English"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/a.png"},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+	if containsWarningFragment(resp.Warnings, "已移除品牌、Logo、原文案或过于接近原图的描述") {
+		t.Fatalf("warnings = %#v, do not want unsafe-removal warning for safe structured JSON", resp.Warnings)
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleKeepsBroaderSafeStyleCues(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"Koi Wave","palette":["Teal","Orange"],"composition":"Centered Badge","typography":"Brush Lettering","product_fit":"Resort Wear"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/a.png"},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	lowerPrompt := strings.ToLower(resp.SanitizedPrompt)
+	lowerBrief := strings.ToLower(resp.ReferenceStyleBrief)
+	for _, safeSignal := range []string{
+		"koi wave",
+		"teal, orange",
+		"centered composition",
+		"badge composition",
+		"brush lettering",
+		"resort wear",
+	} {
+		if !strings.Contains(lowerPrompt, safeSignal) {
+			t.Fatalf("sanitized prompt = %q, want safe style cue %q preserved", resp.SanitizedPrompt, safeSignal)
+		}
+		if !strings.Contains(lowerBrief, safeSignal) {
+			t.Fatalf("reference style brief = %q, want safe style cue %q preserved", resp.ReferenceStyleBrief, safeSignal)
+		}
+	}
+	if containsWarningFragment(resp.Warnings, "已移除品牌、Logo、原文案或过于接近原图的描述") {
+		t.Fatalf("warnings = %#v, do not want unsafe-removal warning for safe broadened cues", resp.Warnings)
+	}
+}
+
 func TestAnalyzeStudioReferenceStyleErrorsWhenNoSafeSignalsSurvive(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
 		`{"motif":"Hello Kitty","palette":["Nike"],"composition":"same exact layout","typography":"Taylor Swift signature quote","density":"Mickey portrait","product_fit":"Adidas logo","avoid":["Just Do It slogan"]}`,

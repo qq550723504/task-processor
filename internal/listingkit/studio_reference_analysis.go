@@ -22,6 +22,7 @@ var (
 
 var (
 	studioMotifPhraseVocabulary = []string{
+		"koi wave",
 		"retro flowers",
 		"western floral",
 		"sports mascot",
@@ -36,6 +37,8 @@ var (
 		"flower":     "flower",
 		"flowers":    "flowers",
 		"botanical":  "botanical",
+		"koi":        "koi",
+		"wave":       "wave",
 		"cherry":     "cherry",
 		"sports":     "sports",
 		"mascot":     "mascot",
@@ -57,6 +60,8 @@ var (
 		"red":    "red",
 		"navy":   "navy",
 		"tan":    "tan",
+		"teal":   "teal",
+		"orange": "orange",
 		"black":  "black",
 		"white":  "white",
 		"blue":   "blue",
@@ -70,11 +75,14 @@ var (
 		"cherry": "cherry",
 	}
 	studioTypographyPhraseVocabulary = []string{
+		"brush lettering",
 		"old english",
 		"sans serif",
 	}
 	studioTypographyWordVocabulary = map[string]string{
 		"bold":       "bold",
+		"brush":      "brush",
+		"lettering":  "lettering",
 		"collegiate": "collegiate",
 		"distressed": "distressed",
 		"serif":      "serif",
@@ -99,9 +107,12 @@ var (
 		"bold":     "bold",
 	}
 	studioProductFitPhraseVocabulary = []string{
+		"resort wear",
 		"vintage streetwear",
 	}
 	studioProductFitWordVocabulary = map[string]string{
+		"resort":     "resort",
+		"wear":       "wear",
 		"vintage":    "vintage",
 		"streetwear": "streetwear",
 		"casual":     "casual",
@@ -417,7 +428,7 @@ func abstractStudioReferenceAnalysis(item studioReferenceImageAnalysis) studioAb
 		}
 	}
 
-	abstracted.HadUnsafe = studioReferenceFieldContainsUnsafeSignals(item.Raw)
+	abstracted.HadUnsafe = studioReferenceAnalysisContainsUnsafeSignals(item)
 	for _, avoid := range item.Avoid {
 		if strings.TrimSpace(avoid) != "" {
 			abstracted.HadUnsafe = true
@@ -430,7 +441,6 @@ func abstractStudioReferenceAnalysis(item studioReferenceImageAnalysis) studioAb
 	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldWasDropped(item.Typography, abstracted.Typography)
 	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldWasDropped(item.Density, abstracted.Density)
 	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldWasDropped(item.ProductFit, abstracted.ProductFit)
-	abstracted.HadUnsafe = abstracted.HadUnsafe || studioCompositionWasAbstracted(item.Composition, abstracted.Composition)
 	return abstracted
 }
 
@@ -547,7 +557,7 @@ func containsStudioVocabularyPhrase(phrases []string, target string) bool {
 
 func studioReferenceContainsUnsafeSignals(analyses []studioReferenceImageAnalysis, abstracted []studioAbstractedReferenceAnalysis) bool {
 	for _, item := range analyses {
-		if studioReferenceFieldContainsUnsafeSignals(item.Raw) {
+		if studioReferenceAnalysisContainsUnsafeSignals(item) {
 			return true
 		}
 		for _, avoid := range item.Avoid {
@@ -558,6 +568,38 @@ func studioReferenceContainsUnsafeSignals(analyses []studioReferenceImageAnalysi
 	}
 	for _, item := range abstracted {
 		if item.HadUnsafe {
+			return true
+		}
+	}
+	return false
+}
+
+func studioReferenceAnalysisContainsUnsafeSignals(item studioReferenceImageAnalysis) bool {
+	if isMalformedStudioReferenceAnalysis(item) {
+		return studioReferenceFieldContainsUnsafeSignals(item.Raw)
+	}
+
+	for _, value := range []string{
+		item.Motif,
+		item.Composition,
+		item.Typography,
+		item.Density,
+		item.ProductFit,
+	} {
+		if studioReferenceFieldContainsUnsafeSignals(value) {
+			return true
+		}
+	}
+	for _, value := range item.Palette {
+		if studioReferenceFieldContainsUnsafeSignals(value) {
+			return true
+		}
+	}
+	for _, value := range item.Avoid {
+		if strings.TrimSpace(value) == "" {
+			continue
+		}
+		if studioReferenceFieldContainsUnsafeSignals(value) {
 			return true
 		}
 	}
@@ -587,18 +629,6 @@ func studioReferenceFieldContainsUnsafeSignals(value string) bool {
 
 func studioStructuredFieldWasDropped(original string, abstracted string) bool {
 	return strings.TrimSpace(original) != "" && strings.TrimSpace(abstracted) == ""
-}
-
-func studioCompositionWasAbstracted(original string, abstracted []string) bool {
-	return strings.TrimSpace(original) != "" &&
-		(strings.Contains(strings.ToLower(original), "split") ||
-			strings.Contains(strings.ToLower(original), "diagonal") ||
-			strings.Contains(strings.ToLower(original), "frame") ||
-			strings.Contains(strings.ToLower(original), "arch") ||
-			strings.Contains(strings.ToLower(original), "border") ||
-			strings.Contains(strings.ToLower(original), "badge") ||
-			strings.Contains(strings.ToLower(original), "center")) &&
-		len(abstracted) > 0
 }
 
 func isMalformedStudioReferenceAnalysis(item studioReferenceImageAnalysis) bool {
