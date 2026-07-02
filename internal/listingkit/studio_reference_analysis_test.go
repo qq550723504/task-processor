@@ -156,7 +156,7 @@ func TestAnalyzeStudioReferenceStyleLimitsReferencesAndSanitizesPrompt(t *testin
 		t.Fatalf("calls = %d, want 5", len(completer.calls))
 	}
 	for _, unsafeToken := range []string{
-		"hello kitty", "bow", "diagonal split badge", "adidas", "trefoil", "just do it", "mickey", "taylor swift", "face portrait", "same diagonal split layout",
+		"hello kitty", "diagonal split badge", "adidas", "trefoil", "just do it", "mickey", "taylor swift", "face portrait", "same diagonal split layout",
 	} {
 		if strings.Contains(strings.ToLower(resp.SanitizedPrompt), unsafeToken) {
 			t.Fatalf("sanitized prompt contains unsafe token %q: %q", unsafeToken, resp.SanitizedPrompt)
@@ -387,6 +387,74 @@ func TestAnalyzeStudioReferenceStyleAvoidWarningsOnlyForUnsafeSignals(t *testing
 				t.Fatalf("warnings = %#v, unsafe warning = %v, want %v", resp.Warnings, gotWarning, tc.wantWarning)
 			}
 		})
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleStripsLowercaseProtectedNamesAndKeepsSafeDescriptors(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"hello kitty bow","composition":"adidas mascot","palette":["cream"],"typography":"clean serif"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/lowercase-protected.png"},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	lowerPrompt := strings.ToLower(resp.SanitizedPrompt)
+	lowerBrief := strings.ToLower(resp.ReferenceStyleBrief)
+	for _, unsafeToken := range []string{"hello kitty", "adidas"} {
+		if strings.Contains(lowerPrompt, unsafeToken) {
+			t.Fatalf("sanitized prompt contains lowercase protected token %q: %q", unsafeToken, resp.SanitizedPrompt)
+		}
+		if strings.Contains(lowerBrief, unsafeToken) {
+			t.Fatalf("reference style brief contains lowercase protected token %q: %q", unsafeToken, resp.ReferenceStyleBrief)
+		}
+	}
+	for _, safeSignal := range []string{"bow", "mascot", "cream", "clean serif"} {
+		if !strings.Contains(lowerPrompt, safeSignal) {
+			t.Fatalf("sanitized prompt = %q, want safe signal %q preserved", resp.SanitizedPrompt, safeSignal)
+		}
+		if !strings.Contains(lowerBrief, safeSignal) {
+			t.Fatalf("reference style brief = %q, want safe signal %q preserved", resp.ReferenceStyleBrief, safeSignal)
+		}
+	}
+	if !containsWarningFragment(resp.Warnings, "已移除品牌、Logo、原文案或过于接近原图的描述") {
+		t.Fatalf("warnings = %#v, want unsafe-removal warning for lowercase protected names", resp.Warnings)
+	}
+}
+
+func TestAnalyzeStudioReferenceStylePreservesMoodAndGarmentPlacement(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"mood":"playful resort mood","garment_placement":"left chest placement"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/mood-placement.png"},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	if len(completer.calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(completer.calls))
+	}
+	prompt := strings.SplitN(completer.calls[0], "|", 2)[1]
+	for _, requiredKey := range []string{"mood", "garment_placement"} {
+		if !strings.Contains(prompt, requiredKey) {
+			t.Fatalf("analysis prompt = %q, want json key %q included", prompt, requiredKey)
+		}
+	}
+	for _, safeSignal := range []string{"playful resort mood", "left chest placement"} {
+		if !strings.Contains(strings.ToLower(resp.SanitizedPrompt), safeSignal) {
+			t.Fatalf("sanitized prompt = %q, want %q preserved", resp.SanitizedPrompt, safeSignal)
+		}
+		if !strings.Contains(strings.ToLower(resp.ReferenceStyleBrief), safeSignal) {
+			t.Fatalf("reference style brief = %q, want %q preserved", resp.ReferenceStyleBrief, safeSignal)
+		}
 	}
 }
 

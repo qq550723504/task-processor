@@ -15,6 +15,8 @@ var (
 	studioWordPattern               = regexp.MustCompile(`[a-z0-9]+`)
 	studioCapitalizedPhrasePattern  = regexp.MustCompile(`\b(?:[A-Z][a-z0-9]*)(?:\s+[A-Z][a-z0-9]*){0,2}\b`)
 	studioQuotedTextPattern         = regexp.MustCompile(`["'][^"']+["']`)
+	studioProtectedIdentityTerms    = []string{"hello kitty", "adidas", "nike", "mickey mouse", "taylor swift", "elsa"}
+	studioProtectedIdentityPattern  = regexp.MustCompile(`(?i)\b(?:hello\s+kitty|adidas|nike|mickey\s+mouse|taylor\s+swift|elsa)\b`)
 	studioBrandMarkPattern          = regexp.MustCompile(`\b(?:logo|logos|brand mark|brand marks|wordmark|wordmarks|emblem|emblems|trefoil|swoosh)\b`)
 	studioExactTextPattern          = regexp.MustCompile(`\b(?:exact text|exact slogan|same wording|copy this exact|quote|quoted|slogan|tagline|catchphrase)\b`)
 	studioCharacterIdentityPattern  = regexp.MustCompile(`\b(?:characters?|face|faces|portrait|portraits|person|people|identity|identities|celebrity|celebrities|likeness)\b`)
@@ -28,6 +30,7 @@ var (
 		"abstract": {}, "airy": {}, "allover": {}, "arched": {}, "art": {}, "artwork": {}, "balanced": {}, "badge": {}, "beach": {},
 		"black": {}, "block": {}, "blue": {}, "bold": {}, "border": {}, "botanical": {}, "brown": {}, "brush": {}, "centered": {}, "cherry": {},
 		"clean": {}, "coastal": {}, "coral": {}, "cream": {}, "gray": {}, "green": {}, "grey": {}, "navy": {}, "old": {}, "orange": {},
+		"left": {}, "right": {}, "front": {}, "back": {}, "chest": {}, "sleeve": {}, "placement": {}, "mood": {}, "nostalgic": {},
 		"pink": {}, "red": {}, "silver": {}, "white": {}, "gold": {},
 		"collegiate": {}, "composition": {}, "crest": {}, "dense": {}, "distressed": {}, "drawn": {}, "dynamic": {},
 		"english": {}, "floral": {}, "flower": {}, "flowers": {}, "frame": {}, "framed": {}, "geometric": {}, "glass": {}, "gothic": {},
@@ -141,25 +144,29 @@ var (
 )
 
 type studioReferenceImageAnalysis struct {
-	Motif       string   `json:"motif,omitempty"`
-	Palette     []string `json:"palette,omitempty"`
-	Composition string   `json:"composition,omitempty"`
-	Typography  string   `json:"typography,omitempty"`
-	Density     string   `json:"density,omitempty"`
-	ProductFit  string   `json:"product_fit,omitempty"`
-	Avoid       []string `json:"avoid,omitempty"`
-	Raw         string   `json:"-"`
+	Motif            string   `json:"motif,omitempty"`
+	Palette          []string `json:"palette,omitempty"`
+	Composition      string   `json:"composition,omitempty"`
+	Typography       string   `json:"typography,omitempty"`
+	Density          string   `json:"density,omitempty"`
+	ProductFit       string   `json:"product_fit,omitempty"`
+	Mood             string   `json:"mood,omitempty"`
+	GarmentPlacement string   `json:"garment_placement,omitempty"`
+	Avoid            []string `json:"avoid,omitempty"`
+	Raw              string   `json:"-"`
 }
 
 type studioAbstractedReferenceAnalysis struct {
-	Motif        string
-	Palette      []string
-	Composition  []string
-	Typography   string
-	Density      string
-	ProductFit   string
-	HadUnsafe    bool
-	HadMalformed bool
+	Motif            string
+	Palette          []string
+	Composition      []string
+	Typography       string
+	Density          string
+	ProductFit       string
+	Mood             string
+	GarmentPlacement string
+	HadUnsafe        bool
+	HadMalformed     bool
 }
 
 func (s *service) AnalyzeStudioReferenceStyle(ctx context.Context, req *StudioReferenceAnalysisRequest) (*StudioReferenceAnalysisResponse, error) {
@@ -253,7 +260,7 @@ func buildStudioReferenceAnalysisPrompt(req *StudioReferenceAnalysisRequest) str
 	basePrompt := strings.TrimSpace(req.BasePrompt)
 	userInstruction := strings.TrimSpace(req.UserInstruction)
 	return strings.TrimSpace(fmt.Sprintf(`Analyze this ecommerce product image as a style reference for original POD artwork.
-Return JSON only with keys: motif, palette, composition, typography, density, product_fit, avoid.
+Return JSON only with keys: motif, palette, composition, typography, density, product_fit, mood, garment_placement, avoid.
 Extract broad reusable commercial style only. Do not ask to copy logos, brand marks, exact slogans, exact characters, faces, or the same unique layout.
 Product: %s
 Category: %s
@@ -298,6 +305,12 @@ func buildStudioReferenceStyleBrief(req *StudioReferenceAnalysisRequest, analyse
 		if item.ProductFit != "" {
 			parts = append(parts, "Product fit: "+item.ProductFit+".")
 		}
+		if item.Mood != "" {
+			parts = append(parts, "Mood cue: "+item.Mood+".")
+		}
+		if item.GarmentPlacement != "" {
+			parts = append(parts, "Garment placement: "+item.GarmentPlacement+".")
+		}
 	}
 	parts = append(parts, "Create a new original design in this broad style family. Do not reproduce logos, brand marks, exact text, characters, faces, or the same unique layout from any reference image.")
 	return strings.Join(parts, " ")
@@ -330,6 +343,16 @@ func buildSanitizedStudioReferencePrompt(analyses []studioAbstractedReferenceAna
 		return item.ProductFit
 	}); len(productFit) > 0 {
 		parts = append(parts, "Product fit: "+strings.Join(productFit, ", ")+".")
+	}
+	if mood := collectStudioReferenceFragments(analyses, func(item studioAbstractedReferenceAnalysis) string {
+		return item.Mood
+	}); len(mood) > 0 {
+		parts = append(parts, "Mood cue: "+strings.Join(mood, ", ")+".")
+	}
+	if garmentPlacement := collectStudioReferenceFragments(analyses, func(item studioAbstractedReferenceAnalysis) string {
+		return item.GarmentPlacement
+	}); len(garmentPlacement) > 0 {
+		parts = append(parts, "Garment placement: "+strings.Join(garmentPlacement, ", ")+".")
 	}
 	parts = append(parts, "Keep all graphics brand-neutral, use fresh custom wording if text appears, avoid recognizable characters or people, and use a clearly original layout.")
 	return strings.Join(parts, " ")
@@ -398,6 +421,8 @@ func abstractStudioReferenceAnalyses(analyses []studioReferenceImageAnalysis) []
 			abstracted.Typography == "" &&
 			abstracted.Density == "" &&
 			abstracted.ProductFit == "" &&
+			abstracted.Mood == "" &&
+			abstracted.GarmentPlacement == "" &&
 			!(abstracted.HadUnsafe || abstracted.HadMalformed) {
 			continue
 		}
@@ -413,7 +438,9 @@ func hasStudioReusableSafeStyleDirection(analyses []studioAbstractedReferenceAna
 			len(item.Composition) > 0 ||
 			item.Typography != "" ||
 			item.Density != "" ||
-			item.ProductFit != "" {
+			item.ProductFit != "" ||
+			item.Mood != "" ||
+			item.GarmentPlacement != "" {
 			return true
 		}
 	}
@@ -422,12 +449,14 @@ func hasStudioReusableSafeStyleDirection(analyses []studioAbstractedReferenceAna
 
 func abstractStudioReferenceAnalysis(item studioReferenceImageAnalysis) studioAbstractedReferenceAnalysis {
 	abstracted := studioAbstractedReferenceAnalysis{
-		Motif:       abstractStudioMotif(item.Motif),
-		Palette:     abstractStudioPalette(item.Palette),
-		Composition: abstractStudioComposition(item.Composition),
-		Typography:  abstractStudioTypography(item.Typography),
-		Density:     abstractStudioDensity(item.Density),
-		ProductFit:  abstractStudioProductFit(item.ProductFit),
+		Motif:            abstractStudioMotif(item.Motif),
+		Palette:          abstractStudioPalette(item.Palette),
+		Composition:      abstractStudioComposition(item.Composition),
+		Typography:       abstractStudioTypography(item.Typography),
+		Density:          abstractStudioDensity(item.Density),
+		ProductFit:       abstractStudioProductFit(item.ProductFit),
+		Mood:             abstractStudioMood(item.Mood),
+		GarmentPlacement: abstractStudioGarmentPlacement(item.GarmentPlacement),
 	}
 	abstracted.HadMalformed = isMalformedStudioReferenceAnalysis(item)
 
@@ -442,6 +471,12 @@ func abstractStudioReferenceAnalysis(item studioReferenceImageAnalysis) studioAb
 		if len(abstracted.Composition) == 0 {
 			abstracted.Composition = abstractStudioComposition(item.Raw)
 		}
+		if !rawUnsafe && abstracted.Mood == "" {
+			abstracted.Mood = abstractStudioMood(item.Raw)
+		}
+		if !rawUnsafe && abstracted.GarmentPlacement == "" {
+			abstracted.GarmentPlacement = abstractStudioGarmentPlacement(item.Raw)
+		}
 	}
 
 	abstracted.HadUnsafe = studioReferenceAnalysisContainsUnsafeSignals(item)
@@ -454,6 +489,8 @@ func abstractStudioReferenceAnalysis(item studioReferenceImageAnalysis) studioAb
 	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldWasDropped(item.Typography, abstracted.Typography)
 	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldWasDropped(item.Density, abstracted.Density)
 	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldWasDropped(item.ProductFit, abstracted.ProductFit)
+	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldWasDropped(item.Mood, abstracted.Mood)
+	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldWasDropped(item.GarmentPlacement, abstracted.GarmentPlacement)
 	return abstracted
 }
 
@@ -487,6 +524,14 @@ func abstractStudioDensity(value string) string {
 }
 
 func abstractStudioProductFit(value string) string {
+	return sanitizeStudioStylePhrase(value)
+}
+
+func abstractStudioMood(value string) string {
+	return sanitizeStudioStylePhrase(value)
+}
+
+func abstractStudioGarmentPlacement(value string) string {
 	return sanitizeStudioStylePhrase(value)
 }
 
@@ -542,9 +587,11 @@ func sanitizeStudioStylePhrase(value string) string {
 	if original == "" {
 		return ""
 	}
-	cleaned, removedSuspiciousName := stripSuspiciousStudioNamedPhrases(original)
+	cleaned, _ := stripStudioProtectedIdentityPhrases(original)
+	cleaned, removedSuspiciousName := stripSuspiciousStudioNamedPhrases(cleaned)
 	lower := strings.ToLower(cleaned)
 	lower = studioUnsafeSpacerPattern.ReplaceAllString(lower, " ")
+	lower = studioProtectedIdentityPattern.ReplaceAllString(lower, " ")
 	lower = studioQuotedTextPattern.ReplaceAllString(lower, " ")
 	lower = studioUniqueLayoutPattern.ReplaceAllString(lower, " ")
 	lower = studioCharacterIdentityPattern.ReplaceAllString(lower, " ")
@@ -566,6 +613,20 @@ func sanitizeStudioStylePhrase(value string) string {
 		return ""
 	}
 	return strings.TrimSpace(studioRepeatedWhitespacePattern.ReplaceAllString(strings.Join(filtered, " "), " "))
+}
+
+func stripStudioProtectedIdentityPhrases(value string) (string, bool) {
+	result := value
+	removed := false
+	for _, term := range studioProtectedIdentityTerms {
+		pattern := regexp.MustCompile(`(?i)\b` + strings.ReplaceAll(regexp.QuoteMeta(term), `\ `, `\s+`) + `\b`)
+		updated := pattern.ReplaceAllString(result, " ")
+		if updated != result {
+			removed = true
+			result = updated
+		}
+	}
+	return result, removed
 }
 
 func stripSuspiciousStudioNamedPhrases(value string) (string, bool) {
@@ -666,6 +727,8 @@ func studioReferenceAnalysisContainsUnsafeSignals(item studioReferenceImageAnaly
 		item.Typography,
 		item.Density,
 		item.ProductFit,
+		item.Mood,
+		item.GarmentPlacement,
 	} {
 		if studioReferenceFieldContainsUnsafeSignals(value) {
 			return true
@@ -698,7 +761,8 @@ func studioReferenceFieldContainsUnsafeSignals(value string) bool {
 	if lower == "" {
 		return false
 	}
-	return studioQuotedTextPattern.MatchString(value) ||
+	return studioProtectedIdentityPattern.MatchString(value) ||
+		studioQuotedTextPattern.MatchString(value) ||
 		studioBrandMarkPattern.MatchString(lower) ||
 		studioExactTextPattern.MatchString(lower) ||
 		studioCharacterIdentityPattern.MatchString(lower) ||
@@ -721,5 +785,7 @@ func isMalformedStudioReferenceAnalysis(item studioReferenceImageAnalysis) bool 
 		item.Typography == "" &&
 		item.Density == "" &&
 		item.ProductFit == "" &&
+		item.Mood == "" &&
+		item.GarmentPlacement == "" &&
 		len(item.Avoid) == 0
 }
