@@ -215,9 +215,7 @@ export function SheinStudioGenerationPanel({
         basePrompt: prompt,
       });
       setHotStyleReferenceBrief(result.referenceStyleBrief);
-      if (result.sanitizedPrompt.trim()) {
-        setHotStyleReferencePrompt(result.sanitizedPrompt);
-      }
+      setHotStyleReferencePrompt(result.sanitizedPrompt);
     } catch (error) {
       console.error(
         "shein studio reference style analysis failed",

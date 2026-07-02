@@ -3464,8 +3464,16 @@ describe("SheinStudioWorkbench", () => {
       sanitizedPrompt: "Create an original retro badge.",
       warnings: [],
     });
+    hydrateSDSVariantSelection.mockResolvedValue({
+      ...selection,
+      categoryPath: ["Apparel", "Tops"],
+    });
     loadSheinStudioDraft.mockResolvedValue(
       buildDraft({
+        selection: {
+          ...selection,
+          categoryPath: ["Apparel", "Tops"],
+        },
         hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
         hotStyleReferenceBrief: "saved reference brief",
         hotStyleReferencePrompt: "saved reference prompt",
@@ -3501,6 +3509,7 @@ describe("SheinStudioWorkbench", () => {
     expect(analyzeSheinStudioReferenceStyle).toHaveBeenCalledWith(
       expect.objectContaining({
         basePrompt: "retro cherries",
+        categoryPath: ["Apparel", "Tops"],
         productName: "tee",
         referenceImageUrls: ["https://example.com/ref.png"],
       }),

@@ -1146,6 +1146,9 @@ describe("useSheinStudioItemizedBatchContext", () => {
         productImageCount: "1",
         productImagePrompt: "",
         productImagePrompts: [],
+        hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+        hotStyleReferenceBrief: "current hot style brief",
+        hotStyleReferencePrompt: "current extracted prompt",
         prompt: "prompt",
         renderSizeImagesWithSds: false,
         selectedSdsImages: [],
@@ -1182,7 +1185,12 @@ describe("useSheinStudioItemizedBatchContext", () => {
       detail: expect.objectContaining({
         createdTasks: [{ id: "task-created", title: "Created", designId: "design-1" }],
       }),
-      savedBatch: expect.objectContaining({ id: "batch-1" }),
+      savedBatch: expect.objectContaining({
+        id: "batch-1",
+        hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+        hotStyleReferenceBrief: "current hot style brief",
+        hotStyleReferencePrompt: "current extracted prompt",
+      }),
     });
   });
 

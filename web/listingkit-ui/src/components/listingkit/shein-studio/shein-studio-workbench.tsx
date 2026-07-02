@@ -566,6 +566,9 @@ export function SheinStudioWorkbench({
     productImageCount,
     productImagePrompt,
     productImagePrompts,
+    hotStyleReferenceImageUrls,
+    hotStyleReferenceBrief,
+    hotStyleReferencePrompt,
     prompt,
     renderSizeImagesWithSds,
     selectedSdsImages,
@@ -600,8 +603,9 @@ export function SheinStudioWorkbench({
         referenceImageUrls: input.referenceImageUrls,
         basePrompt: input.basePrompt,
         productName: activeSelection?.productName,
+        categoryPath: activeSelection?.categoryPath,
       }),
-    [activeSelection?.productName],
+    [activeSelection?.categoryPath, activeSelection?.productName],
   );
 
   useEffect(() => {

@@ -45,6 +45,9 @@ type ItemizedTaskCreationProjectionInput = {
   productImageCount: string;
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
+  hotStyleReferenceImageUrls?: string[];
+  hotStyleReferenceBrief?: string;
+  hotStyleReferencePrompt?: string;
   prompt: string;
   renderSizeImagesWithSds: boolean;
   result: SheinStudioBatchTaskCreationResult;
@@ -528,6 +531,9 @@ export function projectItemizedBatchDetail({
   productImageCount,
   productImagePrompt,
   productImagePrompts,
+  hotStyleReferenceImageUrls = [],
+  hotStyleReferenceBrief = "",
+  hotStyleReferencePrompt = "",
   prompt,
   renderSizeImagesWithSds,
   selectedSdsImages,
@@ -551,6 +557,9 @@ export function projectItemizedBatchDetail({
       productImageCount,
       productImagePrompt,
       productImagePrompts,
+      hotStyleReferenceImageUrls,
+      hotStyleReferenceBrief,
+      hotStyleReferencePrompt,
       artworkModel,
       transparentBackground,
       sheinStoreId,
@@ -594,6 +603,9 @@ export function projectItemizedTaskCreationResult({
   productImageCount,
   productImagePrompt,
   productImagePrompts,
+  hotStyleReferenceImageUrls = [],
+  hotStyleReferenceBrief = "",
+  hotStyleReferencePrompt = "",
   prompt,
   renderSizeImagesWithSds,
   result,
@@ -635,6 +647,9 @@ export function projectItemizedTaskCreationResult({
     productImageCount,
     productImagePrompt,
     productImagePrompts,
+    hotStyleReferenceImageUrls,
+    hotStyleReferenceBrief,
+    hotStyleReferencePrompt,
     prompt,
     renderSizeImagesWithSds,
     selectedSdsImages,
@@ -693,6 +708,9 @@ export function useSheinStudioItemizedBatchContext({
   productImageCount,
   productImagePrompt,
   productImagePrompts,
+  hotStyleReferenceImageUrls = [],
+  hotStyleReferenceBrief = "",
+  hotStyleReferencePrompt = "",
   prompt,
   renderSizeImagesWithSds,
   selectedSdsImages,
@@ -729,6 +747,9 @@ export function useSheinStudioItemizedBatchContext({
           productImageCount,
           productImagePrompt,
           productImagePrompts,
+          hotStyleReferenceImageUrls,
+          hotStyleReferenceBrief,
+          hotStyleReferencePrompt,
           prompt,
           renderSizeImagesWithSds,
           result,
@@ -761,6 +782,9 @@ export function useSheinStudioItemizedBatchContext({
     productImageCount,
     productImagePrompt,
     productImagePrompts,
+    hotStyleReferenceImageUrls,
+    hotStyleReferenceBrief,
+    hotStyleReferencePrompt,
     prompt,
     renderSizeImagesWithSds,
     selectedSdsImages,

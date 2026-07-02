@@ -636,4 +636,41 @@ describe("SheinStudioGenerationPanel", () => {
       expect.stringContaining("original retro badge"),
     );
   });
+
+  it("clears stale hot style prompt when extraction returns an empty sanitized prompt", async () => {
+    const user = userEvent.setup();
+    const analyzeReferenceStyle = vi.fn().mockResolvedValue({
+      referenceStyleBrief: "no reusable visual pattern",
+      sanitizedPrompt: "",
+      warnings: [],
+    });
+    const setHotStyleReferenceBrief = vi.fn();
+    const setHotStyleReferencePrompt = vi.fn();
+    const panelProps = buildPanelProps({ prompt: "retro cherries" });
+
+    render(
+      <SheinStudioGenerationPanel
+        {...panelProps}
+        actions={{
+          ...panelProps.actions,
+          analyzeReferenceStyle,
+          setHotStyleReferenceBrief,
+          setHotStyleReferencePrompt,
+        }}
+        form={{
+          ...panelProps.form,
+          hotStyleReferenceBrief: "old brief",
+          hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+          hotStyleReferencePrompt: "old extracted prompt",
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "提取热销款风格" }));
+
+    expect(setHotStyleReferenceBrief).toHaveBeenCalledWith(
+      "no reusable visual pattern",
+    );
+    expect(setHotStyleReferencePrompt).toHaveBeenCalledWith("");
+  });
 });

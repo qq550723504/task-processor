@@ -77,6 +77,7 @@ export type SDSProductVariantSelection = {
   productSize?: string;
   packagingSpecification?: string;
   productName: string;
+  categoryPath?: string[];
   variantLabel: string;
   printableWidth?: number;
   printableHeight?: number;
