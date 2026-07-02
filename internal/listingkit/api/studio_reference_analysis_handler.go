@@ -7,16 +7,16 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) AnalyzeStudioReferenceStyle(c *gin.Context) {
+	if !h.requireSubscriptionUsage(c, listingsubscription.ModuleStudio, "design_jobs", 1) {
+		return
+	}
 	var req listingkit.StudioReferenceAnalysisRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
-		return
-	}
-	if h.studioMediaService == nil {
-		c.JSON(http.StatusNotImplemented, gin.H{"error": "reference_analysis_unavailable", "message": "studio media service is not configured"})
 		return
 	}
 

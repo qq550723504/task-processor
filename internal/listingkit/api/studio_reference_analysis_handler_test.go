@@ -12,6 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingsubscription"
 )
 
 type stubStudioReferenceAnalysisService struct {
@@ -57,7 +58,8 @@ func TestAnalyzeStudioReferenceStyleHandlerReturnsBrief(t *testing.T) {
 		SanitizedPrompt:     "original retro badge",
 		Warnings:            []string{"safe"},
 	}}
-	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(service))
+	subscriptionService := activeStudioSubscriptionService(t)
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(service), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("NewHandler() error = %v", err)
 	}
@@ -83,6 +85,21 @@ func TestAnalyzeStudioReferenceStyleHandlerReturnsBrief(t *testing.T) {
 	if body.SanitizedPrompt != "original retro badge" {
 		t.Fatalf("sanitized prompt = %q", body.SanitizedPrompt)
 	}
+
+	summary, err := subscriptionService.GetSummary(t.Context(), listingkit.DefaultTenantID)
+	if err != nil {
+		t.Fatalf("get summary: %v", err)
+	}
+	var studioUsage int
+	for _, item := range summary.Entitlements {
+		if item.Module.Code == listingsubscription.ModuleStudio {
+			studioUsage = item.Used["design_jobs"]
+			break
+		}
+	}
+	if studioUsage != 1 {
+		t.Fatalf("studio design_jobs usage = %d, want 1", studioUsage)
+	}
 }
 
 func TestAnalyzeStudioReferenceStyleHandlerMapsInvalidRequest(t *testing.T) {
@@ -90,7 +107,7 @@ func TestAnalyzeStudioReferenceStyleHandlerMapsInvalidRequest(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	service := &stubStudioReferenceAnalysisService{err: errors.New("invalid request: reference_image_urls is required")}
-	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(service))
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(service), WithSubscriptionService(activeStudioSubscriptionService(t)))
 	if err != nil {
 		t.Fatalf("NewHandler() error = %v", err)
 	}
@@ -104,5 +121,78 @@ func TestAnalyzeStudioReferenceStyleHandlerMapsInvalidRequest(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body = %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleHandlerRequiresStudioSubscription(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	service := &stubStudioReferenceAnalysisService{}
+	subscriptionService, err := listingsubscription.NewService(listingsubscription.NewMemRepository())
+	if err != nil {
+		t.Fatalf("create subscription service: %v", err)
+	}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(service), WithSubscriptionService(subscriptionService))
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/studio/reference-style/analyze", h.AnalyzeStudioReferenceStyle)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/reference-style/analyze", strings.NewReader(`{"reference_image_urls":["https://example.com/a.png"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusPaymentRequired {
+		t.Fatalf("status = %d, want 402; body = %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"error":"subscription_required"`) {
+		t.Fatalf("body = %s, want subscription_required", w.Body.String())
+	}
+	if service.req != nil {
+		t.Fatalf("service request = %+v, want service not to be called", service.req)
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleHandlerReturnsQuotaExceeded(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	service := &stubStudioReferenceAnalysisService{}
+	subscriptionService, err := listingsubscription.NewService(listingsubscription.NewMemRepository())
+	if err != nil {
+		t.Fatalf("create subscription service: %v", err)
+	}
+	if _, err := subscriptionService.UpsertEntitlement(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"design_jobs": 1},
+	}); err != nil {
+		t.Fatalf("upsert entitlement: %v", err)
+	}
+	if _, err := subscriptionService.RecordUsage(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleStudio, "design_jobs", 1); err != nil {
+		t.Fatalf("seed design_jobs usage: %v", err)
+	}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(service), WithSubscriptionService(subscriptionService))
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/studio/reference-style/analyze", h.AnalyzeStudioReferenceStyle)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/reference-style/analyze", strings.NewReader(`{"reference_image_urls":["https://example.com/a.png"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusPaymentRequired {
+		t.Fatalf("status = %d, want 402; body = %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"error":"quota_exceeded"`) {
+		t.Fatalf("body = %s, want quota_exceeded", w.Body.String())
+	}
+	if service.req != nil {
+		t.Fatalf("service request = %+v, want service not to be called", service.req)
 	}
 }
