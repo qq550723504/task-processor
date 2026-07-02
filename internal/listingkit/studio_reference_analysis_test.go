@@ -48,33 +48,66 @@ func TestAnalyzeStudioReferenceStyleRejectsEmptyReferences(t *testing.T) {
 	}
 }
 
-func TestAnalyzeStudioReferenceStyleRejectsExternalReferenceImages(t *testing.T) {
-	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: &stubReferenceAnalysisCompleter{}})
+func TestAnalyzeStudioReferenceStyleAcceptsPublicHTTPSReferenceImages(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"retro flowers","palette":["cream"],"composition":"centered badge"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
-	_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
 		ReferenceImageURLs: []string{"https://example.com/reference.png"},
 	})
-	if err == nil {
-		t.Fatal("AnalyzeStudioReferenceStyle() error = nil, want uploaded-image validation failure")
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
 	}
-	if !strings.Contains(err.Error(), "uploaded listingkit image") {
-		t.Fatalf("error = %v, want uploaded-image validation failure", err)
+	if len(resp.Warnings) != 0 {
+		t.Fatalf("warnings = %#v, want no validation warning", resp.Warnings)
+	}
+	if len(completer.calls) != 1 || !strings.HasPrefix(completer.calls[0], "https://example.com/reference.png|") {
+		t.Fatalf("AnalyzeImage calls = %#v, want original public https URL", completer.calls)
 	}
 }
 
-func TestAnalyzeStudioReferenceStyleNormalizesUploadedReferenceURLs(t *testing.T) {
+func TestAnalyzeStudioReferenceStyleRejectsInvalidReferenceImageURLs(t *testing.T) {
+	testCases := []struct {
+		name string
+		urls []string
+	}{
+		{name: "http url", urls: []string{"http://example.com/reference.png"}},
+		{name: "relative upload path", urls: []string{"/api/v1/listing-kits/uploads/files/folder/ref-a.png"}},
+		{name: "malformed absolute url", urls: []string{"https://"}},
+		{name: "non absolute text", urls: []string{"example.com/reference.png"}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: &stubReferenceAnalysisCompleter{}})
+
+			_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+				ReferenceImageURLs: tc.urls,
+			})
+			if err == nil {
+				t.Fatal("AnalyzeStudioReferenceStyle() error = nil, want invalid request")
+			}
+			if !strings.Contains(err.Error(), "invalid request") {
+				t.Fatalf("error = %v, want invalid request", err)
+			}
+		})
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleNormalizesHTTPSReferenceURLs(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
 		`{"motif":"retro flowers","palette":["cream"],"composition":"centered badge"}`,
 		`{"motif":"watercolor texture","palette":["coral"],"composition":"arched floral frame"}`,
-		`{"motif":"botanical pattern","palette":["teal"],"composition":"airy balanced layout"}`,
 	}}
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
 	_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
 		ReferenceImageURLs: []string{
-			"/api/v1/listing-kits/uploads/files/folder/ref-a.png",
-			"http://localhost:3000/api/v1/listing-kits/uploads/files/folder/ref-b.png",
-			"https://assets.example.com/api/v1/listing-kits/uploads/files/folder/ref-c.png",
+			"  https://example.com/folder/ref-a.png  ",
+			"https://example.com/folder/ref-a.png",
+			"https://cdn.example.com/folder/ref-b.png",
 		},
 	})
 	if err != nil {
@@ -82,9 +115,8 @@ func TestAnalyzeStudioReferenceStyleNormalizesUploadedReferenceURLs(t *testing.T
 	}
 
 	wantURLs := []string{
-		"http://localhost:3000/api/v1/listing-kits/uploads/files/folder/ref-a.png",
-		"http://localhost:3000/api/v1/listing-kits/uploads/files/folder/ref-b.png",
-		"http://localhost:3000/api/v1/listing-kits/uploads/files/folder/ref-c.png",
+		"https://example.com/folder/ref-a.png",
+		"https://cdn.example.com/folder/ref-b.png",
 	}
 	if len(completer.calls) != len(wantURLs) {
 		t.Fatalf("calls = %d, want %d", len(completer.calls), len(wantURLs))
@@ -106,12 +138,12 @@ func TestAnalyzeStudioReferenceStyleLimitsReferencesAndSanitizesPrompt(t *testin
 
 	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
 		ReferenceImageURLs: []string{
-			"/api/v1/listing-kits/uploads/files/a.png",
-			"/api/v1/listing-kits/uploads/files/b.png",
-			"/api/v1/listing-kits/uploads/files/c.png",
-			"/api/v1/listing-kits/uploads/files/d.png",
-			"/api/v1/listing-kits/uploads/files/e.png",
-			"/api/v1/listing-kits/uploads/files/f.png",
+			"https://example.com/a.png",
+			"https://example.com/b.png",
+			"https://example.com/c.png",
+			"https://example.com/d.png",
+			"https://example.com/e.png",
+			"https://example.com/f.png",
 		},
 		ProductName:  "T-shirt",
 		CategoryPath: []string{"Apparel", "Tops"},
@@ -160,7 +192,7 @@ func TestAnalyzeStudioReferenceStyleFallsBackForMalformedJSON(t *testing.T) {
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
 	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
-		ReferenceImageURLs: []string{"/api/v1/listing-kits/uploads/files/a.png"},
+		ReferenceImageURLs: []string{"https://example.com/a.png"},
 	})
 	if err != nil {
 		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
@@ -189,8 +221,8 @@ func TestAnalyzeStudioReferenceStyleUsesPartialSuccess(t *testing.T) {
 
 	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
 		ReferenceImageURLs: []string{
-			"/api/v1/listing-kits/uploads/files/a.png",
-			"/api/v1/listing-kits/uploads/files/b.png",
+			"https://example.com/a.png",
+			"https://example.com/b.png",
 		},
 	})
 	if err != nil {
@@ -211,7 +243,7 @@ func TestAnalyzeStudioReferenceStyleKeepsSafeTitleCaseStyleSignals(t *testing.T)
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
 	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
-		ReferenceImageURLs: []string{"/api/v1/listing-kits/uploads/files/a.png"},
+		ReferenceImageURLs: []string{"https://example.com/a.png"},
 	})
 	if err != nil {
 		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
@@ -240,7 +272,7 @@ func TestAnalyzeStudioReferenceStyleDoesNotWarnForSafeStructuredJSONQuotes(t *te
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
 	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
-		ReferenceImageURLs: []string{"/api/v1/listing-kits/uploads/files/a.png"},
+		ReferenceImageURLs: []string{"https://example.com/a.png"},
 	})
 	if err != nil {
 		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
@@ -257,7 +289,7 @@ func TestAnalyzeStudioReferenceStyleKeepsBroaderSafeStyleCues(t *testing.T) {
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
 	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
-		ReferenceImageURLs: []string{"/api/v1/listing-kits/uploads/files/a.png"},
+		ReferenceImageURLs: []string{"https://example.com/a.png"},
 	})
 	if err != nil {
 		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
@@ -292,7 +324,7 @@ func TestAnalyzeStudioReferenceStyleKeepsOrdinarySafeStylePhrases(t *testing.T) 
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
 	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
-		ReferenceImageURLs: []string{"/api/v1/listing-kits/uploads/files/reference-safe.png"},
+		ReferenceImageURLs: []string{"https://example.com/reference-safe.png"},
 	})
 	if err != nil {
 		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
@@ -344,7 +376,7 @@ func TestAnalyzeStudioReferenceStyleAvoidWarningsOnlyForUnsafeSignals(t *testing
 			svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
 			resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
-				ReferenceImageURLs: []string{"/api/v1/listing-kits/uploads/files/a.png"},
+				ReferenceImageURLs: []string{"https://example.com/a.png"},
 			})
 			if err != nil {
 				t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
@@ -365,7 +397,7 @@ func TestAnalyzeStudioReferenceStyleErrorsWhenNoSafeSignalsSurvive(t *testing.T)
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
 	_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
-		ReferenceImageURLs: []string{"/api/v1/listing-kits/uploads/files/a.png"},
+		ReferenceImageURLs: []string{"https://example.com/a.png"},
 	})
 	if err == nil {
 		t.Fatal("AnalyzeStudioReferenceStyle() error = nil, want no-safe-signal failure")
@@ -404,10 +436,10 @@ func TestUploadedListingKitImageKeyFromURL(t *testing.T) {
 			ok:     true,
 		},
 		{
-			name:   "remote host uploaded url uses path only",
+			name:   "remote host uploaded url rejected",
 			rawURL: "https://assets.example.com/api/v1/listing-kits/uploads/files/folder/reference.png",
-			want:   "folder/reference.png",
-			ok:     true,
+			want:   "",
+			ok:     false,
 		},
 		{
 			name:   "non upload path rejected",

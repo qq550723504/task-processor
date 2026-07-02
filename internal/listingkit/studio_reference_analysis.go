@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 )
@@ -232,11 +233,11 @@ func normalizeStudioReferenceImageURLs(urls []string) ([]string, error) {
 		if trimmed == "" {
 			continue
 		}
-		key, ok := uploadedListingKitImageKeyFromURL(trimmed)
-		if !ok {
-			return nil, fmt.Errorf("invalid request: reference_image_urls must be uploaded listingkit images")
+		parsed, err := url.ParseRequestURI(trimmed)
+		if err != nil || parsed == nil || !parsed.IsAbs() || !strings.EqualFold(parsed.Scheme, "https") || strings.TrimSpace(parsed.Host) == "" {
+			return nil, fmt.Errorf("invalid request: reference_image_urls must be absolute https urls")
 		}
-		normalized := absolutizeListingKitUploadedImageURL(buildUploadedImagePath(key))
+		normalized := parsed.String()
 		if _, ok := seen[normalized]; ok {
 			continue
 		}
