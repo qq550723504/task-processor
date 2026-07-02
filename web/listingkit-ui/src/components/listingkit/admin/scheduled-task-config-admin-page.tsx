@@ -50,8 +50,8 @@ const TASK_TYPE_OPTIONS: Array<[string, string]> = [
 ];
 
 export function ScheduledTaskConfigAdminPage() {
-  const [platform, setPlatform] = useState("shein");
-  const [taskType, setTaskType] = useState("inventory");
+  const [platform, setPlatform] = useState("");
+  const [taskType, setTaskType] = useState("");
   const [enabled, setEnabled] = useState("");
   const [form, setForm] =
     useState<ListingScheduledTaskConfigInput>(DEFAULT_FORM);
@@ -84,13 +84,19 @@ export function ScheduledTaskConfigAdminPage() {
     (configQuery.error instanceof Error ? configQuery.error.message : "") ||
     (storesQuery.error instanceof Error ? storesQuery.error.message : "");
 
+  function platformForStore(storeId: number) {
+    return stores.find((store) => store.id === storeId)?.platform?.trim() || DEFAULT_FORM.platform;
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     setError("");
     try {
+      const selectedStorePlatform = platformForStore(form.storeId);
       const saved = await upsertListingScheduledTaskConfig({
         ...form,
+        platform: selectedStorePlatform,
         intervalSeconds: Math.max(60, Number(form.intervalSeconds) || 3600),
       });
       const nextPlatform = saved.platform || form.platform || DEFAULT_FORM.platform;
@@ -281,22 +287,11 @@ export function ScheduledTaskConfigAdminPage() {
           </div>
           <AdminStoreSelect
             value={form.storeId}
-            onChange={(storeId) => setForm({ ...form, storeId })}
+            onChange={(storeId) =>
+              setForm({ ...form, storeId, platform: platformForStore(storeId) })
+            }
             stores={stores}
             emptyLabel="请选择店铺"
-            filterStore={(store) =>
-              !form.platform ||
-              store.platform === undefined ||
-              store.platform.toLowerCase() === form.platform
-            }
-          />
-          <TaskSelect
-            label="平台"
-            value={form.platform}
-            onChange={(nextPlatform) =>
-              setForm({ ...form, platform: nextPlatform || "shein" })
-            }
-            options={[["shein", "SHEIN"]]}
           />
           <TaskSelect
             label="任务"

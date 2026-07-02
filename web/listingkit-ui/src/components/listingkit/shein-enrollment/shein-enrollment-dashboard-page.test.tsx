@@ -46,6 +46,36 @@ describe("SheinEnrollmentDashboardPage", () => {
     );
   });
 
+  it("opens store cards on the synced products tab in products mode", async () => {
+    mocks.useSheinEnrollmentDashboard.mockReturnValue({
+      isLoading: false,
+      isError: false,
+      error: null,
+      data: {
+        items: [
+          {
+            store_id: 7,
+            store_name: "SHEIN US",
+            store_username: "shein-us",
+            region: "US",
+            synced_product_count: 12,
+            missing_cost_count: 3,
+            pending_review_count: 2,
+            ready_to_enroll_count: 5,
+          },
+        ],
+      },
+    });
+
+    render(<SheinEnrollmentDashboardPage mode="products" />);
+
+    expect(await screen.findByText("SHEIN Synced Products")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View Products" })).toHaveAttribute(
+      "href",
+      "/listing-kits/shein-enrollment/7?tab=products",
+    );
+  });
+
   it("renders an explicit error state when the dashboard request fails", async () => {
     mocks.useSheinEnrollmentDashboard.mockReturnValue({
       isLoading: false,

@@ -12,6 +12,31 @@ describe("ScheduledTaskConfigAdminPage", () => {
     vi.restoreAllMocks();
   });
 
+  it("loads all task types by default", async () => {
+    vi.spyOn(adminStoresApi, "getSimpleListingStores").mockResolvedValue([]);
+    const getConfigs = vi
+      .spyOn(scheduledTaskConfigsApi, "getListingScheduledTaskConfigs")
+      .mockResolvedValue({
+        items: [],
+        total: 0,
+        page: 1,
+        page_size: 50,
+      });
+
+    renderWithQueryClient(<ScheduledTaskConfigAdminPage />);
+
+    await waitFor(() => {
+      expect(getConfigs).toHaveBeenCalledWith(
+        expect.not.objectContaining({
+          platform: expect.any(String),
+          taskType: expect.any(String),
+        }),
+      );
+    });
+    expect(screen.getAllByLabelText("平台")[0]).toHaveValue("");
+    expect(screen.getAllByLabelText("任务")[0]).toHaveValue("");
+  });
+
   it("renders scheduled inventory sync configs and saves store-level config", async () => {
     vi.spyOn(adminStoresApi, "getSimpleListingStores").mockResolvedValue([
       { id: 962, name: "SHEIN 962", platform: "shein", region: "US" },
@@ -69,6 +94,51 @@ describe("ScheduledTaskConfigAdminPage", () => {
           taskType: "inventory",
           enabled: true,
           intervalSeconds: 3600,
+        }),
+      );
+    });
+  });
+
+  it("uses the selected store platform when saving a scheduled task config", async () => {
+    vi.spyOn(adminStoresApi, "getSimpleListingStores").mockResolvedValue([
+      { id: 962, name: "SHEIN 962", platform: "shein", region: "US" },
+      { id: 1201, name: "TEMU 1201", platform: "temu", region: "US" },
+    ]);
+    vi.spyOn(
+      scheduledTaskConfigsApi,
+      "getListingScheduledTaskConfigs",
+    ).mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 50,
+    });
+    const upsert = vi
+      .spyOn(scheduledTaskConfigsApi, "upsertListingScheduledTaskConfig")
+      .mockResolvedValue({
+        id: 3,
+        tenantId: 246,
+        storeId: 1201,
+        platform: "temu",
+        taskType: "inventory",
+        enabled: true,
+        intervalSeconds: 3600,
+      });
+
+    renderWithQueryClient(<ScheduledTaskConfigAdminPage />);
+
+    await waitFor(() => {
+      expect(screen.getByText("TEMU 1201 (#1201)")).toBeInTheDocument();
+    });
+    await userEvent.selectOptions(screen.getByLabelText("店铺"), "1201");
+    expect(screen.queryAllByLabelText("平台")).toHaveLength(1);
+    await userEvent.click(screen.getByRole("button", { name: "保存配置" }));
+
+    await waitFor(() => {
+      expect(upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          storeId: 1201,
+          platform: "temu",
         }),
       );
     });

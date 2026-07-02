@@ -129,6 +129,12 @@ const ADMIN_NAV_ITEMS = [
         match: "prefix",
       },
       {
+        label: "SHEIN 同步商品",
+        href: "/listing-kits/shein-products",
+        icon: PackageCheck,
+        match: "prefix",
+      },
+      {
         label: "我的上架统计",
         href: "/listing-kits/store-statistics",
         icon: LayoutDashboard,
