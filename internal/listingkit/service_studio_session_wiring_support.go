@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -174,16 +175,32 @@ func buildTaskStudioMediaServiceConfigWithWiring(wiring taskStudioMediaWiring) t
 }
 
 func buildResolveUploadedImagePublicURLFunc(s *service) func(context.Context, string) (string, error) {
-	if repo := resolveUploadedImageRepository(s); repo != nil {
+	repo := resolveUploadedImageRepository(s)
+	store := resolveStudioUploadStore(s)
+	if repo != nil {
 		return func(ctx context.Context, key string) (string, error) {
 			record, err := repo.GetUploadedImage(ctx, key)
+			if err == nil {
+				if publicURL, validateErr := validateStudioReferencePublicHTTPSURL(record.PublicURL); validateErr == nil {
+					return publicURL, nil
+				}
+			} else if !shouldFallbackUploadedImagePublicURLLookup(err) {
+				return "", err
+			}
+			if store != nil {
+				stored, err := store.Open(ctx, key)
+				if err != nil {
+					return "", err
+				}
+				return validateStudioReferencePublicHTTPSURL(stored.PublicURL)
+			}
 			if err != nil {
 				return "", err
 			}
-			return validateStudioReferencePublicHTTPSURL(record.PublicURL)
+			return "", fmt.Errorf("public https url is required")
 		}
 	}
-	if store := resolveStudioUploadStore(s); store != nil {
+	if store != nil {
 		return func(ctx context.Context, key string) (string, error) {
 			stored, err := store.Open(ctx, key)
 			if err != nil {
@@ -195,4 +212,8 @@ func buildResolveUploadedImagePublicURLFunc(s *service) func(context.Context, st
 	return func(context.Context, string) (string, error) {
 		return "", fmt.Errorf("uploaded image public url resolver is not configured")
 	}
+}
+
+func shouldFallbackUploadedImagePublicURLLookup(err error) bool {
+	return errors.Is(err, ErrUploadedImageNotFound)
 }

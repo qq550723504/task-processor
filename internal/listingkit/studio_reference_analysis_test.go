@@ -383,6 +383,37 @@ func TestAnalyzeStudioReferenceStyleKeepsSafeTitleCaseStyleSignals(t *testing.T)
 	}
 }
 
+func TestAnalyzeStudioReferenceStyleDropsUnknownTitleCaseNamedPhrases(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"Old Navy","typography":"Old English"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/title-case.png"},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	lowerPrompt := strings.ToLower(resp.SanitizedPrompt)
+	lowerBrief := strings.ToLower(resp.ReferenceStyleBrief)
+	if strings.Contains(lowerPrompt, "old navy") {
+		t.Fatalf("sanitized prompt contains unsafe title case phrase %q", resp.SanitizedPrompt)
+	}
+	if strings.Contains(lowerBrief, "old navy") {
+		t.Fatalf("reference style brief contains unsafe title case phrase %q", resp.ReferenceStyleBrief)
+	}
+	for _, safeSignal := range []string{"old english"} {
+		if !strings.Contains(lowerPrompt, safeSignal) {
+			t.Fatalf("sanitized prompt = %q, want safe title case phrase %q preserved", resp.SanitizedPrompt, safeSignal)
+		}
+		if !strings.Contains(lowerBrief, safeSignal) {
+			t.Fatalf("reference style brief = %q, want safe title case phrase %q preserved", resp.ReferenceStyleBrief, safeSignal)
+		}
+	}
+}
+
 func TestAnalyzeStudioReferenceStyleDoesNotWarnForSafeStructuredJSONQuotes(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
 		`{"motif":"Retro Flowers","palette":["Cream","Red"],"composition":"Centered Badge","typography":"Old English"}`,
@@ -728,6 +759,62 @@ func containsWarningFragment(warnings []string, fragment string) bool {
 	return false
 }
 
+func TestBuildResolveUploadedImagePublicURLFuncFallsBackToStorePublicURL(t *testing.T) {
+	svc := &service{
+		studioDeps: studioDependencies{
+			uploadStore: &stubResolveUploadedImageStore{
+				openResult: &StoredUploadedImage{
+					Key:       "folder/reference.png",
+					PublicURL: "https://cdn.example.com/folder/reference.png",
+				},
+			},
+		},
+		supportDeps: supportDependencies{
+			uploadedImageRepository: &stubResolveUploadedImageRepository{
+				record: &UploadedImageRecord{
+					Key:       "folder/reference.png",
+					PublicURL: "   ",
+				},
+			},
+		},
+	}
+
+	resolve := buildResolveUploadedImagePublicURLFunc(svc)
+	got, err := resolve(context.Background(), "folder/reference.png")
+	if err != nil {
+		t.Fatalf("resolveUploadedImagePublicURL() error = %v", err)
+	}
+	if got != "https://cdn.example.com/folder/reference.png" {
+		t.Fatalf("public url = %q, want store fallback url", got)
+	}
+}
+
+func TestBuildResolveUploadedImagePublicURLFuncFailsWhenRepoAndStorePublicURLsAreUnusable(t *testing.T) {
+	svc := &service{
+		studioDeps: studioDependencies{
+			uploadStore: &stubResolveUploadedImageStore{
+				openResult: &StoredUploadedImage{
+					Key:       "folder/reference.png",
+					PublicURL: "http://localhost:3000/folder/reference.png",
+				},
+			},
+		},
+		supportDeps: supportDependencies{
+			uploadedImageRepository: &stubResolveUploadedImageRepository{
+				record: &UploadedImageRecord{
+					Key:       "folder/reference.png",
+					PublicURL: "http://localhost:3000/folder/reference.png",
+				},
+			},
+		},
+	}
+
+	resolve := buildResolveUploadedImagePublicURLFunc(svc)
+	if _, err := resolve(context.Background(), "folder/reference.png"); err == nil {
+		t.Fatal("resolveUploadedImagePublicURL() error = nil, want unusable public url failure")
+	}
+}
+
 func TestUploadedListingKitImageKeyFromURL(t *testing.T) {
 	testCases := []struct {
 		name   string
@@ -787,4 +874,52 @@ func TestNormalizeGenerateRequestImageURLs(t *testing.T) {
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("normalizeGenerateRequestImageURLs() = %#v, want %#v", got, want)
 	}
+}
+
+type stubResolveUploadedImageRepository struct {
+	record *UploadedImageRecord
+	err    error
+}
+
+func (s *stubResolveUploadedImageRepository) SaveUploadedImage(context.Context, *UploadedImageRecord) error {
+	return errors.New("not implemented")
+}
+
+func (s *stubResolveUploadedImageRepository) GetUploadedImage(context.Context, string) (*UploadedImageRecord, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.record == nil {
+		return nil, ErrUploadedImageNotFound
+	}
+	record := *s.record
+	return &record, nil
+}
+
+func (s *stubResolveUploadedImageRepository) MarkUploadedImageDeleted(context.Context, string) (*UploadedImageRecord, error) {
+	return nil, errors.New("not implemented")
+}
+
+type stubResolveUploadedImageStore struct {
+	openResult *StoredUploadedImage
+	openErr    error
+}
+
+func (s *stubResolveUploadedImageStore) Save(context.Context, *ImageUploadInput) (*StoredUploadedImage, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubResolveUploadedImageStore) Open(context.Context, string) (*StoredUploadedImage, error) {
+	if s.openErr != nil {
+		return nil, s.openErr
+	}
+	if s.openResult == nil {
+		return nil, ErrUploadedImageNotFound
+	}
+	result := *s.openResult
+	return &result, nil
+}
+
+func (s *stubResolveUploadedImageStore) Delete(context.Context, string) error {
+	return errors.New("not implemented")
 }

@@ -144,6 +144,13 @@ var (
 		"unisex":     "unisex",
 		"athletic":   "athletic",
 	}
+	studioSafeTitleCasePhraseSet = buildStudioSafeTitleCasePhraseSet(
+		studioMotifPhraseVocabulary,
+		studioPalettePhraseVocabulary,
+		studioTypographyPhraseVocabulary,
+		studioDensityPhraseVocabulary,
+		studioProductFitPhraseVocabulary,
+	)
 )
 
 type studioReferenceImageAnalysis struct {
@@ -788,9 +795,14 @@ func stripSuspiciousStudioNamedPhrases(value string) (string, bool) {
 }
 
 func studioCapitalizedPhraseIsSafe(value string) bool {
-	tokens := studioWordPattern.FindAllString(strings.ToLower(value), -1)
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	tokens := studioWordPattern.FindAllString(normalized, -1)
 	if len(tokens) == 0 {
 		return true
+	}
+	if len(tokens) > 1 {
+		_, ok := studioSafeTitleCasePhraseSet[normalized]
+		return ok
 	}
 	for _, token := range tokens {
 		if _, ok := studioSafeDescriptorWords[token]; !ok {
@@ -798,6 +810,20 @@ func studioCapitalizedPhraseIsSafe(value string) bool {
 		}
 	}
 	return true
+}
+
+func buildStudioSafeTitleCasePhraseSet(vocabularies ...[]string) map[string]struct{} {
+	result := make(map[string]struct{})
+	for _, vocabulary := range vocabularies {
+		for _, phrase := range vocabulary {
+			normalized := strings.ToLower(strings.TrimSpace(phrase))
+			if normalized == "" {
+				continue
+			}
+			result[normalized] = struct{}{}
+		}
+	}
+	return result
 }
 
 func preferRicherStudioDescriptor(primary string, fallback string) string {
