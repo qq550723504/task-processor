@@ -11,4 +11,5 @@ type SchedulerRuntimeProvider interface {
 	GetRuntimeStoreService() listingruntime.StoreService
 	ListRuntimeAutoPricingStoreIDs(ctx context.Context, platform string) ([]int64, error)
 	ListRuntimeScheduledTaskConfigs(ctx context.Context, platform string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
+	ListRuntimeScheduledTaskConfigStates(ctx context.Context, platform string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
 }

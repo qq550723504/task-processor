@@ -19,6 +19,7 @@ type schedulerStoreRuntime interface {
 	GetStore(storeID int64) (*listingruntime.StoreInfo, error)
 	ListAutoPricingStoreIDs(ctx context.Context, platformName string) ([]int64, error)
 	ListScheduledTaskConfigs(ctx context.Context, platformName string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
+	ListScheduledTaskConfigStates(ctx context.Context, platformName string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
 }
 
 type resolvedStoreTaskConfig struct {
@@ -353,4 +354,11 @@ func (a schedulerStoreRuntimeAdapter) ListScheduledTaskConfigs(ctx context.Conte
 		return nil, fmt.Errorf("scheduler runtime is not initialized")
 	}
 	return a.runtime.ListRuntimeScheduledTaskConfigs(ctx, platformName, taskType)
+}
+
+func (a schedulerStoreRuntimeAdapter) ListScheduledTaskConfigStates(ctx context.Context, platformName string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error) {
+	if a.runtime == nil {
+		return nil, fmt.Errorf("scheduler runtime is not initialized")
+	}
+	return a.runtime.ListRuntimeScheduledTaskConfigStates(ctx, platformName, taskType)
 }

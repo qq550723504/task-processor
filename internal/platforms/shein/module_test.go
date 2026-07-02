@@ -241,3 +241,11 @@ func (s *stubSheinSchedulerRuntime) ListRuntimeScheduledTaskConfigs(
 	s.calls = append(s.calls, taskType)
 	return s.configs[taskType], nil
 }
+
+func (s *stubSheinSchedulerRuntime) ListRuntimeScheduledTaskConfigStates(
+	ctx context.Context,
+	platform string,
+	taskType appscheduler.TaskType,
+) ([]listingruntime.ScheduledTaskConfig, error) {
+	return s.ListRuntimeScheduledTaskConfigs(ctx, platform, taskType)
+}

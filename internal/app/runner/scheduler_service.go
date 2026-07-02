@@ -21,6 +21,7 @@ type schedulerServiceImpl struct {
 	storeRuntime        schedulerStoreRuntime
 	config              *config.Config
 	rabbitmqClient      *rabbitmq.Client
+	schedulerLockCloser interface{ Close() error }
 	temuFactoryCreator  TaskFactoryCreator
 	sheinFactoryCreator TaskFactoryCreator
 	schedulerManager    *scheduler.Manager
@@ -78,6 +79,12 @@ func (s *schedulerServiceImpl) Stop(ctx context.Context) error {
 	if s.schedulerManager != nil {
 		s.schedulerManager.StopAll()
 		s.logger.Info("scheduler manager stopped")
+	}
+	if s.schedulerLockCloser != nil {
+		if err := s.schedulerLockCloser.Close(); err != nil {
+			s.logger.WithError(err).Warn("close scheduler distributed lock failed")
+		}
+		s.schedulerLockCloser = nil
 	}
 	if s.cancel != nil {
 		s.cancel()

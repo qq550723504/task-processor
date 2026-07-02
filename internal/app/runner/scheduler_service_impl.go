@@ -3,10 +3,13 @@ package runner
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	"task-processor/internal/app/scheduler"
+	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
+	infralock "task-processor/internal/infra/lock"
 )
 
 // initializeResources 初始化资源
@@ -35,7 +38,11 @@ func (s *schedulerServiceImpl) startScheduledTasks() error {
 	}
 
 	// 创建统一调度器管理器
-	s.schedulerManager = scheduler.NewManager(s.ctx, time.Duration(cfg.Worker.TaskTimeout)*time.Second)
+	taskTimeout := time.Duration(cfg.Worker.TaskTimeout) * time.Second
+	s.schedulerManager = scheduler.NewManager(s.ctx, taskTimeout)
+	if err := s.configureSchedulerDistributedLock(cfg, taskTimeout); err != nil {
+		return err
+	}
 
 	// 获取所有平台配置
 	platformConfigs := s.getPlatformConfigs(cfg)
@@ -53,4 +60,34 @@ func (s *schedulerServiceImpl) startScheduledTasks() error {
 
 	log.Info("✅ 调度任务启动完成")
 	return nil
+}
+
+func (s *schedulerServiceImpl) configureSchedulerDistributedLock(cfg *config.Config, taskTimeout time.Duration) error {
+	if s == nil || s.schedulerManager == nil {
+		return nil
+	}
+	if cfg == nil || cfg.Redis == nil || cfg.Redis.Host == "" {
+		s.logger.Warn("调度任务未配置 Redis 分布式锁，当前仅能防止单进程内重复执行")
+		return nil
+	}
+	locker, err := infralock.NewRedisLock(cfg.Redis, schedulerLockOwner(), s.logger)
+	if err != nil {
+		return fmt.Errorf("初始化调度任务分布式锁失败: %w", err)
+	}
+	lockTTL := taskTimeout + time.Minute
+	if lockTTL <= time.Minute {
+		lockTTL = 30 * time.Minute
+	}
+	s.schedulerManager.SetDistributedLock(locker, lockTTL)
+	s.schedulerLockCloser = locker
+	s.logger.WithField("lock_ttl", lockTTL.String()).Info("调度任务 Redis 分布式锁已启用")
+	return nil
+}
+
+func schedulerLockOwner() string {
+	hostname, err := os.Hostname()
+	if err != nil || hostname == "" {
+		hostname = "unknown-host"
+	}
+	return fmt.Sprintf("%s:%d", hostname, os.Getpid())
 }

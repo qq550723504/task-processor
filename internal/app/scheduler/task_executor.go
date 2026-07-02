@@ -3,10 +3,12 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"task-processor/internal/core/logger"
+	infralock "task-processor/internal/infra/lock"
 	"task-processor/internal/pkg/timeout"
 	"time"
 
@@ -23,8 +25,11 @@ type TaskExecutor struct {
 	logger            *logrus.Entry
 	dependencyManager *DependencyManager
 	isRunning         int32          // 任务执行状态标志 (0: 空闲, 1: 执行中)
+	started           int32          // 执行器启动状态标志 (0: 未启动, 1: 已启动)
 	skipCount         int64          // 跳过执行次数统计
 	stats             *ExecutorStats // 执行统计
+	distributedLock   infralock.DistributedLock
+	lockTTL           time.Duration
 }
 
 // NewTaskExecutor 创建新的任务执行器
@@ -50,12 +55,26 @@ func NewTaskExecutor(ctx context.Context, task Task, depManager *DependencyManag
 	}
 }
 
+// SetDistributedLock 为任务执行器设置分布式锁。
+func (e *TaskExecutor) SetDistributedLock(locker infralock.DistributedLock, ttl time.Duration) {
+	e.distributedLock = locker
+	if ttl <= 0 {
+		ttl = e.taskTimeout
+	}
+	e.lockTTL = ttl
+}
+
 // Start 启动任务执行器
-func (e *TaskExecutor) Start() {
+func (e *TaskExecutor) Start() bool {
+	if !atomic.CompareAndSwapInt32(&e.started, 0, 1) {
+		e.logger.Info("任务执行器已启动，跳过重复启动")
+		return false
+	}
 	e.logger.WithField("interval", e.task.GetInterval()).Info("启动任务执行器")
 
 	e.wg.Add(1)
 	go e.run()
+	return true
 }
 
 // Stop 停止任务执行器
@@ -107,8 +126,34 @@ func (e *TaskExecutor) executeTaskWithConcurrencyControl() {
 	// 执行完成后重置状态
 	defer atomic.StoreInt32(&e.isRunning, 0)
 
+	if e.distributedLock != nil {
+		key := e.distributedLockKey()
+		locked, err := e.distributedLock.TryLock(e.ctx, key, e.lockTTL)
+		if err != nil {
+			e.logger.WithError(err).WithField("lock_key", key).Error("获取任务分布式锁失败")
+			e.stats.RecordSkip()
+			atomic.AddInt64(&e.skipCount, 1)
+			return
+		}
+		if !locked {
+			e.logger.WithField("lock_key", key).Info("任务分布式锁已被其他实例持有，跳过本次执行")
+			e.stats.RecordSkip()
+			atomic.AddInt64(&e.skipCount, 1)
+			return
+		}
+		defer func() {
+			if err := e.distributedLock.Unlock(context.Background(), key); err != nil {
+				e.logger.WithError(err).WithField("lock_key", key).Warn("释放任务分布式锁失败")
+			}
+		}()
+	}
+
 	// 执行实际任务
 	e.executeTask()
+}
+
+func (e *TaskExecutor) distributedLockKey() string {
+	return fmt.Sprintf("listing:scheduler:lock:%s:%s:%d", e.task.GetPlatform(), e.task.GetType(), e.task.GetStoreID())
 }
 
 // executeTask 执行任务

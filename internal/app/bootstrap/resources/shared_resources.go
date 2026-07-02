@@ -163,6 +163,7 @@ type schedulerRuntimeSource interface {
 	GetRuntimeStoreService() listingruntime.StoreService
 	ListRuntimeAutoPricingStoreIDs(ctx context.Context, platform string) ([]int64, error)
 	ListRuntimeScheduledTaskConfigs(ctx context.Context, platform string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
+	ListRuntimeScheduledTaskConfigStates(ctx context.Context, platform string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
 	GetStoreAPI() listingadmin.StoreAPI
 	GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error)
 	GetRawJsonDataAdapter() product.RawJsonDataClient
@@ -221,6 +222,13 @@ func (r localSchedulerFactoryRuntime) ListRuntimeScheduledTaskConfigs(ctx contex
 		return nil, nil
 	}
 	return r.source.ListRuntimeScheduledTaskConfigs(ctx, platform, taskType)
+}
+
+func (r localSchedulerFactoryRuntime) ListRuntimeScheduledTaskConfigStates(ctx context.Context, platform string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error) {
+	if r.source == nil {
+		return nil, nil
+	}
+	return r.source.ListRuntimeScheduledTaskConfigStates(ctx, platform, taskType)
 }
 
 func (r localSchedulerFactoryRuntime) GetAutoPricingStoreConfig(ctx context.Context, storeID int64) (*platformtask.AutoPricingStoreConfig, error) {

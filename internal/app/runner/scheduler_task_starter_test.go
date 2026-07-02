@@ -14,9 +14,10 @@ import (
 )
 
 type stubSchedulerStoreRuntime struct {
-	getStoreFunc                 func(storeID int64) (*listingruntime.StoreInfo, error)
-	listAutoPricingStoreIDsFunc  func(ctx context.Context, platformName string) ([]int64, error)
-	listScheduledTaskConfigsFunc func(ctx context.Context, platformName string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
+	getStoreFunc                       func(storeID int64) (*listingruntime.StoreInfo, error)
+	listAutoPricingStoreIDsFunc        func(ctx context.Context, platformName string) ([]int64, error)
+	listScheduledTaskConfigsFunc       func(ctx context.Context, platformName string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
+	listScheduledTaskConfigStatesFunc  func(ctx context.Context, platformName string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error)
 }
 
 func (s *stubSchedulerStoreRuntime) GetStore(storeID int64) (*listingruntime.StoreInfo, error) {
@@ -38,6 +39,13 @@ func (s *stubSchedulerStoreRuntime) ListScheduledTaskConfigs(ctx context.Context
 		return nil, nil
 	}
 	return s.listScheduledTaskConfigsFunc(ctx, platformName, taskType)
+}
+
+func (s *stubSchedulerStoreRuntime) ListScheduledTaskConfigStates(ctx context.Context, platformName string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error) {
+	if s.listScheduledTaskConfigStatesFunc != nil {
+		return s.listScheduledTaskConfigStatesFunc(ctx, platformName, taskType)
+	}
+	return s.ListScheduledTaskConfigs(ctx, platformName, taskType)
 }
 
 func TestResolveStoreIDsForTaskDiscoversAutoPricingStores(t *testing.T) {
@@ -255,6 +263,82 @@ func TestSyncEnabledScheduledTaskConfigsStartsRuntimeAddedConfig(t *testing.T) {
 	}
 	if got := service.schedulerManager.GetTaskCount(); got != 1 {
 		t.Fatalf("expected scheduler task count to remain 1, got %d", got)
+	}
+}
+
+func TestSyncEnabledScheduledTaskConfigsReconcilesIntervalAndDisabledState(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	currentConfig := listingruntime.ScheduledTaskConfig{
+		StoreID:         870,
+		Platform:        "shein",
+		TaskType:        "productSync",
+		Enabled:         true,
+		IntervalSeconds: 3600,
+	}
+	service := &schedulerServiceImpl{
+		logger: logrus.New(),
+		config: &config.Config{},
+		storeRuntime: &stubSchedulerStoreRuntime{
+			getStoreFunc: func(storeID int64) (*listingruntime.StoreInfo, error) {
+				return &listingruntime.StoreInfo{
+					ID:       storeID,
+					TenantID: 227,
+					Platform: "shein",
+				}, nil
+			},
+			listScheduledTaskConfigStatesFunc: func(_ context.Context, platformName string, taskType scheduler.TaskType) ([]listingruntime.ScheduledTaskConfig, error) {
+				if platformName == "SHEIN" && taskType == scheduler.TaskTypeProductSync {
+					return []listingruntime.ScheduledTaskConfig{currentConfig}, nil
+				}
+				return nil, nil
+			},
+		},
+		sheinFactoryCreator: func(*config.Config) scheduler.TaskFactory {
+			return stubRuntimeScheduledTaskFactory{platform: "shein"}
+		},
+		ctx: ctx,
+	}
+	service.schedulerManager = scheduler.NewManager(ctx, time.Second)
+
+	changed, err := service.syncEnabledScheduledTaskConfigs(ctx)
+	if err != nil {
+		t.Fatalf("syncEnabledScheduledTaskConfigs() error = %v", err)
+	}
+	if changed != 1 {
+		t.Fatalf("expected first sync to create 1 task, got %d", changed)
+	}
+	tasks := service.schedulerManager.ListTasks()
+	if len(tasks) != 1 || tasks[0].GetInterval() != time.Hour {
+		t.Fatalf("expected one hourly task, got %+v", tasks)
+	}
+
+	currentConfig.IntervalSeconds = 7200
+	changed, err = service.syncEnabledScheduledTaskConfigs(ctx)
+	if err != nil {
+		t.Fatalf("syncEnabledScheduledTaskConfigs() after interval change error = %v", err)
+	}
+	if changed != 1 {
+		t.Fatalf("expected interval change to replace 1 task, got %d", changed)
+	}
+	tasks = service.schedulerManager.ListTasks()
+	if len(tasks) != 1 || tasks[0].GetInterval() != 2*time.Hour {
+		t.Fatalf("expected one task with updated 2h interval, got %+v", tasks)
+	}
+
+	currentConfig.Enabled = false
+	changed, err = service.syncEnabledScheduledTaskConfigs(ctx)
+	if err != nil {
+		t.Fatalf("syncEnabledScheduledTaskConfigs() after disabled error = %v", err)
+	}
+	if changed != 1 {
+		t.Fatalf("expected disabled config to stop 1 task, got %d", changed)
+	}
+	if got := service.schedulerManager.GetTaskCount(); got != 0 {
+		t.Fatalf("expected disabled config to remove scheduler task, got %d", got)
 	}
 }
 

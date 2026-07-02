@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"task-processor/internal/core/logger"
+	infralock "task-processor/internal/infra/lock"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -18,10 +19,23 @@ type Manager struct {
 	dependencyManager *DependencyManager
 	monitorService    *MonitorService
 	taskTimeout       time.Duration
+	distributedLock   infralock.DistributedLock
+	lockTTL           time.Duration
 	mutex             sync.RWMutex
 	ctx               context.Context
 	cancel            context.CancelFunc
 	logger            *logrus.Entry
+}
+
+// SetDistributedLock configures a lock shared by every task executor created by this manager.
+func (m *Manager) SetDistributedLock(locker infralock.DistributedLock, ttl time.Duration) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	m.distributedLock = locker
+	if ttl <= 0 {
+		ttl = m.taskTimeout
+	}
+	m.lockTTL = ttl
 }
 
 // NewManager 创建新的调度器管理器
@@ -82,6 +96,9 @@ func (m *Manager) CreateAndStartTask(config TaskConfig) error {
 
 	// 创建任务执行器
 	executor := NewTaskExecutor(m.ctx, task, m.dependencyManager, m.taskTimeout)
+	if m.distributedLock != nil {
+		executor.SetDistributedLock(m.distributedLock, m.lockTTL)
+	}
 	m.executors[taskID] = executor
 	m.mutex.Unlock()
 
