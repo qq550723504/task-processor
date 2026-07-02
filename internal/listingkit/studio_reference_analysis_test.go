@@ -50,7 +50,7 @@ func TestAnalyzeStudioReferenceStyleRejectsEmptyReferences(t *testing.T) {
 
 func TestAnalyzeStudioReferenceStyleLimitsReferencesAndSanitizesPrompt(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
-		`{"motif":"sports mascot","palette":["navy","cream"],"composition":"varsity badge","typography":"bold collegiate","avoid":["Nike logo","exact slogan"]}`,
+		`{"motif":"sports mascot","palette":["navy","cream"],"composition":"varsity badge","typography":"bold collegiate","avoid":["Adidas trefoil logo","exact slogan \"Just Do It\"","Mickey Mouse character","Taylor Swift face portrait","same diagonal split layout"]}`,
 		`{"motif":"floral border","palette":["red","cream"],"composition":"arched frame","typography":"distressed serif","avoid":["brand mark"]}`,
 	}}
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
@@ -67,8 +67,12 @@ func TestAnalyzeStudioReferenceStyleLimitsReferencesAndSanitizesPrompt(t *testin
 	if len(completer.calls) != 5 {
 		t.Fatalf("calls = %d, want 5", len(completer.calls))
 	}
-	if strings.Contains(strings.ToLower(resp.SanitizedPrompt), "nike") || strings.Contains(strings.ToLower(resp.SanitizedPrompt), "exact slogan") {
-		t.Fatalf("sanitized prompt contains unsafe source material: %q", resp.SanitizedPrompt)
+	for _, unsafeToken := range []string{
+		"adidas", "trefoil", "just do it", "mickey", "taylor swift", "face portrait", "same diagonal split layout",
+	} {
+		if strings.Contains(strings.ToLower(resp.SanitizedPrompt), unsafeToken) {
+			t.Fatalf("sanitized prompt contains unsafe token %q: %q", unsafeToken, resp.SanitizedPrompt)
+		}
 	}
 	if !strings.Contains(strings.ToLower(resp.SanitizedPrompt), "original") {
 		t.Fatalf("sanitized prompt = %q, want originality instruction", resp.SanitizedPrompt)
@@ -79,7 +83,7 @@ func TestAnalyzeStudioReferenceStyleLimitsReferencesAndSanitizesPrompt(t *testin
 }
 
 func TestAnalyzeStudioReferenceStyleFallsBackForMalformedJSON(t *testing.T) {
-	completer := &stubReferenceAnalysisCompleter{responses: []string{"retro cherry badge, cream background, no logos"}}
+	completer := &stubReferenceAnalysisCompleter{responses: []string{`Use the Adidas trefoil logo, the quote "Just Do It", Elsa's face portrait, and the same split poster layout with retro cherry accents.`}}
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
 	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
@@ -88,8 +92,15 @@ func TestAnalyzeStudioReferenceStyleFallsBackForMalformedJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
 	}
-	if !strings.Contains(resp.ReferenceStyleBrief, "retro cherry badge") {
-		t.Fatalf("brief = %q, want malformed text retained as brief", resp.ReferenceStyleBrief)
+	if !strings.Contains(resp.ReferenceStyleBrief, "Adidas trefoil logo") {
+		t.Fatalf("brief = %q, want malformed text retained for diagnostics", resp.ReferenceStyleBrief)
+	}
+	for _, unsafeToken := range []string{
+		"adidas", "trefoil", "just do it", "elsa", "face portrait", "same split poster layout",
+	} {
+		if strings.Contains(strings.ToLower(resp.SanitizedPrompt), unsafeToken) {
+			t.Fatalf("sanitized prompt contains unsafe malformed detail %q: %q", unsafeToken, resp.SanitizedPrompt)
+		}
 	}
 }
 

@@ -49,6 +49,10 @@ func (stubHandlerCoreService) GetUploadedImage(context.Context, string) (*listin
 	return nil, errors.New("not implemented")
 }
 
+func (stubHandlerCoreService) AnalyzeStudioReferenceStyle(context.Context, *listingkit.StudioReferenceAnalysisRequest) (*listingkit.StudioReferenceAnalysisResponse, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (stubHandlerCoreService) GenerateStudioDesigns(context.Context, *listingkit.StudioDesignRequest) (*listingkit.StudioDesignResponse, error) {
 	return nil, errors.New("not implemented")
 }

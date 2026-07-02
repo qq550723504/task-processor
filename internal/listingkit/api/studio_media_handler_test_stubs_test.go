@@ -43,6 +43,13 @@ func (s *stubStudioMediaHandlerService) GetUploadedImage(_ context.Context, key 
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubStudioMediaHandlerService) AnalyzeStudioReferenceStyle(_ context.Context, _ *listingkit.StudioReferenceAnalysisRequest) (*listingkit.StudioReferenceAnalysisResponse, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return nil, errors.New("not implemented")
+}
+
 func (s *stubStudioMediaHandlerService) DeleteUploadedImage(_ context.Context, key string) (*listingkit.DeletedUploadedImage, error) {
 	s.deletedUploadedImageKey = key
 	if s.deletedUploadedImage != nil || s.err != nil {
