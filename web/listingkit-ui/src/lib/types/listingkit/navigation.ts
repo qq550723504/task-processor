@@ -40,6 +40,7 @@ export type QueueQuery = {
   kind?: string;
   user_id?: string;
   source_codes?: string;
+  query?: string;
 };
 
 export type NavigationDispatchPlanStep = {

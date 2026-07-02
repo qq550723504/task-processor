@@ -139,7 +139,7 @@ func assembleServiceBundle(repositories *builtRepositories, moduleSvc moduleServ
 }
 
 func buildHandlerOptions(runtime serviceBundleRuntime) []listingkitapi.HandlerOption {
-	return []listingkitapi.HandlerOption{
+	options := []listingkitapi.HandlerOption{
 		listingkitapi.WithTaskLifecycleService(runtime.service),
 		listingkitapi.WithGenerationTaskService(runtime.service),
 		listingkitapi.WithChildTaskRetryService(runtime.service),
@@ -159,4 +159,8 @@ func buildHandlerOptions(runtime serviceBundleRuntime) []listingkitapi.HandlerOp
 		listingkitapi.WithSheinSyncRepository(runtime.sheinSyncRepository),
 		listingkitapi.WithSheinSyncServices(runtime.sheinSyncService, runtime.sheinCandidateService, runtime.sheinEnrollmentService),
 	}
+	if lookup, ok := runtime.taskRepository.(listingkit.SheinPODImageLookupRepository); ok {
+		options = append(options, listingkitapi.WithSheinPODImageLookupService(lookup))
+	}
+	return options
 }

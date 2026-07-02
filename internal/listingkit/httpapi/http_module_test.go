@@ -101,6 +101,7 @@ func TestAppendRouteDescriptorsIncludesSheinSyncRoutes(t *testing.T) {
 	require.Contains(t, keys, "PATCH /api/v1/listing-kits/shein-sync/stores/:store_id/activity-strategy")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/shein-sync/stores/:store_id/enrollments")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/shein-sync/stores/:store_id/enrollment-runs")
+	require.Contains(t, keys, "GET /api/v1/listing-kits/shein-pod-image-lookup/stores/:store_id")
 }
 
 type stubStudioSessionRouteHandler struct{}
@@ -177,6 +178,7 @@ func (stubRouteHandler) ReviewSheinActivityCandidate(*gin.Context)              
 func (stubRouteHandler) ExecuteSheinActivityEnrollment(*gin.Context)              {}
 func (stubRouteHandler) ListSheinActivityEnrollmentRuns(*gin.Context)             {}
 func (stubRouteHandler) ListSheinActivityEnrollmentRunItems(*gin.Context)         {}
+func (stubRouteHandler) LookupSheinPODImages(*gin.Context)                        {}
 func (stubRouteHandler) ListSettingsNamespaces(*gin.Context)                      {}
 func (stubRouteHandler) GetSettingsHealth(*gin.Context)                           {}
 func (stubRouteHandler) GetSettingsNamespaceSchema(*gin.Context)                  {}

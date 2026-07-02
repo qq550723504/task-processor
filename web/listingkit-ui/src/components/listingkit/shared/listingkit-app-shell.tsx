@@ -19,6 +19,7 @@ import {
   PackagePlus,
   PanelTop,
   Timer,
+  Search,
   Settings,
   ShieldAlert,
   ShoppingBag,
@@ -132,6 +133,12 @@ const ADMIN_NAV_ITEMS = [
         label: "SHEIN 同步商品",
         href: "/listing-kits/shein-products",
         icon: PackageCheck,
+        match: "prefix",
+      },
+      {
+        label: "POD 原图查询",
+        href: "/listing-kits/shein-pod-image-lookup",
+        icon: Search,
         match: "prefix",
       },
       {

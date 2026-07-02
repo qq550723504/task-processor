@@ -23,6 +23,7 @@ func AppendRouteDescriptors(routes []httproute.Descriptor, handler RouteHandler)
 	routes = appendStudioGenerationRouteDescriptors(routes, handler)
 	routes = appendTaskRouteDescriptors(routes, handler)
 	routes = appendSheinSyncRouteDescriptors(routes, handler)
+	routes = appendSheinPODImageLookupRouteDescriptors(routes, handler)
 	return routes
 }
 

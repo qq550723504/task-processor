@@ -9,4 +9,5 @@ type RouteHandler interface {
 	AdminRouteHandler
 	StudioGenerationRouteHandler
 	sheinSyncRouteHandler
+	sheinPODImageLookupRouteHandler
 }

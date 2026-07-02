@@ -126,6 +126,10 @@ describe("ListingKitAppShell", () => {
       "href",
       "/listing-kits/shein-products",
     );
+    expect(screen.getByRole("link", { name: "POD 原图查询" })).toHaveAttribute(
+      "href",
+      "/listing-kits/shein-pod-image-lookup",
+    );
     expect(screen.getByRole("link", { name: "我的上架统计" })).toHaveAttribute(
       "href",
       "/listing-kits/store-statistics",

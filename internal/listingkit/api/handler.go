@@ -10,27 +10,28 @@ import (
 )
 
 type handler struct {
-	taskLifecycleService        listingkit.TaskLifecycleService
-	taskRecoveryService         listingkit.TaskRecoveryService
-	taskRequeueService          listingkit.TaskRequeueService
-	sdsBaselineWarmService      listingkit.SDSBaselineWarmService
-	sdsRetirementService        listingkit.SDSRetirementService
-	generationTaskService       listingkit.GenerationTaskService
-	childTaskRetryService       childTaskRetryService
-	studioMediaService          listingkit.StudioMediaService
-	studioBatchRunService       studioBatchRunHandlerService
-	studioSessionService        studioSessionAsyncJobService
-	uploadedImageDeleteService  uploadedImageDeleteService
-	storeAdminService           storeAdminHandlerService
-	storeRepository             listingadmin.StoreRepository
-	sheinSyncService            listingkit.SheinSyncService
-	sheinCandidateService       listingkit.SheinCandidateService
-	sheinEnrollmentService      listingkit.SheinEnrollmentService
-	sheinSyncRepository         listingkit.SheinSyncRepository
-	operationStrategyRepository listingadmin.OperationStrategyRepository
+	taskLifecycleService          listingkit.TaskLifecycleService
+	taskRecoveryService           listingkit.TaskRecoveryService
+	taskRequeueService            listingkit.TaskRequeueService
+	sdsBaselineWarmService        listingkit.SDSBaselineWarmService
+	sdsRetirementService          listingkit.SDSRetirementService
+	generationTaskService         listingkit.GenerationTaskService
+	childTaskRetryService         childTaskRetryService
+	studioMediaService            listingkit.StudioMediaService
+	studioBatchRunService         studioBatchRunHandlerService
+	studioSessionService          studioSessionAsyncJobService
+	uploadedImageDeleteService    uploadedImageDeleteService
+	storeAdminService             storeAdminHandlerService
+	storeRepository               listingadmin.StoreRepository
+	sheinSyncService              listingkit.SheinSyncService
+	sheinCandidateService         listingkit.SheinCandidateService
+	sheinEnrollmentService        listingkit.SheinEnrollmentService
+	sheinSyncRepository           listingkit.SheinSyncRepository
+	sheinPODImageLookupService    listingkit.SheinPODImageLookupRepository
+	operationStrategyRepository   listingadmin.OperationStrategyRepository
 	scheduledTaskConfigRepository listingadmin.ScheduledTaskConfigRepository
-	studioAsyncJobs             studioAsyncJobStoreService
-	initErr                     error
+	studioAsyncJobs               studioAsyncJobStoreService
+	initErr                       error
 	adminHandlers
 	subscriptionDependencies
 	settingsService settingsNamespaceService
@@ -258,6 +259,12 @@ func WithSDSBaselineWarmService(service listingkit.SDSBaselineWarmService) Handl
 func WithSDSRetirementService(service listingkit.SDSRetirementService) HandlerOption {
 	return withHandlerState(func(h *handler) {
 		h.sdsRetirementService = service
+	})
+}
+
+func WithSheinPODImageLookupService(service listingkit.SheinPODImageLookupRepository) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.sheinPODImageLookupService = service
 	})
 }
 
