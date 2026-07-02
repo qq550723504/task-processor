@@ -172,6 +172,9 @@ func (s *taskStudioMediaService) AnalyzeStudioReferenceStyle(ctx context.Context
 	}
 
 	abstracted := abstractStudioReferenceAnalyses(analyses)
+	if !hasStudioReusableSafeStyleDirection(abstracted) {
+		return nil, fmt.Errorf("reference_analysis_failed: no reusable safe style direction extracted")
+	}
 	brief := buildStudioReferenceStyleBrief(req, abstracted)
 	sanitized := buildSanitizedStudioReferencePrompt(abstracted)
 	if strings.TrimSpace(sanitized) == "" {
@@ -366,6 +369,20 @@ func abstractStudioReferenceAnalyses(analyses []studioReferenceImageAnalysis) []
 		result = append(result, abstracted)
 	}
 	return result
+}
+
+func hasStudioReusableSafeStyleDirection(analyses []studioAbstractedReferenceAnalysis) bool {
+	for _, item := range analyses {
+		if item.Motif != "" ||
+			len(item.Palette) > 0 ||
+			len(item.Composition) > 0 ||
+			item.Typography != "" ||
+			item.Density != "" ||
+			item.ProductFit != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func abstractStudioReferenceAnalysis(item studioReferenceImageAnalysis) studioAbstractedReferenceAnalysis {

@@ -174,6 +174,23 @@ func TestAnalyzeStudioReferenceStyleKeepsSafeTitleCaseStyleSignals(t *testing.T)
 	}
 }
 
+func TestAnalyzeStudioReferenceStyleErrorsWhenNoSafeSignalsSurvive(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"Hello Kitty","palette":["Nike"],"composition":"same exact layout","typography":"Taylor Swift signature quote","density":"Mickey portrait","product_fit":"Adidas logo","avoid":["Just Do It slogan"]}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/a.png"},
+	})
+	if err == nil {
+		t.Fatal("AnalyzeStudioReferenceStyle() error = nil, want no-safe-signal failure")
+	}
+	if !strings.Contains(err.Error(), "reference_analysis_failed: no reusable safe style direction extracted") {
+		t.Fatalf("error = %v, want no-safe-signal failure", err)
+	}
+}
+
 func containsWarningFragment(warnings []string, fragment string) bool {
 	for _, warning := range warnings {
 		if strings.Contains(warning, fragment) {
