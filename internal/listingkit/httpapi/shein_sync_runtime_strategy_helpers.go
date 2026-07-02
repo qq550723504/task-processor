@@ -73,6 +73,7 @@ func sheinPromotionActivityTypeFromKey(activityKey string) string {
 
 func sheinPromotionStrategyInput(activityType string, strategy *listingadmin.OperationStrategy) sheinsync.SheinPromotionStrategyInput {
 	input := sheinsync.SheinPromotionStrategyInput{
+		ActivityType:          activityType,
 		StoreID:               strategy.StoreID,
 		ActivityPriceMode:     strategy.ActivityPriceMode,
 		ActivityDiscountRate:  sheinPromotionFloat64(strategy.ActivityDiscountRate),

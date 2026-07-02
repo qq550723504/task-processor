@@ -1,6 +1,7 @@
 package activity
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -669,6 +670,47 @@ func TestRegisterPromotionProductsUsesCandidateSalePriceWhenPromotionGoodsPriceI
 	created := api.created.AddCostAndStockInfoList[0]
 	if created.ProductActPrice != 24 || created.CostPrice != 30 || created.MaxProductActPrice != 30 {
 		t.Fatalf("created price = %+v, want fallback prices from candidate sale snapshot", created)
+	}
+}
+
+func TestBuildCalculateRequestForPromotionProductsScalesProfitModeSkuPrices(t *testing.T) {
+	service := &activityRegistrationServiceImpl{}
+	config := TimeLimitedDiscountConfig{
+		PriceMode:            "PROFIT",
+		MinProfitRate:        0,
+		FixedPriceAdjustment: 0,
+		Currency:             "USD",
+	}
+
+	req := service.buildCalculateRequestForPromotionProducts(
+		config,
+		[]marketing.PromotionGoodsData{{
+			Skc:           "sg-multi-sku-profit",
+			USSupplyPrice: 25.16,
+			SkuInfoList: []marketing.PromotionSkuInfo{
+				{Sku: "sku-small", USSupplyPrice: promotionFloat64Ptr(25.16)},
+				{Sku: "sku-medium", USSupplyPrice: promotionFloat64Ptr(35.34)},
+				{Sku: "sku-large", USSupplyPrice: promotionFloat64Ptr(39.06)},
+			},
+		}},
+		[]marketing.SkcInfo{{
+			Skc:         "sg-multi-sku-profit",
+			SupplyPrice: 20.88,
+		}},
+	)
+
+	if req == nil || len(req.SkcInfoList) != 1 || len(req.SkcInfoList[0].SkuInfoList) != 3 {
+		t.Fatalf("calculate request = %+v, want three SKU prices", req)
+	}
+	assertClose(t, req.SkcInfoList[0].SkuInfoList[0].DiscountValue, 20.88)
+	assertClose(t, req.SkcInfoList[0].SkuInfoList[1].DiscountValue, 29.33)
+	assertClose(t, req.SkcInfoList[0].SkuInfoList[2].DiscountValue, 32.42)
+}
+
+func assertClose(t *testing.T, got float64, want float64) {
+	t.Helper()
+	if math.Abs(got-want) > 0.01 {
+		t.Fatalf("value = %.4f, want %.4f", got, want)
 	}
 }
 

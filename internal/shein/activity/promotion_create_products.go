@@ -368,8 +368,8 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestForPromotionProdu
 	skcInfoList := make([]marketing.SkcPriceInfo, 0, len(goods))
 	for _, item := range goods {
 		activityPrice := calculatePriceByDiscount(item.USSupplyPrice, config.DiscountRate)
+		costPrice := costBySKC[item.Skc]
 		if strings.EqualFold(config.PriceMode, "PROFIT") {
-			costPrice := costBySKC[item.Skc]
 			activityPrice = calculatePriceByProfit(item.USSupplyPrice, costPrice, config.MinProfitRate, config.FixedPriceAdjustment)
 		}
 		if activityPrice <= 0 {
@@ -382,6 +382,15 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestForPromotionProdu
 			skuActivityPrice := activityPrice
 			if strings.EqualFold(config.PriceMode, "DISCOUNT") {
 				skuActivityPrice = calculatePriceByDiscount(productPrice, config.DiscountRate)
+			} else if strings.EqualFold(config.PriceMode, "PROFIT") {
+				skuActivityPrice = calculateProfitModeSKUActivityPrice(
+					productPrice,
+					item.USSupplyPrice,
+					activityPrice,
+					costPrice,
+					config.MinProfitRate,
+					config.FixedPriceAdjustment,
+				)
 			}
 			if skuActivityPrice <= 0 {
 				continue
@@ -410,4 +419,26 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestForPromotionProdu
 		ZoneStartTime: config.StartTime.Format("2006-01-02 15:04:05"),
 		ZoneEndTime:   config.EndTime.Format("2006-01-02 15:04:05"),
 	}
+}
+
+func calculateProfitModeSKUActivityPrice(
+	productPrice float64,
+	baseProductPrice float64,
+	baseActivityPrice float64,
+	costPrice float64,
+	minProfitRate float64,
+	fixedAdjustment float64,
+) float64 {
+	if productPrice <= 0 {
+		return 0
+	}
+	minimumPrice := calculatePriceByProfit(productPrice, costPrice, minProfitRate, fixedAdjustment)
+	if baseProductPrice <= 0 || baseActivityPrice <= 0 {
+		return minimumPrice
+	}
+	scaledPrice := productPrice * (baseActivityPrice / baseProductPrice)
+	if minimumPrice > 0 && scaledPrice < minimumPrice {
+		return minimumPrice
+	}
+	return scaledPrice
 }
