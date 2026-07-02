@@ -100,6 +100,18 @@ function mergeDedicatedBatchWithLocalSnapshot(
       ),
       renderSizeImagesWithSds:
         localDraft.renderSizeImagesWithSds ?? savedBatch.renderSizeImagesWithSds,
+      hotStyleReferenceImageUrls: pickLocalArrayValue(
+        localDraft.hotStyleReferenceImageUrls,
+        savedBatch.hotStyleReferenceImageUrls,
+      ),
+      hotStyleReferenceBrief: pickLocalStringValue(
+        localDraft.hotStyleReferenceBrief,
+        savedBatch.hotStyleReferenceBrief,
+      ),
+      hotStyleReferencePrompt: pickLocalStringValue(
+        localDraft.hotStyleReferencePrompt,
+        savedBatch.hotStyleReferencePrompt,
+      ),
       selection: localDraft.selection ?? savedBatch.selection,
       groupedSelections: pickLocalArrayValue(
         localDraft.groupedSelections,

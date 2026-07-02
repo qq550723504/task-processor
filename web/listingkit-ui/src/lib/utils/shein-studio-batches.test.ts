@@ -452,6 +452,43 @@ describe("shein studio storage api", () => {
     );
   });
 
+  it("preserves hot style reference fields on the main batch save path", async () => {
+    upsertSheinStudioBatchDraft.mockResolvedValue({
+      id: "batch-1",
+      name: "批次1",
+      prompt: "retro cherries",
+      styleCount: "3",
+      sheinStoreId: "",
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+      hotStyleReferenceBrief: "embroidered cherry badge",
+      hotStyleReferencePrompt: "extract the cherry badge style",
+      updatedAt: "2026-04-24T00:00:00.000Z",
+    });
+
+    await saveSheinStudioBatch({
+      id: "batch-1",
+      prompt: "retro cherries",
+      styleCount: "3",
+      sheinStoreId: "",
+      groupedSelections: [],
+      groups: [],
+      hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+      hotStyleReferenceBrief: "embroidered cherry badge",
+      hotStyleReferencePrompt: "extract the cherry badge style",
+    });
+
+    expect(upsertSheinStudioBatchDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+        hotStyleReferenceBrief: "embroidered cherry badge",
+        hotStyleReferencePrompt: "extract the cherry badge style",
+      }),
+    );
+  });
+
   it("does not synthesize a default batch name on create", async () => {
     listSheinStudioBatchDrafts.mockResolvedValue([
       {
