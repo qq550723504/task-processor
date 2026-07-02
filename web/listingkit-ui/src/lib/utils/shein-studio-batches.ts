@@ -407,6 +407,9 @@ function projectItemizedBatchSavedBatchCompatibility(
     selection: detail.batch.selection,
     groupedSelections: detail.batch.groupedSelections ?? [],
     selectedSdsImages: detail.batch.selectedSdsImages ?? [],
+    hotStyleReferenceImageUrls: detail.batch.hotStyleReferenceImageUrls ?? [],
+    hotStyleReferenceBrief: detail.batch.hotStyleReferenceBrief ?? "",
+    hotStyleReferencePrompt: detail.batch.hotStyleReferencePrompt ?? "",
     designs: flattenSheinStudioBatchDetailDesigns(detail),
     selectedIds: getApprovedSheinStudioBatchDesignIDs(detail),
     batchStatus: detail.batch.status,
@@ -441,6 +444,14 @@ function mergeBatchDetailWithSavedBatchContext(
         ? itemized.selectedSdsImages
         : (savedBatch?.selectedSdsImages ?? []),
     renderSizeImagesWithSds: savedBatch?.renderSizeImagesWithSds,
+    hotStyleReferenceImageUrls:
+      itemized.hotStyleReferenceImageUrls.length > 0
+        ? itemized.hotStyleReferenceImageUrls
+        : (savedBatch?.hotStyleReferenceImageUrls ?? []),
+    hotStyleReferenceBrief:
+      itemized.hotStyleReferenceBrief || savedBatch?.hotStyleReferenceBrief || "",
+    hotStyleReferencePrompt:
+      itemized.hotStyleReferencePrompt || savedBatch?.hotStyleReferencePrompt || "",
     selectionVariantId:
       itemized.selectionVariantId ??
       itemized.selection?.variantId ??
