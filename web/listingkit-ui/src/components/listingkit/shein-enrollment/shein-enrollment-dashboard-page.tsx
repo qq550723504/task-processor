@@ -6,42 +6,7 @@ import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-p
 import { Button } from "@/components/ui/button";
 import { useSheinEnrollmentDashboard } from "@/lib/query/use-shein-enrollment";
 
-type SheinEnrollmentDashboardMode = "enrollment" | "products";
-
-const SHEIN_DASHBOARD_COPY: Record<
-  SheinEnrollmentDashboardMode,
-  {
-    eyebrow: string;
-    title: string;
-    description: string;
-    actionLabel: string;
-    storeHref: (storeId: number | undefined) => string;
-  }
-> = {
-  enrollment: {
-    eyebrow: "SHEIN ENROLLMENT",
-    title: "SHEIN Activity Enrollment",
-    description:
-      "Pick a store, open its workbench, then sync products, fill missing costs, refresh candidates, and submit activity enrollment.",
-    actionLabel: "Open Workbench",
-    storeHref: (storeId) => `/listing-kits/shein-enrollment/${storeId}`,
-  },
-  products: {
-    eyebrow: "SHEIN PRODUCTS",
-    title: "SHEIN Synced Products",
-    description:
-      "Pick a store to review synced on-shelf products, price snapshots, inventory snapshots, and the latest sync status.",
-    actionLabel: "View Products",
-    storeHref: (storeId) => `/listing-kits/shein-enrollment/${storeId}?tab=products`,
-  },
-};
-
-export function SheinEnrollmentDashboardPage({
-  mode = "enrollment",
-}: {
-  mode?: SheinEnrollmentDashboardMode;
-}) {
-  const copy = SHEIN_DASHBOARD_COPY[mode];
+export function SheinEnrollmentDashboardPage() {
   const dashboard = useSheinEnrollmentDashboard({
     activity_type: "PROMOTION",
   });
@@ -58,13 +23,14 @@ export function SheinEnrollmentDashboardPage({
     >
       <section className="rounded-3xl border border-white/70 bg-white/85 p-6 shadow-sm">
         <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-amber-700">
-          {copy.eyebrow}
+          SHEIN ENROLLMENT
         </p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-950">
-          {copy.title}
+          SHEIN Activity Enrollment
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-600">
-          {copy.description}
+          Pick a store, open its activity workbench, refresh candidates, tune
+          strategy, and submit activity enrollment.
         </p>
       </section>
 
@@ -143,11 +109,8 @@ export function SheinEnrollmentDashboardPage({
               </dl>
               <div className="mt-5 flex gap-2">
                 <Button asChild className="flex-1">
-                  <Link href={copy.storeHref(store.store_id)}>{copy.actionLabel}</Link>
-                </Button>
-                <Button asChild type="button" variant="outline">
-                  <Link href={`/listing-kits/shein-login?store_id=${store.store_id}`}>
-                    Login
+                  <Link href={`/listing-kits/shein-enrollment/${store.store_id}`}>
+                    Open Workbench
                   </Link>
                 </Button>
               </div>

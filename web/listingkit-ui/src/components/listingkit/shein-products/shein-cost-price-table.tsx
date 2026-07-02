@@ -325,7 +325,6 @@ function SheinCostVariantDetailTable({
               key={skuGroup.groupKey}
               onDraftChange={(value) => onDraftChange(skuGroup.groupKey, value)}
               onSave={onSave}
-              row={row}
               saving={saving}
               skuGroup={skuGroup}
               sourceTaskMetadata={sourceTaskMetadataByCode?.get(normalizeSourceCode(skuGroup.skuCode))}
@@ -360,7 +359,6 @@ function SheinCostSKUDetailRow({
   draft,
   onDraftChange,
   onSave,
-  row,
   saving,
   skuGroup,
   sourceTaskMetadata,
@@ -371,7 +369,6 @@ function SheinCostSKUDetailRow({
     target: SheinCostPriceSaveTarget,
     manualCostPrice: number | null,
   ) => Promise<void>;
-  row: SheinCostGroupRow;
   saving: boolean;
   skuGroup: SheinCostSKUGroup;
   sourceTaskMetadata?: SheinCostSourceTaskMetadata;

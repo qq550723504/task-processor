@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   SheinCostPriceTable,
   type SheinCostPriceSaveTarget,
-} from "@/components/listingkit/shein-enrollment/shein-cost-price-table";
+} from "@/components/listingkit/shein-products/shein-cost-price-table";
 
 vi.mock("next/image", () => ({
   default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => (

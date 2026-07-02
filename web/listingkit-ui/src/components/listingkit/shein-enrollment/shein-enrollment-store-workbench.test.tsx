@@ -178,6 +178,11 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       "href",
       "/listing-kits/shein-enrollment/12?tab=candidates&activityType=PROMOTION",
     );
+    expect(screen.queryByRole("link", { name: "同步商品" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "成本价维护" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "混合活动" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "立即同步" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "去检查登录" })).not.toBeInTheDocument();
   });
 
   it("renders dense product details in the synced products tab", async () => {
@@ -632,7 +637,7 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     expect(syncSourceMutation.mutateAsync).toHaveBeenCalledWith("XB0608021001");
   });
 
-  it("only enables backend queries needed by the active costs tab", async () => {
+  it("delegates legacy cost tab links to the product workbench", async () => {
     renderWorkbench({
       initialTab: "costs",
       products: [
@@ -680,23 +685,7 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       },
       { enabled: false },
     );
-    expect(mocks.useSheinActivityCandidates).toHaveBeenCalledWith(
-      12,
-      {
-        activity_type: "PROMOTION",
-        page: 1,
-        page_size: 100,
-      },
-      { enabled: false },
-    );
-    expect(mocks.useSheinActivityEnrollmentRuns).toHaveBeenCalledWith(
-      12,
-      {
-        activity_type: "PROMOTION",
-        page: 1,
-        page_size: 100,
-      },
-      { enabled: false },
-    );
+    expect(mocks.useSheinActivityCandidates).not.toHaveBeenCalled();
+    expect(mocks.useSheinActivityEnrollmentRuns).not.toHaveBeenCalled();
   });
 });

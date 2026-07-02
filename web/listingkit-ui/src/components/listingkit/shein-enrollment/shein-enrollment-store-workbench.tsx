@@ -14,14 +14,12 @@ import {
   sheinEnrollmentTabLabel,
 } from "@/components/listingkit/shein-enrollment/shein-enrollment-model";
 import { SheinCandidatesTable } from "@/components/listingkit/shein-enrollment/shein-candidates-table";
-import {
-  SheinCostPriceTable,
-  type SheinCostPriceSaveTarget,
-} from "@/components/listingkit/shein-enrollment/shein-cost-price-table";
 import { SheinEnrollmentRunsTable } from "@/components/listingkit/shein-enrollment/shein-enrollment-runs-table";
 import { SheinEnrollmentStoreHeader } from "@/components/listingkit/shein-enrollment/shein-enrollment-store-header";
-import { SheinSyncedProductsTable } from "@/components/listingkit/shein-enrollment/shein-synced-products-table";
+import { isSheinProductsTab } from "@/components/listingkit/shein-products/shein-products-model";
+import { SheinProductsStoreWorkbench } from "@/components/listingkit/shein-products/shein-products-store-workbench";
 import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
+import { ListingKitPagination } from "@/components/listingkit/shared/listingkit-pagination";
 import {
   useExecuteSheinActivityEnrollment,
   useSheinActivityStrategy,
@@ -31,14 +29,7 @@ import {
   useSheinActivityEnrollmentRunItems,
   useSheinActivityEnrollmentRuns,
   useSheinEnrollmentStoreSummary,
-  useSheinSDSCostGroups,
-  useSheinSourceSDSCostGroups,
-  useSheinSyncedProducts,
-  useSyncSheinSourceSDSProduct,
-  useTriggerSheinStoreSync,
   useUpdateSheinActivityStrategy,
-  useUpdateSheinSDSCostGroup,
-  useUpdateSheinSyncedProductCost,
 } from "@/lib/query/use-shein-enrollment";
 
 const SHEIN_ENROLLMENT_PAGE_SIZE = 100;
@@ -53,19 +44,36 @@ export function SheinEnrollmentStoreWorkbench({
   initialTab?: string;
   storeId: number;
 }) {
+  if (isSheinProductsTab(initialTab)) {
+    return <SheinProductsStoreWorkbench initialTab={initialTab} storeId={storeId} />;
+  }
+
+  return (
+    <SheinEnrollmentActivityWorkbench
+      initialActivityType={initialActivityType}
+      initialTab={initialTab}
+      storeId={storeId}
+    />
+  );
+}
+
+function SheinEnrollmentActivityWorkbench({
+  initialActivityType,
+  initialTab,
+  storeId,
+}: {
+  initialActivityType?: string;
+  initialTab?: string;
+  storeId: number;
+}) {
   const tab = parseSheinEnrollmentTab(initialTab);
   const [activityType, setActivityType] = useState(
     parseSheinActivityType(initialActivityType),
   );
-  const [productKeyword, setProductKeyword] = useState("");
   const [showExecutableOnly, setShowExecutableOnly] = useState(false);
-  const [productsPage, setProductsPage] = useState(1);
-  const [costsPage, setCostsPage] = useState(1);
   const [candidatesPage, setCandidatesPage] = useState(1);
   const [runsPage, setRunsPage] = useState(1);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
-  const productsTabActive = tab === "products";
-  const costsTabActive = tab === "costs";
   const candidatesTabActive = tab === "candidates";
   const runsTabActive = tab === "runs";
   const summary = useSheinEnrollmentStoreSummary(storeId, {
@@ -73,23 +81,6 @@ export function SheinEnrollmentStoreWorkbench({
   });
   const activityStrategy = useSheinActivityStrategy(storeId, activityType);
 
-  const products = useSheinSyncedProducts(
-    storeId,
-    {
-      skc_name: productKeyword || undefined,
-      page: productsPage,
-      page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
-    },
-    { enabled: productsTabActive },
-  );
-  const costProducts = useSheinSyncedProducts(
-    storeId,
-    {
-      page: costsPage,
-      page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
-    },
-    { enabled: false },
-  );
   const candidates = useSheinActivityCandidates(
     storeId,
     {
@@ -100,28 +91,8 @@ export function SheinEnrollmentStoreWorkbench({
     },
     { enabled: candidatesTabActive },
   );
-  const sdsCostGroups = useSheinSDSCostGroups(
-    storeId,
-    {
-      page: costsPage,
-      page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
-    },
-    { enabled: false },
-  );
-  const sourceSDSCostGroups = useSheinSourceSDSCostGroups(
-    storeId,
-    {
-      page: costsPage,
-      page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
-    },
-    { enabled: costsTabActive },
-  );
-  const syncMutation = useTriggerSheinStoreSync(storeId);
-  const syncSourceProductMutation = useSyncSheinSourceSDSProduct(storeId);
   const refreshMutation = useRefreshSheinActivityCandidates(storeId);
   const updateActivityStrategyMutation = useUpdateSheinActivityStrategy(storeId);
-  const updateCostMutation = useUpdateSheinSyncedProductCost(storeId);
-  const updateGroupCostMutation = useUpdateSheinSDSCostGroup(storeId);
   const reviewMutation = useReviewSheinActivityCandidate(storeId);
   const enrollMutation = useExecuteSheinActivityEnrollment(storeId);
   const runs = useSheinActivityEnrollmentRuns(
@@ -165,11 +136,8 @@ export function SheinEnrollmentStoreWorkbench({
         onRefreshCandidates={() =>
           void refreshMutation.mutateAsync({ activity_type: activityType })
         }
-        onSync={() => void syncMutation.mutateAsync({ trigger_mode: "manual" })}
         refreshPending={refreshMutation.isPending}
         summary={summary.data?.summary}
-        syncError={syncMutation.error}
-        syncPending={syncMutation.isPending}
       />
 
       <nav aria-label="店铺工作台标签" className="flex flex-wrap gap-2">
@@ -187,65 +155,6 @@ export function SheinEnrollmentStoreWorkbench({
           </Link>
         ))}
       </nav>
-
-      {tab === "products" ? (
-        <section className="space-y-4">
-          <input
-            className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-sm"
-            onChange={(event) => {
-              setProductKeyword(event.target.value);
-              setProductsPage(1);
-            }}
-            placeholder="按 SKC 搜索同步商品"
-            value={productKeyword}
-          />
-          <SheinSyncedProductsTable
-            isLoading={products.isLoading}
-            items={products.data?.items ?? []}
-          />
-          <SheinEnrollmentPagination
-            onPageChange={setProductsPage}
-            page={productsPage}
-            pageSize={SHEIN_ENROLLMENT_PAGE_SIZE}
-            total={products.data?.total ?? products.data?.items?.length ?? 0}
-          />
-        </section>
-      ) : null}
-
-      {tab === "costs" ? (
-        <section className="space-y-4">
-          <SheinCostPriceTable
-            groups={sdsCostGroups.data?.items ?? []}
-            items={costProducts.data?.items ?? []}
-            onSave={(target, manualCostPrice) =>
-              saveSheinCostTarget(
-                target,
-                manualCostPrice,
-                updateCostMutation.mutateAsync,
-                updateGroupCostMutation.mutateAsync,
-              )
-            }
-            onSyncSourceSDSProduct={(sourceCode) =>
-              syncSourceProductMutation.mutateAsync(sourceCode).then(() => undefined)
-            }
-            saving={updateCostMutation.isPending || updateGroupCostMutation.isPending}
-            shipmentArea={summary.data?.summary?.region}
-            sourceGroups={sourceSDSCostGroups.data?.items ?? []}
-            storeId={storeId}
-            syncingSourceCode={syncSourceProductMutation.variables}
-          />
-          <SheinEnrollmentPagination
-            onPageChange={setCostsPage}
-            page={costsPage}
-            pageSize={SHEIN_ENROLLMENT_PAGE_SIZE}
-            total={
-              sourceSDSCostGroups.data?.total ??
-              sourceSDSCostGroups.data?.items?.length ??
-              0
-            }
-          />
-        </section>
-      ) : null}
 
       {tab === "candidates" ? (
         <section className="space-y-4">
@@ -296,7 +205,7 @@ export function SheinEnrollmentStoreWorkbench({
               }).then(() => undefined)
             }
           />
-          <SheinEnrollmentPagination
+          <ListingKitPagination
             onPageChange={setCandidatesPage}
             page={candidatesPage}
             pageSize={SHEIN_ENROLLMENT_PAGE_SIZE}
@@ -315,7 +224,7 @@ export function SheinEnrollmentStoreWorkbench({
             onViewDetails={(runId) => setSelectedRunId(runId)}
             selectedRunId={selectedRunId}
           />
-          <SheinEnrollmentPagination
+          <ListingKitPagination
             onPageChange={setRunsPage}
             page={runsPage}
             pageSize={SHEIN_ENROLLMENT_PAGE_SIZE}
@@ -325,71 +234,4 @@ export function SheinEnrollmentStoreWorkbench({
       ) : null}
     </ListingKitPageShell>
   );
-}
-
-function SheinEnrollmentPagination({
-  onPageChange,
-  page,
-  pageSize,
-  total,
-}: {
-  onPageChange: (page: number) => void;
-  page: number;
-  pageSize: number;
-  total: number;
-}) {
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const currentPage = Math.min(Math.max(page, 1), totalPages);
-
-  return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        第 {currentPage} / {totalPages} 页 · 共 {total} 条
-      </div>
-      <div className="flex gap-2">
-        <button
-          className="h-9 rounded-lg border border-zinc-200 px-3 text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={currentPage <= 1}
-          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
-          type="button"
-        >
-          上一页
-        </button>
-        <button
-          className="h-9 rounded-lg border border-zinc-200 px-3 text-sm text-zinc-700 disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={currentPage >= totalPages}
-          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
-          type="button"
-        >
-          下一页
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function saveSheinCostTarget(
-  target: SheinCostPriceSaveTarget,
-  manualCostPrice: number | null,
-  updateProductCost: (input: {
-    productId: number;
-    manual_cost_price?: number | null;
-  }) => Promise<unknown>,
-  updateGroupCost: (input: {
-    groupKey: string;
-    group_label?: string;
-    manual_cost_price?: number | null;
-  }) => Promise<unknown>,
-) {
-  if (target.groupKey.startsWith("product:") && target.productId) {
-    return updateProductCost({
-      productId: target.productId,
-      manual_cost_price: manualCostPrice,
-    }).then(() => undefined);
-  }
-  return updateGroupCost({
-    groupKey: target.groupKey,
-    group_label: target.groupLabel,
-    manual_cost_price: manualCostPrice,
-  }).then(() => undefined);
 }

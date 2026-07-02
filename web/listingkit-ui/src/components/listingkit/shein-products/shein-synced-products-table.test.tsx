@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { SheinSyncedProductsTable } from "@/components/listingkit/shein-enrollment/shein-synced-products-table";
+import { SheinSyncedProductsTable } from "@/components/listingkit/shein-products/shein-synced-products-table";
 
 describe("SheinSyncedProductsTable", () => {
   it("renders dense product operation details", () => {
