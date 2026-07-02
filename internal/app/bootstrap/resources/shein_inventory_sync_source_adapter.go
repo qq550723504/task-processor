@@ -7,18 +7,18 @@ import (
 	"task-processor/internal/shein/inventory"
 )
 
-type sheinSyncedInventoryProductSource struct {
+type sheinSyncedInventoryProductFeed struct {
 	repo listingkit.SheinSyncRepository
 }
 
-func newSheinSyncedInventoryProductSource(repo listingkit.SheinSyncRepository) inventory.SyncedInventoryProductSource {
+func newSheinSyncedInventoryProductFeed(repo listingkit.SheinSyncRepository) inventory.SyncedInventoryProductFeed {
 	if repo == nil {
 		return nil
 	}
-	return sheinSyncedInventoryProductSource{repo: repo}
+	return sheinSyncedInventoryProductFeed{repo: repo}
 }
 
-func (s sheinSyncedInventoryProductSource) ListSyncedInventoryProducts(ctx context.Context, query inventory.SyncedInventoryProductQuery) ([]inventory.SyncedInventoryProductRecord, int64, error) {
+func (s sheinSyncedInventoryProductFeed) ListSyncedInventoryProducts(ctx context.Context, query inventory.SyncedInventoryProductQuery) ([]inventory.SyncedInventoryProductRecord, int64, error) {
 	rows, total, err := s.repo.ListSyncedProducts(ctx, &listingkit.SheinSyncedProductQuery{
 		TenantID: query.TenantID,
 		StoreID:  query.StoreID,
@@ -56,6 +56,6 @@ func (s sheinSyncedInventoryProductSource) ListSyncedInventoryProducts(ctx conte
 	return out, total, nil
 }
 
-func (s sheinSyncedInventoryProductSource) UpdateSyncedInventoryProductAttributes(ctx context.Context, tenantID, storeID int64, skcName string, attributes string) (int, error) {
+func (s sheinSyncedInventoryProductFeed) UpdateSyncedInventoryProductAttributes(ctx context.Context, tenantID, storeID int64, skcName string, attributes string) (int, error) {
 	return s.repo.UpdateSyncedProductInventoryAttributes(ctx, tenantID, storeID, skcName, attributes)
 }

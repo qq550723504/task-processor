@@ -6,7 +6,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/sheinpodimage"
 )
 
 type lookupSheinPODImagesQuery struct {
@@ -34,7 +34,7 @@ func (h *handler) LookupSheinPODImages(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "query is required"})
 		return
 	}
-	items, total, err := h.sheinPODImageLookupService.LookupSheinPODImages(requestContext(c), &listingkit.SheinPODImageLookupQuery{
+	items, total, err := h.sheinPODImageLookupService.LookupSheinPODImages(requestContext(c), &sheinpodimage.SheinPODImageLookupQuery{
 		StoreID: storeID,
 		Query:   query.Query,
 		Limit:   query.Limit,

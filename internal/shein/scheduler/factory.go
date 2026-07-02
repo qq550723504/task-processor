@@ -292,12 +292,12 @@ func defaultBuildSheinInventoryService(config appscheduler.TaskConfig, factory *
 		return nil, fmt.Errorf("create product fetcher: %w", err)
 	}
 
-	var syncedProductSource inventory.SyncedInventoryProductSource
-	if provider, ok := factory.runtimeProvider().(sheinSyncedInventoryProductSourceProvider); ok {
-		syncedProductSource = provider.GetSheinSyncedInventoryProductSource()
+	var syncedProductFeed inventory.SyncedInventoryProductFeed
+	if provider, ok := factory.runtimeProvider().(sheinSyncedInventoryProductFeedProvider); ok {
+		syncedProductFeed = provider.GetSheinSyncedInventoryProductFeed()
 	}
 
-	inventoryService := inventory.NewInventorySyncServiceWithSyncedProductSource(
+	inventoryService := inventory.NewInventorySyncServiceWithSyncedProductFeed(
 		factory.runtimeProvider(),
 		productAPI,
 		productFetcher,
@@ -307,7 +307,7 @@ func defaultBuildSheinInventoryService(config appscheduler.TaskConfig, factory *
 		factory.runtimeProvider().GetRuntimeStoreService(),
 		factory.runtimeProvider().GetLocalStoreRepository(),
 		factory.runtimeProvider().GetLocalProductDataRepository(),
-		syncedProductSource,
+		syncedProductFeed,
 	)
 
 	return newInventorySyncServiceAdapter(inventoryService), nil

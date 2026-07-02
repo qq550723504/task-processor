@@ -301,8 +301,8 @@ func (r localSchedulerFactoryRuntime) GetLocalSheinSyncRepository() listingkit.S
 	return provider.GetLocalSheinSyncRepository()
 }
 
-func (r localSchedulerFactoryRuntime) GetSheinSyncedInventoryProductSource() inventory.SyncedInventoryProductSource {
-	return newSheinSyncedInventoryProductSource(r.GetLocalSheinSyncRepository())
+func (r localSchedulerFactoryRuntime) GetSheinSyncedInventoryProductFeed() inventory.SyncedInventoryProductFeed {
+	return newSheinSyncedInventoryProductFeed(r.GetLocalSheinSyncRepository())
 }
 
 func (r localSchedulerFactoryRuntime) PricingRuntime() temupricingruntime.PricingRuntime {

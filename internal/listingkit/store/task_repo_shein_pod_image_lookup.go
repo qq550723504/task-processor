@@ -8,11 +8,12 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/sheinpodimage"
 )
 
-func (r *taskRepository) LookupSheinPODImages(ctx context.Context, query *listingkit.SheinPODImageLookupQuery) ([]listingkit.SheinPODImageLookupRecord, int64, error) {
+func (r *taskRepository) LookupSheinPODImages(ctx context.Context, query *sheinpodimage.SheinPODImageLookupQuery) ([]sheinpodimage.SheinPODImageLookupRecord, int64, error) {
 	if query == nil || query.StoreID <= 0 {
-		return []listingkit.SheinPODImageLookupRecord{}, 0, nil
+		return []sheinpodimage.SheinPODImageLookupRecord{}, 0, nil
 	}
 	limit := normalizeSheinPODImageLookupLimit(query.Limit)
 	db := applyTaskAccessScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx)
@@ -28,13 +29,13 @@ func (r *taskRepository) LookupSheinPODImages(ctx context.Context, query *listin
 		return nil, 0, err
 	}
 
-	items := make([]listingkit.SheinPODImageLookupRecord, 0, len(tasks))
+	items := make([]sheinpodimage.SheinPODImageLookupRecord, 0, len(tasks))
 	for i := range tasks {
-		record, ok := listingkit.BuildSheinPODImageLookupRecord(&tasks[i])
+		record, ok := sheinpodimage.BuildSheinPODImageLookupRecord(&tasks[i])
 		if !ok || record.StoreID != query.StoreID {
 			continue
 		}
-		if !listingkit.SheinPODImageLookupRecordMatches(record, query.Query) {
+		if !sheinpodimage.SheinPODImageLookupRecordMatches(record, query.Query) {
 			continue
 		}
 		items = append(items, record)
@@ -75,7 +76,7 @@ func applySheinPODImageLookupStoreScope(db *gorm.DB, storeID int64) *gorm.DB {
 
 func applySheinPODImageLookupQueryScope(db *gorm.DB, rawQuery string) *gorm.DB {
 	trimmed := strings.TrimSpace(rawQuery)
-	compact := listingkit.NormalizeSheinPODImageLookupQueryToken(trimmed)
+	compact := sheinpodimage.NormalizeSheinPODImageLookupQueryToken(trimmed)
 	if trimmed == "" && compact == "" {
 		return db
 	}

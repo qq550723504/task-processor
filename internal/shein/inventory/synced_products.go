@@ -11,10 +11,10 @@ import (
 	"task-processor/internal/shein/productsync"
 )
 
-const inventoryProductSourceSheinSyncedProduct = "listingkit_shein_synced_products"
+const inventoryOriginSheinSyncedProduct = "listingkit_shein_synced_products"
 const syncedInventoryProductPageSize = 100
 
-type SyncedInventoryProductSource interface {
+type SyncedInventoryProductFeed interface {
 	ListSyncedInventoryProducts(ctx context.Context, query SyncedInventoryProductQuery) ([]SyncedInventoryProductRecord, int64, error)
 	UpdateSyncedInventoryProductAttributes(ctx context.Context, tenantID, storeID int64, skcName string, attributes string) (int, error)
 }
@@ -50,14 +50,14 @@ type SyncedInventoryProductRecord struct {
 }
 
 func (s *inventorySyncServiceImpl) fetchSyncedProductsForInventorySync(ctx context.Context, tenantID, storeID int64) ([]*InventoryProductSnapshot, error) {
-	if s.syncedProductSource == nil {
+	if s.syncedProductFeed == nil {
 		return nil, nil
 	}
 	active := true
 	page := 1
 	items := make([]*InventoryProductSnapshot, 0)
 	for {
-		rows, total, err := s.syncedProductSource.ListSyncedInventoryProducts(ctx, SyncedInventoryProductQuery{
+		rows, total, err := s.syncedProductFeed.ListSyncedInventoryProducts(ctx, SyncedInventoryProductQuery{
 			TenantID: tenantID,
 			StoreID:  storeID,
 			IsActive: &active,
@@ -95,7 +95,7 @@ func syncedInventoryProductSnapshotFromRecord(record *SyncedInventoryProductReco
 	}
 	return &InventoryProductSnapshot{
 		ID:                record.ID,
-		Source:            inventoryProductSourceSheinSyncedProduct,
+		Source:            inventoryOriginSheinSyncedProduct,
 		StoreID:           record.StoreID,
 		Platform:          "SHEIN",
 		CategoryID:        record.CategoryID,

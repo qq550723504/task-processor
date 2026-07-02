@@ -10,6 +10,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/sheinpodimage"
 	"task-processor/internal/listingkit/store"
 	commonpub "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -27,7 +28,7 @@ func TestTaskRepositoryLookupSheinPODImagesMatchesSellerSKUWithoutHyphen(t *test
 	}
 
 	repo := store.NewTaskRepository(db)
-	lookupRepo, ok := repo.(listingkit.SheinPODImageLookupRepository)
+	lookupRepo, ok := repo.(sheinpodimage.SheinPODImageLookupRepository)
 	if !ok {
 		t.Fatal("task repository does not implement SheinPODImageLookupRepository")
 	}
@@ -54,7 +55,7 @@ func TestTaskRepositoryLookupSheinPODImagesMatchesSellerSKUWithoutHyphen(t *test
 		}
 	}
 
-	items, total, err := lookupRepo.LookupSheinPODImages(ctx, &listingkit.SheinPODImageLookupQuery{
+	items, total, err := lookupRepo.LookupSheinPODImages(ctx, &sheinpodimage.SheinPODImageLookupQuery{
 		StoreID: 869,
 		Query:   "XB0606012001V49720-T000A11F9-R4012C1-14624330",
 		Limit:   20,
@@ -104,7 +105,7 @@ func TestTaskRepositoryLookupSheinPODImagesMatchesSheinReturnedSPUName(t *testin
 	}
 
 	repo := store.NewTaskRepository(db)
-	lookupRepo, ok := repo.(listingkit.SheinPODImageLookupRepository)
+	lookupRepo, ok := repo.(sheinpodimage.SheinPODImageLookupRepository)
 	if !ok {
 		t.Fatal("task repository does not implement SheinPODImageLookupRepository")
 	}
@@ -121,7 +122,7 @@ func TestTaskRepositoryLookupSheinPODImagesMatchesSheinReturnedSPUName(t *testin
 		t.Fatalf("create task: %v", err)
 	}
 
-	items, total, err := lookupRepo.LookupSheinPODImages(ctx, &listingkit.SheinPODImageLookupQuery{
+	items, total, err := lookupRepo.LookupSheinPODImages(ctx, &sheinpodimage.SheinPODImageLookupQuery{
 		StoreID: 869,
 		Query:   "g2605302354951131",
 		Limit:   20,

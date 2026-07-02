@@ -9,18 +9,18 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/sheinpodimage"
 )
 
 type stubSheinPODImageLookupHandlerService struct {
 	ctx   context.Context
-	query *listingkit.SheinPODImageLookupQuery
-	items []listingkit.SheinPODImageLookupRecord
+	query *sheinpodimage.SheinPODImageLookupQuery
+	items []sheinpodimage.SheinPODImageLookupRecord
 	total int64
 	err   error
 }
 
-func (s *stubSheinPODImageLookupHandlerService) LookupSheinPODImages(ctx context.Context, query *listingkit.SheinPODImageLookupQuery) ([]listingkit.SheinPODImageLookupRecord, int64, error) {
+func (s *stubSheinPODImageLookupHandlerService) LookupSheinPODImages(ctx context.Context, query *sheinpodimage.SheinPODImageLookupQuery) ([]sheinpodimage.SheinPODImageLookupRecord, int64, error) {
 	s.ctx = ctx
 	s.query = query
 	return s.items, s.total, s.err
@@ -29,7 +29,7 @@ func (s *stubSheinPODImageLookupHandlerService) LookupSheinPODImages(ctx context
 func TestLookupSheinPODImagesReturnsMatchedItems(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &stubSheinPODImageLookupHandlerService{
-		items: []listingkit.SheinPODImageLookupRecord{{
+		items: []sheinpodimage.SheinPODImageLookupRecord{{
 			TaskID:             "000a11f9-b41e-4e7f-bd9d-b3cefd739012",
 			StoreID:            869,
 			SellerSKU:          "XB0606012001-V49720-T000A11F9-R4012C1-14624330",
@@ -68,8 +68,8 @@ func TestLookupSheinPODImagesReturnsMatchedItems(t *testing.T) {
 	}
 
 	var body struct {
-		Items []listingkit.SheinPODImageLookupRecord `json:"items"`
-		Total int64                                  `json:"total"`
+		Items []sheinpodimage.SheinPODImageLookupRecord `json:"items"`
+		Total int64                                     `json:"total"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode body: %v", err)

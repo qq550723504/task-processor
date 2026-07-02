@@ -88,7 +88,7 @@ func TestFetchProductsForInventorySyncPrefersRepository(t *testing.T) {
 
 func TestFetchProductsForInventorySyncPrefersSyncedProducts(t *testing.T) {
 	attributes := `[{"skc_name":"skc-1","skc_code":"O1","sku_info":[{"sku_code":"I1","mapping_info":{"ProductID":"B0TEST","SKU":"seller-sku-1","PlatformProductID":"I1"}}]}]`
-	source := &fakeSheinSyncedInventoryProductSource{
+	source := &fakeSheinSyncedInventoryProductFeed{
 		records: []SyncedInventoryProductRecord{{
 			TenantID:                1,
 			StoreID:                 2,
@@ -106,9 +106,9 @@ func TestFetchProductsForInventorySyncPrefersSyncedProducts(t *testing.T) {
 		},
 	}
 	service := &inventorySyncServiceImpl{
-		syncedProductSource: source,
-		productDataRepo:     repo,
-		logger:              logrus.NewEntry(logrus.New()),
+		syncedProductFeed: source,
+		productDataRepo:   repo,
+		logger:            logrus.NewEntry(logrus.New()),
 	}
 
 	products, err := service.FetchProductsForInventorySync(context.Background(), 1, 2)
@@ -137,10 +137,10 @@ func TestFetchProductsForInventorySyncPaginatesSyncedProducts(t *testing.T) {
 			IsActive:                true,
 		})
 	}
-	source := &fakeSheinSyncedInventoryProductSource{records: records, pageCap: 100}
+	source := &fakeSheinSyncedInventoryProductFeed{records: records, pageCap: 100}
 	service := &inventorySyncServiceImpl{
-		syncedProductSource: source,
-		logger:              logrus.NewEntry(logrus.New()),
+		syncedProductFeed: source,
+		logger:            logrus.NewEntry(logrus.New()),
 	}
 
 	products, err := service.FetchProductsForInventorySync(context.Background(), 1, 2)
@@ -158,15 +158,15 @@ func TestFetchProductsForInventorySyncPaginatesSyncedProducts(t *testing.T) {
 	}
 }
 
-func TestUpdateInventoryProductAttributesUsesSyncedProductSource(t *testing.T) {
-	source := &fakeSheinSyncedInventoryProductSource{}
+func TestUpdateInventoryProductAttributesUsesSyncedProductFeed(t *testing.T) {
+	source := &fakeSheinSyncedInventoryProductFeed{}
 	service := &inventorySyncServiceImpl{
-		syncedProductSource: source,
-		productDataRepo:     &fakeSheinInventoryProductRepo{},
-		logger:              logrus.NewEntry(logrus.New()),
+		syncedProductFeed: source,
+		productDataRepo:   &fakeSheinInventoryProductRepo{},
+		logger:            logrus.NewEntry(logrus.New()),
 	}
 	prod := &InventoryProductSnapshot{
-		Source:            inventoryProductSourceSheinSyncedProduct,
+		Source:            inventoryOriginSheinSyncedProduct,
 		TenantID:          1,
 		StoreID:           2,
 		Platform:          "SHEIN",
@@ -210,7 +210,7 @@ func (s stubSheinInventoryStoreRepo) FindStoreByID(_ context.Context, _ int64) (
 	return s.store, nil
 }
 
-type fakeSheinSyncedInventoryProductSource struct {
+type fakeSheinSyncedInventoryProductFeed struct {
 	records           []SyncedInventoryProductRecord
 	pageCap           int
 	queries           []SyncedInventoryProductQuery
@@ -218,7 +218,7 @@ type fakeSheinSyncedInventoryProductSource struct {
 	updatedAttributes string
 }
 
-func (f *fakeSheinSyncedInventoryProductSource) ListSyncedInventoryProducts(_ context.Context, query SyncedInventoryProductQuery) ([]SyncedInventoryProductRecord, int64, error) {
+func (f *fakeSheinSyncedInventoryProductFeed) ListSyncedInventoryProducts(_ context.Context, query SyncedInventoryProductQuery) ([]SyncedInventoryProductRecord, int64, error) {
 	f.queries = append(f.queries, query)
 	page := query.Page
 	if page <= 0 {
@@ -242,7 +242,7 @@ func (f *fakeSheinSyncedInventoryProductSource) ListSyncedInventoryProducts(_ co
 	return f.records[start:end], int64(len(f.records)), nil
 }
 
-func (f *fakeSheinSyncedInventoryProductSource) UpdateSyncedInventoryProductAttributes(_ context.Context, _ int64, _ int64, skcName string, attributes string) (int, error) {
+func (f *fakeSheinSyncedInventoryProductFeed) UpdateSyncedInventoryProductAttributes(_ context.Context, _ int64, _ int64, skcName string, attributes string) (int, error) {
 	f.updatedSKCName = skcName
 	f.updatedAttributes = attributes
 	return 1, nil

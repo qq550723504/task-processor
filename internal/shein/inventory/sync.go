@@ -53,7 +53,7 @@ type inventorySyncServiceImpl struct {
 	storeService        listingruntime.StoreService
 	storeRepo           sheinInventoryStoreFinder
 	productDataRepo     listingadmin.ProductDataRepository
-	syncedProductSource SyncedInventoryProductSource
+	syncedProductFeed   SyncedInventoryProductFeed
 	monitorConfig       *config.MonitorConfig
 	costCalculator      *pricing.CostCalculator
 	logger              *logrus.Entry
@@ -78,7 +78,7 @@ func NewInventorySyncService(
 	storeRepo sheinInventoryStoreFinder,
 	productDataRepo listingadmin.ProductDataRepository,
 ) InventorySyncService {
-	return NewInventorySyncServiceWithSyncedProductSource(
+	return NewInventorySyncServiceWithSyncedProductFeed(
 		strategyProvider,
 		productAPI,
 		productFetcher,
@@ -92,7 +92,7 @@ func NewInventorySyncService(
 	)
 }
 
-func NewInventorySyncServiceWithSyncedProductSource(
+func NewInventorySyncServiceWithSyncedProductFeed(
 	strategyProvider pricing.OperationStrategyProvider,
 	productAPI shein_product.ProductAPI,
 	productFetcher fetcher.ProductFetcher,
@@ -102,7 +102,7 @@ func NewInventorySyncServiceWithSyncedProductSource(
 	storeService listingruntime.StoreService,
 	storeRepo sheinInventoryStoreFinder,
 	productDataRepo listingadmin.ProductDataRepository,
-	syncedProductSource SyncedInventoryProductSource,
+	syncedProductFeed SyncedInventoryProductFeed,
 ) InventorySyncService {
 	// 临时设置 Debug 级别以便调试映射问题
 	logger.SetGlobalLogLevel("debug")
@@ -121,7 +121,7 @@ func NewInventorySyncServiceWithSyncedProductSource(
 		storeService:        storeService,
 		storeRepo:           storeRepo,
 		productDataRepo:     productDataRepo,
-		syncedProductSource: syncedProductSource,
+		syncedProductFeed:   syncedProductFeed,
 		monitorConfig:       monitorConfig,
 		costCalculator:      costCalculator,
 		logger:              log,
@@ -135,7 +135,7 @@ func (s *inventorySyncServiceImpl) FetchProductsForInventorySync(ctx context.Con
 		"store_id":  storeID,
 	}).Info("开始获取需要监控库存的产品")
 
-	if s.syncedProductSource != nil {
+	if s.syncedProductFeed != nil {
 		items, err := s.fetchSyncedProductsForInventorySync(ctx, tenantID, storeID)
 		if err != nil {
 			return nil, fmt.Errorf("通过SHEIN同步产品仓储获取库存同步产品列表失败: %w", err)

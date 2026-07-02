@@ -1,4 +1,4 @@
-package listingkit
+package sheinpodimage
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"task-processor/internal/listingkit"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -38,7 +39,7 @@ type SheinPODImageLookupRecord struct {
 	UpdatedAt           time.Time `json:"updated_at"`
 }
 
-func BuildSheinPODImageLookupRecord(task *Task) (SheinPODImageLookupRecord, bool) {
+func BuildSheinPODImageLookupRecord(task *listingkit.Task) (SheinPODImageLookupRecord, bool) {
 	if task == nil || task.Result == nil || task.Result.Shein == nil {
 		return SheinPODImageLookupRecord{}, false
 	}

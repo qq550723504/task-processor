@@ -5,6 +5,7 @@ import (
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/sheinpodimage"
 	"task-processor/internal/listingsubscription"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -27,7 +28,7 @@ type handler struct {
 	sheinCandidateService         listingkit.SheinCandidateService
 	sheinEnrollmentService        listingkit.SheinEnrollmentService
 	sheinSyncRepository           listingkit.SheinSyncRepository
-	sheinPODImageLookupService    listingkit.SheinPODImageLookupRepository
+	sheinPODImageLookupService    sheinpodimage.SheinPODImageLookupRepository
 	operationStrategyRepository   listingadmin.OperationStrategyRepository
 	scheduledTaskConfigRepository listingadmin.ScheduledTaskConfigRepository
 	studioAsyncJobs               studioAsyncJobStoreService
@@ -262,7 +263,7 @@ func WithSDSRetirementService(service listingkit.SDSRetirementService) HandlerOp
 	})
 }
 
-func WithSheinPODImageLookupService(service listingkit.SheinPODImageLookupRepository) HandlerOption {
+func WithSheinPODImageLookupService(service sheinpodimage.SheinPODImageLookupRepository) HandlerOption {
 	return withHandlerState(func(h *handler) {
 		h.sheinPODImageLookupService = service
 	})

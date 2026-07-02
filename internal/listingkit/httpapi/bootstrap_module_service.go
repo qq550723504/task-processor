@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	listingkitapi "task-processor/internal/listingkit/api"
+	"task-processor/internal/listingkit/sheinpodimage"
 )
 
 func prepareModuleServiceEnvironment(input BuildServiceInput, closers *closerStack) error {
@@ -159,7 +160,7 @@ func buildHandlerOptions(runtime serviceBundleRuntime) []listingkitapi.HandlerOp
 		listingkitapi.WithSheinSyncRepository(runtime.sheinSyncRepository),
 		listingkitapi.WithSheinSyncServices(runtime.sheinSyncService, runtime.sheinCandidateService, runtime.sheinEnrollmentService),
 	}
-	if lookup, ok := runtime.taskRepository.(listingkit.SheinPODImageLookupRepository); ok {
+	if lookup, ok := runtime.taskRepository.(sheinpodimage.SheinPODImageLookupRepository); ok {
 		options = append(options, listingkitapi.WithSheinPODImageLookupService(lookup))
 	}
 	return options
