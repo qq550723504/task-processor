@@ -182,6 +182,22 @@ describe("normalizeDraft", () => {
     expect(draft?.groups?.[0].groupedSelections).toHaveLength(1);
     expect(draft?.groups?.[0].primarySelection.variantId).toBe(100);
   });
+
+  it("restores hot style reference fields from persisted drafts", () => {
+    const draft = normalizeDraft({
+      prompt: "legacy prompt",
+      hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+      hotStyleReferenceBrief: "retro badge",
+      hotStyleReferencePrompt: "original retro badge",
+      updatedAt: "2026-05-26T00:00:00Z",
+    });
+
+    expect(draft?.hotStyleReferenceImageUrls).toEqual([
+      "https://example.com/ref.png",
+    ]);
+    expect(draft?.hotStyleReferenceBrief).toBe("retro badge");
+    expect(draft?.hotStyleReferencePrompt).toBe("original retro badge");
+  });
 });
 
 describe("normalizeBatch", () => {
@@ -202,6 +218,29 @@ describe("normalizeBatch", () => {
     expect(batch).toMatchObject({
       id: "batch-1",
       persistedDesignCount: 58,
+    });
+  });
+
+  it("restores hot style reference fields from persisted batches", () => {
+    const batch = normalizeBatch({
+      id: "batch-1",
+      name: "869全品类",
+      prompt: "prompt",
+      styleCount: "4",
+      hot_style_reference_image_urls: ["https://example.com/ref.png"],
+      hot_style_reference_brief: "retro badge",
+      hot_style_reference_prompt: "original retro badge",
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      updatedAt: "2026-06-18T17:04:49.413822Z",
+    } as never);
+
+    expect(batch).toMatchObject({
+      id: "batch-1",
+      hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+      hotStyleReferenceBrief: "retro badge",
+      hotStyleReferencePrompt: "original retro badge",
     });
   });
 });

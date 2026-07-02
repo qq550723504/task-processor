@@ -230,6 +230,19 @@ function mapStudioBatch(
     status: payload.status as SheinStudioBatchStatus,
     prompt: payload.prompt ?? "",
     styleCount: payload.style_count ?? "1",
+    hotStyleReferenceImageUrls: Array.isArray(payload.hot_style_reference_image_urls)
+      ? payload.hot_style_reference_image_urls.filter(
+          (item): item is string => typeof item === "string",
+        )
+      : [],
+    hotStyleReferenceBrief:
+      typeof payload.hot_style_reference_brief === "string"
+        ? payload.hot_style_reference_brief
+        : "",
+    hotStyleReferencePrompt:
+      typeof payload.hot_style_reference_prompt === "string"
+        ? payload.hot_style_reference_prompt
+        : "",
     sheinStoreId: Number(payload.shein_store_id ?? 0) || 0,
     variationIntensity:
       payload.variation_intensity === "light" ||

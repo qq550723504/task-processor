@@ -3,8 +3,10 @@ import type {
   SheinStudioGenerateRequest,
   SheinStudioGenerateResponse,
   SheinStudioProductImagePrompt,
+  SheinStudioReferenceAnalysisRequest,
+  SheinStudioReferenceAnalysisResponse,
 } from "@/lib/types/shein-studio";
-import { apiAsyncRequest } from "@/lib/api/client";
+import { apiAsyncRequest, apiRequest } from "@/lib/api/client";
 
 export async function generateSheinStudioDesigns(
   body: SheinStudioGenerateRequest,
@@ -131,4 +133,30 @@ export async function generateSheinStudioProductImages(body: {
       roleLabel: image.roleLabel ?? image.role_label,
     })) satisfies SheinStudioGeneratedDesign[],
   };
+}
+
+export async function analyzeSheinStudioReferenceStyle(
+  body: SheinStudioReferenceAnalysisRequest,
+) {
+  const payload = await apiRequest<{
+    reference_style_brief?: string;
+    sanitized_prompt?: string;
+    warnings?: string[];
+  }>("/studio/reference-style/analyze", {
+    method: "POST",
+    body: {
+      reference_image_urls: body.referenceImageUrls,
+      product_name: body.productName,
+      category_path: body.categoryPath,
+      base_prompt: body.basePrompt,
+      user_instruction: body.userInstruction,
+    },
+    timeoutMs: 120_000,
+  });
+
+  return {
+    referenceStyleBrief: payload.reference_style_brief ?? "",
+    sanitizedPrompt: payload.sanitized_prompt ?? "",
+    warnings: payload.warnings ?? [],
+  } satisfies SheinStudioReferenceAnalysisResponse;
 }

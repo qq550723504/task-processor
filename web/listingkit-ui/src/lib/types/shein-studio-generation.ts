@@ -54,3 +54,17 @@ export type SheinStudioGenerateResponse = {
   images: SheinStudioGeneratedDesign[];
   warnings?: string[];
 };
+
+export type SheinStudioReferenceAnalysisRequest = {
+  referenceImageUrls: string[];
+  productName?: string;
+  categoryPath?: string[];
+  basePrompt?: string;
+  userInstruction?: string;
+};
+
+export type SheinStudioReferenceAnalysisResponse = {
+  referenceStyleBrief: string;
+  sanitizedPrompt: string;
+  warnings: string[];
+};

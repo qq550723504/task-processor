@@ -45,6 +45,9 @@ type StudioBatchDraftRecordResponse = {
   prompt?: string;
   prompt_mode?: "managed" | "raw";
   style_count?: string;
+  hot_style_reference_image_urls?: string[];
+  hot_style_reference_brief?: string;
+  hot_style_reference_prompt?: string;
   variation_intensity?: SheinStudioVariationIntensity;
   product_image_count?: string;
   product_image_prompt?: string;
@@ -113,6 +116,9 @@ type StudioBatchListResponse = {
     prompt?: string;
     prompt_mode?: "managed" | "raw";
     style_count?: string;
+    hot_style_reference_image_urls?: string[];
+    hot_style_reference_brief?: string;
+    hot_style_reference_prompt?: string;
     variation_intensity?: SheinStudioVariationIntensity;
     product_image_count?: string;
     product_image_prompt?: string;
@@ -198,6 +204,9 @@ export async function upsertSheinStudioBatchDraft(
         prompt: input.prompt,
         prompt_mode: input.promptMode,
         style_count: input.styleCount,
+        hot_style_reference_image_urls: input.hotStyleReferenceImageUrls,
+        hot_style_reference_brief: input.hotStyleReferenceBrief,
+        hot_style_reference_prompt: input.hotStyleReferencePrompt,
         variation_intensity: input.variationIntensity,
         product_image_count: input.productImageCount,
         product_image_prompt: input.productImagePrompt,
@@ -311,6 +320,9 @@ export function mapStudioBatchDraftDetailToDraft(
     prompt: detail.batch.prompt ?? "",
     promptMode: detail.batch.prompt_mode ?? "managed",
     styleCount: detail.batch.style_count ?? "1",
+    hotStyleReferenceImageUrls: detail.batch.hot_style_reference_image_urls ?? [],
+    hotStyleReferenceBrief: detail.batch.hot_style_reference_brief ?? "",
+    hotStyleReferencePrompt: detail.batch.hot_style_reference_prompt ?? "",
     variationIntensity: detail.batch.variation_intensity ?? "medium",
     productImageCount: detail.batch.product_image_count ?? "5",
     productImagePrompt: detail.batch.product_image_prompt ?? "",
@@ -448,6 +460,9 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
     prompt: item.prompt ?? "",
     promptMode: item.prompt_mode ?? "managed",
     styleCount: item.style_count ?? "1",
+    hotStyleReferenceImageUrls: item.hot_style_reference_image_urls ?? [],
+    hotStyleReferenceBrief: item.hot_style_reference_brief ?? "",
+    hotStyleReferencePrompt: item.hot_style_reference_prompt ?? "",
     variationIntensity: item.variation_intensity ?? "medium",
     productImageCount: item.product_image_count ?? "5",
     productImagePrompt: item.product_image_prompt ?? "",

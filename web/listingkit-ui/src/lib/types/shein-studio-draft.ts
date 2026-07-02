@@ -88,6 +88,9 @@ export type SheinStudioPersistedBatchView = {
   prompt: string;
   promptMode?: SheinStudioPromptMode;
   styleCount: string;
+  hotStyleReferenceImageUrls?: string[];
+  hotStyleReferenceBrief?: string;
+  hotStyleReferencePrompt?: string;
   variationIntensity?: SheinStudioVariationIntensity;
   productImageCount?: string;
   productImagePrompt?: string;
@@ -120,6 +123,9 @@ export type SheinStudioSavedBatch = {
   prompt: string;
   promptMode?: SheinStudioPromptMode;
   styleCount: string;
+  hotStyleReferenceImageUrls?: string[];
+  hotStyleReferenceBrief?: string;
+  hotStyleReferencePrompt?: string;
   variationIntensity?: SheinStudioVariationIntensity;
   productImageCount?: string;
   productImagePrompt?: string;
@@ -152,6 +158,9 @@ export type SheinStudioDraft = {
   prompt: string;
   promptMode?: SheinStudioPromptMode;
   styleCount: string;
+  hotStyleReferenceImageUrls?: string[];
+  hotStyleReferenceBrief?: string;
+  hotStyleReferencePrompt?: string;
   variationIntensity?: SheinStudioVariationIntensity;
   productImageCount?: string;
   productImagePrompt?: string;

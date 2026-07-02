@@ -65,6 +65,9 @@ export type SheinStudioBatchRecord = {
   prompt: string;
   promptMode?: SheinStudioPromptMode;
   styleCount: string;
+  hotStyleReferenceImageUrls?: string[];
+  hotStyleReferenceBrief?: string;
+  hotStyleReferencePrompt?: string;
   sheinStoreId: number;
   variationIntensity?: SheinStudioVariationIntensity;
   artworkModel?: SheinStudioArtworkModel;

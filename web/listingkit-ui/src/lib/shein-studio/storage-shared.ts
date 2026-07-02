@@ -135,6 +135,16 @@ export function normalizePromptMode(value: unknown) {
   return value === "raw" ? "raw" : "managed";
 }
 
+function normalizeHotStyleReferenceImageUrls(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function normalizeHotStyleReferenceText(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
 export function isGeneratedDesign(item: unknown): item is SheinStudioGeneratedDesign {
   return (
     !!item &&
@@ -501,6 +511,11 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     return null;
   }
   const legacyRaw = raw as Partial<SheinStudioDraft> & LegacyBatchStatusCarrier;
+  const hotStyleRaw = raw as Partial<SheinStudioDraft> & {
+    hot_style_reference_image_urls?: unknown;
+    hot_style_reference_brief?: unknown;
+    hot_style_reference_prompt?: unknown;
+  };
   const legacyCompatibilitySnapshot = resolveLegacyCompatibilitySnapshot(
     raw.legacyCompatibilitySnapshot,
   );
@@ -513,6 +528,15 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     prompt: typeof raw.prompt === "string" ? raw.prompt : "",
     promptMode: normalizePromptMode(raw.promptMode),
     styleCount: raw.styleCount ?? "4",
+    hotStyleReferenceImageUrls: normalizeHotStyleReferenceImageUrls(
+      hotStyleRaw.hot_style_reference_image_urls ?? raw.hotStyleReferenceImageUrls,
+    ),
+    hotStyleReferenceBrief: normalizeHotStyleReferenceText(
+      hotStyleRaw.hot_style_reference_brief ?? raw.hotStyleReferenceBrief,
+    ),
+    hotStyleReferencePrompt: normalizeHotStyleReferenceText(
+      hotStyleRaw.hot_style_reference_prompt ?? raw.hotStyleReferencePrompt,
+    ),
     variationIntensity: normalizeVariationIntensity(raw.variationIntensity),
     productImageCount: raw.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
     productImagePrompt: raw.productImagePrompt ?? "",
@@ -579,6 +603,11 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     return null;
   }
   const legacyRaw = raw as Partial<SheinStudioSavedBatch> & LegacyBatchStatusCarrier;
+  const hotStyleRaw = raw as Partial<SheinStudioSavedBatch> & {
+    hot_style_reference_image_urls?: unknown;
+    hot_style_reference_brief?: unknown;
+    hot_style_reference_prompt?: unknown;
+  };
   const legacyCompatibilitySnapshot = resolveLegacyCompatibilitySnapshot(
     raw.legacyCompatibilitySnapshot,
   );
@@ -594,6 +623,15 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     prompt: raw.prompt ?? "",
     promptMode: normalizePromptMode(raw.promptMode),
     styleCount: raw.styleCount ?? "4",
+    hotStyleReferenceImageUrls: normalizeHotStyleReferenceImageUrls(
+      hotStyleRaw.hot_style_reference_image_urls ?? raw.hotStyleReferenceImageUrls,
+    ),
+    hotStyleReferenceBrief: normalizeHotStyleReferenceText(
+      hotStyleRaw.hot_style_reference_brief ?? raw.hotStyleReferenceBrief,
+    ),
+    hotStyleReferencePrompt: normalizeHotStyleReferenceText(
+      hotStyleRaw.hot_style_reference_prompt ?? raw.hotStyleReferencePrompt,
+    ),
     variationIntensity: normalizeVariationIntensity(raw.variationIntensity),
     productImageCount: raw.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
     productImagePrompt: raw.productImagePrompt ?? "",

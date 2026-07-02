@@ -110,6 +110,9 @@ describe("parseSheinStudioBatchDetailResponse", () => {
         status: "draft",
         prompt: "botanical",
         styleCount: "3",
+        hotStyleReferenceImageUrls: [],
+        hotStyleReferenceBrief: "",
+        hotStyleReferencePrompt: "",
         sheinStoreId: 7,
         variationIntensity: "strong",
         artworkModel: "gpt-image-2",
@@ -128,9 +131,11 @@ describe("parseSheinStudioBatchDetailResponse", () => {
           parentProductId: 1,
           variantId: 100,
           prototypeGroupId: 200,
-          layerId: "layer-1",
-          productName: "tee",
-          variantLabel: "M / black",
+              layerId: "layer-1",
+              productSize: undefined,
+              packagingSpecification: undefined,
+              productName: "tee",
+              variantLabel: "M / black",
           printableWidth: undefined,
           printableHeight: undefined,
           templateImageUrl: undefined,
@@ -151,6 +156,8 @@ describe("parseSheinStudioBatchDetailResponse", () => {
               variantId: 101,
               prototypeGroupId: 200,
               layerId: "layer-2",
+              productSize: undefined,
+              packagingSpecification: undefined,
               productName: "hoodie",
               variantLabel: "L / white",
               printableWidth: undefined,
@@ -292,6 +299,33 @@ describe("parseSheinStudioBatchDetailResponse", () => {
         sheinStoreId: 870,
         createdAt: "2026-06-01T10:00:00Z",
         updatedAt: "2026-06-01T10:05:00Z",
+      },
+      items: [],
+    });
+  });
+
+  it("restores hot style reference fields from itemized batch detail responses", () => {
+    expect(
+      parseSheinStudioBatchDetailResponse({
+        batch: {
+          id: "batch-1",
+          status: "draft",
+          prompt: "botanical",
+          style_count: "3",
+          hot_style_reference_image_urls: ["https://example.com/ref.png"],
+          hot_style_reference_brief: "retro badge",
+          hot_style_reference_prompt: "original retro badge",
+          created_at: "2026-06-01T10:00:00Z",
+          updated_at: "2026-06-01T10:05:00Z",
+        },
+        items: [],
+      }),
+    ).toMatchObject({
+      batch: {
+        id: "batch-1",
+        hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+        hotStyleReferenceBrief: "retro badge",
+        hotStyleReferencePrompt: "original retro badge",
       },
       items: [],
     });

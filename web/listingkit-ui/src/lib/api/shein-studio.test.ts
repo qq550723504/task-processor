@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { generateSheinStudioDesigns } from "@/lib/api/shein-studio";
+import {
+  analyzeSheinStudioReferenceStyle,
+  generateSheinStudioDesigns,
+} from "@/lib/api/shein-studio";
 import {
   listSheinStudioBatchDrafts,
   mapStudioBatchDraftDetailToBatch,
@@ -115,6 +118,42 @@ describe("shein studio design metadata", () => {
         }),
       }),
     );
+  });
+
+  it("posts hot style reference analysis payload", async () => {
+    mockedApiRequest.mockResolvedValueOnce({
+      reference_style_brief: "retro badge",
+      sanitized_prompt: "original retro badge",
+      warnings: ["safe"],
+    });
+
+    const result = await analyzeSheinStudioReferenceStyle({
+      referenceImageUrls: ["https://example.com/a.png"],
+      productName: "T-shirt",
+      categoryPath: ["Apparel"],
+      basePrompt: "summer",
+      userInstruction: "women audience",
+    });
+
+    expect(mockedApiRequest).toHaveBeenCalledWith(
+      "/studio/reference-style/analyze",
+      expect.objectContaining({
+        method: "POST",
+        body: {
+          reference_image_urls: ["https://example.com/a.png"],
+          product_name: "T-shirt",
+          category_path: ["Apparel"],
+          base_prompt: "summer",
+          user_instruction: "women audience",
+        },
+        timeoutMs: 120_000,
+      }),
+    );
+    expect(result).toEqual({
+      referenceStyleBrief: "retro badge",
+      sanitizedPrompt: "original retro badge",
+      warnings: ["safe"],
+    });
   });
 
   it("loads design prompt and model metadata from studio batch drafts", () => {
@@ -485,6 +524,41 @@ describe("shein studio design metadata", () => {
     );
   });
 
+  it("sends hot style reference fields when saving a studio batch", async () => {
+    mockedApiRequest.mockResolvedValueOnce({
+      batch: { id: "batch-1" },
+      designs: [],
+    });
+
+    await upsertSheinStudioBatchDraft({
+      prompt: "retro botanical clock",
+      styleCount: "2",
+      hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+      hotStyleReferenceBrief: "retro badge",
+      hotStyleReferencePrompt: "original retro badge",
+      selection: {
+        productId: 1,
+        parentProductId: 1,
+        variantId: 100,
+        prototypeGroupId: 200,
+        layerId: "layer-1",
+        productName: "tee",
+        variantLabel: "M / black",
+      },
+    });
+
+    expect(mockedApiRequest).toHaveBeenCalledWith(
+      "/studio/batches",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          hot_style_reference_image_urls: ["https://example.com/ref.png"],
+          hot_style_reference_brief: "retro badge",
+          hot_style_reference_prompt: "original retro badge",
+        }),
+      }),
+    );
+  });
+
   it("keeps top-level grouped selections when saving a legacy batch with empty groups", async () => {
     mockedApiRequest.mockResolvedValueOnce({
       batch: { id: "batch-1" },
@@ -703,6 +777,26 @@ describe("shein studio design metadata", () => {
     });
   });
 
+  it("restores hot style reference fields from batch draft detail", () => {
+    const draft = mapStudioBatchDraftDetailToDraft({
+      batch: {
+        id: "session-1",
+        prompt: "retro cherries",
+        hot_style_reference_image_urls: ["https://example.com/ref.png"],
+        hot_style_reference_brief: "retro badge",
+        hot_style_reference_prompt: "original retro badge",
+        updated_at: "2026-05-30T00:00:00Z",
+      },
+      designs: [],
+    });
+
+    expect(draft).toMatchObject({
+      hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+      hotStyleReferenceBrief: "retro badge",
+      hotStyleReferencePrompt: "original retro badge",
+    });
+  });
+
   it("restores legacy compatibility snapshots from batch list items", async () => {
     mockedApiRequest.mockResolvedValueOnce(
       sheinStudioBatchListContractFixture.response,
@@ -727,6 +821,31 @@ describe("shein studio design metadata", () => {
         timeoutMs: 60_000,
       }),
     );
+  });
+
+  it("restores hot style reference fields from batch list items", async () => {
+    mockedApiRequest.mockResolvedValueOnce({
+      items: [
+        {
+          id: "batch-1",
+          batch_name: "批次12",
+          prompt: "retro cherries",
+          hot_style_reference_image_urls: ["https://example.com/ref.png"],
+          hot_style_reference_brief: "retro badge",
+          hot_style_reference_prompt: "original retro badge",
+          updated_at: "2026-06-18T17:04:49.413822Z",
+        },
+      ],
+    });
+
+    await expect(listSheinStudioBatchDrafts()).resolves.toMatchObject([
+      {
+        id: "batch-1",
+        hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+        hotStyleReferenceBrief: "retro badge",
+        hotStyleReferencePrompt: "original retro badge",
+      },
+    ]);
   });
 
   it("normalizes legacy created tasks that use design_id or omit design ids", () => {
