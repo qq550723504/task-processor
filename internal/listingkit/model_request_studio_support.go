@@ -90,6 +90,20 @@ type StudioDesignResponse struct {
 	Warnings              []string               `json:"warnings,omitempty"`
 }
 
+type StudioReferenceAnalysisRequest struct {
+	ReferenceImageURLs []string `json:"reference_image_urls,omitempty"`
+	ProductName        string   `json:"product_name,omitempty"`
+	CategoryPath       []string `json:"category_path,omitempty"`
+	BasePrompt         string   `json:"base_prompt,omitempty"`
+	UserInstruction    string   `json:"user_instruction,omitempty"`
+}
+
+type StudioReferenceAnalysisResponse struct {
+	ReferenceStyleBrief string   `json:"reference_style_brief,omitempty"`
+	SanitizedPrompt     string   `json:"sanitized_prompt,omitempty"`
+	Warnings            []string `json:"warnings,omitempty"`
+}
+
 type SDSSyncOptions struct {
 	VariantID              int64                  `json:"variant_id,omitempty"`
 	ParentProductID        int64                  `json:"parent_product_id,omitempty"`

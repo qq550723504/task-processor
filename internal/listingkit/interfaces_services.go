@@ -63,6 +63,7 @@ type GenerationTaskService interface {
 type StudioMediaService interface {
 	UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error)
 	GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error)
+	AnalyzeStudioReferenceStyle(ctx context.Context, req *StudioReferenceAnalysisRequest) (*StudioReferenceAnalysisResponse, error)
 	GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error)
 	GenerateStudioProductImages(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error)
 	RegenerateSheinDataImage(ctx context.Context, taskID string, req *RegenerateSheinDataImageRequest) (*RegenerateSheinDataImageResponse, error)
