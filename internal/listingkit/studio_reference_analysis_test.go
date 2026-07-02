@@ -226,6 +226,44 @@ func TestAnalyzeStudioReferenceStyleKeepsBroaderSafeStyleCues(t *testing.T) {
 	}
 }
 
+func TestAnalyzeStudioReferenceStyleAvoidWarningsOnlyForUnsafeSignals(t *testing.T) {
+	testCases := []struct {
+		name        string
+		response    string
+		wantWarning bool
+	}{
+		{
+			name:        "safe avoid guidance",
+			response:    `{"motif":"Retro Flowers","palette":["Cream","Red"],"composition":"Centered Badge","avoid":["avoid cluttered layouts","avoid tiny details"]}`,
+			wantWarning: false,
+		},
+		{
+			name:        "unsafe avoid guidance",
+			response:    `{"motif":"Retro Flowers","palette":["Cream","Red"],"composition":"Centered Badge","avoid":["avoid Nike logo","avoid exact text lockup"]}`,
+			wantWarning: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			completer := &stubReferenceAnalysisCompleter{responses: []string{tc.response}}
+			svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+			resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+				ReferenceImageURLs: []string{"https://example.com/a.png"},
+			})
+			if err != nil {
+				t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+			}
+
+			gotWarning := containsWarningFragment(resp.Warnings, "已移除品牌、Logo、原文案或过于接近原图的描述")
+			if gotWarning != tc.wantWarning {
+				t.Fatalf("warnings = %#v, unsafe warning = %v, want %v", resp.Warnings, gotWarning, tc.wantWarning)
+			}
+		})
+	}
+}
+
 func TestAnalyzeStudioReferenceStyleErrorsWhenNoSafeSignalsSurvive(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
 		`{"motif":"Hello Kitty","palette":["Nike"],"composition":"same exact layout","typography":"Taylor Swift signature quote","density":"Mickey portrait","product_fit":"Adidas logo","avoid":["Just Do It slogan"]}`,

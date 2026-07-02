@@ -430,10 +430,7 @@ func abstractStudioReferenceAnalysis(item studioReferenceImageAnalysis) studioAb
 
 	abstracted.HadUnsafe = studioReferenceAnalysisContainsUnsafeSignals(item)
 	for _, avoid := range item.Avoid {
-		if strings.TrimSpace(avoid) != "" {
-			abstracted.HadUnsafe = true
-		}
-		if studioReferenceFieldContainsUnsafeSignals(avoid) {
+		if studioReferenceAvoidContainsUnsafeSignals(avoid) {
 			abstracted.HadUnsafe = true
 		}
 	}
@@ -561,7 +558,7 @@ func studioReferenceContainsUnsafeSignals(analyses []studioReferenceImageAnalysi
 			return true
 		}
 		for _, avoid := range item.Avoid {
-			if strings.TrimSpace(avoid) != "" {
+			if studioReferenceAvoidContainsUnsafeSignals(avoid) {
 				return true
 			}
 		}
@@ -596,10 +593,7 @@ func studioReferenceAnalysisContainsUnsafeSignals(item studioReferenceImageAnaly
 		}
 	}
 	for _, value := range item.Avoid {
-		if strings.TrimSpace(value) == "" {
-			continue
-		}
-		if studioReferenceFieldContainsUnsafeSignals(value) {
+		if studioReferenceAvoidContainsUnsafeSignals(value) {
 			return true
 		}
 	}
@@ -625,6 +619,10 @@ func studioReferenceFieldContainsUnsafeSignals(value string) bool {
 		studioExactTextPattern.MatchString(lower) ||
 		studioCharacterIdentityPattern.MatchString(lower) ||
 		studioUniqueLayoutPattern.MatchString(lower)
+}
+
+func studioReferenceAvoidContainsUnsafeSignals(value string) bool {
+	return studioReferenceFieldContainsUnsafeSignals(value)
 }
 
 func studioStructuredFieldWasDropped(original string, abstracted string) bool {
