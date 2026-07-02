@@ -17,6 +17,8 @@ data:
       baseURL: "https://api.bltcy.ai/v1"
       timeout: 300
 
+    processor:
+      schedulerEnabled: false
 
     browser:
       enabled: true

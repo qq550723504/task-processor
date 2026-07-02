@@ -22,8 +22,9 @@ func BuildConfig(v *viper.Viper) *Config {
 
 	cfg := &Config{
 		Processor: ProcessorConfig{
-			MaxRetries: v.GetInt("processor.maxRetries"),
-			Timeout:    v.GetInt("processor.timeout"),
+			MaxRetries:       v.GetInt("processor.maxRetries"),
+			Timeout:          v.GetInt("processor.timeout"),
+			SchedulerEnabled: v.GetBool("processor.schedulerEnabled"),
 		},
 		Worker: WorkerConfig{
 			Concurrency:        v.GetInt("worker.concurrency"),

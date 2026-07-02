@@ -143,6 +143,12 @@ func configureScheduler(ctx context.Context, rt consumer.PlatformRuntimeContext)
 	if cfg == nil || schedulerRuntime == nil {
 		return
 	}
+	if !cfg.Processor.SchedulerEnabled {
+		if logger != nil {
+			logger.Info("processor.schedulerEnabled=false，跳过 SHEIN worker 内置调度服务")
+		}
+		return
+	}
 	runtime := rt.SchedulerRuntime()
 	if runtime == nil {
 		if cfg.Platforms.Shein.SchedulerEnabled {

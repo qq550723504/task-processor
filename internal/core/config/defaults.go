@@ -11,6 +11,7 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("processor.maxRetries", defaults.Processor.MaxRetries)
 	v.SetDefault("processor.timeout", defaults.Processor.Timeout)
+	v.SetDefault("processor.schedulerEnabled", defaults.Processor.SchedulerEnabled)
 
 	v.SetDefault("worker.concurrency", defaults.Worker.Concurrency)
 	v.SetDefault("worker.bufferSize", defaults.Worker.BufferSize)

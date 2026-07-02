@@ -34,6 +34,21 @@ func TestBuildRuntimeProductFetcherUsesPlatformFetchModeForShein(t *testing.T) {
 	}
 }
 
+func TestShouldStartSchedulerServiceUsesProcessorSwitch(t *testing.T) {
+	t.Parallel()
+
+	cfg := config.NewDefaultConfig()
+	cfg.Processor.SchedulerEnabled = true
+	if !shouldStartSchedulerService(cfg) {
+		t.Fatal("expected scheduler service to start when processor scheduler switch is enabled")
+	}
+
+	cfg.Processor.SchedulerEnabled = false
+	if shouldStartSchedulerService(cfg) {
+		t.Fatal("expected scheduler service to be skipped when processor scheduler switch is disabled")
+	}
+}
+
 type fakeRawJSONDataClient struct{}
 
 func (fakeRawJSONDataClient) GetRawJsonData(*product.RawJsonReq) (*product.RawJsonResp, error) {

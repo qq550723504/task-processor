@@ -102,8 +102,9 @@ func validateAmazonCrawlerAPIConfig(cfg *Config) error {
 func NewDefaultConfig() *Config {
 	return &Config{
 		Processor: ProcessorConfig{
-			MaxRetries: 3,
-			Timeout:    300,
+			MaxRetries:       3,
+			Timeout:          300,
+			SchedulerEnabled: true,
 		},
 		Worker: WorkerConfig{
 			Concurrency:        10,

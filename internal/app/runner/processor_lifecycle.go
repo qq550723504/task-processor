@@ -50,12 +50,23 @@ func (s *processorServiceImpl) startProcessingComponents(ctx context.Context, cf
 		return errors.Wrap(err, errors.ErrCodeSystem, "启动处理器失败")
 	}
 
-	if err := s.startSchedulerService(ctx, cfg); err != nil {
-		return errors.Wrap(err, errors.ErrCodeSystem, "启动调度服务失败")
+	if shouldStartSchedulerService(cfg) {
+		if err := s.startSchedulerService(ctx, cfg); err != nil {
+			return errors.Wrap(err, errors.ErrCodeSystem, "启动调度服务失败")
+		}
+	} else if s.logger != nil {
+		s.logger.Info("processor.schedulerEnabled=false，跳过 worker 内置调度服务")
 	}
 
 	s.initializeMonitoring(cfg)
 	return nil
+}
+
+func shouldStartSchedulerService(cfg *config.Config) bool {
+	if cfg == nil {
+		return true
+	}
+	return cfg.Processor.SchedulerEnabled
 }
 
 func (s *processorServiceImpl) startLifecycleComponents() error {

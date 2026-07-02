@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: listing-scheduler
+  namespace: task-processor
+  labels:
+    app: listing-scheduler
+    shein-listing-role: scheduler
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app: listing-scheduler
+  template:
+    metadata:
+      labels:
+        app: listing-scheduler
+        shein-listing-role: scheduler
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/agent
+                    operator: In
+                    values: ["true"]
+      containers:
+        - name: listing-scheduler
+          image: xuwei190/task-processor-listing-scheduler:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/app/listing-service"]
+          args:
+            - -config
+            - /app/config/config-shein-listing.yaml
+            - -log-level
+            - info
+          env:
+            - name: TZ
+              value: Asia/Shanghai
+            - name: TASK_PROCESSOR_ENV
+              value: prod
+            - name: TASK_PROCESSOR_PROCESSOR_SCHEDULER_ENABLED
+              value: "true"
+            - name: TASK_PROCESSOR_PLATFORMS_TEMU_SCHEDULER_ENABLED
+              value: "false"
+            - name: TASK_PROCESSOR_PLATFORMS_SHEIN_SCHEDULER_ENABLED
+              value: "true"
+            - name: TASK_PROCESSOR_RABBITMQ_NODE_NODE_ID
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.name
+            - name: TASK_PROCESSOR_RABBITMQ_NODE_ROLE
+              value: scheduler
+            - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ENABLED
+              value: "false"
+            - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_ENABLED
+              value: "false"
+            - name: TASK_PROCESSOR_RABBITMQ_STALE_QUEUED_WATCHDOG_ENABLED
+              value: "false"
+            - name: TASK_PROCESSOR_REDIS_DB
+              value: "9"
+          envFrom:
+            - secretRef:
+                name: shein-listing-secret
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "3Gi"
+          volumeMounts:
+            - name: app-config
+              mountPath: /app/config/config-shein-listing.yaml
+              subPath: config-shein-listing.yaml
+            - name: app-tmp
+              mountPath: /app/tmp
+            - name: app-logs
+              mountPath: /app/logs
+      volumes:
+        - name: app-config
+          configMap:
+            name: shein-listing-config-heavy
+        - name: app-tmp
+          emptyDir: {}
+        - name: app-logs
+          emptyDir: {}

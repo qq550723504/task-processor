@@ -5,8 +5,13 @@ import (
 	"testing"
 
 	"task-processor/internal/app/consumer"
+	"task-processor/internal/app/ports"
+	"task-processor/internal/app/runner"
 	appscheduler "task-processor/internal/app/scheduler"
+	apptask "task-processor/internal/app/task"
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/rabbitmq"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/prompt"
 	"task-processor/internal/shared/tenantctx"
@@ -174,6 +179,56 @@ func TestHasEnabledSheinScheduledTaskConfigsReturnsFalseWithoutRuntimeConfigs(t 
 		appscheduler.TaskTypeInventory,
 		appscheduler.TaskTypeActivity,
 	}, runtime.calls)
+}
+
+func TestConfigureSchedulerRespectsProcessorSchedulerSwitch(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	cfg.Processor.SchedulerEnabled = false
+	cfg.Platforms.Shein.SchedulerEnabled = false
+	runtime := &stubSheinSchedulerRuntime{
+		configs: map[appscheduler.TaskType][]listingruntime.ScheduledTaskConfig{
+			appscheduler.TaskTypeProductSync: {
+				{StoreID: 870, Platform: "shein", TaskType: string(appscheduler.TaskTypeProductSync), Enabled: true},
+			},
+		},
+	}
+	services := &stubSheinRuntimeServices{}
+	rt := consumer.BuildPlatformRuntimeContext(consumer.PlatformRuntimeContextInput{
+		Config: cfg,
+		Logger: logrus.New(),
+		Resources: consumer.NewPlatformRuntimeResources(consumer.NewSharedResources(consumer.SharedResourcesInput{
+			Scheduler: consumer.NewSchedulerResources(runtime, nil, nil),
+		})),
+		Services: services,
+		SchedulerBuilder: func(consumer.SchedulerFactoryRuntime, *config.Config, ports.CrawlSource, *rabbitmq.Client) runner.SchedulerDependencies {
+			return runner.SchedulerDependencies{}
+		},
+	})
+
+	configureScheduler(context.Background(), rt)
+
+	require.False(t, services.schedulerSet)
+}
+
+type stubSheinRuntimeServices struct {
+	schedulerSet bool
+}
+
+func (s *stubSheinRuntimeServices) GetClient() *rabbitmq.Client { return nil }
+
+func (s *stubSheinRuntimeServices) SetSchedulerService(consumer.SchedulerService) {
+	s.schedulerSet = true
+}
+
+func (s *stubSheinRuntimeServices) SetProcessingTimeoutWatchdog(consumer.SchedulerService) {}
+
+func (s *stubSheinRuntimeServices) SetStaleQueuedWatchdog(consumer.SchedulerService) {}
+
+func (s *stubSheinRuntimeServices) SetAutoShardService(consumer.AutoShardService) {}
+
+func (s *stubSheinRuntimeServices) SetStoreAssignmentProvider(consumer.StoreAssignmentProvider) {}
+
+func (s *stubSheinRuntimeServices) SetStoreComponents(listingadmin.StoreAPI, []int64, *apptask.DeduplicationManager) {
 }
 
 func TestCoordinatorRoleDoesNotUseDynamicStoreAssignment(t *testing.T) {

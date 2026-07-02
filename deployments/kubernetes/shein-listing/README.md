@@ -3,6 +3,7 @@
 这套清单用于部署 RabbitMQ 驱动的 SHEIN 上架消费者，对应程序入口：
 
 - [main.go](D:/code/task-processor/cmd/shein-listing/main.go)
+- 计划任务独立入口：[main.go](D:/code/task-processor/cmd/listing-scheduler/main.go)
 
 ## 目录结构
 
@@ -105,6 +106,21 @@ docker build \
   -t xuwei190/task-processor-shein-listing:latest .
 ```
 
+独立计划任务调度器镜像：
+
+```powershell
+pwsh ./scripts/build-push-listing-scheduler.ps1 -DockerHubUser xuwei190 -Tag v20260702-scheduler
+```
+
+或者直接构建：
+
+```bash
+docker build \
+  --build-arg SERVICE_CMD=./cmd/listing-scheduler/main.go \
+  -f deployments/docker/Dockerfile.listing \
+  -t xuwei190/task-processor-listing-scheduler:latest .
+```
+
 ## 部署前必须确认
 
 1. `yudao-cloud` 已开启 RabbitMQ 自动投递
@@ -176,11 +192,19 @@ kubectl apply -k deployments/kubernetes/shein-listing/overlays/prod
 kubectl apply -k deployments/kubernetes/shein-listing/overlays/prod-store-shards-example
 ```
 
+自动分片 StatefulSet + 独立计划任务调度器：
+
+```bash
+kubectl apply -k deployments/kubernetes/shein-listing/overlays/prod-auto-shard-statefulset
+```
+
 ## 部署后检查
 
 ```bash
 kubectl -n task-processor get deploy,pod,svc | grep shein-listing
+kubectl -n task-processor get deploy,pod | grep listing-scheduler
 kubectl -n task-processor logs deploy/shein-listing --tail=200
+kubectl -n task-processor logs deploy/listing-scheduler --tail=200
 kubectl -n task-processor port-forward deploy/shein-listing 8081:8081 8082:8082
 ```
 

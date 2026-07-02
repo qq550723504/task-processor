@@ -56,6 +56,10 @@ spec:
               value: Asia/Shanghai
             - name: TASK_PROCESSOR_ENV
               value: prod
+            - name: TASK_PROCESSOR_PROCESSOR_SCHEDULER_ENABLED
+              value: "false"
+            - name: TASK_PROCESSOR_PLATFORMS_SHEIN_SCHEDULER_ENABLED
+              value: "false"
             - name: TASK_PROCESSOR_RABBITMQ_NODE_NODE_ID
               valueFrom:
                 fieldRef:
