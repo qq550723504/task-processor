@@ -357,6 +357,38 @@ func TestAnalyzeStudioReferenceStyleFallsBackForMalformedJSON(t *testing.T) {
 	}
 }
 
+func TestAnalyzeStudioReferenceStyleDerivesFallbackForSafeOffVocabularyMalformedText(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		"souvenir keepsake vibe, breezy travel poster energy, softened ink haze",
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/a.png"},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v, want safe malformed fallback to degrade instead of failing", err)
+	}
+	if strings.TrimSpace(resp.ReferenceStyleBrief) == "" {
+		t.Fatal("reference style brief is empty, want conservative fallback brief")
+	}
+	if strings.TrimSpace(resp.SanitizedPrompt) == "" {
+		t.Fatal("sanitized prompt is empty, want conservative fallback prompt")
+	}
+	if !strings.Contains(strings.ToLower(resp.ReferenceStyleBrief), "abstract") {
+		t.Fatalf("reference style brief = %q, want conservative derived fallback signal", resp.ReferenceStyleBrief)
+	}
+	if !strings.Contains(strings.ToLower(resp.SanitizedPrompt), "abstract") {
+		t.Fatalf("sanitized prompt = %q, want conservative derived fallback signal", resp.SanitizedPrompt)
+	}
+	if !strings.Contains(strings.ToLower(resp.SanitizedPrompt), "original") {
+		t.Fatalf("sanitized prompt = %q, want originality guardrail preserved", resp.SanitizedPrompt)
+	}
+	if !containsWarningFragment(resp.Warnings, "部分参考图返回了非结构化分析结果，仅保留可安全复用的风格提示。") {
+		t.Fatalf("warnings = %#v, want malformed fallback warning", resp.Warnings)
+	}
+}
+
 func TestAnalyzeStudioReferenceStyleRecoversStructuredCuesFromSafeMalformedText(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{"distressed serif, clean layering, vintage streetwear"}}
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
@@ -388,6 +420,51 @@ func TestAnalyzeStudioReferenceStyleRecoversStructuredCuesFromSafeMalformedText(
 	}
 	if !containsWarningFragment(resp.Warnings, "部分参考图返回了非结构化分析结果，仅保留可安全复用的风格提示。") {
 		t.Fatalf("warnings = %#v, want malformed fallback warning", resp.Warnings)
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleKeepsReferenceBriefDerivedOnlyFromReferenceSignals(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"Retro Flowers","palette":["Cream","Cherry Red"],"composition":"Centered Badge","typography":"Old English"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/a.png"},
+		ProductName:        "T-shirt",
+		CategoryPath:       []string{"Apparel", "Tops"},
+		BasePrompt:         "summer resort capsule",
+		UserInstruction:    "keep it cheerful",
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	lowerBrief := strings.ToLower(resp.ReferenceStyleBrief)
+	for _, forbidden := range []string{
+		"base product:",
+		"category:",
+		"t-shirt",
+		"apparel > tops",
+		"create a new original design",
+		"do not reproduce logos",
+	} {
+		if strings.Contains(lowerBrief, forbidden) {
+			t.Fatalf("reference style brief = %q, want extracted reference brief only without %q", resp.ReferenceStyleBrief, forbidden)
+		}
+	}
+
+	lowerPrompt := strings.ToLower(resp.SanitizedPrompt)
+	for _, required := range []string{
+		"original",
+		"brand-neutral",
+		"fresh custom wording",
+		"avoid recognizable characters or people",
+		"clearly original layout",
+	} {
+		if !strings.Contains(lowerPrompt, required) {
+			t.Fatalf("sanitized prompt = %q, want guardrail %q preserved", resp.SanitizedPrompt, required)
+		}
 	}
 }
 
