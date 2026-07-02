@@ -12,15 +12,30 @@ const maxStudioReferenceAnalysisImages = 5
 
 var (
 	studioWordPattern               = regexp.MustCompile(`[a-z0-9]+`)
+	studioCapitalizedPhrasePattern  = regexp.MustCompile(`\b(?:[A-Z][a-z0-9]*)(?:\s+[A-Z][a-z0-9]*){0,2}\b`)
 	studioQuotedTextPattern         = regexp.MustCompile(`["'][^"']+["']`)
 	studioBrandMarkPattern          = regexp.MustCompile(`\b(?:logo|logos|brand mark|brand marks|wordmark|wordmarks|emblem|emblems|trefoil|swoosh)\b`)
 	studioExactTextPattern          = regexp.MustCompile(`\b(?:exact text|exact slogan|same wording|copy this exact|quote|quoted|slogan|tagline|catchphrase)\b`)
 	studioCharacterIdentityPattern  = regexp.MustCompile(`\b(?:characters?|face|faces|portrait|portraits|person|people|identity|identities|celebrity|celebrities|likeness)\b`)
 	studioUniqueLayoutPattern       = regexp.MustCompile(`\b(?:same|exact|identical|signature|unique|distinctive)\s+[a-z0-9\s-]{0,40}?(?:layout|composition|arrangement|split|frame|badge)\b`)
+	studioUnsafeSpacerPattern       = regexp.MustCompile(`[\(\)\[\]\{\}:,;|]+`)
 	studioRepeatedWhitespacePattern = regexp.MustCompile(`\s+`)
 )
 
 var (
+	studioSafeDescriptorWords = map[string]struct{}{
+		"abstract": {}, "airy": {}, "allover": {}, "arched": {}, "art": {}, "artwork": {}, "balanced": {}, "badge": {}, "beach": {},
+		"black": {}, "block": {}, "blue": {}, "bold": {}, "border": {}, "botanical": {}, "brown": {}, "brush": {}, "centered": {}, "cherry": {},
+		"clean": {}, "coastal": {}, "coral": {}, "cream": {}, "gray": {}, "green": {}, "grey": {}, "navy": {}, "old": {}, "orange": {},
+		"pink": {}, "red": {}, "silver": {}, "white": {}, "gold": {},
+		"collegiate": {}, "composition": {}, "crest": {}, "dense": {}, "distressed": {}, "drawn": {}, "dynamic": {},
+		"english": {}, "floral": {}, "flower": {}, "flowers": {}, "frame": {}, "framed": {}, "geometric": {}, "glass": {}, "gothic": {},
+		"gradient": {}, "hand": {}, "heritage": {}, "illustration": {}, "koi": {}, "layered": {}, "layering": {}, "layout": {},
+		"lettering": {}, "linework": {}, "mascot": {}, "medallion": {}, "minimal": {}, "minimalist": {}, "modern": {}, "ombre": {},
+		"ornamental": {}, "palette": {}, "pattern": {}, "playful": {}, "repeat": {}, "resort": {}, "retro": {}, "rounded": {},
+		"sans": {}, "sea": {}, "seal": {}, "serif": {}, "sky": {}, "sports": {}, "streetwear": {}, "sunset": {}, "teal": {},
+		"texture": {}, "tropical": {}, "vintage": {}, "watercolor": {}, "wave": {}, "wear": {}, "western": {},
+	}
 	studioMotifPhraseVocabulary = []string{
 		"koi wave",
 		"retro flowers",
@@ -154,7 +169,10 @@ func (s *taskStudioMediaService) AnalyzeStudioReferenceStyle(ctx context.Context
 	if req == nil {
 		return nil, fmt.Errorf("invalid request: request is required")
 	}
-	urls := normalizeStudioReferenceImageURLs(req.ReferenceImageURLs)
+	urls, err := normalizeStudioReferenceImageURLs(req.ReferenceImageURLs)
+	if err != nil {
+		return nil, err
+	}
 	if len(urls) == 0 {
 		return nil, fmt.Errorf("invalid request: reference_image_urls is required")
 	}
@@ -206,7 +224,7 @@ func (s *taskStudioMediaService) AnalyzeStudioReferenceStyle(ctx context.Context
 	}, nil
 }
 
-func normalizeStudioReferenceImageURLs(urls []string) []string {
+func normalizeStudioReferenceImageURLs(urls []string) ([]string, error) {
 	seen := map[string]struct{}{}
 	result := make([]string, 0, len(urls))
 	for _, raw := range urls {
@@ -214,13 +232,18 @@ func normalizeStudioReferenceImageURLs(urls []string) []string {
 		if trimmed == "" {
 			continue
 		}
-		if _, ok := seen[trimmed]; ok {
+		key, ok := uploadedListingKitImageKeyFromURL(trimmed)
+		if !ok {
+			return nil, fmt.Errorf("invalid request: reference_image_urls must be uploaded listingkit images")
+		}
+		normalized := absolutizeListingKitUploadedImageURL(buildUploadedImagePath(key))
+		if _, ok := seen[normalized]; ok {
 			continue
 		}
-		seen[trimmed] = struct{}{}
-		result = append(result, trimmed)
+		seen[normalized] = struct{}{}
+		result = append(result, normalized)
 	}
-	return result
+	return result, nil
 }
 
 func buildStudioReferenceAnalysisPrompt(req *StudioReferenceAnalysisRequest) string {
@@ -408,23 +431,15 @@ func abstractStudioReferenceAnalysis(item studioReferenceImageAnalysis) studioAb
 	abstracted.HadMalformed = isMalformedStudioReferenceAnalysis(item)
 
 	if abstracted.HadMalformed {
-		if abstracted.Motif == "" {
+		rawUnsafe := studioReferenceFieldContainsUnsafeSignals(item.Raw)
+		if !rawUnsafe && abstracted.Motif == "" {
 			abstracted.Motif = abstractStudioMotif(item.Raw)
 		}
-		if len(abstracted.Palette) == 0 {
+		if !rawUnsafe && len(abstracted.Palette) == 0 {
 			abstracted.Palette = abstractStudioPalette([]string{item.Raw})
 		}
 		if len(abstracted.Composition) == 0 {
 			abstracted.Composition = abstractStudioComposition(item.Raw)
-		}
-		if abstracted.Typography == "" {
-			abstracted.Typography = abstractStudioTypography(item.Raw)
-		}
-		if abstracted.Density == "" {
-			abstracted.Density = abstractStudioDensity(item.Raw)
-		}
-		if abstracted.ProductFit == "" {
-			abstracted.ProductFit = abstractStudioProductFit(item.Raw)
 		}
 	}
 
@@ -442,14 +457,14 @@ func abstractStudioReferenceAnalysis(item studioReferenceImageAnalysis) studioAb
 }
 
 func abstractStudioMotif(value string) string {
-	return abstractStudioVocabularyPhrase(value, studioMotifPhraseVocabulary, studioMotifWordVocabulary)
+	return sanitizeStudioStylePhrase(value)
 }
 
 func abstractStudioPalette(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := map[string]struct{}{}
 	for _, value := range values {
-		abstracted := abstractStudioVocabularyPhrase(value, studioPalettePhraseVocabulary, studioPaletteWordVocabulary)
+		abstracted := sanitizeStudioStylePhrase(value)
 		if abstracted == "" {
 			continue
 		}
@@ -463,15 +478,15 @@ func abstractStudioPalette(values []string) []string {
 }
 
 func abstractStudioTypography(value string) string {
-	return abstractStudioVocabularyPhrase(value, studioTypographyPhraseVocabulary, studioTypographyWordVocabulary)
+	return sanitizeStudioStylePhrase(value)
 }
 
 func abstractStudioDensity(value string) string {
-	return abstractStudioVocabularyPhrase(value, studioDensityPhraseVocabulary, studioDensityWordVocabulary)
+	return sanitizeStudioStylePhrase(value)
 }
 
 func abstractStudioProductFit(value string) string {
-	return abstractStudioVocabularyPhrase(value, studioProductFitPhraseVocabulary, studioProductFitWordVocabulary)
+	return sanitizeStudioStylePhrase(value)
 }
 
 func abstractStudioComposition(value string) []string {
@@ -479,7 +494,7 @@ func abstractStudioComposition(value string) []string {
 	if lower == "" {
 		return nil
 	}
-	result := make([]string, 0, 2)
+	result := make([]string, 0, 3)
 	add := func(label string) {
 		for _, existing := range result {
 			if existing == label {
@@ -487,6 +502,9 @@ func abstractStudioComposition(value string) []string {
 			}
 		}
 		result = append(result, label)
+	}
+	if literal := sanitizeStudioStylePhrase(value); literal != "" && !studioCompositionShouldSuppressLiteral(lower) {
+		add(literal)
 	}
 	if strings.Contains(lower, "center") {
 		add("centered composition")
@@ -507,6 +525,71 @@ func abstractStudioComposition(value string) []string {
 		add("balanced dynamic composition")
 	}
 	return result
+}
+
+func studioCompositionShouldSuppressLiteral(lower string) bool {
+	for _, token := range []string{"same", "exact", "identical", "signature", "unique", "distinctive", "split", "diagonal", "collage", "offset"} {
+		if strings.Contains(lower, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func sanitizeStudioStylePhrase(value string) string {
+	original := strings.TrimSpace(value)
+	if original == "" {
+		return ""
+	}
+	cleaned, removedSuspiciousName := stripSuspiciousStudioNamedPhrases(original)
+	lower := strings.ToLower(cleaned)
+	lower = studioUnsafeSpacerPattern.ReplaceAllString(lower, " ")
+	lower = studioQuotedTextPattern.ReplaceAllString(lower, " ")
+	lower = studioUniqueLayoutPattern.ReplaceAllString(lower, " ")
+	lower = studioCharacterIdentityPattern.ReplaceAllString(lower, " ")
+	lower = studioExactTextPattern.ReplaceAllString(lower, " ")
+	lower = studioBrandMarkPattern.ReplaceAllString(lower, " ")
+	lower = strings.NewReplacer("/", " ", "&", " ").Replace(lower)
+	tokens := studioWordPattern.FindAllString(lower, -1)
+	if len(tokens) == 0 {
+		return ""
+	}
+	filtered := make([]string, 0, len(tokens))
+	for _, token := range tokens {
+		if token == "same" || token == "exact" || token == "identical" || token == "signature" || token == "unique" || token == "distinctive" {
+			continue
+		}
+		filtered = append(filtered, token)
+	}
+	if removedSuspiciousName && len(filtered) <= 1 {
+		return ""
+	}
+	return strings.TrimSpace(studioRepeatedWhitespacePattern.ReplaceAllString(strings.Join(filtered, " "), " "))
+}
+
+func stripSuspiciousStudioNamedPhrases(value string) (string, bool) {
+	removed := false
+	result := studioCapitalizedPhrasePattern.ReplaceAllStringFunc(value, func(match string) string {
+		if studioCapitalizedPhraseIsSafe(match) {
+			return match
+		}
+		removed = true
+		return " "
+	})
+	return result, removed
+}
+
+func studioCapitalizedPhraseIsSafe(value string) bool {
+	tokens := studioWordPattern.FindAllString(strings.ToLower(value), -1)
+	if len(tokens) == 0 {
+		return true
+	}
+	for _, token := range tokens {
+		if _, ok := studioSafeDescriptorWords[token]; !ok {
+			return false
+		}
+	}
+	return true
 }
 
 func abstractStudioVocabularyPhrase(value string, phrases []string, words map[string]string) string {

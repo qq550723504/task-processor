@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,17 +86,18 @@ func uploadedListingKitImageKeyFromURL(rawURL string) (string, bool) {
 	}
 	const prefix = "/api/v1/listing-kits/uploads/files/"
 	if strings.HasPrefix(trimmed, prefix) {
-		return strings.TrimPrefix(trimmed, prefix), true
+		key := strings.TrimLeft(strings.TrimPrefix(trimmed, prefix), "/")
+		return key, key != ""
 	}
-	const localhostPrefix = "http://localhost:3000/api/v1/listing-kits/uploads/files/"
-	if strings.HasPrefix(trimmed, localhostPrefix) {
-		return strings.TrimPrefix(trimmed, localhostPrefix), true
+	parsed, err := url.Parse(trimmed)
+	if err != nil {
+		return "", false
 	}
-	const localhostSecurePrefix = "https://localhost:3000/api/v1/listing-kits/uploads/files/"
-	if strings.HasPrefix(trimmed, localhostSecurePrefix) {
-		return strings.TrimPrefix(trimmed, localhostSecurePrefix), true
+	if !strings.HasPrefix(parsed.Path, prefix) {
+		return "", false
 	}
-	return "", false
+	key := strings.TrimLeft(strings.TrimPrefix(parsed.Path, prefix), "/")
+	return key, key != ""
 }
 
 func studioSDSMaterialFileName(task *Task) string {
