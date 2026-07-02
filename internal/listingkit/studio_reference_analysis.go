@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"regexp"
@@ -193,10 +194,14 @@ func (s *taskStudioMediaService) AnalyzeStudioReferenceStyle(ctx context.Context
 		urls = urls[:maxStudioReferenceAnalysisImages]
 		warnings = append(warnings, "最多分析 5 张参考图，已忽略多余图片。")
 	}
+	resolvedURLs, err := s.resolveStudioReferenceImageURLs(ctx, urls)
+	if err != nil {
+		return nil, err
+	}
 
 	analysisPrompt := buildStudioReferenceAnalysisPrompt(req)
 	analyses := make([]studioReferenceImageAnalysis, 0, len(urls))
-	for _, imageURL := range urls {
+	for _, imageURL := range resolvedURLs {
 		raw, err := s.promptDiversifier.AnalyzeImage(ctx, imageURL, analysisPrompt)
 		if err != nil {
 			warnings = append(warnings, fmt.Sprintf("参考图分析失败：%s", compactStudioGenerationError(err)))
@@ -263,6 +268,68 @@ func normalizeStudioReferenceImageURLs(urls []string) ([]string, error) {
 		result = append(result, normalized)
 	}
 	return result, nil
+}
+
+func (s *taskStudioMediaService) resolveStudioReferenceImageURLs(ctx context.Context, urls []string) ([]string, error) {
+	resolved := make([]string, 0, len(urls))
+	for _, rawURL := range urls {
+		publicURL, err := s.resolveStudioReferenceImageURL(ctx, rawURL)
+		if err != nil {
+			return nil, err
+		}
+		resolved = append(resolved, publicURL)
+	}
+	return resolved, nil
+}
+
+func (s *taskStudioMediaService) resolveStudioReferenceImageURL(ctx context.Context, rawURL string) (string, error) {
+	trimmed := strings.TrimSpace(rawURL)
+	if key, ok := uploadedListingKitImageKeyFromURL(trimmed); ok {
+		if s == nil || s.resolveUploadedImagePublicURL == nil {
+			return "", fmt.Errorf("invalid request: uploaded reference image %q does not have a public https url configured", trimmed)
+		}
+		publicURL, err := s.resolveUploadedImagePublicURL(ctx, key)
+		if err != nil {
+			if errors.Is(err, ErrUploadedImageNotFound) {
+				return "", fmt.Errorf("invalid request: uploaded reference image %q does not have a public https url configured", trimmed)
+			}
+			return "", fmt.Errorf("invalid request: resolve uploaded reference image %q: %w", trimmed, err)
+		}
+		publicURL, err = validateStudioReferencePublicHTTPSURL(publicURL)
+		if err != nil {
+			return "", fmt.Errorf("invalid request: uploaded reference image %q does not have a public https url configured", trimmed)
+		}
+		return publicURL, nil
+	}
+	publicURL, err := validateStudioReferencePublicHTTPSURL(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("invalid request: reference_image_urls must be absolute https urls or uploaded listingkit paths")
+	}
+	return publicURL, nil
+}
+
+func validateStudioReferencePublicHTTPSURL(rawURL string) (string, error) {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return "", fmt.Errorf("public https url is required")
+	}
+	parsed, err := url.ParseRequestURI(trimmed)
+	if err != nil || parsed == nil || !parsed.IsAbs() || !strings.EqualFold(parsed.Scheme, "https") || strings.TrimSpace(parsed.Host) == "" {
+		return "", fmt.Errorf("public https url is required")
+	}
+	if isStudioReferenceLocalHost(parsed.Hostname()) {
+		return "", fmt.Errorf("public https url is required")
+	}
+	return parsed.String(), nil
+}
+
+func isStudioReferenceLocalHost(host string) bool {
+	switch strings.ToLower(strings.TrimSpace(host)) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
+	}
 }
 
 func buildStudioReferenceAnalysisPrompt(req *StudioReferenceAnalysisRequest) string {
@@ -506,14 +573,14 @@ func abstractStudioReferenceAnalysis(item studioReferenceImageAnalysis) studioAb
 }
 
 func abstractStudioMotif(value string) string {
-	return sanitizeStudioSafeDescriptorPhrase(value)
+	return abstractStudioFieldDescriptor(value, studioMotifPhraseVocabulary, studioMotifWordVocabulary)
 }
 
 func abstractStudioPalette(values []string) []string {
 	result := make([]string, 0, len(values))
 	seen := map[string]struct{}{}
 	for _, value := range values {
-		abstracted := sanitizeStudioSafeDescriptorPhrase(value)
+		abstracted := abstractStudioFieldDescriptor(value, studioPalettePhraseVocabulary, studioPaletteWordVocabulary)
 		if abstracted == "" {
 			continue
 		}
@@ -527,15 +594,15 @@ func abstractStudioPalette(values []string) []string {
 }
 
 func abstractStudioTypography(value string) string {
-	return sanitizeStudioSafeDescriptorPhrase(value)
+	return abstractStudioFieldDescriptor(value, studioTypographyPhraseVocabulary, studioTypographyWordVocabulary)
 }
 
 func abstractStudioDensity(value string) string {
-	return sanitizeStudioSafeDescriptorPhrase(value)
+	return abstractStudioFieldDescriptor(value, studioDensityPhraseVocabulary, studioDensityWordVocabulary)
 }
 
 func abstractStudioProductFit(value string) string {
-	return sanitizeStudioSafeDescriptorPhrase(value)
+	return abstractStudioFieldDescriptor(value, studioProductFitPhraseVocabulary, studioProductFitWordVocabulary)
 }
 
 func abstractStudioMood(value string) string {
@@ -622,6 +689,12 @@ func studioCompositionShouldSuppressLiteral(lower string) bool {
 
 func sanitizeStudioStylePhrase(value string) string {
 	return sanitizeStudioSafeDescriptorPhrase(value)
+}
+
+func abstractStudioFieldDescriptor(value string, phrases []string, words map[string]string) string {
+	vocabularyDerived := abstractStudioVocabularyPhrase(value, phrases, words)
+	genericDerived := sanitizeStudioSafeDescriptorPhrase(value)
+	return preferRicherStudioDescriptor(vocabularyDerived, genericDerived)
 }
 
 func sanitizeStudioSafeDescriptorPhrase(value string) string {
@@ -712,6 +785,27 @@ func studioCapitalizedPhraseIsSafe(value string) bool {
 		}
 	}
 	return true
+}
+
+func preferRicherStudioDescriptor(primary string, fallback string) string {
+	primary = strings.TrimSpace(primary)
+	fallback = strings.TrimSpace(fallback)
+	switch {
+	case primary == "":
+		return fallback
+	case fallback == "":
+		return primary
+	case primary == fallback:
+		return primary
+	case studioDescriptorWordCount(primary) > studioDescriptorWordCount(fallback):
+		return primary
+	default:
+		return fallback
+	}
+}
+
+func studioDescriptorWordCount(value string) int {
+	return len(studioWordPattern.FindAllString(strings.ToLower(strings.TrimSpace(value)), -1))
 }
 
 func abstractStudioVocabularyPhrase(value string, phrases []string, words map[string]string) string {

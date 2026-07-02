@@ -96,12 +96,24 @@ func TestAnalyzeStudioReferenceStyleRejectsInvalidReferenceImageURLs(t *testing.
 	}
 }
 
-func TestAnalyzeStudioReferenceStyleAcceptsUploadedReferencePathsUnchanged(t *testing.T) {
+func TestAnalyzeStudioReferenceStyleResolvesUploadedReferencePathsToPublicHTTPS(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
 		`{"motif":"retro flowers","palette":["cream"],"composition":"centered badge"}`,
 		`{"motif":"floral border","palette":["red"],"composition":"arched frame"}`,
 	}}
-	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
+		promptDiversifier: completer,
+		resolveUploadedImagePublicURL: func(_ context.Context, key string) (string, error) {
+			switch key {
+			case "folder/ref-a.png":
+				return "https://cdn.example.com/folder/ref-a.png", nil
+			case "folder/ref-b.png":
+				return "https://cdn.example.com/folder/ref-b.png", nil
+			default:
+				return "", ErrUploadedImageNotFound
+			}
+		},
+	})
 
 	_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
 		ReferenceImageURLs: []string{
@@ -115,8 +127,8 @@ func TestAnalyzeStudioReferenceStyleAcceptsUploadedReferencePathsUnchanged(t *te
 	}
 
 	wantURLs := []string{
-		"/api/v1/listing-kits/uploads/files/folder/ref-a.png",
-		"/api/v1/listing-kits/uploads/files/folder/ref-b.png",
+		"https://cdn.example.com/folder/ref-a.png",
+		"https://cdn.example.com/folder/ref-b.png",
 	}
 	if len(completer.calls) != len(wantURLs) {
 		t.Fatalf("calls = %d, want %d", len(completer.calls), len(wantURLs))
@@ -126,6 +138,45 @@ func TestAnalyzeStudioReferenceStyleAcceptsUploadedReferencePathsUnchanged(t *te
 		if gotURL != wantURL {
 			t.Fatalf("call[%d] imageURL = %q, want %q", i, gotURL, wantURL)
 		}
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleRejectsUploadedReferencePathsWithoutPublicHTTPS(t *testing.T) {
+	testCases := []struct {
+		name       string
+		publicURL  string
+		resolveErr error
+	}{
+		{name: "missing public url"},
+		{name: "non https public url", publicURL: "http://localhost:3000/uploads/folder/ref-a.png"},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			completer := &stubReferenceAnalysisCompleter{}
+			svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
+				promptDiversifier: completer,
+				resolveUploadedImagePublicURL: func(_ context.Context, key string) (string, error) {
+					if key != "folder/ref-a.png" {
+						t.Fatalf("unexpected key = %q", key)
+					}
+					return tc.publicURL, tc.resolveErr
+				},
+			})
+
+			_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+				ReferenceImageURLs: []string{"/api/v1/listing-kits/uploads/files/folder/ref-a.png"},
+			})
+			if err == nil {
+				t.Fatal("AnalyzeStudioReferenceStyle() error = nil, want invalid request")
+			}
+			if !strings.Contains(err.Error(), "invalid request") {
+				t.Fatalf("error = %v, want invalid request", err)
+			}
+			if len(completer.calls) != 0 {
+				t.Fatalf("AnalyzeImage calls = %#v, want no analysis call", completer.calls)
+			}
+		})
 	}
 }
 
@@ -382,6 +433,38 @@ func TestAnalyzeStudioReferenceStyleKeepsOrdinarySafeStylePhrases(t *testing.T) 
 	}
 	if containsWarningFragment(resp.Warnings, "已移除品牌、Logo、原文案或过于接近原图的描述") {
 		t.Fatalf("warnings = %#v, do not want unsafe-removal warning for ordinary safe style phrases", resp.Warnings)
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleKeepsFieldSpecificSafeVocabularyCues(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"Koi Wave","palette":["Off White","Forest Green"],"typography":"Sans Serif","density":"Clean Layering","product_fit":"Resort Wear"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/reference-vocab.png"},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	lowerPrompt := strings.ToLower(resp.SanitizedPrompt)
+	lowerBrief := strings.ToLower(resp.ReferenceStyleBrief)
+	for _, safeSignal := range []string{
+		"koi wave",
+		"off white",
+		"forest green",
+		"sans serif",
+		"clean layering",
+		"resort wear",
+	} {
+		if !strings.Contains(lowerPrompt, safeSignal) {
+			t.Fatalf("sanitized prompt = %q, want safe vocabulary cue %q preserved", resp.SanitizedPrompt, safeSignal)
+		}
+		if !strings.Contains(lowerBrief, safeSignal) {
+			t.Fatalf("reference style brief = %q, want safe vocabulary cue %q preserved", resp.ReferenceStyleBrief, safeSignal)
+		}
 	}
 }
 

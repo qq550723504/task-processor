@@ -11,25 +11,28 @@ import (
 )
 
 type taskStudioMediaServiceConfig struct {
-	imageGenerator        AIImageGenerator
-	promptDiversifier     AIChatCompleter
-	uploadStoreConfigured bool
-	uploadImages          func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
+	imageGenerator                AIImageGenerator
+	promptDiversifier             AIChatCompleter
+	uploadStoreConfigured         bool
+	uploadImages                  func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
+	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
 type taskStudioMediaService struct {
-	imageGenerator        AIImageGenerator
-	promptDiversifier     AIChatCompleter
-	uploadStoreConfigured bool
-	uploadImages          func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
+	imageGenerator                AIImageGenerator
+	promptDiversifier             AIChatCompleter
+	uploadStoreConfigured         bool
+	uploadImages                  func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
+	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
 func newTaskStudioMediaService(config taskStudioMediaServiceConfig) *taskStudioMediaService {
 	return &taskStudioMediaService{
-		imageGenerator:        config.imageGenerator,
-		promptDiversifier:     config.promptDiversifier,
-		uploadStoreConfigured: config.uploadStoreConfigured,
-		uploadImages:          config.uploadImages,
+		imageGenerator:                config.imageGenerator,
+		promptDiversifier:             config.promptDiversifier,
+		uploadStoreConfigured:         config.uploadStoreConfigured,
+		uploadImages:                  config.uploadImages,
+		resolveUploadedImagePublicURL: config.resolveUploadedImagePublicURL,
 	}
 }
 

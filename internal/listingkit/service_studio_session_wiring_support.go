@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"fmt"
 )
 
 type taskStudioSessionRepoWiring struct {
@@ -35,10 +36,11 @@ type taskStudioSessionCollaborators struct {
 }
 
 type taskStudioMediaWiring struct {
-	imageGenerator        AIImageGenerator
-	promptDiversifier     AIChatCompleter
-	uploadStoreConfigured bool
-	uploadImages          func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
+	imageGenerator                AIImageGenerator
+	promptDiversifier             AIChatCompleter
+	uploadStoreConfigured         bool
+	uploadImages                  func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
+	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
 func buildTaskStudioSessionRepoWiring(s *service) taskStudioSessionRepoWiring {
@@ -133,10 +135,11 @@ func (w taskStudioSessionCollaboratorWiring) resolve(existing taskStudioSessionC
 
 func buildTaskStudioMediaWiring(s *service) taskStudioMediaWiring {
 	return taskStudioMediaWiring{
-		imageGenerator:        resolveStudioImageGenerator(s),
-		promptDiversifier:     resolveStudioPromptDiversifier(s),
-		uploadStoreConfigured: resolveStudioUploadStore(s) != nil,
-		uploadImages:          s.UploadImages,
+		imageGenerator:                resolveStudioImageGenerator(s),
+		promptDiversifier:             resolveStudioPromptDiversifier(s),
+		uploadStoreConfigured:         resolveStudioUploadStore(s) != nil,
+		uploadImages:                  s.UploadImages,
+		resolveUploadedImagePublicURL: buildResolveUploadedImagePublicURLFunc(s),
 	}
 }
 
@@ -162,9 +165,34 @@ func buildTaskStudioBatchDraftServiceConfigWithWiring(config taskStudioSessionCo
 
 func buildTaskStudioMediaServiceConfigWithWiring(wiring taskStudioMediaWiring) taskStudioMediaServiceConfig {
 	return taskStudioMediaServiceConfig{
-		imageGenerator:        wiring.imageGenerator,
-		promptDiversifier:     wiring.promptDiversifier,
-		uploadStoreConfigured: wiring.uploadStoreConfigured,
-		uploadImages:          wiring.uploadImages,
+		imageGenerator:                wiring.imageGenerator,
+		promptDiversifier:             wiring.promptDiversifier,
+		uploadStoreConfigured:         wiring.uploadStoreConfigured,
+		uploadImages:                  wiring.uploadImages,
+		resolveUploadedImagePublicURL: wiring.resolveUploadedImagePublicURL,
+	}
+}
+
+func buildResolveUploadedImagePublicURLFunc(s *service) func(context.Context, string) (string, error) {
+	if repo := resolveUploadedImageRepository(s); repo != nil {
+		return func(ctx context.Context, key string) (string, error) {
+			record, err := repo.GetUploadedImage(ctx, key)
+			if err != nil {
+				return "", err
+			}
+			return validateStudioReferencePublicHTTPSURL(record.PublicURL)
+		}
+	}
+	if store := resolveStudioUploadStore(s); store != nil {
+		return func(ctx context.Context, key string) (string, error) {
+			stored, err := store.Open(ctx, key)
+			if err != nil {
+				return "", err
+			}
+			return validateStudioReferencePublicHTTPSURL(stored.PublicURL)
+		}
+	}
+	return func(context.Context, string) (string, error) {
+		return "", fmt.Errorf("uploaded image public url resolver is not configured")
 	}
 }
