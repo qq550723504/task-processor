@@ -486,9 +486,9 @@ type WorkbenchSavedBatchProjectionInput = {
   productImageCount: string;
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
-  hotStyleReferenceImageUrls: string[];
-  hotStyleReferenceBrief: string;
-  hotStyleReferencePrompt: string;
+  hotStyleReferenceImageUrls?: string[];
+  hotStyleReferenceBrief?: string;
+  hotStyleReferencePrompt?: string;
   artworkModel: SheinStudioArtworkModel;
   transparentBackground: boolean;
   sheinStoreId: string;
@@ -515,9 +515,9 @@ export function projectWorkbenchStateToSavedBatch({
   productImageCount,
   productImagePrompt,
   productImagePrompts,
-  hotStyleReferenceImageUrls,
-  hotStyleReferenceBrief,
-  hotStyleReferencePrompt,
+  hotStyleReferenceImageUrls = [],
+  hotStyleReferenceBrief = "",
+  hotStyleReferencePrompt = "",
   artworkModel,
   transparentBackground,
   sheinStoreId,

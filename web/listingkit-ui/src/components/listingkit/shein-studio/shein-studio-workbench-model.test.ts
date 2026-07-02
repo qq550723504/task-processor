@@ -934,6 +934,36 @@ describe("shein studio workbench model", () => {
     expect(projection.generationError).toBe("");
   });
 
+  it("defaults missing hot style reference fields in saved-batch fallback projections", () => {
+    const projection = projectWorkbenchStateToSavedBatch({
+      id: "batch-1",
+      prompt: "current prompt",
+      styleCount: "2",
+      variationIntensity: "strong",
+      productImageCount: "6",
+      productImagePrompt: "hero shot",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: true,
+      sheinStoreId: "869",
+      imageStrategy: "ai_generated",
+      groupedImageMode: "per_product",
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      groupedSelections: [],
+      groups: [],
+      designs: [],
+      selectedIds: [],
+      createdTasks: [],
+      generationJobs: [],
+      updatedAt: "2026-06-01T10:00:00Z",
+    });
+
+    expect(projection.hotStyleReferenceImageUrls).toEqual([]);
+    expect(projection.hotStyleReferenceBrief).toBe("");
+    expect(projection.hotStyleReferencePrompt).toBe("");
+  });
+
   it("projects the current workbench state into a saved-batch fallback shape", () => {
     const projection = projectWorkbenchStateToSavedBatch({
       id: "batch-1",
