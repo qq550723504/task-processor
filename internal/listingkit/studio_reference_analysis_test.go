@@ -141,6 +141,38 @@ func TestAnalyzeStudioReferenceStyleResolvesUploadedReferencePathsToPublicHTTPS(
 	}
 }
 
+func TestAnalyzeStudioReferenceStyleResolvesAbsoluteUploadedReferenceURLsToPublicHTTPS(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"retro flowers","palette":["cream"],"composition":"centered badge"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
+		promptDiversifier: completer,
+		resolveUploadedImagePublicURL: func(_ context.Context, key string) (string, error) {
+			if key != "2026/a.png" {
+				t.Fatalf("unexpected key = %q", key)
+			}
+			return "https://cdn.example.com/uploads/2026/a.png", nil
+		},
+	})
+
+	_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{
+			"http://localhost:8080/api/v1/listing-kits/uploads/files/2026/a.png",
+		},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	if len(completer.calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(completer.calls))
+	}
+	gotURL := strings.SplitN(completer.calls[0], "|", 2)[0]
+	if gotURL != "https://cdn.example.com/uploads/2026/a.png" {
+		t.Fatalf("AnalyzeImage imageURL = %q, want resolved CDN https URL", gotURL)
+	}
+}
+
 func TestAnalyzeStudioReferenceStyleRejectsUploadedReferencePathsWithoutPublicHTTPS(t *testing.T) {
 	testCases := []struct {
 		name       string
@@ -411,6 +443,38 @@ func TestAnalyzeStudioReferenceStyleDropsUnknownTitleCaseNamedPhrases(t *testing
 		if !strings.Contains(lowerBrief, safeSignal) {
 			t.Fatalf("reference style brief = %q, want safe title case phrase %q preserved", resp.ReferenceStyleBrief, safeSignal)
 		}
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleDropsLowercaseProtectedPhrases(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"old navy","typography":"Old English"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/lowercase-old-navy.png"},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	lowerPrompt := strings.ToLower(resp.SanitizedPrompt)
+	lowerBrief := strings.ToLower(resp.ReferenceStyleBrief)
+	if strings.Contains(lowerPrompt, "old navy") {
+		t.Fatalf("sanitized prompt contains lowercase protected phrase %q", resp.SanitizedPrompt)
+	}
+	if strings.Contains(lowerBrief, "old navy") {
+		t.Fatalf("reference style brief contains lowercase protected phrase %q", resp.ReferenceStyleBrief)
+	}
+	if !strings.Contains(lowerPrompt, "old english") {
+		t.Fatalf("sanitized prompt = %q, want safe phrase old english preserved", resp.SanitizedPrompt)
+	}
+	if !strings.Contains(lowerBrief, "old english") {
+		t.Fatalf("reference style brief = %q, want safe phrase old english preserved", resp.ReferenceStyleBrief)
+	}
+	if !containsWarningFragment(resp.Warnings, "已移除品牌、Logo、原文案或过于接近原图的描述") {
+		t.Fatalf("warnings = %#v, want unsafe-removal warning for lowercase protected phrase", resp.Warnings)
 	}
 }
 

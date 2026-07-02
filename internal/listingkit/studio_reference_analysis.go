@@ -16,8 +16,8 @@ var (
 	studioWordPattern               = regexp.MustCompile(`[a-z0-9]+`)
 	studioCapitalizedPhrasePattern  = regexp.MustCompile(`\b(?:[A-Z][a-z0-9]*)(?:\s+[A-Z][a-z0-9]*){0,2}\b`)
 	studioQuotedTextPattern         = regexp.MustCompile(`["'][^"']+["']`)
-	studioProtectedIdentityTerms    = []string{"hello kitty", "adidas", "nike", "mickey mouse", "taylor swift", "elsa"}
-	studioProtectedIdentityPattern  = regexp.MustCompile(`(?i)\b(?:hello\s+kitty|adidas|nike|mickey\s+mouse|taylor\s+swift|elsa)\b`)
+	studioProtectedIdentityTerms    = []string{"hello kitty", "adidas", "nike", "mickey mouse", "taylor swift", "elsa", "old navy"}
+	studioProtectedIdentityPattern  = regexp.MustCompile(`(?i)\b(?:hello\s+kitty|adidas|nike|mickey\s+mouse|taylor\s+swift|elsa|old\s+navy)\b`)
 	studioBrandMarkPattern          = regexp.MustCompile(`\b(?:logo|logos|brand mark|brand marks|wordmark|wordmarks|emblem|emblems|trefoil|swoosh)\b`)
 	studioExactTextPattern          = regexp.MustCompile(`\b(?:exact text|exact slogan|same wording|copy this exact|quote|quoted|slogan|tagline|catchphrase)\b`)
 	studioExactArtworkPattern       = regexp.MustCompile(`\b(?:exact artwork|same artwork|source artwork|original artwork)\b`)
@@ -254,14 +254,12 @@ func normalizeStudioReferenceImageURLs(urls []string) ([]string, error) {
 		if trimmed == "" {
 			continue
 		}
-		if strings.HasPrefix(trimmed, "/") {
-			if key, ok := uploadedListingKitImageKeyFromURL(trimmed); !ok || strings.TrimSpace(key) == "" {
-				return nil, fmt.Errorf("invalid request: reference_image_urls must be absolute https urls or uploaded listingkit paths")
-			}
-			if _, ok := seen[trimmed]; ok {
+		if key, ok := studioReferenceUploadedImageKeyFromURL(trimmed); ok {
+			dedupeKey := "upload:" + key
+			if _, ok := seen[dedupeKey]; ok {
 				continue
 			}
-			seen[trimmed] = struct{}{}
+			seen[dedupeKey] = struct{}{}
 			result = append(result, trimmed)
 			continue
 		}
@@ -293,7 +291,7 @@ func (s *taskStudioMediaService) resolveStudioReferenceImageURLs(ctx context.Con
 
 func (s *taskStudioMediaService) resolveStudioReferenceImageURL(ctx context.Context, rawURL string) (string, error) {
 	trimmed := strings.TrimSpace(rawURL)
-	if key, ok := uploadedListingKitImageKeyFromURL(trimmed); ok {
+	if key, ok := studioReferenceUploadedImageKeyFromURL(trimmed); ok {
 		if s == nil || s.resolveUploadedImagePublicURL == nil {
 			return "", fmt.Errorf("invalid request: uploaded reference image %q does not have a public https url configured", trimmed)
 		}
@@ -315,6 +313,27 @@ func (s *taskStudioMediaService) resolveStudioReferenceImageURL(ctx context.Cont
 		return "", fmt.Errorf("invalid request: reference_image_urls must be absolute https urls or uploaded listingkit paths")
 	}
 	return publicURL, nil
+}
+
+func studioReferenceUploadedImageKeyFromURL(rawURL string) (string, bool) {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return "", false
+	}
+	const prefix = "/api/v1/listing-kits/uploads/files/"
+	if strings.HasPrefix(trimmed, prefix) {
+		key := strings.TrimSpace(strings.TrimPrefix(trimmed, prefix))
+		return key, key != ""
+	}
+	parsed, err := url.ParseRequestURI(trimmed)
+	if err != nil || parsed == nil || !parsed.IsAbs() {
+		return "", false
+	}
+	if !strings.HasPrefix(parsed.Path, prefix) {
+		return "", false
+	}
+	key := strings.TrimSpace(strings.TrimPrefix(parsed.Path, prefix))
+	return key, key != ""
 }
 
 func validateStudioReferencePublicHTTPSURL(rawURL string) (string, error) {
