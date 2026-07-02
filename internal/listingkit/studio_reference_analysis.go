@@ -597,18 +597,19 @@ func abstractStudioReferenceAnalysis(item studioReferenceImageAnalysis) studioAb
 		}
 	}
 
+	applyStructuredStudioFallbacks(item, &abstracted)
 	abstracted.HadUnsafe = studioReferenceAnalysisContainsUnsafeSignals(item)
 	for _, avoid := range item.Avoid {
 		if studioReferenceAvoidContainsUnsafeSignals(avoid) {
 			abstracted.HadUnsafe = true
 		}
 	}
-	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldWasDropped(item.Motif, abstracted.Motif)
-	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldWasDropped(item.Typography, abstracted.Typography)
-	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldWasDropped(item.Density, abstracted.Density)
-	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldWasDropped(item.ProductFit, abstracted.ProductFit)
-	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldWasDropped(item.Mood, abstracted.Mood)
-	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldWasDropped(item.GarmentPlacement, abstracted.GarmentPlacement)
+	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldDroppedDueToUnsafeSignal(item.Motif, abstracted.Motif)
+	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldDroppedDueToUnsafeSignal(item.Typography, abstracted.Typography)
+	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldDroppedDueToUnsafeSignal(item.Density, abstracted.Density)
+	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldDroppedDueToUnsafeSignal(item.ProductFit, abstracted.ProductFit)
+	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldDroppedDueToUnsafeSignal(item.Mood, abstracted.Mood)
+	abstracted.HadUnsafe = abstracted.HadUnsafe || studioStructuredFieldDroppedDueToUnsafeSignal(item.GarmentPlacement, abstracted.GarmentPlacement)
 	return abstracted
 }
 
@@ -648,6 +649,56 @@ func deriveConservativeStudioMalformedFallback(raw string) studioAbstractedRefer
 		Motif:       "abstract",
 		Composition: []string{"balanced composition"},
 	}
+}
+
+func applyStructuredStudioFallbacks(item studioReferenceImageAnalysis, abstracted *studioAbstractedReferenceAnalysis) {
+	if abstracted == nil {
+		return
+	}
+	if abstracted.Motif == "" && studioStructuredFieldCanUseFallback(item.Motif) {
+		abstracted.Motif = "abstract motif direction"
+	}
+	if len(abstracted.Palette) == 0 && studioStructuredPaletteCanUseFallback(item.Palette) {
+		abstracted.Palette = []string{"balanced palette direction"}
+	}
+	if abstracted.Typography == "" && studioStructuredFieldCanUseFallback(item.Typography) {
+		abstracted.Typography = "decorative typography direction"
+	}
+	if abstracted.Density == "" && studioStructuredFieldCanUseFallback(item.Density) {
+		abstracted.Density = "balanced visual density"
+	}
+	if abstracted.ProductFit == "" && studioStructuredFieldCanUseFallback(item.ProductFit) {
+		abstracted.ProductFit = "general apparel styling"
+	}
+	if abstracted.Mood == "" && studioStructuredFieldCanUseFallback(item.Mood) {
+		abstracted.Mood = "balanced mood"
+	}
+	if abstracted.GarmentPlacement == "" && studioStructuredFieldCanUseFallback(item.GarmentPlacement) {
+		abstracted.GarmentPlacement = "standard garment placement"
+	}
+}
+
+func studioStructuredFieldCanUseFallback(value string) bool {
+	trimmed := strings.TrimSpace(value)
+	return trimmed != "" && !studioReferenceFieldContainsUnsafeSignals(trimmed)
+}
+
+func studioStructuredPaletteCanUseFallback(values []string) bool {
+	if len(values) == 0 {
+		return false
+	}
+	hasNonEmpty := false
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		hasNonEmpty = true
+		if studioReferenceFieldContainsUnsafeSignals(trimmed) {
+			return false
+		}
+	}
+	return hasNonEmpty
 }
 
 func abstractStudioMotif(value string) string {
@@ -1103,8 +1154,20 @@ func studioReferenceAvoidContainsUnsafeSignals(value string) bool {
 	return studioReferenceFieldContainsUnsafeSignals(value)
 }
 
-func studioStructuredFieldWasDropped(original string, abstracted string) bool {
-	return strings.TrimSpace(original) != "" && strings.TrimSpace(abstracted) == ""
+func studioStructuredFieldDroppedDueToUnsafeSignal(original string, abstracted string) bool {
+	trimmedOriginal := strings.TrimSpace(original)
+	if trimmedOriginal == "" || strings.TrimSpace(abstracted) != "" {
+		return false
+	}
+	return studioReferenceFieldContainsUnsafeSignals(trimmedOriginal) || studioDescriptorContainsSuspiciousNamedPhrase(trimmedOriginal)
+}
+
+func studioDescriptorContainsSuspiciousNamedPhrase(value string) bool {
+	if strings.TrimSpace(value) == "" {
+		return false
+	}
+	_, removed := stripSuspiciousStudioNamedPhrases(value)
+	return removed
 }
 
 func isMalformedStudioReferenceAnalysis(item studioReferenceImageAnalysis) bool {

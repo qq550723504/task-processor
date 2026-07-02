@@ -671,6 +671,66 @@ func TestAnalyzeStudioReferenceStyleKeepsOrdinarySafeStylePhrases(t *testing.T) 
 	}
 }
 
+func TestAnalyzeStudioReferenceStyleDerivesStructuredFallbacksForSafeOffVocabularyCues(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"souvenir keepsake vignette","palette":["sun-washed neutrals"],"typography":"ornate letterform treatment","density":"measured breathing room","product_fit":"boutique drape sensibility","mood":"quiet getaway feeling","garment_placement":"anchored print zone"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/off-vocabulary-structured.png"},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	lowerPrompt := strings.ToLower(resp.SanitizedPrompt)
+	lowerBrief := strings.ToLower(resp.ReferenceStyleBrief)
+	for _, expected := range []string{
+		"abstract motif direction",
+		"balanced palette direction",
+		"decorative typography direction",
+		"balanced visual density",
+		"general apparel styling",
+		"balanced mood",
+		"standard garment placement",
+	} {
+		if !strings.Contains(lowerPrompt, expected) {
+			t.Fatalf("sanitized prompt = %q, want derived fallback %q", resp.SanitizedPrompt, expected)
+		}
+		if !strings.Contains(lowerBrief, expected) {
+			t.Fatalf("reference style brief = %q, want derived fallback %q", resp.ReferenceStyleBrief, expected)
+		}
+	}
+	if containsWarningFragment(resp.Warnings, "已移除品牌、Logo、原文案或过于接近原图的描述") {
+		t.Fatalf("warnings = %#v, do not want unsafe-removal warning for safe off-vocabulary structured cues", resp.Warnings)
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleKeepsUnsafeWarningForExplicitProtectedStructuredField(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"souvenir keepsake vignette","typography":"Nike logo wordmark"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/unsafe-structured-field.png"},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	if !containsWarningFragment(resp.Warnings, "已移除品牌、Logo、原文案或过于接近原图的描述") {
+		t.Fatalf("warnings = %#v, want unsafe-removal warning for explicit protected structured field", resp.Warnings)
+	}
+	if strings.Contains(strings.ToLower(resp.SanitizedPrompt), "nike") {
+		t.Fatalf("sanitized prompt contains protected token: %q", resp.SanitizedPrompt)
+	}
+	if !strings.Contains(strings.ToLower(resp.SanitizedPrompt), "abstract motif direction") {
+		t.Fatalf("sanitized prompt = %q, want safe structured fallback to survive alongside unsafe warning", resp.SanitizedPrompt)
+	}
+}
+
 func TestAnalyzeStudioReferenceStyleKeepsFieldSpecificSafeVocabularyCues(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
 		`{"motif":"Koi Wave","palette":["Off White","Forest Green"],"typography":"Sans Serif","density":"Clean Layering","product_fit":"Resort Wear"}`,
