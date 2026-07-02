@@ -20,8 +20,10 @@ var (
 	studioProtectedIdentityPattern  = regexp.MustCompile(`(?i)\b(?:hello\s+kitty|adidas|nike|mickey\s+mouse|taylor\s+swift|elsa)\b`)
 	studioBrandMarkPattern          = regexp.MustCompile(`\b(?:logo|logos|brand mark|brand marks|wordmark|wordmarks|emblem|emblems|trefoil|swoosh)\b`)
 	studioExactTextPattern          = regexp.MustCompile(`\b(?:exact text|exact slogan|same wording|copy this exact|quote|quoted|slogan|tagline|catchphrase)\b`)
+	studioExactArtworkPattern       = regexp.MustCompile(`\b(?:exact artwork|same artwork|source artwork|original artwork)\b`)
 	studioCharacterIdentityPattern  = regexp.MustCompile(`\b(?:characters?|face|faces|portrait|portraits|person|people|identity|identities|celebrity|celebrities|likeness)\b`)
 	studioUniqueLayoutPattern       = regexp.MustCompile(`\b(?:same|exact|identical|signature|unique|distinctive)\s+[a-z0-9\s-]{0,40}?(?:layout|composition|arrangement|split|frame|badge)\b`)
+	studioWatermarkPattern          = regexp.MustCompile(`\b(?:watermark|watermarks)\b`)
 	studioUnsafeSpacerPattern       = regexp.MustCompile(`[\(\)\[\]\{\}:,;|]+`)
 	studioRepeatedWhitespacePattern = regexp.MustCompile(`\s+`)
 )
@@ -339,7 +341,7 @@ func buildStudioReferenceAnalysisPrompt(req *StudioReferenceAnalysisRequest) str
 	userInstruction := strings.TrimSpace(req.UserInstruction)
 	return strings.TrimSpace(fmt.Sprintf(`Analyze this ecommerce product image as a style reference for original POD artwork.
 Return JSON only with keys: motif, palette, composition, typography, density, product_fit, mood, garment_placement, avoid.
-Extract broad reusable commercial style only. Do not ask to copy logos, brand marks, exact slogans, exact characters, faces, or the same unique layout.
+Extract broad reusable commercial style only. Do not ask to copy logos, brand marks, watermarks, exact slogans, exact artwork, exact characters, faces, or the same unique layout.
 Product: %s
 Category: %s
 Existing user theme: %s
@@ -728,8 +730,10 @@ func sanitizeStudioDescriptorCandidate(value string) string {
 	lower = studioQuotedTextPattern.ReplaceAllString(lower, " ")
 	lower = studioUniqueLayoutPattern.ReplaceAllString(lower, " ")
 	lower = studioCharacterIdentityPattern.ReplaceAllString(lower, " ")
+	lower = studioExactArtworkPattern.ReplaceAllString(lower, " ")
 	lower = studioExactTextPattern.ReplaceAllString(lower, " ")
 	lower = studioBrandMarkPattern.ReplaceAllString(lower, " ")
+	lower = studioWatermarkPattern.ReplaceAllString(lower, " ")
 	lower = strings.NewReplacer("/", " ", "&", " ").Replace(lower)
 	tokens := studioWordPattern.FindAllString(lower, -1)
 	if len(tokens) == 0 {
@@ -918,6 +922,8 @@ func studioReferenceFieldContainsUnsafeSignals(value string) bool {
 	return studioProtectedIdentityPattern.MatchString(value) ||
 		studioQuotedTextPattern.MatchString(value) ||
 		studioBrandMarkPattern.MatchString(lower) ||
+		studioWatermarkPattern.MatchString(lower) ||
+		studioExactArtworkPattern.MatchString(lower) ||
 		studioExactTextPattern.MatchString(lower) ||
 		studioCharacterIdentityPattern.MatchString(lower) ||
 		studioUniqueLayoutPattern.MatchString(lower)

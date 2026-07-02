@@ -615,6 +615,59 @@ func TestAnalyzeStudioReferenceStylePreservesMoodAndGarmentPlacement(t *testing.
 	}
 }
 
+func TestAnalyzeStudioReferenceStylePromptIncludesGlobalSafetyCategories(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"retro flowers","palette":["cream"],"composition":"centered badge"}`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/reference.png"},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+	if len(completer.calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(completer.calls))
+	}
+
+	prompt := strings.SplitN(completer.calls[0], "|", 2)[1]
+	for _, required := range []string{"watermark", "exact artwork"} {
+		if !strings.Contains(strings.ToLower(prompt), required) {
+			t.Fatalf("analysis prompt = %q, want global safety category %q", prompt, required)
+		}
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleFiltersWatermarkAndExactArtworkSignals(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{
+		`{"motif":"retro flowers watermark","palette":["cream"],"composition":"centered badge","avoid":["exact artwork lockup"]}`,
+		`Use a faint watermark texture around the frame and keep the exact artwork from the source poster.`,
+	}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{
+			"https://example.com/reference-a.png",
+			"https://example.com/reference-b.png",
+		},
+	})
+	if err != nil {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	}
+
+	for _, field := range []string{strings.ToLower(resp.ReferenceStyleBrief), strings.ToLower(resp.SanitizedPrompt)} {
+		for _, unsafeToken := range []string{"watermark", "exact artwork"} {
+			if strings.Contains(field, unsafeToken) {
+				t.Fatalf("response leaked unsafe token %q: brief=%q prompt=%q", unsafeToken, resp.ReferenceStyleBrief, resp.SanitizedPrompt)
+			}
+		}
+	}
+	if !containsWarningFragment(resp.Warnings, "已移除品牌、Logo、原文案或过于接近原图的描述") {
+		t.Fatalf("warnings = %#v, want unsafe-removal warning for watermark/exact artwork", resp.Warnings)
+	}
+}
+
 func TestAnalyzeStudioReferenceStyleErrorsWhenNoSafeSignalsSurvive(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
 		`{"motif":"Hello Kitty","palette":["Nike"],"composition":"same exact layout","typography":"Taylor Swift signature quote","density":"Mickey portrait","product_fit":"Adidas logo","avoid":["Just Do It slogan"]}`,
