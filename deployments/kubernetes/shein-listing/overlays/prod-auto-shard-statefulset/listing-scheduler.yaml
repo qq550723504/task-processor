@@ -53,7 +53,7 @@ spec:
                   apiVersion: v1
                   fieldPath: metadata.name
             - name: TASK_PROCESSOR_RABBITMQ_NODE_ROLE
-              value: scheduler
+              value: task
             - name: TASK_PROCESSOR_RABBITMQ_AUTO_SHARD_ENABLED
               value: "false"
             - name: TASK_PROCESSOR_RABBITMQ_PROCESSING_TIMEOUT_WATCHDOG_ENABLED

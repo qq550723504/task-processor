@@ -26,7 +26,11 @@ param(
     [string]$ShardStatefulSetName = "shein-listing-shard",
     [string]$OwnershipControllerDeploymentName = "shein-listing-ownership-controller",
     [string]$ControlPlaneDeploymentName = "shein-listing-control-plane",
+    [string]$ListingSchedulerDeploymentName = "listing-scheduler",
+    [string]$ListingSchedulerContainerName = "listing-scheduler",
+    [string]$ListingSchedulerImage = "",
     [switch]$UpdateControlPlane,
+    [switch]$UpdateListingScheduler,
     [int]$ShardBatchSize = 4
 )
 
@@ -125,6 +129,7 @@ if ($UseShardStatefulSet) {
     Write-Host "  Ownership controller: $OwnershipControllerDeploymentName" -ForegroundColor Cyan
     Write-Host "  Control plane: $ControlPlaneDeploymentName" -ForegroundColor Cyan
     Write-Host "  Update control plane: $UpdateControlPlane" -ForegroundColor Cyan
+    Write-Host "  Update listing scheduler: $UpdateListingScheduler" -ForegroundColor Cyan
 }
 Write-Host "========================================" -ForegroundColor Cyan
 
@@ -208,6 +213,14 @@ Invoke-Step "[6/7] Updating workloads..." {
             if ($LASTEXITCODE -ne 0) { throw "kubectl set image failed for deployment/$ControlPlaneDeploymentName" }
         }
 
+        if ($UpdateListingScheduler) {
+            if ([string]::IsNullOrWhiteSpace($ListingSchedulerImage)) {
+                $ListingSchedulerImage = "$DockerHubUser/task-processor-listing-scheduler:$Tag"
+            }
+            kubectl -n $Namespace set image deployment/$ListingSchedulerDeploymentName "$ListingSchedulerContainerName=$ListingSchedulerImage"
+            if ($LASTEXITCODE -ne 0) { throw "kubectl set image failed for deployment/$ListingSchedulerDeploymentName" }
+        }
+
         & $ShardRolloutScript -Namespace $Namespace -StatefulSetName $ShardStatefulSetName -ContainerName "shein-listing" -Image $FullImage -BatchSize $ShardBatchSize
         if ($LASTEXITCODE -ne 0) { throw "shard StatefulSet rollout failed" }
     } else {
@@ -228,11 +241,21 @@ Invoke-Step "[7/7] Waiting for rollouts..." {
             if ($LASTEXITCODE -ne 0) { throw "kubectl rollout status failed for deployment/$ControlPlaneDeploymentName" }
         }
 
+        if ($UpdateListingScheduler) {
+            kubectl -n $Namespace rollout status deployment/$ListingSchedulerDeploymentName --timeout=5m
+            if ($LASTEXITCODE -ne 0) { throw "kubectl rollout status failed for deployment/$ListingSchedulerDeploymentName" }
+        }
+
         kubectl -n $Namespace get pods -l "app=$ShardStatefulSetName" -o wide
         if ($LASTEXITCODE -ne 0) { throw "kubectl get pods failed for app=$ShardStatefulSetName" }
 
         kubectl -n $Namespace get pods -l "app=$ControlPlaneDeploymentName" -o wide
         if ($LASTEXITCODE -ne 0) { throw "kubectl get pods failed for app=$ControlPlaneDeploymentName" }
+
+        if ($UpdateListingScheduler) {
+            kubectl -n $Namespace get pods -l "app=$ListingSchedulerDeploymentName" -o wide
+            if ($LASTEXITCODE -ne 0) { throw "kubectl get pods failed for app=$ListingSchedulerDeploymentName" }
+        }
     } else {
         if ($SequentialRollout) {
             foreach ($deploymentName in $DeploymentNames) {
