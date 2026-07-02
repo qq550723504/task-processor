@@ -293,8 +293,8 @@ func defaultBuildSheinInventoryService(config appscheduler.TaskConfig, factory *
 	}
 
 	var syncedProductSource inventory.SyncedInventoryProductSource
-	if provider, ok := factory.runtimeProvider().(sheinSyncRepositoryProvider); ok {
-		syncedProductSource = newSheinSyncedInventoryProductSource(provider.GetLocalSheinSyncRepository())
+	if provider, ok := factory.runtimeProvider().(sheinSyncedInventoryProductSourceProvider); ok {
+		syncedProductSource = provider.GetSheinSyncedInventoryProductSource()
 	}
 
 	inventoryService := inventory.NewInventorySyncServiceWithSyncedProductSource(

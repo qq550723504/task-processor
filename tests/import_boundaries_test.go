@@ -3202,6 +3202,7 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "listingadmin", "product_import_mapping_handler.go")):    {},
 		filepath.Clean(filepath.Join(root, "listingadmin", "profit_rule_handler.go")):               {},
 		filepath.Clean(filepath.Join(root, "listingadmin", "request_context.go")):                   {},
+		filepath.Clean(filepath.Join(root, "listingadmin", "scheduled_task_config_handler.go")):     {},
 		filepath.Clean(filepath.Join(root, "listingadmin", "sensitive_word_handler.go")):            {},
 		filepath.Clean(filepath.Join(root, "listingadmin", "store_handler.go")):                     {},
 		filepath.Clean(filepath.Join(root, "listingadmin", "store_statistics_handler.go")):          {},

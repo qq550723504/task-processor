@@ -20,6 +20,7 @@ import (
 	platformtask "task-processor/internal/platformtask"
 	"task-processor/internal/product"
 	"task-processor/internal/prompt"
+	"task-processor/internal/shein/inventory"
 	temupricingruntime "task-processor/internal/temu/pricing"
 	temusyncruntime "task-processor/internal/temu/sync"
 
@@ -298,6 +299,10 @@ func (r localSchedulerFactoryRuntime) GetLocalSheinSyncRepository() listingkit.S
 		return nil
 	}
 	return provider.GetLocalSheinSyncRepository()
+}
+
+func (r localSchedulerFactoryRuntime) GetSheinSyncedInventoryProductSource() inventory.SyncedInventoryProductSource {
+	return newSheinSyncedInventoryProductSource(r.GetLocalSheinSyncRepository())
 }
 
 func (r localSchedulerFactoryRuntime) PricingRuntime() temupricingruntime.PricingRuntime {
