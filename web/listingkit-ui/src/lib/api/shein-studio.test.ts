@@ -797,6 +797,21 @@ describe("shein studio design metadata", () => {
     });
   });
 
+  it("preserves omitted hot style reference fields as absent in batch draft detail", () => {
+    const draft = mapStudioBatchDraftDetailToDraft({
+      batch: {
+        id: "session-1",
+        prompt: "retro cherries",
+        updated_at: "2026-05-30T00:00:00Z",
+      },
+      designs: [],
+    });
+
+    expect(draft).not.toHaveProperty("hotStyleReferenceImageUrls");
+    expect(draft).not.toHaveProperty("hotStyleReferenceBrief");
+    expect(draft).not.toHaveProperty("hotStyleReferencePrompt");
+  });
+
   it("restores legacy compatibility snapshots from batch list items", async () => {
     mockedApiRequest.mockResolvedValueOnce(
       sheinStudioBatchListContractFixture.response,
@@ -846,6 +861,25 @@ describe("shein studio design metadata", () => {
         hotStyleReferencePrompt: "original retro badge",
       },
     ]);
+  });
+
+  it("preserves omitted hot style reference fields as absent in batch list items", async () => {
+    mockedApiRequest.mockResolvedValueOnce({
+      items: [
+        {
+          id: "batch-1",
+          batch_name: "批次12",
+          prompt: "retro cherries",
+          updated_at: "2026-06-18T17:04:49.413822Z",
+        },
+      ],
+    });
+
+    const [batch] = await listSheinStudioBatchDrafts();
+
+    expect(batch).not.toHaveProperty("hotStyleReferenceImageUrls");
+    expect(batch).not.toHaveProperty("hotStyleReferenceBrief");
+    expect(batch).not.toHaveProperty("hotStyleReferencePrompt");
   });
 
   it("normalizes legacy created tasks that use design_id or omit design ids", () => {

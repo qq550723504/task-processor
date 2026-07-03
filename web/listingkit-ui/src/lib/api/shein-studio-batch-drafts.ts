@@ -243,6 +243,26 @@ export async function deleteSheinStudioBatchDraft(
   });
 }
 
+function hasOwnResponseProperty(value: object | undefined, key: PropertyKey) {
+  return !!value && Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function preserveHotStyleReferencePresence<T extends Partial<SheinStudioDraft>>(
+  draft: T,
+  source: StudioBatchDraftRecordResponse | undefined,
+): T {
+  if (!hasOwnResponseProperty(source, "hot_style_reference_image_urls")) {
+    delete draft.hotStyleReferenceImageUrls;
+  }
+  if (!hasOwnResponseProperty(source, "hot_style_reference_brief")) {
+    delete draft.hotStyleReferenceBrief;
+  }
+  if (!hasOwnResponseProperty(source, "hot_style_reference_prompt")) {
+    delete draft.hotStyleReferencePrompt;
+  }
+  return draft;
+}
+
 export function mapStudioBatchDraftDetailToDraft(
   detail: StudioBatchDraftDetailResponse | null | undefined,
 ): SheinStudioDraft | null {
@@ -316,7 +336,7 @@ export function mapStudioBatchDraftDetailToDraft(
         ? [{ jobId: detail.batch.generation_job_id, status: "running" as const }]
         : (legacyCompatibilitySnapshot?.generationJobs ?? []);
 
-  return normalizeDraft({
+  const draft = normalizeDraft({
     prompt: detail.batch.prompt ?? "",
     promptMode: detail.batch.prompt_mode ?? "managed",
     styleCount: detail.batch.style_count ?? "1",
@@ -358,6 +378,9 @@ export function mapStudioBatchDraftDetailToDraft(
     draftUpdatedAt: detail.batch.updated_at ?? new Date().toISOString(),
     updatedAt: detail.batch.updated_at ?? new Date().toISOString(),
   });
+  return draft
+    ? preserveHotStyleReferencePresence(draft, detail.batch)
+    : draft;
 }
 
 export function mapStudioBatchDraftDetailToBatch(
@@ -453,7 +476,7 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
   const normalizedSelectedIds =
     item.approved_design_ids ?? legacyCompatibilitySnapshot?.selectedIds ?? [];
   const normalizedDesigns = legacyCompatibilitySnapshot?.designs ?? [];
-  return {
+  const batch = {
     id: item.id,
     tenantId: item.tenant_id?.trim() || undefined,
     name: item.batch_name ?? deriveBatchName(item.prompt ?? ""),
@@ -497,6 +520,7 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
     draftUpdatedAt: item.updated_at ?? new Date().toISOString(),
     updatedAt: item.updated_at ?? new Date().toISOString(),
   } satisfies SheinStudioSavedBatch;
+  return preserveHotStyleReferencePresence(batch, item);
 }
 
 function deriveBatchName(prompt: string) {
