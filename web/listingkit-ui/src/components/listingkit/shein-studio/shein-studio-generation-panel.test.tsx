@@ -656,6 +656,20 @@ describe("SheinStudioGenerationPanel", () => {
     );
   });
 
+  it("shows prompt mode only when generating artwork from a theme prompt", () => {
+    const { rerender } = renderPanel({ artworkGenerationMode: "theme_prompt" });
+
+    expect(screen.getByText("提示词模式")).toBeInTheDocument();
+
+    rerender(
+      <SheinStudioGenerationPanel
+        {...buildPanelProps({ artworkGenerationMode: "hot_reference" })}
+      />,
+    );
+
+    expect(screen.queryByText("提示词模式")).not.toBeInTheDocument();
+  });
+
   it("keeps hot style prompt editing locked until reference style extraction succeeds", async () => {
     const user = userEvent.setup();
     const setHotStyleReferencePrompt = vi.fn();

@@ -267,19 +267,23 @@ export function ArtworkGenerationSettings({
         ) : null}
         </div>
       ) : null}
-      <Label className="space-y-2">
-        <span className="text-sm font-medium text-foreground">提示词模式</span>
-        <Select
-          disabled={disabled}
-          onChange={(event) =>
-            setPromptMode(event.target.value as "managed" | "raw")
-          }
-          value={promptMode}
-        >
-          <option value="managed">ListingKit 优化</option>
-          <option value="raw">完全使用我的提示词</option>
-        </Select>
-      </Label>
+      {!isHotReferenceMode ? (
+        <Label className="space-y-2">
+          <span className="text-sm font-medium text-foreground">
+            提示词模式
+          </span>
+          <Select
+            disabled={disabled}
+            onChange={(event) =>
+              setPromptMode(event.target.value as "managed" | "raw")
+            }
+            value={promptMode}
+          >
+            <option value="managed">ListingKit 优化</option>
+            <option value="raw">完全使用我的提示词</option>
+          </Select>
+        </Label>
+      ) : null}
       <NumberInput
         disabled={disabled}
         label="款式数量"
