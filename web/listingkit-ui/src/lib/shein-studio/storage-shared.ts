@@ -598,6 +598,10 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
   } satisfies SheinStudioDraft;
 }
 
+function hasOwnStorageProperty(value: object | undefined, key: PropertyKey) {
+  return !!value && Object.prototype.hasOwnProperty.call(value, key);
+}
+
 export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | undefined) {
   if (!raw?.id || !raw.name) {
     return null;
@@ -615,6 +619,15 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
   const groups = normalizeGroupedWorkspaces(raw.groups);
   const normalizedGroups =
     groups.length > 0 ? groups : buildLegacyGroupedWorkspace(raw);
+  const hasHotStyleReferenceImageUrls =
+    hasOwnStorageProperty(hotStyleRaw, "hot_style_reference_image_urls") ||
+    hasOwnStorageProperty(raw, "hotStyleReferenceImageUrls");
+  const hasHotStyleReferenceBrief =
+    hasOwnStorageProperty(hotStyleRaw, "hot_style_reference_brief") ||
+    hasOwnStorageProperty(raw, "hotStyleReferenceBrief");
+  const hasHotStyleReferencePrompt =
+    hasOwnStorageProperty(hotStyleRaw, "hot_style_reference_prompt") ||
+    hasOwnStorageProperty(raw, "hotStyleReferencePrompt");
 
   return {
     id: raw.id,
@@ -623,15 +636,30 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     prompt: raw.prompt ?? "",
     promptMode: normalizePromptMode(raw.promptMode),
     styleCount: raw.styleCount ?? "4",
-    hotStyleReferenceImageUrls: normalizeHotStyleReferenceImageUrls(
-      hotStyleRaw.hot_style_reference_image_urls ?? raw.hotStyleReferenceImageUrls,
-    ),
-    hotStyleReferenceBrief: normalizeHotStyleReferenceText(
-      hotStyleRaw.hot_style_reference_brief ?? raw.hotStyleReferenceBrief,
-    ),
-    hotStyleReferencePrompt: normalizeHotStyleReferenceText(
-      hotStyleRaw.hot_style_reference_prompt ?? raw.hotStyleReferencePrompt,
-    ),
+    ...(hasHotStyleReferenceImageUrls
+      ? {
+          hotStyleReferenceImageUrls: normalizeHotStyleReferenceImageUrls(
+            hotStyleRaw.hot_style_reference_image_urls ??
+              raw.hotStyleReferenceImageUrls,
+          ),
+        }
+      : {}),
+    ...(hasHotStyleReferenceBrief
+      ? {
+          hotStyleReferenceBrief: normalizeHotStyleReferenceText(
+            hotStyleRaw.hot_style_reference_brief ??
+              raw.hotStyleReferenceBrief,
+          ),
+        }
+      : {}),
+    ...(hasHotStyleReferencePrompt
+      ? {
+          hotStyleReferencePrompt: normalizeHotStyleReferenceText(
+            hotStyleRaw.hot_style_reference_prompt ??
+              raw.hotStyleReferencePrompt,
+          ),
+        }
+      : {}),
     variationIntensity: normalizeVariationIntensity(raw.variationIntensity),
     productImageCount: raw.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
     productImagePrompt: raw.productImagePrompt ?? "",

@@ -1231,6 +1231,47 @@ describe("shein studio storage api", () => {
     });
   });
 
+  it("keeps itemized hot style fields when the newer saved batch list omits them", async () => {
+    listSheinStudioBatchDrafts.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "Recent Batch",
+        prompt: "newer saved prompt",
+        styleCount: "1",
+        sheinStoreId: "869",
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        draftUpdatedAt: "2026-06-01T10:15:00Z",
+        updatedAt: "2026-06-01T10:15:00Z",
+      },
+    ]);
+    getSheinStudioBatchDetail.mockResolvedValue({
+      batch: {
+        id: "batch-1",
+        status: "review_ready",
+        prompt: "older itemized prompt",
+        styleCount: "1",
+        sheinStoreId: 869,
+        hotStyleReferenceImageUrls: ["https://cdn.example.com/itemized-ref.png"],
+        hotStyleReferenceBrief: "itemized reference brief",
+        hotStyleReferencePrompt: "itemized reference prompt",
+        createdAt: "2026-06-01T10:00:00Z",
+        draftUpdatedAt: "2026-06-01T10:05:00Z",
+        updatedAt: "2026-06-01T10:05:00Z",
+      },
+      items: [],
+    });
+
+    await expect(getSheinStudioHydratedBatch("batch-1")).resolves.toMatchObject({
+      savedBatch: expect.objectContaining({
+        hotStyleReferenceImageUrls: ["https://cdn.example.com/itemized-ref.png"],
+        hotStyleReferenceBrief: "itemized reference brief",
+        hotStyleReferencePrompt: "itemized reference prompt",
+      }),
+    });
+  });
+
   it("surfaces a hydration error when saved batch context cannot be loaded", async () => {
     listSheinStudioBatchDrafts.mockRejectedValueOnce(new Error("list failed"));
     getSheinStudioBatchDetail.mockResolvedValue({
