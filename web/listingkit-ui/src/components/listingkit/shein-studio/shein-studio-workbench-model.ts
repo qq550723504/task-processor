@@ -216,6 +216,20 @@ function resolveDraftComparableTimestamp(value?: string) {
   return value?.trim() || "";
 }
 
+function hasOwnDraftProperty(value: object | undefined, key: PropertyKey) {
+  return !!value && Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function preferSavedBatchDraftPresence(
+  savedUpdatedAt: string | undefined,
+  itemizedUpdatedAt: string | undefined,
+) {
+  return (
+    resolveDraftComparableTimestamp(savedUpdatedAt) >=
+    resolveDraftComparableTimestamp(itemizedUpdatedAt)
+  );
+}
+
 function preferSavedBatchDraftValue(
   savedValue: string | undefined,
   itemizedValue: string | undefined,
@@ -234,6 +248,52 @@ function preferSavedBatchDraftValue(
     resolveDraftComparableTimestamp(itemizedUpdatedAt)
     ? normalizedSaved
     : normalizedItemized;
+}
+
+function preferHotStyleDraftTextValue({
+  savedHasValue,
+  savedValue,
+  itemizedHasValue,
+  itemizedValue,
+  savedUpdatedAt,
+  itemizedUpdatedAt,
+}: {
+  savedHasValue: boolean;
+  savedValue: string | undefined;
+  itemizedHasValue: boolean;
+  itemizedValue: string | undefined;
+  savedUpdatedAt: string | undefined;
+  itemizedUpdatedAt: string | undefined;
+}) {
+  const normalizedSaved = savedValue?.trim() ?? "";
+  const normalizedItemized = itemizedValue?.trim() ?? "";
+  if (preferSavedBatchDraftPresence(savedUpdatedAt, itemizedUpdatedAt)) {
+    return savedHasValue ? normalizedSaved : normalizedItemized;
+  }
+  return itemizedHasValue ? normalizedItemized : normalizedSaved;
+}
+
+function preferHotStyleDraftImageUrls({
+  savedHasValue,
+  savedValue,
+  itemizedHasValue,
+  itemizedValue,
+  savedUpdatedAt,
+  itemizedUpdatedAt,
+}: {
+  savedHasValue: boolean;
+  savedValue: string[] | undefined;
+  itemizedHasValue: boolean;
+  itemizedValue: string[] | undefined;
+  savedUpdatedAt: string | undefined;
+  itemizedUpdatedAt: string | undefined;
+}) {
+  const normalizedSaved = savedValue ?? [];
+  const normalizedItemized = itemizedValue ?? [];
+  if (preferSavedBatchDraftPresence(savedUpdatedAt, itemizedUpdatedAt)) {
+    return savedHasValue ? normalizedSaved : normalizedItemized;
+  }
+  return itemizedHasValue ? normalizedItemized : normalizedSaved;
 }
 
 export function flattenItemizedBatchDesigns(
@@ -432,14 +492,42 @@ export function projectHydratedBatchToWorkbench(
       saved.productImageCount ?? DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
     productImagePrompt: saved.productImagePrompt ?? "",
     productImagePrompts: saved.productImagePrompts ?? [],
-    hotStyleReferenceImageUrls:
-      itemized.hotStyleReferenceImageUrls.length > 0
-        ? itemized.hotStyleReferenceImageUrls
-        : saved.hotStyleReferenceImageUrls,
-    hotStyleReferenceBrief:
-      itemized.hotStyleReferenceBrief || saved.hotStyleReferenceBrief || "",
-    hotStyleReferencePrompt:
-      itemized.hotStyleReferencePrompt || saved.hotStyleReferencePrompt || "",
+    hotStyleReferenceImageUrls: preferHotStyleDraftImageUrls({
+      savedHasValue: hasOwnDraftProperty(
+        savedBatch,
+        "hotStyleReferenceImageUrls",
+      ),
+      savedValue: saved.hotStyleReferenceImageUrls,
+      itemizedHasValue: hasOwnDraftProperty(
+        detail.batch,
+        "hotStyleReferenceImageUrls",
+      ),
+      itemizedValue: itemized.hotStyleReferenceImageUrls,
+      savedUpdatedAt: savedDraftUpdatedAt,
+      itemizedUpdatedAt: itemizedDraftUpdatedAt,
+    }),
+    hotStyleReferenceBrief: preferHotStyleDraftTextValue({
+      savedHasValue: hasOwnDraftProperty(savedBatch, "hotStyleReferenceBrief"),
+      savedValue: saved.hotStyleReferenceBrief,
+      itemizedHasValue: hasOwnDraftProperty(
+        detail.batch,
+        "hotStyleReferenceBrief",
+      ),
+      itemizedValue: itemized.hotStyleReferenceBrief,
+      savedUpdatedAt: savedDraftUpdatedAt,
+      itemizedUpdatedAt: itemizedDraftUpdatedAt,
+    }),
+    hotStyleReferencePrompt: preferHotStyleDraftTextValue({
+      savedHasValue: hasOwnDraftProperty(savedBatch, "hotStyleReferencePrompt"),
+      savedValue: saved.hotStyleReferencePrompt,
+      itemizedHasValue: hasOwnDraftProperty(
+        detail.batch,
+        "hotStyleReferencePrompt",
+      ),
+      itemizedValue: itemized.hotStyleReferencePrompt,
+      savedUpdatedAt: savedDraftUpdatedAt,
+      itemizedUpdatedAt: itemizedDraftUpdatedAt,
+    }),
     artworkModel:
       itemized.artworkModel ??
       saved.artworkModel ??
