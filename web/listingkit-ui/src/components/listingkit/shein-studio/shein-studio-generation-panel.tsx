@@ -221,10 +221,8 @@ export function SheinStudioGenerationPanel({
   const [hotStyleReferenceWarnings, setHotStyleReferenceWarnings] = useState<
     string[]
   >([]);
-  const [
-    selectedHotStyleReferenceFiles,
-    setSelectedHotStyleReferenceFiles,
-  ] = useState<File[]>([]);
+  const [selectedHotStyleReferenceFiles, setSelectedHotStyleReferenceFiles] =
+    useState<File[]>([]);
   const [
     isUploadingHotStyleReferenceImages,
     setIsUploadingHotStyleReferenceImages,
@@ -253,10 +251,19 @@ export function SheinStudioGenerationPanel({
     setPrompt("");
   };
   const handleHotStyleReferenceImageUrlsChange = (nextUrls: string[]) => {
-    if (!areHotStyleReferenceUrlsEqual(hotStyleReferenceImageUrls, nextUrls)) {
+    const singleReferenceUrl = nextUrls
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .slice(0, 1);
+    if (
+      !areHotStyleReferenceUrlsEqual(
+        hotStyleReferenceImageUrls,
+        singleReferenceUrl,
+      )
+    ) {
       clearDerivedHotStyleState();
     }
-    setHotStyleReferenceImageUrls(nextUrls);
+    setHotStyleReferenceImageUrls(singleReferenceUrl);
   };
   const handleUploadHotStyleReferenceImages = async () => {
     if (
@@ -269,16 +276,15 @@ export function SheinStudioGenerationPanel({
     setHotStyleReferenceUploadMessage("");
     try {
       const uploadedUrls = await uploadHotStyleReferenceImages(
-        selectedHotStyleReferenceFiles,
+        selectedHotStyleReferenceFiles.slice(0, 1),
       );
-      const nextUrls = [
-        ...hotStyleReferenceImageUrls,
-        ...uploadedUrls.map((value) => value.trim()).filter(Boolean),
-      ];
+      const nextUrls = uploadedUrls
+        .map((value) => value.trim())
+        .filter(Boolean);
       handleHotStyleReferenceImageUrlsChange(nextUrls);
       setSelectedHotStyleReferenceFiles([]);
       setHotStyleReferenceUploadMessage(
-        `已上传 ${uploadedUrls.length} 张参考图。`,
+        `已上传 ${Math.min(uploadedUrls.length, 1)} 张参考图。`,
       );
     } catch (error) {
       console.error(
@@ -297,7 +303,7 @@ export function SheinStudioGenerationPanel({
     setIsAnalyzingReferenceStyle(true);
     try {
       const result = await analyzeReferenceStyle({
-        referenceImageUrls: hotStyleReferenceImageUrls,
+        referenceImageUrls: hotStyleReferenceImageUrls.slice(0, 1),
         basePrompt: prompt,
       });
       setHotStyleReferenceBrief(result.referenceStyleBrief);
@@ -437,9 +443,7 @@ export function SheinStudioGenerationPanel({
           setHotStyleReferencePrompt={setHotStyleReferencePrompt}
           selectedHotStyleReferenceFiles={selectedHotStyleReferenceFiles}
           setArtworkGenerationMode={handleArtworkGenerationModeChange}
-          setSelectedHotStyleReferenceFiles={
-            setSelectedHotStyleReferenceFiles
-          }
+          setSelectedHotStyleReferenceFiles={setSelectedHotStyleReferenceFiles}
           setPrompt={setPrompt}
           setPromptMode={setPromptMode}
           setStyleCount={setStyleCount}

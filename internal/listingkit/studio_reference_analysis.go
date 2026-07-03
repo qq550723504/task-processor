@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const maxStudioReferenceAnalysisImages = 5
+const maxStudioReferenceAnalysisImages = 1
 
 var (
 	studioWordPattern               = regexp.MustCompile(`[a-z0-9]+`)
@@ -198,11 +198,10 @@ func (s *taskStudioMediaService) AnalyzeStudioReferenceStyle(ctx context.Context
 		return nil, fmt.Errorf("reference_analysis_unavailable: studio reference analyzer is not configured")
 	}
 
-	warnings := make([]string, 0)
 	if len(urls) > maxStudioReferenceAnalysisImages {
-		urls = urls[:maxStudioReferenceAnalysisImages]
-		warnings = append(warnings, "最多分析 5 张参考图，已忽略多余图片。")
+		return nil, fmt.Errorf("invalid request: reference_image_urls supports at most 1 image")
 	}
+	warnings := make([]string, 0)
 	resolvedURLs, err := s.resolveStudioReferenceImageURLs(ctx, urls)
 	if err != nil {
 		return nil, err

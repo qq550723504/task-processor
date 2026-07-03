@@ -688,9 +688,8 @@ describe("SheinStudioGenerationPanel", () => {
       />,
     );
 
-    const promptEditor = screen.getByPlaceholderText(
-      "先提取热销款风格后再微调。",
-    );
+    const promptEditor =
+      screen.getByPlaceholderText("先提取热销款风格后再微调。");
     expect(promptEditor).toBeDisabled();
 
     await user.type(promptEditor, "manual hot style prompt");
@@ -744,7 +743,7 @@ describe("SheinStudioGenerationPanel", () => {
       sanitizedPrompt:
         "Create an original retro badge with cream and red palette.",
       warnings: [
-        "最多分析 5 张参考图，已忽略多余图片。",
+        "部分参考图返回了非结构化分析结果，仅保留可安全复用的风格提示。",
         "已移除品牌、Logo、原文案或过于接近原图的描述。",
       ],
     });
@@ -772,15 +771,25 @@ describe("SheinStudioGenerationPanel", () => {
     await user.click(screen.getByRole("button", { name: "提取热销款风格" }));
 
     expect(
-      screen.getByText("最多分析 5 张参考图，已忽略多余图片。"),
+      screen.getByText(
+        "部分参考图返回了非结构化分析结果，仅保留可安全复用的风格提示。",
+      ),
     ).toBeInTheDocument();
     expect(
       screen.getByText("已移除品牌、Logo、原文案或过于接近原图的描述。"),
     ).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText("每行一个热销款参考图 URL。"), {
-      target: { value: "https://example.com/new-ref.png" },
-    });
+    fireEvent.change(
+      screen.getByPlaceholderText("填写 1 个热销款参考图 URL。"),
+      {
+        target: {
+          value: [
+            "https://example.com/new-ref.png",
+            "https://example.com/ignored-ref.png",
+          ].join("\n"),
+        },
+      },
+    );
 
     expect(setHotStyleReferenceImageUrls).toHaveBeenLastCalledWith([
       "https://example.com/new-ref.png",
@@ -788,17 +797,21 @@ describe("SheinStudioGenerationPanel", () => {
     expect(setHotStyleReferenceBrief).toHaveBeenCalledWith("");
     expect(setHotStyleReferencePrompt).toHaveBeenCalledWith("");
     expect(
-      screen.queryByText("最多分析 5 张参考图，已忽略多余图片。"),
+      screen.queryByText(
+        "部分参考图返回了非结构化分析结果，仅保留可安全复用的风格提示。",
+      ),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByText("已移除品牌、Logo、原文案或过于接近原图的描述。"),
     ).not.toBeInTheDocument();
   });
 
-  it("uploads local hot style reference images and appends returned URLs", async () => {
+  it("uploads only one local hot style reference image and replaces the current URL", async () => {
     const uploadHotStyleReferenceImages = vi
       .fn()
-      .mockResolvedValue(["/api/listing-kits/uploads/files/hot-ref.png"]);
+      .mockImplementation(async (files: File[]) =>
+        files.map((file) => `/api/listing-kits/uploads/files/${file.name}`),
+      );
     const setHotStyleReferenceBrief = vi.fn();
     const setHotStyleReferenceImageUrls = vi.fn();
     const setHotStyleReferencePrompt = vi.fn();
@@ -823,8 +836,11 @@ describe("SheinStudioGenerationPanel", () => {
     const file = new File(["reference"], "hot-ref.png", {
       type: "image/png",
     });
+    const ignoredFile = new File(["ignored"], "ignored-ref.png", {
+      type: "image/png",
+    });
     fireEvent.change(screen.getByLabelText("上传热销参考图"), {
-      target: { files: [file] },
+      target: { files: [file, ignoredFile] },
     });
     fireEvent.click(screen.getByRole("button", { name: "上传参考图" }));
 
@@ -832,10 +848,46 @@ describe("SheinStudioGenerationPanel", () => {
 
     expect(uploadHotStyleReferenceImages).toHaveBeenCalledWith([file]);
     expect(setHotStyleReferenceImageUrls).toHaveBeenCalledWith([
-      "https://example.com/existing.png",
       "/api/listing-kits/uploads/files/hot-ref.png",
     ]);
     expect(setHotStyleReferenceBrief).toHaveBeenCalledWith("");
     expect(setHotStyleReferencePrompt).toHaveBeenCalledWith("");
+  });
+
+  it("analyzes only the first hot style reference URL from legacy multi-image state", async () => {
+    const user = userEvent.setup();
+    const analyzeReferenceStyle = vi.fn().mockResolvedValue({
+      referenceStyleBrief: "retro badge",
+      sanitizedPrompt: "Create an original retro badge.",
+      warnings: [],
+    });
+    const panelProps = buildPanelProps({
+      artworkGenerationMode: "hot_reference",
+      prompt: "retro cherries",
+    });
+
+    render(
+      <SheinStudioGenerationPanel
+        {...panelProps}
+        actions={{
+          ...panelProps.actions,
+          analyzeReferenceStyle,
+        }}
+        form={{
+          ...panelProps.form,
+          hotStyleReferenceImageUrls: [
+            "https://example.com/ref.png",
+            "https://example.com/ignored-ref.png",
+          ],
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "提取热销款风格" }));
+
+    expect(analyzeReferenceStyle).toHaveBeenCalledWith({
+      referenceImageUrls: ["https://example.com/ref.png"],
+      basePrompt: "retro cherries",
+    });
   });
 });

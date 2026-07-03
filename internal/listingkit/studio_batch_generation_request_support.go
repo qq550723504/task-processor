@@ -18,13 +18,10 @@ func buildStudioBatchItemDesignRequest(batch *StudioBatchRecord, item StudioBatc
 	hotStyleReferencePrompt := strings.TrimSpace(batch.HotStyleReferencePrompt)
 	hotStyleReferenceBrief := strings.TrimSpace(batch.HotStyleReferenceBrief)
 	includeHotStyleReference := hotStyleReferencePrompt != "" && hotStyleReferenceBrief != ""
-	referenceImageURLs := mergeStudioHotStyleReferenceImageURLs(
-		studioBatchItemReferenceImageURLs(batch, item),
-		nil,
-	)
+	referenceImageURLs := []string(nil)
 	if includeHotStyleReference {
 		referenceImageURLs = mergeStudioHotStyleReferenceImageURLs(
-			studioBatchItemReferenceImageURLs(batch, item),
+			nil,
 			batch.HotStyleReferenceImageURLs,
 		)
 	} else {

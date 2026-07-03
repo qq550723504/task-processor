@@ -373,7 +373,7 @@ func TestTaskStudioBatchServiceContinueGenerationRecoversBeforeRunningPendingIte
 	}
 }
 
-func TestBuildStudioBatchItemDesignRequestIncludesHotStyleReferencePromptAndPrioritizedReferenceImages(t *testing.T) {
+func TestBuildStudioBatchItemDesignRequestIncludesOnlyHotStyleReferenceImages(t *testing.T) {
 	t.Parallel()
 
 	batch := &StudioBatchRecord{
@@ -386,7 +386,7 @@ func TestBuildStudioBatchItemDesignRequestIncludesHotStyleReferencePromptAndPrio
 		ArtworkModel:            "gpt-image-2",
 		HotStyleReferenceImageURLs: SheinStudioStringList{
 			"https://example.com/hot-ref.png",
-			"https://example.com/mockup-1.png",
+			"https://example.com/hot-ref-2.png",
 		},
 		Selection: SheinStudioSelectionSnapshot(func() SheinStudioSelection {
 			selection := testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)
@@ -437,10 +437,6 @@ func TestBuildStudioBatchItemDesignRequestIncludesHotStyleReferencePromptAndPrio
 	}
 	if got, want := req.ProductReferenceImageURLs, []string{
 		"https://example.com/hot-ref.png",
-		"https://example.com/mockup-1.png",
-		"https://example.com/mockup.png",
-		"https://example.com/mockup-2.png",
-		"https://example.com/mockup-3.png",
 	}; len(got) != len(want) {
 		t.Fatalf("len(ProductReferenceImageURLs) = %d, want %d (%v)", len(got), len(want), got)
 	} else {
@@ -488,10 +484,8 @@ func TestBuildStudioBatchItemDesignRequestDropsHotStyleReferencesWithoutSuccessf
 	if got, want := req.Prompt, "punk eagle collage"; got != want {
 		t.Fatalf("Prompt = %q, want %q", got, want)
 	}
-	if got, want := req.ProductReferenceImageURLs, []string{"https://example.com/mockup.png"}; len(got) != len(want) {
-		t.Fatalf("len(ProductReferenceImageURLs) = %d, want %d (%v)", len(got), len(want), got)
-	} else if got[0] != want[0] {
-		t.Fatalf("ProductReferenceImageURLs[0] = %q, want %q (all=%v)", got[0], want[0], got)
+	if len(req.ProductReferenceImageURLs) != 0 {
+		t.Fatalf("ProductReferenceImageURLs = %v, want empty without successful hot-style analysis", req.ProductReferenceImageURLs)
 	}
 }
 

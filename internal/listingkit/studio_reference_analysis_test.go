@@ -96,10 +96,30 @@ func TestAnalyzeStudioReferenceStyleRejectsInvalidReferenceImageURLs(t *testing.
 	}
 }
 
+func TestAnalyzeStudioReferenceStyleRejectsMultipleReferenceImages(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{
+			"https://example.com/a.png",
+			"https://example.com/b.png",
+		},
+	})
+	if err == nil {
+		t.Fatal("AnalyzeStudioReferenceStyle() error = nil, want invalid request for multiple reference images")
+	}
+	if !strings.Contains(err.Error(), "at most 1") {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v, want at most 1 validation", err)
+	}
+	if len(completer.calls) != 0 {
+		t.Fatalf("AnalyzeImage calls = %d, want 0 for invalid request", len(completer.calls))
+	}
+}
+
 func TestAnalyzeStudioReferenceStyleResolvesUploadedReferencePathsToPublicHTTPS(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
 		`{"motif":"retro flowers","palette":["cream"],"composition":"centered badge"}`,
-		`{"motif":"floral border","palette":["red"],"composition":"arched frame"}`,
 	}}
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
 		promptDiversifier: completer,
@@ -107,8 +127,6 @@ func TestAnalyzeStudioReferenceStyleResolvesUploadedReferencePathsToPublicHTTPS(
 			switch key {
 			case "folder/ref-a.png":
 				return "https://cdn.example.com/folder/ref-a.png", nil
-			case "folder/ref-b.png":
-				return "https://cdn.example.com/folder/ref-b.png", nil
 			default:
 				return "", ErrUploadedImageNotFound
 			}
@@ -119,7 +137,6 @@ func TestAnalyzeStudioReferenceStyleResolvesUploadedReferencePathsToPublicHTTPS(
 		ReferenceImageURLs: []string{
 			" /api/v1/listing-kits/uploads/files/folder/ref-a.png ",
 			"/api/v1/listing-kits/uploads/files/folder/ref-a.png",
-			"/api/v1/listing-kits/uploads/files/folder/ref-b.png",
 		},
 	})
 	if err != nil {
@@ -128,7 +145,6 @@ func TestAnalyzeStudioReferenceStyleResolvesUploadedReferencePathsToPublicHTTPS(
 
 	wantURLs := []string{
 		"https://cdn.example.com/folder/ref-a.png",
-		"https://cdn.example.com/folder/ref-b.png",
 	}
 	if len(completer.calls) != len(wantURLs) {
 		t.Fatalf("calls = %d, want %d", len(completer.calls), len(wantURLs))
@@ -244,7 +260,6 @@ func TestAnalyzeStudioReferenceStyleRejectsUploadedReferencePathsWithoutPublicHT
 func TestAnalyzeStudioReferenceStyleNormalizesHTTPSReferenceURLs(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
 		`{"motif":"retro flowers","palette":["cream"],"composition":"centered badge"}`,
-		`{"motif":"watercolor texture","palette":["coral"],"composition":"arched floral frame"}`,
 	}}
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
@@ -252,7 +267,6 @@ func TestAnalyzeStudioReferenceStyleNormalizesHTTPSReferenceURLs(t *testing.T) {
 		ReferenceImageURLs: []string{
 			"  https://example.com/folder/ref-a.png  ",
 			"https://example.com/folder/ref-a.png",
-			"https://cdn.example.com/folder/ref-b.png",
 		},
 	})
 	if err != nil {
@@ -261,7 +275,6 @@ func TestAnalyzeStudioReferenceStyleNormalizesHTTPSReferenceURLs(t *testing.T) {
 
 	wantURLs := []string{
 		"https://example.com/folder/ref-a.png",
-		"https://cdn.example.com/folder/ref-b.png",
 	}
 	if len(completer.calls) != len(wantURLs) {
 		t.Fatalf("calls = %d, want %d", len(completer.calls), len(wantURLs))
@@ -274,21 +287,15 @@ func TestAnalyzeStudioReferenceStyleNormalizesHTTPSReferenceURLs(t *testing.T) {
 	}
 }
 
-func TestAnalyzeStudioReferenceStyleLimitsReferencesAndSanitizesPrompt(t *testing.T) {
+func TestAnalyzeStudioReferenceStyleSanitizesSingleReferencePrompt(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
 		`{"motif":"Hello Kitty bow","palette":["navy","cream"],"composition":"diagonal split badge","typography":"Old English","density":"Clean Layering","product_fit":"Vintage Streetwear","avoid":["Adidas trefoil logo","exact slogan \"Just Do It\"","Mickey Mouse character","Taylor Swift face portrait","same diagonal split layout"]}`,
-		`{"motif":"floral border","palette":["red","cream"],"composition":"arched frame","typography":"distressed serif","avoid":["brand mark"]}`,
 	}}
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
 	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
 		ReferenceImageURLs: []string{
 			"https://example.com/a.png",
-			"https://example.com/b.png",
-			"https://example.com/c.png",
-			"https://example.com/d.png",
-			"https://example.com/e.png",
-			"https://example.com/f.png",
 		},
 		ProductName:  "T-shirt",
 		CategoryPath: []string{"Apparel", "Tops"},
@@ -297,8 +304,8 @@ func TestAnalyzeStudioReferenceStyleLimitsReferencesAndSanitizesPrompt(t *testin
 	if err != nil {
 		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
 	}
-	if len(completer.calls) != 5 {
-		t.Fatalf("calls = %d, want 5", len(completer.calls))
+	if len(completer.calls) != 1 {
+		t.Fatalf("calls = %d, want 1", len(completer.calls))
 	}
 	for _, unsafeToken := range []string{
 		"hello kitty", "diagonal split badge", "adidas", "trefoil", "just do it", "mickey", "taylor swift", "face portrait", "same diagonal split layout",
@@ -318,7 +325,6 @@ func TestAnalyzeStudioReferenceStyleLimitsReferencesAndSanitizesPrompt(t *testin
 		"clean layering",
 		"vintage streetwear",
 		"cream",
-		"framed composition",
 	} {
 		if !strings.Contains(strings.ToLower(resp.SanitizedPrompt), safeSignal) {
 			t.Fatalf("sanitized prompt = %q, want safe signal %q preserved", resp.SanitizedPrompt, safeSignal)
@@ -468,27 +474,22 @@ func TestAnalyzeStudioReferenceStyleKeepsReferenceBriefDerivedOnlyFromReferenceS
 	}
 }
 
-func TestAnalyzeStudioReferenceStyleUsesPartialSuccess(t *testing.T) {
+func TestAnalyzeStudioReferenceStyleReturnsFailureWhenSingleReferenceAnalysisFails(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{
-		responses: []string{`{"motif":"western floral","palette":["tan","red"],"composition":"center badge"}`},
-		errAt:     2,
+		errAt: 1,
 	}
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
-	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+	_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
 		ReferenceImageURLs: []string{
 			"https://example.com/a.png",
-			"https://example.com/b.png",
 		},
 	})
-	if err != nil {
-		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
+	if err == nil {
+		t.Fatal("AnalyzeStudioReferenceStyle() error = nil, want failed single-image analysis")
 	}
-	if len(resp.Warnings) == 0 {
-		t.Fatalf("warnings = nil, want partial failure warning")
-	}
-	if !strings.Contains(resp.SanitizedPrompt, "western floral") {
-		t.Fatalf("sanitized prompt = %q, want successful image analysis used", resp.SanitizedPrompt)
+	if !strings.Contains(err.Error(), "reference_analysis_failed") {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v, want reference_analysis_failed", err)
 	}
 }
 
@@ -937,14 +938,12 @@ func TestAnalyzeStudioReferenceStylePromptIncludesGlobalSafetyCategories(t *test
 func TestAnalyzeStudioReferenceStyleFiltersWatermarkAndExactArtworkSignals(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
 		`{"motif":"retro flowers watermark","palette":["cream"],"composition":"centered badge","avoid":["exact artwork lockup"]}`,
-		`Use a faint watermark texture around the frame and keep the exact artwork from the source poster.`,
 	}}
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
 
 	resp, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
 		ReferenceImageURLs: []string{
 			"https://example.com/reference-a.png",
-			"https://example.com/reference-b.png",
 		},
 	})
 	if err != nil {

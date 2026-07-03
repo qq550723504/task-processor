@@ -478,13 +478,10 @@ func buildStudioBatchRunDesignRequest(session *SheinStudioSession) *StudioDesign
 	hotStyleReferencePrompt := strings.TrimSpace(session.HotStyleReferencePrompt)
 	hotStyleReferenceBrief := strings.TrimSpace(session.HotStyleReferenceBrief)
 	includeHotStyleReference := hotStyleReferencePrompt != "" && hotStyleReferenceBrief != ""
-	referenceImageURLs := mergeStudioHotStyleReferenceImageURLs(
-		studioBatchRunReferenceImageURLs(session),
-		nil,
-	)
+	referenceImageURLs := []string(nil)
 	if includeHotStyleReference {
 		referenceImageURLs = mergeStudioHotStyleReferenceImageURLs(
-			studioBatchRunReferenceImageURLs(session),
+			nil,
 			session.HotStyleReferenceImageURLs,
 		)
 	} else {
@@ -570,7 +567,7 @@ func buildStudioHotStyleGenerationPrompt(prompt string, hotStyleReferencePrompt 
 }
 
 func mergeStudioHotStyleReferenceImageURLs(existing []string, hotStyleReferenceImageURLs []string) []string {
-	return mergeStudioPrioritizedReferenceImageURLs(existing, hotStyleReferenceImageURLs, 5)
+	return mergeStudioPrioritizedReferenceImageURLs(existing, hotStyleReferenceImageURLs, 1)
 }
 
 func mergeStudioPrioritizedReferenceImageURLs(existing []string, prioritized []string, limit int) []string {

@@ -113,7 +113,9 @@ export function ArtworkGenerationSettings({
           disabled={disabled}
           onClick={() => setArtworkGenerationMode("theme_prompt")}
           type="button"
-          variant={artworkGenerationMode === "theme_prompt" ? "default" : "ghost"}
+          variant={
+            artworkGenerationMode === "theme_prompt" ? "default" : "ghost"
+          }
         >
           按主题生成
         </Button>
@@ -166,105 +168,105 @@ export function ArtworkGenerationSettings({
       ) : null}
       {isHotReferenceMode ? (
         <div className="space-y-3 rounded-lg border border-border bg-background px-3 py-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="text-sm font-medium text-foreground">热销款参考</p>
-            <p className="text-xs leading-5 text-muted-foreground">
-              提取图案、配色和构图方向，生成相似风格的原创 POD 图案。
-            </p>
-          </div>
-          <Button
-            disabled={
-              disabled ||
-              hotStyleReferenceImageUrls.length === 0 ||
-              isAnalyzingReferenceStyle
-            }
-            onClick={handleAnalyzeReferenceStyle}
-            type="button"
-          >
-            {isAnalyzingReferenceStyle ? "提取中..." : "提取热销款风格"}
-          </Button>
-        </div>
-        <div className="grid gap-3 rounded-lg border border-dashed border-emerald-200 bg-emerald-50/60 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-          <Label className="space-y-2">
-            <span className="text-sm font-medium text-foreground">
-              上传热销参考图
-            </span>
-            <Input
-              accept="image/*"
-              aria-label="上传热销参考图"
-              disabled={disabled || isUploadingHotStyleReferenceImages}
-              multiple
-              onChange={(event) =>
-                setSelectedHotStyleReferenceFiles(
-                  Array.from(event.target.files ?? []),
-                )
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-medium text-foreground">热销款参考</p>
+              <p className="text-xs leading-5 text-muted-foreground">
+                提取图案、配色和构图方向，生成相似风格的原创 POD 图案。
+              </p>
+            </div>
+            <Button
+              disabled={
+                disabled ||
+                hotStyleReferenceImageUrls.length === 0 ||
+                isAnalyzingReferenceStyle
               }
-              type="file"
-            />
-            <span className="block text-xs leading-5 text-muted-foreground">
-              {selectedHotStyleReferenceFiles.length > 0
-                ? `已选择 ${selectedHotStyleReferenceFiles.length} 张图片`
-                : "可上传本地图片，也可以继续在下方粘贴公网 URL。"}
-            </span>
-          </Label>
-          <Button
-            disabled={
-              disabled ||
-              selectedHotStyleReferenceFiles.length === 0 ||
-              isUploadingHotStyleReferenceImages
+              onClick={handleAnalyzeReferenceStyle}
+              type="button"
+            >
+              {isAnalyzingReferenceStyle ? "提取中..." : "提取热销款风格"}
+            </Button>
+          </div>
+          <div className="grid gap-3 rounded-lg border border-dashed border-emerald-200 bg-emerald-50/60 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <Label className="space-y-2">
+              <span className="text-sm font-medium text-foreground">
+                上传热销参考图
+              </span>
+              <Input
+                accept="image/*"
+                aria-label="上传热销参考图"
+                disabled={disabled || isUploadingHotStyleReferenceImages}
+                onChange={(event) =>
+                  setSelectedHotStyleReferenceFiles(
+                    Array.from(event.target.files ?? []).slice(0, 1),
+                  )
+                }
+                type="file"
+              />
+              <span className="block text-xs leading-5 text-muted-foreground">
+                {selectedHotStyleReferenceFiles.length > 0
+                  ? `已选择 ${selectedHotStyleReferenceFiles.length} 张图片`
+                  : "可上传 1 张本地图片，也可以在下方粘贴 1 个公网 URL。"}
+              </span>
+            </Label>
+            <Button
+              disabled={
+                disabled ||
+                selectedHotStyleReferenceFiles.length === 0 ||
+                isUploadingHotStyleReferenceImages
+              }
+              onClick={handleUploadHotStyleReferenceImages}
+              type="button"
+            >
+              <Upload className="size-4" />
+              {isUploadingHotStyleReferenceImages ? "上传中..." : "上传参考图"}
+            </Button>
+            {hotStyleReferenceUploadMessage ? (
+              <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
+                {hotStyleReferenceUploadMessage}
+              </p>
+            ) : null}
+          </div>
+          <Textarea
+            className="min-h-20 rounded-lg px-3 py-2"
+            disabled={disabled}
+            onChange={(event) =>
+              setHotStyleReferenceImageUrls(
+                event.target.value
+                  .split(/\r?\n/)
+                  .map((value) => value.trim())
+                  .filter(Boolean)
+                  .slice(0, 1),
+              )
             }
-            onClick={handleUploadHotStyleReferenceImages}
-            type="button"
-          >
-            <Upload className="size-4" />
-            {isUploadingHotStyleReferenceImages ? "上传中..." : "上传参考图"}
-          </Button>
-          {hotStyleReferenceUploadMessage ? (
-            <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
-              {hotStyleReferenceUploadMessage}
+            placeholder="填写 1 个热销款参考图 URL。"
+            value={(hotStyleReferenceImageUrls[0] ?? "").trim()}
+          />
+          <Textarea
+            className="min-h-24 rounded-lg px-3 py-2"
+            disabled={disabled || !hotStyleReferenceAnalyzed}
+            onChange={(event) => setHotStyleReferencePrompt(event.target.value)}
+            placeholder={
+              hotStyleReferenceAnalyzed
+                ? "提取后可在这里微调风格要求。"
+                : "先提取热销款风格后再微调。"
+            }
+            value={hotStyleReferencePrompt}
+          />
+          {hotStyleReferenceBrief ? (
+            <p className="text-xs leading-5 text-muted-foreground">
+              {hotStyleReferenceBrief}
             </p>
           ) : null}
-        </div>
-        <Textarea
-          className="min-h-20 rounded-lg px-3 py-2"
-          disabled={disabled}
-          onChange={(event) =>
-            setHotStyleReferenceImageUrls(
-              event.target.value
-                .split(/\r?\n/)
-                .map((value) => value.trim())
-                .filter(Boolean),
-            )
-          }
-          placeholder="每行一个热销款参考图 URL。"
-          value={hotStyleReferenceImageUrls.join("\n")}
-        />
-        <Textarea
-          className="min-h-24 rounded-lg px-3 py-2"
-          disabled={disabled || !hotStyleReferenceAnalyzed}
-          onChange={(event) => setHotStyleReferencePrompt(event.target.value)}
-          placeholder={
-            hotStyleReferenceAnalyzed
-              ? "提取后可在这里微调风格要求。"
-              : "先提取热销款风格后再微调。"
-          }
-          value={hotStyleReferencePrompt}
-        />
-        {hotStyleReferenceBrief ? (
-          <p className="text-xs leading-5 text-muted-foreground">
-            {hotStyleReferenceBrief}
-          </p>
-        ) : null}
-        {hotStyleReferenceWarnings && hotStyleReferenceWarnings.length > 0 ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">
-            <ul className="space-y-1">
-              {hotStyleReferenceWarnings.map((warning, index) => (
-                <li key={`${index}-${warning}`}>{warning}</li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
+          {hotStyleReferenceWarnings && hotStyleReferenceWarnings.length > 0 ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">
+              <ul className="space-y-1">
+                {hotStyleReferenceWarnings.map((warning, index) => (
+                  <li key={`${index}-${warning}`}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       ) : null}
       {!isHotReferenceMode ? (

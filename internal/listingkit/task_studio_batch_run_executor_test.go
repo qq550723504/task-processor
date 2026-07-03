@@ -550,7 +550,7 @@ func TestExecuteStudioBatchRunItemReturnsStillRunningForAsyncSubmittedBatch(t *t
 	}
 }
 
-func TestExecuteStudioBatchRunItemUsesHotStyleReferencePromptAndImagesForBatchGeneration(t *testing.T) {
+func TestExecuteStudioBatchRunItemUsesOnlyHotStyleReferenceImagesForBatchGeneration(t *testing.T) {
 	repo := NewMemStudioBatchRepository()
 	sessionRepo := &studioBatchRunExecutorSessionRepoStub{
 		session: &SheinStudioSession{
@@ -561,7 +561,7 @@ func TestExecuteStudioBatchRunItemUsesHotStyleReferencePromptAndImagesForBatchGe
 			HotStyleReferencePrompt: "Create an original retro badge.",
 			HotStyleReferenceImageURLs: []string{
 				"https://example.com/hot-ref.png",
-				"https://example.com/mockup.png",
+				"https://example.com/hot-ref-2.png",
 			},
 			StyleCount:       "1",
 			GroupedImageMode: "per_product",
@@ -621,10 +621,6 @@ func TestExecuteStudioBatchRunItemUsesHotStyleReferencePromptAndImagesForBatchGe
 	}
 	if got, want := capturedReq.ProductReferenceImageURLs, []string{
 		"https://example.com/hot-ref.png",
-		"https://example.com/mockup.png",
-		"https://example.com/mockup-alt.png",
-		"https://example.com/mockup-2.png",
-		"https://example.com/mockup-3.png",
 	}; len(got) != len(want) {
 		t.Fatalf("len(capturedReq.ProductReferenceImageURLs) = %d, want %d (%v)", len(got), len(want), got)
 	} else {
@@ -693,10 +689,8 @@ func TestExecuteStudioBatchRunItemDoesNotUseHotStyleReferenceImagesWithoutSucces
 	if got, want := capturedReq.Prompt, "summer flowers"; got != want {
 		t.Fatalf("capturedReq.Prompt = %q, want %q", got, want)
 	}
-	if got, want := capturedReq.ProductReferenceImageURLs, []string{"https://example.com/mockup.png"}; len(got) != len(want) {
-		t.Fatalf("len(capturedReq.ProductReferenceImageURLs) = %d, want %d (%v)", len(got), len(want), got)
-	} else if got[0] != want[0] {
-		t.Fatalf("capturedReq.ProductReferenceImageURLs[0] = %q, want %q (all=%v)", got[0], want[0], got)
+	if len(capturedReq.ProductReferenceImageURLs) != 0 {
+		t.Fatalf("capturedReq.ProductReferenceImageURLs = %v, want empty without successful hot-style analysis", capturedReq.ProductReferenceImageURLs)
 	}
 }
 
