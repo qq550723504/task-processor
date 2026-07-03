@@ -36,4 +36,17 @@ describe("LoginPage", () => {
       "/api/zitadel-auth/login?returnTo=%2F",
     );
   });
+
+  it("falls back to the app root when returnTo points at the ZITADEL login API", async () => {
+    await LoginPage({
+      searchParams: Promise.resolve({
+        returnTo:
+          "/api/zitadel-auth/login?returnTo=%2Fapi%2Fzitadel-auth%2Flogin%3FreturnTo%3D%252Fapi",
+      }),
+    });
+
+    expect(redirectMock).toHaveBeenCalledWith(
+      "/api/zitadel-auth/login?returnTo=%2F",
+    );
+  });
 });

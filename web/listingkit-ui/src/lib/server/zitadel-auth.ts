@@ -57,7 +57,20 @@ export function normalizeReturnTo(value: string | null) {
   if (!value || !value.startsWith("/") || value.startsWith("//")) {
     return "/";
   }
+  if (!isAllowedReturnToPath(value)) {
+    return "/";
+  }
   return value;
+}
+
+function isAllowedReturnToPath(value: string) {
+  let pathname: string;
+  try {
+    pathname = new URL(value, "http://localhost").pathname;
+  } catch {
+    return false;
+  }
+  return pathname === "/" || pathname === "/listing-kits" || pathname.startsWith("/listing-kits/");
 }
 
 export function readZitadelIdentityFromSession(
