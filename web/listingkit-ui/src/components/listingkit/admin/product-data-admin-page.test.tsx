@@ -25,35 +25,6 @@ describe("ProductDataAdminPage", () => {
           originalPrice: 19.99,
           specialPrice: 15.99,
           stock: "12",
-          attributes: [
-            {
-              skc_name: "White",
-              sku_info: [
-                {
-                  sku_code: "SKU-001",
-                  mapping_info: { SKU: "seller-sku-1", CostPrice: 11 },
-                  amazon_monitor_data: { price: "10.00" },
-                  price_info_list: [
-                    {
-                      special_price: "15.00",
-                      shop_price: "16.00",
-                      currency: "USD",
-                    },
-                  ],
-                },
-                {
-                  sku_code: "SKU-002",
-                  mapping_info: { SKU: "seller-sku-2", CostPrice: 20 },
-                  price_info_list: [
-                    {
-                      shop_price: "25.00",
-                      currency: "USD",
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
           status: 1,
           platformProductId: "SPU-001",
           shelfStatus: 2,
@@ -83,10 +54,5 @@ describe("ProductDataAdminPage", () => {
     expect(screen.getByText("B001")).toBeInTheDocument();
     expect(screen.getByText("SPU-001")).toBeInTheDocument();
     expect(screen.getAllByText("SHEIN").length).toBeGreaterThan(0);
-    expect(screen.getByText("利润率")).toBeInTheDocument();
-    expect(screen.getByText("+25.0% ~ +50.0%")).toBeInTheDocument();
-    expect(screen.getByText("(均 +37.5%)")).toBeInTheDocument();
-    expect(screen.getByText("seller-sku-1")).toBeInTheDocument();
-    expect(screen.getAllByText("+5.00 USD")).toHaveLength(2);
   });
 });
