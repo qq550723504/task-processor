@@ -125,6 +125,8 @@ export type SheinSyncedProductRecord = {
   first_shelf_time?: string;
   currency?: string;
   price_snapshot?: string;
+  supply_price?: number | null;
+  supply_price_currency?: string;
   inventory_snapshot?: string;
   site_snapshot?: string;
   auto_cost_price?: number | null;

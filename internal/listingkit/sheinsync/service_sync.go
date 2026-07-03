@@ -390,7 +390,9 @@ func (s *sheinSyncService) fetchOnShelfProducts(
 					applyExistingSheinSyncedProduct(record, existing, snapshots)
 				}
 				if resolved, ok := resolvedCosts[skc.SkcName]; ok {
-					record.AutoCostPrice = cloneSheinSyncFloat64(resolved.CostPrice)
+					record.SupplyPrice = cloneSheinSyncFloat64(resolved.CostPrice)
+					record.SupplyPriceCurrency = resolved.Currency
+					record.AutoCostPrice = nil
 					if resolved.Currency != "" {
 						record.Currency = resolved.Currency
 					}
@@ -463,7 +465,9 @@ func (s *sheinSyncService) fetchSourceSDSProducts(
 					applyExistingSheinSyncedProduct(record, existing, snapshots)
 				}
 				if resolved, ok := resolvedCosts[skc.SkcName]; ok {
-					record.AutoCostPrice = cloneSheinSyncFloat64(resolved.CostPrice)
+					record.SupplyPrice = cloneSheinSyncFloat64(resolved.CostPrice)
+					record.SupplyPriceCurrency = resolved.Currency
+					record.AutoCostPrice = nil
 					if resolved.Currency != "" {
 						record.Currency = resolved.Currency
 					}
@@ -506,7 +510,8 @@ func applyExistingSheinSyncedProduct(record *SheinSyncedProductRecord, existing 
 	}
 	record.ID = existing.ID
 	record.ManualCostPrice = cloneSheinSyncFloat64(existing.ManualCostPrice)
-	record.AutoCostPrice = cloneSheinSyncFloat64(existing.AutoCostPrice)
+	record.SupplyPrice = cloneSheinSyncFloat64(existing.SupplyPrice)
+	record.SupplyPriceCurrency = existing.SupplyPriceCurrency
 	record.CreatedAt = existing.CreatedAt
 	if existing.Currency != "" {
 		record.Currency = existing.Currency

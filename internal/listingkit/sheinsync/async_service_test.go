@@ -102,7 +102,7 @@ func TestAsyncSheinSyncServiceWithBuilderResolvesCostsUsingRuntimeProductAPI(t *
 			Page:     1,
 			PageSize: 10,
 		})
-		return err == nil && len(rows) == 1 && rows[0].AutoCostPrice != nil && *rows[0].AutoCostPrice == 10.5
+		return err == nil && len(rows) == 1 && rows[0].SupplyPrice != nil && *rows[0].SupplyPrice == 10.5
 	}, 3*time.Second, 20*time.Millisecond)
 }
 

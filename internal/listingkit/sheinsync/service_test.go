@@ -170,6 +170,95 @@ func TestSyncSheinOnShelfProductsUsesOnShelfRequestAndPersistsRows(t *testing.T)
 	}`, rows[0].SiteSnapshot)
 }
 
+func TestSyncSheinOnShelfProductsPersistsSheinSupplyPriceSeparatelyFromCost(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	oldAutoCost := 37.2
+	repo.seedProduct(SheinSyncedProductRecord{
+		TenantID:           11,
+		StoreID:            22,
+		SPUName:            "spu-supply",
+		SKCName:            "sh260626230038058040685",
+		SupplierCode:       "sh260626230038058040685",
+		AutoCostPrice:      &oldAutoCost,
+		EffectiveCostPrice: &oldAutoCost,
+		CostPriceSource:    SheinCostPriceSourceAuto,
+		IsActive:           true,
+	})
+	productAPI := &sheinSyncServiceProductAPIStub{
+		listResponses: []*sheinproduct.ProductListResponse{
+			makeProductListResponse([]sheinproduct.ProductListItem{
+				{
+					SpuName:          "spu-supply",
+					SpuCode:          "SPU-SUPPLY",
+					ProductNameMulti: "SHEIN synced product",
+					ShelfStatus:      "ON_SHELF",
+					SkcInfoList: []sheinproduct.SkcInfoItem{
+						{
+							SkcName:               "sh260626230038058040685",
+							SkcCode:               "SKC-SUPPLY",
+							SaleName:              "Default",
+							SupplierCode:          "sh260626230038058040685",
+							MainImageThumbnailURL: "https://img/supply.jpg",
+						},
+					},
+				},
+			}, 1),
+		},
+		queryPriceResp: makePriceQueryResponse([]sheinproduct.SkcPriceData{
+			{
+				SkcName: "sh260626230038058040685",
+				SkuInfoList: []sheinproduct.SkuPriceInfo{
+					{
+						SkuCode: "SKU-SUPPLY",
+						PriceInfoList: []sheinproduct.SkuPriceDetail{
+							{Currency: "USD", ShopPrice: 42.8},
+						},
+					},
+				},
+			},
+		}),
+		queryCostPriceResp: makeCostPriceQueryResponse([]sheinproduct.SkcCostData{
+			{
+				SkcName: "sh260626230038058040685",
+				SkuCostInfoList: []sheinproduct.SkuCostInfo{
+					{
+						SkuCode: "SKU-SUPPLY",
+						CostPriceInfo: sheinproduct.CostPrice{
+							CostPrice: "37.20",
+							Currency:  "USD",
+						},
+					},
+				},
+			},
+		}),
+	}
+
+	service := NewSheinSyncService(repo, productAPI, nil)
+
+	job, err := service.SyncSheinOnShelfProducts(context.Background(), 11, 22, SheinSyncTriggerModeManual)
+	require.NoError(t, err)
+	require.Equal(t, SheinSyncJobStatusSucceeded, job.Status)
+
+	rows, total, err := repo.ListSyncedProducts(context.Background(), &SheinSyncedProductQuery{TenantID: 11, StoreID: 22, Page: 1, PageSize: 10})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, rows, 1)
+	require.Nil(t, rows[0].AutoCostPrice)
+	require.Nil(t, rows[0].EffectiveCostPrice)
+	require.Equal(t, SheinCostPriceSourceNone, rows[0].CostPriceSource)
+	require.NotNil(t, rows[0].SupplyPrice)
+	require.Equal(t, 37.2, *rows[0].SupplyPrice)
+	require.Equal(t, "USD", rows[0].SupplyPriceCurrency)
+	require.JSONEq(t, `{
+		"sale_price":42.8,
+		"currency":"USD",
+		"sub_site":"",
+		"sku_prices":[{"sku_code":"SKU-SUPPLY","sale_price":42.8,"currency":"USD","sub_site":""}]
+	}`, rows[0].PriceSnapshot)
+}
+
 func TestSyncSheinOnShelfProductsPersistsInventorySyncAttributes(t *testing.T) {
 	t.Parallel()
 
@@ -346,8 +435,10 @@ func TestSyncSheinSourceSDSProductRefreshesOnlyMatchingSourceProducts(t *testing
 	require.Equal(t, "skc-1", rows[0].SKCName)
 	require.NotNil(t, rows[0].ManualCostPrice)
 	require.Equal(t, 31.2, *rows[0].ManualCostPrice)
-	require.NotNil(t, rows[0].AutoCostPrice)
-	require.Equal(t, 12.5, *rows[0].AutoCostPrice)
+	require.Nil(t, rows[0].AutoCostPrice)
+	require.NotNil(t, rows[0].SupplyPrice)
+	require.Equal(t, 12.5, *rows[0].SupplyPrice)
+	require.Equal(t, "USD", rows[0].SupplyPriceCurrency)
 	require.Equal(t, SheinCostPriceSourceManual, rows[0].CostPriceSource)
 	require.JSONEq(t, `{
 		"spu_name":"spu-1",
@@ -416,7 +507,7 @@ func TestSyncSheinOnShelfProductsRewordsRuntimeOfflineParsingFallback(t *testing
 	require.NotContains(t, jobs[0].ErrorSummary, "离线解析")
 }
 
-func TestSyncSheinOnShelfProductsManualOverrideWinsOverAutoCost(t *testing.T) {
+func TestSyncSheinOnShelfProductsManualOverrideWinsOverSheinSupplyPrice(t *testing.T) {
 	t.Parallel()
 
 	repo := newSheinSyncServiceRepoStub()
@@ -461,15 +552,17 @@ func TestSyncSheinOnShelfProductsManualOverrideWinsOverAutoCost(t *testing.T) {
 	require.Equal(t, int64(1), total)
 	require.Len(t, rows, 1)
 	require.NotNil(t, rows[0].ManualCostPrice)
-	require.NotNil(t, rows[0].AutoCostPrice)
+	require.Nil(t, rows[0].AutoCostPrice)
+	require.NotNil(t, rows[0].SupplyPrice)
 	require.NotNil(t, rows[0].EffectiveCostPrice)
 	require.Equal(t, 19.8, *rows[0].ManualCostPrice)
-	require.Equal(t, 12.5, *rows[0].AutoCostPrice)
+	require.Equal(t, 12.5, *rows[0].SupplyPrice)
+	require.Equal(t, "USD", rows[0].SupplyPriceCurrency)
 	require.Equal(t, 19.8, *rows[0].EffectiveCostPrice)
 	require.Equal(t, SheinCostPriceSourceManual, rows[0].CostPriceSource)
 }
 
-func TestSyncSheinOnShelfProductsPreservesExistingAutoCostWhenResolverOmitsSKC(t *testing.T) {
+func TestSyncSheinOnShelfProductsClearsLegacyAutoCostWhenResolverOmitsSKC(t *testing.T) {
 	t.Parallel()
 
 	repo := newSheinSyncServiceRepoStub()
@@ -512,12 +605,10 @@ func TestSyncSheinOnShelfProductsPreservesExistingAutoCostWhenResolverOmitsSKC(t
 	require.NoError(t, err)
 	require.Equal(t, int64(1), total)
 	require.Len(t, rows, 1)
-	require.NotNil(t, rows[0].AutoCostPrice)
-	require.NotNil(t, rows[0].EffectiveCostPrice)
-	require.Equal(t, 16.6, *rows[0].AutoCostPrice)
-	require.Equal(t, 16.6, *rows[0].EffectiveCostPrice)
+	require.Nil(t, rows[0].AutoCostPrice)
+	require.Nil(t, rows[0].EffectiveCostPrice)
 	require.Equal(t, "USD", rows[0].Currency)
-	require.Equal(t, SheinCostPriceSourceAuto, rows[0].CostPriceSource)
+	require.Equal(t, SheinCostPriceSourceNone, rows[0].CostPriceSource)
 }
 
 func TestSyncSheinOnShelfProductsMarksMissingSKCsInactive(t *testing.T) {
@@ -1373,6 +1464,7 @@ func cloneServiceTestProduct(row SheinSyncedProductRecord) SheinSyncedProductRec
 	row.PublishTime = cloneServiceTestTime(row.PublishTime)
 	row.FirstShelfTime = cloneServiceTestTime(row.FirstShelfTime)
 	row.LastSyncAt = cloneServiceTestTime(row.LastSyncAt)
+	row.SupplyPrice = cloneServiceTestFloat64(row.SupplyPrice)
 	row.AutoCostPrice = cloneServiceTestFloat64(row.AutoCostPrice)
 	row.ManualCostPrice = cloneServiceTestFloat64(row.ManualCostPrice)
 	row.EffectiveCostPrice = cloneServiceTestFloat64(row.EffectiveCostPrice)

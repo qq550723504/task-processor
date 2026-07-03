@@ -22,6 +22,8 @@ type SheinSyncedProductRecord struct {
 	FirstShelfTime          *time.Time           `json:"first_shelf_time,omitempty"`
 	Currency                string               `json:"currency,omitempty" gorm:"type:varchar(16)"`
 	PriceSnapshot           string               `json:"price_snapshot,omitempty" gorm:"type:text"`
+	SupplyPrice             *float64             `json:"supply_price,omitempty"`
+	SupplyPriceCurrency     string               `json:"supply_price_currency,omitempty" gorm:"type:varchar(16)"`
 	InventorySnapshot       string               `json:"inventory_snapshot,omitempty" gorm:"type:text"`
 	SiteSnapshot            string               `json:"site_snapshot,omitempty" gorm:"type:text"`
 	InventorySyncAttributes string               `json:"inventory_sync_attributes,omitempty" gorm:"type:text"`

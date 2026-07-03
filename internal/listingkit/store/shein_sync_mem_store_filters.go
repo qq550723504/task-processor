@@ -145,6 +145,7 @@ func cloneSheinSyncedProductRecord(row listingkit.SheinSyncedProductRecord) list
 	row.PublishTime = cloneTimePtr(row.PublishTime)
 	row.FirstShelfTime = cloneTimePtr(row.FirstShelfTime)
 	row.LastSyncAt = cloneTimePtr(row.LastSyncAt)
+	row.SupplyPrice = cloneFloat64Ptr(row.SupplyPrice)
 	row.AutoCostPrice = cloneFloat64Ptr(row.AutoCostPrice)
 	row.ManualCostPrice = cloneFloat64Ptr(row.ManualCostPrice)
 	row.EffectiveCostPrice = cloneFloat64Ptr(row.EffectiveCostPrice)

@@ -119,7 +119,7 @@ describe("SheinProductsStoreWorkbench", () => {
     expect(screen.queryByRole("link", { name: "候选池" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "报名记录" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "去检查登录" })).not.toBeInTheDocument();
-    expect(screen.getByText("$29.99")).toBeInTheDocument();
+    expect(screen.getByText("售价 $29.99")).toBeInTheDocument();
   });
 
   it("keeps product and cost queries scoped to the active product tab", async () => {

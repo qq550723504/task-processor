@@ -25,6 +25,56 @@ function formatCostPrice(value?: number | null) {
   return value.toFixed(2);
 }
 
+function formatSupplyPrice(item: SheinSyncedProductRecord) {
+  if (item.supply_price == null) {
+    return "-";
+  }
+  const currency = item.supply_price_currency?.trim() || item.currency?.trim();
+  return `${item.supply_price.toFixed(2)}${currency ? ` ${currency}` : ""}`;
+}
+
+function getProfitSnapshot(item: SheinSyncedProductRecord) {
+  const salePrice = parsePriceSnapshotAmount(item.price_snapshot);
+  const costPrice = item.effective_cost_price;
+  if (salePrice == null || costPrice == null || costPrice === 0) {
+    return null;
+  }
+  const profit = salePrice - costPrice;
+  return {
+    profit,
+    profitRate: (profit / costPrice) * 100,
+    currency: getPriceSnapshotCurrency(item),
+  };
+}
+
+function parsePriceSnapshotAmount(value?: string) {
+  if (!value) {
+    return null;
+  }
+  const match = value.replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
+  if (!match) {
+    return null;
+  }
+  const parsed = Number.parseFloat(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getPriceSnapshotCurrency(item: SheinSyncedProductRecord) {
+  if (item.currency?.trim()) {
+    return item.currency.trim();
+  }
+  const match = item.price_snapshot?.match(/[A-Z]{3}/);
+  return match?.[0] || "USD";
+}
+
+function formatSignedCurrency(value: number, currency: string) {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)} ${currency}`;
+}
+
+function formatSignedRate(value: number) {
+  return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
 function getShelfStatusLabel(status?: string | null) {
   switch (status) {
     case "ON_SHELF":
@@ -74,6 +124,7 @@ export function SheinSyncedProductsTable({
             items.map((item) => {
               const inventory = formatInventorySummary(item.inventory_snapshot);
               const times = formatProductTimes(item);
+              const profit = getProfitSnapshot(item);
 
               return (
                 <TableRow key={item.id}>
@@ -116,10 +167,35 @@ export function SheinSyncedProductsTable({
                   <TableCell className="text-zinc-500">-</TableCell>
                   <TableCell>
                     <div className="space-y-1 text-sm text-zinc-900">
-                      <div>{formatSheinPriceSnapshot(item.price_snapshot)}</div>
+                      <div>售价 {formatSheinPriceSnapshot(item.price_snapshot)}</div>
+                      <div className="text-xs text-zinc-600">
+                        供货价 {formatSupplyPrice(item)}
+                      </div>
                       <div className="text-xs text-zinc-600">
                         成本 {formatCostPrice(item.effective_cost_price)}
                       </div>
+                      {profit ? (
+                        <>
+                          <div
+                            className={
+                              profit.profitRate >= 0
+                                ? "text-xs font-semibold text-emerald-600"
+                                : "text-xs font-semibold text-red-600"
+                            }
+                          >
+                            利润率 {formatSignedRate(profit.profitRate)}
+                          </div>
+                          <div
+                            className={
+                              profit.profit >= 0
+                                ? "text-xs text-emerald-600"
+                                : "text-xs text-red-600"
+                            }
+                          >
+                            利润 {formatSignedCurrency(profit.profit, profit.currency)}
+                          </div>
+                        </>
+                      ) : null}
                       <div className="text-xs text-zinc-500">
                         来源 {getCostSourceLabel(item.cost_price_source)}
                       </div>
