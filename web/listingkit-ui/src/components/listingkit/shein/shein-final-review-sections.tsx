@@ -11,6 +11,10 @@ import {
   summaryStatusLabel,
   summaryTone,
 } from "@/components/listingkit/shein/shein-final-review-helpers";
+import {
+  getSheinDraftPayload,
+  getSheinPreviewPayload,
+} from "@/lib/listingkit/semantic-fields";
 import type {
   SheinFinalReviewImage,
   SheinPreviewPayload,
@@ -418,11 +422,11 @@ export function SizeAttributeTable({
 export function buildSizeAttributeTableModel(
   shein?: SheinPreviewPayload | null,
 ): SizeAttributeTableModel | null {
+  const previewPayload = getSheinPreviewPayload(shein);
+  const draftPayload = getSheinDraftPayload(shein);
   const sizeAttributes = firstNonEmptySizeAttributes(
-    shein?.preview_payload?.size_attribute_list,
-    shein?.preview_product?.size_attribute_list,
-    shein?.draft_payload?.size_attribute_list,
-    shein?.request_draft?.size_attribute_list,
+    previewPayload?.size_attribute_list,
+    draftPayload?.size_attribute_list,
   );
   if (sizeAttributes.length === 0) {
     return null;
@@ -494,6 +498,7 @@ function buildSizeAttributeColumnLabels(shein?: SheinPreviewPayload | null) {
 
 function buildSaleAttributeValueLabels(shein?: SheinPreviewPayload | null) {
   const labels = new Map<number, string>();
+  const draftPayload = getSheinDraftPayload(shein);
   const addResolved = (attribute?: SheinResolvedSaleAttribute) => {
     const valueID = attribute?.attribute_value_id ?? 0;
     const value = String(attribute?.value ?? "").trim();
@@ -506,15 +511,7 @@ function buildSaleAttributeValueLabels(shein?: SheinPreviewPayload | null) {
     shein?.editor_context?.sale_attributes?.current?.sku_attributes ?? []) {
     addResolved(attribute);
   }
-  for (const skc of shein?.draft_payload?.skc_list ?? []) {
-    addResolved(skc.sale_attribute);
-    for (const sku of skc.sku_list ?? []) {
-      for (const attribute of sku.sale_attributes ?? []) {
-        addResolved(attribute);
-      }
-    }
-  }
-  for (const skc of shein?.request_draft?.skc_list ?? []) {
+  for (const skc of draftPayload?.skc_list ?? []) {
     addResolved(skc.sale_attribute);
     for (const sku of skc.sku_list ?? []) {
       for (const attribute of sku.sale_attributes ?? []) {
