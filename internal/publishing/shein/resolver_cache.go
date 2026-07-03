@@ -150,6 +150,26 @@ func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *canonica
 				}
 			}
 		}
+		if entry := r.loadManualPersistentCacheBySourceIdentity(ResolutionCacheKindAttribute, req, canonical, pkg); entry != nil {
+			if resolution := decodeAttributeCacheEntry(entry); resolution != nil {
+				migrated := cloneAttributeResolution(resolution)
+				attachResolutionCacheInfoToAttribute(migrated, cacheEntrySource(entry), key, entry.Manual, cacheHitSourceFromEntry(entry), "hit")
+				r.cache.Store(key, cloneAttributeResolution(migrated))
+				r.savePersistentCache(ResolutionCacheKindAttribute, req, canonical, pkg, key, migrated, entry.Manual)
+				logResolutionCacheHit("attribute", cacheEntrySource(entry), req, canonical, pkg, entry.CacheKey, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount, "migrated_cache_key": key})
+				return migrated
+			}
+		}
+		if entry := r.loadManualPersistentCacheByProductIdentity(ResolutionCacheKindAttribute, req, canonical, pkg); entry != nil {
+			if resolution := decodeAttributeCacheEntry(entry); resolution != nil {
+				migrated := cloneAttributeResolution(resolution)
+				attachResolutionCacheInfoToAttribute(migrated, cacheEntrySource(entry), key, entry.Manual, cacheHitSourceFromEntry(entry), "hit")
+				r.cache.Store(key, cloneAttributeResolution(migrated))
+				r.savePersistentCache(ResolutionCacheKindAttribute, req, canonical, pkg, key, migrated, entry.Manual)
+				logResolutionCacheHit("attribute", cacheEntrySource(entry), req, canonical, pkg, entry.CacheKey, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount, "migrated_cache_key": key, "fallback": "product_identity"})
+				return migrated
+			}
+		}
 	}
 	resolution := r.inner.Resolve(req, canonical, pkg)
 	return resolution
@@ -249,6 +269,38 @@ func (r *cachedAttributeResolver) loadPersistentCache(kind string, req *BuildReq
 		return nil
 	}
 	entry, _ := r.store.GetResolutionCache(context.Background(), kind, sheinStoreID(req), key)
+	return entry
+}
+
+func (r *cachedAttributeResolver) loadManualPersistentCacheBySourceIdentity(kind string, req *BuildRequest, canonical *canonical.Product, pkg *Package) *SheinResolutionCacheEntry {
+	if r == nil || r.store == nil {
+		return nil
+	}
+	getter, ok := r.store.(ResolutionCacheSourceIdentityGetter)
+	if !ok {
+		return nil
+	}
+	sourceIdentity := buildResolutionCacheSourceIdentity(kind, canonical, pkg)
+	if strings.TrimSpace(sourceIdentity) == "" {
+		return nil
+	}
+	entry, _ := getter.GetManualResolutionCacheBySourceIdentity(context.Background(), kind, sheinStoreID(req), sourceIdentity)
+	return entry
+}
+
+func (r *cachedAttributeResolver) loadManualPersistentCacheByProductIdentity(kind string, req *BuildRequest, canonical *canonical.Product, pkg *Package) *SheinResolutionCacheEntry {
+	if r == nil || r.store == nil {
+		return nil
+	}
+	getter, ok := r.store.(ResolutionCacheSourceIdentityGetter)
+	if !ok {
+		return nil
+	}
+	productIdentity := stableProductIdentity(canonical, pkg)
+	if len(productIdentity) == 0 {
+		return nil
+	}
+	entry, _ := getter.GetManualResolutionCacheByProductIdentity(context.Background(), kind, sheinStoreID(req), categoryID(pkg), productIdentity)
 	return entry
 }
 

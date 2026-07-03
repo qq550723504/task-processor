@@ -3,6 +3,8 @@ package shein
 import (
 	"context"
 	"errors"
+	"strconv"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -57,6 +59,11 @@ type ResolutionCacheStore interface {
 	DeleteResolutionCache(ctx context.Context, kind string, storeID string, cacheKey string) error
 }
 
+type ResolutionCacheSourceIdentityGetter interface {
+	GetManualResolutionCacheBySourceIdentity(ctx context.Context, kind string, storeID string, sourceIdentity string) (*SheinResolutionCacheEntry, error)
+	GetManualResolutionCacheByProductIdentity(ctx context.Context, kind string, storeID string, categoryID int, productIdentity []string) (*SheinResolutionCacheEntry, error)
+}
+
 type ResolutionCacheShortKeyDeleter interface {
 	DeleteResolutionCacheByShortKey(ctx context.Context, kind string, storeID string, shortKey string) error
 }
@@ -77,6 +84,61 @@ func (s *GormResolutionCacheStore) GetResolutionCache(ctx context.Context, kind 
 	if err := s.db.WithContext(ctx).
 		Where("cache_kind = ? AND store_id = ? AND cache_key = ?", kind, storeID, cacheKey).
 		First(&entry).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	now := time.Now()
+	_ = s.db.WithContext(ctx).Model(&SheinResolutionCacheEntry{}).
+		Where("id = ?", entry.ID).
+		Updates(map[string]any{"hit_count": gorm.Expr("hit_count + ?", 1), "last_hit_at": now}).Error
+	entry.HitCount++
+	entry.LastHitAt = now
+	return &entry, nil
+}
+
+func (s *GormResolutionCacheStore) GetManualResolutionCacheBySourceIdentity(ctx context.Context, kind string, storeID string, sourceIdentity string) (*SheinResolutionCacheEntry, error) {
+	var entry SheinResolutionCacheEntry
+	if err := s.db.WithContext(ctx).
+		Where("cache_kind = ? AND store_id = ? AND source_identity = ? AND manual = ?", kind, storeID, sourceIdentity, true).
+		Order("updated_at DESC, id DESC").
+		First(&entry).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	now := time.Now()
+	_ = s.db.WithContext(ctx).Model(&SheinResolutionCacheEntry{}).
+		Where("id = ?", entry.ID).
+		Updates(map[string]any{"hit_count": gorm.Expr("hit_count + ?", 1), "last_hit_at": now}).Error
+	entry.HitCount++
+	entry.LastHitAt = now
+	return &entry, nil
+}
+
+func (s *GormResolutionCacheStore) GetManualResolutionCacheByProductIdentity(ctx context.Context, kind string, storeID string, categoryID int, productIdentity []string) (*SheinResolutionCacheEntry, error) {
+	if categoryID <= 0 || len(productIdentity) == 0 {
+		return nil, nil
+	}
+	query := s.db.WithContext(ctx).
+		Where("cache_kind = ? AND store_id = ? AND manual = ?", kind, storeID, true).
+		Where("source_identity LIKE ?", `%"category_id":`+strconv.Itoa(categoryID)+`%`)
+	hasIdentity := false
+	for _, identity := range productIdentity {
+		identity = strings.TrimSpace(strings.ToLower(identity))
+		if identity == "" {
+			continue
+		}
+		query = query.Where("source_identity LIKE ?", `%"`+identity+`"%`)
+		hasIdentity = true
+	}
+	if !hasIdentity {
+		return nil, nil
+	}
+	var entry SheinResolutionCacheEntry
+	if err := query.Order("updated_at DESC, id DESC").First(&entry).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}

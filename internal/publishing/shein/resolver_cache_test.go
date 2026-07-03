@@ -783,6 +783,196 @@ func TestCachedAttributeResolverMigratesLegacyVariantOnlySDSCache(t *testing.T) 
 	}
 }
 
+func TestCachedAttributeResolverReusesManualCacheWhenAttributeInputsShrink(t *testing.T) {
+	valueID := 1009028
+	store := newResolutionCacheTestStore(t)
+	req := &BuildRequest{SheinStoreID: 870}
+	cachedPkg := &Package{
+		CategoryID:     4503,
+		CategoryIDList: []int{3294, 4502, 13597, 4503},
+		CategoryPath:   []string{"箱包", "功能包", "运动包", "健身包"},
+		ProductAttributes: []common.Attribute{
+			{Name: "sku", Value: "XB0606006"},
+			{Name: "product_sku", Value: "XB0606006"},
+			{Name: "variant_sku", Value: "XB0606006001"},
+			{Name: "variant_color", Value: "white"},
+			{Name: "variant_size", Value: "One size"},
+			{Name: "material", Value: "Oxford"},
+			{Name: "features", Value: "High-capacity"},
+		},
+	}
+	currentPkg := &Package{
+		CategoryID:     4503,
+		CategoryIDList: []int{3294, 4502, 13597, 4503},
+		CategoryPath:   []string{"箱包", "功能包", "运动包", "健身包"},
+		ProductAttributes: []common.Attribute{
+			{Name: "sku", Value: "XB0606006"},
+			{Name: "product_sku", Value: "XB0606006"},
+			{Name: "variant_sku", Value: "XB0606006001"},
+			{Name: "variant_color", Value: "white"},
+			{Name: "variant_size", Value: "One size"},
+		},
+	}
+	cachedKey := attributeResolverCacheKey(req, nil, cachedPkg)
+	currentKey := attributeResolverCacheKey(req, nil, currentPkg)
+	if cachedKey == "" || currentKey == "" || cachedKey == currentKey {
+		t.Fatalf("expected distinct cache keys after attribute input shrink: cached=%q current=%q", cachedKey, currentKey)
+	}
+	if buildResolutionCacheSourceIdentity(ResolutionCacheKindAttribute, nil, cachedPkg) != buildResolutionCacheSourceIdentity(ResolutionCacheKindAttribute, nil, currentPkg) {
+		t.Fatalf("expected source identity to stay stable across attribute input shrink")
+	}
+	if err := store.SaveResolutionCache(context.Background(), buildResolutionCacheEntry(
+		ResolutionCacheKindAttribute,
+		req,
+		nil,
+		cachedPkg,
+		cachedKey,
+		&AttributeResolution{
+			Status:        "resolved",
+			Source:        "manual_review",
+			CategoryID:    4503,
+			TemplateCount: 1,
+			ResolvedCount: 1,
+			ResolvedAttributes: []ResolvedAttribute{{
+				Name:             "Features",
+				Value:            "High-capacity",
+				AttributeID:      217,
+				AttributeValueID: &valueID,
+				Required:         true,
+			}},
+		},
+		true,
+	)); err != nil {
+		t.Fatalf("seed source-identity cache: %v", err)
+	}
+	inner := &countingAttributeResolver{
+		out: &AttributeResolution{Status: "partial", CategoryID: 4503, TemplateCount: 1},
+	}
+	resolver := NewCachedAttributeResolver(inner, store)
+
+	got := resolver.Resolve(req, nil, currentPkg)
+	if inner.calls != 0 {
+		t.Fatalf("inner calls = %d, want 0", inner.calls)
+	}
+	if got.Cache == nil || got.Cache.HitSource != ResolutionCacheHitSourcePersistentManualCache {
+		t.Fatalf("cache metadata = %#v, want persistent manual cache", got.Cache)
+	}
+	if got.Cache.CacheKey != currentKey {
+		t.Fatalf("cache key = %q, want migrated current key %q", got.Cache.CacheKey, currentKey)
+	}
+	if got.ResolvedCount != 1 || len(got.ResolvedAttributes) != 1 {
+		t.Fatalf("resolution = %#v, want reused resolved attributes", got)
+	}
+	migrated, err := store.GetResolutionCache(context.Background(), ResolutionCacheKindAttribute, "870", currentKey)
+	if err != nil {
+		t.Fatalf("get migrated cache: %v", err)
+	}
+	if migrated == nil || !migrated.Manual || migrated.Source != "manual_cache" {
+		t.Fatalf("migrated cache = %#v, want manual current-key cache", migrated)
+	}
+}
+
+func TestCachedAttributeResolverReusesManualCacheWhenSourceCategoryPathDrifts(t *testing.T) {
+	valueID := 1007420
+	store := newResolutionCacheTestStore(t)
+	req := &BuildRequest{SheinStoreID: 1043}
+	cachedCanonical := &canonical.Product{
+		CategoryPath: []string{"美国本地直发", "连衣裙", "连衣裙"},
+		Attributes: map[string]canonical.Attribute{
+			"sku":         {Value: "MG8038016"},
+			"product_sku": {Value: "MG8038016"},
+		},
+		Variants: []canonical.Variant{
+			{Attributes: map[string]canonical.Attribute{
+				"source_sds_sku": {Value: "MG8038016001"},
+				"Color":          {Value: "black"},
+				"Size":           {Value: "S"},
+			}},
+		},
+	}
+	currentCanonical := &canonical.Product{
+		Attributes: map[string]canonical.Attribute{
+			"sku":         {Value: "MG8038016"},
+			"product_sku": {Value: "MG8038016"},
+		},
+		Variants: []canonical.Variant{
+			{Attributes: map[string]canonical.Attribute{
+				"source_sds_sku": {Value: "MG8038016001"},
+				"Color":          {Value: "black"},
+				"Size":           {Value: "S"},
+			}},
+		},
+	}
+	cachedPkg := &Package{
+		CategoryID:     1727,
+		CategoryIDList: []int{4478, 2028, 12716, 1727},
+		CategoryPath:   []string{"女士服装", "常规女士服装", "女士连衣裙", "女士短连衣裙"},
+		ProductAttributes: []common.Attribute{
+			{Name: "sku", Value: "MG8038016"},
+			{Name: "product_sku", Value: "MG8038016"},
+			{Name: "variant_sku", Value: "MG8038016001"},
+			{Name: "material", Value: "Knitted Fabric"},
+		},
+	}
+	currentPkg := &Package{
+		CategoryID:     1727,
+		CategoryIDList: []int{4478, 2028, 12716, 1727},
+		CategoryPath:   []string{"女士服装", "常规女士服装", "女士连衣裙", "女士短连衣裙"},
+		ProductAttributes: []common.Attribute{
+			{Name: "sku", Value: "MG8038016"},
+			{Name: "product_sku", Value: "MG8038016"},
+			{Name: "variant_sku", Value: "MG8038016001"},
+		},
+	}
+	if buildResolutionCacheSourceIdentity(ResolutionCacheKindAttribute, cachedCanonical, cachedPkg) == buildResolutionCacheSourceIdentity(ResolutionCacheKindAttribute, currentCanonical, currentPkg) {
+		t.Fatalf("expected source identity to differ after source category path drift")
+	}
+	cachedKey := attributeResolverCacheKey(req, cachedCanonical, cachedPkg)
+	currentKey := attributeResolverCacheKey(req, currentCanonical, currentPkg)
+	if cachedKey == "" || currentKey == "" || cachedKey == currentKey {
+		t.Fatalf("expected distinct keys after source category path drift: cached=%q current=%q", cachedKey, currentKey)
+	}
+	if err := store.SaveResolutionCache(context.Background(), buildResolutionCacheEntry(
+		ResolutionCacheKindAttribute,
+		req,
+		cachedCanonical,
+		cachedPkg,
+		cachedKey,
+		&AttributeResolution{
+			Status:        "resolved",
+			Source:        "manual_review",
+			CategoryID:    1727,
+			TemplateCount: 1,
+			ResolvedCount: 1,
+			ResolvedAttributes: []ResolvedAttribute{{
+				Name:             "Material",
+				Value:            "Knitted Fabric",
+				AttributeID:      160,
+				AttributeValueID: &valueID,
+				Required:         true,
+			}},
+		},
+		true,
+	)); err != nil {
+		t.Fatalf("seed source category path drift cache: %v", err)
+	}
+	inner := &countingAttributeResolver{
+		out: &AttributeResolution{Status: "partial", CategoryID: 1727, TemplateCount: 1},
+	}
+	resolver := NewCachedAttributeResolver(inner, store)
+
+	got := resolver.Resolve(req, currentCanonical, currentPkg)
+	if inner.calls != 0 {
+		t.Fatalf("inner calls = %d, want 0", inner.calls)
+	}
+	if got.Cache == nil || got.Cache.HitSource != ResolutionCacheHitSourcePersistentManualCache {
+		t.Fatalf("cache metadata = %#v, want persistent manual cache", got.Cache)
+	}
+	if got.Cache.CacheKey != currentKey {
+		t.Fatalf("cache key = %q, want migrated current key %q", got.Cache.CacheKey, currentKey)
+	}
+}
+
 func attributeResolverLegacyVariantOnlyCacheKeyForTest(req *BuildRequest, pkg *Package, variantSKU string) string {
 	if pkg == nil || categoryID(pkg) == 0 {
 		return ""
