@@ -31,6 +31,7 @@ import type {
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioArtworkModel,
+  SheinStudioArtworkGenerationMode,
   SheinStudioBatchDetail,
   SheinStudioBatchQueueMode,
   SheinStudioCreatedTask,
@@ -98,6 +99,7 @@ type UseSheinStudioDesignActionsParams = {
   hotStyleReferenceBrief: string;
   hotStyleReferenceImageUrls: string[];
   hotStyleReferencePrompt: string;
+  artworkGenerationMode: SheinStudioArtworkGenerationMode;
   prompt: string;
   promptMode?: SheinStudioGenerateRequest["promptMode"];
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
@@ -145,6 +147,7 @@ export function useSheinStudioDesignActions({
   hotStyleReferenceBrief,
   hotStyleReferenceImageUrls,
   hotStyleReferencePrompt,
+  artworkGenerationMode,
   prompt,
   promptMode,
   promptInputRef,
@@ -198,6 +201,9 @@ export function useSheinStudioDesignActions({
   async function handleGenerate() {
     const startValidation = resolveGenerationStartValidation({
       activeSelection,
+      artworkGenerationMode,
+      hotStyleReferenceBrief,
+      hotStyleReferencePrompt,
       prompt,
       sheinStoreId,
     });
@@ -279,6 +285,7 @@ export function useSheinStudioDesignActions({
         hotStyleReferenceBrief,
         hotStyleReferenceImageUrls,
         hotStyleReferencePrompt,
+        artworkGenerationMode,
         navigateToStep,
         persistDraft,
         prompt,
@@ -344,6 +351,9 @@ export function useSheinStudioDesignActions({
   async function handleRegenerate(designId: string) {
     const startValidation = resolveRegenerationStartValidation({
       activeSelection,
+      artworkGenerationMode,
+      hotStyleReferenceBrief,
+      hotStyleReferencePrompt,
       prompt,
     });
     if (startValidation) {
@@ -401,6 +411,7 @@ export function useSheinStudioDesignActions({
       );
       const targetSelection = target?.selection ?? regenerationSelection;
       const generationInput = buildHotStyleReferenceGenerationInput({
+        artworkGenerationMode,
         prompt,
         hotStyleReferenceBrief,
         hotStyleReferencePrompt,

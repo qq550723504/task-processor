@@ -8,6 +8,7 @@ import {
 import { buildSDSProductReferenceImageUrls } from "@/lib/shein-studio/sds-reference-images";
 import type {
   SheinStudioArtworkModel,
+  SheinStudioArtworkGenerationMode,
   SheinStudioGenerateRequest,
   SheinStudioGenerateResponse,
   SheinStudioGenerationJob,
@@ -59,6 +60,7 @@ type ExecuteStandaloneGenerationInput = {
   hotStyleReferenceBrief?: string;
   hotStyleReferenceImageUrls?: string[];
   hotStyleReferencePrompt?: string;
+  artworkGenerationMode?: SheinStudioArtworkGenerationMode;
   navigateToStep: (step: "review") => void;
   persistDraft: GenerationPersistDraft;
   prompt: string;
@@ -84,10 +86,16 @@ type ExecuteStandaloneGenerationResult = {
 
 export function resolveGenerationStartValidation({
   activeSelection,
+  artworkGenerationMode = "theme_prompt",
+  hotStyleReferenceBrief,
+  hotStyleReferencePrompt,
   prompt,
   sheinStoreId,
 }: {
   activeSelection?: SDSProductVariantSelection;
+  artworkGenerationMode?: SheinStudioArtworkGenerationMode;
+  hotStyleReferenceBrief?: string;
+  hotStyleReferencePrompt?: string;
   prompt: string;
   sheinStoreId: string;
 }) {
@@ -97,6 +105,12 @@ export function resolveGenerationStartValidation({
   if (!sheinStoreId.trim()) {
     return { error: "请先选择批次店铺。" };
   }
+  if (artworkGenerationMode === "hot_reference") {
+    if (!hotStyleReferenceBrief?.trim() || !hotStyleReferencePrompt?.trim()) {
+      return { error: "请先提取热销款风格。", focusPrompt: false };
+    }
+    return null;
+  }
   if (!prompt.trim()) {
     return { error: "请先填写主题提示词。", focusPrompt: true };
   }
@@ -105,13 +119,25 @@ export function resolveGenerationStartValidation({
 
 export function resolveRegenerationStartValidation({
   activeSelection,
+  artworkGenerationMode = "theme_prompt",
+  hotStyleReferenceBrief,
+  hotStyleReferencePrompt,
   prompt,
 }: {
   activeSelection?: SDSProductVariantSelection;
+  artworkGenerationMode?: SheinStudioArtworkGenerationMode;
+  hotStyleReferenceBrief?: string;
+  hotStyleReferencePrompt?: string;
   prompt: string;
 }) {
   if (!activeSelection?.variantId) {
     return { error: "请先选择 SDS 变体。" };
+  }
+  if (artworkGenerationMode === "hot_reference") {
+    if (!hotStyleReferenceBrief?.trim() || !hotStyleReferencePrompt?.trim()) {
+      return { error: "请先提取热销款风格。", focusPrompt: false };
+    }
+    return null;
   }
   if (!prompt.trim()) {
     return { error: "请先填写主题提示词。", focusPrompt: true };
@@ -222,6 +248,7 @@ export function replaceRegeneratedDesign({
 }
 
 export function buildHotStyleReferenceGenerationInput(input: {
+  artworkGenerationMode?: SheinStudioArtworkGenerationMode;
   prompt: string;
   hotStyleReferenceBrief?: string;
   hotStyleReferencePrompt?: string;
@@ -231,6 +258,28 @@ export function buildHotStyleReferenceGenerationInput(input: {
   const referenceBrief = input.hotStyleReferenceBrief?.trim();
   const referencePrompt = input.hotStyleReferencePrompt?.trim();
   const hasAnalyzedReference = Boolean(referenceBrief && referencePrompt);
+  const normalizedProductReferences = normalizeReferenceImageUrls(
+    input.productReferenceImageUrls,
+  );
+  if (input.artworkGenerationMode === "theme_prompt") {
+    return {
+      prompt: input.prompt.trim(),
+      productReferenceImageUrls: normalizedProductReferences,
+    };
+  }
+  const normalizedHotStyleReferences = hasAnalyzedReference
+    ? normalizeReferenceImageUrls(input.hotStyleReferenceImageUrls)
+    : [];
+  if (input.artworkGenerationMode === "hot_reference") {
+    return {
+      prompt: hasAnalyzedReference ? (referencePrompt ?? "") : "",
+      productReferenceImageUrls: prioritizeReferenceImageUrls({
+        existing: normalizedProductReferences,
+        prioritized: normalizedHotStyleReferences,
+        limit: 5,
+      }),
+    };
+  }
   const promptParts = [input.prompt.trim()];
   if (hasAnalyzedReference && referencePrompt) {
     promptParts.push(
@@ -238,12 +287,6 @@ export function buildHotStyleReferenceGenerationInput(input: {
       referencePrompt,
     );
   }
-  const normalizedProductReferences = normalizeReferenceImageUrls(
-    input.productReferenceImageUrls,
-  );
-  const normalizedHotStyleReferences = hasAnalyzedReference
-    ? normalizeReferenceImageUrls(input.hotStyleReferenceImageUrls)
-    : [];
   return {
     prompt: promptParts.filter(Boolean).join("\n"),
     productReferenceImageUrls: prioritizeReferenceImageUrls({
@@ -304,6 +347,7 @@ export async function executeStandaloneGeneration({
   hotStyleReferenceBrief,
   hotStyleReferenceImageUrls,
   hotStyleReferencePrompt,
+  artworkGenerationMode,
   navigateToStep,
   persistDraft,
   prompt,
@@ -373,6 +417,7 @@ export async function executeStandaloneGeneration({
         prompt,
         hotStyleReferenceBrief,
         hotStyleReferencePrompt,
+        artworkGenerationMode,
         productReferenceImageUrls:
           buildSDSProductReferenceImageUrls(target.selection),
         hotStyleReferenceImageUrls,

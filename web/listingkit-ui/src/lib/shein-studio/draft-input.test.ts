@@ -216,7 +216,8 @@ describe("buildSheinStudioDraftInput", () => {
         hotStyleReferenceImageUrls: ["https://example.com/group-ref.png"],
         hotStyleReferenceBrief: "group reference brief",
         hotStyleReferencePrompt: "group reference prompt",
-        currentPrompt: "prompt a",
+        artworkGenerationMode: "hot_reference",
+        currentPrompt: "",
         promptHistory: [
           {
             prompt: "prompt old",
@@ -249,5 +250,113 @@ describe("buildSheinStudioDraftInput", () => {
       createdTasks: [],
       generationJobs: [],
     });
+  });
+
+  it("uses the first grouped workspace primary selection when the top-level selection is absent", () => {
+    const payload = buildSheinStudioDraftInput({
+      prompt: "grouped prompt",
+      styleCount: "2",
+      variationIntensity: "medium",
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "7",
+      imageStrategy: "sds_official",
+      groupedImageMode: "shared_by_size",
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      groupedSelections: [],
+      groups: [
+        {
+          id: "group-1",
+          name: "Group 1",
+          primarySelection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 100,
+            prototypeGroupId: 3,
+            layerId: "layer-1",
+            productName: "tee",
+            variantLabel: "M / black",
+          },
+          groupedSelections: [],
+          sheinStoreId: "9",
+          imageStrategy: "sds_official",
+          groupedImageMode: "shared_by_size",
+          selectedSdsImages: [],
+          renderSizeImagesWithSds: true,
+          currentPrompt: "grouped prompt",
+          promptHistory: [],
+          productImageCount: "5",
+          productImagePrompt: "",
+          productImagePrompts: [],
+          artworkModel: "nanobanana",
+          transparentBackground: false,
+          variationIntensity: "medium",
+          designs: [],
+          selectedIds: [],
+          createdTasks: [],
+          updatedAt: "2026-05-26T00:00:00Z",
+        },
+      ],
+    });
+
+    expect(payload.selection).toEqual(
+      expect.objectContaining({
+        variantId: 100,
+        productName: "tee",
+      }),
+    );
+  });
+
+  it("keeps theme prompt and hot style reference fields mutually exclusive", () => {
+    const baseInput = {
+      prompt: "summer flowers",
+      styleCount: "1",
+      variationIntensity: "medium" as const,
+      productImageCount: "5",
+      productImagePrompt: "",
+      productImagePrompts: [],
+      hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+      hotStyleReferenceBrief: "reference brief",
+      hotStyleReferencePrompt: "reference prompt",
+      artworkModel: "nanobanana",
+      transparentBackground: false,
+      sheinStoreId: "7",
+      imageStrategy: "ai_generated" as const,
+      groupedImageMode: "shared_by_size" as const,
+      selectedSdsImages: [],
+      renderSizeImagesWithSds: true,
+      groupedSelections: [],
+    };
+
+    expect(
+      buildSheinStudioDraftInput({
+        ...baseInput,
+        artworkGenerationMode: "theme_prompt",
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        prompt: "summer flowers",
+        hotStyleReferenceImageUrls: [],
+        hotStyleReferenceBrief: "",
+        hotStyleReferencePrompt: "",
+      }),
+    );
+    expect(
+      buildSheinStudioDraftInput({
+        ...baseInput,
+        artworkGenerationMode: "hot_reference",
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        prompt: "",
+        hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+        hotStyleReferenceBrief: "reference brief",
+        hotStyleReferencePrompt: "reference prompt",
+      }),
+    );
   });
 });

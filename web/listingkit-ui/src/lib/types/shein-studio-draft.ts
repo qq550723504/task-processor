@@ -14,6 +14,9 @@ export type SheinStudioImageStrategy =
 
 export type SheinStudioGroupedImageMode = "shared_by_size" | "per_product";
 export type SheinStudioBatchQueueMode = "generate" | "create_tasks";
+export type SheinStudioArtworkGenerationMode =
+  | "theme_prompt"
+  | "hot_reference";
 
 export type SheinStudioProductImagePrompt = {
   role: string;
@@ -54,6 +57,7 @@ export type SheinStudioGroupedWorkspace = {
   primarySelection: SDSProductVariantSelection;
   groupedSelections: GroupedSDSSelectionEligibility[];
   styleCount?: string;
+  artworkGenerationMode?: SheinStudioArtworkGenerationMode;
   promptMode?: SheinStudioPromptMode;
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
@@ -87,6 +91,7 @@ export type SheinStudioPersistedGroupedWorkspace = Omit<
 
 export type SheinStudioPersistedBatchView = {
   prompt: string;
+  artworkGenerationMode?: SheinStudioArtworkGenerationMode;
   promptMode?: SheinStudioPromptMode;
   styleCount: string;
   hotStyleReferenceImageUrls?: string[];
@@ -122,6 +127,7 @@ export type SheinStudioSavedBatch = {
   tenantId?: string;
   name: string;
   prompt: string;
+  artworkGenerationMode?: SheinStudioArtworkGenerationMode;
   promptMode?: SheinStudioPromptMode;
   styleCount: string;
   hotStyleReferenceImageUrls?: string[];
@@ -157,6 +163,7 @@ export type SheinStudioSavedBatch = {
 
 export type SheinStudioDraft = {
   prompt: string;
+  artworkGenerationMode?: SheinStudioArtworkGenerationMode;
   promptMode?: SheinStudioPromptMode;
   styleCount: string;
   hotStyleReferenceImageUrls?: string[];

@@ -27,6 +27,7 @@ import type {
   SheinStudioGenerationJob,
   SheinStudioImageStrategy,
   SheinStudioArtworkModel,
+  SheinStudioArtworkGenerationMode,
   SheinStudioBatchQueueMode,
   SheinStudioProductImagePrompt,
   SheinStudioSavedBatch,
@@ -123,8 +124,25 @@ export function selectActiveGroupPrimarySelection({
   return groups.find((group) => group.id === activeGroupId)?.primarySelection;
 }
 
+export function resolveArtworkGenerationMode(input: {
+  artworkGenerationMode?: SheinStudioArtworkGenerationMode;
+  hotStyleReferenceImageUrls?: string[];
+  hotStyleReferenceBrief?: string;
+  hotStyleReferencePrompt?: string;
+}): SheinStudioArtworkGenerationMode {
+  if (input.artworkGenerationMode) {
+    return input.artworkGenerationMode;
+  }
+  const hasHotStyleReference =
+    (input.hotStyleReferenceImageUrls ?? []).some((value) => value.trim()) ||
+    Boolean(input.hotStyleReferenceBrief?.trim()) ||
+    Boolean(input.hotStyleReferencePrompt?.trim());
+  return hasHotStyleReference ? "hot_reference" : "theme_prompt";
+}
+
 export function projectGroupToWorkbench(group: SheinStudioGroupedWorkspace) {
   return {
+    artworkGenerationMode: resolveArtworkGenerationMode(group),
     prompt: group.currentPrompt,
     promptMode: group.promptMode ?? "managed",
     styleCount: group.styleCount ?? "1",
@@ -193,6 +211,7 @@ function projectItemizedBatchCompatibilityFields(
     designs: flattenItemizedBatchDesigns(detail),
     selectedIds: getApprovedItemizedBatchDesignIDs(detail),
     selection: detail.batch.selection,
+    artworkGenerationMode: resolveArtworkGenerationMode(detail.batch),
     prompt: detail.batch.prompt,
     promptMode: detail.batch.promptMode ?? "managed",
     styleCount: detail.batch.styleCount || "1",
@@ -443,6 +462,7 @@ export function projectSavedBatchToWorkbench(
 
   return {
     selection: savedBatch.selection,
+    artworkGenerationMode: resolveArtworkGenerationMode(savedBatch),
     prompt: savedBatch.prompt,
     promptMode: savedBatch.promptMode ?? "managed",
     styleCount: savedBatch.styleCount || "1",
@@ -489,9 +509,15 @@ export function projectHydratedBatchToWorkbench(
   const shouldPreserveSavedGenerationError =
     detail.batch.status === "failed" ||
     detail.batch.status === "partially_failed";
+  const artworkGenerationMode: SheinStudioArtworkGenerationMode =
+    itemized.artworkGenerationMode === "hot_reference" ||
+    saved.artworkGenerationMode === "hot_reference"
+      ? "hot_reference"
+      : "theme_prompt";
 
   return {
     selection: itemized.selection ?? saved.selection,
+    artworkGenerationMode,
     prompt: preferSavedBatchDraftValue(
       saved.prompt,
       itemized.prompt,
@@ -582,6 +608,7 @@ export function projectHydratedBatchToWorkbench(
 
 type WorkbenchSavedBatchProjectionInput = {
   id: string;
+  artworkGenerationMode?: SheinStudioArtworkGenerationMode;
   prompt: string;
   promptMode?: "managed" | "raw";
   styleCount: string;
@@ -612,6 +639,7 @@ type WorkbenchSavedBatchProjectionInput = {
 
 export function projectWorkbenchStateToSavedBatch({
   id,
+  artworkGenerationMode,
   prompt,
   styleCount,
   variationIntensity,
@@ -643,6 +671,7 @@ export function projectWorkbenchStateToSavedBatch({
   return {
     id,
     name,
+    artworkGenerationMode,
     prompt,
     promptMode: normalizedPromptMode,
     styleCount,
@@ -689,6 +718,7 @@ export function projectWorkbenchStateFallback(
     hotStyleReferenceImageUrls: state.hotStyleReferenceImageUrls,
     hotStyleReferenceBrief: state.hotStyleReferenceBrief,
     hotStyleReferencePrompt: state.hotStyleReferencePrompt,
+    artworkGenerationMode: state.artworkGenerationMode,
     prompt: state.prompt,
     promptMode: state.promptMode,
     renderSizeImagesWithSds: state.renderSizeImagesWithSds,
@@ -926,6 +956,12 @@ export function mergeSheinStudioDraftState({
   const createdTasks = draft?.createdTasks ?? [];
 
   return {
+    artworkGenerationMode: resolveArtworkGenerationMode({
+      artworkGenerationMode: draft?.artworkGenerationMode,
+      hotStyleReferenceImageUrls: draft?.hotStyleReferenceImageUrls,
+      hotStyleReferenceBrief: draft?.hotStyleReferenceBrief,
+      hotStyleReferencePrompt: draft?.hotStyleReferencePrompt,
+    }),
     prompt: draft?.prompt || galleryPrompt || "",
     promptMode: draft?.promptMode ?? "managed",
     selection: draft?.selection,

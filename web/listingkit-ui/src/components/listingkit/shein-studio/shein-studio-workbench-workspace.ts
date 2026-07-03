@@ -120,6 +120,7 @@ export function useSheinStudioWorkspaceLoader({
           hasCustomizedSdsSelectionRef.current =
             draftState.hasCustomizedSdsSelection;
           workbench.applyDraft({
+            artworkGenerationMode: draftState.artworkGenerationMode,
             prompt: draftState.prompt,
             promptMode: draftState.promptMode,
             selection: draftState.selection,
@@ -247,8 +248,26 @@ export function useSheinStudioBatchActions({
       ...buildDraftInput(),
       id: currentBatchId || undefined,
     };
-    if (!draftInput.prompt?.trim()) {
+    const hotStyleReferenceReady =
+      (draftInput.hotStyleReferenceImageUrls ?? []).length > 0 ||
+      Boolean(draftInput.hotStyleReferenceBrief?.trim()) ||
+      Boolean(draftInput.hotStyleReferencePrompt?.trim());
+    if (
+      draftInput.artworkGenerationMode === "hot_reference" &&
+      !hotStyleReferenceReady
+    ) {
+      workbench.setField("saveMessage", "保存批次前请先提供热销款参考。");
+      return;
+    }
+    if (
+      draftInput.artworkGenerationMode !== "hot_reference" &&
+      !draftInput.prompt?.trim()
+    ) {
       workbench.setField("saveMessage", "保存批次前请先填写主题提示词。");
+      return;
+    }
+    if (!currentBatchId && !draftInput.selection?.variantId) {
+      workbench.setField("saveMessage", "保存批次前请先选择 POD 底版。");
       return;
     }
 

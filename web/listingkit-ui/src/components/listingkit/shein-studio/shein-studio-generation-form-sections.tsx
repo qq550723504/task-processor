@@ -1,4 +1,5 @@
 import type { RefObject } from "react";
+import { Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -18,6 +19,7 @@ import { formatSheinStoreOptionLabel } from "@/lib/shein-studio/store-option-lab
 import type {
   SDSGroupedPromptHistoryEntry,
   SheinStudioArtworkModel,
+  SheinStudioArtworkGenerationMode,
   SheinStudioGroupedImageMode,
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
@@ -30,11 +32,15 @@ export function ArtworkGenerationSettings({
   disabled,
   groupedImageMode,
   handleAnalyzeReferenceStyle,
+  handleUploadHotStyleReferenceImages,
+  artworkGenerationMode,
   hotStyleReferenceBrief,
   hotStyleReferenceImageUrls,
   hotStyleReferencePrompt,
   hotStyleReferenceWarnings,
+  hotStyleReferenceUploadMessage,
   isAnalyzingReferenceStyle,
+  isUploadingHotStyleReferenceImages,
   prompt,
   promptMode,
   promptHistory,
@@ -42,8 +48,11 @@ export function ArtworkGenerationSettings({
   restorePrompt,
   setArtworkModel,
   setGroupedImageMode,
+  setArtworkGenerationMode,
   setHotStyleReferenceImageUrls,
   setHotStyleReferencePrompt,
+  selectedHotStyleReferenceFiles,
+  setSelectedHotStyleReferenceFiles,
   setPrompt,
   setPromptMode,
   setStyleCount,
@@ -58,11 +67,15 @@ export function ArtworkGenerationSettings({
   disabled?: boolean;
   groupedImageMode: SheinStudioGroupedImageMode;
   handleAnalyzeReferenceStyle: () => void;
+  handleUploadHotStyleReferenceImages: () => void;
+  artworkGenerationMode: SheinStudioArtworkGenerationMode;
   hotStyleReferenceBrief: string;
   hotStyleReferenceImageUrls: string[];
   hotStyleReferencePrompt: string;
   hotStyleReferenceWarnings?: string[];
+  hotStyleReferenceUploadMessage?: string;
   isAnalyzingReferenceStyle: boolean;
+  isUploadingHotStyleReferenceImages: boolean;
   prompt: string;
   promptMode: "managed" | "raw";
   promptHistory: SDSGroupedPromptHistoryEntry[];
@@ -70,8 +83,11 @@ export function ArtworkGenerationSettings({
   restorePrompt: (value: string) => void;
   setArtworkModel: (value: SheinStudioArtworkModel) => void;
   setGroupedImageMode: (value: SheinStudioGroupedImageMode) => void;
+  setArtworkGenerationMode: (value: SheinStudioArtworkGenerationMode) => void;
   setHotStyleReferenceImageUrls: (value: string[]) => void;
   setHotStyleReferencePrompt: (value: string) => void;
+  selectedHotStyleReferenceFiles: File[];
+  setSelectedHotStyleReferenceFiles: (value: File[]) => void;
   setPrompt: (value: string) => void;
   setPromptMode: (value: "managed" | "raw") => void;
   setStyleCount: (value: string) => void;
@@ -83,6 +99,7 @@ export function ArtworkGenerationSettings({
   variationIntensity: SheinStudioVariationIntensity;
 }) {
   const hotStyleReferenceAnalyzed = hotStyleReferenceBrief.trim().length > 0;
+  const isHotReferenceMode = artworkGenerationMode === "hot_reference";
 
   return (
     <div className="space-y-4 rounded-[1.5rem] border border-emerald-200 bg-[linear-gradient(135deg,_#ecfdf5,_#f8fafc)] px-4 py-4 dark:border-emerald-500/25 dark:bg-emerald-950/15">
@@ -91,43 +108,64 @@ export function ArtworkGenerationSettings({
         title="生成 POD 款式图"
         description="这里生成的是用于印刷的平面图案。商品场景图在下一块设置。"
       />
-      <Label className="space-y-2">
-        <span className="text-sm font-medium text-foreground">
-          主题提示词 <span className="text-rose-600">*</span>
-        </span>
-        <Textarea
-          className="min-h-40 rounded-2xl border-emerald-200 bg-background/90 px-4 py-3 focus:border-emerald-900 focus:bg-background dark:border-emerald-500/25 dark:bg-background/80"
+      <div className="grid grid-cols-2 gap-2 rounded-2xl border border-emerald-200 bg-background/80 p-1">
+        <Button
           disabled={disabled}
-          onChange={(event) => setPrompt(event.target.value)}
-          placeholder="例如：美国国旗主题，复古学院风，线条清晰，适合印刷。"
-          ref={promptInputRef}
-          value={prompt}
-        />
-        <p className="text-xs leading-6 text-muted-foreground">
-          系统会优先生成适合 POD
-          印刷的图案：大面积形状、清晰对比、减少细线和过小文字。
-        </p>
-        {promptHistory.length > 0 ? (
-          <div className="rounded-2xl border border-emerald-200/80 bg-background/80 px-3 py-3 dark:border-emerald-500/20 dark:bg-card/90">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-900/70">
-              最近使用过的提示词
-            </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {promptHistory.map((entry) => (
-                <button
-                  className="max-w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-left text-xs text-emerald-950 transition hover:border-emerald-400 hover:bg-emerald-100 dark:border-emerald-500/25 dark:bg-emerald-950/30 dark:text-emerald-100 dark:hover:bg-emerald-950/45"
-                  key={entry.createdAt}
-                  onClick={() => restorePrompt(entry.prompt)}
-                  type="button"
-                >
-                  {entry.prompt}
-                </button>
-              ))}
+          onClick={() => setArtworkGenerationMode("theme_prompt")}
+          type="button"
+          variant={artworkGenerationMode === "theme_prompt" ? "default" : "ghost"}
+        >
+          按主题生成
+        </Button>
+        <Button
+          disabled={disabled}
+          onClick={() => setArtworkGenerationMode("hot_reference")}
+          type="button"
+          variant={isHotReferenceMode ? "default" : "ghost"}
+        >
+          参考热销款
+        </Button>
+      </div>
+      {!isHotReferenceMode ? (
+        <Label className="space-y-2">
+          <span className="text-sm font-medium text-foreground">
+            主题提示词 <span className="text-rose-600">*</span>
+          </span>
+          <Textarea
+            className="min-h-40 rounded-2xl border-emerald-200 bg-background/90 px-4 py-3 focus:border-emerald-900 focus:bg-background dark:border-emerald-500/25 dark:bg-background/80"
+            disabled={disabled}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder="例如：美国国旗主题，复古学院风，线条清晰，适合印刷。"
+            ref={promptInputRef}
+            value={prompt}
+          />
+          <p className="text-xs leading-6 text-muted-foreground">
+            系统会优先生成适合 POD
+            印刷的图案：大面积形状、清晰对比、减少细线和过小文字。
+          </p>
+          {promptHistory.length > 0 ? (
+            <div className="rounded-2xl border border-emerald-200/80 bg-background/80 px-3 py-3 dark:border-emerald-500/20 dark:bg-card/90">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-900/70">
+                最近使用过的提示词
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {promptHistory.map((entry) => (
+                  <button
+                    className="max-w-full rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-left text-xs text-emerald-950 transition hover:border-emerald-400 hover:bg-emerald-100 dark:border-emerald-500/25 dark:bg-emerald-950/30 dark:text-emerald-100 dark:hover:bg-emerald-950/45"
+                    key={entry.createdAt}
+                    onClick={() => restorePrompt(entry.prompt)}
+                    type="button"
+                  >
+                    {entry.prompt}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ) : null}
-      </Label>
-      <div className="space-y-3 rounded-lg border border-border bg-background px-3 py-3">
+          ) : null}
+        </Label>
+      ) : null}
+      {isHotReferenceMode ? (
+        <div className="space-y-3 rounded-lg border border-border bg-background px-3 py-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <p className="text-sm font-medium text-foreground">热销款参考</p>
@@ -146,6 +184,47 @@ export function ArtworkGenerationSettings({
           >
             {isAnalyzingReferenceStyle ? "提取中..." : "提取热销款风格"}
           </Button>
+        </div>
+        <div className="grid gap-3 rounded-lg border border-dashed border-emerald-200 bg-emerald-50/60 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+          <Label className="space-y-2">
+            <span className="text-sm font-medium text-foreground">
+              上传热销参考图
+            </span>
+            <Input
+              accept="image/*"
+              aria-label="上传热销参考图"
+              disabled={disabled || isUploadingHotStyleReferenceImages}
+              multiple
+              onChange={(event) =>
+                setSelectedHotStyleReferenceFiles(
+                  Array.from(event.target.files ?? []),
+                )
+              }
+              type="file"
+            />
+            <span className="block text-xs leading-5 text-muted-foreground">
+              {selectedHotStyleReferenceFiles.length > 0
+                ? `已选择 ${selectedHotStyleReferenceFiles.length} 张图片`
+                : "可上传本地图片，也可以继续在下方粘贴公网 URL。"}
+            </span>
+          </Label>
+          <Button
+            disabled={
+              disabled ||
+              selectedHotStyleReferenceFiles.length === 0 ||
+              isUploadingHotStyleReferenceImages
+            }
+            onClick={handleUploadHotStyleReferenceImages}
+            type="button"
+          >
+            <Upload className="size-4" />
+            {isUploadingHotStyleReferenceImages ? "上传中..." : "上传参考图"}
+          </Button>
+          {hotStyleReferenceUploadMessage ? (
+            <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
+              {hotStyleReferenceUploadMessage}
+            </p>
+          ) : null}
         </div>
         <Textarea
           className="min-h-20 rounded-lg px-3 py-2"
@@ -186,7 +265,8 @@ export function ArtworkGenerationSettings({
             </ul>
           </div>
         ) : null}
-      </div>
+        </div>
+      ) : null}
       <Label className="space-y-2">
         <span className="text-sm font-medium text-foreground">提示词模式</span>
         <Select

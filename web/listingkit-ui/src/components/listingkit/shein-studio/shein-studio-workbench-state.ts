@@ -18,6 +18,7 @@ import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioArtworkModel,
+  SheinStudioArtworkGenerationMode,
   SheinStudioBatchDetail,
   SheinStudioBatchQueueMode,
   SheinStudioCreatedTask,
@@ -35,6 +36,7 @@ import type {
 
 export type SheinStudioWorkbenchState = {
   selection?: SDSProductVariantSelection;
+  artworkGenerationMode: SheinStudioArtworkGenerationMode;
   prompt: string;
   promptMode: SheinStudioPromptMode;
   styleCount: string;
@@ -94,6 +96,7 @@ export type SheinStudioWorkbenchDraftPatch = Partial<
   Pick<
     SheinStudioWorkbenchState,
     | "prompt"
+    | "artworkGenerationMode"
     | "promptMode"
     | "selection"
     | "styleCount"
@@ -160,6 +163,7 @@ export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchSta
     prompt: "",
     promptMode: "managed",
     selection: undefined,
+    artworkGenerationMode: "theme_prompt",
     styleCount: "1",
     variationIntensity: DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
     productImageCount: DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
@@ -259,6 +263,9 @@ export function buildSheinStudioWorkbenchSetters(
     setGroupedImageMode: (
       value: SheinStudioWorkbenchStateUpdater<"groupedImageMode">,
     ) => setField("groupedImageMode", value),
+    setArtworkGenerationMode: (
+      value: SheinStudioWorkbenchStateUpdater<"artworkGenerationMode">,
+    ) => setField("artworkGenerationMode", value),
     setImageStrategy: (
       value: SheinStudioWorkbenchStateUpdater<"imageStrategy">,
     ) => setField("imageStrategy", value),
@@ -402,6 +409,7 @@ export function buildSheinStudioWorkbenchController(
 
 const ACTIVE_GROUP_SYNC_FIELDS = new Set<keyof SheinStudioWorkbenchState>([
   "prompt",
+  "artworkGenerationMode",
   "styleCount",
   "variationIntensity",
   "productImageCount",
@@ -465,6 +473,8 @@ function syncActiveGroupFromState(
     group.id === state.activeGroupId
       ? {
           ...group,
+          artworkGenerationMode:
+            patch.artworkGenerationMode ?? state.artworkGenerationMode,
           currentPrompt:
             typeof patch.prompt === "string" ? patch.prompt : state.prompt,
           styleCount:

@@ -74,15 +74,25 @@ function buildPanelProps(options?: {
   statusGroups?: SheinStudioBatchStatusGroups;
   selectionReady?: boolean;
   transparentBackground?: boolean;
+  artworkGenerationMode?: "theme_prompt" | "hot_reference";
   hotStyleReferenceBrief?: string;
   hotStyleReferenceImageUrls?: string[];
   hotStyleReferencePrompt?: string;
+  uploadHotStyleReferenceImages?: (files: File[]) => Promise<string[]>;
 }) {
+  const artworkGenerationMode =
+    options?.artworkGenerationMode ??
+    ((options?.hotStyleReferenceImageUrls?.length ?? 0) > 0 ||
+    options?.hotStyleReferenceBrief ||
+    options?.hotStyleReferencePrompt
+      ? "hot_reference"
+      : "theme_prompt");
   return {
     form: {
       availableSdsImages: options?.availableSdsImages ?? [],
       artworkModel: "nanobanana",
       groupedImageMode: "shared_by_size",
+      artworkGenerationMode,
       hotStyleReferenceBrief: options?.hotStyleReferenceBrief ?? "",
       hotStyleReferenceImageUrls: options?.hotStyleReferenceImageUrls ?? [],
       hotStyleReferencePrompt: options?.hotStyleReferencePrompt ?? "",
@@ -135,11 +145,14 @@ function buildPanelProps(options?: {
         sanitizedPrompt: "",
         warnings: [],
       }),
+      uploadHotStyleReferenceImages:
+        options?.uploadHotStyleReferenceImages ?? (async () => []),
       onRetryFailedItem: options?.onRetryFailedItem,
       onRestorePrompt: options?.onRestorePrompt ?? (() => undefined),
       onSaveBatch: () => undefined,
       setArtworkModel: () => undefined,
       setGroupedImageMode: () => undefined,
+      setArtworkGenerationMode: () => undefined,
       setHotStyleReferenceBrief: () => undefined,
       setHotStyleReferenceImageUrls: () => undefined,
       setHotStyleReferencePrompt: () => undefined,
@@ -606,7 +619,10 @@ describe("SheinStudioGenerationPanel", () => {
     });
     const setHotStyleReferenceBrief = vi.fn();
     const setHotStyleReferencePrompt = vi.fn();
-    const panelProps = buildPanelProps({ prompt: "retro cherries" });
+    const panelProps = buildPanelProps({
+      artworkGenerationMode: "hot_reference",
+      prompt: "retro cherries",
+    });
 
     render(
       <SheinStudioGenerationPanel
@@ -676,7 +692,10 @@ describe("SheinStudioGenerationPanel", () => {
     });
     const setHotStyleReferenceBrief = vi.fn();
     const setHotStyleReferencePrompt = vi.fn();
-    const panelProps = buildPanelProps({ prompt: "retro cherries" });
+    const panelProps = buildPanelProps({
+      artworkGenerationMode: "hot_reference",
+      prompt: "retro cherries",
+    });
 
     render(
       <SheinStudioGenerationPanel
@@ -760,5 +779,49 @@ describe("SheinStudioGenerationPanel", () => {
     expect(
       screen.queryByText("已移除品牌、Logo、原文案或过于接近原图的描述。"),
     ).not.toBeInTheDocument();
+  });
+
+  it("uploads local hot style reference images and appends returned URLs", async () => {
+    const uploadHotStyleReferenceImages = vi
+      .fn()
+      .mockResolvedValue(["/api/listing-kits/uploads/files/hot-ref.png"]);
+    const setHotStyleReferenceBrief = vi.fn();
+    const setHotStyleReferenceImageUrls = vi.fn();
+    const setHotStyleReferencePrompt = vi.fn();
+    const panelProps = buildPanelProps({
+      artworkGenerationMode: "hot_reference",
+      hotStyleReferenceImageUrls: ["https://example.com/existing.png"],
+      uploadHotStyleReferenceImages,
+    });
+
+    render(
+      <SheinStudioGenerationPanel
+        {...panelProps}
+        actions={{
+          ...panelProps.actions,
+          setHotStyleReferenceBrief,
+          setHotStyleReferenceImageUrls,
+          setHotStyleReferencePrompt,
+        }}
+      />,
+    );
+
+    const file = new File(["reference"], "hot-ref.png", {
+      type: "image/png",
+    });
+    fireEvent.change(screen.getByLabelText("上传热销参考图"), {
+      target: { files: [file] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "上传参考图" }));
+
+    await screen.findByText("已上传 1 张参考图。");
+
+    expect(uploadHotStyleReferenceImages).toHaveBeenCalledWith([file]);
+    expect(setHotStyleReferenceImageUrls).toHaveBeenCalledWith([
+      "https://example.com/existing.png",
+      "/api/listing-kits/uploads/files/hot-ref.png",
+    ]);
+    expect(setHotStyleReferenceBrief).toHaveBeenCalledWith("");
+    expect(setHotStyleReferencePrompt).toHaveBeenCalledWith("");
   });
 });

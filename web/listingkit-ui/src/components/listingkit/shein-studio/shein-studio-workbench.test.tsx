@@ -2561,6 +2561,20 @@ describe("SheinStudioWorkbench", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("does not create a server batch before a POD product is selected", async () => {
+    hydrateSDSVariantSelection.mockResolvedValue(undefined);
+
+    render(<SheinStudioWorkbench activeStep="generate" />);
+
+    const promptInput = await screen.findByLabelText("prompt");
+    fireEvent.change(promptInput, {
+      target: { value: "retro cherries" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "save batch" }));
+
+    await waitFor(() => expect(saveSheinStudioBatch).not.toHaveBeenCalled());
+  });
+
   it("loads the selected batch into the editor when clicking a recent batch card", async () => {
     listSheinStudioBatches.mockResolvedValue([
       {

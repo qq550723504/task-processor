@@ -8,6 +8,7 @@ import type {
   SDSGroupedPromptHistoryEntry,
   SheinStudioCreatedTask,
   SheinStudioArtworkModel,
+  SheinStudioArtworkGenerationMode,
   SheinStudioDraft,
   SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
@@ -133,6 +134,14 @@ export function normalizeVariationIntensity(
 
 export function normalizePromptMode(value: unknown) {
   return value === "raw" ? "raw" : "managed";
+}
+
+export function normalizeArtworkGenerationMode(
+  value: unknown,
+): SheinStudioArtworkGenerationMode | undefined {
+  return value === "hot_reference" || value === "theme_prompt"
+    ? value
+    : undefined;
 }
 
 function normalizeHotStyleReferenceImageUrls(value: unknown) {
@@ -408,6 +417,9 @@ function normalizeGroupedWorkspace(
     groupedImageMode: normalizeGroupedImageMode(candidate.groupedImageMode),
     selectedSdsImages: normalizeSelectedImages(candidate.selectedSdsImages),
     renderSizeImagesWithSds: candidate.renderSizeImagesWithSds ?? true,
+    artworkGenerationMode: normalizeArtworkGenerationMode(
+      candidate.artworkGenerationMode,
+    ),
     currentPrompt: candidate.currentPrompt,
     promptMode: normalizePromptMode(candidate.promptMode),
     promptHistory: normalizePromptHistory(candidate.promptHistory),
@@ -473,6 +485,22 @@ function buildLegacyGroupedWorkspace(
     ? raw.selectedIds.filter((item): item is string => typeof item === "string")
     : [];
   const createdTasks = normalizeCreatedTasks(raw.createdTasks);
+  const hotStyleReferenceImageUrls = normalizeHotStyleReferenceImageUrls(
+    raw.hotStyleReferenceImageUrls,
+  );
+  const hotStyleReferenceBrief = normalizeHotStyleReferenceText(
+    raw.hotStyleReferenceBrief,
+  );
+  const hotStyleReferencePrompt = normalizeHotStyleReferenceText(
+    raw.hotStyleReferencePrompt,
+  );
+  const artworkGenerationMode =
+    normalizeArtworkGenerationMode(raw.artworkGenerationMode) ??
+    (hotStyleReferenceImageUrls.length > 0 ||
+    hotStyleReferenceBrief.trim() ||
+    hotStyleReferencePrompt.trim()
+      ? "hot_reference"
+      : "theme_prompt");
   return [
     {
       id: `legacy-${primarySelection.parentProductId}-${primarySelection.variantId}`,
@@ -485,7 +513,8 @@ function buildLegacyGroupedWorkspace(
       groupedImageMode: normalizeGroupedImageMode(raw.groupedImageMode),
       selectedSdsImages: normalizeSelectedImages(raw.selectedSdsImages),
       renderSizeImagesWithSds: raw.renderSizeImagesWithSds ?? true,
-      currentPrompt: prompt,
+      artworkGenerationMode,
+      currentPrompt: artworkGenerationMode === "hot_reference" ? "" : prompt,
       promptMode: normalizePromptMode(raw.promptMode),
       promptHistory: [],
       productImageCount:
@@ -495,6 +524,9 @@ function buildLegacyGroupedWorkspace(
       productImagePrompt:
         typeof raw.productImagePrompt === "string" ? raw.productImagePrompt : "",
       productImagePrompts: normalizeProductImagePrompts(raw.productImagePrompts),
+      hotStyleReferenceImageUrls,
+      hotStyleReferenceBrief,
+      hotStyleReferencePrompt,
       artworkModel: normalizeArtworkModel(raw.artworkModel),
       transparentBackground: raw.transparentBackground ?? false,
       variationIntensity: normalizeVariationIntensity(raw.variationIntensity),
@@ -525,6 +557,9 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     groups.length > 0 ? groups : buildLegacyGroupedWorkspace(raw);
 
   return {
+    artworkGenerationMode: normalizeArtworkGenerationMode(
+      raw.artworkGenerationMode,
+    ),
     prompt: typeof raw.prompt === "string" ? raw.prompt : "",
     promptMode: normalizePromptMode(raw.promptMode),
     styleCount: raw.styleCount ?? "4",
@@ -633,6 +668,9 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     id: raw.id,
     tenantId: typeof raw.tenantId === "string" ? raw.tenantId : undefined,
     name: raw.name,
+    artworkGenerationMode: normalizeArtworkGenerationMode(
+      raw.artworkGenerationMode,
+    ),
     prompt: raw.prompt ?? "",
     promptMode: normalizePromptMode(raw.promptMode),
     styleCount: raw.styleCount ?? "4",

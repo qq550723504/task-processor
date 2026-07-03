@@ -127,6 +127,7 @@ import { getSDSBaselineReadiness } from "@/lib/api/sds-baseline";
 import { warmSDSBaselineForSelection } from "@/lib/api/sds-baseline";
 import { analyzeSheinStudioReferenceStyle } from "@/lib/api/shein-studio";
 import { startSheinStudioBatchRun } from "@/lib/api/shein-studio-batch-runs";
+import { uploadListingKitImages } from "@/lib/api/upload-images";
 import { getCurrentSubscription } from "@/lib/api/subscription";
 import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
@@ -201,6 +202,7 @@ export function SheinStudioWorkbench({
     generationWarningAction,
     groups,
     groupedImageMode,
+    artworkGenerationMode,
     hotStyleReferenceBrief,
     hotStyleReferenceImageUrls,
     hotStyleReferencePrompt,
@@ -239,6 +241,7 @@ export function SheinStudioWorkbench({
     setDesigns,
     setDraftWarning,
     setGroupedImageMode,
+    setArtworkGenerationMode,
     setHotStyleReferenceBrief,
     setHotStyleReferenceImageUrls,
     setHotStyleReferencePrompt,
@@ -447,6 +450,7 @@ export function SheinStudioWorkbench({
         groups,
         groupedImageMode,
         groupedSelections,
+        artworkGenerationMode,
         hotStyleReferenceBrief,
         hotStyleReferenceImageUrls,
         hotStyleReferencePrompt,
@@ -481,6 +485,7 @@ export function SheinStudioWorkbench({
       generationJobs,
       groups,
       groupedImageMode,
+      artworkGenerationMode,
       hotStyleReferenceBrief,
       hotStyleReferenceImageUrls,
       hotStyleReferencePrompt,
@@ -633,6 +638,15 @@ export function SheinStudioWorkbench({
       }),
     [activeSelection?.categoryPath, activeSelection?.productName],
   );
+  const uploadHotStyleReferenceImages = useCallback(async (files: File[]) => {
+    const uploaded = await uploadListingKitImages(files);
+    const urls =
+      uploaded.image_urls?.map((value) => value.trim()).filter(Boolean) ?? [];
+    if (urls.length === 0) {
+      throw new Error("Uploaded reference image URLs are missing.");
+    }
+    return urls;
+  }, []);
 
   useEffect(() => {
     hasLocalWorkflowStateRef.current = false;
@@ -748,6 +762,7 @@ export function SheinStudioWorkbench({
       productImageCount,
       productImagePrompt,
       productImagePrompts,
+      artworkGenerationMode,
       hotStyleReferenceBrief,
       hotStyleReferenceImageUrls,
       hotStyleReferencePrompt,
@@ -1588,8 +1603,10 @@ export function SheinStudioWorkbench({
                   onRestorePrompt: handlePromptChange,
                   onSaveBatch: handleSaveBatch,
                   analyzeReferenceStyle,
+                  uploadHotStyleReferenceImages,
                   setArtworkModel,
                   setGroupedImageMode,
+                  setArtworkGenerationMode,
                   setHotStyleReferenceBrief,
                   setHotStyleReferenceImageUrls:
                     handleHotStyleReferenceImageUrlsChange,
@@ -1613,6 +1630,7 @@ export function SheinStudioWorkbench({
                   artworkModel,
                   availableSdsImages,
                   groupedImageMode,
+                  artworkGenerationMode,
                   hotStyleReferenceBrief,
                   hotStyleReferenceImageUrls,
                   hotStyleReferencePrompt,

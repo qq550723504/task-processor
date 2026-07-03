@@ -16,6 +16,7 @@ import type { SheinStudioSelectableSDSImage } from "@/lib/shein-studio/sds-selec
 import type {
   SDSGroupedPromptHistoryEntry,
   SheinStudioArtworkModel,
+  SheinStudioArtworkGenerationMode,
   SheinStudioBatchStatusGroups,
   SheinStudioBatchItem,
   SheinStudioCreatedTask,
@@ -40,6 +41,7 @@ export type SheinStudioGenerationFormModel = {
   hotStyleReferenceImageUrls: string[];
   hotStyleReferenceBrief: string;
   hotStyleReferencePrompt: string;
+  artworkGenerationMode: SheinStudioArtworkGenerationMode;
   renderSizeImagesWithSds: boolean;
   transparentBackground: boolean;
   prompt: string;
@@ -94,11 +96,13 @@ export type SheinStudioGenerationActions = {
     sanitizedPrompt: string;
     warnings: string[];
   }>;
+  uploadHotStyleReferenceImages: (files: File[]) => Promise<string[]>;
   setImageStrategy: (value: SheinStudioImageStrategy) => void;
   setGroupedImageMode: (value: SheinStudioGroupedImageMode) => void;
   setHotStyleReferenceImageUrls: (value: string[]) => void;
   setHotStyleReferenceBrief: (value: string) => void;
   setHotStyleReferencePrompt: (value: string) => void;
+  setArtworkGenerationMode: (value: SheinStudioArtworkGenerationMode) => void;
   setSelectedSdsImages: (value: SheinStudioSelectedSDSImage[]) => void;
   setArtworkModel: (value: SheinStudioArtworkModel) => void;
   setProductImageCount: (value: string) => void;
@@ -136,6 +140,7 @@ export function SheinStudioGenerationPanel({
     hotStyleReferenceBrief,
     hotStyleReferenceImageUrls,
     hotStyleReferencePrompt,
+    artworkGenerationMode,
     imageStrategy,
     productImageCount,
     productImagePrompt,
@@ -186,11 +191,13 @@ export function SheinStudioGenerationPanel({
     onRestorePrompt,
     onSaveBatch,
     analyzeReferenceStyle,
+    uploadHotStyleReferenceImages,
     setArtworkModel,
     setGroupedImageMode,
     setHotStyleReferenceBrief,
     setHotStyleReferenceImageUrls,
     setHotStyleReferencePrompt,
+    setArtworkGenerationMode,
     setImageStrategy,
     setProductImageCount,
     setProductImagePrompt,
@@ -214,16 +221,74 @@ export function SheinStudioGenerationPanel({
   const [hotStyleReferenceWarnings, setHotStyleReferenceWarnings] = useState<
     string[]
   >([]);
+  const [
+    selectedHotStyleReferenceFiles,
+    setSelectedHotStyleReferenceFiles,
+  ] = useState<File[]>([]);
+  const [
+    isUploadingHotStyleReferenceImages,
+    setIsUploadingHotStyleReferenceImages,
+  ] = useState(false);
+  const [hotStyleReferenceUploadMessage, setHotStyleReferenceUploadMessage] =
+    useState("");
   const clearDerivedHotStyleState = () => {
     setHotStyleReferenceWarnings([]);
     setHotStyleReferenceBrief("");
     setHotStyleReferencePrompt("");
+  };
+  const handleArtworkGenerationModeChange = (
+    nextMode: SheinStudioArtworkGenerationMode,
+  ) => {
+    if (nextMode === artworkGenerationMode) {
+      return;
+    }
+    setArtworkGenerationMode(nextMode);
+    if (nextMode === "theme_prompt") {
+      setHotStyleReferenceWarnings([]);
+      setHotStyleReferenceImageUrls([]);
+      setHotStyleReferenceBrief("");
+      setHotStyleReferencePrompt("");
+      return;
+    }
+    setPrompt("");
   };
   const handleHotStyleReferenceImageUrlsChange = (nextUrls: string[]) => {
     if (!areHotStyleReferenceUrlsEqual(hotStyleReferenceImageUrls, nextUrls)) {
       clearDerivedHotStyleState();
     }
     setHotStyleReferenceImageUrls(nextUrls);
+  };
+  const handleUploadHotStyleReferenceImages = async () => {
+    if (
+      selectedHotStyleReferenceFiles.length === 0 ||
+      isUploadingHotStyleReferenceImages
+    ) {
+      return;
+    }
+    setIsUploadingHotStyleReferenceImages(true);
+    setHotStyleReferenceUploadMessage("");
+    try {
+      const uploadedUrls = await uploadHotStyleReferenceImages(
+        selectedHotStyleReferenceFiles,
+      );
+      const nextUrls = [
+        ...hotStyleReferenceImageUrls,
+        ...uploadedUrls.map((value) => value.trim()).filter(Boolean),
+      ];
+      handleHotStyleReferenceImageUrlsChange(nextUrls);
+      setSelectedHotStyleReferenceFiles([]);
+      setHotStyleReferenceUploadMessage(
+        `已上传 ${uploadedUrls.length} 张参考图。`,
+      );
+    } catch (error) {
+      console.error(
+        "shein studio hot style reference upload failed",
+        error instanceof Error ? error.message : error,
+      );
+      setHotStyleReferenceUploadMessage("参考图上传失败，请稍后重试。");
+    } finally {
+      setIsUploadingHotStyleReferenceImages(false);
+    }
   };
   const handleAnalyzeReferenceStyle = async () => {
     if (hotStyleReferenceImageUrls.length === 0 || isAnalyzingReferenceStyle) {
@@ -348,11 +413,19 @@ export function SheinStudioGenerationPanel({
           disabled={isGenerating}
           groupedImageMode={groupedImageMode}
           handleAnalyzeReferenceStyle={handleAnalyzeReferenceStyle}
+          handleUploadHotStyleReferenceImages={
+            handleUploadHotStyleReferenceImages
+          }
+          artworkGenerationMode={artworkGenerationMode}
           hotStyleReferenceBrief={hotStyleReferenceBrief}
           hotStyleReferenceImageUrls={hotStyleReferenceImageUrls}
           hotStyleReferencePrompt={hotStyleReferencePrompt}
           hotStyleReferenceWarnings={hotStyleReferenceWarnings}
+          hotStyleReferenceUploadMessage={hotStyleReferenceUploadMessage}
           isAnalyzingReferenceStyle={isAnalyzingReferenceStyle}
+          isUploadingHotStyleReferenceImages={
+            isUploadingHotStyleReferenceImages
+          }
           prompt={prompt}
           promptMode={promptMode}
           promptHistory={promptHistory}
@@ -362,6 +435,11 @@ export function SheinStudioGenerationPanel({
           setGroupedImageMode={setGroupedImageMode}
           setHotStyleReferenceImageUrls={handleHotStyleReferenceImageUrlsChange}
           setHotStyleReferencePrompt={setHotStyleReferencePrompt}
+          selectedHotStyleReferenceFiles={selectedHotStyleReferenceFiles}
+          setArtworkGenerationMode={handleArtworkGenerationModeChange}
+          setSelectedHotStyleReferenceFiles={
+            setSelectedHotStyleReferenceFiles
+          }
           setPrompt={setPrompt}
           setPromptMode={setPromptMode}
           setStyleCount={setStyleCount}

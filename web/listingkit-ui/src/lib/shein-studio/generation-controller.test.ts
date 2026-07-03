@@ -259,6 +259,25 @@ describe("SHEIN Studio generation controller", () => {
     });
   });
 
+  it("uses only the analyzed hot style prompt in hot reference mode", () => {
+    expect(
+      buildHotStyleReferenceGenerationInput({
+        artworkGenerationMode: "hot_reference",
+        prompt: "summer flowers",
+        hotStyleReferenceBrief: "retro badge with cream and red palette",
+        hotStyleReferencePrompt: "Create an original retro badge.",
+        productReferenceImageUrls: ["https://example.com/mockup.png"],
+        hotStyleReferenceImageUrls: ["https://example.com/hot-ref.png"],
+      }),
+    ).toEqual({
+      prompt: "Create an original retro badge.",
+      productReferenceImageUrls: [
+        "https://example.com/hot-ref.png",
+        "https://example.com/mockup.png",
+      ],
+    });
+  });
+
   it("gates hot style reference images behind a non-empty sanitized prompt", () => {
     expect(
       buildHotStyleReferenceGenerationInput({

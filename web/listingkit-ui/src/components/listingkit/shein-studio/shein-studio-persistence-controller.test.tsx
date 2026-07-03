@@ -135,6 +135,7 @@ describe("buildSheinStudioDraftPersistenceState", () => {
       groups: [],
       groupedImageMode: "shared_by_size",
       groupedSelections: [],
+      artworkGenerationMode: "hot_reference",
       hotStyleReferenceBrief: "reference brief",
       hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
       hotStyleReferencePrompt: "reference prompt",

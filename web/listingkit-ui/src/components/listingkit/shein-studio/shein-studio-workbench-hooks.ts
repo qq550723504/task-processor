@@ -35,6 +35,7 @@ import type { SDSRatioMatch } from "@/lib/shein-studio/gallery-handoff";
 import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioArtworkModel,
+  SheinStudioArtworkGenerationMode,
   SheinStudioBatchQueueMode,
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
@@ -97,6 +98,7 @@ type WorkbenchDraftState = {
   hotStyleReferenceImageUrls: string[];
   hotStyleReferenceBrief: string;
   hotStyleReferencePrompt: string;
+  artworkGenerationMode: SheinStudioArtworkGenerationMode;
   prompt: string;
   promptMode: "managed" | "raw";
   regeneratingId: string;
@@ -500,6 +502,7 @@ export function useSheinStudioDraftPersistence(
     (overrides?: DraftOverrides) =>
       buildSheinStudioDraftInput({
         updatedAt: state.persistedUpdatedAt,
+        artworkGenerationMode: state.artworkGenerationMode,
         prompt: state.prompt,
         promptMode: state.promptMode,
         styleCount: state.styleCount,

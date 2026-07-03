@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -375,7 +376,7 @@ func TestStudioSessionServiceCreateBatchIgnoresInFlightGenerationState(t *testin
 	ctx := context.Background()
 
 	detail, err := svc.UpsertStudioBatch(ctx, &UpsertStudioBatchRequest{
-		Prompt:       "retro cherries",
+		Prompt:       "",
 		StyleCount:   "2",
 		SheinStoreID: "store-1",
 		Selection:    testStudioSelection(),
@@ -478,7 +479,7 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 	ctx := context.Background()
 
 	detail, err := svc.UpsertStudioBatch(ctx, &UpsertStudioBatchRequest{
-		Prompt:       "retro cherries",
+		Prompt:       "",
 		StyleCount:   "2",
 		SheinStoreID: "store-1",
 		Selection:    testStudioSelection(),
@@ -589,6 +590,66 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 			repo.listDesignsCalls,
 			listDesignCallsBeforeGetBatch+1,
 		)
+	}
+}
+
+func TestStudioSessionServiceUpdatesExistingBatchWithoutSelection(t *testing.T) {
+	svc := newStudioSessionTestService()
+	ctx := context.Background()
+
+	created, err := svc.UpsertStudioBatch(ctx, &UpsertStudioBatchRequest{
+		Prompt:       "retro cherries",
+		StyleCount:   "2",
+		SheinStoreID: "store-1",
+		Selection:    testStudioSelection(),
+		BatchName:    "retro cherries",
+	})
+	if err != nil {
+		t.Fatalf("create batch: %v", err)
+	}
+
+	updated, err := svc.UpsertStudioBatch(ctx, &UpsertStudioBatchRequest{
+		ID:           created.Batch.ID,
+		Prompt:       "retro cherries updated",
+		StyleCount:   "4",
+		SheinStoreID: "store-9",
+	})
+	if err != nil {
+		t.Fatalf("update batch without selection: %v", err)
+	}
+	if updated.Batch == nil {
+		t.Fatal("updated batch = nil, want saved batch")
+	}
+	if got, want := updated.Batch.Prompt, "retro cherries updated"; got != want {
+		t.Fatalf("prompt = %q, want %q", got, want)
+	}
+	if updated.Batch.Selection.VariantID != testStudioSelection().VariantID {
+		t.Fatalf("selection variant = %d, want existing %d", updated.Batch.Selection.VariantID, testStudioSelection().VariantID)
+	}
+	if got, want := updated.Batch.SelectionKey, buildStudioSelectionKey(testStudioSelection()); got != want {
+		t.Fatalf("selection key = %q, want %q", got, want)
+	}
+}
+
+func TestStudioSessionServiceRejectsMixedPromptAndHotStyleReference(t *testing.T) {
+	svc := newStudioSessionTestService()
+	ctx := context.Background()
+
+	_, err := svc.UpsertStudioBatch(ctx, &UpsertStudioBatchRequest{
+		Prompt:     "retro cherries",
+		StyleCount: "1",
+		Selection:  testStudioSelection(),
+		HotStyleReferenceImageURLs: []string{
+			"https://cdn.example.com/hot-style-ref.png",
+		},
+		HotStyleReferenceBrief:  "embroidered cherry badge",
+		HotStyleReferencePrompt: "extract cherry badge print features",
+	})
+	if err == nil {
+		t.Fatal("upsert mixed prompt and hot style reference succeeded, want error")
+	}
+	if !strings.Contains(err.Error(), "theme prompt and hot style reference are mutually exclusive") {
+		t.Fatalf("error = %v, want mutually exclusive validation", err)
 	}
 }
 

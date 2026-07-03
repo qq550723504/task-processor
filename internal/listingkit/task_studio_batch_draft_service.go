@@ -83,20 +83,29 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	if s.repo == nil {
 		return nil, fmt.Errorf("studio session repository is not configured")
 	}
-	if req == nil || req.Selection == nil || req.Selection.VariantID <= 0 {
+	if req == nil {
 		return nil, fmt.Errorf("selection is required")
 	}
-
-	req.Selection.DesignType = studiodomain.NormalizeBatchDesignType(req.Selection.DesignType)
+	if hasMixedStudioArtworkGenerationInputs(req) {
+		return nil, fmt.Errorf("theme prompt and hot style reference are mutually exclusive")
+	}
 
 	var session *SheinStudioSession
 	var err error
 	isCreate := strings.TrimSpace(req.ID) == ""
 	normalizedReq := req
 	if isCreate {
+		if req.Selection == nil || req.Selection.VariantID <= 0 {
+			return nil, fmt.Errorf("selection is required")
+		}
 		normalizedReq = sanitizeStudioBatchCreateRequest(req, isCreate)
-	}
-	if strings.TrimSpace(req.ID) != "" {
+		session = &SheinStudioSession{
+			ID:                      uuid.NewString(),
+			UserID:                  RequestUserIDFromContext(ctx),
+			SelectionKey:            buildStudioSelectionKey(req.Selection),
+			RenderSizeImagesWithSDS: true,
+		}
+	} else {
 		session, err = s.repo.GetSession(ctx, req.ID)
 		if err != nil {
 			return nil, err
@@ -107,14 +116,19 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 		if err := validateStudioSessionExpectedUpdatedAt(session.UpdatedAt, studioSessionStringPtr(req.ExpectedUpdatedAt)); err != nil {
 			return nil, err
 		}
-	} else {
-		session = &SheinStudioSession{
-			ID:                      uuid.NewString(),
-			UserID:                  RequestUserIDFromContext(ctx),
-			SelectionKey:            buildStudioSelectionKey(req.Selection),
-			RenderSizeImagesWithSDS: true,
+		if req.Selection == nil {
+			existingSelection := SheinStudioSelection(session.Selection)
+			if existingSelection.VariantID <= 0 {
+				return nil, fmt.Errorf("selection is required")
+			}
+			cloned := *req
+			cloned.Selection = &existingSelection
+			normalizedReq = &cloned
+		} else if req.Selection.VariantID <= 0 {
+			return nil, fmt.Errorf("selection is required")
 		}
 	}
+	normalizedReq.Selection.DesignType = studiodomain.NormalizeBatchDesignType(normalizedReq.Selection.DesignType)
 	existingBatchName := strings.TrimSpace(session.BatchName)
 
 	session.SelectionKey = buildStudioSelectionKey(normalizedReq.Selection)
@@ -192,6 +206,22 @@ func sanitizeStudioBatchCreateRequest(req *UpsertStudioBatchRequest, isCreate bo
 	cloned := *req
 	cloned.GenerationJobs = nil
 	return &cloned
+}
+
+func hasMixedStudioArtworkGenerationInputs(req *UpsertStudioBatchRequest) bool {
+	if req == nil || strings.TrimSpace(req.Prompt) == "" {
+		return false
+	}
+	if strings.TrimSpace(req.HotStyleReferenceBrief) != "" ||
+		strings.TrimSpace(req.HotStyleReferencePrompt) != "" {
+		return true
+	}
+	for _, value := range req.HotStyleReferenceImageURLs {
+		if strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *taskStudioBatchDraftService) DeleteStudioBatch(ctx context.Context, batchID string) error {

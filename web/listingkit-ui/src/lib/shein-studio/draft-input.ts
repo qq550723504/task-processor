@@ -4,6 +4,7 @@ import type { GroupedSDSSelectionEligibility } from "@/lib/types/sds-baseline";
 import type {
   SheinStudioGroupedWorkspace,
   SheinStudioArtworkModel,
+  SheinStudioArtworkGenerationMode,
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
@@ -19,6 +20,7 @@ import type { SheinStudioSaveInput } from "@/lib/utils/shein-studio-batches";
 
 type BuildSheinStudioDraftInputArgs = {
   updatedAt?: string;
+  artworkGenerationMode?: SheinStudioArtworkGenerationMode;
   prompt: string;
   promptMode?: "managed" | "raw";
   styleCount: string;
@@ -56,6 +58,14 @@ function toPersistedGroupedWorkspace(
     return null;
   }
 
+  const artworkInputs = resolveExclusiveArtworkInputs({
+    artworkGenerationMode: group.artworkGenerationMode,
+    prompt: group.currentPrompt,
+    hotStyleReferenceImageUrls: group.hotStyleReferenceImageUrls,
+    hotStyleReferenceBrief: group.hotStyleReferenceBrief,
+    hotStyleReferencePrompt: group.hotStyleReferencePrompt,
+  });
+
   return {
     id: group.id,
     name: group.name,
@@ -79,14 +89,15 @@ function toPersistedGroupedWorkspace(
     groupedImageMode: group.groupedImageMode,
     selectedSdsImages: group.selectedSdsImages,
     renderSizeImagesWithSds: group.renderSizeImagesWithSds,
-    currentPrompt: group.currentPrompt,
+    artworkGenerationMode: artworkInputs.artworkGenerationMode,
+    currentPrompt: artworkInputs.prompt,
     promptHistory: group.promptHistory,
     productImageCount: group.productImageCount,
     productImagePrompt: group.productImagePrompt,
     productImagePrompts: group.productImagePrompts,
-    hotStyleReferenceImageUrls: group.hotStyleReferenceImageUrls,
-    hotStyleReferenceBrief: group.hotStyleReferenceBrief,
-    hotStyleReferencePrompt: group.hotStyleReferencePrompt,
+    hotStyleReferenceImageUrls: artworkInputs.hotStyleReferenceImageUrls,
+    hotStyleReferenceBrief: artworkInputs.hotStyleReferenceBrief,
+    hotStyleReferencePrompt: artworkInputs.hotStyleReferencePrompt,
     artworkModel: group.artworkModel,
     transparentBackground: group.transparentBackground,
     variationIntensity: group.variationIntensity,
@@ -100,6 +111,56 @@ function toPersistedGroupedWorkspace(
       existing: group.legacyCompatibilitySnapshot,
     }),
     updatedAt: group.updatedAt,
+  };
+}
+
+function hasHotStyleReferenceInput(input: {
+  hotStyleReferenceImageUrls?: string[];
+  hotStyleReferenceBrief?: string;
+  hotStyleReferencePrompt?: string;
+}) {
+  return (
+    (input.hotStyleReferenceImageUrls ?? []).some((value) => value.trim()) ||
+    Boolean(input.hotStyleReferenceBrief?.trim()) ||
+    Boolean(input.hotStyleReferencePrompt?.trim())
+  );
+}
+
+function resolveArtworkGenerationMode(input: {
+  artworkGenerationMode?: SheinStudioArtworkGenerationMode;
+  hotStyleReferenceImageUrls?: string[];
+  hotStyleReferenceBrief?: string;
+  hotStyleReferencePrompt?: string;
+}): SheinStudioArtworkGenerationMode {
+  if (input.artworkGenerationMode) {
+    return input.artworkGenerationMode;
+  }
+  return hasHotStyleReferenceInput(input) ? "hot_reference" : "theme_prompt";
+}
+
+function resolveExclusiveArtworkInputs(input: {
+  artworkGenerationMode?: SheinStudioArtworkGenerationMode;
+  prompt: string;
+  hotStyleReferenceImageUrls?: string[];
+  hotStyleReferenceBrief?: string;
+  hotStyleReferencePrompt?: string;
+}) {
+  const artworkGenerationMode = resolveArtworkGenerationMode(input);
+  if (artworkGenerationMode === "hot_reference") {
+    return {
+      artworkGenerationMode,
+      prompt: "",
+      hotStyleReferenceImageUrls: input.hotStyleReferenceImageUrls ?? [],
+      hotStyleReferenceBrief: input.hotStyleReferenceBrief ?? "",
+      hotStyleReferencePrompt: input.hotStyleReferencePrompt ?? "",
+    };
+  }
+  return {
+    artworkGenerationMode,
+    prompt: input.prompt,
+    hotStyleReferenceImageUrls: [],
+    hotStyleReferenceBrief: "",
+    hotStyleReferencePrompt: "",
   };
 }
 
@@ -153,18 +214,26 @@ function buildLegacyCompatibilitySnapshot({
 export function buildSheinStudioDraftInput(
   args: BuildSheinStudioDraftInputArgs,
 ): SheinStudioSaveInput {
+  const artworkInputs = resolveExclusiveArtworkInputs(args);
+  const groupedPrimarySelection = args.groups
+    ?.map((group) => buildSelectionSummary(group.primarySelection))
+    .find(Boolean);
+  const primarySelection =
+    buildSelectionSummary(args.selection) ?? groupedPrimarySelection;
+
   return {
     updatedAt: args.updatedAt,
-    prompt: args.prompt,
+    artworkGenerationMode: artworkInputs.artworkGenerationMode,
+    prompt: artworkInputs.prompt,
     promptMode: args.promptMode,
     styleCount: args.styleCount,
     variationIntensity: args.variationIntensity,
     productImageCount: args.productImageCount,
     productImagePrompt: args.productImagePrompt,
     productImagePrompts: args.productImagePrompts,
-    hotStyleReferenceImageUrls: args.hotStyleReferenceImageUrls ?? [],
-    hotStyleReferenceBrief: args.hotStyleReferenceBrief ?? "",
-    hotStyleReferencePrompt: args.hotStyleReferencePrompt ?? "",
+    hotStyleReferenceImageUrls: artworkInputs.hotStyleReferenceImageUrls,
+    hotStyleReferenceBrief: artworkInputs.hotStyleReferenceBrief,
+    hotStyleReferencePrompt: artworkInputs.hotStyleReferencePrompt,
     artworkModel: args.artworkModel,
     transparentBackground: args.transparentBackground,
     sheinStoreId: args.sheinStoreId,
@@ -172,7 +241,7 @@ export function buildSheinStudioDraftInput(
     groupedImageMode: args.groupedImageMode,
     selectedSdsImages: args.selectedSdsImages,
     renderSizeImagesWithSds: args.renderSizeImagesWithSds,
-    selection: buildSelectionSummary(args.selection),
+    selection: primarySelection,
     legacyCompatibilitySnapshot: buildLegacyCompatibilitySnapshot({
       designs: args.designs,
       selectedIds: args.selectedIds,

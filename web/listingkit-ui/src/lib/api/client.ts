@@ -59,6 +59,19 @@ function buildApiUrl(path: string, query?: QueueQuery) {
   return `${API_BASE}${path}${queryString ? `?${queryString}` : ""}`;
 }
 
+function apiErrorMessage(status: number, payload: unknown) {
+  const serverMessage =
+    payload &&
+    typeof payload === "object" &&
+    "message" in payload &&
+    typeof payload.message === "string"
+      ? payload.message.trim()
+      : "";
+  return serverMessage
+    ? `ListingKit API request failed: ${status}: ${serverMessage}`
+    : `ListingKit API request failed: ${status}`;
+}
+
 export async function apiRequest<T>(
   path: string,
   { method = "GET", query, body, conditional, timeoutMs, signal }: RequestOptions = {},
@@ -116,7 +129,7 @@ export async function apiRequest<T>(
 
   if (!response.ok) {
     throw new ApiError(
-      `ListingKit API request failed: ${response.status}`,
+      apiErrorMessage(response.status, payload),
       response.status,
       payload,
     );

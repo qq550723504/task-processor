@@ -6,6 +6,7 @@ import { mergeSheinStudioDraftState } from "@/components/listingkit/shein-studio
 import type { SheinStudioWorkbenchController } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 import type {
   SheinStudioArtworkModel,
+  SheinStudioArtworkGenerationMode,
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
@@ -71,6 +72,7 @@ type DraftPersistenceProjectionParams = {
   hotStyleReferenceBrief: string;
   hotStyleReferenceImageUrls: string[];
   hotStyleReferencePrompt: string;
+  artworkGenerationMode: SheinStudioArtworkGenerationMode;
   imageStrategy: SheinStudioImageStrategy;
   isCreatingTasks: boolean;
   isGenerating: boolean;
@@ -109,6 +111,7 @@ export function buildSheinStudioDraftPersistenceState({
   hotStyleReferenceBrief,
   hotStyleReferenceImageUrls,
   hotStyleReferencePrompt,
+  artworkGenerationMode,
   imageStrategy,
   isCreatingTasks,
   isGenerating,
@@ -144,6 +147,7 @@ export function buildSheinStudioDraftPersistenceState({
     hotStyleReferenceBrief,
     hotStyleReferenceImageUrls,
     hotStyleReferencePrompt,
+    artworkGenerationMode,
     imageStrategy,
     isCreatingTasks,
     isGenerating,
@@ -181,6 +185,7 @@ export function projectLocalDraftRecovery({ draft }: LocalDraftRecoveryParams) {
       hotStyleReferenceImageUrls: draftState.hotStyleReferenceImageUrls,
       hotStyleReferenceBrief: draftState.hotStyleReferenceBrief,
       hotStyleReferencePrompt: draftState.hotStyleReferencePrompt,
+      artworkGenerationMode: draftState.artworkGenerationMode,
       artworkModel: draftState.artworkModel,
       transparentBackground: draftState.transparentBackground,
       sheinStoreId: draftState.sheinStoreId,

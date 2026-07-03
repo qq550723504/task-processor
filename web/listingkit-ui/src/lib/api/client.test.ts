@@ -258,4 +258,31 @@ describe("apiRequest", () => {
       payload: { message: "Invalid JSON response: 502" },
     });
   });
+
+  it("includes server validation messages in ApiError text", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            error: "studio_batch_save_failed",
+            message: "selection is required",
+          }),
+          {
+            status: 400,
+            headers: { "content-type": "application/json" },
+          },
+        ),
+      ),
+    );
+
+    await expect(apiRequest("/studio/batches", { method: "POST" })).rejects.toMatchObject({
+      message: "ListingKit API request failed: 400: selection is required",
+      status: 400,
+      payload: {
+        error: "studio_batch_save_failed",
+        message: "selection is required",
+      },
+    });
+  });
 });
