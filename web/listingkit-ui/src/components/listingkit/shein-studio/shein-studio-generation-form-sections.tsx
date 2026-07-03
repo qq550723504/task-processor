@@ -82,6 +82,8 @@ export function ArtworkGenerationSettings({
   transparentBackground: boolean;
   variationIntensity: SheinStudioVariationIntensity;
 }) {
+  const hotStyleReferenceAnalyzed = hotStyleReferenceBrief.trim().length > 0;
+
   return (
     <div className="space-y-4 rounded-[1.5rem] border border-emerald-200 bg-[linear-gradient(135deg,_#ecfdf5,_#f8fafc)] px-4 py-4 dark:border-emerald-500/25 dark:bg-emerald-950/15">
       <SectionHeading
@@ -161,9 +163,13 @@ export function ArtworkGenerationSettings({
         />
         <Textarea
           className="min-h-24 rounded-lg px-3 py-2"
-          disabled={disabled}
+          disabled={disabled || !hotStyleReferenceAnalyzed}
           onChange={(event) => setHotStyleReferencePrompt(event.target.value)}
-          placeholder="提取后可在这里微调风格要求。"
+          placeholder={
+            hotStyleReferenceAnalyzed
+              ? "提取后可在这里微调风格要求。"
+              : "先提取热销款风格后再微调。"
+          }
           value={hotStyleReferencePrompt}
         />
         {hotStyleReferenceBrief ? (

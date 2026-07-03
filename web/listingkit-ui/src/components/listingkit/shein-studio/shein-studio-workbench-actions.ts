@@ -95,6 +95,7 @@ type UseSheinStudioDesignActionsParams = {
   productImageCount: string;
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
+  hotStyleReferenceBrief: string;
   hotStyleReferenceImageUrls: string[];
   hotStyleReferencePrompt: string;
   prompt: string;
@@ -141,6 +142,7 @@ export function useSheinStudioDesignActions({
   productImageCount,
   productImagePrompt,
   productImagePrompts,
+  hotStyleReferenceBrief,
   hotStyleReferenceImageUrls,
   hotStyleReferencePrompt,
   prompt,
@@ -274,6 +276,7 @@ export function useSheinStudioDesignActions({
         groupedSelections,
         groups: nextGroups,
         hasLocalWorkflowStateRef,
+        hotStyleReferenceBrief,
         hotStyleReferenceImageUrls,
         hotStyleReferencePrompt,
         navigateToStep,
@@ -399,6 +402,7 @@ export function useSheinStudioDesignActions({
       const targetSelection = target?.selection ?? regenerationSelection;
       const generationInput = buildHotStyleReferenceGenerationInput({
         prompt,
+        hotStyleReferenceBrief,
         hotStyleReferencePrompt,
         productReferenceImageUrls:
           buildSDSProductReferenceImageUrls(targetSelection),

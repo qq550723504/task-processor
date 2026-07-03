@@ -640,6 +640,33 @@ describe("SheinStudioGenerationPanel", () => {
     );
   });
 
+  it("keeps hot style prompt editing locked until reference style extraction succeeds", async () => {
+    const user = userEvent.setup();
+    const setHotStyleReferencePrompt = vi.fn();
+    const panelProps = buildPanelProps({
+      hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+      hotStyleReferencePrompt: "",
+    });
+
+    render(
+      <SheinStudioGenerationPanel
+        {...panelProps}
+        actions={{
+          ...panelProps.actions,
+          setHotStyleReferencePrompt,
+        }}
+      />,
+    );
+
+    const promptEditor = screen.getByPlaceholderText(
+      "先提取热销款风格后再微调。",
+    );
+    expect(promptEditor).toBeDisabled();
+
+    await user.type(promptEditor, "manual hot style prompt");
+    expect(setHotStyleReferencePrompt).not.toHaveBeenCalled();
+  });
+
   it("clears stale hot style prompt when extraction returns an empty sanitized prompt", async () => {
     const user = userEvent.setup();
     const analyzeReferenceStyle = vi.fn().mockResolvedValue({

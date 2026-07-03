@@ -56,6 +56,7 @@ type ExecuteStandaloneGenerationInput = {
   groupedSelections: GroupedSDSSelectionEligibility[];
   groups: SheinStudioGroupedWorkspace[];
   hasLocalWorkflowStateRef: { current: boolean };
+  hotStyleReferenceBrief?: string;
   hotStyleReferenceImageUrls?: string[];
   hotStyleReferencePrompt?: string;
   navigateToStep: (step: "review") => void;
@@ -222,13 +223,16 @@ export function replaceRegeneratedDesign({
 
 export function buildHotStyleReferenceGenerationInput(input: {
   prompt: string;
+  hotStyleReferenceBrief?: string;
   hotStyleReferencePrompt?: string;
   productReferenceImageUrls?: string[];
   hotStyleReferenceImageUrls?: string[];
 }) {
+  const referenceBrief = input.hotStyleReferenceBrief?.trim();
   const referencePrompt = input.hotStyleReferencePrompt?.trim();
+  const hasAnalyzedReference = Boolean(referenceBrief && referencePrompt);
   const promptParts = [input.prompt.trim()];
-  if (referencePrompt) {
+  if (hasAnalyzedReference && referencePrompt) {
     promptParts.push(
       "Hot-selling reference direction for original artwork:",
       referencePrompt,
@@ -237,7 +241,7 @@ export function buildHotStyleReferenceGenerationInput(input: {
   const normalizedProductReferences = normalizeReferenceImageUrls(
     input.productReferenceImageUrls,
   );
-  const normalizedHotStyleReferences = referencePrompt
+  const normalizedHotStyleReferences = hasAnalyzedReference
     ? normalizeReferenceImageUrls(input.hotStyleReferenceImageUrls)
     : [];
   return {
@@ -297,6 +301,7 @@ export async function executeStandaloneGeneration({
   groupedSelections,
   groups,
   hasLocalWorkflowStateRef,
+  hotStyleReferenceBrief,
   hotStyleReferenceImageUrls,
   hotStyleReferencePrompt,
   navigateToStep,
@@ -366,6 +371,7 @@ export async function executeStandaloneGeneration({
     targets.map(async (target) => {
       const generationInput = buildHotStyleReferenceGenerationInput({
         prompt,
+        hotStyleReferenceBrief,
         hotStyleReferencePrompt,
         productReferenceImageUrls:
           buildSDSProductReferenceImageUrls(target.selection),

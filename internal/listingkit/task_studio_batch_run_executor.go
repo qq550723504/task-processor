@@ -476,15 +476,19 @@ func buildStudioBatchRunDesignRequest(session *SheinStudioSession) *StudioDesign
 		return nil
 	}
 	hotStyleReferencePrompt := strings.TrimSpace(session.HotStyleReferencePrompt)
+	hotStyleReferenceBrief := strings.TrimSpace(session.HotStyleReferenceBrief)
+	includeHotStyleReference := hotStyleReferencePrompt != "" && hotStyleReferenceBrief != ""
 	referenceImageURLs := mergeStudioHotStyleReferenceImageURLs(
 		studioBatchRunReferenceImageURLs(session),
 		nil,
 	)
-	if hotStyleReferencePrompt != "" {
+	if includeHotStyleReference {
 		referenceImageURLs = mergeStudioHotStyleReferenceImageURLs(
 			studioBatchRunReferenceImageURLs(session),
 			session.HotStyleReferenceImageURLs,
 		)
+	} else {
+		hotStyleReferencePrompt = ""
 	}
 	return &StudioDesignRequest{
 		Prompt:                    buildStudioHotStyleGenerationPrompt(session.Prompt, hotStyleReferencePrompt),

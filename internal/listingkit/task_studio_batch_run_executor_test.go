@@ -557,6 +557,7 @@ func TestExecuteStudioBatchRunItemUsesHotStyleReferencePromptAndImagesForBatchGe
 			ID:                      "batch-1",
 			SavedAsBatch:            true,
 			Prompt:                  "summer flowers",
+			HotStyleReferenceBrief:  "retro badge with cream and red palette",
 			HotStyleReferencePrompt: "Create an original retro badge.",
 			HotStyleReferenceImageURLs: []string{
 				"https://example.com/hot-ref.png",
@@ -635,14 +636,14 @@ func TestExecuteStudioBatchRunItemUsesHotStyleReferencePromptAndImagesForBatchGe
 	}
 }
 
-func TestExecuteStudioBatchRunItemDoesNotUseHotStyleReferenceImagesWithoutSanitizedPrompt(t *testing.T) {
+func TestExecuteStudioBatchRunItemDoesNotUseHotStyleReferenceImagesWithoutSuccessfulAnalysis(t *testing.T) {
 	repo := NewMemStudioBatchRepository()
 	sessionRepo := &studioBatchRunExecutorSessionRepoStub{
 		session: &SheinStudioSession{
 			ID:                      "batch-1",
 			SavedAsBatch:            true,
 			Prompt:                  "summer flowers",
-			HotStyleReferencePrompt: "   ",
+			HotStyleReferencePrompt: "Create an original retro badge.",
 			HotStyleReferenceImageURLs: []string{
 				"https://example.com/hot-ref.png",
 			},

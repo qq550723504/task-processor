@@ -235,6 +235,7 @@ describe("SHEIN Studio generation controller", () => {
     expect(
       buildHotStyleReferenceGenerationInput({
         prompt: "summer flowers",
+        hotStyleReferenceBrief: "retro badge with cream and red palette",
         hotStyleReferencePrompt: "Create an original retro badge.",
         productReferenceImageUrls: [
           "https://example.com/mockup.png",
@@ -262,7 +263,22 @@ describe("SHEIN Studio generation controller", () => {
     expect(
       buildHotStyleReferenceGenerationInput({
         prompt: "summer flowers",
+        hotStyleReferenceBrief: "retro badge with cream and red palette",
         hotStyleReferencePrompt: "   ",
+        productReferenceImageUrls: ["https://example.com/mockup.png"],
+        hotStyleReferenceImageUrls: ["https://example.com/hot-ref.png"],
+      }),
+    ).toEqual({
+      prompt: "summer flowers",
+      productReferenceImageUrls: ["https://example.com/mockup.png"],
+    });
+  });
+
+  it("gates hot style reference images behind a successful analysis brief", () => {
+    expect(
+      buildHotStyleReferenceGenerationInput({
+        prompt: "summer flowers",
+        hotStyleReferencePrompt: "Create an original retro badge.",
         productReferenceImageUrls: ["https://example.com/mockup.png"],
         hotStyleReferenceImageUrls: ["https://example.com/hot-ref.png"],
       }),
@@ -276,6 +292,7 @@ describe("SHEIN Studio generation controller", () => {
     expect(
       buildHotStyleReferenceGenerationInput({
         prompt: "summer flowers",
+        hotStyleReferenceBrief: "retro badge with cream and red palette",
         hotStyleReferencePrompt: "Create an original retro badge.",
         productReferenceImageUrls: [
           "https://example.com/mockup-1.png",
@@ -328,6 +345,7 @@ describe("SHEIN Studio generation controller", () => {
       groupedSelections: [],
       groups,
       hasLocalWorkflowStateRef: localWorkflowStateRef,
+      hotStyleReferenceBrief: "retro badge with cream and red palette",
       hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
       hotStyleReferencePrompt: "Create an original retro badge.",
       navigateToStep,
@@ -480,7 +498,7 @@ describe("SHEIN Studio generation controller", () => {
     expect(localWorkflowStateRef.current).toBe(false);
   });
 
-  it("does not send hot style reference images during standalone generation without a sanitized prompt", async () => {
+  it("does not send hot style reference images during standalone generation without successful analysis", async () => {
     const setField = vi.fn();
     const persistDraft = vi.fn().mockResolvedValue(undefined);
     const navigateToStep = vi.fn();
@@ -499,7 +517,7 @@ describe("SHEIN Studio generation controller", () => {
       groups: [buildGroup()],
       hasLocalWorkflowStateRef: { current: false },
       hotStyleReferenceImageUrls: ["https://example.com/hot-ref.png"],
-      hotStyleReferencePrompt: "   ",
+      hotStyleReferencePrompt: "Create an original retro badge.",
       navigateToStep,
       persistDraft,
       prompt: "summer flowers",

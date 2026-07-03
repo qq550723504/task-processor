@@ -379,6 +379,7 @@ func TestBuildStudioBatchItemDesignRequestIncludesHotStyleReferencePromptAndPrio
 	batch := &StudioBatchRecord{
 		ID:                      "batch-1",
 		Prompt:                  "punk eagle collage",
+		HotStyleReferenceBrief:  "retro badge with cream and red palette",
 		HotStyleReferencePrompt: "Create an original retro badge.",
 		StyleCount:              "1",
 		VariationIntensity:      "medium",
@@ -451,13 +452,13 @@ func TestBuildStudioBatchItemDesignRequestIncludesHotStyleReferencePromptAndPrio
 	}
 }
 
-func TestBuildStudioBatchItemDesignRequestDropsHotStyleReferencesWithoutSanitizedPrompt(t *testing.T) {
+func TestBuildStudioBatchItemDesignRequestDropsHotStyleReferencesWithoutSuccessfulAnalysis(t *testing.T) {
 	t.Parallel()
 
 	batch := &StudioBatchRecord{
 		ID:                      "batch-1",
 		Prompt:                  "punk eagle collage",
-		HotStyleReferencePrompt: "   ",
+		HotStyleReferencePrompt: "Create an original retro badge.",
 		HotStyleReferenceImageURLs: SheinStudioStringList{
 			"https://example.com/hot-ref.png",
 		},
