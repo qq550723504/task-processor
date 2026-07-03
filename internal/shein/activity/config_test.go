@@ -4,6 +4,10 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"task-processor/internal/listingruntime"
+
+	"github.com/sirupsen/logrus"
 )
 
 // TestDefaultTimeLimitedDiscountConfig 验证默认配置的关键字段
@@ -116,5 +120,26 @@ func TestTimeLimitedDiscountConfig_Validate_StartEqualsEnd(t *testing.T) {
 	// StartTime.After(EndTime) 为 false，应通过
 	if err := cfg.Validate(); err != nil {
 		t.Errorf("equal start/end time should pass Validate, got: %v", err)
+	}
+}
+
+func TestBuildTimeLimitedDiscountConfigSchedulesStartWithFutureBuffer(t *testing.T) {
+	service := &activityRegistrationServiceImpl{
+		logger: logrus.NewEntry(logrus.New()),
+	}
+	before := time.Now()
+
+	cfg := service.buildTimeLimitedDiscountConfig(
+		&listingruntime.StoreInfo{Username: "seller"},
+		&listingruntime.OperationStrategy{},
+		"TIME_LIMITED:227:870",
+	)
+
+	minStart := before.Add(5 * time.Minute)
+	if cfg.StartTime.Before(minStart) {
+		t.Fatalf("StartTime = %s, want at least %s to avoid stale SHEIN activity start time", cfg.StartTime, minStart)
+	}
+	if cfg.EndTime.Sub(cfg.StartTime) < 14*24*time.Hour {
+		t.Fatalf("activity duration = %s, want the normal multi-day window preserved", cfg.EndTime.Sub(cfg.StartTime))
 	}
 }

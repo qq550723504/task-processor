@@ -154,12 +154,45 @@ func (s *activityRegistrationServiceImpl) validatePriceRisk(
 func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 	config TimeLimitedDiscountConfig,
 	goods []marketing.PromotionGoodsData,
+	calcReq *marketing.CalculateSupplyPriceRequest,
 	calcResp *marketing.CalculateSupplyPriceResponse,
 ) (*marketing.CreateActivityRequest, []string, map[string]string) {
 	// 构建SKC到计算结果的映射,方便快速查找
 	skcPriceMap := make(map[string]*marketing.SkcCalculationResult)
-	for i := range calcResp.Info {
-		skcPriceMap[calcResp.Info[i].SkcName] = &calcResp.Info[i]
+	if calcResp != nil {
+		for i := range calcResp.Info {
+			skcPriceMap[calcResp.Info[i].SkcName] = &calcResp.Info[i]
+		}
+	}
+
+	requestedSKUProductPriceBySKC := make(map[string]map[string]float64)
+	requestedSKUActPriceBySKC := make(map[string]map[string]float64)
+	requestedSKCMinActPrice := make(map[string]float64)
+	useRequestedActivityPrices := strings.EqualFold(config.PriceMode, "PROFIT")
+	if calcReq != nil {
+		for _, skcInfo := range calcReq.SkcInfoList {
+			if skcInfo.SkcName == "" {
+				continue
+			}
+			productPrices := make(map[string]float64, len(skcInfo.SkuInfoList))
+			actPrices := make(map[string]float64, len(skcInfo.SkuInfoList))
+			for _, skuInfo := range skcInfo.SkuInfoList {
+				if skuInfo.SkuCode == "" {
+					continue
+				}
+				if skuInfo.ProductPrice > 0 {
+					productPrices[skuInfo.SkuCode] = skuInfo.ProductPrice
+				}
+				if useRequestedActivityPrices && skuInfo.DiscountValue > 0 {
+					actPrices[skuInfo.SkuCode] = skuInfo.DiscountValue
+					if requestedSKCMinActPrice[skcInfo.SkcName] == 0 || skuInfo.DiscountValue < requestedSKCMinActPrice[skcInfo.SkcName] {
+						requestedSKCMinActPrice[skcInfo.SkcName] = skuInfo.DiscountValue
+					}
+				}
+			}
+			requestedSKUProductPriceBySKC[skcInfo.SkcName] = productPrices
+			requestedSKUActPriceBySKC[skcInfo.SkcName] = actPrices
+		}
 	}
 
 	costAndStockList := make([]marketing.CostAndStockInfo, 0, len(goods))
@@ -244,8 +277,14 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		// 构建SKU列表
 		addSkuList := make([]marketing.SkuCostInfo, 0, len(g.SkuInfoList))
 		for _, sku := range g.SkuInfoList {
-			skuActPrice := skuActPriceMap[sku.Sku]
-			skuCostPrice := skuProductPriceMap[sku.Sku]
+			skuActPrice := requestedSKUActPriceBySKC[g.Skc][sku.Sku]
+			if skuActPrice <= 0 {
+				skuActPrice = skuActPriceMap[sku.Sku]
+			}
+			skuCostPrice := requestedSKUProductPriceBySKC[g.Skc][sku.Sku]
+			if skuCostPrice <= 0 {
+				skuCostPrice = skuProductPriceMap[sku.Sku]
+			}
 			if skuCostPrice <= 0 {
 				skuCostPrice = promotionSKUUSSupplyPrice(sku, g.USSupplyPrice)
 			}
@@ -294,10 +333,13 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 			skippedByPriceInfo++
 			continue
 		}
-		activityPrice := skcCalcResult.SkuInfoList[0].PriceInfo.ProductAmount - skcCalcResult.SkuInfoList[0].PriceInfo.PromotionAmount
-		for _, skuCalc := range skcCalcResult.SkuInfoList[1:] {
-			if p := skuCalc.PriceInfo.ProductAmount - skuCalc.PriceInfo.PromotionAmount; p < activityPrice {
-				activityPrice = p
+		activityPrice := requestedSKCMinActPrice[g.Skc]
+		if activityPrice <= 0 {
+			activityPrice = skcCalcResult.SkuInfoList[0].PriceInfo.ProductAmount - skcCalcResult.SkuInfoList[0].PriceInfo.PromotionAmount
+			for _, skuCalc := range skcCalcResult.SkuInfoList[1:] {
+				if p := skuCalc.PriceInfo.ProductAmount - skuCalc.PriceInfo.PromotionAmount; p < activityPrice {
+					activityPrice = p
+				}
 			}
 		}
 
@@ -479,7 +521,7 @@ func (s *activityRegistrationServiceImpl) CreateTimeLimitedDiscountActivity(
 	}
 
 	// 7. 构建活动创建请求
-	createReq, filterReasons, _ := s.buildCreateActivityRequest(config, allGoods, calcResp)
+	createReq, filterReasons, _ := s.buildCreateActivityRequest(config, allGoods, calcReq, calcResp)
 
 	// 检查是否有符合条件的商品
 	if len(createReq.AddCostAndStockInfoList) == 0 {

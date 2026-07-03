@@ -34,6 +34,7 @@ type SheinSyncedProductRecord struct {
 	SyncVersion             string               `json:"sync_version,omitempty" gorm:"type:varchar(64);index"`
 	LastSyncAt              *time.Time           `json:"last_sync_at,omitempty"`
 	IsActive                bool                 `json:"is_active" gorm:"index;not null;default:true"`
+	SKUCostPriceInfoList    []SheinSKUCostPrice  `json:"sku_cost_price_info_list,omitempty" gorm:"-"`
 	CreatedAt               time.Time            `json:"created_at"`
 	UpdatedAt               time.Time            `json:"updated_at"`
 }

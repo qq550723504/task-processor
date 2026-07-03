@@ -453,6 +453,8 @@ func (s *activityRegistrationServiceImpl) calculateActivityStock(totalStock int,
 }
 
 // buildTimeLimitedDiscountConfig 构建限时折扣配置
+const defaultActivityStartLeadTime = 5 * time.Minute
+
 func (s *activityRegistrationServiceImpl) buildTimeLimitedDiscountConfig(
 	storeInfo *listingruntime.StoreInfo,
 	strategy *listingruntime.OperationStrategy,
@@ -464,10 +466,10 @@ func (s *activityRegistrationServiceImpl) buildTimeLimitedDiscountConfig(
 	// 生成活动名称（格式：#用户名#限时折扣#日期#序号/短后缀）
 	config.ActivityName = GenerateActivityNameForActivityKey(storeInfo.Username, activityKey)
 
-	// 设置活动时间（默认从现在开始，持续7天）
-	now := time.Now()
-	config.StartTime = now
-	config.EndTime = now.AddDate(0, 0, 15)
+	// SHEIN rejects create_activity when the start time has already passed by
+	// the time product query and price calculation finish.
+	config.StartTime = time.Now().Add(defaultActivityStartLeadTime)
+	config.EndTime = config.StartTime.AddDate(0, 0, 15)
 
 	// 配置定价模式（优先级：限时折扣专属 > 通用配置 > 默认值）
 	if strategy.TimeLimitedPriceMode != "" {

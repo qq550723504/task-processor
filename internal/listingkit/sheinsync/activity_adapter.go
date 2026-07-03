@@ -17,6 +17,7 @@ type SheinActivityEnrollmentCandidate struct {
 	CandidateVersion     string
 	SKCName              string
 	EffectiveCostPrice   *float64
+	SKUCostPriceInfoList []SheinSKUCostPrice
 	PriceSnapshot        string
 	InventorySnapshot    string
 	CalculatedProfitRate *float64
@@ -304,8 +305,40 @@ func buildPromotionCandidateProduct(candidate SheinActivityEnrollmentCandidate, 
 		SupplyPriceCurrency: priceSnapshot.Currency,
 		SitePriceInfoList:   []marketing.SitePriceInfo{{SalePrice: priceSnapshot.SalePrice, Currency: priceSnapshot.Currency, SiteCode: priceSnapshot.SubSite, IsAvailable: true}},
 		SkuPriceInfoList:    promotionSnapshotSKUPricesToMarketing(priceSnapshot.SKUPrices),
+		SkuCostPriceInfoList: promotionCandidateSKUCostsToMarketing(
+			candidate.SKUCostPriceInfoList,
+			priceSnapshot.Currency,
+		),
 	}
 	return product, "", true
+}
+
+func promotionCandidateSKUCostsToMarketing(costs []SheinSKUCostPrice, fallbackCurrency string) []marketing.SkuCostPriceInfo {
+	if len(costs) == 0 {
+		return nil
+	}
+	out := make([]marketing.SkuCostPriceInfo, 0, len(costs))
+	for _, cost := range costs {
+		if strings.TrimSpace(cost.SKUCode) == "" || cost.CostPrice <= 0 {
+			continue
+		}
+		currency := strings.TrimSpace(cost.Currency)
+		if currency == "" {
+			currency = strings.TrimSpace(fallbackCurrency)
+		}
+		out = append(out, marketing.SkuCostPriceInfo{
+			SkuCode:   strings.TrimSpace(cost.SKUCode),
+			CostPrice: cost.CostPrice,
+			Currency:  currency,
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].SkuCode < out[j].SkuCode
+	})
+	return out
 }
 
 func sheinActivityCandidateCostValue(value *float64) float64 {

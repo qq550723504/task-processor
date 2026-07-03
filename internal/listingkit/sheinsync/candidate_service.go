@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -358,9 +359,11 @@ func applySheinSDSCostGroupOverrides(
 	}
 	groupOverrides := make(map[string]float64)
 	productOverrides := make(map[int]float64)
+	productSKUCostOverrides := make(map[int][]SheinSKUCostPrice)
 	for index, product := range products {
-		if cost, ok := sheinCandidateVariantCostGroupOverride(product, fetchedCosts); ok {
+		if cost, skuCosts, ok := sheinCandidateVariantCostGroupOverride(product, fetchedCosts); ok {
 			productOverrides[index] = cost
+			productSKUCostOverrides[index] = skuCosts
 			continue
 		}
 		identity := ResolveSheinSDSCostGroupIdentity(product)
@@ -387,11 +390,13 @@ func applySheinSDSCostGroupOverrides(
 	for i := range out {
 		if cost, ok := productOverrides[i]; ok {
 			out[i].EffectiveCostPrice = sheinFloat64Ptr(cost)
+			out[i].SKUCostPriceInfoList = cloneSheinSKUCostPriceList(productSKUCostOverrides[i])
 			continue
 		}
 		key := sheinCandidateSDSCostGroupKey(out[i])
 		if cost, ok := groupOverrides[key]; ok {
 			out[i].EffectiveCostPrice = sheinFloat64Ptr(cost)
+			out[i].SKUCostPriceInfoList = sheinCandidateSKUCostsFromGroupCost(out[i], cost)
 		}
 	}
 	return out, nil
@@ -434,30 +439,77 @@ func sheinCandidateSDSCostGroupKeysForProduct(product SheinSyncedProductRecord) 
 	return keys
 }
 
-func sheinCandidateVariantCostGroupOverride(product SheinSyncedProductRecord, fetchedCosts map[string]float64) (float64, bool) {
+func sheinCandidateVariantCostGroupOverride(product SheinSyncedProductRecord, fetchedCosts map[string]float64) (float64, []SheinSKUCostPrice, bool) {
 	var (
 		maxCost float64
 		found   bool
 	)
+	costBySKU := make(map[string]SheinSKUCostPrice)
 	for _, identity := range ResolveSheinSDSVariantCostGroupIdentities(product) {
-		if cost, ok := fetchedCosts[identity.GroupKey]; ok {
-			if !found || cost > maxCost {
-				maxCost = cost
-				found = true
+		if cost, ok := sheinCandidateCostForIdentity(identity, fetchedCosts); ok {
+			maxCost, found = sheinCandidateMaxCost(maxCost, found, cost)
+			for _, skuCode := range identity.SKUCodes {
+				skuCode = strings.TrimSpace(skuCode)
+				if skuCode == "" {
+					continue
+				}
+				costBySKU[skuCode] = SheinSKUCostPrice{SKUCode: skuCode, CostPrice: cost}
 			}
 			continue
 		}
-		for _, legacyKey := range identity.LegacyGroupKeys {
-			if cost, ok := fetchedCosts[legacyKey]; ok {
-				if !found || cost > maxCost {
-					maxCost = cost
-					found = true
-				}
-				break
-			}
+	}
+	if !found {
+		return 0, nil, false
+	}
+	return maxCost, sheinCandidateSortedSKUCosts(costBySKU), true
+}
+
+func sheinCandidateCostForIdentity(identity SheinSDSCostGroupIdentity, fetchedCosts map[string]float64) (float64, bool) {
+	if cost, ok := fetchedCosts[identity.GroupKey]; ok {
+		return cost, true
+	}
+	for _, legacyKey := range identity.LegacyGroupKeys {
+		if cost, ok := fetchedCosts[legacyKey]; ok {
+			return cost, true
 		}
 	}
-	return maxCost, found
+	return 0, false
+}
+
+func sheinCandidateMaxCost(current float64, found bool, cost float64) (float64, bool) {
+	if !found || cost > current {
+		return cost, true
+	}
+	return current, found
+}
+
+func sheinCandidateSKUCostsFromGroupCost(product SheinSyncedProductRecord, cost float64) []SheinSKUCostPrice {
+	if cost <= 0 {
+		return nil
+	}
+	costBySKU := make(map[string]SheinSKUCostPrice)
+	for _, skuCode := range SheinSyncedProductSKUCodes(product) {
+		skuCode = strings.TrimSpace(skuCode)
+		if skuCode == "" {
+			continue
+		}
+		costBySKU[skuCode] = SheinSKUCostPrice{SKUCode: skuCode, CostPrice: cost}
+	}
+	return sheinCandidateSortedSKUCosts(costBySKU)
+}
+
+func sheinCandidateSortedSKUCosts(costBySKU map[string]SheinSKUCostPrice) []SheinSKUCostPrice {
+	if len(costBySKU) == 0 {
+		return nil
+	}
+	out := make([]SheinSKUCostPrice, 0, len(costBySKU))
+	for _, cost := range costBySKU {
+		out = append(out, cost)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].SKUCode < out[j].SKUCode
+	})
+	return out
 }
 
 func calculateSheinCandidateProfitRate(costPrice *float64, priceSnapshot string) *float64 {

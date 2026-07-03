@@ -149,6 +149,7 @@ func cloneSheinSyncedProductRecord(row listingkit.SheinSyncedProductRecord) list
 	row.AutoCostPrice = cloneFloat64Ptr(row.AutoCostPrice)
 	row.ManualCostPrice = cloneFloat64Ptr(row.ManualCostPrice)
 	row.EffectiveCostPrice = cloneFloat64Ptr(row.EffectiveCostPrice)
+	row.SKUCostPriceInfoList = append([]listingkit.SheinSKUCostPrice(nil), row.SKUCostPriceInfoList...)
 	return row
 }
 
@@ -161,6 +162,7 @@ func cloneSheinSyncJobRecord(row listingkit.SheinSyncJobRecord) listingkit.Shein
 func cloneSheinCandidateRecord(row listingkit.SheinActivityCandidateRecord) listingkit.SheinActivityCandidateRecord {
 	row.EffectiveCostPrice = cloneFloat64Ptr(row.EffectiveCostPrice)
 	row.CalculatedProfitRate = cloneFloat64Ptr(row.CalculatedProfitRate)
+	row.SKUCostPriceInfoList = append([]listingkit.SheinSKUCostPrice(nil), row.SKUCostPriceInfoList...)
 	return row
 }
 

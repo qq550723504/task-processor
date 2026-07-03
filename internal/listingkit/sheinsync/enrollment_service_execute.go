@@ -184,6 +184,7 @@ func (s *sheinEnrollmentService) executeCandidates(
 			CandidateVersion:     candidate.CandidateVersion,
 			SKCName:              candidate.SKCName,
 			EffectiveCostPrice:   cloneSheinEnrollmentFloat64(candidate.EffectiveCostPrice),
+			SKUCostPriceInfoList: cloneSheinSKUCostPriceList(candidate.SKUCostPriceInfoList),
 			PriceSnapshot:        candidate.PriceSnapshot,
 			InventorySnapshot:    candidate.InventorySnapshot,
 			CalculatedProfitRate: cloneSheinEnrollmentFloat64(candidate.CalculatedProfitRate),

@@ -839,12 +839,14 @@ func cloneSheinCandidateTestProduct(row SheinSyncedProductRecord) SheinSyncedPro
 	row.PublishTime = cloneServiceTestTime(row.PublishTime)
 	row.FirstShelfTime = cloneServiceTestTime(row.FirstShelfTime)
 	row.LastSyncAt = cloneServiceTestTime(row.LastSyncAt)
+	row.SKUCostPriceInfoList = cloneSheinSKUCostPriceList(row.SKUCostPriceInfoList)
 	return row
 }
 
 func cloneSheinCandidateTestCandidate(row SheinActivityCandidateRecord) SheinActivityCandidateRecord {
 	row.EffectiveCostPrice = cloneServiceTestFloat64(row.EffectiveCostPrice)
 	row.CalculatedProfitRate = cloneServiceTestFloat64(row.CalculatedProfitRate)
+	row.SKUCostPriceInfoList = cloneSheinSKUCostPriceList(row.SKUCostPriceInfoList)
 	return row
 }
 

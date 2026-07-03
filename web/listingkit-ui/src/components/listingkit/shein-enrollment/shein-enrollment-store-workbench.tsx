@@ -71,11 +71,13 @@ function SheinEnrollmentActivityWorkbench({
     parseSheinActivityType(initialActivityType),
   );
   const [showExecutableOnly, setShowExecutableOnly] = useState(false);
+  const [candidateSkcKeyword, setCandidateSkcKeyword] = useState("");
   const [candidatesPage, setCandidatesPage] = useState(1);
   const [runsPage, setRunsPage] = useState(1);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const candidatesTabActive = tab === "candidates";
   const runsTabActive = tab === "runs";
+  const candidateSkcName = candidateSkcKeyword.trim();
   const summary = useSheinEnrollmentStoreSummary(storeId, {
     activity_type: activityType,
   });
@@ -86,6 +88,7 @@ function SheinEnrollmentActivityWorkbench({
     {
       activity_type: activityType,
       executable_only: showExecutableOnly || undefined,
+      ...(candidateSkcName ? { skc_name: candidateSkcName } : {}),
       page: candidatesPage,
       page_size: SHEIN_ENROLLMENT_PAGE_SIZE,
     },
@@ -168,17 +171,28 @@ function SheinEnrollmentActivityWorkbench({
             saving={updateActivityStrategyMutation.isPending}
             strategy={activityStrategy.data?.strategy}
           />
-          <label className="flex w-fit items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <input
-              checked={showExecutableOnly}
+              className="h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm sm:w-80"
               onChange={(event) => {
-                setShowExecutableOnly(event.target.checked);
+                setCandidateSkcKeyword(event.target.value);
                 setCandidatesPage(1);
               }}
-              type="checkbox"
+              placeholder="输入完整 SKC 搜索候选商品"
+              value={candidateSkcKeyword}
             />
-            只看可报名
-          </label>
+            <label className="flex w-fit items-center gap-2 rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
+              <input
+                checked={showExecutableOnly}
+                onChange={(event) => {
+                  setShowExecutableOnly(event.target.checked);
+                  setCandidatesPage(1);
+                }}
+                type="checkbox"
+              />
+              只看可报名
+            </label>
+          </div>
           <SheinCandidatesTable
             enrollmentDisabled={!activityStrategyReady}
             enrollmentDisabledReason={
@@ -186,7 +200,7 @@ function SheinEnrollmentActivityWorkbench({
             }
             enrolling={enrollMutation.isPending}
             items={candidates.data?.items ?? []}
-            key={`${activityType}:${showExecutableOnly}:${candidatesPage}`}
+            key={`${activityType}:${showExecutableOnly}:${candidateSkcName}:${candidatesPage}`}
             onEnroll={(candidateIds, activityKey) =>
               enrollMutation.mutateAsync({
                 activity_type: activityType,

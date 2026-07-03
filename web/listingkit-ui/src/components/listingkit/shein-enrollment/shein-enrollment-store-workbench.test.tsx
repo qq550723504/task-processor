@@ -540,6 +540,42 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     });
   });
 
+  it("searches candidates by exact SKC and resets backend pagination", async () => {
+    renderWorkbench({
+      initialTab: "candidates",
+      candidateTotal: 101,
+      candidates: [
+        {
+          id: 18,
+          skc_name: "sg260618173737193036297",
+          review_status: "pending_review",
+        },
+      ],
+    });
+
+    expect(await screen.findByText("第 1 / 2 页 · 共 101 条")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
+    fireEvent.change(screen.getByPlaceholderText("输入完整 SKC 搜索候选商品"), {
+      target: { value: " sg260618173737193036297 " },
+    });
+
+    await waitFor(() => {
+      expect(mocks.useSheinActivityCandidates).toHaveBeenLastCalledWith(
+        12,
+        {
+          activity_type: "PROMOTION",
+          skc_name: "sg260618173737193036297",
+          page: 1,
+          page_size: 100,
+        },
+        {
+          enabled: true,
+        },
+      );
+    });
+  });
+
   it("shows enrollment run item details from the runs tab", async () => {
     renderWorkbench({
       initialTab: "runs",

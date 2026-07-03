@@ -158,6 +158,7 @@ func (s *sheinEnrollmentService) refreshCandidateCostOverrides(
 			continue
 		}
 		out[i].EffectiveCostPrice = cloneSheinSyncFloat64(product.EffectiveCostPrice)
+		out[i].SKUCostPriceInfoList = cloneSheinSKUCostPriceList(product.SKUCostPriceInfoList)
 		out[i].PriceSnapshot = refreshSheinEnrollmentPriceSnapshot(out[i].PriceSnapshot, product)
 		out[i].CalculatedProfitRate = calculateSheinCandidateProfitRate(out[i].EffectiveCostPrice, out[i].PriceSnapshot)
 	}

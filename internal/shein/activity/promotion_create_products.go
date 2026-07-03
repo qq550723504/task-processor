@@ -120,7 +120,7 @@ func (s *activityRegistrationServiceImpl) createPromotionActivityFromPreparedGoo
 		return nil, fmt.Errorf("价格风险检查失败: %w", riskErr)
 	}
 
-	createReq, filterReasons, filterReasonBySKC := s.buildCreateActivityRequest(config, goods, calcResp)
+	createReq, filterReasons, filterReasonBySKC := s.buildCreateActivityRequest(config, goods, calcReq, calcResp)
 	if len(createReq.AddCostAndStockInfoList) == 0 {
 		return &PromotionRegistrationResult{ActivityRequest: createReq, FilterReasons: filterReasonBySKC}, noAvailablePromotionProductsError(filterReasons)
 	}
@@ -359,9 +359,27 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestForPromotionProdu
 	products []marketing.SkcInfo,
 ) *marketing.CalculateSupplyPriceRequest {
 	costBySKC := make(map[string]float64, len(products))
+	costBySKUBySKC := make(map[string]map[string]float64, len(products))
 	for _, product := range products {
 		if product.Skc != "" && product.SupplyPrice > 0 {
 			costBySKC[product.Skc] = product.SupplyPrice
+		}
+		if product.Skc == "" || len(product.SkuCostPriceInfoList) == 0 {
+			continue
+		}
+		skuCosts := make(map[string]float64, len(product.SkuCostPriceInfoList))
+		for _, skuCost := range product.SkuCostPriceInfoList {
+			skuCode := normalizedPromotionSKUCode(skuCost.SkuCode)
+			if skuCode == "" || skuCost.CostPrice <= 0 {
+				continue
+			}
+			skuCosts[skuCode] = skuCost.CostPrice
+			if costBySKC[product.Skc] <= 0 || skuCost.CostPrice > costBySKC[product.Skc] {
+				costBySKC[product.Skc] = skuCost.CostPrice
+			}
+		}
+		if len(skuCosts) > 0 {
+			costBySKUBySKC[product.Skc] = skuCosts
 		}
 	}
 
@@ -383,14 +401,23 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestForPromotionProdu
 			if strings.EqualFold(config.PriceMode, "DISCOUNT") {
 				skuActivityPrice = calculatePriceByDiscount(productPrice, config.DiscountRate)
 			} else if strings.EqualFold(config.PriceMode, "PROFIT") {
-				skuActivityPrice = calculateProfitModeSKUActivityPrice(
-					productPrice,
-					item.USSupplyPrice,
-					activityPrice,
-					costPrice,
-					config.MinProfitRate,
-					config.FixedPriceAdjustment,
-				)
+				if skuCostPrice := costBySKUBySKC[item.Skc][normalizedPromotionSKUCode(sku.Sku)]; skuCostPrice > 0 {
+					skuActivityPrice = calculatePriceByProfit(
+						productPrice,
+						skuCostPrice,
+						config.MinProfitRate,
+						config.FixedPriceAdjustment,
+					)
+				} else {
+					skuActivityPrice = calculateProfitModeSKUActivityPrice(
+						productPrice,
+						item.USSupplyPrice,
+						activityPrice,
+						costPrice,
+						config.MinProfitRate,
+						config.FixedPriceAdjustment,
+					)
+				}
 			}
 			if skuActivityPrice <= 0 {
 				continue
@@ -421,6 +448,10 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestForPromotionProdu
 	}
 }
 
+func normalizedPromotionSKUCode(value string) string {
+	return strings.ToUpper(strings.TrimSpace(value))
+}
+
 func calculateProfitModeSKUActivityPrice(
 	productPrice float64,
 	baseProductPrice float64,
@@ -437,7 +468,10 @@ func calculateProfitModeSKUActivityPrice(
 		return minimumPrice
 	}
 	scaledPrice := productPrice * (baseActivityPrice / baseProductPrice)
-	if minimumPrice > 0 && scaledPrice < minimumPrice {
+	if scaledPrice > 0 && productPrice != baseProductPrice {
+		return scaledPrice
+	}
+	if minimumPrice > 0 {
 		return minimumPrice
 	}
 	return scaledPrice

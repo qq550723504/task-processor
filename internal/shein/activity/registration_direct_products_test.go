@@ -707,6 +707,162 @@ func TestBuildCalculateRequestForPromotionProductsScalesProfitModeSkuPrices(t *t
 	assertClose(t, req.SkcInfoList[0].SkuInfoList[2].DiscountValue, 32.42)
 }
 
+func TestRegisterPromotionProductsUsesRequestedProfitModeSkuActivityPrices(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		promotionGoods: []marketing.PromotionGoodsData{{
+			Skc:              "sg-profit-sku-prices",
+			IsSaleAttribute:  1,
+			InventoryNum:     999,
+			USSupplyPrice:    34.2,
+			MaxUSSupplyPrice: 34.2,
+			SkuInfoList: []marketing.PromotionSkuInfo{
+				{Sku: "sku-small", USSupplyPrice: promotionFloat64Ptr(29.7), MaxUSSupplyPrice: promotionFloat64Ptr(28.21)},
+				{Sku: "sku-large", USSupplyPrice: promotionFloat64Ptr(31.68), MaxUSSupplyPrice: promotionFloat64Ptr(30.09)},
+			},
+		}},
+		calcResponse: &marketing.CalculateSupplyPriceResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: []marketing.SkcCalculationResult{{
+				SkcName: "sg-profit-sku-prices",
+				SkuInfoList: []marketing.SkuCalculationInfo{
+					{
+						SkuCode: "sku-small",
+						PriceInfo: marketing.PriceInfo{
+							ProductAmount:   29.7,
+							PromotionAmount: 18.82,
+						},
+					},
+					{
+						SkuCode: "sku-large",
+						PriceInfo: marketing.PriceInfo{
+							ProductAmount:   31.68,
+							PromotionAmount: 20.8,
+						},
+					},
+				},
+			}},
+		},
+		createResponse: &marketing.CreateActivityResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: &marketing.ActivityCreateInfo{ActivityID: 12348},
+		},
+	}
+	service := &activityRegistrationServiceImpl{
+		storeService: promotionProductsStoreServiceStub{
+			store: &listingruntime.StoreInfo{ID: 870, Username: "seller"},
+		},
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	_, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:               870,
+			ActivityPriceMode:     "PROFIT",
+			ActivityMinProfitRate: 0,
+		},
+		"TIME_LIMITED:227:870:profit-sku-prices",
+		[]marketing.SkcInfo{{
+			Skc:         "sg-profit-sku-prices",
+			SupplyPrice: 10.88,
+		}},
+	)
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if api.created == nil || len(api.created.AddCostAndStockInfoList) != 1 || len(api.created.AddCostAndStockInfoList[0].AddSkuList) != 2 {
+		t.Fatalf("created request = %+v, want two SKU rows", api.created)
+	}
+	wantSmall := api.calculated.SkcInfoList[0].SkuInfoList[0].DiscountValue
+	wantLarge := api.calculated.SkcInfoList[0].SkuInfoList[1].DiscountValue
+	assertClose(t, wantSmall, 9.45)
+	assertClose(t, wantLarge, 10.08)
+	assertClose(t, api.created.AddCostAndStockInfoList[0].AddSkuList[0].ProductActPrice, wantSmall)
+	assertClose(t, api.created.AddCostAndStockInfoList[0].AddSkuList[1].ProductActPrice, wantLarge)
+}
+
+func TestRegisterPromotionProductsUsesSKUCostsForProfitModeSkuActivityPrices(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		promotionGoods: []marketing.PromotionGoodsData{{
+			Skc:              "sg-profit-sku-costs",
+			IsSaleAttribute:  1,
+			InventoryNum:     999,
+			USSupplyPrice:    34.2,
+			MaxUSSupplyPrice: 34.2,
+			SkuInfoList: []marketing.PromotionSkuInfo{
+				{Sku: "sku-small", USSupplyPrice: promotionFloat64Ptr(29.7), MaxUSSupplyPrice: promotionFloat64Ptr(28.21)},
+				{Sku: "sku-large", USSupplyPrice: promotionFloat64Ptr(31.68), MaxUSSupplyPrice: promotionFloat64Ptr(30.09)},
+			},
+		}},
+		calcResponse: &marketing.CalculateSupplyPriceResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: []marketing.SkcCalculationResult{{
+				SkcName: "sg-profit-sku-costs",
+				SkuInfoList: []marketing.SkuCalculationInfo{
+					{
+						SkuCode: "sku-small",
+						PriceInfo: marketing.PriceInfo{
+							ProductAmount:   29.7,
+							PromotionAmount: 19.82,
+						},
+					},
+					{
+						SkuCode: "sku-large",
+						PriceInfo: marketing.PriceInfo{
+							ProductAmount:   31.68,
+							PromotionAmount: 20.8,
+						},
+					},
+				},
+			}},
+		},
+		createResponse: &marketing.CreateActivityResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: &marketing.ActivityCreateInfo{ActivityID: 12349},
+		},
+	}
+	service := &activityRegistrationServiceImpl{
+		storeService: promotionProductsStoreServiceStub{
+			store: &listingruntime.StoreInfo{ID: 870, Username: "seller"},
+		},
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	_, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:               870,
+			ActivityPriceMode:     "PROFIT",
+			ActivityMinProfitRate: 0,
+		},
+		"TIME_LIMITED:227:870:profit-sku-costs",
+		[]marketing.SkcInfo{{
+			Skc:         "sg-profit-sku-costs",
+			SupplyPrice: 10.88,
+			SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
+				{SkuCode: "sku-small", CostPrice: 9.88},
+				{SkuCode: "sku-large", CostPrice: 10.88},
+			},
+		}},
+	)
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if api.created == nil || len(api.created.AddCostAndStockInfoList) != 1 || len(api.created.AddCostAndStockInfoList[0].AddSkuList) != 2 {
+		t.Fatalf("created request = %+v, want two SKU rows", api.created)
+	}
+	assertClose(t, api.calculated.SkcInfoList[0].SkuInfoList[0].DiscountValue, 9.88)
+	assertClose(t, api.calculated.SkcInfoList[0].SkuInfoList[1].DiscountValue, 10.88)
+	assertClose(t, api.created.AddCostAndStockInfoList[0].AddSkuList[0].ProductActPrice, 9.88)
+	assertClose(t, api.created.AddCostAndStockInfoList[0].AddSkuList[1].ProductActPrice, 10.88)
+}
+
 func assertClose(t *testing.T, got float64, want float64) {
 	t.Helper()
 	if math.Abs(got-want) > 0.01 {

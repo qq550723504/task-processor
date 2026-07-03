@@ -125,6 +125,75 @@ func TestExecuteSheinActivityEnrollmentExecutesApprovedCandidatesAndUpdatesRunOu
 	require.Equal(t, SheinCandidateReviewStatusRejected, candidates[2].ReviewStatus)
 }
 
+func TestExecuteTimeLimitedEnrollmentPassesVariantSDSCostsToAdapter(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
+		{
+			ID:                 1,
+			TenantID:           227,
+			StoreID:            870,
+			SyncedProductID:    435,
+			ActivityType:       "TIME_LIMITED",
+			ActivityKey:        "TIME_LIMITED:227:870",
+			SKCName:            "sg260618173737193036297",
+			CandidateVersion:   "v1",
+			EffectiveCostPrice: sheinEnrollmentFloat64Ptr(10.88),
+			PriceSnapshot:      `{"currency":"USD","sale_price":34.2,"sku_prices":[{"sku_code":"I6mqjb40o5q46g","sale_price":29.7,"currency":"USD"},{"sku_code":"I5mqjb40oez38e","sale_price":31.68,"currency":"USD"}]}`,
+			InventorySnapshot:  `{"available":1998}`,
+			EligibilityStatus:  SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:       SheinCandidateReviewStatusPendingReview,
+		},
+	})
+	repo.syncedProducts = []SheinSyncedProductRecord{{
+		ID:           435,
+		TenantID:     227,
+		StoreID:      870,
+		SKCName:      "sg260618173737193036297",
+		SupplierCode: "XB0603003001-792599F3",
+		SiteSnapshot: `{"sku_info":[{"sku_code":"I6mqjb40o5q46g","variant_label":"12 18cm"},{"sku_code":"I5mqjb40oez38e","variant_label":"20 25cm"}]}`,
+		IsActive:     true,
+	}}
+	repo.sdsGroups = map[string]SheinSDSCostGroupRecord{
+		"source:XB0603003001:variant:A66686F88AFA": {
+			TenantID:        227,
+			StoreID:         870,
+			GroupKey:        "source:XB0603003001:variant:A66686F88AFA",
+			GroupLabel:      "XB0603003001 / 12 18cm",
+			ManualCostPrice: sheinEnrollmentFloat64Ptr(9.88),
+		},
+		"source:XB0603003001:variant:04F293D640B8": {
+			TenantID:        227,
+			StoreID:         870,
+			GroupKey:        "source:XB0603003001:variant:04F293D640B8",
+			GroupLabel:      "XB0603003001 / 20 25cm",
+			ManualCostPrice: sheinEnrollmentFloat64Ptr(10.88),
+		},
+	}
+	adapter := &sheinEnrollmentAdapterStub{
+		results: []SheinActivityEnrollmentResult{{CandidateID: 1, Success: true}},
+	}
+	service := NewSheinEnrollmentService(repo, adapter)
+
+	_, err := service.ExecuteSheinActivityEnrollment(
+		context.Background(),
+		227,
+		870,
+		"TIME_LIMITED",
+		"TIME_LIMITED:227:870",
+		SheinEnrollmentRunTriggerModeManualConfirmed,
+		1,
+	)
+
+	require.NoError(t, err)
+	require.Len(t, adapter.calls, 1)
+	require.Len(t, adapter.calls[0].Candidates, 1)
+	require.Equal(t, []SheinSKUCostPrice{
+		{SKUCode: "I5MQJB40OEZ38E", CostPrice: 10.88},
+		{SKUCode: "I6MQJB40O5Q46G", CostPrice: 9.88},
+	}, adapter.calls[0].Candidates[0].SKUCostPriceInfoList)
+}
+
 func TestExecuteSheinActivityEnrollmentReturnsErrorWhenCandidateIDsMissing(t *testing.T) {
 	t.Parallel()
 
@@ -1629,6 +1698,7 @@ func isExecutableSheinEnrollmentQueryCandidate(row SheinActivityCandidateRecord)
 func cloneSheinEnrollmentCandidate(row SheinActivityCandidateRecord) SheinActivityCandidateRecord {
 	row.EffectiveCostPrice = cloneServiceTestFloat64(row.EffectiveCostPrice)
 	row.CalculatedProfitRate = cloneServiceTestFloat64(row.CalculatedProfitRate)
+	row.SKUCostPriceInfoList = cloneSheinSKUCostPriceList(row.SKUCostPriceInfoList)
 	return row
 }
 
@@ -1636,6 +1706,7 @@ func cloneSheinEnrollmentSyncedProduct(row SheinSyncedProductRecord) SheinSynced
 	row.AutoCostPrice = cloneServiceTestFloat64(row.AutoCostPrice)
 	row.ManualCostPrice = cloneServiceTestFloat64(row.ManualCostPrice)
 	row.EffectiveCostPrice = cloneServiceTestFloat64(row.EffectiveCostPrice)
+	row.SKUCostPriceInfoList = cloneSheinSKUCostPriceList(row.SKUCostPriceInfoList)
 	return row
 }
 

@@ -80,6 +80,7 @@ const (
 )
 
 type SheinSyncedProductRecord = sheinsync.SheinSyncedProductRecord
+type SheinSKUCostPrice = sheinsync.SheinSKUCostPrice
 type SheinSDSCostGroupRecord = sheinsync.SheinSDSCostGroupRecord
 type SheinSourceSDSCostGroupRecord = sheinsync.SheinSourceSDSCostGroupRecord
 type SheinSourceSDSSKUCostGroupRecord = sheinsync.SheinSourceSDSSKUCostGroupRecord

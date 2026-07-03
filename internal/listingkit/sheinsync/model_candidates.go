@@ -40,10 +40,24 @@ type SheinActivityCandidateRecord struct {
 	SelectedForRun       bool                            `json:"selected_for_run" gorm:"index;not null;default:false"`
 	LastEnrollmentError  string                          `json:"last_enrollment_error,omitempty" gorm:"-"`
 	MainImageURL         string                          `json:"main_image_url,omitempty" gorm:"-"`
+	SKUCostPriceInfoList []SheinSKUCostPrice             `json:"sku_cost_price_info_list,omitempty" gorm:"-"`
 	CreatedAt            time.Time                       `json:"created_at"`
 	UpdatedAt            time.Time                       `json:"updated_at"`
 }
 
 func (SheinActivityCandidateRecord) TableName() string {
 	return "listingkit_shein_activity_candidates"
+}
+
+type SheinSKUCostPrice struct {
+	SKUCode   string  `json:"sku_code"`
+	CostPrice float64 `json:"cost_price"`
+	Currency  string  `json:"currency,omitempty"`
+}
+
+func cloneSheinSKUCostPriceList(source []SheinSKUCostPrice) []SheinSKUCostPrice {
+	if len(source) == 0 {
+		return nil
+	}
+	return append([]SheinSKUCostPrice(nil), source...)
 }
