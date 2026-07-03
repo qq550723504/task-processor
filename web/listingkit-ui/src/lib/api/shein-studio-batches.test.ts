@@ -110,9 +110,6 @@ describe("parseSheinStudioBatchDetailResponse", () => {
         status: "draft",
         prompt: "botanical",
         styleCount: "3",
-        hotStyleReferenceImageUrls: [],
-        hotStyleReferenceBrief: "",
-        hotStyleReferencePrompt: "",
         sheinStoreId: 7,
         variationIntensity: "strong",
         artworkModel: "gpt-image-2",
@@ -329,6 +326,24 @@ describe("parseSheinStudioBatchDetailResponse", () => {
       },
       items: [],
     });
+  });
+
+  it("preserves omitted hot style reference fields as absent in itemized batch detail responses", () => {
+    const parsed = parseSheinStudioBatchDetailResponse({
+      batch: {
+        id: "batch-1",
+        status: "draft",
+        prompt: "botanical",
+        style_count: "3",
+        created_at: "2026-06-01T10:00:00Z",
+        updated_at: "2026-06-01T10:05:00Z",
+      },
+      items: [],
+    });
+
+    expect(parsed.batch).not.toHaveProperty("hotStyleReferenceImageUrls");
+    expect(parsed.batch).not.toHaveProperty("hotStyleReferenceBrief");
+    expect(parsed.batch).not.toHaveProperty("hotStyleReferencePrompt");
   });
 
   it("maps structured task outcomes from batch detail responses", () => {

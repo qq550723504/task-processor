@@ -224,25 +224,12 @@ function mapStudioBatch(
   const selection = normalizeSelectionResponse(
     payload.selection as Record<string, unknown> | undefined,
   );
-  return {
+  const batch: SheinStudioBatchRecord = {
     id: payload.id,
     tenantId: typeof payload.tenant_id === "string" ? payload.tenant_id.trim() || undefined : undefined,
     status: payload.status as SheinStudioBatchStatus,
     prompt: payload.prompt ?? "",
     styleCount: payload.style_count ?? "1",
-    hotStyleReferenceImageUrls: Array.isArray(payload.hot_style_reference_image_urls)
-      ? payload.hot_style_reference_image_urls.filter(
-          (item): item is string => typeof item === "string",
-        )
-      : [],
-    hotStyleReferenceBrief:
-      typeof payload.hot_style_reference_brief === "string"
-        ? payload.hot_style_reference_brief
-        : "",
-    hotStyleReferencePrompt:
-      typeof payload.hot_style_reference_prompt === "string"
-        ? payload.hot_style_reference_prompt
-        : "",
     sheinStoreId: Number(payload.shein_store_id ?? 0) || 0,
     variationIntensity:
       payload.variation_intensity === "light" ||
@@ -272,6 +259,37 @@ function mapStudioBatch(
     draftUpdatedAt: payload.draft_updated_at,
     updatedAt: payload.updated_at,
   };
+  if (
+    Object.prototype.hasOwnProperty.call(
+      payload,
+      "hot_style_reference_image_urls",
+    )
+  ) {
+    batch.hotStyleReferenceImageUrls = Array.isArray(
+      payload.hot_style_reference_image_urls,
+    )
+      ? payload.hot_style_reference_image_urls.filter(
+          (item): item is string => typeof item === "string",
+        )
+      : [];
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "hot_style_reference_brief")
+  ) {
+    batch.hotStyleReferenceBrief =
+      typeof payload.hot_style_reference_brief === "string"
+        ? payload.hot_style_reference_brief
+        : "";
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(payload, "hot_style_reference_prompt")
+  ) {
+    batch.hotStyleReferencePrompt =
+      typeof payload.hot_style_reference_prompt === "string"
+        ? payload.hot_style_reference_prompt
+        : "";
+  }
+  return batch;
 }
 
 type SheinStudioBatchRequestOptions = {
