@@ -261,6 +261,32 @@ describe("dedicated batch hydration", () => {
     );
   });
 
+  it("keeps cleared hot style reference fields from a newer local snapshot", () => {
+    const hydratedBatch = buildHydratedBatch({
+      hotStyleReferenceImageUrls: ["https://example.com/remote-ref.png"],
+      hotStyleReferenceBrief: "remote reference brief",
+      hotStyleReferencePrompt: "remote reference prompt",
+      draftUpdatedAt: "2026-06-22T00:00:00.000Z",
+    });
+
+    const result = resolveDedicatedBatchHydration({
+      batchId: "batch-1",
+      hydratedBatch,
+      localSnapshot: buildLocalSnapshot({
+        draft: buildLocalDraft({
+          hotStyleReferenceImageUrls: [],
+          hotStyleReferenceBrief: "",
+          hotStyleReferencePrompt: "",
+          updatedAt: "2026-06-22T00:00:01.000Z",
+        }),
+      }),
+    });
+
+    expect(result.savedBatch.hotStyleReferenceImageUrls).toEqual([]);
+    expect(result.savedBatch.hotStyleReferenceBrief).toBe("");
+    expect(result.savedBatch.hotStyleReferencePrompt).toBe("");
+  });
+
   it("keeps the remote batch when the remote draft is newer", () => {
     const hydratedBatch = buildHydratedBatch({
       prompt: "new remote prompt",

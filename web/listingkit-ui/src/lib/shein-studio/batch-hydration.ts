@@ -100,15 +100,21 @@ function mergeDedicatedBatchWithLocalSnapshot(
       ),
       renderSizeImagesWithSds:
         localDraft.renderSizeImagesWithSds ?? savedBatch.renderSizeImagesWithSds,
-      hotStyleReferenceImageUrls: pickLocalArrayValue(
+      hotStyleReferenceImageUrls: pickLocalPresentArrayValue(
+        localDraft,
+        "hotStyleReferenceImageUrls",
         localDraft.hotStyleReferenceImageUrls,
         savedBatch.hotStyleReferenceImageUrls,
       ),
-      hotStyleReferenceBrief: pickLocalStringValue(
+      hotStyleReferenceBrief: pickLocalPresentStringValue(
+        localDraft,
+        "hotStyleReferenceBrief",
         localDraft.hotStyleReferenceBrief,
         savedBatch.hotStyleReferenceBrief,
       ),
-      hotStyleReferencePrompt: pickLocalStringValue(
+      hotStyleReferencePrompt: pickLocalPresentStringValue(
+        localDraft,
+        "hotStyleReferencePrompt",
         localDraft.hotStyleReferencePrompt,
         savedBatch.hotStyleReferencePrompt,
       ),
@@ -121,4 +127,30 @@ function mergeDedicatedBatchWithLocalSnapshot(
     },
     detail: hydratedBatch.detail,
   };
+}
+
+function hasOwnDraftProperty(value: object | undefined, key: PropertyKey) {
+  return !!value && Object.prototype.hasOwnProperty.call(value, key);
+}
+
+function pickLocalPresentStringValue(
+  source: object,
+  key: PropertyKey,
+  localValue: string | undefined,
+  remoteValue: string | undefined,
+) {
+  return hasOwnDraftProperty(source, key)
+    ? (localValue?.trim() ?? "")
+    : (remoteValue ?? "");
+}
+
+function pickLocalPresentArrayValue<T>(
+  source: object,
+  key: PropertyKey,
+  localValue: T[] | undefined,
+  remoteValue: T[] | undefined,
+) {
+  return (hasOwnDraftProperty(source, key)
+    ? (localValue ?? [])
+    : (remoteValue ?? [])) as T[];
 }
