@@ -74,6 +74,9 @@ describe("buildSheinStudioDraftInput", () => {
         variantSku: "SKU-BLK",
       },
     ]);
+    expect(payload.hotStyleReferenceImageUrls).toEqual([]);
+    expect(payload.hotStyleReferenceBrief).toBe("");
+    expect(payload.hotStyleReferencePrompt).toBe("");
     expect(payload.selection?.variantId).toBe(2);
     expect(payload.selection?.variants).toEqual([
       {
@@ -126,6 +129,9 @@ describe("buildSheinStudioDraftInput", () => {
       productImageCount: "5",
       productImagePrompt: "",
       productImagePrompts: [],
+      hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+      hotStyleReferenceBrief: "reference brief",
+      hotStyleReferencePrompt: "reference prompt",
       artworkModel: "",
       transparentBackground: false,
       sheinStoreId: "7",
@@ -179,20 +185,23 @@ describe("buildSheinStudioDraftInput", () => {
           groupedImageMode: "shared_by_size",
           selectedSdsImages: [],
           renderSizeImagesWithSds: true,
-          currentPrompt: "prompt a",
-          promptHistory: [
-            {
-              prompt: "prompt old",
-              groupedImageMode: "shared_by_size",
-              createdAt: "2026-05-26T00:00:00Z",
-            },
-          ],
-          productImageCount: "5",
-          productImagePrompt: "",
-          productImagePrompts: [],
-          artworkModel: "",
-          transparentBackground: false,
-          variationIntensity: "medium",
+        currentPrompt: "prompt a",
+        promptHistory: [
+          {
+            prompt: "prompt old",
+            groupedImageMode: "shared_by_size",
+            createdAt: "2026-05-26T00:00:00Z",
+          },
+        ],
+        productImageCount: "5",
+        productImagePrompt: "",
+        productImagePrompts: [],
+        hotStyleReferenceImageUrls: ["https://example.com/group-ref.png"],
+        hotStyleReferenceBrief: "group reference brief",
+        hotStyleReferencePrompt: "group reference prompt",
+        artworkModel: "",
+        transparentBackground: false,
+        variationIntensity: "medium",
           designs: [{ id: "group-design-1", imageUrl: "https://example.com/group.png" }],
           selectedIds: ["group-design-1"],
           createdTasks: [],
@@ -204,6 +213,9 @@ describe("buildSheinStudioDraftInput", () => {
     expect(payload.groups).toEqual([
       expect.objectContaining({
         id: "group-1",
+        hotStyleReferenceImageUrls: ["https://example.com/group-ref.png"],
+        hotStyleReferenceBrief: "group reference brief",
+        hotStyleReferencePrompt: "group reference prompt",
         currentPrompt: "prompt a",
         promptHistory: [
           {
@@ -222,6 +234,11 @@ describe("buildSheinStudioDraftInput", () => {
         ],
       }),
     ]);
+    expect(payload.hotStyleReferenceImageUrls).toEqual([
+      "https://example.com/ref.png",
+    ]);
+    expect(payload.hotStyleReferenceBrief).toBe("reference brief");
+    expect(payload.hotStyleReferencePrompt).toBe("reference prompt");
     expect(payload.groups?.[0]).not.toHaveProperty("designs");
     expect(payload.groups?.[0]).not.toHaveProperty("selectedIds");
     expect(payload.groups?.[0]).not.toHaveProperty("createdTasks");

@@ -255,6 +255,8 @@ describe("SHEIN Studio generation controller", () => {
       groupedSelections: [],
       groups,
       hasLocalWorkflowStateRef: localWorkflowStateRef,
+      hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+      hotStyleReferencePrompt: "Create an original retro badge.",
       navigateToStep,
       persistDraft,
       prompt: " summer flowers ",
@@ -277,7 +279,12 @@ describe("SHEIN Studio generation controller", () => {
         count: 1,
         printableWidth: 300,
         printableHeight: 400,
-        prompt: expect.stringContaining("summer flowers"),
+        prompt: expect.stringMatching(
+          /summer flowers[\s\S]*Create an original retro badge\./,
+        ),
+        productReferenceImageUrls: expect.arrayContaining([
+          "https://example.com/ref.png",
+        ]),
       }),
       expect.objectContaining({ onJobStarted: expect.any(Function) }),
     );

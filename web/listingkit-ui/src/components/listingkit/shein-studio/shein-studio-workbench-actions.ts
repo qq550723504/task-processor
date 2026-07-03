@@ -10,6 +10,7 @@ import {
   resolveDesignTargetKey,
 } from "@/lib/shein-studio/grouped-image-mode";
 import {
+  buildHotStyleReferenceGenerationInput,
   buildSheinStudioGenerateRequest,
   buildGenerationPromptHistoryGroups,
   executeStandaloneGeneration,
@@ -94,6 +95,8 @@ type UseSheinStudioDesignActionsParams = {
   productImageCount: string;
   productImagePrompt: string;
   productImagePrompts: SheinStudioProductImagePrompt[];
+  hotStyleReferenceImageUrls: string[];
+  hotStyleReferencePrompt: string;
   prompt: string;
   promptMode?: SheinStudioGenerateRequest["promptMode"];
   promptInputRef: RefObject<HTMLTextAreaElement | null>;
@@ -138,6 +141,8 @@ export function useSheinStudioDesignActions({
   productImageCount,
   productImagePrompt,
   productImagePrompts,
+  hotStyleReferenceImageUrls,
+  hotStyleReferencePrompt,
   prompt,
   promptMode,
   promptInputRef,
@@ -269,6 +274,8 @@ export function useSheinStudioDesignActions({
         groupedSelections,
         groups: nextGroups,
         hasLocalWorkflowStateRef,
+        hotStyleReferenceImageUrls,
+        hotStyleReferencePrompt,
         navigateToStep,
         persistDraft,
         prompt,
@@ -390,15 +397,21 @@ export function useSheinStudioDesignActions({
             item.key,
       );
       const targetSelection = target?.selection ?? regenerationSelection;
+      const generationInput = buildHotStyleReferenceGenerationInput({
+        prompt,
+        hotStyleReferencePrompt,
+        productReferenceImageUrls:
+          buildSDSProductReferenceImageUrls(targetSelection),
+        hotStyleReferenceImageUrls,
+      });
       const response = await generateSheinStudioDesigns(
         buildSheinStudioGenerateRequest({
-          prompt: prompt.trim(),
+          prompt: generationInput.prompt,
           promptMode,
           variationIntensity,
           printableWidth: targetSelection?.printableWidth,
           printableHeight: targetSelection?.printableHeight,
-          productReferenceImageUrls:
-            buildSDSProductReferenceImageUrls(targetSelection),
+          productReferenceImageUrls: generationInput.productReferenceImageUrls,
           styleCount: 1,
           artworkModel,
           transparentBackground,

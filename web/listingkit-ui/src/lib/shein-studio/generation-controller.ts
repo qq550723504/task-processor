@@ -56,6 +56,8 @@ type ExecuteStandaloneGenerationInput = {
   groupedSelections: GroupedSDSSelectionEligibility[];
   groups: SheinStudioGroupedWorkspace[];
   hasLocalWorkflowStateRef: { current: boolean };
+  hotStyleReferenceImageUrls?: string[];
+  hotStyleReferencePrompt?: string;
   navigateToStep: (step: "review") => void;
   persistDraft: GenerationPersistDraft;
   prompt: string;
@@ -218,6 +220,36 @@ export function replaceRegeneratedDesign({
   );
 }
 
+export function buildHotStyleReferenceGenerationInput(input: {
+  prompt: string;
+  hotStyleReferencePrompt?: string;
+  productReferenceImageUrls?: string[];
+  hotStyleReferenceImageUrls?: string[];
+}) {
+  const promptParts = [input.prompt.trim()];
+  const referencePrompt = input.hotStyleReferencePrompt?.trim();
+  if (referencePrompt) {
+    promptParts.push(
+      "Hot-selling reference direction for original artwork:",
+      referencePrompt,
+    );
+  }
+  const productReferenceImageUrls = Array.from(
+    new Set(
+      [
+        ...(input.productReferenceImageUrls ?? []),
+        ...(input.hotStyleReferenceImageUrls ?? []),
+      ]
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  );
+  return {
+    prompt: promptParts.filter(Boolean).join("\n"),
+    productReferenceImageUrls,
+  };
+}
+
 export async function executeStandaloneGeneration({
   activeGroupId,
   activeSelection,
@@ -228,6 +260,8 @@ export async function executeStandaloneGeneration({
   groupedSelections,
   groups,
   hasLocalWorkflowStateRef,
+  hotStyleReferenceImageUrls,
+  hotStyleReferencePrompt,
   navigateToStep,
   persistDraft,
   prompt,
@@ -293,15 +327,21 @@ export async function executeStandaloneGeneration({
 
   const settled = await Promise.allSettled(
     targets.map(async (target) => {
+      const generationInput = buildHotStyleReferenceGenerationInput({
+        prompt,
+        hotStyleReferencePrompt,
+        productReferenceImageUrls:
+          buildSDSProductReferenceImageUrls(target.selection),
+        hotStyleReferenceImageUrls,
+      });
       const response = await generateDesigns(
         buildSheinStudioGenerateRequest({
-          prompt: prompt.trim(),
+          prompt: generationInput.prompt,
           promptMode,
           variationIntensity,
           printableWidth: target.selection.printableWidth,
           printableHeight: target.selection.printableHeight,
-          productReferenceImageUrls:
-            buildSDSProductReferenceImageUrls(target.selection),
+          productReferenceImageUrls: generationInput.productReferenceImageUrls,
           styleCount: parsePositiveInt(styleCount) ?? 1,
           artworkModel,
           transparentBackground,

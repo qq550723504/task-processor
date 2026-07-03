@@ -722,6 +722,8 @@ export function SheinStudioWorkbench({
       productImageCount,
       productImagePrompt,
       productImagePrompts,
+      hotStyleReferenceImageUrls,
+      hotStyleReferencePrompt,
       prompt,
       promptMode,
       promptInputRef,
