@@ -264,6 +264,10 @@ func (s *stubListingKitHandler) GenerateListingKit(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"task_id": "listing-kit-task"})
 }
 
+func (s *stubListingKitHandler) AnalyzeStudioReferenceStyle(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"style": gin.H{}})
+}
+
 func (s *stubListingKitHandler) GenerateStudioDesigns(c *gin.Context) {
 	s.generateStudioDesignsCalled = true
 	c.JSON(http.StatusOK, gin.H{"images": []any{}})
