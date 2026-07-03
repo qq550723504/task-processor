@@ -550,6 +550,89 @@ func TestExecuteStudioBatchRunItemReturnsStillRunningForAsyncSubmittedBatch(t *t
 	}
 }
 
+func TestExecuteStudioBatchRunItemUsesHotStyleReferencePromptAndImagesForBatchGeneration(t *testing.T) {
+	repo := NewMemStudioBatchRepository()
+	sessionRepo := &studioBatchRunExecutorSessionRepoStub{
+		session: &SheinStudioSession{
+			ID:                      "batch-1",
+			SavedAsBatch:            true,
+			Prompt:                  "summer flowers",
+			HotStyleReferencePrompt: "Create an original retro badge.",
+			HotStyleReferenceImageURLs: []string{
+				"https://example.com/hot-ref.png",
+				"https://example.com/mockup.png",
+			},
+			StyleCount:       "1",
+			GroupedImageMode: "per_product",
+			Selection: SheinStudioSelectionSnapshot{
+				ProductID:          101,
+				ParentProductID:    7001,
+				VariantID:          101,
+				PrototypeGroupID:   9001,
+				LayerID:            "layer-1",
+				ProductName:        "Canvas Tote",
+				VariantLabel:       "Red",
+				PrintableWidth:     1200,
+				PrintableHeight:    1200,
+				SelectedVariantIDs: []int64{101},
+				MockupImageURL:     "https://example.com/mockup.png",
+				MockupImageURLs: []string{
+					"https://example.com/mockup.png",
+					"https://example.com/mockup-alt.png",
+				},
+				SizeReferenceImageURLs: []string{"https://example.com/size.png"},
+			},
+			SelectedSDSImages: SheinStudioSelectedSDSImageList{
+				{ImageURL: "https://example.com/sds.png"},
+			},
+		},
+	}
+	var capturedReq *StudioDesignRequest
+	svc := &service{studioDeps: studioDependencies{sessionRepo: sessionRepo, batchRepo: repo}}
+	svc.studio.batchGroup.batch = newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              repo,
+		studioSessionRepo: sessionRepo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo: repo,
+			execute: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+				capturedReq = input.Request
+				return &StudioBatchGenerateExecutionOutput{
+					Response:  testStudioDesignResponse("design-1", "https://example.com/design.png"),
+					BatchID:   input.BatchID,
+					ItemID:    input.ItemID,
+					AttemptID: input.AttemptID,
+				}, nil
+			},
+		}),
+	})
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	if err := svc.executeStudioBatchRunItem(ctx, "batch-1"); err != nil {
+		t.Fatalf("executeStudioBatchRunItem() error = %v", err)
+	}
+	if capturedReq == nil {
+		t.Fatal("capturedReq = nil, want batch generation request")
+	}
+	if got, want := capturedReq.Prompt, "summer flowers\nHot-selling reference direction for original artwork:\nCreate an original retro badge."; got != want {
+		t.Fatalf("capturedReq.Prompt = %q, want %q", got, want)
+	}
+	if got, want := capturedReq.ProductReferenceImageURLs, []string{
+		"https://example.com/mockup.png",
+		"https://example.com/mockup-alt.png",
+		"https://example.com/size.png",
+		"https://example.com/sds.png",
+		"https://example.com/hot-ref.png",
+	}; len(got) != len(want) {
+		t.Fatalf("len(capturedReq.ProductReferenceImageURLs) = %d, want %d (%v)", len(got), len(want), got)
+	} else {
+		for index := range want {
+			if got[index] != want[index] {
+				t.Fatalf("capturedReq.ProductReferenceImageURLs[%d] = %q, want %q (all=%v)", index, got[index], want[index], got)
+			}
+		}
+	}
+}
+
 func TestStudioBatchRunExecutorCancelsStillRunningItemWhenCancelRequestedDuringPolling(t *testing.T) {
 	repo := NewMemStudioBatchRunRepository()
 	ctx := WithTenantID(context.Background(), "tenant-a")

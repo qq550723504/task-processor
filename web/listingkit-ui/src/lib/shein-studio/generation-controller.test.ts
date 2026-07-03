@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  buildHotStyleReferenceGenerationInput,
   buildGenerationPromptHistoryGroups,
   executeStandaloneGeneration,
   mergeGeneratedDesignCollections,
@@ -228,6 +229,33 @@ describe("SHEIN Studio generation controller", () => {
       },
       { id: "design-2", imageUrl: "other.png" },
     ]);
+  });
+
+  it("preserves existing product references and dedupes hot style reference images", () => {
+    expect(
+      buildHotStyleReferenceGenerationInput({
+        prompt: "summer flowers",
+        hotStyleReferencePrompt: "Create an original retro badge.",
+        productReferenceImageUrls: [
+          "https://example.com/mockup.png",
+          "https://example.com/size.png",
+          "https://example.com/mockup.png",
+        ],
+        hotStyleReferenceImageUrls: [
+          "https://example.com/hot-ref.png",
+          " https://example.com/mockup.png ",
+          "https://example.com/hot-ref.png",
+        ],
+      }),
+    ).toEqual({
+      prompt:
+        "summer flowers\nHot-selling reference direction for original artwork:\nCreate an original retro badge.",
+      productReferenceImageUrls: [
+        "https://example.com/mockup.png",
+        "https://example.com/size.png",
+        "https://example.com/hot-ref.png",
+      ],
+    });
   });
 
   it("executes standalone grouped generation and persists successful results", async () => {

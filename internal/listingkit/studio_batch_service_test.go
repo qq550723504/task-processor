@@ -373,16 +373,30 @@ func TestTaskStudioBatchServiceContinueGenerationRecoversBeforeRunningPendingIte
 	}
 }
 
-func TestBuildStudioBatchItemDesignRequestOmitsReferenceImagesForStyleGeneration(t *testing.T) {
+func TestBuildStudioBatchItemDesignRequestIncludesHotStyleReferencePromptAndDedupedReferenceImages(t *testing.T) {
 	t.Parallel()
 
 	batch := &StudioBatchRecord{
-		ID:                 "batch-1",
-		Prompt:             "punk eagle collage",
-		StyleCount:         "1",
-		VariationIntensity: "medium",
-		ArtworkModel:       "gpt-image-2",
-		Selection:          SheinStudioSelectionSnapshot(testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)),
+		ID:                      "batch-1",
+		Prompt:                  "punk eagle collage",
+		HotStyleReferencePrompt: "Create an original retro badge.",
+		StyleCount:              "1",
+		VariationIntensity:      "medium",
+		ArtworkModel:            "gpt-image-2",
+		HotStyleReferenceImageURLs: SheinStudioStringList{
+			"https://example.com/hot-ref.png",
+			"https://example.com/mockup-1.png",
+		},
+		Selection: SheinStudioSelectionSnapshot(func() SheinStudioSelection {
+			selection := testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)
+			selection.MockupImageURL = "https://example.com/mockup.png"
+			selection.MockupImageURLs = []string{
+				"https://example.com/mockup-1.png",
+				"https://example.com/mockup-2.png",
+			}
+			selection.SizeReferenceImageURLs = []string{"https://example.com/size.png"}
+			return selection
+		}()),
 		GroupedSelections: SheinStudioGroupedSelectionList{
 			{
 				SelectionID: "7001:9001:101:layer-1:101",
@@ -406,15 +420,31 @@ func TestBuildStudioBatchItemDesignRequestOmitsReferenceImagesForStyleGeneration
 	item := StudioBatchItemRecord{
 		ID:           "item-1",
 		BatchID:      "batch-1",
-		SelectionIDs: []string{"7001:9001:101:layer-1:101"},
+		SelectionIDs: []string{selectionIDForStudioSelection(batch.GroupedSelections[0].Selection)},
 	}
 
 	req := buildStudioBatchItemDesignRequest(batch, item)
 	if req == nil {
 		t.Fatal("buildStudioBatchItemDesignRequest() = nil")
 	}
-	if len(req.ProductReferenceImageURLs) != 0 {
-		t.Fatalf("ProductReferenceImageURLs = %v, want no reference images for style generation", req.ProductReferenceImageURLs)
+	if got, want := req.Prompt, "punk eagle collage\nHot-selling reference direction for original artwork:\nCreate an original retro badge."; got != want {
+		t.Fatalf("Prompt = %q, want %q", got, want)
+	}
+	if got, want := req.ProductReferenceImageURLs, []string{
+		"https://example.com/mockup.png",
+		"https://example.com/mockup-1.png",
+		"https://example.com/mockup-2.png",
+		"https://example.com/size.png",
+		"https://example.com/sds.png",
+		"https://example.com/hot-ref.png",
+	}; len(got) != len(want) {
+		t.Fatalf("len(ProductReferenceImageURLs) = %d, want %d (%v)", len(got), len(want), got)
+	} else {
+		for index := range want {
+			if got[index] != want[index] {
+				t.Fatalf("ProductReferenceImageURLs[%d] = %q, want %q (all=%v)", index, got[index], want[index], got)
+			}
+		}
 	}
 }
 

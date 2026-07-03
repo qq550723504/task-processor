@@ -475,14 +475,18 @@ func buildStudioBatchRunDesignRequest(session *SheinStudioSession) *StudioDesign
 	if session == nil {
 		return nil
 	}
+	referenceImageURLs := mergeStudioHotStyleReferenceImageURLs(
+		studioBatchRunReferenceImageURLs(session),
+		session.HotStyleReferenceImageURLs,
+	)
 	return &StudioDesignRequest{
-		Prompt:                    session.Prompt,
+		Prompt:                    buildStudioHotStyleGenerationPrompt(session.Prompt, session.HotStyleReferencePrompt),
 		PromptMode:                session.PromptMode,
 		Count:                     parseStudioBatchRunStyleCount(session.StyleCount),
 		VariationIntensity:        session.VariationIntensity,
 		PrintableWidth:            session.PrintableWidth,
 		PrintableHeight:           session.PrintableHeight,
-		ProductReferenceImageURLs: studioBatchRunReferenceImageURLs(session),
+		ProductReferenceImageURLs: referenceImageURLs,
 		ImageModel:                session.ArtworkModel,
 		TransparentBackground:     session.TransparentBackground,
 	}
@@ -539,6 +543,40 @@ func studioBatchRunReferenceImageURLs(session *SheinStudioSession) []string {
 	}
 	for _, image := range session.SelectedSDSImages {
 		appendURL(image.ImageURL)
+	}
+	return result
+}
+
+func buildStudioHotStyleGenerationPrompt(prompt string, hotStyleReferencePrompt string) string {
+	parts := make([]string, 0, 3)
+	if trimmedPrompt := strings.TrimSpace(prompt); trimmedPrompt != "" {
+		parts = append(parts, trimmedPrompt)
+	}
+	if trimmedReferencePrompt := strings.TrimSpace(hotStyleReferencePrompt); trimmedReferencePrompt != "" {
+		parts = append(parts, "Hot-selling reference direction for original artwork:", trimmedReferencePrompt)
+	}
+	return strings.Join(parts, "\n")
+}
+
+func mergeStudioHotStyleReferenceImageURLs(existing []string, hotStyleReferenceImageURLs []string) []string {
+	seen := make(map[string]struct{}, len(existing)+len(hotStyleReferenceImageURLs))
+	result := make([]string, 0, len(existing)+len(hotStyleReferenceImageURLs))
+	appendURL := func(value string) {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	for _, value := range existing {
+		appendURL(value)
+	}
+	for _, value := range hotStyleReferenceImageURLs {
+		appendURL(value)
 	}
 	return result
 }
