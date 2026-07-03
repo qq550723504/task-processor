@@ -4,19 +4,25 @@ import (
 	"errors"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingsubscription"
+	"task-processor/internal/tenantbridge"
 )
+
+const subscriptionTenantContextKey = "listingkit.subscription_tenant_id"
 
 func (h *handler) requireSubscription(c *gin.Context, moduleCode string) bool {
 	if h.subscriptionService == nil {
 		writeSubscriptionRequired(c, listingsubscription.GuardResult{ModuleCode: moduleCode, Reason: "not_configured"})
 		return false
 	}
-	result, err := h.subscriptionService.Check(c.Request.Context(), requestTenantID(c), moduleCode)
+	result, err := h.checkSubscriptionWithLegacyFallback(c, func(tenantID string) (listingsubscription.GuardResult, error) {
+		return h.subscriptionService.Check(c.Request.Context(), tenantID, moduleCode)
+	})
 	if err == nil && result.Allowed {
 		return true
 	}
@@ -33,7 +39,9 @@ func (h *handler) requireSubscriptionUsage(c *gin.Context, moduleCode, metric st
 		writeSubscriptionRequired(c, listingsubscription.GuardResult{ModuleCode: moduleCode, Reason: "not_configured"})
 		return false
 	}
-	result, err := h.subscriptionService.CheckUsage(c.Request.Context(), requestTenantID(c), moduleCode, metric, increment)
+	result, err := h.checkSubscriptionWithLegacyFallback(c, func(tenantID string) (listingsubscription.GuardResult, error) {
+		return h.subscriptionService.CheckUsage(c.Request.Context(), tenantID, moduleCode, metric, increment)
+	})
 	if err == nil && result.Allowed {
 		return true
 	}
@@ -50,7 +58,9 @@ func (h *handler) authorizeSubscriptionUsage(c *gin.Context, moduleCode, metric 
 		writeSubscriptionRequired(c, listingsubscription.GuardResult{ModuleCode: moduleCode, Reason: "not_configured"})
 		return false
 	}
-	result, err := h.subscriptionService.AuthorizeUsage(c.Request.Context(), requestTenantID(c), moduleCode, metric, increment)
+	result, err := h.checkSubscriptionWithLegacyFallback(c, func(tenantID string) (listingsubscription.GuardResult, error) {
+		return h.subscriptionService.AuthorizeUsage(c.Request.Context(), tenantID, moduleCode, metric, increment)
+	})
 	if err == nil && result.Allowed {
 		return true
 	}
@@ -66,7 +76,54 @@ func (h *handler) recordSubscriptionUsage(c *gin.Context, moduleCode, metric str
 	if h.subscriptionService == nil || increment == 0 || metric == "" {
 		return
 	}
-	_, _ = h.subscriptionService.RecordUsage(c.Request.Context(), requestTenantID(c), moduleCode, metric, increment)
+	_, _ = h.subscriptionService.RecordUsage(c.Request.Context(), subscriptionTenantID(c), moduleCode, metric, increment)
+}
+
+func (h *handler) checkSubscriptionWithLegacyFallback(c *gin.Context, check func(tenantID string) (listingsubscription.GuardResult, error)) (listingsubscription.GuardResult, error) {
+	tenantID := requestTenantID(c)
+	result, err := check(tenantID)
+	if err == nil && result.Allowed {
+		c.Set(subscriptionTenantContextKey, tenantID)
+		return result, nil
+	}
+	if !shouldTryLegacySubscriptionFallback(err, result) {
+		return result, err
+	}
+	legacyTenantID, ok := resolveLegacySubscriptionTenantID(c, tenantID)
+	if !ok {
+		return result, err
+	}
+	fallbackResult, fallbackErr := check(legacyTenantID)
+	if fallbackErr == nil && fallbackResult.Allowed {
+		c.Set(subscriptionTenantContextKey, legacyTenantID)
+		return fallbackResult, nil
+	}
+	return fallbackResult, fallbackErr
+}
+
+func shouldTryLegacySubscriptionFallback(err error, result listingsubscription.GuardResult) bool {
+	return errors.Is(err, listingsubscription.ErrSubscriptionRequired) && result.Reason == "not_configured"
+}
+
+func resolveLegacySubscriptionTenantID(c *gin.Context, tenantID string) (string, bool) {
+	legacyTenantID, err := tenantbridge.ResolveLegacyTenantID(c.Request.Context(), tenantID)
+	if err != nil || legacyTenantID <= 0 {
+		return "", false
+	}
+	resolved := strconv.FormatInt(legacyTenantID, 10)
+	if resolved == strings.TrimSpace(tenantID) {
+		return "", false
+	}
+	return resolved, true
+}
+
+func subscriptionTenantID(c *gin.Context) string {
+	if value, ok := c.Get(subscriptionTenantContextKey); ok {
+		if tenantID, ok := value.(string); ok && strings.TrimSpace(tenantID) != "" {
+			return strings.TrimSpace(tenantID)
+		}
+	}
+	return requestTenantID(c)
 }
 
 func (h *handler) requireSubscriptionHandler(c *gin.Context) bool {

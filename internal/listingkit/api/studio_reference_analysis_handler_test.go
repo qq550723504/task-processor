@@ -13,12 +13,30 @@ import (
 
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingsubscription"
+	"task-processor/internal/tenantbridge"
 )
 
 type stubStudioReferenceAnalysisService struct {
 	req  *listingkit.StudioReferenceAnalysisRequest
 	resp *listingkit.StudioReferenceAnalysisResponse
 	err  error
+}
+
+type failingUsageRepository struct {
+	listingsubscription.Repository
+}
+
+func (r failingUsageRepository) IncrementUsage(context.Context, string, string, string, string, int) (*listingsubscription.UsageCounter, error) {
+	return nil, errors.New("usage counter unavailable")
+}
+
+type staticStudioLegacyTenantResolver struct {
+	values map[string]int64
+}
+
+func (r staticStudioLegacyTenantResolver) ResolveLegacyTenantID(_ context.Context, tenantID string) (int64, bool, error) {
+	value, ok := r.values[tenantID]
+	return value, ok, nil
 }
 
 func (s *stubStudioReferenceAnalysisService) UploadImages(context.Context, *listingkit.UploadImagesRequest) (*listingkit.UploadImagesResponse, error) {
@@ -121,6 +139,102 @@ func TestAnalyzeStudioReferenceStyleHandlerMapsInvalidRequest(t *testing.T) {
 
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400; body = %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleHandlerDoesNotBlockOnUsageRecordFailure(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	service := &stubStudioReferenceAnalysisService{resp: &listingkit.StudioReferenceAnalysisResponse{
+		ReferenceStyleBrief: "retro badge",
+		SanitizedPrompt:     "retro badge",
+	}}
+	repo := failingUsageRepository{Repository: listingsubscription.NewMemRepository()}
+	subscriptionService, err := listingsubscription.NewService(repo)
+	if err != nil {
+		t.Fatalf("create subscription service: %v", err)
+	}
+	if _, err := subscriptionService.UpsertEntitlement(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"design_jobs": 10},
+	}); err != nil {
+		t.Fatalf("upsert entitlement: %v", err)
+	}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(service), WithSubscriptionService(subscriptionService))
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/studio/reference-style/analyze", h.AnalyzeStudioReferenceStyle)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/reference-style/analyze", strings.NewReader(`{"reference_image_urls":["https://example.com/a.png"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+	if service.req == nil {
+		t.Fatal("service request = nil, want analysis to continue")
+	}
+}
+
+func TestAnalyzeStudioReferenceStyleHandlerUsesLegacyTenantSubscriptionFallback(t *testing.T) {
+	restore := tenantbridge.ConfigureLegacyTenantResolver(staticStudioLegacyTenantResolver{
+		values: map[string]int64{"zitadel-tenant": 227},
+	})
+	t.Cleanup(restore)
+
+	gin.SetMode(gin.TestMode)
+	service := &stubStudioReferenceAnalysisService{resp: &listingkit.StudioReferenceAnalysisResponse{
+		ReferenceStyleBrief: "retro badge",
+		SanitizedPrompt:     "retro badge",
+	}}
+	subscriptionService, err := listingsubscription.NewService(listingsubscription.NewMemRepository())
+	if err != nil {
+		t.Fatalf("create subscription service: %v", err)
+	}
+	if _, err := subscriptionService.UpsertEntitlement(t.Context(), "227", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"design_jobs": 10},
+	}); err != nil {
+		t.Fatalf("upsert entitlement: %v", err)
+	}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(service), WithSubscriptionService(subscriptionService))
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/studio/reference-style/analyze", h.AnalyzeStudioReferenceStyle)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/reference-style/analyze", strings.NewReader(`{"reference_image_urls":["https://example.com/a.png"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "zitadel-tenant")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %s", w.Code, w.Body.String())
+	}
+	if service.req == nil {
+		t.Fatal("service request = nil, want analysis to continue")
+	}
+
+	summary, err := subscriptionService.GetSummary(t.Context(), "227")
+	if err != nil {
+		t.Fatalf("get legacy summary: %v", err)
+	}
+	var studioUsage int
+	for _, item := range summary.Entitlements {
+		if item.Module.Code == listingsubscription.ModuleStudio {
+			studioUsage = item.Used["design_jobs"]
+			break
+		}
+	}
+	if studioUsage != 1 {
+		t.Fatalf("legacy studio design_jobs usage = %d, want 1", studioUsage)
 	}
 }
 

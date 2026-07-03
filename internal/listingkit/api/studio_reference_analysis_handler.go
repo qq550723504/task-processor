@@ -11,7 +11,7 @@ import (
 )
 
 func (h *handler) AnalyzeStudioReferenceStyle(c *gin.Context) {
-	if !h.requireSubscriptionUsage(c, listingsubscription.ModuleStudio, "design_jobs", 1) {
+	if !h.authorizeSubscriptionUsage(c, listingsubscription.ModuleStudio, "design_jobs", 1) {
 		return
 	}
 	var req listingkit.StudioReferenceAnalysisRequest
@@ -36,5 +36,6 @@ func (h *handler) AnalyzeStudioReferenceStyle(c *gin.Context) {
 		return
 	}
 
+	h.recordSubscriptionUsage(c, listingsubscription.ModuleStudio, "design_jobs", 1)
 	c.JSON(http.StatusOK, response)
 }
