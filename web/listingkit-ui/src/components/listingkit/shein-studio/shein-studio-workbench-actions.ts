@@ -203,6 +203,7 @@ export function useSheinStudioDesignActions({
       activeSelection,
       artworkGenerationMode,
       hotStyleReferenceBrief,
+      hotStyleReferenceImageUrls,
       hotStyleReferencePrompt,
       prompt,
       sheinStoreId,
@@ -353,6 +354,7 @@ export function useSheinStudioDesignActions({
       activeSelection,
       artworkGenerationMode,
       hotStyleReferenceBrief,
+      hotStyleReferenceImageUrls,
       hotStyleReferencePrompt,
       prompt,
     });
@@ -421,6 +423,7 @@ export function useSheinStudioDesignActions({
       });
       const response = await generateSheinStudioDesigns(
         buildSheinStudioGenerateRequest({
+          artworkGenerationMode,
           prompt: generationInput.prompt,
           promptMode,
           variationIntensity,

@@ -204,7 +204,9 @@ export async function upsertSheinStudioBatchDraft(
         prompt: input.prompt,
         prompt_mode: input.promptMode,
         style_count: input.styleCount,
-        hot_style_reference_image_urls: input.hotStyleReferenceImageUrls,
+        hot_style_reference_image_urls: normalizeHotStyleReferenceImageUrls(
+          input.hotStyleReferenceImageUrls,
+        ),
         hot_style_reference_brief: input.hotStyleReferenceBrief,
         hot_style_reference_prompt: input.hotStyleReferencePrompt,
         variation_intensity: input.variationIntensity,
@@ -230,6 +232,29 @@ export async function upsertSheinStudioBatchDraft(
     }),
   );
   return mapStudioBatchDraftDetailToBatch(detail);
+}
+
+function normalizeHotStyleReferenceImageUrls(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const result: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string") {
+      continue;
+    }
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    result.push(trimmed);
+    if (result.length === 1) {
+      break;
+    }
+  }
+  return result;
 }
 
 export async function deleteSheinStudioBatchDraft(
@@ -340,7 +365,9 @@ export function mapStudioBatchDraftDetailToDraft(
     prompt: detail.batch.prompt ?? "",
     promptMode: detail.batch.prompt_mode ?? "managed",
     styleCount: detail.batch.style_count ?? "1",
-    hotStyleReferenceImageUrls: detail.batch.hot_style_reference_image_urls ?? [],
+    hotStyleReferenceImageUrls: normalizeHotStyleReferenceImageUrls(
+      detail.batch.hot_style_reference_image_urls,
+    ),
     hotStyleReferenceBrief: detail.batch.hot_style_reference_brief ?? "",
     hotStyleReferencePrompt: detail.batch.hot_style_reference_prompt ?? "",
     variationIntensity: detail.batch.variation_intensity ?? "medium",
@@ -483,7 +510,9 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
     prompt: item.prompt ?? "",
     promptMode: item.prompt_mode ?? "managed",
     styleCount: item.style_count ?? "1",
-    hotStyleReferenceImageUrls: item.hot_style_reference_image_urls ?? [],
+    hotStyleReferenceImageUrls: normalizeHotStyleReferenceImageUrls(
+      item.hot_style_reference_image_urls,
+    ),
     hotStyleReferenceBrief: item.hot_style_reference_brief ?? "",
     hotStyleReferencePrompt: item.hot_style_reference_prompt ?? "",
     variationIntensity: item.variation_intensity ?? "medium",

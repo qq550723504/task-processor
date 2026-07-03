@@ -35,6 +35,7 @@ export type SheinStudioGenerationJob = {
 
 export type SheinStudioGenerateRequest = {
   prompt: string;
+  artworkGenerationMode?: import("@/lib/types/shein-studio-draft").SheinStudioArtworkGenerationMode;
   promptMode?: SheinStudioPromptMode;
   count: number;
   variationIntensity?: SheinStudioVariationIntensity;

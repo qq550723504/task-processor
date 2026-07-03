@@ -66,6 +66,7 @@ type StudioGeneratedImage struct {
 
 type StudioDesignRequest struct {
 	Prompt                    string   `json:"prompt,omitempty"`
+	ArtworkGenerationMode     string   `json:"artwork_generation_mode,omitempty"`
 	PromptMode                string   `json:"prompt_mode,omitempty"`
 	Count                     int      `json:"count,omitempty"`
 	VariationIntensity        string   `json:"variation_intensity,omitempty"`

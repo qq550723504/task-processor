@@ -227,7 +227,10 @@ describe("normalizeBatch", () => {
       name: "869全品类",
       prompt: "prompt",
       styleCount: "4",
-      hot_style_reference_image_urls: ["https://example.com/ref.png"],
+      hot_style_reference_image_urls: [
+        "https://example.com/ref.png",
+        "https://example.com/ref-2.png",
+      ],
       hot_style_reference_brief: "retro badge",
       hot_style_reference_prompt: "original retro badge",
       designs: [],

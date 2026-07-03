@@ -156,7 +156,7 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	session.GroupedSelections = toStudioGroupedSelectionList(normalizedReq.GroupedSelections)
 	session.TransparentBackground = normalizedReq.TransparentBackground
 	session.RenderSizeImagesWithSDS = normalizedReq.RenderSizeImagesWithSDS
-	session.HotStyleReferenceImageURLs = append(SheinStudioStringList(nil), normalizedReq.HotStyleReferenceImageURLs...)
+	session.HotStyleReferenceImageURLs = normalizeStudioHotStyleReferenceImageURLs(normalizedReq.HotStyleReferenceImageURLs)
 	session.HotStyleReferenceBrief = strings.TrimSpace(normalizedReq.HotStyleReferenceBrief)
 	session.HotStyleReferencePrompt = strings.TrimSpace(normalizedReq.HotStyleReferencePrompt)
 	session.SheinStoreID = normalizedReq.SheinStoreID
@@ -222,6 +222,24 @@ func hasMixedStudioArtworkGenerationInputs(req *UpsertStudioBatchRequest) bool {
 		}
 	}
 	return false
+}
+
+func normalizeStudioHotStyleReferenceImageURLs(values []string) SheinStudioStringList {
+	result := make(SheinStudioStringList, 0, 1)
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if _, ok := seen[trimmed]; ok {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		result = append(result, trimmed)
+		break
+	}
+	return result
 }
 
 func (s *taskStudioBatchDraftService) DeleteStudioBatch(ctx context.Context, batchID string) error {

@@ -42,6 +42,7 @@ export async function generateSheinStudioDesigns(
   }>("/studio/designs", {
     body: {
       prompt: body.prompt,
+      artwork_generation_mode: body.artworkGenerationMode,
       prompt_mode: body.promptMode,
       count: body.count,
       variation_intensity: body.variationIntensity,

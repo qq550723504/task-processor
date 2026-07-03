@@ -47,6 +47,11 @@ func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, r
 	if s.imageGenerator == nil {
 		return nil, fmt.Errorf("studio image generator is not configured")
 	}
+	referenceURLs, err := validateStudioDesignReferenceImageURLs(req)
+	if err != nil {
+		return nil, err
+	}
+	req.ProductReferenceImageURLs = referenceURLs
 
 	asyncGenerator, ok := s.imageGenerator.(AIAsyncImageGenerator)
 	if !ok {
@@ -63,7 +68,6 @@ func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, r
 	if count != 1 {
 		return nil, ErrAsyncImageGenerationNotSupported
 	}
-	referenceURLs := studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)
 	model := resolveStudioDesignImageModel(req, s.imageGenerator.GetDefaultModel())
 	size := resolveStudioDesignSize(req.PrintableWidth, req.PrintableHeight)
 	promptText := buildStudioDesignPromptWithTheme(req, theme)
@@ -139,6 +143,11 @@ func (s *taskStudioMediaService) GenerateStudioDesigns(ctx context.Context, req 
 	if s.imageGenerator == nil {
 		return nil, fmt.Errorf("studio image generator is not configured")
 	}
+	referenceURLs, err := validateStudioDesignReferenceImageURLs(req)
+	if err != nil {
+		return nil, err
+	}
+	req.ProductReferenceImageURLs = referenceURLs
 
 	count := req.Count
 	if count <= 0 {
@@ -153,8 +162,6 @@ func (s *taskStudioMediaService) GenerateStudioDesigns(ctx context.Context, req 
 		themes = buildFallbackStudioDesignThemes(req.Prompt, count)
 	}
 	size := resolveStudioDesignSize(req.PrintableWidth, req.PrintableHeight)
-	referenceURLs := studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)
-
 	response := &StudioDesignResponse{
 		Prompt:                theme,
 		PrintableWidth:        req.PrintableWidth,

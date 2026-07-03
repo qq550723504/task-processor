@@ -145,9 +145,26 @@ export function normalizeArtworkGenerationMode(
 }
 
 function normalizeHotStyleReferenceImageUrls(value: unknown) {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
-    : [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") {
+      continue;
+    }
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    result.push(trimmed);
+    if (result.length === 1) {
+      break;
+    }
+  }
+  return result;
 }
 
 function normalizeHotStyleReferenceText(value: unknown) {

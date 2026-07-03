@@ -357,8 +357,9 @@ func TestSubmitStudioDesignsAsyncUsesEditPathWhenReferenceImagesExist(t *testing
 
 	result, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
 		Prompt:                    "retro cherries",
+		ArtworkGenerationMode:     "hot_reference",
 		Count:                     1,
-		ProductReferenceImageURLs: []string{"https://example.com/black-shirt.jpg", "https://example.com/white-shirt.jpg"},
+		ProductReferenceImageURLs: []string{"https://example.com/black-shirt.jpg"},
 	})
 	if err != nil {
 		t.Fatalf("SubmitStudioDesignsAsync() error = %v", err)
@@ -369,8 +370,58 @@ func TestSubmitStudioDesignsAsyncUsesEditPathWhenReferenceImagesExist(t *testing
 	if generator.asyncEditCalls != 1 {
 		t.Fatalf("asyncEditCalls = %d, want 1", generator.asyncEditCalls)
 	}
-	if len(generator.asyncEditReqs) != 1 || len(generator.asyncEditReqs[0].ImageURLs) != 2 {
-		t.Fatalf("async edit requests = %+v, want 2 reference images", generator.asyncEditReqs)
+	if len(generator.asyncEditReqs) != 1 || len(generator.asyncEditReqs[0].ImageURLs) != 1 {
+		t.Fatalf("async edit requests = %+v, want 1 reference image", generator.asyncEditReqs)
+	}
+}
+
+func TestSubmitStudioDesignsAsyncRejectsReferenceImagesWithoutHotReferenceMode(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		asyncSubmit: &AIImageAsyncSubmit{JobID: "job-1"},
+	}
+	svc := &taskStudioMediaService{imageGenerator: generator}
+
+	_, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
+		Prompt:                    "retro cherries",
+		Count:                     1,
+		ProductReferenceImageURLs: []string{"https://example.com/black-shirt.jpg"},
+	})
+	if err == nil {
+		t.Fatal("SubmitStudioDesignsAsync() succeeded, want reference mode validation error")
+	}
+	if !strings.Contains(err.Error(), "theme prompt mode cannot include reference images") {
+		t.Fatalf("error = %v, want theme reference validation", err)
+	}
+}
+
+func TestSubmitStudioDesignsAsyncRequiresExactlyOneHotReferenceImage(t *testing.T) {
+	tests := []struct {
+		name string
+		urls []string
+	}{
+		{name: "none", urls: nil},
+		{name: "multiple", urls: []string{"https://example.com/a.png", "https://example.com/b.png"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			generator := &stubStudioImageGenerator{
+				asyncSubmit: &AIImageAsyncSubmit{JobID: "job-1"},
+			}
+			svc := &taskStudioMediaService{imageGenerator: generator}
+
+			_, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
+				Prompt:                    "retro cherries",
+				ArtworkGenerationMode:     "hot_reference",
+				Count:                     1,
+				ProductReferenceImageURLs: tt.urls,
+			})
+			if err == nil {
+				t.Fatal("SubmitStudioDesignsAsync() succeeded, want hot reference validation error")
+			}
+			if !strings.Contains(err.Error(), "hot reference mode requires exactly one reference image") {
+				t.Fatalf("error = %v, want hot reference count validation", err)
+			}
+		})
 	}
 }
 
@@ -480,6 +531,25 @@ func TestGenerateStudioDesignsAddsWarningsForPromptFallbackAndPartialSuccess(t *
 	}
 	if !strings.Contains(response.Warnings[1], "upstream rate limited") {
 		t.Fatalf("warning[1] = %q, want first failure reason", response.Warnings[1])
+	}
+}
+
+func TestGenerateStudioDesignsRejectsReferenceImagesWithoutHotReferenceMode(t *testing.T) {
+	svc := &service{studioDeps: studioDependencies{
+		imageGenerator: &stubStudioImageGenerator{},
+		uploadStore:    &stubImageUploadStore{},
+	}}
+
+	_, err := svc.GenerateStudioDesigns(context.Background(), &StudioDesignRequest{
+		Prompt:                    "retro cherries",
+		Count:                     1,
+		ProductReferenceImageURLs: []string{"https://example.com/black-shirt.jpg"},
+	})
+	if err == nil {
+		t.Fatal("GenerateStudioDesigns() succeeded, want reference mode validation error")
+	}
+	if !strings.Contains(err.Error(), "theme prompt mode cannot include reference images") {
+		t.Fatalf("error = %v, want theme reference validation", err)
 	}
 }
 

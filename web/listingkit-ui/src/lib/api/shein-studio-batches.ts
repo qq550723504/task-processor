@@ -55,6 +55,29 @@ const studioBatchSchema = z
   })
   .passthrough();
 
+function normalizeHotStyleReferenceImageUrls(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of value) {
+    if (typeof item !== "string") {
+      continue;
+    }
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) {
+      continue;
+    }
+    seen.add(trimmed);
+    result.push(trimmed);
+    if (result.length === 1) {
+      break;
+    }
+  }
+  return result;
+}
+
 const studioMaterializedDesignReviewStatusSchema = z.enum([
   "unreviewed",
   "approved",
@@ -265,13 +288,9 @@ function mapStudioBatch(
       "hot_style_reference_image_urls",
     )
   ) {
-    batch.hotStyleReferenceImageUrls = Array.isArray(
+    batch.hotStyleReferenceImageUrls = normalizeHotStyleReferenceImageUrls(
       payload.hot_style_reference_image_urls,
-    )
-      ? payload.hot_style_reference_image_urls.filter(
-          (item): item is string => typeof item === "string",
-        )
-      : [];
+    );
   }
   if (
     Object.prototype.hasOwnProperty.call(payload, "hot_style_reference_brief")

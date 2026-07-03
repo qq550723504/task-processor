@@ -490,6 +490,7 @@ func TestStudioSessionServiceUpsertsAndListsBatches(t *testing.T) {
 		BatchName:         "retro cherries",
 		HotStyleReferenceImageURLs: []string{
 			"https://cdn.example.com/hot-style-ref.png",
+			"https://cdn.example.com/hot-style-ref-2.png",
 		},
 		HotStyleReferenceBrief:  "embroidered cherry badge",
 		HotStyleReferencePrompt: "extract cherry badge print features",

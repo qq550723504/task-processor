@@ -397,6 +397,7 @@ export const sheinStudioBatchUpsertContractFixture = {
     batch_name: "retro botanical clock",
     prompt: "retro botanical clock",
     style_count: "2",
+    hot_style_reference_image_urls: [],
     variation_intensity: "medium",
     product_image_count: "5",
     product_image_prompt: "",

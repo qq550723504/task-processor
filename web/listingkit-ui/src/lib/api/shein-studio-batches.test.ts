@@ -309,7 +309,10 @@ describe("parseSheinStudioBatchDetailResponse", () => {
           status: "draft",
           prompt: "botanical",
           style_count: "3",
-          hot_style_reference_image_urls: ["https://example.com/ref.png"],
+          hot_style_reference_image_urls: [
+            "https://example.com/ref.png",
+            "https://example.com/ref-2.png",
+          ],
           hot_style_reference_brief: "retro badge",
           hot_style_reference_prompt: "original retro badge",
           created_at: "2026-06-01T10:00:00Z",

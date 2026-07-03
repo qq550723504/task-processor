@@ -189,6 +189,36 @@ func resolveStudioDesignImageModel(req *StudioDesignRequest, fallback string) st
 	return strings.TrimSpace(fallback)
 }
 
+const (
+	studioArtworkGenerationModeThemePrompt  = "theme_prompt"
+	studioArtworkGenerationModeHotReference = "hot_reference"
+)
+
+func validateStudioDesignReferenceImageURLs(req *StudioDesignRequest) ([]string, error) {
+	if req == nil {
+		return nil, fmt.Errorf("invalid request: request is required")
+	}
+	mode := strings.TrimSpace(req.ArtworkGenerationMode)
+	if mode == "" {
+		mode = studioArtworkGenerationModeThemePrompt
+	}
+	referenceURLs := studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)
+	switch mode {
+	case studioArtworkGenerationModeThemePrompt:
+		if len(referenceURLs) > 0 {
+			return nil, fmt.Errorf("invalid request: theme prompt mode cannot include reference images")
+		}
+		return nil, nil
+	case studioArtworkGenerationModeHotReference:
+		if len(referenceURLs) != 1 {
+			return nil, fmt.Errorf("invalid request: hot reference mode requires exactly one reference image")
+		}
+		return referenceURLs, nil
+	default:
+		return nil, fmt.Errorf("invalid request: unknown artwork generation mode %q", mode)
+	}
+}
+
 func studioDesignReferenceImageURLs(urls []string) []string {
 	const maxStudioDesignReferenceImages = 5
 	cleaned := make([]string, 0, min(len(urls), maxStudioDesignReferenceImages))

@@ -88,6 +88,7 @@ export function resolveGenerationStartValidation({
   activeSelection,
   artworkGenerationMode = "theme_prompt",
   hotStyleReferenceBrief,
+  hotStyleReferenceImageUrls,
   hotStyleReferencePrompt,
   prompt,
   sheinStoreId,
@@ -95,6 +96,7 @@ export function resolveGenerationStartValidation({
   activeSelection?: SDSProductVariantSelection;
   artworkGenerationMode?: SheinStudioArtworkGenerationMode;
   hotStyleReferenceBrief?: string;
+  hotStyleReferenceImageUrls?: string[];
   hotStyleReferencePrompt?: string;
   prompt: string;
   sheinStoreId: string;
@@ -106,8 +108,16 @@ export function resolveGenerationStartValidation({
     return { error: "请先选择批次店铺。" };
   }
   if (artworkGenerationMode === "hot_reference") {
-    if (!hotStyleReferenceBrief?.trim() || !hotStyleReferencePrompt?.trim()) {
+    const referenceImageUrls = normalizeReferenceImageUrls(hotStyleReferenceImageUrls);
+    if (
+      referenceImageUrls.length === 0 ||
+      !hotStyleReferenceBrief?.trim() ||
+      !hotStyleReferencePrompt?.trim()
+    ) {
       return { error: "请先提取热销款风格。", focusPrompt: false };
+    }
+    if (referenceImageUrls.length > 1) {
+      return { error: "热销参考模式只能使用 1 张参考图。", focusPrompt: false };
     }
     return null;
   }
@@ -121,12 +131,14 @@ export function resolveRegenerationStartValidation({
   activeSelection,
   artworkGenerationMode = "theme_prompt",
   hotStyleReferenceBrief,
+  hotStyleReferenceImageUrls,
   hotStyleReferencePrompt,
   prompt,
 }: {
   activeSelection?: SDSProductVariantSelection;
   artworkGenerationMode?: SheinStudioArtworkGenerationMode;
   hotStyleReferenceBrief?: string;
+  hotStyleReferenceImageUrls?: string[];
   hotStyleReferencePrompt?: string;
   prompt: string;
 }) {
@@ -134,8 +146,16 @@ export function resolveRegenerationStartValidation({
     return { error: "请先选择 SDS 变体。" };
   }
   if (artworkGenerationMode === "hot_reference") {
-    if (!hotStyleReferenceBrief?.trim() || !hotStyleReferencePrompt?.trim()) {
+    const referenceImageUrls = normalizeReferenceImageUrls(hotStyleReferenceImageUrls);
+    if (
+      referenceImageUrls.length === 0 ||
+      !hotStyleReferenceBrief?.trim() ||
+      !hotStyleReferencePrompt?.trim()
+    ) {
       return { error: "请先提取热销款风格。", focusPrompt: false };
+    }
+    if (referenceImageUrls.length > 1) {
+      return { error: "热销参考模式只能使用 1 张参考图。", focusPrompt: false };
     }
     return null;
   }
@@ -258,42 +278,25 @@ export function buildHotStyleReferenceGenerationInput(input: {
   const referenceBrief = input.hotStyleReferenceBrief?.trim();
   const referencePrompt = input.hotStyleReferencePrompt?.trim();
   const hasAnalyzedReference = Boolean(referenceBrief && referencePrompt);
-  const normalizedProductReferences = normalizeReferenceImageUrls(
-    input.productReferenceImageUrls,
-  );
-  if (input.artworkGenerationMode === "theme_prompt") {
+  const artworkGenerationMode = input.artworkGenerationMode ?? "theme_prompt";
+  if (artworkGenerationMode === "theme_prompt") {
     return {
       prompt: input.prompt.trim(),
-      productReferenceImageUrls: normalizedProductReferences,
+      productReferenceImageUrls: [],
     };
   }
   const normalizedHotStyleReferences = hasAnalyzedReference
     ? normalizeReferenceImageUrls(input.hotStyleReferenceImageUrls)
     : [];
-  if (input.artworkGenerationMode === "hot_reference") {
+  if (artworkGenerationMode === "hot_reference") {
     return {
       prompt: hasAnalyzedReference ? (referencePrompt ?? "") : "",
-      productReferenceImageUrls: prioritizeReferenceImageUrls({
-        existing: normalizedProductReferences,
-        prioritized: normalizedHotStyleReferences,
-        limit: 5,
-      }),
+      productReferenceImageUrls: normalizedHotStyleReferences.slice(0, 1),
     };
   }
-  const promptParts = [input.prompt.trim()];
-  if (hasAnalyzedReference && referencePrompt) {
-    promptParts.push(
-      "Hot-selling reference direction for original artwork:",
-      referencePrompt,
-    );
-  }
   return {
-    prompt: promptParts.filter(Boolean).join("\n"),
-    productReferenceImageUrls: prioritizeReferenceImageUrls({
-      existing: normalizedProductReferences,
-      prioritized: normalizedHotStyleReferences,
-      limit: 5,
-    }),
+    prompt: input.prompt.trim(),
+    productReferenceImageUrls: [],
   };
 }
 
@@ -307,29 +310,6 @@ function normalizeReferenceImageUrls(values?: string[]) {
     }
     seen.add(normalized);
     result.push(normalized);
-  }
-  return result;
-}
-
-function prioritizeReferenceImageUrls(input: {
-  existing: string[];
-  prioritized: string[];
-  limit: number;
-}) {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  const append = (value: string) => {
-    if (!value || seen.has(value) || result.length >= input.limit) {
-      return;
-    }
-    seen.add(value);
-    result.push(value);
-  };
-  for (const value of input.prioritized) {
-    append(value);
-  }
-  for (const value of input.existing) {
-    append(value);
   }
   return result;
 }
@@ -424,6 +404,7 @@ export async function executeStandaloneGeneration({
       });
       const response = await generateDesigns(
         buildSheinStudioGenerateRequest({
+          artworkGenerationMode: artworkGenerationMode ?? "theme_prompt",
           prompt: generationInput.prompt,
           promptMode,
           variationIntensity,
@@ -558,6 +539,7 @@ export async function executeStandaloneGeneration({
 }
 
 export function buildSheinStudioGenerateRequest({
+  artworkGenerationMode,
   artworkModel,
   prompt,
   promptMode,
@@ -568,6 +550,7 @@ export function buildSheinStudioGenerateRequest({
   transparentBackground,
   variationIntensity,
 }: {
+  artworkGenerationMode: SheinStudioArtworkGenerationMode;
   artworkModel: SheinStudioArtworkModel;
   prompt: string;
   promptMode?: SheinStudioGenerateRequest["promptMode"];
@@ -586,6 +569,7 @@ export function buildSheinStudioGenerateRequest({
   });
   return {
     prompt: normalizedPrompt,
+    artworkGenerationMode,
     promptMode,
     count: styleCount,
     variationIntensity,

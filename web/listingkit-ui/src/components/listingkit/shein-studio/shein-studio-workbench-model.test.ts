@@ -1338,6 +1338,7 @@ describe("shein studio workbench model", () => {
   it("builds generation requests with transparent-background model override", () => {
     expect(
       buildSheinStudioGenerateRequest({
+        artworkGenerationMode: "theme_prompt",
         artworkModel: "nanobanana",
         prompt: " retro cherries ",
         printableWidth: 1000,
@@ -1349,6 +1350,7 @@ describe("shein studio workbench model", () => {
       }),
     ).toEqual({
       prompt: "retro cherries\n\nprintable size: 1000x1200px.",
+      artworkGenerationMode: "theme_prompt",
       count: 2,
       variationIntensity: "strong",
       printableWidth: 1000,
@@ -1362,6 +1364,7 @@ describe("shein studio workbench model", () => {
   it("leaves image model empty so backend default can apply", () => {
     expect(
       buildSheinStudioGenerateRequest({
+        artworkGenerationMode: "theme_prompt",
         artworkModel: "   ",
         prompt: "retro cherries",
         styleCount: 1,
@@ -1370,6 +1373,7 @@ describe("shein studio workbench model", () => {
       }),
     ).toEqual({
       prompt: "retro cherries",
+      artworkGenerationMode: "theme_prompt",
       count: 1,
       variationIntensity: "medium",
       printableWidth: undefined,
@@ -1383,6 +1387,7 @@ describe("shein studio workbench model", () => {
   it("does not append the SDS size twice when the prompt already contains it", () => {
     expect(
       buildSheinStudioGenerateRequest({
+        artworkGenerationMode: "theme_prompt",
         artworkModel: "nanobanana",
         prompt: "retro cherries printable size: 1000x1200px.",
         printableWidth: 1000,
@@ -1393,6 +1398,7 @@ describe("shein studio workbench model", () => {
       }),
     ).toEqual({
       prompt: "retro cherries printable size: 1000x1200px.",
+      artworkGenerationMode: "theme_prompt",
       count: 1,
       variationIntensity: "medium",
       printableWidth: 1000,

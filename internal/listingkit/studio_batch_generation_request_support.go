@@ -27,8 +27,13 @@ func buildStudioBatchItemDesignRequest(batch *StudioBatchRecord, item StudioBatc
 	} else {
 		hotStyleReferencePrompt = ""
 	}
+	artworkGenerationMode := studioArtworkGenerationModeThemePrompt
+	if len(referenceImageURLs) == 1 {
+		artworkGenerationMode = studioArtworkGenerationModeHotReference
+	}
 	return &StudioDesignRequest{
 		Prompt:                    buildStudioHotStyleGenerationPrompt(batch.Prompt, hotStyleReferencePrompt),
+		ArtworkGenerationMode:     artworkGenerationMode,
 		PromptMode:                strings.TrimSpace(batch.PromptMode),
 		Count:                     parseStudioBatchRunStyleCount(strings.TrimSpace(batch.StyleCount)),
 		VariationIntensity:        strings.TrimSpace(batch.VariationIntensity),

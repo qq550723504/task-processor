@@ -96,6 +96,32 @@ describe("shein studio design metadata", () => {
     );
   });
 
+  it("posts artwork generation mode and reference images to studio designs", async () => {
+    mockedApiAsyncRequest.mockResolvedValueOnce({
+      prompt: "original retro badge",
+      transparent_background: false,
+      images: [],
+    });
+
+    await generateSheinStudioDesigns({
+      prompt: "original retro badge",
+      count: 1,
+      artworkGenerationMode: "hot_reference",
+      productReferenceImageUrls: ["https://example.com/hot-ref.png"],
+      transparentBackground: false,
+    });
+
+    expect(mockedApiAsyncRequest).toHaveBeenCalledWith(
+      "/studio/designs",
+      expect.objectContaining({
+        body: expect.objectContaining({
+          artwork_generation_mode: "hot_reference",
+          product_reference_image_urls: ["https://example.com/hot-ref.png"],
+        }),
+      }),
+    );
+  });
+
   it("omits image model when using backend default model", async () => {
     mockedApiAsyncRequest.mockResolvedValueOnce({
       prompt: "retro botanical clock",

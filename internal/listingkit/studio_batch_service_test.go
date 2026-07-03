@@ -435,6 +435,9 @@ func TestBuildStudioBatchItemDesignRequestIncludesOnlyHotStyleReferenceImages(t 
 	if got, want := req.Prompt, "punk eagle collage\nHot-selling reference direction for original artwork:\nCreate an original retro badge."; got != want {
 		t.Fatalf("Prompt = %q, want %q", got, want)
 	}
+	if got, want := req.ArtworkGenerationMode, "hot_reference"; got != want {
+		t.Fatalf("ArtworkGenerationMode = %q, want %q", got, want)
+	}
 	if got, want := req.ProductReferenceImageURLs, []string{
 		"https://example.com/hot-ref.png",
 	}; len(got) != len(want) {
@@ -483,6 +486,9 @@ func TestBuildStudioBatchItemDesignRequestDropsHotStyleReferencesWithoutSuccessf
 	}
 	if got, want := req.Prompt, "punk eagle collage"; got != want {
 		t.Fatalf("Prompt = %q, want %q", got, want)
+	}
+	if got, want := req.ArtworkGenerationMode, "theme_prompt"; got != want {
+		t.Fatalf("ArtworkGenerationMode = %q, want %q", got, want)
 	}
 	if len(req.ProductReferenceImageURLs) != 0 {
 		t.Fatalf("ProductReferenceImageURLs = %v, want empty without successful hot-style analysis", req.ProductReferenceImageURLs)
