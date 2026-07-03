@@ -137,9 +137,9 @@ type SheinStudioBatchListItem struct {
 	GroupedImageMode           string                          `json:"grouped_image_mode,omitempty"`
 	TransparentBackground      bool                            `json:"transparent_background,omitempty"`
 	RenderSizeImagesWithSDS    bool                            `json:"render_size_images_with_sds,omitempty"`
-	HotStyleReferenceImageURLs []string                        `json:"hot_style_reference_image_urls,omitempty"`
-	HotStyleReferenceBrief     string                          `json:"hot_style_reference_brief,omitempty"`
-	HotStyleReferencePrompt    string                          `json:"hot_style_reference_prompt,omitempty"`
+	HotStyleReferenceImageURLs []string                        `json:"hot_style_reference_image_urls"`
+	HotStyleReferenceBrief     string                          `json:"hot_style_reference_brief"`
+	HotStyleReferencePrompt    string                          `json:"hot_style_reference_prompt"`
 	SheinStoreID               string                          `json:"shein_store_id,omitempty"`
 	Selection                  *SheinStudioSelection           `json:"selection,omitempty"`
 	GroupedSelections          []SheinStudioGroupedSelection   `json:"grouped_selections,omitempty"`

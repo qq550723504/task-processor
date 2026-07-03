@@ -29,6 +29,18 @@ func TestStudioHotStyleReferenceFieldsSerializeWhenCleared(t *testing.T) {
 		}
 		assertStudioHotStyleReferenceKeys(t, payload)
 	})
+
+	t.Run("batch list item", func(t *testing.T) {
+		var payload map[string]json.RawMessage
+		if err := json.Unmarshal(mustMarshalStudioHotStyleJSON(t, SheinStudioBatchListItem{
+			HotStyleReferenceImageURLs: []string{},
+			HotStyleReferenceBrief:     "",
+			HotStyleReferencePrompt:    "",
+		}), &payload); err != nil {
+			t.Fatalf("unmarshal batch list item json: %v", err)
+		}
+		assertStudioHotStyleReferenceKeys(t, payload)
+	})
 }
 
 func mustMarshalStudioHotStyleJSON(t *testing.T, value any) []byte {
