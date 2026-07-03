@@ -210,10 +210,10 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
-    expect(screen.getByText("$29.99")).toBeInTheDocument();
-    expect(screen.getByText("SPU: spu-123")).toBeInTheDocument();
-    expect(screen.getByText("货号: J0529021001")).toBeInTheDocument();
-    expect(screen.getByText("总库存 999")).toBeInTheDocument();
+    expect(screen.getByText(/售价\s+\$29\.99/)).toBeInTheDocument();
+    expect(screen.getByText(/SPU:\s+spu-123/)).toBeInTheDocument();
+    expect(screen.getByText(/货号:\s+J0529021001/)).toBeInTheDocument();
+    expect(screen.getByText(/总库存\s+999/)).toBeInTheDocument();
   });
 
   it("renders price snapshot in the candidates tab", async () => {
