@@ -440,6 +440,9 @@ describe("SheinStudioWorkbench", () => {
         prompt: "retro cherries",
         styleCount: "1",
         sheinStoreId: "869",
+        hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+        hotStyleReferenceBrief: "saved reference brief",
+        hotStyleReferencePrompt: "saved reference prompt",
         selection,
         designs: [],
         selectedIds: [],
@@ -453,6 +456,9 @@ describe("SheinStudioWorkbench", () => {
           prompt: "retro cherries",
           styleCount: "1",
           sheinStoreId: 869,
+          hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+          hotStyleReferenceBrief: "saved reference brief",
+          hotStyleReferencePrompt: "saved reference prompt",
           createdAt: "2026-05-26T09:59:00.000Z",
           updatedAt: "2026-05-26T10:00:00.000Z",
         },
@@ -672,6 +678,19 @@ describe("SheinStudioWorkbench", () => {
       ]),
     );
     expect(createSheinReviewTasks).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "前往生成区" }));
+    await waitFor(() =>
+      expect(lastGenerationPanelProps?.hotStyleReferenceImageUrls).toEqual([
+        "https://example.com/ref.png",
+      ]),
+    );
+    expect(lastGenerationPanelProps?.hotStyleReferenceBrief).toBe(
+      "saved reference brief",
+    );
+    expect(lastGenerationPanelProps?.hotStyleReferencePrompt).toBe(
+      "saved reference prompt",
+    );
   });
 
   it("generates an active homepage batch through the itemized batch endpoint instead of session append", async () => {
