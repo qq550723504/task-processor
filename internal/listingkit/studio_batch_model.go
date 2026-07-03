@@ -61,9 +61,9 @@ type StudioBatchRecord struct {
 	ArtworkModel               string                          `json:"artwork_model,omitempty" gorm:"type:varchar(32)"`
 	SelectedSDSImages          SheinStudioSelectedSDSImageList `json:"selected_sds_images,omitempty" gorm:"type:text"`
 	TransparentBackground      bool                            `json:"transparent_background"`
-	HotStyleReferenceImageURLs SheinStudioStringList           `json:"hot_style_reference_image_urls,omitempty" gorm:"type:text"`
-	HotStyleReferenceBrief     string                          `json:"hot_style_reference_brief,omitempty" gorm:"type:text"`
-	HotStyleReferencePrompt    string                          `json:"hot_style_reference_prompt,omitempty" gorm:"type:text"`
+	HotStyleReferenceImageURLs SheinStudioStringList           `json:"hot_style_reference_image_urls" gorm:"type:text"`
+	HotStyleReferenceBrief     string                          `json:"hot_style_reference_brief" gorm:"type:text"`
+	HotStyleReferencePrompt    string                          `json:"hot_style_reference_prompt" gorm:"type:text"`
 	SheinStoreID               int64                           `json:"shein_store_id,omitempty" gorm:"index"`
 	DraftUpdatedAt             *time.Time                      `json:"draft_updated_at,omitempty" gorm:"-"`
 	CreatedAt                  time.Time                       `json:"created_at"`

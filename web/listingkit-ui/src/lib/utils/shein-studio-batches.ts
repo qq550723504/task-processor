@@ -419,7 +419,26 @@ function projectItemizedBatchSavedBatchCompatibility(
 }
 
 function resolveDraftComparableTimestamp(value?: string) {
-  return value?.trim() || "";
+  const normalized = value?.trim() || "";
+  if (!normalized) {
+    return null;
+  }
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function compareDraftTimestamps(
+  savedUpdatedAt: string | undefined,
+  itemizedUpdatedAt: string | undefined,
+) {
+  const savedTimestamp = resolveDraftComparableTimestamp(savedUpdatedAt);
+  const itemizedTimestamp = resolveDraftComparableTimestamp(itemizedUpdatedAt);
+  if (savedTimestamp != null && itemizedTimestamp != null) {
+    return savedTimestamp - itemizedTimestamp;
+  }
+  return (savedUpdatedAt?.trim() || "").localeCompare(
+    itemizedUpdatedAt?.trim() || "",
+  );
 }
 
 function hasOwnDraftProperty(value: object | undefined, key: PropertyKey) {
@@ -430,10 +449,7 @@ function preferSavedBatchDraftPresence(
   savedUpdatedAt: string | undefined,
   itemizedUpdatedAt: string | undefined,
 ) {
-  return (
-    resolveDraftComparableTimestamp(savedUpdatedAt) >=
-    resolveDraftComparableTimestamp(itemizedUpdatedAt)
-  );
+  return compareDraftTimestamps(savedUpdatedAt, itemizedUpdatedAt) >= 0;
 }
 
 function preferHotStyleDraftTextValue({

@@ -639,6 +639,46 @@ describe("shein studio workbench model", () => {
     expect(projection.hotStyleReferencePrompt).toBe("");
   });
 
+  it("uses parsed timestamps when deciding whether cleared hot style fields are newer", () => {
+    const projection = projectHydratedBatchToWorkbench({
+      savedBatch: {
+        id: "batch-1",
+        name: "Saved Batch",
+        prompt: "newer saved prompt",
+        styleCount: "1",
+        sheinStoreId: "869",
+        hotStyleReferenceImageUrls: [],
+        hotStyleReferenceBrief: "",
+        hotStyleReferencePrompt: "",
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        draftUpdatedAt: "2026-06-01T02:15:00Z",
+        updatedAt: "2026-06-01T02:15:00Z",
+      },
+      detail: {
+        batch: {
+          id: "batch-1",
+          status: "review_ready",
+          prompt: "older itemized prompt",
+          styleCount: "1",
+          sheinStoreId: 869,
+          hotStyleReferenceImageUrls: ["https://example.com/stale-ref.png"],
+          hotStyleReferenceBrief: "stale itemized reference",
+          hotStyleReferencePrompt: "stale itemized prompt",
+          createdAt: "2026-06-01T10:00:00+08:00",
+          draftUpdatedAt: "2026-06-01T10:10:00+08:00",
+          updatedAt: "2026-06-01T10:10:00+08:00",
+        },
+        items: [],
+      },
+    });
+
+    expect(projection.hotStyleReferenceImageUrls).toEqual([]);
+    expect(projection.hotStyleReferenceBrief).toBe("");
+    expect(projection.hotStyleReferencePrompt).toBe("");
+  });
+
   it("detects approved itemized designs that still need SHEIN task creation", () => {
     const pendingDesignIds = getItemizedBatchPendingTaskDesignIDs({
       batch: {

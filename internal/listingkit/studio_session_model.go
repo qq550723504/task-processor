@@ -65,9 +65,9 @@ type SheinStudioSession struct {
 	GroupedSelections          SheinStudioGroupedSelectionList   `json:"grouped_selections,omitempty" gorm:"type:text"`
 	TransparentBackground      bool                              `json:"transparent_background"`
 	RenderSizeImagesWithSDS    bool                              `json:"render_size_images_with_sds"`
-	HotStyleReferenceImageURLs SheinStudioStringList             `json:"hot_style_reference_image_urls,omitempty" gorm:"type:text"`
-	HotStyleReferenceBrief     string                            `json:"hot_style_reference_brief,omitempty" gorm:"type:text"`
-	HotStyleReferencePrompt    string                            `json:"hot_style_reference_prompt,omitempty" gorm:"type:text"`
+	HotStyleReferenceImageURLs SheinStudioStringList             `json:"hot_style_reference_image_urls" gorm:"type:text"`
+	HotStyleReferenceBrief     string                            `json:"hot_style_reference_brief" gorm:"type:text"`
+	HotStyleReferencePrompt    string                            `json:"hot_style_reference_prompt" gorm:"type:text"`
 	SheinStoreID               string                            `json:"shein_store_id,omitempty" gorm:"type:varchar(64)"`
 	GenerationJobID            string                            `json:"generation_job_id,omitempty" gorm:"type:varchar(64);index"`
 	GenerationJobs             SheinStudioGenerationJobList      `json:"generation_jobs,omitempty" gorm:"type:text"`

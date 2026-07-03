@@ -1231,6 +1231,50 @@ describe("shein studio storage api", () => {
     });
   });
 
+  it("uses parsed timestamps when preserving newer cleared hot style fields", async () => {
+    listSheinStudioBatchDrafts.mockResolvedValue([
+      {
+        id: "batch-1",
+        name: "Cleared Reference",
+        prompt: "newer saved prompt",
+        styleCount: "1",
+        sheinStoreId: "869",
+        hotStyleReferenceImageUrls: [],
+        hotStyleReferenceBrief: "",
+        hotStyleReferencePrompt: "",
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+        draftUpdatedAt: "2026-06-01T02:15:00Z",
+        updatedAt: "2026-06-01T02:15:00Z",
+      },
+    ]);
+    getSheinStudioBatchDetail.mockResolvedValue({
+      batch: {
+        id: "batch-1",
+        status: "review_ready",
+        prompt: "older itemized prompt",
+        styleCount: "1",
+        sheinStoreId: 869,
+        hotStyleReferenceImageUrls: ["https://cdn.example.com/stale-ref.png"],
+        hotStyleReferenceBrief: "stale itemized reference",
+        hotStyleReferencePrompt: "stale itemized prompt",
+        createdAt: "2026-06-01T10:00:00+08:00",
+        draftUpdatedAt: "2026-06-01T10:10:00+08:00",
+        updatedAt: "2026-06-01T10:10:00+08:00",
+      },
+      items: [],
+    });
+
+    await expect(getSheinStudioHydratedBatch("batch-1")).resolves.toMatchObject({
+      savedBatch: expect.objectContaining({
+        hotStyleReferenceImageUrls: [],
+        hotStyleReferenceBrief: "",
+        hotStyleReferencePrompt: "",
+      }),
+    });
+  });
+
   it("keeps itemized hot style fields when the newer saved batch list omits them", async () => {
     listSheinStudioBatchDrafts.mockResolvedValue([
       {
