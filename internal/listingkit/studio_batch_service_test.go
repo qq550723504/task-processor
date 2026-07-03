@@ -373,7 +373,7 @@ func TestTaskStudioBatchServiceContinueGenerationRecoversBeforeRunningPendingIte
 	}
 }
 
-func TestBuildStudioBatchItemDesignRequestIncludesHotStyleReferencePromptAndDedupedReferenceImages(t *testing.T) {
+func TestBuildStudioBatchItemDesignRequestIncludesHotStyleReferencePromptAndPrioritizedReferenceImages(t *testing.T) {
 	t.Parallel()
 
 	batch := &StudioBatchRecord{
@@ -393,6 +393,8 @@ func TestBuildStudioBatchItemDesignRequestIncludesHotStyleReferencePromptAndDedu
 			selection.MockupImageURLs = []string{
 				"https://example.com/mockup-1.png",
 				"https://example.com/mockup-2.png",
+				"https://example.com/mockup-3.png",
+				"https://example.com/mockup-4.png",
 			}
 			selection.SizeReferenceImageURLs = []string{"https://example.com/size.png"}
 			return selection
@@ -406,6 +408,8 @@ func TestBuildStudioBatchItemDesignRequestIncludesHotStyleReferencePromptAndDedu
 					selection.MockupImageURLs = []string{
 						"https://example.com/mockup-1.png",
 						"https://example.com/mockup-2.png",
+						"https://example.com/mockup-3.png",
+						"https://example.com/mockup-4.png",
 					}
 					selection.SizeReferenceImageURLs = []string{"https://example.com/size.png"}
 					return selection
@@ -431,12 +435,11 @@ func TestBuildStudioBatchItemDesignRequestIncludesHotStyleReferencePromptAndDedu
 		t.Fatalf("Prompt = %q, want %q", got, want)
 	}
 	if got, want := req.ProductReferenceImageURLs, []string{
-		"https://example.com/mockup.png",
-		"https://example.com/mockup-1.png",
-		"https://example.com/mockup-2.png",
-		"https://example.com/size.png",
-		"https://example.com/sds.png",
 		"https://example.com/hot-ref.png",
+		"https://example.com/mockup-1.png",
+		"https://example.com/mockup.png",
+		"https://example.com/mockup-2.png",
+		"https://example.com/mockup-3.png",
 	}; len(got) != len(want) {
 		t.Fatalf("len(ProductReferenceImageURLs) = %d, want %d (%v)", len(got), len(want), got)
 	} else {
@@ -445,6 +448,49 @@ func TestBuildStudioBatchItemDesignRequestIncludesHotStyleReferencePromptAndDedu
 				t.Fatalf("ProductReferenceImageURLs[%d] = %q, want %q (all=%v)", index, got[index], want[index], got)
 			}
 		}
+	}
+}
+
+func TestBuildStudioBatchItemDesignRequestDropsHotStyleReferencesWithoutSanitizedPrompt(t *testing.T) {
+	t.Parallel()
+
+	batch := &StudioBatchRecord{
+		ID:                      "batch-1",
+		Prompt:                  "punk eagle collage",
+		HotStyleReferencePrompt: "   ",
+		HotStyleReferenceImageURLs: SheinStudioStringList{
+			"https://example.com/hot-ref.png",
+		},
+		Selection: SheinStudioSelectionSnapshot(func() SheinStudioSelection {
+			selection := testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200)
+			selection.MockupImageURL = "https://example.com/mockup.png"
+			return selection
+		}()),
+		GroupedSelections: SheinStudioGroupedSelectionList{
+			{
+				SelectionID: "7001:9001:101:layer-1:101",
+				Selection:   testStudioBatchSelection(101, "Canvas Tote", "Red", 1200, 1200),
+				Eligible:    true,
+			},
+		},
+	}
+	item := StudioBatchItemRecord{
+		ID:           "item-1",
+		BatchID:      "batch-1",
+		SelectionIDs: []string{selectionIDForStudioSelection(batch.GroupedSelections[0].Selection)},
+	}
+
+	req := buildStudioBatchItemDesignRequest(batch, item)
+	if req == nil {
+		t.Fatal("buildStudioBatchItemDesignRequest() = nil")
+	}
+	if got, want := req.Prompt, "punk eagle collage"; got != want {
+		t.Fatalf("Prompt = %q, want %q", got, want)
+	}
+	if got, want := req.ProductReferenceImageURLs, []string{"https://example.com/mockup.png"}; len(got) != len(want) {
+		t.Fatalf("len(ProductReferenceImageURLs) = %d, want %d (%v)", len(got), len(want), got)
+	} else if got[0] != want[0] {
+		t.Fatalf("ProductReferenceImageURLs[0] = %q, want %q (all=%v)", got[0], want[0], got)
 	}
 }
 

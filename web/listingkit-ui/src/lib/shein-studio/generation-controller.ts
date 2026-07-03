@@ -226,28 +226,65 @@ export function buildHotStyleReferenceGenerationInput(input: {
   productReferenceImageUrls?: string[];
   hotStyleReferenceImageUrls?: string[];
 }) {
-  const promptParts = [input.prompt.trim()];
   const referencePrompt = input.hotStyleReferencePrompt?.trim();
+  const promptParts = [input.prompt.trim()];
   if (referencePrompt) {
     promptParts.push(
       "Hot-selling reference direction for original artwork:",
       referencePrompt,
     );
   }
-  const productReferenceImageUrls = Array.from(
-    new Set(
-      [
-        ...(input.productReferenceImageUrls ?? []),
-        ...(input.hotStyleReferenceImageUrls ?? []),
-      ]
-        .map((item) => item.trim())
-        .filter(Boolean),
-    ),
+  const normalizedProductReferences = normalizeReferenceImageUrls(
+    input.productReferenceImageUrls,
   );
+  const normalizedHotStyleReferences = referencePrompt
+    ? normalizeReferenceImageUrls(input.hotStyleReferenceImageUrls)
+    : [];
   return {
     prompt: promptParts.filter(Boolean).join("\n"),
-    productReferenceImageUrls,
+    productReferenceImageUrls: prioritizeReferenceImageUrls({
+      existing: normalizedProductReferences,
+      prioritized: normalizedHotStyleReferences,
+      limit: 5,
+    }),
   };
+}
+
+function normalizeReferenceImageUrls(values?: string[]) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values ?? []) {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function prioritizeReferenceImageUrls(input: {
+  existing: string[];
+  prioritized: string[];
+  limit: number;
+}) {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  const append = (value: string) => {
+    if (!value || seen.has(value) || result.length >= input.limit) {
+      return;
+    }
+    seen.add(value);
+    result.push(value);
+  };
+  for (const value of input.prioritized) {
+    append(value);
+  }
+  for (const value of input.existing) {
+    append(value);
+  }
+  return result;
 }
 
 export async function executeStandaloneGeneration({

@@ -475,12 +475,19 @@ func buildStudioBatchRunDesignRequest(session *SheinStudioSession) *StudioDesign
 	if session == nil {
 		return nil
 	}
+	hotStyleReferencePrompt := strings.TrimSpace(session.HotStyleReferencePrompt)
 	referenceImageURLs := mergeStudioHotStyleReferenceImageURLs(
 		studioBatchRunReferenceImageURLs(session),
-		session.HotStyleReferenceImageURLs,
+		nil,
 	)
+	if hotStyleReferencePrompt != "" {
+		referenceImageURLs = mergeStudioHotStyleReferenceImageURLs(
+			studioBatchRunReferenceImageURLs(session),
+			session.HotStyleReferenceImageURLs,
+		)
+	}
 	return &StudioDesignRequest{
-		Prompt:                    buildStudioHotStyleGenerationPrompt(session.Prompt, session.HotStyleReferencePrompt),
+		Prompt:                    buildStudioHotStyleGenerationPrompt(session.Prompt, hotStyleReferencePrompt),
 		PromptMode:                session.PromptMode,
 		Count:                     parseStudioBatchRunStyleCount(session.StyleCount),
 		VariationIntensity:        session.VariationIntensity,
@@ -559,11 +566,18 @@ func buildStudioHotStyleGenerationPrompt(prompt string, hotStyleReferencePrompt 
 }
 
 func mergeStudioHotStyleReferenceImageURLs(existing []string, hotStyleReferenceImageURLs []string) []string {
-	seen := make(map[string]struct{}, len(existing)+len(hotStyleReferenceImageURLs))
-	result := make([]string, 0, len(existing)+len(hotStyleReferenceImageURLs))
+	return mergeStudioPrioritizedReferenceImageURLs(existing, hotStyleReferenceImageURLs, 5)
+}
+
+func mergeStudioPrioritizedReferenceImageURLs(existing []string, prioritized []string, limit int) []string {
+	seen := make(map[string]struct{}, len(existing)+len(prioritized))
+	result := make([]string, 0, len(existing)+len(prioritized))
 	appendURL := func(value string) {
 		value = strings.TrimSpace(value)
 		if value == "" {
+			return
+		}
+		if limit > 0 && len(result) >= limit {
 			return
 		}
 		if _, ok := seen[value]; ok {
@@ -572,10 +586,10 @@ func mergeStudioHotStyleReferenceImageURLs(existing []string, hotStyleReferenceI
 		seen[value] = struct{}{}
 		result = append(result, value)
 	}
-	for _, value := range existing {
+	for _, value := range prioritized {
 		appendURL(value)
 	}
-	for _, value := range hotStyleReferenceImageURLs {
+	for _, value := range existing {
 		appendURL(value)
 	}
 	return result

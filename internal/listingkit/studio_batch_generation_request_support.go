@@ -15,12 +15,19 @@ func aggregateStudioBatchStatus(items []StudioBatchItemRecord) StudioBatchStatus
 
 func buildStudioBatchItemDesignRequest(batch *StudioBatchRecord, item StudioBatchItemRecord) *StudioDesignRequest {
 	selection := firstStudioBatchItemSelection(batch, item)
+	hotStyleReferencePrompt := strings.TrimSpace(batch.HotStyleReferencePrompt)
 	referenceImageURLs := mergeStudioHotStyleReferenceImageURLs(
 		studioBatchItemReferenceImageURLs(batch, item),
-		batch.HotStyleReferenceImageURLs,
+		nil,
 	)
+	if hotStyleReferencePrompt != "" {
+		referenceImageURLs = mergeStudioHotStyleReferenceImageURLs(
+			studioBatchItemReferenceImageURLs(batch, item),
+			batch.HotStyleReferenceImageURLs,
+		)
+	}
 	return &StudioDesignRequest{
-		Prompt:                    buildStudioHotStyleGenerationPrompt(batch.Prompt, batch.HotStyleReferencePrompt),
+		Prompt:                    buildStudioHotStyleGenerationPrompt(batch.Prompt, hotStyleReferencePrompt),
 		PromptMode:                strings.TrimSpace(batch.PromptMode),
 		Count:                     parseStudioBatchRunStyleCount(strings.TrimSpace(batch.StyleCount)),
 		VariationIntensity:        strings.TrimSpace(batch.VariationIntensity),

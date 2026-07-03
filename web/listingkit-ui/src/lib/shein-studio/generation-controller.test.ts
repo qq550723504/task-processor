@@ -251,9 +251,54 @@ describe("SHEIN Studio generation controller", () => {
       prompt:
         "summer flowers\nHot-selling reference direction for original artwork:\nCreate an original retro badge.",
       productReferenceImageUrls: [
+        "https://example.com/hot-ref.png",
         "https://example.com/mockup.png",
         "https://example.com/size.png",
-        "https://example.com/hot-ref.png",
+      ],
+    });
+  });
+
+  it("gates hot style reference images behind a non-empty sanitized prompt", () => {
+    expect(
+      buildHotStyleReferenceGenerationInput({
+        prompt: "summer flowers",
+        hotStyleReferencePrompt: "   ",
+        productReferenceImageUrls: ["https://example.com/mockup.png"],
+        hotStyleReferenceImageUrls: ["https://example.com/hot-ref.png"],
+      }),
+    ).toEqual({
+      prompt: "summer flowers",
+      productReferenceImageUrls: ["https://example.com/mockup.png"],
+    });
+  });
+
+  it("prioritizes eligible hot style references within the five-image budget before SDS refs", () => {
+    expect(
+      buildHotStyleReferenceGenerationInput({
+        prompt: "summer flowers",
+        hotStyleReferencePrompt: "Create an original retro badge.",
+        productReferenceImageUrls: [
+          "https://example.com/mockup-1.png",
+          "https://example.com/mockup-2.png",
+          "https://example.com/mockup-3.png",
+          "https://example.com/mockup-4.png",
+          "https://example.com/mockup-5.png",
+        ],
+        hotStyleReferenceImageUrls: [
+          "https://example.com/hot-1.png",
+          "https://example.com/mockup-2.png",
+          "https://example.com/hot-2.png",
+        ],
+      }),
+    ).toEqual({
+      prompt:
+        "summer flowers\nHot-selling reference direction for original artwork:\nCreate an original retro badge.",
+      productReferenceImageUrls: [
+        "https://example.com/hot-1.png",
+        "https://example.com/mockup-2.png",
+        "https://example.com/hot-2.png",
+        "https://example.com/mockup-1.png",
+        "https://example.com/mockup-3.png",
       ],
     });
   });
@@ -433,5 +478,43 @@ describe("SHEIN Studio generation controller", () => {
       expect.anything(),
     );
     expect(localWorkflowStateRef.current).toBe(false);
+  });
+
+  it("does not send hot style reference images during standalone generation without a sanitized prompt", async () => {
+    const setField = vi.fn();
+    const persistDraft = vi.fn().mockResolvedValue(undefined);
+    const navigateToStep = vi.fn();
+    const generateDesigns = vi.fn().mockResolvedValue({
+      images: [{ id: "design-1", imageUrl: "generated.png" }],
+    });
+
+    await executeStandaloneGeneration({
+      activeGroupId: "group-1",
+      activeSelection: selection,
+      artworkModel: "gpt-image-1",
+      generateDesigns,
+      generationJobs: [],
+      groupedImageMode: "shared_by_size",
+      groupedSelections: [],
+      groups: [buildGroup()],
+      hasLocalWorkflowStateRef: { current: false },
+      hotStyleReferenceImageUrls: ["https://example.com/hot-ref.png"],
+      hotStyleReferencePrompt: "   ",
+      navigateToStep,
+      persistDraft,
+      prompt: "summer flowers",
+      setField,
+      styleCount: "1",
+      transparentBackground: false,
+      variationIntensity: "medium",
+    });
+
+    expect(generateDesigns).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "summer flowers",
+        productReferenceImageUrls: [],
+      }),
+      expect.any(Object),
+    );
   });
 });

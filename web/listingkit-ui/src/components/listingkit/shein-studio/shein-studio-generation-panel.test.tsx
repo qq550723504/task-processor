@@ -74,15 +74,18 @@ function buildPanelProps(options?: {
   statusGroups?: SheinStudioBatchStatusGroups;
   selectionReady?: boolean;
   transparentBackground?: boolean;
+  hotStyleReferenceBrief?: string;
+  hotStyleReferenceImageUrls?: string[];
+  hotStyleReferencePrompt?: string;
 }) {
   return {
     form: {
       availableSdsImages: options?.availableSdsImages ?? [],
       artworkModel: "nanobanana",
       groupedImageMode: "shared_by_size",
-      hotStyleReferenceBrief: "",
-      hotStyleReferenceImageUrls: [],
-      hotStyleReferencePrompt: "",
+      hotStyleReferenceBrief: options?.hotStyleReferenceBrief ?? "",
+      hotStyleReferenceImageUrls: options?.hotStyleReferenceImageUrls ?? [],
+      hotStyleReferencePrompt: options?.hotStyleReferencePrompt ?? "",
       imageStrategy: options?.imageStrategy ?? "ai_generated",
       productImageCount: "5",
       productImagePrompt: options?.isGenerating ? "暖色背景" : "",
@@ -672,5 +675,63 @@ describe("SheinStudioGenerationPanel", () => {
       "no reusable visual pattern",
     );
     expect(setHotStyleReferencePrompt).toHaveBeenCalledWith("");
+  });
+
+  it("shows analyzer warnings and clears derived hot-style state after URL edits", async () => {
+    const user = userEvent.setup();
+    const analyzeReferenceStyle = vi.fn().mockResolvedValue({
+      referenceStyleBrief: "retro badge with cream and red palette",
+      sanitizedPrompt:
+        "Create an original retro badge with cream and red palette.",
+      warnings: [
+        "最多分析 5 张参考图，已忽略多余图片。",
+        "已移除品牌、Logo、原文案或过于接近原图的描述。",
+      ],
+    });
+    const setHotStyleReferenceBrief = vi.fn();
+    const setHotStyleReferenceImageUrls = vi.fn();
+    const setHotStyleReferencePrompt = vi.fn();
+    const panelProps = buildPanelProps({
+      prompt: "retro cherries",
+      hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+    });
+
+    render(
+      <SheinStudioGenerationPanel
+        {...panelProps}
+        actions={{
+          ...panelProps.actions,
+          analyzeReferenceStyle,
+          setHotStyleReferenceBrief,
+          setHotStyleReferenceImageUrls,
+          setHotStyleReferencePrompt,
+        }}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "提取热销款风格" }));
+
+    expect(
+      screen.getByText("最多分析 5 张参考图，已忽略多余图片。"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("已移除品牌、Logo、原文案或过于接近原图的描述。"),
+    ).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText("每行一个热销款参考图 URL。"), {
+      target: { value: "https://example.com/new-ref.png" },
+    });
+
+    expect(setHotStyleReferenceImageUrls).toHaveBeenLastCalledWith([
+      "https://example.com/new-ref.png",
+    ]);
+    expect(setHotStyleReferenceBrief).toHaveBeenCalledWith("");
+    expect(setHotStyleReferencePrompt).toHaveBeenCalledWith("");
+    expect(
+      screen.queryByText("最多分析 5 张参考图，已忽略多余图片。"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("已移除品牌、Logo、原文案或过于接近原图的描述。"),
+    ).not.toBeInTheDocument();
   });
 });

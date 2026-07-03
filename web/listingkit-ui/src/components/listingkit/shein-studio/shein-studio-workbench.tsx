@@ -597,6 +597,32 @@ export function SheinStudioWorkbench({
     },
     [saveDedicatedBatchDraftSnapshot, setPrompt],
   );
+  const handleHotStyleReferenceImageUrlsChange = useCallback(
+    (nextUrls: string[]) => {
+      const changed =
+        nextUrls.length !== hotStyleReferenceImageUrls.length ||
+        nextUrls.some(
+          (item, index) => item !== hotStyleReferenceImageUrls[index],
+        );
+      if (changed) {
+        saveDedicatedBatchDraftSnapshot({
+          hotStyleReferenceBrief: "",
+          hotStyleReferenceImageUrls: nextUrls,
+          hotStyleReferencePrompt: "",
+        });
+        setHotStyleReferenceBrief("");
+        setHotStyleReferencePrompt("");
+      }
+      setHotStyleReferenceImageUrls(nextUrls);
+    },
+    [
+      hotStyleReferenceImageUrls,
+      saveDedicatedBatchDraftSnapshot,
+      setHotStyleReferenceBrief,
+      setHotStyleReferenceImageUrls,
+      setHotStyleReferencePrompt,
+    ],
+  );
   const analyzeReferenceStyle = useCallback(
     (input: { referenceImageUrls: string[]; basePrompt?: string }) =>
       analyzeSheinStudioReferenceStyle({
@@ -1564,7 +1590,8 @@ export function SheinStudioWorkbench({
                   setArtworkModel,
                   setGroupedImageMode,
                   setHotStyleReferenceBrief,
-                  setHotStyleReferenceImageUrls,
+                  setHotStyleReferenceImageUrls:
+                    handleHotStyleReferenceImageUrlsChange,
                   setHotStyleReferencePrompt,
                   setImageStrategy,
                   setProductImageCount,

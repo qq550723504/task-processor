@@ -579,6 +579,8 @@ func TestExecuteStudioBatchRunItemUsesHotStyleReferencePromptAndImagesForBatchGe
 				MockupImageURLs: []string{
 					"https://example.com/mockup.png",
 					"https://example.com/mockup-alt.png",
+					"https://example.com/mockup-2.png",
+					"https://example.com/mockup-3.png",
 				},
 				SizeReferenceImageURLs: []string{"https://example.com/size.png"},
 			},
@@ -617,11 +619,11 @@ func TestExecuteStudioBatchRunItemUsesHotStyleReferencePromptAndImagesForBatchGe
 		t.Fatalf("capturedReq.Prompt = %q, want %q", got, want)
 	}
 	if got, want := capturedReq.ProductReferenceImageURLs, []string{
+		"https://example.com/hot-ref.png",
 		"https://example.com/mockup.png",
 		"https://example.com/mockup-alt.png",
-		"https://example.com/size.png",
-		"https://example.com/sds.png",
-		"https://example.com/hot-ref.png",
+		"https://example.com/mockup-2.png",
+		"https://example.com/mockup-3.png",
 	}; len(got) != len(want) {
 		t.Fatalf("len(capturedReq.ProductReferenceImageURLs) = %d, want %d (%v)", len(got), len(want), got)
 	} else {
@@ -630,6 +632,70 @@ func TestExecuteStudioBatchRunItemUsesHotStyleReferencePromptAndImagesForBatchGe
 				t.Fatalf("capturedReq.ProductReferenceImageURLs[%d] = %q, want %q (all=%v)", index, got[index], want[index], got)
 			}
 		}
+	}
+}
+
+func TestExecuteStudioBatchRunItemDoesNotUseHotStyleReferenceImagesWithoutSanitizedPrompt(t *testing.T) {
+	repo := NewMemStudioBatchRepository()
+	sessionRepo := &studioBatchRunExecutorSessionRepoStub{
+		session: &SheinStudioSession{
+			ID:                      "batch-1",
+			SavedAsBatch:            true,
+			Prompt:                  "summer flowers",
+			HotStyleReferencePrompt: "   ",
+			HotStyleReferenceImageURLs: []string{
+				"https://example.com/hot-ref.png",
+			},
+			StyleCount:       "1",
+			GroupedImageMode: "per_product",
+			Selection: SheinStudioSelectionSnapshot{
+				ProductID:          101,
+				ParentProductID:    7001,
+				VariantID:          101,
+				PrototypeGroupID:   9001,
+				LayerID:            "layer-1",
+				ProductName:        "Canvas Tote",
+				VariantLabel:       "Red",
+				PrintableWidth:     1200,
+				PrintableHeight:    1200,
+				SelectedVariantIDs: []int64{101},
+				MockupImageURL:     "https://example.com/mockup.png",
+			},
+		},
+	}
+	var capturedReq *StudioDesignRequest
+	svc := &service{studioDeps: studioDependencies{sessionRepo: sessionRepo, batchRepo: repo}}
+	svc.studio.batchGroup.batch = newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              repo,
+		studioSessionRepo: sessionRepo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo: repo,
+			execute: func(ctx context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+				capturedReq = input.Request
+				return &StudioBatchGenerateExecutionOutput{
+					Response:  testStudioDesignResponse("design-1", "https://example.com/design.png"),
+					BatchID:   input.BatchID,
+					ItemID:    input.ItemID,
+					AttemptID: input.AttemptID,
+				}, nil
+			},
+		}),
+	})
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	if err := svc.executeStudioBatchRunItem(ctx, "batch-1"); err != nil {
+		t.Fatalf("executeStudioBatchRunItem() error = %v", err)
+	}
+	if capturedReq == nil {
+		t.Fatal("capturedReq = nil, want batch generation request")
+	}
+	if got, want := capturedReq.Prompt, "summer flowers"; got != want {
+		t.Fatalf("capturedReq.Prompt = %q, want %q", got, want)
+	}
+	if got, want := capturedReq.ProductReferenceImageURLs, []string{"https://example.com/mockup.png"}; len(got) != len(want) {
+		t.Fatalf("len(capturedReq.ProductReferenceImageURLs) = %d, want %d (%v)", len(got), len(want), got)
+	} else if got[0] != want[0] {
+		t.Fatalf("capturedReq.ProductReferenceImageURLs[0] = %q, want %q (all=%v)", got[0], want[0], got)
 	}
 }
 

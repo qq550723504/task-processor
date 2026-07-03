@@ -33,6 +33,7 @@ export function ArtworkGenerationSettings({
   hotStyleReferenceBrief,
   hotStyleReferenceImageUrls,
   hotStyleReferencePrompt,
+  hotStyleReferenceWarnings,
   isAnalyzingReferenceStyle,
   prompt,
   promptMode,
@@ -60,6 +61,7 @@ export function ArtworkGenerationSettings({
   hotStyleReferenceBrief: string;
   hotStyleReferenceImageUrls: string[];
   hotStyleReferencePrompt: string;
+  hotStyleReferenceWarnings?: string[];
   isAnalyzingReferenceStyle: boolean;
   prompt: string;
   promptMode: "managed" | "raw";
@@ -168,6 +170,15 @@ export function ArtworkGenerationSettings({
           <p className="text-xs leading-5 text-muted-foreground">
             {hotStyleReferenceBrief}
           </p>
+        ) : null}
+        {hotStyleReferenceWarnings && hotStyleReferenceWarnings.length > 0 ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">
+            <ul className="space-y-1">
+              {hotStyleReferenceWarnings.map((warning, index) => (
+                <li key={`${index}-${warning}`}>{warning}</li>
+              ))}
+            </ul>
+          </div>
         ) : null}
       </div>
       <Label className="space-y-2">

@@ -113,6 +113,13 @@ export type SheinStudioGenerationActions = {
   setTransparentBackground: (value: boolean) => void;
 };
 
+function areHotStyleReferenceUrlsEqual(current: string[], next: string[]) {
+  if (current.length !== next.length) {
+    return false;
+  }
+  return current.every((value, index) => value === next[index]);
+}
+
 export function SheinStudioGenerationPanel({
   actions,
   form,
@@ -204,6 +211,20 @@ export function SheinStudioGenerationPanel({
   const showVariationIntensity = parsePositiveInteger(styleCount) > 1;
   const [isAnalyzingReferenceStyle, setIsAnalyzingReferenceStyle] =
     useState(false);
+  const [hotStyleReferenceWarnings, setHotStyleReferenceWarnings] = useState<
+    string[]
+  >([]);
+  const clearDerivedHotStyleState = () => {
+    setHotStyleReferenceWarnings([]);
+    setHotStyleReferenceBrief("");
+    setHotStyleReferencePrompt("");
+  };
+  const handleHotStyleReferenceImageUrlsChange = (nextUrls: string[]) => {
+    if (!areHotStyleReferenceUrlsEqual(hotStyleReferenceImageUrls, nextUrls)) {
+      clearDerivedHotStyleState();
+    }
+    setHotStyleReferenceImageUrls(nextUrls);
+  };
   const handleAnalyzeReferenceStyle = async () => {
     if (hotStyleReferenceImageUrls.length === 0 || isAnalyzingReferenceStyle) {
       return;
@@ -216,11 +237,13 @@ export function SheinStudioGenerationPanel({
       });
       setHotStyleReferenceBrief(result.referenceStyleBrief);
       setHotStyleReferencePrompt(result.sanitizedPrompt);
+      setHotStyleReferenceWarnings(result.warnings ?? []);
     } catch (error) {
       console.error(
         "shein studio reference style analysis failed",
         error instanceof Error ? error.message : error,
       );
+      setHotStyleReferenceWarnings([]);
       setHotStyleReferenceBrief("热销款风格提取失败，请稍后重试。");
     } finally {
       setIsAnalyzingReferenceStyle(false);
@@ -328,6 +351,7 @@ export function SheinStudioGenerationPanel({
           hotStyleReferenceBrief={hotStyleReferenceBrief}
           hotStyleReferenceImageUrls={hotStyleReferenceImageUrls}
           hotStyleReferencePrompt={hotStyleReferencePrompt}
+          hotStyleReferenceWarnings={hotStyleReferenceWarnings}
           isAnalyzingReferenceStyle={isAnalyzingReferenceStyle}
           prompt={prompt}
           promptMode={promptMode}
@@ -336,7 +360,7 @@ export function SheinStudioGenerationPanel({
           restorePrompt={onRestorePrompt}
           setArtworkModel={setArtworkModel}
           setGroupedImageMode={setGroupedImageMode}
-          setHotStyleReferenceImageUrls={setHotStyleReferenceImageUrls}
+          setHotStyleReferenceImageUrls={handleHotStyleReferenceImageUrlsChange}
           setHotStyleReferencePrompt={setHotStyleReferencePrompt}
           setPrompt={setPrompt}
           setPromptMode={setPromptMode}
