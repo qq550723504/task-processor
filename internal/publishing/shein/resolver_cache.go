@@ -43,6 +43,10 @@ type SaleAttributeResolutionCache interface {
 	ClearSaleAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package) error
 }
 
+type attributeResolutionCacheValidator interface {
+	CachedAttributeResolutionIsFresh(req *BuildRequest, canonical *canonical.Product, pkg *Package, resolution *AttributeResolution) (bool, string)
+}
+
 func NewCachedCategoryResolver(inner CategoryResolver, stores ...ResolutionCacheStore) CategoryResolver {
 	if inner == nil {
 		return nil
@@ -124,15 +128,19 @@ func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *canonica
 	if key != "" {
 		if cached, ok := r.cache.Load(key); ok {
 			if resolution, ok := cached.(*AttributeResolution); ok {
-				logResolutionCacheHit("attribute", "memory_cache", req, canonical, pkg, key, resolution.Cache, nil)
-				return cloneAttributeResolutionWithCacheNote(resolution)
+				if r.cachedAttributeResolutionIsFresh(req, canonical, pkg, key, resolution) {
+					logResolutionCacheHit("attribute", "memory_cache", req, canonical, pkg, key, resolution.Cache, nil)
+					return cloneAttributeResolutionWithCacheNote(resolution)
+				}
 			}
 		}
 		if entry := r.loadPersistentCache(ResolutionCacheKindAttribute, req, key); entry != nil {
 			if resolution := decodeAttributeCacheEntry(entry); resolution != nil {
-				r.cache.Store(key, cloneAttributeResolution(resolution))
-				logResolutionCacheHit("attribute", cacheEntrySource(entry), req, canonical, pkg, key, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount})
-				return resolution
+				if r.cachedAttributeResolutionIsFresh(req, canonical, pkg, key, resolution) {
+					r.cache.Store(key, cloneAttributeResolution(resolution))
+					logResolutionCacheHit("attribute", cacheEntrySource(entry), req, canonical, pkg, key, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount})
+					return resolution
+				}
 			}
 		}
 		for _, legacyKey := range attributeResolverLegacyVariantOnlyCacheKeys(req, canonical, pkg) {
@@ -141,6 +149,9 @@ func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *canonica
 			}
 			if entry := r.loadPersistentCache(ResolutionCacheKindAttribute, req, legacyKey); entry != nil {
 				if resolution := decodeAttributeCacheEntry(entry); resolution != nil {
+					if !r.cachedAttributeResolutionIsFresh(req, canonical, pkg, legacyKey, resolution) {
+						continue
+					}
 					migrated := cloneAttributeResolution(resolution)
 					attachResolutionCacheInfoToAttribute(migrated, cacheEntrySource(entry), key, entry.Manual, cacheHitSourceFromEntry(entry), "hit")
 					r.cache.Store(key, cloneAttributeResolution(migrated))
@@ -152,27 +163,58 @@ func (r *cachedAttributeResolver) Resolve(req *BuildRequest, canonical *canonica
 		}
 		if entry := r.loadManualPersistentCacheBySourceIdentity(ResolutionCacheKindAttribute, req, canonical, pkg); entry != nil {
 			if resolution := decodeAttributeCacheEntry(entry); resolution != nil {
-				migrated := cloneAttributeResolution(resolution)
-				attachResolutionCacheInfoToAttribute(migrated, cacheEntrySource(entry), key, entry.Manual, cacheHitSourceFromEntry(entry), "hit")
-				r.cache.Store(key, cloneAttributeResolution(migrated))
-				r.savePersistentCache(ResolutionCacheKindAttribute, req, canonical, pkg, key, migrated, entry.Manual)
-				logResolutionCacheHit("attribute", cacheEntrySource(entry), req, canonical, pkg, entry.CacheKey, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount, "migrated_cache_key": key})
-				return migrated
+				if r.cachedAttributeResolutionIsFresh(req, canonical, pkg, entry.CacheKey, resolution) {
+					migrated := cloneAttributeResolution(resolution)
+					attachResolutionCacheInfoToAttribute(migrated, cacheEntrySource(entry), key, entry.Manual, cacheHitSourceFromEntry(entry), "hit")
+					r.cache.Store(key, cloneAttributeResolution(migrated))
+					r.savePersistentCache(ResolutionCacheKindAttribute, req, canonical, pkg, key, migrated, entry.Manual)
+					logResolutionCacheHit("attribute", cacheEntrySource(entry), req, canonical, pkg, entry.CacheKey, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount, "migrated_cache_key": key})
+					return migrated
+				}
 			}
 		}
 		if entry := r.loadManualPersistentCacheByProductIdentity(ResolutionCacheKindAttribute, req, canonical, pkg); entry != nil {
 			if resolution := decodeAttributeCacheEntry(entry); resolution != nil {
-				migrated := cloneAttributeResolution(resolution)
-				attachResolutionCacheInfoToAttribute(migrated, cacheEntrySource(entry), key, entry.Manual, cacheHitSourceFromEntry(entry), "hit")
-				r.cache.Store(key, cloneAttributeResolution(migrated))
-				r.savePersistentCache(ResolutionCacheKindAttribute, req, canonical, pkg, key, migrated, entry.Manual)
-				logResolutionCacheHit("attribute", cacheEntrySource(entry), req, canonical, pkg, entry.CacheKey, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount, "migrated_cache_key": key, "fallback": "product_identity"})
-				return migrated
+				if r.cachedAttributeResolutionIsFresh(req, canonical, pkg, entry.CacheKey, resolution) {
+					migrated := cloneAttributeResolution(resolution)
+					attachResolutionCacheInfoToAttribute(migrated, cacheEntrySource(entry), key, entry.Manual, cacheHitSourceFromEntry(entry), "hit")
+					r.cache.Store(key, cloneAttributeResolution(migrated))
+					r.savePersistentCache(ResolutionCacheKindAttribute, req, canonical, pkg, key, migrated, entry.Manual)
+					logResolutionCacheHit("attribute", cacheEntrySource(entry), req, canonical, pkg, entry.CacheKey, resolution.Cache, logrus.Fields{"hit_count": entry.HitCount, "migrated_cache_key": key, "fallback": "product_identity"})
+					return migrated
+				}
 			}
 		}
 	}
 	resolution := r.inner.Resolve(req, canonical, pkg)
 	return resolution
+}
+
+func (r *cachedAttributeResolver) cachedAttributeResolutionIsFresh(req *BuildRequest, canonical *canonical.Product, pkg *Package, key string, resolution *AttributeResolution) bool {
+	if r == nil || r.inner == nil || resolution == nil {
+		return true
+	}
+	validator, ok := r.inner.(attributeResolutionCacheValidator)
+	if !ok {
+		return true
+	}
+	fresh, reason := validator.CachedAttributeResolutionIsFresh(req, canonical, pkg, resolution)
+	if fresh {
+		return true
+	}
+	if key != "" {
+		_ = r.clearCache(ResolutionCacheKindAttribute, req, key)
+	}
+	logResolutionCacheEvent("reject_stale", "attribute", req, canonical, pkg, key, resolution.Cache)
+	if strings.TrimSpace(reason) != "" {
+		sheinLogger("shein/cache").WithFields(logrus.Fields{
+			"cache_kind": "attribute",
+			"cache_key":  key,
+			"reason":     reason,
+			"store_id":   sheinStoreID(req),
+		}).Info("rejected stale SHEIN attribute cache")
+	}
+	return false
 }
 
 func (r *cachedAttributeResolver) RememberAttributeResolution(req *BuildRequest, canonical *canonical.Product, pkg *Package, resolution *AttributeResolution) {

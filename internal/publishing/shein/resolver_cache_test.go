@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	common "task-processor/internal/publishing/common"
+	sheinattribute "task-processor/internal/shein/api/attribute"
 )
 
 type countingCategoryResolver struct {
@@ -479,6 +480,69 @@ func TestCachedAttributeResolverCanRememberManualResolution(t *testing.T) {
 	}
 	if got := next.ResolvedAttributes[0].AttributeValueID; got == nil || *got != 2001 {
 		t.Fatalf("attribute value id = %v, want 2001", got)
+	}
+}
+
+func TestCachedAttributeResolverRejectsManualResolutionWithStaleTemplateAttributes(t *testing.T) {
+	valueID := 526
+	resolver := NewCachedAttributeResolver(NewAttributeResolver(stubAttributeAPI{
+		templates: &sheinattribute.AttributeTemplateInfo{
+			Data: []sheinattribute.AttributeTemplate{{
+				AttributeInfos: []sheinattribute.AttributeInfo{{
+					AttributeID:     160,
+					AttributeNameEn: "Material",
+					AttributeType:   4,
+					AttributeStatus: 3,
+					AttributeValueInfoList: []sheinattribute.AttributeValue{{
+						AttributeValueID: 526,
+						AttributeValueEn: "Polyester",
+					}},
+				}},
+			}},
+		},
+	}, nil))
+	cache := resolver.(AttributeResolutionCache)
+	req := &BuildRequest{SheinStoreID: 42}
+	pkg := &Package{
+		CategoryID:     10484,
+		CategoryIDList: []int{2866, 4359, 2868, 10484},
+		ProductAttributes: []common.Attribute{
+			{Name: "Material", Value: "Polyester"},
+		},
+		RequestDraft: &RequestDraft{
+			SKCList: []SKCRequestDraft{{
+				SKUList: []SKUDraft{{
+					SupplierSKU: "XB0604115001",
+					Length:      "15",
+					Width:       "13",
+					Height:      "3",
+				}},
+			}},
+		},
+	}
+	cache.RememberAttributeResolution(req, nil, pkg, &AttributeResolution{
+		Status:        "resolved",
+		Source:        "manual",
+		CategoryID:    10484,
+		TemplateCount: 1,
+		ResolvedCount: 4,
+		ResolvedAttributes: []ResolvedAttribute{
+			{Name: "Material", Value: "Polyester", AttributeID: 160, AttributeValueID: &valueID},
+			{Name: "Width (cm)", Value: "13", AttributeID: 118, AttributeExtraValue: "13"},
+			{Name: "Length (cm)", Value: "15", AttributeID: 55, AttributeExtraValue: "15"},
+			{Name: "Height (cm)", Value: "3", AttributeID: 48, AttributeExtraValue: "3"},
+		},
+	})
+
+	next := resolver.Resolve(req, nil, pkg)
+	for _, attr := range next.ResolvedAttributes {
+		switch attr.AttributeID {
+		case 48, 55, 118:
+			t.Fatalf("stale cached attribute still reused: %#v", attr)
+		}
+	}
+	if len(next.ResolvedAttributes) != 1 || next.ResolvedAttributes[0].AttributeID != 160 {
+		t.Fatalf("resolved attributes = %#v, want live Material-only resolution", next.ResolvedAttributes)
 	}
 }
 
