@@ -566,6 +566,48 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     });
   });
 
+  it("saves both promotion profit strategy with a lower limited minimum profit", async () => {
+    const updateStrategyMutation = resolvedMutation();
+    renderWorkbench({
+      initialTab: "candidates",
+      activityStrategyResponse: { configured: false, strategy: null },
+      updateStrategyMutation,
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "按利润" }));
+    fireEvent.click(screen.getByRole("button", { name: "常规+限量" }));
+    expect(
+      screen.getByRole("spinbutton", { name: "限量最低利润率" }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("spinbutton", { name: "活动库存比例" }), {
+      target: { value: "0.4" },
+    });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "最低利润率" }), {
+      target: { value: "0.2" },
+    });
+    fireEvent.change(
+      screen.getByRole("spinbutton", { name: "限量最低利润率" }),
+      {
+        target: { value: "0.1" },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "保存活动设置" }));
+
+    expect(updateStrategyMutation.mutateAsync).toHaveBeenCalledWith({
+      activity_type: "PROMOTION",
+      activity_price_mode: "PROFIT",
+      activity_partake_type: "BOTH",
+      activity_stock_ratio: 0.4,
+      activity_min_profit_rate: 0.2,
+      activity_limited_min_profit_rate: 0.1,
+      fixed_price_adjustment: 0,
+    });
+  });
+
   it("shows only mode-specific activity strategy fields", async () => {
     const updateStrategyMutation = resolvedMutation();
     renderWorkbench({

@@ -73,15 +73,16 @@ func sheinPromotionActivityTypeFromKey(activityKey string) string {
 
 func sheinPromotionStrategyInput(activityType string, strategy *listingadmin.OperationStrategy) sheinsync.SheinPromotionStrategyInput {
 	input := sheinsync.SheinPromotionStrategyInput{
-		ActivityType:                activityType,
-		StoreID:                     strategy.StoreID,
-		ActivityPriceMode:           strategy.ActivityPriceMode,
-		ActivityPartakeType:         strategy.ActivityPartakeType,
-		ActivityDiscountRate:        sheinPromotionFloat64(strategy.ActivityDiscountRate),
-		ActivityLimitedDiscountRate: sheinPromotionFloat64(strategy.ActivityLimitedDiscountRate),
-		ActivityMinProfitRate:       sheinPromotionFloat64(strategy.ActivityMinProfitRate),
-		ActivityStockRatio:          sheinPromotionFloat64(strategy.ActivityStockRatio),
-		FixedPriceAdjustment:        sheinPromotionFloat64(strategy.FixedPriceAdjustment),
+		ActivityType:                 activityType,
+		StoreID:                      strategy.StoreID,
+		ActivityPriceMode:            strategy.ActivityPriceMode,
+		ActivityPartakeType:          strategy.ActivityPartakeType,
+		ActivityDiscountRate:         sheinPromotionFloat64(strategy.ActivityDiscountRate),
+		ActivityLimitedDiscountRate:  sheinPromotionFloat64(strategy.ActivityLimitedDiscountRate),
+		ActivityMinProfitRate:        sheinPromotionFloat64(strategy.ActivityMinProfitRate),
+		ActivityLimitedMinProfitRate: sheinPromotionFloat64(strategy.ActivityLimitedMinProfitRate),
+		ActivityStockRatio:           sheinPromotionFloat64(strategy.ActivityStockRatio),
+		FixedPriceAdjustment:         sheinPromotionFloat64(strategy.FixedPriceAdjustment),
 	}
 	if activityType != "TIME_LIMITED" {
 		return input

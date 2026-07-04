@@ -131,6 +131,14 @@ func validateSheinActivityStrategyRequest(req updateSheinActivityStrategyRequest
 		if req.ActivityMinProfitRate == nil || *req.ActivityMinProfitRate < 0 || *req.ActivityMinProfitRate >= 1 {
 			return errors.New("activity_min_profit_rate must be between 0 and 1")
 		}
+		if partakeType == sheinActivityPartakeTypeBoth {
+			if req.ActivityLimitedMinProfitRate == nil || *req.ActivityLimitedMinProfitRate < 0 || *req.ActivityLimitedMinProfitRate >= 1 {
+				return errors.New("activity_limited_min_profit_rate must be between 0 and 1")
+			}
+			if *req.ActivityLimitedMinProfitRate >= *req.ActivityMinProfitRate {
+				return errors.New("activity_limited_min_profit_rate must be less than activity_min_profit_rate")
+			}
+		}
 	default:
 		return errors.New("activity_price_mode must be DISCOUNT or PROFIT")
 	}
@@ -185,6 +193,7 @@ func buildSheinActivityOperationStrategy(tenantID, storeID int64, activityType s
 	strategy.ActivityLimitedDiscountRate = req.ActivityLimitedDiscountRate
 	strategy.ActivityStockRatio = req.ActivityStockRatio
 	strategy.ActivityMinProfitRate = req.ActivityMinProfitRate
+	strategy.ActivityLimitedMinProfitRate = req.ActivityLimitedMinProfitRate
 	strategy.FixedPriceAdjustment = req.FixedPriceAdjustment
 	return strategy
 }
@@ -194,17 +203,18 @@ func sheinActivityStrategyDTO(strategy *listingadmin.OperationStrategy, tenantID
 		return nil
 	}
 	return &sheinActivityStrategyResponse{
-		ID:                          strategy.ID,
-		TenantID:                    tenantID,
-		StoreID:                     storeID,
-		ActivityType:                activityType,
-		ActivityPriceMode:           strings.ToUpper(strings.TrimSpace(strategy.ActivityPriceMode)),
-		ActivityPartakeType:         defaultSheinActivityPartakeType(strategy.ActivityPartakeType),
-		ActivityDiscountRate:        sheinActivityFloat64(strategy.ActivityDiscountRate),
-		ActivityLimitedDiscountRate: sheinActivityFloat64(strategy.ActivityLimitedDiscountRate),
-		ActivityStockRatio:          sheinActivityFloat64(strategy.ActivityStockRatio),
-		ActivityMinProfitRate:       sheinActivityFloat64(strategy.ActivityMinProfitRate),
-		FixedPriceAdjustment:        sheinActivityFloat64(strategy.FixedPriceAdjustment),
+		ID:                           strategy.ID,
+		TenantID:                     tenantID,
+		StoreID:                      storeID,
+		ActivityType:                 activityType,
+		ActivityPriceMode:            strings.ToUpper(strings.TrimSpace(strategy.ActivityPriceMode)),
+		ActivityPartakeType:          defaultSheinActivityPartakeType(strategy.ActivityPartakeType),
+		ActivityDiscountRate:         sheinActivityFloat64(strategy.ActivityDiscountRate),
+		ActivityLimitedDiscountRate:  sheinActivityFloat64(strategy.ActivityLimitedDiscountRate),
+		ActivityStockRatio:           sheinActivityFloat64(strategy.ActivityStockRatio),
+		ActivityMinProfitRate:        sheinActivityFloat64(strategy.ActivityMinProfitRate),
+		ActivityLimitedMinProfitRate: sheinActivityFloat64(strategy.ActivityLimitedMinProfitRate),
+		FixedPriceAdjustment:         sheinActivityFloat64(strategy.FixedPriceAdjustment),
 	}
 }
 

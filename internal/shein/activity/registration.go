@@ -194,23 +194,9 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 	// 2. 根据定价模式构建活动配置
 	var configList []marketing.ActivityConfig
 
-	priceMode := strategy.ActivityPriceMode
-	if priceMode == "" {
-		priceMode = "DISCOUNT" // 默认按折扣率
-	}
+	priceMode := autoPartakePriceModeFromStrategy(strategy)
 
-	if priceMode == "PROFIT" {
-		// 按最低利润率定价，使用管理系统配置的固定价格调整值
-		configList = s.buildActivityConfigsByProfit(products, strategy.ActivityMinProfitRate, autoPartakeStockRatioFromStrategy(strategy), strategy.StoreID, strategy.FixedPriceAdjustment)
-	} else {
-		// 按折扣率定价
-		dropRate := CalculateDropRateFromDiscount(strategy.ActivityDiscountRate, s.logger)
-		s.logger.Debugf("使用折扣率: %d%%", dropRate)
-		configList = s.buildActivityConfigsWithStrategy(products, dropRate, autoPartakeStockRatioFromStrategy(strategy), strategy.StoreID)
-	}
-	if len(configList) == 0 {
-		configList = s.buildActivityConfigsFromProvidedProducts(products, strategy, priceMode)
-	}
+	configList = s.buildPromotionConfigList(products, strategy, priceMode)
 
 	if len(configList) == 0 {
 		s.logger.Info("没有符合条件的产品需要报名")
@@ -221,7 +207,7 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 	if err := validateAutoPartakeDiscountsForStrategy(strategy); err != nil {
 		return &PromotionRegistrationResult{}, err
 	}
-	firstReq, firstResponse, err := s.savePromotionConfigs(configList, activityTypes, strategy)
+	firstReq, firstResponse, err := s.savePromotionConfigs(products, configList, activityTypes, strategy, priceMode)
 	if err != nil {
 		return &PromotionRegistrationResult{Request: firstReq, Response: firstResponse}, err
 	}
@@ -238,12 +224,30 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 	}, nil
 }
 
-func (s *activityRegistrationServiceImpl) savePromotionConfigs(configList []marketing.ActivityConfig, activityTypes []int, strategy *listingruntime.OperationStrategy) (*marketing.SaveConfigRequest, *marketing.SaveConfigResponse, error) {
+func (s *activityRegistrationServiceImpl) buildPromotionConfigList(products []marketing.SkcInfo, strategy *listingruntime.OperationStrategy, priceMode string) []marketing.ActivityConfig {
+	if priceMode == "PROFIT" {
+		configList := s.buildActivityConfigsByProfit(products, strategy.ActivityMinProfitRate, autoPartakeStockRatioFromStrategy(strategy), strategy.StoreID, strategy.FixedPriceAdjustment)
+		if len(configList) == 0 {
+			configList = s.buildActivityConfigsFromProvidedProducts(products, strategy, priceMode)
+		}
+		return configList
+	}
+
+	dropRate := CalculateDropRateFromDiscount(strategy.ActivityDiscountRate, s.logger)
+	s.logger.Debugf("使用折扣率: %d%%", dropRate)
+	configList := s.buildActivityConfigsWithStrategy(products, dropRate, autoPartakeStockRatioFromStrategy(strategy), strategy.StoreID)
+	if len(configList) == 0 {
+		configList = s.buildActivityConfigsFromProvidedProducts(products, strategy, priceMode)
+	}
+	return configList
+}
+
+func (s *activityRegistrationServiceImpl) savePromotionConfigs(products []marketing.SkcInfo, configList []marketing.ActivityConfig, activityTypes []int, strategy *listingruntime.OperationStrategy, priceMode string) (*marketing.SaveConfigRequest, *marketing.SaveConfigResponse, error) {
 	var firstReq *marketing.SaveConfigRequest
 	var firstResponse *marketing.SaveConfigResponse
 	for _, activityType := range activityTypes {
 		saveReq := &marketing.SaveConfigRequest{
-			ConfigList: promotionConfigListForActivityType(configList, activityType, strategy),
+			ConfigList: s.promotionConfigListForActivityType(products, configList, activityType, strategy, priceMode),
 			Type:       activityType,
 		}
 		if firstReq == nil {
@@ -265,9 +269,18 @@ func (s *activityRegistrationServiceImpl) savePromotionConfigs(configList []mark
 	return firstReq, firstResponse, nil
 }
 
-func promotionConfigListForActivityType(configList []marketing.ActivityConfig, activityType int, strategy *listingruntime.OperationStrategy) []marketing.ActivityConfig {
+func (s *activityRegistrationServiceImpl) promotionConfigListForActivityType(products []marketing.SkcInfo, configList []marketing.ActivityConfig, activityType int, strategy *listingruntime.OperationStrategy, priceMode string) []marketing.ActivityConfig {
 	copied := append([]marketing.ActivityConfig(nil), configList...)
 	if activityType != marketing.AutoPartakeActivityTypeLimited || strategy == nil {
+		return copied
+	}
+	if priceMode == "PROFIT" && strategy.ActivityLimitedMinProfitRate >= 0 && strategy.ActivityLimitedMinProfitRate < 1 {
+		limitedStrategy := *strategy
+		limitedStrategy.ActivityMinProfitRate = strategy.ActivityLimitedMinProfitRate
+		limitedConfigList := s.buildPromotionConfigList(products, &limitedStrategy, priceMode)
+		if len(limitedConfigList) > 0 {
+			return limitedConfigList
+		}
 		return copied
 	}
 	if autoPartakePriceModeFromStrategy(strategy) != "DISCOUNT" || strategy.ActivityLimitedDiscountRate <= 0 {
@@ -287,14 +300,22 @@ func validateAutoPartakeDiscountsForStrategy(strategy *listingruntime.OperationS
 	if strings.ToUpper(strings.TrimSpace(strategy.ActivityPartakeType)) != "BOTH" {
 		return nil
 	}
-	if autoPartakePriceModeFromStrategy(strategy) != "DISCOUNT" {
+	switch autoPartakePriceModeFromStrategy(strategy) {
+	case "DISCOUNT":
+		if strategy.ActivityLimitedDiscountRate <= 0 || strategy.ActivityLimitedDiscountRate >= 1 {
+			return fmt.Errorf("限量活动折扣率必须在 0 到 1 之间")
+		}
+		if strategy.ActivityLimitedDiscountRate <= strategy.ActivityDiscountRate {
+			return fmt.Errorf("同时报名常规和限量活动时，限量活动折扣率必须大于常规活动折扣率")
+		}
 		return nil
-	}
-	if strategy.ActivityLimitedDiscountRate <= 0 || strategy.ActivityLimitedDiscountRate >= 1 {
-		return fmt.Errorf("限量活动折扣率必须在 0 到 1 之间")
-	}
-	if strategy.ActivityLimitedDiscountRate <= strategy.ActivityDiscountRate {
-		return fmt.Errorf("同时报名常规和限量活动时，限量活动折扣率必须大于常规活动折扣率")
+	case "PROFIT":
+		if strategy.ActivityLimitedMinProfitRate < 0 || strategy.ActivityLimitedMinProfitRate >= 1 {
+			return fmt.Errorf("限量活动最低利润率必须在 0 到 1 之间")
+		}
+		if strategy.ActivityLimitedMinProfitRate >= strategy.ActivityMinProfitRate {
+			return fmt.Errorf("同时报名常规和限量活动时，限量活动最低利润率必须小于常规活动最低利润率")
+		}
 	}
 	return nil
 }

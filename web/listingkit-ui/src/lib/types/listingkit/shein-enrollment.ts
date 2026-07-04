@@ -78,6 +78,7 @@ export type SheinActivityStrategyRecord = {
   activity_limited_discount_rate?: number;
   activity_stock_ratio?: number;
   activity_min_profit_rate?: number;
+  activity_limited_min_profit_rate?: number;
   fixed_price_adjustment?: number;
 };
 
@@ -94,6 +95,7 @@ export type SheinUpdateActivityStrategyInput = {
   activity_limited_discount_rate?: number;
   activity_stock_ratio?: number;
   activity_min_profit_rate?: number;
+  activity_limited_min_profit_rate?: number;
   fixed_price_adjustment?: number;
 };
 

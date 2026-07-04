@@ -70,3 +70,19 @@ func TestSheinPromotionStrategyPassesPromotionPartakeTypeToRuntimeStrategy(t *te
 		t.Fatalf("runtime activity partake type = %q, want LIMITED", runtimeStrategy.ActivityPartakeType)
 	}
 }
+
+func TestSheinPromotionStrategyRejectsBothProfitWhenLimitedMinProfitIsNotLower(t *testing.T) {
+	strategy := NewSheinPromotionStrategy(SheinPromotionStrategyInput{
+		ActivityType:                 "PROMOTION",
+		StoreID:                      177,
+		ActivityPriceMode:            "PROFIT",
+		ActivityPartakeType:          "BOTH",
+		ActivityMinProfitRate:        0.2,
+		ActivityLimitedMinProfitRate: 0.2,
+		ActivityStockRatio:           0.5,
+	})
+
+	if err := strategy.ValidateForPromotionEnrollment(); err == nil {
+		t.Fatalf("ValidateForPromotionEnrollment error = nil, want limited min profit validation")
+	}
+}

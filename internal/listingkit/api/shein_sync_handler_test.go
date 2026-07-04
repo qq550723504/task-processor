@@ -684,6 +684,40 @@ func TestUpdateSheinActivityStrategyRejectsBothWhenLimitedDiscountIsNotGreater(t
 	}
 }
 
+func TestUpdateSheinActivityStrategyRejectsBothProfitWhenLimitedMinProfitIsNotLower(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	repo := newSheinActivityStrategyTestRepository(t)
+	h, err := NewHandler(&stubHandlerCoreService{}, WithOperationStrategyRepository(repo))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.PATCH("/api/v1/listing-kits/shein-sync/stores/:store_id/activity-strategy", h.UpdateSheinActivityStrategy)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/listing-kits/shein-sync/stores/2001/activity-strategy", strings.NewReader(`{
+		"activity_price_mode":"PROFIT",
+		"activity_partake_type":"BOTH",
+		"activity_min_profit_rate":0.2,
+		"activity_limited_min_profit_rate":0.2,
+		"activity_stock_ratio":0.4
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "18")
+	req.Header.Set("X-User-ID", "shein-ops")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "activity_limited_min_profit_rate must be less than activity_min_profit_rate") {
+		t.Fatalf("body = %s, want limited min profit validation message", resp.Body.String())
+	}
+}
+
 func TestListSheinEnrollmentDashboardReturnsAggregatedStats(t *testing.T) {
 	t.Parallel()
 
@@ -1273,6 +1307,7 @@ type sheinActivityStrategyTestRow struct {
 	ActivityStockRatio           float64    `gorm:"column:activity_stock_ratio"`
 	PromotionRatio               float64    `gorm:"column:promotion_ratio"`
 	ActivityMinProfitRate        float64    `gorm:"column:activity_min_profit_rate"`
+	ActivityLimitedMinProfitRate float64    `gorm:"column:activity_limited_min_profit_rate"`
 	ActivityPriceMode            string     `gorm:"column:activity_price_mode"`
 	ActivityPartakeType          string     `gorm:"column:activity_partake_type"`
 	TimeLimitedDiscountRate      float64    `gorm:"column:time_limited_discount_rate"`

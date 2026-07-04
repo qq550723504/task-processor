@@ -13,6 +13,7 @@ type SheinPromotionStrategyInput struct {
 	ActivityDiscountRate         float64
 	ActivityLimitedDiscountRate  float64
 	ActivityMinProfitRate        float64
+	ActivityLimitedMinProfitRate float64
 	ActivityStockRatio           float64
 	FixedPriceAdjustment         float64
 	TimeLimitedDiscountRate      float64
@@ -32,6 +33,7 @@ type SheinPromotionStrategy struct {
 	ActivityDiscountRate         float64
 	ActivityLimitedDiscountRate  float64
 	ActivityMinProfitRate        float64
+	ActivityLimitedMinProfitRate float64
 	ActivityStockRatio           float64
 	FixedPriceAdjustment         float64
 	TimeLimitedDiscountRate      float64
@@ -52,6 +54,7 @@ func NewSheinPromotionStrategy(input SheinPromotionStrategyInput) *SheinPromotio
 		ActivityDiscountRate:         input.ActivityDiscountRate,
 		ActivityLimitedDiscountRate:  input.ActivityLimitedDiscountRate,
 		ActivityMinProfitRate:        input.ActivityMinProfitRate,
+		ActivityLimitedMinProfitRate: input.ActivityLimitedMinProfitRate,
 		ActivityStockRatio:           input.ActivityStockRatio,
 		FixedPriceAdjustment:         input.FixedPriceAdjustment,
 		TimeLimitedDiscountRate:      input.TimeLimitedDiscountRate,
@@ -90,6 +93,14 @@ func (s *SheinPromotionStrategy) ValidateForPromotionEnrollment() error {
 	case "PROFIT":
 		if s.EffectiveActivityMinProfitRate() < 0 || s.EffectiveActivityMinProfitRate() >= 1 {
 			return fmt.Errorf("SHEIN promotion strategy activity minimum profit rate must be between 0 and 1")
+		}
+		if s.EffectiveActivityPartakeType() == "BOTH" {
+			if s.EffectiveActivityLimitedMinProfitRate() < 0 || s.EffectiveActivityLimitedMinProfitRate() >= 1 {
+				return fmt.Errorf("SHEIN promotion strategy activity limited minimum profit rate must be between 0 and 1")
+			}
+			if s.EffectiveActivityLimitedMinProfitRate() >= s.EffectiveActivityMinProfitRate() {
+				return fmt.Errorf("SHEIN promotion strategy activity limited minimum profit rate must be less than regular minimum profit rate")
+			}
 		}
 	default:
 		return fmt.Errorf("unsupported SHEIN promotion activity price mode %q", s.EffectiveActivityPriceMode())
@@ -141,6 +152,13 @@ func (s *SheinPromotionStrategy) EffectiveActivityMinProfitRate() float64 {
 		return s.TimeLimitedMinProfitRate
 	}
 	return s.ActivityMinProfitRate
+}
+
+func (s *SheinPromotionStrategy) EffectiveActivityLimitedMinProfitRate() float64 {
+	if s == nil {
+		return 0
+	}
+	return s.ActivityLimitedMinProfitRate
 }
 
 func (s *SheinPromotionStrategy) EffectiveActivityStockRatio() float64 {

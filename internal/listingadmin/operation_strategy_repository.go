@@ -29,7 +29,10 @@ func ensureOperationStrategyActivityColumns(db *gorm.DB) error {
 	if err := ensureTextColumn(db, "listing_operation_strategy", "activity_partake_type", "varchar(32)"); err != nil {
 		return err
 	}
-	return ensureTextColumn(db, "listing_operation_strategy", "activity_limited_discount_rate", "double precision")
+	if err := ensureTextColumn(db, "listing_operation_strategy", "activity_limited_discount_rate", "double precision"); err != nil {
+		return err
+	}
+	return ensureTextColumn(db, "listing_operation_strategy", "activity_limited_min_profit_rate", "double precision")
 }
 
 func (r *GormOperationStrategyRepository) ListOperationStrategies(ctx context.Context, query OperationStrategyQuery) (*OperationStrategyPage, error) {
@@ -101,6 +104,7 @@ func (r *GormOperationStrategyRepository) UpdateOperationStrategy(ctx context.Co
 		"activity_stock_ratio":             row.ActivityStockRatio,
 		"promotion_ratio":                  row.PromotionRatio,
 		"activity_min_profit_rate":         row.ActivityMinProfitRate,
+		"activity_limited_min_profit_rate": row.ActivityLimitedMinProfitRate,
 		"activity_price_mode":              row.ActivityPriceMode,
 		"activity_partake_type":            row.ActivityPartakeType,
 		"time_limited_discount_rate":       row.TimeLimitedDiscountRate,
@@ -136,20 +140,21 @@ func (r *GormOperationStrategyRepository) SaveActivityStrategy(ctx context.Conte
 	}
 	row := listingOperationStrategyFromOperationStrategy(strategy)
 	values := map[string]any{
-		"tenant_id":                      row.TenantID,
-		"store_id":                       row.StoreID,
-		"name":                           row.Name,
-		"platform":                       row.Platform,
-		"status":                         row.Status,
-		"activity_enabled":               row.ActivityEnabled,
-		"activity_type":                  row.ActivityType,
-		"activity_discount_rate":         nullableFloat64(strategy.ActivityDiscountRate),
-		"activity_limited_discount_rate": nullableFloat64(strategy.ActivityLimitedDiscountRate),
-		"activity_stock_ratio":           nullableFloat64(strategy.ActivityStockRatio),
-		"activity_min_profit_rate":       nullableFloat64(strategy.ActivityMinProfitRate),
-		"activity_price_mode":            row.ActivityPriceMode,
-		"activity_partake_type":          row.ActivityPartakeType,
-		"fixed_price_adjustment":         nullableFloat64(strategy.FixedPriceAdjustment),
+		"tenant_id":                        row.TenantID,
+		"store_id":                         row.StoreID,
+		"name":                             row.Name,
+		"platform":                         row.Platform,
+		"status":                           row.Status,
+		"activity_enabled":                 row.ActivityEnabled,
+		"activity_type":                    row.ActivityType,
+		"activity_discount_rate":           nullableFloat64(strategy.ActivityDiscountRate),
+		"activity_limited_discount_rate":   nullableFloat64(strategy.ActivityLimitedDiscountRate),
+		"activity_stock_ratio":             nullableFloat64(strategy.ActivityStockRatio),
+		"activity_min_profit_rate":         nullableFloat64(strategy.ActivityMinProfitRate),
+		"activity_limited_min_profit_rate": nullableFloat64(strategy.ActivityLimitedMinProfitRate),
+		"activity_price_mode":              row.ActivityPriceMode,
+		"activity_partake_type":            row.ActivityPartakeType,
+		"fixed_price_adjustment":           nullableFloat64(strategy.FixedPriceAdjustment),
 	}
 	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
 		values["owner_user_id"] = ownerUserID

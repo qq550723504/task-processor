@@ -300,17 +300,18 @@ func TestRegisterPromotionProductsUsesBothPartakeStrategy(t *testing.T) {
 	_, err := service.RegisterPromotionProducts(
 		t.Context(),
 		&listingruntime.OperationStrategy{
-			StoreID:               870,
-			ActivityPriceMode:     "PROFIT",
-			ActivityPartakeType:   "BOTH",
-			ActivityMinProfitRate: 0,
-			ActivityStockRatio:    0.5,
+			StoreID:                      870,
+			ActivityPriceMode:            "PROFIT",
+			ActivityPartakeType:          "BOTH",
+			ActivityMinProfitRate:        0.1,
+			ActivityLimitedMinProfitRate: 0,
+			ActivityStockRatio:           0.5,
 		},
 		"",
 		[]marketing.SkcInfo{{
 			Skc:                 "sg-enable-both",
 			Stock:               10,
-			SupplyPrice:         20,
+			SupplyPrice:         10,
 			SupplyPriceCurrency: "USD",
 			SitePriceInfoList: []marketing.SitePriceInfo{{
 				SalePrice:   20,
@@ -398,6 +399,69 @@ func TestRegisterPromotionProductsUsesLimitedDiscountForBothPartake(t *testing.T
 	}
 	if got := api.savedRequests[1].ConfigList[0].DropRate; got != 25 {
 		t.Fatalf("limited drop rate = %d, want 25", got)
+	}
+}
+
+func TestRegisterPromotionProductsUsesLimitedMinProfitForBothPartake(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		configListResponse: &marketing.GetConfigListResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: &marketing.ConfigListInfo{
+				Total: 1,
+				ConfigList: []marketing.ActivityConfigInfo{
+					{
+						ID:  13042103,
+						Skc: "sg-both-profit",
+						ActivityConfigList: []marketing.ActivityConfigDetail{
+							{ID: 13042103, ActivityType: marketing.AutoPartakeActivityTypeRegular, State: marketing.AutoPartakeConfigStateClosed},
+							{ID: 13042104, ActivityType: marketing.AutoPartakeActivityTypeLimited, State: marketing.AutoPartakeConfigStateClosed},
+						},
+					},
+				},
+			},
+		},
+	}
+	service := &activityRegistrationServiceImpl{
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	_, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:                      870,
+			ActivityPriceMode:            "PROFIT",
+			ActivityPartakeType:          "BOTH",
+			ActivityMinProfitRate:        0.2,
+			ActivityLimitedMinProfitRate: 0.1,
+			ActivityStockRatio:           0.5,
+		},
+		"",
+		[]marketing.SkcInfo{{
+			Skc:                 "sg-both-profit",
+			Stock:               10,
+			SupplyPrice:         10,
+			SupplyPriceCurrency: "USD",
+			SitePriceInfoList: []marketing.SitePriceInfo{{
+				SalePrice:   20,
+				Currency:    "USD",
+				IsAvailable: true,
+			}},
+		}},
+	)
+
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if len(api.savedRequests) != 2 {
+		t.Fatalf("saved request count = %d, want 2", len(api.savedRequests))
+	}
+	if got := api.savedRequests[0].ConfigList[0].DropRate; got != 37 {
+		t.Fatalf("regular profit drop rate = %d, want 37", got)
+	}
+	if got := api.savedRequests[1].ConfigList[0].DropRate; got != 44 {
+		t.Fatalf("limited profit drop rate = %d, want 44", got)
 	}
 }
 

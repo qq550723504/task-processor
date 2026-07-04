@@ -476,6 +476,7 @@ func operationStrategyToDTO(strategy *listingadmin.OperationStrategy) *listingad
 		ActivityStockRatio:           float64FromPtr(strategy.ActivityStockRatio),
 		PromotionRatio:               float64FromPtr(strategy.PromotionRatio),
 		ActivityMinProfitRate:        float64FromPtr(strategy.ActivityMinProfitRate),
+		ActivityLimitedMinProfitRate: float64FromPtr(strategy.ActivityLimitedMinProfitRate),
 		ActivityPriceMode:            strategy.ActivityPriceMode,
 		ActivityPartakeType:          strategy.ActivityPartakeType,
 		TimeLimitedDiscountRate:      float64FromPtr(strategy.TimeLimitedDiscountRate),
@@ -1050,6 +1051,7 @@ type localOperationStrategy struct {
 	ActivityStockRatio           float64    `gorm:"column:activity_stock_ratio"`
 	PromotionRatio               float64    `gorm:"column:promotion_ratio"`
 	ActivityMinProfitRate        float64    `gorm:"column:activity_min_profit_rate"`
+	ActivityLimitedMinProfitRate float64    `gorm:"column:activity_limited_min_profit_rate"`
 	ActivityPriceMode            string     `gorm:"column:activity_price_mode"`
 	ActivityPartakeType          string     `gorm:"column:activity_partake_type"`
 	TimeLimitedDiscountRate      float64    `gorm:"column:time_limited_discount_rate"`

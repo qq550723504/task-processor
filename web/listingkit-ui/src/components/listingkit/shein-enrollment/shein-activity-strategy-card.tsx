@@ -18,6 +18,7 @@ type ActivityStrategyForm = {
   activity_limited_discount_rate: string;
   activity_stock_ratio: string;
   activity_min_profit_rate: string;
+  activity_limited_min_profit_rate: string;
   fixed_price_adjustment: string;
 };
 
@@ -28,6 +29,7 @@ const DEFAULT_FORM: ActivityStrategyForm = {
   activity_limited_discount_rate: "0.25",
   activity_stock_ratio: "0.5",
   activity_min_profit_rate: "0.15",
+  activity_limited_min_profit_rate: "0.1",
   fixed_price_adjustment: "0",
 };
 
@@ -203,6 +205,27 @@ function SheinActivityStrategyForm({
               />
             </label>
           ) : null}
+          {form.activity_price_mode === "PROFIT" &&
+          form.activity_partake_type === "BOTH" ? (
+            <label className="text-xs font-medium text-zinc-600">
+              限量最低利润率
+              <Input
+                aria-label="限量最低利润率"
+                className="mt-1"
+                max="0.99"
+                min="0"
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    activity_limited_min_profit_rate: event.target.value,
+                  }))
+                }
+                step="0.01"
+                type="number"
+                value={form.activity_limited_min_profit_rate}
+              />
+            </label>
+          ) : null}
           {partakeTypeNeedsStockRatio(form.activity_partake_type) ? (
             <label className="text-xs font-medium text-zinc-600">
               活动库存比例
@@ -273,6 +296,8 @@ export function isSheinActivityStrategyReady(response?: {
       response.strategy.activity_limited_discount_rate,
     activity_stock_ratio: response.strategy.activity_stock_ratio,
     activity_min_profit_rate: response.strategy.activity_min_profit_rate,
+    activity_limited_min_profit_rate:
+      response.strategy.activity_limited_min_profit_rate,
     fixed_price_adjustment: response.strategy.fixed_price_adjustment ?? 0,
   });
 }
@@ -303,6 +328,10 @@ function strategyToForm(
       strategy.activity_min_profit_rate ??
         DEFAULT_FORM.activity_min_profit_rate,
     ),
+    activity_limited_min_profit_rate: String(
+      strategy.activity_limited_min_profit_rate ??
+        DEFAULT_FORM.activity_limited_min_profit_rate,
+    ),
     fixed_price_adjustment: String(
       strategy.fixed_price_adjustment ?? DEFAULT_FORM.fixed_price_adjustment,
     ),
@@ -322,6 +351,7 @@ function activityStrategyFormKey(
     strategy.activity_limited_discount_rate,
     strategy.activity_stock_ratio,
     strategy.activity_min_profit_rate,
+    strategy.activity_limited_min_profit_rate,
     strategy.fixed_price_adjustment,
   ].join(":");
 }
@@ -347,6 +377,10 @@ function formToInput(
     input.activity_min_profit_rate = parseDecimal(
       form.activity_min_profit_rate,
     );
+    if (form.activity_partake_type === "BOTH") {
+      input.activity_limited_min_profit_rate =
+        parseDecimal(form.activity_limited_min_profit_rate) ?? -1;
+    }
   }
   return input;
 }
@@ -370,7 +404,16 @@ function isActivityStrategyInputValid(input: SheinUpdateActivityStrategyInput) {
     }
     return true;
   }
-  return withinProfitFloor(input.activity_min_profit_rate);
+  if (!withinProfitFloor(input.activity_min_profit_rate)) {
+    return false;
+  }
+  if (input.activity_partake_type === "BOTH") {
+    return (
+      withinProfitFloor(input.activity_limited_min_profit_rate) &&
+      input.activity_limited_min_profit_rate! < input.activity_min_profit_rate!
+    );
+  }
+  return true;
 }
 
 function withinRatio(value: number | undefined, allowOne: boolean) {

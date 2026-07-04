@@ -665,6 +665,7 @@ type OperationStrategyDTO struct {
 	ActivityStockRatio           float64              `json:"activityStockRatio"`
 	PromotionRatio               float64              `json:"promotionRatio"`
 	ActivityMinProfitRate        float64              `json:"activityMinProfitRate"`
+	ActivityLimitedMinProfitRate float64              `json:"activityLimitedMinProfitRate"`
 	ActivityPriceMode            string               `json:"activityPriceMode"`
 	ActivityPartakeType          string               `json:"activityPartakeType"`
 	TimeLimitedDiscountRate      float64              `json:"timeLimitedDiscountRate"`

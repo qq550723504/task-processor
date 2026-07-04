@@ -21,6 +21,7 @@ type OperationStrategy struct {
 	ActivityStockRatio           float64
 	PromotionRatio               float64
 	ActivityMinProfitRate        float64
+	ActivityLimitedMinProfitRate float64
 	ActivityPriceMode            string
 	ActivityPartakeType          string
 	TimeLimitedDiscountRate      float64
