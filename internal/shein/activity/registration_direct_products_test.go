@@ -465,6 +465,69 @@ func TestRegisterPromotionProductsUsesLimitedMinProfitForBothPartake(t *testing.
 	}
 }
 
+func TestRegisterPromotionProductsKeepsLimitedProfitDropRateGreaterAfterRounding(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		configListResponse: &marketing.GetConfigListResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: &marketing.ConfigListInfo{
+				Total: 1,
+				ConfigList: []marketing.ActivityConfigInfo{
+					{
+						ID:  13042103,
+						Skc: "sg-both-profit-rounded",
+						ActivityConfigList: []marketing.ActivityConfigDetail{
+							{ID: 13042103, ActivityType: marketing.AutoPartakeActivityTypeRegular, State: marketing.AutoPartakeConfigStateClosed},
+							{ID: 13042104, ActivityType: marketing.AutoPartakeActivityTypeLimited, State: marketing.AutoPartakeConfigStateClosed},
+						},
+					},
+				},
+			},
+		},
+	}
+	service := &activityRegistrationServiceImpl{
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	_, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:                      870,
+			ActivityPriceMode:            "PROFIT",
+			ActivityPartakeType:          "BOTH",
+			ActivityMinProfitRate:        0.01,
+			ActivityLimitedMinProfitRate: 0,
+			ActivityStockRatio:           0.5,
+		},
+		"",
+		[]marketing.SkcInfo{{
+			Skc:                 "sg-both-profit-rounded",
+			Stock:               999,
+			SupplyPrice:         16.88,
+			SupplyPriceCurrency: "USD",
+			SitePriceInfoList: []marketing.SitePriceInfo{{
+				SalePrice:   30.08,
+				Currency:    "USD",
+				IsAvailable: true,
+			}},
+		}},
+	)
+
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if len(api.savedRequests) != 2 {
+		t.Fatalf("saved request count = %d, want 2", len(api.savedRequests))
+	}
+	if got := api.savedRequests[0].ConfigList[0].DropRate; got != 43 {
+		t.Fatalf("regular profit drop rate = %d, want 43", got)
+	}
+	if got := api.savedRequests[1].ConfigList[0].DropRate; got != 44 {
+		t.Fatalf("limited profit drop rate = %d, want 44", got)
+	}
+}
+
 func TestRegisterPromotionProductsCreatesActivityWhenActivityKeyIsProvided(t *testing.T) {
 	api := &promotionProductsMarketingAPIStub{
 		promotionGoods: []marketing.PromotionGoodsData{

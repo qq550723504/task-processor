@@ -279,7 +279,7 @@ func (s *activityRegistrationServiceImpl) promotionConfigListForActivityType(pro
 		limitedStrategy.ActivityMinProfitRate = strategy.ActivityLimitedMinProfitRate
 		limitedConfigList := s.buildPromotionConfigList(products, &limitedStrategy, priceMode)
 		if len(limitedConfigList) > 0 {
-			return limitedConfigList
+			return ensureLimitedPromotionDropRatesGreater(copied, limitedConfigList)
 		}
 		return copied
 	}
@@ -291,6 +291,29 @@ func (s *activityRegistrationServiceImpl) promotionConfigListForActivityType(pro
 		copied[i].DropRate = limitedDropRate
 	}
 	return copied
+}
+
+func ensureLimitedPromotionDropRatesGreater(regularConfigs, limitedConfigs []marketing.ActivityConfig) []marketing.ActivityConfig {
+	regularDropRateBySKC := make(map[string]int, len(regularConfigs))
+	for _, config := range regularConfigs {
+		if config.Skc == "" {
+			continue
+		}
+		regularDropRateBySKC[config.Skc] = config.DropRate
+	}
+	if len(regularDropRateBySKC) == 0 {
+		return limitedConfigs
+	}
+
+	out := append([]marketing.ActivityConfig(nil), limitedConfigs...)
+	for i := range out {
+		regularDropRate, ok := regularDropRateBySKC[out[i].Skc]
+		if !ok || out[i].DropRate > regularDropRate || regularDropRate >= 99 {
+			continue
+		}
+		out[i].DropRate = regularDropRate + 1
+	}
+	return out
 }
 
 func validateAutoPartakeDiscountsForStrategy(strategy *listingruntime.OperationStrategy) error {

@@ -9,6 +9,10 @@ import (
 	"task-processor/internal/listingkit"
 )
 
+type sheinEnrollmentSummaryCounter interface {
+	CountSheinEnrollmentSummary(ctx context.Context, tenantID, storeID int64, activityType string) (syncedProductCount, missingCostCount, pendingReviewCount, readyToEnrollCount int, err error)
+}
+
 func resolveSheinSummaryActivityType(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
@@ -52,11 +56,7 @@ func (h *handler) buildSheinEnrollmentStoreSummary(
 		return &listingkit.SheinEnrollmentStoreSummary{ActivityType: activityType}, nil
 	}
 
-	products, err := h.listActiveSheinSyncedProducts(ctx, tenantID, store.ID)
-	if err != nil {
-		return nil, err
-	}
-	candidates, err := h.listSheinActivityCandidatesForSummary(ctx, tenantID, store.ID, activityType)
+	syncedProductCount, missingCostCount, pendingReviewCount, readyToEnrollCount, err := h.countSheinEnrollmentSummary(ctx, tenantID, store.ID, activityType)
 	if err != nil {
 		return nil, err
 	}
@@ -77,10 +77,9 @@ func (h *handler) buildSheinEnrollmentStoreSummary(
 		Region:             strings.TrimSpace(store.Region),
 		EnableAutoListing:  store.EnableAutoListing,
 		ActivityType:       activityType,
-		SyncedProductCount: len(products),
-		MissingCostCount:   countSheinProductsMissingCost(products),
+		SyncedProductCount: syncedProductCount,
+		MissingCostCount:   missingCostCount,
 	}
-	pendingReviewCount, readyToEnrollCount := summarizeLatestSheinCandidates(candidates)
 	summary.PendingReviewCount = pendingReviewCount
 	summary.ReadyToEnrollCount = readyToEnrollCount
 	if lastSyncJob != nil {
@@ -93,6 +92,23 @@ func (h *handler) buildSheinEnrollmentStoreSummary(
 		summary.LastEnrollmentAt = preferSheinTime(lastRun.FinishedAt, lastRun.StartedAt)
 	}
 	return summary, nil
+}
+
+func (h *handler) countSheinEnrollmentSummary(ctx context.Context, tenantID, storeID int64, activityType string) (syncedProductCount, missingCostCount, pendingReviewCount, readyToEnrollCount int, err error) {
+	if counter, ok := h.sheinSyncRepository.(sheinEnrollmentSummaryCounter); ok {
+		return counter.CountSheinEnrollmentSummary(ctx, tenantID, storeID, activityType)
+	}
+
+	products, err := h.listActiveSheinSyncedProducts(ctx, tenantID, storeID)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	candidates, err := h.listSheinActivityCandidatesForSummary(ctx, tenantID, storeID, activityType)
+	if err != nil {
+		return 0, 0, 0, 0, err
+	}
+	pendingReviewCount, readyToEnrollCount = summarizeLatestSheinCandidates(candidates)
+	return len(products), countSheinProductsMissingCost(products), pendingReviewCount, readyToEnrollCount, nil
 }
 
 func (h *handler) listActiveSheinSyncedProducts(ctx context.Context, tenantID, storeID int64) ([]listingkit.SheinSyncedProductRecord, error) {

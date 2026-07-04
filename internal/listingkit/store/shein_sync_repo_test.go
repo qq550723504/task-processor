@@ -135,6 +135,104 @@ func TestSheinSyncRepositoryUpdateSyncedProductInventoryAttributes(t *testing.T)
 	}
 }
 
+func TestSheinSyncRepositoryCountSheinEnrollmentSummary(t *testing.T) {
+	t.Parallel()
+
+	for _, harness := range sheinSyncRepositoryHarnesses(t) {
+		harness := harness
+		t.Run(harness.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			now := time.Date(2026, 6, 4, 9, 0, 0, 0, time.UTC)
+			cost := 12.5
+			if err := harness.repo.UpsertSyncedProducts(ctx, []*listingkit.SheinSyncedProductRecord{
+				{TenantID: 1, StoreID: 101, SKCName: "skc-costed", AutoCostPrice: &cost, IsActive: true, CreatedAt: now, UpdatedAt: now},
+				{TenantID: 1, StoreID: 101, SKCName: "skc-missing", IsActive: true, CreatedAt: now, UpdatedAt: now},
+				{TenantID: 1, StoreID: 101, SKCName: "skc-inactive", IsActive: false, CreatedAt: now, UpdatedAt: now},
+				{TenantID: 1, StoreID: 202, SKCName: "skc-other-store", IsActive: true, CreatedAt: now, UpdatedAt: now},
+			}); err != nil {
+				t.Fatalf("seed products: %v", err)
+			}
+			if err := harness.repo.SaveCandidates(ctx, []*listingkit.SheinActivityCandidateRecord{
+				{
+					TenantID:          1,
+					StoreID:           101,
+					ActivityType:      "TIME_LIMITED",
+					ActivityKey:       "TIME_LIMITED:1:101",
+					SKCName:           "skc-pending",
+					CandidateVersion:  "old",
+					EligibilityStatus: listingkit.SheinCandidateEligibilityStatusEligible,
+					ReviewStatus:      listingkit.SheinCandidateReviewStatusApproved,
+					CreatedAt:         now,
+					UpdatedAt:         now,
+				},
+				{
+					TenantID:          1,
+					StoreID:           101,
+					ActivityType:      "TIME_LIMITED",
+					ActivityKey:       "TIME_LIMITED:1:101",
+					SKCName:           "skc-pending",
+					CandidateVersion:  "new",
+					EligibilityStatus: listingkit.SheinCandidateEligibilityStatusEligible,
+					ReviewStatus:      listingkit.SheinCandidateReviewStatusPendingReview,
+					CreatedAt:         now.Add(time.Minute),
+					UpdatedAt:         now.Add(time.Minute),
+				},
+				{
+					TenantID:          1,
+					StoreID:           101,
+					ActivityType:      "TIME_LIMITED",
+					ActivityKey:       "TIME_LIMITED:1:101",
+					SKCName:           "skc-ready",
+					CandidateVersion:  "v1",
+					EligibilityStatus: listingkit.SheinCandidateEligibilityStatusEligible,
+					ReviewStatus:      listingkit.SheinCandidateReviewStatusAutoQueued,
+					CreatedAt:         now,
+					UpdatedAt:         now,
+				},
+				{
+					TenantID:          1,
+					StoreID:           101,
+					ActivityType:      "TIME_LIMITED",
+					ActivityKey:       "TIME_LIMITED:1:101",
+					SKCName:           "skc-not-ready",
+					CandidateVersion:  "v1",
+					EligibilityStatus: listingkit.SheinCandidateEligibilityStatusIneligible,
+					ReviewStatus:      listingkit.SheinCandidateReviewStatusApproved,
+					CreatedAt:         now,
+					UpdatedAt:         now,
+				},
+				{
+					TenantID:          1,
+					StoreID:           101,
+					ActivityType:      "PROMOTION",
+					ActivityKey:       "PROMOTION:1:101",
+					SKCName:           "skc-other-activity",
+					CandidateVersion:  "v1",
+					EligibilityStatus: listingkit.SheinCandidateEligibilityStatusEligible,
+					ReviewStatus:      listingkit.SheinCandidateReviewStatusPendingReview,
+					CreatedAt:         now,
+					UpdatedAt:         now,
+				},
+			}); err != nil {
+				t.Fatalf("seed candidates: %v", err)
+			}
+
+			counter := harness.repo.(interface {
+				CountSheinEnrollmentSummary(ctx context.Context, tenantID, storeID int64, activityType string) (int, int, int, int, error)
+			})
+			syncedProductCount, missingCostCount, pendingReviewCount, readyToEnrollCount, err := counter.CountSheinEnrollmentSummary(ctx, 1, 101, "TIME_LIMITED")
+			if err != nil {
+				t.Fatalf("CountSheinEnrollmentSummary() error = %v", err)
+			}
+			if syncedProductCount != 2 || missingCostCount != 1 || pendingReviewCount != 1 || readyToEnrollCount != 1 {
+				t.Fatalf("counts = (%d,%d,%d,%d), want (2,1,1,1)", syncedProductCount, missingCostCount, pendingReviewCount, readyToEnrollCount)
+			}
+		})
+	}
+}
+
 func TestSheinSyncRepositoryListSyncedProductsSupportsFilteringAndPagination(t *testing.T) {
 	t.Parallel()
 

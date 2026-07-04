@@ -75,6 +75,17 @@ describe("resolveListingKitProxyTimeoutMs", () => {
     );
   });
 
+  it("extends the timeout for shein enrollment store summary requests", () => {
+    expect(
+      resolveListingKitProxyTimeoutMs("GET", [
+        "shein-sync",
+        "stores",
+        "870",
+        "summary",
+      ]),
+    ).toBe(PROXY_SHEIN_ENROLLMENT_DASHBOARD_UPSTREAM_TIMEOUT_MS);
+  });
+
   it("extends the timeout for shein enrollment execution requests", () => {
     expect(
       resolveListingKitProxyTimeoutMs("POST", [

@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -178,6 +179,42 @@ func (*stubSheinSummaryStoreRepository) ListDeletedStores(context.Context, int64
 }
 func (*stubSheinSummaryStoreRepository) RestoreStore(context.Context, int64, int64) (*listingadmin.Store, error) {
 	panic("unexpected call")
+}
+
+type summaryStatsOnlySheinSyncRepository struct {
+	listingkit.SheinSyncRepository
+
+	syncedProductCount int
+	missingCostCount   int
+	pendingReviewCount int
+	readyToEnrollCount int
+
+	summaryTenantID     int64
+	summaryStoreID      int64
+	summaryActivityType string
+}
+
+func (r *summaryStatsOnlySheinSyncRepository) CountSheinEnrollmentSummary(ctx context.Context, tenantID, storeID int64, activityType string) (int, int, int, int, error) {
+	r.summaryTenantID = tenantID
+	r.summaryStoreID = storeID
+	r.summaryActivityType = activityType
+	return r.syncedProductCount, r.missingCostCount, r.pendingReviewCount, r.readyToEnrollCount, nil
+}
+
+func (r *summaryStatsOnlySheinSyncRepository) ListSyncedProducts(context.Context, *listingkit.SheinSyncedProductQuery) ([]listingkit.SheinSyncedProductRecord, int64, error) {
+	return nil, 0, errors.New("summary should not list synced products")
+}
+
+func (r *summaryStatsOnlySheinSyncRepository) ListCandidates(context.Context, *listingkit.SheinActivityCandidateQuery) ([]listingkit.SheinActivityCandidateRecord, int64, error) {
+	return nil, 0, errors.New("summary should not list candidates")
+}
+
+func (r *summaryStatsOnlySheinSyncRepository) ListSyncJobs(context.Context, *listingkit.SheinSyncJobQuery) ([]listingkit.SheinSyncJobRecord, int64, error) {
+	return nil, 0, nil
+}
+
+func (r *summaryStatsOnlySheinSyncRepository) ListEnrollmentRuns(context.Context, *listingkit.SheinEnrollmentRunQuery) ([]listingkit.SheinActivityEnrollmentRunRecord, int64, error) {
+	return nil, 0, nil
 }
 func (*stubSheinSummaryStoreRepository) PermanentlyDeleteStore(context.Context, int64, int64) error {
 	panic("unexpected call")
@@ -950,6 +987,67 @@ func TestGetSheinEnrollmentStoreSummaryUsesLegacyTenantMapping(t *testing.T) {
 	}
 	if body.Summary.StoreID != 870 || body.Summary.ActivityType != "PROMOTION" {
 		t.Fatalf("summary = %+v, want mapped store 870 PROMOTION", body.Summary)
+	}
+}
+
+func TestGetSheinEnrollmentStoreSummaryUsesAggregatedCounts(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	storeRepo := &stubSheinSummaryStoreRepository{
+		stores: []listingadmin.Store{
+			{
+				ID:       870,
+				TenantID: 227,
+				Name:     "US Store",
+				Username: "zone-us",
+				Platform: "SHEIN",
+				Region:   "US",
+			},
+		},
+	}
+	syncRepo := &summaryStatsOnlySheinSyncRepository{
+		syncedProductCount: 1000,
+		missingCostCount:   123,
+		pendingReviewCount: 45,
+		readyToEnrollCount: 6,
+	}
+	h, err := NewHandler(
+		&stubHandlerCoreService{},
+		WithStoreRepository(storeRepo),
+		WithSheinSyncRepository(syncRepo),
+		WithSheinSyncServices(&stubSheinSyncHandlerService{}, stubSheinCandidateHandlerService{}, stubSheinEnrollmentHandlerService{}),
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.GET("/api/v1/listing-kits/shein-sync/stores/:store_id/summary", h.GetSheinEnrollmentStoreSummary)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/shein-sync/stores/870/summary?activity_type=TIME_LIMITED", nil)
+	req.Header.Set("X-Tenant-ID", "227")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", resp.Code, resp.Body.String())
+	}
+
+	var body struct {
+		Summary listingkit.SheinEnrollmentStoreSummary `json:"summary"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if body.Summary.SyncedProductCount != 1000 ||
+		body.Summary.MissingCostCount != 123 ||
+		body.Summary.PendingReviewCount != 45 ||
+		body.Summary.ReadyToEnrollCount != 6 {
+		t.Fatalf("summary counts = %+v, want aggregated counts", body.Summary)
+	}
+	if syncRepo.summaryTenantID != 227 || syncRepo.summaryStoreID != 870 || syncRepo.summaryActivityType != "TIME_LIMITED" {
+		t.Fatalf("summary query = tenant %d store %d activity %q, want 227/870/TIME_LIMITED", syncRepo.summaryTenantID, syncRepo.summaryStoreID, syncRepo.summaryActivityType)
 	}
 }
 
