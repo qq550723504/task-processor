@@ -121,6 +121,7 @@ func (r *GormSheinSyncRepository) UpdateSyncedProductInventoryAttributes(ctx con
 }
 
 func (r *GormSheinSyncRepository) MarkMissingSyncedProductsInactive(ctx context.Context, tenantID, storeID int64, activeSKCNames []string) error {
+	now := time.Now().UTC()
 	db := r.db.WithContext(ctx).
 		Model(&listingkit.SheinSyncedProductRecord{}).
 		Where("tenant_id = ? AND store_id = ?", tenantID, storeID)
@@ -128,8 +129,10 @@ func (r *GormSheinSyncRepository) MarkMissingSyncedProductsInactive(ctx context.
 		db = db.Where("skc_name NOT IN ?", activeSKCNames)
 	}
 	return db.Updates(map[string]any{
-		"is_active":  false,
-		"updated_at": time.Now().UTC(),
+		"is_active":    false,
+		"shelf_status": "OFF_SHELF",
+		"last_sync_at": &now,
+		"updated_at":   now,
 	}).Error
 }
 

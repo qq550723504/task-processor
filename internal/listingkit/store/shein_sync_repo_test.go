@@ -570,14 +570,19 @@ func TestSheinSyncRepositoryMarkMissingSyncedProductsInactive(t *testing.T) {
 			}
 
 			statusBySKC := map[string]bool{}
+			shelfStatusBySKC := map[string]string{}
 			for _, item := range items {
 				statusBySKC[item.SKCName] = item.IsActive
+				shelfStatusBySKC[item.SKCName] = item.ShelfStatus
 			}
 			if !statusBySKC["keep-active"] {
 				t.Fatalf("keep-active marked inactive unexpectedly")
 			}
 			if statusBySKC["go-inactive"] {
 				t.Fatalf("go-inactive remained active unexpectedly")
+			}
+			if shelfStatusBySKC["go-inactive"] != "OFF_SHELF" {
+				t.Fatalf("go-inactive shelf_status = %q, want OFF_SHELF", shelfStatusBySKC["go-inactive"])
 			}
 
 			otherStore, total, err := harness.repo.ListSyncedProducts(ctx, &listingkit.SheinSyncedProductQuery{TenantID: 1, StoreID: 202})

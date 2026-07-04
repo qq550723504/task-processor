@@ -664,6 +664,7 @@ func TestSyncSheinOnShelfProductsMarksMissingSKCsInactive(t *testing.T) {
 	require.Equal(t, "skc-2", rows[1].SKCName)
 	require.True(t, rows[0].IsActive)
 	require.False(t, rows[1].IsActive)
+	require.Equal(t, "OFF_SHELF", rows[1].ShelfStatus)
 
 	activeRows, activeTotal, err := repo.ListSyncedProducts(context.Background(), &SheinSyncedProductQuery{TenantID: 7, StoreID: 88, IsActive: &active, Page: 1, PageSize: 10})
 	require.NoError(t, err)
@@ -1148,6 +1149,7 @@ func (r *sheinSyncServiceRepoStub) MarkMissingSyncedProductsInactive(_ context.C
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	now := time.Now().UTC()
 	activeSet := make(map[string]struct{}, len(activeSKCNames))
 	for _, skcName := range activeSKCNames {
 		activeSet[skcName] = struct{}{}
@@ -1160,6 +1162,9 @@ func (r *sheinSyncServiceRepoStub) MarkMissingSyncedProductsInactive(_ context.C
 			continue
 		}
 		row.IsActive = false
+		row.ShelfStatus = "OFF_SHELF"
+		row.LastSyncAt = &now
+		row.UpdatedAt = now
 		r.products[key] = row
 	}
 	return nil

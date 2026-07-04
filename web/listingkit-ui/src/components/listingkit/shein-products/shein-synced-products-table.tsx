@@ -75,14 +75,30 @@ function formatSignedRate(value: number) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
-function getShelfStatusLabel(status?: string | null) {
-  switch (status) {
+function getShelfStatusView(item: SheinSyncedProductRecord) {
+  if (item.is_active === false) {
+    return {
+      label: "已下架",
+      className: "bg-zinc-100 text-zinc-600",
+    };
+  }
+
+  switch (item.shelf_status) {
     case "ON_SHELF":
-      return "已上架";
+      return {
+        label: "已上架",
+        className: "bg-emerald-50 text-emerald-700",
+      };
     case "OFF_SHELF":
-      return "已下架";
+      return {
+        label: "已下架",
+        className: "bg-zinc-100 text-zinc-600",
+      };
     default:
-      return status || "-";
+      return {
+        label: item.shelf_status || "-",
+        className: "bg-zinc-100 text-zinc-600",
+      };
   }
 }
 
@@ -125,6 +141,7 @@ export function SheinSyncedProductsTable({
               const inventory = formatInventorySummary(item.inventory_snapshot);
               const times = formatProductTimes(item);
               const profit = getProfitSnapshot(item);
+              const shelfStatus = getShelfStatusView(item);
 
               return (
                 <TableRow key={item.id}>
@@ -209,8 +226,10 @@ export function SheinSyncedProductsTable({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="inline-flex rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
-                      {getShelfStatusLabel(item.shelf_status)}
+                    <div
+                      className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${shelfStatus.className}`}
+                    >
+                      {shelfStatus.label}
                     </div>
                   </TableCell>
                   <TableCell>

@@ -73,4 +73,25 @@ describe("SheinSyncedProductsTable", () => {
     expect(screen.queryByText(/^利润率/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^利润 /)).not.toBeInTheDocument();
   });
+
+  it("shows inactive products as off shelf even when legacy shelf status is stale", () => {
+    render(
+      <SheinSyncedProductsTable
+        isLoading={false}
+        items={[
+          {
+            id: 3,
+            product_name_multi: "Inactive SHEIN product",
+            skc_name: "skc-inactive",
+            cost_price_source: "none",
+            shelf_status: "ON_SHELF",
+            is_active: false,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("已下架")).toBeInTheDocument();
+    expect(screen.queryByText("已上架")).not.toBeInTheDocument();
+  });
 });

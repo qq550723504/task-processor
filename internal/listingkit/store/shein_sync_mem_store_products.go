@@ -114,6 +114,7 @@ func (r *MemSheinSyncRepository) MarkMissingSyncedProductsInactive(_ context.Con
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	now := time.Now().UTC()
 	activeSet := make(map[string]struct{}, len(activeSKCNames))
 	for _, skcName := range activeSKCNames {
 		activeSet[skcName] = struct{}{}
@@ -127,7 +128,9 @@ func (r *MemSheinSyncRepository) MarkMissingSyncedProductsInactive(_ context.Con
 			continue
 		}
 		row.IsActive = false
-		row.UpdatedAt = time.Now().UTC()
+		row.ShelfStatus = "OFF_SHELF"
+		row.LastSyncAt = cloneTimePtr(&now)
+		row.UpdatedAt = now
 		r.products[key] = row
 	}
 	return nil
