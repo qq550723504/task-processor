@@ -26,7 +26,7 @@ func (s *activityRegistrationServiceImpl) RegisterMixedActivity(
 
 // registerPromotionProducts 报名指定产品到促销活动（私有方法）
 func (s *activityRegistrationServiceImpl) registerPromotionProducts(
-	_ context.Context,
+	ctx context.Context,
 	products []marketing.SkcInfo,
 	strategy *listingruntime.OperationStrategy,
 ) (int, error) {
@@ -39,24 +39,23 @@ func (s *activityRegistrationServiceImpl) registerPromotionProducts(
 	s.logger.Debugf("使用折扣率: %d%%", dropRate)
 
 	// 构建活动配置列表
-	configList := s.buildActivityConfigsWithStrategy(products, dropRate, strategy.ActivityStockRatio, strategy.StoreID)
+	configList := s.buildActivityConfigsWithStrategy(products, dropRate, autoPartakeStockRatioFromStrategy(strategy), strategy.StoreID)
 
 	if len(configList) == 0 {
 		return 0, nil
 	}
 
-	// 调用 SHEIN API 保存活动配置
-	saveReq := &marketing.SaveConfigRequest{
-		ConfigList: configList,
+	activityTypes := autoPartakeActivityTypesFromStrategy(strategy)
+	if err := validateAutoPartakeDiscountsForStrategy(strategy); err != nil {
+		return 0, err
 	}
-
-	response, err := s.marketingAPI.SaveConfig(saveReq)
+	_, _, err := s.savePromotionConfigs(configList, activityTypes, strategy)
 	if err != nil {
-		return 0, fmt.Errorf("保存活动配置失败: %w", err)
+		return 0, err
 	}
 
-	if response.Code != "0" {
-		return 0, fmt.Errorf("保存活动配置失败: %s", response.Msg)
+	if err := s.enableSavedPromotionConfigs(ctx, configList, activityTypes); err != nil {
+		return 0, fmt.Errorf("开启活动配置失败: %w", err)
 	}
 
 	return len(configList), nil

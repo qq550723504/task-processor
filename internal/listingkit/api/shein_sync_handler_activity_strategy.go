@@ -13,6 +13,9 @@ import (
 const sheinActivityStrategyTypePromotion = "PROMOTION"
 const sheinActivityStrategyTypeTimeLimited = "TIME_LIMITED"
 const sheinActivityStrategyPlatform = "SHEIN"
+const sheinActivityPartakeTypeRegular = "REGULAR"
+const sheinActivityPartakeTypeLimited = "LIMITED"
+const sheinActivityPartakeTypeBoth = "BOTH"
 
 func (h *handler) GetSheinActivityStrategy(c *gin.Context) {
 	if h.operationStrategyRepository == nil {
@@ -100,17 +103,29 @@ func normalizeSheinActivityStrategyType(raw string) (string, error) {
 }
 
 func validateSheinActivityStrategyRequest(req updateSheinActivityStrategyRequest) error {
+	partakeType, err := normalizeSheinActivityPartakeType(req.ActivityPartakeType)
+	if err != nil {
+		return err
+	}
 	priceMode := strings.ToUpper(strings.TrimSpace(req.ActivityPriceMode))
 	if priceMode == "" {
 		priceMode = "DISCOUNT"
 	}
-	if req.ActivityStockRatio == nil || *req.ActivityStockRatio <= 0 || *req.ActivityStockRatio > 1 {
+	if partakeTypeRequiresStockRatio(partakeType) && (req.ActivityStockRatio == nil || *req.ActivityStockRatio <= 0 || *req.ActivityStockRatio > 1) {
 		return errors.New("activity_stock_ratio must be between 0 and 1")
 	}
 	switch priceMode {
 	case "DISCOUNT":
 		if req.ActivityDiscountRate == nil || *req.ActivityDiscountRate <= 0 || *req.ActivityDiscountRate >= 1 {
 			return errors.New("activity_discount_rate must be between 0 and 1")
+		}
+		if partakeType == sheinActivityPartakeTypeBoth {
+			if req.ActivityLimitedDiscountRate == nil || *req.ActivityLimitedDiscountRate <= 0 || *req.ActivityLimitedDiscountRate >= 1 {
+				return errors.New("activity_limited_discount_rate must be between 0 and 1")
+			}
+			if *req.ActivityLimitedDiscountRate <= *req.ActivityDiscountRate {
+				return errors.New("activity_limited_discount_rate must be greater than activity_discount_rate")
+			}
 		}
 	case "PROFIT":
 		if req.ActivityMinProfitRate == nil || *req.ActivityMinProfitRate < 0 || *req.ActivityMinProfitRate >= 1 {
@@ -122,16 +137,40 @@ func validateSheinActivityStrategyRequest(req updateSheinActivityStrategyRequest
 	return nil
 }
 
+func normalizeSheinActivityPartakeType(raw string) (string, error) {
+	partakeType := strings.ToUpper(strings.TrimSpace(raw))
+	if partakeType == "" {
+		return sheinActivityPartakeTypeRegular, nil
+	}
+	switch partakeType {
+	case sheinActivityPartakeTypeRegular, sheinActivityPartakeTypeLimited, sheinActivityPartakeTypeBoth:
+		return partakeType, nil
+	default:
+		return "", errors.New("activity_partake_type must be REGULAR, LIMITED, or BOTH")
+	}
+}
+
+func partakeTypeRequiresStockRatio(partakeType string) bool {
+	switch strings.ToUpper(strings.TrimSpace(partakeType)) {
+	case sheinActivityPartakeTypeLimited, sheinActivityPartakeTypeBoth:
+		return true
+	default:
+		return false
+	}
+}
+
 func buildSheinActivityOperationStrategy(tenantID, storeID int64, activityType string, existing *listingadmin.OperationStrategy, req updateSheinActivityStrategyRequest) *listingadmin.OperationStrategy {
+	partakeType, _ := normalizeSheinActivityPartakeType(req.ActivityPartakeType)
 	strategy := &listingadmin.OperationStrategy{
-		TenantID:          tenantID,
-		StoreID:           storeID,
-		Name:              "SHEIN 活动报名",
-		Platform:          sheinActivityStrategyPlatform,
-		Status:            0,
-		ActivityEnabled:   true,
-		ActivityType:      activityType,
-		ActivityPriceMode: strings.ToUpper(strings.TrimSpace(req.ActivityPriceMode)),
+		TenantID:            tenantID,
+		StoreID:             storeID,
+		Name:                "SHEIN 活动报名",
+		Platform:            sheinActivityStrategyPlatform,
+		Status:              0,
+		ActivityEnabled:     true,
+		ActivityType:        activityType,
+		ActivityPriceMode:   strings.ToUpper(strings.TrimSpace(req.ActivityPriceMode)),
+		ActivityPartakeType: partakeType,
 	}
 	if strategy.ActivityPriceMode == "" {
 		strategy.ActivityPriceMode = "DISCOUNT"
@@ -143,6 +182,7 @@ func buildSheinActivityOperationStrategy(tenantID, storeID int64, activityType s
 		}
 	}
 	strategy.ActivityDiscountRate = req.ActivityDiscountRate
+	strategy.ActivityLimitedDiscountRate = req.ActivityLimitedDiscountRate
 	strategy.ActivityStockRatio = req.ActivityStockRatio
 	strategy.ActivityMinProfitRate = req.ActivityMinProfitRate
 	strategy.FixedPriceAdjustment = req.FixedPriceAdjustment
@@ -154,16 +194,26 @@ func sheinActivityStrategyDTO(strategy *listingadmin.OperationStrategy, tenantID
 		return nil
 	}
 	return &sheinActivityStrategyResponse{
-		ID:                    strategy.ID,
-		TenantID:              tenantID,
-		StoreID:               storeID,
-		ActivityType:          activityType,
-		ActivityPriceMode:     strings.ToUpper(strings.TrimSpace(strategy.ActivityPriceMode)),
-		ActivityDiscountRate:  sheinActivityFloat64(strategy.ActivityDiscountRate),
-		ActivityStockRatio:    sheinActivityFloat64(strategy.ActivityStockRatio),
-		ActivityMinProfitRate: sheinActivityFloat64(strategy.ActivityMinProfitRate),
-		FixedPriceAdjustment:  sheinActivityFloat64(strategy.FixedPriceAdjustment),
+		ID:                          strategy.ID,
+		TenantID:                    tenantID,
+		StoreID:                     storeID,
+		ActivityType:                activityType,
+		ActivityPriceMode:           strings.ToUpper(strings.TrimSpace(strategy.ActivityPriceMode)),
+		ActivityPartakeType:         defaultSheinActivityPartakeType(strategy.ActivityPartakeType),
+		ActivityDiscountRate:        sheinActivityFloat64(strategy.ActivityDiscountRate),
+		ActivityLimitedDiscountRate: sheinActivityFloat64(strategy.ActivityLimitedDiscountRate),
+		ActivityStockRatio:          sheinActivityFloat64(strategy.ActivityStockRatio),
+		ActivityMinProfitRate:       sheinActivityFloat64(strategy.ActivityMinProfitRate),
+		FixedPriceAdjustment:        sheinActivityFloat64(strategy.FixedPriceAdjustment),
 	}
+}
+
+func defaultSheinActivityPartakeType(value string) string {
+	partakeType, err := normalizeSheinActivityPartakeType(value)
+	if err != nil {
+		return sheinActivityPartakeTypeRegular
+	}
+	return partakeType
 }
 
 func firstNonBlank(values ...string) string {

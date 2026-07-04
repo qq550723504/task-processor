@@ -50,3 +50,23 @@ func TestSheinPromotionStrategyTimeLimitedFallsBackToActivityPriceConfig(t *test
 		t.Fatalf("runtime activity discount rate = %.2f, want activity fallback discount 0.22", runtimeStrategy.ActivityDiscountRate)
 	}
 }
+
+func TestSheinPromotionStrategyPassesPromotionPartakeTypeToRuntimeStrategy(t *testing.T) {
+	strategy := NewSheinPromotionStrategy(SheinPromotionStrategyInput{
+		ActivityType:          "PROMOTION",
+		StoreID:               177,
+		ActivityPriceMode:     "DISCOUNT",
+		ActivityPartakeType:   "LIMITED",
+		ActivityDiscountRate:  0.22,
+		ActivityMinProfitRate: 0.1,
+		ActivityStockRatio:    0.5,
+	})
+
+	if err := strategy.ValidateForPromotionEnrollment(); err != nil {
+		t.Fatalf("ValidateForPromotionEnrollment error = %v", err)
+	}
+	runtimeStrategy := strategy.runtimeOperationStrategy()
+	if runtimeStrategy.ActivityPartakeType != "LIMITED" {
+		t.Fatalf("runtime activity partake type = %q, want LIMITED", runtimeStrategy.ActivityPartakeType)
+	}
+}

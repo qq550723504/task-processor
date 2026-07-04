@@ -32,13 +32,16 @@ vi.mock("@/lib/query/use-shein-enrollment", () => ({
     mocks.useSheinSDSCostGroups(...args),
   useSheinSourceSDSCostGroups: (...args: unknown[]) =>
     mocks.useSheinSourceSDSCostGroups(...args),
-  useSheinSyncedProducts: (...args: unknown[]) => mocks.useSheinSyncedProducts(...args),
-  useSheinActivityCandidates: (...args: unknown[]) => mocks.useSheinActivityCandidates(...args),
+  useSheinSyncedProducts: (...args: unknown[]) =>
+    mocks.useSheinSyncedProducts(...args),
+  useSheinActivityCandidates: (...args: unknown[]) =>
+    mocks.useSheinActivityCandidates(...args),
   useSheinActivityEnrollmentRuns: (...args: unknown[]) =>
     mocks.useSheinActivityEnrollmentRuns(...args),
   useSheinActivityEnrollmentRunItems: (...args: unknown[]) =>
     mocks.useSheinActivityEnrollmentRunItems(...args),
-  useTriggerSheinStoreSync: (...args: unknown[]) => mocks.useTriggerSheinStoreSync(...args),
+  useTriggerSheinStoreSync: (...args: unknown[]) =>
+    mocks.useTriggerSheinStoreSync(...args),
   useSyncSheinSourceSDSProduct: (...args: unknown[]) =>
     mocks.useSyncSheinSourceSDSProduct(...args),
   useRefreshSheinActivityCandidates: (...args: unknown[]) =>
@@ -149,7 +152,9 @@ function renderWorkbench({
     isLoading: false,
   });
   mocks.useTriggerSheinStoreSync.mockReturnValue(resolvedMutation());
-  mocks.useSyncSheinSourceSDSProduct.mockReturnValue(syncSourceMutation ?? resolvedMutation());
+  mocks.useSyncSheinSourceSDSProduct.mockReturnValue(
+    syncSourceMutation ?? resolvedMutation(),
+  );
   mocks.useRefreshSheinActivityCandidates.mockReturnValue(resolvedMutation());
   mocks.useUpdateSheinActivityStrategy.mockReturnValue(
     updateStrategyMutation ?? resolvedMutation(),
@@ -157,7 +162,9 @@ function renderWorkbench({
   mocks.useUpdateSheinSDSCostGroup.mockReturnValue(resolvedMutation());
   mocks.useUpdateSheinSyncedProductCost.mockReturnValue(resolvedMutation());
   mocks.useReviewSheinActivityCandidate.mockReturnValue(resolvedMutation());
-  mocks.useExecuteSheinActivityEnrollment.mockReturnValue(enrollMutation ?? resolvedMutation());
+  mocks.useExecuteSheinActivityEnrollment.mockReturnValue(
+    enrollMutation ?? resolvedMutation(),
+  );
 
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -173,16 +180,28 @@ describe("SheinEnrollmentStoreWorkbench", () => {
   it("defaults to the candidates tab and carries activityType in links", async () => {
     renderWorkbench({});
 
-    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "候选池" })).toHaveAttribute(
       "href",
       "/listing-kits/shein-enrollment/12?tab=candidates&activityType=PROMOTION",
     );
-    expect(screen.queryByRole("link", { name: "同步商品" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "成本价维护" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: "混合活动" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "立即同步" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "去检查登录" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "同步商品" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "成本价维护" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "混合活动" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "立即同步" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "去检查登录" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders dense product details in the synced products tab", async () => {
@@ -200,7 +219,8 @@ describe("SheinEnrollmentStoreWorkbench", () => {
           price_snapshot: "USD 29.99",
           effective_cost_price: 12.5,
           cost_price_source: "manual",
-          inventory_snapshot: '{"total_inventory":999,"saleable_inventory":999}',
+          inventory_snapshot:
+            '{"total_inventory":999,"saleable_inventory":999}',
           shelf_status: "ON_SHELF",
           created_at: "2026-06-01 01:38:43",
           publish_time: "2026-06-02 02:58:40",
@@ -209,7 +229,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       ],
     });
 
-    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/售价\s+\$29\.99/)).toBeInTheDocument();
     expect(screen.getByText(/SPU:\s+spu-123/)).toBeInTheDocument();
     expect(screen.getByText(/货号:\s+J0529021001/)).toBeInTheDocument();
@@ -231,7 +253,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       ],
     });
 
-    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
     expect(screen.getByText(/售价 \$29.99/)).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "SKC-18 图片" })).toHaveAttribute(
       "src",
@@ -256,7 +280,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       ],
     });
 
-    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
     expect(mocks.useSheinActivityCandidates).toHaveBeenLastCalledWith(
       12,
       {
@@ -296,8 +322,12 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       ],
     });
 
-    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "通过" })).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "通过" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "驳回" })).toBeInTheDocument();
   });
 
@@ -320,7 +350,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       ],
     });
 
-    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
 
     expect(screen.getByLabelText("选择 SKC-PENDING")).not.toBeDisabled();
     fireEvent.click(screen.getByLabelText("选择 SKC-PENDING"));
@@ -338,7 +370,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
   it("ignores duplicate manual enrollment clicks while a request is in flight", async () => {
     const enrollMutation = {
       isPending: false,
-      mutateAsync: vi.fn().mockReturnValue(new Promise<undefined>(() => undefined)),
+      mutateAsync: vi
+        .fn()
+        .mockReturnValue(new Promise<undefined>(() => undefined)),
     };
     renderWorkbench({
       initialTab: "candidates",
@@ -352,7 +386,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       ],
     });
 
-    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("选择 SKC-PENDING"));
     const enrollButton = screen.getByRole("button", { name: "报名活动" });
@@ -388,12 +424,15 @@ describe("SheinEnrollmentStoreWorkbench", () => {
           id: 20,
           skc_name: "SKC-FAILED",
           review_status: "failed",
-          last_enrollment_error: "SHEIN rejected: current status can not enroll",
+          last_enrollment_error:
+            "SHEIN rejected: current status can not enroll",
         },
       ],
     });
 
-    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "全选" }));
     expect(screen.getByLabelText("选择 SKC-PENDING")).toBeChecked();
@@ -401,7 +440,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     expect(screen.getByLabelText("选择 SKC-REJECTED")).toBeDisabled();
     expect(screen.getByLabelText("选择 SKC-FAILED")).not.toBeChecked();
     expect(screen.getByLabelText("选择 SKC-FAILED")).toBeDisabled();
-    expect(screen.getByText(/SHEIN rejected: current status can not enroll/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/SHEIN rejected: current status can not enroll/),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "报名活动" }));
 
@@ -426,7 +467,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       ],
     });
 
-    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByLabelText("选择 SKC-18"));
 
@@ -442,13 +485,12 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       updateStrategyMutation,
     });
 
-    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByRole("spinbutton", { name: "折扣率" }), {
       target: { value: "0.18" },
-    });
-    fireEvent.change(screen.getByRole("spinbutton", { name: "活动库存比例" }), {
-      target: { value: "0.4" },
     });
     fireEvent.change(screen.getByRole("spinbutton", { name: "固定调价" }), {
       target: { value: "1.2" },
@@ -458,9 +500,69 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     expect(updateStrategyMutation.mutateAsync).toHaveBeenCalledWith({
       activity_type: "PROMOTION",
       activity_price_mode: "DISCOUNT",
+      activity_partake_type: "REGULAR",
       activity_discount_rate: 0.18,
-      activity_stock_ratio: 0.4,
       fixed_price_adjustment: 1.2,
+    });
+  });
+
+  it("saves limited promotion activity strategy when selected", async () => {
+    const updateStrategyMutation = resolvedMutation();
+    renderWorkbench({
+      initialTab: "candidates",
+      activityStrategyResponse: { configured: false, strategy: null },
+      updateStrategyMutation,
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "限量活动" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "活动库存比例" }), {
+      target: { value: "0.4" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存活动设置" }));
+
+    expect(updateStrategyMutation.mutateAsync).toHaveBeenCalledWith({
+      activity_type: "PROMOTION",
+      activity_price_mode: "DISCOUNT",
+      activity_partake_type: "LIMITED",
+      activity_discount_rate: 0.2,
+      activity_stock_ratio: 0.4,
+      fixed_price_adjustment: 0,
+    });
+  });
+
+  it("saves both promotion activity strategy when selected", async () => {
+    const updateStrategyMutation = resolvedMutation();
+    renderWorkbench({
+      initialTab: "candidates",
+      activityStrategyResponse: { configured: false, strategy: null },
+      updateStrategyMutation,
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "常规+限量" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "活动库存比例" }), {
+      target: { value: "0.4" },
+    });
+    expect(
+      screen.getByRole("spinbutton", { name: "限量折扣率" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "保存活动设置" }));
+
+    expect(updateStrategyMutation.mutateAsync).toHaveBeenCalledWith({
+      activity_type: "PROMOTION",
+      activity_price_mode: "DISCOUNT",
+      activity_partake_type: "BOTH",
+      activity_discount_rate: 0.2,
+      activity_limited_discount_rate: 0.25,
+      activity_stock_ratio: 0.4,
+      fixed_price_adjustment: 0,
     });
   });
 
@@ -472,16 +574,35 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       updateStrategyMutation,
     });
 
-    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
-    expect(screen.getByRole("spinbutton", { name: "折扣率" })).toBeInTheDocument();
-    expect(screen.queryByRole("spinbutton", { name: "最低利润率" })).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("spinbutton", { name: "折扣率" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("spinbutton", { name: "最低利润率" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("spinbutton", { name: "活动库存比例" }),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "按利润" }));
+    fireEvent.click(screen.getByRole("button", { name: "限量活动" }));
 
-    expect(screen.queryByRole("spinbutton", { name: "折扣率" })).not.toBeInTheDocument();
-    expect(screen.getByRole("spinbutton", { name: "最低利润率" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("spinbutton", { name: "折扣率" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("spinbutton", { name: "最低利润率" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("spinbutton", { name: "活动库存比例" }),
+    ).toBeInTheDocument();
 
-    const minProfitInput = screen.getByRole("spinbutton", { name: "最低利润率" });
+    const minProfitInput = screen.getByRole("spinbutton", {
+      name: "最低利润率",
+    });
     expect(minProfitInput).toHaveAttribute("min", "0");
 
     fireEvent.change(minProfitInput, {
@@ -492,6 +613,7 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     expect(updateStrategyMutation.mutateAsync).toHaveBeenCalledWith({
       activity_type: "PROMOTION",
       activity_price_mode: "PROFIT",
+      activity_partake_type: "LIMITED",
       activity_stock_ratio: 0.5,
       activity_min_profit_rate: 0,
       fixed_price_adjustment: 0,
@@ -511,7 +633,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     });
 
     expect(await screen.findByText("最近同步失败")).toBeInTheDocument();
-    expect(screen.getByText("shein login failed: 登录等待验证码")).toBeInTheDocument();
+    expect(
+      screen.getByText("shein login failed: 登录等待验证码"),
+    ).toBeInTheDocument();
   });
 
   it("paginates candidates with backend page parameters", async () => {
@@ -527,17 +651,23 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       ],
     });
 
-    expect(await screen.findByText("第 1 / 2 页 · 共 101 条")).toBeInTheDocument();
+    expect(
+      await screen.findByText("第 1 / 2 页 · 共 101 条"),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "下一页" }));
 
-    expect(mocks.useSheinActivityCandidates).toHaveBeenLastCalledWith(12, {
-      activity_type: "PROMOTION",
-      page: 2,
-      page_size: 100,
-    }, {
-      enabled: true,
-    });
+    expect(mocks.useSheinActivityCandidates).toHaveBeenLastCalledWith(
+      12,
+      {
+        activity_type: "PROMOTION",
+        page: 2,
+        page_size: 100,
+      },
+      {
+        enabled: true,
+      },
+    );
   });
 
   it("searches candidates by exact SKC and resets backend pagination", async () => {
@@ -553,7 +683,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       ],
     });
 
-    expect(await screen.findByText("第 1 / 2 页 · 共 101 条")).toBeInTheDocument();
+    expect(
+      await screen.findByText("第 1 / 2 页 · 共 101 条"),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "下一页" }));
     fireEvent.change(screen.getByPlaceholderText("输入完整 SKC 搜索候选商品"), {
@@ -604,7 +736,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       ],
     });
 
-    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
     expect(mocks.useSheinActivityEnrollmentRunItems).toHaveBeenLastCalledWith(
       12,
       0,
@@ -630,8 +764,12 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       },
       { enabled: true },
     );
-    expect(await screen.findByText("sg260618174087119533319")).toBeInTheDocument();
-    expect(screen.getByText("current status can not enroll")).toBeInTheDocument();
+    expect(
+      await screen.findByText("sg260618174087119533319"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("current status can not enroll"),
+    ).toBeInTheDocument();
   });
 
   it("renders cost rows from source POD SDS groups in the cost tab", async () => {
@@ -663,12 +801,20 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       ],
     });
 
-    expect(await screen.findByText("XB0608021001 · 2 个商品")).toBeInTheDocument();
-    expect(screen.getAllByText(/sg260604223794143925005/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/sg260603162031320517713/).length).toBeGreaterThan(0);
+    expect(
+      await screen.findByText("XB0608021001 · 2 个商品"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/sg260604223794143925005/).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/sg260603162031320517713/).length,
+    ).toBeGreaterThan(0);
     expect(screen.getByDisplayValue("50")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "同步该产品 XB0608021001" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "同步该产品 XB0608021001" }),
+    );
 
     expect(syncSourceMutation.mutateAsync).toHaveBeenCalledWith("XB0608021001");
   });
@@ -685,7 +831,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       ],
     });
 
-    expect(await screen.findByRole("heading", { name: "SHEIN US" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
     expect(mocks.useSheinSyncedProducts).toHaveBeenNthCalledWith(
       1,
       12,

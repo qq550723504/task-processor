@@ -309,8 +309,8 @@ describe("use-shein-enrollment", () => {
     await sync.current.mutateAsync({ trigger_mode: "manual" });
     await updateStrategy.current.mutateAsync({
       activity_price_mode: "DISCOUNT",
+      activity_partake_type: "REGULAR",
       activity_discount_rate: 0.18,
-      activity_stock_ratio: 0.4,
     });
     await refresh.current.mutateAsync({ activity_type: "flash_sale" });
 
@@ -319,8 +319,8 @@ describe("use-shein-enrollment", () => {
     );
     expect(mocks.updateSheinActivityStrategy).toHaveBeenCalledWith(5, {
       activity_price_mode: "DISCOUNT",
+      activity_partake_type: "REGULAR",
       activity_discount_rate: 0.18,
-      activity_stock_ratio: 0.4,
     });
     expect(invalidateQueries).toHaveBeenNthCalledWith(1, {
       queryKey: ["listingkit", "shein-enrollment", 5],

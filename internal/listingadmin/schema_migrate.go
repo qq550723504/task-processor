@@ -48,6 +48,17 @@ func ensureOwnerAuditColumns(db *gorm.DB, table string) error {
 	return nil
 }
 
+func ensureTextColumn(db *gorm.DB, table, column, definition string) error {
+	if db == nil {
+		return fmt.Errorf("database is not configured")
+	}
+	if db.Migrator().HasColumn(table, column) {
+		return nil
+	}
+	statement := fmt.Sprintf(`ALTER TABLE "%s" ADD COLUMN "%s" %s`, table, column, definition)
+	return db.Exec(statement).Error
+}
+
 func sensitiveWordLegacyColumnMigrations() map[string]postgresColumnTypeMigration {
 	return map[string]postgresColumnTypeMigration{
 		"status": {

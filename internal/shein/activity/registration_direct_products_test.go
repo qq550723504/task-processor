@@ -104,6 +104,303 @@ func TestRegisterPromotionProductsAllowsZeroMinProfitRateWithProvidedProductSnap
 	}
 }
 
+func TestRegisterPromotionProductsEnablesSavedRegularConfig(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		configListResponse: &marketing.GetConfigListResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: &marketing.ConfigListInfo{
+				Total: 1,
+				ConfigList: []marketing.ActivityConfigInfo{
+					{
+						ID:  13042103,
+						Skc: "sg-enable-regular",
+						ActivityConfigList: []marketing.ActivityConfigDetail{
+							{ID: 13042103, ActivityType: marketing.AutoPartakeActivityTypeRegular, State: marketing.AutoPartakeConfigStateClosed},
+							{ID: 13042104, ActivityType: marketing.AutoPartakeActivityTypeLimited, State: marketing.AutoPartakeConfigStateClosed},
+						},
+					},
+				},
+			},
+		},
+	}
+	service := &activityRegistrationServiceImpl{
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	result, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:               870,
+			ActivityPriceMode:     "PROFIT",
+			ActivityMinProfitRate: 0,
+			ActivityStockRatio:    0.5,
+		},
+		"",
+		[]marketing.SkcInfo{{
+			Skc:                 "sg-enable-regular",
+			Stock:               10,
+			SupplyPrice:         20,
+			SupplyPriceCurrency: "USD",
+			SitePriceInfoList: []marketing.SitePriceInfo{{
+				SalePrice:   20,
+				Currency:    "USD",
+				IsAvailable: true,
+			}},
+		}},
+	)
+
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if result == nil || result.Request == nil {
+		t.Fatalf("result = %+v, want request", result)
+	}
+	if len(api.updateStateRequests) != 1 {
+		t.Fatalf("update state calls = %d, want 1", len(api.updateStateRequests))
+	}
+	update := api.updateStateRequests[0]
+	if update.State != marketing.AutoPartakeConfigStateOpen {
+		t.Fatalf("update state = %d, want open", update.State)
+	}
+	if len(update.IDs) != 1 || update.IDs[0] != 13042103 {
+		t.Fatalf("update ids = %#v, want [13042103]", update.IDs)
+	}
+}
+
+func TestRegisterPromotionProductsAllowsRegularPartakeWithoutStockRatio(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{}
+	service := &activityRegistrationServiceImpl{
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	result, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:               870,
+			ActivityPriceMode:     "PROFIT",
+			ActivityPartakeType:   "REGULAR",
+			ActivityMinProfitRate: 0,
+		},
+		"",
+		[]marketing.SkcInfo{{
+			Skc:                 "sg-regular-no-stock-ratio",
+			Stock:               10,
+			SupplyPrice:         20,
+			SupplyPriceCurrency: "USD",
+			SitePriceInfoList: []marketing.SitePriceInfo{{
+				SalePrice:   20,
+				Currency:    "USD",
+				IsAvailable: true,
+			}},
+		}},
+	)
+
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if result == nil || result.Request == nil || len(result.Request.ConfigList) != 1 {
+		t.Fatalf("result = %+v, want one regular config", result)
+	}
+	if result.Request.Type != marketing.AutoPartakeActivityTypeRegular {
+		t.Fatalf("request type = %d, want regular", result.Request.Type)
+	}
+}
+
+func TestRegisterPromotionProductsUsesLimitedPartakeStrategy(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		configListResponse: &marketing.GetConfigListResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: &marketing.ConfigListInfo{
+				Total: 1,
+				ConfigList: []marketing.ActivityConfigInfo{
+					{
+						ID:  13042103,
+						Skc: "sg-enable-limited",
+						ActivityConfigList: []marketing.ActivityConfigDetail{
+							{ID: 13042103, ActivityType: marketing.AutoPartakeActivityTypeRegular, State: marketing.AutoPartakeConfigStateClosed},
+							{ID: 13042104, ActivityType: marketing.AutoPartakeActivityTypeLimited, State: marketing.AutoPartakeConfigStateClosed},
+						},
+					},
+				},
+			},
+		},
+	}
+	service := &activityRegistrationServiceImpl{
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	_, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:               870,
+			ActivityPriceMode:     "PROFIT",
+			ActivityPartakeType:   "LIMITED",
+			ActivityMinProfitRate: 0,
+			ActivityStockRatio:    0.5,
+		},
+		"",
+		[]marketing.SkcInfo{{
+			Skc:                 "sg-enable-limited",
+			Stock:               10,
+			SupplyPrice:         20,
+			SupplyPriceCurrency: "USD",
+			SitePriceInfoList: []marketing.SitePriceInfo{{
+				SalePrice:   20,
+				Currency:    "USD",
+				IsAvailable: true,
+			}},
+		}},
+	)
+
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if api.saved == nil || api.saved.Type != marketing.AutoPartakeActivityTypeLimited {
+		t.Fatalf("saved request type = %+v, want limited", api.saved)
+	}
+	if len(api.updateStateRequests) != 1 {
+		t.Fatalf("update state calls = %d, want 1", len(api.updateStateRequests))
+	}
+	update := api.updateStateRequests[0]
+	if len(update.IDs) != 1 || update.IDs[0] != 13042104 {
+		t.Fatalf("update ids = %#v, want limited config id 13042104", update.IDs)
+	}
+}
+
+func TestRegisterPromotionProductsUsesBothPartakeStrategy(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		configListResponse: &marketing.GetConfigListResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: &marketing.ConfigListInfo{
+				Total: 1,
+				ConfigList: []marketing.ActivityConfigInfo{
+					{
+						ID:  13042103,
+						Skc: "sg-enable-both",
+						ActivityConfigList: []marketing.ActivityConfigDetail{
+							{ID: 13042103, ActivityType: marketing.AutoPartakeActivityTypeRegular, State: marketing.AutoPartakeConfigStateClosed},
+							{ID: 13042104, ActivityType: marketing.AutoPartakeActivityTypeLimited, State: marketing.AutoPartakeConfigStateClosed},
+						},
+					},
+				},
+			},
+		},
+	}
+	service := &activityRegistrationServiceImpl{
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	_, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:               870,
+			ActivityPriceMode:     "PROFIT",
+			ActivityPartakeType:   "BOTH",
+			ActivityMinProfitRate: 0,
+			ActivityStockRatio:    0.5,
+		},
+		"",
+		[]marketing.SkcInfo{{
+			Skc:                 "sg-enable-both",
+			Stock:               10,
+			SupplyPrice:         20,
+			SupplyPriceCurrency: "USD",
+			SitePriceInfoList: []marketing.SitePriceInfo{{
+				SalePrice:   20,
+				Currency:    "USD",
+				IsAvailable: true,
+			}},
+		}},
+	)
+
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if len(api.savedRequests) != 2 {
+		t.Fatalf("saved request count = %d, want 2", len(api.savedRequests))
+	}
+	if api.savedRequests[0].Type != marketing.AutoPartakeActivityTypeRegular || api.savedRequests[1].Type != marketing.AutoPartakeActivityTypeLimited {
+		t.Fatalf("saved request types = %d/%d, want regular/limited", api.savedRequests[0].Type, api.savedRequests[1].Type)
+	}
+	if len(api.updateStateRequests) != 1 {
+		t.Fatalf("update state calls = %d, want 1", len(api.updateStateRequests))
+	}
+	update := api.updateStateRequests[0]
+	if len(update.IDs) != 2 || update.IDs[0] != 13042103 || update.IDs[1] != 13042104 {
+		t.Fatalf("update ids = %#v, want regular and limited ids", update.IDs)
+	}
+}
+
+func TestRegisterPromotionProductsUsesLimitedDiscountForBothPartake(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		configListResponse: &marketing.GetConfigListResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: &marketing.ConfigListInfo{
+				Total: 1,
+				ConfigList: []marketing.ActivityConfigInfo{
+					{
+						ID:  13042103,
+						Skc: "sg-both-discount",
+						ActivityConfigList: []marketing.ActivityConfigDetail{
+							{ID: 13042103, ActivityType: marketing.AutoPartakeActivityTypeRegular, State: marketing.AutoPartakeConfigStateClosed},
+							{ID: 13042104, ActivityType: marketing.AutoPartakeActivityTypeLimited, State: marketing.AutoPartakeConfigStateClosed},
+						},
+					},
+				},
+			},
+		},
+	}
+	service := &activityRegistrationServiceImpl{
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	_, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:                     870,
+			ActivityPriceMode:           "DISCOUNT",
+			ActivityPartakeType:         "BOTH",
+			ActivityDiscountRate:        0.2,
+			ActivityLimitedDiscountRate: 0.25,
+			ActivityStockRatio:          0.5,
+		},
+		"",
+		[]marketing.SkcInfo{{
+			Skc:                 "sg-both-discount",
+			Stock:               10,
+			SupplyPrice:         10,
+			SupplyPriceCurrency: "USD",
+			SitePriceInfoList: []marketing.SitePriceInfo{{
+				SalePrice:   20,
+				Currency:    "USD",
+				IsAvailable: true,
+			}},
+		}},
+	)
+
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if len(api.savedRequests) != 2 {
+		t.Fatalf("saved request count = %d, want 2", len(api.savedRequests))
+	}
+	if got := api.savedRequests[0].ConfigList[0].DropRate; got != 20 {
+		t.Fatalf("regular drop rate = %d, want 20", got)
+	}
+	if got := api.savedRequests[1].ConfigList[0].DropRate; got != 25 {
+		t.Fatalf("limited drop rate = %d, want 25", got)
+	}
+}
+
 func TestRegisterPromotionProductsCreatesActivityWhenActivityKeyIsProvided(t *testing.T) {
 	api := &promotionProductsMarketingAPIStub{
 		promotionGoods: []marketing.PromotionGoodsData{
@@ -946,8 +1243,11 @@ func TestRegisterPromotionProductsReturnsFilteredProductReasonWhenNoGoodsCanBeCr
 
 type promotionProductsMarketingAPIStub struct {
 	saved                    *marketing.SaveConfigRequest
+	savedRequests            []*marketing.SaveConfigRequest
 	created                  *marketing.CreateActivityRequest
 	calculated               *marketing.CalculateSupplyPriceRequest
+	configListResponse       *marketing.GetConfigListResponse
+	updateStateRequests      []*marketing.UpdateConfigStateRequest
 	promotionGoods           []marketing.PromotionGoodsData
 	calcResponse             *marketing.CalculateSupplyPriceResponse
 	createResponse           *marketing.CreateActivityResponse
@@ -961,11 +1261,44 @@ func (s *promotionProductsMarketingAPIStub) GetAvailableSkcList(req *marketing.G
 
 func (s *promotionProductsMarketingAPIStub) SaveConfig(req *marketing.SaveConfigRequest) (*marketing.SaveConfigResponse, error) {
 	s.saved = req
+	s.savedRequests = append(s.savedRequests, req)
 	return &marketing.SaveConfigResponse{Code: "0", Msg: "ok"}, nil
 }
 
 func (s *promotionProductsMarketingAPIStub) GetConfigList(req *marketing.GetConfigListRequest) (*marketing.GetConfigListResponse, error) {
-	return nil, nil
+	if s.configListResponse != nil {
+		return s.configListResponse, nil
+	}
+	if s.saved != nil {
+		configs := make([]marketing.ActivityConfigInfo, 0, len(s.saved.ConfigList))
+		for i, savedConfig := range s.saved.ConfigList {
+			configs = append(configs, marketing.ActivityConfigInfo{
+				ID:  int64(13000000 + i),
+				Skc: savedConfig.Skc,
+				ActivityConfigList: []marketing.ActivityConfigDetail{
+					{
+						ID:           int64(13000000 + i),
+						ActivityType: s.saved.ActivityType(),
+						State:        marketing.AutoPartakeConfigStateClosed,
+					},
+				},
+			})
+		}
+		return &marketing.GetConfigListResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: &marketing.ConfigListInfo{
+				Total:      len(configs),
+				ConfigList: configs,
+			},
+		}, nil
+	}
+	return &marketing.GetConfigListResponse{Code: "0", Msg: "ok", Info: &marketing.ConfigListInfo{}}, nil
+}
+
+func (s *promotionProductsMarketingAPIStub) UpdateConfigState(req *marketing.UpdateConfigStateRequest) (*marketing.UpdateConfigStateResponse, error) {
+	s.updateStateRequests = append(s.updateStateRequests, req)
+	return &marketing.UpdateConfigStateResponse{Code: "0", Msg: "ok"}, nil
 }
 
 func (s *promotionProductsMarketingAPIStub) QueryPromotionGoods(req *marketing.QueryPromotionGoodsRequest) (*marketing.QueryPromotionGoodsResponse, error) {

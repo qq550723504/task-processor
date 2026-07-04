@@ -18,6 +18,7 @@ func TestLocalRuntimePromotionStrategyProviderUsesPromotionStrategyByDefault(t *
 			"PROMOTION": {
 				StoreID:               870,
 				ActivityPriceMode:     "DISCOUNT",
+				ActivityPartakeType:   "LIMITED",
 				ActivityDiscountRate:  runtimeStrategyFloat64Ptr(0.2),
 				ActivityMinProfitRate: runtimeStrategyFloat64Ptr(0.15),
 				ActivityStockRatio:    runtimeStrategyFloat64Ptr(0.5),
@@ -36,6 +37,7 @@ func TestLocalRuntimePromotionStrategyProviderUsesPromotionStrategyByDefault(t *
 	require.Equal(t, []string{"SHEIN"}, repo.requestedPlatforms)
 	require.Equal(t, []string{"PROMOTION"}, repo.requestedActivityTypes)
 	require.Equal(t, "DISCOUNT", strategy.ActivityPriceMode)
+	require.Equal(t, "LIMITED", strategy.ActivityPartakeType)
 	require.Equal(t, 0.2, strategy.ActivityDiscountRate)
 	require.Equal(t, 0.15, strategy.ActivityMinProfitRate)
 	require.Equal(t, 0.5, strategy.ActivityStockRatio)

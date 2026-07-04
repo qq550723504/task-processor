@@ -40,6 +40,7 @@ func GetEndpoint(name string) string {
 		"getAvailableSkcList":    getAvailableSkcListEndpoint,
 		"saveConfig":             saveConfigEndpoint,
 		"getConfigList":          getConfigListEndpoint,
+		"updateConfigState":      updateConfigStateEndpoint,
 		"queryPromotionGoods":    queryPromotionGoodsEndpoint,
 		"calculateSupplyPrice":   calculateSupplyPriceEndpoint,
 		"createActivity":         createActivityEndpoint,
@@ -88,6 +89,7 @@ func GetOperateShelfStatusEndpoint() string     { return operateShelfStatusEndpo
 func GetAvailableSkcListEndpoint() string       { return getAvailableSkcListEndpoint }
 func GetSaveConfigEndpoint() string             { return saveConfigEndpoint }
 func GetConfigListEndpoint() string             { return getConfigListEndpoint }
+func GetUpdateConfigStateEndpoint() string      { return updateConfigStateEndpoint }
 func GetQueryPromotionGoodsEndpoint() string    { return queryPromotionGoodsEndpoint }
 func GetCalculateSupplyPriceEndpoint() string   { return calculateSupplyPriceEndpoint }
 func GetCreateActivityEndpoint() string         { return createActivityEndpoint }

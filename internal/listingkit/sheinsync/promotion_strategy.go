@@ -9,7 +9,9 @@ type SheinPromotionStrategyInput struct {
 	ActivityType                 string
 	StoreID                      int64
 	ActivityPriceMode            string
+	ActivityPartakeType          string
 	ActivityDiscountRate         float64
+	ActivityLimitedDiscountRate  float64
 	ActivityMinProfitRate        float64
 	ActivityStockRatio           float64
 	FixedPriceAdjustment         float64
@@ -26,7 +28,9 @@ type SheinPromotionStrategy struct {
 	ActivityType                 string
 	StoreID                      int64
 	ActivityPriceMode            string
+	ActivityPartakeType          string
 	ActivityDiscountRate         float64
+	ActivityLimitedDiscountRate  float64
 	ActivityMinProfitRate        float64
 	ActivityStockRatio           float64
 	FixedPriceAdjustment         float64
@@ -44,7 +48,9 @@ func NewSheinPromotionStrategy(input SheinPromotionStrategyInput) *SheinPromotio
 		ActivityType:                 normalizeSheinActivityType(input.ActivityType),
 		StoreID:                      input.StoreID,
 		ActivityPriceMode:            input.ActivityPriceMode,
+		ActivityPartakeType:          normalizeSheinPartakeType(input.ActivityPartakeType),
 		ActivityDiscountRate:         input.ActivityDiscountRate,
+		ActivityLimitedDiscountRate:  input.ActivityLimitedDiscountRate,
 		ActivityMinProfitRate:        input.ActivityMinProfitRate,
 		ActivityStockRatio:           input.ActivityStockRatio,
 		FixedPriceAdjustment:         input.FixedPriceAdjustment,
@@ -65,13 +71,21 @@ func (s *SheinPromotionStrategy) ValidateForPromotionEnrollment() error {
 	if s.StoreID <= 0 {
 		return fmt.Errorf("SHEIN promotion strategy store id is required")
 	}
-	if s.EffectiveActivityStockRatio() <= 0 || s.EffectiveActivityStockRatio() > 1 {
+	if s.requiresActivityStockRatio() && (s.EffectiveActivityStockRatio() <= 0 || s.EffectiveActivityStockRatio() > 1) {
 		return fmt.Errorf("SHEIN promotion strategy activity stock ratio must be between 0 and 1")
 	}
 	switch s.EffectiveActivityPriceMode() {
 	case "", "DISCOUNT":
 		if s.EffectiveActivityDiscountRate() <= 0 || s.EffectiveActivityDiscountRate() >= 1 {
 			return fmt.Errorf("SHEIN promotion strategy activity discount rate must be between 0 and 1")
+		}
+		if s.EffectiveActivityPartakeType() == "BOTH" {
+			if s.EffectiveActivityLimitedDiscountRate() <= 0 || s.EffectiveActivityLimitedDiscountRate() >= 1 {
+				return fmt.Errorf("SHEIN promotion strategy activity limited discount rate must be between 0 and 1")
+			}
+			if s.EffectiveActivityLimitedDiscountRate() <= s.EffectiveActivityDiscountRate() {
+				return fmt.Errorf("SHEIN promotion strategy activity limited discount rate must be greater than regular discount rate")
+			}
 		}
 	case "PROFIT":
 		if s.EffectiveActivityMinProfitRate() < 0 || s.EffectiveActivityMinProfitRate() >= 1 {
@@ -81,6 +95,13 @@ func (s *SheinPromotionStrategy) ValidateForPromotionEnrollment() error {
 		return fmt.Errorf("unsupported SHEIN promotion activity price mode %q", s.EffectiveActivityPriceMode())
 	}
 	return nil
+}
+
+func (s *SheinPromotionStrategy) EffectiveActivityPartakeType() string {
+	if s == nil {
+		return "REGULAR"
+	}
+	return normalizeSheinPartakeType(s.ActivityPartakeType)
 }
 
 func (s *SheinPromotionStrategy) EffectiveActivityPriceMode() string {
@@ -105,6 +126,13 @@ func (s *SheinPromotionStrategy) EffectiveActivityDiscountRate() float64 {
 	return s.ActivityDiscountRate
 }
 
+func (s *SheinPromotionStrategy) EffectiveActivityLimitedDiscountRate() float64 {
+	if s == nil {
+		return 0
+	}
+	return s.ActivityLimitedDiscountRate
+}
+
 func (s *SheinPromotionStrategy) EffectiveActivityMinProfitRate() float64 {
 	if s == nil {
 		return 0
@@ -119,10 +147,25 @@ func (s *SheinPromotionStrategy) EffectiveActivityStockRatio() float64 {
 	if s == nil {
 		return 0
 	}
+	if !s.requiresActivityStockRatio() && s.ActivityStockRatio <= 0 {
+		return 1
+	}
 	if s.isTimeLimitedActivity() && s.TimeLimitedStockLimit && s.TimeLimitedStockLimitPercent > 0 {
 		return float64(s.TimeLimitedStockLimitPercent) / 100
 	}
 	return s.ActivityStockRatio
+}
+
+func (s *SheinPromotionStrategy) requiresActivityStockRatio() bool {
+	if s == nil {
+		return false
+	}
+	switch s.EffectiveActivityPartakeType() {
+	case "LIMITED", "BOTH":
+		return true
+	default:
+		return s.isTimeLimitedActivity()
+	}
 }
 
 func (s *SheinPromotionStrategy) isTimeLimitedActivity() bool {
@@ -138,5 +181,15 @@ func normalizeSheinActivityType(activityType string) string {
 		return "TIME_LIMITED"
 	default:
 		return "PROMOTION"
+	}
+}
+
+func normalizeSheinPartakeType(partakeType string) string {
+	normalized := strings.ToUpper(strings.TrimSpace(partakeType))
+	switch normalized {
+	case "LIMITED", "BOTH":
+		return normalized
+	default:
+		return "REGULAR"
 	}
 }

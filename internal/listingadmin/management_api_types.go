@@ -661,10 +661,12 @@ type OperationStrategyDTO struct {
 	ActivityEnabled              bool                 `json:"activityEnabled"`
 	ActivityType                 string               `json:"activityType"`
 	ActivityDiscountRate         float64              `json:"activityDiscountRate"`
+	ActivityLimitedDiscountRate  float64              `json:"activityLimitedDiscountRate"`
 	ActivityStockRatio           float64              `json:"activityStockRatio"`
 	PromotionRatio               float64              `json:"promotionRatio"`
 	ActivityMinProfitRate        float64              `json:"activityMinProfitRate"`
 	ActivityPriceMode            string               `json:"activityPriceMode"`
+	ActivityPartakeType          string               `json:"activityPartakeType"`
 	TimeLimitedDiscountRate      float64              `json:"timeLimitedDiscountRate"`
 	TimeLimitedMinProfitRate     float64              `json:"timeLimitedMinProfitRate"`
 	TimeLimitedPriceMode         string               `json:"timeLimitedPriceMode"`

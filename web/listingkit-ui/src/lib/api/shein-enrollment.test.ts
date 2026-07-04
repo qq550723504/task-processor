@@ -255,8 +255,8 @@ describe("shein enrollment api", () => {
     await updateSheinActivityStrategy(12, {
       activity_type: "TIME_LIMITED",
       activity_price_mode: "DISCOUNT",
+      activity_partake_type: "REGULAR",
       activity_discount_rate: 0.18,
-      activity_stock_ratio: 0.4,
       activity_min_profit_rate: 0.15,
       fixed_price_adjustment: 1.2,
     });
@@ -278,8 +278,8 @@ describe("shein enrollment api", () => {
         body: {
           activity_type: "TIME_LIMITED",
           activity_price_mode: "DISCOUNT",
+          activity_partake_type: "REGULAR",
           activity_discount_rate: 0.18,
-          activity_stock_ratio: 0.4,
           activity_min_profit_rate: 0.15,
           fixed_price_adjustment: 1.2,
         },

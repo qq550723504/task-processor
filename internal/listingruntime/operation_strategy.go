@@ -17,10 +17,12 @@ type OperationStrategy struct {
 	ActivityEnabled              bool
 	ActivityType                 string
 	ActivityDiscountRate         float64
+	ActivityLimitedDiscountRate  float64
 	ActivityStockRatio           float64
 	PromotionRatio               float64
 	ActivityMinProfitRate        float64
 	ActivityPriceMode            string
+	ActivityPartakeType          string
 	TimeLimitedDiscountRate      float64
 	TimeLimitedMinProfitRate     float64
 	TimeLimitedPriceMode         string

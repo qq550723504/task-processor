@@ -9,6 +9,8 @@ type MarketingAPI interface {
 	SaveConfig(req *SaveConfigRequest) (*SaveConfigResponse, error)
 	// GetConfigList 获取已报名活动的产品列表
 	GetConfigList(req *GetConfigListRequest) (*GetConfigListResponse, error)
+	// UpdateConfigState 更新活动配置开关状态
+	UpdateConfigState(req *UpdateConfigStateRequest) (*UpdateConfigStateResponse, error)
 	// QueryPromotionGoods 查询促销活动商品列表
 	QueryPromotionGoods(req *QueryPromotionGoodsRequest) (*QueryPromotionGoodsResponse, error)
 	// CalculateSupplyPrice 计算供货价格和利润
@@ -16,6 +18,15 @@ type MarketingAPI interface {
 	// CreateActivity 创建促销活动
 	CreateActivity(req *CreateActivityRequest) (*CreateActivityResponse, error)
 }
+
+const (
+	AutoPartakeActivityTypeRegular = 1
+	AutoPartakeActivityTypeLimited = 2
+	DefaultAutoPartakeActivityType = AutoPartakeActivityTypeRegular
+
+	AutoPartakeConfigStateOpen   = 1
+	AutoPartakeConfigStateClosed = 2
+)
 
 // GetAvailableSkcListRequest 获取可报名活动产品列表请求参数
 type GetAvailableSkcListRequest struct {
@@ -39,17 +50,20 @@ type AvailableSkcListInfo struct {
 
 // SkcInfo SKC产品信息
 type SkcInfo struct {
-	Skc                  string             `json:"skc"`                                // SKC编码
-	GoodsName            string             `json:"goods_name"`                         // 商品名称
-	Image                string             `json:"image"`                              // 商品图片URL
-	SupplierNo           string             `json:"supplier_no"`                        // 供应商编号
-	Stock                int                `json:"stock"`                              // 库存数量
-	SupplyPrice          float64            `json:"supply_price"`                       // 供货价格
-	SupplyPriceCurrency  string             `json:"supply_price_currency"`              // 供货价格币种
-	IsConfigured         bool               `json:"is_configured"`                      // 是否已配置
-	SitePriceInfoList    []SitePriceInfo    `json:"site_price_info_list"`               // 站点价格信息列表
-	SkuPriceInfoList     []SkuSitePriceInfo `json:"sku_price_info_list,omitempty"`      // SKU站点价格信息列表
-	SkuCostPriceInfoList []SkuCostPriceInfo `json:"sku_cost_price_info_list,omitempty"` // SKU成本价格信息列表
+	Skc                   string             `json:"skc"`                                // SKC编码
+	GoodsName             string             `json:"goods_name"`                         // 商品名称
+	Image                 string             `json:"image"`                              // 商品图片URL
+	SupplierNo            string             `json:"supplier_no"`                        // 供应商编号
+	Stock                 int                `json:"stock"`                              // 库存数量
+	SupplyPrice           float64            `json:"supply_price"`                       // 供货价格
+	SupplyPriceCurrency   string             `json:"supply_price_currency"`              // 供货价格币种
+	IsConfigured          bool               `json:"is_configured"`                      // 是否已配置
+	EnableNewPriceDisplay bool               `json:"enable_new_price_display"`           // 是否启用新版价格展示
+	GradeName             string             `json:"grade_name"`                         // 商品等级名称
+	ConfiguredTypeList    []int              `json:"configured_type_list"`               // 已配置活动类型列表
+	SitePriceInfoList     []SitePriceInfo    `json:"site_price_info_list"`               // 站点价格信息列表
+	SkuPriceInfoList      []SkuSitePriceInfo `json:"sku_price_info_list,omitempty"`      // SKU站点价格信息列表
+	SkuCostPriceInfoList  []SkuCostPriceInfo `json:"sku_cost_price_info_list,omitempty"` // SKU成本价格信息列表
 }
 
 // SitePriceInfo 站点价格信息
@@ -76,6 +90,38 @@ type SkuCostPriceInfo struct {
 // SaveConfigRequest 保存活动配置请求参数
 type SaveConfigRequest struct {
 	ConfigList []ActivityConfig `json:"config_list"` // 配置列表
+	Type       int              `json:"type"`        // 活动类型，常规为1，限量为2
+}
+
+func (r *SaveConfigRequest) ActivityType() int {
+	if r.Type != 0 {
+		return r.Type
+	}
+	return DefaultAutoPartakeActivityType
+}
+
+func (r *SaveConfigRequest) Payload() map[string]any {
+	activityType := r.ActivityType()
+	configs := make([]map[string]any, 0, len(r.ConfigList))
+	for _, config := range r.ConfigList {
+		sitePriceInfoList := config.SitePriceInfoList
+		if sitePriceInfoList == nil {
+			sitePriceInfoList = []ActivitySitePriceInfo{}
+		}
+		item := map[string]any{
+			"skc":                  config.Skc,
+			"drop_rate":            config.DropRate,
+			"site_price_info_list": sitePriceInfoList,
+		}
+		if activityType == AutoPartakeActivityTypeLimited {
+			item["act_stock"] = config.ActStock
+		}
+		configs = append(configs, item)
+	}
+	return map[string]any{
+		"config_list": configs,
+		"type":        activityType,
+	}
 }
 
 // ActivityConfig 活动配置信息
@@ -125,17 +171,45 @@ type ConfigListInfo struct {
 
 // ActivityConfigInfo 已报名活动配置信息
 type ActivityConfigInfo struct {
-	ID                  int64                   `json:"id"`                    // 配置ID
-	Skc                 string                  `json:"skc"`                   // SKC编码
-	GoodsName           string                  `json:"goods_name"`            // 商品名称
-	Image               string                  `json:"image"`                 // 商品图片URL
-	SupplierNo          string                  `json:"supplier_no"`           // 供应商编号
-	SupplyPrice         float64                 `json:"supply_price"`          // 供货价格
-	SupplyPriceCurrency string                  `json:"supply_price_currency"` // 供货价格币种
-	DropRate            float64                 `json:"drop_rate"`             // 降价幅度（百分比）
-	ActStock            int                     `json:"act_stock"`             // 活动库存
-	ReservedActStock    int                     `json:"reserved_act_stock"`    // 预留活动库存
-	State               int                     `json:"state"`                 // 状态（1:正常）
-	Stock               int                     `json:"stock"`                 // 当前库存
-	SitePriceInfoList   []ActivitySitePriceInfo `json:"site_price_info_list"`  // 站点价格信息列表
+	ID                    int64                   `json:"id"`                       // 配置ID
+	Skc                   string                  `json:"skc"`                      // SKC编码
+	GoodsName             string                  `json:"goods_name"`               // 商品名称
+	Image                 string                  `json:"image"`                    // 商品图片URL
+	SupplierNo            string                  `json:"supplier_no"`              // 供应商编号
+	SupplyPrice           float64                 `json:"supply_price"`             // 供货价格
+	SupplyPriceCurrency   string                  `json:"supply_price_currency"`    // 供货价格币种
+	DropRate              float64                 `json:"drop_rate"`                // 降价幅度（百分比）
+	ActStock              int                     `json:"act_stock"`                // 活动库存
+	ReservedActStock      int                     `json:"reserved_act_stock"`       // 预留活动库存
+	State                 int                     `json:"state"`                    // 状态（1:正常）
+	Stock                 int                     `json:"stock"`                    // 当前库存
+	EnableNewPriceDisplay bool                    `json:"enable_new_price_display"` // 是否启用新版价格展示
+	SitePriceInfoList     []ActivitySitePriceInfo `json:"site_price_info_list"`     // 站点价格信息列表
+	ActivityConfigList    []ActivityConfigDetail  `json:"activity_config_list"`     // 新版活动配置列表
+}
+
+// ActivityConfigDetail 新版已报名活动配置详情
+type ActivityConfigDetail struct {
+	ID                   int64                   `json:"id"`                     // 配置ID
+	ActivityType         int                     `json:"activity_type"`          // 活动类型
+	DropRate             float64                 `json:"drop_rate"`              // 降价幅度（百分比）
+	ActStock             *int                    `json:"act_stock"`              // 活动库存
+	State                int                     `json:"state"`                  // 状态
+	ConfigRuleType       int                     `json:"config_rule_type"`       // 配置规则类型
+	SitePriceInfoList    []ActivitySitePriceInfo `json:"site_price_info_list"`   // 站点价格信息列表
+	PartakeActivityInfos []any                   `json:"partake_activity_infos"` // 已参与活动信息
+}
+
+// UpdateConfigStateRequest 更新活动配置开关状态请求参数
+type UpdateConfigStateRequest struct {
+	IDs   []int64 `json:"ids"`   // 配置ID列表
+	State int     `json:"state"` // 目标状态：1开启，2关闭
+}
+
+// UpdateConfigStateResponse 更新活动配置开关状态响应
+type UpdateConfigStateResponse struct {
+	Code string `json:"code"` // 响应码
+	Msg  string `json:"msg"`  // 响应消息
+	Info any    `json:"info"` // 响应数据（通常为null）
+	BBL  any    `json:"bbl"`  // BBL字段（通常为null）
 }

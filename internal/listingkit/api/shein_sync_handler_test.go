@@ -390,6 +390,7 @@ func TestUpdateSheinActivityStrategyCreatesStorePromotionStrategy(t *testing.T) 
 
 	req := httptest.NewRequest(http.MethodPatch, "/api/v1/listing-kits/shein-sync/stores/2001/activity-strategy", strings.NewReader(`{
 		"activity_price_mode":"DISCOUNT",
+		"activity_partake_type":"LIMITED",
 		"activity_discount_rate":0.18,
 		"activity_stock_ratio":0.4,
 		"activity_min_profit_rate":0.15,
@@ -413,6 +414,56 @@ func TestUpdateSheinActivityStrategyCreatesStorePromotionStrategy(t *testing.T) 
 	}
 	if strategy.ActivityDiscountRate == nil || *strategy.ActivityDiscountRate != 0.18 {
 		t.Fatalf("discount rate = %v, want 0.18", strategy.ActivityDiscountRate)
+	}
+	if strategy.ActivityPartakeType != "LIMITED" {
+		t.Fatalf("activity partake type = %q, want LIMITED", strategy.ActivityPartakeType)
+	}
+	var body struct {
+		Strategy struct {
+			ActivityPartakeType string `json:"activity_partake_type"`
+		} `json:"strategy"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if body.Strategy.ActivityPartakeType != "LIMITED" {
+		t.Fatalf("response activity_partake_type = %q, want LIMITED", body.Strategy.ActivityPartakeType)
+	}
+}
+
+func TestUpdateSheinActivityStrategyAllowsRegularPartakeWithoutStockRatio(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	repo := newSheinActivityStrategyTestRepository(t)
+	h, err := NewHandler(&stubHandlerCoreService{}, WithOperationStrategyRepository(repo))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.PATCH("/api/v1/listing-kits/shein-sync/stores/:store_id/activity-strategy", h.UpdateSheinActivityStrategy)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/listing-kits/shein-sync/stores/2001/activity-strategy", strings.NewReader(`{
+		"activity_price_mode":"DISCOUNT",
+		"activity_partake_type":"REGULAR",
+		"activity_discount_rate":0.18
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "18")
+	req.Header.Set("X-User-ID", "shein-ops")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", resp.Code, resp.Body.String())
+	}
+	strategy, err := repo.GetActiveActivityStrategy(context.Background(), 18, 2001, "SHEIN", "PROMOTION")
+	if err != nil {
+		t.Fatalf("load strategy: %v", err)
+	}
+	if strategy == nil || strategy.ActivityStockRatio != nil {
+		t.Fatalf("regular strategy stock ratio = %+v, want nil", strategy)
 	}
 }
 
@@ -596,6 +647,40 @@ VALUES
 	}
 	if row.ActivityDiscountRate != 0.18 || row.ActivityStockRatio != 0.4 || row.FixedPriceAdjustment != 1.2 {
 		t.Fatalf("row = %+v, want updated activity fields", row)
+	}
+}
+
+func TestUpdateSheinActivityStrategyRejectsBothWhenLimitedDiscountIsNotGreater(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	repo := newSheinActivityStrategyTestRepository(t)
+	h, err := NewHandler(&stubHandlerCoreService{}, WithOperationStrategyRepository(repo))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.PATCH("/api/v1/listing-kits/shein-sync/stores/:store_id/activity-strategy", h.UpdateSheinActivityStrategy)
+
+	req := httptest.NewRequest(http.MethodPatch, "/api/v1/listing-kits/shein-sync/stores/2001/activity-strategy", strings.NewReader(`{
+		"activity_price_mode":"DISCOUNT",
+		"activity_partake_type":"BOTH",
+		"activity_discount_rate":0.2,
+		"activity_limited_discount_rate":0.2,
+		"activity_stock_ratio":0.4
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "18")
+	req.Header.Set("X-User-ID", "shein-ops")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "activity_limited_discount_rate must be greater than activity_discount_rate") {
+		t.Fatalf("body = %s, want limited discount validation message", resp.Body.String())
 	}
 }
 
@@ -1189,6 +1274,7 @@ type sheinActivityStrategyTestRow struct {
 	PromotionRatio               float64    `gorm:"column:promotion_ratio"`
 	ActivityMinProfitRate        float64    `gorm:"column:activity_min_profit_rate"`
 	ActivityPriceMode            string     `gorm:"column:activity_price_mode"`
+	ActivityPartakeType          string     `gorm:"column:activity_partake_type"`
 	TimeLimitedDiscountRate      float64    `gorm:"column:time_limited_discount_rate"`
 	TimeLimitedMinProfitRate     float64    `gorm:"column:time_limited_min_profit_rate"`
 	TimeLimitedPriceMode         string     `gorm:"column:time_limited_price_mode"`

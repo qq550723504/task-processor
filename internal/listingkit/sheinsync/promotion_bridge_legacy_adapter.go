@@ -109,7 +109,9 @@ func (s *SheinPromotionStrategy) runtimeOperationStrategy() *listingruntime.Oper
 	return &listingruntime.OperationStrategy{
 		StoreID:                      s.StoreID,
 		ActivityPriceMode:            s.EffectiveActivityPriceMode(),
+		ActivityPartakeType:          s.EffectiveActivityPartakeType(),
 		ActivityDiscountRate:         s.EffectiveActivityDiscountRate(),
+		ActivityLimitedDiscountRate:  s.EffectiveActivityLimitedDiscountRate(),
 		ActivityMinProfitRate:        s.EffectiveActivityMinProfitRate(),
 		ActivityStockRatio:           s.EffectiveActivityStockRatio(),
 		FixedPriceAdjustment:         s.FixedPriceAdjustment,

@@ -325,7 +325,7 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsFromProvidedProduc
 		if !ok {
 			continue
 		}
-		actStock := s.calculateActivityStock(product.Stock, strategy.ActivityStockRatio)
+		actStock := s.calculateActivityStock(product.Stock, autoPartakeStockRatioFromStrategy(strategy))
 		if actStock <= 0 {
 			s.logger.Warnf("产品 [%s] 活动库存为0，跳过", product.Skc)
 			continue

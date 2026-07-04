@@ -4,6 +4,7 @@ package activity
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingruntime"
@@ -200,12 +201,12 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 
 	if priceMode == "PROFIT" {
 		// 按最低利润率定价，使用管理系统配置的固定价格调整值
-		configList = s.buildActivityConfigsByProfit(products, strategy.ActivityMinProfitRate, strategy.ActivityStockRatio, strategy.StoreID, strategy.FixedPriceAdjustment)
+		configList = s.buildActivityConfigsByProfit(products, strategy.ActivityMinProfitRate, autoPartakeStockRatioFromStrategy(strategy), strategy.StoreID, strategy.FixedPriceAdjustment)
 	} else {
 		// 按折扣率定价
 		dropRate := CalculateDropRateFromDiscount(strategy.ActivityDiscountRate, s.logger)
 		s.logger.Debugf("使用折扣率: %d%%", dropRate)
-		configList = s.buildActivityConfigsWithStrategy(products, dropRate, strategy.ActivityStockRatio, strategy.StoreID)
+		configList = s.buildActivityConfigsWithStrategy(products, dropRate, autoPartakeStockRatioFromStrategy(strategy), strategy.StoreID)
 	}
 	if len(configList) == 0 {
 		configList = s.buildActivityConfigsFromProvidedProducts(products, strategy, priceMode)
@@ -216,26 +217,240 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 		return &PromotionRegistrationResult{}, nil
 	}
 
-	// 3. 调用 SHEIN API 保存活动配置（报名）
-	saveReq := &marketing.SaveConfigRequest{
-		ConfigList: configList,
+	activityTypes := autoPartakeActivityTypesFromStrategy(strategy)
+	if err := validateAutoPartakeDiscountsForStrategy(strategy); err != nil {
+		return &PromotionRegistrationResult{}, err
 	}
-
-	response, err := s.marketingAPI.SaveConfig(saveReq)
+	firstReq, firstResponse, err := s.savePromotionConfigs(configList, activityTypes, strategy)
 	if err != nil {
-		s.logger.Errorf("保存活动配置失败: %v", err)
-		return &PromotionRegistrationResult{Request: saveReq}, fmt.Errorf("保存活动配置失败: %w", err)
+		return &PromotionRegistrationResult{Request: firstReq, Response: firstResponse}, err
 	}
 
-	if response.Code != "0" {
-		return &PromotionRegistrationResult{Request: saveReq, Response: response}, fmt.Errorf("保存活动配置失败: %s", response.Msg)
+	if err := s.enableSavedPromotionConfigs(ctx, configList, activityTypes); err != nil {
+		s.logger.Errorf("开启活动配置失败: %v", err)
+		return &PromotionRegistrationResult{Request: firstReq, Response: firstResponse}, fmt.Errorf("开启活动配置失败: %w", err)
 	}
 
 	s.logger.Infof("成功报名 %d 个产品到促销活动", len(configList))
 	return &PromotionRegistrationResult{
-		Request:  saveReq,
-		Response: response,
+		Request:  firstReq,
+		Response: firstResponse,
 	}, nil
+}
+
+func (s *activityRegistrationServiceImpl) savePromotionConfigs(configList []marketing.ActivityConfig, activityTypes []int, strategy *listingruntime.OperationStrategy) (*marketing.SaveConfigRequest, *marketing.SaveConfigResponse, error) {
+	var firstReq *marketing.SaveConfigRequest
+	var firstResponse *marketing.SaveConfigResponse
+	for _, activityType := range activityTypes {
+		saveReq := &marketing.SaveConfigRequest{
+			ConfigList: promotionConfigListForActivityType(configList, activityType, strategy),
+			Type:       activityType,
+		}
+		if firstReq == nil {
+			firstReq = saveReq
+		}
+
+		response, err := s.marketingAPI.SaveConfig(saveReq)
+		if firstResponse == nil {
+			firstResponse = response
+		}
+		if err != nil {
+			s.logger.Errorf("保存活动配置失败: %v", err)
+			return saveReq, response, fmt.Errorf("保存活动配置失败: %w", err)
+		}
+		if response.Code != "0" {
+			return saveReq, response, fmt.Errorf("保存活动配置失败: %s", response.Msg)
+		}
+	}
+	return firstReq, firstResponse, nil
+}
+
+func promotionConfigListForActivityType(configList []marketing.ActivityConfig, activityType int, strategy *listingruntime.OperationStrategy) []marketing.ActivityConfig {
+	copied := append([]marketing.ActivityConfig(nil), configList...)
+	if activityType != marketing.AutoPartakeActivityTypeLimited || strategy == nil {
+		return copied
+	}
+	if autoPartakePriceModeFromStrategy(strategy) != "DISCOUNT" || strategy.ActivityLimitedDiscountRate <= 0 {
+		return copied
+	}
+	limitedDropRate := CalculateDropRateFromDiscount(strategy.ActivityLimitedDiscountRate, nil)
+	for i := range copied {
+		copied[i].DropRate = limitedDropRate
+	}
+	return copied
+}
+
+func validateAutoPartakeDiscountsForStrategy(strategy *listingruntime.OperationStrategy) error {
+	if strategy == nil {
+		return nil
+	}
+	if strings.ToUpper(strings.TrimSpace(strategy.ActivityPartakeType)) != "BOTH" {
+		return nil
+	}
+	if autoPartakePriceModeFromStrategy(strategy) != "DISCOUNT" {
+		return nil
+	}
+	if strategy.ActivityLimitedDiscountRate <= 0 || strategy.ActivityLimitedDiscountRate >= 1 {
+		return fmt.Errorf("限量活动折扣率必须在 0 到 1 之间")
+	}
+	if strategy.ActivityLimitedDiscountRate <= strategy.ActivityDiscountRate {
+		return fmt.Errorf("同时报名常规和限量活动时，限量活动折扣率必须大于常规活动折扣率")
+	}
+	return nil
+}
+
+func autoPartakePriceModeFromStrategy(strategy *listingruntime.OperationStrategy) string {
+	if strategy == nil {
+		return "DISCOUNT"
+	}
+	priceMode := strings.ToUpper(strings.TrimSpace(strategy.ActivityPriceMode))
+	if priceMode == "" {
+		return "DISCOUNT"
+	}
+	return priceMode
+}
+
+func (s *activityRegistrationServiceImpl) enableSavedPromotionConfigs(ctx context.Context, configList []marketing.ActivityConfig, activityTypes []int) error {
+	if len(configList) == 0 || len(activityTypes) == 0 {
+		return nil
+	}
+
+	ids, err := s.findSavedPromotionConfigIDs(ctx, configList, activityTypes)
+	if err != nil {
+		return err
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+
+	response, err := s.marketingAPI.UpdateConfigState(&marketing.UpdateConfigStateRequest{
+		IDs:   ids,
+		State: marketing.AutoPartakeConfigStateOpen,
+	})
+	if err != nil {
+		return err
+	}
+	if response.Code != "0" {
+		return fmt.Errorf("开启活动配置失败: %s", response.Msg)
+	}
+	return nil
+}
+
+func (s *activityRegistrationServiceImpl) findSavedPromotionConfigIDs(ctx context.Context, configList []marketing.ActivityConfig, activityTypes []int) ([]int64, error) {
+	targetSkcs := make(map[string]struct{}, len(configList))
+	for _, config := range configList {
+		if config.Skc != "" {
+			targetSkcs[config.Skc] = struct{}{}
+		}
+	}
+	if len(targetSkcs) == 0 {
+		return nil, nil
+	}
+	targetCount := len(targetSkcs) * len(activityTypes)
+
+	const pageSize = 500
+	foundConfigs := make(map[string]struct{}, targetCount)
+	ids := make([]int64, 0, targetCount)
+	for pageNum := 1; ; pageNum++ {
+		response, err := s.marketingAPI.GetConfigList(&marketing.GetConfigListRequest{
+			PageNum:  pageNum,
+			PageSize: pageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if response.Code != "0" {
+			return nil, fmt.Errorf("获取已报名活动配置失败: %s", response.Msg)
+		}
+		if response.Info == nil || len(response.Info.ConfigList) == 0 {
+			break
+		}
+
+		for _, row := range response.Info.ConfigList {
+			if _, ok := targetSkcs[row.Skc]; !ok {
+				continue
+			}
+			for _, activityType := range activityTypes {
+				id, shouldOpen := promotionConfigIDForActivityType(row, activityType)
+				if id <= 0 {
+					continue
+				}
+				key := fmt.Sprintf("%s:%d", row.Skc, activityType)
+				if _, ok := foundConfigs[key]; ok {
+					continue
+				}
+				foundConfigs[key] = struct{}{}
+				if shouldOpen {
+					ids = append(ids, id)
+				}
+			}
+		}
+
+		if len(foundConfigs) == targetCount || pageNum*pageSize >= response.Info.Total {
+			break
+		}
+	}
+
+	if len(foundConfigs) != targetCount {
+		return nil, fmt.Errorf("保存活动配置后未找到可开启的配置ID: 已找到 %d/%d", len(foundConfigs), targetCount)
+	}
+	return ids, nil
+}
+
+func promotionConfigIDForActivityType(row marketing.ActivityConfigInfo, activityType int) (int64, bool) {
+	for _, config := range row.ActivityConfigList {
+		if config.ActivityType != activityType || config.ID <= 0 {
+			continue
+		}
+		return config.ID, config.State != marketing.AutoPartakeConfigStateOpen
+	}
+	if len(row.ActivityConfigList) > 0 {
+		return 0, false
+	}
+	if row.ID <= 0 {
+		return 0, false
+	}
+	return row.ID, row.State != marketing.AutoPartakeConfigStateOpen
+}
+
+func autoPartakeActivityTypeFromStrategy(strategy *listingruntime.OperationStrategy) int {
+	return autoPartakeActivityTypesFromStrategy(strategy)[0]
+}
+
+func autoPartakeActivityTypesFromStrategy(strategy *listingruntime.OperationStrategy) []int {
+	if strategy == nil {
+		return []int{marketing.AutoPartakeActivityTypeRegular}
+	}
+	switch strings.ToUpper(strings.TrimSpace(strategy.ActivityPartakeType)) {
+	case "LIMITED":
+		return []int{marketing.AutoPartakeActivityTypeLimited}
+	case "BOTH":
+		return []int{marketing.AutoPartakeActivityTypeRegular, marketing.AutoPartakeActivityTypeLimited}
+	default:
+		return []int{marketing.AutoPartakeActivityTypeRegular}
+	}
+}
+
+func autoPartakeStockRatioFromStrategy(strategy *listingruntime.OperationStrategy) float64 {
+	if strategy == nil {
+		return 1
+	}
+	if !autoPartakeRequiresStockRatio(strategy) && strategy.ActivityStockRatio <= 0 {
+		return 1
+	}
+	return strategy.ActivityStockRatio
+}
+
+func autoPartakeRequiresStockRatio(strategy *listingruntime.OperationStrategy) bool {
+	if strategy == nil {
+		return false
+	}
+	switch strings.ToUpper(strings.TrimSpace(strategy.ActivityPartakeType)) {
+	case "LIMITED", "BOTH":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *activityRegistrationServiceImpl) getStoreInfo(ctx context.Context, storeID int64) (*listingruntime.StoreInfo, error) {

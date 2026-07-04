@@ -56,22 +56,26 @@ type executeSheinActivityEnrollmentRequest struct {
 }
 
 type updateSheinActivityStrategyRequest struct {
-	ActivityType          string   `json:"activity_type"`
-	ActivityPriceMode     string   `json:"activity_price_mode"`
-	ActivityDiscountRate  *float64 `json:"activity_discount_rate"`
-	ActivityStockRatio    *float64 `json:"activity_stock_ratio"`
-	ActivityMinProfitRate *float64 `json:"activity_min_profit_rate"`
-	FixedPriceAdjustment  *float64 `json:"fixed_price_adjustment"`
+	ActivityType                string   `json:"activity_type"`
+	ActivityPriceMode           string   `json:"activity_price_mode"`
+	ActivityPartakeType         string   `json:"activity_partake_type"`
+	ActivityDiscountRate        *float64 `json:"activity_discount_rate"`
+	ActivityLimitedDiscountRate *float64 `json:"activity_limited_discount_rate"`
+	ActivityStockRatio          *float64 `json:"activity_stock_ratio"`
+	ActivityMinProfitRate       *float64 `json:"activity_min_profit_rate"`
+	FixedPriceAdjustment        *float64 `json:"fixed_price_adjustment"`
 }
 
 type sheinActivityStrategyResponse struct {
-	ID                    int64   `json:"id,omitempty"`
-	TenantID              int64   `json:"tenant_id"`
-	StoreID               int64   `json:"store_id"`
-	ActivityType          string  `json:"activity_type"`
-	ActivityPriceMode     string  `json:"activity_price_mode"`
-	ActivityDiscountRate  float64 `json:"activity_discount_rate"`
-	ActivityStockRatio    float64 `json:"activity_stock_ratio"`
-	ActivityMinProfitRate float64 `json:"activity_min_profit_rate"`
-	FixedPriceAdjustment  float64 `json:"fixed_price_adjustment"`
+	ID                          int64   `json:"id,omitempty"`
+	TenantID                    int64   `json:"tenant_id"`
+	StoreID                     int64   `json:"store_id"`
+	ActivityType                string  `json:"activity_type"`
+	ActivityPriceMode           string  `json:"activity_price_mode"`
+	ActivityPartakeType         string  `json:"activity_partake_type"`
+	ActivityDiscountRate        float64 `json:"activity_discount_rate"`
+	ActivityLimitedDiscountRate float64 `json:"activity_limited_discount_rate"`
+	ActivityStockRatio          float64 `json:"activity_stock_ratio"`
+	ActivityMinProfitRate       float64 `json:"activity_min_profit_rate"`
+	FixedPriceAdjustment        float64 `json:"fixed_price_adjustment"`
 }

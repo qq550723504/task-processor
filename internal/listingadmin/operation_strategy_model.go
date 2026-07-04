@@ -21,10 +21,12 @@ func (s listingOperationStrategy) toOperationStrategy() OperationStrategy {
 		ActivityEnabled:              s.ActivityEnabled != 0,
 		ActivityType:                 s.ActivityType,
 		ActivityDiscountRate:         floatPtrIfPositive(s.ActivityDiscountRate),
+		ActivityLimitedDiscountRate:  floatPtrIfPositive(s.ActivityLimitedDiscountRate),
 		ActivityStockRatio:           floatPtrIfPositive(s.ActivityStockRatio),
 		PromotionRatio:               floatPtrIfPositive(s.PromotionRatio),
 		ActivityMinProfitRate:        activityProfitRatePtr(s.ActivityPriceMode, s.ActivityMinProfitRate),
 		ActivityPriceMode:            s.ActivityPriceMode,
+		ActivityPartakeType:          defaultActivityPartakeType(s.ActivityPartakeType),
 		TimeLimitedDiscountRate:      floatPtrIfPositive(s.TimeLimitedDiscountRate),
 		TimeLimitedMinProfitRate:     floatPtrIfPositive(s.TimeLimitedMinProfitRate),
 		TimeLimitedPriceMode:         s.TimeLimitedPriceMode,
@@ -65,10 +67,12 @@ func listingOperationStrategyFromOperationStrategy(strategy *OperationStrategy) 
 		ActivityEnabled:              boolToInt16(strategy.ActivityEnabled),
 		ActivityType:                 strings.TrimSpace(strategy.ActivityType),
 		ActivityDiscountRate:         floatValue(strategy.ActivityDiscountRate),
+		ActivityLimitedDiscountRate:  floatValue(strategy.ActivityLimitedDiscountRate),
 		ActivityStockRatio:           floatValue(strategy.ActivityStockRatio),
 		PromotionRatio:               floatValue(strategy.PromotionRatio),
 		ActivityMinProfitRate:        floatValue(strategy.ActivityMinProfitRate),
 		ActivityPriceMode:            strings.TrimSpace(strategy.ActivityPriceMode),
+		ActivityPartakeType:          defaultActivityPartakeType(strategy.ActivityPartakeType),
 		TimeLimitedDiscountRate:      floatValue(strategy.TimeLimitedDiscountRate),
 		TimeLimitedMinProfitRate:     floatValue(strategy.TimeLimitedMinProfitRate),
 		TimeLimitedPriceMode:         strings.TrimSpace(strategy.TimeLimitedPriceMode),
@@ -114,4 +118,13 @@ func activityProfitRatePtr(priceMode string, value float64) *float64 {
 		return nil
 	}
 	return &value
+}
+
+func defaultActivityPartakeType(value string) string {
+	switch strings.ToUpper(strings.TrimSpace(value)) {
+	case "LIMITED", "BOTH":
+		return strings.ToUpper(strings.TrimSpace(value))
+	default:
+		return "REGULAR"
+	}
 }

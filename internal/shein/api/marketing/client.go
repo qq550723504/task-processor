@@ -51,7 +51,7 @@ func (m *Client) GetAvailableSkcList(req *GetAvailableSkcListRequest) (*GetAvail
 func (m *Client) SaveConfig(req *SaveConfigRequest) (*SaveConfigResponse, error) {
 	url := fmt.Sprintf("%s%s", m.GetBaseURL(), client.GetSaveConfigEndpoint())
 
-	reqBody := map[string]any{"config_list": req.ConfigList}
+	reqBody := req.Payload()
 
 	var result struct {
 		api.APIResponse
@@ -89,6 +89,32 @@ func (m *Client) GetConfigList(req *GetConfigListRequest) (*GetConfigListRespons
 	}
 
 	return &GetConfigListResponse{Code: result.Code, Msg: result.Msg, Info: result.Info, BBL: result.BBL}, nil
+}
+
+// UpdateConfigState 更新活动配置开关状态
+func (m *Client) UpdateConfigState(req *UpdateConfigStateRequest) (*UpdateConfigStateResponse, error) {
+	url := fmt.Sprintf("%s%s", m.GetBaseURL(), client.GetUpdateConfigStateEndpoint())
+
+	reqBody := map[string]any{
+		"ids":   req.IDs,
+		"state": req.State,
+	}
+
+	var result struct {
+		api.APIResponse
+		Info any `json:"info"`
+		BBL  any `json:"bbl"`
+	}
+
+	if err := m.APIRequest(http.MethodPost, url, reqBody, &result); err != nil {
+		return nil, fmt.Errorf("更新活动配置状态请求失败: %w", err)
+	}
+
+	if result.Code != "0" {
+		return nil, &api.APIError{StatusCode: 0, Message: fmt.Sprintf("更新活动配置状态失败: %s", result.Msg), URL: url}
+	}
+
+	return &UpdateConfigStateResponse{Code: result.Code, Msg: result.Msg, Info: result.Info, BBL: result.BBL}, nil
 }
 
 // QueryPromotionGoods 查询促销活动商品列表

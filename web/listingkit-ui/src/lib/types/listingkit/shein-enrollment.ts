@@ -65,6 +65,7 @@ export type SheinRefreshCandidatesInput = {
 };
 
 export type SheinActivityPriceMode = "DISCOUNT" | "PROFIT";
+export type SheinActivityPartakeType = "REGULAR" | "LIMITED" | "BOTH";
 
 export type SheinActivityStrategyRecord = {
   id?: number;
@@ -72,7 +73,9 @@ export type SheinActivityStrategyRecord = {
   store_id?: number;
   activity_type?: string;
   activity_price_mode?: SheinActivityPriceMode | string;
+  activity_partake_type?: SheinActivityPartakeType | string;
   activity_discount_rate?: number;
+  activity_limited_discount_rate?: number;
   activity_stock_ratio?: number;
   activity_min_profit_rate?: number;
   fixed_price_adjustment?: number;
@@ -86,8 +89,10 @@ export type SheinActivityStrategyResponse = {
 export type SheinUpdateActivityStrategyInput = {
   activity_type?: string;
   activity_price_mode: SheinActivityPriceMode;
+  activity_partake_type: SheinActivityPartakeType;
   activity_discount_rate?: number;
-  activity_stock_ratio: number;
+  activity_limited_discount_rate?: number;
+  activity_stock_ratio?: number;
   activity_min_profit_rate?: number;
   fixed_price_adjustment?: number;
 };

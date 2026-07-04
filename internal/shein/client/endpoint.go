@@ -43,9 +43,10 @@ const (
 	updateInventoryEndpoint        = apiPrefix + "/product/inventory/update"
 	operateShelfStatusEndpoint     = apiPrefix + "/product/operate_Shelf_status"
 	// 自动报名活动
-	getAvailableSkcListEndpoint = mbrsPrefix + "/activity/auto_partake/get_available_skc_list"
-	saveConfigEndpoint          = mbrsPrefix + "/activity/auto_partake/save_config"
-	getConfigListEndpoint       = mbrsPrefix + "/activity/auto_partake/get_config_list"
+	getAvailableSkcListEndpoint = mbrsPrefix + "/activity/auto_partake/get_available_skc_list_v2"
+	saveConfigEndpoint          = mbrsPrefix + "/activity/auto_partake/save_config_v2"
+	getConfigListEndpoint       = mbrsPrefix + "/activity/auto_partake/get_config_list_v2"
+	updateConfigStateEndpoint   = mbrsPrefix + "/activity/auto_partake/update_config_state_v2"
 
 	// 促销活动相关
 	mrsPrefix                   = "/mrs-api-prefix/promotion"

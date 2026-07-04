@@ -26,10 +26,12 @@ type OperationStrategy struct {
 	ActivityEnabled              bool       `json:"activityEnabled"`
 	ActivityType                 string     `json:"activityType,omitempty"`
 	ActivityDiscountRate         *float64   `json:"activityDiscountRate,omitempty"`
+	ActivityLimitedDiscountRate  *float64   `json:"activityLimitedDiscountRate,omitempty"`
 	ActivityStockRatio           *float64   `json:"activityStockRatio,omitempty"`
 	PromotionRatio               *float64   `json:"promotionRatio,omitempty"`
 	ActivityMinProfitRate        *float64   `json:"activityMinProfitRate,omitempty"`
 	ActivityPriceMode            string     `json:"activityPriceMode,omitempty"`
+	ActivityPartakeType          string     `json:"activityPartakeType,omitempty"`
 	TimeLimitedDiscountRate      *float64   `json:"timeLimitedDiscountRate,omitempty"`
 	TimeLimitedMinProfitRate     *float64   `json:"timeLimitedMinProfitRate,omitempty"`
 	TimeLimitedPriceMode         string     `json:"timeLimitedPriceMode,omitempty"`
@@ -97,10 +99,12 @@ type listingOperationStrategy struct {
 	ActivityEnabled              int16      `gorm:"column:activity_enabled;not null;default:0"`
 	ActivityType                 string     `gorm:"column:activity_type"`
 	ActivityDiscountRate         float64    `gorm:"column:activity_discount_rate"`
+	ActivityLimitedDiscountRate  float64    `gorm:"column:activity_limited_discount_rate"`
 	ActivityStockRatio           float64    `gorm:"column:activity_stock_ratio"`
 	PromotionRatio               float64    `gorm:"column:promotion_ratio"`
 	ActivityMinProfitRate        float64    `gorm:"column:activity_min_profit_rate"`
 	ActivityPriceMode            string     `gorm:"column:activity_price_mode"`
+	ActivityPartakeType          string     `gorm:"column:activity_partake_type"`
 	TimeLimitedDiscountRate      float64    `gorm:"column:time_limited_discount_rate"`
 	TimeLimitedMinProfitRate     float64    `gorm:"column:time_limited_min_profit_rate"`
 	TimeLimitedPriceMode         string     `gorm:"column:time_limited_price_mode"`

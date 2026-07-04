@@ -84,9 +84,7 @@ func (m *MarketingAPI) GetAvailableSkcList(req *marketing.GetAvailableSkcListReq
 func (m *MarketingAPI) SaveConfig(req *marketing.SaveConfigRequest) (*marketing.SaveConfigResponse, error) {
 	url := fmt.Sprintf("%s%s", m.GetBaseURL(), client.GetSaveConfigEndpoint())
 
-	reqBody := map[string]any{
-		"config_list": req.ConfigList,
-	}
+	reqBody := req.Payload()
 
 	var result struct {
 		api.APIResponse
@@ -137,6 +135,37 @@ func (m *MarketingAPI) GetConfigList(req *marketing.GetConfigListRequest) (*mark
 	}
 
 	return &marketing.GetConfigListResponse{
+		Code: result.Code,
+		Msg:  result.Msg,
+		Info: result.Info,
+		BBL:  result.BBL,
+	}, nil
+}
+
+// UpdateConfigState 更新活动配置开关状态
+func (m *MarketingAPI) UpdateConfigState(req *marketing.UpdateConfigStateRequest) (*marketing.UpdateConfigStateResponse, error) {
+	url := fmt.Sprintf("%s%s", m.GetBaseURL(), client.GetUpdateConfigStateEndpoint())
+
+	reqBody := map[string]any{
+		"ids":   req.IDs,
+		"state": req.State,
+	}
+
+	var result struct {
+		api.APIResponse
+		Info any `json:"info"`
+		BBL  any `json:"bbl"`
+	}
+
+	if err := m.APIRequest(http.MethodPost, url, reqBody, &result); err != nil {
+		return nil, fmt.Errorf("更新活动配置状态请求失败: %w", err)
+	}
+
+	if err := m.validateAPIResponse(&result.APIResponse, url, "更新活动配置状态"); err != nil {
+		return nil, err
+	}
+
+	return &marketing.UpdateConfigStateResponse{
 		Code: result.Code,
 		Msg:  result.Msg,
 		Info: result.Info,

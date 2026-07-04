@@ -472,10 +472,12 @@ func operationStrategyToDTO(strategy *listingadmin.OperationStrategy) *listingad
 		ActivityEnabled:              strategy.ActivityEnabled,
 		ActivityType:                 strategy.ActivityType,
 		ActivityDiscountRate:         float64FromPtr(strategy.ActivityDiscountRate),
+		ActivityLimitedDiscountRate:  float64FromPtr(strategy.ActivityLimitedDiscountRate),
 		ActivityStockRatio:           float64FromPtr(strategy.ActivityStockRatio),
 		PromotionRatio:               float64FromPtr(strategy.PromotionRatio),
 		ActivityMinProfitRate:        float64FromPtr(strategy.ActivityMinProfitRate),
 		ActivityPriceMode:            strategy.ActivityPriceMode,
+		ActivityPartakeType:          strategy.ActivityPartakeType,
 		TimeLimitedDiscountRate:      float64FromPtr(strategy.TimeLimitedDiscountRate),
 		TimeLimitedMinProfitRate:     float64FromPtr(strategy.TimeLimitedMinProfitRate),
 		TimeLimitedPriceMode:         strategy.TimeLimitedPriceMode,
@@ -1044,10 +1046,12 @@ type localOperationStrategy struct {
 	ActivityEnabled              bool       `gorm:"column:activity_enabled"`
 	ActivityType                 string     `gorm:"column:activity_type"`
 	ActivityDiscountRate         float64    `gorm:"column:activity_discount_rate"`
+	ActivityLimitedDiscountRate  float64    `gorm:"column:activity_limited_discount_rate"`
 	ActivityStockRatio           float64    `gorm:"column:activity_stock_ratio"`
 	PromotionRatio               float64    `gorm:"column:promotion_ratio"`
 	ActivityMinProfitRate        float64    `gorm:"column:activity_min_profit_rate"`
 	ActivityPriceMode            string     `gorm:"column:activity_price_mode"`
+	ActivityPartakeType          string     `gorm:"column:activity_partake_type"`
 	TimeLimitedDiscountRate      float64    `gorm:"column:time_limited_discount_rate"`
 	TimeLimitedMinProfitRate     float64    `gorm:"column:time_limited_min_profit_rate"`
 	TimeLimitedPriceMode         string     `gorm:"column:time_limited_price_mode"`
