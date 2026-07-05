@@ -96,6 +96,37 @@ func TestListingKitZitadelAuthStaysDisabledWhenConfigDisablesAuthWithIssuerConfi
 	}
 }
 
+func TestListingKitZitadelAuthStaysDisabledWhenAuthorizationIsDisabledWithAllowlists(t *testing.T) {
+	t.Cleanup(SetListingKitZitadelAuthConfigForTesting(nil))
+	ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
+		IssuerURL:             "https://issuer.example",
+		ClientID:              "listingkit-client",
+		AuthRequired:          false,
+		AuthorizationRequired: false,
+		AllowedRoles:          []string{"listingkit_admin"},
+		AllowedUsernames:      []string{"1-admin"},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{
+		{
+			Method: http.MethodGet,
+			Path:   "/api/v1/listing-kits/tasks",
+			Module: "listing-kit",
+			Handler: func(c *gin.Context) {
+				c.JSON(http.StatusOK, gin.H{"ok": true})
+			},
+		},
+	})
+
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil))
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+}
+
 func TestListingKitZitadelAuthReturnsUnavailableWhenRequiredButNotConfigured(t *testing.T) {
 	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
 		AuthConfig: zitadelAuthConfig{Required: true},

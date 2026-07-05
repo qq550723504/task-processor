@@ -640,6 +640,12 @@ func knownEnvBindings() map[string]envBinding {
 		"listingkit.zitadel.clientSecret": {
 			Primary: "ZITADEL_CLIENT_SECRET",
 		},
+		"listingkit.zitadel.authRequired": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED",
+		},
+		"listingkit.zitadel.authorizationRequired": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED",
+		},
 		"listingkit.zitadel.allowedTenantIDs": {
 			Primary:    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS",
 			Deprecated: []string{"LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS"},

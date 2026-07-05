@@ -14,11 +14,6 @@ func BuildConfig(v *viper.Viper) *Config {
 	listingKitAllowedUserIDs := getStringSlice(v, "listingkit.zitadel.allowedUserIDs")
 	listingKitAllowedUsernames := getStringSlice(v, "listingkit.zitadel.allowedUsernames")
 	listingKitAllowedRoles := getStringSlice(v, "listingkit.zitadel.allowedRoles")
-	listingKitAuthorizationRequired :=
-		len(listingKitAllowedTenantIDs) > 0 ||
-			len(listingKitAllowedUserIDs) > 0 ||
-			len(listingKitAllowedUsernames) > 0 ||
-			len(listingKitAllowedRoles) > 0
 
 	cfg := &Config{
 		Processor: ProcessorConfig{
@@ -214,7 +209,7 @@ func BuildConfig(v *viper.Viper) *Config {
 				ClientID:              v.GetString("listingkit.zitadel.clientID"),
 				ClientSecret:          v.GetString("listingkit.zitadel.clientSecret"),
 				AuthRequired:          v.GetBool("listingkit.zitadel.authRequired"),
-				AuthorizationRequired: listingKitAuthorizationRequired,
+				AuthorizationRequired: v.GetBool("listingkit.zitadel.authorizationRequired"),
 				AllowedTenantIDs:      listingKitAllowedTenantIDs,
 				AllowedUserIDs:        listingKitAllowedUserIDs,
 				AllowedUsernames:      listingKitAllowedUsernames,

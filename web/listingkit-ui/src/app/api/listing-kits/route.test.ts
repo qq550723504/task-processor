@@ -197,6 +197,28 @@ describe("buildListingKitUpstreamHeaders", () => {
     expect(headers.get("X-User-Roles")).toBe("platform_admin,listingkit_admin");
   });
 
+  it("does not scope upstream requests to the local debug identity", () => {
+    const request = new Request("http://localhost/api/listing-kits/tasks", {
+      headers: {
+        accept: "application/json",
+      },
+    });
+
+    const headers = buildListingKitUpstreamHeaders(request.headers, {
+      tenantId: "local-debug",
+      userId: "local-debug",
+      username: "local-debug",
+      userType: "local_debug",
+      roles: ["platform_admin", "listingkit_admin"],
+    });
+
+    expect(headers.get("tenant-id")).toBeNull();
+    expect(headers.get("X-Tenant-ID")).toBeNull();
+    expect(headers.get("X-User-ID")).toBeNull();
+    expect(headers.get("X-User-Type")).toBeNull();
+    expect(headers.get("X-User-Roles")).toBeNull();
+  });
+
   it("does not forward legacy gateway-only headers", () => {
     const request = new Request("http://localhost/api/listing-kits/tasks", {
       headers: {

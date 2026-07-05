@@ -12,10 +12,7 @@ import (
 )
 
 func ConfigureListingKitZitadelAuth(cfg config.ListingKitZitadelConfig) {
-	authzRequired := len(cfg.AllowedTenantIDs) > 0 ||
-		len(cfg.AllowedUserIDs) > 0 ||
-		len(cfg.AllowedUsernames) > 0 ||
-		len(cfg.AllowedRoles) > 0
+	authzRequired := cfg.AuthorizationRequired
 	listingKitZitadelRuntimeConfigMu.Lock()
 	defer listingKitZitadelRuntimeConfigMu.Unlock()
 	listingKitZitadelRuntimeConfigV = &listingKitZitadelRuntimeConfig{

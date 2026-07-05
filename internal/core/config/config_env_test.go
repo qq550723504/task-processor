@@ -239,6 +239,8 @@ func TestNewViper_BindsListingKitEnvironmentVariables(t *testing.T) {
 	t.Setenv("ZITADEL_ISSUER_URL", "https://issuer.example")
 	t.Setenv("ZITADEL_CLIENT_ID", "listingkit-client")
 	t.Setenv("ZITADEL_CLIENT_SECRET", "listingkit-secret")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED", "true")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED", "true")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS", "tenant-a,tenant-b")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS", "user-a,user-b")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "alice,bob")
@@ -253,8 +255,8 @@ func TestNewViper_BindsListingKitEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "https://issuer.example", v.GetString("listingkit.zitadel.issuerURL"))
 	assert.Equal(t, "listingkit-client", v.GetString("listingkit.zitadel.clientID"))
 	assert.Equal(t, "listingkit-secret", v.GetString("listingkit.zitadel.clientSecret"))
-	assert.False(t, v.IsSet("listingkit.zitadel.authRequired"))
-	assert.False(t, v.IsSet("listingkit.zitadel.authorizationRequired"))
+	assert.True(t, v.GetBool("listingkit.zitadel.authRequired"))
+	assert.True(t, v.GetBool("listingkit.zitadel.authorizationRequired"))
 	assert.Equal(t, []string{"tenant-a", "tenant-b"}, getStringSlice(v, "listingkit.zitadel.allowedTenantIDs"))
 	assert.Equal(t, []string{"user-a", "user-b"}, getStringSlice(v, "listingkit.zitadel.allowedUserIDs"))
 	assert.Equal(t, []string{"alice", "bob"}, getStringSlice(v, "listingkit.zitadel.allowedUsernames"))
@@ -507,10 +509,41 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 	assert.Equal(t, []string{"user-b", "user-c"}, cfg.ListingKit.PlatformAdminUsers)
 	assert.Equal(t, []string{"platform_admin"}, cfg.ListingKit.PlatformAdminRoles)
 	assert.True(t, cfg.ListingKit.OwnerScopeRequired)
-	assert.False(t, cfg.ListingKit.Zitadel.AuthRequired)
+	assert.True(t, cfg.ListingKit.Zitadel.AuthRequired)
 	assert.True(t, cfg.ListingKit.Zitadel.AuthorizationRequired)
 	assert.Equal(t, "https://issuer.file.example", cfg.ListingKit.Zitadel.IssuerURL)
 	assert.Equal(t, "file-client", cfg.ListingKit.Zitadel.ClientID)
 	assert.Equal(t, []string{"file-admin"}, cfg.ListingKit.Zitadel.AllowedUsernames)
+	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, cfg.ListingKit.Zitadel.AllowedRoles)
+}
+
+func TestLoadConfigFromFile_HonorsExplicitListingKitZitadelAuthzDisabledWithAllowlists(t *testing.T) {
+	tempDir := t.TempDir()
+	configPath := filepath.Join(tempDir, "config-test.yaml")
+	configBody := strings.Join([]string{
+		"openai:",
+		"  apiKey: \"test-openai-key\"",
+		"  model: \"gemini-2.5-flash\"",
+		"  baseURL: \"https://api.example.test/v1\"",
+		"  timeout: 30",
+		"listingkit:",
+		"  zitadel:",
+		"    authRequired: false",
+		"    authorizationRequired: false",
+		"    allowedUsernames: [\"file-admin\"]",
+	}, "\n")
+	require.NoError(t, os.WriteFile(configPath, []byte(configBody), 0o600))
+
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED", "0")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED", "0")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES", "listingkit_admin,platform_admin")
+	t.Setenv("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "1-admin")
+
+	cfg, err := LoadConfigFromFile(configPath)
+	require.NoError(t, err)
+
+	assert.False(t, cfg.ListingKit.Zitadel.AuthRequired)
+	assert.False(t, cfg.ListingKit.Zitadel.AuthorizationRequired)
+	assert.Equal(t, []string{"1-admin"}, cfg.ListingKit.Zitadel.AllowedUsernames)
 	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, cfg.ListingKit.Zitadel.AllowedRoles)
 }
