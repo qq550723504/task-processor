@@ -116,7 +116,10 @@ function SheinEnrollmentActivityWorkbench({
     },
     { enabled: runsTabActive && selectedRunId != null },
   );
-  const activityStrategyReady = isSheinActivityStrategyReady(activityStrategy.data);
+  const activityStrategyReady = isSheinActivityStrategyReady(
+    activityStrategy.data,
+    activityType,
+  );
 
   return (
     <ListingKitPageShell backgroundClassName="overflow-hidden rounded-lg bg-zinc-50" contentClassName="gap-5 px-4 py-4 sm:px-6 sm:py-6">
@@ -162,6 +165,7 @@ function SheinEnrollmentActivityWorkbench({
       {tab === "candidates" ? (
         <section className="space-y-4">
           <SheinActivityStrategyCard
+            activityType={activityType}
             configured={activityStrategy.data?.configured}
             onSave={(input) =>
               updateActivityStrategyMutation

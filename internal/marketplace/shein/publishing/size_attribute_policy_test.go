@@ -60,6 +60,35 @@ func TestBuildSizeAttributesFromProductSizeUsesTemplateAttributeIDs(t *testing.T
 	}
 }
 
+func TestBuildSizeAttributesFromProductSizeSkipsDuplicateTemplateAttributePerSize(t *testing.T) {
+	t.Parallel()
+
+	productSize := `[[{"content":"尺码","remark":""},{"content":"高(cm/in)","remark":""},{"content":"杯底直径(cm/in)","remark":""},{"content":"杯口直径(cm/in)","remark":""}],[{"content":"One size","remark":""},{"content":"19.2/7.6","remark":""},{"content":"5.8/2.3","remark":""},{"content":"7.1/2.8","remark":""}]]`
+	got := BuildSizeAttributesFromProductSizeWithHeaderAttributeIDs(productSize, []SizeSaleAttributeRef{
+		{SizeValue: "One size", AttributeID: 87, AttributeValueID: 474},
+	}, []SizeChartTemplateAttribute{
+		{AttributeID: 48, AttributeName: "高度 (cm)", AttributeNameEn: "Height (cm)"},
+		{AttributeID: 32, AttributeName: "直径 (cm)", AttributeNameEn: "Diameter (cm)"},
+	}, map[string]int{
+		"高(cm/in)":    48,
+		"杯底直径(cm/in)": 32,
+		"杯口直径(cm/in)": 32,
+	})
+
+	want := []sheinproduct.SizeAttribute{
+		{AttributeID: 48, AttributeExtraValue: "19.2", RelateSaleAttributeID: 87, RelateSaleAttributeValueID: 474},
+		{AttributeID: 32, AttributeExtraValue: "5.8", RelateSaleAttributeID: 87, RelateSaleAttributeValueID: 474},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("size attributes = %#v, want %d items", got, len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("size attribute[%d] = %#v, want %#v", i, got[i], want[i])
+		}
+	}
+}
+
 func TestBuildSizeAttributesFromProductSizeAcceptsHeaderUnitWithoutCellUnit(t *testing.T) {
 	t.Parallel()
 

@@ -34,11 +34,13 @@ const DEFAULT_FORM: ActivityStrategyForm = {
 };
 
 export function SheinActivityStrategyCard({
+  activityType,
   configured,
   onSave,
   saving,
   strategy,
 }: {
+  activityType?: string;
   configured?: boolean;
   onSave: (input: SheinUpdateActivityStrategyInput) => Promise<void>;
   saving?: boolean;
@@ -46,9 +48,10 @@ export function SheinActivityStrategyCard({
 }) {
   return (
     <SheinActivityStrategyForm
+      activityType={activityType}
       configured={configured}
       initialForm={strategyToForm(strategy)}
-      key={activityStrategyFormKey(strategy)}
+      key={`${activityType ?? "PROMOTION"}:${activityStrategyFormKey(strategy)}`}
       onSave={onSave}
       saving={saving}
     />
@@ -56,20 +59,23 @@ export function SheinActivityStrategyCard({
 }
 
 function SheinActivityStrategyForm({
+  activityType,
   configured,
   initialForm,
   onSave,
   saving,
 }: {
+  activityType?: string;
   configured?: boolean;
   initialForm: ActivityStrategyForm;
   onSave: (input: SheinUpdateActivityStrategyInput) => Promise<void>;
   saving?: boolean;
 }) {
   const [form, setForm] = useState<ActivityStrategyForm>(initialForm);
+  const usesPartakeSettings = activityTypeUsesPartakeSettings(activityType);
 
-  const input = formToInput(form);
-  const valid = isActivityStrategyInputValid(input);
+  const input = formToInput(form, { usesPartakeSettings });
+  const valid = isActivityStrategyInputValid(input, { usesPartakeSettings });
 
   return (
     <section className="rounded-2xl border border-zinc-200 bg-white p-4">
@@ -114,13 +120,15 @@ function SheinActivityStrategyForm({
               ),
             )}
           </div>
-          <div
-            className="flex flex-wrap gap-2"
-            role="group"
-            aria-label="活动类型"
-          >
-            {(["REGULAR", "LIMITED", "BOTH"] as SheinActivityPartakeType[]).map(
-              (type) => (
+          {usesPartakeSettings ? (
+            <div
+              className="flex flex-wrap gap-2"
+              role="group"
+              aria-label="活动类型"
+            >
+              {(
+                ["REGULAR", "LIMITED", "BOTH"] as SheinActivityPartakeType[]
+              ).map((type) => (
                 <button
                   className={
                     form.activity_partake_type === type
@@ -138,9 +146,9 @@ function SheinActivityStrategyForm({
                 >
                   {partakeTypeLabel(type)}
                 </button>
-              ),
-            )}
-          </div>
+              ))}
+            </div>
+          ) : null}
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -164,7 +172,8 @@ function SheinActivityStrategyForm({
               />
             </label>
           ) : null}
-          {form.activity_price_mode === "DISCOUNT" &&
+          {usesPartakeSettings &&
+          form.activity_price_mode === "DISCOUNT" &&
           form.activity_partake_type === "BOTH" ? (
             <label className="text-xs font-medium text-zinc-600">
               限量折扣率
@@ -205,7 +214,8 @@ function SheinActivityStrategyForm({
               />
             </label>
           ) : null}
-          {form.activity_price_mode === "PROFIT" &&
+          {usesPartakeSettings &&
+          form.activity_price_mode === "PROFIT" &&
           form.activity_partake_type === "BOTH" ? (
             <label className="text-xs font-medium text-zinc-600">
               限量最低利润率
@@ -226,7 +236,8 @@ function SheinActivityStrategyForm({
               />
             </label>
           ) : null}
-          {partakeTypeNeedsStockRatio(form.activity_partake_type) ? (
+          {usesPartakeSettings &&
+          partakeTypeNeedsStockRatio(form.activity_partake_type) ? (
             <label className="text-xs font-medium text-zinc-600">
               活动库存比例
               <Input
@@ -279,27 +290,35 @@ function SheinActivityStrategyForm({
 export function isSheinActivityStrategyReady(response?: {
   configured?: boolean;
   strategy?: SheinActivityStrategyRecord | null;
-}) {
+}, activityType?: string) {
   if (!response?.configured || !response.strategy) {
     return false;
   }
-  return isActivityStrategyInputValid({
-    activity_price_mode:
-      response.strategy.activity_price_mode === "PROFIT"
-        ? "PROFIT"
-        : "DISCOUNT",
-    activity_partake_type: normalizeActivityPartakeType(
-      response.strategy.activity_partake_type,
-    ),
-    activity_discount_rate: response.strategy.activity_discount_rate,
-    activity_limited_discount_rate:
-      response.strategy.activity_limited_discount_rate,
-    activity_stock_ratio: response.strategy.activity_stock_ratio,
-    activity_min_profit_rate: response.strategy.activity_min_profit_rate,
-    activity_limited_min_profit_rate:
-      response.strategy.activity_limited_min_profit_rate,
-    fixed_price_adjustment: response.strategy.fixed_price_adjustment ?? 0,
-  });
+  const usesPartakeSettings = activityTypeUsesPartakeSettings(activityType);
+  return isActivityStrategyInputValid(
+    {
+      activity_price_mode:
+        response.strategy.activity_price_mode === "PROFIT"
+          ? "PROFIT"
+          : "DISCOUNT",
+      ...(usesPartakeSettings
+        ? {
+            activity_partake_type: normalizeActivityPartakeType(
+              response.strategy.activity_partake_type,
+            ),
+          }
+        : {}),
+      activity_discount_rate: response.strategy.activity_discount_rate,
+      activity_limited_discount_rate:
+        response.strategy.activity_limited_discount_rate,
+      activity_stock_ratio: response.strategy.activity_stock_ratio,
+      activity_min_profit_rate: response.strategy.activity_min_profit_rate,
+      activity_limited_min_profit_rate:
+        response.strategy.activity_limited_min_profit_rate,
+      fixed_price_adjustment: response.strategy.fixed_price_adjustment ?? 0,
+    },
+    { usesPartakeSettings },
+  );
 }
 
 function strategyToForm(
@@ -358,18 +377,24 @@ function activityStrategyFormKey(
 
 function formToInput(
   form: ActivityStrategyForm,
+  { usesPartakeSettings = true }: { usesPartakeSettings?: boolean } = {},
 ): SheinUpdateActivityStrategyInput {
   const input: SheinUpdateActivityStrategyInput = {
     activity_price_mode: form.activity_price_mode,
-    activity_partake_type: form.activity_partake_type,
     fixed_price_adjustment: parseDecimal(form.fixed_price_adjustment) ?? 0,
   };
-  if (partakeTypeNeedsStockRatio(form.activity_partake_type)) {
+  if (usesPartakeSettings) {
+    input.activity_partake_type = form.activity_partake_type;
+  }
+  if (
+    usesPartakeSettings &&
+    partakeTypeNeedsStockRatio(form.activity_partake_type)
+  ) {
     input.activity_stock_ratio = parseDecimal(form.activity_stock_ratio) ?? 0;
   }
   if (form.activity_price_mode === "DISCOUNT") {
     input.activity_discount_rate = parseDecimal(form.activity_discount_rate);
-    if (form.activity_partake_type === "BOTH") {
+    if (usesPartakeSettings && form.activity_partake_type === "BOTH") {
       input.activity_limited_discount_rate =
         parseDecimal(form.activity_limited_discount_rate) ?? 0;
     }
@@ -377,7 +402,7 @@ function formToInput(
     input.activity_min_profit_rate = parseDecimal(
       form.activity_min_profit_rate,
     );
-    if (form.activity_partake_type === "BOTH") {
+    if (usesPartakeSettings && form.activity_partake_type === "BOTH") {
       input.activity_limited_min_profit_rate =
         parseDecimal(form.activity_limited_min_profit_rate) ?? -1;
     }
@@ -385,8 +410,12 @@ function formToInput(
   return input;
 }
 
-function isActivityStrategyInputValid(input: SheinUpdateActivityStrategyInput) {
+function isActivityStrategyInputValid(
+  input: SheinUpdateActivityStrategyInput,
+  { usesPartakeSettings = true }: { usesPartakeSettings?: boolean } = {},
+) {
   if (
+    usesPartakeSettings &&
     partakeTypeNeedsStockRatio(input.activity_partake_type) &&
     !withinRatio(input.activity_stock_ratio, true)
   ) {
@@ -396,7 +425,7 @@ function isActivityStrategyInputValid(input: SheinUpdateActivityStrategyInput) {
     if (!withinRatio(input.activity_discount_rate, false)) {
       return false;
     }
-    if (input.activity_partake_type === "BOTH") {
+    if (usesPartakeSettings && input.activity_partake_type === "BOTH") {
       return (
         withinRatio(input.activity_limited_discount_rate, false) &&
         input.activity_limited_discount_rate! > input.activity_discount_rate!
@@ -407,7 +436,7 @@ function isActivityStrategyInputValid(input: SheinUpdateActivityStrategyInput) {
   if (!withinProfitFloor(input.activity_min_profit_rate)) {
     return false;
   }
-  if (input.activity_partake_type === "BOTH") {
+  if (usesPartakeSettings && input.activity_partake_type === "BOTH") {
     return (
       withinProfitFloor(input.activity_limited_min_profit_rate) &&
       input.activity_limited_min_profit_rate! < input.activity_min_profit_rate!
@@ -446,7 +475,11 @@ function normalizeActivityPartakeType(
   return "REGULAR";
 }
 
-function partakeTypeNeedsStockRatio(type: SheinActivityPartakeType) {
+function activityTypeUsesPartakeSettings(activityType?: string) {
+  return activityType !== "TIME_LIMITED";
+}
+
+function partakeTypeNeedsStockRatio(type?: SheinActivityPartakeType) {
   return type === "LIMITED" || type === "BOTH";
 }
 

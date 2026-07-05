@@ -82,15 +82,20 @@ func BuildSizeAttributesFromProductSizeWithHeaderAttributeIDs(productSize string
 		if !ok || ref.AttributeID <= 0 || ref.AttributeValueID <= 0 {
 			continue
 		}
+		seenAttributeIDs := map[int]struct{}{}
 		for columnIndex := 1; columnIndex < len(row) && columnIndex < len(headerAttributeIDs); columnIndex++ {
 			attributeID := headerAttributeIDs[columnIndex]
 			if attributeID <= 0 {
+				continue
+			}
+			if _, ok := seenAttributeIDs[attributeID]; ok {
 				continue
 			}
 			value := extractCentimeterValue(row[columnIndex])
 			if value == "" {
 				continue
 			}
+			seenAttributeIDs[attributeID] = struct{}{}
 			result = append(result, sheinproduct.SizeAttribute{
 				AttributeID:                attributeID,
 				AttributeExtraValue:        value,

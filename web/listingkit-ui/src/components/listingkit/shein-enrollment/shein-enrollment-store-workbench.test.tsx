@@ -70,6 +70,7 @@ function resolvedMutation() {
 }
 
 function renderWorkbench({
+  initialActivityType,
   initialTab,
   products = [],
   productTotal,
@@ -86,6 +87,7 @@ function renderWorkbench({
   syncSourceMutation,
   enrollMutation,
 }: {
+  initialActivityType?: string;
   initialTab?: string;
   products?: Array<Record<string, unknown>>;
   productTotal?: number;
@@ -171,7 +173,11 @@ function renderWorkbench({
   });
   render(
     <QueryClientProvider client={client}>
-      <SheinEnrollmentStoreWorkbench initialTab={initialTab} storeId={12} />
+      <SheinEnrollmentStoreWorkbench
+        initialActivityType={initialActivityType}
+        initialTab={initialTab}
+        storeId={12}
+      />
     </QueryClientProvider>,
   );
 }
@@ -503,6 +509,52 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       activity_partake_type: "REGULAR",
       activity_discount_rate: 0.18,
       fixed_price_adjustment: 1.2,
+    });
+  });
+
+  it("omits promotion partake settings when saving time-limited activity strategy", async () => {
+    const updateStrategyMutation = resolvedMutation();
+    renderWorkbench({
+      initialActivityType: "TIME_LIMITED",
+      initialTab: "candidates",
+      activityStrategyResponse: { configured: false, strategy: null },
+      updateStrategyMutation,
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.queryByRole("button", { name: "常规活动" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "限量活动" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "常规+限量" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("spinbutton", { name: "限量折扣率" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("spinbutton", { name: "活动库存比例" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "按利润" }));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "最低利润率" }), {
+      target: { value: "0.12" },
+    });
+    fireEvent.change(screen.getByRole("spinbutton", { name: "固定调价" }), {
+      target: { value: "0" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存活动设置" }));
+
+    expect(updateStrategyMutation.mutateAsync).toHaveBeenCalledWith({
+      activity_type: "TIME_LIMITED",
+      activity_price_mode: "PROFIT",
+      activity_min_profit_rate: 0.12,
+      fixed_price_adjustment: 0,
     });
   });
 
