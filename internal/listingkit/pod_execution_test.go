@@ -11,7 +11,9 @@ func TestEnsureTaskPodExecutionMarksRequiredSDSFailureAsBlocking(t *testing.T) {
 	task := &Task{
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
+			ImageURLs: []string{"https://cdn.example.com/source.png"},
 			Options: &GenerateOptions{
+				ProcessImages: false,
 				SDS: &SDSSyncOptions{
 					VariantID: 901,
 				},
@@ -165,7 +167,9 @@ func TestEnsureTaskPodExecutionDoesNotDuplicateAuditHistoryWhenStateIsStable(t *
 	task := &Task{
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
+			ImageURLs: []string{"https://cdn.example.com/source.png"},
 			Options: &GenerateOptions{
+				ProcessImages: false,
 				SDS: &SDSSyncOptions{
 					VariantID: 901,
 				},
@@ -193,6 +197,97 @@ func TestEnsureTaskPodExecutionDoesNotDuplicateAuditHistoryWhenStateIsStable(t *
 	}
 }
 
+func TestDerivePodExecutionSummaryUsesProcessingChildTaskOverStaleSDSFailure(t *testing.T) {
+	t.Parallel()
+
+	result := derivePodExecutionSummary(
+		&PodExecutionSummary{
+			Provider:       podProviderSDS,
+			DependencyMode: podDependencyModeRequired,
+			Status:         podStatusFailedBlocking,
+			FailureReason:  "previous render timeout",
+			FallbackType:   podFallbackLocalMockup,
+		},
+		&SDSSyncSummary{
+			VariantID: 901,
+			Status:    "failed",
+			Error:     "previous render timeout",
+		},
+		[]ChildTaskState{{
+			Kind:   "sds_design_sync",
+			Status: string(TaskStatusProcessing),
+		}},
+		&GenerateRequest{
+			Platforms: []string{"shein"},
+			ImageURLs: []string{"https://cdn.example.com/source.png"},
+			Options: &GenerateOptions{
+				ProcessImages: false,
+				SDS: &SDSSyncOptions{
+					VariantID: 901,
+				},
+			},
+		},
+		time.Time{},
+	)
+
+	if result.Status != podStatusProcessing {
+		t.Fatalf("status = %q, want %q", result.Status, podStatusProcessing)
+	}
+	if result.FailureReason != "" {
+		t.Fatalf("failure reason = %q, want empty after retry starts", result.FailureReason)
+	}
+	if result.FallbackType != "" {
+		t.Fatalf("fallback type = %q, want empty after retry starts", result.FallbackType)
+	}
+	if result.CompletedAt != nil {
+		t.Fatalf("completed at = %v, want nil while processing", result.CompletedAt)
+	}
+}
+
+func TestDerivePodExecutionSummaryClearsFailureDetailsAfterSuccess(t *testing.T) {
+	t.Parallel()
+
+	updatedAt := time.Date(2026, 7, 6, 9, 0, 0, 0, time.UTC)
+	result := derivePodExecutionSummary(
+		&PodExecutionSummary{
+			Provider:       podProviderSDS,
+			DependencyMode: podDependencyModeRequired,
+			Status:         podStatusFailedBlocking,
+			FailureReason:  "previous render timeout",
+			FallbackType:   podFallbackLocalMockup,
+		},
+		&SDSSyncSummary{
+			VariantID: 901,
+			Status:    "completed",
+		},
+		nil,
+		&GenerateRequest{
+			Platforms: []string{"shein"},
+			ImageURLs: []string{"https://cdn.example.com/source.png"},
+			Options: &GenerateOptions{
+				ProcessImages: false,
+				SDS: &SDSSyncOptions{
+					VariantID: 901,
+				},
+			},
+		},
+		updatedAt,
+	)
+
+	if result.Status != podStatusSucceeded {
+		t.Fatalf("status = %q, want %q", result.Status, podStatusSucceeded)
+	}
+	if result.FailureReason != "" {
+		t.Fatalf("failure reason = %q, want empty after success", result.FailureReason)
+	}
+	if result.FallbackType != "" {
+		t.Fatalf("fallback type = %q, want empty after success", result.FallbackType)
+	}
+	if result.CompletedAt == nil || !result.CompletedAt.Equal(updatedAt) {
+		t.Fatalf("completed at = %v, want %v", result.CompletedAt, updatedAt)
+	}
+}
+
 func TestMarkPodExecutionStatusRecordsProcessingTransition(t *testing.T) {
 	t.Parallel()
 
@@ -201,6 +296,8 @@ func TestMarkPodExecutionStatusRecordsProcessingTransition(t *testing.T) {
 			Provider:       podProviderSDS,
 			DependencyMode: podDependencyModeRequired,
 			Status:         podStatusPending,
+			FailureReason:  "previous render timeout",
+			FallbackType:   podFallbackLocalMockup,
 			History: []PodExecutionAuditEvent{{
 				Kind:           podAuditKindPolicyDecision,
 				Code:           podAuditCodePolicyApplied,
@@ -218,6 +315,12 @@ func TestMarkPodExecutionStatusRecordsProcessingTransition(t *testing.T) {
 	}
 	if result.PodExecution.Status != podStatusProcessing {
 		t.Fatalf("status = %q, want %q", result.PodExecution.Status, podStatusProcessing)
+	}
+	if result.PodExecution.FailureReason != "" {
+		t.Fatalf("failure reason = %q, want empty after processing transition", result.PodExecution.FailureReason)
+	}
+	if result.PodExecution.FallbackType != "" {
+		t.Fatalf("fallback type = %q, want empty after processing transition", result.PodExecution.FallbackType)
 	}
 	if len(result.PodExecution.History) != 2 {
 		t.Fatalf("history length = %d, want appended transition event", len(result.PodExecution.History))

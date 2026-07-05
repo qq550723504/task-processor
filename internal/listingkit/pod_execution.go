@@ -67,7 +67,11 @@ func clonePodExecutionSummary(pod *PodExecutionSummary) *PodExecutionSummary {
 }
 
 func shouldUsePODPlatform(req *GenerateRequest) bool {
-	return shouldSyncSDS(req) || shouldRunRemoteSDSDesignSync(req)
+	return shouldRunRemoteSDSDesignSync(req) || shouldRunImageResultSDSDesignSync(req)
+}
+
+func shouldRunImageResultSDSDesignSync(req *GenerateRequest) bool {
+	return shouldSyncSDS(req) && shouldProcessImages(req)
 }
 
 func inferPODProvider(req *GenerateRequest) string {
@@ -130,10 +134,10 @@ func derivePodExecutionSummary(current *PodExecutionSummary, sds *SDSSyncSummary
 	if found && status != "" {
 		pod.Status = status
 	}
-	if found && reason != "" {
+	if found {
 		pod.FailureReason = reason
 	}
-	if found && fallback != "" {
+	if found {
 		pod.FallbackType = fallback
 	}
 	if !found && strings.TrimSpace(pod.Status) == "" {
@@ -166,6 +170,7 @@ func markPodExecutionStatus(result *ListingKitResult, status string, at time.Tim
 	}
 	before := clonePodExecutionSummary(result.PodExecution)
 	result.PodExecution.Status = strings.ToLower(strings.TrimSpace(status))
+	clearPodExecutionFailureDetailsForStatus(result.PodExecution)
 	if at.IsZero() {
 		at = time.Now()
 	}
@@ -179,5 +184,18 @@ func markPodExecutionStatus(result *ListingKitResult, status string, at time.Tim
 	recordPodExecutionAudit(before, result.PodExecution, at)
 	if result.StandardProductSnapshot != nil {
 		result.StandardProductSnapshot.PodExecution = clonePodExecutionSummary(result.PodExecution)
+	}
+}
+
+func clearPodExecutionFailureDetailsForStatus(pod *PodExecutionSummary) {
+	if pod == nil {
+		return
+	}
+	switch strings.ToLower(strings.TrimSpace(pod.Status)) {
+	case podStatusFailedBlocking, podStatusFailedDegraded:
+		return
+	default:
+		pod.FailureReason = ""
+		pod.FallbackType = ""
 	}
 }

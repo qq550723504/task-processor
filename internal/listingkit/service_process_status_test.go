@@ -502,8 +502,10 @@ func TestGetTaskResultDerivesPodExecutionForLegacyStoredResults(t *testing.T) {
 		Status: TaskStatusCompleted,
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
+			ImageURLs: []string{"https://cdn.example.com/source.png"},
 			Options: &GenerateOptions{
-				SDS: &SDSSyncOptions{ParentProductID: 1001, VariantID: 2002},
+				ProcessImages: false,
+				SDS:           &SDSSyncOptions{ParentProductID: 1001, VariantID: 2002},
 			},
 		},
 		Result: &ListingKitResult{

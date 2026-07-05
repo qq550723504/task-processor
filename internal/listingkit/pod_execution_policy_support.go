@@ -3,11 +3,33 @@ package listingkit
 import "strings"
 
 func inferPodStatusFromSDS(sds *SDSSyncSummary, childTasks []ChildTaskState, dependencyMode string) (status string, reason string, fallback string, found bool) {
+	if status, reason, fallback, found := inferActivePodStatusFromChildTasks(childTasks); found {
+		return status, reason, fallback, true
+	}
 	if sds != nil {
 		status, fallback = mapSDSStatusToPODStatus(sds.Status, dependencyMode)
 		reason = strings.TrimSpace(sds.Error)
 		return status, reason, fallback, true
 	}
+	return inferPodStatusFromChildTasks(childTasks, dependencyMode)
+}
+
+func inferActivePodStatusFromChildTasks(childTasks []ChildTaskState) (status string, reason string, fallback string, found bool) {
+	for _, child := range childTasks {
+		if child.Kind != "sds_design_sync" {
+			continue
+		}
+		switch strings.ToLower(strings.TrimSpace(child.Status)) {
+		case strings.ToLower(string(TaskStatusProcessing)):
+			return podStatusProcessing, "", "", true
+		case strings.ToLower(string(TaskStatusPending)):
+			return podStatusPending, "", "", true
+		}
+	}
+	return "", "", "", false
+}
+
+func inferPodStatusFromChildTasks(childTasks []ChildTaskState, dependencyMode string) (status string, reason string, fallback string, found bool) {
 	for _, child := range childTasks {
 		if child.Kind != "sds_design_sync" {
 			continue

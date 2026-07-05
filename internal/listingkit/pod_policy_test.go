@@ -2,12 +2,14 @@ package listingkit
 
 import "testing"
 
-func TestDeterminePODExecutionPolicyRequiresSDSBackedTasks(t *testing.T) {
+func TestDeterminePODExecutionPolicyRequiresRemoteSDSBackedTasks(t *testing.T) {
 	t.Parallel()
 
 	policy := determinePODExecutionPolicy(&GenerateRequest{
 		Platforms: []string{"shein"},
+		ImageURLs: []string{"https://cdn.example.com/source.png"},
 		Options: &GenerateOptions{
+			ProcessImages: false,
 			SDS: &SDSSyncOptions{
 				VariantID: 901,
 			},
@@ -19,6 +21,35 @@ func TestDeterminePODExecutionPolicyRequiresSDSBackedTasks(t *testing.T) {
 	}
 	if policy.DependencyMode != podDependencyModeRequired {
 		t.Fatalf("dependency mode = %q, want %q", policy.DependencyMode, podDependencyModeRequired)
+	}
+	if policy.DecisionSource != "system_rule" {
+		t.Fatalf("decision source = %q, want system_rule", policy.DecisionSource)
+	}
+}
+
+func TestDeterminePODExecutionPolicyDisablesSDSCatalogOnlyTasks(t *testing.T) {
+	t.Parallel()
+
+	policy := determinePODExecutionPolicy(&GenerateRequest{
+		Platforms: []string{"amazon"},
+		ImageURLs: []string{"https://cdn.example.com/catalog-source.png"},
+		Options: &GenerateOptions{
+			ProcessImages: true,
+			SDS: &SDSSyncOptions{
+				VariantID:    901,
+				ProductName:  "Catalog-backed clock",
+				ProductSKU:   "MG17701061",
+				VariantSKU:   "MG17701061001",
+				CategoryPath: []string{"Home", "Decor", "Clock"},
+			},
+		},
+	})
+
+	if policy.Provider != "" {
+		t.Fatalf("provider = %q, want empty", policy.Provider)
+	}
+	if policy.DependencyMode != podDependencyModeDisabled {
+		t.Fatalf("dependency mode = %q, want %q", policy.DependencyMode, podDependencyModeDisabled)
 	}
 	if policy.DecisionSource != "system_rule" {
 		t.Fatalf("decision source = %q, want system_rule", policy.DecisionSource)
