@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import {
   authorizeZitadelIdentity,
+  getListingKitLocalDebugIdentity,
+  isListingKitLocalAuthBypassed,
   isZitadelAuthConfigured,
   readZitadelAccessTokenFromSession,
   readZitadelIdentityFromSession,
@@ -12,6 +14,13 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  if (isListingKitLocalAuthBypassed()) {
+    return NextResponse.json({
+      ok: true,
+      identity: getListingKitLocalDebugIdentity(),
+    });
+  }
+
   if (!isZitadelAuthConfigured()) {
     return NextResponse.json(
       {

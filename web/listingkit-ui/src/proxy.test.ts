@@ -93,4 +93,13 @@ describe("ListingKit ZITADEL proxy", () => {
       error: "ZITADEL auth is not configured",
     });
   });
+
+  it("allows ListingKit pages when local auth gate bypass is enabled", async () => {
+    vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
+
+    const response = await callProxy("/listing-kits/sds?step=generate");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+  });
 });

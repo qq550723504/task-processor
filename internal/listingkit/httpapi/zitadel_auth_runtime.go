@@ -81,9 +81,7 @@ func NewZitadelAuthMiddlewareFromEnv() gin.HandlerFunc {
 	if runtimeCfg == nil {
 		return nil
 	}
-	if !runtimeCfg.AuthConfig.Required &&
-		strings.TrimSpace(runtimeCfg.AuthConfig.IssuerURL) == "" &&
-		strings.TrimSpace(runtimeCfg.AuthConfig.ClientID) == "" {
+	if !runtimeCfg.AuthConfig.Required && !runtimeCfg.AuthzConfig.Required {
 		return nil
 	}
 	return newListingKitZitadelAuthMiddleware(runtimeCfg.AuthConfig, runtimeCfg.AuthzConfig).Handle

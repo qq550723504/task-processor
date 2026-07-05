@@ -9,7 +9,9 @@ param(
     [switch]$IncludeTemporal,
     [switch]$SkipTemporal,
     [int]$LocalTemporalPort = 7233,
-    [string]$BypassAuthGate = ""
+    [ValidateSet("Disabled", "Required")]
+    [string]$ZitadelAuthMode = "Disabled",
+    [string]$BypassAuthGate = "1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -213,7 +215,15 @@ if ($useTemporal) {
 }
 
 Write-Host "Starting local API..." -ForegroundColor Cyan
-& powershell -ExecutionPolicy Bypass -File $apiScript -Port $ApiPort -ConfigPath $ConfigPath -LogLevel $LogLevel
+$apiArgs = @(
+    "-ExecutionPolicy", "Bypass",
+    "-File", $apiScript,
+    "-Port", $ApiPort,
+    "-ConfigPath", $ConfigPath,
+    "-LogLevel", $LogLevel,
+    "-ZitadelAuthMode", $ZitadelAuthMode
+)
+& powershell @apiArgs
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to start local API"
 }

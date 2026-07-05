@@ -22,6 +22,14 @@ export type ZitadelAuthorizationResult = {
   reason?: string;
 };
 
+const LOCAL_DEBUG_IDENTITY: ZitadelVerifiedIdentity = {
+  tenantId: "local-debug",
+  userId: "local-debug",
+  username: "local-debug",
+  userType: "local_debug",
+  roles: ["platform_admin", "listingkit_admin", "listingkit_operator"],
+};
+
 type ZitadelIntrospectionResponse = {
   active?: boolean;
   sub?: string;
@@ -37,6 +45,15 @@ export { getZitadelAuthOptions };
 
 export function isZitadelAuthConfigured() {
   return Boolean(getZitadelAuthOptions());
+}
+
+export function isListingKitLocalAuthBypassed() {
+  const value = process.env.LISTINGKIT_UI_BYPASS_AUTH_GATE?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
+}
+
+export function getListingKitLocalDebugIdentity(): ZitadelVerifiedIdentity {
+  return { ...LOCAL_DEBUG_IDENTITY, roles: [...(LOCAL_DEBUG_IDENTITY.roles ?? [])] };
 }
 
 export function resolvePublicAppOrigin() {

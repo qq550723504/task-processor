@@ -2,7 +2,7 @@ param(
     [int]$Port = 3000,
     [string]$ApiBase = "http://localhost:8085/api/v1/listing-kits",
     [string]$ServiceApiBase = "http://localhost:8085/api/v1",
-    [string]$BypassAuthGate = ""
+    [string]$BypassAuthGate = "1"
 )
 
 $ErrorActionPreference = "Stop"

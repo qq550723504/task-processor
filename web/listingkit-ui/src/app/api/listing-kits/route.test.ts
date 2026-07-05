@@ -251,6 +251,24 @@ describe("verifyListingKitRequestIdentity", () => {
     expect(result.response?.status).toBe(503);
   });
 
+  it("returns a local debug identity when auth gate bypass is enabled", async () => {
+    vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
+
+    const result = await verifyListingKitRequestIdentity(
+      new NextRequest("http://localhost/api/listing-kits/tasks"),
+    );
+
+    expect(result.response).toBeUndefined();
+    expect(result.token).toBe("");
+    expect(result.identity).toEqual({
+      tenantId: "local-debug",
+      userId: "local-debug",
+      username: "local-debug",
+      userType: "local_debug",
+      roles: ["platform_admin", "listingkit_admin", "listingkit_operator"],
+    });
+  });
+
   it("rejects requests when no real ZITADEL session is present", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
     vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");

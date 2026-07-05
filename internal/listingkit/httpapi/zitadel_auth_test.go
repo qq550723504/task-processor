@@ -67,7 +67,7 @@ func TestListingKitZitadelAuthRejectsMissingBearerToken(t *testing.T) {
 	}
 }
 
-func TestListingKitZitadelAuthRemainsEnabledEvenWhenConfigDisablesAuth(t *testing.T) {
+func TestListingKitZitadelAuthStaysDisabledWhenConfigDisablesAuthWithIssuerConfigured(t *testing.T) {
 	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: "https://issuer.example",
@@ -91,8 +91,8 @@ func TestListingKitZitadelAuthRemainsEnabledEvenWhenConfigDisablesAuth(t *testin
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil))
 
-	if resp.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusUnauthorized, resp.Body.String())
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
 	}
 }
 
