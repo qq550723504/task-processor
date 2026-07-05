@@ -631,6 +631,10 @@ func knownEnvBindings() map[string]envBinding {
 		"listingkit.platformAdminRoles": {
 			Primary: "LISTINGKIT_PLATFORM_ADMIN_ROLES",
 		},
+		"listingkit.ownerScopeRequired": {
+			Primary:    "TASK_PROCESSOR_LISTINGKIT_OWNER_SCOPE_REQUIRED",
+			Deprecated: []string{"TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED"},
+		},
 		"listingkit.zitadel.issuerURL": {
 			Primary: "ZITADEL_ISSUER_URL",
 		},

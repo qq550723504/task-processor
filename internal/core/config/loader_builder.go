@@ -203,7 +203,7 @@ func BuildConfig(v *viper.Viper) *Config {
 			SheinSubmitDebugDumpDir: v.GetString("listingkit.sheinSubmitDebugDumpDir"),
 			PlatformAdminUsers:      getStringSlice(v, "listingkit.platformAdminUsers"),
 			PlatformAdminRoles:      getStringSlice(v, "listingkit.platformAdminRoles"),
-			OwnerScopeRequired:      true,
+			OwnerScopeRequired:      v.GetBool("listingkit.ownerScopeRequired"),
 			Zitadel: ListingKitZitadelConfig{
 				IssuerURL:             v.GetString("listingkit.zitadel.issuerURL"),
 				ClientID:              v.GetString("listingkit.zitadel.clientID"),

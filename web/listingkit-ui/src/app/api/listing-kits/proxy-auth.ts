@@ -140,15 +140,12 @@ export function buildListingKitUpstreamHeaders(
     copyHeader(requestHeaders, headers, headerName, headerName);
   }
 
-  const scopedIdentity = isLocalDebugIdentity(verifiedIdentity)
-    ? undefined
-    : verifiedIdentity;
   const tenantID = stringifyIdentityValue(
-    scopedIdentity?.tenantId ?? requestHeaders.get("tenant-id"),
+    verifiedIdentity?.tenantId ?? requestHeaders.get("tenant-id"),
   );
-  const userID = stringifyIdentityValue(scopedIdentity?.userId);
-  const userType = stringifyIdentityValue(scopedIdentity?.userType);
-  const userRoles = scopedIdentity?.roles
+  const userID = stringifyIdentityValue(verifiedIdentity?.userId);
+  const userType = stringifyIdentityValue(verifiedIdentity?.userType);
+  const userRoles = verifiedIdentity?.roles
     ?.map((role) => stringifyIdentityValue(role))
     .filter(Boolean)
     .join(",");
@@ -190,14 +187,6 @@ function stringifyIdentityValue(value: unknown) {
     return value.trim();
   }
   return "";
-}
-
-function isLocalDebugIdentity(identity?: VerifiedIdentity) {
-  return (
-    identity?.userType === "local_debug" &&
-    identity.tenantId === "local-debug" &&
-    identity.userId === "local-debug"
-  );
 }
 
 function extractBearerToken(authorization: string | null) {

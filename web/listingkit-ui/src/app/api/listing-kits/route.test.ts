@@ -197,7 +197,7 @@ describe("buildListingKitUpstreamHeaders", () => {
     expect(headers.get("X-User-Roles")).toBe("platform_admin,listingkit_admin");
   });
 
-  it("does not scope upstream requests to the local debug identity", () => {
+  it("forwards local debug identity as listingkit data permission headers", () => {
     const request = new Request("http://localhost/api/listing-kits/tasks", {
       headers: {
         accept: "application/json",
@@ -205,18 +205,20 @@ describe("buildListingKitUpstreamHeaders", () => {
     });
 
     const headers = buildListingKitUpstreamHeaders(request.headers, {
-      tenantId: "local-debug",
+      tenantId: "default",
       userId: "local-debug",
       username: "local-debug",
       userType: "local_debug",
-      roles: ["platform_admin", "listingkit_admin"],
+      roles: ["platform_admin", "listingkit_admin", "listingkit_operator"],
     });
 
-    expect(headers.get("tenant-id")).toBeNull();
-    expect(headers.get("X-Tenant-ID")).toBeNull();
-    expect(headers.get("X-User-ID")).toBeNull();
-    expect(headers.get("X-User-Type")).toBeNull();
-    expect(headers.get("X-User-Roles")).toBeNull();
+    expect(headers.get("tenant-id")).toBe("default");
+    expect(headers.get("X-Tenant-ID")).toBe("default");
+    expect(headers.get("X-User-ID")).toBe("local-debug");
+    expect(headers.get("X-User-Type")).toBe("local_debug");
+    expect(headers.get("X-User-Roles")).toBe(
+      "platform_admin,listingkit_admin,listingkit_operator",
+    );
   });
 
   it("does not forward legacy gateway-only headers", () => {
@@ -283,7 +285,7 @@ describe("verifyListingKitRequestIdentity", () => {
     expect(result.response).toBeUndefined();
     expect(result.token).toBe("");
     expect(result.identity).toEqual({
-      tenantId: "local-debug",
+      tenantId: "default",
       userId: "local-debug",
       username: "local-debug",
       userType: "local_debug",

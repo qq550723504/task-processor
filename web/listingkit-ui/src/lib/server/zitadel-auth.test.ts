@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   authorizeZitadelIdentity,
+  getListingKitLocalDebugIdentity,
   getZitadelAuthOptions,
   readZitadelIdentityFromSession,
   verifyZitadelAccessToken,
@@ -19,6 +20,37 @@ describe("getZitadelAuthOptions", () => {
     expect(getZitadelAuthOptions()?.scopes.split(/\s+/)).toContain(
       "urn:zitadel:iam:user:resourceowner",
     );
+  });
+});
+
+describe("getListingKitLocalDebugIdentity", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("uses the backend default tenant and platform admin role for local data scope", () => {
+    expect(getListingKitLocalDebugIdentity()).toEqual({
+      tenantId: "default",
+      userId: "local-debug",
+      username: "local-debug",
+      userType: "local_debug",
+      roles: ["platform_admin", "listingkit_admin", "listingkit_operator"],
+    });
+  });
+
+  it("allows local debug data scope to be overridden from environment", () => {
+    vi.stubEnv("LISTINGKIT_UI_LOCAL_DEBUG_TENANT_ID", "org-286");
+    vi.stubEnv("LISTINGKIT_UI_LOCAL_DEBUG_USER_ID", "user-42");
+    vi.stubEnv("LISTINGKIT_UI_LOCAL_DEBUG_USERNAME", "debug-admin");
+    vi.stubEnv("LISTINGKIT_UI_LOCAL_DEBUG_ROLES", "listingkit_admin,platform_admin");
+
+    expect(getListingKitLocalDebugIdentity()).toEqual({
+      tenantId: "org-286",
+      userId: "user-42",
+      username: "debug-admin",
+      userType: "local_debug",
+      roles: ["listingkit_admin", "platform_admin"],
+    });
   });
 });
 

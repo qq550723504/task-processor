@@ -15,7 +15,18 @@ By default this does two things:
 - Starts the API with `-ZitadelAuthMode Disabled`.
 - Starts the UI with `-BypassAuthGate 1`.
 
-The API starter clears ZITADEL issuer/client/allowlist values from the current process before launching Go, so `.env` values cannot accidentally re-enable middleware. The UI bypass makes the Next auth gate and API proxy use a local `local-debug` identity instead of requiring browser login tokens.
+The API starter clears ZITADEL issuer/client/allowlist values from the current process before launching Go, so `.env` values cannot accidentally re-enable middleware. The UI bypass makes the Next auth gate and API proxy use a local debug identity instead of requiring browser login tokens.
+
+That local identity still goes through the normal ListingKit data-permission headers. By default it is:
+
+```env
+LISTINGKIT_UI_LOCAL_DEBUG_TENANT_ID=default
+LISTINGKIT_UI_LOCAL_DEBUG_USER_ID=local-debug
+LISTINGKIT_UI_LOCAL_DEBUG_USERNAME=local-debug
+LISTINGKIT_UI_LOCAL_DEBUG_ROLES=platform_admin,listingkit_admin,listingkit_operator
+```
+
+Use these variables when a local replay needs to behave like a specific tenant or user. The default `platform_admin` role lets the backend's existing ListingKit authorizer skip owner-only filtering without adding a special local-debug bypass in the Go API.
 
 The same defaults apply when starting each side separately:
 
@@ -53,3 +64,5 @@ The helper writes the token under `.local\listingkit-api-token.txt` and can expo
 ## Safety
 
 The bypass is for local development only. Do not use it for production checks, deployment validation, or tests whose purpose is to verify ZITADEL authorization behavior.
+
+`listingkit.ownerScopeRequired` is controlled by config or `TASK_PROCESSOR_LISTINGKIT_OWNER_SCOPE_REQUIRED`. The older `TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED` alias is still accepted for local `.env` compatibility.

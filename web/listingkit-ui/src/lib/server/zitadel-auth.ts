@@ -22,12 +22,18 @@ export type ZitadelAuthorizationResult = {
   reason?: string;
 };
 
+const LOCAL_DEBUG_DEFAULT_ROLES = [
+  "platform_admin",
+  "listingkit_admin",
+  "listingkit_operator",
+];
+
 const LOCAL_DEBUG_IDENTITY: ZitadelVerifiedIdentity = {
-  tenantId: "local-debug",
+  tenantId: "default",
   userId: "local-debug",
   username: "local-debug",
   userType: "local_debug",
-  roles: ["platform_admin", "listingkit_admin", "listingkit_operator"],
+  roles: LOCAL_DEBUG_DEFAULT_ROLES,
 };
 
 type ZitadelIntrospectionResponse = {
@@ -53,7 +59,21 @@ export function isListingKitLocalAuthBypassed() {
 }
 
 export function getListingKitLocalDebugIdentity(): ZitadelVerifiedIdentity {
-  return { ...LOCAL_DEBUG_IDENTITY, roles: [...(LOCAL_DEBUG_IDENTITY.roles ?? [])] };
+  return {
+    ...LOCAL_DEBUG_IDENTITY,
+    tenantId:
+      readOptionalEnv("LISTINGKIT_UI_LOCAL_DEBUG_TENANT_ID") ??
+      LOCAL_DEBUG_IDENTITY.tenantId,
+    userId:
+      readOptionalEnv("LISTINGKIT_UI_LOCAL_DEBUG_USER_ID") ??
+      LOCAL_DEBUG_IDENTITY.userId,
+    username:
+      readOptionalEnv("LISTINGKIT_UI_LOCAL_DEBUG_USERNAME") ??
+      LOCAL_DEBUG_IDENTITY.username,
+    roles:
+      readDelimitedEnvList("LISTINGKIT_UI_LOCAL_DEBUG_ROLES") ??
+      [...LOCAL_DEBUG_DEFAULT_ROLES],
+  };
 }
 
 export function resolvePublicAppOrigin() {
@@ -328,6 +348,21 @@ function readDelimitedEnvSet(...names: string[]) {
     }
   }
   return values;
+}
+
+function readDelimitedEnvList(...names: string[]) {
+  const values = [...readDelimitedEnvSet(...names)];
+  return values.length > 0 ? values : undefined;
+}
+
+function readOptionalEnv(...names: string[]) {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 function stringifyIdentityValue(value: unknown) {
