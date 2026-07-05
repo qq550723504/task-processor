@@ -32,6 +32,14 @@ func (s *taskStudioBatchService) syncStudioBatchRetryExecutionConfigFromDraft(ct
 		return nil
 	}
 
+	draftBatch := buildStudioBatchRecordFromSessionDraft(session, s.currentTime().UTC())
+	if err := validateStudioBatchRecordDesignSource(draftBatch); err != nil {
+		if validateStudioBatchRecordDesignSource(batch) == nil {
+			return nil
+		}
+		return err
+	}
+
 	batch.Prompt = session.Prompt
 	batch.StyleCount = session.StyleCount
 	batch.VariationIntensity = session.VariationIntensity
@@ -81,6 +89,18 @@ func refreshStudioBatchGenerationGraph(
 
 	now := currentTime().UTC()
 	batch := buildStudioBatchRecordFromSessionDraft(session, now)
+	if err := validateStudioBatchRecordDesignSource(batch); err != nil {
+		if existingErr == nil {
+			existing, getErr := repo.GetStudioBatch(ctx, batchID)
+			if getErr != nil {
+				return getErr
+			}
+			if validateStudioBatchRecordDesignSource(existing) == nil {
+				return nil
+			}
+		}
+		return err
+	}
 	items := expandStudioBatchItems(batch)
 	for index := range items {
 		items[index].CreatedAt = now.Add(time.Duration(index) * time.Second)

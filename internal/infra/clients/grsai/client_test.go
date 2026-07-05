@@ -1,4 +1,4 @@
-package nanobanana
+package grsai
 
 import (
 	"context"
@@ -186,7 +186,9 @@ func TestClientEditImageUsesGenerateEndpointForGPTImage(t *testing.T) {
 			if !ok || len(images) != 2 {
 				t.Fatalf("image = %#v", req["image"])
 			}
-			if images[0] != "https://example.com/source.png" || images[1] != "https://example.com/side.png" {
+			wantSource := serverURL + "/source.png"
+			wantSide := serverURL + "/side.png"
+			if images[0] != wantSource || images[1] != wantSide {
 				t.Fatalf("image urls = %#v", images)
 			}
 			_ = json.NewEncoder(w).Encode(submitResponse{
@@ -219,8 +221,8 @@ func TestClientEditImageUsesGenerateEndpointForGPTImage(t *testing.T) {
 		Model:  "gpt-image-2",
 		Prompt: "edit faithfully",
 		ImageURLs: []string{
-			"https://example.com/source.png",
-			"https://example.com/side.png",
+			serverURL + "/source.png",
+			serverURL + "/side.png",
 		},
 		Size: "1024x1024",
 	})
@@ -271,8 +273,8 @@ func TestClientSubmitImageGenerationReturnsAsyncJobMetadata(t *testing.T) {
 	if result.RequestID != "req-submit-1" {
 		t.Fatalf("request id = %q, want req-submit-1", result.RequestID)
 	}
-	if result.Provider != "nanobanana" {
-		t.Fatalf("provider = %q, want nanobanana", result.Provider)
+	if result.Provider != "grsai" {
+		t.Fatalf("provider = %q, want grsai", result.Provider)
 	}
 }
 
@@ -283,6 +285,18 @@ func TestClientSubmitImageEditReturnsDirectResultWhenGenerateAlreadySucceeded(t 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/api/generate":
+			var req map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			images, ok := req["image"].([]any)
+			if !ok || len(images) != 1 {
+				t.Fatalf("request image = %#v, want 1 reference image", req["image"])
+			}
+			want := serverURL + "/source.png"
+			if images[0] != want {
+				t.Fatalf("image[0] = %q, want original URL", images[0])
+			}
 			_ = json.NewEncoder(w).Encode(submitResponse{
 				ID:     "job-direct-1",
 				Status: "succeeded",
@@ -311,7 +325,7 @@ func TestClientSubmitImageEditReturnsDirectResultWhenGenerateAlreadySucceeded(t 
 	resp, err := client.SubmitImageEdit(context.Background(), &openaiclient.ImageEditRequest{
 		Model:     "gpt-image-2",
 		Prompt:    "edit faithfully",
-		ImageURLs: []string{"https://example.com/source.png"},
+		ImageURLs: []string{serverURL + "/source.png"},
 	})
 	if err != nil {
 		t.Fatalf("SubmitImageEdit() error = %v", err)
@@ -331,25 +345,35 @@ func TestClientSubmitImageEditReturnsDirectResultWhenGenerateAlreadySucceeded(t 
 }
 
 func TestClientSubmitImageEditReturnsAsyncJobMetadata(t *testing.T) {
+	var serverURL string
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/api/generate" {
-			t.Fatalf("path = %q", r.URL.Path)
+		switch r.URL.Path {
+		case "/v1/api/generate":
+			var req map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			images, ok := req["image"].([]any)
+			if !ok || len(images) != 2 {
+				t.Fatalf("request image = %#v, want 2 reference images", req["image"])
+			}
+			wantA := serverURL + "/a.png"
+			wantB := serverURL + "/b.png"
+			if images[0] != wantA || images[1] != wantB {
+				t.Fatalf("image urls = %#v", images)
+			}
+			w.Header().Set("X-Request-Id", "req-submit-edit-1")
+			_ = json.NewEncoder(w).Encode(submitResponse{
+				ID:     "job-async-edit-1",
+				Status: "running",
+			})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
 		}
-		var req map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			t.Fatalf("decode request: %v", err)
-		}
-		images, ok := req["image"].([]any)
-		if !ok || len(images) != 2 {
-			t.Fatalf("request image = %#v, want 2 reference images", req["image"])
-		}
-		w.Header().Set("X-Request-Id", "req-submit-edit-1")
-		_ = json.NewEncoder(w).Encode(submitResponse{
-			ID:     "job-async-edit-1",
-			Status: "running",
-		})
 	}))
 	defer server.Close()
+	serverURL = server.URL
 
 	client := NewClient(Config{
 		APIKey:     "test-key",
@@ -361,7 +385,7 @@ func TestClientSubmitImageEditReturnsAsyncJobMetadata(t *testing.T) {
 
 	result, err := client.SubmitImageEdit(context.Background(), &openaiclient.ImageEditRequest{
 		Prompt:    "flat artwork",
-		ImageURLs: []string{"https://example.com/a.png", "https://example.com/b.png"},
+		ImageURLs: []string{serverURL + "/a.png", serverURL + "/b.png"},
 	})
 	if err != nil {
 		t.Fatalf("SubmitImageEdit() error = %v", err)
@@ -371,6 +395,56 @@ func TestClientSubmitImageEditReturnsAsyncJobMetadata(t *testing.T) {
 	}
 	if result.RequestID != "req-submit-edit-1" {
 		t.Fatalf("request id = %q, want req-submit-edit-1", result.RequestID)
+	}
+}
+
+func TestClientSubmitImageEditSendsReferenceImagesAsURLs(t *testing.T) {
+	var serverURL string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/api/generate":
+			var req map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			images, ok := req["image"].([]any)
+			if !ok || len(images) != 1 {
+				t.Fatalf("request image = %#v, want 1 reference image", req["image"])
+			}
+			want := serverURL + "/source.png"
+			if images[0] != want {
+				t.Fatalf("image[0] = %q, want original URL", images[0])
+			}
+			w.Header().Set("X-Request-Id", "req-submit-edit-1")
+			_ = json.NewEncoder(w).Encode(submitResponse{
+				ID:     "job-async-edit-1",
+				Status: "running",
+			})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	client := NewClient(Config{
+		APIKey:     "test-key",
+		Model:      "gpt-image-2",
+		SubmitURL:  server.URL + "/v1",
+		Timeout:    time.Second,
+		HTTPClient: server.Client(),
+	})
+
+	result, err := client.SubmitImageEdit(context.Background(), &openaiclient.ImageEditRequest{
+		Prompt:    "flat artwork",
+		ImageURLs: []string{serverURL + "/source.png"},
+	})
+	if err != nil {
+		t.Fatalf("SubmitImageEdit() error = %v", err)
+	}
+	if result.JobID != "job-async-edit-1" {
+		t.Fatalf("job id = %q, want job-async-edit-1", result.JobID)
 	}
 }
 

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"task-processor/internal/infra/clients/nanobanana"
+	"task-processor/internal/infra/clients/grsai"
 	productimage "task-processor/internal/productimage"
 	"task-processor/internal/productimage/store"
 )
@@ -454,7 +454,7 @@ func TestService_ProcessImages_DowngradesSubjectModerationToNeedsReview(t *testi
 	svc, err := productimage.NewService(&productimage.ServiceConfig{
 		TaskRepo:       repo,
 		AssetPublisher: &stubAssetPublisher{},
-		SubjectExtractor: &failingSubjectExtractor{err: &nanobanana.JobError{
+		SubjectExtractor: &failingSubjectExtractor{err: &grsai.JobError{
 			Reason: "output_moderation",
 			Detail: "blocked by provider moderation",
 		}},

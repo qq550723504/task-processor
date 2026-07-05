@@ -342,7 +342,7 @@ func TestExecuteStudioBatchRunItemResumesExistingGraphWithoutWipingMaterializedD
 	}
 }
 
-func TestExecuteStudioBatchRunItemRetriesFailedItemsWhenResumeHasNoPendingWork(t *testing.T) {
+func TestExecuteStudioBatchRunItemStopsOnFailedItemsWhenResumeHasNoPendingWork(t *testing.T) {
 	repo := NewMemStudioBatchRepository()
 	sessionRepo := &studioBatchRunExecutorSessionRepoStub{
 		session: &SheinStudioSession{
@@ -444,29 +444,31 @@ func TestExecuteStudioBatchRunItemRetriesFailedItemsWhenResumeHasNoPendingWork(t
 		}},
 	})
 
-	if err := svc.executeStudioBatchRunItem(ctx, "batch-1"); err != nil {
-		t.Fatalf("executeStudioBatchRunItem() error = %v, want failed item retried", err)
+	if err := svc.executeStudioBatchRunItem(ctx, "batch-1"); err == nil {
+		t.Fatal("executeStudioBatchRunItem() error = nil, want failed item error")
+	} else if !strings.Contains(err.Error(), "image_gpt_image_2") {
+		t.Fatalf("executeStudioBatchRunItem() error = %v, want original failed item error", err)
 	}
 
 	detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
 	if err != nil {
 		t.Fatalf("GetStudioBatchDetail() error = %v", err)
 	}
-	if detail.Batch == nil || detail.Batch.Status != StudioBatchStatusReviewReady {
-		t.Fatalf("detail.Batch = %+v, want review_ready after retry", detail.Batch)
+	if detail.Batch == nil || detail.Batch.Status != StudioBatchStatusPartiallyFailed {
+		t.Fatalf("detail.Batch = %+v, want partially_failed without automatic retry", detail.Batch)
 	}
 	if got := len(detail.DesignsByItem["item-ready"]); got != 1 {
 		t.Fatalf("ready item designs = %d, want preserved existing design", got)
 	}
-	if got := len(detail.DesignsByItem["item-failed"]); got != 1 {
-		t.Fatalf("retried item designs = %d, want one new design", got)
+	if got := len(detail.DesignsByItem["item-failed"]); got != 0 {
+		t.Fatalf("retried item designs = %d, want no new design without explicit retry", got)
 	}
 	attempts := detail.AttemptsByItem["item-failed"]
-	if len(attempts) != 4 {
-		t.Fatalf("failed item attempts = %d, want old failed attempts plus manual retry", len(attempts))
+	if len(attempts) != 3 {
+		t.Fatalf("failed item attempts = %d, want preserved failed attempts only", len(attempts))
 	}
-	if attempts[3].Status != StudioGenerationAttemptStatusMaterialized {
-		t.Fatalf("retry attempt status = %q, want %q", attempts[3].Status, StudioGenerationAttemptStatusMaterialized)
+	if attempts[2].Status != StudioGenerationAttemptStatusFailed {
+		t.Fatalf("last attempt status = %q, want %q", attempts[2].Status, StudioGenerationAttemptStatusFailed)
 	}
 }
 
@@ -510,7 +512,7 @@ func TestExecuteStudioBatchRunItemReturnsStillRunningForAsyncSubmittedBatch(t *t
 					Submit: &AIImageAsyncSubmit{
 						JobID:             "job-async-1",
 						RequestID:         "req-async-1",
-						Provider:          "nanobanana",
+						Provider:          "grsai",
 						Status:            AIImageAsyncResultRunning,
 						RawSubmitResponse: `{"id":"job-async-1","status":"running"}`,
 						AcceptedAt:        time.Date(2026, 6, 20, 13, 0, 0, 0, time.UTC),
@@ -550,7 +552,7 @@ func TestExecuteStudioBatchRunItemReturnsStillRunningForAsyncSubmittedBatch(t *t
 	}
 }
 
-func TestExecuteStudioBatchRunItemUsesOnlyHotStyleReferenceImagesForBatchGeneration(t *testing.T) {
+func TestExecuteStudioBatchRunItemUsesHotReferenceImageDirectlyForBatchGeneration(t *testing.T) {
 	repo := NewMemStudioBatchRepository()
 	sessionRepo := &studioBatchRunExecutorSessionRepoStub{
 		session: &SheinStudioSession{
@@ -616,26 +618,18 @@ func TestExecuteStudioBatchRunItemUsesOnlyHotStyleReferenceImagesForBatchGenerat
 	if capturedReq == nil {
 		t.Fatal("capturedReq = nil, want batch generation request")
 	}
-	if got, want := capturedReq.Prompt, "summer flowers\nHot-selling reference direction for original artwork:\nCreate an original retro badge."; got != want {
-		t.Fatalf("capturedReq.Prompt = %q, want %q", got, want)
+	if got := capturedReq.Prompt; got != "summer flowers" {
+		t.Fatalf("capturedReq.Prompt = %q, want user prompt only", got)
 	}
 	if got, want := capturedReq.ArtworkGenerationMode, "hot_reference"; got != want {
 		t.Fatalf("capturedReq.ArtworkGenerationMode = %q, want %q", got, want)
 	}
-	if got, want := capturedReq.ProductReferenceImageURLs, []string{
-		"https://example.com/hot-ref.png",
-	}; len(got) != len(want) {
-		t.Fatalf("len(capturedReq.ProductReferenceImageURLs) = %d, want %d (%v)", len(got), len(want), got)
-	} else {
-		for index := range want {
-			if got[index] != want[index] {
-				t.Fatalf("capturedReq.ProductReferenceImageURLs[%d] = %q, want %q (all=%v)", index, got[index], want[index], got)
-			}
-		}
+	if got, want := capturedReq.ProductReferenceImageURLs, []string{"https://example.com/hot-ref.png"}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("capturedReq.ProductReferenceImageURLs = %v, want %v", got, want)
 	}
 }
 
-func TestExecuteStudioBatchRunItemDoesNotUseHotStyleReferenceImagesWithoutSuccessfulAnalysis(t *testing.T) {
+func TestExecuteStudioBatchRunItemUsesHotStyleReferenceImagesWithoutAnalysis(t *testing.T) {
 	repo := NewMemStudioBatchRepository()
 	sessionRepo := &studioBatchRunExecutorSessionRepoStub{
 		session: &SheinStudioSession{
@@ -689,14 +683,86 @@ func TestExecuteStudioBatchRunItemDoesNotUseHotStyleReferenceImagesWithoutSucces
 	if capturedReq == nil {
 		t.Fatal("capturedReq = nil, want batch generation request")
 	}
-	if got, want := capturedReq.Prompt, "summer flowers"; got != want {
-		t.Fatalf("capturedReq.Prompt = %q, want %q", got, want)
+	if got := capturedReq.Prompt; got != "summer flowers" {
+		t.Fatalf("capturedReq.Prompt = %q, want user prompt only", got)
 	}
-	if got, want := capturedReq.ArtworkGenerationMode, "theme_prompt"; got != want {
+	if got, want := capturedReq.ArtworkGenerationMode, "hot_reference"; got != want {
 		t.Fatalf("capturedReq.ArtworkGenerationMode = %q, want %q", got, want)
 	}
-	if len(capturedReq.ProductReferenceImageURLs) != 0 {
-		t.Fatalf("capturedReq.ProductReferenceImageURLs = %v, want empty without successful hot-style analysis", capturedReq.ProductReferenceImageURLs)
+	if got, want := capturedReq.ProductReferenceImageURLs, []string{"https://example.com/hot-ref.png"}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("capturedReq.ProductReferenceImageURLs = %v, want %v", got, want)
+	}
+}
+
+func TestExecuteStudioBatchRunItemDoesNotAutoRetryFailedBatchItem(t *testing.T) {
+	repo := NewMemStudioBatchRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Date(2026, 6, 20, 13, 25, 0, 0, time.UTC)
+
+	if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), []StudioBatchItemRecord{
+		{
+			ID:               "item-1",
+			BatchID:          "batch-1",
+			TargetGroupKey:   "size:1200x1200",
+			TargetGroupLabel: "1200 x 1200",
+			Status:           StudioBatchItemStatusFailed,
+			LastError:        "submit image generation request returned status 400: generate image failed",
+			SelectionCount:   1,
+			CreatedAt:        now.Add(-20 * time.Minute),
+			UpdatedAt:        now.Add(-20 * time.Minute),
+		},
+	}, []StudioGenerationAttemptRecord{
+		{
+			ID:           "attempt-1",
+			ItemID:       "item-1",
+			AttemptNo:    1,
+			Status:       StudioGenerationAttemptStatusFailed,
+			ErrorMessage: "submit image generation request returned status 400: generate image failed",
+			CreatedAt:    now.Add(-20 * time.Minute),
+			UpdatedAt:    now.Add(-20 * time.Minute),
+		},
+	}, nil); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	executions := 0
+	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
+	svc.studio.batchGroup.batch = newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo: repo,
+		generator: newStudioBatchGenerationService(studioBatchGenerationServiceConfig{
+			repo: repo,
+			execute: func(_ context.Context, input StudioBatchGenerateExecutionInput) (*StudioBatchGenerateExecutionOutput, error) {
+				executions++
+				return &StudioBatchGenerateExecutionOutput{
+					Response:  testStudioDesignResponse("design-1", "https://example.com/design.png"),
+					BatchID:   input.BatchID,
+					ItemID:    input.ItemID,
+					AttemptID: input.AttemptID,
+				}, nil
+			},
+			currentTime: func() time.Time { return now },
+		}),
+	})
+
+	err := svc.executeStudioBatchRunItem(ctx, "batch-1")
+	if err == nil {
+		t.Fatal("executeStudioBatchRunItem() error = nil, want existing failed item error")
+	}
+	if !strings.Contains(err.Error(), "generate image failed") {
+		t.Fatalf("executeStudioBatchRunItem() error = %v, want original failed item error", err)
+	}
+	if executions != 0 {
+		t.Fatalf("executions = %d, want no automatic retry generation", executions)
+	}
+	detail, getErr := repo.GetStudioBatchDetail(ctx, "batch-1")
+	if getErr != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", getErr)
+	}
+	if got := detail.Items[0].Status; got != StudioBatchItemStatusFailed {
+		t.Fatalf("item status = %q, want failed", got)
+	}
+	if got := len(detail.AttemptsByItem["item-1"]); got != 1 {
+		t.Fatalf("attempt count = %d, want original failed attempt only", got)
 	}
 }
 

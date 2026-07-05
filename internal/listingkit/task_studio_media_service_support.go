@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -39,6 +40,44 @@ func (s *taskStudioMediaService) generateStudioDesignSiblingThemes(ctx context.C
 		return buildFallbackStudioDesignThemes(baseTheme, count), parseErr
 	}
 	return themes, nil
+}
+
+func (s *taskStudioMediaService) resolveStudioDesignReferenceImageURLs(ctx context.Context, req *StudioDesignRequest) error {
+	if req == nil || len(req.ProductReferenceImageURLs) == 0 || s == nil || s.resolveUploadedImagePublicURL == nil {
+		return nil
+	}
+	resolved := make([]string, 0, len(req.ProductReferenceImageURLs))
+	for _, rawURL := range req.ProductReferenceImageURLs {
+		resolvedURL, err := s.resolveStudioDesignReferenceImageURL(ctx, rawURL)
+		if err != nil {
+			return err
+		}
+		resolved = append(resolved, resolvedURL)
+	}
+	req.ProductReferenceImageURLs = resolved
+	return nil
+}
+
+func (s *taskStudioMediaService) resolveStudioDesignReferenceImageURL(ctx context.Context, rawURL string) (string, error) {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" || s == nil || s.resolveUploadedImagePublicURL == nil {
+		return trimmed, nil
+	}
+	candidates := studioReferenceUploadedImageKeyCandidates(trimmed)
+	for _, key := range candidates {
+		publicURL, err := s.resolveUploadedImagePublicURL(ctx, key)
+		if err == nil {
+			validated, validateErr := validateStudioReferencePublicHTTPSURL(publicURL)
+			if validateErr != nil {
+				return "", fmt.Errorf("invalid request: uploaded reference image %q does not have a public https url configured", trimmed)
+			}
+			return validated, nil
+		}
+		if !errors.Is(err, ErrUploadedImageNotFound) {
+			return "", fmt.Errorf("invalid request: resolve uploaded reference image %q: %w", trimmed, err)
+		}
+	}
+	return trimmed, nil
 }
 
 func (s *taskStudioMediaService) generateStudioDesignImage(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*AIImageResponse, error) {

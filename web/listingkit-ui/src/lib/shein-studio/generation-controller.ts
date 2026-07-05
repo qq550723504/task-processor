@@ -87,9 +87,7 @@ type ExecuteStandaloneGenerationResult = {
 export function resolveGenerationStartValidation({
   activeSelection,
   artworkGenerationMode = "theme_prompt",
-  hotStyleReferenceBrief,
   hotStyleReferenceImageUrls,
-  hotStyleReferencePrompt,
   prompt,
   sheinStoreId,
 }: {
@@ -109,12 +107,8 @@ export function resolveGenerationStartValidation({
   }
   if (artworkGenerationMode === "hot_reference") {
     const referenceImageUrls = normalizeReferenceImageUrls(hotStyleReferenceImageUrls);
-    if (
-      referenceImageUrls.length === 0 ||
-      !hotStyleReferenceBrief?.trim() ||
-      !hotStyleReferencePrompt?.trim()
-    ) {
-      return { error: "请先提取热销款风格。", focusPrompt: false };
+    if (referenceImageUrls.length === 0) {
+      return { error: "请先上传 1 张热销参考图。", focusPrompt: false };
     }
     if (referenceImageUrls.length > 1) {
       return { error: "热销参考模式只能使用 1 张参考图。", focusPrompt: false };
@@ -130,9 +124,7 @@ export function resolveGenerationStartValidation({
 export function resolveRegenerationStartValidation({
   activeSelection,
   artworkGenerationMode = "theme_prompt",
-  hotStyleReferenceBrief,
   hotStyleReferenceImageUrls,
-  hotStyleReferencePrompt,
   prompt,
 }: {
   activeSelection?: SDSProductVariantSelection;
@@ -147,12 +139,8 @@ export function resolveRegenerationStartValidation({
   }
   if (artworkGenerationMode === "hot_reference") {
     const referenceImageUrls = normalizeReferenceImageUrls(hotStyleReferenceImageUrls);
-    if (
-      referenceImageUrls.length === 0 ||
-      !hotStyleReferenceBrief?.trim() ||
-      !hotStyleReferencePrompt?.trim()
-    ) {
-      return { error: "请先提取热销款风格。", focusPrompt: false };
+    if (referenceImageUrls.length === 0) {
+      return { error: "请先上传 1 张热销参考图。", focusPrompt: false };
     }
     if (referenceImageUrls.length > 1) {
       return { error: "热销参考模式只能使用 1 张参考图。", focusPrompt: false };
@@ -275,9 +263,6 @@ export function buildHotStyleReferenceGenerationInput(input: {
   productReferenceImageUrls?: string[];
   hotStyleReferenceImageUrls?: string[];
 }) {
-  const referenceBrief = input.hotStyleReferenceBrief?.trim();
-  const referencePrompt = input.hotStyleReferencePrompt?.trim();
-  const hasAnalyzedReference = Boolean(referenceBrief && referencePrompt);
   const artworkGenerationMode = input.artworkGenerationMode ?? "theme_prompt";
   if (artworkGenerationMode === "theme_prompt") {
     return {
@@ -285,12 +270,12 @@ export function buildHotStyleReferenceGenerationInput(input: {
       productReferenceImageUrls: [],
     };
   }
-  const normalizedHotStyleReferences = hasAnalyzedReference
-    ? normalizeReferenceImageUrls(input.hotStyleReferenceImageUrls)
-    : [];
+  const normalizedHotStyleReferences = normalizeReferenceImageUrls(
+    input.hotStyleReferenceImageUrls,
+  );
   if (artworkGenerationMode === "hot_reference") {
     return {
-      prompt: hasAnalyzedReference ? (referencePrompt ?? "") : "",
+      prompt: input.prompt.trim(),
       productReferenceImageUrls: normalizedHotStyleReferences.slice(0, 1),
     };
   }
@@ -562,11 +547,14 @@ export function buildSheinStudioGenerateRequest({
   variationIntensity: SheinStudioVariationIntensity;
 }): SheinStudioGenerateRequest {
   const trimmedModel = artworkModel.trim();
-  const normalizedPrompt = normalizeSheinStudioPromptWithSDSSize({
-    prompt,
-    printableWidth,
-    printableHeight,
-  });
+  const normalizedPrompt =
+    artworkGenerationMode === "hot_reference"
+      ? prompt.trim()
+      : normalizeSheinStudioPromptWithSDSSize({
+          prompt,
+          printableWidth,
+          printableHeight,
+        });
   return {
     prompt: normalizedPrompt,
     artworkGenerationMode,

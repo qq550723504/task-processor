@@ -9,9 +9,9 @@ import (
 func TestBootstrapKeepsModelProviderAssemblyInDedicatedFile(t *testing.T) {
 	bootstrapSource := readProductImageHTTPAPIBoundaryFile(t, "bootstrap.go")
 	for _, marker := range []string{
-		`"task-processor/internal/infra/clients/nanobanana"`,
+		`"task-processor/internal/infra/clients/grsai"`,
 		"func buildModelProvider(",
-		"nanobanana.NewClient(",
+		"grsai.NewClient(",
 	} {
 		if strings.Contains(bootstrapSource, marker) {
 			t.Fatalf("bootstrap.go should delegate ProductImage model provider assembly to model_provider_builder.go; found %s", marker)
@@ -20,9 +20,9 @@ func TestBootstrapKeepsModelProviderAssemblyInDedicatedFile(t *testing.T) {
 
 	builderSource := readProductImageHTTPAPIBoundaryFile(t, "model_provider_builder.go")
 	for _, marker := range []string{
-		`"task-processor/internal/infra/clients/nanobanana"`,
+		`"task-processor/internal/infra/clients/grsai"`,
 		"func buildModelProvider(",
-		"nanobanana.NewClient(",
+		"grsai.NewClient(",
 	} {
 		if !strings.Contains(builderSource, marker) {
 			t.Fatalf("model_provider_builder.go missing %s", marker)

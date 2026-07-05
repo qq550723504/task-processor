@@ -179,6 +179,15 @@ func buildResolveUploadedImagePublicURLFunc(s *service) func(context.Context, st
 	store := resolveStudioUploadStore(s)
 	if repo != nil {
 		return func(ctx context.Context, key string) (string, error) {
+			if store != nil {
+				stored, err := store.Open(ctx, key)
+				if err == nil {
+					return validateStudioReferencePublicHTTPSURL(stored.PublicURL)
+				}
+				if !shouldFallbackUploadedImagePublicURLLookup(err) {
+					return "", err
+				}
+			}
 			record, err := repo.GetUploadedImage(ctx, key)
 			if err == nil {
 				if publicURL, validateErr := validateStudioReferencePublicHTTPSURL(record.PublicURL); validateErr == nil {
@@ -186,13 +195,6 @@ func buildResolveUploadedImagePublicURLFunc(s *service) func(context.Context, st
 				}
 			} else if !shouldFallbackUploadedImagePublicURLLookup(err) {
 				return "", err
-			}
-			if store != nil {
-				stored, err := store.Open(ctx, key)
-				if err != nil {
-					return "", err
-				}
-				return validateStudioReferencePublicHTTPSURL(stored.PublicURL)
 			}
 			if err != nil {
 				return "", err

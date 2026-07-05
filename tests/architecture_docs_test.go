@@ -1137,7 +1137,7 @@ func TestExternalClientBoundaryInventoryDefinesCouplingHotspots(t *testing.T) {
 		"in-repository database/repository access",
 		"freeze current seams",
 		"`internal/infra/clients/openai`",
-		"`internal/infra/clients/nanobanana`",
+		"`internal/infra/clients/grsai`",
 		"Hotspots",
 		"`internal/listingkit`",
 		"`internal/publishing/shein`",

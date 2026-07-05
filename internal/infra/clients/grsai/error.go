@@ -1,4 +1,4 @@
-package nanobanana
+package grsai
 
 import "strings"
 
@@ -9,19 +9,19 @@ type JobError struct {
 
 func (e *JobError) Error() string {
 	if e == nil {
-		return "nanobanana job failed"
+		return "grsai job failed"
 	}
 	reason := strings.TrimSpace(e.Reason)
 	detail := strings.TrimSpace(e.Detail)
 	switch {
 	case reason == "" && detail == "":
-		return "nanobanana job failed"
+		return "grsai job failed"
 	case detail == "":
-		return "nanobanana job failed: " + reason
+		return "grsai job failed: " + reason
 	case reason == "":
-		return "nanobanana job failed: " + detail
+		return "grsai job failed: " + detail
 	default:
-		return "nanobanana job failed: " + reason + " (" + detail + ")"
+		return "grsai job failed: " + reason + " (" + detail + ")"
 	}
 }
 

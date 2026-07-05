@@ -47,6 +47,9 @@ func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, r
 	if s.imageGenerator == nil {
 		return nil, fmt.Errorf("studio image generator is not configured")
 	}
+	if err := s.resolveStudioDesignReferenceImageURLs(ctx, req); err != nil {
+		return nil, err
+	}
 	referenceURLs, err := validateStudioDesignReferenceImageURLs(req)
 	if err != nil {
 		return nil, err
@@ -142,6 +145,9 @@ func (s *taskStudioMediaService) GenerateStudioDesigns(ctx context.Context, req 
 	}
 	if s.imageGenerator == nil {
 		return nil, fmt.Errorf("studio image generator is not configured")
+	}
+	if err := s.resolveStudioDesignReferenceImageURLs(ctx, req); err != nil {
+		return nil, err
 	}
 	referenceURLs, err := validateStudioDesignReferenceImageURLs(req)
 	if err != nil {

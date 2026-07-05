@@ -609,19 +609,12 @@ describe("SheinStudioGenerationPanel", () => {
     );
   });
 
-  it("renders hot style reference controls and applies extracted prompt", async () => {
+  it("renders direct hot reference controls without style extraction", async () => {
     const user = userEvent.setup();
-    const analyzeReferenceStyle = vi.fn().mockResolvedValue({
-      referenceStyleBrief: "retro badge with cream and red palette",
-      sanitizedPrompt:
-        "Create an original retro badge with cream and red palette.",
-      warnings: [],
-    });
-    const setHotStyleReferenceBrief = vi.fn();
-    const setHotStyleReferencePrompt = vi.fn();
+    const setPrompt = vi.fn();
     const panelProps = buildPanelProps({
       artworkGenerationMode: "hot_reference",
-      prompt: "retro cherries",
+      prompt: "",
     });
 
     render(
@@ -629,31 +622,27 @@ describe("SheinStudioGenerationPanel", () => {
         {...panelProps}
         actions={{
           ...panelProps.actions,
-          analyzeReferenceStyle,
-          setHotStyleReferenceBrief,
-          setHotStyleReferencePrompt,
+          setPrompt,
         }}
         form={{
           ...panelProps.form,
-          hotStyleReferenceBrief: "",
           hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
-          hotStyleReferencePrompt: "",
+          prompt: "",
         }}
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "提取热销款风格" }));
+    expect(
+      screen.queryByRole("button", { name: "提取热销款风格" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("热销款参考")).toBeInTheDocument();
+    const promptEditor = screen.getByPlaceholderText(
+      "可选：补充你想要的主题、文字、颜色或图案方向。",
+    );
+    expect(promptEditor).toBeEnabled();
 
-    expect(analyzeReferenceStyle).toHaveBeenCalledWith({
-      referenceImageUrls: ["https://example.com/ref.png"],
-      basePrompt: "retro cherries",
-    });
-    expect(setHotStyleReferenceBrief).toHaveBeenCalledWith(
-      "retro badge with cream and red palette",
-    );
-    expect(setHotStyleReferencePrompt).toHaveBeenCalledWith(
-      expect.stringContaining("original retro badge"),
-    );
+    await user.type(promptEditor, "retro cherries");
+    expect(setPrompt).toHaveBeenCalled();
   });
 
   it("shows prompt mode only when generating artwork from a theme prompt", () => {
@@ -670,83 +659,7 @@ describe("SheinStudioGenerationPanel", () => {
     expect(screen.queryByText("提示词模式")).not.toBeInTheDocument();
   });
 
-  it("keeps hot style prompt editing locked until reference style extraction succeeds", async () => {
-    const user = userEvent.setup();
-    const setHotStyleReferencePrompt = vi.fn();
-    const panelProps = buildPanelProps({
-      hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
-      hotStyleReferencePrompt: "",
-    });
-
-    render(
-      <SheinStudioGenerationPanel
-        {...panelProps}
-        actions={{
-          ...panelProps.actions,
-          setHotStyleReferencePrompt,
-        }}
-      />,
-    );
-
-    const promptEditor =
-      screen.getByPlaceholderText("先提取热销款风格后再微调。");
-    expect(promptEditor).toBeDisabled();
-
-    await user.type(promptEditor, "manual hot style prompt");
-    expect(setHotStyleReferencePrompt).not.toHaveBeenCalled();
-  });
-
-  it("clears stale hot style prompt when extraction returns an empty sanitized prompt", async () => {
-    const user = userEvent.setup();
-    const analyzeReferenceStyle = vi.fn().mockResolvedValue({
-      referenceStyleBrief: "no reusable visual pattern",
-      sanitizedPrompt: "",
-      warnings: [],
-    });
-    const setHotStyleReferenceBrief = vi.fn();
-    const setHotStyleReferencePrompt = vi.fn();
-    const panelProps = buildPanelProps({
-      artworkGenerationMode: "hot_reference",
-      prompt: "retro cherries",
-    });
-
-    render(
-      <SheinStudioGenerationPanel
-        {...panelProps}
-        actions={{
-          ...panelProps.actions,
-          analyzeReferenceStyle,
-          setHotStyleReferenceBrief,
-          setHotStyleReferencePrompt,
-        }}
-        form={{
-          ...panelProps.form,
-          hotStyleReferenceBrief: "old brief",
-          hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
-          hotStyleReferencePrompt: "old extracted prompt",
-        }}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "提取热销款风格" }));
-
-    expect(setHotStyleReferenceBrief).toHaveBeenCalledWith(
-      "no reusable visual pattern",
-    );
-    expect(setHotStyleReferencePrompt).toHaveBeenCalledWith("");
-  });
-
-  it("shows analyzer warnings and clears derived hot-style state after URL edits", async () => {
-    const user = userEvent.setup();
-    const analyzeReferenceStyle = vi.fn().mockResolvedValue({
-      referenceStyleBrief: "retro badge with cream and red palette",
-      sanitizedPrompt:
-        "Create an original retro badge with cream and red palette.",
-      warnings: [
-        "部分参考图返回了非结构化分析结果，仅保留可安全复用的风格提示。",
-        "已移除品牌、Logo、原文案或过于接近原图的描述。",
-      ],
-    });
+  it("clears stale derived hot-style state after URL edits", () => {
     const setHotStyleReferenceBrief = vi.fn();
     const setHotStyleReferenceImageUrls = vi.fn();
     const setHotStyleReferencePrompt = vi.fn();
@@ -760,24 +673,12 @@ describe("SheinStudioGenerationPanel", () => {
         {...panelProps}
         actions={{
           ...panelProps.actions,
-          analyzeReferenceStyle,
           setHotStyleReferenceBrief,
           setHotStyleReferenceImageUrls,
           setHotStyleReferencePrompt,
         }}
       />,
     );
-
-    await user.click(screen.getByRole("button", { name: "提取热销款风格" }));
-
-    expect(
-      screen.getByText(
-        "部分参考图返回了非结构化分析结果，仅保留可安全复用的风格提示。",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByText("已移除品牌、Logo、原文案或过于接近原图的描述。"),
-    ).toBeInTheDocument();
 
     fireEvent.change(
       screen.getByPlaceholderText("填写 1 个热销款参考图 URL。"),
@@ -796,14 +697,6 @@ describe("SheinStudioGenerationPanel", () => {
     ]);
     expect(setHotStyleReferenceBrief).toHaveBeenCalledWith("");
     expect(setHotStyleReferencePrompt).toHaveBeenCalledWith("");
-    expect(
-      screen.queryByText(
-        "部分参考图返回了非结构化分析结果，仅保留可安全复用的风格提示。",
-      ),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("已移除品牌、Logo、原文案或过于接近原图的描述。"),
-    ).not.toBeInTheDocument();
   });
 
   it("uploads only one local hot style reference image and replaces the current URL", async () => {
@@ -854,13 +747,7 @@ describe("SheinStudioGenerationPanel", () => {
     expect(setHotStyleReferencePrompt).toHaveBeenCalledWith("");
   });
 
-  it("analyzes only the first hot style reference URL from legacy multi-image state", async () => {
-    const user = userEvent.setup();
-    const analyzeReferenceStyle = vi.fn().mockResolvedValue({
-      referenceStyleBrief: "retro badge",
-      sanitizedPrompt: "Create an original retro badge.",
-      warnings: [],
-    });
+  it("does not render style extraction for legacy multi-image state", () => {
     const panelProps = buildPanelProps({
       artworkGenerationMode: "hot_reference",
       prompt: "retro cherries",
@@ -869,10 +756,6 @@ describe("SheinStudioGenerationPanel", () => {
     render(
       <SheinStudioGenerationPanel
         {...panelProps}
-        actions={{
-          ...panelProps.actions,
-          analyzeReferenceStyle,
-        }}
         form={{
           ...panelProps.form,
           hotStyleReferenceImageUrls: [
@@ -883,11 +766,8 @@ describe("SheinStudioGenerationPanel", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", { name: "提取热销款风格" }));
-
-    expect(analyzeReferenceStyle).toHaveBeenCalledWith({
-      referenceImageUrls: ["https://example.com/ref.png"],
-      basePrompt: "retro cherries",
-    });
+    expect(
+      screen.queryByRole("button", { name: "提取热销款风格" }),
+    ).not.toBeInTheDocument();
   });
 });

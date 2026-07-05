@@ -89,5 +89,5 @@ func TestAIClientBuildersFileOwnsStrictClientConstruction(t *testing.T) {
 	require.Contains(t, content, "func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ChatCompleter {")
 	require.Contains(t, content, "func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ImageGenerator {")
 	require.Contains(t, content, "func buildStrictListingKitNanobananaImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ImageGenerator {")
-	require.Contains(t, content, "nanobanana.NewClient(")
+	require.Contains(t, content, "grsai.NewClient(")
 }

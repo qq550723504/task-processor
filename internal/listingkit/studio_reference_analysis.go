@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path"
 	"regexp"
 	"strings"
 )
@@ -336,6 +337,40 @@ func studioReferenceUploadedImageKeyFromURL(rawURL string) (string, bool) {
 	}
 	key := strings.TrimSpace(strings.TrimPrefix(parsed.Path, prefix))
 	return key, key != ""
+}
+
+func studioReferenceUploadedImageKeyCandidates(rawURL string) []string {
+	trimmed := strings.TrimSpace(rawURL)
+	if trimmed == "" {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	result := make([]string, 0, 2)
+	appendKey := func(key string) {
+		key = strings.TrimSpace(strings.TrimPrefix(key, "/"))
+		if key == "" {
+			return
+		}
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		result = append(result, key)
+	}
+	if key, ok := studioReferenceUploadedImageKeyFromURL(trimmed); ok {
+		appendKey(key)
+	}
+	parsed, err := url.ParseRequestURI(trimmed)
+	if err != nil || parsed == nil || !parsed.IsAbs() {
+		return result
+	}
+	cleanPath := strings.TrimPrefix(path.Clean(parsed.Path), "/")
+	const assetPrefix = "listingkit-assets/"
+	if strings.HasPrefix(cleanPath, assetPrefix) {
+		appendKey(strings.TrimPrefix(cleanPath, assetPrefix))
+	}
+	appendKey(cleanPath)
+	return result
 }
 
 func validateStudioReferencePublicHTTPSURL(rawURL string) (string, error) {

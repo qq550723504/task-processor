@@ -7,6 +7,13 @@ describe("toImageProxyUrl", () => {
     expect(toImageProxyUrl(url)).toBe(url);
   });
 
+  it("keeps Tencent COS image URLs direct so generated designs do not depend on the local proxy", () => {
+    const url =
+      "https://cos-1303159911.cos.na-ashburn.myqcloud.com/20260705/test.png";
+
+    expect(toImageProxyUrl(url)).toBe(url);
+  });
+
   it("proxies other remote images", () => {
     const url = "https://cdn.sdspod.com/images/test.jpg";
 

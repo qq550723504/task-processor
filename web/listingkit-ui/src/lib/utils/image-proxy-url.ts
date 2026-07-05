@@ -18,11 +18,19 @@ export function toImageProxyUrl(url?: string | null) {
     if (parsed.pathname.startsWith(listingKitUploadPrefix)) {
       return `${parsed.pathname.replace(listingKitUploadPrefix, "/api/listing-kits/uploads/files/")}${parsed.search}`;
     }
-    if (parsed.hostname.toLowerCase() === "oss.shuomiai.com") {
+    if (isDirectPublicImageHost(parsed.hostname)) {
       return trimmed;
     }
   } catch {
     // Fall through to the proxy for relative or malformed-but-displayable values.
   }
   return `/api/image-proxy?url=${encodeURIComponent(trimmed)}`;
+}
+
+function isDirectPublicImageHost(hostname: string) {
+  const normalized = hostname.toLowerCase();
+  return (
+    normalized === "oss.shuomiai.com" ||
+    normalized === "cos-1303159911.cos.na-ashburn.myqcloud.com"
+  );
 }

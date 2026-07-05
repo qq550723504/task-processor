@@ -125,6 +125,57 @@ func TestStudioDesignPromptRendersWithoutTransparencyInstructions(t *testing.T) 
 	}
 }
 
+func TestStudioDesignPromptUsesHotReferenceImageHint(t *testing.T) {
+	registry := prompt.NewRegistry(logrus.NewEntry(logrus.New()))
+	if err := registry.Init(context.Background(), filepath.Join("..", "..", "prompts"), false); err != nil {
+		t.Fatalf("init prompt registry: %v", err)
+	}
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = registry
+	t.Cleanup(func() {
+		prompt.GlobalRegistry = previous
+	})
+
+	text := buildStudioDesignPrompt(&StudioDesignRequest{
+		Prompt:                    "summer flowers",
+		ArtworkGenerationMode:     studioArtworkGenerationModeHotReference,
+		PrintableWidth:            1626,
+		PrintableHeight:           2000,
+		ProductReferenceImageURLs: []string{"https://example.com/hot-ref.png"},
+	})
+	lower := strings.ToLower(text)
+
+	for _, forbidden := range []string{
+		"sds product mockup/reference images are provided",
+		"product color variants",
+		"material, print-surface shape",
+		"provided product colors",
+		"customized-product",
+		"optimize for real pod production",
+		"avoid tiny text",
+		"avoid weak low-contrast details",
+		"broad style reference only",
+	} {
+		if strings.Contains(lower, forbidden) {
+			t.Fatalf("hot-reference prompt contains long-template phrase %q:\n%s", forbidden, text)
+		}
+	}
+	for _, required := range []string{
+		"hot-selling artwork reference",
+		"ignore the garment",
+		"focus on the printed artwork",
+		"preserve the main subject family",
+		"dominant silhouette",
+		"color palette",
+		"recognizably related to the reference",
+		"target print area: 1626 by 2000 pixels",
+	} {
+		if !strings.Contains(lower, required) {
+			t.Fatalf("hot-reference prompt missing %q:\n%s", required, text)
+		}
+	}
+}
+
 func TestStudioDesignReferenceImageURLsDeduplicatesAndCaps(t *testing.T) {
 	got := studioDesignReferenceImageURLs([]string{
 		"",
@@ -248,18 +299,20 @@ func TestGenerateStudioDesignImageFallsBackWhenMultiReferenceEditFails(t *testin
 }
 
 type stubStudioImageGenerator struct {
-	mu               sync.Mutex
-	editErr          error
-	editErrs         []error
-	editCalls        int
-	editRequests     []*AIImageEditRequest
-	asyncEditCalls   int
-	asyncEditReqs    []*AIImageEditRequest
-	asyncSupported   *bool
-	asyncSubmit      *AIImageAsyncSubmit
-	generateCalls    int
-	generateErrs     []error
-	generateResponse *AIImageResponse
+	mu                 sync.Mutex
+	editErr            error
+	editErrs           []error
+	editCalls          int
+	editRequests       []*AIImageEditRequest
+	asyncEditCalls     int
+	asyncEditReqs      []*AIImageEditRequest
+	asyncGenerateCalls int
+	asyncGenerateReqs  []*AIImageGenerateRequest
+	asyncSupported     *bool
+	asyncSubmit        *AIImageAsyncSubmit
+	generateCalls      int
+	generateErrs       []error
+	generateResponse   *AIImageResponse
 }
 
 type stubStudioChatCompleter struct {
@@ -328,7 +381,12 @@ func (s *stubStudioImageGenerator) SupportsAsyncImageGeneration() bool {
 	return s.asyncSubmit != nil
 }
 
-func (s *stubStudioImageGenerator) SubmitImageGeneration(context.Context, *AIImageGenerateRequest) (*AIImageAsyncSubmit, error) {
+func (s *stubStudioImageGenerator) SubmitImageGeneration(_ context.Context, req *AIImageGenerateRequest) (*AIImageAsyncSubmit, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.asyncGenerateCalls++
+	reqCopy := *req
+	s.asyncGenerateReqs = append(s.asyncGenerateReqs, &reqCopy)
 	return s.asyncSubmit, nil
 }
 
@@ -350,7 +408,7 @@ func TestSubmitStudioDesignsAsyncUsesEditPathWhenReferenceImagesExist(t *testing
 		asyncSubmit: &AIImageAsyncSubmit{
 			JobID:     "job-1",
 			RequestID: "req-1",
-			Provider:  "nanobanana",
+			Provider:  "grsai",
 		},
 	}
 	svc := &taskStudioMediaService{imageGenerator: generator}
@@ -375,6 +433,44 @@ func TestSubmitStudioDesignsAsyncUsesEditPathWhenReferenceImagesExist(t *testing
 	}
 }
 
+func TestSubmitStudioDesignsAsyncResolvesUploadedHotReferenceToCurrentPublicURL(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		asyncSubmit: &AIImageAsyncSubmit{
+			JobID:     "job-1",
+			RequestID: "req-1",
+			Provider:  "grsai",
+		},
+	}
+	svc := &taskStudioMediaService{
+		imageGenerator: generator,
+		resolveUploadedImagePublicURL: func(_ context.Context, key string) (string, error) {
+			if key != "20260704/ref.png" {
+				return "", ErrUploadedImageNotFound
+			}
+			return "https://cos.example.com/20260704/ref.png", nil
+		},
+	}
+
+	_, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
+		Prompt:                    "retro cherries",
+		ArtworkGenerationMode:     "hot_reference",
+		Count:                     1,
+		ProductReferenceImageURLs: []string{"https://oss.shuomiai.com/listingkit-assets/20260704/ref.png"},
+	})
+	if err != nil {
+		t.Fatalf("SubmitStudioDesignsAsync() error = %v", err)
+	}
+	if len(generator.asyncEditReqs) != 1 {
+		t.Fatalf("async edit request count = %d, want 1", len(generator.asyncEditReqs))
+	}
+	if got, want := generator.asyncEditReqs[0].ImageURL, "https://cos.example.com/20260704/ref.png"; got != want {
+		t.Fatalf("ImageURL = %q, want %q", got, want)
+	}
+	if got, want := generator.asyncEditReqs[0].ImageURLs, []string{"https://cos.example.com/20260704/ref.png"}; len(got) != len(want) || got[0] != want[0] {
+		t.Fatalf("ImageURLs = %v, want %v", got, want)
+	}
+}
+
 func TestSubmitStudioDesignsAsyncRejectsReferenceImagesWithoutHotReferenceMode(t *testing.T) {
 	generator := &stubStudioImageGenerator{
 		asyncSubmit: &AIImageAsyncSubmit{JobID: "job-1"},
@@ -394,34 +490,45 @@ func TestSubmitStudioDesignsAsyncRejectsReferenceImagesWithoutHotReferenceMode(t
 	}
 }
 
-func TestSubmitStudioDesignsAsyncRequiresExactlyOneHotReferenceImage(t *testing.T) {
-	tests := []struct {
-		name string
-		urls []string
-	}{
-		{name: "none", urls: nil},
-		{name: "multiple", urls: []string{"https://example.com/a.png", "https://example.com/b.png"}},
+func TestSubmitStudioDesignsAsyncUsesGeneratePathWhenHotReferenceHasNoImage(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		asyncSubmit: &AIImageAsyncSubmit{JobID: "job-1"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			generator := &stubStudioImageGenerator{
-				asyncSubmit: &AIImageAsyncSubmit{JobID: "job-1"},
-			}
-			svc := &taskStudioMediaService{imageGenerator: generator}
+	svc := &taskStudioMediaService{imageGenerator: generator}
 
-			_, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
-				Prompt:                    "retro cherries",
-				ArtworkGenerationMode:     "hot_reference",
-				Count:                     1,
-				ProductReferenceImageURLs: tt.urls,
-			})
-			if err == nil {
-				t.Fatal("SubmitStudioDesignsAsync() succeeded, want hot reference validation error")
-			}
-			if !strings.Contains(err.Error(), "hot reference mode requires exactly one reference image") {
-				t.Fatalf("error = %v, want hot reference count validation", err)
-			}
-		})
+	_, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
+		Prompt:                "Create an original retro badge.",
+		ArtworkGenerationMode: "hot_reference",
+		Count:                 1,
+	})
+	if err != nil {
+		t.Fatalf("SubmitStudioDesignsAsync() error = %v", err)
+	}
+	if generator.asyncGenerateCalls != 1 {
+		t.Fatalf("asyncGenerateCalls = %d, want 1", generator.asyncGenerateCalls)
+	}
+	if generator.asyncEditCalls != 0 {
+		t.Fatalf("asyncEditCalls = %d, want 0", generator.asyncEditCalls)
+	}
+}
+
+func TestSubmitStudioDesignsAsyncRejectsMultipleHotReferenceImages(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		asyncSubmit: &AIImageAsyncSubmit{JobID: "job-1"},
+	}
+	svc := &taskStudioMediaService{imageGenerator: generator}
+
+	_, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
+		Prompt:                    "retro cherries",
+		ArtworkGenerationMode:     "hot_reference",
+		Count:                     1,
+		ProductReferenceImageURLs: []string{"https://example.com/a.png", "https://example.com/b.png"},
+	})
+	if err == nil {
+		t.Fatal("SubmitStudioDesignsAsync() succeeded, want hot reference validation error")
+	}
+	if !strings.Contains(err.Error(), "hot reference mode supports at most one reference image") {
+		t.Fatalf("error = %v, want hot reference count validation", err)
 	}
 }
 
@@ -432,7 +539,7 @@ func TestSubmitStudioDesignsAsyncAttemptsSubmitWhenCapabilityProbeIsContextBlind
 		asyncSubmit: &AIImageAsyncSubmit{
 			JobID:     "job-contextual-1",
 			RequestID: "req-contextual-1",
-			Provider:  "nanobanana",
+			Provider:  "grsai",
 		},
 	}
 	svc := &taskStudioMediaService{imageGenerator: generator}
@@ -454,7 +561,7 @@ func TestSubmitStudioDesignsAsyncMaterializesDirectSubmitResult(t *testing.T) {
 		asyncSubmit: &AIImageAsyncSubmit{
 			JobID:     "job-1",
 			RequestID: "req-1",
-			Provider:  "nanobanana",
+			Provider:  "grsai",
 			Status:    AIImageAsyncResultSucceeded,
 			Response: &AIImageResponse{
 				Data: []AIImageData{{
@@ -724,8 +831,8 @@ func TestGenerateOneStudioProductImageRetriesWithSanitizedInputsOnFormatError(t 
 
 	generator := &stubStudioImageGenerator{
 		editErrs: []error{
-			errors.New("nanobanana job failed: error (The image format is incorrect. Please check if there are any issues with the image format)"),
-			errors.New("nanobanana job failed: error (The image format is incorrect. Please check if there are any issues with the image format)"),
+			errors.New("grsai job failed: error (The image format is incorrect. Please check if there are any issues with the image format)"),
+			errors.New("grsai job failed: error (The image format is incorrect. Please check if there are any issues with the image format)"),
 			nil,
 		},
 		generateResponse: &AIImageResponse{

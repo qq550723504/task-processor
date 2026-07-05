@@ -924,7 +924,7 @@ func TestListingKitHTTPAPIExternalClientImportsStayAllowlisted(t *testing.T) {
 			continue
 		}
 		for _, bannedImport := range []string{
-			`"task-processor/internal/infra/clients/nanobanana"`,
+			`"task-processor/internal/infra/clients/grsai"`,
 			`"task-processor/internal/infra/clients/openai"`,
 		} {
 			if _, ok := facts.imports[bannedImport]; ok {
@@ -3246,7 +3246,7 @@ func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 			continue
 		}
 		for _, bannedImport := range []string{
-			`"task-processor/internal/infra/clients/nanobanana"`,
+			`"task-processor/internal/infra/clients/grsai"`,
 			`"task-processor/internal/infra/clients/openai"`,
 		} {
 			if _, ok := facts.imports[bannedImport]; ok {
@@ -3473,7 +3473,7 @@ func TestAppHTTPAPIProductImageExternalClientImportsStayAllowlisted(t *testing.T
 			continue
 		}
 		for _, bannedImport := range []string{
-			`"task-processor/internal/infra/clients/nanobanana"`,
+			`"task-processor/internal/infra/clients/grsai"`,
 			`"task-processor/internal/infra/clients/openai"`,
 		} {
 			if _, ok := facts.imports[bannedImport]; ok {

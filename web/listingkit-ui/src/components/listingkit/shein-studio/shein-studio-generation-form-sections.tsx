@@ -31,15 +31,10 @@ export function ArtworkGenerationSettings({
   artworkModel,
   disabled,
   groupedImageMode,
-  handleAnalyzeReferenceStyle,
   handleUploadHotStyleReferenceImages,
   artworkGenerationMode,
-  hotStyleReferenceBrief,
   hotStyleReferenceImageUrls,
-  hotStyleReferencePrompt,
-  hotStyleReferenceWarnings,
   hotStyleReferenceUploadMessage,
-  isAnalyzingReferenceStyle,
   isUploadingHotStyleReferenceImages,
   prompt,
   promptMode,
@@ -50,7 +45,6 @@ export function ArtworkGenerationSettings({
   setGroupedImageMode,
   setArtworkGenerationMode,
   setHotStyleReferenceImageUrls,
-  setHotStyleReferencePrompt,
   selectedHotStyleReferenceFiles,
   setSelectedHotStyleReferenceFiles,
   setPrompt,
@@ -66,15 +60,10 @@ export function ArtworkGenerationSettings({
   artworkModel: SheinStudioArtworkModel;
   disabled?: boolean;
   groupedImageMode: SheinStudioGroupedImageMode;
-  handleAnalyzeReferenceStyle: () => void;
   handleUploadHotStyleReferenceImages: () => void;
   artworkGenerationMode: SheinStudioArtworkGenerationMode;
-  hotStyleReferenceBrief: string;
   hotStyleReferenceImageUrls: string[];
-  hotStyleReferencePrompt: string;
-  hotStyleReferenceWarnings?: string[];
   hotStyleReferenceUploadMessage?: string;
-  isAnalyzingReferenceStyle: boolean;
   isUploadingHotStyleReferenceImages: boolean;
   prompt: string;
   promptMode: "managed" | "raw";
@@ -85,7 +74,6 @@ export function ArtworkGenerationSettings({
   setGroupedImageMode: (value: SheinStudioGroupedImageMode) => void;
   setArtworkGenerationMode: (value: SheinStudioArtworkGenerationMode) => void;
   setHotStyleReferenceImageUrls: (value: string[]) => void;
-  setHotStyleReferencePrompt: (value: string) => void;
   selectedHotStyleReferenceFiles: File[];
   setSelectedHotStyleReferenceFiles: (value: File[]) => void;
   setPrompt: (value: string) => void;
@@ -98,7 +86,6 @@ export function ArtworkGenerationSettings({
   transparentBackground: boolean;
   variationIntensity: SheinStudioVariationIntensity;
 }) {
-  const hotStyleReferenceAnalyzed = hotStyleReferenceBrief.trim().length > 0;
   const isHotReferenceMode = artworkGenerationMode === "hot_reference";
 
   return (
@@ -172,20 +159,9 @@ export function ArtworkGenerationSettings({
             <div>
               <p className="text-sm font-medium text-foreground">热销款参考</p>
               <p className="text-xs leading-5 text-muted-foreground">
-                提取图案、配色和构图方向，生成相似风格的原创 POD 图案。
+                上传或粘贴 1 张热销款图，生成时直接作为参考图使用。
               </p>
             </div>
-            <Button
-              disabled={
-                disabled ||
-                hotStyleReferenceImageUrls.length === 0 ||
-                isAnalyzingReferenceStyle
-              }
-              onClick={handleAnalyzeReferenceStyle}
-              type="button"
-            >
-              {isAnalyzingReferenceStyle ? "提取中..." : "提取热销款风格"}
-            </Button>
           </div>
           <div className="grid gap-3 rounded-lg border border-dashed border-emerald-200 bg-emerald-50/60 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
             <Label className="space-y-2">
@@ -244,29 +220,11 @@ export function ArtworkGenerationSettings({
           />
           <Textarea
             className="min-h-24 rounded-lg px-3 py-2"
-            disabled={disabled || !hotStyleReferenceAnalyzed}
-            onChange={(event) => setHotStyleReferencePrompt(event.target.value)}
-            placeholder={
-              hotStyleReferenceAnalyzed
-                ? "提取后可在这里微调风格要求。"
-                : "先提取热销款风格后再微调。"
-            }
-            value={hotStyleReferencePrompt}
+            disabled={disabled}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder="可选：补充你想要的主题、文字、颜色或图案方向。"
+            value={prompt}
           />
-          {hotStyleReferenceBrief ? (
-            <p className="text-xs leading-5 text-muted-foreground">
-              {hotStyleReferenceBrief}
-            </p>
-          ) : null}
-          {hotStyleReferenceWarnings && hotStyleReferenceWarnings.length > 0 ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-900">
-              <ul className="space-y-1">
-                {hotStyleReferenceWarnings.map((warning, index) => (
-                  <li key={`${index}-${warning}`}>{warning}</li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
         </div>
       ) : null}
       {!isHotReferenceMode ? (

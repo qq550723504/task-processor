@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
-	nanobanana "task-processor/internal/infra/clients/nanobanana"
+	grsai "task-processor/internal/infra/clients/grsai"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	productenrich "task-processor/internal/productenrich"
 	productimage "task-processor/internal/productimage"
@@ -18,7 +18,7 @@ func buildModelProvider(cfg *config.Config, llmMgr productenrich.LLMManager, ope
 	var faithfulEditor productimage.FaithfulEditor
 	var sceneGenerator productimage.SceneGenerator
 	if imageCfg, ok := cfg.OpenAI.Clients["image"]; ok && imageCfg.APIStyle == "nanobanana" {
-		imageClient := nanobanana.NewClient(nanobanana.Config{
+		imageClient := grsai.NewClient(grsai.Config{
 			APIKey:       firstNonEmpty(imageCfg.APIKey, cfg.OpenAI.APIKey),
 			Model:        imageCfg.Model,
 			SubmitURL:    firstNonEmpty(imageCfg.BaseURL, cfg.OpenAI.BaseURL),

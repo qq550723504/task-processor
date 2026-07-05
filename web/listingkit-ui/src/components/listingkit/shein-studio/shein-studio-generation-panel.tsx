@@ -137,9 +137,7 @@ export function SheinStudioGenerationPanel({
     artworkModel,
     availableSdsImages,
     groupedImageMode,
-    hotStyleReferenceBrief,
     hotStyleReferenceImageUrls,
-    hotStyleReferencePrompt,
     artworkGenerationMode,
     imageStrategy,
     productImageCount,
@@ -190,7 +188,6 @@ export function SheinStudioGenerationPanel({
     onRetryFailedItem,
     onRestorePrompt,
     onSaveBatch,
-    analyzeReferenceStyle,
     uploadHotStyleReferenceImages,
     setArtworkModel,
     setGroupedImageMode,
@@ -216,11 +213,6 @@ export function SheinStudioGenerationPanel({
   const showRenderSizeImagesWithSdsOption =
     hasSdsSizeReferenceImages && imageStrategy !== "sds_official";
   const showVariationIntensity = parsePositiveInteger(styleCount) > 1;
-  const [isAnalyzingReferenceStyle, setIsAnalyzingReferenceStyle] =
-    useState(false);
-  const [hotStyleReferenceWarnings, setHotStyleReferenceWarnings] = useState<
-    string[]
-  >([]);
   const [selectedHotStyleReferenceFiles, setSelectedHotStyleReferenceFiles] =
     useState<File[]>([]);
   const [
@@ -230,7 +222,6 @@ export function SheinStudioGenerationPanel({
   const [hotStyleReferenceUploadMessage, setHotStyleReferenceUploadMessage] =
     useState("");
   const clearDerivedHotStyleState = () => {
-    setHotStyleReferenceWarnings([]);
     setHotStyleReferenceBrief("");
     setHotStyleReferencePrompt("");
   };
@@ -242,7 +233,6 @@ export function SheinStudioGenerationPanel({
     }
     setArtworkGenerationMode(nextMode);
     if (nextMode === "theme_prompt") {
-      setHotStyleReferenceWarnings([]);
       setHotStyleReferenceImageUrls([]);
       setHotStyleReferenceBrief("");
       setHotStyleReferencePrompt("");
@@ -294,30 +284,6 @@ export function SheinStudioGenerationPanel({
       setHotStyleReferenceUploadMessage("参考图上传失败，请稍后重试。");
     } finally {
       setIsUploadingHotStyleReferenceImages(false);
-    }
-  };
-  const handleAnalyzeReferenceStyle = async () => {
-    if (hotStyleReferenceImageUrls.length === 0 || isAnalyzingReferenceStyle) {
-      return;
-    }
-    setIsAnalyzingReferenceStyle(true);
-    try {
-      const result = await analyzeReferenceStyle({
-        referenceImageUrls: hotStyleReferenceImageUrls.slice(0, 1),
-        basePrompt: prompt,
-      });
-      setHotStyleReferenceBrief(result.referenceStyleBrief);
-      setHotStyleReferencePrompt(result.sanitizedPrompt);
-      setHotStyleReferenceWarnings(result.warnings ?? []);
-    } catch (error) {
-      console.error(
-        "shein studio reference style analysis failed",
-        error instanceof Error ? error.message : error,
-      );
-      setHotStyleReferenceWarnings([]);
-      setHotStyleReferenceBrief("热销款风格提取失败，请稍后重试。");
-    } finally {
-      setIsAnalyzingReferenceStyle(false);
     }
   };
   const generateActionLabel = isGenerating
@@ -418,17 +384,12 @@ export function SheinStudioGenerationPanel({
           artworkModel={artworkModel}
           disabled={isGenerating}
           groupedImageMode={groupedImageMode}
-          handleAnalyzeReferenceStyle={handleAnalyzeReferenceStyle}
           handleUploadHotStyleReferenceImages={
             handleUploadHotStyleReferenceImages
           }
           artworkGenerationMode={artworkGenerationMode}
-          hotStyleReferenceBrief={hotStyleReferenceBrief}
           hotStyleReferenceImageUrls={hotStyleReferenceImageUrls}
-          hotStyleReferencePrompt={hotStyleReferencePrompt}
-          hotStyleReferenceWarnings={hotStyleReferenceWarnings}
           hotStyleReferenceUploadMessage={hotStyleReferenceUploadMessage}
-          isAnalyzingReferenceStyle={isAnalyzingReferenceStyle}
           isUploadingHotStyleReferenceImages={
             isUploadingHotStyleReferenceImages
           }
@@ -440,7 +401,6 @@ export function SheinStudioGenerationPanel({
           setArtworkModel={setArtworkModel}
           setGroupedImageMode={setGroupedImageMode}
           setHotStyleReferenceImageUrls={handleHotStyleReferenceImageUrlsChange}
-          setHotStyleReferencePrompt={setHotStyleReferencePrompt}
           selectedHotStyleReferenceFiles={selectedHotStyleReferenceFiles}
           setArtworkGenerationMode={handleArtworkGenerationModeChange}
           setSelectedHotStyleReferenceFiles={setSelectedHotStyleReferenceFiles}

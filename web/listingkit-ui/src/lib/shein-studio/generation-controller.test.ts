@@ -73,13 +73,11 @@ describe("SHEIN Studio generation controller", () => {
       resolveGenerationStartValidation({
         activeSelection: selection,
         artworkGenerationMode: "hot_reference",
-        hotStyleReferenceBrief: "retro badge",
-        hotStyleReferencePrompt: "Create an original retro badge.",
         hotStyleReferenceImageUrls: [],
         prompt: "",
         sheinStoreId: "869",
       }),
-    ).toEqual({ error: "请先提取热销款风格。", focusPrompt: false });
+    ).toEqual({ error: "请先上传 1 张热销参考图。", focusPrompt: false });
     expect(
       resolveGenerationStartValidation({
         activeSelection: selection,
@@ -98,10 +96,8 @@ describe("SHEIN Studio generation controller", () => {
       resolveGenerationStartValidation({
         activeSelection: selection,
         artworkGenerationMode: "hot_reference",
-        hotStyleReferenceBrief: "retro badge",
-        hotStyleReferencePrompt: "Create an original retro badge.",
         hotStyleReferenceImageUrls: ["https://example.com/hot-ref.png"],
-        prompt: "prompt",
+        prompt: "",
         sheinStoreId: "869",
       }),
     ).toBeNull();
@@ -124,12 +120,10 @@ describe("SHEIN Studio generation controller", () => {
       resolveRegenerationStartValidation({
         activeSelection: selection,
         artworkGenerationMode: "hot_reference",
-        hotStyleReferenceBrief: "retro badge",
-        hotStyleReferencePrompt: "Create an original retro badge.",
         hotStyleReferenceImageUrls: [],
         prompt: "",
       }),
-    ).toEqual({ error: "请先提取热销款风格。", focusPrompt: false });
+    ).toEqual({ error: "请先上传 1 张热销参考图。", focusPrompt: false });
     expect(
       resolveRegenerationStartValidation({
         activeSelection: selection,
@@ -147,10 +141,8 @@ describe("SHEIN Studio generation controller", () => {
       resolveRegenerationStartValidation({
         activeSelection: selection,
         artworkGenerationMode: "hot_reference",
-        hotStyleReferenceBrief: "retro badge",
-        hotStyleReferencePrompt: "Create an original retro badge.",
         hotStyleReferenceImageUrls: ["https://example.com/hot-ref.png"],
-        prompt: "prompt",
+        prompt: "",
       }),
     ).toBeNull();
   });
@@ -311,13 +303,11 @@ describe("SHEIN Studio generation controller", () => {
     });
   });
 
-  it("uses only the analyzed hot style prompt and first hot style image in hot reference mode", () => {
+  it("uses the hot style reference image directly in hot reference mode", () => {
     expect(
       buildHotStyleReferenceGenerationInput({
         artworkGenerationMode: "hot_reference",
         prompt: "summer flowers",
-        hotStyleReferenceBrief: "retro badge with cream and red palette",
-        hotStyleReferencePrompt: "Create an original retro badge.",
         productReferenceImageUrls: ["https://example.com/mockup.png"],
         hotStyleReferenceImageUrls: [
           "https://example.com/hot-ref.png",
@@ -325,37 +315,22 @@ describe("SHEIN Studio generation controller", () => {
         ],
       }),
     ).toEqual({
-      prompt: "Create an original retro badge.",
+      prompt: "summer flowers",
       productReferenceImageUrls: ["https://example.com/hot-ref.png"],
     });
   });
 
-  it("gates hot style reference images behind a non-empty sanitized prompt", () => {
+  it("allows hot reference generation without analyzed prompt text", () => {
     expect(
       buildHotStyleReferenceGenerationInput({
-        prompt: "summer flowers",
-        hotStyleReferenceBrief: "retro badge with cream and red palette",
-        hotStyleReferencePrompt: "   ",
+        artworkGenerationMode: "hot_reference",
+        prompt: " ",
         productReferenceImageUrls: ["https://example.com/mockup.png"],
         hotStyleReferenceImageUrls: ["https://example.com/hot-ref.png"],
       }),
     ).toEqual({
-      prompt: "summer flowers",
-      productReferenceImageUrls: [],
-    });
-  });
-
-  it("gates hot style reference images behind a successful analysis brief", () => {
-    expect(
-      buildHotStyleReferenceGenerationInput({
-        prompt: "summer flowers",
-        hotStyleReferencePrompt: "Create an original retro badge.",
-        productReferenceImageUrls: ["https://example.com/mockup.png"],
-        hotStyleReferenceImageUrls: ["https://example.com/hot-ref.png"],
-      }),
-    ).toEqual({
-      prompt: "summer flowers",
-      productReferenceImageUrls: [],
+      prompt: "",
+      productReferenceImageUrls: ["https://example.com/hot-ref.png"],
     });
   });
 
@@ -436,9 +411,7 @@ describe("SHEIN Studio generation controller", () => {
         printableWidth: 300,
         printableHeight: 400,
         artworkGenerationMode: "hot_reference",
-        prompt: expect.stringMatching(
-          /^Create an original retro badge\.[\s\S]*printable size: 300x400px\.$/,
-        ),
+        prompt: "summer flowers",
         productReferenceImageUrls: ["https://example.com/ref.png"],
       }),
       expect.objectContaining({ onJobStarted: expect.any(Function) }),

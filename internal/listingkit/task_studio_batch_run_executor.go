@@ -319,14 +319,6 @@ func (s *service) executeStudioBatchRunItem(ctx context.Context, batchID string)
 	if err != nil {
 		return err
 	}
-	if shouldRetryFailedStudioBatchRunItems(detail) {
-		detail, err = batchService.RetryStudioBatchItems(ctx, normalizedBatchID, &RetryStudioBatchItemsRequest{
-			ItemIDs: collectFailedStudioBatchRunItemIDs(detail),
-		})
-		if err != nil {
-			return err
-		}
-	}
 	if detail == nil || detail.Batch == nil {
 		return ErrStudioSessionNotFound
 	}
@@ -337,34 +329,6 @@ func (s *service) executeStudioBatchRunItem(ctx context.Context, batchID string)
 		return &studioBatchRunItemStillRunningError{AsyncJobID: resolveStudioBatchRunAsyncJobID(detail)}
 	}
 	return studioBatchRunDetailError(detail)
-}
-
-func shouldRetryFailedStudioBatchRunItems(detail *StudioBatchDetail) bool {
-	if detail == nil || detail.Batch == nil {
-		return false
-	}
-	if isStudioBatchRunDetailStillRunning(detail) {
-		return false
-	}
-	return len(collectFailedStudioBatchRunItemIDs(detail)) > 0
-}
-
-func collectFailedStudioBatchRunItemIDs(detail *StudioBatchDetail) []string {
-	if detail == nil {
-		return nil
-	}
-	ids := make([]string, 0)
-	for _, item := range detail.Items {
-		if item.Item.Status != StudioBatchItemStatusFailed {
-			continue
-		}
-		itemID := strings.TrimSpace(item.Item.ID)
-		if itemID == "" {
-			continue
-		}
-		ids = append(ids, itemID)
-	}
-	return ids
 }
 
 func (s *service) executeStudioBatchRunTaskCreation(ctx context.Context, batchID string) error {
@@ -475,24 +439,13 @@ func buildStudioBatchRunDesignRequest(session *SheinStudioSession) *StudioDesign
 	if session == nil {
 		return nil
 	}
-	hotStyleReferencePrompt := strings.TrimSpace(session.HotStyleReferencePrompt)
-	hotStyleReferenceBrief := strings.TrimSpace(session.HotStyleReferenceBrief)
-	includeHotStyleReference := hotStyleReferencePrompt != "" && hotStyleReferenceBrief != ""
-	referenceImageURLs := []string(nil)
-	if includeHotStyleReference {
-		referenceImageURLs = mergeStudioHotStyleReferenceImageURLs(
-			nil,
-			session.HotStyleReferenceImageURLs,
-		)
-	} else {
-		hotStyleReferencePrompt = ""
-	}
+	referenceImageURLs := mergeStudioHotStyleReferenceImageURLs(nil, session.HotStyleReferenceImageURLs)
 	artworkGenerationMode := studioArtworkGenerationModeThemePrompt
 	if len(referenceImageURLs) == 1 {
 		artworkGenerationMode = studioArtworkGenerationModeHotReference
 	}
 	return &StudioDesignRequest{
-		Prompt:                    buildStudioHotStyleGenerationPrompt(session.Prompt, hotStyleReferencePrompt),
+		Prompt:                    strings.TrimSpace(session.Prompt),
 		ArtworkGenerationMode:     artworkGenerationMode,
 		PromptMode:                session.PromptMode,
 		Count:                     parseStudioBatchRunStyleCount(session.StyleCount),
@@ -558,17 +511,6 @@ func studioBatchRunReferenceImageURLs(session *SheinStudioSession) []string {
 		appendURL(image.ImageURL)
 	}
 	return result
-}
-
-func buildStudioHotStyleGenerationPrompt(prompt string, hotStyleReferencePrompt string) string {
-	parts := make([]string, 0, 3)
-	if trimmedPrompt := strings.TrimSpace(prompt); trimmedPrompt != "" {
-		parts = append(parts, trimmedPrompt)
-	}
-	if trimmedReferencePrompt := strings.TrimSpace(hotStyleReferencePrompt); trimmedReferencePrompt != "" {
-		parts = append(parts, "Hot-selling reference direction for original artwork:", trimmedReferencePrompt)
-	}
-	return strings.Join(parts, "\n")
 }
 
 func mergeStudioHotStyleReferenceImageURLs(existing []string, hotStyleReferenceImageURLs []string) []string {

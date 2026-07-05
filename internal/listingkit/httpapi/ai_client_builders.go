@@ -7,7 +7,7 @@ import (
 
 	"task-processor/internal/core/config"
 	geminiimage "task-processor/internal/infra/clients/geminiimage"
-	nanobanana "task-processor/internal/infra/clients/nanobanana"
+	grsai "task-processor/internal/infra/clients/grsai"
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
@@ -38,7 +38,7 @@ func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.
 					RetryDelay:  time.Second,
 				}), nil
 			case imageAPIStyleGRSAI:
-				return nanobanana.NewClient(nanobanana.Config{
+				return grsai.NewClient(grsai.Config{
 					APIKey:       cfg.APIKey,
 					Model:        cfg.Model,
 					SubmitURL:    cfg.BaseURL,
@@ -74,7 +74,7 @@ func buildStrictListingKitNanobananaImageClient(cfg *config.Config, resolver ope
 					RetryDelay:  time.Second,
 				}), nil
 			default:
-				return nanobanana.NewClient(nanobanana.Config{
+				return grsai.NewClient(grsai.Config{
 					APIKey:       cfg.APIKey,
 					Model:        cfg.Model,
 					SubmitURL:    cfg.BaseURL,

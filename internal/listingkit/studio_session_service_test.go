@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -632,11 +631,11 @@ func TestStudioSessionServiceUpdatesExistingBatchWithoutSelection(t *testing.T) 
 	}
 }
 
-func TestStudioSessionServiceRejectsMixedPromptAndHotStyleReference(t *testing.T) {
+func TestStudioSessionServiceAllowsPromptWithHotStyleReference(t *testing.T) {
 	svc := newStudioSessionTestService()
 	ctx := context.Background()
 
-	_, err := svc.UpsertStudioBatch(ctx, &UpsertStudioBatchRequest{
+	detail, err := svc.UpsertStudioBatch(ctx, &UpsertStudioBatchRequest{
 		Prompt:     "retro cherries",
 		StyleCount: "1",
 		Selection:  testStudioSelection(),
@@ -646,11 +645,17 @@ func TestStudioSessionServiceRejectsMixedPromptAndHotStyleReference(t *testing.T
 		HotStyleReferenceBrief:  "embroidered cherry badge",
 		HotStyleReferencePrompt: "extract cherry badge print features",
 	})
-	if err == nil {
-		t.Fatal("upsert mixed prompt and hot style reference succeeded, want error")
+	if err != nil {
+		t.Fatalf("upsert mixed prompt and hot style reference: %v", err)
 	}
-	if !strings.Contains(err.Error(), "theme prompt and hot style reference are mutually exclusive") {
-		t.Fatalf("error = %v, want mutually exclusive validation", err)
+	if got, want := detail.Batch.Prompt, "retro cherries"; got != want {
+		t.Fatalf("prompt = %q, want %q", got, want)
+	}
+	if got := detail.Batch.HotStyleReferenceImageURLs; len(got) != 1 || got[0] != "https://cdn.example.com/hot-style-ref.png" {
+		t.Fatalf("hot style reference image urls = %#v", got)
+	}
+	if got, want := detail.Batch.HotStyleReferencePrompt, "extract cherry badge print features"; got != want {
+		t.Fatalf("hot style reference prompt = %q, want %q", got, want)
 	}
 }
 

@@ -84,6 +84,9 @@ func (g *studioBatchGenerationService) RunPendingStudioBatchItems(ctx context.Co
 		if item.Status != StudioBatchItemStatusPending {
 			continue
 		}
+		if err := validateStudioBatchDesignRequest(buildStudioBatchItemDesignRequest(detail.Batch, item)); err != nil {
+			return err
+		}
 		claimedItem, claimed, err := g.repo.ClaimStudioBatchItem(ctx, item.ID, StudioBatchItemStatusPending, StudioBatchItemStatusGenerating, g.now())
 		if err != nil {
 			return err

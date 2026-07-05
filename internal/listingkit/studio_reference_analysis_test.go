@@ -1018,6 +1018,36 @@ func TestBuildResolveUploadedImagePublicURLFuncFallsBackToStorePublicURL(t *test
 	}
 }
 
+func TestBuildResolveUploadedImagePublicURLFuncPrefersCurrentStorePublicURL(t *testing.T) {
+	svc := &service{
+		studioDeps: studioDependencies{
+			uploadStore: &stubResolveUploadedImageStore{
+				openResult: &StoredUploadedImage{
+					Key:       "20260704/ref.png",
+					PublicURL: "https://cos.example.com/20260704/ref.png",
+				},
+			},
+		},
+		supportDeps: supportDependencies{
+			uploadedImageRepository: &stubResolveUploadedImageRepository{
+				record: &UploadedImageRecord{
+					Key:       "20260704/ref.png",
+					PublicURL: "https://oss.shuomiai.com/listingkit-assets/20260704/ref.png",
+				},
+			},
+		},
+	}
+
+	resolve := buildResolveUploadedImagePublicURLFunc(svc)
+	got, err := resolve(context.Background(), "20260704/ref.png")
+	if err != nil {
+		t.Fatalf("resolveUploadedImagePublicURL() error = %v", err)
+	}
+	if got != "https://cos.example.com/20260704/ref.png" {
+		t.Fatalf("public url = %q, want current store public url", got)
+	}
+}
+
 func TestBuildResolveUploadedImagePublicURLFuncFailsWhenRepoAndStorePublicURLsAreUnusable(t *testing.T) {
 	svc := &service{
 		studioDeps: studioDependencies{

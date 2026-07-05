@@ -54,4 +54,17 @@ describe("toImgproxyThumbnailUrl", () => {
       `/api/image-proxy?url=${encodeURIComponent("https://cdn.sdspod.com/images/example.jpg")}`,
     );
   });
+
+  it("keeps Tencent COS thumbnail previews direct", () => {
+    process.env[IMGPROXY_ENV] = "https://pod.shuomiai.com/img";
+    const url =
+      "https://cos-1303159911.cos.na-ashburn.myqcloud.com/20260705/design.png";
+
+    expect(
+      toThumbnailPreviewUrl(url, {
+        width: 320,
+        height: 240,
+      }),
+    ).toBe(url);
+  });
 });

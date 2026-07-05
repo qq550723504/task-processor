@@ -1,4 +1,4 @@
-package nanobanana
+package grsai
 
 import (
 	"context"
@@ -11,8 +11,8 @@ import (
 )
 
 func TestClientGenerateImageConcurrentLive(t *testing.T) {
-	if os.Getenv("NANOBANANA_LIVE_TEST") == "" {
-		t.Skip("set NANOBANANA_LIVE_TEST=1 to run live nanobanana integration test")
+	if os.Getenv("GRSAI_LIVE_TEST") == "" {
+		t.Skip("set GRSAI_LIVE_TEST=1 to run live grsai integration test")
 	}
 
 	client := NewClient(Config{

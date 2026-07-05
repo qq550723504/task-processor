@@ -22,7 +22,7 @@ Current concrete client families that frequently cross domain boundaries:
 
 - `internal/infra/clients/management`
 - `internal/infra/clients/openai`
-- `internal/infra/clients/nanobanana`
+- `internal/infra/clients/grsai`
 
 These packages are allowed infrastructure adapters. The architectural risk is
 not their existence. The risk is business packages importing adapter types as
@@ -242,7 +242,7 @@ Current direct dependency hotspots are:
   - current direct management seams are guarded by
     `TestStateRetiredManagementImportsStayBlocked`
 - `internal/productimage`
-  - uses `openai` and `nanobanana` as provider adapters
+  - uses `openai` and `grsai` as provider adapters
   - provider-facing interfaces should stay in the product image domain, with
     concrete adapter construction kept in HTTP/runtime assembly
   - OpenAI-compatible image edit request/response mapping is isolated to
@@ -342,7 +342,7 @@ and Amazon DTO/test seams.
    future feature work should introduce local AI/rewrite/mapping interfaces rather
    than adding new concrete OpenAI adapter call sites.
 9. Product image provider construction currently importing `openai` and
-   `nanobanana` outside the narrow runtime builder path. Current imports are
+   `grsai` outside the narrow runtime builder path. Current imports are
    explicitly allowlisted in productimage-owned adapter seams and app/httpapi
    ProductImage assembly seams; renderer logic should stay behind local
    ProductImage ports and must not add new concrete adapter imports without a
@@ -427,7 +427,7 @@ When reviewing a change that touches external clients, ask:
 
 1. Is this package constructing an adapter, or expressing a domain capability?
 2. Would a local interface make the call site easier to test?
-3. Is a concrete `management`, `openai`, or `nanobanana` type leaking into a
+3. Is a concrete `management`, `openai`, or `grsai` type leaking into a
    public domain contract?
 4. Does the change reduce coupling in one hotspot, or create a new hotspot?
 5. If the dependency is `management`, why is this not using in-repository

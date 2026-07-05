@@ -198,6 +198,31 @@ describe("normalizeDraft", () => {
     expect(draft?.hotStyleReferenceBrief).toBe("retro badge");
     expect(draft?.hotStyleReferencePrompt).toBe("original retro badge");
   });
+
+  it("keeps the legacy prompt when rebuilding a hot reference group", () => {
+    const draft = normalizeDraft({
+      prompt: "change the artwork to a skull while keeping the color tone",
+      artworkGenerationMode: "hot_reference",
+      hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
+      hotStyleReferenceBrief: "retro badge",
+      hotStyleReferencePrompt: "original retro badge",
+      selection: {
+        variantId: 100,
+        parentProductId: 1,
+        productId: 1,
+        prototypeGroupId: 200,
+        layerId: "layer-1",
+        productName: "tee",
+        variantLabel: "M / black",
+      },
+      updatedAt: "2026-05-26T00:00:00Z",
+    });
+
+    expect(draft?.groups?.[0]?.artworkGenerationMode).toBe("hot_reference");
+    expect(draft?.groups?.[0]?.currentPrompt).toBe(
+      "change the artwork to a skull while keeping the color tone",
+    );
+  });
 });
 
 describe("normalizeBatch", () => {

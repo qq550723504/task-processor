@@ -531,7 +531,7 @@ function buildLegacyGroupedWorkspace(
       selectedSdsImages: normalizeSelectedImages(raw.selectedSdsImages),
       renderSizeImagesWithSds: raw.renderSizeImagesWithSds ?? true,
       artworkGenerationMode,
-      currentPrompt: artworkGenerationMode === "hot_reference" ? "" : prompt,
+      currentPrompt: prompt,
       promptMode: normalizePromptMode(raw.promptMode),
       promptHistory: [],
       productImageCount:

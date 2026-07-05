@@ -238,14 +238,14 @@ func TestAdaptListingKitAIImageGeneratorDelegatesAsyncCapability(t *testing.T) {
 		submitResponse: &openaiclient.ImageAsyncSubmitResponse{
 			JobID:             "job-1",
 			RequestID:         "req-1",
-			Provider:          "nanobanana",
+			Provider:          "grsai",
 			RawSubmitResponse: `{"id":"job-1"}`,
 			AcceptedAt:        acceptedAt,
 		},
 		queryResponse: &openaiclient.ImageAsyncQueryResponse{
 			JobID:             "job-1",
 			RequestID:         "req-1",
-			Provider:          "nanobanana",
+			Provider:          "grsai",
 			Status:            "running",
 			RawResultResponse: `{"id":"job-1","status":"running"}`,
 		},
@@ -281,8 +281,8 @@ func TestAdaptListingKitAIImageGeneratorDelegatesAsyncCapability(t *testing.T) {
 	if query == nil || query.Status != listingkit.AIImageAsyncResultRunning {
 		t.Fatalf("query = %+v, want running result", query)
 	}
-	if query.Provider != "nanobanana" {
-		t.Fatalf("query provider = %q, want nanobanana", query.Provider)
+	if query.Provider != "grsai" {
+		t.Fatalf("query provider = %q, want grsai", query.Provider)
 	}
 
 	editSubmit, err := asyncGenerator.SubmitImageEdit(context.Background(), &listingkit.AIImageEditRequest{

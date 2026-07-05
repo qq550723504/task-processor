@@ -86,10 +86,6 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	if req == nil {
 		return nil, fmt.Errorf("selection is required")
 	}
-	if hasMixedStudioArtworkGenerationInputs(req) {
-		return nil, fmt.Errorf("theme prompt and hot style reference are mutually exclusive")
-	}
-
 	var session *SheinStudioSession
 	var err error
 	isCreate := strings.TrimSpace(req.ID) == ""
@@ -206,22 +202,6 @@ func sanitizeStudioBatchCreateRequest(req *UpsertStudioBatchRequest, isCreate bo
 	cloned := *req
 	cloned.GenerationJobs = nil
 	return &cloned
-}
-
-func hasMixedStudioArtworkGenerationInputs(req *UpsertStudioBatchRequest) bool {
-	if req == nil || strings.TrimSpace(req.Prompt) == "" {
-		return false
-	}
-	if strings.TrimSpace(req.HotStyleReferenceBrief) != "" ||
-		strings.TrimSpace(req.HotStyleReferencePrompt) != "" {
-		return true
-	}
-	for _, value := range req.HotStyleReferenceImageURLs {
-		if strings.TrimSpace(value) != "" {
-			return true
-		}
-	}
-	return false
 }
 
 func normalizeStudioHotStyleReferenceImageURLs(values []string) SheinStudioStringList {

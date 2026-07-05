@@ -30,13 +30,16 @@ func buildStudioDesignPromptWithTheme(req *StudioDesignRequest, theme string) st
 	if isStudioRawPromptMode(req.PromptMode) {
 		return buildRawStudioDesignPrompt(req, theme)
 	}
+	if req != nil && strings.EqualFold(strings.TrimSpace(req.ArtworkGenerationMode), studioArtworkGenerationModeHotReference) {
+		return buildHotReferenceStudioDesignPrompt(req, theme)
+	}
 	printableHint := ""
 	if req.PrintableWidth > 0 && req.PrintableHeight > 0 {
 		printableHint = studioDesignPrintableHint(req.PrintableWidth, req.PrintableHeight)
 	}
 	referenceHint := ""
 	if len(studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)) > 0 {
-		referenceHint = "SDS product mockup/reference images are provided. Use them to understand product color variants, material, print-surface shape, scale, and visual contrast. Generate only the flat artwork/design, not a product photo; make the artwork work across the provided product colors."
+		referenceHint = studioDesignReferenceHint(req)
 	}
 	transparentHint := ""
 	if req.TransparentBackground {
@@ -57,6 +60,34 @@ func buildStudioDesignPromptWithTheme(req *StudioDesignRequest, theme string) st
 		return renderPromptFallback(fallback, vars)
 	}
 	return strings.TrimSpace(rendered)
+}
+
+func buildHotReferenceStudioDesignPrompt(req *StudioDesignRequest, theme string) string {
+	parts := append([]string(nil), studioHotReferenceInstructionParts...)
+	if req != nil && req.PrintableWidth > 0 && req.PrintableHeight > 0 {
+		parts = append(parts, studioDesignPrintableHint(req.PrintableWidth, req.PrintableHeight))
+	}
+	if req != nil && req.TransparentBackground {
+		parts = append(parts, "Output on a true transparent background with alpha channel.")
+	}
+	if promptText := strings.TrimSpace(theme); promptText != "" {
+		parts = append(parts, "Theme prompt: "+promptText)
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n"))
+}
+
+var studioHotReferenceInstructionParts = []string{
+	"Use the provided hot-selling artwork reference image as a strong visual reference for a new original flat POD artwork.",
+	"Ignore the garment, background, watermark, and product mockup; focus on the printed artwork.",
+	"Preserve the main subject family, dominant silhouette, composition direction, color palette, stroke/line style, and graphic energy so the result is recognizably related to the reference.",
+	"Redraw everything with original details; do not copy exact text, logos, watermarks, brand marks, or protected characters.",
+}
+
+func studioDesignReferenceHint(req *StudioDesignRequest) string {
+	if req != nil && strings.EqualFold(strings.TrimSpace(req.ArtworkGenerationMode), studioArtworkGenerationModeHotReference) {
+		return strings.Join(studioHotReferenceInstructionParts, " ")
+	}
+	return "SDS product mockup/reference images are provided. Use them to understand product color variants, material, print-surface shape, scale, and visual contrast. Generate only the flat artwork/design, not a product photo; make the artwork work across the provided product colors."
 }
 
 func isStudioRawPromptMode(value string) bool {
@@ -210,8 +241,8 @@ func validateStudioDesignReferenceImageURLs(req *StudioDesignRequest) ([]string,
 		}
 		return nil, nil
 	case studioArtworkGenerationModeHotReference:
-		if len(referenceURLs) != 1 {
-			return nil, fmt.Errorf("invalid request: hot reference mode requires exactly one reference image")
+		if len(referenceURLs) > 1 {
+			return nil, fmt.Errorf("invalid request: hot reference mode supports at most one reference image")
 		}
 		return referenceURLs, nil
 	default:

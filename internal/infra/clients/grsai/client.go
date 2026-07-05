@@ -1,4 +1,4 @@
-package nanobanana
+package grsai
 
 import (
 	"context"
@@ -117,10 +117,10 @@ func (c *Client) SubmitImageGeneration(ctx context.Context, req *openaiclient.Im
 		ResponseFormat: "url",
 	}
 	if strings.TrimSpace(submitReq.Model) == "" {
-		return nil, fmt.Errorf("nanobanana model cannot be empty")
+		return nil, fmt.Errorf("grsai model cannot be empty")
 	}
 	if strings.TrimSpace(submitReq.Prompt) == "" {
-		return nil, fmt.Errorf("nanobanana prompt cannot be empty")
+		return nil, fmt.Errorf("grsai prompt cannot be empty")
 	}
 	if c.cfg.Timeout > 0 {
 		var cancel context.CancelFunc
@@ -139,7 +139,7 @@ func (c *Client) SubmitImageGeneration(ctx context.Context, req *openaiclient.Im
 	response := &openaiclient.ImageAsyncSubmitResponse{
 		JobID:             strings.TrimSpace(payload.ID),
 		RequestID:         strings.TrimSpace(payload.RequestID),
-		Provider:          "nanobanana",
+		Provider:          "grsai",
 		Status:            strings.ToLower(strings.TrimSpace(payload.Status)),
 		RawSubmitResponse: strings.TrimSpace(payload.RawResponse),
 		AcceptedAt:        time.Now().UTC(),
@@ -159,7 +159,7 @@ func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEdi
 		imageURLs = cleanImageURLs([]string{req.ImageURL}, 1)
 	}
 	if len(imageURLs) == 0 {
-		return nil, fmt.Errorf("nanobanana image edit requires image url")
+		return nil, fmt.Errorf("grsai image edit requires image url")
 	}
 	submitReq := submitRequest{
 		Model:          defaultString(req.Model, c.cfg.Model),
@@ -169,10 +169,10 @@ func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEdi
 		ResponseFormat: "url",
 	}
 	if strings.TrimSpace(submitReq.Model) == "" {
-		return nil, fmt.Errorf("nanobanana model cannot be empty")
+		return nil, fmt.Errorf("grsai model cannot be empty")
 	}
 	if strings.TrimSpace(submitReq.Prompt) == "" {
-		return nil, fmt.Errorf("nanobanana prompt cannot be empty")
+		return nil, fmt.Errorf("grsai prompt cannot be empty")
 	}
 	if c.cfg.Timeout > 0 {
 		var cancel context.CancelFunc
@@ -191,7 +191,7 @@ func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEdi
 	response := &openaiclient.ImageAsyncSubmitResponse{
 		JobID:             strings.TrimSpace(payload.ID),
 		RequestID:         strings.TrimSpace(payload.RequestID),
-		Provider:          "nanobanana",
+		Provider:          "grsai",
 		Status:            strings.ToLower(strings.TrimSpace(payload.Status)),
 		RawSubmitResponse: strings.TrimSpace(payload.RawResponse),
 		AcceptedAt:        time.Now().UTC(),
@@ -204,14 +204,14 @@ func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEdi
 
 func (c *Client) logSubmitDiagnostic(ctx context.Context, submitURL string, req submitRequest, mode string) {
 	fields := logrus.Fields{
-		"mode":                mode,
-		"submit_url":          submitURL,
-		"model":               req.Model,
-		"size":                req.Size,
-		"image_count":         len(req.Image),
-		"configured_timeout":  c.cfg.Timeout.String(),
-		"http_client_timeout": c.httpClient.Timeout.String(),
-		"max_attempts":        c.cfg.MaxAttempts,
+		"mode":                 mode,
+		"submit_url":           submitURL,
+		"model":                req.Model,
+		"size":                 req.Size,
+		"image_count":          len(req.Image),
+		"configured_timeout":   c.cfg.Timeout.String(),
+		"http_client_timeout":  c.httpClient.Timeout.String(),
+		"max_attempts":         c.cfg.MaxAttempts,
 	}
 	if deadline, ok := ctx.Deadline(); ok {
 		fields["ctx_deadline"] = deadline.UTC().Format(time.RFC3339Nano)
@@ -219,7 +219,7 @@ func (c *Client) logSubmitDiagnostic(ctx context.Context, submitURL string, req 
 	} else {
 		fields["ctx_deadline"] = "none"
 	}
-	logrus.WithFields(fields).Info("nanobanana submit diagnostic")
+	logrus.WithFields(fields).Info("grsai submit diagnostic")
 }
 
 func (c *Client) attachSubmitResponseData(ctx context.Context, payload *resultPayload, response *openaiclient.ImageAsyncSubmitResponse) error {
@@ -254,7 +254,7 @@ func (c *Client) QueryImageGeneration(ctx context.Context, jobID string) (*opena
 	query := &openaiclient.ImageAsyncQueryResponse{
 		JobID:             trimmedJobID,
 		RequestID:         strings.TrimSpace(payload.RequestID),
-		Provider:          "nanobanana",
+		Provider:          "grsai",
 		Status:            status,
 		RawResultResponse: strings.TrimSpace(payload.RawResponse),
 	}
@@ -285,7 +285,7 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 		imageURLs = cleanImageURLs([]string{req.ImageURL}, 1)
 	}
 	if len(imageURLs) == 0 {
-		return nil, fmt.Errorf("nanobanana image edit requires image url")
+		return nil, fmt.Errorf("grsai image edit requires image url")
 	}
 	return c.submitImagesGeneration(ctx, submitRequest{
 		Model:          defaultString(req.Model, c.cfg.Model),
@@ -321,17 +321,16 @@ func cleanImageURLs(urls []string, max int) []string {
 
 func (c *Client) submitImagesGeneration(ctx context.Context, req submitRequest) (*openaiclient.ImageResponse, error) {
 	if strings.TrimSpace(req.Model) == "" {
-		return nil, fmt.Errorf("nanobanana model cannot be empty")
+		return nil, fmt.Errorf("grsai model cannot be empty")
 	}
 	if strings.TrimSpace(req.Prompt) == "" {
-		return nil, fmt.Errorf("nanobanana prompt cannot be empty")
+		return nil, fmt.Errorf("grsai prompt cannot be empty")
 	}
 	if c.cfg.Timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, c.cfg.Timeout)
 		defer cancel()
 	}
-
 	submitURL, err := buildSubmitURL(c.cfg.SubmitURL, req.Model)
 	if err != nil {
 		return nil, err
@@ -617,11 +616,11 @@ func buildResultURL(configuredURL string) (string, error) {
 func buildGRSAIURL(configuredURL string, path string) (string, error) {
 	trimmed := strings.TrimSpace(configuredURL)
 	if trimmed == "" {
-		return "", fmt.Errorf("nanobanana submit url cannot be empty")
+		return "", fmt.Errorf("grsai submit url cannot be empty")
 	}
 	parsed, err := url.Parse(trimmed)
 	if err != nil {
-		return "", fmt.Errorf("parse nanobanana submit url: %w", err)
+		return "", fmt.Errorf("parse grsai submit url: %w", err)
 	}
 	parsed.Path = path
 	parsed.RawQuery = ""
