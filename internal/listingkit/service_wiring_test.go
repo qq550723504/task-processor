@@ -576,16 +576,16 @@ func TestTaskStudioServiceConfigsInjectListingStudioRunners(t *testing.T) {
 		"type taskStudioBatchServiceConfigWiring struct {",
 		"type taskStudioBatchCollaboratorWiring struct {",
 		"type taskStudioBatchCollaborators struct {",
-		"resetRetryItems    func(context.Context, []StudioBatchItemRecord) error",
+		"resetRetryItems          func(context.Context, []StudioBatchItemRecord) error",
 		"taskPrepare  *listingStudioBatchTaskPrepareRunner",
 		"taskResume   *listingStudioBatchTaskResumeRunner",
 		"func buildStudioBatchGenerationServiceConfigWithWiring(wiring studioBatchGenerationWiring) studioBatchGenerationServiceConfig {",
 		"func buildTaskStudioBatchServiceConfigWithCollaborators(",
-		"detailRunner:       config.detailRunner,",
-		"reviewRunner:       config.reviewRunner,",
-		"retryRunner:        config.retryRunner,",
-		"taskPrepareRunner:  config.taskPrepare,",
-		"taskResumeRunner:   config.taskResume,",
+		"detailRunner:             config.detailRunner,",
+		"reviewRunner:             config.reviewRunner,",
+		"retryRunner:              config.retryRunner,",
+		"taskPrepareRunner:        config.taskPrepare,",
+		"taskResumeRunner:         config.taskResume,",
 		"func buildTaskStudioBatchServiceConfigWiring(s *service) taskStudioBatchServiceConfigWiring {",
 		"func buildTaskStudioBatchServiceConfigWiringWithGenerator(s *service, generator *studioBatchGenerationService) taskStudioBatchServiceConfigWiring {",
 		"func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studioBatchGenerationService) taskStudioBatchServiceWiring {",
@@ -4684,7 +4684,7 @@ func TestTaskStudioBatchTaskResumeAdapterUsesListingStudioRunner(t *testing.T) {
 
 	for _, needle := range []string{
 		"service.ensureTaskResumeRunner()",
-		"taskResumeRunner   *listingStudioBatchTaskResumeRunner",
+		"taskResumeRunner         *listingStudioBatchTaskResumeRunner",
 	} {
 		if !strings.Contains(serviceContent, needle) {
 			t.Fatalf("task_studio_batch_service.go should contain %q", needle)

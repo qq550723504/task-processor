@@ -9,19 +9,20 @@ import (
 )
 
 type taskStudioBatchServiceWiring struct {
-	repo               StudioBatchRepository
-	batchRunRepo       StudioBatchRunRepository
-	batchTaskLinkRepo  StudioBatchTaskLinkRepository
-	studioSessionRepo  StudioSessionRepository
-	baselineChecker    StudioBatchBaselineReadinessChecker
-	storeValidator     StudioBatchStoreValidator
-	generator          *studioBatchGenerationService
-	createGenerateTask func(context.Context, *GenerateRequest) (*Task, error)
-	getTask            func(context.Context, string) (*Task, error)
-	ensureGraph        func(context.Context, string) error
-	loadDetail         func(context.Context, string) (*StudioBatchDetail, error)
-	resetRetryItems    func(context.Context, []StudioBatchItemRecord) error
-	currentTime        func() time.Time
+	repo                     StudioBatchRepository
+	batchRunRepo             StudioBatchRunRepository
+	batchTaskLinkRepo        StudioBatchTaskLinkRepository
+	studioSessionRepo        StudioSessionRepository
+	baselineChecker          StudioBatchBaselineReadinessChecker
+	sdsProductDetailProvider SDSBaselineRemoteProvider
+	storeValidator           StudioBatchStoreValidator
+	generator                *studioBatchGenerationService
+	createGenerateTask       func(context.Context, *GenerateRequest) (*Task, error)
+	getTask                  func(context.Context, string) (*Task, error)
+	ensureGraph              func(context.Context, string) error
+	loadDetail               func(context.Context, string) (*StudioBatchDetail, error)
+	resetRetryItems          func(context.Context, []StudioBatchItemRecord) error
+	currentTime              func() time.Time
 }
 
 type taskStudioBatchServiceConfigWiring struct {
@@ -57,15 +58,16 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 	repo := resolveStudioBatchRepo(s)
 	studioSessionRepo := resolveStudioSessionRepo(s)
 	return taskStudioBatchServiceWiring{
-		repo:               repo,
-		batchRunRepo:       resolveStudioBatchRunRepo(s),
-		batchTaskLinkRepo:  resolveStudioBatchTaskLinkRepo(s),
-		studioSessionRepo:  studioSessionRepo,
-		baselineChecker:    resolveStudioBatchBaselineReadinessChecker(s),
-		storeValidator:     resolveStudioBatchStoreValidator(s),
-		generator:          generator,
-		createGenerateTask: s.CreateGenerateTask,
-		getTask:            repository.getTask,
+		repo:                     repo,
+		batchRunRepo:             resolveStudioBatchRunRepo(s),
+		batchTaskLinkRepo:        resolveStudioBatchTaskLinkRepo(s),
+		studioSessionRepo:        studioSessionRepo,
+		baselineChecker:          resolveStudioBatchBaselineReadinessChecker(s),
+		sdsProductDetailProvider: resolveSDSBaselineRemoteProvider(s),
+		storeValidator:           resolveStudioBatchStoreValidator(s),
+		generator:                generator,
+		createGenerateTask:       s.CreateGenerateTask,
+		getTask:                  repository.getTask,
 		ensureGraph: func(ctx context.Context, batchID string) error {
 			return ensureStudioBatchGenerationGraphForResume(ctx, repo, studioSessionRepo, time.Now, batchID)
 		},
@@ -74,9 +76,10 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 		},
 		resetRetryItems: func(ctx context.Context, items []StudioBatchItemRecord) error {
 			batchService := &taskStudioBatchService{
-				repo:         repo,
-				batchRunRepo: resolveStudioBatchRunRepo(s),
-				currentTime:  time.Now,
+				repo:                     repo,
+				batchRunRepo:             resolveStudioBatchRunRepo(s),
+				currentTime:              time.Now,
+				sdsProductDetailProvider: resolveSDSBaselineRemoteProvider(s),
 			}
 			return batchService.resetStudioBatchRetryItems(ctx, items)
 		},
@@ -270,20 +273,21 @@ func buildTaskStudioBatchServiceConfigWithCollaborators(
 	config taskStudioBatchServiceConfigWiring,
 ) taskStudioBatchServiceConfig {
 	return taskStudioBatchServiceConfig{
-		repo:               config.batch.repo,
-		batchRunRepo:       config.batch.batchRunRepo,
-		batchTaskLinkRepo:  config.batch.batchTaskLinkRepo,
-		studioSessionRepo:  config.batch.studioSessionRepo,
-		baselineChecker:    config.batch.baselineChecker,
-		storeValidator:     config.batch.storeValidator,
-		generator:          config.batch.generator,
-		createGenerateTask: config.batch.createGenerateTask,
-		getTask:            config.batch.getTask,
-		detailRunner:       config.detailRunner,
-		reviewRunner:       config.reviewRunner,
-		retryRunner:        config.retryRunner,
-		taskPrepareRunner:  config.taskPrepare,
-		taskResumeRunner:   config.taskResume,
+		repo:                     config.batch.repo,
+		batchRunRepo:             config.batch.batchRunRepo,
+		batchTaskLinkRepo:        config.batch.batchTaskLinkRepo,
+		studioSessionRepo:        config.batch.studioSessionRepo,
+		baselineChecker:          config.batch.baselineChecker,
+		sdsProductDetailProvider: config.batch.sdsProductDetailProvider,
+		storeValidator:           config.batch.storeValidator,
+		generator:                config.batch.generator,
+		createGenerateTask:       config.batch.createGenerateTask,
+		getTask:                  config.batch.getTask,
+		detailRunner:             config.detailRunner,
+		reviewRunner:             config.reviewRunner,
+		retryRunner:              config.retryRunner,
+		taskPrepareRunner:        config.taskPrepare,
+		taskResumeRunner:         config.taskResume,
 	}
 }
 

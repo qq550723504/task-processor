@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	sdstemplate "task-processor/internal/sds/template"
+
 	"gorm.io/gorm"
 )
 
@@ -136,15 +138,7 @@ func (s *taskStudioBatchService) evaluateStudioBatchTaskCandidates(
 		designsByID[strings.TrimSpace(design.ID)] = design
 	}
 	selectionsByID := studioBatchSelectionSnapshotMap(batch)
-	itemSelectionsByID := make(map[string][]SheinStudioGroupedSelection)
-	if detail != nil {
-		itemSelectionsByID = make(map[string][]SheinStudioGroupedSelection, len(detail.Items))
-		for _, item := range detail.Items {
-			selections, _, _ := resolveStudioBatchTaskCandidateSelections(batch, item)
-			selections = normalizeStudioBatchTaskGroupedSelections(batch, selections)
-			itemSelectionsByID[strings.TrimSpace(item.ID)] = selections
-		}
-	}
+	itemSelectionsByID := studioBatchTaskCandidateSelectionsByItem(candidates)
 	eligible := make([]studioBatchTaskCandidate, 0, len(candidates))
 	rejected := make([]SheinStudioRejectedTask, 0)
 	failed := make([]SheinStudioFailedTask, 0)
@@ -190,6 +184,30 @@ func (s *taskStudioBatchService) evaluateStudioBatchTaskCandidates(
 	return eligible, rejected, failed
 }
 
+func studioBatchTaskCandidateSelectionsByItem(candidates []studioBatchTaskCandidate) map[string][]SheinStudioGroupedSelection {
+	selectionsByItemID := make(map[string][]SheinStudioGroupedSelection)
+	seenByItemID := make(map[string]map[string]struct{})
+	for _, candidate := range candidates {
+		itemID := strings.TrimSpace(candidate.Item.ID)
+		if itemID == "" {
+			continue
+		}
+		selectionID := strings.TrimSpace(candidate.SelectionID)
+		if selectionID == "" {
+			selectionID = selectionIDForStudioSelection(candidate.SelectionSnapshot)
+		}
+		if seenByItemID[itemID] == nil {
+			seenByItemID[itemID] = make(map[string]struct{})
+		}
+		if _, seen := seenByItemID[itemID][selectionID]; seen {
+			continue
+		}
+		seenByItemID[itemID][selectionID] = struct{}{}
+		selectionsByItemID[itemID] = append(selectionsByItemID[itemID], candidate.Selection)
+	}
+	return selectionsByItemID
+}
+
 func (s *taskStudioBatchService) buildStudioBatchTaskCandidates(
 	ctx context.Context,
 	session *SheinStudioSession,
@@ -226,6 +244,11 @@ func (s *taskStudioBatchService) buildStudioBatchTaskCandidates(
 		if len(selections) == 0 && len(missingSelectionIDs) > 0 {
 			continue
 		}
+		var hydrateErr error
+		selections, hydrateErr = s.hydrateStudioBatchTaskSelections(ctx, selections)
+		if hydrateErr != nil {
+			return nil, nil, hydrateErr
+		}
 
 		designCandidates, rejected := buildStudioBatchTaskCandidatesForDesign(ctx, session, batch, item, design, selections)
 		if rejected != nil {
@@ -235,6 +258,56 @@ func (s *taskStudioBatchService) buildStudioBatchTaskCandidates(
 	}
 
 	return candidates, rejectedTasks, nil
+}
+
+func (s *taskStudioBatchService) hydrateStudioBatchTaskSelections(
+	ctx context.Context,
+	selections []SheinStudioGroupedSelection,
+) ([]SheinStudioGroupedSelection, error) {
+	if s == nil || s.sdsProductDetailProvider == nil || len(selections) == 0 {
+		return selections, nil
+	}
+	hydrated := append([]SheinStudioGroupedSelection(nil), selections...)
+	detailsByParentID := make(map[int64]*sdstemplate.ProductDetail)
+	for i, grouped := range hydrated {
+		selection := grouped.Selection
+		if !studioBatchSelectionNeedsProductTableHydration(selection) {
+			continue
+		}
+		if selection.ParentProductID <= 0 {
+			continue
+		}
+		detail, ok := detailsByParentID[selection.ParentProductID]
+		if !ok {
+			var err error
+			detail, err = s.sdsProductDetailProvider.GetProductDetail(ctx, selection.ParentProductID)
+			if err != nil {
+				return nil, fmt.Errorf("hydrate SDS product detail %d: %w", selection.ParentProductID, err)
+			}
+			detailsByParentID[selection.ParentProductID] = detail
+		}
+		grouped.Selection = hydrateStudioBatchSelectionProductTables(selection, detail)
+		hydrated[i] = grouped
+	}
+	return hydrated, nil
+}
+
+func studioBatchSelectionNeedsProductTableHydration(selection SheinStudioSelection) bool {
+	return strings.TrimSpace(selection.ProductSize) == "" || strings.TrimSpace(selection.PackagingSpecification) == ""
+}
+
+func hydrateStudioBatchSelectionProductTables(selection SheinStudioSelection, detail *sdstemplate.ProductDetail) SheinStudioSelection {
+	if detail == nil {
+		return selection
+	}
+	productDetails := detail.ProductDetails
+	if strings.TrimSpace(selection.ProductSize) == "" {
+		selection.ProductSize = strings.TrimSpace(productDetails.ProductSize)
+	}
+	if strings.TrimSpace(selection.PackagingSpecification) == "" {
+		selection.PackagingSpecification = strings.TrimSpace(productDetails.PackagingSpecification)
+	}
+	return selection
 }
 
 func buildStudioBatchTaskCandidatesForDesign(

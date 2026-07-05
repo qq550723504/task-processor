@@ -226,6 +226,29 @@ func TestValidatePreparedProductPublishPayloadRequiresNormalizedSKUFields(t *tes
 	}
 }
 
+func TestValidatePreparedProductPublishPayloadRequiresTemplateSizeChartAttributes(t *testing.T) {
+	t.Parallel()
+
+	product := preparedPublishProduct()
+	requiredSizeAttrs := []PendingAttributeCandidate{
+		{AttributeID: 55, AttributeName: "长度 (cm)", AttributeNameEn: "Length (cm)", Required: true},
+		{AttributeID: 20, AttributeName: "胸围 (cm)", AttributeNameEn: "Bust (cm)", Required: true},
+	}
+
+	err := ValidatePreparedProductPublishPayloadWithSizeChartAttributes(product, requiredSizeAttrs)
+	if err == nil || err.Error() != "SHEIN publish blocked: missing required size chart attributes: 长度 (cm), 胸围 (cm)" {
+		t.Fatalf("ValidatePreparedProductPublishPayloadWithSizeChartAttributes(missing required size attrs) error = %v", err)
+	}
+
+	product.SizeAttributeList = []sheinproduct.SizeAttribute{
+		{AttributeID: 55, AttributeExtraValue: "88", RelateSaleAttributeID: 87, RelateSaleAttributeValueID: 568},
+		{AttributeID: 20, AttributeExtraValue: "96", RelateSaleAttributeID: 87, RelateSaleAttributeValueID: 568},
+	}
+	if err := ValidatePreparedProductPublishPayloadWithSizeChartAttributes(product, requiredSizeAttrs); err != nil {
+		t.Fatalf("ValidatePreparedProductPublishPayloadWithSizeChartAttributes(with required size attrs) error = %v", err)
+	}
+}
+
 func preparedPublishProduct() *sheinproduct.Product {
 	quantity := 1
 	quantityType := 1

@@ -49,5 +49,12 @@ func validatePreparedSheinSubmitPayload(pkg *SheinPackage) error {
 		return err
 	}
 	sheinpub.PrepareProductForNewSubmit(product)
-	return sheinpub.ValidatePreparedProductPublishPayload(product)
+	return sheinpub.ValidatePreparedProductPublishPayloadWithSizeChartAttributes(product, sheinRequiredSizeChartAttributes(pkg))
+}
+
+func sheinRequiredSizeChartAttributes(pkg *SheinPackage) []sheinpub.PendingAttributeCandidate {
+	if pkg == nil || pkg.AttributeResolution == nil || len(pkg.AttributeResolution.SizeChartAttributes) == 0 {
+		return nil
+	}
+	return pkg.AttributeResolution.SizeChartAttributes
 }

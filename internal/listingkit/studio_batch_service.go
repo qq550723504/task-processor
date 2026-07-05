@@ -77,22 +77,23 @@ type CreateStudioBatchTasksResult struct {
 }
 
 type taskStudioBatchServiceConfig struct {
-	repo               StudioBatchRepository
-	batchRunRepo       StudioBatchRunRepository
-	batchTaskLinkRepo  StudioBatchTaskLinkRepository
-	studioSessionRepo  studioBatchSeedSessionRepository
-	baselineChecker    StudioBatchBaselineReadinessChecker
-	storeValidator     StudioBatchStoreValidator
-	generator          studioBatchGenerator
-	createGenerateTask func(ctx context.Context, req *GenerateRequest) (*Task, error)
-	getTask            func(ctx context.Context, taskID string) (*Task, error)
-	serviceRunner      *listingStudioBatchServiceRunner
-	batchRunner        *listingStudioBatchGenerationRunner
-	detailRunner       *listingStudioBatchDetailRunner
-	reviewRunner       *listingStudioBatchReviewRunner
-	retryRunner        *listingStudioBatchRetryPrepareRunner
-	taskCreationRunner *listingStudioBatchTaskCreationRunner
-	taskExecuteRunner  *listingStudioBatchTaskExecuteRunner
-	taskPrepareRunner  *listingStudioBatchTaskPrepareRunner
-	taskResumeRunner   *listingStudioBatchTaskResumeRunner
+	repo                     StudioBatchRepository
+	batchRunRepo             StudioBatchRunRepository
+	batchTaskLinkRepo        StudioBatchTaskLinkRepository
+	studioSessionRepo        studioBatchSeedSessionRepository
+	baselineChecker          StudioBatchBaselineReadinessChecker
+	sdsProductDetailProvider SDSBaselineRemoteProvider
+	storeValidator           StudioBatchStoreValidator
+	generator                studioBatchGenerator
+	createGenerateTask       func(ctx context.Context, req *GenerateRequest) (*Task, error)
+	getTask                  func(ctx context.Context, taskID string) (*Task, error)
+	serviceRunner            *listingStudioBatchServiceRunner
+	batchRunner              *listingStudioBatchGenerationRunner
+	detailRunner             *listingStudioBatchDetailRunner
+	reviewRunner             *listingStudioBatchReviewRunner
+	retryRunner              *listingStudioBatchRetryPrepareRunner
+	taskCreationRunner       *listingStudioBatchTaskCreationRunner
+	taskExecuteRunner        *listingStudioBatchTaskExecuteRunner
+	taskPrepareRunner        *listingStudioBatchTaskPrepareRunner
+	taskResumeRunner         *listingStudioBatchTaskResumeRunner
 }

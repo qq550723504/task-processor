@@ -13,6 +13,7 @@ import (
 
 	studiodomain "task-processor/internal/listing/studio"
 	sheinpub "task-processor/internal/publishing/shein"
+	sdstemplate "task-processor/internal/sds/template"
 
 	"gorm.io/gorm"
 )
@@ -2497,6 +2498,83 @@ func TestBuildStudioBatchTaskCandidates_PartialMissingOwnedSelectionReturnsCandi
 	}
 	if rejected[0].DesignID != "design-1" || rejected[0].ItemID != "item-1" || rejected[0].SelectionID != "selection-owned-missing" {
 		t.Fatalf("rejected task = %+v, want structured missing selection rejection", rejected[0])
+	}
+}
+
+func TestBuildStudioBatchTaskCandidates_HydratesMissingSDSProductTables(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	productSize := `[[{"content":"尺码"},{"content":"胸围(cm/in)"}],[{"content":"S"},{"content":"92cm/36.2in"}]]`
+	packagingSpecification := `[[{"content":"尺码"},{"content":"包装尺寸（cm）"}],[{"content":"S"},{"content":"40.0*30.0*1.0"}]]`
+	batch := newStudioBatchRecordForTest("batch-1", now)
+	batch.GroupedImageMode = "shared_by_size"
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3001, "Red", "870", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+		studioBatchFanOutSelection("selection-2", 3002, "Blue", "870", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	item := StudioBatchItemRecord{
+		ID:           "item-1",
+		BatchID:      "batch-1",
+		SelectionIDs: SheinStudioStringList{"selection-1", "selection-2"},
+		GroupMode:    "shared_by_size",
+	}
+	design := StudioMaterializedDesignRecord{
+		ID:           "design-1",
+		BatchID:      "batch-1",
+		ItemID:       "item-1",
+		ImageURL:     "https://cdn.example.com/design-1.png",
+		ReviewStatus: StudioMaterializedDesignReviewStatusApproved,
+	}
+	svc := taskStudioBatchService{
+		sdsProductDetailProvider: stubSDSBaselineRemoteProvider{
+			productDetail: &sdstemplate.ProductDetail{
+				ProductSummary: sdstemplate.ProductSummary{
+					ProductDetails: sdstemplate.ProductDetails{
+						ProductSize:            productSize,
+						PackagingSpecification: packagingSpecification,
+					},
+				},
+			},
+		},
+	}
+
+	candidates, rejected, err := svc.buildStudioBatchTaskCandidates(context.Background(), nil, batch, &StudioBatchDetailGraph{
+		Batch: batch,
+		Items: []StudioBatchItemRecord{item},
+	}, []StudioMaterializedDesignRecord{design})
+	if err != nil {
+		t.Fatalf("buildStudioBatchTaskCandidates() error = %v", err)
+	}
+	if len(rejected) != 0 {
+		t.Fatalf("rejected = %+v, want none", rejected)
+	}
+	if len(candidates) != 2 {
+		t.Fatalf("candidates = %+v, want two", candidates)
+	}
+	for _, candidate := range candidates {
+		if candidate.SelectionSnapshot.ProductSize != productSize {
+			t.Fatalf("ProductSize = %q, want %q", candidate.SelectionSnapshot.ProductSize, productSize)
+		}
+		if candidate.SelectionSnapshot.PackagingSpecification != packagingSpecification {
+			t.Fatalf("PackagingSpecification = %q, want %q", candidate.SelectionSnapshot.PackagingSpecification, packagingSpecification)
+		}
+		if got, want := candidate.CompatibilityFingerprint, buildStudioBatchCompatibilityFingerprint(candidate.SelectionSnapshot); got != want {
+			t.Fatalf("CompatibilityFingerprint = %q, want hydrated fingerprint %q", got, want)
+		}
+	}
+	eligible, gateRejected, failed := svc.evaluateStudioBatchTaskCandidates(context.Background(), batch, &StudioBatchDetailGraph{
+		Batch: batch,
+		Items: []StudioBatchItemRecord{item},
+	}, []StudioMaterializedDesignRecord{design}, candidates)
+	if len(failed) != 0 {
+		t.Fatalf("failed = %+v, want none", failed)
+	}
+	if len(gateRejected) != 0 {
+		t.Fatalf("gate rejected = %+v, want none", gateRejected)
+	}
+	if len(eligible) != 2 {
+		t.Fatalf("eligible = %+v, want two hydrated candidates", eligible)
 	}
 }
 

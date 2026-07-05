@@ -28,6 +28,9 @@ func (s *taskSubmissionExecutionService) prepareSheinSubmitProduct(ctx context.C
 	}
 	sheinpub.PrepareProductForSubmit(submitProduct, sheinSubmitPayloadSettings(s.resolveSubmitSettings(runtimeCtx, task)))
 	if action == "publish" {
+		if err := sheinpub.ValidateRequiredSizeChartAttributesForSubmit(submitProduct, sheinRequiredSizeChartAttributes(pkg)); err != nil {
+			return nil, err
+		}
 		if err := sheinpub.ValidateProductPublishPayload(submitProduct); err != nil {
 			return nil, err
 		}

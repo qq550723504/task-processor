@@ -7,48 +7,50 @@ import (
 )
 
 type taskStudioBatchService struct {
-	repo               StudioBatchRepository
-	batchRunRepo       StudioBatchRunRepository
-	batchTaskLinkRepo  StudioBatchTaskLinkRepository
-	studioSessionRepo  studioBatchSeedSessionRepository
-	baselineChecker    StudioBatchBaselineReadinessChecker
-	storeValidator     StudioBatchStoreValidator
-	generator          studioBatchGenerator
-	createGenerateTask func(context.Context, *GenerateRequest) (*Task, error)
-	getTask            func(context.Context, string) (*Task, error)
-	currentTime        func() time.Time
-	serviceRunner      *listingStudioBatchServiceRunner
-	batchRunner        *listingStudioBatchGenerationRunner
-	detailRunner       *listingStudioBatchDetailRunner
-	reviewRunner       *listingStudioBatchReviewRunner
-	retryRunner        *listingStudioBatchRetryPrepareRunner
-	taskCreationRunner *listingStudioBatchTaskCreationRunner
-	taskExecuteRunner  *listingStudioBatchTaskExecuteRunner
-	taskPrepareRunner  *listingStudioBatchTaskPrepareRunner
-	taskResumeRunner   *listingStudioBatchTaskResumeRunner
+	repo                     StudioBatchRepository
+	batchRunRepo             StudioBatchRunRepository
+	batchTaskLinkRepo        StudioBatchTaskLinkRepository
+	studioSessionRepo        studioBatchSeedSessionRepository
+	baselineChecker          StudioBatchBaselineReadinessChecker
+	sdsProductDetailProvider SDSBaselineRemoteProvider
+	storeValidator           StudioBatchStoreValidator
+	generator                studioBatchGenerator
+	createGenerateTask       func(context.Context, *GenerateRequest) (*Task, error)
+	getTask                  func(context.Context, string) (*Task, error)
+	currentTime              func() time.Time
+	serviceRunner            *listingStudioBatchServiceRunner
+	batchRunner              *listingStudioBatchGenerationRunner
+	detailRunner             *listingStudioBatchDetailRunner
+	reviewRunner             *listingStudioBatchReviewRunner
+	retryRunner              *listingStudioBatchRetryPrepareRunner
+	taskCreationRunner       *listingStudioBatchTaskCreationRunner
+	taskExecuteRunner        *listingStudioBatchTaskExecuteRunner
+	taskPrepareRunner        *listingStudioBatchTaskPrepareRunner
+	taskResumeRunner         *listingStudioBatchTaskResumeRunner
 }
 
 func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioBatchService {
 	service := &taskStudioBatchService{
-		repo:               config.repo,
-		batchRunRepo:       config.batchRunRepo,
-		batchTaskLinkRepo:  config.batchTaskLinkRepo,
-		studioSessionRepo:  config.studioSessionRepo,
-		baselineChecker:    config.baselineChecker,
-		storeValidator:     config.storeValidator,
-		generator:          config.generator,
-		createGenerateTask: config.createGenerateTask,
-		getTask:            config.getTask,
-		currentTime:        time.Now,
-		serviceRunner:      config.serviceRunner,
-		batchRunner:        config.batchRunner,
-		detailRunner:       config.detailRunner,
-		reviewRunner:       config.reviewRunner,
-		retryRunner:        config.retryRunner,
-		taskCreationRunner: config.taskCreationRunner,
-		taskExecuteRunner:  config.taskExecuteRunner,
-		taskPrepareRunner:  config.taskPrepareRunner,
-		taskResumeRunner:   config.taskResumeRunner,
+		repo:                     config.repo,
+		batchRunRepo:             config.batchRunRepo,
+		batchTaskLinkRepo:        config.batchTaskLinkRepo,
+		studioSessionRepo:        config.studioSessionRepo,
+		baselineChecker:          config.baselineChecker,
+		sdsProductDetailProvider: config.sdsProductDetailProvider,
+		storeValidator:           config.storeValidator,
+		generator:                config.generator,
+		createGenerateTask:       config.createGenerateTask,
+		getTask:                  config.getTask,
+		currentTime:              time.Now,
+		serviceRunner:            config.serviceRunner,
+		batchRunner:              config.batchRunner,
+		detailRunner:             config.detailRunner,
+		reviewRunner:             config.reviewRunner,
+		retryRunner:              config.retryRunner,
+		taskCreationRunner:       config.taskCreationRunner,
+		taskExecuteRunner:        config.taskExecuteRunner,
+		taskPrepareRunner:        config.taskPrepareRunner,
+		taskResumeRunner:         config.taskResumeRunner,
 	}
 	service.ensureBatchRunner()
 	service.ensureDetailRunner()
