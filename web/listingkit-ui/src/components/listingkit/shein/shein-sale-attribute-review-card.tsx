@@ -571,14 +571,8 @@ function SheinManualSaleAttributeForm({
   );
   const [hasExplicitEmptySecondarySelection, setHasExplicitEmptySecondarySelection] =
     useState(false);
-  const [skcSelections, setSKCSelections] = useState<
-    Record<string, ManualSaleAttributeSelection>
-  >({});
-  const [skuSelections, setSKUSelections] = useState<
-    Record<string, ManualSaleAttributeSelection>
-  >({});
   const [manualDetailsOpen, setManualDetailsOpen] = useState(
-    currentHasMissingValueIDs,
+    currentHasMissingValueIDs || secondaryRequired,
   );
   const primaryOption = primaryOptionCandidates.find(
     (option) => String(option.attribute_id ?? "") === primaryOptionID,
@@ -615,6 +609,25 @@ function SheinManualSaleAttributeForm({
       (option) =>
         String(option.attribute_id ?? "") === selectedSecondaryOptionID,
     ) ?? null;
+  const [skcSelections, setSKCSelections] = useState<
+    Record<string, ManualSaleAttributeSelection>
+  >(() =>
+    buildInitialManualSKCSelections({
+      current,
+      primaryOption,
+      primarySourceDimension: selectedSourceDimensions.primarySourceDimension,
+    }),
+  );
+  const [skuSelections, setSKUSelections] = useState<
+    Record<string, ManualSaleAttributeSelection>
+  >(() =>
+    buildInitialManualSKUSelections({
+      current,
+      secondaryOption,
+      secondarySourceDimension:
+        selectedSourceDimensions.secondarySourceDimension,
+    }),
+  );
 
   const allSKCSelected =
     (current.skc_patches ?? []).length > 0 &&
@@ -649,18 +662,42 @@ function SheinManualSaleAttributeForm({
   useEffect(() => {
     if (previousPrimaryAttributeIDRef.current !== primaryOption?.attribute_id) {
       previousPrimaryAttributeIDRef.current = primaryOption?.attribute_id;
-      setSKCSelections({});
+      setSKCSelections(
+        buildInitialManualSKCSelections({
+          current,
+          primaryOption,
+          primarySourceDimension:
+            selectedSourceDimensions.primarySourceDimension,
+        }),
+      );
     }
-  }, [primaryOption?.attribute_id]);
+  }, [
+    current,
+    primaryOption,
+    primaryOption?.attribute_id,
+    selectedSourceDimensions.primarySourceDimension,
+  ]);
 
   useEffect(() => {
     if (
       previousSecondaryAttributeIDRef.current !== secondaryOption?.attribute_id
     ) {
       previousSecondaryAttributeIDRef.current = secondaryOption?.attribute_id;
-      setSKUSelections({});
+      setSKUSelections(
+        buildInitialManualSKUSelections({
+          current,
+          secondaryOption,
+          secondarySourceDimension:
+            selectedSourceDimensions.secondarySourceDimension,
+        }),
+      );
     }
-  }, [secondaryOption?.attribute_id]);
+  }, [
+    current,
+    secondaryOption,
+    secondaryOption?.attribute_id,
+    selectedSourceDimensions.secondarySourceDimension,
+  ]);
 
   return (
     <details
@@ -669,11 +706,16 @@ function SheinManualSaleAttributeForm({
       onToggle={(event) => setManualDetailsOpen(event.currentTarget.open)}
     >
       <summary className="cursor-pointer list-none">
-        <SectionHeading
-          description="只有系统结果不准确时，才需要展开这里手工修正。保存后会写入 SKC/SKU 规格，并优先用文本值向 SHEIN 换取真实 value_id。"
-          title="手工修正规格"
-          tone="amber"
-        />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <SectionHeading
+            description="只有系统结果不准确时，才需要展开这里手工修正。保存后会写入 SKC/SKU 规格，并优先用文本值向 SHEIN 换取真实 value_id。"
+            title="手工修正规格"
+            tone="amber"
+          />
+          <span className="inline-flex h-8 shrink-0 items-center justify-center rounded-full border border-amber-300 bg-white px-3 text-xs font-medium text-amber-800">
+            {manualDetailsOpen ? "收起" : "展开修正"}
+          </span>
+        </div>
       </summary>
       <div className="mt-3 space-y-3">
         <div className="grid gap-3 2xl:grid-cols-2">
@@ -754,7 +796,7 @@ function SheinManualSaleAttributeForm({
                   primaryOption,
                   secondaryOption,
                   skcSelections,
-                  skuSelections,
+                  skuSelections: secondaryOption ? skuSelections : {},
                 })
               }
             >
@@ -1031,6 +1073,137 @@ function resolveSourceValue(
     return "";
   }
   return attributes[sourceDimension] ?? "";
+}
+
+function buildInitialManualSKCSelections({
+  current,
+  primaryOption,
+  primarySourceDimension,
+}: {
+  current: NonNullable<
+    NonNullable<SheinEditorContext["sale_attributes"]>["current"]
+  >;
+  primaryOption: SheinSaleAttributeTemplateOption | null;
+  primarySourceDimension?: string;
+}) {
+  const selections: Record<string, ManualSaleAttributeSelection> = {};
+  for (const patch of current.skc_patches ?? []) {
+    if (!patch.supplier_code) {
+      continue;
+    }
+    const sourceValue = resolveSourceValue(
+      patch.attributes,
+      primarySourceDimension,
+    );
+    const fallbackValueID = findResolvedSaleAttributeValueID({
+      attributes: current.skc_attributes,
+      attributeID: primaryOption?.attribute_id,
+      sourceValue,
+    });
+    selections[patch.supplier_code] = buildInitialManualSelection({
+      option: primaryOption,
+      sourceValue,
+      fallbackValueID,
+    });
+  }
+  return selections;
+}
+
+function buildInitialManualSKUSelections({
+  current,
+  secondaryOption,
+  secondarySourceDimension,
+}: {
+  current: NonNullable<
+    NonNullable<SheinEditorContext["sale_attributes"]>["current"]
+  >;
+  secondaryOption: SheinSaleAttributeTemplateOption | null;
+  secondarySourceDimension?: string;
+}) {
+  const selections: Record<string, ManualSaleAttributeSelection> = {};
+  for (const skcPatch of current.skc_patches ?? []) {
+    for (const skuPatch of skcPatch.sku_patches ?? []) {
+      if (!skuPatch.supplier_sku) {
+        continue;
+      }
+      const sourceValue = resolveSourceValue(
+        skuPatch.attributes,
+        secondarySourceDimension,
+      );
+      const fallbackValueID = findResolvedSaleAttributeValueID({
+        attributes: current.sku_attributes,
+        attributeID: secondaryOption?.attribute_id,
+        sourceValue,
+      });
+      selections[skuPatch.supplier_sku] = buildInitialManualSelection({
+        option: secondaryOption,
+        sourceValue,
+        fallbackValueID,
+      });
+    }
+  }
+  return selections;
+}
+
+function buildInitialManualSelection({
+  option,
+  sourceValue,
+  fallbackValueID,
+}: {
+  option: SheinSaleAttributeTemplateOption | null;
+  sourceValue?: string;
+  fallbackValueID?: number;
+}): ManualSaleAttributeSelection {
+  const matchedValueID = findTemplateValueID(option, sourceValue, fallbackValueID);
+  if (matchedValueID) {
+    return { valueId: matchedValueID, textValue: "" };
+  }
+  return sourceValue?.trim() ? { textValue: sourceValue.trim() } : {};
+}
+
+function findResolvedSaleAttributeValueID({
+  attributes,
+  attributeID,
+  sourceValue,
+}: {
+  attributes?: SheinResolvedSaleAttribute[];
+  attributeID?: number;
+  sourceValue?: string;
+}) {
+  const normalizedSource = normalizeSaleAttributeToken(sourceValue);
+  const match = (attributes ?? []).find((attribute) => {
+    if (attributeID && attribute.attribute_id !== attributeID) {
+      return false;
+    }
+    if (!normalizedSource) {
+      return Boolean(attribute.attribute_value_id);
+    }
+    return (
+      normalizeSaleAttributeToken(attribute.value) === normalizedSource &&
+      Boolean(attribute.attribute_value_id)
+    );
+  });
+  return match?.attribute_value_id;
+}
+
+function findTemplateValueID(
+  option: SheinSaleAttributeTemplateOption | null,
+  sourceValue?: string,
+  fallbackValueID?: number,
+) {
+  const values = option?.attribute_value_list ?? [];
+  if (fallbackValueID && values.some((value) => value.attribute_value_id === fallbackValueID)) {
+    return fallbackValueID;
+  }
+  const normalizedSource = normalizeSaleAttributeToken(sourceValue);
+  if (!normalizedSource) {
+    return undefined;
+  }
+  return values.find(
+    (value) =>
+      normalizeSaleAttributeToken(value.value_en) === normalizedSource ||
+      normalizeSaleAttributeToken(value.value) === normalizedSource,
+  )?.attribute_value_id;
 }
 
 function pickTemplateOptionID({

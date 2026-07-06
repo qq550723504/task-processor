@@ -12,7 +12,9 @@ function getManualCorrectionDetails() {
 
 async function openManualCorrection(user: ReturnType<typeof userEvent.setup>) {
   const manualDetails = getManualCorrectionDetails();
-  expect(manualDetails).not.toHaveAttribute("open");
+  if (manualDetails.hasAttribute("open")) {
+    return;
+  }
   const summary = manualDetails?.querySelector("summary");
   expect(summary).not.toBeNull();
   await user.click(summary!);
@@ -1000,8 +1002,8 @@ describe("SheinSaleAttributeReviewCard", () => {
     );
 
     expect(
-      screen.queryByRole("button", { name: "保存手工修正" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("button", { name: "保存手工修正" }),
+    ).toBeInTheDocument();
 
     await user.selectOptions(screen.getByLabelText(/第 3 步：主规格值/), "739");
     await user.selectOptions(
@@ -1666,6 +1668,97 @@ describe("SheinSaleAttributeReviewCard", () => {
       screen.getByText(
         "已触发销售属性刷新，系统会重新拉取模板并刷新颜色、尺寸等映射。",
       ),
+    ).toBeInTheDocument();
+  });
+
+  it("opens manual correction by default when the secondary sale attribute is required", () => {
+    render(
+      <SheinSaleAttributeReviewCard
+        editorContext={{
+          sale_attributes: {
+            current: {
+              status: "partial",
+              primary_attribute_id: 27,
+              secondary_attribute_id: 87,
+              primary_source_dimension: "Color",
+              secondary_source_dimension: "Size",
+              skc_attributes: [
+                {
+                  scope: "skc",
+                  name: "Color",
+                  value: "white",
+                  attribute_id: 27,
+                  attribute_value_id: 739,
+                },
+              ],
+              sku_attributes: [
+                {
+                  scope: "sku",
+                  name: "Size",
+                  value: "M",
+                  attribute_id: 87,
+                  attribute_value_id: 417,
+                },
+              ],
+              template_options: [
+                {
+                  attribute_id: 27,
+                  name: "Color",
+                  name_en: "Color",
+                  skc_scope: true,
+                  attribute_value_list: [
+                    {
+                      attribute_value_id: 739,
+                      value: "White",
+                      value_en: "White",
+                    },
+                  ],
+                },
+                {
+                  attribute_id: 87,
+                  name: "Size",
+                  name_en: "Size",
+                  attribute_value_list: [
+                    { attribute_value_id: 417, value: "M", value_en: "M" },
+                  ],
+                },
+              ],
+              skc_patches: [
+                {
+                  supplier_code: "SKC-1",
+                  skc_name: "white",
+                  attributes: { Color: "white" },
+                  sku_patches: [
+                    {
+                      supplier_sku: "SKU-S",
+                      attributes: { Size: "S" },
+                    },
+                    {
+                      supplier_sku: "SKU-M",
+                      attributes: { Size: "M" },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }}
+        onApplyManualSaleAttributes={vi.fn()}
+      />,
+    );
+
+    expect(getManualCorrectionDetails()).toHaveAttribute("open");
+    expect(screen.getByText("收起")).toBeInTheDocument();
+    expect(screen.getByLabelText(/第 2 步：其他规格字段/)).toBeInTheDocument();
+    expect(screen.getByText("SKU-S")).toBeInTheDocument();
+    expect(screen.getByText("SKU-M")).toBeInTheDocument();
+    expect(
+      within(getSKUSelectionCard("SKU-S")).getByPlaceholderText(
+        "手工输入，建议值：S",
+      ),
+    ).toHaveValue("S");
+    expect(
+      screen.getByRole("button", { name: "保存手工修正" }),
     ).toBeInTheDocument();
   });
 });
