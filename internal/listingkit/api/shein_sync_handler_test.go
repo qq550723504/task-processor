@@ -94,6 +94,10 @@ func (stubSheinCandidateHandlerService) ListCandidates(context.Context, *listing
 	return nil, 0, nil
 }
 
+func (stubSheinCandidateHandlerService) ResetCandidates(context.Context, int64, int64, listingkit.SheinCandidateResetRequest) (*listingkit.SheinCandidateResetResult, error) {
+	return nil, nil
+}
+
 func (stubSheinCandidateHandlerService) ReviewCandidate(context.Context, int64, int64, int64, listingkit.SheinCandidateReviewStatus, *bool, *bool) (*listingkit.SheinActivityCandidateRecord, error) {
 	return nil, nil
 }
