@@ -279,7 +279,7 @@ func TestExecuteSheinActivityEnrollmentReturnsErrorWhenCandidateIDsMissing(t *te
 	require.Empty(t, repo.createdRuns)
 }
 
-func TestExecuteSheinActivityEnrollmentBestEffortPersistsTerminalRunWhenFollowupPersistenceFails(t *testing.T) {
+func TestExecuteSheinActivityEnrollmentPersistsFailedRunWhenOutcomeDetailsFail(t *testing.T) {
 	t.Parallel()
 
 	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
@@ -315,11 +315,10 @@ func TestExecuteSheinActivityEnrollmentBestEffortPersistsTerminalRunWhenFollowup
 	require.Error(t, err)
 	require.ErrorContains(t, err, "save items failed")
 	require.ErrorContains(t, err, "save candidates failed")
-	require.Len(t, repo.updatedRuns, 2)
-	require.Equal(t, SheinEnrollmentRunStatusSucceeded, repo.updatedRuns[0].Status)
-	require.Equal(t, SheinEnrollmentRunStatusFailed, repo.updatedRuns[1].Status)
-	require.Contains(t, repo.updatedRuns[1].ErrorSummary, "save items failed")
-	require.Contains(t, repo.updatedRuns[1].ErrorSummary, "save candidates failed")
+	require.Len(t, repo.updatedRuns, 1)
+	require.Equal(t, SheinEnrollmentRunStatusFailed, repo.updatedRuns[0].Status)
+	require.Contains(t, repo.updatedRuns[0].ErrorSummary, "save items failed")
+	require.Contains(t, repo.updatedRuns[0].ErrorSummary, "save candidates failed")
 }
 
 func TestExecuteSheinActivityEnrollmentDeduplicatesExecutableCandidatesBySKC(t *testing.T) {
@@ -350,7 +349,7 @@ func TestExecuteSheinActivityEnrollmentDeduplicatesExecutableCandidatesBySKC(t *
 		},
 	})
 	adapter := &sheinEnrollmentAdapterStub{
-		results: []SheinActivityEnrollmentResult{{CandidateID: 1, Success: true}},
+		results: []SheinActivityEnrollmentResult{{CandidateID: 2, Success: true}},
 	}
 	service := NewSheinEnrollmentService(repo, adapter)
 
@@ -370,17 +369,17 @@ func TestExecuteSheinActivityEnrollmentDeduplicatesExecutableCandidatesBySKC(t *
 	require.Equal(t, 1, run.SucceededCount)
 	require.Equal(t, 1, run.FailedCount)
 	require.Len(t, adapter.calls, 1)
-	require.Equal(t, []int64{1}, sheinEnrollmentCandidateIDs(adapter.calls[0].Candidates))
+	require.Equal(t, []int64{2}, sheinEnrollmentCandidateIDs(adapter.calls[0].Candidates))
 
 	candidates := repo.savedCandidates()
 	require.Len(t, candidates, 2)
-	require.Equal(t, SheinCandidateReviewStatusEnrolled, candidates[0].ReviewStatus)
-	require.Equal(t, SheinCandidateReviewStatusFailed, candidates[1].ReviewStatus)
+	require.Equal(t, SheinCandidateReviewStatusFailed, candidates[0].ReviewStatus)
+	require.Equal(t, SheinCandidateReviewStatusEnrolled, candidates[1].ReviewStatus)
 	require.Len(t, repo.savedItems, 2)
-	require.ErrorContains(t, errors.New(repo.savedItems[1].ErrorMessage), "duplicate executable candidate")
+	require.ErrorContains(t, errors.New(repo.savedItems[0].ErrorMessage), "duplicate executable candidate")
 }
 
-func TestExecuteSheinActivityEnrollmentManualConfirmedDoesNotRetryFailedCandidates(t *testing.T) {
+func TestExecuteSheinActivityEnrollmentFailsWhenPagedExecutableQueryFindsNoCandidates(t *testing.T) {
 	t.Parallel()
 
 	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
@@ -411,10 +410,11 @@ func TestExecuteSheinActivityEnrollmentManualConfirmedDoesNotRetryFailedCandidat
 	)
 
 	require.NoError(t, err)
-	require.Equal(t, SheinEnrollmentRunStatusSucceeded, run.Status)
+	require.Equal(t, SheinEnrollmentRunStatusFailed, run.Status)
 	require.Zero(t, run.CandidateCount)
 	require.Zero(t, run.SubmittedCount)
 	require.Zero(t, run.FailedCount)
+	require.Contains(t, run.ErrorSummary, "no SHEIN enrollment candidates")
 	require.Len(t, repo.listCandidateQueries, 1)
 	require.True(t, repo.listCandidateQueries[0].ExecutableOnly)
 	require.Empty(t, adapter.calls)

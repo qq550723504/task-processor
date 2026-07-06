@@ -106,6 +106,45 @@ func TestSyncDesignRequestUnmarshalRealFields(t *testing.T) {
 	}
 }
 
+func TestGetDesignProductForPrototypeGroupSendsPrototypeGroupQuery(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Fatalf("method = %s, want GET", r.Method)
+		}
+		if r.URL.Path != "/ps/design/products/101" {
+			t.Fatalf("path = %s, want /ps/design/products/101", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("prototypeGroupId"); got != "7001" {
+			t.Fatalf("prototypeGroupId query = %q, want 7001", got)
+		}
+		_, _ = w.Write([]byte(`{
+			"product":{"id":101},
+			"prototypeGroup":{"id":7001},
+			"layers":[{"id":"layer-1"}]
+		}`))
+	}))
+	defer server.Close()
+
+	cfg := sdsclient.DefaultConfig()
+	cfg.BaseURL = server.URL
+	cfg.Endpoints.DesignProductPath = "/ps/design/products/%d"
+	cfg.AuthBootstrap = sdsclient.AuthBootstrapConfig{}
+	client, err := sdsclient.New(cfg)
+	if err != nil {
+		t.Fatalf("new client: %v", err)
+	}
+
+	page, err := NewService(client).GetDesignProductForPrototypeGroup(context.Background(), 101, 7001)
+	if err != nil {
+		t.Fatalf("GetDesignProductForPrototypeGroup() error = %v", err)
+	}
+	if page == nil || page.Product.ID != 101 || page.PrototypeGroup.ID != 7001 {
+		t.Fatalf("page = %+v, want selected prototype group page", page)
+	}
+}
+
 func TestPrepareSyncDesignUsesRelatedVariantLayerIDs(t *testing.T) {
 	t.Parallel()
 

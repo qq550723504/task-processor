@@ -221,6 +221,28 @@ describe("SheinCostPriceTable", () => {
     expect(await screen.findByText("发货地 US")).toBeInTheDocument();
   });
 
+  it("disables manual cost save for non-positive values", async () => {
+    mockSourceMetadataFetch([]);
+    const onSave = vi.fn().mockResolvedValue(undefined);
+
+    renderCostPriceTable({
+      onSave,
+      shipmentArea: "US",
+    });
+
+    const input = screen.getByLabelText("成本价 MG8006905001");
+    const saveButton = screen.getByRole("button", { name: "保存成本价" });
+
+    fireEvent.change(input, { target: { value: "0" } });
+    expect(saveButton).toBeDisabled();
+    fireEvent.click(saveButton);
+    expect(onSave).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: "-1" } });
+    expect(saveButton).toBeDisabled();
+    expect(await screen.findByText("发货地 US")).toBeInTheDocument();
+  });
+
   it("falls back to source code and store shipment area when source metadata is unavailable", async () => {
     mockSourceMetadataFetch([]);
 

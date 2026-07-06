@@ -14,8 +14,6 @@ func (s *sheinEnrollmentService) persistEnrollmentOutcome(
 	candidates []*SheinActivityCandidateRecord,
 ) error {
 	ctx = context.WithoutCancel(ctx)
-	initialRunUpdateErr := s.bestEffortUpdateEnrollmentRun(ctx, run)
-
 	persistErrs := make([]error, 0, 2)
 	if len(items) > 0 {
 		if err := s.repo.SaveEnrollmentItems(ctx, items); err != nil {
@@ -32,11 +30,8 @@ func (s *sheinEnrollmentService) persistEnrollmentOutcome(
 		run.ErrorSummary = joinSheinEnrollmentSummary(run.ErrorSummary, joinSheinEnrollmentErrors(persistErrs...).Error())
 	}
 
-	if len(persistErrs) == 0 && initialRunUpdateErr == nil {
-		return nil
-	}
 	finalRunUpdateErr := s.bestEffortUpdateEnrollmentRun(ctx, run)
-	return joinSheinEnrollmentErrors(initialRunUpdateErr, joinSheinEnrollmentErrors(persistErrs...), finalRunUpdateErr)
+	return joinSheinEnrollmentErrors(joinSheinEnrollmentErrors(persistErrs...), finalRunUpdateErr)
 }
 
 func (s *sheinEnrollmentService) bestEffortUpdateEnrollmentRun(ctx context.Context, run *SheinActivityEnrollmentRunRecord) error {
@@ -175,13 +170,7 @@ func countSheinEnrollmentOutcomes(resultByCandidateID map[int64]SheinActivityEnr
 func deriveSheinEnrollmentRunStatus(candidateCount, submittedCount, succeededCount, failedCount int, adapterErr error) SheinEnrollmentRunStatus {
 	switch {
 	case submittedCount == 0:
-		if candidateCount > 0 && failedCount == 0 {
-			return SheinEnrollmentRunStatusFailed
-		}
-		if failedCount > 0 {
-			return SheinEnrollmentRunStatusFailed
-		}
-		return SheinEnrollmentRunStatusSucceeded
+		return SheinEnrollmentRunStatusFailed
 	case succeededCount > 0 && failedCount > 0:
 		return SheinEnrollmentRunStatusPartiallySucceeded
 	case failedCount > 0:

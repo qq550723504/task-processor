@@ -247,6 +247,27 @@ func (s *Service) GetDesignProduct(ctx context.Context, variantID int64) (*Desig
 	return result, nil
 }
 
+func (s *Service) GetDesignProductForPrototypeGroup(ctx context.Context, variantID, prototypeGroupID int64) (*DesignProductPage, error) {
+	if variantID <= 0 {
+		return nil, fmt.Errorf("variantID must be positive")
+	}
+	if prototypeGroupID <= 0 {
+		return nil, fmt.Errorf("prototypeGroupID must be positive")
+	}
+
+	path := fmt.Sprintf(s.client.Config().Endpoints.DesignProductPath, variantID)
+	query := map[string]string{
+		"prototypeGroupId": strconv.FormatInt(prototypeGroupID, 10),
+	}
+	result := new(DesignProductPage)
+	_, err := s.client.Do(ctx, "GET", path, query, nil, result)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 // GetProductDetail 获取 SDS 商品详情。syncDesign 的稳定 mockup 图会回写到该详情中。
 func (s *Service) GetProductDetail(ctx context.Context, parentProductID int64) (*sdstemplate.ProductDetail, error) {
 	if parentProductID <= 0 {

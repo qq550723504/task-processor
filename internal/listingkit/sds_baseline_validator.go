@@ -20,6 +20,10 @@ type SDSBaselineRemoteProvider interface {
 	GetPrototypeGroups(ctx context.Context, parentProductID int64) ([]sdsdesign.PrototypeGroup, error)
 }
 
+type sdsBaselinePrototypeGroupDesignProvider interface {
+	GetDesignProductForPrototypeGroup(ctx context.Context, variantID, prototypeGroupID int64) (*sdsdesign.DesignProductPage, error)
+}
+
 type sdsBaselineValidationResult struct {
 	Status     string
 	ReasonCode string
@@ -183,7 +187,7 @@ func (s *service) validateSDSBaselineRemote(ctx context.Context, options *SDSSyn
 			Reason:     "SDS product detail is unavailable.",
 		}
 	}
-	page, err := remoteProvider.GetDesignProduct(ctx, options.VariantID)
+	page, err := getSDSBaselineDesignProduct(ctx, remoteProvider, options)
 	if err != nil {
 		if isSDSBaselineCredentialBootstrapError(err) {
 			return sdsBaselineValidationResult{
@@ -244,6 +248,15 @@ func (s *service) validateSDSBaselineRemote(ctx context.Context, options *SDSSyn
 		}
 	}
 	return sdsBaselineValidationResult{Status: SDSBaselineValidationStatusReady}
+}
+
+func getSDSBaselineDesignProduct(ctx context.Context, remoteProvider SDSBaselineRemoteProvider, options *SDSSyncOptions) (*sdsdesign.DesignProductPage, error) {
+	if options != nil && options.PrototypeGroupID > 0 {
+		if groupProvider, ok := remoteProvider.(sdsBaselinePrototypeGroupDesignProvider); ok {
+			return groupProvider.GetDesignProductForPrototypeGroup(ctx, options.VariantID, options.PrototypeGroupID)
+		}
+	}
+	return remoteProvider.GetDesignProduct(ctx, options.VariantID)
 }
 
 func isSDSBaselineCredentialBootstrapError(err error) bool {

@@ -130,6 +130,8 @@ func (s *sheinEnrollmentService) completeSheinActivityEnrollmentRun(
 	run.FinishedAt = &finishedAt
 	if adapterErr != nil {
 		run.ErrorSummary = adapterErr.Error()
+	} else if run.CandidateCount == 0 {
+		run.ErrorSummary = "no SHEIN enrollment candidates"
 	} else if run.CandidateCount > 0 && run.SubmittedCount == 0 {
 		run.ErrorSummary = "no executable SHEIN enrollment candidates"
 	}

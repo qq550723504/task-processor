@@ -62,6 +62,13 @@ func (p *BaselineRemoteProvider) GetDesignProduct(ctx context.Context, variantID
 	return p.design.GetDesignProduct(ctx, variantID)
 }
 
+func (p *BaselineRemoteProvider) GetDesignProductForPrototypeGroup(ctx context.Context, variantID, prototypeGroupID int64) (*sdsdesign.DesignProductPage, error) {
+	if p == nil || p.design == nil {
+		return nil, nil
+	}
+	return p.design.GetDesignProductForPrototypeGroup(ctx, variantID, prototypeGroupID)
+}
+
 func (p *BaselineRemoteProvider) GetPrototypeGroups(ctx context.Context, parentProductID int64) ([]sdsdesign.PrototypeGroup, error) {
 	if p == nil || p.design == nil {
 		return nil, nil

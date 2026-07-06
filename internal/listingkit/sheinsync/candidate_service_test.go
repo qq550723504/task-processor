@@ -508,6 +508,76 @@ func TestSheinCandidateServiceRefreshCandidatesPreservesWorkflowStateForSameVers
 	require.True(t, candidates[0].SelectedForRun)
 }
 
+func TestSheinCandidateServiceRefreshCandidatesTreatsSKUCostChangesAsNewVersion(t *testing.T) {
+	t.Parallel()
+
+	oldProduct := SheinSyncedProductRecord{
+		ID:                 32,
+		TenantID:           9,
+		StoreID:            10,
+		SKCName:            "sku-cost-version-skc",
+		ShelfStatus:        "ON_SHELF",
+		EffectiveCostPrice: float64Ptr(22.2),
+		PriceSnapshot:      `{"sale_price":49.9}`,
+		InventorySnapshot:  `{"available":50}`,
+		SyncVersion:        "sync-v1",
+		IsActive:           true,
+		SKUCostPriceInfoList: []SheinSKUCostPrice{
+			{SKUCode: "SKU-A", CostPrice: 18.8},
+			{SKUCode: "SKU-B", CostPrice: 22.2},
+		},
+	}
+	newProduct := oldProduct
+	newProduct.SKUCostPriceInfoList = []SheinSKUCostPrice{
+		{SKUCode: "SKU-A", CostPrice: 19.9},
+		{SKUCode: "SKU-B", CostPrice: 22.2},
+	}
+
+	repo := newSheinCandidateRepoStub([]SheinSyncedProductRecord{newProduct})
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                   1002,
+		TenantID:             9,
+		StoreID:              10,
+		SyncedProductID:      32,
+		ActivityType:         "flash_sale",
+		ActivityKey:          "flash_sale:9:10",
+		SKCName:              "sku-cost-version-skc",
+		CandidateVersion:     buildSheinCandidateVersion(oldProduct),
+		EligibilityStatus:    SheinCandidateEligibilityStatusEligible,
+		ReviewStatus:         SheinCandidateReviewStatusApproved,
+		AutoModeEligible:     true,
+		SelectedForRun:       true,
+		EffectiveCostPrice:   float64Ptr(22.2),
+		SKUCostPriceInfoList: oldProduct.SKUCostPriceInfoList,
+	})
+
+	service := NewSheinCandidateService(repo)
+
+	result, err := service.RefreshCandidates(context.Background(), 9, 10, "flash_sale")
+	require.NoError(t, err)
+	require.Equal(t, 1, result.EligibleCount)
+
+	candidates := repo.savedCandidates()
+	require.Len(t, candidates, 2)
+
+	byVersion := make(map[string]SheinActivityCandidateRecord, len(candidates))
+	for _, candidate := range candidates {
+		byVersion[candidate.CandidateVersion] = candidate
+	}
+	latest := byVersion[buildSheinCandidateVersion(newProduct)]
+	stale := byVersion[buildSheinCandidateVersion(oldProduct)]
+	require.NotEmpty(t, latest.CandidateVersion)
+	require.NotEmpty(t, stale.CandidateVersion)
+	require.Equal(t, SheinCandidateReviewStatusPendingReview, latest.ReviewStatus)
+	require.False(t, latest.AutoModeEligible)
+	require.False(t, latest.SelectedForRun)
+	require.Equal(t, newProduct.SKUCostPriceInfoList, latest.SKUCostPriceInfoList)
+	require.Equal(t, SheinCandidateEligibilityStatusIneligible, stale.EligibilityStatus)
+	require.Equal(t, SheinCandidateReviewStatusRejected, stale.ReviewStatus)
+	require.False(t, stale.AutoModeEligible)
+	require.False(t, stale.SelectedForRun)
+}
+
 func TestSheinCandidateServiceRefreshCandidatesSupersedesOlderCandidateVersions(t *testing.T) {
 	t.Parallel()
 

@@ -195,6 +195,7 @@ func filterExecutableSheinCandidates(
 	duplicateResults := make(map[int64]SheinActivityEnrollmentResult)
 	nonExecutableResults := make(map[int64]SheinActivityEnrollmentResult)
 	executableBySKC := make(map[string]int64)
+	executableIndexBySKC := make(map[string]int)
 	for _, candidate := range candidates {
 		if reason := sheinCandidateNonExecutableReason(candidate, triggerMode); reason != "" {
 			nonExecutableResults[candidate.ID] = SheinActivityEnrollmentResult{
@@ -204,18 +205,43 @@ func filterExecutableSheinCandidates(
 			}
 			continue
 		}
-		if existingCandidateID, exists := executableBySKC[candidate.SKCName]; exists {
-			duplicateResults[candidate.ID] = SheinActivityEnrollmentResult{
-				CandidateID:  candidate.ID,
-				Success:      false,
-				ErrorMessage: fmt.Sprintf("duplicate executable candidate for SKC %s (already selected by candidate %d)", candidate.SKCName, existingCandidateID),
+		if existingIndex, exists := executableIndexBySKC[candidate.SKCName]; exists {
+			existing := filtered[existingIndex]
+			if preferSheinCandidateForExecution(candidate, existing) {
+				duplicateResults[existing.ID] = SheinActivityEnrollmentResult{
+					CandidateID:  existing.ID,
+					Success:      false,
+					ErrorMessage: fmt.Sprintf("duplicate executable candidate for SKC %s (already selected by candidate %d)", existing.SKCName, candidate.ID),
+				}
+				filtered[existingIndex] = candidate
+				executableBySKC[candidate.SKCName] = candidate.ID
+			} else {
+				duplicateResults[candidate.ID] = SheinActivityEnrollmentResult{
+					CandidateID:  candidate.ID,
+					Success:      false,
+					ErrorMessage: fmt.Sprintf("duplicate executable candidate for SKC %s (already selected by candidate %d)", candidate.SKCName, executableBySKC[candidate.SKCName]),
+				}
 			}
 			continue
 		}
 		executableBySKC[candidate.SKCName] = candidate.ID
+		executableIndexBySKC[candidate.SKCName] = len(filtered)
 		filtered = append(filtered, candidate)
 	}
 	return filtered, duplicateResults, nonExecutableResults
+}
+
+func preferSheinCandidateForExecution(candidate, existing SheinActivityCandidateRecord) bool {
+	if candidate.SelectedForRun != existing.SelectedForRun {
+		return candidate.SelectedForRun
+	}
+	if !candidate.UpdatedAt.Equal(existing.UpdatedAt) {
+		return candidate.UpdatedAt.After(existing.UpdatedAt)
+	}
+	if !candidate.CreatedAt.Equal(existing.CreatedAt) {
+		return candidate.CreatedAt.After(existing.CreatedAt)
+	}
+	return candidate.ID > existing.ID
 }
 
 func isExecutableSheinCandidate(candidate SheinActivityCandidateRecord, triggerMode SheinEnrollmentRunTriggerMode) bool {

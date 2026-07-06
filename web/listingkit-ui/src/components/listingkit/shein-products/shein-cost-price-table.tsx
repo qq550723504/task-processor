@@ -905,7 +905,7 @@ function parseSheinCostDraft(value: string): { invalid: boolean; value: number |
     return { invalid: false, value: null };
   }
   const parsed = Number(trimmed);
-  if (!Number.isFinite(parsed)) {
+  if (!Number.isFinite(parsed) || parsed <= 0) {
     return { invalid: true, value: null };
   }
   return { invalid: false, value: parsed };

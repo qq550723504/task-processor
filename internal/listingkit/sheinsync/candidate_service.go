@@ -260,8 +260,9 @@ func buildSheinCandidateRecord(product SheinSyncedProductRecord, activityType, a
 			product.EffectiveCostPrice,
 			product.PriceSnapshot,
 		),
-		ReviewStatus:     SheinCandidateReviewStatusPendingReview,
-		AutoModeEligible: false,
+		ReviewStatus:         SheinCandidateReviewStatusPendingReview,
+		AutoModeEligible:     false,
+		SKUCostPriceInfoList: cloneSheinSKUCostPriceList(product.SKUCostPriceInfoList),
 	}
 
 	switch {
@@ -550,7 +551,37 @@ func buildSheinCandidateVersion(product SheinSyncedProductRecord) string {
 	hash.Write([]byte(product.PriceSnapshot))
 	hash.Write([]byte{0})
 	hash.Write([]byte(product.InventorySnapshot))
+	hash.Write([]byte{0})
+	writeSheinCandidateSKUCostVersion(hash, product.SKUCostPriceInfoList)
 	return hex.EncodeToString(hash.Sum(nil))
+}
+
+func writeSheinCandidateSKUCostVersion(hash hashWriter, source []SheinSKUCostPrice) {
+	if len(source) == 0 {
+		return
+	}
+	items := cloneSheinSKUCostPriceList(source)
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].SKUCode != items[j].SKUCode {
+			return items[i].SKUCode < items[j].SKUCode
+		}
+		if items[i].Currency != items[j].Currency {
+			return items[i].Currency < items[j].Currency
+		}
+		return items[i].CostPrice < items[j].CostPrice
+	})
+	for _, item := range items {
+		hash.Write([]byte(strings.TrimSpace(item.SKUCode)))
+		hash.Write([]byte{0})
+		hash.Write([]byte(strconv.FormatFloat(item.CostPrice, 'f', -1, 64)))
+		hash.Write([]byte{0})
+		hash.Write([]byte(strings.TrimSpace(item.Currency)))
+		hash.Write([]byte{0})
+	}
+}
+
+type hashWriter interface {
+	Write([]byte) (int, error)
 }
 
 func sheinCandidateStateKey(skcName, candidateVersion string) string {

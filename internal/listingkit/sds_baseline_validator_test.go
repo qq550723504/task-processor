@@ -41,6 +41,20 @@ func (s stubSDSBaselineRemoteProvider) GetPrototypeGroups(context.Context, int64
 	return s.prototypeGroups, s.prototypeErr
 }
 
+type stubSDSBaselineGroupAwareRemoteProvider struct {
+	stubSDSBaselineRemoteProvider
+	groupDesignProduct        *sdsdesign.DesignProductPage
+	groupDesignProductErr     error
+	requestedVariantID        int64
+	requestedPrototypeGroupID int64
+}
+
+func (s *stubSDSBaselineGroupAwareRemoteProvider) GetDesignProductForPrototypeGroup(_ context.Context, variantID, prototypeGroupID int64) (*sdsdesign.DesignProductPage, error) {
+	s.requestedVariantID = variantID
+	s.requestedPrototypeGroupID = prototypeGroupID
+	return s.groupDesignProduct, s.groupDesignProductErr
+}
+
 func TestWarmSDSBaselineReturnsReadyWhenCacheAndValidationPass(t *testing.T) {
 	t.Parallel()
 
@@ -142,6 +156,49 @@ func TestWarmSDSBaselineReturnsBlockedWhenRemoteSurfaceMismatches(t *testing.T) 
 	}
 	if readiness.ReasonCode != SDSBaselineReasonCodePrototypeGroupMismatch {
 		t.Fatalf("reason code = %q, want %q", readiness.ReasonCode, SDSBaselineReasonCodePrototypeGroupMismatch)
+	}
+}
+
+func TestValidateSDSBaselineRemoteUsesSelectedPrototypeGroupForDesignSurface(t *testing.T) {
+	t.Parallel()
+
+	remoteProvider := &stubSDSBaselineGroupAwareRemoteProvider{
+		stubSDSBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+			productDetail: &sdstemplate.ProductDetail{},
+			designProduct: &sdsdesign.DesignProductPage{
+				Product:        sdsdesign.DesignProduct{ID: 101},
+				PrototypeGroup: sdsdesign.PrototypeGroup{ID: 9999},
+				Layers:         []sdsdesign.DesignLayer{{ID: "layer-1"}},
+			},
+			prototypeGroups: []sdsdesign.PrototypeGroup{{ID: 7001}},
+		},
+		groupDesignProduct: &sdsdesign.DesignProductPage{
+			Product:        sdsdesign.DesignProduct{ID: 101},
+			PrototypeGroup: sdsdesign.PrototypeGroup{ID: 7001},
+			Layers:         []sdsdesign.DesignLayer{{ID: "layer-1"}},
+		},
+	}
+	svc := seedSupportDeps(&service{
+		repo: NewInMemoryRepositoryForTest(),
+	}, supportDependencySeed{
+		sdsBaselineRemoteProvider: remoteProvider,
+	})
+
+	result := svc.validateSDSBaselineRemote(context.Background(), &SDSSyncOptions{
+		ParentProductID:  9001,
+		PrototypeGroupID: 7001,
+		VariantID:        101,
+		DesignType:       "material",
+		LayerID:          "layer-1",
+		PrintableWidth:   1000,
+		PrintableHeight:  1000,
+	})
+
+	if result.Status != SDSBaselineValidationStatusReady {
+		t.Fatalf("validation result = %+v, want ready", result)
+	}
+	if remoteProvider.requestedVariantID != 101 || remoteProvider.requestedPrototypeGroupID != 7001 {
+		t.Fatalf("requested design surface = variant %d group %d, want variant 101 group 7001", remoteProvider.requestedVariantID, remoteProvider.requestedPrototypeGroupID)
 	}
 }
 
