@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -277,11 +278,12 @@ func (s *sheinSyncService) listCandidatesForSyncedProduct(ctx context.Context, t
 	items := make([]SheinActivityCandidateRecord, 0)
 	for {
 		rows, total, err := s.repo.ListCandidates(ctx, &SheinActivityCandidateQuery{
-			TenantID: tenantID,
-			StoreID:  storeID,
-			SKCName:  skcName,
-			Page:     page,
-			PageSize: s.pageSize,
+			TenantID:       tenantID,
+			StoreID:        storeID,
+			SKCName:        skcName,
+			ExecutableOnly: true,
+			Page:           page,
+			PageSize:       s.pageSize,
 		})
 		if err != nil {
 			return nil, err
@@ -292,7 +294,7 @@ func (s *sheinSyncService) listCandidatesForSyncedProduct(ctx context.Context, t
 		}
 		page++
 	}
-	return items, nil
+	return latestSheinActivityCandidatesByActivity(items), nil
 }
 
 func sheinSyncedProductHasSDSCostGroupKey(product SheinSyncedProductRecord, groupKey string) bool {
@@ -302,6 +304,44 @@ func sheinSyncedProductHasSDSCostGroupKey(product SheinSyncedProductRecord, grou
 		}
 	}
 	return false
+}
+
+func latestSheinActivityCandidatesByActivity(candidates []SheinActivityCandidateRecord) []SheinActivityCandidateRecord {
+	if len(candidates) <= 1 {
+		return candidates
+	}
+	latestByActivity := make(map[string]SheinActivityCandidateRecord)
+	for _, candidate := range candidates {
+		key := candidate.ActivityType + "\x00" + candidate.ActivityKey
+		current, ok := latestByActivity[key]
+		if !ok || sheinActivityCandidateNewer(candidate, current) {
+			latestByActivity[key] = candidate
+		}
+	}
+	out := make([]SheinActivityCandidateRecord, 0, len(latestByActivity))
+	for _, candidate := range latestByActivity {
+		out = append(out, candidate)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].ActivityType != out[j].ActivityType {
+			return out[i].ActivityType < out[j].ActivityType
+		}
+		if out[i].ActivityKey != out[j].ActivityKey {
+			return out[i].ActivityKey < out[j].ActivityKey
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out
+}
+
+func sheinActivityCandidateNewer(left, right SheinActivityCandidateRecord) bool {
+	if !left.CreatedAt.Equal(right.CreatedAt) {
+		return left.CreatedAt.After(right.CreatedAt)
+	}
+	if !left.UpdatedAt.Equal(right.UpdatedAt) {
+		return left.UpdatedAt.After(right.UpdatedAt)
+	}
+	return left.ID > right.ID
 }
 
 func (s *sheinSyncService) listExistingProducts(ctx context.Context, tenantID, storeID int64) (map[string]SheinSyncedProductRecord, error) {

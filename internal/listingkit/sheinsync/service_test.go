@@ -911,6 +911,107 @@ func TestUpdateSDSCostGroupManualCostRefreshesRelatedCandidateCosts(t *testing.T
 	require.Equal(t, SheinCandidateReviewStatusPendingReview, candidates[0].ReviewStatus)
 }
 
+func TestUpdateSDSCostGroupManualCostRefreshesOnlyCurrentExecutableCandidateCosts(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	now := time.Date(2026, 7, 6, 10, 0, 0, 0, time.UTC)
+	repo.seedProduct(SheinSyncedProductRecord{
+		ID:                 301,
+		TenantID:           227,
+		StoreID:            870,
+		SKCName:            "sg260524164927164214023",
+		SupplierCode:       "XB0608035002-AB885FBF",
+		EffectiveCostPrice: float64Ptr(25.99),
+		IsActive:           true,
+	})
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                 803,
+		TenantID:           227,
+		StoreID:            870,
+		SyncedProductID:    301,
+		ActivityType:       "PROMOTION",
+		ActivityKey:        "PROMOTION:227:870",
+		SKCName:            "sg260524164927164214023",
+		CandidateVersion:   "v-old",
+		EffectiveCostPrice: float64Ptr(47.52),
+		PriceSnapshot:      `{"currency":"USD","sale_price":29.9}`,
+		EligibilityStatus:  SheinCandidateEligibilityStatusEligible,
+		ReviewStatus:       SheinCandidateReviewStatusApproved,
+		AutoModeEligible:   true,
+		SelectedForRun:     true,
+		CreatedAt:          now.Add(-2 * time.Hour),
+		UpdatedAt:          now.Add(-2 * time.Hour),
+	})
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                 804,
+		TenantID:           227,
+		StoreID:            870,
+		SyncedProductID:    301,
+		ActivityType:       "PROMOTION",
+		ActivityKey:        "PROMOTION:227:870",
+		SKCName:            "sg260524164927164214023",
+		CandidateVersion:   "v-current",
+		EffectiveCostPrice: float64Ptr(47.52),
+		PriceSnapshot:      `{"currency":"USD","sale_price":29.9}`,
+		EligibilityStatus:  SheinCandidateEligibilityStatusEligible,
+		ReviewStatus:       SheinCandidateReviewStatusPendingReview,
+		CreatedAt:          now.Add(-time.Hour),
+		UpdatedAt:          now.Add(-time.Hour),
+	})
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                 805,
+		TenantID:           227,
+		StoreID:            870,
+		SyncedProductID:    301,
+		ActivityType:       "PROMOTION",
+		ActivityKey:        "PROMOTION:227:870",
+		SKCName:            "sg260524164927164214023",
+		CandidateVersion:   "v-rejected",
+		EffectiveCostPrice: float64Ptr(47.52),
+		PriceSnapshot:      `{"currency":"USD","sale_price":29.9}`,
+		EligibilityStatus:  SheinCandidateEligibilityStatusEligible,
+		ReviewStatus:       SheinCandidateReviewStatusRejected,
+		CreatedAt:          now,
+		UpdatedAt:          now,
+	})
+	service := NewSheinSyncService(repo, &sheinSyncServiceProductAPIStub{}, &sheinSyncServiceCostResolverStub{})
+
+	group, err := service.(interface {
+		UpdateSDSCostGroupManualCost(context.Context, int64, int64, string, string, *float64) (*SheinSDSCostGroupRecord, error)
+	}).UpdateSDSCostGroupManualCost(context.Background(), 227, 870, "source:XB0608035002", "XB0608035002", float64Ptr(21.99))
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+
+	candidates, _, err := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+		TenantID: 227,
+		StoreID:  870,
+		SKCName:  "sg260524164927164214023",
+	})
+	require.NoError(t, err)
+	require.Len(t, candidates, 3)
+
+	byVersion := make(map[string]SheinActivityCandidateRecord, len(candidates))
+	for _, candidate := range candidates {
+		byVersion[candidate.CandidateVersion] = candidate
+	}
+	require.NotNil(t, byVersion["v-current"].EffectiveCostPrice)
+	require.Equal(t, 21.99, *byVersion["v-current"].EffectiveCostPrice)
+	require.NotNil(t, byVersion["v-current"].CalculatedProfitRate)
+	require.InEpsilon(t, 0.264548494983278, *byVersion["v-current"].CalculatedProfitRate, 0.0000000001)
+
+	require.NotNil(t, byVersion["v-old"].EffectiveCostPrice)
+	require.Equal(t, 47.52, *byVersion["v-old"].EffectiveCostPrice)
+	require.Equal(t, SheinCandidateReviewStatusApproved, byVersion["v-old"].ReviewStatus)
+	require.True(t, byVersion["v-old"].AutoModeEligible)
+	require.True(t, byVersion["v-old"].SelectedForRun)
+
+	require.NotNil(t, byVersion["v-rejected"].EffectiveCostPrice)
+	require.Equal(t, 47.52, *byVersion["v-rejected"].EffectiveCostPrice)
+	require.Equal(t, SheinCandidateReviewStatusRejected, byVersion["v-rejected"].ReviewStatus)
+}
+
 type sheinSyncServiceRepoStub struct {
 	mu            sync.RWMutex
 	nextID        int64
@@ -1243,6 +1344,9 @@ func (r *sheinSyncServiceRepoStub) ListCandidates(_ context.Context, query *Shei
 			if len(query.CandidateIDs) > 0 && !containsServiceTestID(query.CandidateIDs, row.ID) {
 				continue
 			}
+			if query.ExecutableOnly && !isServiceTestExecutableCandidate(row) {
+				continue
+			}
 		}
 		items = append(items, cloneServiceTestCandidate(row))
 	}
@@ -1250,6 +1354,18 @@ func (r *sheinSyncServiceRepoStub) ListCandidates(_ context.Context, query *Shei
 		return items[i].ID < items[j].ID
 	})
 	return items, int64(len(items)), nil
+}
+
+func isServiceTestExecutableCandidate(row SheinActivityCandidateRecord) bool {
+	if row.EligibilityStatus != SheinCandidateEligibilityStatusEligible {
+		return false
+	}
+	switch row.ReviewStatus {
+	case SheinCandidateReviewStatusPendingReview, SheinCandidateReviewStatusApproved, SheinCandidateReviewStatusAutoQueued:
+		return true
+	default:
+		return false
+	}
 }
 
 func (r *sheinSyncServiceRepoStub) SaveCandidates(_ context.Context, records []*SheinActivityCandidateRecord) error {
