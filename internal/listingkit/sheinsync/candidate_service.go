@@ -18,6 +18,7 @@ const sheinCandidateRefreshPageSize = 100
 type SheinCandidateService interface {
 	RefreshCandidates(ctx context.Context, tenantID, storeID int64, activityType string) (*SheinCandidateRefreshResult, error)
 	ListCandidates(ctx context.Context, query *SheinActivityCandidateQuery) ([]SheinActivityCandidateRecord, int64, error)
+	ResetCandidates(ctx context.Context, tenantID, storeID int64, req SheinCandidateResetRequest) (*SheinCandidateResetResult, error)
 	ReviewCandidate(
 		ctx context.Context,
 		tenantID, storeID, candidateID int64,
@@ -31,6 +32,20 @@ type SheinCandidateRefreshResult struct {
 	TotalCount      int
 	EligibleCount   int
 	IneligibleCount int
+}
+
+type SheinCandidateResetRequest struct {
+	ActivityType      string
+	ActivityKey       string
+	SKCName           string
+	EligibilityReason string
+	CandidateIDs      []int64
+}
+
+type SheinCandidateResetResult struct {
+	MatchedCount int `json:"matched_count"`
+	ResetCount   int `json:"reset_count"`
+	SkippedCount int `json:"skipped_count"`
 }
 
 type SheinCandidateRepository interface {
@@ -138,6 +153,73 @@ func (s *sheinCandidateService) ListCandidates(ctx context.Context, query *Shein
 		return nil, 0, err
 	}
 	return s.repo.ListCandidates(ctx, query)
+}
+
+func (s *sheinCandidateService) ResetCandidates(ctx context.Context, tenantID, storeID int64, req SheinCandidateResetRequest) (*SheinCandidateResetResult, error) {
+	if err := s.validate(); err != nil {
+		return nil, err
+	}
+	activityType := strings.TrimSpace(req.ActivityType)
+	if activityType == "" {
+		return nil, fmt.Errorf("SHEIN candidate activity type is required")
+	}
+
+	query := &SheinActivityCandidateQuery{
+		TenantID:     tenantID,
+		StoreID:      storeID,
+		ActivityType: activityType,
+		ActivityKey:  strings.TrimSpace(req.ActivityKey),
+		SKCName:      strings.TrimSpace(req.SKCName),
+		CandidateIDs: append([]int64(nil), req.CandidateIDs...),
+	}
+	reason := strings.TrimSpace(req.EligibilityReason)
+	result := &SheinCandidateResetResult{}
+	pageSize := s.pageSize
+	if pageSize <= 0 {
+		pageSize = sheinCandidateRefreshPageSize
+	}
+	if len(query.CandidateIDs) > 0 {
+		pageSize = len(query.CandidateIDs)
+	}
+
+	for page := 1; ; page++ {
+		query.Page = page
+		query.PageSize = pageSize
+		rows, total, err := s.repo.ListCandidates(ctx, query)
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) == 0 {
+			break
+		}
+
+		toSave := make([]*SheinActivityCandidateRecord, 0, len(rows))
+		for i := range rows {
+			row := rows[i]
+			if reason != "" && strings.TrimSpace(row.EligibilityReason) != reason {
+				continue
+			}
+			result.MatchedCount++
+			if row.ReviewStatus == SheinCandidateReviewStatusEnrolled {
+				result.SkippedCount++
+				continue
+			}
+			row.ReviewStatus = SheinCandidateReviewStatusPendingReview
+			row.AutoModeEligible = false
+			row.SelectedForRun = false
+			toSave = append(toSave, &row)
+		}
+		if len(toSave) > 0 {
+			if err := s.repo.SaveCandidates(ctx, toSave); err != nil {
+				return nil, err
+			}
+			result.ResetCount += len(toSave)
+		}
+		if int64(page*pageSize) >= total {
+			break
+		}
+	}
+	return result, nil
 }
 
 func (s *sheinCandidateService) ReviewCandidate(

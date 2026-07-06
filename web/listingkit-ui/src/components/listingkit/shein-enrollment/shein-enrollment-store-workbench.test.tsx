@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   useTriggerSheinStoreSync: vi.fn(),
   useSyncSheinSourceSDSProduct: vi.fn(),
   useRefreshSheinActivityCandidates: vi.fn(),
+  useResetSheinActivityCandidates: vi.fn(),
   useUpdateSheinActivityStrategy: vi.fn(),
   useUpdateSheinSDSCostGroup: vi.fn(),
   useUpdateSheinSyncedProductCost: vi.fn(),
@@ -46,6 +47,8 @@ vi.mock("@/lib/query/use-shein-enrollment", () => ({
     mocks.useSyncSheinSourceSDSProduct(...args),
   useRefreshSheinActivityCandidates: (...args: unknown[]) =>
     mocks.useRefreshSheinActivityCandidates(...args),
+  useResetSheinActivityCandidates: (...args: unknown[]) =>
+    mocks.useResetSheinActivityCandidates(...args),
   useUpdateSheinActivityStrategy: (...args: unknown[]) =>
     mocks.useUpdateSheinActivityStrategy(...args),
   useUpdateSheinSDSCostGroup: (...args: unknown[]) =>
@@ -81,6 +84,7 @@ function renderWorkbench({
   summary,
   activityStrategyResponse,
   updateStrategyMutation,
+  resetCandidatesMutation,
   sdsCostGroups = [],
   sourceSDSCostGroups = [],
   runTotal,
@@ -98,6 +102,7 @@ function renderWorkbench({
   summary?: Record<string, unknown>;
   activityStrategyResponse?: Record<string, unknown>;
   updateStrategyMutation?: ReturnType<typeof resolvedMutation>;
+  resetCandidatesMutation?: ReturnType<typeof resolvedMutation>;
   sdsCostGroups?: Array<Record<string, unknown>>;
   sourceSDSCostGroups?: Array<Record<string, unknown>>;
   runTotal?: number;
@@ -158,6 +163,9 @@ function renderWorkbench({
     syncSourceMutation ?? resolvedMutation(),
   );
   mocks.useRefreshSheinActivityCandidates.mockReturnValue(resolvedMutation());
+  mocks.useResetSheinActivityCandidates.mockReturnValue(
+    resetCandidatesMutation ?? resolvedMutation(),
+  );
   mocks.useUpdateSheinActivityStrategy.mockReturnValue(
     updateStrategyMutation ?? resolvedMutation(),
   );
@@ -370,6 +378,35 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       activity_key: undefined,
       trigger_mode: "manual_confirmed",
       candidate_ids: [18],
+    });
+  });
+
+  it("resets missing cost candidates from the candidates tab", async () => {
+    const resetCandidatesMutation = resolvedMutation();
+    renderWorkbench({
+      initialActivityType: "TIME_LIMITED",
+      initialTab: "candidates",
+      resetCandidatesMutation,
+      candidates: [
+        {
+          id: 18,
+          skc_name: "SKC-MISSING-COST",
+          review_status: "failed",
+          eligibility_status: "ineligible",
+          eligibility_reason: "missing effective cost price",
+        },
+      ],
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "重置状态" }));
+
+    expect(resetCandidatesMutation.mutateAsync).toHaveBeenCalledWith({
+      activity_type: "TIME_LIMITED",
+      eligibility_reason: "missing effective cost price",
     });
   });
 

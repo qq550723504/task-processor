@@ -80,6 +80,41 @@ func (h *handler) ListSheinActivityCandidates(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items, "total": total})
 }
 
+func (h *handler) ResetSheinActivityCandidates(c *gin.Context) {
+	if h.sheinCandidateService == nil {
+		c.JSON(http.StatusNotImplemented, gin.H{"error": "shein_candidate_unavailable", "message": "SHEIN candidate service is not configured"})
+		return
+	}
+
+	storeID, tenantID, ctx, ok := parseSheinScopedRequest(c)
+	if !ok {
+		return
+	}
+
+	var req resetSheinActivityCandidatesRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	if strings.TrimSpace(req.ActivityType) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "activity_type is required"})
+		return
+	}
+
+	result, err := h.sheinCandidateService.ResetCandidates(ctx, tenantID, storeID, listingkit.SheinCandidateResetRequest{
+		ActivityType:      strings.TrimSpace(req.ActivityType),
+		ActivityKey:       strings.TrimSpace(req.ActivityKey),
+		SKCName:           strings.TrimSpace(req.SKCName),
+		EligibilityReason: strings.TrimSpace(req.EligibilityReason),
+		CandidateIDs:      req.CandidateIDs,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "shein_candidate_reset_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"result": result})
+}
+
 func (h *handler) ReviewSheinActivityCandidate(c *gin.Context) {
 	if h.sheinCandidateService == nil {
 		c.JSON(http.StatusNotImplemented, gin.H{"error": "shein_candidate_unavailable", "message": "SHEIN candidate service is not configured"})

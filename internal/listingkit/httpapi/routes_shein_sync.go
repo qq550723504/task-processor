@@ -17,6 +17,7 @@ type sheinSyncRouteHandler interface {
 	UpdateSheinSDSCostGroup(c *gin.Context)
 	RefreshSheinActivityCandidates(c *gin.Context)
 	ListSheinActivityCandidates(c *gin.Context)
+	ResetSheinActivityCandidates(c *gin.Context)
 	ReviewSheinActivityCandidate(c *gin.Context)
 	ExecuteSheinActivityEnrollment(c *gin.Context)
 	ListSheinActivityEnrollmentRuns(c *gin.Context)

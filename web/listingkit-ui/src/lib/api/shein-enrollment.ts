@@ -2,6 +2,7 @@ import { apiRequest } from "@/lib/api/client";
 import type {
   ExecuteSheinActivityEnrollmentResponse,
   RefreshSheinActivityCandidatesResponse,
+  ResetSheinActivityCandidatesResponse,
   ReviewSheinActivityCandidateResponse,
   SheinActivityCandidateListResponse,
   SheinActivityCandidateQuery,
@@ -15,6 +16,7 @@ import type {
   SheinEnrollmentSummaryQuery,
   SheinExecuteEnrollmentInput,
   SheinRefreshCandidatesInput,
+  SheinResetActivityCandidatesInput,
   SheinReviewActivityCandidateInput,
   SheinSDSCostGroupListResponse,
   SheinSDSCostGroupQuery,
@@ -186,6 +188,19 @@ export async function refreshSheinActivityCandidates(
 ): Promise<RefreshSheinActivityCandidatesResponse> {
   return apiRequest<RefreshSheinActivityCandidatesResponse>(
     `/shein-sync/stores/${storeId}/candidates/refresh`,
+    {
+      method: "POST",
+      body: input,
+    },
+  );
+}
+
+export async function resetSheinActivityCandidates(
+  storeId: number,
+  input: SheinResetActivityCandidatesInput,
+): Promise<ResetSheinActivityCandidatesResponse> {
+  return apiRequest<ResetSheinActivityCandidatesResponse>(
+    `/shein-sync/stores/${storeId}/candidates/reset`,
     {
       method: "POST",
       body: input,

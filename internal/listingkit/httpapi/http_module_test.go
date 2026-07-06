@@ -176,6 +176,7 @@ func (stubRouteHandler) GetSheinActivityStrategy(*gin.Context)                  
 func (stubRouteHandler) UpdateSheinActivityStrategy(*gin.Context)                 {}
 func (stubRouteHandler) RefreshSheinActivityCandidates(*gin.Context)              {}
 func (stubRouteHandler) ListSheinActivityCandidates(*gin.Context)                 {}
+func (stubRouteHandler) ResetSheinActivityCandidates(*gin.Context)                {}
 func (stubRouteHandler) ReviewSheinActivityCandidate(*gin.Context)                {}
 func (stubRouteHandler) ExecuteSheinActivityEnrollment(*gin.Context)              {}
 func (stubRouteHandler) ListSheinActivityEnrollmentRuns(*gin.Context)             {}

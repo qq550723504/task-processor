@@ -14,6 +14,7 @@ import {
   getSheinSourceSDSCostGroups,
   getSheinSyncedProducts,
   refreshSheinActivityCandidates,
+  resetSheinActivityCandidates,
   reviewSheinActivityCandidate,
   syncSheinSourceSDSProduct,
   triggerSheinStoreSync,
@@ -30,6 +31,7 @@ import type {
   SheinEnrollmentSummaryQuery,
   SheinExecuteEnrollmentInput,
   SheinRefreshCandidatesInput,
+  SheinResetActivityCandidatesInput,
   SheinReviewActivityCandidateInput,
   SheinSDSCostGroupQuery,
   SheinSyncedProductQuery,
@@ -253,6 +255,19 @@ export function useRefreshSheinActivityCandidates(storeId: number) {
   return useMutation({
     mutationFn: (input: SheinRefreshCandidatesInput) =>
       refreshSheinActivityCandidates(storeId, input),
+    onSuccess: async () => {
+      await client.invalidateQueries({
+        queryKey: listingKitKeys.sheinEnrollmentStoreScope(storeId),
+      });
+    },
+  });
+}
+
+export function useResetSheinActivityCandidates(storeId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SheinResetActivityCandidatesInput) =>
+      resetSheinActivityCandidates(storeId, input),
     onSuccess: async () => {
       await client.invalidateQueries({
         queryKey: listingKitKeys.sheinEnrollmentStoreScope(storeId),

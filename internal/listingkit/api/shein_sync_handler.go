@@ -31,6 +31,14 @@ type refreshSheinActivityCandidatesRequest struct {
 	ActivityType string `json:"activity_type"`
 }
 
+type resetSheinActivityCandidatesRequest struct {
+	ActivityType      string  `json:"activity_type"`
+	ActivityKey       string  `json:"activity_key"`
+	SKCName           string  `json:"skc_name"`
+	EligibilityReason string  `json:"eligibility_reason"`
+	CandidateIDs      []int64 `json:"candidate_ids"`
+}
+
 type listSheinActivityCandidatesQuery struct {
 	ActivityType     string `form:"activity_type"`
 	ActivityKey      string `form:"activity_key"`

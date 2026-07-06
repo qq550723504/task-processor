@@ -13,6 +13,7 @@ import {
   getSheinSourceSDSMetadata,
   getSheinSyncedProducts,
   refreshSheinActivityCandidates,
+  resetSheinActivityCandidates,
   reviewSheinActivityCandidate,
   syncSheinSourceSDSProduct,
   triggerSheinStoreSync,
@@ -160,6 +161,10 @@ describe("shein enrollment api", () => {
       auto_mode_eligible: true,
       selected_for_run: true,
     });
+    await resetSheinActivityCandidates(12, {
+      activity_type: "flash_sale",
+      eligibility_reason: "missing effective cost price",
+    });
     await executeSheinActivityEnrollment(12, {
       activity_type: "flash_sale",
       activity_key: "flash_sale#12",
@@ -215,6 +220,17 @@ describe("shein enrollment api", () => {
     );
     expect(mockedApiRequest).toHaveBeenNthCalledWith(
       4,
+      "/shein-sync/stores/12/candidates/reset",
+      {
+        method: "POST",
+        body: {
+          activity_type: "flash_sale",
+          eligibility_reason: "missing effective cost price",
+        },
+      },
+    );
+    expect(mockedApiRequest).toHaveBeenNthCalledWith(
+      5,
       "/shein-sync/stores/12/enrollments",
       {
         method: "POST",
@@ -227,7 +243,7 @@ describe("shein enrollment api", () => {
       },
     );
     expect(mockedApiRequest).toHaveBeenNthCalledWith(
-      5,
+      6,
       "/shein-sync/stores/12/enrollment-runs",
       {
         query: {
@@ -239,7 +255,7 @@ describe("shein enrollment api", () => {
       },
     );
     expect(mockedApiRequest).toHaveBeenNthCalledWith(
-      6,
+      7,
       "/shein-sync/stores/12/enrollment-runs/99/items",
       {
         query: {

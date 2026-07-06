@@ -24,6 +24,7 @@ import {
   useExecuteSheinActivityEnrollment,
   useSheinActivityStrategy,
   useRefreshSheinActivityCandidates,
+  useResetSheinActivityCandidates,
   useReviewSheinActivityCandidate,
   useSheinActivityCandidates,
   useSheinActivityEnrollmentRunItems,
@@ -95,6 +96,7 @@ function SheinEnrollmentActivityWorkbench({
     { enabled: candidatesTabActive },
   );
   const refreshMutation = useRefreshSheinActivityCandidates(storeId);
+  const resetCandidatesMutation = useResetSheinActivityCandidates(storeId);
   const updateActivityStrategyMutation = useUpdateSheinActivityStrategy(storeId);
   const reviewMutation = useReviewSheinActivityCandidate(storeId);
   const enrollMutation = useExecuteSheinActivityEnrollment(storeId);
@@ -196,6 +198,20 @@ function SheinEnrollmentActivityWorkbench({
               />
               只看可报名
             </label>
+            <button
+              className="h-10 w-fit rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={resetCandidatesMutation.isPending}
+              onClick={() =>
+                void resetCandidatesMutation.mutateAsync({
+                  activity_type: activityType,
+                  eligibility_reason: "missing effective cost price",
+                  ...(candidateSkcName ? { skc_name: candidateSkcName } : {}),
+                })
+              }
+              type="button"
+            >
+              {resetCandidatesMutation.isPending ? "重置中" : "重置状态"}
+            </button>
           </div>
           <SheinCandidatesTable
             enrollmentDisabled={!activityStrategyReady}

@@ -963,6 +963,10 @@ func (s *stubListingKitHandler) ListSheinActivityCandidates(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": []any{}, "total": 0})
 }
 
+func (s *stubListingKitHandler) ResetSheinActivityCandidates(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"result": gin.H{"reset_count": 0}})
+}
+
 func (s *stubListingKitHandler) ReviewSheinActivityCandidate(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"candidate": gin.H{"id": c.Param("id")}})
 }

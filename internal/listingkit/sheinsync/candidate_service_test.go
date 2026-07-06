@@ -710,6 +710,94 @@ func TestSheinCandidateServiceRefreshCandidatesSupersedesCandidatesForMissingSKC
 	require.Contains(t, missing.EligibilityReason, "superseded")
 }
 
+func TestSheinCandidateServiceResetCandidatesResetsMatchingCandidates(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinCandidateRepoStub(nil)
+	service := NewSheinCandidateService(repo)
+	activityKey := buildSheinActivityKey("TIME_LIMITED", 227, 870)
+
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                1,
+		TenantID:          227,
+		StoreID:           870,
+		ActivityType:      "TIME_LIMITED",
+		ActivityKey:       activityKey,
+		SKCName:           "skc-missing-cost",
+		CandidateVersion:  "v1",
+		EligibilityStatus: SheinCandidateEligibilityStatusIneligible,
+		EligibilityReason: "missing effective cost price",
+		ReviewStatus:      SheinCandidateReviewStatusFailed,
+		AutoModeEligible:  true,
+		SelectedForRun:    true,
+	})
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                2,
+		TenantID:          227,
+		StoreID:           870,
+		ActivityType:      "TIME_LIMITED",
+		ActivityKey:       activityKey,
+		SKCName:           "skc-other-reason",
+		CandidateVersion:  "v1",
+		EligibilityStatus: SheinCandidateEligibilityStatusIneligible,
+		EligibilityReason: "product is not on shelf",
+		ReviewStatus:      SheinCandidateReviewStatusFailed,
+		AutoModeEligible:  true,
+		SelectedForRun:    true,
+	})
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                3,
+		TenantID:          227,
+		StoreID:           870,
+		ActivityType:      "TIME_LIMITED",
+		ActivityKey:       activityKey,
+		SKCName:           "skc-enrolled",
+		CandidateVersion:  "v1",
+		EligibilityStatus: SheinCandidateEligibilityStatusIneligible,
+		EligibilityReason: "missing effective cost price",
+		ReviewStatus:      SheinCandidateReviewStatusEnrolled,
+		AutoModeEligible:  true,
+		SelectedForRun:    true,
+	})
+
+	result, err := service.ResetCandidates(context.Background(), 227, 870, SheinCandidateResetRequest{
+		ActivityType:      "TIME_LIMITED",
+		EligibilityReason: "missing effective cost price",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.ResetCount)
+
+	rows, _, err := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+		TenantID:     227,
+		StoreID:      870,
+		ActivityType: "TIME_LIMITED",
+		PageSize:     10,
+	})
+	require.NoError(t, err)
+	byID := map[int64]SheinActivityCandidateRecord{}
+	for _, row := range rows {
+		byID[row.ID] = row
+	}
+
+	reset := byID[1]
+	require.Equal(t, SheinCandidateReviewStatusPendingReview, reset.ReviewStatus)
+	require.False(t, reset.AutoModeEligible)
+	require.False(t, reset.SelectedForRun)
+	require.Equal(t, SheinCandidateEligibilityStatusIneligible, reset.EligibilityStatus)
+	require.Equal(t, "missing effective cost price", reset.EligibilityReason)
+
+	unchangedReason := byID[2]
+	require.Equal(t, SheinCandidateReviewStatusFailed, unchangedReason.ReviewStatus)
+	require.True(t, unchangedReason.AutoModeEligible)
+	require.True(t, unchangedReason.SelectedForRun)
+
+	unchangedEnrolled := byID[3]
+	require.Equal(t, SheinCandidateReviewStatusEnrolled, unchangedEnrolled.ReviewStatus)
+	require.True(t, unchangedEnrolled.AutoModeEligible)
+	require.True(t, unchangedEnrolled.SelectedForRun)
+}
+
 type sheinCandidateRepoStub struct {
 	mu         sync.RWMutex
 	products   []SheinSyncedProductRecord

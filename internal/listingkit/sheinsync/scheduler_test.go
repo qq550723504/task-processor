@@ -66,6 +66,10 @@ func (s *stubSheinSchedulerCandidateService) ListCandidates(context.Context, *Sh
 	return nil, 0, nil
 }
 
+func (s *stubSheinSchedulerCandidateService) ResetCandidates(context.Context, int64, int64, SheinCandidateResetRequest) (*SheinCandidateResetResult, error) {
+	return nil, nil
+}
+
 func (s *stubSheinSchedulerCandidateService) ReviewCandidate(context.Context, int64, int64, int64, SheinCandidateReviewStatus, *bool, *bool) (*SheinActivityCandidateRecord, error) {
 	return nil, nil
 }

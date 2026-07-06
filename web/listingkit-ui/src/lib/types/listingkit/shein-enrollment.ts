@@ -64,6 +64,14 @@ export type SheinRefreshCandidatesInput = {
   activity_type: string;
 };
 
+export type SheinResetActivityCandidatesInput = {
+  activity_type: string;
+  activity_key?: string;
+  skc_name?: string;
+  eligibility_reason?: string;
+  candidate_ids?: number[];
+};
+
 export type SheinActivityPriceMode = "DISCOUNT" | "PROFIT";
 export type SheinActivityPartakeType = "REGULAR" | "LIMITED" | "BOTH";
 
@@ -300,6 +308,16 @@ export type RefreshSheinActivityCandidatesResponse = {
 
 export type ReviewSheinActivityCandidateResponse = {
   candidate?: SheinActivityCandidateRecord;
+};
+
+export type SheinResetCandidatesResult = {
+  matched_count?: number;
+  reset_count?: number;
+  skipped_count?: number;
+};
+
+export type ResetSheinActivityCandidatesResponse = {
+  result?: SheinResetCandidatesResult;
 };
 
 export type SheinActivityEnrollmentRunRecord = {
