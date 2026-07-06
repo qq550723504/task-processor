@@ -154,6 +154,9 @@ func TestRetryTaskChildTaskRetriesSDSDesignSync(t *testing.T) {
 	if result.Result == nil || result.Result.SDSSync == nil {
 		t.Fatalf("task result = %+v, want sds sync payload", result.Result)
 	}
+	if result.Result.Status != string(result.Status) {
+		t.Fatalf("result status = %q, want task status %q", result.Result.Status, result.Status)
+	}
 	if result.Result.SDSSync.Status != "completed" {
 		t.Fatalf("sds sync = %+v, want completed status", result.Result.SDSSync)
 	}

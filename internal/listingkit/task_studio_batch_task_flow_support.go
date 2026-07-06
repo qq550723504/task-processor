@@ -276,7 +276,53 @@ func (s *taskStudioBatchService) prepareStudioBatchTaskCreation(
 			return nil, nil, nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s is not approved", design.ID))
 		}
 	}
+	if err := validateStudioBatchTaskCreationDesignReadiness(designs, batchDetail); err != nil {
+		return nil, nil, nil, err
+	}
 	return designIDs, session, batchDetail, nil
+}
+
+func validateStudioBatchTaskCreationDesignReadiness(
+	designs []StudioMaterializedDesignRecord,
+	detail *StudioBatchDetailGraph,
+) error {
+	if !studioBatchTaskCreationRequiresReadyItems(detail) {
+		return nil
+	}
+	itemsByID := make(map[string]StudioBatchItemRecord, len(detail.Items))
+	for _, item := range detail.Items {
+		if itemID := strings.TrimSpace(item.ID); itemID != "" {
+			itemsByID[itemID] = item
+		}
+	}
+	for _, design := range designs {
+		itemID := strings.TrimSpace(design.ItemID)
+		item, ok := itemsByID[itemID]
+		if !ok {
+			return NewStudioBatchActionValidationError(fmt.Sprintf("design %s belongs to unknown item %s", design.ID, itemID))
+		}
+		if item.Status != StudioBatchItemStatusReviewReady {
+			return NewStudioBatchActionValidationError(fmt.Sprintf("design %s belongs to item %s with status %s; item is not ready for task creation", design.ID, item.ID, item.Status))
+		}
+	}
+	return nil
+}
+
+func studioBatchTaskCreationRequiresReadyItems(detail *StudioBatchDetailGraph) bool {
+	if detail == nil || detail.Batch == nil {
+		return false
+	}
+	switch detail.Batch.Status {
+	case StudioBatchStatusGenerating,
+		StudioBatchStatusPartiallyMaterialized,
+		StudioBatchStatusReviewReady,
+		StudioBatchStatusPartiallyFailed,
+		StudioBatchStatusTasksCreating,
+		StudioBatchStatusTasksCreated:
+		return true
+	default:
+		return false
+	}
 }
 
 func studioBatchTaskCreationHasInFlightGeneration(detail *StudioBatchDetailGraph) bool {

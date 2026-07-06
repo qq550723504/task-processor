@@ -14,12 +14,23 @@ function hasFailedSDSChildTask(task?: ListingKitTaskResult | null) {
   );
 }
 
+function hasFailedSheinSubmission(task?: ListingKitTaskResult | null) {
+  return Boolean(
+    task?.shein_latest_submission_status === "failed" ||
+      task?.shein_workflow_status === "publish_failed" ||
+      task?.shein_latest_submission_error,
+  );
+}
+
 function primaryTaskError(task: ListingKitTaskResult) {
   const blockingIssue = task.result?.workflow_issues?.find(
     (issue) => issue.severity === "blocking" && (issue.detail || issue.message),
   );
   if (blockingIssue?.detail) return blockingIssue.detail;
   if (blockingIssue?.message) return blockingIssue.message;
+  if (hasFailedSheinSubmission(task) && task.shein_latest_submission_error) {
+    return task.shein_latest_submission_error;
+  }
   if (task.error) return task.error;
   const failedChild = task.result?.child_tasks?.find((child) => child.error);
   return failedChild?.error;
@@ -63,18 +74,25 @@ export function TaskStatusPanel({
   retryingChildTaskKind?: string | null;
 }) {
   const keepsActionableFailureVisible =
-    task?.status === "completed" && hasFailedSDSChildTask(task);
+    task?.status === "completed" &&
+    (hasFailedSDSChildTask(task) || hasFailedSheinSubmission(task));
   if (!task?.status || (task.status === "completed" && !keepsActionableFailureVisible)) {
     return null;
   }
 
-  const presentation = isBlockedRetryable(task)
+  const presentation = hasFailedSheinSubmission(task)
     ? {
-        label: "等待依赖恢复",
-        title: "等待依赖恢复",
-        tone: "warning" as const,
+        label: "最近提交失败",
+        title: "SHEIN 提交失败",
+        tone: "danger" as const,
       }
-    : presentTaskStatus(keepsActionableFailureVisible ? "needs_review" : task.status);
+    : isBlockedRetryable(task)
+      ? {
+          label: "等待依赖恢复",
+          title: "等待依赖恢复",
+          tone: "warning" as const,
+        }
+      : presentTaskStatus(keepsActionableFailureVisible ? "needs_review" : task.status);
   const tone =
     presentation.tone === "danger"
       ? {

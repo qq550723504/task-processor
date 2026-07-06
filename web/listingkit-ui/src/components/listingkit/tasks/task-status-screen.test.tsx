@@ -318,6 +318,25 @@ describe("TaskStatusScreen", () => {
     expect(screen.getByText("远端已确认")).toBeInTheDocument();
   });
 
+  it("shows SHEIN submission failures even when generation completed", () => {
+    render(
+      <TaskStatusScreen
+        taskId="task_123"
+        task={{
+          task_id: "task_123",
+          status: "completed",
+          shein_workflow_status: "publish_failed",
+          shein_latest_submission_status: "failed",
+          shein_latest_submission_error: "方形图必须有一个",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("任务生成已完成，SHEIN 提交失败")).toBeInTheDocument();
+    expect(screen.getByText("SHEIN 提交失败")).toBeInTheDocument();
+    expect(screen.getByText("方形图必须有一个")).toBeInTheDocument();
+  });
+
   it("shows SHEIN publish status for completed tasks", () => {
     render(
       <TaskStatusScreen

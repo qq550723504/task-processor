@@ -101,18 +101,21 @@ func (s *service) persistRetriedChildTaskResult(ctx context.Context, task *Task,
 		}
 	}
 	if childTaskHasFailed(result, kind) {
+		result = applyProcessTerminalResult(result, TaskStatusNeedsReview)
 		if err := s.repo.MarkNeedsReview(ctx, task.ID, result, taskNeedsReviewReason(result)); err != nil {
 			return nil, err
 		}
 		task.Status = TaskStatusNeedsReview
 		task.Error = taskNeedsReviewReason(result)
 	} else if result.Summary != nil && result.Summary.NeedsReview {
+		result = applyProcessTerminalResult(result, TaskStatusNeedsReview)
 		if err := s.repo.MarkNeedsReview(ctx, task.ID, result, taskNeedsReviewReason(result)); err != nil {
 			return nil, err
 		}
 		task.Status = TaskStatusNeedsReview
 		task.Error = taskNeedsReviewReason(result)
 	} else {
+		result = applyProcessTerminalResult(result, TaskStatusCompleted)
 		if err := s.repo.MarkCompleted(ctx, task.ID, result); err != nil {
 			return nil, err
 		}

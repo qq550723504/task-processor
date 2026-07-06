@@ -103,6 +103,7 @@ func TestBatchRunCompletionServiceResolveFinalStatus(t *testing.T) {
 		want            string
 	}{
 		{name: "cancelled", cancelRequested: true, want: "cancelled"},
+		{name: "empty items", want: "failed"},
 		{name: "all succeeded", items: []completionItemStub{{Status: "succeeded"}}, want: "succeeded"},
 		{name: "all failed", items: []completionItemStub{{Status: "failed"}}, want: "failed"},
 		{name: "mixed", items: []completionItemStub{{Status: "succeeded"}, {Status: "failed"}}, want: "partially_succeeded"},

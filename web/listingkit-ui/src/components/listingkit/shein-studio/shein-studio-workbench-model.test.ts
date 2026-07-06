@@ -733,6 +733,73 @@ describe("shein studio workbench model", () => {
     expect(pendingDesignIds).toEqual(["design-2"]);
   });
 
+  it("ignores approved itemized designs from pending retry items", () => {
+    const pendingDesignIds = getItemizedBatchPendingTaskDesignIDs({
+      batch: {
+        id: "batch-1",
+        status: "review_ready",
+        prompt: "itemized prompt",
+        styleCount: "1",
+        sheinStoreId: 869,
+        createdAt: "2026-06-01T10:00:00Z",
+        updatedAt: "2026-06-01T10:10:00Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "group-1",
+            status: "pending",
+            selectionCount: 1,
+            createdAt: "2026-06-01T10:00:00Z",
+            updatedAt: "2026-06-01T10:10:00Z",
+          },
+          designs: [
+            {
+              id: "design-stale",
+              batchId: "batch-1",
+              itemId: "item-1",
+              sourceAttemptId: "attempt-1",
+              targetGroupKey: "group-1",
+              imageUrl: "https://example.com/design-stale.png",
+              reviewStatus: "approved",
+              createdAt: "2026-06-01T10:00:00Z",
+              updatedAt: "2026-06-01T10:10:00Z",
+            },
+          ],
+        },
+        {
+          item: {
+            id: "item-2",
+            batchId: "batch-1",
+            targetGroupKey: "group-2",
+            status: "review_ready",
+            selectionCount: 1,
+            createdAt: "2026-06-01T10:00:00Z",
+            updatedAt: "2026-06-01T10:10:00Z",
+          },
+          designs: [
+            {
+              id: "design-ready",
+              batchId: "batch-1",
+              itemId: "item-2",
+              sourceAttemptId: "attempt-2",
+              targetGroupKey: "group-2",
+              imageUrl: "https://example.com/design-ready.png",
+              reviewStatus: "approved",
+              createdAt: "2026-06-01T10:00:00Z",
+              updatedAt: "2026-06-01T10:10:00Z",
+            },
+          ],
+        },
+      ],
+      createdTasks: [],
+    });
+
+    expect(pendingDesignIds).toEqual(["design-ready"]);
+  });
+
   it("toggles approval for one itemized batch design", () => {
     const detail = {
       batch: {

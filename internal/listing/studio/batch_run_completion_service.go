@@ -88,6 +88,9 @@ func (s *BatchRunCompletionService[Item, Status]) ResolveFinalStatus(cancelReque
 	if s == nil || s.itemStatus == nil {
 		return s.succeededStatus
 	}
+	if len(items) == 0 {
+		return s.failedStatus
+	}
 
 	succeeded := 0
 	failed := 0

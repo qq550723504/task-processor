@@ -351,11 +351,14 @@ export function flattenItemizedBatchDesigns(
 export function getApprovedItemizedBatchDesignIDs(
   detail: SheinStudioBatchDetail,
 ) {
-  return detail.items.flatMap((entry) =>
-    entry.designs
+  return detail.items.flatMap((entry) => {
+    if (entry.item.status !== "review_ready") {
+      return [];
+    }
+    return entry.designs
       .filter((design) => design.reviewStatus === "approved")
-      .map((design) => design.id),
-  );
+      .map((design) => design.id);
+  });
 }
 
 export function toggleItemizedBatchDesignApproval(

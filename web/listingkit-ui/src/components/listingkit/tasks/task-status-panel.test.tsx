@@ -11,6 +11,22 @@ describe("TaskStatusPanel", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("shows SHEIN submission failures for completed tasks", () => {
+    render(
+      <TaskStatusPanel
+        task={{
+          status: "completed",
+          shein_latest_submission_status: "failed",
+          shein_latest_submission_error: "方形图必须有一个",
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText("SHEIN 提交失败").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("最近提交失败").length).toBeGreaterThan(0);
+    expect(screen.getByText("方形图必须有一个")).toBeInTheDocument();
+  });
+
   it("renders failure details from the task result", () => {
     render(
       <TaskStatusPanel

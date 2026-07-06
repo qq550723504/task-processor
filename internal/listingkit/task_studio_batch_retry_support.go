@@ -164,7 +164,10 @@ func (s *taskStudioBatchService) resetStudioBatchRetryRunItems(ctx context.Conte
 		if len(runItems) == 0 {
 			continue
 		}
-		runItem := runItems[0]
+		runItem, ok := selectStudioBatchRetryRunItem(runItems)
+		if !ok {
+			continue
+		}
 		runItem.Status = StudioBatchRunItemStatusPending
 		runItem.AsyncJobID = ""
 		runItem.ErrorMessage = ""
@@ -179,6 +182,13 @@ func (s *taskStudioBatchService) resetStudioBatchRetryRunItems(ctx context.Conte
 		}
 	}
 	return nil
+}
+
+func selectStudioBatchRetryRunItem(runItems []StudioBatchRunItemRecord) (StudioBatchRunItemRecord, bool) {
+	if len(runItems) != 1 {
+		return StudioBatchRunItemRecord{}, false
+	}
+	return runItems[0], true
 }
 
 func (s *taskStudioBatchService) refreshStudioBatchRunAfterRetryReset(ctx context.Context, runID string, now time.Time) error {

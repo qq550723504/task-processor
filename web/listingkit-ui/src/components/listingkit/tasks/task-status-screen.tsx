@@ -40,7 +40,18 @@ function formatStatusDate(value?: string) {
   }).format(date);
 }
 
+function hasFailedSheinSubmission(task?: ListingKitTaskResult | null) {
+  return Boolean(
+    task?.shein_latest_submission_status === "failed" ||
+      task?.shein_workflow_status === "publish_failed" ||
+      task?.shein_latest_submission_error,
+  );
+}
+
 function terminalStatusTitle(task?: ListingKitTaskResult | null) {
+  if (task?.status === "completed" && hasFailedSheinSubmission(task)) {
+    return "任务生成已完成，SHEIN 提交失败";
+  }
   if (task?.status === "completed" && task?.shein_workflow_status === "published") {
     return "任务生成已完成，SHEIN 已发布";
   }
@@ -57,6 +68,9 @@ function terminalStatusTitle(task?: ListingKitTaskResult | null) {
 }
 
 function terminalStatusDescription(task?: ListingKitTaskResult | null) {
+  if (task?.status === "completed" && hasFailedSheinSubmission(task)) {
+    return "生成链路已经完成，但最近一次 SHEIN 提交失败。建议进入工作台查看提交记录，修正后重新提交。";
+  }
   if (task?.status === "completed" && task?.shein_workflow_status === "published") {
     return "生成链路已经完成，且商品资料已经发布到 SHEIN。建议进入工作台核对最终结果和提交记录。";
   }
