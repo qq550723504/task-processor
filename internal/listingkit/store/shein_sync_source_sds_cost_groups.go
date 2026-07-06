@@ -8,7 +8,10 @@ import (
 )
 
 func (r *GormSheinSyncRepository) ListSourceSDSCostGroups(ctx context.Context, query *listingkit.SheinSourceSDSCostGroupQuery) ([]listingkit.SheinSourceSDSCostGroupRecord, int64, error) {
-	db := r.db.WithContext(ctx).Model(&listingkit.SheinSyncedProductRecord{})
+	db := r.db.WithContext(ctx).
+		Model(&listingkit.SheinSyncedProductRecord{}).
+		Where("is_active = ?", true).
+		Where("shelf_status = '' OR shelf_status IS NULL OR shelf_status = ?", "ON_SHELF")
 	if query != nil {
 		if query.TenantID > 0 {
 			db = db.Where("tenant_id = ?", query.TenantID)
@@ -34,6 +37,9 @@ func (r *MemSheinSyncRepository) ListSourceSDSCostGroups(ctx context.Context, qu
 	r.mu.RLock()
 	products := make([]listingkit.SheinSyncedProductRecord, 0, len(r.products))
 	for _, row := range r.products {
+		if !sheinSyncedProductVisibleForSDSCostMaintenance(row) {
+			continue
+		}
 		if query != nil {
 			if query.TenantID > 0 && row.TenantID != query.TenantID {
 				continue
@@ -71,6 +77,13 @@ func (r *MemSheinSyncRepository) ListSourceSDSCostGroups(ctx context.Context, qu
 	groups, _ := buildSheinSourceSDSCostGroupRows(products)
 	applySheinSourceSDSManualCosts(groups, costs)
 	return paginateSheinSourceSDSCostGroupRows(groups, query), int64(len(groups)), nil
+}
+
+func sheinSyncedProductVisibleForSDSCostMaintenance(row listingkit.SheinSyncedProductRecord) bool {
+	if !row.IsActive {
+		return false
+	}
+	return row.ShelfStatus == "" || row.ShelfStatus == "ON_SHELF"
 }
 
 func (r *GormSheinSyncRepository) applySheinSDSCostGroupCosts(

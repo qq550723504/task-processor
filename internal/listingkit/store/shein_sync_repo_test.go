@@ -1849,6 +1849,76 @@ func TestSheinSyncRepositoryListsSourceSDSCostGroupsFromSyncedProducts(t *testin
 	}
 }
 
+func TestSheinSyncRepositoryListsSourceSDSCostGroupsOnlyForActiveOnShelfProducts(t *testing.T) {
+	t.Parallel()
+
+	for _, harness := range sheinSyncRepositoryHarnesses(t) {
+		t.Run(harness.name, func(t *testing.T) {
+			ctx := context.Background()
+			repo := harness.repo
+
+			sourceRepo, ok := repo.(interface {
+				UpsertSyncedProducts(ctx context.Context, records []*listingkit.SheinSyncedProductRecord) error
+				ListSourceSDSCostGroups(ctx context.Context, query *listingkit.SheinSourceSDSCostGroupQuery) ([]listingkit.SheinSourceSDSCostGroupRecord, int64, error)
+			})
+			if !ok {
+				t.Fatalf("%s repo does not implement source SDS cost groups", harness.name)
+			}
+
+			if err := sourceRepo.UpsertSyncedProducts(ctx, []*listingkit.SheinSyncedProductRecord{
+				{
+					TenantID:     11,
+					StoreID:      22,
+					SKCName:      "sg-active",
+					SupplierCode: "XB0608021001-DA578653",
+					ShelfStatus:  "ON_SHELF",
+					IsActive:     true,
+				},
+				{
+					TenantID:     11,
+					StoreID:      22,
+					SKCName:      "sg-inactive",
+					SupplierCode: "XB0608021001-DE93508C",
+					ShelfStatus:  "OFF_SHELF",
+					IsActive:     false,
+				},
+				{
+					TenantID:     11,
+					StoreID:      22,
+					SKCName:      "sg-off-shelf",
+					SupplierCode: "XB0608021001-BB6679CE",
+					ShelfStatus:  "OFF_SHELF",
+					IsActive:     true,
+				},
+			}); err != nil {
+				t.Fatalf("seed synced products: %v", err)
+			}
+
+			rows, total, err := sourceRepo.ListSourceSDSCostGroups(ctx, &listingkit.SheinSourceSDSCostGroupQuery{
+				TenantID: 11,
+				StoreID:  22,
+				Page:     1,
+				PageSize: 10,
+			})
+			if err != nil {
+				t.Fatalf("list source SDS cost groups: %v", err)
+			}
+			if total != 1 || len(rows) != 1 {
+				t.Fatalf("groups total=%d len=%d, want 1", total, len(rows))
+			}
+			if rows[0].GroupKey != "source:XB0608021001" {
+				t.Fatalf("group key = %q, want source:XB0608021001", rows[0].GroupKey)
+			}
+			if rows[0].ProductCount != 1 {
+				t.Fatalf("product count = %d, want only active on-shelf product", rows[0].ProductCount)
+			}
+			if len(rows[0].Products) != 1 || rows[0].Products[0].SKCName != "sg-active" {
+				t.Fatalf("sample products = %+v, want only active product", rows[0].Products)
+			}
+		})
+	}
+}
+
 func TestSheinSyncRepositoryListsSourceSDSCostGroupWithVariantDetailsForMultiVariantProduct(t *testing.T) {
 	t.Parallel()
 

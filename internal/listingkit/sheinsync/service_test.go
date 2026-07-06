@@ -1307,6 +1307,61 @@ func TestUpdateManualCostPriceClearingCostMarksExecutableCandidatesIneligible(t 
 	require.Empty(t, executable)
 }
 
+func TestUpdateSDSCostGroupManualCostSkipsOffShelfProducts(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	repo.seedProduct(SheinSyncedProductRecord{
+		ID:                 301,
+		TenantID:           227,
+		StoreID:            870,
+		SKCName:            "sg260524164927164214023",
+		SupplierCode:       "XB0608035002-AB885FBF",
+		ShelfStatus:        "OFF_SHELF",
+		EffectiveCostPrice: float64Ptr(47.52),
+		PriceSnapshot:      `{"currency":"USD","sale_price":29.9}`,
+		IsActive:           true,
+	})
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                   804,
+		TenantID:             227,
+		StoreID:              870,
+		SyncedProductID:      301,
+		ActivityType:         "PROMOTION",
+		ActivityKey:          "PROMOTION:227:870",
+		SKCName:              "sg260524164927164214023",
+		CandidateVersion:     "v-existing",
+		EffectiveCostPrice:   float64Ptr(47.52),
+		PriceSnapshot:        `{"currency":"USD","sale_price":29.9}`,
+		CalculatedProfitRate: float64Ptr(-0.5892976588628764),
+		EligibilityStatus:    SheinCandidateEligibilityStatusEligible,
+		ReviewStatus:         SheinCandidateReviewStatusPendingReview,
+		AutoModeEligible:     true,
+		SelectedForRun:       true,
+	})
+	service := NewSheinSyncService(repo, &sheinSyncServiceProductAPIStub{}, &sheinSyncServiceCostResolverStub{})
+
+	group, err := service.(interface {
+		UpdateSDSCostGroupManualCost(context.Context, int64, int64, string, string, *float64) (*SheinSDSCostGroupRecord, error)
+	}).UpdateSDSCostGroupManualCost(context.Background(), 227, 870, "source:XB0608035002", "XB0608035002", float64Ptr(21.99))
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	candidates, _, err := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+		TenantID: 227,
+		StoreID:  870,
+		SKCName:  "sg260524164927164214023",
+	})
+	require.NoError(t, err)
+	require.Len(t, candidates, 1)
+	require.Equal(t, "v-existing", candidates[0].CandidateVersion)
+	require.NotNil(t, candidates[0].EffectiveCostPrice)
+	require.Equal(t, 47.52, *candidates[0].EffectiveCostPrice)
+	require.Equal(t, SheinCandidateEligibilityStatusEligible, candidates[0].EligibilityStatus)
+	require.True(t, candidates[0].AutoModeEligible)
+	require.True(t, candidates[0].SelectedForRun)
+}
+
 func TestUpdateManualCostPriceRejectsNonPositiveManualCost(t *testing.T) {
 	t.Parallel()
 

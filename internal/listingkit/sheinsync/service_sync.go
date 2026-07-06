@@ -276,6 +276,9 @@ func (s *sheinSyncService) listProductsForSDSCostGroup(ctx context.Context, tena
 			return nil, err
 		}
 		for _, row := range rows {
+			if sheinSyncedProductOffShelf(row) {
+				continue
+			}
 			if !sheinSyncedProductHasSDSCostGroupKey(row, groupKey) {
 				continue
 			}
@@ -287,6 +290,10 @@ func (s *sheinSyncService) listProductsForSDSCostGroup(ctx context.Context, tena
 		page++
 	}
 	return items, nil
+}
+
+func sheinSyncedProductOffShelf(row SheinSyncedProductRecord) bool {
+	return strings.EqualFold(strings.TrimSpace(row.ShelfStatus), "OFF_SHELF")
 }
 
 func (s *sheinSyncService) listCandidatesForSyncedProduct(ctx context.Context, tenantID, storeID int64, skcName string) ([]SheinActivityCandidateRecord, error) {
