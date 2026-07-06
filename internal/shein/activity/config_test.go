@@ -143,3 +143,15 @@ func TestBuildTimeLimitedDiscountConfigSchedulesStartWithFutureBuffer(t *testing
 		t.Fatalf("activity duration = %s, want the normal multi-day window preserved", cfg.EndTime.Sub(cfg.StartTime))
 	}
 }
+
+func TestApplyPromotionCreateConfigKeepsFullStockRatioUnlimited(t *testing.T) {
+	cfg := DefaultTimeLimitedDiscountConfig()
+
+	applyPromotionCreateConfig(&cfg, &listingruntime.OperationStrategy{
+		ActivityStockRatio: 1,
+	})
+
+	if cfg.StockLimit {
+		t.Fatalf("StockLimit = true, want full stock ratio to keep stock unlimited")
+	}
+}

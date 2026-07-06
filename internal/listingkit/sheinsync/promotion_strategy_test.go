@@ -51,6 +51,23 @@ func TestSheinPromotionStrategyTimeLimitedFallsBackToActivityPriceConfig(t *test
 	}
 }
 
+func TestSheinPromotionStrategyTimeLimitedDefaultsToFullStockWhenStockLimitDisabled(t *testing.T) {
+	strategy := NewSheinPromotionStrategy(SheinPromotionStrategyInput{
+		ActivityType:         "TIME_LIMITED",
+		StoreID:              177,
+		ActivityPriceMode:    "DISCOUNT",
+		ActivityDiscountRate: 0.22,
+	})
+
+	if err := strategy.ValidateForPromotionEnrollment(); err != nil {
+		t.Fatalf("ValidateForPromotionEnrollment error = %v", err)
+	}
+	runtimeStrategy := strategy.runtimeOperationStrategy()
+	if runtimeStrategy.ActivityStockRatio != 1 {
+		t.Fatalf("runtime activity stock ratio = %.2f, want default full stock", runtimeStrategy.ActivityStockRatio)
+	}
+}
+
 func TestSheinPromotionStrategyPassesPromotionPartakeTypeToRuntimeStrategy(t *testing.T) {
 	strategy := NewSheinPromotionStrategy(SheinPromotionStrategyInput{
 		ActivityType:          "PROMOTION",

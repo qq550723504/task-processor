@@ -168,7 +168,7 @@ func applyPromotionCreateConfig(config *TimeLimitedDiscountConfig, strategy *lis
 	if strategy.ActivityMinProfitRate >= 0 && strategy.ActivityMinProfitRate < 1 {
 		config.MinProfitRate = strategy.ActivityMinProfitRate
 	}
-	if strategy.ActivityStockRatio > 0 && strategy.ActivityStockRatio <= 1 {
+	if strategy.ActivityStockRatio > 0 && strategy.ActivityStockRatio < 1 {
 		config.StockLimit = true
 		config.StockPercent = int(strategy.ActivityStockRatio * 100)
 		if config.StockPercent < 1 {

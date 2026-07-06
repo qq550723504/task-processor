@@ -165,6 +165,9 @@ func (s *SheinPromotionStrategy) EffectiveActivityStockRatio() float64 {
 	if s == nil {
 		return 0
 	}
+	if s.isTimeLimitedActivity() && !s.TimeLimitedStockLimit && s.ActivityStockRatio <= 0 {
+		return 1
+	}
 	if !s.requiresActivityStockRatio() && s.ActivityStockRatio <= 0 {
 		return 1
 	}
