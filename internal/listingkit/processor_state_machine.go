@@ -27,5 +27,8 @@ func (m *ProcessorStateMachine) ShouldRetry(task *Task) bool {
 	if task == nil {
 		return false
 	}
+	if task.Status != TaskStatusPending {
+		return false
+	}
 	return task.RetryCount < m.maxRetries
 }

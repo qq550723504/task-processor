@@ -43,9 +43,10 @@ func TestProcessorStateMachineShouldRetry(t *testing.T) {
 		want bool
 	}{
 		{name: "nil task", task: nil, want: false},
-		{name: "first retry", task: &Task{RetryCount: 0}, want: true},
-		{name: "second retry", task: &Task{RetryCount: 1}, want: true},
-		{name: "max retries reached", task: &Task{RetryCount: 2}, want: false},
+		{name: "first retry", task: &Task{Status: TaskStatusPending, RetryCount: 0}, want: true},
+		{name: "second retry", task: &Task{Status: TaskStatusPending, RetryCount: 1}, want: true},
+		{name: "max retries reached", task: &Task{Status: TaskStatusPending, RetryCount: 2}, want: false},
+		{name: "completed task", task: &Task{Status: TaskStatusCompleted, RetryCount: 0}, want: false},
 	}
 
 	for _, tt := range tests {
