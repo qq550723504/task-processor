@@ -11,12 +11,12 @@ import (
 )
 
 func (h *handler) GenerateStudioProductImages(c *gin.Context) {
-	if !h.requireSubscriptionUsage(c, listingsubscription.ModuleStudio, "product_image_jobs", 1) {
-		return
-	}
 	var req listingkit.StudioProductImageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	if !h.authorizeSubscriptionUsage(c, listingsubscription.ModuleStudio, "product_image_jobs", 1) {
 		return
 	}
 
@@ -32,6 +32,7 @@ func (h *handler) GenerateStudioProductImages(c *gin.Context) {
 	for idx := range response.Images {
 		response.Images[idx].ImageURL = absolutizeUploadedImageURLs(c, []string{response.Images[idx].ImageURL})[0]
 	}
+	h.recordSubscriptionUsage(c, listingsubscription.ModuleStudio, "product_image_jobs", 1)
 
 	c.JSON(http.StatusOK, response)
 }

@@ -74,7 +74,7 @@ func (s *taskSubmissionRefreshService) resolveSubmissionRefreshConfirmation(task
 }
 
 func (s *taskSubmissionRefreshService) finishSubmissionRefresh(ctx context.Context, taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinpub.SubmissionConfirmRemoteUpdate, remoteErr error) (*ListingKitPreview, error) {
-	task, err := s.persistSheinSubmissionRefreshResult(ctx, taskID, refreshState, confirmation)
+	task, err := s.persistSheinSubmissionRefreshResult(ctx, taskID, refreshState, confirmation, remoteErr)
 	if err != nil {
 		return nil, err
 	}

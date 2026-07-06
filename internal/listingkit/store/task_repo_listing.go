@@ -55,10 +55,7 @@ func (r *taskRepository) ListTasks(ctx context.Context, query *listingkit.TaskLi
 
 	if query != nil && (query.Platform != "" || query.SourceType != "" || query.ReadinessStatus != "" || query.SheinWorkflowStatus != "" || query.SheinSubmissionStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
 		var candidates []taskListFilterRow
-		columns := []string{"id", "created_at", "status", "user_id"}
-		if query.Platform != "" || query.SheinWorkQueue != "" {
-			columns = append(columns, "request")
-		}
+		columns := []string{"id", "created_at", "status", "user_id", "request"}
 		if query.SourceType != "" || query.ReadinessStatus != "" || query.SheinWorkflowStatus != "" || query.SheinSubmissionStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "" {
 			columns = append(columns, "result")
 		}
@@ -67,10 +64,10 @@ func (r *taskRepository) ListTasks(ctx context.Context, query *listingkit.TaskLi
 		}
 		filteredIDs := make([]string, 0, len(candidates))
 		for i := range candidates {
-			if !taskVisibleToUser(ctx, &listingkit.Task{UserID: candidates[i].UserID, Request: &listingkit.GenerateRequest{UserID: candidates[i].RequestUserID}}) {
+			if !matchesTaskListFilterRow(&candidates[i], query) {
 				continue
 			}
-			if !matchesTaskListFilterRow(&candidates[i], query) {
+			if !taskVisibleToUser(ctx, &listingkit.Task{UserID: candidates[i].UserID, Request: &listingkit.GenerateRequest{UserID: candidates[i].RequestUserID}}) {
 				continue
 			}
 			filteredIDs = append(filteredIDs, candidates[i].ID)
@@ -106,10 +103,7 @@ func (r *taskRepository) ListTaskSummaryTasks(ctx context.Context, query *listin
 
 	if query != nil && (query.Platform != "" || query.SourceType != "" || query.ReadinessStatus != "" || query.SheinWorkflowStatus != "" || query.SheinSubmissionStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
 		var candidates []taskListFilterRow
-		columns := []string{"id", "created_at", "status", "user_id"}
-		if query.Platform != "" || query.SheinWorkQueue != "" {
-			columns = append(columns, "request")
-		}
+		columns := []string{"id", "created_at", "status", "user_id", "request"}
 		if query.SourceType != "" || query.ReadinessStatus != "" || query.SheinWorkflowStatus != "" || query.SheinSubmissionStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "" {
 			columns = append(columns, "result")
 		}
@@ -118,10 +112,10 @@ func (r *taskRepository) ListTaskSummaryTasks(ctx context.Context, query *listin
 		}
 		filteredIDs := make([]string, 0, len(candidates))
 		for i := range candidates {
-			if !taskVisibleToUser(ctx, &listingkit.Task{UserID: candidates[i].UserID, Request: &listingkit.GenerateRequest{UserID: candidates[i].RequestUserID}}) {
+			if !matchesTaskListFilterRow(&candidates[i], query) {
 				continue
 			}
-			if !matchesTaskListFilterRow(&candidates[i], query) {
+			if !taskVisibleToUser(ctx, &listingkit.Task{UserID: candidates[i].UserID, Request: &listingkit.GenerateRequest{UserID: candidates[i].RequestUserID}}) {
 				continue
 			}
 			filteredIDs = append(filteredIDs, candidates[i].ID)
@@ -164,7 +158,7 @@ func matchesTaskListFilterRow(row *taskListFilterRow, query *listingkit.TaskList
 	}
 	task := &listingkit.Task{}
 	task.Status = listingkit.TaskStatus(row.Status)
-	if query != nil && (query.Platform != "" || query.SheinWorkQueue != "") {
+	if row.Request != "" {
 		var request taskListFilterRequest
 		if err := json.Unmarshal([]byte(row.Request), &request); err == nil {
 			task.Request = &listingkit.GenerateRequest{Platforms: request.Platforms, UserID: request.UserID}

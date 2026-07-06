@@ -14,6 +14,7 @@ type stubStudioMediaHandlerService struct {
 	deletedUploadedImage    *listingkit.DeletedUploadedImage
 	studioDesigns           *listingkit.StudioDesignResponse
 	studioProductImages     *listingkit.StudioProductImageResponse
+	regeneratedSheinImage   *listingkit.RegenerateSheinDataImageResponse
 	err                     error
 	uploadedImageKey        string
 	deletedUploadedImageKey string
@@ -22,6 +23,9 @@ type stubStudioMediaHandlerService struct {
 	studioDesignReq         *listingkit.StudioDesignRequest
 	studioProductImageCtx   context.Context
 	studioProductImageReq   *listingkit.StudioProductImageRequest
+	regenerateSheinImageCtx context.Context
+	regenerateSheinImageID  string
+	regenerateSheinImageReq *listingkit.RegenerateSheinDataImageRequest
 	updatedStudioSessionCtx context.Context
 	updatedStudioSessionID  string
 	updatedStudioSessionReq *listingkit.UpdateStudioSessionRequest
@@ -70,7 +74,13 @@ func (s *stubStudioMediaHandlerService) GenerateStudioProductImages(ctx context.
 	return s.studioProductImages, s.err
 }
 
-func (s *stubStudioMediaHandlerService) RegenerateSheinDataImage(context.Context, string, *listingkit.RegenerateSheinDataImageRequest) (*listingkit.RegenerateSheinDataImageResponse, error) {
+func (s *stubStudioMediaHandlerService) RegenerateSheinDataImage(ctx context.Context, taskID string, req *listingkit.RegenerateSheinDataImageRequest) (*listingkit.RegenerateSheinDataImageResponse, error) {
+	s.regenerateSheinImageCtx = ctx
+	s.regenerateSheinImageID = taskID
+	s.regenerateSheinImageReq = req
+	if s.regeneratedSheinImage != nil || s.err != nil {
+		return s.regeneratedSheinImage, s.err
+	}
 	return nil, errors.New("not implemented")
 }
 

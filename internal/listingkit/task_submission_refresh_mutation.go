@@ -16,10 +16,11 @@ type sheinSubmissionRefreshMutationRequest struct {
 	requestID    string
 	startedAt    time.Time
 	confirmation *sheinpub.SubmissionConfirmRemoteUpdate
+	remoteErr    error
 }
 
-func (s *taskSubmissionRefreshService) persistSheinSubmissionRefreshResult(ctx context.Context, taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinpub.SubmissionConfirmRemoteUpdate) (*Task, error) {
-	request, err := buildSubmissionRefreshMutationRequest(taskID, refreshState, confirmation)
+func (s *taskSubmissionRefreshService) persistSheinSubmissionRefreshResult(ctx context.Context, taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinpub.SubmissionConfirmRemoteUpdate, remoteErr error) (*Task, error) {
+	request, err := buildSubmissionRefreshMutationRequest(taskID, refreshState, confirmation, remoteErr)
 	if err != nil {
 		return nil, err
 	}
@@ -28,7 +29,7 @@ func (s *taskSubmissionRefreshService) persistSheinSubmissionRefreshResult(ctx c
 	})
 }
 
-func buildSubmissionRefreshMutationRequest(taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinpub.SubmissionConfirmRemoteUpdate) (*sheinSubmissionRefreshMutationRequest, error) {
+func buildSubmissionRefreshMutationRequest(taskID string, refreshState *sheinSubmissionRefreshState, confirmation *sheinpub.SubmissionConfirmRemoteUpdate, remoteErr error) (*sheinSubmissionRefreshMutationRequest, error) {
 	remoteRequest, err := buildSheinRemoteStatusRequest(taskID, refreshState)
 	if err != nil {
 		return nil, err
@@ -39,6 +40,7 @@ func buildSubmissionRefreshMutationRequest(taskID string, refreshState *sheinSub
 		requestID:    remoteRequest.requestID,
 		startedAt:    remoteRequest.startedAt,
 		confirmation: confirmation,
+		remoteErr:    remoteErr,
 	}, nil
 }
 
@@ -61,6 +63,7 @@ func appendSubmissionRefreshMutationEvents(pkg *SheinPackage, request *sheinSubm
 	}
 	sheinpub.AppendSubmissionEvent(pkg, sheinpub.BuildSubmissionRefreshConfirmRemoteRunningEvent(request.taskID, request.action, request.requestID, request.startedAt))
 	applySubmissionRefreshConfirmation(pkg, request.action, request.requestID, request.confirmation)
+	appendSubmissionRefreshFailureEvent(pkg, request)
 }
 
 func validateSubmissionRefreshMutation(task *Task, action, requestID string) (*SheinPackage, error) {
@@ -103,4 +106,20 @@ func applySubmissionRefreshConfirmation(pkg *SheinPackage, action, requestID str
 		return
 	}
 	sheinpub.ApplySubmissionConfirmRemoteUpdate(pkg, action, requestID, *confirmation)
+}
+
+func appendSubmissionRefreshFailureEvent(pkg *SheinPackage, request *sheinSubmissionRefreshMutationRequest) {
+	if pkg == nil || request == nil || request.remoteErr == nil || request.confirmation != nil {
+		return
+	}
+	event := sheinpub.BuildSubmissionConfirmRemoteEvent(
+		request.taskID,
+		request.action,
+		sheinpub.SubmissionStatusFailed,
+		request.requestID,
+		request.startedAt,
+		"刷新 SHEIN 远端提交状态失败",
+		request.remoteErr,
+	)
+	sheinpub.AppendSubmissionEvent(pkg, event)
 }

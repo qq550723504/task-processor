@@ -486,6 +486,61 @@ func TestTaskRepositoryOwnerScopeIncludesLegacyRequestUserIDTasks(t *testing.T) 
 	}
 }
 
+func TestTaskRepositoryOwnerScopeFilteredListIncludesLegacyRequestUserIDTasks(t *testing.T) {
+	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(true))
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := store.NewTaskRepository(db)
+	summaryRepo, ok := repo.(interface {
+		ListTaskSummaryTasks(ctx context.Context, query *listingkit.TaskListQuery) ([]listingkit.Task, error)
+	})
+	if !ok {
+		t.Fatal("task repo does not expose ListTaskSummaryTasks")
+	}
+	baseCtx := listingkit.WithTenantID(context.Background(), "tenant-a")
+	userCtx := openaiclient.WithIdentity(baseCtx, openaiclient.Identity{TenantID: "tenant-a", UserID: "legacy-user"})
+	createdAt := time.Date(2026, 7, 6, 9, 0, 0, 0, time.UTC)
+
+	visible := makeTaskRepoFixture("task-legacy-visible", createdAt, []string{"shein"}, "published", "")
+	visible.UserID = ""
+	visible.Request.UserID = "legacy-user"
+	wrongPlatform := makeTaskRepoFixture("task-legacy-amazon", createdAt.Add(-time.Minute), []string{"amazon"}, "published", "")
+	wrongPlatform.UserID = ""
+	wrongPlatform.Request.UserID = "legacy-user"
+	otherUser := makeTaskRepoFixture("task-legacy-other-user", createdAt.Add(-2*time.Minute), []string{"shein"}, "published", "")
+	otherUser.UserID = ""
+	otherUser.Request.UserID = "someone-else"
+	for _, task := range []*listingkit.Task{visible, wrongPlatform, otherUser} {
+		if err := db.WithContext(baseCtx).Create(task).Error; err != nil {
+			t.Fatalf("create raw task %s: %v", task.ID, err)
+		}
+	}
+
+	query := &listingkit.TaskListQuery{Platform: "shein", Page: 1, PageSize: 10}
+	items, total, err := repo.ListTasks(userCtx, query)
+	if err != nil {
+		t.Fatalf("ListTasks() error = %v", err)
+	}
+	if total != 1 || len(items) != 1 || items[0].ID != "task-legacy-visible" {
+		t.Fatalf("filtered legacy items = %+v total=%d, want only task-legacy-visible", items, total)
+	}
+
+	summaryItems, err := summaryRepo.ListTaskSummaryTasks(userCtx, query)
+	if err != nil {
+		t.Fatalf("ListTaskSummaryTasks() error = %v", err)
+	}
+	if len(summaryItems) != 1 || summaryItems[0].ID != "task-legacy-visible" {
+		t.Fatalf("filtered legacy summary items = %+v, want only task-legacy-visible", summaryItems)
+	}
+}
+
 func TestTaskRepositoryPlatformAdminBypassesOwnerScope(t *testing.T) {
 	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(true))
 

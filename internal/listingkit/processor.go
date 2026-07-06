@@ -68,7 +68,14 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 		if errors.Is(err, ErrTaskNotPending) {
 			return nil
 		}
-		if p.stateMachine.ShouldRetry(task) {
+		retryTask := task
+		if refreshedTask, refreshErr := p.repo.GetTask(ctx, task.ID); refreshErr == nil && refreshedTask != nil {
+			retryTask = refreshedTask
+		}
+		if retryTask.Status != TaskStatusPending {
+			return err
+		}
+		if p.stateMachine.ShouldRetry(retryTask) {
 			_ = p.repo.IncrementRetryCount(ctx, task.ID)
 			_ = p.repo.PrepareRetry(ctx, task.ID)
 			if p.taskSubmitter != nil {

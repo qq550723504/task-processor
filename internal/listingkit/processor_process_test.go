@@ -17,6 +17,7 @@ type stubProcessorService struct {
 	calls    int
 	lastCtx  context.Context
 	lastTask *Task
+	onCall   func(context.Context, *Task)
 }
 
 type stubProcessorRepo struct {
@@ -38,6 +39,9 @@ func (s *stubProcessorService) ProcessListingKit(ctx context.Context, task *Task
 	s.calls++
 	s.lastCtx = ctx
 	s.lastTask = task
+	if s.onCall != nil {
+		s.onCall(ctx, task)
+	}
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -175,6 +179,69 @@ func TestProcessorProcessTaskSchedulesRetryForRetryableFailure(t *testing.T) {
 	}
 	if submitter.calls != 1 || submitter.lastTaskID != "task-3" {
 		t.Fatalf("Submit = %d for %q, want 1 for task-3", submitter.calls, submitter.lastTaskID)
+	}
+}
+
+func TestProcessorProcessTaskDoesNotLegacyRetryWhenServicePersistedBlockedRetryable(t *testing.T) {
+	t.Parallel()
+
+	workflowErr := errors.New("workflow failed")
+	repo := &stubProcessorRepo{task: &Task{ID: "task-blocked", Status: TaskStatusPending, RetryCount: 0}}
+	svc := &stubProcessorService{
+		err: workflowErr,
+		onCall: func(context.Context, *Task) {
+			repo.task.Status = TaskStatusBlockedRetryable
+			repo.task.RetryableBlock = &RetryableBlock{ReasonCode: "openai_rate_limited"}
+			repo.task.Error = "rate limited"
+		},
+	}
+	submitter := &stubProcessorSubmitter{}
+	processor, err := NewProcessor(svc, repo, logrus.New(), 2)
+	if err != nil {
+		t.Fatalf("NewProcessor() error = %v", err)
+	}
+	processor.SetTaskSubmitter(submitter)
+
+	err = processor.ProcessTask(context.Background(), worker.WorkerJob{TaskData: "task-blocked"})
+	if !errors.Is(err, workflowErr) {
+		t.Fatalf("ProcessTask() error = %v, want %v", err, workflowErr)
+	}
+	if repo.incrementRetryCalls != 0 || repo.prepareRetryCalls != 0 || submitter.calls != 0 {
+		t.Fatalf("legacy retry path = increment:%d prepare:%d submit:%d, want all 0", repo.incrementRetryCalls, repo.prepareRetryCalls, submitter.calls)
+	}
+	if repo.task.Status != TaskStatusBlockedRetryable || repo.task.RetryableBlock == nil {
+		t.Fatalf("stored task = %+v, want blocked_retryable state preserved", repo.task)
+	}
+}
+
+func TestProcessorProcessTaskDoesNotLegacyRetryWhenServicePersistedFailed(t *testing.T) {
+	t.Parallel()
+
+	workflowErr := errors.New("workflow failed")
+	repo := &stubProcessorRepo{task: &Task{ID: "task-failed", Status: TaskStatusPending, RetryCount: 0}}
+	svc := &stubProcessorService{
+		err: workflowErr,
+		onCall: func(context.Context, *Task) {
+			repo.task.Status = TaskStatusFailed
+			repo.task.Error = "non-retryable failure"
+		},
+	}
+	submitter := &stubProcessorSubmitter{}
+	processor, err := NewProcessor(svc, repo, logrus.New(), 2)
+	if err != nil {
+		t.Fatalf("NewProcessor() error = %v", err)
+	}
+	processor.SetTaskSubmitter(submitter)
+
+	err = processor.ProcessTask(context.Background(), worker.WorkerJob{TaskData: "task-failed"})
+	if !errors.Is(err, workflowErr) {
+		t.Fatalf("ProcessTask() error = %v, want %v", err, workflowErr)
+	}
+	if repo.incrementRetryCalls != 0 || repo.prepareRetryCalls != 0 || submitter.calls != 0 {
+		t.Fatalf("legacy retry path = increment:%d prepare:%d submit:%d, want all 0", repo.incrementRetryCalls, repo.prepareRetryCalls, submitter.calls)
+	}
+	if repo.task.Status != TaskStatusFailed {
+		t.Fatalf("stored status = %q, want failed", repo.task.Status)
 	}
 }
 

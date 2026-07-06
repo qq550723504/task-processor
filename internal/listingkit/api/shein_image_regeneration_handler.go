@@ -12,12 +12,12 @@ import (
 )
 
 func (h *handler) RegenerateSheinDataImage(c *gin.Context) {
-	if !h.requireSubscriptionUsage(c, listingsubscription.ModuleStudio, "image_regenerations", 1) {
-		return
-	}
 	var req listingkit.RegenerateSheinDataImageRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	if !h.authorizeSubscriptionUsage(c, listingsubscription.ModuleStudio, "image_regenerations", 1) {
 		return
 	}
 
@@ -36,6 +36,7 @@ func (h *handler) RegenerateSheinDataImage(c *gin.Context) {
 	if strings.TrimSpace(response.Image.ImageURL) != "" {
 		response.Image.ImageURL = absolutizeUploadedImageURLs(c, []string{response.Image.ImageURL})[0]
 	}
+	h.recordSubscriptionUsage(c, listingsubscription.ModuleStudio, "image_regenerations", 1)
 
 	c.JSON(http.StatusOK, response)
 }

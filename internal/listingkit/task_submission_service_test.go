@@ -572,6 +572,20 @@ func TestTaskSubmissionServiceFinishSubmissionRefreshReturnsRemoteErrorAfterPers
 	if previewCalls != 0 {
 		t.Fatalf("preview calls = %d, want 0", previewCalls)
 	}
+	saved, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	if len(saved.Result.Shein.SubmissionEvents) == 0 {
+		t.Fatal("submission events = empty, want failed confirm_remote event")
+	}
+	latest := saved.Result.Shein.SubmissionEvents[0]
+	if latest.Phase != sheinpub.SubmissionPhaseConfirmRemote || latest.Status != sheinpub.SubmissionStatusFailed {
+		t.Fatalf("latest event = %+v, want failed confirm_remote event", latest)
+	}
+	if latest.ErrorMessage != remoteErr.Error() {
+		t.Fatalf("latest error = %q, want %q", latest.ErrorMessage, remoteErr.Error())
+	}
 }
 
 func TestTaskSubmissionServiceFinishSubmissionRefreshBuildsPreviewOnSuccess(t *testing.T) {
@@ -909,13 +923,14 @@ func TestBuildSubmissionRefreshMutationRequestMapsStateAndConfirmation(t *testin
 		RemoteStatus: sheinpub.SubmissionRemoteStatusConfirmed,
 		Message:      "confirmed remotely",
 	}
+	remoteErr := errors.New("remote refresh failed")
 	request, err := buildSubmissionRefreshMutationRequest("task-123", &sheinSubmissionRefreshState{
 		remoteRequest: &sheinRemoteStatusRequest{
 			action:    "publish",
 			requestID: "refresh-123",
 			startedAt: startedAt,
 		},
-	}, confirmation)
+	}, confirmation, remoteErr)
 	if err != nil {
 		t.Fatalf("buildSubmissionRefreshMutationRequest() error = %v", err)
 	}
@@ -936,6 +951,9 @@ func TestBuildSubmissionRefreshMutationRequestMapsStateAndConfirmation(t *testin
 	}
 	if request.confirmation != confirmation {
 		t.Fatalf("confirmation = %+v, want %+v", request.confirmation, confirmation)
+	}
+	if request.remoteErr != remoteErr {
+		t.Fatalf("remoteErr = %v, want %v", request.remoteErr, remoteErr)
 	}
 }
 
@@ -1006,7 +1024,7 @@ func TestApplySubmissionRefreshMutationAppendsRunningEventBeforeConfirmation(t *
 			requestID: "refresh-123",
 			startedAt: startedAt,
 		},
-	}, confirmation)
+	}, confirmation, nil)
 	if err != nil {
 		t.Fatalf("buildSubmissionRefreshMutationRequest() error = %v", err)
 	}
