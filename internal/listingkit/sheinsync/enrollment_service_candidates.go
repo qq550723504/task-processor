@@ -196,15 +196,11 @@ func filterExecutableSheinCandidates(
 	nonExecutableResults := make(map[int64]SheinActivityEnrollmentResult)
 	executableBySKC := make(map[string]int64)
 	for _, candidate := range candidates {
-		if !isExecutableSheinCandidate(candidate, triggerMode) {
+		if reason := sheinCandidateNonExecutableReason(candidate, triggerMode); reason != "" {
 			nonExecutableResults[candidate.ID] = SheinActivityEnrollmentResult{
-				CandidateID: candidate.ID,
-				Success:     false,
-				ErrorMessage: fmt.Sprintf(
-					"candidate review status %s is not executable for trigger mode %s",
-					candidate.ReviewStatus,
-					triggerMode,
-				),
+				CandidateID:  candidate.ID,
+				Success:      false,
+				ErrorMessage: reason,
 			}
 			continue
 		}
@@ -223,13 +219,35 @@ func filterExecutableSheinCandidates(
 }
 
 func isExecutableSheinCandidate(candidate SheinActivityCandidateRecord, triggerMode SheinEnrollmentRunTriggerMode) bool {
+	return sheinCandidateNonExecutableReason(candidate, triggerMode) == ""
+}
+
+func sheinCandidateNonExecutableReason(candidate SheinActivityCandidateRecord, triggerMode SheinEnrollmentRunTriggerMode) string {
+	if candidate.EligibilityStatus != SheinCandidateEligibilityStatusEligible {
+		return fmt.Sprintf(
+			"candidate eligibility status %s is not executable for trigger mode %s",
+			candidate.EligibilityStatus,
+			triggerMode,
+		)
+	}
 	switch candidate.ReviewStatus {
 	case SheinCandidateReviewStatusApproved, SheinCandidateReviewStatusAutoQueued:
-		return true
+		return ""
 	case SheinCandidateReviewStatusPendingReview:
-		return triggerMode == SheinEnrollmentRunTriggerModeManualConfirmed
+		if triggerMode == SheinEnrollmentRunTriggerModeManualConfirmed {
+			return ""
+		}
+		return fmt.Sprintf(
+			"candidate review status %s is not executable for trigger mode %s",
+			candidate.ReviewStatus,
+			triggerMode,
+		)
 	default:
-		return false
+		return fmt.Sprintf(
+			"candidate review status %s is not executable for trigger mode %s",
+			candidate.ReviewStatus,
+			triggerMode,
+		)
 	}
 }
 

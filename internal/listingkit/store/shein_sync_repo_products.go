@@ -78,6 +78,14 @@ func (r *GormSheinSyncRepository) ListSyncedProducts(ctx context.Context, query 
 	return rows, total, nil
 }
 
+func (r *GormSheinSyncRepository) GetSyncedProductByID(ctx context.Context, productID int64) (*listingkit.SheinSyncedProductRecord, error) {
+	var row listingkit.SheinSyncedProductRecord
+	if err := r.db.WithContext(ctx).Where("id = ?", productID).First(&row).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
 func (r *GormSheinSyncRepository) UpdateManualCostPrice(ctx context.Context, productID int64, manualCostPrice *float64) error {
 	var row listingkit.SheinSyncedProductRecord
 	if err := r.db.WithContext(ctx).Where("id = ?", productID).First(&row).Error; err != nil {

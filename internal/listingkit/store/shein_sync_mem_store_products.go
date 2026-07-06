@@ -78,6 +78,20 @@ func (r *MemSheinSyncRepository) ListSyncedProducts(_ context.Context, query *li
 	return items[start:end], total, nil
 }
 
+func (r *MemSheinSyncRepository) GetSyncedProductByID(_ context.Context, productID int64) (*listingkit.SheinSyncedProductRecord, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, row := range r.products {
+		if row.ID != productID {
+			continue
+		}
+		copied := cloneSheinSyncedProductRecord(row)
+		return &copied, nil
+	}
+	return nil, gorm.ErrRecordNotFound
+}
+
 func (r *MemSheinSyncRepository) UpdateManualCostPrice(_ context.Context, productID int64, manualCostPrice *float64) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

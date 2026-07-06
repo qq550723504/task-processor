@@ -125,6 +125,58 @@ func TestExecuteSheinActivityEnrollmentExecutesApprovedCandidatesAndUpdatesRunOu
 	require.Equal(t, SheinCandidateReviewStatusRejected, candidates[2].ReviewStatus)
 }
 
+func TestExecuteSheinActivityEnrollmentRejectsIneligibleCandidateIDs(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
+		{
+			ID:                 1,
+			TenantID:           11,
+			StoreID:            22,
+			SyncedProductID:    101,
+			ActivityType:       "PROMOTION",
+			ActivityKey:        "PROMOTION:11:22",
+			SKCName:            "skc-missing-cost",
+			CandidateVersion:   "v1",
+			EligibilityStatus:  SheinCandidateEligibilityStatusIneligible,
+			EligibilityReason:  "missing effective cost price",
+			ReviewStatus:       SheinCandidateReviewStatusApproved,
+			EffectiveCostPrice: nil,
+		},
+	})
+	adapter := &sheinEnrollmentAdapterStub{
+		results: []SheinActivityEnrollmentResult{{CandidateID: 1, Success: true}},
+	}
+	service := NewSheinEnrollmentService(repo, adapter)
+
+	run, err := service.ExecuteSheinActivityEnrollment(
+		context.Background(),
+		11,
+		22,
+		"PROMOTION",
+		"PROMOTION:11:22",
+		SheinEnrollmentRunTriggerModeManualConfirmed,
+		1,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, run)
+	require.Equal(t, SheinEnrollmentRunStatusFailed, run.Status)
+	require.Equal(t, 1, run.CandidateCount)
+	require.Zero(t, run.SubmittedCount)
+	require.Zero(t, run.SucceededCount)
+	require.Equal(t, 1, run.FailedCount)
+	require.Empty(t, adapter.calls)
+
+	require.Len(t, repo.savedItems, 1)
+	require.Equal(t, SheinEnrollmentItemStatusFailed, repo.savedItems[0].Status)
+	require.Contains(t, repo.savedItems[0].ErrorMessage, "eligibility status ineligible is not executable")
+
+	candidates := repo.savedCandidates()
+	require.Len(t, candidates, 1)
+	require.Equal(t, SheinCandidateReviewStatusApproved, candidates[0].ReviewStatus)
+}
+
 func TestExecuteTimeLimitedEnrollmentPassesVariantSDSCostsToAdapter(t *testing.T) {
 	t.Parallel()
 

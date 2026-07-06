@@ -868,7 +868,9 @@ func TestUpdateSDSCostGroupManualCostRefreshesRelatedCandidateCosts(t *testing.T
 		StoreID:            870,
 		SKCName:            "sg260524164927164214023",
 		SupplierCode:       "XB0608035002-AB885FBF",
+		ShelfStatus:        "ON_SHELF",
 		EffectiveCostPrice: float64Ptr(25.99),
+		PriceSnapshot:      `{"currency":"USD","sale_price":29.9}`,
 		IsActive:           true,
 	})
 	repo.seedCandidate(SheinActivityCandidateRecord{
@@ -903,12 +905,34 @@ func TestUpdateSDSCostGroupManualCostRefreshesRelatedCandidateCosts(t *testing.T
 		SKCName:  "sg260524164927164214023",
 	})
 	require.NoError(t, err)
-	require.Len(t, candidates, 1)
-	require.NotNil(t, candidates[0].EffectiveCostPrice)
-	require.Equal(t, 21.99, *candidates[0].EffectiveCostPrice)
-	require.NotNil(t, candidates[0].CalculatedProfitRate)
-	require.InEpsilon(t, 0.264548494983278, *candidates[0].CalculatedProfitRate, 0.0000000001)
-	require.Equal(t, SheinCandidateReviewStatusPendingReview, candidates[0].ReviewStatus)
+	require.Len(t, candidates, 2)
+	byVersion := make(map[string]SheinActivityCandidateRecord, len(candidates))
+	for _, candidate := range candidates {
+		byVersion[candidate.CandidateVersion] = candidate
+	}
+	require.NotNil(t, byVersion["v1"].EffectiveCostPrice)
+	require.Equal(t, 47.52, *byVersion["v1"].EffectiveCostPrice)
+	require.Equal(t, SheinCandidateEligibilityStatusIneligible, byVersion["v1"].EligibilityStatus)
+	require.Equal(t, "superseded by newer candidate version", byVersion["v1"].EligibilityReason)
+	require.Equal(t, SheinCandidateReviewStatusRejected, byVersion["v1"].ReviewStatus)
+
+	updatedProduct := SheinSyncedProductRecord{
+		ID:                 301,
+		TenantID:           227,
+		StoreID:            870,
+		SKCName:            "sg260524164927164214023",
+		SupplierCode:       "XB0608035002-AB885FBF",
+		ShelfStatus:        "ON_SHELF",
+		EffectiveCostPrice: float64Ptr(21.99),
+		PriceSnapshot:      `{"currency":"USD","sale_price":29.9}`,
+		IsActive:           true,
+	}
+	updatedVersion := buildSheinCandidateVersion(updatedProduct)
+	require.NotNil(t, byVersion[updatedVersion].EffectiveCostPrice)
+	require.Equal(t, 21.99, *byVersion[updatedVersion].EffectiveCostPrice)
+	require.NotNil(t, byVersion[updatedVersion].CalculatedProfitRate)
+	require.InEpsilon(t, 0.264548494983278, *byVersion[updatedVersion].CalculatedProfitRate, 0.0000000001)
+	require.Equal(t, SheinCandidateReviewStatusPendingReview, byVersion[updatedVersion].ReviewStatus)
 }
 
 func TestUpdateSDSCostGroupManualCostRefreshesOnlyCurrentExecutableCandidateCosts(t *testing.T) {
@@ -922,7 +946,9 @@ func TestUpdateSDSCostGroupManualCostRefreshesOnlyCurrentExecutableCandidateCost
 		StoreID:            870,
 		SKCName:            "sg260524164927164214023",
 		SupplierCode:       "XB0608035002-AB885FBF",
+		ShelfStatus:        "ON_SHELF",
 		EffectiveCostPrice: float64Ptr(25.99),
+		PriceSnapshot:      `{"currency":"USD","sale_price":29.9}`,
 		IsActive:           true,
 	})
 	repo.seedCandidate(SheinActivityCandidateRecord{
@@ -990,26 +1016,307 @@ func TestUpdateSDSCostGroupManualCostRefreshesOnlyCurrentExecutableCandidateCost
 		SKCName:  "sg260524164927164214023",
 	})
 	require.NoError(t, err)
-	require.Len(t, candidates, 3)
+	require.Len(t, candidates, 4)
 
 	byVersion := make(map[string]SheinActivityCandidateRecord, len(candidates))
 	for _, candidate := range candidates {
 		byVersion[candidate.CandidateVersion] = candidate
 	}
-	require.NotNil(t, byVersion["v-current"].EffectiveCostPrice)
-	require.Equal(t, 21.99, *byVersion["v-current"].EffectiveCostPrice)
-	require.NotNil(t, byVersion["v-current"].CalculatedProfitRate)
-	require.InEpsilon(t, 0.264548494983278, *byVersion["v-current"].CalculatedProfitRate, 0.0000000001)
+
+	updatedProduct := SheinSyncedProductRecord{
+		ID:                 301,
+		TenantID:           227,
+		StoreID:            870,
+		SKCName:            "sg260524164927164214023",
+		SupplierCode:       "XB0608035002-AB885FBF",
+		ShelfStatus:        "ON_SHELF",
+		EffectiveCostPrice: float64Ptr(21.99),
+		PriceSnapshot:      `{"currency":"USD","sale_price":29.9}`,
+		IsActive:           true,
+	}
+	updatedVersion := buildSheinCandidateVersion(updatedProduct)
+	require.NotNil(t, byVersion[updatedVersion].EffectiveCostPrice)
+	require.Equal(t, 21.99, *byVersion[updatedVersion].EffectiveCostPrice)
+	require.NotNil(t, byVersion[updatedVersion].CalculatedProfitRate)
+	require.InEpsilon(t, 0.264548494983278, *byVersion[updatedVersion].CalculatedProfitRate, 0.0000000001)
 
 	require.NotNil(t, byVersion["v-old"].EffectiveCostPrice)
 	require.Equal(t, 47.52, *byVersion["v-old"].EffectiveCostPrice)
-	require.Equal(t, SheinCandidateReviewStatusApproved, byVersion["v-old"].ReviewStatus)
-	require.True(t, byVersion["v-old"].AutoModeEligible)
-	require.True(t, byVersion["v-old"].SelectedForRun)
+	require.Equal(t, SheinCandidateEligibilityStatusIneligible, byVersion["v-old"].EligibilityStatus)
+	require.Equal(t, SheinCandidateReviewStatusRejected, byVersion["v-old"].ReviewStatus)
+	require.False(t, byVersion["v-old"].AutoModeEligible)
+	require.False(t, byVersion["v-old"].SelectedForRun)
+
+	require.NotNil(t, byVersion["v-current"].EffectiveCostPrice)
+	require.Equal(t, 47.52, *byVersion["v-current"].EffectiveCostPrice)
+	require.Equal(t, SheinCandidateEligibilityStatusIneligible, byVersion["v-current"].EligibilityStatus)
+	require.Equal(t, SheinCandidateReviewStatusRejected, byVersion["v-current"].ReviewStatus)
 
 	require.NotNil(t, byVersion["v-rejected"].EffectiveCostPrice)
 	require.Equal(t, 47.52, *byVersion["v-rejected"].EffectiveCostPrice)
 	require.Equal(t, SheinCandidateReviewStatusRejected, byVersion["v-rejected"].ReviewStatus)
+}
+
+func TestUpdateSDSCostGroupManualCostSupersedesExecutableCandidatesWithNewVersion(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	product := SheinSyncedProductRecord{
+		ID:                 301,
+		TenantID:           227,
+		StoreID:            870,
+		SKCName:            "sg260524164927164214023",
+		SupplierCode:       "XB0608035002-AB885FBF",
+		ShelfStatus:        "ON_SHELF",
+		EffectiveCostPrice: float64Ptr(25.99),
+		PriceSnapshot:      `{"currency":"USD","sale_price":29.9}`,
+		IsActive:           true,
+	}
+	repo.seedProduct(product)
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                   804,
+		TenantID:             227,
+		StoreID:              870,
+		SyncedProductID:      301,
+		ActivityType:         "PROMOTION",
+		ActivityKey:          "PROMOTION:227:870",
+		SKCName:              "sg260524164927164214023",
+		CandidateVersion:     "v-old",
+		EffectiveCostPrice:   float64Ptr(47.52),
+		PriceSnapshot:        `{"currency":"USD","sale_price":29.9}`,
+		CalculatedProfitRate: float64Ptr(-0.5892976588628764),
+		EligibilityStatus:    SheinCandidateEligibilityStatusEligible,
+		ReviewStatus:         SheinCandidateReviewStatusApproved,
+		AutoModeEligible:     true,
+		SelectedForRun:       true,
+	})
+	service := NewSheinSyncService(repo, &sheinSyncServiceProductAPIStub{}, &sheinSyncServiceCostResolverStub{})
+
+	group, err := service.(interface {
+		UpdateSDSCostGroupManualCost(context.Context, int64, int64, string, string, *float64) (*SheinSDSCostGroupRecord, error)
+	}).UpdateSDSCostGroupManualCost(context.Background(), 227, 870, "source:XB0608035002", "XB0608035002", float64Ptr(21.99))
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+
+	candidates, _, err := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+		TenantID: 227,
+		StoreID:  870,
+		SKCName:  "sg260524164927164214023",
+	})
+	require.NoError(t, err)
+	require.Len(t, candidates, 2)
+
+	updatedProduct := product
+	updatedProduct.EffectiveCostPrice = float64Ptr(21.99)
+	wantVersion := buildSheinCandidateVersion(updatedProduct)
+	byVersion := make(map[string]SheinActivityCandidateRecord, len(candidates))
+	for _, candidate := range candidates {
+		byVersion[candidate.CandidateVersion] = candidate
+	}
+
+	require.NotNil(t, byVersion[wantVersion].EffectiveCostPrice)
+	require.Equal(t, 21.99, *byVersion[wantVersion].EffectiveCostPrice)
+	require.Equal(t, SheinCandidateEligibilityStatusEligible, byVersion[wantVersion].EligibilityStatus)
+	require.Equal(t, SheinCandidateReviewStatusPendingReview, byVersion[wantVersion].ReviewStatus)
+	require.False(t, byVersion[wantVersion].AutoModeEligible)
+	require.False(t, byVersion[wantVersion].SelectedForRun)
+
+	require.Equal(t, SheinCandidateEligibilityStatusIneligible, byVersion["v-old"].EligibilityStatus)
+	require.Equal(t, "superseded by newer candidate version", byVersion["v-old"].EligibilityReason)
+	require.Equal(t, SheinCandidateReviewStatusRejected, byVersion["v-old"].ReviewStatus)
+	require.False(t, byVersion["v-old"].AutoModeEligible)
+	require.False(t, byVersion["v-old"].SelectedForRun)
+}
+
+func TestUpdateSDSCostGroupManualCostClearingCostMarksExecutableCandidatesIneligible(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	product := SheinSyncedProductRecord{
+		ID:           301,
+		TenantID:     227,
+		StoreID:      870,
+		SKCName:      "sg260524164927164214023",
+		SupplierCode: "XB0608035002-AB885FBF",
+		ShelfStatus:  "ON_SHELF",
+		PriceSnapshot: `{
+			"currency":"USD",
+			"sale_price":29.9
+		}`,
+		IsActive: true,
+	}
+	repo.seedProduct(product)
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                   804,
+		TenantID:             227,
+		StoreID:              870,
+		SyncedProductID:      301,
+		ActivityType:         "PROMOTION",
+		ActivityKey:          "PROMOTION:227:870",
+		SKCName:              "sg260524164927164214023",
+		CandidateVersion:     "v-old",
+		EffectiveCostPrice:   float64Ptr(21.99),
+		PriceSnapshot:        `{"currency":"USD","sale_price":29.9}`,
+		CalculatedProfitRate: float64Ptr(0.264548494983278),
+		EligibilityStatus:    SheinCandidateEligibilityStatusEligible,
+		ReviewStatus:         SheinCandidateReviewStatusApproved,
+		AutoModeEligible:     true,
+		SelectedForRun:       true,
+	})
+	repo.sdsCostGroups[repo.sdsCostGroupKey(227, 870, "source:XB0608035002")] = SheinSDSCostGroupRecord{
+		TenantID:        227,
+		StoreID:         870,
+		GroupKey:        "source:XB0608035002",
+		GroupLabel:      "XB0608035002",
+		ManualCostPrice: float64Ptr(21.99),
+	}
+	service := NewSheinSyncService(repo, &sheinSyncServiceProductAPIStub{}, &sheinSyncServiceCostResolverStub{})
+
+	group, err := service.(interface {
+		UpdateSDSCostGroupManualCost(context.Context, int64, int64, string, string, *float64) (*SheinSDSCostGroupRecord, error)
+	}).UpdateSDSCostGroupManualCost(context.Background(), 227, 870, "source:XB0608035002", "XB0608035002", nil)
+
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.Nil(t, group.ManualCostPrice)
+
+	candidates, _, err := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+		TenantID: 227,
+		StoreID:  870,
+		SKCName:  "sg260524164927164214023",
+	})
+	require.NoError(t, err)
+	require.Len(t, candidates, 2)
+
+	wantVersion := buildSheinCandidateVersion(product)
+	byVersion := make(map[string]SheinActivityCandidateRecord, len(candidates))
+	for _, candidate := range candidates {
+		byVersion[candidate.CandidateVersion] = candidate
+	}
+
+	require.Nil(t, byVersion[wantVersion].EffectiveCostPrice)
+	require.Equal(t, SheinCandidateEligibilityStatusIneligible, byVersion[wantVersion].EligibilityStatus)
+	require.Equal(t, "missing effective cost price", byVersion[wantVersion].EligibilityReason)
+	require.Equal(t, SheinCandidateReviewStatusPendingReview, byVersion[wantVersion].ReviewStatus)
+
+	require.Equal(t, SheinCandidateEligibilityStatusIneligible, byVersion["v-old"].EligibilityStatus)
+	require.Equal(t, "superseded by newer candidate version", byVersion["v-old"].EligibilityReason)
+	require.Equal(t, SheinCandidateReviewStatusRejected, byVersion["v-old"].ReviewStatus)
+	require.False(t, byVersion["v-old"].AutoModeEligible)
+	require.False(t, byVersion["v-old"].SelectedForRun)
+
+	executable, _, _ := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+		TenantID:       227,
+		StoreID:        870,
+		SKCName:        "sg260524164927164214023",
+		ExecutableOnly: true,
+	})
+	require.Empty(t, executable)
+}
+
+func TestUpdateSDSCostGroupManualCostRejectsNonPositiveManualCost(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	service := NewSheinSyncService(repo, &sheinSyncServiceProductAPIStub{}, &sheinSyncServiceCostResolverStub{})
+
+	_, err := service.(interface {
+		UpdateSDSCostGroupManualCost(context.Context, int64, int64, string, string, *float64) (*SheinSDSCostGroupRecord, error)
+	}).UpdateSDSCostGroupManualCost(context.Background(), 227, 870, "source:XB0608035002", "XB0608035002", float64Ptr(0))
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "manual cost price must be greater than 0")
+}
+
+func TestUpdateManualCostPriceClearingCostMarksExecutableCandidatesIneligible(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	product := SheinSyncedProductRecord{
+		ID:                 301,
+		TenantID:           227,
+		StoreID:            870,
+		SKCName:            "sg260524164927164214023",
+		SupplierCode:       "XB0608035002-AB885FBF",
+		ShelfStatus:        "ON_SHELF",
+		ManualCostPrice:    float64Ptr(21.99),
+		EffectiveCostPrice: float64Ptr(21.99),
+		CostPriceSource:    SheinCostPriceSourceManual,
+		PriceSnapshot:      `{"currency":"USD","sale_price":29.9}`,
+		IsActive:           true,
+	}
+	repo.seedProduct(product)
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                   804,
+		TenantID:             227,
+		StoreID:              870,
+		SyncedProductID:      301,
+		ActivityType:         "PROMOTION",
+		ActivityKey:          "PROMOTION:227:870",
+		SKCName:              "sg260524164927164214023",
+		CandidateVersion:     "v-old",
+		EffectiveCostPrice:   float64Ptr(21.99),
+		PriceSnapshot:        `{"currency":"USD","sale_price":29.9}`,
+		CalculatedProfitRate: float64Ptr(0.264548494983278),
+		EligibilityStatus:    SheinCandidateEligibilityStatusEligible,
+		ReviewStatus:         SheinCandidateReviewStatusApproved,
+		AutoModeEligible:     true,
+		SelectedForRun:       true,
+	})
+	service := NewSheinSyncService(repo, &sheinSyncServiceProductAPIStub{}, &sheinSyncServiceCostResolverStub{})
+
+	err := service.UpdateManualCostPrice(context.Background(), 301, nil)
+
+	require.NoError(t, err)
+
+	product.ManualCostPrice = nil
+	product.EffectiveCostPrice = nil
+	product.CostPriceSource = SheinCostPriceSourceNone
+	wantVersion := buildSheinCandidateVersion(product)
+
+	candidates, _, err := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+		TenantID: 227,
+		StoreID:  870,
+		SKCName:  "sg260524164927164214023",
+	})
+	require.NoError(t, err)
+	require.Len(t, candidates, 2)
+
+	byVersion := make(map[string]SheinActivityCandidateRecord, len(candidates))
+	for _, candidate := range candidates {
+		byVersion[candidate.CandidateVersion] = candidate
+	}
+	require.Nil(t, byVersion[wantVersion].EffectiveCostPrice)
+	require.Equal(t, SheinCandidateEligibilityStatusIneligible, byVersion[wantVersion].EligibilityStatus)
+	require.Equal(t, "missing effective cost price", byVersion[wantVersion].EligibilityReason)
+	require.Equal(t, SheinCandidateReviewStatusPendingReview, byVersion[wantVersion].ReviewStatus)
+
+	require.Equal(t, SheinCandidateEligibilityStatusIneligible, byVersion["v-old"].EligibilityStatus)
+	require.Equal(t, SheinCandidateReviewStatusRejected, byVersion["v-old"].ReviewStatus)
+	require.False(t, byVersion["v-old"].AutoModeEligible)
+	require.False(t, byVersion["v-old"].SelectedForRun)
+
+	executable, _, err := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+		TenantID:       227,
+		StoreID:        870,
+		SKCName:        "sg260524164927164214023",
+		ExecutableOnly: true,
+	})
+	require.NoError(t, err)
+	require.Empty(t, executable)
+}
+
+func TestUpdateManualCostPriceRejectsNonPositiveManualCost(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	service := NewSheinSyncService(repo, &sheinSyncServiceProductAPIStub{}, &sheinSyncServiceCostResolverStub{})
+
+	err := service.UpdateManualCostPrice(context.Background(), 301, float64Ptr(-1))
+
+	require.Error(t, err)
+	require.ErrorContains(t, err, "manual cost price must be greater than 0")
 }
 
 type sheinSyncServiceRepoStub struct {
@@ -1176,6 +1483,20 @@ func (r *sheinSyncServiceRepoStub) ListSyncedProducts(_ context.Context, query *
 		end = len(items)
 	}
 	return items[start:end], total, nil
+}
+
+func (r *sheinSyncServiceRepoStub) GetSyncedProductByID(_ context.Context, productID int64) (*SheinSyncedProductRecord, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	for _, row := range r.products {
+		if row.ID != productID {
+			continue
+		}
+		copied := cloneServiceTestProduct(row)
+		return &copied, nil
+	}
+	return nil, gorm.ErrRecordNotFound
 }
 
 func (r *sheinSyncServiceRepoStub) UpdateManualCostPrice(_ context.Context, productID int64, manualCostPrice *float64) error {

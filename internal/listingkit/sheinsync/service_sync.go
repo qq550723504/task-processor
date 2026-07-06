@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -129,7 +130,28 @@ func (s *sheinSyncService) UpdateManualCostPrice(ctx context.Context, productID 
 	if err := s.validateDependencies(); err != nil {
 		return err
 	}
-	return s.repo.UpdateManualCostPrice(ctx, productID, manualCostPrice)
+	if err := validateSheinManualCostPrice(manualCostPrice); err != nil {
+		return err
+	}
+	if err := s.repo.UpdateManualCostPrice(ctx, productID, manualCostPrice); err != nil {
+		return err
+	}
+	productReader, ok := s.repo.(sheinSyncedProductByIDRepository)
+	if !ok {
+		return nil
+	}
+	product, err := productReader.GetSyncedProductByID(ctx, productID)
+	if err != nil {
+		return err
+	}
+	if product == nil {
+		return nil
+	}
+	return s.rebuildCandidatesForSyncedProducts(ctx, []SheinSyncedProductRecord{*product})
+}
+
+type sheinSyncedProductByIDRepository interface {
+	GetSyncedProductByID(ctx context.Context, productID int64) (*SheinSyncedProductRecord, error)
 }
 
 type sheinSDSCostGroupRepository interface {
@@ -165,6 +187,9 @@ func (s *sheinSyncService) ListSourceSDSCostGroups(ctx context.Context, query *S
 
 func (s *sheinSyncService) UpdateSDSCostGroupManualCost(ctx context.Context, tenantID, storeID int64, groupKey, groupLabel string, manualCostPrice *float64) (*SheinSDSCostGroupRecord, error) {
 	if err := s.validateDependencies(); err != nil {
+		return nil, err
+	}
+	if err := validateSheinManualCostPrice(manualCostPrice); err != nil {
 		return nil, err
 	}
 	repo, ok := s.repo.(sheinSDSCostGroupRepository)
@@ -204,6 +229,16 @@ func (s *sheinSyncService) UpdateSDSCostGroupManualCost(ctx context.Context, ten
 	return &rows[0], nil
 }
 
+func validateSheinManualCostPrice(manualCostPrice *float64) error {
+	if manualCostPrice == nil {
+		return nil
+	}
+	if math.IsNaN(*manualCostPrice) || math.IsInf(*manualCostPrice, 0) || *manualCostPrice <= 0 {
+		return fmt.Errorf("manual cost price must be greater than 0")
+	}
+	return nil
+}
+
 func (s *sheinSyncService) refreshCandidateCostsForSDSCostGroup(
 	ctx context.Context,
 	groupReader sheinCandidateSDSCostGroupReader,
@@ -222,26 +257,7 @@ func (s *sheinSyncService) refreshCandidateCostsForSDSCostGroup(
 		return err
 	}
 
-	updates := make([]*SheinActivityCandidateRecord, 0, len(products))
-	for _, product := range products {
-		if product.SKCName == "" || product.EffectiveCostPrice == nil {
-			continue
-		}
-		candidates, err := s.listCandidatesForSyncedProduct(ctx, tenantID, storeID, product.SKCName)
-		if err != nil {
-			return err
-		}
-		for _, candidate := range candidates {
-			row := candidate
-			row.EffectiveCostPrice = cloneSheinSyncFloat64(product.EffectiveCostPrice)
-			row.CalculatedProfitRate = calculateSheinCandidateProfitRate(row.EffectiveCostPrice, row.PriceSnapshot)
-			updates = append(updates, &row)
-		}
-	}
-	if len(updates) == 0 {
-		return nil
-	}
-	return s.repo.SaveCandidates(ctx, updates)
+	return s.rebuildCandidatesForSyncedProducts(ctx, products)
 }
 
 func (s *sheinSyncService) listProductsForSDSCostGroup(ctx context.Context, tenantID, storeID int64, groupKey string) ([]SheinSyncedProductRecord, error) {
@@ -294,7 +310,84 @@ func (s *sheinSyncService) listCandidatesForSyncedProduct(ctx context.Context, t
 		}
 		page++
 	}
-	return latestSheinActivityCandidatesByActivity(items), nil
+	return items, nil
+}
+
+func (s *sheinSyncService) rebuildCandidatesForSyncedProducts(ctx context.Context, products []SheinSyncedProductRecord) error {
+	if len(products) == 0 {
+		return nil
+	}
+	updates := make([]*SheinActivityCandidateRecord, 0, len(products))
+	for _, product := range products {
+		if strings.TrimSpace(product.SKCName) == "" {
+			continue
+		}
+		candidates, err := s.listCandidatesForSyncedProduct(ctx, product.TenantID, product.StoreID, product.SKCName)
+		if err != nil {
+			return err
+		}
+		updates = append(updates, rebuildSheinCandidatesForSyncedProduct(product, candidates)...)
+	}
+	if len(updates) == 0 {
+		return nil
+	}
+	return s.repo.SaveCandidates(ctx, updates)
+}
+
+func rebuildSheinCandidatesForSyncedProduct(product SheinSyncedProductRecord, candidates []SheinActivityCandidateRecord) []*SheinActivityCandidateRecord {
+	if len(candidates) == 0 {
+		return nil
+	}
+	candidatesByActivity := make(map[string][]SheinActivityCandidateRecord)
+	activityKeys := make([]string, 0)
+	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate.ActivityType) == "" {
+			continue
+		}
+		activityKey := candidate.ActivityType + "\x00" + candidate.ActivityKey
+		if _, ok := candidatesByActivity[activityKey]; !ok {
+			activityKeys = append(activityKeys, activityKey)
+		}
+		candidatesByActivity[activityKey] = append(candidatesByActivity[activityKey], candidate)
+	}
+	sort.Strings(activityKeys)
+
+	updates := make([]*SheinActivityCandidateRecord, 0, len(candidates)+len(activityKeys))
+	for _, activityKey := range activityKeys {
+		existingCandidates := candidatesByActivity[activityKey]
+		sort.Slice(existingCandidates, func(i, j int) bool {
+			return existingCandidates[i].ID < existingCandidates[j].ID
+		})
+		template := existingCandidates[0]
+		next := buildSheinCandidateRecord(product, template.ActivityType, template.ActivityKey)
+		for _, existing := range existingCandidates {
+			if existing.CandidateVersion != next.CandidateVersion {
+				continue
+			}
+			next.ReviewStatus = existing.ReviewStatus
+			next.AutoModeEligible = existing.AutoModeEligible
+			next.SelectedForRun = existing.SelectedForRun
+			break
+		}
+		updates = append(updates, next)
+		for _, existing := range existingCandidates {
+			if existing.CandidateVersion == next.CandidateVersion {
+				continue
+			}
+			stale := markSheinCandidateSuperseded(existing)
+			updates = append(updates, &stale)
+		}
+	}
+	return updates
+}
+
+func markSheinCandidateSuperseded(candidate SheinActivityCandidateRecord) SheinActivityCandidateRecord {
+	candidate.EligibilityStatus = SheinCandidateEligibilityStatusIneligible
+	candidate.EligibilityReason = "superseded by newer candidate version"
+	candidate.ReviewStatus = SheinCandidateReviewStatusRejected
+	candidate.AutoModeEligible = false
+	candidate.SelectedForRun = false
+	return candidate
 }
 
 func sheinSyncedProductHasSDSCostGroupKey(product SheinSyncedProductRecord, groupKey string) bool {
