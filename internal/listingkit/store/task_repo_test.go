@@ -117,6 +117,73 @@ func TestTaskRepositoryListTasksFiltersBySheinBlockerKey(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryListTasksAcceptsLegacyKeyedCatalogAttributes(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := store.NewTaskRepository(db)
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
+	createdAt := time.Date(2026, 7, 5, 10, 59, 26, 0, time.UTC)
+	resultJSON := `{
+		"task_id": "task-legacy-keyed-attrs",
+		"status": "needs_review",
+		"standard_product_snapshot": {
+			"catalog_product": {
+				"title": "Legacy catalog product",
+				"attributes": {
+					"product_size": {
+						"value": "[[{\"content\":\"Size\"},{\"content\":\"Bust\"}]]",
+						"trace": {
+							"sources": [{"type": "derived", "detail": "SDS product detail repair"}],
+							"confidence": 0.99
+						}
+					}
+				}
+			}
+		},
+		"catalog_product": {
+			"title": "Legacy catalog product",
+			"attributes": {
+				"product_size": {
+					"value": "[[{\"content\":\"Size\"},{\"content\":\"Bust\"}]]"
+				}
+			}
+		}
+	}`
+	if err := db.Exec(
+		`insert into listing_kit_tasks (id, tenant_id, status, request, result, created_at, updated_at, retry_count) values (?, ?, ?, ?, ?, ?, ?, ?)`,
+		"task-legacy-keyed-attrs",
+		"tenant-a",
+		string(listingkit.TaskStatusNeedsReview),
+		`{"platforms":["shein"]}`,
+		resultJSON,
+		createdAt,
+		createdAt,
+		0,
+	).Error; err != nil {
+		t.Fatalf("insert legacy task: %v", err)
+	}
+
+	items, total, err := repo.ListTasks(ctx, &listingkit.TaskListQuery{Page: 1, PageSize: 20})
+	if err != nil {
+		t.Fatalf("ListTasks() error = %v", err)
+	}
+	if total != 1 || len(items) != 1 {
+		t.Fatalf("items=%d total=%d, want one task", len(items), total)
+	}
+	attrs := items[0].Result.StandardProductSnapshot.CatalogProduct.Attributes
+	if len(attrs) != 1 || attrs[0].Name != "product_size" {
+		t.Fatalf("catalog attributes = %+v, want keyed product_size converted", attrs)
+	}
+}
+
 func TestTaskRepositoryListTasksFiltersByPodPlatformBlocker(t *testing.T) {
 	t.Parallel()
 

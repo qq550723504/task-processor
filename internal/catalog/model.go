@@ -1,5 +1,10 @@
 package catalog
 
+import (
+	"encoding/json"
+	"sort"
+)
+
 type Product struct {
 	Title          string          `json:"title,omitempty"`
 	Brand          string          `json:"brand,omitempty"`
@@ -13,6 +18,24 @@ type Product struct {
 	Images         []Image         `json:"images,omitempty"`
 	Review         *ReviewState    `json:"review,omitempty"`
 	Sources        []SourceRecord  `json:"sources,omitempty"`
+}
+
+func (p *Product) UnmarshalJSON(data []byte) error {
+	type productAlias Product
+	var raw struct {
+		*productAlias
+		Attributes json.RawMessage `json:"attributes,omitempty"`
+	}
+	raw.productAlias = (*productAlias)(p)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	attrs, err := unmarshalAttributeList(raw.Attributes)
+	if err != nil {
+		return err
+	}
+	p.Attributes = attrs
+	return nil
 }
 
 type Attribute struct {
@@ -36,6 +59,24 @@ type Variant struct {
 	Barcode    string      `json:"barcode,omitempty"`
 	IsDefault  bool        `json:"is_default,omitempty"`
 	Trace      Trace       `json:"trace,omitempty"`
+}
+
+func (v *Variant) UnmarshalJSON(data []byte) error {
+	type variantAlias Variant
+	var raw struct {
+		*variantAlias
+		Attributes json.RawMessage `json:"attributes,omitempty"`
+	}
+	raw.variantAlias = (*variantAlias)(v)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	attrs, err := unmarshalAttributeList(raw.Attributes)
+	if err != nil {
+		return err
+	}
+	v.Attributes = attrs
+	return nil
 }
 
 type Price struct {
@@ -86,4 +127,32 @@ type Trace struct {
 type SourceRecord struct {
 	Type   string `json:"type,omitempty"`
 	Detail string `json:"detail,omitempty"`
+}
+
+func unmarshalAttributeList(data json.RawMessage) ([]Attribute, error) {
+	if len(data) == 0 || string(data) == "null" {
+		return nil, nil
+	}
+	var attrs []Attribute
+	if err := json.Unmarshal(data, &attrs); err == nil {
+		return attrs, nil
+	}
+	var keyed map[string]Attribute
+	if err := json.Unmarshal(data, &keyed); err != nil {
+		return nil, err
+	}
+	keys := make([]string, 0, len(keyed))
+	for key := range keyed {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	attrs = make([]Attribute, 0, len(keys))
+	for _, key := range keys {
+		attr := keyed[key]
+		if attr.Name == "" {
+			attr.Name = key
+		}
+		attrs = append(attrs, attr)
+	}
+	return attrs, nil
 }
