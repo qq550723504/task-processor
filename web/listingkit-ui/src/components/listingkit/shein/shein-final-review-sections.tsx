@@ -17,10 +17,7 @@ import {
   getSheinDraftPayload,
   getSheinPreviewPayload,
 } from "@/lib/listingkit/semantic-fields";
-import {
-  buildSDSInternalFallbackHref,
-  buildSDSSourceProductHref,
-} from "@/components/listingkit/shein/shein-source-product-panel";
+import { buildSDSSourceProductHref } from "@/components/listingkit/shein/shein-source-product-panel";
 import type {
   SheinFinalReviewImage,
   SheinPreviewPayload,
@@ -254,9 +251,7 @@ export function FinalReviewOverviewCards({
 }: {
   finalReview?: SheinPreviewPayload["final_review"];
 }) {
-  const sourceProductHref =
-    buildSDSSourceProductHref(finalReview?.source_product) ||
-    buildSDSInternalFallbackHref(finalReview?.source_product);
+  const sourceProductHref = buildSDSSourceProductHref(finalReview?.source_product);
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-3">

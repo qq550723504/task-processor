@@ -2,7 +2,6 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
-  buildSDSInternalFallbackHref,
   buildSDSSourceProductHref,
   SheinSourceProductPanel,
 } from "@/components/listingkit/shein/shein-source-product-panel";
@@ -32,15 +31,9 @@ describe("SheinSourceProductPanel", () => {
     );
   });
 
-  it("builds an internal SKU search fallback when the SDS product id is missing", () => {
+  it("does not build an internal route when the SDS product id is missing", () => {
     expect(buildSDSSourceProductHref({ title: "SDS pants", sku: "NS6104229008" })).toBe(
       "",
     );
-    expect(
-      buildSDSInternalFallbackHref({
-        title: "SDS pants",
-        sku: "NS6104229008",
-      }),
-    ).toBe("/listing-kits/sds?keyword=NS6104229008");
   });
 });

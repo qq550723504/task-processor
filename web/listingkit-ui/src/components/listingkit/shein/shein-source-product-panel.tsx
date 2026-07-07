@@ -74,24 +74,6 @@ export function buildSDSSourceProductHref(
   return "";
 }
 
-export function buildSDSInternalFallbackHref(
-  source?: SheinPreviewPayload["source_product"] | null,
-) {
-  if (!source) {
-    return "";
-  }
-  const params = new URLSearchParams();
-  const variantID = normalizePositiveID(source.variant_id);
-  if (variantID) {
-    params.set("variantId", variantID);
-  }
-  const keyword = source.sku || source.variant_sku;
-  if (keyword) {
-    params.set("keyword", keyword);
-  }
-  return params.toString() ? `/listing-kits/sds?${params.toString()}` : "";
-}
-
 function normalizePositiveID(value?: string | number | null) {
   const id = Number(value);
   if (!Number.isFinite(id) || id <= 0) {
@@ -114,8 +96,7 @@ export function SheinSourceProductPanel({
 
   const material =
     source.attributes?.material ?? source.attributes?.material_description;
-  const sourceProductHref =
-    buildSDSSourceProductHref(source) || buildSDSInternalFallbackHref(source);
+  const sourceProductHref = buildSDSSourceProductHref(source);
 
   return (
     <Card className="border-zinc-200 bg-white p-5">
