@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -135,6 +136,32 @@ func TestTaskRepositoryLookupSheinPODImagesMatchesSheinReturnedSPUName(t *testin
 	}
 	if items[0].TaskID != task.ID {
 		t.Fatalf("task id = %q, want %q", items[0].TaskID, task.ID)
+	}
+}
+
+func TestSheinPODImageLookupQueryScopeDoesNotScanRawTaskJSON(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{DryRun: true})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+
+	var tasks []listingkit.Task
+	stmt := db.Model(&listingkit.Task{})
+	stmt = store.ApplySheinPODImageLookupStoreScopeForTest(stmt, 869)
+	stmt = store.ApplySheinPODImageLookupQueryScopeForTest(stmt, "JJ0531027001-V34576-TFCBA9C")
+	statement := stmt.Find(&tasks).Statement
+
+	sql := statement.SQL.String()
+	for _, forbidden := range []string{
+		"COALESCE(result",
+		"COALESCE(request",
+		"REPLACE(REPLACE",
+	} {
+		if strings.Contains(sql, forbidden) {
+			t.Fatalf("lookup SQL contains slow raw JSON text predicate %q: %s", forbidden, sql)
+		}
 	}
 }
 

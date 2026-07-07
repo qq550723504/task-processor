@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"strconv"
-	"strings"
 
 	"gorm.io/gorm"
 
@@ -75,31 +74,8 @@ func applySheinPODImageLookupStoreScope(db *gorm.DB, storeID int64) *gorm.DB {
 }
 
 func applySheinPODImageLookupQueryScope(db *gorm.DB, rawQuery string) *gorm.DB {
-	trimmed := strings.TrimSpace(rawQuery)
-	compact := sheinpodimage.NormalizeSheinPODImageLookupQueryToken(trimmed)
-	if trimmed == "" && compact == "" {
-		return db
-	}
-	likeRaw := "%" + strings.ToUpper(trimmed) + "%"
-	likeCompact := "%" + compact + "%"
-	switch db.Dialector.Name() {
-	case "postgres":
-		return db.Where(`(
-			UPPER(COALESCE(id, '')) LIKE ?
-			OR UPPER(COALESCE(result, '')) LIKE ?
-			OR UPPER(COALESCE(request, '')) LIKE ?
-			OR UPPER(REPLACE(REPLACE(COALESCE(result, ''), '-', ''), '_', '')) LIKE ?
-			OR UPPER(REPLACE(REPLACE(COALESCE(request, ''), '-', ''), '_', '')) LIKE ?
-		)`, likeRaw, likeRaw, likeRaw, likeCompact, likeCompact)
-	case "sqlite":
-		return db.Where(`(
-			UPPER(COALESCE(id, '')) LIKE ?
-			OR UPPER(COALESCE(result, '')) LIKE ?
-			OR UPPER(COALESCE(request, '')) LIKE ?
-			OR UPPER(REPLACE(REPLACE(COALESCE(result, ''), '-', ''), '_', '')) LIKE ?
-			OR UPPER(REPLACE(REPLACE(COALESCE(request, ''), '-', ''), '_', '')) LIKE ?
-		)`, likeRaw, likeRaw, likeRaw, likeCompact, likeCompact)
-	default:
-		return db
-	}
+	// Query matching happens after materializing records so Postgres does not
+	// run unindexed LIKE predicates over large request/result JSON blobs.
+	_ = rawQuery
+	return db
 }
