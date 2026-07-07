@@ -94,6 +94,16 @@ export function resolveListingKitProxyTimeoutMs(
     return PROXY_SHEIN_ENROLLMENT_EXECUTE_UPSTREAM_TIMEOUT_MS;
   }
   if (
+    method.toUpperCase() === "POST" &&
+    path.length === 5 &&
+    path[0] === "shein-sync" &&
+    path[1] === "stores" &&
+    path[3] === "candidates" &&
+    path[4] === "refresh"
+  ) {
+    return PROXY_SHEIN_ENROLLMENT_EXECUTE_UPSTREAM_TIMEOUT_MS;
+  }
+  if (
     method.toUpperCase() === "GET" &&
     path.length === 4 &&
     path[0] === "tasks" &&

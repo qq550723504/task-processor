@@ -4,11 +4,13 @@ import (
 	"context"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	_ "modernc.org/sqlite"
 
 	"task-processor/internal/listingkit"
@@ -230,6 +232,86 @@ func TestSheinSyncRepositoryCountSheinEnrollmentSummary(t *testing.T) {
 				t.Fatalf("counts = (%d,%d,%d,%d), want (2,1,1,1)", syncedProductCount, missingCostCount, pendingReviewCount, readyToEnrollCount)
 			}
 		})
+	}
+}
+
+func TestGormSheinSyncRepositorySaveCandidatesBatchesUpserts(t *testing.T) {
+	t.Parallel()
+
+	sqlCounter := &candidateInsertSQLCounter{}
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{
+		Logger: sqlCounter,
+	})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := AutoMigrateSheinSyncRepository(db); err != nil {
+		t.Fatalf("auto migrate shein sync repository: %v", err)
+	}
+
+	repo := NewSheinSyncRepository(db)
+	now := time.Date(2026, 7, 7, 10, 0, 0, 0, time.UTC)
+	records := []*listingkit.SheinActivityCandidateRecord{
+		{
+			TenantID:          1,
+			StoreID:           870,
+			ActivityType:      "PROMOTION",
+			ActivityKey:       "PROMOTION:1:870",
+			SKCName:           "skc-a",
+			CandidateVersion:  "v1",
+			EligibilityStatus: listingkit.SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:      listingkit.SheinCandidateReviewStatusPendingReview,
+			CreatedAt:         now,
+			UpdatedAt:         now,
+		},
+		{
+			TenantID:          1,
+			StoreID:           870,
+			ActivityType:      "PROMOTION",
+			ActivityKey:       "PROMOTION:1:870",
+			SKCName:           "skc-b",
+			CandidateVersion:  "v1",
+			EligibilityStatus: listingkit.SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:      listingkit.SheinCandidateReviewStatusPendingReview,
+			CreatedAt:         now,
+			UpdatedAt:         now,
+		},
+		{
+			TenantID:          1,
+			StoreID:           870,
+			ActivityType:      "PROMOTION",
+			ActivityKey:       "PROMOTION:1:870",
+			SKCName:           "skc-c",
+			CandidateVersion:  "v1",
+			EligibilityStatus: listingkit.SheinCandidateEligibilityStatusIneligible,
+			EligibilityReason: "missing effective cost price",
+			ReviewStatus:      listingkit.SheinCandidateReviewStatusPendingReview,
+			CreatedAt:         now,
+			UpdatedAt:         now,
+		},
+	}
+
+	if err := repo.SaveCandidates(context.Background(), records); err != nil {
+		t.Fatalf("SaveCandidates() error = %v", err)
+	}
+	if sqlCounter.candidateInsertCount != 1 {
+		t.Fatalf("candidate insert statements = %d, want 1", sqlCounter.candidateInsertCount)
+	}
+
+	items, total, err := repo.(interface {
+		ListCandidates(ctx context.Context, query *listingkit.SheinActivityCandidateQuery) ([]listingkit.SheinActivityCandidateRecord, int64, error)
+	}).ListCandidates(context.Background(), &listingkit.SheinActivityCandidateQuery{
+		TenantID:     1,
+		StoreID:      870,
+		ActivityType: "PROMOTION",
+		Page:         1,
+		PageSize:     10,
+	})
+	if err != nil {
+		t.Fatalf("ListCandidates() error = %v", err)
+	}
+	if total != 3 || len(items) != 3 {
+		t.Fatalf("saved candidates total=%d len=%d, want 3", total, len(items))
 	}
 }
 
@@ -2160,4 +2242,21 @@ func sortSheinEnrollmentItems(rows []listingkit.SheinActivityEnrollmentItemRecor
 		}
 		return rows[i].CandidateID < rows[j].CandidateID
 	})
+}
+
+type candidateInsertSQLCounter struct {
+	logger.Interface
+	candidateInsertCount int
+}
+
+func (l *candidateInsertSQLCounter) LogMode(logger.LogLevel) logger.Interface {
+	return l
+}
+
+func (l *candidateInsertSQLCounter) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	sql, _ := fc()
+	if strings.Contains(sql, "INSERT INTO `listingkit_shein_activity_candidates`") ||
+		strings.Contains(sql, `INSERT INTO "listingkit_shein_activity_candidates"`) {
+		l.candidateInsertCount++
+	}
 }

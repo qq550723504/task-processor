@@ -14,6 +14,7 @@ import (
 )
 
 const sheinCandidateRefreshPageSize = 100
+const sheinCandidateSDSCostGroupFetchBatchSize = 100
 
 type SheinCandidateService interface {
 	RefreshCandidates(ctx context.Context, tenantID, storeID int64, activityType string) (*SheinCandidateRefreshResult, error)
@@ -420,13 +421,7 @@ func applySheinSDSCostGroupOverrides(
 	if len(groupKeys) == 0 {
 		return products, nil
 	}
-	groups, _, err := reader.ListSDSCostGroups(ctx, &SheinSDSCostGroupQuery{
-		TenantID:  tenantID,
-		StoreID:   storeID,
-		GroupKeys: groupKeys,
-		Page:      1,
-		PageSize:  len(groupKeys),
-	})
+	groups, err := listSheinCandidateSDSCostGroups(ctx, reader, tenantID, storeID, groupKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -483,6 +478,33 @@ func applySheinSDSCostGroupOverrides(
 		}
 	}
 	return out, nil
+}
+
+func listSheinCandidateSDSCostGroups(
+	ctx context.Context,
+	reader sheinCandidateSDSCostGroupReader,
+	tenantID, storeID int64,
+	groupKeys []string,
+) ([]SheinSDSCostGroupRecord, error) {
+	groups := make([]SheinSDSCostGroupRecord, 0)
+	for start := 0; start < len(groupKeys); start += sheinCandidateSDSCostGroupFetchBatchSize {
+		end := start + sheinCandidateSDSCostGroupFetchBatchSize
+		if end > len(groupKeys) {
+			end = len(groupKeys)
+		}
+		rows, _, err := reader.ListSDSCostGroups(ctx, &SheinSDSCostGroupQuery{
+			TenantID:  tenantID,
+			StoreID:   storeID,
+			GroupKeys: groupKeys[start:end],
+			Page:      1,
+			PageSize:  end - start,
+		})
+		if err != nil {
+			return nil, err
+		}
+		groups = append(groups, rows...)
+	}
+	return groups, nil
 }
 
 func sheinCandidateSDSCostGroupKeys(products []SheinSyncedProductRecord) []string {

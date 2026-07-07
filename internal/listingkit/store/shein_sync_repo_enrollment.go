@@ -10,7 +10,10 @@ import (
 	"task-processor/internal/listingkit"
 )
 
+const sheinCandidateSaveBatchSize = 500
+
 func (r *GormSheinSyncRepository) SaveCandidates(ctx context.Context, records []*listingkit.SheinActivityCandidateRecord) error {
+	rows := make([]listingkit.SheinActivityCandidateRecord, 0, len(records))
 	for _, record := range records {
 		if record == nil {
 			continue
@@ -22,8 +25,14 @@ func (r *GormSheinSyncRepository) SaveCandidates(ctx context.Context, records []
 		if row.CreatedAt.IsZero() {
 			row.CreatedAt = now
 		}
+		rows = append(rows, row)
+	}
+	if len(rows) == 0 {
+		return nil
+	}
 
-		if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{
 				{Name: "tenant_id"},
 				{Name: "store_id"},
@@ -32,24 +41,21 @@ func (r *GormSheinSyncRepository) SaveCandidates(ctx context.Context, records []
 				{Name: "skc_name"},
 				{Name: "candidate_version"},
 			},
-			DoUpdates: clause.Assignments(map[string]any{
-				"synced_product_id":      row.SyncedProductID,
-				"effective_cost_price":   row.EffectiveCostPrice,
-				"price_snapshot":         row.PriceSnapshot,
-				"inventory_snapshot":     row.InventorySnapshot,
-				"calculated_profit_rate": row.CalculatedProfitRate,
-				"eligibility_status":     row.EligibilityStatus,
-				"eligibility_reason":     row.EligibilityReason,
-				"review_status":          row.ReviewStatus,
-				"auto_mode_eligible":     row.AutoModeEligible,
-				"selected_for_run":       row.SelectedForRun,
-				"updated_at":             row.UpdatedAt,
+			DoUpdates: clause.AssignmentColumns([]string{
+				"synced_product_id",
+				"effective_cost_price",
+				"price_snapshot",
+				"inventory_snapshot",
+				"calculated_profit_rate",
+				"eligibility_status",
+				"eligibility_reason",
+				"review_status",
+				"auto_mode_eligible",
+				"selected_for_run",
+				"updated_at",
 			}),
-		}).Create(&row).Error; err != nil {
-			return err
-		}
-	}
-	return nil
+		}).CreateInBatches(rows, sheinCandidateSaveBatchSize).Error
+	})
 }
 
 func (r *GormSheinSyncRepository) ListCandidates(ctx context.Context, query *listingkit.SheinActivityCandidateQuery) ([]listingkit.SheinActivityCandidateRecord, int64, error) {

@@ -97,6 +97,18 @@ describe("resolveListingKitProxyTimeoutMs", () => {
     ).toBe(PROXY_SHEIN_ENROLLMENT_EXECUTE_UPSTREAM_TIMEOUT_MS);
   });
 
+  it("extends the timeout for shein candidate refresh requests", () => {
+    expect(
+      resolveListingKitProxyTimeoutMs("POST", [
+        "shein-sync",
+        "stores",
+        "870",
+        "candidates",
+        "refresh",
+      ]),
+    ).toBe(PROXY_SHEIN_ENROLLMENT_EXECUTE_UPSTREAM_TIMEOUT_MS);
+  });
+
   it("extends the timeout for slow admin collection reads", () => {
     expect(resolveListingKitProxyTimeoutMs("GET", ["admin", "product-import-mappings"])).toBe(
       PROXY_ADMIN_COLLECTION_UPSTREAM_TIMEOUT_MS,

@@ -424,6 +424,70 @@ func TestSheinCandidateServiceRefreshCandidatesUsesSourceVariantCostGroupOverrid
 	require.Equal(t, 0.45, *candidates[1].CalculatedProfitRate)
 }
 
+func TestSheinCandidateServiceRefreshCandidatesFetchesSDSCostGroupsBeyondFirstPage(t *testing.T) {
+	t.Parallel()
+
+	products := make([]SheinSyncedProductRecord, 0, 103)
+	for i := 0; i < 102; i++ {
+		products = append(products, SheinSyncedProductRecord{
+			ID:                int64(i + 1),
+			TenantID:          11,
+			StoreID:           22,
+			SKCName:           fmt.Sprintf("filler-%03d", i),
+			SupplierCode:      fmt.Sprintf("AA%010d-ABCDEFGH", i),
+			ShelfStatus:       "ON_SHELF",
+			PriceSnapshot:     `{"sale_price":100}`,
+			InventorySnapshot: `{"available":8}`,
+			IsActive:          true,
+		})
+	}
+	products = append(products, SheinSyncedProductRecord{
+		ID:                200,
+		TenantID:          11,
+		StoreID:           22,
+		SKCName:           "sg260524220749889172313",
+		SupplierCode:      "XB0614000001-328D4DCA",
+		SaleName:          "White",
+		ShelfStatus:       "ON_SHELF",
+		PriceSnapshot:     `{"sale_price":61.2}`,
+		InventorySnapshot: `{"available":999}`,
+		SiteSnapshot:      `{"sku_codes":["I3MPJUQZ9KCJBH"],"sku_info":[{"sku_code":"I3mpjuqz9kcjbh","variant_label":"均码"}]}`,
+		IsActive:          true,
+	})
+	repo := newSheinCandidateRepoStub(products)
+	for i := 0; i < 102; i++ {
+		repo.seedSDSCostGroup(SheinSDSCostGroupRecord{
+			TenantID:        11,
+			StoreID:         22,
+			GroupKey:        fmt.Sprintf("source:AA%010d", i),
+			ManualCostPrice: float64Ptr(10),
+		})
+	}
+	repo.seedSDSCostGroup(SheinSDSCostGroupRecord{
+		TenantID:        11,
+		StoreID:         22,
+		GroupKey:        "source:XB0614000001:variant:0DDA0C15301B",
+		ManualCostPrice: float64Ptr(23.88),
+	})
+
+	service := NewSheinCandidateService(repo)
+
+	_, err := service.RefreshCandidates(context.Background(), 11, 22, "PROMOTION")
+	require.NoError(t, err)
+
+	var target SheinActivityCandidateRecord
+	for _, candidate := range repo.savedCandidates() {
+		if candidate.SKCName == "sg260524220749889172313" {
+			target = candidate
+			break
+		}
+	}
+	require.NotNil(t, target.EffectiveCostPrice)
+	require.Equal(t, 23.88, *target.EffectiveCostPrice)
+	require.Equal(t, SheinCandidateEligibilityStatusEligible, target.EligibilityStatus)
+	require.Greater(t, len(repo.sdsGroupQueries), 1)
+}
+
 func TestSheinCandidateServiceRefreshCandidatesMarksNonOnShelfRowsIneligibleAndIgnoresInactiveRows(t *testing.T) {
 	t.Parallel()
 
@@ -799,11 +863,12 @@ func TestSheinCandidateServiceResetCandidatesResetsMatchingCandidates(t *testing
 }
 
 type sheinCandidateRepoStub struct {
-	mu         sync.RWMutex
-	products   []SheinSyncedProductRecord
-	queries    []*SheinSyncedProductQuery
-	candidates map[string]SheinActivityCandidateRecord
-	sdsGroups  map[string]SheinSDSCostGroupRecord
+	mu              sync.RWMutex
+	products        []SheinSyncedProductRecord
+	queries         []*SheinSyncedProductQuery
+	sdsGroupQueries []*SheinSDSCostGroupQuery
+	candidates      map[string]SheinActivityCandidateRecord
+	sdsGroups       map[string]SheinSDSCostGroupRecord
 }
 
 func newSheinCandidateRepoStub(products []SheinSyncedProductRecord) *sheinCandidateRepoStub {
@@ -931,6 +996,7 @@ func (r *sheinCandidateRepoStub) ListSDSCostGroups(_ context.Context, query *She
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
+	r.sdsGroupQueries = append(r.sdsGroupQueries, cloneSheinCandidateSDSCostGroupQuery(query))
 	items := make([]SheinSDSCostGroupRecord, 0, len(r.sdsGroups))
 	for _, row := range r.sdsGroups {
 		if query != nil {
@@ -949,7 +1015,31 @@ func (r *sheinCandidateRepoStub) ListSDSCostGroups(_ context.Context, query *She
 	sort.Slice(items, func(i, j int) bool {
 		return items[i].GroupKey < items[j].GroupKey
 	})
-	return items, int64(len(items)), nil
+	total := int64(len(items))
+	page, pageSize := 1, len(items)
+	if query != nil {
+		if query.Page > 0 {
+			page = query.Page
+		}
+		if query.PageSize > 0 {
+			pageSize = query.PageSize
+		}
+	}
+	if pageSize == 0 {
+		pageSize = 20
+	}
+	if pageSize > 100 {
+		pageSize = 100
+	}
+	start := (page - 1) * pageSize
+	if start >= len(items) {
+		return []SheinSDSCostGroupRecord{}, total, nil
+	}
+	end := start + pageSize
+	if end > len(items) {
+		end = len(items)
+	}
+	return items[start:end], total, nil
 }
 
 func (r *sheinCandidateRepoStub) savedCandidates() []SheinActivityCandidateRecord {
@@ -1017,6 +1107,15 @@ func cloneSheinCandidateQuery(query *SheinSyncedProductQuery) *SheinSyncedProduc
 		active := *query.IsActive
 		cloned.IsActive = &active
 	}
+	return &cloned
+}
+
+func cloneSheinCandidateSDSCostGroupQuery(query *SheinSDSCostGroupQuery) *SheinSDSCostGroupQuery {
+	if query == nil {
+		return nil
+	}
+	cloned := *query
+	cloned.GroupKeys = append([]string(nil), query.GroupKeys...)
 	return &cloned
 }
 
