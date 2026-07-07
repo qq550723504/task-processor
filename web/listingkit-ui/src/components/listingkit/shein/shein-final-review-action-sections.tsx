@@ -33,10 +33,12 @@ export function FinalReviewReadinessBanner({
   blockingCount,
   confirmed,
   ready,
+  saveDraftReady,
 }: {
   blockingCount: number;
   confirmed: boolean;
   ready: boolean;
+  saveDraftReady?: boolean;
 }) {
   return (
     <div
@@ -60,11 +62,15 @@ export function FinalReviewReadinessBanner({
               ? confirmed
                 ? "可以提交"
                 : "资料已就绪，还需要最终确认"
+              : saveDraftReady
+                ? "可以先保存草稿"
               : "暂时不能提交"}
           </div>
           <p className="mt-1 text-sm leading-6 text-zinc-700">
             {ready
               ? "后端 readiness 已通过。提交前请确认价格、图片和 SKU。"
+              : saveDraftReady
+                ? "当前阻断项只影响正式发布，仍可先保存到 SHEIN 草稿箱。"
               : "需要先修复阻断项，提交按钮会保持不可用。"}
           </p>
         </div>
@@ -141,6 +147,7 @@ export function FinalReviewSubmitActions({
   manualOverrides,
   onSubmit,
   ready,
+  saveDraftReady,
   submitAction,
   submitHint,
 }: {
@@ -158,6 +165,7 @@ export function FinalReviewSubmitActions({
     },
   ) => void;
   ready: boolean;
+  saveDraftReady?: boolean;
   submitAction?: FinalReviewSubmitAction | null;
   submitHint: string;
 }) {
@@ -172,7 +180,7 @@ export function FinalReviewSubmitActions({
       <Button
         className="w-full sm:w-auto"
         variant="secondary"
-        disabled={isSaving || !ready || isSubmitting}
+        disabled={isSaving || !(saveDraftReady ?? ready) || isSubmitting}
         onClick={() =>
           onSubmit?.("save_draft", {
             confirmed: true,

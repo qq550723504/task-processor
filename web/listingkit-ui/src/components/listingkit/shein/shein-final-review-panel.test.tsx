@@ -333,6 +333,14 @@ describe("SheinFinalReviewPanel", () => {
             category_id: 123,
             attributes: [{ name: "Material", value: "Polyester" }],
             sale_attributes: [{ name: "Size", value: "XXXXL" }],
+            blocking_items: [
+              {
+                key: "variants",
+                label: "发布载荷结构",
+                message:
+                  "SHEIN publish blocked: missing required size chart attributes: 内侧裤长 (cm), 胸围 (cm)",
+              },
+            ],
             images: [{ url: "https://example.com/main.jpg", main: true, final: true }],
           },
         }}
@@ -340,12 +348,15 @@ describe("SheinFinalReviewPanel", () => {
     );
 
     expect(screen.getByText("发布载荷")).toBeInTheDocument();
+    expect(screen.getByText("可以先保存草稿")).toBeInTheDocument();
     expect(
       screen.getByText(
         "SHEIN publish blocked: missing required size chart attributes: 内侧裤长 (cm), 胸围 (cm)",
       ),
     ).toBeInTheDocument();
     expect(screen.getByText("已映射 1 个销售属性")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存到 SHEIN 草稿箱" })).not.toBeDisabled();
+    expect(screen.getByRole("button", { name: "发布到 SHEIN" })).toBeDisabled();
   });
 
   it("does not locally block single-variant final images when swatch and size map are not selected", () => {

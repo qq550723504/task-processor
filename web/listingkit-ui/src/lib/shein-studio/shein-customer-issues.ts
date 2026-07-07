@@ -13,6 +13,7 @@ export type CustomerIssueCategory =
   | "类目问题"
   | "普通属性问题"
   | "销售属性问题"
+  | "发布载荷问题"
   | "价格/库存问题"
   | "提交接口问题"
   | "其他问题";
@@ -25,6 +26,7 @@ export type CustomerIssueActionKey =
   | "category"
   | "attributes"
   | "sale_attributes"
+  | "variants"
   | "pricing"
   | "pod_platform";
 
@@ -76,6 +78,15 @@ function byKey(key?: string | null): IssueTemplate | null {
       title: "等待最终确认",
       message: "当前页面就是最终确认页。核对无误后，可以直接保存草稿或发布到 SHEIN。",
       actionLabel: "继续最终确认",
+    };
+  }
+  if (normalized === "variants") {
+    return {
+      category: "发布载荷问题",
+      title: "尺码表字段需要补齐",
+      message: "正式发布前需要补齐 SHEIN 必填尺码表字段；当前仍可先保存到 SHEIN 草稿箱。",
+      actionLabel: "查看尺码表",
+      actionKey: "variants",
     };
   }
   if (normalized === "shein_online_auth") {
@@ -244,6 +255,18 @@ function byText(rawText: string): IssueTemplate {
       message: "多颜色或多 SKC 商品需要色块图。请在图片区为对应颜色标记色块图。",
       actionLabel: "去标记色块图",
       actionKey: "images",
+    };
+  }
+  if (
+    text.includes("missing required size chart attributes") ||
+    rawText.includes("尺码表")
+  ) {
+    return {
+      category: "发布载荷问题",
+      title: "尺码表字段需要补齐",
+      message: "正式发布前需要补齐 SHEIN 必填尺码表字段；当前仍可先保存到 SHEIN 草稿箱。",
+      actionLabel: "查看尺码表",
+      actionKey: "variants",
     };
   }
   if (

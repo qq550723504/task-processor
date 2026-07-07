@@ -129,6 +129,7 @@ export function SheinFinalReviewPanel({
     imageBlocked,
     imageCounts,
     ready,
+    saveDraftReady,
     submitHint,
     summaryItems,
   } = model;
@@ -171,6 +172,7 @@ export function SheinFinalReviewPanel({
         blockingCount={blockingCount}
         confirmed={confirmed}
         ready={ready}
+        saveDraftReady={saveDraftReady}
       />
 
       <SheinCustomerIssueSummary
@@ -262,6 +264,7 @@ export function SheinFinalReviewPanel({
         manualOverrides={manualOverrides}
         onSubmit={onSubmit}
         ready={ready}
+        saveDraftReady={saveDraftReady}
         submitAction={submitAction}
         submitHint={submitHint}
       />

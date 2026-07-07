@@ -23,6 +23,15 @@ export function hasBlockingKey(items: SheinReadinessItem[], keys: string[]) {
   return items.some((item) => keys.includes(item.key ?? ""));
 }
 
+export function isPublishOnlySizeChartBlocker(item: SheinReadinessItem) {
+  return (
+    item.key === "variants" &&
+    String(item.message ?? "")
+      .toLowerCase()
+      .includes("missing required size chart attributes")
+  );
+}
+
 export function imageRoleCounts(images?: SheinFinalReviewImage[]) {
   const counts = {
     final: images?.filter((image) => image.final !== false).length ?? 0,
@@ -134,6 +143,10 @@ export function buildFinalReviewModel({
   const allBlockingItems = [...actionableReadinessBlockers, ...actionableFinalBlockers];
   const ready =
     shein?.submit_readiness?.ready === true || visibleBlockers.length === 0;
+  const saveDraftReady =
+    ready ||
+    (allBlockingItems.length > 0 &&
+      allBlockingItems.every(isPublishOnlySizeChartBlocker));
   const blockingCount = customerBlockingCount || visibleBlockers.length;
   const imageCounts = imageRoleCounts(finalReview?.images);
   const finalImages = (finalReview?.images ?? []).filter(
@@ -224,7 +237,9 @@ export function buildFinalReviewModel({
     },
   ];
   const submitHint = !ready
-      ? `还差 ${blockingCount} 个阻断项，修复后才能提交。`
+      ? saveDraftReady
+        ? `还差 ${blockingCount} 个发布阻断项；可以先保存到 SHEIN 草稿箱。`
+        : `还差 ${blockingCount} 个阻断项，修复后才能提交。`
       : !confirmed
         ? "资料已通过检查，请先确认当前结果无误。"
         : "可以保存到 SHEIN 草稿箱，也可以正式发布。";
@@ -238,6 +253,7 @@ export function buildFinalReviewModel({
     imageCounts,
     pricing,
     ready,
+    saveDraftReady,
     submitHint,
     summaryItems,
   };

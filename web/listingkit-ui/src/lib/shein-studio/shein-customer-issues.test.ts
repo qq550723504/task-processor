@@ -154,6 +154,28 @@ describe("buildSheinCustomerIssues", () => {
     });
   });
 
+  it("maps size chart payload blockers without treating them as sale attributes", () => {
+    const issues = buildSheinCustomerIssues({
+      submit_readiness: {
+        ready: false,
+        blocking_items: [
+          {
+            key: "variants",
+            label: "发布载荷结构",
+            message:
+              "SHEIN publish blocked: missing required size chart attributes: 内侧裤长 (cm), 胸围 (cm)",
+          },
+        ],
+      },
+    });
+
+    expect(issues[0]).toMatchObject({
+      category: "发布载荷问题",
+      title: "尺码表字段需要补齐",
+      actionKey: "variants",
+    });
+  });
+
   it("maps pod platform blockers to pod guidance", () => {
     const issues = buildSheinCustomerIssues({
       submit_readiness: {

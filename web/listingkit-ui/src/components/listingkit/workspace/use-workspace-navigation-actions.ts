@@ -67,6 +67,13 @@ export function useWorkspaceNavigationActions({
       return;
     }
 
+    const currentParams = new URLSearchParams(
+      typeof window === "undefined" ? searchParams.toString() : window.location.search,
+    );
+    if (currentParams.get("section_key") === "final_review") {
+      return;
+    }
+
     const nextSearch = buildWorkspaceSearch(searchParams.toString(), focusedTarget);
     const currentSearch = searchParams.toString();
     if (nextSearch === currentSearch) {
