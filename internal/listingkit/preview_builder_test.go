@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog"
+	"task-processor/internal/catalog/canonical"
 	listingplatform "task-processor/internal/listing/platform"
 	common "task-processor/internal/publishing/common"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -47,6 +48,48 @@ func TestNormalizePreviewPlatform(t *testing.T) {
 	}
 	if got != "shein" {
 		t.Fatalf("ValidateSelectedPlatform() = %q, want %q", got, "shein")
+	}
+}
+
+func TestBuildListingKitPreviewBackfillsSheinSourceProductSDSIdentity(t *testing.T) {
+	t.Parallel()
+
+	preview, err := buildListingKitPreview(&Task{
+		ID: "task-sds-source-link",
+		Request: &GenerateRequest{
+			Platforms: []string{"shein"},
+			Options: &GenerateOptions{SDS: &SDSSyncOptions{
+				ParentProductID: 41661,
+				VariantID:       41662,
+			}},
+		},
+		Result: &ListingKitResult{
+			TaskID:    "task-sds-source-link",
+			Platforms: []string{"shein"},
+			CanonicalProduct: &canonical.Product{
+				Title: "SDS Pants",
+				Attributes: map[string]canonical.Attribute{
+					"sku": {Value: "NS6104229008"},
+				},
+			},
+			Shein: &SheinPackage{},
+		},
+	}, "shein")
+	if err != nil {
+		t.Fatalf("build preview: %v", err)
+	}
+
+	if preview.Shein == nil || preview.Shein.SourceProduct == nil {
+		t.Fatalf("source product = %+v", preview.Shein)
+	}
+	if got := preview.Shein.SourceProduct.ParentProductID; got != "41661" {
+		t.Fatalf("source product parent_product_id = %q, want 41661", got)
+	}
+	if preview.Shein.FinalReview == nil || preview.Shein.FinalReview.SourceProduct == nil {
+		t.Fatalf("final review source product = %+v", preview.Shein.FinalReview)
+	}
+	if got := preview.Shein.FinalReview.SourceProduct.ParentProductID; got != "41661" {
+		t.Fatalf("final review source product parent_product_id = %q, want 41661", got)
 	}
 }
 

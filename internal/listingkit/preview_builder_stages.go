@@ -27,5 +27,9 @@ func populateListingKitPreviewResult(task *Task, preview *ListingKitPreview, sel
 	}
 	ensureTaskPodExecution(task)
 	attachListingKitPreviewResult(preview, task, selectedPlatform)
-	return buildPreviewPlatformSections(task.Result, preview, selectedPlatform)
+	if err := buildPreviewPlatformSections(task.Result, preview, selectedPlatform); err != nil {
+		return err
+	}
+	backfillSheinPreviewSourceProductIdentity(preview, task)
+	return nil
 }

@@ -336,7 +336,11 @@ describe("SheinFinalReviewPanel", () => {
 
     expect(screen.getByRole("link", { name: /打开 SDS 商品/ })).toHaveAttribute(
       "href",
-      "/listing-kits/sds?productId=238915&parentProductId=238915&variantId=238916&keyword=NS6104229008",
+      "https://www.sdsdiy.com/portal/detail/238915",
+    );
+    expect(screen.getByRole("link", { name: /打开 SDS 商品/ })).toHaveAttribute(
+      "target",
+      "_blank",
     );
   });
 

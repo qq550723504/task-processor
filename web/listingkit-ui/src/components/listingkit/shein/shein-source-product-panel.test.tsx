@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
+  buildSDSInternalFallbackHref,
   buildSDSSourceProductHref,
   SheinSourceProductPanel,
 } from "@/components/listingkit/shein/shein-source-product-panel";
@@ -23,13 +24,20 @@ describe("SheinSourceProductPanel", () => {
 
     expect(screen.getByRole("link", { name: /打开 SDS 商品/ })).toHaveAttribute(
       "href",
-      "/listing-kits/sds?productId=238915&parentProductId=238915&variantId=238916&keyword=NS6104229008",
+      "https://www.sdsdiy.com/portal/detail/238915",
+    );
+    expect(screen.getByRole("link", { name: /打开 SDS 商品/ })).toHaveAttribute(
+      "target",
+      "_blank",
     );
   });
 
-  it("falls back to an SDS SKU search link", () => {
+  it("builds an internal SKU search fallback when the SDS product id is missing", () => {
+    expect(buildSDSSourceProductHref({ title: "SDS pants", sku: "NS6104229008" })).toBe(
+      "",
+    );
     expect(
-      buildSDSSourceProductHref({
+      buildSDSInternalFallbackHref({
         title: "SDS pants",
         sku: "NS6104229008",
       }),
