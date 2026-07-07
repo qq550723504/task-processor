@@ -15,6 +15,8 @@ export function SheinCandidatesTable({
   items,
   onEnroll,
   onReject,
+  onReset,
+  resetting,
 }: {
   enrollmentDisabled?: boolean;
   enrollmentDisabledReason?: string;
@@ -22,6 +24,8 @@ export function SheinCandidatesTable({
   items: SheinActivityCandidateRecord[];
   onEnroll: (candidateIds: number[], activityKey: string) => Promise<void>;
   onReject: (candidateId: number) => Promise<void>;
+  onReset: (candidateId: number) => Promise<void>;
+  resetting?: boolean;
 }) {
   const [activityKey, setActivityKey] = useState("");
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -151,6 +155,16 @@ export function SheinCandidatesTable({
                   </div>
                 </label>
                 <div className="flex flex-wrap gap-2 lg:ml-auto">
+                  <Button
+                    aria-label={`重置 ${item.skc_name || item.id} 状态`}
+                    disabled={!item.id || resetting}
+                    onClick={() => void onReset(item.id ?? 0)}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    重置
+                  </Button>
                   <Button
                     disabled={!item.id}
                     onClick={() => void onReject(item.id ?? 0)}

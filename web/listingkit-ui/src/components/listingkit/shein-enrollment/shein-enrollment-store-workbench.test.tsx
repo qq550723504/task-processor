@@ -381,7 +381,7 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     });
   });
 
-  it("resets missing cost candidates from the candidates tab", async () => {
+  it("resets a selected candidate row without enabling it for enrollment", async () => {
     const resetCandidatesMutation = resolvedMutation();
     renderWorkbench({
       initialActivityType: "TIME_LIMITED",
@@ -402,11 +402,14 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       await screen.findByRole("heading", { name: "SHEIN US" }),
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "重置状态" }));
+    expect(screen.getByLabelText("选择 SKC-MISSING-COST")).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "重置 SKC-MISSING-COST 状态" }),
+    );
 
     expect(resetCandidatesMutation.mutateAsync).toHaveBeenCalledWith({
       activity_type: "TIME_LIMITED",
-      eligibility_reason: "missing effective cost price",
+      candidate_ids: [18],
     });
   });
 

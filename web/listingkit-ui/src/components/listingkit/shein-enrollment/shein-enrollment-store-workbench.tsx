@@ -198,20 +198,6 @@ function SheinEnrollmentActivityWorkbench({
               />
               只看可报名
             </label>
-            <button
-              className="h-10 w-fit rounded-xl border border-zinc-200 bg-white px-4 text-sm font-medium text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={resetCandidatesMutation.isPending}
-              onClick={() =>
-                void resetCandidatesMutation.mutateAsync({
-                  activity_type: activityType,
-                  eligibility_reason: "missing effective cost price",
-                  ...(candidateSkcName ? { skc_name: candidateSkcName } : {}),
-                })
-              }
-              type="button"
-            >
-              {resetCandidatesMutation.isPending ? "重置中" : "重置状态"}
-            </button>
           </div>
           <SheinCandidatesTable
             enrollmentDisabled={!activityStrategyReady}
@@ -238,6 +224,13 @@ function SheinEnrollmentActivityWorkbench({
                 },
               }).then(() => undefined)
             }
+            onReset={(candidateId) =>
+              resetCandidatesMutation.mutateAsync({
+                activity_type: activityType,
+                candidate_ids: [candidateId],
+              }).then(() => undefined)
+            }
+            resetting={resetCandidatesMutation.isPending}
           />
           <ListingKitPagination
             onPageChange={setCandidatesPage}
