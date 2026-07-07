@@ -830,7 +830,9 @@ func TestSheinCandidateServiceResetCandidatesResetsMatchingCandidates(t *testing
 	})
 
 	require.NoError(t, err)
-	require.Equal(t, 1, result.ResetCount)
+	require.Equal(t, 2, result.MatchedCount)
+	require.Equal(t, 2, result.ResetCount)
+	require.Equal(t, 0, result.SkippedCount)
 
 	rows, _, err := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
 		TenantID:     227,
@@ -856,10 +858,10 @@ func TestSheinCandidateServiceResetCandidatesResetsMatchingCandidates(t *testing
 	require.True(t, unchangedReason.AutoModeEligible)
 	require.True(t, unchangedReason.SelectedForRun)
 
-	unchangedEnrolled := byID[3]
-	require.Equal(t, SheinCandidateReviewStatusEnrolled, unchangedEnrolled.ReviewStatus)
-	require.True(t, unchangedEnrolled.AutoModeEligible)
-	require.True(t, unchangedEnrolled.SelectedForRun)
+	resetEnrolled := byID[3]
+	require.Equal(t, SheinCandidateReviewStatusPendingReview, resetEnrolled.ReviewStatus)
+	require.False(t, resetEnrolled.AutoModeEligible)
+	require.False(t, resetEnrolled.SelectedForRun)
 }
 
 type sheinCandidateRepoStub struct {

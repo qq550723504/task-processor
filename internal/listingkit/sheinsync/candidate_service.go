@@ -201,10 +201,6 @@ func (s *sheinCandidateService) ResetCandidates(ctx context.Context, tenantID, s
 				continue
 			}
 			result.MatchedCount++
-			if row.ReviewStatus == SheinCandidateReviewStatusEnrolled {
-				result.SkippedCount++
-				continue
-			}
 			row.ReviewStatus = SheinCandidateReviewStatusPendingReview
 			row.AutoModeEligible = false
 			row.SelectedForRun = false
