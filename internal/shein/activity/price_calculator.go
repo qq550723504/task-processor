@@ -18,6 +18,8 @@ func calculateActivityPrice(
 	case "PROFIT":
 		// 按最低利润率定价
 		return calculatePriceByProfit(originalPrice, costPrice, config.MinProfitRate, config.FixedPriceAdjustment)
+	case "BREAKEVEN":
+		return calculatePriceByBreakeven(originalPrice, costPrice, config.FixedPriceAdjustment)
 	case "DISCOUNT":
 		// 按折扣率定价
 		return calculatePriceByDiscount(originalPrice, config.DiscountRate)
@@ -48,6 +50,14 @@ func calculatePriceByProfit(originalPrice float64, costPrice float64, minProfitR
 		activityPrice = originalPrice
 	}
 
+	return activityPrice
+}
+
+func calculatePriceByBreakeven(originalPrice float64, costPrice float64, fixedAdjustment float64) float64 {
+	activityPrice := costPrice + fixedAdjustment
+	if costPrice <= 0 || originalPrice <= 0 || activityPrice >= originalPrice {
+		return 0
+	}
 	return activityPrice
 }
 

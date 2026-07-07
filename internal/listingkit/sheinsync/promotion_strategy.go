@@ -102,6 +102,8 @@ func (s *SheinPromotionStrategy) ValidateForPromotionEnrollment() error {
 				return fmt.Errorf("SHEIN promotion strategy activity limited minimum profit rate must be less than regular minimum profit rate")
 			}
 		}
+	case "BREAKEVEN":
+		return nil
 	default:
 		return fmt.Errorf("unsupported SHEIN promotion activity price mode %q", s.EffectiveActivityPriceMode())
 	}

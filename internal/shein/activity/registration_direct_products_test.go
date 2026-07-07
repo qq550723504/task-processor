@@ -104,6 +104,226 @@ func TestRegisterPromotionProductsAllowsZeroMinProfitRateWithProvidedProductSnap
 	}
 }
 
+func TestRegisterPromotionProductsUsesBreakevenDropRateWithProvidedProductSnapshot(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{}
+	service := &activityRegistrationServiceImpl{
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	result, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:            870,
+			ActivityPriceMode:  "BREAKEVEN",
+			ActivityStockRatio: 0.5,
+		},
+		"",
+		[]marketing.SkcInfo{{
+			Skc:                 "sg-breakeven",
+			Stock:               10,
+			SupplyPrice:         18,
+			SupplyPriceCurrency: "USD",
+			SitePriceInfoList: []marketing.SitePriceInfo{{
+				SalePrice:   30,
+				Currency:    "USD",
+				IsAvailable: true,
+			}},
+		}},
+	)
+
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if result == nil || result.Request == nil || len(result.Request.ConfigList) != 1 {
+		t.Fatalf("config list = %+v, want one breakeven config", result)
+	}
+	config := result.Request.ConfigList[0]
+	if config.DropRate != 40 {
+		t.Fatalf("drop rate = %d, want breakeven drop rate 40", config.DropRate)
+	}
+	if config.ActStock != 5 {
+		t.Fatalf("act stock = %d, want 5", config.ActStock)
+	}
+}
+
+func TestRegisterPromotionProductsRejectsPromotionMultiSkuDifferentPrices(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{}
+	service := &activityRegistrationServiceImpl{
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	result, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:               870,
+			ActivityPriceMode:     "PROFIT",
+			ActivityMinProfitRate: 0.1,
+			ActivityStockRatio:    0.5,
+		},
+		"",
+		[]marketing.SkcInfo{{
+			Skc:         "sg-multi-price",
+			Stock:       100,
+			SupplyPrice: 18,
+			SitePriceInfoList: []marketing.SitePriceInfo{{
+				SalePrice:   30,
+				Currency:    "USD",
+				IsAvailable: true,
+			}},
+			SkuPriceInfoList: []marketing.SkuSitePriceInfo{
+				{
+					SkuCode: "sku-small",
+					SitePriceInfoList: []marketing.SitePriceInfo{{
+						SalePrice:   29.9,
+						Currency:    "USD",
+						IsAvailable: true,
+					}},
+				},
+				{
+					SkuCode: "sku-large",
+					SitePriceInfoList: []marketing.SitePriceInfo{{
+						SalePrice:   34.9,
+						Currency:    "USD",
+						IsAvailable: true,
+					}},
+				},
+			},
+		}},
+	)
+
+	if err == nil {
+		t.Fatalf("RegisterPromotionProducts error = nil, want multi-SKU price rejection")
+	}
+	if result == nil || result.Request != nil {
+		t.Fatalf("result request = %+v, want no SaveConfig request", result)
+	}
+	if api.saved != nil {
+		t.Fatalf("saved request = %+v, want SaveConfig not called", api.saved)
+	}
+	if !strings.Contains(err.Error(), "PROMOTION 不支持多 SKU 不同价格") {
+		t.Fatalf("error = %v, want multi-SKU different price message", err)
+	}
+}
+
+func TestRegisterPromotionProductsAllowsPromotionMultiSkuSamePrices(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{}
+	service := &activityRegistrationServiceImpl{
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	result, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:               870,
+			ActivityPriceMode:     "PROFIT",
+			ActivityMinProfitRate: 0.1,
+			ActivityStockRatio:    0.5,
+		},
+		"",
+		[]marketing.SkcInfo{{
+			Skc:         "sg-multi-same-price",
+			Stock:       100,
+			SupplyPrice: 18,
+			SitePriceInfoList: []marketing.SitePriceInfo{{
+				SalePrice:   30,
+				Currency:    "USD",
+				IsAvailable: true,
+			}},
+			SkuPriceInfoList: []marketing.SkuSitePriceInfo{
+				{
+					SkuCode: "sku-small",
+					SitePriceInfoList: []marketing.SitePriceInfo{{
+						SalePrice:   29.9,
+						Currency:    "USD",
+						IsAvailable: true,
+					}},
+				},
+				{
+					SkuCode: "sku-large",
+					SitePriceInfoList: []marketing.SitePriceInfo{{
+						SalePrice:   29.9,
+						Currency:    "USD",
+						IsAvailable: true,
+					}},
+				},
+			},
+		}},
+	)
+
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if result == nil || result.Request == nil || len(result.Request.ConfigList) != 1 {
+		t.Fatalf("config list = %+v, want one config", result)
+	}
+	if api.saved == nil {
+		t.Fatalf("saved request is nil, want SaveConfig called")
+	}
+}
+
+func TestRegisterPromotionProductsKeepsLimitedBreakevenDropRateGreaterThanRegular(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		configListResponse: &marketing.GetConfigListResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: &marketing.ConfigListInfo{
+				Total: 1,
+				ConfigList: []marketing.ActivityConfigInfo{
+					{
+						ID:  13042103,
+						Skc: "sg-breakeven-both",
+						ActivityConfigList: []marketing.ActivityConfigDetail{
+							{ID: 13042103, ActivityType: marketing.AutoPartakeActivityTypeRegular, State: marketing.AutoPartakeConfigStateClosed},
+							{ID: 13042104, ActivityType: marketing.AutoPartakeActivityTypeLimited, State: marketing.AutoPartakeConfigStateClosed},
+						},
+					},
+				},
+			},
+		},
+	}
+	service := &activityRegistrationServiceImpl{
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	_, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:             870,
+			ActivityPriceMode:   "BREAKEVEN",
+			ActivityPartakeType: "BOTH",
+			ActivityStockRatio:  0.5,
+		},
+		"",
+		[]marketing.SkcInfo{{
+			Skc:                 "sg-breakeven-both",
+			Stock:               100,
+			SupplyPrice:         18,
+			SupplyPriceCurrency: "USD",
+			SitePriceInfoList: []marketing.SitePriceInfo{{
+				SalePrice:   30,
+				Currency:    "USD",
+				IsAvailable: true,
+			}},
+		}},
+	)
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if len(api.savedRequests) != 2 {
+		t.Fatalf("saved request count = %d, want 2", len(api.savedRequests))
+	}
+	if got := api.savedRequests[0].ConfigList[0].DropRate; got != 39 {
+		t.Fatalf("regular breakeven drop rate = %d, want 39", got)
+	}
+	if got := api.savedRequests[1].ConfigList[0].DropRate; got != 40 {
+		t.Fatalf("limited breakeven drop rate = %d, want 40", got)
+	}
+}
+
 func TestRegisterPromotionProductsEnablesSavedRegularConfig(t *testing.T) {
 	api := &promotionProductsMarketingAPIStub{
 		configListResponse: &marketing.GetConfigListResponse{
@@ -1268,6 +1488,84 @@ func TestRegisterPromotionProductsUsesSKUCostsForProfitModeSkuActivityPrices(t *
 		"TIME_LIMITED:227:870:profit-sku-costs",
 		[]marketing.SkcInfo{{
 			Skc:         "sg-profit-sku-costs",
+			SupplyPrice: 10.88,
+			SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
+				{SkuCode: "sku-small", CostPrice: 9.88},
+				{SkuCode: "sku-large", CostPrice: 10.88},
+			},
+		}},
+	)
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if api.created == nil || len(api.created.AddCostAndStockInfoList) != 1 || len(api.created.AddCostAndStockInfoList[0].AddSkuList) != 2 {
+		t.Fatalf("created request = %+v, want two SKU rows", api.created)
+	}
+	assertClose(t, api.calculated.SkcInfoList[0].SkuInfoList[0].DiscountValue, 9.88)
+	assertClose(t, api.calculated.SkcInfoList[0].SkuInfoList[1].DiscountValue, 10.88)
+	assertClose(t, api.created.AddCostAndStockInfoList[0].AddSkuList[0].ProductActPrice, 9.88)
+	assertClose(t, api.created.AddCostAndStockInfoList[0].AddSkuList[1].ProductActPrice, 10.88)
+}
+
+func TestRegisterPromotionProductsUsesSKUCostsForBreakevenModeSkuActivityPrices(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		promotionGoods: []marketing.PromotionGoodsData{{
+			Skc:              "sg-breakeven-sku-costs",
+			IsSaleAttribute:  1,
+			InventoryNum:     999,
+			USSupplyPrice:    34.2,
+			MaxUSSupplyPrice: 34.2,
+			SkuInfoList: []marketing.PromotionSkuInfo{
+				{Sku: "sku-small", USSupplyPrice: promotionFloat64Ptr(29.7), MaxUSSupplyPrice: promotionFloat64Ptr(28.21)},
+				{Sku: "sku-large", USSupplyPrice: promotionFloat64Ptr(31.68), MaxUSSupplyPrice: promotionFloat64Ptr(30.09)},
+			},
+		}},
+		calcResponse: &marketing.CalculateSupplyPriceResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: []marketing.SkcCalculationResult{{
+				SkcName: "sg-breakeven-sku-costs",
+				SkuInfoList: []marketing.SkuCalculationInfo{
+					{
+						SkuCode: "sku-small",
+						PriceInfo: marketing.PriceInfo{
+							ProductAmount:   29.7,
+							PromotionAmount: 19.82,
+						},
+					},
+					{
+						SkuCode: "sku-large",
+						PriceInfo: marketing.PriceInfo{
+							ProductAmount:   31.68,
+							PromotionAmount: 20.8,
+						},
+					},
+				},
+			}},
+		},
+		createResponse: &marketing.CreateActivityResponse{
+			Code: "0",
+			Msg:  "ok",
+			Info: &marketing.ActivityCreateInfo{ActivityID: 12350},
+		},
+	}
+	service := &activityRegistrationServiceImpl{
+		storeService: promotionProductsStoreServiceStub{
+			store: &listingruntime.StoreInfo{ID: 870, Username: "seller"},
+		},
+		marketingAPI: api,
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+
+	_, err := service.RegisterPromotionProducts(
+		t.Context(),
+		&listingruntime.OperationStrategy{
+			StoreID:           870,
+			ActivityPriceMode: "BREAKEVEN",
+		},
+		"TIME_LIMITED:227:870:breakeven-sku-costs",
+		[]marketing.SkcInfo{{
+			Skc:         "sg-breakeven-sku-costs",
 			SupplyPrice: 10.88,
 			SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
 				{SkuCode: "sku-small", CostPrice: 9.88},

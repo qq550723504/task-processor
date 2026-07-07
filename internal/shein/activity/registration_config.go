@@ -325,6 +325,10 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsFromProvidedProduc
 		if !ok {
 			continue
 		}
+		if priceMode == "BREAKEVEN" && strings.EqualFold(strategy.ActivityPartakeType, "BOTH") && dropRate <= 1 {
+			s.logger.Warnf("产品 [%s] 保本降幅不足以同时配置常规和限量活动，跳过", product.Skc)
+			continue
+		}
 		actStock := s.calculateActivityStock(product.Stock, autoPartakeStockRatioFromStrategy(strategy))
 		if actStock <= 0 {
 			s.logger.Warnf("产品 [%s] 活动库存为0，跳过", product.Skc)
@@ -370,6 +374,20 @@ func (s *activityRegistrationServiceImpl) dropRateFromProvidedProduct(
 			minPrice := product.SupplyPrice/(1-minProfitRate) + strategy.FixedPriceAdjustment
 			s.logger.Warnf("产品 [%s] 利润率不足 (原价: %.2f, 成本: %.2f, 最低售价: %.2f, 固定调整: %.2f, 要求利润率: %.2f%%)，跳过",
 				product.Skc, salePrice, product.SupplyPrice, minPrice, strategy.FixedPriceAdjustment, minProfitRate*100)
+			return 0, false
+		}
+		discountRate := (salePrice - activityPrice) / salePrice
+		return ValidateDropRate(int(discountRate*100), discountRate, s.logger), true
+	}
+	if priceMode == "BREAKEVEN" {
+		if product.SupplyPrice <= 0 {
+			s.logger.Warnf("产品 [%s] 供货成本价为空，跳过", product.Skc)
+			return 0, false
+		}
+		activityPrice := product.SupplyPrice + strategy.FixedPriceAdjustment
+		if activityPrice >= salePrice {
+			s.logger.Warnf("产品 [%s] 保本活动价不低于销售价 (原价: %.2f, 成本: %.2f, 固定调整: %.2f)，跳过",
+				product.Skc, salePrice, product.SupplyPrice, strategy.FixedPriceAdjustment)
 			return 0, false
 		}
 		discountRate := (salePrice - activityPrice) / salePrice

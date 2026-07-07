@@ -139,8 +139,10 @@ func validateSheinActivityStrategyRequest(req updateSheinActivityStrategyRequest
 				return errors.New("activity_limited_min_profit_rate must be less than activity_min_profit_rate")
 			}
 		}
+	case "BREAKEVEN":
+		return nil
 	default:
-		return errors.New("activity_price_mode must be DISCOUNT or PROFIT")
+		return errors.New("activity_price_mode must be DISCOUNT, PROFIT, or BREAKEVEN")
 	}
 	return nil
 }

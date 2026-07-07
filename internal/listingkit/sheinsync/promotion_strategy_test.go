@@ -103,3 +103,20 @@ func TestSheinPromotionStrategyRejectsBothProfitWhenLimitedMinProfitIsNotLower(t
 		t.Fatalf("ValidateForPromotionEnrollment error = nil, want limited min profit validation")
 	}
 }
+
+func TestSheinPromotionStrategyAcceptsBreakevenPriceMode(t *testing.T) {
+	strategy := NewSheinPromotionStrategy(SheinPromotionStrategyInput{
+		ActivityType:        "PROMOTION",
+		StoreID:             177,
+		ActivityPriceMode:   "BREAKEVEN",
+		ActivityPartakeType: "REGULAR",
+	})
+
+	if err := strategy.ValidateForPromotionEnrollment(); err != nil {
+		t.Fatalf("ValidateForPromotionEnrollment error = %v", err)
+	}
+	runtimeStrategy := strategy.runtimeOperationStrategy()
+	if runtimeStrategy.ActivityPriceMode != "BREAKEVEN" {
+		t.Fatalf("runtime activity price mode = %q, want BREAKEVEN", runtimeStrategy.ActivityPriceMode)
+	}
+}

@@ -190,6 +190,9 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 	if activityKey != "" {
 		return s.createPromotionActivityFromProducts(ctx, strategy, activityKey, products)
 	}
+	if err := rejectPromotionProductsWithDifferentSKUPrices(products); err != nil {
+		return &PromotionRegistrationResult{}, err
+	}
 
 	// 2. 根据定价模式构建活动配置
 	var configList []marketing.ActivityConfig
@@ -224,6 +227,32 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 	}, nil
 }
 
+func rejectPromotionProductsWithDifferentSKUPrices(products []marketing.SkcInfo) error {
+	for _, product := range products {
+		if promotionProductHasDifferentSKUPrices(product.SkuPriceInfoList) {
+			return fmt.Errorf("PROMOTION 不支持多 SKU 不同价格，请改用 TIME_LIMITED 活动报名")
+		}
+	}
+	return nil
+}
+
+func promotionProductHasDifferentSKUPrices(items []marketing.SkuSitePriceInfo) bool {
+	seen := make(map[string]struct{}, len(items))
+	for _, skuPrice := range items {
+		for _, sitePrice := range skuPrice.SitePriceInfoList {
+			if sitePrice.SalePrice <= 0 {
+				continue
+			}
+			key := fmt.Sprintf("%.2f", sitePrice.SalePrice)
+			seen[key] = struct{}{}
+			if len(seen) > 1 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (s *activityRegistrationServiceImpl) buildPromotionConfigList(products []marketing.SkcInfo, strategy *listingruntime.OperationStrategy, priceMode string) []marketing.ActivityConfig {
 	if priceMode == "PROFIT" {
 		configList := s.buildActivityConfigsByProfit(products, strategy.ActivityMinProfitRate, autoPartakeStockRatioFromStrategy(strategy), strategy.StoreID, strategy.FixedPriceAdjustment)
@@ -231,6 +260,9 @@ func (s *activityRegistrationServiceImpl) buildPromotionConfigList(products []ma
 			configList = s.buildActivityConfigsFromProvidedProducts(products, strategy, priceMode)
 		}
 		return configList
+	}
+	if priceMode == "BREAKEVEN" {
+		return s.buildActivityConfigsFromProvidedProducts(products, strategy, priceMode)
 	}
 
 	dropRate := CalculateDropRateFromDiscount(strategy.ActivityDiscountRate, s.logger)
@@ -271,6 +303,15 @@ func (s *activityRegistrationServiceImpl) savePromotionConfigs(products []market
 
 func (s *activityRegistrationServiceImpl) promotionConfigListForActivityType(products []marketing.SkcInfo, configList []marketing.ActivityConfig, activityType int, strategy *listingruntime.OperationStrategy, priceMode string) []marketing.ActivityConfig {
 	copied := append([]marketing.ActivityConfig(nil), configList...)
+	if activityType == marketing.AutoPartakeActivityTypeRegular &&
+		priceMode == "BREAKEVEN" &&
+		strategy != nil &&
+		strings.EqualFold(strategy.ActivityPartakeType, "BOTH") {
+		for i := range copied {
+			copied[i].DropRate--
+		}
+		return copied
+	}
 	if activityType != marketing.AutoPartakeActivityTypeLimited || strategy == nil {
 		return copied
 	}

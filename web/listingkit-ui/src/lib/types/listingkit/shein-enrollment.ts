@@ -72,7 +72,7 @@ export type SheinResetActivityCandidatesInput = {
   candidate_ids?: number[];
 };
 
-export type SheinActivityPriceMode = "DISCOUNT" | "PROFIT";
+export type SheinActivityPriceMode = "DISCOUNT" | "PROFIT" | "BREAKEVEN";
 export type SheinActivityPartakeType = "REGULAR" | "LIMITED" | "BOTH";
 
 export type SheinActivityStrategyRecord = {

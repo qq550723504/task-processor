@@ -98,7 +98,7 @@ function SheinActivityStrategyForm({
             role="group"
             aria-label="价格模式"
           >
-            {(["DISCOUNT", "PROFIT"] as SheinActivityPriceMode[]).map(
+            {(["DISCOUNT", "PROFIT", "BREAKEVEN"] as SheinActivityPriceMode[]).map(
               (mode) => (
                 <button
                   className={
@@ -115,7 +115,7 @@ function SheinActivityStrategyForm({
                   }
                   type="button"
                 >
-                  {mode === "DISCOUNT" ? "按折扣" : "按利润"}
+                  {priceModeLabel(mode)}
                 </button>
               ),
             )}
@@ -154,9 +154,9 @@ function SheinActivityStrategyForm({
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {form.activity_price_mode === "DISCOUNT" ? (
             <label className="text-xs font-medium text-zinc-600">
-              折扣率
+              常规折扣率
               <Input
-                aria-label="折扣率"
+                aria-label="常规折扣率"
                 className="mt-1"
                 max="0.99"
                 min="0.01"
@@ -196,9 +196,9 @@ function SheinActivityStrategyForm({
           ) : null}
           {form.activity_price_mode === "PROFIT" ? (
             <label className="text-xs font-medium text-zinc-600">
-              最低利润率
+              常规利润率
               <Input
-                aria-label="最低利润率"
+                aria-label="常规利润率"
                 className="mt-1"
                 max="0.99"
                 min="0"
@@ -218,9 +218,9 @@ function SheinActivityStrategyForm({
           form.activity_price_mode === "PROFIT" &&
           form.activity_partake_type === "BOTH" ? (
             <label className="text-xs font-medium text-zinc-600">
-              限量最低利润率
+              限量利润率
               <Input
-                aria-label="限量最低利润率"
+                aria-label="限量利润率"
                 className="mt-1"
                 max="0.99"
                 min="0"
@@ -298,9 +298,7 @@ export function isSheinActivityStrategyReady(response?: {
   return isActivityStrategyInputValid(
     {
       activity_price_mode:
-        response.strategy.activity_price_mode === "PROFIT"
-          ? "PROFIT"
-          : "DISCOUNT",
+        normalizeActivityPriceMode(response.strategy.activity_price_mode),
       ...(usesPartakeSettings
         ? {
             activity_partake_type: normalizeActivityPartakeType(
@@ -328,8 +326,9 @@ function strategyToForm(
     return DEFAULT_FORM;
   }
   return {
-    activity_price_mode:
-      strategy.activity_price_mode === "PROFIT" ? "PROFIT" : "DISCOUNT",
+    activity_price_mode: normalizeActivityPriceMode(
+      strategy.activity_price_mode,
+    ),
     activity_partake_type: normalizeActivityPartakeType(
       strategy.activity_partake_type,
     ),
@@ -398,7 +397,7 @@ function formToInput(
       input.activity_limited_discount_rate =
         parseDecimal(form.activity_limited_discount_rate) ?? 0;
     }
-  } else {
+  } else if (form.activity_price_mode === "PROFIT") {
     input.activity_min_profit_rate = parseDecimal(
       form.activity_min_profit_rate,
     );
@@ -431,6 +430,9 @@ function isActivityStrategyInputValid(
         input.activity_limited_discount_rate! > input.activity_discount_rate!
       );
     }
+    return true;
+  }
+  if (input.activity_price_mode === "BREAKEVEN") {
     return true;
   }
   if (!withinProfitFloor(input.activity_min_profit_rate)) {
@@ -473,6 +475,26 @@ function normalizeActivityPartakeType(
     return value;
   }
   return "REGULAR";
+}
+
+function normalizeActivityPriceMode(
+  value?: SheinActivityPriceMode | string,
+): SheinActivityPriceMode {
+  if (value === "PROFIT" || value === "BREAKEVEN") {
+    return value;
+  }
+  return "DISCOUNT";
+}
+
+function priceModeLabel(mode: SheinActivityPriceMode) {
+  switch (mode) {
+    case "PROFIT":
+      return "按利润";
+    case "BREAKEVEN":
+      return "按保本";
+    default:
+      return "按折扣";
+  }
 }
 
 function activityTypeUsesPartakeSettings(activityType?: string) {

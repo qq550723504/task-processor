@@ -389,6 +389,8 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestForPromotionProdu
 		costPrice := costBySKC[item.Skc]
 		if strings.EqualFold(config.PriceMode, "PROFIT") {
 			activityPrice = calculatePriceByProfit(item.USSupplyPrice, costPrice, config.MinProfitRate, config.FixedPriceAdjustment)
+		} else if strings.EqualFold(config.PriceMode, "BREAKEVEN") {
+			activityPrice = calculatePriceByBreakeven(item.USSupplyPrice, costPrice, config.FixedPriceAdjustment)
 		}
 		if activityPrice <= 0 {
 			continue
@@ -417,6 +419,12 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestForPromotionProdu
 						config.MinProfitRate,
 						config.FixedPriceAdjustment,
 					)
+				}
+			} else if strings.EqualFold(config.PriceMode, "BREAKEVEN") {
+				if skuCostPrice := costBySKUBySKC[item.Skc][normalizedPromotionSKUCode(sku.Sku)]; skuCostPrice > 0 {
+					skuActivityPrice = calculatePriceByBreakeven(productPrice, skuCostPrice, config.FixedPriceAdjustment)
+				} else {
+					skuActivityPrice = calculatePriceByBreakeven(productPrice, costPrice, config.FixedPriceAdjustment)
 				}
 			}
 			if skuActivityPrice <= 0 {
