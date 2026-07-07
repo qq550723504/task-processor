@@ -1,12 +1,15 @@
 package workspace
 
 import (
+	"strconv"
 	"strings"
 
 	"task-processor/internal/catalog/canonical"
 )
 
 type SourceProductSummary struct {
+	ParentProductID string            `json:"parent_product_id,omitempty"`
+	VariantID       string            `json:"variant_id,omitempty"`
 	Title           string            `json:"title,omitempty"`
 	SKU             string            `json:"sku,omitempty"`
 	CategoryPath    []string          `json:"category_path,omitempty"`
@@ -42,6 +45,8 @@ func BuildSourceProductSummary(product *canonical.Product) *SourceProductSummary
 			summary.VariantWeight = product.Specifications.Weight.Value
 		}
 		if product.Specifications.Technical != nil {
+			summary.ParentProductID = sourceProductIdentityValue(product.Specifications.Technical, "parent_product_id")
+			summary.VariantID = sourceProductIdentityValue(product.Specifications.Technical, "variant_id")
 			summary.VariantSize = product.Specifications.Technical["size"]
 			summary.VariantColor = product.Specifications.Technical["color"]
 			summary.ProductionCycle = product.Specifications.Technical["production_cycle_hours"]
@@ -75,4 +80,16 @@ func BuildSourceProductSummary(product *canonical.Product) *SourceProductSummary
 	}
 	summary.ImageURLs = uniqueStrings(summary.ImageURLs)
 	return summary
+}
+
+func sourceProductIdentityValue(values map[string]string, key string) string {
+	value := strings.TrimSpace(values[key])
+	if value == "" {
+		return ""
+	}
+	id, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || id <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(id, 10)
 }

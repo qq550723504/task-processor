@@ -313,6 +313,33 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.getByText("91")).toBeInTheDocument();
   });
 
+  it("shows an SDS product link in the final review overview", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: true },
+          final_review: {
+            confirmed: true,
+            title: "SHEIN pants",
+            category_id: 123,
+            source_product: {
+              parent_product_id: "238915",
+              variant_id: "238916",
+              title: "SDS pants",
+              sku: "NS6104229008",
+            },
+            images: [{ url: "https://example.com/main.jpg", main: true, final: true }],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: /打开 SDS 商品/ })).toHaveAttribute(
+      "href",
+      "/listing-kits/sds?productId=238915&parentProductId=238915&variantId=238916&keyword=NS6104229008",
+    );
+  });
+
   it("saves manually completed required SHEIN size chart attributes", async () => {
     const user = userEvent.setup();
     const onSaveFinalDraft = vi.fn();

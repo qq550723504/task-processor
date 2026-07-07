@@ -1,4 +1,6 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import Link from "next/link";
+import { ExternalLink } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,6 +17,7 @@ import {
   getSheinDraftPayload,
   getSheinPreviewPayload,
 } from "@/lib/listingkit/semantic-fields";
+import { buildSDSSourceProductHref } from "@/components/listingkit/shein/shein-source-product-panel";
 import type {
   SheinFinalReviewImage,
   SheinPreviewPayload,
@@ -248,6 +251,7 @@ export function FinalReviewOverviewCards({
 }: {
   finalReview?: SheinPreviewPayload["final_review"];
 }) {
+  const sourceProductHref = buildSDSSourceProductHref(finalReview?.source_product);
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-3">
@@ -260,6 +264,15 @@ export function FinalReviewOverviewCards({
         <div className="mt-1 text-xs text-zinc-500">
           {finalReview?.category_path?.join(" > ") || "未匹配类目"}
         </div>
+        {finalReview?.source_product ? (
+          <Link
+            className="mt-3 inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-3 py-1 text-[11px] font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50"
+            href={sourceProductHref}
+          >
+            打开 SDS 商品
+            <ExternalLink className="size-3" />
+          </Link>
+        ) : null}
       </div>
       <div className="rounded-2xl border border-zinc-100 bg-zinc-50 p-3">
         <div className="text-[10px] font-semibold uppercase tracking-[0.22em] text-zinc-500">

@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { ExternalLink } from "lucide-react";
+
 import { Card } from "@/components/ui/card";
 import { formatSDSPrice } from "@/lib/sds/format";
 import type { SheinPreviewPayload } from "@/lib/types/listingkit";
@@ -58,6 +61,38 @@ function presentSourceLabel(label: string) {
   }
 }
 
+export function buildSDSSourceProductHref(
+  source?: SheinPreviewPayload["source_product"] | null,
+) {
+  if (!source) {
+    return "";
+  }
+  const params = new URLSearchParams();
+  const parentProductID = normalizePositiveID(source.parent_product_id);
+  const variantID = normalizePositiveID(source.variant_id);
+  if (parentProductID) {
+    params.set("productId", parentProductID);
+    params.set("parentProductId", parentProductID);
+  }
+  if (variantID) {
+    params.set("variantId", variantID);
+  }
+  const keyword = source.sku || source.variant_sku;
+  if (keyword) {
+    params.set("keyword", keyword);
+  }
+  const query = params.toString();
+  return query ? `/listing-kits/sds?${query}` : "/listing-kits/sds";
+}
+
+function normalizePositiveID(value?: string | number | null) {
+  const id = Number(value);
+  if (!Number.isFinite(id) || id <= 0) {
+    return "";
+  }
+  return String(Math.trunc(id));
+}
+
 export function SheinSourceProductPanel({
   shein,
   defaultCollapsed = false,
@@ -72,6 +107,7 @@ export function SheinSourceProductPanel({
 
   const material =
     source.attributes?.material ?? source.attributes?.material_description;
+  const sourceProductHref = buildSDSSourceProductHref(source);
 
   return (
     <Card className="border-zinc-200 bg-white p-5">
@@ -86,9 +122,18 @@ export function SheinSourceProductPanel({
                 {source.title}
               </p>
             </div>
-            <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] font-medium text-zinc-600">
-              {defaultCollapsed ? "点击展开" : "来源详情"}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                className="inline-flex items-center gap-1 rounded-full border border-zinc-200 bg-white px-3 py-1 text-[11px] font-medium text-zinc-700 transition hover:border-zinc-300 hover:bg-zinc-50"
+                href={sourceProductHref}
+              >
+                打开 SDS 商品
+                <ExternalLink className="size-3" />
+              </Link>
+              <span className="rounded-full border border-zinc-200 bg-zinc-50 px-3 py-1 text-[11px] font-medium text-zinc-600">
+                {defaultCollapsed ? "点击展开" : "来源详情"}
+              </span>
+            </div>
           </div>
         </summary>
 

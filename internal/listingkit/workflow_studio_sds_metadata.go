@@ -90,6 +90,15 @@ func studioSpecifications(sds *SDSSyncOptions) *canonical.ProductSpecs {
 	addTechnicalSpec(specs.Technical, "packaging_specification", sds.PackagingSpecification)
 	addTechnicalSpec(specs.Technical, "design_area", sds.DesignArea)
 	addTechnicalSpec(specs.Technical, "picture_request", sds.PictureRequest)
+	if sds.ParentProductID > 0 {
+		specs.Technical["parent_product_id"] = strconv.FormatInt(sds.ParentProductID, 10)
+	}
+	if sds.VariantID > 0 {
+		specs.Technical["variant_id"] = strconv.FormatInt(sds.VariantID, 10)
+	}
+	if sds.PrototypeGroupID > 0 {
+		specs.Technical["prototype_group_id"] = strconv.FormatInt(sds.PrototypeGroupID, 10)
+	}
 	if sds.ProductionCycle > 0 {
 		specs.Technical["production_cycle_hours"] = strconv.Itoa(sds.ProductionCycle)
 	}

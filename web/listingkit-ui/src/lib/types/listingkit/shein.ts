@@ -462,6 +462,8 @@ export type SheinPreviewPayload = PlatformPreviewPayload & {
   category_id?: number;
   category_path?: string[];
   source_product?: {
+    parent_product_id?: string;
+    variant_id?: string;
     title?: string;
     sku?: string;
     category_path?: string[];
