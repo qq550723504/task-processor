@@ -313,6 +313,41 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.getByText("91")).toBeInTheDocument();
   });
 
+  it("shows size chart payload blockers without marking sale attributes blocked", () => {
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: {
+            ready: false,
+            blocking_items: [
+              {
+                key: "variants",
+                label: "发布载荷结构",
+                message:
+                  "SHEIN publish blocked: missing required size chart attributes: 内侧裤长 (cm), 胸围 (cm)",
+              },
+            ],
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            attributes: [{ name: "Material", value: "Polyester" }],
+            sale_attributes: [{ name: "Size", value: "XXXXL" }],
+            images: [{ url: "https://example.com/main.jpg", main: true, final: true }],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("发布载荷")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "SHEIN publish blocked: missing required size chart attributes: 内侧裤长 (cm), 胸围 (cm)",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("已映射 1 个销售属性")).toBeInTheDocument();
+  });
+
   it("does not locally block single-variant final images when swatch and size map are not selected", () => {
     render(
       <SheinFinalReviewPanel

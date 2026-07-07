@@ -33,6 +33,8 @@ func applyProcessTerminalResult(result *ListingKitResult, status TaskStatus) *Li
 	result.Status = string(status)
 	if status == TaskStatusNeedsReview {
 		result.ReviewReasons = reviewReasonsFromResult(result)
+	} else {
+		result.ReviewReasons = nil
 	}
 	return result
 }

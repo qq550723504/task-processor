@@ -1,4 +1,5 @@
 import {
+  buildApplyManualSheinSaleAttributesRevision,
   buildConfirmCurrentSheinSaleAttributesRevision,
   buildRefreshCurrentSheinCategoryRevision,
   buildRegenerateSheinAttributesRevision,
@@ -124,6 +125,79 @@ describe("shein workspace action builders", () => {
           status: "resolved",
         },
       },
+    });
+  });
+
+  it("prefers the selected template sale attribute value over stale manual text", () => {
+    const revision = buildApplyManualSheinSaleAttributesRevision({
+      sheinPreview: {
+        editor_context: {
+          sale_attributes: {
+            current: {
+              status: "partial",
+              primary_attribute_id: 27,
+              secondary_attribute_id: 87,
+              skc_patches: [
+                {
+                  supplier_code: "SKC-1",
+                  attributes: { Color: "White" },
+                  sku_patches: [
+                    {
+                      supplier_sku: "NS6104229008",
+                      attributes: { Size: "5XL" },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      } as never,
+      primaryOption: {
+        attribute_id: 27,
+        name: "Color",
+        name_en: "Color",
+        attribute_value_list: [
+          {
+            attribute_value_id: 112,
+            value: "White",
+            value_en: "White",
+          },
+        ],
+      },
+      secondaryOption: {
+        attribute_id: 87,
+        name: "Size",
+        name_en: "Size",
+        attribute_value_list: [
+          {
+            attribute_value_id: 4004,
+            value: "XXXXL",
+            value_en: "XXXXL",
+          },
+        ],
+      },
+      skcSelections: {
+        "SKC-1": { valueId: 112 },
+      },
+      skuSelections: {
+        NS6104229008: { valueId: 4004, textValue: "5XL" },
+      },
+    });
+
+    expect(revision?.shein?.skc_patches?.[0]?.sku_patches?.[0]).toEqual({
+      supplier_sku: "NS6104229008",
+      attributes: { Size: "5XL" },
+      sale_attributes: [
+        {
+          scope: "sku",
+          name: "Size",
+          value: "XXXXL",
+          attribute_id: 87,
+          attribute_value_id: 4004,
+          matched_by: "manual_review",
+        },
+      ],
     });
   });
 

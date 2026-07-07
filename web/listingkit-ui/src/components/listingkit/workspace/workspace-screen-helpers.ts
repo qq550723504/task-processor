@@ -120,12 +120,14 @@ export function openSheinAdvancedDetailsForTarget(targetId: string) {
     targetId !== "shein-category-review-card" &&
     targetId !== "shein-attribute-review-card" &&
     targetId !== "shein-sale-attribute-review-card" &&
-    targetId !== "shein-final-review-pricing"
+    targetId !== "shein-final-review-pricing" &&
+    targetId !== "shein-final-review-size-chart"
   ) {
     return;
   }
   const detailsId =
-    targetId === "shein-final-review-pricing"
+    targetId === "shein-final-review-pricing" ||
+    targetId === "shein-final-review-size-chart"
       ? "shein-general-final-review-details"
       : "shein-advanced-review-details";
   const details = document.getElementById(detailsId);
@@ -143,7 +145,7 @@ export function scrollSheinWorkspaceTarget(
     normalizedKey === "attributes" || normalizedKey === "attribute_review"
       ? document.getElementById("shein-attribute-required-group") ??
         document.getElementById(targetId)
-      : normalizedKey === "sale_attributes" || normalizedKey === "variants"
+      : normalizedKey === "sale_attributes"
         ? document.getElementById("shein-sale-attribute-unresolved-group") ??
           document.getElementById(targetId)
         : document.getElementById(targetId);

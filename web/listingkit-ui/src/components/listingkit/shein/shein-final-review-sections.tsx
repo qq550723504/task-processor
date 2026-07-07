@@ -370,7 +370,10 @@ export function SizeAttributeTable({
   const gridTemplateColumns = `minmax(7rem, 0.8fr) repeat(${model.columns.length}, minmax(8rem, 1fr))`;
 
   return (
-    <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+    <div
+      id="shein-final-review-size-chart"
+      className="scroll-mt-6 rounded-2xl border border-zinc-200 bg-white p-4"
+    >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">

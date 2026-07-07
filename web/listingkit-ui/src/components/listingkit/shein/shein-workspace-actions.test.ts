@@ -123,15 +123,30 @@ describe("shein workspace actions", () => {
     });
   });
 
+  it("does not treat final payload variant blockers as sale attribute review blockers", () => {
+    const projection = projectSheinReadinessActions([
+      {
+        key: "variants",
+        label: "发布载荷结构",
+        message: "SHEIN publish blocked: missing required size chart attributes: 胸围 (cm)",
+      },
+    ]);
+
+    expect(projection.saleAttributeBlocked).toBe(false);
+    expect(projection.blockingActionSummary).toBeUndefined();
+  });
+
   it("maps normalized keys to concrete workspace section ids", () => {
     expect(sheinWorkspaceTargetIdForKey("images")).toBe("shein-preview-images");
     expect(sheinWorkspaceTargetIdForKey("pod_platform")).toBe("shein-preview-images");
     expect(sheinWorkspaceTargetIdForKey("pricing")).toBe("shein-final-review-pricing");
+    expect(sheinWorkspaceTargetIdForKey("variants")).toBe("shein-final-review-size-chart");
   });
 
   it("flags advanced review keys that require the editable workspace", () => {
     expect(isSheinAdvancedRepairKey("attributes")).toBe(true);
     expect(isSheinAdvancedRepairKey("sale_attributes")).toBe(true);
+    expect(isSheinAdvancedRepairKey("variants")).toBe(false);
     expect(isSheinAdvancedRepairKey("images")).toBe(false);
     expect(isSheinAdvancedRepairKey("pricing")).toBe(false);
   });

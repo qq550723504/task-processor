@@ -37,6 +37,9 @@ func buildTaskRevisionServiceConfig(s *service) taskRevisionServiceConfig {
 		refreshSheinDerivedState: func(task *Task, req *ApplyRevisionRequest) {
 			s.refreshSheinDerivedState(task, req)
 		},
+		refreshSheinTaskResultState: func(ctx context.Context, task *Task, result *ListingKitResult) {
+			s.refreshSheinTaskResultState(ctx, task, result)
+		},
 		buildTaskPreview: preview.buildTaskPreview,
 	}
 }

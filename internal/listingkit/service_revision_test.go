@@ -312,6 +312,48 @@ func TestApplyTaskRevisionReturnsAppliedChanges(t *testing.T) {
 	}
 }
 
+func TestApplyTaskRevisionClearsStaleNeedsReviewStateWhenSheinBecomesReady(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubApplyRevisionRepo{}
+	task := makeReadySheinTask()
+	task.Status = TaskStatusNeedsReview
+	task.Error = "SHEIN 销售属性尚未完成真实 sale attribute 映射，当前仍需要人工确认变体规格"
+	task.Result.Status = string(TaskStatusNeedsReview)
+	task.Result.ReviewReasons = []string{task.Error}
+	task.Result.Summary = &GenerationSummary{}
+	task.Result.Summary.NeedsReview = true
+	_ = repo.CreateTask(context.Background(), task)
+	svc := &service{repo: repo}
+
+	newName := "Ready After Manual Sale Attributes"
+	_, err := svc.ApplyTaskRevision(context.Background(), task.ID, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein: &SheinRevisionInput{
+			ProductNameEn: &newName,
+		},
+	})
+	if err != nil {
+		t.Fatalf("apply task revision: %v", err)
+	}
+
+	if repo.task.Status != TaskStatusCompleted {
+		t.Fatalf("task status = %q, want %q", repo.task.Status, TaskStatusCompleted)
+	}
+	if repo.task.Error != "" {
+		t.Fatalf("task error = %q, want empty", repo.task.Error)
+	}
+	if repo.task.Result.Status != string(TaskStatusCompleted) {
+		t.Fatalf("result status = %q, want %q", repo.task.Result.Status, TaskStatusCompleted)
+	}
+	if len(repo.task.Result.ReviewReasons) != 0 {
+		t.Fatalf("review reasons = %#v, want none", repo.task.Result.ReviewReasons)
+	}
+	if repo.task.Result.Summary != nil && repo.task.Result.Summary.NeedsReview {
+		t.Fatalf("summary needs_review = true, want false")
+	}
+}
+
 func TestApplyTaskRevisionTrimsRevisionHistory(t *testing.T) {
 	t.Parallel()
 

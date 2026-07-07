@@ -5,7 +5,7 @@ import type {
 } from "@/lib/types/listingkit";
 
 export type ReviewSummaryItem = {
-  key: "category" | "attributes" | "sale_attributes" | "images";
+  key: "category" | "attributes" | "sale_attributes" | "variants" | "images";
   title: string;
   message: string;
   status: "done" | "blocked" | "warning";
@@ -162,9 +162,13 @@ export function buildFinalReviewModel({
           ? `已确认 ${resolvedAttributeCount} 个普通属性`
           : "普通属性未展示已确认结果，建议检查必填属性。";
   const imageBlocked =
-    hasBlockingKey(allBlockingItems, ["images", "final_images", "preview_product"]) ||
+    hasBlockingKey(allBlockingItems, ["images", "final_images"]) ||
     imageCounts.final === 0 ||
     imageCounts.main === 0;
+  const payloadBlocker = allBlockingItems.find((item) =>
+    ["variants", "request_draft", "preview_product"].includes(item.key ?? ""),
+  );
+  const payloadBlocked = Boolean(payloadBlocker);
   const summaryItems: ReviewSummaryItem[] = [
     {
       key: "category",
@@ -189,7 +193,7 @@ export function buildFinalReviewModel({
     {
       key: "sale_attributes",
       title: "销售属性",
-      status: hasBlockingKey(allBlockingItems, ["sale_attributes", "variants"])
+      status: hasBlockingKey(allBlockingItems, ["sale_attributes"])
         ? "blocked"
         : (finalReview?.sale_attributes?.length ?? 0) > 0
           ? "done"
@@ -199,6 +203,15 @@ export function buildFinalReviewModel({
           ? `已映射 ${finalReview?.sale_attributes?.length ?? 0} 个销售属性`
           : "销售属性未展示已映射结果，建议检查主规格和其他规格。",
       actionLabel: "去确认销售属性",
+    },
+    {
+      key: "variants",
+      title: "发布载荷",
+      status: payloadBlocked ? "blocked" : "done",
+      message: payloadBlocked
+        ? (payloadBlocker?.message ?? "发布载荷结构还不完整，请检查尺码表、SKU 或预览载荷。")
+        : "发布载荷结构已通过提交前检查。",
+      actionLabel: "查看尺码表",
     },
     {
       key: "images",

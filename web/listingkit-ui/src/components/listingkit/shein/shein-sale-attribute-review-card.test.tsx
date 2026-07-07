@@ -1308,6 +1308,112 @@ describe("SheinSaleAttributeReviewCard", () => {
     });
   });
 
+  it("initializes refreshed SKU selections from saved sale attributes instead of the original source text", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SheinSaleAttributeReviewCard
+        editorContext={{
+          sale_attributes: {
+            current: {
+              status: "partial",
+              primary_attribute_id: 27,
+              secondary_attribute_id: 87,
+              primary_source_dimension: "Color",
+              secondary_source_dimension: "Size",
+              skc_attributes: [
+                {
+                  scope: "skc",
+                  name: "Color",
+                  value: "White",
+                  attribute_id: 27,
+                  attribute_value_id: 112,
+                },
+              ],
+              sku_attributes: [
+                {
+                  scope: "sku",
+                  name: "Size",
+                  value: "XXXXL",
+                  attribute_id: 87,
+                  attribute_value_id: 4004,
+                },
+              ],
+              template_options: [
+                {
+                  attribute_id: 27,
+                  name: "Color",
+                  name_en: "Color",
+                  skc_scope: true,
+                  attribute_value_list: [
+                    {
+                      attribute_value_id: 112,
+                      value: "White",
+                      value_en: "White",
+                    },
+                  ],
+                },
+                {
+                  attribute_id: 87,
+                  name: "Size",
+                  name_en: "Size",
+                  attribute_value_list: [
+                    { attribute_value_id: 5005, value: "5XL", value_en: "5XL" },
+                    {
+                      attribute_value_id: 4004,
+                      value: "XXXXL",
+                      value_en: "XXXXL",
+                    },
+                  ],
+                },
+              ],
+              skc_patches: [
+                {
+                  supplier_code: "SKC-1",
+                  skc_name: "White",
+                  attributes: { Color: "White" },
+                  sale_attribute: {
+                    scope: "skc",
+                    name: "Color",
+                    value: "White",
+                    attribute_id: 27,
+                    attribute_value_id: 112,
+                  },
+                  sku_patches: [
+                    {
+                      supplier_sku: "NS6104229008",
+                      attributes: { Size: "5XL" },
+                      sale_attributes: [
+                        {
+                          scope: "sku",
+                          name: "Size",
+                          value: "XXXXL",
+                          attribute_id: 87,
+                          attribute_value_id: 4004,
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }}
+        onApplyManualSaleAttributes={vi.fn()}
+      />,
+    );
+
+    await openManualCorrection(user);
+
+    const skuRow = getSKUSelectionCard("NS6104229008");
+    expect(within(skuRow).getByLabelText(/第 3 步：其他规格值/)).toHaveValue(
+      "4004",
+    );
+    expect(within(skuRow).getByPlaceholderText("手工输入，建议值：5XL")).toHaveValue(
+      "",
+    );
+  });
+
   it("prefers important template as manual primary option", async () => {
     const user = userEvent.setup();
 

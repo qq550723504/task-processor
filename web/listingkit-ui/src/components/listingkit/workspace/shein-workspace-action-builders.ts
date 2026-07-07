@@ -518,6 +518,9 @@ function resolveManualSaleAttributeTextValue(
   selection: { valueId?: number; textValue?: string } | undefined,
   fallbackValue: string | undefined,
 ) {
+  if (selection?.valueId && fallbackValue) {
+    return fallbackValue;
+  }
   const customText = selection?.textValue?.trim();
   if (customText) {
     return customText;

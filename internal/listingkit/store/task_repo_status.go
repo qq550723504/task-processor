@@ -171,8 +171,11 @@ func (r *taskRepository) MutateTaskResult(ctx context.Context, taskID string, mu
 			Scopes(taskAccessScope(ctx)).
 			Where("id = ?", taskID).
 			Updates(map[string]any{
-				"result":     task.Result,
-				"updated_at": currentTimestampValue(tx),
+				"status":          task.Status,
+				"error":           task.Error,
+				"result":          task.Result,
+				"retryable_block": task.RetryableBlock,
+				"updated_at":      currentTimestampValue(tx),
 			}).Error; err != nil {
 			return fmt.Errorf("failed to update task result: %w", err)
 		}

@@ -13,6 +13,7 @@ type taskRevisionServiceConfig struct {
 	resolveManualSheinSaleAttributeValueIDs func(context.Context, *Task, *ApplyRevisionRequest) error
 	recovery                                *taskSubmissionRecoveryService
 	refreshSheinDerivedState                func(*Task, *ApplyRevisionRequest)
+	refreshSheinTaskResultState             func(context.Context, *Task, *ListingKitResult)
 	buildTaskPreview                        func(context.Context, *Task, string) (*ListingKitPreview, error)
 }
 
@@ -21,6 +22,7 @@ type taskRevisionService struct {
 	resolveManualSheinSaleAttributeValueIDs func(context.Context, *Task, *ApplyRevisionRequest) error
 	recovery                                *taskSubmissionRecoveryService
 	refreshSheinDerivedState                func(*Task, *ApplyRevisionRequest)
+	refreshSheinTaskResultState             func(context.Context, *Task, *ListingKitResult)
 	buildTaskPreview                        func(context.Context, *Task, string) (*ListingKitPreview, error)
 }
 
@@ -30,6 +32,7 @@ func newTaskRevisionService(config taskRevisionServiceConfig) *taskRevisionServi
 		resolveManualSheinSaleAttributeValueIDs: config.resolveManualSheinSaleAttributeValueIDs,
 		recovery:                                config.recovery,
 		refreshSheinDerivedState:                config.refreshSheinDerivedState,
+		refreshSheinTaskResultState:             config.refreshSheinTaskResultState,
 		buildTaskPreview:                        config.buildTaskPreview,
 	}
 }
@@ -66,6 +69,10 @@ func (s *taskRevisionService) ApplyTaskRevision(ctx context.Context, taskID stri
 		if effectiveReq.Platform == "shein" && s.refreshSheinDerivedState != nil {
 			s.refreshSheinDerivedState(task, effectiveReq)
 		}
+		if effectiveReq.Platform == "shein" && s.refreshSheinTaskResultState != nil {
+			s.refreshSheinTaskResultState(ctx, task, task.Result)
+		}
+		refreshRevisionTaskLifecycle(task)
 		appliedChanges = buildAppliedChangesPreview(effectiveReq.Platform, before, task.Result)
 		task.Result.Revision = &ListingKitRevisionSummary{
 			UpdatedAt:              task.Result.Revision.UpdatedAt,
@@ -105,6 +112,23 @@ func (s *taskRevisionService) ApplyTaskRevision(ctx context.Context, taskID stri
 	preview.RestoreResult = buildRevisionRestoreResult(req, task.Result, appliedChanges)
 	preview.RevisionHistory = buildRevisionHistoryPreviewItems(task.Result.RevisionHistory)
 	return preview, nil
+}
+
+func refreshRevisionTaskLifecycle(task *Task) {
+	if task == nil || task.Result == nil {
+		return
+	}
+	switch deriveProcessTerminalStatus(task.Result) {
+	case TaskStatusNeedsReview:
+		task.Result = applyProcessTerminalResult(task.Result, TaskStatusNeedsReview)
+		task.Status = TaskStatusNeedsReview
+		task.Error = taskNeedsReviewReason(task.Result)
+	default:
+		task.Result = applyProcessTerminalResult(task.Result, TaskStatusCompleted)
+		task.Status = TaskStatusCompleted
+		task.Error = ""
+		task.RetryableBlock = nil
+	}
 }
 
 func buildRevisionHistorySnapshot(platform string, result *ListingKitResult) *SheinEditorContext {

@@ -1095,11 +1095,16 @@ function buildInitialManualSKCSelections({
       patch.attributes,
       primarySourceDimension,
     );
-    const fallbackValueID = findResolvedSaleAttributeValueID({
-      attributes: current.skc_attributes,
-      attributeID: primaryOption?.attribute_id,
-      sourceValue,
-    });
+    const fallbackValueID =
+      findResolvedSaleAttributeValueID({
+        attributes: patch.sale_attribute ? [patch.sale_attribute] : undefined,
+        attributeID: primaryOption?.attribute_id,
+      }) ??
+      findResolvedSaleAttributeValueID({
+        attributes: current.skc_attributes,
+        attributeID: primaryOption?.attribute_id,
+        sourceValue,
+      });
     selections[patch.supplier_code] = buildInitialManualSelection({
       option: primaryOption,
       sourceValue,
@@ -1130,11 +1135,16 @@ function buildInitialManualSKUSelections({
         skuPatch.attributes,
         secondarySourceDimension,
       );
-      const fallbackValueID = findResolvedSaleAttributeValueID({
-        attributes: current.sku_attributes,
-        attributeID: secondaryOption?.attribute_id,
-        sourceValue,
-      });
+      const fallbackValueID =
+        findResolvedSaleAttributeValueID({
+          attributes: skuPatch.sale_attributes,
+          attributeID: secondaryOption?.attribute_id,
+        }) ??
+        findResolvedSaleAttributeValueID({
+          attributes: current.sku_attributes,
+          attributeID: secondaryOption?.attribute_id,
+          sourceValue,
+        });
       selections[skuPatch.supplier_sku] = buildInitialManualSelection({
         option: secondaryOption,
         sourceValue,

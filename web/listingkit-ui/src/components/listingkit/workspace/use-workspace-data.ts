@@ -128,11 +128,18 @@ export function useWorkspaceData({
   const sheinReadinessProjection = projectSheinReadinessActions(
     sheinPreviewPayload?.submit_readiness?.blocking_items,
   );
+  const sheinCookieBlocked = sheinReadinessProjection.cookieBlocked;
   const sheinCategoryBlocked = sheinReadinessProjection.categoryBlocked;
   const sheinAttributeBlocked = sheinReadinessProjection.attributeBlocked;
   const sheinSaleAttributeBlocked = sheinReadinessProjection.saleAttributeBlocked;
   const sheinPreviewBlocked = sheinReadinessProjection.previewBlocked;
   const sheinReadyStatus = sheinPreviewPayload?.submit_readiness?.status;
+  const sheinPreFinalReviewBlocked =
+    sheinCookieBlocked ||
+    sheinCategoryBlocked ||
+    sheinAttributeBlocked ||
+    sheinSaleAttributeBlocked ||
+    sheinPreviewBlocked;
   const isSheinFinalReviewMode =
     selectedPlatform === "shein" &&
     searchParams.get("section_key") === "final_review";
@@ -193,9 +200,9 @@ export function useWorkspaceData({
       description: "先上传 SHEIN 图片，再保存草稿或发布。",
       href: `/listing-kits/${taskId}/workspace?platform=shein&section_key=final_review`,
       state:
-        sheinReadyStatus === "ready"
+        isSheinFinalReviewMode || sheinReadyStatus === "ready" || !sheinPreFinalReviewBlocked
           ? "active"
-          : sheinReadyStatus === "blocked"
+          : sheinPreFinalReviewBlocked
             ? "blocked"
             : "pending",
       actionLabel: "打开最终确认",

@@ -36,7 +36,7 @@ const SHEIN_REPAIR_TARGETS: Record<SheinWorkspaceActionKey, string> = {
   attributes: "shein-attribute-review-card",
   attribute_review: "shein-attribute-review-card",
   sale_attributes: "shein-sale-attribute-review-card",
-  variants: "shein-sale-attribute-review-card",
+  variants: "shein-final-review-size-chart",
   images: "shein-preview-images",
   pod_platform: "shein-preview-images",
   pricing: "shein-final-review-pricing",
@@ -330,8 +330,7 @@ export function projectSheinReadinessActions(
     workspaceActionKeys.has("attribute_review");
   const saleAttributeBlocked =
     saleAttributeFreshnessBlocked ||
-    workspaceActionKeys.has("sale_attributes") ||
-    workspaceActionKeys.has("variants");
+    workspaceActionKeys.has("sale_attributes");
   const previewBlocked = workspaceActionKeys.has("images");
 
   return {
@@ -376,8 +375,7 @@ export function isSheinAdvancedRepairKey(key: SheinWorkspaceActionKey) {
     key === "category_review" ||
     key === "attributes" ||
     key === "attribute_review" ||
-    key === "sale_attributes" ||
-    key === "variants"
+    key === "sale_attributes"
   );
 }
 
