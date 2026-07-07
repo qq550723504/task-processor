@@ -115,6 +115,7 @@ export function buildSheinWorkspaceViewProps({
     submitErrorMessage: formatSheinSubmitError(submitError, shein),
     canSelectBlockingItem: canSelectSheinReadinessItem,
     onSelectBlockingItem,
+    onSaveFinalDraft: sheinActions.handleSaveSheinFinalDraft,
     onSubmit: sheinActions.handleSubmitShein,
   };
   const sheinSubmission = getSheinSubmissionState(shein);

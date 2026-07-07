@@ -263,6 +263,55 @@ func TestUpdateSheinFinalDraftPreservesExistingDraftPrice(t *testing.T) {
 	}
 }
 
+func TestUpdateSheinFinalDraftPersistsManualSizeAttributes(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubSubmitRepo{}
+	task := makeReadySheinTask()
+	sizeAttributes := []sheinproduct.SizeAttribute{
+		{
+			AttributeID:                55,
+			AttributeExtraValue:        "87.5",
+			RelateSaleAttributeID:      87,
+			RelateSaleAttributeValueID: 568,
+		},
+		{
+			AttributeID:                20,
+			AttributeExtraValue:        " 87 ",
+			RelateSaleAttributeID:      87,
+			RelateSaleAttributeValueID: 568,
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	svc, err := NewService(newTestServiceConfig(repo))
+	if err != nil {
+		t.Fatalf("new service: %v", err)
+	}
+
+	if _, err := svc.UpdateSheinFinalDraft(context.Background(), task.ID, &SheinFinalDraftUpdateRequest{SizeAttributeList: &sizeAttributes}); err != nil {
+		t.Fatalf("update final draft: %v", err)
+	}
+
+	saved, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("get task: %v", err)
+	}
+	gotDraft := saved.Result.Shein.RequestDraft.SizeAttributeList
+	if len(gotDraft) != 2 {
+		t.Fatalf("request draft size_attribute_list = %#v, want 2 items", gotDraft)
+	}
+	if gotDraft[1].AttributeExtraValue != "87" {
+		t.Fatalf("request draft size_attribute_list[1].attribute_extra_value = %q, want trimmed 87", gotDraft[1].AttributeExtraValue)
+	}
+	gotPreview := saved.Result.Shein.PreviewProduct.SizeAttributeList
+	if len(gotPreview) != len(gotDraft) {
+		t.Fatalf("preview size_attribute_list = %#v, want %d items", gotPreview, len(gotDraft))
+	}
+}
+
 func TestPreviewSheinPriceApplyToTaskUsesMutation(t *testing.T) {
 	t.Parallel()
 

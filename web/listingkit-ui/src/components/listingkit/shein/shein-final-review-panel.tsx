@@ -33,6 +33,7 @@ import {
   sheinPublishInFlight,
   sheinPublishSucceeded,
 } from "@/lib/shein-studio/shein-submission-display";
+import type { UpdateSheinFinalDraftRequest } from "@/lib/api/shein-final-draft";
 import type {
   SheinPreviewPayload,
   SheinReadinessItem,
@@ -48,6 +49,10 @@ type Props = {
   saveErrorMessage?: string | null;
   canSelectBlockingItem?: (item: SheinReadinessItem) => boolean;
   onSelectBlockingItem?: (item: SheinReadinessItem) => void;
+  onSaveFinalDraft?: (
+    payload: UpdateSheinFinalDraftRequest,
+    successMessage?: string,
+  ) => void;
   onSubmit?: (
     action: "publish" | "save_draft",
     payload?: {
@@ -68,6 +73,7 @@ export function SheinFinalReviewPanel({
   saveErrorMessage,
   canSelectBlockingItem,
   onSelectBlockingItem,
+  onSaveFinalDraft,
   onSubmit,
 }: Props) {
   const pricing = shein?.pricing;
@@ -219,7 +225,19 @@ export function SheinFinalReviewPanel({
 
       <FinalReviewOverviewCards finalReview={finalReview} />
 
-      <SizeAttributeTable shein={shein} />
+      <SizeAttributeTable
+        shein={shein}
+        isSaving={isSaving}
+        onSaveSizeAttributes={
+          onSaveFinalDraft
+            ? (payload) =>
+                onSaveFinalDraft(
+                  payload,
+                  "尺码表已保存，发布前会使用当前 SHEIN 尺码字段。",
+                )
+            : undefined
+        }
+      />
 
       <SkuPricingTable
         priceOverrides={priceOverrides}

@@ -313,6 +313,128 @@ describe("SheinFinalReviewPanel", () => {
     expect(screen.getByText("91")).toBeInTheDocument();
   });
 
+  it("saves manually completed required SHEIN size chart attributes", async () => {
+    const user = userEvent.setup();
+    const onSaveFinalDraft = vi.fn();
+
+    render(
+      <SheinFinalReviewPanel
+        shein={{
+          submit_readiness: { ready: false },
+          editor_context: {
+            attributes: {
+              current: {
+                size_chart_attributes: [
+                  {
+                    attribute_id: 55,
+                    attribute_name: "长度 (cm)",
+                    attribute_name_en: "Length (cm)",
+                    required: true,
+                  },
+                  {
+                    attribute_id: 20,
+                    attribute_name: "胸围 (cm)",
+                    attribute_name_en: "Bust (cm)",
+                    required: true,
+                  },
+                ],
+              },
+            },
+          },
+          draft_payload: {
+            skc_list: [
+              {
+                sku_list: [
+                  {
+                    sale_attributes: [
+                      {
+                        name: "Size",
+                        value: "S",
+                        attribute_id: 87,
+                        attribute_value_id: 568,
+                      },
+                    ],
+                  },
+                  {
+                    sale_attributes: [
+                      {
+                        name: "Size",
+                        value: "M",
+                        attribute_id: 87,
+                        attribute_value_id: 417,
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+          preview_payload: {
+            size_attribute_list: [
+              {
+                attribute_id: 55,
+                attribute_extra_value: "87.5",
+                relate_sale_attribute_id: 87,
+                relate_sale_attribute_value_id: 568,
+              },
+              {
+                attribute_id: 55,
+                attribute_extra_value: "88.5",
+                relate_sale_attribute_id: 87,
+                relate_sale_attribute_value_id: 417,
+              },
+            ],
+          },
+          final_review: {
+            confirmed: true,
+            category_id: 123,
+            images: [{ url: "https://example.com/main.jpg", main: true, final: true }],
+          },
+        }}
+        onSaveFinalDraft={onSaveFinalDraft}
+      />,
+    );
+
+    expect(screen.getByText("待补 2 项")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "保存尺码表" })).toBeDisabled();
+
+    await user.type(screen.getByRole("textbox", { name: "S Bust (cm)" }), "87");
+    await user.type(screen.getByRole("textbox", { name: "M Bust (cm)" }), "91");
+    await user.click(screen.getByRole("button", { name: "保存尺码表" }));
+
+    expect(onSaveFinalDraft).toHaveBeenCalledWith(
+      {
+        size_attribute_list: [
+          {
+            attribute_id: 55,
+            attribute_extra_value: "87.5",
+            relate_sale_attribute_id: 87,
+            relate_sale_attribute_value_id: 568,
+          },
+          {
+            attribute_id: 20,
+            attribute_extra_value: "87",
+            relate_sale_attribute_id: 87,
+            relate_sale_attribute_value_id: 568,
+          },
+          {
+            attribute_id: 55,
+            attribute_extra_value: "88.5",
+            relate_sale_attribute_id: 87,
+            relate_sale_attribute_value_id: 417,
+          },
+          {
+            attribute_id: 20,
+            attribute_extra_value: "91",
+            relate_sale_attribute_id: 87,
+            relate_sale_attribute_value_id: 417,
+          },
+        ],
+      },
+      "尺码表已保存，发布前会使用当前 SHEIN 尺码字段。",
+    );
+  });
+
   it("shows size chart payload blockers without marking sale attributes blocked", () => {
     render(
       <SheinFinalReviewPanel

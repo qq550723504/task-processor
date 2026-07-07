@@ -273,6 +273,7 @@ func applySheinFinalDraftRequest(pkg *sheinpub.Package, req *SheinFinalDraftUpda
 		MainImageURL:         req.MainImageURL,
 		DeletedImageURLs:     req.DeletedImageURLs,
 		ImageRoleOverrides:   req.ImageRoleOverrides,
+		SizeAttributeList:    req.SizeAttributeList,
 	}, time.Now())
 }
 

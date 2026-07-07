@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api/client";
-import type { ListingKitPreview } from "@/lib/types/listingkit";
+import type { ListingKitPreview, SheinSizeAttribute } from "@/lib/types/listingkit";
 
 export type UpdateSheinFinalDraftRequest = {
   confirmed?: boolean;
@@ -9,6 +9,7 @@ export type UpdateSheinFinalDraftRequest = {
   main_image_url?: string;
   deleted_image_urls?: string[];
   image_role_overrides?: Record<string, "main" | "gallery" | "swatch" | "size_map" | "skc">;
+  size_attribute_list?: SheinSizeAttribute[];
 };
 
 export function updateSheinFinalDraft(

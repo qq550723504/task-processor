@@ -4,6 +4,7 @@ import (
 	"time"
 
 	sheinpub "task-processor/internal/publishing/shein"
+	sheinproduct "task-processor/internal/shein/api/product"
 )
 
 type SubmitTaskRequest struct {
@@ -54,13 +55,14 @@ type SheinPricePreviewRequest struct {
 }
 
 type SheinFinalDraftUpdateRequest struct {
-	Confirmed            *bool              `json:"confirmed,omitempty"`
-	SubmitMode           string             `json:"submit_mode,omitempty"`
-	ManualPriceOverrides map[string]float64 `json:"manual_price_overrides,omitempty"`
-	FinalImageOrder      *[]string          `json:"final_image_order,omitempty"`
-	MainImageURL         string             `json:"main_image_url,omitempty"`
-	DeletedImageURLs     *[]string          `json:"deleted_image_urls,omitempty"`
-	ImageRoleOverrides   map[string]string  `json:"image_role_overrides,omitempty"`
+	Confirmed            *bool                         `json:"confirmed,omitempty"`
+	SubmitMode           string                        `json:"submit_mode,omitempty"`
+	ManualPriceOverrides map[string]float64            `json:"manual_price_overrides,omitempty"`
+	FinalImageOrder      *[]string                     `json:"final_image_order,omitempty"`
+	MainImageURL         string                        `json:"main_image_url,omitempty"`
+	DeletedImageURLs     *[]string                     `json:"deleted_image_urls,omitempty"`
+	ImageRoleOverrides   map[string]string             `json:"image_role_overrides,omitempty"`
+	SizeAttributeList    *[]sheinproduct.SizeAttribute `json:"size_attribute_list,omitempty"`
 }
 
 type SheinSubmissionEventPage struct {

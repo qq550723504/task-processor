@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -349,9 +349,10 @@ function formatStoreResolutionTime(value?: string) {
 }
 
 type SizeAttributeTableModel = {
-  columns: Array<{ attributeID: number; label: string }>;
+  columns: Array<{ attributeID: number; label: string; required?: boolean }>;
   rows: Array<{
     label: string;
+    saleAttributeID: number;
     saleAttributeValueID: number;
     values: Record<number, string>;
   }>;
@@ -359,15 +360,63 @@ type SizeAttributeTableModel = {
 
 export function SizeAttributeTable({
   shein,
+  isSaving,
+  onSaveSizeAttributes,
 }: {
   shein?: SheinPreviewPayload | null;
+  isSaving?: boolean;
+  onSaveSizeAttributes?: (payload: { size_attribute_list: SheinSizeAttribute[] }) => void;
 }) {
-  const model = buildSizeAttributeTableModel(shein);
+  const model = useMemo(() => buildSizeAttributeTableModel(shein), [shein]);
+  const initialValues = useMemo(() => sizeAttributeValuesFromModel(model), [model]);
+  const initialValuesKey = useMemo(() => JSON.stringify(initialValues), [initialValues]);
   if (!model) {
     return null;
   }
 
+  return (
+    <SizeAttributeTableEditor
+      key={initialValuesKey}
+      initialValues={initialValues}
+      isSaving={isSaving}
+      model={model}
+      onSaveSizeAttributes={onSaveSizeAttributes}
+    />
+  );
+}
+
+function SizeAttributeTableEditor({
+  initialValues,
+  isSaving,
+  model,
+  onSaveSizeAttributes,
+}: {
+  initialValues: Record<string, string>;
+  isSaving?: boolean;
+  model: SizeAttributeTableModel;
+  onSaveSizeAttributes?: (payload: { size_attribute_list: SheinSizeAttribute[] }) => void;
+}) {
+  const [draftValues, setDraftValues] = useState<Record<string, string>>(
+    () => initialValues,
+  );
+  const missingRequiredCount = useMemo(
+    () => countMissingRequiredSizeAttributeValues(model, draftValues),
+    [draftValues, model],
+  );
+  const isDirty = useMemo(
+    () => JSON.stringify(draftValues) !== JSON.stringify(initialValues),
+    [draftValues, initialValues],
+  );
   const gridTemplateColumns = `minmax(7rem, 0.8fr) repeat(${model.columns.length}, minmax(8rem, 1fr))`;
+  const canEdit = Boolean(onSaveSizeAttributes);
+  const badgeVariant = missingRequiredCount > 0 ? "warning" : "success";
+  const badgeText =
+    missingRequiredCount > 0 ? `待补 ${missingRequiredCount} 项` : "已生成";
+  const handleSave = () => {
+    onSaveSizeAttributes?.({
+      size_attribute_list: buildSizeAttributeListFromDraft(model, draftValues),
+    });
+  };
 
   return (
     <div
@@ -383,9 +432,21 @@ export function SizeAttributeTable({
             {model.rows.length} 个尺码 · {model.columns.length} 个尺码字段
           </p>
         </div>
-        <Badge className="w-fit rounded-full px-3 py-1 text-xs" variant="success">
-          已生成
-        </Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className="w-fit rounded-full px-3 py-1 text-xs" variant={badgeVariant}>
+            {badgeText}
+          </Badge>
+          {canEdit ? (
+            <Button
+              className="h-8 px-3 text-xs"
+              disabled={!isDirty || isSaving}
+              variant="secondary"
+              onClick={handleSave}
+            >
+              {isSaving ? "保存中..." : "保存尺码表"}
+            </Button>
+          ) : null}
+        </div>
       </div>
       <div className="mt-3 overflow-hidden rounded-2xl border border-zinc-200">
         <div className="overflow-x-auto">
@@ -396,7 +457,10 @@ export function SizeAttributeTable({
             >
               <span>尺码</span>
               {model.columns.map((column) => (
-                <span key={column.attributeID}>{column.label}</span>
+                <span key={column.attributeID}>
+                  {column.label}
+                  {column.required ? " *" : ""}
+                </span>
               ))}
             </div>
             <div className="divide-y divide-zinc-100">
@@ -408,9 +472,36 @@ export function SizeAttributeTable({
                 >
                   <span className="font-medium text-zinc-950">{row.label}</span>
                   {model.columns.map((column) => (
-                    <span className="text-zinc-700" key={column.attributeID}>
-                      {row.values[column.attributeID] || "-"}
-                    </span>
+                    <div key={column.attributeID}>
+                      {canEdit ? (
+                        <Input
+                          aria-label={`${row.label} ${column.label}`}
+                          className="h-9 rounded-xl"
+                          value={
+                            draftValues[
+                              sizeAttributeValueKey(
+                                row.saleAttributeValueID,
+                                column.attributeID,
+                              )
+                            ] ?? ""
+                          }
+                          onChange={(event) => {
+                            const key = sizeAttributeValueKey(
+                              row.saleAttributeValueID,
+                              column.attributeID,
+                            );
+                            setDraftValues((current) => ({
+                              ...current,
+                              [key]: event.target.value,
+                            }));
+                          }}
+                        />
+                      ) : (
+                        <span className="text-zinc-700">
+                          {row.values[column.attributeID] || "-"}
+                        </span>
+                      )}
+                    </div>
                   ))}
                 </div>
               ))}
@@ -436,43 +527,143 @@ export function buildSizeAttributeTableModel(
   }
 
   const columnLabels = buildSizeAttributeColumnLabels(shein);
+  const requiredColumnIDs = buildRequiredSizeAttributeIDs(shein);
   const saleValueLabels = buildSaleAttributeValueLabels(shein);
   const columns: SizeAttributeTableModel["columns"] = [];
   const rows: SizeAttributeTableModel["rows"] = [];
   const columnIDs = new Set<number>();
   const rowByValueID = new Map<number, SizeAttributeTableModel["rows"][number]>();
+  let fallbackSaleAttributeID = 0;
 
-  for (const item of sizeAttributes) {
-    const attributeID = item.attribute_id ?? 0;
-    const saleAttributeValueID = item.relate_sale_attribute_value_id ?? 0;
-    const value = String(item.attribute_extra_value ?? "").trim();
-    if (attributeID <= 0 || saleAttributeValueID <= 0 || !value) {
-      continue;
+  const addColumn = (attributeID: number) => {
+    if (attributeID <= 0 || columnIDs.has(attributeID)) {
+      return;
     }
-    if (!columnIDs.has(attributeID)) {
-      columnIDs.add(attributeID);
-      columns.push({
-        attributeID,
-        label: columnLabels.get(attributeID) ?? `attribute_id ${attributeID}`,
-      });
+    columnIDs.add(attributeID);
+    columns.push({
+      attributeID,
+      label: columnLabels.get(attributeID) ?? `attribute_id ${attributeID}`,
+      required: requiredColumnIDs.has(attributeID),
+    });
+  };
+
+  const ensureRow = (saleAttributeValueID: number, saleAttributeID = 0) => {
+    if (saleAttributeValueID <= 0) {
+      return null;
     }
     let row = rowByValueID.get(saleAttributeValueID);
     if (!row) {
       row = {
         label: saleValueLabels.get(saleAttributeValueID) ?? String(saleAttributeValueID),
+        saleAttributeID: saleAttributeID || fallbackSaleAttributeID,
         saleAttributeValueID,
         values: {},
       };
       rowByValueID.set(saleAttributeValueID, row);
       rows.push(row);
+    } else if (!row.saleAttributeID && saleAttributeID > 0) {
+      row.saleAttributeID = saleAttributeID;
+    }
+    return row;
+  };
+
+  for (const item of sizeAttributes) {
+    const attributeID = item.attribute_id ?? 0;
+    const saleAttributeID = item.relate_sale_attribute_id ?? 0;
+    const saleAttributeValueID = item.relate_sale_attribute_value_id ?? 0;
+    const value = String(item.attribute_extra_value ?? "").trim();
+    if (saleAttributeID > 0 && fallbackSaleAttributeID <= 0) {
+      fallbackSaleAttributeID = saleAttributeID;
+    }
+    if (attributeID <= 0 || saleAttributeValueID <= 0 || !value) {
+      continue;
+    }
+    addColumn(attributeID);
+    const row = ensureRow(saleAttributeValueID, saleAttributeID);
+    if (!row) {
+      continue;
     }
     row.values[attributeID] = value;
+  }
+
+  for (const attributeID of requiredColumnIDs) {
+    addColumn(attributeID);
+  }
+  for (const [saleAttributeValueID] of saleValueLabels) {
+    ensureRow(saleAttributeValueID, fallbackSaleAttributeID);
   }
 
   if (columns.length === 0 || rows.length === 0) {
     return null;
   }
   return { columns, rows };
+}
+
+function sizeAttributeValueKey(saleAttributeValueID: number, attributeID: number) {
+  return `${saleAttributeValueID}:${attributeID}`;
+}
+
+function sizeAttributeValuesFromModel(model: SizeAttributeTableModel | null) {
+  const values: Record<string, string> = {};
+  if (!model) {
+    return values;
+  }
+  for (const row of model.rows) {
+    for (const column of model.columns) {
+      values[sizeAttributeValueKey(row.saleAttributeValueID, column.attributeID)] =
+        row.values[column.attributeID] ?? "";
+    }
+  }
+  return values;
+}
+
+function countMissingRequiredSizeAttributeValues(
+  model: SizeAttributeTableModel | null,
+  values: Record<string, string>,
+) {
+  if (!model) {
+    return 0;
+  }
+  let count = 0;
+  for (const row of model.rows) {
+    for (const column of model.columns) {
+      if (
+        column.required &&
+        !String(
+          values[sizeAttributeValueKey(row.saleAttributeValueID, column.attributeID)] ??
+            "",
+        ).trim()
+      ) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
+function buildSizeAttributeListFromDraft(
+  model: SizeAttributeTableModel,
+  values: Record<string, string>,
+): SheinSizeAttribute[] {
+  const attrs: SheinSizeAttribute[] = [];
+  for (const row of model.rows) {
+    for (const column of model.columns) {
+      const value = String(
+        values[sizeAttributeValueKey(row.saleAttributeValueID, column.attributeID)] ??
+          "",
+      ).trim();
+      if (!value) {
+        continue;
+      }
+      attrs.push({
+        attribute_id: column.attributeID,
+        attribute_extra_value: value,
+        relate_sale_attribute_id: row.saleAttributeID,
+        relate_sale_attribute_value_id: row.saleAttributeValueID,
+      });
+    }
+  }
+  return attrs;
 }
 
 function firstNonEmptySizeAttributes(
@@ -499,12 +690,32 @@ function buildSizeAttributeColumnLabels(shein?: SheinPreviewPayload | null) {
   return labels;
 }
 
+function buildRequiredSizeAttributeIDs(shein?: SheinPreviewPayload | null) {
+  const ids = new Set<number>();
+  for (const attribute of
+    shein?.editor_context?.attributes?.current?.size_chart_attributes ?? []) {
+    const attributeID = attribute.attribute_id ?? 0;
+    if (attributeID > 0 && attribute.required) {
+      ids.add(attributeID);
+    }
+  }
+  return ids;
+}
+
 function buildSaleAttributeValueLabels(shein?: SheinPreviewPayload | null) {
   const labels = new Map<number, string>();
   const draftPayload = getSheinDraftPayload(shein);
-  const addResolved = (attribute?: SheinResolvedSaleAttribute) => {
+  const addResolved = (attribute?: SheinResolvedSaleAttribute, skuOnly = false) => {
     const valueID = attribute?.attribute_value_id ?? 0;
     const value = String(attribute?.value ?? "").trim();
+    const scope = String(attribute?.scope ?? "").toLowerCase();
+    const name = String(attribute?.name ?? "").toLowerCase();
+    if (skuOnly && scope && scope !== "sku") {
+      return;
+    }
+    if (skuOnly && name && !name.includes("size") && !name.includes("尺码")) {
+      return;
+    }
     if (valueID > 0 && value && !labels.has(valueID)) {
       labels.set(valueID, value);
     }
@@ -512,18 +723,17 @@ function buildSaleAttributeValueLabels(shein?: SheinPreviewPayload | null) {
 
   for (const attribute of
     shein?.editor_context?.sale_attributes?.current?.sku_attributes ?? []) {
-    addResolved(attribute);
+    addResolved(attribute, true);
   }
   for (const skc of draftPayload?.skc_list ?? []) {
-    addResolved(skc.sale_attribute);
     for (const sku of skc.sku_list ?? []) {
       for (const attribute of sku.sale_attributes ?? []) {
-        addResolved(attribute);
+        addResolved(attribute, true);
       }
     }
   }
   for (const attribute of shein?.final_review?.sale_attributes ?? []) {
-    addResolved(attribute);
+    addResolved(attribute, true);
   }
 
   return labels;
