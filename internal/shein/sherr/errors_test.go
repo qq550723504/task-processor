@@ -46,6 +46,7 @@ func TestIsRetryableError(t *testing.T) {
 		{"不可重试错误", sherr.NewNonRetryableError("业务错误", errors.New("invalid")), false},
 		{"过滤错误不可重试", sherr.NewFilteredError("低于筛选规则"), false},
 		{"Cookie加载错误不可重试", sherr.NewCookieLoadError(1, 2, "cookie失效"), false},
+		{"显式可重试错误不会被内部404字符串覆盖", sherr.NewRetryableError("fetch product data failed", errors.New("driver download failed: 404 Not Found")), true},
 		// 普通 error 默认可重试（兜底策略）
 		{"普通错误默认可重试", errors.New("unknown error"), true},
 	}

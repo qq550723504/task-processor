@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 	"github.com/sirupsen/logrus"
 )
 

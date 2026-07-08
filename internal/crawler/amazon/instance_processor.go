@@ -12,7 +12,7 @@ import (
 	"task-processor/internal/model"
 	"time"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // InstanceProcessor 实例处理器

@@ -4,7 +4,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 	"github.com/sirupsen/logrus"
 )
 

@@ -4,7 +4,7 @@ import (
 	"task-processor/internal/crawler/amazon/variations"
 	"task-processor/internal/model"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // VariationsConfig 变体提取配置（向后兼容）

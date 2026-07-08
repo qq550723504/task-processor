@@ -8,7 +8,7 @@ import (
 	"task-processor/internal/core/logger"
 	"time"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // handleSliderCaptchaWithResult 处理滑动验证码并返回结果

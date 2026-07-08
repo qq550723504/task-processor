@@ -4,7 +4,7 @@ import (
 	"strings"
 	"task-processor/internal/model"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // SellerExtractor 卖家信息提取器

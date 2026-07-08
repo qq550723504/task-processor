@@ -17,7 +17,7 @@ import (
 	"task-processor/internal/core/logger"
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 type browserRunConfig struct {

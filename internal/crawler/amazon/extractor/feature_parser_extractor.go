@@ -4,7 +4,7 @@ import (
 	"strings"
 	"task-processor/internal/model"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // FeatureParserExtractor 特性解析提取器

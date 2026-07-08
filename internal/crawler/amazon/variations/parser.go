@@ -1,7 +1,7 @@
 package variations
 
 import (
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // Parser JavaScript数据解析器

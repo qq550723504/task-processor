@@ -2,7 +2,7 @@
 package browser
 
 import (
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // ZipcodeStrategy 邮编输入策略接口

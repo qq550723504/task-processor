@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/core/logger"
 	"time"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // JapaneseZipcodeStrategy 日本站分离式邮编输入策略

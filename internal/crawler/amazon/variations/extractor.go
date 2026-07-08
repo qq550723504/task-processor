@@ -5,7 +5,7 @@ import (
 	"strings"
 	"task-processor/internal/core/logger"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // Extractor 变体信息提取器

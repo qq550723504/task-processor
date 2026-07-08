@@ -5,7 +5,7 @@ import (
 	"strings"
 	"task-processor/internal/model"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // DeliveryExtractor 配送信息提取器

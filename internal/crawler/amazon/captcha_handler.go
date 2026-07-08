@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/core/logger"
 	"time"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // CaptchaHandler 验证码处理器

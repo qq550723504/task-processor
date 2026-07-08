@@ -14,7 +14,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 type failureArtifactPage interface {

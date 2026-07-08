@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	coreLogger "task-processor/internal/core/logger"
+	amazonCrawler "task-processor/internal/crawler/amazon"
 	appProduct "task-processor/internal/crawler/fetcher"
 	"task-processor/internal/model"
 	domainProduct "task-processor/internal/product"
@@ -40,6 +41,21 @@ func isProductNotFoundError(err error) bool {
 	}
 
 	errorStr := strings.ToLower(err.Error())
+	classified := amazonCrawler.ClassifyFetchError(err)
+	if classified != nil {
+		switch classified.ErrorType() {
+		case amazonCrawler.FetchErrorTypeProductNotFound:
+			return true
+		case amazonCrawler.FetchErrorTypeProcessorUnavailable,
+			amazonCrawler.FetchErrorTypeSystemBusy,
+			amazonCrawler.FetchErrorTypeNetwork,
+			amazonCrawler.FetchErrorTypeTimeout,
+			amazonCrawler.FetchErrorTypeServerError,
+			amazonCrawler.FetchErrorTypeCrawlInProgress:
+			return false
+		}
+	}
+
 	productNotFoundPatterns := []string{
 		"page not found",
 		"404",

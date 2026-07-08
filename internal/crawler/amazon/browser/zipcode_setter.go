@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/core/logger"
 	"time"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 const zipcodeVerificationSettleWindow = 4 * time.Second

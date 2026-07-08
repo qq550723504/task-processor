@@ -5,7 +5,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/model"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // ImageExtractor 图片提取器 - 只提取轮播图

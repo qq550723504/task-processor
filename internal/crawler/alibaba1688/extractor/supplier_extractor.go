@@ -5,7 +5,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/model"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // SupplierExtractor 供应商提取器

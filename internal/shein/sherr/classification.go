@@ -10,8 +10,8 @@ func isNonRetryableError(err error) bool {
 		return false
 	}
 	var re *retryableError
-	if errors.As(err, &re) && !re.IsRetryable() {
-		return true
+	if errors.As(err, &re) {
+		return !re.IsRetryable()
 	}
 	var fe *FilteredError
 	if errors.As(err, &fe) {

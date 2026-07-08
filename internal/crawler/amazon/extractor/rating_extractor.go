@@ -11,7 +11,7 @@ import (
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/timeout"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // RatingExtractor 评分提取器

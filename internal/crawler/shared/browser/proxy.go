@@ -4,7 +4,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 func parseProxyServer(raw string) *playwright.Proxy {

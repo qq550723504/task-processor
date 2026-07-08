@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"task-processor/internal/core/logger"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // StandardZipcodeStrategy 标准单一输入框策略（美国、欧洲等大部分站点）

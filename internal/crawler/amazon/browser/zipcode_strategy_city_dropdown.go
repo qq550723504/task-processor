@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/core/logger"
 	"time"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // CityDropdownStrategy 城市下拉框策略（沙特、阿联酋等站点使用城市选择而非邮编输入）

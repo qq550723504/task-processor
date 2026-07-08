@@ -5,7 +5,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/model"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // SpecificationExtractor 规格提取器 - 协调各个专门的提取器

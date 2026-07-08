@@ -6,7 +6,7 @@ import (
 	"strings"
 	"task-processor/internal/core/logger"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // ZipcodeGetter 邮编获取器

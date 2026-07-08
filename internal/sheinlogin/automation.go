@@ -13,7 +13,7 @@ import (
 
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 type AutomationConfig struct {

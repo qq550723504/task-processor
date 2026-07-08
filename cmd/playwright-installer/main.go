@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 const defaultPlaywrightBrowser = "chromium"

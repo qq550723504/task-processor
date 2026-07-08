@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/model"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // PriceExtractor 价格提取器（包含价格范围功能）

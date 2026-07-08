@@ -4,7 +4,7 @@ package extractor
 import (
 	"task-processor/internal/crawler/alibaba1688/model"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // BaseExtractor 基础提取器接口

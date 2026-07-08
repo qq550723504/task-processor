@@ -6,7 +6,7 @@ import (
 	"task-processor/internal/crawler/alibaba1688/model"
 	"time"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // ProductExtractor 1688产品数据提取器

@@ -7,7 +7,7 @@ import (
 	"task-processor/internal/core/logger"
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // BrowserManager Amazon专用的浏览器管理器，继承shared的功能

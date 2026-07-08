@@ -8,7 +8,7 @@ import (
 
 	"task-processor/internal/model"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 func TestInstanceProcessorRetriesOnProductQualityFailure(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"task-processor/internal/core/logger"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // PlaywrightInstaller Playwright 驱动安装器

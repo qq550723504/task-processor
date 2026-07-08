@@ -6,7 +6,7 @@ import (
 	"math"
 	"time"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // easeInOutCubic 缓动函数

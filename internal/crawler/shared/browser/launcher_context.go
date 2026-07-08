@@ -10,7 +10,7 @@ import (
 	"strings"
 	"task-processor/internal/core/logger"
 
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // ContextLauncher 浏览器上下文启动器
