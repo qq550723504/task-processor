@@ -449,6 +449,43 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     });
   });
 
+  it("selects all visible candidates for batch reset even when none are enrollable", async () => {
+    const resetCandidatesMutation = resolvedMutation();
+    renderWorkbench({
+      initialActivityType: "TIME_LIMITED",
+      initialTab: "candidates",
+      resetCandidatesMutation,
+      candidates: [
+        {
+          id: 18,
+          skc_name: "SKC-FAILED",
+          review_status: "failed",
+        },
+        {
+          id: 19,
+          skc_name: "SKC-REJECTED",
+          review_status: "rejected",
+        },
+      ],
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "全选" }));
+    expect(screen.getByLabelText("选择 SKC-FAILED")).toBeChecked();
+    expect(screen.getByLabelText("选择 SKC-REJECTED")).toBeChecked();
+    expect(screen.getByRole("button", { name: "报名活动" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "批量重置已选" }));
+
+    expect(resetCandidatesMutation.mutateAsync).toHaveBeenCalledWith({
+      activity_type: "TIME_LIMITED",
+      candidate_ids: [18, 19],
+    });
+  });
+
   it("ignores duplicate manual enrollment clicks while a request is in flight", async () => {
     const enrollMutation = {
       isPending: false,
@@ -486,7 +523,7 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     });
   });
 
-  it("selects all executable candidates on the current candidates page", async () => {
+  it("selects all visible candidates while enrollment submits only executable candidates", async () => {
     const enrollMutation = resolvedMutation();
     renderWorkbench({
       initialTab: "candidates",
@@ -518,9 +555,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "全选" }));
     expect(screen.getByLabelText("选择 SKC-PENDING")).toBeChecked();
-    expect(screen.getByLabelText("选择 SKC-REJECTED")).not.toBeChecked();
+    expect(screen.getByLabelText("选择 SKC-REJECTED")).toBeChecked();
     expect(screen.getByLabelText("选择 SKC-REJECTED")).toBeEnabled();
-    expect(screen.getByLabelText("选择 SKC-FAILED")).not.toBeChecked();
+    expect(screen.getByLabelText("选择 SKC-FAILED")).toBeChecked();
     expect(screen.getByLabelText("选择 SKC-FAILED")).toBeEnabled();
     expect(
       screen.getByText(/SHEIN rejected: current status can not enroll/),

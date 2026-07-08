@@ -32,6 +32,10 @@ export function SheinCandidatesTable({
   const [localEnrolling, setLocalEnrolling] = useState(false);
   const enrollmentInFlightRef = useRef(false);
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectableIds = useMemo(
+    () => items.filter((item) => item.id).map((item) => item.id ?? 0),
+    [items],
+  );
   const executableIds = useMemo(
     () =>
       items
@@ -43,8 +47,8 @@ export function SheinCandidatesTable({
     () => selectedIds.filter((id) => executableIds.includes(id)),
     [executableIds, selectedIds],
   );
-  const allExecutableSelected =
-    executableIds.length > 0 && executableIds.every((id) => selected.has(id));
+  const allSelectableSelected =
+    selectableIds.length > 0 && selectableIds.every((id) => selected.has(id));
   const enrollmentInFlight = enrolling || localEnrolling;
 
   async function handleEnroll() {
@@ -85,14 +89,14 @@ export function SheinCandidatesTable({
           value={activityKey}
         />
         <Button
-          disabled={enrollmentInFlight || executableIds.length === 0}
+          disabled={enrollmentInFlight || resetting || selectableIds.length === 0}
           onClick={() => {
-            setSelectedIds(allExecutableSelected ? [] : executableIds);
+            setSelectedIds(allSelectableSelected ? [] : selectableIds);
           }}
           type="button"
           variant="outline"
         >
-          {allExecutableSelected ? "取消全选" : "全选"}
+          {allSelectableSelected ? "取消全选" : "全选"}
         </Button>
         <Button
           disabled={
