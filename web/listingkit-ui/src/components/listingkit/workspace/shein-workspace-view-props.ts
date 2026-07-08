@@ -12,6 +12,7 @@ import {
 import { SheinAdvancedReviewDetails } from "@/components/listingkit/workspace/shein-advanced-review-details";
 import { submitErrorMessage } from "@/components/listingkit/workspace/workspace-screen-helpers";
 import type { useSheinWorkspaceActions } from "@/components/listingkit/workspace/use-shein-workspace-actions";
+import type { SheinResolutionCacheKind } from "@/lib/api/shein-resolution-cache";
 import { getSheinSubmissionState } from "@/lib/listingkit/semantic-fields";
 import type {
   PreviewSlot,
@@ -66,7 +67,7 @@ export function buildSheinWorkspaceViewProps({
   isRefreshingSubmissionStatus: boolean;
   onSelectBlockingItem: (item: SheinReadinessItem) => void;
   onRunPrimaryAction: (key?: string | null) => void;
-  onClearResolutionCache: (kind: "category" | "attribute" | "sale_attribute" | "pricing") => void;
+  onClearResolutionCache: (kind: SheinResolutionCacheKind) => void;
   onRefreshSubmissionStatus: () => void;
 }) {
   const sheinDisplayImages =

@@ -18,13 +18,9 @@ import type {
   SheinResolutionCacheInfo,
   SheinResolutionCacheSummary,
 } from "@/lib/types/listingkit";
+import type { SheinResolutionCacheKind } from "@/lib/api/shein-resolution-cache";
 
-export type ResolutionCacheKind =
-  | "category"
-  | "attribute"
-  | "sale_attribute"
-  | "size_attribute"
-  | "pricing";
+export type ResolutionCacheKind = Exclude<SheinResolutionCacheKind, "all">;
 
 export function ResolutionCacheRow({
   title,

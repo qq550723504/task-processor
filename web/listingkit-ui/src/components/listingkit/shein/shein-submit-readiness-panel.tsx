@@ -12,6 +12,7 @@ import {
   ChecklistSection,
   ReadinessItems,
   ResolutionCacheSummaryCard,
+  type ResolutionCacheKind,
 } from "@/components/listingkit/shein/shein-submit-readiness-sections";
 import {
   CurrentSubmitStatusCard,
@@ -79,9 +80,7 @@ export function SheinSubmitReadinessPanel({
   isSubmitting?: boolean;
   submitAction?: "publish" | "save_draft" | null;
   submitErrorMessage?: string | null;
-  onClearResolutionCache?:
-    | ((kind: "category" | "attribute" | "sale_attribute" | "pricing") => void)
-    | null;
+  onClearResolutionCache?: ((kind: ResolutionCacheKind) => void) | null;
   clearingResolutionCacheKind?: string | null;
   compact?: boolean;
   showSubmitActions?: boolean;
