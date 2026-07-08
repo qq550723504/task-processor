@@ -180,6 +180,9 @@ func applySheinEnrollmentItemFilters(db *gorm.DB, query *listingkit.SheinEnrollm
 	if query.RunID > 0 {
 		db = db.Where("listingkit_shein_activity_enrollment_items.run_id = ?", query.RunID)
 	}
+	if len(query.CandidateIDs) > 0 {
+		db = db.Where("listingkit_shein_activity_enrollment_items.candidate_id IN ?", query.CandidateIDs)
+	}
 	if query.Status != nil {
 		db = db.Where("listingkit_shein_activity_enrollment_items.status = ?", *query.Status)
 	}
@@ -188,6 +191,15 @@ func applySheinEnrollmentItemFilters(db *gorm.DB, query *listingkit.SheinEnrollm
 	}
 	if query.StoreID > 0 {
 		db = db.Where("runs.store_id = ?", query.StoreID)
+	}
+	if query.ActivityType != "" {
+		db = db.Where("runs.activity_type = ?", query.ActivityType)
+	}
+	if query.ActivityKey != "" {
+		db = db.Where("runs.activity_key = ?", query.ActivityKey)
+	}
+	if query.RunStatus != nil {
+		db = db.Where("runs.status = ?", *query.RunStatus)
 	}
 	return db
 }

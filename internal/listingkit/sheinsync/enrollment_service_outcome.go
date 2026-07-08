@@ -108,6 +108,26 @@ func buildSheinEnrollmentItems(
 	return items
 }
 
+func buildSheinEnrollmentRunningItems(
+	runID, storeID int64,
+	candidates []SheinActivityCandidateRecord,
+) []*SheinActivityEnrollmentItemRecord {
+	items := make([]*SheinActivityEnrollmentItemRecord, 0, len(candidates))
+	for _, candidate := range candidates {
+		items = append(items, &SheinActivityEnrollmentItemRecord{
+			RunID:            runID,
+			CandidateID:      candidate.ID,
+			StoreID:          storeID,
+			ActivityKey:      candidate.ActivityKey,
+			CandidateVersion: candidate.CandidateVersion,
+			SyncedProductID:  candidate.SyncedProductID,
+			SKCName:          candidate.SKCName,
+			Status:           SheinEnrollmentItemStatusRunning,
+		})
+	}
+	return items
+}
+
 func buildSheinEnrollmentCandidateUpdates(
 	candidates []SheinActivityCandidateRecord,
 	resultByCandidateID map[int64]SheinActivityEnrollmentResult,

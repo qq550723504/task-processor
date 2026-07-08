@@ -869,12 +869,88 @@ func TestSheinCandidateServiceResetCandidatesResetsMatchingCandidates(t *testing
 	require.False(t, resetEnrolled.SelectedForRun)
 }
 
+func TestSheinCandidateServiceResetCandidatesSkipsRunningEnrollmentItems(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinCandidateRepoStub(nil)
+	service := NewSheinCandidateService(repo)
+	activityKey := buildSheinActivityKey("TIME_LIMITED", 227, 870)
+
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                11,
+		TenantID:          227,
+		StoreID:           870,
+		ActivityType:      "TIME_LIMITED",
+		ActivityKey:       activityKey,
+		SKCName:           "skc-running",
+		CandidateVersion:  "v1",
+		EligibilityStatus: SheinCandidateEligibilityStatusEligible,
+		ReviewStatus:      SheinCandidateReviewStatusFailed,
+		AutoModeEligible:  true,
+		SelectedForRun:    true,
+	})
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                12,
+		TenantID:          227,
+		StoreID:           870,
+		ActivityType:      "TIME_LIMITED",
+		ActivityKey:       activityKey,
+		SKCName:           "skc-resettable",
+		CandidateVersion:  "v1",
+		EligibilityStatus: SheinCandidateEligibilityStatusEligible,
+		ReviewStatus:      SheinCandidateReviewStatusFailed,
+		AutoModeEligible:  true,
+		SelectedForRun:    true,
+	})
+	repo.seedEnrollmentItem(SheinActivityEnrollmentItemRecord{
+		RunID:       101,
+		CandidateID: 11,
+		StoreID:     870,
+		ActivityKey: activityKey,
+		Status:      SheinEnrollmentItemStatusRunning,
+	})
+
+	result, err := service.ResetCandidates(context.Background(), 227, 870, SheinCandidateResetRequest{
+		ActivityType: "TIME_LIMITED",
+		CandidateIDs: []int64{11, 12},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, result.MatchedCount)
+	require.Equal(t, 1, result.ResetCount)
+	require.Equal(t, 1, result.SkippedCount)
+
+	rows, _, err := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+		TenantID:     227,
+		StoreID:      870,
+		ActivityType: "TIME_LIMITED",
+		CandidateIDs: []int64{11, 12},
+		PageSize:     2,
+	})
+	require.NoError(t, err)
+	byID := map[int64]SheinActivityCandidateRecord{}
+	for _, row := range rows {
+		byID[row.ID] = row
+	}
+
+	running := byID[11]
+	require.Equal(t, SheinCandidateReviewStatusFailed, running.ReviewStatus)
+	require.True(t, running.AutoModeEligible)
+	require.True(t, running.SelectedForRun)
+
+	resettable := byID[12]
+	require.Equal(t, SheinCandidateReviewStatusPendingReview, resettable.ReviewStatus)
+	require.False(t, resettable.AutoModeEligible)
+	require.False(t, resettable.SelectedForRun)
+}
+
 type sheinCandidateRepoStub struct {
 	mu              sync.RWMutex
 	products        []SheinSyncedProductRecord
 	queries         []*SheinSyncedProductQuery
 	sdsGroupQueries []*SheinSDSCostGroupQuery
 	candidates      map[string]SheinActivityCandidateRecord
+	enrollmentItems []SheinActivityEnrollmentItemRecord
 	sdsGroups       map[string]SheinSDSCostGroupRecord
 }
 
@@ -999,6 +1075,28 @@ func (r *sheinCandidateRepoStub) ListCandidates(_ context.Context, query *SheinA
 	return items[start:end], total, nil
 }
 
+func (r *sheinCandidateRepoStub) ListEnrollmentItems(_ context.Context, query *SheinEnrollmentItemQuery) ([]SheinActivityEnrollmentItemRecord, int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	items := make([]SheinActivityEnrollmentItemRecord, 0, len(r.enrollmentItems))
+	for _, row := range r.enrollmentItems {
+		if query != nil {
+			if query.StoreID > 0 && row.StoreID != query.StoreID {
+				continue
+			}
+			if query.Status != nil && row.Status != *query.Status {
+				continue
+			}
+			if len(query.CandidateIDs) > 0 && !containsSheinCandidateID(query.CandidateIDs, row.CandidateID) {
+				continue
+			}
+		}
+		items = append(items, row)
+	}
+	return items, int64(len(items)), nil
+}
+
 func (r *sheinCandidateRepoStub) ListSDSCostGroups(_ context.Context, query *SheinSDSCostGroupQuery) ([]SheinSDSCostGroupRecord, int64, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -1076,6 +1174,22 @@ func (r *sheinCandidateRepoStub) seedCandidate(record SheinActivityCandidateReco
 
 	key := fmt.Sprintf("%d|%d|%s|%s|%s|%s", record.TenantID, record.StoreID, record.ActivityType, record.ActivityKey, record.SKCName, record.CandidateVersion)
 	r.candidates[key] = cloneSheinCandidateTestCandidate(record)
+}
+
+func (r *sheinCandidateRepoStub) seedEnrollmentItem(record SheinActivityEnrollmentItemRecord) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.enrollmentItems = append(r.enrollmentItems, record)
+}
+
+func containsSheinCandidateID(values []int64, target int64) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func containsSheinCandidateGroupKey(values []string, target string) bool {

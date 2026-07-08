@@ -53,6 +53,7 @@ type SheinCandidateRepository interface {
 	ListSyncedProducts(ctx context.Context, query *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error)
 	ListCandidates(ctx context.Context, query *SheinActivityCandidateQuery) ([]SheinActivityCandidateRecord, int64, error)
 	SaveCandidates(ctx context.Context, records []*SheinActivityCandidateRecord) error
+	ListEnrollmentItems(ctx context.Context, query *SheinEnrollmentItemQuery) ([]SheinActivityEnrollmentItemRecord, int64, error)
 }
 
 type sheinCandidateService struct {
@@ -194,13 +195,27 @@ func (s *sheinCandidateService) ResetCandidates(ctx context.Context, tenantID, s
 			break
 		}
 
-		toSave := make([]*SheinActivityCandidateRecord, 0, len(rows))
+		matched := make([]SheinActivityCandidateRecord, 0, len(rows))
 		for i := range rows {
 			row := rows[i]
 			if reason != "" && strings.TrimSpace(row.EligibilityReason) != reason {
 				continue
 			}
 			result.MatchedCount++
+			matched = append(matched, row)
+		}
+		runningCandidateIDs, err := s.runningEnrollmentCandidateIDs(ctx, tenantID, storeID, activityType, query.ActivityKey, matched)
+		if err != nil {
+			return nil, err
+		}
+
+		toSave := make([]*SheinActivityCandidateRecord, 0, len(matched))
+		for i := range matched {
+			row := matched[i]
+			if _, ok := runningCandidateIDs[row.ID]; ok {
+				result.SkippedCount++
+				continue
+			}
 			row.ReviewStatus = SheinCandidateReviewStatusPendingReview
 			row.AutoModeEligible = false
 			row.SelectedForRun = false
@@ -217,6 +232,47 @@ func (s *sheinCandidateService) ResetCandidates(ctx context.Context, tenantID, s
 		}
 	}
 	return result, nil
+}
+
+func (s *sheinCandidateService) runningEnrollmentCandidateIDs(
+	ctx context.Context,
+	tenantID, storeID int64,
+	activityType, activityKey string,
+	candidates []SheinActivityCandidateRecord,
+) (map[int64]struct{}, error) {
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	candidateIDs := make([]int64, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.ID > 0 {
+			candidateIDs = append(candidateIDs, candidate.ID)
+		}
+	}
+	if len(candidateIDs) == 0 {
+		return nil, nil
+	}
+	itemStatus := SheinEnrollmentItemStatusRunning
+	runStatus := SheinEnrollmentRunStatusRunning
+	items, _, err := s.repo.ListEnrollmentItems(ctx, &SheinEnrollmentItemQuery{
+		TenantID:     tenantID,
+		StoreID:      storeID,
+		ActivityType: activityType,
+		ActivityKey:  activityKey,
+		Status:       &itemStatus,
+		RunStatus:    &runStatus,
+		CandidateIDs: candidateIDs,
+		Page:         1,
+		PageSize:     len(candidateIDs),
+	})
+	if err != nil {
+		return nil, err
+	}
+	running := make(map[int64]struct{}, len(items))
+	for _, item := range items {
+		running[item.CandidateID] = struct{}{}
+	}
+	return running, nil
 }
 
 func (s *sheinCandidateService) ReviewCandidate(

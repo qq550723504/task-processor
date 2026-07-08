@@ -24,7 +24,7 @@ export function SheinCandidatesTable({
   items: SheinActivityCandidateRecord[];
   onEnroll: (candidateIds: number[], activityKey: string) => Promise<void>;
   onReject: (candidateId: number) => Promise<void>;
-  onReset: (candidateId: number) => Promise<void>;
+  onReset: (candidateIds: number[]) => Promise<void>;
   resetting?: boolean;
 }) {
   const [activityKey, setActivityKey] = useState("");
@@ -66,6 +66,14 @@ export function SheinCandidatesTable({
     }
   }
 
+  async function handleResetSelected() {
+    const resetIds = selectedIds.filter((id) => id > 0);
+    if (resetIds.length === 0 || resetting || enrollmentInFlight) {
+      return;
+    }
+    await onReset(resetIds);
+  }
+
   return (
     <section className="space-y-4">
       <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white p-4 lg:flex-row lg:items-center">
@@ -95,8 +103,17 @@ export function SheinCandidatesTable({
         >
           {enrollmentInFlight ? "报名中..." : "报名活动"}
         </Button>
+        <Button
+          disabled={resetting || enrollmentInFlight || selectedIds.length === 0}
+          onClick={() => void handleResetSelected()}
+          type="button"
+          variant="outline"
+        >
+          {resetting ? "重置中..." : "批量重置已选"}
+        </Button>
         <span className="text-xs text-zinc-500">
-          已选 {selectedExecutableIds.length} / {executableIds.length} 个可报名
+          已选 {selectedIds.length} 个 · 可报名 {selectedExecutableIds.length} /{" "}
+          {executableIds.length}
         </span>
         {enrollmentDisabled && enrollmentDisabledReason ? (
           <span className="text-xs text-amber-700">{enrollmentDisabledReason}</span>
@@ -118,8 +135,8 @@ export function SheinCandidatesTable({
                 <label className="flex min-w-0 items-start gap-3">
                   <input
                     aria-label={`选择 ${item.skc_name || item.id}`}
-                    checked={executable && selected.has(item.id ?? 0)}
-                    disabled={!executable || !item.id}
+                    checked={selected.has(item.id ?? 0)}
+                    disabled={!item.id || resetting || enrollmentInFlight}
                     onChange={(event) => {
                       const currentId = item.id ?? 0;
                       if (!currentId) {
@@ -157,8 +174,8 @@ export function SheinCandidatesTable({
                 <div className="flex flex-wrap gap-2 lg:ml-auto">
                   <Button
                     aria-label={`重置 ${item.skc_name || item.id} 状态`}
-                    disabled={!item.id || resetting}
-                    onClick={() => void onReset(item.id ?? 0)}
+                    disabled={!item.id || resetting || enrollmentInFlight}
+                    onClick={() => void onReset([item.id ?? 0])}
                     size="sm"
                     type="button"
                     variant="outline"

@@ -101,6 +101,11 @@ func (s *sheinEnrollmentService) prepareSheinActivityEnrollmentRun(
 	if err := s.repo.CreateEnrollmentRun(ctx, run); err != nil {
 		return nil, nil, err
 	}
+	if items := buildSheinEnrollmentRunningItems(run.ID, run.StoreID, candidates); len(items) > 0 {
+		if err := s.repo.SaveEnrollmentItems(ctx, items); err != nil {
+			return nil, nil, err
+		}
+	}
 
 	return run, candidates, nil
 }

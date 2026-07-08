@@ -2,6 +2,15 @@ package store
 
 import "task-processor/internal/listingkit"
 
+func containsInt64(values []int64, target int64) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
 func matchesSheinSyncedProductQuery(row listingkit.SheinSyncedProductRecord, query *listingkit.SheinSyncedProductQuery) bool {
 	if query == nil {
 		return true
@@ -129,6 +138,9 @@ func matchesSheinEnrollmentItemQuery(row listingkit.SheinActivityEnrollmentItemR
 	if query.RunID > 0 && row.RunID != query.RunID {
 		return false
 	}
+	if len(query.CandidateIDs) > 0 && !containsInt64(query.CandidateIDs, row.CandidateID) {
+		return false
+	}
 	if query.Status != nil && row.Status != *query.Status {
 		return false
 	}
@@ -136,6 +148,15 @@ func matchesSheinEnrollmentItemQuery(row listingkit.SheinActivityEnrollmentItemR
 		return false
 	}
 	if query.StoreID > 0 && run.StoreID != query.StoreID {
+		return false
+	}
+	if query.ActivityType != "" && run.ActivityType != query.ActivityType {
+		return false
+	}
+	if query.ActivityKey != "" && run.ActivityKey != query.ActivityKey {
+		return false
+	}
+	if query.RunStatus != nil && run.Status != *query.RunStatus {
 		return false
 	}
 	return true

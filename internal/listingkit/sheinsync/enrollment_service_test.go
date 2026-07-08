@@ -1076,6 +1076,66 @@ func TestStartSheinActivityEnrollmentRunsInBackgroundAfterRequestContextCanceled
 	}, 2*time.Second, 10*time.Millisecond)
 }
 
+func TestStartSheinActivityEnrollmentReservesRunningItemsBeforeBackgroundExecution(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
+		{
+			ID:                1,
+			TenantID:          11,
+			StoreID:           22,
+			ActivityType:      "TIME_LIMITED",
+			ActivityKey:       "TIME_LIMITED:11:22",
+			SKCName:           "skc-running",
+			CandidateVersion:  "v1",
+			EligibilityStatus: SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:      SheinCandidateReviewStatusPendingReview,
+		},
+	})
+	adapterStarted := make(chan struct{})
+	releaseAdapter := make(chan struct{})
+	adapter := &sheinEnrollmentAdapterStub{
+		enroll: func(_ context.Context, _ int64, _ string, _ string, candidates []SheinActivityEnrollmentCandidate) ([]SheinActivityEnrollmentResult, error) {
+			close(adapterStarted)
+			<-releaseAdapter
+			return []SheinActivityEnrollmentResult{{
+				CandidateID: candidates[0].CandidateID,
+				Success:     true,
+			}}, nil
+		},
+	}
+	service := NewSheinEnrollmentService(repo, adapter)
+
+	run, err := service.StartSheinActivityEnrollment(
+		context.Background(),
+		11,
+		22,
+		"TIME_LIMITED",
+		"TIME_LIMITED:11:22",
+		SheinEnrollmentRunTriggerModeManualConfirmed,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, SheinEnrollmentRunStatusRunning, run.Status)
+	require.Eventually(t, func() bool {
+		select {
+		case <-adapterStarted:
+			return true
+		default:
+			return false
+		}
+	}, 2*time.Second, 10*time.Millisecond)
+	require.Len(t, repo.savedItems, 1)
+	require.Equal(t, run.ID, repo.savedItems[0].RunID)
+	require.Equal(t, int64(1), repo.savedItems[0].CandidateID)
+	require.Equal(t, SheinEnrollmentItemStatusRunning, repo.savedItems[0].Status)
+
+	close(releaseAdapter)
+	require.Eventually(t, func() bool {
+		return len(repo.savedItems) == 1 && repo.savedItems[0].Status == SheinEnrollmentItemStatusSucceeded
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
 func TestSheinActivityAdapterUsesListingKitCandidatesAsOnlyPromotionSource(t *testing.T) {
 	t.Parallel()
 
@@ -1589,11 +1649,26 @@ func (r *sheinEnrollmentRepoStub) SaveEnrollmentItems(ctx context.Context, items
 	sort.Slice(r.savedItems, func(i, j int) bool {
 		return r.savedItems[i].CandidateID < r.savedItems[j].CandidateID
 	})
+	if allSheinEnrollmentItemsRunning(items) {
+		return nil
+	}
 	return r.saveItemsErr
 }
 
 func (r *sheinEnrollmentRepoStub) ListEnrollmentItems(_ context.Context, _ *SheinEnrollmentItemQuery) ([]SheinActivityEnrollmentItemRecord, int64, error) {
 	return nil, 0, nil
+}
+
+func allSheinEnrollmentItemsRunning(items []*SheinActivityEnrollmentItemRecord) bool {
+	if len(items) == 0 {
+		return false
+	}
+	for _, item := range items {
+		if item == nil || item.Status != SheinEnrollmentItemStatusRunning {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *sheinEnrollmentRepoStub) savedCandidates() []SheinActivityCandidateRecord {

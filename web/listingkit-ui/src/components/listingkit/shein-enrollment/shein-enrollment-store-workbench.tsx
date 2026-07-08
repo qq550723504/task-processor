@@ -224,10 +224,10 @@ function SheinEnrollmentActivityWorkbench({
                 },
               }).then(() => undefined)
             }
-            onReset={(candidateId) =>
+            onReset={(candidateIds) =>
               resetCandidatesMutation.mutateAsync({
                 activity_type: activityType,
-                candidate_ids: [candidateId],
+                candidate_ids: candidateIds,
               }).then(() => undefined)
             }
             resetting={resetCandidatesMutation.isPending}

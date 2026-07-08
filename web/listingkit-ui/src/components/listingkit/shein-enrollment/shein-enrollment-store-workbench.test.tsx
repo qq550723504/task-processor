@@ -370,7 +370,7 @@ describe("SheinEnrollmentStoreWorkbench", () => {
 
     expect(screen.getByLabelText("选择 SKC-PENDING")).not.toBeDisabled();
     fireEvent.click(screen.getByLabelText("选择 SKC-PENDING"));
-    expect(screen.getByLabelText("选择 SKC-REJECTED")).toBeDisabled();
+    expect(screen.getByLabelText("选择 SKC-REJECTED")).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "报名活动" }));
 
     expect(enrollMutation.mutateAsync).toHaveBeenCalledWith({
@@ -402,7 +402,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
       await screen.findByRole("heading", { name: "SHEIN US" }),
     ).toBeInTheDocument();
 
-    expect(screen.getByLabelText("选择 SKC-MISSING-COST")).toBeDisabled();
+    expect(screen.getByLabelText("选择 SKC-MISSING-COST")).toBeEnabled();
+    fireEvent.click(screen.getByLabelText("选择 SKC-MISSING-COST"));
+    expect(screen.getByRole("button", { name: "报名活动" })).toBeDisabled();
     fireEvent.click(
       screen.getByRole("button", { name: "重置 SKC-MISSING-COST 状态" }),
     );
@@ -410,6 +412,40 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     expect(resetCandidatesMutation.mutateAsync).toHaveBeenCalledWith({
       activity_type: "TIME_LIMITED",
       candidate_ids: [18],
+    });
+  });
+
+  it("resets selected candidates in a single batch request", async () => {
+    const resetCandidatesMutation = resolvedMutation();
+    renderWorkbench({
+      initialActivityType: "TIME_LIMITED",
+      initialTab: "candidates",
+      resetCandidatesMutation,
+      candidates: [
+        {
+          id: 18,
+          skc_name: "SKC-READY-1",
+          review_status: "pending_review",
+        },
+        {
+          id: 19,
+          skc_name: "SKC-READY-2",
+          review_status: "approved",
+        },
+      ],
+    });
+
+    expect(
+      await screen.findByRole("heading", { name: "SHEIN US" }),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("选择 SKC-READY-1"));
+    fireEvent.click(screen.getByLabelText("选择 SKC-READY-2"));
+    fireEvent.click(screen.getByRole("button", { name: "批量重置已选" }));
+
+    expect(resetCandidatesMutation.mutateAsync).toHaveBeenCalledWith({
+      activity_type: "TIME_LIMITED",
+      candidate_ids: [18, 19],
     });
   });
 
@@ -483,9 +519,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "全选" }));
     expect(screen.getByLabelText("选择 SKC-PENDING")).toBeChecked();
     expect(screen.getByLabelText("选择 SKC-REJECTED")).not.toBeChecked();
-    expect(screen.getByLabelText("选择 SKC-REJECTED")).toBeDisabled();
+    expect(screen.getByLabelText("选择 SKC-REJECTED")).toBeEnabled();
     expect(screen.getByLabelText("选择 SKC-FAILED")).not.toBeChecked();
-    expect(screen.getByLabelText("选择 SKC-FAILED")).toBeDisabled();
+    expect(screen.getByLabelText("选择 SKC-FAILED")).toBeEnabled();
     expect(
       screen.getByText(/SHEIN rejected: current status can not enroll/),
     ).toBeInTheDocument();

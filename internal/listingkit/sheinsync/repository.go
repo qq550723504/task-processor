@@ -67,7 +67,11 @@ type SheinEnrollmentItemQuery struct {
 	TenantID       int64
 	StoreID        int64
 	RunID          int64
+	ActivityType   string
+	ActivityKey    string
 	Status         *SheinEnrollmentItemStatus
+	RunStatus      *SheinEnrollmentRunStatus
+	CandidateIDs   []int64
 	IncludePayload bool
 	Page           int
 	PageSize       int
