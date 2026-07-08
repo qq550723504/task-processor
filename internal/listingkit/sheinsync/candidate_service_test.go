@@ -215,16 +215,18 @@ func TestSheinCandidateServiceRefreshCandidatesCalculatesProfitRateFromSharedSDS
 			IsActive:           true,
 		},
 		{
-			ID:                 202,
-			TenantID:           11,
-			StoreID:            22,
-			SKCName:            "group-cost-target",
-			SupplierCode:       "MG8006905002-B3195DA6",
-			ShelfStatus:        "ON_SHELF",
-			EffectiveCostPrice: float64Ptr(20),
-			PriceSnapshot:      `{"sale_price":100}`,
-			InventorySnapshot:  `{"available":6}`,
-			IsActive:           true,
+			ID:                  202,
+			TenantID:            11,
+			StoreID:             22,
+			SKCName:             "group-cost-target",
+			SupplierCode:        "MG8006905002-B3195DA6",
+			ShelfStatus:         "ON_SHELF",
+			EffectiveCostPrice:  float64Ptr(20),
+			SupplyPrice:         float64Ptr(80),
+			SupplyPriceCurrency: "USD",
+			PriceSnapshot:       `{"sale_price":100}`,
+			InventorySnapshot:   `{"available":6}`,
+			IsActive:            true,
 		},
 	})
 
@@ -236,7 +238,10 @@ func TestSheinCandidateServiceRefreshCandidatesCalculatesProfitRateFromSharedSDS
 	candidates := repo.savedCandidates()
 	require.Len(t, candidates, 2)
 	require.NotNil(t, candidates[1].CalculatedProfitRate)
-	require.Equal(t, 0.7, *candidates[1].CalculatedProfitRate)
+	require.Equal(t, 0.625, *candidates[1].CalculatedProfitRate)
+	price, currency := parsePromotionPriceSnapshot(candidates[1].PriceSnapshot)
+	require.Equal(t, 80.0, price)
+	require.Equal(t, "USD", currency)
 }
 
 func TestSheinCandidateServiceRefreshCandidatesUsesSharedSDSCostForSameSourceSDS(t *testing.T) {

@@ -2,6 +2,7 @@ package sheinsync
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"sort"
 	"sync"
@@ -12,6 +13,46 @@ import (
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestMarshalPromotionRequestPayloadIncludesAllSaveConfigRequests(t *testing.T) {
+	t.Parallel()
+
+	payload := marshalPromotionRequestPayload(&SheinPromotionRegistrationResult{
+		Request: &marketing.SaveConfigRequest{
+			Type: marketing.AutoPartakeActivityTypeRegular,
+			ConfigList: []marketing.ActivityConfig{{
+				Skc:      "skc-one",
+				DropRate: 70,
+			}},
+		},
+		Requests: []*marketing.SaveConfigRequest{
+			{
+				Type: marketing.AutoPartakeActivityTypeRegular,
+				ConfigList: []marketing.ActivityConfig{{
+					Skc:      "skc-one",
+					DropRate: 70,
+				}},
+			},
+			{
+				Type: marketing.AutoPartakeActivityTypeLimited,
+				ConfigList: []marketing.ActivityConfig{{
+					Skc:      "skc-one",
+					DropRate: 71,
+				}},
+			},
+		},
+	})
+
+	var body struct {
+		Requests []marketing.SaveConfigRequest `json:"requests"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(payload), &body))
+	require.Len(t, body.Requests, 2)
+	require.Equal(t, marketing.AutoPartakeActivityTypeRegular, body.Requests[0].Type)
+	require.Equal(t, marketing.AutoPartakeActivityTypeLimited, body.Requests[1].Type)
+	require.Equal(t, 70, body.Requests[0].ConfigList[0].DropRate)
+	require.Equal(t, 71, body.Requests[1].ConfigList[0].DropRate)
+}
 
 func TestExecuteSheinActivityEnrollmentExecutesApprovedCandidatesAndUpdatesRunOutcome(t *testing.T) {
 	t.Parallel()
@@ -716,7 +757,7 @@ func TestExecuteSheinActivityEnrollmentUsesLatestSDSCostGroupOverride(t *testing
 	require.Equal(t, 29.99, *candidates[0].EffectiveCostPrice)
 }
 
-func TestExecuteSheinActivityEnrollmentUsesAutoCostAsOriginalPriceWithManualSDSCost(t *testing.T) {
+func TestExecuteSheinActivityEnrollmentUsesSupplyPriceAsOriginalPriceWithManualSDSCost(t *testing.T) {
 	t.Parallel()
 
 	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
@@ -738,17 +779,19 @@ func TestExecuteSheinActivityEnrollmentUsesAutoCostAsOriginalPriceWithManualSDSC
 	})
 	repo.syncedProducts = []SheinSyncedProductRecord{
 		{
-			ID:                 456,
-			TenantID:           227,
-			StoreID:            870,
-			SKCName:            "sg260618173076361709498",
-			SupplierCode:       "JJ0529207001-5CC441F3",
-			AutoCostPrice:      sheinEnrollmentFloat64Ptr(34.77),
-			EffectiveCostPrice: sheinEnrollmentFloat64Ptr(34.77),
-			Currency:           "USD",
-			PriceSnapshot:      `{"sale_price":40,"currency":"USD","sub_site":"shein-us"}`,
-			InventorySnapshot:  `{"available":999,"total":999}`,
-			IsActive:           true,
+			ID:                  456,
+			TenantID:            227,
+			StoreID:             870,
+			SKCName:             "sg260618173076361709498",
+			SupplierCode:        "JJ0529207001-5CC441F3",
+			SupplyPrice:         sheinEnrollmentFloat64Ptr(53.95),
+			SupplyPriceCurrency: "USD",
+			AutoCostPrice:       sheinEnrollmentFloat64Ptr(34.77),
+			EffectiveCostPrice:  sheinEnrollmentFloat64Ptr(34.77),
+			Currency:            "USD",
+			PriceSnapshot:       `{"sale_price":40,"currency":"USD","sub_site":"shein-us"}`,
+			InventorySnapshot:   `{"available":999,"total":999}`,
+			IsActive:            true,
 		},
 	}
 	repo.sdsGroups = map[string]SheinSDSCostGroupRecord{
@@ -782,7 +825,7 @@ func TestExecuteSheinActivityEnrollmentUsesAutoCostAsOriginalPriceWithManualSDSC
 	require.NotNil(t, adapter.calls[0].Candidates[0].EffectiveCostPrice)
 	require.Equal(t, 19.99, *adapter.calls[0].Candidates[0].EffectiveCostPrice)
 	price, currency := parsePromotionPriceSnapshot(adapter.calls[0].Candidates[0].PriceSnapshot)
-	require.Equal(t, 34.77, price)
+	require.Equal(t, 53.95, price)
 	require.Equal(t, "USD", currency)
 
 	candidates := repo.savedCandidates()
@@ -790,7 +833,7 @@ func TestExecuteSheinActivityEnrollmentUsesAutoCostAsOriginalPriceWithManualSDSC
 	require.NotNil(t, candidates[0].EffectiveCostPrice)
 	require.Equal(t, 19.99, *candidates[0].EffectiveCostPrice)
 	price, currency = parsePromotionPriceSnapshot(candidates[0].PriceSnapshot)
-	require.Equal(t, 34.77, price)
+	require.Equal(t, 53.95, price)
 	require.Equal(t, "USD", currency)
 }
 

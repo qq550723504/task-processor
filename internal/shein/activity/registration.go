@@ -62,7 +62,9 @@ type activityMappingFinder interface {
 
 type PromotionRegistrationResult struct {
 	Request          *marketing.SaveConfigRequest
+	Requests         []*marketing.SaveConfigRequest
 	Response         *marketing.SaveConfigResponse
+	Responses        []*marketing.SaveConfigResponse
 	ActivityRequest  *marketing.CreateActivityRequest
 	ActivityResponse *marketing.CreateActivityResponse
 	FilterReasons    map[string]string
@@ -210,20 +212,22 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 	if err := validateAutoPartakeDiscountsForStrategy(strategy); err != nil {
 		return &PromotionRegistrationResult{}, err
 	}
-	firstReq, firstResponse, err := s.savePromotionConfigs(products, configList, activityTypes, strategy, priceMode)
+	firstReq, firstResponse, requests, responses, err := s.savePromotionConfigs(products, configList, activityTypes, strategy, priceMode)
 	if err != nil {
-		return &PromotionRegistrationResult{Request: firstReq, Response: firstResponse}, err
+		return &PromotionRegistrationResult{Request: firstReq, Requests: requests, Response: firstResponse, Responses: responses}, err
 	}
 
 	if err := s.enableSavedPromotionConfigs(ctx, configList, activityTypes); err != nil {
 		s.logger.Errorf("开启活动配置失败: %v", err)
-		return &PromotionRegistrationResult{Request: firstReq, Response: firstResponse}, fmt.Errorf("开启活动配置失败: %w", err)
+		return &PromotionRegistrationResult{Request: firstReq, Requests: requests, Response: firstResponse, Responses: responses}, fmt.Errorf("开启活动配置失败: %w", err)
 	}
 
 	s.logger.Infof("成功报名 %d 个产品到促销活动", len(configList))
 	return &PromotionRegistrationResult{
-		Request:  firstReq,
-		Response: firstResponse,
+		Request:   firstReq,
+		Requests:  requests,
+		Response:  firstResponse,
+		Responses: responses,
 	}, nil
 }
 
@@ -274,31 +278,35 @@ func (s *activityRegistrationServiceImpl) buildPromotionConfigList(products []ma
 	return configList
 }
 
-func (s *activityRegistrationServiceImpl) savePromotionConfigs(products []marketing.SkcInfo, configList []marketing.ActivityConfig, activityTypes []int, strategy *listingruntime.OperationStrategy, priceMode string) (*marketing.SaveConfigRequest, *marketing.SaveConfigResponse, error) {
+func (s *activityRegistrationServiceImpl) savePromotionConfigs(products []marketing.SkcInfo, configList []marketing.ActivityConfig, activityTypes []int, strategy *listingruntime.OperationStrategy, priceMode string) (*marketing.SaveConfigRequest, *marketing.SaveConfigResponse, []*marketing.SaveConfigRequest, []*marketing.SaveConfigResponse, error) {
 	var firstReq *marketing.SaveConfigRequest
 	var firstResponse *marketing.SaveConfigResponse
+	requests := make([]*marketing.SaveConfigRequest, 0, len(activityTypes))
+	responses := make([]*marketing.SaveConfigResponse, 0, len(activityTypes))
 	for _, activityType := range activityTypes {
 		saveReq := &marketing.SaveConfigRequest{
 			ConfigList: s.promotionConfigListForActivityType(products, configList, activityType, strategy, priceMode),
 			Type:       activityType,
 		}
+		requests = append(requests, saveReq)
 		if firstReq == nil {
 			firstReq = saveReq
 		}
 
 		response, err := s.marketingAPI.SaveConfig(saveReq)
+		responses = append(responses, response)
 		if firstResponse == nil {
 			firstResponse = response
 		}
 		if err != nil {
 			s.logger.Errorf("保存活动配置失败: %v", err)
-			return saveReq, response, fmt.Errorf("保存活动配置失败: %w", err)
+			return saveReq, response, requests, responses, fmt.Errorf("保存活动配置失败: %w", err)
 		}
 		if response.Code != "0" {
-			return saveReq, response, fmt.Errorf("保存活动配置失败: %s", response.Msg)
+			return saveReq, response, requests, responses, fmt.Errorf("保存活动配置失败: %s", response.Msg)
 		}
 	}
-	return firstReq, firstResponse, nil
+	return firstReq, firstResponse, requests, responses, nil
 }
 
 func (s *activityRegistrationServiceImpl) promotionConfigListForActivityType(products []marketing.SkcInfo, configList []marketing.ActivityConfig, activityType int, strategy *listingruntime.OperationStrategy, priceMode string) []marketing.ActivityConfig {

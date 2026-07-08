@@ -324,6 +324,7 @@ func (s *sheinCandidateService) validate() error {
 }
 
 func buildSheinCandidateRecord(product SheinSyncedProductRecord, activityType, activityKey string) *SheinActivityCandidateRecord {
+	priceSnapshot := refreshSheinEnrollmentPriceSnapshot(product.PriceSnapshot, product)
 	record := &SheinActivityCandidateRecord{
 		TenantID:           product.TenantID,
 		StoreID:            product.StoreID,
@@ -333,11 +334,11 @@ func buildSheinCandidateRecord(product SheinSyncedProductRecord, activityType, a
 		SKCName:            product.SKCName,
 		CandidateVersion:   buildSheinCandidateVersion(product),
 		EffectiveCostPrice: cloneSheinSyncFloat64(product.EffectiveCostPrice),
-		PriceSnapshot:      product.PriceSnapshot,
+		PriceSnapshot:      priceSnapshot,
 		InventorySnapshot:  product.InventorySnapshot,
 		CalculatedProfitRate: calculateSheinCandidateProfitRate(
 			product.EffectiveCostPrice,
-			product.PriceSnapshot,
+			priceSnapshot,
 		),
 		ReviewStatus:         SheinCandidateReviewStatusPendingReview,
 		AutoModeEligible:     false,
@@ -648,7 +649,7 @@ func buildSheinCandidateVersion(product SheinSyncedProductRecord) string {
 		hash.Write([]byte(strconv.FormatFloat(*product.EffectiveCostPrice, 'f', -1, 64)))
 	}
 	hash.Write([]byte{0})
-	hash.Write([]byte(product.PriceSnapshot))
+	hash.Write([]byte(refreshSheinEnrollmentPriceSnapshot(product.PriceSnapshot, product)))
 	hash.Write([]byte{0})
 	hash.Write([]byte(product.InventorySnapshot))
 	hash.Write([]byte{0})

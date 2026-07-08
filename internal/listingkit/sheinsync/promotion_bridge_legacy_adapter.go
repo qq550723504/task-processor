@@ -45,7 +45,9 @@ func (a *legacyPromotionBridgeAdapter) RegisterPromotionProducts(ctx context.Con
 	}
 	return &SheinPromotionRegistrationResult{
 		Request:          result.Request,
+		Requests:         result.Requests,
 		Response:         result.Response,
+		Responses:        result.Responses,
 		ActivityRequest:  result.ActivityRequest,
 		ActivityResponse: result.ActivityResponse,
 		FilterReasons:    result.FilterReasons,
@@ -83,7 +85,9 @@ func (a legacyPromotionRegistrationSessionAdapter) RegisterPromotionProducts(
 	}
 	return &SheinPromotionRegistrationResult{
 		Request:          result.Request,
+		Requests:         result.Requests,
 		Response:         result.Response,
+		Responses:        result.Responses,
 		ActivityRequest:  result.ActivityRequest,
 		ActivityResponse: result.ActivityResponse,
 		FilterReasons:    result.FilterReasons,

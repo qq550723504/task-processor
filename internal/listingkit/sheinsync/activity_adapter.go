@@ -428,8 +428,15 @@ func buildPromotionEnrollmentResults(
 		for skc, reason := range bridgeResult.FilterReasons {
 			filterReasons[skc] = reason
 		}
-		if bridgeResult.Request != nil {
-			for _, config := range bridgeResult.Request.ConfigList {
+		requests := bridgeResult.Requests
+		if len(requests) == 0 && bridgeResult.Request != nil {
+			requests = []*marketing.SaveConfigRequest{bridgeResult.Request}
+		}
+		for _, request := range requests {
+			if request == nil {
+				continue
+			}
+			for _, config := range request.ConfigList {
 				configured[config.Skc] = struct{}{}
 			}
 		}
@@ -514,6 +521,11 @@ func marshalPromotionRequestPayload(result *SheinPromotionRegistrationResult) st
 	if result.ActivityRequest != nil {
 		return marshalPromotionPayload(result.ActivityRequest)
 	}
+	if len(result.Requests) > 1 {
+		return marshalPromotionPayload(struct {
+			Requests []*marketing.SaveConfigRequest `json:"requests"`
+		}{Requests: result.Requests})
+	}
 	return marshalPromotionPayload(result.Request)
 }
 
@@ -523,6 +535,11 @@ func marshalPromotionResponsePayload(result *SheinPromotionRegistrationResult) s
 	}
 	if result.ActivityResponse != nil {
 		return marshalPromotionPayload(result.ActivityResponse)
+	}
+	if len(result.Responses) > 1 {
+		return marshalPromotionPayload(struct {
+			Responses []*marketing.SaveConfigResponse `json:"responses"`
+		}{Responses: result.Responses})
 	}
 	return marshalPromotionPayload(result.Response)
 }

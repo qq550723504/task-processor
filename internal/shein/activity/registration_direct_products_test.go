@@ -517,7 +517,7 @@ func TestRegisterPromotionProductsUsesBothPartakeStrategy(t *testing.T) {
 		logger:       logrus.NewEntry(logrus.New()),
 	}
 
-	_, err := service.RegisterPromotionProducts(
+	result, err := service.RegisterPromotionProducts(
 		t.Context(),
 		&listingruntime.OperationStrategy{
 			StoreID:                      870,
@@ -546,6 +546,9 @@ func TestRegisterPromotionProductsUsesBothPartakeStrategy(t *testing.T) {
 	}
 	if len(api.savedRequests) != 2 {
 		t.Fatalf("saved request count = %d, want 2", len(api.savedRequests))
+	}
+	if result == nil || len(result.Requests) != 2 {
+		t.Fatalf("result requests = %+v, want two SaveConfig requests", result)
 	}
 	if api.savedRequests[0].Type != marketing.AutoPartakeActivityTypeRegular || api.savedRequests[1].Type != marketing.AutoPartakeActivityTypeLimited {
 		t.Fatalf("saved request types = %d/%d, want regular/limited", api.savedRequests[0].Type, api.savedRequests[1].Type)
@@ -1126,18 +1129,18 @@ func TestRegisterPromotionProductsUsesSkuPricesForSaleAttributeGoods(t *testing.
 	}
 }
 
-func TestRegisterPromotionProductsUsesProvidedSkuPricesWhenPromotionGoodsSkuPricesAreMissing(t *testing.T) {
+func TestRegisterPromotionProductsUsesProvidedSkuPricesOverPromotionGoodsSkuPrices(t *testing.T) {
 	api := &promotionProductsMarketingAPIStub{
 		promotionGoods: []marketing.PromotionGoodsData{
 			{
 				Skc:              "sg-snapshot-prices",
 				IsSaleAttribute:  1,
 				InventoryNum:     100,
-				USSupplyPrice:    0,
-				MaxUSSupplyPrice: 0,
+				USSupplyPrice:    88,
+				MaxUSSupplyPrice: 88,
 				SkuInfoList: []marketing.PromotionSkuInfo{
-					{Sku: "sku-small"},
-					{Sku: "sku-large"},
+					{Sku: "sku-small", USSupplyPrice: promotionTestFloat64Ptr(88), MaxUSSupplyPrice: promotionTestFloat64Ptr(88)},
+					{Sku: "sku-large", USSupplyPrice: promotionTestFloat64Ptr(99), MaxUSSupplyPrice: promotionTestFloat64Ptr(99)},
 				},
 			},
 		},
@@ -1235,16 +1238,16 @@ func TestRegisterPromotionProductsUsesProvidedSkuPricesWhenPromotionGoodsSkuPric
 	}
 }
 
-func TestRegisterPromotionProductsUsesCandidateSalePriceWhenPromotionGoodsPriceIsMissing(t *testing.T) {
+func TestRegisterPromotionProductsUsesCandidateSalePriceOverPromotionGoodsPrice(t *testing.T) {
 	api := &promotionProductsMarketingAPIStub{
 		promotionGoods: []marketing.PromotionGoodsData{
 			{
 				Skc:              "sg-missing-price",
 				IsSaleAttribute:  1,
 				InventoryNum:     100,
-				USSupplyPrice:    0,
-				MaxUSSupplyPrice: 0,
-				SkuInfoList:      []marketing.PromotionSkuInfo{{Sku: "sku-missing-price-1"}},
+				USSupplyPrice:    62,
+				MaxUSSupplyPrice: 62,
+				SkuInfoList:      []marketing.PromotionSkuInfo{{Sku: "sku-missing-price-1", USSupplyPrice: promotionTestFloat64Ptr(62), MaxUSSupplyPrice: promotionTestFloat64Ptr(62)}},
 			},
 		},
 		calcResponse: &marketing.CalculateSupplyPriceResponse{
@@ -1257,8 +1260,8 @@ func TestRegisterPromotionProductsUsesCandidateSalePriceWhenPromotionGoodsPriceI
 						{
 							SkuCode: "sku-missing-price-1",
 							PriceInfo: marketing.PriceInfo{
-								ProductAmount:   30,
-								PromotionAmount: 6,
+								ProductAmount:   53.95,
+								PromotionAmount: 10.79,
 							},
 						},
 					},
@@ -1291,7 +1294,7 @@ func TestRegisterPromotionProductsUsesCandidateSalePriceWhenPromotionGoodsPriceI
 		[]marketing.SkcInfo{{
 			Skc: "sg-missing-price",
 			SitePriceInfoList: []marketing.SitePriceInfo{{
-				SalePrice:   30,
+				SalePrice:   53.95,
 				Currency:    "USD",
 				IsAvailable: true,
 			}},
@@ -1302,19 +1305,21 @@ func TestRegisterPromotionProductsUsesCandidateSalePriceWhenPromotionGoodsPriceI
 		t.Fatalf("RegisterPromotionProducts error = %v", err)
 	}
 	if api.calculated == nil || len(api.calculated.SkcInfoList) != 1 {
-		t.Fatalf("calculated request = %+v, want one SKC from candidate sale price fallback", api.calculated)
+		t.Fatalf("calculated request = %+v, want one SKC from candidate sale price", api.calculated)
 	}
 	sku := api.calculated.SkcInfoList[0].SkuInfoList[0]
-	if sku.ProductPrice != 30 || sku.DiscountValue != 24 {
-		t.Fatalf("sku price = %+v, want product 30 discount value 24", sku)
+	assertClose(t, sku.ProductPrice, 53.95)
+	assertClose(t, sku.DiscountValue, 43.16)
+	if sku.ProductPrice == 62 {
+		t.Fatalf("sku price = %+v, still using promotion goods price", sku)
 	}
 	if api.created == nil || len(api.created.AddCostAndStockInfoList) != 1 {
 		t.Fatalf("created request = %+v, want one created SKC", api.created)
 	}
 	created := api.created.AddCostAndStockInfoList[0]
-	if created.ProductActPrice != 24 || created.CostPrice != 30 || created.MaxProductActPrice != 30 {
-		t.Fatalf("created price = %+v, want fallback prices from candidate sale snapshot", created)
-	}
+	assertClose(t, created.ProductActPrice, 43.16)
+	assertClose(t, created.CostPrice, 53.95)
+	assertClose(t, created.MaxProductActPrice, 53.95)
 }
 
 func TestBuildCalculateRequestForPromotionProductsScalesProfitModeSkuPrices(t *testing.T) {

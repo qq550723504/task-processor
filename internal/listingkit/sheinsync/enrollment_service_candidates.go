@@ -166,7 +166,7 @@ func (s *sheinEnrollmentService) refreshCandidateCostOverrides(
 }
 
 func refreshSheinEnrollmentPriceSnapshot(existing string, product SheinSyncedProductRecord) string {
-	if product.AutoCostPrice == nil || *product.AutoCostPrice <= 0 {
+	if product.SupplyPrice == nil || *product.SupplyPrice <= 0 {
 		return existing
 	}
 
@@ -174,8 +174,17 @@ func refreshSheinEnrollmentPriceSnapshot(existing string, product SheinSyncedPro
 	if strings.TrimSpace(existing) != "" {
 		_ = json.Unmarshal([]byte(existing), &payload)
 	}
-	payload["sale_price"] = *product.AutoCostPrice
-	if strings.TrimSpace(product.Currency) != "" {
+	payload["sale_price"] = *product.SupplyPrice
+	if items, ok := payload["sku_prices"].([]any); ok {
+		for _, item := range items {
+			if entry, ok := item.(map[string]any); ok {
+				entry["sale_price"] = *product.SupplyPrice
+			}
+		}
+	}
+	if strings.TrimSpace(product.SupplyPriceCurrency) != "" {
+		payload["currency"] = strings.TrimSpace(product.SupplyPriceCurrency)
+	} else if strings.TrimSpace(product.Currency) != "" {
 		payload["currency"] = strings.TrimSpace(product.Currency)
 	} else if _, ok := payload["currency"]; !ok {
 		payload["currency"] = product.Currency

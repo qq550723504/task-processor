@@ -49,7 +49,7 @@ func (s *activityRegistrationServiceImpl) registerPromotionProducts(
 	if err := validateAutoPartakeDiscountsForStrategy(strategy); err != nil {
 		return 0, err
 	}
-	_, _, err := s.savePromotionConfigs(products, configList, activityTypes, strategy, "DISCOUNT")
+	_, _, _, _, err := s.savePromotionConfigs(products, configList, activityTypes, strategy, "DISCOUNT")
 	if err != nil {
 		return 0, err
 	}

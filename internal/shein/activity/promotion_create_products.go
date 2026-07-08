@@ -234,16 +234,16 @@ func enrichPromotionGoodsFromProductSnapshots(
 		if fallbackPrice <= 0 {
 			fallbackPrice = promotionProductSKUFallbackSalePrice(product, currency)
 		}
-		if item.USSupplyPrice <= 0 && fallbackPrice > 0 {
+		if fallbackPrice > 0 {
 			item.USSupplyPrice = fallbackPrice
 		}
-		if item.MaxUSSupplyPrice <= 0 && item.USSupplyPrice > 0 {
-			item.MaxUSSupplyPrice = item.USSupplyPrice
+		if fallbackPrice > 0 {
+			item.MaxUSSupplyPrice = fallbackPrice
 		}
 		if item.InventoryNum <= 0 && product.Stock > 0 {
 			item.InventoryNum = product.Stock
 		}
-		item.SkuInfoList = enrichPromotionSKUPricesFromProductSnapshot(item.SkuInfoList, product, configCurrencyOrDefault(currency))
+		item.SkuInfoList = enrichPromotionSKUPricesFromProductSnapshot(item.SkuInfoList, product, configCurrencyOrDefault(currency), fallbackPrice)
 		enriched = append(enriched, item)
 	}
 	return enriched
@@ -261,8 +261,9 @@ func enrichPromotionSKUPricesFromProductSnapshot(
 	skus []marketing.PromotionSkuInfo,
 	product marketing.SkcInfo,
 	preferredCurrency string,
+	fallbackPrice float64,
 ) []marketing.PromotionSkuInfo {
-	if len(skus) == 0 || len(product.SkuPriceInfoList) == 0 {
+	if len(skus) == 0 {
 		return skus
 	}
 	priceBySKU := make(map[string]marketing.SitePriceInfo, len(product.SkuPriceInfoList))
@@ -275,27 +276,20 @@ func enrichPromotionSKUPricesFromProductSnapshot(
 			priceBySKU[skuCode] = sitePrice
 		}
 	}
-	if len(priceBySKU) == 0 {
-		return skus
-	}
 	out := append([]marketing.PromotionSkuInfo(nil), skus...)
 	for idx := range out {
 		sitePrice, ok := priceBySKU[out[idx].Sku]
-		if !ok || sitePrice.SalePrice <= 0 {
+		price := sitePrice.SalePrice
+		if !ok || price <= 0 {
+			price = fallbackPrice
+		}
+		if price <= 0 {
 			continue
 		}
-		if out[idx].USSupplyPrice == nil || *out[idx].USSupplyPrice <= 0 {
-			out[idx].USSupplyPrice = promotionFloat64Ptr(sitePrice.SalePrice)
-		}
-		if out[idx].SupplyPrice == nil || *out[idx].SupplyPrice <= 0 {
-			out[idx].SupplyPrice = promotionFloat64Ptr(sitePrice.SalePrice)
-		}
-		if out[idx].MaxUSSupplyPrice == nil || *out[idx].MaxUSSupplyPrice <= 0 {
-			out[idx].MaxUSSupplyPrice = promotionFloat64Ptr(sitePrice.SalePrice)
-		}
-		if out[idx].MaxSupplyPrice == nil || *out[idx].MaxSupplyPrice <= 0 {
-			out[idx].MaxSupplyPrice = promotionFloat64Ptr(sitePrice.SalePrice)
-		}
+		out[idx].USSupplyPrice = promotionFloat64Ptr(price)
+		out[idx].SupplyPrice = promotionFloat64Ptr(price)
+		out[idx].MaxUSSupplyPrice = promotionFloat64Ptr(price)
+		out[idx].MaxSupplyPrice = promotionFloat64Ptr(price)
 	}
 	return out
 }
