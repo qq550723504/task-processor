@@ -304,8 +304,30 @@ func TestMergeSDSVariantSyncSummariesKeepsVariantFailureReason(t *testing.T) {
 	if merged.Status != "failed" {
 		t.Fatalf("status = %q", merged.Status)
 	}
-	if merged.Error != "SDS render failed for selected color variants: white" {
+	if merged.Error != "SDS render failed for selected color variants: white; detail: SDS template render returned empty result" {
 		t.Fatalf("error = %q", merged.Error)
+	}
+}
+
+func TestMergeSDSVariantSyncSummariesIncludesVariantFailureDetail(t *testing.T) {
+	merged := mergeSDSVariantSyncSummaries(&SDSSyncOptions{VariantID: 101}, []SDSSyncSummary{
+		{
+			VariantID:    101,
+			VariantColor: "white",
+			Status:       "failed",
+			Error:        "下载图片失败，HTTP状态码: 404",
+			Diagnostics: &SDSSyncDiagnostics{
+				MaterialImageURL: "https://oss.shuomiai.com/listingkit-assets/missing.png",
+			},
+		},
+	})
+
+	if merged.Status != "failed" {
+		t.Fatalf("status = %q", merged.Status)
+	}
+	want := "SDS render failed for selected color variants: white; detail: 下载图片失败，HTTP状态码: 404; source image: https://oss.shuomiai.com/listingkit-assets/missing.png"
+	if merged.Error != want {
+		t.Fatalf("error = %q, want %q", merged.Error, want)
 	}
 }
 

@@ -127,6 +127,34 @@ func TestDisplayAttributeTemplateBatchDoesNotLimitOutputBudget(t *testing.T) {
 	if !strings.Contains(promptText, "complete JSON") {
 		t.Fatalf("prompt = %q, want complete JSON instruction", promptText)
 	}
+	if !strings.Contains(promptText, "type=2") || !strings.Contains(promptText, "without units") {
+		t.Fatalf("prompt = %q, want numeric attributes to reject units", promptText)
+	}
+}
+
+func TestDisplayAttributeTemplateBatchStripsUnitsFromNumericTextValue(t *testing.T) {
+	attributes := []sheinattribute.AttributeInfo{{
+		AttributeID:       1002001,
+		AttributeName:     "主料克重",
+		AttributeNameEn:   "Main Fabric Weight",
+		AttributeType:     2,
+		AttributeStatus:   3,
+		AttributeInputNum: 1,
+	}}
+	inputs := []common.Attribute{{Name: "主料克重", Value: "200g"}}
+	llm := &captureAttributeLLM{
+		responses: []string{
+			`{"selections":[{"attribute_id":1002001,"attribute_extra_value":"200g","reasons":["source value is 200g"]}]}`,
+		},
+	}
+
+	resolved, _ := inferDisplayAttributesTemplateBatch(context.Background(), attributes, inputs, map[int]ResolvedAttribute{}, llm)
+	if len(resolved) != 1 {
+		t.Fatalf("resolved = %+v, want one numeric attribute", resolved)
+	}
+	if resolved[0].Value != "200" || resolved[0].AttributeExtraValue != "200" {
+		t.Fatalf("numeric value = %q extra = %q, want 200 without unit", resolved[0].Value, resolved[0].AttributeExtraValue)
+	}
 }
 
 func TestAttributeResolverSkipsSaleScopeAttributes(t *testing.T) {

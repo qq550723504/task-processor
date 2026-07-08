@@ -140,6 +140,9 @@ func inferDisplayAttributeTextFromContext(
 	if value == "" {
 		return ResolvedAttribute{}, append(selection.Reasons, selection.Reason), false
 	}
+	if classifyDisplayTemplateAttribute(attr).Kind == displayAttributeKindNumeric {
+		value = normalizeNumericDisplayAttributeValue(value)
+	}
 	match := ResolvedAttribute{
 		Name:                firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
 		Value:               value,
@@ -166,6 +169,7 @@ func buildMissingDisplayAttributeTextPrompt(attr sheinattribute.AttributeInfo, i
 	return renderSheinDisplayAttributePrompt(prompt.KSheinDisplayAttributeMissingText, `You infer one missing SHEIN display attribute text value from source product signals.
 Use only values explicitly present in source attributes. Do not invent marketing copy.
 If the source product does not clearly support a value, return an empty value.
+For numeric template attributes where type=2, return only the numeric value without units or surrounding text. Example: use "180" instead of "180g"; use "2.5" instead of "2.5 m".
 Return JSON only with keys value and reasons.
 
 Missing SHEIN template attribute: {{.TemplateAttribute}}

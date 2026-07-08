@@ -91,6 +91,9 @@ func inferDisplayAttributesTemplateBatch(
 				notes = append(notes, choice.Reasons...)
 				continue
 			}
+			if classifyDisplayTemplateAttribute(attr).Kind == displayAttributeKindNumeric {
+				value = normalizeNumericDisplayAttributeValue(value)
+			}
 			match := ResolvedAttribute{
 				Name:                firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
 				Value:               value,
@@ -236,6 +239,7 @@ Use full product context to make consistent choices across all attributes in one
 For every listed template attribute, you must return exactly one selection entry.
 For enum attributes, select only from the provided attribute_value_id options. Prefer the best-supported candidate when the evidence is directionally clear. Use 0 only when the evidence is genuinely absent or conflicting.
 For text attributes, fill attribute_extra_value only when the value is explicitly supported by source evidence. Do not invent product model names or marketing copy.
+For numeric attributes where type=2, attribute_extra_value must contain only the numeric value without units or surrounding text. Example: use "180" instead of "180g"; use "2.5" instead of "2.5 m".
 Return complete JSON only, without markdown or explanatory text:
 {"selections":[{"attribute_id":number,"attribute_value_id":number,"attribute_extra_value":string,"reasons":[string]}]}
 

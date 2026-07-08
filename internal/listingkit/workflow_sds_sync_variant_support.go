@@ -44,13 +44,22 @@ func mergeSDSVariantSyncSummaries(options *SDSSyncOptions, summaries []SDSSyncSu
 		merged.VariantID = options.VariantID
 	}
 	var failedColors []string
+	var failureDetails []string
+	var failureSourceImages []string
 	var authFailureDetail string
 	var primary *SDSSyncSummary
 	var renderedURLs []string
 	for _, summary := range summaries {
 		if summary.Status == "failed" || len(summary.MockupImageURLs) == 0 {
-			if authFailureDetail == "" && isSDSAuthRequiredError(fmt.Errorf("%s", strings.TrimSpace(summary.Error))) {
-				authFailureDetail = strings.TrimSpace(summary.Error)
+			errorDetail := strings.TrimSpace(summary.Error)
+			if authFailureDetail == "" && isSDSAuthRequiredError(fmt.Errorf("%s", errorDetail)) {
+				authFailureDetail = errorDetail
+			}
+			if errorDetail != "" {
+				failureDetails = append(failureDetails, errorDetail)
+			}
+			if summary.Diagnostics != nil && strings.TrimSpace(summary.Diagnostics.MaterialImageURL) != "" {
+				failureSourceImages = append(failureSourceImages, strings.TrimSpace(summary.Diagnostics.MaterialImageURL))
 			}
 			label := strings.TrimSpace(summary.VariantColor)
 			if label == "" {
@@ -81,7 +90,16 @@ func mergeSDSVariantSyncSummaries(options *SDSSyncOptions, summaries []SDSSyncSu
 	}
 	if len(failedColors) > 0 {
 		merged.Status = "failed"
-		merged.Error = "SDS render failed for selected color variants: " + strings.Join(uniqueNonEmptyStrings(failedColors), ", ")
+		errorParts := []string{
+			"SDS render failed for selected color variants: " + strings.Join(uniqueNonEmptyStrings(failedColors), ", "),
+		}
+		if details := uniqueNonEmptyStrings(failureDetails); len(details) > 0 {
+			errorParts = append(errorParts, "detail: "+strings.Join(details, " | "))
+		}
+		if sourceImages := uniqueNonEmptyStrings(failureSourceImages); len(sourceImages) > 0 {
+			errorParts = append(errorParts, "source image: "+strings.Join(sourceImages, " | "))
+		}
+		merged.Error = strings.Join(errorParts, "; ")
 		merged.MockupImageURLs = nil
 	}
 	return merged

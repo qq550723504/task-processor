@@ -71,11 +71,15 @@ func matchTemplateAttributeValueDeterministic(
 	}
 
 	template := classifyDisplayTemplateAttribute(attr)
+	resolvedValue := sourceValue
+	if template.Kind == displayAttributeKindNumeric {
+		resolvedValue = normalizeNumericDisplayAttributeValue(sourceValue)
+	}
 	base := ResolvedAttribute{
 		Name:                firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
-		Value:               sourceValue,
+		Value:               resolvedValue,
 		AttributeID:         attr.AttributeID,
-		AttributeExtraValue: sourceValue,
+		AttributeExtraValue: resolvedValue,
 		AttributeType:       attr.AttributeType,
 		AttributeMode:       attr.AttributeMode,
 		DataDimension:       attr.DataDimension,
@@ -86,7 +90,7 @@ func matchTemplateAttributeValueDeterministic(
 	}
 	switch template.Kind {
 	case displayAttributeKindNumeric:
-		return base, numericAttributeNotes(attr, sourceValue), nil, true
+		return base, numericAttributeNotes(attr, resolvedValue), nil, true
 	case displayAttributeKindComposition:
 		return base, compositionAttributeNotes(attr, sourceValue), nil, true
 	}

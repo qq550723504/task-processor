@@ -81,7 +81,13 @@ func (s *service) collectSDSVariantRemoteSummaries(
 		syncResult, err := s.performVariantSDSRemoteSync(ctx, task, imageURL, options, variant, syncService)
 		if err != nil {
 			finishSDSStageWithError(stage, recorder, "sds_variant_render_failed", "SDS variant render failed", err)
-			summaries = append(summaries, failedSDSVariantSyncSummary(variant, err.Error()))
+			failedSummary := failedSDSVariantSyncSummary(variant, err.Error())
+			if strings.TrimSpace(imageURL) != "" {
+				failedSummary.Diagnostics = &SDSSyncDiagnostics{
+					MaterialImageURL: strings.TrimSpace(imageURL),
+				}
+			}
+			summaries = append(summaries, failedSummary)
 			continue
 		}
 		if syncResult == nil {

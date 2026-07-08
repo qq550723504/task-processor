@@ -12,7 +12,7 @@ var numericTokenPattern = regexp.MustCompile(`[-+]?\d+(?:\.\d+)?`)
 
 func numericAttributeNotes(attr sheinattribute.AttributeInfo, sourceValue string) []string {
 	notes := []string{
-		fmt.Sprintf("SHEIN 数值属性待确认: 属性 %q 当前保留原始值 %q，后续需按模板规则校验单位/范围", firstNonEmpty(attr.AttributeNameEn, attr.AttributeName), sourceValue),
+		fmt.Sprintf("SHEIN 数值属性待确认: 属性 %q 当前保留数值 %q，后续需按模板规则校验范围", firstNonEmpty(attr.AttributeNameEn, attr.AttributeName), sourceValue),
 	}
 	if !containsNumericToken(sourceValue) {
 		notes = append(notes, fmt.Sprintf("SHEIN 数值属性值无效: 属性 %q 当前值 %q 未识别到有效数字", firstNonEmpty(attr.AttributeNameEn, attr.AttributeName), sourceValue))
@@ -25,4 +25,15 @@ func numericAttributeNotes(attr sheinattribute.AttributeInfo, sourceValue string
 
 func containsNumericToken(value string) bool {
 	return numericTokenPattern.FindString(strings.TrimSpace(value)) != ""
+}
+
+func normalizeNumericDisplayAttributeValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if numeric := numericTokenPattern.FindString(value); numeric != "" {
+		return numeric
+	}
+	return value
 }

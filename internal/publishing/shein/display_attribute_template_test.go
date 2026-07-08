@@ -69,6 +69,20 @@ func TestMatchTemplateAttributeValueReturnsNumericFallbackWithTemplateMetadata(t
 	}
 }
 
+func TestMatchTemplateAttributeValueStripsUnitsFromNumericFallback(t *testing.T) {
+	attr := sheinattribute.AttributeInfo{
+		AttributeID:     1002001,
+		AttributeName:   "主料克重",
+		AttributeNameEn: "Main Fabric Weight",
+		AttributeType:   2,
+	}
+
+	resolved, _ := matchTemplateAttributeValue(attr, "主料克重", "180g", nil, nil)
+	if resolved.Value != "180" || resolved.AttributeExtraValue != "180" {
+		t.Fatalf("numeric value = %q extra = %q, want 180 without unit", resolved.Value, resolved.AttributeExtraValue)
+	}
+}
+
 func TestNewDisplayTemplateIndexSkipsSaleAttributes(t *testing.T) {
 	idx := newDisplayTemplateIndex([]sheinattribute.AttributeInfo{
 		{
