@@ -1171,7 +1171,7 @@ describe("SheinStudioWorkbench", () => {
     expect(generateSheinStudioBatch).not.toHaveBeenCalled();
   });
 
-  it("starts a backend batch run when generate is clicked on a partially failed batch", async () => {
+  it("retries failed batch items when generate is clicked on a partially failed batch", async () => {
     getSheinStudioHydratedBatch.mockResolvedValue(
       buildHydratedBatch(
         {
@@ -1247,15 +1247,115 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试失败批次" }));
 
     await waitFor(() =>
-      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(
-        ["batch-1"],
-        "generate",
+      expect(retrySheinStudioBatchItems).toHaveBeenCalledWith("batch-1", [
+        "item-1",
+      ]),
+    );
+    expect(startSheinStudioBatchRun).not.toHaveBeenCalled();
+    expect(generateSheinStudioBatch).not.toHaveBeenCalled();
+  });
+
+  it("retries all failed items from the dedicated batch header retry button", async () => {
+    getSheinStudioHydratedBatch.mockResolvedValue(
+      buildHydratedBatch(
+        {
+          name: "Retro Cherries",
+          selection: undefined,
+          updatedAt: "2026-05-26T10:00:00.000Z",
+        },
+        {
+          batch: {
+            ...buildHydratedBatch().detail.batch,
+            status: "partially_failed",
+            tenantId: "tenant-detail",
+            updatedAt: "2026-05-26T10:06:00.000Z",
+          },
+          items: [
+            {
+              item: {
+                id: "item-1",
+                batchId: "batch-1",
+                targetGroupKey: "size:1000x1000",
+                status: "failed",
+                selectionCount: 1,
+                lastError: "excessive system load",
+                createdAt: "2026-05-26T09:59:00.000Z",
+                updatedAt: "2026-05-26T10:06:00.000Z",
+              },
+              designs: [],
+            },
+            {
+              item: {
+                id: "item-2",
+                batchId: "batch-1",
+                targetGroupKey: "size:1200x1200",
+                status: "failed",
+                selectionCount: 1,
+                lastError: "upstream timeout",
+                createdAt: "2026-05-26T09:59:00.000Z",
+                updatedAt: "2026-05-26T10:06:00.000Z",
+              },
+              designs: [],
+            },
+          ],
+        },
       ),
     );
-    expect(
-      await screen.findByText("batch run progress: run-default"),
-    ).toBeInTheDocument();
-    expect(retrySheinStudioBatchItems).not.toHaveBeenCalled();
+    retrySheinStudioBatchItems.mockResolvedValue({
+      ...buildHydratedBatch().detail,
+      batch: {
+        ...buildHydratedBatch().detail.batch,
+        status: "generating",
+        updatedAt: "2026-05-26T10:07:00.000Z",
+      },
+      items: [
+        {
+          item: {
+            id: "item-1",
+            batchId: "batch-1",
+            targetGroupKey: "size:1000x1000",
+            status: "generating",
+            selectionCount: 1,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:07:00.000Z",
+          },
+          designs: [],
+        },
+        {
+          item: {
+            id: "item-2",
+            batchId: "batch-1",
+            targetGroupKey: "size:1200x1200",
+            status: "generating",
+            selectionCount: 1,
+            createdAt: "2026-05-26T09:59:00.000Z",
+            updatedAt: "2026-05-26T10:07:00.000Z",
+          },
+          designs: [],
+        },
+      ],
+    });
+
+    render(
+      <SheinStudioWorkbench activeStep="generate" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("retro cherries")).toBeInTheDocument(),
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "重试失败款式 2 个" }),
+    );
+
+    await waitFor(() =>
+      expect(retrySheinStudioBatchItems).toHaveBeenCalledWith(
+        "batch-1",
+        ["item-1", "item-2"],
+        { tenantId: "tenant-detail" },
+      ),
+    );
+    expect(startSheinStudioBatchRun).not.toHaveBeenCalled();
     expect(generateSheinStudioBatch).not.toHaveBeenCalled();
   });
 
@@ -1734,36 +1834,6 @@ describe("SheinStudioWorkbench", () => {
           {
             batch: {
               ...buildHydratedBatch().detail.batch,
-              status: "partially_failed",
-              updatedAt: "2026-05-26T10:06:00.000Z",
-            },
-            items: [
-              {
-                item: {
-                  id: "item-1",
-                  batchId: "batch-1",
-                  targetGroupKey: "size:1000x1000",
-                  status: "failed",
-                  selectionCount: 1,
-                  lastError: "excessive system load",
-                  createdAt: "2026-05-26T09:59:00.000Z",
-                  updatedAt: "2026-05-26T10:06:00.000Z",
-                },
-                designs: [],
-              },
-            ],
-          },
-        ),
-      )
-      .mockResolvedValueOnce(
-        buildHydratedBatch(
-          {
-            name: "Retro Cherries",
-            updatedAt: "2026-05-26T10:00:00.000Z",
-          },
-          {
-            batch: {
-              ...buildHydratedBatch().detail.batch,
               status: "generating",
               updatedAt: "2026-05-26T10:07:00.000Z",
             },
@@ -1804,15 +1874,15 @@ describe("SheinStudioWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "重试失败批次" }));
 
     await waitFor(() =>
-      expect(startSheinStudioBatchRun).toHaveBeenCalledWith(
-        ["batch-1"],
-        "generate",
-      ),
+      expect(retrySheinStudioBatchItems).toHaveBeenCalledWith("batch-1", [
+        "item-1",
+      ]),
     );
+    expect(startSheinStudioBatchRun).not.toHaveBeenCalled();
+    expect(await screen.findByText("正在生成款式图")).toBeInTheDocument();
     expect(
-      await screen.findByText("batch run progress: run-default"),
-    ).toBeInTheDocument();
-    expect(retrySheinStudioBatchItems).not.toHaveBeenCalled();
+      screen.queryByText(/重试失败项失败：ListingKit API request failed: 504/),
+    ).not.toBeInTheDocument();
   });
 
   it("retries a single failed batch item without retriggering the whole failed set", async () => {

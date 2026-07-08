@@ -1280,6 +1280,55 @@ export function SheinStudioWorkbench({
     }
   }
 
+  async function handleRetryFailedItems() {
+    if (!activeBatchId || !itemizedBatchDetail) {
+      return;
+    }
+    const failedItemIds = itemizedBatchDetail.items
+      .filter((entry) => entry.item.status === "failed")
+      .map((entry) => entry.item.id);
+    if (failedItemIds.length === 0) {
+      return;
+    }
+
+    setRetryingFailedItemId("__all_failed__");
+    clearWorkbenchTaskRecoveryAlerts(workbenchController);
+
+    try {
+      const tenantId =
+        itemizedBatchDetail.batch.tenantId?.trim() ||
+        currentActiveBatch?.tenantId?.trim();
+      const nextDetail = tenantId
+        ? await retrySheinStudioBatchItems(activeBatchId, failedItemIds, {
+            tenantId,
+          })
+        : await retrySheinStudioBatchItems(activeBatchId, failedItemIds);
+      applyItemizedBatchDetail(nextDetail);
+      const nextStep = projectItemizedFailedRetryStep(nextDetail);
+      if (nextStep) {
+        setEffectiveStep(nextStep);
+      }
+    } catch (error) {
+      const hydratedBatch = await loadItemizedGenerationPollBatch({
+        activeBatchId,
+        getHydratedBatch: getSheinStudioHydratedBatch,
+      });
+      if (hydratedBatch) {
+        handleLoadHydratedBatchRef.current(hydratedBatch);
+        if (projectItemizedFailedRetryStep(hydratedBatch.detail)) {
+          setEffectiveStep("generate");
+          return;
+        }
+      }
+      workbenchController.setField(
+        "generationError",
+        `重试失败项失败：${formatSubscriptionApiError(error)}`,
+      );
+    } finally {
+      setRetryingFailedItemId("");
+    }
+  }
+
   const busyMessage = useSheinStudioBusyMessage({
     isCreatingTasks,
     isGenerating: effectiveIsGenerating,
@@ -1369,13 +1418,21 @@ export function SheinStudioWorkbench({
             </Button>
           ) : (
             <Button
-              disabled={isStartingDedicatedBatchRun}
-              onClick={handleStartDedicatedBatchRun}
+              disabled={isStartingDedicatedBatchRun || Boolean(retryingFailedItemId)}
+              onClick={() => {
+                if (hasRetryableFailedItems) {
+                  void handleRetryFailedItems();
+                  return;
+                }
+                handleStartDedicatedBatchRun();
+              }}
               size="sm"
               type="button"
               variant="default"
             >
-              {isStartingDedicatedBatchRun
+              {retryingFailedItemId
+                ? "正在重试..."
+                : isStartingDedicatedBatchRun
                 ? "正在启动..."
                 : dedicatedGenerateButtonLabel}
             </Button>
@@ -1595,7 +1652,11 @@ export function SheinStudioWorkbench({
                 actions={{
                   onCreateTasks: handleCreateTasks,
                   onDeleteBatch: handleDeleteBatch,
-                  onGenerate: handleGenerate,
+                  onGenerate: hasRetryableFailedItems
+                    ? () => {
+                        void handleRetryFailedItems();
+                      }
+                    : handleGenerate,
                   onLoadBatch: handleLoadBatch,
                   onRetryFailedItem: (itemId) => {
                     void handleRetryFailedItem(itemId);
