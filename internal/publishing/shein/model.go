@@ -56,8 +56,9 @@ type Package struct {
 	// Deprecated: kept only for JSON/history compatibility. New business code should use SubmissionState.
 	Submission *SubmissionReport `json:"submission,omitempty"`
 	// SubmissionState is the canonical SHEIN submission state used by current business logic.
-	SubmissionState *SubmissionReport `json:"submission_state,omitempty"`
-	Pricing         *PricingReview    `json:"pricing,omitempty"`
+	SubmissionState *SubmissionReport    `json:"submission_state,omitempty"`
+	Pricing         *PricingReview       `json:"pricing,omitempty"`
+	SizeAttributes  *SizeAttributeReview `json:"size_attributes,omitempty"`
 	// Deprecated: kept only for JSON/history compatibility. New business code should use FinalSubmissionDraft.
 	FinalDraft *FinalDraft `json:"final_draft,omitempty"`
 	// FinalSubmissionDraft is the canonical SHEIN final submission draft used by current business logic.
@@ -93,6 +94,14 @@ type PricingReview struct {
 	Cache            *ResolutionCacheInfo `json:"cache,omitempty"`
 	Ready            bool                 `json:"ready"`
 	UpdatedAt        *time.Time           `json:"updated_at,omitempty"`
+}
+
+type SizeAttributeReview struct {
+	Attributes      []sheinproduct.SizeAttribute `json:"attributes,omitempty"`
+	ManualOverrides map[string]string            `json:"manual_overrides,omitempty"`
+	Cache           *ResolutionCacheInfo         `json:"cache,omitempty"`
+	Ready           bool                         `json:"ready"`
+	UpdatedAt       *time.Time                   `json:"updated_at,omitempty"`
 }
 
 type SKUPriceReview struct {

@@ -17,15 +17,16 @@ type settingsAdminWiring struct {
 }
 
 type sheinAdminWiring struct {
-	repo                  Repository
-	recovery              *taskSubmissionRecoveryService
-	currentPricingRule    func() sheinpub.PricingRule
-	newSheinAPIClient     func(context.Context, *Task) (*sheinclient.APIClient, int64, error)
-	buildTaskPreview      func(context.Context, *Task, string) (*ListingKitPreview, error)
-	categoryResolver      sheinpub.CategoryResolver
-	attributeResolver     sheinpub.AttributeResolver
-	saleAttributeResolver sheinpub.SaleAttributeResolver
-	clearPricingCache     func(*sheinpub.BuildRequest, *sheinpub.Package) error
+	repo                    Repository
+	recovery                *taskSubmissionRecoveryService
+	currentPricingRule      func() sheinpub.PricingRule
+	newSheinAPIClient       func(context.Context, *Task) (*sheinclient.APIClient, int64, error)
+	buildTaskPreview        func(context.Context, *Task, string) (*ListingKitPreview, error)
+	categoryResolver        sheinpub.CategoryResolver
+	attributeResolver       sheinpub.AttributeResolver
+	saleAttributeResolver   sheinpub.SaleAttributeResolver
+	clearPricingCache       func(*sheinpub.BuildRequest, *sheinpub.Package) error
+	clearSizeAttributeCache func(*sheinpub.BuildRequest, *sheinpub.Package) error
 }
 
 func buildSettingsAdminWiring(s *service) settingsAdminWiring {
@@ -52,15 +53,16 @@ func buildSheinAdminWiring(s *service) sheinAdminWiring {
 	repository := buildServiceRepositoryWiring(s)
 	preview := buildTaskPreviewAccessWiring(s)
 	return sheinAdminWiring{
-		repo:                  repository.repo,
-		recovery:              s.taskSubmissionRecoveryOrDefault(),
-		currentPricingRule:    s.currentSheinPricingRule,
-		newSheinAPIClient:     s.newSheinAPIClient,
-		buildTaskPreview:      preview.buildTaskPreview,
-		categoryResolver:      resolveSheinCategoryResolver(s),
-		attributeResolver:     resolveSheinAttributeResolver(s),
-		saleAttributeResolver: resolveSheinSaleAttributeResolver(s),
-		clearPricingCache:     s.clearSheinPricingCache,
+		repo:                    repository.repo,
+		recovery:                s.taskSubmissionRecoveryOrDefault(),
+		currentPricingRule:      s.currentSheinPricingRule,
+		newSheinAPIClient:       s.newSheinAPIClient,
+		buildTaskPreview:        preview.buildTaskPreview,
+		categoryResolver:        resolveSheinCategoryResolver(s),
+		attributeResolver:       resolveSheinAttributeResolver(s),
+		saleAttributeResolver:   resolveSheinSaleAttributeResolver(s),
+		clearPricingCache:       s.clearSheinPricingCache,
+		clearSizeAttributeCache: s.clearSheinSizeAttributeCache,
 	}
 }
 
@@ -91,14 +93,15 @@ func buildSettingsAdminServiceConfigWithWiring(wiring settingsAdminWiring) setti
 
 func buildSheinAdminServiceConfigWithWiring(wiring sheinAdminWiring) sheinAdminServiceConfig {
 	return sheinAdminServiceConfig{
-		repo:                  wiring.repo,
-		recovery:              wiring.recovery,
-		currentPricingRule:    wiring.currentPricingRule,
-		newSheinAPIClient:     wiring.newSheinAPIClient,
-		buildTaskPreview:      wiring.buildTaskPreview,
-		categoryResolver:      wiring.categoryResolver,
-		attributeResolver:     wiring.attributeResolver,
-		saleAttributeResolver: wiring.saleAttributeResolver,
-		clearPricingCache:     wiring.clearPricingCache,
+		repo:                    wiring.repo,
+		recovery:                wiring.recovery,
+		currentPricingRule:      wiring.currentPricingRule,
+		newSheinAPIClient:       wiring.newSheinAPIClient,
+		buildTaskPreview:        wiring.buildTaskPreview,
+		categoryResolver:        wiring.categoryResolver,
+		attributeResolver:       wiring.attributeResolver,
+		saleAttributeResolver:   wiring.saleAttributeResolver,
+		clearPricingCache:       wiring.clearPricingCache,
+		clearSizeAttributeCache: wiring.clearSizeAttributeCache,
 	}
 }

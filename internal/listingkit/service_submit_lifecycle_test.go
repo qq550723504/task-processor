@@ -331,6 +331,12 @@ func TestSubmitTaskRejectsCodeZeroPublishWhenInfoSuccessIsFalse(t *testing.T) {
 
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
+	task.Result.Shein.RequestDraft.SizeAttributeList = []sheinproduct.SizeAttribute{{
+		AttributeID:                15,
+		AttributeExtraValue:        "112",
+		RelateSaleAttributeID:      87,
+		RelateSaleAttributeValueID: 267,
+	}}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -382,6 +388,12 @@ func TestSubmitTaskRemembersSheinResolutionCacheAfterPublishSuccess(t *testing.T
 
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
+	task.Result.Shein.RequestDraft.SizeAttributeList = []sheinproduct.SizeAttribute{{
+		AttributeID:                15,
+		AttributeExtraValue:        "112",
+		RelateSaleAttributeID:      87,
+		RelateSaleAttributeValueID: 267,
+	}}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("create task: %v", err)
 	}
@@ -426,22 +438,25 @@ func TestSubmitTaskRemembersSheinResolutionCacheAfterPublishSuccess(t *testing.T
 	if preview.Shein.ResolutionCache == nil ||
 		preview.Shein.ResolutionCache.Category == nil ||
 		preview.Shein.ResolutionCache.Attributes == nil ||
-		preview.Shein.ResolutionCache.SaleAttributes == nil {
-		t.Fatalf("resolution cache summary = %+v, want category/attribute/sale_attribute after publish", preview.Shein.ResolutionCache)
+		preview.Shein.ResolutionCache.SaleAttributes == nil ||
+		preview.Shein.ResolutionCache.SizeAttributes == nil {
+		t.Fatalf("resolution cache summary = %+v, want category/attribute/sale_attribute/size_attribute after publish", preview.Shein.ResolutionCache)
 	}
 	if preview.Shein.ResolutionCache.Category.HitSource != sheinpub.ResolutionCacheHitSourcePublishRemembered ||
 		preview.Shein.ResolutionCache.Attributes.HitSource != sheinpub.ResolutionCacheHitSourcePublishRemembered ||
-		preview.Shein.ResolutionCache.SaleAttributes.HitSource != sheinpub.ResolutionCacheHitSourcePublishRemembered {
+		preview.Shein.ResolutionCache.SaleAttributes.HitSource != sheinpub.ResolutionCacheHitSourcePublishRemembered ||
+		preview.Shein.ResolutionCache.SizeAttributes.HitSource != sheinpub.ResolutionCacheHitSourcePublishRemembered {
 		t.Fatalf("resolution cache hit sources = %+v, want publish_remembered", preview.Shein.ResolutionCache)
 	}
 	if preview.Shein.ResolutionCache.Pricing == nil || preview.Shein.ResolutionCache.Pricing.UpdatedAt == nil {
 		t.Fatalf("pricing resolution cache = %+v, want updated_at after publish", preview.Shein.ResolutionCache.Pricing)
 	}
 	entries := cacheStore.snapshot()
-	if len(entries) != 4 {
-		t.Fatalf("cache entry count = %d, want 4 including pricing: %+v", len(entries), entries)
+	if len(entries) != 5 {
+		t.Fatalf("cache entry count = %d, want 5 including pricing and size_attribute: %+v", len(entries), entries)
 	}
 	foundPricing := false
+	foundSizeAttribute := false
 	for _, entry := range entries {
 		if entry.Source != "manual_cache" || !entry.Manual {
 			t.Fatalf("cache entry = %+v, want manual_cache confirmed by publish", entry)
@@ -449,9 +464,15 @@ func TestSubmitTaskRemembersSheinResolutionCacheAfterPublishSuccess(t *testing.T
 		if entry.CacheKind == sheinpub.ResolutionCacheKindPricing {
 			foundPricing = true
 		}
+		if entry.CacheKind == sheinpub.ResolutionCacheKindSizeAttribute {
+			foundSizeAttribute = true
+		}
 	}
 	if !foundPricing {
 		t.Fatalf("cache entries = %+v, want pricing cache entry", entries)
+	}
+	if !foundSizeAttribute {
+		t.Fatalf("cache entries = %+v, want size_attribute cache entry", entries)
 	}
 }
 

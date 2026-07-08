@@ -67,6 +67,7 @@ func (p *platformPostprocessPhase) run(
 			appendWarning(final, "shein content optimization skipped: "+err.Error())
 		}
 	}
+	p.service.applyDefaultSheinSizeAttributes(task.Request, final.Shein)
 	p.service.applyDefaultSheinPricing(task.Request, final.Shein)
 	if shouldUseSDSOfficialImages(task.Request) {
 		applySDSOfficialImagesToShein(final.Shein, task.Request, final.SDSDesignResult, sdsOptions)

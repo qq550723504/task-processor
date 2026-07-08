@@ -15,6 +15,7 @@ const (
 	ResolutionCacheKindCategory                  = "category"
 	ResolutionCacheKindAttribute                 = "attribute"
 	ResolutionCacheKindSaleAttribute             = "sale_attribute"
+	ResolutionCacheKindSizeAttribute             = "size_attribute"
 	ResolutionCacheKindPricing                   = "pricing"
 	ResolutionCacheKindSaleAttributeCustomDenied = "sale_attribute_custom_denied"
 

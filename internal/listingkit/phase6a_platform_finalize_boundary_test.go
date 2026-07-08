@@ -88,6 +88,7 @@ func TestWorkflowPlatformPostprocessPhaseOwnsSheinPostprocessCompatibility(t *te
 
 	for _, needle := range []string{
 		"sheinpub.OptimizePackageReviewContent(",
+		"p.service.applyDefaultSheinSizeAttributes(",
 		"p.service.applyDefaultSheinPricing(",
 		"applySDSOfficialImagesToShein(",
 		"applySheinSizeReferenceImages(",

@@ -13,6 +13,7 @@ func (s *service) rememberSheinSubmittedResolution(task *Task, action string) {
 	s.rememberSheinCategoryResolution(task)
 	s.rememberSheinAttributeResolution(task)
 	s.rememberSheinSaleAttributeResolution(task)
+	s.rememberSheinSubmittedSizeAttributes(task, action)
 	s.rememberSheinSubmittedPricing(task, action)
 }
 

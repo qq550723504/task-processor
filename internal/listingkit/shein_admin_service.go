@@ -14,40 +14,43 @@ import (
 )
 
 type sheinAdminServiceConfig struct {
-	repo                  Repository
-	recovery              *taskSubmissionRecoveryService
-	currentPricingRule    func() sheinpub.PricingRule
-	newSheinAPIClient     func(context.Context, *Task) (*sheinclient.APIClient, int64, error)
-	buildTaskPreview      func(context.Context, *Task, string) (*ListingKitPreview, error)
-	categoryResolver      sheinpub.CategoryResolver
-	attributeResolver     sheinpub.AttributeResolver
-	saleAttributeResolver sheinpub.SaleAttributeResolver
-	clearPricingCache     func(*sheinpub.BuildRequest, *sheinpub.Package) error
+	repo                    Repository
+	recovery                *taskSubmissionRecoveryService
+	currentPricingRule      func() sheinpub.PricingRule
+	newSheinAPIClient       func(context.Context, *Task) (*sheinclient.APIClient, int64, error)
+	buildTaskPreview        func(context.Context, *Task, string) (*ListingKitPreview, error)
+	categoryResolver        sheinpub.CategoryResolver
+	attributeResolver       sheinpub.AttributeResolver
+	saleAttributeResolver   sheinpub.SaleAttributeResolver
+	clearPricingCache       func(*sheinpub.BuildRequest, *sheinpub.Package) error
+	clearSizeAttributeCache func(*sheinpub.BuildRequest, *sheinpub.Package) error
 }
 
 type sheinAdminService struct {
-	repo                  Repository
-	recovery              *taskSubmissionRecoveryService
-	currentPricingRule    func() sheinpub.PricingRule
-	newSheinAPIClient     func(context.Context, *Task) (*sheinclient.APIClient, int64, error)
-	buildTaskPreview      func(context.Context, *Task, string) (*ListingKitPreview, error)
-	categoryResolver      sheinpub.CategoryResolver
-	attributeResolver     sheinpub.AttributeResolver
-	saleAttributeResolver sheinpub.SaleAttributeResolver
-	clearPricingCache     func(*sheinpub.BuildRequest, *sheinpub.Package) error
+	repo                    Repository
+	recovery                *taskSubmissionRecoveryService
+	currentPricingRule      func() sheinpub.PricingRule
+	newSheinAPIClient       func(context.Context, *Task) (*sheinclient.APIClient, int64, error)
+	buildTaskPreview        func(context.Context, *Task, string) (*ListingKitPreview, error)
+	categoryResolver        sheinpub.CategoryResolver
+	attributeResolver       sheinpub.AttributeResolver
+	saleAttributeResolver   sheinpub.SaleAttributeResolver
+	clearPricingCache       func(*sheinpub.BuildRequest, *sheinpub.Package) error
+	clearSizeAttributeCache func(*sheinpub.BuildRequest, *sheinpub.Package) error
 }
 
 func newSheinAdminService(config sheinAdminServiceConfig) *sheinAdminService {
 	return &sheinAdminService{
-		repo:                  config.repo,
-		recovery:              config.recovery,
-		currentPricingRule:    config.currentPricingRule,
-		newSheinAPIClient:     config.newSheinAPIClient,
-		buildTaskPreview:      config.buildTaskPreview,
-		categoryResolver:      config.categoryResolver,
-		attributeResolver:     config.attributeResolver,
-		saleAttributeResolver: config.saleAttributeResolver,
-		clearPricingCache:     config.clearPricingCache,
+		repo:                    config.repo,
+		recovery:                config.recovery,
+		currentPricingRule:      config.currentPricingRule,
+		newSheinAPIClient:       config.newSheinAPIClient,
+		buildTaskPreview:        config.buildTaskPreview,
+		categoryResolver:        config.categoryResolver,
+		attributeResolver:       config.attributeResolver,
+		saleAttributeResolver:   config.saleAttributeResolver,
+		clearPricingCache:       config.clearPricingCache,
+		clearSizeAttributeCache: config.clearSizeAttributeCache,
 	}
 }
 
@@ -166,7 +169,7 @@ func (s *sheinAdminService) ClearSheinResolutionCache(ctx context.Context, taskI
 	if kind == "" {
 		kind = "all"
 	}
-	if kind != "all" && kind != sheinpub.ResolutionCacheKindCategory && kind != sheinpub.ResolutionCacheKindAttribute && kind != sheinpub.ResolutionCacheKindSaleAttribute && kind != sheinpub.ResolutionCacheKindPricing {
+	if kind != "all" && kind != sheinpub.ResolutionCacheKindCategory && kind != sheinpub.ResolutionCacheKindAttribute && kind != sheinpub.ResolutionCacheKindSaleAttribute && kind != sheinpub.ResolutionCacheKindSizeAttribute && kind != sheinpub.ResolutionCacheKindPricing {
 		return nil, ErrInvalidSheinResolutionCacheKind
 	}
 
@@ -302,6 +305,14 @@ func (s *sheinAdminService) clearSheinAdminResolutionKinds(kind string, buildReq
 				return nil, err
 			}
 			deletedKinds = append(deletedKinds, sheinpub.ResolutionCacheKindSaleAttribute)
+		}
+	}
+	if kind == "all" || kind == sheinpub.ResolutionCacheKindSizeAttribute {
+		if s.clearSizeAttributeCache != nil {
+			if err := s.clearSizeAttributeCache(buildReq, pkg); err != nil {
+				return nil, err
+			}
+			deletedKinds = append(deletedKinds, sheinpub.ResolutionCacheKindSizeAttribute)
 		}
 	}
 	if kind == "all" || kind == sheinpub.ResolutionCacheKindPricing {

@@ -19,7 +19,12 @@ import type {
   SheinResolutionCacheSummary,
 } from "@/lib/types/listingkit";
 
-export type ResolutionCacheKind = "category" | "attribute" | "sale_attribute" | "pricing";
+export type ResolutionCacheKind =
+  | "category"
+  | "attribute"
+  | "sale_attribute"
+  | "size_attribute"
+  | "pricing";
 
 export function ResolutionCacheRow({
   title,
@@ -292,7 +297,7 @@ export function ResolutionCacheSummaryCard({
             解析缓存
           </p>
           <p className="text-sm leading-6 text-zinc-700">
-            分类、普通属性、销售属性、价格的缓存来源和命中状态。
+            分类、普通属性、销售属性、尺码表、价格的缓存来源和命中状态。
           </p>
         </div>
         <ResolutionCacheRow
@@ -314,6 +319,13 @@ export function ResolutionCacheSummaryCard({
           item={resolutionCache?.sale_attributes}
           kind="sale_attribute"
           isClearing={clearingResolutionCacheKind === "sale_attribute"}
+          onClear={onClearResolutionCache}
+        />
+        <ResolutionCacheRow
+          title="尺码表"
+          item={resolutionCache?.size_attributes}
+          kind="size_attribute"
+          isClearing={clearingResolutionCacheKind === "size_attribute"}
           onClear={onClearResolutionCache}
         />
         <ResolutionCacheRow

@@ -12,6 +12,7 @@ type ResolutionCacheSummary struct {
 	Category       *sheinpub.ResolutionCacheInfo `json:"category,omitempty"`
 	Attributes     *sheinpub.ResolutionCacheInfo `json:"attributes,omitempty"`
 	SaleAttributes *sheinpub.ResolutionCacheInfo `json:"sale_attributes,omitempty"`
+	SizeAttributes *sheinpub.ResolutionCacheInfo `json:"size_attributes,omitempty"`
 	Pricing        *sheinpub.ResolutionCacheInfo `json:"pricing,omitempty"`
 }
 
@@ -50,7 +51,11 @@ func BuildResolutionCacheSummary(pkg *sheinpub.Package) *ResolutionCacheSummary 
 		summary.Pricing = sheinpub.CloneResolutionCacheInfo(pkg.Pricing.Cache)
 		enrichPricingResolutionCacheInfo(summary.Pricing, pkg.Pricing)
 	}
-	if summary.Category == nil && summary.Attributes == nil && summary.SaleAttributes == nil && summary.Pricing == nil {
+	if pkg.SizeAttributes != nil {
+		summary.SizeAttributes = sheinpub.CloneResolutionCacheInfo(pkg.SizeAttributes.Cache)
+		enrichSizeAttributeResolutionCacheInfo(summary.SizeAttributes, pkg.SizeAttributes)
+	}
+	if summary.Category == nil && summary.Attributes == nil && summary.SaleAttributes == nil && summary.SizeAttributes == nil && summary.Pricing == nil {
 		return nil
 	}
 	return summary
@@ -249,4 +254,18 @@ func enrichPricingResolutionCacheInfo(info *sheinpub.ResolutionCacheInfo, review
 		return
 	}
 	info.DisplayValue = fmt.Sprintf("%d SKU；%s %.2f - %.2f", count, currency, minPrice, maxPrice)
+}
+
+func enrichSizeAttributeResolutionCacheInfo(info *sheinpub.ResolutionCacheInfo, review *sheinpub.SizeAttributeReview) {
+	if info == nil || review == nil {
+		return
+	}
+	if info.UpdatedAt == nil && review.UpdatedAt != nil {
+		updatedAt := *review.UpdatedAt
+		info.UpdatedAt = &updatedAt
+	}
+	if len(review.Attributes) == 0 {
+		return
+	}
+	info.DisplayValue = fmt.Sprintf("%d 个尺码表值", len(review.Attributes))
 }

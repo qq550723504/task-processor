@@ -178,6 +178,7 @@ export type SheinResolutionCacheSummary = {
   category?: SheinResolutionCacheInfo;
   attributes?: SheinResolutionCacheInfo;
   sale_attributes?: SheinResolutionCacheInfo;
+  size_attributes?: SheinResolutionCacheInfo;
   pricing?: SheinResolutionCacheInfo;
 };
 
