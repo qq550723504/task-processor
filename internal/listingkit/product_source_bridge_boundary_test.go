@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestProductSourceBridgeImportsOnlyNeutralFacts(t *testing.T) {
+func TestSourceFactsBridgeImportsOnlyNeutralFacts(t *testing.T) {
 	t.Parallel()
 
 	allowedImports := map[string]struct{}{
