@@ -1,6 +1,8 @@
 # Next Phase Refactoring Plan
 
-> Status: active next-phase plan after the ListingKit boundary checkpoint, service slimming wave, and HTTPAPI runtime inventory.
+> Status: active next-phase plan after the ListingKit boundary checkpoint, service slimming wave, HTTPAPI runtime inventory, and generated-baseline cleanup.
+>
+> Last reviewed: 2026-07-09.
 
 ## 1. Current Position
 
@@ -11,8 +13,9 @@ Current read:
 - ListingKit file-group slimming has reached a checkpoint.
 - Submission refactoring has moved from file grouping into boundary migration and guardrail work.
 - HTTPAPI runtime assembly inventory exists and shows `internal/app/httpapi` is mostly in the right shape.
-- Import boundary tests are now part of the active architecture guardrail system.
-- Further work should prioritize ownership reduction and boundary enforcement, not more helper shaving.
+- Import boundary tests are part of the active architecture guardrail system.
+- Generated package/dependency baselines are local evidence, not committed architecture documents.
+- Further work should prioritize ownership reduction and boundary enforcement, not helper shaving.
 
 This plan supersedes ad-hoc continuation of file splitting when the split does not reduce ownership, import pressure, or runtime/business coupling.
 
@@ -25,7 +28,8 @@ The next phase should focus on:
 1. validating and freezing the current checkpoint,
 2. keeping `httpapi` assembly-only,
 3. moving only small, stable ownership seams into target domains,
-4. strengthening boundary tests and allowlist discipline.
+4. strengthening boundary tests and allowlist discipline,
+5. keeping generated refactoring evidence out of committed docs unless it is deliberately promoted to a dated validation note.
 
 ## 3. Current Phase Status
 
@@ -38,6 +42,7 @@ The next phase should focus on:
 | SHEIN marketplace rules | Active small-step migration | Move new pure rules to marketplace/publishing/workspace homes |
 | Product sourcing | Target exists | Move only source normalization seams when crawler adapters remain thin |
 | Boundary tests | Active | Stabilize and explain allowlists before more migration |
+| Generated baselines | Local evidence only | Write outputs under `.local/` or a dated validation note, not long-lived refactoring docs |
 
 ## 4. Immediate Priorities
 
@@ -58,18 +63,20 @@ Then run broader validation when practical:
 
 ```powershell
 go test ./... -count=1
-./scripts/analyze-project-deps.ps1 6>&1 | Tee-Object -FilePath docs/refactoring/dependency-baseline-output.txt
+New-Item -ItemType Directory -Force .local/refactoring | Out-Null
+./scripts/analyze-project-deps.ps1 6>&1 | Tee-Object -FilePath .local/refactoring/dependency-baseline-output.txt
 ```
 
 Acceptance criteria:
 
 - Test failures are classified as refactor regressions, flaky fixtures, stale allowlists, or legacy exceptions.
 - Import boundary allowlists explain real temporary exceptions.
+- Generated package/dependency outputs are treated as local evidence unless a dated validation note explicitly summarizes them.
 - No new broad refactoring starts while basic checkpoint validation is red.
 
 ### Priority 2: HTTPAPI runtime checkpoint closeout
 
-`docs/refactoring/httpapi-runtime-inventory.md` already records the current HTTPAPI runtime inventory.
+`docs/refactoring/httpapi-runtime-inventory.md` records the current HTTPAPI runtime inventory.
 
 Next action is not another broad split. Instead:
 
@@ -122,12 +129,14 @@ Scope:
 - Fix true refactor regressions.
 - Stabilize flaky fixtures only when required.
 - Update import allowlists only with a clear temporary reason.
+- Keep generated dependency/package outputs in `.local/` unless their result is summarized in a dated validation note.
 
 Do not:
 
 - move more code,
 - rename more files,
-- introduce new package boundaries.
+- introduce new package boundaries,
+- commit generated baseline snapshots.
 
 ### PR B: Close HTTPAPI runtime checkpoint
 
@@ -157,7 +166,7 @@ refactor: move one submission policy seam
 
 Scope:
 
-- Pick a single read-only policy currently still owned by root ListingKit or the remaining compatibility adapter.
+- Pick a single read-only policy currently still owned by root ListingKit.
 - Move it to `internal/listing/submission` only if it does not require root models.
 - Keep persistence, side effects, Temporal activity flow, and SHEIN API calls out of the target package.
 
@@ -221,6 +230,7 @@ Scope:
 - Keep crawler packages focused on extraction/runtime adapters.
 - Move source-result normalization and source identity toward `internal/product/sourcing`.
 - Avoid marketplace publishing packages absorbing crawler ownership.
+- Use `docs/product/product-sourcing-handoff.md` as the current handoff guide.
 
 ## 6. Stop Conditions
 
@@ -232,7 +242,8 @@ Pause and document instead of continuing if any proposed slice:
 - moves runtime client construction into a business package,
 - combines behavior change with package movement,
 - only reduces file size without changing ownership or boundary clarity,
-- requires broad allowlist expansion without a migration explanation.
+- requires broad allowlist expansion without a migration explanation,
+- depends on stale generated package/dependency snapshots.
 
 ## 7. Boundary Rules For New Code
 
@@ -263,7 +274,8 @@ Mitigation:
 
 - prefer tests and guardrails before new extraction,
 - prefer target-domain seams over compatibility-shell grooming,
-- keep every PR tied to an explicit ownership improvement.
+- keep every PR tied to an explicit ownership improvement,
+- keep transient evidence under `.local/` unless promoted into a dated validation note.
 
 ## 9. Definition Of Done For The Next Phase
 
@@ -273,7 +285,9 @@ The next phase is complete when:
 - HTTPAPI runtime assembly checkpoint is current,
 - at least one small target-domain ownership seam is migrated with guard coverage,
 - import boundary allowlists are stable and explained,
-- `internal/listingkit` receives no new broad policy ownership.
+- product-source handoff rules are documented and followed by new source work,
+- `internal/listingkit` receives no new broad policy ownership,
+- generated baseline outputs are not committed as long-lived docs.
 
 ## 10. Recommended Immediate Next Step
 
@@ -290,5 +304,6 @@ go test ./tests/... -count=1
 
 Then choose either:
 
-1. update the HTTPAPI runtime checkpoint if the latest split changed the inventory, or
-2. move one small read-only policy seam to `internal/listing/submission`.
+1. update the HTTPAPI runtime checkpoint if the latest split changed the inventory,
+2. move one small read-only policy seam to `internal/listing/submission`, or
+3. start the product sourcing handoff work described in `docs/product/product-sourcing-handoff.md`.
