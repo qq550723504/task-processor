@@ -8,8 +8,8 @@ import (
 	"task-processor/internal/catalog"
 )
 
-func TestGenerateRequestFromProductSourceFactsMapsNeutralFacts(t *testing.T) {
-	req := GenerateRequestFromProductSourceFacts(ProductSourceGenerateRequestInput{
+func TestGenerateRequestFromSourceFactsMapsNeutralFacts(t *testing.T) {
+	req := GenerateRequestFromSourceFacts(SourceFactsGenerateRequestInput{
 		TenantID: " tenant-1 ",
 		UserID:   " user-1 ",
 		Product: catalog.ProductFacts{
@@ -66,8 +66,8 @@ func TestGenerateRequestFromProductSourceFactsMapsNeutralFacts(t *testing.T) {
 	}
 }
 
-func TestGenerateRequestFromProductSourceFactsKeepsExplicitCategoryHint(t *testing.T) {
-	req := GenerateRequestFromProductSourceFacts(ProductSourceGenerateRequestInput{
+func TestGenerateRequestFromSourceFactsKeepsExplicitCategoryHint(t *testing.T) {
+	req := GenerateRequestFromSourceFacts(SourceFactsGenerateRequestInput{
 		Product: catalog.ProductFacts{Attributes: map[string]string{"category": "Source Category"}},
 		TargetCategoryHint: " Explicit Category ",
 	})
@@ -77,8 +77,8 @@ func TestGenerateRequestFromProductSourceFactsKeepsExplicitCategoryHint(t *testi
 	}
 }
 
-func TestGenerateRequestFromProductSourceFactsDoesNotRequireAssetsOrPlatforms(t *testing.T) {
-	req := GenerateRequestFromProductSourceFacts(ProductSourceGenerateRequestInput{
+func TestGenerateRequestFromSourceFactsDoesNotRequireAssetsOrPlatforms(t *testing.T) {
+	req := GenerateRequestFromSourceFacts(SourceFactsGenerateRequestInput{
 		Product: catalog.ProductFacts{Title: "Only Title"},
 	})
 
