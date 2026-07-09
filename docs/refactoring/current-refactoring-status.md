@@ -2,7 +2,7 @@
 
 > Status: active current-state document.
 >
-> Last reviewed: 2026-06-27.
+> Last reviewed: 2026-07-09.
 >
 > Scope: refactoring closeout, growth sequencing, and the current Now / Next / Later direction for Task Processor / ListingKit.
 
@@ -25,6 +25,7 @@ Use this file together with:
 - `docs/refactoring/next-phase-plan.md`
 - `docs/refactoring/listingkit-boundary-checkpoint.md`
 - `docs/refactoring/decisions/2026-06-26-next-growth-sequence.md`
+- `docs/development/repository-structure.md`
 
 ## 2. Now
 
@@ -34,27 +35,28 @@ The current active work should focus on closeout and stabilization, not broad fe
 
 Required next work:
 
-1. Keep the listing runtime boundary free of the retired management service; the retired `internal/infra/clients/management` package no longer exists as a Go package, and boundary tests keep the old import paths from being reintroduced.
-2. Keep bootstrap shared resources on the `internal/listingruntime/local` provider/runtime path; that package now owns the local runtime implementation used by bootstrap. HTTP task-RPC/login and processor-base seams use explicit ports or retired/unavailable behavior instead of reviving a broad retired management service.
+1. Keep listing runtime and app runtime boundaries free of the retired management-service semantics. The concrete `internal/infra/clients/management` adapter package still exists as a legacy retirement target, but new runtime/task/status/store/product/pricing/health paths should not reintroduce a broad management service dependency.
+2. Keep bootstrap shared resources on the current local provider/runtime path; HTTP task-RPC/login and processor-base seams should use explicit ports or retired/unavailable behavior instead of reviving a broad retired management service.
 3. Keep `internal/listingkit` as orchestration, compatibility, DTO adaptation, persistence ordering, and API shell glue.
 4. Do not continue splitting files just because a helper can move.
 5. Keep every new migration tied to an explicit ownership reduction.
 
 ### 2.2 Control Plane and runtime validation
 
-The backend Go Listing Control Plane hardening path has production closeout evidence, but the current closeout still needs stable operational proof around the broader runtime.
+The backend Go Listing Control Plane path now has first-class repository support: `cmd/listing-control-plane` is an official runtime entrypoint, Docker deployment support exists, and CI builds it together with `cmd/shein-listing`.
 
 Required next work:
 
-1. Record the latest `master` validation for:
+1. Keep the latest `master` validation evidence visible for:
    - `go test ./... -count=1`
    - listing control-plane race tests
    - listingadmin dispatch / rollback / recovery race tests
    - `go build ./cmd/listing-control-plane`
    - `go build ./cmd/shein-listing`
-2. Keep the SHEIN listing browser startup path in the rollout smoke test checklist.
-3. Publish or explicitly schedule the frontend admin dispatch-reason / dispatch-event visibility if the UI artifact deploys separately.
-4. Keep dispatch event distribution, leader status, and `failed > 0` cycle reporting as observability follow-ups rather than introducing another scheduler variant.
+2. Treat `.github/workflows/ci.yml` as the executable source for the core backend gate, but record any manual smoke or production validation evidence in a dated validation note when it is used for release decisions.
+3. Keep the SHEIN listing browser startup path in the rollout smoke test checklist.
+4. Publish or explicitly schedule the frontend admin dispatch-reason / dispatch-event visibility if the UI artifact deploys separately.
+5. Keep dispatch event distribution, leader status, and `failed > 0` cycle reporting as observability follow-ups rather than introducing another scheduler variant.
 
 ### 2.3 Boundary checkpoint cleanup
 
@@ -64,6 +66,7 @@ Required next work:
 2. Keep long completed-slice lists as evidence, not as an invitation to continue helper shaving.
 3. Prefer small target-domain policy seams with guard tests.
 4. Update allowlists only with a temporary ownership explanation.
+5. Do not use stale generated package maps or baseline snapshots as architecture authority; regenerate them when fresh evidence is needed.
 
 ## 3. Next
 
@@ -105,7 +108,7 @@ Allowed now:
 2. API / readiness contract design.
 3. Mapping cost assessment.
 4. Read-only package guards.
-5. Platform 자료包 / payload preview exploration that does not introduce a second submission state machine.
+5. Platform 资料包 / payload preview exploration that does not introduce a second submission state machine.
 
 Deferred for now:
 
@@ -126,7 +129,8 @@ Do not start work that does any of the following:
 - adds business rules to `internal/app/*` runtime assembly;
 - adds SHEIN, TEMU, Amazon, or Walmart platform policy to root `internal/listingkit`;
 - splits into microservices before package boundaries are stable;
-- launches a full new sales-platform workbench before closeout and product-source normalization are stable.
+- launches a full new sales-platform workbench before closeout and product-source normalization are stable;
+- treats generated dependency/package snapshots as current unless they were regenerated for the current change.
 
 ## 6. Current execution checklist
 
@@ -141,6 +145,7 @@ Use this checklist before approving the next structural migration PR:
 [ ] The change does not touch Temporal determinism unless explicitly reviewed.
 [ ] The change does not add a second owner for dispatch, recovery, or submission state.
 [ ] The latest validation result is recorded or the missing validation is called out.
+[ ] Generated baseline artifacts are regenerated or intentionally left out of the commit.
 ```
 
 ## 7. Source of truth summary
@@ -152,3 +157,4 @@ Current order of authority:
 3. `listingkit-boundary-checkpoint.md` for ListingKit stop lines.
 4. `project-wide-refactoring-plan.md` for long-term architecture direction.
 5. `project-wide-execution-plan.md` and dated progress snapshots as historical references.
+6. Generated package/dependency snapshots only as dated evidence when freshly regenerated.
