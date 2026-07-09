@@ -1,7 +1,7 @@
 # ListingKit - AI 驱动的跨境商品标准化与上架系统
 
 [![CI](https://github.com/qq550723504/task-processor/actions/workflows/ci.yml/badge.svg)](https://github.com/qq550723504/task-processor/actions/workflows/ci.yml)
-[![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?style=flat&logo=go)](https://golang.org/)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://golang.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 ListingKit 是当前项目的主程序与产品主入口，目标是帮助用户把来自不同来源的商品信息，整理成一套可复用、可审核、可差异化改造的标准商品资料包，并进一步上架到主流电商平台。
@@ -25,6 +25,17 @@ In particular, future changes should preserve these rules:
 - Marketplace-specific rules should live under marketplace-specific packages.
 - Product facts and reusable assets should stay outside ListingKit.
 - Infrastructure and external clients should be hidden behind small interfaces.
+
+## 当前正式运行入口
+
+当前受维护的正式 `cmd/` 入口以仓库结构测试和 CI 构建为准：
+
+- `cmd/product-listing-api`：统一 ListingKit HTTP API。
+- `cmd/listing-control-plane`：Listing Control Plane 运行时。
+- `cmd/shein-listing`：SHEIN listing worker/runtime。
+- `cmd/temu-listing`：TEMU listing worker/runtime。
+
+历史爬虫、订阅、调试或一次性迁移入口不应继续放在 `cmd/` 下；需要保留时应放入 `hack/`、`tools/` 或对应业务模块，并同步更新 `docs/development/repository-structure.md` 与结构测试。
 
 ## 业务场景
 
