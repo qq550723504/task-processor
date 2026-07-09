@@ -230,7 +230,7 @@ Use this table when adding new code:
 | Legacy preview facade / task-result aggregation | `internal/listingkit` during migration |
 | Export aggregation | `internal/listingkit/export` during migration |
 | Revision/history facade | `internal/listingkit/revision` during migration |
-| Submission state / retry / recovery | `internal/listing/submission` target; use `internal/listingkit/submission` only as a temporary compatibility bridge during migration |
+| Submission state / retry / recovery | `internal/listing/submission`; do not recreate `internal/listingkit/submission` |
 | Product facts | `internal/catalog` |
 | Reusable asset facts | `internal/asset` |
 | Product image processing | `internal/productimage` or `internal/asset` depending on ownership |
