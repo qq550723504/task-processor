@@ -87,6 +87,9 @@ documents unless they say so explicitly:
 - `project-target-architecture.md`
   - target architecture context; use stable boundary documents for current
     review policy
+- `auth-and-tenancy.md`
+  - ZITADEL-backed authentication, tenant context propagation, route
+    authorization, and data isolation context; not yet a stable guard document
 - `task-status-lifecycle.md`
   - status lifecycle context; use stable boundary documents for package
     ownership and dependency rules
