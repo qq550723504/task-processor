@@ -1,9 +1,6 @@
 package sourcing
 
-import (
-	"strconv"
-	"strings"
-)
+import "strings"
 
 // SourceRequest carries source-identifying fields shared by product fetch paths.
 type SourceRequest struct {
@@ -15,14 +12,6 @@ type SourceRequest struct {
 	StoreID    int64
 	CategoryID int64
 	Creator    string
-}
-
-// SourceIdentity is the stable identity for a source product request.
-type SourceIdentity struct {
-	Platform  string
-	Region    string
-	ProductID string
-	StoreID   int64
 }
 
 // NormalizeSourceRequest trims source request fields and normalizes platform
@@ -39,25 +28,15 @@ func NormalizeSourceRequest(req SourceRequest) SourceRequest {
 // Identity returns the normalized source identity for a request.
 func (req SourceRequest) Identity() SourceIdentity {
 	normalized := NormalizeSourceRequest(req)
-	return SourceIdentity{
-		Platform:  normalized.Platform,
-		Region:    normalized.Region,
-		ProductID: normalized.ProductID,
-		StoreID:   normalized.StoreID,
-	}
-}
-
-// Key returns a stable string key for source identity comparisons and caches.
-func (id SourceIdentity) Key() string {
-	parts := []string{
-		strings.ToLower(strings.TrimSpace(id.Platform)),
-		strings.ToLower(strings.TrimSpace(id.Region)),
-		strings.TrimSpace(id.ProductID),
-	}
-	if id.StoreID > 0 {
-		parts = append(parts, strconv.FormatInt(id.StoreID, 10))
-	}
-	return strings.Join(parts, ":")
+	return NormalizeSourceIdentity(SourceIdentity{
+		SourceType:     SourceTypeCrawler,
+		SourcePlatform: normalized.Platform,
+		SourceID:       normalized.ProductID,
+		Platform:       normalized.Platform,
+		Region:         normalized.Region,
+		ProductID:      normalized.ProductID,
+		StoreID:        normalized.StoreID,
+	})
 }
 
 // VariantSourceRequest builds a source request for one variant while preserving
