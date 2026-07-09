@@ -1,8 +1,7 @@
-# Makefile for Task Processor
+# Makefile for Task Processor / ListingKit
 .PHONY: all build-all clean test test-fast test-all test-coverage help \
-	build-1688-crawler-api build-amazon-crawler-api build-amazon-listing \
-	build-product-listing-api build-productenrich-api build-shein-address-copy \
-	build-shein build-temu
+	build-listing-control-plane build-product-listing-api build-shein build-temu \
+	run-listing-control-plane run-product-listing-api run-shein run-temu lint fmt
 
 # 版本信息
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "v1.0.0")
@@ -12,68 +11,41 @@ LDFLAGS := -X main.appVersion=$(VERSION) -X main.buildTime=$(BUILD_TIME)
 # 输出目录
 BIN_DIR := bin
 
-# 常用测试包
-FAST_TEST_PACKAGES := ./cmd/product-listing-api ./internal/app/httpapi ./internal/crawler/alibaba1688 ./internal/listingkit ./internal/listingadmin ./internal/promptmgmt ./internal/listingsubscription
+# 当前维护的测试包
+FAST_TEST_PACKAGES := ./cmd/product-listing-api ./cmd/listing-control-plane ./cmd/shein-listing ./cmd/temu-listing ./internal/app/httpapi ./internal/app/runtime/listingcontrol ./internal/listingkit ./internal/listingadmin ./internal/promptmgmt ./internal/listingsubscription
 BOUNDARY_TEST_PACKAGES := ./tests/...
 ALL_TEST_PACKAGES := ./cmd/... ./internal/... ./tests/... ./tools/... ./hack/debug/...
 
 # 帮助信息
 help:
-	@echo "Task Processor 构建工具"
+	@echo "Task Processor / ListingKit 构建工具"
+	@echo ""
+	@echo "当前正式入口以 docs/development/repository-structure.md 和 tests/repository_structure_test.go 为准。"
 	@echo ""
 	@echo "使用方法:"
-	@echo "  make build-all          - 构建当前受维护的服务入口"
-	@echo "  make build-temu         - 构建 TEMU 上架服务"
-	@echo "  make build-shein        - 构建 SHEIN 上架服务"
-	@echo "  make build-amazon-listing - 构建 Amazon 上架服务"
-	@echo "  make build-amazon-crawler-api - 构建 Amazon 爬虫 API"
-	@echo "  make build-1688-crawler-api - 构建 1688 爬虫 API"
+	@echo "  make build-all                 - 构建当前受维护的服务入口"
+	@echo "  make build-listing-control-plane - 构建 Listing Control Plane"
 	@echo "  make build-product-listing-api - 构建统一 ListingKit API"
-	@echo "  make build-productenrich-api - 构建兼容 productenrich API"
-	@echo "  make clean              - 清理构建文件"
-	@echo "  make test               - 运行常用快速测试"
-	@echo "  make test-fast          - 运行常用快速测试"
-	@echo "  make test-all           - 运行全部 Go 测试"
+	@echo "  make build-shein               - 构建 SHEIN Listing runtime"
+	@echo "  make build-temu                - 构建 TEMU Listing runtime"
+	@echo "  make clean                     - 清理构建文件"
+	@echo "  make test                      - 运行常用快速测试"
+	@echo "  make test-fast                 - 运行常用快速测试"
+	@echo "  make test-all                  - 运行全部 Go 测试"
 	@echo ""
 
-# 构建所有服务
-build-all: build-temu build-shein build-amazon-listing build-amazon-crawler-api build-1688-crawler-api build-product-listing-api build-productenrich-api
-	@echo "✅ 所有服务构建完成"
+all: build-all
 
-# TEMU 上架服务
-build-temu:
-	@echo "🔨 构建 TEMU 上架服务..."
-	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/temu-listing cmd/temu-listing/main.go
-	@echo "✅ TEMU 上架服务构建完成: $(BIN_DIR)/temu-listing"
+# 构建所有当前受维护服务
+build-all: build-listing-control-plane build-product-listing-api build-shein build-temu
+	@echo "✅ 所有当前受维护服务构建完成"
 
-# SHEIN 上架服务
-build-shein:
-	@echo "🔨 构建 SHEIN 上架服务..."
+# Listing Control Plane
+build-listing-control-plane:
+	@echo "🔨 构建 Listing Control Plane..."
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/shein-listing cmd/shein-listing/main.go
-	@echo "✅ SHEIN 上架服务构建完成: $(BIN_DIR)/shein-listing"
-
-# Amazon 上架服务
-build-amazon-listing:
-	@echo "🔨 构建 Amazon 上架服务..."
-	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/amazon-listing ./cmd/amazon-listing
-	@echo "✅ Amazon 上架服务构建完成: $(BIN_DIR)/amazon-listing"
-
-# Amazon 爬虫 API 服务（不依赖 RabbitMQ）
-build-amazon-crawler-api:
-	@echo "🔨 构建 Amazon 爬虫 API 服务..."
-	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/amazon-crawler-api ./cmd/amazon-crawler-api
-	@echo "✅ Amazon 爬虫 API 服务构建完成: $(BIN_DIR)/amazon-crawler-api"
-
-# 1688 爬虫 API 服务（不依赖 RabbitMQ）
-build-1688-crawler-api:
-	@echo "🔨 构建 1688 爬虫 API 服务..."
-	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/1688-crawler-api ./cmd/1688-crawler-api
-	@echo "✅ 1688 爬虫 API 服务构建完成: $(BIN_DIR)/1688-crawler-api"
+	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/listing-control-plane ./cmd/listing-control-plane
+	@echo "✅ Listing Control Plane 构建完成: $(BIN_DIR)/listing-control-plane"
 
 # 统一 ListingKit API
 build-product-listing-api:
@@ -82,19 +54,19 @@ build-product-listing-api:
 	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/product-listing-api ./cmd/product-listing-api
 	@echo "✅ 统一 ListingKit API 构建完成: $(BIN_DIR)/product-listing-api"
 
-# 兼容 productenrich API
-build-productenrich-api:
-	@echo "🔨 构建兼容 productenrich API..."
+# SHEIN Listing runtime
+build-shein:
+	@echo "🔨 构建 SHEIN Listing runtime..."
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/productenrich-api ./cmd/productenrich-api
-	@echo "✅ 兼容 productenrich API 构建完成: $(BIN_DIR)/productenrich-api"
+	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/shein-listing ./cmd/shein-listing
+	@echo "✅ SHEIN Listing runtime 构建完成: $(BIN_DIR)/shein-listing"
 
-# SHEIN 地址复制工具
-build-shein-address-copy:
-	@echo "🔨 构建 SHEIN 地址复制工具..."
+# TEMU Listing runtime
+build-temu:
+	@echo "🔨 构建 TEMU Listing runtime..."
 	@mkdir -p $(BIN_DIR)
-	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/shein-address-copy ./cmd/shein-address-copy
-	@echo "✅ SHEIN 地址复制工具构建完成: $(BIN_DIR)/shein-address-copy"
+	CGO_ENABLED=0 GOOS=linux go build -ldflags "$(LDFLAGS)" -o $(BIN_DIR)/temu-listing ./cmd/temu-listing
+	@echo "✅ TEMU Listing runtime 构建完成: $(BIN_DIR)/temu-listing"
 
 # 清理构建文件
 clean:
@@ -133,27 +105,22 @@ fmt:
 	@echo "✨ 格式化代码..."
 	go fmt ./...
 
-# 本地运行 TEMU 服务
-run-temu:
-	@echo "🚀 启动 TEMU 上架服务..."
-	go run ./cmd/temu-listing --config=config/config-dev.yaml
+# 本地运行 Listing Control Plane
+run-listing-control-plane:
+	@echo "🚀 启动 Listing Control Plane..."
+	go run ./cmd/listing-control-plane -config=config/config-dev.yaml -log-level=info
 
-# 本地运行 SHEIN 服务
+# 本地运行统一 ListingKit API
+run-product-listing-api:
+	@echo "🚀 启动统一 ListingKit API..."
+	go run ./cmd/product-listing-api --config=config/config-dev.yaml --port=8085
+
+# 本地运行 SHEIN Listing runtime
 run-shein:
-	@echo "🚀 启动 SHEIN 上架服务..."
+	@echo "🚀 启动 SHEIN Listing runtime..."
 	go run ./cmd/shein-listing --config=config/config-dev.yaml
 
-# 本地运行 Amazon 上架服务
-run-amazon-listing:
-	@echo "🚀 启动 Amazon 上架服务..."
-	go run ./cmd/amazon-listing --config=config/config-dev.yaml
-
-# 本地运行 Amazon 爬虫 API
-run-amazon-crawler-api:
-	@echo "🚀 启动 Amazon 爬虫 API 服务..."
-	go run ./cmd/amazon-crawler-api --config=config/config-dev.yaml --port=8080
-
-# 本地运行 1688 爬虫 API
-run-1688-crawler-api:
-	@echo "🚀 启动 1688 爬虫 API 服务..."
-	go run ./cmd/1688-crawler-api --config=config/config-dev.yaml --port=8083
+# 本地运行 TEMU Listing runtime
+run-temu:
+	@echo "🚀 启动 TEMU Listing runtime..."
+	go run ./cmd/temu-listing --config=config/config-dev.yaml
