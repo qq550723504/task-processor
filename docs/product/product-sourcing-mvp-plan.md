@@ -23,7 +23,9 @@ raw source data
   -> existing SHEIN preview / submission path
 ```
 
-The goal is not to build a full product-source platform in one PR. The goal is to create one clean path that future 1688, SDS, warehouse catalog, or other source integrations can copy.
+The goal is not to build a full product-source platform in one PR. The goal is to create one clean path that future 1688, warehouse catalog, or other product-source integrations can copy.
+
+SDS is intentionally treated as a POD/design capability, not a normal product-source validation target.
 
 ## 2. MVP constraints
 
@@ -46,27 +48,29 @@ Prefer the source with the lowest integration risk and highest business signal.
 Current recommendation:
 
 ```text
-Option A: normalize an existing source path first, such as 1688 or SDS, if code already exists and test fixtures are available.
+Option A: normalize an existing product-source path first, such as 1688, if code already exists and test fixtures are available.
 Option B: use 大建云仓 / overseas warehouse source catalog as the first new source when the business data contract is already clear.
 ```
 
 Current implementation choice:
 
 ```text
-PR 2 starts with the existing Amazon product fetch/crawler result path.
+PR 2 starts with the existing Amazon product fetch/crawler result path for boundary validation.
+The next business-source validation path is 1688.
 ```
 
 Reason:
 
 - the Amazon path already has source request planning, product fetch tests, and a stable `internal/model.Product` crawler result shape;
-- it is useful for boundary validation before adding a new source;
+- it is useful for boundary validation before adding a business-priority source;
 - it lets `SourceEnvelope` mapping be tested without browser automation;
-- it does not imply full Amazon listing workbench expansion.
+- it does not imply full Amazon listing workbench expansion;
+- 1688 already has crawler models and product-sourcing normalization code, making it the lowest-risk business source after boundary guards are in place.
 
-Choose Option A when the first objective is boundary validation.
-Choose Option B when the first objective is business expansion.
+Choose Option A when the first objective is boundary validation or using an existing product-source path.
+Choose Option B when the first objective is new warehouse business expansion.
 
-Do not start two source integrations in the same MVP.
+Do not start two source integrations in the same PR.
 
 ## 4. Proposed PR sequence
 
@@ -142,6 +146,7 @@ Current selected source:
 
 ```text
 Amazon source product result -> internal/product/sourcing.SourceEnvelope
+1688 source product result -> internal/product/sourcing.SourceEnvelope
 ```
 
 Acceptance criteria:
@@ -318,12 +323,12 @@ Pause and document before continuing if:
 
 ## 8. Immediate next action
 
-PR 1 through PR 5 now establish identity/envelope, the first Amazon source-envelope mapping, neutral catalog/asset facts, a narrow ListingKit request bridge, and source/crawler/facts boundary guards.
+PR 1 through PR 5 now establish identity/envelope, the first Amazon source-envelope mapping, neutral catalog/asset facts, a narrow ListingKit request bridge, and source/crawler/facts boundary guards. 1688 is now the next business source to validate against the same path.
 
 Next, run focused validation and then choose whether to:
 
 1. wire the bridge into one controlled ListingKit create/preview path, or
-2. swap the first validation source from Amazon to the business-priority source such as SDS / 1688 / 大建云仓.
+2. start the next new warehouse/source catalog path such as 大建云仓.
 
 Implementation checklist:
 
@@ -333,6 +338,7 @@ Implementation checklist:
 [ ] add validation/fingerprint tests.
 [ ] add or plan import-boundary guard coverage.
 [ ] map the existing Amazon product result path into SourceEnvelope.
+[ ] map the existing 1688 product result path into SourceEnvelope.
 [ ] map SourceEnvelope into internal/catalog and internal/asset neutral facts.
 [ ] map internal/catalog and internal/asset neutral facts into a ListingKit GenerateRequest bridge.
 [ ] guard product-source, catalog, asset, crawler, and ListingKit bridge dependency direction.
