@@ -204,7 +204,7 @@ Current implementation path:
 
 ```text
 internal/catalog.ProductFacts + internal/asset.Facts
-  -> internal/listingkit.ProductSourceGenerateRequestInput
+  -> internal/listingkit.SourceFactsGenerateRequestInput
   -> internal/listingkit.GenerateRequest
 ```
 
