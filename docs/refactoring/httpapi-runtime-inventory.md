@@ -32,7 +32,7 @@ Current app-layer read:
 
 ## `internal/listingkit/httpapi`
 
-Current package shape: 74 non-test Go files.
+Current package shape: feature-owned assembly plus adapter construction. Regenerate package/file evidence locally when an exact file count is needed.
 
 | File group | Classification | Current files | Notes |
 | --- | --- | --- | --- |
@@ -58,7 +58,7 @@ Current package shape: 74 non-test Go files.
 Why it stands out:
 
 - it is now mostly service assembly,
-- bridge shaping, bridge-factory construction, and enrollment adapter construction live in a dedicated helper file,
+- bridge shaping, bridge-factory construction, and enrollment adapter construction live in dedicated helper files,
 - management strategy-provider construction has also been split into its own helper file,
 - if more branching lands there, it could become a mixed runtime hotspot again.
 
@@ -73,15 +73,17 @@ Suggested next slice:
 Why it stands out:
 
 - it now mostly owns public builder entrypoints,
-- concrete strict chat/image/nanobanana builders now live in `ai_client_builders.go`,
-- routed image client assembly and selector handling now live in `ai_client_image_routing.go`,
+- concrete strict chat/image/grsai builders live in dedicated builder/helper files,
+- routed image client assembly and selector handling live in `ai_client_image_routing.go`,
 - strict chat/image client wrappers and cache resolution have been pushed into dedicated helper files,
-- fallback shaping and naming are already isolated,
+- fallback shaping and naming are isolated,
 - if more request-shaping or model-selection rules land there, they should stay in helper homes rather than re-grow the entrypoint file.
 
 ### Additional note
 
 `runtime_support.go` has now been narrowed to the runtime support contract itself; repository, hook, submit-prep, and recovery-loop setup live in dedicated helper files so the top-level support file stays easier to read and review.
+
+## Refresh Notes
 
 ### 2026-06-17 closeout note
 
@@ -98,19 +100,30 @@ This keeps health reporting close to the ListingKit runtime support boundary whi
 
 ### 2026-06-17 inventory refresh
 
-The current `internal/listingkit/httpapi` package has been refreshed from the live file list after the bootstrap, repository builder, route descriptor, ZITADEL auth, AI client, and SHEIN sync helper splits.
+The `internal/listingkit/httpapi` package was refreshed from the live file list after the bootstrap, repository builder, route descriptor, ZITADEL auth, AI client, and SHEIN sync helper splits.
 
 - The old one-file rows for `bootstrap_repositories.go` and `routes.go` were replaced by grouped current files because those responsibilities now live across narrower helper files.
 - The package still classifies as feature-owned assembly plus adapter construction; this refresh did not identify app-layer business policy drift.
 - `shein_sync_runtime.go` and `ai_clients.go` remain watchlist entrypoints, but their bridge/strategy/fallback/routing/strict-wrapper details are already held in narrower helper files.
+
+### 2026-07-09 refresh note
+
+The runtime/documentation cleanup wave added or reinforced these constraints:
+
+- `cmd/listing-control-plane` is an official runtime entrypoint, but its process assembly lives under `internal/app/runtime/listingcontrol`, not `internal/app/httpapi`.
+- `internal/app/httpapi` remains assembly-only for HTTP API runtime composition.
+- ZITADEL auth context is now indexed in `docs/architecture/auth-and-tenancy.md` as supporting architecture context; formal package/dependency authority still comes from stable boundary documents.
+- Generated dependency/package baselines are no longer committed as long-lived docs; regenerate evidence locally under `.local/` when needed.
+- `shein_sync_runtime.go` and `ai_clients.go` remain the main feature-owned HTTPAPI watchlist files.
 
 ## Current Boundary Conclusion
 
 At this checkpoint:
 
 - `internal/app/httpapi` is mostly in the right place and should not be widened,
-- the `internal/listingkit/httpapi` live file map has been refreshed and remains feature-owned runtime assembly plus adapter construction,
+- the `internal/listingkit/httpapi` file map remains a grouped inventory rather than generated package evidence,
 - the default SHEIN store heuristic should be feature-owned in `internal/listingkit`, not `httpapi`-owned,
 - settings-health probe construction is feature-owned adapter reporting, not app-layer policy,
+- ZITADEL auth middleware and route authorization are HTTPAPI adapter/runtime concerns, while tenant-owned business state should still be protected by tenant-aware service/repository contracts,
 - the most meaningful remaining cleanup is inside feature-owned runtime adapter helpers under `internal/listingkit/httpapi`,
 - the next safe refactor should target newly introduced suspicious shaping helpers, not continue splitting already-thin entrypoints or reopen the stable app-layer assembly split.
