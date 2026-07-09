@@ -235,6 +235,23 @@ Scope:
 - guard `internal/product/sourcing` from importing runtime, HTTPAPI, ListingKit root, or marketplace packages;
 - document any temporary exception with owner and retirement condition.
 
+Current guard coverage:
+
+```text
+internal/product/sourcing/boundary_guard_test.go
+internal/integration/crawler/boundary_guard_test.go
+internal/catalog/boundary_guard_test.go
+internal/asset/boundary_guard_test.go
+internal/listingkit/product_source_bridge_boundary_test.go
+```
+
+Guard intent:
+
+- crawler/integration remains raw source collection only;
+- product sourcing does not import ListingKit, marketplace, runtime, HTTPAPI, infra, or platform packages;
+- catalog and asset fact packages do not import source, ListingKit, marketplace, crawler, runtime, infra, or platform packages;
+- the ListingKit product-source bridge can import only standard library plus neutral `internal/catalog` and `internal/asset` facts.
+
 Acceptance criteria:
 
 ```text
@@ -301,7 +318,12 @@ Pause and document before continuing if:
 
 ## 8. Immediate next action
 
-PR 1 through PR 4 now establish identity/envelope, the first Amazon source-envelope mapping, neutral catalog/asset facts, and a narrow ListingKit request bridge. Continue by running focused tests and then adding/confirming source boundary guards as PR 5.
+PR 1 through PR 5 now establish identity/envelope, the first Amazon source-envelope mapping, neutral catalog/asset facts, a narrow ListingKit request bridge, and source/crawler/facts boundary guards.
+
+Next, run focused validation and then choose whether to:
+
+1. wire the bridge into one controlled ListingKit create/preview path, or
+2. swap the first validation source from Amazon to the business-priority source such as SDS / 1688 / 大建云仓.
 
 Implementation checklist:
 
@@ -313,5 +335,6 @@ Implementation checklist:
 [ ] map the existing Amazon product result path into SourceEnvelope.
 [ ] map SourceEnvelope into internal/catalog and internal/asset neutral facts.
 [ ] map internal/catalog and internal/asset neutral facts into a ListingKit GenerateRequest bridge.
+[ ] guard product-source, catalog, asset, crawler, and ListingKit bridge dependency direction.
 [ ] update this plan only if the first chosen source changes the PR order.
 ```
