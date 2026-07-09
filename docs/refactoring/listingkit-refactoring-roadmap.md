@@ -1,719 +1,108 @@
-# ListingKit 项目重构路线图
+# ListingKit Refactoring Roadmap
 
-## 文档状态
+> Status: directional / historical roadmap.
+>
+> Original active baseline: 2026-06-24, `master` commit `4829df08677a8b21960bfef59c702c3dc5027a2e`.
+>
+> Current authority: use `docs/refactoring/current-refactoring-status.md` for Now / Next / Later, `docs/refactoring/listingkit-boundary-checkpoint.md` for current ListingKit stop lines, and `docs/refactoring/next-phase-plan.md` for the next execution queue.
 
-- 状态：Active
-- 更新日期：2026-06-24
-- 参考基线：`master` commit `4829df08677a8b21960bfef59c702c3dc5027a2e`
-- 适用对象：技术负责人、后端、前端、QA、代码审查者
+## 1. Why this document still exists
 
-## 1. 重构目标
+This roadmap captured the major ListingKit refactoring direction when the project was moving from broad file splitting into capability-driven boundary work.
 
-本轮重构的目标不是追求理想目录结构，而是降低真实业务演进成本，使 ListingKit 能够稳定支持：
+It remains useful as context for why the project chose these principles:
 
-- SDS-to-SHEIN 批量生产；
-- 多平台 Listing 资料包；
-- 可观察、可恢复、幂等的提交；
-- 清晰的商品、资产、平台规则和外部集成边界；
-- 可独立测试的核心业务逻辑。
+- use capability-driven, small-step migration instead of a large rewrite;
+- keep ListingKit as orchestration and compatibility facade, not a dumping ground for every platform rule;
+- move generic listing behavior toward `internal/listing/*` only when the seam is stable;
+- move SHEIN publishing/workspace rules toward marketplace-owned packages;
+- keep product facts and reusable asset facts outside root ListingKit;
+- keep app/runtime packages focused on assembly rather than business policy.
 
-最终判断标准是：
+It is **not** the current active execution plan. Do not use this document to justify a new extraction if the newer status/checkpoint documents say to stop.
 
-> 新能力能够在清晰模块中实现，失败能够定位到明确责任边界，平台扩展不需要继续把规则堆入 `internal/listingkit` 根包。
+## 2. Current direction summary
 
-## 2. 核心策略
-
-采用“能力牵引、小步迁移、兼容收缩”的策略：
-
-```text
-先解决生产链路中的真实风险；
-在实现能力时切清对应边界；
-保留兼容 facade，逐步迁出所有权；
-每一步可测试、可回滚；
-不进行一次性大搬家。
-```
-
-优先级比例原则：
+The current direction is:
 
 ```text
-主要精力用于主链路稳定和可恢复性；
-其余精力用于与当前能力直接相关的边界收口。
+1. Close out runtime and boundary ownership first.
+2. Expand product sources second.
+3. Defer full new sales-platform workbenches until the SHEIN template is stable.
 ```
 
-## 3. 当前架构判断
+The current stop line is:
 
-项目已经从通用 task processor 演进为跨境商品 Listing 自动化平台，包含：
+```text
+Do not keep splitting internal/listingkit files only because a file can be made smaller.
+Only move code when ownership, dependency direction, or guard coverage improves.
+```
 
-- HTTP API 与运行时装配；
-- Temporal / 队列 / Worker；
-- GORM、Redis、RabbitMQ 和对象存储；
-- OpenAI 和图片模型；
-- 浏览器自动化和外部平台客户端；
-- 多租户、权限和配置；
-- ListingKit UI；
-- SHEIN、Amazon、TEMU、Walmart 等平台流程。
+## 3. Still-valid long-term goals
 
-当前主要问题不是功能不足，而是部分所有权仍然交叉。
+These goals remain valid, but the timing and exact package names must follow the current authority documents:
 
-### 3.1 `internal/listingkit` 仍是复杂度中心
+- SDS-to-SHEIN batch production should have durable task ownership and recoverable execution.
+- Multi-platform Listing packages should reuse product facts and assets instead of duplicating source logic inside ListingKit.
+- Submission should remain observable, idempotent, recoverable, and guarded by one generic submission domain plus marketplace-specific publishing packages.
+- Product, asset, platform rule, and external integration boundaries should stay clear enough for review and tests.
+- New marketplace work should not copy old ListingKit root coupling into a new package tree.
 
-根包同时承载或兼容：
+## 4. Historical target module map
 
-- API-facing service；
-- Studio 批次；
-- SDS baseline；
-- 工作流编排；
-- 平台预览；
-- 平台提交兼容；
-- 设置和运行时协作者；
-- 旧 Session 模型。
-
-它应逐步收缩为产品编排和兼容 facade，而不是继续成为所有业务规则的默认位置。
-
-### 3.2 Batch Graph 与 Session 双事实源
-
-Studio 已有 durable `batch -> item -> attempt -> design` 图，但任务归属、旧草稿和部分 UI 状态仍依赖 `SheinStudioSession`。
-
-风险包括：
-
-- 页面显示新状态，任务创建读取旧状态；
-- 无 Session 时任务关系无法刷新恢复；
-- 重试或重复点击产生重复任务；
-- 旧设计与已创建任务失去历史关系。
-
-### 3.3 通用提交与平台规则仍需继续分层
-
-通用提交状态机、attempt、幂等和恢复应属于 listing submission 领域；SHEIN 的图片上传、预校验、远端提交和平台错误映射应属于 SHEIN publishing 领域。
-
-### 3.4 HTTP 和运行时装配仍可能拥有业务判断
-
-`internal/app/httpapi` 和 runtime 包应负责装配、路由、鉴权上下文和生命周期，不应拥有类目、属性、兼容性、readiness 或发布资格规则。
-
-### 3.5 外部客户端需要稳定适配层
-
-SDS、SHEIN、AI、图片、对象存储和历史 retired management service 应通过小接口隐藏。核心业务不应依赖具体 SDK、HTTP payload 或浏览器实现。
-
-## 4. 目标模块地图
-
-目标结构是方向，不是一次性迁移清单。
+The historical target map was directional, not a migration checklist:
 
 ```text
 internal/app
-  runtime/                 进程启动、依赖装配、生命周期
-  httpapi/                 路由、handler、认证上下文、DTO 绑定
+  runtime/                 process startup, dependency assembly, lifecycle
+  httpapi/                 route/runtime assembly and auth context
 
-internal/catalog
-  canonical/               标准商品事实
-  product/                 商品身份、变体、规格和来源事实
-
-internal/asset
-  productimage/            商品图片和衍生资产
-  design/                  设计稿、模板、蒙版和版本关系
+internal/catalog           canonical product facts
+internal/asset             reusable asset and image facts
 
 internal/listing
-  studio/                  通用 batch/item/attempt/design 机制
-  task/                    Listing 任务领域
-  readiness/               通用 readiness 结构与 blocker 契约
-  submission/              通用提交 attempt、幂等、阶段和恢复
+  studio/                  platform-neutral batch/item/attempt/design seams
+  preview/                 platform-neutral preview rules
+  submission/              generic submit attempt, retry, lock, event, recovery rules
 
 internal/marketplace/shein
-  workspace/               SHEIN 人工审核和修复规则
-  readiness/               SHEIN 提交资格和 blocker
-  publishing/              SHEIN 草稿、发布和远端结果
-  mapping/                 类目、属性、销售属性、SKU 和价格适配
+  workspace/               SHEIN operator-facing review and repair rules
+  publishing/              SHEIN draft/publish and remote-result rules
 
-internal/marketplace/amazon
-internal/marketplace/temu
-internal/marketplace/walmart
+internal/product/sourcing  product source identity and normalization
+internal/integration/*     external protocol and client adapters
 
-internal/integration
-  sds/                     SDS API / 登录 / 浏览器适配
-  shein/                   SHEIN 远端 client
-  ai/                      文案和图片模型适配
-  storage/                 对象存储适配
-
-internal/listingkit
-  facade/compatibility      产品 API facade、旧契约兼容
-  orchestration             跨领域用例编排
+internal/listingkit        product API facade, orchestration, legacy compatibility glue
 ```
 
-如果现有代码已经使用 `internal/publishing/shein` 等路径，不要求立即改名。应先完成所有权迁移，再决定目录统一。
+Some current package names still differ from this ideal target. Do not rename packages for consistency alone.
 
-## 5. 边界规则
+## 5. Current replacement documents
 
-### 5.1 `internal/app/*`
+Use these instead of this roadmap for current decisions:
 
-允许：
-
-- 初始化依赖；
-- 注册路由；
-- 构造 service；
-- 管理进程生命周期；
-- 注入 tenant/user context。
-
-禁止：
-
-- 平台业务规则；
-- 商品字段映射；
-- readiness 判定；
-- 提交重试策略；
-- Studio 兼容性规则。
-
-### 5.2 `internal/listingkit`
-
-允许：
-
-- 产品级用例入口；
-- 跨模块编排；
-- 旧 API 和旧数据兼容；
-- 迁移期 adapter。
-
-禁止新增：
-
-- SHEIN 专属类目、属性、图片、价格和发布规则；
-- 通用提交状态机的第二套实现；
-- 商品事实和图片资产的重复模型；
-- 直接依赖外部 SDK 的核心规则。
-
-### 5.3 `internal/listing/*`
-
-拥有：
-
-- 平台无关的 Listing 生命周期；
-- Batch、Item、Attempt、Design 的通用机制；
-- 提交 attempt、幂等、锁、事件和恢复；
-- 通用 readiness / blocker 契约；
-- durable task ownership。
-
-### 5.4 `internal/marketplace/*`
-
-拥有：
-
-- 平台特定字段映射；
-- 类目与属性规则；
-- 平台图片、SKU、价格和提交限制；
-- 远端错误到业务 reason code 的映射；
-- 平台工作台修复规则。
-
-### 5.5 `internal/catalog` 与 `internal/asset`
-
-拥有平台无关的商品事实和资产。平台包可以引用它们，但不能反向依赖平台规则。
-
-### 5.6 `internal/integration/*`
-
-拥有外部协议和客户端适配。业务层只依赖窄接口，不依赖具体请求结构。
-
-## 6. 重构工作流优先级
-
-## Stream A：SDS 批量生产闭环
-
-这是当前 P0，也是下一阶段所有边界调整的主要牵引。
-
-需要完成：
-
-```text
-design x selection 正确 fan-out；
-Batch 与 ListingKit task 的 durable link；
-候选级幂等和并发去重；
-baseline、store、ownership、compatibility 最终门禁；
-严格 baseline 复用；
-兼容指纹驱动的生成分组；
-created/reused/rejected/failed 结构化结果；
-真实 task/submission 状态投影；
-已创建任务后的重生成保护；
-批量提交部分成功。
-```
-
-边界收益：
-
-- Batch Graph 成为任务创建事实源；
-- Session 收缩为旧草稿兼容；
-- Studio 通用机制与 SHEIN 规则开始分离；
-- 提交状态与任务创建状态解耦。
-
-## Stream B：Submission 所有权收口
-
-目标：通用提交机制只保留一套。
-
-迁移方向：
-
-```text
-internal/listing/submission
-  -> attempt
-  -> idempotency
-  -> phase transition
-  -> lock / retry / recovery
-  -> event / persistence orchestration
-
-internal/marketplace/shein/publishing
-  -> prepare SHEIN payload
-  -> upload SHEIN assets
-  -> pre-validate
-  -> save draft / publish
-  -> map remote result and error
-```
-
-`internal/listingkit` 只保留提交用例入口和旧契约 adapter。
-
-## Stream C：Studio 事实源统一
-
-目标：新流程不再依赖 Session 持有 Batch 的核心业务状态。
-
-顺序：
-
-1. 新增 durable batch-task link；
-2. Batch detail 优先读取 durable link；
-3. 旧 Session CreatedTasks 回填 link；
-4. 新任务创建停止写 Session 作为唯一来源；
-5. Session 仅保留旧草稿读取和迁移；
-6. 删除无调用的 session-centered API。
-
-## Stream D：商品事实与资产迁移
-
-当新增或修改商品、图片逻辑时，将平台无关部分迁入：
-
-```text
-internal/catalog/*
-internal/asset/*
-```
-
-优先迁移高复用内容：
-
-- 商品身份和变体；
-- 图片角色和资产版本；
-- design revision；
-- 来源 trace；
-- canonical product cache policy。
-
-## Stream E：平台规则隔离
-
-以 SHEIN 为模板，把以下规则迁出 ListingKit 根包：
-
-- 类目解析；
-- 属性和销售属性映射；
-- 平台价格和 SKU；
-- workspace repair target；
-- readiness blocker；
-- publishing payload 和错误映射。
-
-完成 SHEIN 发布门槛后，再将同样边界应用到 TEMU、Amazon 和 Walmart。
-
-## Stream F：运行时和外部集成解耦
-
-逐步淘汰业务层对以下具体实现的直接依赖：
-
-- retired management service；
-- Gin context；
-- GORM transaction 细节；
-- 具体 AI SDK；
-- 浏览器自动化对象；
-- 外部平台原始 response。
-
-先定义业务所需的小接口，再移动具体 adapter。
-
-## Stream G：测试、CI 与可观测性
-
-所有重构必须有以下安全网：
-
-```text
-go test ./... -count=1
-npm run lint
-npm run typecheck
-npm test
-npm run build
-```
-
-高风险并发模块增加：
-
-```text
-go test -race ./internal/listingkit ./internal/listing/studio ./internal/listing/submission
-```
-
-关键状态必须记录 tenant、batch、item、attempt、design、selection、candidate 和 task 标识。
-
-## 7. 分阶段执行路线
-
-## Phase 0：基线和守门规则
-
-目标：确保后续迁移可度量、可回滚。
-
-交付：
-
-- 完整测试 baseline；
-- 包列表和依赖图；
-- project boundaries；
-- CI 全量后端和前端测试；
-- 禁止新增反向依赖的检查。
-
-退出条件：
-
-- baseline 可重复生成；
-- 关键测试进入 CI；
-- 新 PR 能说明模块归属。
-
-## Phase 1：完成 SDS 批量生产闭环
-
-目标：消除当前真实生产风险。
-
-交付：
-
-- 正确候选展开；
-- durable task link；
-- 最终门禁；
-- 严格 baseline；
-- 兼容分组；
-- 状态投影；
-- 重生成和部分提交保护。
-
-退出条件：
-
-- 真实 SDS-to-SHEIN 草稿通过；
-- 重复请求不产生重复任务；
-- Session-less Batch 可刷新恢复；
-- 受控失败不阻断无关候选。
-
-## Phase 2：收缩 ListingKit 根包
-
-目标：只迁移已经通过 Phase 1 明确归属的逻辑。
-
-执行方式：
-
-- 每次迁移一个 use case；
-- 保留兼容 facade；
-- 先转调用，再删旧实现；
-- 不把文件移动和行为修改混在同一个 PR。
-
-优先对象：
-
-```text
-studio task ownership
-submission orchestration
-readiness taxonomy
-SHEIN publishing adapters
-```
-
-退出条件：
-
-- 根包不再拥有这些领域的核心状态机；
-- 新能力无需修改多个兼容层；
-- 包级测试可独立运行。
-
-## Phase 3：平台边界固化
-
-目标：形成可复制的 SHEIN marketplace 模板。
-
-交付：
-
-- SHEIN mapping / readiness / workspace / publishing 边界；
-- 外部 SHEIN client adapter；
-- 稳定平台 DTO 和错误代码；
-- ListingKit facade 不持有 SHEIN 规则。
-
-退出条件：
-
-- SHEIN 规则可以在不启动 ListingKit HTTP 层的情况下测试；
-- 平台包依赖 catalog/listing/asset，而不是反向依赖；
-- TEMU/Amazon 可以复用通用 submission 和 readiness 契约。
-
-## Phase 4：外部集成和运行时清理
-
-目标：消除业务逻辑对基础设施的直接耦合。
-
-交付：
-
-- retired management service closeout plan；
-- repository 和 integration ports；
-- runtime 只做装配；
-- 旧 debug 或 compatibility 入口清理。
-
-退出条件：
-
-- 核心业务测试不依赖真实外部服务；
-- 替换客户端不需要修改领域逻辑；
-- 进程启动代码不包含业务判断。
-
-## Phase 5：多平台复制
-
-前置条件：SHEIN 发布门槛通过。
-
-目标：把稳定模式复制到 TEMU、Amazon 和 Walmart，而不是复制旧耦合。
-
-每个平台先明确：
-
-- 只生成资料包还是完整工作台；
-- readiness 和 blocker；
-- 保存草稿 / 发布能力；
-- 失败恢复和运营入口；
-- 哪些规则可以复用，哪些必须平台独有。
-
-## 8. 迁移方法
-
-### 8.1 Strangler / Facade
-
-新实现放入目标模块，旧入口委托新实现；调用方迁移完成后再删除旧代码。
-
-### 8.2 Additive API
-
-先增加新字段和新状态，保持旧字段可读；前端切换完成后再淘汰旧语义。
-
-### 8.3 双读单写
-
-迁移期允许：
-
-```text
-优先读新事实源；
-旧数据作为 fallback；
-所有新写入只进入新事实源；
-读取旧数据时顺手回填新模型。
-```
-
-避免两个事实源同时接受新写入。
-
-### 8.4 数据回填
-
-每个数据迁移必须具备：
-
-- 幂等回填；
-- tenant scope；
-- 统计报告；
-- unresolved 记录；
-- 可重复执行；
-- 回滚或禁用方案。
-
-### 8.5 Feature Gate
-
-对高风险行为切换使用显式配置或按租户灰度，不通过隐含条件改变生产路径。
-
-## 9. PR 规则
-
-每个重构 PR 应满足：
-
-1. 只解决一个明确所有权问题；
-2. 说明行为是否改变；
-3. 提供迁移前后依赖关系；
-4. 添加或迁移测试；
-5. 不同时进行大规模重命名和业务修改；
-6. 不引入新的平台规则到 `internal/listingkit`；
-7. 包含回滚方式；
-8. 更新相关边界或 checkpoint 文档。
-
-推荐 PR 描述：
-
-```text
-Problem
-Ownership before
-Ownership after
-Behavior change
-Compatibility path
-Tests
-Rollback
-Follow-up deletion
-```
-
-## 10. 停止条件
-
-以下重构不应执行：
-
-- 只是为了目录更整齐；
-- 没有减少任何模块所有权；
-- 迁移后仍需通过原包完成核心逻辑；
-- 没有测试保护；
-- 同时影响多个稳定业务链路但没有真实收益；
-- 为未来假设平台提前建设复杂抽象。
-
-出现以下信号时，应先切边界再继续加能力：
-
-- 一个小功能需要修改多个无关模块；
-- 同一状态或规则在多个包重复；
-- 平台规则回流到 ListingKit；
-- 业务测试必须启动 HTTP、数据库和远端服务；
-- 修复一个平台问题影响其他平台；
-- 团队只能通过全文搜索判断责任归属。
-
-## 11. 风险与控制
-
-| 风险 | 控制方式 |
-| --- | --- |
-| 大规模迁移破坏已跑通链路 | 小步 use-case 迁移、兼容 facade、真实验收报告。 |
-| 新旧事实源不一致 | 双读单写、幂等回填、明确 source of truth。 |
-| 重试产生重复远端动作 | candidate / submission 幂等键、唯一索引、恢复状态机。 |
-| 平台规则被过度抽象 | 先实现 SHEIN 平台规则，再提取真正通用契约。 |
-| 文件移动掩盖行为变更 | 拆分纯移动 PR 和行为 PR。 |
-| 测试只覆盖 happy path | 并发、重启、部分失败、超时和真实接口验收。 |
-| 旧批次无法读取 | 保留 legacy adapter，按读取回填新模型。 |
-
-## 12. 重构度量
-
-### 12.1 结构指标
-
-- `internal/listingkit` 根包文件数和代码量；
-- 平台规则位于目标平台包的比例；
-- app/runtime 中业务规则数量；
-- 跨领域反向依赖数量；
-- legacy Session 新写入路径数量。
-
-### 12.2 工程效率指标
-
-- 新能力平均触碰包数量；
-- 核心 use-case 单元测试启动成本；
-- CI 时长和不稳定测试数量；
-- 真实问题定位到责任模块的时间；
-- 需要工程查日志才能恢复的运营问题比例。
-
-### 12.3 可靠性指标
-
-- 重复任务和重复提交数量；
-- 孤儿 task / design / attempt 数量；
-- 未知状态和空错误数量；
-- 恢复后无需人工数据修复的比例；
-- 批次部分失败后的继续完成率。
-
-## 13. 近期执行顺序
-
-```text
-1. SDS candidate fan-out 正确性
-2. durable batch-task ownership
-3. candidate 幂等和并发保护
-4. baseline/store/ownership 最终门禁
-5. strict baseline reuse
-6. compatibility-aware generation grouping
-7. created/reused/rejected/failed 前后端契约
-8. task/submission 真实状态投影
-9. regeneration protection
-10. partial batch submission
-11. 真实环境验收
-12. 根据上述实现收缩 ListingKit 根包
-```
-
-2026-06-21 执行记录：
-
-| 步骤 | 状态 | 证据 |
-| --- | --- | --- |
-| 1-10 | 已完成代码层闭环 | 见 `docs/product/validation/runs/2026-06-21-shein-sds-batch-production-closure-regression.md`。 |
-| 11. 真实环境验收 | pass | 见 `docs/product/validation/runs/2026-06-21-shein-sds-batch-production-closure.md`。store `870` 复测中真实 SDS fan-out、重复请求幂等、受控拒绝、SDS baseline warmup、readiness 清零和真实 SHEIN `save_draft` 均已验证。 |
-| 12. 根据上述实现收缩 ListingKit 根包 | next | Phase 1 退出条件中的“真实 SDS-to-SHEIN 草稿通过”已关闭；下一步可按已验证边界收缩 ListingKit 根包。 |
-
-2026-06-21 Phase 2 启动记录：
-
-| 对象 | 状态 | 证据 |
-| --- | --- | --- |
-| readiness repair center 组装 | migrated | `internal/listingkit/shein_repair_center.go` 已收缩为 facade；去重、排序、section label、direct apply queue/session 组装迁入 `internal/marketplace/shein/workspace/repair_center_from_readiness.go`，并新增 marketplace 包级测试。 |
-| readiness taxonomy 映射 | migrated | key -> taxonomy 映射规则迁入 `internal/marketplace/shein/workspace/readiness_taxonomy.go`；ListingKit 直接调用 workspace readiness check/taxonomy builder，已删除 taxonomy/check 直通 wrapper。 |
-| SHEIN remote submit 动作分发 | migrated | `internal/listingkit/task_submission_execution_remote.go` 不再直接 switch `save_draft` / `publish` 调用远端 API；动作分发和 response summary 构造迁入 `internal/publishing/shein/submit_remote_action.go`，ListingKit 仅保留执行服务日志和 orchestration。 |
-| SHEIN submit 翻译决策 | migrated | `internal/listingkit/task_submission_execution_product.go` 不再组合翻译缺失与区域目标语言规则；该判断迁入 `internal/publishing/shein/submit_prep.go` 的 `SubmitProductTranslationNeeded`，ListingKit 仅传入 task region 并决定是否构造 translate API。 |
-| SHEIN submit supplier/publish payload policy | migrated | supplier code 派生和 publish 必需 SKC 图片校验迁入 `internal/publishing/shein/submit_payload_policy.go`；提交执行直接调用 publishing 校验，已删除 ListingKit supplier/publish 兼容 wrapper。 |
-| SHEIN submit image policy | migrated | submit product 深拷贝、图片 URL 计数、待上传计数、已上传/SDS URL 分类和 upload cache 清洗迁入 `internal/publishing/shein/submit_image_policy.go`；ListingKit 图片上传编排仍保留在根包。 |
-| SHEIN submit payload transport normalization | migrated | submit payload 空集合、extra 默认值和传输字段补齐迁入 `internal/publishing/shein/submit_payload_normalize.go`；ListingKit submit payload facade 仅保留提交准备入口和 `SheinSettings` 适配，已清理底层 transport normalization 直通 wrapper。 |
-| SHEIN submit site/SKU normalization | migrated | submit 站点默认值、仓库选择、SKU 库存/数量/尺寸/重量规范化迁入 `internal/publishing/shein/submit_site_sku_policy.go`；ListingKit 仅在 submit payload facade 中把 `SheinSettings` 适配为 publishing-owned settings，已删除 site/SKU 兼容 wrapper。 |
-| SHEIN submit image upload orchestration | migrated | submit 图片上传去重、cache key、并发 job、color-block fallback 迁入 `internal/publishing/shein/submit_image_upload.go`；ListingKit 仅在生产路径注入现有 color-block builder 与 SHEIN image API，已删除无生产调用的单 image upload 兼容 wrapper。 |
-| SHEIN submit payload image normalization | migrated | submit SPU/SKC/SKU 图片类型、排序、去重、square/color-block、site detail image 组装迁入 `internal/publishing/shein/submit_payload_images.go`；已删除无生产调用的 ListingKit 图片 payload 兼容 wrapper。 |
-| SHEIN studio submit SKU pricing references | migrated | supplier SKU rename 后的手工价格覆盖、SKU price 引用 remap，以及 stale task/request pricing alias reconcile 迁入 `internal/publishing/shein/submit_sku_pricing.go`；已删除无生产调用的 ListingKit pricing 兼容 wrapper。 |
-| SHEIN studio submit SKU style tokens | migrated | submit task/request discriminator、style suffix 推导、token classifier 和 discriminator 组合迁入 `internal/publishing/shein/submit_sku_style.go`；ListingKit 仅在 supplier SKU normalization facade 中从 `Task` / `SheinStudioOptions` 取 style adapter，已删除独立 style support 文件。 |
-| SHEIN studio submit SKU variant rules | migrated | SDS variant 匹配、base SKU 推导、variant discriminator、旧 SKU 反推与是否需要 discriminator 的规则迁入 `internal/publishing/shein/submit_sku_variant.go`；ListingKit 仅在 supplier SKU normalization facade 中适配 `SDSSyncOptions` 到 publishing-owned input，已删除独立 variant support 文件。 |
-| SHEIN studio submit supplier SKU normalization flow | migrated | studio supplier SKU 主流程、DraftPayload/SkcList/PreviewPayload 同步更新、rename 收集与 pricing reconcile 编排迁入 `internal/publishing/shein/submit_sku_normalization.go`；ListingKit 只在 facade 中从 `Task` 组装 style/discriminator/variant context。 |
-| SHEIN submit state transitions | migrated | begin/advance/complete/fail attempt 状态转移、lease 刷新、closeout event 构造迁入 `internal/publishing/shein/submission_state.go`；ListingKit 仅保留兼容 wrapper 并注入统一 TTL。 |
-| SHEIN submit sensitive-word retry | migrated | publish validation notes 触发的敏感词清理、retry event 追加和重试响应错误归一迁入 `internal/publishing/shein/submit_sensitive_retry.go`；ListingKit 仅注入现有远端执行函数。 |
-| SHEIN submit source-facts readiness | migrated | 1688 来源事实复核规则抽到底层 `internal/listing/sourcefacts`，并由 SHEIN workspace 暴露 `SourceFactsReady`；ListingKit readiness checks 不再直接依赖 `internal/listing/submission`。 |
-| SHEIN submit final draft confirmation | migrated | submit 请求确认最终草稿时的 FinalSubmissionDraft 初始化、Confirmed/时间戳/SubmitMode 写入迁入 `internal/publishing/shein/final_draft_submit.go`；ListingKit 仅判断请求是否携带 ConfirmedFinal。 |
-| SHEIN submit readiness status predicates | migrated | submit readiness 使用的 SKU、最终图片、SKC/色块图、价格和图片存在性判定迁入 `internal/publishing/shein/submit_readiness_status.go`；已删除无生产调用的 ListingKit status 兼容 wrapper。 |
-| SHEIN submit image upload cache persistence | migrated | 图片上传后的 FinalSubmissionDraft cache 写入和更新时间迁入 `internal/publishing/shein/submit_image_upload_cache.go`；ListingKit 上传服务仅负责 API/runtime orchestration。 |
-| SHEIN final draft image application | migrated | 最终图片排序、删除、角色覆盖、SKC/SKU fallback 和 preview SKC image 回写迁入 `internal/publishing/shein/final_draft_images.go`；ListingKit 直接调用 publishing final draft image entrypoint，已删除 final draft 兼容 wrapper 文件。 |
-| SHEIN pricing cache review reconcile | migrated | 缓存命中的旧 SKU/manual price override 按当前 DraftPayload/source_sds_sku 重映射的规则迁入 `internal/publishing/shein/pricing_cache_reconcile.go`；ListingKit pricing cache loader 只负责读取缓存并委托 publishing 规则。 |
-| SHEIN pricing cache identity/applicability | migrated | pricing cache key、source identity、SKU facts、SKU alias、review normalization/applicability/decode/clone 迁入 `internal/publishing/shein/pricing_cache_identity.go`；ListingKit pricing cache support 仅保留兼容 wrapper、cache store 读写和日志。 |
-| SHEIN revision patch application | migrated | editor revision 的 category/attribute/sale attribute/SKC/SKU patch 应用规则迁入 `internal/marketplace/shein/workspace/revision_apply_patch.go`；ListingKit revision apply 编排直接调用 workspace patch application，已删除 resolution/SKC/SKU 直通 support wrapper。 |
-| SHEIN submit freshness readiness checks | migrated | 在线登录态、类目模板、普通属性模板和销售属性 freshness readiness check 的 key/文案/field path 构造迁入 `internal/marketplace/shein/workspace/submit_freshness_readiness.go`，freshness 规则调用也直连 workspace；ListingKit freshness flow 仅保留 API 调用、任务上下文和结果持久化。 |
-| SHEIN submit readiness check construction | migrated | submit readiness check 的字段拷贝和 taxonomy 绑定迁入 `internal/marketplace/shein/workspace/submit_readiness_check.go`；ListingKit readiness checks 只负责按当前 payload/service 状态收集输入。 |
-| SHEIN submit final review readiness | migrated | 最终确认页对 `save_draft` / `publish` 的 readiness 判定和提示文案迁入 `internal/publishing/shein/submit_readiness_status.go`；已删除无生产调用的 ListingKit final review readiness wrapper。 |
-| SHEIN submit review/facts readiness checks | migrated | 人工备注 warning 与来源事实 blocking readiness check 构造迁入 `internal/marketplace/shein/workspace/submit_readiness_review_checks.go`；ListingKit checks assembly 仅追加 workspace 生成的检查项。 |
-| SHEIN submit payload readiness checks | migrated | request draft、preview payload、图片、变体覆盖、规格结构、价格和最终确认 readiness check 构造迁入 `internal/marketplace/shein/workspace/submit_payload_readiness_checks.go`；ListingKit payload checks support 仅委托 workspace。 |
-| SHEIN submit template readiness checks | migrated | 类目骨架、类目复核、普通属性、属性复核和销售属性 readiness check 构造迁入 `internal/marketplace/shein/workspace/submit_template_readiness_checks.go`；ListingKit 仅将 `sheinBuildValidation` 适配为 workspace input。 |
-| SHEIN submit payload validation readiness checks | migrated | prepared submit payload 校验失败时的发布载荷结构 readiness check 构造迁入 `internal/marketplace/shein/workspace/submit_payload_validation_readiness_checks.go`；ListingKit build validation 仅传递 ready/message。 |
-| SHEIN final draft update application | migrated | admin final draft 更新请求的 submit mode、价格覆盖、图片排序/删除/角色覆盖和确认状态写入规则迁入 `internal/publishing/shein/final_draft_submit.go`；ListingKit admin support 仅适配 HTTP DTO 并保留 pricing/image 后续编排。 |
-| SHEIN final draft support wrapper cleanup | migrated | 删除已无生产调用的 `internal/listingkit/shein_final_draft_support.go` 私有兼容 wrapper；final draft image ordering/fallback/SKC image/role normalization 规则由 `internal/publishing/shein/final_draft_images.go` 直接持有。 |
-| SHEIN sale attribute submit readiness rules | migrated | 二级销售属性是否必需、source/template 维度匹配、销售属性 readiness failure reasons 和 pending attribute blocker 迁入 `internal/publishing/shein/sale_attribute_readiness.go`；ListingKit 仅保留兼容 wrapper。 |
-| SHEIN prepared publish payload validation | migrated | publish 前已规范化 product 的 quantity_info、package_type、stock_info_list 和包装尺寸结构校验迁入 `internal/publishing/shein/submit_payload_policy.go`；ListingKit build validation 仅负责 clone/prepare 后委托校验。 |
-| SHEIN package template validation aggregation | migrated | 类目、属性、销售属性和 prepared payload 的 submit readiness 输入聚合迁入 `internal/marketplace/shein/workspace/package_template_validation.go`；ListingKit 仅将 workspace validation 适配为历史私有结构。 |
-| SHEIN submit product preparation flow | migrated | submit product 的 SPUName 清空、point_key 生成、source_system/supplier_code 设置以及 collections/site/SKU/image/extra/transport normalization 编排迁入 `internal/publishing/shein/submit_payload_prepare.go`；ListingKit 仅适配 `SheinSettings`。 |
-| SHEIN repair revision seed construction | migrated | repair patch payload、repair reason、revision input 和最小 editor skeleton seed 构造迁入 `internal/marketplace/shein/workspace/repair_revision.go`；ListingKit 仅保留生产使用的 artifacts/validation preview 入口和 app `ApplyRevisionRequest` 包装，已删除未调用的小 wrapper、revision bundle 中间层和独立 validation support 文件。 |
-| SHEIN repair patch payload cloning | migrated | repair patch payload 深拷贝迁入 `internal/marketplace/shein/workspace/repair_revision.go`，并补齐 attribute pending candidates 等嵌套 slice 的深拷贝；ListingKit 直接调用 workspace clone，仅保留 app-owned artifact clone。 |
-| SHEIN readiness repair patch payload construction | migrated | readiness key 到 direct repair patch payload 的映射迁入 `internal/marketplace/shein/workspace/readiness_guidance.go`；ListingKit guidance support 直接调用 workspace 构造 patch，并继续包装 repair hint validation / ApplyRevisionRequest，已删除 patch payload 直通 wrapper。 |
-| SHEIN SDS image matching helpers | migrated | SDS mockup 到 ImageSet 转换、SKU/color key 归一、source_sds_sku/SupplierSKU 匹配和 image set merge 迁入 `internal/publishing/shein/sds_images.go`；ListingKit SDS 图片流程直接调用 publishing helpers，前端请求 DTO 适配已并回主流程文件并删除独立 support 文件。 |
-| SHEIN studio variant image matching | migrated | AI 生成的 variant image set 按 source_sds_sku/SupplierSKU/SKC color 匹配 DraftPayload/SkcList 的规则迁入 `internal/publishing/shein/variant_image_sets.go`；ListingKit 仅把前端 `SheinStudioVariantImageSet` DTO 归一为 publishing-owned `VariantImageSet`。 |
-| SHEIN variant image coverage guard | migrated | 多 SKC 共享单图的 coverage 阻断判断、SKC group/main image 计数和 metadata 状态读写迁入 `internal/publishing/shein/variant_image_coverage.go`；ListingKit 仅从前端/SDS 输入计算可用变体图片组数并委托 publishing 规则。 |
-| SHEIN studio AI product image application | migrated | AI 商品图替换/追加、ImageSet 构造、DraftPayload/SkcList/PreviewPayload 写回迁入 `internal/publishing/shein/studio_ai_images.go`；ListingKit Studio 图片流程仅保留请求策略、source image 聚合和兼容 wrapper。 |
-| SHEIN studio size reference image application | migrated | size reference 图片追加、preview Product/SKC size-map 标记和 `ImageType=6`/`SizeImgFlag` 写回迁入 `internal/publishing/shein/studio_size_reference_images.go`；ListingKit 只保留前端/SDS 尺寸图解析与兼容 wrapper。 |
-| SHEIN size reference rendered resolution | migrated | raw size reference 与 SDS source/rendered mockup 按位置匹配、variant summary 按 ID/SKU/color 匹配规则迁入 `internal/publishing/shein/size_reference_resolution.go`；ListingKit 只负责从 `GenerateRequest`/`SDSSyncSummary` 适配输入。 |
-| SHEIN Studio image compatibility cleanup | migrated | 删除迁移后未调用的 ListingKit 私有 wrapper/dead helper，包括旧 coverage group/main-image helper、clear shared SKC image helper、ImageDraftToSet wrapper 和 size reference detail wrapper。 |
-| SHEIN store resolution presentation cleanup | migrated | store resolution summary/submission event presentation 不再通过 ListingKit 私有 value wrapper 中转；preview/history/revision 场景直接调用 `internal/marketplace/shein/workspace` 的 summary 与 submission store resolution builder，ListingKit 仅保留 task snapshot/time 适配。 |
-| SHEIN submission refresh remote policy | migrated | refresh remote lookup 的 default-confirmed 判定统一使用 `internal/marketplace/shein/publishing` 的 remote confirmation policy；删除不再使用的通用 `internal/listing/submission` refresh remote policy，ListingKit 仅保留 request ID 与 product API 适配。 |
-| SHEIN direct submit image upload predicate cleanup | migrated | direct submit flow 不再保留 ListingKit 私有 `NeedsImageUpload` wrapper；runner 配置直接调用 `internal/publishing/shein` 的 pending image upload count，ListingKit 仅负责提交阶段编排。 |
-| SHEIN submit state dead wrapper cleanup | migrated | 删除 ListingKit 中无调用的 submit failure/report/remote-record 私有 wrapper；submit 状态转换继续由 `internal/publishing/shein/submission_state.go` 持有，ListingKit 仅保留仍被编排路径使用的 TTL adapter。 |
-| SHEIN submit lease state query cleanup | migrated | submit lease replay、active attempt、remote recovery 和 in-flight 清理不再通过 ListingKit 私有查询 wrapper；recovery lease 编排直接调用 `internal/publishing/shein` 的 submission state helpers，ListingKit 仅注入统一 TTL。 |
-| SHEIN submit closeout event wrapper cleanup | migrated | direct/temporal persistence 与 remote completion 不再通过 ListingKit 私有 complete/fail event wrapper；成功/失败 closeout event 直接由 `internal/publishing/shein` 构造，ListingKit 只负责持久化编排。 |
-| SHEIN submit state test-only wrapper cleanup | migrated | 删除只剩测试调用的 advance/complete/fail submit attempt wrapper；测试直接验证 `internal/publishing/shein` 状态转换，ListingKit 仅保留生产编排仍需要的 TTL adapter。 |
-| SHEIN submit phase transition wrapper cleanup | migrated | direct/recovery phase 持久化路径直接调用 `internal/publishing/shein.AdvanceSubmitPhaseAndBuildEvent` 并注入统一 TTL；删除 ListingKit 中已无所有权的 phase transition/closeout 私有 wrapper，`shein_submit_state.go` 只保留 begin attempt TTL adapter。 |
-| SHEIN submit state adapter file cleanup | migrated | recovery lease 与测试 fixture 直接调用 `internal/publishing/shein.BeginSubmitAttempt` 并注入统一 TTL；删除 ListingKit 根包最后的 `shein_submit_state.go` adapter 和重复状态机测试。 |
-| SHEIN readiness reason ownership | migrated | readiness reason DTO 和 clone/build helper 迁入 `internal/marketplace/shein/workspace`；ListingKit 仅保留 API alias 与 repair hint/app revision 适配，提交 readiness guidance 不再在根包复制 reason 字段。 |
-| SHEIN repair hint DTO ownership | migrated | readiness repair hint JSON DTO 迁入 `internal/marketplace/shein/workspace` 的泛型 `RepairHint`；ListingKit 以 alias 绑定本地 revision request/validation 类型，只保留 artifact clone 和 app request 包装。 |
-| SHEIN repair artifact container ownership | migrated | patch/skeleton/request/validation artifact 容器迁入 `internal/marketplace/shein/workspace` 泛型类型；不再保留 repair revision bundle 中间容器，ListingKit 仅保留 workspace seed 到 app `ApplyRevisionRequest` 的包装与 clone 调用。 |
-| SHEIN repair validation clone ownership | migrated | repair validation preview 与 revision diff 深拷贝 helper 迁入 `internal/marketplace/shein/workspace`；ListingKit clone support 只委托 workspace helper，不再复制 validation/diff clone 细节。 |
-| Shared image set clone ownership | migrated | `common.ImageSet` 深拷贝 helper 迁入 `internal/publishing/common`；ListingKit revision restore 和 SHEIN workspace image clone 均复用 `common.CloneImageSet`，删除根包 editor image set clone helper。 |
-| SHEIN repair validation wrapper cleanup | migrated | 删除 ListingKit 中单行 `cloneSheinRepairValidationPreview` wrapper；repair artifact clone 直接调用 `internal/marketplace/shein/workspace.CloneRepairValidationPreview`。 |
-| SHEIN repair clone support file cleanup | migrated | 删除只剩 artifact clone tuple 的 `shein_repair_clone_support.go`；repair center 与 readiness hint clone 直接组合 workspace clone helper 和 app request clone。 |
-| SHEIN readiness reason wrapper cleanup | migrated | 删除 ListingKit 中单行 `buildSheinReadinessReason` / `cloneSheinReadinessReason` wrapper；readiness guidance resolver 与 repair center 直接调用 `internal/marketplace/shein/workspace` 的 reason builder/clone helper。 |
-| SHEIN readiness guidance DTO cleanup | migrated | 删除 ListingKit 私有 `sheinReadinessGuidance` 中间 DTO 和 `cloneSheinRepairHints` wrapper；guidance resolver 直接返回 workspace 泛型 `Guidance[SheinReadinessReason, SheinRepairHint]`。 |
-| SHEIN repair artifact alias cleanup | migrated | 删除 ListingKit 私有 `sheinRepairArtifacts` alias；repair artifact builder 直接返回 workspace 泛型 `RepairArtifacts[SheinRepairPatchPayload, SheinEditorRevisionSkeleton, ApplyRevisionRequest, SheinRepairValidationPreview]`。 |
-| SHEIN repair support file cleanup | migrated | 删除只剩 `SheinRepairPatchPayload` / `SheinRepairValidationPreview` alias 的 `shein_repair_support.go`；repair DTO alias 统一并入 `shein_workspace_repair_bridge.go`。 |
-| SHEIN repair apply request wrapper cleanup | migrated | 删除单用 `buildSheinRepairApplyRequest` wrapper；repair artifact builder 直接把 workspace revision seed 包装为 app `ApplyRevisionRequest`。 |
-| SHEIN repair validation preview wrapper cleanup | migrated | 删除单用 `buildSheinRepairValidationPreview` wrapper；repair artifact builder 内联 app revision validation 并直接调用 workspace repair validation preview builder。 |
-| SHEIN repair revision support file cleanup | migrated | 删除只剩 repair artifact builder 的 `shein_repair_revision_support.go`；artifact builder 并入 readiness guidance support，作为 repair hint 组装的一部分。 |
-| SHEIN submit readiness append wrapper cleanup | migrated | 删除单用 `appendSheinTemplateReadinessChecks` / `appendSheinPayloadReadinessChecks` wrapper；checks builder 直接追加 workspace template/payload readiness checks，POD 本地规则保留独立 helper。 |
-| SHEIN submit readiness checks support file cleanup | migrated | 删除只剩 readiness checks builder/POD helper 的 `shein_submit_readiness_checks_support.go`；checks assembly 归并回 `shein_submit_readiness.go`，平台 check 构造仍委托 workspace。 |
-| SHEIN submit readiness guidance support file cleanup | migrated | 删除只剩 guidance/hint assembly 的 `shein_submit_readiness_guidance_support.go`；repair hint artifact 组装和 guidance resolver helper 归并回 `shein_submit_readiness.go`。 |
-| SHEIN admin service support file cleanup | migrated | 删除只剩 admin service 私有 helper 的 `shein_admin_service_support.go`；task/package 加载、category API、final draft 后续编排与 resolution cache 清理归并回 `shein_admin_service.go`，final draft 写入和类目搜索规则继续委托 publishing/workspace。 |
-
-2026-06-23/24 Control Plane 与 Management retirement 记录：
-
-| 对象 | 状态 | 证据 |
-| --- | --- | --- |
-| Go Listing Control Plane 代码路径 | production hardened | `cmd/listing-control-plane`、`internal/listingcontrol`、`internal/app/runtime/listingcontrol`、`scripts/build-push-deploy-listing-control-plane.ps1` 和 `deployments/kubernetes/shein-listing/overlays/prod-auto-shard-statefulset/listing-control-plane.yaml` 已落库并部署到生产镜像 `xuwei190/task-processor-listing-control-plane:f1f8a06a`。`docs/product/validation/runs/2026-06-24-listing-control-plane-leader-rollout.md` 已记录双实例 leader/standby rollout、active Pod 删除接管、dispatch event/task reason DB 观察，以及从 `f1f8a06a` 回滚到 `b3fd80e1` 再滚回 `f1f8a06a` 的 rollback rehearsal。dispatch skip/delay reason 已作为任务表业务事实和 `listing_dispatch_event` 审计事实生产验证；daily limit capacity 已接入 Store Runtime 并在 `/ready` 和事件表中观察到。唯一 deferred 项是 ListingKit UI 的 admin 任务列表“调度原因”列尚未发布。 |
-| Control Plane 实施计划状态 | production closeout updated | `docs/superpowers/plans/2026-06-23-go-listing-control-plane.md` 已补充 2026-06-24 closeout，明确哪些是代码完成、哪些还只是待生产验证，避免原始 checklist 与代码状态继续漂移。 |
-| Retired management runtime closeout | completed | `internal/infra/clients/management` 已作为 Go package 删除；bootstrap/runtime 路径改走 `internal/listingruntime/local`，consumer/runtime 边界改由 `ListingRuntimeHealthValidator`、`ListingRuntimeImportTaskRepository`、`listingadmin` 和 `taskrpcapi` contracts 承载。剩余工作不是恢复 management API 适配层，而是守住边界测试并继续做 runtime closeout / product-source normalization。 |
-| ListingKit 重构进展快照 | added | `docs/refactoring/listingkit-refactoring-progress-2026-06-24.md` 记录当前后半程状态、核心缺口、两周执行建议和不建议继续做的工作。该文件是 active snapshot，不替代 roadmap 和长期架构文档。 |
-
-2026-06-26 执行对齐：
-
-- 本 roadmap 仍是 ListingKit 重构方向的主来源；`docs/refactoring/listingkit-boundary-checkpoint.md` 记录小步提交、临时 stop line 和 guard-backed seam 状态。
-- 当前执行线先继续 SHEIN marketplace publishing / submission 边界收口，尤其是把稳定的 SHEIN 发布规则迁入 `internal/marketplace/shein/publishing`，并让 `internal/publishing/shein` 只保留兼容模型、状态 mutation 和远端副作用编排。
-- Retired management runtime closeout 已完成到 package deletion；后续切片不应新增或整理 management API 适配层，只允许维护边界 guard、历史文档说明和 runtime/product-source ownership 收口。
-
-在这条路径完成之前，不启动新的大规模多平台工作台建设，也不进行无业务牵引的目录级重构。
-
-## 14. 完成定义
-
-项目重构不是以“文件全部搬完”为完成标准，而是以以下结果为准：
-
-```text
-每个核心领域有一个明确事实源；
-ListingKit 根包主要承担 facade 和 orchestration；
-平台规则位于平台边界；
-通用提交和 Studio 机制可独立测试；
-外部客户端可替换；
-真实失败能够安全恢复；
-新增平台不需要复制已有状态机和技术债。
-```
-
-## 15. 相关文档
-
-- `docs/product/listingkit-project-goals.md`
-- `docs/architecture/project-boundaries.md`
-- `docs/architecture/next-steps.md`
-- `docs/refactoring/project-wide-refactoring-plan.md`
+- `docs/refactoring/current-refactoring-status.md`
+  - current Now / Next / Later posture;
+- `docs/refactoring/next-phase-plan.md`
+  - immediate validation and PR queue;
 - `docs/refactoring/listingkit-boundary-checkpoint.md`
-- `docs/refactoring/listingkit-refactoring-progress-2026-06-24.md`
-- `docs/product/listingkit-next-execution-plan.md`
-- `docs/superpowers/specs/2026-06-20-listingkit-sds-batch-production-closure-requirements.md`
-- `docs/superpowers/plans/2026-06-20-listingkit-sds-batch-production-closure.md`
-- `docs/superpowers/specs/2026-06-23-go-listing-control-plane-design.md`
-- `docs/superpowers/plans/2026-06-23-go-listing-control-plane.md`
+  - current ListingKit stop lines and safe next seams;
+- `docs/product/product-sourcing-handoff.md`
+  - product-source expansion ownership and handoff rules;
+- `docs/architecture/project-boundaries.md`
+  - repository-wide ownership and dependency direction rules.
 
+## 6. Review warning
+
+If this roadmap conflicts with a newer checkpoint, ADR, architecture document, or guard test, follow the newer document or test.
+
+When in doubt, prefer the rule that keeps:
+
+```text
+app/runtime assembly thin,
+ListingKit root narrow,
+product/source facts outside ListingKit,
+marketplace policy in marketplace packages,
+external clients behind local interfaces,
+generated baselines as local evidence only.
+```
