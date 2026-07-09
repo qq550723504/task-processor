@@ -1,5 +1,7 @@
 package sourcing
 
+import "strings"
+
 // SourceEnvelope is the neutral handoff shape from source adapters into product,
 // catalog, asset, and ListingKit orchestration. It should not carry target
 // marketplace publishing payloads or runtime adapter dependencies.
@@ -81,8 +83,9 @@ type SourceWarning struct {
 
 // Normalize returns a warning with trimmed metadata.
 func (w SourceWarning) Normalize() SourceWarning {
-	w.Code = trimSourceMetadata(w.Code)
-	w.Field = trimSourceMetadata(w.Field)
+	w.Code = strings.ToLower(strings.TrimSpace(w.Code))
+	w.Field = strings.TrimSpace(w.Field)
+	w.Message = strings.TrimSpace(w.Message)
 	return w
 }
 
