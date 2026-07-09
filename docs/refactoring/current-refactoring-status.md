@@ -24,6 +24,8 @@ Use this file together with:
 
 - `docs/refactoring/next-phase-plan.md`
 - `docs/refactoring/listingkit-boundary-checkpoint.md`
+- `docs/product/product-sourcing-handoff.md`
+- `docs/product/product-sourcing-mvp-plan.md`
 - `docs/refactoring/decisions/2026-06-26-next-growth-sequence.md`
 - `docs/development/repository-structure.md`
 
@@ -92,11 +94,34 @@ Allowed work:
 5. Cost, price, and source-SDS identity mapping when it stays platform-neutral.
 6. Thin crawler adapters that execute raw source collection without owning marketplace publishing rules.
 
+Immediate MVP direction:
+
+```text
+raw source data
+  -> SourceIdentity + SourceEnvelope
+  -> source-result normalization
+  -> catalog / asset facts
+  -> ListingKit batch or task orchestration
+  -> existing SHEIN preview / submission path
+```
+
+Use `docs/product/product-sourcing-mvp-plan.md` for the active PR sequence.
+
+Recommended order:
+
+1. Introduce `internal/product/sourcing` source identity and envelope types.
+2. Map exactly one source path into the envelope.
+3. Hand off neutral product and asset facts.
+4. Add the narrow ListingKit orchestration bridge.
+5. Add import-boundary guards for product sourcing and crawler/integration packages.
+
 Stop lines:
 
 1. Product-source code must not directly assemble SHEIN publish payloads.
 2. Crawler packages must not depend on ListingKit root, marketplace publishing, or workspace packages.
 3. New source logic must not add `if source == ...` policy branches to root `internal/listingkit` unless it is temporary API-shell adaptation with a recorded follow-up.
+4. Do not start two product-source integrations in the same MVP.
+5. Do not mix product-source modeling with full new sales-platform workbench expansion.
 
 ## 4. Later
 
@@ -155,6 +180,8 @@ Current order of authority:
 1. `current-refactoring-status.md` for Now / Next / Later.
 2. `next-phase-plan.md` for immediate execution details.
 3. `listingkit-boundary-checkpoint.md` for ListingKit stop lines.
-4. `project-wide-refactoring-plan.md` for long-term architecture direction.
-5. `project-wide-execution-plan.md` and dated progress snapshots as historical references.
-6. Generated package/dependency snapshots only as dated evidence when freshly regenerated.
+4. `docs/product/product-sourcing-handoff.md` for product-source ownership boundaries.
+5. `docs/product/product-sourcing-mvp-plan.md` for the active product-source MVP PR sequence.
+6. `project-wide-refactoring-plan.md` for long-term architecture direction.
+7. `project-wide-execution-plan.md` and dated progress snapshots as historical references.
+8. Generated package/dependency snapshots only as dated evidence when freshly regenerated.
