@@ -200,6 +200,16 @@ Scope:
 - keep ListingKit as orchestration and DTO adaptation only;
 - avoid adding source-specific branches to root ListingKit except temporary adapter shells with follow-up notes.
 
+Current implementation path:
+
+```text
+internal/catalog.ProductFacts + internal/asset.Facts
+  -> internal/listingkit.ProductSourceGenerateRequestInput
+  -> internal/listingkit.GenerateRequest
+```
+
+The bridge is intentionally a pure DTO-adaptation function. It does not create tasks, submit packages, assemble marketplace payloads, or introduce another submission state owner.
+
 Acceptance criteria:
 
 ```text
@@ -291,7 +301,7 @@ Pause and document before continuing if:
 
 ## 8. Immediate next action
 
-PR 1 and PR 2 have established the source identity/envelope and the first Amazon source-envelope mapping. Continue with PR 3 by proving catalog/asset handoff, then move to the ListingKit orchestration bridge.
+PR 1 through PR 4 now establish identity/envelope, the first Amazon source-envelope mapping, neutral catalog/asset facts, and a narrow ListingKit request bridge. Continue by running focused tests and then adding/confirming source boundary guards as PR 5.
 
 Implementation checklist:
 
@@ -302,5 +312,6 @@ Implementation checklist:
 [ ] add or plan import-boundary guard coverage.
 [ ] map the existing Amazon product result path into SourceEnvelope.
 [ ] map SourceEnvelope into internal/catalog and internal/asset neutral facts.
+[ ] map internal/catalog and internal/asset neutral facts into a ListingKit GenerateRequest bridge.
 [ ] update this plan only if the first chosen source changes the PR order.
 ```
