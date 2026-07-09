@@ -84,6 +84,13 @@ web/listingkit-ui/.next/
 web/listingkit-ui/node_modules/
 web/listingkit-ui/tsconfig.tsbuildinfo
 
+# Generated refactoring evidence. Regenerate locally when needed instead of
+# keeping stale package/dependency snapshots in the repository.
+docs/refactoring/*.generated.md
+docs/refactoring/packages-baseline.txt
+docs/refactoring/mod-graph-baseline.txt
+docs/refactoring/dependency-baseline-output.txt
+
 # Local SDS/SHEIN integration state and credentials
 .local/sds/
 data/sds/
