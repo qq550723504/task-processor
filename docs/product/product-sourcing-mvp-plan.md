@@ -168,6 +168,14 @@ Scope:
 - keep platform-neutral facts outside marketplace packages;
 - avoid changing ListingKit task orchestration until the facts are stable.
 
+Current implementation path:
+
+```text
+internal/product/sourcing.SourceEnvelope
+  -> internal/catalog.ProductFacts
+  -> internal/asset.Facts
+```
+
 Acceptance criteria:
 
 ```text
@@ -283,7 +291,7 @@ Pause and document before continuing if:
 
 ## 8. Immediate next action
 
-Start with PR 1, then continue to the Amazon source-envelope mapping as PR 2.
+PR 1 and PR 2 have established the source identity/envelope and the first Amazon source-envelope mapping. Continue with PR 3 by proving catalog/asset handoff, then move to the ListingKit orchestration bridge.
 
 Implementation checklist:
 
@@ -293,5 +301,6 @@ Implementation checklist:
 [ ] add validation/fingerprint tests.
 [ ] add or plan import-boundary guard coverage.
 [ ] map the existing Amazon product result path into SourceEnvelope.
+[ ] map SourceEnvelope into internal/catalog and internal/asset neutral facts.
 [ ] update this plan only if the first chosen source changes the PR order.
 ```
