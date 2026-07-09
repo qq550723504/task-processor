@@ -8,10 +8,10 @@ import (
 	"task-processor/internal/catalog"
 )
 
-// ProductSourceGenerateRequestInput is the narrow bridge input from normalized
-// product-source facts into ListingKit orchestration. It must receive catalog
-// and asset facts, not raw crawler payloads or source-specific DTOs.
-type ProductSourceGenerateRequestInput struct {
+// SourceFactsGenerateRequestInput is the narrow bridge input from normalized
+// source facts into ListingKit orchestration. It must receive catalog and asset
+// facts, not raw crawler payloads or source-specific DTOs.
+type SourceFactsGenerateRequestInput struct {
 	TenantID           string
 	UserID             string
 	Product            catalog.ProductFacts
@@ -24,23 +24,23 @@ type ProductSourceGenerateRequestInput struct {
 	Options            *GenerateOptions
 }
 
-// GenerateRequestFromProductSourceFacts converts normalized catalog/asset facts
-// into the existing ListingKit GenerateRequest shape. It does not create tasks,
+// GenerateRequestFromSourceFacts converts normalized catalog/asset facts into
+// the existing ListingKit GenerateRequest shape. It does not create tasks,
 // submit packages, assemble marketplace payloads, or introduce new source-specific
 // branches.
-func GenerateRequestFromProductSourceFacts(input ProductSourceGenerateRequestInput) GenerateRequest {
+func GenerateRequestFromSourceFacts(input SourceFactsGenerateRequestInput) GenerateRequest {
 	product := input.Product
 	return GenerateRequest{
 		TenantID:           strings.TrimSpace(input.TenantID),
 		UserID:             strings.TrimSpace(input.UserID),
 		ImageURLs:          imageURLsFromAssetFacts(input.Assets),
-		Text:               productSourcePromptText(product),
+		Text:               sourceFactsPromptText(product),
 		ProductURL:         strings.TrimSpace(product.SourceURL),
-		Platforms:          normalizedProductSourcePlatforms(input.Platforms),
+		Platforms:          normalizedSourceFactsPlatforms(input.Platforms),
 		Country:            strings.TrimSpace(input.Country),
 		Language:           strings.TrimSpace(input.Language),
 		SheinStoreID:       input.SheinStoreID,
-		TargetCategoryHint: productSourceCategoryHint(input.TargetCategoryHint, product),
+		TargetCategoryHint: sourceFactsCategoryHint(input.TargetCategoryHint, product),
 		BrandHint:          strings.TrimSpace(product.Brand),
 		Options:            input.Options,
 	}
@@ -66,7 +66,7 @@ func imageURLsFromAssetFacts(facts asset.Facts) []string {
 	return urls
 }
 
-func normalizedProductSourcePlatforms(platforms []string) []string {
+func normalizedSourceFactsPlatforms(platforms []string) []string {
 	if len(platforms) == 0 {
 		return nil
 	}
@@ -86,7 +86,7 @@ func normalizedProductSourcePlatforms(platforms []string) []string {
 	return out
 }
 
-func productSourceCategoryHint(explicit string, product catalog.ProductFacts) string {
+func sourceFactsCategoryHint(explicit string, product catalog.ProductFacts) string {
 	if explicit = strings.TrimSpace(explicit); explicit != "" {
 		return explicit
 	}
@@ -101,7 +101,7 @@ func productSourceCategoryHint(explicit string, product catalog.ProductFacts) st
 	return ""
 }
 
-func productSourcePromptText(product catalog.ProductFacts) string {
+func sourceFactsPromptText(product catalog.ProductFacts) string {
 	parts := []string{}
 	appendPart := func(label, value string) {
 		value = strings.TrimSpace(value)
