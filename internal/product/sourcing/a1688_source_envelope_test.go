@@ -104,7 +104,7 @@ func TestAlibaba1688SourceEnvelopeMapsProductFacts(t *testing.T) {
 	if variant.Attributes["Color"] != "Blue" || variant.Attributes["price"] != "9.9" || variant.Attributes["stock"] != "20" {
 		t.Fatalf("variant attributes = %+v, want color price and stock", variant.Attributes)
 	}
-	if len(envelope.AssetCandidates) != 6 {
+	if len(envelope.AssetCandidates) != 7 {
 		t.Fatalf("assets = %d, want main/gallery/detail/variant/package/video cover/video", len(envelope.AssetCandidates))
 	}
 	if envelope.AssetCandidates[0].Role != alibaba1688ImageRolePrimary {
