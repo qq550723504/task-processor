@@ -50,6 +50,19 @@ Option A: normalize an existing source path first, such as 1688 or SDS, if code 
 Option B: use 大建云仓 / overseas warehouse source catalog as the first new source when the business data contract is already clear.
 ```
 
+Current implementation choice:
+
+```text
+PR 2 starts with the existing Amazon product fetch/crawler result path.
+```
+
+Reason:
+
+- the Amazon path already has source request planning, product fetch tests, and a stable `internal/model.Product` crawler result shape;
+- it is useful for boundary validation before adding a new source;
+- it lets `SourceEnvelope` mapping be tested without browser automation;
+- it does not imply full Amazon listing workbench expansion.
+
 Choose Option A when the first objective is boundary validation.
 Choose Option B when the first objective is business expansion.
 
@@ -124,6 +137,12 @@ Scope:
 - map raw source data into `SourceEnvelope`;
 - keep crawler/runtime adapter code thin;
 - avoid marketplace publish payload decisions.
+
+Current selected source:
+
+```text
+Amazon source product result -> internal/product/sourcing.SourceEnvelope
+```
 
 Acceptance criteria:
 
@@ -264,7 +283,7 @@ Pause and document before continuing if:
 
 ## 8. Immediate next action
 
-Start with PR 1.
+Start with PR 1, then continue to the Amazon source-envelope mapping as PR 2.
 
 Implementation checklist:
 
@@ -273,5 +292,6 @@ Implementation checklist:
 [ ] define SourceIdentity and SourceEnvelope with minimal neutral fields.
 [ ] add validation/fingerprint tests.
 [ ] add or plan import-boundary guard coverage.
+[ ] map the existing Amazon product result path into SourceEnvelope.
 [ ] update this plan only if the first chosen source changes the PR order.
 ```
