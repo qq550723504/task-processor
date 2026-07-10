@@ -109,6 +109,9 @@ func collectSizeChartAttributeCandidates(attributes []sheinattribute.AttributeIn
 		if !isSizeChartTemplateAttribute(attr) {
 			continue
 		}
+		if !isTemplateRequired(attr) {
+			continue
+		}
 		result = append(result, buildPendingAttributeCandidate(attr))
 	}
 	if len(result) == 0 {

@@ -56,6 +56,9 @@ func BuildSizeAttributesFromProductSizeWithTemplates(productSize string, sizeVal
 }
 
 func BuildSizeAttributesFromProductSizeWithHeaderAttributeIDs(productSize string, sizeValues []SizeSaleAttributeRef, templateAttrs []SizeChartTemplateAttribute, headerAttributeIDsByName map[string]int) []sheinproduct.SizeAttribute {
+	if templateAttrs != nil && len(templateAttrs) == 0 {
+		return nil
+	}
 	table := parseSDSProductSizeTable(productSize)
 	if len(table) < 2 || len(table[0]) < 2 {
 		return nil

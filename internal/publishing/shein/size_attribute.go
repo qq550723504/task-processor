@@ -109,8 +109,11 @@ func collectSizeSaleAttributeRefs(pkg *Package) []sheinpublishing.SizeSaleAttrib
 
 func collectSizeChartTemplateAttributes(pkg *Package) []sheinpublishing.SizeChartTemplateAttribute {
 	pkg = NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.AttributeResolution == nil || len(pkg.AttributeResolution.SizeChartAttributes) == 0 {
+	if pkg == nil || pkg.AttributeResolution == nil {
 		return nil
+	}
+	if len(pkg.AttributeResolution.SizeChartAttributes) == 0 {
+		return []sheinpublishing.SizeChartTemplateAttribute{}
 	}
 	result := make([]sheinpublishing.SizeChartTemplateAttribute, 0, len(pkg.AttributeResolution.SizeChartAttributes))
 	for _, attr := range pkg.AttributeResolution.SizeChartAttributes {
