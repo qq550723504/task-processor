@@ -19,7 +19,6 @@ import (
 	a1688 "task-processor/internal/product/sourcehandoff/a1688"
 	productsourcea1688httpapi "task-processor/internal/product/sourcehandoff/a1688/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	"task-processor/internal/sdslogin"
