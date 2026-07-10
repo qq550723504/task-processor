@@ -4,7 +4,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	a1688handoff "task-processor/internal/product/sourcehandoff/a1688"
-	productsourcea1688httpapi "task-processor/internal/product/sourcehandoff/a1688/httpapi"
+	sourcea1688httpapi "task-processor/internal/productenrich/httpapi/sourcea1688"
 )
 
 type httpFeatureCompositionBuilder struct {
@@ -87,7 +87,7 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 	}
 	composition.listingKitModule = listingKitFeatures.listingKitModule
 	if composition.listingKitModule != nil && composition.listingKitModule.TaskLifecycleService != nil {
-		composition.productSourcingModule = productsourcea1688httpapi.BuildModule(
+		composition.productSourcingModule = sourcea1688httpapi.BuildModule(
 			a1688handoff.NewTaskCommandService(composition.listingKitModule.TaskLifecycleService),
 		)
 	}
