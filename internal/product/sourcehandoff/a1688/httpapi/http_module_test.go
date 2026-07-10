@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/httproute"
 	"task-processor/internal/kernel/module"
 	a1688 "task-processor/internal/product/sourcehandoff/a1688"
 )
@@ -33,7 +34,13 @@ func TestBuildModuleReturnsHandlerAndModule(t *testing.T) {
 	require.True(t, result.Module.Enabled(&config.Config{}))
 }
 
-func moduleRouteKeys(routes []structRouteDescriptor) []string { return nil }
+func moduleRouteKeys(routes []httproute.Descriptor) []string {
+	keys := make([]string, 0, len(routes))
+	for _, route := range routes {
+		keys = append(keys, route.Method+" "+route.Path)
+	}
+	return keys
+}
 
 type moduleTaskCommandService struct{}
 
