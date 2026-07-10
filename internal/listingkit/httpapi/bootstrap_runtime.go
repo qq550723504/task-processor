@@ -76,6 +76,7 @@ func createModuleRuntime(input BuildModuleInput, bundle *ServiceBundle, closers 
 	return &Module{
 		Handler:              handler,
 		StudioSessionHandler: studioSessionHandler,
+		TaskLifecycleService: bundle.runtime.service,
 		Pool:                 assembly.pool,
 		Closers:              closers.Snapshot(),
 	}, nil
