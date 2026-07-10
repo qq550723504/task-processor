@@ -4,6 +4,8 @@ package activity
 import (
 	"context"
 	"fmt"
+	"math/big"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,6 +14,18 @@ import (
 
 	"github.com/sirupsen/logrus"
 )
+
+const maxTimeLimitedDiscountRate = 0.95
+
+func isTimeLimitedDiscountValid(activityPrice, originalPrice float64) bool {
+	activity, activityOK := new(big.Rat).SetString(strconv.FormatFloat(activityPrice, 'f', -1, 64))
+	original, originalOK := new(big.Rat).SetString(strconv.FormatFloat(originalPrice, 'f', -1, 64))
+	if !activityOK || !originalOK || activity.Sign() <= 0 || original.Sign() <= 0 {
+		return false
+	}
+	maximumActivityPrice := new(big.Rat).Mul(original, big.NewRat(95, 100))
+	return activity.Cmp(maximumActivityPrice) < 0
+}
 
 // queryPromotionGoods 查询促销活动商品列表（私有方法）
 func (s *activityRegistrationServiceImpl) queryPromotionGoods(
@@ -276,6 +290,7 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 
 		// 构建SKU列表
 		addSkuList := make([]marketing.SkuCostInfo, 0, len(g.SkuInfoList))
+		invalidSKUReason := ""
 		for _, sku := range g.SkuInfoList {
 			skuActPrice := requestedSKUActPriceBySKC[g.Skc][sku.Sku]
 			if skuActPrice <= 0 {
@@ -288,6 +303,26 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 			if skuCostPrice <= 0 {
 				skuCostPrice = promotionSKUUSSupplyPrice(sku, g.USSupplyPrice)
 			}
+			if skuCostPrice <= 0 || skuActPrice <= 0 {
+				invalidSKUReason = fmt.Sprintf(
+					"商品 %s 的 SKU %s 价格无效(活动价 %.2f, 原价 %.2f)",
+					g.Skc,
+					sku.Sku,
+					skuActPrice,
+					skuCostPrice,
+				)
+				break
+			}
+			if !isTimeLimitedDiscountValid(skuActPrice, skuCostPrice) {
+				invalidSKUReason = fmt.Sprintf(
+					"商品 %s 的 SKU %s 折扣不足(活动价 %.2f, 原价 %.2f, 要求低于原价95%%)",
+					g.Skc,
+					sku.Sku,
+					skuActPrice,
+					skuCostPrice,
+				)
+				break
+			}
 			skuMaxProductActPrice := promotionSKUMaxUSSupplyPrice(sku, skuCostPrice)
 			addSkuList = append(addSkuList, marketing.SkuCostInfo{
 				Sku:                sku.Sku,
@@ -295,6 +330,12 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 				MaxProductActPrice: skuMaxProductActPrice,
 				ProductActPrice:    skuActPrice,
 			})
+		}
+		if invalidSKUReason != "" {
+			s.logger.Warn(invalidSKUReason)
+			filterReasons = appendPromotionFilterReasonForSKC(filterReasons, filterReasonBySKC, g.Skc, invalidSKUReason)
+			skippedByDiscount++
+			continue
 		}
 
 		// 确定库存数量
@@ -344,12 +385,11 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		}
 
 		// 检查折扣率是否满足要求(活动价必须小于销售价的95%)
-		maxDiscountRate := 0.95 // 最大折扣率95%,即至少5%折扣
-		if activityPrice >= g.USSupplyPrice*maxDiscountRate {
+		if !isTimeLimitedDiscountValid(activityPrice, g.USSupplyPrice) {
 			actualDiscountRate := activityPrice / g.USSupplyPrice
 			s.logger.Warnf("商品 %s 折扣不足(活动价:%.2f, 原价:%.2f, 折扣率:%.2f%%, 要求<%.2f%%),跳过该商品",
-				g.Skc, activityPrice, g.USSupplyPrice, actualDiscountRate*100, maxDiscountRate*100)
-			filterReasons = appendPromotionFilterReasonForSKC(filterReasons, filterReasonBySKC, g.Skc, fmt.Sprintf("商品 %s 折扣不足(活动价 %.2f, 原价 %.2f, 要求低于原价 %.0f%%)", g.Skc, activityPrice, g.USSupplyPrice, maxDiscountRate*100))
+				g.Skc, activityPrice, g.USSupplyPrice, actualDiscountRate*100, maxTimeLimitedDiscountRate*100)
+			filterReasons = appendPromotionFilterReasonForSKC(filterReasons, filterReasonBySKC, g.Skc, fmt.Sprintf("商品 %s 折扣不足(活动价 %.2f, 原价 %.2f, 要求低于原价 %.0f%%)", g.Skc, activityPrice, g.USSupplyPrice, maxTimeLimitedDiscountRate*100))
 			skippedByDiscount++
 			continue
 		}

@@ -1,6 +1,7 @@
 package activity
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"testing"
@@ -1126,6 +1127,105 @@ func TestRegisterPromotionProductsUsesSkuPricesForSaleAttributeGoods(t *testing.
 	}
 	if got := created.AddSkuList[1].ProductActPrice; got != 18.99 {
 		t.Fatalf("second SKU create activity price = %.2f, want 18.99", got)
+	}
+}
+
+func TestBuildCreateActivityRequestValidatesEverySKUDiscount(t *testing.T) {
+	tests := []struct {
+		name                   string
+		secondSKUOriginalPrice float64
+		secondSKUPrice         float64
+		wantIncluded           bool
+		wantReasonPrice        string
+	}{
+		{name: "equal to 95 percent", secondSKUOriginalPrice: 200, secondSKUPrice: 190, wantIncluded: false, wantReasonPrice: "190.00"},
+		{name: "equal to 95 percent with decimal rounding", secondSKUOriginalPrice: 16.60, secondSKUPrice: 15.77, wantIncluded: false, wantReasonPrice: "15.77"},
+		{name: "above 95 percent", secondSKUOriginalPrice: 200, secondSKUPrice: 191, wantIncluded: false, wantReasonPrice: "191.00"},
+		{name: "strictly below 95 percent", secondSKUOriginalPrice: 200, secondSKUPrice: 189.99, wantIncluded: true},
+		{name: "strictly below 95 percent with sub-cent precision", secondSKUOriginalPrice: 100, secondSKUPrice: 94.999, wantIncluded: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := &activityRegistrationServiceImpl{logger: logrus.NewEntry(logrus.New())}
+			goods := []marketing.PromotionGoodsData{{
+				Skc:              "sg-multi-sku-discount",
+				InventoryNum:     100,
+				USSupplyPrice:    100,
+				MaxUSSupplyPrice: 100,
+				SkuInfoList: []marketing.PromotionSkuInfo{
+					{Sku: "sku-small", USSupplyPrice: promotionTestFloat64Ptr(100)},
+					{Sku: "sku-large", USSupplyPrice: promotionTestFloat64Ptr(tt.secondSKUOriginalPrice)},
+				},
+			}}
+			calcResp := &marketing.CalculateSupplyPriceResponse{Info: []marketing.SkcCalculationResult{{
+				SkcName: "sg-multi-sku-discount",
+				SkuInfoList: []marketing.SkuCalculationInfo{
+					{SkuCode: "sku-small", PriceInfo: marketing.PriceInfo{ProductAmount: 100, PromotionAmount: 20}},
+					{SkuCode: "sku-large", PriceInfo: marketing.PriceInfo{ProductAmount: tt.secondSKUOriginalPrice, PromotionAmount: tt.secondSKUOriginalPrice - tt.secondSKUPrice}},
+				},
+			}}}
+
+			req, _, reasons := service.buildCreateActivityRequest(
+				TimeLimitedDiscountConfig{EffectiveCenterList: []int{2}},
+				goods,
+				nil,
+				calcResp,
+			)
+
+			if got := len(req.AddCostAndStockInfoList); (got == 1) != tt.wantIncluded {
+				t.Fatalf("created goods count = %d, want included %t", got, tt.wantIncluded)
+			}
+			if tt.wantIncluded {
+				if reason := reasons["sg-multi-sku-discount"]; reason != "" {
+					t.Fatalf("filter reason = %q, want empty", reason)
+				}
+				return
+			}
+			reason := reasons["sg-multi-sku-discount"]
+			for _, want := range []string{"sku-large", tt.wantReasonPrice, fmt.Sprintf("%.2f", tt.secondSKUOriginalPrice), "95%"} {
+				if !strings.Contains(reason, want) {
+					t.Fatalf("filter reason = %q, want %q", reason, want)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildCreateActivityRequestRejectsMissingSKUActivityPrice(t *testing.T) {
+	service := &activityRegistrationServiceImpl{logger: logrus.NewEntry(logrus.New())}
+	goods := []marketing.PromotionGoodsData{{
+		Skc:              "sg-missing-sku-price",
+		InventoryNum:     100,
+		USSupplyPrice:    100,
+		MaxUSSupplyPrice: 100,
+		SkuInfoList: []marketing.PromotionSkuInfo{
+			{Sku: "sku-priced", USSupplyPrice: promotionTestFloat64Ptr(100)},
+			{Sku: "sku-missing", USSupplyPrice: promotionTestFloat64Ptr(200)},
+		},
+	}}
+	calcResp := &marketing.CalculateSupplyPriceResponse{Info: []marketing.SkcCalculationResult{{
+		SkcName: "sg-missing-sku-price",
+		SkuInfoList: []marketing.SkuCalculationInfo{
+			{SkuCode: "sku-priced", PriceInfo: marketing.PriceInfo{ProductAmount: 100, PromotionAmount: 20}},
+		},
+	}}}
+
+	req, _, reasons := service.buildCreateActivityRequest(
+		TimeLimitedDiscountConfig{EffectiveCenterList: []int{2}},
+		goods,
+		nil,
+		calcResp,
+	)
+
+	if got := len(req.AddCostAndStockInfoList); got != 0 {
+		t.Fatalf("created goods count = %d, want missing-price SKC excluded", got)
+	}
+	reason := reasons["sg-missing-sku-price"]
+	for _, want := range []string{"sku-missing", "活动价 0.00", "原价 200.00"} {
+		if !strings.Contains(reason, want) {
+			t.Fatalf("filter reason = %q, want %q", reason, want)
+		}
 	}
 }
 
