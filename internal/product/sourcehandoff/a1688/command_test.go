@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
-	"task-processor/internal/listingkit"
 )
 
 func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) {
@@ -14,17 +13,18 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 	service := NewTaskCommandService(creator)
 
 	result, err := service.CreateTask(context.Background(), CreateTaskCommand{
-		URL:         " https://detail.1688.com/offer/888.html?spm=command ",
-		Product:     commandProduct1688("888"),
-		RawSnapshot: "raw-888",
-		SourceRunID: "run-888",
-		RequestID:   "request-888",
-		TenantID:    " tenant-1688 ",
-		UserID:      " user-1688 ",
-		Platforms:   []string{" SHEIN ", "shein"},
-		Country:     " US ",
-		Language:    " en_US ",
-		SheinStoreID: 168811,
+		URL:           " https://detail.1688.com/offer/888.html?spm=command ",
+		Product:       commandProduct1688("888"),
+		RawSnapshot:   "raw-888",
+		SourceRunID:   "run-888",
+		RequestID:     "request-888",
+		SourceStoreID: 3001,
+		TenantID:      " tenant-1688 ",
+		UserID:        " user-1688 ",
+		Platforms:     []string{" SHEIN ", "shein"},
+		Country:       " US ",
+		Language:      " en_US ",
+		SheinStoreID:  168811,
 	})
 	if err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
@@ -38,11 +38,17 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 	if got := result.Handoff.Envelope.Identity.SourceKey(); got != "crawler:1688:888" {
 		t.Fatalf("SourceKey() = %q, want crawler:1688:888", got)
 	}
+	if got := result.Handoff.Envelope.Identity.Key(); got != "1688:cn:888:3001" {
+		t.Fatalf("Key() = %q, want source store identity", got)
+	}
 	if result.Handoff.Request.ProductURL != "https://detail.1688.com/offer/888.html" {
 		t.Fatalf("ProductURL = %q, want normalized command URL", result.Handoff.Request.ProductURL)
 	}
 	if result.Handoff.Request.TenantID != "tenant-1688" || result.Handoff.Request.UserID != "user-1688" {
 		t.Fatalf("request tenant/user = %q/%q, want trimmed values", result.Handoff.Request.TenantID, result.Handoff.Request.UserID)
+	}
+	if result.Handoff.Request.SheinStoreID != 168811 {
+		t.Fatalf("SheinStoreID = %d, want target store id", result.Handoff.Request.SheinStoreID)
 	}
 	if len(result.Handoff.Request.Platforms) != 1 || result.Handoff.Request.Platforms[0] != "shein" {
 		t.Fatalf("Platforms = %#v, want normalized deduped shein", result.Handoff.Request.Platforms)
@@ -127,5 +133,3 @@ func commandProduct1688(id string) *alibaba1688model.Product1688 {
 		ProductDetails: []alibaba1688model.ProductDetail{{Content: "Thermal lunch bag with zipper."}},
 	}
 }
-
-var _ = listingkit.GenerateRequest{}
