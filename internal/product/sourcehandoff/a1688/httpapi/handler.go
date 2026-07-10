@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -14,7 +15,7 @@ import (
 )
 
 type TaskCommandService interface {
-	CreateTask(*gin.Context, a1688.CreateTaskCommand) (*a1688.CreateTaskResult, error)
+	CreateTask(context.Context, a1688.CreateTaskCommand) (*a1688.CreateTaskResult, error)
 }
 
 type Handler struct {
@@ -63,7 +64,7 @@ func (h *Handler) CreateListingKitTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	result, err := h.service.CreateTask(c, req.toCommand(c))
+	result, err := h.service.CreateTask(c.Request.Context(), req.toCommand(c))
 	if err != nil {
 		status := http.StatusInternalServerError
 		if isBadRequestError(err) {
