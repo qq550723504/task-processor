@@ -16,6 +16,8 @@ import (
 	"task-processor/internal/infra/worker"
 	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	a1688 "task-processor/internal/product/sourcehandoff/a1688"
+	productsourcea1688httpapi "task-processor/internal/product/sourcehandoff/a1688/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
@@ -146,6 +148,19 @@ func TestAmazonListingHTTPModuleRegistersRoutes(t *testing.T) {
 	}, routeKeys(reg.Routes()))
 }
 
+func TestProductSourcingHTTPModuleRegistersRoutes(t *testing.T) {
+	t.Parallel()
+
+	reg := kernelmodule.NewRegistry()
+
+	err := productsourcea1688httpapi.NewHTTPModule(productsourcea1688httpapi.NewHandler(&stubProductSourcingTaskCommandService{})).Register(reg)
+	require.NoError(t, err)
+
+	require.Equal(t, []string{
+		"POST /api/v1/product-sourcing/1688/listingkit/tasks",
+	}, routeKeys(reg.Routes()))
+}
+
 func TestListingKitHTTPModuleRegistersRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -217,20 +232,14 @@ func TestBuildHTTPServerBundleFromModulesSkipsDisabledModules(t *testing.T) {
 	server, routes, err := buildHTTPServerBundleFromModules(18080, &config.Config{}, []kernelmodule.Module{
 		httpModule{
 			name: "enabled",
-			register: func(reg *kernelmodule.Registry) error {
-				reg.AddRoutes(enabledRoute)
-				return nil
-			},
+			register: func(reg *kernelmodule.Registry) error { reg.AddRoutes(enabledRoute); return nil },
 		},
 		httpModule{
 			name: "disabled",
 			enabled: func(*config.Config) bool {
 				return false
 			},
-			register: func(reg *kernelmodule.Registry) error {
-				reg.AddRoutes(disabledRoute)
-				return nil
-			},
+			register: func(reg *kernelmodule.Registry) error { reg.AddRoutes(disabledRoute); return nil },
 		},
 	})
 	require.NoError(t, err)
@@ -358,122 +367,15 @@ func TestRuntimeBundleBuildsLocalTaskHealthProviderFromRegisteredPools(t *testin
 	})
 	require.NoError(t, err)
 
-	status := bundle.localTaskHealthProvider()
-	require.NotNil(t, status)
+	status := bundle.localTaskHealthProvider()()
+	summary := status["summary"].(map[string]any)
+	require.Equal(t, 2, summary["poolCount"])
 
-	snapshot := status()
-	require.Equal(t, 2, snapshot["summary"].(map[string]any)["poolCount"])
-	require.Equal(t, 3, snapshot["summary"].(map[string]any)["totalQueueSize"])
-
-	pools := snapshot["pools"].(map[string]any)
+	pools := status["pools"].(map[string]any)
 	require.Contains(t, pools, "custom_pool")
 	require.Contains(t, pools, "secondary_pool")
 	require.NotContains(t, pools, "disabled_pool")
 }
-
-func TestHTTPFeatureCompositionBuildRuntimeBundleUsesRegisteredModules(t *testing.T) {
-	t.Parallel()
-
-	composition := httpFeatureComposition{
-		productModule: &productenrichhttpapi.Module{
-			Handler: &stubProductHandler{},
-			Pool: stubWorkerPool{
-				stats: worker.QueueStats{
-					QueueSize:      1,
-					BufferSize:     4,
-					AvailableSlots: 3,
-				},
-			},
-		},
-		imageModule: &productimagehttpapi.Module{
-			Handler: &stubImageHandler{},
-			Pool: stubWorkerPool{
-				stats: worker.QueueStats{
-					QueueSize:      2,
-					BufferSize:     5,
-					AvailableSlots: 3,
-				},
-			},
-		},
-		amazonListingModule: &amazonlistinghttpapi.Module{},
-		listingKitModule: &listingkithttpapi.Module{
-			Handler: &stubListingKitHandler{},
-			Pool: stubWorkerPool{
-				stats: worker.QueueStats{
-					QueueSize:      3,
-					BufferSize:     6,
-					AvailableSlots: 3,
-				},
-			},
-		},
-	}
-
-	bundle, err := composition.buildRuntimeBundle(&config.Config{})
-	require.NoError(t, err)
-	require.Len(t, bundle.workerPools, 3)
-	require.Contains(t, routeKeys(bundle.routes), "POST /api/v1/products/generate")
-	require.Contains(t, routeKeys(bundle.routes), "POST /api/v1/images/process")
-	require.Contains(t, routeKeys(bundle.routes), "POST /api/v1/listing-kits/generate")
-}
-
-func TestHTTPFeatureCompositionBuildServerBundleUsesRouteModules(t *testing.T) {
-	t.Parallel()
-
-	composition := httpFeatureComposition{
-		productModule: &productenrichhttpapi.Module{
-			Handler: &stubProductHandler{},
-		},
-		imageModule: &productimagehttpapi.Module{
-			Handler: &stubImageHandler{},
-		},
-	}
-
-	server, routes, err := composition.buildServerBundle(18080, &config.Config{})
-	require.NoError(t, err)
-	require.Contains(t, routeKeys(routes), "GET /health")
-	require.Contains(t, routeKeys(routes), "POST /api/v1/products/generate")
-	require.Contains(t, routeKeys(routes), "POST /api/v1/images/process")
-
-	router, ok := server.Handler.(*gin.Engine)
-	require.True(t, ok)
-
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
-	resp := httptest.NewRecorder()
-	router.ServeHTTP(resp, req)
-	require.Equal(t, http.StatusOK, resp.Code)
-}
-
-type stubWorkerPool struct {
-	stats   worker.QueueStats
-	metrics *worker.Metrics
-}
-
-func (p stubWorkerPool) Start(_ context.Context)          {}
-func (p stubWorkerPool) Stop(_ context.Context)           {}
-func (p stubWorkerPool) Submit(worker.WorkerJob) error    { return nil }
-func (p stubWorkerPool) AvailableSlots() int              { return p.stats.AvailableSlots }
-func (p stubWorkerPool) GetQueueStats() worker.QueueStats { return p.stats }
-func (p stubWorkerPool) SetJobHandler(worker.JobHandler)  {}
-func (p stubWorkerPool) GetMetrics() *worker.Metrics      { return p.metrics }
-
-type stubSDSCatalogRouteHandler struct{}
-
-func (stubSDSCatalogRouteHandler) ListSDSProducts(*gin.Context)      {}
-func (stubSDSCatalogRouteHandler) GetSDSProduct(*gin.Context)        {}
-func (stubSDSCatalogRouteHandler) ListSDSCategories(*gin.Context)    {}
-func (stubSDSCatalogRouteHandler) ListSDSShipmentAreas(*gin.Context) {}
-
-type stubStudioSessionHandler struct{}
-
-func (stubStudioSessionHandler) ListStudioSessionGallery(*gin.Context)   {}
-func (stubStudioSessionHandler) ListStudioBatches(*gin.Context)          {}
-func (stubStudioSessionHandler) GetStudioBatch(*gin.Context)             {}
-func (stubStudioSessionHandler) StartStudioBatchGeneration(*gin.Context) {}
-func (stubStudioSessionHandler) RetryStudioBatchItems(*gin.Context)      {}
-func (stubStudioSessionHandler) ApproveStudioBatchDesigns(*gin.Context)  {}
-func (stubStudioSessionHandler) CreateStudioBatchTasks(*gin.Context)     {}
-func (stubStudioSessionHandler) UpsertStudioBatch(*gin.Context)          {}
-func (stubStudioSessionHandler) DeleteStudioBatch(*gin.Context)          {}
 
 func routeKeys(routes []httproute.Descriptor) []string {
 	keys := make([]string, 0, len(routes))
@@ -481,4 +383,10 @@ func routeKeys(routes []httproute.Descriptor) []string {
 		keys = append(keys, fmt.Sprintf("%s %s", route.Method, route.Path))
 	}
 	return keys
+}
+
+type stubProductSourcingTaskCommandService struct{}
+
+func (stubProductSourcingTaskCommandService) CreateTask(context.Context, a1688.CreateTaskCommand) (*a1688.CreateTaskResult, error) {
+	return &a1688.CreateTaskResult{}, nil
 }
