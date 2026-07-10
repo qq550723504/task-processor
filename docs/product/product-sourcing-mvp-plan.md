@@ -219,11 +219,15 @@ internal/product/sourcehandoff.ListingKitRequestInput
 internal/product/sourcehandoff/a1688.ListingKitTaskInput
   -> internal/product/sourcehandoff.ListingKitRequestInput
   -> existing CreateGenerateTask boundary
+
+internal/product/sourcehandoff/a1688.CreateTaskCommand
+  -> internal/product/sourcehandoff/a1688.ListingKitTaskInput
+  -> existing CreateGenerateTask boundary
 ```
 
 The bridge is intentionally a pure DTO-adaptation function. It does not create tasks, submit packages, assemble marketplace payloads, or introduce another submission state owner.
 
-The 1688 adapter is source-specific by package location only; root ListingKit still receives only the existing `GenerateRequest` shape.
+The 1688 adapter and command service are source-specific by package location only; root ListingKit still receives only the existing `GenerateRequest` shape.
 
 Acceptance criteria:
 
@@ -333,11 +337,11 @@ Pause and document before continuing if:
 
 ## 8. Immediate next action
 
-PR 1 through PR 5 now establish identity/envelope, the first Amazon source-envelope mapping, neutral catalog/asset facts, a narrow ListingKit request bridge, source/crawler/facts boundary guards, and a controlled 1688 handoff adapter to the existing ListingKit create boundary.
+PR 1 through PR 5 now establish identity/envelope, the first Amazon source-envelope mapping, neutral catalog/asset facts, a narrow ListingKit request bridge, and source/crawler/facts boundary guards. 1688 is now the next business source to validate against the same path.
 
 Next, run focused validation and then choose whether to:
 
-1. wire the 1688 adapter into an API/application command, or
+1. wire the 1688 command service into one HTTP/API adapter, or
 2. start the next new warehouse/source catalog path such as 大建云仓.
 
 Implementation checklist:
