@@ -11,6 +11,7 @@ import (
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/core/config"
+	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
@@ -117,7 +118,8 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 			require.Nil(t, input.Runtime.Repositories.Core.Task)
 			require.Nil(t, input.Runtime.Hooks.ConfigureAuthorization)
 			return &listingkithttpapi.Module{
-				Pool: stubWorkerPool{},
+				TaskLifecycleService: stubCompositionTaskLifecycleService{},
+				Pool:                 stubWorkerPool{},
 			}, nil
 		},
 		buildPrompt: func(prompt.TenantPromptStore) *promptmgmtapi.BuildResult {
@@ -147,6 +149,7 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	require.NotNil(t, composition.imageModule)
 	require.NotNil(t, composition.amazonListingModule)
 	require.NotNil(t, composition.listingKitModule)
+	require.NotNil(t, composition.productSourcingModule)
 	require.NotNil(t, composition.promptModule)
 	require.NotNil(t, composition.taskRPCResult)
 	require.NotNil(t, composition.sdsModule)
@@ -166,6 +169,10 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	require.NoError(t, deps.shared.closers[1]())
 	require.True(t, sheinClosed)
 	require.True(t, sdsClosed)
+}
+
+type stubCompositionTaskLifecycleService struct {
+	listingkit.TaskLifecycleService
 }
 
 type stubCompositionProductService struct{}
