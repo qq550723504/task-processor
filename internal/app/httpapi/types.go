@@ -4,10 +4,11 @@ import (
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-	"task-processor/internal/productenrich"
+	productenrich "task-processor/internal/productenrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
-	"task-processor/internal/productimage"
+	productimage "task-processor/internal/productimage"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
+	productsourcea1688httpapi "task-processor/internal/product/sourcehandoff/a1688/httpapi"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
 	sdsloginbootstrap "task-processor/internal/sdslogin/bootstrap"
@@ -37,13 +38,14 @@ type listingKitSupport struct {
 }
 
 type httpFeatureComposition struct {
-	productModule       *productenrichhttpapi.Module
-	imageModule         *productimagehttpapi.Module
-	amazonListingModule *amazonlistinghttpapi.Module
-	listingKitModule    *listingkithttpapi.Module
-	promptModule        *promptmgmtapi.BuildResult
-	sdsModule           *sdshttpapi.BuildResult
-	taskRPCResult       *taskrpcapi.BuildResult
-	sheinLoginResult    *sheinloginbootstrap.BuildResult
-	sdsLoginResult      *sdsloginbootstrap.BuildResult
+	productModule        *productenrichhttpapi.Module
+	imageModule          *productimagehttpapi.Module
+	amazonListingModule  *amazonlistinghttpapi.Module
+	listingKitModule     *listingkithttpapi.Module
+	productSourcingModule *productsourcea1688httpapi.BuildResult
+	promptModule         *promptmgmtapi.BuildResult
+	sdsModule            *sdshttpapi.BuildResult
+	taskRPCResult        *taskrpcapi.BuildResult
+	sheinLoginResult     *sheinloginbootstrap.BuildResult
+	sdsLoginResult       *sdsloginbootstrap.BuildResult
 }
