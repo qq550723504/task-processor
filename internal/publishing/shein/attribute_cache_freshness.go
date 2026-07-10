@@ -50,6 +50,7 @@ func attributeResolutionMatchesTemplates(resolution *AttributeResolution, templa
 			attributeIndex[attr.AttributeID] = attr
 		}
 	}
+	resolvedByID := make(map[int]ResolvedAttribute, len(resolution.ResolvedAttributes))
 	for _, item := range resolution.ResolvedAttributes {
 		if item.AttributeID <= 0 {
 			continue
@@ -57,6 +58,19 @@ func attributeResolutionMatchesTemplates(resolution *AttributeResolution, templa
 		if !resolvedAttributeMatchesTemplate(item, attributeIndex) {
 			return false, fmt.Sprintf("cached attribute %q (attribute_id=%d) is not valid in current template", strings.TrimSpace(item.Name), item.AttributeID)
 		}
+		resolvedByID[item.AttributeID] = item
+	}
+	for _, attr := range attributeIndex {
+		if !isTemplateRequired(attr) {
+			continue
+		}
+		if !dependencyIsActive(attr, resolvedByID) {
+			continue
+		}
+		if _, ok := resolvedByID[attr.AttributeID]; ok {
+			continue
+		}
+		return false, fmt.Sprintf("cached attribute resolution is missing required template attribute %q (attribute_id=%d)", strings.TrimSpace(firstNonEmpty(attr.AttributeNameEn, attr.AttributeName)), attr.AttributeID)
 	}
 	return true, ""
 }

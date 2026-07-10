@@ -35,6 +35,22 @@ func (stubRevisionSheinAttributeResolver) Resolve(req *sheinpub.BuildRequest, ca
 	}
 }
 
+type trackingRevisionSheinAttributeResolver struct {
+	clearCalls int
+}
+
+func (r *trackingRevisionSheinAttributeResolver) Resolve(_ *sheinpub.BuildRequest, _ *canonical.Product, _ *sheinpub.Package) *sheinpub.AttributeResolution {
+	return &sheinpub.AttributeResolution{Status: "resolved"}
+}
+
+func (r *trackingRevisionSheinAttributeResolver) RememberAttributeResolution(_ *sheinpub.BuildRequest, _ *canonical.Product, _ *sheinpub.Package, _ *sheinpub.AttributeResolution) {
+}
+
+func (r *trackingRevisionSheinAttributeResolver) ClearAttributeResolution(_ *sheinpub.BuildRequest, _ *canonical.Product, _ *sheinpub.Package) error {
+	r.clearCalls++
+	return nil
+}
+
 type stubRevisionSheinSaleResolver struct{}
 
 func (stubRevisionSheinSaleResolver) Resolve(req *sheinpub.BuildRequest, canonical *canonical.Product, pkg *sheinpub.Package) *sheinpub.SaleAttributeResolution {
@@ -1331,6 +1347,34 @@ func TestApplyTaskRevisionRegeneratesSheinAttributesWithoutTouchingSaleAttribute
 	}
 	if repo.task.Result.Shein.SaleAttributeResolution.SecondaryAttributeID != 87 {
 		t.Fatalf("secondary attribute id = %d, want 87", repo.task.Result.Shein.SaleAttributeResolution.SecondaryAttributeID)
+	}
+}
+
+func TestRefreshSheinDerivedStateClearsAttributeCacheForRegeneration(t *testing.T) {
+	resolver := &trackingRevisionSheinAttributeResolver{}
+	svc := &service{
+		sheinRuntimeDeps: sheinRuntimeDependencies{
+			attributeResolver: resolver,
+		},
+	}
+	task := &Task{
+		Request: &GenerateRequest{SheinStoreID: 869},
+		Result: &ListingKitResult{
+			CanonicalProduct: &canonical.Product{Title: "metal wall sign"},
+			Shein: &SheinPackage{
+				CategoryID:   3894,
+				RequestDraft: &SheinRequestDraft{},
+			},
+		},
+	}
+
+	svc.refreshSheinDerivedState(task, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein:    &SheinRevisionInput{RegenerateAttributes: true},
+	})
+
+	if resolver.clearCalls != 1 {
+		t.Fatalf("clear calls = %d, want 1 before regenerating attributes", resolver.clearCalls)
 	}
 }
 

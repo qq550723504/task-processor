@@ -52,6 +52,9 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 		buildReq.TargetCategoryHint = strconv.Itoa(task.Result.Shein.CategoryID)
 	}
 	if req.Shein.RegenerateAttributes {
+		if cache, ok := attributeResolver.(sheinpub.AttributeResolutionCache); ok {
+			_ = cache.ClearAttributeResolution(buildReq, task.Result.CanonicalProduct, task.Result.Shein)
+		}
 		s.refreshSheinAttributeDerivedState(task, buildReq)
 		return
 	}

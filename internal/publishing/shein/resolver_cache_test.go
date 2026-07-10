@@ -546,6 +546,46 @@ func TestCachedAttributeResolverRejectsManualResolutionWithStaleTemplateAttribut
 	}
 }
 
+func TestAttributeResolutionMatchesTemplatesRejectsMissingNewRequiredAttribute(t *testing.T) {
+	materialValueID := 526
+	templates := &sheinattribute.AttributeTemplateInfo{
+		Data: []sheinattribute.AttributeTemplate{{
+			AttributeInfos: []sheinattribute.AttributeInfo{
+				{
+					AttributeID:     160,
+					AttributeNameEn: "Material",
+					AttributeStatus: 3,
+					AttributeValueInfoList: []sheinattribute.AttributeValue{{
+						AttributeValueID: materialValueID,
+						AttributeValueEn: "Polyester",
+					}},
+				},
+				{
+					AttributeID:     1000462,
+					AttributeNameEn: "Hazardous materials classification",
+					AttributeStatus: 3,
+				},
+			},
+		}},
+	}
+	resolution := &AttributeResolution{
+		ResolvedAttributes: []ResolvedAttribute{{
+			Name:             "Material",
+			Value:            "Polyester",
+			AttributeID:      160,
+			AttributeValueID: &materialValueID,
+		}},
+	}
+
+	fresh, reason := attributeResolutionMatchesTemplates(resolution, templates)
+	if fresh {
+		t.Fatal("fresh = true, want cached resolution rejected when a new required attribute is missing")
+	}
+	if reason == "" {
+		t.Fatal("reason is empty, want missing required attribute detail")
+	}
+}
+
 func TestCachedAttributeResolverCanReusePublishedResolutionAfterListingCopyNormalization(t *testing.T) {
 	valueID := 2001
 	inner := &countingAttributeResolver{
