@@ -1142,6 +1142,7 @@ func TestBuildCreateActivityRequestValidatesEverySKUDiscount(t *testing.T) {
 		{name: "equal to 95 percent with decimal rounding", secondSKUOriginalPrice: 16.60, secondSKUPrice: 15.77, wantIncluded: false, wantReasonPrice: "15.77"},
 		{name: "above 95 percent", secondSKUOriginalPrice: 200, secondSKUPrice: 191, wantIncluded: false, wantReasonPrice: "191.00"},
 		{name: "strictly below 95 percent", secondSKUOriginalPrice: 200, secondSKUPrice: 189.99, wantIncluded: true},
+		{name: "strictly below 95 percent with sub-cent precision", secondSKUOriginalPrice: 100, secondSKUPrice: 94.999, wantIncluded: true},
 	}
 
 	for _, tt := range tests {

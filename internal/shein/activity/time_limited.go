@@ -4,7 +4,8 @@ package activity
 import (
 	"context"
 	"fmt"
-	"math"
+	"math/big"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,13 +18,13 @@ import (
 const maxTimeLimitedDiscountRate = 0.95
 
 func isTimeLimitedDiscountValid(activityPrice, originalPrice float64) bool {
-	activityCents := int64(math.Round(activityPrice * 100))
-	originalCents := int64(math.Round(originalPrice * 100))
-	if activityCents <= 0 || originalCents <= 0 {
+	activity, activityOK := new(big.Rat).SetString(strconv.FormatFloat(activityPrice, 'f', -1, 64))
+	original, originalOK := new(big.Rat).SetString(strconv.FormatFloat(originalPrice, 'f', -1, 64))
+	if !activityOK || !originalOK || activity.Sign() <= 0 || original.Sign() <= 0 {
 		return false
 	}
-	maxDiscountPercent := int64(math.Round(maxTimeLimitedDiscountRate * 100))
-	return activityCents*100 < originalCents*maxDiscountPercent
+	maximumActivityPrice := new(big.Rat).Mul(original, big.NewRat(95, 100))
+	return activity.Cmp(maximumActivityPrice) < 0
 }
 
 // queryPromotionGoods 查询促销活动商品列表（私有方法）
