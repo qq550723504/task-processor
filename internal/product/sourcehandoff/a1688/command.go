@@ -15,12 +15,13 @@ import (
 // already-fetched 1688 product into a ListingKit task through the existing
 // CreateGenerateTask boundary.
 type CreateTaskCommand struct {
-	URL         string
-	Product     *alibaba1688model.Product1688
-	RawSnapshot string
-	SourceRunID string
-	RequestID   string
-	Error       error
+	URL           string
+	Product       *alibaba1688model.Product1688
+	RawSnapshot   string
+	SourceRunID   string
+	RequestID     string
+	Error         error
+	SourceStoreID int64
 
 	TenantID           string
 	UserID             string
@@ -67,7 +68,7 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 
 	task, handoff, err := CreateListingKitTask(ctx, s.creator, ListingKitTaskInput{
 		Source: sourcing.Alibaba1688SourceEnvelopeInput{
-			Request:     sourcing.Alibaba1688CrawlRequestInput{URL: url, StoreID: command.SheinStoreID},
+			Request:     sourcing.Alibaba1688CrawlRequestInput{URL: url, StoreID: command.SourceStoreID},
 			Product:     command.Product,
 			RawSnapshot: command.RawSnapshot,
 			SourceRunID: command.SourceRunID,
