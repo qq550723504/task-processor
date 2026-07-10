@@ -4,6 +4,7 @@ package activity
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -14,6 +15,16 @@ import (
 )
 
 const maxTimeLimitedDiscountRate = 0.95
+
+func isTimeLimitedDiscountValid(activityPrice, originalPrice float64) bool {
+	activityCents := int64(math.Round(activityPrice * 100))
+	originalCents := int64(math.Round(originalPrice * 100))
+	if activityCents <= 0 || originalCents <= 0 {
+		return false
+	}
+	maxDiscountPercent := int64(math.Round(maxTimeLimitedDiscountRate * 100))
+	return activityCents*100 < originalCents*maxDiscountPercent
+}
 
 // queryPromotionGoods 查询促销活动商品列表（私有方法）
 func (s *activityRegistrationServiceImpl) queryPromotionGoods(
@@ -291,7 +302,17 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 			if skuCostPrice <= 0 {
 				skuCostPrice = promotionSKUUSSupplyPrice(sku, g.USSupplyPrice)
 			}
-			if skuCostPrice > 0 && skuActPrice >= skuCostPrice*maxTimeLimitedDiscountRate {
+			if skuCostPrice <= 0 || skuActPrice <= 0 {
+				invalidSKUReason = fmt.Sprintf(
+					"商品 %s 的 SKU %s 价格无效(活动价 %.2f, 原价 %.2f)",
+					g.Skc,
+					sku.Sku,
+					skuActPrice,
+					skuCostPrice,
+				)
+				break
+			}
+			if !isTimeLimitedDiscountValid(skuActPrice, skuCostPrice) {
 				invalidSKUReason = fmt.Sprintf(
 					"商品 %s 的 SKU %s 折扣不足(活动价 %.2f, 原价 %.2f, 要求低于原价95%%)",
 					g.Skc,
@@ -363,7 +384,7 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 		}
 
 		// 检查折扣率是否满足要求(活动价必须小于销售价的95%)
-		if activityPrice >= g.USSupplyPrice*maxTimeLimitedDiscountRate {
+		if !isTimeLimitedDiscountValid(activityPrice, g.USSupplyPrice) {
 			actualDiscountRate := activityPrice / g.USSupplyPrice
 			s.logger.Warnf("商品 %s 折扣不足(活动价:%.2f, 原价:%.2f, 折扣率:%.2f%%, 要求<%.2f%%),跳过该商品",
 				g.Skc, activityPrice, g.USSupplyPrice, actualDiscountRate*100, maxTimeLimitedDiscountRate*100)
