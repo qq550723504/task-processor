@@ -224,18 +224,18 @@ internal/product/sourcehandoff/a1688.CreateTaskCommand
   -> internal/product/sourcehandoff/a1688.ListingKitTaskInput
   -> existing CreateGenerateTask boundary
 
-internal/product/sourcehandoff/a1688/httpapi.CreateListingKitTaskRequest
+internal/productenrich/httpapi/sourcea1688.CreateListingKitTaskRequest
   -> internal/product/sourcehandoff/a1688.CreateTaskCommand
   -> existing CreateGenerateTask boundary
 
 internal/app/httpapi.httpFeatureComposition
-  -> internal/product/sourcehandoff/a1688/httpapi.BuildModule
+  -> internal/productenrich/httpapi/sourcea1688.BuildModule
   -> app module registry route
 ```
 
 The bridge is intentionally a pure DTO-adaptation function. It does not create tasks, submit packages, assemble marketplace payloads, or introduce another submission state owner.
 
-The 1688 adapter, command service, HTTP adapter, and app module registration are source-specific by package location only; root ListingKit still receives only the existing `GenerateRequest` shape and exposes only the task lifecycle boundary needed by the product-sourcing module.
+The 1688 adapter and command service are source-specific by package location only; root ListingKit still receives only the existing `GenerateRequest` shape. The Gin HTTP adapter lives under the existing product HTTP adapter boundary so business implementation packages do not import Gin directly.
 
 Acceptance criteria:
 
