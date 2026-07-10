@@ -2,6 +2,9 @@ package httpapi
 
 import (
 	"github.com/sirupsen/logrus"
+
+	a1688handoff "task-processor/internal/product/sourcehandoff/a1688"
+	productsourcea1688httpapi "task-processor/internal/product/sourcehandoff/a1688/httpapi"
 )
 
 type httpFeatureCompositionBuilder struct {
@@ -83,6 +86,11 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 		return composition, err
 	}
 	composition.listingKitModule = listingKitFeatures.listingKitModule
+	if composition.listingKitModule != nil && composition.listingKitModule.TaskLifecycleService != nil {
+		composition.productSourcingModule = productsourcea1688httpapi.BuildModule(
+			a1688handoff.NewTaskCommandService(composition.listingKitModule.TaskLifecycleService),
+		)
+	}
 
 	done = timer.phase("buildSupportModules")
 	supportFeatures, err := supportFeatureBuilder{
