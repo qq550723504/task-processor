@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"strings"
 
 	listingsubmission "task-processor/internal/listing/submission"
 )
@@ -14,6 +15,9 @@ func validateSheinSubmitReadinessGates(
 	readiness *SheinSubmitReadiness,
 	validateFreshness func(context.Context, *Task, *SheinPackage, string) (*SheinSubmitReadiness, error),
 ) error {
+	if sheinSubmitActionAllowsDraftWithReadinessBlockers(action) {
+		return nil
+	}
 	return listingsubmission.ValidateReadinessGates(
 		ctx,
 		task,
@@ -24,6 +28,10 @@ func validateSheinSubmitReadinessGates(
 		ErrSubmitBlocked,
 		"SHEIN 提交前状态尚未就绪",
 	)
+}
+
+func sheinSubmitActionAllowsDraftWithReadinessBlockers(action string) bool {
+	return strings.EqualFold(strings.TrimSpace(action), "save_draft")
 }
 
 func sheinSubmitReadinessSnapshot(readiness *SheinSubmitReadiness) *listingsubmission.ReadinessSnapshot {

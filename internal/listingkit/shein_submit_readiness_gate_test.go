@@ -61,3 +61,41 @@ func TestValidateSheinSubmitReadinessGatesBlocksOnFreshnessReadiness(t *testing.
 		t.Fatalf("err = %v, want freshness readiness message", err)
 	}
 }
+
+func TestValidateSheinSubmitReadinessGatesAllowsSaveDraftWhenReadinessBlocked(t *testing.T) {
+	t.Parallel()
+
+	task := makeReadySheinTask()
+	freshnessCalled := false
+	err := validateSheinSubmitReadinessGates(
+		context.Background(),
+		task,
+		task.Result.Shein,
+		"save_draft",
+		&SheinSubmitReadiness{
+			Ready:  false,
+			Status: "blocked",
+			Summary: []string{
+				"当前还有关键字段未完成",
+			},
+		},
+		func(context.Context, *Task, *SheinPackage, string) (*SheinSubmitReadiness, error) {
+			freshnessCalled = true
+			return &SheinSubmitReadiness{
+				Ready:  false,
+				Status: "blocked",
+				BlockingItems: []SheinReadinessItem{{
+					Key:     sheinFreshnessAttributeKey,
+					Label:   "普通属性模板新鲜度",
+					Message: "当前普通属性模板已变化",
+				}},
+			}, nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("err = %v, want save_draft to continue despite readiness blockers", err)
+	}
+	if freshnessCalled {
+		t.Fatalf("freshness validator was called for save_draft, want skipped")
+	}
+}
