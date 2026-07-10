@@ -1129,6 +1129,65 @@ func TestRegisterPromotionProductsUsesSkuPricesForSaleAttributeGoods(t *testing.
 	}
 }
 
+func TestBuildCreateActivityRequestValidatesEverySKUDiscount(t *testing.T) {
+	tests := []struct {
+		name            string
+		secondSKUPrice  float64
+		wantIncluded    bool
+		wantReasonPrice string
+	}{
+		{name: "equal to 95 percent", secondSKUPrice: 190, wantIncluded: false, wantReasonPrice: "190.00"},
+		{name: "above 95 percent", secondSKUPrice: 191, wantIncluded: false, wantReasonPrice: "191.00"},
+		{name: "strictly below 95 percent", secondSKUPrice: 189.99, wantIncluded: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := &activityRegistrationServiceImpl{logger: logrus.NewEntry(logrus.New())}
+			goods := []marketing.PromotionGoodsData{{
+				Skc:              "sg-multi-sku-discount",
+				InventoryNum:     100,
+				USSupplyPrice:    100,
+				MaxUSSupplyPrice: 100,
+				SkuInfoList: []marketing.PromotionSkuInfo{
+					{Sku: "sku-small", USSupplyPrice: promotionTestFloat64Ptr(100)},
+					{Sku: "sku-large", USSupplyPrice: promotionTestFloat64Ptr(200)},
+				},
+			}}
+			calcResp := &marketing.CalculateSupplyPriceResponse{Info: []marketing.SkcCalculationResult{{
+				SkcName: "sg-multi-sku-discount",
+				SkuInfoList: []marketing.SkuCalculationInfo{
+					{SkuCode: "sku-small", PriceInfo: marketing.PriceInfo{ProductAmount: 100, PromotionAmount: 20}},
+					{SkuCode: "sku-large", PriceInfo: marketing.PriceInfo{ProductAmount: 200, PromotionAmount: 200 - tt.secondSKUPrice}},
+				},
+			}}}
+
+			req, _, reasons := service.buildCreateActivityRequest(
+				TimeLimitedDiscountConfig{EffectiveCenterList: []int{2}},
+				goods,
+				nil,
+				calcResp,
+			)
+
+			if got := len(req.AddCostAndStockInfoList); (got == 1) != tt.wantIncluded {
+				t.Fatalf("created goods count = %d, want included %t", got, tt.wantIncluded)
+			}
+			if tt.wantIncluded {
+				if reason := reasons["sg-multi-sku-discount"]; reason != "" {
+					t.Fatalf("filter reason = %q, want empty", reason)
+				}
+				return
+			}
+			reason := reasons["sg-multi-sku-discount"]
+			for _, want := range []string{"sku-large", tt.wantReasonPrice, "200.00", "95%"} {
+				if !strings.Contains(reason, want) {
+					t.Fatalf("filter reason = %q, want %q", reason, want)
+				}
+			}
+		})
+	}
+}
+
 func TestRegisterPromotionProductsUsesProvidedSkuPricesOverPromotionGoodsSkuPrices(t *testing.T) {
 	api := &promotionProductsMarketingAPIStub{
 		promotionGoods: []marketing.PromotionGoodsData{
