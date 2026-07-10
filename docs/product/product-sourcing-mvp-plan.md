@@ -223,11 +223,15 @@ internal/product/sourcehandoff/a1688.ListingKitTaskInput
 internal/product/sourcehandoff/a1688.CreateTaskCommand
   -> internal/product/sourcehandoff/a1688.ListingKitTaskInput
   -> existing CreateGenerateTask boundary
+
+internal/product/sourcehandoff/a1688/httpapi.CreateListingKitTaskRequest
+  -> internal/product/sourcehandoff/a1688.CreateTaskCommand
+  -> existing CreateGenerateTask boundary
 ```
 
 The bridge is intentionally a pure DTO-adaptation function. It does not create tasks, submit packages, assemble marketplace payloads, or introduce another submission state owner.
 
-The 1688 adapter and command service are source-specific by package location only; root ListingKit still receives only the existing `GenerateRequest` shape.
+The 1688 adapter, command service, and HTTP adapter are source-specific by package location only; root ListingKit still receives only the existing `GenerateRequest` shape.
 
 Acceptance criteria:
 
@@ -341,7 +345,7 @@ PR 1 through PR 5 now establish identity/envelope, the first Amazon source-envel
 
 Next, run focused validation and then choose whether to:
 
-1. wire the 1688 command service into one HTTP/API adapter, or
+1. wire the 1688 HTTP adapter into the application module registry, or
 2. start the next new warehouse/source catalog path such as 大建云仓.
 
 Implementation checklist:
