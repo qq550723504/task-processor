@@ -211,6 +211,10 @@ Current implementation path:
 internal/catalog.ProductFacts + internal/asset.Facts
   -> internal/listingkit.SourceFactsGenerateRequestInput
   -> internal/listingkit.GenerateRequest
+
+internal/product/sourcehandoff.ListingKitRequestInput
+  -> internal/listingkit.GenerateRequest
+  -> existing CreateGenerateTask boundary when a caller provides a creator
 ```
 
 The bridge is intentionally a pure DTO-adaptation function. It does not create tasks, submit packages, assemble marketplace payloads, or introduce another submission state owner.
@@ -288,6 +292,7 @@ Run focused tests first:
 
 ```powershell
 go test ./internal/product/sourcing/... -count=1
+go test ./internal/product/sourcehandoff/... -count=1
 go test ./internal/catalog/... -count=1
 go test ./internal/asset/... -count=1
 go test ./tests/... -count=1
@@ -323,11 +328,11 @@ Pause and document before continuing if:
 
 ## 8. Immediate next action
 
-PR 1 through PR 5 now establish identity/envelope, the first Amazon source-envelope mapping, neutral catalog/asset facts, a narrow ListingKit request bridge, and source/crawler/facts boundary guards. 1688 is now the next business source to validate against the same path.
+PR 1 through PR 5 now establish identity/envelope, the first Amazon source-envelope mapping, neutral catalog/asset facts, a narrow ListingKit request bridge, and source/crawler/facts boundary guards. 1688 now has a source-envelope mapping, a flow-level request test, and a controlled source-envelope handoff into the existing ListingKit generate-task create boundary.
 
 Next, run focused validation and then choose whether to:
 
-1. wire the bridge into one controlled ListingKit create/preview path, or
+1. expose the controlled 1688 handoff through a narrow API/application adapter, or
 2. start the next new warehouse/source catalog path such as 大建云仓.
 
 Implementation checklist:
@@ -341,6 +346,7 @@ Implementation checklist:
 [ ] map the existing 1688 product result path into SourceEnvelope.
 [ ] map SourceEnvelope into internal/catalog and internal/asset neutral facts.
 [ ] map internal/catalog and internal/asset neutral facts into a ListingKit GenerateRequest bridge.
+[ ] add controlled SourceEnvelope -> GenerateRequest -> CreateGenerateTask handoff.
 [ ] guard product-source, catalog, asset, crawler, and ListingKit bridge dependency direction.
 [ ] update this plan only if the first chosen source changes the PR order.
 ```
