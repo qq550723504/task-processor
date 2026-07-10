@@ -23,6 +23,7 @@ import (
 type Module struct {
 	Handler              RouteHandler
 	StudioSessionHandler listingkit.StudioSessionHandler
+	TaskLifecycleService listingkit.TaskLifecycleService
 	Pool                 worker.WorkerPool
 	Closers              []func() error
 }
