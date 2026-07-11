@@ -43,41 +43,6 @@ func studioStyleName(sds *SDSSyncOptions) string {
 	return ""
 }
 
-func applyStudioStyleDimension(product *canonical.Product, sds *SDSSyncOptions) bool {
-	if product == nil || len(product.Variants) == 0 {
-		return false
-	}
-	styleName := studioStyleName(sds)
-	if styleName == "" {
-		return false
-	}
-	trace := canonical.FieldTrace{
-		Sources: []canonical.Source{{
-			Type:   canonical.SourceDerived,
-			Detail: "SDS studio AI style dimension",
-		}},
-		Confidence:  0.94,
-		IsInferred:  false,
-		NeedsReview: false,
-	}
-	changed := false
-	for i := range product.Variants {
-		if product.Variants[i].Attributes == nil {
-			product.Variants[i].Attributes = map[string]canonical.Attribute{}
-		}
-		current := strings.TrimSpace(product.Variants[i].Attributes[studioAIStyleAttributeKey].Value)
-		if current == styleName {
-			continue
-		}
-		product.Variants[i].Attributes[studioAIStyleAttributeKey] = canonical.Attribute{
-			Value: styleName,
-			Trace: trace,
-		}
-		changed = true
-	}
-	return changed
-}
-
 func normalizeStyleIDSuffix(value string) string {
 	value = strings.TrimSpace(strings.ToUpper(value))
 	if value == "" {

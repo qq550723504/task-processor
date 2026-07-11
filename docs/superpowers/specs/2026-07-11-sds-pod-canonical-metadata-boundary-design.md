@@ -6,7 +6,7 @@ Approved design direction for the next ListingKit ownership-reduction slice.
 
 ## Goal
 
-Move deterministic SDS POD source-to-canonical metadata mapping out of root internal/listingkit into internal/product/sourcing/sdspod while preserving all current production behavior.
+Move deterministic SDS POD source-to-canonical metadata mapping out of root internal/listingkit into internal/product/sourcing/sdspod while preserving current production behavior except for the approved anonymous successful variant product-image union refinement described below.
 
 ListingKit remains the compatibility and orchestration shell. The new package owns platform-neutral SDS POD normalization for canonical titles, identity attributes, Studio style metadata, rendered mockup images, variant image assignment, and field traces.
 
@@ -32,7 +32,7 @@ Use two mature architecture patterns:
 - an anti-corruption layer in ListingKit converts legacy DTOs and compatibility conventions into a narrow input;
 - a functional core in internal/product/sourcing/sdspod applies deterministic canonical transformations.
 
-Reuse canonical.Product, canonical.Attribute, canonical.Image, and canonical.FieldTrace. Reuse current behavior as the characterization oracle. Do not introduce a mapping framework, generic rule engine, reflection-based copier, or dependency injection container.
+Reuse canonical.Product, canonical.Attribute, canonical.Image, and canonical.FieldTrace. Reuse current behavior as the characterization oracle except for the approved anonymous successful variant product-image union refinement. Do not introduce a mapping framework, generic rule engine, reflection-based copier, or dependency injection container.
 
 ## Target Architecture
 
@@ -112,7 +112,7 @@ ListingKit does not retain title, identity, style, image construction, image equ
 
 ## Canonical Mapping Rules
 
-The new package preserves these rules exactly.
+The new package preserves these rules exactly except for the intentional image refinement documented in the Images section.
 
 ### Title
 
@@ -164,6 +164,13 @@ The canonical attribute key is exactly `ai_style` and is covered by compatibilit
 - Preserve the existing image trace with detail SDS rendered mockup images and confidence 0.98.
 - Image equality continues to compare trimmed URL and role only.
 - Reapplying identical metadata returns false and does not reorder images.
+
+**Intentional behavior refinement:** Legacy behavior used top-level default
+mockups, or the first successful variant image group, when every successful
+variant lacked a non-empty normalized SKU or Color key. The refactored behavior
+unions all successful variant images into `product.Images` even when those
+variants have no lookup key. Per-variant assignment still requires a matching
+lookup key and otherwise uses the existing default fallback.
 
 ## Data Flow
 
@@ -240,7 +247,8 @@ Keep focused tests proving:
 
 - SDSSyncSummary and SDSSyncOptions are converted correctly;
 - historical decorated SHEIN supplier SKU lookup still assigns the same images;
-- existing workflow entrypoints receive the same canonical product;
+- existing workflow entrypoints receive the same canonical product except for
+  the approved anonymous successful variant product-image union refinement;
 - public DTOs and JSON tags remain unchanged.
 
 ### Boundary tests
@@ -272,7 +280,10 @@ The existing working-tree go.work.sum modification is out of scope and must not 
 8. Run focused and repository-wide verification.
 9. Update the active ListingKit boundary checkpoint.
 
-Algorithm changes and package movement must not be combined. If a current behavior appears wrong, capture it as a follow-up rather than correcting it during extraction.
+No algorithm change other than the approved anonymous successful variant
+product-image union refinement may be combined with package movement. If any
+other current behavior appears wrong, capture it as a follow-up rather than
+correcting it during extraction.
 
 ## Non-Goals
 
@@ -284,7 +295,8 @@ Algorithm changes and package movement must not be combined. If a current behavi
 - Changing Studio batch orchestration.
 - Renaming broad SDS package trees.
 - Removing historical decorated SHEIN supplier SKU compatibility.
-- Adding new product facts, image policy, or business behavior.
+- Adding new product facts, image policy, or business behavior beyond the
+  approved anonymous successful variant product-image union refinement.
 
 ## Risks and Mitigations
 
@@ -310,7 +322,10 @@ Mitigation: ApplyCanonical copies assigned image slices and does not retain call
 
 Canonical metadata feeds active SDS POD workflows.
 
-Mitigation: public DTOs and workflow entrypoints remain unchanged; run complete ListingKit and SDS-related workflow tests before completion.
+Mitigation: public DTOs and workflow entrypoint contracts remain unchanged;
+canonical output changes only for the approved anonymous successful variant
+product-image union refinement. Run complete ListingKit and SDS-related
+workflow tests before completion.
 
 ## Success Criteria
 
@@ -319,7 +334,10 @@ The slice is complete when:
 - internal/product/sourcing/sdspod owns deterministic SDS POD canonical mapping;
 - the new package imports only standard library and canonical;
 - ListingKit retains only DTO adaptation, historical lookup-key compatibility, orchestration, and changed-result propagation;
-- title, identity attributes, style dimension, images, traces, precedence, fallback, and idempotency are unchanged;
+- title, identity attributes, style dimension, images, traces, precedence,
+  fallback, and idempotency are unchanged except for the approved anonymous
+  variant product-union refinement; per-variant lookup and fallback remain
+  unchanged;
 - SDS remote sync, baseline validation, SHEIN payload mapping, Temporal, persistence, and public DTO files are untouched;
 - focused, boundary, ListingKit, and repository tests pass;
 - the active ListingKit checkpoint records the new ownership boundary.

@@ -224,6 +224,27 @@ func TestApplySDSSyncMetadataToCanonicalPromotesRenderedMockupsToCanonicalImages
 	}
 }
 
+func TestApplySDSSyncMetadataToCanonicalMatchesDecoratedSupplierSKU(t *testing.T) {
+	product := &canonical.Product{
+		Variants: []canonical.Variant{{
+			SKU: "MG17701061001-B6C753EB",
+		}},
+	}
+	summary := &SDSSyncSummary{
+		VariantResults: []SDSSyncSummary{{
+			VariantSKU:      "MG17701061001",
+			Status:          "completed",
+			MockupImageURLs: []string{"https://cdn.sdspod.com/out/main.jpg"},
+		}},
+	}
+
+	applySDSSyncMetadataToCanonical(product, summary, nil)
+
+	if got := product.Variants[0].Images; len(got) != 1 || got[0].URL != "https://cdn.sdspod.com/out/main.jpg" {
+		t.Fatalf("decorated supplier SKU variant images = %+v", got)
+	}
+}
+
 func TestApplySDSSyncMetadataToCanonicalPromotesSDSIdentityAttributes(t *testing.T) {
 	product := &canonical.Product{
 		Variants: []canonical.Variant{

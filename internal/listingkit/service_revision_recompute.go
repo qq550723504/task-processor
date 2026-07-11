@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
+	sdspod "task-processor/internal/product/sourcing/sdspod"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -21,7 +22,9 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 	}
 	task.Result.Shein = sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
 	if task.Request != nil && task.Request.Options != nil {
-		applyStudioStyleDimension(task.Result.CanonicalProduct, task.Request.Options.SDS)
+		sdspod.ApplyCanonical(task.Result.CanonicalProduct, sdspod.CanonicalMetadata{
+			StyleName: studioStyleName(task.Request.Options.SDS),
+		})
 	}
 
 	buildReq := buildSheinPublishRequestForTask(task, task.Request)
