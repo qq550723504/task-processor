@@ -58,6 +58,18 @@ Guardrail:
 - Do not recreate an `internal/listingkit/submission` compatibility package.
 - Root `internal/listingkit` may keep SHEIN task/result/package adaptation, repository callbacks, persistence ordering, Temporal/direct fallback routing, and root DTO/error translation when those paths still require task-owned state transitions.
 
+### `internal/product/sourcing/sdspod`
+
+Owns deterministic, platform-neutral SDS POD normalization into canonical product facts, including trusted title, SDS identity attributes, Studio style metadata, rendered mockup normalization, variant image assignment, and canonical field traces.
+
+Guardrail:
+
+- `internal/product/sourcing/sdspod` may import only the Go standard library and `internal/catalog/canonical`; it must not import ListingKit, marketplace or publishing packages, SDS runtime/client packages, app/runtime, infra, HTTP, Temporal, or external SDKs.
+
+Root `internal/listingkit` retains legacy SDS DTO adaptation, historical decorated supplier-SKU lookup compatibility, task/workflow orchestration, and changed-result propagation.
+
+The anonymous successful variant union in `product.Images` is a human-approved intentional refinement; all other image precedence and per-variant lookup/fallback behavior remains unchanged.
+
 ### `internal/marketplace/shein/publishing`
 
 Owns canonical SHEIN marketplace publishing rules that are stable and do not require root runtime wiring.
