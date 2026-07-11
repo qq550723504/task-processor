@@ -771,7 +771,7 @@ func TestExecuteSheinActivityEnrollmentUsesSupplyPriceAsOriginalPriceWithManualS
 			SKCName:            "sg260618173076361709498",
 			CandidateVersion:   "v1",
 			EffectiveCostPrice: sheinEnrollmentFloat64Ptr(19.99),
-			PriceSnapshot:      `{"sale_price":40,"currency":"USD","sub_site":"shein-us"}`,
+			PriceSnapshot:      `{"sale_price":40,"currency":"USD","sub_site":"shein-us","sku_prices":[{"sku_code":"sku-small","sale_price":29.9,"currency":"USD"},{"sku_code":"sku-large","sale_price":34.9,"currency":"USD"}]}`,
 			InventorySnapshot:  `{"available":999,"total":999}`,
 			EligibilityStatus:  SheinCandidateEligibilityStatusEligible,
 			ReviewStatus:       SheinCandidateReviewStatusPendingReview,
@@ -789,7 +789,7 @@ func TestExecuteSheinActivityEnrollmentUsesSupplyPriceAsOriginalPriceWithManualS
 			AutoCostPrice:       sheinEnrollmentFloat64Ptr(34.77),
 			EffectiveCostPrice:  sheinEnrollmentFloat64Ptr(34.77),
 			Currency:            "USD",
-			PriceSnapshot:       `{"sale_price":40,"currency":"USD","sub_site":"shein-us"}`,
+			PriceSnapshot:       `{"sale_price":40,"currency":"USD","sub_site":"shein-us","sku_prices":[{"sku_code":"sku-small","sale_price":29.9,"currency":"USD"},{"sku_code":"sku-large","sale_price":34.9,"currency":"USD"}]}`,
 			InventorySnapshot:   `{"available":999,"total":999}`,
 			IsActive:            true,
 		},
@@ -827,6 +827,13 @@ func TestExecuteSheinActivityEnrollmentUsesSupplyPriceAsOriginalPriceWithManualS
 	price, currency := parsePromotionPriceSnapshot(adapter.calls[0].Candidates[0].PriceSnapshot)
 	require.Equal(t, 53.95, price)
 	require.Equal(t, "USD", currency)
+	var refreshed promotionCandidatePriceSnapshot
+	require.NoError(t, json.Unmarshal([]byte(adapter.calls[0].Candidates[0].PriceSnapshot), &refreshed))
+	require.Equal(t, 53.95, refreshed.SalePrice)
+	require.Equal(t, []promotionCandidateSKUPriceSnapshot{
+		{SKUCode: "sku-small", SalePrice: 29.9, Currency: "USD"},
+		{SKUCode: "sku-large", SalePrice: 34.9, Currency: "USD"},
+	}, refreshed.SKUPrices)
 
 	candidates := repo.savedCandidates()
 	require.Len(t, candidates, 1)
