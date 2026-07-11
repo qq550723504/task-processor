@@ -2,7 +2,7 @@
 
 > Status: current checkpoint for the ListingKit slimming and boundary-guard wave.
 >
-> Last reviewed: 2026-07-09.
+> Last reviewed: 2026-07-11.
 
 ## Purpose
 
@@ -27,6 +27,16 @@ Guardrail:
 - `internal/listing/studio` must not import `internal/listingkit`, SHEIN marketplace/workspace/publishing packages, or runtime/integration wiring.
 
 Root `internal/listingkit` still owns API-facing DTO adaptation, repository implementations, generation resume, task creation behavior, batch-run execution, logging, and legacy error translation when those paths still require root task/repository ordering.
+
+### `internal/listing/studio/referenceanalysis`
+
+Owns platform-neutral interpretation and safety policy for Studio reference-image analysis, including structured/malformed result parsing, reusable style abstraction, protected-identity filtering, and sanitized brief/prompt construction.
+
+Guardrail:
+
+- `internal/listing/studio/referenceanalysis` uses only the Go standard library and must not import ListingKit, marketplace, runtime, infrastructure, HTTP, SDS, or external SDK packages.
+
+Root `internal/listingkit` retains request validation, image URL and upload resolution, AI invocation, compatibility DTOs, warning text, and public error translation.
 
 ### `internal/listing/preview`
 
