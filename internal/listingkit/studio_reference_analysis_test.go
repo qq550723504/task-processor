@@ -490,6 +490,22 @@ func TestAnalyzeStudioReferenceStyleReturnsFailureWhenSingleReferenceAnalysisFai
 	}
 }
 
+func TestAnalyzeStudioReferenceStyleReturnsNoSafeDirectionForWhitespaceAnalysis(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{responses: []string{" \n\t "}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{promptDiversifier: completer})
+
+	_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"https://example.com/a.png"},
+	})
+	if err == nil {
+		t.Fatal("AnalyzeStudioReferenceStyle() error = nil, want no-safe-direction failure")
+	}
+	const want = "reference_analysis_failed: no reusable safe style direction extracted"
+	if err.Error() != want {
+		t.Fatalf("AnalyzeStudioReferenceStyle() error = %q, want %q", err, want)
+	}
+}
+
 func TestAnalyzeStudioReferenceStyleKeepsSafeTitleCaseStyleSignals(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
 		`{"motif":"Retro Flowers","palette":["Cream","Cherry Red"],"composition":"Centered Badge","typography":"Old English","density":"Clean Layering","product_fit":"Vintage Streetwear"}`,

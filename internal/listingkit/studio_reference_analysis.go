@@ -63,7 +63,7 @@ func (s *taskStudioMediaService) AnalyzeStudioReferenceStyle(ctx context.Context
 		case errors.Is(err, referenceanalysis.ErrEmptyPrompt):
 			return nil, fmt.Errorf("reference_analysis_failed: generated reference brief is empty")
 		case errors.Is(err, referenceanalysis.ErrNoInput):
-			return nil, fmt.Errorf("reference_analysis_failed: no reference image could be analyzed")
+			return nil, fmt.Errorf("reference_analysis_failed: no reusable safe style direction extracted")
 		default:
 			return nil, fmt.Errorf("reference_analysis_failed: %w", err)
 		}
