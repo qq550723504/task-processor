@@ -771,7 +771,7 @@ func TestExecuteSheinActivityEnrollmentUsesSupplyPriceAsOriginalPriceWithManualS
 			SKCName:            "sg260618173076361709498",
 			CandidateVersion:   "v1",
 			EffectiveCostPrice: sheinEnrollmentFloat64Ptr(19.99),
-			PriceSnapshot:      `{"sale_price":40,"currency":"USD","sub_site":"shein-us","sku_prices":[{"sku_code":"sku-small","sale_price":29.9,"currency":"USD"},{"sku_code":"sku-large","sale_price":34.9,"currency":"USD"}]}`,
+			PriceSnapshot:      `{"sale_price":53.95,"currency":"USD","sub_site":"shein-us","sku_prices":[{"sku_code":"sku-small","sale_price":53.95,"currency":"USD"},{"sku_code":"sku-large","sale_price":53.95,"currency":"USD"}]}`,
 			InventorySnapshot:  `{"available":999,"total":999}`,
 			EligibilityStatus:  SheinCandidateEligibilityStatusEligible,
 			ReviewStatus:       SheinCandidateReviewStatusPendingReview,

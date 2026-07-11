@@ -171,7 +171,10 @@ func refreshSheinEnrollmentPriceSnapshot(existing string, product SheinSyncedPro
 	}
 
 	payload := map[string]any{}
-	if strings.TrimSpace(existing) != "" {
+	if strings.TrimSpace(product.PriceSnapshot) != "" {
+		_ = json.Unmarshal([]byte(product.PriceSnapshot), &payload)
+	}
+	if len(payload) == 0 && strings.TrimSpace(existing) != "" {
 		_ = json.Unmarshal([]byte(existing), &payload)
 	}
 	payload["sale_price"] = *product.SupplyPrice
