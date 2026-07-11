@@ -51,7 +51,6 @@ export function SheinCostPriceTable({
   items,
   onSave,
   onSyncSourceSDSProduct,
-  saving,
   shipmentArea = "US",
   sourceGroups,
   storeId,
@@ -71,7 +70,33 @@ export function SheinCostPriceTable({
   syncingSourceCode?: string;
 }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [savingKeys, setSavingKeys] = useState<Record<string, boolean>>({});
+  const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
   const [activeImage, setActiveImage] = useState<SheinPreviewImage | null>(null);
+  const handleSave = async (
+    target: SheinCostPriceSaveTarget,
+    manualCostPrice: number | null,
+  ) => {
+    const key = target.groupKey;
+    setSavingKeys((current) => ({ ...current, [key]: true }));
+    setSaveErrors((current) => ({ ...current, [key]: "" }));
+    try {
+      await onSave(target, manualCostPrice);
+      setDrafts((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+    } catch (error) {
+      setSaveErrors((current) => ({ ...current, [key]: costSaveErrorMessage(error) }));
+    } finally {
+      setSavingKeys((current) => {
+        const next = { ...current };
+        delete next[key];
+        return next;
+      });
+    }
+  };
   const rows = useMemo(
     () =>
       sourceGroups
@@ -133,10 +158,11 @@ export function SheinCostPriceTable({
               [key]: value,
             }))
           }
-          onSave={onSave}
+          onSave={handleSave}
           onSyncSourceSDSProduct={onSyncSourceSDSProduct}
           row={row}
-          saving={saving}
+          saveErrors={saveErrors}
+          savingKeys={savingKeys}
           shipmentArea={shipmentArea}
           onPreviewImage={setActiveImage}
           sourceTaskMetadataByCode={sourceTaskMetadataQuery.data}
@@ -161,7 +187,8 @@ function SheinCostPriceRow({
   onSave,
   onSyncSourceSDSProduct,
   row,
-  saving,
+  saveErrors,
+  savingKeys,
   shipmentArea,
   onPreviewImage,
   sourceTaskMetadataByCode,
@@ -175,7 +202,8 @@ function SheinCostPriceRow({
   ) => Promise<void>;
   onSyncSourceSDSProduct?: (sourceCode: string) => Promise<void>;
   row: SheinCostGroupRow;
-  saving: boolean;
+  saveErrors: Record<string, string>;
+  savingKeys: Record<string, boolean>;
   shipmentArea: string;
   onPreviewImage: (image: SheinPreviewImage) => void;
   sourceTaskMetadataByCode?: Map<string, SheinCostSourceTaskMetadata>;
@@ -189,6 +217,8 @@ function SheinCostPriceRow({
     syncSourceCode &&
       normalizeSourceCode(syncingSourceCode) === normalizeSourceCode(syncSourceCode),
   );
+  const saving = Boolean(savingKeys[row.groupKey]);
+  const saveError = saveErrors[row.groupKey];
 
   return (
     <div className="rounded-2xl border border-zinc-200 bg-white p-4">
@@ -257,6 +287,9 @@ function SheinCostPriceRow({
             >
               {saving ? "保存中..." : "保存成本价"}
             </Button>
+            {saveError ? (
+              <p className="text-xs text-red-600" role="alert">{saveError}</p>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -265,7 +298,8 @@ function SheinCostPriceRow({
         onDraftChange={onDraftChange}
         onSave={onSave}
         row={row}
-        saving={saving}
+        saveErrors={saveErrors}
+        savingKeys={savingKeys}
         sourceTaskMetadataByCode={sourceTaskMetadataByCode}
       />
     </div>
@@ -277,7 +311,8 @@ function SheinCostVariantDetailTable({
   onDraftChange,
   onSave,
   row,
-  saving,
+  saveErrors,
+  savingKeys,
   sourceTaskMetadataByCode,
 }: {
   drafts: Record<string, string>;
@@ -287,7 +322,8 @@ function SheinCostVariantDetailTable({
     manualCostPrice: number | null,
   ) => Promise<void>;
   row: SheinCostGroupRow;
-  saving: boolean;
+  saveErrors: Record<string, string>;
+  savingKeys: Record<string, boolean>;
   sourceTaskMetadataByCode?: Map<string, SheinCostSourceTaskMetadata>;
 }) {
   const details = row.products.slice(0, 5).map((product) => {
@@ -325,7 +361,8 @@ function SheinCostVariantDetailTable({
               key={skuGroup.groupKey}
               onDraftChange={(value) => onDraftChange(skuGroup.groupKey, value)}
               onSave={onSave}
-              saving={saving}
+              saveError={saveErrors[skuGroup.groupKey]}
+              saving={Boolean(savingKeys[skuGroup.groupKey])}
               skuGroup={skuGroup}
               sourceTaskMetadata={sourceTaskMetadataByCode?.get(normalizeSourceCode(skuGroup.skuCode))}
             />
@@ -359,6 +396,7 @@ function SheinCostSKUDetailRow({
   draft,
   onDraftChange,
   onSave,
+  saveError,
   saving,
   skuGroup,
   sourceTaskMetadata,
@@ -369,6 +407,7 @@ function SheinCostSKUDetailRow({
     target: SheinCostPriceSaveTarget,
     manualCostPrice: number | null,
   ) => Promise<void>;
+  saveError?: string;
   saving: boolean;
   skuGroup: SheinCostSKUGroup;
   sourceTaskMetadata?: SheinCostSourceTaskMetadata;
@@ -413,9 +452,12 @@ function SheinCostSKUDetailRow({
             }
             type="button"
           >
-            保存
+            {saving ? "保存中..." : "保存"}
           </Button>
         </div>
+        {saveError ? (
+          <p className="mt-1 text-xs text-red-600" role="alert">{saveError}</p>
+        ) : null}
       </td>
     </tr>
   );
@@ -909,4 +951,11 @@ function parseSheinCostDraft(value: string): { invalid: boolean; value: number |
     return { invalid: true, value: null };
   }
   return { invalid: false, value: parsed };
+}
+
+function costSaveErrorMessage(error: unknown) {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+  return "保存失败，请重试";
 }

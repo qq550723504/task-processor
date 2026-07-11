@@ -316,6 +316,36 @@ describe("SheinCostPriceTable", () => {
     });
   });
 
+  it("clears the local draft after a successful save", async () => {
+    mockSourceMetadataFetch([]);
+    const onSave = vi.fn().mockResolvedValue(undefined);
+
+    renderCostPriceTable({ onSave });
+
+    const input = screen.getByLabelText("成本价 MG8006905001");
+    fireEvent.change(input, { target: { value: "45.6" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存成本价" }));
+
+    await waitFor(() => {
+      expect(input).toHaveValue("50");
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps the draft and shows an inline error after a failed save", async () => {
+    mockSourceMetadataFetch([]);
+    const onSave = vi.fn().mockRejectedValue(new Error("保存接口失败"));
+
+    renderCostPriceTable({ onSave });
+
+    const input = screen.getByLabelText("成本价 MG8006905001");
+    fireEvent.change(input, { target: { value: "45.6" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存成本价" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("保存接口失败");
+    expect(input).toHaveValue("45.6");
+  });
+
   it("edits each source product variant once in the child table", async () => {
     mockSourceMetadataFetch([
       {
