@@ -111,3 +111,28 @@ func TestApplyCanonicalUsesDefaultImagesAndIgnoresInvalidLookups(t *testing.T) {
 		}
 	}
 }
+
+func TestApplyCanonicalUsesVariantUnionWhenLookupKeysAreEmpty(t *testing.T) {
+	product := &canonical.Product{}
+	metadata := CanonicalMetadata{
+		MockupURLs: []string{"default.jpg"},
+		Variants: []VariantMetadata{
+			{
+				Status:     "completed",
+				MockupURLs: []string{"first.jpg"},
+			},
+			{
+				Status:     "completed",
+				MockupURLs: []string{"second.jpg"},
+			},
+		},
+	}
+
+	if !ApplyCanonical(product, metadata) {
+		t.Fatal("ApplyCanonical() = false")
+	}
+	want := []string{"first.jpg", "second.jpg"}
+	if got := imageURLs(product.Images); !reflect.DeepEqual(got, want) {
+		t.Fatalf("product image URLs = %#v, want %#v", got, want)
+	}
+}

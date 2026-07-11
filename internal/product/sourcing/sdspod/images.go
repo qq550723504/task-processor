@@ -9,18 +9,19 @@ import (
 func applyImages(product *canonical.Product, metadata CanonicalMetadata) bool {
 	trace := canonicalTrace("SDS rendered mockup images", 0.98)
 	byKey := renderedImagesByKey(metadata.Variants, trace)
+	allVariantImages := imagesFromVariants(metadata.Variants, trace)
 	defaultImages := imagesFromMockups(metadata.MockupURLs, trace)
 	if len(defaultImages) == 0 {
 		defaultImages = firstVariantImages(metadata.Variants, trace)
 	}
-	if len(defaultImages) == 0 && len(byKey) == 0 {
+	if len(defaultImages) == 0 && len(allVariantImages) == 0 {
 		return false
 	}
 
 	changed := false
 	productImages := defaultImages
-	if len(byKey) > 0 {
-		productImages = imagesFromVariants(metadata.Variants, trace)
+	if len(allVariantImages) > 0 {
+		productImages = allVariantImages
 	}
 	if len(productImages) > 0 && !imagesEqual(product.Images, productImages) {
 		product.Images = copyImages(productImages)
