@@ -12,6 +12,11 @@
 
 - Preserve SDSSyncSummary, SDSSyncOptions, GenerateRequest, canonical.Product, and all public JSON contracts.
 - Preserve title, attribute, style, image, trace, precedence, fallback, ordering, de-duplication, and bool changed behavior exactly.
+- Approved exception to exact image preservation: `product.Images` unions all
+  successful variant image groups even when every variant has an empty
+  normalized SKU and Color. Legacy behavior used top-level default mockups or
+  the first successful variant group in that case. Per-variant lookup and
+  default fallback behavior remain unchanged.
 - The ai_style canonical variant attribute key remains exactly ai_style.
 - Variant lookup normalization remains strings.ToLower(strings.TrimSpace(value)); empty normalized keys are ignored.
 - internal/product/sourcing/sdspod may import only the Go standard library and task-processor/internal/catalog/canonical.
@@ -707,6 +712,11 @@ Implementation requirements for applyImages:
 7. Copy image slices when assigning them.
 8. Write product.FieldTraces["images"] only when an image assignment changed.
 9. Return false when no usable images exist or every URL/role sequence is already equal.
+
+**Human-approved Task 3 refinement:** Treat successful variant images as
+available for the product union independently of whether SKU or Color produced
+a lookup key. Anonymous successful variants therefore participate in
+`product.Images`; `byKey` remains only the per-variant lookup index.
 
 Remove the temporary applyImages stub from apply.go.
 

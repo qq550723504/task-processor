@@ -9,6 +9,8 @@ import (
 func applyImages(product *canonical.Product, metadata CanonicalMetadata) bool {
 	trace := canonicalTrace("SDS rendered mockup images", 0.98)
 	byKey := renderedImagesByKey(metadata.Variants, trace)
+	// Intentional refactor: anonymous successful variants participate in the
+	// product image union; byKey is only for per-variant lookup.
 	allVariantImages := imagesFromVariants(metadata.Variants, trace)
 	defaultImages := imagesFromMockups(metadata.MockupURLs, trace)
 	if len(defaultImages) == 0 {

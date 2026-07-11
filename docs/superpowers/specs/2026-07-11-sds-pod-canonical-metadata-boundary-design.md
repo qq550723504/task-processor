@@ -165,6 +165,13 @@ The canonical attribute key is exactly `ai_style` and is covered by compatibilit
 - Image equality continues to compare trimmed URL and role only.
 - Reapplying identical metadata returns false and does not reorder images.
 
+**Intentional behavior refinement:** Legacy behavior used top-level default
+mockups, or the first successful variant image group, when every successful
+variant lacked a non-empty normalized SKU or Color key. The refactored behavior
+unions all successful variant images into `product.Images` even when those
+variants have no lookup key. Per-variant assignment still requires a matching
+lookup key and otherwise uses the existing default fallback.
+
 ## Data Flow
 
 ~~~text
