@@ -122,7 +122,3 @@ func setPreferred(values map[string]string, key, preferred string) {
 		values[key] = preferred
 	}
 }
-
-func applyImages(*canonical.Product, CanonicalMetadata) bool {
-	return false
-}
