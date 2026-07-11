@@ -2,16 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**Goal:** Move deterministic SDS POD canonical title, identity, style, and rendered-image mapping from root ListingKit into internal/product/sourcing/sdspod without changing production behavior.
+**Goal:** Move deterministic SDS POD canonical title, identity, style, and rendered-image mapping from root ListingKit into internal/product/sourcing/sdspod while preserving production behavior except for the approved anonymous successful variant product-image union refinement.
 
-**Architecture:** ListingKit remains the anti-corruption shell for legacy SDSSyncSummary, SDSSyncOptions, and decorated SHEIN supplier SKU compatibility. A platform-neutral functional core receives CanonicalMetadata and mutates canonical.Product deterministically with the existing traces, precedence, fallback, ordering, and idempotency.
+**Architecture:** ListingKit remains the anti-corruption shell for legacy SDSSyncSummary, SDSSyncOptions, and decorated SHEIN supplier SKU compatibility. A platform-neutral functional core receives CanonicalMetadata and mutates canonical.Product deterministically with the existing traces, precedence, fallback, ordering, and idempotency, subject only to the approved anonymous successful variant product-image union refinement.
 
 **Tech Stack:** Go 1.26+, standard library, internal/catalog/canonical, existing ListingKit characterization tests and AST import guards.
 
 ## Global Constraints
 
 - Preserve SDSSyncSummary, SDSSyncOptions, GenerateRequest, canonical.Product, and all public JSON contracts.
-- Preserve title, attribute, style, image, trace, precedence, fallback, ordering, de-duplication, and bool changed behavior exactly.
+- Preserve title, attribute, style, image, trace, precedence, fallback,
+  ordering, de-duplication, and bool changed behavior exactly except for the
+  approved anonymous successful variant product-image union refinement below.
 - Approved exception to exact image preservation: `product.Images` unions all
   successful variant image groups even when every variant has an empty
   normalized SKU and Color. Legacy behavior used top-level default mockups or
@@ -508,7 +510,9 @@ Expected: PASS.
 
 **Interfaces:**
 - Consumes: CanonicalMetadata.MockupURLs, Variants, and VariantLookup.
-- Produces: canonical product and variant images with exact current trace, ordering, fallback, and idempotency.
+- Produces: canonical product and variant images with exact current trace,
+  ordering, fallback, and idempotency, plus the approved anonymous successful
+  variant product-image union refinement.
 
 - [ ] **Step 1: Write failing multi-variant image test**
 
@@ -646,7 +650,7 @@ Expected: FAIL because the Task 2 stub never changes images.
 
 - [ ] **Step 4: Implement the image policy mechanically**
 
-Create images.go with these private functions, preserving the algorithms from internal/listingkit/sds_canonical_metadata.go:
+Create images.go with these private functions, preserving the algorithms from internal/listingkit/sds_canonical_metadata.go except for the approved anonymous successful variant product-image union refinement:
 
 ~~~text
 applyImages
@@ -661,7 +665,8 @@ uniqueNonEmpty
 copyImages
 ~~~
 
-Use these exact rules:
+Use these exact rules, subject to the approved anonymous successful variant
+product-image union refinement stated below:
 
 ~~~go
 func normalizeKey(value string) string {
@@ -745,7 +750,8 @@ Expected: PASS.
 
 **Interfaces:**
 - Consumes: sdspod.CanonicalMetadata and ApplyCanonical from Tasks 1-3.
-- Produces: unchanged applySDSSyncMetadataToCanonical facade behavior.
+- Produces: unchanged applySDSSyncMetadataToCanonical facade behavior except
+  for the approved anonymous successful variant product-image union refinement.
 
 - [ ] **Step 1: Preserve the existing facade characterization tests**
 
@@ -938,7 +944,8 @@ go test ./internal/listingkit -run "TestApplySDSSyncMetadataToCanonical|TestStud
 go test ./internal/listingkit/... -count=1
 ~~~
 
-Expected: PASS with unchanged facade and workflow behavior.
+Expected: PASS with unchanged facade and workflow behavior except for the
+approved anonymous successful variant product-image union refinement.
 
 - [ ] **Step 6: Commit**
 
@@ -1049,6 +1056,9 @@ git commit -m "docs: record sds pod canonical ownership"
 ## Final Acceptance Checklist
 
 - [ ] sdspod owns deterministic title, identity, style, image, trace, precedence, fallback, and idempotency rules.
+- [ ] `product.Images` includes the approved anonymous successful variant union;
+      all other image precedence and per-variant lookup/fallback behavior remain
+      unchanged.
 - [ ] sdspod imports only standard library and internal/catalog/canonical.
 - [ ] ListingKit retains DTO conversion, decorated SHEIN supplier SKU compatibility, orchestration, and changed-result propagation.
 - [ ] SDSSyncSummary, SDSSyncOptions, public JSON, remote sync, baseline, Temporal, persistence, and SHEIN payload behavior are unchanged.
