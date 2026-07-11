@@ -1982,9 +1982,9 @@ func TestRegisterPromotionProductsUsesMinimumMultiSKUDiscountForBoth(t *testing.
 			{SkuCode: "sku-deep", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 23.00, Currency: "USD", IsAvailable: true}}},
 		},
 		SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
-			{SkuCode: "sku-min", CostPrice: 23.88, Currency: "USD"},
-			{SkuCode: "sku-mid", CostPrice: 20.88, Currency: "USD"},
-			{SkuCode: "sku-deep", CostPrice: 8.88, Currency: "USD"},
+			{SkuCode: "SKU-MIN", CostPrice: 23.88, Currency: "USD"},
+			{SkuCode: "SKU-MID", CostPrice: 20.88, Currency: "USD"},
+			{SkuCode: "SKU-DEEP", CostPrice: 8.88, Currency: "USD"},
 		},
 	}
 

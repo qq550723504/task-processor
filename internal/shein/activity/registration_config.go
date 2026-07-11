@@ -431,13 +431,14 @@ func minimumPromotionSKUDiscountRate(
 
 	costBySKU := make(map[string]float64, len(product.SkuCostPriceInfoList))
 	for _, item := range product.SkuCostPriceInfoList {
-		if item.SkuCode == "" || item.CostPrice <= 0 {
+		skuCode := normalizePromotionSKUCode(item.SkuCode)
+		if skuCode == "" || item.CostPrice <= 0 {
 			return 0, false, true
 		}
-		if _, exists := costBySKU[item.SkuCode]; exists {
+		if _, exists := costBySKU[skuCode]; exists {
 			return 0, false, true
 		}
-		costBySKU[item.SkuCode] = item.CostPrice
+		costBySKU[skuCode] = item.CostPrice
 	}
 	if len(costBySKU) != len(product.SkuPriceInfoList) {
 		return 0, false, true
@@ -446,15 +447,16 @@ func minimumPromotionSKUDiscountRate(
 	minimumRate := 1.0
 	seenSKU := make(map[string]struct{}, len(product.SkuPriceInfoList))
 	for _, item := range product.SkuPriceInfoList {
+		skuCode := normalizePromotionSKUCode(item.SkuCode)
 		originalPrice := firstAvailablePromotionSalePrice(item.SitePriceInfoList)
-		costPrice, ok := costBySKU[item.SkuCode]
-		if item.SkuCode == "" || originalPrice <= 0 || !ok || costPrice <= 0 {
+		costPrice, ok := costBySKU[skuCode]
+		if skuCode == "" || originalPrice <= 0 || !ok || costPrice <= 0 {
 			return 0, false, true
 		}
-		if _, exists := seenSKU[item.SkuCode]; exists {
+		if _, exists := seenSKU[skuCode]; exists {
 			return 0, false, true
 		}
-		seenSKU[item.SkuCode] = struct{}{}
+		seenSKU[skuCode] = struct{}{}
 
 		activityPrice := calculatePriceByBreakeven(originalPrice, costPrice, fixedPriceAdjustment)
 		if strings.EqualFold(priceMode, "PROFIT") {
@@ -470,6 +472,10 @@ func minimumPromotionSKUDiscountRate(
 	}
 
 	return ValidateDropRate(int(minimumRate*100), minimumRate, nil), true, true
+}
+
+func normalizePromotionSKUCode(value string) string {
+	return strings.ToUpper(strings.TrimSpace(value))
 }
 
 func firstAvailablePromotionSalePrice(items []marketing.SitePriceInfo) float64 {
