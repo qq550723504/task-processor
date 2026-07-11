@@ -1307,10 +1307,28 @@ func TestSheinActivityAdapterPromotionPassesMultiSKUPricesAndCosts(t *testing.T)
 	require.Len(t, bridge.calls, 1)
 	require.Len(t, bridge.calls[0].Products, 1)
 	product := bridge.calls[0].Products[0]
-	require.Len(t, product.SkuPriceInfoList, 2)
-	require.Len(t, product.SkuCostPriceInfoList, 2)
-	require.Equal(t, "sku-small", product.SkuPriceInfoList[0].SkuCode)
-	require.Equal(t, "sku-small", product.SkuCostPriceInfoList[0].SkuCode)
+	require.Equal(t, []marketing.SkuSitePriceInfo{
+		{
+			SkuCode: "sku-small",
+			SitePriceInfoList: []marketing.SitePriceInfo{{
+				SalePrice:   29.9,
+				Currency:    "USD",
+				IsAvailable: true,
+			}},
+		},
+		{
+			SkuCode: "sku-large",
+			SitePriceInfoList: []marketing.SitePriceInfo{{
+				SalePrice:   34.9,
+				Currency:    "USD",
+				IsAvailable: true,
+			}},
+		},
+	}, product.SkuPriceInfoList)
+	require.Equal(t, []marketing.SkuCostPriceInfo{
+		{SkuCode: "sku-small", CostPrice: 12.5, Currency: "USD"},
+		{SkuCode: "sku-large", CostPrice: 20.5, Currency: "USD"},
+	}, product.SkuCostPriceInfoList)
 	require.Len(t, results, 1)
 	require.True(t, results[0].Success)
 	require.Equal(t, int64(1), results[0].CandidateID)

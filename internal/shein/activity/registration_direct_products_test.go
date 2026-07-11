@@ -151,50 +151,55 @@ func TestRegisterPromotionProductsUsesBreakevenDropRateWithProvidedProductSnapsh
 func TestRegisterPromotionProductsAcceptsPromotionMultiSkuDifferentPrices(t *testing.T) {
 	api := &promotionProductsMarketingAPIStub{}
 	service := &activityRegistrationServiceImpl{
+		storeService: promotionProductsStoreServiceStub{
+			store: &listingruntime.StoreInfo{ID: 870, Username: "seller"},
+		},
 		marketingAPI: api,
 		logger:       logrus.NewEntry(logrus.New()),
+	}
+	strategy := &listingruntime.OperationStrategy{
+		StoreID:            870,
+		ActivityPriceMode:  "BREAKEVEN",
+		ActivityStockRatio: 0.5,
+	}
+	product := marketing.SkcInfo{
+		Skc:         "sg-multi-price",
+		Stock:       100,
+		SupplyPrice: 18,
+		SitePriceInfoList: []marketing.SitePriceInfo{{
+			SalePrice:   30,
+			Currency:    "USD",
+			IsAvailable: true,
+		}},
+		SkuPriceInfoList: []marketing.SkuSitePriceInfo{
+			{
+				SkuCode: "sku-small",
+				SitePriceInfoList: []marketing.SitePriceInfo{{
+					SalePrice:   29.9,
+					Currency:    "USD",
+					IsAvailable: true,
+				}},
+			},
+			{
+				SkuCode: "sku-large",
+				SitePriceInfoList: []marketing.SitePriceInfo{{
+					SalePrice:   34.9,
+					Currency:    "USD",
+					IsAvailable: true,
+				}},
+			},
+		},
+		SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
+			{SkuCode: "sku-small", CostPrice: 12.5, Currency: "USD"},
+			{SkuCode: "sku-large", CostPrice: 20.5, Currency: "USD"},
+		},
 	}
 
 	result, err := service.RegisterPromotionProducts(
 		t.Context(),
-		&listingruntime.OperationStrategy{
-			StoreID:            870,
-			ActivityPriceMode:  "BREAKEVEN",
-			ActivityStockRatio: 0.5,
-		},
+		strategy,
 		"",
-		[]marketing.SkcInfo{{
-			Skc:         "sg-multi-price",
-			Stock:       100,
-			SupplyPrice: 18,
-			SitePriceInfoList: []marketing.SitePriceInfo{{
-				SalePrice:   30,
-				Currency:    "USD",
-				IsAvailable: true,
-			}},
-			SkuPriceInfoList: []marketing.SkuSitePriceInfo{
-				{
-					SkuCode: "sku-small",
-					SitePriceInfoList: []marketing.SitePriceInfo{{
-						SalePrice:   29.9,
-						Currency:    "USD",
-						IsAvailable: true,
-					}},
-				},
-				{
-					SkuCode: "sku-large",
-					SitePriceInfoList: []marketing.SitePriceInfo{{
-						SalePrice:   34.9,
-						Currency:    "USD",
-						IsAvailable: true,
-					}},
-				},
-			},
-			SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
-				{SkuCode: "sku-small", CostPrice: 12.5, Currency: "USD"},
-				{SkuCode: "sku-large", CostPrice: 20.5, Currency: "USD"},
-			},
-		}},
+		[]marketing.SkcInfo{product},
 	)
 
 	if err != nil {
@@ -205,6 +210,55 @@ func TestRegisterPromotionProductsAcceptsPromotionMultiSkuDifferentPrices(t *tes
 	}
 	if api.saved == nil {
 		t.Fatal("SaveConfig was not called")
+	}
+
+	api.promotionGoods = []marketing.PromotionGoodsData{{
+		Skc:              product.Skc,
+		IsSaleAttribute:  1,
+		InventoryNum:     product.Stock,
+		USSupplyPrice:    88,
+		MaxUSSupplyPrice: 88,
+		SkuInfoList: []marketing.PromotionSkuInfo{
+			{Sku: "sku-small", USSupplyPrice: promotionTestFloat64Ptr(88)},
+			{Sku: "sku-large", USSupplyPrice: promotionTestFloat64Ptr(99)},
+		},
+	}}
+	api.calcResponse = &marketing.CalculateSupplyPriceResponse{
+		Code: "0",
+		Msg:  "ok",
+		Info: []marketing.SkcCalculationResult{{
+			SkcName: product.Skc,
+			SkuInfoList: []marketing.SkuCalculationInfo{
+				{SkuCode: "sku-small", PriceInfo: marketing.PriceInfo{ProductAmount: 29.9, PromotionAmount: 12.5}},
+				{SkuCode: "sku-large", PriceInfo: marketing.PriceInfo{ProductAmount: 34.9, PromotionAmount: 20.5}},
+			},
+		}},
+	}
+
+	activityResult, err := service.RegisterPromotionProducts(
+		t.Context(),
+		strategy,
+		"TIME_LIMITED:227:870:multi-price",
+		[]marketing.SkcInfo{product},
+	)
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts activity error = %v", err)
+	}
+	if activityResult == nil || activityResult.ActivityRequest == nil {
+		t.Fatalf("activity result = %+v, want create activity request", activityResult)
+	}
+	if api.calculated == nil || len(api.calculated.SkcInfoList) != 1 {
+		t.Fatalf("calculated request = %+v, want one SKU-priced product", api.calculated)
+	}
+	skuPrices := api.calculated.SkcInfoList[0].SkuInfoList
+	if len(skuPrices) != 2 {
+		t.Fatalf("calculated SKU prices = %+v, want two entries", skuPrices)
+	}
+	if skuPrices[0].SkuCode != "sku-small" || skuPrices[0].ProductPrice != 29.9 || skuPrices[0].DiscountValue != 12.5 {
+		t.Fatalf("first calculated SKU price = %+v, want sku-small price 29.9 and cost 12.5", skuPrices[0])
+	}
+	if skuPrices[1].SkuCode != "sku-large" || skuPrices[1].ProductPrice != 34.9 || skuPrices[1].DiscountValue != 20.5 {
+		t.Fatalf("second calculated SKU price = %+v, want sku-large price 34.9 and cost 20.5", skuPrices[1])
 	}
 }
 
