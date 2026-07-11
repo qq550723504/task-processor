@@ -24,16 +24,22 @@ func TestWorkflowStudioSDSMetadataSupportBoundary(t *testing.T) {
 	supportSource := readTaskGenerationSourceFile(t, "workflow_studio_sds_metadata_support.go")
 	assertSourceContainsAll(t, supportSource, []string{
 		"func studioStyleName(sds *SDSSyncOptions) string {",
-		"func applyStudioStyleDimension(product *canonical.Product, sds *SDSSyncOptions) bool {",
 		"func buildStudioVariantSKU(baseSKU, styleID, variantDiscriminator string, requireVariantDiscriminator bool, seen map[string]int) string {",
 		"func studioVariantDiscriminator(item SDSSyncVariantOption, index int) string {",
 		"func appendNonEmpty(values []string, candidates ...string) []string {",
 	})
 	assertSourceExcludesAll(t, supportSource, []string{
+		"func applyStudioStyleDimension(product *canonical.Product, sds *SDSSyncOptions) bool {",
 		"func studioCategoryPath(sds *SDSSyncOptions) []string {",
 		"func studioAttributes(sds *SDSSyncOptions, trace canonical.FieldTrace) map[string]canonical.Attribute {",
 		"func studioSpecifications(sds *SDSSyncOptions) *canonical.ProductSpecs {",
 		"func studioVariants(sds *SDSSyncOptions, images []canonical.Image, trace canonical.FieldTrace) []canonical.Variant {",
 		"func studioSellingPoints(sds *SDSSyncOptions) []string {",
+	})
+
+	adapterSource := readTaskGenerationSourceFile(t, "sds_canonical_metadata.go")
+	assertSourceContainsAll(t, adapterSource, []string{
+		"sdspod \"task-processor/internal/product/sourcing/sdspod\"",
+		"return sdspod.ApplyCanonical(",
 	})
 }
