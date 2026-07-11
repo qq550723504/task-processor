@@ -1263,7 +1263,7 @@ func TestSheinActivityAdapterSupportsTimeLimitedEnrollment(t *testing.T) {
 	require.True(t, results[0].Success)
 }
 
-func TestSheinActivityAdapterPromotionRejectsMultiSKUDifferentPrices(t *testing.T) {
+func TestSheinActivityAdapterPromotionPassesMultiSKUPricesAndCosts(t *testing.T) {
 	t.Parallel()
 
 	strategyProvider := &sheinPromotionStrategyProviderStub{
@@ -1274,7 +1274,14 @@ func TestSheinActivityAdapterPromotionRejectsMultiSKUDifferentPrices(t *testing.
 			ActivityStockRatio:   0.5,
 		}),
 	}
-	bridge := &sheinPromotionBridgeStub{}
+	bridge := &sheinPromotionBridgeStub{
+		result: &SheinPromotionRegistrationResult{
+			Request: &marketing.SaveConfigRequest{
+				ConfigList: []marketing.ActivityConfig{{Skc: "skc-multi-price"}},
+			},
+			Response: &marketing.SaveConfigResponse{Code: "0", Msg: "ok"},
+		},
+	}
 	adapter := newSheinActivityAdapter(strategyProvider, bridge)
 
 	results, err := adapter.EnrollCandidates(
@@ -1284,21 +1291,29 @@ func TestSheinActivityAdapterPromotionRejectsMultiSKUDifferentPrices(t *testing.
 		"PROMOTION:11:22",
 		[]SheinActivityEnrollmentCandidate{
 			{
-				CandidateID:       1,
-				SKCName:           "skc-multi-price",
-				PriceSnapshot:     `{"sale_price":29.9,"currency":"USD","sku_prices":[{"sku_code":"sku-small","sale_price":29.9,"currency":"USD"},{"sku_code":"sku-large","sale_price":34.9,"currency":"USD"}]}`,
+				CandidateID:   1,
+				SKCName:       "skc-multi-price",
+				PriceSnapshot: `{"sale_price":29.9,"currency":"USD","sku_prices":[{"sku_code":"sku-small","sale_price":29.9,"currency":"USD"},{"sku_code":"sku-large","sale_price":34.9,"currency":"USD"}]}`,
+				SKUCostPriceInfoList: []SheinSKUCostPrice{
+					{SKUCode: "sku-small", CostPrice: 12.5, Currency: "USD"},
+					{SKUCode: "sku-large", CostPrice: 20.5, Currency: "USD"},
+				},
 				InventorySnapshot: `{"available":10}`,
 			},
 		},
 	)
 
 	require.NoError(t, err)
-	require.Empty(t, bridge.calls)
+	require.Len(t, bridge.calls, 1)
+	require.Len(t, bridge.calls[0].Products, 1)
+	product := bridge.calls[0].Products[0]
+	require.Len(t, product.SkuPriceInfoList, 2)
+	require.Len(t, product.SkuCostPriceInfoList, 2)
+	require.Equal(t, "sku-small", product.SkuPriceInfoList[0].SkuCode)
+	require.Equal(t, "sku-small", product.SkuCostPriceInfoList[0].SkuCode)
 	require.Len(t, results, 1)
-	require.False(t, results[0].Success)
+	require.True(t, results[0].Success)
 	require.Equal(t, int64(1), results[0].CandidateID)
-	require.Contains(t, results[0].ErrorMessage, "PROMOTION")
-	require.Contains(t, results[0].ErrorMessage, "多 SKU")
 }
 
 func TestSheinActivityAdapterTimeLimitedBatchFallbackReusesPromotionSession(t *testing.T) {

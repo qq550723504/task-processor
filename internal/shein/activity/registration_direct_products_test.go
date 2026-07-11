@@ -148,7 +148,7 @@ func TestRegisterPromotionProductsUsesBreakevenDropRateWithProvidedProductSnapsh
 	}
 }
 
-func TestRegisterPromotionProductsRejectsPromotionMultiSkuDifferentPrices(t *testing.T) {
+func TestRegisterPromotionProductsAcceptsPromotionMultiSkuDifferentPrices(t *testing.T) {
 	api := &promotionProductsMarketingAPIStub{}
 	service := &activityRegistrationServiceImpl{
 		marketingAPI: api,
@@ -158,10 +158,9 @@ func TestRegisterPromotionProductsRejectsPromotionMultiSkuDifferentPrices(t *tes
 	result, err := service.RegisterPromotionProducts(
 		t.Context(),
 		&listingruntime.OperationStrategy{
-			StoreID:               870,
-			ActivityPriceMode:     "PROFIT",
-			ActivityMinProfitRate: 0.1,
-			ActivityStockRatio:    0.5,
+			StoreID:            870,
+			ActivityPriceMode:  "BREAKEVEN",
+			ActivityStockRatio: 0.5,
 		},
 		"",
 		[]marketing.SkcInfo{{
@@ -191,20 +190,21 @@ func TestRegisterPromotionProductsRejectsPromotionMultiSkuDifferentPrices(t *tes
 					}},
 				},
 			},
+			SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
+				{SkuCode: "sku-small", CostPrice: 12.5, Currency: "USD"},
+				{SkuCode: "sku-large", CostPrice: 20.5, Currency: "USD"},
+			},
 		}},
 	)
 
-	if err == nil {
-		t.Fatalf("RegisterPromotionProducts error = nil, want multi-SKU price rejection")
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
 	}
-	if result == nil || result.Request != nil {
-		t.Fatalf("result request = %+v, want no SaveConfig request", result)
+	if result == nil || result.Request == nil || len(result.Request.ConfigList) != 1 {
+		t.Fatalf("result request = %+v, want one SaveConfig request", result)
 	}
-	if api.saved != nil {
-		t.Fatalf("saved request = %+v, want SaveConfig not called", api.saved)
-	}
-	if !strings.Contains(err.Error(), "PROMOTION 不支持多 SKU 不同价格") {
-		t.Fatalf("error = %v, want multi-SKU different price message", err)
+	if api.saved == nil {
+		t.Fatal("SaveConfig was not called")
 	}
 }
 
