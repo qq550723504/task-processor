@@ -2,7 +2,7 @@
 
 > Status: current checkpoint for the ListingKit slimming and boundary-guard wave.
 >
-> Last reviewed: 2026-07-09.
+> Last reviewed: 2026-07-11.
 
 ## Purpose
 
