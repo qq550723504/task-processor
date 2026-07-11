@@ -330,11 +330,8 @@ func TestAnalyzeStudioReferenceStyleSanitizesSingleReferencePrompt(t *testing.T)
 			t.Fatalf("sanitized prompt = %q, want safe signal %q preserved", resp.SanitizedPrompt, safeSignal)
 		}
 	}
-	if len(resp.Warnings) == 0 {
-		t.Fatalf("warnings = nil, want warning for truncated reference list")
-	}
-	if !containsWarningFragment(resp.Warnings, "已移除品牌、Logo、原文案或过于接近原图的描述") {
-		t.Fatalf("warnings = %#v, want unsafe-signal warning", resp.Warnings)
+	if len(resp.Warnings) != 1 || resp.Warnings[0] != "已移除品牌、Logo、原文案或过于接近原图的描述。" {
+		t.Fatalf("warnings = %#v, want exact unsafe-signal warning", resp.Warnings)
 	}
 }
 
@@ -390,8 +387,8 @@ func TestAnalyzeStudioReferenceStyleDerivesFallbackForSafeOffVocabularyMalformed
 	if !strings.Contains(strings.ToLower(resp.SanitizedPrompt), "original") {
 		t.Fatalf("sanitized prompt = %q, want originality guardrail preserved", resp.SanitizedPrompt)
 	}
-	if !containsWarningFragment(resp.Warnings, "部分参考图返回了非结构化分析结果，仅保留可安全复用的风格提示。") {
-		t.Fatalf("warnings = %#v, want malformed fallback warning", resp.Warnings)
+	if len(resp.Warnings) != 1 || resp.Warnings[0] != "部分参考图返回了非结构化分析结果，仅保留可安全复用的风格提示。" {
+		t.Fatalf("warnings = %#v, want exact malformed fallback warning", resp.Warnings)
 	}
 }
 
