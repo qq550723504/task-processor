@@ -260,6 +260,21 @@ func TestRegisterPromotionProductsAcceptsPromotionMultiSkuDifferentPrices(t *tes
 	if skuPrices[1].SkuCode != "sku-large" || skuPrices[1].ProductPrice != 34.9 || skuPrices[1].DiscountValue != 20.5 {
 		t.Fatalf("second calculated SKU price = %+v, want sku-large price 34.9 and cost 20.5", skuPrices[1])
 	}
+	if api.created == nil || len(api.created.AddCostAndStockInfoList) != 1 {
+		t.Fatalf("created request = %+v, want one product", api.created)
+	}
+	createdSKUs := api.created.AddCostAndStockInfoList[0].AddSkuList
+	if len(createdSKUs) != 2 {
+		t.Fatalf("created SKU list = %+v, want two entries", createdSKUs)
+	}
+	if createdSKUs[0].Sku != "sku-small" || createdSKUs[0].CostPrice != 29.9 {
+		t.Fatalf("first created SKU = %+v, want sku-small original 29.9 activity 17.4", createdSKUs[0])
+	}
+	assertClose(t, createdSKUs[0].ProductActPrice, 17.4)
+	if createdSKUs[1].Sku != "sku-large" || createdSKUs[1].CostPrice != 34.9 {
+		t.Fatalf("second created SKU = %+v, want sku-large original 34.9 activity 14.4", createdSKUs[1])
+	}
+	assertClose(t, createdSKUs[1].ProductActPrice, 14.4)
 }
 
 func TestRegisterPromotionProductsAllowsPromotionMultiSkuSamePrices(t *testing.T) {
@@ -304,6 +319,10 @@ func TestRegisterPromotionProductsAllowsPromotionMultiSkuSamePrices(t *testing.T
 						IsAvailable: true,
 					}},
 				},
+			},
+			SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
+				{SkuCode: "sku-small", CostPrice: 18, Currency: "USD"},
+				{SkuCode: "sku-large", CostPrice: 18, Currency: "USD"},
 			},
 		}},
 	)
@@ -1936,4 +1955,76 @@ func (s promotionProductsStoreServiceStub) SetStorePauseStatus(storeID int64, pa
 
 func promotionTestFloat64Ptr(value float64) *float64 {
 	return &value
+}
+
+func TestRegisterPromotionProductsUsesMinimumMultiSKUDiscountForBoth(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		configListResponse: &marketing.GetConfigListResponse{
+			Code: "0", Msg: "ok", Info: &marketing.ConfigListInfo{
+				Total: 1,
+				ConfigList: []marketing.ActivityConfigInfo{{
+					ID: 1, Skc: "sh260625180761728097751",
+					ActivityConfigList: []marketing.ActivityConfigDetail{
+						{ID: 1, ActivityType: marketing.AutoPartakeActivityTypeRegular, State: marketing.AutoPartakeConfigStateClosed},
+						{ID: 2, ActivityType: marketing.AutoPartakeActivityTypeLimited, State: marketing.AutoPartakeConfigStateClosed},
+					},
+				}},
+			},
+		},
+	}
+	service := &activityRegistrationServiceImpl{marketingAPI: api, logger: logrus.NewEntry(logrus.New())}
+	product := marketing.SkcInfo{
+		Skc:   "sh260625180761728097751",
+		Stock: 10989,
+		SkuPriceInfoList: []marketing.SkuSitePriceInfo{
+			{SkuCode: "sku-min", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 39.20, Currency: "USD", IsAvailable: true}}},
+			{SkuCode: "sku-mid", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 43.50, Currency: "USD", IsAvailable: true}}},
+			{SkuCode: "sku-deep", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 23.00, Currency: "USD", IsAvailable: true}}},
+		},
+		SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
+			{SkuCode: "sku-min", CostPrice: 23.88, Currency: "USD"},
+			{SkuCode: "sku-mid", CostPrice: 20.88, Currency: "USD"},
+			{SkuCode: "sku-deep", CostPrice: 8.88, Currency: "USD"},
+		},
+	}
+
+	result, err := service.RegisterPromotionProducts(t.Context(), &listingruntime.OperationStrategy{
+		StoreID: 177, ActivityPriceMode: "BREAKEVEN", ActivityPartakeType: "BOTH", ActivityStockRatio: 0.5,
+	}, "", []marketing.SkcInfo{product})
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if result == nil || len(result.Requests) != 2 {
+		t.Fatalf("requests = %+v, want regular and limited", result)
+	}
+	if got := result.Requests[0].ConfigList[0].DropRate; got != 38 {
+		t.Fatalf("regular drop rate = %d, want 38", got)
+	}
+	if got := result.Requests[1].ConfigList[0].DropRate; got != 39 {
+		t.Fatalf("limited drop rate = %d, want 39", got)
+	}
+}
+
+func TestRegisterPromotionProductsRejectsPartialMultiSKUPrices(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{}
+	service := &activityRegistrationServiceImpl{marketingAPI: api, logger: logrus.NewEntry(logrus.New())}
+	result, err := service.RegisterPromotionProducts(t.Context(), &listingruntime.OperationStrategy{
+		StoreID: 177, ActivityPriceMode: "BREAKEVEN", ActivityPartakeType: "REGULAR", ActivityStockRatio: 0.5,
+	}, "", []marketing.SkcInfo{{
+		Skc: "skc-partial", Stock: 10,
+		SkuPriceInfoList: []marketing.SkuSitePriceInfo{
+			{SkuCode: "sku-one", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 30, IsAvailable: true}}},
+			{SkuCode: "sku-two", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 40, IsAvailable: true}}},
+		},
+		SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{{SkuCode: "sku-one", CostPrice: 18}},
+	}})
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if result == nil || result.Request != nil || len(result.Requests) != 0 {
+		t.Fatalf("result = %+v, want no promotion request", result)
+	}
+	if api.saved != nil {
+		t.Fatalf("saved request = %+v, want SaveConfig not called", api.saved)
+	}
 }

@@ -10,7 +10,6 @@ import (
 
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/shein/api/marketing"
-	"task-processor/internal/shein/productsync"
 
 	"github.com/sirupsen/logrus"
 )
@@ -199,10 +198,7 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 		}
 
 		// 检查该SKC下的所有SKU是否都满足利润率要求
-		validSkus := make([]productsync.EnrichedSkuInfo, 0, len(skcInfo.SkuInfo))
-		totalOriginalPrice := 0.0
-		totalActivityPrice := 0.0
-		skuCount := 0
+		minimumDiscountRate := 1.0
 		allSkusValid := true
 
 		for _, sku := range skcInfo.SkuInfo {
@@ -211,8 +207,9 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 			if sku.AmazonMonitorData != nil && sku.AmazonMonitorData.Price > 0 {
 				costPrice = sku.AmazonMonitorData.Price
 			} else {
-				s.logger.Warningf("SKU [%s] 无Amazon价格数据，跳过", sku.SkuCode)
-				continue
+				s.logger.Warningf("SKU [%s] 无Amazon价格数据，整个SKC跳过", sku.SkuCode)
+				allSkusValid = false
+				break
 			}
 
 			// 获取映射信息中的原价
@@ -222,12 +219,14 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 				if parsedPrice, err := strconv.ParseFloat(sku.CostPriceInfo.CostPrice, 64); err == nil && parsedPrice > 0 {
 					originalPrice = parsedPrice
 				} else {
-					s.logger.Warningf("SKU [%s] 价格解析失败: %s", sku.SkuCode, sku.CostPriceInfo.CostPrice)
-					continue
+					s.logger.Warningf("SKU [%s] 价格解析失败: %s，整个SKC跳过", sku.SkuCode, sku.CostPriceInfo.CostPrice)
+					allSkusValid = false
+					break
 				}
 			} else {
-				s.logger.Warningf("SKU [%s] 无映射价格信息，跳过", sku.SkuCode)
-				continue
+				s.logger.Warningf("SKU [%s] 无映射价格信息，整个SKC跳过", sku.SkuCode)
+				allSkusValid = false
+				break
 			}
 
 			// 按最低利润率计算活动价格（使用固定价格调整值）
@@ -240,27 +239,23 @@ func (s *activityRegistrationServiceImpl) buildActivityConfigsByProfit(
 				break
 			}
 
-			validSkus = append(validSkus, sku)
-			totalOriginalPrice += originalPrice
-			totalActivityPrice += activityPrice
-			skuCount++
+			discountRate := (originalPrice - activityPrice) / originalPrice
+			if discountRate < minimumDiscountRate {
+				minimumDiscountRate = discountRate
+			}
 		}
 
 		// 如果不是所有SKU都满足要求，或者没有有效的SKU，跳过该产品
-		if !allSkusValid || len(validSkus) == 0 {
+		if !allSkusValid || len(skcInfo.SkuInfo) == 0 {
 			s.logger.Warningf("产品 [%s] 没有满足利润率要求的SKU，跳过", product.Skc)
 			skippedInsufficientProfit++
 			continue
 		}
 
-		// 计算平均折扣率
-		avgOriginalPrice := totalOriginalPrice / float64(skuCount)
-		avgActivityPrice := totalActivityPrice / float64(skuCount)
-		discountRate := (avgOriginalPrice - avgActivityPrice) / avgOriginalPrice
-		dropRate := int(discountRate * 100)
+		dropRate := int(minimumDiscountRate * 100)
 
 		// 确保折扣率在合理范围内（SHEIN API要求1-99）
-		dropRate = ValidateDropRate(dropRate, discountRate, s.logger)
+		dropRate = ValidateDropRate(dropRate, minimumDiscountRate, s.logger)
 
 		// 计算活动库存
 		actStock := s.calculateActivityStock(product.Stock, stockRatio)
@@ -354,6 +349,21 @@ func (s *activityRegistrationServiceImpl) dropRateFromProvidedProduct(
 	strategy *listingruntime.OperationStrategy,
 	priceMode string,
 ) (int, bool) {
+	if priceMode == "PROFIT" || priceMode == "BREAKEVEN" {
+		minProfitRate := strategy.ActivityMinProfitRate
+		if minProfitRate < 0 || minProfitRate >= 1 {
+			minProfitRate = 0.15
+		}
+		if dropRate, ok, hasSKUData := minimumPromotionSKUDiscountRate(
+			product, minProfitRate, strategy.FixedPriceAdjustment, priceMode,
+		); hasSKUData {
+			if !ok {
+				s.logger.Warnf("产品 [%s] SKU价格或成本数据不完整，跳过", product.Skc)
+			}
+			return dropRate, ok
+		}
+	}
+
 	salePrice := firstAvailablePromotionSalePrice(product.SitePriceInfoList)
 	if salePrice <= 0 {
 		s.logger.Warnf("产品 [%s] 没有站点价格信息，跳过", product.Skc)
@@ -404,6 +414,62 @@ func (s *activityRegistrationServiceImpl) dropRateFromProvidedProduct(
 		}
 	}
 	return dropRate, true
+}
+
+func minimumPromotionSKUDiscountRate(
+	product marketing.SkcInfo,
+	minProfitRate float64,
+	fixedPriceAdjustment float64,
+	priceMode string,
+) (int, bool, bool) {
+	if len(product.SkuPriceInfoList) == 0 && len(product.SkuCostPriceInfoList) == 0 {
+		return 0, false, false
+	}
+	if len(product.SkuPriceInfoList) == 0 || len(product.SkuCostPriceInfoList) == 0 {
+		return 0, false, true
+	}
+
+	costBySKU := make(map[string]float64, len(product.SkuCostPriceInfoList))
+	for _, item := range product.SkuCostPriceInfoList {
+		if item.SkuCode == "" || item.CostPrice <= 0 {
+			return 0, false, true
+		}
+		if _, exists := costBySKU[item.SkuCode]; exists {
+			return 0, false, true
+		}
+		costBySKU[item.SkuCode] = item.CostPrice
+	}
+	if len(costBySKU) != len(product.SkuPriceInfoList) {
+		return 0, false, true
+	}
+
+	minimumRate := 1.0
+	seenSKU := make(map[string]struct{}, len(product.SkuPriceInfoList))
+	for _, item := range product.SkuPriceInfoList {
+		originalPrice := firstAvailablePromotionSalePrice(item.SitePriceInfoList)
+		costPrice, ok := costBySKU[item.SkuCode]
+		if item.SkuCode == "" || originalPrice <= 0 || !ok || costPrice <= 0 {
+			return 0, false, true
+		}
+		if _, exists := seenSKU[item.SkuCode]; exists {
+			return 0, false, true
+		}
+		seenSKU[item.SkuCode] = struct{}{}
+
+		activityPrice := calculatePriceByBreakeven(originalPrice, costPrice, fixedPriceAdjustment)
+		if strings.EqualFold(priceMode, "PROFIT") {
+			activityPrice = calculatePriceByProfit(originalPrice, costPrice, minProfitRate, fixedPriceAdjustment)
+		}
+		if activityPrice <= 0 || activityPrice >= originalPrice {
+			return 0, false, true
+		}
+		rate := (originalPrice - activityPrice) / originalPrice
+		if rate < minimumRate {
+			minimumRate = rate
+		}
+	}
+
+	return ValidateDropRate(int(minimumRate*100), minimumRate, nil), true, true
 }
 
 func firstAvailablePromotionSalePrice(items []marketing.SitePriceInfo) float64 {

@@ -1293,10 +1293,10 @@ func TestSheinActivityAdapterPromotionPassesMultiSKUPricesAndCosts(t *testing.T)
 			{
 				CandidateID:   1,
 				SKCName:       "skc-multi-price",
-				PriceSnapshot: `{"sale_price":29.9,"currency":"USD","sku_prices":[{"sku_code":"sku-small","sale_price":29.9,"currency":"USD"},{"sku_code":"sku-large","sale_price":34.9,"currency":"USD"}]}`,
+				PriceSnapshot: `{"sale_price":29.9,"currency":"USD","sku_prices":[{"sku_code":"sku-z-small","sale_price":29.9,"currency":"USD"},{"sku_code":"sku-a-large","sale_price":34.9,"currency":"USD"}]}`,
 				SKUCostPriceInfoList: []SheinSKUCostPrice{
-					{SKUCode: "sku-small", CostPrice: 12.5, Currency: "USD"},
-					{SKUCode: "sku-large", CostPrice: 20.5, Currency: "USD"},
+					{SKUCode: "sku-z-small", CostPrice: 12.5, Currency: "USD"},
+					{SKUCode: "sku-a-large", CostPrice: 20.5, Currency: "USD"},
 				},
 				InventorySnapshot: `{"available":10}`,
 			},
@@ -1309,7 +1309,7 @@ func TestSheinActivityAdapterPromotionPassesMultiSKUPricesAndCosts(t *testing.T)
 	product := bridge.calls[0].Products[0]
 	require.Equal(t, []marketing.SkuSitePriceInfo{
 		{
-			SkuCode: "sku-small",
+			SkuCode: "sku-z-small",
 			SitePriceInfoList: []marketing.SitePriceInfo{{
 				SalePrice:   29.9,
 				Currency:    "USD",
@@ -1317,7 +1317,7 @@ func TestSheinActivityAdapterPromotionPassesMultiSKUPricesAndCosts(t *testing.T)
 			}},
 		},
 		{
-			SkuCode: "sku-large",
+			SkuCode: "sku-a-large",
 			SitePriceInfoList: []marketing.SitePriceInfo{{
 				SalePrice:   34.9,
 				Currency:    "USD",
@@ -1326,8 +1326,8 @@ func TestSheinActivityAdapterPromotionPassesMultiSKUPricesAndCosts(t *testing.T)
 		},
 	}, product.SkuPriceInfoList)
 	require.Equal(t, []marketing.SkuCostPriceInfo{
-		{SkuCode: "sku-small", CostPrice: 12.5, Currency: "USD"},
-		{SkuCode: "sku-large", CostPrice: 20.5, Currency: "USD"},
+		{SkuCode: "sku-z-small", CostPrice: 12.5, Currency: "USD"},
+		{SkuCode: "sku-a-large", CostPrice: 20.5, Currency: "USD"},
 	}, product.SkuCostPriceInfoList)
 	require.Len(t, results, 1)
 	require.True(t, results[0].Success)
