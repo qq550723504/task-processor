@@ -2023,7 +2023,7 @@ func TestRegisterPromotionProductsUsesLivePromotionSKUPricesForCandidate(t *test
 			Skc: "sq-live-prices",
 			SkuInfoList: []marketing.PromotionSkuInfo{
 				{Sku: "sku-one", USSupplyPrice: promotionTestFloat64Ptr(30)},
-				{Sku: "sku-two", USSupplyPrice: promotionTestFloat64Ptr(20)},
+				{Sku: "sku-two", SupplyPrice: promotionTestFloat64Ptr(20)},
 			},
 		}},
 	}

@@ -78,10 +78,11 @@ func promotionProductWithLiveSKUPrices(product marketing.SkcInfo, goods marketin
 	livePriceBySKU := make(map[string]float64, len(goods.SkuInfoList))
 	for _, sku := range goods.SkuInfoList {
 		skuCode := normalizePromotionSKUCode(sku.Sku)
-		if skuCode == "" || sku.USSupplyPrice == nil || *sku.USSupplyPrice <= 0 {
+		price := promotionSKUUSSupplyPrice(sku, 0)
+		if skuCode == "" || price <= 0 {
 			continue
 		}
-		livePriceBySKU[skuCode] = *sku.USSupplyPrice
+		livePriceBySKU[skuCode] = price
 	}
 	if len(livePriceBySKU) != len(product.SkuPriceInfoList) {
 		return marketing.SkcInfo{}, false
