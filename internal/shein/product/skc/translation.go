@@ -32,7 +32,10 @@ func NewSKCTranslationHandler(runtime *SKCRuntimeInput, openaiClient openaiClien
 }
 
 func (h *SKCTranslationHandler) CreateSKC(ctx context.Context, params shein.SKCCreationParams) product.SKC {
-	targetLanguages := submitprep.GetTargetLanguagesByRegion(h.runtime.Region)
+	targetLanguages := append([]string(nil), h.runtime.TargetLanguages...)
+	if len(targetLanguages) == 0 {
+		targetLanguages = submitprep.GetTargetLanguagesByRegion(h.runtime.Region)
+	}
 	sourceTitle := h.findBestSourceTitle(params)
 	sourceLang := h.detectTitleLanguage(sourceTitle)
 	multiLanguageNameList := h.initializeMultiLanguageContent(targetLanguages)

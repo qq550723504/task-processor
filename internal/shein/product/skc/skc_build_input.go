@@ -31,6 +31,7 @@ type SKCRuntimeInput struct {
 	TranslateAPI       *sheintranslate.Client
 	AICache            *aicache.Cache
 	NameLengthLimits   namelimit.Limits
+	TargetLanguages    []string
 }
 
 type SKCVariantBuildInput struct {
@@ -67,6 +68,7 @@ func newSKCRuntimeInput(ctx *shein.TaskContext) *SKCRuntimeInput {
 		TranslateAPI:       ctx.TranslateAPI,
 		AICache:            ctx.AICache,
 		NameLengthLimits:   ctx.ProductNameLengthLimits,
+		TargetLanguages:    append([]string(nil), ctx.TargetLanguages...),
 	}
 	if ctx.Task != nil {
 		input.Region = ctx.Task.Region
