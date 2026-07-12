@@ -16,6 +16,7 @@ import (
 	sheintranslate "task-processor/internal/shein/api/translate"
 	"task-processor/internal/shein/api/warehouse"
 	"task-processor/internal/shein/authorizedbrand"
+	"task-processor/internal/shein/namelimit"
 	"task-processor/internal/state"
 )
 
@@ -62,26 +63,27 @@ type RuntimeState struct {
 }
 
 type ProductState struct {
-	SupplierInfo           *other.SupplierOperateInfo
-	SpuLimitCount          *other.SpuLimitCountInfo
-	ShelfQuotaInfo         *other.ShelfQuotaInfo
-	AmazonProduct          *model.Product
-	Variants               *[]model.Product
-	UnFilteredVariants     *[]model.Product
-	VariantFilterMap       map[string]*VariantFilterInfo
-	AsinSkuMap             map[string]string
-	SupplierSkuMap         map[string]string
-	ProductData            *product.Product
-	FilterRule             *listingruntime.FilterRule
-	ProfitRule             *listingruntime.ProfitRule
-	Warehouses             *warehouse.WarehouseResponse
-	SiteList               []product.SiteInfo
-	CategoryTree           *sheincategory.CategoryTreeResponse
-	AttributeTemplates     *sheinattribute.AttributeTemplateInfo
-	BuildAttributeData     *BuildAttributeInfo
-	GenerateAttribute      *AttributeData
-	SaleSpecResult         *ResultSaleAttribute
-	SaleAttributeSelection *SaleAttributeSelectionState
+	SupplierInfo            *other.SupplierOperateInfo
+	SpuLimitCount           *other.SpuLimitCountInfo
+	ShelfQuotaInfo          *other.ShelfQuotaInfo
+	AmazonProduct           *model.Product
+	Variants                *[]model.Product
+	UnFilteredVariants      *[]model.Product
+	VariantFilterMap        map[string]*VariantFilterInfo
+	AsinSkuMap              map[string]string
+	SupplierSkuMap          map[string]string
+	ProductData             *product.Product
+	FilterRule              *listingruntime.FilterRule
+	ProfitRule              *listingruntime.ProfitRule
+	Warehouses              *warehouse.WarehouseResponse
+	SiteList                []product.SiteInfo
+	CategoryTree            *sheincategory.CategoryTreeResponse
+	AttributeTemplates      *sheinattribute.AttributeTemplateInfo
+	BuildAttributeData      *BuildAttributeInfo
+	GenerateAttribute       *AttributeData
+	SaleSpecResult          *ResultSaleAttribute
+	SaleAttributeSelection  *SaleAttributeSelectionState
+	ProductNameLengthLimits namelimit.Limits
 }
 
 type APIClients struct {
