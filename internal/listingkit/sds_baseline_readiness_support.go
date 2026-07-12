@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/catalog/canonical"
+	sdspod "task-processor/internal/product/sourcing/sdspod"
 )
 
 const sdsBaselineSupportedVersion = 1
@@ -64,9 +65,17 @@ func evaluateSDSBaselineReusableReadiness(entry *SDSBaselineCacheEntry) sdsBasel
 		result.Err = fmt.Errorf("sds baseline %q resolved to empty canonical product", entry.BaselineKey)
 		return result
 	}
-	if validationStatus != SDSBaselineValidationStatusReady {
-		result.ReasonCode = firstNonEmpty(strings.TrimSpace(entry.ValidationReasonCode), SDSBaselineReasonCodeValidationNotReady)
-		result.Reason = firstNonEmpty(strings.TrimSpace(entry.ValidationReason), "SDS baseline validation is not ready.")
+	decision := sdspod.EvaluateBaseline(sdspod.BaselineSnapshot{
+		CacheStatus:          cacheStatus,
+		Version:              entry.Version,
+		PayloadState:         sdspod.BaselinePayloadPresent,
+		ValidationStatus:     validationStatus,
+		ValidationReasonCode: entry.ValidationReasonCode,
+		ValidationReason:     entry.ValidationReason,
+	})
+	if !decision.Reusable {
+		result.ReasonCode = decision.ReasonCode
+		result.Reason = decision.Reason
 		return result
 	}
 	result.Reusable = true

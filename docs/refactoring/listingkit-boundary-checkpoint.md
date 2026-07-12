@@ -71,13 +71,13 @@ Guardrail:
 
 ### `internal/product/sourcing/sdspod`
 
-Owns deterministic, platform-neutral SDS POD normalization into canonical product facts and execution policy, including trusted title, SDS identity attributes, Studio style metadata, rendered mockup normalization, variant image assignment, canonical field traces, execution-status mapping, failure-detail hygiene, submission blocking, and readiness messages.
+Owns deterministic, platform-neutral SDS POD normalization into canonical product facts, execution policy, and baseline cache policy, including trusted title, SDS identity attributes, Studio style metadata, rendered mockup normalization, variant image assignment, canonical field traces, execution-status mapping, failure-detail hygiene, submission blocking, readiness messages, and baseline cache reusability.
 
 Guardrail:
 
 - `internal/product/sourcing/sdspod` may import only the Go standard library and `internal/catalog/canonical`; it must not import ListingKit, marketplace or publishing packages, SDS runtime/client packages, app/runtime, infra, HTTP, Temporal, or external SDKs.
 
-Root `internal/listingkit` retains legacy SDS DTO adaptation, historical decorated supplier-SKU lookup compatibility, request-level dependency policy selection, timestamps, audit history, task/workflow orchestration, SHEIN readiness-shape assembly, and changed-result propagation.
+Root `internal/listingkit` retains legacy SDS DTO adaptation, historical decorated supplier-SKU lookup compatibility, request-level dependency policy selection, cache payload decoding, cache/tenant/login/remote validation integration, timestamps, audit history, task/workflow orchestration, SHEIN readiness-shape assembly, and changed-result propagation.
 
 The anonymous successful variant union in `product.Images` is a human-approved intentional refinement; all other image precedence and per-variant lookup/fallback behavior remains unchanged.
 
