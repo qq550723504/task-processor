@@ -293,7 +293,7 @@ func buildPromotionCandidateProduct(candidate SheinActivityEnrollmentCandidate) 
 	product := marketing.SkcInfo{
 		Skc:                 candidate.SKCName,
 		Stock:               stock,
-		SupplyPrice:         sheinActivityCandidateCostValue(candidate.EffectiveCostPrice),
+		SupplyPrice:         priceSnapshot.SalePrice,
 		SupplyPriceCurrency: priceSnapshot.Currency,
 		SitePriceInfoList:   []marketing.SitePriceInfo{{SalePrice: priceSnapshot.SalePrice, Currency: priceSnapshot.Currency, SiteCode: priceSnapshot.SubSite, IsAvailable: true}},
 		SkuPriceInfoList:    promotionSnapshotSKUPricesToMarketing(priceSnapshot.SKUPrices),
@@ -301,7 +301,6 @@ func buildPromotionCandidateProduct(candidate SheinActivityEnrollmentCandidate) 
 			candidate.SKUCostPriceInfoList,
 			priceSnapshot.Currency,
 		),
-		UseLivePromotionSKUPrices: true,
 	}
 	return product, "", true
 }

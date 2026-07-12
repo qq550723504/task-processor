@@ -26,10 +26,7 @@ func (s *activityRegistrationServiceImpl) createPromotionActivityFromProducts(
 	}
 
 	config := s.buildPromotionCreateConfig(storeInfo, strategy, activityKey, products)
-	allGoods, err := s.queryAllPromotionGoods(config)
-	if err != nil {
-		return nil, fmt.Errorf("查询商品失败: %w", err)
-	}
+	allGoods := promotionGoodsFromProductSnapshots(products, config.Currency)
 	return s.createPromotionActivityFromPreparedGoods(ctx, strategy, config, products, allGoods)
 }
 
@@ -45,16 +42,10 @@ func (s *activityRegistrationServiceImpl) NewPromotionRegistrationSession(
 	if err != nil {
 		return nil, fmt.Errorf("获取店铺信息失败: %w", err)
 	}
-	config := s.buildPromotionCreateConfig(storeInfo, strategy, activityKey, nil)
-	allGoods, err := s.queryAllPromotionGoods(config)
-	if err != nil {
-		return nil, fmt.Errorf("查询商品失败: %w", err)
-	}
 	return &promotionRegistrationSession{
 		service:   s,
 		strategy:  clonePromotionOperationStrategy(strategy),
 		storeInfo: storeInfo,
-		allGoods:  append([]marketing.PromotionGoodsData(nil), allGoods...),
 	}, nil
 }
 
@@ -62,7 +53,6 @@ type promotionRegistrationSession struct {
 	service   *activityRegistrationServiceImpl
 	strategy  *listingruntime.OperationStrategy
 	storeInfo *listingruntime.StoreInfo
-	allGoods  []marketing.PromotionGoodsData
 }
 
 func (s *promotionRegistrationSession) RegisterPromotionProducts(
@@ -77,7 +67,14 @@ func (s *promotionRegistrationSession) RegisterPromotionProducts(
 		return &PromotionRegistrationResult{}, nil
 	}
 	config := s.service.buildPromotionCreateConfig(s.storeInfo, s.strategy, activityKey, products)
-	return s.service.createPromotionActivityFromPreparedGoods(ctx, s.strategy, config, products, s.allGoods)
+	allGoods := promotionGoodsFromProductSnapshots(products, config.Currency)
+	return s.service.createPromotionActivityFromPreparedGoods(
+		ctx,
+		s.strategy,
+		config,
+		products,
+		allGoods,
+	)
 }
 
 func (s *activityRegistrationServiceImpl) buildPromotionCreateConfig(
@@ -209,6 +206,42 @@ func filterPromotionGoodsBySKC(goods []marketing.PromotionGoodsData, selected []
 		}
 	}
 	return filtered
+}
+
+// promotionGoodsFromProductSnapshots builds the registration payload source from
+// the locally synchronized product snapshot. The SKC supply price and the
+// per-SKU customer prices have different meanings and must remain separate.
+func promotionGoodsFromProductSnapshots(products []marketing.SkcInfo, currency string) []marketing.PromotionGoodsData {
+	goods := make([]marketing.PromotionGoodsData, 0, len(products))
+	for _, product := range products {
+		skc := strings.TrimSpace(product.Skc)
+		if skc == "" || product.Stock <= 0 {
+			continue
+		}
+		supplyPrice := product.SupplyPrice
+		if supplyPrice <= 0 {
+			supplyPrice = promotionProductSalePrice(product, currency)
+		}
+		skuInfoList := make([]marketing.PromotionSkuInfo, 0, len(product.SkuPriceInfoList))
+		for _, skuPrice := range product.SkuPriceInfoList {
+			skuCode := strings.TrimSpace(skuPrice.SkuCode)
+			if skuCode == "" {
+				continue
+			}
+			skuInfoList = append(skuInfoList, marketing.PromotionSkuInfo{Sku: skuCode})
+		}
+		if supplyPrice <= 0 || len(skuInfoList) == 0 {
+			continue
+		}
+		goods = append(goods, marketing.PromotionGoodsData{
+			Skc:              skc,
+			InventoryNum:     product.Stock,
+			USSupplyPrice:    supplyPrice,
+			MaxUSSupplyPrice: supplyPrice,
+			SkuInfoList:      skuInfoList,
+		})
+	}
+	return goods
 }
 
 func enrichPromotionGoodsFromProductSnapshots(

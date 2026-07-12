@@ -50,21 +50,20 @@ type AvailableSkcListInfo struct {
 
 // SkcInfo SKC产品信息
 type SkcInfo struct {
-	Skc                       string             `json:"skc"`                                // SKC编码
-	GoodsName                 string             `json:"goods_name"`                         // 商品名称
-	Image                     string             `json:"image"`                              // 商品图片URL
-	SupplierNo                string             `json:"supplier_no"`                        // 供应商编号
-	Stock                     int                `json:"stock"`                              // 库存数量
-	SupplyPrice               float64            `json:"supply_price"`                       // 供货价格
-	SupplyPriceCurrency       string             `json:"supply_price_currency"`              // 供货价格币种
-	IsConfigured              bool               `json:"is_configured"`                      // 是否已配置
-	EnableNewPriceDisplay     bool               `json:"enable_new_price_display"`           // 是否启用新版价格展示
-	GradeName                 string             `json:"grade_name"`                         // 商品等级名称
-	ConfiguredTypeList        []int              `json:"configured_type_list"`               // 已配置活动类型列表
-	SitePriceInfoList         []SitePriceInfo    `json:"site_price_info_list"`               // 站点价格信息列表
-	SkuPriceInfoList          []SkuSitePriceInfo `json:"sku_price_info_list,omitempty"`      // SKU站点价格信息列表
-	SkuCostPriceInfoList      []SkuCostPriceInfo `json:"sku_cost_price_info_list,omitempty"` // SKU成本价格信息列表
-	UseLivePromotionSKUPrices bool               `json:"-"`                                  // 促销报名时以活动商品接口返回的SKU供货价计算折扣
+	Skc                   string             `json:"skc"`                                // SKC编码
+	GoodsName             string             `json:"goods_name"`                         // 商品名称
+	Image                 string             `json:"image"`                              // 商品图片URL
+	SupplierNo            string             `json:"supplier_no"`                        // 供应商编号
+	Stock                 int                `json:"stock"`                              // 库存数量
+	SupplyPrice           float64            `json:"supply_price"`                       // 供货价格
+	SupplyPriceCurrency   string             `json:"supply_price_currency"`              // 供货价格币种
+	IsConfigured          bool               `json:"is_configured"`                      // 是否已配置
+	EnableNewPriceDisplay bool               `json:"enable_new_price_display"`           // 是否启用新版价格展示
+	GradeName             string             `json:"grade_name"`                         // 商品等级名称
+	ConfiguredTypeList    []int              `json:"configured_type_list"`               // 已配置活动类型列表
+	SitePriceInfoList     []SitePriceInfo    `json:"site_price_info_list"`               // 站点价格信息列表
+	SkuPriceInfoList      []SkuSitePriceInfo `json:"sku_price_info_list,omitempty"`      // SKU站点价格信息列表
+	SkuCostPriceInfoList  []SkuCostPriceInfo `json:"sku_cost_price_info_list,omitempty"` // SKU成本价格信息列表
 }
 
 // SitePriceInfo 站点价格信息

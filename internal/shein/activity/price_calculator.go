@@ -76,6 +76,9 @@ func promotionSKUUSSupplyPrice(sku marketing.PromotionSkuInfo, fallback float64)
 	if sku.SupplyPrice != nil && *sku.SupplyPrice > 0 {
 		return *sku.SupplyPrice
 	}
+	if sku.SupplyPriceInfo != nil && sku.SupplyPriceInfo.SupplyPrice > 0 {
+		return sku.SupplyPriceInfo.SupplyPrice
+	}
 	return fallback
 }
 
