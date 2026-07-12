@@ -15,7 +15,6 @@ func TestWorkflowStudioSDSMetadataSupportBoundary(t *testing.T) {
 	})
 	assertSourceExcludesAll(t, rootSource, []string{
 		"func studioStyleName(sds *SDSSyncOptions) string {",
-		"func applyStudioStyleDimension(product *canonical.Product, sds *SDSSyncOptions) bool {",
 		"func buildStudioVariantSKU(baseSKU, styleID, variantDiscriminator string, requireVariantDiscriminator bool, seen map[string]int) string {",
 		"func studioVariantDiscriminator(item SDSSyncVariantOption, index int) string {",
 		"func appendNonEmpty(values []string, candidates ...string) []string {",
@@ -29,7 +28,6 @@ func TestWorkflowStudioSDSMetadataSupportBoundary(t *testing.T) {
 		"func appendNonEmpty(values []string, candidates ...string) []string {",
 	})
 	assertSourceExcludesAll(t, supportSource, []string{
-		"func applyStudioStyleDimension(product *canonical.Product, sds *SDSSyncOptions) bool {",
 		"func studioCategoryPath(sds *SDSSyncOptions) []string {",
 		"func studioAttributes(sds *SDSSyncOptions, trace canonical.FieldTrace) map[string]canonical.Attribute {",
 		"func studioSpecifications(sds *SDSSyncOptions) *canonical.ProductSpecs {",
@@ -37,9 +35,17 @@ func TestWorkflowStudioSDSMetadataSupportBoundary(t *testing.T) {
 		"func studioSellingPoints(sds *SDSSyncOptions) []string {",
 	})
 
-	adapterSource := readTaskGenerationSourceFile(t, "sds_canonical_metadata.go")
-	assertSourceContainsAll(t, adapterSource, []string{
-		"sdspod \"task-processor/internal/product/sourcing/sdspod\"",
-		"return sdspod.ApplyCanonical(",
-	})
+	for _, path := range listingKitProductionGoFiles(t) {
+		if hasFunctionDeclaration(parseListingKitGoFile(t, path), "applyStudioStyleDimension") {
+			t.Fatalf("%s should not declare retired applyStudioStyleDimension", path)
+		}
+	}
+
+	adapterFile := parseListingKitGoFile(t, "sds_canonical_metadata.go")
+	if !hasImportPath(adapterFile, "task-processor/internal/product/sourcing/sdspod") {
+		t.Fatal("sds_canonical_metadata.go should import sdspod")
+	}
+	if !hasSelectorCall(adapterFile, "sdspod", "ApplyCanonical") {
+		t.Fatal("sds_canonical_metadata.go should call sdspod.ApplyCanonical")
+	}
 }

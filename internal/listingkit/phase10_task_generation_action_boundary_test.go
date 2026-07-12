@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -21,6 +22,23 @@ func TestTaskGenerationActionDelegationBoundary(t *testing.T) {
 	assertSourceContainsAll(t, actionSource, []string{
 		"taskGenerationActionProjectionInput",
 	})
+}
+
+func TestHasSelectorCallIgnoresCommentsAndStrings(t *testing.T) {
+	t.Parallel()
+
+	fileSet := token.NewFileSet()
+	file, err := parser.ParseFile(fileSet, "fixture.go", `package fixture
+// sdspod.ApplyCanonical(product, metadata)
+var note = "sdspod.ApplyCanonical(product, metadata)"
+func apply() {}
+`, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+	if hasSelectorCall(file, "sdspod", "ApplyCanonical") {
+		t.Fatal("comment or string should not satisfy selector-call detection")
+	}
 }
 
 func TestTaskGenerationActionServiceBoundary(t *testing.T) {
@@ -282,6 +300,75 @@ func assertFunctionCallsContainAll(t *testing.T, callNames []string, required []
 			t.Fatalf("function calls should contain %q; got %v", want, callNames)
 		}
 	}
+}
+
+func listingKitProductionGoFiles(t *testing.T) []string {
+	t.Helper()
+
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("ReadDir(.): %v", err)
+	}
+	paths := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") ||
+			strings.HasSuffix(entry.Name(), "_test.go") {
+			continue
+		}
+		paths = append(paths, entry.Name())
+	}
+	return paths
+}
+
+func parseListingKitGoFile(t *testing.T, path string) *ast.File {
+	t.Helper()
+
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ParseComments)
+	if err != nil {
+		t.Fatalf("ParseFile(%s): %v", path, err)
+	}
+	return file
+}
+
+func hasFunctionDeclaration(file *ast.File, name string) bool {
+	for _, decl := range file.Decls {
+		funcDecl, ok := decl.(*ast.FuncDecl)
+		if ok && funcDecl.Name != nil && funcDecl.Name.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func hasImportPath(file *ast.File, want string) bool {
+	for _, imported := range file.Imports {
+		path, err := strconv.Unquote(imported.Path.Value)
+		if err == nil && path == want {
+			return true
+		}
+	}
+	return false
+}
+
+func hasSelectorCall(file *ast.File, receiver, name string) bool {
+	found := false
+	ast.Inspect(file, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || selector.Sel == nil || selector.Sel.Name != name {
+			return true
+		}
+		identifier, ok := selector.X.(*ast.Ident)
+		if ok && identifier.Name == receiver {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 func assertFunctionCallsExcludeAll(t *testing.T, callNames []string, forbidden []string) {
