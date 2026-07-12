@@ -79,19 +79,54 @@ func (s *service) loadSheinSizeAttributeCache(req *GenerateRequest, pkg *sheinpu
 		return nil
 	}
 	entry, err := cacheStore.GetResolutionCache(context.Background(), sheinpub.ResolutionCacheKindSizeAttribute, sheinpub.SizeAttributeStoreID(buildReq), key)
-	if err != nil || entry == nil {
+	if err != nil {
 		return nil
 	}
-	review := sheinpub.DecodeSizeAttributeCacheEntry(entry)
-	review = sheinpub.ReconcileSizeAttributeCacheReview(pkg, review)
-	if !sheinpub.SizeAttributeReviewApplicable(pkg, review) {
-		return nil
+	review := applicableSheinSizeAttributeReview(pkg, entry)
+	if review == nil {
+		getter, ok := cacheStore.(sheinpub.ResolutionCacheSourceIdentityGetter)
+		if !ok {
+			return nil
+		}
+		entry, err = getter.GetManualResolutionCacheByProductIdentity(
+			context.Background(),
+			sheinpub.ResolutionCacheKindSizeAttribute,
+			sheinpub.SizeAttributeStoreID(buildReq),
+			pkg.CategoryID,
+			sheinpub.StablePricingPackageIdentity(pkg),
+		)
+		if err != nil {
+			return nil
+		}
+		review = applicableSheinSizeAttributeReview(pkg, entry)
+		if review == nil {
+			return nil
+		}
+		upgraded := *entry
+		upgraded.CacheKey = key
+		upgraded.ShortKey = sheinpub.SizeAttributeShortKey(key)
+		_ = cacheStore.SaveResolutionCache(context.Background(), &upgraded)
 	}
 	attachSizeAttributeCacheInfo(review, cacheEntrySourceLabel(entry), entry.CacheKey, entry.Manual, pricingCacheHitSource(entry), "hit", entry.HitCount, &entry.UpdatedAt)
 	logSizeAttributeCacheEvent("hit", buildReq, pkg, review.Cache, logrus.Fields{
 		"cache_kind": sheinpub.ResolutionCacheKindSizeAttribute,
 		"hit_count":  entry.HitCount,
 	})
+	return review
+}
+
+func applicableSheinSizeAttributeReview(pkg *sheinpub.Package, entry *sheinpub.SheinResolutionCacheEntry) *sheinpub.SizeAttributeReview {
+	if entry == nil {
+		return nil
+	}
+	review := sheinpub.DecodeSizeAttributeCacheEntry(entry)
+	if sheinpub.SizeAttributeReviewApplicableToSaleResolution(pkg, review) {
+		return review
+	}
+	review = sheinpub.ReconcileSizeAttributeCacheReview(pkg, review)
+	if !sheinpub.SizeAttributeReviewApplicable(pkg, review) {
+		return nil
+	}
 	return review
 }
 

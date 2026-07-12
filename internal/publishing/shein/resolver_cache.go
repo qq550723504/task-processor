@@ -250,6 +250,9 @@ func (r *cachedSaleAttributeResolver) Resolve(req *BuildRequest, canonical *cano
 				if reason, invalid := saleAttributeResolutionHasPromptLikeValues(resolution); invalid {
 					cacheRejectedReason = reason
 					r.cache.Delete(key)
+				} else if applicable, reason := SaleAttributeResolutionApplicable(resolution); !applicable {
+					cacheRejectedReason = reason
+					r.cache.Delete(key)
 				} else {
 					logResolutionCacheHit("sale_attribute", "memory_cache", req, canonical, pkg, key, resolution.Cache, nil)
 					return cloneSaleAttributeResolutionWithCacheNote(resolution)
@@ -259,6 +262,9 @@ func (r *cachedSaleAttributeResolver) Resolve(req *BuildRequest, canonical *cano
 		if entry := r.loadPersistentCache(ResolutionCacheKindSaleAttribute, req, key); entry != nil {
 			if resolution := decodeSaleAttributeCacheEntry(entry); resolution != nil {
 				if reason, invalid := saleAttributeResolutionHasPromptLikeValues(resolution); invalid {
+					cacheRejectedReason = reason
+					_ = r.clearCache(ResolutionCacheKindSaleAttribute, req, key)
+				} else if applicable, reason := SaleAttributeResolutionApplicable(resolution); !applicable {
 					cacheRejectedReason = reason
 					_ = r.clearCache(ResolutionCacheKindSaleAttribute, req, key)
 				} else {
@@ -281,11 +287,15 @@ func (r *cachedSaleAttributeResolver) RememberSaleAttributeResolution(req *Build
 	if r == nil || resolution == nil {
 		return
 	}
+	original := resolution
+	resolution = ReconcilePublishedSaleAttributeResolution(pkg, resolution)
 	key := saleAttributeResolverCacheKey(req, canonical, pkg)
-	if key == "" || !shouldCacheSaleAttributeResolution(resolution) {
+	applicable, _ := SaleAttributeResolutionApplicable(resolution)
+	if key == "" || !shouldCacheSaleAttributeResolution(resolution) || !applicable {
 		return
 	}
 	attachResolutionCacheInfoToSaleAttribute(resolution, "manual_cache", key, true, ResolutionCacheHitSourcePublishRemembered, "stored")
+	attachResolutionCacheInfoToSaleAttribute(original, "manual_cache", key, true, ResolutionCacheHitSourcePublishRemembered, "stored")
 	r.cache.Store(key, cloneSaleAttributeResolution(resolution))
 	r.savePersistentCache(ResolutionCacheKindSaleAttribute, req, canonical, pkg, key, resolution, true)
 }

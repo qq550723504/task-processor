@@ -128,6 +128,15 @@ func (p *submitRemoteActionTestProductAPI) QueryCostPrice(spuName string, skcNam
 func (p *submitRemoteActionTestProductAPI) QueryBrandList() (*sheinproduct.BrandListResponse, error) {
 	return nil, nil
 }
+func (p *submitRemoteActionTestProductAPI) QueryProductNameLengthConfig(categoryID int) ([]sheinproduct.NameLengthConfigItem, error) {
+	return nil, nil
+}
+func (p *submitRemoteActionTestProductAPI) QueryLanguageList() ([]sheinproduct.LanguageListItem, error) {
+	return nil, nil
+}
+func (p *submitRemoteActionTestProductAPI) QuerySiteList() ([]sheinproduct.SiteListGroup, error) {
+	return nil, nil
+}
 func (p *submitRemoteActionTestProductAPI) OffShelf(request *sheinproduct.ShelfOperateRequest) error {
 	return nil
 }

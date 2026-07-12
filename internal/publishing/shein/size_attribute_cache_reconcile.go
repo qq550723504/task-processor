@@ -164,6 +164,37 @@ func SizeAttributeReviewApplicable(pkg *Package, review *SizeAttributeReview) bo
 	return true
 }
 
+// SizeAttributeReviewApplicableToSaleResolution validates a published size
+// chart against the current task's reconciled size sale-value assignments.
+func SizeAttributeReviewApplicableToSaleResolution(pkg *Package, review *SizeAttributeReview) bool {
+	pkg = NormalizePackageSemanticFields(pkg)
+	if pkg == nil || pkg.SaleAttributeResolution == nil || review == nil || !review.Ready || len(review.Attributes) == 0 {
+		return false
+	}
+	resolution := pkg.SaleAttributeResolution
+	allowed := map[int]struct{}{}
+	for _, assignment := range resolution.SKUValueAssignments {
+		if assignment.AttributeID != resolution.SecondaryAttributeID || assignment.AttributeValueID == nil || *assignment.AttributeValueID <= 0 {
+			continue
+		}
+		allowed[*assignment.AttributeValueID] = struct{}{}
+	}
+	if len(allowed) == 0 {
+		return false
+	}
+	seen := map[int]struct{}{}
+	for _, attr := range review.Attributes {
+		if attr.AttributeID <= 0 || attr.RelateSaleAttributeID != resolution.SecondaryAttributeID || attr.RelateSaleAttributeValueID <= 0 {
+			return false
+		}
+		if _, ok := allowed[attr.RelateSaleAttributeValueID]; !ok {
+			return false
+		}
+		seen[attr.RelateSaleAttributeValueID] = struct{}{}
+	}
+	return len(seen) == len(allowed)
+}
+
 func SortedSizeAttributeAliasesFromAttributes(attrs []sheinproduct.SizeAttribute) []string {
 	seen := map[string]struct{}{}
 	for _, attr := range attrs {
