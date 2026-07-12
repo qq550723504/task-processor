@@ -501,41 +501,6 @@ func buildStudioBatchMissingSelectionRejections(
 	return rejections
 }
 
-func normalizeStudioBatchTaskGroupedSelections(
-	batch *StudioBatchRecord,
-	selections []SheinStudioGroupedSelection,
-) []SheinStudioGroupedSelection {
-	if len(selections) == 0 {
-		return selections
-	}
-	normalized := make([]SheinStudioGroupedSelection, 0, len(selections))
-	for _, selection := range selections {
-		normalized = append(normalized, normalizeStudioBatchTaskGroupedSelection(batch, selection))
-	}
-	return normalized
-}
-
-func normalizeStudioBatchTaskGroupedSelection(
-	batch *StudioBatchRecord,
-	grouped SheinStudioGroupedSelection,
-) SheinStudioGroupedSelection {
-	grouped.Selection.DesignType = normalizeStudioBatchTaskDesignType(batch, grouped.Selection.DesignType)
-	return grouped
-}
-
-func normalizeStudioBatchTaskDesignType(batch *StudioBatchRecord, designType string) string {
-	designType = strings.TrimSpace(designType)
-	if designType != "" {
-		return designType
-	}
-	if batch != nil {
-		if fallback := strings.TrimSpace(batch.Selection.DesignType); fallback != "" {
-			return fallback
-		}
-	}
-	return "material"
-}
-
 func buildStudioBatchTaskCandidateRejection(
 	design StudioMaterializedDesignRecord,
 	item StudioBatchItemRecord,

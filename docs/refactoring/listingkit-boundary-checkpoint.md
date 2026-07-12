@@ -28,6 +28,17 @@ Guardrail:
 
 Root `internal/listingkit` still owns API-facing DTO adaptation, repository implementations, generation resume, task creation behavior, batch-run execution, logging, and legacy error translation when those paths still require root task/repository ordering.
 
+### `internal/listingkit/studiobatch`
+
+Owns neutral, deterministic ListingKit Studio batch candidate evaluation: item selection ownership, group-mode fallback, selection ID derivation, compatibility fingerprinting, stable candidate keys, candidate titles, and structured candidate rejections.
+
+Guardrail:
+
+- `internal/listingkit/studiobatch` may import only the Go standard library and `internal/listing/studio`. It must not import root `internal/listingkit`, HTTP, GORM, Temporal, SDS clients, remote Studio clients, or external SDKs.
+- It must reuse `internal/listing/studio` for generic Studio draft, naming, status, and completion rules rather than reimplementing them.
+
+Root `internal/listingkit` retains legacy DTO and record adaptation, SDS hydration, candidate gate evaluation, durable task-link behavior, task creation, persistence ordering, logging, and API orchestration.
+
 ### `internal/listing/studio/referenceanalysis`
 
 Owns platform-neutral interpretation and safety policy for Studio reference-image analysis, including structured/malformed result parsing, reusable style abstraction, protected-identity filtering, and sanitized brief/prompt construction.
