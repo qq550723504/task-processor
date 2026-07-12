@@ -11,9 +11,10 @@ import (
 	sheinproduct "task-processor/internal/shein/api/product"
 	sheintranslateapi "task-processor/internal/shein/api/translate"
 	"task-processor/internal/shein/content"
+	"task-processor/internal/shein/namelimit"
 )
 
-func BuildLocalizedTitleAndDescription(ctx context.Context, region string, title string, description string, features string, brand string, aiClient openaiclient.ChatCompleter, cache *aicache.Cache, translateAPI sheintranslateapi.TranslateAPI) ([]sheinproduct.LanguageContent, []sheinproduct.LanguageContent, error) {
+func BuildLocalizedTitleAndDescription(ctx context.Context, region string, title string, description string, features string, brand string, aiClient openaiclient.ChatCompleter, cache *aicache.Cache, translateAPI sheintranslateapi.TranslateAPI, nameLimits namelimit.Limits) ([]sheinproduct.LanguageContent, []sheinproduct.LanguageContent, error) {
 	cleaner := content.NewTextCleaner()
 	optimizer := content.NewContentOptimizer(aiClient)
 
@@ -41,19 +42,19 @@ func BuildLocalizedTitleAndDescription(ctx context.Context, region string, title
 		return nil, nil, fmt.Errorf("unsupported region: %s", region)
 	}
 
-	nameList, err := buildLocalizedList(optimizedTitle, detectedLang, targetLanguages, translateAPI, false)
+	nameList, err := buildLocalizedList(optimizedTitle, detectedLang, targetLanguages, translateAPI, false, nameLimits)
 	if err != nil {
 		return nil, nil, fmt.Errorf("translate product title: %w", err)
 	}
 
 	descSource := optimizedDescription
-	descList, err := buildLocalizedList(truncateDescription(descSource), detectedLang, targetLanguages, translateAPI, true)
+	descList, err := buildLocalizedList(truncateDescription(descSource), detectedLang, targetLanguages, translateAPI, true, nil)
 	if err != nil {
 		fallbackDescription := strings.TrimSpace(features)
 		if fallbackDescription == "" {
 			fallbackDescription = "High quality product with excellent features and design."
 		}
-		descList, err = buildLocalizedList(truncateDescription(fallbackDescription), detectedLang, targetLanguages, translateAPI, true)
+		descList, err = buildLocalizedList(truncateDescription(fallbackDescription), detectedLang, targetLanguages, translateAPI, true, nil)
 		if err != nil {
 			return nil, nil, fmt.Errorf("translate product description: %w", err)
 		}
@@ -62,7 +63,7 @@ func BuildLocalizedTitleAndDescription(ctx context.Context, region string, title
 	return nameList, descList, nil
 }
 
-func buildLocalizedList(sourceText string, sourceLang string, targetLanguages []string, translateAPI sheintranslateapi.TranslateAPI, truncateDesc bool) ([]sheinproduct.LanguageContent, error) {
+func buildLocalizedList(sourceText string, sourceLang string, targetLanguages []string, translateAPI sheintranslateapi.TranslateAPI, truncateDesc bool, nameLimits namelimit.Limits) ([]sheinproduct.LanguageContent, error) {
 	sourceText = strings.TrimSpace(sourceText)
 	if sourceText == "" {
 		return nil, nil
@@ -81,6 +82,9 @@ func buildLocalizedList(sourceText string, sourceLang string, targetLanguages []
 		}
 		if truncateDesc {
 			text = truncateDescription(text)
+		}
+		if maxLength, ok := nameLimits.Max(targetLang); ok {
+			text = namelimit.Truncate(text, maxLength)
 		}
 		if strings.TrimSpace(text) == "" {
 			continue

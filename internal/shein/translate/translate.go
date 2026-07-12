@@ -3,8 +3,10 @@ package translate
 
 import (
 	"strings"
+	"task-processor/internal/core/logger"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	shein "task-processor/internal/shein"
+	"task-processor/internal/shein/namelimit"
 	"task-processor/internal/shein/submitprep"
 )
 
@@ -27,6 +29,7 @@ func (h *TranslateHandler) Name() string {
 
 // Handle 执行翻译处理
 func (h *TranslateHandler) Handle(ctx *shein.TaskContext) error {
+	h.loadProductNameLengthLimits(ctx)
 	features := strings.Join(ctx.AmazonProduct.Features, ", ")
 	nameList, descList, err := submitprep.BuildLocalizedTitleAndDescription(
 		ctx.Context,
@@ -38,6 +41,7 @@ func (h *TranslateHandler) Handle(ctx *shein.TaskContext) error {
 		h.openaiClient,
 		ctx.AICache,
 		ctx.TranslateAPI,
+		ctx.ProductNameLengthLimits,
 	)
 	if err != nil {
 		return err
@@ -45,4 +49,22 @@ func (h *TranslateHandler) Handle(ctx *shein.TaskContext) error {
 	ctx.ProductData.MultiLanguageNameList = nameList
 	ctx.ProductData.MultiLanguageDescList = descList
 	return nil
+}
+
+func (h *TranslateHandler) loadProductNameLengthLimits(ctx *shein.TaskContext) {
+	if ctx.ProductNameLengthLimits != nil {
+		return
+	}
+	ctx.ProductNameLengthLimits = make(namelimit.Limits)
+	if ctx.ProductAPI == nil || ctx.ProductData == nil || ctx.ProductData.CategoryID <= 0 {
+		logger.GetGlobalLogger("shein/translate").Warn("skip product name length config: product API or category ID is unavailable")
+		return
+	}
+
+	items, err := ctx.ProductAPI.QueryProductNameLengthConfig(ctx.ProductData.CategoryID)
+	if err != nil {
+		logger.GetGlobalLogger("shein/translate").Warnf("query product name length config for category %d failed: %v", ctx.ProductData.CategoryID, err)
+		return
+	}
+	ctx.ProductNameLengthLimits = namelimit.Normalize(items)
 }
