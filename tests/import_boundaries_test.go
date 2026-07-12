@@ -3433,6 +3433,7 @@ func TestSheinOpenAIImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "product", "build", "skc_list.go")):                             {},
 		filepath.Clean(filepath.Join(root, "product", "skc", "builder.go")):                                {},
 		filepath.Clean(filepath.Join(root, "product", "skc", "translation.go")):                            {},
+		filepath.Clean(filepath.Join(root, "product", "skc", "translation_test.go")):                       {},
 		filepath.Clean(filepath.Join(root, "product", "skc", "variant.go")):                                {},
 		filepath.Clean(filepath.Join(root, "submitprep", "localized_content.go")):                          {},
 		filepath.Clean(filepath.Join(root, "translate", "translate.go")):                                   {},

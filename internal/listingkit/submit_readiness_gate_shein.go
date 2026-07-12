@@ -4,7 +4,7 @@ import (
 	"context"
 
 	listingsubmission "task-processor/internal/listing/submission"
-	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
+	sheinpub "task-processor/internal/publishing/shein"
 )
 
 func validateSheinSubmitReadinessGates(
@@ -15,7 +15,7 @@ func validateSheinSubmitReadinessGates(
 	readiness *SheinSubmitReadiness,
 	validateFreshness func(context.Context, *Task, *SheinPackage, string) (*SheinSubmitReadiness, error),
 ) error {
-	if sheinmarketpub.SubmitActionAllowsReadinessBlockers(action) {
+	if sheinpub.SubmitActionAllowsReadinessBlockers(action) {
 		return nil
 	}
 	return listingsubmission.ValidateReadinessGates(

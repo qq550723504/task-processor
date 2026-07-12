@@ -3,7 +3,6 @@ package listingkit
 import (
 	"strings"
 
-	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -157,7 +156,7 @@ func appendSheinPodReadinessChecks(checks []sheinworkspace.ReadinessCheckSpec, p
 	if pod == nil {
 		return checks
 	}
-	decision := sheinmarketpub.EvaluatePODSubmitReadiness(action, podExecutionPolicyState(pod))
+	decision := sheinpub.EvaluatePODSubmitReadiness(action, podExecutionPolicyState(pod))
 	if !decision.Applicable {
 		return checks
 	}
