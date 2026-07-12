@@ -78,6 +78,11 @@ func (c *Client) QueryBrandList() (*BrandListResponse, error) {
 	return c.productMgr.queryBrandList()
 }
 
+// QueryProductNameLengthConfig returns per-language product-name limits for a category.
+func (c *Client) QueryProductNameLengthConfig(categoryID int) ([]NameLengthConfigItem, error) {
+	return c.productMgr.queryProductNameLengthConfig(categoryID)
+}
+
 // QueryStock 查询产品库存
 func (c *Client) QueryStock(request *StockQueryRequest) (*StockQueryResponse, error) {
 	return c.inventoryMgr.queryStock(request)
