@@ -247,6 +247,27 @@ func TestStudioBatchTaskGateEvaluateEligibleAndCachesSharedChecks(t *testing.T) 
 	}
 }
 
+func TestStudioBatchTaskGateRejectsPolicyBeforeExternalChecks(t *testing.T) {
+	t.Parallel()
+
+	eval := newEligibleStudioBatchGateEvaluation(t)
+	eval.Candidate.Design.ReviewStatus = StudioMaterializedDesignReviewStatusRejected
+	eval.DesignsByID[eval.Candidate.Design.ID] = eval.Candidate.Design
+	baseline := eval.BaselineChecker.(*stubStudioBatchBaselineReadinessChecker)
+	store := eval.StoreValidator.(*stubStudioBatchStoreValidator)
+
+	result, err := newStudioBatchTaskGate(eval.BaselineChecker, eval.StoreValidator).Evaluate(context.Background(), eval)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if result.Eligible || result.ReasonCode != "design_not_approved" {
+		t.Fatalf("Evaluate() = %+v, want design_not_approved", result)
+	}
+	if store.calls != 0 || baseline.calls != 0 {
+		t.Fatalf("external calls = store:%d baseline:%d, want both zero", store.calls, baseline.calls)
+	}
+}
+
 func TestStudioBatchStoreProfileValidatorUsesResolvedNumericTenant(t *testing.T) {
 	t.Parallel()
 

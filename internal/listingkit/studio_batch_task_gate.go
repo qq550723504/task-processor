@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"task-processor/internal/listingkit/studiobatch"
 	"task-processor/internal/tenantbridge"
 )
 
@@ -45,7 +46,6 @@ type studioBatchTaskGate struct {
 	storeValidator  StudioBatchStoreValidator
 	baselineCache   map[string]studioBatchTaskGateBaselineCacheEntry
 	storeCache      map[string]studioBatchTaskGateStoreCacheEntry
-	compatCache     map[string]string
 }
 
 type studioBatchTaskGateBaselineCacheEntry struct {
@@ -67,7 +67,6 @@ func newStudioBatchTaskGate(
 		storeValidator:  storeValidator,
 		baselineCache:   make(map[string]studioBatchTaskGateBaselineCacheEntry),
 		storeCache:      make(map[string]studioBatchTaskGateStoreCacheEntry),
-		compatCache:     make(map[string]string),
 	}
 }
 
@@ -81,13 +80,7 @@ func (g *studioBatchTaskGate) Evaluate(ctx context.Context, eval *studioBatchTas
 	if eval.StoreValidator != nil {
 		g.storeValidator = eval.StoreValidator
 	}
-	if result := g.evaluateDesign(eval); !result.Eligible {
-		return result, nil
-	}
-	if result := g.evaluateSelection(eval); !result.Eligible {
-		return result, nil
-	}
-	if result := g.evaluateCompatibility(eval); !result.Eligible {
+	if result := studioBatchGateResult(studiobatch.EvaluateGate(studioBatchGateInput(eval))); !result.Eligible {
 		return result, nil
 	}
 	if result, err := g.evaluateStore(ctx, eval); err != nil || !result.Eligible {
@@ -97,89 +90,6 @@ func (g *studioBatchTaskGate) Evaluate(ctx context.Context, eval *studioBatchTas
 		return result, nil
 	}
 	return studioBatchTaskGateResult{Eligible: true}, nil
-}
-
-func (g *studioBatchTaskGate) evaluateDesign(eval *studioBatchTaskGateEvaluation) studioBatchTaskGateResult {
-	candidate := eval.Candidate
-	designID := strings.TrimSpace(candidate.Design.ID)
-	design, ok := eval.DesignsByID[designID]
-	if designID == "" || !ok {
-		return rejectStudioBatchTaskGate("design_not_found", "design was not found for batch task creation")
-	}
-	batchID := ""
-	if eval.Batch != nil {
-		batchID = strings.TrimSpace(eval.Batch.ID)
-	}
-	if strings.TrimSpace(design.BatchID) != batchID ||
-		strings.TrimSpace(candidate.Design.BatchID) != batchID ||
-		strings.TrimSpace(design.ItemID) != strings.TrimSpace(candidate.Item.ID) ||
-		strings.TrimSpace(candidate.Design.ItemID) != strings.TrimSpace(candidate.Item.ID) {
-		return rejectStudioBatchTaskGate("design_target_mismatch", fmt.Sprintf("design %s does not belong to the requested batch item", designID))
-	}
-	if design.ReviewStatus != StudioMaterializedDesignReviewStatusApproved ||
-		candidate.Design.ReviewStatus != StudioMaterializedDesignReviewStatusApproved {
-		return rejectStudioBatchTaskGate("design_not_approved", fmt.Sprintf("design %s is not approved", designID))
-	}
-	if strings.TrimSpace(design.ImageURL) == "" || strings.TrimSpace(candidate.Design.ImageURL) == "" {
-		return rejectStudioBatchTaskGate("design_image_missing", fmt.Sprintf("design %s is missing an image URL", designID))
-	}
-	return studioBatchTaskGateResult{Eligible: true}
-}
-
-func (g *studioBatchTaskGate) evaluateSelection(eval *studioBatchTaskGateEvaluation) studioBatchTaskGateResult {
-	candidate := eval.Candidate
-	selectionID := strings.TrimSpace(candidate.SelectionID)
-	if selectionID == "" {
-		return rejectStudioBatchTaskGate("selection_identity_incomplete", "selection identity is incomplete")
-	}
-	grouped, ok := eval.SelectionsByID[selectionID]
-	if !ok {
-		return rejectStudioBatchTaskGate("selection_not_in_batch", fmt.Sprintf("selection %s is not in the batch snapshot", selectionID))
-	}
-	if !studioBatchTaskItemOwnsSelection(candidate.Item, selectionID) {
-		return rejectStudioBatchTaskGate("selection_not_in_item", fmt.Sprintf("selection %s is not owned by item %s", selectionID, strings.TrimSpace(candidate.Item.ID)))
-	}
-	selection := candidate.SelectionSnapshot
-	if selection.ParentProductID <= 0 || selection.PrototypeGroupID <= 0 || selection.VariantID <= 0 ||
-		strings.TrimSpace(selection.LayerID) == "" || strings.TrimSpace(selection.DesignType) == "" {
-		return rejectStudioBatchTaskGate("selection_identity_incomplete", fmt.Sprintf("selection %s is missing required SDS identity fields", selectionID))
-	}
-	if !studioBatchSelectionVariantsCompatible(selection) {
-		return rejectStudioBatchTaskGate("selection_variant_incompatible", fmt.Sprintf("selection %s has incompatible variant surface metadata", selectionID))
-	}
-	if strings.TrimSpace(grouped.SelectionID) != "" && strings.TrimSpace(grouped.SelectionID) != selectionID {
-		return rejectStudioBatchTaskGate("selection_not_in_batch", fmt.Sprintf("selection %s does not match the batch snapshot", selectionID))
-	}
-	return studioBatchTaskGateResult{Eligible: true}
-}
-
-func (g *studioBatchTaskGate) evaluateCompatibility(eval *studioBatchTaskGateEvaluation) studioBatchTaskGateResult {
-	candidate := eval.Candidate
-	selectionID := strings.TrimSpace(candidate.SelectionID)
-	fingerprint := g.compatibilityFingerprint(selectionID, candidate.SelectionSnapshot)
-	if fingerprint == "" || !studioBatchTaskCompatibilityFingerprintComplete(candidate.SelectionSnapshot) {
-		return rejectStudioBatchTaskGate("compatibility_incomplete", fmt.Sprintf("selection %s has an incomplete compatibility fingerprint", selectionID))
-	}
-	groupMode := studioBatchTaskCandidateGroupMode(eval.Batch, candidate.Item)
-	if groupMode != "per_product" && len(eval.ItemSelections) > 1 {
-		for _, grouped := range eval.ItemSelections {
-			otherID := strings.TrimSpace(grouped.SelectionID)
-			if otherID == "" {
-				otherID = selectionIDForStudioSelection(grouped.Selection)
-			}
-			otherFingerprint := g.compatibilityFingerprint(otherID, grouped.Selection)
-			if otherFingerprint == "" || !studioBatchTaskCompatibilityFingerprintComplete(grouped.Selection) {
-				return rejectStudioBatchTaskGate("compatibility_incomplete", fmt.Sprintf("selection %s has an incomplete compatibility fingerprint", otherID))
-			}
-			if otherFingerprint != fingerprint {
-				return rejectStudioBatchTaskGate("compatibility_mismatch", fmt.Sprintf("selection %s is incompatible with item %s", otherID, strings.TrimSpace(candidate.Item.ID)))
-			}
-		}
-	}
-	if target := strings.TrimSpace(candidate.Design.TargetGroupKey); target != "" && strings.TrimSpace(candidate.Item.TargetGroupKey) != "" && target != strings.TrimSpace(candidate.Item.TargetGroupKey) {
-		return rejectStudioBatchTaskGate("design_target_mismatch", fmt.Sprintf("design %s target does not match item %s", strings.TrimSpace(candidate.Design.ID), strings.TrimSpace(candidate.Item.ID)))
-	}
-	return studioBatchTaskGateResult{Eligible: true}
 }
 
 func (g *studioBatchTaskGate) evaluateStore(ctx context.Context, eval *studioBatchTaskGateEvaluation) (studioBatchTaskGateResult, error) {
@@ -255,20 +165,111 @@ func (g *studioBatchTaskGate) evaluateBaseline(ctx context.Context, eval *studio
 	}
 }
 
-func (g *studioBatchTaskGate) compatibilityFingerprint(selectionID string, selection SheinStudioSelection) string {
-	cacheKey := strings.TrimSpace(selectionID)
-	if cacheKey == "" {
-		cacheKey = selectionIDForStudioSelection(selection)
+func studioBatchGateInput(eval *studioBatchTaskGateEvaluation) studiobatch.GateInput {
+	if eval == nil {
+		return studiobatch.GateInput{}
 	}
-	if cacheKey == "" {
-		return buildStudioBatchCompatibilityFingerprint(selection)
+	input := studiobatch.GateInput{
+		Candidate: studiobatch.Candidate{
+			Design:                   studioBatchGateDesign(eval.Candidate.Design),
+			Item:                     studioBatchGateItem(eval.Candidate.Item),
+			Selection:                studioBatchGateGroupedSelection(eval.Candidate.Selection),
+			SelectionSnapshot:        studioBatchGateSelection(eval.Candidate.SelectionSnapshot),
+			SelectionID:              eval.Candidate.SelectionID,
+			CompatibilityFingerprint: eval.Candidate.CompatibilityFingerprint,
+			CandidateKey:             eval.Candidate.CandidateKey,
+			StoreID:                  eval.Candidate.SheinStoreID,
+			StyleID:                  eval.Candidate.StyleID,
+			Title:                    eval.Candidate.Title,
+		},
+		SelectionByID:  make(map[string]studiobatch.GroupedSelection, len(eval.SelectionsByID)),
+		ItemSelections: make([]studiobatch.GroupedSelection, 0, len(eval.ItemSelections)),
 	}
-	if fingerprint, ok := g.compatCache[cacheKey]; ok {
-		return fingerprint
+	if eval.Batch != nil {
+		input.BatchID = eval.Batch.ID
+		input.BatchGroupMode = eval.Batch.GroupedImageMode
 	}
-	fingerprint := buildStudioBatchCompatibilityFingerprint(selection)
-	g.compatCache[cacheKey] = fingerprint
-	return fingerprint
+	input.Designs = make([]studiobatch.Design, 0, len(eval.DesignsByID))
+	for _, design := range eval.DesignsByID {
+		input.Designs = append(input.Designs, studioBatchGateDesign(design))
+	}
+	for id, selection := range eval.SelectionsByID {
+		input.SelectionByID[id] = studioBatchGateGroupedSelection(selection)
+	}
+	for _, selection := range eval.ItemSelections {
+		input.ItemSelections = append(input.ItemSelections, studioBatchGateGroupedSelection(selection))
+	}
+	return input
+}
+
+func studioBatchGateDesign(design StudioMaterializedDesignRecord) studiobatch.Design {
+	return studiobatch.Design{
+		ID:               design.ID,
+		BatchID:          design.BatchID,
+		ItemID:           design.ItemID,
+		TargetGroupKey:   design.TargetGroupKey,
+		TargetGroupLabel: design.TargetGroupLabel,
+		Approved:         design.ReviewStatus == StudioMaterializedDesignReviewStatusApproved,
+		ImageURL:         design.ImageURL,
+	}
+}
+
+func studioBatchGateItem(item StudioBatchItemRecord) studiobatch.Item {
+	return studiobatch.Item{
+		ID:               item.ID,
+		TargetGroupKey:   item.TargetGroupKey,
+		TargetGroupLabel: item.TargetGroupLabel,
+		GroupMode:        item.GroupMode,
+		SelectionIDs:     append([]string(nil), item.SelectionIDs...),
+	}
+}
+
+func studioBatchGateGroupedSelection(grouped SheinStudioGroupedSelection) studiobatch.GroupedSelection {
+	storeID, _ := strconv.ParseInt(strings.TrimSpace(grouped.SheinStoreID), 10, 64)
+	return studiobatch.GroupedSelection{
+		SelectionID: grouped.SelectionID,
+		StoreID:     storeID,
+		Selection:   studioBatchGateSelection(grouped.Selection),
+	}
+}
+
+func studioBatchGateSelection(selection SheinStudioSelection) studiobatch.Selection {
+	variants := make([]studiobatch.VariantSurface, 0, len(selection.Variants))
+	for _, variant := range selection.Variants {
+		variants = append(variants, studiobatch.VariantSurface{
+			VariantID:        variant.VariantID,
+			PrototypeGroupID: variant.PrototypeGroupID,
+			LayerID:          variant.LayerID,
+			TemplateImageURL: variant.TemplateImageURL,
+			MaskImageURL:     variant.MaskImageURL,
+		})
+	}
+	return studiobatch.Selection{
+		ProductID:          selection.ProductID,
+		VariantID:          selection.VariantID,
+		ParentProductID:    selection.ParentProductID,
+		PrototypeGroupID:   selection.PrototypeGroupID,
+		LayerID:            selection.LayerID,
+		DesignType:         selection.DesignType,
+		PrintableWidth:     selection.PrintableWidth,
+		PrintableHeight:    selection.PrintableHeight,
+		TemplateImageURL:   selection.TemplateImageURL,
+		MaskImageURL:       selection.MaskImageURL,
+		ProductSize:        selection.ProductSize,
+		PackagingSpec:      selection.PackagingSpecification,
+		VariantLabel:       selection.VariantLabel,
+		ProductName:        selection.ProductName,
+		SelectedVariantIDs: append([]int64(nil), selection.SelectedVariantIDs...),
+		Variants:           variants,
+	}
+}
+
+func studioBatchGateResult(result studiobatch.GateResult) studioBatchTaskGateResult {
+	return studioBatchTaskGateResult{
+		Eligible:   result.Eligible,
+		ReasonCode: result.ReasonCode,
+		Message:    result.Message,
+	}
 }
 
 func rejectStudioBatchTaskGate(reasonCode string, message string) studioBatchTaskGateResult {
@@ -278,60 +279,6 @@ func rejectStudioBatchTaskGate(reasonCode string, message string) studioBatchTas
 		Message:    strings.TrimSpace(message),
 	}
 }
-
-func studioBatchTaskItemOwnsSelection(item StudioBatchItemRecord, selectionID string) bool {
-	selectionID = strings.TrimSpace(selectionID)
-	if selectionID == "" {
-		return false
-	}
-	for _, ownedID := range studioBatchTaskItemSelectionIDs(item) {
-		if ownedID == selectionID {
-			return true
-		}
-	}
-	return false
-}
-
-func studioBatchSelectionVariantsCompatible(selection SheinStudioSelection) bool {
-	if len(selection.SelectedVariantIDs) > 0 {
-		known := make(map[int64]struct{}, len(selection.Variants)+1)
-		if selection.VariantID > 0 {
-			known[selection.VariantID] = struct{}{}
-		}
-		for _, variant := range selection.Variants {
-			if variant.VariantID > 0 {
-				known[variant.VariantID] = struct{}{}
-			}
-		}
-		for _, selectedID := range selection.SelectedVariantIDs {
-			if selectedID <= 0 {
-				return false
-			}
-			if _, ok := known[selectedID]; !ok && len(selection.Variants) > 0 {
-				return false
-			}
-		}
-	}
-	for _, variant := range selection.Variants {
-		if variant.VariantID != selection.VariantID {
-			continue
-		}
-		if variant.PrototypeGroupID > 0 && variant.PrototypeGroupID != selection.PrototypeGroupID {
-			return false
-		}
-		if strings.TrimSpace(variant.LayerID) != "" && strings.TrimSpace(variant.LayerID) != strings.TrimSpace(selection.LayerID) {
-			return false
-		}
-		if strings.TrimSpace(variant.TemplateImageURL) != "" && strings.TrimSpace(selection.TemplateImageURL) != "" && strings.TrimSpace(variant.TemplateImageURL) != strings.TrimSpace(selection.TemplateImageURL) {
-			return false
-		}
-		if strings.TrimSpace(variant.MaskImageURL) != "" && strings.TrimSpace(selection.MaskImageURL) != "" && strings.TrimSpace(variant.MaskImageURL) != strings.TrimSpace(selection.MaskImageURL) {
-			return false
-		}
-	}
-	return true
-}
-
 func studioBatchTaskGateTenantID(ctx context.Context, batch *StudioBatchRecord) string {
 	if batch != nil && strings.TrimSpace(batch.TenantID) != "" {
 		return strings.TrimSpace(batch.TenantID)

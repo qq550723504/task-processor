@@ -30,14 +30,14 @@ Root `internal/listingkit` still owns API-facing DTO adaptation, repository impl
 
 ### `internal/listingkit/studiobatch`
 
-Owns neutral, deterministic ListingKit Studio batch candidate evaluation: item selection ownership, group-mode fallback, selection ID derivation, compatibility fingerprinting, stable candidate keys, candidate titles, and structured candidate rejections.
+Owns neutral, deterministic ListingKit Studio batch candidate evaluation and gate admission: item selection ownership, group-mode fallback, selection ID derivation, variant-surface validation, compatibility fingerprinting, target-group checks, stable candidate keys, candidate titles, and structured candidate rejections.
 
 Guardrail:
 
 - `internal/listingkit/studiobatch` may import only the Go standard library and `internal/listing/studio`. It must not import root `internal/listingkit`, HTTP, GORM, Temporal, SDS clients, remote Studio clients, or external SDKs.
 - It must reuse `internal/listing/studio` for generic Studio draft, naming, status, and completion rules rather than reimplementing them.
 
-Root `internal/listingkit` retains legacy DTO and record adaptation, SDS hydration, candidate gate evaluation, durable task-link behavior, task creation, persistence ordering, logging, and API orchestration.
+Root `internal/listingkit` retains legacy DTO and record adaptation, SDS hydration, store and baseline integration, cache maps, tenant resolution, external-error translation, durable task-link persistence, task creation, persistence ordering, logging, and API orchestration.
 
 ### `internal/listing/studio/referenceanalysis`
 
