@@ -88,6 +88,8 @@ func (c *Client) QueryLanguageList() ([]LanguageListItem, error) {
 	return c.productMgr.queryLanguageList()
 }
 
+func (c *Client) QuerySiteList() ([]SiteListGroup, error) { return c.productMgr.querySiteList() }
+
 // QueryStock 查询产品库存
 func (c *Client) QueryStock(request *StockQueryRequest) (*StockQueryResponse, error) {
 	return c.inventoryMgr.queryStock(request)

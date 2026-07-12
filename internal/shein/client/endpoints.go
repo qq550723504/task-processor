@@ -19,6 +19,7 @@ func GetEndpoint(name string) string {
 		"publishProduct":          publishProductEndpoint,
 		"productNameLengthConfig": productNameLengthConfigEndpoint,
 		"languageList":            languageListEndpoint,
+		"siteList":                siteListEndpoint,
 		"uploadImage":             uploadImageEndpoint,
 		"translateText":           translateTextEndpoint,
 		"getWarehouses":           getWarehousesEndpoint,
@@ -69,6 +70,7 @@ func GetSaveDraftEndpoint() string               { return saveDraftEndpoint }
 func GetPublishProductEndpoint() string          { return publishProductEndpoint }
 func GetProductNameLengthConfigEndpoint() string { return productNameLengthConfigEndpoint }
 func GetLanguageListEndpoint() string            { return languageListEndpoint }
+func GetSiteListEndpoint() string                { return siteListEndpoint }
 func GetUploadImageEndpoint() string             { return uploadImageEndpoint }
 func GetTranslateTextEndpoint() string           { return translateTextEndpoint }
 func GetWarehousesEndpoint() string              { return getWarehousesEndpoint }

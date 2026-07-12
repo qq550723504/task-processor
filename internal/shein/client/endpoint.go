@@ -23,6 +23,7 @@ const (
 	publishProductEndpoint          = apiPrefix + "/product/publish"
 	productNameLengthConfigEndpoint = apiPrefix + "/product/publish/config/query_product_name_length_config"
 	languageListEndpoint            = apiPrefix + "/basic/get_language_list"
+	siteListEndpoint                = apiPrefix + "/supplier/query_site_list"
 	uploadImageEndpoint             = apiPrefix + "/image/upload_image"
 	translateTextEndpoint           = apiPrefix + "/abc/google_text_translate"
 	getWarehousesEndpoint           = apiPrefix + "/inventory/query_merchant_warehouse"
