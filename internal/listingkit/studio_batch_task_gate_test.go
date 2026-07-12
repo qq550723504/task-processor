@@ -247,6 +247,22 @@ func TestStudioBatchTaskGateEvaluateEligibleAndCachesSharedChecks(t *testing.T) 
 	}
 }
 
+func TestStudioBatchTaskGateAllowsReadyCacheWithUnknownValidation(t *testing.T) {
+	eval := newEligibleStudioBatchGateEvaluation(t)
+	baseline := eval.BaselineChecker.(*stubStudioBatchBaselineReadinessChecker)
+	entry := baseline.entries[baselineKeyForStudioBatchGateTest(eval)]
+	entry.Status = SDSBaselineStatusReady
+	entry.ValidationStatus = SDSBaselineValidationStatusUnknown
+
+	result, err := newStudioBatchTaskGate(eval.BaselineChecker, eval.StoreValidator).Evaluate(context.Background(), eval)
+	if err != nil {
+		t.Fatalf("Evaluate() error = %v", err)
+	}
+	if !result.Eligible {
+		t.Fatalf("Evaluate() = %+v, want eligible", result)
+	}
+}
+
 func TestStudioBatchTaskGateRejectsPolicyBeforeExternalChecks(t *testing.T) {
 	t.Parallel()
 
