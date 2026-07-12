@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/core/logger"
 	openaiClient "task-processor/internal/infra/clients/openai"
 	shein "task-processor/internal/shein"
+	"task-processor/internal/shein/languageconfig"
 	"task-processor/internal/shein/namelimit"
 	"task-processor/internal/shein/submitprep"
 )
@@ -29,11 +30,12 @@ func (h *TranslateHandler) Name() string {
 
 // Handle 执行翻译处理
 func (h *TranslateHandler) Handle(ctx *shein.TaskContext) error {
+	h.loadTargetLanguages(ctx)
 	h.loadProductNameLengthLimits(ctx)
 	features := strings.Join(ctx.AmazonProduct.Features, ", ")
 	nameList, descList, err := submitprep.BuildLocalizedTitleAndDescription(
 		ctx.Context,
-		ctx.Task.Region,
+		append([]string(nil), ctx.TargetLanguages...),
 		ctx.AmazonProduct.Title,
 		ctx.AmazonProduct.Description,
 		features,
@@ -49,6 +51,27 @@ func (h *TranslateHandler) Handle(ctx *shein.TaskContext) error {
 	ctx.ProductData.MultiLanguageNameList = nameList
 	ctx.ProductData.MultiLanguageDescList = descList
 	return nil
+}
+
+func (h *TranslateHandler) loadTargetLanguages(ctx *shein.TaskContext) {
+	if len(ctx.TargetLanguages) > 0 {
+		return
+	}
+	if ctx.ProductAPI == nil {
+		logger.GetGlobalLogger("shein/translate").Warn("query product language list skipped: product API is unavailable")
+		ctx.TargetLanguages = languageconfig.Resolve(nil, ctx.Task.Region)
+		return
+	}
+	items, err := ctx.ProductAPI.QueryLanguageList()
+	if err != nil {
+		logger.GetGlobalLogger("shein/translate").Warnf("query product language list failed: %v", err)
+		ctx.TargetLanguages = languageconfig.Resolve(nil, ctx.Task.Region)
+		return
+	}
+	ctx.TargetLanguages = languageconfig.Resolve(items, ctx.Task.Region)
+	if len(languageconfig.Normalize(items)) == 0 {
+		logger.GetGlobalLogger("shein/translate").Warn("product language list contains no enabled languages; using region fallback")
+	}
 }
 
 func (h *TranslateHandler) loadProductNameLengthLimits(ctx *shein.TaskContext) {

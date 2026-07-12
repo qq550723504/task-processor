@@ -18,7 +18,7 @@ func TestBuildLocalizedTitleAndDescriptionAppliesNameLimits(t *testing.T) {
 
 	names, _, err := BuildLocalizedTitleAndDescription(
 		context.Background(),
-		"US",
+		[]string{"en", "es"},
 		strings.Repeat("a", 20),
 		"description",
 		"",

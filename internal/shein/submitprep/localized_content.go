@@ -14,7 +14,7 @@ import (
 	"task-processor/internal/shein/namelimit"
 )
 
-func BuildLocalizedTitleAndDescription(ctx context.Context, region string, title string, description string, features string, brand string, aiClient openaiclient.ChatCompleter, cache *aicache.Cache, translateAPI sheintranslateapi.TranslateAPI, nameLimits namelimit.Limits) ([]sheinproduct.LanguageContent, []sheinproduct.LanguageContent, error) {
+func BuildLocalizedTitleAndDescription(ctx context.Context, targetLanguages []string, title string, description string, features string, brand string, aiClient openaiclient.ChatCompleter, cache *aicache.Cache, translateAPI sheintranslateapi.TranslateAPI, nameLimits namelimit.Limits) ([]sheinproduct.LanguageContent, []sheinproduct.LanguageContent, error) {
 	cleaner := content.NewTextCleaner()
 	optimizer := content.NewContentOptimizer(aiClient)
 
@@ -37,9 +37,8 @@ func BuildLocalizedTitleAndDescription(ctx context.Context, region string, title
 	optimizedTitle = ensureValidText(optimizedTitle, cleanedTitle, title, "Quality Product")
 	optimizedDescription = ensureValidText(optimizedDescription, cleanedDescription, description, "High quality product with excellent features and design.")
 
-	targetLanguages := GetTargetLanguagesByRegion(strings.ToUpper(strings.TrimSpace(region)))
 	if len(targetLanguages) == 0 {
-		return nil, nil, fmt.Errorf("unsupported region: %s", region)
+		return nil, nil, fmt.Errorf("target languages are empty")
 	}
 
 	nameList, err := buildLocalizedList(optimizedTitle, detectedLang, targetLanguages, translateAPI, false, nameLimits)
