@@ -41,16 +41,16 @@ spec:
                   key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY
                   optional: true
           readinessProbe:
-            httpGet:
-              path: /health
+            httpGet: null
+            tcpSocket:
               port: http
             initialDelaySeconds: 10
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 6
           livenessProbe:
-            httpGet:
-              path: /health
+            httpGet: null
+            tcpSocket:
               port: http
             initialDelaySeconds: 30
             periodSeconds: 20

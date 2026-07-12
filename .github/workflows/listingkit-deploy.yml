@@ -174,6 +174,9 @@ jobs:
         with:
           version: latest
 
+      - name: Set up Kustomize
+        uses: imranismail/setup-kustomize@v2
+
       - name: Write kubeconfig
         shell: bash
         run: |
@@ -181,6 +184,16 @@ jobs:
           mkdir -p "$HOME/.kube"
           printf '%s' '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
+
+      - name: Pin release images in Kubernetes manifests
+        working-directory: ${{ env.K8S_OVERLAY_PATH }}
+        run: |
+          kustomize edit set image xuwei190/task-processor-product-listing-api=${{ needs.prepare.outputs.api_image }}
+          kustomize edit set image xuwei190/task-processor-listingkit-ui=${{ needs.prepare.outputs.ui_image }}
+
+      - name: Validate Kubernetes manifests
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_apply) }}
+        run: kubectl apply -k ${{ env.K8S_OVERLAY_PATH }} --dry-run=server
 
       - name: Apply Kubernetes manifests
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_apply) }}
