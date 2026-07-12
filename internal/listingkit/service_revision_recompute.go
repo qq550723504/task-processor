@@ -22,9 +22,18 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 	}
 	task.Result.Shein = sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
 	if task.Request != nil && task.Request.Options != nil {
-		sdspod.ApplyCanonical(task.Result.CanonicalProduct, sdspod.CanonicalMetadata{
-			StyleName: studioStyleName(task.Request.Options.SDS),
-		})
+		sdsOptions := task.Request.Options.SDS
+		if task.Result.SDSDesignResult != nil {
+			applySDSSyncMetadataToCanonical(
+				task.Result.CanonicalProduct,
+				task.Result.SDSDesignResult,
+				sdsOptions,
+			)
+		} else {
+			sdspod.ApplyCanonical(task.Result.CanonicalProduct, sdspod.CanonicalMetadata{
+				StyleName: studioStyleName(sdsOptions),
+			})
+		}
 	}
 
 	buildReq := buildSheinPublishRequestForTask(task, task.Request)
