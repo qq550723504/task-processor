@@ -13,10 +13,11 @@ import (
 	shein "task-processor/internal/shein"
 	"task-processor/internal/shein/aicache"
 	"task-processor/internal/shein/api/product"
+	"task-processor/internal/shein/namelimit"
 	"task-processor/internal/shein/submitprep"
 )
 
-const sheinSKCTitleMaxLength = 150
+const defaultEnglishNameMaxLength = 150
 
 type SKCTranslationHandler struct {
 	runtime      *SKCRuntimeInput
@@ -38,6 +39,7 @@ func (h *SKCTranslationHandler) CreateSKC(ctx context.Context, params shein.SKCC
 
 	h.translateToAllLanguages(ctx, sourceTitle, sourceLang, &multiLanguageNameList)
 	h.optimizeMultiLanguageContent(ctx, &multiLanguageNameList, sourceTitle)
+	h.applyNameLimits(multiLanguageNameList)
 
 	primaryLanguageContent := h.selectPrimaryDisplayLanguage(targetLanguages, multiLanguageNameList, sourceTitle)
 
@@ -156,9 +158,7 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx context.Context
 				langContent := &(*multiLanguageNameList)[englishIndexes[i]]
 				cleanedName := strings.TrimSpace(optimizedContent)
 				if len(cleanedName) >= 10 {
-					if len(cleanedName) > sheinSKCTitleMaxLength {
-						cleanedName = h.truncateContent(cleanedName, sheinSKCTitleMaxLength)
-					}
+					cleanedName = namelimit.Truncate(cleanedName, h.englishNameMaxLength())
 					langContent.Name = cleanedName
 				}
 			}
@@ -181,9 +181,7 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx context.Context
 		if len(cleanedName) < 10 {
 			continue
 		}
-		if len(cleanedName) > sheinSKCTitleMaxLength {
-			cleanedName = h.truncateContent(cleanedName, sheinSKCTitleMaxLength)
-		}
+		cleanedName = namelimit.Truncate(cleanedName, h.englishNameMaxLength())
 		langContent.Name = cleanedName
 	}
 
@@ -193,13 +191,19 @@ func (h *SKCTranslationHandler) optimizeMultiLanguageContent(ctx context.Context
 }
 
 func (h *SKCTranslationHandler) batchOptimizeEnglishContent(ctx context.Context, contents []string, sourceTitle string) ([]string, error) {
-	systemPrompt := prompt.GlobalRegistry.Get(prompt.KSheinTranslationBatchOptimizeSystem, `You are an e-commerce content optimization expert. Optimize product titles for SHEIN listings.
+	maxLength := h.englishNameMaxLength()
+	defaultPrompt := fmt.Sprintf(`You are an e-commerce content optimization expert. Optimize product titles for SHEIN listings.
 Requirements:
-1. Output must be English and 10-150 characters long.
+1. Output must be English and 10-%d characters long.
 2. Highlight major product features and selling points.
 3. Keep wording concise and attractive.
 4. Avoid brand names and sensitive words.
-5. Return JSON: {"optimized_titles": ["title1", "title2"]}`)
+5. Return JSON: {"optimized_titles": ["title1", "title2"]}`, maxLength)
+	systemPrompt := defaultPrompt
+	if prompt.GlobalRegistry != nil {
+		systemPrompt = prompt.GlobalRegistry.Get(prompt.KSheinTranslationBatchOptimizeSystem, defaultPrompt)
+	}
+	systemPrompt = strings.ReplaceAll(systemPrompt, "10-150 characters", fmt.Sprintf("10-%d characters", maxLength))
 
 	var contentList strings.Builder
 	for i, content := range contents {
@@ -271,16 +275,25 @@ func (h *SKCTranslationHandler) parseOptimizedResponse(content string) (string, 
 	return response.OptimizedTitle, nil
 }
 
-func (h *SKCTranslationHandler) truncateContent(content string, maxLength int) string {
-	if len(content) <= maxLength {
-		return content
+func (h *SKCTranslationHandler) englishNameMaxLength() int {
+	if h.runtime != nil {
+		if maxLength, ok := h.runtime.NameLengthLimits.Max("en"); ok {
+			return maxLength
+		}
 	}
-	truncated := content[:maxLength]
-	lastSpace := strings.LastIndex(truncated, " ")
-	if lastSpace > 0 && lastSpace > maxLength-50 {
-		truncated = truncated[:lastSpace]
+	return defaultEnglishNameMaxLength
+}
+
+func (h *SKCTranslationHandler) applyNameLimits(items []product.LanguageContent) {
+	for i := range items {
+		maxLength, ok := h.runtime.NameLengthLimits.Max(items[i].Language)
+		if !ok && strings.EqualFold(items[i].Language, "en") {
+			maxLength, ok = defaultEnglishNameMaxLength, true
+		}
+		if ok {
+			items[i].Name = namelimit.Truncate(items[i].Name, maxLength)
+		}
 	}
-	return strings.TrimSpace(truncated)
 }
 
 func (h *SKCTranslationHandler) selectPrimaryDisplayLanguage(targetLanguages []string, multiLanguageNameList []product.LanguageContent, sourceTitle string) product.LanguageContent {

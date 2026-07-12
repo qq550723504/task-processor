@@ -9,6 +9,7 @@ import (
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	productapi "task-processor/internal/shein/api/product"
 	sheintranslate "task-processor/internal/shein/api/translate"
+	"task-processor/internal/shein/namelimit"
 	sheinsale "task-processor/internal/shein/product/attribute/sale"
 )
 
@@ -29,6 +30,7 @@ type SKCRuntimeInput struct {
 	AsinSkuMap         map[string]string
 	TranslateAPI       *sheintranslate.Client
 	AICache            *aicache.Cache
+	NameLengthLimits   namelimit.Limits
 }
 
 type SKCVariantBuildInput struct {
@@ -64,6 +66,7 @@ func newSKCRuntimeInput(ctx *shein.TaskContext) *SKCRuntimeInput {
 		AsinSkuMap:         ctx.AsinSkuMap,
 		TranslateAPI:       ctx.TranslateAPI,
 		AICache:            ctx.AICache,
+		NameLengthLimits:   ctx.ProductNameLengthLimits,
 	}
 	if ctx.Task != nil {
 		input.Region = ctx.Task.Region
