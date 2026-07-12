@@ -1386,10 +1386,15 @@ func TestRefreshSheinDerivedStateAppliesSDSStyleToEveryCanonicalVariant(t *testi
 			SDS: &SDSSyncOptions{StyleName: styleName},
 		}},
 		Result: &ListingKitResult{
-			CanonicalProduct: &canonical.Product{Variants: []canonical.Variant{
-				{SKU: "SKU-1"},
-				{SKU: "SKU-2"},
-			}},
+			CanonicalProduct: &canonical.Product{
+				Title:      "Existing title",
+				Attributes: map[string]canonical.Attribute{"sku": {Value: "EXISTING"}},
+				Images:     []canonical.Image{{URL: "https://cdn.example.com/existing.jpg", Role: "primary"}},
+				Variants: []canonical.Variant{
+					{SKU: "SKU-1", Images: []canonical.Image{{URL: "https://cdn.example.com/existing-variant.jpg", Role: "primary"}}},
+					{SKU: "SKU-2"},
+				},
+			},
 			Shein: &SheinPackage{RequestDraft: &SheinRequestDraft{}},
 		},
 	}
@@ -1419,6 +1424,66 @@ func TestRefreshSheinDerivedStateAppliesSDSStyleToEveryCanonicalVariant(t *testi
 		if !reflect.DeepEqual(attribute.Trace, wantTrace) {
 			t.Fatalf("variant[%d] ai_style trace = %+v, want %+v", i, attribute.Trace, wantTrace)
 		}
+	}
+	product := task.Result.CanonicalProduct
+	if product.Title != "Existing title" || product.Attributes["sku"].Value != "EXISTING" {
+		t.Fatalf("unexpected no-result identity mutation: %+v", product)
+	}
+	if product.Images[0].URL != "https://cdn.example.com/existing.jpg" ||
+		product.Variants[0].Images[0].URL != "https://cdn.example.com/existing-variant.jpg" {
+		t.Fatalf("unexpected no-result image mutation: product=%+v variant=%+v", product.Images, product.Variants[0].Images)
+	}
+}
+
+func TestRefreshSheinDerivedStateReappliesCompletedSDSCanonicalMetadata(t *testing.T) {
+	task := &Task{
+		Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
+			StyleName: "Studio A1",
+		}}},
+		Result: &ListingKitResult{
+			CanonicalProduct: &canonical.Product{
+				Title:      "Stale title",
+				Attributes: map[string]canonical.Attribute{"sku": {Value: "STALE"}},
+				Images:     []canonical.Image{{URL: "https://cdn.example.com/stale.jpg", Role: "primary"}},
+				Variants: []canonical.Variant{{
+					SKU:        "SKU-RED",
+					Attributes: map[string]canonical.Attribute{"source_sds_sku": {Value: "SDS-RED"}},
+				}},
+			},
+			SDSDesignResult: &SDSSyncSummary{
+				ProductName:     "Rendered clock",
+				ProductSKU:      "PARENT-1",
+				VariantSKU:      "SDS-RED",
+				VariantColor:    "Red",
+				MockupImageURLs: []string{"https://cdn.example.com/rendered-main.jpg"},
+				VariantResults: []SDSSyncSummary{{
+					VariantSKU:      "SDS-RED",
+					VariantColor:    "Red",
+					Status:          "completed",
+					MockupImageURLs: []string{"https://cdn.example.com/rendered-red.jpg"},
+				}},
+			},
+			Shein: &SheinPackage{RequestDraft: &SheinRequestDraft{}},
+		},
+	}
+
+	(&service{}).refreshSheinDerivedState(task, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein:    &SheinRevisionInput{RegenerateAttributes: true},
+	})
+
+	product := task.Result.CanonicalProduct
+	if product.Title != "Rendered clock" || product.Attributes["product_sku"].Value != "PARENT-1" {
+		t.Fatalf("canonical identity = %+v", product)
+	}
+	if len(product.Images) != 1 || product.Images[0].URL != "https://cdn.example.com/rendered-red.jpg" {
+		t.Fatalf("product images = %+v", product.Images)
+	}
+	if len(product.Variants[0].Images) != 1 || product.Variants[0].Images[0].URL != "https://cdn.example.com/rendered-red.jpg" {
+		t.Fatalf("variant images = %+v", product.Variants[0].Images)
+	}
+	if product.Variants[0].Attributes["ai_style"].Value != "Studio A1" {
+		t.Fatalf("ai_style = %+v", product.Variants[0].Attributes["ai_style"])
 	}
 }
 
