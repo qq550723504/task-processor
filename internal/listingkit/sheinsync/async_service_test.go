@@ -176,6 +176,18 @@ func (s *blockingSheinSyncProductAPIStub) QueryBrandList() (*sheinproduct.BrandL
 	return nil, nil
 }
 
+func (s *blockingSheinSyncProductAPIStub) QueryProductNameLengthConfig(int) ([]sheinproduct.NameLengthConfigItem, error) {
+	return nil, nil
+}
+
+func (s *blockingSheinSyncProductAPIStub) QueryLanguageList() ([]sheinproduct.LanguageListItem, error) {
+	return nil, nil
+}
+
+func (s *blockingSheinSyncProductAPIStub) QuerySiteList() ([]sheinproduct.SiteListGroup, error) {
+	return nil, nil
+}
+
 func (s *blockingSheinSyncProductAPIStub) QueryStock(*sheinproduct.StockQueryRequest) (*sheinproduct.StockQueryResponse, error) {
 	return nil, nil
 }

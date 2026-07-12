@@ -1863,6 +1863,18 @@ func (s *sheinSyncServiceProductAPIStub) QueryBrandList() (*sheinproduct.BrandLi
 	return nil, errors.New("not implemented")
 }
 
+func (s *sheinSyncServiceProductAPIStub) QueryProductNameLengthConfig(int) ([]sheinproduct.NameLengthConfigItem, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *sheinSyncServiceProductAPIStub) QueryLanguageList() ([]sheinproduct.LanguageListItem, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *sheinSyncServiceProductAPIStub) QuerySiteList() ([]sheinproduct.SiteListGroup, error) {
+	return nil, errors.New("not implemented")
+}
+
 func (s *sheinSyncServiceProductAPIStub) QueryStock(*sheinproduct.StockQueryRequest) (*sheinproduct.StockQueryResponse, error) {
 	return nil, errors.New("not implemented")
 }
