@@ -177,6 +177,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 	for _, needle := range []string{
 		"func buildSheinSubmitReadinessChecks(pkg *SheinPackage, pod *PodExecutionSummary, action string, validation sheinBuildValidation) []sheinworkspace.ReadinessCheckSpec {",
 		"func appendSheinPodReadinessChecks(",
+		"sheinmarketpub.EvaluatePODSubmitReadiness(action, podExecutionPolicyState(pod))",
 		"checks = append(checks, sheinworkspace.BuildSubmitTemplateReadinessChecks(sheinworkspace.SubmitTemplateReadinessInput{",
 		"checks = append(checks, sheinworkspace.BuildSubmitPayloadReadinessChecks(pkg, action)...)",
 		"sheinworkspace.BuildSubmitReadinessCheck(",
@@ -194,6 +195,10 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 		"func appendSheinPayloadReadinessChecks(",
 		"return sheinpub.FinalReviewReady(pkg, action)",
 		"return sheinpub.FinalReviewMessage(action)",
+		"podSubmissionBlocked(pod)",
+		"podReadinessMessage(pod)",
+		"podStatusFailedDegraded",
+		"podStatusBypassed",
 	} {
 		if strings.Contains(checksContent, needle) {
 			t.Fatalf("shein_submit_readiness.go should not keep readiness wrapper %q", needle)

@@ -3,6 +3,7 @@ package listingkit
 import (
 	"strings"
 
+	sheinmarketpub "task-processor/internal/marketplace/shein/publishing"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -153,22 +154,21 @@ func buildSheinSubmitReadinessChecks(pkg *SheinPackage, pod *PodExecutionSummary
 }
 
 func appendSheinPodReadinessChecks(checks []sheinworkspace.ReadinessCheckSpec, pod *PodExecutionSummary, action string) []sheinworkspace.ReadinessCheckSpec {
-	if pod == nil || pod.DependencyMode == podDependencyModeDisabled {
+	if pod == nil {
 		return checks
 	}
-	podBlocked := action != "save_draft" && podSubmissionBlocked(pod)
-	podMessage := podReadinessMessage(pod)
-	if action == "save_draft" && pod.Status != podStatusSucceeded {
-		podMessage = firstNonEmptyString(podMessage, "POD 平台处理尚未完成；当前允许先保存草稿，正式发布前仍需确认平台结果")
+	decision := sheinmarketpub.EvaluatePODSubmitReadiness(action, podExecutionPolicyState(pod))
+	if !decision.Applicable {
+		return checks
 	}
 	return append(checks, sheinworkspace.BuildSubmitReadinessCheck(
 		"pod_platform",
 		"POD 平台处理",
-		!podBlocked && (action == "save_draft" || (pod.Status != podStatusFailedDegraded && pod.Status != podStatusBypassed)),
-		firstNonEmptyString(podMessage, "POD 平台处理状态尚未满足发布要求"),
+		decision.Ready,
+		firstNonEmptyString(decision.Message, "POD 平台处理状态尚未满足发布要求"),
 		[]string{"pod_execution"},
 		"处理 POD 平台结果",
-		action == "save_draft" || !podBlocked,
+		decision.WarningOnly,
 	))
 }
 
