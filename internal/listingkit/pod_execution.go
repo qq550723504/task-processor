@@ -3,6 +3,8 @@ package listingkit
 import (
 	"strings"
 	"time"
+
+	sdspod "task-processor/internal/product/sourcing/sdspod"
 )
 
 const (
@@ -33,27 +35,8 @@ func normalizePodExecutionSummary(pod *PodExecutionSummary) *PodExecutionSummary
 	if pod == nil {
 		return nil
 	}
-	pod.Provider = strings.ToLower(strings.TrimSpace(pod.Provider))
-	pod.DependencyMode = strings.ToLower(strings.TrimSpace(pod.DependencyMode))
-	pod.Status = strings.ToLower(strings.TrimSpace(pod.Status))
-	pod.FailureReason = strings.TrimSpace(pod.FailureReason)
-	pod.FallbackType = strings.ToLower(strings.TrimSpace(pod.FallbackType))
-	pod.DecisionSource = strings.TrimSpace(pod.DecisionSource)
+	applyPodExecutionPolicyState(pod, sdspod.NormalizeExecution(podExecutionPolicyState(pod)))
 	pod.History = normalizePodExecutionAuditHistory(pod.History)
-	if pod.DecisionSource == "" {
-		pod.DecisionSource = "system_rule"
-	}
-	if pod.DependencyMode == "" {
-		pod.DependencyMode = podDependencyModeDisabled
-	}
-	if pod.Status == "" {
-		switch pod.DependencyMode {
-		case podDependencyModeDisabled:
-			pod.Status = podStatusNotApplicable
-		default:
-			pod.Status = podStatusPending
-		}
-	}
 	return pod
 }
 
@@ -64,6 +47,51 @@ func clonePodExecutionSummary(pod *PodExecutionSummary) *PodExecutionSummary {
 	copy := *pod
 	copy.History = clonePodExecutionAuditHistory(pod.History)
 	return &copy
+}
+
+func podExecutionPolicyState(pod *PodExecutionSummary) sdspod.Execution {
+	if pod == nil {
+		return sdspod.Execution{}
+	}
+	return sdspod.Execution{
+		Provider:       pod.Provider,
+		DependencyMode: pod.DependencyMode,
+		Status:         pod.Status,
+		FailureReason:  pod.FailureReason,
+		FallbackType:   pod.FallbackType,
+		DecisionSource: pod.DecisionSource,
+	}
+}
+
+func applyPodExecutionPolicyState(pod *PodExecutionSummary, state sdspod.Execution) *PodExecutionSummary {
+	if pod == nil {
+		pod = &PodExecutionSummary{}
+	}
+	pod.Provider = state.Provider
+	pod.DependencyMode = state.DependencyMode
+	pod.Status = state.Status
+	pod.FailureReason = state.FailureReason
+	pod.FallbackType = state.FallbackType
+	pod.DecisionSource = state.DecisionSource
+	return pod
+}
+
+func podExecutionPolicySDS(sds *SDSSyncSummary) *sdspod.SDSResult {
+	if sds == nil {
+		return nil
+	}
+	return &sdspod.SDSResult{Status: sds.Status, Error: sds.Error}
+}
+
+func podExecutionPolicyChildren(children []ChildTaskState) []sdspod.ChildTask {
+	if len(children) == 0 {
+		return nil
+	}
+	result := make([]sdspod.ChildTask, 0, len(children))
+	for _, child := range children {
+		result = append(result, sdspod.ChildTask{Kind: child.Kind, Status: child.Status, Error: child.Error})
+	}
+	return result
 }
 
 func shouldUsePODPlatform(req *GenerateRequest) bool {
@@ -130,19 +158,11 @@ func derivePodExecutionSummary(current *PodExecutionSummary, sds *SDSSyncSummary
 		return normalizePodExecutionSummary(pod)
 	}
 
-	status, reason, fallback, found := inferPodStatusFromSDS(sds, childTasks, pod.DependencyMode)
-	if found && status != "" {
-		pod.Status = status
-	}
-	if found {
-		pod.FailureReason = reason
-	}
-	if found {
-		pod.FallbackType = fallback
-	}
-	if !found && strings.TrimSpace(pod.Status) == "" {
-		pod.Status = podStatusPending
-	}
+	pod = applyPodExecutionPolicyState(pod, sdspod.DeriveExecution(sdspod.DeriveInput{
+		Current:  podExecutionPolicyState(pod),
+		SDS:      podExecutionPolicySDS(sds),
+		Children: podExecutionPolicyChildren(childTasks),
+	}))
 	if pod.LastAttemptAt == nil && pod.Status != podStatusPending {
 		at := updatedAt
 		if at.IsZero() {
@@ -170,7 +190,6 @@ func markPodExecutionStatus(result *ListingKitResult, status string, at time.Tim
 	}
 	before := clonePodExecutionSummary(result.PodExecution)
 	result.PodExecution.Status = strings.ToLower(strings.TrimSpace(status))
-	clearPodExecutionFailureDetailsForStatus(result.PodExecution)
 	if at.IsZero() {
 		at = time.Now()
 	}
@@ -184,18 +203,5 @@ func markPodExecutionStatus(result *ListingKitResult, status string, at time.Tim
 	recordPodExecutionAudit(before, result.PodExecution, at)
 	if result.StandardProductSnapshot != nil {
 		result.StandardProductSnapshot.PodExecution = clonePodExecutionSummary(result.PodExecution)
-	}
-}
-
-func clearPodExecutionFailureDetailsForStatus(pod *PodExecutionSummary) {
-	if pod == nil {
-		return
-	}
-	switch strings.ToLower(strings.TrimSpace(pod.Status)) {
-	case podStatusFailedBlocking, podStatusFailedDegraded:
-		return
-	default:
-		pod.FailureReason = ""
-		pod.FallbackType = ""
 	}
 }

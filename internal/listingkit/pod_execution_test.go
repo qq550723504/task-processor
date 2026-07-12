@@ -288,6 +288,30 @@ func TestDerivePodExecutionSummaryClearsFailureDetailsAfterSuccess(t *testing.T)
 	}
 }
 
+func TestDerivePodExecutionSummaryClearsSDSFailureDetailsAfterSuccess(t *testing.T) {
+	updatedAt := time.Date(2026, 7, 12, 9, 0, 0, 0, time.UTC)
+	result := derivePodExecutionSummary(
+		&PodExecutionSummary{
+			Provider:       podProviderSDS,
+			DependencyMode: podDependencyModeRequired,
+			Status:         podStatusFailedBlocking,
+			FailureReason:  "old timeout",
+			FallbackType:   podFallbackLocalMockup,
+		},
+		&SDSSyncSummary{Status: "completed", Error: "old timeout"},
+		nil,
+		&GenerateRequest{
+			Platforms: []string{"shein"},
+			ImageURLs: []string{"https://cdn.example.com/source.png"},
+			Options:   &GenerateOptions{SDS: &SDSSyncOptions{VariantID: 901}},
+		},
+		updatedAt,
+	)
+	if result.Status != podStatusSucceeded || result.FailureReason != "" || result.FallbackType != "" {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
 func TestMarkPodExecutionStatusRecordsProcessingTransition(t *testing.T) {
 	t.Parallel()
 
