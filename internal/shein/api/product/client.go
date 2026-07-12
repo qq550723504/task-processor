@@ -83,6 +83,11 @@ func (c *Client) QueryProductNameLengthConfig(categoryID int) ([]NameLengthConfi
 	return c.productMgr.queryProductNameLengthConfig(categoryID)
 }
 
+// QueryLanguageList returns product languages supported by the current store.
+func (c *Client) QueryLanguageList() ([]LanguageListItem, error) {
+	return c.productMgr.queryLanguageList()
+}
+
 // QueryStock 查询产品库存
 func (c *Client) QueryStock(request *StockQueryRequest) (*StockQueryResponse, error) {
 	return c.inventoryMgr.queryStock(request)

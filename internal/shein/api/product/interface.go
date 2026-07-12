@@ -19,6 +19,7 @@ type ProductAPI interface {
 	ListProducts(pageNum, pageSize int, request *ProductListRequest) (*ProductListResponse, error)
 	QueryBrandList() (*BrandListResponse, error)
 	QueryProductNameLengthConfig(categoryID int) ([]NameLengthConfigItem, error)
+	QueryLanguageList() ([]LanguageListItem, error)
 
 	// 库存管理
 	QueryStock(request *StockQueryRequest) (*StockQueryResponse, error)
