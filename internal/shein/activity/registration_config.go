@@ -444,7 +444,10 @@ func minimumPromotionSKUDiscountRate(
 		return 0, false, true
 	}
 
-	lowestOriginalPrice := 0.0
+	// The activity drop rate is based on the synchronized SHEIN supply price.
+	// SKU retail prices remain required for a complete multi-SKU snapshot, but
+	// are only a legacy fallback when the supply price has not been synchronized.
+	lowestOriginalPrice := product.SupplyPrice
 	highestCostPrice := 0.0
 	seenSKU := make(map[string]struct{}, len(product.SkuPriceInfoList))
 	for _, item := range product.SkuPriceInfoList {
@@ -458,7 +461,7 @@ func minimumPromotionSKUDiscountRate(
 			return 0, false, true
 		}
 		seenSKU[skuCode] = struct{}{}
-		if lowestOriginalPrice <= 0 || originalPrice < lowestOriginalPrice {
+		if product.SupplyPrice <= 0 && (lowestOriginalPrice <= 0 || originalPrice < lowestOriginalPrice) {
 			lowestOriginalPrice = originalPrice
 		}
 		if costPrice > highestCostPrice {

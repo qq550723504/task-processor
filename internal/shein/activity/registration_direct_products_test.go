@@ -165,7 +165,7 @@ func TestRegisterPromotionProductsAcceptsPromotionMultiSkuDifferentPrices(t *tes
 	product := marketing.SkcInfo{
 		Skc:         "sg-multi-price",
 		Stock:       100,
-		SupplyPrice: 18,
+		SupplyPrice: 30,
 		SitePriceInfoList: []marketing.SitePriceInfo{{
 			SalePrice:   30,
 			Currency:    "USD",
@@ -234,6 +234,9 @@ func TestRegisterPromotionProductsAcceptsPromotionMultiSkuDifferentPrices(t *tes
 			},
 		}},
 	}
+	// This branch verifies the legacy SKU-price fallback used when no synced
+	// supply price exists; the auto-partake assertion above uses SupplyPrice.
+	product.SupplyPrice = 0
 
 	activityResult, err := service.RegisterPromotionProducts(
 		t.Context(),
@@ -296,7 +299,7 @@ func TestRegisterPromotionProductsAllowsPromotionMultiSkuSamePrices(t *testing.T
 		[]marketing.SkcInfo{{
 			Skc:         "sg-multi-same-price",
 			Stock:       100,
-			SupplyPrice: 18,
+			SupplyPrice: 30,
 			SitePriceInfoList: []marketing.SitePriceInfo{{
 				SalePrice:   30,
 				Currency:    "USD",
@@ -2060,6 +2063,49 @@ func TestRegisterPromotionProductsUsesLowestSKUPriceAndHighestCostForBoth(t *tes
 	}
 	if got := result.Requests[1].ConfigList[0].DropRate; got != 25 {
 		t.Fatalf("limited drop rate = %d, want 25", got)
+	}
+}
+
+func TestRegisterPromotionProductsUsesSupplyPriceForBreakevenDropRate(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		configListResponse: &marketing.GetConfigListResponse{Code: "0", Msg: "ok", Info: &marketing.ConfigListInfo{
+			Total: 1,
+			ConfigList: []marketing.ActivityConfigInfo{{
+				ID: 1, Skc: "sz260708164727639531767",
+				ActivityConfigList: []marketing.ActivityConfigDetail{
+					{ID: 1, ActivityType: marketing.AutoPartakeActivityTypeRegular, State: marketing.AutoPartakeConfigStateClosed},
+					{ID: 2, ActivityType: marketing.AutoPartakeActivityTypeLimited, State: marketing.AutoPartakeConfigStateClosed},
+				},
+			}},
+		}},
+	}
+	service := &activityRegistrationServiceImpl{marketingAPI: api, logger: logrus.NewEntry(logrus.New())}
+	product := marketing.SkcInfo{
+		Skc: "sz260708164727639531767", Stock: 7992, SupplyPrice: 82.16,
+		SkuPriceInfoList: []marketing.SkuSitePriceInfo{
+			{SkuCode: "sku-one", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 96.98, Currency: "USD", IsAvailable: true}}},
+			{SkuCode: "sku-two", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 96.98, Currency: "USD", IsAvailable: true}}},
+		},
+		SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
+			{SkuCode: "sku-one", CostPrice: 26.12, Currency: "USD"},
+			{SkuCode: "sku-two", CostPrice: 26.12, Currency: "USD"},
+		},
+	}
+
+	result, err := service.RegisterPromotionProducts(t.Context(), &listingruntime.OperationStrategy{
+		StoreID: 1043, ActivityPriceMode: "BREAKEVEN", ActivityPartakeType: "BOTH", ActivityStockRatio: 0.5,
+	}, "", []marketing.SkcInfo{product})
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if result == nil || len(result.Requests) != 2 {
+		t.Fatalf("requests = %+v, want regular and limited", result)
+	}
+	if got := result.Requests[0].ConfigList[0].DropRate; got != 67 {
+		t.Fatalf("regular drop rate = %d, want 67 from supply price 82.16 and cost 26.12", got)
+	}
+	if got := result.Requests[1].ConfigList[0].DropRate; got != 68 {
+		t.Fatalf("limited drop rate = %d, want 68 from supply price 82.16 and cost 26.12", got)
 	}
 }
 
