@@ -1,6 +1,7 @@
 package studiobatch
 
 import (
+	"crypto/sha1"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -28,7 +29,7 @@ func Evaluate(input EvaluationInput) EvaluationResult {
 	var expectedFingerprint string
 	for index, grouped := range selections {
 		grouped.Selection.DesignType = normalizeDesignType(input.BatchSelection, grouped.Selection.DesignType)
-		selectionID := firstNonEmpty(grouped.SelectionID, input.Item.TargetGroupKey, input.Design.TargetGroupKey, input.Design.ID)
+		selectionID := firstNonEmpty(grouped.SelectionID, selectionIDForSnapshot(grouped.Selection), input.Item.TargetGroupKey, input.Design.TargetGroupKey, input.Design.ID)
 		fingerprint := compatibilityFingerprint(grouped.Selection)
 		if groupMode != "per_product" && len(selections) > 1 {
 			if !compatibilityComplete(grouped.Selection) {
@@ -52,7 +53,7 @@ func Evaluate(input EvaluationInput) EvaluationResult {
 			SelectionID:              selectionID,
 			CompatibilityFingerprint: fingerprint,
 			StoreID:                  storeID,
-			StyleID:                  strings.Join([]string{strings.TrimSpace(input.BatchID), strings.TrimSpace(input.Item.ID), strings.TrimSpace(input.Design.ID), selectionID}, "-"),
+			StyleID:                  styleID(input.BatchID, input.Item.ID, input.Design.ID, selectionID),
 			Title:                    firstNonEmpty(grouped.Selection.VariantLabel, grouped.Selection.ProductName, input.Item.TargetGroupLabel, input.Design.TargetGroupLabel, input.Design.ID),
 		}
 		candidate.CandidateKey = candidateKey(input.TenantID, input.BatchID, candidate)
@@ -73,7 +74,7 @@ func compatibilityComplete(selection Selection) bool {
 }
 
 func compatibilityFingerprint(selection Selection) string {
-	return strings.Join([]string{
+	value := strings.Join([]string{
 		strconv.FormatInt(selection.ParentProductID, 10),
 		strconv.FormatInt(selection.PrototypeGroupID, 10),
 		strings.TrimSpace(selection.LayerID),
@@ -85,6 +86,14 @@ func compatibilityFingerprint(selection Selection) string {
 		strings.TrimSpace(selection.ProductSize),
 		strings.TrimSpace(selection.PackagingSpec),
 	}, "|")
+	sum := sha1.Sum([]byte(value))
+	return hex.EncodeToString(sum[:])
+}
+
+func styleID(batchID, itemID, designID, selectionID string) string {
+	value := strings.Join([]string{batchID, itemID, designID, selectionID}, "|")
+	sum := sha1.Sum([]byte(value))
+	return strings.ToUpper(hex.EncodeToString(sum[:]))[:10]
 }
 
 func candidateKey(tenantID, batchID string, candidate Candidate) string {
@@ -108,11 +117,32 @@ func rejection(input EvaluationInput, selectionID, reasonCode, message string) R
 func selectionIDs(selections []GroupedSelection) []string {
 	result := make([]string, 0, len(selections))
 	for _, grouped := range selections {
-		if id := strings.TrimSpace(grouped.SelectionID); id != "" {
+		if id := firstNonEmpty(grouped.SelectionID, selectionIDForSnapshot(grouped.Selection)); id != "" {
 			result = append(result, id)
 		}
 	}
 	return result
+}
+
+func selectionIDForSnapshot(selection Selection) string {
+	if selection.VariantID <= 0 {
+		return ""
+	}
+	parentProductID := selection.ParentProductID
+	if parentProductID <= 0 {
+		parentProductID = selection.ProductID
+	}
+	values := make([]string, 0, len(selection.SelectedVariantIDs))
+	for _, id := range selection.SelectedVariantIDs {
+		values = append(values, strconv.FormatInt(id, 10))
+	}
+	return strings.Join([]string{
+		strconv.FormatInt(parentProductID, 10),
+		strconv.FormatInt(selection.PrototypeGroupID, 10),
+		strconv.FormatInt(selection.VariantID, 10),
+		strings.TrimSpace(selection.LayerID),
+		strings.Join(values, ","),
+	}, ":")
 }
 
 func firstNonEmpty(values ...string) string {

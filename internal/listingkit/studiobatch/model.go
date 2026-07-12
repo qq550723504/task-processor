@@ -1,19 +1,21 @@
 package studiobatch
 
 type Selection struct {
-	VariantID        int64
-	ParentProductID  int64
-	PrototypeGroupID int64
-	LayerID          string
-	DesignType       string
-	PrintableWidth   int
-	PrintableHeight  int
-	TemplateImageURL string
-	MaskImageURL     string
-	ProductSize      string
-	PackagingSpec    string
-	VariantLabel     string
-	ProductName      string
+	ProductID          int64
+	VariantID          int64
+	ParentProductID    int64
+	PrototypeGroupID   int64
+	LayerID            string
+	DesignType         string
+	PrintableWidth     int
+	PrintableHeight    int
+	TemplateImageURL   string
+	MaskImageURL       string
+	ProductSize        string
+	PackagingSpec      string
+	VariantLabel       string
+	ProductName        string
+	SelectedVariantIDs []int64
 }
 
 type GroupedSelection struct {
