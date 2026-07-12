@@ -20,7 +20,7 @@ The revision path currently calls `sdspod.ApplyCanonical` directly with only `St
 
 ### Revision alignment
 
-In `refreshSheinDerivedState`, replace the style-only direct `sdspod.ApplyCanonical` invocation with the existing root adapter using:
+In `refreshSheinDerivedState`, when `task.Result.SDSDesignResult` is present, replace the style-only direct `sdspod.ApplyCanonical` invocation with the existing root adapter using:
 
 - `task.Result.CanonicalProduct`;
 - `task.Result.SDSDesignResult`; and
@@ -30,7 +30,8 @@ The call happens at the same current position before building the SHEIN publish 
 
 ### Empty and partial data
 
-- A missing canonical product, SDS summary, or SDS options remains safe: the adapter does not invent canonical facts and only applies available non-empty values.
+- A missing canonical product remains a no-op. A present SDS summary or options still applies only available non-empty facts.
+- If `SDSDesignResult` is absent, retain the current style-only update from SDS options. Do not introduce title, identity, or image changes for an incomplete or absent SDS result.
 - Existing `sdspod.ApplyCanonical` idempotence remains the source of truth. Repeating the revision refresh with unchanged data does not modify the canonical product.
 - Completed SDS summary fields take precedence exactly as in the normal workflow; options provide the existing fallback product name, style, and attribute values.
 
@@ -38,7 +39,7 @@ The call happens at the same current position before building the SHEIN publish 
 
 Add a service revision regression test with a task whose canonical product contains stale title, attributes, and images while its completed SDS summary contains current product, variant, and rendered-image metadata. Assert that a qualifying SHEIN revision refresh restores the same canonical values as the normal SDS workflow.
 
-Also cover the no-SDS case to verify revision refresh does not mutate canonical facts when no authoritative SDS result exists.
+Also cover the no-SDS-result case to verify revision refresh retains the current style-only behavior and does not introduce title, identity, or image mutations.
 
 Keep the existing `sdspod` package tests and its import boundary guard unchanged; add a root boundary assertion only if the implementation needs a new adapter or bypass risk.
 
