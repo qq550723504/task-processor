@@ -301,6 +301,7 @@ func buildPromotionCandidateProduct(candidate SheinActivityEnrollmentCandidate) 
 			candidate.SKUCostPriceInfoList,
 			priceSnapshot.Currency,
 		),
+		UseLivePromotionSKUPrices: true,
 	}
 	return product, "", true
 }

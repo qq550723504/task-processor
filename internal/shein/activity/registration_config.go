@@ -444,7 +444,8 @@ func minimumPromotionSKUDiscountRate(
 		return 0, false, true
 	}
 
-	minimumRate := 1.0
+	lowestOriginalPrice := 0.0
+	highestCostPrice := 0.0
 	seenSKU := make(map[string]struct{}, len(product.SkuPriceInfoList))
 	for _, item := range product.SkuPriceInfoList {
 		skuCode := normalizePromotionSKUCode(item.SkuCode)
@@ -457,21 +458,23 @@ func minimumPromotionSKUDiscountRate(
 			return 0, false, true
 		}
 		seenSKU[skuCode] = struct{}{}
-
-		activityPrice := calculatePriceByBreakeven(originalPrice, costPrice, fixedPriceAdjustment)
-		if strings.EqualFold(priceMode, "PROFIT") {
-			activityPrice = calculatePriceByProfit(originalPrice, costPrice, minProfitRate, fixedPriceAdjustment)
+		if lowestOriginalPrice <= 0 || originalPrice < lowestOriginalPrice {
+			lowestOriginalPrice = originalPrice
 		}
-		if activityPrice <= 0 || activityPrice >= originalPrice {
-			return 0, false, true
-		}
-		rate := (originalPrice - activityPrice) / originalPrice
-		if rate < minimumRate {
-			minimumRate = rate
+		if costPrice > highestCostPrice {
+			highestCostPrice = costPrice
 		}
 	}
 
-	return ValidateDropRate(int(minimumRate*100), minimumRate, nil), true, true
+	activityPrice := calculatePriceByBreakeven(lowestOriginalPrice, highestCostPrice, fixedPriceAdjustment)
+	if strings.EqualFold(priceMode, "PROFIT") {
+		activityPrice = calculatePriceByProfit(lowestOriginalPrice, highestCostPrice, minProfitRate, fixedPriceAdjustment)
+	}
+	if activityPrice <= 0 || activityPrice >= lowestOriginalPrice {
+		return 0, false, true
+	}
+	rate := (lowestOriginalPrice - activityPrice) / lowestOriginalPrice
+	return ValidateDropRate(int(rate*100), rate, nil), true, true
 }
 
 func normalizePromotionSKUCode(value string) string {

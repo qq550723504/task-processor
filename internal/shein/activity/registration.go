@@ -192,6 +192,14 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 	if activityKey != "" {
 		return s.createPromotionActivityFromProducts(ctx, strategy, activityKey, products)
 	}
+	products, livePriceFilterReasons, err := s.withLivePromotionSKUPrices(ctx, strategy, products)
+	if err != nil {
+		return &PromotionRegistrationResult{FilterReasons: livePriceFilterReasons}, err
+	}
+	if len(products) == 0 {
+		s.logger.Info("没有带完整实时SKU供货价的产品需要报名")
+		return &PromotionRegistrationResult{FilterReasons: livePriceFilterReasons}, nil
+	}
 
 	// 2. 根据定价模式构建活动配置
 	var configList []marketing.ActivityConfig
@@ -202,7 +210,7 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 
 	if len(configList) == 0 {
 		s.logger.Info("没有符合条件的产品需要报名")
-		return &PromotionRegistrationResult{}, nil
+		return &PromotionRegistrationResult{FilterReasons: livePriceFilterReasons}, nil
 	}
 
 	activityTypes := autoPartakeActivityTypesFromStrategy(strategy)
@@ -211,20 +219,21 @@ func (s *activityRegistrationServiceImpl) RegisterPromotionProducts(
 	}
 	firstReq, firstResponse, requests, responses, err := s.savePromotionConfigs(products, configList, activityTypes, strategy, priceMode)
 	if err != nil {
-		return &PromotionRegistrationResult{Request: firstReq, Requests: requests, Response: firstResponse, Responses: responses}, err
+		return &PromotionRegistrationResult{Request: firstReq, Requests: requests, Response: firstResponse, Responses: responses, FilterReasons: livePriceFilterReasons}, err
 	}
 
 	if err := s.enableSavedPromotionConfigs(ctx, configList, activityTypes); err != nil {
 		s.logger.Errorf("开启活动配置失败: %v", err)
-		return &PromotionRegistrationResult{Request: firstReq, Requests: requests, Response: firstResponse, Responses: responses}, fmt.Errorf("开启活动配置失败: %w", err)
+		return &PromotionRegistrationResult{Request: firstReq, Requests: requests, Response: firstResponse, Responses: responses, FilterReasons: livePriceFilterReasons}, fmt.Errorf("开启活动配置失败: %w", err)
 	}
 
 	s.logger.Infof("成功报名 %d 个产品到促销活动", len(configList))
 	return &PromotionRegistrationResult{
-		Request:   firstReq,
-		Requests:  requests,
-		Response:  firstResponse,
-		Responses: responses,
+		Request:       firstReq,
+		Requests:      requests,
+		Response:      firstResponse,
+		Responses:     responses,
+		FilterReasons: livePriceFilterReasons,
 	}, nil
 }
 

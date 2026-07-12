@@ -1957,7 +1957,7 @@ func promotionTestFloat64Ptr(value float64) *float64 {
 	return &value
 }
 
-func TestRegisterPromotionProductsUsesMinimumMultiSKUDiscountForBoth(t *testing.T) {
+func TestRegisterPromotionProductsUsesLowestSKUPriceAndHighestCostForBoth(t *testing.T) {
 	api := &promotionProductsMarketingAPIStub{
 		configListResponse: &marketing.GetConfigListResponse{
 			Code: "0", Msg: "ok", Info: &marketing.ConfigListInfo{
@@ -1977,14 +1977,14 @@ func TestRegisterPromotionProductsUsesMinimumMultiSKUDiscountForBoth(t *testing.
 		Skc:   "sh260625180761728097751",
 		Stock: 10989,
 		SkuPriceInfoList: []marketing.SkuSitePriceInfo{
-			{SkuCode: "sku-min", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 39.20, Currency: "USD", IsAvailable: true}}},
-			{SkuCode: "sku-mid", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 43.50, Currency: "USD", IsAvailable: true}}},
-			{SkuCode: "sku-deep", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 23.00, Currency: "USD", IsAvailable: true}}},
+			{SkuCode: "sku-min", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 40, Currency: "USD", IsAvailable: true}}},
+			{SkuCode: "sku-mid", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 80, Currency: "USD", IsAvailable: true}}},
+			{SkuCode: "sku-high", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 100, Currency: "USD", IsAvailable: true}}},
 		},
 		SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
-			{SkuCode: "SKU-MIN", CostPrice: 23.88, Currency: "USD"},
-			{SkuCode: "SKU-MID", CostPrice: 20.88, Currency: "USD"},
-			{SkuCode: "SKU-DEEP", CostPrice: 8.88, Currency: "USD"},
+			{SkuCode: "SKU-MIN", CostPrice: 10, Currency: "USD"},
+			{SkuCode: "SKU-MID", CostPrice: 15, Currency: "USD"},
+			{SkuCode: "SKU-HIGH", CostPrice: 30, Currency: "USD"},
 		},
 	}
 
@@ -1997,11 +1997,111 @@ func TestRegisterPromotionProductsUsesMinimumMultiSKUDiscountForBoth(t *testing.
 	if result == nil || len(result.Requests) != 2 {
 		t.Fatalf("requests = %+v, want regular and limited", result)
 	}
-	if got := result.Requests[0].ConfigList[0].DropRate; got != 38 {
-		t.Fatalf("regular drop rate = %d, want 38", got)
+	if got := result.Requests[0].ConfigList[0].DropRate; got != 24 {
+		t.Fatalf("regular drop rate = %d, want 24", got)
 	}
-	if got := result.Requests[1].ConfigList[0].DropRate; got != 39 {
-		t.Fatalf("limited drop rate = %d, want 39", got)
+	if got := result.Requests[1].ConfigList[0].DropRate; got != 25 {
+		t.Fatalf("limited drop rate = %d, want 25", got)
+	}
+}
+
+func TestRegisterPromotionProductsUsesLivePromotionSKUPricesForCandidate(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		configListResponse: &marketing.GetConfigListResponse{
+			Code: "0", Msg: "ok", Info: &marketing.ConfigListInfo{
+				Total: 1,
+				ConfigList: []marketing.ActivityConfigInfo{{
+					ID: 1, Skc: "sq-live-prices",
+					ActivityConfigList: []marketing.ActivityConfigDetail{
+						{ID: 1, ActivityType: marketing.AutoPartakeActivityTypeRegular, State: marketing.AutoPartakeConfigStateClosed},
+						{ID: 2, ActivityType: marketing.AutoPartakeActivityTypeLimited, State: marketing.AutoPartakeConfigStateClosed},
+					},
+				}},
+			},
+		},
+		promotionGoods: []marketing.PromotionGoodsData{{
+			Skc: "sq-live-prices",
+			SkuInfoList: []marketing.PromotionSkuInfo{
+				{Sku: "sku-one", USSupplyPrice: promotionTestFloat64Ptr(30)},
+				{Sku: "sku-two", USSupplyPrice: promotionTestFloat64Ptr(20)},
+			},
+		}},
+	}
+	service := &activityRegistrationServiceImpl{
+		marketingAPI: api,
+		storeService: promotionProductsStoreServiceStub{store: &listingruntime.StoreInfo{ID: 687}},
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+	product := marketing.SkcInfo{
+		Skc: "sq-live-prices", Stock: 100, UseLivePromotionSKUPrices: true,
+		SkuPriceInfoList: []marketing.SkuSitePriceInfo{
+			{SkuCode: "sku-one", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 74.8, Currency: "USD", IsAvailable: true}}},
+			{SkuCode: "sku-two", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 59.2, Currency: "USD", IsAvailable: true}}},
+		},
+		SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
+			{SkuCode: "SKU-ONE", CostPrice: 10, Currency: "USD"},
+			{SkuCode: "SKU-TWO", CostPrice: 5, Currency: "USD"},
+		},
+	}
+
+	result, err := service.RegisterPromotionProducts(t.Context(), &listingruntime.OperationStrategy{
+		StoreID: 687, ActivityPriceMode: "BREAKEVEN", ActivityPartakeType: "BOTH", ActivityStockRatio: 0.5,
+	}, "", []marketing.SkcInfo{product})
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if api.queryPromotionGoodsCalls != 1 {
+		t.Fatalf("QueryPromotionGoods calls = %d, want 1", api.queryPromotionGoodsCalls)
+	}
+	if result == nil || len(result.Requests) != 2 {
+		t.Fatalf("requests = %+v, want regular and limited", result)
+	}
+	if got := result.Requests[0].ConfigList[0].DropRate; got != 49 {
+		t.Fatalf("regular drop rate = %d, want 49 from the lowest live SKU price and highest cost", got)
+	}
+	if got := result.Requests[1].ConfigList[0].DropRate; got != 50 {
+		t.Fatalf("limited drop rate = %d, want 50 from the lowest live SKU price and highest cost", got)
+	}
+}
+
+func TestRegisterPromotionProductsFiltersCandidateWithIncompleteLiveSKUPrices(t *testing.T) {
+	api := &promotionProductsMarketingAPIStub{
+		promotionGoods: []marketing.PromotionGoodsData{{
+			Skc: "sq-live-prices-incomplete",
+			SkuInfoList: []marketing.PromotionSkuInfo{
+				{Sku: "sku-one", USSupplyPrice: promotionTestFloat64Ptr(30)},
+			},
+		}},
+	}
+	service := &activityRegistrationServiceImpl{
+		marketingAPI: api,
+		storeService: promotionProductsStoreServiceStub{store: &listingruntime.StoreInfo{ID: 687}},
+		logger:       logrus.NewEntry(logrus.New()),
+	}
+	result, err := service.RegisterPromotionProducts(t.Context(), &listingruntime.OperationStrategy{
+		StoreID: 687, ActivityPriceMode: "BREAKEVEN", ActivityPartakeType: "REGULAR",
+	}, "", []marketing.SkcInfo{{
+		Skc: "sq-live-prices-incomplete", Stock: 100, UseLivePromotionSKUPrices: true,
+		SkuPriceInfoList: []marketing.SkuSitePriceInfo{
+			{SkuCode: "sku-one", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 74.8, Currency: "USD", IsAvailable: true}}},
+			{SkuCode: "sku-two", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 59.2, Currency: "USD", IsAvailable: true}}},
+		},
+		SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
+			{SkuCode: "sku-one", CostPrice: 10, Currency: "USD"},
+			{SkuCode: "sku-two", CostPrice: 5, Currency: "USD"},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("RegisterPromotionProducts error = %v", err)
+	}
+	if result == nil || result.Request != nil {
+		t.Fatalf("result = %+v, want no promotion request", result)
+	}
+	if got := result.FilterReasons["sq-live-prices-incomplete"]; got != "活动商品实时SKU供货价不完整" {
+		t.Fatalf("filter reason = %q, want incomplete live SKU price reason", got)
+	}
+	if api.saved != nil {
+		t.Fatalf("saved request = %+v, want SaveConfig not called", api.saved)
 	}
 }
 
