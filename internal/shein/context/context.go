@@ -84,6 +84,7 @@ type ProductState struct {
 	SaleSpecResult          *ResultSaleAttribute
 	SaleAttributeSelection  *SaleAttributeSelectionState
 	ProductNameLengthLimits namelimit.Limits
+	TargetLanguages         []string
 }
 
 type APIClients struct {
