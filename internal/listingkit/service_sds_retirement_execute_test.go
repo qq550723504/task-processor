@@ -681,6 +681,15 @@ func (s *sdsRetirementProductAPIStub) ListProducts(int, int, *sheinproduct.Produ
 func (s *sdsRetirementProductAPIStub) QueryBrandList() (*sheinproduct.BrandListResponse, error) {
 	return nil, nil
 }
+func (s *sdsRetirementProductAPIStub) QueryProductNameLengthConfig(int) ([]sheinproduct.NameLengthConfigItem, error) {
+	return nil, nil
+}
+func (s *sdsRetirementProductAPIStub) QueryLanguageList() ([]sheinproduct.LanguageListItem, error) {
+	return nil, nil
+}
+func (s *sdsRetirementProductAPIStub) QuerySiteList() ([]sheinproduct.SiteListGroup, error) {
+	return nil, nil
+}
 func (s *sdsRetirementProductAPIStub) QueryStock(*sheinproduct.StockQueryRequest) (*sheinproduct.StockQueryResponse, error) {
 	return nil, nil
 }

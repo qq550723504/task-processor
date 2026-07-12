@@ -16,6 +16,15 @@ type Selection struct {
 	VariantLabel       string
 	ProductName        string
 	SelectedVariantIDs []int64
+	Variants           []VariantSurface
+}
+
+type VariantSurface struct {
+	VariantID        int64
+	PrototypeGroupID int64
+	LayerID          string
+	TemplateImageURL string
+	MaskImageURL     string
 }
 
 type GroupedSelection struct {
@@ -29,12 +38,32 @@ type Item struct {
 	TargetGroupKey   string
 	TargetGroupLabel string
 	GroupMode        string
+	SelectionIDs     []string
 }
 
 type Design struct {
 	ID               string
+	BatchID          string
+	ItemID           string
 	TargetGroupKey   string
 	TargetGroupLabel string
+	Approved         bool
+	ImageURL         string
+}
+
+type GateInput struct {
+	BatchID        string
+	BatchGroupMode string
+	Candidate      Candidate
+	Designs        []Design
+	SelectionByID  map[string]GroupedSelection
+	ItemSelections []GroupedSelection
+}
+
+type GateResult struct {
+	Eligible   bool
+	ReasonCode string
+	Message    string
 }
 
 type EvaluationInput struct {

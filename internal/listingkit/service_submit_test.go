@@ -515,6 +515,15 @@ func (s stubSheinProductAPI) ListProducts(pageNum, pageSize int, request *sheinp
 func (s stubSheinProductAPI) QueryBrandList() (*sheinproduct.BrandListResponse, error) {
 	return nil, errors.New("not implemented")
 }
+func (s stubSheinProductAPI) QueryProductNameLengthConfig(int) ([]sheinproduct.NameLengthConfigItem, error) {
+	return nil, errors.New("not implemented")
+}
+func (s stubSheinProductAPI) QueryLanguageList() ([]sheinproduct.LanguageListItem, error) {
+	return nil, errors.New("not implemented")
+}
+func (s stubSheinProductAPI) QuerySiteList() ([]sheinproduct.SiteListGroup, error) {
+	return nil, errors.New("not implemented")
+}
 func (s stubSheinProductAPI) QueryStock(request *sheinproduct.StockQueryRequest) (*sheinproduct.StockQueryResponse, error) {
 	return nil, errors.New("not implemented")
 }

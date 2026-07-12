@@ -232,6 +232,15 @@ func (s temporalStubSheinProductAPI) ListProducts(int, int, *sheinproduct.Produc
 func (s temporalStubSheinProductAPI) QueryBrandList() (*sheinproduct.BrandListResponse, error) {
 	return nil, errors.New("not implemented")
 }
+func (s temporalStubSheinProductAPI) QueryProductNameLengthConfig(int) ([]sheinproduct.NameLengthConfigItem, error) {
+	return nil, errors.New("not implemented")
+}
+func (s temporalStubSheinProductAPI) QueryLanguageList() ([]sheinproduct.LanguageListItem, error) {
+	return nil, errors.New("not implemented")
+}
+func (s temporalStubSheinProductAPI) QuerySiteList() ([]sheinproduct.SiteListGroup, error) {
+	return nil, errors.New("not implemented")
+}
 func (s temporalStubSheinProductAPI) QueryStock(*sheinproduct.StockQueryRequest) (*sheinproduct.StockQueryResponse, error) {
 	return nil, errors.New("not implemented")
 }
