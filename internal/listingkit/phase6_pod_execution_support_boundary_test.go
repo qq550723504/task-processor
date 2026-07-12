@@ -1,69 +1,115 @@
 package listingkit
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
 
 func TestPodExecutionSupportBoundary(t *testing.T) {
-	t.Parallel()
+	root := parsePodExecutionBoundaryFile(t, "pod_execution.go")
+	policy := parsePodExecutionBoundaryFile(t, "pod_execution_policy_support.go")
 
-	rootPath := "pod_execution.go"
-	policyPath := "pod_execution_policy_support.go"
-	auditPath := "pod_execution_audit_support.go"
+	assertPodExecutionImport(t, root, "task-processor/internal/product/sourcing/sdspod")
+	assertPodExecutionDelegates(t, root, "derivePodExecutionSummary", "DeriveExecution")
+	assertPodExecutionDelegates(t, root, "normalizePodExecutionSummary", "NormalizeExecution")
+	assertPodExecutionDelegates(t, policy, "podSubmissionBlocked", "SubmissionBlocked")
+	assertPodExecutionDelegates(t, policy, "podReadinessMessage", "ReadinessMessage")
 
-	rootContent, err := os.ReadFile(rootPath)
+	for _, file := range []*ast.File{root, policy} {
+		assertPodExecutionRetiredHelpersAbsent(t, file)
+	}
+
+	auditContent, err := os.ReadFile("pod_execution_audit_support.go")
 	if err != nil {
-		t.Fatalf("read root file: %v", err)
+		t.Fatal(err)
 	}
-	policyContent, err := os.ReadFile(policyPath)
-	if err != nil {
-		t.Fatalf("read policy support file: %v", err)
-	}
-	auditContent, err := os.ReadFile(auditPath)
-	if err != nil {
-		t.Fatalf("read audit support file: %v", err)
-	}
-
-	rootText := string(rootContent)
-	policyText := string(policyContent)
-	auditText := string(auditContent)
-
-	for _, snippet := range []string{
-		"func normalizePodExecutionSummary(pod *PodExecutionSummary) *PodExecutionSummary {",
-		"func ensureResultPodExecution(result *ListingKitResult, req *GenerateRequest) bool {",
-		"func derivePodExecutionSummary(current *PodExecutionSummary, sds *SDSSyncSummary, childTasks []ChildTaskState, req *GenerateRequest, updatedAt time.Time) *PodExecutionSummary {",
-		"func markPodExecutionStatus(result *ListingKitResult, status string, at time.Time) {",
-	} {
-		if !strings.Contains(rootText, snippet) {
-			t.Fatalf("root file missing seam %q", snippet)
-		}
-	}
-
-	for _, snippet := range []string{
-		"func inferPodStatusFromSDS(sds *SDSSyncSummary, childTasks []ChildTaskState, dependencyMode string) (status string, reason string, fallback string, found bool) {",
-		"func podSubmissionBlocked(pod *PodExecutionSummary) bool {",
-		"func podReadinessMessage(pod *PodExecutionSummary) string {",
-	} {
-		if strings.Contains(rootText, snippet) {
-			t.Fatalf("root file still contains policy helper %q", snippet)
-		}
-		if !strings.Contains(policyText, snippet) {
-			t.Fatalf("policy support file missing helper %q", snippet)
-		}
-	}
-
 	for _, snippet := range []string{
 		"func podExecutionEqual(left *PodExecutionSummary, right *PodExecutionSummary) bool {",
 		"func normalizePodExecutionAuditHistory(items []PodExecutionAuditEvent) []PodExecutionAuditEvent {",
 		"func recordPodExecutionAudit(before *PodExecutionSummary, after *PodExecutionSummary, updatedAt time.Time) {",
 	} {
-		if strings.Contains(rootText, snippet) {
-			t.Fatalf("root file still contains audit helper %q", snippet)
+		if !strings.Contains(string(auditContent), snippet) {
+			t.Fatalf("audit support file missing seam %q", snippet)
 		}
-		if !strings.Contains(auditText, snippet) {
-			t.Fatalf("audit support file missing helper %q", snippet)
+	}
+}
+
+func parsePodExecutionBoundaryFile(t *testing.T, path string) *ast.File {
+	t.Helper()
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return file
+}
+
+func assertPodExecutionImport(t *testing.T, file *ast.File, want string) {
+	t.Helper()
+	for _, spec := range file.Imports {
+		path, err := strconv.Unquote(spec.Path.Value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if path == want {
+			return
+		}
+	}
+	t.Fatalf("%s should import %q", file.Name.Name, want)
+}
+
+func assertPodExecutionDelegates(t *testing.T, file *ast.File, functionName, selectorName string) {
+	t.Helper()
+	for _, decl := range file.Decls {
+		function, ok := decl.(*ast.FuncDecl)
+		if !ok || function.Name == nil || function.Name.Name != functionName {
+			continue
+		}
+		delegates := false
+		ast.Inspect(function.Body, func(node ast.Node) bool {
+			call, ok := node.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			selector, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || selector.Sel == nil || selector.Sel.Name != selectorName {
+				return true
+			}
+			identifier, ok := selector.X.(*ast.Ident)
+			if ok && identifier.Name == "sdspod" {
+				delegates = true
+				return false
+			}
+			return true
+		})
+		if delegates {
+			return
+		}
+		t.Fatalf("%s should call sdspod.%s", functionName, selectorName)
+	}
+	t.Fatalf("missing %s", functionName)
+}
+
+func assertPodExecutionRetiredHelpersAbsent(t *testing.T, file *ast.File) {
+	t.Helper()
+	retired := map[string]struct{}{
+		"inferPodStatusFromSDS":              {},
+		"inferActivePodStatusFromChildTasks": {},
+		"inferPodStatusFromChildTasks":       {},
+		"mapSDSStatusToPODStatus":            {},
+		"podFailureStatusForMode":            {},
+	}
+	for _, decl := range file.Decls {
+		function, ok := decl.(*ast.FuncDecl)
+		if !ok || function.Name == nil {
+			continue
+		}
+		if _, found := retired[function.Name.Name]; found {
+			t.Fatalf("retired root policy helper %s remains in %s", function.Name.Name, file.Name.Name)
 		}
 	}
 }
