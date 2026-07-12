@@ -6,7 +6,7 @@ Approved direction for reducing root ListingKit ownership while improving Studio
 
 ## Goal
 
-Create a dedicated internal/listingkit/studiobatch domain package. It will own Studio batch business concepts and deterministic draft/candidate rules. Root internal/listingkit remains the compatibility, task-orchestration, repository, and HTTP assembly shell.
+Create a dedicated internal/listingkit/studiobatch domain package for ListingKit-specific Studio batch candidate semantics. Reuse the existing internal/listing/studio package for generic draft, naming, status, and batch-run rules. Root internal/listingkit remains the compatibility, task-orchestration, repository, and HTTP assembly shell.
 
 ## Problem
 
@@ -25,15 +25,15 @@ internal/listingkit
   -> delegates deterministic Studio batch domain work
 
 internal/listingkit/studiobatch
-  -> domain inputs and outputs for draft/candidate behavior
-  -> draft validation, normalization, status derivation
-  -> candidate grouping and deterministic detail/status projection
-  -> domain errors and stable contracts for later generation/run services
+  -> ListingKit-specific candidate ownership and grouping semantics
+  -> stable candidate fingerprints and rejection categories
+  -> deterministic candidate projections over neutral values
+  -> domain errors and stable contracts for later ListingKit-specific flows
   -> no root ListingKit import, HTTP, GORM, Temporal, or remote client
 
 internal/listing/studio
-  -> remains the reusable Studio reference/design utility package
-  -> is reused where it already owns normalization rules
+  -> owns generic batch draft, naming, status, and completion policy
+  -> is reused directly; no equivalent policy is copied into studiobatch
 ~~~
 
 The child package never imports its parent. Root ListingKit converts legacy request/session/record structures into the new domain input/output types. This avoids an import cycle and keeps public JSON and GORM models stable.
@@ -42,12 +42,9 @@ The child package never imports its parent. Root ListingKit converts legacy requ
 
 ### studiobatch owns
 
-- batch draft intent independent of transport and persistence;
 - selected target groups and candidate selection identity;
-- validation of required selection identity;
-- normalization of deterministic string/list fields needed by a draft;
-- draft status derivation;
-- candidate grouping, status grouping, and deterministic detail projections;
+- item-specific selection ownership and group-mode fallback;
+- candidate grouping, rejection, stable fingerprinting, and deterministic projections;
 - domain error categories used by adapters.
 
 ### Root ListingKit retains in this slice
@@ -59,38 +56,38 @@ The child package never imports its parent. Root ListingKit converts legacy requ
 - remote Studio submission, polling, materialization, approval, task creation, retry/recovery, and batch-run execution;
 - HTTP/API handler and service method signatures.
 
-## First Implementation Slice: Draft and Candidate Policy
+## First Implementation Slice: Candidate Policy
 
-The first implementation is limited to deterministic behavior currently mixed into taskStudioBatchDraftService and its candidate helpers.
+The first implementation is limited to deterministic behavior in task_studio_batch_candidate_support.go. Generic draft behavior remains in internal/listing/studio, which already owns NormalizeBatchDesignType, ShouldDropCreateGenerationJobs, ResolveBatchName, AggregateBatchStatus, ResolveBatchStatus, and batch-run completion.
 
-Create internal/listingkit/studiobatch with platform-neutral draft, selection, candidate group, status, and error types. Its entrypoint accepts a draft input and returns a draft result with no persistence side effects.
+Create internal/listingkit/studiobatch with neutral selection, item, design, candidate, rejection, and error types. Its entrypoint accepts a candidate evaluation input and returns candidates plus structured rejections with no persistence side effects.
 
-PrepareDraft must:
+The candidate policy must:
 
-1. reject a missing or invalid selected variant;
-2. normalize the design type with the existing internal/listing/studio rule;
-3. normalize deterministic string/list fields;
-4. derive the same draft status as the legacy path;
-5. preserve candidate and approved-design ordering and identifiers.
+1. retain item-specific selection ownership;
+2. apply existing internal/listing/studio design-type normalization rather than duplicate it;
+3. resolve group-mode fallback deterministically;
+4. preserve candidate/rejection ordering and identifiers;
+5. produce the same stable candidate fingerprint inputs as the legacy path.
 
-The root draft service continues to create/load sessions, enforce expected update timestamps, derive a batch name, persist mapped results, replace designs, log, and load the existing public detail response.
+The root service continues to convert existing batch/item/design/session structures, hydrate SDS product details, resolve durable task links, persist task links, create tasks, log, and load public details.
 
 ## Migration Sequence
 
-### Phase 1 — Domain contract and pure draft/candidate policy
+### Phase 1 — Candidate contract and pure candidate policy
 
-- characterize current draft validation, normalization, status, and candidate projection behavior;
-- introduce studiobatch models, errors, and pure rules with package-local tests;
-- replace root deterministic helpers with an adapter call;
+- characterize current item ownership, group-mode, candidate/rejection, and fingerprint behavior;
+- introduce studiobatch models, errors, and pure candidate rules with package-local tests;
+- replace root deterministic candidate helpers with an adapter call;
 - add an AST import guard prohibiting studiobatch from importing root ListingKit, HTTP, GORM, Temporal, or remote clients;
-- preserve root facade and persistence behavior exactly.
+- preserve root facade, generic studio policy, hydration, and persistence behavior exactly.
 
 ### Phase 2 — Draft lifecycle service behind ports
 
-- define repository-facing ports in studiobatch, owned by the consumer;
-- move list/get/upsert/delete decision flow into the domain service;
+- define repository-facing ports for ListingKit-specific candidate lookup/claim behavior where they become necessary;
+- move only candidate evaluation decision flow into the domain service;
 - keep root implementations of ports over existing legacy repositories and public DTO adapters;
-- preserve optimistic concurrency, batch-name behavior, and responses.
+- preserve candidate ownership, durable-link behavior, and responses.
 
 ### Phase 3 — Generation, approval, and task creation
 
@@ -109,28 +106,28 @@ Each phase is a separate design/plan/verification cycle. Phase 1 must merge befo
 
 - Existing ListingKit service and API method signatures remain unchanged.
 - Existing JSON field names, GORM table names, records, and repository interfaces remain unchanged.
-- Existing batch IDs, session IDs, timestamps, ordering, and persistence sequencing remain unchanged.
+- Existing batch IDs, session IDs, candidate keys, timestamps, ordering, and persistence sequencing remain unchanged.
 - Existing SDS, SHEIN, remote Studio, browser, Temporal, and task-creation behavior remain unchanged.
 - No database migration or external dependency is introduced in Phase 1.
 
 ## Error Handling
 
-studiobatch returns typed domain errors for invalid draft input only. The root adapter maps them to existing ListingKit errors and messages. Repository, remote, and persistence errors remain owned by root ListingKit.
+studiobatch returns typed domain errors for invalid candidate input only. The root adapter maps them to existing ListingKit errors and messages. Repository, remote, hydration, and persistence errors remain owned by root ListingKit.
 
 ## Testing Strategy
 
 Phase 1 uses characterization and TDD:
 
-- package-local table tests for invalid selection, design-type normalization, status derivation, ordering, and idempotent normalization;
-- root adapter tests comparing the old public draft result and persisted payload shape;
+- package-local table tests for item selection ownership, design-type normalization reuse, group-mode fallback, rejection category, candidate order, and candidate fingerprint input;
+- root adapter tests comparing legacy candidate/rejection outputs and task-link key inputs;
 - AST import guard for the new package;
-- root boundary test ensuring the draft service delegates deterministic preparation instead of recreating rules;
+- root boundary test ensuring candidate support delegates deterministic evaluation instead of recreating rules;
 - focused studiobatch and ListingKit tests, followed by the existing ListingKit suite.
 
 ## Non-Goals
 
 - Migrating the entire Studio batch implementation in one change.
-- Moving GORM models, database repositories, or public JSON DTOs in Phase 1.
+- Moving GORM models, database repositories, public JSON DTOs, or draft persistence in Phase 1.
 - Changing batch naming, IDs, optimistic locking, logging, or timestamps.
 - Changing remote Studio submission, polling, materialization, approval, task creation, retry, recovery, or batch-run execution.
 - Changing SDS POD, SHEIN, Temporal, or HTTP behavior.
@@ -144,11 +141,11 @@ A child package that accepts root ListingKit DTOs would import its parent.
 
 Mitigation: define narrow studiobatch values and convert in a root adapter.
 
-### Behavioral drift in legacy draft persistence
+### Behavioral drift in legacy candidate creation
 
-The current service combines pure normalization with session/database mutation.
+The current candidate flow combines pure ownership rules with SDS hydration, durable-link lookup, and task persistence.
 
-Mitigation: move only pure policy first; retain session loading, expected-update checks, UUIDs, naming, persistence, replacement, and logging in root.
+Mitigation: move only pure candidate policy first; retain hydration, durable-link lookup, persistence, task creation, and logging in root.
 
 ### Accidental scope expansion into remote workflows
 
@@ -160,9 +157,9 @@ Mitigation: keep those flows out of Phase 1; introduce explicit ports only in la
 
 The first slice is complete when:
 
-- internal/listingkit/studiobatch owns a tested, pure draft/candidate policy;
+- internal/listingkit/studiobatch owns a tested, pure ListingKit candidate policy and reuses internal/listing/studio generic policy;
 - root ListingKit delegates that policy through a thin adapter;
 - public API/JSON, GORM records, persistence, remote execution, and task behavior are unchanged;
 - the new package has no dependency on root ListingKit or runtime/infrastructure packages;
-- exact legacy draft outputs remain characterized and passing;
+- exact legacy candidate and rejection outputs remain characterized and passing;
 - the root package has less deterministic Studio batch policy and a documented next migration phase.
