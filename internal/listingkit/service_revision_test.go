@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1375,6 +1376,49 @@ func TestRefreshSheinDerivedStateClearsAttributeCacheForRegeneration(t *testing.
 
 	if resolver.clearCalls != 1 {
 		t.Fatalf("clear calls = %d, want 1 before regenerating attributes", resolver.clearCalls)
+	}
+}
+
+func TestRefreshSheinDerivedStateAppliesSDSStyleToEveryCanonicalVariant(t *testing.T) {
+	styleName := "  Studio B6C753EB  "
+	task := &Task{
+		Request: &GenerateRequest{Options: &GenerateOptions{
+			SDS: &SDSSyncOptions{StyleName: styleName},
+		}},
+		Result: &ListingKitResult{
+			CanonicalProduct: &canonical.Product{Variants: []canonical.Variant{
+				{SKU: "SKU-1"},
+				{SKU: "SKU-2"},
+			}},
+			Shein: &SheinPackage{RequestDraft: &SheinRequestDraft{}},
+		},
+	}
+
+	(&service{}).refreshSheinDerivedState(task, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein:    &SheinRevisionInput{RegenerateAttributes: true},
+	})
+
+	wantTrace := canonical.FieldTrace{
+		Sources: []canonical.Source{{
+			Type:   canonical.SourceDerived,
+			Detail: "SDS studio AI style dimension",
+		}},
+		Confidence:  0.94,
+		IsInferred:  false,
+		NeedsReview: false,
+	}
+	for i, variant := range task.Result.CanonicalProduct.Variants {
+		attribute, ok := variant.Attributes["ai_style"]
+		if !ok {
+			t.Fatalf("variant[%d] ai_style missing", i)
+		}
+		if attribute.Value != "Studio B6C753EB" {
+			t.Fatalf("variant[%d] ai_style = %q, want Studio B6C753EB", i, attribute.Value)
+		}
+		if !reflect.DeepEqual(attribute.Trace, wantTrace) {
+			t.Fatalf("variant[%d] ai_style trace = %+v, want %+v", i, attribute.Trace, wantTrace)
+		}
 	}
 }
 
