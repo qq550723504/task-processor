@@ -31,3 +31,16 @@ func TestFinalReviewRequiredSkipsSaveDraftOnly(t *testing.T) {
 		}
 	}
 }
+
+func TestSubmitActionAllowsReadinessBlockersForSaveDraftOnly(t *testing.T) {
+	t.Parallel()
+
+	if !SubmitActionAllowsReadinessBlockers(" save_draft ") {
+		t.Fatal("SubmitActionAllowsReadinessBlockers(save_draft) = false, want true")
+	}
+	for _, action := range []string{"publish", "", "unknown"} {
+		if SubmitActionAllowsReadinessBlockers(action) {
+			t.Fatalf("SubmitActionAllowsReadinessBlockers(%q) = true, want false", action)
+		}
+	}
+}

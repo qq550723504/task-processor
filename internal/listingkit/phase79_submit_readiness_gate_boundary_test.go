@@ -50,15 +50,20 @@ func TestSheinSubmitReadinessGateBoundary(t *testing.T) {
 		callNames := readNamedFunctionCallNames(t, "submit_readiness_gate_shein.go", "validateSheinSubmitReadinessGates")
 
 		assertSourceContainsAll(t, source, []string{
+			"if sheinmarketpub.SubmitActionAllowsReadinessBlockers(action) {",
 			"return listingsubmission.ValidateReadinessGates(",
 			"sheinSubmitReadinessSnapshot(readiness)",
 			"adaptSheinSubmitFreshnessValidator(validateFreshness)",
 			"ErrSubmitBlocked",
 		})
 		assertFunctionCallsContainAll(t, callNames, []string{
+			"SubmitActionAllowsReadinessBlockers",
 			"ValidateReadinessGates",
 			"sheinSubmitReadinessSnapshot",
 			"adaptSheinSubmitFreshnessValidator",
+		})
+		assertSourceExcludesAll(t, source, []string{
+			"strings.EqualFold",
 		})
 	})
 }

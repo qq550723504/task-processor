@@ -7,6 +7,11 @@ func FinalReviewRequired(action string) bool {
 	return !strings.EqualFold(strings.TrimSpace(action), "save_draft")
 }
 
+// SubmitActionAllowsReadinessBlockers reports whether readiness blockers can be bypassed for the action.
+func SubmitActionAllowsReadinessBlockers(action string) bool {
+	return !FinalReviewRequired(action)
+}
+
 // FinalReviewMessage returns the readiness message for final review confirmation.
 func FinalReviewMessage(action string) string {
 	if !FinalReviewRequired(action) {
