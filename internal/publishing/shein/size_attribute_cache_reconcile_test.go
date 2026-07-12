@@ -92,3 +92,28 @@ func TestSizeAttributeCacheKeyIgnoresMeasuredValuesButTracksShape(t *testing.T) 
 		t.Fatalf("SizeAttributeCacheKey did not change after shape changed: %q", got)
 	}
 }
+
+func TestSizeAttributeReviewApplicableToSaleResolutionAcceptsCompletePublishedRows(t *testing.T) {
+	t.Parallel()
+
+	sID, fiveXLID := 568, 1430561
+	pkg := &Package{SaleAttributeResolution: &SaleAttributeResolution{
+		SecondaryAttributeID: 87,
+		SKUValueAssignments: map[string]ResolvedSaleAttribute{
+			"s":   {AttributeID: 87, AttributeValueID: &sID},
+			"5xl": {AttributeID: 87, AttributeValueID: &fiveXLID},
+		},
+	}}
+	review := &SizeAttributeReview{Ready: true, Attributes: []sheinproduct.SizeAttribute{
+		{AttributeID: 55, RelateSaleAttributeID: 87, RelateSaleAttributeValueID: sID, AttributeExtraValue: "69.5"},
+		{AttributeID: 55, RelateSaleAttributeID: 87, RelateSaleAttributeValueID: fiveXLID, AttributeExtraValue: "80"},
+	}}
+
+	if !SizeAttributeReviewApplicableToSaleResolution(pkg, review) {
+		t.Fatal("complete published size rows were rejected")
+	}
+	review.Attributes[1].RelateSaleAttributeValueID = 999999
+	if SizeAttributeReviewApplicableToSaleResolution(pkg, review) {
+		t.Fatal("size row with unknown sale value id was accepted")
+	}
+}
