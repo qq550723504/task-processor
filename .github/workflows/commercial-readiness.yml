@@ -1,0 +1,371 @@
+name: ListingKit Commercial Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Immutable 40-character commit SHA to validate.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commercial-readiness-${{ inputs.commit_sha }}
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  NODE_VERSION: "22"
+  K8S_OVERLAY_PATH: deployments/kubernetes/listingkit-workbench/overlays/prod
+
+jobs:
+  prepare:
+    name: Validate Target and Record Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.resolve.outputs.commit_sha }}
+    steps:
+      - name: Validate immutable commit SHA input
+        shell: bash
+        run: |
+          set -euo pipefail
+          commit_sha="${{ inputs.commit_sha }}"
+          if [[ ! "$commit_sha" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "commit_sha must be a full 40-character hexadecimal commit SHA." >&2
+            exit 1
+          fi
+
+      - name: Checkout requested commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/listingkit-ui/package-lock.json
+
+      - name: Resolve checked-out commit
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          requested="${{ inputs.commit_sha }}"
+          resolved="$(git rev-parse HEAD)"
+          if [[ "${requested,,}" != "${resolved,,}" ]]; then
+            echo "checkout resolved $resolved instead of requested $requested" >&2
+            exit 1
+          fi
+          echo "commit_sha=$resolved" >> "$GITHUB_OUTPUT"
+
+      - name: Record release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          {
+            echo "# Commercial Readiness Metadata"
+            echo
+            echo "- Commit SHA: $(git rev-parse HEAD)"
+            echo "- Repository: $GITHUB_REPOSITORY"
+            echo "- Workflow run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "- Go: $(go version)"
+            echo "- Node: $(node --version)"
+            echo "- npm: $(npm --version)"
+          } | tee evidence/metadata.md
+          sha256sum go.mod go.sum web/listingkit-ui/package-lock.json | tee evidence/lockfiles.sha256
+          git show --no-patch --format=fuller HEAD | tee evidence/commit.txt
+
+      - name: Upload target metadata
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: commercial-readiness-metadata-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  backend:
+    name: Backend Validation
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pinned commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Prepare evidence directory
+        run: mkdir -p evidence
+
+      - name: Run full Go test suite
+        id: go_tests
+        shell: bash
+        run: |
+          set -o pipefail
+          go test ./... -count=1 2>&1 | tee evidence/go-test.log
+
+      - name: Run ListingKit race tests
+        id: race_tests
+        shell: bash
+        run: |
+          set -o pipefail
+          go test -race ./internal/app/runtime/listingcontrol -run TestControlPlaneService -count=1 2>&1 | tee evidence/listingcontrol-race.log
+          go test -race ./internal/listingadmin -run "TestConcurrentClaimForDispatchOnlyOneWorkerWins|TestConcurrentRollbackDispatchOnlyOriginalQueuedClaimIsRestoredOnce|TestConcurrentRecoveryOnlyUpdatesStillEligibleRowsOnce" -count=1 2>&1 | tee evidence/listingadmin-race.log
+
+      - name: Build maintained runtime commands
+        id: build
+        shell: bash
+        run: |
+          set -o pipefail
+          make build-all 2>&1 | tee evidence/build-all.log
+
+      - name: Classify backend validation result
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          {
+            echo "# Backend Validation Result"
+            echo
+            echo "- Full Go tests: ${{ steps.go_tests.outcome }}"
+            echo "- Race tests: ${{ steps.race_tests.outcome }}"
+            echo "- Build: ${{ steps.build.outcome }}"
+          } | tee evidence/failure-classification.md
+
+      - name: Upload backend evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: commercial-readiness-backend-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  frontend:
+    name: Frontend Validation
+    needs: prepare
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web/listingkit-ui
+    steps:
+      - name: Checkout pinned commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/listingkit-ui/package-lock.json
+
+      - name: Prepare evidence directory
+        run: mkdir -p evidence
+
+      - name: Install dependencies
+        id: install
+        run: npm ci
+
+      - name: Run lint
+        id: lint
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run lint 2>&1 | tee evidence/lint.log
+
+      - name: Run typecheck
+        id: typecheck
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run typecheck 2>&1 | tee evidence/typecheck.log
+
+      - name: Run tests
+        id: test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee evidence/test.log
+
+      - name: Build frontend
+        id: build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee evidence/build.log
+
+      - name: Classify frontend validation result
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          {
+            echo "# Frontend Validation Result"
+            echo
+            echo "- Dependency install: ${{ steps.install.outcome }}"
+            echo "- Lint: ${{ steps.lint.outcome }}"
+            echo "- Typecheck: ${{ steps.typecheck.outcome }}"
+            echo "- Tests: ${{ steps.test.outcome }}"
+            echo "- Build: ${{ steps.build.outcome }}"
+          } | tee evidence/failure-classification.md
+
+      - name: Upload frontend evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: commercial-readiness-frontend-${{ github.run_id }}
+          path: web/listingkit-ui/evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  images:
+    name: Container Build Validation
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pinned commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Prepare evidence directory
+        run: mkdir -p evidence
+
+      - name: Build API image without push
+        id: api_image
+        shell: bash
+        run: |
+          set -o pipefail
+          docker build -f deployments/docker/Dockerfile.product-listing-api --tag commercial-readiness/product-listing-api:${{ needs.prepare.outputs.commit_sha }} . 2>&1 | tee evidence/api-image-build.log
+
+      - name: Build UI image without push
+        id: ui_image
+        shell: bash
+        run: |
+          set -o pipefail
+          docker build -f deployments/docker/Dockerfile.listingkit-ui --tag commercial-readiness/listingkit-ui:${{ needs.prepare.outputs.commit_sha }} . 2>&1 | tee evidence/ui-image-build.log
+
+      - name: Classify container build result
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          {
+            echo "# Container Build Validation Result"
+            echo
+            echo "- API image: ${{ steps.api_image.outcome }}"
+            echo "- UI image: ${{ steps.ui_image.outcome }}"
+          } | tee evidence/failure-classification.md
+
+      - name: Upload container build evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: commercial-readiness-images-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  manifests:
+    name: Kubernetes Manifest Validation
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout pinned commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.commit_sha }}
+
+      - name: Set up Kustomize
+        uses: imranismail/setup-kustomize@v2
+
+      - name: Render production manifest
+        id: render
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p evidence
+          kustomize build deployments/kubernetes/listingkit-workbench/overlays/prod | tee evidence/listingkit-workbench-prod.yaml
+
+      - name: Classify manifest validation result
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          {
+            echo "# Kubernetes Manifest Validation Result"
+            echo
+            echo "- Kustomize render: ${{ steps.render.outcome }}"
+          } | tee evidence/failure-classification.md
+
+      - name: Upload manifest evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: commercial-readiness-manifests-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
+
+  summary:
+    name: Commercial Readiness Summary
+    needs:
+      - prepare
+      - backend
+      - frontend
+      - images
+      - manifests
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Write validation summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          {
+            echo "# Commercial Readiness Summary"
+            echo
+            echo "- Target metadata: ${{ needs.prepare.result }}"
+            echo "- Backend validation: ${{ needs.backend.result }}"
+            echo "- Frontend validation: ${{ needs.frontend.result }}"
+            echo "- Container build validation: ${{ needs.images.result }}"
+            echo "- Manifest validation: ${{ needs.manifests.result }}"
+          } | tee evidence/summary.md
+
+          if [[ "${{ needs.prepare.result }}" != "success" || \
+                "${{ needs.backend.result }}" != "success" || \
+                "${{ needs.frontend.result }}" != "success" || \
+                "${{ needs.images.result }}" != "success" || \
+                "${{ needs.manifests.result }}" != "success" ]]; then
+            echo "Commercial readiness validation failed; inspect the evidence artifacts." >&2
+            exit 1
+          fi
+
+      - name: Upload commercial readiness summary
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: commercial-readiness-summary-${{ github.run_id }}
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 30
