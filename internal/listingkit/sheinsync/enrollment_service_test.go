@@ -282,8 +282,8 @@ func TestExecuteTimeLimitedEnrollmentPassesVariantSDSCostsToAdapter(t *testing.T
 	require.Len(t, adapter.calls, 1)
 	require.Len(t, adapter.calls[0].Candidates, 1)
 	require.Equal(t, []SheinSKUCostPrice{
-		{SKUCode: "I5MQJB40OEZ38E", CostPrice: 10.88},
-		{SKUCode: "I6MQJB40O5Q46G", CostPrice: 9.88},
+		{SKUCode: "I5mqjb40oez38e", CostPrice: 10.88},
+		{SKUCode: "I6mqjb40o5q46g", CostPrice: 9.88},
 	}, adapter.calls[0].Candidates[0].SKUCostPriceInfoList)
 }
 

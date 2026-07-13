@@ -1,6 +1,9 @@
 package sheinsync
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 type sheinEnrollmentCandidatePricingRepository interface {
 	ListSyncedProducts(context.Context, *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error)
@@ -68,9 +71,41 @@ func refreshSheinEnrollmentCandidatePricing(
 			continue
 		}
 		out[i].EffectiveCostPrice = cloneSheinSyncFloat64(product.EffectiveCostPrice)
-		out[i].SKUCostPriceInfoList = cloneSheinSKUCostPriceList(product.SKUCostPriceInfoList)
 		out[i].PriceSnapshot = refreshSheinEnrollmentPriceSnapshot(out[i].PriceSnapshot, product)
+		out[i].SKUCostPriceInfoList = alignSheinEnrollmentSKUCostCodes(
+			out[i].PriceSnapshot,
+			product.SKUCostPriceInfoList,
+		)
 		out[i].CalculatedProfitRate = calculateSheinCandidateProfitRate(out[i].EffectiveCostPrice, out[i].PriceSnapshot)
 	}
 	return out, nil
+}
+
+// alignSheinEnrollmentSKUCostCodes preserves the SKU spelling from the price snapshot.
+// SDS cost identities are normalized to uppercase, while SHEIN price snapshots retain
+// the upstream spelling that should also be used for display and enrollment payloads.
+func alignSheinEnrollmentSKUCostCodes(
+	priceSnapshot string,
+	costs []SheinSKUCostPrice,
+) []SheinSKUCostPrice {
+	if len(costs) == 0 {
+		return nil
+	}
+
+	priceSKUByKey := make(map[string]string)
+	for _, price := range parsePromotionCandidatePriceSnapshot(priceSnapshot).SKUPrices {
+		skuCode := strings.TrimSpace(price.SKUCode)
+		if skuCode == "" {
+			continue
+		}
+		priceSKUByKey[strings.ToUpper(skuCode)] = skuCode
+	}
+
+	out := cloneSheinSKUCostPriceList(costs)
+	for i := range out {
+		if skuCode, ok := priceSKUByKey[strings.ToUpper(strings.TrimSpace(out[i].SKUCode))]; ok {
+			out[i].SKUCode = skuCode
+		}
+	}
+	return out
 }

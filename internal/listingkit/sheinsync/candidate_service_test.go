@@ -660,14 +660,14 @@ func TestSheinCandidateServiceListCandidatesUsesCurrentEnrollmentSKUPricesAndCos
 		EffectiveCostPrice: float64Ptr(30),
 		Currency:           "USD",
 		PriceSnapshot: `{"sale_price":99,"currency":"USD","sku_prices":[
-			{"sku_code":"SKU-A","sale_price":99,"currency":"USD"},
-			{"sku_code":"SKU-B","sale_price":88,"currency":"USD"}
+			{"sku_code":"sku-a","sale_price":99,"currency":"USD"},
+			{"sku_code":"sku-b","sale_price":88,"currency":"USD"}
 		]}`,
 		SupplyPrice:         float64Ptr(31.62),
 		SupplyPriceCurrency: "USD",
 		SupplyPriceSnapshot: `{"sku_supply_prices":[
-			{"sku_code":"SKU-A","supply_price":27.38,"currency":"USD"},
-			{"sku_code":"SKU-B","supply_price":31.62,"currency":"USD"}
+			{"sku_code":"sku-a","supply_price":27.38,"currency":"USD"},
+			{"sku_code":"sku-b","supply_price":31.62,"currency":"USD"}
 		]}`,
 		InventorySnapshot: `{"available":20}`,
 		SiteSnapshot: `{"sku_info":[
@@ -719,12 +719,12 @@ func TestSheinCandidateServiceListCandidatesUsesCurrentEnrollmentSKUPricesAndCos
 	priceSnapshot := parsePromotionCandidatePriceSnapshot(rows[0].PriceSnapshot)
 	require.Equal(t, 31.62, priceSnapshot.SalePrice)
 	require.Equal(t, []promotionCandidateSKUPriceSnapshot{
-		{SKUCode: "SKU-A", SalePrice: 27.38, Currency: "USD"},
-		{SKUCode: "SKU-B", SalePrice: 31.62, Currency: "USD"},
+		{SKUCode: "sku-a", SalePrice: 27.38, Currency: "USD"},
+		{SKUCode: "sku-b", SalePrice: 31.62, Currency: "USD"},
 	}, priceSnapshot.SKUPrices)
 	require.Equal(t, []SheinSKUCostPrice{
-		{SKUCode: "SKU-A", CostPrice: 19.99},
-		{SKUCode: "SKU-B", CostPrice: 22.50},
+		{SKUCode: "sku-a", CostPrice: 19.99},
+		{SKUCode: "sku-b", CostPrice: 22.50},
 	}, rows[0].SKUCostPriceInfoList)
 }
 
