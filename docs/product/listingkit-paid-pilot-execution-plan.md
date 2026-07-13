@@ -564,6 +564,14 @@ storage_bytes_current
 
 首发不建议按每次 AI 内部调用直接向客户计费，但必须内部记录 AI 成本。
 
+**已冻结的首发政策**
+
+- 详细目录见 [`listingkit-paid-pilot-product-catalog.md`](./listingkit-paid-pilot-product-catalog.md)。唯一首发套餐为 `paid_pilot`，仅限邀请制和人工开通。
+- SDS、设计生成、商品图和保存草稿在租户准入后可用；1688 保持关闭。
+- `shein_publish` 是独立 entitlement，默认关闭。
+- 成功才提交用量；失败、取消、平台拒绝和工程重放不计费；storage 按当前占用计量。
+- 本阶段只冻结政策；PAY-041～PAY-044 完成前不得启用收费，因此不勾选 M4 的 ledger、入口执行、商业台账或对账验收项。
+
 ### PAY-041：实现幂等 usage event ledger
 
 **目标**
