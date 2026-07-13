@@ -43,6 +43,20 @@ func (s stubTitleAIClient) GetDefaultModel() string {
 	return "stub"
 }
 
+func TestBuildSheinListingCopyGeneratesMissingEnglishDescriptionWithAI(t *testing.T) {
+	copy := buildSheinListingCopy(context.Background(), &canonical.Product{
+		Title:        "Pillow Cover",
+		CategoryPath: []string{"Home", "Pillow Covers"},
+	}, "Pillow Cover", stubTitleAIClient{response: "Soft polyester pillow cover with a concealed zipper."})
+
+	if got, want := copy.Description, "Soft polyester pillow cover with a concealed zipper."; got != want {
+		t.Fatalf("description = %q, want %q", got, want)
+	}
+	if strings.Contains(strings.ToLower(copy.Description), "gift-ready selling") {
+		t.Fatalf("description = %q, must not contain fixed fallback copy", copy.Description)
+	}
+}
+
 func TestBuildSheinListingCopyKeepsStructuredEnglishTitle(t *testing.T) {
 	canonical := &canonical.Product{
 		Title: "Flannel non-slip floor mat",
