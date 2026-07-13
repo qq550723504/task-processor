@@ -812,6 +812,14 @@ func (s *stubListingKitHandler) RetryTaskChildTask(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "retried"})
 }
 
+func (s *stubListingKitHandler) GetTaskSDSRepair(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "repairable"})
+}
+
+func (s *stubListingKitHandler) RepairAndRetryTaskSDS(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "retried"})
+}
+
 func (s *stubListingKitHandler) ExecuteTaskGenerationAction(c *gin.Context) {
 	s.executeGenerationActionCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": c.Param("task_id"), "status": "executed"})
