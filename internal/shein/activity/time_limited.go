@@ -399,18 +399,21 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 			}
 		}
 
-		costAndStockList = append(costAndStockList, marketing.CostAndStockInfo{
-			Skc:                g.Skc,
-			AttendNum:          stockNum, // 活动库存
-			StockNum:           stockNum, // 也设为活动库存
-			CenterList:         config.EffectiveCenterList,
-			IsSaleAttribute:    g.IsSaleAttribute,
-			PromotionIDList:    nil,
-			CostPrice:          g.USSupplyPrice,
-			MaxProductActPrice: g.MaxUSSupplyPrice,
-			ProductActPrice:    activityPrice,
-			AddSkuList:         addSkuList,
-		})
+		costAndStock := marketing.CostAndStockInfo{
+			Skc:             g.Skc,
+			AttendNum:       stockNum, // 活动库存
+			StockNum:        stockNum, // 也设为活动库存
+			CenterList:      config.EffectiveCenterList,
+			IsSaleAttribute: g.IsSaleAttribute,
+			PromotionIDList: nil,
+			AddSkuList:      addSkuList,
+		}
+		if g.IsSaleAttribute != 1 {
+			costAndStock.CostPrice = g.USSupplyPrice
+			costAndStock.MaxProductActPrice = g.MaxUSSupplyPrice
+			costAndStock.ProductActPrice = activityPrice
+		}
+		costAndStockList = append(costAndStockList, costAndStock)
 
 		addedCount++
 

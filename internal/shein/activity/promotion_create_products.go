@@ -230,9 +230,14 @@ func promotionGoodsFromProductSnapshots(products []marketing.SkcInfo, _ string) 
 		if len(skuInfoList) == 0 {
 			continue
 		}
+		isSaleAttribute := 0
+		if len(skuInfoList) > 1 {
+			isSaleAttribute = 1
+		}
 		goods = append(goods, marketing.PromotionGoodsData{
 			Skc:              skc,
 			InventoryNum:     product.Stock,
+			IsSaleAttribute:  isSaleAttribute,
 			USSupplyPrice:    supplyPrice,
 			MaxUSSupplyPrice: supplyPrice,
 			SkuInfoList:      skuInfoList,
