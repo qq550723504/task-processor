@@ -166,6 +166,68 @@ func (s *sheinEnrollmentService) refreshCandidateCostOverrides(
 }
 
 func refreshSheinEnrollmentPriceSnapshot(existing string, product SheinSyncedProductRecord) string {
+	supplyPrices := parseSheinEnrollmentSKUSupplyPrices(product.SupplyPriceSnapshot)
+	if len(supplyPrices) == 0 {
+		return refreshSheinEnrollmentAggregateSupplyPrice(existing, product)
+	}
+
+	priceSnapshot := parsePromotionCandidatePriceSnapshot(product.PriceSnapshot)
+	if priceSnapshot.SalePrice <= 0 {
+		priceSnapshot = parsePromotionCandidatePriceSnapshot(existing)
+	}
+
+	subSiteBySKU := make(map[string]string, len(priceSnapshot.SKUPrices))
+	for _, skuPrice := range priceSnapshot.SKUPrices {
+		skuCode := strings.ToUpper(strings.TrimSpace(skuPrice.SKUCode))
+		if skuCode != "" {
+			subSiteBySKU[skuCode] = skuPrice.SubSite
+		}
+	}
+
+	refreshedSKUPrices := make([]promotionCandidateSKUPriceSnapshot, 0, len(supplyPrices))
+	var fallbackPrice float64
+	fallbackCurrency := ""
+	for _, supplyPrice := range supplyPrices {
+		skuCode := strings.TrimSpace(supplyPrice.SKUCode)
+		if skuCode == "" || supplyPrice.SupplyPrice <= 0 {
+			continue
+		}
+		if supplyPrice.SupplyPrice > fallbackPrice {
+			fallbackPrice = supplyPrice.SupplyPrice
+			fallbackCurrency = strings.TrimSpace(supplyPrice.Currency)
+		}
+		refreshedSKUPrices = append(refreshedSKUPrices, promotionCandidateSKUPriceSnapshot{
+			SKUCode:   skuCode,
+			SalePrice: supplyPrice.SupplyPrice,
+			Currency:  strings.TrimSpace(supplyPrice.Currency),
+			SubSite:   subSiteBySKU[strings.ToUpper(skuCode)],
+		})
+	}
+	if len(refreshedSKUPrices) == 0 {
+		return existing
+	}
+
+	if product.SupplyPrice != nil && *product.SupplyPrice > 0 {
+		priceSnapshot.SalePrice = *product.SupplyPrice
+	} else {
+		priceSnapshot.SalePrice = fallbackPrice
+	}
+	if strings.TrimSpace(product.SupplyPriceCurrency) != "" {
+		priceSnapshot.Currency = strings.TrimSpace(product.SupplyPriceCurrency)
+	} else if fallbackCurrency != "" {
+		priceSnapshot.Currency = fallbackCurrency
+	} else if strings.TrimSpace(product.Currency) != "" {
+		priceSnapshot.Currency = strings.TrimSpace(product.Currency)
+	}
+	priceSnapshot.SKUPrices = refreshedSKUPrices
+	encoded, err := json.Marshal(priceSnapshot)
+	if err != nil {
+		return existing
+	}
+	return string(encoded)
+}
+
+func refreshSheinEnrollmentAggregateSupplyPrice(existing string, product SheinSyncedProductRecord) string {
 	if product.SupplyPrice == nil || *product.SupplyPrice <= 0 {
 		return existing
 	}
@@ -190,6 +252,19 @@ func refreshSheinEnrollmentPriceSnapshot(existing string, product SheinSyncedPro
 		return existing
 	}
 	return string(encoded)
+}
+
+func parseSheinEnrollmentSKUSupplyPrices(raw string) []SheinSKUSupplyPrice {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var payload struct {
+		SKUSupplyPrices []SheinSKUSupplyPrice `json:"sku_supply_prices"`
+	}
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return nil
+	}
+	return payload.SKUSupplyPrices
 }
 
 func filterExecutableSheinCandidates(
