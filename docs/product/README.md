@@ -9,14 +9,16 @@
 3. [ListingKit 产品路线图](./listingkit-product-roadmap.md)
 4. [ListingKit 下一阶段执行计划](./listingkit-next-execution-plan.md)
 5. [ListingKit 付费商业试点上线执行计划](./listingkit-paid-pilot-execution-plan.md)
-6. [ListingKit 错误恢复手册](./listingkit-error-recovery.md)
-7. [ListingKit 错误恢复 SOP](./ops/listingkit-error-recovery-sop.md)
-8. [ListingKit 真实接口验收报告模板](./validation/listingkit-real-api-validation-report-template.md)
+6. [ListingKit 付费试点产品目录与用量政策](./listingkit-paid-pilot-product-catalog.md)
+7. [ListingKit 错误恢复手册](./listingkit-error-recovery.md)
+8. [ListingKit 错误恢复 SOP](./ops/listingkit-error-recovery-sop.md)
+9. [ListingKit 真实接口验收报告模板](./validation/listingkit-real-api-validation-report-template.md)
 
 ## 当前执行入口
 
 - 日常产品能力、运营效率和平台扩展按 `listingkit-next-execution-plan.md` 理解。
 - 准备邀请制付费使用时，安全、租户隔离、提交幂等、订阅计量、数据保护、发布门禁和试点放行标准以 `listingkit-paid-pilot-execution-plan.md` 为准。
+- `listingkit-paid-pilot-product-catalog.md` 定义唯一 `paid_pilot` 套餐、正式发布 entitlement 和首发用量政策。
 - 付费试点计划不代表已经达到公开注册或公众自助 SaaS 的 General Availability 标准。
 
 ## 面向读者
