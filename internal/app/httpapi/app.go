@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"task-processor/internal/httproute"
 
@@ -49,7 +48,7 @@ func Run(logger *logrus.Logger, options Options) error {
 		logger.Infof("received signal %v, shutting down", sig)
 	}
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), options.shutdownTimeout())
 	defer shutdownCancel()
 
 	if err := bootstrap.server.Shutdown(shutdownCtx); err != nil {

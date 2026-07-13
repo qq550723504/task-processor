@@ -37,9 +37,10 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	}()
 
 	options := httpapi.Options{
-		ConfigPath:     "../../config/config-test.yaml",
-		Port:           port,
-		ShutdownSignal: shutdownCh,
+		ConfigPath:      "../../config/config-test.yaml",
+		Port:            port,
+		ShutdownSignal:  shutdownCh,
+		ShutdownTimeout: time.Second,
 	}
 
 	resultCh := make(chan error, 1)
