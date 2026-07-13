@@ -74,6 +74,31 @@ describe("SheinSyncedProductsTable", () => {
     expect(screen.queryByText(/^利润 /)).not.toBeInTheDocument();
   });
 
+  it("shows every SKU price from the local sync snapshot", () => {
+    render(
+      <SheinSyncedProductsTable
+        isLoading={false}
+        items={[
+          {
+            id: 4,
+            product_name_multi: "Multi SKU SHEIN product",
+            skc_name: "sh260627121580076835358",
+            price_snapshot:
+              '{"sale_price":28.1,"currency":"USD","sku_prices":[{"sku_code":"I5mqvuk7p0fzpi","sale_price":28.1,"currency":"USD"},{"sku_code":"I3mqvuk7pdcxlv","sale_price":31.5,"currency":"USD"}]}',
+            cost_price_source: "none",
+            shelf_status: "ON_SHELF",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("同步快照 SKU 价格（非实时后台价）")).toBeInTheDocument();
+    expect(screen.getByText("SKU: I5mqvuk7p0fzpi")).toBeInTheDocument();
+    expect(screen.getByText("$28.10")).toBeInTheDocument();
+    expect(screen.getByText("SKU: I3mqvuk7pdcxlv")).toBeInTheDocument();
+    expect(screen.getByText("$31.50")).toBeInTheDocument();
+  });
+
   it("shows inactive products as off shelf even when legacy shelf status is stale", () => {
     render(
       <SheinSyncedProductsTable

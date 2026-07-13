@@ -2,6 +2,11 @@
 
 const SHEIN_PRICE_LOCALE = "en-US";
 
+export type SheinSKUPriceSnapshot = {
+  skuCode: string;
+  price: string;
+};
+
 export function formatSheinPriceSnapshot(value?: string | null) {
   const text = value?.trim();
   if (!text) {
@@ -49,5 +54,57 @@ function formatCurrencyAmount(currency: string, amount: number, fallback: string
     }).format(amount);
   } catch {
     return fallback;
+  }
+}
+
+export function getSheinSKUPriceSnapshots(
+  value?: string | null,
+): SheinSKUPriceSnapshot[] {
+  const text = value?.trim();
+  if (!text) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(text) as {
+      currency?: unknown;
+      sku_prices?: unknown;
+    };
+    if (typeof parsed !== "object" || parsed === null || !Array.isArray(parsed.sku_prices)) {
+      return [];
+    }
+
+    const snapshotCurrency = typeof parsed.currency === "string" ? parsed.currency : "";
+    return parsed.sku_prices.flatMap((entry) => {
+      if (typeof entry !== "object" || entry === null) {
+        return [];
+      }
+
+      const skuPrice = entry as {
+        sku_code?: unknown;
+        sale_price?: unknown;
+        currency?: unknown;
+      };
+      const skuCode = typeof skuPrice.sku_code === "string" ? skuPrice.sku_code.trim() : "";
+      const amount = Number(skuPrice.sale_price);
+      const currency =
+        typeof skuPrice.currency === "string" && skuPrice.currency.trim()
+          ? skuPrice.currency.trim()
+          : snapshotCurrency;
+      if (!skuCode || !Number.isFinite(amount)) {
+        return [];
+      }
+
+      return [
+        {
+          skuCode,
+          price: currency
+            ? formatCurrencyAmount(currency, amount, `${currency} ${amount.toFixed(2)}`)
+            : amount.toFixed(2),
+        },
+      ];
+    });
+  } catch {
+    return [];
   }
 }

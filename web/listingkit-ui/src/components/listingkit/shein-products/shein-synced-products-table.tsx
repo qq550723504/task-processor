@@ -6,7 +6,10 @@ import {
   formatProductTimes,
   getCostSourceLabel,
 } from "@/components/listingkit/shein-enrollment/shein-product-table-formatters";
-import { formatSheinPriceSnapshot } from "@/components/listingkit/shein-enrollment/shein-price-snapshot";
+import {
+  formatSheinPriceSnapshot,
+  getSheinSKUPriceSnapshots,
+} from "@/components/listingkit/shein-enrollment/shein-price-snapshot";
 import {
   Table,
   TableBody,
@@ -142,6 +145,7 @@ export function SheinSyncedProductsTable({
               const times = formatProductTimes(item);
               const profit = getProfitSnapshot(item);
               const shelfStatus = getShelfStatusView(item);
+              const skuPrices = getSheinSKUPriceSnapshots(item.price_snapshot);
 
               return (
                 <TableRow key={item.id}>
@@ -185,6 +189,21 @@ export function SheinSyncedProductsTable({
                   <TableCell>
                     <div className="space-y-1 text-sm text-zinc-900">
                       <div>售价 {formatSheinPriceSnapshot(item.price_snapshot)}</div>
+                      {skuPrices.length > 0 ? (
+                        <div className="space-y-1 border-t border-zinc-100 pt-2 text-xs text-zinc-600">
+                          <div className="font-medium text-zinc-700">
+                            同步快照 SKU 价格（非实时后台价）
+                          </div>
+                          {skuPrices.map((skuPrice) => (
+                            <div className="flex items-center justify-between gap-3" key={skuPrice.skuCode}>
+                              <span className="truncate">SKU: {skuPrice.skuCode}</span>
+                              <span className="shrink-0 font-medium text-zinc-900">
+                                {skuPrice.price}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                       <div className="text-xs text-zinc-600">
                         供货价 {formatSupplyPrice(item)}
                       </div>
