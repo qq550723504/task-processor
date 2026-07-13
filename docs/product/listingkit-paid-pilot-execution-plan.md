@@ -80,7 +80,7 @@
 只有以下条件全部成立，并完成 PAY-070～PAY-072 的逐租户放行，才能对外收取试点费用：
 
 ```text
-[ ] 固定 release SHA 的后端、前端、race、build 和镜像验证结果可见。
+[x] 固定 release SHA 的后端、前端、race、build 和镜像验证结果可见。
 [ ] 所有外部 ListingKit / Product Sourcing 路由只信任验证后的身份上下文。
 [ ] 零已知跨租户读写路径。
 [ ] 零已知重复远端草稿或重复发布路径。
@@ -178,11 +178,11 @@ M0 固定基线和发布证据
 **验收标准**
 
 ```text
-[ ] 可以对一个不可变 SHA 手动触发完整验证。
-[ ] 四个正式 command 全部构建。
-[ ] API 和 UI 镜像可以在不 push 的情况下完成 build。
-[ ] 输出可以关联到具体 workflow run 和 artifact。
-[ ] 失败不会被通知步骤或非关键上传步骤掩盖。
+[x] 可以对一个不可变 SHA 手动触发完整验证。
+[x] 四个正式 command 全部构建。
+[x] API 和 UI 镜像可以在不 push 的情况下完成 build。
+[x] 输出可以关联到具体 workflow run 和 artifact。
+[x] 失败不会被通知步骤或非关键上传步骤掩盖。
 ```
 
 ### PAY-001：记录首个商业候选基线
