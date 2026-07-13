@@ -158,9 +158,10 @@ func TestHTTPAPITypesDoesNotOwnRunOptions(t *testing.T) {
 
 	for _, marker := range []string{
 		"type Options struct",
-		"ConfigPath     string",
-		"Port           int",
-		"ShutdownSignal chan os.Signal",
+		"ConfigPath",
+		"Port",
+		"ShutdownSignal",
+		"ShutdownTimeout",
 	} {
 		require.NotContains(t, typesContent, marker)
 	}
@@ -170,9 +171,10 @@ func TestHTTPAPITypesDoesNotOwnRunOptions(t *testing.T) {
 	optionsContent := string(optionsSrc)
 	for _, marker := range []string{
 		"type Options struct",
-		"ConfigPath     string",
-		"Port           int",
-		"ShutdownSignal chan os.Signal",
+		"ConfigPath",
+		"Port",
+		"ShutdownSignal",
+		"ShutdownTimeout",
 	} {
 		require.Contains(t, optionsContent, marker)
 	}
