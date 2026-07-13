@@ -108,3 +108,56 @@ export function getSheinSKUPriceSnapshots(
     return [];
   }
 }
+
+export function getSheinSKUSupplyPriceSnapshots(
+  value?: string | null,
+): SheinSKUPriceSnapshot[] {
+  const text = value?.trim();
+  if (!text) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(text) as {
+      sku_supply_prices?: unknown;
+    };
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !Array.isArray(parsed.sku_supply_prices)
+    ) {
+      return [];
+    }
+
+    return parsed.sku_supply_prices.flatMap((entry) => {
+      if (typeof entry !== "object" || entry === null) {
+        return [];
+      }
+
+      const skuSupplyPrice = entry as {
+        sku_code?: unknown;
+        supply_price?: unknown;
+        currency?: unknown;
+      };
+      const skuCode =
+        typeof skuSupplyPrice.sku_code === "string" ? skuSupplyPrice.sku_code.trim() : "";
+      const amount = Number(skuSupplyPrice.supply_price);
+      const currency =
+        typeof skuSupplyPrice.currency === "string" ? skuSupplyPrice.currency.trim() : "";
+      if (!skuCode || !Number.isFinite(amount) || amount <= 0) {
+        return [];
+      }
+
+      return [
+        {
+          skuCode,
+          price: currency
+            ? formatCurrencyAmount(currency, amount, `${currency} ${amount.toFixed(2)}`)
+            : amount.toFixed(2),
+        },
+      ];
+    });
+  } catch {
+    return [];
+  }
+}

@@ -116,6 +116,22 @@ func buildSheinSiteSnapshot(product sheinproduct.ProductListItem, skc sheinprodu
 	return string(encoded)
 }
 
+func marshalSheinSKUSupplyPrices(prices []SheinSKUSupplyPrice) string {
+	if len(prices) == 0 {
+		return ""
+	}
+	payload := struct {
+		SKUSupplyPrices []SheinSKUSupplyPrice `json:"sku_supply_prices"`
+	}{
+		SKUSupplyPrices: prices,
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	return string(encoded)
+}
+
 func sheinInventorySKUVariantLabel(saleNameInfo []sheinproduct.SkuSaleNameInfo) string {
 	if len(saleNameInfo) == 0 {
 		return ""

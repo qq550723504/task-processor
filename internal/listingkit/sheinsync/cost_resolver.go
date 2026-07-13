@@ -3,6 +3,7 @@ package sheinsync
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -10,8 +11,9 @@ import (
 )
 
 type resolvedSheinCost struct {
-	CostPrice *float64
-	Currency  string
+	CostPrice       *float64
+	Currency        string
+	SKUSupplyPrices []SheinSKUSupplyPrice
 }
 
 type SheinCostResolver interface {
@@ -71,11 +73,20 @@ func (r *sheinProductCostResolver) ResolveAutoCosts(ctx context.Context, product
 			bestPrice float64
 			hasPrice  bool
 			currency  string
+			skuPrices []SheinSKUSupplyPrice
 		)
 		for _, skuCost := range item.SkuCostInfoList {
+			skuCode := skuCost.SkuCode
 			parsedPrice, parseErr := strconv.ParseFloat(skuCost.CostPriceInfo.CostPrice, 64)
 			if parseErr != nil || parsedPrice <= 0 {
 				continue
+			}
+			if skuCode != "" {
+				skuPrices = append(skuPrices, SheinSKUSupplyPrice{
+					SKUCode:     skuCode,
+					SupplyPrice: parsedPrice,
+					Currency:    skuCost.CostPriceInfo.Currency,
+				})
 			}
 			if !hasPrice || parsedPrice > bestPrice {
 				bestPrice = parsedPrice
@@ -86,11 +97,15 @@ func (r *sheinProductCostResolver) ResolveAutoCosts(ctx context.Context, product
 		if !hasPrice {
 			continue
 		}
+		sort.Slice(skuPrices, func(i, j int) bool {
+			return skuPrices[i].SKUCode < skuPrices[j].SKUCode
+		})
 
 		price := bestPrice
 		resolved[item.SkcName] = resolvedSheinCost{
-			CostPrice: &price,
-			Currency:  currency,
+			CostPrice:       &price,
+			Currency:        currency,
+			SKUSupplyPrices: skuPrices,
 		}
 	}
 

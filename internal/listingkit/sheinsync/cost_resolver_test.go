@@ -73,6 +73,34 @@ func TestSheinCostResolverReturnsEmptyCostsWhenForbiddenRetriesExhausted(t *test
 	require.Equal(t, 3, productAPI.calls)
 }
 
+func TestSheinCostResolverPreservesEverySKUSupplyPrice(t *testing.T) {
+	t.Parallel()
+
+	productAPI := &retryingCostPriceProductAPI{
+		response: makeCostPriceQueryResponse([]sheinproduct.SkcCostData{{
+			SkcName: "skc-1",
+			SkuCostInfoList: []sheinproduct.SkuCostInfo{
+				{SkuCode: "sku-small", CostPriceInfo: sheinproduct.CostPrice{CostPrice: "12.50", Currency: "USD"}},
+				{SkuCode: "sku-large", CostPriceInfo: sheinproduct.CostPrice{CostPrice: "18.25", Currency: "USD"}},
+			},
+		}}),
+	}
+	resolver := &sheinProductCostResolver{productAPI: productAPI, retryDelays: nil}
+
+	resolved, err := resolver.ResolveAutoCosts(context.Background(), sheinproduct.ProductListItem{
+		SpuName: "spu-1",
+		SkcInfoList: []sheinproduct.SkcInfoItem{
+			{SkcName: "skc-1"},
+		},
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, []SheinSKUSupplyPrice{
+		{SKUCode: "sku-large", SupplyPrice: 18.25, Currency: "USD"},
+		{SKUCode: "sku-small", SupplyPrice: 12.50, Currency: "USD"},
+	}, resolved["skc-1"].SKUSupplyPrices)
+}
+
 type retryingCostPriceProductAPI struct {
 	sheinSyncServiceProductAPIStub
 	calls                 int

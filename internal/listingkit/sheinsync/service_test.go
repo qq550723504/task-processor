@@ -230,6 +230,13 @@ func TestSyncSheinOnShelfProductsPersistsSheinSupplyPriceSeparatelyFromCost(t *t
 							Currency:  "USD",
 						},
 					},
+					{
+						SkuCode: "SKU-SUPPLY-SMALL",
+						CostPriceInfo: sheinproduct.CostPrice{
+							CostPrice: "19.20",
+							Currency:  "USD",
+						},
+					},
 				},
 			},
 		}),
@@ -251,6 +258,12 @@ func TestSyncSheinOnShelfProductsPersistsSheinSupplyPriceSeparatelyFromCost(t *t
 	require.NotNil(t, rows[0].SupplyPrice)
 	require.Equal(t, 37.2, *rows[0].SupplyPrice)
 	require.Equal(t, "USD", rows[0].SupplyPriceCurrency)
+	require.JSONEq(t, `{
+		"sku_supply_prices":[
+			{"sku_code":"SKU-SUPPLY","supply_price":37.2,"currency":"USD"},
+			{"sku_code":"SKU-SUPPLY-SMALL","supply_price":19.2,"currency":"USD"}
+		]
+	}`, rows[0].SupplyPriceSnapshot)
 	require.JSONEq(t, `{
 		"sale_price":42.8,
 		"currency":"USD",

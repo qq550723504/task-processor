@@ -2,6 +2,12 @@ package sheinsync
 
 import "time"
 
+type SheinSKUSupplyPrice struct {
+	SKUCode     string  `json:"sku_code"`
+	SupplyPrice float64 `json:"supply_price"`
+	Currency    string  `json:"currency"`
+}
+
 type SheinSyncedProductRecord struct {
 	ID                      int64                `json:"id" gorm:"primaryKey"`
 	TenantID                int64                `json:"tenant_id" gorm:"index:idx_listingkit_shein_synced_products_scope,priority:1;uniqueIndex:uk_listingkit_shein_synced_products_store_skc,priority:1"`
@@ -24,6 +30,7 @@ type SheinSyncedProductRecord struct {
 	PriceSnapshot           string               `json:"price_snapshot,omitempty" gorm:"type:text"`
 	SupplyPrice             *float64             `json:"supply_price,omitempty"`
 	SupplyPriceCurrency     string               `json:"supply_price_currency,omitempty" gorm:"type:varchar(16)"`
+	SupplyPriceSnapshot     string               `json:"supply_price_snapshot,omitempty" gorm:"type:text"`
 	InventorySnapshot       string               `json:"inventory_snapshot,omitempty" gorm:"type:text"`
 	SiteSnapshot            string               `json:"site_snapshot,omitempty" gorm:"type:text"`
 	InventorySyncAttributes string               `json:"inventory_sync_attributes,omitempty" gorm:"type:text"`

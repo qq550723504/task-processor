@@ -9,6 +9,7 @@ import {
 import {
   formatSheinPriceSnapshot,
   getSheinSKUPriceSnapshots,
+  getSheinSKUSupplyPriceSnapshots,
 } from "@/components/listingkit/shein-enrollment/shein-price-snapshot";
 import {
   Table,
@@ -26,14 +27,6 @@ function formatCostPrice(value?: number | null) {
   }
 
   return value.toFixed(2);
-}
-
-function formatSupplyPrice(item: SheinSyncedProductRecord) {
-  if (item.supply_price == null) {
-    return "-";
-  }
-  const currency = item.supply_price_currency?.trim() || item.currency?.trim();
-  return `${item.supply_price.toFixed(2)}${currency ? ` ${currency}` : ""}`;
 }
 
 function getProfitSnapshot(item: SheinSyncedProductRecord) {
@@ -146,6 +139,9 @@ export function SheinSyncedProductsTable({
               const profit = getProfitSnapshot(item);
               const shelfStatus = getShelfStatusView(item);
               const skuPrices = getSheinSKUPriceSnapshots(item.price_snapshot);
+              const skuSupplyPrices = getSheinSKUSupplyPriceSnapshots(
+                item.supply_price_snapshot,
+              );
 
               return (
                 <TableRow key={item.id}>
@@ -204,8 +200,25 @@ export function SheinSyncedProductsTable({
                           ))}
                         </div>
                       ) : null}
-                      <div className="text-xs text-zinc-600">
-                        供货价 {formatSupplyPrice(item)}
+                      <div className="space-y-1 border-t border-zinc-100 pt-2 text-xs text-zinc-600">
+                        <div className="font-medium text-zinc-700">
+                          SKU 供货价（SHEIN 供货价接口）
+                        </div>
+                        {skuSupplyPrices.length > 0 ? (
+                          skuSupplyPrices.map((skuSupplyPrice) => (
+                            <div
+                              className="flex items-center justify-between gap-3"
+                              key={skuSupplyPrice.skuCode}
+                            >
+                              <span className="truncate">SKU: {skuSupplyPrice.skuCode}</span>
+                              <span className="shrink-0 font-medium text-zinc-900">
+                                {skuSupplyPrice.price}
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <div>SKU 供货价：下次同步后可见</div>
+                        )}
                       </div>
                       <div className="text-xs text-zinc-600">
                         成本 {formatCostPrice(item.effective_cost_price)}

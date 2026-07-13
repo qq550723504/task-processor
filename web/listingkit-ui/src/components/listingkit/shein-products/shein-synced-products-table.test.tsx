@@ -68,7 +68,8 @@ describe("SheinSyncedProductsTable", () => {
     );
 
     expect(screen.getByText("售价 $42.80")).toBeInTheDocument();
-    expect(screen.getByText("供货价 37.20 USD")).toBeInTheDocument();
+    expect(screen.queryByText("供货价 37.20 USD")).not.toBeInTheDocument();
+    expect(screen.getByText("SKU 供货价：下次同步后可见")).toBeInTheDocument();
     expect(screen.getByText("成本 -")).toBeInTheDocument();
     expect(screen.queryByText(/^利润率/)).not.toBeInTheDocument();
     expect(screen.queryByText(/^利润 /)).not.toBeInTheDocument();
@@ -97,6 +98,31 @@ describe("SheinSyncedProductsTable", () => {
     expect(screen.getByText("$28.10")).toBeInTheDocument();
     expect(screen.getByText("SKU: I3mqvuk7pdcxlv")).toBeInTheDocument();
     expect(screen.getByText("$31.50")).toBeInTheDocument();
+  });
+
+  it("shows every SKU supply price from the SHEIN supply price snapshot", () => {
+    render(
+      <SheinSyncedProductsTable
+        isLoading={false}
+        items={[
+          {
+            id: 5,
+            product_name_multi: "Multi SKU SHEIN product",
+            skc_name: "sh260627121580076835358",
+            supply_price_snapshot:
+              '{"sku_supply_prices":[{"sku_code":"I5mqvuk7p0fzpi","supply_price":12.5,"currency":"USD"},{"sku_code":"I3mqvuk7pdcxlv","supply_price":18.25,"currency":"USD"}]}',
+            cost_price_source: "none",
+            shelf_status: "ON_SHELF",
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("SKU 供货价（SHEIN 供货价接口）")).toBeInTheDocument();
+    expect(screen.getByText("SKU: I5mqvuk7p0fzpi")).toBeInTheDocument();
+    expect(screen.getByText("$12.50")).toBeInTheDocument();
+    expect(screen.getByText("SKU: I3mqvuk7pdcxlv")).toBeInTheDocument();
+    expect(screen.getByText("$18.25")).toBeInTheDocument();
   });
 
   it("shows inactive products as off shelf even when legacy shelf status is stale", () => {

@@ -166,6 +166,7 @@ func sheinSyncedProductAssignments(row listingkit.SheinSyncedProductRecord) map[
 		"price_snapshot":            row.PriceSnapshot,
 		"supply_price":              row.SupplyPrice,
 		"supply_price_currency":     row.SupplyPriceCurrency,
+		"supply_price_snapshot":     row.SupplyPriceSnapshot,
 		"inventory_snapshot":        row.InventorySnapshot,
 		"site_snapshot":             row.SiteSnapshot,
 		"inventory_sync_attributes": row.InventorySyncAttributes,
