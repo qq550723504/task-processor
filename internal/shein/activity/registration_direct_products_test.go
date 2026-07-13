@@ -329,7 +329,14 @@ func TestRegisterPromotionProductsAcceptsPromotionMultiSkuDifferentPrices(t *tes
 	if api.created == nil || len(api.created.AddCostAndStockInfoList) != 1 {
 		t.Fatalf("created request = %+v, want one product", api.created)
 	}
-	createdSKUs := api.created.AddCostAndStockInfoList[0].AddSkuList
+	createdProduct := api.created.AddCostAndStockInfoList[0]
+	if createdProduct.IsSaleAttribute != 1 {
+		t.Fatalf("is_sale_attribute = %d, want 1 for a multi-SKU activity", createdProduct.IsSaleAttribute)
+	}
+	if createdProduct.CostPrice != 0 || createdProduct.MaxProductActPrice != 0 || createdProduct.ProductActPrice != 0 {
+		t.Fatalf("multi-SKU product-level prices = %+v, want zero so each add_sku_list price takes effect", createdProduct)
+	}
+	createdSKUs := createdProduct.AddSkuList
 	if len(createdSKUs) != 2 {
 		t.Fatalf("created SKU list = %+v, want two entries", createdSKUs)
 	}
@@ -1028,8 +1035,12 @@ func TestRegisterPromotionProductsUsesSavedSupplyPriceWithoutQueryingGoods(t *te
 	if api.created == nil || len(api.created.AddCostAndStockInfoList) != 1 {
 		t.Fatalf("created request = %+v, want one SKC", api.created)
 	}
-	if got := api.created.AddCostAndStockInfoList[0].CostPrice; got != 82.16 {
-		t.Fatalf("created supply price = %.2f, want 82.16", got)
+	created := api.created.AddCostAndStockInfoList[0]
+	if created.IsSaleAttribute != 1 {
+		t.Fatalf("is_sale_attribute = %d, want 1 for multiple SKU prices", created.IsSaleAttribute)
+	}
+	if created.CostPrice != 0 || created.MaxProductActPrice != 0 || created.ProductActPrice != 0 {
+		t.Fatalf("multi-SKU product-level prices = %+v, want zero", created)
 	}
 }
 
@@ -1306,8 +1317,11 @@ func TestRegisterPromotionProductsUsesSkuPricesForSaleAttributeGoods(t *testing.
 		t.Fatalf("created request = %+v, want one sale-attribute SKC", api.created)
 	}
 	created := api.created.AddCostAndStockInfoList[0]
-	if created.IsSaleAttribute != 0 || len(created.AddSkuList) != 2 {
+	if created.IsSaleAttribute != 1 || len(created.AddSkuList) != 2 {
 		t.Fatalf("created sale attribute item = %+v, want two SKU rows", created)
+	}
+	if created.CostPrice != 0 || created.MaxProductActPrice != 0 || created.ProductActPrice != 0 {
+		t.Fatalf("multi-SKU product-level prices = %+v, want zero", created)
 	}
 	if got := created.AddSkuList[0].CostPrice; got != 31.68 {
 		t.Fatalf("first SKU create cost price = %.2f, want 31.68", got)
