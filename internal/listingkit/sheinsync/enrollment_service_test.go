@@ -757,7 +757,7 @@ func TestExecuteSheinActivityEnrollmentUsesLatestSDSCostGroupOverride(t *testing
 	require.Equal(t, 29.99, *candidates[0].EffectiveCostPrice)
 }
 
-func TestExecuteSheinActivityEnrollmentUsesSupplyPriceAsOriginalPriceWithManualSDSCost(t *testing.T) {
+func TestExecuteSheinActivityEnrollmentUsesStoredSKUPricesAsOriginalPricesWithManualSDSCost(t *testing.T) {
 	t.Parallel()
 
 	repo := newSheinEnrollmentRepoStub([]SheinActivityCandidateRecord{
@@ -784,8 +784,9 @@ func TestExecuteSheinActivityEnrollmentUsesSupplyPriceAsOriginalPriceWithManualS
 			StoreID:             870,
 			SKCName:             "sg260618173076361709498",
 			SupplierCode:        "JJ0529207001-5CC441F3",
-			SupplyPrice:         sheinEnrollmentFloat64Ptr(53.95),
+			SupplyPrice:         sheinEnrollmentFloat64Ptr(31.62),
 			SupplyPriceCurrency: "USD",
+			SupplyPriceSnapshot: `{"sku_supply_prices":[{"sku_code":"sku-small","supply_price":27.38,"currency":"USD"},{"sku_code":"sku-large","supply_price":31.62,"currency":"USD"}]}`,
 			AutoCostPrice:       sheinEnrollmentFloat64Ptr(34.77),
 			EffectiveCostPrice:  sheinEnrollmentFloat64Ptr(34.77),
 			Currency:            "USD",
@@ -825,14 +826,14 @@ func TestExecuteSheinActivityEnrollmentUsesSupplyPriceAsOriginalPriceWithManualS
 	require.NotNil(t, adapter.calls[0].Candidates[0].EffectiveCostPrice)
 	require.Equal(t, 19.99, *adapter.calls[0].Candidates[0].EffectiveCostPrice)
 	price, currency := parsePromotionPriceSnapshot(adapter.calls[0].Candidates[0].PriceSnapshot)
-	require.Equal(t, 53.95, price)
+	require.Equal(t, 31.62, price)
 	require.Equal(t, "USD", currency)
 	var refreshed promotionCandidatePriceSnapshot
 	require.NoError(t, json.Unmarshal([]byte(adapter.calls[0].Candidates[0].PriceSnapshot), &refreshed))
-	require.Equal(t, 53.95, refreshed.SalePrice)
+	require.Equal(t, 31.62, refreshed.SalePrice)
 	require.Equal(t, []promotionCandidateSKUPriceSnapshot{
-		{SKUCode: "sku-small", SalePrice: 29.9, Currency: "USD"},
-		{SKUCode: "sku-large", SalePrice: 34.9, Currency: "USD"},
+		{SKUCode: "sku-small", SalePrice: 27.38, Currency: "USD"},
+		{SKUCode: "sku-large", SalePrice: 31.62, Currency: "USD"},
 	}, refreshed.SKUPrices)
 
 	candidates := repo.savedCandidates()
@@ -840,7 +841,7 @@ func TestExecuteSheinActivityEnrollmentUsesSupplyPriceAsOriginalPriceWithManualS
 	require.NotNil(t, candidates[0].EffectiveCostPrice)
 	require.Equal(t, 19.99, *candidates[0].EffectiveCostPrice)
 	price, currency = parsePromotionPriceSnapshot(candidates[0].PriceSnapshot)
-	require.Equal(t, 53.95, price)
+	require.Equal(t, 31.62, price)
 	require.Equal(t, "USD", currency)
 }
 
