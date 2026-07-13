@@ -211,7 +211,7 @@ func filterPromotionGoodsBySKC(goods []marketing.PromotionGoodsData, selected []
 // promotionGoodsFromProductSnapshots builds the registration payload source from
 // the locally synchronized product snapshot. The SKC supply price and the
 // per-SKU customer prices have different meanings and must remain separate.
-func promotionGoodsFromProductSnapshots(products []marketing.SkcInfo, currency string) []marketing.PromotionGoodsData {
+func promotionGoodsFromProductSnapshots(products []marketing.SkcInfo, _ string) []marketing.PromotionGoodsData {
 	goods := make([]marketing.PromotionGoodsData, 0, len(products))
 	for _, product := range products {
 		skc := strings.TrimSpace(product.Skc)
@@ -219,9 +219,6 @@ func promotionGoodsFromProductSnapshots(products []marketing.SkcInfo, currency s
 			continue
 		}
 		supplyPrice := product.SupplyPrice
-		if supplyPrice <= 0 {
-			supplyPrice = promotionProductSalePrice(product, currency)
-		}
 		skuInfoList := make([]marketing.PromotionSkuInfo, 0, len(product.SkuPriceInfoList))
 		for _, skuPrice := range product.SkuPriceInfoList {
 			skuCode := strings.TrimSpace(skuPrice.SkuCode)
@@ -230,7 +227,7 @@ func promotionGoodsFromProductSnapshots(products []marketing.SkcInfo, currency s
 			}
 			skuInfoList = append(skuInfoList, marketing.PromotionSkuInfo{Sku: skuCode})
 		}
-		if supplyPrice <= 0 || len(skuInfoList) == 0 {
+		if len(skuInfoList) == 0 {
 			continue
 		}
 		goods = append(goods, marketing.PromotionGoodsData{
@@ -263,20 +260,9 @@ func enrichPromotionGoodsFromProductSnapshots(
 			enriched = append(enriched, item)
 			continue
 		}
-		fallbackPrice := promotionProductSalePrice(product, currency)
-		if fallbackPrice <= 0 {
-			fallbackPrice = promotionProductSKUFallbackSalePrice(product, currency)
-		}
-		if fallbackPrice > 0 {
-			item.USSupplyPrice = fallbackPrice
-		}
-		if fallbackPrice > 0 {
-			item.MaxUSSupplyPrice = fallbackPrice
-		}
 		if item.InventoryNum <= 0 && product.Stock > 0 {
 			item.InventoryNum = product.Stock
 		}
-		item.SkuInfoList = enrichPromotionSKUPricesFromProductSnapshot(item.SkuInfoList, product, configCurrencyOrDefault(currency), fallbackPrice)
 		enriched = append(enriched, item)
 	}
 	return enriched
@@ -290,94 +276,60 @@ func configCurrencyOrDefault(currency string) string {
 	return currency
 }
 
-func enrichPromotionSKUPricesFromProductSnapshot(
-	skus []marketing.PromotionSkuInfo,
-	product marketing.SkcInfo,
-	preferredCurrency string,
-	fallbackPrice float64,
-) []marketing.PromotionSkuInfo {
-	if len(skus) == 0 {
-		return skus
-	}
-	priceBySKU := make(map[string]marketing.SitePriceInfo, len(product.SkuPriceInfoList))
-	for _, skuPrice := range product.SkuPriceInfoList {
-		skuCode := strings.TrimSpace(skuPrice.SkuCode)
-		if skuCode == "" {
-			continue
-		}
-		if sitePrice, ok := promotionPreferredSitePrice(skuPrice.SitePriceInfoList, preferredCurrency); ok {
-			priceBySKU[skuCode] = sitePrice
-		}
-	}
-	out := append([]marketing.PromotionSkuInfo(nil), skus...)
-	for idx := range out {
-		sitePrice, ok := priceBySKU[out[idx].Sku]
-		price := sitePrice.SalePrice
-		if !ok || price <= 0 {
-			price = fallbackPrice
-		}
-		if price <= 0 {
-			continue
-		}
-		out[idx].USSupplyPrice = promotionFloat64Ptr(price)
-		out[idx].SupplyPrice = promotionFloat64Ptr(price)
-		out[idx].MaxUSSupplyPrice = promotionFloat64Ptr(price)
-		out[idx].MaxSupplyPrice = promotionFloat64Ptr(price)
-	}
-	return out
-}
-
-func promotionPreferredSitePrice(items []marketing.SitePriceInfo, preferredCurrency string) (marketing.SitePriceInfo, bool) {
-	for _, item := range items {
-		if item.SalePrice > 0 && item.IsAvailable && strings.EqualFold(item.Currency, preferredCurrency) {
-			return item, true
-		}
-	}
-	for _, item := range items {
-		if item.SalePrice > 0 && item.IsAvailable {
-			return item, true
-		}
-	}
-	for _, item := range items {
-		if item.SalePrice > 0 {
-			return item, true
-		}
-	}
-	return marketing.SitePriceInfo{}, false
-}
-
 func promotionFloat64Ptr(value float64) *float64 {
 	return &value
 }
 
-func promotionProductSalePrice(product marketing.SkcInfo, preferredCurrency string) float64 {
-	preferredCurrency = strings.TrimSpace(strings.ToUpper(preferredCurrency))
-	for _, site := range product.SitePriceInfoList {
-		if site.SalePrice > 0 && site.IsAvailable && strings.EqualFold(site.Currency, preferredCurrency) {
-			return site.SalePrice
-		}
-	}
-	for _, site := range product.SitePriceInfoList {
-		if site.SalePrice > 0 && site.IsAvailable {
-			return site.SalePrice
-		}
-	}
-	for _, site := range product.SitePriceInfoList {
-		if site.SalePrice > 0 {
-			return site.SalePrice
-		}
-	}
-	return 0
+type promotionSKUPriceInput struct {
+	SKU         string
+	RetailPrice float64
+	CostPrice   float64
+	Currency    string
 }
 
-func promotionProductSKUFallbackSalePrice(product marketing.SkcInfo, preferredCurrency string) float64 {
-	preferredCurrency = strings.TrimSpace(strings.ToUpper(preferredCurrency))
-	for _, skuPrice := range product.SkuPriceInfoList {
-		if sitePrice, ok := promotionPreferredSitePrice(skuPrice.SitePriceInfoList, preferredCurrency); ok {
-			return sitePrice.SalePrice
+func promotionSKUPriceInputs(products []marketing.SkcInfo, currency string) map[string]map[string]promotionSKUPriceInput {
+	targetCurrency := configCurrencyOrDefault(currency)
+	inputsBySKC := make(map[string]map[string]promotionSKUPriceInput, len(products))
+	for _, product := range products {
+		skc := strings.TrimSpace(product.Skc)
+		if skc == "" {
+			continue
+		}
+		inputsBySKU := inputsBySKC[skc]
+		if inputsBySKU == nil {
+			inputsBySKU = make(map[string]promotionSKUPriceInput)
+			inputsBySKC[skc] = inputsBySKU
+		}
+		for _, skuSitePrice := range product.SkuPriceInfoList {
+			sku := normalizedPromotionSKUCode(skuSitePrice.SkuCode)
+			if sku == "" {
+				continue
+			}
+			input := inputsBySKU[sku]
+			input.SKU = sku
+			input.Currency = targetCurrency
+			for _, sitePrice := range skuSitePrice.SitePriceInfoList {
+				if input.RetailPrice == 0 && sitePrice.IsAvailable && sitePrice.SalePrice > 0 && strings.EqualFold(sitePrice.Currency, targetCurrency) {
+					input.RetailPrice = sitePrice.SalePrice
+				}
+			}
+			inputsBySKU[sku] = input
+		}
+		for _, skuCost := range product.SkuCostPriceInfoList {
+			sku := normalizedPromotionSKUCode(skuCost.SkuCode)
+			if sku == "" || skuCost.CostPrice <= 0 || !strings.EqualFold(skuCost.Currency, targetCurrency) {
+				continue
+			}
+			input := inputsBySKU[sku]
+			input.SKU = sku
+			input.Currency = targetCurrency
+			if input.CostPrice == 0 {
+				input.CostPrice = skuCost.CostPrice
+			}
+			inputsBySKU[sku] = input
 		}
 	}
-	return 0
+	return inputsBySKC
 }
 
 func (s *activityRegistrationServiceImpl) buildCalculateRequestForPromotionProducts(
@@ -385,74 +337,32 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestForPromotionProdu
 	goods []marketing.PromotionGoodsData,
 	products []marketing.SkcInfo,
 ) *marketing.CalculateSupplyPriceRequest {
-	costBySKC := make(map[string]float64, len(products))
-	costBySKUBySKC := make(map[string]map[string]float64, len(products))
-	for _, product := range products {
-		if product.Skc != "" && product.SupplyPrice > 0 {
-			costBySKC[product.Skc] = product.SupplyPrice
-		}
-		if product.Skc == "" || len(product.SkuCostPriceInfoList) == 0 {
-			continue
-		}
-		skuCosts := make(map[string]float64, len(product.SkuCostPriceInfoList))
-		for _, skuCost := range product.SkuCostPriceInfoList {
-			skuCode := normalizedPromotionSKUCode(skuCost.SkuCode)
-			if skuCode == "" || skuCost.CostPrice <= 0 {
-				continue
-			}
-			skuCosts[skuCode] = skuCost.CostPrice
-			if costBySKC[product.Skc] <= 0 || skuCost.CostPrice > costBySKC[product.Skc] {
-				costBySKC[product.Skc] = skuCost.CostPrice
-			}
-		}
-		if len(skuCosts) > 0 {
-			costBySKUBySKC[product.Skc] = skuCosts
-		}
-	}
-
+	mode := strings.ToUpper(strings.TrimSpace(config.PriceMode))
+	priceInputsBySKC := promotionSKUPriceInputs(products, config.Currency)
 	skcInfoList := make([]marketing.SkcPriceInfo, 0, len(goods))
 	for _, item := range goods {
-		activityPrice := calculatePriceByDiscount(item.USSupplyPrice, config.DiscountRate)
-		costPrice := costBySKC[item.Skc]
-		if strings.EqualFold(config.PriceMode, "PROFIT") {
-			activityPrice = calculatePriceByProfit(item.USSupplyPrice, costPrice, config.MinProfitRate, config.FixedPriceAdjustment)
-		} else if strings.EqualFold(config.PriceMode, "BREAKEVEN") {
-			activityPrice = calculatePriceByBreakeven(item.USSupplyPrice, costPrice, config.FixedPriceAdjustment)
-		}
-		if activityPrice <= 0 {
-			continue
-		}
-
+		priceInputsBySKU := priceInputsBySKC[strings.TrimSpace(item.Skc)]
 		skuInfoList := make([]marketing.SkuPriceInfo, 0, len(item.SkuInfoList))
 		for _, sku := range item.SkuInfoList {
-			productPrice := promotionSKUUSSupplyPrice(sku, item.USSupplyPrice)
-			skuActivityPrice := activityPrice
-			if strings.EqualFold(config.PriceMode, "DISCOUNT") {
+			input, ok := priceInputsBySKU[normalizedPromotionSKUCode(sku.Sku)]
+			if !ok || input.RetailPrice <= 0 {
+				continue
+			}
+			productPrice := input.RetailPrice
+			var skuActivityPrice float64
+			switch mode {
+			case "PROFIT":
+				if input.CostPrice <= 0 {
+					continue
+				}
+				skuActivityPrice = calculatePriceByProfit(productPrice, input.CostPrice, config.MinProfitRate, config.FixedPriceAdjustment)
+			case "BREAKEVEN":
+				if input.CostPrice <= 0 {
+					continue
+				}
+				skuActivityPrice = calculatePriceByBreakeven(productPrice, input.CostPrice, config.FixedPriceAdjustment)
+			default:
 				skuActivityPrice = calculatePriceByDiscount(productPrice, config.DiscountRate)
-			} else if strings.EqualFold(config.PriceMode, "PROFIT") {
-				if skuCostPrice := costBySKUBySKC[item.Skc][normalizedPromotionSKUCode(sku.Sku)]; skuCostPrice > 0 {
-					skuActivityPrice = calculatePriceByProfit(
-						productPrice,
-						skuCostPrice,
-						config.MinProfitRate,
-						config.FixedPriceAdjustment,
-					)
-				} else {
-					skuActivityPrice = calculateProfitModeSKUActivityPrice(
-						productPrice,
-						item.USSupplyPrice,
-						activityPrice,
-						costPrice,
-						config.MinProfitRate,
-						config.FixedPriceAdjustment,
-					)
-				}
-			} else if strings.EqualFold(config.PriceMode, "BREAKEVEN") {
-				if skuCostPrice := costBySKUBySKC[item.Skc][normalizedPromotionSKUCode(sku.Sku)]; skuCostPrice > 0 {
-					skuActivityPrice = calculatePriceByBreakeven(productPrice, skuCostPrice, config.FixedPriceAdjustment)
-				} else {
-					skuActivityPrice = calculatePriceByBreakeven(productPrice, costPrice, config.FixedPriceAdjustment)
-				}
 			}
 			if skuActivityPrice <= 0 {
 				continue
@@ -485,29 +395,4 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestForPromotionProdu
 
 func normalizedPromotionSKUCode(value string) string {
 	return strings.ToUpper(strings.TrimSpace(value))
-}
-
-func calculateProfitModeSKUActivityPrice(
-	productPrice float64,
-	baseProductPrice float64,
-	baseActivityPrice float64,
-	costPrice float64,
-	minProfitRate float64,
-	fixedAdjustment float64,
-) float64 {
-	if productPrice <= 0 {
-		return 0
-	}
-	minimumPrice := calculatePriceByProfit(productPrice, costPrice, minProfitRate, fixedAdjustment)
-	if baseProductPrice <= 0 || baseActivityPrice <= 0 {
-		return minimumPrice
-	}
-	scaledPrice := productPrice * (baseActivityPrice / baseProductPrice)
-	if scaledPrice > 0 && productPrice != baseProductPrice {
-		return scaledPrice
-	}
-	if minimumPrice > 0 {
-		return minimumPrice
-	}
-	return scaledPrice
 }

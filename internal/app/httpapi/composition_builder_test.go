@@ -149,7 +149,7 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	require.NotNil(t, composition.imageModule)
 	require.NotNil(t, composition.amazonListingModule)
 	require.NotNil(t, composition.listingKitModule)
-	require.NotNil(t, composition.productSourcingModule)
+	require.Nil(t, composition.productSourcingModule)
 	require.NotNil(t, composition.promptModule)
 	require.NotNil(t, composition.taskRPCResult)
 	require.NotNil(t, composition.sdsModule)

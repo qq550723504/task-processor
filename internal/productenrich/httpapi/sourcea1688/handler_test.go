@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/authz"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
 	a1688 "task-processor/internal/product/sourcehandoff/a1688"
@@ -66,7 +67,7 @@ func TestCreateListingKitTaskReturnsBadRequestWithHandoff(t *testing.T) {
 	router := gin.New()
 	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
 
-	rec := performJSONRequest(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{URL: "https://detail.1688.com/offer/1000.html", SourceError: "crawler failed"}, nil)
+	rec := performJSONRequest(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{URL: "https://detail.1688.com/offer/1000.html", SourceError: "crawler failed"}, map[string]string{"X-Tenant-ID": "tenant-http", "X-User-ID": "user-http"})
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -100,12 +101,43 @@ func TestCreateListingKitTaskRejectsInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestCreateListingKitTaskRequiresVerifiedIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &fakeTaskCommandService{}
+	router := gin.New()
+	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
+
+	rec := performJSONRequest(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{URL: "https://detail.1688.com/offer/1001.html"}, nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	if service.command.URL != "" {
+		t.Fatalf("command = %+v, want no service call", service.command)
+	}
+}
+
+func TestCreateListingKitTaskIgnoresForgedBodyIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &fakeTaskCommandService{}
+	router := gin.New()
+	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
+	req := httptest.NewRequest(http.MethodPost, "/tasks", bytes.NewBufferString(`{"url":"https://detail.1688.com/offer/1002.html","tenant_id":"attacker","user_id":"attacker"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "verified-tenant")
+	req.Header.Set("X-User-ID", "verified-user")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || service.command.TenantID != "verified-tenant" || service.command.UserID != "verified-user" {
+		t.Fatalf("status=%d command=%+v, want verified identity", rec.Code, service.command)
+	}
+}
+
 func TestAppendRouteDescriptorsIncludesCreateRoute(t *testing.T) {
 	routes := AppendRouteDescriptors(nil, NewHandler(&fakeTaskCommandService{}))
 	if len(routes) != 1 {
 		t.Fatalf("routes = %d, want 1", len(routes))
 	}
-	if routes[0].Method != http.MethodPost || routes[0].Path != "/api/v1/product-sourcing/1688/listingkit/tasks" || routes[0].Module != ModuleName || routes[0].Handler == nil {
+	if routes[0].Method != http.MethodPost || routes[0].Path != "/api/v1/product-sourcing/1688/listingkit/tasks" || routes[0].Module != ModuleName || routes[0].Permission != authz.PermissionProductSourcingWrite || routes[0].Handler == nil {
 		t.Fatalf("route = %+v, want 1688 listingkit task route", routes[0])
 	}
 }

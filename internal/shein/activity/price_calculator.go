@@ -69,7 +69,7 @@ func calculateProfitRate(salePrice float64, costPrice float64) float64 {
 	return (salePrice - costPrice) / salePrice
 }
 
-func promotionSKUUSSupplyPrice(sku marketing.PromotionSkuInfo, fallback float64) float64 {
+func promotionSKUUSSupplyPrice(sku marketing.PromotionSkuInfo, _ float64) float64 {
 	if sku.USSupplyPrice != nil && *sku.USSupplyPrice > 0 {
 		return *sku.USSupplyPrice
 	}
@@ -79,7 +79,7 @@ func promotionSKUUSSupplyPrice(sku marketing.PromotionSkuInfo, fallback float64)
 	if sku.SupplyPriceInfo != nil && sku.SupplyPriceInfo.SupplyPrice > 0 {
 		return sku.SupplyPriceInfo.SupplyPrice
 	}
-	return fallback
+	return 0
 }
 
 func promotionSKUMaxUSSupplyPrice(sku marketing.PromotionSkuInfo, fallback float64) float64 {

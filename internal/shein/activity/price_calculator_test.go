@@ -3,12 +3,20 @@ package activity
 import (
 	"math"
 	"testing"
+
+	"task-processor/internal/shein/api/marketing"
 )
 
 const floatTolerance = 1e-9
 
 func almostEqual(a, b float64) bool {
 	return math.Abs(a-b) < floatTolerance
+}
+
+func TestPromotionSKUUSSupplyPriceDoesNotUseSKCFallback(t *testing.T) {
+	if got := promotionSKUUSSupplyPrice(marketing.PromotionSkuInfo{}, 10); got != 0 {
+		t.Fatalf("price = %v, want zero without direct SKU supply price", got)
+	}
 }
 
 // TestCalculatePriceByDiscount 验证折扣率定价
