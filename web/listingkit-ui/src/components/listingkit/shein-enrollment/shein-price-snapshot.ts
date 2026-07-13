@@ -5,6 +5,7 @@ const SHEIN_PRICE_LOCALE = "en-US";
 export type SheinSKUPriceSnapshot = {
   skuCode: string;
   price: string;
+  currency: string;
 };
 
 export function formatSheinPriceSnapshot(value?: string | null) {
@@ -41,6 +42,18 @@ export function formatSheinPriceSnapshot(value?: string | null) {
   }
 
   return formatCurrencyAmount(currency, amount, text);
+}
+
+export function formatSheinCurrencyAmount(currency: string, amount: number) {
+  const normalizedCurrency = currency.trim();
+  if (!normalizedCurrency || !Number.isFinite(amount)) {
+    return "-";
+  }
+  return formatCurrencyAmount(
+    normalizedCurrency,
+    amount,
+    `${normalizedCurrency} ${amount.toFixed(2)}`,
+  );
 }
 
 function formatCurrencyAmount(currency: string, amount: number, fallback: string) {
@@ -98,6 +111,7 @@ export function getSheinSKUPriceSnapshots(
       return [
         {
           skuCode,
+          currency,
           price: currency
             ? formatCurrencyAmount(currency, amount, `${currency} ${amount.toFixed(2)}`)
             : amount.toFixed(2),
@@ -151,6 +165,7 @@ export function getSheinSKUSupplyPriceSnapshots(
       return [
         {
           skuCode,
+          currency,
           price: currency
             ? formatCurrencyAmount(currency, amount, `${currency} ${amount.toFixed(2)}`)
             : amount.toFixed(2),

@@ -268,6 +268,7 @@ export type SheinActivityCandidateRecord = {
   skc_name?: string;
   candidate_version?: string;
   effective_cost_price?: number | null;
+  sku_cost_price_info_list?: SheinSKUCostPrice[];
   price_snapshot?: string;
   inventory_snapshot?: string;
   calculated_profit_rate?: number | null;
@@ -287,6 +288,12 @@ export type SheinActivityCandidateRecord = {
   selected_for_run?: boolean;
   created_at?: string;
   updated_at?: string;
+};
+
+export type SheinSKUCostPrice = {
+  sku_code?: string;
+  cost_price?: number;
+  currency?: string;
 };
 
 export type SheinActivityCandidateListResponse = {
