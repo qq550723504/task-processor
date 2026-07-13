@@ -4,7 +4,7 @@
 >
 > Last reviewed: 2026-07-13.
 >
-> Calibrated against: `master` at `5c72f406c18b40d3860fb8f0c7518c6606f38b85`.
+> Calibrated against: `master` at `49a202c0a964e54f9864b3a57be5bed4bfbf2cf1`.
 >
 > Scope: implementation status, remaining validation, and the decision gate before starting another product source.
 >
@@ -33,15 +33,15 @@ The foundation slices that were previously described as future PRs are implement
 
 | Capability | Implementation status | Validation status |
 | --- | --- | --- |
-| `SourceIdentity` normalization, validation, and fingerprinting | Implemented | Current-baseline test evidence must be recorded. |
-| Neutral `SourceEnvelope` | Implemented | Current-baseline test evidence must be recorded. |
-| Amazon source-result mapping | Implemented | Used as a fixture-friendly boundary-validation path. |
-| 1688 source-result mapping | Implemented | Controlled business-flow validation pending. |
-| Catalog fact handoff | Implemented | Focused validation pending. |
-| Asset fact handoff | Implemented | Focused validation pending. |
-| ListingKit `GenerateRequest` bridge | Implemented | Focused validation pending. |
-| 1688 command and HTTP adapter to task creation | Implemented | Controlled source-to-task-to-preview validation pending. |
-| Source/crawler/catalog/asset/bridge boundary guards | Implemented | Must remain green on the exact closeout baseline. |
+| `SourceIdentity` normalization, validation, and fingerprinting | Implemented | Current-baseline focused evidence recorded. |
+| Neutral `SourceEnvelope` | Implemented | Current-baseline focused evidence recorded. |
+| Amazon source-result mapping | Implemented | Fixture-friendly focused validation recorded. |
+| 1688 source-result mapping | Implemented | Focused validation recorded; controlled business flow pending. |
+| Catalog fact handoff | Implemented | Focused validation recorded. |
+| Asset fact handoff | Implemented | Focused validation recorded. |
+| ListingKit `GenerateRequest` bridge | Implemented | Focused validation recorded. |
+| 1688 command and HTTP adapter to task creation | Implemented | Focused validation recorded; controlled source-to-task-to-preview flow pending. |
+| Source/crawler/catalog/asset/bridge boundary guards | Implemented | Green on the recorded checkpoint baseline. |
 | Operator-visible lineage and warning behavior | Partially represented in contracts | Real or controlled-flow verification pending. |
 | MVP closeout decision | Not complete | Requires a dated validation note and explicit outcome. |
 
@@ -138,7 +138,7 @@ The following items are complete by repository inspection on the calibrated base
 The following items remain open because they require execution evidence rather than code inspection:
 
 ```text
-[ ] Focused Product Sourcing tests are recorded for the exact closeout commit.
+[x] Focused Product Sourcing tests are recorded for the exact checkpoint commit in `product-sourcing-validation-2026-07-13.md`.
 [ ] Full backend tests are recorded for the exact closeout commit.
 [ ] One controlled 1688 import reaches task creation and the existing preview/readiness path.
 [ ] Source lineage or a durable source reference is verified on the created task or traceable result.
