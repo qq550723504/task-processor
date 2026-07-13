@@ -33,6 +33,8 @@ type TaskActionRouteHandler interface {
 	DispatchTaskGenerationNavigation(c *gin.Context)
 	RetryTaskGenerationTasks(c *gin.Context)
 	RetryTaskChildTask(c *gin.Context)
+	GetTaskSDSRepair(c *gin.Context)
+	RepairAndRetryTaskSDS(c *gin.Context)
 	ExecuteTaskGenerationAction(c *gin.Context)
 	GetTaskRevisionHistory(c *gin.Context)
 	GetTaskRevisionHistoryDetail(c *gin.Context)

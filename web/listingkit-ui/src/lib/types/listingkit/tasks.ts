@@ -59,6 +59,20 @@ export type ListingKitWorkflowIssue = {
   detail?: string;
 };
 
+export type SDSRepairLayer = { id: string; name?: string };
+export type SDSRepairVariant = {
+  variant_id: number;
+  variant_sku?: string;
+  color?: string;
+  size?: string;
+  old_layer_id: string;
+  layers: SDSRepairLayer[];
+};
+export type TaskSDSRepairSession = { task_id: string; variants: SDSRepairVariant[] };
+export type ApplyTaskSDSRepairRequest = {
+  variants: Array<{ variant_id: number; layer_id: string }>;
+};
+
 export type SDSSyncSummary = {
   variant_id?: number;
   product_id?: number;

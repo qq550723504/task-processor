@@ -120,6 +120,8 @@ func (stubStudioSessionRouteHandler) DeleteStudioBatch(*gin.Context)          {}
 type stubRouteHandler struct{}
 
 func (stubRouteHandler) GenerateListingKit(*gin.Context)                          {}
+func (stubRouteHandler) GetTaskSDSRepair(*gin.Context)                            {}
+func (stubRouteHandler) RepairAndRetryTaskSDS(*gin.Context)                       {}
 func (stubRouteHandler) ListTasks(*gin.Context)                                   {}
 func (stubRouteHandler) GetSDSBaselineReadiness(*gin.Context)                     {}
 func (stubRouteHandler) WarmSDSBaseline(*gin.Context)                             {}

@@ -54,6 +54,12 @@ type TaskListSummarySource interface {
 	ListTaskSummaryTasks(ctx context.Context, query *TaskListQuery) ([]Task, error)
 }
 
+// TaskSDSRepairRepository atomically replaces persisted SDS options before a
+// retry and keeps the repair decision in the task execution history.
+type TaskSDSRepairRepository interface {
+	ReplaceTaskSDSOptionsForRetry(ctx context.Context, taskID string, options *SDSSyncOptions, audit PodExecutionAuditEvent) (*Task, error)
+}
+
 type SheinSourceSDSMetadataSource interface {
 	ListSheinSourceSDSMetadata(ctx context.Context, query *SheinSourceSDSMetadataQuery) ([]SheinSourceSDSMetadataRecord, error)
 }

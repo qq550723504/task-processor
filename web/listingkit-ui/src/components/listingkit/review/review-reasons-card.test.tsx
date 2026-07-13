@@ -1,8 +1,21 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import { ReviewReasonsCard } from "@/components/listingkit/review/review-reasons-card";
 
 describe("ReviewReasonsCard", () => {
+
+  it("offers the in-place SDS repair action when supplied by the workspace", () => {
+    const onRepairSDS = vi.fn();
+    render(
+      <ReviewReasonsCard
+        task={{ status: "needs_review", review_reasons: ["SDS render failed"], result: { child_tasks: [{ kind: "sds_design_sync", status: "failed" }] } }}
+        onRepairSDS={onRepairSDS}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "修复并重试 SDS" }));
+    expect(onRepairSDS).toHaveBeenCalledTimes(1);
+  });
   it("renders nothing when the task does not need review", () => {
     const { container } = render(
       <ReviewReasonsCard task={{ status: "completed" }} />,

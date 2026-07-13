@@ -186,6 +186,42 @@ func (r *taskRepository) MutateTaskResult(ctx context.Context, taskID string, mu
 	return out, err
 }
 
+func (r *taskRepository) ReplaceTaskSDSOptionsForRetry(ctx context.Context, taskID string, options *listingkit.SDSSyncOptions, audit listingkit.PodExecutionAuditEvent) (*listingkit.Task, error) {
+	var out *listingkit.Task
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var task listingkit.Task
+		if err := applyTaskAccessScope(tx.Clauses(clause.Locking{Strength: "UPDATE"}), ctx).Where("id = ?", taskID).First(&task).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return listingkit.ErrTaskNotFound
+			}
+			return err
+		}
+		if !listingkit.TaskEligibleForSDSRepair(&task) || task.Request == nil || task.Request.Options == nil || options == nil {
+			return listingkit.ErrSDSRepairNotEligible
+		}
+		task.Request.Options.SDS = options
+		if task.Result.PodExecution == nil {
+			task.Result.PodExecution = &listingkit.PodExecutionSummary{}
+		}
+		task.Result.PodExecution.History = append(task.Result.PodExecution.History, audit)
+		task.UpdatedAt = time.Now()
+		if err := tx.Model(&listingkit.Task{}).
+			Scopes(taskAccessScope(ctx)).
+			Where("id = ?", taskID).
+			Updates(map[string]any{
+				"request":    task.Request,
+				"result":     task.Result,
+				"updated_at": currentTimestampValue(tx),
+			}).Error; err != nil {
+			return fmt.Errorf("failed to replace task SDS options: %w", err)
+		}
+		copied := task
+		out = &copied
+		return nil
+	})
+	return out, err
+}
+
 func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, updates map[string]any) error {
 	updates["updated_at"] = currentTimestampValue(r.db)
 	result := r.db.WithContext(ctx).Model(&listingkit.Task{}).Scopes(taskAccessScope(ctx)).Where("id = ?", taskID).Updates(updates)

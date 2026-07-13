@@ -14,10 +14,12 @@ export function ReviewReasonsCard({
   task,
   taskId,
   limit = 4,
+  onRepairSDS,
 }: {
   task?: ListingKitTaskResult | null;
   taskId?: string;
   limit?: number;
+  onRepairSDS?: () => void;
 }) {
   if (task?.status !== "needs_review") {
     return null;
@@ -60,6 +62,13 @@ export function ReviewReasonsCard({
                 <Link href={action.href}>{action.label}</Link>
               </Button>
             ))}
+          </div>
+        ) : null}
+        {onRepairSDS ? (
+          <div>
+            <Button onClick={onRepairSDS} size="sm" type="button" variant="secondary">
+              修复并重试 SDS
+            </Button>
           </div>
         ) : null}
         {hiddenCount > 0 ? (
