@@ -13,7 +13,7 @@ func TestLifecycleRegistrationDoesNotDependOnAppServices(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read component_adapters.go: %v", err)
 	}
-	source := string(content)
+	source := strings.ReplaceAll(string(content), "\r\n", "\n")
 
 	for _, marker := range []string{
 		"svc *appServices",
