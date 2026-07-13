@@ -1,6 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
+import { useState } from "react";
 
 import { PlatformCardRail } from "@/components/listingkit/shared/platform-card-rail";
 import { SheinFlowNav } from "@/components/listingkit/shein/shein-flow-nav";
@@ -10,6 +11,7 @@ import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel
 import { TaskProgressNotice } from "@/components/listingkit/tasks/task-progress-notice";
 import { WorkspaceHeader } from "@/components/listingkit/workspace/workspace-header";
 import { WorkspaceOverviewPanel } from "@/components/listingkit/workspace/workspace-overview-panel";
+import { SDSRepairPanel } from "@/components/listingkit/workspace/sds-repair-panel";
 import {
   SheinFinalReviewWorkspaceView,
   WorkspaceReviewView,
@@ -40,6 +42,7 @@ import { useExecuteAction } from "@/lib/query/use-action";
 import { useRetryChildTask } from "@/lib/query/use-child-task-retry";
 
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
+	const [sdsRepairOpen, setSDSRepairOpen] = useState(false);
   const searchParams = useSearchParams();
   const workspaceData = useWorkspaceData({ taskId, searchParams });
   const {
@@ -225,7 +228,12 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         onRetryChildTask={(kind) => childTaskRetry.mutate({ kind })}
         retryingChildTaskKind={childTaskRetry.isPending ? childTaskRetry.variables?.kind ?? null : null}
       />
-      <ReviewReasonsCard task={taskResult.data} taskId={taskId} />
+      <ReviewReasonsCard
+        task={taskResult.data}
+        taskId={taskId}
+        onRepairSDS={taskResult.data?.status === "needs_review" && taskResult.data?.result?.child_tasks?.some((child) => child.kind === "sds_design_sync" && child.status === "failed") ? () => setSDSRepairOpen(true) : undefined}
+      />
+      <SDSRepairPanel taskId={taskId} open={sdsRepairOpen} onClose={() => setSDSRepairOpen(false)} />
       <TaskProgressNotice task={taskResult.data} />
 
       {shouldShowPlatformRail ? (

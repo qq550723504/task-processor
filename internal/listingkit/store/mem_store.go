@@ -352,6 +352,26 @@ func (r *MemTaskRepository) MutateTaskResult(ctx context.Context, taskID string,
 	return &copied, nil
 }
 
+func (r *MemTaskRepository) ReplaceTaskSDSOptionsForRetry(ctx context.Context, taskID string, options *listingkit.SDSSyncOptions, audit listingkit.PodExecutionAuditEvent) (*listingkit.Task, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return nil, listingkit.ErrTaskNotFound
+	}
+	if !listingkit.TaskEligibleForSDSRepair(task) || task.Request == nil || task.Request.Options == nil || options == nil {
+		return nil, listingkit.ErrSDSRepairNotEligible
+	}
+	task.Request.Options.SDS = options
+	if task.Result.PodExecution == nil {
+		task.Result.PodExecution = &listingkit.PodExecutionSummary{}
+	}
+	task.Result.PodExecution.History = append(task.Result.PodExecution.History, audit)
+	task.UpdatedAt = time.Now()
+	copied := *task
+	return &copied, nil
+}
+
 func (r *MemTaskRepository) GetCanonicalProductCache(ctx context.Context, fingerprint string) (*canonical.Product, error) {
 	if fingerprint == "" {
 		return nil, nil

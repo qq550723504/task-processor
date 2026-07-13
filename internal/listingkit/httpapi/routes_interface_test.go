@@ -20,6 +20,8 @@ func (settingsOnlyRouteHandler) UpdateAIClientSettings(c *gin.Context)     {}
 type taskOnlyRouteHandler struct{}
 
 func (taskOnlyRouteHandler) GenerateListingKit(c *gin.Context)               {}
+func (taskOnlyRouteHandler) GetTaskSDSRepair(c *gin.Context)                 {}
+func (taskOnlyRouteHandler) RepairAndRetryTaskSDS(c *gin.Context)            {}
 func (taskOnlyRouteHandler) ListTasks(c *gin.Context)                        {}
 func (taskOnlyRouteHandler) GetSDSBaselineReadiness(c *gin.Context)          {}
 func (taskOnlyRouteHandler) WarmSDSBaseline(c *gin.Context)                  {}

@@ -18,6 +18,7 @@ type handler struct {
 	sdsRetirementService          listingkit.SDSRetirementService
 	generationTaskService         listingkit.GenerationTaskService
 	childTaskRetryService         childTaskRetryService
+	taskSDSRepairService          taskSDSRepairService
 	studioMediaService            listingkit.StudioMediaService
 	studioBatchRunService         studioBatchRunHandlerService
 	studioSessionService          studioSessionAsyncJobService
@@ -95,6 +96,11 @@ type storeAdminHandlerService interface {
 
 type childTaskRetryService interface {
 	RetryTaskChildTask(ctx context.Context, taskID string, req *listingkit.RetryChildTaskRequest) (*listingkit.TaskResult, error)
+}
+
+type taskSDSRepairService interface {
+	GetTaskSDSRepair(ctx context.Context, taskID string) (*listingkit.TaskSDSRepairSession, error)
+	RepairAndRetryTaskSDS(ctx context.Context, taskID string, req *listingkit.ApplyTaskSDSRepairRequest) (*listingkit.TaskResult, error)
 }
 
 type uploadedImageDeleteService interface {

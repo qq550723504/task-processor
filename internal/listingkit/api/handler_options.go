@@ -35,6 +35,9 @@ func (h *handler) attachOptionalServices(service any) {
 	if retryService, ok := service.(childTaskRetryService); ok {
 		h.childTaskRetryService = retryService
 	}
+	if repairService, ok := service.(taskSDSRepairService); ok {
+		h.taskSDSRepairService = repairService
+	}
 	if recoveryService, ok := any(service).(listingkit.TaskRecoveryService); ok {
 		h.taskRecoveryService = recoveryService
 	}

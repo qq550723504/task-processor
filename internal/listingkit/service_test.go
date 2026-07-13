@@ -1049,6 +1049,24 @@ func (r *stubInlineTaskRepo) MutateTaskResult(_ context.Context, taskID string, 
 	return &copied, nil
 }
 
+func (r *stubInlineTaskRepo) ReplaceTaskSDSOptionsForRetry(_ context.Context, taskID string, options *SDSSyncOptions, audit PodExecutionAuditEvent) (*Task, error) {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return nil, ErrTaskNotFound
+	}
+	if !TaskEligibleForSDSRepair(task) || task.Request == nil || task.Request.Options == nil || options == nil {
+		return nil, ErrSDSRepairNotEligible
+	}
+	task.Request.Options.SDS = options
+	if task.Result.PodExecution == nil {
+		task.Result.PodExecution = &PodExecutionSummary{}
+	}
+	task.Result.PodExecution.History = append(task.Result.PodExecution.History, audit)
+	task.UpdatedAt = time.Now()
+	copied := *task
+	return &copied, nil
+}
+
 type retryQueueFullTaskSubmitter struct {
 	mu      sync.Mutex
 	results []error
