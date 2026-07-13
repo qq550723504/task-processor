@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/product/sourcehandoff"
 	"task-processor/internal/product/sourcing"
@@ -45,10 +46,19 @@ type CreateTaskResult struct {
 // boundary and does not fetch, crawl, or submit marketplace payloads.
 type TaskCommandService struct {
 	creator sourcehandoff.GenerateTaskCreator
+	stores  storeLookup
 }
 
-func NewTaskCommandService(creator sourcehandoff.GenerateTaskCreator) *TaskCommandService {
-	return &TaskCommandService{creator: creator}
+type storeLookup interface {
+	GetStore(context.Context, int64, int64) (*listingadmin.Store, error)
+}
+
+func NewTaskCommandService(creator sourcehandoff.GenerateTaskCreator, stores ...storeLookup) *TaskCommandService {
+	service := &TaskCommandService{creator: creator}
+	if len(stores) > 0 {
+		service.stores = stores[0]
+	}
+	return service
 }
 
 // CreateTask prepares a 1688 source envelope and delegates to the existing
@@ -57,6 +67,12 @@ func NewTaskCommandService(creator sourcehandoff.GenerateTaskCreator) *TaskComma
 func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskCommand) (*CreateTaskResult, error) {
 	if s == nil || s.creator == nil {
 		return nil, fmt.Errorf("listingkit generate task creator is required")
+	}
+	if err := validateRequestIdentity(ctx, command); err != nil {
+		return nil, err
+	}
+	if err := s.validateStores(ctx, command); err != nil {
+		return nil, err
 	}
 	url := strings.TrimSpace(command.URL)
 	if url == "" && command.Product != nil {
@@ -88,4 +104,35 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 		return &CreateTaskResult{Handoff: handoff}, err
 	}
 	return &CreateTaskResult{Task: task, Handoff: handoff}, nil
+}
+
+func (s *TaskCommandService) validateStores(ctx context.Context, command CreateTaskCommand) error {
+	if s.stores == nil {
+		return fmt.Errorf("requested store is unavailable")
+	}
+	tenantID := strings.TrimSpace(listingkit.TenantIDFromContext(ctx))
+	var legacyTenantID int64
+	if _, err := fmt.Sscan(tenantID, &legacyTenantID); err != nil || legacyTenantID <= 0 {
+		return fmt.Errorf("requested store is unavailable")
+	}
+	for _, item := range []struct {
+		id       int64
+		platform string
+	}{{command.SourceStoreID, "1688"}, {command.SheinStoreID, "SHEIN"}} {
+		store, err := s.stores.GetStore(ctx, legacyTenantID, item.id)
+		if item.id <= 0 || err != nil || store == nil || store.TenantID != legacyTenantID || store.Status != 0 || !strings.EqualFold(strings.TrimSpace(store.Platform), item.platform) {
+			return fmt.Errorf("requested store is unavailable")
+		}
+	}
+	return nil
+}
+
+func validateRequestIdentity(ctx context.Context, command CreateTaskCommand) error {
+	tenantID := strings.TrimSpace(listingkit.TenantIDFromContext(ctx))
+	identity := listingkit.RequestIdentityFromContext(ctx)
+	if tenantID == "" || identity.TenantID != tenantID || identity.UserID == "" ||
+		strings.TrimSpace(command.TenantID) != tenantID || strings.TrimSpace(command.UserID) != identity.UserID {
+		return fmt.Errorf("verified request identity is required")
+	}
+	return nil
 }

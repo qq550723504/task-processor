@@ -6,20 +6,22 @@ import (
 	"testing"
 
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingkit"
 )
 
 func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) {
 	creator := &fakeGenerateTaskCreator{}
-	service := NewTaskCommandService(creator)
+	service := NewTaskCommandService(creator, validStoreLookup())
 
-	result, err := service.CreateTask(context.Background(), CreateTaskCommand{
+	result, err := service.CreateTask(authenticatedCommandContext("101", "user-1688"), CreateTaskCommand{
 		URL:           " https://detail.1688.com/offer/888.html?spm=command ",
 		Product:       commandProduct1688("888"),
 		RawSnapshot:   "raw-888",
 		SourceRunID:   "run-888",
 		RequestID:     "request-888",
 		SourceStoreID: 3001,
-		TenantID:      " tenant-1688 ",
+		TenantID:      " 101 ",
 		UserID:        " user-1688 ",
 		Platforms:     []string{" SHEIN ", "shein"},
 		Country:       " US ",
@@ -44,7 +46,7 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 	if result.Handoff.Request.ProductURL != "https://detail.1688.com/offer/888.html" {
 		t.Fatalf("ProductURL = %q, want normalized command URL", result.Handoff.Request.ProductURL)
 	}
-	if result.Handoff.Request.TenantID != "tenant-1688" || result.Handoff.Request.UserID != "user-1688" {
+	if result.Handoff.Request.TenantID != "101" || result.Handoff.Request.UserID != "user-1688" {
 		t.Fatalf("request tenant/user = %q/%q, want trimmed values", result.Handoff.Request.TenantID, result.Handoff.Request.UserID)
 	}
 	if result.Handoff.Request.SheinStoreID != 168811 {
@@ -58,13 +60,71 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 	}
 }
 
+func TestTaskCommandServiceRejectsWrongStorePlatform(t *testing.T) {
+	creator := &fakeGenerateTaskCreator{}
+	stores := testStoreLookup{items: map[int64]*listingadmin.Store{
+		3001:   {ID: 3001, TenantID: 101, Platform: "SHEIN", Status: 0},
+		168811: {ID: 168811, TenantID: 101, Platform: "SHEIN", Status: 0},
+	}}
+	ctx := listingkit.WithTenantID(context.Background(), "101")
+	ctx = listingkit.WithRequestIdentity(ctx, listingkit.RequestIdentity{TenantID: "101", UserID: "user-1"})
+	_, err := NewTaskCommandService(creator, stores).CreateTask(ctx, CreateTaskCommand{URL: "https://detail.1688.com/offer/893.html", Product: commandProduct1688("893"), TenantID: "101", UserID: "user-1", SourceStoreID: 3001, SheinStoreID: 168811, Platforms: []string{"shein"}})
+	if err == nil {
+		t.Fatal("CreateTask() error = nil, want wrong source platform rejection")
+	}
+	if creator.request != nil {
+		t.Fatalf("creator request = %+v, want no task creation", creator.request)
+	}
+}
+
+func TestTaskCommandServiceRejectsDisabledSourceStore(t *testing.T) {
+	creator := &fakeGenerateTaskCreator{}
+	stores := validStoreLookup()
+	stores.items[3001].Status = 1
+	_, err := NewTaskCommandService(creator, stores).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{URL: "https://detail.1688.com/offer/894.html", Product: commandProduct1688("894"), TenantID: "101", UserID: "user-1", SourceStoreID: 3001, SheinStoreID: 168811, Platforms: []string{"shein"}})
+	if err == nil || creator.request != nil {
+		t.Fatalf("err=%v request=%+v, want disabled store rejection", err, creator.request)
+	}
+}
+
+type testStoreLookup struct{ items map[int64]*listingadmin.Store }
+
+func (s testStoreLookup) GetStore(_ context.Context, tenantID, id int64) (*listingadmin.Store, error) {
+	store := s.items[id]
+	if store == nil || store.TenantID != tenantID {
+		return nil, listingadmin.ErrStoreNotFound
+	}
+	return store, nil
+}
+
+func TestTaskCommandServiceRejectsMismatchedContextTenant(t *testing.T) {
+	creator := &fakeGenerateTaskCreator{}
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-verified")
+	ctx = listingkit.WithRequestIdentity(ctx, listingkit.RequestIdentity{TenantID: "tenant-verified", UserID: "user-verified"})
+
+	_, err := NewTaskCommandService(creator).CreateTask(ctx, CreateTaskCommand{
+		URL:       "https://detail.1688.com/offer/892.html",
+		Product:   commandProduct1688("892"),
+		TenantID:  "tenant-attacker",
+		UserID:    "user-verified",
+		Platforms: []string{"shein"},
+	})
+	if err == nil {
+		t.Fatal("CreateTask() error = nil, want tenant mismatch rejection")
+	}
+	if creator.request != nil {
+		t.Fatalf("creator request = %+v, want no task creation", creator.request)
+	}
+}
+
 func TestTaskCommandServiceCreateTaskFallsBackToProductURL(t *testing.T) {
 	creator := &fakeGenerateTaskCreator{}
 	product := commandProduct1688("889")
 	product.URL = "https://detail.1688.com/offer/889.html?from=product"
 
-	result, err := NewTaskCommandService(creator).CreateTask(context.Background(), CreateTaskCommand{
-		Product:   product,
+	result, err := NewTaskCommandService(creator, validStoreLookup()).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{
+		Product:  product,
+		TenantID: "101", UserID: "user-1", SourceStoreID: 3001, SheinStoreID: 168811,
 		Platforms: []string{"shein"},
 	})
 	if err != nil {
@@ -97,8 +157,9 @@ func TestTaskCommandServiceCreateTaskRequiresURL(t *testing.T) {
 
 func TestTaskCommandServiceCreateTaskReturnsHandoffOnSourceError(t *testing.T) {
 	creator := &fakeGenerateTaskCreator{}
-	result, err := NewTaskCommandService(creator).CreateTask(context.Background(), CreateTaskCommand{
-		URL:       "https://detail.1688.com/offer/891.html",
+	result, err := NewTaskCommandService(creator, validStoreLookup()).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{
+		URL:      "https://detail.1688.com/offer/891.html",
+		TenantID: "101", UserID: "user-1", SourceStoreID: 3001, SheinStoreID: 168811,
 		Error:     errors.New("crawler failed"),
 		Platforms: []string{"shein"},
 	})
@@ -111,6 +172,18 @@ func TestTaskCommandServiceCreateTaskReturnsHandoffOnSourceError(t *testing.T) {
 	if creator.request != nil {
 		t.Fatalf("creator request = %+v, want no task creation", creator.request)
 	}
+}
+
+func authenticatedCommandContext(tenantID, userID string) context.Context {
+	ctx := listingkit.WithTenantID(context.Background(), tenantID)
+	return listingkit.WithRequestIdentity(ctx, listingkit.RequestIdentity{TenantID: tenantID, UserID: userID})
+}
+
+func validStoreLookup() testStoreLookup {
+	return testStoreLookup{items: map[int64]*listingadmin.Store{
+		3001:   {ID: 3001, TenantID: 101, Platform: "1688", Status: 0},
+		168811: {ID: 168811, TenantID: 101, Platform: "SHEIN", Status: 0},
+	}}
 }
 
 func commandProduct1688(id string) *alibaba1688model.Product1688 {

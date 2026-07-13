@@ -35,8 +35,6 @@ type CreateListingKitTaskRequest struct {
 	SourceError   string                        `json:"source_error"`
 	SourceStoreID int64                         `json:"source_store_id"`
 
-	TenantID           string                      `json:"tenant_id"`
-	UserID             string                      `json:"user_id"`
 	Platforms          []string                    `json:"platforms"`
 	Country            string                      `json:"country"`
 	Language           string                      `json:"language"`
@@ -64,7 +62,12 @@ func (h *Handler) CreateListingKitTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	result, err := h.service.CreateTask(c.Request.Context(), req.toCommand(c))
+	ctx, identity, err := verifiedRequestContext(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	result, err := h.service.CreateTask(ctx, req.toCommand(identity))
 	if err != nil {
 		status := http.StatusInternalServerError
 		if isBadRequestError(err) {
@@ -81,18 +84,22 @@ func (h *Handler) CreateListingKitTask(c *gin.Context) {
 	c.JSON(http.StatusOK, responseFromCreateTaskResult(result))
 }
 
-func (r CreateListingKitTaskRequest) toCommand(c *gin.Context) a1688.CreateTaskCommand {
+func verifiedRequestContext(c *gin.Context) (context.Context, listingkit.RequestIdentity, error) {
+	if c == nil || c.Request == nil {
+		return nil, listingkit.RequestIdentity{}, errors.New("verified request identity is required")
+	}
+	identity := listingkit.RequestIdentity{TenantID: strings.TrimSpace(c.GetHeader("X-Tenant-ID")), UserID: strings.TrimSpace(c.GetHeader("X-User-ID"))}
+	if identity.TenantID == "" || identity.UserID == "" {
+		return nil, listingkit.RequestIdentity{}, errors.New("verified request identity is required")
+	}
+	ctx := listingkit.WithTenantID(c.Request.Context(), identity.TenantID)
+	return listingkit.WithRequestIdentity(ctx, identity), identity, nil
+}
+
+func (r CreateListingKitTaskRequest) toCommand(identity listingkit.RequestIdentity) a1688.CreateTaskCommand {
 	var sourceErr error
 	if message := strings.TrimSpace(r.SourceError); message != "" {
 		sourceErr = errors.New(message)
-	}
-	tenantID := strings.TrimSpace(r.TenantID)
-	if tenantID == "" && c != nil {
-		tenantID = strings.TrimSpace(c.GetHeader("X-Tenant-ID"))
-	}
-	userID := strings.TrimSpace(r.UserID)
-	if userID == "" && c != nil {
-		userID = strings.TrimSpace(c.GetHeader("X-User-ID"))
 	}
 	return a1688.CreateTaskCommand{
 		URL:                r.URL,
@@ -102,8 +109,8 @@ func (r CreateListingKitTaskRequest) toCommand(c *gin.Context) a1688.CreateTaskC
 		RequestID:          r.RequestID,
 		Error:              sourceErr,
 		SourceStoreID:      r.SourceStoreID,
-		TenantID:           tenantID,
-		UserID:             userID,
+		TenantID:           identity.TenantID,
+		UserID:             identity.UserID,
 		Platforms:          r.Platforms,
 		Country:            r.Country,
 		Language:           r.Language,

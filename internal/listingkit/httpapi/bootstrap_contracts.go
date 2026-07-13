@@ -24,6 +24,7 @@ type Module struct {
 	Handler              RouteHandler
 	StudioSessionHandler listingkit.StudioSessionHandler
 	TaskLifecycleService listingkit.TaskLifecycleService
+	StoreRepository      listingadmin.StoreRepository
 	Pool                 worker.WorkerPool
 	Closers              []func() error
 }

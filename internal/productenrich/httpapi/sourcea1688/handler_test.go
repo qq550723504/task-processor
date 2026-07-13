@@ -67,7 +67,7 @@ func TestCreateListingKitTaskReturnsBadRequestWithHandoff(t *testing.T) {
 	router := gin.New()
 	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
 
-	rec := performJSONRequest(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{URL: "https://detail.1688.com/offer/1000.html", SourceError: "crawler failed"}, nil)
+	rec := performJSONRequest(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{URL: "https://detail.1688.com/offer/1000.html", SourceError: "crawler failed"}, map[string]string{"X-Tenant-ID": "tenant-http", "X-User-ID": "user-http"})
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -98,6 +98,37 @@ func TestCreateListingKitTaskRejectsInvalidJSON(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateListingKitTaskRequiresVerifiedIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &fakeTaskCommandService{}
+	router := gin.New()
+	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
+
+	rec := performJSONRequest(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{URL: "https://detail.1688.com/offer/1001.html"}, nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	if service.command.URL != "" {
+		t.Fatalf("command = %+v, want no service call", service.command)
+	}
+}
+
+func TestCreateListingKitTaskIgnoresForgedBodyIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &fakeTaskCommandService{}
+	router := gin.New()
+	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
+	req := httptest.NewRequest(http.MethodPost, "/tasks", bytes.NewBufferString(`{"url":"https://detail.1688.com/offer/1002.html","tenant_id":"attacker","user_id":"attacker"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "verified-tenant")
+	req.Header.Set("X-User-ID", "verified-user")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || service.command.TenantID != "verified-tenant" || service.command.UserID != "verified-user" {
+		t.Fatalf("status=%d command=%+v, want verified identity", rec.Code, service.command)
 	}
 }
 
