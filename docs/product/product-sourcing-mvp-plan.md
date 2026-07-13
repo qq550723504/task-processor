@@ -1,16 +1,18 @@
-# Product Sourcing MVP Plan
+# Product Sourcing MVP Status and Closeout Plan
 
-> Status: active execution plan.
+> Status: foundation implemented; validation closeout active.
 >
-> Last reviewed: 2026-07-09.
+> Last reviewed: 2026-07-13.
 >
-> Scope: first product-source expansion loop after refactoring/documentation closeout.
+> Calibrated against: `master` at `5c72f406c18b40d3860fb8f0c7518c6606f38b85`.
+>
+> Scope: implementation status, remaining validation, and the decision gate before starting another product source.
 >
 > Current authority: use this plan together with `product-sourcing-handoff.md`, `current-refactoring-status.md`, and `next-phase-plan.md`.
 
 ## 1. Goal
 
-Build the smallest product-source expansion loop that proves the current boundaries can support new source growth without pushing source logic back into root `internal/listingkit`.
+Prove that external product sources can enter ListingKit through a stable, reusable, platform-neutral path without pushing raw source logic or marketplace publishing rules into root `internal/listingkit`.
 
 The target loop is:
 
@@ -19,161 +21,63 @@ raw source data
   -> SourceIdentity + SourceEnvelope
   -> source-result normalization
   -> catalog / asset facts
-  -> ListingKit batch or task orchestration
+  -> ListingKit task orchestration
   -> existing SHEIN preview / submission path
 ```
 
-The goal is not to build a full product-source platform in one PR. The goal is to create one clean path that future 1688, warehouse catalog, or other product-source integrations can copy.
+SDS remains a POD/design capability and is not the generic product-source validation target for this MVP.
 
-SDS is intentionally treated as a POD/design capability, not a normal product-source validation target.
+## 2. Current status
 
-## 2. MVP constraints
+The foundation slices that were previously described as future PRs are implemented on the calibrated baseline.
 
-This MVP must stay inside these constraints:
+| Capability | Implementation status | Validation status |
+| --- | --- | --- |
+| `SourceIdentity` normalization, validation, and fingerprinting | Implemented | Current-baseline test evidence must be recorded. |
+| Neutral `SourceEnvelope` | Implemented | Current-baseline test evidence must be recorded. |
+| Amazon source-result mapping | Implemented | Used as a fixture-friendly boundary-validation path. |
+| 1688 source-result mapping | Implemented | Controlled business-flow validation pending. |
+| Catalog fact handoff | Implemented | Focused validation pending. |
+| Asset fact handoff | Implemented | Focused validation pending. |
+| ListingKit `GenerateRequest` bridge | Implemented | Focused validation pending. |
+| 1688 command and HTTP adapter to task creation | Implemented | Controlled source-to-task-to-preview validation pending. |
+| Source/crawler/catalog/asset/bridge boundary guards | Implemented | Must remain green on the exact closeout baseline. |
+| Operator-visible lineage and warning behavior | Partially represented in contracts | Real or controlled-flow verification pending. |
+| MVP closeout decision | Not complete | Requires a dated validation note and explicit outcome. |
 
-- no full TEMU / Amazon / Walmart workbench expansion;
-- no new sales-platform auto-publish runtime;
-- no new submission state machine;
-- no broad ListingKit root refactor;
-- no crawler package importing root `internal/listingkit`;
-- no crawler package importing marketplace publishing or workspace packages;
-- no `internal/product/sourcing` package importing root `internal/listingkit`;
-- no SHEIN publish payload assembly inside product-source packages;
-- no behavior-changing package move hidden inside a modeling PR.
+“Implemented” here means that the path exists in the repository. It does not claim that the exact calibrated commit has independently recorded green tests or production validation.
 
-## 3. Preferred first source
+## 3. Implemented topology
 
-Prefer the source with the lowest integration risk and highest business signal.
-
-Current recommendation:
-
-```text
-Option A: normalize an existing product-source path first, such as 1688, if code already exists and test fixtures are available.
-Option B: use 大建云仓 / overseas warehouse source catalog as the first new source when the business data contract is already clear.
-```
-
-Current implementation choice:
+### 3.1 Neutral source contracts
 
 ```text
-PR 2 starts with the existing Amazon product fetch/crawler result path for boundary validation.
-The next business-source validation path is 1688.
+internal/product/sourcing.SourceIdentity
+internal/product/sourcing.SourceEnvelope
+internal/product/sourcing.ProductCandidate
+internal/product/sourcing.AssetCandidate
+internal/product/sourcing.SupplierOrCostFacts
+internal/product/sourcing.SourceWarning
+internal/product/sourcing.SourceTrace
 ```
 
-Reason:
+The contracts keep target-marketplace categories, publishing payloads, browser clients, HTTP runtimes, and ListingKit DTOs outside the source model.
 
-- the Amazon path already has source request planning, product fetch tests, and a stable `internal/model.Product` crawler result shape;
-- it is useful for boundary validation before adding a business-priority source;
-- it lets `SourceEnvelope` mapping be tested without browser automation;
-- it does not imply full Amazon listing workbench expansion;
-- 1688 already has crawler models and product-sourcing normalization code, making it the lowest-risk business source after boundary guards are in place.
-
-Choose Option A when the first objective is boundary validation or using an existing product-source path.
-Choose Option B when the first objective is new warehouse business expansion.
-
-Do not start two source integrations in the same PR.
-
-## 4. Proposed PR sequence
-
-### PR 1: introduce source identity and envelope
-
-Suggested title:
+### 3.2 Source mappings
 
 ```text
-feat: introduce product sourcing source identity
+Amazon product result
+  -> internal/product/sourcing.AmazonSourceEnvelope
+
+1688 crawler product result
+  -> internal/product/sourcing.Alibaba1688SourceEnvelope
 ```
 
-Scope:
+Amazon is the fixture-friendly boundary-validation path. It does not imply that a full Amazon target-platform workbench is active.
 
-- create or extend `internal/product/sourcing`;
-- introduce neutral source identity and source envelope types;
-- keep the package free of ListingKit, marketplace, HTTP runtime, and crawler runtime dependencies;
-- add focused unit tests for identity normalization, fingerprinting, and validation rules.
+1688 is the current business-priority source to use for MVP closeout.
 
-Minimum model:
-
-```text
-SourceIdentity
-  SourceType
-  SourcePlatform
-  SourceID
-  SourceURL
-  SourceVersion
-  SourceFingerprint
-
-SourceEnvelope
-  Identity
-  RawReference
-  ProductCandidate
-  AssetCandidates
-  SupplierOrCostFacts
-  Warnings
-  Trace
-```
-
-Acceptance criteria:
-
-```text
-[ ] internal/product/sourcing does not import internal/listingkit.
-[ ] internal/product/sourcing does not import marketplace publishing/workspace packages.
-[ ] identity validation distinguishes missing source id from weak-but-fingerprintable identity.
-[ ] tests cover stable fingerprint behavior.
-[ ] no ListingKit API DTOs are changed.
-```
-
-### PR 2: inventory one source and map it to the envelope
-
-Suggested title:
-
-```text
-docs: inventory first product source mapping
-```
-
-or, if implementation is safe:
-
-```text
-feat: map first source into product sourcing envelope
-```
-
-Scope:
-
-- pick exactly one source path;
-- document available raw fields and missing fields;
-- map raw source data into `SourceEnvelope`;
-- keep crawler/runtime adapter code thin;
-- avoid marketplace publish payload decisions.
-
-Current selected source:
-
-```text
-Amazon source product result -> internal/product/sourcing.SourceEnvelope
-1688 source product result -> internal/product/sourcing.SourceEnvelope
-```
-
-Acceptance criteria:
-
-```text
-[ ] one source path produces a SourceEnvelope or a documented mapping table.
-[ ] missing facts are represented as warnings, not hidden defaults.
-[ ] source mapping can be tested without running browser automation.
-[ ] crawler/integration package does not import internal/listingkit.
-```
-
-### PR 3: catalog and asset handoff
-
-Suggested title:
-
-```text
-feat: hand off product source facts to catalog and assets
-```
-
-Scope:
-
-- introduce the narrow handoff from source envelope to catalog/product facts;
-- introduce the narrow handoff from source envelope to asset/image facts;
-- keep platform-neutral facts outside marketplace packages;
-- avoid changing ListingKit task orchestration until the facts are stable.
-
-Current implementation path:
+### 3.3 Neutral fact handoff
 
 ```text
 internal/product/sourcing.SourceEnvelope
@@ -181,31 +85,9 @@ internal/product/sourcing.SourceEnvelope
   -> internal/asset.Facts
 ```
 
-Acceptance criteria:
+Source identity and warnings remain attached to the neutral handoff. Marketplace packages do not own source identity or source normalization.
 
-```text
-[ ] source facts can produce a neutral product candidate.
-[ ] source image/design facts can produce neutral asset candidates.
-[ ] marketplace packages do not own source identity or source normalization.
-[ ] tests cover at least one product candidate and one asset candidate mapping.
-```
-
-### PR 4: ListingKit orchestration bridge
-
-Suggested title:
-
-```text
-feat: create listing task from product sourcing envelope
-```
-
-Scope:
-
-- add a narrow ListingKit orchestration bridge that consumes normalized facts;
-- create or prepare a batch/task through existing ListingKit flows;
-- keep ListingKit as orchestration and DTO adaptation only;
-- avoid adding source-specific branches to root ListingKit except temporary adapter shells with follow-up notes.
-
-Current implementation path:
+### 3.4 ListingKit orchestration bridge
 
 ```text
 internal/catalog.ProductFacts + internal/asset.Facts
@@ -213,156 +95,191 @@ internal/catalog.ProductFacts + internal/asset.Facts
   -> internal/listingkit.GenerateRequest
 
 internal/product/sourcehandoff.ListingKitRequestInput
-  -> internal/listingkit.GenerateRequest
-  -> existing CreateGenerateTask boundary when a caller provides a creator
-
-internal/product/sourcehandoff/a1688.ListingKitTaskInput
-  -> internal/product/sourcehandoff.ListingKitRequestInput
   -> existing CreateGenerateTask boundary
+```
 
+The bridge is DTO adaptation and orchestration only. It does not submit marketplace payloads or create another submission state owner.
+
+### 3.5 1688 task-creation adapter
+
+```text
 internal/product/sourcehandoff/a1688.CreateTaskCommand
   -> internal/product/sourcehandoff/a1688.ListingKitTaskInput
-  -> existing CreateGenerateTask boundary
+  -> internal/product/sourcehandoff.ListingKitRequestInput
+  -> existing ListingKit CreateGenerateTask boundary
 
-internal/productenrich/httpapi/sourcea1688.CreateListingKitTaskRequest
-  -> internal/product/sourcehandoff/a1688.CreateTaskCommand
-  -> existing CreateGenerateTask boundary
-
-internal/app/httpapi.httpFeatureComposition
-  -> internal/productenrich/httpapi/sourcea1688.BuildModule
-  -> app module registry route
+internal/productenrich/httpapi/sourcea1688
+  -> feature-owned HTTP adapter
+  -> app HTTP module composition
 ```
 
-The bridge is intentionally a pure DTO-adaptation function. It does not create tasks, submit packages, assemble marketplace payloads, or introduce another submission state owner.
+Root ListingKit receives normalized facts through its existing request shape, not a raw 1688 crawler payload.
 
-The 1688 adapter and command service are source-specific by package location only; root ListingKit still receives only the existing `GenerateRequest` shape. The Gin HTTP adapter lives under the existing product HTTP adapter boundary so business implementation packages do not import Gin directly.
+## 4. Implementation checklist
 
-Acceptance criteria:
+The following items are complete by repository inspection on the calibrated baseline:
 
 ```text
-[ ] ListingKit receives normalized facts, not raw source payloads.
-[ ] source-specific behavior remains outside root ListingKit.
-[ ] existing SHEIN preview/submission path is reused.
-[ ] task lineage records source identity or a source reference.
-[ ] failure and missing-fact states are explainable to operators.
+[x] SourceIdentity and SourceEnvelope exist with platform-neutral fields.
+[x] Identity validation distinguishes a missing source ID from a weak-but-fingerprintable identity.
+[x] Stable fingerprint behavior is implemented.
+[x] Amazon source results map into SourceEnvelope.
+[x] 1688 source results map into SourceEnvelope.
+[x] Missing source facts can be represented as warnings instead of hidden defaults.
+[x] SourceEnvelope maps into internal/catalog and internal/asset facts.
+[x] Neutral facts map into an existing ListingKit GenerateRequest.
+[x] A narrow 1688 command/HTTP path delegates to existing task creation.
+[x] Product sourcing is guarded from root ListingKit, marketplace, runtime, HTTPAPI, infra, and platform ownership.
+[x] Crawler/integration packages are guarded from ListingKit and marketplace publishing/workspace ownership.
+[x] Catalog and asset packages have dependency-direction guards.
+[x] The ListingKit source-facts bridge has a narrow import boundary.
 ```
 
-### PR 5: source boundary guard tests
-
-Suggested title:
+The following items remain open because they require execution evidence rather than code inspection:
 
 ```text
-test: guard product sourcing boundaries
+[ ] Focused Product Sourcing tests are recorded for the exact closeout commit.
+[ ] Full backend tests are recorded for the exact closeout commit.
+[ ] One controlled 1688 import reaches task creation and the existing preview/readiness path.
+[ ] Source lineage or a durable source reference is verified on the created task or traceable result.
+[ ] Missing title, assets, price/cost, or source identity produces explainable warnings/errors.
+[ ] A failed controlled flow produces enough context for an operator or engineer to act.
+[ ] Existing SHEIN preview/submission behavior is reused without a new source-specific submission owner.
+[ ] A dated Product Sourcing closeout note records the exact inputs, commit, commands, task IDs, and outcome.
+[ ] The MVP is explicitly declared closed or has a short blocker list.
 ```
 
-Scope:
+## 5. Validation plan
 
-- add import-boundary tests for product-source packages;
-- guard crawler/integration packages from importing ListingKit root and marketplace publishing/workspace packages;
-- guard `internal/product/sourcing` from importing runtime, HTTPAPI, ListingKit root, or marketplace packages;
-- document any temporary exception with owner and retirement condition.
+### 5.1 Focused repository validation
 
-Current guard coverage:
-
-```text
-internal/product/sourcing/boundary_guard_test.go
-internal/integration/crawler/boundary_guard_test.go
-internal/catalog/boundary_guard_test.go
-internal/asset/boundary_guard_test.go
-internal/listingkit/product_source_bridge_boundary_test.go
-```
-
-Guard intent:
-
-- crawler/integration remains raw source collection only;
-- product sourcing does not import ListingKit, marketplace, runtime, HTTPAPI, infra, or platform packages;
-- catalog and asset fact packages do not import source, ListingKit, marketplace, crawler, runtime, infra, or platform packages;
-- the ListingKit product-source bridge can import only standard library plus neutral `internal/catalog` and `internal/asset` facts.
-
-Acceptance criteria:
-
-```text
-[ ] crawler/integration -> internal/listingkit root import is blocked or allowlisted with a retirement reason.
-[ ] crawler/integration -> marketplace publishing/workspace import is blocked or allowlisted with a retirement reason.
-[ ] internal/product/sourcing -> internal/listingkit import is blocked.
-[ ] internal/product/sourcing -> runtime/httpapi import is blocked.
-[ ] guard names are referenced from docs when they become stable review policy.
-```
-
-## 5. Definition of done for the MVP
-
-The MVP is done when:
-
-```text
-[ ] one source path has a stable SourceIdentity.
-[ ] one source path can produce a SourceEnvelope.
-[ ] source facts can hand off to neutral product/catalog facts.
-[ ] source image/design facts can hand off to asset facts.
-[ ] ListingKit can create or prepare a task/batch from normalized facts.
-[ ] existing SHEIN preview/submission behavior remains the target-platform path.
-[ ] source/crawler/product-sourcing boundary tests exist or missing guard coverage is explicitly documented.
-[ ] no new broad policy is added to root internal/listingkit.
-```
-
-## 6. Validation checklist
-
-Run focused tests first:
+Run from the repository root:
 
 ```powershell
 go test ./internal/product/sourcing/... -count=1
 go test ./internal/catalog/... -count=1
 go test ./internal/asset/... -count=1
+go test ./internal/product/sourcehandoff/... -count=1
+go test ./internal/productenrich/httpapi/sourcea1688/... -count=1
+go test ./internal/listingkit/... -count=1
 go test ./tests/... -count=1
 ```
 
-Then run broader validation when the bridge touches ListingKit:
+Then run the full backend gate:
 
 ```powershell
-go test ./internal/listingkit/... -count=1
 go test ./... -count=1
+make build-all
 ```
 
-If dependency evidence is needed, keep it local:
+Acceptance criteria:
 
-```powershell
-New-Item -ItemType Directory -Force .local/refactoring | Out-Null
-./scripts/analyze-project-deps.ps1 6>&1 | Tee-Object -FilePath .local/refactoring/dependency-baseline-output.txt
+- the exact commit SHA is recorded;
+- failures are classified rather than silently ignored;
+- import-boundary guards remain green;
+- no generated dependency/package snapshot is committed as permanent architecture documentation.
+
+### 5.2 Controlled 1688 flow
+
+Use one deterministic 1688 fixture, snapshot, or controlled source result and record:
+
+1. input URL or source ID;
+2. normalized `SourceIdentity` and `SourceKey`;
+3. source warnings;
+4. product title, variants, assets, supplier, and cost facts;
+5. generated ListingKit request fields;
+6. created task ID and tenant/user context;
+7. source lineage or durable source reference;
+8. preview/readiness result;
+9. any blocker, failure phase, and next action;
+10. whether the existing SHEIN preview/submission path remains the downstream owner.
+
+The closeout does not require uncontrolled browser automation merely to test normalization. Raw-source access and real-flow smoke can be recorded separately from deterministic fixture tests.
+
+### 5.3 Missing-fact cases
+
+At minimum, validate:
+
+- missing source product;
+- missing source ID with a fingerprintable URL/version;
+- missing title;
+- missing image assets;
+- missing or invalid cost/price;
+- duplicate asset URLs;
+- empty or partially populated variants;
+- source adapter error propagation.
+
+Missing facts must remain warnings or explicit errors. Do not silently manufacture product truth.
+
+## 6. Boundary constraints
+
+The MVP and future sources must retain these constraints:
+
+- no crawler/integration package imports root `internal/listingkit`;
+- no crawler/integration package imports marketplace publishing or workspace packages;
+- no `internal/product/sourcing` import of root ListingKit, marketplace, runtime, HTTPAPI, infra, or platform packages;
+- no SHEIN/TEMU/Amazon publish payload assembly in source packages;
+- no source-specific permanent policy branch in root ListingKit;
+- no new submission state machine;
+- no behavior-changing package move hidden inside a source-modeling PR;
+- no two new source integrations in one MVP slice.
+
+## 7. MVP closeout decision
+
+The MVP can be declared closed when:
+
+```text
+[ ] Focused and full tests are recorded for the exact baseline.
+[ ] One controlled 1688 path creates a ListingKit task from normalized facts.
+[ ] Source lineage and warnings are verified.
+[ ] The existing preview/readiness/submission ownership remains unchanged.
+[ ] Boundary guards are green.
+[ ] A dated validation note records the result.
+[ ] No unresolved blocker requires raw source payloads or marketplace policy in Product Sourcing.
 ```
 
-Do not commit generated package/dependency baselines as long-lived docs.
+A closeout note should state one of:
 
-## 7. Stop conditions
+- **Closed**: the contract is reusable for the next source.
+- **Conditionally closed**: the contract is reusable, with named operational follow-ups that do not change ownership.
+- **Blocked**: list the minimal contract or runtime blockers before another source begins.
+
+## 8. Next-source gate
+
+Do not start another source until the closeout decision above exists.
+
+After closeout, select exactly one next source. The current named candidate is 大建云仓 or another overseas warehouse catalog with an available business contract.
+
+Before implementation, document:
+
+- stable source identity;
+- product and variant fields;
+- images/design/assets;
+- supplier, cost, currency, and availability fields;
+- authentication and tenant/store scope;
+- pagination and incremental sync behavior;
+- rate limits and retry semantics;
+- raw snapshot or evidence references;
+- missing-field and error behavior;
+- mapping into the existing `SourceEnvelope`.
+
+The next source should reuse the current catalog, asset, source-handoff, and ListingKit boundaries. It should not create a parallel product model or a new marketplace submission path.
+
+## 9. Stop conditions
 
 Pause and document before continuing if:
 
-- the first source requires large schema changes before identity is clear;
-- the source adapter needs browser/runtime behavior to test basic normalization;
-- ListingKit must receive raw source payloads to proceed;
-- product sourcing needs to know SHEIN/TEMU/Amazon publish payload fields;
-- two source integrations are being built in the same PR;
-- a package move changes behavior;
-- import-boundary allowlists grow without a retirement condition.
+- the controlled 1688 path requires ListingKit to consume raw crawler payloads;
+- Product Sourcing needs target-marketplace publish fields;
+- source lineage cannot be retained without broad task schema changes;
+- basic normalization requires live browser automation to be testable;
+- boundary allowlists grow without an owner and retirement condition;
+- the next source requires a second source contract instead of reusing `SourceEnvelope`;
+- a new target-platform workbench is being mixed into source closeout;
+- implementation is being mistaken for repository or production validation.
 
-## 8. Immediate next action
+## 10. Immediate next action
 
-PR 1 through PR 5 now establish identity/envelope, the first Amazon source-envelope mapping, neutral catalog/asset facts, a narrow ListingKit request bridge, and source/crawler/facts boundary guards. 1688 is now the next business source to validate against the same path.
+Run the focused validation suite, then execute and document one controlled 1688 source-to-task-to-preview flow.
 
-Next, run focused validation and then choose whether to:
-
-1. wire the bridge into one controlled ListingKit create/preview path, or
-2. start the next new warehouse/source catalog path such as 大建云仓.
-
-Implementation checklist:
-
-```text
-[ ] inspect existing internal/product/sourcing package shape, if present.
-[ ] define SourceIdentity and SourceEnvelope with minimal neutral fields.
-[ ] add validation/fingerprint tests.
-[ ] add or plan import-boundary guard coverage.
-[ ] map the existing Amazon product result path into SourceEnvelope.
-[ ] map the existing 1688 product result path into SourceEnvelope.
-[ ] map SourceEnvelope into internal/catalog and internal/asset neutral facts.
-[ ] map internal/catalog and internal/asset neutral facts into a ListingKit GenerateRequest bridge.
-[ ] guard product-source, catalog, asset, crawler, and ListingKit bridge dependency direction.
-[ ] update this plan only if the first chosen source changes the PR order.
-```
+Do not start the next warehouse source until that result is recorded and the MVP closeout state is explicit.
