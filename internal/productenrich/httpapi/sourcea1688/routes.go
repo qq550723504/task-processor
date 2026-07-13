@@ -3,6 +3,7 @@ package sourcea1688
 import (
 	"net/http"
 
+	"task-processor/internal/authz"
 	"task-processor/internal/httproute"
 )
 
@@ -13,9 +14,10 @@ func AppendRouteDescriptors(routes []httproute.Descriptor, handler *Handler) []h
 		return routes
 	}
 	return append(routes, httproute.Descriptor{
-		Method:  http.MethodPost,
-		Path:    "/api/v1/product-sourcing/1688/listingkit/tasks",
-		Module:  ModuleName,
-		Handler: handler.CreateListingKitTask,
+		Method:     http.MethodPost,
+		Path:       "/api/v1/product-sourcing/1688/listingkit/tasks",
+		Module:     ModuleName,
+		Permission: authz.PermissionProductSourcingWrite,
+		Handler:    handler.CreateListingKitTask,
 	})
 }

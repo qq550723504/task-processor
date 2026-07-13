@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/authz"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
 	a1688 "task-processor/internal/product/sourcehandoff/a1688"
@@ -105,7 +106,7 @@ func TestAppendRouteDescriptorsIncludesCreateRoute(t *testing.T) {
 	if len(routes) != 1 {
 		t.Fatalf("routes = %d, want 1", len(routes))
 	}
-	if routes[0].Method != http.MethodPost || routes[0].Path != "/api/v1/product-sourcing/1688/listingkit/tasks" || routes[0].Module != ModuleName || routes[0].Handler == nil {
+	if routes[0].Method != http.MethodPost || routes[0].Path != "/api/v1/product-sourcing/1688/listingkit/tasks" || routes[0].Module != ModuleName || routes[0].Permission != authz.PermissionProductSourcingWrite || routes[0].Handler == nil {
 		t.Fatalf("route = %+v, want 1688 listingkit task route", routes[0])
 	}
 }

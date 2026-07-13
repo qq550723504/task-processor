@@ -12,6 +12,7 @@ const (
 	PermissionListingKitAdminRead   = "listingkit.admin.read"
 	PermissionListingKitAdminWrite  = "listingkit.admin.write"
 	PermissionListingKitPlatformAdm = "listingkit.platform_admin"
+	PermissionProductSourcingWrite  = "product_sourcing.write"
 )
 
 const listingKitModel = `
@@ -53,12 +54,15 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 	for _, policy := range [][]string{
 		{"listingkit_operator", PermissionListingKitAdminRead},
 		{"listingkit_operator", PermissionListingKitAdminWrite},
+		{"listingkit_operator", PermissionProductSourcingWrite},
 		{"listingkit_admin", PermissionListingKitAdminRead},
 		{"listingkit_admin", PermissionListingKitAdminWrite},
 		{"listingkit_admin", PermissionListingKitPlatformAdm},
+		{"listingkit_admin", PermissionProductSourcingWrite},
 		{"platform_admin", PermissionListingKitAdminRead},
 		{"platform_admin", PermissionListingKitAdminWrite},
 		{"platform_admin", PermissionListingKitPlatformAdm},
+		{"platform_admin", PermissionProductSourcingWrite},
 		{"admin", PermissionListingKitPlatformAdm},
 	} {
 		if _, err := enforcer.AddPolicy(policy); err != nil {
