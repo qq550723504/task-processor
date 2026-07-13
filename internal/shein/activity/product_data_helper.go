@@ -131,6 +131,22 @@ func (h *ProductDataHelper) ExtractAmazonPriceFromSkcData(skcData *productsync.E
 	return 0
 }
 
+// AmazonCostBySKU returns the normalized SKU-to-Amazon-cost mapping for an SKC.
+func (h *ProductDataHelper) AmazonCostBySKU(skcData *productsync.EnrichedSkcInfo) map[string]float64 {
+	costs := make(map[string]float64)
+	if skcData == nil {
+		return costs
+	}
+	for _, sku := range skcData.SkuInfo {
+		code := normalizePromotionSKUCode(sku.SkuCode)
+		if code == "" || sku.AmazonMonitorData == nil || sku.AmazonMonitorData.Price <= 0 {
+			continue
+		}
+		costs[code] = sku.AmazonMonitorData.Price
+	}
+	return costs
+}
+
 // ExtractAmazonPriceFromAttributes 从Attributes JSON字符串中提取指定SKC的Amazon价格
 func (h *ProductDataHelper) ExtractAmazonPriceFromAttributes(attributesJSON string, skcCode string) float64 {
 	if attributesJSON == "" {

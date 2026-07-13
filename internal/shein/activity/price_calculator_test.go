@@ -1,10 +1,19 @@
 package activity
 
 import (
+	"context"
+	"encoding/json"
 	"math"
+	"reflect"
 	"testing"
 
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/shein"
 	"task-processor/internal/shein/api/marketing"
+	"task-processor/internal/shein/api/product"
+	"task-processor/internal/shein/productsync"
+
+	"github.com/sirupsen/logrus"
 )
 
 const floatTolerance = 1e-9
@@ -17,6 +26,106 @@ func TestPromotionSKUUSSupplyPriceDoesNotUseSKCFallback(t *testing.T) {
 	if got := promotionSKUUSSupplyPrice(marketing.PromotionSkuInfo{}, 10); got != 0 {
 		t.Fatalf("price = %v, want zero without direct SKU supply price", got)
 	}
+}
+
+func TestAmazonCostBySKUUsesNormalizedSKUAndSkipsMissingCosts(t *testing.T) {
+	data := &productsync.EnrichedSkcInfo{SkuInfo: []productsync.EnrichedSkuInfo{
+		{
+			SkuInfo:           product.SkuInfo{SkuCode: "sku-small"},
+			AmazonMonitorData: &shein.AmazonMonitorData{Price: 12.5},
+		},
+		{
+			SkuInfo:           product.SkuInfo{SkuCode: "SKU-LARGE"},
+			AmazonMonitorData: &shein.AmazonMonitorData{Price: 20.5},
+		},
+		{SkuInfo: product.SkuInfo{SkuCode: "sku-missing"}},
+	}}
+
+	got := (&ProductDataHelper{}).AmazonCostBySKU(data)
+	want := map[string]float64{"SKU-SMALL": 12.5, "SKU-LARGE": 20.5}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("cost map = %#v, want %#v", got, want)
+	}
+}
+
+func TestBuildCalculateRequestWithPriceModeBreakevenUsesPerSKUCost(t *testing.T) {
+	attributes, err := json.Marshal([]productsync.EnrichedSkcInfo{{
+		SkcName: "skc-1",
+		SkuInfo: []productsync.EnrichedSkuInfo{
+			{SkuInfo: product.SkuInfo{SkuCode: "sku-small"}, AmazonMonitorData: &shein.AmazonMonitorData{Price: 12.5}},
+			{SkuInfo: product.SkuInfo{SkuCode: "sku-large"}, AmazonMonitorData: &shein.AmazonMonitorData{Price: 20.5}},
+			{SkuInfo: product.SkuInfo{SkuCode: "sku-invalid"}, AmazonMonitorData: &shein.AmazonMonitorData{Price: 20}},
+		},
+	}})
+	if err != nil {
+		t.Fatalf("marshal attributes: %v", err)
+	}
+
+	service := &activityRegistrationServiceImpl{
+		productDataRepo: priceCalculatorProductDataRepo{items: []listingadmin.ProductData{{Attributes: json.RawMessage(attributes)}}},
+		logger:          logrus.NewEntry(logrus.New()),
+	}
+	req := service.buildCalculateRequestWithPriceMode(TimeLimitedDiscountConfig{
+		PriceMode:            "BREAKEVEN",
+		FixedPriceAdjustment: 1,
+	}, []marketing.PromotionGoodsData{{
+		Skc: "skc-1",
+		SkuInfoList: []marketing.PromotionSkuInfo{
+			{Sku: "sku-small", USSupplyPrice: promotionFloat64Ptr(30)},
+			{Sku: "sku-large", USSupplyPrice: promotionFloat64Ptr(45)},
+			{Sku: "sku-invalid", USSupplyPrice: promotionFloat64Ptr(18)},
+		},
+	}}, 1)
+
+	if len(req.SkcInfoList) != 1 {
+		t.Fatalf("SKC count = %d, want 1", len(req.SkcInfoList))
+	}
+	got := req.SkcInfoList[0].SkuInfoList
+	if len(got) != 2 {
+		t.Fatalf("SKU count = %d, want 2; prices = %+v", len(got), got)
+	}
+	if got[0].SkuCode != "sku-small" || got[0].ProductPrice != 30 || got[0].DiscountValue != 13.5 {
+		t.Fatalf("first SKU price = %+v, want sku-small original 30 activity 13.5", got[0])
+	}
+	if got[1].SkuCode != "sku-large" || got[1].ProductPrice != 45 || got[1].DiscountValue != 21.5 {
+		t.Fatalf("second SKU price = %+v, want sku-large original 45 activity 21.5", got[1])
+	}
+}
+
+type priceCalculatorProductDataRepo struct {
+	items []listingadmin.ProductData
+}
+
+func (r priceCalculatorProductDataRepo) ListProductData(context.Context, listingadmin.ProductDataQuery) (*listingadmin.ProductDataPage, error) {
+	return &listingadmin.ProductDataPage{Items: r.items}, nil
+}
+
+func (priceCalculatorProductDataRepo) GetProductData(context.Context, int64, int64) (*listingadmin.ProductData, error) {
+	return nil, nil
+}
+
+func (priceCalculatorProductDataRepo) CreateProductData(context.Context, *listingadmin.ProductData) (*listingadmin.ProductData, error) {
+	return nil, nil
+}
+
+func (priceCalculatorProductDataRepo) UpdateProductData(context.Context, *listingadmin.ProductData) (*listingadmin.ProductData, error) {
+	return nil, nil
+}
+
+func (priceCalculatorProductDataRepo) UpdateProductDataStatus(context.Context, int64, int64, int16) (*listingadmin.ProductData, error) {
+	return nil, nil
+}
+
+func (priceCalculatorProductDataRepo) DeleteProductData(context.Context, int64, int64) error {
+	return nil
+}
+
+func (priceCalculatorProductDataRepo) UpsertProductDataBatch(context.Context, []listingadmin.ProductData) (int, error) {
+	return 0, nil
+}
+
+func (priceCalculatorProductDataRepo) BatchUpdateAttributesByPlatformProductID(context.Context, []listingadmin.ProductData) (int, error) {
+	return 0, nil
 }
 
 // TestCalculatePriceByDiscount 验证折扣率定价

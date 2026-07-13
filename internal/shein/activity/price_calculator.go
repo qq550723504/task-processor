@@ -110,15 +110,15 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 
 	s.logger.Infof("开始构建价格计算请求，输入商品数量: %d，定价模式: %s", totalInputGoods, config.PriceMode)
 
-	// 如果使用利润率模式,需要获取产品的Attributes来提取Amazon价格
+	// 利润率和保本模式都需要获取产品的 Attributes 来提取 Amazon 成本价。
 	var skcDataMap map[string]*productsync.EnrichedSkcInfo
 	var helper *ProductDataHelper
-	if config.PriceMode == "PROFIT" {
+	if config.PriceMode == "PROFIT" || config.PriceMode == "BREAKEVEN" {
 		helper = NewProductDataHelper(s.productDataRepo, s.logger.Logger)
 		var err error
 		skcDataMap, err = helper.BuildSkcDataMap(storeID)
 		if err != nil {
-			s.logger.WithError(err).Warn("构建SKC数据映射失败，无法使用利润率模式")
+			s.logger.WithError(err).Warn("构建SKC数据映射失败，无法使用利润率或保本模式")
 		}
 	}
 
@@ -148,13 +148,13 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 				s.logger.Warnf("商品 %s 无法获取Amazon成本价 (原价: %.2f)，跳过", g.Skc, g.USSupplyPrice)
 				skippedByCostPrice++
 			}
-		} else {
+		} else if config.PriceMode != "BREAKEVEN" {
 			// 按折扣率计算
 			discountValue = calculatePriceByDiscount(g.USSupplyPrice, config.DiscountRate)
 		}
 
 		// 如果活动价格为0或负数,跳过该商品(利润不足或无法定价)
-		if discountValue <= 0 {
+		if config.PriceMode != "BREAKEVEN" && discountValue <= 0 {
 			s.logger.Warnf("商品 %s 活动价格为 %.2f (原价: %.2f)，跳过", g.Skc, discountValue, g.USSupplyPrice)
 			skippedByZeroPrice++
 			continue
@@ -165,8 +165,15 @@ func (s *activityRegistrationServiceImpl) buildCalculateRequestWithPriceMode(
 		for _, sku := range g.SkuInfoList {
 			productPrice := promotionSKUUSSupplyPrice(sku, g.USSupplyPrice)
 			skuDiscountValue := discountValue
-			if config.PriceMode == "DISCOUNT" {
+			switch config.PriceMode {
+			case "DISCOUNT":
 				skuDiscountValue = calculatePriceByDiscount(productPrice, config.DiscountRate)
+			case "BREAKEVEN":
+				costPrice := 0.0
+				if helper != nil {
+					costPrice = helper.AmazonCostBySKU(skcDataMap[g.Skc])[normalizedPromotionSKUCode(sku.Sku)]
+				}
+				skuDiscountValue = calculatePriceByBreakeven(productPrice, costPrice, config.FixedPriceAdjustment)
 			}
 			if skuDiscountValue <= 0 {
 				continue
