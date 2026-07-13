@@ -25,25 +25,21 @@ SKU cost remains preferred over SKC cost for profit and breakeven calculations.
 Values with a non-positive amount are absent. Price values are never silently
 substituted across currencies.
 
-## Fallback policy
+## Missing-price policy
 
-`PROFIT` and `BREAKEVEN` require true synchronized supply/cost data. If it is
-missing for an SKC or SKU, that candidate is excluded before the SHEIN pricing
-request and the result records a stable missing-cost reason. A retail sale price
-must never become the cost used in these modes.
-
-`DISCOUNT` uses the retail sale price to calculate the discounted customer price.
-When the preferred-currency retail price is unavailable, it may use an available
-retail price, then any positive retail price, with an explicit
-`retail_price_fallback` reason. It does not claim that this value is supply cost.
+There is no fallback policy. `PROFIT` and `BREAKEVEN` require true synchronized
+supply/cost data; `DISCOUNT` requires an available retail price in the requested
+currency. A missing, disabled, zero, cross-currency, product-level, or other-SKU
+value excludes that candidate before the SHEIN pricing request and records a
+stable missing-price reason. No retail price may become cost, and no SKU may
+borrow a price from an SKC or another SKU.
 
 ## Acceptance criteria
 
 - Multiple SKUs retain independent customer prices and independent true costs.
 - Profit and breakeven exclude candidates with no true cost; no sale-price cost
   substitution occurs.
-- Discount mode retains the documented retail fallback order and emits the
-  fallback reason.
+- Discount mode excludes missing target-currency retail prices without fallback.
 - A zero, missing, disabled, or currency-incompatible value cannot become a
   positive pricing input by accident.
 - Focused deterministic tests cover all source priorities, multi-SKU pricing,
