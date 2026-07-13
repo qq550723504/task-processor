@@ -2,23 +2,26 @@
 
 > Status: active current-state document.
 >
-> Last reviewed: 2026-07-09.
+> Last reviewed: 2026-07-13.
 >
-> Scope: refactoring closeout, growth sequencing, and the current Now / Next / Later direction for Task Processor / ListingKit.
+> Calibrated against: `master` at `5c72f406c18b40d3860fb8f0c7518c6606f38b85`.
+>
+> Scope: current product maturity, validation gates, refactoring closeout, Product Sourcing closeout, and the active Now / Next / Later direction for Task Processor / ListingKit.
 
 ## 1. Current position
 
-The project is past the early broad-splitting phase.
+The project is past both the early broad-splitting phase and the initial Product Sourcing foundation phase.
 
 The current posture is:
 
 ```text
-Close out the new runtime and boundary ownership first;
-expand product sources second;
+Stabilize and validate the current SHEIN production path first;
+close the implemented Product Sourcing MVP with controlled evidence second;
+select exactly one next product source only after that;
 defer full new sales-platform workbenches until the SHEIN template is stable.
 ```
 
-This document is intentionally short. It points to the active execution and checkpoint documents instead of repeating every historical slice.
+This is a modular-monolith stabilization and growth-readiness phase. It is not a greenfield architecture phase and it is not the right time for another broad directory rewrite.
 
 Use this file together with:
 
@@ -29,159 +32,268 @@ Use this file together with:
 - `docs/refactoring/decisions/2026-06-26-next-growth-sequence.md`
 - `docs/development/repository-structure.md`
 
-## 2. Now
+### 1.1 Evidence vocabulary
 
-The current active work should focus on closeout and stabilization, not broad feature expansion.
+Use these terms consistently in status documents and review notes:
 
-### 2.1 Refactoring closeout
+- **Implemented**: the code path exists on the calibrated `master` baseline.
+- **Repository-validated**: the exact baseline has recorded automated test/build results.
+- **Production-validated**: a real environment or real API run is recorded in a dated validation note.
+- **Deferred**: code or runtime assets may exist, but the capability is not an active product-expansion commitment.
 
-Required next work:
+Do not treat “implemented” as equivalent to “repository-validated” or “production-validated”.
 
-1. Keep listing runtime and app runtime boundaries free of the retired management-service semantics. The concrete `internal/infra/clients/management` adapter package still exists as a legacy retirement target, but new runtime/task/status/store/product/pricing/health paths should not reintroduce a broad management service dependency.
-2. Keep bootstrap shared resources on the current local provider/runtime path; HTTP task-RPC/login and processor-base seams should use explicit ports or retired/unavailable behavior instead of reviving a broad retired management service.
-3. Keep `internal/listingkit` as orchestration, compatibility, DTO adaptation, persistence ordering, and API shell glue.
-4. Do not continue splitting files just because a helper can move.
-5. Keep every new migration tied to an explicit ownership reduction.
+## 2. Current system reality
 
-### 2.2 Control Plane and runtime validation
+### 2.1 Product and runtime shape
 
-The backend Go Listing Control Plane path now has first-class repository support: `cmd/listing-control-plane` is an official runtime entrypoint, Docker deployment support exists, and CI builds it together with `cmd/shein-listing`.
+ListingKit is the product entrypoint. The repository is no longer best described as a generic task processor.
 
-Required next work:
+The maintained runtime entrypoints are:
 
-1. Keep the latest `master` validation evidence visible for:
-   - `go test ./... -count=1`
-   - listing control-plane race tests
-   - listingadmin dispatch / rollback / recovery race tests
-   - `go build ./cmd/listing-control-plane`
-   - `go build ./cmd/shein-listing`
-2. Treat `.github/workflows/ci.yml` as the executable source for the core backend gate, but record any manual smoke or production validation evidence in a dated validation note when it is used for release decisions.
-3. Keep the SHEIN listing browser startup path in the rollout smoke test checklist.
-4. Publish or explicitly schedule the frontend admin dispatch-reason / dispatch-event visibility if the UI artifact deploys separately.
-5. Keep dispatch event distribution, leader status, and `failed > 0` cycle reporting as observability follow-ups rather than introducing another scheduler variant.
+- `cmd/product-listing-api`
+- `cmd/listing-control-plane`
+- `cmd/shein-listing`
+- `cmd/temu-listing`
 
-### 2.3 Boundary checkpoint cleanup
+An official runtime entrypoint means that the command is maintained and structurally supported. It does not mean every target-platform product experience has the same maturity.
 
-Required next work:
+### 2.2 Platform maturity
 
-1. Treat `listingkit-boundary-checkpoint.md` as the current ListingKit stop-line authority.
-2. Keep long completed-slice lists as evidence, not as an invitation to continue helper shaving.
-3. Prefer small target-domain policy seams with guard tests.
-4. Update allowlists only with a temporary ownership explanation.
-5. Do not use stale generated package maps or baseline snapshots as architecture authority; regenerate them when fresh evidence is needed.
+| Capability | Current status | Current interpretation |
+| --- | --- | --- |
+| SHEIN target listing | Production main path; active stabilization | The current product and release focus. Pricing, promotion, readiness, caching, browser startup, save-draft, publish, and recovery behavior require current-baseline evidence. |
+| SDS POD source/design flow | Active capability; active stabilization | Treated as a POD/design capability rather than a generic product-source integration. |
+| 1688 product source | Implemented through normalization and a narrow ListingKit task bridge; controlled validation pending | The first business-priority product-source path to close with repository and real-flow evidence. |
+| Amazon product source | Implemented as a source-envelope boundary-validation path | Useful for source modeling and tests; it does not mean a full Amazon ListingKit workbench is active. |
+| TEMU target listing | Runtime and integration assets retained; full workbench deferred | Maintain existing runtime correctness without starting a broad new workbench. |
+| Amazon target listing | Existing historical/target code retained; full workbench deferred | Do not infer current product parity with SHEIN. |
+| 大建云仓 / next warehouse source | Planned candidate | Start only after the current Product Sourcing MVP is closed and its contract is clear. |
 
-## 3. Next
+### 2.3 Product Sourcing implementation status
 
-After the closeout items are green or explicitly documented, the next growth direction should be product-source expansion.
+The Product Sourcing MVP foundation is implemented on the calibrated baseline:
 
-### 3.1 Product-source expansion focus
+1. `internal/product/sourcing` owns `SourceIdentity`, fingerprinting, validation, and `SourceEnvelope`.
+2. Amazon and 1688 source results map into the neutral envelope.
+3. Source envelopes hand off to `internal/catalog.ProductFacts` and `internal/asset.Facts`.
+4. `internal/product/sourcehandoff` adapts neutral facts into the existing ListingKit `GenerateRequest`.
+5. The 1688 handoff has a narrow command and HTTP adapter path to the existing task-creation boundary.
+6. Product-source, crawler, catalog, asset, and ListingKit bridge dependency directions have guard tests.
 
-Preferred target area:
+The remaining Product Sourcing work is not “introduce the model”. It is:
 
-```text
-internal/product/sourcing
-internal/catalog or the approved product/catalog target
-internal/asset or the approved product/asset target
-internal/integration/crawler/*
+- record focused and full validation against the current baseline;
+- exercise one controlled 1688 import-to-task-to-preview path;
+- verify lineage, warnings, and missing-fact behavior are visible enough for operators;
+- close the MVP explicitly before choosing the next source.
+
+## 3. Now
+
+Current work should focus on validation, production stabilization, and closeout—not broad feature expansion.
+
+### 3.1 Validate the current baseline
+
+Keep exact results visible for the calibrated `master` commit or for the newer commit being considered for release:
+
+```powershell
+go test ./... -count=1
+
+go test -race ./internal/app/runtime/listingcontrol `
+  -run TestControlPlaneService -count=1
+
+go test -race ./internal/listingadmin `
+  -run "TestConcurrentClaimForDispatchOnlyOneWorkerWins|TestConcurrentRollbackDispatchOnlyOriginalQueuedClaimIsRestoredOnce|TestConcurrentRecoveryOnlyUpdatesStillEligibleRowsOnce" `
+  -count=1
+
+make build-all
 ```
 
-Allowed work:
+Frontend validation:
 
-1. Product source identity.
-2. Source result normalization.
-3. Canonical product facts.
-4. Image and asset fact normalization.
-5. Cost, price, and source-SDS identity mapping when it stays platform-neutral.
-6. Thin crawler adapters that execute raw source collection without owning marketplace publishing rules.
-
-Immediate MVP direction:
-
-```text
-raw source data
-  -> SourceIdentity + SourceEnvelope
-  -> source-result normalization
-  -> catalog / asset facts
-  -> ListingKit batch or task orchestration
-  -> existing SHEIN preview / submission path
+```powershell
+Set-Location web/listingkit-ui
+npm ci
+npm run lint
+npm run typecheck
+npm test
+npm run build
 ```
 
-Use `docs/product/product-sourcing-mvp-plan.md` for the active PR sequence.
+Required posture:
 
-Recommended order:
+1. Treat `.github/workflows/ci.yml` as the executable core gate.
+2. Treat GitHub Actions as the source of truth for exact job status and logs.
+3. Record manual smoke or production evidence in a dated validation note when it affects a release decision.
+4. Do not call the current baseline green unless the exact workflow or command result is visible.
 
-1. Introduce `internal/product/sourcing` source identity and envelope types.
-2. Map exactly one source path into the envelope.
-3. Hand off neutral product and asset facts.
-4. Add the narrow ListingKit orchestration bridge.
-5. Add import-boundary guards for product sourcing and crawler/integration packages.
+### 3.2 Stabilize the SHEIN production path
 
-Stop lines:
+The recent change stream concentrates on production-sensitive behavior rather than cosmetic refactoring.
 
-1. Product-source code must not directly assemble SHEIN publish payloads.
-2. Crawler packages must not depend on ListingKit root, marketplace publishing, or workspace packages.
-3. New source logic must not add `if source == ...` policy branches to root `internal/listingkit` unless it is temporary API-shell adaptation with a recorded follow-up.
-4. Do not start two product-source integrations in the same MVP.
-5. Do not mix product-source modeling with full new sales-platform workbench expansion.
+Keep focused evidence for:
 
-## 4. Later
+1. synchronized SHEIN supply-price usage;
+2. promotion drop-rate and breakeven calculations;
+3. multi-SKU price and cost completeness;
+4. republish resolution-cache preservation;
+5. SDS baseline and canonical metadata behavior;
+6. action-aware submit-readiness and POD-readiness policy;
+7. save-draft / publish idempotency and recovery;
+8. SHEIN listing browser startup and rollout smoke behavior.
 
-Full new sales-platform expansion should wait until the SHEIN template is stable enough to copy without copying the old coupling.
+New pure SHEIN policies should continue moving behind marketplace/publishing/workspace seams. Root `internal/listingkit` should consume stable seams rather than acquire new marketplace ownership.
 
-Allowed now:
+### 3.3 Close the Product Sourcing MVP
 
-1. Platform capability inventory.
-2. API / readiness contract design.
-3. Mapping cost assessment.
-4. Read-only package guards.
-5. Platform 资料包 / payload preview exploration that does not introduce a second submission state machine.
+Required next work:
 
-Deferred for now:
+1. Run the focused Product Sourcing, catalog, asset, source-handoff, ListingKit, and boundary tests.
+2. Exercise one controlled 1688 path:
+   - source request or URL;
+   - source normalization;
+   - `SourceEnvelope`;
+   - catalog and asset facts;
+   - ListingKit task creation;
+   - existing preview/readiness path.
+3. Verify the task records source lineage or a durable source reference.
+4. Verify missing facts remain warnings or explicit errors rather than hidden defaults.
+5. Record the result in a dated validation note.
+6. Decide explicitly whether the MVP is closed before starting 大建云仓 or another warehouse source.
 
-1. Full TEMU / Amazon / Walmart workbench expansion.
-2. New platform auto-publish runtime.
-3. Another dispatch scheduler or watchdog owner.
-4. Marketplace-specific rules added to root `internal/listingkit`.
-5. A new submission state machine outside `internal/listing/submission` and marketplace-owned publishing packages.
+### 3.4 Preserve runtime and package boundaries
 
-## 5. Do not do now
+Required posture:
 
-Do not start work that does any of the following:
+1. Keep listing runtime and app runtime free of retired broad management-service semantics.
+2. Keep `internal/app/*` focused on runtime assembly.
+3. Keep `internal/listingkit` focused on orchestration, compatibility, DTO adaptation, persistence ordering, and API-shell glue.
+4. Prefer small target-domain policy seams with focused tests.
+5. Update import allowlists only with an owner, reason, and retirement condition.
+6. Do not use stale generated package maps or dependency snapshots as architecture authority.
+7. Do not continue splitting files merely because a helper can move.
+
+### 3.5 Control Plane posture
+
+The Go Listing Control Plane has recorded production validation for leader election, standby readiness, leader takeover, dispatch persistence, rollback, and roll-forward behavior.
+
+Current work should preserve that result and keep current-baseline evidence visible for:
+
+- listing control-plane race tests;
+- listingadmin dispatch / rollback / recovery race tests;
+- leader status and takeover behavior;
+- dispatch event distribution and `failed > 0` reporting;
+- production rollout and rollback procedures.
+
+Do not introduce another scheduler or watchdog owner.
+
+## 4. Next
+
+After the current validation and closeout gates are green or explicitly documented:
+
+### 4.1 Select one next product source
+
+The preferred next growth direction is one warehouse or catalog source, with 大建云仓 as the current named candidate.
+
+Before implementation:
+
+1. define the raw source contract;
+2. identify stable source identity fields;
+3. identify missing and optional facts;
+4. confirm authentication, pagination, rate-limit, and snapshot behavior;
+5. map the contract into the existing `SourceEnvelope`;
+6. keep crawler/access concerns outside product normalization;
+7. keep target-marketplace publishing rules outside source packages.
+
+Start exactly one source integration. Do not combine it with a new target-platform workbench.
+
+### 4.2 Improve operational evidence
+
+After the controlled 1688 path is validated:
+
+- make source lineage and warnings inspectable;
+- keep dispatch and submission failure reasons operator-visible;
+- record real successful and failed task examples;
+- close gaps in configuration health checks and recovery guidance;
+- convert recurring operational findings into tests or stable runbooks.
+
+### 4.3 Keep HTTP runtime closed
+
+Continue to keep:
+
+- `internal/app/httpapi` assembly-only;
+- feature policy in feature-owned packages;
+- external clients behind small interfaces;
+- source-specific adapters outside root ListingKit;
+- runtime helper files limited to adapter construction and composition.
+
+## 5. Later
+
+Full new sales-platform expansion should wait until the SHEIN template and current source loop are stable enough to copy without copying legacy coupling.
+
+Allowed preparatory work:
+
+1. platform capability inventory;
+2. API and readiness contract design;
+3. mapping-cost assessment;
+4. read-only package guards;
+5. payload-preview exploration that does not introduce a second submission state machine.
+
+Deferred:
+
+1. full TEMU / Amazon / Walmart workbench expansion;
+2. new platform auto-publish runtime;
+3. another dispatch scheduler or watchdog owner;
+4. marketplace-specific rules in root `internal/listingkit`;
+5. a new submission state machine outside `internal/listing/submission` and marketplace-owned publishing packages;
+6. microservice extraction before package and runtime boundaries are stable.
+
+## 6. Do not do now
+
+Do not start work that:
 
 - renames broad package trees for directory consistency only;
 - moves files without reducing ownership or dependency pressure;
 - combines behavior changes with package movement;
-- expands import boundary allowlists without a migration explanation;
-- adds business rules to `internal/app/*` runtime assembly;
-- adds SHEIN, TEMU, Amazon, or Walmart platform policy to root `internal/listingkit`;
-- splits into microservices before package boundaries are stable;
-- launches a full new sales-platform workbench before closeout and product-source normalization are stable;
-- treats generated dependency/package snapshots as current unless they were regenerated for the current change.
+- expands import-boundary allowlists without a migration explanation;
+- adds business rules to `internal/app/*`;
+- adds SHEIN, TEMU, Amazon, or Walmart policy to root `internal/listingkit`;
+- starts another product source before the current source loop is validated or explicitly closed;
+- launches a full new sales-platform workbench during current stabilization;
+- treats official command existence as proof of equal product maturity;
+- treats generated dependency/package snapshots as current without regenerating them;
+- treats unrecorded test execution as a green release gate.
 
-## 6. Current execution checklist
+## 7. Current execution checklist
 
-Use this checklist before approving the next structural migration PR:
+Before approving the next structural or release-sensitive PR:
 
 ```text
-[ ] The target package does not import internal/listingkit.
+[ ] The exact base commit is named.
+[ ] Current automated test/build results are linked or the missing evidence is explicit.
+[ ] Production-sensitive SHEIN behavior has focused regression coverage.
+[ ] Any real smoke or production result is recorded in a dated validation note.
+[ ] The target package does not import internal/listingkit unless it is an approved compatibility bridge.
 [ ] The moved logic is a stable rule or policy, not runtime wiring.
-[ ] ListingKit keeps only compatibility, DTO adaptation, orchestration, or persistence callbacks.
+[ ] ListingKit keeps only compatibility, DTO adaptation, orchestration, persistence ordering, or API-shell responsibilities.
+[ ] Source packages receive neutral source contracts and do not assemble marketplace publish payloads.
 [ ] The PR includes a focused test or an import-boundary guard.
 [ ] Behavior changes are separated from file moves.
-[ ] The change does not touch Temporal determinism unless explicitly reviewed.
+[ ] Temporal determinism or activity retry semantics are untouched unless explicitly reviewed.
 [ ] The change does not add a second owner for dispatch, recovery, or submission state.
-[ ] The latest validation result is recorded or the missing validation is called out.
-[ ] Generated baseline artifacts are regenerated or intentionally left out of the commit.
+[ ] Import allowlist changes include an owner, reason, and retirement condition.
+[ ] Generated baseline artifacts are local evidence or a deliberately dated validation note.
 ```
 
-## 7. Source of truth summary
+## 8. Source of truth summary
 
 Current order of authority:
 
-1. `current-refactoring-status.md` for Now / Next / Later.
-2. `next-phase-plan.md` for immediate execution details.
+1. `current-refactoring-status.md` for current product maturity and Now / Next / Later.
+2. `next-phase-plan.md` for the immediate execution queue.
 3. `listingkit-boundary-checkpoint.md` for ListingKit stop lines.
 4. `docs/product/product-sourcing-handoff.md` for product-source ownership boundaries.
-5. `docs/product/product-sourcing-mvp-plan.md` for the active product-source MVP PR sequence.
+5. `docs/product/product-sourcing-mvp-plan.md` for Product Sourcing implementation and closeout status.
 6. `project-wide-refactoring-plan.md` for long-term architecture direction.
 7. `project-wide-execution-plan.md` and dated progress snapshots as historical references.
 8. Generated package/dependency snapshots only as dated evidence when freshly regenerated.
