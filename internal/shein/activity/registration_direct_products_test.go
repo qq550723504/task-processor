@@ -334,13 +334,13 @@ func TestRegisterPromotionProductsAcceptsPromotionMultiSkuDifferentPrices(t *tes
 		t.Fatalf("created SKU list = %+v, want two entries", createdSKUs)
 	}
 	if createdSKUs[0].Sku != "sku-small" || createdSKUs[0].CostPrice != 29.9 {
-		t.Fatalf("first created SKU = %+v, want sku-small original 29.9 activity 17.4", createdSKUs[0])
+		t.Fatalf("first created SKU = %+v, want sku-small original 29.9 activity 12.5", createdSKUs[0])
 	}
-	assertClose(t, createdSKUs[0].ProductActPrice, 17.4)
+	assertClose(t, createdSKUs[0].ProductActPrice, 12.5)
 	if createdSKUs[1].Sku != "sku-large" || createdSKUs[1].CostPrice != 34.9 {
-		t.Fatalf("second created SKU = %+v, want sku-large original 34.9 activity 14.4", createdSKUs[1])
+		t.Fatalf("second created SKU = %+v, want sku-large original 34.9 activity 20.5", createdSKUs[1])
 	}
-	assertClose(t, createdSKUs[1].ProductActPrice, 14.4)
+	assertClose(t, createdSKUs[1].ProductActPrice, 20.5)
 }
 
 func TestRegisterPromotionProductsAllowsPromotionMultiSkuSamePrices(t *testing.T) {
@@ -1848,14 +1848,14 @@ func TestRegisterPromotionProductsUsesSKUCostsForBreakevenModeSkuActivityPrices(
 						SkuCode: "sku-small",
 						PriceInfo: marketing.PriceInfo{
 							ProductAmount:   29.7,
-							PromotionAmount: 19.82,
+							PromotionAmount: 1.82,
 						},
 					},
 					{
 						SkuCode: "sku-large",
 						PriceInfo: marketing.PriceInfo{
 							ProductAmount:   31.68,
-							PromotionAmount: 20.8,
+							PromotionAmount: 2.8,
 						},
 					},
 				},

@@ -182,7 +182,8 @@ func (s *activityRegistrationServiceImpl) buildCreateActivityRequest(
 	requestedSKUProductPriceBySKC := make(map[string]map[string]float64)
 	requestedSKUActPriceBySKC := make(map[string]map[string]float64)
 	requestedSKCMinActPrice := make(map[string]float64)
-	useRequestedActivityPrices := strings.EqualFold(config.PriceMode, "PROFIT")
+	useRequestedActivityPrices := strings.EqualFold(config.PriceMode, "PROFIT") ||
+		strings.EqualFold(config.PriceMode, "BREAKEVEN")
 	if calcReq != nil {
 		for _, skcInfo := range calcReq.SkcInfoList {
 			if skcInfo.SkcName == "" {
