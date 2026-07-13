@@ -647,6 +647,87 @@ func TestSheinCandidateServiceRefreshCandidatesTreatsSKUCostChangesAsNewVersion(
 	require.False(t, stale.SelectedForRun)
 }
 
+func TestSheinCandidateServiceListCandidatesUsesCurrentEnrollmentSKUPricesAndCosts(t *testing.T) {
+	t.Parallel()
+
+	product := SheinSyncedProductRecord{
+		ID:                 92,
+		TenantID:           9,
+		StoreID:            10,
+		SKCName:            "candidate-pricing-skc",
+		SupplierCode:       "XB0603003001-181EB5DF",
+		ShelfStatus:        "ON_SHELF",
+		EffectiveCostPrice: float64Ptr(30),
+		Currency:           "USD",
+		PriceSnapshot: `{"sale_price":99,"currency":"USD","sku_prices":[
+			{"sku_code":"SKU-A","sale_price":99,"currency":"USD"},
+			{"sku_code":"SKU-B","sale_price":88,"currency":"USD"}
+		]}`,
+		SupplyPrice:         float64Ptr(31.62),
+		SupplyPriceCurrency: "USD",
+		SupplyPriceSnapshot: `{"sku_supply_prices":[
+			{"sku_code":"SKU-A","supply_price":27.38,"currency":"USD"},
+			{"sku_code":"SKU-B","supply_price":31.62,"currency":"USD"}
+		]}`,
+		InventorySnapshot: `{"available":20}`,
+		SiteSnapshot: `{"sku_info":[
+			{"sku_code":"SKU-A","variant_label":"40 inch"},
+			{"sku_code":"SKU-B","variant_label":"60 inch"}
+		]}`,
+		IsActive: true,
+	}
+	repo := newSheinCandidateRepoStub([]SheinSyncedProductRecord{product})
+	for _, identity := range ResolveSheinSDSVariantCostGroupIdentities(product) {
+		cost := 19.99
+		if identity.VariantLabel == "60 inch" {
+			cost = 22.50
+		}
+		repo.seedSDSCostGroup(SheinSDSCostGroupRecord{
+			TenantID:        9,
+			StoreID:         10,
+			GroupKey:        identity.GroupKey,
+			ManualCostPrice: float64Ptr(cost),
+		})
+	}
+	repo.seedCandidate(SheinActivityCandidateRecord{
+		ID:                 1003,
+		TenantID:           9,
+		StoreID:            10,
+		SyncedProductID:    product.ID,
+		ActivityType:       "TIME_LIMITED",
+		ActivityKey:        "time_limited:9:10",
+		SKCName:            product.SKCName,
+		CandidateVersion:   "stale-price-snapshot",
+		EffectiveCostPrice: float64Ptr(99),
+		PriceSnapshot:      `{"sale_price":99,"currency":"USD"}`,
+		EligibilityStatus:  SheinCandidateEligibilityStatusEligible,
+		ReviewStatus:       SheinCandidateReviewStatusApproved,
+	})
+
+	service := NewSheinCandidateService(repo)
+	rows, total, err := service.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+		TenantID:     9,
+		StoreID:      10,
+		ActivityType: "TIME_LIMITED",
+		Page:         1,
+		PageSize:     20,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, rows, 1)
+
+	priceSnapshot := parsePromotionCandidatePriceSnapshot(rows[0].PriceSnapshot)
+	require.Equal(t, 31.62, priceSnapshot.SalePrice)
+	require.Equal(t, []promotionCandidateSKUPriceSnapshot{
+		{SKUCode: "SKU-A", SalePrice: 27.38, Currency: "USD"},
+		{SKUCode: "SKU-B", SalePrice: 31.62, Currency: "USD"},
+	}, priceSnapshot.SKUPrices)
+	require.Equal(t, []SheinSKUCostPrice{
+		{SKUCode: "SKU-A", CostPrice: 19.99},
+		{SKUCode: "SKU-B", CostPrice: 22.50},
+	}, rows[0].SKUCostPriceInfoList)
+}
+
 func TestSheinCandidateServiceRefreshCandidatesSupersedesOlderCandidateVersions(t *testing.T) {
 	t.Parallel()
 

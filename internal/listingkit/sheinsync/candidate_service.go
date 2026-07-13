@@ -154,7 +154,18 @@ func (s *sheinCandidateService) ListCandidates(ctx context.Context, query *Shein
 	if err := s.validate(); err != nil {
 		return nil, 0, err
 	}
-	return s.repo.ListCandidates(ctx, query)
+	rows, total, err := s.repo.ListCandidates(ctx, query)
+	if err != nil {
+		return nil, 0, err
+	}
+	if query == nil {
+		return rows, total, nil
+	}
+	rows, err = refreshSheinEnrollmentCandidatePricing(ctx, s.repo, query.TenantID, query.StoreID, rows)
+	if err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
 }
 
 func (s *sheinCandidateService) ResetCandidates(ctx context.Context, tenantID, storeID int64, req SheinCandidateResetRequest) (*SheinCandidateResetResult, error) {
