@@ -53,18 +53,31 @@
 
 ### 1.3 发布阶段
 
-| 阶段 | 用户范围 | 发布能力 | 退出条件 |
-| --- | --- | --- | --- |
-| Internal Readiness | 内部账号 | 草稿与测试发布 | P0 安全、数据、发布门禁完成 |
-| Paid Pilot A | 2–5 个邀请制租户 | 默认草稿；单租户白名单发布 | 连续真实任务稳定、无越权和重复提交事故 |
-| Paid Pilot B | 5–20 个邀请制租户 | 逐租户开放发布 | 计量可对账、备份恢复演练通过、支持流程稳定 |
-| General Availability | 公开注册 | 另行决策 | 自助支付、HA、合规和自动化运营闭环完成 |
+| 阶段 | 用户范围 | 收费状态 | 发布能力 | 进入/退出条件 |
+| --- | --- | --- | --- | --- |
+| Internal Readiness | 仅内部账号 | 不收费、不签付费试点订单 | 草稿与测试发布 | 完成 M0；其余门禁在隔离环境持续验证 |
+| Paid Pilot A | 2–5 个邀请制租户 | 可按已批准的固定套餐收费 | 默认草稿；逐租户白名单发布 | 进入前满足第 2 节全部收费门禁并完成 PAY-070～PAY-072；退出按 PAY-073 |
+| Paid Pilot B | 6–20 个邀请制租户 | 按已批准套餐收费 | 逐租户开放发布 | PAY-073 通过后才可增加第 6 个租户 |
+| General Availability | 公开注册 | 另行决策 | 另行决策 | 自助支付、HA、合规和自动化运营闭环完成 |
 
 本计划只覆盖 Internal Readiness、Paid Pilot A 和 Paid Pilot B。
 
-## 2. 付费试点 Definition of Done
+### 1.4 唯一商业放行规则
 
-只有以下条件全部成立，才能对外收取试点费用：
+以下规则是收费和外部准入的唯一权威；单个里程碑完成不自动获得商业放行：
+
+| 动作 | 必须满足 |
+| --- | --- |
+| 邀请外部客户进入生产或连接真实店铺 | 第 2 节全部条件完成；PAY-070～PAY-072 完成；产品、工程、运维共同 Go/No-Go |
+| 签署并开始计费 | 上述条件完成；套餐、价格、退款/暂停政策及合同、隐私文本经人工批准 |
+| 为某租户开放正式发布 | 上述条件完成；M3 完成；该租户 preflight、草稿验收和显式业务批准通过 |
+| 增加第 6 个租户并进入 Paid Pilot B | PAY-073 全部观察门禁通过 |
+
+内部账号可以在隔离环境提前验证后续能力，但这不构成邀请外部客户、收费或开放正式发布的依据。
+
+## 2. Paid Pilot A 收费 Definition of Done
+
+只有以下条件全部成立，并完成 PAY-070～PAY-072 的逐租户放行，才能对外收取试点费用：
 
 ```text
 [ ] 固定 release SHA 的后端、前端、race、build 和镜像验证结果可见。
@@ -120,16 +133,17 @@ Known follow-ups:
 
 ```text
 M0 固定基线和发布证据
+  -> PAY-040 冻结套餐、entitlement 和用量政策
   -> M1 身份、租户、店铺和资源隔离
+  -> M3 SHEIN 提交安全、定价、远端对账和发布策略
   -> M2 来源追溯与 1688 闭环
-  -> M3 SHEIN 提交安全、定价和远端对账
-  -> M4 套餐、计量和人工商业台账
+  -> M4 用量 ledger、入口执行和人工商业台账（PAY-041～PAY-044）
   -> M5 数据保护、生产配置和供应链硬化
   -> M6 可观测性、支持和真实验收
   -> M7 邀请制付费试点发布
 ```
 
-M1 未完成时不得邀请外部客户。M3 未完成时不得开放正式发布。M4 未完成时只能使用人工固定套餐，不得按系统用量出具正式账单。M5 的恢复演练未完成时不得承诺数据 SLA。
+章节按风险域组织，不代表执行顺序；唯一执行顺序以第 14 节 PR 队列为准。M1 完成只代表隔离基础具备，不单独构成外部准入条件。M3 未完成时不得开放正式发布。PAY-040 未完成人工固定套餐也不得启用；M4 未完成不得开始收费。M5 的恢复演练未完成时不得邀请外部客户或承诺数据 SLA。
 
 ## 5. M0：固定基线和发布证据
 
@@ -425,11 +439,17 @@ Product1688 fixture
 **幂等范围**
 
 ```text
-tenant_id + store_id + task_id + action + idempotency_key
+tenant_id + store_id + task_id + action + confirmed_payload_revision
+  -> one stable submission_intent_id
+  -> one active or successful remote execution
 ```
 
 **实现要求**
 
+- 用户确认时由服务端创建并持久化稳定的 `submission_intent_id`；同一确认意图的超时重试、页面刷新、服务重启和恢复任务必须复用该 ID。
+- 客户端 `idempotency_key` 只能用于定位同一确认意图，不能仅因 key 不同就获得新的远端执行资格。
+- 同一 tenant、store、task、action 和 confirmed payload revision 只能存在一个 running、unknown 或 succeeded 的远端执行 owner。
+- 只有内容 revision 变化并再次确认，或原意图明确终止且按策略允许重试时，才能创建新的 submission intent。
 - `save_draft` 和 `publish` 使用不同 action scope。
 - 数据库唯一约束或原子 claim。
 - 并发请求只有一个 owner 可进入远端调用。
@@ -440,9 +460,11 @@ tenant_id + store_id + task_id + action + idempotency_key
 
 ```text
 [ ] 100 个并发相同请求只产生一次远端调用。
+[ ] 同一确认意图使用两个不同客户端 idempotency key 并发请求仍只产生一次远端调用。
 [ ] 网络超时后重试不重复创建草稿或发布。
 [ ] 服务重启后仍能识别已有 attempt。
 [ ] 重放返回相同 remote record 或进入 reconciliation。
+[ ] 内容 revision 变化后必须重新确认，才允许创建新的远端执行意图。
 ```
 
 ### PAY-031：冻结提交时的店铺、定价、币种和库存快照
@@ -896,25 +918,25 @@ backup
 
 ## 14. 推荐 PR 队列
 
-严格按依赖顺序推进：
+严格按依赖顺序推进；本队列覆盖并取代章节出现顺序：
 
 | 顺序 | Task | PR 建议标题 | Gate |
 | ---: | --- | --- | --- |
 | 1 | PAY-000 | `ci: add commercial readiness validation workflow` | M0 |
 | 2 | PAY-001 | `test: record first commercial baseline validation` | M0 |
-| 3 | PAY-010 | `security: protect product sourcing routes` | M1 |
-| 4 | PAY-011 | `security: enforce authenticated tenant identity` | M1 |
-| 5 | PAY-012 | `security: enforce tenant store ownership` | M1 |
-| 6 | PAY-013 | `security: isolate uploaded tenant assets` | M1 |
-| 7 | PAY-014 | `test: add commercial cross tenant security suite` | M1 |
-| 8 | PAY-020 | `feat: persist neutral product source references` | M2 |
-| 9 | PAY-021 | `test: close 1688 contract flow through persisted task` | M2 |
-| 10 | PAY-022 | `test: record staging 1688 operational smoke` | M2 |
-| 11 | PAY-030 | `fix: enforce shein submission idempotency` | M3 |
-| 12 | PAY-031 | `fix: freeze shein commercial submission snapshot` | M3 |
-| 13 | PAY-032 | `feat: reconcile unknown shein remote submission state` | M3 |
-| 14 | PAY-033 | `feat: add tenant commercial release flags` | M3 |
-| 15 | PAY-040 | `docs: define paid pilot product catalog and usage policy` | M4 |
+| 3 | PAY-040 | `docs: define paid pilot product catalog and usage policy` | Commercial policy |
+| 4 | PAY-010 | `security: protect product sourcing routes` | M1 |
+| 5 | PAY-011 | `security: enforce authenticated tenant identity` | M1 |
+| 6 | PAY-012 | `security: enforce tenant store ownership` | M1 |
+| 7 | PAY-013 | `security: isolate uploaded tenant assets` | M1 |
+| 8 | PAY-014 | `test: add commercial cross tenant security suite` | M1 |
+| 9 | PAY-030 | `fix: enforce shein submission idempotency` | M3 |
+| 10 | PAY-031 | `fix: freeze shein commercial submission snapshot` | M3 |
+| 11 | PAY-032 | `feat: reconcile unknown shein remote submission state` | M3 |
+| 12 | PAY-033 | `feat: add tenant commercial release flags` | M3 |
+| 13 | PAY-020 | `feat: persist neutral product source references` | M2 |
+| 14 | PAY-021 | `test: close 1688 contract flow through persisted task` | M2 |
+| 15 | PAY-022 | `test: record staging 1688 operational smoke` | M2 |
 | 16 | PAY-041 | `feat: add idempotent subscription usage ledger` | M4 |
 | 17 | PAY-042 | `fix: enforce usage across paid feature entrypoints` | M4 |
 | 18 | PAY-043 | `feat: add manual commercial subscription registry` | M4 |
@@ -934,7 +956,7 @@ backup
 | 32 | PAY-072 | `ci: gate paid pilot production releases` | M7 |
 | 33 | PAY-073 | `docs: record paid pilot A review` | M7 |
 
-PAY-030 到 PAY-032 若仓库已有相应机制，AI 应先做 inventory，补约束和测试，不重新实现平行状态机。
+PAY-030 到 PAY-032 若仓库已有相应机制，AI 应先做 inventory，补约束和测试，不重新实现平行状态机。PAY-020 到 PAY-022 不得在 PAY-030 到 PAY-033 完成前进入可销售范围或连接付费租户真实店铺。
 
 ## 15. 通用验证命令
 
@@ -1009,4 +1031,4 @@ kustomize build deployments/kubernetes/listingkit-workbench/overlays/prod
 ci: add commercial readiness validation workflow
 ```
 
-然后执行 PAY-001 记录当前不可变 SHA 的原始状态。不要在验证证据建立前同时推进新的来源或新目标平台工作台。
+然后执行 PAY-001 记录当前不可变 SHA 的原始状态，再执行 PAY-040 冻结套餐和用量政策。按第 14 节先完成 M1 和 M3，之后才推进 1688 商业闭环；不要在核心身份和远端提交安全门禁完成前扩大来源或新目标平台工作台。
