@@ -14,25 +14,22 @@ cache and readiness/idempotency belong to later independent changes.
 
 ## Price sources
 
-For a SKU, true supply price is selected in this order:
+Promotion request preparation uses an internal SKU pricing input with `SKU`,
+`RetailPrice`, `CostPrice`, and `Currency`. It is not a marketplace DTO and
+must not be serialized to SHEIN unchanged.
 
-1. `USSupplyPrice`;
-2. `SupplyPrice`;
-3. `SupplyPriceInfo.SupplyPrice`;
-4. the synchronized SKC supply price.
-
-SKU cost remains preferred over SKC cost for profit and breakeven calculations.
-Values with a non-positive amount are absent. Price values are never silently
-substituted across currencies.
+`RetailPrice` comes only from the matching SKU's available site price in the
+requested currency. `CostPrice` comes only from the matching SKU's synchronized
+`SkuCostPriceInfoList` entry in the requested currency. Values with a
+non-positive amount are absent. SKC prices, other SKU prices, and other
+currencies are never substituted.
 
 ## Missing-price policy
 
-There is no fallback policy. `PROFIT` and `BREAKEVEN` require true synchronized
-supply/cost data; `DISCOUNT` requires an available retail price in the requested
-currency. A missing, disabled, zero, cross-currency, product-level, or other-SKU
-value excludes that candidate before the SHEIN pricing request and records a
-stable missing-price reason. No retail price may become cost, and no SKU may
-borrow a price from an SKC or another SKU.
+There is no fallback policy. `PROFIT` and `BREAKEVEN` require `CostPrice`;
+`DISCOUNT` requires `RetailPrice`. A missing, disabled, zero, cross-currency,
+product-level, or other-SKU value excludes that SKU before the SHEIN pricing
+request and records a stable missing-price reason.
 
 ## Acceptance criteria
 

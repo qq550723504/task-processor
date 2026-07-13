@@ -4,7 +4,7 @@
 
 **Goal:** Require complete, same-currency source prices for SHEIN promotion calculations and exclude every incomplete candidate without fallback.
 
-**Architecture:** Keep price selection in `internal/shein/activity`. Represent the selected amount with its source kind so cost-required modes can reject retail-derived values, and preserve per-SKU price/cost selection.
+**Architecture:** Keep price selection in `internal/shein/activity`. Build an internal per-SKU pricing input (`SKU`, `RetailPrice`, `CostPrice`, `Currency`) from synchronized snapshots, then let each mode consume only its required field.
 
 **Tech Stack:** Go, SHEIN marketing DTOs, Testify, existing activity registration tests.
 
@@ -62,7 +62,7 @@ Commit: `git commit -m "fix: track shein promotion supply price source"`
 
 - [ ] **Step 1: Write failing integration tests**
 
-Add `PROFIT`, `BREAKEVEN`, and `DISCOUNT` registration cases with missing required values; assert no candidate reaches `calculateSupplyPrice` and the result contains a stable missing-price reason.
+Add `PROFIT`, `BREAKEVEN`, and `DISCOUNT` registration cases with a single SKU that lacks its required direct input; assert that SKU is absent from `calculateSupplyPrice` and the result contains a stable missing-price reason.
 
 - [ ] **Step 2: Verify red**
 
@@ -72,7 +72,7 @@ Expected: FAIL because current enrichment substitutes product, other-SKU, or oth
 
 - [ ] **Step 3: Implement minimal mode guard**
 
-Pass `PriceMode` and requested currency into snapshot enrichment. Retain only required direct SKU values; add a filter reason for every missing or incompatible value. Do not substitute any product, other-SKU, or other-currency value.
+Build `promotionSKUPriceInput` from matching `SkuPriceInfoList` and `SkuCostPriceInfoList` entries in the requested currency. Filter each SKU by mode-required field before creating `marketing.SkuPriceInfo`; do not mutate `marketing.PromotionSkuInfo` supply fields.
 
 - [ ] **Step 4: Verify green and commit**
 
