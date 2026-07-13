@@ -61,6 +61,73 @@ func TestRegisterPromotionProductsUsesProvidedPriceAndStockWhenAttributesAreMiss
 	}
 }
 
+func TestPromotionGoodsFromProductSnapshotsKeepsRetailOnlySKUForDiscountPricing(t *testing.T) {
+	goods := promotionGoodsFromProductSnapshots([]marketing.SkcInfo{{
+		Skc: "skc-retail-only", Stock: 1,
+		SitePriceInfoList: []marketing.SitePriceInfo{{Currency: "USD", SalePrice: 29.9, IsAvailable: true}},
+		SkuPriceInfoList:  []marketing.SkuSitePriceInfo{{SkuCode: "sku-1"}},
+	}}, "USD")
+	if len(goods) != 1 || len(goods[0].SkuInfoList) != 1 {
+		t.Fatalf("goods = %+v, want retail-only SKU retained for discount pricing", goods)
+	}
+}
+
+func TestBuildCalculateRequestForPromotionProductsRequiresDirectSKUPrices(t *testing.T) {
+	service := &activityRegistrationServiceImpl{}
+	goods := []marketing.PromotionGoodsData{{
+		Skc:           "skc-direct-prices",
+		USSupplyPrice: 99,
+		SkuInfoList: []marketing.PromotionSkuInfo{
+			{Sku: "sku-complete"},
+			{Sku: "sku-missing-cost"},
+			{Sku: "sku-eur-retail"},
+			{Sku: "sku-eur-cost"},
+			{Sku: "sku-disabled-retail"},
+		},
+	}}
+	products := []marketing.SkcInfo{{
+		Skc: "skc-direct-prices", Stock: 1, SupplyPrice: 99,
+		SkuPriceInfoList: []marketing.SkuSitePriceInfo{
+			{SkuCode: "sku-complete", SitePriceInfoList: []marketing.SitePriceInfo{{Currency: "USD", SalePrice: 100, IsAvailable: true}}},
+			{SkuCode: "sku-missing-cost", SitePriceInfoList: []marketing.SitePriceInfo{{Currency: "USD", SalePrice: 80, IsAvailable: true}}},
+			{SkuCode: "sku-eur-retail", SitePriceInfoList: []marketing.SitePriceInfo{{Currency: "EUR", SalePrice: 500, IsAvailable: true}}},
+			{SkuCode: "sku-eur-cost", SitePriceInfoList: []marketing.SitePriceInfo{{Currency: "USD", SalePrice: 60, IsAvailable: true}}},
+			{SkuCode: "sku-disabled-retail", SitePriceInfoList: []marketing.SitePriceInfo{{Currency: "USD", SalePrice: 70, IsAvailable: false}}},
+		},
+		SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
+			{SkuCode: "sku-complete", CostPrice: 50, Currency: "USD"},
+			{SkuCode: "sku-eur-retail", CostPrice: 5, Currency: "USD"},
+			{SkuCode: "sku-eur-cost", CostPrice: 1, Currency: "EUR"},
+			{SkuCode: "sku-disabled-retail", CostPrice: 10, Currency: "USD"},
+		},
+	}}
+
+	for _, tc := range []struct {
+		name          string
+		mode          string
+		wantSKUPrices map[string]float64
+	}{
+		{name: "discount", mode: "DISCOUNT", wantSKUPrices: map[string]float64{"sku-complete": 100, "sku-missing-cost": 80, "sku-eur-cost": 60}},
+		{name: "profit", mode: "PROFIT", wantSKUPrices: map[string]float64{"sku-complete": 100}},
+		{name: "breakeven", mode: "BREAKEVEN", wantSKUPrices: map[string]float64{"sku-complete": 100}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := service.buildCalculateRequestForPromotionProducts(TimeLimitedDiscountConfig{
+				PriceMode: tc.mode, Currency: "USD", DiscountRate: 0.2,
+			}, goods, products)
+			if req == nil || len(req.SkcInfoList) != 1 || len(req.SkcInfoList[0].SkuInfoList) != len(tc.wantSKUPrices) {
+				t.Fatalf("calculate request = %+v, want SKU prices %+v", req, tc.wantSKUPrices)
+			}
+			for _, sku := range req.SkcInfoList[0].SkuInfoList {
+				wantPrice, ok := tc.wantSKUPrices[sku.SkuCode]
+				if !ok || sku.ProductPrice != wantPrice || sku.DiscountValue <= 0 {
+					t.Fatalf("calculated SKU = %+v, want direct USD retail price and positive activity price", sku)
+				}
+			}
+		})
+	}
+}
+
 func TestRegisterPromotionProductsAllowsZeroMinProfitRateWithProvidedProductSnapshot(t *testing.T) {
 	api := &promotionProductsMarketingAPIStub{}
 	service := &activityRegistrationServiceImpl{
@@ -234,10 +301,6 @@ func TestRegisterPromotionProductsAcceptsPromotionMultiSkuDifferentPrices(t *tes
 			},
 		}},
 	}
-	// This branch verifies the legacy SKU-price fallback used when no synced
-	// supply price exists; the auto-partake assertion above uses SupplyPrice.
-	product.SupplyPrice = 0
-
 	activityResult, err := service.RegisterPromotionProducts(
 		t.Context(),
 		strategy,
@@ -1358,7 +1421,7 @@ func TestBuildCreateActivityRequestRejectsMissingSKUActivityPrice(t *testing.T) 
 		t.Fatalf("created goods count = %d, want missing-price SKC excluded", got)
 	}
 	reason := reasons["sg-missing-sku-price"]
-	for _, want := range []string{"sku-missing", "活动价 0.00", "原价 200.00"} {
+	for _, want := range []string{"sku-missing", "活动价 0.00", "原价 0.00"} {
 		if !strings.Contains(reason, want) {
 			t.Fatalf("filter reason = %q, want %q", reason, want)
 		}
@@ -1559,7 +1622,7 @@ func TestRegisterPromotionProductsUsesCandidateSalePriceOverPromotionGoodsPrice(
 	assertClose(t, created.MaxProductActPrice, 53.95)
 }
 
-func TestBuildCalculateRequestForPromotionProductsScalesProfitModeSkuPrices(t *testing.T) {
+func TestBuildCalculateRequestForPromotionProductsUsesDirectSKUCosts(t *testing.T) {
 	service := &activityRegistrationServiceImpl{}
 	config := TimeLimitedDiscountConfig{
 		PriceMode:            "PROFIT",
@@ -1580,8 +1643,17 @@ func TestBuildCalculateRequestForPromotionProductsScalesProfitModeSkuPrices(t *t
 			},
 		}},
 		[]marketing.SkcInfo{{
-			Skc:         "sg-multi-sku-profit",
-			SupplyPrice: 20.88,
+			Skc: "sg-multi-sku-profit",
+			SkuPriceInfoList: []marketing.SkuSitePriceInfo{
+				{SkuCode: "sku-small", SitePriceInfoList: []marketing.SitePriceInfo{{Currency: "USD", SalePrice: 25.16, IsAvailable: true}}},
+				{SkuCode: "sku-medium", SitePriceInfoList: []marketing.SitePriceInfo{{Currency: "USD", SalePrice: 35.34, IsAvailable: true}}},
+				{SkuCode: "sku-large", SitePriceInfoList: []marketing.SitePriceInfo{{Currency: "USD", SalePrice: 39.06, IsAvailable: true}}},
+			},
+			SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
+				{SkuCode: "sku-small", CostPrice: 20.88, Currency: "USD"},
+				{SkuCode: "sku-medium", CostPrice: 29.33, Currency: "USD"},
+				{SkuCode: "sku-large", CostPrice: 32.42, Currency: "USD"},
+			},
 		}},
 	)
 
@@ -1654,6 +1726,10 @@ func TestRegisterPromotionProductsUsesRequestedProfitModeSkuActivityPrices(t *te
 		[]marketing.SkcInfo{{
 			Skc: "sg-profit-sku-prices", Stock: 999, SupplyPrice: 10.88,
 			SkuPriceInfoList: []marketing.SkuSitePriceInfo{{SkuCode: "sku-small", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 29.7, Currency: "USD", IsAvailable: true}}}, {SkuCode: "sku-large", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 31.68, Currency: "USD", IsAvailable: true}}}},
+			SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
+				{SkuCode: "sku-small", CostPrice: 10.88, Currency: "USD"},
+				{SkuCode: "sku-large", CostPrice: 11.6053, Currency: "USD"},
+			},
 		}},
 	)
 	if err != nil {
@@ -1732,8 +1808,8 @@ func TestRegisterPromotionProductsUsesSKUCostsForProfitModeSkuActivityPrices(t *
 			Skc: "sg-profit-sku-costs", Stock: 999, SupplyPrice: 10.88,
 			SkuPriceInfoList: []marketing.SkuSitePriceInfo{{SkuCode: "sku-small", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 29.7, Currency: "USD", IsAvailable: true}}}, {SkuCode: "sku-large", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 31.68, Currency: "USD", IsAvailable: true}}}},
 			SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
-				{SkuCode: "sku-small", CostPrice: 9.88},
-				{SkuCode: "sku-large", CostPrice: 10.88},
+				{SkuCode: "sku-small", CostPrice: 9.88, Currency: "USD"},
+				{SkuCode: "sku-large", CostPrice: 10.88, Currency: "USD"},
 			},
 		}},
 	)
@@ -1810,8 +1886,8 @@ func TestRegisterPromotionProductsUsesSKUCostsForBreakevenModeSkuActivityPrices(
 			Skc: "sg-breakeven-sku-costs", Stock: 999, SupplyPrice: 10.88,
 			SkuPriceInfoList: []marketing.SkuSitePriceInfo{{SkuCode: "sku-small", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 29.7, Currency: "USD", IsAvailable: true}}}, {SkuCode: "sku-large", SitePriceInfoList: []marketing.SitePriceInfo{{SalePrice: 31.68, Currency: "USD", IsAvailable: true}}}},
 			SkuCostPriceInfoList: []marketing.SkuCostPriceInfo{
-				{SkuCode: "sku-small", CostPrice: 9.88},
-				{SkuCode: "sku-large", CostPrice: 10.88},
+				{SkuCode: "sku-small", CostPrice: 9.88, Currency: "USD"},
+				{SkuCode: "sku-large", CostPrice: 10.88, Currency: "USD"},
 			},
 		}},
 	)

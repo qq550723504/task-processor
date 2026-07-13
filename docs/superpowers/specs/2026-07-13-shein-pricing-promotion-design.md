@@ -26,10 +26,11 @@ currencies are never substituted.
 
 ## Missing-price policy
 
-There is no fallback policy. `PROFIT` and `BREAKEVEN` require `CostPrice`;
-`DISCOUNT` requires `RetailPrice`. A missing, disabled, zero, cross-currency,
+There is no fallback policy. `DISCOUNT` requires `RetailPrice`; `PROFIT` and
+`BREAKEVEN` require both `RetailPrice` (the customer-price baseline) and
+`CostPrice` (the cost input). A missing, disabled, zero, cross-currency,
 product-level, or other-SKU value excludes that SKU before the SHEIN pricing
-request and records a stable missing-price reason.
+request.
 
 ## Acceptance criteria
 
