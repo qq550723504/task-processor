@@ -3,7 +3,10 @@
 
 import { useMemo, useRef, useState } from "react";
 
-import { formatSheinPriceSnapshot } from "@/components/listingkit/shein-enrollment/shein-price-snapshot";
+import {
+  formatSheinCurrencyAmount,
+  getSheinSKUPriceSnapshots,
+} from "@/components/listingkit/shein-enrollment/shein-price-snapshot";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { SheinActivityCandidateRecord } from "@/lib/types/listingkit/shein-enrollment";
@@ -161,10 +164,10 @@ export function SheinCandidatesTable({
                       {item.eligibility_reason || "未提供候选原因"}
                     </p>
                     <p className="mt-1 text-xs text-zinc-500">
-                      状态 {item.review_status || "-"} · 成本 {item.effective_cost_price ?? "-"} ·
-                      售价 {formatSheinPriceSnapshot(item.price_snapshot)} · 利润率{" "}
+                      状态 {item.review_status || "-"} · 利润率{" "}
                       {item.calculated_profit_rate ?? "-"}
                     </p>
+                    <SheinCandidateSKUPriceTable item={item} />
                     {!executable ? (
                       <p className="mt-1 text-xs text-amber-700">当前状态不可报名</p>
                     ) : null}
@@ -202,6 +205,83 @@ export function SheinCandidatesTable({
         })}
       </div>
     </section>
+  );
+}
+
+function SheinCandidateSKUPriceTable({ item }: { item: SheinActivityCandidateRecord }) {
+  const rows = getSheinCandidateSKUPriceRows(item);
+  if (rows.length === 0) {
+    return (
+      <p className="mt-2 text-xs text-zinc-500">暂未同步 SKU 原价或 SDS 成本明细。</p>
+    );
+  }
+
+  return (
+    <div className="mt-3 overflow-x-auto rounded-lg border border-zinc-100">
+      <div aria-label="报名价格明细" role="table" className="min-w-[420px] text-xs">
+        <div
+          role="row"
+          className="grid grid-cols-[minmax(150px,1fr)_130px_130px] border-b border-zinc-100 bg-zinc-50 text-zinc-500"
+        >
+          <span role="columnheader" className="px-3 py-2 font-medium">SKU</span>
+          <span role="columnheader" className="px-3 py-2 text-right font-medium">原价（供货价）</span>
+          <span role="columnheader" className="px-3 py-2 text-right font-medium">成本（SDS）</span>
+        </div>
+        {rows.map((row) => (
+          <div
+            key={row.skuCode}
+            role="row"
+            className="grid grid-cols-[minmax(150px,1fr)_130px_130px] border-b border-zinc-100 last:border-b-0"
+          >
+            <span role="cell" className="px-3 py-2 font-mono text-zinc-700">{row.skuCode}</span>
+            <span role="cell" className="px-3 py-2 text-right tabular-nums text-zinc-900">{row.originalPrice ?? "-"}</span>
+            <span role="cell" className="px-3 py-2 text-right tabular-nums text-zinc-900">{row.costPrice ?? "-"}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type SheinCandidateSKUPriceRow = {
+  skuCode: string;
+  originalPrice: string | null;
+  costPrice: string | null;
+  currency: string;
+};
+
+function getSheinCandidateSKUPriceRows(
+  item: SheinActivityCandidateRecord,
+): SheinCandidateSKUPriceRow[] {
+  const rowsBySKU = new Map<string, SheinCandidateSKUPriceRow>();
+  for (const price of getSheinSKUPriceSnapshots(item.price_snapshot)) {
+    rowsBySKU.set(price.skuCode, {
+      skuCode: price.skuCode,
+      originalPrice: price.price,
+      costPrice: null,
+      currency: price.currency,
+    });
+  }
+  for (const cost of item.sku_cost_price_info_list ?? []) {
+    const skuCode = cost.sku_code?.trim() ?? "";
+    const costPrice = Number(cost.cost_price);
+    if (!skuCode || !Number.isFinite(costPrice)) {
+      continue;
+    }
+    const current = rowsBySKU.get(skuCode) ?? {
+      skuCode,
+      originalPrice: null,
+      costPrice: null,
+      currency: "",
+    };
+    const currency = cost.currency?.trim() || current.currency;
+    current.costPrice = currency
+      ? formatSheinCurrencyAmount(currency, costPrice)
+      : costPrice.toFixed(2);
+    rowsBySKU.set(skuCode, current);
+  }
+  return Array.from(rowsBySKU.values()).sort((left, right) =>
+    left.skuCode.localeCompare(right.skuCode),
   );
 }
 

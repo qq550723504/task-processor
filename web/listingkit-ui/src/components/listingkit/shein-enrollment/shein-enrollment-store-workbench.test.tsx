@@ -246,13 +246,16 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     expect(
       await screen.findByRole("heading", { name: "SHEIN US" }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/售价\s+\$29\.99/)).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "同步售价" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("$29.99")).toBeInTheDocument();
     expect(screen.getByText(/SPU:\s+spu-123/)).toBeInTheDocument();
     expect(screen.getByText(/货号:\s+J0529021001/)).toBeInTheDocument();
     expect(screen.getByText(/总库存\s+999/)).toBeInTheDocument();
   });
 
-  it("renders price snapshot in the candidates tab", async () => {
+  it("renders enrollment source prices and SDS costs for each candidate SKU", async () => {
     renderWorkbench({
       initialTab: "candidates",
       candidates: [
@@ -261,8 +264,19 @@ describe("SheinEnrollmentStoreWorkbench", () => {
           skc_name: "SKC-18",
           main_image_url: "https://example.com/skc-18.png",
           review_status: "pending_review",
-          effective_cost_price: 12.5,
-          price_snapshot: "USD 29.99",
+          effective_cost_price: 22.5,
+          price_snapshot: JSON.stringify({
+            currency: "USD",
+            sale_price: 31.62,
+            sku_prices: [
+              { sku_code: "SKU-A", sale_price: 27.38, currency: "USD" },
+              { sku_code: "SKU-B", sale_price: 31.62, currency: "USD" },
+            ],
+          }),
+          sku_cost_price_info_list: [
+            { sku_code: "SKU-A", cost_price: 19.99 },
+            { sku_code: "SKU-B", cost_price: 22.5 },
+          ],
         },
       ],
     });
@@ -270,7 +284,14 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     expect(
       await screen.findByRole("heading", { name: "SHEIN US" }),
     ).toBeInTheDocument();
-    expect(screen.getByText(/售价 \$29.99/)).toBeInTheDocument();
+    expect(screen.getByText("原价（供货价）")).toBeInTheDocument();
+    expect(screen.getByText("成本（SDS）")).toBeInTheDocument();
+    expect(screen.getByText("SKU-A")).toBeInTheDocument();
+    expect(screen.getByText("SKU-B")).toBeInTheDocument();
+    expect(screen.getByText("$27.38")).toBeInTheDocument();
+    expect(screen.getByText("$31.62")).toBeInTheDocument();
+    expect(screen.getByText("$19.99")).toBeInTheDocument();
+    expect(screen.getByText("$22.50")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "SKC-18 图片" })).toHaveAttribute(
       "src",
       "https://example.com/skc-18.png",
