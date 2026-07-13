@@ -14,16 +14,14 @@ type listingCopy struct {
 	Description      string
 	SKCTitleBase     string
 	TitleDiagnostics *TitleDiagnostics
+	DescriptionError error
 }
 
 func buildSheinListingCopy(runtimeCtx context.Context, canonical *canonical.Product, fallbackTitle string, aiClient TextGenerator) listingCopy {
 	titleResolution := resolveListingTitle(runtimeCtx, canonical, fallbackTitle, aiClient)
 	titleResolution = enrichResolvedListingTitle(runtimeCtx, titleResolution, canonical, fallbackTitle, aiClient)
 	title := titleResolution.title
-	description := firstEnglishCandidate(canonicalDescription(canonical))
-	if description == "" || containsCJK(description) {
-		description = synthesizeEnglishDescription(canonical, title)
-	}
+	description, descriptionErr := resolveListingDescription(runtimeCtx, canonical, title, aiClient)
 	copy := listingCopy{
 		Title:        cleanListingText(title),
 		Description:  cleanListingText(description),
@@ -34,6 +32,7 @@ func buildSheinListingCopy(runtimeCtx context.Context, canonical *canonical.Prod
 			ResolutionNote:     titleResolution.note,
 			SKCBaseTitle:       titleResolution.skcBase,
 		},
+		DescriptionError: descriptionErr,
 	}
 	sanitizeSheinListingCopy(&copy, runtimeCtx, nil)
 	return copy
@@ -107,32 +106,6 @@ func synthesizeEnglishTitle(canonical *canonical.Product, fallbackTitle string) 
 		parts = append(parts, normalizeSizeText(size))
 	}
 	return strings.Join(uniqueNonEmpty(parts), " ")
-}
-
-func synthesizeEnglishDescription(canonical *canonical.Product, title string) string {
-	productType := inferEnglishProductType(canonical, title)
-	material := normalizeEnglishMaterial(firstNonEmpty(
-		lookupCanonicalAttribute(canonical, "material"),
-		lookupTechnicalSpec(canonical, "material"),
-	))
-	if material == "" {
-		material = "durable material"
-	}
-	size := firstNonEmpty(
-		lookupVariantAttribute(canonical, "Size"),
-		lookupTechnicalSpec(canonical, "size"),
-	)
-	var sentences []string
-	sentences = append(sentences, title+" designed for everyday home decor and gift-ready selling.")
-	sentences = append(sentences, "Made with "+material+" and finished for reliable daily use.")
-	if size != "" && !containsCJK(size) {
-		sentences = append(sentences, "Size: "+normalizeSizeText(size)+".")
-	}
-	sentences = append(sentences, "Suitable for bedrooms, living rooms, offices, dorm rooms and seasonal decor.")
-	if productType != "" {
-		sentences = append(sentences, "Product type: "+productType+".")
-	}
-	return strings.Join(sentences, " ")
 }
 
 func inferEnglishProductType(canonical *canonical.Product, fallback string) string {
