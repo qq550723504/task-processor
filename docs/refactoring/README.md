@@ -8,9 +8,11 @@ Use the documents in this order when they disagree.
 
 ### Current execution authority
 
-- [current-refactoring-status.md](./current-refactoring-status.md) - current Now / Next / Later status, active focus, deferred work, and immediate validation gates.
-- [next-phase-plan.md](./next-phase-plan.md) - active next-phase execution plan for checkpoint validation, HTTPAPI runtime closeout, small target-domain seams, and boundary guard stabilization.
+- [current-refactoring-status.md](./current-refactoring-status.md) - current product maturity, Now / Next / Later status, active focus, deferred work, and validation gates.
+- [next-phase-plan.md](./next-phase-plan.md) - active execution plan for current-baseline validation, SHEIN stabilization, Product Sourcing MVP closeout, HTTPAPI runtime closure, and boundary guard stabilization.
 - [listingkit-boundary-checkpoint.md](./listingkit-boundary-checkpoint.md) - current approved ListingKit stop-lines, remaining root ownership, and submission / marketplace boundary checkpoints.
+- [../product/product-sourcing-mvp-plan.md](../product/product-sourcing-mvp-plan.md) - Product Sourcing implementation and closeout plan.
+- [../product/product-sourcing-handoff.md](../product/product-sourcing-handoff.md) - Product Sourcing ownership boundaries and handoff expectations.
 
 ### Long-term architecture authority
 
@@ -31,6 +33,17 @@ Use the documents in this order when they disagree.
 
 For submission and Temporal-related ListingKit work, treat `listingkit-boundary-checkpoint.md` as the checkpoint authority when older local inventories or phase notes disagree with newer package direction.
 
+## Status vocabulary
+
+Use these terms consistently across refactoring and product documents:
+
+- **Implemented**: the code path exists on the referenced baseline.
+- **Repository-validated**: the exact baseline has recorded automated test/build results.
+- **Production-validated**: a real environment or real API run is recorded in a dated validation note.
+- **Deferred**: code or runtime assets may exist, but the capability is not an active product-expansion commitment.
+
+Do not use official command existence, retained historical code, or an implemented adapter as proof of full product maturity.
+
 ## Boundary rules and enforcement
 
 Use these files before starting broad package moves:
@@ -39,10 +52,11 @@ Use these files before starting broad package moves:
 - [dependency-baseline.md](./dependency-baseline.md) - worksheet for capturing the current dependency and package-shape baseline before broad moves.
 - [../../scripts/analyze-project-deps.ps1](../../scripts/analyze-project-deps.ps1) - advisory dependency analysis script for package file counts, largest files, ListingKit import pressure, and likely boundary violations.
 
-Recommended first command from the repository root:
+Recommended first command from the repository root when fresh dependency evidence is needed:
 
 ```powershell
-./scripts/analyze-project-deps.ps1 6>&1 | Tee-Object -FilePath docs/refactoring/dependency-baseline-output.txt
+New-Item -ItemType Directory -Force .local/refactoring | Out-Null
+./scripts/analyze-project-deps.ps1 6>&1 | Tee-Object -FilePath .local/refactoring/dependency-baseline-output.txt
 ```
 
 To make the script fail when it detects advisory boundary violations:
@@ -51,27 +65,28 @@ To make the script fail when it detects advisory boundary violations:
 ./scripts/analyze-project-deps.ps1 -FailOnViolation
 ```
 
-The script is advisory at first. Known legacy exceptions should be documented in `dependency-baseline.md` before promoting it to CI enforcement.
+The script is advisory unless a current PR explicitly promotes a specific check to CI. Generated dependency/package outputs should remain under `.local/` unless a dated validation note summarizes the relevant result.
 
 ## Current active direction
 
 The current active direction is:
 
 1. Keep the project as a modular monolith first; do not split microservices before package boundaries are stable.
-2. Finish refactoring closeout and runtime boundary stabilization before broad new feature expansion.
-3. Reduce `internal/listingkit` into orchestration, compatibility facade, task flow, preview/export aggregation, revision/history, and API shell responsibilities.
-4. Keep marketplace-specific rules in marketplace-specific packages.
-5. Keep product facts, product-source identity, and reusable visual assets outside ListingKit.
-6. Hide infrastructure and external clients behind small interfaces.
-7. Prefer small, testable migrations over broad rewrites.
-8. For submission refactoring, prefer `internal/listing/submission` for generic mechanics, `internal/marketplace/*/publishing` for marketplace rules, and keep `internal/listingkit` as a shrinking orchestration and compatibility surface.
-9. Expand product sources before building another full sales-platform workbench.
-10. Defer large TEMU / Amazon / Walmart workbench expansion until the SHEIN template, CI/race/build gates, and runtime smoke tests are stable.
+2. Stabilize the SHEIN production path and keep exact validation evidence visible before release decisions.
+3. Close the implemented Product Sourcing MVP with focused tests and one controlled 1688 source-to-task path before starting another source.
+4. Select exactly one next product source after the current loop is closed; 大建云仓 / warehouse catalog remains a candidate, not an active multi-source expansion.
+5. Reduce root `internal/listingkit` into orchestration, compatibility facade, task flow, preview/export aggregation, revision/history, persistence ordering, and API shell responsibilities.
+6. Keep marketplace-specific rules in marketplace-specific packages.
+7. Keep product facts, product-source identity, source normalization, and reusable visual assets outside root ListingKit.
+8. Hide infrastructure and external clients behind small interfaces.
+9. Prefer small, testable migrations over broad rewrites.
+10. For submission refactoring, prefer `internal/listing/submission` for generic mechanics, `internal/marketplace/*/publishing` or approved `internal/publishing/*` seams for marketplace rules, and keep `internal/listingkit` as a shrinking orchestration and compatibility surface.
+11. Defer full TEMU / Amazon / Walmart workbench expansion until the SHEIN template, source loop, CI/race/build gates, and runtime smoke tests are stable.
 
 ## Current refactoring documents
 
-- [current-refactoring-status.md](./current-refactoring-status.md) - active Now / Next / Later status and strategic focus.
-- [next-phase-plan.md](./next-phase-plan.md) - active next-phase goals: checkpoint validation, HTTPAPI runtime closeout, small target-domain seams, and boundary guard stabilization.
+- [current-refactoring-status.md](./current-refactoring-status.md) - active product maturity, Now / Next / Later status, and strategic focus.
+- [next-phase-plan.md](./next-phase-plan.md) - active next-phase goals: baseline validation, SHEIN stabilization, Product Sourcing MVP closeout, HTTPAPI runtime closure, and boundary guard stabilization.
 - [listingkit-boundary-checkpoint.md](./listingkit-boundary-checkpoint.md) - current ListingKit boundary stop-lines and approved seam directions.
 - [project-wide-refactoring-plan.md](./project-wide-refactoring-plan.md) - project-level target architecture, boundaries, phases, and success metrics.
 - [project-wide-execution-plan.md](./project-wide-execution-plan.md) - earlier broad execution plan; historical/reference when it conflicts with current checkpoint docs.
@@ -96,6 +111,7 @@ The current active direction is:
 4. **Incremental migration**: avoid one-shot rewrites and package renames.
 5. **Boundary ownership**: new business rules should be placed in the package that owns the business concept.
 6. **No silent authority drift**: if the active execution direction changes, update `current-refactoring-status.md` and add or update a decision record.
+7. **Evidence discipline**: do not claim a baseline is green unless the exact workflow, command output, or validation note is visible.
 
 ## Risk control
 
@@ -103,5 +119,6 @@ The current active direction is:
 - Keep behavior-preserving moves separate from feature changes.
 - Record known import-boundary exceptions instead of normalizing accidental dependencies.
 - Keep rollback simple by limiting each PR to one bounded capability.
-- Require code review for boundary changes, package moves, or new cross-module dependencies.
+- Require code review for boundary changes, package moves, production-sensitive SHEIN behavior, pricing logic, submission behavior, or new cross-module dependencies.
 - Do not continue helper shaving, file splitting, or package renaming unless it reduces real ownership or improves dependency direction.
+- Do not use Product Sourcing implementation progress as justification to start several new source integrations at once.
