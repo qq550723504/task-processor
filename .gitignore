@@ -75,6 +75,7 @@ tmp/*
 .playwright-cli/
 .tools/
 .codegraph/
+.codex/
 .worktrees/
 web/listingkit-ui/.data/
 node_modules/
