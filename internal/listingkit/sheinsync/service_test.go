@@ -170,6 +170,43 @@ func TestSyncSheinOnShelfProductsUsesOnShelfRequestAndPersistsRows(t *testing.T)
 	}`, rows[0].SiteSnapshot)
 }
 
+func TestSheinSyncServiceListSyncedProductsAppliesManualSDSCostGroup(t *testing.T) {
+	t.Parallel()
+
+	repo := newSheinSyncServiceRepoStub()
+	repo.seedProduct(SheinSyncedProductRecord{
+		TenantID:     11,
+		StoreID:      22,
+		SKCName:      "skc-sds-cost",
+		SupplierCode: "XB0603003001-181EB5DF",
+		SiteSnapshot: `{"sku_info":[{"sku_code":"sku-a"}]}`,
+		IsActive:     true,
+	})
+	manualCost := 19.99
+	require.NoError(t, repo.UpsertSDSCostGroup(context.Background(), &SheinSDSCostGroupRecord{
+		TenantID:        11,
+		StoreID:         22,
+		GroupKey:        "source:XB0603003001",
+		ManualCostPrice: &manualCost,
+	}))
+
+	service := NewSheinSyncService(repo, &sheinSyncServiceProductAPIStub{}, nil)
+	rows, total, err := service.ListSyncedProducts(context.Background(), &SheinSyncedProductQuery{
+		TenantID: 11,
+		StoreID:  22,
+		Page:     1,
+		PageSize: 10,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, int64(1), total)
+	require.Len(t, rows, 1)
+	require.Equal(t, SheinCostPriceSourceManual, rows[0].CostPriceSource)
+	require.NotNil(t, rows[0].EffectiveCostPrice)
+	require.Equal(t, manualCost, *rows[0].EffectiveCostPrice)
+	require.Equal(t, []SheinSKUCostPrice{{SKUCode: "SKU-A", CostPrice: manualCost}}, rows[0].SKUCostPriceInfoList)
+}
+
 func TestSyncSheinOnShelfProductsPersistsSheinSupplyPriceSeparatelyFromCost(t *testing.T) {
 	t.Parallel()
 

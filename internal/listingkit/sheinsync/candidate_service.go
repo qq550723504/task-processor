@@ -532,12 +532,14 @@ func applySheinSDSCostGroupOverrides(
 	for i := range out {
 		if cost, ok := productOverrides[i]; ok {
 			out[i].EffectiveCostPrice = sheinFloat64Ptr(cost)
+			out[i].CostPriceSource = SheinCostPriceSourceManual
 			out[i].SKUCostPriceInfoList = cloneSheinSKUCostPriceList(productSKUCostOverrides[i])
 			continue
 		}
 		key := sheinCandidateSDSCostGroupKey(out[i])
 		if cost, ok := groupOverrides[key]; ok {
 			out[i].EffectiveCostPrice = sheinFloat64Ptr(cost)
+			out[i].CostPriceSource = SheinCostPriceSourceManual
 			out[i].SKUCostPriceInfoList = sheinCandidateSKUCostsFromGroupCost(out[i], cost)
 		}
 	}

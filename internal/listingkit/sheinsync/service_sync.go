@@ -93,7 +93,23 @@ func (s *sheinSyncService) ListSyncedProducts(ctx context.Context, query *SheinS
 	if err := s.validateDependencies(); err != nil {
 		return nil, 0, err
 	}
-	return s.repo.ListSyncedProducts(ctx, query)
+	products, total, err := s.repo.ListSyncedProducts(ctx, query)
+	if err != nil {
+		return nil, 0, err
+	}
+	if query == nil || query.TenantID <= 0 || query.StoreID <= 0 {
+		return products, total, nil
+	}
+
+	reader, ok := s.repo.(sheinCandidateSDSCostGroupReader)
+	if !ok {
+		return products, total, nil
+	}
+	products, err = applySheinSDSCostGroupOverrides(ctx, reader, query.TenantID, query.StoreID, products)
+	if err != nil {
+		return nil, 0, fmt.Errorf("apply SDS cost group overrides: %w", err)
+	}
+	return products, total, nil
 }
 
 func (s *sheinSyncService) SyncSheinSourceSDSProduct(ctx context.Context, tenantID, storeID int64, sourceCode string) (int, error) {
