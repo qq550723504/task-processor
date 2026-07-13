@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SheinEnrollmentStoreWorkbench } from "@/components/listingkit/shein-enrollment/shein-enrollment-store-workbench";
@@ -274,8 +274,8 @@ describe("SheinEnrollmentStoreWorkbench", () => {
             ],
           }),
           sku_cost_price_info_list: [
-            { sku_code: "SKU-A", cost_price: 19.99 },
-            { sku_code: "SKU-B", cost_price: 22.5 },
+            { sku_code: "sku-a", cost_price: 19.99 },
+            { sku_code: "sku-b", cost_price: 22.5 },
           ],
         },
       ],
@@ -292,6 +292,9 @@ describe("SheinEnrollmentStoreWorkbench", () => {
     expect(screen.getByText("$31.62")).toBeInTheDocument();
     expect(screen.getByText("$19.99")).toBeInTheDocument();
     expect(screen.getByText("$22.50")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("table", { name: "报名价格明细" })).getAllByRole("row"),
+    ).toHaveLength(3);
     expect(screen.getByRole("img", { name: "SKC-18 图片" })).toHaveAttribute(
       "src",
       "https://example.com/skc-18.png",

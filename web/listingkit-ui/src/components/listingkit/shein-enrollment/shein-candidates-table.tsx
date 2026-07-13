@@ -255,7 +255,7 @@ function getSheinCandidateSKUPriceRows(
 ): SheinCandidateSKUPriceRow[] {
   const rowsBySKU = new Map<string, SheinCandidateSKUPriceRow>();
   for (const price of getSheinSKUPriceSnapshots(item.price_snapshot)) {
-    rowsBySKU.set(price.skuCode, {
+    rowsBySKU.set(normalizeSheinSKUPriceRowKey(price.skuCode), {
       skuCode: price.skuCode,
       originalPrice: price.price,
       costPrice: null,
@@ -268,7 +268,8 @@ function getSheinCandidateSKUPriceRows(
     if (!skuCode || !Number.isFinite(costPrice)) {
       continue;
     }
-    const current = rowsBySKU.get(skuCode) ?? {
+    const skuKey = normalizeSheinSKUPriceRowKey(skuCode);
+    const current = rowsBySKU.get(skuKey) ?? {
       skuCode,
       originalPrice: null,
       costPrice: null,
@@ -278,11 +279,15 @@ function getSheinCandidateSKUPriceRows(
     current.costPrice = currency
       ? formatSheinCurrencyAmount(currency, costPrice)
       : costPrice.toFixed(2);
-    rowsBySKU.set(skuCode, current);
+    rowsBySKU.set(skuKey, current);
   }
   return Array.from(rowsBySKU.values()).sort((left, right) =>
     left.skuCode.localeCompare(right.skuCode),
   );
+}
+
+function normalizeSheinSKUPriceRowKey(skuCode: string) {
+  return skuCode.trim().toUpperCase();
 }
 
 function SheinCandidateImage({ item }: { item: SheinActivityCandidateRecord }) {
