@@ -8,6 +8,7 @@ import (
 
 	"task-processor/internal/authz"
 	"task-processor/internal/httproute"
+	"task-processor/internal/listingkit"
 )
 
 func RouteRequiresZitadelAuth(route httproute.Descriptor) bool {
@@ -61,11 +62,15 @@ func NewRouteRoleMiddleware(route httproute.Descriptor) gin.HandlerFunc {
 		}
 	}
 	return func(c *gin.Context) {
-		userRoles := roleHeaderValues(c.GetHeader("X-User-Roles"))
-		if len(userRoles) == 0 {
-			userRoles = roleHeaderValues(c.GetHeader("X-Zitadel-Roles"))
+		identity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error":   "listingkit_permission_denied",
+				"message": "ZITADEL identity is required to access this ListingKit route",
+			})
+			return
 		}
-		if authorizer.Authorize(c.GetHeader("X-User-ID"), userRoles, requiredPermission) {
+		if authorizer.Authorize(identity.UserID, identity.Roles, requiredPermission) {
 			c.Next()
 			return
 		}
