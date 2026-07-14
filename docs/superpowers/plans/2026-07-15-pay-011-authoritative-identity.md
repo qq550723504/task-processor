@@ -264,4 +264,3 @@ git commit -m "security: prevent proxy tenant header override"
 - [ ] Run `Set-Location web/listingkit-ui; npm run lint; npm run typecheck; npm test`.
 - [ ] Run `git diff origin/master...HEAD --check` and confirm no migration, subscription, billing, or store-ownership change is present.
 - [ ] Update the PAY-011 checkbox and dated validation evidence only after the production-route tests pass.
-
