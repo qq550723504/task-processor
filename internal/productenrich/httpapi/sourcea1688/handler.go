@@ -88,10 +88,11 @@ func verifiedRequestContext(c *gin.Context) (context.Context, listingkit.Request
 	if c == nil || c.Request == nil {
 		return nil, listingkit.RequestIdentity{}, errors.New("verified request identity is required")
 	}
-	identity := listingkit.RequestIdentity{TenantID: strings.TrimSpace(c.GetHeader("X-Tenant-ID")), UserID: strings.TrimSpace(c.GetHeader("X-User-ID"))}
-	if identity.TenantID == "" || identity.UserID == "" {
+	authenticatedIdentity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+	if !ok || strings.TrimSpace(authenticatedIdentity.UserID) == "" {
 		return nil, listingkit.RequestIdentity{}, errors.New("verified request identity is required")
 	}
+	identity := listingkit.RequestIdentity{TenantID: authenticatedIdentity.TenantID, UserID: authenticatedIdentity.UserID}
 	ctx := listingkit.WithTenantID(c.Request.Context(), identity.TenantID)
 	return listingkit.WithRequestIdentity(ctx, identity), identity, nil
 }

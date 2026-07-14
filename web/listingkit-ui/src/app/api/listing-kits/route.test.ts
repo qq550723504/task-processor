@@ -248,6 +248,20 @@ describe("buildListingKitUpstreamHeaders", () => {
     expect(headers.get("login-user")).toBeNull();
   });
 
+  it("does not treat caller tenant headers as a verified identity", () => {
+    const request = new Request("http://localhost/api/listing-kits/tasks", {
+      headers: {
+        "tenant-id": "forged-tenant",
+        "x-tenant-id": "forged-tenant",
+      },
+    });
+
+    const headers = buildListingKitUpstreamHeaders(request.headers);
+
+    expect(headers.get("tenant-id")).toBeNull();
+    expect(headers.get("X-Tenant-ID")).toBeNull();
+  });
+
   it("forwards shein studio trace headers to the upstream request", () => {
     const request = new Request("http://localhost/api/listing-kits/studio/async-jobs", {
       headers: {

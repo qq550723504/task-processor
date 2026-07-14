@@ -9,8 +9,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
+	"task-processor/internal/listingkit"
 )
 
 type routeDescriptor = httproute.Descriptor
@@ -259,6 +261,87 @@ func TestListingKitZitadelAuthMapsVerifiedIdentityToHeaders(t *testing.T) {
 	}
 	if body["tenant_id"] != "org-286" || body["user_id"] != "user-42" || body["user_type"] != "zitadel" || body["roles"] != "listingkit_admin" {
 		t.Fatalf("identity headers = %#v", body)
+	}
+}
+
+func TestListingKitZitadelAuthStoresVerifiedIdentityInContext(t *testing.T) {
+	zitadel := newZitadelRoleServer(t, "listingkit_operator")
+	defer zitadel.Close()
+
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{IssuerURL: zitadel.URL, ClientID: "listingkit-client", Required: true},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{{
+		Method: http.MethodGet, Path: "/api/v1/listing-kits/tasks", Module: "listing-kit",
+		Handler: func(c *gin.Context) {
+			identity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+			if !ok {
+				c.JSON(http.StatusForbidden, gin.H{"error": "missing_identity"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"tenant_id": identity.TenantID, "user_id": identity.UserID, "roles": identity.Roles})
+		},
+	}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+}
+
+func TestListingKitZitadelAuthRoleMiddlewareIgnoresForgedHeaders(t *testing.T) {
+	zitadel := newZitadelRoleServer(t, "listingkit_operator")
+	defer zitadel.Close()
+
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{IssuerURL: zitadel.URL, ClientID: "listingkit-client", Required: true},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{{
+		Method: http.MethodPost, Path: "/api/v1/product-sourcing/1688/listingkit/tasks", Module: "product-sourcing", Permission: authz.PermissionProductSourcingWrite,
+		Handler: func(c *gin.Context) { c.Status(http.StatusNoContent) },
+	}})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/product-sourcing/1688/listingkit/tasks", nil)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+	req.Header.Set("X-User-Roles", "viewer")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusNoContent, resp.Body.String())
+	}
+}
+
+func TestListingKitZitadelAuthRoleMiddlewareRejectsForgedPermittedHeader(t *testing.T) {
+	zitadel := newZitadelRoleServer(t)
+	defer zitadel.Close()
+
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{IssuerURL: zitadel.URL, ClientID: "listingkit-client", Required: true},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{{
+		Method: http.MethodPost, Path: "/api/v1/product-sourcing/1688/listingkit/tasks", Module: "product-sourcing", Permission: authz.PermissionProductSourcingWrite,
+		Handler: func(c *gin.Context) { c.Status(http.StatusNoContent) },
+	}})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/product-sourcing/1688/listingkit/tasks", nil)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+	req.Header.Set("X-User-Roles", "listingkit_operator")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusForbidden, resp.Body.String())
 	}
 }
 

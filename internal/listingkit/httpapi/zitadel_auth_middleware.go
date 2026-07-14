@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/listingkit"
 )
 
 func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
@@ -39,6 +41,19 @@ func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
 		})
 		return
 	}
+	trustedIdentity := listingkit.AuthenticatedIdentity{
+		TenantID: identity.ResourceID,
+		UserID:   firstNonEmptyZitadelValue(identity.UserID, identity.Subject, identity.Username),
+		Roles:    identity.Roles,
+	}
+	if strings.TrimSpace(trustedIdentity.TenantID) == "" {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"error":   "zitadel_tenant_missing",
+			"message": "ZITADEL identity has no tenant",
+		})
+		return
+	}
+	c.Request = c.Request.WithContext(listingkit.WithAuthenticatedIdentity(c.Request.Context(), trustedIdentity))
 
 	if identity.ResourceID != "" {
 		c.Request.Header.Set("X-Tenant-ID", identity.ResourceID)

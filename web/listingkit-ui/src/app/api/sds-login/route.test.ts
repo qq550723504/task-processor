@@ -11,7 +11,7 @@ import {
 } from "@/app/api/sds-login/[...path]/route";
 
 describe("buildSDSLoginUpstreamHeaders", () => {
-  it("forwards only generic request headers", () => {
+  it("does not trust caller tenant headers without a verified identity", () => {
     const headers = buildSDSLoginUpstreamHeaders(
       new Headers({
         accept: "application/json",
@@ -23,8 +23,8 @@ describe("buildSDSLoginUpstreamHeaders", () => {
     );
 
     expect(headers.get("Authorization")).toBe("Bearer token-1");
-    expect(headers.get("tenant-id")).toBe("286");
-    expect(headers.get("X-Tenant-ID")).toBe("286");
+    expect(headers.get("tenant-id")).toBeNull();
+    expect(headers.get("X-Tenant-ID")).toBeNull();
     expect(headers.get("visit-tenant-id")).toBeNull();
     expect(headers.get("login-user")).toBeNull();
   });

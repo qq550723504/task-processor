@@ -140,9 +140,7 @@ export function buildListingKitUpstreamHeaders(
     copyHeader(requestHeaders, headers, headerName, headerName);
   }
 
-  const tenantID = stringifyIdentityValue(
-    verifiedIdentity?.tenantId ?? requestHeaders.get("tenant-id"),
-  );
+  const tenantID = stringifyIdentityValue(verifiedIdentity?.tenantId);
   const userID = stringifyIdentityValue(verifiedIdentity?.userId);
   const userType = stringifyIdentityValue(verifiedIdentity?.userType);
   const userRoles = verifiedIdentity?.roles
