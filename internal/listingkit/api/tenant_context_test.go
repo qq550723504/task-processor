@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+
+	"task-processor/internal/listingkit"
 )
 
 func TestRequestContextUsesVerifiedIdentityHeaders(t *testing.T) {
@@ -41,6 +43,33 @@ func TestRequestContextIgnoresLegacyLoginUserHeader(t *testing.T) {
 	}
 	if got := requestUserID(c); got != "" {
 		t.Fatalf("user id = %q, want empty", got)
+	}
+}
+
+func TestRequestContextPrefersAuthenticatedIdentityOverCallerInputs(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(nil)
+	req, err := http.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks?tenant_id=tenant-b&user_id=user-b", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("X-Tenant-ID", "tenant-b")
+	req.Header.Set("X-User-ID", "user-b")
+	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{
+		TenantID: "tenant-a",
+		UserID:   "user-a",
+		Roles:    []string{"listingkit_operator"},
+	}))
+	c.Request = req
+
+	if got := requestTenantID(c, "tenant-b"); got != "tenant-a" {
+		t.Fatalf("tenant id = %q, want authenticated tenant-a", got)
+	}
+	if got := requestUserID(c); got != "user-a" {
+		t.Fatalf("user id = %q, want authenticated user-a", got)
+	}
+	if got := requestRoles(c); len(got) != 1 || got[0] != "listingkit_operator" {
+		t.Fatalf("roles = %#v, want authenticated operator role", got)
 	}
 }
 

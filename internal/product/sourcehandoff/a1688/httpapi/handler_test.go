@@ -32,7 +32,7 @@ func TestCreateListingKitTaskReturnsCreatedTask(t *testing.T) {
 		Language:      "en_US",
 		SheinStoreID:  168811,
 	}
-	rec := performJSONRequest(t, router, http.MethodPost, "/tasks", body, map[string]string{"X-Tenant-ID": " tenant-http ", "X-User-ID": " user-http "})
+	rec := performJSONRequestWithAuthenticatedIdentity(t, router, http.MethodPost, "/tasks", body, map[string]string{"X-Tenant-ID": " tenant-http ", "X-User-ID": " user-http "}, listingkit.AuthenticatedIdentity{TenantID: "tenant-http", UserID: "user-http"})
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -66,7 +66,7 @@ func TestCreateListingKitTaskReturnsBadRequestWithHandoff(t *testing.T) {
 	router := gin.New()
 	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
 
-	rec := performJSONRequest(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{URL: "https://detail.1688.com/offer/1000.html", SourceError: "crawler failed"}, map[string]string{"X-Tenant-ID": "tenant-http", "X-User-ID": "user-http"})
+	rec := performJSONRequestWithAuthenticatedIdentity(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{URL: "https://detail.1688.com/offer/1000.html", SourceError: "crawler failed"}, map[string]string{"X-Tenant-ID": "tenant-http", "X-User-ID": "user-http"}, listingkit.AuthenticatedIdentity{TenantID: "tenant-http", UserID: "user-http"})
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
@@ -121,6 +121,23 @@ func performJSONRequest(t *testing.T, router http.Handler, method string, path s
 	for key, value := range headers {
 		req.Header.Set(key, value)
 	}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+func performJSONRequestWithAuthenticatedIdentity(t *testing.T, router http.Handler, method string, path string, body any, headers map[string]string, identity listingkit.AuthenticatedIdentity) *httptest.ResponseRecorder {
+	t.Helper()
+	payload, err := json.Marshal(body)
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+	req := httptest.NewRequest(method, path, bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), identity))
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	return rec

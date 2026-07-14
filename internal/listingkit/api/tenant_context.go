@@ -35,6 +35,9 @@ func requestTenantID(c *gin.Context, candidates ...string) string {
 }
 
 func requestExplicitTenantID(c *gin.Context, candidates ...string) (string, bool) {
+	if identity, ok := authenticatedIdentity(c); ok {
+		return identity.TenantID, true
+	}
 	for _, candidate := range candidates {
 		if trimmed := strings.TrimSpace(candidate); trimmed != "" {
 			return trimmed, true
@@ -61,6 +64,9 @@ func requireExplicitRequestContext(c *gin.Context, candidates ...string) (contex
 }
 
 func requestUserID(c *gin.Context) string {
+	if identity, ok := authenticatedIdentity(c); ok {
+		return identity.UserID
+	}
 	for _, header := range []string{"X-User-ID", "X-User-Id", "X-User"} {
 		if value := strings.TrimSpace(c.GetHeader(header)); value != "" {
 			return value
@@ -73,6 +79,9 @@ func requestUserID(c *gin.Context) string {
 }
 
 func requestRoles(c *gin.Context) []string {
+	if identity, ok := authenticatedIdentity(c); ok {
+		return append([]string(nil), identity.Roles...)
+	}
 	if c == nil {
 		return nil
 	}
@@ -92,6 +101,13 @@ func requestRoles(c *gin.Context) []string {
 		}
 	}
 	return roles
+}
+
+func authenticatedIdentity(c *gin.Context) (listingkit.AuthenticatedIdentity, bool) {
+	if c == nil || c.Request == nil {
+		return listingkit.AuthenticatedIdentity{}, false
+	}
+	return listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
 }
 
 func requestTrace(c *gin.Context) listingkit.RequestTrace {
