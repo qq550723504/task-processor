@@ -28,7 +28,7 @@
 - Produces `AuthenticatedIdentity`, `WithAuthenticatedIdentity(context.Context, AuthenticatedIdentity) context.Context`, and `AuthenticatedIdentityFromContext(context.Context) (AuthenticatedIdentity, bool)`.
 - Consumed by the HTTP middleware, ListingKit API helpers, and Product Sourcing handoff handler.
 
-- [ ] **Step 1: Write failing context tests**
+- [x] **Step 1: Write failing context tests**
 
 ```go
 func TestAuthenticatedIdentityRoundTripsThroughContext(t *testing.T) {
@@ -46,13 +46,13 @@ func TestAuthenticatedIdentityFromContextRejectsMissingOrBlankTenant(t *testing.
 }
 ```
 
-- [ ] **Step 2: Run the focused test to verify it fails**
+- [x] **Step 2: Run the focused test to verify it fails**
 
 Run: `$env:GOWORK='off'; go test ./internal/listingkit -run TestAuthenticatedIdentity -count=1`
 
 Expected: compile failure because the identity helpers do not exist.
 
-- [ ] **Step 3: Implement normalized identity storage**
+- [x] **Step 3: Implement normalized identity storage**
 
 ```go
 type AuthenticatedIdentity struct {
@@ -67,13 +67,13 @@ func AuthenticatedIdentityFromContext(ctx context.Context) (AuthenticatedIdentit
 
 Trim tenant and user IDs, copy the role slice, and return `false` unless the tenant ID is non-empty. Use an unexported context-key type.
 
-- [ ] **Step 4: Run the focused test to verify it passes**
+- [x] **Step 4: Run the focused test to verify it passes**
 
 Run: `$env:GOWORK='off'; go test ./internal/listingkit -run TestAuthenticatedIdentity -count=1`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add internal/listingkit/authenticated_identity.go internal/listingkit/authenticated_identity_test.go
@@ -91,7 +91,7 @@ git commit -m "feat: add authenticated listingkit identity context"
 - Consumes `listingkit.WithAuthenticatedIdentity` after successful token introspection.
 - Produces a request context available to downstream handlers and role authorization.
 
-- [ ] **Step 1: Write failing route tests**
+- [x] **Step 1: Write failing route tests**
 
 Extend the mock-introspection route test to assert this handler body:
 
@@ -103,13 +103,13 @@ c.JSON(http.StatusOK, identity)
 
 Add a route with `PermissionProductSourcingWrite`, send a verified token with `listingkit_operator`, and a forged `X-User-Roles: viewer`. It must return 200. The same verified token with no permitted role must return `403 listingkit_permission_denied` even when the incoming header claims `listingkit_operator`.
 
-- [ ] **Step 2: Run the middleware tests to verify they fail**
+- [x] **Step 2: Run the middleware tests to verify they fail**
 
 Run: `$env:GOWORK='off'; go test ./internal/listingkit/httpapi -run 'TestListingKitZitadelAuth(MapsVerifiedIdentityToContext|RoleMiddlewareIgnoresForgedHeaders)' -count=1`
 
 Expected: the context assertion fails because no identity is stored.
 
-- [ ] **Step 3: Store identity before `c.Next()` and authorize from it**
+- [x] **Step 3: Store identity before `c.Next()` and authorize from it**
 
 After token verification, construct:
 
@@ -128,7 +128,7 @@ c.Request = c.Request.WithContext(listingkit.WithAuthenticatedIdentity(c.Request
 
 Retain header replacement only for compatibility, but change `NewRouteRoleMiddleware` to load `AuthenticatedIdentityFromContext(c.Request.Context())`. If it is absent, deny with the existing authorization-unavailable response. Pass `trusted.UserID` and `trusted.Roles` to `authorizer.Authorize`.
 
-- [ ] **Step 4: Run focused middleware and package tests**
+- [x] **Step 4: Run focused middleware and package tests**
 
 ```powershell
 $env:GOWORK='off'; go test ./internal/listingkit/httpapi -run 'TestListingKitZitadelAuth' -count=1
@@ -137,7 +137,7 @@ $env:GOWORK='off'; go test ./internal/listingkit/httpapi -count=1
 
 Expected: PASS; missing token remains 401, missing tenant claim is 403, and forged roles do not grant access.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add internal/listingkit/httpapi/zitadel_auth_middleware.go internal/listingkit/httpapi/zitadel_auth_route_authorization.go internal/listingkit/httpapi/zitadel_auth_test.go
@@ -156,13 +156,13 @@ git commit -m "security: bind route authorization to verified identity"
 - `requestContext` prefers `listingkit.AuthenticatedIdentityFromContext(c.Request.Context())` before candidates, headers, or query values.
 - `verifiedRequestContext` returns `listingkit.RequestIdentity` derived only from `AuthenticatedIdentity`.
 
-- [ ] **Step 1: Write failing forged-override tests**
+- [x] **Step 1: Write failing forged-override tests**
 
 Add an API helper test with a request context containing `{TenantID: "tenant-a", UserID: "user-a"}` and request values `tenant-b`/`user-b` in every supported candidate/header/query location. Assert `requestContext` has tenant-a and OpenAI identity user-a.
 
 Change the Product Sourcing handler test setup to attach a trusted request context. Add a test that supplies trusted tenant-a/user-a plus forged `X-Tenant-ID: tenant-b` and `X-User-ID: user-b`; assert `CreateTaskCommand` contains tenant-a/user-a. Add a missing-trusted-context test that returns bad request and leaves the fake service command empty.
 
-- [ ] **Step 2: Run focused tests to verify they fail**
+- [x] **Step 2: Run focused tests to verify they fail**
 
 ```powershell
 $env:GOWORK='off'; go test ./internal/listingkit/api -run 'TestRequestContext.*Authenticated' -count=1
@@ -171,7 +171,7 @@ $env:GOWORK='off'; go test ./internal/productenrich/httpapi/sourcea1688 -run 'Te
 
 Expected: current helpers use header/candidate values and the forged override test fails.
 
-- [ ] **Step 3: Implement trusted-first context selection**
+- [x] **Step 3: Implement trusted-first context selection**
 
 At the top of `requestTenantID`, `requestUserID`, and `requestRoles`, read `listingkit.AuthenticatedIdentityFromContext(c.Request.Context())`. When present, return it and do not inspect candidates, request headers, or query parameters. Preserve legacy fallback only when no authenticated context exists so unprotected internal/unit routes are not silently reclassified.
 
@@ -186,7 +186,7 @@ if !ok || strings.TrimSpace(identity.UserID) == "" {
 
 Then build the existing `listingkit.RequestIdentity` and tenant context from `identity`.
 
-- [ ] **Step 4: Run focused package verification**
+- [x] **Step 4: Run focused package verification**
 
 ```powershell
 $env:GOWORK='off'; go test ./internal/listingkit/api -count=1
@@ -196,7 +196,7 @@ $env:GOWORK='off'; go test ./internal/product/sourcehandoff/a1688/httpapi -count
 
 Expected: PASS; all trusted paths retain the authenticated tenant, and direct 1688 handlers refuse header-only identity.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add internal/listingkit/api/tenant_context.go internal/listingkit/api/tenant_context_test.go internal/productenrich/httpapi/sourcea1688/handler.go internal/productenrich/httpapi/sourcea1688/handler_test.go
@@ -212,7 +212,7 @@ git commit -m "security: use verified tenant identity in listingkit APIs"
 **Interfaces:**
 - `buildListingKitUpstreamHeaders` emits `tenant-id` and `X-Tenant-ID` only when `verifiedIdentity.tenantId` is present.
 
-- [ ] **Step 1: Add the failing proxy-header test**
+- [x] **Step 1: Add the failing proxy-header test**
 
 ```ts
 const headers = buildListingKitUpstreamHeaders(
@@ -225,13 +225,13 @@ expect(headers.get("X-Tenant-ID")).toBeNull();
 
 Keep the existing verified-session test asserting that its tenant ID is forwarded.
 
-- [ ] **Step 2: Run the focused test to verify it fails**
+- [x] **Step 2: Run the focused test to verify it fails**
 
 Run: `& .\node_modules\.bin\vitest.cmd run src/app/api/listing-kits/route.test.ts --maxWorkers=1`
 
 Expected: FAIL because the proxy currently falls back to the incoming `tenant-id` header.
 
-- [ ] **Step 3: Remove the caller-header fallback**
+- [x] **Step 3: Remove the caller-header fallback**
 
 Replace the tenant selection with:
 
@@ -241,7 +241,7 @@ const tenantID = stringifyIdentityValue(verifiedIdentity?.tenantId);
 
 Do not alter authorization-token forwarding; direct bearer requests still undergo API-side introspection.
 
-- [ ] **Step 4: Run frontend verification**
+- [x] **Step 4: Run frontend verification**
 
 ```powershell
 Set-Location web/listingkit-ui
@@ -251,7 +251,7 @@ npm run typecheck
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add web/listingkit-ui/src/app/api/listing-kits/proxy-auth.ts web/listingkit-ui/src/app/api/listing-kits/route.test.ts
@@ -260,7 +260,13 @@ git commit -m "security: prevent proxy tenant header override"
 
 ## Final verification
 
-- [ ] Run `$env:GOWORK='off'; go test ./internal/listingkit ./internal/listingkit/api ./internal/listingkit/httpapi ./internal/productenrich/httpapi/sourcea1688 ./internal/product/sourcehandoff/a1688/httpapi -count=1`.
-- [ ] Run `Set-Location web/listingkit-ui; npm run lint; npm run typecheck; npm test`.
-- [ ] Run `git diff origin/master...HEAD --check` and confirm no migration, subscription, billing, or store-ownership change is present.
-- [ ] Update the PAY-011 checkbox and dated validation evidence only after the production-route tests pass.
+- [x] Run `$env:GOWORK='off'; go test ./internal/listingkit ./internal/listingkit/api ./internal/listingkit/httpapi ./internal/productenrich/httpapi/sourcea1688 ./internal/product/sourcehandoff/a1688/httpapi -count=1`.
+- [x] Run `Set-Location web/listingkit-ui; npm run lint; npm run typecheck; npm test`.
+- [x] Run `git diff origin/master...HEAD --check` and confirm no migration, subscription, billing, or store-ownership change is present.
+- [x] Update the PAY-011 checkbox and dated validation evidence only after the production-route tests pass.
+
+### Validation evidence (2026-07-15)
+
+- `$env:GOWORK='off'; go test ./internal/listingkit ./internal/listingkit/api ./internal/listingkit/httpapi ./internal/productenrich/httpapi/sourcea1688 ./internal/product/sourcehandoff/a1688/httpapi -count=1` passed.
+- `npm run lint`, `npm run typecheck`, and `npm test` in `web/listingkit-ui` completed with exit code 0. Lint reported 14 pre-existing warnings and no errors.
+- `git diff origin/master...HEAD --check` passed. The reviewed diff contains no database migration, subscription, billing, or store-ownership change.
