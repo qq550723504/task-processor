@@ -15,6 +15,7 @@ type taskSubmissionExecutionServiceConfig struct {
 	sheinContentOptimizer    AIChatCompleter
 	currentSheinPricingRule  func() sheinpub.PricingRule
 	resolveSheinStoreID      func(context.Context, *Task) (int64, error)
+	resolveSheinStoreInfo    func(context.Context, *Task) (*SheinStoreInfo, error)
 	resolveSubmitSettings    func(context.Context, *Task) SheinSettings
 }
 
@@ -25,6 +26,7 @@ type taskSubmissionExecutionService struct {
 	sheinContentOptimizer    AIChatCompleter
 	currentSheinPricingRule  func() sheinpub.PricingRule
 	resolveSheinStoreID      func(context.Context, *Task) (int64, error)
+	resolveSheinStoreInfo    func(context.Context, *Task) (*SheinStoreInfo, error)
 	resolveSubmitSettings    func(context.Context, *Task) SheinSettings
 }
 
@@ -36,6 +38,7 @@ func newTaskSubmissionExecutionService(config taskSubmissionExecutionServiceConf
 		sheinContentOptimizer:    config.sheinContentOptimizer,
 		currentSheinPricingRule:  config.currentSheinPricingRule,
 		resolveSheinStoreID:      config.resolveSheinStoreID,
+		resolveSheinStoreInfo:    config.resolveSheinStoreInfo,
 		resolveSubmitSettings:    config.resolveSubmitSettings,
 	}
 }
@@ -55,6 +58,18 @@ func (s *taskSubmissionExecutionService) resolveSheinStoreRuntime(ctx context.Co
 	runtimeCtx, err := withSheinSubmitTaskIdentity(ctx, task)
 	if err != nil {
 		return nil, 0, err
+	}
+	if s.resolveSheinStoreInfo != nil {
+		storeInfo, err := s.resolveSheinStoreInfo(runtimeCtx, task)
+		if err != nil {
+			return nil, 0, err
+		}
+		if storeInfo != nil && storeInfo.ID > 0 {
+			return runtimeCtx, storeInfo.ID, nil
+		}
+	}
+	if s.resolveSheinStoreID == nil {
+		return nil, 0, fmt.Errorf("shein store id is unavailable for %s", action)
 	}
 	storeID, err := s.resolveSheinStoreID(runtimeCtx, task)
 	if err != nil || storeID <= 0 {

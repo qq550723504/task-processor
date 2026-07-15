@@ -163,3 +163,21 @@ func TestNewSheinAPIClientRejectsSnapshotWhenCatalogNoLongerMatchesStore(t *test
 		t.Fatalf("api client factory calls = %d, want 0", factory.calls)
 	}
 }
+
+func TestResolveSheinStoreIDPrefersPersistedSnapshotOverMutableRequest(t *testing.T) {
+	t.Parallel()
+
+	resolver := buildSubmitRuntimeContextResolver(&service{})
+	storeID, err := resolver.resolveStoreID(context.Background(), &Task{
+		Request: &GenerateRequest{SheinStoreID: 870},
+		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
+			StoreID: 869,
+		},
+	})
+	if err != nil {
+		t.Fatalf("resolve store id: %v", err)
+	}
+	if storeID != 869 {
+		t.Fatalf("store id = %d, want snapshot store 869", storeID)
+	}
+}

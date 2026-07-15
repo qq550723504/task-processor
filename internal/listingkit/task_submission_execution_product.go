@@ -42,11 +42,11 @@ func (s *taskSubmissionExecutionService) buildSheinSubmitTranslateAPI(ctx contex
 	if !s.sheinSubmitTranslationNeeded(task, submitProduct) || s.sheinTranslateAPIBuilder == nil {
 		return nil
 	}
-	storeID, err := s.resolveSheinStoreID(ctx, task)
+	runtimeCtx, storeID, err := s.resolveSheinStoreRuntime(ctx, task, "translation")
 	if err != nil || storeID <= 0 {
 		return nil
 	}
-	return s.buildSheinSubmitTranslateAPIForStore(ctx, storeID)
+	return s.buildSheinSubmitTranslateAPIForStore(runtimeCtx, storeID)
 }
 
 func (s *taskSubmissionExecutionService) buildSheinSubmitTranslateAPIForStore(ctx context.Context, storeID int64) sheintranslateapi.TranslateAPI {

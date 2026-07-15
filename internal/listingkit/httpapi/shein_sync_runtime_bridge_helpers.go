@@ -3,13 +3,13 @@ package httpapi
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/shein/activity"
+	"task-processor/internal/tenantbridge"
 )
 
 type sheinPromotionBridgeRuntimeFactory struct {
@@ -59,6 +59,9 @@ func (f sheinPromotionBridgeRuntimeFactory) BuildPromotionBridge(ctx context.Con
 	if err != nil {
 		return nil, err
 	}
+	if storeInfo == nil || storeInfo.ID != storeID || storeInfo.TenantID != tenantID || !strings.EqualFold(strings.TrimSpace(storeInfo.Platform), "SHEIN") {
+		return nil, listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
+	}
 	apiClient := f.apiFactory.NewSheinAPIClient(storeID, storeInfo)
 	if apiClient == nil {
 		return nil, fmt.Errorf("SHEIN API client is unavailable")
@@ -77,9 +80,9 @@ func sheinRuntimeTenantID(ctx context.Context) (int64, error) {
 	if value == "" {
 		return 0, fmt.Errorf("tenant id is required")
 	}
-	tenantID, err := strconv.ParseInt(value, 10, 64)
+	tenantID, err := tenantbridge.ResolveLegacyTenantID(ctx, value)
 	if err != nil || tenantID <= 0 {
-		return 0, fmt.Errorf("tenant id must be numeric")
+		return 0, listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
 	}
 	return tenantID, nil
 }

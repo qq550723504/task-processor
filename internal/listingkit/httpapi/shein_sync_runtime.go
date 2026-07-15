@@ -19,6 +19,7 @@ func buildSheinSyncRuntimeServices(input BuildServiceInput, repositories *builtR
 	productAPIBuilder := input.Hooks.SheinProductAPIBuilderFactory(repositories.storeRepository)
 	mappingSource := sheinInventoryMappingSourceFromRepository(repositories.productImportMappingRepository)
 	storeAccessValidator := listingAdminStoreAccessValidator{repo: repositories.storeRepository}
+	productAPIBuilder = listingkit.NewStoreValidatedSheinProductAPIBuilder(productAPIBuilder, storeAccessValidator)
 	syncService := listingkit.NewStoreValidatedSheinSyncService(listingkit.NewAsyncSheinSyncServiceWithBuilderAndInventoryMappingSource(
 		repositories.sheinSyncRepository,
 		productAPIBuilder,

@@ -15,6 +15,7 @@ type taskSubmissionOrchestratorWiring struct {
 type taskSubmissionSupportWiring struct {
 	repo                     Repository
 	resolveSheinStoreID      func(context.Context, *Task) (int64, error)
+	resolveSheinStoreInfo    func(context.Context, *Task) (*SheinStoreInfo, error)
 	resolveSubmitSettings    func(context.Context, *Task) SheinSettings
 	sheinProductAPIBuilder   sheinpub.ProductAPIBuilder
 	sheinImageAPIBuilder     sheinpub.ImageAPIBuilder
@@ -213,6 +214,7 @@ func buildTaskSubmissionSupportWiringWithDependencies(
 	}
 	if resolver != nil {
 		wiring.resolveSheinStoreID = resolver.resolveStoreID
+		wiring.resolveSheinStoreInfo = resolver.resolveStoreInfo
 		wiring.resolveSubmitSettings = resolver.resolveSubmitSettings
 	}
 	return wiring

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	sheinsync "task-processor/internal/listingkit/sheinsync"
+	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/shein/activity"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -183,6 +184,31 @@ func NewAsyncSheinSyncServiceWithBuilderAndInventoryMappingSource(repo SheinSync
 // from creating sync jobs or building a remote product API client.
 func NewStoreValidatedSheinSyncService(delegate SheinSyncService, validator StoreAccessValidator) SheinSyncService {
 	return storeValidatedSheinSyncService{delegate: delegate, validator: validator}
+}
+
+// NewStoreValidatedSheinProductAPIBuilder rechecks access when a background
+// sync job is about to build its remote API client.
+func NewStoreValidatedSheinProductAPIBuilder(delegate sheinpub.ProductAPIBuilder, validator StoreAccessValidator) sheinpub.ProductAPIBuilder {
+	return storeValidatedSheinProductAPIBuilder{delegate: delegate, validator: validator}
+}
+
+type storeValidatedSheinProductAPIBuilder struct {
+	delegate  sheinpub.ProductAPIBuilder
+	validator StoreAccessValidator
+}
+
+func (b storeValidatedSheinProductAPIBuilder) BuildProductAPI(ctx context.Context, storeID int64) (sheinproduct.ProductAPI, string) {
+	tenantID, ok := tenantIDInt64FromContext(ctx)
+	if !ok || tenantID <= 0 || b.validator == nil {
+		return nil, "store is unavailable"
+	}
+	if _, err := b.validator.ValidateStoreAccess(ctx, tenantID, storeID, "SHEIN"); err != nil {
+		return nil, err.Error()
+	}
+	if b.delegate == nil {
+		return nil, "SHEIN product API builder is unavailable"
+	}
+	return b.delegate.BuildProductAPI(ctx, storeID)
 }
 
 type storeValidatedSheinSyncService struct {

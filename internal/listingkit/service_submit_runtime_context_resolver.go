@@ -113,11 +113,11 @@ func (r *submitRuntimeContextResolver) newAPIClient(ctx context.Context, task *T
 }
 
 func (r *submitRuntimeContextResolver) resolveStoreID(ctx context.Context, task *Task) (int64, error) {
-	if task != nil && task.Request != nil && task.Request.SheinStoreID > 0 {
-		return task.Request.SheinStoreID, nil
-	}
 	if snapshot := sheinStoreResolutionSnapshotFromTask(task); snapshot != nil && snapshot.StoreID > 0 {
 		return snapshot.StoreID, nil
+	}
+	if task != nil && task.Request != nil && task.Request.SheinStoreID > 0 {
+		return task.Request.SheinStoreID, nil
 	}
 	return 0, fmt.Errorf("shein store id is unavailable")
 }
