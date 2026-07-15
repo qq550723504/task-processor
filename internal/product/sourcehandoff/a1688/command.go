@@ -6,10 +6,10 @@ import (
 	"strings"
 
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
-	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/product/sourcehandoff"
 	"task-processor/internal/product/sourcing"
+	"task-processor/internal/tenantbridge"
 )
 
 // CreateTaskCommand is the application-facing command shape for turning one
@@ -45,18 +45,14 @@ type CreateTaskResult struct {
 // task creation. It depends only on the existing ListingKit task creator
 // boundary and does not fetch, crawl, or submit marketplace payloads.
 type TaskCommandService struct {
-	creator sourcehandoff.GenerateTaskCreator
-	stores  storeLookup
+	creator              sourcehandoff.GenerateTaskCreator
+	storeAccessValidator listingkit.StoreAccessValidator
 }
 
-type storeLookup interface {
-	GetStore(context.Context, int64, int64) (*listingadmin.Store, error)
-}
-
-func NewTaskCommandService(creator sourcehandoff.GenerateTaskCreator, stores ...storeLookup) *TaskCommandService {
+func NewTaskCommandService(creator sourcehandoff.GenerateTaskCreator, validators ...listingkit.StoreAccessValidator) *TaskCommandService {
 	service := &TaskCommandService{creator: creator}
-	if len(stores) > 0 {
-		service.stores = stores[0]
+	if len(validators) > 0 {
+		service.storeAccessValidator = validators[0]
 	}
 	return service
 }
@@ -107,21 +103,23 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 }
 
 func (s *TaskCommandService) validateStores(ctx context.Context, command CreateTaskCommand) error {
-	if s.stores == nil {
-		return fmt.Errorf("requested store is unavailable")
+	if s.storeAccessValidator == nil {
+		return listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
 	}
 	tenantID := strings.TrimSpace(listingkit.TenantIDFromContext(ctx))
-	var legacyTenantID int64
-	if _, err := fmt.Sscan(tenantID, &legacyTenantID); err != nil || legacyTenantID <= 0 {
-		return fmt.Errorf("requested store is unavailable")
+	legacyTenantID, err := tenantbridge.ResolveLegacyTenantID(ctx, tenantID)
+	if err != nil || legacyTenantID <= 0 {
+		return listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
 	}
 	for _, item := range []struct {
 		id       int64
 		platform string
 	}{{command.SourceStoreID, "1688"}, {command.SheinStoreID, "SHEIN"}} {
-		store, err := s.stores.GetStore(ctx, legacyTenantID, item.id)
-		if item.id <= 0 || err != nil || store == nil || store.TenantID != legacyTenantID || store.Status != 0 || !strings.EqualFold(strings.TrimSpace(store.Platform), item.platform) {
-			return fmt.Errorf("requested store is unavailable")
+		if item.id <= 0 {
+			return listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
+		}
+		if _, err := s.storeAccessValidator.ValidateStoreAccess(ctx, legacyTenantID, item.id, item.platform); err != nil {
+			return err
 		}
 	}
 	return nil

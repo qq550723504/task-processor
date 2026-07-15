@@ -69,6 +69,9 @@ func (h *Handler) CreateListingKitTask(c *gin.Context) {
 	}
 	result, err := h.service.CreateTask(ctx, req.toCommand(identity))
 	if err != nil {
+		if writeStoreAccessError(c, err) {
+			return
+		}
 		status := http.StatusInternalServerError
 		if isBadRequestError(err) {
 			status = http.StatusBadRequest
@@ -82,6 +85,19 @@ func (h *Handler) CreateListingKitTask(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, responseFromCreateTaskResult(result))
+}
+
+func writeStoreAccessError(c *gin.Context, err error) bool {
+	code := listingkit.StoreAccessErrorCode(err)
+	if code == "" {
+		return false
+	}
+	message := "Choose enabled source and target stores available to your tenant and try again."
+	if code == listingkit.StoreAccessDisabled {
+		message = "Enable the selected store or choose another available store and try again."
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": code, "message": message})
+	return true
 }
 
 func verifiedRequestContext(c *gin.Context) (context.Context, listingkit.RequestIdentity, error) {

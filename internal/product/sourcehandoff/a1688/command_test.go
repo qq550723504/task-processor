@@ -6,13 +6,12 @@ import (
 	"testing"
 
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
-	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 )
 
 func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) {
 	creator := &fakeGenerateTaskCreator{}
-	service := NewTaskCommandService(creator, validStoreLookup())
+	service := NewTaskCommandService(creator, validStoreAccessValidator())
 
 	result, err := service.CreateTask(authenticatedCommandContext("101", "user-1688"), CreateTaskCommand{
 		URL:           " https://detail.1688.com/offer/888.html?spm=command ",
@@ -62,15 +61,14 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 
 func TestTaskCommandServiceRejectsWrongStorePlatform(t *testing.T) {
 	creator := &fakeGenerateTaskCreator{}
-	stores := testStoreLookup{items: map[int64]*listingadmin.Store{
-		3001:   {ID: 3001, TenantID: 101, Platform: "SHEIN", Status: 0},
-		168811: {ID: 168811, TenantID: 101, Platform: "SHEIN", Status: 0},
+	validator := &storeAccessValidatorFake{errs: map[int64]error{
+		3001: listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable"),
 	}}
 	ctx := listingkit.WithTenantID(context.Background(), "101")
 	ctx = listingkit.WithRequestIdentity(ctx, listingkit.RequestIdentity{TenantID: "101", UserID: "user-1"})
-	_, err := NewTaskCommandService(creator, stores).CreateTask(ctx, CreateTaskCommand{URL: "https://detail.1688.com/offer/893.html", Product: commandProduct1688("893"), TenantID: "101", UserID: "user-1", SourceStoreID: 3001, SheinStoreID: 168811, Platforms: []string{"shein"}})
-	if err == nil {
-		t.Fatal("CreateTask() error = nil, want wrong source platform rejection")
+	_, err := NewTaskCommandService(creator, validator).CreateTask(ctx, CreateTaskCommand{URL: "https://detail.1688.com/offer/893.html", Product: commandProduct1688("893"), TenantID: "101", UserID: "user-1", SourceStoreID: 3001, SheinStoreID: 168811, Platforms: []string{"shein"}})
+	if listingkit.StoreAccessErrorCode(err) != listingkit.StoreAccessUnavailable {
+		t.Fatalf("StoreAccessErrorCode() = %q, want unavailable (err=%v)", listingkit.StoreAccessErrorCode(err), err)
 	}
 	if creator.request != nil {
 		t.Fatalf("creator request = %+v, want no task creation", creator.request)
@@ -79,22 +77,58 @@ func TestTaskCommandServiceRejectsWrongStorePlatform(t *testing.T) {
 
 func TestTaskCommandServiceRejectsDisabledSourceStore(t *testing.T) {
 	creator := &fakeGenerateTaskCreator{}
-	stores := validStoreLookup()
-	stores.items[3001].Status = 1
-	_, err := NewTaskCommandService(creator, stores).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{URL: "https://detail.1688.com/offer/894.html", Product: commandProduct1688("894"), TenantID: "101", UserID: "user-1", SourceStoreID: 3001, SheinStoreID: 168811, Platforms: []string{"shein"}})
-	if err == nil || creator.request != nil {
+	validator := validStoreAccessValidator()
+	validator.errs[3001] = listingkit.NewStoreAccessError(listingkit.StoreAccessDisabled, "store is disabled")
+	_, err := NewTaskCommandService(creator, validator).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{URL: "https://detail.1688.com/offer/894.html", Product: commandProduct1688("894"), TenantID: "101", UserID: "user-1", SourceStoreID: 3001, SheinStoreID: 168811, Platforms: []string{"shein"}})
+	if listingkit.StoreAccessErrorCode(err) != listingkit.StoreAccessDisabled || creator.request != nil {
 		t.Fatalf("err=%v request=%+v, want disabled store rejection", err, creator.request)
 	}
 }
 
-type testStoreLookup struct{ items map[int64]*listingadmin.Store }
-
-func (s testStoreLookup) GetStore(_ context.Context, tenantID, id int64) (*listingadmin.Store, error) {
-	store := s.items[id]
-	if store == nil || store.TenantID != tenantID {
-		return nil, listingadmin.ErrStoreNotFound
+func TestTaskCommandServiceRejectsUnavailableSourceStoreBeforeTaskCreation(t *testing.T) {
+	creator := &fakeGenerateTaskCreator{}
+	validator := &storeAccessValidatorFake{
+		errs: map[int64]error{3001: listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")},
 	}
-	return store, nil
+
+	_, err := NewTaskCommandService(creator, validator).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{
+		URL:           "https://detail.1688.com/offer/895.html",
+		Product:       commandProduct1688("895"),
+		TenantID:      "101",
+		UserID:        "user-1",
+		SourceStoreID: 3001,
+		SheinStoreID:  168811,
+		Platforms:     []string{"shein"},
+	})
+
+	if listingkit.StoreAccessErrorCode(err) != listingkit.StoreAccessUnavailable {
+		t.Fatalf("StoreAccessErrorCode() = %q, want %q (err=%v)", listingkit.StoreAccessErrorCode(err), listingkit.StoreAccessUnavailable, err)
+	}
+	if creator.request != nil {
+		t.Fatalf("creator request = %+v, want nil", creator.request)
+	}
+	if len(validator.calls) != 1 || validator.calls[0].platform != "1688" {
+		t.Fatalf("validator calls = %+v, want source store only", validator.calls)
+	}
+}
+
+type storeAccessValidatorCall struct {
+	tenantID int64
+	storeID  int64
+	platform string
+}
+
+type storeAccessValidatorFake struct {
+	errs  map[int64]error
+	calls []storeAccessValidatorCall
+}
+
+func (v *storeAccessValidatorFake) ValidateStoreAccess(_ context.Context, tenantID, storeID int64, platform string) (listingkit.StoreAccess, error) {
+	v.calls = append(v.calls, storeAccessValidatorCall{tenantID: tenantID, storeID: storeID, platform: platform})
+	if err := v.errs[storeID]; err != nil {
+		return listingkit.StoreAccess{}, err
+	}
+	return listingkit.StoreAccess{ID: storeID, TenantID: tenantID, Platform: platform, Enabled: true}, nil
 }
 
 func TestTaskCommandServiceRejectsMismatchedContextTenant(t *testing.T) {
@@ -122,7 +156,7 @@ func TestTaskCommandServiceCreateTaskFallsBackToProductURL(t *testing.T) {
 	product := commandProduct1688("889")
 	product.URL = "https://detail.1688.com/offer/889.html?from=product"
 
-	result, err := NewTaskCommandService(creator, validStoreLookup()).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{
+	result, err := NewTaskCommandService(creator, validStoreAccessValidator()).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{
 		Product:  product,
 		TenantID: "101", UserID: "user-1", SourceStoreID: 3001, SheinStoreID: 168811,
 		Platforms: []string{"shein"},
@@ -157,7 +191,7 @@ func TestTaskCommandServiceCreateTaskRequiresURL(t *testing.T) {
 
 func TestTaskCommandServiceCreateTaskReturnsHandoffOnSourceError(t *testing.T) {
 	creator := &fakeGenerateTaskCreator{}
-	result, err := NewTaskCommandService(creator, validStoreLookup()).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{
+	result, err := NewTaskCommandService(creator, validStoreAccessValidator()).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{
 		URL:      "https://detail.1688.com/offer/891.html",
 		TenantID: "101", UserID: "user-1", SourceStoreID: 3001, SheinStoreID: 168811,
 		Error:     errors.New("crawler failed"),
@@ -179,11 +213,8 @@ func authenticatedCommandContext(tenantID, userID string) context.Context {
 	return listingkit.WithRequestIdentity(ctx, listingkit.RequestIdentity{TenantID: tenantID, UserID: userID})
 }
 
-func validStoreLookup() testStoreLookup {
-	return testStoreLookup{items: map[int64]*listingadmin.Store{
-		3001:   {ID: 3001, TenantID: 101, Platform: "1688", Status: 0},
-		168811: {ID: 168811, TenantID: 101, Platform: "SHEIN", Status: 0},
-	}}
+func validStoreAccessValidator() *storeAccessValidatorFake {
+	return &storeAccessValidatorFake{errs: make(map[int64]error)}
 }
 
 func commandProduct1688(id string) *alibaba1688model.Product1688 {
