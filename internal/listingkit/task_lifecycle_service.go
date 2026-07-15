@@ -8,6 +8,7 @@ import (
 type taskLifecycleServiceConfig struct {
 	repo                        Repository
 	sdsBaselineReadinessService sdsBaselineReadinessService
+	validateSheinStoreAccess    func(context.Context, int64, int64) error
 	requestDefaults             func() generateRequestDefaults
 	taskSubmitter               func() TaskSubmitter
 	standardWorkflow            func() (StandardProductWorkflowClient, bool)
@@ -19,6 +20,7 @@ type taskLifecycleServiceConfig struct {
 type taskLifecycleService struct {
 	repo                        Repository
 	sdsBaselineReadinessService sdsBaselineReadinessService
+	validateSheinStoreAccess    func(context.Context, int64, int64) error
 	requestDefaults             func() generateRequestDefaults
 	taskSubmitter               func() TaskSubmitter
 	standardWorkflow            func() (StandardProductWorkflowClient, bool)
@@ -31,6 +33,7 @@ func newTaskLifecycleService(config taskLifecycleServiceConfig) *taskLifecycleSe
 	return &taskLifecycleService{
 		repo:                        config.repo,
 		sdsBaselineReadinessService: config.sdsBaselineReadinessService,
+		validateSheinStoreAccess:    config.validateSheinStoreAccess,
 		requestDefaults:             config.requestDefaults,
 		taskSubmitter:               config.taskSubmitter,
 		standardWorkflow:            config.standardWorkflow,

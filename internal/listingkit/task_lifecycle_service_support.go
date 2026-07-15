@@ -12,6 +12,7 @@ import (
 
 	"task-processor/internal/infra/worker"
 	listingsubmission "task-processor/internal/listing/submission"
+	"task-processor/internal/tenantbridge"
 )
 
 func buildTaskListSummary(tasks []Task) *TaskListSummary {
@@ -110,7 +111,9 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 	if req == nil {
 		return ctx, nil, fmt.Errorf("request cannot be nil")
 	}
-	if req.TenantID == "" {
+	if identity, ok := AuthenticatedIdentityFromContext(ctx); ok {
+		req.TenantID = identity.TenantID
+	} else if req.TenantID == "" {
 		req.TenantID = TenantIDFromContext(ctx)
 	}
 	ctx = WithTenantID(ctx, req.TenantID)
@@ -119,6 +122,9 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 	}
 	if err := validateRequest(req); err != nil {
 		return ctx, nil, fmt.Errorf("invalid request: %w", err)
+	}
+	if err := s.validateRequestedSheinStoreAccess(ctx, req); err != nil {
+		return ctx, nil, err
 	}
 
 	task := &Task{
@@ -133,6 +139,32 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 	}
 	s.applySheinStoreResolutionSnapshot(ctx, task)
 	return ctx, task, nil
+}
+
+func (s *taskLifecycleService) validateRequestedSheinStoreAccess(ctx context.Context, req *GenerateRequest) error {
+	if req == nil || req.SheinStoreID <= 0 || !generateRequestTargetsPlatform(req, "shein") {
+		return nil
+	}
+	if s.validateSheinStoreAccess == nil {
+		return NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
+	}
+	tenantID, err := tenantbridge.ResolveLegacyTenantID(ctx, TenantIDFromContext(ctx))
+	if err != nil || tenantID <= 0 {
+		return NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
+	}
+	return s.validateSheinStoreAccess(ctx, tenantID, req.SheinStoreID)
+}
+
+func generateRequestTargetsPlatform(req *GenerateRequest, platform string) bool {
+	if req == nil {
+		return false
+	}
+	for _, candidate := range req.Platforms {
+		if strings.EqualFold(strings.TrimSpace(candidate), strings.TrimSpace(platform)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *taskLifecycleService) applySheinStoreResolutionSnapshot(ctx context.Context, task *Task) {

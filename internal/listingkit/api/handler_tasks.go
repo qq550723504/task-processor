@@ -27,6 +27,9 @@ func (h *handler) GenerateListingKit(c *gin.Context) {
 	}
 	task, err := h.taskLifecycleService.CreateGenerateTask(requestContext(c, req.TenantID), &req)
 	if err != nil {
+		if writeStoreAccessError(c, err) {
+			return
+		}
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "invalid request") {
 			status = http.StatusBadRequest
@@ -35,6 +38,19 @@ func (h *handler) GenerateListingKit(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"task_id": task.ID, "tenant_id": task.TenantID, "status": task.Status, "created_at": task.CreatedAt})
+}
+
+func writeStoreAccessError(c *gin.Context, err error) bool {
+	code := listingkit.StoreAccessErrorCode(err)
+	if code == "" {
+		return false
+	}
+	message := "Choose an enabled store available to your tenant and try again."
+	if code == listingkit.StoreAccessDisabled {
+		message = "Enable the selected store or choose another available store and try again."
+	}
+	c.JSON(http.StatusForbidden, gin.H{"error": code, "message": message})
+	return true
 }
 
 func (h *handler) ListTasks(c *gin.Context) {

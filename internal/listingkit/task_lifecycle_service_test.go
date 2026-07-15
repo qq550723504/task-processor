@@ -6,6 +6,94 @@ import (
 	"time"
 )
 
+func TestTaskLifecycleServiceRejectsForeignSheinStoreBeforePersistingTask(t *testing.T) {
+	repo := &stubSubmitRepo{}
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
+		repo: repo,
+		validateSheinStoreAccess: func(context.Context, int64, int64) error {
+			return NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
+		},
+	})
+	ctx := WithTenantID(context.Background(), "101")
+
+	_, err := lifecycle.CreateGenerateTask(ctx, &GenerateRequest{
+		TenantID:     "101",
+		ProductURL:   "https://example.com/product",
+		Platforms:    []string{"shein"},
+		SheinStoreID: 202,
+	})
+
+	if StoreAccessErrorCode(err) != StoreAccessUnavailable {
+		t.Fatalf("StoreAccessErrorCode() = %q, want %q (err=%v)", StoreAccessErrorCode(err), StoreAccessUnavailable, err)
+	}
+	if repo.task != nil {
+		t.Fatalf("persisted task = %+v, want nil", repo.task)
+	}
+}
+
+func TestTaskLifecycleServiceValidatesOwnedSheinStoreBeforePersistingTask(t *testing.T) {
+	repo := &stubSubmitRepo{}
+	validationCalls := 0
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
+		repo: repo,
+		validateSheinStoreAccess: func(_ context.Context, tenantID, storeID int64) error {
+			validationCalls++
+			if tenantID != 101 || storeID != 202 {
+				t.Fatalf("store access validation = tenant %d, store %d; want tenant 101, store 202", tenantID, storeID)
+			}
+			return nil
+		},
+	})
+	ctx := WithTenantID(context.Background(), "101")
+
+	_, err := lifecycle.CreateGenerateTask(ctx, &GenerateRequest{
+		TenantID:     "101",
+		ProductURL:   "https://example.com/product",
+		Platforms:    []string{"shein"},
+		SheinStoreID: 202,
+	})
+
+	if err != nil {
+		t.Fatalf("CreateGenerateTask() error = %v", err)
+	}
+	if validationCalls != 1 {
+		t.Fatalf("store access validation calls = %d, want 1", validationCalls)
+	}
+	if repo.task == nil {
+		t.Fatal("persisted task = nil, want task")
+	}
+}
+
+func TestTaskLifecycleServiceUsesAuthenticatedTenantForSheinStoreValidation(t *testing.T) {
+	repo := &stubSubmitRepo{}
+	validatedTenantID := int64(0)
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
+		repo: repo,
+		validateSheinStoreAccess: func(_ context.Context, tenantID, _ int64) error {
+			validatedTenantID = tenantID
+			return nil
+		},
+	})
+	ctx := WithAuthenticatedIdentity(WithTenantID(context.Background(), "202"), AuthenticatedIdentity{TenantID: "101", UserID: "user-1"})
+
+	task, err := lifecycle.CreateGenerateTask(ctx, &GenerateRequest{
+		TenantID:     "202",
+		ProductURL:   "https://example.com/product",
+		Platforms:    []string{"shein"},
+		SheinStoreID: 303,
+	})
+
+	if err != nil {
+		t.Fatalf("CreateGenerateTask() error = %v", err)
+	}
+	if validatedTenantID != 101 {
+		t.Fatalf("validated tenant id = %d, want authenticated tenant 101", validatedTenantID)
+	}
+	if task.TenantID != "101" {
+		t.Fatalf("task tenant id = %q, want authenticated tenant 101", task.TenantID)
+	}
+}
+
 type stubTaskLifecycleBaselineReadinessService struct {
 	readiness *SDSBaselineReadiness
 	query     *SDSBaselineReadinessQuery
