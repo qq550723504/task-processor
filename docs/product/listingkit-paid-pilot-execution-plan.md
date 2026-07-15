@@ -280,11 +280,17 @@ M0 固定基线和发布证据
 **验收标准**
 
 ```text
-[ ] tenant A 不能使用 tenant B 的 SHEIN store。
-[ ] tenant A 不能使用 tenant B 的 source store。
-[ ] 已禁用店铺不能进入远端提交。
-[ ] 店铺切换不会复用旧租户的价格、Cookie 或 resolution cache。
+[x] tenant A 不能使用 tenant B 的 SHEIN store。
+[x] tenant A 不能使用 tenant B 的 source store。
+[x] 已禁用店铺不能进入远端提交。
+[x] 店铺切换不会复用旧租户的价格、Cookie 或 resolution cache。
 ```
+
+**验证证据（2026-07-16，Asia/Singapore）**
+
+- `$env:GOWORK='off'; go test ./internal/listingkit ./internal/listingkit/api ./internal/listingkit/httpapi ./internal/product/sourcehandoff/a1688 ./internal/productenrich/httpapi/sourcea1688 ./internal/app/httpapi -count=1`：通过。
+- `$env:GOWORK='off'; go test ./tests/... -count=1`：通过。
+- `web/listingkit-ui` 中的 `npm run lint`（0 error，14 个既有 warning）、`npm run typecheck` 和 `npm test`：通过；Vitest 为 243 个文件、1351 个测试。
 
 ### PAY-013：上传素材和对象存储资源隔离
 
