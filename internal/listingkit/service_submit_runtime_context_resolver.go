@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
 )
@@ -78,7 +79,7 @@ func (r *submitRuntimeContextResolver) resolveStoreInfo(ctx context.Context, tas
 		return nil, NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
 	}
 	if _, err := validator.ValidateStoreAccess(ctx, tenantID, storeID, "SHEIN"); err != nil {
-		if sheinStoreResolutionSnapshotFromTask(task) != nil {
+		if sheinStoreResolutionSnapshotFromTask(task) != nil && StoreAccessErrorCode(err) != "" {
 			return nil, NewStoreAccessError(StoreAccessStale, "store selection is stale")
 		}
 		return nil, err
@@ -87,10 +88,17 @@ func (r *submitRuntimeContextResolver) resolveStoreInfo(ctx context.Context, tas
 	if err != nil {
 		return nil, fmt.Errorf("load shein store info: %w", err)
 	}
-	if storeInfo == nil || storeInfo.ID != storeID || storeInfo.TenantID != tenantID {
-		return nil, fmt.Errorf("shein store info is unavailable")
+	if storeInfo == nil || storeInfo.ID != storeID || storeInfo.TenantID != tenantID || !strings.EqualFold(strings.TrimSpace(storeInfo.Platform), "SHEIN") {
+		return nil, storeResolutionAccessError(task)
 	}
 	return storeInfo, nil
+}
+
+func storeResolutionAccessError(task *Task) error {
+	if sheinStoreResolutionSnapshotFromTask(task) != nil {
+		return NewStoreAccessError(StoreAccessStale, "store selection is stale")
+	}
+	return NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
 }
 
 func (r *submitRuntimeContextResolver) newAPIClient(ctx context.Context, task *Task) (*SheinRuntimeAPIClient, int64, error) {

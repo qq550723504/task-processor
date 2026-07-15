@@ -132,3 +132,34 @@ func TestNewSheinAPIClientRejectsStaleStoreSnapshotBeforeCreatingClient(t *testi
 		t.Fatalf("api client factory calls = %d, want 0", factory.calls)
 	}
 }
+
+func TestNewSheinAPIClientRejectsSnapshotWhenCatalogNoLongerMatchesStore(t *testing.T) {
+	t.Parallel()
+
+	factory := &recordingSheinAPIClientFactory{}
+	svc := &service{sheinSharedDeps: sheinSharedDependencies{
+		storeCatalog: &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{
+			ID:       869,
+			TenantID: 228,
+			Platform: "shein",
+		}},
+		storeAccessValidator: &storeAccessValidatorStub{},
+		apiClientFactory:     factory,
+	}}
+	task := &Task{
+		TenantID: "227",
+		Request:  &GenerateRequest{},
+		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
+			StoreID: 869,
+		},
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "227", UserID: "user-store-tenant"})
+
+	_, _, err := svc.newSheinAPIClient(ctx, task)
+	if got := StoreAccessErrorCode(err); got != StoreAccessStale {
+		t.Fatalf("store access error = %q, want %q (err=%v)", got, StoreAccessStale, err)
+	}
+	if factory.calls != 0 {
+		t.Fatalf("api client factory calls = %d, want 0", factory.calls)
+	}
+}

@@ -51,6 +51,23 @@ type stubSheinSyncHandlerService struct {
 	updateCost    *float64
 }
 
+type rejectingSheinSyncStoreAccessValidator struct {
+	err error
+}
+
+func (v rejectingSheinSyncStoreAccessValidator) ValidateStoreAccess(context.Context, int64, int64, string) (listingkit.StoreAccess, error) {
+	return listingkit.StoreAccess{}, v.err
+}
+
+type recordingSheinSyncProductAPIBuilder struct {
+	calls int
+}
+
+func (b *recordingSheinSyncProductAPIBuilder) BuildProductAPI(context.Context, int64) (sheinproduct.ProductAPI, string) {
+	b.calls++
+	return nil, "unexpected product api build"
+}
+
 func (s *stubSheinSyncHandlerService) SyncSheinOnShelfProducts(ctx context.Context, tenantID, storeID int64, triggerMode listingkit.SheinSyncTriggerMode) (*listingkit.SheinSyncJobRecord, error) {
 	s.syncCtx = ctx
 	s.syncTenantID = tenantID
@@ -341,6 +358,32 @@ func TestTriggerSheinStoreSyncMapsStoreAccessErrorToForbidden(t *testing.T) {
 	}
 	if !strings.Contains(resp.Body.String(), `"error":"listingkit_store_disabled"`) {
 		t.Fatalf("body = %s, want stable store access code", resp.Body.String())
+	}
+}
+
+func TestStoreValidatedSheinSyncRejectsBeforeSavingJobOrBuildingProductAPI(t *testing.T) {
+	t.Parallel()
+
+	repo := store.NewMemSheinSyncRepository()
+	builder := &recordingSheinSyncProductAPIBuilder{}
+	service := listingkit.NewStoreValidatedSheinSyncService(
+		listingkit.NewAsyncSheinSyncServiceWithBuilder(repo, builder, nil),
+		rejectingSheinSyncStoreAccessValidator{err: listingkit.NewStoreAccessError(listingkit.StoreAccessDisabled, "store is disabled")},
+	)
+
+	_, err := service.SyncSheinOnShelfProducts(context.Background(), 18, 2001, listingkit.SheinSyncTriggerModeManual)
+	if got := listingkit.StoreAccessErrorCode(err); got != listingkit.StoreAccessDisabled {
+		t.Fatalf("store access error = %q, want %q (err=%v)", got, listingkit.StoreAccessDisabled, err)
+	}
+	jobs, total, err := repo.ListSyncJobs(context.Background(), &listingkit.SheinSyncJobQuery{TenantID: 18, StoreID: 2001, Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list sync jobs: %v", err)
+	}
+	if total != 0 || len(jobs) != 0 {
+		t.Fatalf("sync jobs = %+v total=%d, want none", jobs, total)
+	}
+	if builder.calls != 0 {
+		t.Fatalf("product api builder calls = %d, want 0", builder.calls)
 	}
 }
 
