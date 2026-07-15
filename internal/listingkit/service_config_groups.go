@@ -76,9 +76,10 @@ func buildSheinSharedDependencies(config *ServiceConfig) sheinSharedDependencies
 		return sheinSharedDependencies{}
 	}
 	return sheinSharedDependencies{
-		storeCatalog:     config.Shein.SheinStoreCatalog,
-		apiClientFactory: config.Shein.SheinAPIClientFactory,
-		contentOptimizer: config.Shein.SheinContentOptimizer,
+		storeCatalog:         config.Shein.SheinStoreCatalog,
+		storeAccessValidator: config.Shein.StoreAccessValidator,
+		apiClientFactory:     config.Shein.SheinAPIClientFactory,
+		contentOptimizer:     config.Shein.SheinContentOptimizer,
 	}
 }
 

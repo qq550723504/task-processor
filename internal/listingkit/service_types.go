@@ -61,6 +61,7 @@ type ServiceAssetDependencies struct {
 type ServiceSheinDependencies struct {
 	SheinDefaultStoreID        int64
 	SheinStoreCatalog          SheinStoreCatalog
+	StoreAccessValidator       StoreAccessValidator
 	SheinAPIClientFactory      SheinAPIClientFactory
 	SheinCategoryResolver      sheinpub.CategoryResolver
 	SheinResolutionCacheStore  sheinpub.ResolutionCacheStore

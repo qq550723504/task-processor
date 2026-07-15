@@ -473,6 +473,9 @@ func TestBuildListingKitServiceConfigMapsRegistrarOutputs(t *testing.T) {
 	if cfg.Shein.SheinStoreCatalog == nil {
 		t.Fatal("expected shein store catalog to be set")
 	}
+	if cfg.Shein.StoreAccessValidator == nil {
+		t.Fatal("expected tenant store access validator to be set")
+	}
 	if cfg.Shein.SheinAPIClientFactory != apiFactory {
 		t.Fatal("expected shein api client factory to be mapped from submit module")
 	}
