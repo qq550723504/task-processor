@@ -26,7 +26,8 @@
 - Modify: `internal/listingkit/service_types.go`
 - Modify: `internal/listingkit/httpapi/runtime_support_store_catalog.go`
 - Modify: `internal/listingkit/httpapi/bootstrap_service_config.go`
-- Modify: `internal/listingkit/httpapi/bootstrap_admin_module.go`
+- Modify: `internal/listingkit/httpapi/bootstrap_contracts.go`
+- Modify: `internal/listingkit/httpapi/bootstrap_runtime.go`
 - Modify: `internal/listingkit/httpapi/runtime_support_store_catalog_test.go`
 
 **Interfaces:** Produces `StoreAccessValidator`, `StoreAccess`, `StoreAccessError`, and `StoreAccessErrorCode(error) string`; the production adapter is the only code that imports `listingadmin.StoreRepository`.
@@ -77,7 +78,7 @@ Expected: PASS; production wiring contains the validator and the three rejection
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add internal/listingkit/store_access.go internal/listingkit/store_access_test.go internal/listingkit/service_types.go internal/listingkit/httpapi/runtime_support_store_catalog.go internal/listingkit/httpapi/bootstrap_service_config.go internal/listingkit/httpapi/bootstrap_admin_module.go internal/listingkit/httpapi/runtime_support_store_catalog_test.go
+git add internal/listingkit/store_access.go internal/listingkit/store_access_test.go internal/listingkit/service_types.go internal/listingkit/httpapi/runtime_support_store_catalog.go internal/listingkit/httpapi/bootstrap_service_config.go internal/listingkit/httpapi/bootstrap_contracts.go internal/listingkit/httpapi/bootstrap_runtime.go internal/listingkit/httpapi/runtime_support_store_catalog_test.go
 git commit -m "security: add tenant store access validator"
 ```
 
