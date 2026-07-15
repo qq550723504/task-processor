@@ -26,6 +26,7 @@
 - Modify: `internal/listingkit/service_types.go`
 - Modify: `internal/listingkit/httpapi/runtime_support_store_catalog.go`
 - Modify: `internal/listingkit/httpapi/bootstrap_service_config.go`
+- Modify: `internal/listingkit/httpapi/bootstrap_admin_module.go`
 - Modify: `internal/listingkit/httpapi/runtime_support_store_catalog_test.go`
 
 **Interfaces:** Produces `StoreAccessValidator`, `StoreAccess`, `StoreAccessError`, and `StoreAccessErrorCode(error) string`; the production adapter is the only code that imports `listingadmin.StoreRepository`.
@@ -65,7 +66,7 @@ const (
 )
 ```
 
-The HTTP adapter calls `repo.GetStore(ctx, tenantID, storeID)`, rejects nil records, tenant mismatch, and case-insensitive platform mismatch as unavailable, and rejects `Status != 0` as disabled. It returns a sanitized copied record. Wire it through `ListingKitServiceConfig.Shein` without importing `listingadmin` from the ListingKit root.
+The HTTP adapter calls `repo.GetStore(ctx, tenantID, storeID)`, rejects nil records, tenant mismatch, and case-insensitive platform mismatch as unavailable, and rejects `Status != 0` as disabled. It returns a sanitized copied record. Construct it once in the ListingKit HTTP module, wire it through `ListingKitServiceConfig.Shein`, and expose that same interface on the module result for source-handoff composition; do not import `listingadmin` from the ListingKit root.
 
 - [ ] **Step 4: Verify the shared boundary**
 
@@ -76,7 +77,7 @@ Expected: PASS; production wiring contains the validator and the three rejection
 - [ ] **Step 5: Commit**
 
 ```powershell
-git add internal/listingkit/store_access.go internal/listingkit/store_access_test.go internal/listingkit/service_types.go internal/listingkit/httpapi/runtime_support_store_catalog.go internal/listingkit/httpapi/bootstrap_service_config.go internal/listingkit/httpapi/runtime_support_store_catalog_test.go
+git add internal/listingkit/store_access.go internal/listingkit/store_access_test.go internal/listingkit/service_types.go internal/listingkit/httpapi/runtime_support_store_catalog.go internal/listingkit/httpapi/bootstrap_service_config.go internal/listingkit/httpapi/bootstrap_admin_module.go internal/listingkit/httpapi/runtime_support_store_catalog_test.go
 git commit -m "security: add tenant store access validator"
 ```
 
