@@ -13,6 +13,10 @@ func resolveSubmissionStoreCatalog(s *service) SheinStoreCatalog {
 	return resolveSheinStoreCatalog(s)
 }
 
+func resolveSubmissionStoreAccessValidator(s *service) StoreAccessValidator {
+	return resolveSheinStoreAccessValidator(s)
+}
+
 func resolveSubmissionAPIClientFactory(s *service) SheinAPIClientFactory {
 	return resolveSheinAPIClientFactory(s)
 }

@@ -312,6 +312,38 @@ func TestTriggerSheinStoreSyncRejectsNonNumericTenantID(t *testing.T) {
 	}
 }
 
+func TestTriggerSheinStoreSyncMapsStoreAccessErrorToForbidden(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	syncSvc := &stubSheinSyncHandlerService{
+		syncErr: listingkit.NewStoreAccessError(listingkit.StoreAccessDisabled, "store is disabled"),
+	}
+	h, err := NewHandler(
+		&stubHandlerCoreService{},
+		WithSheinSyncServices(syncSvc, stubSheinCandidateHandlerService{}, stubSheinEnrollmentHandlerService{}),
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/shein-sync/stores/:store_id/sync", h.TriggerSheinStoreSync)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/shein-sync/stores/2001/sync", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "18")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"listingkit_store_disabled"`) {
+		t.Fatalf("body = %s, want stable store access code", resp.Body.String())
+	}
+}
+
 func TestSyncSheinSourceSDSProductReturnsSyncedCount(t *testing.T) {
 	t.Parallel()
 

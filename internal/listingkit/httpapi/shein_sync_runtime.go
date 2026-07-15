@@ -18,18 +18,19 @@ func buildSheinSyncRuntimeServices(input BuildServiceInput, repositories *builtR
 
 	productAPIBuilder := input.Hooks.SheinProductAPIBuilderFactory(repositories.storeRepository)
 	mappingSource := sheinInventoryMappingSourceFromRepository(repositories.productImportMappingRepository)
-	syncService := listingkit.NewAsyncSheinSyncServiceWithBuilderAndInventoryMappingSource(
+	storeAccessValidator := listingAdminStoreAccessValidator{repo: repositories.storeRepository}
+	syncService := listingkit.NewStoreValidatedSheinSyncService(listingkit.NewAsyncSheinSyncServiceWithBuilderAndInventoryMappingSource(
 		repositories.sheinSyncRepository,
 		productAPIBuilder,
 		nil,
 		mappingSource,
-	)
-	sdsRetirementSyncService := listingkit.NewSheinSyncServiceWithBuilderAndInventoryMappingSource(
+	), storeAccessValidator)
+	sdsRetirementSyncService := listingkit.NewStoreValidatedSheinSyncService(listingkit.NewSheinSyncServiceWithBuilderAndInventoryMappingSource(
 		repositories.sheinSyncRepository,
 		productAPIBuilder,
 		nil,
 		mappingSource,
-	)
+	), storeAccessValidator)
 	candidateService := listingkit.NewSheinCandidateService(repositories.sheinSyncRepository)
 
 	strategyProvider, err := buildSheinPromotionStrategyProvider(repositories)

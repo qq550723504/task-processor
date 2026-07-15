@@ -13,20 +13,22 @@ import (
 )
 
 type sheinPromotionBridgeRuntimeFactory struct {
-	storeCatalog    listingkit.SheinStoreCatalog
-	apiFactory      listingkit.SheinAPIClientFactory
-	storeRepository listingadmin.StoreRepository
-	mappingRepo     listingadmin.ProductImportMappingRepository
-	productDataRepo listingadmin.ProductDataRepository
+	storeCatalog         listingkit.SheinStoreCatalog
+	storeAccessValidator listingkit.StoreAccessValidator
+	apiFactory           listingkit.SheinAPIClientFactory
+	storeRepository      listingadmin.StoreRepository
+	mappingRepo          listingadmin.ProductImportMappingRepository
+	productDataRepo      listingadmin.ProductDataRepository
 }
 
 func buildSheinPromotionBridgeRuntimeFactory(input BuildServiceInput, repositories *builtRepositories) sheinPromotionBridgeRuntimeFactory {
 	return sheinPromotionBridgeRuntimeFactory{
-		storeCatalog:    sheinListingStoreCatalog{repo: repositories.storeRepository},
-		apiFactory:      input.Hooks.SheinAPIClientFactoryBuilder(repositories.storeRepository),
-		storeRepository: repositories.storeRepository,
-		mappingRepo:     repositories.productImportMappingRepository,
-		productDataRepo: repositories.productDataRepository,
+		storeCatalog:         sheinListingStoreCatalog{repo: repositories.storeRepository},
+		storeAccessValidator: listingAdminStoreAccessValidator{repo: repositories.storeRepository},
+		apiFactory:           input.Hooks.SheinAPIClientFactoryBuilder(repositories.storeRepository),
+		storeRepository:      repositories.storeRepository,
+		mappingRepo:          repositories.productImportMappingRepository,
+		productDataRepo:      repositories.productDataRepository,
 	}
 }
 
@@ -42,9 +44,15 @@ func (f sheinPromotionBridgeRuntimeFactory) BuildPromotionBridge(ctx context.Con
 	if f.apiFactory == nil {
 		return nil, fmt.Errorf("SHEIN API client factory is not configured")
 	}
+	if f.storeAccessValidator == nil {
+		return nil, listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
+	}
 
 	tenantID, err := sheinRuntimeTenantID(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := f.storeAccessValidator.ValidateStoreAccess(ctx, tenantID, storeID, "SHEIN"); err != nil {
 		return nil, err
 	}
 	storeInfo, err := f.storeCatalog.GetStoreInfo(ctx, tenantID, storeID)

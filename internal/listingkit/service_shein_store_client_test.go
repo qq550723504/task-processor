@@ -40,6 +40,24 @@ func (f stubSheinAPIClientFactory) NewSheinAPIClient(_ int64, _ *SheinStoreInfo)
 	return f.client
 }
 
+type recordingSheinAPIClientFactory struct {
+	client *sheinclient.APIClient
+	calls  int
+}
+
+func (f *recordingSheinAPIClientFactory) NewSheinAPIClient(_ int64, _ *SheinStoreInfo) *sheinclient.APIClient {
+	f.calls++
+	return f.client
+}
+
+type rejectingStoreAccessValidator struct {
+	err error
+}
+
+func (v rejectingStoreAccessValidator) ValidateStoreAccess(context.Context, int64, int64, string) (StoreAccess, error) {
+	return StoreAccess{}, v.err
+}
+
 func TestResolveSheinStoreInfoUsesTenantScopedStoreClient(t *testing.T) {
 	t.Parallel()
 
@@ -53,7 +71,10 @@ func TestResolveSheinStoreInfoUsesTenantScopedStoreClient(t *testing.T) {
 		},
 	}
 
-	svc := &service{sheinSharedDeps: sheinSharedDependencies{storeCatalog: catalog}}
+	svc := &service{sheinSharedDeps: sheinSharedDependencies{
+		storeCatalog:         catalog,
+		storeAccessValidator: &storeAccessValidatorStub{},
+	}}
 	task := &Task{
 		ID:       "task-store-tenant",
 		TenantID: "227",
@@ -78,5 +99,36 @@ func TestResolveSheinStoreInfoUsesTenantScopedStoreClient(t *testing.T) {
 	}
 	if catalog.seenStoreID != 869 {
 		t.Fatalf("store id = %d, want 869", catalog.seenStoreID)
+	}
+}
+
+func TestNewSheinAPIClientRejectsStaleStoreSnapshotBeforeCreatingClient(t *testing.T) {
+	t.Parallel()
+
+	factory := &recordingSheinAPIClientFactory{}
+	svc := &service{sheinSharedDeps: sheinSharedDependencies{
+		storeCatalog: &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{
+			ID:       869,
+			TenantID: 227,
+			Platform: "shein",
+		}},
+		storeAccessValidator: rejectingStoreAccessValidator{err: NewStoreAccessError(StoreAccessDisabled, "store is disabled")},
+		apiClientFactory:     factory,
+	}}
+	task := &Task{
+		TenantID: "227",
+		Request:  &GenerateRequest{},
+		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
+			StoreID: 869,
+		},
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "227", UserID: "user-store-tenant"})
+
+	_, _, err := svc.newSheinAPIClient(ctx, task)
+	if got := StoreAccessErrorCode(err); got != StoreAccessStale {
+		t.Fatalf("store access error = %q, want %q (err=%v)", got, StoreAccessStale, err)
+	}
+	if factory.calls != 0 {
+		t.Fatalf("api client factory calls = %d, want 0", factory.calls)
 	}
 }

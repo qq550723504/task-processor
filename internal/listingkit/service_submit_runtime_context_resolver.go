@@ -73,15 +73,22 @@ func (r *submitRuntimeContextResolver) resolveStoreInfo(ctx context.Context, tas
 	if tenantID <= 0 {
 		return nil, fmt.Errorf("shein store tenant is unavailable")
 	}
+	validator := resolveSubmissionStoreAccessValidator(r.service)
+	if validator == nil {
+		return nil, NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
+	}
+	if _, err := validator.ValidateStoreAccess(ctx, tenantID, storeID, "SHEIN"); err != nil {
+		if sheinStoreResolutionSnapshotFromTask(task) != nil {
+			return nil, NewStoreAccessError(StoreAccessStale, "store selection is stale")
+		}
+		return nil, err
+	}
 	storeInfo, err := resolveSubmissionStoreCatalog(r.service).GetStoreInfo(ctx, tenantID, storeID)
 	if err != nil {
 		return nil, fmt.Errorf("load shein store info: %w", err)
 	}
-	if storeInfo == nil || storeInfo.ID <= 0 {
+	if storeInfo == nil || storeInfo.ID != storeID || storeInfo.TenantID != tenantID {
 		return nil, fmt.Errorf("shein store info is unavailable")
-	}
-	if storeInfo.TenantID <= 0 {
-		return nil, fmt.Errorf("shein store tenant is unavailable")
 	}
 	return storeInfo, nil
 }

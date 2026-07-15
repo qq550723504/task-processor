@@ -179,6 +179,80 @@ func NewAsyncSheinSyncServiceWithBuilderAndInventoryMappingSource(repo SheinSync
 	return sheinsync.NewAsyncSheinSyncServiceWithBuilderAndInventoryMappingSource(repo, sheinSyncProductAPIBuilderBridge{builder: productAPIBuilder}, costResolver, mappingSource)
 }
 
+// NewStoreValidatedSheinSyncService prevents a stale, disabled, or foreign store
+// from creating sync jobs or building a remote product API client.
+func NewStoreValidatedSheinSyncService(delegate SheinSyncService, validator StoreAccessValidator) SheinSyncService {
+	return storeValidatedSheinSyncService{delegate: delegate, validator: validator}
+}
+
+type storeValidatedSheinSyncService struct {
+	delegate  SheinSyncService
+	validator StoreAccessValidator
+}
+
+func (s storeValidatedSheinSyncService) SyncSheinOnShelfProducts(ctx context.Context, tenantID, storeID int64, triggerMode SheinSyncTriggerMode) (*SheinSyncJobRecord, error) {
+	if err := s.validateStore(ctx, tenantID, storeID); err != nil {
+		return nil, err
+	}
+	if s.delegate == nil {
+		return nil, NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
+	}
+	return s.delegate.SyncSheinOnShelfProducts(ctx, tenantID, storeID, triggerMode)
+}
+
+func (s storeValidatedSheinSyncService) SyncSheinSourceSDSProduct(ctx context.Context, tenantID, storeID int64, sourceCode string) (int, error) {
+	if err := s.validateStore(ctx, tenantID, storeID); err != nil {
+		return 0, err
+	}
+	if s.delegate == nil {
+		return 0, NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
+	}
+	return s.delegate.SyncSheinSourceSDSProduct(ctx, tenantID, storeID, sourceCode)
+}
+
+func (s storeValidatedSheinSyncService) ListSyncedProducts(ctx context.Context, query *SheinSyncedProductQuery) ([]SheinSyncedProductRecord, int64, error) {
+	if s.delegate == nil {
+		return nil, 0, NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
+	}
+	return s.delegate.ListSyncedProducts(ctx, query)
+}
+
+func (s storeValidatedSheinSyncService) UpdateManualCostPrice(ctx context.Context, productID int64, manualCostPrice *float64) error {
+	if s.delegate == nil {
+		return NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
+	}
+	return s.delegate.UpdateManualCostPrice(ctx, productID, manualCostPrice)
+}
+
+func (s storeValidatedSheinSyncService) ResolveProductAPI(ctx context.Context, storeID int64) (sheinproduct.ProductAPI, error) {
+	tenantID, ok := tenantIDInt64FromContext(ctx)
+	if !ok || tenantID <= 0 {
+		return nil, NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
+	}
+	if err := s.validateStore(ctx, tenantID, storeID); err != nil {
+		return nil, err
+	}
+	if s.delegate == nil {
+		return nil, NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
+	}
+	return s.delegate.ResolveProductAPI(ctx, storeID)
+}
+
+func (s storeValidatedSheinSyncService) SupportsImmediateRefresh() bool {
+	aware, ok := s.delegate.(interface {
+		SupportsImmediateRefresh() bool
+	})
+	return ok && aware.SupportsImmediateRefresh()
+}
+
+func (s storeValidatedSheinSyncService) validateStore(ctx context.Context, tenantID, storeID int64) error {
+	if s.validator == nil {
+		return NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
+	}
+	_, err := s.validator.ValidateStoreAccess(ctx, tenantID, storeID, "SHEIN")
+	return err
+}
+
 type sheinSyncProductAPIBuilderBridge struct {
 	builder sheinSyncProductAPIBuilder
 }
