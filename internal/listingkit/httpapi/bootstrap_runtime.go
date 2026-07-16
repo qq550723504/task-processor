@@ -77,6 +77,7 @@ func createModuleRuntime(input BuildModuleInput, bundle *ServiceBundle, closers 
 		Handler:              handler,
 		StudioSessionHandler: studioSessionHandler,
 		TaskLifecycleService: bundle.runtime.service,
+		StoreAccessValidator: listingAdminStoreAccessValidator{repo: bundle.StoreRepository},
 		StoreRepository:      bundle.StoreRepository,
 		Pool:                 assembly.pool,
 		Closers:              closers.Snapshot(),

@@ -308,7 +308,7 @@ func TestStudioBatchStoreProfileValidatorUsesResolvedNumericTenant(t *testing.T)
 func TestStudioBatchStoreProfileValidatorSkipsWhenTenantCannotResolve(t *testing.T) {
 	t.Parallel()
 
-	result, err := (studioBatchStoreProfileValidator{repo: newInMemoryStoreProfileRepository()}).ValidateStudioBatchStore(context.Background(), "tenant-a", 870)
+	result, err := (studioBatchStoreProfileValidator{repo: newInMemoryStoreProfileRepository()}).ValidateStudioBatchStore(context.Background(), "unmapped-tenant", 870)
 	if err != nil {
 		t.Fatalf("ValidateStudioBatchStore() error = %v", err)
 	}

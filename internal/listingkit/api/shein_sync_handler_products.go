@@ -46,6 +46,9 @@ func (h *handler) TriggerSheinStoreSync(c *gin.Context) {
 
 	job, err := h.sheinSyncService.SyncSheinOnShelfProducts(ctx, tenantID, storeID, req.TriggerMode)
 	if err != nil {
+		if writeStoreAccessError(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "shein_sync_failed", "message": err.Error()})
 		return
 	}
@@ -70,6 +73,9 @@ func (h *handler) SyncSheinSourceSDSProduct(c *gin.Context) {
 
 	syncedCount, err := h.sheinSyncService.SyncSheinSourceSDSProduct(ctx, tenantID, storeID, sourceCode)
 	if err != nil {
+		if writeStoreAccessError(c, err) {
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "shein_source_sds_product_sync_failed", "message": err.Error()})
 		return
 	}

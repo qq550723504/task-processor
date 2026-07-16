@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
 )
@@ -73,17 +74,31 @@ func (r *submitRuntimeContextResolver) resolveStoreInfo(ctx context.Context, tas
 	if tenantID <= 0 {
 		return nil, fmt.Errorf("shein store tenant is unavailable")
 	}
+	validator := resolveSubmissionStoreAccessValidator(r.service)
+	if validator == nil {
+		return nil, NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
+	}
+	if _, err := validator.ValidateStoreAccess(ctx, tenantID, storeID, "SHEIN"); err != nil {
+		if sheinStoreResolutionSnapshotFromTask(task) != nil && StoreAccessErrorCode(err) != "" {
+			return nil, NewStoreAccessError(StoreAccessStale, "store selection is stale")
+		}
+		return nil, err
+	}
 	storeInfo, err := resolveSubmissionStoreCatalog(r.service).GetStoreInfo(ctx, tenantID, storeID)
 	if err != nil {
 		return nil, fmt.Errorf("load shein store info: %w", err)
 	}
-	if storeInfo == nil || storeInfo.ID <= 0 {
-		return nil, fmt.Errorf("shein store info is unavailable")
-	}
-	if storeInfo.TenantID <= 0 {
-		return nil, fmt.Errorf("shein store tenant is unavailable")
+	if storeInfo == nil || storeInfo.ID != storeID || storeInfo.TenantID != tenantID || !strings.EqualFold(strings.TrimSpace(storeInfo.Platform), "SHEIN") {
+		return nil, storeResolutionAccessError(task)
 	}
 	return storeInfo, nil
+}
+
+func storeResolutionAccessError(task *Task) error {
+	if sheinStoreResolutionSnapshotFromTask(task) != nil {
+		return NewStoreAccessError(StoreAccessStale, "store selection is stale")
+	}
+	return NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
 }
 
 func (r *submitRuntimeContextResolver) newAPIClient(ctx context.Context, task *Task) (*SheinRuntimeAPIClient, int64, error) {
@@ -98,11 +113,11 @@ func (r *submitRuntimeContextResolver) newAPIClient(ctx context.Context, task *T
 }
 
 func (r *submitRuntimeContextResolver) resolveStoreID(ctx context.Context, task *Task) (int64, error) {
-	if task != nil && task.Request != nil && task.Request.SheinStoreID > 0 {
-		return task.Request.SheinStoreID, nil
-	}
 	if snapshot := sheinStoreResolutionSnapshotFromTask(task); snapshot != nil && snapshot.StoreID > 0 {
 		return snapshot.StoreID, nil
+	}
+	if task != nil && task.Request != nil && task.Request.SheinStoreID > 0 {
+		return task.Request.SheinStoreID, nil
 	}
 	return 0, fmt.Errorf("shein store id is unavailable")
 }

@@ -86,6 +86,31 @@ func TestCreateListingKitTaskReturnsBadRequestWithHandoff(t *testing.T) {
 	}
 }
 
+func TestCreateListingKitTaskReturnsStableStoreAccessError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &fakeTaskCommandService{err: listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")}
+	router := gin.New()
+	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
+
+	rec := performJSONRequestWithAuthenticatedIdentity(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{
+		URL:           "https://detail.1688.com/offer/1003.html",
+		SourceStoreID: 3001,
+		SheinStoreID:  168811,
+		Platforms:     []string{"shein"},
+	}, nil, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-http"})
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if body["error"] != listingkit.StoreAccessUnavailable {
+		t.Fatalf("error = %#v, want %q", body["error"], listingkit.StoreAccessUnavailable)
+	}
+}
+
 func TestCreateListingKitTaskRejectsInvalidJSON(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

@@ -457,7 +457,8 @@ func TestCreateGenerateTaskPersistsSheinStoreResolutionSnapshot(t *testing.T) {
 			taskSubmitter: noopTaskSubmitter{},
 		},
 	}
-	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "606", UserID: "user-f"})
+	enableTestStoreAccess(svc)
+	ctx := WithTenantID(openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "606", UserID: "user-f"}), "606")
 
 	profile, err := svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
 		StoreID:       903,

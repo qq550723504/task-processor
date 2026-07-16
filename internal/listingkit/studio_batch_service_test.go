@@ -2020,6 +2020,7 @@ func TestServiceCreateStudioBatchTasksUsesApprovedDesignOwnership(t *testing.T) 
 	}
 
 	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
+	enableTestStoreAccess(svc)
 	svc.repo = newStudioBatchTaskRepositoryStub()
 	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
 	svc.studioDeps.sessionRepo = &studioBatchTaskCreationSessionRepoStub{
@@ -2112,6 +2113,7 @@ func TestServiceCreateStudioBatchTasksDoesNotCompleteBatchForPartialApprovedDesi
 	}
 
 	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
+	enableTestStoreAccess(svc)
 	svc.repo = newStudioBatchTaskRepositoryStub()
 	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
 	svc.studioDeps.sessionRepo = &studioBatchTaskCreationSessionRepoStub{
@@ -2184,6 +2186,7 @@ func TestServiceCreateStudioBatchTasksRejectsApprovedDesignsFromPendingItems(t *
 	}
 
 	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
+	enableTestStoreAccess(svc)
 	svc.repo = newStudioBatchTaskRepositoryStub()
 	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
 	svc.studioDeps.sessionRepo = &studioBatchTaskCreationSessionRepoStub{
@@ -2271,6 +2274,7 @@ func TestServiceResumeStudioBatchTaskCreationDoesNotFinalizePartialRequest(t *te
 		},
 	}
 	svc := &service{studioDeps: studioDependencies{batchRepo: repo, sessionRepo: sessionRepo}}
+	enableTestStoreAccess(svc)
 	svc.repo = newStudioBatchTaskRepositoryStub()
 	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
 
@@ -2350,6 +2354,7 @@ func TestServiceCreateStudioBatchTasksRejectsInFlightBatchWithoutPartialAllowanc
 	taskRepo := newStudioBatchTaskRepositoryStub()
 	submitter := &studioBatchTaskSubmitterStub{}
 	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
+	enableTestStoreAccess(svc)
 	svc.repo = taskRepo
 	svc.taskDeps.taskSubmitter = submitter
 	svc.studioDeps.sessionRepo = &studioBatchTaskCreationSessionRepoStub{
@@ -2430,6 +2435,7 @@ func TestServiceCreateStudioBatchTasksAllowsExplicitPartialCreationWhileGenerati
 
 	taskRepo := newStudioBatchTaskRepositoryStub()
 	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
+	enableTestStoreAccess(svc)
 	svc.repo = taskRepo
 	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
 	svc.studioDeps.sessionRepo = &studioBatchTaskCreationSessionRepoStub{
@@ -2488,6 +2494,7 @@ func TestServiceCreateStudioBatchTasks_UsesBatchGraphWithoutSession(t *testing.T
 	}
 
 	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
+	enableTestStoreAccess(svc)
 	svc.repo = taskRepo
 	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
 	svc.studioDeps.sessionRepo = nil
@@ -2557,6 +2564,7 @@ func TestServiceCreateStudioBatchTasks_FansOutEachDesignToEveryCompatibleSelecti
 	}
 
 	svc := &service{repo: taskRepo, studioDeps: studioDependencies{batchRepo: batchRepo}}
+	enableTestStoreAccess(svc)
 	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
 
 	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
@@ -2660,6 +2668,7 @@ func TestServiceCreateStudioBatchTasks_FansOutHonorsRequestDesignOrder(t *testin
 	}
 
 	svc := &service{repo: taskRepo, studioDeps: studioDependencies{batchRepo: batchRepo}}
+	enableTestStoreAccess(svc)
 	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
 
 	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
@@ -3014,6 +3023,7 @@ func TestServiceCreateStudioBatchTasks_RejectsCompatibilityMismatch(t *testing.T
 	}
 
 	svc := &service{studioDeps: studioDependencies{batchRepo: repo}}
+	enableTestStoreAccess(svc)
 	svc.repo = taskRepo
 	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
 
@@ -3115,6 +3125,7 @@ func TestServiceCreateStudioBatchTasksCreatesRealListingKitTasks(t *testing.T) {
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}
+	enableTestStoreAccess(svc)
 
 	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
 		DesignIDs: []string{"design-1"},
@@ -3258,6 +3269,7 @@ func TestServiceCreateStudioBatchTasksUsesItemSelectionOwnershipForGroupedProduc
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}
+	enableTestStoreAccess(svc)
 
 	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
 		DesignIDs: []string{"design-grouped"},
@@ -3348,6 +3360,7 @@ func TestServiceCreateStudioBatchTasksDefaultsGroupedSelectionDesignType(t *test
 		},
 		taskDeps: taskDependencies{taskSubmitter: &studioBatchTaskSubmitterStub{}},
 	}
+	enableTestStoreAccess(svc)
 
 	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
 		DesignIDs: []string{"design-grouped"},
@@ -3430,6 +3443,7 @@ func TestServiceCreateStudioBatchTasksAllowsGroupedSelectionWithoutMaskImage(t *
 		},
 		taskDeps: taskDependencies{taskSubmitter: &studioBatchTaskSubmitterStub{}},
 	}
+	enableTestStoreAccess(svc)
 
 	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
 		DesignIDs: []string{"design-grouped"},
@@ -3512,6 +3526,7 @@ func TestServiceCreateStudioBatchTasksReturnsPartialSuccessWhenQueueIsFull(t *te
 			taskSubmitter: &studioBatchTaskSubmitterStub{failAfter: 1},
 		},
 	}
+	enableTestStoreAccess(svc)
 
 	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
 		DesignIDs: []string{"design-1", "design-2"},
@@ -3591,6 +3606,7 @@ func TestServiceCreateStudioBatchTasksReusesExistingTasksForRepeatedRequests(t *
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}
+	enableTestStoreAccess(svc)
 
 	first, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
 		DesignIDs: []string{"design-1"},
@@ -3658,6 +3674,7 @@ func TestServiceCreateStudioBatchTasks_ReusesDurableLinkedTaskWithoutSession(t *
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}
+	enableTestStoreAccess(svc)
 
 	first, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
 	if err != nil {
@@ -3796,6 +3813,7 @@ func TestServiceCreateStudioBatchTasks_ConcurrentRequestsCreateOneTask(t *testin
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}
+	enableTestStoreAccess(svc)
 
 	var wg sync.WaitGroup
 	results := make([]*CreateStudioBatchTasksResult, 2)
@@ -4051,6 +4069,7 @@ func TestStudioBatchDetail_LoadsCreatedTasksFromDurableLinks(t *testing.T) {
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}
+	enableTestStoreAccess(svc)
 	created, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
 	if err != nil {
 		t.Fatalf("CreateStudioBatchTasks() error = %v", err)
@@ -4307,6 +4326,7 @@ func TestServiceCreateStudioBatchTasks_RecoversReservedCandidate(t *testing.T) {
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}
+	enableTestStoreAccess(svc)
 
 	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
 	if err != nil {
@@ -4356,6 +4376,7 @@ func TestServiceCreateStudioBatchTasks_RecoversPostPersistDispatchFailureWithout
 		},
 		taskDeps: taskDependencies{taskSubmitter: submitter},
 	}
+	enableTestStoreAccess(svc)
 
 	first, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{DesignIDs: []string{"design-1"}})
 	if err != nil {
@@ -4602,6 +4623,7 @@ func TestServiceCreateStudioBatchTasksReusesLegacyStyleIDTasks(t *testing.T) {
 			taskSubmitter: &studioBatchTaskSubmitterStub{},
 		},
 	}
+	enableTestStoreAccess(svc)
 
 	result, err := svc.CreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
 		DesignIDs: []string{"design-1"},

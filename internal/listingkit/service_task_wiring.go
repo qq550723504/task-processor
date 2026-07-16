@@ -66,6 +66,14 @@ func buildTaskLifecycleServiceConfig(s *service) taskLifecycleServiceConfig {
 	return taskLifecycleServiceConfig{
 		repo:                        repository.repo,
 		sdsBaselineReadinessService: s.sdsBaselineOrDefault(),
+		validateSheinStoreAccess: func(ctx context.Context, tenantID, storeID int64) error {
+			validator := resolveSheinStoreAccessValidator(s)
+			if validator == nil {
+				return NewStoreAccessError(StoreAccessUnavailable, "store is unavailable")
+			}
+			_, err := validator.ValidateStoreAccess(ctx, tenantID, storeID, "SHEIN")
+			return err
+		},
 		requestDefaults: func() generateRequestDefaults {
 			return resolveTaskRequestDefaults(s)
 		},

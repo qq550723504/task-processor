@@ -727,6 +727,10 @@ func TestBuildSheinSubmitProductAPIUsesExplicitStoreID(t *testing.T) {
 			storeProfileRepo:       storeProfileRepo,
 			sheinProductAPIBuilder: builder,
 		},
+		sheinSharedDeps: sheinSharedDependencies{
+			storeCatalog:         &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 903, TenantID: 505, Platform: "shein"}},
+			storeAccessValidator: &storeAccessValidatorStub{},
+		},
 	}
 	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "505", UserID: "user-e"})
 	_, err := svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
@@ -756,6 +760,31 @@ func TestBuildSheinSubmitProductAPIUsesExplicitStoreID(t *testing.T) {
 	}
 }
 
+func TestBuildSheinSubmitProductAPIRejectsDisabledStoreBeforeBuildingClient(t *testing.T) {
+	t.Parallel()
+
+	var lastStoreID int64
+	svc := &service{
+		submissionDeps: submissionDependencies{
+			sheinProductAPIBuilder: stubSheinProductAPIBuilder{api: &stubSheinProductAPI{}, lastStoreID: &lastStoreID},
+		},
+		sheinSharedDeps: sheinSharedDependencies{
+			storeCatalog:         &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 903, TenantID: 505, Platform: "shein"}},
+			storeAccessValidator: rejectingStoreAccessValidator{err: NewStoreAccessError(StoreAccessDisabled, "store is disabled")},
+		},
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "505", UserID: "user-e"})
+	task := &Task{TenantID: "505", Request: &GenerateRequest{SheinStoreID: 903}}
+
+	_, err := svc.taskSubmissionExecutionOrDefault().buildSheinSubmitProductAPI(ctx, task)
+	if got := StoreAccessErrorCode(err); got != StoreAccessDisabled {
+		t.Fatalf("store access error = %q, want %q (err=%v)", got, StoreAccessDisabled, err)
+	}
+	if lastStoreID != 0 {
+		t.Fatalf("builder store id = %d, want 0", lastStoreID)
+	}
+}
+
 func TestBuildSheinSubmitProductAPIInjectsTaskTenantIntoBuilderContext(t *testing.T) {
 	t.Parallel()
 
@@ -766,6 +795,10 @@ func TestBuildSheinSubmitProductAPIInjectsTaskTenantIntoBuilderContext(t *testin
 				api:     &stubSheinProductAPI{},
 				lastCtx: &builderCtx,
 			},
+		},
+		sheinSharedDeps: sheinSharedDependencies{
+			storeCatalog:         &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 373211199677923496, Platform: "shein"}},
+			storeAccessValidator: &storeAccessValidatorStub{},
 		},
 	}
 	task := &Task{
@@ -800,6 +833,10 @@ func TestUploadSheinSubmitImagesInjectsTaskTenantIntoBuilderContext(t *testing.T
 				api:     &stubSheinImageAPI{uploaded: map[string]string{"https://example.com/source.jpg": "https://img.shein.com/uploaded.jpg"}},
 				lastCtx: &builderCtx,
 			},
+		},
+		sheinSharedDeps: sheinSharedDependencies{
+			storeCatalog:         &stubSheinStoreCatalog{storeInfo: &SheinStoreInfo{ID: 870, TenantID: 373211199677923496, Platform: "shein"}},
+			storeAccessValidator: &storeAccessValidatorStub{},
 		},
 	}
 	task := &Task{

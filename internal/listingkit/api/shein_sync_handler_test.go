@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/store"
@@ -49,6 +50,35 @@ type stubSheinSyncHandlerService struct {
 	updateCostCtx context.Context
 	updateCostID  int64
 	updateCost    *float64
+}
+
+type rejectingSheinSyncStoreAccessValidator struct {
+	err error
+}
+
+func (v rejectingSheinSyncStoreAccessValidator) ValidateStoreAccess(context.Context, int64, int64, string) (listingkit.StoreAccess, error) {
+	return listingkit.StoreAccess{}, v.err
+}
+
+type recordingSheinSyncProductAPIBuilder struct {
+	calls int
+}
+
+func (b *recordingSheinSyncProductAPIBuilder) BuildProductAPI(context.Context, int64) (sheinproduct.ProductAPI, string) {
+	b.calls++
+	return nil, "unexpected product api build"
+}
+
+type sequentialSheinSyncStoreAccessValidator struct {
+	calls int
+}
+
+func (v *sequentialSheinSyncStoreAccessValidator) ValidateStoreAccess(context.Context, int64, int64, string) (listingkit.StoreAccess, error) {
+	v.calls++
+	if v.calls == 1 {
+		return listingkit.StoreAccess{ID: 2001, TenantID: 18, Platform: "SHEIN", Enabled: true}, nil
+	}
+	return listingkit.StoreAccess{}, listingkit.NewStoreAccessError(listingkit.StoreAccessDisabled, "store is disabled")
 }
 
 func (s *stubSheinSyncHandlerService) SyncSheinOnShelfProducts(ctx context.Context, tenantID, storeID int64, triggerMode listingkit.SheinSyncTriggerMode) (*listingkit.SheinSyncJobRecord, error) {
@@ -310,6 +340,102 @@ func TestTriggerSheinStoreSyncRejectsNonNumericTenantID(t *testing.T) {
 	if resp.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400 body=%s", resp.Code, resp.Body.String())
 	}
+}
+
+func TestTriggerSheinStoreSyncMapsStoreAccessErrorToForbidden(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	syncSvc := &stubSheinSyncHandlerService{
+		syncErr: listingkit.NewStoreAccessError(listingkit.StoreAccessDisabled, "store is disabled"),
+	}
+	h, err := NewHandler(
+		&stubHandlerCoreService{},
+		WithSheinSyncServices(syncSvc, stubSheinCandidateHandlerService{}, stubSheinEnrollmentHandlerService{}),
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/shein-sync/stores/:store_id/sync", h.TriggerSheinStoreSync)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/shein-sync/stores/2001/sync", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "18")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403 body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"listingkit_store_disabled"`) {
+		t.Fatalf("body = %s, want stable store access code", resp.Body.String())
+	}
+}
+
+func TestStoreValidatedSheinSyncRejectsBeforeSavingJobOrBuildingProductAPI(t *testing.T) {
+	t.Parallel()
+
+	repo := store.NewMemSheinSyncRepository()
+	builder := &recordingSheinSyncProductAPIBuilder{}
+	service := listingkit.NewStoreValidatedSheinSyncService(
+		listingkit.NewAsyncSheinSyncServiceWithBuilder(repo, builder, nil),
+		rejectingSheinSyncStoreAccessValidator{err: listingkit.NewStoreAccessError(listingkit.StoreAccessDisabled, "store is disabled")},
+	)
+
+	_, err := service.SyncSheinOnShelfProducts(context.Background(), 18, 2001, listingkit.SheinSyncTriggerModeManual)
+	if got := listingkit.StoreAccessErrorCode(err); got != listingkit.StoreAccessDisabled {
+		t.Fatalf("store access error = %q, want %q (err=%v)", got, listingkit.StoreAccessDisabled, err)
+	}
+	jobs, total, err := repo.ListSyncJobs(context.Background(), &listingkit.SheinSyncJobQuery{TenantID: 18, StoreID: 2001, Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("list sync jobs: %v", err)
+	}
+	if total != 0 || len(jobs) != 0 {
+		t.Fatalf("sync jobs = %+v total=%d, want none", jobs, total)
+	}
+	if builder.calls != 0 {
+		t.Fatalf("product api builder calls = %d, want 0", builder.calls)
+	}
+}
+
+func TestAsyncSheinSyncRechecksStoreBeforeBuildingProductAPI(t *testing.T) {
+	t.Parallel()
+
+	repo := store.NewMemSheinSyncRepository()
+	builder := &recordingSheinSyncProductAPIBuilder{}
+	validator := &sequentialSheinSyncStoreAccessValidator{}
+	guardedBuilder := listingkit.NewStoreValidatedSheinProductAPIBuilder(builder, validator)
+	service := listingkit.NewStoreValidatedSheinSyncService(
+		listingkit.NewAsyncSheinSyncServiceWithBuilder(repo, guardedBuilder, nil),
+		validator,
+	)
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "18", UserID: "sync-user"})
+
+	job, err := service.SyncSheinOnShelfProducts(ctx, 18, 2001, listingkit.SheinSyncTriggerModeManual)
+	if err != nil {
+		t.Fatalf("sync shein products: %v", err)
+	}
+	if job == nil {
+		t.Fatal("job = nil, want pending job")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		jobs, _, listErr := repo.ListSyncJobs(context.Background(), &listingkit.SheinSyncJobQuery{TenantID: 18, StoreID: 2001, Page: 1, PageSize: 10})
+		if listErr == nil && len(jobs) == 1 && jobs[0].Status == listingkit.SheinSyncJobStatusFailed {
+			if builder.calls != 0 {
+				t.Fatalf("product api builder calls = %d, want 0", builder.calls)
+			}
+			if validator.calls < 2 {
+				t.Fatalf("store validator calls = %d, want recheck before product api build", validator.calls)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("background sync job did not fail after store access changed")
 }
 
 func TestSyncSheinSourceSDSProductReturnsSyncedCount(t *testing.T) {

@@ -61,6 +61,7 @@ func buildListingKitSheinDependencies(in buildListingKitServiceConfigInput) list
 	return listingkit.ServiceSheinDependencies{
 		SheinDefaultStoreID:        in.submit.shein.defaultStoreID,
 		SheinStoreCatalog:          sheinListingStoreCatalog{repo: in.repositories.storeRepository},
+		StoreAccessValidator:       listingAdminStoreAccessValidator{repo: in.repositories.storeRepository},
 		SheinAPIClientFactory:      in.submit.shein.apiClientFactory,
 		SheinCategoryResolver:      in.submit.shein.categoryResolver,
 		SheinResolutionCacheStore:  in.repositories.resolutionCacheStore,

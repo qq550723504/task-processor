@@ -1,9 +1,10 @@
 package listingkit
 
 type sheinSharedDependencies struct {
-	storeCatalog     SheinStoreCatalog
-	apiClientFactory SheinAPIClientFactory
-	contentOptimizer AIChatCompleter
+	storeCatalog         SheinStoreCatalog
+	storeAccessValidator StoreAccessValidator
+	apiClientFactory     SheinAPIClientFactory
+	contentOptimizer     AIChatCompleter
 }
 
 func resolveSheinStoreCatalog(s *service) SheinStoreCatalog {
@@ -11,6 +12,13 @@ func resolveSheinStoreCatalog(s *service) SheinStoreCatalog {
 		return nil
 	}
 	return s.sheinSharedDeps.storeCatalog
+}
+
+func resolveSheinStoreAccessValidator(s *service) StoreAccessValidator {
+	if s == nil {
+		return nil
+	}
+	return s.sheinSharedDeps.storeAccessValidator
 }
 
 func resolveSheinAPIClientFactory(s *service) SheinAPIClientFactory {

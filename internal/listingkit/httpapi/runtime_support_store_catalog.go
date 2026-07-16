@@ -13,6 +13,29 @@ type sheinListingStoreCatalog struct {
 	repo listingadmin.StoreRepository
 }
 
+type listingAdminStoreAccessValidator struct {
+	repo listingadmin.StoreRepository
+}
+
+func (v listingAdminStoreAccessValidator) ValidateStoreAccess(ctx context.Context, tenantID, storeID int64, expectedPlatform string) (listingkit.StoreAccess, error) {
+	if v.repo == nil || tenantID <= 0 || storeID <= 0 {
+		return listingkit.StoreAccess{}, listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
+	}
+	store, err := v.repo.GetStore(ctx, tenantID, storeID)
+	if err != nil || store == nil || store.ID != storeID || store.TenantID != tenantID || !strings.EqualFold(strings.TrimSpace(store.Platform), strings.TrimSpace(expectedPlatform)) {
+		return listingkit.StoreAccess{}, listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
+	}
+	if store.Status != 0 {
+		return listingkit.StoreAccess{}, listingkit.NewStoreAccessError(listingkit.StoreAccessDisabled, "store is disabled")
+	}
+	return listingkit.StoreAccess{
+		ID:       store.ID,
+		TenantID: store.TenantID,
+		Platform: strings.TrimSpace(store.Platform),
+		Enabled:  true,
+	}, nil
+}
+
 func (c sheinListingStoreCatalog) GetStoreInfo(ctx context.Context, tenantID, storeID int64) (*listingkit.SheinStoreInfo, error) {
 	if c.repo == nil {
 		return nil, fmt.Errorf("listing admin store repository is not configured")

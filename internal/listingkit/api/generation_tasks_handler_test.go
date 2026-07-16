@@ -96,6 +96,43 @@ func TestGenerateListingKitAbsolutizesUploadedImageURLs(t *testing.T) {
 	}
 }
 
+func TestGenerateListingKitReturnsStableStoreAccessError(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubCreateGenerateTaskHandlerService{
+		err: listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable"),
+	}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc), WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/generate", h.GenerateListingKit)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/generate", strings.NewReader(`{"text":"demo","platforms":["shein"],"shein_store_id":202}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403: %s", resp.Code, resp.Body.String())
+	}
+	var body struct {
+		Error   string `json:"error"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if body.Error != listingkit.StoreAccessUnavailable {
+		t.Fatalf("error = %q, want %q", body.Error, listingkit.StoreAccessUnavailable)
+	}
+	if body.Message == "" || body.Message == "store is unavailable" {
+		t.Fatalf("message = %q, want non-sensitive next step", body.Message)
+	}
+}
+
 func TestGetTaskGenerationTasksBindsQueryFilters(t *testing.T) {
 	t.Parallel()
 

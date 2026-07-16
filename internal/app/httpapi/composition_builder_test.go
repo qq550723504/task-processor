@@ -119,6 +119,7 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 			require.Nil(t, input.Runtime.Hooks.ConfigureAuthorization)
 			return &listingkithttpapi.Module{
 				TaskLifecycleService: stubCompositionTaskLifecycleService{},
+				StoreAccessValidator: stubCompositionStoreAccessValidator{},
 				Pool:                 stubWorkerPool{},
 			}, nil
 		},
@@ -149,7 +150,7 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 	require.NotNil(t, composition.imageModule)
 	require.NotNil(t, composition.amazonListingModule)
 	require.NotNil(t, composition.listingKitModule)
-	require.Nil(t, composition.productSourcingModule)
+	require.NotNil(t, composition.productSourcingModule)
 	require.NotNil(t, composition.promptModule)
 	require.NotNil(t, composition.taskRPCResult)
 	require.NotNil(t, composition.sdsModule)
@@ -173,6 +174,12 @@ func TestHTTPFeatureCompositionBuilderBuildsFeaturesInDependencyOrder(t *testing
 
 type stubCompositionTaskLifecycleService struct {
 	listingkit.TaskLifecycleService
+}
+
+type stubCompositionStoreAccessValidator struct{}
+
+func (stubCompositionStoreAccessValidator) ValidateStoreAccess(context.Context, int64, int64, string) (listingkit.StoreAccess, error) {
+	return listingkit.StoreAccess{}, nil
 }
 
 type stubCompositionProductService struct{}

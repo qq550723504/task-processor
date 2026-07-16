@@ -1,6 +1,7 @@
 package listingkit
 
 import (
+	"context"
 	"testing"
 
 	assetrepo "task-processor/internal/asset/repository"
@@ -17,12 +18,24 @@ func newTestServiceConfig(repo Repository, opts ...testServiceConfigOption) *Ser
 			ProductService: stubSubmitProductService{},
 		},
 	}
+	cfg.Shein.SheinStoreCatalog = testSheinStoreCatalog{}
+	cfg.Shein.StoreAccessValidator = &storeAccessValidatorStub{}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(cfg)
 		}
 	}
 	return cfg
+}
+
+type testSheinStoreCatalog struct{}
+
+func (testSheinStoreCatalog) GetStoreInfo(_ context.Context, tenantID, storeID int64) (*SheinStoreInfo, error) {
+	return &SheinStoreInfo{ID: storeID, TenantID: tenantID, Platform: "SHEIN"}, nil
+}
+
+func (testSheinStoreCatalog) ListStoreOptions(context.Context, int64) ([]SheinStoreOption, error) {
+	return nil, nil
 }
 
 func withTestProductService(productSvc ProductService) testServiceConfigOption {

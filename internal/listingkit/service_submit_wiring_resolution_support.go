@@ -13,6 +13,10 @@ func resolveSubmissionStoreCatalog(s *service) SheinStoreCatalog {
 	return resolveSheinStoreCatalog(s)
 }
 
+func resolveSubmissionStoreAccessValidator(s *service) StoreAccessValidator {
+	return resolveSheinStoreAccessValidator(s)
+}
+
 func resolveSubmissionAPIClientFactory(s *service) SheinAPIClientFactory {
 	return resolveSheinAPIClientFactory(s)
 }
@@ -72,6 +76,7 @@ func buildTaskSubmissionExecutionServiceConfigWithSupport(wiring taskSubmissionS
 		sheinContentOptimizer:    wiring.sheinContentOptimizer,
 		currentSheinPricingRule:  wiring.currentSheinPricingRule,
 		resolveSheinStoreID:      wiring.resolveSheinStoreID,
+		resolveSheinStoreInfo:    wiring.resolveSheinStoreInfo,
 		resolveSubmitSettings:    wiring.resolveSubmitSettings,
 	}
 }

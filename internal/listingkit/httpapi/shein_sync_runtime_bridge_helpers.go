@@ -3,30 +3,32 @@ package httpapi
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingruntime"
 	"task-processor/internal/shein/activity"
+	"task-processor/internal/tenantbridge"
 )
 
 type sheinPromotionBridgeRuntimeFactory struct {
-	storeCatalog    listingkit.SheinStoreCatalog
-	apiFactory      listingkit.SheinAPIClientFactory
-	storeRepository listingadmin.StoreRepository
-	mappingRepo     listingadmin.ProductImportMappingRepository
-	productDataRepo listingadmin.ProductDataRepository
+	storeCatalog         listingkit.SheinStoreCatalog
+	storeAccessValidator listingkit.StoreAccessValidator
+	apiFactory           listingkit.SheinAPIClientFactory
+	storeRepository      listingadmin.StoreRepository
+	mappingRepo          listingadmin.ProductImportMappingRepository
+	productDataRepo      listingadmin.ProductDataRepository
 }
 
 func buildSheinPromotionBridgeRuntimeFactory(input BuildServiceInput, repositories *builtRepositories) sheinPromotionBridgeRuntimeFactory {
 	return sheinPromotionBridgeRuntimeFactory{
-		storeCatalog:    sheinListingStoreCatalog{repo: repositories.storeRepository},
-		apiFactory:      input.Hooks.SheinAPIClientFactoryBuilder(repositories.storeRepository),
-		storeRepository: repositories.storeRepository,
-		mappingRepo:     repositories.productImportMappingRepository,
-		productDataRepo: repositories.productDataRepository,
+		storeCatalog:         sheinListingStoreCatalog{repo: repositories.storeRepository},
+		storeAccessValidator: listingAdminStoreAccessValidator{repo: repositories.storeRepository},
+		apiFactory:           input.Hooks.SheinAPIClientFactoryBuilder(repositories.storeRepository),
+		storeRepository:      repositories.storeRepository,
+		mappingRepo:          repositories.productImportMappingRepository,
+		productDataRepo:      repositories.productDataRepository,
 	}
 }
 
@@ -42,14 +44,23 @@ func (f sheinPromotionBridgeRuntimeFactory) BuildPromotionBridge(ctx context.Con
 	if f.apiFactory == nil {
 		return nil, fmt.Errorf("SHEIN API client factory is not configured")
 	}
+	if f.storeAccessValidator == nil {
+		return nil, listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
+	}
 
 	tenantID, err := sheinRuntimeTenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
+	if _, err := f.storeAccessValidator.ValidateStoreAccess(ctx, tenantID, storeID, "SHEIN"); err != nil {
+		return nil, err
+	}
 	storeInfo, err := f.storeCatalog.GetStoreInfo(ctx, tenantID, storeID)
 	if err != nil {
 		return nil, err
+	}
+	if storeInfo == nil || storeInfo.ID != storeID || storeInfo.TenantID != tenantID || !strings.EqualFold(strings.TrimSpace(storeInfo.Platform), "SHEIN") {
+		return nil, listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
 	}
 	apiClient := f.apiFactory.NewSheinAPIClient(storeID, storeInfo)
 	if apiClient == nil {
@@ -69,9 +80,9 @@ func sheinRuntimeTenantID(ctx context.Context) (int64, error) {
 	if value == "" {
 		return 0, fmt.Errorf("tenant id is required")
 	}
-	tenantID, err := strconv.ParseInt(value, 10, 64)
+	tenantID, err := tenantbridge.ResolveLegacyTenantID(ctx, value)
 	if err != nil || tenantID <= 0 {
-		return 0, fmt.Errorf("tenant id must be numeric")
+		return 0, listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
 	}
 	return tenantID, nil
 }
