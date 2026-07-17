@@ -75,11 +75,11 @@ func (h *handler) GetUploadedListingKitImage(c *gin.Context) {
 	key := strings.TrimPrefix(c.Param("key"), "/")
 	file, err := h.studioMediaService.GetUploadedImage(requestContext(c), key)
 	if err != nil {
-		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrUploadedImageNotFound) {
-			status = http.StatusNotFound
+			writeUploadedImageNotFound(c)
+			return
 		}
-		c.JSON(status, gin.H{"error": "image_not_found", "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "image_not_found", "message": err.Error()})
 		return
 	}
 
@@ -98,17 +98,21 @@ func (h *handler) DeleteUploadedListingKitImage(c *gin.Context) {
 	}
 	deleted, err := h.uploadedImageDeleteService.DeleteUploadedImage(requestContext(c), key)
 	if err != nil {
-		status := http.StatusInternalServerError
 		if errors.Is(err, listingkit.ErrUploadedImageNotFound) {
-			status = http.StatusNotFound
+			writeUploadedImageNotFound(c)
+			return
 		}
-		c.JSON(status, gin.H{"error": "image_delete_failed", "message": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "image_delete_failed", "message": err.Error()})
 		return
 	}
-	if deleted.Size > 0 {
+	if !deleted.AlreadyDeleted && deleted.Size > 0 {
 		h.recordSubscriptionUsage(c, listingsubscription.ModuleOSSStorage, "storage_bytes", -int(deleted.Size))
 	}
 	c.JSON(http.StatusOK, deleted)
+}
+
+func writeUploadedImageNotFound(c *gin.Context) {
+	c.JSON(http.StatusNotFound, gin.H{"error": "uploaded_image_not_found", "message": "uploaded image not found"})
 }
 
 func absolutizeUploadedImageURLs(c *gin.Context, urls []string) []string {

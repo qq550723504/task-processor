@@ -67,4 +67,17 @@ describe("toImgproxyThumbnailUrl", () => {
       }),
     ).toBe(url);
   });
+
+  it("keeps ListingKit uploads on the authenticated proxy when imgproxy is configured", () => {
+    process.env[IMGPROXY_ENV] = "https://pod.shuomiai.com/img";
+
+    expect(
+      toThumbnailPreviewUrl(
+        "/api/v1/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901",
+        { width: 320, height: 320 },
+      ),
+    ).toBe(
+      "/api/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901",
+    );
+  });
 });
