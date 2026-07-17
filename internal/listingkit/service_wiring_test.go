@@ -3600,9 +3600,9 @@ func TestUploadedImageFileOwnsRootLogic(t *testing.T) {
 
 	for _, needle := range []string{
 		"func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error) {",
-		"func (s *service) GetUploadedImage(ctx context.Context, key string) (*UploadedImageFile, error) {",
-		"func (s *service) DeleteUploadedImage(ctx context.Context, key string) (*DeletedUploadedImage, error) {",
-		"return &DeletedUploadedImage{Key: stored.Key, Size: stored.Size}, nil",
+		"func (s *service) GetUploadedImage(ctx context.Context, uploadID string) (*UploadedImageFile, error) {",
+		"func (s *service) DeleteUploadedImage(ctx context.Context, uploadID string) (*DeletedUploadedImage, error) {",
+		"return &DeletedUploadedImage{Key: uploadID, Size: claim.Record.Size}, nil",
 	} {
 		if !strings.Contains(facadeContent, needle) {
 			t.Fatalf("service_upload_logic.go should contain %q", needle)

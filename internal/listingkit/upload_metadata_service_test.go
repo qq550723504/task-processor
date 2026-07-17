@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -95,6 +96,21 @@ func TestUploadImagesUsesOpaqueIDAndTenantScopedStorageKey(t *testing.T) {
 	}
 }
 
+func TestUploadImagesDeletesObjectWhenMetadataSaveFails(t *testing.T) {
+	t.Parallel()
+	store := &stubMetadataImageUploadStore{}
+	repo := &failingUploadedImageRepository{MemUploadedImageRepository: NewMemUploadedImageRepository(), saveErr: errors.New("db down")}
+	svc := seedSupportDeps(&service{studioDeps: studioDependencies{uploadStore: store}}, supportDependencySeed{uploadedImageRepository: repo})
+
+	_, err := svc.UploadImages(tenantctx.WithTenantID(context.Background(), "227"), &UploadImagesRequest{Files: []ImageUploadInput{{Filename: "shirt.webp", Data: validWebPData(t)}}})
+	if err == nil || !strings.Contains(err.Error(), "save uploaded image metadata") {
+		t.Fatalf("UploadImages() error = %v, want metadata failure", err)
+	}
+	if store.deletedKey != store.savedKey || store.deletedKey == "" {
+		t.Fatalf("deleted key = %q, saved key = %q", store.deletedKey, store.savedKey)
+	}
+}
+
 func TestDeleteUploadedImageUsesMetadataAndMarksRecordDeleted(t *testing.T) {
 	t.Parallel()
 
@@ -132,11 +148,67 @@ func TestDeleteUploadedImageUsesMetadataAndMarksRecordDeleted(t *testing.T) {
 	}
 }
 
+func TestGetUploadedImageDoesNotOpenForeignObject(t *testing.T) {
+	t.Parallel()
+	metadataRepo := NewMemUploadedImageRepository()
+	ownerCtx := tenantctx.WithTenantID(context.Background(), "227")
+	uploadID := uuid.NewString()
+	if err := metadataRepo.SaveUploadedImage(ownerCtx, &UploadedImageRecord{UploadID: uploadID, StorageKey: "listingkit/tenants/227/uploads/" + uploadID + ".webp"}); err != nil {
+		t.Fatal(err)
+	}
+	store := &stubMetadataImageUploadStore{}
+	svc := seedSupportDeps(&service{studioDeps: studioDependencies{uploadStore: store}}, supportDependencySeed{uploadedImageRepository: metadataRepo})
+
+	_, err := svc.GetUploadedImage(tenantctx.WithTenantID(context.Background(), "202"), uploadID)
+	if !errors.Is(err, ErrUploadedImageNotFound) {
+		t.Fatalf("GetUploadedImage() error = %v, want %v", err, ErrUploadedImageNotFound)
+	}
+	if store.openCalls != 0 {
+		t.Fatalf("store open calls = %d, want 0", store.openCalls)
+	}
+}
+
+func TestDeleteUploadedImageIsIdempotent(t *testing.T) {
+	t.Parallel()
+	metadataRepo := NewMemUploadedImageRepository()
+	ctx := tenantctx.WithTenantID(context.Background(), "227")
+	uploadID := uuid.NewString()
+	storageKey := "listingkit/tenants/227/uploads/" + uploadID + ".webp"
+	if err := metadataRepo.SaveUploadedImage(ctx, &UploadedImageRecord{UploadID: uploadID, StorageKey: storageKey, Size: 3}); err != nil {
+		t.Fatal(err)
+	}
+	store := &stubMetadataImageUploadStore{}
+	svc := seedSupportDeps(&service{studioDeps: studioDependencies{uploadStore: store}}, supportDependencySeed{uploadedImageRepository: metadataRepo})
+
+	first, err := svc.DeleteUploadedImage(ctx, uploadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := svc.DeleteUploadedImage(ctx, uploadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.AlreadyDeleted || !second.AlreadyDeleted || store.deleteCalls != 1 {
+		t.Fatalf("first=%#v second=%#v deleteCalls=%d", first, second, store.deleteCalls)
+	}
+}
+
 type stubMetadataImageUploadStore struct {
-	saveResult *StoredUploadedImage
-	deletedKey string
-	saveCalls  int
-	savedKey   string
+	saveResult  *StoredUploadedImage
+	deletedKey  string
+	deleteCalls int
+	saveCalls   int
+	savedKey    string
+	openCalls   int
+}
+
+type failingUploadedImageRepository struct {
+	*MemUploadedImageRepository
+	saveErr error
+}
+
+func (r *failingUploadedImageRepository) SaveUploadedImage(context.Context, *UploadedImageRecord) error {
+	return r.saveErr
 }
 
 func (s *stubMetadataImageUploadStore) Save(context.Context, *ImageUploadInput) (*StoredUploadedImage, error) {
@@ -157,10 +229,12 @@ func (s *stubMetadataImageUploadStore) SaveWithKey(_ context.Context, key string
 }
 
 func (s *stubMetadataImageUploadStore) Open(_ context.Context, key string) (*StoredUploadedImage, error) {
+	s.openCalls++
 	return &StoredUploadedImage{Key: key, Size: 3}, nil
 }
 
 func (s *stubMetadataImageUploadStore) Delete(_ context.Context, key string) error {
 	s.deletedKey = key
+	s.deleteCalls++
 	return nil
 }
