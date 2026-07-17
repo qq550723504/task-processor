@@ -105,6 +105,7 @@ func (b *sdsBaselineService) reconcileCachedSDSLoginBaselineReadiness(
 	}
 	if readiness.ReasonCode != SDSBaselineReasonCodeLoginMissingCredentials &&
 		readiness.ReasonCode != SDSBaselineReasonCodeLoginInProgress &&
+		readiness.ReasonCode != SDSBaselineReasonCodeLoginUnavailable &&
 		!isSDSBaselineCredentialBootstrapReadinessFailure(readiness) {
 		return
 	}

@@ -470,3 +470,76 @@ func TestGetSDSBaselineReadinessClearsCachedDesignSurfaceCredentialFailureWhenAc
 		t.Fatalf("readiness = %+v, want cleared reason fields", readiness)
 	}
 }
+
+func TestGetSDSBaselineReadinessClearsOtherCachedCompletedLoginFailures(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		validationStatus string
+		reasonCode       string
+		reason           string
+	}{
+		{
+			name:             "login unavailable",
+			validationStatus: SDSBaselineValidationStatusBlocked,
+			reasonCode:       SDSBaselineReasonCodeLoginUnavailable,
+			reason:           "SDS login state is unavailable: SDS 登录等待验证码或风控校验",
+		},
+		{
+			name:             "design surface login in progress",
+			validationStatus: SDSBaselineValidationStatusFailed,
+			reasonCode:       SDSBaselineReasonCodeDesignSurfaceCheckFailed,
+			reason:           "SDS design surface check failed: SDS login already in progress",
+		},
+		{
+			name:             "design surface waiting for verification",
+			validationStatus: SDSBaselineValidationStatusFailed,
+			reasonCode:       SDSBaselineReasonCodeDesignSurfaceCheckFailed,
+			reason:           "SDS design surface check failed: SDS 登录等待验证码或风控校验",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := NewInMemoryRepositoryForTest()
+			cacheRepo, ok := repo.(SDSBaselineCacheRepository)
+			if !ok {
+				t.Fatal("mem task repository does not expose SDS baseline cache repository")
+			}
+			query := &SDSBaselineReadinessQuery{
+				ParentProductID:    9001,
+				PrototypeGroupID:   7001,
+				VariantID:          101,
+				SelectedVariantIDs: []int64{101},
+			}
+			payload, err := newCanonicalProductCachePayload(&canonical.Product{Title: "Baseline Product"})
+			if err != nil {
+				t.Fatalf("newCanonicalProductCachePayload: %v", err)
+			}
+			ctx := WithTenantID(context.Background(), DefaultTenantID)
+			if err := cacheRepo.SaveSDSBaselineCache(ctx, &SDSBaselineCacheEntry{
+				BaselineKey:          SDSBaselineKeyFromOptions(DefaultTenantID, query.BaselineOptions()),
+				Status:               SDSBaselineStatusBaselineCached,
+				Version:              1,
+				CanonicalProductBase: payload,
+				ValidationStatus:     tt.validationStatus,
+				ValidationReasonCode: tt.reasonCode,
+				ValidationReason:     tt.reason,
+			}); err != nil {
+				t.Fatalf("SaveSDSBaselineCache: %v", err)
+			}
+
+			svc := seedTaskDeps(&service{repo: repo}, taskDependencySeed{
+				sdsLoginStatusProvider: stubSDSLoginStatusProvider{status: &sdslogin.Status{HasAccessToken: true}},
+			})
+			readiness, err := svc.GetSDSBaselineReadiness(ctx, query)
+			if err != nil {
+				t.Fatalf("GetSDSBaselineReadiness() error = %v", err)
+			}
+			if readiness == nil || readiness.Status != SDSBaselineStatusReady || readiness.ValidationStatus != SDSBaselineValidationStatusReady || readiness.ReasonCode != "" || readiness.Reason != "" {
+				t.Fatalf("readiness = %+v, want ready/ready with cleared reason after completed SDS login", readiness)
+			}
+		})
+	}
+}

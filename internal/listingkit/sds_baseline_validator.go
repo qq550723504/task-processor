@@ -264,7 +264,9 @@ func isSDSBaselineCredentialBootstrapError(err error) bool {
 		return false
 	}
 	message := strings.ToLower(strings.TrimSpace(err.Error()))
-	return strings.Contains(message, "merchant_name, username and password are required")
+	return strings.Contains(message, "merchant_name, username and password are required") ||
+		strings.Contains(message, "sds login already in progress") ||
+		strings.Contains(message, "sds 登录等待验证码或风控校验")
 }
 
 func sdsBaselineLayerExists(page *sdsdesign.DesignProductPage, layerID string) bool {
