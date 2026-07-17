@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -74,6 +75,40 @@ func TestLocalImageUploadStoreOpenReturnsNotFound(t *testing.T) {
 	}
 	if err != ErrUploadedImageNotFound {
 		t.Fatalf("Open() error = %v, want %v", err, ErrUploadedImageNotFound)
+	}
+}
+
+func TestLocalImageUploadStoreSavesProvidedTenantScopedKey(t *testing.T) {
+	t.Parallel()
+	store, err := NewLocalImageUploadStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyed, ok := store.(KeyedImageUploadStore)
+	if !ok {
+		t.Fatal("store does not implement KeyedImageUploadStore")
+	}
+	key := "listingkit/tenants/227/uploads/2f7d42b5-0aa2-4bd0-bb65-9122f2261237.jpg"
+	file, err := keyed.SaveWithKey(context.Background(), key, &ImageUploadInput{Filename: "shirt.jpg", Data: []byte{0xFF, 0xD8, 0xFF}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if file.Key != key {
+		t.Fatalf("key = %q, want %q", file.Key, key)
+	}
+}
+
+func TestLocalImageUploadStoreRejectsProvidedKeyOutsideRootDir(t *testing.T) {
+	t.Parallel()
+	store, err := NewLocalImageUploadStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyed := store.(KeyedImageUploadStore)
+
+	_, err = keyed.SaveWithKey(context.Background(), "../outside.jpg", &ImageUploadInput{Data: []byte{0xFF, 0xD8, 0xFF}})
+	if !errors.Is(err, ErrUploadedImageNotFound) {
+		t.Fatalf("SaveWithKey() error = %v, want %v", err, ErrUploadedImageNotFound)
 	}
 }
 

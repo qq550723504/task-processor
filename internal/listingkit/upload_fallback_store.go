@@ -28,6 +28,14 @@ func (s *fallbackImageUploadStore) Save(ctx context.Context, input *ImageUploadI
 	return s.primary.Save(ctx, input)
 }
 
+func (s *fallbackImageUploadStore) SaveWithKey(ctx context.Context, key string, input *ImageUploadInput) (*StoredUploadedImage, error) {
+	keyed, ok := s.primary.(KeyedImageUploadStore)
+	if !ok {
+		return nil, fmt.Errorf("primary upload store does not support keyed writes")
+	}
+	return keyed.SaveWithKey(ctx, key, input)
+}
+
 func (s *fallbackImageUploadStore) Open(ctx context.Context, key string) (*StoredUploadedImage, error) {
 	file, err := s.primary.Open(ctx, key)
 	if err == nil || s.fallback == nil || !errors.Is(err, ErrUploadedImageNotFound) {
