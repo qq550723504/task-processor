@@ -15,6 +15,7 @@ type taskStudioMediaServiceConfig struct {
 	promptDiversifier             AIChatCompleter
 	uploadStoreConfigured         bool
 	uploadImages                  func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
+	loadUploadedImage             func(context.Context, string) (*UploadedImageFile, error)
 	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
@@ -23,6 +24,7 @@ type taskStudioMediaService struct {
 	promptDiversifier             AIChatCompleter
 	uploadStoreConfigured         bool
 	uploadImages                  func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
+	loadUploadedImage             func(context.Context, string) (*UploadedImageFile, error)
 	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
@@ -32,6 +34,7 @@ func newTaskStudioMediaService(config taskStudioMediaServiceConfig) *taskStudioM
 		promptDiversifier:             config.promptDiversifier,
 		uploadStoreConfigured:         config.uploadStoreConfigured,
 		uploadImages:                  config.uploadImages,
+		loadUploadedImage:             config.loadUploadedImage,
 		resolveUploadedImagePublicURL: config.resolveUploadedImagePublicURL,
 	}
 }

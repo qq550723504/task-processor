@@ -68,6 +68,27 @@ func TestAnalyzeStudioReferenceStyleAcceptsPublicHTTPSReferenceImages(t *testing
 	}
 }
 
+func TestStudioReferenceAnalysisUsesDataURLForOwnedUpload(t *testing.T) {
+	completer := &stubReferenceAnalysisCompleter{}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
+		promptDiversifier: completer,
+		loadUploadedImage: func(context.Context, string) (*UploadedImageFile, error) {
+			return &UploadedImageFile{ContentType: "image/webp", Data: validWebPData(t)}, nil
+		},
+	})
+	uploadID := "0b15bb5e-9f9e-4952-9a06-fd31aab99901"
+
+	_, err := svc.AnalyzeStudioReferenceStyle(context.Background(), &StudioReferenceAnalysisRequest{
+		ReferenceImageURLs: []string{"/api/v1/listing-kits/uploads/files/" + uploadID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(completer.calls) != 1 || !strings.HasPrefix(completer.calls[0], "data:image/webp;base64,") {
+		t.Fatalf("AnalyzeImage calls = %#v, want data URL", completer.calls)
+	}
+}
+
 func TestAnalyzeStudioReferenceStyleRejectsInvalidReferenceImageURLs(t *testing.T) {
 	testCases := []struct {
 		name string
@@ -117,18 +138,18 @@ func TestAnalyzeStudioReferenceStyleRejectsMultipleReferenceImages(t *testing.T)
 	}
 }
 
-func TestAnalyzeStudioReferenceStyleResolvesUploadedReferencePathsToPublicHTTPS(t *testing.T) {
+func TestAnalyzeStudioReferenceStyleResolvesUploadedReferencePathsToDataURL(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
 		`{"motif":"retro flowers","palette":["cream"],"composition":"centered badge"}`,
 	}}
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
 		promptDiversifier: completer,
-		resolveUploadedImagePublicURL: func(_ context.Context, key string) (string, error) {
+		loadUploadedImage: func(_ context.Context, key string) (*UploadedImageFile, error) {
 			switch key {
 			case "folder/ref-a.png":
-				return "https://cdn.example.com/folder/ref-a.png", nil
+				return &UploadedImageFile{ContentType: "image/png", Data: []byte("reference-a")}, nil
 			default:
-				return "", ErrUploadedImageNotFound
+				return nil, ErrUploadedImageNotFound
 			}
 		},
 	})
@@ -143,31 +164,22 @@ func TestAnalyzeStudioReferenceStyleResolvesUploadedReferencePathsToPublicHTTPS(
 		t.Fatalf("AnalyzeStudioReferenceStyle() error = %v", err)
 	}
 
-	wantURLs := []string{
-		"https://cdn.example.com/folder/ref-a.png",
-	}
-	if len(completer.calls) != len(wantURLs) {
-		t.Fatalf("calls = %d, want %d", len(completer.calls), len(wantURLs))
-	}
-	for i, wantURL := range wantURLs {
-		gotURL := strings.SplitN(completer.calls[i], "|", 2)[0]
-		if gotURL != wantURL {
-			t.Fatalf("call[%d] imageURL = %q, want %q", i, gotURL, wantURL)
-		}
+	if len(completer.calls) != 1 || !strings.HasPrefix(completer.calls[0], "data:image/png;base64,") {
+		t.Fatalf("calls = %#v, want one PNG data URL", completer.calls)
 	}
 }
 
-func TestAnalyzeStudioReferenceStyleResolvesAbsoluteUploadedReferenceURLsToPublicHTTPS(t *testing.T) {
+func TestAnalyzeStudioReferenceStyleResolvesAbsoluteUploadedReferenceURLsToDataURL(t *testing.T) {
 	completer := &stubReferenceAnalysisCompleter{responses: []string{
 		`{"motif":"retro flowers","palette":["cream"],"composition":"centered badge"}`,
 	}}
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
 		promptDiversifier: completer,
-		resolveUploadedImagePublicURL: func(_ context.Context, key string) (string, error) {
+		loadUploadedImage: func(_ context.Context, key string) (*UploadedImageFile, error) {
 			if key != "2026/a.png" {
 				t.Fatalf("unexpected key = %q", key)
 			}
-			return "https://cdn.example.com/uploads/2026/a.png", nil
+			return &UploadedImageFile{ContentType: "image/png", Data: []byte("reference-a")}, nil
 		},
 	})
 
@@ -184,8 +196,8 @@ func TestAnalyzeStudioReferenceStyleResolvesAbsoluteUploadedReferenceURLsToPubli
 		t.Fatalf("calls = %d, want 1", len(completer.calls))
 	}
 	gotURL := strings.SplitN(completer.calls[0], "|", 2)[0]
-	if gotURL != "https://cdn.example.com/uploads/2026/a.png" {
-		t.Fatalf("AnalyzeImage imageURL = %q, want resolved CDN https URL", gotURL)
+	if !strings.HasPrefix(gotURL, "data:image/png;base64,") {
+		t.Fatalf("AnalyzeImage imageURL = %q, want PNG data URL", gotURL)
 	}
 }
 
