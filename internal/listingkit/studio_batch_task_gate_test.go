@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/sdslogin"
 )
 
 type stubStudioBatchBaselineReadinessChecker struct {
@@ -15,7 +16,7 @@ type stubStudioBatchBaselineReadinessChecker struct {
 	calls   int
 }
 
-func (s *stubStudioBatchBaselineReadinessChecker) CheckStudioBatchBaselineReadiness(_ context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineCacheEntry, error) {
+func (s *stubStudioBatchBaselineReadinessChecker) CheckStudioBatchBaselineReadiness(_ context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error) {
 	s.calls++
 	if s.err != nil {
 		return nil, s.err
@@ -23,7 +24,24 @@ func (s *stubStudioBatchBaselineReadinessChecker) CheckStudioBatchBaselineReadin
 	if s.entries == nil {
 		return nil, nil
 	}
-	return s.entries[sdsBaselineKey(query.TenantID, query.BaselineOptions())], nil
+	return studioBatchReadinessFromCacheEntryForTest(s.entries[sdsBaselineKey(query.TenantID, query.BaselineOptions())]), nil
+}
+
+func studioBatchReadinessFromCacheEntryForTest(entry *SDSBaselineCacheEntry) *SDSBaselineReadiness {
+	readiness := evaluateSDSBaselineReusableReadiness(entry)
+	if readiness.Reusable {
+		return &SDSBaselineReadiness{
+			Status:           SDSBaselineStatusReady,
+			ValidationStatus: SDSBaselineValidationStatusReady,
+		}
+	}
+	return &SDSBaselineReadiness{
+		CacheStatus:      readiness.CacheStatus,
+		ValidationStatus: readiness.ValidationStatus,
+		ReasonCode:       readiness.ReasonCode,
+		Status:           SDSBaselineStatusBlocked,
+		Reason:           readiness.Reason,
+	}
 }
 
 type stubStudioBatchStoreValidator struct {
@@ -260,6 +278,71 @@ func TestStudioBatchTaskGateAllowsReadyCacheWithUnknownValidation(t *testing.T) 
 	}
 	if !result.Eligible {
 		t.Fatalf("Evaluate() = %+v, want eligible", result)
+	}
+}
+
+func TestStudioBatchBaselineReadinessCheckerHandlesCachedLoginState(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		status         *sdslogin.Status
+		wantStatus     string
+		wantValidation string
+		wantReasonCode string
+	}{
+		{
+			name:           "completed login clears stale block",
+			status:         &sdslogin.Status{HasAccessToken: true},
+			wantStatus:     SDSBaselineStatusReady,
+			wantValidation: SDSBaselineValidationStatusReady,
+		},
+		{
+			name:           "active login remains blocked",
+			status:         &sdslogin.Status{HasAccessToken: true, LoginInProgress: true},
+			wantStatus:     SDSBaselineStatusBlocked,
+			wantValidation: SDSBaselineValidationStatusBlocked,
+			wantReasonCode: SDSBaselineReasonCodeLoginInProgress,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := NewInMemoryRepositoryForTest()
+			cacheRepo, ok := repo.(SDSBaselineCacheRepository)
+			if !ok {
+				t.Fatal("repository does not expose SDS baseline cache")
+			}
+			ctx := WithTenantID(context.Background(), "tenant-a")
+			query := &SDSBaselineReadinessQuery{
+				TenantID:           "tenant-a",
+				ParentProductID:    9001,
+				PrototypeGroupID:   7001,
+				VariantID:          101,
+				SelectedVariantIDs: []int64{101},
+			}
+			entry := baselineEntryForStudioBatchGateTest(t, SDSBaselineValidationStatusBlocked, sdsBaselineSupportedVersion)
+			entry.TenantID = query.TenantID
+			entry.BaselineKey = sdsBaselineKey(query.TenantID, query.BaselineOptions())
+			entry.ValidationReasonCode = SDSBaselineReasonCodeLoginInProgress
+			entry.ValidationReason = "SDS login is still in progress."
+			if err := cacheRepo.SaveSDSBaselineCache(ctx, entry); err != nil {
+				t.Fatalf("SaveSDSBaselineCache() error = %v", err)
+			}
+
+			checker := studioBatchBaselineCacheReadinessChecker{
+				readinessService: newSDSBaselineService(sdsBaselineServiceConfig{
+					repo:                   repo,
+					sdsLoginStatusProvider: stubSDSLoginStatusProvider{status: tt.status},
+				}),
+			}
+			readiness, err := checker.CheckStudioBatchBaselineReadiness(ctx, query)
+			if err != nil {
+				t.Fatalf("CheckStudioBatchBaselineReadiness() error = %v", err)
+			}
+			if readiness == nil || readiness.Status != tt.wantStatus || readiness.ValidationStatus != tt.wantValidation || readiness.ReasonCode != tt.wantReasonCode {
+				t.Fatalf("readiness = %+v, want status=%q validation=%q reason=%q", readiness, tt.wantStatus, tt.wantValidation, tt.wantReasonCode)
+			}
+		})
 	}
 }
 

@@ -296,8 +296,11 @@ func resolveStudioBatchBaselineReadinessChecker(s *service) StudioBatchBaselineR
 		return nil
 	}
 	repository := buildServiceRepositoryWiring(s)
-	if repo, ok := repository.repo.(SDSBaselineCacheRepository); ok {
-		return studioBatchBaselineCacheReadinessChecker{repo: repo}
+	if _, ok := repository.repo.(SDSBaselineCacheRepository); !ok {
+		return nil
+	}
+	if readinessService := s.sdsBaselineOrDefault(); readinessService != nil {
+		return studioBatchBaselineCacheReadinessChecker{readinessService: readinessService}
 	}
 	return nil
 }

@@ -11,7 +11,7 @@ import (
 )
 
 type StudioBatchBaselineReadinessChecker interface {
-	CheckStudioBatchBaselineReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineCacheEntry, error)
+	CheckStudioBatchBaselineReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error)
 }
 
 type StudioBatchStoreValidator interface {
@@ -49,8 +49,8 @@ type studioBatchTaskGate struct {
 }
 
 type studioBatchTaskGateBaselineCacheEntry struct {
-	entry *SDSBaselineCacheEntry
-	err   error
+	readiness *SDSBaselineReadiness
+	err       error
 }
 
 type studioBatchTaskGateStoreCacheEntry struct {
@@ -139,16 +139,20 @@ func (g *studioBatchTaskGate) evaluateBaseline(ctx context.Context, eval *studio
 	}
 	cached, ok := g.baselineCache[baselineKey]
 	if !ok {
-		entry, err := g.baselineChecker.CheckStudioBatchBaselineReadiness(ctx, query)
-		cached = studioBatchTaskGateBaselineCacheEntry{entry: entry, err: err}
+		readiness, err := g.baselineChecker.CheckStudioBatchBaselineReadiness(ctx, query)
+		cached = studioBatchTaskGateBaselineCacheEntry{readiness: readiness, err: err}
 		g.baselineCache[baselineKey] = cached
 	}
 	if cached.err != nil {
 		return rejectStudioBatchTaskGate("baseline_check_unavailable", cached.err.Error())
 	}
-	readiness := evaluateSDSBaselineReusableReadiness(cached.entry)
-	if readiness.Reusable {
+	readiness := cached.readiness
+	if readiness != nil && readiness.Status == SDSBaselineStatusReady &&
+		readiness.ValidationStatus == SDSBaselineValidationStatusReady {
 		return studioBatchTaskGateResult{Eligible: true}
+	}
+	if readiness == nil {
+		return rejectStudioBatchTaskGate("baseline_missing", "SDS baseline is not ready")
 	}
 	switch readiness.ReasonCode {
 	case SDSBaselineReasonCodeCacheUnavailable:
@@ -158,9 +162,6 @@ func (g *studioBatchTaskGate) evaluateBaseline(ctx context.Context, eval *studio
 	case SDSBaselineReasonCodeCachePayloadMissing, SDSBaselineReasonCodeCachePayloadInvalid, SDSBaselineReasonCodeCachePayloadEmpty:
 		return rejectStudioBatchTaskGate("baseline_invalid", readiness.Reason)
 	default:
-		if readiness.Err != nil {
-			return rejectStudioBatchTaskGate("baseline_invalid", readiness.Err.Error())
-		}
 		return rejectStudioBatchTaskGate("baseline_not_ready", firstNonEmpty(readiness.Reason, "SDS baseline is not ready"))
 	}
 }
@@ -287,15 +288,14 @@ func studioBatchTaskGateTenantID(ctx context.Context, batch *StudioBatchRecord) 
 }
 
 type studioBatchBaselineCacheReadinessChecker struct {
-	repo SDSBaselineCacheRepository
+	readinessService sdsBaselineReadinessService
 }
 
-func (c studioBatchBaselineCacheReadinessChecker) CheckStudioBatchBaselineReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineCacheEntry, error) {
-	if c.repo == nil {
+func (c studioBatchBaselineCacheReadinessChecker) CheckStudioBatchBaselineReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error) {
+	if c.readinessService == nil {
 		return nil, nil
 	}
-	tenantID := resolveSDSBaselineReadinessTenant(ctx, query.TenantID)
-	return c.repo.GetSDSBaselineCache(ctx, tenantID, sdsBaselineKey(tenantID, query.BaselineOptions()))
+	return c.readinessService.GetReadiness(ctx, query)
 }
 
 type studioBatchStoreProfileValidator struct {
