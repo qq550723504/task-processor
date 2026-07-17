@@ -2,9 +2,13 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
-	"strings"
+
+	"github.com/google/uuid"
+
+	"task-processor/internal/tenantbridge"
 )
 
 func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error) {
@@ -15,36 +19,50 @@ func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*
 	if req == nil || len(req.Files) == 0 {
 		return nil, fmt.Errorf("invalid request: files are required")
 	}
+	keyedUploadStore, ok := uploadStore.(KeyedImageUploadStore)
+	if !ok {
+		return nil, fmt.Errorf("image upload store does not support tenant-scoped keys")
+	}
+	uploadedImageRepo := resolveUploadedImageRepository(s)
+	if uploadedImageRepo == nil {
+		return nil, fmt.Errorf("uploaded image repository is not configured")
+	}
+	legacyTenantID, err := tenantbridge.ResolveLegacyTenantID(ctx, TenantIDFromContext(ctx))
+	if err != nil || legacyTenantID <= 0 {
+		return nil, fmt.Errorf("resolve legacy tenant id: %w", err)
+	}
 
 	response := &UploadImagesResponse{
 		ImageURLs: make([]string, 0, len(req.Files)),
 	}
-	uploadedImageRepo := resolveUploadedImageRepository(s)
 	for _, file := range req.Files {
 		validated, err := validateUploadedImage(file)
 		if err != nil {
 			return nil, fmt.Errorf("invalid image upload: %w", err)
 		}
 		file.ContentType = validated.ContentType
-		stored, err := uploadStore.Save(ctx, &file)
+		uploadID := uuid.NewString()
+		storageKey := fmt.Sprintf("listingkit/tenants/%d/uploads/%s%s", legacyTenantID, uploadID, validated.Extension)
+		stored, err := keyedUploadStore.SaveWithKey(ctx, storageKey, &file)
 		if err != nil {
 			return nil, fmt.Errorf("save uploaded image: %w", err)
 		}
-		if uploadedImageRepo != nil {
-			_ = uploadedImageRepo.SaveUploadedImage(ctx, &UploadedImageRecord{
-				Key:          stored.Key,
-				Filename:     stored.Filename,
-				PublicURL:    stored.PublicURL,
-				ContentType:  stored.ContentType,
-				Size:         stored.Size,
-				OriginalName: stored.OriginalName,
-			})
+		if err := uploadedImageRepo.SaveUploadedImage(ctx, &UploadedImageRecord{
+			Key:          stored.Key,
+			UploadID:     uploadID,
+			StorageKey:   stored.Key,
+			Filename:     stored.Filename,
+			ContentType:  stored.ContentType,
+			Size:         stored.Size,
+			OriginalName: stored.OriginalName,
+		}); err != nil {
+			cleanupErr := uploadStore.Delete(ctx, stored.Key)
+			if cleanupErr != nil && !errors.Is(cleanupErr, ErrUploadedImageNotFound) {
+				return nil, errors.Join(fmt.Errorf("save uploaded image metadata: %w", err), fmt.Errorf("delete uploaded image after metadata failure: %w", cleanupErr))
+			}
+			return nil, fmt.Errorf("save uploaded image metadata: %w", err)
 		}
-		publicURL := strings.TrimSpace(stored.PublicURL)
-		if publicURL == "" {
-			publicURL = buildUploadedImagePath(stored.Key)
-		}
-		response.ImageURLs = append(response.ImageURLs, publicURL)
+		response.ImageURLs = append(response.ImageURLs, buildUploadedImagePath(uploadID))
 	}
 
 	return response, nil
