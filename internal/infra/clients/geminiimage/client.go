@@ -220,8 +220,12 @@ func (c *Client) buildImageInputParts(ctx context.Context, req *openaiclient.Ima
 	}
 	parts := make([]geminiPart, 0, partCap)
 	if len(req.Image) > 0 {
+		mimeType := strings.TrimSpace(req.ImageContentType)
+		if mimeType == "" {
+			mimeType = http.DetectContentType(req.Image)
+		}
 		parts = append(parts, geminiPart{InlineData: &geminiInlineData{
-			MIMEType: http.DetectContentType(req.Image),
+			MIMEType: mimeType,
 			Data:     base64.StdEncoding.EncodeToString(req.Image),
 		}})
 	}

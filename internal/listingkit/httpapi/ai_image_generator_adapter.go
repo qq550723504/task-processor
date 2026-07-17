@@ -34,13 +34,15 @@ func (g listingKitAIImageGenerator) GenerateImage(ctx context.Context, req *list
 
 func (g listingKitAIImageGenerator) EditImage(ctx context.Context, req *listingkit.AIImageEditRequest) (*listingkit.AIImageResponse, error) {
 	response, err := g.generator.EditImage(ctx, &openaiclient.ImageEditRequest{
-		Model:          req.Model,
-		Prompt:         req.Prompt,
-		ImageURL:       req.ImageURL,
-		ImageURLs:      req.ImageURLs,
-		Size:           req.Size,
-		ResponseFormat: req.ResponseFormat,
-		N:              req.N,
+		Model:            req.Model,
+		Prompt:           req.Prompt,
+		Image:            req.ImageData,
+		ImageContentType: req.ImageContentType,
+		ImageURL:         req.ImageURL,
+		ImageURLs:        req.ImageURLs,
+		Size:             req.Size,
+		ResponseFormat:   req.ResponseFormat,
+		N:                req.N,
 	})
 	if err != nil {
 		return nil, err

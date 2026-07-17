@@ -121,7 +121,7 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 	if req.N > 0 {
 		_ = writer.WriteField("n", fmt.Sprintf("%d", req.N))
 	}
-	imagePart, err := writer.CreateFormFile("image", "image.png")
+	imagePart, err := writer.CreateFormFile("image", imageEditFilename(req.ImageContentType))
 	if err != nil {
 		return nil, fmt.Errorf("create image form file: %w", err)
 	}
@@ -141,6 +141,19 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 	return bc.doMultipartImageRequest(ctx, "/images/edits", body, writer.FormDataContentType())
+}
+
+func imageEditFilename(contentType string) string {
+	switch strings.ToLower(strings.TrimSpace(contentType)) {
+	case "image/jpeg", "image/jpg":
+		return "image.jpg"
+	case "image/webp":
+		return "image.webp"
+	case "image/gif":
+		return "image.gif"
+	default:
+		return "image.png"
+	}
 }
 
 func (bc *BaseClient) doJSONImageRequest(ctx context.Context, method string, apiPath string, payload any) (*ImageResponse, error) {

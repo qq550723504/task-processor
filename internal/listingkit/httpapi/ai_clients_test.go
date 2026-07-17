@@ -70,6 +70,24 @@ func (r *stubListingKitClientResolver) ResolveClientConfig(_ context.Context, cl
 	return r.resolved, nil
 }
 
+func TestListingKitAIImageGeneratorForwardsOwnedImageBytes(t *testing.T) {
+	upstream := &stubListingKitImageGenerator{}
+	generator := adaptListingKitAIImageGenerator(upstream)
+
+	_, err := generator.EditImage(context.Background(), &listingkit.AIImageEditRequest{
+		Model:            "gpt-image-1",
+		Prompt:           "edit",
+		ImageData:        []byte("owned-image"),
+		ImageContentType: "image/webp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if upstream.lastEdit == nil || string(upstream.lastEdit.Image) != "owned-image" || upstream.lastEdit.ImageContentType != "image/webp" || upstream.lastEdit.ImageURL != "" || len(upstream.lastEdit.ImageURLs) != 0 {
+		t.Fatalf("upstream edit request = %#v", upstream.lastEdit)
+	}
+}
+
 func TestBuildListingKitClientFallbackStripsSensitiveFields(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.OpenAI.APIKey = "shared-key"

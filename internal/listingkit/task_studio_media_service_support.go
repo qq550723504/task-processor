@@ -60,6 +60,9 @@ func (s *taskStudioMediaService) resolveStudioDesignReferenceImageURLs(ctx conte
 
 func (s *taskStudioMediaService) resolveStudioDesignReferenceImageURL(ctx context.Context, rawURL string) (string, error) {
 	trimmed := strings.TrimSpace(rawURL)
+	if _, ok := studioReferenceUploadedImageKeyFromURL(trimmed); ok && s != nil && s.loadUploadedImage != nil {
+		return trimmed, nil
+	}
 	if trimmed == "" || s == nil || s.resolveUploadedImagePublicURL == nil {
 		return trimmed, nil
 	}
@@ -98,6 +101,31 @@ func (s *taskStudioMediaService) generateStudioDesignImage(ctx context.Context, 
 }
 
 func (s *taskStudioMediaService) editStudioDesignImageWithReferences(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*AIImageResponse, error) {
+	if s.loadUploadedImage != nil {
+		for _, referenceURL := range referenceURLs[1:] {
+			if _, ok := studioReferenceUploadedImageKeyFromURL(referenceURL); ok {
+				return nil, fmt.Errorf("invalid request: uploaded listingkit image must be the primary image")
+			}
+		}
+	}
+	if key, ok := studioReferenceUploadedImageKeyFromURL(referenceURLs[0]); ok && s.loadUploadedImage != nil {
+		file, err := s.loadUploadedImage(ctx, key)
+		if err != nil {
+			return nil, err
+		}
+		if file == nil || len(file.Data) == 0 || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(file.ContentType)), "image/") {
+			return nil, fmt.Errorf("invalid uploaded image data")
+		}
+		return s.imageGenerator.EditImage(ctx, &AIImageEditRequest{
+			Model:            model,
+			Prompt:           promptText,
+			ImageData:        file.Data,
+			ImageContentType: file.ContentType,
+			Size:             size,
+			ResponseFormat:   "b64_json",
+			N:                1,
+		})
+	}
 	return s.imageGenerator.EditImage(ctx, &AIImageEditRequest{
 		Model:          model,
 		Prompt:         promptText,
@@ -232,25 +260,12 @@ func (s *taskStudioMediaService) generateOneStudioProductImage(ctx context.Conte
 }
 
 func (s *taskStudioMediaService) tryGenerateStudioProductImage(ctx context.Context, inputImages []string, promptText string) (*AIImageResponse, error) {
-	generated, err := s.imageGenerator.EditImage(ctx, &AIImageEditRequest{
-		Model:          s.imageGenerator.GetDefaultModel(),
-		Prompt:         promptText,
-		ImageURL:       inputImages[0],
-		ImageURLs:      inputImages,
-		Size:           "auto",
-		ResponseFormat: "b64_json",
-		N:              1,
-	})
+	if s.loadUploadedImage != nil && hasOwnedListingKitUploadReference(inputImages[1:]) {
+		return nil, fmt.Errorf("invalid request: uploaded listingkit image must be the primary image")
+	}
+	generated, err := s.editStudioDesignImageWithReferences(ctx, s.imageGenerator.GetDefaultModel(), promptText, "auto", inputImages)
 	if err != nil {
-		generated, err = s.imageGenerator.EditImage(ctx, &AIImageEditRequest{
-			Model:          s.imageGenerator.GetDefaultModel(),
-			Prompt:         promptText,
-			ImageURL:       inputImages[0],
-			ImageURLs:      inputImages[:1],
-			Size:           "auto",
-			ResponseFormat: "b64_json",
-			N:              1,
-		})
+		generated, err = s.editStudioDesignImageWithReferences(ctx, s.imageGenerator.GetDefaultModel(), promptText, "auto", inputImages[:1])
 		if err != nil {
 			return nil, err
 		}
