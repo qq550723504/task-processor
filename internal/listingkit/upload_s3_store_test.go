@@ -4,11 +4,23 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
+
+func TestS3ImageUploadStoreDoesNotRetainPublicBaseConfiguration(t *testing.T) {
+	source, err := os.ReadFile("upload_s3_store.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(source), "PublicBase") {
+		t.Fatal("S3 image upload store must not retain PublicBase configuration")
+	}
+}
 
 func TestS3ImageUploadStoreSavesPrivateTenantScopedKeyWithoutPublicURL(t *testing.T) {
 	t.Parallel()

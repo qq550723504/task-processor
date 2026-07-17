@@ -26,19 +26,17 @@ type s3ImageUploadDeleter interface {
 }
 
 type S3ImageUploadStoreConfig struct {
-	Bucket     string
-	PublicBase string
-	Uploader   s3ImageUploadWriter
-	Reader     s3ImageUploadReader
-	Deleter    s3ImageUploadDeleter
+	Bucket   string
+	Uploader s3ImageUploadWriter
+	Reader   s3ImageUploadReader
+	Deleter  s3ImageUploadDeleter
 }
 
 type s3ImageUploadStore struct {
-	bucket     string
-	publicBase string
-	uploader   s3ImageUploadWriter
-	reader     s3ImageUploadReader
-	deleter    s3ImageUploadDeleter
+	bucket   string
+	uploader s3ImageUploadWriter
+	reader   s3ImageUploadReader
+	deleter  s3ImageUploadDeleter
 }
 
 func NewS3ImageUploadStore(cfg S3ImageUploadStoreConfig) (ImageUploadStore, error) {
@@ -60,11 +58,10 @@ func NewS3ImageUploadStore(cfg S3ImageUploadStoreConfig) (ImageUploadStore, erro
 		}
 	}
 	return &s3ImageUploadStore{
-		bucket:     strings.TrimSpace(cfg.Bucket),
-		publicBase: strings.TrimRight(strings.TrimSpace(cfg.PublicBase), "/"),
-		uploader:   cfg.Uploader,
-		reader:     cfg.Reader,
-		deleter:    deleter,
+		bucket:   strings.TrimSpace(cfg.Bucket),
+		uploader: cfg.Uploader,
+		reader:   cfg.Reader,
+		deleter:  deleter,
 	}, nil
 }
 
