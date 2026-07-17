@@ -1215,6 +1215,18 @@ func (s *stubResolveUploadedImageRepository) MarkUploadedImageDeleted(context.Co
 	return nil, errors.New("not implemented")
 }
 
+func (s *stubResolveUploadedImageRepository) ClaimUploadedImageDeletion(context.Context, string) (*UploadedImageDeletionClaim, error) {
+	return nil, errors.New("not implemented")
+}
+
+func (s *stubResolveUploadedImageRepository) CompleteUploadedImageDeletion(context.Context, string) error {
+	return errors.New("not implemented")
+}
+
+func (s *stubResolveUploadedImageRepository) ReleaseUploadedImageDeletion(context.Context, string) error {
+	return errors.New("not implemented")
+}
+
 type stubResolveUploadedImageStore struct {
 	openResult *StoredUploadedImage
 	openErr    error
