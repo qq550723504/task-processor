@@ -3,6 +3,7 @@ package listingkit
 import (
 	"bytes"
 	"errors"
+	_ "golang.org/x/image/webp"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -44,6 +45,8 @@ func uploadedImageFormat(format string) (string, string, bool) {
 		return "image/png", ".png", true
 	case "gif":
 		return "image/gif", ".gif", true
+	case "webp":
+		return "image/webp", ".webp", true
 	default:
 		return "", "", false
 	}

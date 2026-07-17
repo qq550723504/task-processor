@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"task-processor/internal/shared/tenantctx"
@@ -28,7 +29,7 @@ func TestUploadImagesRecordsUploadedImageMetadata(t *testing.T) {
 	})
 	ctx := tenantctx.WithTenantID(context.Background(), "tenant-a")
 
-	if _, err := svc.UploadImages(ctx, &UploadImagesRequest{Files: []ImageUploadInput{{Filename: "a.jpg", Data: []byte{1, 2, 3}}}}); err != nil {
+	if _, err := svc.UploadImages(ctx, &UploadImagesRequest{Files: []ImageUploadInput{{Filename: "a.webp", Data: validWebPData(t)}}}); err != nil {
 		t.Fatalf("UploadImages() error = %v", err)
 	}
 
@@ -41,6 +42,20 @@ func TestUploadImagesRecordsUploadedImageMetadata(t *testing.T) {
 	}
 	if record.PublicURL != "https://cdn.example.com/20260515/a.jpg" {
 		t.Fatalf("public url = %q", record.PublicURL)
+	}
+}
+
+func TestUploadImagesRejectsInvalidImageBeforeStorage(t *testing.T) {
+	t.Parallel()
+	store := &stubMetadataImageUploadStore{saveResult: &StoredUploadedImage{Key: "listingkit/tenants/1/uploads/id.jpg"}}
+	svc := seedSupportDeps(&service{studioDeps: studioDependencies{uploadStore: store}}, supportDependencySeed{})
+
+	_, err := svc.UploadImages(context.Background(), &UploadImagesRequest{Files: []ImageUploadInput{{Filename: "not-an-image.jpg", Data: []byte("not an image")}}})
+	if err == nil || !strings.Contains(err.Error(), "invalid image") {
+		t.Fatalf("UploadImages() error = %v, want invalid image", err)
+	}
+	if store.saveCalls != 0 {
+		t.Fatalf("store save calls = %d, want 0", store.saveCalls)
 	}
 }
 
@@ -84,9 +99,11 @@ func TestDeleteUploadedImageUsesMetadataAndMarksRecordDeleted(t *testing.T) {
 type stubMetadataImageUploadStore struct {
 	saveResult *StoredUploadedImage
 	deletedKey string
+	saveCalls  int
 }
 
 func (s *stubMetadataImageUploadStore) Save(context.Context, *ImageUploadInput) (*StoredUploadedImage, error) {
+	s.saveCalls++
 	return s.saveResult, nil
 }
 

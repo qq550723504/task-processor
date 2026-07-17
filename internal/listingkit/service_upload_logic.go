@@ -21,6 +21,11 @@ func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*
 	}
 	uploadedImageRepo := resolveUploadedImageRepository(s)
 	for _, file := range req.Files {
+		validated, err := validateUploadedImage(file)
+		if err != nil {
+			return nil, fmt.Errorf("invalid image upload: %w", err)
+		}
+		file.ContentType = validated.ContentType
 		stored, err := uploadStore.Save(ctx, &file)
 		if err != nil {
 			return nil, fmt.Errorf("save uploaded image: %w", err)
