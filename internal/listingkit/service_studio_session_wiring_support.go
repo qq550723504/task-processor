@@ -41,6 +41,7 @@ type taskStudioMediaWiring struct {
 	promptDiversifier             AIChatCompleter
 	uploadStoreConfigured         bool
 	uploadImages                  func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
+	loadUploadedImage             func(context.Context, string) (*UploadedImageFile, error)
 	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
@@ -140,6 +141,7 @@ func buildTaskStudioMediaWiring(s *service) taskStudioMediaWiring {
 		promptDiversifier:             resolveStudioPromptDiversifier(s),
 		uploadStoreConfigured:         resolveStudioUploadStore(s) != nil,
 		uploadImages:                  s.UploadImages,
+		loadUploadedImage:             s.GetUploadedImage,
 		resolveUploadedImagePublicURL: buildResolveUploadedImagePublicURLFunc(s),
 	}
 }
@@ -170,6 +172,7 @@ func buildTaskStudioMediaServiceConfigWithWiring(wiring taskStudioMediaWiring) t
 		promptDiversifier:             wiring.promptDiversifier,
 		uploadStoreConfigured:         wiring.uploadStoreConfigured,
 		uploadImages:                  wiring.uploadImages,
+		loadUploadedImage:             wiring.loadUploadedImage,
 		resolveUploadedImagePublicURL: wiring.resolveUploadedImagePublicURL,
 	}
 }

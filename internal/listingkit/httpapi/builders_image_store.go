@@ -81,21 +81,10 @@ func buildS3ImageUploadStore(cfg *config.Config, logger *logrus.Logger) listingk
 		return nil
 	}
 
-	publicBase := strings.TrimSpace(cfg.ProductImage.Publisher.PublicBase)
-	if publicBase == "" {
-		publicBase = storageinfra.BuildS3PublicBase(
-			cfg.ProductImage.Publisher.S3.Endpoint,
-			cfg.ProductImage.Publisher.S3.Bucket,
-			cfg.ProductImage.Publisher.S3.UsePathStyle,
-		)
-	}
-
 	store, err := listingkit.NewS3ImageUploadStore(listingkit.S3ImageUploadStoreConfig{
-		Bucket:     cfg.ProductImage.Publisher.S3.Bucket,
-		PublicBase: publicBase,
+		Bucket: cfg.ProductImage.Publisher.S3.Bucket,
 		Uploader: storageinfra.NewS3UploaderWithOptions(client, storageinfra.S3UploaderOptions{
 			Bucket:       cfg.ProductImage.Publisher.S3.Bucket,
-			PublicBase:   publicBase,
 			Endpoint:     cfg.ProductImage.Publisher.S3.Endpoint,
 			UsePathStyle: cfg.ProductImage.Publisher.S3.UsePathStyle,
 		}),

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"os"
 	"strings"
 	"testing"
 
@@ -11,23 +12,38 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-func TestS3ImageUploadStoreSaveUsesPublicBase(t *testing.T) {
+func TestS3ImageUploadStoreDoesNotRetainPublicBaseConfiguration(t *testing.T) {
+	source, err := os.ReadFile("upload_s3_store.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(source), "PublicBase") {
+		t.Fatal("S3 image upload store must not retain PublicBase configuration")
+	}
+}
+
+func TestS3ImageUploadStoreSavesPrivateTenantScopedKeyWithoutPublicURL(t *testing.T) {
 	t.Parallel()
 
+	uploader := &stubS3ImageUploadUploader{
+		url: "https://listingkit-inputs.s3.amazonaws.com/20260419/image.jpg",
+	}
 	store, err := NewS3ImageUploadStore(S3ImageUploadStoreConfig{
-		Bucket:     "listingkit-inputs",
-		PublicBase: "https://cdn.example.com/listingkit-inputs",
-		Uploader: &stubS3ImageUploadUploader{
-			url: "https://listingkit-inputs.s3.amazonaws.com/20260419/image.jpg",
-		},
-		Reader:  &stubS3ImageUploadReader{},
-		Deleter: &stubS3ImageUploadDeleter{},
+		Bucket:   "listingkit-inputs",
+		Uploader: uploader,
+		Reader:   &stubS3ImageUploadReader{},
+		Deleter:  &stubS3ImageUploadDeleter{},
 	})
 	if err != nil {
 		t.Fatalf("NewS3ImageUploadStore() error = %v", err)
 	}
 
-	file, err := store.Save(context.Background(), &ImageUploadInput{
+	key := "listingkit/tenants/227/uploads/59fb51a1-b0bc-4ca3-9180-cb92947e8d6e.png"
+	keyed, ok := store.(KeyedImageUploadStore)
+	if !ok {
+		t.Fatal("store does not implement KeyedImageUploadStore")
+	}
+	file, err := keyed.SaveWithKey(context.Background(), key, &ImageUploadInput{
 		Filename:    "shirt.png",
 		ContentType: "image/png",
 		Data:        []byte{0x89, 0x50, 0x4E, 0x47},
@@ -39,28 +55,29 @@ func TestS3ImageUploadStoreSaveUsesPublicBase(t *testing.T) {
 	if file == nil {
 		t.Fatal("Save() returned nil file")
 	}
-	if file.Key == "" {
-		t.Fatal("Save() returned empty key")
+	if file.Key != key {
+		t.Fatalf("key = %q, want %q", file.Key, key)
 	}
 	if file.ContentType != "image/png" {
 		t.Fatalf("content type = %q, want image/png", file.ContentType)
 	}
-	if file.PublicURL == "" {
-		t.Fatal("PublicURL = empty, want CDN URL")
+	if file.PublicURL != "" {
+		t.Fatalf("PublicURL = %q, want empty", file.PublicURL)
 	}
-	if !strings.HasPrefix(file.PublicURL, "https://cdn.example.com/listingkit-inputs/") {
-		t.Fatalf("PublicURL = %q, want publicBase-derived URL", file.PublicURL)
+	if uploader.lastKey != key {
+		t.Fatalf("uploaded key = %q, want %q", uploader.lastKey, key)
 	}
 }
 
 func TestS3ImageUploadStoreOpenReadsObjectData(t *testing.T) {
 	t.Parallel()
 
+	uploader := &stubS3ImageUploadUploader{
+		url: "https://listingkit-inputs.s3.amazonaws.com/20260419/image.jpg",
+	}
 	store, err := NewS3ImageUploadStore(S3ImageUploadStoreConfig{
-		Bucket: "listingkit-inputs",
-		Uploader: &stubS3ImageUploadUploader{
-			url: "https://listingkit-inputs.s3.amazonaws.com/20260419/image.jpg",
-		},
+		Bucket:   "listingkit-inputs",
+		Uploader: uploader,
 		Reader: &stubS3ImageUploadReader{
 			output: &s3.GetObjectOutput{
 				Body:          io.NopCloser(bytes.NewReader([]byte("image-bytes"))),

@@ -88,7 +88,7 @@ func TestClientEditImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 			case "prompt":
 				sawPrompt = string(data) == "edit faithfully"
 			case "image":
-				sawImage = len(data) > 0
+				sawImage = len(data) > 0 && part.FileName() == "image.webp"
 			}
 		}
 		if !sawPrompt || !sawImage {
@@ -108,8 +108,9 @@ func TestClientEditImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 		MaxRetries: 0,
 	})
 	resp, err := client.EditImage(context.Background(), &ImageEditRequest{
-		Prompt: "edit faithfully",
-		Image:  []byte("source"),
+		Prompt:           "edit faithfully",
+		Image:            []byte("source"),
+		ImageContentType: "image/webp",
 	})
 	if err != nil {
 		t.Fatalf("EditImage() error = %v", err)

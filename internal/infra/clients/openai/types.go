@@ -113,16 +113,17 @@ type ImageGenerateRequest struct {
 }
 
 type ImageEditRequest struct {
-	Model          string
-	Prompt         string
-	Image          []byte
-	ImageURL       string
-	ImageURLs      []string
-	Mask           []byte
-	Size           string
-	Quality        string
-	ResponseFormat string
-	N              int
+	Model            string
+	Prompt           string
+	Image            []byte
+	ImageContentType string
+	ImageURL         string
+	ImageURLs        []string
+	Mask             []byte
+	Size             string
+	Quality          string
+	ResponseFormat   string
+	N                int
 }
 
 type ImageData struct {

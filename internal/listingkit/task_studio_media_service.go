@@ -15,6 +15,7 @@ type taskStudioMediaServiceConfig struct {
 	promptDiversifier             AIChatCompleter
 	uploadStoreConfigured         bool
 	uploadImages                  func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
+	loadUploadedImage             func(context.Context, string) (*UploadedImageFile, error)
 	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
@@ -23,6 +24,7 @@ type taskStudioMediaService struct {
 	promptDiversifier             AIChatCompleter
 	uploadStoreConfigured         bool
 	uploadImages                  func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
+	loadUploadedImage             func(context.Context, string) (*UploadedImageFile, error)
 	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
@@ -32,6 +34,7 @@ func newTaskStudioMediaService(config taskStudioMediaServiceConfig) *taskStudioM
 		promptDiversifier:             config.promptDiversifier,
 		uploadStoreConfigured:         config.uploadStoreConfigured,
 		uploadImages:                  config.uploadImages,
+		loadUploadedImage:             config.loadUploadedImage,
 		resolveUploadedImagePublicURL: config.resolveUploadedImagePublicURL,
 	}
 }
@@ -75,6 +78,9 @@ func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, r
 	size := resolveStudioDesignSize(req.PrintableWidth, req.PrintableHeight)
 	promptText := buildStudioDesignPromptWithTheme(req, theme)
 	if len(referenceURLs) > 0 {
+		if hasOwnedListingKitUploadReference(referenceURLs) {
+			return nil, fmt.Errorf("invalid request: async editing does not support uploaded listingkit images")
+		}
 		submit, err := asyncGenerator.SubmitImageEdit(ctx, &AIImageEditRequest{
 			Model:          model,
 			Prompt:         promptText,
@@ -100,6 +106,15 @@ func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, r
 		return nil, err
 	}
 	return s.buildStudioDesignAsyncSubmitResponse(ctx, req, submit)
+}
+
+func hasOwnedListingKitUploadReference(referenceURLs []string) bool {
+	for _, referenceURL := range referenceURLs {
+		if _, ok := studioReferenceUploadedImageKeyFromURL(referenceURL); ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *taskStudioMediaService) QueryStudioDesignsAsync(ctx context.Context, req *StudioDesignRequest, jobID string) (*studioDesignAsyncQueryResponse, error) {

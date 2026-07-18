@@ -433,6 +433,29 @@ func TestSubmitStudioDesignsAsyncUsesEditPathWhenReferenceImagesExist(t *testing
 	}
 }
 
+func TestSubmitStudioDesignsAsyncRejectsOwnedUploadReference(t *testing.T) {
+	generator := &stubStudioImageGenerator{asyncSubmit: &AIImageAsyncSubmit{JobID: "job-1"}}
+	svc := &taskStudioMediaService{
+		imageGenerator: generator,
+		loadUploadedImage: func(context.Context, string) (*UploadedImageFile, error) {
+			return &UploadedImageFile{ContentType: "image/webp", Data: validWebPData(t)}, nil
+		},
+	}
+
+	_, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
+		Prompt:                    "retro cherries",
+		ArtworkGenerationMode:     "hot_reference",
+		Count:                     1,
+		ProductReferenceImageURLs: []string{"/api/v1/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "async editing does not support uploaded listingkit images") {
+		t.Fatalf("SubmitStudioDesignsAsync() error = %v", err)
+	}
+	if generator.asyncEditCalls != 0 {
+		t.Fatalf("async edit calls = %d, want 0", generator.asyncEditCalls)
+	}
+}
+
 func TestSubmitStudioDesignsAsyncResolvesUploadedHotReferenceToCurrentPublicURL(t *testing.T) {
 	generator := &stubStudioImageGenerator{
 		asyncSubmit: &AIImageAsyncSubmit{
@@ -790,8 +813,94 @@ func TestStudioProductImageRawPromptBypassesManagedTemplate(t *testing.T) {
 	}
 }
 
+func TestStudioEditRejectsOwnedUploadWhenItIsNotPrimaryReference(t *testing.T) {
+	generator := &stubStudioImageGenerator{}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
+		imageGenerator: generator,
+		loadUploadedImage: func(context.Context, string) (*UploadedImageFile, error) {
+			return &UploadedImageFile{Data: validWebPData(t), ContentType: "image/webp"}, nil
+		},
+	})
+
+	_, err := svc.editStudioDesignImageWithReferences(context.Background(), "gpt-image-1", "edit", "1024x1024", []string{
+		"https://example.com/reference.png",
+		"/api/v1/listing-kits/uploads/files/0b15bb5e-44c1-4ea3-9e4e-15af18c94bdb",
+	})
+	if err == nil || !strings.Contains(err.Error(), "must be the primary image") {
+		t.Fatalf("edit error = %v, want primary image validation", err)
+	}
+	if generator.editCalls != 0 {
+		t.Fatalf("edit calls = %d, want 0", generator.editCalls)
+	}
+}
+
+func TestStudioProductImageUsesOwnedUploadBytesInsteadOfObjectURL(t *testing.T) {
+	generator := &stubStudioImageGenerator{generateResponse: &AIImageResponse{Data: []AIImageData{{B64JSON: "generated"}}}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
+		imageGenerator: generator,
+		loadUploadedImage: func(context.Context, string) (*UploadedImageFile, error) {
+			return &UploadedImageFile{ContentType: "image/webp", Data: validWebPData(t)}, nil
+		},
+	})
+
+	_, err := svc.tryGenerateStudioProductImage(context.Background(), []string{"/api/v1/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901"}, "product image")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(generator.editRequests) != 1 {
+		t.Fatalf("edit requests = %d, want 1", len(generator.editRequests))
+	}
+	req := generator.editRequests[0]
+	if len(req.ImageData) == 0 || req.ImageContentType != "image/webp" || req.ImageURL != "" || len(req.ImageURLs) != 0 {
+		t.Fatalf("edit request = %#v, want owned image bytes without URLs", req)
+	}
+}
+
+func TestStudioProductImageRejectsOwnedUploadWhenItIsNotPrimaryReference(t *testing.T) {
+	generator := &stubStudioImageGenerator{}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
+		imageGenerator: generator,
+		loadUploadedImage: func(context.Context, string) (*UploadedImageFile, error) {
+			return &UploadedImageFile{ContentType: "image/webp", Data: validWebPData(t)}, nil
+		},
+	})
+
+	_, err := svc.tryGenerateStudioProductImage(context.Background(), []string{
+		"https://example.com/source.png",
+		"/api/v1/listing-kits/uploads/files/0b15bb5e-44c1-4ea3-9e4e-15af18c94bdb",
+	}, "product image")
+	if err == nil || !strings.Contains(err.Error(), "must be the primary image") {
+		t.Fatalf("generate error = %v, want primary image validation", err)
+	}
+	if generator.editCalls != 0 {
+		t.Fatalf("edit calls = %d, want 0", generator.editCalls)
+	}
+}
+
 type stubImageUploadStore struct {
 	saved []*ImageUploadInput
+}
+
+func TestStudioEditPassesOwnedUploadBytesInsteadOfObjectURL(t *testing.T) {
+	generator := &stubStudioImageGenerator{generateResponse: &AIImageResponse{Data: []AIImageData{{B64JSON: "generated"}}}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
+		imageGenerator: generator,
+		loadUploadedImage: func(context.Context, string) (*UploadedImageFile, error) {
+			return &UploadedImageFile{ContentType: "image/webp", Data: validWebPData(t)}, nil
+		},
+	})
+
+	_, err := svc.editStudioDesignImageWithReferences(context.Background(), "test-model", "prompt", "1024x1024", []string{"/api/v1/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(generator.editRequests) != 1 {
+		t.Fatalf("edit requests = %d, want 1", len(generator.editRequests))
+	}
+	req := generator.editRequests[0]
+	if len(req.ImageData) == 0 || req.ImageContentType != "image/webp" || req.ImageURL != "" || len(req.ImageURLs) != 0 {
+		t.Fatalf("edit request = %#v, want owned image bytes without URLs", req)
+	}
 }
 
 func (s *stubImageUploadStore) Save(_ context.Context, input *ImageUploadInput) (*StoredUploadedImage, error) {

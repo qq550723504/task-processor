@@ -46,7 +46,7 @@
 - Produces `GetUploadedImage(ctx context.Context, uploadID string) (*UploadedImageRecord, error)`.
 - Produces `ClaimUploadedImageDeletion(ctx context.Context, uploadID string) (*UploadedImageDeletionClaim, error)`, `CompleteUploadedImageDeletion`, and `ReleaseUploadedImageDeletion`.
 
-- [ ] **Step 1: Write the failing ownership and deletion-claim tests**
+- [x] **Step 1: Write the failing ownership and deletion-claim tests**
 
 ```go
 func TestGormUploadedImageRepositoryHidesForeignAndMalformedUploadIDs(t *testing.T) {
@@ -66,13 +66,13 @@ func TestGormUploadedImageRepositoryClaimsOnlyOneDeletion(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run the focused tests and verify they fail**
+- [x] **Step 2: Run the focused tests and verify they fail**
 
 Run: `$env:GOWORK='off'; go test ./internal/listingkit -run 'TestGormUploadedImageRepository(HidesForeignAndMalformedUploadIDs|ClaimsOnlyOneDeletion)' -count=1`
 
 Expected: FAIL because `UploadID`, `StorageKey`, and deletion-claim methods do not exist.
 
-- [ ] **Step 3: Implement the record and repository state machine**
+- [x] **Step 3: Implement the record and repository state machine**
 
 ```go
 type UploadedImageRecord struct {
@@ -94,13 +94,13 @@ type UploadedImageDeletionClaim struct {
 
 Use `uuid.Parse` before querying. In memory and GORM repositories, scope every lookup and state transition by `tenantctx.TenantIDFromContext(ctx)` plus `upload_id`. Atomically claim only `active` records by setting `deleting`; return `AlreadyDeleted: true` for the same tenant's `deleting` or `deleted` row, and `ErrUploadedImageNotFound` when no row belongs to the tenant. `Release...` restores only `deleting` to `active`.
 
-- [ ] **Step 4: Run repository tests**
+- [x] **Step 4: Run repository tests**
 
 Run: `$env:GOWORK='off'; go test ./internal/listingkit -run 'TestGormUploadedImageRepository' -count=1`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit the persistence boundary**
+- [x] **Step 5: Commit the persistence boundary**
 
 ```bash
 git add internal/listingkit/upload_model.go internal/listingkit/upload_metadata_repository.go internal/listingkit/upload_metadata_repository_test.go

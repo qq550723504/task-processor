@@ -69,12 +69,35 @@ func TestFallbackImageUploadStoreSaveUsesPrimaryStore(t *testing.T) {
 	}
 }
 
+func TestFallbackImageUploadStoreForwardsProvidedKeyToPrimaryStore(t *testing.T) {
+	primary := &stubFallbackImageUploadStore{saveResult: &StoredUploadedImage{Key: "listingkit/tenants/227/uploads/id.png"}}
+	store := &fallbackImageUploadStore{primary: primary}
+	keyed, ok := any(store).(KeyedImageUploadStore)
+	if !ok {
+		t.Fatal("store does not implement KeyedImageUploadStore")
+	}
+	key := "listingkit/tenants/227/uploads/id.png"
+	_, err := keyed.SaveWithKey(context.Background(), key, &ImageUploadInput{Data: []byte{1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if primary.savedKey != key {
+		t.Fatalf("key = %q, want %q", primary.savedKey, key)
+	}
+}
+
 type stubFallbackImageUploadStore struct {
 	openResult *StoredUploadedImage
 	openErr    error
 	saveResult *StoredUploadedImage
 	saveErr    error
 	saveCalls  int
+	savedKey   string
+}
+
+func (s *stubFallbackImageUploadStore) SaveWithKey(_ context.Context, key string, _ *ImageUploadInput) (*StoredUploadedImage, error) {
+	s.savedKey = key
+	return s.saveResult, s.saveErr
 }
 
 func (s *stubFallbackImageUploadStore) Save(_ context.Context, _ *ImageUploadInput) (*StoredUploadedImage, error) {

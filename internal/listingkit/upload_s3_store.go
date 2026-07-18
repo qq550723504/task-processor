@@ -7,9 +7,6 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
-	"time"
-
-	"task-processor/internal/infra/storage"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
@@ -29,19 +26,17 @@ type s3ImageUploadDeleter interface {
 }
 
 type S3ImageUploadStoreConfig struct {
-	Bucket     string
-	PublicBase string
-	Uploader   s3ImageUploadWriter
-	Reader     s3ImageUploadReader
-	Deleter    s3ImageUploadDeleter
+	Bucket   string
+	Uploader s3ImageUploadWriter
+	Reader   s3ImageUploadReader
+	Deleter  s3ImageUploadDeleter
 }
 
 type s3ImageUploadStore struct {
-	bucket     string
-	publicBase string
-	uploader   s3ImageUploadWriter
-	reader     s3ImageUploadReader
-	deleter    s3ImageUploadDeleter
+	bucket   string
+	uploader s3ImageUploadWriter
+	reader   s3ImageUploadReader
+	deleter  s3ImageUploadDeleter
 }
 
 func NewS3ImageUploadStore(cfg S3ImageUploadStoreConfig) (ImageUploadStore, error) {
@@ -63,15 +58,22 @@ func NewS3ImageUploadStore(cfg S3ImageUploadStoreConfig) (ImageUploadStore, erro
 		}
 	}
 	return &s3ImageUploadStore{
-		bucket:     strings.TrimSpace(cfg.Bucket),
-		publicBase: strings.TrimRight(strings.TrimSpace(cfg.PublicBase), "/"),
-		uploader:   cfg.Uploader,
-		reader:     cfg.Reader,
-		deleter:    deleter,
+		bucket:   strings.TrimSpace(cfg.Bucket),
+		uploader: cfg.Uploader,
+		reader:   cfg.Reader,
+		deleter:  deleter,
 	}, nil
 }
 
 func (s *s3ImageUploadStore) Save(ctx context.Context, input *ImageUploadInput) (*StoredUploadedImage, error) {
+	return s.save(ctx, "", input)
+}
+
+func (s *s3ImageUploadStore) SaveWithKey(ctx context.Context, key string, input *ImageUploadInput) (*StoredUploadedImage, error) {
+	return s.save(ctx, key, input)
+}
+
+func (s *s3ImageUploadStore) save(ctx context.Context, key string, input *ImageUploadInput) (*StoredUploadedImage, error) {
 	if input == nil {
 		return nil, fmt.Errorf("input cannot be nil")
 	}
@@ -83,9 +85,12 @@ func (s *s3ImageUploadStore) Save(ctx context.Context, input *ImageUploadInput) 
 	if contentType == "" {
 		contentType = http.DetectContentType(input.Data)
 	}
-	ext := normalizedImageExtension(input.Filename, contentType, input.Data)
-	key := filepath.ToSlash(filepath.Join(time.Now().UTC().Format("20060102"), uuid.NewString()+ext))
-	fallbackURL, err := s.uploader.Upload(ctx, key, input.Data, contentType)
+	if strings.TrimSpace(key) == "" {
+		ext := normalizedImageExtension(input.Filename, contentType, input.Data)
+		key = filepath.ToSlash(filepath.Join("legacy", uuid.NewString()+ext))
+	}
+	key = strings.TrimLeft(strings.TrimSpace(key), "/")
+	_, err := s.uploader.Upload(ctx, key, input.Data, contentType)
 	if err != nil {
 		return nil, fmt.Errorf("upload to s3: %w", err)
 	}
@@ -98,7 +103,6 @@ func (s *s3ImageUploadStore) Save(ctx context.Context, input *ImageUploadInput) 
 	return &StoredUploadedImage{
 		Key:          key,
 		Filename:     filepath.Base(filename),
-		PublicURL:    storage.ResolveObjectURL(s.publicBase, key, fallbackURL),
 		ContentType:  contentType,
 		Size:         int64(len(input.Data)),
 		OriginalName: strings.TrimSpace(input.Filename),
@@ -158,7 +162,6 @@ func (s *s3ImageUploadStore) Open(ctx context.Context, key string) (*StoredUploa
 	return &StoredUploadedImage{
 		Key:         normalizedKey,
 		Filename:    filepath.Base(normalizedKey),
-		PublicURL:   storage.ResolveObjectURL(s.publicBase, normalizedKey, ""),
 		ContentType: contentType,
 		Size:        size,
 		Data:        data,

@@ -309,11 +309,17 @@ M0 固定基线和发布证据
 **验收标准**
 
 ```text
-[ ] tenant A 不能读取或删除 tenant B 的图片。
-[ ] 伪造 Content-Type 不绕过文件校验。
-[ ] 重复删除不造成重复额度退款。
-[ ] 上传失败不产生孤儿用量或孤儿对象。
+[x] tenant A 不能读取或删除 tenant B 的图片。
+[x] 伪造 Content-Type 不绕过文件校验。
+[x] 重复删除不造成重复额度退款。
+[x] 上传失败不产生孤儿用量或孤儿对象。
 ```
+
+**验证证据（2026-07-17，Asia/Singapore）**
+
+- `$env:GOWORK='off'; go test ./internal/listingkit ./internal/listingkit/api ./internal/listingkit/httpapi ./internal/app/httpapi -count=1 -timeout 120s`：通过。
+- `web/listingkit-ui` 中的 `npm test -- --run src/lib/utils/image-proxy-url.test.ts src/lib/utils/imgproxy-url.test.ts src/app/api/listing-kits/proxy-upstream-response.test.ts`：通过（3 个文件、16 个测试）。
+- `git diff --check`：通过。
 
 ### PAY-014：跨租户安全回归套件
 

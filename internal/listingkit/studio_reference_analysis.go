@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/url"
@@ -127,27 +128,30 @@ func (s *taskStudioMediaService) resolveStudioReferenceImageURLs(ctx context.Con
 func (s *taskStudioMediaService) resolveStudioReferenceImageURL(ctx context.Context, rawURL string) (string, error) {
 	trimmed := strings.TrimSpace(rawURL)
 	if key, ok := studioReferenceUploadedImageKeyFromURL(trimmed); ok {
-		if s == nil || s.resolveUploadedImagePublicURL == nil {
-			return "", fmt.Errorf("invalid request: uploaded reference image %q does not have a public https url configured", trimmed)
+		if s == nil || s.loadUploadedImage == nil {
+			return "", fmt.Errorf("invalid request: uploaded reference image %q is unavailable", trimmed)
 		}
-		publicURL, err := s.resolveUploadedImagePublicURL(ctx, key)
+		file, err := s.loadUploadedImage(ctx, key)
 		if err != nil {
 			if errors.Is(err, ErrUploadedImageNotFound) {
-				return "", fmt.Errorf("invalid request: uploaded reference image %q does not have a public https url configured", trimmed)
+				return "", fmt.Errorf("invalid request: uploaded reference image %q is unavailable", trimmed)
 			}
 			return "", fmt.Errorf("invalid request: resolve uploaded reference image %q: %w", trimmed, err)
 		}
-		publicURL, err = validateStudioReferencePublicHTTPSURL(publicURL)
-		if err != nil {
-			return "", fmt.Errorf("invalid request: uploaded reference image %q does not have a public https url configured", trimmed)
-		}
-		return publicURL, nil
+		return uploadedImageDataURL(file)
 	}
 	publicURL, err := validateStudioReferencePublicHTTPSURL(trimmed)
 	if err != nil {
 		return "", fmt.Errorf("invalid request: reference_image_urls must be absolute https urls or uploaded listingkit paths")
 	}
 	return publicURL, nil
+}
+
+func uploadedImageDataURL(file *UploadedImageFile) (string, error) {
+	if file == nil || len(file.Data) == 0 || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(file.ContentType)), "image/") {
+		return "", fmt.Errorf("invalid uploaded image data")
+	}
+	return "data:" + strings.TrimSpace(file.ContentType) + ";base64," + base64.StdEncoding.EncodeToString(file.Data), nil
 }
 
 func studioReferenceUploadedImageKeyFromURL(rawURL string) (string, bool) {

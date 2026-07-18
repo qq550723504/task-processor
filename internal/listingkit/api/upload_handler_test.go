@@ -329,6 +329,45 @@ func TestDeleteUploadedListingKitImageDecrementsStorageUsage(t *testing.T) {
 	t.Fatal("oss storage entitlement view missing")
 }
 
+func TestDeleteUploadedListingKitImageRefundsOnlyFirstCompletedDelete(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &stubStudioMediaHandlerService{deletedUploadedImage: &listingkit.DeletedUploadedImage{Key: "0b15bb5e-9f9e-4952-9a06-fd31aab99901", Size: 3}}
+	subscriptionService := activeOSSStorageSubscriptionService(t, nil)
+	if _, err := subscriptionService.RecordUsage(t.Context(), listingkit.DefaultTenantID, listingsubscription.ModuleOSSStorage, "storage_bytes", 6); err != nil {
+		t.Fatalf("seed storage usage: %v", err)
+	}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithStudioMediaService(svc), WithUploadedImageDeleteService(svc), WithSubscriptionService(subscriptionService))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+	router := gin.New()
+	router.DELETE("/api/v1/listing-kits/uploads/files/*key", h.DeleteUploadedListingKitImage)
+
+	for _, alreadyDeleted := range []bool{false, true} {
+		svc.deletedUploadedImage = &listingkit.DeletedUploadedImage{Key: "0b15bb5e-9f9e-4952-9a06-fd31aab99901", Size: 3, AlreadyDeleted: alreadyDeleted}
+		request := httptest.NewRequest(http.MethodDelete, "/api/v1/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901", nil)
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, request)
+		if response.Code != http.StatusOK {
+			t.Fatalf("delete status = %d, want 200: %s", response.Code, response.Body.String())
+		}
+	}
+
+	summary, err := subscriptionService.GetSummary(t.Context(), listingkit.DefaultTenantID)
+	if err != nil {
+		t.Fatalf("get subscription summary: %v", err)
+	}
+	for _, view := range summary.Entitlements {
+		if view.Module.Code == listingsubscription.ModuleOSSStorage {
+			if view.Used["storage_bytes"] != 3 {
+				t.Fatalf("storage_bytes = %d, want 3 after only one refund", view.Used["storage_bytes"])
+			}
+			return
+		}
+	}
+	t.Fatal("oss storage entitlement view missing")
+}
+
 func TestDeleteUploadedListingKitImageReturnsNotFound(t *testing.T) {
 	t.Parallel()
 
@@ -348,6 +387,9 @@ func TestDeleteUploadedListingKitImageReturnsNotFound(t *testing.T) {
 
 	if resp.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", resp.Code)
+	}
+	if !bytes.Contains(resp.Body.Bytes(), []byte(`"uploaded_image_not_found"`)) {
+		t.Fatalf("response = %s, want uploaded_image_not_found", resp.Body.String())
 	}
 }
 
@@ -406,6 +448,9 @@ func TestGetUploadedListingKitImageReturnsNotFound(t *testing.T) {
 
 	if resp.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", resp.Code)
+	}
+	if !bytes.Contains(resp.Body.Bytes(), []byte(`"uploaded_image_not_found"`)) {
+		t.Fatalf("response = %s, want uploaded_image_not_found", resp.Body.String())
 	}
 }
 

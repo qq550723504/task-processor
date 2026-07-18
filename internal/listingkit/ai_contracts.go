@@ -37,13 +37,15 @@ type AIImageGenerateRequest struct {
 }
 
 type AIImageEditRequest struct {
-	Model          string
-	Prompt         string
-	ImageURL       string
-	ImageURLs      []string
-	Size           string
-	ResponseFormat string
-	N              int
+	Model            string
+	Prompt           string
+	ImageData        []byte
+	ImageContentType string
+	ImageURL         string
+	ImageURLs        []string
+	Size             string
+	ResponseFormat   string
+	N                int
 }
 
 type AIImageResponse struct {
