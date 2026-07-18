@@ -35,16 +35,10 @@ func TestValidateDropRate(t *testing.T) {
 			expected:      1,
 		},
 		{
-			name:          "等于100的值应该调整为99",
-			dropRate:      100,
-			originalValue: 1.0,
-			expected:      99,
-		},
-		{
-			name:          "大于100的值应该调整为99",
-			dropRate:      150,
-			originalValue: 1.5,
-			expected:      99,
+			name:          "超过80的值应该调整为80",
+			dropRate:      81,
+			originalValue: 0.81,
+			expected:      80,
 		},
 		{
 			name:          "边界值1应该保持不变",
@@ -53,10 +47,10 @@ func TestValidateDropRate(t *testing.T) {
 			expected:      1,
 		},
 		{
-			name:          "边界值99应该保持不变",
-			dropRate:      99,
-			originalValue: 0.99,
-			expected:      99,
+			name:          "边界值80应该保持不变",
+			dropRate:      80,
+			originalValue: 0.8,
+			expected:      80,
 		},
 	}
 
@@ -109,9 +103,9 @@ func TestCalculateDropRateFromDiscount(t *testing.T) {
 			expected:     10,
 		},
 		{
-			name:         "边界值99%应该返回99",
+			name:         "超过80%的折扣率应该返回80",
 			discountRate: 0.99,
-			expected:     99,
+			expected:     80,
 		},
 		{
 			name:         "边界值1%应该返回1",

@@ -228,6 +228,34 @@ func TestCalculatePriceByProfit(t *testing.T) {
 	}
 }
 
+func TestCalculatePriceByBreakevenCapsSHEINDiscountAtEightyPercent(t *testing.T) {
+	got := calculatePriceByBreakeven(124.96, 24.88, 0)
+	if !almostEqual(got, 25) {
+		t.Fatalf("breakeven activity price = %v, want 25.00 to cap the discount at 80%%", got)
+	}
+}
+
+func TestCalculateActivityPriceCapsSHEINDiscountAtEightyPercentInEveryMode(t *testing.T) {
+	tests := []struct {
+		name   string
+		config TimeLimitedDiscountConfig
+		cost   float64
+	}{
+		{name: "breakeven", config: TimeLimitedDiscountConfig{PriceMode: "BREAKEVEN"}, cost: 24.88},
+		{name: "profit", config: TimeLimitedDiscountConfig{PriceMode: "PROFIT", MinProfitRate: 0.1}, cost: 10},
+		{name: "discount", config: TimeLimitedDiscountConfig{PriceMode: "DISCOUNT", DiscountRate: 0.9}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := calculateActivityPrice(tt.config, 124.96, tt.cost)
+			if !almostEqual(got, 25) {
+				t.Fatalf("activity price = %v, want 25.00 to cap the discount at 80%%", got)
+			}
+		})
+	}
+}
+
 // TestCalculateProfitRate 验证利润率计算
 func TestCalculateProfitRate(t *testing.T) {
 	tests := []struct {

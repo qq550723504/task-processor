@@ -5,7 +5,12 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// ValidateDropRate 验证并修正降幅参数，确保符合SHEIN API要求（1-99的正整数）
+const (
+	sheinMaximumActivityDiscountRate = 0.8
+	sheinMaximumActivityDropRate     = 80
+)
+
+// ValidateDropRate 验证并修正降幅参数，确保符合SHEIN活动降幅规则（1-80的正整数）
 func ValidateDropRate(dropRate int, originalValue float64, logger *logrus.Entry) int {
 	if dropRate < 1 {
 		if logger != nil {
@@ -14,11 +19,11 @@ func ValidateDropRate(dropRate int, originalValue float64, logger *logrus.Entry)
 		return 1
 	}
 
-	if dropRate >= 100 {
+	if dropRate > sheinMaximumActivityDropRate {
 		if logger != nil {
-			logger.Warnf("降幅过大 (计算值: %d%%, 原值: %.2f%%), 调整为最大值99%%", dropRate, originalValue*100)
+			logger.Warnf("降幅超过SHEIN活动上限 (计算值: %d%%, 原值: %.2f%%), 调整为最大值%d%%", dropRate, originalValue*100, sheinMaximumActivityDropRate)
 		}
-		return 99
+		return sheinMaximumActivityDropRate
 	}
 
 	return dropRate

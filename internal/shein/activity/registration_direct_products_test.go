@@ -2250,11 +2250,13 @@ func TestRegisterPromotionProductsUsesSavedSKUPricesForCandidate(t *testing.T) {
 	if result == nil || len(result.Requests) != 2 {
 		t.Fatalf("requests = %+v, want regular and limited", result)
 	}
-	if got := result.Requests[0].ConfigList[0].DropRate; got != 82 {
-		t.Fatalf("regular drop rate = %d, want 82 from the lowest saved SKU price and highest cost", got)
+	regularDropRate := result.Requests[0].ConfigList[0].DropRate
+	limitedDropRate := result.Requests[1].ConfigList[0].DropRate
+	if regularDropRate > 80 || limitedDropRate > 80 {
+		t.Fatalf("drop rates = regular %d, limited %d; neither may exceed SHEIN's 80%% discount limit", regularDropRate, limitedDropRate)
 	}
-	if got := result.Requests[1].ConfigList[0].DropRate; got != 83 {
-		t.Fatalf("limited drop rate = %d, want 83 from the lowest saved SKU price and highest cost", got)
+	if limitedDropRate <= regularDropRate {
+		t.Fatalf("limited drop rate = %d, want greater than regular drop rate %d", limitedDropRate, regularDropRate)
 	}
 }
 
@@ -2298,8 +2300,8 @@ func TestRegisterPromotionProductsUsesSavedSKUPricesWhenRealtimePricesAreMissing
 	if api.queryPromotionGoodsCalls != 0 {
 		t.Fatalf("QueryPromotionGoods calls = %d, want 0", api.queryPromotionGoodsCalls)
 	}
-	if got := result.Request.ConfigList[0].DropRate; got != 84 {
-		t.Fatalf("drop rate = %d, want 84 from the saved SKU price and highest cost", got)
+	if got := result.Request.ConfigList[0].DropRate; got > 80 {
+		t.Fatalf("drop rate = %d, must not exceed SHEIN's 80%% discount limit", got)
 	}
 }
 

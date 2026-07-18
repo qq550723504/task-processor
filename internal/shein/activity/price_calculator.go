@@ -2,6 +2,8 @@
 package activity
 
 import (
+	"math"
+
 	"task-processor/internal/shein/api/marketing"
 	"task-processor/internal/shein/productsync"
 
@@ -31,7 +33,7 @@ func calculateActivityPrice(
 
 // calculatePriceByDiscount 按折扣率计算价格
 func calculatePriceByDiscount(originalPrice float64, discountRate float64) float64 {
-	return originalPrice * (1 - discountRate)
+	return capSHEINActivityPrice(originalPrice, originalPrice*(1-discountRate))
 }
 
 // calculatePriceByProfit 按最低利润率计算价格
@@ -50,13 +52,28 @@ func calculatePriceByProfit(originalPrice float64, costPrice float64, minProfitR
 		activityPrice = originalPrice
 	}
 
-	return activityPrice
+	return capSHEINActivityPrice(originalPrice, activityPrice)
 }
 
 func calculatePriceByBreakeven(originalPrice float64, costPrice float64, fixedAdjustment float64) float64 {
 	activityPrice := costPrice + fixedAdjustment
-	if costPrice <= 0 || originalPrice <= 0 || activityPrice >= originalPrice {
+	if costPrice <= 0 || originalPrice <= 0 {
 		return 0
+	}
+	activityPrice = capSHEINActivityPrice(originalPrice, activityPrice)
+	if activityPrice >= originalPrice {
+		return 0
+	}
+	return activityPrice
+}
+
+func capSHEINActivityPrice(originalPrice float64, activityPrice float64) float64 {
+	if originalPrice <= 0 || activityPrice <= 0 {
+		return activityPrice
+	}
+	minimumPrice := math.Ceil(originalPrice*(1-sheinMaximumActivityDiscountRate)*100) / 100
+	if activityPrice < minimumPrice {
+		return minimumPrice
 	}
 	return activityPrice
 }
