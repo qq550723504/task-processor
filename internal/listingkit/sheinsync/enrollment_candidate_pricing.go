@@ -20,25 +20,33 @@ func refreshSheinEnrollmentCandidatePricing(
 	}
 
 	active := true
-	products := make([]SheinSyncedProductRecord, 0, len(candidates))
+	skcNames := make([]string, 0, len(candidates))
+	seenSKCNames := make(map[string]struct{}, len(candidates))
 	for _, candidate := range candidates {
-		if candidate.SKCName == "" {
+		skcName := strings.TrimSpace(candidate.SKCName)
+		if skcName == "" {
 			continue
 		}
-		rows, _, err := repo.ListSyncedProducts(ctx, &SheinSyncedProductQuery{
-			TenantID: tenantID,
-			StoreID:  storeID,
-			SKCName:  candidate.SKCName,
-			IsActive: &active,
-			Page:     1,
-			PageSize: 1,
-		})
-		if err != nil {
-			return nil, err
+		if _, exists := seenSKCNames[skcName]; exists {
+			continue
 		}
-		if len(rows) > 0 {
-			products = append(products, rows[0])
-		}
+		seenSKCNames[skcName] = struct{}{}
+		skcNames = append(skcNames, skcName)
+	}
+	if len(skcNames) == 0 {
+		return candidates, nil
+	}
+
+	products, _, err := repo.ListSyncedProducts(ctx, &SheinSyncedProductQuery{
+		TenantID: tenantID,
+		StoreID:  storeID,
+		SKCNames: skcNames,
+		IsActive: &active,
+		Page:     1,
+		PageSize: len(skcNames),
+	})
+	if err != nil {
+		return nil, err
 	}
 	if len(products) == 0 {
 		return candidates, nil

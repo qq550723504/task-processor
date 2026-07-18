@@ -84,6 +84,9 @@ func applySheinSyncedProductFilters(db *gorm.DB, query *listingkit.SheinSyncedPr
 	if query.SKCName != "" {
 		db = db.Where("skc_name = ?", query.SKCName)
 	}
+	if len(query.SKCNames) > 0 {
+		db = db.Where("skc_name IN ?", query.SKCNames)
+	}
 	if query.IsActive != nil {
 		db = db.Where("is_active = ?", *query.IsActive)
 	}

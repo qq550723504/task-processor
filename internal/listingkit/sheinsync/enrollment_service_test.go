@@ -673,7 +673,7 @@ func TestExecuteSheinActivityEnrollmentUsesLatestSyncedProductCostBeforeEnrollme
 	require.NoError(t, err)
 	require.Equal(t, SheinEnrollmentRunStatusSucceeded, run.Status)
 	require.Len(t, repo.listSyncedProductQueries, 1)
-	require.Equal(t, "sg260618173076361709498", repo.listSyncedProductQueries[0].SKCName)
+	require.Equal(t, []string{"sg260618173076361709498"}, repo.listSyncedProductQueries[0].SKCNames)
 	require.Len(t, adapter.calls, 1)
 	require.Len(t, adapter.calls[0].Candidates, 1)
 	require.NotNil(t, adapter.calls[0].Candidates[0].EffectiveCostPrice)
@@ -1589,6 +1589,7 @@ func (r *sheinEnrollmentRepoStub) ListSyncedProducts(_ context.Context, query *S
 
 	if query != nil {
 		copied := *query
+		copied.SKCNames = append([]string(nil), query.SKCNames...)
 		r.listSyncedProductQueries = append(r.listSyncedProductQueries, copied)
 	}
 
@@ -1602,6 +1603,9 @@ func (r *sheinEnrollmentRepoStub) ListSyncedProducts(_ context.Context, query *S
 				continue
 			}
 			if query.SKCName != "" && row.SKCName != query.SKCName {
+				continue
+			}
+			if len(query.SKCNames) > 0 && !containsSheinEnrollmentString(query.SKCNames, row.SKCName) {
 				continue
 			}
 			if query.IsActive != nil && row.IsActive != *query.IsActive {

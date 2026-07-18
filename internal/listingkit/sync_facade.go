@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 
 	sheinsync "task-processor/internal/listingkit/sheinsync"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -216,6 +217,12 @@ type storeValidatedSheinSyncService struct {
 	validator StoreAccessValidator
 }
 
+type sheinSDSCostGroupService interface {
+	ListSDSCostGroups(ctx context.Context, query *SheinSDSCostGroupQuery) ([]SheinSDSCostGroupRecord, int64, error)
+	ListSourceSDSCostGroups(ctx context.Context, query *SheinSourceSDSCostGroupQuery) ([]SheinSourceSDSCostGroupRecord, int64, error)
+	UpdateSDSCostGroupManualCost(ctx context.Context, tenantID, storeID int64, groupKey, groupLabel string, manualCostPrice *float64) (*SheinSDSCostGroupRecord, error)
+}
+
 func (s storeValidatedSheinSyncService) SyncSheinOnShelfProducts(ctx context.Context, tenantID, storeID int64, triggerMode SheinSyncTriggerMode) (*SheinSyncJobRecord, error) {
 	if err := s.validateStore(ctx, tenantID, storeID); err != nil {
 		return nil, err
@@ -250,6 +257,30 @@ func (s storeValidatedSheinSyncService) UpdateManualCostPrice(ctx context.Contex
 	return s.delegate.UpdateManualCostPrice(ctx, productID, manualCostPrice)
 }
 
+func (s storeValidatedSheinSyncService) ListSDSCostGroups(ctx context.Context, query *SheinSDSCostGroupQuery) ([]SheinSDSCostGroupRecord, int64, error) {
+	service, err := s.sdsCostGroupService()
+	if err != nil {
+		return nil, 0, err
+	}
+	return service.ListSDSCostGroups(ctx, query)
+}
+
+func (s storeValidatedSheinSyncService) ListSourceSDSCostGroups(ctx context.Context, query *SheinSourceSDSCostGroupQuery) ([]SheinSourceSDSCostGroupRecord, int64, error) {
+	service, err := s.sdsCostGroupService()
+	if err != nil {
+		return nil, 0, err
+	}
+	return service.ListSourceSDSCostGroups(ctx, query)
+}
+
+func (s storeValidatedSheinSyncService) UpdateSDSCostGroupManualCost(ctx context.Context, tenantID, storeID int64, groupKey, groupLabel string, manualCostPrice *float64) (*SheinSDSCostGroupRecord, error) {
+	service, err := s.sdsCostGroupService()
+	if err != nil {
+		return nil, err
+	}
+	return service.UpdateSDSCostGroupManualCost(ctx, tenantID, storeID, groupKey, groupLabel, manualCostPrice)
+}
+
 func (s storeValidatedSheinSyncService) ResolveProductAPI(ctx context.Context, storeID int64) (sheinproduct.ProductAPI, error) {
 	tenantID, ok := tenantIDInt64FromContext(ctx)
 	if !ok || tenantID <= 0 {
@@ -269,6 +300,14 @@ func (s storeValidatedSheinSyncService) SupportsImmediateRefresh() bool {
 		SupportsImmediateRefresh() bool
 	})
 	return ok && aware.SupportsImmediateRefresh()
+}
+
+func (s storeValidatedSheinSyncService) sdsCostGroupService() (sheinSDSCostGroupService, error) {
+	service, ok := s.delegate.(sheinSDSCostGroupService)
+	if !ok {
+		return nil, errors.New("SHEIN SDS cost group service is unavailable")
+	}
+	return service, nil
 }
 
 func (s storeValidatedSheinSyncService) validateStore(ctx context.Context, tenantID, storeID int64) error {

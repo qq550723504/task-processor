@@ -11,6 +11,15 @@ func containsInt64(values []int64, target int64) bool {
 	return false
 }
 
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
 func matchesSheinSyncedProductQuery(row listingkit.SheinSyncedProductRecord, query *listingkit.SheinSyncedProductQuery) bool {
 	if query == nil {
 		return true
@@ -22,6 +31,9 @@ func matchesSheinSyncedProductQuery(row listingkit.SheinSyncedProductRecord, que
 		return false
 	}
 	if query.SKCName != "" && row.SKCName != query.SKCName {
+		return false
+	}
+	if len(query.SKCNames) > 0 && !containsString(query.SKCNames, row.SKCName) {
 		return false
 	}
 	if query.IsActive != nil && row.IsActive != *query.IsActive {

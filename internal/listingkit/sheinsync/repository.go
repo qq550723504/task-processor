@@ -9,6 +9,7 @@ type SheinSyncedProductQuery struct {
 	TenantID int64
 	StoreID  int64
 	SKCName  string
+	SKCNames []string
 	IsActive *bool
 	Page     int
 	PageSize int

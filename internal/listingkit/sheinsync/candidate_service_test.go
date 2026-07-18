@@ -728,6 +728,41 @@ func TestSheinCandidateServiceListCandidatesUsesCurrentEnrollmentSKUPricesAndCos
 	}, rows[0].SKUCostPriceInfoList)
 }
 
+func TestSheinCandidateServiceListCandidatesBatchesCurrentProductPricingLookups(t *testing.T) {
+	t.Parallel()
+
+	products := []SheinSyncedProductRecord{
+		{ID: 91, TenantID: 9, StoreID: 10, SKCName: "candidate-pricing-a", EffectiveCostPrice: float64Ptr(30), IsActive: true},
+		{ID: 92, TenantID: 9, StoreID: 10, SKCName: "candidate-pricing-b", EffectiveCostPrice: float64Ptr(40), IsActive: true},
+	}
+	repo := newSheinCandidateRepoStub(products)
+	for _, product := range products {
+		repo.seedCandidate(SheinActivityCandidateRecord{
+			ID:                 product.ID,
+			TenantID:           product.TenantID,
+			StoreID:            product.StoreID,
+			SyncedProductID:    product.ID,
+			ActivityType:       "PROMOTION",
+			ActivityKey:        "promotion:9:10",
+			SKCName:            product.SKCName,
+			CandidateVersion:   "v1",
+			EffectiveCostPrice: float64Ptr(99),
+			EligibilityStatus:  SheinCandidateEligibilityStatusEligible,
+			ReviewStatus:       SheinCandidateReviewStatusApproved,
+		})
+	}
+
+	rows, total, err := NewSheinCandidateService(repo).ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+		TenantID: 9, StoreID: 10, ActivityType: "PROMOTION", Page: 1, PageSize: 100,
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), total)
+	require.Len(t, rows, 2)
+	require.Len(t, repo.queries, 1)
+	require.Equal(t, []string{"candidate-pricing-a", "candidate-pricing-b"}, repo.queries[0].SKCNames)
+	require.Equal(t, 2, repo.queries[0].PageSize)
+}
+
 func TestSheinCandidateServiceRefreshCandidatesSupersedesOlderCandidateVersions(t *testing.T) {
 	t.Parallel()
 
@@ -1062,6 +1097,12 @@ func (r *sheinCandidateRepoStub) ListSyncedProducts(_ context.Context, query *Sh
 			if query.StoreID > 0 && row.StoreID != query.StoreID {
 				continue
 			}
+			if query.SKCName != "" && row.SKCName != query.SKCName {
+				continue
+			}
+			if len(query.SKCNames) > 0 && !containsSheinCandidateTestString(query.SKCNames, row.SKCName) {
+				continue
+			}
 			if query.IsActive != nil && row.IsActive != *query.IsActive {
 				continue
 			}
@@ -1309,7 +1350,17 @@ func cloneSheinCandidateQuery(query *SheinSyncedProductQuery) *SheinSyncedProduc
 		active := *query.IsActive
 		cloned.IsActive = &active
 	}
+	cloned.SKCNames = append([]string(nil), query.SKCNames...)
 	return &cloned
+}
+
+func containsSheinCandidateTestString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func cloneSheinCandidateSDSCostGroupQuery(query *SheinSDSCostGroupQuery) *SheinSDSCostGroupQuery {
