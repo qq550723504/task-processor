@@ -32,6 +32,8 @@ func TestPublishWorkflowWithConcreteActivitiesPersistsStateAndBuildsPreview(t *t
 			ProductService: temporalStubSubmitProductService{},
 		},
 		Shein: listingkit.ServiceSheinDependencies{
+			SheinStoreCatalog:    temporalAllowingSheinStoreCatalog{},
+			StoreAccessValidator: temporalAllowingStoreAccessValidator{},
 			SheinProductAPIBuilder: temporalStubSheinProductAPIBuilder{
 				api: temporalStubSheinProductAPI{
 					publishHook: func(product *sheinproduct.Product) {
@@ -268,7 +270,8 @@ func makeTemporalReadySheinTask() *listingkit.Task {
 	valueID := 2493
 	sizeValueID := 267
 	return &listingkit.Task{
-		ID: "submit-task-1",
+		ID:       "submit-task-1",
+		TenantID: "227",
 		Request: &listingkit.GenerateRequest{
 			SheinStoreID: 869,
 		},
@@ -416,4 +419,29 @@ func makeTemporalReadySheinTask() *listingkit.Task {
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
+}
+
+type temporalAllowingSheinStoreCatalog struct{}
+
+func (temporalAllowingSheinStoreCatalog) GetStoreInfo(_ context.Context, tenantID, storeID int64) (*listingkit.SheinStoreInfo, error) {
+	return &listingkit.SheinStoreInfo{
+		ID:       storeID,
+		TenantID: tenantID,
+		Platform: "SHEIN",
+	}, nil
+}
+
+func (temporalAllowingSheinStoreCatalog) ListStoreOptions(context.Context, int64) ([]listingkit.SheinStoreOption, error) {
+	return nil, nil
+}
+
+type temporalAllowingStoreAccessValidator struct{}
+
+func (temporalAllowingStoreAccessValidator) ValidateStoreAccess(_ context.Context, tenantID, storeID int64, platform string) (listingkit.StoreAccess, error) {
+	return listingkit.StoreAccess{
+		ID:       storeID,
+		TenantID: tenantID,
+		Platform: platform,
+		Enabled:  true,
+	}, nil
 }
