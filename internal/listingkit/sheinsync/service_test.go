@@ -949,6 +949,15 @@ func TestUpdateSDSCostGroupManualCostRefreshesRelatedCandidateCosts(t *testing.T
 	require.NotNil(t, group.ManualCostPrice)
 	require.Equal(t, 21.99, *group.ManualCostPrice)
 
+	require.Eventually(t, func() bool {
+		candidates, _, listErr := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+			TenantID: 227,
+			StoreID:  870,
+			SKCName:  "sg260524164927164214023",
+		})
+		return listErr == nil && len(candidates) == 2
+	}, time.Second, 10*time.Millisecond)
+
 	candidates, _, err := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
 		TenantID: 227,
 		StoreID:  870,
@@ -1060,6 +1069,15 @@ func TestUpdateSDSCostGroupManualCostRefreshesOnlyCurrentExecutableCandidateCost
 	require.NoError(t, err)
 	require.NotNil(t, group)
 
+	require.Eventually(t, func() bool {
+		candidates, _, listErr := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+			TenantID: 227,
+			StoreID:  870,
+			SKCName:  "sg260524164927164214023",
+		})
+		return listErr == nil && len(candidates) == 4
+	}, time.Second, 10*time.Millisecond)
+
 	candidates, _, err := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
 		TenantID: 227,
 		StoreID:  870,
@@ -1149,6 +1167,15 @@ func TestUpdateSDSCostGroupManualCostSupersedesExecutableCandidatesWithNewVersio
 	require.NoError(t, err)
 	require.NotNil(t, group)
 
+	require.Eventually(t, func() bool {
+		candidates, _, listErr := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+			TenantID: 227,
+			StoreID:  870,
+			SKCName:  "sg260524164927164214023",
+		})
+		return listErr == nil && len(candidates) == 2
+	}, time.Second, 10*time.Millisecond)
+
 	candidates, _, err := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
 		TenantID: 227,
 		StoreID:  870,
@@ -1230,6 +1257,15 @@ func TestUpdateSDSCostGroupManualCostClearingCostMarksExecutableCandidatesInelig
 	require.NoError(t, err)
 	require.NotNil(t, group)
 	require.Nil(t, group.ManualCostPrice)
+
+	require.Eventually(t, func() bool {
+		candidates, _, listErr := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
+			TenantID: 227,
+			StoreID:  870,
+			SKCName:  "sg260524164927164214023",
+		})
+		return listErr == nil && len(candidates) == 2
+	}, time.Second, 10*time.Millisecond)
 
 	candidates, _, err := repo.ListCandidates(context.Background(), &SheinActivityCandidateQuery{
 		TenantID: 227,

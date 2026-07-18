@@ -218,9 +218,9 @@ export function useUpdateSheinSyncedProductCost(storeId: number) {
       productId: number;
       manual_cost_price?: number | null;
     }) => updateSheinSyncedProductCost(productId, { manual_cost_price }),
-    onSuccess: async () => {
-      await client.invalidateQueries({
-        queryKey: listingKitKeys.sheinEnrollmentStoreScope(storeId),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: listingKitKeys.sheinEnrollmentProductsScope(storeId),
       });
     },
   });
@@ -242,9 +242,9 @@ export function useUpdateSheinSDSCostGroup(storeId: number) {
         group_label,
         manual_cost_price,
       }),
-    onSuccess: async () => {
-      await client.invalidateQueries({
-        queryKey: listingKitKeys.sheinEnrollmentStoreScope(storeId),
+    onSuccess: () => {
+      void client.invalidateQueries({
+        queryKey: listingKitKeys.sheinEnrollmentSourceSDSCostGroupsScope(storeId),
       });
     },
   });

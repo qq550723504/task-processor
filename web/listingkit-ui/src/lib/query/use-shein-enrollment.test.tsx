@@ -390,7 +390,7 @@ describe("use-shein-enrollment", () => {
     expect(shouldPollSheinSyncSummary({ summary: { last_sync_status: "succeeded" } })).toBe(false);
   });
 
-  it("invalidates store-scoped queries after cost update, candidate review, and enrollment execution", async () => {
+  it("invalidates only affected cost queries while keeping review and enrollment refreshes store-scoped", async () => {
     const client = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -471,10 +471,10 @@ describe("use-shein-enrollment", () => {
       expect(invalidateQueries).toHaveBeenCalledTimes(4),
     );
     expect(invalidateQueries).toHaveBeenNthCalledWith(1, {
-      queryKey: ["listingkit", "shein-enrollment", 5],
+      queryKey: ["listingkit", "shein-enrollment", 5, "products"],
     });
     expect(invalidateQueries).toHaveBeenNthCalledWith(2, {
-      queryKey: ["listingkit", "shein-enrollment", 5],
+      queryKey: ["listingkit", "shein-enrollment", 5, "source-sds-cost-groups"],
     });
     expect(invalidateQueries).toHaveBeenNthCalledWith(3, {
       queryKey: ["listingkit", "shein-enrollment", 5],

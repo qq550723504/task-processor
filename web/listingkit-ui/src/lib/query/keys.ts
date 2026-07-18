@@ -62,6 +62,8 @@ export const listingKitKeys = {
       "products",
       compactQueryKeyObject(query),
     ] as const,
+  sheinEnrollmentProductsScope: (storeId: number) =>
+    ["listingkit", "shein-enrollment", storeId, "products"] as const,
   sheinEnrollmentSDSCostGroups: (
     storeId: number,
     query: {
@@ -90,6 +92,8 @@ export const listingKitKeys = {
       "source-sds-cost-groups",
       compactQueryKeyObject(query),
     ] as const,
+  sheinEnrollmentSourceSDSCostGroupsScope: (storeId: number) =>
+    ["listingkit", "shein-enrollment", storeId, "source-sds-cost-groups"] as const,
   sheinEnrollmentCandidates: (
     storeId: number,
     query: {

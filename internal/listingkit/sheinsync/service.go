@@ -5,6 +5,8 @@ import (
 
 	"task-processor/internal/listingadmin"
 	sheinproduct "task-processor/internal/shein/api/product"
+
+	"github.com/sirupsen/logrus"
 )
 
 const sheinSyncPageSize = 100
@@ -28,6 +30,7 @@ type sheinSyncService struct {
 	productAPIBuilder      SheinSyncProductAPIBuilder
 	costResolver           SheinCostResolver
 	inventoryMappingSource SheinInventoryMappingSource
+	candidateCostRefreshes *costRefreshCoordinator
 	pageSize               int
 }
 
@@ -52,7 +55,10 @@ func newSheinSyncService(repo SheinSyncRepository, productAPI sheinproduct.Produ
 		productAPI:        productAPI,
 		productAPIBuilder: productAPIBuilder,
 		costResolver:      costResolver,
-		pageSize:          sheinSyncPageSize,
+		candidateCostRefreshes: newCostRefreshCoordinator(func(scopeKey string, err error) {
+			logrus.WithError(err).WithField("scope", scopeKey).Warn("SHEIN candidate cost refresh failed")
+		}),
+		pageSize: sheinSyncPageSize,
 	}
 }
 

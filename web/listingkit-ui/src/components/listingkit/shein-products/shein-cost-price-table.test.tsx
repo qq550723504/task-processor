@@ -25,6 +25,7 @@ function renderCostPriceTable(options?: {
   onSyncSourceSDSProduct?: (sourceCode: string) => Promise<void>;
   shipmentArea?: string;
   sourceGroups?: Array<Record<string, unknown>>;
+  saving?: boolean;
   syncingSourceCode?: string;
 }) {
   const client = new QueryClient({
@@ -58,7 +59,7 @@ function renderCostPriceTable(options?: {
         }
         onSave={options?.onSave ?? vi.fn()}
         onSyncSourceSDSProduct={options?.onSyncSourceSDSProduct}
-        saving={false}
+        saving={options?.saving ?? false}
         shipmentArea={options?.shipmentArea}
         sourceGroups={options?.sourceGroups}
         storeId={870}
@@ -241,6 +242,66 @@ describe("SheinCostPriceTable", () => {
     fireEvent.change(input, { target: { value: "-1" } });
     expect(saveButton).toBeDisabled();
     expect(await screen.findByText("发货地 US")).toBeInTheDocument();
+  });
+
+  it("disables every cost save action while another cost update is pending", async () => {
+    mockSourceMetadataFetch([], "MG8006905001,MG8006905002");
+
+    renderCostPriceTable({
+      saving: true,
+      items: [
+        {
+          id: 8,
+          skc_name: "SKC-A",
+          supplier_code: "MG8006905001-B3195DA6",
+        },
+        {
+          id: 9,
+          skc_name: "SKC-B",
+          supplier_code: "MG8006905002-BC126789",
+        },
+      ],
+    });
+
+    expect(screen.getAllByRole("button", { name: "保存中..." })).toHaveLength(2);
+    for (const button of screen.getAllByRole("button", { name: "保存中..." })) {
+      expect(button).toBeDisabled();
+    }
+  });
+
+  it("ignores a second rapid cost save until the first request settles", async () => {
+    mockSourceMetadataFetch([], "MG8006905001,MG8006905002");
+    let resolveSave: (() => void) | undefined;
+    const onSave = vi.fn(
+      () => new Promise<void>((resolve) => {
+        resolveSave = resolve;
+      }),
+    );
+
+    renderCostPriceTable({
+      onSave,
+      items: [
+        {
+          id: 8,
+          skc_name: "SKC-A",
+          supplier_code: "MG8006905001-B3195DA6",
+        },
+        {
+          id: 9,
+          skc_name: "SKC-B",
+          supplier_code: "MG8006905002-BC126789",
+        },
+      ],
+    });
+
+    const saveButtons = screen.getAllByRole("button", { name: "保存成本价" });
+    fireEvent.click(saveButtons[0]);
+    fireEvent.click(saveButtons[1]);
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledTimes(1);
+    });
+    resolveSave?.();
   });
 
   it("falls back to source code and store shipment area when source metadata is unavailable", async () => {

@@ -236,13 +236,27 @@ func (s *sheinSyncService) UpdateSDSCostGroupManualCost(ctx context.Context, ten
 	if err != nil {
 		return nil, err
 	}
-	if err := s.refreshCandidateCostsForSDSCostGroup(ctx, repo, tenantID, storeID, groupKey); err != nil {
-		return nil, err
-	}
+	s.scheduleSDSCostGroupCandidateRefresh(ctx, repo, tenantID, storeID, groupKey)
 	if len(rows) == 0 {
 		return row, nil
 	}
 	return &rows[0], nil
+}
+
+func (s *sheinSyncService) scheduleSDSCostGroupCandidateRefresh(
+	ctx context.Context,
+	groupReader sheinCandidateSDSCostGroupReader,
+	tenantID, storeID int64,
+	groupKey string,
+) {
+	if s.candidateCostRefreshes == nil {
+		return
+	}
+	refreshCtx := detachedSheinSyncContext(ctx)
+	scopeKey := fmt.Sprintf("sds-cost:%d:%d:%s", tenantID, storeID, groupKey)
+	s.candidateCostRefreshes.Schedule(scopeKey, refreshCtx, func(backgroundCtx context.Context) error {
+		return s.refreshCandidateCostsForSDSCostGroup(backgroundCtx, groupReader, tenantID, storeID, groupKey)
+	})
 }
 
 func validateSheinManualCostPrice(manualCostPrice *float64) error {

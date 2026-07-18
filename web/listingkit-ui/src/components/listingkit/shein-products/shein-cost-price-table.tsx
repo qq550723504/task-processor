@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { ImagePreviewDialog } from "@/components/listingkit/shein/shein-data-image-gallery-dialog";
@@ -53,6 +53,7 @@ export function SheinCostPriceTable({
   onSyncSourceSDSProduct,
   shipmentArea = "US",
   sourceGroups,
+  saving: savingAll,
   storeId,
   syncingSourceCode,
 }: {
@@ -73,10 +74,15 @@ export function SheinCostPriceTable({
   const [savingKeys, setSavingKeys] = useState<Record<string, boolean>>({});
   const [saveErrors, setSaveErrors] = useState<Record<string, string>>({});
   const [activeImage, setActiveImage] = useState<SheinPreviewImage | null>(null);
+  const saveInFlightRef = useRef(false);
   const handleSave = async (
     target: SheinCostPriceSaveTarget,
     manualCostPrice: number | null,
   ) => {
+    if (saveInFlightRef.current) {
+      return;
+    }
+    saveInFlightRef.current = true;
     const key = target.groupKey;
     setSavingKeys((current) => ({ ...current, [key]: true }));
     setSaveErrors((current) => ({ ...current, [key]: "" }));
@@ -90,6 +96,7 @@ export function SheinCostPriceTable({
     } catch (error) {
       setSaveErrors((current) => ({ ...current, [key]: costSaveErrorMessage(error) }));
     } finally {
+      saveInFlightRef.current = false;
       setSavingKeys((current) => {
         const next = { ...current };
         delete next[key];
@@ -162,6 +169,7 @@ export function SheinCostPriceTable({
           onSyncSourceSDSProduct={onSyncSourceSDSProduct}
           row={row}
           saveErrors={saveErrors}
+          savingAll={savingAll}
           savingKeys={savingKeys}
           shipmentArea={shipmentArea}
           onPreviewImage={setActiveImage}
@@ -188,6 +196,7 @@ function SheinCostPriceRow({
   onSyncSourceSDSProduct,
   row,
   saveErrors,
+  savingAll,
   savingKeys,
   shipmentArea,
   onPreviewImage,
@@ -203,6 +212,7 @@ function SheinCostPriceRow({
   onSyncSourceSDSProduct?: (sourceCode: string) => Promise<void>;
   row: SheinCostGroupRow;
   saveErrors: Record<string, string>;
+  savingAll: boolean;
   savingKeys: Record<string, boolean>;
   shipmentArea: string;
   onPreviewImage: (image: SheinPreviewImage) => void;
@@ -217,7 +227,7 @@ function SheinCostPriceRow({
     syncSourceCode &&
       normalizeSourceCode(syncingSourceCode) === normalizeSourceCode(syncSourceCode),
   );
-  const saving = Boolean(savingKeys[row.groupKey]);
+  const saving = savingAll || Boolean(savingKeys[row.groupKey]);
   const saveError = saveErrors[row.groupKey];
 
   return (
@@ -268,6 +278,7 @@ function SheinCostPriceRow({
             <Input
               aria-label={`成本价 ${row.groupLabel}`}
               className="w-full"
+              disabled={saving}
               onChange={(event) => onDraftChange(row.groupKey, event.target.value)}
               value={value}
             />
@@ -299,6 +310,7 @@ function SheinCostPriceRow({
         onSave={onSave}
         row={row}
         saveErrors={saveErrors}
+        savingAll={savingAll}
         savingKeys={savingKeys}
         sourceTaskMetadataByCode={sourceTaskMetadataByCode}
       />
@@ -312,6 +324,7 @@ function SheinCostVariantDetailTable({
   onSave,
   row,
   saveErrors,
+  savingAll,
   savingKeys,
   sourceTaskMetadataByCode,
 }: {
@@ -323,6 +336,7 @@ function SheinCostVariantDetailTable({
   ) => Promise<void>;
   row: SheinCostGroupRow;
   saveErrors: Record<string, string>;
+  savingAll: boolean;
   savingKeys: Record<string, boolean>;
   sourceTaskMetadataByCode?: Map<string, SheinCostSourceTaskMetadata>;
 }) {
@@ -362,7 +376,7 @@ function SheinCostVariantDetailTable({
               onDraftChange={(value) => onDraftChange(skuGroup.groupKey, value)}
               onSave={onSave}
               saveError={saveErrors[skuGroup.groupKey]}
-              saving={Boolean(savingKeys[skuGroup.groupKey])}
+              saving={savingAll || Boolean(savingKeys[skuGroup.groupKey])}
               skuGroup={skuGroup}
               sourceTaskMetadata={sourceTaskMetadataByCode?.get(normalizeSourceCode(skuGroup.skuCode))}
             />
@@ -435,6 +449,7 @@ function SheinCostSKUDetailRow({
           <Input
             aria-label={`成本价 ${skuGroup.groupLabel}`}
             className="h-8 w-28"
+            disabled={saving}
             onChange={(event) => onDraftChange(event.target.value)}
             value={value}
           />
