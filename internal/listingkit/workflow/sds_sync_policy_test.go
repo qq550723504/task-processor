@@ -8,8 +8,8 @@ import (
 func TestSDSDesignSyncTimeoutForVariantCount(t *testing.T) {
 	t.Parallel()
 
-	if got := SDSDesignSyncTimeoutForVariantCount(1); got != SDSDesignSyncTimeout {
-		t.Fatalf("single variant timeout = %s, want %s", got, SDSDesignSyncTimeout)
+	if got := SDSDesignSyncTimeoutForVariantCount(1); got != 180*time.Second {
+		t.Fatalf("single variant timeout = %s, want 180s", got)
 	}
 	if got := SDSDesignSyncTimeoutForVariantCount(3); got != SDSDesignSyncTimeout+16*5*time.Second {
 		t.Fatalf("three variant timeout = %s, want %s", got, SDSDesignSyncTimeout+16*5*time.Second)

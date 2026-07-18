@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"fmt"
+	"math/rand/v2"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +13,8 @@ import (
 	"github.com/imroc/req/v3"
 	"github.com/sirupsen/logrus"
 )
+
+const sdsRetryMaxInterval = 30 * time.Second
 
 // Client 是 SDS 的登录态 HTTP 客户端。
 type Client struct {
@@ -36,7 +39,7 @@ func New(config *Config) (*Client, error) {
 		SetCommonHeaders(buildDefaultHeaders(config)).
 		SetCommonRetryCount(config.RetryCount).
 		SetCommonRetryInterval(func(_ *req.Response, attempt int) time.Duration {
-			return time.Duration(attempt) * config.RetryInterval
+			return retryIntervalWithJitter(config.RetryInterval, attempt)
 		}).
 		SetCommonRetryCondition(func(resp *req.Response, err error) bool {
 			if err != nil {
@@ -82,6 +85,30 @@ func New(config *Config) (*Client, error) {
 	}
 
 	return client, nil
+}
+
+func retryIntervalWithJitter(base time.Duration, attempt int) time.Duration {
+	if base <= 0 {
+		return 0
+	}
+	if attempt < 1 {
+		attempt = 1
+	}
+
+	delay := base
+	for index := 1; index < attempt && delay < sdsRetryMaxInterval; index++ {
+		if delay > sdsRetryMaxInterval/2 {
+			delay = sdsRetryMaxInterval
+			break
+		}
+		delay *= 2
+	}
+	if delay >= sdsRetryMaxInterval {
+		return sdsRetryMaxInterval
+	}
+
+	maxDelay := min(delay*2, sdsRetryMaxInterval)
+	return delay + time.Duration(rand.Int64N(int64(maxDelay-delay)))
 }
 
 // Config 返回客户端配置。
