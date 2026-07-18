@@ -402,6 +402,9 @@ func buildPromotionEnrollmentResults(
 		for skc, reason := range bridgeResult.FilterReasons {
 			filterReasons[skc] = reason
 		}
+		for skc, reason := range promotionResponseFailureReasons(bridgeResult) {
+			filterReasons[skc] = reason
+		}
 		requests := bridgeResult.Requests
 		if len(requests) == 0 && bridgeResult.Request != nil {
 			requests = []*marketing.SaveConfigRequest{bridgeResult.Request}
@@ -437,6 +440,11 @@ func buildPromotionEnrollmentResults(
 			results = append(results, result)
 			continue
 		}
+		if reason := strings.TrimSpace(filterReasons[candidate.SKCName]); reason != "" {
+			result.ErrorMessage = reason
+			results = append(results, result)
+			continue
+		}
 		if _, ok := configured[candidate.SKCName]; !ok {
 			if reason := strings.TrimSpace(filterReasons[candidate.SKCName]); reason != "" {
 				result.ErrorMessage = reason
@@ -457,6 +465,105 @@ func buildPromotionEnrollmentResults(
 		results = append(results, result)
 	}
 	return results
+}
+
+func promotionResponseFailureReasons(result *SheinPromotionRegistrationResult) map[string]string {
+	reasons := make(map[string]string)
+	if result == nil || result.ActivityResponse == nil || result.ActivityResponse.Info == nil {
+		return reasons
+	}
+	requestedSKCs := promotionRequestSKCs(result.ActivityRequest)
+
+	for skc, reason := range normalizePromotionResponseErrors(result.ActivityResponse.Info.SkcErrorInfo) {
+		reasons[skc] = reason
+	}
+
+	skuErrors := normalizePromotionResponseErrors(result.ActivityResponse.Info.SkuErrorInfo)
+	if len(skuErrors) > 0 && result.ActivityRequest != nil {
+		for _, product := range result.ActivityRequest.AddCostAndStockInfoList {
+			for _, sku := range product.AddSkuList {
+				if reason := strings.TrimSpace(skuErrors[sku.Sku]); reason != "" {
+					reasons[product.Skc] = reason
+					break
+				}
+			}
+		}
+	}
+	if len(skuErrors) > 0 {
+		for _, skc := range requestedSKCs {
+			if _, exists := reasons[skc]; !exists {
+				reasons[skc] = "SHEIN reported SKU enrollment errors"
+			}
+		}
+	}
+	if len(reasons) > 0 {
+		return reasons
+	}
+	if result.ActivityResponse.Info.ErrorInfo != nil {
+		return promotionResponseFailureForSKCs(requestedSKCs, promotionResponseErrorMessage(result.ActivityResponse.Info.ErrorInfo))
+	}
+	if result.ActivityResponse.Info.ActivityID <= 0 {
+		return promotionResponseFailureForSKCs(requestedSKCs, "SHEIN did not create an activity")
+	}
+	return reasons
+}
+
+func promotionRequestSKCs(request *marketing.CreateActivityRequest) []string {
+	if request == nil {
+		return nil
+	}
+	values := make([]string, 0, len(request.AddCostAndStockInfoList))
+	for _, product := range request.AddCostAndStockInfoList {
+		if skc := strings.TrimSpace(product.Skc); skc != "" {
+			values = append(values, skc)
+		}
+	}
+	return values
+}
+
+func promotionResponseFailureForSKCs(skcs []string, reason string) map[string]string {
+	reasons := make(map[string]string, len(skcs))
+	for _, skc := range skcs {
+		reasons[skc] = reason
+	}
+	return reasons
+}
+
+func normalizePromotionResponseErrors(value any) map[string]string {
+	if value == nil {
+		return nil
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var raw map[string]any
+	if err := json.Unmarshal(encoded, &raw); err != nil {
+		return nil
+	}
+	errorsByKey := make(map[string]string, len(raw))
+	for key, detail := range raw {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		message := promotionResponseErrorMessage(detail)
+		if message != "" {
+			errorsByKey[key] = message
+		}
+	}
+	return errorsByKey
+}
+
+func promotionResponseErrorMessage(detail any) string {
+	if message, ok := detail.(string); ok {
+		return strings.TrimSpace(message)
+	}
+	encoded, err := json.Marshal(detail)
+	if err != nil {
+		return "SHEIN reported an enrollment error"
+	}
+	return strings.TrimSpace(string(encoded))
 }
 
 func parsePromotionPriceSnapshot(raw string) (float64, string) {
