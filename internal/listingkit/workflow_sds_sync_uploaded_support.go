@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,7 +30,11 @@ func (s *service) syncSDSDesignFromUploadedImageKey(ctx context.Context, task *T
 	if uploadStore == nil {
 		return nil, true, fmt.Errorf("uploaded image store is not configured")
 	}
-	stored, err := uploadStore.Open(ctx, key)
+	storageKey, err := s.resolveUploadedImageStorageKey(ctx, key)
+	if err != nil {
+		return nil, true, err
+	}
+	stored, err := uploadStore.Open(ctx, storageKey)
 	if err != nil {
 		return nil, true, err
 	}
@@ -76,6 +81,30 @@ func (s *service) syncSDSDesignFromUploadedImageKey(ctx context.Context, task *T
 		return nil, true, err
 	}
 	return syncResult, true, nil
+}
+
+func (s *service) resolveUploadedImageStorageKey(ctx context.Context, uploadID string) (string, error) {
+	repo := resolveUploadedImageRepository(s)
+	if repo == nil {
+		return uploadID, nil
+	}
+	record, err := repo.GetUploadedImage(ctx, uploadID)
+	if err != nil {
+		if errors.Is(err, ErrUploadedImageNotFound) {
+			return uploadID, nil
+		}
+		return "", fmt.Errorf("resolve uploaded image metadata: %w", err)
+	}
+	if record == nil {
+		return uploadID, nil
+	}
+	if storageKey := strings.TrimSpace(record.StorageKey); storageKey != "" {
+		return storageKey, nil
+	}
+	if key := strings.TrimSpace(record.Key); key != "" {
+		return key, nil
+	}
+	return uploadID, nil
 }
 
 func uploadedListingKitImageKeyFromURL(rawURL string) (string, bool) {

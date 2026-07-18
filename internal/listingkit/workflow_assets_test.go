@@ -20,6 +20,7 @@ import (
 	sdsdesign "task-processor/internal/sds/design"
 	sdsusecase "task-processor/internal/sds/usecase"
 	sdsworkflow "task-processor/internal/sds/workflow"
+	"task-processor/internal/shared/tenantctx"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
 )
@@ -2473,6 +2474,80 @@ func TestSyncSDSDesignFromRemoteUsesLocalFileForUploadedImagePath(t *testing.T) 
 	}
 	if !hasChildTaskStatus(result.ChildTasks, "sds_design_sync", string(TaskStatusCompleted)) {
 		t.Fatalf("child tasks = %+v, want completed sds_design_sync", result.ChildTasks)
+	}
+}
+
+func TestSyncSDSDesignFromRemoteResolvesUploadedImageIDToStorageKey(t *testing.T) {
+	t.Parallel()
+
+	const uploadID = "0c014ff4-2211-4d91-a4d3-354fd343f59e"
+	ctx := tenantctx.WithTenantID(context.Background(), "227")
+	storageKey := "listingkit/tenants/227/uploads/" + uploadID + ".png"
+	store, err := NewLocalImageUploadStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewLocalImageUploadStore() error = %v", err)
+	}
+	keyedStore, ok := store.(KeyedImageUploadStore)
+	if !ok {
+		t.Fatal("upload store does not support keyed writes")
+	}
+	if _, err := keyedStore.SaveWithKey(ctx, storageKey, &ImageUploadInput{
+		Filename:    "design.png",
+		ContentType: "image/png",
+		Data:        []byte{0x89, 0x50, 0x4E, 0x47},
+	}); err != nil {
+		t.Fatalf("SaveWithKey() error = %v", err)
+	}
+	metadataRepo := NewMemUploadedImageRepository()
+	if err := metadataRepo.SaveUploadedImage(ctx, &UploadedImageRecord{
+		UploadID:   uploadID,
+		StorageKey: storageKey,
+		Filename:   "design.png",
+	}); err != nil {
+		t.Fatalf("SaveUploadedImage() error = %v", err)
+	}
+
+	sdsSvc := &stubWorkflowSDSSyncService{
+		remoteErr: fmt.Errorf("remote sync should not be called for uploaded image paths"),
+		localFileResult: &sdsworkflow.SyncResult{
+			DesignResult: &sdsdesign.PrepareSyncDesignResult{
+				Page: &sdsdesign.DesignProductPage{Product: sdsdesign.DesignProduct{ID: 53064}},
+				Request: &sdsdesign.SyncDesignRequest{
+					PrototypeGroupID: 9663,
+					Prototypes:       []sdsdesign.SyncDesignPrototype{{Layers: []sdsdesign.SyncDesignLayer{{LayerID: "436328327568490496"}}}},
+				},
+				RenderedImageURLs: []string{"https://cdn.sdspod.com/out/53064-main.jpg"},
+			},
+		},
+	}
+	svc := seedSupportDeps(&service{studioDeps: studioDependencies{uploadStore: store}}, supportDependencySeed{
+		sdsSyncService:          sdsSvc,
+		uploadedImageRepository: metadataRepo,
+	})
+	task := &Task{
+		ID: "listingkit-task-uploaded-storage-key-sds",
+		Request: &GenerateRequest{
+			ImageURLs: []string{"http://localhost:3000" + buildUploadedImagePath(uploadID)},
+			Options: &GenerateOptions{SDS: &SDSSyncOptions{
+				VariantID:        53064,
+				ParentProductID:  53063,
+				PrototypeGroupID: 9663,
+				LayerID:          "436328327568490496",
+			}},
+		},
+	}
+	result := &ListingKitResult{}
+
+	svc.syncSDSDesignFromRemote(ctx, task, result, newWorkflowRecorder(result))
+
+	if sdsSvc.remoteCalls != 0 {
+		t.Fatalf("remote calls = %d, want 0 when uploaded image is resolved locally", sdsSvc.remoteCalls)
+	}
+	if sdsSvc.localFileCalls != 1 {
+		t.Fatalf("local file calls = %d, want 1 after resolving the storage key", sdsSvc.localFileCalls)
+	}
+	if result.SDSSync == nil || result.SDSSync.Status != "completed" {
+		t.Fatalf("sds sync = %+v, want completed local-file SDS sync", result.SDSSync)
 	}
 }
 
