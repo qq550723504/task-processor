@@ -2477,7 +2477,7 @@ func TestSyncSDSDesignFromRemoteUsesLocalFileForUploadedImagePath(t *testing.T) 
 	}
 }
 
-func TestSyncSDSDesignFromRemoteResolvesUploadedImageIDToStorageKey(t *testing.T) {
+func TestSyncSDSDesignFromRemoteResolvesUploadedImageIDToStorageKeyFromTaskTenant(t *testing.T) {
 	t.Parallel()
 
 	const uploadID = "0c014ff4-2211-4d91-a4d3-354fd343f59e"
@@ -2525,7 +2525,8 @@ func TestSyncSDSDesignFromRemoteResolvesUploadedImageIDToStorageKey(t *testing.T
 		uploadedImageRepository: metadataRepo,
 	})
 	task := &Task{
-		ID: "listingkit-task-uploaded-storage-key-sds",
+		ID:       "listingkit-task-uploaded-storage-key-sds",
+		TenantID: "227",
 		Request: &GenerateRequest{
 			ImageURLs: []string{"http://localhost:3000" + buildUploadedImagePath(uploadID)},
 			Options: &GenerateOptions{SDS: &SDSSyncOptions{
@@ -2538,7 +2539,7 @@ func TestSyncSDSDesignFromRemoteResolvesUploadedImageIDToStorageKey(t *testing.T
 	}
 	result := &ListingKitResult{}
 
-	svc.syncSDSDesignFromRemote(ctx, task, result, newWorkflowRecorder(result))
+	svc.syncSDSDesignFromRemote(context.Background(), task, result, newWorkflowRecorder(result))
 
 	if sdsSvc.remoteCalls != 0 {
 		t.Fatalf("remote calls = %d, want 0 when uploaded image is resolved locally", sdsSvc.remoteCalls)

@@ -30,6 +30,11 @@ func (s *service) syncSDSDesignFromUploadedImageKey(ctx context.Context, task *T
 	if uploadStore == nil {
 		return nil, true, fmt.Errorf("uploaded image store is not configured")
 	}
+	if task != nil {
+		if tenantID := strings.TrimSpace(task.TenantID); tenantID != "" {
+			ctx = WithTenantID(ctx, tenantID)
+		}
+	}
 	storageKey, err := s.resolveUploadedImageStorageKey(ctx, key)
 	if err != nil {
 		return nil, true, err

@@ -49,16 +49,17 @@ function Get-K8sEnvValue {
     }
 }
 
-function Set-EnvIfMissing {
+function Set-EnvValue {
     param(
         [string]$Name,
-        [string]$Value
+        [string]$Value,
+        [switch]$Overwrite
     )
 
     if ([string]::IsNullOrWhiteSpace($Value)) {
         return
     }
-    if (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($Name))) {
+    if (-not $Overwrite -and -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($Name))) {
         return
     }
     [Environment]::SetEnvironmentVariable($Name, $Value)
@@ -159,14 +160,17 @@ function Initialize-ListingKitObjectStorageEnvFromK8s {
         return
     }
 
-    Set-EnvIfMissing -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER" -Value $provider
-    Set-EnvIfMissing -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE" -Value $publicBase
-    Set-EnvIfMissing -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET" -Value $bucket
-    Set-EnvIfMissing -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION" -Value $region
-    Set-EnvIfMissing -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT" -Value $endpoint
-    Set-EnvIfMissing -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID" -Value $accessKey
-    Set-EnvIfMissing -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY" -Value $secretKey
-    Set-EnvIfMissing -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE" -Value $usePathStyle
+    # The local API must use the same object store that persisted ListingKit uploads.
+    # Import-DotEnvFile runs first, so stale local values must not shadow the live
+    # ListingKit config and cause GetObject failures to look like missing uploads.
+    Set-EnvValue -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER" -Value $provider -Overwrite
+    Set-EnvValue -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE" -Value $publicBase -Overwrite
+    Set-EnvValue -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET" -Value $bucket -Overwrite
+    Set-EnvValue -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_REGION" -Value $region -Overwrite
+    Set-EnvValue -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ENDPOINT" -Value $endpoint -Overwrite
+    Set-EnvValue -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID" -Value $accessKey -Overwrite
+    Set-EnvValue -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY" -Value $secretKey -Overwrite
+    Set-EnvValue -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_USEPATHSTYLE" -Value $usePathStyle -Overwrite
 
     Write-Host "Loaded ListingKit object storage env from k8s config/secret for local API." -ForegroundColor DarkGreen
 }
