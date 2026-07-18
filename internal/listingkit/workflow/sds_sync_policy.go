@@ -2,7 +2,7 @@ package workflow
 
 import "time"
 
-const SDSDesignSyncTimeout = 130 * time.Second
+const SDSDesignSyncTimeout = 180 * time.Second
 const SDSDesignSyncExtraPollCap = 24
 
 func SDSDesignSyncTimeoutForVariantCount(targetCount int) time.Duration {
