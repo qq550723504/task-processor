@@ -2,28 +2,28 @@
 
 ## Goal
 
-Retry transient failures while uploading a ListingKit design image to SDS, so a
-temporary network or SDS object-storage interruption does not immediately leave
-the task in `needs_review`.
+Give the existing SDS multipart-upload retry loop enough end-to-end time to
+recover from a temporary network or SDS object-storage interruption, without
+turning invalid requests into long-running retries.
 
 ## Scope
 
-The retry belongs in `internal/sds/client.Client.UploadFile`, which is the
-single client boundary used for SDS multipart uploads. Existing callers keep
-their current API and their existing context deadline remains the total budget.
+The retry remains in the req/v3 client configured by
+`internal/sds/client.Client`. It already resets multipart file readers between
+attempts and retries transport errors, `429`, and `5xx` responses. This change
+adjusts the shared retry interval and extends the ListingKit SDS design-sync
+deadline, which is the total budget passed to all upload attempts.
 
 ## Policy
 
-- Make at most three total upload attempts.
-- Wait one second before the second attempt and two seconds before the third
-  attempt.
-- Retry transport errors, including context deadline errors, and HTTP `408`,
-  `429`, and `5xx` responses.
-- Do not retry other `4xx` responses: these represent invalid form data,
-  invalid or expired signatures, authorization failures, or another request
-  that cannot succeed unchanged.
-- Before every wait and attempt, honor context cancellation and deadline. A
-  retry must never extend the parent SDS design-sync deadline.
+- Keep three total upload attempts (`RetryCount=2`).
+- Replace the current deterministic wait sequence with capped exponential
+  backoff plus jitter, based on the configured 1.5-second base delay.
+- Preserve the existing retry classification: transport errors, `429`, and
+  `5xx` responses retry; other `4xx` responses do not.
+- Extend `SDSDesignSyncTimeout` from 130 seconds to 180 seconds. The context
+  remains the hard end-to-end budget and cancels a wait or request when it
+  expires.
 - Preserve the final response and error type so existing task failure handling
   still records an actionable cause if every attempt fails.
 
@@ -36,9 +36,9 @@ exhausted.
 
 ## Tests
 
-- A transport failure followed by success performs a second upload and returns
-  success.
-- A non-retryable `4xx` response performs one upload only.
-- Repeated retryable failures stop after three total attempts and return the
-  final error.
-- A canceled context stops without an additional retry.
+- Retry delays increase exponentially and remain within the configured cap.
+- Retry jitter stays bounded by its exponential delay window.
+- The SDS design-sync timeout is 180 seconds for one variant and retains its
+  bounded per-variant extension for larger batches.
+- Existing request-level retry tests continue to prove that a multipart upload
+  is replayable and a non-retryable `4xx` is not retried.
