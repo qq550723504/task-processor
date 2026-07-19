@@ -14,6 +14,13 @@ describe("toImageProxyUrl", () => {
     expect(toImageProxyUrl(url)).toBe(url);
   });
 
+  it("keeps the Hong Kong COS image URLs direct", () => {
+    const url =
+      "https://shuomi-1303159911.cos.ap-hongkong.myqcloud.com/20260719/test.png";
+
+    expect(toImageProxyUrl(url)).toBe(url);
+  });
+
   it("proxies other remote images", () => {
     const url = "https://cdn.sdspod.com/images/test.jpg";
 

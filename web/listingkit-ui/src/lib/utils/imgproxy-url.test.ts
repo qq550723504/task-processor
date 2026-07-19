@@ -31,6 +31,19 @@ describe("toImgproxyThumbnailUrl", () => {
     );
   });
 
+  it("rewrites root-path COS objects on the legacy public domain", () => {
+    process.env[IMGPROXY_ENV] = "https://pod.shuomiai.com/img";
+
+    expect(
+      toImgproxyThumbnailUrl("https://oss.shuomiai.com/20260719/design.png", {
+        width: 320,
+        height: 240,
+      }),
+    ).toBe(
+      "https://pod.shuomiai.com/img/insecure/rs:fit:320:240/plain/s3://shuomi-1303159911/20260719/design.png@webp",
+    );
+  });
+
   it("keeps non-oss urls unchanged", () => {
     process.env[IMGPROXY_ENV] = "https://pod.shuomiai.com/img";
 

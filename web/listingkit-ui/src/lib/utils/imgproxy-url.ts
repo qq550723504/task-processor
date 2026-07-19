@@ -12,6 +12,8 @@ type ImgproxyThumbnailOptions = {
 const DEFAULT_IMGPROXY_FORMAT = "webp";
 const DEFAULT_IMGPROXY_MODE: ImgproxyResizeMode = "fit";
 const OSS_HOST = "oss.shuomiai.com";
+const LEGACY_BUCKET = "listingkit-assets";
+const COS_BUCKET = "shuomi-1303159911";
 
 function configuredImgproxyBaseUrl() {
   return process.env.NEXT_PUBLIC_LISTINGKIT_IMGPROXY_BASE_URL?.trim().replace(/\/+$/, "") ?? "";
@@ -27,10 +29,16 @@ function parseOssObjectLocation(url: string) {
     if (segments.length < 2) {
       return null;
     }
-    const [bucket, ...keyParts] = segments;
+    if (segments[0] === LEGACY_BUCKET) {
+      const [, ...keyParts] = segments;
+      return {
+        bucket: LEGACY_BUCKET,
+        key: keyParts.join("/"),
+      };
+    }
     return {
-      bucket,
-      key: keyParts.join("/"),
+      bucket: COS_BUCKET,
+      key: segments.join("/"),
     };
   } catch {
     return null;

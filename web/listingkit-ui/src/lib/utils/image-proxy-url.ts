@@ -31,6 +31,7 @@ function isDirectPublicImageHost(hostname: string) {
   const normalized = hostname.toLowerCase();
   return (
     normalized === "oss.shuomiai.com" ||
-    normalized === "cos-1303159911.cos.na-ashburn.myqcloud.com"
+    normalized === "cos-1303159911.cos.na-ashburn.myqcloud.com" ||
+    normalized === "shuomi-1303159911.cos.ap-hongkong.myqcloud.com"
   );
 }
