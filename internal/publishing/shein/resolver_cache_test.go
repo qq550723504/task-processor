@@ -1319,6 +1319,7 @@ func TestSaleAttributeResolverCacheKeyUsesCanonicalSDSIdentifiers(t *testing.T) 
 			SKU: "MG8014062001-OLDSTYLE",
 			Attributes: map[string]canonical.Attribute{
 				"source_sds_sku": {Value: "MG8014062001"},
+				"variant_sku":    {Value: "MG8014062001"},
 				"Color":          {Value: "white"},
 			},
 		}},
@@ -1329,6 +1330,7 @@ func TestSaleAttributeResolverCacheKeyUsesCanonicalSDSIdentifiers(t *testing.T) 
 			SKU: "MG8014062001-NEWSTYLE",
 			Attributes: map[string]canonical.Attribute{
 				"source_sds_sku": {Value: "MG8014062001"},
+				"variant_sku":    {Value: "MG8014062001-CE954D2D"},
 				"Color":          {Value: "white"},
 			},
 		}},

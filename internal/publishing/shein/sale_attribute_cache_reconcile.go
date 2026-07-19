@@ -20,8 +20,8 @@ func ReconcilePublishedSaleAttributeResolution(pkg *Package, resolution *SaleAtt
 		result.SKUValueAssignments = map[string]ResolvedSaleAttribute{}
 	}
 	for _, skc := range pkg.DraftPayload.SKCList {
-		mergePublishedSaleAssignment(result.SKCValueAssignments, map[string]string{result.PrimarySourceDimension: skc.SaleName}, result.PrimarySourceDimension, skc.SaleAttribute)
 		for _, sku := range skc.SKUList {
+			mergePublishedSaleAssignment(result.SKCValueAssignments, sku.Attributes, result.PrimarySourceDimension, skc.SaleAttribute)
 			for i := range sku.SaleAttributes {
 				assignment := sku.SaleAttributes[i]
 				mergePublishedSaleAssignment(result.SKUValueAssignments, sku.Attributes, result.SecondarySourceDimension, &assignment)

@@ -55,10 +55,12 @@ func stableCanonicalSDSIdentifiers(canonical *canonical.Product) []string {
 		}
 	}
 	for _, variant := range canonical.Variants {
-		for _, key := range []string{"source_sds_sku", "variant_sku"} {
-			if attr, ok := variant.Attributes[key]; ok {
-				values = append(values, attr.Value)
-			}
+		if attr, ok := variant.Attributes["source_sds_sku"]; ok && strings.TrimSpace(attr.Value) != "" {
+			values = append(values, attr.Value)
+			continue
+		}
+		if attr, ok := variant.Attributes["variant_sku"]; ok {
+			values = append(values, attr.Value)
 		}
 	}
 	identifiers := normalizeStableSDSIdentity(values)

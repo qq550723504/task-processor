@@ -41,6 +41,39 @@ func TestReconcilePublishedSaleAttributeResolutionAddsFinalSKUAssignments(t *tes
 	}
 }
 
+func TestReconcilePublishedSaleAttributeResolutionUsesSKUSourceValueForPrimaryAssignment(t *testing.T) {
+	t.Parallel()
+
+	colorID := 447
+	original := &SaleAttributeResolution{
+		Status:                 "resolved",
+		PrimaryAttributeID:     27,
+		PrimarySourceDimension: "Color",
+		SourceDimensions:       []SourceVariantDimension{{Name: "Color", Values: []string{"white"}}},
+	}
+	pkg := &Package{DraftPayload: &RequestDraft{SKCList: []SKCRequestDraft{{
+		SaleName: "product display title",
+		SaleAttribute: &ResolvedSaleAttribute{
+			Scope:            "skc",
+			Name:             "Color",
+			Value:            "Multicolor",
+			AttributeID:      27,
+			AttributeValueID: &colorID,
+		},
+		SKUList: []SKUDraft{{Attributes: map[string]string{"Color": "white"}}},
+	}}}}
+
+	got := ReconcilePublishedSaleAttributeResolution(pkg, original)
+
+	assignment, ok := got.SKCValueAssignments["white"]
+	if !ok || assignment.AttributeValueID == nil || *assignment.AttributeValueID != colorID {
+		t.Fatalf("white assignment = %+v, want attribute_value_id=%d", assignment, colorID)
+	}
+	if applicable, reason := SaleAttributeResolutionApplicable(got); !applicable {
+		t.Fatalf("reconciled resolution is not applicable: %s", reason)
+	}
+}
+
 func TestSaleAttributeResolutionApplicableRejectsMissingCurrentValue(t *testing.T) {
 	t.Parallel()
 
