@@ -1420,6 +1420,116 @@ describe("SheinSaleAttributeReviewCard", () => {
     );
   });
 
+  it("rehydrates a saved custom SKU value into the manual text input", async () => {
+    const onApplyManual = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <SheinSaleAttributeReviewCard
+        editorContext={{
+          sale_attributes: {
+            current: {
+              status: "resolved",
+              primary_attribute_id: 27,
+              secondary_attribute_id: 87,
+              primary_source_dimension: "Color",
+              secondary_source_dimension: "Size",
+              skc_attributes: [
+                {
+                  scope: "skc",
+                  name: "Color",
+                  value: "White",
+                  attribute_id: 27,
+                  attribute_value_id: 112,
+                },
+              ],
+              sku_attributes: [
+                {
+                  scope: "sku",
+                  name: "Size",
+                  value: "11",
+                  attribute_id: 87,
+                  attribute_value_id: 322953386,
+                  matched_by: "custom_attribute_value",
+                },
+              ],
+              template_options: [
+                {
+                  attribute_id: 27,
+                  name: "Color",
+                  name_en: "Color",
+                  skc_scope: true,
+                  attribute_value_list: [
+                    {
+                      attribute_value_id: 112,
+                      value: "White",
+                      value_en: "White",
+                    },
+                  ],
+                },
+                {
+                  attribute_id: 87,
+                  name: "Size",
+                  name_en: "Size",
+                  attribute_value_list: [
+                    { attribute_value_id: 5005, value: "1PCS", value_en: "1PCS" },
+                  ],
+                },
+              ],
+              skc_patches: [
+                {
+                  supplier_code: "SKC-1",
+                  skc_name: "White",
+                  attributes: { Color: "White" },
+                  sale_attribute: {
+                    scope: "skc",
+                    name: "Color",
+                    value: "White",
+                    attribute_id: 27,
+                    attribute_value_id: 112,
+                  },
+                  sku_patches: [
+                    {
+                      supplier_sku: "SKU-CUSTOM-11",
+                      attributes: { Size: "1PCS" },
+                      sale_attributes: [
+                        {
+                          scope: "sku",
+                          name: "Size",
+                          value: "11",
+                          attribute_id: 87,
+                          attribute_value_id: 322953386,
+                          matched_by: "custom_attribute_value",
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        }}
+        onApplyManualSaleAttributes={onApplyManual}
+      />,
+    );
+
+    await openManualCorrection(user);
+
+    const skuRow = getSKUSelectionCard("SKU-CUSTOM-11");
+    expect(within(skuRow).getByPlaceholderText("手工输入，建议值：1PCS")).toHaveValue(
+      "11",
+    );
+
+    await user.click(screen.getByRole("button", { name: "保存手工修正" }));
+    expect(onApplyManual).toHaveBeenCalledWith(
+      expect.objectContaining({
+        skuSelections: {
+          "SKU-CUSTOM-11": expect.objectContaining({ textValue: "11" }),
+        },
+      }),
+    );
+  });
+
   it("prefers important template as manual primary option", async () => {
     const user = userEvent.setup();
 

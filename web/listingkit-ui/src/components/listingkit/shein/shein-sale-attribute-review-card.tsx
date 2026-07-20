@@ -1095,12 +1095,12 @@ function buildInitialManualSKCSelections({
       patch.attributes,
       primarySourceDimension,
     );
-    const fallbackValueID =
-      findResolvedSaleAttributeValueID({
+    const savedAttribute =
+      findResolvedSaleAttribute({
         attributes: patch.sale_attribute ? [patch.sale_attribute] : undefined,
         attributeID: primaryOption?.attribute_id,
       }) ??
-      findResolvedSaleAttributeValueID({
+      findResolvedSaleAttribute({
         attributes: current.skc_attributes,
         attributeID: primaryOption?.attribute_id,
         sourceValue,
@@ -1108,7 +1108,8 @@ function buildInitialManualSKCSelections({
     selections[patch.supplier_code] = buildInitialManualSelection({
       option: primaryOption,
       sourceValue,
-      fallbackValueID,
+      fallbackValueID: savedAttribute?.attribute_value_id,
+      savedValue: savedAttribute?.value,
     });
   }
   return selections;
@@ -1135,12 +1136,12 @@ function buildInitialManualSKUSelections({
         skuPatch.attributes,
         secondarySourceDimension,
       );
-      const fallbackValueID =
-        findResolvedSaleAttributeValueID({
+      const savedAttribute =
+        findResolvedSaleAttribute({
           attributes: skuPatch.sale_attributes,
           attributeID: secondaryOption?.attribute_id,
         }) ??
-        findResolvedSaleAttributeValueID({
+        findResolvedSaleAttribute({
           attributes: current.sku_attributes,
           attributeID: secondaryOption?.attribute_id,
           sourceValue,
@@ -1148,7 +1149,8 @@ function buildInitialManualSKUSelections({
       selections[skuPatch.supplier_sku] = buildInitialManualSelection({
         option: secondaryOption,
         sourceValue,
-        fallbackValueID,
+        fallbackValueID: savedAttribute?.attribute_value_id,
+        savedValue: savedAttribute?.value,
       });
     }
   }
@@ -1159,19 +1161,24 @@ function buildInitialManualSelection({
   option,
   sourceValue,
   fallbackValueID,
+  savedValue,
 }: {
   option: SheinSaleAttributeTemplateOption | null;
   sourceValue?: string;
   fallbackValueID?: number;
+  savedValue?: string;
 }): ManualSaleAttributeSelection {
-  const matchedValueID = findTemplateValueID(option, sourceValue, fallbackValueID);
+  const matchedValueID = findTemplateValueID(option, savedValue ?? sourceValue, fallbackValueID);
   if (matchedValueID) {
     return { valueId: matchedValueID, textValue: "" };
+  }
+  if (savedValue?.trim()) {
+    return { textValue: savedValue.trim() };
   }
   return sourceValue?.trim() ? { textValue: sourceValue.trim() } : {};
 }
 
-function findResolvedSaleAttributeValueID({
+function findResolvedSaleAttribute({
   attributes,
   attributeID,
   sourceValue,
@@ -1193,7 +1200,7 @@ function findResolvedSaleAttributeValueID({
       Boolean(attribute.attribute_value_id)
     );
   });
-  return match?.attribute_value_id;
+  return match;
 }
 
 function findTemplateValueID(
