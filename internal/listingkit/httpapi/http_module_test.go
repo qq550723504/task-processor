@@ -107,15 +107,16 @@ func TestAppendRouteDescriptorsIncludesSheinSyncRoutes(t *testing.T) {
 
 type stubStudioSessionRouteHandler struct{}
 
-func (stubStudioSessionRouteHandler) ListStudioSessionGallery(*gin.Context)   {}
-func (stubStudioSessionRouteHandler) ListStudioBatches(*gin.Context)          {}
-func (stubStudioSessionRouteHandler) GetStudioBatch(*gin.Context)             {}
-func (stubStudioSessionRouteHandler) StartStudioBatchGeneration(*gin.Context) {}
-func (stubStudioSessionRouteHandler) RetryStudioBatchItems(*gin.Context)      {}
-func (stubStudioSessionRouteHandler) ApproveStudioBatchDesigns(*gin.Context)  {}
-func (stubStudioSessionRouteHandler) CreateStudioBatchTasks(*gin.Context)     {}
-func (stubStudioSessionRouteHandler) UpsertStudioBatch(*gin.Context)          {}
-func (stubStudioSessionRouteHandler) DeleteStudioBatch(*gin.Context)          {}
+func (stubStudioSessionRouteHandler) ListStudioSessionGallery(*gin.Context)      {}
+func (stubStudioSessionRouteHandler) ListStudioBatches(*gin.Context)             {}
+func (stubStudioSessionRouteHandler) GetStudioBatch(*gin.Context)                {}
+func (stubStudioSessionRouteHandler) StartStudioBatchGeneration(*gin.Context)    {}
+func (stubStudioSessionRouteHandler) RetryStudioBatchItems(*gin.Context)         {}
+func (stubStudioSessionRouteHandler) RetryStudioBatchSDSChildTasks(*gin.Context) {}
+func (stubStudioSessionRouteHandler) ApproveStudioBatchDesigns(*gin.Context)     {}
+func (stubStudioSessionRouteHandler) CreateStudioBatchTasks(*gin.Context)        {}
+func (stubStudioSessionRouteHandler) UpsertStudioBatch(*gin.Context)             {}
+func (stubStudioSessionRouteHandler) DeleteStudioBatch(*gin.Context)             {}
 
 type stubRouteHandler struct{}
 

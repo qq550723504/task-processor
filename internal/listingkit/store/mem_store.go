@@ -12,17 +12,19 @@ import (
 )
 
 type MemTaskRepository struct {
-	mu               sync.RWMutex
-	tasks            map[string]*listingkit.Task
-	canonicalProduct map[string]*listingkit.CanonicalProductCacheEntry
-	sdsBaselineCache map[string]*listingkit.SDSBaselineCacheEntry
+	mu                sync.RWMutex
+	tasks             map[string]*listingkit.Task
+	canonicalProduct  map[string]*listingkit.CanonicalProductCacheEntry
+	sdsBaselineCache  map[string]*listingkit.SDSBaselineCacheEntry
+	sdsChildRetryJobs map[string]listingkit.SDSChildRetryJob
 }
 
 func NewMemTaskRepository() listingkit.Repository {
 	return &MemTaskRepository{
-		tasks:            make(map[string]*listingkit.Task),
-		canonicalProduct: make(map[string]*listingkit.CanonicalProductCacheEntry),
-		sdsBaselineCache: make(map[string]*listingkit.SDSBaselineCacheEntry),
+		tasks:             make(map[string]*listingkit.Task),
+		canonicalProduct:  make(map[string]*listingkit.CanonicalProductCacheEntry),
+		sdsBaselineCache:  make(map[string]*listingkit.SDSBaselineCacheEntry),
+		sdsChildRetryJobs: make(map[string]listingkit.SDSChildRetryJob),
 	}
 }
 

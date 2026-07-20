@@ -44,6 +44,9 @@ type stubStudioBatchActionService struct {
 	retryReq                  *listingkit.RetryStudioBatchItemsRequest
 	retryResult               *listingkit.StudioBatchDetail
 	retryErr                  error
+	scheduleSDSBatchID        string
+	scheduleSDSResult         *listingkit.StudioBatchSDSChildRetryResult
+	scheduleSDSErr            error
 	approveCtx                context.Context
 	approveBatchID            string
 	approveReq                *listingkit.ApproveStudioBatchDesignsRequest
@@ -134,6 +137,11 @@ func (s *stubStudioBatchActionService) RetryStudioBatchItems(ctx context.Context
 	s.retryBatchID = batchID
 	s.retryReq = req
 	return s.retryResult, s.retryErr
+}
+
+func (s *stubStudioBatchActionService) ScheduleStudioBatchSDSChildRetries(_ context.Context, batchID string) (*listingkit.StudioBatchSDSChildRetryResult, error) {
+	s.scheduleSDSBatchID = batchID
+	return s.scheduleSDSResult, s.scheduleSDSErr
 }
 
 func (s *stubStudioBatchActionService) ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *listingkit.ApproveStudioBatchDesignsRequest) (*listingkit.StudioBatchDetail, error) {
@@ -363,6 +371,28 @@ func TestStudioBatchRetryItemsHandlerBindsIDs(t *testing.T) {
 	case <-svc.resumeCalled:
 	case <-time.After(time.Second):
 		t.Fatal("background resume was not launched for retry")
+	}
+}
+
+func TestStudioBatchSDSChildRetryHandlerSchedulesExistingTasks(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &stubStudioBatchActionService{scheduleSDSResult: &listingkit.StudioBatchSDSChildRetryResult{BatchID: "batch-1", Scheduled: 26}}
+	h, err := NewStudioSessionHandler(svc)
+	if err != nil {
+		t.Fatalf("NewStudioSessionHandler() error = %v", err)
+	}
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/studio/batches/:batch_id/sds-child-tasks/retry", h.RetryStudioBatchSDSChildTasks)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/batches/batch-1/sds-child-tasks/retry", nil)
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d: %s", response.Code, http.StatusAccepted, response.Body.String())
+	}
+	if svc.scheduleSDSBatchID != "batch-1" {
+		t.Fatalf("scheduled batch id = %q, want batch-1", svc.scheduleSDSBatchID)
 	}
 }
 

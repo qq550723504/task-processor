@@ -6,6 +6,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	sdsclient "task-processor/internal/sds/client"
 	sdsusecase "task-processor/internal/sds/usecase"
 	sdsworkflow "task-processor/internal/sds/workflow"
 )
@@ -21,6 +22,11 @@ func (s *service) runSingleSDSDesignFromRemote(ctx context.Context, task *Task, 
 
 	syncResult, err := s.performSingleSDSRemoteSync(ctx, task, imageURL, options)
 	if err != nil {
+		if reasonCode, retryable := sdsclient.RetryableUploadFailure(err); retryable {
+			if scheduleErr := s.ScheduleSDSChildRetry(ctx, task, reasonCode, err); scheduleErr != nil {
+				log.WithError(scheduleErr).Warn("schedule transient SDS upload retry")
+			}
+		}
 		failSDSSyncStage(result, task.Request, recorder, stage, options.VariantID, "sds template render failed: ", "sds_template_render_failed", "SDS template render failed", err)
 		log.WithError(err).Error("remote SDS design sync failed")
 		return
@@ -80,6 +86,11 @@ func (s *service) collectSDSVariantRemoteSummaries(
 		stage.SetTaskID(strings.TrimSpace(variant.VariantSKU))
 		syncResult, err := s.performVariantSDSRemoteSync(ctx, task, imageURL, options, variant, syncService)
 		if err != nil {
+			if reasonCode, retryable := sdsclient.RetryableUploadFailure(err); retryable {
+				if scheduleErr := s.ScheduleSDSChildRetry(ctx, task, reasonCode, err); scheduleErr != nil {
+					logrus.WithError(scheduleErr).Warn("schedule transient SDS upload retry")
+				}
+			}
 			finishSDSStageWithError(stage, recorder, "sds_variant_render_failed", "SDS variant render failed", err)
 			failedSummary := failedSDSVariantSyncSummary(variant, err.Error())
 			if strings.TrimSpace(imageURL) != "" {

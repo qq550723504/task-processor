@@ -11,7 +11,11 @@ const SDSChildRetryKindDesignSync SDSChildRetryKind = "sds_design_sync"
 
 type SDSChildRetryJobStatus string
 
-const SDSChildRetryJobStatusPending SDSChildRetryJobStatus = "pending"
+const (
+	SDSChildRetryJobStatusPending   SDSChildRetryJobStatus = "pending"
+	SDSChildRetryJobStatusCompleted SDSChildRetryJobStatus = "completed"
+	SDSChildRetryJobStatusExhausted SDSChildRetryJobStatus = "exhausted"
+)
 
 // SDSChildRetryJob is durable retry state for a single ListingKit child task.
 // It intentionally does not use the parent task recovery flow, which reruns the
@@ -27,6 +31,8 @@ type SDSChildRetryJob struct {
 	ReasonCode  string                 `json:"reason_code" gorm:"type:varchar(96)"`
 	LastError   string                 `json:"last_error" gorm:"type:text"`
 	Status      SDSChildRetryJobStatus `json:"status" gorm:"type:varchar(32);index"`
+	LeaseOwner  string                 `json:"lease_owner" gorm:"type:varchar(64);index"`
+	LeaseUntil  *time.Time             `json:"lease_until" gorm:"index"`
 	CreatedAt   time.Time              `json:"created_at"`
 	UpdatedAt   time.Time              `json:"updated_at"`
 }
@@ -35,4 +41,22 @@ func (SDSChildRetryJob) TableName() string { return "listingkit_sds_child_retry_
 
 type SDSChildRetryJobRepository interface {
 	ScheduleSDSChildRetry(ctx context.Context, job *SDSChildRetryJob) (*SDSChildRetryJob, error)
+	ListDueSDSChildRetries(ctx context.Context, dueBefore time.Time, limit int) ([]SDSChildRetryJob, error)
+	ClaimDueSDSChildRetries(ctx context.Context, dueBefore time.Time, limit int, owner string, leaseUntil time.Time) ([]SDSChildRetryJob, error)
+	SaveSDSChildRetry(ctx context.Context, job *SDSChildRetryJob) error
+}
+
+// StudioBatchSDSChildRetryResult records the tasks accepted by an explicit
+// Studio batch retry request. Each accepted task is retried by the same durable
+// worker used for automatically classified OSS failures.
+type StudioBatchSDSChildRetryResult struct {
+	BatchID   string                         `json:"batch_id"`
+	Scheduled int                            `json:"scheduled"`
+	Skipped   int                            `json:"skipped"`
+	Failures  []StudioBatchSDSChildRetryFail `json:"failures,omitempty"`
+}
+
+type StudioBatchSDSChildRetryFail struct {
+	TaskID  string `json:"task_id,omitempty"`
+	Message string `json:"message"`
 }

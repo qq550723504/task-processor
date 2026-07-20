@@ -34,6 +34,10 @@ type TaskRecoveryService interface {
 	BulkRecoverTasks(ctx context.Context, query *RecoverBlockedTasksQuery) (int64, error)
 }
 
+type SDSChildRetrySweepService interface {
+	RunDueSDSChildRetries(ctx context.Context, now time.Time, limit int) (int64, error)
+}
+
 type TaskRequeueService interface {
 	RequeuePendingTasks(ctx context.Context, req *RequeuePendingTasksRequest) (*RequeuePendingTasksResult, error)
 }

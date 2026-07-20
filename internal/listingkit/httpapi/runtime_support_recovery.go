@@ -15,14 +15,16 @@ func startTaskRecoverySweep(input BuildModuleInput, bundle *ServiceBundle, close
 	if !ok || recoveryService == nil || closers == nil {
 		return
 	}
+	sdsChildRetryService, _ := any(bundle.runtime.service).(listingkit.SDSChildRetrySweepService)
 
 	interval := BuildListingKitTaskRecoverySweepInterval()
 	limit := BuildListingKitTaskRecoverySweepLimit()
 	ticker := time.NewTicker(interval)
 	closers.Add(startTaskRecoverySweepLoop(taskRecoverySweepLoopConfig{
-		recoveryService: recoveryService,
-		logger:          input.ServiceInput.Logger,
-		limit:           limit,
+		recoveryService:      recoveryService,
+		sdsChildRetryService: sdsChildRetryService,
+		logger:               input.ServiceInput.Logger,
+		limit:                limit,
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
@@ -34,12 +36,13 @@ func startTaskRecoverySweep(input BuildModuleInput, bundle *ServiceBundle, close
 }
 
 type taskRecoverySweepLoopConfig struct {
-	recoveryService listingkit.TaskRecoveryService
-	logger          *logrus.Logger
-	limit           int
-	now             func() time.Time
-	ticks           <-chan time.Time
-	stopTicker      func()
+	recoveryService      listingkit.TaskRecoveryService
+	sdsChildRetryService listingkit.SDSChildRetrySweepService
+	logger               *logrus.Logger
+	limit                int
+	now                  func() time.Time
+	ticks                <-chan time.Time
+	stopTicker           func()
 }
 
 func startTaskRecoverySweepLoop(config taskRecoverySweepLoopConfig) func() error {
@@ -80,14 +83,23 @@ func startTaskRecoverySweepLoop(config taskRecoverySweepLoopConfig) func() error
 
 func runTaskRecoverySweep(config taskRecoverySweepLoopConfig, ctx context.Context, now time.Time) {
 	recovered, err := config.recoveryService.RunRecoverySweep(ctx, now.UTC(), config.limit)
-	if config.logger == nil {
+	if config.logger != nil {
+		logger := config.logger.WithField("component", "listingkit/httpapi").WithField("recovery_limit", config.limit)
+		switch {
+		case err != nil:
+			logger.WithError(err).Warn("listingkit task recovery sweep failed")
+		case recovered > 0:
+			logger.WithField("recovered", recovered).Info("listingkit task recovery sweep requeued blocked tasks")
+		}
+	}
+	if config.sdsChildRetryService == nil {
 		return
 	}
-	logger := config.logger.WithField("component", "listingkit/httpapi").WithField("recovery_limit", config.limit)
-	switch {
-	case err != nil:
-		logger.WithError(err).Warn("listingkit task recovery sweep failed")
-	case recovered > 0:
-		logger.WithField("recovered", recovered).Info("listingkit task recovery sweep requeued blocked tasks")
+	if retried, err := config.sdsChildRetryService.RunDueSDSChildRetries(ctx, now.UTC(), config.limit); err != nil {
+		if config.logger != nil {
+			config.logger.WithError(err).Warn("listingkit SDS child retry sweep failed")
+		}
+	} else if retried > 0 && config.logger != nil {
+		config.logger.WithField("retried", retried).Info("listingkit SDS child retries processed")
 	}
 }

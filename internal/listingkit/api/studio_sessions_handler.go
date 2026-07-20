@@ -156,6 +156,15 @@ func (h *studioSessionHandler) RetryStudioBatchItems(c *gin.Context) {
 	c.JSON(http.StatusOK, detail)
 }
 
+func (h *studioSessionHandler) RetryStudioBatchSDSChildTasks(c *gin.Context) {
+	result, err := h.service.ScheduleStudioBatchSDSChildRetries(requestContext(c), c.Param("batch_id"))
+	if err != nil {
+		writeStudioBatchActionError(c, "studio_batch_sds_retry_failed", err)
+		return
+	}
+	c.JSON(http.StatusAccepted, result)
+}
+
 func (h *studioSessionHandler) ApproveStudioBatchDesigns(c *gin.Context) {
 	var req listingkit.ApproveStudioBatchDesignsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
