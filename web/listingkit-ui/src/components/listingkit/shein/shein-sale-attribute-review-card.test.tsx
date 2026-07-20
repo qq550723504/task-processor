@@ -1194,10 +1194,16 @@ describe("SheinSaleAttributeReviewCard", () => {
       primaryOption: expect.objectContaining({ attribute_id: 27 }),
       secondaryOption: expect.objectContaining({ attribute_id: 87 }),
       skcSelections: {
-        "SKC-1": expect.objectContaining({ textValue: "Cream Beige" }),
+        "SKC-1": expect.objectContaining({
+          textValue: "Cream Beige",
+          valueId: undefined,
+        }),
       },
       skuSelections: {
-        "SKU-1": expect.objectContaining({ textValue: '30"×40"' }),
+        "SKU-1": expect.objectContaining({
+          textValue: '30"×40"',
+          valueId: undefined,
+        }),
       },
     });
   });

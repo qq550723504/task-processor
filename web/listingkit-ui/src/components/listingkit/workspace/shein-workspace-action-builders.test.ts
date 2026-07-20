@@ -128,7 +128,7 @@ describe("shein workspace action builders", () => {
     });
   });
 
-  it("prefers the selected template sale attribute value over stale manual text", () => {
+  it("prefers manually typed sale attribute text over a previously selected template value", () => {
     const revision = buildApplyManualSheinSaleAttributesRevision({
       sheinPreview: {
         editor_context: {
@@ -192,9 +192,9 @@ describe("shein workspace action builders", () => {
         {
           scope: "sku",
           name: "Size",
-          value: "XXXXL",
+          value: "5XL",
           attribute_id: 87,
-          attribute_value_id: 4004,
+          attribute_value_id: undefined,
           matched_by: "manual_review",
         },
       ],

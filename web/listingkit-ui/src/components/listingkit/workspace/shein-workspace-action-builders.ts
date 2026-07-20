@@ -426,7 +426,9 @@ function buildManualSaleSKCPatch({
   if (!hasManualSaleAttributeSelection(primarySelection)) {
     return null;
   }
-  const primaryValueID = primarySelection?.valueId;
+  const primaryValueID = primarySelection?.textValue?.trim()
+    ? undefined
+    : primarySelection?.valueId;
   const primaryValue = primaryOption.attribute_value_list?.find(
     (option) => option.attribute_value_id === primaryValueID,
   );
@@ -450,7 +452,9 @@ function buildManualSaleSKCPatch({
         return null;
       }
       const secondarySelection = skuSelections[supplierSKU];
-      const secondaryValueID = secondarySelection?.valueId;
+      const secondaryValueID = secondarySelection?.textValue?.trim()
+        ? undefined
+        : secondarySelection?.valueId;
       const secondaryValue = secondaryOption?.attribute_value_list?.find(
         (option) => option.attribute_value_id === secondaryValueID,
       );
@@ -518,12 +522,12 @@ function resolveManualSaleAttributeTextValue(
   selection: { valueId?: number; textValue?: string } | undefined,
   fallbackValue: string | undefined,
 ) {
-  if (selection?.valueId && fallbackValue) {
-    return fallbackValue;
-  }
   const customText = selection?.textValue?.trim();
   if (customText) {
     return customText;
+  }
+  if (selection?.valueId && fallbackValue) {
+    return fallbackValue;
   }
   return fallbackValue;
 }

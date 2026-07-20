@@ -1024,7 +1024,7 @@ function ValueOptionSelect({
           value={value?.textValue ?? ""}
           onChange={(event) =>
             onChange({
-              valueId: value?.valueId,
+              valueId: event.target.value.trim() ? undefined : value?.valueId,
               textValue: event.target.value,
             })
           }
