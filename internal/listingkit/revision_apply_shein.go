@@ -75,6 +75,9 @@ func applySheinRevision(pkg *sheinpub.Package, req *SheinRevisionInput) {
 	}
 	if req.SKCPatches != nil {
 		sheinworkspace.ApplySKCRevisionPatches(pkg, req.SKCPatches)
+		if pkg.SaleAttributeResolution != nil {
+			pkg.SaleAttributeResolution = sheinpub.ReconcilePublishedSaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
+		}
 	}
 	if req.ReviewNotes != nil {
 		pkg.ReviewNotes = uniqueStrings(append([]string(nil), req.ReviewNotes...))

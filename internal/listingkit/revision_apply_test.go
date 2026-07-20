@@ -718,6 +718,68 @@ func TestApplyListingKitRevisionReturnsFieldValidationErrors(t *testing.T) {
 	}
 }
 
+func TestApplyListingKitRevisionReconcilesManualSKUValueAssignments(t *testing.T) {
+	t.Parallel()
+
+	oldValueID := 322953386
+	newValueID := 322953387
+	manualValue := "11.8 by 11.8 IN"
+	manualAttribute := SheinResolvedSaleAttribute{
+		Scope:            "sku",
+		Name:             "Size",
+		Value:            manualValue,
+		AttributeID:      87,
+		AttributeValueID: &newValueID,
+		MatchedBy:        "custom_attribute_value",
+	}
+	result := &ListingKitResult{Shein: &SheinPackage{
+		RequestDraft: &SheinRequestDraft{SKCList: []SheinSKCRequestDraft{{
+			SupplierCode: "SKC-1",
+			SKUList: []SheinSKUDraft{{
+				SupplierSKU: "SKU-1",
+				Attributes:  map[string]string{"Size": "1PCS"},
+			}},
+		}}},
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			SecondaryAttributeID:     87,
+			SecondarySourceDimension: "Size",
+			SKUValueAssignments: map[string]SheinResolvedSaleAttribute{
+				"1pcs": {
+					Scope:            "sku",
+					Name:             "Size",
+					Value:            "11",
+					AttributeID:      87,
+					AttributeValueID: &oldValueID,
+				},
+			},
+		},
+	}}
+
+	err := applyListingKitRevision(result, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein: &SheinRevisionInput{
+			SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+				SKUAttributes: []SheinResolvedSaleAttribute{manualAttribute},
+			},
+			SKCPatches: []SheinSKCRevisionPatch{{
+				SupplierCode: "SKC-1",
+				SKUPatches: []SheinSKURevisionPatch{{
+					SupplierSKU:    "SKU-1",
+					SaleAttributes: []SheinResolvedSaleAttribute{manualAttribute},
+				}},
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("apply revision: %v", err)
+	}
+
+	assignment := result.Shein.SaleAttributeResolution.SKUValueAssignments["1pcs"]
+	if assignment.Value != manualValue || assignment.AttributeValueID == nil || *assignment.AttributeValueID != newValueID {
+		t.Fatalf("sku value assignment = %+v, want manual attribute %+v", assignment, manualAttribute)
+	}
+}
+
 func ptrInt(v int) *int {
 	return &v
 }
