@@ -19,6 +19,7 @@ func TestSanitizeSheinAttributeText(t *testing.T) {
 		{"inch", `12"`, "12 inch"},
 		{"feet", `5'`, "5 ft"},
 		{"dimension", "10 x 20", "10 by 20"},
+		{"asterisk dimension", "11.8*11.8 IN", "11.8 by 11.8 IN"},
 		{"and", "Black & White", "Black and White"},
 		{"percent", "50%", "50 percent"},
 		{"chinese punctuation", "颜色（红色）", "颜色 红色"},
