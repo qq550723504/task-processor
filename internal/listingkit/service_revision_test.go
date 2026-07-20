@@ -1893,6 +1893,25 @@ func TestResolveManualSheinSaleAttributeValueIDsRejectsValueIDMissingFromLiveTem
 	}
 }
 
+func TestIsManualSheinSaleAttributeSaveUsesStructuredManualReviewSource(t *testing.T) {
+	t.Parallel()
+
+	req := &ApplyRevisionRequest{
+		Platform: "shein",
+		Reason:   "other client wording",
+		Shein: &SheinRevisionInput{
+			SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+				Source: stringPtr("manual_review"),
+			},
+			SKCPatches: []SheinSKCRevisionPatch{{SupplierCode: "SKC-1"}},
+		},
+	}
+
+	if !isManualSheinSaleAttributeSave(req) {
+		t.Fatal("expected structured manual_review sale attribute patch to require online save")
+	}
+}
+
 func TestResolveManualSheinSaleAttributeValueIDsResolvesMissingSKUSaleAttributesOnlineWhenAssignmentsExist(t *testing.T) {
 	t.Parallel()
 

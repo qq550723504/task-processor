@@ -76,7 +76,10 @@ func (s *service) resolveManualSheinSaleAttributeValueIDs(
 }
 
 func isManualSheinSaleAttributeSave(req *ApplyRevisionRequest) bool {
-	return req != nil && req.Shein != nil && strings.TrimSpace(req.Reason) == "Apply manual SHEIN sale attributes"
+	if req == nil || req.Shein == nil || req.Shein.SaleAttributeResolution == nil || len(req.Shein.SKCPatches) == 0 {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(stringValue(req.Shein.SaleAttributeResolution.Source)), "manual_review")
 }
 
 func resolveManualSheinSaleAttributeValueIDs(
