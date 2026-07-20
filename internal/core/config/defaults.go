@@ -57,6 +57,7 @@ func setListingControlPlaneDefaults(v *viper.Viper, defaults *Config) {
 	v.SetDefault("listingControlPlane.platform", lcp.Platform)
 	v.SetDefault("listingControlPlane.leaderLockKey", lcp.LeaderLockKey)
 	v.SetDefault("listingControlPlane.leaderLockTTL", lcp.LeaderLockTTL)
+	v.SetDefault("listingControlPlane.cycleTimeout", lcp.CycleTimeout)
 	v.SetDefault("listingControlPlane.scanInterval", lcp.ScanInterval)
 	v.SetDefault("listingControlPlane.batchSize", lcp.BatchSize)
 	v.SetDefault("listingControlPlane.perStoreBurst", lcp.PerStoreBurst)

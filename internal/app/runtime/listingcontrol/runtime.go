@@ -195,6 +195,7 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 		}, time.Now),
 		LeaderLock:          newRedisLeaderLock(redisRT, resolveLeaderLockKey(controlCfg, platform), resolveLeaderOwner(cfg), leaderLockTTL(controlCfg)),
 		LeaderRenewInterval: leaderRenewInterval(controlCfg),
+		CycleTimeout:        controlPlaneCycleTimeout(controlCfg),
 		ScanInterval:        controlCfg.ScanInterval,
 		Logger:              logger,
 		Status:              status,
@@ -225,6 +226,7 @@ type controlPlaneService struct {
 	PausedTaskRecovery  *intervalRunner
 	LeaderLock          leaderLock
 	LeaderRenewInterval time.Duration
+	CycleTimeout        time.Duration
 	ScanInterval        time.Duration
 	Logger              *logrus.Logger
 	Status              *StatusTracker
@@ -269,13 +271,18 @@ func (s controlPlaneService) Run(ctx context.Context) error {
 }
 
 func (s controlPlaneService) runOnce(ctx context.Context) error {
+	cycleTimeout := s.CycleTimeout
+	if cycleTimeout <= 0 {
+		cycleTimeout = 30 * time.Second
+	}
+	cycleCtx, cancelCycle := context.WithTimeout(ctx, cycleTimeout)
+	defer cancelCycle()
 	if s.Status != nil {
 		s.Status.BeginCycle(time.Now())
 	}
-	cycleCtx := ctx
 	stopRenewal := func() {}
 	if s.LeaderLock != nil {
-		leader, acquired, err := s.LeaderLock.Acquire(ctx)
+		leader, acquired, err := s.LeaderLock.Acquire(cycleCtx)
 		if err != nil {
 			if s.Status != nil {
 				s.Status.RecordError(err, time.Now())
@@ -298,7 +305,7 @@ func (s controlPlaneService) runOnce(ctx context.Context) error {
 			s.Status.RecordLeader(leader)
 		}
 		var cancel context.CancelFunc
-		cycleCtx, cancel = context.WithCancel(ctx)
+		cycleCtx, cancel = context.WithCancel(cycleCtx)
 		done := make(chan struct{})
 		stopRenewal = func() {
 			close(done)
@@ -450,6 +457,13 @@ func pausedTaskRecoveryInterval(controlCfg config.ListingControlPlaneConfig) tim
 	return controlCfg.PausedTaskRecoveryInterval
 }
 
+func controlPlaneCycleTimeout(controlCfg config.ListingControlPlaneConfig) time.Duration {
+	if controlCfg.CycleTimeout > 0 {
+		return controlCfg.CycleTimeout
+	}
+	return 30 * time.Second
+}
+
 type realRabbitRuntime struct {
 	manager   *rabbitmq.ConnectionManager
 	client    *rabbitmq.Client
@@ -492,16 +506,35 @@ func (r *realRabbitRuntime) QueueDepthSource(platform string) controllib.QueueDe
 	return newRabbitQueueDepthSource(r.inspectQueue, r.client, platform)
 }
 
-func (r *realRabbitRuntime) inspectQueue(name string) (amqp.Queue, error) {
+func (r *realRabbitRuntime) inspectQueue(ctx context.Context, name string) (amqp.Queue, error) {
 	if r == nil || r.manager == nil {
 		return amqp.Queue{}, errors.New("RabbitMQ connection manager is not configured")
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	channel, err := r.manager.CreateChannel()
 	if err != nil {
 		return amqp.Queue{}, err
 	}
-	defer channel.Close()
-	return channel.QueueInspect(name)
+	type result struct {
+		queue amqp.Queue
+		err   error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		queue, inspectErr := channel.QueueInspect(name)
+		resultCh <- result{queue: queue, err: inspectErr}
+	}()
+
+	select {
+	case inspected := <-resultCh:
+		_ = channel.Close()
+		return inspected.queue, inspected.err
+	case <-ctx.Done():
+		go func() { _ = channel.Close() }()
+		return amqp.Queue{}, ctx.Err()
+	}
 }
 
 func (r *realRabbitRuntime) Close() error {

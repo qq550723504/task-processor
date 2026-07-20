@@ -240,6 +240,7 @@ func NewDefaultConfig() *Config {
 			Platform:                   "shein",
 			LeaderLockKey:              "listing:control-plane:leader:shein",
 			LeaderLockTTL:              30 * time.Second,
+			CycleTimeout:               30 * time.Second,
 			ScanInterval:               5 * time.Second,
 			BatchSize:                  500,
 			PerStoreBurst:              1,

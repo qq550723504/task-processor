@@ -399,6 +399,9 @@ func knownEnvBindings() map[string]envBinding {
 		"listingControlPlane.leaderLockTTL": {
 			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_LEADER_LOCK_TTL",
 		},
+		"listingControlPlane.cycleTimeout": {
+			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_CYCLE_TIMEOUT",
+		},
 		"listingControlPlane.scanInterval": {
 			Primary: "TASK_PROCESSOR_LISTING_CONTROL_PLANE_SCAN_INTERVAL",
 		},

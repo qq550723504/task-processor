@@ -175,7 +175,7 @@ type rabbitQueueDepthSource struct {
 	platform     string
 }
 
-type queueInspectFunc func(name string) (amqp.Queue, error)
+type queueInspectFunc func(context.Context, string) (amqp.Queue, error)
 
 type storeQueueDeclarer interface {
 	DeclareQueue(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) error
@@ -194,7 +194,7 @@ func (s rabbitQueueDepthSource) QueueDepth(ctx context.Context, tenantID, storeI
 	if s.inspectQueue == nil {
 		return 0, errors.New("RabbitMQ queue inspector is not configured")
 	}
-	queue, err := s.inspectQueue(rabbitmq.GetStoreQueueName(s.platform, storeID))
+	queue, err := s.inspectQueue(ctx, rabbitmq.GetStoreQueueName(s.platform, storeID))
 	if err != nil {
 		if isAMQPNotFound(err) {
 			if err := s.declareStoreQueue(storeID); err != nil {

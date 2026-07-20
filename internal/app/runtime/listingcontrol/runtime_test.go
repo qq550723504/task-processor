@@ -223,7 +223,7 @@ func TestDirectStoreSourceMapsListingStoreRowsWithoutOwnerScope(t *testing.T) {
 func TestRabbitQueueDepthSourceDeclaresMissingStoreQueueAndReturnsZero(t *testing.T) {
 	declarer := &fakeStoreQueueDeclarer{}
 	source := newRabbitQueueDepthSource(
-		func(name string) (amqp.Queue, error) {
+		func(_ context.Context, name string) (amqp.Queue, error) {
 			if name != "shein.tasks.store.100" {
 				t.Fatalf("unexpected inspected queue name: %s", name)
 			}
@@ -252,7 +252,7 @@ func TestRabbitQueueDepthSourceReturnsDeclarationErrorForMissingStoreQueue(t *te
 	declarationErr := errors.New("declare failed")
 	declarer := &fakeStoreQueueDeclarer{declareErr: declarationErr}
 	source := newRabbitQueueDepthSource(
-		func(name string) (amqp.Queue, error) {
+		func(_ context.Context, name string) (amqp.Queue, error) {
 			return amqp.Queue{}, &amqp.Error{Code: 404, Reason: "NOT_FOUND - no queue"}
 		},
 		declarer,
@@ -457,6 +457,53 @@ func TestControlPlaneServiceRenewsLeaderLockDuringLongCycle(t *testing.T) {
 	}
 	if lock.acquireCalls < 2 {
 		t.Fatalf("leader lock acquire calls = %d, want renewal during cycle", lock.acquireCalls)
+	}
+}
+
+func TestControlPlaneServiceCancelsStalledDispatchAtCycleTimeout(t *testing.T) {
+	status := NewStatusTracker(time.Now())
+	service := controlPlaneService{
+		Recovery: func(context.Context) (controllib.RecoverySummary, error) {
+			return controllib.RecoverySummary{}, nil
+		},
+		Dispatch: func(ctx context.Context) (controllib.DispatchSummary, error) {
+			<-ctx.Done()
+			return controllib.DispatchSummary{}, ctx.Err()
+		},
+		CycleTimeout: 20 * time.Millisecond,
+		Status:       status,
+	}
+
+	startedAt := time.Now()
+	err := service.runOnce(context.Background())
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("runOnce error = %v, want deadline exceeded", err)
+	}
+	if elapsed := time.Since(startedAt); elapsed > time.Second {
+		t.Fatalf("runOnce took %s after its cycle timeout", elapsed)
+	}
+
+	snapshot := status.Snapshot()
+	if snapshot.ConsecutiveErrors != 1 || snapshot.Ready {
+		t.Fatalf("status after timed out cycle = %+v", snapshot)
+	}
+}
+
+func TestRabbitQueueDepthSourceCancelsBlockedQueueInspect(t *testing.T) {
+	source := newRabbitQueueDepthSource(
+		func(ctx context.Context, name string) (amqp.Queue, error) {
+			<-ctx.Done()
+			return amqp.Queue{}, ctx.Err()
+		},
+		nil,
+		"shein",
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err := source.QueueDepth(ctx, 246, 815)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("QueueDepth error = %v, want deadline exceeded", err)
 	}
 }
 

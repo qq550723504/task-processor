@@ -93,6 +93,7 @@ func TestListingControlPlaneConfigDefaults(t *testing.T) {
 	assert.Equal(t, "shein", v.GetString("listingControlPlane.platform"))
 	assert.Equal(t, "listing:control-plane:leader:shein", v.GetString("listingControlPlane.leaderLockKey"))
 	assert.Equal(t, 30*time.Second, v.GetDuration("listingControlPlane.leaderLockTTL"))
+	assert.Equal(t, 30*time.Second, v.GetDuration("listingControlPlane.cycleTimeout"))
 	assert.Equal(t, 5*time.Second, v.GetDuration("listingControlPlane.scanInterval"))
 	assert.Equal(t, 500, v.GetInt("listingControlPlane.batchSize"))
 	assert.Equal(t, 1, v.GetInt("listingControlPlane.perStoreBurst"))
@@ -256,6 +257,7 @@ listingControlPlane:
   platform: temu
   leaderLockKey: "listing:control-plane:leader:temu"
   leaderLockTTL: 45s
+  cycleTimeout: 40s
   scanInterval: 10s
   batchSize: 250
   perStoreBurst: 2
@@ -271,6 +273,7 @@ listingControlPlane:
 	assert.Equal(t, "temu", cfg.ListingControlPlane.Platform)
 	assert.Equal(t, "listing:control-plane:leader:temu", cfg.ListingControlPlane.LeaderLockKey)
 	assert.Equal(t, 45*time.Second, cfg.ListingControlPlane.LeaderLockTTL)
+	assert.Equal(t, 40*time.Second, cfg.ListingControlPlane.CycleTimeout)
 	assert.Equal(t, 10*time.Second, cfg.ListingControlPlane.ScanInterval)
 	assert.Equal(t, 250, cfg.ListingControlPlane.BatchSize)
 	assert.Equal(t, 2, cfg.ListingControlPlane.PerStoreBurst)

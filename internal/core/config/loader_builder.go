@@ -190,6 +190,7 @@ func BuildConfig(v *viper.Viper) *Config {
 			Platform:                   v.GetString("listingControlPlane.platform"),
 			LeaderLockKey:              v.GetString("listingControlPlane.leaderLockKey"),
 			LeaderLockTTL:              v.GetDuration("listingControlPlane.leaderLockTTL"),
+			CycleTimeout:               v.GetDuration("listingControlPlane.cycleTimeout"),
 			ScanInterval:               v.GetDuration("listingControlPlane.scanInterval"),
 			BatchSize:                  v.GetInt("listingControlPlane.batchSize"),
 			PerStoreBurst:              v.GetInt("listingControlPlane.perStoreBurst"),

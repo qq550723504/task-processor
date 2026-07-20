@@ -7,6 +7,7 @@ type ListingControlPlaneConfig struct {
 	Platform                   string        `yaml:"platform"`
 	LeaderLockKey              string        `yaml:"leaderLockKey"`
 	LeaderLockTTL              time.Duration `yaml:"leaderLockTTL"`
+	CycleTimeout               time.Duration `yaml:"cycleTimeout"`
 	ScanInterval               time.Duration `yaml:"scanInterval"`
 	BatchSize                  int           `yaml:"batchSize"`
 	PerStoreBurst              int           `yaml:"perStoreBurst"`
