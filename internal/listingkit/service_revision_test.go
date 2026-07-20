@@ -1846,7 +1846,54 @@ func TestResolveManualSheinSaleAttributeValueIDsCreatesCustomValueIDs(t *testing
 	}
 }
 
-func TestResolveManualSheinSaleAttributeValueIDsBackfillsMissingSKUSaleAttributesFromAssignments(t *testing.T) {
+func TestResolveManualSheinSaleAttributeValueIDsRejectsValueIDMissingFromLiveTemplate(t *testing.T) {
+	t.Parallel()
+
+	staleValueID := 999
+	pkg := &SheinPackage{
+		CategoryID: 12143,
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			PrimarySourceDimension: "Color",
+		},
+	}
+	req := &SheinRevisionInput{
+		SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+			PrimaryAttributeID: intPtr(27),
+		},
+		SKCPatches: []SheinSKCRevisionPatch{{
+			SupplierCode: "SKC-1",
+			SaleAttribute: &SheinResolvedSaleAttribute{
+				Scope:            "skc",
+				Name:             "Color",
+				Value:            "Multicolor",
+				AttributeID:      27,
+				AttributeValueID: &staleValueID,
+			},
+		}},
+	}
+	templates := &sheinattribute.AttributeTemplateInfo{Data: []sheinattribute.AttributeTemplate{{
+		AttributeInfos: []sheinattribute.AttributeInfo{{
+			AttributeID: 27,
+			AttributeValueInfoList: []sheinattribute.AttributeValue{{
+				AttributeValueID: 447,
+				AttributeValue:   "Multicolor",
+			}},
+		}},
+	}}}
+
+	_, _, err := resolveManualSheinSaleAttributeValueIDs(
+		pkg,
+		req,
+		stubManualSaleAttributeAPI{templates: templates},
+		12143,
+		flattenSheinAttributeTemplatesByID(templates),
+	)
+	if err == nil {
+		t.Fatal("expected stale manual value_id to be rejected")
+	}
+}
+
+func TestResolveManualSheinSaleAttributeValueIDsResolvesMissingSKUSaleAttributesOnlineWhenAssignmentsExist(t *testing.T) {
 	t.Parallel()
 
 	sizeMValueID := 9101
@@ -1923,12 +1970,25 @@ func TestResolveManualSheinSaleAttributeValueIDsBackfillsMissingSKUSaleAttribute
 		}},
 	}
 
+	templates := &sheinattribute.AttributeTemplateInfo{
+		Data: []sheinattribute.AttributeTemplate{{
+			AttributeInfos: []sheinattribute.AttributeInfo{{
+				AttributeID:       87,
+				AttributeName:     "尺码",
+				AttributeNameEn:   "Size",
+				AttributeInputNum: 1,
+				AttributeValueInfoList: []sheinattribute.AttributeValue{{
+					AttributeValueID: sizeMValueID,
+				}},
+			}},
+		}},
+	}
 	_, _, err := resolveManualSheinSaleAttributeValueIDs(
 		pkg,
 		req,
-		stubManualSaleAttributeAPI{},
+		stubManualSaleAttributeAPI{templates: templates},
 		12143,
-		nil,
+		flattenSheinAttributeTemplatesByID(templates),
 	)
 	if err != nil {
 		t.Fatalf("resolve manual shein sale attributes: %v", err)
@@ -1936,10 +1996,10 @@ func TestResolveManualSheinSaleAttributeValueIDsBackfillsMissingSKUSaleAttribute
 
 	missingSKU := req.SKCPatches[0].SKUPatches[1]
 	if len(missingSKU.SaleAttributes) != 1 {
-		t.Fatalf("missing sku sale attributes = %+v, want one backfilled attribute", missingSKU.SaleAttributes)
+		t.Fatalf("missing sku sale attributes = %+v, want one remotely resolved attribute", missingSKU.SaleAttributes)
 	}
-	if got := missingSKU.SaleAttributes[0].AttributeValueID; got == nil || *got != sizeLValueID {
-		t.Fatalf("missing sku sale attributes = %+v, want value id %d", missingSKU.SaleAttributes, sizeLValueID)
+	if got := missingSKU.SaleAttributes[0].AttributeValueID; got == nil || *got != 9001 {
+		t.Fatalf("missing sku sale attributes = %+v, want online value id 9001", missingSKU.SaleAttributes)
 	}
 	if len(req.SaleAttributeResolution.SKUAttributes) != 2 {
 		t.Fatalf("sale attribute resolution sku attrs = %+v, want two synced sku attributes", req.SaleAttributeResolution.SKUAttributes)
@@ -2016,7 +2076,15 @@ func TestResolveManualSheinSaleAttributeValueIDsResolvesMissingSKUSaleAttributes
 	templates := &sheinattribute.AttributeTemplateInfo{
 		Data: []sheinattribute.AttributeTemplate{{
 			AttributeInfos: []sheinattribute.AttributeInfo{
-				{AttributeID: 87, AttributeName: "尺码", AttributeNameEn: "Size", AttributeInputNum: 1},
+				{
+					AttributeID:       87,
+					AttributeName:     "尺码",
+					AttributeNameEn:   "Size",
+					AttributeInputNum: 1,
+					AttributeValueInfoList: []sheinattribute.AttributeValue{{
+						AttributeValueID: sizeMValueID,
+					}},
+				},
 			},
 		}},
 	}

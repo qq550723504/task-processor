@@ -17,11 +17,7 @@ func (s *service) resolveManualSheinSaleAttributeValueIDs(
 	task *Task,
 	req *ApplyRevisionRequest,
 ) error {
-	if task == nil || task.Result == nil || task.Result.Shein == nil || req == nil || req.Shein == nil {
-		return nil
-	}
-	backfillManualSheinSaleAttributeAssignments(task.Result.Shein, req.Shein)
-	if !manualSheinSaleAttributesNeedRemoteResolution(req.Shein) {
+	if !isManualSheinSaleAttributeSave(req) || task == nil || task.Result == nil || task.Result.Shein == nil {
 		return nil
 	}
 
@@ -40,6 +36,12 @@ func (s *service) resolveManualSheinSaleAttributeValueIDs(
 	attrByID := flattenSheinAttributeTemplatesByID(templates)
 	if len(attrByID) == 0 {
 		return fmt.Errorf("shein attribute templates are unavailable for manual sale attribute resolution")
+	}
+	if err := validateManualSheinSaleAttributeValueIDs(req.Shein, attrByID); err != nil {
+		return err
+	}
+	if !manualSheinSaleAttributesNeedRemoteResolution(req.Shein) {
+		return nil
 	}
 
 	relations, notes, err := resolveManualSheinSaleAttributeValueIDs(
@@ -73,6 +75,10 @@ func (s *service) resolveManualSheinSaleAttributeValueIDs(
 	return nil
 }
 
+func isManualSheinSaleAttributeSave(req *ApplyRevisionRequest) bool {
+	return req != nil && req.Shein != nil && strings.TrimSpace(req.Reason) == "Apply manual SHEIN sale attributes"
+}
+
 func resolveManualSheinSaleAttributeValueIDs(
 	pkg *SheinPackage,
 	req *SheinRevisionInput,
@@ -83,7 +89,9 @@ func resolveManualSheinSaleAttributeValueIDs(
 	if pkg == nil || req == nil || api == nil {
 		return nil, nil, nil
 	}
-	backfillManualSheinSaleAttributeAssignments(pkg, req)
+	if err := validateManualSheinSaleAttributeValueIDs(req, attrByID); err != nil {
+		return nil, nil, err
+	}
 	primaryDimension := ""
 	secondaryDimension := ""
 	if pkg.SaleAttributeResolution != nil {
@@ -183,6 +191,41 @@ func resolveManualSheinSaleAttributeValueIDs(
 
 	syncSheinManualSaleAttributeResolution(req)
 	return dedupeCustomAttributeRelations(relations), uniqueStrings(notes), nil
+}
+
+func validateManualSheinSaleAttributeValueIDs(req *SheinRevisionInput, attrByID map[int]sheinattribute.AttributeInfo) error {
+	if req == nil {
+		return nil
+	}
+	for _, patch := range req.SKCPatches {
+		if err := validateManualSheinSaleAttributeValueID(patch.SaleAttribute, attrByID); err != nil {
+			return err
+		}
+		for _, skuPatch := range patch.SKUPatches {
+			for index := range skuPatch.SaleAttributes {
+				if err := validateManualSheinSaleAttributeValueID(&skuPatch.SaleAttributes[index], attrByID); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func validateManualSheinSaleAttributeValueID(attr *SheinResolvedSaleAttribute, attrByID map[int]sheinattribute.AttributeInfo) error {
+	if attr == nil || attr.AttributeID <= 0 || attr.AttributeValueID == nil {
+		return nil
+	}
+	template, ok := attrByID[attr.AttributeID]
+	if !ok {
+		return fmt.Errorf("shein template attribute %d is unavailable", attr.AttributeID)
+	}
+	for _, value := range template.AttributeValueInfoList {
+		if value.AttributeValueID == *attr.AttributeValueID {
+			return nil
+		}
+	}
+	return fmt.Errorf("shein template value %d is unavailable for attribute %d", *attr.AttributeValueID, attr.AttributeID)
 }
 
 func resolveManualSheinSKUAttributeValueWithVariants(
