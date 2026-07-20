@@ -2,8 +2,15 @@ package client
 
 import "fmt"
 
+type ErrorKind string
+
+const (
+	ErrorKindMultipartUpload ErrorKind = "multipart_upload"
+)
+
 // Error 表示 SDS 客户端统一错误。
 type Error struct {
+	Kind       ErrorKind
 	Op         string
 	StatusCode int
 	Message    string

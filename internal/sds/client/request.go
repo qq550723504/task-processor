@@ -72,6 +72,7 @@ func (c *Client) UploadFile(
 	resp, err := reqBuilder.Post(url)
 	if err != nil {
 		return nil, &Error{
+			Kind:    ErrorKindMultipartUpload,
 			Op:      fmt.Sprintf("POST %s", path),
 			Message: "multipart upload failed",
 			Err:     err,
@@ -80,6 +81,7 @@ func (c *Client) UploadFile(
 
 	if !resp.IsSuccessState() {
 		return resp, &Error{
+			Kind:       ErrorKindMultipartUpload,
 			Op:         fmt.Sprintf("POST %s", path),
 			StatusCode: resp.StatusCode,
 			Message:    resp.String(),
