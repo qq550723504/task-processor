@@ -64,6 +64,7 @@ func applySheinRevision(pkg *sheinpub.Package, req *SheinRevisionInput) {
 	}
 	if req.SaleAttributeResolution != nil {
 		sheinworkspace.ApplySaleAttributeResolutionPatch(pkg, req.SaleAttributeResolution)
+		resetStaleSheinSaleAttributeValueAssignments(pkg, req.SaleAttributeResolution)
 	}
 	if req.RequestDraft != nil {
 		draftCopy := *req.RequestDraft
@@ -72,6 +73,7 @@ func applySheinRevision(pkg *sheinpub.Package, req *SheinRevisionInput) {
 	ensureSheinRequestDraft(pkg)
 	if req.SaleAttributeResolution != nil {
 		sheinpub.ApplySaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
+		pkg.SaleAttributeResolution = sheinpub.ReconcilePublishedSaleAttributeResolution(pkg, pkg.SaleAttributeResolution)
 	}
 	if req.SKCPatches != nil {
 		sheinworkspace.ApplySKCRevisionPatches(pkg, req.SKCPatches)
@@ -88,6 +90,18 @@ func applySheinRevision(pkg *sheinpub.Package, req *SheinRevisionInput) {
 	preview := sheinpub.BuildPreviewProduct(pkg)
 	sheinpub.SetPreviewPayload(pkg, preview)
 	refreshSheinReviewState(pkg)
+}
+
+func resetStaleSheinSaleAttributeValueAssignments(pkg *sheinpub.Package, patch *SheinSaleAttributeResolutionPatch) {
+	if pkg == nil || pkg.SaleAttributeResolution == nil || patch == nil {
+		return
+	}
+	if len(patch.SKCAttributes) > 0 && patch.SKCValueAssignments == nil {
+		pkg.SaleAttributeResolution.SKCValueAssignments = nil
+	}
+	if len(patch.SKUAttributes) > 0 && patch.SKUValueAssignments == nil {
+		pkg.SaleAttributeResolution.SKUValueAssignments = nil
+	}
 }
 
 func normalizeSheinSaleAttributeState(pkg *sheinpub.Package) {

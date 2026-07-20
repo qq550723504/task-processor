@@ -761,13 +761,6 @@ func TestApplyListingKitRevisionReconcilesManualSKUValueAssignments(t *testing.T
 			SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
 				SKUAttributes: []SheinResolvedSaleAttribute{manualAttribute},
 			},
-			SKCPatches: []SheinSKCRevisionPatch{{
-				SupplierCode: "SKC-1",
-				SKUPatches: []SheinSKURevisionPatch{{
-					SupplierSKU:    "SKU-1",
-					SaleAttributes: []SheinResolvedSaleAttribute{manualAttribute},
-				}},
-			}},
 		},
 	})
 	if err != nil {
@@ -777,6 +770,10 @@ func TestApplyListingKitRevisionReconcilesManualSKUValueAssignments(t *testing.T
 	assignment := result.Shein.SaleAttributeResolution.SKUValueAssignments["1pcs"]
 	if assignment.Value != manualValue || assignment.AttributeValueID == nil || *assignment.AttributeValueID != newValueID {
 		t.Fatalf("sku value assignment = %+v, want manual attribute %+v", assignment, manualAttribute)
+	}
+	got := result.Shein.RequestDraft.SKCList[0].SKUList[0].SaleAttributes
+	if len(got) != 1 || got[0].Value != manualValue || got[0].AttributeValueID == nil || *got[0].AttributeValueID != newValueID {
+		t.Fatalf("draft sku sale attributes = %+v, want manual attribute %+v", got, manualAttribute)
 	}
 }
 
