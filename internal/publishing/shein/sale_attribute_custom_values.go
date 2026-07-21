@@ -26,6 +26,7 @@ func resolveCustomSaleAttributeValues(
 	spuName string,
 	storeID string,
 	store ResolutionCacheStore,
+	preserveSourceValues bool,
 ) (map[string]ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string) {
 	if api == nil || categoryID <= 0 || len(sourceValues) == 0 || attr.AttributeID <= 0 {
 		return nil, nil, nil
@@ -44,8 +45,11 @@ func resolveCustomSaleAttributeValues(
 	}
 
 	for _, sourceValue := range uniqueNormalizedValues(sourceValues) {
-		sanitizedValue := sanitizeSheinAttributeText(sourceValue)
-		if !isValidSheinAttributeText(sanitizedValue) {
+		attributeValue := sanitizeSheinAttributeText(sourceValue)
+		if preserveSourceValues {
+			attributeValue = strings.TrimSpace(sourceValue)
+		}
+		if attributeValue == "" || len(attributeValue) > 100 || (!preserveSourceValues && !isValidSheinAttributeText(attributeValue)) {
 			notes = append(notes, fmt.Sprintf(
 				"SHEIN 自定义销售属性值不可用: 源维度 %q 的值 %q 清洗后不符合 SHEIN 约束",
 				sourceDimension,
@@ -54,7 +58,7 @@ func resolveCustomSaleAttributeValues(
 			continue
 		}
 
-		validateResp, err := api.ValidateCustomAttributeValue(attr.AttributeID, sanitizedValue, categoryID, strings.TrimSpace(spuName))
+		validateResp, err := api.ValidateCustomAttributeValue(attr.AttributeID, attributeValue, categoryID, strings.TrimSpace(spuName))
 		if err != nil {
 			if isCustomSaleAttributePermissionDeniedError(err) {
 				rememberCustomSaleAttributePermissionDenied(store, storeID, categoryID, attr.AttributeID)
@@ -83,7 +87,7 @@ func resolveCustomSaleAttributeValues(
 			continue
 		}
 
-		nameMultis := buildCustomAttributeValueNameMultis(validateResp.Data.AttributeValueNameMultis, sanitizedValue)
+		nameMultis := buildCustomAttributeValueNameMultis(validateResp.Data.AttributeValueNameMultis, attributeValue)
 		if len(nameMultis) == 0 {
 			notes = append(notes, fmt.Sprintf(
 				"SHEIN 自定义销售属性值不可创建: 模板属性 %q 的值 %q 未返回可用的多语言名称",
@@ -98,7 +102,7 @@ func resolveCustomSaleAttributeValues(
 			PreAttributeValueList: []sheinattribute.PreAttributeValue{{
 				AttributeID:              attr.AttributeID,
 				PreAttributeValueID:      int64(validateResp.Data.PreAttributeValueID),
-				AttributeValue:           sanitizedValue,
+				AttributeValue:           attributeValue,
 				AttributeValueNameMultis: nameMultis,
 			}},
 		})

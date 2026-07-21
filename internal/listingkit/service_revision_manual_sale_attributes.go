@@ -123,7 +123,7 @@ func resolveManualSheinSaleAttributeValueIDs(
 			if !ok {
 				return nil, nil, fmt.Errorf("shein template attribute %d is unavailable", patch.SaleAttribute.AttributeID)
 			}
-			resolved, customRelations, resolveNotes, matched := sheinpub.ResolveSingleSaleAttributeValue(
+			resolved, customRelations, resolveNotes, matched := sheinpub.ResolveSingleManualSaleAttributeValue(
 				attr,
 				primaryDimension,
 				sourceValue,
@@ -242,7 +242,7 @@ func resolveManualSheinSKUAttributeValueWithVariants(
 	var lastRelations []sheinattribute.CustomAttributeRelation
 	var lastNotes []string
 	for _, candidate := range manualSheinComparableSourceValues(sourceValue) {
-		resolved, relations, notes, matched := sheinpub.ResolveSingleSaleAttributeValue(
+		resolved, relations, notes, matched := sheinpub.ResolveSingleManualSaleAttributeValue(
 			attr,
 			sourceDimension,
 			candidate,

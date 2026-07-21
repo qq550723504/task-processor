@@ -42,6 +42,36 @@ func buildValueAssignmentsWithDeniedStore(
 	deniedStore ResolutionCacheStore,
 	llm TextGenerator,
 ) (map[string]ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string, saleAttributeValueSummary) {
+	return buildValueAssignmentsWithPreparationPolicy(values, sourceDimension, templateName, scope, index, api, categoryID, spuName, storeID, deniedStore, llm, false)
+}
+
+func buildValueAssignmentsPreservingSourceValues(
+	values []string,
+	sourceDimension string,
+	templateName string,
+	scope string,
+	index *templateIndex,
+	api AttributeAPI,
+	categoryID int,
+	spuName string,
+) (map[string]ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string, saleAttributeValueSummary) {
+	return buildValueAssignmentsWithPreparationPolicy(values, sourceDimension, templateName, scope, index, api, categoryID, spuName, "", nil, nil, true)
+}
+
+func buildValueAssignmentsWithPreparationPolicy(
+	values []string,
+	sourceDimension string,
+	templateName string,
+	scope string,
+	index *templateIndex,
+	api AttributeAPI,
+	categoryID int,
+	spuName string,
+	storeID string,
+	deniedStore ResolutionCacheStore,
+	llm TextGenerator,
+	preserveSourceValues bool,
+) (map[string]ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string, saleAttributeValueSummary) {
 	if len(values) == 0 || strings.TrimSpace(templateName) == "" || index == nil {
 		return nil, nil, nil, saleAttributeValueSummary{}
 	}
@@ -59,6 +89,13 @@ func buildValueAssignmentsWithDeniedStore(
 	var notes []string
 	for _, value := range uniqueNormalizedValues(values) {
 		prepared := prepareSaleAttributeSourceValue(attr, sourceDimension, value, spuName, llm)
+		if preserveSourceValues {
+			prepared = saleAttributeValuePreparation{
+				Original:           value,
+				Effective:          value,
+				SanitizationSource: "manual_direct",
+			}
+		}
 		preparedValues[normalizeText(value)] = prepared
 		mergeSaleAttributeValueSummary(&summary, prepared)
 		if prepared.NeedsManualReview {
@@ -109,7 +146,7 @@ func buildValueAssignmentsWithDeniedStore(
 			effectiveKey := normalizeText(effective)
 			originalByEffective[effectiveKey] = append(originalByEffective[effectiveKey], normalizeText(value))
 		}
-		customAssignments, customRelations, customNotes := resolveCustomSaleAttributeValues(*attr, sourceDimension, stillUnresolved, scope, api, categoryID, spuName, storeID, deniedStore)
+		customAssignments, customRelations, customNotes := resolveCustomSaleAttributeValues(*attr, sourceDimension, stillUnresolved, scope, api, categoryID, spuName, storeID, deniedStore, preserveSourceValues)
 		notes = append(notes, customNotes...)
 		relations = append(relations, customRelations...)
 		for key, resolved := range customAssignments {
@@ -149,18 +186,46 @@ func ResolveSingleSaleAttributeValue(
 	categoryID int,
 	spuName string,
 ) (ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string, bool) {
+	return resolveSingleSaleAttributeValue(attr, sourceDimension, sourceValue, scope, api, categoryID, spuName, false)
+}
+
+// ResolveSingleManualSaleAttributeValue resolves a user-entered value without
+// applying prompt or canvas-size cleanup before the online SHEIN validation.
+func ResolveSingleManualSaleAttributeValue(
+	attr sheinattribute.AttributeInfo,
+	sourceDimension string,
+	sourceValue string,
+	scope string,
+	api AttributeAPI,
+	categoryID int,
+	spuName string,
+) (ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string, bool) {
+	return resolveSingleSaleAttributeValue(attr, sourceDimension, sourceValue, scope, api, categoryID, spuName, true)
+}
+
+func resolveSingleSaleAttributeValue(
+	attr sheinattribute.AttributeInfo,
+	sourceDimension string,
+	sourceValue string,
+	scope string,
+	api AttributeAPI,
+	categoryID int,
+	spuName string,
+	preserveSourceValue bool,
+) (ResolvedSaleAttribute, []sheinattribute.CustomAttributeRelation, []string, bool) {
 	index := newTemplateIndex([]sheinattribute.AttributeInfo{attr})
-	assignments, relations, notes, _ := buildValueAssignments(
-		[]string{sourceValue},
-		sourceDimension,
-		firstNonEmpty(attr.AttributeNameEn, attr.AttributeName),
-		scope,
-		index,
-		api,
-		categoryID,
-		spuName,
-		nil,
-	)
+	var assignments map[string]ResolvedSaleAttribute
+	var relations []sheinattribute.CustomAttributeRelation
+	var notes []string
+	if preserveSourceValue {
+		assignments, relations, notes, _ = buildValueAssignmentsPreservingSourceValues(
+			[]string{sourceValue}, sourceDimension, firstNonEmpty(attr.AttributeNameEn, attr.AttributeName), scope, index, api, categoryID, spuName,
+		)
+	} else {
+		assignments, relations, notes, _ = buildValueAssignments(
+			[]string{sourceValue}, sourceDimension, firstNonEmpty(attr.AttributeNameEn, attr.AttributeName), scope, index, api, categoryID, spuName, nil,
+		)
+	}
 	if len(assignments) == 0 {
 		return ResolvedSaleAttribute{}, relations, notes, false
 	}

@@ -1736,7 +1736,9 @@ func stringPtr(v string) *string {
 }
 
 type stubManualSaleAttributeAPI struct {
-	templates *sheinattribute.AttributeTemplateInfo
+	templates       *sheinattribute.AttributeTemplateInfo
+	validatedValues *[]string
+	addedValues     *[]string
 }
 
 func (s stubManualSaleAttributeAPI) GetAttributeTemplates(categoryID int) (*sheinattribute.AttributeTemplateInfo, error) {
@@ -1744,6 +1746,9 @@ func (s stubManualSaleAttributeAPI) GetAttributeTemplates(categoryID int) (*shei
 }
 
 func (s stubManualSaleAttributeAPI) ValidateCustomAttributeValue(attributeID int, attributeValue string, categoryID int, spuName string) (*sheinattribute.ValidateAttributeResponse, error) {
+	if s.validatedValues != nil {
+		*s.validatedValues = append(*s.validatedValues, attributeValue)
+	}
 	resp := &sheinattribute.ValidateAttributeResponse{}
 	resp.Data.AttributeID = attributeID
 	resp.Data.PreAttributeValueID = 3001
@@ -1758,12 +1763,90 @@ func (s stubManualSaleAttributeAPI) ValidateCustomAttributeValue(attributeID int
 }
 
 func (s stubManualSaleAttributeAPI) AddCustomAttributeValue(req *sheinattribute.AddCustomAttributeValueRequest) (*sheinattribute.AddCustomAttributeValueResponse, error) {
+	if s.addedValues != nil && len(req.PreAttributeValueList) > 0 {
+		*s.addedValues = append(*s.addedValues, req.PreAttributeValueList[0].AttributeValue)
+	}
 	resp := &sheinattribute.AddCustomAttributeValueResponse{}
 	resp.Info.Data.CustomAttributeRelation = []sheinattribute.CustomAttributeRelation{{
 		PreAttributeValueID: req.PreAttributeValueList[0].PreAttributeValueID,
 		AttributeValueID:    9001,
 	}}
 	return resp, nil
+}
+
+func TestResolveManualSheinSaleAttributeValueIDsPreservesFreeFormSizeTextForOnlineValidation(t *testing.T) {
+	t.Parallel()
+
+	manualSize := "11.8*11.8 IN"
+	validatedValues := make([]string, 0, 1)
+	addedValues := make([]string, 0, 1)
+	pkg := &SheinPackage{
+		SpuName:    "Bench Cushion",
+		CategoryID: 12143,
+		SaleAttributeResolution: &SheinSaleAttributeResolution{
+			PrimarySourceDimension:   "Color",
+			SecondarySourceDimension: "Size",
+		},
+	}
+	req := &SheinRevisionInput{
+		SaleAttributeResolution: &SheinSaleAttributeResolutionPatch{
+			PrimaryAttributeID:   intPtr(501),
+			SecondaryAttributeID: intPtr(502),
+		},
+		SKCPatches: []SheinSKCRevisionPatch{{
+			SupplierCode: "SKC-1",
+			SaleAttribute: &SheinResolvedSaleAttribute{
+				Scope:            "skc",
+				Name:             "Color",
+				Value:            "Multicolor",
+				AttributeID:      501,
+				AttributeValueID: intPtr(7001),
+			},
+			SKUPatches: []SheinSKURevisionPatch{{
+				SupplierSKU: "SKU-1",
+				SaleAttributes: []SheinResolvedSaleAttribute{{
+					Scope:       "sku",
+					Name:        "Size",
+					Value:       manualSize,
+					AttributeID: 502,
+				}},
+			}},
+		}},
+	}
+	templates := &sheinattribute.AttributeTemplateInfo{Data: []sheinattribute.AttributeTemplate{{
+		AttributeInfos: []sheinattribute.AttributeInfo{
+			{
+				AttributeID:     501,
+				AttributeName:   "颜色",
+				AttributeNameEn: "Color",
+				AttributeValueInfoList: []sheinattribute.AttributeValue{{
+					AttributeValueID: 7001,
+					AttributeValue:   "Multicolor",
+				}},
+			},
+			{AttributeID: 502, AttributeName: "尺码", AttributeNameEn: "Size", AttributeInputNum: 1},
+		},
+	}}}
+
+	_, _, err := resolveManualSheinSaleAttributeValueIDs(
+		pkg,
+		req,
+		stubManualSaleAttributeAPI{templates: templates, validatedValues: &validatedValues, addedValues: &addedValues},
+		12143,
+		flattenSheinAttributeTemplatesByID(templates),
+	)
+	if err != nil {
+		t.Fatalf("resolve manual shein sale attributes: %v", err)
+	}
+	if len(validatedValues) != 1 || validatedValues[0] != manualSize {
+		t.Fatalf("online validated values = %#v, want %#v", validatedValues, []string{manualSize})
+	}
+	if len(addedValues) != 1 || addedValues[0] != manualSize {
+		t.Fatalf("online created values = %#v, want %#v", addedValues, []string{manualSize})
+	}
+	if got := req.SKCPatches[0].SKUPatches[0].SaleAttributes[0].Value; got != manualSize {
+		t.Fatalf("resolved SKU size = %q, want %q", got, manualSize)
+	}
 }
 
 func TestResolveManualSheinSaleAttributeValueIDsCreatesCustomValueIDs(t *testing.T) {
