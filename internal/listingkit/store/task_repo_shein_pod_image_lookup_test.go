@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 
+	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/sheinpodimage"
 	"task-processor/internal/listingkit/store"
@@ -179,6 +181,114 @@ func TestTaskRepositoryLookupSheinPODImagesUsesExactNormalizedMatch(t *testing.T
 	}
 }
 
+func TestTaskRepositoryMarkProcessingSynchronizesSheinPODImageLookupIndex(t *testing.T) {
+	t.Parallel()
+
+	db, repo := newLookupRepository(t)
+	lookupRepo := repo.(sheinpodimage.SheinPODImageLookupRepository)
+	ctx := tenantContext("tenant-a")
+	base := time.Now().Add(-time.Hour).UTC()
+	target := makeSheinPODLookupTask("task-mark-processing", 869, "PROCESSING-SCOPE", "SKU-TARGET", base)
+	target.Status = listingkit.TaskStatusPending
+	previouslyNewer := makeSheinPODLookupTask("task-previously-newer", 869, "PROCESSING-SCOPE", "SKU-OTHER", base.Add(time.Minute))
+	for _, task := range []*listingkit.Task{target, previouslyNewer} {
+		if err := repo.CreateTask(ctx, task); err != nil {
+			t.Fatalf("CreateTask(%s): %v", task.ID, err)
+		}
+	}
+
+	if err := repo.MarkProcessing(ctx, target.ID); err != nil {
+		t.Fatalf("MarkProcessing: %v", err)
+	}
+	items, total, err := lookupRepo.LookupSheinPODImages(ctx, &sheinpodimage.SheinPODImageLookupQuery{
+		StoreID: 869,
+		Query:   "PROCESSING_SCOPE",
+		Limit:   2,
+	})
+	if err != nil || total != 2 || len(items) != 2 {
+		t.Fatalf("items=%+v total=%d err=%v", items, total, err)
+	}
+	if items[0].TaskID != target.ID || items[0].Status != string(listingkit.TaskStatusProcessing) {
+		t.Fatalf("first item=%+v, want freshly processing target first", items[0])
+	}
+	var finalTask listingkit.Task
+	if err := db.First(&finalTask, "id = ?", target.ID).Error; err != nil {
+		t.Fatalf("load final task: %v", err)
+	}
+	if !items[0].UpdatedAt.Equal(finalTask.UpdatedAt) {
+		t.Fatalf("index updated_at=%s task updated_at=%s", items[0].UpdatedAt, finalTask.UpdatedAt)
+	}
+}
+
+func TestTaskRepositoryLookupSheinPODImagesHonorsTenantAndOwnerScope(t *testing.T) {
+	t.Cleanup(listingkit.SetOwnerScopeRequiredForTesting(true))
+
+	_, repo := newLookupRepository(t)
+	lookupRepo := repo.(sheinpodimage.SheinPODImageLookupRepository)
+	baseCtx := tenantContext("tenant-a")
+	fixtures := []*listingkit.Task{
+		makeSheinPODLookupTask("task-tenant-a-user-a", 869, "ACCESS-SCOPE", "SKU-A", time.Now()),
+		makeSheinPODLookupTask("task-tenant-a-user-b", 869, "ACCESS-SCOPE", "SKU-B", time.Now()),
+		makeSheinPODLookupTask("task-tenant-b-user-a", 869, "ACCESS-SCOPE", "SKU-C", time.Now()),
+	}
+	fixtures[1].UserID = "user-b"
+	fixtures[2].TenantID = "tenant-b"
+	for _, task := range fixtures {
+		createCtx := baseCtx
+		if task.TenantID == "tenant-b" {
+			createCtx = tenantContext("tenant-b")
+		}
+		if err := repo.CreateTask(createCtx, task); err != nil {
+			t.Fatalf("CreateTask(%s): %v", task.ID, err)
+		}
+	}
+
+	userACtx := openaiclient.WithIdentity(
+		tenantContext("tenant-a"),
+		openaiclient.Identity{TenantID: "tenant-a", UserID: "user-a"},
+	)
+	items, total, err := lookupRepo.LookupSheinPODImages(userACtx, &sheinpodimage.SheinPODImageLookupQuery{
+		StoreID: 869,
+		Query:   "ACCESS-SCOPE",
+	})
+	if err != nil || total != 1 || len(items) != 1 || items[0].TaskID != "task-tenant-a-user-a" {
+		t.Fatalf("tenant/owner scoped items=%+v total=%d err=%v", items, total, err)
+	}
+}
+
+func TestTaskRepositoryLookupSheinPODImagesOrdersAndCapsResults(t *testing.T) {
+	t.Parallel()
+
+	_, repo := newLookupRepository(t)
+	lookupRepo := repo.(sheinpodimage.SheinPODImageLookupRepository)
+	ctx := tenantContext("tenant-a")
+	base := time.Now().Add(-time.Hour).UTC()
+	for i := 0; i < 55; i++ {
+		task := makeSheinPODLookupTask(
+			fmt.Sprintf("task-order-%02d", i),
+			869,
+			"ORDER-SCOPE",
+			fmt.Sprintf("SKU-%02d", i),
+			base.Add(time.Duration(i)*time.Minute),
+		)
+		if err := repo.CreateTask(ctx, task); err != nil {
+			t.Fatalf("CreateTask(%s): %v", task.ID, err)
+		}
+	}
+
+	items, total, err := lookupRepo.LookupSheinPODImages(ctx, &sheinpodimage.SheinPODImageLookupQuery{
+		StoreID: 869,
+		Query:   "ORDER_SCOPE",
+		Limit:   100,
+	})
+	if err != nil || total != 55 || len(items) != 50 {
+		t.Fatalf("items length=%d total=%d err=%v, want 50/55", len(items), total, err)
+	}
+	if items[0].TaskID != "task-order-54" || items[49].TaskID != "task-order-05" {
+		t.Fatalf("ordered bounds=%s..%s, want task-order-54..task-order-05", items[0].TaskID, items[49].TaskID)
+	}
+}
+
 func TestTaskRepositorySynchronizesSheinPODImageLookupIndexOnResultUpdates(t *testing.T) {
 	t.Parallel()
 
@@ -224,6 +334,7 @@ func TestTaskRepositorySynchronizesSheinPODImageLookupIndexOnResultUpdates(t *te
 		}
 		_, err := mutationRepo.MutateTaskResult(ctx, task.ID, func(task *listingkit.Task) error {
 			task.Result.Shein.RequestDraft.SKCList[0].SKUList[0].SupplierSKU = "SKU-NEW"
+			task.Result.Shein.Images.Gallery = []string{"https://cdn.sdspod.com/refreshed-gallery.jpg"}
 			return nil
 		})
 		if err != nil {
@@ -231,6 +342,14 @@ func TestTaskRepositorySynchronizesSheinPODImageLookupIndexOnResultUpdates(t *te
 		}
 		assertLookupCount(t, lookupRepo, ctx, "SKUOLD", 0)
 		assertLookupCount(t, lookupRepo, ctx, "SKUNEW", 1)
+		items, _, err := lookupRepo.LookupSheinPODImages(ctx, &sheinpodimage.SheinPODImageLookupQuery{
+			StoreID: 869,
+			Query:   "SKUNEW",
+		})
+		if err != nil || len(items) != 1 || len(items[0].SDSGalleryImageURLs) != 1 ||
+			items[0].SDSGalleryImageURLs[0] != "https://cdn.sdspod.com/refreshed-gallery.jpg" {
+			t.Fatalf("updated gallery items=%+v err=%v", items, err)
+		}
 	})
 
 	t.Run("ReplaceTaskSDSOptionsForRetry", func(t *testing.T) {

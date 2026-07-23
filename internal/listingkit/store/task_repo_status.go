@@ -14,18 +14,36 @@ import (
 )
 
 func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) error {
-	result := r.db.WithContext(ctx).
-		Model(&listingkit.Task{}).
-		Scopes(taskAccessScope(ctx)).
-		Where("id = ? AND status = ?", taskID, listingkit.TaskStatusPending).
-		Updates(map[string]any{
-			"status":     listingkit.TaskStatusProcessing,
-			"updated_at": currentTimestampValue(r.db),
-		})
-	if result.Error != nil {
-		return fmt.Errorf("failed to update task: %w", result.Error)
+	updated := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.
+			Model(&listingkit.Task{}).
+			Scopes(taskAccessScope(ctx)).
+			Where("id = ? AND status = ?", taskID, listingkit.TaskStatusPending).
+			Updates(map[string]any{
+				"status":     listingkit.TaskStatusProcessing,
+				"updated_at": currentTimestampValue(tx),
+			})
+		if result.Error != nil {
+			return fmt.Errorf("failed to update task: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return nil
+		}
+		finalTask, err := loadTaskForSheinPODImageLookupIndex(ctx, tx, taskID)
+		if err != nil {
+			return err
+		}
+		if err := syncSheinPODImageLookupIndex(ctx, tx, finalTask); err != nil {
+			return err
+		}
+		updated = true
+		return nil
+	})
+	if err != nil {
+		return err
 	}
-	if result.RowsAffected > 0 {
+	if updated {
 		return nil
 	}
 	task, err := r.GetTask(ctx, taskID)
