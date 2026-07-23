@@ -76,6 +76,7 @@ tmp/*
 .tools/
 .codegraph/
 .codex/
+.worktrees
 .worktrees/
 web/listingkit-ui/.data/
 node_modules/
