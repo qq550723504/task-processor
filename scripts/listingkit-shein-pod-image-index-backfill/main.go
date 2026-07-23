@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -13,14 +14,10 @@ import (
 	"task-processor/internal/core/config"
 	corelogger "task-processor/internal/core/logger"
 	"task-processor/internal/infra/database"
-	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	listingkitstore "task-processor/internal/listingkit/store"
 )
 
-const (
-	defaultConfigPath = "config/config-prod.yaml"
-	defaultBatchSize  = 200
-)
+const defaultBatchSize = 200
 
 type options struct {
 	configPath string
@@ -64,10 +61,14 @@ func parseArgs(args []string) (options, error) {
 	opts := options{}
 	fs := flag.NewFlagSet("listingkit-shein-pod-image-index-backfill", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	fs.StringVar(&opts.configPath, "config", defaultConfigPath, "config path")
+	fs.StringVar(&opts.configPath, "config", "", "config path (required)")
 	fs.IntVar(&opts.batchSize, "batch-size", defaultBatchSize, "tasks per transaction")
 	if err := fs.Parse(args); err != nil {
 		return options{}, err
+	}
+	opts.configPath = strings.TrimSpace(opts.configPath)
+	if opts.configPath == "" {
+		return options{}, fmt.Errorf("-config is required")
 	}
 	return opts, nil
 }
@@ -76,7 +77,7 @@ func defaultDependencies() dependencies {
 	return dependencies{
 		loadConfig: loadConfigWithoutGlobalLogs,
 		openDB:     database.NewDatabaseFromConfig,
-		migrate:    listingkithttpapi.AutoMigrateListingKitRuntimeSchema,
+		migrate:    listingkitstore.AutoMigrateSheinPODImageLookupIndex,
 		backfill:   listingkitstore.BackfillSheinPODImageLookupIndexes,
 		closeDB:    database.CloseDatabase,
 		now:        time.Now,
@@ -117,7 +118,7 @@ func run(ctx context.Context, args []string, output io.Writer, deps dependencies
 	}()
 
 	if err := deps.migrate(db); err != nil {
-		return fmt.Errorf("migrate runtime schema: %w", err)
+		return fmt.Errorf("migrate POD image lookup index schema: %w", err)
 	}
 	startedAt := deps.now()
 	processed, err := deps.backfill(ctx, db, opts.batchSize)

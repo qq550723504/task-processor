@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"strings"
 
@@ -48,9 +50,27 @@ func BuildSheinPODImageLookupIndex(task *listingkit.Task) (listingkit.SheinPODIm
 		NormalizedAIOriginalImageURL: normalize(record.AIOriginalImageURL),
 		NormalizedAIOriginalImageKey: normalize(record.AIOriginalImageKey),
 		NormalizedSDSMainImageURL:    normalize(record.SDSMainImageURL),
+		TaskIDLookupKey:              sheinPODImageLookupKey(record.TaskID),
+		ProductNameLookupKey:         sheinPODImageLookupKey(record.ProductName),
+		SupplierCodeLookupKey:        sheinPODImageLookupKey(record.SupplierCode),
+		SellerSKULookupKey:           sheinPODImageLookupKey(record.SellerSKU),
+		SheinSPUNameLookupKey:        sheinPODImageLookupKey(record.SheinSPUName),
+		SheinVersionLookupKey:        sheinPODImageLookupKey(record.SheinVersion),
+		AIOriginalImageURLLookupKey:  sheinPODImageLookupKey(record.AIOriginalImageURL),
+		AIOriginalImageKeyLookupKey:  sheinPODImageLookupKey(record.AIOriginalImageKey),
+		SDSMainImageURLLookupKey:     sheinPODImageLookupKey(record.SDSMainImageURL),
 		CreatedAt:                    record.CreatedAt,
 		UpdatedAt:                    record.UpdatedAt,
 	}, true
+}
+
+func sheinPODImageLookupKey(raw string) string {
+	normalized := sheinpodimage.NormalizeSheinPODImageLookupQueryToken(raw)
+	if normalized == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(normalized))
+	return hex.EncodeToString(sum[:])
 }
 
 func syncSheinPODImageLookupIndex(ctx context.Context, tx *gorm.DB, task *listingkit.Task) error {

@@ -9,22 +9,19 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	_ "modernc.org/sqlite"
 
 	"task-processor/internal/core/config"
 	corelogger "task-processor/internal/core/logger"
+	"task-processor/internal/listingkit"
 )
 
-func TestParseDefaultsToProductionConfigAndBatchSize200(t *testing.T) {
-	opts, err := parseArgs(nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if opts.configPath != "config/config-prod.yaml" {
-		t.Fatalf("config path = %q", opts.configPath)
-	}
-	if opts.batchSize != 200 {
-		t.Fatalf("batch size = %d, want 200", opts.batchSize)
+func TestParseRequiresExplicitConfig(t *testing.T) {
+	_, err := parseArgs(nil)
+	if err == nil || !strings.Contains(err.Error(), "-config is required") {
+		t.Fatalf("parse error = %v, want explicit config requirement", err)
 	}
 }
 
@@ -89,10 +86,10 @@ func TestRunMigratesBeforeBackfillAndOutputsOnlyCountAndDuration(t *testing.T) {
 	}
 	nowIndex := 0
 
-	err := run(context.Background(), nil, &output, dependencies{
+	err := run(context.Background(), []string{"-config", "config/production.yaml"}, &output, dependencies{
 		loadConfig: func(path string) (*config.Config, error) {
 			calls = append(calls, "load")
-			if path != "config/config-prod.yaml" {
+			if path != "config/production.yaml" {
 				t.Fatalf("config path = %q", path)
 			}
 			return &config.Config{Database: &config.DatabaseConfig{}}, nil
@@ -136,5 +133,22 @@ func TestRunMigratesBeforeBackfillAndOutputsOnlyCountAndDuration(t *testing.T) {
 	}
 	if got, want := output.String(), "processed=17 duration=2s\n"; got != want {
 		t.Fatalf("output = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultMigrationCreatesOnlyPODImageLookupIndexSchema(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+
+	if err := defaultDependencies().migrate(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if !db.Migrator().HasTable(&listingkit.SheinPODImageLookupIndex{}) {
+		t.Fatal("POD image lookup index table was not created")
+	}
+	if db.Migrator().HasTable(&listingkit.Task{}) {
+		t.Fatal("backfill migration unexpectedly ran unrelated ListingKit task migrations")
 	}
 }

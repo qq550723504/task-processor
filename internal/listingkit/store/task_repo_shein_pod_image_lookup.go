@@ -52,21 +52,32 @@ func applySheinPODImageLookupStoreScope(db *gorm.DB, storeID int64) *gorm.DB {
 }
 
 func applySheinPODImageLookupQueryScope(db *gorm.DB, rawQuery string) *gorm.DB {
-	query := sheinpodimage.NormalizeSheinPODImageLookupQueryToken(rawQuery)
-	if query == "" {
+	normalized := sheinpodimage.NormalizeSheinPODImageLookupQueryToken(rawQuery)
+	if normalized == "" {
 		return db
 	}
+	query := sheinPODImageLookupKey(rawQuery)
 	return db.Where(`(
-		normalized_task_id = ?
-		OR normalized_product_name = ?
-		OR normalized_supplier_code = ?
-		OR normalized_seller_sku = ?
-		OR normalized_shein_spu_name = ?
-		OR normalized_shein_version = ?
-		OR normalized_ai_original_image_url = ?
-		OR normalized_ai_original_image_key = ?
-		OR normalized_sds_main_image_url = ?
-	)`, query, query, query, query, query, query, query, query, query)
+		(task_id_lookup_key = ? AND normalized_task_id = ?)
+		OR (product_name_lookup_key = ? AND normalized_product_name = ?)
+		OR (supplier_code_lookup_key = ? AND normalized_supplier_code = ?)
+		OR (seller_sku_lookup_key = ? AND normalized_seller_sku = ?)
+		OR (shein_spu_name_lookup_key = ? AND normalized_shein_spu_name = ?)
+		OR (shein_version_lookup_key = ? AND normalized_shein_version = ?)
+		OR (ai_original_image_url_lookup_key = ? AND normalized_ai_original_image_url = ?)
+		OR (ai_original_image_key_lookup_key = ? AND normalized_ai_original_image_key = ?)
+		OR (sds_main_image_url_lookup_key = ? AND normalized_sds_main_image_url = ?)
+	)`,
+		query, normalized,
+		query, normalized,
+		query, normalized,
+		query, normalized,
+		query, normalized,
+		query, normalized,
+		query, normalized,
+		query, normalized,
+		query, normalized,
+	)
 }
 
 func applySheinPODImageLookupAccessScope(db *gorm.DB, ctx context.Context) *gorm.DB {

@@ -2,6 +2,8 @@ package store_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -178,6 +180,83 @@ func TestTaskRepositoryLookupSheinPODImagesUsesExactNormalizedMatch(t *testing.T
 	})
 	if err != nil || total != 0 || len(items) != 0 {
 		t.Fatalf("partial lookup items=%+v total=%d err=%v, want no match", items, total, err)
+	}
+}
+
+func TestBuildSheinPODImageLookupIndexUsesFixedLengthHashedLookupKeys(t *testing.T) {
+	t.Parallel()
+
+	task := makeSheinPODLookupTask(
+		"task-hash",
+		869,
+		"SUPPLIER",
+		"SKU-123",
+		time.Now(),
+	)
+	task.Result.Shein.Images.MainImage = "https://cdn.example.com/" + strings.Repeat("very-long-path/", 80) + "main.jpg"
+
+	index, ok := store.BuildSheinPODImageLookupIndex(task)
+	if !ok {
+		t.Fatal("expected task to produce lookup index")
+	}
+	keys := []struct {
+		name string
+		got  string
+		raw  string
+	}{
+		{"task id", index.TaskIDLookupKey, task.ID},
+		{"product name", index.ProductNameLookupKey, index.ProductName},
+		{"supplier code", index.SupplierCodeLookupKey, index.SupplierCode},
+		{"seller SKU", index.SellerSKULookupKey, index.SellerSKU},
+		{"SHEIN SPU", index.SheinSPUNameLookupKey, index.SheinSPUName},
+		{"SHEIN version", index.SheinVersionLookupKey, index.SheinVersion},
+		{"AI original URL", index.AIOriginalImageURLLookupKey, index.AIOriginalImageURL},
+		{"AI original key", index.AIOriginalImageKeyLookupKey, index.AIOriginalImageKey},
+		{"SDS main URL", index.SDSMainImageURLLookupKey, index.SDSMainImageURL},
+	}
+	for _, key := range keys {
+		normalized := sheinpodimage.NormalizeSheinPODImageLookupQueryToken(key.raw)
+		sum := sha256.Sum256([]byte(normalized))
+		want := hex.EncodeToString(sum[:])
+		if key.got != want {
+			t.Errorf("%s lookup key = %q, want SHA-256 %q", key.name, key.got, want)
+		}
+		if len(key.got) != 64 {
+			t.Errorf("%s lookup key length = %d, want 64", key.name, len(key.got))
+		}
+	}
+}
+
+func TestTaskRepositoryLookupSheinPODImagesVerifiesNormalizedValueAfterHashMatch(t *testing.T) {
+	t.Parallel()
+
+	db, repo := newLookupRepository(t)
+	lookupRepo := repo.(sheinpodimage.SheinPODImageLookupRepository)
+	ctx := tenantContext("tenant-a")
+	task := makeSheinPODLookupTask("task-hash-collision", 869, "SUPPLIER", "SKU-OTHER", time.Now())
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	target := makeSheinPODLookupTask("target-key-source", 869, "SUPPLIER", "SKU-TARGET", time.Now())
+	targetIndex, ok := store.BuildSheinPODImageLookupIndex(target)
+	if !ok {
+		t.Fatal("build target lookup index")
+	}
+	if err := db.Model(&listingkit.SheinPODImageLookupIndex{}).
+		Where("task_id = ?", task.ID).
+		Update("seller_sku_lookup_key", targetIndex.SellerSKULookupKey).Error; err != nil {
+		t.Fatalf("force colliding lookup key: %v", err)
+	}
+
+	items, total, err := lookupRepo.LookupSheinPODImages(ctx, &sheinpodimage.SheinPODImageLookupQuery{
+		StoreID: 869,
+		Query:   "SKU-TARGET",
+	})
+	if err != nil {
+		t.Fatalf("lookup: %v", err)
+	}
+	if total != 0 || len(items) != 0 {
+		t.Fatalf("hash-only false match items=%+v total=%d", items, total)
 	}
 }
 
@@ -414,10 +493,13 @@ func TestSheinPODImageLookupQueryScopeDoesNotScanRawTaskJSON(t *testing.T) {
 			t.Fatalf("lookup SQL contains slow raw JSON text predicate %q: %s", forbidden, sql)
 		}
 	}
-	for _, required := range []string{"listingkit_shein_pod_image_indexes", "store_id", "normalized_seller_sku"} {
+	for _, required := range []string{"listingkit_shein_pod_image_indexes", "store_id", "seller_sku_lookup_key"} {
 		if !strings.Contains(sql, required) {
 			t.Fatalf("lookup SQL does not contain %q: %s", required, sql)
 		}
+	}
+	if !strings.Contains(sql, "normalized_seller_sku") {
+		t.Fatalf("lookup SQL does not verify normalized value after hash match: %s", sql)
 	}
 }
 

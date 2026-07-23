@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"task-processor/internal/listingkit"
 )
@@ -38,7 +39,14 @@ func BackfillSheinPODImageLookupIndexes(ctx context.Context, db *gorm.DB, batchS
 
 		if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			for i := range tasks {
-				if err := syncSheinPODImageLookupIndex(ctx, tx, &tasks[i]); err != nil {
+				var current listingkit.Task
+				if err := tx.WithContext(ctx).
+					Clauses(clause.Locking{Strength: "UPDATE"}).
+					Where("id = ?", tasks[i].ID).
+					First(&current).Error; err != nil {
+					return fmt.Errorf("reload listingkit task %q: %w", tasks[i].ID, err)
+				}
+				if err := syncSheinPODImageLookupIndex(ctx, tx, &current); err != nil {
 					return err
 				}
 			}

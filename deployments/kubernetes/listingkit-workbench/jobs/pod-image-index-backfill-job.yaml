@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: listingkit-pod-image-index-backfill-
+  namespace: task-processor
+  labels:
+    app.kubernetes.io/name: listingkit-pod-image-index-backfill
+spec:
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: listingkit-pod-image-index-backfill
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: backfill
+          image: xuwei190/task-processor-product-listing-api:REPLACE_WITH_DEPLOYED_TAG
+          imagePullPolicy: IfNotPresent
+          command:
+            - /app/listingkit-shein-pod-image-index-backfill
+          args:
+            - -config
+            - /app/config/config-prod.yaml
+            - -batch-size
+            - "200"
+          envFrom:
+            - configMapRef:
+                name: listingkit-workbench-config
+            - secretRef:
+                name: listingkit-workbench-secret
+                optional: true
