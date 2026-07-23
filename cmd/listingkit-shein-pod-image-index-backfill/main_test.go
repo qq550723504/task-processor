@@ -3,13 +3,16 @@ package main
 import (
 	"bytes"
 	"context"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
 	"gorm.io/gorm"
 
 	"task-processor/internal/core/config"
+	corelogger "task-processor/internal/core/logger"
 )
 
 func TestParseDefaultsToProductionConfigAndBatchSize200(t *testing.T) {
@@ -32,6 +35,47 @@ func TestParseAcceptsExplicitConfigAndBatchSize(t *testing.T) {
 	}
 	if opts.configPath != "config/custom.yaml" || opts.batchSize != 25 {
 		t.Fatalf("unexpected options: %+v", opts)
+	}
+}
+
+func TestDefaultConfigLoaderDoesNotWriteGlobalLogsToStdout(t *testing.T) {
+	globalLogger := corelogger.GetGlobalLogManager().GetRawLogger()
+	originalOutput := globalLogger.Out
+	var stdout bytes.Buffer
+	globalLogger.SetOutput(&stdout)
+	t.Cleanup(func() {
+		globalLogger.SetOutput(originalOutput)
+	})
+
+	_, err := defaultDependencies().loadConfig(filepath.Join(t.TempDir(), "missing.yaml"))
+	if err == nil {
+		t.Fatal("expected missing config error")
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("default config loader wrote to stdout: %q", stdout.String())
+	}
+}
+
+func TestRunMainWritesErrorsOnlyToStderr(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+
+	exitCode := runMain(
+		context.Background(),
+		[]string{"-unknown"},
+		&stdout,
+		&stderr,
+		dependencies{},
+	)
+
+	if exitCode != 1 {
+		t.Fatalf("exit code = %d, want 1", exitCode)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "flag provided but not defined") {
+		t.Fatalf("stderr = %q, want parse error", stderr.String())
 	}
 }
 

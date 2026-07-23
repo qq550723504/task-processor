@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/core/config"
+	corelogger "task-processor/internal/core/logger"
 	"task-processor/internal/infra/database"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	listingkitstore "task-processor/internal/listingkit/store"
@@ -36,9 +37,27 @@ type dependencies struct {
 }
 
 func main() {
-	if err := run(context.Background(), os.Args[1:], os.Stdout, defaultDependencies()); err != nil {
-		os.Exit(1)
+	os.Exit(runMain(
+		context.Background(),
+		os.Args[1:],
+		os.Stdout,
+		os.Stderr,
+		defaultDependencies(),
+	))
+}
+
+func runMain(
+	ctx context.Context,
+	args []string,
+	stdout io.Writer,
+	stderr io.Writer,
+	deps dependencies,
+) int {
+	if err := run(ctx, args, stdout, deps); err != nil {
+		_, _ = fmt.Fprintln(stderr, err)
+		return 1
 	}
+	return 0
 }
 
 func parseArgs(args []string) (options, error) {
@@ -55,13 +74,21 @@ func parseArgs(args []string) (options, error) {
 
 func defaultDependencies() dependencies {
 	return dependencies{
-		loadConfig: config.LoadConfigFromFile,
+		loadConfig: loadConfigWithoutGlobalLogs,
 		openDB:     database.NewDatabaseFromConfig,
 		migrate:    listingkithttpapi.AutoMigrateListingKitRuntimeSchema,
 		backfill:   listingkitstore.BackfillSheinPODImageLookupIndexes,
 		closeDB:    database.CloseDatabase,
 		now:        time.Now,
 	}
+}
+
+func loadConfigWithoutGlobalLogs(configPath string) (*config.Config, error) {
+	globalLogger := corelogger.GetGlobalLogManager().GetRawLogger()
+	originalOutput := globalLogger.Out
+	globalLogger.SetOutput(io.Discard)
+	defer globalLogger.SetOutput(originalOutput)
+	return config.LoadConfigFromFile(configPath)
 }
 
 func run(ctx context.Context, args []string, output io.Writer, deps dependencies) (returnErr error) {
