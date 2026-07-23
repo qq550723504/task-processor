@@ -14,18 +14,36 @@ import (
 )
 
 func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) error {
-	result := r.db.WithContext(ctx).
-		Model(&listingkit.Task{}).
-		Scopes(taskAccessScope(ctx)).
-		Where("id = ? AND status = ?", taskID, listingkit.TaskStatusPending).
-		Updates(map[string]any{
-			"status":     listingkit.TaskStatusProcessing,
-			"updated_at": currentTimestampValue(r.db),
-		})
-	if result.Error != nil {
-		return fmt.Errorf("failed to update task: %w", result.Error)
+	updated := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		result := tx.
+			Model(&listingkit.Task{}).
+			Scopes(taskAccessScope(ctx)).
+			Where("id = ? AND status = ?", taskID, listingkit.TaskStatusPending).
+			Updates(map[string]any{
+				"status":     listingkit.TaskStatusProcessing,
+				"updated_at": currentTimestampValue(tx),
+			})
+		if result.Error != nil {
+			return fmt.Errorf("failed to update task: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return nil
+		}
+		finalTask, err := loadTaskForSheinPODImageLookupIndex(ctx, tx, taskID)
+		if err != nil {
+			return err
+		}
+		if err := syncSheinPODImageLookupIndex(ctx, tx, finalTask); err != nil {
+			return err
+		}
+		updated = true
+		return nil
+	})
+	if err != nil {
+		return err
 	}
-	if result.RowsAffected > 0 {
+	if updated {
 		return nil
 	}
 	task, err := r.GetTask(ctx, taskID)
@@ -179,8 +197,14 @@ func (r *taskRepository) MutateTaskResult(ctx context.Context, taskID string, mu
 			}).Error; err != nil {
 			return fmt.Errorf("failed to update task result: %w", err)
 		}
-		copied = task
-		out = &copied
+		finalTask, err := loadTaskForSheinPODImageLookupIndex(ctx, tx, taskID)
+		if err != nil {
+			return err
+		}
+		if err := syncSheinPODImageLookupIndex(ctx, tx, finalTask); err != nil {
+			return err
+		}
+		out = finalTask
 		return nil
 	})
 	return out, err
@@ -215,23 +239,35 @@ func (r *taskRepository) ReplaceTaskSDSOptionsForRetry(ctx context.Context, task
 			}).Error; err != nil {
 			return fmt.Errorf("failed to replace task SDS options: %w", err)
 		}
-		copied := task
-		out = &copied
+		finalTask, err := loadTaskForSheinPODImageLookupIndex(ctx, tx, taskID)
+		if err != nil {
+			return err
+		}
+		if err := syncSheinPODImageLookupIndex(ctx, tx, finalTask); err != nil {
+			return err
+		}
+		out = finalTask
 		return nil
 	})
 	return out, err
 }
 
 func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, updates map[string]any) error {
-	updates["updated_at"] = currentTimestampValue(r.db)
-	result := r.db.WithContext(ctx).Model(&listingkit.Task{}).Scopes(taskAccessScope(ctx)).Where("id = ?", taskID).Updates(updates)
-	if result.Error != nil {
-		return fmt.Errorf("failed to update task: %w", result.Error)
-	}
-	if result.RowsAffected == 0 {
-		return listingkit.ErrTaskNotFound
-	}
-	return nil
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		updates["updated_at"] = currentTimestampValue(tx)
+		result := tx.Model(&listingkit.Task{}).Scopes(taskAccessScope(ctx)).Where("id = ?", taskID).Updates(updates)
+		if result.Error != nil {
+			return fmt.Errorf("failed to update task: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return listingkit.ErrTaskNotFound
+		}
+		finalTask, err := loadTaskForSheinPODImageLookupIndex(ctx, tx, taskID)
+		if err != nil {
+			return err
+		}
+		return syncSheinPODImageLookupIndex(ctx, tx, finalTask)
+	})
 }
 
 func collectRecoverableTasks(tasks []listingkit.Task, dueBefore time.Time) []listingkit.Task {

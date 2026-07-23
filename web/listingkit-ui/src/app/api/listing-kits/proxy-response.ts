@@ -6,6 +6,7 @@ export const PROXY_SUBMIT_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_REVISION_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_CHILD_TASK_RETRY_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS = 60_000;
+export const PROXY_SHEIN_POD_IMAGE_LOOKUP_UPSTREAM_TIMEOUT_MS = 60_000;
 export const PROXY_STUDIO_UPSTREAM_TIMEOUT_MS = 60_000;
 export const PROXY_STUDIO_BATCH_TASK_CREATION_UPSTREAM_TIMEOUT_MS = 180_000;
 export const PROXY_SHEIN_ENROLLMENT_DASHBOARD_UPSTREAM_TIMEOUT_MS = 120_000;
@@ -111,6 +112,14 @@ export function resolveListingKitProxyTimeoutMs(
     path[3] === "categories"
   ) {
     return PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS;
+  }
+  if (
+    method.toUpperCase() === "GET" &&
+    path.length === 3 &&
+    path[0] === "shein-pod-image-lookup" &&
+    path[1] === "stores"
+  ) {
+    return PROXY_SHEIN_POD_IMAGE_LOOKUP_UPSTREAM_TIMEOUT_MS;
   }
   if (
     method.toUpperCase() === "GET" &&

@@ -202,9 +202,12 @@ func autoMigrateListingKitRuntimeSchema(db *gorm.DB) error {
 }
 
 func autoMigrateListingKitTaskRepository(db *gorm.DB) error {
-	return db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&listingkit.Task{},
 		&listingkit.CanonicalProductCacheEntry{},
 		&listingkit.SDSBaselineCacheEntry{},
-	)
+	); err != nil {
+		return err
+	}
+	return listingkitstore.AutoMigrateSheinPODImageLookupIndex(db)
 }

@@ -28,7 +28,16 @@ func (r *taskRepository) CreateTask(ctx context.Context, task *listingkit.Task) 
 			task.Request.UserID = task.UserID
 		}
 	}
-	return r.db.WithContext(ctx).Create(task).Error
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(task).Error; err != nil {
+			return err
+		}
+		persisted, err := loadTaskForSheinPODImageLookupIndex(ctx, tx, task.ID)
+		if err != nil {
+			return err
+		}
+		return syncSheinPODImageLookupIndex(ctx, tx, persisted)
+	})
 }
 
 func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*listingkit.Task, error) {

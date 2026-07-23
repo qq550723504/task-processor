@@ -69,6 +69,12 @@ describe("resolveListingKitProxyTimeoutMs", () => {
     ).toBe(PROXY_SHEIN_CATEGORY_SEARCH_UPSTREAM_TIMEOUT_MS);
   });
 
+  it("uses a 60 second upstream timeout for POD image lookup", () => {
+    expect(
+      resolveListingKitProxyTimeoutMs("GET", ["shein-pod-image-lookup", "stores", "870"]),
+    ).toBe(60_000);
+  });
+
   it("extends the timeout for shein enrollment dashboard requests", () => {
     expect(resolveListingKitProxyTimeoutMs("GET", ["shein-sync", "dashboard"])).toBe(
       PROXY_SHEIN_ENROLLMENT_DASHBOARD_UPSTREAM_TIMEOUT_MS,

@@ -172,6 +172,40 @@ Use the emergency path only when GitHub Actions cannot be used. If you do use
 it, follow up with a normal workflow-driven deploy so the release history stays
 consistent.
 
+## SHEIN POD image lookup index backfill
+
+The `product-listing-api` image also contains the controlled
+`/app/listingkit-shein-pod-image-index-backfill` maintenance binary. It requires
+an explicit `-config` argument, migrates only the POD image lookup table, and
+then rereads and locks each task before synchronizing its index row. It does not
+run the unrelated ListingKit runtime migrations.
+
+After deploying an image that contains the POD image lookup index:
+
+1. Copy
+   `deployments/kubernetes/listingkit-workbench/jobs/pod-image-index-backfill-job.yaml`
+   to a temporary file outside the repository.
+2. Replace `REPLACE_WITH_DEPLOYED_TAG` with the exact immutable tag currently
+   deployed for `product-listing-api`. Do not use `latest`.
+3. Create and follow the one-shot Job:
+
+```powershell
+$jobFile = Join-Path $env:TEMP "listingkit-pod-image-index-backfill-job.yaml"
+Copy-Item deployments/kubernetes/listingkit-workbench/jobs/pod-image-index-backfill-job.yaml $jobFile
+(Get-Content -Raw $jobFile).Replace("REPLACE_WITH_DEPLOYED_TAG", "<deployed-commit-tag>") |
+  Set-Content -NoNewline $jobFile
+$jobName = kubectl create -f $jobFile -o jsonpath='{.metadata.name}'
+kubectl -n task-processor wait --for=condition=complete "job/$jobName" --timeout=30m
+kubectl -n task-processor logs "job/$jobName"
+```
+
+Successful stdout is a single machine-readable line such as
+`processed=12500 duration=42s`. A failed Job may be safely rerun after fixing
+the cause; upserts are idempotent. Verify a known full SKU through
+`GET /api/v1/listing-kits/shein-pod-image-lookup/stores/<store_id>?q=<sku>`,
+then inspect API/proxy logs for errors. Keep owner-scope rollout disabled until
+the backfill and tenant/user sampling are complete.
+
 ## Temporal rollout
 
 ListingKit now runs three Temporal-backed workflow paths:

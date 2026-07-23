@@ -9,6 +9,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/listingkit"
 	listingkitstore "task-processor/internal/listingkit/store"
 
 	"github.com/sirupsen/logrus"
@@ -214,6 +215,26 @@ func TestAutoMigrateListingKitTaskRepositoryCreatesSDSBaselineCacheTable(t *test
 
 	if !db.Migrator().HasTable("listing_kit_sds_baseline_cache") {
 		t.Fatal("expected listing_kit_sds_baseline_cache table to be created")
+	}
+}
+
+func TestAutoMigrateListingKitTaskRepositoryCreatesSheinPODImageLookupIndexTable(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+
+	if err := autoMigrateListingKitTaskRepository(db); err != nil {
+		t.Fatalf("autoMigrateListingKitTaskRepository() error = %v", err)
+	}
+
+	if !db.Migrator().HasTable(&listingkit.SheinPODImageLookupIndex{}) {
+		t.Fatal("expected POD image lookup index table to be created")
+	}
+	if !db.Migrator().HasColumn(&listingkit.SheinPODImageLookupIndex{}, "sds_gallery_image_urls") {
+		t.Fatal("expected POD image lookup index table to store SDS gallery image URLs")
 	}
 }
 
