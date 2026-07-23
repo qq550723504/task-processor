@@ -32,5 +32,6 @@ func autoMigrateListingKitTaskRepository(db *gorm.DB) error {
 		&listingkit.Task{},
 		&listingkit.CanonicalProductCacheEntry{},
 		&listingkit.SDSBaselineCacheEntry{},
+		&listingkit.SheinPODImageLookupIndex{},
 	)
 }
