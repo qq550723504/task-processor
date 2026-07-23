@@ -16,6 +16,7 @@ import (
 	"task-processor/internal/core/config"
 	corelogger "task-processor/internal/core/logger"
 	"task-processor/internal/listingkit"
+	listingkitstore "task-processor/internal/listingkit/store"
 )
 
 func TestParseRequiresExplicitConfig(t *testing.T) {
@@ -76,7 +77,7 @@ func TestRunMainWritesErrorsOnlyToStderr(t *testing.T) {
 	}
 }
 
-func TestRunMigratesBeforeBackfillAndOutputsOnlyCountAndDuration(t *testing.T) {
+func TestRunMigratesBeforeBackfillAndOutputsSummaryAndDiagnostics(t *testing.T) {
 	db := &gorm.DB{}
 	var calls []string
 	var output bytes.Buffer
@@ -105,12 +106,20 @@ func TestRunMigratesBeforeBackfillAndOutputsOnlyCountAndDuration(t *testing.T) {
 			}
 			return nil
 		},
-		backfill: func(_ context.Context, got *gorm.DB, batchSize int) (int64, error) {
+		backfill: func(_ context.Context, got *gorm.DB, batchSize int) (listingkitstore.SheinPODImageLookupBackfillSummary, error) {
 			calls = append(calls, "backfill")
 			if got != db || batchSize != 200 {
 				t.Fatalf("backfill database/batch = %p/%d", got, batchSize)
 			}
-			return 17, nil
+			return listingkitstore.SheinPODImageLookupBackfillSummary{
+				Processed:        17,
+				SkippedMalformed: 1,
+				MalformedRows: []listingkitstore.SheinPODImageLookupBackfillMalformedRow{{
+					TaskID: "malformed-task",
+					Field:  "result",
+					Reason: "invalid_json",
+				}},
+			}, nil
 		},
 		closeDB: func(got *gorm.DB) error {
 			calls = append(calls, "close")
@@ -131,7 +140,8 @@ func TestRunMigratesBeforeBackfillAndOutputsOnlyCountAndDuration(t *testing.T) {
 	if want := []string{"load", "open", "migrate", "backfill", "close"}; !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %v, want %v", calls, want)
 	}
-	if got, want := output.String(), "processed=17 duration=2s\n"; got != want {
+	if got, want := output.String(), "processed=17 skipped_malformed=1 duration=2s\n"+
+		"skipped_malformed task_id=\"malformed-task\" field=result reason=invalid_json\n"; got != want {
 		t.Fatalf("output = %q, want %q", got, want)
 	}
 }

@@ -28,7 +28,7 @@ type dependencies struct {
 	loadConfig func(string) (*config.Config, error)
 	openDB     func(*config.DatabaseConfig) (*gorm.DB, error)
 	migrate    func(*gorm.DB) error
-	backfill   func(context.Context, *gorm.DB, int) (int64, error)
+	backfill   func(context.Context, *gorm.DB, int) (listingkitstore.SheinPODImageLookupBackfillSummary, error)
 	closeDB    func(*gorm.DB) error
 	now        func() time.Time
 }
@@ -121,11 +121,30 @@ func run(ctx context.Context, args []string, output io.Writer, deps dependencies
 		return fmt.Errorf("migrate POD image lookup index schema: %w", err)
 	}
 	startedAt := deps.now()
-	processed, err := deps.backfill(ctx, db, opts.batchSize)
+	summary, err := deps.backfill(ctx, db, opts.batchSize)
 	if err != nil {
 		return fmt.Errorf("backfill POD image lookup indexes: %w", err)
 	}
 	duration := deps.now().Sub(startedAt)
-	_, err = fmt.Fprintf(output, "processed=%d duration=%s\n", processed, duration)
-	return err
+	if _, err = fmt.Fprintf(
+		output,
+		"processed=%d skipped_malformed=%d duration=%s\n",
+		summary.Processed,
+		summary.SkippedMalformed,
+		duration,
+	); err != nil {
+		return err
+	}
+	for _, malformed := range summary.MalformedRows {
+		if _, err = fmt.Fprintf(
+			output,
+			"skipped_malformed task_id=%q field=%s reason=%s\n",
+			malformed.TaskID,
+			malformed.Field,
+			malformed.Reason,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
 }

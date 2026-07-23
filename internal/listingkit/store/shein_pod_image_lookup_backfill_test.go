@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -14,17 +15,65 @@ import (
 	"task-processor/internal/listingkit/store"
 )
 
+func TestBackfillSheinPODImageLookupIndexesSkipsMalformedTaskAndIndexesValidRows(t *testing.T) {
+	db := migratedLookupDB(t)
+	now := time.Now()
+	insertBackfillTask(t, db, makeSheinPODLookupTask("task-1-valid", 869, "SUPPLIER", "SKU-1", now))
+	if err := db.Exec(
+		`INSERT INTO listing_kit_tasks (id, status, result, created_at, updated_at, retry_count)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
+		"task-2-malformed",
+		listingkit.TaskStatusCompleted,
+		`{"secret":"must-not-leak"`,
+		now,
+		now,
+		0,
+	).Error; err != nil {
+		t.Fatalf("insert malformed task: %v", err)
+	}
+	insertBackfillTask(t, db, makeSheinPODLookupTask("task-3-valid", 869, "SUPPLIER", "SKU-3", now))
+
+	summary, err := store.BackfillSheinPODImageLookupIndexes(context.Background(), db, 10)
+	if err != nil {
+		t.Fatalf("backfill: %v", err)
+	}
+	if summary.Processed != 2 {
+		t.Fatalf("processed = %d, want 2", summary.Processed)
+	}
+	if summary.SkippedMalformed != 1 {
+		t.Fatalf("skipped malformed = %d, want 1", summary.SkippedMalformed)
+	}
+	if len(summary.MalformedRows) != 1 {
+		t.Fatalf("malformed rows = %+v, want one diagnostic", summary.MalformedRows)
+	}
+	diagnostic := summary.MalformedRows[0]
+	if diagnostic.TaskID != "task-2-malformed" || diagnostic.Field != "result" || diagnostic.Reason != "invalid_json" {
+		t.Fatalf("malformed row diagnostic = %+v", diagnostic)
+	}
+	if strings.Contains(fmt.Sprint(summary), "must-not-leak") {
+		t.Fatalf("summary leaked malformed JSON: %+v", summary)
+	}
+
+	var indexes []listingkit.SheinPODImageLookupIndex
+	if err := db.Order("task_id ASC").Find(&indexes).Error; err != nil {
+		t.Fatalf("load indexes: %v", err)
+	}
+	if len(indexes) != 2 || indexes[0].TaskID != "task-1-valid" || indexes[1].TaskID != "task-3-valid" {
+		t.Fatalf("indexed tasks = %+v, want both valid tasks", indexes)
+	}
+}
+
 func TestBackfillSheinPODImageLookupIndexesIsIdempotent(t *testing.T) {
 	db := migratedLookupDB(t)
 	insertBackfillTask(t, db, makeSheinPODLookupTask("task-1", 869, "SUPPLIER", "SKU-1", time.Now()))
 
 	for range 2 {
-		processed, err := store.BackfillSheinPODImageLookupIndexes(context.Background(), db, 1)
+		summary, err := store.BackfillSheinPODImageLookupIndexes(context.Background(), db, 1)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if processed != 1 {
-			t.Fatalf("processed = %d, want 1", processed)
+		if summary.Processed != 1 {
+			t.Fatalf("processed = %d, want 1", summary.Processed)
 		}
 	}
 
@@ -82,7 +131,7 @@ func TestBackfillSheinPODImageLookupIndexesRereadsTaskBeforeOverwritingIndex(t *
 			if triggered {
 				return
 			}
-			if _, ok := tx.Statement.Dest.(*[]listingkit.Task); !ok {
+			if len(tx.Statement.Selects) != 1 || tx.Statement.Selects[0] != "id" {
 				return
 			}
 			triggered = true
@@ -128,7 +177,7 @@ func TestBackfillSheinPODImageLookupIndexesRereadsTaskBeforeDeletingIndex(t *tes
 			if triggered {
 				return
 			}
-			if _, ok := tx.Statement.Dest.(*[]listingkit.Task); !ok {
+			if len(tx.Statement.Selects) != 1 || tx.Statement.Selects[0] != "id" {
 				return
 			}
 			triggered = true
