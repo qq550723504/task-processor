@@ -50,7 +50,7 @@ func runMain(
 	stderr io.Writer,
 	deps dependencies,
 ) int {
-	if err := run(ctx, args, stdout, deps); err != nil {
+	if err := run(ctx, args, stdout, stderr, deps); err != nil {
 		_, _ = fmt.Fprintln(stderr, err)
 		return 1
 	}
@@ -92,7 +92,7 @@ func loadConfigWithoutGlobalLogs(configPath string) (*config.Config, error) {
 	return config.LoadConfigFromFile(configPath)
 }
 
-func run(ctx context.Context, args []string, output io.Writer, deps dependencies) (returnErr error) {
+func run(ctx context.Context, args []string, stdout io.Writer, diagnostics io.Writer, deps dependencies) (returnErr error) {
 	opts, err := parseArgs(args)
 	if err != nil {
 		return err
@@ -127,17 +127,19 @@ func run(ctx context.Context, args []string, output io.Writer, deps dependencies
 	}
 	duration := deps.now().Sub(startedAt)
 	if _, err = fmt.Fprintf(
-		output,
-		"processed=%d skipped_malformed=%d duration=%s\n",
+		stdout,
+		"processed=%d duration=%s\n",
 		summary.Processed,
-		summary.SkippedMalformed,
 		duration,
 	); err != nil {
 		return err
 	}
+	if _, err = fmt.Fprintf(diagnostics, "skipped_malformed=%d\n", summary.SkippedMalformed); err != nil {
+		return err
+	}
 	for _, malformed := range summary.MalformedRows {
 		if _, err = fmt.Fprintf(
-			output,
+			diagnostics,
 			"skipped_malformed task_id=%q field=%s reason=%s\n",
 			malformed.TaskID,
 			malformed.Field,

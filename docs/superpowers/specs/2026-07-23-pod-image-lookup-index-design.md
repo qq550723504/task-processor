@@ -18,7 +18,7 @@
 
 任务创建后、任务结果保存/变更后以及 SDS 选项替换后，在与任务写入相同的数据库事务中 upsert 或删除索引行。只有 `BuildSheinPODImageLookupRecord` 能构建出可检索记录的任务保留索引；其余任务移除已有索引行，避免过期数据。
 
-新增可重复执行的回填函数和受控迁移脚本入口 `scripts/listingkit-shein-pod-image-index-backfill`。工具必须显式传入 `-config`，只迁移 POD 图片索引表，不执行其他 runtime migration。部署镜像包含该工具以及不自动执行的 Kubernetes Job 模板。部署顺序为：部署包含 schema 和工具的同一不可变镜像、用已部署镜像 tag 创建一次性 backfill Job、等待 Job 成功、再以已知 SKU 验证端点响应与代理日志。命令按固定批次扫描任务 ID，并在每个写事务中以 `SELECT ... FOR UPDATE` 重新读取任务后构建、upsert 或删除索引；这保证批次读取后发生的并发任务更新不会被旧快照覆盖或删除。重复运行不会产生重复数据。应用启动仅执行 schema migration，不在用户查询路径或启动路径扫描旧任务。
+新增可重复执行的回填函数和受控迁移脚本入口 `scripts/listingkit-shein-pod-image-index-backfill`。工具必须显式传入 `-config`，只迁移 POD 图片索引表，不执行其他 runtime migration。部署镜像包含该工具以及不自动执行的 Kubernetes Job 模板。部署顺序为：部署包含 schema 和工具的同一不可变镜像、用已部署镜像 tag 创建一次性 backfill Job、等待 Job 成功、再以已知 SKU 验证端点响应与代理日志。命令按固定批次扫描任务 ID，并在每个写事务中以 `SELECT ... FOR UPDATE` 重新读取任务后构建、upsert 或删除索引；这保证批次读取后发生的并发任务更新不会被旧快照覆盖或删除。单条任务的 request/result JSON 无法解码时仅跳过该行，stderr 只记录跳过数量、任务 ID、字段名和固定原因，不记录原始 JSON；stdout 保持单行 `processed=<n> duration=<d>` 契约。重复运行不会产生重复数据。应用启动仅执行 schema migration，不在用户查询路径或启动路径扫描旧任务。
 
 ## API、错误处理与可观测性
 

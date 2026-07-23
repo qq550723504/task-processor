@@ -200,8 +200,10 @@ kubectl -n task-processor logs "job/$jobName"
 ```
 
 Successful stdout is a single machine-readable line such as
-`processed=12500 duration=42s`. A failed Job may be safely rerun after fixing
-the cause; upserts are idempotent. Verify a known full SKU through
+`processed=12500 duration=42s`. The skipped-malformed count and safe per-row
+diagnostics (`task_id`, JSON field name, and reason only) are written to stderr;
+persisted request/result JSON is never logged. A failed Job may be safely rerun
+after fixing the cause; upserts are idempotent. Verify a known full SKU through
 `GET /api/v1/listing-kits/shein-pod-image-lookup/stores/<store_id>?q=<sku>`,
 then inspect API/proxy logs for errors. Keep owner-scope rollout disabled until
 the backfill and tenant/user sampling are complete.

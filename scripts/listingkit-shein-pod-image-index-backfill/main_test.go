@@ -77,17 +77,18 @@ func TestRunMainWritesErrorsOnlyToStderr(t *testing.T) {
 	}
 }
 
-func TestRunMigratesBeforeBackfillAndOutputsSummaryAndDiagnostics(t *testing.T) {
+func TestRunMainPreservesStdoutContractAndWritesDiagnosticsToStderr(t *testing.T) {
 	db := &gorm.DB{}
 	var calls []string
-	var output bytes.Buffer
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
 	times := []time.Time{
 		time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC),
 		time.Date(2026, 7, 23, 10, 0, 2, 0, time.UTC),
 	}
 	nowIndex := 0
 
-	err := run(context.Background(), []string{"-config", "config/production.yaml"}, &output, dependencies{
+	deps := dependencies{
 		loadConfig: func(path string) (*config.Config, error) {
 			calls = append(calls, "load")
 			if path != "config/production.yaml" {
@@ -133,16 +134,26 @@ func TestRunMigratesBeforeBackfillAndOutputsSummaryAndDiagnostics(t *testing.T) 
 			nowIndex++
 			return value
 		},
-	})
-	if err != nil {
-		t.Fatal(err)
+	}
+	exitCode := runMain(
+		context.Background(),
+		[]string{"-config", "config/production.yaml"},
+		&stdout,
+		&stderr,
+		deps,
+	)
+	if exitCode != 0 {
+		t.Fatalf("exit code = %d, want 0; stderr = %q", exitCode, stderr.String())
 	}
 	if want := []string{"load", "open", "migrate", "backfill", "close"}; !reflect.DeepEqual(calls, want) {
 		t.Fatalf("calls = %v, want %v", calls, want)
 	}
-	if got, want := output.String(), "processed=17 skipped_malformed=1 duration=2s\n"+
+	if got, want := stdout.String(), "processed=17 duration=2s\n"; got != want {
+		t.Fatalf("stdout = %q, want %q", got, want)
+	}
+	if got, want := stderr.String(), "skipped_malformed=1\n"+
 		"skipped_malformed task_id=\"malformed-task\" field=result reason=invalid_json\n"; got != want {
-		t.Fatalf("output = %q, want %q", got, want)
+		t.Fatalf("stderr = %q, want %q", got, want)
 	}
 }
 
