@@ -6,8 +6,11 @@ import (
 	"testing"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/listingkit"
 
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	_ "modernc.org/sqlite"
 )
 
 func TestResolveConfigPathAndParseFlags(t *testing.T) {
@@ -71,4 +74,42 @@ func TestRunDispatchesSheinSyncScopeAndClosesDatabase(t *testing.T) {
 	if !opened || !migratedSheinSync || !closed {
 		t.Fatalf("expected open, shein-sync migration, and close; opened=%v migrated=%v closed=%v", opened, migratedSheinSync, closed)
 	}
+}
+
+func TestAutoMigrateListingKitRuntimeSchemaCreatesSheinPODImageLookupIndexTable(t *testing.T) {
+	db := openRuntimeSchemaTestDB(t)
+
+	if err := autoMigrateListingKitRuntimeSchema(db); err != nil {
+		t.Fatalf("autoMigrateListingKitRuntimeSchema() error = %v", err)
+	}
+
+	if !db.Migrator().HasTable(&listingkit.SheinPODImageLookupIndex{}) {
+		t.Fatal("expected POD image lookup index table to be created")
+	}
+}
+
+func openRuntimeSchemaTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	for _, table := range []string{
+		"listing_store",
+		"listing_product_import_task",
+		"listing_filter_rule",
+		"listing_profit_rule",
+		"listing_pricing_rule",
+		"listing_operation_strategy",
+		"listing_sensitive_word",
+		"listing_product_import_mapping",
+		"listing_category",
+		"listing_product_data",
+	} {
+		if err := db.Exec("CREATE TABLE " + table + " (id integer)").Error; err != nil {
+			t.Fatalf("create legacy %s table: %v", table, err)
+		}
+	}
+	return db
 }
