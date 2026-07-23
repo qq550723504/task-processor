@@ -233,6 +233,9 @@ func TestAutoMigrateListingKitTaskRepositoryCreatesSheinPODImageLookupIndexTable
 	if !db.Migrator().HasTable(&listingkit.SheinPODImageLookupIndex{}) {
 		t.Fatal("expected POD image lookup index table to be created")
 	}
+	if !db.Migrator().HasColumn(&listingkit.SheinPODImageLookupIndex{}, "sds_gallery_image_urls") {
+		t.Fatal("expected POD image lookup index table to store SDS gallery image URLs")
+	}
 }
 
 func TestAutoMigrateSheinSyncRepositoryCreatesSDSCostGroupTable(t *testing.T) {

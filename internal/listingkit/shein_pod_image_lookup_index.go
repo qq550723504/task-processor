@@ -12,16 +12,17 @@ type SheinPODImageLookupIndex struct {
 	UserID   string `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
 	StoreID  int64  `json:"store_id" gorm:"index:idx_shein_pod_image_lookup_task_id,priority:1;index:idx_shein_pod_image_lookup_product_name,priority:1;index:idx_shein_pod_image_lookup_supplier_code,priority:1;index:idx_shein_pod_image_lookup_seller_sku,priority:1;index:idx_shein_pod_image_lookup_shein_spu_name,priority:1;index:idx_shein_pod_image_lookup_shein_version,priority:1;index:idx_shein_pod_image_lookup_ai_original_image_url,priority:1;index:idx_shein_pod_image_lookup_ai_original_image_key,priority:1;index:idx_shein_pod_image_lookup_sds_main_image_url,priority:1"`
 
-	Status             string `json:"status,omitempty" gorm:"type:varchar(20)"`
-	Prompt             string `json:"prompt,omitempty" gorm:"type:text"`
-	ProductName        string `json:"product_name,omitempty" gorm:"type:text"`
-	SupplierCode       string `json:"supplier_code,omitempty" gorm:"type:text"`
-	SellerSKU          string `json:"seller_sku,omitempty" gorm:"type:text"`
-	SheinSPUName       string `json:"shein_spu_name,omitempty" gorm:"type:text"`
-	SheinVersion       string `json:"shein_version,omitempty" gorm:"type:text"`
-	AIOriginalImageURL string `json:"ai_original_image_url,omitempty" gorm:"type:text"`
-	AIOriginalImageKey string `json:"ai_original_image_key,omitempty" gorm:"type:text"`
-	SDSMainImageURL    string `json:"sds_main_image_url,omitempty" gorm:"type:text"`
+	Status              string   `json:"status,omitempty" gorm:"type:varchar(20)"`
+	Prompt              string   `json:"prompt,omitempty" gorm:"type:text"`
+	ProductName         string   `json:"product_name,omitempty" gorm:"type:text"`
+	SupplierCode        string   `json:"supplier_code,omitempty" gorm:"type:text"`
+	SellerSKU           string   `json:"seller_sku,omitempty" gorm:"type:text"`
+	SheinSPUName        string   `json:"shein_spu_name,omitempty" gorm:"type:text"`
+	SheinVersion        string   `json:"shein_version,omitempty" gorm:"type:text"`
+	AIOriginalImageURL  string   `json:"ai_original_image_url,omitempty" gorm:"type:text"`
+	AIOriginalImageKey  string   `json:"ai_original_image_key,omitempty" gorm:"type:text"`
+	SDSMainImageURL     string   `json:"sds_main_image_url,omitempty" gorm:"type:text"`
+	SDSGalleryImageURLs []string `json:"sds_gallery_image_urls,omitempty" gorm:"type:text;serializer:json"`
 
 	NormalizedTaskID             string `json:"-" gorm:"type:text;index:idx_shein_pod_image_lookup_task_id,priority:2"`
 	NormalizedProductName        string `json:"-" gorm:"type:text;index:idx_shein_pod_image_lookup_product_name,priority:2"`
