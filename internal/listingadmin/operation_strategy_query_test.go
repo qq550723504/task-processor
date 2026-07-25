@@ -150,6 +150,102 @@ func TestGormOperationStrategyRepositoryGetActiveActivityStrategyFiltersEnrollme
 	}
 }
 
+func TestGormOperationStrategyRepositoryGetActiveActivityStrategyIsSharedByStore(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingOperationStrategy{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	row := listingOperationStrategy{
+		TenantID:            101,
+		OwnerUserID:         "strategy-owner",
+		StoreID:             21,
+		Name:                "shared promotion",
+		Platform:            "SHEIN",
+		Status:              0,
+		Deleted:             0,
+		ActivityEnabled:     1,
+		ActivityType:        "PROMOTION",
+		ActivityPriceMode:   "BREAKEVEN",
+		ActivityPartakeType: "REGULAR",
+		ActivityStockRatio:  1,
+	}
+	if err := db.Table("listing_operation_strategy").Create(&row).Error; err != nil {
+		t.Fatalf("seed row: %v", err)
+	}
+
+	restore := SetOwnerScopeRequiredForTesting(true)
+	t.Cleanup(restore)
+	repo := NewGormOperationStrategyRepository(db)
+	got, err := repo.GetActiveActivityStrategy(withRequestIdentity(context.Background(), "store-operator", nil), 101, 21, "SHEIN", "PROMOTION")
+	if err != nil {
+		t.Fatalf("GetActiveActivityStrategy() error = %v", err)
+	}
+	if got == nil || got.Name != "shared promotion" {
+		t.Fatalf("GetActiveActivityStrategy() = %+v, want store-shared activity strategy", got)
+	}
+}
+
+func TestGormOperationStrategyRepositorySaveActivityStrategyUpdatesSharedStoreStrategy(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingOperationStrategy{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	row := listingOperationStrategy{
+		TenantID:             101,
+		OwnerUserID:          "strategy-owner",
+		StoreID:              21,
+		Name:                 "shared promotion",
+		Platform:             "SHEIN",
+		Status:               0,
+		Deleted:              0,
+		ActivityEnabled:      1,
+		ActivityType:         "PROMOTION",
+		ActivityPriceMode:    "DISCOUNT",
+		ActivityDiscountRate: 0.2,
+	}
+	if err := db.Table("listing_operation_strategy").Create(&row).Error; err != nil {
+		t.Fatalf("seed row: %v", err)
+	}
+
+	restore := SetOwnerScopeRequiredForTesting(true)
+	t.Cleanup(restore)
+	discount := 0.3
+	repo := NewGormOperationStrategyRepository(db)
+	updated, err := repo.SaveActivityStrategy(withRequestIdentity(context.Background(), "store-operator", nil), &OperationStrategy{
+		ID:                   row.ID,
+		TenantID:             101,
+		StoreID:              21,
+		Name:                 "shared promotion",
+		Platform:             "SHEIN",
+		Status:               0,
+		ActivityEnabled:      true,
+		ActivityType:         "PROMOTION",
+		ActivityPriceMode:    "DISCOUNT",
+		ActivityPartakeType:  "REGULAR",
+		ActivityDiscountRate: &discount,
+	})
+	if err != nil {
+		t.Fatalf("SaveActivityStrategy() error = %v", err)
+	}
+	if updated == nil || updated.ActivityDiscountRate == nil || *updated.ActivityDiscountRate != discount {
+		t.Fatalf("SaveActivityStrategy() = %+v, want updated shared strategy", updated)
+	}
+
+	var persisted listingOperationStrategy
+	if err := db.Table("listing_operation_strategy").Where("id = ?", row.ID).Take(&persisted).Error; err != nil {
+		t.Fatalf("load persisted strategy: %v", err)
+	}
+	if persisted.OwnerUserID != "strategy-owner" {
+		t.Fatalf("owner = %q, want preserved strategy owner", persisted.OwnerUserID)
+	}
+}
+
 func TestGormOperationStrategyRepositoryPreservesZeroActivityMinProfitRate(t *testing.T) {
 	t.Parallel()
 

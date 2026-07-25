@@ -156,21 +156,36 @@ func (r *GormOperationStrategyRepository) SaveActivityStrategy(ctx context.Conte
 		"activity_partake_type":            row.ActivityPartakeType,
 		"fixed_price_adjustment":           nullableFloat64(strategy.FixedPriceAdjustment),
 	}
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		values["owner_user_id"] = ownerUserID
-	}
 	if row.ID <= 0 {
 		values["deleted"] = 0
+		if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+			// Keep the creator for audit history. Activity strategies themselves
+			// are shared by all operators with access to the same store.
+			values["owner_user_id"] = ownerUserID
+		}
 		if err := r.db.WithContext(ctx).Table("listing_operation_strategy").Create(values).Error; err != nil {
 			return nil, err
 		}
 		return r.GetActiveActivityStrategy(ctx, row.TenantID, row.StoreID, row.Platform, row.ActivityType)
 	}
 	delete(values, "tenant_id")
-	if err := updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_operation_strategy"), row.TenantID, row.ID, "owner_user_id", values, ErrOperationStrategyNotFound); err != nil {
-		return nil, err
+	result := r.db.WithContext(ctx).
+		Table("listing_operation_strategy").
+		Where("tenant_id = ? AND id = ? AND store_id = ? AND platform = ? AND activity_enabled = 1 AND activity_type = ? AND deleted = 0",
+			row.TenantID,
+			row.ID,
+			row.StoreID,
+			row.Platform,
+			row.ActivityType,
+		).
+		Updates(values)
+	if result.Error != nil {
+		return nil, result.Error
 	}
-	return r.GetOperationStrategy(ctx, row.TenantID, row.ID)
+	if result.RowsAffected == 0 {
+		return nil, ErrOperationStrategyNotFound
+	}
+	return r.GetActiveActivityStrategy(ctx, row.TenantID, row.StoreID, row.Platform, row.ActivityType)
 }
 
 func (r *GormOperationStrategyRepository) UpdateOperationStrategyStatus(ctx context.Context, tenantID, id int64, status int16, remark string) (*OperationStrategy, error) {
@@ -235,18 +250,20 @@ func (r *GormOperationStrategyRepository) GetActiveActivityStrategy(ctx context.
 	}
 
 	var row listingOperationStrategy
-	err := applyOwnerScope(
-		r.db.WithContext(ctx).
-			Table("listing_operation_strategy").
-			Where("tenant_id = ? AND store_id = ? AND platform = ? AND status = 0 AND activity_enabled = 1 AND activity_type = ? AND deleted = 0",
-				tenantID,
-				storeID,
-				platform,
-				activityType,
-			),
-		ctx,
-		"owner_user_id",
-	).Order("id desc").Take(&row).Error
+	// An activity strategy configures a store-level SHEIN enrollment flow, not
+	// a user-owned resource. Enrollment validates store access before it reaches
+	// this lookup; filtering by the strategy creator would make the same store
+	// unusable for another authorized operator.
+	err := r.db.WithContext(ctx).
+		Table("listing_operation_strategy").
+		Where("tenant_id = ? AND store_id = ? AND platform = ? AND status = 0 AND activity_enabled = 1 AND activity_type = ? AND deleted = 0",
+			tenantID,
+			storeID,
+			platform,
+			activityType,
+		).
+		Order("id desc").
+		Take(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, nil
 	}
