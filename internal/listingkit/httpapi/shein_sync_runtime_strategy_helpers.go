@@ -3,12 +3,12 @@ package httpapi
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	sheinsync "task-processor/internal/listingkit/sheinsync"
+	"task-processor/internal/tenantbridge"
 )
 
 type localRuntimePromotionStrategyProvider struct {
@@ -113,7 +113,7 @@ func sheinPromotionStrategyInput(activityType string, strategy *listingadmin.Ope
 
 func sheinPromotionTenantID(ctx context.Context) (int64, error) {
 	value := strings.TrimSpace(listingkit.TenantIDFromContext(ctx))
-	tenantID, err := strconv.ParseInt(value, 10, 64)
+	tenantID, err := tenantbridge.ResolveLegacyTenantID(ctx, value)
 	if err != nil || tenantID <= 0 {
 		return 0, fmt.Errorf("numeric tenant id is required for SHEIN promotion strategy")
 	}

@@ -8,6 +8,7 @@ import (
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/tenantbridge"
 )
 
 func TestLocalRuntimePromotionStrategyProviderUsesPromotionStrategyByDefault(t *testing.T) {
@@ -87,6 +88,40 @@ func TestLocalRuntimePromotionStrategyProviderUsesTimeLimitedFieldsForTimeLimite
 	require.Equal(t, 30, strategy.TimeLimitedStockLimitPercent)
 	require.True(t, strategy.TimeLimitedUserLimit)
 	require.Equal(t, 2, strategy.TimeLimitedUserLimitNum)
+}
+
+func TestLocalRuntimePromotionStrategyProviderResolvesLegacyTenantIDBeforeLoadingStrategy(t *testing.T) {
+	restore := tenantbridge.ConfigureLegacyTenantResolver(runtimePromotionTenantResolver{
+		mapping: map[string]int64{"373211199677923496": 227},
+	})
+	t.Cleanup(restore)
+
+	repo := &runtimePromotionStrategyRepoStub{
+		strategies: map[string]*listingadmin.OperationStrategy{
+			"PROMOTION": {
+				StoreID:           177,
+				ActivityPriceMode: "BREAKEVEN",
+			},
+		},
+	}
+	provider := localRuntimePromotionStrategyProvider{repo: repo}
+
+	strategy, err := provider.GetPromotionStrategy(
+		listingkit.WithTenantID(context.Background(), "373211199677923496"),
+		177,
+		"PROMOTION:227:177",
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, strategy)
+	require.Equal(t, []int64{227}, repo.requestedTenantIDs)
+}
+
+type runtimePromotionTenantResolver struct{ mapping map[string]int64 }
+
+func (r runtimePromotionTenantResolver) ResolveLegacyTenantID(_ context.Context, tenantID string) (int64, bool, error) {
+	value, ok := r.mapping[tenantID]
+	return value, ok, nil
 }
 
 type runtimePromotionStrategyRepoStub struct {
