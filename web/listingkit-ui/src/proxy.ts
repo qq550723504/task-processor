@@ -10,6 +10,7 @@ import {
   readZitadelIdentityFromSession,
   readZitadelSessionError,
 } from "@/lib/server/zitadel-auth";
+import { hasPlatformAdminRole } from "@/lib/listingkit-permissions";
 
 type AuthenticatedProxyRequest = NextRequest & {
   auth?: unknown;
@@ -55,7 +56,18 @@ async function handleProxy(request: AuthenticatedProxyRequest) {
     return NextResponse.redirect(new URL("/unauthorized", request.nextUrl));
   }
 
+  if (
+    isSDSLoginPagePath(request.nextUrl.pathname) &&
+    !hasPlatformAdminRole(identity.roles)
+  ) {
+    return NextResponse.redirect(new URL("/unauthorized", request.nextUrl));
+  }
+
   return NextResponse.next();
+}
+
+function isSDSLoginPagePath(pathname: string) {
+  return pathname === "/listing-kits/sds-login";
 }
 
 function isListingKitPagePath(pathname: string) {

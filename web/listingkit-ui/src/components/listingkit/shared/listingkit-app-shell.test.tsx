@@ -203,10 +203,7 @@ describe("ListingKitAppShell", () => {
       "href",
       "/listing-kits/shein-login",
     );
-    expect(screen.getByRole("link", { name: "SDS 登录" })).toHaveAttribute(
-      "href",
-      "/listing-kits/sds-login",
-    );
+    expect(screen.queryByRole("link", { name: "SDS 登录" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "提示词" })).toHaveAttribute(
       "href",
       "/listing-kits/prompts",

@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 
 import { ThemeToggleButton } from "@/components/listingkit/shared/theme-toggle-button";
+import { PLATFORM_ADMIN_ROLES } from "@/lib/listingkit-permissions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -108,7 +109,7 @@ const PRIMARY_NAV_ITEMS = [
 const MENU_ROLES = {
   operator: ["listingkit_operator", "listingkit_admin", "platform_admin", "admin"],
   admin: ["listingkit_admin", "platform_admin", "admin"],
-  platformAdmin: ["platform_admin", "admin"],
+  platformAdmin: PLATFORM_ADMIN_ROLES,
 } as const;
 
 const ZITADEL_CONSOLE_URL =
@@ -269,7 +270,7 @@ const ADMIN_NAV_ITEMS = [
         href: "/listing-kits/sds-login",
         icon: KeyRound,
         match: "prefix",
-        requiredRoles: MENU_ROLES.admin,
+        requiredRoles: MENU_ROLES.platformAdmin,
       },
       {
         label: "提示词",

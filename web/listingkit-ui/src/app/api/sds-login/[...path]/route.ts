@@ -6,6 +6,7 @@ import {
   verifyListingKitRequestIdentity,
 } from "@/app/api/listing-kits/proxy-auth";
 import { buildSDSLoginURL } from "@/app/api/sds-login/shared";
+import { hasPlatformAdminRole } from "@/lib/listingkit-permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,16 @@ async function proxyRequest(
   const auth = await verifyListingKitRequestIdentity(request);
   if (auth.response) {
     return auth.response;
+  }
+
+  if (auth.identity && !hasPlatformAdminRole(auth.identity.roles)) {
+    return NextResponse.json(
+      {
+        error: "listingkit_permission_denied",
+        message: "Platform administrator permission is required to access SDS login",
+      },
+      { status: 403 },
+    );
   }
 
   const headers = buildSDSLoginUpstreamHeaders(request.headers, auth.identity);

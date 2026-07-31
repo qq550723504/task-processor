@@ -820,8 +820,8 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForAISettingsRoute(t *testi
 	}
 }
 
-func TestListingKitZitadelAuthAllowsAuthenticatedUserForSDSLoginRoutes(t *testing.T) {
-	zitadel := newZitadelRoleServer(t, "listingkit_operator")
+func TestListingKitZitadelAuthAllowsPlatformAdminForSDSLoginRoutes(t *testing.T) {
+	zitadel := newZitadelRoleServer(t, "platform_admin")
 	defer zitadel.Close()
 
 	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
@@ -851,6 +851,43 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForSDSLoginRoutes(t *testin
 
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+}
+
+func TestListingKitZitadelAuthRejectsListingKitAdminForSDSLoginRoutes(t *testing.T) {
+	zitadel := newZitadelRoleServer(t, "listingkit_admin")
+	defer zitadel.Close()
+
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{
+			IssuerURL: zitadel.URL,
+			ClientID:  "listingkit-client",
+			Required:  true,
+		},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{
+		{
+			Method: http.MethodGet,
+			Path:   "/api/v1/sds-login/status",
+			Module: "sds-login",
+			Handler: func(c *gin.Context) {
+				c.JSON(http.StatusOK, gin.H{"ok": true})
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/sds-login/status", nil)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusForbidden, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "listingkit_permission_denied") {
+		t.Fatalf("body = %s, want listingkit_permission_denied", resp.Body.String())
 	}
 }
 

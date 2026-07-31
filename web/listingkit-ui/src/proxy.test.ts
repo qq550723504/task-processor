@@ -64,6 +64,46 @@ describe("ListingKit ZITADEL proxy", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
+  it("redirects non-platform administrators away from the SDS login page", async () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    mockedAuthState.session = {
+      accessToken: "token-1",
+      identity: {
+        tenantId: "org-1",
+        userId: "user-1",
+        username: "operator",
+        userType: "zitadel",
+        roles: ["listingkit_admin"],
+      },
+    };
+
+    const response = await callProxy("/listing-kits/sds-login");
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("http://localhost/unauthorized");
+  });
+
+  it("allows platform administrators to access the SDS login page", async () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    mockedAuthState.session = {
+      accessToken: "token-1",
+      identity: {
+        tenantId: "org-1",
+        userId: "user-1",
+        username: "platform-admin",
+        userType: "zitadel",
+        roles: ["platform_admin"],
+      },
+    };
+
+    const response = await callProxy("/listing-kits/sds-login");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+  });
+
   it("redirects authenticated but unauthorized users to the unauthorized page", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");

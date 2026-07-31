@@ -34,6 +34,8 @@ func listingKitRouteRequiredPermission(route httproute.Descriptor) string {
 		return authz.PermissionListingKitAdminWrite
 	case "listing-kit-platform-admin":
 		return authz.PermissionListingKitPlatformAdm
+	case "sds-login":
+		return authz.PermissionListingKitPlatformAdm
 	default:
 		return ""
 	}
