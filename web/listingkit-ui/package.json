@@ -12,7 +12,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@auth/core": "0.41.3",
+    "@auth/core": "0.41.2",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-slot": "^1.2.4",
     "@tanstack/react-query": "^5.99.0",
