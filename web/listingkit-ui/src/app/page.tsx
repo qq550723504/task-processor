@@ -1,5 +1,5 @@
-import { ListingKitHomepage } from "@/components/listingkit/home/listingkit-homepage";
+import { MarketingHomepage } from "@/components/marketing/marketing-homepage";
 
 export default function Home() {
-  return <ListingKitHomepage />;
+  return <MarketingHomepage />;
 }

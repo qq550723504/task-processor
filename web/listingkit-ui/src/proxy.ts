@@ -71,7 +71,7 @@ function isSDSLoginPagePath(pathname: string) {
 }
 
 function isListingKitPagePath(pathname: string) {
-  return pathname === "/" || pathname === "/listing-kits" || pathname.startsWith("/listing-kits/");
+  return pathname === "/listing-kits" || pathname.startsWith("/listing-kits/");
 }
 
 function redirectToZitadelLogin(request: NextRequest) {
@@ -91,5 +91,5 @@ function buildReturnTo(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/listing-kits/:path*"],
+  matcher: ["/listing-kits/:path*"],
 };

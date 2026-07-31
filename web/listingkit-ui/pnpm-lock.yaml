@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@auth/core':
-        specifier: 0.41.2
-        version: 0.41.2
+        specifier: 0.41.3
+        version: 0.41.3
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.5.7(@standard-schema/spec@1.1.0)(react-hook-form@7.83.0(react@19.2.4))(zod@4.4.3)
@@ -120,20 +120,6 @@ packages:
 
   '@asamuzakjp/nwsapi@2.3.9':
     resolution: {integrity: sha512-n8GuYSrI9bF7FFZ/SjhwevlHc8xaVlb/7HmHelnc/PZXBD2ZR49NnN9sMMuDdEGPeeRQ5d0hqlSlEpgCX3Wl0Q==}
-
-  '@auth/core@0.41.2':
-    resolution: {integrity: sha512-Hx5MNBxN2fJTbJKGUKAA0wca43D0Akl3TvufY54Gn8lop7F+34vU1zA1pn0vQfIoVuLIrpfc2nkyjwIaPJMW7w==}
-    peerDependencies:
-      '@simplewebauthn/browser': ^9.0.1
-      '@simplewebauthn/server': ^9.0.2
-      nodemailer: ^7.0.7
-    peerDependenciesMeta:
-      '@simplewebauthn/browser':
-        optional: true
-      '@simplewebauthn/server':
-        optional: true
-      nodemailer:
-        optional: true
 
   '@auth/core@0.41.3':
     resolution: {integrity: sha512-sJ3JMHHkXMD3aOjopv7mOBTO1Ocw4b0fAEXJBz6k7YHLpYQI6C40jCUPc5fNvUKxXRXNE1/sRISA15UrwWJBTw==}
@@ -2924,14 +2910,6 @@ snapshots:
   '@asamuzakjp/generational-cache@1.0.1': {}
 
   '@asamuzakjp/nwsapi@2.3.9': {}
-
-  '@auth/core@0.41.2':
-    dependencies:
-      '@panva/hkdf': 1.2.1
-      jose: 6.2.5
-      oauth4webapi: 3.8.6
-      preact: 10.24.3
-      preact-render-to-string: 6.5.11(preact@10.24.3)
 
   '@auth/core@0.41.3':
     dependencies:

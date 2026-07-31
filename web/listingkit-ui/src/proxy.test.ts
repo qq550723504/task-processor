@@ -142,4 +142,11 @@ describe("ListingKit ZITADEL proxy", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("location")).toBeNull();
   });
+
+  it("keeps the public product homepage outside the auth gate", async () => {
+    const response = await callProxy("/");
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+  });
 });

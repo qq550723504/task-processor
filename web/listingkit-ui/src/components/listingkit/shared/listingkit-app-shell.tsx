@@ -91,7 +91,7 @@ type NavSection = {
 type NavTreeItem = NavItem | ExternalNavItem | NavSection;
 
 const PRIMARY_NAV_ITEMS = [
-  { label: "首页", href: "/", icon: Home, match: "exact" },
+  { label: "首页", href: "/listing-kits/home", icon: Home, match: "exact" },
   { label: "新建任务", href: "/listing-kits/new", icon: PackagePlus, match: "exact" },
   { label: "POD", href: "/listing-kits/sds", icon: Boxes, match: "prefix" },
   {

@@ -140,22 +140,26 @@ export function buildAuthConfig(): NextAuthConfig {
   const normalizedPublicOrigin = publicOrigin.replace(/\/+$/, "");
   const postLogoutRedirect =
     zitadel?.postLogoutRedirectUri || normalizedPublicOrigin || "/";
+  const zitadelProvider = zitadel
+    ? ZITADEL({
+        issuer: zitadel.issuerUrl,
+        clientId: zitadel.clientId,
+        clientSecret: zitadel.clientSecret,
+        authorization: { params: { scope: zitadel.scopes } },
+      })
+    : undefined;
+
+  // Auth.js exposes customFetch on the resolved provider configuration, while
+  // the ZITADEL factory input type does not include the symbol yet.
+  if (zitadelProvider) {
+    zitadelProvider[customFetch] = oidcFetch;
+  }
 
   return {
     secret: getAuthJsSecret(),
     trustHost: true,
     session: { strategy: "jwt" },
-    providers: zitadel
-      ? [
-          ZITADEL({
-            issuer: zitadel.issuerUrl,
-            clientId: zitadel.clientId,
-            clientSecret: zitadel.clientSecret,
-            authorization: { params: { scope: zitadel.scopes } },
-            [customFetch]: oidcFetch,
-          }),
-        ]
-      : [],
+    providers: zitadelProvider ? [zitadelProvider] : [],
     callbacks: {
       async jwt({ token, account, profile }) {
         if (account?.provider === "zitadel") {
