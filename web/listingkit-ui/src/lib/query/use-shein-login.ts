@@ -11,60 +11,61 @@ import {
   submitSheinVerifyCode,
 } from "@/lib/api/shein-login";
 
-const sheinLoginAccountsKey = ["listingkit", "shein-login", "accounts"] as const;
+const sheinLoginAccountsKey = (tenantID?: string) =>
+  ["listingkit", "shein-login", "accounts", tenantID || "current"] as const;
 
-export function useSheinLoginAccounts() {
+export function useSheinLoginAccounts(tenantID?: string) {
   return useQuery({
-    queryKey: sheinLoginAccountsKey,
-    queryFn: listSheinLoginAccounts,
+    queryKey: sheinLoginAccountsKey(tenantID),
+    queryFn: () => listSheinLoginAccounts(tenantID),
     refetchInterval: 15000,
   });
 }
 
-function useInvalidateSheinLoginAccounts() {
+function useInvalidateSheinLoginAccounts(tenantID?: string) {
   const client = useQueryClient();
   return async () => {
-    await client.invalidateQueries({ queryKey: sheinLoginAccountsKey });
+    await client.invalidateQueries({ queryKey: sheinLoginAccountsKey(tenantID) });
   };
 }
 
-export function useLoginSheinAccount() {
-  const invalidate = useInvalidateSheinLoginAccounts();
+export function useLoginSheinAccount(tenantID?: string) {
+  const invalidate = useInvalidateSheinLoginAccounts(tenantID);
   return useMutation({
-    mutationFn: (storeID: number) => loginSheinAccount(storeID),
+    mutationFn: (storeID: number) => loginSheinAccount(storeID, tenantID),
     onSuccess: invalidate,
   });
 }
 
-export function useSubmitSheinVerifyCode() {
-  const invalidate = useInvalidateSheinLoginAccounts();
+export function useSubmitSheinVerifyCode(tenantID?: string) {
+  const invalidate = useInvalidateSheinLoginAccounts(tenantID);
   return useMutation({
     mutationFn: ({ storeID, code }: { storeID: number; code: string }) =>
-      submitSheinVerifyCode(storeID, code),
+      submitSheinVerifyCode(storeID, code, tenantID),
     onSuccess: invalidate,
   });
 }
 
-export function useClearSheinCookie() {
-  const invalidate = useInvalidateSheinLoginAccounts();
+export function useClearSheinCookie(tenantID?: string) {
+  const invalidate = useInvalidateSheinLoginAccounts(tenantID);
   return useMutation({
-    mutationFn: (storeID: number) => clearSheinCookie(storeID),
+    mutationFn: (storeID: number) => clearSheinCookie(storeID, tenantID),
     onSuccess: invalidate,
   });
 }
 
-export function useClearSheinLastFailure() {
-  const invalidate = useInvalidateSheinLoginAccounts();
+export function useClearSheinLastFailure(tenantID?: string) {
+  const invalidate = useInvalidateSheinLoginAccounts(tenantID);
   return useMutation({
-    mutationFn: (storeID: number) => clearSheinLastFailure(storeID),
+    mutationFn: (storeID: number) => clearSheinLastFailure(storeID, tenantID),
     onSuccess: invalidate,
   });
 }
 
-export function useSheinLastFailure(storeID?: number | null) {
+export function useSheinLastFailure(storeID?: number | null, tenantID?: string) {
   return useQuery({
-    queryKey: ["listingkit", "shein-login", "failure", storeID],
-    queryFn: () => getSheinLastFailure(storeID as number),
+    queryKey: ["listingkit", "shein-login", "failure", storeID, tenantID || "current"],
+    queryFn: () => getSheinLastFailure(storeID as number, tenantID),
     enabled: Boolean(storeID),
   });
 }

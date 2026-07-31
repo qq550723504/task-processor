@@ -8,6 +8,7 @@ vi.mock("@/auth", () => ({
 import {
   buildSheinLoginUpstreamHeaders,
   GET,
+  resolveSheinLoginVisitTenantID,
 } from "@/app/api/shein-login/[...path]/route";
 
 describe("buildSheinLoginUpstreamHeaders", () => {
@@ -39,6 +40,21 @@ describe("buildSheinLoginUpstreamHeaders", () => {
     expect(headers.get("tenant-id")).toBeNull();
     expect(headers.get("visit-tenant-id")).toBeNull();
     expect(headers.get("login-user")).toBeNull();
+  });
+});
+
+describe("resolveSheinLoginVisitTenantID", () => {
+  it("accepts only a positive tenant id from the URL query", () => {
+    expect(
+      resolveSheinLoginVisitTenantID(
+        new NextRequest("http://localhost/api/shein-login/accounts?tenant_id=286"),
+      ),
+    ).toBe("286");
+    expect(
+      resolveSheinLoginVisitTenantID(
+        new NextRequest("http://localhost/api/shein-login/accounts?tenant_id=0"),
+      ),
+    ).toBe("");
   });
 });
 
@@ -110,5 +126,30 @@ describe("SHEIN login proxy ZITADEL auth", () => {
     expect(new Headers(upstreamInit?.headers).get("Authorization")).toBe(
       "Bearer access-token-1",
     );
+  });
+
+  it("forwards the target tenant only from the URL query", async () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response("[]", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await GET(
+      new NextRequest("http://localhost/api/shein-login/accounts?tenant_id=286", {
+        headers: {
+          authorization: "Bearer access-token-1",
+          "X-Shein-Login-Visit-Tenant-ID": "999",
+        },
+      }),
+      { params: Promise.resolve({ path: ["accounts"] }) },
+    );
+
+    const upstreamInit = fetchMock.mock.calls[0]?.[1];
+    expect(new Headers(upstreamInit?.headers).get("X-Shein-Login-Visit-Tenant-ID")).toBe("286");
   });
 });

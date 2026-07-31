@@ -1,6 +1,7 @@
 package sheinlogin
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -190,7 +191,11 @@ func parseStoreID(c *gin.Context) (int64, bool) {
 func requireTenantID(c *gin.Context) (int64, bool) {
 	tenantID, err := requestTenantID(c)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"success": false, "message": err.Error()})
+		statusCode := http.StatusUnauthorized
+		if errors.Is(err, errVisitTenantAccessDenied) {
+			statusCode = http.StatusForbidden
+		}
+		c.JSON(statusCode, gin.H{"success": false, "message": err.Error()})
 		return 0, false
 	}
 	return tenantID, true

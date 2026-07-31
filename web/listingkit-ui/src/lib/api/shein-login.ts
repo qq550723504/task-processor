@@ -9,8 +9,17 @@ async function readJSON<T>(response: Response): Promise<T> {
   return text ? (JSON.parse(text) as T) : ({} as T);
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`/api/shein-login${path}`, {
+function withTenantScope(path: string, tenantID?: string) {
+  const tenant = tenantID?.trim();
+  if (!tenant) {
+    return path;
+  }
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}tenant_id=${encodeURIComponent(tenant)}`;
+}
+
+async function request<T>(path: string, init?: RequestInit, tenantID?: string): Promise<T> {
+  const response = await fetch(`/api/shein-login${withTenantScope(path, tenantID)}`, {
     ...init,
     headers: new Headers({
       Accept: "application/json",
@@ -27,42 +36,42 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (payload.data ?? (payload as unknown as T)) as T;
 }
 
-export function listSheinLoginAccounts() {
-  return request<SheinLoginAccountStatus[]>("/accounts");
+export function listSheinLoginAccounts(tenantID?: string) {
+  return request<SheinLoginAccountStatus[]>("/accounts", undefined, tenantID);
 }
 
-export function loginSheinAccount(storeID: number) {
+export function loginSheinAccount(storeID: number, tenantID?: string) {
   return request(`/accounts/${storeID}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ force_login: true, headless: false }),
-  });
+  }, tenantID);
 }
 
-export function submitSheinVerifyCode(storeID: number, code: string) {
+export function submitSheinVerifyCode(storeID: number, code: string, tenantID?: string) {
   return request(`/accounts/${storeID}/verify-code`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ code }),
-  });
+  }, tenantID);
 }
 
-export function clearSheinCookie(storeID: number) {
+export function clearSheinCookie(storeID: number, tenantID?: string) {
   return request(`/accounts/${storeID}/cookie`, {
     method: "DELETE",
-  });
+  }, tenantID);
 }
 
-export function getSheinLastFailure(storeID: number) {
-  return request<SheinLoginFailureDetail | undefined>(`/accounts/${storeID}/last-failure`);
+export function getSheinLastFailure(storeID: number, tenantID?: string) {
+  return request<SheinLoginFailureDetail | undefined>(`/accounts/${storeID}/last-failure`, undefined, tenantID);
 }
 
 export function listSheinStoreWarehouses(storeID: number) {
   return request<SheinLoginWarehouse[]>(`/accounts/${storeID}/warehouses`);
 }
 
-export function clearSheinLastFailure(storeID: number) {
+export function clearSheinLastFailure(storeID: number, tenantID?: string) {
   return request(`/accounts/${storeID}/last-failure`, {
     method: "DELETE",
-  });
+  }, tenantID);
 }

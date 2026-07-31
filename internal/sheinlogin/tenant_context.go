@@ -2,6 +2,7 @@ package sheinlogin
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -9,12 +10,26 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/authz"
+	"task-processor/internal/listingkit"
 	"task-processor/internal/tenantbridge"
 )
+
+const visitTenantIDHeader = "X-Shein-Login-Visit-Tenant-ID"
+
+var errVisitTenantAccessDenied = errors.New("platform administrator role is required to manage another tenant's SHEIN login")
 
 func requestTenantID(c *gin.Context) (int64, error) {
 	if c == nil {
 		return 0, fmt.Errorf("tenant id is required")
+	}
+
+	if visitTenantID := strings.TrimSpace(c.GetHeader(visitTenantIDHeader)); visitTenantID != "" {
+		identity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+		if !ok || !authz.IsListingKitPlatformAdmin(identity.UserID, identity.Roles) {
+			return 0, errVisitTenantAccessDenied
+		}
+		return tenantbridge.ResolveLegacyTenantID(c.Request.Context(), visitTenantID)
 	}
 
 	for _, candidate := range []string{

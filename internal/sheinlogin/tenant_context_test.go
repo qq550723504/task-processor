@@ -2,12 +2,14 @@ package sheinlogin
 
 import (
 	"context"
+	"errors"
 	"net/http/httptest"
 	"net/url"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/listingkit"
 	"task-processor/internal/tenantbridge"
 )
 
@@ -76,6 +78,47 @@ func TestRequestTenantIDResolvesMappedZitadelTenant(t *testing.T) {
 	}
 	if tenantID != 227 {
 		t.Fatalf("tenantID = %d, want 227", tenantID)
+	}
+}
+
+func TestRequestTenantIDAllowsPlatformAdminToVisitAnotherTenant(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set(visitTenantIDHeader, "286")
+	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{
+		TenantID: "227",
+		UserID:   "platform-user",
+		Roles:    []string{"platform_admin"},
+	}))
+	c.Request = req
+
+	tenantID, err := requestTenantID(c)
+	if err != nil {
+		t.Fatalf("requestTenantID() error = %v", err)
+	}
+	if tenantID != 286 {
+		t.Fatalf("tenantID = %d, want 286", tenantID)
+	}
+}
+
+func TestRequestTenantIDRejectsVisitTenantForNonPlatformAdmin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest("GET", "/", nil)
+	req.Header.Set(visitTenantIDHeader, "286")
+	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{
+		TenantID: "227",
+		UserID:   "operator-user",
+		Roles:    []string{"listingkit_operator"},
+	}))
+	c.Request = req
+
+	_, err := requestTenantID(c)
+	if !errors.Is(err, errVisitTenantAccessDenied) {
+		t.Fatalf("requestTenantID() error = %v, want platform admin denial", err)
 	}
 }
 

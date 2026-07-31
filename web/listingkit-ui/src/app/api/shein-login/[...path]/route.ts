@@ -16,6 +16,11 @@ export function buildSheinLoginUpstreamHeaders(
   return buildListingKitUpstreamHeaders(requestHeaders, verifiedIdentity);
 }
 
+export function resolveSheinLoginVisitTenantID(request: NextRequest) {
+  const value = request.nextUrl.searchParams.get("tenant_id")?.trim() ?? "";
+  return /^[1-9][0-9]*$/.test(value) ? value : "";
+}
+
 async function proxyRequest(
   request: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
@@ -28,6 +33,10 @@ async function proxyRequest(
   }
 
   const headers = buildSheinLoginUpstreamHeaders(request.headers, auth.identity);
+  const visitTenantID = resolveSheinLoginVisitTenantID(request);
+  if (visitTenantID) {
+    headers.set("X-Shein-Login-Visit-Tenant-ID", visitTenantID);
+  }
   if (auth.token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${auth.token}`);
   }
