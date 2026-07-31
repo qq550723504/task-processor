@@ -134,10 +134,7 @@ describe("ListingKitAppShell", () => {
       "href",
       "/listing-kits/store-statistics",
     );
-    expect(screen.getByRole("link", { name: "平台店铺管理" })).toHaveAttribute(
-      "href",
-      "/listing-kits/admin/stores",
-    );
+    expect(screen.queryByRole("link", { name: "平台店铺管理" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "上架统计" })).toHaveAttribute(
       "href",
       "/listing-kits/admin/store-statistics",
@@ -222,6 +219,8 @@ describe("ListingKitAppShell", () => {
       "href",
       "/listing-kits/subscription",
     );
+    expect(screen.queryByRole("link", { name: "租户订阅管理" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "套餐管理" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "用户管理" })).not.toBeInTheDocument();
   });
 
@@ -236,7 +235,7 @@ describe("ListingKitAppShell", () => {
 
     const user = userEvent.setup();
     render(
-      <ConfiguredShell identity={{ roles: ["listingkit_admin"] }}>
+      <ConfiguredShell identity={{ roles: ["platform_admin"] }}>
         <div>workspace content</div>
       </ConfiguredShell>,
     );

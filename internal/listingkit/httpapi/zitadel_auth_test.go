@@ -888,7 +888,7 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForRuleAdminRoutes(t *testi
 	}
 }
 
-func TestListingKitZitadelAuthAllowsListingKitAdminForPlatformRoutes(t *testing.T) {
+func TestListingKitZitadelAuthRejectsListingKitAdminForPlatformRoutes(t *testing.T) {
 	zitadel := newZitadelRoleServer(t, "listingkit_admin")
 	defer zitadel.Close()
 
@@ -917,8 +917,11 @@ func TestListingKitZitadelAuthAllowsListingKitAdminForPlatformRoutes(t *testing.
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusForbidden, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "listingkit_permission_denied") {
+		t.Fatalf("body = %s, want listingkit_permission_denied", resp.Body.String())
 	}
 }
 

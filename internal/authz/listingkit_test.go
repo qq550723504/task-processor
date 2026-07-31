@@ -15,3 +15,11 @@ func TestListingKitAuthorizerAllowsOperationalRolesToWriteProductSourcing(t *tes
 	require.True(t, authorizer.Authorize("", []string{"platform_admin"}, PermissionProductSourcingWrite))
 	require.False(t, authorizer.Authorize("", []string{"viewer"}, PermissionProductSourcingWrite))
 }
+
+func TestListingKitAuthorizerDoesNotTreatListingKitAdminAsPlatformAdmin(t *testing.T) {
+	authorizer, err := NewListingKitAuthorizer(nil, nil)
+	require.NoError(t, err)
+
+	require.False(t, authorizer.Authorize("", []string{"listingkit_admin"}, PermissionListingKitPlatformAdm))
+	require.True(t, authorizer.Authorize("", []string{"platform_admin"}, PermissionListingKitPlatformAdm))
+}

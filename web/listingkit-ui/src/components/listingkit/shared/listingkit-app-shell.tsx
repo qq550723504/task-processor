@@ -108,6 +108,7 @@ const PRIMARY_NAV_ITEMS = [
 const MENU_ROLES = {
   operator: ["listingkit_operator", "listingkit_admin", "platform_admin", "admin"],
   admin: ["listingkit_admin", "platform_admin", "admin"],
+  platformAdmin: ["platform_admin", "admin"],
 } as const;
 
 const ZITADEL_CONSOLE_URL =
@@ -152,7 +153,7 @@ const ADMIN_NAV_ITEMS = [
         href: "/listing-kits/admin/stores",
         icon: Store,
         match: "prefix",
-        requiredRoles: MENU_ROLES.operator,
+        requiredRoles: MENU_ROLES.platformAdmin,
       },
       {
         label: "上架统计",
@@ -289,14 +290,14 @@ const ADMIN_NAV_ITEMS = [
         href: "/listing-kits/platform/subscriptions",
         icon: UserCog,
         match: "prefix",
-        requiredRoles: MENU_ROLES.admin,
+        requiredRoles: MENU_ROLES.platformAdmin,
       },
       {
         label: "套餐管理",
         href: "/listing-kits/platform/subscription-plans",
         icon: PanelTop,
         match: "prefix",
-        requiredRoles: MENU_ROLES.admin,
+        requiredRoles: MENU_ROLES.platformAdmin,
       },
       ...(ZITADEL_CONSOLE_URL
         ? [{
@@ -304,7 +305,7 @@ const ADMIN_NAV_ITEMS = [
             href: ZITADEL_CONSOLE_URL,
             icon: UserCog,
             external: true as const,
-            requiredRoles: MENU_ROLES.admin,
+            requiredRoles: MENU_ROLES.platformAdmin,
           }]
         : []),
     ],

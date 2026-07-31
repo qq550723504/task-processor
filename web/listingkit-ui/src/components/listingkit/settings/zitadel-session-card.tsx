@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { ListingKitSettingsSection } from "@/components/listingkit/settings/listingkit-settings-section";
 import { useZitadelSession } from "@/lib/query/use-zitadel-session";
 
-const PLATFORM_ADMIN_ROLES = ["platform_admin", "listingkit_admin", "admin"];
+const PLATFORM_ADMIN_ROLES = ["platform_admin", "admin"];
 
 function stringify(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -109,8 +109,7 @@ export function ZitadelSessionCard() {
             </div>
             {!hasPlatformAccess ? (
               <p className="mt-3 text-sm text-muted-foreground">
-                需要在 ZITADEL 给当前用户配置 `platform_admin`、`listingkit_admin`
-                或 `admin` 之一，才能访问租户订阅管理和套餐管理。
+                需要在 ZITADEL 给当前用户配置 `platform_admin` 或 `admin`，才能访问租户订阅管理和套餐管理。
               </p>
             ) : null}
           </div>

@@ -10,7 +10,7 @@
 
 1. 前端已经发起了来源元数据请求，但接口返回 `200 {"items":[]}`。
 2. 后端鉴权链路里，ZITADEL/Auth.js session 的业务用户 ID 与 Go 后端 bearer introspection 得到的 subject 可能不一致。
-3. 当前用户具备 `listingkit_admin`，会被识别为 ListingKit 平台管理员。
+3. 当前用户具备 `platform_admin`，会被识别为 ListingKit 平台管理员。
 4. 来源 SDS 历史任务使用的 tenant 可能是旧 tenant ID，和当前请求解析出的 tenant scope 不一致。
 5. 原实现对平台管理员跳过了跨 tenant fallback，导致明明数据库里有 SDS 任务，接口仍返回空数组。
 6. 打开 fallback 后，第一次实现又把店铺下所有 SDS 任务取出再在内存中过滤，数据量大时会触发 Next.js 代理 15 秒超时，表现为 `504 listingkit_upstream_unavailable`。
@@ -78,7 +78,7 @@
 
 ### 3. 平台管理员也需要跨 tenant fallback
 
-`listingkit_admin` 会映射为 ListingKit platform admin。原先 fallback 对平台管理员跳过，导致：
+`platform_admin` 会映射为 ListingKit platform admin。原先 fallback 对平台管理员跳过，导致：
 
 - 当前请求 tenant scope 查不到历史 SDS 任务
 - 因为是 admin 又不走 fallback

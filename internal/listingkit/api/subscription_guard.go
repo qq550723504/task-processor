@@ -144,7 +144,7 @@ func (h *handler) requirePlatformSubscriptionAccess(c *gin.Context) bool {
 	}
 	allowedRoles := h.platformAdminRoles
 	if len(allowedRoles) == 0 {
-		allowedRoles = []string{"listingkit_admin", "platform_admin", "admin"}
+		allowedRoles = []string{"platform_admin", "admin"}
 	}
 	for _, role := range splitCSVHeaders(c.GetHeader("X-User-Roles"), c.GetHeader("X-Zitadel-Roles")) {
 		if slices.Contains(allowedRoles, role) {

@@ -57,7 +57,6 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		{"listingkit_operator", PermissionProductSourcingWrite},
 		{"listingkit_admin", PermissionListingKitAdminRead},
 		{"listingkit_admin", PermissionListingKitAdminWrite},
-		{"listingkit_admin", PermissionListingKitPlatformAdm},
 		{"listingkit_admin", PermissionProductSourcingWrite},
 		{"platform_admin", PermissionListingKitAdminRead},
 		{"platform_admin", PermissionListingKitAdminWrite},
