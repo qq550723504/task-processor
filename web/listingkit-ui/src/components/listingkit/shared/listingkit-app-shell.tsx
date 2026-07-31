@@ -536,12 +536,14 @@ export function ListingKitAppShell({
   })();
   const [tenantInput, setTenantInput] = useState(visitTenantID);
   const hasPlatformAdminAccess = hasPlatformAdminRole(identity?.roles);
-  const [tenantDirectory, setTenantDirectory] = useState<Awaited<ReturnType<typeof getPlatformTenantDirectory>>>([]);
+  const [loadedTenantDirectory, setTenantDirectory] = useState<
+    Awaited<ReturnType<typeof getPlatformTenantDirectory>>
+  >([]);
+  const tenantDirectory = hasPlatformAdminAccess ? loadedTenantDirectory : [];
   const currentTenantSummary = summarizeTenant(identity, tenantDirectory);
 
   useEffect(() => {
     if (!hasPlatformAdminAccess) {
-      setTenantDirectory([]);
       return;
     }
     let cancelled = false;
