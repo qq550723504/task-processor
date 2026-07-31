@@ -1,13 +1,17 @@
-name: ListingKit Deploy
+name: ListingKit API Deploy
 
 on:
   push:
     tags:
-      - "listingkit-v*"
+      - "listingkit-api-v*"
   workflow_dispatch:
     inputs:
+      source_ref:
+        description: "API source commit or ref. Defaults to the workflow commit."
+        required: false
+        type: string
       image_tag:
-        description: "Optional image tag override. Defaults to the current commit SHA."
+        description: "Optional API image tag. Defaults to the first eight source-ref characters."
         required: false
         type: string
       api_runtime_base_image:
@@ -29,17 +33,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: listingkit-deploy-production
+  group: listingkit-api-deploy-production
   cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-  GO_VERSION_FILE: go.mod
-  NODE_VERSION: "22"
   REGISTRY: docker.io
   DOCKERHUB_NAMESPACE: xuwei190
   API_IMAGE_NAME: task-processor-product-listing-api
-  UI_IMAGE_NAME: task-processor-listingkit-ui
   API_RUNTIME_BASE_IMAGE: docker.io/xuwei190/crawler-env:latest
   K8S_NAMESPACE: task-processor
   K8S_OVERLAY_PATH: deployments/kubernetes/listingkit-workbench/overlays/prod
@@ -49,11 +50,10 @@ jobs:
     name: Prepare Release Metadata
     runs-on: ubuntu-latest
     outputs:
+      source_ref: ${{ steps.meta.outputs.source_ref }}
       tag: ${{ steps.meta.outputs.tag }}
       api_image: ${{ steps.meta.outputs.api_image }}
-      ui_image: ${{ steps.meta.outputs.ui_image }}
       api_tags: ${{ steps.meta.outputs.api_tags }}
-      ui_tags: ${{ steps.meta.outputs.ui_tags }}
       api_runtime_base_image: ${{ steps.meta.outputs.api_runtime_base_image }}
     steps:
       - name: Resolve release tag
@@ -61,10 +61,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.image_tag }}" ]]; then
-            tag="${{ inputs.image_tag }}"
-          else
-            tag="${GITHUB_SHA::8}"
+          source_ref="${{ inputs.source_ref }}"
+          if [[ -z "$source_ref" ]]; then
+            source_ref="${GITHUB_SHA}"
+          fi
+          tag="${{ inputs.image_tag }}"
+          if [[ -z "$tag" ]]; then
+            tag="${source_ref:0:8}"
           fi
           api_runtime_base_image="${{ env.API_RUNTIME_BASE_IMAGE }}"
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.api_runtime_base_image }}" ]]; then
@@ -75,10 +78,9 @@ jobs:
             publish_latest="true"
           fi
           api_image="${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:$tag"
-          ui_image="${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.UI_IMAGE_NAME }}:$tag"
+          echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "api_image=$api_image" >> "$GITHUB_OUTPUT"
-          echo "ui_image=$ui_image" >> "$GITHUB_OUTPUT"
           echo "api_runtime_base_image=$api_runtime_base_image" >> "$GITHUB_OUTPUT"
           {
             echo "api_tags<<EOF"
@@ -88,22 +90,16 @@ jobs:
             fi
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
-          {
-            echo "ui_tags<<EOF"
-            echo "$ui_image"
-            if [[ "$publish_latest" == "true" ]]; then
-              echo "${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.UI_IMAGE_NAME }}:latest"
-            fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
 
   build-api:
     name: Build API Image
     runs-on: ubuntu-latest
     needs: prepare
     steps:
-      - name: Checkout repository
+      - name: Checkout API source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -127,47 +123,20 @@ jobs:
           cache-from: type=gha,scope=listingkit-api
           cache-to: type=gha,mode=max,scope=listingkit-api
 
-  build-ui:
-    name: Build UI Image
-    runs-on: ubuntu-latest
-    needs: prepare
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and push UI image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: deployments/docker/Dockerfile.listingkit-ui
-          push: true
-          tags: ${{ needs.prepare.outputs.ui_tags }}
-          cache-from: type=gha,scope=listingkit-ui
-          cache-to: type=gha,mode=max,scope=listingkit-ui
-
-  deploy:
-    name: Deploy ListingKit
+  deploy-api:
+    name: Deploy ListingKit API
     runs-on: ubuntu-latest
     needs:
       - prepare
       - build-api
-      - build-ui
     environment:
       name: production
       url: https://pod.shuomiai.com
     steps:
-      - name: Checkout repository
+      - name: Checkout API source
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.source_ref }}
 
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
@@ -185,11 +154,10 @@ jobs:
           printf '%s' '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
 
-      - name: Pin release images in Kubernetes manifests
+      - name: Pin API release image in Kubernetes manifests
         working-directory: ${{ env.K8S_OVERLAY_PATH }}
         run: |
           kustomize edit set image xuwei190/task-processor-product-listing-api=${{ needs.prepare.outputs.api_image }}
-          kustomize edit set image xuwei190/task-processor-listingkit-ui=${{ needs.prepare.outputs.ui_image }}
 
       - name: Validate Kubernetes manifests
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_apply) }}
@@ -199,16 +167,14 @@ jobs:
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_apply) }}
         run: kubectl apply -k ${{ env.K8S_OVERLAY_PATH }}
 
-      - name: Update deployment images
+      - name: Update API deployment image
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} set image deployment/product-listing-api product-listing-api=${{ needs.prepare.outputs.api_image }}
-          kubectl -n ${{ env.K8S_NAMESPACE }} set image deployment/listingkit-ui listingkit-ui=${{ needs.prepare.outputs.ui_image }}
 
-      - name: Wait for rollout
+      - name: Wait for API rollout
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/product-listing-api --timeout=5m
-          kubectl -n ${{ env.K8S_NAMESPACE }} rollout status deployment/listingkit-ui --timeout=5m
 
-      - name: Show running images
+      - name: Show running API image
         run: |
-          kubectl -n ${{ env.K8S_NAMESPACE }} get deployment product-listing-api listingkit-ui -o jsonpath='{range .items[*]}{.metadata.name}{" => "}{range .spec.template.spec.containers[*]}{.image}{end}{"\n"}{end}'
+          kubectl -n ${{ env.K8S_NAMESPACE }} get deployment product-listing-api -o jsonpath='{.metadata.name}{" => "}{range .spec.template.spec.containers[*]}{.image}{end}{"\n"}'

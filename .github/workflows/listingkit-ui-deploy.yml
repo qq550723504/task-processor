@@ -1,6 +1,9 @@
 name: ListingKit UI Deploy
 
 on:
+  push:
+    tags:
+      - "listingkit-ui-v*"
   workflow_dispatch:
     inputs:
       source_ref:
@@ -21,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: listingkit-deploy-production
+  group: listingkit-ui-deploy-production
   cancel-in-progress: false
 
 env:
