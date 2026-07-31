@@ -60,6 +60,18 @@ type ZitadelTokenResponse = {
   error_description?: string;
 };
 
+const DEFAULT_ZITADEL_SCOPES = [
+  "openid",
+  "profile",
+  "email",
+  "urn:zitadel:iam:user:resourceowner",
+  "urn:zitadel:iam:org:project:id:zitadel:aud",
+  "urn:zitadel:iam:org:project:role:listingkit_viewer",
+  "urn:zitadel:iam:org:project:role:listingkit_operator",
+  "urn:zitadel:iam:org:project:role:listingkit_admin",
+  "urn:zitadel:iam:org:project:role:platform_admin",
+].join(" ");
+
 export function getZitadelAuthOptions(): ZitadelAuthOptions | undefined {
   const issuerUrl = process.env.ZITADEL_ISSUER_URL?.trim().replace(/\/+$/, "");
   const clientId = process.env.ZITADEL_CLIENT_ID?.trim();
@@ -76,7 +88,7 @@ export function getZitadelAuthOptions(): ZitadelAuthOptions | undefined {
       process.env.ZITADEL_POST_LOGOUT_REDIRECT_URI?.trim() || undefined,
     scopes:
       process.env.ZITADEL_SCOPES?.trim() ||
-      "openid profile email urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:zitadel:aud",
+      DEFAULT_ZITADEL_SCOPES,
   };
 }
 

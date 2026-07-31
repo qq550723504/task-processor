@@ -2,12 +2,11 @@ package httpapi
 
 import (
 	"fmt"
-	"os"
-	"strings"
 
 	"gorm.io/gorm"
 
 	"task-processor/internal/amazonlisting"
+	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	productimage "task-processor/internal/productimage"
@@ -15,16 +14,7 @@ import (
 )
 
 func shouldAutoMigrateProductListingAPIRuntime() bool {
-	raw := strings.TrimSpace(os.Getenv("TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE"))
-	if raw == "" {
-		return true
-	}
-	switch strings.ToLower(raw) {
-	case "0", "false", "no", "n", "off", "disabled":
-		return false
-	default:
-		return true
-	}
+	return config.ProductListingAPIRuntimeAutoMigrateEnabled()
 }
 
 func AutoMigrateProductListingAPIRuntimeSchema(db *gorm.DB) error {

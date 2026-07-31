@@ -255,6 +255,7 @@ func (s *Service) Login(ctx context.Context, tenantID int64, storeID int64, req 
 				return err
 			}
 			s.setSession(account.StoreID, session)
+			s.watchVerifySession(*account, session)
 			result = &LoginResult{
 				Success:              false,
 				Message:              runResult.ErrorMessage,
@@ -385,6 +386,39 @@ func (s *Service) SubmitVerifyCode(ctx context.Context, tenantID int64, storeID 
 		ttl = time.Duration(expireSeconds) * time.Second
 	}
 	return s.store.SubmitVerifyCode(ctx, account.TenantID, account.StoreID, code, ttl)
+}
+
+func (s *Service) watchVerifySession(account Account, session VerifySession) {
+	watcher, ok := session.(VerifySessionLoginWatcher)
+	if !ok || watcher == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		defer cancel()
+
+		result, err := watcher.WaitForLogin(ctx)
+		if err != nil || result == nil || result.BrowserState == nil {
+			return
+		}
+		if current := s.loadSession(account.StoreID); current != session {
+			return
+		}
+		if err := s.store.SaveCookieState(ctx, account.TenantID, account.StoreID, result.BrowserState, 30*24*time.Hour); err != nil {
+			sheinLoginServiceLogger.WithError(err).WithFields(map[string]any{
+				"tenant_id": account.TenantID,
+				"store_id":  account.StoreID,
+			}).Warn("persist SHEIN cookie after manual verification failed")
+			return
+		}
+		now := time.Now()
+		_ = s.store.RecordLastLoginTime(ctx, account.TenantID, account.StoreID, now)
+		_ = s.store.ClearLastFailure(ctx, account.TenantID, account.StoreID)
+		_ = s.store.ClearPauseKeys(ctx, account.TenantID, account.StoreID)
+		_, _ = s.store.CancelVerifyWait(ctx, account.TenantID, account.StoreID)
+		s.syncStoreIDAfterLogin(ctx, account)
+		s.clearSession(account.StoreID)
+	}()
 }
 
 func verifyCodeFailureSummary(account *Account) *FailureSummary {

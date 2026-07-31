@@ -42,9 +42,11 @@ func (s *stubAccountProvider) GetAccount(_ context.Context, tenantID int64, stor
 }
 
 type stubVerifySession struct {
-	result *AutomationResult
-	err    error
-	closed int
+	result     *AutomationResult
+	err        error
+	waitResult *AutomationResult
+	waitErr    error
+	closed     int
 }
 
 func (s *stubVerifySession) SubmitCode(context.Context, string) (*AutomationResult, error) {
@@ -53,6 +55,9 @@ func (s *stubVerifySession) SubmitCode(context.Context, string) (*AutomationResu
 func (s *stubVerifySession) Close() error {
 	s.closed++
 	return nil
+}
+func (s *stubVerifySession) WaitForLogin(context.Context) (*AutomationResult, error) {
+	return s.waitResult, s.waitErr
 }
 
 type stubAutomation struct {
@@ -263,6 +268,34 @@ func TestServiceSubmitVerifyCodeCompletesStoredSession(t *testing.T) {
 	if has, err := svc.store.HasCookie(context.Background(), 1, 2); err != nil || !has {
 		t.Fatalf("expected cookie persisted, has=%v err=%v", has, err)
 	}
+}
+
+func TestServicePersistsCookieWhenManualVerificationCompletesAfterVerifyRequest(t *testing.T) {
+	session := &stubVerifySession{
+		waitResult: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "manual"}},
+		}},
+	}
+	auto := &stubAutomation{
+		result:  &AutomationResult{WaitingForVerifyCode: true, ErrorCode: "VERIFY_CODE_REQUIRED", ErrorMessage: "wait"},
+		session: session,
+	}
+	svc := newTestService(t, auto)
+	if _, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("start login: %v", err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if has, err := svc.store.HasCookie(context.Background(), 1, 2); err == nil && has {
+			if svc.loadSession(2) != nil {
+				t.Fatal("expected completed manual verification session to be cleared")
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("expected manual verification watcher to persist cookie")
 }
 
 func TestServiceLoginPersistsCookieOnlyBrowserState(t *testing.T) {

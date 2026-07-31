@@ -145,8 +145,10 @@ func newDBTaskRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (pro
 	}
 	logger.Infof("database connected: %s:%d/%s", cfg.Host, cfg.Port, cfg.Database)
 
-	if err := db.AutoMigrate(&productenrich.Task{}); err != nil {
-		return nil, nil, fmt.Errorf("database auto-migrate failed: %w", err)
+	if config.ProductListingAPIRuntimeAutoMigrateEnabled() {
+		if err := db.AutoMigrate(&productenrich.Task{}); err != nil {
+			return nil, nil, fmt.Errorf("database auto-migrate failed: %w", err)
+		}
 	}
 
 	repo := productstore.NewTaskRepository(db)

@@ -20,6 +20,9 @@ describe("getZitadelAuthOptions", () => {
     expect(getZitadelAuthOptions()?.scopes.split(/\s+/)).toContain(
       "urn:zitadel:iam:user:resourceowner",
     );
+    expect(getZitadelAuthOptions()?.scopes.split(/\s+/)).toContain(
+      "urn:zitadel:iam:org:project:role:listingkit_admin",
+    );
   });
 });
 

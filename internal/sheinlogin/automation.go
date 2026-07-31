@@ -79,6 +79,14 @@ type VerifySession interface {
 	Close() error
 }
 
+// VerifySessionLoginWatcher is implemented by verification sessions that can
+// observe a user completing the remaining SHEIN checks in the browser window.
+// The service uses it to persist the browser state even when the final step is
+// completed manually after the verify-code request has returned.
+type VerifySessionLoginWatcher interface {
+	WaitForLogin(ctx context.Context) (*AutomationResult, error)
+}
+
 type PlaywrightAutomation struct{}
 
 func NewPlaywrightAutomation() *PlaywrightAutomation { return &PlaywrightAutomation{} }
@@ -175,6 +183,17 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "wait_login_surface", err)
 		closeManagerProfile(manager, profileDir)
 		return result, nil, resultErr
+	}
+	if loggedIn, loginErr := isLoggedIn(page); loginErr == nil && loggedIn {
+		storageState, stateErr := manager.GetContext().StorageState()
+		if stateErr != nil {
+			result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "export_state_already_logged_in", stateErr)
+			closeManagerProfile(manager, profileDir)
+			return result, nil, resultErr
+		}
+		state := cookieOnlyBrowserState(map[string]any{"cookies": storageState.Cookies})
+		closeManagerProfile(manager, profileDir)
+		return &AutomationResult{BrowserState: state}, nil, nil
 	}
 	if err := fillLogin(page, account); err != nil {
 		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "fill_login", err)
@@ -1207,6 +1226,7 @@ func settleAfterSubmit(page playwright.Page, wait time.Duration) {
 }
 
 type playwrightVerifySession struct {
+	mu          sync.Mutex
 	account     Account
 	manager     *sharedbrowser.Manager
 	page        playwright.Page
@@ -1215,6 +1235,9 @@ type playwrightVerifySession struct {
 }
 
 func (s *playwrightVerifySession) SubmitCode(ctx context.Context, code string) (*AutomationResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if err := submitVerifyCode(s.page, code); err != nil {
 		return artifactResult(s.page, s.artifactDir, s.account, "submit_verify_code", err)
 	}
@@ -1260,7 +1283,36 @@ func (s *playwrightVerifySession) SubmitCode(ctx context.Context, code string) (
 	}, nil
 }
 
+func (s *playwrightVerifySession) WaitForLogin(ctx context.Context) (*AutomationResult, error) {
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
+		s.mu.Lock()
+		loggedIn, loginErr := isLoggedIn(s.page)
+		if loginErr == nil && loggedIn {
+			storageState, stateErr := s.manager.GetContext().StorageState()
+			s.mu.Unlock()
+			if stateErr != nil {
+				return artifactResult(s.page, s.artifactDir, s.account, "export_state_after_manual_verify", stateErr)
+			}
+			return &AutomationResult{
+				BrowserState: cookieOnlyBrowserState(map[string]any{"cookies": storageState.Cookies}),
+			}, nil
+		}
+		_, _ = dismissRequestFailure(s.page)
+		s.mu.Unlock()
+
+		time.Sleep(time.Second)
+	}
+}
+
 func (s *playwrightVerifySession) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.manager != nil {
 		closeManagerProfile(s.manager, s.profileDir)
 	}
