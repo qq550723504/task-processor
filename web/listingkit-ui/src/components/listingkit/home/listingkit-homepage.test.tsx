@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import Home from "@/app/page";
+import Home from "@/app/listing-kits/home/page";
 
 vi.mock("@/lib/query/use-task-list", () => ({
   useListingKitTasks: () => ({

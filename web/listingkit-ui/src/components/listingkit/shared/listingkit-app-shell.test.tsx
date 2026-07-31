@@ -41,7 +41,10 @@ describe("ListingKitAppShell", () => {
     expect(sidebarNav.closest("[data-slot='sidebar']")).toBeInTheDocument();
     expect(screen.getByText("主流程")).toBeInTheDocument();
     expect(screen.getByText("管理后台")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "首页" })).toHaveAttribute("href", "/");
+    expect(screen.getByRole("link", { name: "首页" })).toHaveAttribute(
+      "href",
+      "/listing-kits/home",
+    );
     expect(screen.getByRole("link", { name: "新建任务" })).toHaveAttribute("href", "/listing-kits/new");
     expect(screen.getByRole("link", { name: "POD" })).toHaveAttribute("href", "/listing-kits/sds");
     expect(screen.getByRole("link", { name: "款式图库" })).toHaveAttribute(
