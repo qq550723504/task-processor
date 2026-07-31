@@ -5,10 +5,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingsubscription"
 )
 
 func (h *handler) ListAdminStores(c *gin.Context) {
+	listingadmin.MarkPlatformStoreAccess(c)
 	if !h.requireStoreHandler(c) {
 		return
 	}
@@ -16,6 +18,7 @@ func (h *handler) ListAdminStores(c *gin.Context) {
 }
 
 func (h *handler) GetAdminStore(c *gin.Context) {
+	listingadmin.MarkPlatformStoreAccess(c)
 	if !h.requireStoreHandler(c) {
 		return
 	}
@@ -23,6 +26,7 @@ func (h *handler) GetAdminStore(c *gin.Context) {
 }
 
 func (h *handler) CreateAdminStore(c *gin.Context) {
+	listingadmin.MarkPlatformStoreAccess(c)
 	if !h.requireStoreHandler(c) {
 		return
 	}
@@ -33,6 +37,7 @@ func (h *handler) CreateAdminStore(c *gin.Context) {
 }
 
 func (h *handler) UpdateAdminStore(c *gin.Context) {
+	listingadmin.MarkPlatformStoreAccess(c)
 	if !h.requireStoreHandler(c) {
 		return
 	}
@@ -43,6 +48,7 @@ func (h *handler) UpdateAdminStore(c *gin.Context) {
 }
 
 func (h *handler) UpdateAdminStoreStatus(c *gin.Context) {
+	listingadmin.MarkPlatformStoreAccess(c)
 	if !h.requireStoreHandler(c) {
 		return
 	}
@@ -53,6 +59,7 @@ func (h *handler) UpdateAdminStoreStatus(c *gin.Context) {
 }
 
 func (h *handler) DeleteAdminStore(c *gin.Context) {
+	listingadmin.MarkPlatformStoreAccess(c)
 	if !h.requireStoreHandler(c) {
 		return
 	}
@@ -91,6 +98,7 @@ func (h *handler) ListAdminDispatchEvents(c *gin.Context) {
 }
 
 func (h *handler) ListDeletedAdminStores(c *gin.Context) {
+	listingadmin.MarkPlatformStoreAccess(c)
 	if !h.requireStoreHandler(c) {
 		return
 	}
@@ -98,6 +106,7 @@ func (h *handler) ListDeletedAdminStores(c *gin.Context) {
 }
 
 func (h *handler) RestoreAdminStore(c *gin.Context) {
+	listingadmin.MarkPlatformStoreAccess(c)
 	if !h.requireStoreHandler(c) {
 		return
 	}
@@ -108,6 +117,7 @@ func (h *handler) RestoreAdminStore(c *gin.Context) {
 }
 
 func (h *handler) PermanentlyDeleteAdminStore(c *gin.Context) {
+	listingadmin.MarkPlatformStoreAccess(c)
 	if !h.requireStoreHandler(c) {
 		return
 	}
@@ -118,6 +128,7 @@ func (h *handler) PermanentlyDeleteAdminStore(c *gin.Context) {
 }
 
 func (h *handler) ExtendAdminStoreValidity(c *gin.Context) {
+	listingadmin.MarkPlatformStoreAccess(c)
 	if !h.requireStoreHandler(c) {
 		return
 	}

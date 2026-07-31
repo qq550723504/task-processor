@@ -69,6 +69,8 @@ describe("StoreAdminPage", () => {
     await waitFor(() => {
       expect(screen.getByText("SHEIN US")).toBeInTheDocument();
     });
+    expect(screen.getByRole("columnheader", { name: "租户" })).toBeInTheDocument();
+    expect(screen.getByText("101")).toBeInTheDocument();
     expect(screen.getByText("shein-us")).toBeInTheDocument();
     expect(screen.getAllByText("SHEIN").length).toBeGreaterThan(0);
     expect(screen.getByText("启用")).toBeInTheDocument();

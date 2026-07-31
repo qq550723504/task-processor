@@ -12,12 +12,30 @@ type StoreHandler struct {
 	repo StoreRepository
 }
 
+const platformStoreAccessContextKey = "listingkit.platform_store_access"
+
 func NewStoreHandler(repo StoreRepository) *StoreHandler {
 	return &StoreHandler{repo: repo}
 }
 
+// MarkPlatformStoreAccess records that the route middleware has granted the
+// request platform-store permission. It supports configured ZITADEL platform
+// roles instead of relying only on the built-in role names.
+func MarkPlatformStoreAccess(c *gin.Context) {
+	if c != nil {
+		c.Set(platformStoreAccessContextKey, true)
+	}
+}
+
 func (h *StoreHandler) ListStores(c *gin.Context) {
 	scope := requestListScope(c)
+	if hasPlatformStoreAccess(c) {
+		// The platform store management route is already protected by the
+		// platform-admin permission. Its list must span every tenant instead of
+		// inheriting the current user's tenant from X-Tenant-ID.
+		scope.TenantID = 0
+		scope.OwnerUserID = ""
+	}
 	query := applyListQueryScope(&StoreQuery{
 		Name:        strings.TrimSpace(c.Query("name")),
 		Username:    strings.TrimSpace(c.Query("username")),
@@ -70,7 +88,7 @@ func (h *StoreHandler) GetStore(c *gin.Context) {
 	if !ok {
 		return
 	}
-	store, err := h.repo.GetStore(requestIdentityContext(c), requestTenantID(c), id)
+	store, err := h.repo.GetStore(requestIdentityContext(c), adminStoreTenantID(c), id)
 	if err != nil {
 		writeStoreError(c, err, "store_get_failed")
 		return
@@ -116,6 +134,11 @@ func (h *StoreHandler) UpdateStore(c *gin.Context) {
 	}) {
 		return
 	}
+	if hasPlatformStoreAccess(c) {
+		// Store IDs are globally unique. Let platform administrators update a
+		// store from any tenant while regular users remain tenant-scoped.
+		req.TenantID = 0
+	}
 	store, err := h.repo.UpdateStore(requestIdentityContext(c), &req)
 	if err != nil {
 		writeStoreError(c, err, "store_update_failed")
@@ -136,7 +159,7 @@ func (h *StoreHandler) UpdateStoreStatus(c *gin.Context) {
 	if !bindJSON(c, &req) {
 		return
 	}
-	store, err := h.repo.UpdateStoreStatus(requestIdentityContext(c), requestTenantID(c), id, req.Status, req.Remark)
+	store, err := h.repo.UpdateStoreStatus(requestIdentityContext(c), adminStoreTenantID(c), id, req.Status, req.Remark)
 	if err != nil {
 		writeStoreError(c, err, "store_status_update_failed")
 		return
@@ -149,7 +172,7 @@ func (h *StoreHandler) DeleteStore(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.repo.DeleteStore(requestIdentityContext(c), requestTenantID(c), id); err != nil {
+	if err := h.repo.DeleteStore(requestIdentityContext(c), adminStoreTenantID(c), id); err != nil {
 		writeStoreError(c, err, "store_delete_failed")
 		return
 	}
@@ -157,7 +180,7 @@ func (h *StoreHandler) DeleteStore(c *gin.Context) {
 }
 
 func (h *StoreHandler) ListDeletedStores(c *gin.Context) {
-	items, err := h.repo.ListDeletedStores(requestIdentityContext(c), requestTenantID(c))
+	items, err := h.repo.ListDeletedStores(requestIdentityContext(c), adminStoreTenantID(c))
 	if err != nil {
 		writeInternalHandlerError(c, "store_deleted_list_failed", err)
 		return
@@ -170,7 +193,7 @@ func (h *StoreHandler) RestoreStore(c *gin.Context) {
 	if !ok {
 		return
 	}
-	store, err := h.repo.RestoreStore(requestIdentityContext(c), requestTenantID(c), id)
+	store, err := h.repo.RestoreStore(requestIdentityContext(c), adminStoreTenantID(c), id)
 	if err != nil {
 		writeStoreError(c, err, "store_restore_failed")
 		return
@@ -183,7 +206,7 @@ func (h *StoreHandler) PermanentlyDeleteStore(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.repo.PermanentlyDeleteStore(requestIdentityContext(c), requestTenantID(c), id); err != nil {
+	if err := h.repo.PermanentlyDeleteStore(requestIdentityContext(c), adminStoreTenantID(c), id); err != nil {
 		writeStoreError(c, err, "store_permanent_delete_failed")
 		return
 	}
@@ -199,7 +222,7 @@ func (h *StoreHandler) ExtendStoreValidity(c *gin.Context) {
 	if !ok {
 		return
 	}
-	store, err := h.repo.ExtendStoreValidity(requestIdentityContext(c), requestTenantID(c), id, days)
+	store, err := h.repo.ExtendStoreValidity(requestIdentityContext(c), adminStoreTenantID(c), id, days)
 	if err != nil {
 		writeStoreError(c, err, "store_validity_extend_failed")
 		return
@@ -245,3 +268,21 @@ func validateStore(store *Store, requirePassword bool) error {
 var writeStoreError = newMappedHandlerErrorWriter(
 	handlerErrorRule{match: ErrStoreNotFound, status: http.StatusNotFound, errorCode: "store_not_found"},
 )
+
+func adminStoreTenantID(c *gin.Context) int64 {
+	if hasPlatformStoreAccess(c) {
+		return 0
+	}
+	return requestTenantID(c)
+}
+
+func hasPlatformStoreAccess(c *gin.Context) bool {
+	if c != nil {
+		if value, ok := c.Get(platformStoreAccessContextKey); ok {
+			if allowed, ok := value.(bool); ok && allowed {
+				return true
+			}
+		}
+	}
+	return requestHasPlatformAdminAccess(requestIdentityContext(c))
+}

@@ -227,7 +227,7 @@ func TestStoreHandlerOwnerScopeFiltersStoresByUser(t *testing.T) {
 	}
 }
 
-func TestStoreHandlerPlatformAdminBypassesOwnerScope(t *testing.T) {
+func TestStoreHandlerPlatformRouteListsStoresAcrossTenants(t *testing.T) {
 	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
 
 	router := newStoreTestRouter(t)
@@ -245,6 +245,19 @@ func TestStoreHandlerPlatformAdminBypassesOwnerScope(t *testing.T) {
 		Status:      0,
 	})
 	seedStore(t, router.db, listingStore{
+		TenantID:    202,
+		OwnerUserID: "user-c",
+		CreatedBy:   "user-c",
+		UpdatedBy:   "user-c",
+		Name:        "Owned by C in another tenant",
+		Username:    "owner-c",
+		Password:    "secret",
+		Platform:    "TEMU",
+		ShopType:    "full",
+		Region:      "DE",
+		Status:      0,
+	})
+	seedStore(t, router.db, listingStore{
 		TenantID:    101,
 		OwnerUserID: "user-b",
 		CreatedBy:   "user-b",
@@ -258,10 +271,14 @@ func TestStoreHandlerPlatformAdminBypassesOwnerScope(t *testing.T) {
 		Status:      0,
 	})
 
-	req := httptest.NewRequest(http.MethodGet, "/stores?page=1&page_size=20", nil)
+	router.engine.GET("/platform/stores", func(c *gin.Context) {
+		MarkPlatformStoreAccess(c)
+		router.handler.ListStores(c)
+	})
+	req := httptest.NewRequest(http.MethodGet, "/platform/stores?page=1&page_size=20", nil)
 	req.Header.Set("X-Tenant-ID", "101")
 	req.Header.Set("X-User-ID", "platform-admin")
-	req.Header.Set("X-User-Roles", "platform_admin")
+	req.Header.Set("X-User-Roles", "configured-platform-role")
 	resp := httptest.NewRecorder()
 	router.engine.ServeHTTP(resp, req)
 
@@ -272,8 +289,18 @@ func TestStoreHandlerPlatformAdminBypassesOwnerScope(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if page.Total != 2 || len(page.Items) != 2 {
-		t.Fatalf("platform-admin items = %+v, want both stores", page.Items)
+	if page.Total != 3 || len(page.Items) != 3 {
+		t.Fatalf("platform-admin items = %+v, want stores from both tenants", page.Items)
+	}
+	foundOtherTenant := false
+	for _, item := range page.Items {
+		if item.TenantID == 202 {
+			foundOtherTenant = true
+			break
+		}
+	}
+	if !foundOtherTenant {
+		t.Fatalf("platform-admin items = %+v, want a tenant 202 store", page.Items)
 	}
 }
 
@@ -482,8 +509,9 @@ func TestStoreHandlerRejectsInvalidValidityDays(t *testing.T) {
 }
 
 type storeTestRouter struct {
-	engine *gin.Engine
-	db     *gorm.DB
+	engine  *gin.Engine
+	db      *gorm.DB
+	handler *StoreHandler
 }
 
 func newStoreTestRouter(t *testing.T) storeTestRouter {
@@ -506,7 +534,7 @@ func newStoreTestRouter(t *testing.T) storeTestRouter {
 	engine.PUT("/stores/:id/restore", handler.RestoreStore)
 	engine.DELETE("/stores/:id/permanent", handler.PermanentlyDeleteStore)
 	engine.PUT("/stores/:id/extend-validity", handler.ExtendStoreValidity)
-	return storeTestRouter{engine: engine, db: db}
+	return storeTestRouter{engine: engine, db: db, handler: handler}
 }
 
 func seedStore(t *testing.T, db *gorm.DB, store listingStore) listingStore {

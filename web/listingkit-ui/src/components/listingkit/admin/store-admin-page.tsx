@@ -226,7 +226,10 @@ export function StoreAdminPage() {
           <div>
             <h1 className="text-2xl font-semibold text-zinc-950">平台店铺管理</h1>
             <p className="mt-1 text-sm text-zinc-500">
-              共 {total} 个店铺，按当前 ZITADEL 租户隔离。这里维护平台侧店铺主数据，不负责租户自己的发布配置。
+              共 {total} 个店铺，展示平台内所有租户的店铺主数据；不负责租户自己的发布配置。
+            </p>
+            <p className="mt-1 text-xs text-zinc-500">
+              仅平台管理员可访问；列表覆盖全部租户，并在每行标明所属租户。
             </p>
           </div>
           <form
@@ -284,9 +287,10 @@ export function StoreAdminPage() {
       <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
-            <Table className="min-w-[64rem] divide-y divide-zinc-200 text-sm">
+            <Table className="min-w-[70rem] divide-y divide-zinc-200 text-sm">
               <TableHeader className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
                 <TableRow>
+                  <TableHead className="px-4 py-3">租户</TableHead>
                   <TableHead className="px-4 py-3">店铺</TableHead>
                   <TableHead className="px-4 py-3">账号</TableHead>
                   <TableHead className="px-4 py-3">平台</TableHead>
@@ -301,19 +305,22 @@ export function StoreAdminPage() {
               <TableBody className="divide-y divide-zinc-100">
                 {loading ? (
                     <TableRow>
-                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={9}>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={10}>
                       加载中...
                     </TableCell>
                   </TableRow>
                 ) : stores.length === 0 ? (
                   <TableRow>
-                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={9}>
+                    <TableCell className="px-4 py-6 text-zinc-500" colSpan={10}>
                       暂无店铺
                     </TableCell>
                   </TableRow>
                 ) : (
                   stores.map((store) => (
                     <TableRow key={store.id} className="align-top">
+                      <TableCell className="px-4 py-3 font-mono text-xs text-zinc-600">
+                        {store.tenantId ?? "-"}
+                      </TableCell>
                       <TableCell className="px-4 py-3">
                         <div className="font-medium text-zinc-950">{store.name}</div>
                         <div className="font-mono text-xs text-zinc-500">#{store.id}</div>
