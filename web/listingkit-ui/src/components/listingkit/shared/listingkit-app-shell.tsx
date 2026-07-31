@@ -502,12 +502,19 @@ function summarizeIdentity(identity: ZitadelClientIdentity | null | undefined) {
   return "账号";
 }
 
-function summarizeTenant(identity: ZitadelClientIdentity | null | undefined) {
+function summarizeTenant(
+  identity: ZitadelClientIdentity | null | undefined,
+  tenantDirectory: Awaited<ReturnType<typeof getPlatformTenantDirectory>> = [],
+) {
   const tenantId =
     identity?.tenantId === undefined || identity.tenantId === null
       ? ""
       : String(identity.tenantId).trim();
-  return tenantId || "未识别租户";
+  if (!tenantId) {
+    return "未识别租户";
+  }
+  const tenantName = tenantDirectory.find((tenant) => tenant.tenant_id === tenantId)?.tenant_display_name?.trim();
+  return tenantName ? `${tenantName} · ${tenantId}` : tenantId;
 }
 
 export function ListingKitAppShell({
@@ -530,6 +537,7 @@ export function ListingKitAppShell({
   const [tenantInput, setTenantInput] = useState(visitTenantID);
   const hasPlatformAdminAccess = hasPlatformAdminRole(identity?.roles);
   const [tenantDirectory, setTenantDirectory] = useState<Awaited<ReturnType<typeof getPlatformTenantDirectory>>>([]);
+  const currentTenantSummary = summarizeTenant(identity, tenantDirectory);
 
   useEffect(() => {
     if (!hasPlatformAdminAccess) {
@@ -652,7 +660,7 @@ export function ListingKitAppShell({
                       {summarizeIdentity(identity)}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">
-                      {summarizeTenant(identity)}
+                      {currentTenantSummary}
                     </span>
                   </span>
                   <UserCog className="size-4 shrink-0 text-muted-foreground" />
@@ -673,7 +681,7 @@ export function ListingKitAppShell({
                         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                           当前租户
                         </p>
-                        <p className="break-all text-sm text-foreground">{summarizeTenant(identity)}</p>
+                        <p className="break-all text-sm text-foreground">{currentTenantSummary}</p>
                       </div>
                       <div className="space-y-1">
                         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
