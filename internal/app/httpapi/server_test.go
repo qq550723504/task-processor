@@ -703,6 +703,10 @@ func (s *stubListingKitHandler) ListPlatformTenantSubscriptions(c *gin.Context) 
 	c.JSON(http.StatusOK, gin.H{"items": []gin.H{{"tenant_id": "org-286"}}})
 }
 
+func (s *stubListingKitHandler) ListPlatformTenantDirectory(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"items": []gin.H{{"tenant_id": "org-286", "tenant_display_name": "Test tenant"}}})
+}
+
 func (s *stubListingKitHandler) ListPlatformSubscriptionPlans(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": []gin.H{{"plan": gin.H{"code": "professional"}}}})
 }

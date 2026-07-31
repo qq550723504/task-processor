@@ -209,6 +209,7 @@ func BuildConfig(v *viper.Viper) *Config {
 				IssuerURL:             v.GetString("listingkit.zitadel.issuerURL"),
 				ClientID:              v.GetString("listingkit.zitadel.clientID"),
 				ClientSecret:          v.GetString("listingkit.zitadel.clientSecret"),
+				TenantDirectoryToken:  v.GetString("listingkit.zitadel.tenantDirectoryToken"),
 				AuthRequired:          v.GetBool("listingkit.zitadel.authRequired"),
 				AuthorizationRequired: v.GetBool("listingkit.zitadel.authorizationRequired"),
 				AllowedTenantIDs:      listingKitAllowedTenantIDs,

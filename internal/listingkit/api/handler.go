@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/sheinpodimage"
+	"task-processor/internal/listingkit/tenantdirectory"
 	"task-processor/internal/listingsubscription"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -71,6 +72,7 @@ type subscriptionDependencies struct {
 	subscriptionHandler *listingsubscription.Handler
 	platformAdminUsers  []string
 	platformAdminRoles  []string
+	tenantDirectory     tenantdirectory.Directory
 }
 
 type handlerCoreService interface {
@@ -143,6 +145,7 @@ type SubscriptionDependencies struct {
 	Service            *listingsubscription.Service
 	PlatformAdminUsers []string
 	PlatformAdminRoles []string
+	TenantDirectory    tenantdirectory.Directory
 }
 
 type HandlerDependencies struct {

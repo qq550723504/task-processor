@@ -207,6 +207,7 @@ func (stubRouteHandler) ListSubscriptionModules(*gin.Context)                   
 func (stubRouteHandler) ListSubscriptionEntitlements(*gin.Context)                {}
 func (stubRouteHandler) UpsertSubscriptionEntitlement(*gin.Context)               {}
 func (stubRouteHandler) ListPlatformTenantSubscriptions(*gin.Context)             {}
+func (stubRouteHandler) ListPlatformTenantDirectory(*gin.Context)                 {}
 func (stubRouteHandler) ListPlatformSubscriptionPlans(*gin.Context)               {}
 func (stubRouteHandler) UpsertPlatformSubscriptionPlan(*gin.Context)              {}
 func (stubRouteHandler) UpsertPlatformSubscriptionPlanModule(*gin.Context)        {}

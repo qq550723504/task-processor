@@ -77,6 +77,7 @@ type platformAdminSubscriptionRouteHandler struct{}
 
 func (platformAdminSubscriptionRouteHandler) ListPlatformTenantSubscriptions(c *gin.Context) {
 }
+func (platformAdminSubscriptionRouteHandler) ListPlatformTenantDirectory(c *gin.Context)   {}
 func (platformAdminSubscriptionRouteHandler) ListPlatformSubscriptionPlans(c *gin.Context) {}
 func (platformAdminSubscriptionRouteHandler) UpsertPlatformSubscriptionPlan(c *gin.Context) {
 }

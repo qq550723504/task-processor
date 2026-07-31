@@ -6,6 +6,8 @@ import { ListingKitAppShell } from "@/components/listingkit/shared/listingkit-ap
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/listing-kits/sds",
+  useRouter: () => ({ replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 describe("ListingKitAppShell", () => {
@@ -95,10 +97,26 @@ describe("ListingKitAppShell", () => {
     expect(screen.getByText("当前租户")).toBeInTheDocument();
     expect(screen.getAllByText("373211199677923496").length).toBeGreaterThan(0);
     expect(screen.getByText("listingkit_admin, platform_admin")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "代管租户 ID" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "退出登录" })).toHaveAttribute(
       "href",
       "/api/zitadel-auth/logout",
     );
+  });
+
+  it("hides tenant switching from tenant administrators", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ListingKitAppShell identity={{ roles: ["listingkit_admin"] }}>
+        <div>workspace content</div>
+      </ListingKitAppShell>,
+    );
+
+    const accountButtons = screen.getAllByRole("button", { name: /账号/ });
+    await user.click(accountButtons[accountButtons.length - 1]);
+
+    expect(screen.queryByRole("textbox", { name: "代管租户 ID" })).not.toBeInTheDocument();
   });
 
   it("renders second-level menu sections that can expand child links", async () => {

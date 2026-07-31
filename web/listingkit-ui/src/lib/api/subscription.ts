@@ -139,6 +139,15 @@ export const subscriptionTenantOverviewSchema = z
   })
   .passthrough();
 
+export const tenantDirectoryEntrySchema = z
+  .object({
+    tenant_id: z.string(),
+    tenant_display_name: z.string().optional(),
+    primary_domain: z.string().optional(),
+    state: z.string().optional(),
+  })
+  .passthrough();
+
 const subscriptionModuleListSchema = z
   .object({
     items: z.array(subscriptionModuleSchema),
@@ -154,6 +163,12 @@ const subscriptionPlanListSchema = z
 const subscriptionTenantOverviewListSchema = z
   .object({
     items: z.array(subscriptionTenantOverviewSchema),
+  })
+  .passthrough();
+
+const tenantDirectoryListSchema = z
+  .object({
+    items: z.array(tenantDirectoryEntrySchema),
   })
   .passthrough();
 
@@ -196,6 +211,7 @@ export type SubscriptionSummary = z.infer<typeof subscriptionSummarySchema>;
 export type SubscriptionTenantOverview = z.infer<
   typeof subscriptionTenantOverviewSchema
 >;
+export type TenantDirectoryEntry = z.infer<typeof tenantDirectoryEntrySchema>;
 export type SubscriptionUsageCounter = z.infer<
   typeof subscriptionUsageCounterSchema
 >;
@@ -285,6 +301,14 @@ export function parseSubscriptionTenantOverviewList(
     payload,
     subscriptionTenantOverviewListSchema,
     "ListingKit API returned an unexpected subscription tenant list response",
+  ).items;
+}
+
+export function parseTenantDirectoryList(payload: unknown): TenantDirectoryEntry[] {
+  return parseApiResponseShape(
+    payload,
+    tenantDirectoryListSchema,
+    "ListingKit API returned an unexpected tenant directory response",
   ).items;
 }
 
@@ -487,6 +511,11 @@ export async function getPlatformTenantSubscriptions(): Promise<
 > {
   const payload = await apiRequest<unknown>("/platform/subscriptions");
   return parseSubscriptionTenantOverviewList(payload);
+}
+
+export async function getPlatformTenantDirectory(): Promise<TenantDirectoryEntry[]> {
+  const payload = await apiRequest<unknown>("/platform/tenant-directory");
+  return parseTenantDirectoryList(payload);
 }
 
 export async function updatePlatformTenantSubscriptionEntitlement(

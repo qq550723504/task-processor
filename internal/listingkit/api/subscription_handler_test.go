@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/listingkit/tenantdirectory"
 	"task-processor/internal/listingsubscription"
 )
 
@@ -140,6 +141,53 @@ func TestPlatformSubscriptionListReturnsResolvedTenantDisplayName(t *testing.T) 
 	if len(listBody.Items) != 1 || listBody.Items[0].TenantDisplayName != "目标租户" {
 		t.Fatalf("tenant list = %#v", listBody.Items)
 	}
+}
+
+func TestPlatformTenantDirectoryRequiresPlatformRole(t *testing.T) {
+	service, err := listingsubscription.NewService(listingsubscription.NewMemRepository())
+	if err != nil {
+		t.Fatalf("create subscription service: %v", err)
+	}
+	h, err := NewHandler(
+		&stubHandlerCoreService{},
+		WithSubscriptionService(service),
+		WithTenantDirectory(tenantDirectoryStub{{ID: "org-target", DisplayName: "Target tenant"}}),
+	)
+	if err != nil {
+		t.Fatalf("create handler: %v", err)
+	}
+	router := gin.New()
+	router.GET("/platform/tenant-directory", h.ListPlatformTenantDirectory)
+
+	forbiddenReq := httptest.NewRequest(http.MethodGet, "/platform/tenant-directory", nil)
+	forbiddenResp := httptest.NewRecorder()
+	router.ServeHTTP(forbiddenResp, forbiddenReq)
+	if forbiddenResp.Code != http.StatusForbidden {
+		t.Fatalf("forbidden status = %d, want %d", forbiddenResp.Code, http.StatusForbidden)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/platform/tenant-directory", nil)
+	req.Header.Set("X-User-Roles", "platform_admin")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+	var body struct {
+		Items []tenantdirectory.Tenant `json:"items"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode tenant directory: %v", err)
+	}
+	if len(body.Items) != 1 || body.Items[0].ID != "org-target" {
+		t.Fatalf("items = %#v", body.Items)
+	}
+}
+
+type tenantDirectoryStub []tenantdirectory.Tenant
+
+func (s tenantDirectoryStub) List(context.Context) ([]tenantdirectory.Tenant, error) {
+	return append([]tenantdirectory.Tenant(nil), s...), nil
 }
 
 func TestPlatformSubscriptionCanApplyPlanForTenant(t *testing.T) {

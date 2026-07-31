@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   ArrowUpRight,
   CheckCircle2,
@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 
 import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
-import { useZitadelIdentity } from "@/components/providers/zitadel-auth-gate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -501,21 +500,11 @@ function FailureDialog({
 }
 
 export function SheinLoginPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const identity = useZitadelIdentity();
   const visitTenantID = useMemo(() => {
     const value = searchParams.get("tenant_id")?.trim() ?? "";
     return /^[1-9][0-9]*$/.test(value) ? value : "";
   }, [searchParams]);
-  const hasPlatformAdminAccess = useMemo(
-    () =>
-      (identity?.roles ?? []).some((role) =>
-        ["platform_admin", "listingkit_admin", "admin"].includes(role),
-      ),
-    [identity],
-  );
-  const [tenantInput, setTenantInput] = useState(visitTenantID);
 
   const accounts = useSheinLoginAccounts(visitTenantID || undefined);
   const login = useLoginSheinAccount(visitTenantID || undefined);
@@ -549,19 +538,6 @@ export function SheinLoginPage() {
   const runbook = useMemo(() => runbookItems(accountItems), [accountItems]);
   const statusNote = mutationStatusNote({ clearCookie, clearFailure, login, verifyCode });
 
-  function applyVisitTenant() {
-    const value = tenantInput.trim();
-    if (!/^[1-9][0-9]*$/.test(value)) {
-      return;
-    }
-    router.replace(`/listing-kits/shein-login?tenant_id=${encodeURIComponent(value)}`);
-  }
-
-  function clearVisitTenant() {
-    setTenantInput("");
-    router.replace("/listing-kits/shein-login");
-  }
-
   return (
     <ListingKitPageShell backgroundClassName="isolate bg-[linear-gradient(180deg,#fbfaf6_0%,#efeee8_100%)]">
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px] xl:items-start">
@@ -578,34 +554,6 @@ export function SheinLoginPage() {
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                   先处理验证码和失败，再决定是否重登或清理 Cookie。页面只保留登录管理需要的信息，不再把调试细节直接铺在首屏。
                 </p>
-                {hasPlatformAdminAccess ? (
-                  <div className="mt-4 flex flex-wrap items-end gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-                    <Label className="grid gap-1.5">
-                      <span className="text-xs font-semibold">代管租户 ID</span>
-                      <Input
-                        aria-label="代管租户 ID"
-                        className="h-9 w-48 bg-background"
-                        inputMode="numeric"
-                        onChange={(event) => setTenantInput(event.target.value)}
-                        placeholder="输入目标租户 ID"
-                        value={tenantInput}
-                      />
-                    </Label>
-                    <Button className="h-9" onClick={applyVisitTenant} disabled={!tenantInput.trim()} type="button">
-                      切换租户
-                    </Button>
-                    {visitTenantID ? (
-                      <Button className="h-9" onClick={clearVisitTenant} type="button" variant="outline">
-                        返回我的租户
-                      </Button>
-                    ) : null}
-                    <span className="pb-2 text-xs text-amber-800">
-                      {visitTenantID
-                        ? `当前正代管租户 ${visitTenantID}，所有 SHEIN 登录操作均会作用于该租户。`
-                        : "未切换时仅操作当前登录租户。"}
-                    </span>
-                  </div>
-                ) : null}
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge

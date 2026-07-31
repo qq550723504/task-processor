@@ -1,6 +1,9 @@
 package api
 
-import "task-processor/internal/listingsubscription"
+import (
+	"task-processor/internal/listingkit/tenantdirectory"
+	"task-processor/internal/listingsubscription"
+)
 
 func withSubscriptionDependencies(apply func(*subscriptionDependencies)) HandlerOption {
 	return withHandlerState(func(h *handler) {
@@ -22,6 +25,7 @@ func withSubscriptionConfig(deps SubscriptionDependencies) HandlerOption {
 	options := []HandlerOption{
 		WithPlatformSubscriptionAccess(deps.PlatformAdminUsers, deps.PlatformAdminRoles),
 		WithSubscriptionService(deps.Service),
+		WithTenantDirectory(deps.TenantDirectory),
 	}
 	return func(h *handler) {
 		for _, option := range options {
@@ -30,6 +34,12 @@ func withSubscriptionConfig(deps SubscriptionDependencies) HandlerOption {
 			}
 		}
 	}
+}
+
+func WithTenantDirectory(directory tenantdirectory.Directory) HandlerOption {
+	return withSubscriptionDependencies(func(subscription *subscriptionDependencies) {
+		subscription.tenantDirectory = directory
+	})
 }
 
 func WithSubscriptionService(service *listingsubscription.Service) HandlerOption {

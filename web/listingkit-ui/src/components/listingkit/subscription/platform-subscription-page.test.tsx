@@ -8,6 +8,7 @@ import {
   applyPlatformTenantSubscriptionPlan,
   getPlatformSubscriptionPlans,
   getPlatformTenantSubscriptionAuditLogs,
+  getPlatformTenantDirectory,
   getPlatformTenantSubscriptions,
   getPlatformTenantSubscription,
   updatePlatformTenantSubscriptionUsage,
@@ -22,6 +23,7 @@ vi.mock("@/lib/api/subscription", async (importOriginal) => {
     applyPlatformTenantSubscriptionPlan: vi.fn(),
     getPlatformSubscriptionPlans: vi.fn(),
     getPlatformTenantSubscriptionAuditLogs: vi.fn(),
+    getPlatformTenantDirectory: vi.fn(),
     getPlatformTenantSubscriptions: vi.fn(),
     getPlatformTenantSubscription: vi.fn(),
     updatePlatformTenantSubscriptionUsage: vi.fn(),
@@ -36,6 +38,7 @@ const mockedGetPlatformSubscriptionPlans = vi.mocked(getPlatformSubscriptionPlan
 const mockedGetPlatformTenantSubscriptionAuditLogs = vi.mocked(
   getPlatformTenantSubscriptionAuditLogs,
 );
+const mockedGetPlatformTenantDirectory = vi.mocked(getPlatformTenantDirectory);
 const mockedGetPlatformTenantSubscriptions = vi.mocked(
   getPlatformTenantSubscriptions,
 );
@@ -51,6 +54,7 @@ describe("PlatformSubscriptionPage", () => {
   beforeEach(() => {
     vi.stubGlobal("confirm", vi.fn(() => true));
     mockedGetPlatformTenantSubscriptionAuditLogs.mockReset();
+    mockedGetPlatformTenantDirectory.mockReset();
     mockedApplyPlatformTenantSubscriptionPlan.mockReset();
     mockedGetPlatformSubscriptionPlans.mockReset();
     mockedGetPlatformTenantSubscriptions.mockReset();
@@ -82,6 +86,20 @@ describe("PlatformSubscriptionPage", () => {
         tenant_display_name: "目标租户",
         entitlement_count: 1,
         active_count: 0,
+      },
+    ]);
+    mockedGetPlatformTenantDirectory.mockResolvedValue([
+      {
+        tenant_id: "org-target",
+        tenant_display_name: "目标租户",
+        primary_domain: "target.example",
+        state: "ORGANIZATION_STATE_ACTIVE",
+      },
+      {
+        tenant_id: "org-new",
+        tenant_display_name: "新租户",
+        primary_domain: "new.example",
+        state: "ORGANIZATION_STATE_ACTIVE",
       },
     ]);
   });
@@ -170,6 +188,44 @@ describe("PlatformSubscriptionPage", () => {
     await waitFor(() => {
       expect(mockedApplyPlatformTenantSubscriptionPlan).toHaveBeenCalledWith(
         "org-target",
+        expect.objectContaining({
+          plan_code: "professional",
+          status: "active",
+        }),
+      );
+    });
+  });
+
+  it("opens a new tenant directly from subscription management", async () => {
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-new",
+      modules: [],
+      entitlements: [],
+    });
+    mockedApplyPlatformTenantSubscriptionPlan.mockResolvedValue({
+      id: 2,
+      tenant_id: "org-new",
+      plan_code: "professional",
+      status: "active",
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "开通新租户" }));
+    await waitFor(() => {
+      expect(screen.getByLabelText("新租户套餐").querySelectorAll("option")).toHaveLength(2);
+    });
+    fireEvent.change(screen.getByLabelText("新租户 ID"), {
+      target: { value: "org-new" },
+    });
+    fireEvent.change(screen.getByLabelText("新租户套餐"), {
+      target: { value: "professional" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确认开通" }));
+
+    await waitFor(() => {
+      expect(mockedApplyPlatformTenantSubscriptionPlan).toHaveBeenCalledWith(
+        "org-new",
         expect.objectContaining({
           plan_code: "professional",
           status: "active",
@@ -361,7 +417,7 @@ describe("PlatformSubscriptionPage", () => {
     renderWithQueryClient(<PlatformSubscriptionPage />);
 
     expect(
-      screen.getByText("如果你不知道租户 ID，优先通过输入框搜索或从下方列表选择；只有列表里没有时，再手动输入租户 ID。"),
+      screen.getByText("可按名称、域名或租户 ID 搜索整个 ZITADEL 租户目录；开通套餐前无需先在订阅表中出现。"),
     ).toBeInTheDocument();
 
     fireEvent.change(screen.getByPlaceholderText("搜索或输入租户 ID"), {

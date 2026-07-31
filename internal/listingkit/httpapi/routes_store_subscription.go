@@ -19,6 +19,7 @@ type SubscriptionRouteHandler interface {
 
 type PlatformAdminRouteHandler interface {
 	ListPlatformTenantSubscriptions(c *gin.Context)
+	ListPlatformTenantDirectory(c *gin.Context)
 	ListPlatformSubscriptionPlans(c *gin.Context)
 	UpsertPlatformSubscriptionPlan(c *gin.Context)
 	UpsertPlatformSubscriptionPlanModule(c *gin.Context)

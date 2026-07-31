@@ -2,7 +2,7 @@ param(
     [int]$Port = 3000,
     [string]$ApiBase = "http://localhost:8085/api/v1/listing-kits",
     [string]$ServiceApiBase = "http://localhost:8085/api/v1",
-    [string]$BypassAuthGate = "1"
+    [string]$BypassAuthGate = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -57,6 +57,76 @@ function Set-EnvIfMissing {
         return
     }
     [Environment]::SetEnvironmentVariable($Name, $Value)
+}
+
+function Import-DotEnvFile {
+    param([string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return
+    }
+
+    $loadedCount = 0
+    foreach ($line in Get-Content -LiteralPath $Path) {
+        $trimmed = $line.Trim()
+        if ([string]::IsNullOrWhiteSpace($trimmed) -or $trimmed.StartsWith("#")) {
+            continue
+        }
+
+        $match = [regex]::Match($trimmed, "^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
+        if (-not $match.Success) {
+            continue
+        }
+
+        $name = $match.Groups[1].Value
+        if (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+            continue
+        }
+
+        $value = $match.Groups[2].Value.Trim()
+        if (
+            ($value.Length -ge 2) -and
+            (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'")))
+        ) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
+
+        [Environment]::SetEnvironmentVariable($name, $value, "Process")
+        $loadedCount++
+    }
+
+    if ($loadedCount -gt 0) {
+        Write-Host "Loaded local .env values for local UI startup." -ForegroundColor DarkGreen
+    }
+}
+
+function Import-DeployedListingKitAuthSecrets {
+    if ([string]::IsNullOrWhiteSpace($env:KUBECONFIG)) {
+        Write-Host "KUBECONFIG is not set; keeping local Auth.js credentials." -ForegroundColor DarkYellow
+        return
+    }
+
+    try {
+        $json = & kubectl -n task-processor get secret listingkit-workbench-secret -o json 2>$null
+        if (-not $json) {
+            throw "the deployed ListingKit secret was not returned"
+        }
+        $secret = $json | ConvertFrom-Json
+        # Keep AUTH_SECRET from .env so a UI restart can still decrypt the
+        # existing localhost Auth.js session. Only the OAuth client secret has
+        # to match the deployed ZITADEL application for a future login.
+        foreach ($name in @("ZITADEL_CLIENT_SECRET")) {
+            $encoded = $secret.data.$name
+            if ([string]::IsNullOrWhiteSpace($encoded)) {
+                throw "missing $name"
+            }
+            $value = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded))
+            [Environment]::SetEnvironmentVariable($name, $value, "Process")
+        }
+        Write-Host "Loaded the deployed ListingKit ZITADEL client credential for this local UI process." -ForegroundColor DarkGreen
+    } catch {
+        Write-Host "Could not load deployed ListingKit Auth.js credentials: $($_.Exception.Message)" -ForegroundColor DarkYellow
+    }
 }
 
 function Get-ListeningProcessIds {
@@ -148,6 +218,8 @@ Remove-FileIfExists -Path $stdoutLog
 Remove-FileIfExists -Path $stderrLog
 Remove-FileIfExists -Path $pidFile
 
+Import-DotEnvFile -Path (Join-Path $repoRoot ".env")
+Import-DeployedListingKitAuthSecrets
 Set-EnvIfMissing -Name "LISTINGKIT_API_BASE" -Value $ApiBase
 Set-EnvIfMissing -Name "LISTINGKIT_SERVICE_API_BASE" -Value $ServiceApiBase
 if (-not [string]::IsNullOrWhiteSpace($BypassAuthGate)) {

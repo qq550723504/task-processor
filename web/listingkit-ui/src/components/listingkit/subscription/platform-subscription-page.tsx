@@ -2,7 +2,7 @@
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Power, RefreshCw, Save, Search, XCircle } from "lucide-react";
+import { CheckCircle2, Power, RefreshCw, Save, Search, UserPlus, XCircle } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
 
 import {
@@ -10,6 +10,7 @@ import {
   formatSubscriptionApiError,
   getPlatformSubscriptionPlans,
   getPlatformTenantSubscriptionAuditLogs,
+  getPlatformTenantDirectory,
   getPlatformTenantSubscriptions,
   getPlatformTenantSubscription,
   updatePlatformTenantSubscriptionUsage,
@@ -98,9 +99,14 @@ export function PlatformSubscriptionPage() {
   const [usageReason, setUsageReason] = useState("");
   const [selectedPlan, setSelectedPlan] = useState("");
   const [planExpiresAt, setPlanExpiresAt] = useState("");
+  const [showTenantOnboarding, setShowTenantOnboarding] = useState(false);
+  const [newTenantId, setNewTenantId] = useState("");
+  const [newTenantPlan, setNewTenantPlan] = useState("");
+  const [newTenantExpiresAt, setNewTenantExpiresAt] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingUsage, setSavingUsage] = useState(false);
   const [applyingPlan, setApplyingPlan] = useState(false);
+  const [openingTenant, setOpeningTenant] = useState(false);
   const [error, setError] = useState("");
 
   const normalizedTenantId = useMemo(() => tenantId.trim(), [tenantId]);
@@ -112,6 +118,10 @@ export function PlatformSubscriptionPage() {
   const tenantListQuery = useQuery({
     queryKey: ["listingkit-platform-subscriptions"],
     queryFn: getPlatformTenantSubscriptions,
+  });
+  const tenantDirectoryQuery = useQuery({
+    queryKey: ["listingkit-platform-tenant-directory"],
+    queryFn: getPlatformTenantDirectory,
   });
   const planQuery = useQuery({
     queryKey: ["listingkit-platform-subscription-plans"],
@@ -128,18 +138,32 @@ export function PlatformSubscriptionPage() {
   const editingGuidance = editingModule ? MODULE_GUIDANCE[editingModule] : undefined;
   const recommendedMetrics = editingGuidance?.recommendedMetrics ?? [];
   const tenantOptions = tenantListQuery.data ?? [];
+  const configuredTenantByID = new Map(tenantOptions.map((tenant) => [tenant.tenant_id, tenant]));
+  const directoryOptions = (tenantDirectoryQuery.data ?? []).map((tenant) => {
+    const subscription = configuredTenantByID.get(tenant.tenant_id);
+    return {
+      ...tenant,
+      active_count: subscription?.active_count ?? 0,
+      entitlement_count: subscription?.entitlement_count ?? 0,
+      configured: Boolean(subscription),
+    };
+  });
   const tenantKeyword = tenantInput.trim().toLowerCase();
   const visibleTenants = tenantKeyword
-    ? tenantOptions.filter((tenant) => {
+    ? directoryOptions.filter((tenant) => {
         const displayName = tenant.tenant_display_name?.toLowerCase() ?? "";
-        return displayName.includes(tenantKeyword) || tenant.tenant_id.toLowerCase().includes(tenantKeyword);
+        const primaryDomain = tenant.primary_domain?.toLowerCase() ?? "";
+        return displayName.includes(tenantKeyword) || tenant.tenant_id.toLowerCase().includes(tenantKeyword) || primaryDomain.includes(tenantKeyword);
       })
-    : tenantOptions;
+    : directoryOptions;
   const visibleError =
     error ||
     (query.error ? formatSubscriptionApiError(query.error) : "") ||
     (tenantListQuery.error
       ? formatSubscriptionApiError(tenantListQuery.error)
+      : "") ||
+    (tenantDirectoryQuery.error
+      ? formatSubscriptionApiError(tenantDirectoryQuery.error)
       : "") ||
     (planQuery.error ? formatSubscriptionApiError(planQuery.error) : "") ||
     (auditQuery.error
@@ -151,6 +175,48 @@ export function PlatformSubscriptionPage() {
     setError("");
     setEditingModule("");
     setTenantId(tenantInput);
+  }
+
+  async function handleTenantOnboarding(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const nextTenantId = newTenantId.trim();
+    if (!nextTenantId || !newTenantPlan) {
+      return;
+    }
+    const planName =
+      planQuery.data?.find((bundle) => bundle.plan.code === newTenantPlan)?.plan.name ?? newTenantPlan;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(`确认开通租户 ${nextTenantId} 的套餐“${planName}”吗？`)
+    ) {
+      return;
+    }
+
+    setOpeningTenant(true);
+    setError("");
+    try {
+      await applyPlatformTenantSubscriptionPlan(nextTenantId, {
+        plan_code: newTenantPlan,
+        status: "active",
+        expires_at: newTenantExpiresAt ? new Date(newTenantExpiresAt).toISOString() : undefined,
+      });
+      setTenantInput(nextTenantId);
+      setTenantId(nextTenantId);
+      setSelectedPlan(newTenantPlan);
+      setPlanExpiresAt(newTenantExpiresAt);
+      setNewTenantId("");
+      setNewTenantPlan("");
+      setNewTenantExpiresAt("");
+      setShowTenantOnboarding(false);
+      await tenantListQuery.refetch();
+      await tenantDirectoryQuery.refetch();
+      await query.refetch();
+      await auditQuery.refetch();
+    } catch (err) {
+      setError(formatSubscriptionApiError(err));
+    } finally {
+      setOpeningTenant(false);
+    }
   }
 
   async function handlePlanApply(event: FormEvent<HTMLFormElement>) {
@@ -175,6 +241,7 @@ export function PlatformSubscriptionPage() {
         expires_at: planExpiresAt ? new Date(planExpiresAt).toISOString() : undefined,
       });
       await tenantListQuery.refetch();
+      await tenantDirectoryQuery.refetch();
       await query.refetch();
       await auditQuery.refetch();
     } catch (err) {
@@ -329,8 +396,8 @@ export function PlatformSubscriptionPage() {
               list="listingkit-tenant-options"
             />
             <datalist id="listingkit-tenant-options">
-              {tenantOptions.map((tenant) => (
-                <option key={tenant.tenant_id} value={tenant.tenant_id} />
+              {directoryOptions.map((tenant) => (
+                <option key={tenant.tenant_id} value={tenant.tenant_id} label={tenant.tenant_display_name} />
               ))}
             </datalist>
             <Button
@@ -351,11 +418,22 @@ export function PlatformSubscriptionPage() {
               <RefreshCw className={`size-4 ${query.isFetching ? "animate-spin" : ""}`} />
               刷新
             </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                setShowTenantOnboarding((visible) => !visible);
+                setError("");
+              }}
+              className="h-9 w-full gap-2 px-3 sm:w-auto"
+            >
+              <UserPlus className="size-4" />
+              开通新租户
+            </Button>
           </form>
         </CardHeader>
         <CardContent className="pt-0">
           <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600">
-            如果你不知道租户 ID，优先通过输入框搜索或从下方列表选择；只有列表里没有时，再手动输入租户 ID。
+            可按名称、域名或租户 ID 搜索整个 ZITADEL 租户目录；开通套餐前无需先在订阅表中出现。
           </div>
         </CardContent>
         {visibleError ? (
@@ -365,29 +443,82 @@ export function PlatformSubscriptionPage() {
             </Alert>
           </CardContent>
         ) : null}
+        {showTenantOnboarding ? (
+          <CardContent className="pt-0">
+            <form
+              onSubmit={handleTenantOnboarding}
+              className="grid gap-3 rounded-lg border border-blue-200 bg-blue-50 p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end"
+            >
+              <Label className="block text-xs text-zinc-600">
+                新租户 ID
+                <Input
+                  value={newTenantId}
+                  onChange={(event) => setNewTenantId(event.target.value)}
+                  className="mt-1 h-9 bg-white font-mono"
+                  placeholder="输入 ZITADEL 租户 ID"
+                  aria-label="新租户 ID"
+                  list="listingkit-tenant-options"
+                />
+              </Label>
+              <Label className="block text-xs text-zinc-600">
+                开通套餐
+                <Select
+                  value={newTenantPlan}
+                  onChange={(event) => setNewTenantPlan(event.target.value)}
+                  className="mt-1 h-9 bg-white"
+                  aria-label="新租户套餐"
+                >
+                  <option value="">选择套餐</option>
+                  {(planQuery.data ?? []).map((bundle) => (
+                    <option key={bundle.plan.code} value={bundle.plan.code}>
+                      {bundle.plan.name}
+                    </option>
+                  ))}
+                </Select>
+              </Label>
+              <Label className="block text-xs text-zinc-600">
+                到期时间（可选）
+                <Input
+                  type="datetime-local"
+                  value={newTenantExpiresAt}
+                  onChange={(event) => setNewTenantExpiresAt(event.target.value)}
+                  className="mt-1 h-9 bg-white"
+                />
+              </Label>
+              <Button
+                type="submit"
+                disabled={!newTenantId.trim() || !newTenantPlan || openingTenant}
+                className="h-9 gap-2 px-3"
+              >
+                {openingTenant ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
+                确认开通
+              </Button>
+            </form>
+          </CardContent>
+        ) : null}
       </Card>
 
       <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_380px]">
         <Card className="overflow-hidden p-0">
           <div className="border-b border-zinc-200 bg-zinc-50 px-4 py-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <h2 className="text-sm font-semibold text-zinc-900">已配置租户</h2>
+              <h2 className="text-sm font-semibold text-zinc-900">ZITADEL 租户目录</h2>
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => void tenantListQuery.refetch()}
+                onClick={() => void tenantDirectoryQuery.refetch()}
                 className="h-8 w-full gap-2 px-3 text-xs sm:w-auto"
               >
                 <RefreshCw
-                  className={`size-3.5 ${tenantListQuery.isFetching ? "animate-spin" : ""}`}
+                  className={`size-3.5 ${tenantDirectoryQuery.isFetching ? "animate-spin" : ""}`}
                 />
                 刷新
               </Button>
             </div>
             <div className="mt-3 flex gap-2 overflow-x-auto pb-1 2xl:flex-wrap 2xl:overflow-visible">
-              {tenantListQuery.isLoading ? (
+              {tenantDirectoryQuery.isLoading ? (
                 <span className="text-sm text-zinc-500">加载中...</span>
-              ) : tenantOptions.length === 0 ? (
+              ) : directoryOptions.length === 0 ? (
                 <span className="text-sm text-zinc-500">暂无租户</span>
               ) : visibleTenants.length === 0 ? (
                 <span className="text-sm text-zinc-500">没有匹配的租户，请继续手动输入完整租户 ID。</span>
@@ -417,7 +548,9 @@ export function PlatformSubscriptionPage() {
                       <div className="mt-1 font-mono opacity-70">{tenant.tenant_id}</div>
                     ) : null}
                     <div className="mt-1 opacity-80">
-                      {tenant.active_count}/{tenant.entitlement_count} 已开通
+                      {tenant.configured
+                        ? `${tenant.active_count}/${tenant.entitlement_count} 已开通`
+                        : "未开通套餐"}
                     </div>
                   </Button>
                 ))

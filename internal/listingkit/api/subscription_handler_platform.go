@@ -49,6 +49,28 @@ func (h *handler) ListPlatformTenantSubscriptions(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items})
 }
 
+func (h *handler) ListPlatformTenantDirectory(c *gin.Context) {
+	if !h.requireSubscriptionHandler(c) {
+		return
+	}
+	if !h.requirePlatformSubscriptionAccess(c) {
+		return
+	}
+	if h.tenantDirectory == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error":   "tenant_directory_unavailable",
+			"message": "ZITADEL tenant directory is not configured",
+		})
+		return
+	}
+	items, err := h.tenantDirectory.List(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "tenant_directory_list_failed", "message": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"items": items})
+}
+
 func (h *handler) ListPlatformSubscriptionPlans(c *gin.Context) {
 	if !h.requireSubscriptionHandler(c) {
 		return

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import {
   Boxes,
   ChevronRight,
@@ -31,9 +31,12 @@ import {
 } from "lucide-react";
 
 import { ThemeToggleButton } from "@/components/listingkit/shared/theme-toggle-button";
-import { PLATFORM_ADMIN_ROLES } from "@/lib/listingkit-permissions";
+import { hasPlatformAdminRole, PLATFORM_ADMIN_ROLES } from "@/lib/listingkit-permissions";
+import { getPlatformTenantDirectory } from "@/lib/api/subscription";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   AppUpdateBanner,
   resolveAppUpdatePollIntervalMs,
@@ -515,9 +518,64 @@ export function ListingKitAppShell({
   identity?: ZitadelClientIdentity | null;
 }>) {
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const identityFromContext = useZitadelIdentity();
   const identity = identityOverride ?? identityFromContext;
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const visitTenantID = (() => {
+    const value = searchParams.get("tenant_id")?.trim() ?? "";
+    return /^[1-9][0-9]*$/.test(value) ? value : "";
+  })();
+  const [tenantInput, setTenantInput] = useState(visitTenantID);
+  const hasPlatformAdminAccess = hasPlatformAdminRole(identity?.roles);
+  const [tenantDirectory, setTenantDirectory] = useState<Awaited<ReturnType<typeof getPlatformTenantDirectory>>>([]);
+
+  useEffect(() => {
+    if (!hasPlatformAdminAccess) {
+      setTenantDirectory([]);
+      return;
+    }
+    let cancelled = false;
+    void getPlatformTenantDirectory()
+      .then((items) => {
+        if (!cancelled) {
+          setTenantDirectory(items);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setTenantDirectory([]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [hasPlatformAdminAccess]);
+
+  function replaceVisitTenant(tenantID?: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (tenantID) {
+      params.set("tenant_id", tenantID);
+    } else {
+      params.delete("tenant_id");
+    }
+    const query = params.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname);
+  }
+
+  function applyVisitTenant() {
+    const value = tenantInput.trim();
+    if (!/^[1-9][0-9]*$/.test(value)) {
+      return;
+    }
+    replaceVisitTenant(value);
+  }
+
+  function clearVisitTenant() {
+    setTenantInput("");
+    replaceVisitTenant();
+  }
   const navGroups = NAV_GROUPS.map((group) => ({
     ...group,
     items: group.items
@@ -601,7 +659,7 @@ export function ListingKitAppShell({
                 </Button>
                 {accountMenuOpen ? (
                   <div
-                    className="absolute right-0 top-full z-50 mt-2 w-[280px] rounded-2xl border border-border bg-background p-3 shadow-xl"
+                    className="absolute right-0 top-full z-50 mt-2 w-[320px] rounded-2xl border border-border bg-background p-3 shadow-xl"
                     role="menu"
                   >
                     <div className="space-y-3">
@@ -625,6 +683,56 @@ export function ListingKitAppShell({
                           {identity?.roles?.length ? identity.roles.join(", ") : "未识别角色"}
                         </p>
                       </div>
+                      {hasPlatformAdminAccess ? (
+                        <div className="space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950">
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-800">
+                            SHEIN 代管租户
+                          </p>
+                          <Label className="grid gap-1.5 text-xs font-semibold">
+                            代管租户 ID
+                            <Input
+                              aria-label="代管租户 ID"
+                              className="h-9 bg-background text-sm font-normal text-foreground"
+                              inputMode="numeric"
+                              onChange={(event) => setTenantInput(event.target.value)}
+                              placeholder="输入目标租户 ID"
+                              list="listingkit-visit-tenant-options"
+                              value={tenantInput}
+                            />
+                          </Label>
+                          <datalist id="listingkit-visit-tenant-options">
+                            {tenantDirectory.map((tenant) => (
+                              <option key={tenant.tenant_id} value={tenant.tenant_id} label={tenant.tenant_display_name} />
+                            ))}
+                          </datalist>
+                          <div className="flex gap-2">
+                            <Button
+                              className="flex-1"
+                              disabled={!tenantInput.trim()}
+                              onClick={applyVisitTenant}
+                              size="sm"
+                              type="button"
+                            >
+                              切换租户
+                            </Button>
+                            {visitTenantID ? (
+                              <Button
+                                onClick={clearVisitTenant}
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                              >
+                                返回我的租户
+                              </Button>
+                            ) : null}
+                          </div>
+                          <p className="text-xs leading-5 text-amber-800">
+                            {visitTenantID
+                              ? `当前正代管租户 ${visitTenantID}，SHEIN 登录操作会作用于该租户。`
+                              : "未切换时仅操作当前登录租户。"}
+                          </p>
+                        </div>
+                      ) : null}
                       <Button asChild className="w-full justify-center" size="sm" variant="outline">
                         <a href="/api/zitadel-auth/logout">
                           <LogOut data-icon="inline-start" />
