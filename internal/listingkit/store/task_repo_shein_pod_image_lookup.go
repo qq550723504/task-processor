@@ -82,7 +82,7 @@ func applySheinPODImageLookupQueryScope(db *gorm.DB, rawQuery string) *gorm.DB {
 
 func applySheinPODImageLookupAccessScope(db *gorm.DB, ctx context.Context) *gorm.DB {
 	db = applyTenantScope(db, ctx, "tenant_id")
-	if !listingkit.OwnerScopeEnabled() || listingkit.RequestHasPlatformAdminAccess(ctx) {
+	if !listingkit.OwnerScopeEnabled() || listingkit.RequestHasTenantAdminAccess(ctx) {
 		return db
 	}
 	userID := strings.TrimSpace(listingkit.RequestUserIDFromContext(ctx))

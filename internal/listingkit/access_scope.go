@@ -65,6 +65,10 @@ func RequestHasPlatformAdminAccess(ctx context.Context) bool {
 	return authz.IsListingKitPlatformAdmin(RequestUserIDFromContext(ctx), RequestRolesFromContext(ctx))
 }
 
+func RequestHasTenantAdminAccess(ctx context.Context) bool {
+	return authz.IsListingKitTenantAdmin(RequestUserIDFromContext(ctx), RequestRolesFromContext(ctx))
+}
+
 func ResolveTaskUserID(task *Task) string {
 	if task == nil {
 		return ""

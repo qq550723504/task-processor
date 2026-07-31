@@ -925,6 +925,40 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForRuleAdminRoutes(t *testi
 	}
 }
 
+func TestListingKitZitadelAuthAllowsListingKitAdminForSimpleStoreLookup(t *testing.T) {
+	zitadel := newZitadelRoleServer(t, "listingkit_admin")
+	defer zitadel.Close()
+
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{
+			IssuerURL: zitadel.URL,
+			ClientID:  "listingkit-client",
+			Required:  true,
+		},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{
+		{
+			Method: http.MethodGet,
+			Path:   "/api/v1/listing-kits/admin/stores/simple",
+			Module: "listing-kit-admin",
+			Handler: func(c *gin.Context) {
+				c.JSON(http.StatusOK, gin.H{"items": []any{}})
+			},
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/admin/stores/simple", nil)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+}
+
 func TestListingKitZitadelAuthRejectsListingKitAdminForPlatformRoutes(t *testing.T) {
 	zitadel := newZitadelRoleServer(t, "listingkit_admin")
 	defer zitadel.Close()

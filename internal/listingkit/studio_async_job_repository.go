@@ -199,7 +199,7 @@ func applyStudioAsyncJobAccessScope(db *gorm.DB, ctx context.Context) *gorm.DB {
 			db = db.Where("tenant_id = ?", tenantID)
 		}
 	}
-	if OwnerScopeEnabled() {
+	if OwnerScopeEnabled() && !RequestHasTenantAdminAccess(ctx) {
 		if userID := RequestUserIDFromContext(ctx); userID != "" {
 			db = db.Where("user_id = ?", userID)
 		}
@@ -211,7 +211,7 @@ func matchesStudioAsyncJobScope(ctx context.Context, tenantID string, userID str
 	if !tenantctx.MatchesTenant(tenantID, tenantctx.TenantIDFromContext(ctx)) {
 		return false
 	}
-	if !OwnerScopeEnabled() {
+	if !OwnerScopeEnabled() || RequestHasTenantAdminAccess(ctx) {
 		return true
 	}
 	requestUserID := RequestUserIDFromContext(ctx)

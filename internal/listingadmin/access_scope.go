@@ -90,11 +90,15 @@ func requestHasPlatformAdminAccess(ctx context.Context) bool {
 	return authz.IsListingKitPlatformAdmin(requestUserIDFromContext(ctx), requestRolesFromContext(ctx))
 }
 
+func requestHasTenantAdminAccess(ctx context.Context) bool {
+	return authz.IsListingKitTenantAdmin(requestUserIDFromContext(ctx), requestRolesFromContext(ctx))
+}
+
 func applyOwnerScope(db *gorm.DB, ctx context.Context, ownerColumn string) *gorm.DB {
 	if db == nil || !ownerScopeEnabled() {
 		return db
 	}
-	if requestHasPlatformAdminAccess(ctx) {
+	if requestHasTenantAdminAccess(ctx) {
 		return db
 	}
 	ownerUserID := requestUserIDFromContext(ctx)

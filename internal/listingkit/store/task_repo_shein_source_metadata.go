@@ -54,13 +54,15 @@ func (r *taskRepository) ListSheinSourceSDSMetadata(ctx context.Context, query *
 }
 
 func applySheinSourceSDSMetadataAccessScope(db *gorm.DB, ctx context.Context) *gorm.DB {
-	if !listingkit.RequestHasPlatformAdminAccess(ctx) {
-		userID := strings.TrimSpace(listingkit.RequestUserIDFromContext(ctx))
-		if userID != "" {
-			return applyTaskUserScope(db, userID)
-		}
+	db = applyTenantScope(db, ctx, "tenant_id")
+	if listingkit.RequestHasTenantAdminAccess(ctx) {
+		return db
 	}
-	return applyTenantScope(db, ctx, "tenant_id")
+	userID := strings.TrimSpace(listingkit.RequestUserIDFromContext(ctx))
+	if userID != "" {
+		return applyTaskUserScope(db, userID)
+	}
+	return db
 }
 
 func applySheinSourceSDSMetadataStoreScope(db *gorm.DB, storeID int64) *gorm.DB {

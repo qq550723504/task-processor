@@ -23,3 +23,10 @@ func TestListingKitAuthorizerDoesNotTreatListingKitAdminAsPlatformAdmin(t *testi
 	require.False(t, authorizer.Authorize("", []string{"listingkit_admin"}, PermissionListingKitPlatformAdm))
 	require.True(t, authorizer.Authorize("", []string{"platform_admin"}, PermissionListingKitPlatformAdm))
 }
+
+func TestIsListingKitTenantAdminIncludesTenantAndPlatformAdmins(t *testing.T) {
+	require.True(t, IsListingKitTenantAdmin("", []string{"listingkit_admin"}))
+	require.True(t, IsListingKitTenantAdmin("", []string{"platform_admin"}))
+	require.True(t, IsListingKitTenantAdmin("", []string{"admin"}))
+	require.False(t, IsListingKitTenantAdmin("", []string{"listingkit_operator"}))
+}

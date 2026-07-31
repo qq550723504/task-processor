@@ -94,6 +94,43 @@ func TestApplyOwnedTenantQueryAppliesDeletedTenantAndOwnerFilters(t *testing.T) 
 	}
 }
 
+func TestApplyOwnedTenantQueryAllowsTenantAdminAcrossOwnersWithinTenant(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	type ownedRow struct {
+		ID          int64  `gorm:"column:id;primaryKey;autoIncrement"`
+		TenantID    int64  `gorm:"column:tenant_id"`
+		OwnerUserID string `gorm:"column:owner_user_id"`
+		Deleted     int16  `gorm:"column:deleted"`
+		Name        string `gorm:"column:name"`
+	}
+	if err := db.Table("owned_rows").AutoMigrate(&ownedRow{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	for _, row := range []ownedRow{
+		{TenantID: 101, OwnerUserID: "user-a", Name: "owner-a"},
+		{TenantID: 101, OwnerUserID: "user-b", Name: "owner-b"},
+		{TenantID: 202, OwnerUserID: "user-c", Name: "other-tenant"},
+	} {
+		if err := db.Table("owned_rows").Create(&row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
+	adminCtx := withRequestIdentity(context.Background(), "tenant-admin", []string{"listingkit_admin"})
+	var rows []ownedRow
+	err = applyOwnedTenantQuery(db.WithContext(adminCtx).Table("owned_rows"), 101, "user-a").Find(&rows).Error
+	if err != nil {
+		t.Fatalf("query rows: %v", err)
+	}
+	if len(rows) != 2 || rows[0].Name == "other-tenant" || rows[1].Name == "other-tenant" {
+		t.Fatalf("rows = %+v, want both owners from tenant 101 only", rows)
+	}
+}
+
 func TestTakeOwnedTenantRowMapsMissingRecordToNotFoundError(t *testing.T) {
 	t.Parallel()
 

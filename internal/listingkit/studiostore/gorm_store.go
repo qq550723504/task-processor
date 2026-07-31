@@ -335,7 +335,7 @@ func (r *GormRepository) ListTenantBatchNames(ctx context.Context) ([]string, er
 
 func applySessionAccessScope(db *gorm.DB, ctx context.Context, tenantColumn string, userColumn string) *gorm.DB {
 	db = applyTenantScope(db, ctx, tenantColumn)
-	if !listingkit.OwnerScopeEnabled() || strings.TrimSpace(userColumn) == "" {
+	if !listingkit.OwnerScopeEnabled() || listingkit.RequestHasTenantAdminAccess(ctx) || strings.TrimSpace(userColumn) == "" {
 		return db
 	}
 	userID := strings.TrimSpace(listingkit.RequestUserIDFromContext(ctx))

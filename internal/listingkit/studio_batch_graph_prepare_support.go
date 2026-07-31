@@ -71,7 +71,7 @@ func applyStudioBatchAccessScope(db *gorm.DB, ctx context.Context) *gorm.DB {
 			db = db.Where("tenant_id = ?", tenantID)
 		}
 	}
-	if OwnerScopeEnabled() {
+	if OwnerScopeEnabled() && !RequestHasTenantAdminAccess(ctx) {
 		if userID := RequestUserIDFromContext(ctx); userID != "" {
 			db = db.Where("user_id = ?", userID)
 		}
@@ -83,7 +83,7 @@ func matchesStudioBatchScope(ctx context.Context, tenantID string, userID string
 	if !tenantctx.MatchesTenant(tenantID, tenantctx.TenantIDFromContext(ctx)) {
 		return false
 	}
-	if !OwnerScopeEnabled() {
+	if !OwnerScopeEnabled() || RequestHasTenantAdminAccess(ctx) {
 		return true
 	}
 	requestUserID := RequestUserIDFromContext(ctx)

@@ -32,7 +32,7 @@ func applyStoreQuery(db *gorm.DB, query StoreQuery) *gorm.DB {
 		if query.TenantID > 0 {
 			db = db.Where("tenant_id = ?", query.TenantID)
 		}
-		if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
+		if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" && !requestHasTenantAdminAccess(db.Statement.Context) {
 			db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
 		}
 	}
@@ -93,7 +93,7 @@ func applyStoreAccessScope(db *gorm.DB, query StoreQuery) *gorm.DB {
 	if query.TenantID > 0 {
 		db = db.Where("tenant_id = ?", query.TenantID)
 	}
-	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
+	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" && !requestHasTenantAdminAccess(db.Statement.Context) {
 		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
 	}
 	return db

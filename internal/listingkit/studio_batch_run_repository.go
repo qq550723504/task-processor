@@ -70,22 +70,22 @@ func (StudioBatchRunRecord) TableName() string {
 }
 
 type StudioBatchRunItemRecord struct {
-	ID           string                   `json:"id" gorm:"primaryKey;type:varchar(96)"`
-	TenantID     string                   `json:"-" gorm:"type:varchar(64);index"`
-	UserID       string                   `json:"-" gorm:"type:varchar(128);index"`
-	RunID        string                   `json:"run_id" gorm:"type:varchar(64);index:idx_listingkit_studio_batch_run_items_run_position,priority:1"`
-	BatchID      string                   `json:"batch_id" gorm:"type:varchar(64);index"`
-	Position     int                      `json:"position" gorm:"index:idx_listingkit_studio_batch_run_items_run_position,priority:2"`
-	Status       StudioBatchRunItemStatus `json:"status" gorm:"type:varchar(32);index;not null"`
-	SessionID    string                   `json:"session_id,omitempty" gorm:"type:varchar(64);index"`
-	AsyncJobID   string                   `json:"async_job_id,omitempty" gorm:"type:varchar(64);index"`
-	ErrorMessage string                   `json:"error_message,omitempty" gorm:"type:text"`
-	BatchStatus  StudioBatchStatus        `json:"batch_status,omitempty" gorm:"-"`
-	BatchLastError string                 `json:"batch_last_error,omitempty" gorm:"-"`
-	StartedAt    *time.Time               `json:"started_at,omitempty"`
-	FinishedAt   *time.Time               `json:"finished_at,omitempty"`
-	CreatedAt    time.Time                `json:"created_at"`
-	UpdatedAt    time.Time                `json:"updated_at"`
+	ID             string                   `json:"id" gorm:"primaryKey;type:varchar(96)"`
+	TenantID       string                   `json:"-" gorm:"type:varchar(64);index"`
+	UserID         string                   `json:"-" gorm:"type:varchar(128);index"`
+	RunID          string                   `json:"run_id" gorm:"type:varchar(64);index:idx_listingkit_studio_batch_run_items_run_position,priority:1"`
+	BatchID        string                   `json:"batch_id" gorm:"type:varchar(64);index"`
+	Position       int                      `json:"position" gorm:"index:idx_listingkit_studio_batch_run_items_run_position,priority:2"`
+	Status         StudioBatchRunItemStatus `json:"status" gorm:"type:varchar(32);index;not null"`
+	SessionID      string                   `json:"session_id,omitempty" gorm:"type:varchar(64);index"`
+	AsyncJobID     string                   `json:"async_job_id,omitempty" gorm:"type:varchar(64);index"`
+	ErrorMessage   string                   `json:"error_message,omitempty" gorm:"type:text"`
+	BatchStatus    StudioBatchStatus        `json:"batch_status,omitempty" gorm:"-"`
+	BatchLastError string                   `json:"batch_last_error,omitempty" gorm:"-"`
+	StartedAt      *time.Time               `json:"started_at,omitempty"`
+	FinishedAt     *time.Time               `json:"finished_at,omitempty"`
+	CreatedAt      time.Time                `json:"created_at"`
+	UpdatedAt      time.Time                `json:"updated_at"`
 }
 
 func (StudioBatchRunItemRecord) TableName() string {
@@ -120,7 +120,7 @@ func applyStudioBatchRunAccessScope(db *gorm.DB, ctx context.Context) *gorm.DB {
 			db = db.Where("tenant_id = ?", tenantID)
 		}
 	}
-	if OwnerScopeEnabled() {
+	if OwnerScopeEnabled() && !RequestHasTenantAdminAccess(ctx) {
 		if userID := RequestUserIDFromContext(ctx); userID != "" {
 			db = db.Where("user_id = ?", userID)
 		}
@@ -132,7 +132,7 @@ func matchesStudioBatchRunScope(ctx context.Context, tenantID string, userID str
 	if !tenantctx.MatchesTenant(tenantID, tenantctx.TenantIDFromContext(ctx)) {
 		return false
 	}
-	if !OwnerScopeEnabled() {
+	if !OwnerScopeEnabled() || RequestHasTenantAdminAccess(ctx) {
 		return true
 	}
 	requestUserID := RequestUserIDFromContext(ctx)

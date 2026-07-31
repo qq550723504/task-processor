@@ -12,7 +12,7 @@ func applyOwnedTenantQuery(db *gorm.DB, tenantID int64, ownerUserID string) *gor
 	if tenantID > 0 {
 		db = db.Where("tenant_id = ?", tenantID)
 	}
-	if ownerScopeEnabled() && ownerUserID != "" {
+	if ownerScopeEnabled() && ownerUserID != "" && !requestHasTenantAdminAccess(db.Statement.Context) {
 		db = db.Where("owner_user_id = ?", ownerUserID)
 	}
 	return db

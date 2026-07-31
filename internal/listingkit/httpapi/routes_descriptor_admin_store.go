@@ -9,7 +9,7 @@ import (
 func appendAdminStoreRouteDescriptors(routes []httproute.Descriptor, handler AdminRouteHandler) []httproute.Descriptor {
 	return append(routes,
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/stores", Module: "listing-kit-platform-admin", Handler: handler.ListAdminStores},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/stores/simple", Module: "listing-kit-platform-admin", Handler: handler.ListSimpleAdminStores},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/stores/simple", Module: "listing-kit-admin", Handler: handler.ListSimpleAdminStores},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/stores/deleted", Module: "listing-kit-platform-admin", Handler: handler.ListDeletedAdminStores},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/admin/stores/:id", Module: "listing-kit-platform-admin", Handler: handler.GetAdminStore},
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/admin/stores", Module: "listing-kit-platform-admin", Handler: handler.CreateAdminStore},

@@ -586,6 +586,21 @@ func TestTaskRepositoryPlatformAdminBypassesOwnerScope(t *testing.T) {
 	if got.ID != "task-user-b" {
 		t.Fatalf("GetTask id = %q, want task-user-b", got.ID)
 	}
+
+	tenantAdminCtx := listingkit.WithRequestRoles(
+		openaiclient.WithIdentity(baseCtx, openaiclient.Identity{TenantID: "tenant-a", UserID: "tenant-admin"}),
+		[]string{"listingkit_admin"},
+	)
+	items, total, err = repo.ListTasks(tenantAdminCtx, &listingkit.TaskListQuery{Page: 1, PageSize: 10})
+	if err != nil {
+		t.Fatalf("tenant admin list tasks: %v", err)
+	}
+	if total != 2 || len(items) != 2 {
+		t.Fatalf("tenant admin items = %+v total=%d, want both same-tenant tasks", items, total)
+	}
+	if _, err := repo.GetTask(tenantAdminCtx, "task-user-b"); err != nil {
+		t.Fatalf("tenant admin GetTask err = %v, want nil", err)
+	}
 }
 
 func TestTaskRepositoryListSheinSourceSDSMetadataMatchesSameUserAcrossLegacyTenantMapping(t *testing.T) {

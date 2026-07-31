@@ -120,6 +120,21 @@ func IsListingKitPlatformAdmin(userID string, roles []string) bool {
 	return DefaultListingKitAuthorizer().Authorize(userID, roles, PermissionListingKitPlatformAdm)
 }
 
+// IsListingKitTenantAdmin reports whether the identity may manage all data in
+// its current tenant. Platform administrators are included because they also
+// have tenant-wide access, while listingkit_operator remains owner-scoped.
+func IsListingKitTenantAdmin(userID string, roles []string) bool {
+	if IsListingKitPlatformAdmin(userID, roles) {
+		return true
+	}
+	for _, role := range normalizeUnique(roles) {
+		if role == "listingkit_admin" {
+			return true
+		}
+	}
+	return false
+}
+
 func userSubject(userID string) string {
 	if value := strings.TrimSpace(userID); value != "" {
 		return "user:" + value

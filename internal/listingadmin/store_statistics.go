@@ -92,7 +92,7 @@ func (r *GormStoreStatisticsRepository) listEligibleStores(ctx context.Context, 
 	if query.TenantID > 0 {
 		db = db.Where("tenant_id = ?", query.TenantID)
 	}
-	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" {
+	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" && !requestHasTenantAdminAccess(ctx) {
 		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
 	}
 	var stores []listingStore

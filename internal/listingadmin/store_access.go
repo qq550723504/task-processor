@@ -25,7 +25,7 @@ func applyStoreReadOwnerScope(db *gorm.DB, ctx context.Context) *gorm.DB {
 	if db == nil || !ownerScopeEnabled() {
 		return db
 	}
-	if requestHasPlatformAdminAccess(ctx) {
+	if requestHasTenantAdminAccess(ctx) {
 		return db
 	}
 	ownerUserID := requestUserIDFromContext(ctx)
