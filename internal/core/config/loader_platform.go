@@ -81,6 +81,7 @@ func BuildLoginServiceConfig(v *viper.Viper, prefix string) LoginServiceConfig {
 		ProfileRootDir:      v.GetString(prefix + ".profileRootDir"),
 		ArtifactDir:         v.GetString(prefix + ".artifactDir"),
 		DefaultHeadless:     v.GetBool(prefix + ".defaultHeadless"),
+		ExecutionMode:       v.GetString(prefix + ".executionMode"),
 	}
 }
 

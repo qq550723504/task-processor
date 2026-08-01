@@ -29,6 +29,7 @@ type Service struct {
 	runtime            *Runtime
 	automation         Automation
 	defaultHeadless    bool
+	executionMode      string
 	profileRoot        string
 	artifactDir        string
 	browserPath        string
@@ -65,6 +66,7 @@ func NewService(cfg config.LoginServiceConfig, redisCfg config.RedisConfig, brow
 		runtime:           runtime,
 		automation:        NewPlaywrightAutomation(),
 		defaultHeadless:   cfg.DefaultHeadless,
+		executionMode:     normalizeLoginExecutionMode(cfg.ExecutionMode),
 		profileRoot:       cfg.ProfileRootDir,
 		artifactDir:       cfg.ArtifactDir,
 		browserPath:       browserCfg.BrowserPath,
@@ -131,6 +133,10 @@ func (s *Service) Status(ctx context.Context, tenantID int64, storeID int64) (*A
 	if err != nil {
 		return nil, err
 	}
+	latestAttempt, err := s.store.LatestLoginAttempt(ctx, account.TenantID, account.StoreID)
+	if err != nil {
+		return nil, err
+	}
 	if s.loadSession(account.StoreID) != nil {
 		if !waiting {
 			s.clearSession(account.StoreID)
@@ -152,9 +158,10 @@ func (s *Service) Status(ctx context.Context, tenantID int64, storeID int64) (*A
 		CookieTTL:            int64(ttl.Seconds()),
 		WaitingForVerifyCode: waiting,
 		LastLoginTime:        lastLogin,
-		LoginInProgress:      s.runtime.IsInFlight(account.StoreID),
+		LoginInProgress:      s.runtime.IsInFlight(account.StoreID) || (latestAttempt != nil && latestAttempt.Status.IsActive()),
 		LastFailure:          lastFailure,
 		RecommendedAction:    recommendedAction,
+		LatestAttempt:        latestAttempt,
 	}, nil
 }
 
@@ -200,6 +207,15 @@ func (s *Service) ListWarehouses(ctx context.Context, tenantID int64, storeID in
 }
 
 func (s *Service) Login(ctx context.Context, tenantID int64, storeID int64, req LoginRequest) (*LoginResult, error) {
+	if s.workerExecutionEnabled() {
+		return s.enqueueLogin(ctx, tenantID, storeID, req)
+	}
+	return s.loginInline(ctx, tenantID, storeID, req)
+}
+
+// loginInline retains the current browser execution semantics for migration and
+// is called by the dedicated worker after it has claimed an attempt.
+func (s *Service) loginInline(ctx context.Context, tenantID int64, storeID int64, req LoginRequest) (*LoginResult, error) {
 	account, err := s.provider.GetAccount(ctx, tenantID, storeID)
 	if err != nil {
 		return nil, err
@@ -311,16 +327,66 @@ func (s *Service) Login(ctx context.Context, tenantID int64, storeID int64, req 
 		return nil
 	})
 	if err != nil {
+		summary := loginLaunchFailureSummary(err)
+		_ = s.store.RecordLastFailure(ctx, account.TenantID, account.StoreID, summary, 30*24*time.Hour)
 		return &LoginResult{
-			Success:   false,
-			Message:   err.Error(),
-			StoreID:   account.StoreID,
-			TenantID:  account.TenantID,
-			Username:  account.Username,
-			ErrorCode: "LOGIN_FAILED",
+			Success:     false,
+			Message:     err.Error(),
+			StoreID:     account.StoreID,
+			TenantID:    account.TenantID,
+			Username:    account.Username,
+			ErrorCode:   "LOGIN_FAILED",
+			LastFailure: summary,
 		}, nil
 	}
 	return result, nil
+}
+
+func (s *Service) enqueueLogin(ctx context.Context, tenantID int64, storeID int64, req LoginRequest) (*LoginResult, error) {
+	account, err := s.provider.GetAccount(ctx, tenantID, storeID)
+	if err != nil {
+		return nil, err
+	}
+	attempt, created, err := s.store.EnqueueLoginAttempt(ctx, account.TenantID, account.StoreID, req)
+	if err != nil {
+		return nil, err
+	}
+	message := "login queued"
+	if !created {
+		message = "login already in progress"
+	}
+	return &LoginResult{
+		Success:         false,
+		Message:         message,
+		StoreID:         account.StoreID,
+		TenantID:        account.TenantID,
+		Username:        account.Username,
+		AttemptID:       attempt.ID,
+		ExecutionStatus: attempt.Status,
+	}, nil
+}
+
+func (s *Service) workerExecutionEnabled() bool {
+	return s != nil && s.executionMode == "worker"
+}
+
+func normalizeLoginExecutionMode(value string) string {
+	if strings.EqualFold(strings.TrimSpace(value), "worker") {
+		return "worker"
+	}
+	return "inline"
+}
+
+func loginLaunchFailureSummary(err error) *FailureSummary {
+	if err == nil {
+		return nil
+	}
+	return &FailureSummary{
+		ErrorCode:    "LOGIN_LAUNCH_FAILED",
+		ErrorMessage: err.Error(),
+		Stage:        "browser_launch",
+		CapturedAt:   time.Now(),
+	}
 }
 
 func (s *Service) ForceLogin(ctx context.Context, tenantID int64, storeID int64) error {
@@ -340,10 +406,50 @@ func (s *Service) ForceLogin(ctx context.Context, tenantID int64, storeID int64)
 			return err
 		}
 	}
+	if result != nil && result.ExecutionStatus.IsActive() {
+		result, err = s.waitForLoginAttempt(ctx, result.AttemptID)
+		if err != nil {
+			return err
+		}
+	}
 	if result == nil || !result.Success {
-		return fmt.Errorf("shein login failed: %s", result.Message)
+		message := "empty login result"
+		if result != nil {
+			message = result.Message
+		}
+		return fmt.Errorf("shein login failed: %s", message)
 	}
 	return nil
+}
+
+func (s *Service) waitForLoginAttempt(ctx context.Context, attemptID string) (*LoginResult, error) {
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		attempt, err := s.store.LoadLoginAttempt(ctx, attemptID)
+		if err != nil {
+			return nil, err
+		}
+		if attempt == nil {
+			return nil, fmt.Errorf("queued SHEIN login attempt %q is unavailable", attemptID)
+		}
+		if !attempt.Status.IsActive() {
+			return &LoginResult{
+				Success:         attempt.Status == LoginAttemptSucceeded,
+				Message:         attempt.Message,
+				StoreID:         attempt.StoreID,
+				TenantID:        attempt.TenantID,
+				AttemptID:       attempt.ID,
+				ErrorCode:       attempt.ErrorCode,
+				ExecutionStatus: attempt.Status,
+			}, nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("wait for SHEIN login attempt %s: %w", attemptID, ctx.Err())
+		case <-ticker.C:
+		}
+	}
 }
 
 func (s *Service) SubmitVerifyCode(ctx context.Context, tenantID int64, storeID int64, code string, expireSeconds int) error {
@@ -386,6 +492,43 @@ func (s *Service) SubmitVerifyCode(ctx context.Context, tenantID int64, storeID 
 		ttl = time.Duration(expireSeconds) * time.Second
 	}
 	return s.store.SubmitVerifyCode(ctx, account.TenantID, account.StoreID, code, ttl)
+}
+
+// SubmitVerifyCodeForAttempt is the cross-process verification path. Supplying
+// an attempt ID binds the code to the active browser session owned by a Worker;
+// callers without one retain the legacy in-process behaviour during rollout.
+func (s *Service) SubmitVerifyCodeForAttempt(ctx context.Context, tenantID int64, storeID int64, attemptID, code string, expireSeconds int) error {
+	attemptID = strings.TrimSpace(attemptID)
+	if attemptID == "" {
+		if s.workerExecutionEnabled() {
+			attempt, err := s.store.LatestLoginAttempt(ctx, tenantID, storeID)
+			if err != nil {
+				return err
+			}
+			if attempt == nil || attempt.Status != LoginAttemptWaitingVerifyCode {
+				return fmt.Errorf("verification attempt is unavailable")
+			}
+			attemptID = attempt.ID
+		} else {
+			return s.SubmitVerifyCode(ctx, tenantID, storeID, code, expireSeconds)
+		}
+	}
+	account, err := s.provider.GetAccount(ctx, tenantID, storeID)
+	if err != nil {
+		return err
+	}
+	attempt, err := s.store.LoadLoginAttempt(ctx, attemptID)
+	if err != nil {
+		return err
+	}
+	if attempt == nil || attempt.TenantID != account.TenantID || attempt.StoreID != account.StoreID || attempt.Status != LoginAttemptWaitingVerifyCode {
+		return fmt.Errorf("verification attempt is unavailable")
+	}
+	ttl := 5 * time.Minute
+	if expireSeconds > 0 {
+		ttl = time.Duration(expireSeconds) * time.Second
+	}
+	return s.store.SubmitVerifyCodeForAttempt(ctx, account.TenantID, account.StoreID, attemptID, code, ttl)
 }
 
 func (s *Service) watchVerifySession(account Account, session VerifySession) {
@@ -623,8 +766,19 @@ func (s *Service) CancelVerifyCodeWait(ctx context.Context, tenantID int64, stor
 	if err != nil {
 		return false, err
 	}
+	attempt, attemptCancelled, err := s.store.CancelLoginAttempt(ctx, account.TenantID, account.StoreID, "verification cancelled by user")
+	if err != nil {
+		return false, err
+	}
 	s.clearSession(storeID)
-	return s.store.CancelVerifyWait(ctx, account.TenantID, account.StoreID)
+	waitCancelled, err := s.store.CancelVerifyWait(ctx, account.TenantID, account.StoreID)
+	if err != nil {
+		return false, err
+	}
+	if attemptCancelled && attempt != nil {
+		return true, nil
+	}
+	return waitCancelled, nil
 }
 
 func (s *Service) ClearCookie(ctx context.Context, tenantID int64, storeID int64) error {
@@ -632,7 +786,13 @@ func (s *Service) ClearCookie(ctx context.Context, tenantID int64, storeID int64
 	if err != nil {
 		return err
 	}
+	if _, _, err := s.store.CancelLoginAttempt(ctx, account.TenantID, account.StoreID, "login cancelled while clearing cookie"); err != nil {
+		return err
+	}
 	s.clearSession(storeID)
+	if _, err := s.store.CancelVerifyWait(ctx, account.TenantID, account.StoreID); err != nil {
+		return err
+	}
 	return s.store.ClearCookie(ctx, account.TenantID, account.StoreID)
 }
 
@@ -656,6 +816,11 @@ func (s *Service) GetLastFailureDetail(ctx context.Context, tenantID int64, stor
 	if summary == nil {
 		return nil, nil
 	}
+	if detail, err := s.store.LastFailureDetail(ctx, account.TenantID, account.StoreID); err != nil {
+		return nil, err
+	} else if detail != nil {
+		return detail, nil
+	}
 	detail := failureDetailFromSummary(summary)
 	if strings.TrimSpace(summary.ArtifactPath) == "" {
 		return detail, nil
@@ -669,6 +834,19 @@ func (s *Service) GetLastFailureDetail(ctx context.Context, tenantID int64, stor
 		return detail, nil
 	}
 	return failureDetailFromArtifact(summary, metadata), nil
+}
+
+func (s *Service) cacheLastFailureDetail(ctx context.Context, tenantID, storeID int64) {
+	detail, err := s.GetLastFailureDetail(ctx, tenantID, storeID)
+	if err != nil || detail == nil {
+		return
+	}
+	if err := s.store.RecordLastFailureDetail(ctx, tenantID, storeID, detail, 30*24*time.Hour); err != nil {
+		sheinLoginServiceLogger.WithError(err).WithFields(map[string]any{
+			"tenant_id": tenantID,
+			"store_id":  storeID,
+		}).Warn("cache SHEIN login failure detail failed")
+	}
 }
 
 func (s *Service) setSession(storeID int64, session VerifySession) {

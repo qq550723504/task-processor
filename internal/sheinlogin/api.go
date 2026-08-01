@@ -51,7 +51,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 	statusCode := http.StatusOK
-	if result.WaitingForVerifyCode {
+	if result.WaitingForVerifyCode || result.ExecutionStatus.IsActive() {
 		statusCode = http.StatusAccepted
 	}
 	c.JSON(statusCode, result)
@@ -105,7 +105,7 @@ func (h *Handler) SubmitVerifyCode(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "verify code is required"})
 		return
 	}
-	if err := h.svc.SubmitVerifyCode(c.Request.Context(), tenantID, storeID, req.Code, req.ExpireSeconds); err != nil {
+	if err := h.svc.SubmitVerifyCodeForAttempt(c.Request.Context(), tenantID, storeID, req.AttemptID, req.Code, req.ExpireSeconds); err != nil {
 		c.JSON(statusCodeForTenantScopedError(err), gin.H{"success": false, "message": err.Error()})
 		return
 	}
