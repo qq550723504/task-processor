@@ -120,12 +120,16 @@ export function StoreAdminPage() {
     setSaving(true);
     setError("");
     try {
+      const wasCreating = !editingStoreId;
       if (editingStoreId) {
         await updateListingStore(editingStoreId, form);
       } else {
         await createListingStore(form);
       }
       resetForm();
+      if (wasCreating) {
+        setPage(1);
+      }
       await storeQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
@@ -188,7 +192,13 @@ export function StoreAdminPage() {
     setError("");
     try {
       await deleteListingStore(id);
-      await storeQuery.refetch();
+      const result = await storeQuery.refetch();
+      const refreshedTotal = result.data?.total ?? 0;
+      const refreshedTotalPages = Math.max(
+        1,
+        Math.ceil(refreshedTotal / pageSize),
+      );
+      setPage((current) => Math.min(current, refreshedTotalPages));
       await deletedStoreQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));

@@ -165,6 +165,73 @@ describe("StoreAdminPage", () => {
     });
   });
 
+  it("returns to a valid page after deleting the last store on that page", async () => {
+    const user = userEvent.setup();
+    const getStoresSpy = vi
+      .spyOn(adminStoresApi, "getListingStores")
+      .mockResolvedValueOnce({
+        items: [],
+        total: 51,
+        page: 1,
+        page_size: 50,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 51,
+            tenantId: 202,
+            name: "Tenant 202 Store",
+            username: "tenant-202",
+            platform: "SHEIN",
+            shopType: "0",
+            region: "US",
+            status: 0,
+          },
+        ],
+        total: 51,
+        page: 2,
+        page_size: 50,
+      })
+      .mockResolvedValueOnce({
+        items: [],
+        total: 50,
+        page: 2,
+        page_size: 50,
+      })
+      .mockResolvedValue({
+        items: [],
+        total: 50,
+        page: 1,
+        page_size: 50,
+      });
+    vi.spyOn(adminStoresApi, "getDeletedListingStores").mockResolvedValue([]);
+    vi.spyOn(adminStoresApi, "deleteListingStore").mockResolvedValue();
+    vi.spyOn(sheinLoginApi, "listSheinLoginAccounts").mockResolvedValue([]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <StoreAdminPage />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("共 51 个店铺，当前第 1 / 2 页");
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    await screen.findByText("Tenant 202 Store");
+    await user.click(
+      screen.getByRole("button", { name: "删除 Tenant 202 Store" }),
+    );
+
+    await waitFor(() => {
+      expect(getStoresSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, page_size: 50 }),
+      );
+    });
+    expect(screen.getByText("共 50 个店铺，当前第 1 / 1 页")).toBeInTheDocument();
+  });
+
   it("edits an existing ListingKit store", async () => {
     const user = userEvent.setup();
     const store = {
