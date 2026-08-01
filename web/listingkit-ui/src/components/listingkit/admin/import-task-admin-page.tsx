@@ -126,7 +126,13 @@ export function ImportTaskAdminPage() {
     setError("");
     try {
       await deleteListingImportTask(id);
-      await importTaskQuery.refetch();
+      const result = await importTaskQuery.refetch();
+      const refreshedTotal = result.data?.total ?? 0;
+      const refreshedTotalPages = Math.max(
+        1,
+        Math.ceil(refreshedTotal / pageSize),
+      );
+      setPage((current) => Math.min(current, refreshedTotalPages));
     } catch (err) {
       setError(formatSubscriptionApiError(err));
     }

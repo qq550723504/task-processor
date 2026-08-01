@@ -154,4 +154,64 @@ describe("ImportTaskAdminPage", () => {
       );
     });
   });
+
+  it("returns to a valid page when deleting the final task on the last page", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminStoresApi, "getSimpleListingStores").mockResolvedValue([]);
+    const getTasksSpy = vi
+      .spyOn(adminImportTasksApi, "getListingImportTasks")
+      .mockResolvedValueOnce({
+        items: [],
+        total: 51,
+        page: 1,
+        page_size: 50,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 51,
+            platform: "Amazon",
+            productId: "B051",
+            status: 0,
+          },
+        ],
+        total: 51,
+        page: 2,
+        page_size: 50,
+      })
+      .mockResolvedValueOnce({
+        items: [],
+        total: 50,
+        page: 2,
+        page_size: 50,
+      })
+      .mockResolvedValue({
+        items: [],
+        total: 50,
+        page: 1,
+        page_size: 50,
+      });
+    vi.spyOn(adminImportTasksApi, "deleteListingImportTask").mockResolvedValue();
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ImportTaskAdminPage />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("共 51 条，当前第 1 / 2 页");
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    await screen.findByText("B051");
+    await user.click(screen.getByRole("button", { name: "删除 B051" }));
+
+    await waitFor(() => {
+      expect(getTasksSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, page_size: 50 }),
+      );
+    });
+    expect(screen.getByText("共 50 条，当前第 1 / 1 页")).toBeInTheDocument();
+  });
 });
