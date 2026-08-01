@@ -1,6 +1,54 @@
 package sheinlogin
 
-import "testing"
+import (
+	"errors"
+	"reflect"
+	"sync"
+	"testing"
+	"time"
+)
+
+type blockingBrowserLaunchManager struct {
+	launchStarted chan struct{}
+	closed        chan struct{}
+	closeOnce     sync.Once
+}
+
+func newBlockingBrowserLaunchManager() *blockingBrowserLaunchManager {
+	return &blockingBrowserLaunchManager{
+		launchStarted: make(chan struct{}),
+		closed:        make(chan struct{}),
+	}
+}
+
+func (m *blockingBrowserLaunchManager) Launch() error {
+	close(m.launchStarted)
+	<-m.closed
+	return errors.New("browser driver closed")
+}
+
+func (m *blockingBrowserLaunchManager) Close() {
+	m.closeOnce.Do(func() { close(m.closed) })
+}
+
+func TestLaunchManagerWithTimeoutClosesBlockedLaunch(t *testing.T) {
+	manager := newBlockingBrowserLaunchManager()
+
+	err := launchManagerWithTimeout(manager, 20*time.Millisecond)
+	if err == nil || err.Error() != "SHEIN browser launch timed out after 20ms" {
+		t.Fatalf("launchManagerWithTimeout error = %v", err)
+	}
+	select {
+	case <-manager.launchStarted:
+	case <-time.After(time.Second):
+		t.Fatal("Launch was not started")
+	}
+	select {
+	case <-manager.closed:
+	case <-time.After(time.Second):
+		t.Fatal("Close was not called after launch timeout")
+	}
+}
 
 func TestBuildAutomationBrowserConfigEnablesCloakBrowserMode(t *testing.T) {
 	account := Account{
@@ -77,7 +125,8 @@ func TestBuildAutomationBrowserConfigKeepsDefaultModeForNonCloakBrowser(t *testi
 	if !managerCfg.UseMinimalFingerprintArgs {
 		t.Fatal("UseMinimalFingerprintArgs should be enabled")
 	}
-	if len(managerCfg.ExtraLaunchArgs) != 1 || managerCfg.ExtraLaunchArgs[0] != "--enable-unsafe-swiftshader" {
+	wantLaunchArgs := []string{"--no-sandbox", "--disable-dev-shm-usage", "--enable-unsafe-swiftshader"}
+	if !reflect.DeepEqual(managerCfg.ExtraLaunchArgs, wantLaunchArgs) {
 		t.Fatalf("ExtraLaunchArgs = %#v", managerCfg.ExtraLaunchArgs)
 	}
 }

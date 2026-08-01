@@ -28,10 +28,16 @@ export type ListingKitPreview = {
   asset_generation_tasks?: unknown[];
   asset_render_previews?: PreviewSlot[];
   platform_asset_render_previews?: unknown[];
-  amazon?: PlatformPreviewPayload;
+  amazon?: AmazonPreviewPayload;
   shein?: SheinPreviewPayload;
   temu?: PlatformPreviewPayload;
   walmart?: PlatformPreviewPayload;
+};
+
+export type AmazonPreviewPayload = PlatformPreviewPayload & {
+  title?: string;
+  brand?: string;
+  product_type?: string;
 };
 
 export type ListingKitChildTask = {

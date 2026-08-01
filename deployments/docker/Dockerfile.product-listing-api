@@ -14,6 +14,7 @@ RUN go mod download
 
 # Copy only the necessary source files for compilation
 COPY cmd/product-listing-api/ cmd/product-listing-api/
+COPY cmd/listingkit-schema-migrate/ cmd/listingkit-schema-migrate/
 COPY scripts/listingkit-shein-pod-image-index-backfill/ scripts/listingkit-shein-pod-image-index-backfill/
 COPY internal/ internal/
 COPY config/ config/
@@ -21,6 +22,7 @@ COPY prompts/ prompts/
 
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/product-listing-api ./cmd/product-listing-api/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/listingkit-schema-migrate ./cmd/listingkit-schema-migrate
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/listingkit-shein-pod-image-index-backfill ./scripts/listingkit-shein-pod-image-index-backfill
 
 FROM ${API_RUNTIME_BASE_IMAGE}
@@ -28,12 +30,13 @@ FROM ${API_RUNTIME_BASE_IMAGE}
 WORKDIR /app
 
 COPY --from=builder /out/product-listing-api /app/product-listing-api
+COPY --from=builder /out/listingkit-schema-migrate /app/listingkit-schema-migrate
 COPY --from=builder /out/listingkit-shein-pod-image-index-backfill /app/listingkit-shein-pod-image-index-backfill
 COPY --from=builder /src/config /app/config
 COPY --from=builder /src/prompts /app/prompts
 
 RUN mkdir -p /app/logs /app/tmp /app/chrome && \
-    chmod +x /app/product-listing-api /app/listingkit-shein-pod-image-index-backfill
+    chmod +x /app/product-listing-api /app/listingkit-schema-migrate /app/listingkit-shein-pod-image-index-backfill
 
 EXPOSE 8085
 

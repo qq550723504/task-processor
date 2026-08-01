@@ -42,6 +42,28 @@ YYYY-MM-DD-<platform>-<source>-<scenario>.md
 - 1 条可恢复失败路径。
 - 1 条 readiness blocked 修复路径。
 
+## 可重复回归数据集
+
+将受控生产 fixture 的 task ID 保存在仓库外的 JSON 文件中，并以
+[`../listingkit-production-regression-dataset.example.json`](../listingkit-production-regression-dataset.example.json)
+为结构模板。该文件不能包含 bearer token、Cookie、店铺密钥或客户商品原始数据。
+
+校验器只读取任务 preview/readiness，不创建任务、不保存草稿也不发布商品：
+
+```powershell
+.\scripts\listingkit-regression-dataset-check.ps1 -DatasetPath C:\secure\listingkit-regression-dataset.json
+```
+
+运行前通过 `LISTINGKIT_API_TOKEN` 或 `.local\listingkit-api-token.txt` 提供短期
+operator token。每次 RC 验收都应保留校验结果及对应的 validation run 记录。
+
+在接触受控生产环境前，先在本地或 CI 中校验仓库外清单的结构；该模式不读取
+token，也不发起网络请求：
+
+```powershell
+.\scripts\listingkit-regression-dataset-check.ps1 -DatasetPath C:\secure\listingkit-regression-dataset.json -ValidateOnly
+```
+
 ## 不能忽略的问题
 
 以下问题不能只记录为备注，必须进入待关闭清单：

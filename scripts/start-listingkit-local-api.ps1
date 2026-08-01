@@ -2,6 +2,8 @@ param(
     [int]$Port = 8085,
     [string]$ConfigPath = "config/config-dev.yaml",
     [string]$LogLevel = "info",
+    [Alias("RequireSettingsHealth")]
+    [switch]$RequireReadiness,
     [ValidateSet("Disabled", "Required")]
     [string]$ZitadelAuthMode = "Disabled"
 )
@@ -207,6 +209,8 @@ function Stop-ListeningProcesses {
 function Wait-ForApiReady {
     param(
         [string]$HealthURL,
+        [string]$ReadinessURL,
+        [switch]$RequireReadiness,
         [string]$StdoutLogPath,
         [int]$TimeoutSeconds = 180
     )
@@ -223,7 +227,14 @@ function Wait-ForApiReady {
         try {
             $response = Invoke-WebRequest -Uri $HealthURL -UseBasicParsing -TimeoutSec 3
             if ($response.StatusCode -eq 200) {
-                return
+                if (-not $RequireReadiness) {
+                    return
+                }
+
+                $readiness = Invoke-WebRequest -Uri $ReadinessURL -UseBasicParsing -TimeoutSec 3
+                if ($readiness.StatusCode -eq 200) {
+                    return
+                }
             }
         } catch {
         }
@@ -231,7 +242,10 @@ function Wait-ForApiReady {
         Start-Sleep -Milliseconds 500
     }
 
-    throw "Timed out waiting for API readiness: $HealthURL"
+    if ($RequireReadiness) {
+        throw "Timed out waiting for ListingKit readiness: $ReadinessURL"
+    }
+    throw "Timed out waiting for API HTTP listener: $HealthURL"
 }
 
 $repoRoot = Get-RepoRoot
@@ -242,6 +256,7 @@ $stdoutLog = Join-Path $logDir "stdout.log"
 $stderrLog = Join-Path $logDir "stderr.log"
 $pidFile = Join-Path $runtimeDir "product-listing-api-local.pid"
 $healthURL = "http://127.0.0.1:${Port}/health"
+$readinessURL = "http://127.0.0.1:${Port}/readyz"
 
 Ensure-Directory -Path $runtimeDir
 Ensure-Directory -Path $logDir
@@ -278,7 +293,12 @@ $process = Start-Process `
     -RedirectStandardError $stderrLog
 
 try {
-    Wait-ForApiReady -HealthURL $healthURL -StdoutLogPath $stdoutLog -TimeoutSeconds 180
+    Wait-ForApiReady `
+        -HealthURL $healthURL `
+        -ReadinessURL $readinessURL `
+        -RequireReadiness:$RequireReadiness `
+        -StdoutLogPath $stdoutLog `
+        -TimeoutSeconds 180
 } catch {
     if (-not $process.HasExited) {
         Stop-Process -Id $process.Id -Force
@@ -301,7 +321,11 @@ try {
 Set-Content -LiteralPath $pidFile -Value $process.Id -NoNewline
 
 Write-Host ""
-Write-Host "Local API is ready." -ForegroundColor Green
+if ($RequireReadiness) {
+    Write-Host "Local API and ListingKit readiness are ready." -ForegroundColor Green
+} else {
+    Write-Host "Local API HTTP listener is ready." -ForegroundColor Green
+}
 Write-Host "  URL: ${healthURL}"
 Write-Host "  PID: $($process.Id)"
 Write-Host "  stdout: $stdoutLog"
@@ -312,6 +336,9 @@ Write-Host "  api runtime auto-migrate: disabled for this local process (TASK_PR
 Write-Host "  listingkit auto-migrate: disabled for this local process (TASK_PROCESSOR_LISTINGKIT_RUNTIME_AUTOMIGRATE=false)"
 Write-Host "  listingkit temporal task queue: $env:LISTINGKIT_TEMPORAL_TASK_QUEUE"
 Write-Host "  listingkit zitadel auth mode: $ZitadelAuthMode"
+if (-not $RequireReadiness) {
+    Write-Host "  ListingKit readiness: not verified (use -RequireReadiness after DB/Redis/Temporal port-forward is ready)" -ForegroundColor DarkYellow
+}
 Write-Host ""
 Write-Host "Stop command:" -ForegroundColor Yellow
 Write-Host "  Stop-Process -Id $($process.Id)"

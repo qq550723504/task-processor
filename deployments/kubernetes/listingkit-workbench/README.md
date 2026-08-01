@@ -102,14 +102,80 @@ but receives `listingkit_role_denied`, confirm the OIDC runtime uses the printed
 
 GitHub Actions is now the preferred release path for ListingKit Workbench.
 
-Workflow file:
+For the Release Candidate gate, immutable image policy, post-deploy smoke
+checks, and recovery decision, follow the
+[ListingKit Release Candidate Runbook](../../../docs/operations/listingkit-release-candidate-runbook.md).
 
-- [D:/code/task-processor/.github/workflows/listingkit-deploy.yml](D:/code/task-processor/.github/workflows/listingkit-deploy.yml)
+### First controlled deployment
+
+Use a release image built by an approved CI run and its immutable tag. Before
+applying the API or UI deployment, create the namespace, ConfigMap, and real
+Secret, then run the schema migration Job once. The API does not auto-migrate
+at startup.
+
+```powershell
+$tag = "<immutable-release-tag>"
+$migrationFile = Join-Path $env:TEMP "listingkit-schema-migrate-job.yaml"
+
+kubectl apply -f deployments/kubernetes/listingkit-workbench/base/namespace.yaml
+kubectl apply -f deployments/kubernetes/listingkit-workbench/base/configmap.yaml
+# Apply the real Secret created outside Git before continuing.
+
+Copy-Item deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml $migrationFile
+(Get-Content -Raw $migrationFile).Replace("REPLACE_WITH_DEPLOYED_TAG", $tag) |
+  Set-Content -NoNewline $migrationFile
+$jobName = kubectl create -n task-processor -f $migrationFile -o jsonpath='{.metadata.name}'
+kubectl -n task-processor wait --for=condition=complete "job/$jobName" --timeout=15m
+kubectl -n task-processor logs "job/$jobName"
+```
+
+The Job shares only the production ConfigMap and Secret references required by
+the API, runs `/app/listingkit-schema-migrate -scope all`, and uses the same
+immutable API image that will be released. A failed Job is a No-Go: investigate
+and use an approved roll-forward or restore procedure instead of deleting or
+editing the production schema manually.
+
+For a new cluster, render the existing production overlay from a temporary
+copy, pin both image names to the same immutable tag, and apply that rendered
+manifest only after the Job succeeds. This prevents the overlay's development
+`latest` defaults from being used during bootstrap.
+
+```powershell
+$source = Resolve-Path deployments/kubernetes/listingkit-workbench
+$stagingRoot = (Resolve-Path $env:TEMP).Path
+$staging = Join-Path $stagingRoot ("listingkit-workbench-release-" + [guid]::NewGuid())
+New-Item -ItemType Directory -Path $staging | Out-Null
+Copy-Item -Recurse (Join-Path $source "*") $staging
+Push-Location (Join-Path $staging "overlays/prod")
+try {
+  kustomize edit set image "xuwei190/task-processor-product-listing-api=docker.io/xuwei190/task-processor-product-listing-api:$tag"
+  kustomize edit set image "xuwei190/task-processor-listingkit-ui=docker.io/xuwei190/task-processor-listingkit-ui:$tag"
+  kustomize build . | kubectl apply -f -
+} finally {
+  Pop-Location
+  if ((Resolve-Path (Split-Path $staging -Parent)).Path -ne $stagingRoot) {
+    throw "Refusing to remove a staging directory outside the temporary root"
+  }
+  Remove-Item -Recurse -Force $staging
+}
+```
+
+Record the source SHA, image tags, migration Job name, and rollout output in
+the Release Candidate Runbook. Subsequent releases must use the independent
+GitHub Actions workflows below rather than reapplying an unpinned overlay.
+
+### Release workflows
+
+- `ListingKit API Deploy` ([workflow](../../../.github/workflows/listingkit-deploy.yml))
+- `ListingKit UI Deploy` ([workflow](../../../.github/workflows/listingkit-ui-deploy.yml))
 
 Trigger rules:
 
-- push tag `listingkit-v*`: run backend tests, frontend build, build/push both images, then deploy to K3S
-- manual dispatch: optional custom image tag, optional `latest` publish, optional `skip_apply`
+- API tag `listingkit-api-v*` deploys only `product-listing-api`.
+- UI tag `listingkit-ui-v*` deploys only `listingkit-ui`.
+- For an RC, use `workflow_dispatch` for both workflows and set the same
+  immutable `source_ref` and `image_tag` explicitly.
+- `publish_latest` is not a release or rollback target.
 
 Required GitHub repository secrets:
 
@@ -135,27 +201,29 @@ The workflow uses:
 - image tag: current commit short SHA by default
 - Docker Hub namespace: `xuwei190`
 - Kubernetes namespace: `task-processor`
-- overlay: `deployments/kubernetes/listingkit-workbench/overlays/prod`
+- release overlays must be rendered with immutable image tags as shown above.
 
 ## Rollback
 
-Use the same GitHub Actions workflow for rollback. Do not bypass it unless the
-workflow or GitHub itself is unavailable.
+Use the same GitHub Actions workflows for rollback. Do not bypass them unless
+GitHub Actions itself is unavailable.
 
 Standard rollback path:
 
-1. Open the `ListingKit Deploy` workflow in GitHub Actions.
-2. Choose `Run workflow`.
-3. Set `image_tag` to a previously deployed commit tag, for example `496ca069`.
-4. Keep `skip_apply=false`.
-5. Run the workflow and wait for rollout to finish.
+1. Identify the prior API and UI image tags from a successful release record.
+2. Run `ListingKit API Deploy` with its prior immutable tag, then wait for the
+   API rollout and readiness probe.
+3. Run `ListingKit UI Deploy` with its prior immutable tag, then wait for the
+   UI rollout.
+4. Record the rollback decision, deployed tags, probe results, and any data
+   recovery action in the validation run.
 
 This reuses the same deployment logic as a normal release and keeps the
 rollback auditable.
 
 To find a rollback target:
 
-- Check prior successful runs of `ListingKit Deploy`.
+- Check prior successful runs of `ListingKit API Deploy` and `ListingKit UI Deploy`.
 - Or inspect the currently deployed / previously deployed image tags in Docker
   Hub or Kubernetes rollout history.
 

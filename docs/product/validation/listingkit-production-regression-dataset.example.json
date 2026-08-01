@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "description": "Copy outside Git, replace placeholders with controlled production fixture IDs, and do not store credentials here.",
+  "cases": [
+    {
+      "id": "shein-save-draft-ready",
+      "task_id": "REPLACE_WITH_CONTROLLED_TASK_ID",
+      "platform": "shein",
+      "expected_preview_ready": true,
+      "expected_submit_mode": "save_draft"
+    }
+  ]
+}
