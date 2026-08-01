@@ -1,6 +1,9 @@
 package sheinlogin
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestBuildAutomationBrowserConfigEnablesCloakBrowserMode(t *testing.T) {
 	account := Account{
@@ -77,7 +80,8 @@ func TestBuildAutomationBrowserConfigKeepsDefaultModeForNonCloakBrowser(t *testi
 	if !managerCfg.UseMinimalFingerprintArgs {
 		t.Fatal("UseMinimalFingerprintArgs should be enabled")
 	}
-	if len(managerCfg.ExtraLaunchArgs) != 1 || managerCfg.ExtraLaunchArgs[0] != "--enable-unsafe-swiftshader" {
+	wantLaunchArgs := []string{"--no-sandbox", "--disable-dev-shm-usage", "--enable-unsafe-swiftshader"}
+	if !reflect.DeepEqual(managerCfg.ExtraLaunchArgs, wantLaunchArgs) {
 		t.Fatalf("ExtraLaunchArgs = %#v", managerCfg.ExtraLaunchArgs)
 	}
 }

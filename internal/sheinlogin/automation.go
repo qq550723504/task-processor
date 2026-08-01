@@ -291,7 +291,14 @@ func buildAutomationBrowserConfig(account Account, cfg AutomationConfig) *shared
 		Timezone:                       "Asia/Shanghai",
 		SkipDefaultLaunchArgs:          true,
 		UseMinimalFingerprintArgs:      true,
-		ExtraLaunchArgs:                []string{"--enable-unsafe-swiftshader"},
+		// product-listing-api runs as root in Kubernetes. Keep the container-safe
+		// Chromium flags here instead of relying on Playwright defaults, because
+		// this login flow intentionally customizes its launch arguments.
+		ExtraLaunchArgs: []string{
+			"--no-sandbox",
+			"--disable-dev-shm-usage",
+			"--enable-unsafe-swiftshader",
+		},
 	}
 	if isCloakBrowserPath(managerCfg.BrowserPath) {
 		managerCfg.StealthProvider = sharedbrowser.StealthProviderCloakBrowser

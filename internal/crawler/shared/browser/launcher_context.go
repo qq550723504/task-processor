@@ -21,6 +21,8 @@ type ContextLauncher struct {
 	userDataDir string
 }
 
+const persistentBrowserLaunchTimeout = 60_000
+
 // NewContextLauncher 创建上下文启动器
 func NewContextLauncher(pw *playwright.Playwright, cfg *BrowserConfig, fingerprint *FingerprintConfig, userDataDir string) *ContextLauncher {
 	return &ContextLauncher{
@@ -70,6 +72,7 @@ func (cl *ContextLauncher) launchPersistentContext(userAgent string) (playwright
 		Args:              args,
 		IgnoreDefaultArgs: ignoreDefaultArgs,
 		IgnoreHttpsErrors: playwright.Bool(true),
+		Timeout:           playwright.Float(persistentBrowserLaunchTimeout),
 	}
 	if cl.config == nil || cl.config.StealthProvider != StealthProviderCloakBrowser {
 		options.Viewport = &playwright.Size{

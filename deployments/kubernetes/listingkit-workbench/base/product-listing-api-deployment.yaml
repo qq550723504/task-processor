@@ -28,6 +28,11 @@ spec:
                 configMapKeyRef:
                   name: listingkit-workbench-config
                   key: TASK_PROCESSOR_SDS_LOGIN_SERVICE_DEFAULT_HEADLESS
+            - name: TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_DEFAULT_HEADLESS
+              valueFrom:
+                configMapKeyRef:
+                  name: listingkit-workbench-config
+                  key: TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_DEFAULT_HEADLESS
           ports:
             - name: http
               containerPort: 8085
