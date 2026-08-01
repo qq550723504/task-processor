@@ -101,6 +101,7 @@ $env:LISTINGKIT_TEMPORAL_ADDRESS='127.0.0.1:7233'
 4. 对这次本地进程强制注入 `TASK_PROCESSOR_SHEIN_IGNORE_STORE_PROXY=1`
 5. 对这次本地进程默认注入 `TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE=false`
 6. 对这次本地进程默认注入 `TASK_PROCESSOR_LISTINGKIT_RUNTIME_AUTOMIGRATE=false`
+7. 通过完整 `start-listingkit-local-dev.ps1` 启动时，会额外验证无需认证的 `/readyz`；单独运行 API 脚本只证明 HTTP listener，除非显式传入 `-RequireReadiness`（旧参数 `-RequireSettingsHealth` 仍兼容）。
 
 第 4 点是这轮联调里非常关键的一步。
 原因不是“兼容”，而是根因上本地开发机通常访问不到店铺在远端环境里配置的代理地址；

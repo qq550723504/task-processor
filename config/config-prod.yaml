@@ -99,6 +99,7 @@ platforms:
     loginService:
       baseURL: "http://login:8000"
       sharedKey: ""
+      defaultHeadless: true
     # 自动核价配置
     autoPricing:
       enabled: true        # 启用自动核价

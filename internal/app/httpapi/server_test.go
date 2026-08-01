@@ -879,6 +879,10 @@ func (s *stubListingKitHandler) GetSettingsHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+func (s *stubListingKitHandler) GetReadiness(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ready"})
+}
+
 func (s *stubListingKitHandler) UpdateSettingsNamespace(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"namespace": c.Param("namespace"), "method": "PUT"})
 }

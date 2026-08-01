@@ -32,7 +32,7 @@ function Import-StartScriptFunctions {
     }
 
     $functionNames = @(
-        "Set-EnvIfMissing",
+        "Set-EnvValue",
         "Import-DotEnvFile",
         "Configure-ListingKitLocalZitadelAuth"
     )
@@ -78,8 +78,8 @@ Describe "start-listingkit-local-api env loading" {
         )
 
         Import-DotEnvFile -Path $envPath
-        Set-EnvIfMissing -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE" -Value "https://oss.example.com"
-        Set-EnvIfMissing -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET" -Value "oss-bucket"
+        Set-EnvValue -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE" -Value "https://oss.example.com"
+        Set-EnvValue -Name "TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET" -Value "oss-bucket"
 
         [Environment]::GetEnvironmentVariable("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE", "Process") | Should Be "https://cos.example.com"
         [Environment]::GetEnvironmentVariable("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET", "Process") | Should Be "cos-bucket"
@@ -98,10 +98,10 @@ Describe "start-listingkit-local-api env loading" {
         Import-DotEnvFile -Path $envPath
         Configure-ListingKitLocalZitadelAuth -Mode "Disabled"
 
-        [Environment]::GetEnvironmentVariable("ZITADEL_ISSUER_URL", "Process") | Should Be ""
-        [Environment]::GetEnvironmentVariable("ZITADEL_CLIENT_ID", "Process") | Should Be ""
-        [Environment]::GetEnvironmentVariable("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES", "Process") | Should Be ""
-        [Environment]::GetEnvironmentVariable("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "Process") | Should Be ""
+        [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable("ZITADEL_ISSUER_URL", "Process")) | Should Be $true
+        [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable("ZITADEL_CLIENT_ID", "Process")) | Should Be $true
+        [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES", "Process")) | Should Be $true
+        [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "Process")) | Should Be $true
     }
 
     It "keeps loaded ZITADEL values when required local debug mode is requested" {

@@ -8,6 +8,7 @@ import (
 
 func appendSettingsRouteDescriptors(routes []httproute.Descriptor, handler SettingsRouteHandler) []httproute.Descriptor {
 	return append(routes,
+		httproute.Descriptor{Method: http.MethodGet, Path: "/readyz", Module: "system", Handler: handler.GetReadiness},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings", Module: "listing-kit", Handler: handler.ListSettingsNamespaces},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings-health", Module: "listing-kit", Handler: handler.GetSettingsHealth},
 		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/listing-kits/settings/:namespace/schema", Module: "listing-kit", Handler: handler.GetSettingsNamespaceSchema},

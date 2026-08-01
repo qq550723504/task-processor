@@ -53,6 +53,28 @@ func (h *handler) GetSettingsHealth(c *gin.Context) {
 	c.JSON(http.StatusOK, health)
 }
 
+// GetReadiness verifies that the ListingKit settings backend is reachable without
+// exposing tenant configuration or dependency error details to an infrastructure
+// probe. Configuration warnings are intentionally not readiness failures: they
+// are surfaced by the authenticated settings-health endpoint instead.
+func (h *handler) GetReadiness(c *gin.Context) {
+	if h.settingsService == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status": "not_ready",
+			"error":  "listingkit_settings_unavailable",
+		})
+		return
+	}
+	if _, err := h.settingsService.Health(requestContext(c)); err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"status": "not_ready",
+			"error":  "listingkit_settings_unavailable",
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ready"})
+}
+
 func (h *handler) ListSettingsNamespaces(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"items": h.settingsService.ListSchemas(),

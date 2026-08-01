@@ -149,6 +149,51 @@ func TestGetSettingsHealthReturnsUnavailableWhenSettingsServiceMissing(t *testin
 	}
 }
 
+func TestGetReadinessAcceptsConfigurationWarningsWhenSettingsBackendIsReachable(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, err := NewHandler(&stubHandlerCoreService{}, WithSettingsHandlerService(&stubSettingsNamespaceService{}))
+	if err != nil {
+		t.Fatalf("NewHandler returned error: %v", err)
+	}
+	router := gin.New()
+	router.GET("/readyz", h.GetReadiness)
+
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /readyz = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+	if resp.Body.String() != `{"status":"ready"}` {
+		t.Fatalf("body = %s, want ready response", resp.Body.String())
+	}
+}
+
+func TestGetReadinessReturnsServiceUnavailableWithoutLeakingDependencyFailure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h, err := NewHandler(&stubHandlerCoreService{}, WithSettingsHandlerService(&stubSettingsNamespaceService{
+		err: errors.New("postgres connection refused for password=secret"),
+	}))
+	if err != nil {
+		t.Fatalf("NewHandler returned error: %v", err)
+	}
+	router := gin.New()
+	router.GET("/readyz", h.GetReadiness)
+
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+
+	if resp.Code != http.StatusServiceUnavailable {
+		t.Fatalf("GET /readyz = %d, want 503; body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "listingkit_settings_unavailable") {
+		t.Fatalf("body = %s, want listingkit_settings_unavailable", resp.Body.String())
+	}
+	if strings.Contains(resp.Body.String(), "password=secret") {
+		t.Fatalf("body leaked dependency failure: %s", resp.Body.String())
+	}
+}
+
 func TestUpdateAISettingsDoesNotRequireStudioSubscription(t *testing.T) {
 	t.Helper()
 

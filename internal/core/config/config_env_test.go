@@ -162,6 +162,14 @@ func TestNewViper_BindsSheinCookieRedisEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, 9, v.GetInt("platforms.shein.cookieRedis.db"))
 }
 
+func TestNewViper_BindsSheinLoginServiceDefaultHeadlessEnvironmentVariable(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_DEFAULT_HEADLESS", "true")
+
+	v := newViper()
+
+	assert.True(t, v.GetBool("platforms.shein.loginService.defaultHeadless"))
+}
+
 func TestNewViper_BindsSDSLoginServiceEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_BASE_URL", "http://login.svc:8000")
 	t.Setenv("TASK_PROCESSOR_SDS_LOGIN_SERVICE_SHARED_KEY", "sds-key")

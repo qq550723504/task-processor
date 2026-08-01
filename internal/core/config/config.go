@@ -556,6 +556,9 @@ func knownEnvBindings() map[string]envBinding {
 		"platforms.shein.loginService.identifier": {
 			Primary: "TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_IDENTIFIER",
 		},
+		"platforms.shein.loginService.defaultHeadless": {
+			Primary: "TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_DEFAULT_HEADLESS",
+		},
 		"platforms.sds.loginService.baseURL": {
 			Primary: "TASK_PROCESSOR_SDS_LOGIN_SERVICE_BASE_URL",
 		},
