@@ -48,6 +48,7 @@ const STORE_TYPE_OPTIONS = [
 ] as const;
 
 const REGION_OPTIONS = [...SHEIN_SITE_OPTIONS];
+const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
 
 const DEFAULT_FORM: ListingStoreInput = {
   name: "",
@@ -71,6 +72,8 @@ const DEFAULT_FORM: ListingStoreInput = {
 export function StoreAdminPage() {
   const [platform, setPlatform] = useState("");
   const [keyword, setKeyword] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [form, setForm] = useState<ListingStoreInput>(DEFAULT_FORM);
   const [editingStoreId, setEditingStoreId] = useState<number | undefined>();
   const [saving, setSaving] = useState(false);
@@ -78,12 +81,12 @@ export function StoreAdminPage() {
 
   const query = useMemo(
     () => ({
-      page: 1,
-      page_size: 50,
+      page,
+      page_size: pageSize,
       platform: platform || undefined,
       name: keyword || undefined,
     }),
-    [keyword, platform],
+    [keyword, page, pageSize, platform],
   );
 
   const storeQuery = useQuery({
@@ -99,6 +102,7 @@ export function StoreAdminPage() {
   const stores: ListingStore[] = storeQuery.data?.items ?? [];
   const deletedStores = deletedStoreQuery.data ?? [];
   const total = storeQuery.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const loading = storeQuery.isLoading || storeQuery.isFetching;
   const loginStatusMap = useMemo(
     () => buildSheinLoginStatusMap(sheinLoginQuery.data),
@@ -116,12 +120,16 @@ export function StoreAdminPage() {
     setSaving(true);
     setError("");
     try {
+      const wasCreating = !editingStoreId;
       if (editingStoreId) {
         await updateListingStore(editingStoreId, form);
       } else {
         await createListingStore(form);
       }
       resetForm();
+      if (wasCreating) {
+        setPage(1);
+      }
       await storeQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
@@ -133,6 +141,21 @@ export function StoreAdminPage() {
   function resetForm() {
     setForm(DEFAULT_FORM);
     setEditingStoreId(undefined);
+  }
+
+  function handlePlatformChange(value: string) {
+    setPage(1);
+    setPlatform(value);
+  }
+
+  function handleKeywordChange(value: string) {
+    setPage(1);
+    setKeyword(value);
+  }
+
+  function handlePageSizeChange(value: string) {
+    setPage(1);
+    setPageSize(Number(value));
   }
 
   function handleEdit(store: ListingStore) {
@@ -169,7 +192,13 @@ export function StoreAdminPage() {
     setError("");
     try {
       await deleteListingStore(id);
-      await storeQuery.refetch();
+      const result = await storeQuery.refetch();
+      const refreshedTotal = result.data?.total ?? 0;
+      const refreshedTotalPages = Math.max(
+        1,
+        Math.ceil(refreshedTotal / pageSize),
+      );
+      setPage((current) => Math.min(current, refreshedTotalPages));
       await deletedStoreQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
@@ -249,7 +278,7 @@ export function StoreAdminPage() {
               平台
               <Select
                 value={platform}
-                onChange={(event) => setPlatform(event.target.value)}
+                onChange={(event) => handlePlatformChange(event.target.value)}
                 className="h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
               >
                 <option value="">全部</option>
@@ -261,7 +290,7 @@ export function StoreAdminPage() {
               店铺名称
               <Input
                 value={keyword}
-                onChange={(event) => setKeyword(event.target.value)}
+                onChange={(event) => handleKeywordChange(event.target.value)}
                 className="h-9 w-full rounded-md border border-zinc-200 px-3 text-sm text-zinc-900 sm:w-52"
                 placeholder="搜索店铺"
               />
@@ -286,6 +315,45 @@ export function StoreAdminPage() {
 
       <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_360px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-zinc-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-zinc-500">
+              共 {total} 个店铺，当前第 {page} / {totalPages} 页
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Label className="text-xs font-medium text-zinc-500">
+                每页
+                <Select
+                  value={String(pageSize)}
+                  onChange={(event) => handlePageSizeChange(event.target.value)}
+                  className="ml-2 h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+                >
+                  {PAGE_SIZE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </Select>
+              </Label>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={page <= 1 || loading}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                上一页
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={page >= totalPages || loading}
+                onClick={() =>
+                  setPage((current) => Math.min(totalPages, current + 1))
+                }
+              >
+                下一页
+              </Button>
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <Table className="min-w-[70rem] divide-y divide-zinc-200 text-sm">
               <TableHeader className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
