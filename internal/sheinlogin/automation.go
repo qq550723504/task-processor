@@ -1326,8 +1326,15 @@ func (s *playwrightVerifySession) Close() error {
 	return nil
 }
 
-func launchManagerWithProfileRecovery(manager *sharedbrowser.Manager, profileDir string) error {
-	err := manager.Launch()
+const sheinBrowserLaunchTimeout = time.Minute
+
+type browserLaunchManager interface {
+	Launch() error
+	Close()
+}
+
+func launchManagerWithProfileRecovery(manager browserLaunchManager, profileDir string) error {
+	err := launchManagerWithTimeout(manager, sheinBrowserLaunchTimeout)
 	if err == nil {
 		return nil
 	}
@@ -1339,13 +1346,44 @@ func launchManagerWithProfileRecovery(manager *sharedbrowser.Manager, profileDir
 	if !cleared {
 		return fmt.Errorf("SHEIN 浏览器 profile 正在使用，请稍后重试或关闭当前登录窗口: %w", err)
 	}
-	if retryErr := manager.Launch(); retryErr != nil {
+	if retryErr := launchManagerWithTimeout(manager, sheinBrowserLaunchTimeout); retryErr != nil {
 		if isProfileInUseError(retryErr) {
 			return fmt.Errorf("SHEIN 浏览器 profile 正在使用，请稍后重试或关闭当前登录窗口: %w", retryErr)
 		}
 		return retryErr
 	}
 	return nil
+}
+
+func launchManagerWithTimeout(manager browserLaunchManager, timeout time.Duration) error {
+	if manager == nil {
+		return fmt.Errorf("SHEIN browser manager is nil")
+	}
+	if timeout <= 0 {
+		return manager.Launch()
+	}
+
+	result := make(chan error, 1)
+	timedOut := make(chan struct{})
+	go func() {
+		err := manager.Launch()
+		select {
+		case result <- err:
+		case <-timedOut:
+			manager.Close()
+		}
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case err := <-result:
+		return err
+	case <-timer.C:
+		close(timedOut)
+		manager.Close()
+		return fmt.Errorf("SHEIN browser launch timed out after %s", timeout)
+	}
 }
 
 func closeManagerProfile(manager *sharedbrowser.Manager, profileDir string) {
