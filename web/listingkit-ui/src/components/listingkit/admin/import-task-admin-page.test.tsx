@@ -116,4 +116,42 @@ describe("ImportTaskAdminPage", () => {
       }),
     );
   });
+
+  it("requests the next page and resets pagination when page size changes", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminStoresApi, "getSimpleListingStores").mockResolvedValue([]);
+    const getTasksSpy = vi
+      .spyOn(adminImportTasksApi, "getListingImportTasks")
+      .mockResolvedValue({
+        items: [],
+        total: 51,
+        page: 1,
+        page_size: 50,
+      });
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ImportTaskAdminPage />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("共 51 条，当前第 1 / 2 页");
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+
+    await waitFor(() => {
+      expect(getTasksSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 2, page_size: 50 }),
+      );
+    });
+
+    await user.selectOptions(screen.getByLabelText("每页"), "20");
+    await waitFor(() => {
+      expect(getTasksSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, page_size: 20 }),
+      );
+    });
+  });
 });

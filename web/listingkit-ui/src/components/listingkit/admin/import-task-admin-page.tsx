@@ -54,6 +54,7 @@ const STATUS_TEXT: Record<number, string> = {
 };
 
 const REGION_OPTIONS = [...SHEIN_SITE_OPTIONS];
+const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
 
 type ProductIdImportSummary = {
   fileName: string;
@@ -64,6 +65,8 @@ type ProductIdImportSummary = {
 export function ImportTaskAdminPage() {
   const [platform, setPlatform] = useState("");
   const [productId, setProductId] = useState("");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [form, setForm] =
     useState<BatchCreateListingImportTaskInput>(DEFAULT_FORM);
   const [productText, setProductText] = useState("");
@@ -74,12 +77,12 @@ export function ImportTaskAdminPage() {
 
   const query = useMemo(
     () => ({
-      page: 1,
-      page_size: 50,
+      page,
+      page_size: pageSize,
       platform: platform || undefined,
       productId: productId || undefined,
     }),
-    [platform, productId],
+    [page, pageSize, platform, productId],
   );
 
   const importTaskQuery = useQuery({
@@ -90,6 +93,7 @@ export function ImportTaskAdminPage() {
 
   const tasks: ListingImportTask[] = importTaskQuery.data?.items ?? [];
   const total = importTaskQuery.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const stores = storesQuery.data ?? [];
   const loading = importTaskQuery.isLoading || importTaskQuery.isFetching;
   const visibleError =
@@ -109,6 +113,7 @@ export function ImportTaskAdminPage() {
       setForm({ ...DEFAULT_FORM, storeId: form.storeId });
       setProductText("");
       setProductImportSummary(null);
+      setPage(1);
       await importTaskQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
@@ -125,6 +130,21 @@ export function ImportTaskAdminPage() {
     } catch (err) {
       setError(formatSubscriptionApiError(err));
     }
+  }
+
+  function handlePlatformChange(value: string) {
+    setPage(1);
+    setPlatform(value);
+  }
+
+  function handleProductIdChange(value: string) {
+    setPage(1);
+    setProductId(value);
+  }
+
+  function handlePageSizeChange(value: string) {
+    setPage(1);
+    setPageSize(Number(value));
   }
 
   async function handleProductFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -172,14 +192,14 @@ export function ImportTaskAdminPage() {
             <ImportTaskSelect
               label="来源平台"
               value={platform}
-              onChange={setPlatform}
+              onChange={handlePlatformChange}
               options={["", "Amazon", "SHEIN", "TEMU"]}
               labels={{ "": "全部" }}
             />
             <ImportTaskInput
               label="商品 ID"
               value={productId}
-              onChange={setProductId}
+              onChange={handleProductIdChange}
               placeholder="搜索商品"
             />
             <Button
@@ -206,6 +226,45 @@ export function ImportTaskAdminPage() {
 
       <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-zinc-100 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-zinc-500">
+              共 {total} 条，当前第 {page} / {totalPages} 页
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Label className="text-xs font-medium text-zinc-500">
+                每页
+                <Select
+                  value={String(pageSize)}
+                  onChange={(event) => handlePageSizeChange(event.target.value)}
+                  className="ml-2 h-9 rounded-md border border-zinc-200 bg-white px-3 text-sm text-zinc-900"
+                >
+                  {PAGE_SIZE_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </Select>
+              </Label>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={page <= 1 || loading}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                上一页
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={page >= totalPages || loading}
+                onClick={() =>
+                  setPage((current) => Math.min(totalPages, current + 1))
+                }
+              >
+                下一页
+              </Button>
+            </div>
+          </div>
           <div className="overflow-x-auto">
             <Table className="min-w-[58rem] divide-y divide-zinc-200 text-sm">
               <TableHeader className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
