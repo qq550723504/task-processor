@@ -3,6 +3,7 @@ package sheinlogin
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -155,5 +156,54 @@ func TestEnqueueLoginAttemptIsCredentialFreeAndDeduplicated(t *testing.T) {
 	}
 	if contains := string(raw); contains == "" || contains == "password" || contains == "pwd" {
 		t.Fatalf("attempt payload contains credential data: %s", raw)
+	}
+}
+
+func TestEnqueueLoginAttemptIsAtomicForConcurrentRequests(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	store := newRedisStoreFromClient(client)
+	t.Cleanup(func() { _ = store.Close() })
+
+	const callers = 16
+	results := make(chan struct {
+		attempt *LoginAttempt
+		created bool
+		err     error
+	}, callers)
+	var wg sync.WaitGroup
+	for range callers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			attempt, created, err := store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+			results <- struct {
+				attempt *LoginAttempt
+				created bool
+				err     error
+			}{attempt, created, err}
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	var id string
+	createdCount := 0
+	for result := range results {
+		if result.err != nil || result.attempt == nil {
+			t.Fatalf("enqueue result: attempt=%+v err=%v", result.attempt, result.err)
+		}
+		if id == "" {
+			id = result.attempt.ID
+		}
+		if result.attempt.ID != id {
+			t.Fatalf("expected one attempt, got %q and %q", id, result.attempt.ID)
+		}
+		if result.created {
+			createdCount++
+		}
+	}
+	if createdCount != 1 {
+		t.Fatalf("created attempts = %d, want 1", createdCount)
 	}
 }

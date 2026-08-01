@@ -105,11 +105,10 @@ func (s *Service) processLoginAttemptMessage(ctx context.Context, workerID, mess
 		if err := s.store.UpdateLoginAttempt(ctx, attempt); err != nil {
 			return err
 		}
-		if err := s.store.AcknowledgeLoginAttemptJob(ctx, messageID); err != nil {
-			return err
-		}
-		go s.waitForAttemptVerifyCode(attempt)
-		return nil
+		// Keep the stream entry pending while this process owns the browser
+		// session. If the worker exits, another worker can claim the entry and
+		// mark the otherwise unrecoverable session as interrupted.
+		return s.waitForAttemptVerifyCode(ctx, attempt, messageID)
 	}
 	if result != nil && result.Success {
 		return s.completeLoginAttempt(ctx, attempt, LoginAttemptSucceeded, "", result.Message, messageID)
@@ -125,36 +124,42 @@ func (s *Service) processLoginAttemptMessage(ctx context.Context, workerID, mess
 	return s.completeLoginAttempt(ctx, attempt, LoginAttemptFailed, errorCode, message, messageID)
 }
 
-func (s *Service) waitForAttemptVerifyCode(attempt *LoginAttempt) {
+func (s *Service) waitForAttemptVerifyCode(parent context.Context, attempt *LoginAttempt, messageID string) error {
 	if attempt == nil {
-		return
+		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(parent, 10*time.Minute)
 	defer cancel()
-	code, ok, err := s.store.WaitAndConsumeVerifyCodeForAttempt(ctx, attempt.TenantID, attempt.StoreID, attempt.ID, 10*time.Minute)
+	code, ok, cancelled, err := s.store.WaitAndConsumeVerifyCodeOrCancel(ctx, attempt.TenantID, attempt.StoreID, attempt.ID, 10*time.Minute)
 	if err != nil {
-		_ = s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_WAIT_FAILED", err.Error(), "")
-		return
+		if parent.Err() != nil {
+			// Do not acknowledge or complete the attempt on worker shutdown. The
+			// pending stream job is the durable recovery signal for the next worker.
+			return nil
+		}
+		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_WAIT_FAILED", err.Error(), messageID)
+	}
+	if cancelled {
+		s.clearSession(attempt.StoreID)
+		_, _ = s.store.CancelVerifyWait(context.Background(), attempt.TenantID, attempt.StoreID)
+		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptCancelled, "LOGIN_CANCELLED", "verification cancelled by user", messageID)
 	}
 	if !ok {
-		_, _ = s.CancelVerifyCodeWait(context.Background(), attempt.TenantID, attempt.StoreID)
-		_ = s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_TIMEOUT", "verification code wait expired", "")
-		return
+		s.clearSession(attempt.StoreID)
+		_, _ = s.store.CancelVerifyWait(context.Background(), attempt.TenantID, attempt.StoreID)
+		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_TIMEOUT", "verification code wait expired", messageID)
 	}
 	if err := s.SubmitVerifyCode(ctx, attempt.TenantID, attempt.StoreID, code, 0); err != nil {
-		_ = s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_SUBMIT_FAILED", err.Error(), "")
-		return
+		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_SUBMIT_FAILED", err.Error(), messageID)
 	}
 	status, err := s.Status(ctx, attempt.TenantID, attempt.StoreID)
 	if err != nil {
-		_ = s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_STATUS_FAILED", err.Error(), "")
-		return
+		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_STATUS_FAILED", err.Error(), messageID)
 	}
 	if status.HasCookie {
-		_ = s.completeLoginAttempt(context.Background(), attempt, LoginAttemptSucceeded, "", "login succeeded", "")
-		return
+		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptSucceeded, "", "login succeeded", messageID)
 	}
-	_ = s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_LOGIN_FAILED", "verification code did not produce a usable cookie", "")
+	return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_LOGIN_FAILED", "verification code did not produce a usable cookie", messageID)
 }
 
 func (s *Service) completeLoginAttempt(ctx context.Context, attempt *LoginAttempt, status LoginAttemptStatus, errorCode, message, messageID string) error {
@@ -166,6 +171,9 @@ func (s *Service) completeLoginAttempt(ctx context.Context, attempt *LoginAttemp
 	attempt.ErrorCode = errorCode
 	attempt.Message = message
 	attempt.CompletedAt = &now
+	if status == LoginAttemptFailed {
+		s.cacheLastFailureDetail(ctx, attempt.TenantID, attempt.StoreID)
+	}
 	if err := s.store.UpdateLoginAttempt(ctx, attempt); err != nil {
 		return err
 	}
