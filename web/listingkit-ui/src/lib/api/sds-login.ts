@@ -83,7 +83,8 @@ export function triggerSDSLogin() {
   return request("/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ force_login: true }),
+    // SDS runs in the cluster, where no display server is available.
+    body: JSON.stringify({ force_login: true, headless: true }),
   });
 }
 
@@ -98,6 +99,7 @@ export function manualSDSLogin(input: SDSManualLoginInput) {
       username: input.username,
       password: input.password,
       force_login: true,
+      headless: true,
     }),
   });
 }

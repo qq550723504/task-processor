@@ -23,6 +23,11 @@ spec:
           env:
             - name: TASK_PROCESSOR_BROWSER_PATH
               value: /opt/fingerprint-chrome/chrome-144/chrome
+            - name: TASK_PROCESSOR_SDS_LOGIN_SERVICE_DEFAULT_HEADLESS
+              valueFrom:
+                configMapKeyRef:
+                  name: listingkit-workbench-config
+                  key: TASK_PROCESSOR_SDS_LOGIN_SERVICE_DEFAULT_HEADLESS
           ports:
             - name: http
               containerPort: 8085
