@@ -126,6 +126,45 @@ describe("StoreAdminPage", () => {
     expect(screen.getByPlaceholderText("搜索店铺")).toHaveClass("w-full");
   });
 
+  it("paginates the platform-wide store catalog", async () => {
+    const user = userEvent.setup();
+    const getStoresSpy = vi
+      .spyOn(adminStoresApi, "getListingStores")
+      .mockResolvedValue({
+        items: [],
+        total: 51,
+        page: 1,
+        page_size: 50,
+      });
+    vi.spyOn(adminStoresApi, "getDeletedListingStores").mockResolvedValue([]);
+    vi.spyOn(sheinLoginApi, "listSheinLoginAccounts").mockResolvedValue([]);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <StoreAdminPage />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByText("共 51 个店铺，当前第 1 / 2 页");
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+
+    await waitFor(() => {
+      expect(getStoresSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 2, page_size: 50 }),
+      );
+    });
+
+    await user.selectOptions(screen.getByLabelText("每页"), "20");
+    await waitFor(() => {
+      expect(getStoresSpy).toHaveBeenLastCalledWith(
+        expect.objectContaining({ page: 1, page_size: 20 }),
+      );
+    });
+  });
+
   it("edits an existing ListingKit store", async () => {
     const user = userEvent.setup();
     const store = {
