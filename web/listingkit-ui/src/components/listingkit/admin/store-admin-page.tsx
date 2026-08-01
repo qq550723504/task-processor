@@ -419,7 +419,11 @@ export function StoreAdminPage() {
                       <TableCell className="px-4 py-3 text-right">
                         {store.platform === "SHEIN" ? (
                           <Button asChild type="button" className="mr-2" size="sm" variant="outline">
-                            <Link href={`/listing-kits/shein-login?store_id=${store.id}`}>去登录</Link>
+                            <Link
+                              href={`/listing-kits/shein-login?store_id=${store.id}${store.tenantId ? `&tenant_id=${store.tenantId}` : ""}`}
+                            >
+                              去登录
+                            </Link>
                           </Button>
                         ) : null}
                         <Button
