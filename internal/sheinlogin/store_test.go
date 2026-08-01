@@ -126,3 +126,34 @@ func TestLoadCookieStateReturnsStoredPayload(t *testing.T) {
 		t.Fatal("expected non-empty stored cookie state payload")
 	}
 }
+
+func TestEnqueueLoginAttemptIsCredentialFreeAndDeduplicated(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	store := newRedisStoreFromClient(client)
+	t.Cleanup(func() { _ = store.Close() })
+
+	headless := true
+	first, created, err := store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true, Headless: &headless})
+	if err != nil {
+		t.Fatalf("enqueue first attempt: %v", err)
+	}
+	if !created || first == nil || first.Status != LoginAttemptQueued {
+		t.Fatalf("unexpected first attempt: created=%v attempt=%+v", created, first)
+	}
+	second, created, err := store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{})
+	if err != nil {
+		t.Fatalf("enqueue duplicate attempt: %v", err)
+	}
+	if created || second == nil || second.ID != first.ID {
+		t.Fatalf("duplicate enqueue should return the active attempt: created=%v first=%+v second=%+v", created, first, second)
+	}
+
+	raw, err := client.Get(context.Background(), loginAttemptKey(first.ID)).Result()
+	if err != nil {
+		t.Fatalf("load attempt payload: %v", err)
+	}
+	if contains := string(raw); contains == "" || contains == "password" || contains == "pwd" {
+		t.Fatalf("attempt payload contains credential data: %s", raw)
+	}
+}

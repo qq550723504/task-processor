@@ -10,6 +10,7 @@ resources:
   - imgproxy-service.yaml
   - product-listing-api-deployment.yaml
   - product-listing-api-service.yaml
+  - shein-login-worker-deployment.yaml
   - listingkit-ui-deployment.yaml
   - listingkit-ui-service.yaml
   - ingress.yaml

@@ -142,6 +142,12 @@ function accountFilterItems(items: SheinLoginAccountStatus[]) {
 }
 
 function summaryTone(item: SheinLoginAccountStatus) {
+  if (item.latest_attempt?.status === "queued" || item.latest_attempt?.status === "launching") {
+    return "border-sky-200 bg-sky-50 text-sky-800";
+  }
+  if (item.latest_attempt?.status === "waiting_verify_code") {
+    return "border-amber-200 bg-amber-50 text-amber-800";
+  }
   if (item.waiting_for_verify_code) {
     return "border-amber-200 bg-amber-50 text-amber-800";
   }
@@ -152,6 +158,27 @@ function summaryTone(item: SheinLoginAccountStatus) {
     return "border-emerald-200 bg-emerald-50 text-emerald-800";
   }
   return "border-border bg-muted text-muted-foreground";
+}
+
+function latestAttemptLabel(item: SheinLoginAccountStatus) {
+  switch (item.latest_attempt?.status) {
+    case "queued":
+      return "排队中";
+    case "launching":
+      return "启动浏览器";
+    case "waiting_verify_code":
+      return "等待验证码";
+    case "succeeded":
+      return "登录成功";
+    case "failed":
+      return "登录失败";
+    case "cancelled":
+      return "已取消";
+    case "interrupted":
+      return "Worker 中断";
+    default:
+      return undefined;
+  }
 }
 
 function actionTone(item: SheinLoginAccountStatus, kind: "login" | "code" | "failure" | "cookie") {
@@ -196,6 +223,10 @@ function filterAccounts(items: SheinLoginAccountStatus[], filter: AccountFilter)
 }
 
 function storeStatusSummary(item: SheinLoginAccountStatus) {
+  const attemptLabel = latestAttemptLabel(item);
+  if (attemptLabel && item.latest_attempt?.status !== "succeeded") {
+    return attemptLabel;
+  }
   if (item.waiting_for_verify_code) {
     return "等待验证码";
   }
@@ -212,6 +243,9 @@ function storeStatusSummary(item: SheinLoginAccountStatus) {
 }
 
 function storeStatusNote(item: SheinLoginAccountStatus) {
+  if (item.latest_attempt?.status === "queued" || item.latest_attempt?.status === "launching") {
+    return item.latest_attempt.message || "登录任务已交给浏览器 Worker 处理。";
+  }
   if (item.waiting_for_verify_code) {
     return "登录流程停在验证码阶段，继续提交验证码即可。";
   }
@@ -682,7 +716,7 @@ export function SheinLoginPage() {
                             </Badge>
                             {item.login_in_progress ? (
                               <Badge className="rounded-full px-3 py-1 text-xs" variant="warning">
-                                登录中
+                                {latestAttemptLabel(item) || "登录中"}
                               </Badge>
                             ) : null}
                             {item.last_login_time && !item.waiting_for_verify_code ? (
@@ -837,7 +871,11 @@ export function SheinLoginPage() {
             return;
           }
           verifyCode.mutate(
-            { storeID: verifyStoreID, code },
+            {
+              storeID: verifyStoreID,
+              code,
+              attemptID: accountItems.find((item) => item.account.store_id === verifyStoreID)?.latest_attempt?.id,
+            },
             {
               onSuccess: () => setVerifyStoreID(null),
             },

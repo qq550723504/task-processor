@@ -32,6 +32,16 @@ export type SheinLoginRecommendedAction = {
   message?: string;
 };
 
+export type SheinLoginAttempt = {
+  id: string;
+  status: "queued" | "launching" | "waiting_verify_code" | "succeeded" | "failed" | "cancelled" | "interrupted";
+  message?: string;
+  error_code?: string;
+  created_at?: string;
+  started_at?: string;
+  completed_at?: string;
+};
+
 export type SheinLoginAccount = {
   store_id: number;
   tenant_id: number;
@@ -52,6 +62,7 @@ export type SheinLoginAccountStatus = {
   login_in_progress: boolean;
   last_failure?: SheinLoginFailureSummary;
   recommended_action?: SheinLoginRecommendedAction;
+  latest_attempt?: SheinLoginAttempt;
 };
 
 export type SheinLoginWarehouse = {

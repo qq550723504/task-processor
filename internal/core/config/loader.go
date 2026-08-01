@@ -295,6 +295,7 @@ func NewDefaultConfig() *Config {
 					ProfileRootDir:      "./.local/tmp/shein-login/profiles",
 					ArtifactDir:         "./.local/tmp/shein-login/artifacts",
 					DefaultHeadless:     true,
+					ExecutionMode:       "inline",
 				},
 				AutoPricing: AutoPricingConfig{
 					Enabled:   false,

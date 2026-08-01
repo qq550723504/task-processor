@@ -40,8 +40,8 @@ export function useLoginSheinAccount(tenantID?: string) {
 export function useSubmitSheinVerifyCode(tenantID?: string) {
   const invalidate = useInvalidateSheinLoginAccounts(tenantID);
   return useMutation({
-    mutationFn: ({ storeID, code }: { storeID: number; code: string }) =>
-      submitSheinVerifyCode(storeID, code, tenantID),
+    mutationFn: ({ storeID, code, attemptID }: { storeID: number; code: string; attemptID?: string }) =>
+      submitSheinVerifyCode(storeID, code, tenantID, attemptID),
     onSuccess: invalidate,
   });
 }

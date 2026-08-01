@@ -332,6 +332,7 @@ func setSheinDefaults(v *viper.Viper, p *PlatformConfig) {
 	v.SetDefault("platforms.shein.loginService.profileRootDir", p.LoginService.ProfileRootDir)
 	v.SetDefault("platforms.shein.loginService.artifactDir", p.LoginService.ArtifactDir)
 	v.SetDefault("platforms.shein.loginService.defaultHeadless", p.LoginService.DefaultHeadless)
+	v.SetDefault("platforms.shein.loginService.executionMode", p.LoginService.ExecutionMode)
 
 	ap := p.AutoPricing
 	v.SetDefault("platforms.shein.autoPricing.enabled", ap.Enabled)

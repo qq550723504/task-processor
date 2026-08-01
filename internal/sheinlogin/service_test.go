@@ -2,6 +2,7 @@ package sheinlogin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -111,6 +112,84 @@ func TestServiceLoginReturnsExistingCookieWithoutAutomation(t *testing.T) {
 	}
 	if !result.Success || result.LoginType != "existing" {
 		t.Fatalf("unexpected result: %+v", result)
+	}
+}
+
+func TestServiceLoginQueuesAttemptInWorkerMode(t *testing.T) {
+	auto := &stubAutomation{}
+	svc := newTestService(t, auto)
+	svc.executionMode = "worker"
+
+	result, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil {
+		t.Fatalf("queue login: %v", err)
+	}
+	if result == nil || result.AttemptID == "" || result.ExecutionStatus != LoginAttemptQueued {
+		t.Fatalf("unexpected queued login result: %+v", result)
+	}
+	if auto.calls != 0 {
+		t.Fatalf("browser should not start in API worker mode, calls=%d", auto.calls)
+	}
+	status, err := svc.Status(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("load status: %v", err)
+	}
+	if !status.LoginInProgress || status.LatestAttempt == nil || status.LatestAttempt.ID != result.AttemptID {
+		t.Fatalf("queued attempt missing from status: %+v", status)
+	}
+}
+
+func TestServiceLoginPersistsBrowserLaunchFailure(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{err: errors.New("browser exited before connection")})
+	result, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if result == nil || result.LastFailure == nil || result.LastFailure.ErrorCode != "LOGIN_LAUNCH_FAILED" {
+		t.Fatalf("launch failure was not surfaced: %+v", result)
+	}
+	persisted, err := svc.store.LastFailure(context.Background(), 1, 2)
+	if err != nil || persisted == nil || persisted.Stage != "browser_launch" {
+		t.Fatalf("launch failure was not persisted: failure=%+v err=%v", persisted, err)
+	}
+}
+
+func TestWorkerProcessesQueuedAttemptWithoutRequeueing(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{result: &AutomationResult{
+		BrowserState: map[string]any{"cookies": []any{map[string]any{"name": "sid", "value": "ok"}}},
+	}})
+	svc.executionMode = "worker"
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	if err := svc.processLoginAttemptMessage(context.Background(), "test-worker", "", map[string]any{"attempt_id": attempt.ID}); err != nil {
+		t.Fatalf("process attempt: %v", err)
+	}
+	updated, err := svc.store.LoadLoginAttempt(context.Background(), attempt.ID)
+	if err != nil {
+		t.Fatalf("load updated attempt: %v", err)
+	}
+	if updated == nil || updated.Status != LoginAttemptSucceeded {
+		t.Fatalf("attempt status = %+v, want succeeded", updated)
+	}
+	if hasCookie, err := svc.store.HasCookie(context.Background(), 1, 2); err != nil || !hasCookie {
+		t.Fatalf("worker did not persist cookie: has=%v err=%v", hasCookie, err)
+	}
+}
+
+func TestSubmitVerifyCodeForAttemptRejectsStoreMismatch(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+	if err := svc.SubmitVerifyCodeForAttempt(context.Background(), 9, 2, attempt.ID, "123456", 60); err == nil {
+		t.Fatal("expected tenant mismatch to be rejected")
 	}
 }
 
