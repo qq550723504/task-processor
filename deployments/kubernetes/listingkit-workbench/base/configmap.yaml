@@ -6,6 +6,13 @@ data:
   LISTINGKIT_API_BASE: "http://product-listing-api:8085/api/v1/listing-kits"
   LISTINGKIT_SERVICE_API_BASE: "http://product-listing-api:8085/api/v1"
   NEXT_TELEMETRY_DISABLED: "1"
+  # Public Auth.js origin and callback proxy. Keep these in version-controlled
+  # configuration so an OIDC login never falls back to a Pod-local address.
+  AUTH_URL: "https://pod.shuomiai.com"
+  AUTH_REDIRECT_PROXY_URL: "https://pod.shuomiai.com/api/auth"
+  ZITADEL_REDIRECT_URI: "https://pod.shuomiai.com/api/auth/callback/zitadel"
+  ZITADEL_POST_LOGOUT_REDIRECT_URI: "https://pod.shuomiai.com"
+  LISTINGKIT_PUBLIC_BASE_URL: "https://pod.shuomiai.com"
   TASK_PROCESSOR_ENV: "prod"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER: "s3"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE: "https://oss.shuomiai.com"

@@ -27,6 +27,34 @@ spec:
             - secretRef:
                 name: listingkit-workbench-secret
                 optional: true
+          # These public OIDC addresses must not be overridden by an
+          # externally recreated Secret with stale or Pod-local values.
+          env:
+            - name: AUTH_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: listingkit-workbench-config
+                  key: AUTH_URL
+            - name: AUTH_REDIRECT_PROXY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: listingkit-workbench-config
+                  key: AUTH_REDIRECT_PROXY_URL
+            - name: ZITADEL_REDIRECT_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: listingkit-workbench-config
+                  key: ZITADEL_REDIRECT_URI
+            - name: ZITADEL_POST_LOGOUT_REDIRECT_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: listingkit-workbench-config
+                  key: ZITADEL_POST_LOGOUT_REDIRECT_URI
+            - name: LISTINGKIT_PUBLIC_BASE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: listingkit-workbench-config
+                  key: LISTINGKIT_PUBLIC_BASE_URL
           readinessProbe:
             httpGet:
               path: /healthz
