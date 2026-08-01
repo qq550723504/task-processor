@@ -221,6 +221,7 @@ $apiArgs = @(
     "-Port", $ApiPort,
     "-ConfigPath", $ConfigPath,
     "-LogLevel", $LogLevel,
+    "-RequireReadiness",
     "-ZitadelAuthMode", $ZitadelAuthMode
 )
 & powershell @apiArgs
@@ -246,7 +247,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $apiPid = if (Test-Path -LiteralPath $apiPidFile) { (Get-Content -LiteralPath $apiPidFile -Raw).Trim() } else { "" }
 $uiPid = if (Test-Path -LiteralPath $uiPidFile) { (Get-Content -LiteralPath $uiPidFile -Raw).Trim() } else { "" }
-$apiHealth = Invoke-WebRequest -Uri "http://127.0.0.1:${ApiPort}/health" -UseBasicParsing -TimeoutSec 5
+$apiReadiness = Invoke-WebRequest -Uri "http://127.0.0.1:${ApiPort}/readyz" -UseBasicParsing -TimeoutSec 5
 
 try {
     $uiResponse = Invoke-WebRequest -Uri "http://127.0.0.1:${UiPort}" -MaximumRedirection 0 -UseBasicParsing -TimeoutSec 5
@@ -262,7 +263,7 @@ try {
 Write-Host ""
 Write-Host "Local ListingKit dev stack is ready." -ForegroundColor Green
 Write-Host "  UI: http://localhost:${UiPort} (status ${uiStatus})"
-Write-Host "  API: http://localhost:${ApiPort}/health (status $($apiHealth.StatusCode))"
+Write-Host "  API readiness: http://localhost:${ApiPort}/readyz (status $($apiReadiness.StatusCode))"
 Write-Host "  Port-forward PID: $($portforwardProcess.Id)"
 if (-not [string]::IsNullOrWhiteSpace($apiPid)) {
     Write-Host "  API PID: $apiPid"

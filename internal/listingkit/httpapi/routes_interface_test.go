@@ -6,6 +6,7 @@ type settingsOnlyRouteHandler struct{}
 
 func (settingsOnlyRouteHandler) ListSettingsNamespaces(c *gin.Context)     {}
 func (settingsOnlyRouteHandler) GetSettingsHealth(c *gin.Context)          {}
+func (settingsOnlyRouteHandler) GetReadiness(c *gin.Context)               {}
 func (settingsOnlyRouteHandler) GetSettingsNamespaceSchema(c *gin.Context) {}
 func (settingsOnlyRouteHandler) GetSettingsNamespace(c *gin.Context)       {}
 func (settingsOnlyRouteHandler) UpdateSettingsNamespace(c *gin.Context)    {}

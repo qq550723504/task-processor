@@ -17,6 +17,9 @@ data:
   # Kubernetes Pods do not have an X server. SDS browser login must run
   # headlessly unless a dedicated interactive browser environment is provided.
   TASK_PROCESSOR_SDS_LOGIN_SERVICE_DEFAULT_HEADLESS: "true"
+  # SHEIN has a dedicated login runtime. Keep its browser mode explicit rather
+  # than inheriting an image-level default.
+  TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_DEFAULT_HEADLESS: "true"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER: "s3"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE: "https://oss.shuomiai.com"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET: "shuomi-1303159911"

@@ -291,7 +291,14 @@ func buildAutomationBrowserConfig(account Account, cfg AutomationConfig) *shared
 		Timezone:                       "Asia/Shanghai",
 		SkipDefaultLaunchArgs:          true,
 		UseMinimalFingerprintArgs:      true,
-		ExtraLaunchArgs:                []string{"--enable-unsafe-swiftshader"},
+		// product-listing-api runs as root in Kubernetes. Keep the container-safe
+		// Chromium flags here instead of relying on Playwright defaults, because
+		// this login flow intentionally customizes its launch arguments.
+		ExtraLaunchArgs: []string{
+			"--no-sandbox",
+			"--disable-dev-shm-usage",
+			"--enable-unsafe-swiftshader",
+		},
 	}
 	if isCloakBrowserPath(managerCfg.BrowserPath) {
 		managerCfg.StealthProvider = sharedbrowser.StealthProviderCloakBrowser
@@ -1319,8 +1326,15 @@ func (s *playwrightVerifySession) Close() error {
 	return nil
 }
 
-func launchManagerWithProfileRecovery(manager *sharedbrowser.Manager, profileDir string) error {
-	err := manager.Launch()
+const sheinBrowserLaunchTimeout = time.Minute
+
+type browserLaunchManager interface {
+	Launch() error
+	Close()
+}
+
+func launchManagerWithProfileRecovery(manager browserLaunchManager, profileDir string) error {
+	err := launchManagerWithTimeout(manager, sheinBrowserLaunchTimeout)
 	if err == nil {
 		return nil
 	}
@@ -1332,13 +1346,46 @@ func launchManagerWithProfileRecovery(manager *sharedbrowser.Manager, profileDir
 	if !cleared {
 		return fmt.Errorf("SHEIN 浏览器 profile 正在使用，请稍后重试或关闭当前登录窗口: %w", err)
 	}
-	if retryErr := manager.Launch(); retryErr != nil {
+	if retryErr := launchManagerWithTimeout(manager, sheinBrowserLaunchTimeout); retryErr != nil {
 		if isProfileInUseError(retryErr) {
 			return fmt.Errorf("SHEIN 浏览器 profile 正在使用，请稍后重试或关闭当前登录窗口: %w", retryErr)
 		}
 		return retryErr
 	}
 	return nil
+}
+
+func launchManagerWithTimeout(manager browserLaunchManager, timeout time.Duration) error {
+	if manager == nil {
+		return fmt.Errorf("SHEIN browser manager is nil")
+	}
+	if timeout <= 0 {
+		return manager.Launch()
+	}
+
+	result := make(chan error, 1)
+	timedOut := make(chan struct{})
+	go func() {
+		err := manager.Launch()
+		select {
+		case result <- err:
+		case <-timedOut:
+			// Close a launch that eventually returns after its caller has timed out,
+			// otherwise its browser context can outlive the store login lock.
+			manager.Close()
+		}
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case err := <-result:
+		return err
+	case <-timer.C:
+		close(timedOut)
+		manager.Close()
+		return fmt.Errorf("SHEIN browser launch timed out after %s", timeout)
+	}
 }
 
 func closeManagerProfile(manager *sharedbrowser.Manager, profileDir string) {

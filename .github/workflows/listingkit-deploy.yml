@@ -23,11 +23,6 @@ on:
         required: false
         default: false
         type: boolean
-      skip_apply:
-        description: "Skip kubectl apply -k before updating deployment images."
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -43,7 +38,6 @@ env:
   API_IMAGE_NAME: task-processor-product-listing-api
   API_RUNTIME_BASE_IMAGE: docker.io/xuwei190/crawler-env:latest
   K8S_NAMESPACE: task-processor
-  K8S_OVERLAY_PATH: deployments/kubernetes/listingkit-workbench/overlays/prod
 
 jobs:
   prepare:
@@ -153,19 +147,6 @@ jobs:
           mkdir -p "$HOME/.kube"
           printf '%s' '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
-
-      - name: Pin API release image in Kubernetes manifests
-        working-directory: ${{ env.K8S_OVERLAY_PATH }}
-        run: |
-          kustomize edit set image xuwei190/task-processor-product-listing-api=${{ needs.prepare.outputs.api_image }}
-
-      - name: Validate Kubernetes manifests
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_apply) }}
-        run: kubectl apply -k ${{ env.K8S_OVERLAY_PATH }} --dry-run=server
-
-      - name: Apply Kubernetes manifests
-        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.skip_apply) }}
-        run: kubectl apply -k ${{ env.K8S_OVERLAY_PATH }}
 
       - name: Update API deployment image
         run: |
