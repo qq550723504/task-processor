@@ -87,7 +87,7 @@ describe("StoreAdminPage", () => {
     expect(screen.getByText("已登录")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "去登录" })).toHaveAttribute(
       "href",
-      "/listing-kits/shein-login?store_id=1",
+      "/listing-kits/shein-login?store_id=1&tenant_id=101",
     );
     expect(
       screen.getByRole("button", { name: "恢复 Deleted SHEIN" }),
