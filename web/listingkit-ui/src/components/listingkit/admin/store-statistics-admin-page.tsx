@@ -21,7 +21,6 @@ import {
 import {
   getListingStoreStatistics,
   type ListingStoreStatistics,
-  type ListingStoreStatisticsPage,
   type ListingStoreStatisticsSummary,
 } from "@/lib/api/admin-store-statistics";
 
@@ -86,7 +85,8 @@ export function StoreStatisticsAdminPage({
     }
     const lastValidPage = Math.max(1, Math.ceil(pageData.total / pageSize));
     if (page > lastValidPage) {
-      setPage(lastValidPage);
+      const timeoutId = window.setTimeout(() => setPage(lastValidPage), 0);
+      return () => window.clearTimeout(timeoutId);
     }
   }, [page, pageData, pageSize]);
 
