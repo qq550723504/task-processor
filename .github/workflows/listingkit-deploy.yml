@@ -144,6 +144,10 @@ jobs:
           printf '%s' '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
 
+      - name: Apply ListingKit runtime configuration
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} apply -f deployments/kubernetes/listingkit-workbench/base/configmap.yaml
+
       - name: Update API deployment image
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} set image deployment/product-listing-api product-listing-api=${{ needs.prepare.outputs.api_image }}
