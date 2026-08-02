@@ -163,7 +163,7 @@ func (s *Service) processLoginAttemptMessage(ctx context.Context, workerID, mess
 			errorCode = runResult.ErrorCode
 		}
 	}
-	return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, errorCode, message, messageID)
+	return s.completeFailedLoginAttempt(context.Background(), attempt, errorCode, message, messageID, runResultFailureSummary(runResult))
 }
 
 func (s *Service) updateActiveAttemptState(ctx context.Context, attempt *LoginAttempt, messageID string) (bool, error) {
@@ -405,13 +405,29 @@ func (s *Service) finishAttemptVerifyResult(attempt *LoginAttempt, account *Acco
 		}
 		return false, nil
 	}
-	return true, s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, failureCode(runResult), failureMessage(runResult), messageID)
+	return true, s.completeFailedLoginAttempt(
+		context.Background(),
+		attempt,
+		failureCode(runResult),
+		failureMessage(runResult),
+		messageID,
+		runResultFailureSummary(runResult),
+	)
 }
 
 func (s *Service) completeLoginAttempt(ctx context.Context, attempt *LoginAttempt, status LoginAttemptStatus, errorCode, message, messageID string) error {
+	return s.completeLoginAttemptWithFailureSummary(ctx, attempt, status, errorCode, message, messageID, nil)
+}
+
+func (s *Service) completeFailedLoginAttempt(ctx context.Context, attempt *LoginAttempt, errorCode, message, messageID string, summary *FailureSummary) error {
+	return s.completeLoginAttemptWithFailureSummary(ctx, attempt, LoginAttemptFailed, errorCode, message, messageID, summary)
+}
+
+func (s *Service) completeLoginAttemptWithFailureSummary(ctx context.Context, attempt *LoginAttempt, status LoginAttemptStatus, errorCode, message, messageID string, summary *FailureSummary) error {
 	if attempt == nil {
 		return nil
 	}
+	statusBeforeCompletion := attempt.Status
 	now := time.Now().UTC()
 	attempt.Status = status
 	attempt.ErrorCode = errorCode
@@ -422,7 +438,7 @@ func (s *Service) completeLoginAttempt(ctx context.Context, attempt *LoginAttemp
 		return err
 	}
 	if completed && status == LoginAttemptFailed {
-		s.cacheLastFailureDetail(ctx, attempt.TenantID, attempt.StoreID)
+		s.persistCommittedWorkerFailure(ctx, attempt, statusBeforeCompletion, errorCode, message, summary)
 	}
 	if !completed {
 		current, loadErr := s.store.LoadLoginAttempt(ctx, attempt.ID)

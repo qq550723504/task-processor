@@ -76,6 +76,22 @@ describe("SheinLoginPage", () => {
             status: "waiting_verify_code",
           },
         },
+        {
+          account: {
+            store_id: 871,
+            tenant_id: 227,
+            store_name: "SHEIN Backup Store",
+            username: "backup-store",
+          },
+          has_cookie: false,
+          cookie_ttl: 0,
+          waiting_for_verify_code: true,
+          login_in_progress: true,
+          latest_attempt: {
+            id: "attempt-871",
+            status: "waiting_verify_code",
+          },
+        },
       ],
       isLoading: false,
       isError: false,
@@ -129,52 +145,101 @@ describe("SheinLoginPage", () => {
     expect(screen.queryByRole("button", { name: "Close Verify Code Dialog" })).not.toBeInTheDocument();
   });
 
-  it("disables login and verify-code actions while cancellation is pending", async () => {
-    mocks.cancelMutation.isPending = true;
+  it("scopes cancellation pending UI to the target store", async () => {
+    const user = userEvent.setup();
+    mocks.cancelMutation.mutate.mockImplementation(() => {
+      mocks.cancelMutation.isPending = true;
+    });
 
     render(<SheinLoginPage />);
 
-    const row = (await screen.findByText("SHEIN Active Store")).closest("tr");
-    expect(row).not.toBeNull();
+    const activeRow = (await screen.findByText("SHEIN Active Store")).closest("tr");
+    const backupRow = (await screen.findByText("SHEIN Backup Store")).closest("tr");
+    expect(activeRow).not.toBeNull();
+    expect(backupRow).not.toBeNull();
+
+    await user.click(
+      within(activeRow as HTMLElement).getByRole("button", {
+        name: "Cancel Login for store 870",
+      }),
+    );
 
     expect(
-      within(row as HTMLElement).getByRole("button", {
+      within(activeRow as HTMLElement).getByRole("button", {
+        name: "Cancelling login for store 870",
+      }),
+    ).toHaveAttribute("aria-busy", "true");
+    expect(
+      within(activeRow as HTMLElement).getByRole("button", {
         name: "重新登录",
       }),
     ).toBeDisabled();
     expect(
-      within(row as HTMLElement).getByRole("button", {
+      within(activeRow as HTMLElement).getByRole("button", {
         name: "Open Verify Code for store 870",
       }),
     ).toBeDisabled();
+
     expect(
-      within(row as HTMLElement).getByRole("button", {
-        name: "Cancelling login for store 870",
+      within(backupRow as HTMLElement).getByRole("button", {
+        name: "Cancel Login for store 871",
       }),
-    ).toHaveAttribute("aria-busy", "true");
+    ).toBeInTheDocument();
+    expect(
+      within(backupRow as HTMLElement).getByRole("button", {
+        name: "重新登录",
+      }),
+    ).not.toBeDisabled();
+    expect(
+      within(backupRow as HTMLElement).getByRole("button", {
+        name: "Open Verify Code for store 871",
+      }),
+    ).not.toBeDisabled();
     expect(screen.getByRole("status")).toHaveTextContent("Cancelling the active login attempt...");
   });
 
-  it("shows accessible cancellation feedback in the verify-code dialog", async () => {
+  it("shows cancellation feedback only in the target store verify dialog", async () => {
     const user = userEvent.setup();
-    mocks.cancelMutation.error = new Error("Cancel login failed.");
+    mocks.cancelMutation.mutate.mockImplementation(() => {
+      mocks.cancelMutation.error = new Error("Cancel login failed.");
+    });
 
     render(<SheinLoginPage />);
 
-    const row = (await screen.findByText("SHEIN Active Store")).closest("tr");
-    expect(row).not.toBeNull();
+    const activeRow = (await screen.findByText("SHEIN Active Store")).closest("tr");
+    const backupRow = (await screen.findByText("SHEIN Backup Store")).closest("tr");
+    expect(activeRow).not.toBeNull();
+    expect(backupRow).not.toBeNull();
 
     await user.click(
-      within(row as HTMLElement).getByRole("button", {
-        name: "Open Verify Code for store 870",
+      within(activeRow as HTMLElement).getByRole("button", {
+        name: "Cancel Login for store 870",
+      }),
+    );
+
+    await user.click(
+      within(backupRow as HTMLElement).getByRole("button", {
+        name: "Open Verify Code for store 871",
       }),
     );
 
     expect(screen.getByRole("dialog", { name: "Submit Verify Code" })).toBeInTheDocument();
-    expect(screen.getByRole("alert")).toHaveTextContent("Cancel login failed.");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close Verify Code Dialog" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel Login" })).toBeInTheDocument();
     expect(screen.getByRole("status")).toHaveTextContent("Cancel login failed.");
+
+    await user.click(screen.getByRole("button", { name: "Close Verify Code Dialog" }));
+    await user.click(
+      within(activeRow as HTMLElement).getByRole("button", {
+        name: "Open Verify Code for store 870",
+      }),
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Cancel login failed.");
+    expect(screen.getByRole("button", { name: "Close Verify Code Dialog" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel Login" })).toBeInTheDocument();
   });
 });

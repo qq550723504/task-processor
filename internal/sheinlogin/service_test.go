@@ -313,6 +313,70 @@ func TestWorkerProcessesQueuedAttemptWithoutRequeueing(t *testing.T) {
 	}
 }
 
+func TestWorkerFailedAttemptPersistsFailureSummary(t *testing.T) {
+	capturedAt := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
+	summary := &FailureSummary{
+		ErrorCode:     "REQUEST_FAILED",
+		ErrorMessage:  "request modal blocked login",
+		PageState:     "request_failure",
+		ActionKey:     "retry_login",
+		ActionMessage: "retry after clearing the request failure modal",
+		Stage:         "wait_login",
+		CapturedAt:    capturedAt,
+		URL:           "https://sellerhub.shein.com/login",
+	}
+	svc := newTestService(t, &stubAutomation{result: &AutomationResult{
+		ErrorCode:           "LOGIN_FAILED",
+		ErrorMessage:        "fallback failure message",
+		FailureArtifactPath: "/worker-only/artifact",
+		FailureSummary:      summary,
+	}})
+	svc.executionMode = "worker"
+
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	if err := svc.processLoginAttemptMessage(context.Background(), "test-worker", "", map[string]any{"attempt_id": attempt.ID}); err != nil {
+		t.Fatalf("process attempt: %v", err)
+	}
+
+	updated, err := svc.store.LoadLoginAttempt(context.Background(), attempt.ID)
+	if err != nil {
+		t.Fatalf("load updated attempt: %v", err)
+	}
+	if updated == nil || updated.Status != LoginAttemptFailed {
+		t.Fatalf("attempt status = %+v, want failed", updated)
+	}
+
+	persisted, err := svc.store.LastFailure(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("load last failure: %v", err)
+	}
+	if persisted == nil || persisted.ErrorCode != summary.ErrorCode || persisted.ErrorMessage != summary.ErrorMessage || persisted.Stage != summary.Stage || persisted.ActionKey != summary.ActionKey || persisted.ActionMessage != summary.ActionMessage || !persisted.CapturedAt.Equal(capturedAt) {
+		t.Fatalf("persisted failure = %+v, want preserved summary", persisted)
+	}
+
+	detail, err := svc.store.LastFailureDetail(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("load cached failure detail: %v", err)
+	}
+	if detail == nil || detail.ErrorCode != summary.ErrorCode || detail.ErrorMessage != summary.ErrorMessage || detail.Stage != summary.Stage || !detail.CapturedAt.Equal(capturedAt) {
+		t.Fatalf("cached failure detail = %+v, want summary-derived detail", detail)
+	}
+
+	status, err := svc.Status(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if status.LastFailure == nil || status.LastFailure.ErrorCode != summary.ErrorCode {
+		t.Fatalf("status last failure = %+v, want persisted summary", status.LastFailure)
+	}
+	if status.RecommendedAction.Key != summary.ActionKey || status.RecommendedAction.Message != summary.ActionMessage {
+		t.Fatalf("recommended action = %+v, want summary action", status.RecommendedAction)
+	}
+}
+
 func TestSubmitVerifyCodeForAttemptRejectsStoreMismatch(t *testing.T) {
 	svc := newTestService(t, &stubAutomation{})
 	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
@@ -602,6 +666,44 @@ func TestCompleteLoginAttemptIfActiveDoesNotOverwriteCancellation(t *testing.T) 
 	}
 	if updated.Message != "verification cancelled by user" {
 		t.Fatalf("attempt message = %q, want cancellation message", updated.Message)
+	}
+}
+
+func TestCompleteLoginAttemptDoesNotPersistFailureWhenCancellationWins(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+
+	_, cancelled, err := svc.store.CancelLoginAttempt(context.Background(), 1, 2, "verification cancelled by user")
+	if err != nil || !cancelled {
+		t.Fatalf("cancel attempt: cancelled=%v err=%v", cancelled, err)
+	}
+
+	staleFailed := *attempt
+	if err := svc.completeLoginAttempt(context.Background(), &staleFailed, LoginAttemptFailed, "REQUEST_FAILED", "request modal blocked login", ""); err != nil {
+		t.Fatalf("complete stale failure attempt: %v", err)
+	}
+
+	lastFailure, err := svc.store.LastFailure(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("load last failure: %v", err)
+	}
+	if lastFailure != nil {
+		t.Fatalf("last failure = %+v, want nil after cancellation wins", lastFailure)
+	}
+
+	detail, err := svc.store.LastFailureDetail(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("load last failure detail: %v", err)
+	}
+	if detail != nil {
+		t.Fatalf("last failure detail = %+v, want nil after cancellation wins", detail)
 	}
 }
 

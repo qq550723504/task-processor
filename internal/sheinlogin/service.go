@@ -687,7 +687,20 @@ func runResultFailureSummary(runResult *AutomationResult) *FailureSummary {
 		return &FailureSummary{ErrorCode: "LOGIN_FAILED", ErrorMessage: "login failed"}
 	}
 	if runResult.FailureSummary != nil {
-		return runResult.FailureSummary
+		summary := *runResult.FailureSummary
+		if strings.TrimSpace(summary.ErrorCode) == "" {
+			summary.ErrorCode = failureCode(runResult)
+		}
+		if strings.TrimSpace(summary.ErrorMessage) == "" {
+			summary.ErrorMessage = failureMessage(runResult)
+		}
+		if strings.TrimSpace(summary.ArtifactPath) == "" {
+			summary.ArtifactPath = failureArtifactPath(runResult)
+		}
+		if runResult.WaitingForVerifyCode {
+			summary.WaitingForVerifyCode = true
+		}
+		return &summary
 	}
 	if runResult.ErrorCode == "" && runResult.ErrorMessage == "" && runResult.FailureArtifactPath == "" {
 		return nil
@@ -700,6 +713,47 @@ func runResultFailureSummary(runResult *AutomationResult) *FailureSummary {
 		ActionKey:            "inspect_artifact",
 		ActionMessage:        "查看失败详情和 artifact，确认当前页面分支后再处理",
 	}
+}
+
+func workerFailureSummary(attemptStatus LoginAttemptStatus, errorCode, message string, summary *FailureSummary) *FailureSummary {
+	if summary == nil && strings.TrimSpace(errorCode) == "" && strings.TrimSpace(message) == "" {
+		return nil
+	}
+	var merged FailureSummary
+	if summary != nil {
+		merged = *summary
+	}
+	if strings.TrimSpace(merged.ErrorCode) == "" {
+		merged.ErrorCode = strings.TrimSpace(errorCode)
+	}
+	if strings.TrimSpace(merged.ErrorCode) == "" {
+		merged.ErrorCode = "LOGIN_FAILED"
+	}
+	if strings.TrimSpace(merged.ErrorMessage) == "" {
+		merged.ErrorMessage = strings.TrimSpace(message)
+	}
+	if strings.TrimSpace(merged.ErrorMessage) == "" {
+		merged.ErrorMessage = "login failed"
+	}
+	if merged.CapturedAt.IsZero() {
+		merged.CapturedAt = time.Now().UTC()
+	}
+	if strings.TrimSpace(merged.Stage) == "" {
+		switch {
+		case attemptStatus == LoginAttemptWaitingVerifyCode || strings.HasPrefix(strings.TrimSpace(merged.ErrorCode), "VERIFY_CODE_"):
+			merged.Stage = "wait_login"
+		default:
+			merged.Stage = "start_login"
+		}
+	}
+	if strings.TrimSpace(merged.ActionKey) == "" && strings.TrimSpace(merged.ActionMessage) == "" {
+		merged.ActionKey, merged.ActionMessage = deriveFailureAction(
+			strings.TrimSpace(merged.PageState),
+			merged.WaitingForVerifyCode,
+			strings.TrimSpace(merged.ErrorCode),
+		)
+	}
+	return &merged
 }
 
 func failureMessage(runResult *AutomationResult) string {
@@ -923,6 +977,25 @@ func (s *Service) cacheLastFailureDetail(ctx context.Context, tenantID, storeID 
 			"store_id":  storeID,
 		}).Warn("cache SHEIN login failure detail failed")
 	}
+}
+
+func (s *Service) persistCommittedWorkerFailure(ctx context.Context, attempt *LoginAttempt, statusBeforeCompletion LoginAttemptStatus, errorCode, message string, summary *FailureSummary) {
+	if s == nil || s.store == nil || attempt == nil {
+		return
+	}
+	merged := workerFailureSummary(statusBeforeCompletion, errorCode, message, summary)
+	if merged == nil {
+		return
+	}
+	if err := s.store.RecordLastFailure(ctx, attempt.TenantID, attempt.StoreID, merged, 30*24*time.Hour); err != nil {
+		sheinLoginServiceLogger.WithError(err).WithFields(map[string]any{
+			"tenant_id":  attempt.TenantID,
+			"store_id":   attempt.StoreID,
+			"attempt_id": attempt.ID,
+		}).Warn("persist SHEIN login failure summary failed")
+		return
+	}
+	s.cacheLastFailureDetail(ctx, attempt.TenantID, attempt.StoreID)
 }
 
 func (s *Service) setSession(tenantID int64, storeID int64, session VerifySession) {
