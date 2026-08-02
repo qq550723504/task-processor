@@ -380,6 +380,88 @@ func TestWorkerCancelsBrowserExecution(t *testing.T) {
 	}
 }
 
+func TestWorkerCancellationPreservesExistingCookieState(t *testing.T) {
+	auto := &blockingLoginAutomation{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+	}
+	svc := newTestService(t, auto)
+	svc.executionMode = "worker"
+
+	if err := svc.store.SaveCookieState(context.Background(), 1, 2, map[string]any{
+		"cookies": []any{
+			map[string]any{
+				"name":   "session",
+				"value":  "existing-cookie",
+				"domain": ".shein.com",
+				"path":   "/",
+			},
+		},
+	}, time.Hour); err != nil {
+		t.Fatalf("seed cookie: %v", err)
+	}
+	beforeRaw, ok, err := svc.store.LoadCookieState(context.Background(), 1, 2)
+	if err != nil || !ok {
+		t.Fatalf("load seeded cookie: ok=%v err=%v", ok, err)
+	}
+
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	if err := svc.store.EnsureLoginAttemptConsumerGroup(context.Background()); err != nil {
+		t.Fatalf("create consumer group: %v", err)
+	}
+	messages, err := svc.store.ReadLoginAttemptJobs(context.Background(), "worker-one", time.Second)
+	if err != nil || len(messages) != 1 {
+		t.Fatalf("read attempt job: messages=%v err=%v", messages, err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- svc.processLoginAttemptMessage(ctx, "worker-one", messages[0].ID, messages[0].Values)
+	}()
+
+	select {
+	case <-auto.started:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not start browser execution")
+	}
+
+	cancelled, err := svc.CancelVerifyCodeWait(context.Background(), 1, 2)
+	if err != nil || !cancelled {
+		t.Fatalf("cancel verify wait: cancelled=%v err=%v", cancelled, err)
+	}
+
+	select {
+	case <-auto.cancelled:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("browser execution did not observe attempt cancellation")
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("process attempt: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not finish after attempt cancellation")
+	}
+
+	afterRaw, ok, err := svc.store.LoadCookieState(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("load cookie after cancellation: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected cancellation to preserve the existing cookie state")
+	}
+	if afterRaw != beforeRaw {
+		t.Fatalf("cookie payload changed after cancellation: before=%s after=%s", beforeRaw, afterRaw)
+	}
+}
+
 func TestCompleteLoginAttemptIfActiveDoesNotOverwriteCancellation(t *testing.T) {
 	svc := newTestService(t, &stubAutomation{})
 	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
@@ -464,6 +546,89 @@ func TestFinishAttemptVerifyResultDoesNotOverwriteCancellationWithVerifyWait(t *
 	}
 	if updated.Message != "verification cancelled by user" {
 		t.Fatalf("attempt message = %q, want cancellation message", updated.Message)
+	}
+	waiting, err := svc.store.IsWaitingVerifyCode(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("check verify wait: %v", err)
+	}
+	if waiting {
+		t.Fatal("cancelled attempt should not recreate verify wait state")
+	}
+}
+
+func TestCompleteSuccessfulAttemptDoesNotOverwriteCancellation(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	if err := svc.store.SaveCookieState(context.Background(), 1, 2, map[string]any{
+		"cookies": []any{
+			map[string]any{
+				"name":   "session",
+				"value":  "existing-cookie",
+				"domain": ".shein.com",
+				"path":   "/",
+			},
+		},
+	}, time.Hour); err != nil {
+		t.Fatalf("seed cookie: %v", err)
+	}
+	beforeRaw, ok, err := svc.store.LoadCookieState(context.Background(), 1, 2)
+	if err != nil || !ok {
+		t.Fatalf("load seeded cookie: ok=%v err=%v", ok, err)
+	}
+
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+
+	cancelledAttempt, cancelled, err := svc.store.CancelLoginAttempt(context.Background(), 1, 2, "verification cancelled by user")
+	if err != nil || !cancelled {
+		t.Fatalf("cancel attempt: attempt=%+v cancelled=%v err=%v", cancelledAttempt, cancelled, err)
+	}
+
+	account, err := svc.provider.GetAccount(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("get account: %v", err)
+	}
+	if err := svc.completeSuccessfulAttempt(context.Background(), attempt, account, map[string]any{
+		"cookies": []any{
+			map[string]any{
+				"name":   "session",
+				"value":  "fresh-cookie",
+				"domain": ".shein.com",
+				"path":   "/",
+			},
+		},
+	}, "login succeeded", ""); err != nil {
+		t.Fatalf("complete successful attempt: %v", err)
+	}
+
+	afterRaw, ok, err := svc.store.LoadCookieState(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("load cookie after stale success: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected stale success to leave the original cookie state in place")
+	}
+	if afterRaw != beforeRaw {
+		t.Fatalf("cookie payload changed after stale success: before=%s after=%s", beforeRaw, afterRaw)
+	}
+	lastLogin, err := svc.store.LastLoginTime(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("last login after stale success: %v", err)
+	}
+	if lastLogin != nil {
+		t.Fatalf("stale success should not record last login time: %v", lastLogin)
+	}
+	updated, err := svc.store.LoadLoginAttempt(context.Background(), attempt.ID)
+	if err != nil {
+		t.Fatalf("load attempt after stale success: %v", err)
+	}
+	if updated == nil || updated.Status != LoginAttemptCancelled {
+		t.Fatalf("attempt status = %+v, want cancelled", updated)
 	}
 }
 

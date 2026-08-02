@@ -385,7 +385,12 @@ function VerifyCodeDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 px-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Submit Verify Code"
+    >
       <div className="w-full max-w-md rounded-3xl border border-border/70 bg-card p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -399,7 +404,7 @@ function VerifyCodeDialog({
             variant="ghost"
             className="h-9 px-3"
             onClick={onClose}
-            disabled={pending || cancelPending}
+            disabled={pending}
             aria-label="Close Verify Code Dialog"
           >
             关闭
@@ -419,13 +424,16 @@ function VerifyCodeDialog({
         </Label>
 
         {cancelError ? (
-          <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+          <div
+            className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+            role="alert"
+          >
             {cancelError.message || "Cancel login failed."}
           </div>
         ) : null}
 
         <div className="mt-5 flex justify-end gap-3">
-          <Button variant="secondary" onClick={onClose} disabled={pending || cancelPending}>
+          <Button variant="secondary" onClick={onClose} disabled={pending}>
             取消
           </Button>
           <Button variant="danger" onClick={onCancelLogin} disabled={pending || cancelPending}>
@@ -797,7 +805,7 @@ export function SheinLoginPage() {
                             variant={actionTone(item, "login")}
                             className="h-9 px-3"
                             onClick={() => login.mutate(item.account.store_id)}
-                            disabled={login.isPending}
+                            disabled={login.isPending || cancelLogin.isPending}
                           >
                             重新登录
                           </Button>
@@ -824,6 +832,7 @@ export function SheinLoginPage() {
                             variant={actionTone(item, "code")}
                             className="h-9 px-3"
                             onClick={() => setVerifyStoreID(item.account.store_id)}
+                            disabled={cancelLogin.isPending}
                             aria-label={`Open Verify Code for store ${item.account.store_id}`}
                           >
                             <KeyRound className="mr-2 h-4 w-4" />

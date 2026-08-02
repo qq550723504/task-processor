@@ -124,4 +124,46 @@ describe("SheinLoginPage", () => {
     expect(mocks.cancelMutation.mutate).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Close Verify Code Dialog" })).not.toBeInTheDocument();
   });
+
+  it("disables login and verify-code actions while cancellation is pending", async () => {
+    mocks.cancelMutation.isPending = true;
+
+    render(<SheinLoginPage />);
+
+    const row = (await screen.findByText("SHEIN Active Store")).closest("tr");
+    expect(row).not.toBeNull();
+
+    expect(
+      within(row as HTMLElement).getByRole("button", {
+        name: "重新登录",
+      }),
+    ).toBeDisabled();
+    expect(
+      within(row as HTMLElement).getByRole("button", {
+        name: "Open Verify Code for store 870",
+      }),
+    ).toBeDisabled();
+    expect(screen.getByText("Cancelling the active login attempt...")).toBeInTheDocument();
+  });
+
+  it("shows accessible cancellation feedback in the verify-code dialog", async () => {
+    const user = userEvent.setup();
+    mocks.cancelMutation.error = new Error("Cancel login failed.");
+
+    render(<SheinLoginPage />);
+
+    const row = (await screen.findByText("SHEIN Active Store")).closest("tr");
+    expect(row).not.toBeNull();
+
+    await user.click(
+      within(row as HTMLElement).getByRole("button", {
+        name: "Open Verify Code for store 870",
+      }),
+    );
+
+    expect(screen.getByRole("dialog", { name: "Submit Verify Code" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Cancel login failed.");
+    expect(screen.getByRole("button", { name: "Close Verify Code Dialog" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel Login" })).toBeInTheDocument();
+  });
 });

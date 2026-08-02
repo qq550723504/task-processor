@@ -140,14 +140,7 @@ func (s *Service) processLoginAttemptMessage(ctx context.Context, workerID, mess
 		if control.Cancelled() {
 			return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptCancelled, "LOGIN_CANCELLED", "verification cancelled by user", messageID)
 		}
-		persistCtx := context.Background()
-		if err := s.persistVerifyWait(persistCtx, account, runResult); err != nil {
-			return s.completeLoginAttempt(persistCtx, attempt, LoginAttemptFailed, "VERIFY_CODE_WAIT_FAILED", err.Error(), messageID)
-		}
-		attempt.Status = LoginAttemptWaitingVerifyCode
-		attempt.Message = runResult.ErrorMessage
-		attempt.ErrorCode = runResult.ErrorCode
-		updated, err := s.updateActiveAttemptState(persistCtx, attempt, messageID)
+		updated, err := s.transitionAttemptToVerifyWait(context.Background(), attempt, account, runResult, messageID)
 		if err != nil {
 			return err
 		}
@@ -160,10 +153,7 @@ func (s *Service) processLoginAttemptMessage(ctx context.Context, workerID, mess
 		return s.waitForAttemptVerifyCode(ctx, attemptCtx, attempt, account, session, control, messageID)
 	}
 	if runResult != nil && runResult.BrowserState != nil {
-		if _, err := s.persistSuccessfulBrowserState(context.Background(), *account, runResult.BrowserState); err != nil {
-			return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "LOGIN_PERSIST_FAILED", err.Error(), messageID)
-		}
-		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptSucceeded, "", "login succeeded", messageID)
+		return s.completeSuccessfulAttempt(context.Background(), attempt, account, runResult.BrowserState, "login succeeded", messageID)
 	}
 	message := "SHEIN login failed"
 	errorCode := "LOGIN_FAILED"
@@ -393,11 +383,7 @@ func (s *Service) waitForAttemptVerifyCode(parentCtx, attemptCtx context.Context
 				waitCh = nil
 				continue
 			}
-			_, err := s.persistSuccessfulBrowserState(context.Background(), *account, waitResult.result.BrowserState)
-			if err != nil {
-				return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "LOGIN_PERSIST_FAILED", err.Error(), messageID)
-			}
-			return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptSucceeded, "", "login succeeded", messageID)
+			return s.completeSuccessfulAttempt(context.Background(), attempt, account, waitResult.result.BrowserState, "login succeeded", messageID)
 		}
 	}
 }
@@ -407,20 +393,10 @@ func (s *Service) finishAttemptVerifyResult(attempt *LoginAttempt, account *Acco
 		return true, nil
 	}
 	if runResult != nil && runResult.BrowserState != nil {
-		if _, err := s.persistSuccessfulBrowserState(context.Background(), *account, runResult.BrowserState); err != nil {
-			return true, s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "LOGIN_PERSIST_FAILED", err.Error(), messageID)
-		}
-		return true, s.completeLoginAttempt(context.Background(), attempt, LoginAttemptSucceeded, "", "login succeeded", messageID)
+		return true, s.completeSuccessfulAttempt(context.Background(), attempt, account, runResult.BrowserState, "login succeeded", messageID)
 	}
 	if runResult != nil && runResult.WaitingForVerifyCode {
-		persistCtx := context.Background()
-		if err := s.persistVerifyWait(persistCtx, account, runResult); err != nil {
-			return true, s.completeLoginAttempt(persistCtx, attempt, LoginAttemptFailed, "VERIFY_CODE_WAIT_FAILED", err.Error(), messageID)
-		}
-		attempt.Status = LoginAttemptWaitingVerifyCode
-		attempt.Message = runResult.ErrorMessage
-		attempt.ErrorCode = runResult.ErrorCode
-		updated, err := s.updateActiveAttemptState(persistCtx, attempt, messageID)
+		updated, err := s.transitionAttemptToVerifyWait(context.Background(), attempt, account, runResult, messageID)
 		if err != nil {
 			return true, err
 		}
@@ -449,6 +425,67 @@ func (s *Service) completeLoginAttempt(ctx context.Context, attempt *LoginAttemp
 		s.cacheLastFailureDetail(ctx, attempt.TenantID, attempt.StoreID)
 	}
 	if !completed {
+		current, loadErr := s.store.LoadLoginAttempt(ctx, attempt.ID)
+		if loadErr != nil {
+			return loadErr
+		}
+		if current != nil {
+			*attempt = *current
+		}
+	}
+	if strings.TrimSpace(messageID) == "" {
+		return nil
+	}
+	return s.store.AcknowledgeLoginAttemptJob(ctx, messageID)
+}
+
+func (s *Service) transitionAttemptToVerifyWait(ctx context.Context, attempt *LoginAttempt, account *Account, runResult *AutomationResult, messageID string) (bool, error) {
+	if attempt == nil || account == nil {
+		return false, nil
+	}
+	summary := runResultFailureSummary(runResult)
+	if summary == nil {
+		summary = verifyCodeFailureSummary(account)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	attempt.Message = summary.ErrorMessage
+	attempt.ErrorCode = summary.ErrorCode
+	updated, err := s.store.PersistVerifyWaitAndUpdateAttemptIfActive(ctx, attempt, summary, 10*time.Minute, 30*24*time.Hour)
+	if err != nil {
+		return false, err
+	}
+	if updated {
+		return true, nil
+	}
+	current, loadErr := s.store.LoadLoginAttempt(ctx, attempt.ID)
+	if loadErr != nil {
+		return false, loadErr
+	}
+	if current != nil {
+		*attempt = *current
+	}
+	if strings.TrimSpace(messageID) == "" {
+		return false, nil
+	}
+	return false, s.store.AcknowledgeLoginAttemptJob(ctx, messageID)
+}
+
+func (s *Service) completeSuccessfulAttempt(ctx context.Context, attempt *LoginAttempt, account *Account, browserState map[string]any, message, messageID string) error {
+	if attempt == nil || account == nil {
+		return nil
+	}
+	now := time.Now().UTC()
+	attempt.Status = LoginAttemptSucceeded
+	attempt.ErrorCode = ""
+	attempt.Message = message
+	attempt.CompletedAt = &now
+	completed, err := s.store.CompleteSuccessfulLoginAttemptIfActive(ctx, attempt, browserState, now)
+	if err != nil {
+		return err
+	}
+	if completed {
+		s.syncStoreIDAfterLogin(ctx, *account)
+	} else {
 		current, loadErr := s.store.LoadLoginAttempt(ctx, attempt.ID)
 		if loadErr != nil {
 			return loadErr

@@ -263,11 +263,6 @@ func (s *Service) runLoginStart(ctx context.Context, account *Account, req Login
 		session   VerifySession
 	)
 	err := s.runtime.withStoreLock(account.StoreID, func() error {
-		if req.ForceLogin {
-			if err := s.store.ClearCookie(ctx, account.TenantID, account.StoreID); err != nil {
-				return err
-			}
-		}
 		var runErr error
 		runResult, session, runErr = s.automation.StartLogin(ctx, *account, s.loginAutomationConfig(s.resolveHeadless(req)))
 		return runErr
@@ -323,11 +318,6 @@ func (s *Service) loginInline(ctx context.Context, tenantID int64, storeID int64
 
 	var result *LoginResult
 	err = s.runtime.withStoreLock(account.StoreID, func() error {
-		if req.ForceLogin {
-			if err := s.store.ClearCookie(ctx, account.TenantID, account.StoreID); err != nil {
-				return err
-			}
-		}
 		headless := s.defaultHeadless
 		if s.forceHeadless {
 			headless = true

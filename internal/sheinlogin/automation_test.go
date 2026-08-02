@@ -1,6 +1,7 @@
 package sheinlogin
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"sync"
@@ -47,6 +48,51 @@ func TestLaunchManagerWithTimeoutClosesBlockedLaunch(t *testing.T) {
 	case <-manager.closed:
 	case <-time.After(time.Second):
 		t.Fatal("Close was not called after launch timeout")
+	}
+}
+
+func TestRunBlockingStageWithContextClosesResourcesOnCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	started := make(chan struct{})
+	closed := make(chan struct{})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runBlockingStageWithContext(ctx, func() {
+			select {
+			case <-closed:
+			default:
+				close(closed)
+			}
+		}, func() error {
+			close(started)
+			select {}
+		})
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("blocking stage did not start")
+	}
+
+	cancel()
+
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("blocking stage cancellation did not close resources")
+	}
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("runBlockingStageWithContext error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("blocking stage did not return after cancellation")
 	}
 }
 
