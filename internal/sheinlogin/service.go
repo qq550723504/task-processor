@@ -491,7 +491,7 @@ func (s *Service) SubmitVerifyCode(ctx context.Context, tenantID int64, storeID 
 			return nil
 		}
 	}
-	ttl := 5 * time.Minute
+	ttl := 10 * time.Minute
 	if expireSeconds > 0 {
 		ttl = time.Duration(expireSeconds) * time.Second
 	}
@@ -528,7 +528,7 @@ func (s *Service) SubmitVerifyCodeForAttempt(ctx context.Context, tenantID int64
 	if attempt == nil || attempt.TenantID != account.TenantID || attempt.StoreID != account.StoreID || attempt.Status != LoginAttemptWaitingVerifyCode {
 		return fmt.Errorf("verification attempt is unavailable")
 	}
-	ttl := 5 * time.Minute
+	ttl := 10 * time.Minute
 	if expireSeconds > 0 {
 		ttl = time.Duration(expireSeconds) * time.Second
 	}
