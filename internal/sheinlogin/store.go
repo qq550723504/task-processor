@@ -456,6 +456,10 @@ func (s *RedisStore) UpdateLoginAttempt(ctx context.Context, attempt *LoginAttem
 	if attempt == nil || strings.TrimSpace(attempt.ID) == "" {
 		return fmt.Errorf("login attempt is required")
 	}
+	if !attempt.Status.IsActive() {
+		_, err := s.CompleteLoginAttemptIfActive(ctx, attempt)
+		return err
+	}
 	if err := s.saveLoginAttempt(ctx, attempt); err != nil {
 		return err
 	}
@@ -463,6 +467,49 @@ func (s *RedisStore) UpdateLoginAttempt(ctx context.Context, attempt *LoginAttem
 		return s.refreshLoginAttemptLease(ctx, attempt)
 	}
 	return s.releaseLoginAttemptLease(ctx, attempt)
+}
+
+func (s *RedisStore) CompleteLoginAttemptIfActive(ctx context.Context, attempt *LoginAttempt) (bool, error) {
+	if attempt == nil || strings.TrimSpace(attempt.ID) == "" {
+		return false, fmt.Errorf("login attempt is required")
+	}
+	if attempt.Status.IsActive() {
+		return false, fmt.Errorf("login attempt completion requires a terminal status")
+	}
+	body, err := json.Marshal(attempt)
+	if err != nil {
+		return false, err
+	}
+	const completeAttemptIfActiveScript = `
+local raw = redis.call("GET", KEYS[2])
+if not raw then
+	return 0
+end
+local current = cjson.decode(raw)
+local status = tostring(current["status"] or "")
+if status ~= "queued" and status ~= "launching" and status ~= "waiting_verify_code" then
+	return 0
+end
+redis.call("SET", KEYS[2], ARGV[2], "PX", ARGV[3])
+redis.call("SET", KEYS[3], ARGV[1], "PX", ARGV[3])
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+	redis.call("DEL", KEYS[1])
+end
+return 1`
+	result, err := s.client.Eval(ctx, completeAttemptIfActiveScript,
+		[]string{
+			loginAttemptActiveKey(attempt.TenantID, attempt.StoreID),
+			loginAttemptKey(attempt.ID),
+			loginAttemptLatestKey(attempt.TenantID, attempt.StoreID),
+		},
+		attempt.ID,
+		body,
+		loginAttemptTTL.Milliseconds(),
+	).Int()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
 }
 
 func (s *RedisStore) EnsureLoginAttemptConsumerGroup(ctx context.Context) error {
@@ -518,8 +565,14 @@ func (s *RedisStore) ClaimStaleLoginAttemptJobs(ctx context.Context, consumer st
 // and marks the attempt terminal before allowing another attempt for the store.
 func (s *RedisStore) CancelLoginAttempt(ctx context.Context, tenantID, storeID int64, message string) (*LoginAttempt, bool, error) {
 	attempt, err := s.LatestLoginAttempt(ctx, tenantID, storeID)
-	if err != nil || attempt == nil || !attempt.Status.IsActive() {
+	if err != nil || attempt == nil {
 		return attempt, false, err
+	}
+	if attempt.Status == LoginAttemptCancelled {
+		return attempt, true, nil
+	}
+	if !attempt.Status.IsActive() {
+		return attempt, false, nil
 	}
 	now := time.Now().UTC()
 	attempt.Status = LoginAttemptCancelled
@@ -531,13 +584,27 @@ func (s *RedisStore) CancelLoginAttempt(ctx context.Context, tenantID, storeID i
 		return nil, false, err
 	}
 	const cancelAttemptScript = `
+local raw = redis.call("GET", KEYS[2])
+if not raw then
+	return 0
+end
+local current = cjson.decode(raw)
+local status = tostring(current["status"] or "")
+if status == "cancelled" then
+	return 2
+end
+if status ~= "queued" and status ~= "launching" and status ~= "waiting_verify_code" then
+	return 0
+end
 redis.call("SET", KEYS[2], ARGV[2], "PX", ARGV[3])
 redis.call("SET", KEYS[3], ARGV[1], "PX", ARGV[3])
 redis.call("RPUSH", KEYS[4], "cancel")
 redis.call("PEXPIRE", KEYS[4], ARGV[4])
-if redis.call("GET", KEYS[1]) == ARGV[1] then redis.call("DEL", KEYS[1]) end
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+	redis.call("DEL", KEYS[1])
+end
 return 1`
-	if err := s.client.Eval(ctx, cancelAttemptScript,
+	result, err := s.client.Eval(ctx, cancelAttemptScript,
 		[]string{
 			loginAttemptActiveKey(tenantID, storeID),
 			loginAttemptKey(attempt.ID),
@@ -548,8 +615,25 @@ return 1`
 		body,
 		loginAttemptTTL.Milliseconds(),
 		activeAttemptLeaseTTL.Milliseconds(),
-	).Err(); err != nil {
+	).Int()
+	if err != nil {
 		return nil, false, err
+	}
+	if result == 2 {
+		current, loadErr := s.LoadLoginAttempt(ctx, attempt.ID)
+		if loadErr != nil {
+			return nil, false, loadErr
+		}
+		if current != nil {
+			return current, true, nil
+		}
+	}
+	if result != 1 {
+		current, loadErr := s.LoadLoginAttempt(ctx, attempt.ID)
+		if loadErr != nil {
+			return nil, false, loadErr
+		}
+		return current, false, nil
 	}
 	return attempt, true, nil
 }

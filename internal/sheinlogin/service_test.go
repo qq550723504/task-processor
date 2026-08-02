@@ -302,6 +302,80 @@ func TestWorkerLeavesVerificationJobPendingOnShutdown(t *testing.T) {
 	}
 }
 
+func TestCompleteLoginAttemptIfActiveDoesNotOverwriteCancellation(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+
+	staleSuccess := *attempt
+	now := time.Now().UTC()
+	staleSuccess.Status = LoginAttemptSucceeded
+	staleSuccess.Message = "login succeeded"
+	staleSuccess.CompletedAt = &now
+
+	cancelledAttempt, cancelled, err := svc.store.CancelLoginAttempt(context.Background(), 1, 2, "verification cancelled by user")
+	if err != nil || !cancelled {
+		t.Fatalf("cancel attempt: attempt=%+v cancelled=%v err=%v", cancelledAttempt, cancelled, err)
+	}
+
+	completed, err := svc.store.CompleteLoginAttemptIfActive(context.Background(), &staleSuccess)
+	if err != nil {
+		t.Fatalf("complete stale success attempt: %v", err)
+	}
+	if completed {
+		t.Fatal("expected stale success completion to be rejected")
+	}
+
+	updated, err := svc.store.LoadLoginAttempt(context.Background(), attempt.ID)
+	if err != nil {
+		t.Fatalf("load cancelled attempt: %v", err)
+	}
+	if updated == nil || updated.Status != LoginAttemptCancelled {
+		t.Fatalf("attempt status = %+v, want cancelled", updated)
+	}
+	if updated.Message != "verification cancelled by user" {
+		t.Fatalf("attempt message = %q, want cancellation message", updated.Message)
+	}
+}
+
+func TestCancelLoginAttemptIsIdempotent(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+
+	firstAttempt, firstCancelled, err := svc.store.CancelLoginAttempt(context.Background(), 1, 2, "verification cancelled by user")
+	if err != nil || !firstCancelled {
+		t.Fatalf("first cancel: attempt=%+v cancelled=%v err=%v", firstAttempt, firstCancelled, err)
+	}
+	controlKey := loginAttemptControlKey(attempt.ID)
+	if length := svc.store.client.LLen(context.Background(), controlKey).Val(); length != 1 {
+		t.Fatalf("control queue length after first cancel = %d, want 1", length)
+	}
+
+	secondAttempt, secondCancelled, err := svc.store.CancelLoginAttempt(context.Background(), 1, 2, "verification cancelled by user")
+	if err != nil {
+		t.Fatalf("second cancel: %v", err)
+	}
+	if !secondCancelled {
+		t.Fatalf("second cancel should remain successful, attempt=%+v", secondAttempt)
+	}
+	if length := svc.store.client.LLen(context.Background(), controlKey).Val(); length != 1 {
+		t.Fatalf("control queue length after second cancel = %d, want 1", length)
+	}
+}
+
 func TestCancelVerifyCodeWaitSignalsOwningWorker(t *testing.T) {
 	svc := newTestService(t, &stubAutomation{})
 	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
