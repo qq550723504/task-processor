@@ -1,10 +1,32 @@
-import { render, screen, within } from "@testing-library/react";
+import * as React from "react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SheinLoginPage } from "@/components/listingkit/shein-login/shein-login-page";
 
 const mocks = vi.hoisted(() => {
+  const cancelController = {
+    pending: new Map<number, { fail: (message?: string) => void; succeed: () => void }>(),
+    reset() {
+      this.pending.clear();
+    },
+    fail(storeID: number, message = "Cancel login failed.") {
+      const pending = this.pending.get(storeID);
+      if (!pending) {
+        throw new Error(`No pending cancellation for store ${storeID}`);
+      }
+      pending.fail(message);
+    },
+    succeed(storeID: number) {
+      const pending = this.pending.get(storeID);
+      if (!pending) {
+        throw new Error(`No pending cancellation for store ${storeID}`);
+      }
+      pending.succeed();
+    },
+  };
+
   const cancelMutation: {
     mutate: ReturnType<typeof vi.fn>;
     isPending: boolean;
@@ -17,6 +39,7 @@ const mocks = vi.hoisted(() => {
 
   return {
     searchParams: new URLSearchParams(),
+    cancelController,
     cancelMutation,
     useSheinLoginAccounts: vi.fn(),
     useLoginSheinAccount: vi.fn(),
@@ -54,6 +77,7 @@ describe("SheinLoginPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.searchParams = new URLSearchParams("tenant_id=227");
+    mocks.cancelController.reset();
     mocks.cancelMutation.mutate.mockReset();
     mocks.cancelMutation.isPending = false;
     mocks.cancelMutation.error = null;
@@ -145,10 +169,43 @@ describe("SheinLoginPage", () => {
     expect(screen.queryByRole("button", { name: "Close Verify Code Dialog" })).not.toBeInTheDocument();
   });
 
-  it("scopes cancellation pending UI to the target store", async () => {
+  it("keeps cancellation pending and errors scoped to the target store", async () => {
     const user = userEvent.setup();
-    mocks.cancelMutation.mutate.mockImplementation(() => {
-      mocks.cancelMutation.isPending = true;
+    mocks.useCancelSheinLogin.mockImplementation(() => {
+      const [pendingStoreIDs, setPendingStoreIDs] = React.useState<number[]>([]);
+      const [error, setError] = React.useState<Error | null>(null);
+
+      return {
+        mutate: (
+          storeID: number,
+          options?: {
+            onError?: (error: Error) => void;
+            onSuccess?: () => void;
+            onSettled?: () => void;
+          },
+        ) => {
+          setPendingStoreIDs((previous) => (previous.includes(storeID) ? previous : [...previous, storeID]));
+          mocks.cancelController.pending.set(storeID, {
+            fail: (message = "Cancel login failed.") => {
+              const nextError = new Error(message);
+              setError(nextError);
+              setPendingStoreIDs((previous) => previous.filter((value) => value !== storeID));
+              mocks.cancelController.pending.delete(storeID);
+              options?.onError?.(nextError);
+              options?.onSettled?.();
+            },
+            succeed: () => {
+              setError(null);
+              setPendingStoreIDs((previous) => previous.filter((value) => value !== storeID));
+              mocks.cancelController.pending.delete(storeID);
+              options?.onSuccess?.();
+              options?.onSettled?.();
+            },
+          });
+        },
+        isPending: pendingStoreIDs.length > 0,
+        error,
+      };
     });
 
     render(<SheinLoginPage />);
@@ -179,43 +236,29 @@ describe("SheinLoginPage", () => {
         name: "Open Verify Code for store 870",
       }),
     ).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Cancelling the active login attempt...");
 
     expect(
       within(backupRow as HTMLElement).getByRole("button", {
         name: "Cancel Login for store 871",
       }),
-    ).toBeInTheDocument();
+    ).toBeEnabled();
     expect(
       within(backupRow as HTMLElement).getByRole("button", {
         name: "重新登录",
       }),
-    ).not.toBeDisabled();
+    ).toBeEnabled();
     expect(
       within(backupRow as HTMLElement).getByRole("button", {
         name: "Open Verify Code for store 871",
       }),
-    ).not.toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent("Cancelling the active login attempt...");
-  });
+    ).toBeEnabled();
 
-  it("shows cancellation feedback only in the target store verify dialog", async () => {
-    const user = userEvent.setup();
-    mocks.cancelMutation.mutate.mockImplementation(() => {
-      mocks.cancelMutation.error = new Error("Cancel login failed.");
+    act(() => {
+      mocks.cancelController.fail(870, "Cancel login failed for store 870.");
     });
 
-    render(<SheinLoginPage />);
-
-    const activeRow = (await screen.findByText("SHEIN Active Store")).closest("tr");
-    const backupRow = (await screen.findByText("SHEIN Backup Store")).closest("tr");
-    expect(activeRow).not.toBeNull();
-    expect(backupRow).not.toBeNull();
-
-    await user.click(
-      within(activeRow as HTMLElement).getByRole("button", {
-        name: "Cancel Login for store 870",
-      }),
-    );
+    expect(screen.getByRole("status")).toHaveTextContent("Cancel login failed for store 870.");
 
     await user.click(
       within(backupRow as HTMLElement).getByRole("button", {
@@ -228,18 +271,19 @@ describe("SheinLoginPage", () => {
     expect(screen.getByRole("button", { name: "Close Verify Code Dialog" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel Login" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("Cancel login failed.");
 
-    await user.click(screen.getByRole("button", { name: "Close Verify Code Dialog" }));
-    await user.click(
-      within(activeRow as HTMLElement).getByRole("button", {
-        name: "Open Verify Code for store 870",
-      }),
-    );
+    await user.click(screen.getByRole("button", { name: "Cancel Login" }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent("Cancel login failed.");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close Verify Code Dialog" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cancel Login" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancelling..." })).toBeDisabled();
+
+    act(() => {
+      mocks.cancelController.fail(871, "Cancel login failed for store 871.");
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Cancel login failed for store 871.");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("Cancel login failed for store 870.");
   });
 });
