@@ -78,6 +78,9 @@ function Invoke-PostgresJsonLines {
     $sqlBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Sql))
     $command = "printf '%s' '$sqlBase64' | base64 -d | PGPASSWORD='postgresql2026Zone$' psql -U $DbUser -d $Database -tA"
     $result = kubectl -n $Namespace exec $Target -- bash -lc $command
+    if ($LASTEXITCODE -ne 0) {
+        throw "PostgreSQL query failed for database $Database on $Namespace/$Target."
+    }
     return (($result -join "`n").Trim())
 }
 
@@ -155,7 +158,7 @@ with ranked_users as (
     u.email,
     u.mobile,
     u.dept_id,
-    row_number() over (partition by tenant_id order by id) as user_rank
+    row_number() over (partition by u.tenant_id order by u.id) as user_rank
   from system_users u
   join system_tenant t on t.id = u.tenant_id
   where u.deleted = 0
