@@ -74,6 +74,21 @@ func TestValidatedCookieOnlyBrowserState(t *testing.T) {
 	}
 }
 
+func TestValidatedCookieOnlyBrowserStateAcceptsPlaywrightCookies(t *testing.T) {
+	state, err := validatedCookieOnlyBrowserState([]playwright.Cookie{{
+		Name:   "sid",
+		Value:  "ok",
+		Domain: ".geiwohuo.com",
+		Path:   "/",
+	}})
+	if err != nil {
+		t.Fatalf("validatedCookieOnlyBrowserState(playwright cookies): %v", err)
+	}
+	if got := cookieCount(state); got != 1 {
+		t.Fatalf("cookie count = %d, want 1", got)
+	}
+}
+
 func TestCookieDiagnosticSummary(t *testing.T) {
 	summary := cookieDiagnosticSummary([]playwright.Cookie{
 		{Name: "session", Value: "secret-a", Domain: ".sso.geiwohuo.com"},
