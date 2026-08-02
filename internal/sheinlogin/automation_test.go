@@ -39,6 +39,42 @@ func (m *blockingBrowserLaunchManager) Close() {
 	m.closeOnce.Do(func() { close(m.closed) })
 }
 
+type countingBlockingBrowserLaunchManager struct {
+	launchStarted  chan struct{}
+	releaseLaunch  chan struct{}
+	launchReturned chan struct{}
+	firstClose     chan struct{}
+	closeCalls     atomic.Int32
+	earlyClose     atomic.Bool
+	closeSignal    sync.Once
+}
+
+func newCountingBlockingBrowserLaunchManager() *countingBlockingBrowserLaunchManager {
+	return &countingBlockingBrowserLaunchManager{
+		launchStarted:  make(chan struct{}),
+		releaseLaunch:  make(chan struct{}),
+		launchReturned: make(chan struct{}),
+		firstClose:     make(chan struct{}),
+	}
+}
+
+func (m *countingBlockingBrowserLaunchManager) Launch() error {
+	close(m.launchStarted)
+	<-m.releaseLaunch
+	close(m.launchReturned)
+	return nil
+}
+
+func (m *countingBlockingBrowserLaunchManager) Close() {
+	m.closeCalls.Add(1)
+	select {
+	case <-m.launchReturned:
+	default:
+		m.earlyClose.Store(true)
+	}
+	m.closeSignal.Do(func() { close(m.firstClose) })
+}
+
 func TestLaunchManagerWithTimeoutDefersCleanupUntilLaunchReturns(t *testing.T) {
 	manager := newBlockingBrowserLaunchManager()
 
@@ -94,6 +130,85 @@ func TestLaunchManagerWithTimeoutDefersCleanupUntilLaunchReturns(t *testing.T) {
 	case <-manager.closed:
 	case <-time.After(time.Second):
 		t.Fatal("Close was not called after Launch returned")
+	}
+}
+
+func TestRunBlockingStageWithContextAndLaunchTimeoutShareCleanup(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	manager := newCountingBlockingBrowserLaunchManager()
+	launchTimeout := 20 * time.Millisecond
+	innerReturned := make(chan struct{})
+	sharedCleanup := newOnceCleanup(manager.Close)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runBlockingStageWithContext(ctx, sharedCleanup, func() error {
+			defer close(innerReturned)
+			return launchManagerWithTimeoutAndCleanup(manager, launchTimeout, sharedCleanup)
+		})
+	}()
+
+	select {
+	case <-manager.launchStarted:
+	case <-time.After(time.Second):
+		t.Fatal("Launch was not started")
+	}
+
+	select {
+	case err := <-done:
+		t.Fatalf("runBlockingStageWithContext returned before outer cancellation: %v", err)
+	case <-time.After(launchTimeout * 2):
+	}
+
+	if got := manager.closeCalls.Load(); got != 0 {
+		t.Fatalf("manager.Close called %d times before Launch returned, want 0", got)
+	}
+
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("runBlockingStageWithContext error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("runBlockingStageWithContext did not return after cancellation")
+	}
+
+	if got := manager.closeCalls.Load(); got != 0 {
+		t.Fatalf("manager.Close called %d times before Launch returned after cancellation, want 0", got)
+	}
+
+	close(manager.releaseLaunch)
+
+	select {
+	case <-manager.launchReturned:
+	case <-time.After(time.Second):
+		t.Fatal("Launch did not return after release")
+	}
+
+	select {
+	case <-innerReturned:
+	case <-time.After(time.Second):
+		t.Fatal("inner launch timeout goroutine did not return after Launch unwound")
+	}
+
+	select {
+	case <-manager.firstClose:
+	case <-time.After(time.Second):
+		t.Fatal("cleanup did not run after Launch returned")
+	}
+
+	if manager.earlyClose.Load() {
+		t.Fatal("cleanup ran before Launch returned")
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	if got := manager.closeCalls.Load(); got != 1 {
+		t.Fatalf("manager.Close called %d times, want 1", got)
 	}
 }
 

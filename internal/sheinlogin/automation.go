@@ -159,18 +159,19 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 	manager := sharedbrowser.NewManager(managerCfg)
 	manager.SetUserDataDir(profileDir)
 	manager.SetFingerprint(buildAutomationFingerprint(account, managerCfg))
+	launchCleanup := newOnceCleanup(manager.Close)
 	if err := ctx.Err(); err != nil {
 		closeManagerProfile(manager, profileDir)
 		return nil, nil, err
 	}
-	if err := runBlockingStageWithContext(ctx, manager.Close, manager.Install); err != nil {
+	if err := runBlockingStageWithContext(ctx, launchCleanup, manager.Install); err != nil {
 		if shouldCloseManagerAfterStageError(err) {
 			closeManagerProfile(manager, profileDir)
 		}
 		return nil, nil, err
 	}
-	if err := runBlockingStageWithContext(ctx, manager.Close, func() error {
-		return launchManagerWithProfileRecovery(manager, profileDir)
+	if err := runBlockingStageWithContext(ctx, launchCleanup, func() error {
+		return launchManagerWithProfileRecovery(manager, profileDir, launchCleanup)
 	}); err != nil {
 		if shouldCloseManagerAfterStageError(err) {
 			closeManagerProfile(manager, profileDir)
@@ -1450,8 +1451,18 @@ func (stage *blockingStage) runInterruptCleanup() {
 	stage.cleanupOnce.Do(stage.onInterrupt)
 }
 
-func launchManagerWithProfileRecovery(manager browserLaunchManager, profileDir string) error {
-	err := launchManagerWithTimeout(manager, sheinBrowserLaunchTimeout)
+func newOnceCleanup(fn func()) func() {
+	if fn == nil {
+		return nil
+	}
+	var once sync.Once
+	return func() {
+		once.Do(fn)
+	}
+}
+
+func launchManagerWithProfileRecovery(manager browserLaunchManager, profileDir string, cleanup func()) error {
+	err := launchManagerWithTimeoutAndCleanup(manager, sheinBrowserLaunchTimeout, cleanup)
 	if err == nil {
 		return nil
 	}
@@ -1463,7 +1474,7 @@ func launchManagerWithProfileRecovery(manager browserLaunchManager, profileDir s
 	if !cleared {
 		return fmt.Errorf("SHEIN 浏览器 profile 正在使用，请稍后重试或关闭当前登录窗口: %w", err)
 	}
-	if retryErr := launchManagerWithTimeout(manager, sheinBrowserLaunchTimeout); retryErr != nil {
+	if retryErr := launchManagerWithTimeoutAndCleanup(manager, sheinBrowserLaunchTimeout, cleanup); retryErr != nil {
 		if isProfileInUseError(retryErr) {
 			return fmt.Errorf("SHEIN 浏览器 profile 正在使用，请稍后重试或关闭当前登录窗口: %w", retryErr)
 		}
@@ -1473,14 +1484,21 @@ func launchManagerWithProfileRecovery(manager browserLaunchManager, profileDir s
 }
 
 func launchManagerWithTimeout(manager browserLaunchManager, timeout time.Duration) error {
+	return launchManagerWithTimeoutAndCleanup(manager, timeout, manager.Close)
+}
+
+func launchManagerWithTimeoutAndCleanup(manager browserLaunchManager, timeout time.Duration, cleanup func()) error {
 	if manager == nil {
 		return fmt.Errorf("SHEIN browser manager is nil")
 	}
 	if timeout <= 0 {
 		return manager.Launch()
 	}
+	if cleanup == nil {
+		cleanup = manager.Close
+	}
 
-	stage := startBlockingStage(manager.Launch, manager.Close)
+	stage := startBlockingStage(manager.Launch, cleanup)
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
