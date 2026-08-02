@@ -87,4 +87,6 @@ func (q *StoreQuery) applyListScope(scope listQueryScope) {
 func (q *StoreStatisticsQuery) applyListScope(scope listQueryScope) {
 	q.TenantID = scope.TenantID
 	q.OwnerUserID = scope.OwnerUserID
+	q.Page = scope.Page
+	q.PageSize = scope.PageSize
 }

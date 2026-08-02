@@ -32,10 +32,27 @@ type StoreStatisticsQuery struct {
 	TenantID    int64
 	OwnerUserID string
 	Date        string
+	Page        int
+	PageSize    int
+}
+
+type StoreStatisticsSummary struct {
+	CompletedCount int `json:"completedCount"`
+	RemainingCount int `json:"remainingCount"`
+	QueuedCount    int `json:"queuedCount"`
+	HoldCount      int `json:"holdCount"`
+}
+
+type StoreStatisticsPage struct {
+	Items    []StoreStatistics      `json:"items"`
+	Total    int64                  `json:"total"`
+	Page     int                    `json:"page"`
+	PageSize int                    `json:"page_size"`
+	Summary  StoreStatisticsSummary `json:"summary"`
 }
 
 type StoreStatisticsRepository interface {
-	ListStoreStatistics(ctx context.Context, query StoreStatisticsQuery) ([]StoreStatistics, error)
+	ListStoreStatistics(ctx context.Context, query StoreStatisticsQuery) (*StoreStatisticsPage, error)
 }
 
 type GormStoreStatisticsRepository struct {
@@ -56,7 +73,7 @@ func AutoMigrateStoreStatisticsRepository(db *gorm.DB) error {
 	return ensureOwnerAuditColumns(db, (listingProductImportTask{}).TableName())
 }
 
-func (r *GormStoreStatisticsRepository) ListStoreStatistics(ctx context.Context, query StoreStatisticsQuery) ([]StoreStatistics, error) {
+func (r *GormStoreStatisticsRepository) ListStoreStatistics(ctx context.Context, query StoreStatisticsQuery) (*StoreStatisticsPage, error) {
 	if r == nil || r.db == nil {
 		return nil, errors.New("store statistics repository database is not configured")
 	}
@@ -66,12 +83,31 @@ func (r *GormStoreStatisticsRepository) ListStoreStatistics(ctx context.Context,
 	}
 	query.Date = date
 
-	stores, err := r.listEligibleStores(ctx, query)
+	page, pageSize := normalizePage(query.Page, query.PageSize)
+	query.Page = page
+	query.PageSize = pageSize
+
+	total, err := r.countEligibleStores(ctx, query)
 	if err != nil {
 		return nil, err
 	}
-	if len(stores) == 0 {
-		return []StoreStatistics{}, nil
+	summary, err := r.summarizeTasks(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	if total == 0 {
+		return &StoreStatisticsPage{
+			Items:    []StoreStatistics{},
+			Total:    0,
+			Page:     query.Page,
+			PageSize: query.PageSize,
+			Summary:  summary,
+		}, nil
+	}
+
+	stores, err := r.listEligibleStores(ctx, query)
+	if err != nil {
+		return nil, err
 	}
 
 	items := make([]StoreStatistics, 0, len(stores))
@@ -82,10 +118,16 @@ func (r *GormStoreStatisticsRepository) ListStoreStatistics(ctx context.Context,
 		}
 		items = append(items, buildStoreStatistics(store, counts))
 	}
-	return items, nil
+	return &StoreStatisticsPage{
+		Items:    items,
+		Total:    total,
+		Page:     query.Page,
+		PageSize: query.PageSize,
+		Summary:  summary,
+	}, nil
 }
 
-func (r *GormStoreStatisticsRepository) listEligibleStores(ctx context.Context, query StoreStatisticsQuery) ([]listingStore, error) {
+func (r *GormStoreStatisticsRepository) eligibleStoresQuery(ctx context.Context, query StoreStatisticsQuery) *gorm.DB {
 	db := r.db.WithContext(ctx).Table("listing_store").
 		Where("deleted = 0 AND status = 0").
 		Where("enable_auto_listing = ? AND enable_auto_login = ?", true, true)
@@ -95,8 +137,24 @@ func (r *GormStoreStatisticsRepository) listEligibleStores(ctx context.Context, 
 	if ownerScopeEnabled() && strings.TrimSpace(query.OwnerUserID) != "" && !requestHasTenantAdminAccess(ctx) {
 		db = db.Where("owner_user_id = ?", strings.TrimSpace(query.OwnerUserID))
 	}
+	return db
+}
+
+func (r *GormStoreStatisticsRepository) countEligibleStores(ctx context.Context, query StoreStatisticsQuery) (int64, error) {
+	var total int64
+	if err := r.eligibleStoresQuery(ctx, query).Count(&total).Error; err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+func (r *GormStoreStatisticsRepository) listEligibleStores(ctx context.Context, query StoreStatisticsQuery) ([]listingStore, error) {
 	var stores []listingStore
-	if err := db.Order("id asc").Find(&stores).Error; err != nil {
+	if err := r.eligibleStoresQuery(ctx, query).
+		Order("id asc").
+		Offset((query.Page - 1) * query.PageSize).
+		Limit(query.PageSize).
+		Find(&stores).Error; err != nil {
 		return nil, err
 	}
 	return stores, nil
@@ -142,6 +200,43 @@ func (r *GormStoreStatisticsRepository) countTasks(ctx context.Context, tenantID
 		}
 	}
 	return counts, nil
+}
+
+func (r *GormStoreStatisticsRepository) summarizeTasks(ctx context.Context, query StoreStatisticsQuery) (StoreStatisticsSummary, error) {
+	eligibleStores := r.eligibleStoresQuery(ctx, query).Select("id, tenant_id")
+	db := r.db.WithContext(ctx).
+		Table("listing_product_import_task as task").
+		Select("task.status as status, count(*) as count").
+		Joins("join (?) as eligible_stores on eligible_stores.id = task.store_id and eligible_stores.tenant_id = task.tenant_id", eligibleStores).
+		Where("task.deleted = 0").
+		Where("task.status IN ?", []int16{0, 1, 2, 5, 10})
+	if query.Date != "" {
+		start, end, ok := statisticsDateRange(query.Date)
+		if ok {
+			db = db.Where("task.create_time >= ? AND task.create_time < ?", start, end)
+		}
+	}
+	var rows []struct {
+		Status int16
+		Count  int64
+	}
+	if err := db.Group("task.status").Scan(&rows).Error; err != nil {
+		return StoreStatisticsSummary{}, err
+	}
+	var summary StoreStatisticsSummary
+	for _, row := range rows {
+		switch row.Status {
+		case 0, 1:
+			summary.RemainingCount += int(row.Count)
+		case 2:
+			summary.CompletedCount += int(row.Count)
+		case 5:
+			summary.QueuedCount += int(row.Count)
+		case 10:
+			summary.HoldCount += int(row.Count)
+		}
+	}
+	return summary, nil
 }
 
 func buildStoreStatistics(store listingStore, counts storeTaskStatisticsCounts) StoreStatistics {

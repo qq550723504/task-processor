@@ -77,6 +77,7 @@ func (h *handler) ListSimpleAdminStores(c *gin.Context) {
 }
 
 func (h *handler) ListAdminStoreStatistics(c *gin.Context) {
+	listingadmin.MarkPlatformStoreAccess(c)
 	if !h.requireStoreStatisticsHandler(c) {
 		return
 	}

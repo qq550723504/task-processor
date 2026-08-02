@@ -1,7 +1,9 @@
 package listingadmin
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -13,6 +15,23 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 )
+
+type captureStoreStatisticsRepository struct {
+	query StoreStatisticsQuery
+	page  *StoreStatisticsPage
+	err   error
+}
+
+func (r *captureStoreStatisticsRepository) ListStoreStatistics(_ context.Context, query StoreStatisticsQuery) (*StoreStatisticsPage, error) {
+	r.query = query
+	if r.err != nil {
+		return nil, r.err
+	}
+	if r.page != nil {
+		return r.page, nil
+	}
+	return &StoreStatisticsPage{Items: []StoreStatistics{}}, nil
+}
 
 func TestStoreStatisticsHandlerListsAutoListingStoresWithinTenant(t *testing.T) {
 	router := newStoreStatisticsTestRouter(t)
@@ -74,14 +93,17 @@ func TestStoreStatisticsHandlerListsAutoListingStoresWithinTenant(t *testing.T) 
 	if resp.Code != http.StatusOK {
 		t.Fatalf("GET /store-statistics = %d, body=%s", resp.Code, resp.Body.String())
 	}
-	var items []StoreStatistics
-	if err := json.Unmarshal(resp.Body.Bytes(), &items); err != nil {
+	var page StoreStatisticsPage
+	if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(items) != 1 {
-		t.Fatalf("items = %+v, want one auto listing store for tenant 101", items)
+	if page.Total != 1 || page.Page != 1 || page.PageSize != 20 {
+		t.Fatalf("page metadata = %+v, want total=1 page=1 pageSize=20", page)
 	}
-	got := items[0]
+	if len(page.Items) != 1 {
+		t.Fatalf("items = %+v, want one auto listing store for tenant 101", page.Items)
+	}
+	got := page.Items[0]
 	if got.Name != "SHEIN US" || got.CompletedCount != 1 || got.RemainingCount != 2 || got.QueuedCount != 1 || got.HoldCount != 1 {
 		t.Fatalf("statistics = %+v, want aggregated counts", got)
 	}
@@ -135,12 +157,12 @@ func TestStoreStatisticsHandlerOwnerScopeFiltersStoresByUser(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("GET /store-statistics = %d, body=%s", resp.Code, resp.Body.String())
 	}
-	var items []StoreStatistics
-	if err := json.Unmarshal(resp.Body.Bytes(), &items); err != nil {
+	var page StoreStatisticsPage
+	if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(items) != 1 || items[0].Name != "Owned by A" {
-		t.Fatalf("statistics items = %+v, want only user-a store", items)
+	if len(page.Items) != 1 || page.Items[0].Name != "Owned by A" {
+		t.Fatalf("statistics items = %+v, want only user-a store", page.Items)
 	}
 }
 
@@ -190,12 +212,12 @@ func TestStoreStatisticsHandlerPlatformAdminBypassesOwnerScope(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("GET /store-statistics = %d, body=%s", resp.Code, resp.Body.String())
 	}
-	var items []StoreStatistics
-	if err := json.Unmarshal(resp.Body.Bytes(), &items); err != nil {
+	var page StoreStatisticsPage
+	if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(items) != 2 {
-		t.Fatalf("statistics items = %+v, want both stores", items)
+	if len(page.Items) != 2 {
+		t.Fatalf("statistics items = %+v, want both stores", page.Items)
 	}
 }
 
@@ -222,12 +244,12 @@ func TestStoreStatisticsHandlerAcceptsTenantIDQueryFallback(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("GET /store-statistics?tenant_id=101 = %d, body=%s", resp.Code, resp.Body.String())
 	}
-	var items []StoreStatistics
-	if err := json.Unmarshal(resp.Body.Bytes(), &items); err != nil {
+	var page StoreStatisticsPage
+	if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(items) != 1 || items[0].Name != "Query Tenant Store" {
-		t.Fatalf("statistics items = %+v, want query-tenant scoped store", items)
+	if len(page.Items) != 1 || page.Items[0].Name != "Query Tenant Store" {
+		t.Fatalf("statistics items = %+v, want query-tenant scoped store", page.Items)
 	}
 }
 
@@ -263,16 +285,99 @@ func TestStoreStatisticsHandlerFiltersTaskCountsByDate(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("GET /store-statistics = %d, body=%s", resp.Code, resp.Body.String())
 	}
-	var items []StoreStatistics
-	if err := json.Unmarshal(resp.Body.Bytes(), &items); err != nil {
+	var page StoreStatisticsPage
+	if err := json.Unmarshal(resp.Body.Bytes(), &page); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(items) != 1 {
-		t.Fatalf("items = %+v, want one store", items)
+	if len(page.Items) != 1 {
+		t.Fatalf("items = %+v, want one store", page.Items)
 	}
-	got := items[0]
+	got := page.Items[0]
 	if got.CompletedCount != 1 || got.QueuedCount != 0 {
 		t.Fatalf("statistics = %+v, want only tasks from 2026-05-15 counted", got)
+	}
+}
+
+func TestStoreStatisticsHandlerPassesPageParamsToRepository(t *testing.T) {
+	repo := &captureStoreStatisticsRepository{page: &StoreStatisticsPage{Items: []StoreStatistics{}, Total: 0, Page: 2, PageSize: 1}}
+	handler := NewStoreStatisticsHandler(repo)
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.GET("/store-statistics", handler.ListStoreStatistics)
+
+	req := httptest.NewRequest(http.MethodGet, "/store-statistics?page=2&page_size=1", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	req.Header.Set("X-User-ID", "user-101")
+	resp := httptest.NewRecorder()
+	engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /store-statistics = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	if repo.query.Page != 2 || repo.query.PageSize != 1 {
+		t.Fatalf("repo query page/pageSize = %d/%d, want 2/1", repo.query.Page, repo.query.PageSize)
+	}
+}
+
+func TestStoreStatisticsHandlerPlatformAccessClearsTenantAndOwnerScope(t *testing.T) {
+	repo := &captureStoreStatisticsRepository{page: &StoreStatisticsPage{Items: []StoreStatistics{}}}
+	handler := NewStoreStatisticsHandler(repo)
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.GET("/store-statistics", func(c *gin.Context) {
+		MarkPlatformStoreAccess(c)
+		handler.ListStoreStatistics(c)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/store-statistics", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	req.Header.Set("X-User-ID", "platform-admin")
+	resp := httptest.NewRecorder()
+	engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /store-statistics = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	if repo.query.TenantID != 0 || repo.query.OwnerUserID != "" {
+		t.Fatalf("repo query = %+v, want TenantID=0 and empty OwnerUserID", repo.query)
+	}
+}
+
+func TestStoreStatisticsHandlerTenantScopePreservesTenantAndOwner(t *testing.T) {
+	repo := &captureStoreStatisticsRepository{page: &StoreStatisticsPage{Items: []StoreStatistics{}}}
+	handler := NewStoreStatisticsHandler(repo)
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.GET("/store-statistics", handler.ListStoreStatistics)
+
+	req := httptest.NewRequest(http.MethodGet, "/store-statistics", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	req.Header.Set("X-User-ID", "user-101")
+	resp := httptest.NewRecorder()
+	engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /store-statistics = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	if repo.query.TenantID != 101 || repo.query.OwnerUserID != "user-101" {
+		t.Fatalf("repo query = %+v, want tenant-scoped query", repo.query)
+	}
+}
+
+func TestStoreStatisticsHandlerRepositoryErrorReturnsInternalServerError(t *testing.T) {
+	repo := &captureStoreStatisticsRepository{err: errors.New("boom")}
+	handler := NewStoreStatisticsHandler(repo)
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.GET("/store-statistics", handler.ListStoreStatistics)
+
+	req := httptest.NewRequest(http.MethodGet, "/store-statistics", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	resp := httptest.NewRecorder()
+	engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusInternalServerError {
+		t.Fatalf("GET /store-statistics = %d, want 500", resp.Code)
 	}
 }
 
