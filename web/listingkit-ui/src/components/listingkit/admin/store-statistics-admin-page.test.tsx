@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -163,6 +163,28 @@ describe("StoreStatisticsAdminPage", () => {
     });
   });
 
+  it("offers only 20, 50, and 100 as page-size options", async () => {
+    vi.spyOn(
+      adminStoreStatisticsApi,
+      "getListingStoreStatistics",
+    ).mockResolvedValue(
+      buildStatisticsPage({
+        total: 41,
+        page: 1,
+        page_size: 20,
+      }),
+    );
+
+    renderPage(<StoreStatisticsAdminPage />);
+
+    const pageSizeSelect = await screen.findByRole("combobox", { name: "每页" });
+    const options = within(pageSizeSelect)
+      .getAllByRole("option")
+      .map((option) => option.getAttribute("value"));
+
+    expect(options).toEqual(["20", "50", "100"]);
+  });
+
   it("resets pagination to the first page when the date filter changes", async () => {
     const user = userEvent.setup();
     const getStatisticsSpy = vi
@@ -219,5 +241,58 @@ describe("StoreStatisticsAdminPage", () => {
       screen.getByRole("heading", { name: "我的上架统计" }),
     ).toBeInTheDocument();
     await screen.findByText(/共 41/);
+  });
+
+  it("falls back to the last valid page after refresh returns an out-of-range page", async () => {
+    const user = userEvent.setup();
+    const getStatisticsSpy = vi
+      .spyOn(adminStoreStatisticsApi, "getListingStoreStatistics")
+      .mockResolvedValueOnce(
+        buildStatisticsPage({
+          total: 41,
+          page: 1,
+          page_size: 20,
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildStatisticsPage({
+          total: 41,
+          page: 2,
+          page_size: 20,
+          items: [buildStatisticsItem({ id: 2, name: "SHEIN EU" })],
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildStatisticsPage({
+          total: 20,
+          page: 2,
+          page_size: 20,
+          items: [],
+        }),
+      )
+      .mockResolvedValueOnce(
+        buildStatisticsPage({
+          total: 20,
+          page: 1,
+          page_size: 20,
+          items: [buildStatisticsItem({ id: 3, name: "Recovered Page 1" })],
+        }),
+      );
+
+    renderPage(<StoreStatisticsAdminPage />);
+
+    await screen.findByText(/共 41/);
+    await user.click(screen.getByRole("button", { name: "下一页" }));
+    await screen.findByText("SHEIN EU");
+
+    await user.click(screen.getByRole("button", { name: "刷新" }));
+
+    await waitFor(() => {
+      expect(getStatisticsSpy).toHaveBeenNthCalledWith(
+        4,
+        expect.objectContaining({ page: 1, page_size: 20 }),
+      );
+    });
+    await screen.findByText("Recovered Page 1");
   });
 });
