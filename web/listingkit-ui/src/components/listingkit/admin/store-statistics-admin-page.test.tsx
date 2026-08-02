@@ -50,6 +50,11 @@ describe("StoreStatisticsAdminPage", () => {
     });
     expect(screen.getByText("6 / 10")).toBeInTheDocument();
     expect(screen.getByText("60%")).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "店铺 ID" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("1", { selector: "td" })).toBeInTheDocument();
+    expect(screen.getByText("SHEIN-US")).toBeInTheDocument();
   });
 
   it("keeps summary cards and the table mobile-friendly", async () => {
