@@ -110,6 +110,21 @@ func installPageNetworkCapture(page playwright.Page) error {
       || lowered.includes('/sso/geetest/reset.php');
   };
   const summarizeText = (value) => String(value || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  const summarizeAuthBody = (value) => {
+    const text = String(value || '').replace(/\s+/g, ' ').trim();
+    try {
+      const payload = JSON.parse(text);
+      return JSON.stringify({
+        code: payload && payload.code != null ? payload.code : null,
+        msg: summarizeText(payload && payload.msg),
+        info: payload && payload.info && typeof payload.info === 'object'
+          ? { needValidCode: !!payload.info.needValidCode }
+          : null,
+      });
+    } catch (e) {
+      return text.slice(0, 1000);
+    }
+  };
   const describeElement = (el) => {
     if (!el || !el.tagName) return {};
     return {
@@ -169,7 +184,7 @@ func installPageNetworkCapture(page playwright.Page) error {
             channel: 'fetch',
             url: String(url || ''),
             status: response.status,
-            bodyPreview: String(body || '').replace(/\s+/g, ' ').slice(0, 1000),
+            bodyPreview: summarizeAuthBody(body),
           });
           pushPageEvent({
             channel: 'fetch_end',
@@ -208,7 +223,7 @@ func installPageNetworkCapture(page playwright.Page) error {
             channel: 'xhr',
             url: String(url || ''),
             status: this.status,
-            bodyPreview: String(body || '').replace(/\s+/g, ' ').slice(0, 1000),
+            bodyPreview: summarizeAuthBody(body),
           });
           pushPageEvent({
             channel: 'xhr_end',

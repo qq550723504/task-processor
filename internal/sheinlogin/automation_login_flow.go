@@ -32,25 +32,36 @@ func waitForLoginSurface(ctx context.Context, page playwright.Page) (loginSurfac
 }
 
 func isLoginFormVisible(page playwright.Page) bool {
-	_, err := firstVisible(page, []string{
+	_, usernameErr := firstVisible(page, []string{
 		"input.soui-input-input:first-of-type",
 		`input.soui-input-input:not([type="password"])`,
 		`input[type="text"].soui-input-input`,
 		`input[type="text"]`,
+	})
+	if usernameErr != nil {
+		return false
+	}
+	_, passwordErr := firstVisible(page, []string{
 		`input[type="password"].soui-input-input`,
 		`input[type="password"]`,
-		`button.soui-button-primary:has-text("登录")`,
-		`button:has-text("登录")`,
 	})
-	return err == nil
+	return passwordErr == nil
 }
 
-func exportAuthenticatedBrowserState(manager *sharedbrowser.Manager, page playwright.Page, account Account, artifactDir, stage string) (*AutomationResult, error) {
+func exportAuthenticatedBrowserState(ctx context.Context, manager *sharedbrowser.Manager, page playwright.Page, account Account, artifactDir, profileDir, stage string) (*AutomationResult, error) {
 	targetURL := postLoginTargetURL(account)
-	if _, err := page.Goto(targetURL, playwright.PageGotoOptions{
-		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
-		Timeout:   playwright.Float(30000),
+	if err := runBlockingStageWithContext(ctx, func() {
+		closeManagerProfile(manager, profileDir)
+	}, func() error {
+		_, err := page.Goto(targetURL, playwright.PageGotoOptions{
+			WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+			Timeout:   playwright.Float(30000),
+		})
+		return err
 	}); err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		sheinLoginServiceLogger.WithError(err).WithFields(map[string]any{
 			"tenant_id":  account.TenantID,
 			"store_id":   account.StoreID,

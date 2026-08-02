@@ -61,7 +61,7 @@ func (s *playwrightVerifySession) SubmitCode(ctx context.Context, code string) (
 		}
 		return result, nil
 	}
-	return exportAuthenticatedBrowserState(s.manager, s.page, s.account, s.artifactDir, "export_state_after_verify")
+	return exportAuthenticatedBrowserState(ctx, s.manager, s.page, s.account, s.artifactDir, s.profileDir, "export_state_after_verify")
 }
 
 func (s *playwrightVerifySession) WaitForLogin(ctx context.Context) (*AutomationResult, error) {
@@ -76,7 +76,7 @@ func (s *playwrightVerifySession) WaitForLogin(ctx context.Context) (*Automation
 		loggedIn, loginErr := isLoggedIn(s.page)
 		if loginErr == nil && loggedIn {
 			s.mu.Unlock()
-			return exportAuthenticatedBrowserState(s.manager, s.page, s.account, s.artifactDir, "export_state_after_manual_verify")
+			return exportAuthenticatedBrowserState(ctx, s.manager, s.page, s.account, s.artifactDir, s.profileDir, "export_state_after_manual_verify")
 		}
 		_, _ = dismissRequestFailure(s.page)
 		s.mu.Unlock()

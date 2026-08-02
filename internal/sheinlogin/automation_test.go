@@ -12,6 +12,9 @@ import (
 )
 
 func TestResolveLoginSurfacePrefersVisibleFormOverGenericSuccess(t *testing.T) {
+	if got := resolveLoginSurface(true, true, true); got != loginSurfaceVerifyCode {
+		t.Fatalf("resolveLoginSurface(form=true, verify=true, loggedIn=true) = %v, want loginSurfaceVerifyCode", got)
+	}
 	if got := resolveLoginSurface(true, false, true); got != loginSurfaceForm {
 		t.Fatalf("resolveLoginSurface(form=true, verify=false, loggedIn=true) = %v, want loginSurfaceForm", got)
 	}

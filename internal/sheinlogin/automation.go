@@ -43,10 +43,10 @@ const (
 
 func resolveLoginSurface(loginFormVisible, verifyCodeVisible, loggedIn bool) loginSurface {
 	switch {
-	case loginFormVisible:
-		return loginSurfaceForm
 	case verifyCodeVisible:
 		return loginSurfaceVerifyCode
+	case loginFormVisible:
+		return loginSurfaceForm
 	case loggedIn:
 		return loginSurfaceAuthenticated
 	default:
@@ -242,7 +242,7 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 		return result, nil, resultErr
 	}
 	if surface == loginSurfaceAuthenticated {
-		result, resultErr := exportAuthenticatedBrowserState(manager, page, account, cfg.ArtifactDir, "export_state_already_logged_in")
+		result, resultErr := exportAuthenticatedBrowserState(ctx, manager, page, account, cfg.ArtifactDir, profileDir, "export_state_already_logged_in")
 		closeManagerProfile(manager, profileDir)
 		return result, nil, resultErr
 	}
@@ -285,7 +285,7 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 		}
 		_ = settleAfterSubmit(ctx, page, 8*time.Second)
 		if loggedIn, loginErr := isLoggedIn(page); loginErr == nil && loggedIn {
-			result, resultErr := exportAuthenticatedBrowserState(manager, page, account, cfg.ArtifactDir, "export_state_after_recover")
+			result, resultErr := exportAuthenticatedBrowserState(ctx, manager, page, account, cfg.ArtifactDir, profileDir, "export_state_after_recover")
 			closeManagerProfile(manager, profileDir)
 			return result, nil, resultErr
 		}
@@ -319,7 +319,7 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 			}, nil
 	}
 
-	result, resultErr := exportAuthenticatedBrowserState(manager, page, account, cfg.ArtifactDir, "export_state")
+	result, resultErr := exportAuthenticatedBrowserState(ctx, manager, page, account, cfg.ArtifactDir, profileDir, "export_state")
 	closeManagerProfile(manager, profileDir)
 	return result, nil, resultErr
 }
