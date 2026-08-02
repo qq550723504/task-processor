@@ -137,9 +137,6 @@ jobs:
         with:
           version: latest
 
-      - name: Set up Kustomize
-        uses: imranismail/setup-kustomize@v2
-
       - name: Write kubeconfig
         shell: bash
         run: |
@@ -147,6 +144,10 @@ jobs:
           mkdir -p "$HOME/.kube"
           printf '%s' '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
+
+      - name: Apply ListingKit runtime configuration
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} apply -f deployments/kubernetes/listingkit-workbench/base/configmap.yaml
 
       - name: Update API deployment image
         run: |

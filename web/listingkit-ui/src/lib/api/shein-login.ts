@@ -44,15 +44,15 @@ export function loginSheinAccount(storeID: number, tenantID?: string) {
   return request(`/accounts/${storeID}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ force_login: true, headless: false }),
+    body: JSON.stringify({ force_login: true, headless: true }),
   }, tenantID);
 }
 
-export function submitSheinVerifyCode(storeID: number, code: string, tenantID?: string) {
+export function submitSheinVerifyCode(storeID: number, code: string, tenantID?: string, attemptID?: string) {
   return request(`/accounts/${storeID}/verify-code`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, ...(attemptID ? { attempt_id: attemptID } : {}) }),
   }, tenantID);
 }
 

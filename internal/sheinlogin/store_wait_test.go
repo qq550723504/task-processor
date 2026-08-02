@@ -46,6 +46,25 @@ func TestWaitAndConsumeVerifyCodeReturnsWhenCodeArrives(t *testing.T) {
 	}
 }
 
+func TestWaitAndConsumeVerifyCodeForAttemptDoesNotConsumeAnotherAttempt(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	store := newRedisStoreFromClient(client)
+	t.Cleanup(func() { _ = store.Close() })
+
+	if err := store.SubmitVerifyCodeForAttempt(context.Background(), 1, 2, "attempt-new", "654321", time.Minute); err != nil {
+		t.Fatalf("submit attempt code: %v", err)
+	}
+	code, ok, err := store.WaitAndConsumeVerifyCodeForAttempt(context.Background(), 1, 2, "attempt-old", 20*time.Millisecond)
+	if err != nil || ok || code != "" {
+		t.Fatalf("old attempt consumed another code: code=%q ok=%v err=%v", code, ok, err)
+	}
+	code, ok, err = store.WaitAndConsumeVerifyCodeForAttempt(context.Background(), 1, 2, "attempt-new", time.Second)
+	if err != nil || !ok || code != "654321" {
+		t.Fatalf("new attempt did not receive its code: code=%q ok=%v err=%v", code, ok, err)
+	}
+}
+
 func TestWaitAndConsumeVerifyCodeReturnsFalseOnTimeout(t *testing.T) {
 	mr := miniredis.RunT(t)
 	client := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})

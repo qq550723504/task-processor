@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shein-login-worker
+  labels:
+    app: shein-login-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: shein-login-worker
+  template:
+    metadata:
+      labels:
+        app: shein-login-worker
+    spec:
+      nodeSelector:
+        task-processor/crawler-tier: heavy
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: shein-login-worker
+          image: xuwei190/task-processor-shein-login-worker:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: TASK_PROCESSOR_BROWSER_PATH
+              value: /app/chrome/chrome-144/chrome
+          envFrom:
+            - configMapRef:
+                name: listingkit-workbench-config
+            - secretRef:
+                name: listingkit-workbench-secret
+                optional: true
+          ports:
+            - name: health
+              containerPort: 8086
+          volumeMounts:
+            - name: tmp
+              mountPath: /app/tmp
+            - name: logs
+              mountPath: /app/logs
+            - name: dshm
+              mountPath: /dev/shm
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: health
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: "500m"
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 3Gi
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: logs
+          emptyDir: {}
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
