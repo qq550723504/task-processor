@@ -125,6 +125,58 @@ func TestStoreStatisticsRepositoryReturnsPaginatedPageWithFullSummary(t *testing
 	}
 }
 
+func TestStoreStatisticsRepositoryReturnsEmptyPageMetadataWhenNoEligibleStoresMatch(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingStore{}, &listingProductImportTask{}); err != nil {
+		t.Fatalf("migrate statistics tables: %v", err)
+	}
+
+	falseValue := false
+	seedStoreStatisticsStore(t, db, listingStore{
+		ID:                9,
+		TenantID:          101,
+		Name:              "Manual Store",
+		Username:          "manual-store",
+		Password:          "secret",
+		Platform:          "SHEIN",
+		ShopType:          "semi",
+		EnableAutoListing: &falseValue,
+		EnableAutoLogin:   &falseValue,
+		Status:            0,
+	})
+
+	repo := NewGormStoreStatisticsRepository(db)
+	page, err := repo.ListStoreStatistics(context.Background(), StoreStatisticsQuery{
+		TenantID: 101,
+		Date:     "2026-05-15",
+		Page:     2,
+		PageSize: 1,
+	})
+	if err != nil {
+		t.Fatalf("ListStoreStatistics: %v", err)
+	}
+	if page == nil {
+		t.Fatal("page = nil, want non-nil empty page")
+	}
+	if page.Total != 0 || page.Page != 2 || page.PageSize != 1 {
+		t.Fatalf("page metadata = %+v, want total=0 page=2 pageSize=1", page)
+	}
+	if len(page.Items) != 0 {
+		t.Fatalf("items = %+v, want empty items slice", page.Items)
+	}
+	if page.Items == nil {
+		t.Fatal("items = nil, want empty slice")
+	}
+	if page.Summary != (StoreStatisticsSummary{}) {
+		t.Fatalf("summary = %+v, want zero-value summary", page.Summary)
+	}
+}
+
 func seedStoreStatisticsStore(t *testing.T, db *gorm.DB, store listingStore) {
 	t.Helper()
 	if err := db.Table("listing_store").Create(&store).Error; err != nil {
