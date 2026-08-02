@@ -13,6 +13,9 @@ func TaskMatchesListQuery(task *Task, query *TaskListQuery) bool {
 	if query.Platform != "" && !taskHasPlatform(task, query.Platform) {
 		return false
 	}
+	if query.CanonicalProduct && (task.Result == nil || task.Result.CanonicalProduct == nil) {
+		return false
+	}
 	if !queryHasDerivedTaskItemFilters(query) {
 		return true
 	}
@@ -50,6 +53,7 @@ func queryHasDerivedTaskItemFilters(query *TaskListQuery) bool {
 	}
 	return query.SourceType != "" ||
 		query.ReadinessStatus != "" ||
+		query.CanonicalProduct ||
 		queryHasSheinDerivedFilters(query)
 }
 

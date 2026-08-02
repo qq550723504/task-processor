@@ -33,6 +33,8 @@ export function CanonicalProductListPage() {
   const page = Number(searchParams.get("page") ?? "1") || 1;
   const products = useCanonicalProducts({ page, page_size: 30 });
   const items = products.data?.items ?? [];
+  const total = products.data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / 30));
 
   return (
     <ListingKitPageShell backgroundClassName="bg-background">
@@ -58,6 +60,8 @@ export function CanonicalProductListPage() {
         <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
           <Database className="h-4 w-4 text-teal-700" />
           <span>当前页 {items.length} 个标准商品</span>
+          <span className="text-border">/</span>
+          <span>共 {total} 个标准商品</span>
           <span className="text-border">/</span>
           <span>来源：ListingKit task result canonical_product</span>
         </div>
@@ -89,6 +93,21 @@ export function CanonicalProductListPage() {
           {items.map((item) => (
             <CanonicalProductRow key={item.taskId} item={item} />
           ))}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+            <Button asChild variant="outline" disabled={page <= 1}>
+              <Link href={`/listing-kits/canonical-products?page=${Math.max(1, page - 1)}`}>
+                上一页
+              </Link>
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              第 {page} / {totalPages} 页
+            </span>
+            <Button asChild variant="outline" disabled={page >= totalPages}>
+              <Link href={`/listing-kits/canonical-products?page=${Math.min(totalPages, page + 1)}`}>
+                下一页
+              </Link>
+            </Button>
+          </div>
         </div>
       )}
     </ListingKitPageShell>

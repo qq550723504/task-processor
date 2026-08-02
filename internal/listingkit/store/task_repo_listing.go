@@ -8,6 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit"
 	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/shared/tenantctx"
@@ -62,10 +63,10 @@ func (r *taskRepository) ListTasks(ctx context.Context, query *listingkit.TaskLi
 		db = db.Where("status = ?", query.Status)
 	}
 
-	if query != nil && (query.Platform != "" || query.SourceType != "" || query.ReadinessStatus != "" || query.SheinWorkflowStatus != "" || query.SheinSubmissionStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
+	if query != nil && (query.Platform != "" || query.SourceType != "" || query.ReadinessStatus != "" || query.CanonicalProduct || query.SheinWorkflowStatus != "" || query.SheinSubmissionStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
 		var candidates []taskListFilterRow
 		columns := []string{"id", "created_at", "status", "user_id", "request"}
-		if query.SourceType != "" || query.ReadinessStatus != "" || query.SheinWorkflowStatus != "" || query.SheinSubmissionStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "" {
+		if query.SourceType != "" || query.ReadinessStatus != "" || query.CanonicalProduct || query.SheinWorkflowStatus != "" || query.SheinSubmissionStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "" {
 			columns = append(columns, "result")
 		}
 		if err := db.Select(columns).Order("created_at DESC").Find(&candidates).Error; err != nil {
@@ -110,10 +111,10 @@ func (r *taskRepository) ListTaskSummaryTasks(ctx context.Context, query *listin
 		db = db.Where("status = ?", query.Status)
 	}
 
-	if query != nil && (query.Platform != "" || query.SourceType != "" || query.ReadinessStatus != "" || query.SheinWorkflowStatus != "" || query.SheinSubmissionStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
+	if query != nil && (query.Platform != "" || query.SourceType != "" || query.ReadinessStatus != "" || query.CanonicalProduct || query.SheinWorkflowStatus != "" || query.SheinSubmissionStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
 		var candidates []taskListFilterRow
 		columns := []string{"id", "created_at", "status", "user_id", "request"}
-		if query.SourceType != "" || query.ReadinessStatus != "" || query.SheinWorkflowStatus != "" || query.SheinSubmissionStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "" {
+		if query.SourceType != "" || query.ReadinessStatus != "" || query.CanonicalProduct || query.SheinWorkflowStatus != "" || query.SheinSubmissionStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "" {
 			columns = append(columns, "result")
 		}
 		if err := db.Select(columns).Order("created_at DESC").Find(&candidates).Error; err != nil {
@@ -156,9 +157,10 @@ type taskListFilterRequest struct {
 }
 
 type taskListFilterResult struct {
-	Shein        *sheinpub.Package               `json:"shein,omitempty"`
-	PodExecution *listingkit.PodExecutionSummary `json:"pod_execution,omitempty"`
-	Summary      *listingkit.GenerationSummary   `json:"summary,omitempty"`
+	Shein            *sheinpub.Package               `json:"shein,omitempty"`
+	PodExecution     *listingkit.PodExecutionSummary `json:"pod_execution,omitempty"`
+	Summary          *listingkit.GenerationSummary   `json:"summary,omitempty"`
+	CanonicalProduct *canonical.Product              `json:"canonical_product,omitempty"`
 }
 
 func matchesTaskListFilterRow(row *taskListFilterRow, query *listingkit.TaskListQuery) bool {
@@ -177,10 +179,10 @@ func matchesTaskListFilterRow(row *taskListFilterRow, query *listingkit.TaskList
 	if task.Request == nil {
 		task.Request = &listingkit.GenerateRequest{UserID: row.RequestUserID}
 	}
-	if query != nil && (query.SourceType != "" || query.ReadinessStatus != "" || query.SheinWorkflowStatus != "" || query.SheinSubmissionStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
+	if query != nil && (query.SourceType != "" || query.ReadinessStatus != "" || query.CanonicalProduct || query.SheinWorkflowStatus != "" || query.SheinSubmissionStatus != "" || query.SheinBlockerKey != "" || query.SheinWarningKey != "" || query.SheinWorkQueue != "" || query.SheinActionQueue != "") {
 		var result taskListFilterResult
 		if err := json.Unmarshal([]byte(row.Result), &result); err == nil {
-			task.Result = &listingkit.ListingKitResult{Shein: result.Shein, PodExecution: result.PodExecution, Summary: result.Summary}
+			task.Result = &listingkit.ListingKitResult{Shein: result.Shein, PodExecution: result.PodExecution, Summary: result.Summary, CanonicalProduct: result.CanonicalProduct}
 		}
 	}
 	return listingkit.TaskMatchesListQuery(task, query)

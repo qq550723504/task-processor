@@ -4,6 +4,7 @@ import type {
   CanonicalFieldTrace,
   CanonicalProduct,
   ListingKitTaskListQuery,
+  ListingKitTaskListItem,
   ListingKitTaskResult,
 } from "@/lib/types/listingkit";
 
@@ -38,6 +39,7 @@ export type CanonicalProductDetail = {
 export type CanonicalProductListPage = {
   page: number;
   pageSize: number;
+  total: number;
   items: CanonicalProductListItem[];
 };
 
@@ -46,19 +48,43 @@ export async function getCanonicalProducts(
 ): Promise<CanonicalProductListPage> {
   const page = query.page && query.page > 0 ? query.page : 1;
   const pageSize = query.page_size && query.page_size > 0 ? query.page_size : 20;
-  const tasks = await getListingKitTasks({ page, page_size: pageSize });
-  const results = await Promise.allSettled(
-    (tasks.items ?? []).map((task) => getListingKitTaskResult(task.task_id)),
-  );
-  const items = results
-    .flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
-    .map(buildCanonicalProductListItem)
+  const tasks = await getListingKitTasks({
+    page,
+    page_size: pageSize,
+    canonical_product: true,
+  });
+  const items = (tasks.items ?? [])
+    .map(buildCanonicalProductListItemFromTask)
     .filter((item): item is CanonicalProductListItem => item !== null);
 
   return {
     page,
     pageSize,
+    total: tasks.total,
     items,
+  };
+}
+
+export function buildCanonicalProductListItemFromTask(
+  task: ListingKitTaskListItem,
+): CanonicalProductListItem | null {
+  const product = task.canonical_product;
+  if (!product) {
+    return null;
+  }
+  return {
+    taskId: task.task_id,
+    tenantId: task.tenant_id,
+    title: product.title?.trim() || task.title?.trim() || task.task_id || "Untitled canonical product",
+    brand: product.brand,
+    categoryPath: product.category_path ?? [],
+    imageUrl: product.image_url,
+    platformLabels: task.platforms ?? [],
+    needsReview: Boolean(product.needs_review),
+    imageCount: product.image_count ?? task.image_count ?? 0,
+    variantCount: product.variant_count ?? 0,
+    createdAt: task.created_at,
+    completedAt: task.completed_at,
   };
 }
 
