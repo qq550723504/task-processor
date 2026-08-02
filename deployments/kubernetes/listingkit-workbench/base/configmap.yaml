@@ -20,9 +20,9 @@ data:
   # SHEIN has a dedicated login runtime. Keep its browser mode explicit rather
   # than inheriting an image-level default.
   TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_DEFAULT_HEADLESS: "true"
-  # Keep HTTP login execution inline until the dedicated Worker is deployed and
-  # explicitly enabled. The worker itself always consumes attempts directly.
-  TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_EXECUTION_MODE: "inline"
+  # Run SHEIN browser sessions in the dedicated Worker so the API process does
+  # not own long-lived browser profiles or verification-code waits.
+  TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_EXECUTION_MODE: "worker"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PROVIDER: "s3"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_PUBLICBASE: "https://oss.shuomiai.com"
   TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET: "shuomi-1303159911"
