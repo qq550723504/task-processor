@@ -206,6 +206,7 @@ export function TenantStoreDirectoryPanel() {
             <TableHeader className="bg-zinc-50 text-left text-xs font-semibold uppercase text-zinc-500">
               <TableRow>
                 <TableHead className="px-4 py-3">店铺</TableHead>
+                <TableHead className="px-4 py-3">店铺 ID</TableHead>
                 <TableHead className="px-4 py-3">账号</TableHead>
                 <TableHead className="px-4 py-3">平台</TableHead>
                 <TableHead className="px-4 py-3">地区</TableHead>
@@ -217,13 +218,13 @@ export function TenantStoreDirectoryPanel() {
             <TableBody className="divide-y divide-zinc-100">
               {loading ? (
                 <TableRow>
-                  <TableCell className="px-4 py-6 text-zinc-500" colSpan={7}>
+                  <TableCell className="px-4 py-6 text-zinc-500" colSpan={8}>
                     加载中...
                   </TableCell>
                 </TableRow>
               ) : stores.length === 0 ? (
                 <TableRow>
-                  <TableCell className="px-4 py-6 text-zinc-500" colSpan={7}>
+                  <TableCell className="px-4 py-6 text-zinc-500" colSpan={8}>
                     暂无店铺
                   </TableCell>
                 </TableRow>
@@ -232,7 +233,10 @@ export function TenantStoreDirectoryPanel() {
                   <TableRow key={store.id} className="align-top">
                     <TableCell className="px-4 py-3">
                       <div className="font-medium text-zinc-950">{store.name}</div>
-                      <div className="text-xs text-zinc-500">#{store.id}</div>
+                      <div className="text-xs text-zinc-500">{store.storeId || "-"}</div>
+                    </TableCell>
+                    <TableCell className="px-4 py-3 font-mono text-zinc-700">
+                      {store.id}
                     </TableCell>
                     <TableCell className="px-4 py-3 text-zinc-700">{store.username}</TableCell>
                     <TableCell className="px-4 py-3 text-zinc-700">{store.platform}</TableCell>
