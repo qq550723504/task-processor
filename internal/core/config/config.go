@@ -559,6 +559,9 @@ func knownEnvBindings() map[string]envBinding {
 		"platforms.shein.loginService.defaultHeadless": {
 			Primary: "TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_DEFAULT_HEADLESS",
 		},
+		"platforms.shein.loginService.forceHeadless": {
+			Primary: "TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_FORCE_HEADLESS",
+		},
 		"platforms.shein.loginService.executionMode": {
 			Primary: "TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_EXECUTION_MODE",
 		},

@@ -7,7 +7,7 @@ describe("shein login api", () => {
     vi.restoreAllMocks();
   });
 
-  it("starts manual login in a visible browser for debugging", async () => {
+  it("starts manual login in headless mode for cluster execution", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ success: true, data: {} }), {
         status: 200,
@@ -22,7 +22,7 @@ describe("shein login api", () => {
       "/api/shein-login/accounts/12/login",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ force_login: true, headless: false }),
+        body: JSON.stringify({ force_login: true, headless: true }),
       }),
     );
   });

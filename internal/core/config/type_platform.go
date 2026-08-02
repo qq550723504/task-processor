@@ -85,6 +85,7 @@ type LoginServiceConfig struct {
 	ProfileRootDir      string `mapstructure:"profileRootDir" yaml:"profileRootDir"`
 	ArtifactDir         string `mapstructure:"artifactDir" yaml:"artifactDir"`
 	DefaultHeadless     bool   `mapstructure:"defaultHeadless" yaml:"defaultHeadless"`
+	ForceHeadless       bool   `mapstructure:"forceHeadless" yaml:"forceHeadless"`
 	// ExecutionMode selects where browser login runs. "inline" preserves the
 	// historical HTTP-process execution; "worker" dispatches to the dedicated
 	// SHEIN login worker.

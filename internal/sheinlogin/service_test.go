@@ -66,13 +66,15 @@ type stubAutomation struct {
 	session VerifySession
 	err     error
 	calls   int
+	config  AutomationConfig
 }
 
 func (s *stubAutomation) Login(context.Context, Account, AutomationConfig, *RedisStore) (*AutomationResult, error) {
 	return s.result, s.err
 }
-func (s *stubAutomation) StartLogin(context.Context, Account, AutomationConfig) (*AutomationResult, VerifySession, error) {
+func (s *stubAutomation) StartLogin(_ context.Context, _ Account, cfg AutomationConfig) (*AutomationResult, VerifySession, error) {
 	s.calls++
+	s.config = cfg
 	return s.result, s.session, s.err
 }
 
@@ -151,6 +153,22 @@ func TestServiceLoginPersistsBrowserLaunchFailure(t *testing.T) {
 	persisted, err := svc.store.LastFailure(context.Background(), 1, 2)
 	if err != nil || persisted == nil || persisted.Stage != "browser_launch" {
 		t.Fatalf("launch failure was not persisted: failure=%+v err=%v", persisted, err)
+	}
+}
+
+func TestServiceForceHeadlessIgnoresRequestOverride(t *testing.T) {
+	automation := &stubAutomation{result: &AutomationResult{
+		BrowserState: map[string]any{"cookies": []any{}},
+	}}
+	svc := newTestService(t, automation)
+	svc.forceHeadless = true
+	headed := false
+
+	if _, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true, Headless: &headed}); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	if !automation.config.Headless {
+		t.Fatal("forced headless login must ignore a headed request override")
 	}
 }
 

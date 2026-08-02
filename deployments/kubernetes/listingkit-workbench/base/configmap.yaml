@@ -20,6 +20,9 @@ data:
   # SHEIN has a dedicated login runtime. Keep its browser mode explicit rather
   # than inheriting an image-level default.
   TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_DEFAULT_HEADLESS: "true"
+  # Kubernetes login workers do not run an X server. Reject headed overrides
+  # from stale clients and keep browser startup deterministic.
+  TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_FORCE_HEADLESS: "true"
   # Run SHEIN browser sessions in the dedicated Worker so the API process does
   # not own long-lived browser profiles or verification-code waits.
   TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_EXECUTION_MODE: "worker"

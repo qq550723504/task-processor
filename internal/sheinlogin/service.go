@@ -29,6 +29,7 @@ type Service struct {
 	runtime            *Runtime
 	automation         Automation
 	defaultHeadless    bool
+	forceHeadless      bool
 	executionMode      string
 	profileRoot        string
 	artifactDir        string
@@ -66,6 +67,7 @@ func NewService(cfg config.LoginServiceConfig, redisCfg config.RedisConfig, brow
 		runtime:           runtime,
 		automation:        NewPlaywrightAutomation(),
 		defaultHeadless:   cfg.DefaultHeadless,
+		forceHeadless:     cfg.ForceHeadless,
 		executionMode:     normalizeLoginExecutionMode(cfg.ExecutionMode),
 		profileRoot:       cfg.ProfileRootDir,
 		artifactDir:       cfg.ArtifactDir,
@@ -242,7 +244,9 @@ func (s *Service) loginInline(ctx context.Context, tenantID int64, storeID int64
 			}
 		}
 		headless := s.defaultHeadless
-		if req.Headless != nil {
+		if s.forceHeadless {
+			headless = true
+		} else if req.Headless != nil {
 			headless = *req.Headless
 		}
 		runResult, session, runErr := s.automation.StartLogin(ctx, *account, AutomationConfig{
