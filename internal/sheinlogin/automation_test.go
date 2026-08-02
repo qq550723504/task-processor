@@ -10,29 +10,34 @@ import (
 )
 
 type blockingBrowserLaunchManager struct {
-	launchStarted chan struct{}
-	closed        chan struct{}
-	closeOnce     sync.Once
+	launchStarted  chan struct{}
+	releaseLaunch  chan struct{}
+	launchReturned chan struct{}
+	closed         chan struct{}
+	closeOnce      sync.Once
 }
 
 func newBlockingBrowserLaunchManager() *blockingBrowserLaunchManager {
 	return &blockingBrowserLaunchManager{
-		launchStarted: make(chan struct{}),
-		closed:        make(chan struct{}),
+		launchStarted:  make(chan struct{}),
+		releaseLaunch:  make(chan struct{}),
+		launchReturned: make(chan struct{}),
+		closed:         make(chan struct{}),
 	}
 }
 
 func (m *blockingBrowserLaunchManager) Launch() error {
 	close(m.launchStarted)
-	<-m.closed
-	return errors.New("browser driver closed")
+	<-m.releaseLaunch
+	close(m.launchReturned)
+	return nil
 }
 
 func (m *blockingBrowserLaunchManager) Close() {
 	m.closeOnce.Do(func() { close(m.closed) })
 }
 
-func TestLaunchManagerWithTimeoutClosesBlockedLaunch(t *testing.T) {
+func TestLaunchManagerWithTimeoutDefersCleanupUntilLaunchReturns(t *testing.T) {
 	manager := newBlockingBrowserLaunchManager()
 
 	err := launchManagerWithTimeout(manager, 20*time.Millisecond)
@@ -46,16 +51,31 @@ func TestLaunchManagerWithTimeoutClosesBlockedLaunch(t *testing.T) {
 	}
 	select {
 	case <-manager.closed:
+		t.Fatal("Close should wait until Launch returns")
+	default:
+	}
+
+	close(manager.releaseLaunch)
+
+	select {
+	case <-manager.launchReturned:
 	case <-time.After(time.Second):
-		t.Fatal("Close was not called after launch timeout")
+		t.Fatal("Launch did not return after release")
+	}
+	select {
+	case <-manager.closed:
+	case <-time.After(time.Second):
+		t.Fatal("Close was not called after Launch returned")
 	}
 }
 
-func TestRunBlockingStageWithContextClosesResourcesOnCancellation(t *testing.T) {
+func TestRunBlockingStageWithContextDefersCleanupUntilStageReturns(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	started := make(chan struct{})
+	release := make(chan struct{})
+	stageReturned := make(chan struct{})
 	closed := make(chan struct{})
 
 	done := make(chan error, 1)
@@ -68,7 +88,9 @@ func TestRunBlockingStageWithContextClosesResourcesOnCancellation(t *testing.T) 
 			}
 		}, func() error {
 			close(started)
-			select {}
+			<-release
+			close(stageReturned)
+			return nil
 		})
 	}()
 
@@ -82,8 +104,8 @@ func TestRunBlockingStageWithContextClosesResourcesOnCancellation(t *testing.T) 
 
 	select {
 	case <-closed:
-	case <-time.After(time.Second):
-		t.Fatal("blocking stage cancellation did not close resources")
+		t.Fatal("cleanup should wait until the blocking stage returns")
+	default:
 	}
 
 	select {
@@ -93,6 +115,19 @@ func TestRunBlockingStageWithContextClosesResourcesOnCancellation(t *testing.T) 
 		}
 	case <-time.After(time.Second):
 		t.Fatal("blocking stage did not return after cancellation")
+	}
+
+	close(release)
+
+	select {
+	case <-stageReturned:
+	case <-time.After(time.Second):
+		t.Fatal("blocking stage goroutine did not return after release")
+	}
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("cleanup did not run after the blocking stage returned")
 	}
 }
 

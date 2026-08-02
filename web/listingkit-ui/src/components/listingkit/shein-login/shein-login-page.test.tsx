@@ -143,7 +143,12 @@ describe("SheinLoginPage", () => {
         name: "Open Verify Code for store 870",
       }),
     ).toBeDisabled();
-    expect(screen.getByText("Cancelling the active login attempt...")).toBeInTheDocument();
+    expect(
+      within(row as HTMLElement).getByRole("button", {
+        name: "Cancelling login for store 870",
+      }),
+    ).toHaveAttribute("aria-busy", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("Cancelling the active login attempt...");
   });
 
   it("shows accessible cancellation feedback in the verify-code dialog", async () => {
@@ -164,6 +169,8 @@ describe("SheinLoginPage", () => {
     expect(screen.getByRole("dialog", { name: "Submit Verify Code" })).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("Cancel login failed.");
     expect(screen.getByRole("button", { name: "Close Verify Code Dialog" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancel Login" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Cancel login failed.");
   });
 });

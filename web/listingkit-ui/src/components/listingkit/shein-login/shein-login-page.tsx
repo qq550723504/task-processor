@@ -434,7 +434,7 @@ function VerifyCodeDialog({
 
         <div className="mt-5 flex justify-end gap-3">
           <Button variant="secondary" onClick={onClose} disabled={pending}>
-            取消
+            Close
           </Button>
           <Button variant="danger" onClick={onCancelLogin} disabled={pending || cancelPending}>
             {cancelPending ? "Cancelling..." : "Cancel Login"}
@@ -823,7 +823,12 @@ export function SheinLoginPage() {
                                 })
                               }
                               disabled={cancelLogin.isPending}
-                              aria-label={`Cancel Login for store ${item.account.store_id}`}
+                              aria-label={
+                                cancelLogin.isPending
+                                  ? `Cancelling login for store ${item.account.store_id}`
+                                  : `Cancel Login for store ${item.account.store_id}`
+                              }
+                              aria-busy={cancelLogin.isPending || undefined}
                             >
                               {cancelLogin.isPending ? "Cancelling..." : "Cancel Login"}
                             </Button>
@@ -911,7 +916,9 @@ export function SheinLoginPage() {
                 <RefreshCw className={cn("h-4 w-4", accounts.isFetching && "animate-spin")} />
                 同步状态
               </div>
-              <p className="mt-4 text-sm leading-6 text-muted-foreground">{statusNote}</p>
+              <p className="mt-4 text-sm leading-6 text-muted-foreground" role="status" aria-live="polite" aria-atomic="true">
+                {statusNote}
+              </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button variant="secondary" className="h-9 px-3" onClick={() => accounts.refetch()} disabled={accounts.isFetching}>
                   立即刷新

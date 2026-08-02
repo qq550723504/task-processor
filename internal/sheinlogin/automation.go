@@ -3,12 +3,14 @@ package sheinlogin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
@@ -162,13 +164,17 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 		return nil, nil, err
 	}
 	if err := runBlockingStageWithContext(ctx, manager.Close, manager.Install); err != nil {
-		closeManagerProfile(manager, profileDir)
+		if shouldCloseManagerAfterStageError(err) {
+			closeManagerProfile(manager, profileDir)
+		}
 		return nil, nil, err
 	}
 	if err := runBlockingStageWithContext(ctx, manager.Close, func() error {
 		return launchManagerWithProfileRecovery(manager, profileDir)
 	}); err != nil {
-		closeManagerProfile(manager, profileDir)
+		if shouldCloseManagerAfterStageError(err) {
+			closeManagerProfile(manager, profileDir)
+		}
 		return nil, nil, err
 	}
 
@@ -187,7 +193,9 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 		})
 		return gotoErr
 	}); err != nil {
-		closeManagerProfile(manager, profileDir)
+		if shouldCloseManagerAfterStageError(err) {
+			closeManagerProfile(manager, profileDir)
+		}
 		return nil, nil, err
 	}
 	if err := waitForLoginSurface(ctx, page); err != nil {
@@ -1401,6 +1409,25 @@ type browserLaunchManager interface {
 	Close()
 }
 
+type blockingStage struct {
+	result      chan error
+	interrupted atomic.Bool
+}
+
+func startBlockingStage(fn func() error, onInterrupt func()) *blockingStage {
+	stage := &blockingStage{
+		result: make(chan error, 1),
+	}
+	go func() {
+		err := fn()
+		if stage.interrupted.Load() && onInterrupt != nil {
+			onInterrupt()
+		}
+		stage.result <- err
+	}()
+	return stage
+}
+
 func launchManagerWithProfileRecovery(manager browserLaunchManager, profileDir string) error {
 	err := launchManagerWithTimeout(manager, sheinBrowserLaunchTimeout)
 	if err == nil {
@@ -1431,27 +1458,14 @@ func launchManagerWithTimeout(manager browserLaunchManager, timeout time.Duratio
 		return manager.Launch()
 	}
 
-	result := make(chan error, 1)
-	timedOut := make(chan struct{})
-	go func() {
-		err := manager.Launch()
-		select {
-		case result <- err:
-		case <-timedOut:
-			// Close a launch that eventually returns after its caller has timed out,
-			// otherwise its browser context can outlive the store login lock.
-			manager.Close()
-		}
-	}()
-
+	stage := startBlockingStage(manager.Launch, manager.Close)
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
-	case err := <-result:
+	case err := <-stage.result:
 		return err
 	case <-timer.C:
-		close(timedOut)
-		manager.Close()
+		stage.interrupted.Store(true)
 		return fmt.Errorf("SHEIN browser launch timed out after %s", timeout)
 	}
 }
@@ -1463,19 +1477,18 @@ func runBlockingStageWithContext(ctx context.Context, onCancel func(), fn func()
 		}
 		return err
 	}
-	result := make(chan error, 1)
-	go func() {
-		result <- fn()
-	}()
+	stage := startBlockingStage(fn, onCancel)
 	select {
-	case err := <-result:
+	case err := <-stage.result:
 		return err
 	case <-ctx.Done():
-		if onCancel != nil {
-			onCancel()
-		}
+		stage.interrupted.Store(true)
 		return ctx.Err()
 	}
+}
+
+func shouldCloseManagerAfterStageError(err error) bool {
+	return !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
 }
 
 func sleepWithContext(ctx context.Context, wait time.Duration) error {
