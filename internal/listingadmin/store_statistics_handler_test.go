@@ -298,6 +298,111 @@ func TestStoreStatisticsHandlerFiltersTaskCountsByDate(t *testing.T) {
 	}
 }
 
+func TestStoreStatisticsHandlerSummaryJSONMatchesFrontendContract(t *testing.T) {
+	router := newStoreStatisticsTestRouter(t)
+	trueValue := true
+	limitA := 5
+	limitB := 7
+	zeroLimit := 0
+	seedStore(t, router.db, listingStore{
+		ID:                1,
+		TenantID:          101,
+		Name:              "Tenant 101 Store A",
+		Username:          "store-a",
+		Password:          "secret",
+		Platform:          "SHEIN",
+		ShopType:          "semi",
+		DailyLimit:        &limitA,
+		DailyLimitType:    "fixed",
+		EnableAutoListing: &trueValue,
+		EnableAutoLogin:   &trueValue,
+		Status:            0,
+	})
+	seedStore(t, router.db, listingStore{
+		ID:                2,
+		TenantID:          101,
+		Name:              "Tenant 101 Store B",
+		Username:          "store-b",
+		Password:          "secret",
+		Platform:          "TEMU",
+		ShopType:          "semi",
+		DailyLimit:        &limitB,
+		DailyLimitType:    "fixed",
+		EnableAutoListing: &trueValue,
+		EnableAutoLogin:   &trueValue,
+		Status:            0,
+	})
+	seedStore(t, router.db, listingStore{
+		ID:                3,
+		TenantID:          101,
+		Name:              "Zero Limit Store",
+		Username:          "store-c",
+		Password:          "secret",
+		Platform:          "AMAZON",
+		ShopType:          "semi",
+		DailyLimit:        &zeroLimit,
+		DailyLimitType:    "fixed",
+		EnableAutoListing: &trueValue,
+		EnableAutoLogin:   &trueValue,
+		Status:            0,
+	})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 1, ProductID: "P1", Status: 2, CreateTime: timePtr(time.Date(2026, 5, 15, 8, 0, 0, 0, time.UTC))})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 2, ProductID: "P2", Status: 5, CreateTime: timePtr(time.Date(2026, 5, 15, 9, 0, 0, 0, time.UTC))})
+	seedStatisticsImportTask(t, router.db, listingProductImportTask{TenantID: 101, StoreID: 3, ProductID: "P3", Status: 10, CreateTime: timePtr(time.Date(2026, 5, 15, 10, 0, 0, 0, time.UTC))})
+
+	req := httptest.NewRequest(http.MethodGet, "/store-statistics?date=2026-05-15&page=1&page_size=1", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /store-statistics = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	summaryValue, ok := payload["summary"]
+	if !ok {
+		t.Fatalf("response = %+v, want summary object", payload)
+	}
+	summary, ok := summaryValue.(map[string]any)
+	if !ok {
+		t.Fatalf("summary = %#v, want object", summaryValue)
+	}
+	for _, want := range []string{
+		"completed_count",
+		"daily_limit",
+		"remaining_count",
+		"queued_count",
+		"hold_count",
+	} {
+		if _, ok := summary[want]; !ok {
+			t.Fatalf("summary = %+v, want key %s", summary, want)
+		}
+	}
+	if got := summary["completed_count"]; got != float64(1) {
+		t.Fatalf("summary completed_count = %v, want 1", got)
+	}
+	if got := summary["daily_limit"]; got != float64(12) {
+		t.Fatalf("summary daily_limit = %v, want 12 across all eligible stores", got)
+	}
+	if got := summary["remaining_count"]; got != float64(0) {
+		t.Fatalf("summary remaining_count = %v, want 0", got)
+	}
+	if got := summary["queued_count"]; got != float64(1) {
+		t.Fatalf("summary queued_count = %v, want 1", got)
+	}
+	if got := summary["hold_count"]; got != float64(1) {
+		t.Fatalf("summary hold_count = %v, want 1", got)
+	}
+	for _, unwanted := range []string{"completedCount", "dailyLimit", "remainingCount", "queuedCount", "holdCount"} {
+		if _, exists := summary[unwanted]; exists {
+			t.Fatalf("summary = %+v, should not contain key %s", summary, unwanted)
+		}
+	}
+}
+
 func TestStoreStatisticsHandlerPassesPageParamsToRepository(t *testing.T) {
 	repo := &captureStoreStatisticsRepository{page: &StoreStatisticsPage{Items: []StoreStatistics{}, Total: 0, Page: 2, PageSize: 1}}
 	handler := NewStoreStatisticsHandler(repo)

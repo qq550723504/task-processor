@@ -37,10 +37,11 @@ type StoreStatisticsQuery struct {
 }
 
 type StoreStatisticsSummary struct {
-	CompletedCount int `json:"completedCount"`
-	RemainingCount int `json:"remainingCount"`
-	QueuedCount    int `json:"queuedCount"`
-	HoldCount      int `json:"holdCount"`
+	CompletedCount int `json:"completed_count"`
+	DailyLimit     int `json:"daily_limit"`
+	RemainingCount int `json:"remaining_count"`
+	QueuedCount    int `json:"queued_count"`
+	HoldCount      int `json:"hold_count"`
 }
 
 type StoreStatisticsPage struct {
@@ -204,6 +205,14 @@ func (r *GormStoreStatisticsRepository) countTasks(ctx context.Context, tenantID
 
 func (r *GormStoreStatisticsRepository) summarizeTasks(ctx context.Context, query StoreStatisticsQuery) (StoreStatisticsSummary, error) {
 	eligibleStores := r.eligibleStoresQuery(ctx, query).Select("id, tenant_id")
+	var limitRow struct {
+		DailyLimit int
+	}
+	if err := r.eligibleStoresQuery(ctx, query).
+		Select("coalesce(sum(case when daily_limit > 0 then daily_limit else 0 end), 0) as daily_limit").
+		Scan(&limitRow).Error; err != nil {
+		return StoreStatisticsSummary{}, err
+	}
 	db := r.db.WithContext(ctx).
 		Table("listing_product_import_task as task").
 		Select("task.status as status, count(*) as count").
@@ -223,7 +232,7 @@ func (r *GormStoreStatisticsRepository) summarizeTasks(ctx context.Context, quer
 	if err := db.Group("task.status").Scan(&rows).Error; err != nil {
 		return StoreStatisticsSummary{}, err
 	}
-	var summary StoreStatisticsSummary
+	summary := StoreStatisticsSummary{DailyLimit: limitRow.DailyLimit}
 	for _, row := range rows {
 		switch row.Status {
 		case 0, 1:

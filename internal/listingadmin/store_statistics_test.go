@@ -2,6 +2,7 @@ package listingadmin
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -120,8 +121,47 @@ func TestStoreStatisticsRepositoryReturnsPaginatedPageWithFullSummary(t *testing
 	if got := page.Items[0]; got.ID != 2 || got.Name != "Tenant 202 Store B" {
 		t.Fatalf("page item = %+v, want second eligible store ordered by id asc", got)
 	}
-	if page.Summary.CompletedCount != 2 || page.Summary.RemainingCount != 1 || page.Summary.QueuedCount != 1 || page.Summary.HoldCount != 1 {
+	if page.Summary.CompletedCount != 2 || page.Summary.DailyLimit != 12 || page.Summary.RemainingCount != 1 || page.Summary.QueuedCount != 1 || page.Summary.HoldCount != 1 {
 		t.Fatalf("summary = %+v, want counts across both eligible stores only", page.Summary)
+	}
+}
+
+func TestStoreStatisticsSummaryJSONUsesFrontendContractFields(t *testing.T) {
+	t.Parallel()
+
+	payload, err := json.Marshal(StoreStatisticsSummary{
+		CompletedCount: 3,
+		DailyLimit:     11,
+		RemainingCount: 4,
+		QueuedCount:    5,
+		HoldCount:      6,
+	})
+	if err != nil {
+		t.Fatalf("marshal summary: %v", err)
+	}
+
+	got := string(payload)
+	for _, want := range []string{
+		`"completed_count":3`,
+		`"daily_limit":11`,
+		`"remaining_count":4`,
+		`"queued_count":5`,
+		`"hold_count":6`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("summary json = %s, want %s", got, want)
+		}
+	}
+	for _, unwanted := range []string{
+		`"completedCount":3`,
+		`"dailyLimit":11`,
+		`"remainingCount":4`,
+		`"queuedCount":5`,
+		`"holdCount":6`,
+	} {
+		if strings.Contains(got, unwanted) {
+			t.Fatalf("summary json = %s, should not contain %s", got, unwanted)
+		}
 	}
 }
 
