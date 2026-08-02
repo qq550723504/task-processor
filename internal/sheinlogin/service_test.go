@@ -105,7 +105,7 @@ func (p stubSheinCookieProvider) GetCookie(context.Context, int64) (*sheinclient
 
 func TestServiceLoginReturnsExistingCookieWithoutAutomation(t *testing.T) {
 	svc := newTestService(t, &stubAutomation{})
-	if err := svc.store.SaveCookieState(context.Background(), 1, 2, map[string]any{"cookies": []any{}}, time.Hour); err != nil {
+	if err := svc.store.SaveCookieState(context.Background(), 1, 2, map[string]any{"cookies": []any{map[string]any{"name": "sid", "value": "existing"}}}, time.Hour); err != nil {
 		t.Fatalf("seed cookie: %v", err)
 	}
 	result, err := svc.Login(context.Background(), 1, 2, LoginRequest{})
@@ -229,6 +229,29 @@ func TestSubmitVerifyCodeWithoutAttemptRoutesToWaitingWorkerAttempt(t *testing.T
 	code, ok, err := svc.store.WaitAndConsumeVerifyCodeForAttempt(context.Background(), 1, 2, attempt.ID, time.Second)
 	if err != nil || !ok || code != "123456" {
 		t.Fatalf("attempt code = %q, %v, %v; want routed code", code, ok, err)
+	}
+}
+
+func TestSubmitVerifyCodeForAttemptDefaultsToTenMinutes(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+
+	if err := svc.SubmitVerifyCodeForAttempt(context.Background(), 1, 2, attempt.ID, "123456", 0); err != nil {
+		t.Fatalf("submit code: %v", err)
+	}
+	ttl, err := svc.store.client.TTL(context.Background(), verifyAttemptCodeKey(1, 2, attempt.ID)).Result()
+	if err != nil {
+		t.Fatalf("read code ttl: %v", err)
+	}
+	if ttl != 10*time.Minute {
+		t.Fatalf("verify code ttl = %s, want 10m", ttl)
 	}
 }
 

@@ -79,6 +79,11 @@ describe("TenantStoreDirectoryPanel", () => {
     expect(await screen.findByText("店铺主数据")).toBeInTheDocument();
     expect(await screen.findByText("SHEIN US")).toBeInTheDocument();
     expect(await screen.findByText("shein-us")).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "店铺 ID" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("1", { selector: "td" })).toBeInTheDocument();
+    expect(screen.getByText("SHEIN-US-001")).toBeInTheDocument();
   });
 
   it("creates a tenant store", async () => {

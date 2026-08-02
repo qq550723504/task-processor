@@ -170,6 +170,7 @@ export function StoreStatisticsAdminPage({
             <TableHeader className="bg-zinc-50">
               <TableRow className="text-xs uppercase tracking-[0.2em] hover:bg-transparent">
                 <TableHead>店铺</TableHead>
+                <TableHead>店铺 ID</TableHead>
                 <TableHead>平台</TableHead>
                 <TableHead>额度</TableHead>
                 <TableHead>任务</TableHead>
@@ -180,13 +181,13 @@ export function StoreStatisticsAdminPage({
             <TableBody>
               {loading && items.length === 0 ? (
                 <TableRow>
-                  <TableCell className="py-6 text-zinc-500" colSpan={6}>
+                  <TableCell className="py-6 text-zinc-500" colSpan={7}>
                     加载中...
                   </TableCell>
                 </TableRow>
               ) : items.length === 0 ? (
                 <TableRow>
-                  <TableCell className="py-6 text-zinc-500" colSpan={6}>
+                  <TableCell className="py-6 text-zinc-500" colSpan={7}>
                     暂无统计数据
                   </TableCell>
                 </TableRow>
@@ -232,6 +233,7 @@ function StoreStatisticsRow({
           <div className="text-xs text-zinc-500">租户 {item.tenantId}</div>
         )}
       </TableCell>
+      <TableCell className="font-mono text-zinc-700">{item.id}</TableCell>
       <TableCell className="text-zinc-700">{item.platform || "-"}</TableCell>
       <TableCell className="text-zinc-700">
         <div>{item.dailyLimit}</div>

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -14,6 +15,8 @@ import (
 
 	goredis "github.com/redis/go-redis/v9"
 )
+
+var ErrNoUsableCookie = errors.New("SHEIN browser state does not contain a usable cookie")
 
 const (
 	cookieKeyPrefix           = "shein:cookie"
@@ -82,7 +85,11 @@ func (s *RedisStore) Ready(ctx context.Context) bool {
 }
 
 func (s *RedisStore) SaveCookieState(ctx context.Context, tenantID, storeID int64, payload map[string]any, ttl time.Duration) error {
-	body, err := json.Marshal(cookieOnlyBrowserState(payload))
+	state := cookieOnlyBrowserState(payload)
+	if cookieCount(state) == 0 {
+		return ErrNoUsableCookie
+	}
+	body, err := json.Marshal(state)
 	if err != nil {
 		return err
 	}
@@ -112,7 +119,33 @@ func (s *RedisStore) HasCookie(ctx context.Context, tenantID, storeID int64) (bo
 	if err != nil {
 		return false, err
 	}
-	return ok && ttl > 0, nil
+	if !ok || ttl <= 0 {
+		return false, nil
+	}
+	raw, found, err := s.LoadCookieState(ctx, tenantID, storeID)
+	if err != nil || !found {
+		return false, err
+	}
+	var state map[string]any
+	if err := json.Unmarshal([]byte(raw), &state); err != nil {
+		return false, err
+	}
+	return cookieCount(state) > 0, nil
+}
+
+func cookieCount(state map[string]any) int {
+	if state == nil {
+		return 0
+	}
+	raw, err := json.Marshal(state["cookies"])
+	if err != nil {
+		return 0
+	}
+	var cookies []json.RawMessage
+	if err := json.Unmarshal(raw, &cookies); err != nil {
+		return 0
+	}
+	return len(cookies)
 }
 
 func (s *RedisStore) LoadCookieState(ctx context.Context, tenantID, storeID int64) (string, bool, error) {
