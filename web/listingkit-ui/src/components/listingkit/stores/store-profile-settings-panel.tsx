@@ -95,8 +95,7 @@ export function StoreProfileSettingsPanel() {
   const canLoadWarehouses =
     selectedStoreID > 0 &&
     Boolean(
-      selectedStoreLoginStatus?.has_cookie ||
-        (selectedStoreLoginStatus?.cookie_ttl ?? 0) > 0,
+      selectedStoreLoginStatus?.has_cookie,
     );
   const warehouseOptionsQuery = useQuery({
     queryKey: ["listingkit-shein-store-warehouses", selectedStoreID],

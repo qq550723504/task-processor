@@ -11,6 +11,104 @@ import (
 	"time"
 )
 
+func TestResolveLoginSurfacePrefersVisibleFormOverGenericSuccess(t *testing.T) {
+	if got := resolveLoginSurface(true, true, true); got != loginSurfaceVerifyCode {
+		t.Fatalf("resolveLoginSurface(form=true, verify=true, loggedIn=true) = %v, want loginSurfaceVerifyCode", got)
+	}
+	if got := resolveLoginSurface(true, false, true); got != loginSurfaceForm {
+		t.Fatalf("resolveLoginSurface(form=true, verify=false, loggedIn=true) = %v, want loginSurfaceForm", got)
+	}
+	if got := resolveLoginSurface(false, true, true); got != loginSurfaceVerifyCode {
+		t.Fatalf("resolveLoginSurface(form=false, verify=true, loggedIn=true) = %v, want loginSurfaceVerifyCode", got)
+	}
+	if got := resolveLoginSurface(false, false, true); got != loginSurfaceAuthenticated {
+		t.Fatalf("resolveLoginSurface(form=false, verify=false, loggedIn=true) = %v, want loginSurfaceAuthenticated", got)
+	}
+}
+
+func TestPostLoginTargetURL(t *testing.T) {
+	cases := []struct {
+		name     string
+		loginURL string
+		want     string
+	}{
+		{
+			name:     "default seller hub account",
+			loginURL: "",
+			want:     "https://sellerhub.shein.com/#/spmp/commdities/list",
+		},
+		{
+			name:     "seller hub account",
+			loginURL: "https://sellerhub.shein.com",
+			want:     "https://sellerhub.shein.com/#/spmp/commdities/list",
+		},
+		{
+			name:     "sso account",
+			loginURL: "https://sso.geiwohuo.com",
+			want:     "https://sso.geiwohuo.com/#/spmp/commdities/list",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := postLoginTargetURL(Account{LoginURL: tc.loginURL}); got != tc.want {
+				t.Fatalf("postLoginTargetURL(%q) = %q, want %q", tc.loginURL, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidatedCookieOnlyBrowserState(t *testing.T) {
+	if _, err := validatedCookieOnlyBrowserState([]any{}); !errors.Is(err, ErrNoUsableCookie) {
+		t.Fatalf("validatedCookieOnlyBrowserState(empty) error = %v, want ErrNoUsableCookie", err)
+	}
+
+	state, err := validatedCookieOnlyBrowserState([]any{map[string]any{"name": "sid", "value": "ok"}})
+	if err != nil {
+		t.Fatalf("validatedCookieOnlyBrowserState(valid): %v", err)
+	}
+	if got := cookieCount(state); got != 1 {
+		t.Fatalf("cookie count = %d, want 1", got)
+	}
+}
+
+func TestMergeNetworkPayloadsPreservesInjectedLoginResponseBody(t *testing.T) {
+	playwrightPayloads := []map[string]any{{
+		"channel": "playwright_page_response",
+		"url":     "https://sellerhub.shein.com/sso/authenticate/login",
+		"status":  200,
+	}}
+	injectedPayloads := []map[string]any{{
+		"channel":     "xhr",
+		"url":         "https://sellerhub.shein.com/sso/authenticate/login",
+		"status":      200,
+		"bodyPreview": `{"code":0,"info":{"supplierId":"redacted"}}`,
+	}}
+
+	merged := mergeNetworkPayloads(playwrightPayloads, injectedPayloads)
+	if len(merged) != 2 {
+		t.Fatalf("merged payload count = %d, want 2", len(merged))
+	}
+	if got := merged[1]["bodyPreview"]; got == nil || got == "" {
+		t.Fatal("injected response body must remain available for login classification")
+	}
+}
+
+func TestNetworkPayloadsConfirmSHEINLoginFromSuccessfulResponse(t *testing.T) {
+	payloads := []map[string]any{{
+		"url":         "https://sellerhub.shein.com/sso/authenticate/login",
+		"status":      200,
+		"bodyPreview": `{"code":0,"info":{"supplierId":"redacted"}}`,
+	}}
+	if !networkPayloadsConfirmSHEINLogin(payloads) {
+		t.Fatal("successful sellerhub login response must confirm login")
+	}
+
+	payloads[0]["bodyPreview"] = `{"code":"022008","info":{"needValidCode":true}}`
+	if networkPayloadsConfirmSHEINLogin(payloads) {
+		t.Fatal("verification-required response must not confirm login")
+	}
+}
+
 type blockingBrowserLaunchManager struct {
 	launchStarted  chan struct{}
 	releaseLaunch  chan struct{}

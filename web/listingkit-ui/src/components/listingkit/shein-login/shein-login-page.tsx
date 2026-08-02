@@ -38,6 +38,7 @@ import {
   useSubmitSheinVerifyCode,
 } from "@/lib/query/use-shein-login";
 import { cn } from "@/lib/utils/cn";
+import { hasUsableSheinCookie } from "@/components/listingkit/stores/store-login-status";
 import type {
   SheinLoginAccountStatus,
   SheinLoginFailureDetail,
@@ -88,7 +89,7 @@ function metricCards(items: SheinLoginAccountStatus[]) {
     },
     {
       label: "Cookie 可用",
-      value: items.filter((item) => item.has_cookie || (item.cookie_ttl ?? 0) > 0).length,
+      value: items.filter((item) => hasUsableSheinCookie(item)).length,
       note: "已有可用登录态",
       tone: "text-emerald-700",
     },
@@ -121,7 +122,7 @@ function accountFilterItems(items: SheinLoginAccountStatus[]) {
         (item) =>
           item.waiting_for_verify_code ||
           Boolean(item.last_failure) ||
-          (!item.has_cookie && (item.cookie_ttl ?? 0) <= 0),
+          !hasUsableSheinCookie(item),
       ).length,
     },
     {
@@ -137,7 +138,7 @@ function accountFilterItems(items: SheinLoginAccountStatus[]) {
     {
       key: "healthy" as const,
       label: "可用",
-      count: items.filter((item) => item.has_cookie || (item.cookie_ttl ?? 0) > 0).length,
+      count: items.filter((item) => hasUsableSheinCookie(item)).length,
     },
   ];
 }
@@ -155,8 +156,11 @@ function summaryTone(item: SheinLoginAccountStatus) {
   if (item.last_failure) {
     return "border-rose-200 bg-rose-50 text-rose-800";
   }
-  if (item.has_cookie || (item.cookie_ttl ?? 0) > 0) {
+  if (hasUsableSheinCookie(item)) {
     return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  }
+  if ((item.cookie_ttl ?? 0) > 0) {
+    return "border-rose-200 bg-rose-50 text-rose-800";
   }
   return "border-border bg-muted text-muted-foreground";
 }
@@ -218,14 +222,14 @@ function filterAccounts(items: SheinLoginAccountStatus[], filter: AccountFilter)
         (item) =>
           item.waiting_for_verify_code ||
           Boolean(item.last_failure) ||
-          (!item.has_cookie && (item.cookie_ttl ?? 0) <= 0),
+          !hasUsableSheinCookie(item),
       );
     case "verify":
       return items.filter((item) => item.waiting_for_verify_code);
     case "failed":
       return items.filter((item) => item.last_failure);
     case "healthy":
-      return items.filter((item) => item.has_cookie || (item.cookie_ttl ?? 0) > 0);
+      return items.filter((item) => hasUsableSheinCookie(item));
     default:
       return items;
   }
@@ -245,8 +249,11 @@ function storeStatusSummary(item: SheinLoginAccountStatus) {
   if (item.login_in_progress) {
     return "登录流程执行中";
   }
-  if (item.has_cookie || (item.cookie_ttl ?? 0) > 0) {
+  if (hasUsableSheinCookie(item)) {
     return `Cookie 可用 · ${formatTTL(item.cookie_ttl)}`;
+  }
+  if ((item.cookie_ttl ?? 0) > 0) {
+    return `Cookie 无效 · ${formatTTL(item.cookie_ttl)}`;
   }
   return "尚未持有可用 Cookie";
 }
@@ -268,10 +275,13 @@ function storeStatusNote(item: SheinLoginAccountStatus) {
   if (item.login_in_progress) {
     return "后台正在尝试刷新登录态，可以稍后刷新状态。";
   }
-  if (item.has_cookie || (item.cookie_ttl ?? 0) > 0) {
+  if (hasUsableSheinCookie(item)) {
     return item.last_login_time
       ? `最近登录 ${formatDateTime(item.last_login_time)}`
       : "当前可以直接复用现有登录态。";
+  }
+  if ((item.cookie_ttl ?? 0) > 0) {
+    return "Redis 中仍有 Cookie 记录，但内容不可用，建议清理后重新登录。";
   }
   return "建议先发起登录，建立新的店铺 Cookie。";
 }
@@ -280,7 +290,7 @@ function runbookItems(items: SheinLoginAccountStatus[]) {
   const verifyCount = items.filter((item) => item.waiting_for_verify_code).length;
   const failureCount = items.filter((item) => item.last_failure).length;
   const emptyCookieCount = items.filter(
-    (item) => !item.has_cookie && (item.cookie_ttl ?? 0) <= 0 && !item.waiting_for_verify_code,
+    (item) => !hasUsableSheinCookie(item) && !item.waiting_for_verify_code,
   ).length;
 
   return [

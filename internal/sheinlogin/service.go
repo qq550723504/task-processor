@@ -124,7 +124,11 @@ func (s *Service) Status(ctx context.Context, tenantID int64, storeID int64) (*A
 	if err != nil {
 		return nil, err
 	}
-	ttl, hasCookie, err := s.store.CookieTTL(ctx, account.TenantID, account.StoreID)
+	ttl, _, err := s.store.CookieTTL(ctx, account.TenantID, account.StoreID)
+	if err != nil {
+		return nil, err
+	}
+	hasCookie, err := s.store.HasCookie(ctx, account.TenantID, account.StoreID)
 	if err != nil {
 		return nil, err
 	}
@@ -308,7 +312,8 @@ func (s *Service) loginInline(ctx context.Context, tenantID int64, storeID int64
 		return nil, err
 	}
 	if !req.ForceLogin {
-		if ttl, ok, err := s.store.CookieTTL(ctx, account.TenantID, account.StoreID); err == nil && ok && ttl > 0 {
+		if hasCookie, err := s.store.HasCookie(ctx, account.TenantID, account.StoreID); err == nil && hasCookie {
+			ttl, _, _ := s.store.CookieTTL(ctx, account.TenantID, account.StoreID)
 			return s.existingCookieLoginResult(account, ttl), nil
 		}
 	}
