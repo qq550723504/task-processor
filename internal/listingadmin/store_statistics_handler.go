@@ -16,7 +16,12 @@ func NewStoreStatisticsHandler(repo StoreStatisticsRepository) *StoreStatisticsH
 
 func (h *StoreStatisticsHandler) ListStoreStatistics(c *gin.Context) {
 	scope := requestListScope(c)
-	if scope.TenantID <= 0 {
+	platformAccess := hasPlatformStoreAccess(c)
+	if platformAccess {
+		scope.TenantID = 0
+		scope.OwnerUserID = ""
+	}
+	if scope.TenantID <= 0 && !platformAccess {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "tenant id is required"})
 		return
 	}
@@ -25,10 +30,10 @@ func (h *StoreStatisticsHandler) ListStoreStatistics(c *gin.Context) {
 		return
 	}
 	query := applyListQueryScope(&StoreStatisticsQuery{Date: date}, scope)
-	items, err := h.repo.ListStoreStatistics(requestIdentityContext(c), *query)
+	page, err := h.repo.ListStoreStatistics(requestIdentityContext(c), *query)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"message": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, items)
+	c.JSON(http.StatusOK, page)
 }
