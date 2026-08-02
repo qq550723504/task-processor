@@ -3,12 +3,34 @@ package sheinlogin
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
 
 	"github.com/mxschmitt/playwright-go"
 )
+
+func cookieDiagnosticSummary(cookies []playwright.Cookie) map[string]any {
+	domainSet := make(map[string]struct{}, len(cookies))
+	for _, cookie := range cookies {
+		domain := strings.TrimSpace(cookie.Domain)
+		if domain == "" {
+			domain = "<empty>"
+		}
+		domainSet[domain] = struct{}{}
+	}
+	domains := make([]string, 0, len(domainSet))
+	for domain := range domainSet {
+		domains = append(domains, domain)
+	}
+	sort.Strings(domains)
+	return map[string]any{
+		"count":   len(cookies),
+		"domains": domains,
+	}
+}
 
 func waitForLoginSurface(ctx context.Context, page playwright.Page) (loginSurface, error) {
 	deadline := time.Now().Add(45 * time.Second)
@@ -72,6 +94,23 @@ func exportAuthenticatedBrowserState(ctx context.Context, manager *sharedbrowser
 	if err != nil {
 		return artifactResult(page, artifactDir, account, stage, err)
 	}
+	contextCookies, contextCookieErr := manager.GetContext().Cookies()
+	storageDiagnosticSummary := cookieDiagnosticSummary(storageState.Cookies)
+	diagnosticFields := map[string]any{
+		"tenant_id":                    account.TenantID,
+		"store_id":                     account.StoreID,
+		"target_url":                   targetURL,
+		"stage":                        stage,
+		"storage_state_cookie_count":   storageDiagnosticSummary["count"],
+		"storage_state_cookie_domains": storageDiagnosticSummary["domains"],
+		"context_cookie_read_error":    contextCookieErr != nil,
+	}
+	if contextCookieErr == nil {
+		diagnosticSummary := cookieDiagnosticSummary(contextCookies)
+		diagnosticFields["context_cookie_count"] = diagnosticSummary["count"]
+		diagnosticFields["context_cookie_domains"] = diagnosticSummary["domains"]
+	}
+	sheinLoginServiceLogger.WithFields(diagnosticFields).Info("SHEIN cookie export diagnostic")
 	state, err := validatedCookieOnlyBrowserState(storageState.Cookies)
 	if err != nil {
 		sheinLoginServiceLogger.WithFields(map[string]any{

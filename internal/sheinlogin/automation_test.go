@@ -3,12 +3,15 @@ package sheinlogin
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/mxschmitt/playwright-go"
 )
 
 func TestResolveLoginSurfacePrefersVisibleFormOverGenericSuccess(t *testing.T) {
@@ -68,6 +71,25 @@ func TestValidatedCookieOnlyBrowserState(t *testing.T) {
 	}
 	if got := cookieCount(state); got != 1 {
 		t.Fatalf("cookie count = %d, want 1", got)
+	}
+}
+
+func TestCookieDiagnosticSummary(t *testing.T) {
+	summary := cookieDiagnosticSummary([]playwright.Cookie{
+		{Name: "session", Value: "secret-a", Domain: ".sso.geiwohuo.com"},
+		{Name: "csrf", Value: "secret-b", Domain: ".sso.geiwohuo.com"},
+		{Name: "tenant", Value: "secret-c", Domain: ".sellerhub.shein.com"},
+	})
+
+	if got := summary["count"]; got != 3 {
+		t.Fatalf("cookie diagnostic count = %v, want 3", got)
+	}
+	if got := summary["domains"]; !reflect.DeepEqual(got, []string{".sellerhub.shein.com", ".sso.geiwohuo.com"}) {
+		t.Fatalf("cookie diagnostic domains = %#v, want sorted unique domains", got)
+	}
+	serialized := fmt.Sprint(summary)
+	if strings.Contains(serialized, "secret-a") || strings.Contains(serialized, "session") {
+		t.Fatalf("cookie diagnostic must not contain cookie names or values: %s", serialized)
 	}
 }
 
