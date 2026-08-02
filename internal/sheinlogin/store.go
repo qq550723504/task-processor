@@ -322,11 +322,7 @@ func (s *RedisStore) LastLoginTime(ctx context.Context, tenantID, storeID int64)
 }
 
 func (s *RedisStore) ClearPauseKeys(ctx context.Context, tenantID, storeID int64) error {
-	keys := []string{
-		fmt.Sprintf("listing:task:pause:shein:%d:%d", tenantID, storeID),
-		fmt.Sprintf("listing:task:pause:%d:%d", tenantID, storeID),
-	}
-	return s.client.Del(ctx, keys...).Err()
+	return s.client.Del(ctx, pauseKeys(tenantID, storeID)...).Err()
 }
 
 func (s *RedisStore) RecordLastFailure(ctx context.Context, tenantID, storeID int64, summary *FailureSummary, ttl time.Duration) error {
@@ -489,6 +485,10 @@ func (s *RedisStore) UpdateLoginAttempt(ctx context.Context, attempt *LoginAttem
 	if attempt == nil || strings.TrimSpace(attempt.ID) == "" {
 		return fmt.Errorf("login attempt is required")
 	}
+	if !attempt.Status.IsActive() {
+		_, err := s.CompleteLoginAttemptIfActive(ctx, attempt)
+		return err
+	}
 	if err := s.saveLoginAttempt(ctx, attempt); err != nil {
 		return err
 	}
@@ -496,6 +496,228 @@ func (s *RedisStore) UpdateLoginAttempt(ctx context.Context, attempt *LoginAttem
 		return s.refreshLoginAttemptLease(ctx, attempt)
 	}
 	return s.releaseLoginAttemptLease(ctx, attempt)
+}
+
+func (s *RedisStore) UpdateLoginAttemptIfActive(ctx context.Context, attempt *LoginAttempt) (bool, error) {
+	if attempt == nil || strings.TrimSpace(attempt.ID) == "" {
+		return false, fmt.Errorf("login attempt is required")
+	}
+	if !attempt.Status.IsActive() {
+		return false, fmt.Errorf("guarded login attempt update requires an active status")
+	}
+	body, err := json.Marshal(attempt)
+	if err != nil {
+		return false, err
+	}
+	const updateAttemptIfActiveScript = `
+local raw = redis.call("GET", KEYS[2])
+if not raw then
+	return 0
+end
+local current = cjson.decode(raw)
+local status = tostring(current["status"] or "")
+if status ~= "queued" and status ~= "launching" and status ~= "waiting_verify_code" then
+	return 0
+end
+redis.call("SET", KEYS[1], ARGV[1], "PX", ARGV[3])
+redis.call("SET", KEYS[2], ARGV[2], "PX", ARGV[4])
+redis.call("SET", KEYS[3], ARGV[1], "PX", ARGV[4])
+return 1`
+	result, err := s.client.Eval(ctx, updateAttemptIfActiveScript,
+		[]string{
+			loginAttemptActiveKey(attempt.TenantID, attempt.StoreID),
+			loginAttemptKey(attempt.ID),
+			loginAttemptLatestKey(attempt.TenantID, attempt.StoreID),
+		},
+		attempt.ID,
+		body,
+		activeAttemptLeaseTTL.Milliseconds(),
+		loginAttemptTTL.Milliseconds(),
+	).Int()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
+}
+
+func (s *RedisStore) CompleteLoginAttemptIfActive(ctx context.Context, attempt *LoginAttempt) (bool, error) {
+	if attempt == nil || strings.TrimSpace(attempt.ID) == "" {
+		return false, fmt.Errorf("login attempt is required")
+	}
+	if attempt.Status.IsActive() {
+		return false, fmt.Errorf("login attempt completion requires a terminal status")
+	}
+	body, err := json.Marshal(attempt)
+	if err != nil {
+		return false, err
+	}
+	controlKey := loginAttemptControlKey(attempt.ID)
+	codeKey := verifyAttemptCodeKey(attempt.TenantID, attempt.StoreID, attempt.ID)
+	queueKey := verifyAttemptQueueKey(attempt.TenantID, attempt.StoreID, attempt.ID)
+	const completeAttemptIfActiveScript = `
+if redis.call("GET", KEYS[1]) ~= ARGV[1] then
+	return 0
+end
+local raw = redis.call("GET", KEYS[2])
+if not raw then
+	return 0
+end
+local current = cjson.decode(raw)
+local status = tostring(current["status"] or "")
+if status ~= "queued" and status ~= "launching" and status ~= "waiting_verify_code" then
+	return 0
+end
+redis.call("SET", KEYS[2], ARGV[2], "PX", ARGV[3])
+redis.call("SET", KEYS[3], ARGV[1], "PX", ARGV[3])
+if ARGV[4] == "failed" then
+	redis.call("DEL", KEYS[4], KEYS[5], KEYS[6], KEYS[7])
+end
+redis.call("DEL", KEYS[1])
+return 1`
+	result, err := s.client.Eval(ctx, completeAttemptIfActiveScript,
+		[]string{
+			loginAttemptActiveKey(attempt.TenantID, attempt.StoreID),
+			loginAttemptKey(attempt.ID),
+			loginAttemptLatestKey(attempt.TenantID, attempt.StoreID),
+			verifyWaitKey(attempt.TenantID, attempt.StoreID),
+			controlKey,
+			codeKey,
+			queueKey,
+		},
+		attempt.ID,
+		body,
+		loginAttemptTTL.Milliseconds(),
+		string(attempt.Status),
+	).Int()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
+}
+
+func (s *RedisStore) PersistVerifyWaitAndUpdateAttemptIfActive(ctx context.Context, attempt *LoginAttempt, summary *FailureSummary, waitTTL, failureTTL time.Duration) (bool, error) {
+	if attempt == nil || strings.TrimSpace(attempt.ID) == "" {
+		return false, fmt.Errorf("login attempt is required")
+	}
+	if !attempt.Status.IsActive() {
+		return false, fmt.Errorf("verify wait persistence requires an active login attempt status")
+	}
+	attemptBody, err := json.Marshal(attempt)
+	if err != nil {
+		return false, err
+	}
+	summaryBody := ""
+	if summary != nil {
+		raw, err := json.Marshal(summary)
+		if err != nil {
+			return false, err
+		}
+		summaryBody = string(raw)
+	}
+	const persistVerifyWaitScript = `
+local raw = redis.call("GET", KEYS[2])
+if not raw then
+	return 0
+end
+local current = cjson.decode(raw)
+local status = tostring(current["status"] or "")
+if status ~= "queued" and status ~= "launching" and status ~= "waiting_verify_code" then
+	return 0
+end
+redis.call("SET", KEYS[1], ARGV[1], "PX", ARGV[4])
+redis.call("SET", KEYS[2], ARGV[2], "PX", ARGV[3])
+redis.call("SET", KEYS[3], ARGV[1], "PX", ARGV[3])
+redis.call("SET", KEYS[4], "waiting", "PX", ARGV[5])
+if ARGV[6] ~= "" then
+	redis.call("SET", KEYS[5], ARGV[6], "PX", ARGV[7])
+	redis.call("DEL", KEYS[6])
+else
+	redis.call("DEL", KEYS[5], KEYS[6])
+end
+return 1`
+	result, err := s.client.Eval(ctx, persistVerifyWaitScript,
+		[]string{
+			loginAttemptActiveKey(attempt.TenantID, attempt.StoreID),
+			loginAttemptKey(attempt.ID),
+			loginAttemptLatestKey(attempt.TenantID, attempt.StoreID),
+			verifyWaitKey(attempt.TenantID, attempt.StoreID),
+			lastFailureKey(attempt.TenantID, attempt.StoreID),
+			lastFailureDetailKey(attempt.TenantID, attempt.StoreID),
+		},
+		attempt.ID,
+		attemptBody,
+		loginAttemptTTL.Milliseconds(),
+		activeAttemptLeaseTTL.Milliseconds(),
+		waitTTL.Milliseconds(),
+		summaryBody,
+		failureTTL.Milliseconds(),
+	).Int()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
+}
+
+func (s *RedisStore) CompleteSuccessfulLoginAttemptIfActive(ctx context.Context, attempt *LoginAttempt, browserState map[string]any, when time.Time) (bool, error) {
+	if attempt == nil || strings.TrimSpace(attempt.ID) == "" {
+		return false, fmt.Errorf("login attempt is required")
+	}
+	if attempt.Status.IsActive() {
+		return false, fmt.Errorf("successful login attempt completion requires a terminal status")
+	}
+	attemptBody, err := json.Marshal(attempt)
+	if err != nil {
+		return false, err
+	}
+	cookieBody, err := json.Marshal(cookieOnlyBrowserState(browserState))
+	if err != nil {
+		return false, err
+	}
+	pauseKeySet := pauseKeys(attempt.TenantID, attempt.StoreID)
+	const completeSuccessfulAttemptScript = `
+local raw = redis.call("GET", KEYS[2])
+if not raw then
+	return 0
+end
+local current = cjson.decode(raw)
+local status = tostring(current["status"] or "")
+if status ~= "queued" and status ~= "launching" and status ~= "waiting_verify_code" then
+	return 0
+end
+redis.call("SET", KEYS[2], ARGV[2], "PX", ARGV[3])
+redis.call("SET", KEYS[3], ARGV[1], "PX", ARGV[3])
+redis.call("SET", KEYS[4], ARGV[4], "PX", ARGV[5])
+redis.call("SET", KEYS[5], ARGV[6], "PX", ARGV[7])
+redis.call("DEL", KEYS[6], KEYS[7], KEYS[8], KEYS[9], KEYS[10])
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+	redis.call("DEL", KEYS[1])
+end
+return 1`
+	result, err := s.client.Eval(ctx, completeSuccessfulAttemptScript,
+		[]string{
+			loginAttemptActiveKey(attempt.TenantID, attempt.StoreID),
+			loginAttemptKey(attempt.ID),
+			loginAttemptLatestKey(attempt.TenantID, attempt.StoreID),
+			cookieKey(attempt.TenantID, attempt.StoreID),
+			lastLoginKey(attempt.TenantID, attempt.StoreID),
+			lastFailureKey(attempt.TenantID, attempt.StoreID),
+			lastFailureDetailKey(attempt.TenantID, attempt.StoreID),
+			verifyWaitKey(attempt.TenantID, attempt.StoreID),
+			pauseKeySet[0],
+			pauseKeySet[1],
+		},
+		attempt.ID,
+		attemptBody,
+		loginAttemptTTL.Milliseconds(),
+		string(cookieBody),
+		loginAttemptTTL.Milliseconds(),
+		strconv.FormatInt(when.Unix(), 10),
+		loginAttemptTTL.Milliseconds(),
+	).Int()
+	if err != nil {
+		return false, err
+	}
+	return result == 1, nil
 }
 
 func (s *RedisStore) EnsureLoginAttemptConsumerGroup(ctx context.Context) error {
@@ -551,8 +773,14 @@ func (s *RedisStore) ClaimStaleLoginAttemptJobs(ctx context.Context, consumer st
 // and marks the attempt terminal before allowing another attempt for the store.
 func (s *RedisStore) CancelLoginAttempt(ctx context.Context, tenantID, storeID int64, message string) (*LoginAttempt, bool, error) {
 	attempt, err := s.LatestLoginAttempt(ctx, tenantID, storeID)
-	if err != nil || attempt == nil || !attempt.Status.IsActive() {
+	if err != nil || attempt == nil {
 		return attempt, false, err
+	}
+	if attempt.Status == LoginAttemptCancelled {
+		return attempt, true, nil
+	}
+	if !attempt.Status.IsActive() {
+		return attempt, false, nil
 	}
 	now := time.Now().UTC()
 	attempt.Status = LoginAttemptCancelled
@@ -564,13 +792,27 @@ func (s *RedisStore) CancelLoginAttempt(ctx context.Context, tenantID, storeID i
 		return nil, false, err
 	}
 	const cancelAttemptScript = `
+local raw = redis.call("GET", KEYS[2])
+if not raw then
+	return 0
+end
+local current = cjson.decode(raw)
+local status = tostring(current["status"] or "")
+if status == "cancelled" then
+	return 2
+end
+if status ~= "queued" and status ~= "launching" and status ~= "waiting_verify_code" then
+	return 0
+end
 redis.call("SET", KEYS[2], ARGV[2], "PX", ARGV[3])
 redis.call("SET", KEYS[3], ARGV[1], "PX", ARGV[3])
 redis.call("RPUSH", KEYS[4], "cancel")
 redis.call("PEXPIRE", KEYS[4], ARGV[4])
-if redis.call("GET", KEYS[1]) == ARGV[1] then redis.call("DEL", KEYS[1]) end
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+	redis.call("DEL", KEYS[1])
+end
 return 1`
-	if err := s.client.Eval(ctx, cancelAttemptScript,
+	result, err := s.client.Eval(ctx, cancelAttemptScript,
 		[]string{
 			loginAttemptActiveKey(tenantID, storeID),
 			loginAttemptKey(attempt.ID),
@@ -581,8 +823,25 @@ return 1`
 		body,
 		loginAttemptTTL.Milliseconds(),
 		activeAttemptLeaseTTL.Milliseconds(),
-	).Err(); err != nil {
+	).Int()
+	if err != nil {
 		return nil, false, err
+	}
+	if result == 2 {
+		current, loadErr := s.LoadLoginAttempt(ctx, attempt.ID)
+		if loadErr != nil {
+			return nil, false, loadErr
+		}
+		if current != nil {
+			return current, true, nil
+		}
+	}
+	if result != 1 {
+		current, loadErr := s.LoadLoginAttempt(ctx, attempt.ID)
+		if loadErr != nil {
+			return nil, false, loadErr
+		}
+		return current, false, nil
 	}
 	return attempt, true, nil
 }
@@ -715,6 +974,13 @@ func loginAttemptLatestKey(tenantID, storeID int64) string {
 }
 func loginAttemptControlKey(attemptID string) string {
 	return fmt.Sprintf("%s:%s", loginAttemptControlPrefix, attemptID)
+}
+
+func pauseKeys(tenantID, storeID int64) []string {
+	return []string{
+		fmt.Sprintf("listing:task:pause:shein:%d:%d", tenantID, storeID),
+		fmt.Sprintf("listing:task:pause:%d:%d", tenantID, storeID),
+	}
 }
 
 func nextLocalMidnight(day time.Time) time.Time {

@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	sharedbrowser "task-processor/internal/crawler/shared/browser"
@@ -196,12 +197,23 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 	manager := sharedbrowser.NewManager(managerCfg)
 	manager.SetUserDataDir(profileDir)
 	manager.SetFingerprint(buildAutomationFingerprint(account, managerCfg))
-	if err := manager.Install(); err != nil {
+	launchCleanup := newOnceCleanup(manager.Close)
+	if err := ctx.Err(); err != nil {
+		closeManagerProfile(manager, profileDir)
 		return nil, nil, err
 	}
-	if err := launchManagerWithProfileRecovery(manager, profileDir); err != nil {
-		manager.Close()
-		trimProfileDir(profileDir)
+	if err := runBlockingStageWithContext(ctx, launchCleanup, manager.Install); err != nil {
+		if shouldCloseManagerAfterStageError(err) {
+			closeManagerProfile(manager, profileDir)
+		}
+		return nil, nil, err
+	}
+	if err := runBlockingStageWithContext(ctx, nil, func() error {
+		return launchManagerWithProfileRecoveryContext(ctx, manager, profileDir, launchCleanup)
+	}); err != nil {
+		if shouldCloseManagerAfterStageError(err) {
+			closeManagerProfile(manager, profileDir)
+		}
 		return nil, nil, err
 	}
 
@@ -211,15 +223,26 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 		return nil, nil, err
 	}
 	_ = installPageNetworkCapture(page)
-	if _, err = page.Goto(loginURLForAccount(account), playwright.PageGotoOptions{
-		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
-		Timeout:   playwright.Float(60000),
-	}); err != nil {
+	if err := runBlockingStageWithContext(ctx, func() {
 		closeManagerProfile(manager, profileDir)
+	}, func() error {
+		_, gotoErr := page.Goto(loginURLForAccount(account), playwright.PageGotoOptions{
+			WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+			Timeout:   playwright.Float(60000),
+		})
+		return gotoErr
+	}); err != nil {
+		if shouldCloseManagerAfterStageError(err) {
+			closeManagerProfile(manager, profileDir)
+		}
 		return nil, nil, err
 	}
 	surface, err := waitForLoginSurface(ctx, page)
 	if err != nil {
+		if ctx.Err() != nil {
+			closeManagerProfile(manager, profileDir)
+			return nil, nil, ctx.Err()
+		}
 		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "wait_login_surface", err)
 		closeManagerProfile(manager, profileDir)
 		return result, nil, resultErr
@@ -242,19 +265,31 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 				profileDir:  profileDir,
 			}, nil
 	}
-	if err := fillLogin(page, account); err != nil {
+	if err := fillLogin(ctx, page, account); err != nil {
+		if ctx.Err() != nil {
+			closeManagerProfile(manager, profileDir)
+			return nil, nil, ctx.Err()
+		}
 		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "fill_login", err)
 		closeManagerProfile(manager, profileDir)
 		return result, nil, resultErr
 	}
 	waitForDeviceContextReady(ctx, page, 12*time.Second)
-	if err := submitLogin(page); err != nil {
+	if err := submitLogin(ctx, page); err != nil {
+		if ctx.Err() != nil {
+			closeManagerProfile(manager, profileDir)
+			return nil, nil, ctx.Err()
+		}
 		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "submit_login", err)
 		closeManagerProfile(manager, profileDir)
 		return result, nil, resultErr
 	}
 	if waiting, err := waitForLoginOutcome(ctx, page); err != nil {
-		settleAfterSubmit(page, 8*time.Second)
+		if ctx.Err() != nil {
+			closeManagerProfile(manager, profileDir)
+			return nil, nil, ctx.Err()
+		}
+		_ = settleAfterSubmit(ctx, page, 8*time.Second)
 		if loggedIn, loginErr := isLoggedIn(page); loginErr == nil && loggedIn {
 			result, resultErr := exportAuthenticatedBrowserState(manager, page, account, cfg.ArtifactDir, "export_state_after_recover")
 			closeManagerProfile(manager, profileDir)
@@ -1123,7 +1158,9 @@ func waitForLoginSurface(ctx context.Context, page playwright.Page) (loginSurfac
 		if surface := resolveLoginSurface(loginFormVisible, verifyRequired, loggedIn); surface != loginSurfaceUnknown {
 			return surface, nil
 		}
-		time.Sleep(1 * time.Second)
+		if err := sleepWithContext(ctx, time.Second); err != nil {
+			return loginSurfaceUnknown, err
+		}
 	}
 	return loginSurfaceUnknown, fmt.Errorf("login surface not ready")
 }
@@ -1177,7 +1214,7 @@ func exportAuthenticatedBrowserState(manager *sharedbrowser.Manager, page playwr
 	return &AutomationResult{BrowserState: state}, nil
 }
 
-func fillLogin(page playwright.Page, account Account) error {
+func fillLogin(ctx context.Context, page playwright.Page, account Account) error {
 	username, err := firstVisible(page, []string{
 		"input.soui-input-input:first-of-type",
 		`input.soui-input-input:not([type="password"])`,
@@ -1197,22 +1234,28 @@ func fillLogin(page playwright.Page, account Account) error {
 	if err := username.Click(); err != nil {
 		return err
 	}
-	time.Sleep(300 * time.Millisecond)
+	if err := sleepWithContext(ctx, 300*time.Millisecond); err != nil {
+		return err
+	}
 	if err := username.Fill(account.Username); err != nil {
 		return err
 	}
 	if err := password.Click(); err != nil {
 		return err
 	}
-	time.Sleep(300 * time.Millisecond)
+	if err := sleepWithContext(ctx, 300*time.Millisecond); err != nil {
+		return err
+	}
 	if err := password.Fill(account.Password); err != nil {
 		return err
 	}
-	time.Sleep(500 * time.Millisecond)
+	if err := sleepWithContext(ctx, 500*time.Millisecond); err != nil {
+		return err
+	}
 	return nil
 }
 
-func submitLogin(page playwright.Page) error {
+func submitLogin(ctx context.Context, page playwright.Page) error {
 	button, err := firstVisible(page, []string{
 		`button.soui-button-primary:has-text("登录")`,
 		`button:has-text("登录")`,
@@ -1226,37 +1269,53 @@ func submitLogin(page playwright.Page) error {
 		`input[type="password"]`,
 	}); pwErr == nil {
 		_ = password.Click()
-		time.Sleep(300 * time.Millisecond)
+		if err := sleepWithContext(ctx, 300*time.Millisecond); err != nil {
+			return err
+		}
 		if err := password.Press("Enter"); err == nil {
-			time.Sleep(1 * time.Second)
-			if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
+			if err := sleepWithContext(ctx, time.Second); err != nil {
+				return err
+			}
+			if advanced, waitErr := loginOutcomeAdvanced(ctx, page, 2*time.Second); waitErr == nil && advanced {
 				return nil
+			} else if waitErr != nil {
+				return waitErr
 			}
 		}
 	}
 	if err := button.Click(playwright.LocatorClickOptions{Timeout: playwright.Float(5000)}); err == nil {
-		if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
+		if advanced, waitErr := loginOutcomeAdvanced(ctx, page, 2*time.Second); waitErr == nil && advanced {
 			return nil
+		} else if waitErr != nil {
+			return waitErr
 		}
 	}
 	if dismissed, dismissErr := dismissRequestFailure(page); dismissErr == nil && dismissed {
-		if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
+		if advanced, waitErr := loginOutcomeAdvanced(ctx, page, 2*time.Second); waitErr == nil && advanced {
 			return nil
+		} else if waitErr != nil {
+			return waitErr
 		}
 	}
 	if err := button.Click(playwright.LocatorClickOptions{Timeout: playwright.Float(5000), Force: playwright.Bool(true)}); err == nil {
-		if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
+		if advanced, waitErr := loginOutcomeAdvanced(ctx, page, 2*time.Second); waitErr == nil && advanced {
 			return nil
+		} else if waitErr != nil {
+			return waitErr
 		}
 	}
 	if dismissed, dismissErr := dismissRequestFailure(page); dismissErr == nil && dismissed {
-		if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
+		if advanced, waitErr := loginOutcomeAdvanced(ctx, page, 2*time.Second); waitErr == nil && advanced {
 			return nil
+		} else if waitErr != nil {
+			return waitErr
 		}
 	}
 	if _, evalErr := button.Evaluate(`(el) => el.click()`, nil); evalErr == nil {
-		if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
+		if advanced, waitErr := loginOutcomeAdvanced(ctx, page, 2*time.Second); waitErr == nil && advanced {
 			return nil
+		} else if waitErr != nil {
+			return waitErr
 		}
 	}
 	if _, evalErr := button.Evaluate(`(el) => {
@@ -1272,8 +1331,10 @@ func submitLogin(page playwright.Page) error {
 			}
 		}
 	}`, nil); evalErr == nil {
-		if advanced, waitErr := loginOutcomeAdvanced(page, 2*time.Second); waitErr == nil && advanced {
+		if advanced, waitErr := loginOutcomeAdvanced(ctx, page, 2*time.Second); waitErr == nil && advanced {
 			return nil
+		} else if waitErr != nil {
+			return waitErr
 		}
 	}
 	return clickWithFallback(page, button)
@@ -1303,7 +1364,9 @@ func waitForLoginOutcome(ctx context.Context, page playwright.Page) (bool, error
 		if dismissed, _ := dismissRequestFailure(page); dismissed {
 			continue
 		}
-		time.Sleep(1 * time.Second)
+		if err := sleepWithContext(ctx, time.Second); err != nil {
+			return false, err
+		}
 	}
 	if loginError, err := extractLoginError(page); err == nil && loginError != "" {
 		return false, fmt.Errorf("%s", loginError)
@@ -1321,9 +1384,12 @@ func waitForLoginOutcome(ctx context.Context, page playwright.Page) (bool, error
 	return false, fmt.Errorf("login outcome timeout")
 }
 
-func loginOutcomeAdvanced(page playwright.Page, wait time.Duration) (bool, error) {
+func loginOutcomeAdvanced(ctx context.Context, page playwright.Page, wait time.Duration) (bool, error) {
 	deadline := time.Now().Add(wait)
 	for time.Now().Before(deadline) {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
 		if loggedIn, err := isLoggedIn(page); err == nil && loggedIn {
 			return true, nil
 		}
@@ -1339,25 +1405,33 @@ func loginOutcomeAdvanced(page playwright.Page, wait time.Duration) (bool, error
 		if dismissed, _ := dismissRequestFailure(page); dismissed {
 			continue
 		}
-		time.Sleep(200 * time.Millisecond)
+		if err := sleepWithContext(ctx, 200*time.Millisecond); err != nil {
+			return false, err
+		}
 	}
 	return false, nil
 }
 
-func settleAfterSubmit(page playwright.Page, wait time.Duration) {
+func settleAfterSubmit(ctx context.Context, page playwright.Page, wait time.Duration) error {
 	deadline := time.Now().Add(wait)
 	for time.Now().Before(deadline) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if loggedIn, err := isLoggedIn(page); err == nil && loggedIn {
-			return
+			return nil
 		}
 		if verifyRequired, err := isVerifyCodeRequired(page); err == nil && verifyRequired {
-			return
+			return nil
 		}
 		if dismissed, _ := dismissRequestFailure(page); dismissed {
 			continue
 		}
-		time.Sleep(200 * time.Millisecond)
+		if err := sleepWithContext(ctx, 200*time.Millisecond); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 type playwrightVerifySession struct {
@@ -1373,7 +1447,7 @@ func (s *playwrightVerifySession) SubmitCode(ctx context.Context, code string) (
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if err := submitVerifyCode(s.page, code); err != nil {
+	if err := submitVerifyCode(ctx, s.page, code); err != nil {
 		return artifactResult(s.page, s.artifactDir, s.account, "submit_verify_code", err)
 	}
 	waitCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -1429,7 +1503,9 @@ func (s *playwrightVerifySession) WaitForLogin(ctx context.Context) (*Automation
 		_, _ = dismissRequestFailure(s.page)
 		s.mu.Unlock()
 
-		time.Sleep(time.Second)
+		if err := sleepWithContext(ctx, time.Second); err != nil {
+			return nil, err
+		}
 	}
 }
 
@@ -1449,10 +1525,71 @@ type browserLaunchManager interface {
 	Close()
 }
 
-func launchManagerWithProfileRecovery(manager browserLaunchManager, profileDir string) error {
-	err := launchManagerWithTimeout(manager, sheinBrowserLaunchTimeout)
+type blockingStage struct {
+	result      chan error
+	completed   chan struct{}
+	onInterrupt func()
+	cleanupOnce sync.Once
+	interrupted atomic.Bool
+}
+
+func startBlockingStage(fn func() error, onInterrupt func()) *blockingStage {
+	stage := &blockingStage{
+		result:      make(chan error, 1),
+		completed:   make(chan struct{}),
+		onInterrupt: onInterrupt,
+	}
+	go func() {
+		err := fn()
+		close(stage.completed)
+		if stage.interrupted.Load() {
+			stage.runInterruptCleanup()
+		}
+		stage.result <- err
+	}()
+	return stage
+}
+
+func (stage *blockingStage) interrupt() {
+	stage.interrupted.Store(true)
+	select {
+	case <-stage.completed:
+		stage.runInterruptCleanup()
+	default:
+	}
+}
+
+func (stage *blockingStage) runInterruptCleanup() {
+	if stage.onInterrupt == nil {
+		return
+	}
+	stage.cleanupOnce.Do(stage.onInterrupt)
+}
+
+func newOnceCleanup(fn func()) func() {
+	if fn == nil {
+		return nil
+	}
+	var once sync.Once
+	return func() {
+		once.Do(fn)
+	}
+}
+
+func launchManagerWithProfileRecovery(manager browserLaunchManager, profileDir string, cleanup func()) error {
+	return launchManagerWithProfileRecoveryContext(context.Background(), manager, profileDir, cleanup)
+}
+
+func launchManagerWithProfileRecoveryContext(ctx context.Context, manager browserLaunchManager, profileDir string, cleanup func()) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	err := launchManagerWithTimeoutAndCleanupContext(ctx, manager, sheinBrowserLaunchTimeout, cleanup)
 	if err == nil {
 		return nil
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
 	}
 	if !isProfileInUseError(err) {
 		return err
@@ -1462,7 +1599,13 @@ func launchManagerWithProfileRecovery(manager browserLaunchManager, profileDir s
 	if !cleared {
 		return fmt.Errorf("SHEIN 浏览器 profile 正在使用，请稍后重试或关闭当前登录窗口: %w", err)
 	}
-	if retryErr := launchManagerWithTimeout(manager, sheinBrowserLaunchTimeout); retryErr != nil {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	if retryErr := launchManagerWithTimeoutAndCleanupContext(ctx, manager, sheinBrowserLaunchTimeout, cleanup); retryErr != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if isProfileInUseError(retryErr) {
 			return fmt.Errorf("SHEIN 浏览器 profile 正在使用，请稍后重试或关闭当前登录窗口: %w", retryErr)
 		}
@@ -1472,35 +1615,71 @@ func launchManagerWithProfileRecovery(manager browserLaunchManager, profileDir s
 }
 
 func launchManagerWithTimeout(manager browserLaunchManager, timeout time.Duration) error {
+	return launchManagerWithTimeoutAndCleanup(manager, timeout, manager.Close)
+}
+
+func launchManagerWithTimeoutAndCleanup(manager browserLaunchManager, timeout time.Duration, cleanup func()) error {
+	return launchManagerWithTimeoutAndCleanupContext(context.Background(), manager, timeout, cleanup)
+}
+
+func launchManagerWithTimeoutAndCleanupContext(ctx context.Context, manager browserLaunchManager, timeout time.Duration, cleanup func()) error {
 	if manager == nil {
 		return fmt.Errorf("SHEIN browser manager is nil")
 	}
 	if timeout <= 0 {
 		return manager.Launch()
 	}
+	if cleanup == nil {
+		cleanup = manager.Close
+	}
 
-	result := make(chan error, 1)
-	timedOut := make(chan struct{})
-	go func() {
-		err := manager.Launch()
-		select {
-		case result <- err:
-		case <-timedOut:
-			// Close a launch that eventually returns after its caller has timed out,
-			// otherwise its browser context can outlive the store login lock.
-			manager.Close()
-		}
-	}()
-
+	stage := startBlockingStage(manager.Launch, cleanup)
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	select {
-	case err := <-result:
+	case err := <-stage.result:
 		return err
+	case <-ctx.Done():
+		stage.interrupt()
+		return ctx.Err()
 	case <-timer.C:
-		close(timedOut)
-		manager.Close()
-		return fmt.Errorf("SHEIN browser launch timed out after %s", timeout)
+		stage.interrupt()
+		return fmt.Errorf("SHEIN browser launch timed out after %s: %w", timeout, context.DeadlineExceeded)
+	}
+}
+
+func runBlockingStageWithContext(ctx context.Context, onCancel func(), fn func() error) error {
+	if err := ctx.Err(); err != nil {
+		if onCancel != nil {
+			onCancel()
+		}
+		return err
+	}
+	stage := startBlockingStage(fn, onCancel)
+	select {
+	case err := <-stage.result:
+		return err
+	case <-ctx.Done():
+		stage.interrupt()
+		return ctx.Err()
+	}
+}
+
+func shouldCloseManagerAfterStageError(err error) bool {
+	return !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)
+}
+
+func sleepWithContext(ctx context.Context, wait time.Duration) error {
+	if wait <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }
 
@@ -1511,7 +1690,7 @@ func closeManagerProfile(manager *sharedbrowser.Manager, profileDir string) {
 	trimProfileDir(profileDir)
 }
 
-func submitVerifyCode(page playwright.Page, code string) error {
+func submitVerifyCode(ctx context.Context, page playwright.Page, code string) error {
 	input, err := firstVisible(page, []string{
 		"#verifyCode",
 		`input[placeholder*="验证码"]`,
@@ -1545,11 +1724,16 @@ func submitVerifyCode(page playwright.Page, code string) error {
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		disabled, disabledErr := button.IsDisabled()
 		if disabledErr == nil && !disabled {
 			break
 		}
-		time.Sleep(200 * time.Millisecond)
+		if err := sleepWithContext(ctx, 200*time.Millisecond); err != nil {
+			return err
+		}
 	}
 	return clickWithFallback(page, button)
 }
@@ -2172,7 +2356,9 @@ func waitForDeviceContextReady(ctx context.Context, page playwright.Page, timeou
 		if isDeviceContextReadySnapshot(snapshot) {
 			return true
 		}
-		time.Sleep(300 * time.Millisecond)
+		if err := sleepWithContext(ctx, 300*time.Millisecond); err != nil {
+			return false
+		}
 	}
 	return false
 }

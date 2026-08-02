@@ -62,6 +62,12 @@ export function clearSheinCookie(storeID: number, tenantID?: string) {
   }, tenantID);
 }
 
+export function cancelSheinLogin(storeID: number, tenantID?: string) {
+  return request(`/accounts/${storeID}/verify-code-wait`, {
+    method: "DELETE",
+  }, tenantID);
+}
+
 export function getSheinLastFailure(storeID: number, tenantID?: string) {
   return request<SheinLoginFailureDetail | undefined>(`/accounts/${storeID}/last-failure`, undefined, tenantID);
 }

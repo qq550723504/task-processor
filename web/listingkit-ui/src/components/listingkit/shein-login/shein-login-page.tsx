@@ -29,6 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  useCancelSheinLogin,
   useClearSheinCookie,
   useClearSheinLastFailure,
   useLoginSheinAccount,
@@ -201,6 +202,14 @@ function actionTone(item: SheinLoginAccountStatus, kind: "login" | "code" | "fai
   return "secondary";
 }
 
+function canCancelLogin(item: SheinLoginAccountStatus) {
+  return (
+    item.latest_attempt?.status === "queued" ||
+    item.latest_attempt?.status === "launching" ||
+    item.latest_attempt?.status === "waiting_verify_code"
+  );
+}
+
 function storeDisplay(item: SheinLoginAccountStatus) {
   const account = item.account;
   return account.store_name || account.shop_name || `店铺 ${account.store_id}`;
@@ -322,11 +331,15 @@ function runbookItems(items: SheinLoginAccountStatus[]) {
 }
 
 function mutationStatusNote({
+  cancelError,
+  cancelPendingCount,
   clearCookie,
   clearFailure,
   login,
   verifyCode,
 }: {
+  cancelError?: Error | null;
+  cancelPendingCount: number;
   clearCookie: ReturnType<typeof useClearSheinCookie>;
   clearFailure: ReturnType<typeof useClearSheinLastFailure>;
   login: ReturnType<typeof useLoginSheinAccount>;
@@ -341,12 +354,14 @@ function mutationStatusNote({
   if (clearCookie.isPending) {
     return "正在清理 Cookie。";
   }
+  if (cancelPendingCount > 0) {
+    return "Cancelling the active login attempt...";
+  }
   if (clearFailure.isPending) {
     return "正在清理失败记录。";
   }
 
-  const mutationError =
-    verifyCode.error || login.error || clearCookie.error || clearFailure.error;
+  const mutationError = verifyCode.error || login.error || clearCookie.error || cancelError || clearFailure.error;
   if (mutationError) {
     return (mutationError as Error).message || "最近操作失败。";
   }
@@ -357,14 +372,20 @@ function mutationStatusNote({
 function VerifyCodeDialog({
   open,
   storeID,
+  cancelError,
+  cancelPending,
   pending,
   onClose,
+  onCancelLogin,
   onSubmit,
 }: {
   open: boolean;
   storeID?: number | null;
+  cancelError?: Error | null;
+  cancelPending: boolean;
   pending: boolean;
   onClose: () => void;
+  onCancelLogin: () => void;
   onSubmit: (code: string) => void;
 }) {
   const [code, setCode] = useState("");
@@ -374,7 +395,12 @@ function VerifyCodeDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 px-4">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/45 px-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Submit Verify Code"
+    >
       <div className="w-full max-w-md rounded-3xl border border-border/70 bg-card p-6 shadow-2xl">
         <div className="flex items-start justify-between gap-4">
           <div>
@@ -384,7 +410,13 @@ function VerifyCodeDialog({
             <h2 className="mt-2 text-xl font-semibold text-foreground">提交验证码</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">店铺 {storeID} 当前停在验证码阶段，提交后会刷新登录状态。</p>
           </div>
-          <Button variant="ghost" className="h-9 px-3" onClick={onClose} disabled={pending}>
+          <Button
+            variant="ghost"
+            className="h-9 px-3"
+            onClick={onClose}
+            disabled={pending}
+            aria-label="Close Verify Code Dialog"
+          >
             关闭
           </Button>
         </div>
@@ -401,12 +433,24 @@ function VerifyCodeDialog({
           />
         </Label>
 
+        {cancelError ? (
+          <div
+            className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
+            role="alert"
+          >
+            {cancelError.message || "Cancel login failed."}
+          </div>
+        ) : null}
+
         <div className="mt-5 flex justify-end gap-3">
           <Button variant="secondary" onClick={onClose} disabled={pending}>
-            取消
+            Close
+          </Button>
+          <Button variant="danger" onClick={onCancelLogin} disabled={pending || cancelPending}>
+            {cancelPending ? "Cancelling..." : "Cancel Login"}
           </Button>
           <Button
-            disabled={pending || !code.trim()}
+            disabled={pending || cancelPending || !code.trim()}
             onClick={() => {
               onSubmit(code.trim());
               setCode("");
@@ -554,10 +598,13 @@ export function SheinLoginPage() {
   const login = useLoginSheinAccount(visitTenantID || undefined);
   const verifyCode = useSubmitSheinVerifyCode(visitTenantID || undefined);
   const clearCookie = useClearSheinCookie(visitTenantID || undefined);
+  const cancelLogin = useCancelSheinLogin(visitTenantID || undefined);
   const clearFailure = useClearSheinLastFailure(visitTenantID || undefined);
 
   const [verifyStoreID, setVerifyStoreID] = useState<number | null>(null);
   const [failureStoreID, setFailureStoreID] = useState<number | null>(null);
+  const [cancelPendingStoreIDs, setCancelPendingStoreIDs] = useState<Set<number>>(() => new Set());
+  const [cancelErrorsByStoreID, setCancelErrorsByStoreID] = useState<Map<number, Error>>(() => new Map());
   const [activeFilter, setActiveFilter] = useState<AccountFilter>("attention");
   const failureDetail = useSheinLastFailure(failureStoreID, visitTenantID || undefined);
   const focusedStoreID = useMemo(() => {
@@ -580,7 +627,67 @@ export function SheinLoginPage() {
     [accountItems, activeFilter, focusedStoreID],
   );
   const runbook = useMemo(() => runbookItems(accountItems), [accountItems]);
-  const statusNote = mutationStatusNote({ clearCookie, clearFailure, login, verifyCode });
+  const latestCancelError = useMemo(() => {
+    const errors = Array.from(cancelErrorsByStoreID.values());
+    return errors.at(-1) ?? null;
+  }, [cancelErrorsByStoreID]);
+  const statusNote = mutationStatusNote({
+    cancelError: latestCancelError,
+    cancelPendingCount: cancelPendingStoreIDs.size,
+    clearCookie,
+    clearFailure,
+    login,
+    verifyCode,
+  });
+  const cancelError = verifyStoreID ? (cancelErrorsByStoreID.get(verifyStoreID) ?? null) : null;
+  const isCancelPending = (storeID: number) => cancelPendingStoreIDs.has(storeID);
+
+  const requestCancelLogin = async (storeID: number, onSuccess?: () => void) => {
+    setCancelPendingStoreIDs((previous) => {
+      if (previous.has(storeID)) {
+        return previous;
+      }
+      const next = new Set(previous);
+      next.add(storeID);
+      return next;
+    });
+    setCancelErrorsByStoreID((previous) => {
+      if (!previous.has(storeID)) {
+        return previous;
+      }
+      const next = new Map(previous);
+      next.delete(storeID);
+      return next;
+    });
+    try {
+      await cancelLogin.mutateAsync(storeID);
+      setCancelErrorsByStoreID((previous) => {
+        if (!previous.has(storeID)) {
+          return previous;
+        }
+        const next = new Map(previous);
+        next.delete(storeID);
+        return next;
+      });
+      onSuccess?.();
+    } catch (error) {
+      const nextError = error instanceof Error ? error : new Error("Cancel login failed.");
+      setCancelErrorsByStoreID((previous) => {
+        const next = new Map(previous);
+        next.set(storeID, nextError);
+        return next;
+      });
+    } finally {
+      setCancelPendingStoreIDs((previous) => {
+        if (!previous.has(storeID)) {
+          return previous;
+        }
+        const next = new Set(previous);
+        next.delete(storeID);
+        return next;
+      });
+    }
+  };
 
   return (
     <ListingKitPageShell backgroundClassName="isolate bg-[linear-gradient(180deg,#fbfaf6_0%,#efeee8_100%)]">
@@ -770,14 +877,38 @@ export function SheinLoginPage() {
                             variant={actionTone(item, "login")}
                             className="h-9 px-3"
                             onClick={() => login.mutate(item.account.store_id)}
-                            disabled={login.isPending}
+                            disabled={login.isPending || isCancelPending(item.account.store_id)}
                           >
                             重新登录
                           </Button>
+                          {canCancelLogin(item) ? (
+                            <Button
+                              variant="danger"
+                              className="h-9 px-3"
+                              onClick={() =>
+                                requestCancelLogin(item.account.store_id, () => {
+                                  if (verifyStoreID === item.account.store_id) {
+                                    setVerifyStoreID(null);
+                                  }
+                                })
+                              }
+                              disabled={isCancelPending(item.account.store_id)}
+                              aria-label={
+                                isCancelPending(item.account.store_id)
+                                  ? `Cancelling login for store ${item.account.store_id}`
+                                  : `Cancel Login for store ${item.account.store_id}`
+                              }
+                              aria-busy={isCancelPending(item.account.store_id) || undefined}
+                            >
+                              {isCancelPending(item.account.store_id) ? "Cancelling..." : "Cancel Login"}
+                            </Button>
+                          ) : null}
                           <Button
                             variant={actionTone(item, "code")}
                             className="h-9 px-3"
                             onClick={() => setVerifyStoreID(item.account.store_id)}
+                            disabled={isCancelPending(item.account.store_id)}
+                            aria-label={`Open Verify Code for store ${item.account.store_id}`}
                           >
                             <KeyRound className="mr-2 h-4 w-4" />
                             验证码
@@ -855,7 +986,9 @@ export function SheinLoginPage() {
                 <RefreshCw className={cn("h-4 w-4", accounts.isFetching && "animate-spin")} />
                 同步状态
               </div>
-              <p className="mt-4 text-sm leading-6 text-muted-foreground">{statusNote}</p>
+              <p className="mt-4 text-sm leading-6 text-muted-foreground" role="status" aria-live="polite" aria-atomic="true">
+                {statusNote}
+              </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button variant="secondary" className="h-9 px-3" onClick={() => accounts.refetch()} disabled={accounts.isFetching}>
                   立即刷新
@@ -874,8 +1007,16 @@ export function SheinLoginPage() {
       <VerifyCodeDialog
         open={Boolean(verifyStoreID)}
         storeID={verifyStoreID}
+        cancelError={cancelError}
+        cancelPending={verifyStoreID ? isCancelPending(verifyStoreID) : false}
         pending={verifyCode.isPending}
         onClose={() => setVerifyStoreID(null)}
+        onCancelLogin={() => {
+          if (!verifyStoreID) {
+            return;
+          }
+          requestCancelLogin(verifyStoreID, () => setVerifyStoreID(null));
+        }}
         onSubmit={(code) => {
           if (!verifyStoreID) {
             return;
