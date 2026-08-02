@@ -78,6 +78,22 @@ func (s *stubAutomation) StartLogin(_ context.Context, _ Account, cfg Automation
 	return s.result, s.session, s.err
 }
 
+type blockingLoginAutomation struct {
+	started   chan struct{}
+	cancelled chan struct{}
+}
+
+func (a *blockingLoginAutomation) Login(context.Context, Account, AutomationConfig, *RedisStore) (*AutomationResult, error) {
+	return nil, errors.New("unexpected Login call")
+}
+
+func (a *blockingLoginAutomation) StartLogin(ctx context.Context, _ Account, _ AutomationConfig) (*AutomationResult, VerifySession, error) {
+	close(a.started)
+	<-ctx.Done()
+	close(a.cancelled)
+	return nil, nil, ctx.Err()
+}
+
 type stubStoreClient struct {
 	updateStoreIDReq     *listingadmin.StoreIdUpdateReqDTO
 	updateStoreIDErr     error
@@ -302,6 +318,68 @@ func TestWorkerLeavesVerificationJobPendingOnShutdown(t *testing.T) {
 	}
 }
 
+func TestWorkerCancelsBrowserExecution(t *testing.T) {
+	auto := &blockingLoginAutomation{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+	}
+	svc := newTestService(t, auto)
+	svc.executionMode = "worker"
+
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	if err := svc.store.EnsureLoginAttemptConsumerGroup(context.Background()); err != nil {
+		t.Fatalf("create consumer group: %v", err)
+	}
+	messages, err := svc.store.ReadLoginAttemptJobs(context.Background(), "worker-one", time.Second)
+	if err != nil || len(messages) != 1 {
+		t.Fatalf("read attempt job: messages=%v err=%v", messages, err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- svc.processLoginAttemptMessage(ctx, "worker-one", messages[0].ID, messages[0].Values)
+	}()
+
+	select {
+	case <-auto.started:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not start browser execution")
+	}
+
+	cancelled, err := svc.CancelVerifyCodeWait(context.Background(), 1, 2)
+	if err != nil || !cancelled {
+		t.Fatalf("cancel verify wait: cancelled=%v err=%v", cancelled, err)
+	}
+
+	select {
+	case <-auto.cancelled:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("browser execution did not observe attempt cancellation")
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("process attempt: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not finish after attempt cancellation")
+	}
+
+	updated, err := svc.store.LoadLoginAttempt(context.Background(), attempt.ID)
+	if err != nil {
+		t.Fatalf("load cancelled attempt: %v", err)
+	}
+	if updated == nil || updated.Status != LoginAttemptCancelled {
+		t.Fatalf("attempt status = %+v, want cancelled", updated)
+	}
+}
+
 func TestCompleteLoginAttemptIfActiveDoesNotOverwriteCancellation(t *testing.T) {
 	svc := newTestService(t, &stubAutomation{})
 	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
@@ -335,6 +413,51 @@ func TestCompleteLoginAttemptIfActiveDoesNotOverwriteCancellation(t *testing.T) 
 	updated, err := svc.store.LoadLoginAttempt(context.Background(), attempt.ID)
 	if err != nil {
 		t.Fatalf("load cancelled attempt: %v", err)
+	}
+	if updated == nil || updated.Status != LoginAttemptCancelled {
+		t.Fatalf("attempt status = %+v, want cancelled", updated)
+	}
+	if updated.Message != "verification cancelled by user" {
+		t.Fatalf("attempt message = %q, want cancellation message", updated.Message)
+	}
+}
+
+func TestFinishAttemptVerifyResultDoesNotOverwriteCancellationWithVerifyWait(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+
+	staleWaiting := *attempt
+	_, cancelled, err := svc.store.CancelLoginAttempt(context.Background(), 1, 2, "verification cancelled by user")
+	if err != nil || !cancelled {
+		t.Fatalf("cancel attempt: cancelled=%v err=%v", cancelled, err)
+	}
+
+	account, err := svc.provider.GetAccount(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("get account: %v", err)
+	}
+	done, err := svc.finishAttemptVerifyResult(&staleWaiting, account, &AutomationResult{
+		WaitingForVerifyCode: true,
+		ErrorCode:            "VERIFY_CODE_REQUIRED",
+		ErrorMessage:         "wait again",
+	}, "")
+	if err != nil {
+		t.Fatalf("finish attempt verify result: %v", err)
+	}
+	if !done {
+		t.Fatal("expected cancelled attempt to stop verify wait processing")
+	}
+
+	updated, err := svc.store.LoadLoginAttempt(context.Background(), attempt.ID)
+	if err != nil {
+		t.Fatalf("load attempt: %v", err)
 	}
 	if updated == nil || updated.Status != LoginAttemptCancelled {
 		t.Fatalf("attempt status = %+v, want cancelled", updated)

@@ -2,6 +2,7 @@ package sheinlogin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -87,79 +88,348 @@ func (s *Service) processLoginAttemptMessage(ctx context.Context, workerID, mess
 	attempt.Status = LoginAttemptLaunching
 	attempt.WorkerID = workerID
 	attempt.StartedAt = &now
-	if err := s.store.UpdateLoginAttempt(ctx, attempt); err != nil {
+	updated, err := s.updateActiveAttemptState(ctx, attempt, messageID)
+	if err != nil {
 		return err
 	}
+	if !updated {
+		return nil
+	}
 
-	result, runErr := s.loginInline(ctx, attempt.TenantID, attempt.StoreID, LoginRequest{
+	attemptCtx, cancelAttempt := context.WithCancel(ctx)
+	defer cancelAttempt()
+	control := s.startAttemptControlLoop(attemptCtx, attempt, cancelAttempt)
+	defer control.Stop()
+
+	account, err := s.provider.GetAccount(attemptCtx, attempt.TenantID, attempt.StoreID)
+	if err != nil {
+		if ctx.Err() != nil && !control.Cancelled() {
+			return nil
+		}
+		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "LOGIN_ACCOUNT_FAILED", err.Error(), messageID)
+	}
+	if !attempt.ForceLogin {
+		if ttl, ok, ttlErr := s.store.CookieTTL(attemptCtx, account.TenantID, account.StoreID); ttlErr == nil && ok && ttl > 0 {
+			result := s.existingCookieLoginResult(account, ttl)
+			return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptSucceeded, "", result.Message, messageID)
+		} else if ttlErr != nil {
+			if ctx.Err() != nil && !control.Cancelled() {
+				return nil
+			}
+			return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "LOGIN_STATUS_FAILED", ttlErr.Error(), messageID)
+		}
+	}
+
+	runResult, session, runErr := s.runLoginStart(attemptCtx, account, LoginRequest{
 		ForceLogin: attempt.ForceLogin,
 		Headless:   attempt.Headless,
 	})
 	if runErr != nil {
-		return s.completeLoginAttempt(ctx, attempt, LoginAttemptFailed, "LOGIN_FAILED", runErr.Error(), messageID)
+		if control.Cancelled() || errors.Is(runErr, context.Canceled) && control.Cancelled() {
+			return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptCancelled, "LOGIN_CANCELLED", "verification cancelled by user", messageID)
+		}
+		if ctx.Err() != nil {
+			return nil
+		}
+		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "LOGIN_FAILED", runErr.Error(), messageID)
 	}
-	if result != nil && result.WaitingForVerifyCode {
+	if session != nil {
+		defer session.Close()
+	}
+	if runResult != nil && runResult.WaitingForVerifyCode {
+		if control.Cancelled() {
+			return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptCancelled, "LOGIN_CANCELLED", "verification cancelled by user", messageID)
+		}
+		persistCtx := context.Background()
+		if err := s.persistVerifyWait(persistCtx, account, runResult); err != nil {
+			return s.completeLoginAttempt(persistCtx, attempt, LoginAttemptFailed, "VERIFY_CODE_WAIT_FAILED", err.Error(), messageID)
+		}
 		attempt.Status = LoginAttemptWaitingVerifyCode
-		attempt.Message = result.Message
-		attempt.ErrorCode = result.ErrorCode
-		if err := s.store.UpdateLoginAttempt(ctx, attempt); err != nil {
+		attempt.Message = runResult.ErrorMessage
+		attempt.ErrorCode = runResult.ErrorCode
+		updated, err := s.updateActiveAttemptState(persistCtx, attempt, messageID)
+		if err != nil {
 			return err
+		}
+		if !updated {
+			return nil
 		}
 		// Keep the stream entry pending while this process owns the browser
 		// session. If the worker exits, another worker can claim the entry and
 		// mark the otherwise unrecoverable session as interrupted.
-		return s.waitForAttemptVerifyCode(ctx, attempt, messageID)
+		return s.waitForAttemptVerifyCode(ctx, attemptCtx, attempt, account, session, control, messageID)
 	}
-	if result != nil && result.Success {
-		return s.completeLoginAttempt(ctx, attempt, LoginAttemptSucceeded, "", result.Message, messageID)
+	if runResult != nil && runResult.BrowserState != nil {
+		if _, err := s.persistSuccessfulBrowserState(context.Background(), *account, runResult.BrowserState); err != nil {
+			return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "LOGIN_PERSIST_FAILED", err.Error(), messageID)
+		}
+		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptSucceeded, "", "login succeeded", messageID)
 	}
 	message := "SHEIN login failed"
 	errorCode := "LOGIN_FAILED"
-	if result != nil {
-		message = result.Message
-		if result.ErrorCode != "" {
-			errorCode = result.ErrorCode
+	if runResult != nil {
+		message = failureMessage(runResult)
+		if runResult.ErrorCode != "" {
+			errorCode = runResult.ErrorCode
 		}
 	}
-	return s.completeLoginAttempt(ctx, attempt, LoginAttemptFailed, errorCode, message, messageID)
+	return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, errorCode, message, messageID)
 }
 
-func (s *Service) waitForAttemptVerifyCode(parent context.Context, attempt *LoginAttempt, messageID string) error {
+func (s *Service) updateActiveAttemptState(ctx context.Context, attempt *LoginAttempt, messageID string) (bool, error) {
 	if attempt == nil {
+		return false, nil
+	}
+	updated, err := s.store.UpdateLoginAttemptIfActive(ctx, attempt)
+	if err != nil {
+		return false, err
+	}
+	if updated {
+		return true, nil
+	}
+	current, err := s.store.LoadLoginAttempt(ctx, attempt.ID)
+	if err != nil {
+		return false, err
+	}
+	if current != nil {
+		*attempt = *current
+	}
+	if strings.TrimSpace(messageID) == "" {
+		return false, nil
+	}
+	if current == nil || !current.Status.IsActive() {
+		if err := s.store.AcknowledgeLoginAttemptJob(ctx, messageID); err != nil {
+			return false, err
+		}
+	}
+	return false, nil
+}
+
+type loginAttemptControlEvent struct {
+	code      string
+	received  bool
+	cancelled bool
+	err       error
+}
+
+type loginAttemptControlLoop struct {
+	events    chan loginAttemptControlEvent
+	done      chan struct{}
+	cancelled chan struct{}
+	stop      context.CancelFunc
+}
+
+func (l *loginAttemptControlLoop) Cancelled() bool {
+	if l == nil {
+		return false
+	}
+	select {
+	case <-l.cancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+func (l *loginAttemptControlLoop) markCancelled() {
+	if l == nil {
+		return
+	}
+	select {
+	case <-l.cancelled:
+	default:
+		close(l.cancelled)
+	}
+}
+
+func (l *loginAttemptControlLoop) Stop() {
+	if l == nil {
+		return
+	}
+	l.stop()
+	<-l.done
+}
+
+func (s *Service) startAttemptControlLoop(ctx context.Context, attempt *LoginAttempt, cancelAttempt context.CancelFunc) *loginAttemptControlLoop {
+	loopCtx, stop := context.WithCancel(ctx)
+	loop := &loginAttemptControlLoop{
+		events:    make(chan loginAttemptControlEvent, 4),
+		done:      make(chan struct{}),
+		cancelled: make(chan struct{}),
+		stop:      stop,
+	}
+	go func() {
+		defer close(loop.done)
+		defer close(loop.events)
+		if attempt == nil {
+			return
+		}
+		for {
+			code, received, cancelled, err := s.store.WaitAndConsumeVerifyCodeOrCancel(loopCtx, attempt.TenantID, attempt.StoreID, attempt.ID, time.Second)
+			if err != nil {
+				if loopCtx.Err() != nil {
+					return
+				}
+				select {
+				case loop.events <- loginAttemptControlEvent{err: err}:
+				case <-loopCtx.Done():
+				}
+				return
+			}
+			if cancelled {
+				loop.markCancelled()
+				select {
+				case loop.events <- loginAttemptControlEvent{cancelled: true}:
+				case <-loopCtx.Done():
+				}
+				cancelAttempt()
+				return
+			}
+			if received {
+				select {
+				case loop.events <- loginAttemptControlEvent{code: code, received: true}:
+				case <-loopCtx.Done():
+					return
+				}
+			}
+		}
+	}()
+	return loop
+}
+
+type loginAttemptWaitResult struct {
+	result *AutomationResult
+	err    error
+}
+
+func waitForLoginResult(ctx context.Context, session VerifySession) <-chan loginAttemptWaitResult {
+	watcher, ok := session.(VerifySessionLoginWatcher)
+	if !ok || watcher == nil {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(parent, 10*time.Minute)
+	ch := make(chan loginAttemptWaitResult, 1)
+	go func() {
+		result, err := watcher.WaitForLogin(ctx)
+		ch <- loginAttemptWaitResult{result: result, err: err}
+		close(ch)
+	}()
+	return ch
+}
+
+func (s *Service) waitForAttemptVerifyCode(parentCtx, attemptCtx context.Context, attempt *LoginAttempt, account *Account, session VerifySession, control *loginAttemptControlLoop, messageID string) error {
+	if attempt == nil || account == nil || session == nil {
+		return nil
+	}
+	verifyCtx, cancel := context.WithTimeout(attemptCtx, 10*time.Minute)
 	defer cancel()
-	code, ok, cancelled, err := s.store.WaitAndConsumeVerifyCodeOrCancel(ctx, attempt.TenantID, attempt.StoreID, attempt.ID, 10*time.Minute)
-	if err != nil {
-		if parent.Err() != nil {
+	waitCh := waitForLoginResult(verifyCtx, session)
+	var controlEvents <-chan loginAttemptControlEvent
+	if control != nil {
+		controlEvents = control.events
+	}
+	for {
+		select {
+		case <-parentCtx.Done():
+			if control.Cancelled() {
+				return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptCancelled, "LOGIN_CANCELLED", "verification cancelled by user", messageID)
+			}
 			// Do not acknowledge or complete the attempt on worker shutdown. The
 			// pending stream job is the durable recovery signal for the next worker.
 			return nil
+		case <-verifyCtx.Done():
+			if control.Cancelled() {
+				return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptCancelled, "LOGIN_CANCELLED", "verification cancelled by user", messageID)
+			}
+			if parentCtx.Err() != nil {
+				return nil
+			}
+			if errors.Is(verifyCtx.Err(), context.DeadlineExceeded) {
+				return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_TIMEOUT", "verification code wait expired", messageID)
+			}
+			return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_WAIT_FAILED", verifyCtx.Err().Error(), messageID)
+		case event, ok := <-controlEvents:
+			if !ok {
+				controlEvents = nil
+				continue
+			}
+			if event.err != nil {
+				if control.Cancelled() {
+					return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptCancelled, "LOGIN_CANCELLED", "verification cancelled by user", messageID)
+				}
+				if parentCtx.Err() != nil {
+					return nil
+				}
+				return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_WAIT_FAILED", event.err.Error(), messageID)
+			}
+			if event.cancelled {
+				return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptCancelled, "LOGIN_CANCELLED", "verification cancelled by user", messageID)
+			}
+			if !event.received {
+				continue
+			}
+			runResult, err := session.SubmitCode(verifyCtx, event.code)
+			if err != nil {
+				if control != nil && control.Cancelled() {
+					return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptCancelled, "LOGIN_CANCELLED", "verification cancelled by user", messageID)
+				}
+				if parentCtx.Err() != nil {
+					return nil
+				}
+				if errors.Is(verifyCtx.Err(), context.DeadlineExceeded) {
+					return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_TIMEOUT", "verification code wait expired", messageID)
+				}
+				return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_SUBMIT_FAILED", err.Error(), messageID)
+			}
+			done, finishErr := s.finishAttemptVerifyResult(attempt, account, runResult, messageID)
+			if finishErr != nil || done {
+				return finishErr
+			}
+		case waitResult, ok := <-waitCh:
+			if !ok {
+				waitCh = nil
+				continue
+			}
+			if waitResult.err != nil || waitResult.result == nil || waitResult.result.BrowserState == nil {
+				waitCh = nil
+				continue
+			}
+			_, err := s.persistSuccessfulBrowserState(context.Background(), *account, waitResult.result.BrowserState)
+			if err != nil {
+				return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "LOGIN_PERSIST_FAILED", err.Error(), messageID)
+			}
+			return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptSucceeded, "", "login succeeded", messageID)
 		}
-		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_WAIT_FAILED", err.Error(), messageID)
 	}
-	if cancelled {
-		s.clearSession(attempt.StoreID)
-		_, _ = s.store.CancelVerifyWait(context.Background(), attempt.TenantID, attempt.StoreID)
-		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptCancelled, "LOGIN_CANCELLED", "verification cancelled by user", messageID)
+}
+
+func (s *Service) finishAttemptVerifyResult(attempt *LoginAttempt, account *Account, runResult *AutomationResult, messageID string) (bool, error) {
+	if attempt == nil || account == nil {
+		return true, nil
 	}
-	if !ok {
-		s.clearSession(attempt.StoreID)
-		_, _ = s.store.CancelVerifyWait(context.Background(), attempt.TenantID, attempt.StoreID)
-		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_TIMEOUT", "verification code wait expired", messageID)
+	if runResult != nil && runResult.BrowserState != nil {
+		if _, err := s.persistSuccessfulBrowserState(context.Background(), *account, runResult.BrowserState); err != nil {
+			return true, s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "LOGIN_PERSIST_FAILED", err.Error(), messageID)
+		}
+		return true, s.completeLoginAttempt(context.Background(), attempt, LoginAttemptSucceeded, "", "login succeeded", messageID)
 	}
-	if err := s.SubmitVerifyCode(ctx, attempt.TenantID, attempt.StoreID, code, 0); err != nil {
-		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_SUBMIT_FAILED", err.Error(), messageID)
+	if runResult != nil && runResult.WaitingForVerifyCode {
+		persistCtx := context.Background()
+		if err := s.persistVerifyWait(persistCtx, account, runResult); err != nil {
+			return true, s.completeLoginAttempt(persistCtx, attempt, LoginAttemptFailed, "VERIFY_CODE_WAIT_FAILED", err.Error(), messageID)
+		}
+		attempt.Status = LoginAttemptWaitingVerifyCode
+		attempt.Message = runResult.ErrorMessage
+		attempt.ErrorCode = runResult.ErrorCode
+		updated, err := s.updateActiveAttemptState(persistCtx, attempt, messageID)
+		if err != nil {
+			return true, err
+		}
+		if !updated {
+			return true, nil
+		}
+		return false, nil
 	}
-	status, err := s.Status(ctx, attempt.TenantID, attempt.StoreID)
-	if err != nil {
-		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_STATUS_FAILED", err.Error(), messageID)
-	}
-	if status.HasCookie {
-		return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptSucceeded, "", "login succeeded", messageID)
-	}
-	return s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, "VERIFY_CODE_LOGIN_FAILED", "verification code did not produce a usable cookie", messageID)
+	return true, s.completeLoginAttempt(context.Background(), attempt, LoginAttemptFailed, failureCode(runResult), failureMessage(runResult), messageID)
 }
 
 func (s *Service) completeLoginAttempt(ctx context.Context, attempt *LoginAttempt, status LoginAttemptStatus, errorCode, message, messageID string) error {
@@ -171,11 +441,21 @@ func (s *Service) completeLoginAttempt(ctx context.Context, attempt *LoginAttemp
 	attempt.ErrorCode = errorCode
 	attempt.Message = message
 	attempt.CompletedAt = &now
-	if status == LoginAttemptFailed {
+	completed, err := s.store.CompleteLoginAttemptIfActive(ctx, attempt)
+	if err != nil {
+		return err
+	}
+	if completed && status == LoginAttemptFailed {
 		s.cacheLastFailureDetail(ctx, attempt.TenantID, attempt.StoreID)
 	}
-	if err := s.store.UpdateLoginAttempt(ctx, attempt); err != nil {
-		return err
+	if !completed {
+		current, loadErr := s.store.LoadLoginAttempt(ctx, attempt.ID)
+		if loadErr != nil {
+			return loadErr
+		}
+		if current != nil {
+			*attempt = *current
+		}
 	}
 	if strings.TrimSpace(messageID) == "" {
 		return nil

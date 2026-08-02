@@ -215,6 +215,91 @@ func (s *Service) Login(ctx context.Context, tenantID int64, storeID int64, req 
 	return s.loginInline(ctx, tenantID, storeID, req)
 }
 
+func (s *Service) existingCookieLoginResult(account *Account, ttl time.Duration) *LoginResult {
+	if account == nil {
+		return nil
+	}
+	return &LoginResult{
+		Success:   true,
+		Message:   "璐﹀彿宸叉湁鍙敤 Cookie",
+		StoreID:   account.StoreID,
+		TenantID:  account.TenantID,
+		Username:  account.Username,
+		CookieTTL: int64(ttl.Seconds()),
+		LoginType: "existing",
+	}
+}
+
+func (s *Service) resolveHeadless(req LoginRequest) bool {
+	headless := s.defaultHeadless
+	if s.forceHeadless {
+		return true
+	}
+	if req.Headless != nil {
+		headless = *req.Headless
+	}
+	return headless
+}
+
+func (s *Service) loginAutomationConfig(headless bool) AutomationConfig {
+	return AutomationConfig{
+		Headless:          headless,
+		ProfileRoot:       s.profileRoot,
+		ArtifactDir:       s.artifactDir,
+		BrowserPath:       s.browserPath,
+		ChromeVersion:     s.chromeVersion,
+		ChromeDownloadDir: s.chromeDownloadDir,
+		ViewportWidth:     s.viewportWidth,
+		ViewportHeight:    s.viewportHeight,
+	}
+}
+
+func (s *Service) runLoginStart(ctx context.Context, account *Account, req LoginRequest) (*AutomationResult, VerifySession, error) {
+	if account == nil {
+		return nil, nil, fmt.Errorf("shein login account is required")
+	}
+	var (
+		runResult *AutomationResult
+		session   VerifySession
+	)
+	err := s.runtime.withStoreLock(account.StoreID, func() error {
+		if req.ForceLogin {
+			if err := s.store.ClearCookie(ctx, account.TenantID, account.StoreID); err != nil {
+				return err
+			}
+		}
+		var runErr error
+		runResult, session, runErr = s.automation.StartLogin(ctx, *account, s.loginAutomationConfig(s.resolveHeadless(req)))
+		return runErr
+	})
+	return runResult, session, err
+}
+
+func (s *Service) persistVerifyWait(ctx context.Context, account *Account, runResult *AutomationResult) error {
+	if account == nil {
+		return fmt.Errorf("shein login account is required")
+	}
+	summary := runResult.FailureSummary
+	if summary == nil {
+		summary = verifyCodeFailureSummary(account)
+	}
+	_ = s.store.RecordLastFailure(ctx, account.TenantID, account.StoreID, summary, 30*24*time.Hour)
+	return s.store.SetVerifyWait(ctx, account.TenantID, account.StoreID, 10*time.Minute)
+}
+
+func (s *Service) persistSuccessfulBrowserState(ctx context.Context, account Account, browserState map[string]any) (int, error) {
+	cookies, _ := browserState["cookies"].([]any)
+	if err := s.store.SaveCookieState(ctx, account.TenantID, account.StoreID, browserState, 30*24*time.Hour); err != nil {
+		return 0, err
+	}
+	_ = s.store.RecordLastLoginTime(ctx, account.TenantID, account.StoreID, time.Now())
+	_ = s.store.ClearLastFailure(ctx, account.TenantID, account.StoreID)
+	_ = s.store.ClearPauseKeys(ctx, account.TenantID, account.StoreID)
+	_, _ = s.store.CancelVerifyWait(ctx, account.TenantID, account.StoreID)
+	s.syncStoreIDAfterLogin(ctx, account)
+	return len(cookies), nil
+}
+
 // loginInline retains the current browser execution semantics for migration and
 // is called by the dedicated worker after it has claimed an attempt.
 func (s *Service) loginInline(ctx context.Context, tenantID int64, storeID int64, req LoginRequest) (*LoginResult, error) {
