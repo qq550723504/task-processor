@@ -74,8 +74,7 @@ export function TaskSheinStoreField({
       selectedStoreLoginStatus &&
       !selectedStoreLoginStatus.login_in_progress &&
       !selectedStoreLoginStatus.waiting_for_verify_code &&
-      !selectedStoreLoginStatus.has_cookie &&
-      (selectedStoreLoginStatus.cookie_ttl ?? 0) <= 0,
+      !selectedStoreLoginStatus.has_cookie,
   );
   const noLoggedInStore = Boolean(
     sheinSelected &&

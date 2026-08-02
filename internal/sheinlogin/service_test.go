@@ -493,6 +493,24 @@ func TestServiceStatusClearsExpiredVerifySession(t *testing.T) {
 	}
 }
 
+func TestServiceStatusRejectsEmptyCookiePayload(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	if err := svc.store.client.Set(context.Background(), cookieKey(1, 2), `{"cookies":[]}`, 30*24*time.Hour).Err(); err != nil {
+		t.Fatalf("seed empty cookie payload: %v", err)
+	}
+
+	status, err := svc.Status(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if status.HasCookie {
+		t.Fatalf("empty cookie payload must not be reported as usable: %+v", status)
+	}
+	if status.CookieTTL <= 0 {
+		t.Fatalf("expected positive cookie ttl to remain available for diagnostics: %+v", status)
+	}
+}
+
 func TestServiceForceLoginLimitsAutomaticVerifyCodesPerDay(t *testing.T) {
 	auto := &stubAutomation{
 		result:  &AutomationResult{WaitingForVerifyCode: true, ErrorCode: "VERIFY_CODE_REQUIRED", ErrorMessage: "wait"},

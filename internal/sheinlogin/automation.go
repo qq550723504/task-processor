@@ -3,6 +3,7 @@ package sheinlogin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -34,6 +35,44 @@ type AutomationResult struct {
 	ErrorMessage         string
 	FailureArtifactPath  string
 	FailureSummary       *FailureSummary
+}
+
+type loginSurface int
+
+const (
+	loginSurfaceUnknown loginSurface = iota
+	loginSurfaceForm
+	loginSurfaceVerifyCode
+	loginSurfaceAuthenticated
+)
+
+func resolveLoginSurface(loginFormVisible, verifyCodeVisible, loggedIn bool) loginSurface {
+	switch {
+	case loginFormVisible:
+		return loginSurfaceForm
+	case verifyCodeVisible:
+		return loginSurfaceVerifyCode
+	case loggedIn:
+		return loginSurfaceAuthenticated
+	default:
+		return loginSurfaceUnknown
+	}
+}
+
+func postLoginTargetURL(account Account) string {
+	loginURL := strings.ToLower(strings.TrimSpace(account.LoginURL))
+	if loginURL == "" || strings.Contains(loginURL, "sellerhub.shein.com") {
+		return "https://sellerhub.shein.com/#/spmp/commdities/list"
+	}
+	return "https://sso.geiwohuo.com/#/spmp/commdities/list"
+}
+
+func validatedCookieOnlyBrowserState(cookies any) (map[string]any, error) {
+	state := cookieOnlyBrowserState(map[string]any{"cookies": cookies})
+	if cookieCount(state) == 0 {
+		return nil, ErrNoUsableCookie
+	}
+	return state, nil
 }
 
 type artifactMetadata struct {
@@ -179,21 +218,29 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 		closeManagerProfile(manager, profileDir)
 		return nil, nil, err
 	}
-	if err := waitForLoginSurface(ctx, page); err != nil {
+	surface, err := waitForLoginSurface(ctx, page)
+	if err != nil {
 		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "wait_login_surface", err)
 		closeManagerProfile(manager, profileDir)
 		return result, nil, resultErr
 	}
-	if loggedIn, loginErr := isLoggedIn(page); loginErr == nil && loggedIn {
-		storageState, stateErr := manager.GetContext().StorageState()
-		if stateErr != nil {
-			result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "export_state_already_logged_in", stateErr)
-			closeManagerProfile(manager, profileDir)
-			return result, nil, resultErr
-		}
-		state := cookieOnlyBrowserState(map[string]any{"cookies": storageState.Cookies})
+	if surface == loginSurfaceAuthenticated {
+		result, resultErr := exportAuthenticatedBrowserState(manager, page, account, cfg.ArtifactDir, "export_state_already_logged_in")
 		closeManagerProfile(manager, profileDir)
-		return &AutomationResult{BrowserState: state}, nil, nil
+		return result, nil, resultErr
+	}
+	if surface == loginSurfaceVerifyCode {
+		return &AutomationResult{
+				WaitingForVerifyCode: true,
+				ErrorCode:            "VERIFY_CODE_REQUIRED",
+				ErrorMessage:         "登录等待验证码",
+			}, &playwrightVerifySession{
+				account:     account,
+				manager:     manager,
+				page:        page,
+				artifactDir: cfg.ArtifactDir,
+				profileDir:  profileDir,
+			}, nil
 	}
 	if err := fillLogin(page, account); err != nil {
 		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "fill_login", err)
@@ -209,15 +256,9 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 	if waiting, err := waitForLoginOutcome(ctx, page); err != nil {
 		settleAfterSubmit(page, 8*time.Second)
 		if loggedIn, loginErr := isLoggedIn(page); loginErr == nil && loggedIn {
-			storageState, stateErr := manager.GetContext().StorageState()
-			if stateErr != nil {
-				result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "export_state_after_recover", stateErr)
-				closeManagerProfile(manager, profileDir)
-				return result, nil, resultErr
-			}
-			state := cookieOnlyBrowserState(map[string]any{"cookies": storageState.Cookies})
+			result, resultErr := exportAuthenticatedBrowserState(manager, page, account, cfg.ArtifactDir, "export_state_after_recover")
 			closeManagerProfile(manager, profileDir)
-			return &AutomationResult{BrowserState: state}, nil, nil
+			return result, nil, resultErr
 		}
 		if verifyRequired, verifyErr := isVerifyCodeRequired(page); verifyErr == nil && verifyRequired {
 			return &AutomationResult{
@@ -249,15 +290,9 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 			}, nil
 	}
 
-	storageState, err := manager.GetContext().StorageState()
-	if err != nil {
-		result, resultErr := artifactResult(page, cfg.ArtifactDir, account, "export_state", err)
-		closeManagerProfile(manager, profileDir)
-		return result, nil, resultErr
-	}
-	state := cookieOnlyBrowserState(map[string]any{"cookies": storageState.Cookies})
+	result, resultErr := exportAuthenticatedBrowserState(manager, page, account, cfg.ArtifactDir, "export_state")
 	closeManagerProfile(manager, profileDir)
-	return &AutomationResult{BrowserState: state}, nil, nil
+	return result, nil, resultErr
 }
 
 func buildAutomationBrowserConfig(account Account, cfg AutomationConfig) *sharedbrowser.BrowserConfig {
@@ -442,6 +477,7 @@ func installPageNetworkCapture(page playwright.Page) error {
   const shouldCapture = (url) => {
     const lowered = String(url || '').toLowerCase();
     return lowered.includes('/sso/authenticate/login')
+      || lowered.includes('/sso/authenticate/islogin')
       || lowered.includes('/sso/geetest/ajax.php')
       || lowered.includes('/sso/geetest/reset.php');
   };
@@ -655,12 +691,21 @@ func getCapturedNetworkPayloads(page playwright.Page) []map[string]any {
 	if page == nil {
 		return nil
 	}
+	var playwrightPayloads []map[string]any
 	if capture := getPageNetworkCapture(page); capture != nil {
-		if payloads := capture.snapshot(); len(payloads) > 0 {
-			return payloads
-		}
+		playwrightPayloads = capture.snapshot()
 	}
-	return getInjectedNetworkPayloads(page)
+	return mergeNetworkPayloads(playwrightPayloads, getInjectedNetworkPayloads(page))
+}
+
+func mergeNetworkPayloads(playwrightPayloads, injectedPayloads []map[string]any) []map[string]any {
+	if len(playwrightPayloads) == 0 && len(injectedPayloads) == 0 {
+		return nil
+	}
+	merged := make([]map[string]any, 0, len(playwrightPayloads)+len(injectedPayloads))
+	merged = append(merged, playwrightPayloads...)
+	merged = append(merged, injectedPayloads...)
+	return merged
 }
 
 func getInjectedNetworkPayloads(page playwright.Page) []map[string]any {
@@ -1000,9 +1045,46 @@ func shouldCaptureAuthPayloadURL(url string) bool {
 	if lowered == "" {
 		return false
 	}
-	return strings.Contains(lowered, "/sso/authenticate/login") ||
+	return isSHEINLoginResponseURL(lowered) ||
 		strings.Contains(lowered, "/sso/geetest/ajax.php") ||
 		strings.Contains(lowered, "/sso/geetest/reset.php")
+}
+
+func isSHEINLoginResponseURL(url string) bool {
+	lowered := strings.ToLower(strings.TrimSpace(url))
+	return strings.Contains(lowered, "/sso/authenticate/login") ||
+		strings.Contains(lowered, "/sso/authenticate/islogin")
+}
+
+func networkPayloadsConfirmSHEINLogin(payloads []map[string]any) bool {
+	for i := len(payloads) - 1; i >= 0; i-- {
+		payload := payloads[i]
+		if !isSHEINLoginResponseURL(fmt.Sprint(payload["url"])) {
+			continue
+		}
+		status, ok := anyInt64(payload["status"])
+		if !ok || status < 200 || status >= 300 {
+			continue
+		}
+		body := strings.TrimSpace(fmt.Sprint(payload["bodyPreview"]))
+		if body == "" {
+			body = strings.TrimSpace(fmt.Sprint(payload["body_preview"]))
+		}
+		if sheinLoginResponseSucceeded(body) {
+			return true
+		}
+	}
+	return false
+}
+
+func sheinLoginResponseSucceeded(body string) bool {
+	var payload struct {
+		Code any `json:"code"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(body)), &payload); err != nil {
+		return false
+	}
+	return strings.TrimSpace(fmt.Sprint(payload.Code)) == "0"
 }
 
 func summarizeNetworkPayloadBody(body string) string {
@@ -1027,31 +1109,72 @@ func defaultViewport(value, fallback int) int {
 	return fallback
 }
 
-func waitForLoginSurface(ctx context.Context, page playwright.Page) error {
+func waitForLoginSurface(ctx context.Context, page playwright.Page) (loginSurface, error) {
 	deadline := time.Now().Add(45 * time.Second)
 	for time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return loginSurfaceUnknown, ctx.Err()
 		default:
 		}
-		if loggedIn, err := isLoggedIn(page); err == nil && loggedIn {
-			return nil
-		}
-		if verifyRequired, err := isVerifyCodeRequired(page); err == nil && verifyRequired {
-			return nil
-		}
-		states := collectSelectorStates(page)
-		bodyText := ""
-		if text, err := page.Locator("body").TextContent(); err == nil {
-			bodyText = summarizeBodyText(text, 1200)
-		}
-		if hasLoginSurfaceSignals(states, bodyText) {
-			return nil
+		loginFormVisible := isLoginFormVisible(page)
+		verifyRequired, _ := isVerifyCodeRequired(page)
+		loggedIn, _ := isLoggedIn(page)
+		if surface := resolveLoginSurface(loginFormVisible, verifyRequired, loggedIn); surface != loginSurfaceUnknown {
+			return surface, nil
 		}
 		time.Sleep(1 * time.Second)
 	}
-	return fmt.Errorf("login surface not ready")
+	return loginSurfaceUnknown, fmt.Errorf("login surface not ready")
+}
+
+func isLoginFormVisible(page playwright.Page) bool {
+	_, err := firstVisible(page, []string{
+		"input.soui-input-input:first-of-type",
+		`input.soui-input-input:not([type="password"])`,
+		`input[type="text"].soui-input-input`,
+		`input[type="text"]`,
+		`input[type="password"].soui-input-input`,
+		`input[type="password"]`,
+		`button.soui-button-primary:has-text("登录")`,
+		`button:has-text("登录")`,
+	})
+	return err == nil
+}
+
+func exportAuthenticatedBrowserState(manager *sharedbrowser.Manager, page playwright.Page, account Account, artifactDir, stage string) (*AutomationResult, error) {
+	targetURL := postLoginTargetURL(account)
+	if _, err := page.Goto(targetURL, playwright.PageGotoOptions{
+		WaitUntil: playwright.WaitUntilStateDomcontentloaded,
+		Timeout:   playwright.Float(30000),
+	}); err != nil {
+		sheinLoginServiceLogger.WithError(err).WithFields(map[string]any{
+			"tenant_id":  account.TenantID,
+			"store_id":   account.StoreID,
+			"target_url": targetURL,
+		}).Warn("open SHEIN post-login target before exporting cookies failed")
+	}
+	storageState, err := manager.GetContext().StorageState()
+	if err != nil {
+		return artifactResult(page, artifactDir, account, stage, err)
+	}
+	state, err := validatedCookieOnlyBrowserState(storageState.Cookies)
+	if err != nil {
+		sheinLoginServiceLogger.WithFields(map[string]any{
+			"tenant_id":    account.TenantID,
+			"store_id":     account.StoreID,
+			"target_url":   targetURL,
+			"cookie_count": cookieCount(cookieOnlyBrowserState(map[string]any{"cookies": storageState.Cookies})),
+		}).Warn("SHEIN login completed without exportable cookies")
+		return artifactResult(page, artifactDir, account, stage, err)
+	}
+	sheinLoginServiceLogger.WithFields(map[string]any{
+		"tenant_id":    account.TenantID,
+		"store_id":     account.StoreID,
+		"target_url":   targetURL,
+		"cookie_count": cookieCount(state),
+	}).Info("exported SHEIN cookies after authenticated login")
+	return &AutomationResult{BrowserState: state}, nil
 }
 
 func fillLogin(page playwright.Page, account Account) error {
@@ -1164,14 +1287,15 @@ func waitForLoginOutcome(ctx context.Context, page playwright.Page) (bool, error
 			return false, ctx.Err()
 		default:
 		}
-		if loggedIn, err := isLoggedIn(page); err == nil && loggedIn {
-			return false, nil
-		}
+		payloads := getCapturedNetworkPayloads(page)
 		if verifyRequired, err := isVerifyCodeRequired(page); err == nil && verifyRequired {
 			return true, nil
 		}
-		if networkPayloadsRequireVerifyCode(getCapturedNetworkPayloads(page)) {
+		if networkPayloadsRequireVerifyCode(payloads) {
 			return true, nil
+		}
+		if networkPayloadsConfirmSHEINLogin(payloads) {
+			return false, nil
 		}
 		if loginError, err := extractLoginError(page); err == nil && loginError != "" {
 			return false, fmt.Errorf("%s", loginError)
@@ -1184,8 +1308,12 @@ func waitForLoginOutcome(ctx context.Context, page playwright.Page) (bool, error
 	if loginError, err := extractLoginError(page); err == nil && loginError != "" {
 		return false, fmt.Errorf("%s", loginError)
 	}
-	if networkPayloadsRequireVerifyCode(getCapturedNetworkPayloads(page)) {
+	payloads := getCapturedNetworkPayloads(page)
+	if networkPayloadsRequireVerifyCode(payloads) {
 		return true, nil
+	}
+	if networkPayloadsConfirmSHEINLogin(payloads) {
+		return false, nil
 	}
 	if shouldWaitForCaptcha(page) {
 		return true, nil
@@ -1281,13 +1409,7 @@ func (s *playwrightVerifySession) SubmitCode(ctx context.Context, code string) (
 		}
 		return result, nil
 	}
-	storageState, err := s.manager.GetContext().StorageState()
-	if err != nil {
-		return artifactResult(s.page, s.artifactDir, s.account, "export_state_after_verify", err)
-	}
-	return &AutomationResult{
-		BrowserState: cookieOnlyBrowserState(map[string]any{"cookies": storageState.Cookies}),
-	}, nil
+	return exportAuthenticatedBrowserState(s.manager, s.page, s.account, s.artifactDir, "export_state_after_verify")
 }
 
 func (s *playwrightVerifySession) WaitForLogin(ctx context.Context) (*AutomationResult, error) {
@@ -1301,14 +1423,8 @@ func (s *playwrightVerifySession) WaitForLogin(ctx context.Context) (*Automation
 		s.mu.Lock()
 		loggedIn, loginErr := isLoggedIn(s.page)
 		if loginErr == nil && loggedIn {
-			storageState, stateErr := s.manager.GetContext().StorageState()
 			s.mu.Unlock()
-			if stateErr != nil {
-				return artifactResult(s.page, s.artifactDir, s.account, "export_state_after_manual_verify", stateErr)
-			}
-			return &AutomationResult{
-				BrowserState: cookieOnlyBrowserState(map[string]any{"cookies": storageState.Cookies}),
-			}, nil
+			return exportAuthenticatedBrowserState(s.manager, s.page, s.account, s.artifactDir, "export_state_after_manual_verify")
 		}
 		_, _ = dismissRequestFailure(s.page)
 		s.mu.Unlock()
@@ -1766,13 +1882,16 @@ func artifactResult(page playwright.Page, root string, account Account, stage st
 		_ = os.WriteFile(filepath.Join(dir, "metadata.json"), payload, 0o644)
 	}
 	errorCode := classifyLoginFailure(metadata)
+	if errors.Is(cause, ErrNoUsableCookie) {
+		errorCode = "COOKIE_EXPORT_EMPTY"
+	}
 	actionKey, actionMessage := deriveFailureAction(metadata.PageState, metadata.VerifyCodeVisible != nil && *metadata.VerifyCodeVisible, errorCode)
 	return &AutomationResult{
 		ErrorCode:           errorCode,
 		ErrorMessage:        cause.Error(),
 		FailureArtifactPath: dir,
 		FailureSummary: &FailureSummary{
-			ErrorCode:            metadata.ErrorCode,
+			ErrorCode:            errorCode,
 			ErrorMessage:         metadata.Error,
 			PageState:            metadata.PageState,
 			ActionKey:            actionKey,

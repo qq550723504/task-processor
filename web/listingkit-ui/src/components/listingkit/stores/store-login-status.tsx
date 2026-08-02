@@ -4,6 +4,10 @@ import { Badge } from "@/components/ui/badge";
 import type { ListingStore } from "@/lib/api/admin-stores";
 import type { SheinLoginAccountStatus } from "@/lib/types/shein-login";
 
+export function hasUsableSheinCookie(item?: SheinLoginAccountStatus | null) {
+  return Boolean(item?.has_cookie);
+}
+
 export function sheinLoginStatusLabel(item?: SheinLoginAccountStatus | null) {
   if (!item) {
     return { label: "未登录", variant: "neutral" as const };
@@ -14,8 +18,11 @@ export function sheinLoginStatusLabel(item?: SheinLoginAccountStatus | null) {
   if (item.waiting_for_verify_code) {
     return { label: "待验证码", variant: "warning" as const };
   }
-  if (item.has_cookie || (item.cookie_ttl ?? 0) > 0) {
+  if (hasUsableSheinCookie(item)) {
     return { label: "已登录", variant: "success" as const };
+  }
+  if ((item.cookie_ttl ?? 0) > 0) {
+    return { label: "Cookie无效", variant: "danger" as const };
   }
   if (item.last_failure) {
     return { label: "登录异常", variant: "danger" as const };

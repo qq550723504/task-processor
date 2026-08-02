@@ -31,7 +31,7 @@ export function useSheinStoreSelector(selectedStoreId?: string) {
   const loggedInStoreCount = useMemo(
     () =>
       (sheinLoginAccounts.data ?? []).filter(
-        (item) => item.has_cookie || (item.cookie_ttl ?? 0) > 0,
+        (item) => item.has_cookie,
       ).length,
     [sheinLoginAccounts.data],
   );
