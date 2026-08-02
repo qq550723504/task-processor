@@ -89,10 +89,17 @@ func TestLaunchManagerWithTimeoutDefersCleanupUntilLaunchReturns(t *testing.T) {
 		t.Fatal("Launch was not started")
 	}
 
+	var err error
 	select {
-	case err := <-done:
-		t.Fatalf("launchManagerWithTimeout returned before Launch unwound: %v", err)
-	case <-time.After(40 * time.Millisecond):
+	case err = <-done:
+	case <-time.After(time.Second):
+		t.Fatal("launchManagerWithTimeout did not return promptly after timeout")
+	}
+	if err == nil {
+		t.Fatal("launchManagerWithTimeout error = nil, want timeout")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("launchManagerWithTimeout error = %v, want context.DeadlineExceeded", err)
 	}
 
 	select {
@@ -108,18 +115,6 @@ func TestLaunchManagerWithTimeoutDefersCleanupUntilLaunchReturns(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Launch did not return after release")
 	}
-	var err error
-	select {
-	case err = <-done:
-	case <-time.After(time.Second):
-		t.Fatal("launchManagerWithTimeout did not return after Launch unwound")
-	}
-	if err == nil {
-		t.Fatal("launchManagerWithTimeout error = nil, want timeout")
-	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("launchManagerWithTimeout error = %v, want context.DeadlineExceeded", err)
-	}
 	if !strings.Contains(err.Error(), "SHEIN browser launch timed out after 20ms") {
 		t.Fatalf("launchManagerWithTimeout error = %v", err)
 	}
@@ -133,20 +128,18 @@ func TestLaunchManagerWithTimeoutDefersCleanupUntilLaunchReturns(t *testing.T) {
 	}
 }
 
-func TestRunBlockingStageWithContextAndLaunchTimeoutShareCleanup(t *testing.T) {
+func TestRunBlockingStageWithContextCancellationDefersLaunchCleanup(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	manager := newCountingBlockingBrowserLaunchManager()
-	launchTimeout := 20 * time.Millisecond
-	innerReturned := make(chan struct{})
+	launchTimeout := time.Minute
 	sharedCleanup := newOnceCleanup(manager.Close)
 
 	done := make(chan error, 1)
 	go func() {
-		done <- runBlockingStageWithContext(ctx, sharedCleanup, func() error {
-			defer close(innerReturned)
-			return launchManagerWithTimeoutAndCleanup(manager, launchTimeout, sharedCleanup)
+		done <- runBlockingStageWithContext(ctx, nil, func() error {
+			return launchManagerWithTimeoutAndCleanupContext(ctx, manager, launchTimeout, sharedCleanup)
 		})
 	}()
 
@@ -154,12 +147,6 @@ func TestRunBlockingStageWithContextAndLaunchTimeoutShareCleanup(t *testing.T) {
 	case <-manager.launchStarted:
 	case <-time.After(time.Second):
 		t.Fatal("Launch was not started")
-	}
-
-	select {
-	case err := <-done:
-		t.Fatalf("runBlockingStageWithContext returned before outer cancellation: %v", err)
-	case <-time.After(launchTimeout * 2):
 	}
 
 	if got := manager.closeCalls.Load(); got != 0 {
@@ -187,12 +174,6 @@ func TestRunBlockingStageWithContextAndLaunchTimeoutShareCleanup(t *testing.T) {
 	case <-manager.launchReturned:
 	case <-time.After(time.Second):
 		t.Fatal("Launch did not return after release")
-	}
-
-	select {
-	case <-innerReturned:
-	case <-time.After(time.Second):
-		t.Fatal("inner launch timeout goroutine did not return after Launch unwound")
 	}
 
 	select {

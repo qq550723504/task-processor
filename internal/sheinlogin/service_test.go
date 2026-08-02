@@ -669,6 +669,99 @@ func TestCompleteLoginAttemptIfActiveDoesNotOverwriteCancellation(t *testing.T) 
 	}
 }
 
+func TestFailedLoginAttemptCompletionClearsOwnedVerifyState(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+	if err := svc.store.SetVerifyWait(context.Background(), 1, 2, time.Minute); err != nil {
+		t.Fatalf("set verify wait: %v", err)
+	}
+	if err := svc.store.SubmitVerifyCodeForAttempt(context.Background(), 1, 2, attempt.ID, "123456", time.Minute); err != nil {
+		t.Fatalf("submit verify code: %v", err)
+	}
+
+	failed := *attempt
+	failed.Status = LoginAttemptFailed
+	failed.ErrorCode = "VERIFY_CODE_TIMEOUT"
+	failed.Message = "verification code wait expired"
+	now := time.Now().UTC()
+	failed.CompletedAt = &now
+	completed, err := svc.store.CompleteLoginAttemptIfActive(context.Background(), &failed)
+	if err != nil {
+		t.Fatalf("complete failed attempt: %v", err)
+	}
+	if !completed {
+		t.Fatal("expected failed attempt completion to win")
+	}
+	if waiting, err := svc.store.IsWaitingVerifyCode(context.Background(), 1, 2); err != nil || waiting {
+		t.Fatalf("verify wait = %v, err=%v; want cleared", waiting, err)
+	}
+	for _, key := range []string{
+		loginAttemptControlKey(attempt.ID),
+		verifyAttemptCodeKey(1, 2, attempt.ID),
+		verifyAttemptQueueKey(1, 2, attempt.ID),
+	} {
+		exists, err := svc.store.client.Exists(context.Background(), key).Result()
+		if err != nil {
+			t.Fatalf("check %s: %v", key, err)
+		}
+		if exists != 0 {
+			t.Fatalf("key %s still exists after failed completion", key)
+		}
+	}
+}
+
+func TestStaleFailedLoginAttemptCannotClearNewerVerifyState(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	oldAttempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue old attempt: attempt=%+v created=%v err=%v", oldAttempt, created, err)
+	}
+	oldAttempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), oldAttempt); err != nil {
+		t.Fatalf("mark old attempt waiting: %v", err)
+	}
+	oldTerminal := *oldAttempt
+	oldTerminal.Status = LoginAttemptSucceeded
+	now := time.Now().UTC()
+	oldTerminal.CompletedAt = &now
+	if completed, err := svc.store.CompleteLoginAttemptIfActive(context.Background(), &oldTerminal); err != nil || !completed {
+		t.Fatalf("complete old attempt: completed=%v err=%v", completed, err)
+	}
+
+	newAttempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue new attempt: attempt=%+v created=%v err=%v", newAttempt, created, err)
+	}
+	newAttempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), newAttempt); err != nil {
+		t.Fatalf("mark new attempt waiting: %v", err)
+	}
+	if err := svc.store.SetVerifyWait(context.Background(), 1, 2, time.Minute); err != nil {
+		t.Fatalf("set newer verify wait: %v", err)
+	}
+
+	staleFailed := *oldAttempt
+	staleFailed.Status = LoginAttemptFailed
+	staleFailed.CompletedAt = &now
+	completed, err := svc.store.CompleteLoginAttemptIfActive(context.Background(), &staleFailed)
+	if err != nil {
+		t.Fatalf("complete stale failed attempt: %v", err)
+	}
+	if completed {
+		t.Fatal("stale failed attempt unexpectedly completed")
+	}
+	if waiting, err := svc.store.IsWaitingVerifyCode(context.Background(), 1, 2); err != nil || !waiting {
+		t.Fatalf("newer verify wait = %v, err=%v; want preserved", waiting, err)
+	}
+}
+
 func TestCompleteLoginAttemptDoesNotPersistFailureWhenCancellationWins(t *testing.T) {
 	svc := newTestService(t, &stubAutomation{})
 	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})

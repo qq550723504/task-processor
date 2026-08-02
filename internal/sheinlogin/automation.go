@@ -170,8 +170,8 @@ func (a *PlaywrightAutomation) StartLogin(ctx context.Context, account Account, 
 		}
 		return nil, nil, err
 	}
-	if err := runBlockingStageWithContext(ctx, launchCleanup, func() error {
-		return launchManagerWithProfileRecovery(manager, profileDir, launchCleanup)
+	if err := runBlockingStageWithContext(ctx, nil, func() error {
+		return launchManagerWithProfileRecoveryContext(ctx, manager, profileDir, launchCleanup)
 	}); err != nil {
 		if shouldCloseManagerAfterStageError(err) {
 			closeManagerProfile(manager, profileDir)
@@ -1462,9 +1462,19 @@ func newOnceCleanup(fn func()) func() {
 }
 
 func launchManagerWithProfileRecovery(manager browserLaunchManager, profileDir string, cleanup func()) error {
-	err := launchManagerWithTimeoutAndCleanup(manager, sheinBrowserLaunchTimeout, cleanup)
+	return launchManagerWithProfileRecoveryContext(context.Background(), manager, profileDir, cleanup)
+}
+
+func launchManagerWithProfileRecoveryContext(ctx context.Context, manager browserLaunchManager, profileDir string, cleanup func()) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	err := launchManagerWithTimeoutAndCleanupContext(ctx, manager, sheinBrowserLaunchTimeout, cleanup)
 	if err == nil {
 		return nil
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
 	}
 	if !isProfileInUseError(err) {
 		return err
@@ -1474,7 +1484,13 @@ func launchManagerWithProfileRecovery(manager browserLaunchManager, profileDir s
 	if !cleared {
 		return fmt.Errorf("SHEIN 浏览器 profile 正在使用，请稍后重试或关闭当前登录窗口: %w", err)
 	}
-	if retryErr := launchManagerWithTimeoutAndCleanup(manager, sheinBrowserLaunchTimeout, cleanup); retryErr != nil {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	if retryErr := launchManagerWithTimeoutAndCleanupContext(ctx, manager, sheinBrowserLaunchTimeout, cleanup); retryErr != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		if isProfileInUseError(retryErr) {
 			return fmt.Errorf("SHEIN 浏览器 profile 正在使用，请稍后重试或关闭当前登录窗口: %w", retryErr)
 		}
@@ -1488,6 +1504,10 @@ func launchManagerWithTimeout(manager browserLaunchManager, timeout time.Duratio
 }
 
 func launchManagerWithTimeoutAndCleanup(manager browserLaunchManager, timeout time.Duration, cleanup func()) error {
+	return launchManagerWithTimeoutAndCleanupContext(context.Background(), manager, timeout, cleanup)
+}
+
+func launchManagerWithTimeoutAndCleanupContext(ctx context.Context, manager browserLaunchManager, timeout time.Duration, cleanup func()) error {
 	if manager == nil {
 		return fmt.Errorf("SHEIN browser manager is nil")
 	}
@@ -1504,11 +1524,11 @@ func launchManagerWithTimeoutAndCleanup(manager browserLaunchManager, timeout ti
 	select {
 	case err := <-stage.result:
 		return err
+	case <-ctx.Done():
+		stage.interrupt()
+		return ctx.Err()
 	case <-timer.C:
 		stage.interrupt()
-		if err := <-stage.result; err != nil {
-			return fmt.Errorf("SHEIN browser launch timed out after %s while launch returned %v: %w", timeout, err, context.DeadlineExceeded)
-		}
 		return fmt.Errorf("SHEIN browser launch timed out after %s: %w", timeout, context.DeadlineExceeded)
 	}
 }

@@ -28,11 +28,11 @@ const mocks = vi.hoisted(() => {
   };
 
   const cancelMutation: {
-    mutate: ReturnType<typeof vi.fn>;
+    mutateAsync: ReturnType<typeof vi.fn>;
     isPending: boolean;
     error: Error | null;
   } = {
-    mutate: vi.fn(),
+    mutateAsync: vi.fn(),
     isPending: false,
     error: null,
   };
@@ -67,7 +67,7 @@ vi.mock("@/lib/query/use-shein-login", () => ({
 
 function idleMutation() {
   return {
-    mutate: vi.fn(),
+    mutateAsync: vi.fn(),
     isPending: false,
     error: null,
   };
@@ -78,7 +78,7 @@ describe("SheinLoginPage", () => {
     vi.clearAllMocks();
     mocks.searchParams = new URLSearchParams("tenant_id=227");
     mocks.cancelController.reset();
-    mocks.cancelMutation.mutate.mockReset();
+    mocks.cancelMutation.mutateAsync.mockReset();
     mocks.cancelMutation.isPending = false;
     mocks.cancelMutation.error = null;
 
@@ -147,7 +147,7 @@ describe("SheinLoginPage", () => {
 
     await user.click(cancelButton);
 
-    expect(mocks.cancelMutation.mutate).toHaveBeenCalledWith(870, expect.any(Object));
+    expect(mocks.cancelMutation.mutateAsync).toHaveBeenCalledWith(870);
   });
 
   it("closes the verify-code dialog without cancelling the login", async () => {
@@ -165,8 +165,37 @@ describe("SheinLoginPage", () => {
 
     await user.click(screen.getByRole("button", { name: "Close Verify Code Dialog" }));
 
-    expect(mocks.cancelMutation.mutate).not.toHaveBeenCalled();
+    expect(mocks.cancelMutation.mutateAsync).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Close Verify Code Dialog" })).not.toBeInTheDocument();
+  });
+
+  it("does not offer cancellation for inline login progress without an owned attempt", async () => {
+    mocks.useSheinLoginAccounts.mockReturnValue({
+      data: [
+        {
+          account: {
+            store_id: 872,
+            tenant_id: 227,
+            store_name: "SHEIN Inline Store",
+            username: "inline-store",
+          },
+          has_cookie: false,
+          cookie_ttl: 0,
+          waiting_for_verify_code: false,
+          login_in_progress: true,
+        },
+      ],
+      isLoading: false,
+      isError: false,
+      isFetching: false,
+      refetch: vi.fn(),
+    });
+
+    render(<SheinLoginPage />);
+
+    const row = (await screen.findByText("SHEIN Inline Store")).closest("tr");
+    expect(row).not.toBeNull();
+    expect(within(row as HTMLElement).queryByRole("button", { name: /Cancel Login/ })).not.toBeInTheDocument();
   });
 
   it("keeps cancellation pending and errors scoped to the target store", async () => {
@@ -176,33 +205,27 @@ describe("SheinLoginPage", () => {
       const [error, setError] = React.useState<Error | null>(null);
 
       return {
-        mutate: (
-          storeID: number,
-          options?: {
-            onError?: (error: Error) => void;
-            onSuccess?: () => void;
-            onSettled?: () => void;
-          },
-        ) => {
-          setPendingStoreIDs((previous) => (previous.includes(storeID) ? previous : [...previous, storeID]));
-          mocks.cancelController.pending.set(storeID, {
-            fail: (message = "Cancel login failed.") => {
-              const nextError = new Error(message);
-              setError(nextError);
-              setPendingStoreIDs((previous) => previous.filter((value) => value !== storeID));
-              mocks.cancelController.pending.delete(storeID);
-              options?.onError?.(nextError);
-              options?.onSettled?.();
-            },
-            succeed: () => {
-              setError(null);
-              setPendingStoreIDs((previous) => previous.filter((value) => value !== storeID));
-              mocks.cancelController.pending.delete(storeID);
-              options?.onSuccess?.();
-              options?.onSettled?.();
-            },
-          });
-        },
+        mutateAsync: (storeID: number) =>
+          new Promise<void>((resolve, reject) => {
+            setPendingStoreIDs((previous) =>
+              previous.includes(storeID) ? previous : [...previous, storeID],
+            );
+            mocks.cancelController.pending.set(storeID, {
+              fail: (message = "Cancel login failed.") => {
+                const nextError = new Error(message);
+                setError(nextError);
+                setPendingStoreIDs((previous) => previous.filter((value) => value !== storeID));
+                mocks.cancelController.pending.delete(storeID);
+                reject(nextError);
+              },
+              succeed: () => {
+                setError(null);
+                setPendingStoreIDs((previous) => previous.filter((value) => value !== storeID));
+                mocks.cancelController.pending.delete(storeID);
+                resolve();
+              },
+            });
+          }),
         isPending: pendingStoreIDs.length > 0,
         error,
       };
@@ -254,10 +277,30 @@ describe("SheinLoginPage", () => {
       }),
     ).toBeEnabled();
 
-    act(() => {
+    await user.click(
+      within(backupRow as HTMLElement).getByRole("button", {
+        name: "Cancel Login for store 871",
+      }),
+    );
+    expect(
+      within(backupRow as HTMLElement).getByRole("button", {
+        name: "Cancelling login for store 871",
+      }),
+    ).toHaveAttribute("aria-busy", "true");
+
+    await act(async () => {
       mocks.cancelController.fail(870, "Cancel login failed for store 870.");
     });
 
+    expect(
+      within(backupRow as HTMLElement).getByRole("button", {
+        name: "Cancelling login for store 871",
+      }),
+    ).toBeDisabled();
+
+    await act(async () => {
+      mocks.cancelController.succeed(871);
+    });
     expect(screen.getByRole("status")).toHaveTextContent("Cancel login failed for store 870.");
 
     await user.click(
@@ -279,7 +322,7 @@ describe("SheinLoginPage", () => {
     expect(screen.getByRole("button", { name: "Close" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cancelling..." })).toBeDisabled();
 
-    act(() => {
+    await act(async () => {
       mocks.cancelController.fail(871, "Cancel login failed for store 871.");
     });
 

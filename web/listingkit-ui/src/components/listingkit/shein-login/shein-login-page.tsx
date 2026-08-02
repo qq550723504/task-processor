@@ -200,7 +200,6 @@ function actionTone(item: SheinLoginAccountStatus, kind: "login" | "code" | "fai
 
 function canCancelLogin(item: SheinLoginAccountStatus) {
   return (
-    item.login_in_progress ||
     item.latest_attempt?.status === "queued" ||
     item.latest_attempt?.status === "launching" ||
     item.latest_attempt?.status === "waiting_verify_code"
@@ -633,7 +632,7 @@ export function SheinLoginPage() {
   const cancelError = verifyStoreID ? (cancelErrorsByStoreID.get(verifyStoreID) ?? null) : null;
   const isCancelPending = (storeID: number) => cancelPendingStoreIDs.has(storeID);
 
-  const requestCancelLogin = (storeID: number, onSuccess?: () => void) => {
+  const requestCancelLogin = async (storeID: number, onSuccess?: () => void) => {
     setCancelPendingStoreIDs((previous) => {
       if (previous.has(storeID)) {
         return previous;
@@ -650,37 +649,34 @@ export function SheinLoginPage() {
       next.delete(storeID);
       return next;
     });
-    cancelLogin.mutate(storeID, {
-      onSuccess: () => {
-        setCancelErrorsByStoreID((previous) => {
-          if (!previous.has(storeID)) {
-            return previous;
-          }
-          const next = new Map(previous);
-          next.delete(storeID);
-          return next;
-        });
-        onSuccess?.();
-      },
-      onError: (error) => {
-        const nextError = error instanceof Error ? error : new Error("Cancel login failed.");
-        setCancelErrorsByStoreID((previous) => {
-          const next = new Map(previous);
-          next.set(storeID, nextError);
-          return next;
-        });
-      },
-      onSettled: () => {
-        setCancelPendingStoreIDs((previous) => {
-          if (!previous.has(storeID)) {
-            return previous;
-          }
-          const next = new Set(previous);
-          next.delete(storeID);
-          return next;
-        });
-      },
-    });
+    try {
+      await cancelLogin.mutateAsync(storeID);
+      setCancelErrorsByStoreID((previous) => {
+        if (!previous.has(storeID)) {
+          return previous;
+        }
+        const next = new Map(previous);
+        next.delete(storeID);
+        return next;
+      });
+      onSuccess?.();
+    } catch (error) {
+      const nextError = error instanceof Error ? error : new Error("Cancel login failed.");
+      setCancelErrorsByStoreID((previous) => {
+        const next = new Map(previous);
+        next.set(storeID, nextError);
+        return next;
+      });
+    } finally {
+      setCancelPendingStoreIDs((previous) => {
+        if (!previous.has(storeID)) {
+          return previous;
+        }
+        const next = new Set(previous);
+        next.delete(storeID);
+        return next;
+      });
+    }
   };
 
   return (

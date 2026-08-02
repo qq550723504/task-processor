@@ -518,7 +518,13 @@ func (s *RedisStore) CompleteLoginAttemptIfActive(ctx context.Context, attempt *
 	if err != nil {
 		return false, err
 	}
+	controlKey := loginAttemptControlKey(attempt.ID)
+	codeKey := verifyAttemptCodeKey(attempt.TenantID, attempt.StoreID, attempt.ID)
+	queueKey := verifyAttemptQueueKey(attempt.TenantID, attempt.StoreID, attempt.ID)
 	const completeAttemptIfActiveScript = `
+if redis.call("GET", KEYS[1]) ~= ARGV[1] then
+	return 0
+end
 local raw = redis.call("GET", KEYS[2])
 if not raw then
 	return 0
@@ -530,19 +536,25 @@ if status ~= "queued" and status ~= "launching" and status ~= "waiting_verify_co
 end
 redis.call("SET", KEYS[2], ARGV[2], "PX", ARGV[3])
 redis.call("SET", KEYS[3], ARGV[1], "PX", ARGV[3])
-if redis.call("GET", KEYS[1]) == ARGV[1] then
-	redis.call("DEL", KEYS[1])
+if ARGV[4] == "failed" then
+	redis.call("DEL", KEYS[4], KEYS[5], KEYS[6], KEYS[7])
 end
+redis.call("DEL", KEYS[1])
 return 1`
 	result, err := s.client.Eval(ctx, completeAttemptIfActiveScript,
 		[]string{
 			loginAttemptActiveKey(attempt.TenantID, attempt.StoreID),
 			loginAttemptKey(attempt.ID),
 			loginAttemptLatestKey(attempt.TenantID, attempt.StoreID),
+			verifyWaitKey(attempt.TenantID, attempt.StoreID),
+			controlKey,
+			codeKey,
+			queueKey,
 		},
 		attempt.ID,
 		body,
 		loginAttemptTTL.Milliseconds(),
+		string(attempt.Status),
 	).Int()
 	if err != nil {
 		return false, err
