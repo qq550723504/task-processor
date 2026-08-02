@@ -187,6 +187,7 @@ export type ListingKitTaskListQuery = {
   include_summary?: boolean;
   page?: number;
   page_size?: number;
+  canonical_product?: boolean;
 };
 
 export type ListingKitTaskFacetDescriptor = {
@@ -204,6 +205,15 @@ export type ListingKitTaskListItem = {
   platforms?: string[];
   title?: string;
   image_count?: number;
+  canonical_product?: {
+    title?: string;
+    brand?: string;
+    category_path?: string[];
+    image_url?: string;
+    image_count?: number;
+    variant_count?: number;
+    needs_review?: boolean;
+  };
   source_type?: string;
   product_name?: string;
   source_product_sku?: string;

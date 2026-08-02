@@ -46,6 +46,7 @@ type TaskListQuery struct {
 	SheinWarningKey       string `form:"shein_warning_key" json:"shein_warning_key,omitempty"`
 	SheinWorkQueue        string `form:"shein_work_queue" json:"shein_work_queue,omitempty"`
 	SheinActionQueue      string `form:"shein_action_queue" json:"shein_action_queue,omitempty"`
+	CanonicalProduct      bool   `form:"canonical_product" json:"canonical_product,omitempty"`
 	IncludeSummary        bool   `form:"include_summary" json:"include_summary,omitempty"`
 	Page                  int    `form:"page" json:"page,omitempty"`
 	PageSize              int    `form:"page_size" json:"page_size,omitempty"`
@@ -93,17 +94,28 @@ type TaskListLifecycleFields struct {
 }
 
 type TaskListDisplayFields struct {
-	Platforms          []string                `json:"platforms,omitempty"`
-	Title              string                  `json:"title,omitempty"`
-	ImageCount         int                     `json:"image_count"`
-	SourceType         string                  `json:"source_type,omitempty"`
-	ProductName        string                  `json:"product_name,omitempty"`
-	SourceProductSKU   string                  `json:"source_product_sku,omitempty"`
-	SourceVariantSKU   string                  `json:"source_variant_sku,omitempty"`
-	SourceVariantPrice float64                 `json:"source_variant_price,omitempty"`
-	SourceVariants     []TaskListSourceVariant `json:"source_variants,omitempty"`
-	VariantLabel       string                  `json:"variant_label,omitempty"`
-	SDSSyncStatus      string                  `json:"sds_sync_status,omitempty"`
+	Platforms          []string                 `json:"platforms,omitempty"`
+	Title              string                   `json:"title,omitempty"`
+	ImageCount         int                      `json:"image_count"`
+	CanonicalProduct   *CanonicalProductSummary `json:"canonical_product,omitempty"`
+	SourceType         string                   `json:"source_type,omitempty"`
+	ProductName        string                   `json:"product_name,omitempty"`
+	SourceProductSKU   string                   `json:"source_product_sku,omitempty"`
+	SourceVariantSKU   string                   `json:"source_variant_sku,omitempty"`
+	SourceVariantPrice float64                  `json:"source_variant_price,omitempty"`
+	SourceVariants     []TaskListSourceVariant  `json:"source_variants,omitempty"`
+	VariantLabel       string                   `json:"variant_label,omitempty"`
+	SDSSyncStatus      string                   `json:"sds_sync_status,omitempty"`
+}
+
+type CanonicalProductSummary struct {
+	Title        string   `json:"title,omitempty"`
+	Brand        string   `json:"brand,omitempty"`
+	CategoryPath []string `json:"category_path,omitempty"`
+	ImageURL     string   `json:"image_url,omitempty"`
+	ImageCount   int      `json:"image_count"`
+	VariantCount int      `json:"variant_count"`
+	NeedsReview  bool     `json:"needs_review"`
 }
 
 type TaskListSourceVariant struct {

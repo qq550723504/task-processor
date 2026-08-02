@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 
+	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/store"
@@ -72,6 +73,64 @@ func TestTaskRepositoryListTasksFiltersBeforePaginationAndPreservesOrder(t *test
 	}
 	if len(page2) != 1 || page2[0].ID != "task-oldest-match" {
 		t.Fatalf("page2 tasks = %+v, want task-oldest-match", page2)
+	}
+}
+
+func TestTaskRepositoryListTasksFiltersCanonicalProductsBeforePagination(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := store.NewTaskRepository(db)
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
+	base := time.Date(2026, 8, 2, 12, 0, 0, 0, time.UTC)
+
+	withCanonical := makeTaskRepoFixture("task-canonical-newest", base.Add(3*time.Minute), []string{"shein"}, "published", "")
+	withCanonical.Result.CanonicalProduct = &canonical.Product{Title: "Newest product"}
+	withoutCanonical := makeTaskRepoFixture("task-without-canonical", base.Add(2*time.Minute), []string{"shein"}, "published", "")
+	withoutCanonical.Result.CanonicalProduct = nil
+	withCanonicalOlder := makeTaskRepoFixture("task-canonical-oldest", base.Add(time.Minute), []string{"shein"}, "published", "")
+	withCanonicalOlder.Result.CanonicalProduct = &canonical.Product{Title: "Oldest product"}
+	for _, task := range []*listingkit.Task{withCanonical, withoutCanonical, withCanonicalOlder} {
+		if err := repo.CreateTask(ctx, task); err != nil {
+			t.Fatalf("create task %s: %v", task.ID, err)
+		}
+	}
+
+	page1, total, err := repo.ListTasks(ctx, &listingkit.TaskListQuery{
+		CanonicalProduct: true,
+		Page:             1,
+		PageSize:         1,
+	})
+	if err != nil {
+		t.Fatalf("list page1: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("page1 total = %d, want 2", total)
+	}
+	if len(page1) != 1 || page1[0].ID != "task-canonical-newest" {
+		t.Fatalf("page1 tasks = %+v, want newest canonical task", page1)
+	}
+
+	page2, total, err := repo.ListTasks(ctx, &listingkit.TaskListQuery{
+		CanonicalProduct: true,
+		Page:             2,
+		PageSize:         1,
+	})
+	if err != nil {
+		t.Fatalf("list page2: %v", err)
+	}
+	if total != 2 {
+		t.Fatalf("page2 total = %d, want 2", total)
+	}
+	if len(page2) != 1 || page2[0].ID != "task-canonical-oldest" {
+		t.Fatalf("page2 tasks = %+v, want oldest canonical task", page2)
 	}
 }
 

@@ -4,10 +4,42 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/catalog/canonical"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
+
+func TestBuildTaskListItemIncludesCanonicalProductSummary(t *testing.T) {
+	t.Parallel()
+
+	item := buildTaskListItem(&Task{
+		ID:      "task-canonical-summary",
+		Status:  TaskStatusCompleted,
+		Request: &GenerateRequest{Platforms: []string{"shein"}},
+		Result: &ListingKitResult{CanonicalProduct: &canonical.Product{
+			Title:        "  Canvas Tote  ",
+			Brand:        "Studio",
+			CategoryPath: []string{"Bags"},
+			Images: []canonical.Image{
+				{URL: "https://example.com/main.jpg"},
+				{URL: ""},
+			},
+			Variants:    []canonical.Variant{{}, {}},
+			NeedsReview: true,
+		}},
+	})
+
+	if item.CanonicalProduct == nil {
+		t.Fatal("canonical product summary is nil")
+	}
+	if item.CanonicalProduct.Title != "Canvas Tote" || item.CanonicalProduct.ImageURL != "https://example.com/main.jpg" {
+		t.Fatalf("canonical product summary = %+v", item.CanonicalProduct)
+	}
+	if item.CanonicalProduct.ImageCount != 1 || item.CanonicalProduct.VariantCount != 2 || !item.CanonicalProduct.NeedsReview {
+		t.Fatalf("canonical product counts = %+v", item.CanonicalProduct)
+	}
+}
 
 func TestBuildTaskListItemIncludesSheinRemoteSubmissionSummary(t *testing.T) {
 	t.Parallel()

@@ -3,6 +3,7 @@ package listingkit
 import (
 	"strings"
 
+	"task-processor/internal/catalog/canonical"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -41,11 +42,12 @@ func summaryTaskListQuery(query *TaskListQuery) *TaskListQuery {
 		return nil
 	}
 	return &TaskListQuery{
-		TenantID:        query.TenantID,
-		Status:          query.Status,
-		Platform:        query.Platform,
-		SourceType:      query.SourceType,
-		ReadinessStatus: query.ReadinessStatus,
+		TenantID:         query.TenantID,
+		Status:           query.Status,
+		Platform:         query.Platform,
+		SourceType:       query.SourceType,
+		ReadinessStatus:  query.ReadinessStatus,
+		CanonicalProduct: query.CanonicalProduct,
 	}
 }
 
@@ -75,6 +77,7 @@ func buildTaskListItem(task *Task) TaskListItem {
 		ensureTaskPodExecution(task)
 		task.Result = normalizeListingKitResultSemanticFields(task.Result)
 		item.PodExecution = clonePodExecutionSummary(task.Result.PodExecution)
+		item.CanonicalProduct = buildCanonicalProductSummary(task.Result.CanonicalProduct)
 		if task.Result.Summary != nil {
 			item.SourceType = strings.TrimSpace(task.Result.Summary.SourceType)
 		}
@@ -93,6 +96,30 @@ func buildTaskListItem(task *Task) TaskListItem {
 		item.CompletedAt = &completedAt
 	}
 	return item
+}
+
+func buildCanonicalProductSummary(product *canonical.Product) *CanonicalProductSummary {
+	if product == nil {
+		return nil
+	}
+	summary := &CanonicalProductSummary{
+		Title:        strings.TrimSpace(product.Title),
+		Brand:        strings.TrimSpace(product.Brand),
+		CategoryPath: append([]string(nil), product.CategoryPath...),
+		VariantCount: len(product.Variants),
+		NeedsReview:  product.NeedsReview,
+	}
+	for _, image := range product.Images {
+		url := strings.TrimSpace(image.URL)
+		if url == "" {
+			continue
+		}
+		summary.ImageCount++
+		if summary.ImageURL == "" {
+			summary.ImageURL = url
+		}
+	}
+	return summary
 }
 
 func applyTaskListRequestFields(item *TaskListItem, task *Task) {

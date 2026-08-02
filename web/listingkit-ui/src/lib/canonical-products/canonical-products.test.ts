@@ -1,10 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { getListingKitTasks } from "@/lib/api/task-list";
 
 import {
   buildCanonicalProductDetail,
   buildCanonicalProductListItem,
+  getCanonicalProducts,
 } from "./canonical-products";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
+
+vi.mock("@/lib/api/task-list", () => ({
+  getListingKitTasks: vi.fn(),
+}));
+
+const mockedGetListingKitTasks = vi.mocked(getListingKitTasks);
 
 const taskResult: ListingKitTaskResult = {
   task_id: "task-1",
@@ -50,6 +59,57 @@ describe("buildCanonicalProductListItem", () => {
 
   it("returns null when the task has no canonical product", () => {
     expect(buildCanonicalProductListItem({ task_id: "task-2" })).toBeNull();
+  });
+});
+
+describe("getCanonicalProducts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("uses canonical product summaries from the paginated task list without detail requests", async () => {
+    mockedGetListingKitTasks.mockResolvedValueOnce({
+      page: 1,
+      page_size: 30,
+      total: 2,
+      items: [
+        {
+          task_id: "task-1",
+          tenant_id: "tenant-a",
+          platforms: ["shein"],
+          title: "Canvas Tote",
+          canonical_product: {
+            title: "Canvas Tote",
+            brand: "Studio",
+            category_path: ["Bags"],
+            image_url: "https://example.com/main.jpg",
+            image_count: 3,
+            variant_count: 2,
+            needs_review: false,
+          },
+          created_at: "2026-05-09T01:00:00Z",
+          completed_at: "2026-05-09T01:03:00Z",
+        },
+      ],
+    });
+
+    await expect(getCanonicalProducts({ page: 1, page_size: 30 })).resolves.toMatchObject({
+      page: 1,
+      pageSize: 30,
+      items: [
+        expect.objectContaining({
+          taskId: "task-1",
+          title: "Canvas Tote",
+          imageCount: 3,
+          variantCount: 2,
+        }),
+      ],
+    });
+    expect(mockedGetListingKitTasks).toHaveBeenCalledWith({
+      page: 1,
+      page_size: 30,
+      canonical_product: true,
+    });
   });
 });
 
