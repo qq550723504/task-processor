@@ -1,52 +1,353 @@
 package sheinlogin
 
 import (
+	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
 type blockingBrowserLaunchManager struct {
-	launchStarted chan struct{}
-	closed        chan struct{}
-	closeOnce     sync.Once
+	launchStarted  chan struct{}
+	releaseLaunch  chan struct{}
+	launchReturned chan struct{}
+	closed         chan struct{}
+	closeOnce      sync.Once
 }
 
 func newBlockingBrowserLaunchManager() *blockingBrowserLaunchManager {
 	return &blockingBrowserLaunchManager{
-		launchStarted: make(chan struct{}),
-		closed:        make(chan struct{}),
+		launchStarted:  make(chan struct{}),
+		releaseLaunch:  make(chan struct{}),
+		launchReturned: make(chan struct{}),
+		closed:         make(chan struct{}),
 	}
 }
 
 func (m *blockingBrowserLaunchManager) Launch() error {
 	close(m.launchStarted)
-	<-m.closed
-	return errors.New("browser driver closed")
+	<-m.releaseLaunch
+	close(m.launchReturned)
+	return nil
 }
 
 func (m *blockingBrowserLaunchManager) Close() {
 	m.closeOnce.Do(func() { close(m.closed) })
 }
 
-func TestLaunchManagerWithTimeoutClosesBlockedLaunch(t *testing.T) {
+type countingBlockingBrowserLaunchManager struct {
+	launchStarted  chan struct{}
+	releaseLaunch  chan struct{}
+	launchReturned chan struct{}
+	firstClose     chan struct{}
+	closeCalls     atomic.Int32
+	earlyClose     atomic.Bool
+	closeSignal    sync.Once
+}
+
+func newCountingBlockingBrowserLaunchManager() *countingBlockingBrowserLaunchManager {
+	return &countingBlockingBrowserLaunchManager{
+		launchStarted:  make(chan struct{}),
+		releaseLaunch:  make(chan struct{}),
+		launchReturned: make(chan struct{}),
+		firstClose:     make(chan struct{}),
+	}
+}
+
+func (m *countingBlockingBrowserLaunchManager) Launch() error {
+	close(m.launchStarted)
+	<-m.releaseLaunch
+	close(m.launchReturned)
+	return nil
+}
+
+func (m *countingBlockingBrowserLaunchManager) Close() {
+	m.closeCalls.Add(1)
+	select {
+	case <-m.launchReturned:
+	default:
+		m.earlyClose.Store(true)
+	}
+	m.closeSignal.Do(func() { close(m.firstClose) })
+}
+
+func TestLaunchManagerWithTimeoutDefersCleanupUntilLaunchReturns(t *testing.T) {
 	manager := newBlockingBrowserLaunchManager()
 
-	err := launchManagerWithTimeout(manager, 20*time.Millisecond)
-	if err == nil || err.Error() != "SHEIN browser launch timed out after 20ms" {
-		t.Fatalf("launchManagerWithTimeout error = %v", err)
-	}
+	done := make(chan error, 1)
+	go func() {
+		done <- launchManagerWithTimeout(manager, 20*time.Millisecond)
+	}()
+
 	select {
 	case <-manager.launchStarted:
 	case <-time.After(time.Second):
 		t.Fatal("Launch was not started")
 	}
+
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(time.Second):
+		t.Fatal("launchManagerWithTimeout did not return promptly after timeout")
+	}
+	if err == nil {
+		t.Fatal("launchManagerWithTimeout error = nil, want timeout")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("launchManagerWithTimeout error = %v, want context.DeadlineExceeded", err)
+	}
+
+	select {
+	case <-manager.closed:
+		t.Fatal("Close should wait until Launch returns")
+	default:
+	}
+
+	close(manager.releaseLaunch)
+
+	select {
+	case <-manager.launchReturned:
+	case <-time.After(time.Second):
+		t.Fatal("Launch did not return after release")
+	}
+	if !strings.Contains(err.Error(), "SHEIN browser launch timed out after 20ms") {
+		t.Fatalf("launchManagerWithTimeout error = %v", err)
+	}
+	if shouldCloseManagerAfterStageError(err) {
+		t.Fatal("timeout error should skip immediate close because stage cleanup is deferred")
+	}
 	select {
 	case <-manager.closed:
 	case <-time.After(time.Second):
-		t.Fatal("Close was not called after launch timeout")
+		t.Fatal("Close was not called after Launch returned")
+	}
+}
+
+func TestRunBlockingStageWithContextCancellationDefersLaunchCleanup(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	manager := newCountingBlockingBrowserLaunchManager()
+	launchTimeout := time.Minute
+	sharedCleanup := newOnceCleanup(manager.Close)
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runBlockingStageWithContext(ctx, nil, func() error {
+			return launchManagerWithTimeoutAndCleanupContext(ctx, manager, launchTimeout, sharedCleanup)
+		})
+	}()
+
+	select {
+	case <-manager.launchStarted:
+	case <-time.After(time.Second):
+		t.Fatal("Launch was not started")
+	}
+
+	if got := manager.closeCalls.Load(); got != 0 {
+		t.Fatalf("manager.Close called %d times before Launch returned, want 0", got)
+	}
+
+	cancel()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("runBlockingStageWithContext error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("runBlockingStageWithContext did not return after cancellation")
+	}
+
+	if got := manager.closeCalls.Load(); got != 0 {
+		t.Fatalf("manager.Close called %d times before Launch returned after cancellation, want 0", got)
+	}
+
+	close(manager.releaseLaunch)
+
+	select {
+	case <-manager.launchReturned:
+	case <-time.After(time.Second):
+		t.Fatal("Launch did not return after release")
+	}
+
+	select {
+	case <-manager.firstClose:
+	case <-time.After(time.Second):
+		t.Fatal("cleanup did not run after Launch returned")
+	}
+
+	if manager.earlyClose.Load() {
+		t.Fatal("cleanup ran before Launch returned")
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	if got := manager.closeCalls.Load(); got != 1 {
+		t.Fatalf("manager.Close called %d times, want 1", got)
+	}
+}
+
+func TestRunBlockingStageWithContextDefersCleanupUntilStageReturns(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	stageReturned := make(chan struct{})
+	closed := make(chan struct{})
+
+	done := make(chan error, 1)
+	go func() {
+		done <- runBlockingStageWithContext(ctx, func() {
+			select {
+			case <-closed:
+			default:
+				close(closed)
+			}
+		}, func() error {
+			close(started)
+			<-release
+			close(stageReturned)
+			return nil
+		})
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("blocking stage did not start")
+	}
+
+	cancel()
+
+	select {
+	case <-closed:
+		t.Fatal("cleanup should wait until the blocking stage returns")
+	default:
+	}
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("runBlockingStageWithContext error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("blocking stage did not return after cancellation")
+	}
+
+	close(release)
+
+	select {
+	case <-stageReturned:
+	case <-time.After(time.Second):
+		t.Fatal("blocking stage goroutine did not return after release")
+	}
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("cleanup did not run after the blocking stage returned")
+	}
+}
+
+func TestBlockingStageInterruptBeforeReturnDefersCleanupUntilReturn(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	returned := make(chan struct{})
+	cleaned := make(chan struct{})
+	var cleanupCalls atomic.Int32
+
+	stage := startBlockingStage(func() error {
+		close(started)
+		<-release
+		close(returned)
+		return nil
+	}, func() {
+		if cleanupCalls.Add(1) == 1 {
+			close(cleaned)
+		}
+	})
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("blocking stage did not start")
+	}
+
+	stage.interrupt()
+
+	select {
+	case <-cleaned:
+		t.Fatal("cleanup should wait until the blocking stage returns")
+	default:
+	}
+
+	close(release)
+
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		t.Fatal("blocking stage did not return after release")
+	}
+
+	select {
+	case <-cleaned:
+	case <-time.After(time.Second):
+		t.Fatal("cleanup did not run after the blocking stage returned")
+	}
+
+	if err := <-stage.result; err != nil {
+		t.Fatalf("blocking stage result = %v", err)
+	}
+
+	stage.interrupt()
+
+	if got := cleanupCalls.Load(); got != 1 {
+		t.Fatalf("cleanup called %d times, want 1", got)
+	}
+}
+
+func TestBlockingStageInterruptAfterReturnRunsCleanupOnce(t *testing.T) {
+	returned := make(chan struct{})
+	cleaned := make(chan struct{})
+	var cleanupCalls atomic.Int32
+
+	stage := startBlockingStage(func() error {
+		close(returned)
+		return nil
+	}, func() {
+		if cleanupCalls.Add(1) == 1 {
+			close(cleaned)
+		}
+	})
+
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		t.Fatal("blocking stage did not return")
+	}
+
+	stage.interrupt()
+
+	select {
+	case <-cleaned:
+	case <-time.After(time.Second):
+		t.Fatal("cleanup did not run after interrupting a completed stage")
+	}
+
+	if err := <-stage.result; err != nil {
+		t.Fatalf("blocking stage result = %v", err)
+	}
+
+	stage.interrupt()
+
+	if got := cleanupCalls.Load(); got != 1 {
+		t.Fatalf("cleanup called %d times, want 1", got)
 	}
 }
 

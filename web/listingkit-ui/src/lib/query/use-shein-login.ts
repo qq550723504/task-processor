@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
+  cancelSheinLogin,
   clearSheinCookie,
   clearSheinLastFailure,
   getSheinLastFailure,
@@ -50,6 +51,14 @@ export function useClearSheinCookie(tenantID?: string) {
   const invalidate = useInvalidateSheinLoginAccounts(tenantID);
   return useMutation({
     mutationFn: (storeID: number) => clearSheinCookie(storeID, tenantID),
+    onSuccess: invalidate,
+  });
+}
+
+export function useCancelSheinLogin(tenantID?: string) {
+  const invalidate = useInvalidateSheinLoginAccounts(tenantID);
+  return useMutation({
+    mutationFn: (storeID: number) => cancelSheinLogin(storeID, tenantID),
     onSuccess: invalidate,
   });
 }

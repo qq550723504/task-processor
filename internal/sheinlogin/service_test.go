@@ -47,10 +47,12 @@ type stubVerifySession struct {
 	err        error
 	waitResult *AutomationResult
 	waitErr    error
+	submitted  []string
 	closed     int
 }
 
-func (s *stubVerifySession) SubmitCode(context.Context, string) (*AutomationResult, error) {
+func (s *stubVerifySession) SubmitCode(_ context.Context, code string) (*AutomationResult, error) {
+	s.submitted = append(s.submitted, code)
 	return s.result, s.err
 }
 func (s *stubVerifySession) Close() error {
@@ -62,20 +64,40 @@ func (s *stubVerifySession) WaitForLogin(context.Context) (*AutomationResult, er
 }
 
 type stubAutomation struct {
-	result  *AutomationResult
-	session VerifySession
-	err     error
-	calls   int
-	config  AutomationConfig
+	result     *AutomationResult
+	session    VerifySession
+	err        error
+	calls      int
+	config     AutomationConfig
+	startLogin func(context.Context, Account, AutomationConfig) (*AutomationResult, VerifySession, error)
 }
 
 func (s *stubAutomation) Login(context.Context, Account, AutomationConfig, *RedisStore) (*AutomationResult, error) {
 	return s.result, s.err
 }
-func (s *stubAutomation) StartLogin(_ context.Context, _ Account, cfg AutomationConfig) (*AutomationResult, VerifySession, error) {
+func (s *stubAutomation) StartLogin(ctx context.Context, account Account, cfg AutomationConfig) (*AutomationResult, VerifySession, error) {
 	s.calls++
 	s.config = cfg
+	if s.startLogin != nil {
+		return s.startLogin(ctx, account, cfg)
+	}
 	return s.result, s.session, s.err
+}
+
+type blockingLoginAutomation struct {
+	started   chan struct{}
+	cancelled chan struct{}
+}
+
+func (a *blockingLoginAutomation) Login(context.Context, Account, AutomationConfig, *RedisStore) (*AutomationResult, error) {
+	return nil, errors.New("unexpected Login call")
+}
+
+func (a *blockingLoginAutomation) StartLogin(ctx context.Context, _ Account, _ AutomationConfig) (*AutomationResult, VerifySession, error) {
+	close(a.started)
+	<-ctx.Done()
+	close(a.cancelled)
+	return nil, nil, ctx.Err()
 }
 
 type stubStoreClient struct {
@@ -115,6 +137,9 @@ func TestServiceLoginReturnsExistingCookieWithoutAutomation(t *testing.T) {
 	if !result.Success || result.LoginType != "existing" {
 		t.Fatalf("unexpected result: %+v", result)
 	}
+	if got, want := result.Message, "账号已有可用 Cookie，无需重新登录 / Existing cookie is still valid"; got != want {
+		t.Fatalf("existing cookie message = %q, want %q", got, want)
+	}
 }
 
 func TestServiceLoginQueuesAttemptInWorkerMode(t *testing.T) {
@@ -138,6 +163,98 @@ func TestServiceLoginQueuesAttemptInWorkerMode(t *testing.T) {
 	}
 	if !status.LoginInProgress || status.LatestAttempt == nil || status.LatestAttempt.ID != result.AttemptID {
 		t.Fatalf("queued attempt missing from status: %+v", status)
+	}
+}
+
+func TestServiceStatusDoesNotLeakInFlightAcrossTenants(t *testing.T) {
+	auto := &blockingLoginAutomation{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+	}
+	svc := newTestService(t, auto)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan *LoginResult, 1)
+	go func() {
+		result, err := svc.Login(ctx, 1, 2, LoginRequest{ForceLogin: true})
+		if err != nil {
+			t.Errorf("tenant 1 login: %v", err)
+			done <- nil
+			return
+		}
+		done <- result
+	}()
+
+	select {
+	case <-auto.started:
+	case <-time.After(time.Second):
+		t.Fatal("tenant 1 login did not start")
+	}
+
+	status, err := svc.Status(context.Background(), 9, 2)
+	if err != nil {
+		t.Fatalf("tenant 9 status: %v", err)
+	}
+	if status.LoginInProgress {
+		t.Fatalf("tenant 9 status leaked tenant 1 in-flight login: %+v", status)
+	}
+
+	cancel()
+
+	select {
+	case <-auto.cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("tenant 1 login was not cancelled")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("tenant 1 login did not return")
+	}
+}
+
+func TestServiceLoginDoesNotSerializeSameStoreAcrossTenants(t *testing.T) {
+	started := make(chan int64, 2)
+	release := make(chan struct{})
+	auto := &stubAutomation{
+		startLogin: func(_ context.Context, account Account, _ AutomationConfig) (*AutomationResult, VerifySession, error) {
+			started <- account.TenantID
+			<-release
+			return &AutomationResult{BrowserState: map[string]any{"cookies": []any{}}}, nil, nil
+		},
+	}
+	svc := newTestService(t, auto)
+	svc.runtime = NewRuntime(2)
+
+	done := make(chan error, 2)
+	for _, tenantID := range []int64{1, 9} {
+		go func(tenantID int64) {
+			_, err := svc.Login(context.Background(), tenantID, 2, LoginRequest{ForceLogin: true})
+			done <- err
+		}(tenantID)
+	}
+
+	seen := map[int64]bool{}
+	for len(seen) < 2 {
+		select {
+		case tenantID := <-started:
+			seen[tenantID] = true
+		case <-time.After(150 * time.Millisecond):
+			t.Fatalf("expected both tenant logins to start independently, saw tenants=%v", seen)
+		}
+	}
+
+	close(release)
+
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("login returned err = %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("login did not finish")
+		}
 	}
 }
 
@@ -193,6 +310,70 @@ func TestWorkerProcessesQueuedAttemptWithoutRequeueing(t *testing.T) {
 	}
 	if hasCookie, err := svc.store.HasCookie(context.Background(), 1, 2); err != nil || !hasCookie {
 		t.Fatalf("worker did not persist cookie: has=%v err=%v", hasCookie, err)
+	}
+}
+
+func TestWorkerFailedAttemptPersistsFailureSummary(t *testing.T) {
+	capturedAt := time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
+	summary := &FailureSummary{
+		ErrorCode:     "REQUEST_FAILED",
+		ErrorMessage:  "request modal blocked login",
+		PageState:     "request_failure",
+		ActionKey:     "retry_login",
+		ActionMessage: "retry after clearing the request failure modal",
+		Stage:         "wait_login",
+		CapturedAt:    capturedAt,
+		URL:           "https://sellerhub.shein.com/login",
+	}
+	svc := newTestService(t, &stubAutomation{result: &AutomationResult{
+		ErrorCode:           "LOGIN_FAILED",
+		ErrorMessage:        "fallback failure message",
+		FailureArtifactPath: "/worker-only/artifact",
+		FailureSummary:      summary,
+	}})
+	svc.executionMode = "worker"
+
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	if err := svc.processLoginAttemptMessage(context.Background(), "test-worker", "", map[string]any{"attempt_id": attempt.ID}); err != nil {
+		t.Fatalf("process attempt: %v", err)
+	}
+
+	updated, err := svc.store.LoadLoginAttempt(context.Background(), attempt.ID)
+	if err != nil {
+		t.Fatalf("load updated attempt: %v", err)
+	}
+	if updated == nil || updated.Status != LoginAttemptFailed {
+		t.Fatalf("attempt status = %+v, want failed", updated)
+	}
+
+	persisted, err := svc.store.LastFailure(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("load last failure: %v", err)
+	}
+	if persisted == nil || persisted.ErrorCode != summary.ErrorCode || persisted.ErrorMessage != summary.ErrorMessage || persisted.Stage != summary.Stage || persisted.ActionKey != summary.ActionKey || persisted.ActionMessage != summary.ActionMessage || !persisted.CapturedAt.Equal(capturedAt) {
+		t.Fatalf("persisted failure = %+v, want preserved summary", persisted)
+	}
+
+	detail, err := svc.store.LastFailureDetail(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("load cached failure detail: %v", err)
+	}
+	if detail == nil || detail.ErrorCode != summary.ErrorCode || detail.ErrorMessage != summary.ErrorMessage || detail.Stage != summary.Stage || !detail.CapturedAt.Equal(capturedAt) {
+		t.Fatalf("cached failure detail = %+v, want summary-derived detail", detail)
+	}
+
+	status, err := svc.Status(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("status: %v", err)
+	}
+	if status.LastFailure == nil || status.LastFailure.ErrorCode != summary.ErrorCode {
+		t.Fatalf("status last failure = %+v, want persisted summary", status.LastFailure)
+	}
+	if status.RecommendedAction.Key != summary.ActionKey || status.RecommendedAction.Message != summary.ActionMessage {
+		t.Fatalf("recommended action = %+v, want summary action", status.RecommendedAction)
 	}
 }
 
@@ -325,6 +506,483 @@ func TestWorkerLeavesVerificationJobPendingOnShutdown(t *testing.T) {
 	}
 }
 
+func TestWorkerCancelsBrowserExecution(t *testing.T) {
+	auto := &blockingLoginAutomation{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+	}
+	svc := newTestService(t, auto)
+	svc.executionMode = "worker"
+
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	if err := svc.store.EnsureLoginAttemptConsumerGroup(context.Background()); err != nil {
+		t.Fatalf("create consumer group: %v", err)
+	}
+	messages, err := svc.store.ReadLoginAttemptJobs(context.Background(), "worker-one", time.Second)
+	if err != nil || len(messages) != 1 {
+		t.Fatalf("read attempt job: messages=%v err=%v", messages, err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- svc.processLoginAttemptMessage(ctx, "worker-one", messages[0].ID, messages[0].Values)
+	}()
+
+	select {
+	case <-auto.started:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not start browser execution")
+	}
+
+	cancelled, err := svc.CancelVerifyCodeWait(context.Background(), 1, 2)
+	if err != nil || !cancelled {
+		t.Fatalf("cancel verify wait: cancelled=%v err=%v", cancelled, err)
+	}
+
+	select {
+	case <-auto.cancelled:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("browser execution did not observe attempt cancellation")
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("process attempt: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not finish after attempt cancellation")
+	}
+
+	updated, err := svc.store.LoadLoginAttempt(context.Background(), attempt.ID)
+	if err != nil {
+		t.Fatalf("load cancelled attempt: %v", err)
+	}
+	if updated == nil || updated.Status != LoginAttemptCancelled {
+		t.Fatalf("attempt status = %+v, want cancelled", updated)
+	}
+}
+
+func TestWorkerCancellationPreservesExistingCookieState(t *testing.T) {
+	auto := &blockingLoginAutomation{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+	}
+	svc := newTestService(t, auto)
+	svc.executionMode = "worker"
+
+	if err := svc.store.SaveCookieState(context.Background(), 1, 2, map[string]any{
+		"cookies": []any{
+			map[string]any{
+				"name":   "session",
+				"value":  "existing-cookie",
+				"domain": ".shein.com",
+				"path":   "/",
+			},
+		},
+	}, time.Hour); err != nil {
+		t.Fatalf("seed cookie: %v", err)
+	}
+	beforeRaw, ok, err := svc.store.LoadCookieState(context.Background(), 1, 2)
+	if err != nil || !ok {
+		t.Fatalf("load seeded cookie: ok=%v err=%v", ok, err)
+	}
+
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	if err := svc.store.EnsureLoginAttemptConsumerGroup(context.Background()); err != nil {
+		t.Fatalf("create consumer group: %v", err)
+	}
+	messages, err := svc.store.ReadLoginAttemptJobs(context.Background(), "worker-one", time.Second)
+	if err != nil || len(messages) != 1 {
+		t.Fatalf("read attempt job: messages=%v err=%v", messages, err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		done <- svc.processLoginAttemptMessage(ctx, "worker-one", messages[0].ID, messages[0].Values)
+	}()
+
+	select {
+	case <-auto.started:
+	case <-time.After(time.Second):
+		t.Fatal("worker did not start browser execution")
+	}
+
+	cancelled, err := svc.CancelVerifyCodeWait(context.Background(), 1, 2)
+	if err != nil || !cancelled {
+		t.Fatalf("cancel verify wait: cancelled=%v err=%v", cancelled, err)
+	}
+
+	select {
+	case <-auto.cancelled:
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("browser execution did not observe attempt cancellation")
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("process attempt: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("worker did not finish after attempt cancellation")
+	}
+
+	afterRaw, ok, err := svc.store.LoadCookieState(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("load cookie after cancellation: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected cancellation to preserve the existing cookie state")
+	}
+	if afterRaw != beforeRaw {
+		t.Fatalf("cookie payload changed after cancellation: before=%s after=%s", beforeRaw, afterRaw)
+	}
+}
+
+func TestCompleteLoginAttemptIfActiveDoesNotOverwriteCancellation(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+
+	staleSuccess := *attempt
+	now := time.Now().UTC()
+	staleSuccess.Status = LoginAttemptSucceeded
+	staleSuccess.Message = "login succeeded"
+	staleSuccess.CompletedAt = &now
+
+	cancelledAttempt, cancelled, err := svc.store.CancelLoginAttempt(context.Background(), 1, 2, "verification cancelled by user")
+	if err != nil || !cancelled {
+		t.Fatalf("cancel attempt: attempt=%+v cancelled=%v err=%v", cancelledAttempt, cancelled, err)
+	}
+
+	completed, err := svc.store.CompleteLoginAttemptIfActive(context.Background(), &staleSuccess)
+	if err != nil {
+		t.Fatalf("complete stale success attempt: %v", err)
+	}
+	if completed {
+		t.Fatal("expected stale success completion to be rejected")
+	}
+
+	updated, err := svc.store.LoadLoginAttempt(context.Background(), attempt.ID)
+	if err != nil {
+		t.Fatalf("load cancelled attempt: %v", err)
+	}
+	if updated == nil || updated.Status != LoginAttemptCancelled {
+		t.Fatalf("attempt status = %+v, want cancelled", updated)
+	}
+	if updated.Message != "verification cancelled by user" {
+		t.Fatalf("attempt message = %q, want cancellation message", updated.Message)
+	}
+}
+
+func TestFailedLoginAttemptCompletionClearsOwnedVerifyState(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+	if err := svc.store.SetVerifyWait(context.Background(), 1, 2, time.Minute); err != nil {
+		t.Fatalf("set verify wait: %v", err)
+	}
+	if err := svc.store.SubmitVerifyCodeForAttempt(context.Background(), 1, 2, attempt.ID, "123456", time.Minute); err != nil {
+		t.Fatalf("submit verify code: %v", err)
+	}
+
+	failed := *attempt
+	failed.Status = LoginAttemptFailed
+	failed.ErrorCode = "VERIFY_CODE_TIMEOUT"
+	failed.Message = "verification code wait expired"
+	now := time.Now().UTC()
+	failed.CompletedAt = &now
+	completed, err := svc.store.CompleteLoginAttemptIfActive(context.Background(), &failed)
+	if err != nil {
+		t.Fatalf("complete failed attempt: %v", err)
+	}
+	if !completed {
+		t.Fatal("expected failed attempt completion to win")
+	}
+	if waiting, err := svc.store.IsWaitingVerifyCode(context.Background(), 1, 2); err != nil || waiting {
+		t.Fatalf("verify wait = %v, err=%v; want cleared", waiting, err)
+	}
+	for _, key := range []string{
+		loginAttemptControlKey(attempt.ID),
+		verifyAttemptCodeKey(1, 2, attempt.ID),
+		verifyAttemptQueueKey(1, 2, attempt.ID),
+	} {
+		exists, err := svc.store.client.Exists(context.Background(), key).Result()
+		if err != nil {
+			t.Fatalf("check %s: %v", key, err)
+		}
+		if exists != 0 {
+			t.Fatalf("key %s still exists after failed completion", key)
+		}
+	}
+}
+
+func TestStaleFailedLoginAttemptCannotClearNewerVerifyState(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	oldAttempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue old attempt: attempt=%+v created=%v err=%v", oldAttempt, created, err)
+	}
+	oldAttempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), oldAttempt); err != nil {
+		t.Fatalf("mark old attempt waiting: %v", err)
+	}
+	oldTerminal := *oldAttempt
+	oldTerminal.Status = LoginAttemptSucceeded
+	now := time.Now().UTC()
+	oldTerminal.CompletedAt = &now
+	if completed, err := svc.store.CompleteLoginAttemptIfActive(context.Background(), &oldTerminal); err != nil || !completed {
+		t.Fatalf("complete old attempt: completed=%v err=%v", completed, err)
+	}
+
+	newAttempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue new attempt: attempt=%+v created=%v err=%v", newAttempt, created, err)
+	}
+	newAttempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), newAttempt); err != nil {
+		t.Fatalf("mark new attempt waiting: %v", err)
+	}
+	if err := svc.store.SetVerifyWait(context.Background(), 1, 2, time.Minute); err != nil {
+		t.Fatalf("set newer verify wait: %v", err)
+	}
+
+	staleFailed := *oldAttempt
+	staleFailed.Status = LoginAttemptFailed
+	staleFailed.CompletedAt = &now
+	completed, err := svc.store.CompleteLoginAttemptIfActive(context.Background(), &staleFailed)
+	if err != nil {
+		t.Fatalf("complete stale failed attempt: %v", err)
+	}
+	if completed {
+		t.Fatal("stale failed attempt unexpectedly completed")
+	}
+	if waiting, err := svc.store.IsWaitingVerifyCode(context.Background(), 1, 2); err != nil || !waiting {
+		t.Fatalf("newer verify wait = %v, err=%v; want preserved", waiting, err)
+	}
+}
+
+func TestCompleteLoginAttemptDoesNotPersistFailureWhenCancellationWins(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+
+	_, cancelled, err := svc.store.CancelLoginAttempt(context.Background(), 1, 2, "verification cancelled by user")
+	if err != nil || !cancelled {
+		t.Fatalf("cancel attempt: cancelled=%v err=%v", cancelled, err)
+	}
+
+	staleFailed := *attempt
+	if err := svc.completeLoginAttempt(context.Background(), &staleFailed, LoginAttemptFailed, "REQUEST_FAILED", "request modal blocked login", ""); err != nil {
+		t.Fatalf("complete stale failure attempt: %v", err)
+	}
+
+	lastFailure, err := svc.store.LastFailure(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("load last failure: %v", err)
+	}
+	if lastFailure != nil {
+		t.Fatalf("last failure = %+v, want nil after cancellation wins", lastFailure)
+	}
+
+	detail, err := svc.store.LastFailureDetail(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("load last failure detail: %v", err)
+	}
+	if detail != nil {
+		t.Fatalf("last failure detail = %+v, want nil after cancellation wins", detail)
+	}
+}
+
+func TestFinishAttemptVerifyResultDoesNotOverwriteCancellationWithVerifyWait(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+
+	staleWaiting := *attempt
+	_, cancelled, err := svc.store.CancelLoginAttempt(context.Background(), 1, 2, "verification cancelled by user")
+	if err != nil || !cancelled {
+		t.Fatalf("cancel attempt: cancelled=%v err=%v", cancelled, err)
+	}
+
+	account, err := svc.provider.GetAccount(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("get account: %v", err)
+	}
+	done, err := svc.finishAttemptVerifyResult(&staleWaiting, account, &AutomationResult{
+		WaitingForVerifyCode: true,
+		ErrorCode:            "VERIFY_CODE_REQUIRED",
+		ErrorMessage:         "wait again",
+	}, "")
+	if err != nil {
+		t.Fatalf("finish attempt verify result: %v", err)
+	}
+	if !done {
+		t.Fatal("expected cancelled attempt to stop verify wait processing")
+	}
+
+	updated, err := svc.store.LoadLoginAttempt(context.Background(), attempt.ID)
+	if err != nil {
+		t.Fatalf("load attempt: %v", err)
+	}
+	if updated == nil || updated.Status != LoginAttemptCancelled {
+		t.Fatalf("attempt status = %+v, want cancelled", updated)
+	}
+	if updated.Message != "verification cancelled by user" {
+		t.Fatalf("attempt message = %q, want cancellation message", updated.Message)
+	}
+	waiting, err := svc.store.IsWaitingVerifyCode(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("check verify wait: %v", err)
+	}
+	if waiting {
+		t.Fatal("cancelled attempt should not recreate verify wait state")
+	}
+}
+
+func TestCompleteSuccessfulAttemptDoesNotOverwriteCancellation(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	if err := svc.store.SaveCookieState(context.Background(), 1, 2, map[string]any{
+		"cookies": []any{
+			map[string]any{
+				"name":   "session",
+				"value":  "existing-cookie",
+				"domain": ".shein.com",
+				"path":   "/",
+			},
+		},
+	}, time.Hour); err != nil {
+		t.Fatalf("seed cookie: %v", err)
+	}
+	beforeRaw, ok, err := svc.store.LoadCookieState(context.Background(), 1, 2)
+	if err != nil || !ok {
+		t.Fatalf("load seeded cookie: ok=%v err=%v", ok, err)
+	}
+
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+
+	cancelledAttempt, cancelled, err := svc.store.CancelLoginAttempt(context.Background(), 1, 2, "verification cancelled by user")
+	if err != nil || !cancelled {
+		t.Fatalf("cancel attempt: attempt=%+v cancelled=%v err=%v", cancelledAttempt, cancelled, err)
+	}
+
+	account, err := svc.provider.GetAccount(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("get account: %v", err)
+	}
+	if err := svc.completeSuccessfulAttempt(context.Background(), attempt, account, map[string]any{
+		"cookies": []any{
+			map[string]any{
+				"name":   "session",
+				"value":  "fresh-cookie",
+				"domain": ".shein.com",
+				"path":   "/",
+			},
+		},
+	}, "login succeeded", ""); err != nil {
+		t.Fatalf("complete successful attempt: %v", err)
+	}
+
+	afterRaw, ok, err := svc.store.LoadCookieState(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("load cookie after stale success: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected stale success to leave the original cookie state in place")
+	}
+	if afterRaw != beforeRaw {
+		t.Fatalf("cookie payload changed after stale success: before=%s after=%s", beforeRaw, afterRaw)
+	}
+	lastLogin, err := svc.store.LastLoginTime(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("last login after stale success: %v", err)
+	}
+	if lastLogin != nil {
+		t.Fatalf("stale success should not record last login time: %v", lastLogin)
+	}
+	updated, err := svc.store.LoadLoginAttempt(context.Background(), attempt.ID)
+	if err != nil {
+		t.Fatalf("load attempt after stale success: %v", err)
+	}
+	if updated == nil || updated.Status != LoginAttemptCancelled {
+		t.Fatalf("attempt status = %+v, want cancelled", updated)
+	}
+}
+
+func TestCancelLoginAttemptIsIdempotent(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+
+	firstAttempt, firstCancelled, err := svc.store.CancelLoginAttempt(context.Background(), 1, 2, "verification cancelled by user")
+	if err != nil || !firstCancelled {
+		t.Fatalf("first cancel: attempt=%+v cancelled=%v err=%v", firstAttempt, firstCancelled, err)
+	}
+	controlKey := loginAttemptControlKey(attempt.ID)
+	if length := svc.store.client.LLen(context.Background(), controlKey).Val(); length != 1 {
+		t.Fatalf("control queue length after first cancel = %d, want 1", length)
+	}
+
+	secondAttempt, secondCancelled, err := svc.store.CancelLoginAttempt(context.Background(), 1, 2, "verification cancelled by user")
+	if err != nil {
+		t.Fatalf("second cancel: %v", err)
+	}
+	if !secondCancelled {
+		t.Fatalf("second cancel should remain successful, attempt=%+v", secondAttempt)
+	}
+	if length := svc.store.client.LLen(context.Background(), controlKey).Val(); length != 1 {
+		t.Fatalf("control queue length after second cancel = %d, want 1", length)
+	}
+}
+
 func TestCancelVerifyCodeWaitSignalsOwningWorker(t *testing.T) {
 	svc := newTestService(t, &stubAutomation{})
 	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
@@ -440,7 +1098,7 @@ func TestServiceLoginStoresVerifySessionWhenVerificationRequired(t *testing.T) {
 	if result == nil || !result.WaitingForVerifyCode {
 		t.Fatalf("expected verify wait result: %+v", result)
 	}
-	if svc.loadSession(2) == nil {
+	if svc.loadSession(1, 2) == nil {
 		t.Fatal("expected session to be stored")
 	}
 	status, err := svc.Status(context.Background(), 1, 2)
@@ -485,7 +1143,7 @@ func TestServiceStatusClearsExpiredVerifySession(t *testing.T) {
 	if status.RecommendedAction.Key != "retry_login" {
 		t.Fatalf("recommended action = %+v, want retry_login", status.RecommendedAction)
 	}
-	if svc.loadSession(2) != nil {
+	if svc.loadSession(1, 2) != nil {
 		t.Fatal("expected expired verify session to be cleared")
 	}
 	if session.closed != 1 {
@@ -537,7 +1195,7 @@ func TestServiceSubmitVerifyCodeCompletesStoredSession(t *testing.T) {
 	if err := svc.SubmitVerifyCode(context.Background(), 1, 2, "123456", 60); err != nil {
 		t.Fatalf("submit verify code: %v", err)
 	}
-	if svc.loadSession(2) != nil {
+	if svc.loadSession(1, 2) != nil {
 		t.Fatal("expected session to be cleared")
 	}
 	if has, err := svc.store.HasCookie(context.Background(), 1, 2); err != nil || !has {
@@ -563,7 +1221,7 @@ func TestServicePersistsCookieWhenManualVerificationCompletesAfterVerifyRequest(
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		if has, err := svc.store.HasCookie(context.Background(), 1, 2); err == nil && has {
-			if svc.loadSession(2) != nil {
+			if svc.loadSession(1, 2) != nil {
 				t.Fatal("expected completed manual verification session to be cleared")
 			}
 			return
@@ -571,6 +1229,165 @@ func TestServicePersistsCookieWhenManualVerificationCompletesAfterVerifyRequest(
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("expected manual verification watcher to persist cookie")
+}
+
+func TestServiceSubmitVerifyCodeUsesTenantScopedSessionWhenStoreIDsCollide(t *testing.T) {
+	sessionTenant1 := &stubVerifySession{
+		result: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "tenant-1"}},
+		}},
+	}
+	sessionTenant9 := &stubVerifySession{
+		result: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "tenant-9"}},
+		}},
+	}
+	svc := newTestService(t, newTenantScopedVerifyAutomation(map[int64]*stubVerifySession{
+		1: sessionTenant1,
+		9: sessionTenant9,
+	}))
+
+	if _, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 1 login: %v", err)
+	}
+	if _, err := svc.Login(context.Background(), 9, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 9 login: %v", err)
+	}
+
+	if err := svc.SubmitVerifyCode(context.Background(), 1, 2, "111111", 60); err != nil {
+		t.Fatalf("submit tenant 1 verify code: %v", err)
+	}
+	if got := len(sessionTenant1.submitted); got != 1 {
+		t.Fatalf("tenant 1 submit calls = %d, want 1", got)
+	}
+	if got := len(sessionTenant9.submitted); got != 0 {
+		t.Fatalf("tenant 9 submit calls after tenant 1 verification = %d, want 0", got)
+	}
+	if raw := loadStoredCookiePayload(t, svc, 1, 2); !strings.Contains(raw, "tenant-1") {
+		t.Fatalf("tenant 1 cookie payload = %s, want tenant-1 session state", raw)
+	}
+
+	if err := svc.SubmitVerifyCode(context.Background(), 9, 2, "222222", 60); err != nil {
+		t.Fatalf("submit tenant 9 verify code: %v", err)
+	}
+	if got := len(sessionTenant9.submitted); got != 1 {
+		t.Fatalf("tenant 9 submit calls = %d, want 1", got)
+	}
+	if raw := loadStoredCookiePayload(t, svc, 9, 2); !strings.Contains(raw, "tenant-9") {
+		t.Fatalf("tenant 9 cookie payload = %s, want tenant-9 session state", raw)
+	}
+}
+
+func TestServiceCancelVerifyCodeWaitPreservesOtherTenantSessionWhenStoreIDsCollide(t *testing.T) {
+	sessionTenant1 := &stubVerifySession{
+		result: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "tenant-1"}},
+		}},
+	}
+	sessionTenant9 := &stubVerifySession{
+		result: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "tenant-9"}},
+		}},
+	}
+	svc := newTestService(t, newTenantScopedVerifyAutomation(map[int64]*stubVerifySession{
+		1: sessionTenant1,
+		9: sessionTenant9,
+	}))
+
+	if _, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 1 login: %v", err)
+	}
+	if _, err := svc.Login(context.Background(), 9, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 9 login: %v", err)
+	}
+
+	cancelled, err := svc.CancelVerifyCodeWait(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("cancel tenant 1 verify wait: %v", err)
+	}
+	if !cancelled {
+		t.Fatal("expected tenant 1 verify wait cancellation")
+	}
+
+	if err := svc.SubmitVerifyCode(context.Background(), 9, 2, "222222", 60); err != nil {
+		t.Fatalf("submit tenant 9 verify code after tenant 1 cancellation: %v", err)
+	}
+	if got := len(sessionTenant9.submitted); got != 1 {
+		t.Fatalf("tenant 9 submit calls after tenant 1 cancellation = %d, want 1", got)
+	}
+	if raw := loadStoredCookiePayload(t, svc, 9, 2); !strings.Contains(raw, "tenant-9") {
+		t.Fatalf("tenant 9 cookie payload after tenant 1 cancellation = %s, want tenant-9 session state", raw)
+	}
+}
+
+func TestServiceClearCookiePreservesOtherTenantSessionWhenStoreIDsCollide(t *testing.T) {
+	sessionTenant1 := &stubVerifySession{
+		result: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "tenant-1"}},
+		}},
+	}
+	sessionTenant9 := &stubVerifySession{
+		result: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "tenant-9"}},
+		}},
+	}
+	svc := newTestService(t, newTenantScopedVerifyAutomation(map[int64]*stubVerifySession{
+		1: sessionTenant1,
+		9: sessionTenant9,
+	}))
+
+	if _, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 1 login: %v", err)
+	}
+	if _, err := svc.Login(context.Background(), 9, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 9 login: %v", err)
+	}
+
+	if err := svc.ClearCookie(context.Background(), 1, 2); err != nil {
+		t.Fatalf("clear tenant 1 cookie: %v", err)
+	}
+
+	if err := svc.SubmitVerifyCode(context.Background(), 9, 2, "222222", 60); err != nil {
+		t.Fatalf("submit tenant 9 verify code after tenant 1 cookie clear: %v", err)
+	}
+	if got := len(sessionTenant9.submitted); got != 1 {
+		t.Fatalf("tenant 9 submit calls after tenant 1 cookie clear = %d, want 1", got)
+	}
+	if raw := loadStoredCookiePayload(t, svc, 9, 2); !strings.Contains(raw, "tenant-9") {
+		t.Fatalf("tenant 9 cookie payload after tenant 1 cookie clear = %s, want tenant-9 session state", raw)
+	}
+}
+
+func TestServiceWatchVerifySessionUsesTenantScopedSessionWhenStoreIDsCollide(t *testing.T) {
+	sessionTenant1 := &stubVerifySession{
+		waitResult: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "tenant-1-manual"}},
+		}},
+	}
+	sessionTenant9 := &stubVerifySession{}
+	svc := newTestService(t, newTenantScopedVerifyAutomation(map[int64]*stubVerifySession{
+		1: sessionTenant1,
+		9: sessionTenant9,
+	}))
+
+	if _, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 1 login: %v", err)
+	}
+	if _, err := svc.Login(context.Background(), 9, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 9 login: %v", err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if has, err := svc.store.HasCookie(context.Background(), 1, 2); err == nil && has {
+			if raw := loadStoredCookiePayload(t, svc, 1, 2); !strings.Contains(raw, "tenant-1-manual") {
+				t.Fatalf("tenant 1 manual cookie payload = %s, want tenant-1-manual session state", raw)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("expected tenant 1 manual verification watcher to persist cookie")
 }
 
 func TestServiceLoginPersistsCookieOnlyBrowserState(t *testing.T) {
@@ -903,6 +1720,31 @@ func TestLoginUsesAbsoluteProfileRoot(t *testing.T) {
 	}
 }
 
+func newTenantScopedVerifyAutomation(sessions map[int64]*stubVerifySession) Automation {
+	return &stubAutomation{
+		startLogin: func(_ context.Context, account Account, _ AutomationConfig) (*AutomationResult, VerifySession, error) {
+			session := sessions[account.TenantID]
+			if session == nil {
+				return nil, nil, fmt.Errorf("missing verify session for tenant %d", account.TenantID)
+			}
+			return &AutomationResult{
+				WaitingForVerifyCode: true,
+				ErrorCode:            "VERIFY_CODE_REQUIRED",
+				ErrorMessage:         "wait",
+			}, session, nil
+		},
+	}
+}
+
+func loadStoredCookiePayload(t *testing.T, svc *Service, tenantID int64, storeID int64) string {
+	t.Helper()
+	raw, err := svc.store.client.Get(context.Background(), cookieKey(tenantID, storeID)).Result()
+	if err != nil {
+		t.Fatalf("load cookie payload for tenant %d store %d: %v", tenantID, storeID, err)
+	}
+	return raw
+}
+
 func newTestService(t *testing.T, automation Automation) *Service {
 	return newTestServiceWithAccounts(t, automation, []Account{
 		{StoreID: 2, TenantID: 1, Username: "demo", Password: "pwd", Platform: "SHEIN"},
@@ -922,6 +1764,6 @@ func newTestServiceWithAccounts(t *testing.T, automation Automation, accounts []
 		runtime:         NewRuntime(1),
 		automation:      automation,
 		defaultHeadless: true,
-		sessions:        make(map[int64]VerifySession),
+		sessions:        make(map[verifySessionKey]VerifySession),
 	}
 }
