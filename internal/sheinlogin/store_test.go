@@ -3,6 +3,7 @@ package sheinlogin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -68,6 +69,24 @@ func TestRedisStoreCookieAndVerifyCodeLifecycle(t *testing.T) {
 	failure, err = store.LastFailure(ctx, 1, 2)
 	if err != nil || failure != nil {
 		t.Fatalf("expected cleared last failure: failure=%+v err=%v", failure, err)
+	}
+}
+
+func TestRedisStoreRejectsAndDoesNotTreatEmptyCookieStateAsLoggedIn(t *testing.T) {
+	mr := miniredis.RunT(t)
+	client := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
+	store := newRedisStoreFromClient(client)
+	t.Cleanup(func() { _ = store.Close() })
+	ctx := context.Background()
+
+	if err := store.SaveCookieState(ctx, 1, 2, map[string]any{"cookies": []any{}}, time.Hour); !errors.Is(err, ErrNoUsableCookie) {
+		t.Fatalf("SaveCookieState(empty) error = %v, want ErrNoUsableCookie", err)
+	}
+	if err := client.Set(ctx, cookieKey(1, 2), `{"cookies":[]}`, time.Hour).Err(); err != nil {
+		t.Fatalf("seed legacy empty cookie state: %v", err)
+	}
+	if has, err := store.HasCookie(ctx, 1, 2); err != nil || has {
+		t.Fatalf("empty cookie state must not be treated as logged in, has=%v err=%v", has, err)
 	}
 }
 
