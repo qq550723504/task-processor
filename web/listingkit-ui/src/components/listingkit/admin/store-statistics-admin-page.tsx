@@ -115,7 +115,7 @@ export function StoreStatisticsAdminPage({
         <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-zinc-950">
-              {isTenantView ? "我的上架统计" : "上架统计"}
+              {isTenantView ? "我的上架统计" : "平台上架统计"}
             </h1>
             <p className="mt-1 text-sm text-zinc-500">
               {isTenantView

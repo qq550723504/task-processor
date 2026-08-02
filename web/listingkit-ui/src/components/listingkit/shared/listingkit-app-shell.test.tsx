@@ -156,7 +156,7 @@ describe("ListingKitAppShell", () => {
       "/listing-kits/store-statistics",
     );
     expect(screen.queryByRole("link", { name: "平台店铺管理" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "上架统计" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "平台上架统计" })).toHaveAttribute(
       "href",
       "/listing-kits/admin/store-statistics",
     );
@@ -380,6 +380,6 @@ describe("ListingKitAppShell", () => {
       "/listing-kits/store-statistics",
     );
     expect(screen.queryByRole("link", { name: "平台店铺管理" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "上架统计" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "平台上架统计" })).not.toBeInTheDocument();
   });
 });

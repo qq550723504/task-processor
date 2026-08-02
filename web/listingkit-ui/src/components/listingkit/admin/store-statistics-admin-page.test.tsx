@@ -80,7 +80,7 @@ describe("StoreStatisticsAdminPage", () => {
     renderPage(<StoreStatisticsAdminPage />);
 
     expect(
-      screen.getByRole("heading", { name: "上架统计" }),
+      screen.getByRole("heading", { name: "平台上架统计" }),
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByText("SHEIN US")).toBeInTheDocument();

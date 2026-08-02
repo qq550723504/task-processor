@@ -160,7 +160,7 @@ const ADMIN_NAV_ITEMS = [
         requiredRoles: MENU_ROLES.platformAdmin,
       },
       {
-        label: "上架统计",
+        label: "平台上架统计",
         href: "/listing-kits/admin/store-statistics",
         icon: LayoutDashboard,
         match: "prefix",
