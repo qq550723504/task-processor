@@ -5,7 +5,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { SheinLoginPage } from "@/components/listingkit/shein-login/shein-login-page";
 
 const mocks = vi.hoisted(() => {
-  const cancelMutation = {
+  const cancelMutation: {
+    mutate: ReturnType<typeof vi.fn>;
+    isPending: boolean;
+    error: Error | null;
+  } = {
     mutate: vi.fn(),
     isPending: false,
     error: null,

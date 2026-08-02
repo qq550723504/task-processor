@@ -1488,7 +1488,7 @@ func launchManagerWithTimeout(manager browserLaunchManager, timeout time.Duratio
 		return err
 	case <-timer.C:
 		stage.interrupt()
-		return fmt.Errorf("SHEIN browser launch timed out after %s", timeout)
+		return fmt.Errorf("SHEIN browser launch timed out after %s: %w", timeout, context.DeadlineExceeded)
 	}
 }
 

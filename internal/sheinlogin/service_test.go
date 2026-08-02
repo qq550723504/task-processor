@@ -47,10 +47,12 @@ type stubVerifySession struct {
 	err        error
 	waitResult *AutomationResult
 	waitErr    error
+	submitted  []string
 	closed     int
 }
 
-func (s *stubVerifySession) SubmitCode(context.Context, string) (*AutomationResult, error) {
+func (s *stubVerifySession) SubmitCode(_ context.Context, code string) (*AutomationResult, error) {
+	s.submitted = append(s.submitted, code)
 	return s.result, s.err
 }
 func (s *stubVerifySession) Close() error {
@@ -62,19 +64,23 @@ func (s *stubVerifySession) WaitForLogin(context.Context) (*AutomationResult, er
 }
 
 type stubAutomation struct {
-	result  *AutomationResult
-	session VerifySession
-	err     error
-	calls   int
-	config  AutomationConfig
+	result     *AutomationResult
+	session    VerifySession
+	err        error
+	calls      int
+	config     AutomationConfig
+	startLogin func(context.Context, Account, AutomationConfig) (*AutomationResult, VerifySession, error)
 }
 
 func (s *stubAutomation) Login(context.Context, Account, AutomationConfig, *RedisStore) (*AutomationResult, error) {
 	return s.result, s.err
 }
-func (s *stubAutomation) StartLogin(_ context.Context, _ Account, cfg AutomationConfig) (*AutomationResult, VerifySession, error) {
+func (s *stubAutomation) StartLogin(ctx context.Context, account Account, cfg AutomationConfig) (*AutomationResult, VerifySession, error) {
 	s.calls++
 	s.config = cfg
+	if s.startLogin != nil {
+		return s.startLogin(ctx, account, cfg)
+	}
 	return s.result, s.session, s.err
 }
 
@@ -779,7 +785,7 @@ func TestServiceLoginStoresVerifySessionWhenVerificationRequired(t *testing.T) {
 	if result == nil || !result.WaitingForVerifyCode {
 		t.Fatalf("expected verify wait result: %+v", result)
 	}
-	if svc.loadSession(2) == nil {
+	if svc.loadSession(1, 2) == nil {
 		t.Fatal("expected session to be stored")
 	}
 	status, err := svc.Status(context.Background(), 1, 2)
@@ -824,7 +830,7 @@ func TestServiceStatusClearsExpiredVerifySession(t *testing.T) {
 	if status.RecommendedAction.Key != "retry_login" {
 		t.Fatalf("recommended action = %+v, want retry_login", status.RecommendedAction)
 	}
-	if svc.loadSession(2) != nil {
+	if svc.loadSession(1, 2) != nil {
 		t.Fatal("expected expired verify session to be cleared")
 	}
 	if session.closed != 1 {
@@ -876,7 +882,7 @@ func TestServiceSubmitVerifyCodeCompletesStoredSession(t *testing.T) {
 	if err := svc.SubmitVerifyCode(context.Background(), 1, 2, "123456", 60); err != nil {
 		t.Fatalf("submit verify code: %v", err)
 	}
-	if svc.loadSession(2) != nil {
+	if svc.loadSession(1, 2) != nil {
 		t.Fatal("expected session to be cleared")
 	}
 	if has, err := svc.store.HasCookie(context.Background(), 1, 2); err != nil || !has {
@@ -902,7 +908,7 @@ func TestServicePersistsCookieWhenManualVerificationCompletesAfterVerifyRequest(
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
 		if has, err := svc.store.HasCookie(context.Background(), 1, 2); err == nil && has {
-			if svc.loadSession(2) != nil {
+			if svc.loadSession(1, 2) != nil {
 				t.Fatal("expected completed manual verification session to be cleared")
 			}
 			return
@@ -910,6 +916,165 @@ func TestServicePersistsCookieWhenManualVerificationCompletesAfterVerifyRequest(
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("expected manual verification watcher to persist cookie")
+}
+
+func TestServiceSubmitVerifyCodeUsesTenantScopedSessionWhenStoreIDsCollide(t *testing.T) {
+	sessionTenant1 := &stubVerifySession{
+		result: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "tenant-1"}},
+		}},
+	}
+	sessionTenant9 := &stubVerifySession{
+		result: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "tenant-9"}},
+		}},
+	}
+	svc := newTestService(t, newTenantScopedVerifyAutomation(map[int64]*stubVerifySession{
+		1: sessionTenant1,
+		9: sessionTenant9,
+	}))
+
+	if _, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 1 login: %v", err)
+	}
+	if _, err := svc.Login(context.Background(), 9, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 9 login: %v", err)
+	}
+
+	if err := svc.SubmitVerifyCode(context.Background(), 1, 2, "111111", 60); err != nil {
+		t.Fatalf("submit tenant 1 verify code: %v", err)
+	}
+	if got := len(sessionTenant1.submitted); got != 1 {
+		t.Fatalf("tenant 1 submit calls = %d, want 1", got)
+	}
+	if got := len(sessionTenant9.submitted); got != 0 {
+		t.Fatalf("tenant 9 submit calls after tenant 1 verification = %d, want 0", got)
+	}
+	if raw := loadStoredCookiePayload(t, svc, 1, 2); !strings.Contains(raw, "tenant-1") {
+		t.Fatalf("tenant 1 cookie payload = %s, want tenant-1 session state", raw)
+	}
+
+	if err := svc.SubmitVerifyCode(context.Background(), 9, 2, "222222", 60); err != nil {
+		t.Fatalf("submit tenant 9 verify code: %v", err)
+	}
+	if got := len(sessionTenant9.submitted); got != 1 {
+		t.Fatalf("tenant 9 submit calls = %d, want 1", got)
+	}
+	if raw := loadStoredCookiePayload(t, svc, 9, 2); !strings.Contains(raw, "tenant-9") {
+		t.Fatalf("tenant 9 cookie payload = %s, want tenant-9 session state", raw)
+	}
+}
+
+func TestServiceCancelVerifyCodeWaitPreservesOtherTenantSessionWhenStoreIDsCollide(t *testing.T) {
+	sessionTenant1 := &stubVerifySession{
+		result: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "tenant-1"}},
+		}},
+	}
+	sessionTenant9 := &stubVerifySession{
+		result: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "tenant-9"}},
+		}},
+	}
+	svc := newTestService(t, newTenantScopedVerifyAutomation(map[int64]*stubVerifySession{
+		1: sessionTenant1,
+		9: sessionTenant9,
+	}))
+
+	if _, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 1 login: %v", err)
+	}
+	if _, err := svc.Login(context.Background(), 9, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 9 login: %v", err)
+	}
+
+	cancelled, err := svc.CancelVerifyCodeWait(context.Background(), 1, 2)
+	if err != nil {
+		t.Fatalf("cancel tenant 1 verify wait: %v", err)
+	}
+	if !cancelled {
+		t.Fatal("expected tenant 1 verify wait cancellation")
+	}
+
+	if err := svc.SubmitVerifyCode(context.Background(), 9, 2, "222222", 60); err != nil {
+		t.Fatalf("submit tenant 9 verify code after tenant 1 cancellation: %v", err)
+	}
+	if got := len(sessionTenant9.submitted); got != 1 {
+		t.Fatalf("tenant 9 submit calls after tenant 1 cancellation = %d, want 1", got)
+	}
+	if raw := loadStoredCookiePayload(t, svc, 9, 2); !strings.Contains(raw, "tenant-9") {
+		t.Fatalf("tenant 9 cookie payload after tenant 1 cancellation = %s, want tenant-9 session state", raw)
+	}
+}
+
+func TestServiceClearCookiePreservesOtherTenantSessionWhenStoreIDsCollide(t *testing.T) {
+	sessionTenant1 := &stubVerifySession{
+		result: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "tenant-1"}},
+		}},
+	}
+	sessionTenant9 := &stubVerifySession{
+		result: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "tenant-9"}},
+		}},
+	}
+	svc := newTestService(t, newTenantScopedVerifyAutomation(map[int64]*stubVerifySession{
+		1: sessionTenant1,
+		9: sessionTenant9,
+	}))
+
+	if _, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 1 login: %v", err)
+	}
+	if _, err := svc.Login(context.Background(), 9, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 9 login: %v", err)
+	}
+
+	if err := svc.ClearCookie(context.Background(), 1, 2); err != nil {
+		t.Fatalf("clear tenant 1 cookie: %v", err)
+	}
+
+	if err := svc.SubmitVerifyCode(context.Background(), 9, 2, "222222", 60); err != nil {
+		t.Fatalf("submit tenant 9 verify code after tenant 1 cookie clear: %v", err)
+	}
+	if got := len(sessionTenant9.submitted); got != 1 {
+		t.Fatalf("tenant 9 submit calls after tenant 1 cookie clear = %d, want 1", got)
+	}
+	if raw := loadStoredCookiePayload(t, svc, 9, 2); !strings.Contains(raw, "tenant-9") {
+		t.Fatalf("tenant 9 cookie payload after tenant 1 cookie clear = %s, want tenant-9 session state", raw)
+	}
+}
+
+func TestServiceWatchVerifySessionUsesTenantScopedSessionWhenStoreIDsCollide(t *testing.T) {
+	sessionTenant1 := &stubVerifySession{
+		waitResult: &AutomationResult{BrowserState: map[string]any{
+			"cookies": []any{map[string]any{"name": "sid", "value": "tenant-1-manual"}},
+		}},
+	}
+	sessionTenant9 := &stubVerifySession{}
+	svc := newTestService(t, newTenantScopedVerifyAutomation(map[int64]*stubVerifySession{
+		1: sessionTenant1,
+		9: sessionTenant9,
+	}))
+
+	if _, err := svc.Login(context.Background(), 1, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 1 login: %v", err)
+	}
+	if _, err := svc.Login(context.Background(), 9, 2, LoginRequest{ForceLogin: true}); err != nil {
+		t.Fatalf("tenant 9 login: %v", err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if has, err := svc.store.HasCookie(context.Background(), 1, 2); err == nil && has {
+			if raw := loadStoredCookiePayload(t, svc, 1, 2); !strings.Contains(raw, "tenant-1-manual") {
+				t.Fatalf("tenant 1 manual cookie payload = %s, want tenant-1-manual session state", raw)
+			}
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("expected tenant 1 manual verification watcher to persist cookie")
 }
 
 func TestServiceLoginPersistsCookieOnlyBrowserState(t *testing.T) {
@@ -1242,6 +1407,31 @@ func TestLoginUsesAbsoluteProfileRoot(t *testing.T) {
 	}
 }
 
+func newTenantScopedVerifyAutomation(sessions map[int64]*stubVerifySession) Automation {
+	return &stubAutomation{
+		startLogin: func(_ context.Context, account Account, _ AutomationConfig) (*AutomationResult, VerifySession, error) {
+			session := sessions[account.TenantID]
+			if session == nil {
+				return nil, nil, fmt.Errorf("missing verify session for tenant %d", account.TenantID)
+			}
+			return &AutomationResult{
+				WaitingForVerifyCode: true,
+				ErrorCode:            "VERIFY_CODE_REQUIRED",
+				ErrorMessage:         "wait",
+			}, session, nil
+		},
+	}
+}
+
+func loadStoredCookiePayload(t *testing.T, svc *Service, tenantID int64, storeID int64) string {
+	t.Helper()
+	raw, err := svc.store.client.Get(context.Background(), cookieKey(tenantID, storeID)).Result()
+	if err != nil {
+		t.Fatalf("load cookie payload for tenant %d store %d: %v", tenantID, storeID, err)
+	}
+	return raw
+}
+
 func newTestService(t *testing.T, automation Automation) *Service {
 	return newTestServiceWithAccounts(t, automation, []Account{
 		{StoreID: 2, TenantID: 1, Username: "demo", Password: "pwd", Platform: "SHEIN"},
@@ -1261,6 +1451,6 @@ func newTestServiceWithAccounts(t *testing.T, automation Automation, accounts []
 		runtime:         NewRuntime(1),
 		automation:      automation,
 		defaultHeadless: true,
-		sessions:        make(map[int64]VerifySession),
+		sessions:        make(map[verifySessionKey]VerifySession),
 	}
 }

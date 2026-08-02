@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -42,8 +43,17 @@ func TestLaunchManagerWithTimeoutDefersCleanupUntilLaunchReturns(t *testing.T) {
 	manager := newBlockingBrowserLaunchManager()
 
 	err := launchManagerWithTimeout(manager, 20*time.Millisecond)
-	if err == nil || err.Error() != "SHEIN browser launch timed out after 20ms" {
+	if err == nil {
+		t.Fatal("launchManagerWithTimeout error = nil, want timeout")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("launchManagerWithTimeout error = %v, want context.DeadlineExceeded", err)
+	}
+	if !strings.Contains(err.Error(), "SHEIN browser launch timed out after 20ms") {
 		t.Fatalf("launchManagerWithTimeout error = %v", err)
+	}
+	if shouldCloseManagerAfterStageError(err) {
+		t.Fatal("timeout error should skip immediate close because stage cleanup is deferred")
 	}
 	select {
 	case <-manager.launchStarted:
