@@ -232,6 +232,29 @@ func TestSubmitVerifyCodeWithoutAttemptRoutesToWaitingWorkerAttempt(t *testing.T
 	}
 }
 
+func TestSubmitVerifyCodeForAttemptDefaultsToTenMinutes(t *testing.T) {
+	svc := newTestService(t, &stubAutomation{})
+	attempt, created, err := svc.store.EnqueueLoginAttempt(context.Background(), 1, 2, LoginRequest{ForceLogin: true})
+	if err != nil || !created {
+		t.Fatalf("enqueue attempt: attempt=%+v created=%v err=%v", attempt, created, err)
+	}
+	attempt.Status = LoginAttemptWaitingVerifyCode
+	if err := svc.store.UpdateLoginAttempt(context.Background(), attempt); err != nil {
+		t.Fatalf("mark attempt waiting: %v", err)
+	}
+
+	if err := svc.SubmitVerifyCodeForAttempt(context.Background(), 1, 2, attempt.ID, "123456", 0); err != nil {
+		t.Fatalf("submit code: %v", err)
+	}
+	ttl, err := svc.store.client.TTL(context.Background(), verifyAttemptCodeKey(1, 2, attempt.ID)).Result()
+	if err != nil {
+		t.Fatalf("read code ttl: %v", err)
+	}
+	if ttl != 10*time.Minute {
+		t.Fatalf("verify code ttl = %s, want 10m", ttl)
+	}
+}
+
 func TestForceLoginWaitsForQueuedWorkerAttempt(t *testing.T) {
 	svc := newTestService(t, &stubAutomation{})
 	svc.executionMode = "worker"
