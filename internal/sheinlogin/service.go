@@ -165,7 +165,7 @@ func (s *Service) Status(ctx context.Context, tenantID int64, storeID int64) (*A
 		CookieTTL:            int64(ttl.Seconds()),
 		WaitingForVerifyCode: waiting,
 		LastLoginTime:        lastLogin,
-		LoginInProgress:      s.runtime.IsInFlight(account.StoreID) || (latestAttempt != nil && latestAttempt.Status.IsActive()),
+		LoginInProgress:      s.runtime.IsInFlight(account.TenantID, account.StoreID) || (latestAttempt != nil && latestAttempt.Status.IsActive()),
 		LastFailure:          lastFailure,
 		RecommendedAction:    recommendedAction,
 		LatestAttempt:        latestAttempt,
@@ -226,7 +226,7 @@ func (s *Service) existingCookieLoginResult(account *Account, ttl time.Duration)
 	}
 	return &LoginResult{
 		Success:   true,
-		Message:   "璐﹀彿宸叉湁鍙敤 Cookie",
+		Message:   "账号已有可用 Cookie，无需重新登录 / Existing cookie is still valid",
 		StoreID:   account.StoreID,
 		TenantID:  account.TenantID,
 		Username:  account.Username,
@@ -267,7 +267,7 @@ func (s *Service) runLoginStart(ctx context.Context, account *Account, req Login
 		runResult *AutomationResult
 		session   VerifySession
 	)
-	err := s.runtime.withStoreLock(account.StoreID, func() error {
+	err := s.runtime.withStoreLock(account.TenantID, account.StoreID, func() error {
 		var runErr error
 		runResult, session, runErr = s.automation.StartLogin(ctx, *account, s.loginAutomationConfig(s.resolveHeadless(req)))
 		return runErr
@@ -309,20 +309,12 @@ func (s *Service) loginInline(ctx context.Context, tenantID int64, storeID int64
 	}
 	if !req.ForceLogin {
 		if ttl, ok, err := s.store.CookieTTL(ctx, account.TenantID, account.StoreID); err == nil && ok && ttl > 0 {
-			return &LoginResult{
-				Success:   true,
-				Message:   "账号已有可用 Cookie",
-				StoreID:   account.StoreID,
-				TenantID:  account.TenantID,
-				Username:  account.Username,
-				CookieTTL: int64(ttl.Seconds()),
-				LoginType: "existing",
-			}, nil
+			return s.existingCookieLoginResult(account, ttl), nil
 		}
 	}
 
 	var result *LoginResult
-	err = s.runtime.withStoreLock(account.StoreID, func() error {
+	err = s.runtime.withStoreLock(account.TenantID, account.StoreID, func() error {
 		headless := s.defaultHeadless
 		if s.forceHeadless {
 			headless = true

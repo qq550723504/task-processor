@@ -42,24 +42,23 @@ func (m *blockingBrowserLaunchManager) Close() {
 func TestLaunchManagerWithTimeoutDefersCleanupUntilLaunchReturns(t *testing.T) {
 	manager := newBlockingBrowserLaunchManager()
 
-	err := launchManagerWithTimeout(manager, 20*time.Millisecond)
-	if err == nil {
-		t.Fatal("launchManagerWithTimeout error = nil, want timeout")
-	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("launchManagerWithTimeout error = %v, want context.DeadlineExceeded", err)
-	}
-	if !strings.Contains(err.Error(), "SHEIN browser launch timed out after 20ms") {
-		t.Fatalf("launchManagerWithTimeout error = %v", err)
-	}
-	if shouldCloseManagerAfterStageError(err) {
-		t.Fatal("timeout error should skip immediate close because stage cleanup is deferred")
-	}
+	done := make(chan error, 1)
+	go func() {
+		done <- launchManagerWithTimeout(manager, 20*time.Millisecond)
+	}()
+
 	select {
 	case <-manager.launchStarted:
 	case <-time.After(time.Second):
 		t.Fatal("Launch was not started")
 	}
+
+	select {
+	case err := <-done:
+		t.Fatalf("launchManagerWithTimeout returned before Launch unwound: %v", err)
+	case <-time.After(40 * time.Millisecond):
+	}
+
 	select {
 	case <-manager.closed:
 		t.Fatal("Close should wait until Launch returns")
@@ -72,6 +71,24 @@ func TestLaunchManagerWithTimeoutDefersCleanupUntilLaunchReturns(t *testing.T) {
 	case <-manager.launchReturned:
 	case <-time.After(time.Second):
 		t.Fatal("Launch did not return after release")
+	}
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(time.Second):
+		t.Fatal("launchManagerWithTimeout did not return after Launch unwound")
+	}
+	if err == nil {
+		t.Fatal("launchManagerWithTimeout error = nil, want timeout")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("launchManagerWithTimeout error = %v, want context.DeadlineExceeded", err)
+	}
+	if !strings.Contains(err.Error(), "SHEIN browser launch timed out after 20ms") {
+		t.Fatalf("launchManagerWithTimeout error = %v", err)
+	}
+	if shouldCloseManagerAfterStageError(err) {
+		t.Fatal("timeout error should skip immediate close because stage cleanup is deferred")
 	}
 	select {
 	case <-manager.closed:

@@ -137,6 +137,9 @@ func TestServiceLoginReturnsExistingCookieWithoutAutomation(t *testing.T) {
 	if !result.Success || result.LoginType != "existing" {
 		t.Fatalf("unexpected result: %+v", result)
 	}
+	if got, want := result.Message, "账号已有可用 Cookie，无需重新登录 / Existing cookie is still valid"; got != want {
+		t.Fatalf("existing cookie message = %q, want %q", got, want)
+	}
 }
 
 func TestServiceLoginQueuesAttemptInWorkerMode(t *testing.T) {
@@ -160,6 +163,98 @@ func TestServiceLoginQueuesAttemptInWorkerMode(t *testing.T) {
 	}
 	if !status.LoginInProgress || status.LatestAttempt == nil || status.LatestAttempt.ID != result.AttemptID {
 		t.Fatalf("queued attempt missing from status: %+v", status)
+	}
+}
+
+func TestServiceStatusDoesNotLeakInFlightAcrossTenants(t *testing.T) {
+	auto := &blockingLoginAutomation{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+	}
+	svc := newTestService(t, auto)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan *LoginResult, 1)
+	go func() {
+		result, err := svc.Login(ctx, 1, 2, LoginRequest{ForceLogin: true})
+		if err != nil {
+			t.Errorf("tenant 1 login: %v", err)
+			done <- nil
+			return
+		}
+		done <- result
+	}()
+
+	select {
+	case <-auto.started:
+	case <-time.After(time.Second):
+		t.Fatal("tenant 1 login did not start")
+	}
+
+	status, err := svc.Status(context.Background(), 9, 2)
+	if err != nil {
+		t.Fatalf("tenant 9 status: %v", err)
+	}
+	if status.LoginInProgress {
+		t.Fatalf("tenant 9 status leaked tenant 1 in-flight login: %+v", status)
+	}
+
+	cancel()
+
+	select {
+	case <-auto.cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("tenant 1 login was not cancelled")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("tenant 1 login did not return")
+	}
+}
+
+func TestServiceLoginDoesNotSerializeSameStoreAcrossTenants(t *testing.T) {
+	started := make(chan int64, 2)
+	release := make(chan struct{})
+	auto := &stubAutomation{
+		startLogin: func(_ context.Context, account Account, _ AutomationConfig) (*AutomationResult, VerifySession, error) {
+			started <- account.TenantID
+			<-release
+			return &AutomationResult{BrowserState: map[string]any{"cookies": []any{}}}, nil, nil
+		},
+	}
+	svc := newTestService(t, auto)
+	svc.runtime = NewRuntime(2)
+
+	done := make(chan error, 2)
+	for _, tenantID := range []int64{1, 9} {
+		go func(tenantID int64) {
+			_, err := svc.Login(context.Background(), tenantID, 2, LoginRequest{ForceLogin: true})
+			done <- err
+		}(tenantID)
+	}
+
+	seen := map[int64]bool{}
+	for len(seen) < 2 {
+		select {
+		case tenantID := <-started:
+			seen[tenantID] = true
+		case <-time.After(150 * time.Millisecond):
+			t.Fatalf("expected both tenant logins to start independently, saw tenants=%v", seen)
+		}
+	}
+
+	close(release)
+
+	for i := 0; i < 2; i++ {
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("login returned err = %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("login did not finish")
+		}
 	}
 }
 
