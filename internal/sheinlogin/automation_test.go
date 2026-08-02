@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -128,6 +129,102 @@ func TestRunBlockingStageWithContextDefersCleanupUntilStageReturns(t *testing.T)
 	case <-closed:
 	case <-time.After(time.Second):
 		t.Fatal("cleanup did not run after the blocking stage returned")
+	}
+}
+
+func TestBlockingStageInterruptBeforeReturnDefersCleanupUntilReturn(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	returned := make(chan struct{})
+	cleaned := make(chan struct{})
+	var cleanupCalls atomic.Int32
+
+	stage := startBlockingStage(func() error {
+		close(started)
+		<-release
+		close(returned)
+		return nil
+	}, func() {
+		if cleanupCalls.Add(1) == 1 {
+			close(cleaned)
+		}
+	})
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("blocking stage did not start")
+	}
+
+	stage.interrupt()
+
+	select {
+	case <-cleaned:
+		t.Fatal("cleanup should wait until the blocking stage returns")
+	default:
+	}
+
+	close(release)
+
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		t.Fatal("blocking stage did not return after release")
+	}
+
+	select {
+	case <-cleaned:
+	case <-time.After(time.Second):
+		t.Fatal("cleanup did not run after the blocking stage returned")
+	}
+
+	if err := <-stage.result; err != nil {
+		t.Fatalf("blocking stage result = %v", err)
+	}
+
+	stage.interrupt()
+
+	if got := cleanupCalls.Load(); got != 1 {
+		t.Fatalf("cleanup called %d times, want 1", got)
+	}
+}
+
+func TestBlockingStageInterruptAfterReturnRunsCleanupOnce(t *testing.T) {
+	returned := make(chan struct{})
+	cleaned := make(chan struct{})
+	var cleanupCalls atomic.Int32
+
+	stage := startBlockingStage(func() error {
+		close(returned)
+		return nil
+	}, func() {
+		if cleanupCalls.Add(1) == 1 {
+			close(cleaned)
+		}
+	})
+
+	select {
+	case <-returned:
+	case <-time.After(time.Second):
+		t.Fatal("blocking stage did not return")
+	}
+
+	stage.interrupt()
+
+	select {
+	case <-cleaned:
+	case <-time.After(time.Second):
+		t.Fatal("cleanup did not run after interrupting a completed stage")
+	}
+
+	if err := <-stage.result; err != nil {
+		t.Fatalf("blocking stage result = %v", err)
+	}
+
+	stage.interrupt()
+
+	if got := cleanupCalls.Load(); got != 1 {
+		t.Fatalf("cleanup called %d times, want 1", got)
 	}
 }
 

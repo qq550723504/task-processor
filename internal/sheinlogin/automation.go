@@ -1411,21 +1411,43 @@ type browserLaunchManager interface {
 
 type blockingStage struct {
 	result      chan error
+	completed   chan struct{}
+	onInterrupt func()
+	cleanupOnce sync.Once
 	interrupted atomic.Bool
 }
 
 func startBlockingStage(fn func() error, onInterrupt func()) *blockingStage {
 	stage := &blockingStage{
-		result: make(chan error, 1),
+		result:      make(chan error, 1),
+		completed:   make(chan struct{}),
+		onInterrupt: onInterrupt,
 	}
 	go func() {
 		err := fn()
-		if stage.interrupted.Load() && onInterrupt != nil {
-			onInterrupt()
+		close(stage.completed)
+		if stage.interrupted.Load() {
+			stage.runInterruptCleanup()
 		}
 		stage.result <- err
 	}()
 	return stage
+}
+
+func (stage *blockingStage) interrupt() {
+	stage.interrupted.Store(true)
+	select {
+	case <-stage.completed:
+		stage.runInterruptCleanup()
+	default:
+	}
+}
+
+func (stage *blockingStage) runInterruptCleanup() {
+	if stage.onInterrupt == nil {
+		return
+	}
+	stage.cleanupOnce.Do(stage.onInterrupt)
 }
 
 func launchManagerWithProfileRecovery(manager browserLaunchManager, profileDir string) error {
@@ -1465,7 +1487,7 @@ func launchManagerWithTimeout(manager browserLaunchManager, timeout time.Duratio
 	case err := <-stage.result:
 		return err
 	case <-timer.C:
-		stage.interrupted.Store(true)
+		stage.interrupt()
 		return fmt.Errorf("SHEIN browser launch timed out after %s", timeout)
 	}
 }
@@ -1482,7 +1504,7 @@ func runBlockingStageWithContext(ctx context.Context, onCancel func(), fn func()
 	case err := <-stage.result:
 		return err
 	case <-ctx.Done():
-		stage.interrupted.Store(true)
+		stage.interrupt()
 		return ctx.Err()
 	}
 }
