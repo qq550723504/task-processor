@@ -105,7 +105,7 @@ func (p stubSheinCookieProvider) GetCookie(context.Context, int64) (*sheinclient
 
 func TestServiceLoginReturnsExistingCookieWithoutAutomation(t *testing.T) {
 	svc := newTestService(t, &stubAutomation{})
-	if err := svc.store.SaveCookieState(context.Background(), 1, 2, map[string]any{"cookies": []any{}}, time.Hour); err != nil {
+	if err := svc.store.SaveCookieState(context.Background(), 1, 2, map[string]any{"cookies": []any{map[string]any{"name": "sid", "value": "existing"}}}, time.Hour); err != nil {
 		t.Fatalf("seed cookie: %v", err)
 	}
 	result, err := svc.Login(context.Background(), 1, 2, LoginRequest{})
