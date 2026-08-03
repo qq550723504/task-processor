@@ -159,7 +159,7 @@ data:
         retryOnValidationFailure: true
         validationRetryMaxAttempts: 2
       proxyPool:
-        enabled: true
+        enabled: false
         strategy: "health_aware"
         failureCooldownSeconds: 300
         proxies:
