@@ -66,6 +66,7 @@ logs
 .qoder
 .update-marker
 .understand-anything
+.superpowers/
 .gocache/
 .local/
 tmp/*
