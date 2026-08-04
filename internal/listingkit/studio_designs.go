@@ -63,22 +63,43 @@ func buildStudioDesignPromptWithTheme(req *StudioDesignRequest, theme string) st
 }
 
 func buildHotReferenceStudioDesignPrompt(req *StudioDesignRequest, theme string) string {
-	parts := append([]string(nil), studioHotReferenceInstructionParts...)
+	printableHint := ""
 	if req != nil && req.PrintableWidth > 0 && req.PrintableHeight > 0 {
-		parts = append(parts, studioDesignPrintableHint(req.PrintableWidth, req.PrintableHeight))
+		printableHint = studioDesignPrintableHint(req.PrintableWidth, req.PrintableHeight)
 	}
+	transparentHint := ""
 	if req != nil && req.TransparentBackground {
-		parts = append(parts, "Output on a true transparent background with alpha channel.")
+		transparentHint = "Output on a true transparent background with alpha channel."
 	}
-	if promptText := strings.TrimSpace(theme); promptText != "" {
-		parts = append(parts, "Theme prompt: "+promptText)
+	vars := map[string]any{
+		"PrintableHint":   printableHint,
+		"TransparentHint": transparentHint,
+		"ThemePrompt":     strings.TrimSpace(theme),
 	}
-	return strings.TrimSpace(strings.Join(parts, "\n"))
+	fallback := strings.Join([]string{
+		studioHotReferenceInstructionParts[0],
+		studioHotReferenceInstructionParts[1],
+		studioHotReferenceInstructionParts[2],
+		studioHotReferenceInstructionParts[3],
+		studioHotReferenceInstructionParts[4],
+		"{{.PrintableHint}}",
+		"{{.TransparentHint}}",
+		"{{if .ThemePrompt}}Theme prompt: {{.ThemePrompt}}{{end}}",
+	}, "\n")
+	if prompt.GlobalRegistry == nil {
+		return renderPromptFallback(fallback, vars)
+	}
+	rendered, err := prompt.GlobalRegistry.Render(prompt.KProductImageStudioGenerationPodDesignHotReference, vars, fallback)
+	if err != nil {
+		return renderPromptFallback(fallback, vars)
+	}
+	return strings.TrimSpace(rendered)
 }
 
 var studioHotReferenceInstructionParts = []string{
-	"Use the provided hot-selling artwork reference image as a strong visual reference for a new original flat POD artwork.",
-	"Ignore the garment, background, watermark, and product mockup; focus on the printed artwork.",
+	"Use the provided hot-selling product reference image as a strong visual reference for a new original flat POD artwork.",
+	"Extract the artwork, pattern, or design from the product shown in the reference.",
+	"Ignore the physical product, its material and shape, background, watermark, and mockup framing; focus on the product's visible artwork or pattern.",
 	"Preserve the main subject family, dominant silhouette, composition direction, color palette, stroke/line style, and graphic energy so the result is recognizably related to the reference.",
 	"Redraw everything with original details; do not copy exact text, logos, watermarks, brand marks, or protected characters.",
 }
@@ -248,6 +269,19 @@ func validateStudioDesignReferenceImageURLs(req *StudioDesignRequest) ([]string,
 	default:
 		return nil, fmt.Errorf("invalid request: unknown artwork generation mode %q", mode)
 	}
+}
+
+func validateStudioDesignPromptRequirement(req *StudioDesignRequest, referenceURLs []string) error {
+	if req == nil {
+		return fmt.Errorf("invalid request: prompt is required")
+	}
+	if strings.EqualFold(strings.TrimSpace(req.ArtworkGenerationMode), studioArtworkGenerationModeHotReference) && len(referenceURLs) == 1 {
+		return nil
+	}
+	if strings.TrimSpace(req.Prompt) == "" {
+		return fmt.Errorf("invalid request: prompt is required")
+	}
+	return nil
 }
 
 func studioDesignReferenceImageURLs(urls []string) []string {

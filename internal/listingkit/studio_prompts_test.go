@@ -21,6 +21,29 @@ import (
 	"task-processor/internal/prompt"
 )
 
+type studioPromptRegistryStub struct {
+	key  string
+	vars map[string]any
+}
+
+func (s *studioPromptRegistryStub) Get(string, string) string { return "" }
+
+func (s *studioPromptRegistryStub) Render(key string, vars map[string]any, _ string) (string, error) {
+	s.key = key
+	s.vars = vars
+	return "hot-reference-template", nil
+}
+
+func (s *studioPromptRegistryStub) GetTenant(string, string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (s *studioPromptRegistryStub) RenderTenant(string, string, map[string]any) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (s *studioPromptRegistryStub) Keys() []string { return nil }
+
 func TestParseStudioDesignSiblingThemesParsesPromptObject(t *testing.T) {
 	themes, err := parseStudioDesignSiblingThemes(`{"prompts":["bold vintage badge","dense collage badge","hero emblem badge"]}`, 3)
 	if err != nil {
@@ -161,9 +184,10 @@ func TestStudioDesignPromptUsesHotReferenceImageHint(t *testing.T) {
 		}
 	}
 	for _, required := range []string{
-		"hot-selling artwork reference",
-		"ignore the garment",
-		"focus on the printed artwork",
+		"hot-selling product reference image",
+		"extract the artwork, pattern, or design from the product",
+		"ignore the physical product",
+		"focus on the product's visible artwork or pattern",
 		"preserve the main subject family",
 		"dominant silhouette",
 		"color palette",
@@ -173,6 +197,36 @@ func TestStudioDesignPromptUsesHotReferenceImageHint(t *testing.T) {
 		if !strings.Contains(lower, required) {
 			t.Fatalf("hot-reference prompt missing %q:\n%s", required, text)
 		}
+	}
+	for _, forbidden := range []string{"garment", "apparel", "shirt", "mug", "canvas"} {
+		if strings.Contains(lower, forbidden) {
+			t.Fatalf("hot-reference prompt is tied to a specific product category %q:\n%s", forbidden, text)
+		}
+	}
+}
+
+func TestHotReferenceStudioDesignPromptUsesDedicatedTemplate(t *testing.T) {
+	registry := &studioPromptRegistryStub{}
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = registry
+	t.Cleanup(func() { prompt.GlobalRegistry = previous })
+
+	text := buildStudioDesignPromptWithTheme(&StudioDesignRequest{
+		ArtworkGenerationMode: studioArtworkGenerationModeHotReference,
+		PrintableWidth:        1200,
+		PrintableHeight:       1600,
+		TransparentBackground: true,
+	}, "floral line art")
+
+	if text != "hot-reference-template" {
+		t.Fatalf("prompt = %q, want dedicated template output", text)
+	}
+	const hotReferencePromptKey = "productimage.studio_generation.pod_design_hot_reference"
+	if registry.key != hotReferencePromptKey {
+		t.Fatalf("rendered key = %q, want %q", registry.key, hotReferencePromptKey)
+	}
+	if registry.vars["ThemePrompt"] != "floral line art" {
+		t.Fatalf("ThemePrompt = %#v, want supplemental theme", registry.vars["ThemePrompt"])
 	}
 }
 
@@ -680,6 +734,64 @@ func TestGenerateStudioDesignsRejectsReferenceImagesWithoutHotReferenceMode(t *t
 	}
 	if !strings.Contains(err.Error(), "theme prompt mode cannot include reference images") {
 		t.Fatalf("error = %v, want theme reference validation", err)
+	}
+}
+
+func TestGenerateStudioDesignsAllowsPromptlessHotReference(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		generateResponse: &AIImageResponse{Data: []AIImageData{{
+			B64JSON: base64.StdEncoding.EncodeToString([]byte{0xFF, 0xD8, 0xFF, 0xD9}),
+		}}},
+	}
+	svc := &service{studioDeps: studioDependencies{
+		imageGenerator: generator,
+		uploadStore:    &stubImageUploadStore{},
+	}}
+
+	response, err := svc.GenerateStudioDesigns(context.Background(), &StudioDesignRequest{
+		ArtworkGenerationMode:     studioArtworkGenerationModeHotReference,
+		Count:                     1,
+		ProductReferenceImageURLs: []string{"https://example.com/hot-ref.png"},
+	})
+	if err != nil {
+		t.Fatalf("GenerateStudioDesigns() error = %v", err)
+	}
+	if response == nil || len(response.Images) != 1 {
+		t.Fatalf("response = %#v, want one generated image", response)
+	}
+	if generator.editCalls != 1 {
+		t.Fatalf("editCalls = %d, want 1", generator.editCalls)
+	}
+	if len(generator.editRequests) != 1 || !strings.Contains(
+		strings.ToLower(generator.editRequests[0].Prompt),
+		"hot-selling product reference image",
+	) {
+		t.Fatalf("edit request = %#v, want hot-reference internal prompt", generator.editRequests)
+	}
+}
+
+func TestSubmitStudioDesignsAsyncAllowsPromptlessHotReference(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		asyncSubmit: &AIImageAsyncSubmit{JobID: "hot-reference-job"},
+	}
+	svc := &taskStudioMediaService{imageGenerator: generator}
+
+	result, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
+		ArtworkGenerationMode:     studioArtworkGenerationModeHotReference,
+		Count:                     1,
+		ProductReferenceImageURLs: []string{"https://example.com/hot-ref.png"},
+	})
+	if err != nil {
+		t.Fatalf("SubmitStudioDesignsAsync() error = %v", err)
+	}
+	if result == nil || result.Submit == nil || result.Submit.JobID != "hot-reference-job" {
+		t.Fatalf("result = %#v, want hot-reference async submission", result)
+	}
+	if len(generator.asyncEditReqs) != 1 || !strings.Contains(
+		strings.ToLower(generator.asyncEditReqs[0].Prompt),
+		"hot-selling product reference image",
+	) {
+		t.Fatalf("async edit request = %#v, want hot-reference internal prompt", generator.asyncEditReqs)
 	}
 }
 
