@@ -1162,6 +1162,12 @@ func TestStudioReferenceUploadedImageKeyFromURL(t *testing.T) {
 			ok:     true,
 		},
 		{
+			name:   "frontend proxy uploaded url",
+			rawURL: "https://pod.shuomiai.com/api/listing-kits/uploads/files/folder/reference.png",
+			want:   "folder/reference.png",
+			ok:     true,
+		},
+		{
 			name:   "remote host uploaded url rejected",
 			rawURL: "https://assets.example.com/api/v1/listing-kits/uploads/files/folder/reference.png",
 			want:   "",

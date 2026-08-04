@@ -123,7 +123,7 @@ func (s *taskStudioMediaService) editStudioDesignImageWithReferences(ctx context
 		if file == nil || len(file.Data) == 0 || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(file.ContentType)), "image/") {
 			return nil, fmt.Errorf("invalid uploaded image data")
 		}
-		return s.imageGenerator.EditImage(ctx, &AIImageEditRequest{
+		request := &AIImageEditRequest{
 			Model:            model,
 			Prompt:           promptText,
 			ImageData:        file.Data,
@@ -131,7 +131,22 @@ func (s *taskStudioMediaService) editStudioDesignImageWithReferences(ctx context
 			Size:             size,
 			ResponseFormat:   "b64_json",
 			N:                1,
-		})
+		}
+		if s.resolveUploadedImagePublicURL != nil {
+			publicURL, resolveErr := s.resolveUploadedImagePublicURL(ctx, key)
+			if resolveErr != nil && !errors.Is(resolveErr, ErrUploadedImageNotFound) {
+				return nil, fmt.Errorf("resolve uploaded reference public url: %w", resolveErr)
+			}
+			if resolveErr == nil {
+				validatedURL, validateErr := validateStudioReferencePublicHTTPSURL(publicURL)
+				if validateErr != nil {
+					return nil, fmt.Errorf("invalid uploaded reference public url: %w", validateErr)
+				}
+				request.ImageURL = validatedURL
+				request.ImageURLs = []string{validatedURL}
+			}
+		}
+		return s.imageGenerator.EditImage(ctx, request)
 	}
 	return s.imageGenerator.EditImage(ctx, &AIImageEditRequest{
 		Model:          model,

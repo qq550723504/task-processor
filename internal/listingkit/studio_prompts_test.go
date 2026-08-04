@@ -1048,6 +1048,43 @@ func TestStudioEditPassesOwnedUploadBytesInsteadOfObjectURL(t *testing.T) {
 	}
 }
 
+func TestStudioEditAddsPublicURLForFrontendProxyUploadReference(t *testing.T) {
+	generator := &stubStudioImageGenerator{generateResponse: &AIImageResponse{Data: []AIImageData{{B64JSON: "generated"}}}}
+	publicURL := "https://cdn.example.com/listingkit/reference.png"
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
+		imageGenerator: generator,
+		loadUploadedImage: func(_ context.Context, key string) (*UploadedImageFile, error) {
+			if key != "0b15bb5e-9f9e-4952-9a06-fd31aab99901" {
+				t.Fatalf("unexpected uploaded image key = %q", key)
+			}
+			return &UploadedImageFile{ContentType: "image/webp", Data: validWebPData(t)}, nil
+		},
+		resolveUploadedImagePublicURL: func(_ context.Context, key string) (string, error) {
+			if key != "0b15bb5e-9f9e-4952-9a06-fd31aab99901" {
+				t.Fatalf("unexpected public URL key = %q", key)
+			}
+			return publicURL, nil
+		},
+	})
+
+	_, err := svc.editStudioDesignImageWithReferences(context.Background(), "test-model", "prompt", "1024x1024", []string{
+		"https://pod.shuomiai.com/api/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(generator.editRequests) != 1 {
+		t.Fatalf("edit requests = %d, want 1", len(generator.editRequests))
+	}
+	req := generator.editRequests[0]
+	if len(req.ImageData) == 0 || req.ImageContentType != "image/webp" {
+		t.Fatalf("edit request image data = %d bytes, content type %q, want uploaded bytes", len(req.ImageData), req.ImageContentType)
+	}
+	if req.ImageURL != publicURL || len(req.ImageURLs) != 1 || req.ImageURLs[0] != publicURL {
+		t.Fatalf("edit request public URLs = (%q, %#v), want %q", req.ImageURL, req.ImageURLs, publicURL)
+	}
+}
+
 func (s *stubImageUploadStore) Save(_ context.Context, input *ImageUploadInput) (*StoredUploadedImage, error) {
 	s.saved = append(s.saved, input)
 	return &StoredUploadedImage{
