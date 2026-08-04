@@ -88,7 +88,7 @@ func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, r
 	}
 	model := resolveStudioDesignImageModel(req, s.imageGenerator.GetDefaultModel())
 	size := resolveStudioDesignSize(req.PrintableWidth, req.PrintableHeight)
-	promptText := buildStudioDesignPromptWithTheme(req, theme)
+	promptText := buildStudioDesignPromptWithContext(ctx, req, theme)
 	if len(referenceURLs) > 0 {
 		if hasOwnedListingKitUploadReference(referenceURLs) {
 			return nil, fmt.Errorf("invalid request: async editing does not support uploaded listingkit images")
@@ -196,8 +196,15 @@ func (s *taskStudioMediaService) GenerateStudioDesigns(ctx context.Context, req 
 	errs := make([]error, count)
 	generatedResponses := make([]*AIImageResponse, count)
 	generateOne := func(idx int) {
-		promptText := buildStudioDesignPromptWithTheme(req, themes[idx])
-		generated, err := s.generateStudioDesignImage(ctx, model, promptText, size, referenceURLs)
+		promptText := buildStudioDesignPromptWithContext(ctx, req, themes[idx])
+		generated, err := s.generateStudioDesignImageWithPolicy(
+			ctx,
+			model,
+			promptText,
+			size,
+			referenceURLs,
+			strings.EqualFold(strings.TrimSpace(req.ArtworkGenerationMode), studioArtworkGenerationModeHotReference),
+		)
 		if err != nil {
 			errs[idx] = fmt.Errorf("generate studio design %d: %w", idx+1, err)
 			return

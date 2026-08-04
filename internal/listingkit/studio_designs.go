@@ -23,15 +23,19 @@ const (
 )
 
 func buildStudioDesignPrompt(req *StudioDesignRequest) string {
-	return buildStudioDesignPromptWithTheme(req, strings.TrimSpace(req.Prompt))
+	return buildStudioDesignPromptWithContext(context.Background(), req, strings.TrimSpace(req.Prompt))
 }
 
 func buildStudioDesignPromptWithTheme(req *StudioDesignRequest, theme string) string {
+	return buildStudioDesignPromptWithContext(context.Background(), req, theme)
+}
+
+func buildStudioDesignPromptWithContext(ctx context.Context, req *StudioDesignRequest, theme string) string {
+	if req != nil && strings.EqualFold(strings.TrimSpace(req.ArtworkGenerationMode), studioArtworkGenerationModeHotReference) {
+		return buildHotReferenceStudioDesignPromptWithContext(ctx, req, theme)
+	}
 	if isStudioRawPromptMode(req.PromptMode) {
 		return buildRawStudioDesignPrompt(req, theme)
-	}
-	if req != nil && strings.EqualFold(strings.TrimSpace(req.ArtworkGenerationMode), studioArtworkGenerationModeHotReference) {
-		return buildHotReferenceStudioDesignPrompt(req, theme)
 	}
 	printableHint := ""
 	if req.PrintableWidth > 0 && req.PrintableHeight > 0 {
@@ -63,6 +67,10 @@ func buildStudioDesignPromptWithTheme(req *StudioDesignRequest, theme string) st
 }
 
 func buildHotReferenceStudioDesignPrompt(req *StudioDesignRequest, theme string) string {
+	return buildHotReferenceStudioDesignPromptWithContext(context.Background(), req, theme)
+}
+
+func buildHotReferenceStudioDesignPromptWithContext(ctx context.Context, req *StudioDesignRequest, theme string) string {
 	printableHint := ""
 	if req != nil && req.PrintableWidth > 0 && req.PrintableHeight > 0 {
 		printableHint = studioDesignPrintableHint(req.PrintableWidth, req.PrintableHeight)
@@ -89,7 +97,7 @@ func buildHotReferenceStudioDesignPrompt(req *StudioDesignRequest, theme string)
 	if prompt.GlobalRegistry == nil {
 		return renderPromptFallback(fallback, vars)
 	}
-	rendered, err := prompt.GlobalRegistry.Render(prompt.KProductImageStudioGenerationPodDesignHotReference, vars, fallback)
+	rendered, err := prompt.RenderTenantFromContextWithGlobalFallback(ctx, prompt.KProductImageStudioGenerationPodDesignHotReference, vars)
 	if err != nil {
 		return renderPromptFallback(fallback, vars)
 	}

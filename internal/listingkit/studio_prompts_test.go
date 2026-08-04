@@ -22,8 +22,9 @@ import (
 )
 
 type studioPromptRegistryStub struct {
-	key  string
-	vars map[string]any
+	key       string
+	tenantKey string
+	vars      map[string]any
 }
 
 func (s *studioPromptRegistryStub) Get(string, string) string { return "" }
@@ -31,7 +32,13 @@ func (s *studioPromptRegistryStub) Get(string, string) string { return "" }
 func (s *studioPromptRegistryStub) Render(key string, vars map[string]any, _ string) (string, error) {
 	s.key = key
 	s.vars = vars
-	return "hot-reference-template", nil
+	return "global-hot-reference-template", nil
+}
+
+func (s *studioPromptRegistryStub) RenderTenantFromContext(_ context.Context, key string, vars map[string]any) (string, error) {
+	s.tenantKey = key
+	s.vars = vars
+	return "tenant-hot-reference-template", nil
 }
 
 func (s *studioPromptRegistryStub) GetTenant(string, string) (string, error) {
@@ -213,17 +220,18 @@ func TestHotReferenceStudioDesignPromptUsesDedicatedTemplate(t *testing.T) {
 
 	text := buildStudioDesignPromptWithTheme(&StudioDesignRequest{
 		ArtworkGenerationMode: studioArtworkGenerationModeHotReference,
+		PromptMode:            studioPromptModeRaw,
 		PrintableWidth:        1200,
 		PrintableHeight:       1600,
 		TransparentBackground: true,
 	}, "floral line art")
 
-	if text != "hot-reference-template" {
+	if text != "tenant-hot-reference-template" {
 		t.Fatalf("prompt = %q, want dedicated template output", text)
 	}
 	const hotReferencePromptKey = "productimage.studio_generation.pod_design_hot_reference"
-	if registry.key != hotReferencePromptKey {
-		t.Fatalf("rendered key = %q, want %q", registry.key, hotReferencePromptKey)
+	if registry.tenantKey != hotReferencePromptKey {
+		t.Fatalf("tenant rendered key = %q, want %q", registry.tenantKey, hotReferencePromptKey)
 	}
 	if registry.vars["ThemePrompt"] != "floral line art" {
 		t.Fatalf("ThemePrompt = %#v, want supplemental theme", registry.vars["ThemePrompt"])
@@ -767,6 +775,31 @@ func TestGenerateStudioDesignsAllowsPromptlessHotReference(t *testing.T) {
 		"hot-selling product reference image",
 	) {
 		t.Fatalf("edit request = %#v, want hot-reference internal prompt", generator.editRequests)
+	}
+}
+
+func TestGenerateStudioDesignsDoesNotFallbackOnHotReferenceEditFailure(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		editErr: errors.New("provider rejected reference image"),
+		generateResponse: &AIImageResponse{Data: []AIImageData{{
+			B64JSON: base64.StdEncoding.EncodeToString([]byte{0xFF, 0xD8, 0xFF, 0xD9}),
+		}}},
+	}
+	svc := &service{studioDeps: studioDependencies{
+		imageGenerator: generator,
+		uploadStore:    &stubImageUploadStore{},
+	}}
+
+	response, err := svc.GenerateStudioDesigns(context.Background(), &StudioDesignRequest{
+		ArtworkGenerationMode:     studioArtworkGenerationModeHotReference,
+		Count:                     1,
+		ProductReferenceImageURLs: []string{"https://example.com/hot-ref.png"},
+	})
+	if err == nil {
+		t.Fatalf("GenerateStudioDesigns() error = nil, response = %#v; want reference edit failure", response)
+	}
+	if generator.generateCalls != 0 {
+		t.Fatalf("generateCalls = %d, want no no-reference fallback", generator.generateCalls)
 	}
 }
 
