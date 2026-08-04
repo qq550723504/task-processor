@@ -1073,6 +1073,35 @@ func TestBuildResolveUploadedImagePublicURLFuncPrefersCurrentStorePublicURL(t *t
 	}
 }
 
+func TestBuildResolveUploadedImagePublicURLFuncUsesStorageKeyPublicURLForLegacyRecord(t *testing.T) {
+	store := &stubResolveUploadedImageStore{
+		publicURL: "https://cdn.example.com/listingkit/tenants/227/uploads/reference.png",
+	}
+	svc := &service{
+		studioDeps: studioDependencies{uploadStore: store},
+		supportDeps: supportDependencies{
+			uploadedImageRepository: &stubResolveUploadedImageRepository{
+				record: &UploadedImageRecord{
+					UploadID:   "0b15bb5e-9f9e-4952-9a06-fd31aab99901",
+					StorageKey: "listingkit/tenants/227/uploads/reference.png",
+				},
+			},
+		},
+	}
+
+	resolve := buildResolveUploadedImagePublicURLFunc(svc)
+	got, err := resolve(context.Background(), "0b15bb5e-9f9e-4952-9a06-fd31aab99901")
+	if err != nil {
+		t.Fatalf("resolveUploadedImagePublicURL() error = %v", err)
+	}
+	if got != store.publicURL {
+		t.Fatalf("public url = %q, want %q", got, store.publicURL)
+	}
+	if store.publicURLKey != "listingkit/tenants/227/uploads/reference.png" {
+		t.Fatalf("public url key = %q, want storage key", store.publicURLKey)
+	}
+}
+
 func TestBuildResolveUploadedImagePublicURLFuncFailsWhenRepoAndStorePublicURLsAreUnusable(t *testing.T) {
 	svc := &service{
 		studioDeps: studioDependencies{
@@ -1168,6 +1197,12 @@ func TestStudioReferenceUploadedImageKeyFromURL(t *testing.T) {
 			ok:     true,
 		},
 		{
+			name:   "relative frontend proxy uploaded url with query",
+			rawURL: "/api/listing-kits/uploads/files/folder/reference.png?version=1#preview",
+			want:   "folder/reference.png",
+			ok:     true,
+		},
+		{
 			name:   "remote host uploaded url rejected",
 			rawURL: "https://assets.example.com/api/v1/listing-kits/uploads/files/folder/reference.png",
 			want:   "",
@@ -1246,8 +1281,11 @@ func (s *stubResolveUploadedImageRepository) ReleaseUploadedImageDeletion(contex
 }
 
 type stubResolveUploadedImageStore struct {
-	openResult *StoredUploadedImage
-	openErr    error
+	openResult   *StoredUploadedImage
+	openErr      error
+	publicURL    string
+	publicURLErr error
+	publicURLKey string
 }
 
 func (s *stubResolveUploadedImageStore) Save(context.Context, *ImageUploadInput) (*StoredUploadedImage, error) {
@@ -1263,6 +1301,17 @@ func (s *stubResolveUploadedImageStore) Open(context.Context, string) (*StoredUp
 	}
 	result := *s.openResult
 	return &result, nil
+}
+
+func (s *stubResolveUploadedImageStore) ResolvePublicURL(_ context.Context, key string) (string, error) {
+	s.publicURLKey = key
+	if s.publicURLErr != nil {
+		return "", s.publicURLErr
+	}
+	if s.publicURL == "" {
+		return "", errors.New("public url unavailable")
+	}
+	return s.publicURL, nil
 }
 
 func (s *stubResolveUploadedImageStore) Delete(context.Context, string) error {

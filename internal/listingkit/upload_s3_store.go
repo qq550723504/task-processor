@@ -17,6 +17,10 @@ type s3ImageUploadWriter interface {
 	Upload(ctx context.Context, key string, data []byte, contentType string) (string, error)
 }
 
+type s3ImageUploadPublicURLResolver interface {
+	PublicURL(key string) string
+}
+
 type s3ImageUploadReader interface {
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 }
@@ -90,7 +94,7 @@ func (s *s3ImageUploadStore) save(ctx context.Context, key string, input *ImageU
 		key = filepath.ToSlash(filepath.Join("legacy", uuid.NewString()+ext))
 	}
 	key = strings.TrimLeft(strings.TrimSpace(key), "/")
-	_, err := s.uploader.Upload(ctx, key, input.Data, contentType)
+	publicURL, err := s.uploader.Upload(ctx, key, input.Data, contentType)
 	if err != nil {
 		return nil, fmt.Errorf("upload to s3: %w", err)
 	}
@@ -102,11 +106,24 @@ func (s *s3ImageUploadStore) save(ctx context.Context, key string, input *ImageU
 
 	return &StoredUploadedImage{
 		Key:          key,
+		PublicURL:    strings.TrimSpace(publicURL),
 		Filename:     filepath.Base(filename),
 		ContentType:  contentType,
 		Size:         int64(len(input.Data)),
 		OriginalName: strings.TrimSpace(input.Filename),
 	}, nil
+}
+
+func (s *s3ImageUploadStore) ResolvePublicURL(_ context.Context, key string) (string, error) {
+	resolver, ok := s.uploader.(s3ImageUploadPublicURLResolver)
+	if !ok {
+		return "", fmt.Errorf("public url resolver is not configured")
+	}
+	publicURL := strings.TrimSpace(resolver.PublicURL(strings.TrimLeft(strings.TrimSpace(key), "/")))
+	if publicURL == "" {
+		return "", fmt.Errorf("public url is not configured")
+	}
+	return publicURL, nil
 }
 
 func (s *s3ImageUploadStore) Delete(ctx context.Context, key string) error {
@@ -159,8 +176,14 @@ func (s *s3ImageUploadStore) Open(ctx context.Context, key string) (*StoredUploa
 		size = int64(len(data))
 	}
 
+	publicURL := ""
+	if resolver, ok := s.uploader.(s3ImageUploadPublicURLResolver); ok {
+		publicURL = strings.TrimSpace(resolver.PublicURL(normalizedKey))
+	}
+
 	return &StoredUploadedImage{
 		Key:         normalizedKey,
+		PublicURL:   publicURL,
 		Filename:    filepath.Base(normalizedKey),
 		ContentType: contentType,
 		Size:        size,

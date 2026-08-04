@@ -134,9 +134,6 @@ func (s *taskStudioMediaService) editStudioDesignImageWithReferences(ctx context
 		}
 		if s.resolveUploadedImagePublicURL != nil {
 			publicURL, resolveErr := s.resolveUploadedImagePublicURL(ctx, key)
-			if resolveErr != nil && !errors.Is(resolveErr, ErrUploadedImageNotFound) {
-				return nil, fmt.Errorf("resolve uploaded reference public url: %w", resolveErr)
-			}
 			if resolveErr == nil {
 				validatedURL, validateErr := validateStudioReferencePublicHTTPSURL(publicURL)
 				if validateErr != nil {

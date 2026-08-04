@@ -1085,6 +1085,33 @@ func TestStudioEditAddsPublicURLForFrontendProxyUploadReference(t *testing.T) {
 	}
 }
 
+func TestStudioEditKeepsInlineBytesWhenPublicURLUnavailable(t *testing.T) {
+	generator := &stubStudioImageGenerator{generateResponse: &AIImageResponse{Data: []AIImageData{{B64JSON: "generated"}}}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
+		imageGenerator: generator,
+		loadUploadedImage: func(context.Context, string) (*UploadedImageFile, error) {
+			return &UploadedImageFile{ContentType: "image/webp", Data: validWebPData(t)}, nil
+		},
+		resolveUploadedImagePublicURL: func(context.Context, string) (string, error) {
+			return "", errors.New("public https url is required")
+		},
+	})
+
+	_, err := svc.editStudioDesignImageWithReferences(context.Background(), "test-model", "prompt", "1024x1024", []string{
+		"https://pod.shuomiai.com/api/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(generator.editRequests) != 1 {
+		t.Fatalf("edit requests = %d, want 1", len(generator.editRequests))
+	}
+	request := generator.editRequests[0]
+	if len(request.ImageData) == 0 || request.ImageURL != "" || len(request.ImageURLs) != 0 {
+		t.Fatalf("edit request = %#v, want inline bytes without public URL", request)
+	}
+}
+
 func (s *stubImageUploadStore) Save(_ context.Context, input *ImageUploadInput) (*StoredUploadedImage, error) {
 	s.saved = append(s.saved, input)
 	return &StoredUploadedImage{

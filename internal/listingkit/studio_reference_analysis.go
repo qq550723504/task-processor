@@ -159,19 +159,13 @@ func studioReferenceUploadedImageKeyFromURL(rawURL string) (string, bool) {
 	if trimmed == "" {
 		return "", false
 	}
-	for _, prefix := range studioReferenceUploadedImageURLPrefixes {
-		if strings.HasPrefix(trimmed, prefix) {
-			key := strings.TrimSpace(strings.TrimPrefix(trimmed, prefix))
-			return key, key != ""
-		}
-	}
 	parsed, err := url.ParseRequestURI(trimmed)
-	if err != nil || parsed == nil || !parsed.IsAbs() {
+	if err != nil || parsed == nil {
 		return "", false
 	}
 	for _, prefix := range studioReferenceUploadedImageURLPrefixes {
 		if strings.HasPrefix(parsed.Path, prefix) {
-			if prefix != "/api/listing-kits/uploads/files/" && !isStudioReferenceLocalHost(parsed.Hostname()) {
+			if parsed.IsAbs() && prefix != "/api/listing-kits/uploads/files/" && !isStudioReferenceLocalHost(parsed.Hostname()) {
 				return "", false
 			}
 			key := strings.TrimSpace(strings.TrimPrefix(parsed.Path, prefix))

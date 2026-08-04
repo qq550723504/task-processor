@@ -228,6 +228,7 @@ func (c *Client) buildImageInputParts(ctx context.Context, req *openaiclient.Ima
 			MIMEType: mimeType,
 			Data:     base64.StdEncoding.EncodeToString(req.Image),
 		}})
+		return dedupeInlineParts(parts), nil
 	}
 	for _, rawURL := range append([]string{req.ImageURL}, req.ImageURLs...) {
 		imageURL := strings.TrimSpace(rawURL)
