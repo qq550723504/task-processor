@@ -495,26 +495,44 @@ func TestSubmitStudioDesignsAsyncUsesEditPathWhenReferenceImagesExist(t *testing
 	}
 }
 
-func TestSubmitStudioDesignsAsyncRejectsOwnedUploadReference(t *testing.T) {
-	generator := &stubStudioImageGenerator{asyncSubmit: &AIImageAsyncSubmit{JobID: "job-1"}}
+func TestSubmitStudioDesignsAsyncFallsBackToSyncEditForOwnedUploadReference(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		asyncSubmit:      &AIImageAsyncSubmit{JobID: "job-1"},
+		generateResponse: &AIImageResponse{Data: []AIImageData{{B64JSON: base64.StdEncoding.EncodeToString([]byte("generated"))}}},
+	}
 	svc := &taskStudioMediaService{
 		imageGenerator: generator,
 		loadUploadedImage: func(context.Context, string) (*UploadedImageFile, error) {
 			return &UploadedImageFile{ContentType: "image/webp", Data: validWebPData(t)}, nil
 		},
+		uploadImages: func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error) {
+			return &UploadImagesResponse{ImageURLs: []string{"/api/v1/listing-kits/uploads/files/generated.png"}}, nil
+		},
 	}
 
-	_, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
+	result, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
 		Prompt:                    "retro cherries",
 		ArtworkGenerationMode:     "hot_reference",
 		Count:                     1,
 		ProductReferenceImageURLs: []string{"/api/v1/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901"},
 	})
-	if err == nil || !strings.Contains(err.Error(), "async editing does not support uploaded listingkit images") {
+	if err != nil {
 		t.Fatalf("SubmitStudioDesignsAsync() error = %v", err)
+	}
+	if result == nil || result.Submit == nil || result.Submit.Status != AIImageAsyncResultSucceeded {
+		t.Fatalf("result = %+v, want a completed direct result", result)
+	}
+	if result.Response == nil || len(result.Response.Images) != 1 || result.Response.Images[0].ImageURL != "/api/v1/listing-kits/uploads/files/generated.png" {
+		t.Fatalf("response = %+v, want persisted generated image", result.Response)
 	}
 	if generator.asyncEditCalls != 0 {
 		t.Fatalf("async edit calls = %d, want 0", generator.asyncEditCalls)
+	}
+	if generator.editCalls != 1 {
+		t.Fatalf("sync edit calls = %d, want 1", generator.editCalls)
+	}
+	if len(generator.editRequests) != 1 || len(generator.editRequests[0].ImageData) == 0 || generator.editRequests[0].ImageURL != "" {
+		t.Fatalf("sync edit request = %+v, want uploaded image bytes", generator.editRequests)
 	}
 }
 

@@ -71,11 +71,6 @@ func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, r
 		return nil, fmt.Errorf("studio image generator is not configured")
 	}
 
-	asyncGenerator, ok := s.imageGenerator.(AIAsyncImageGenerator)
-	if !ok {
-		return nil, ErrAsyncImageGenerationNotSupported
-	}
-
 	count := req.Count
 	if count <= 0 {
 		count = 1
@@ -91,7 +86,19 @@ func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, r
 	promptText := buildStudioDesignPromptWithContext(ctx, req, theme)
 	if len(referenceURLs) > 0 {
 		if hasOwnedListingKitUploadReference(referenceURLs) {
-			return nil, fmt.Errorf("invalid request: async editing does not support uploaded listingkit images")
+			generated, err := s.editStudioDesignImageWithReferences(ctx, model, promptText, size, referenceURLs)
+			if err != nil {
+				return nil, fmt.Errorf("edit studio design with uploaded reference: %w", err)
+			}
+			return s.buildStudioDesignAsyncSubmitResponse(ctx, req, &AIImageAsyncSubmit{
+				Provider: "listingkit-sync",
+				Status:   AIImageAsyncResultSucceeded,
+				Response: generated,
+			})
+		}
+		asyncGenerator, ok := s.imageGenerator.(AIAsyncImageGenerator)
+		if !ok {
+			return nil, ErrAsyncImageGenerationNotSupported
 		}
 		submit, err := asyncGenerator.SubmitImageEdit(ctx, &AIImageEditRequest{
 			Model:          model,
@@ -106,6 +113,10 @@ func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, r
 			return nil, err
 		}
 		return s.buildStudioDesignAsyncSubmitResponse(ctx, req, submit)
+	}
+	asyncGenerator, ok := s.imageGenerator.(AIAsyncImageGenerator)
+	if !ok {
+		return nil, ErrAsyncImageGenerationNotSupported
 	}
 	submit, err := asyncGenerator.SubmitImageGeneration(ctx, &AIImageGenerateRequest{
 		Model:          model,
