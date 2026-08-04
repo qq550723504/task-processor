@@ -56,6 +56,7 @@ func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*
 			UploadID:     uploadID,
 			StorageKey:   stored.Key,
 			Filename:     stored.Filename,
+			PublicURL:    strings.TrimSpace(stored.PublicURL),
 			ContentType:  stored.ContentType,
 			Size:         stored.Size,
 			OriginalName: stored.OriginalName,
