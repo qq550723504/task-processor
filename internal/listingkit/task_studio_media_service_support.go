@@ -84,6 +84,10 @@ func (s *taskStudioMediaService) resolveStudioDesignReferenceImageURL(ctx contex
 }
 
 func (s *taskStudioMediaService) generateStudioDesignImage(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*AIImageResponse, error) {
+	return s.generateStudioDesignImageWithPolicy(ctx, model, promptText, size, referenceURLs, false)
+}
+
+func (s *taskStudioMediaService) generateStudioDesignImageWithPolicy(ctx context.Context, model string, promptText string, size string, referenceURLs []string, preserveReferenceOnError bool) (*AIImageResponse, error) {
 	if len(referenceURLs) == 0 {
 		return s.generateStudioDesignImageWithoutReferences(ctx, model, promptText, size)
 	}
@@ -96,6 +100,9 @@ func (s *taskStudioMediaService) generateStudioDesignImage(ctx context.Context, 
 		if singleErr == nil {
 			return response, nil
 		}
+	}
+	if preserveReferenceOnError {
+		return nil, err
 	}
 	return s.generateStudioDesignImageWithoutReferences(ctx, model, promptText, size)
 }

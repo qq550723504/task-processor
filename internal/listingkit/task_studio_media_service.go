@@ -39,25 +39,37 @@ func newTaskStudioMediaService(config taskStudioMediaServiceConfig) *taskStudioM
 	}
 }
 
-func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, req *StudioDesignRequest) (*studioDesignAsyncSubmitResponse, error) {
+func (s *taskStudioMediaService) validateStudioDesignGenerationRequest(ctx context.Context, req *StudioDesignRequest) (string, []string, error) {
 	if req == nil {
-		return nil, fmt.Errorf("invalid request: request is required")
+		return "", nil, fmt.Errorf("invalid request: request is required")
 	}
 	theme := strings.TrimSpace(req.Prompt)
-	if theme == "" {
-		return nil, fmt.Errorf("invalid request: prompt is required")
+	mode := strings.TrimSpace(req.ArtworkGenerationMode)
+	if theme == "" && !strings.EqualFold(mode, studioArtworkGenerationModeHotReference) {
+		return "", nil, fmt.Errorf("invalid request: prompt is required")
+	}
+	if err := s.resolveStudioDesignReferenceImageURLs(ctx, req); err != nil {
+		return "", nil, err
+	}
+	referenceURLs, err := validateStudioDesignReferenceImageURLs(req)
+	if err != nil {
+		return "", nil, err
+	}
+	req.ProductReferenceImageURLs = referenceURLs
+	if err := validateStudioDesignPromptRequirement(req, referenceURLs); err != nil {
+		return "", nil, err
+	}
+	return theme, referenceURLs, nil
+}
+
+func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, req *StudioDesignRequest) (*studioDesignAsyncSubmitResponse, error) {
+	theme, referenceURLs, err := s.validateStudioDesignGenerationRequest(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 	if s.imageGenerator == nil {
 		return nil, fmt.Errorf("studio image generator is not configured")
 	}
-	if err := s.resolveStudioDesignReferenceImageURLs(ctx, req); err != nil {
-		return nil, err
-	}
-	referenceURLs, err := validateStudioDesignReferenceImageURLs(req)
-	if err != nil {
-		return nil, err
-	}
-	req.ProductReferenceImageURLs = referenceURLs
 
 	asyncGenerator, ok := s.imageGenerator.(AIAsyncImageGenerator)
 	if !ok {
@@ -76,7 +88,7 @@ func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, r
 	}
 	model := resolveStudioDesignImageModel(req, s.imageGenerator.GetDefaultModel())
 	size := resolveStudioDesignSize(req.PrintableWidth, req.PrintableHeight)
-	promptText := buildStudioDesignPromptWithTheme(req, theme)
+	promptText := buildStudioDesignPromptWithContext(ctx, req, theme)
 	if len(referenceURLs) > 0 {
 		if hasOwnedListingKitUploadReference(referenceURLs) {
 			return nil, fmt.Errorf("invalid request: async editing does not support uploaded listingkit images")
@@ -151,24 +163,13 @@ func (s *taskStudioMediaService) QueryStudioDesignsAsync(ctx context.Context, re
 }
 
 func (s *taskStudioMediaService) GenerateStudioDesigns(ctx context.Context, req *StudioDesignRequest) (*StudioDesignResponse, error) {
-	if req == nil {
-		return nil, fmt.Errorf("invalid request: request is required")
-	}
-	theme := strings.TrimSpace(req.Prompt)
-	if theme == "" {
-		return nil, fmt.Errorf("invalid request: prompt is required")
+	theme, referenceURLs, err := s.validateStudioDesignGenerationRequest(ctx, req)
+	if err != nil {
+		return nil, err
 	}
 	if s.imageGenerator == nil {
 		return nil, fmt.Errorf("studio image generator is not configured")
 	}
-	if err := s.resolveStudioDesignReferenceImageURLs(ctx, req); err != nil {
-		return nil, err
-	}
-	referenceURLs, err := validateStudioDesignReferenceImageURLs(req)
-	if err != nil {
-		return nil, err
-	}
-	req.ProductReferenceImageURLs = referenceURLs
 
 	count := req.Count
 	if count <= 0 {
@@ -195,8 +196,15 @@ func (s *taskStudioMediaService) GenerateStudioDesigns(ctx context.Context, req 
 	errs := make([]error, count)
 	generatedResponses := make([]*AIImageResponse, count)
 	generateOne := func(idx int) {
-		promptText := buildStudioDesignPromptWithTheme(req, themes[idx])
-		generated, err := s.generateStudioDesignImage(ctx, model, promptText, size, referenceURLs)
+		promptText := buildStudioDesignPromptWithContext(ctx, req, themes[idx])
+		generated, err := s.generateStudioDesignImageWithPolicy(
+			ctx,
+			model,
+			promptText,
+			size,
+			referenceURLs,
+			strings.EqualFold(strings.TrimSpace(req.ArtworkGenerationMode), studioArtworkGenerationModeHotReference),
+		)
 		if err != nil {
 			errs[idx] = fmt.Errorf("generate studio design %d: %w", idx+1, err)
 			return

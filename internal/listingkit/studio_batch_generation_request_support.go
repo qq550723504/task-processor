@@ -38,13 +38,11 @@ func validateStudioBatchDesignRequest(req *StudioDesignRequest) error {
 	if req == nil {
 		return fmt.Errorf("invalid request: prompt is required")
 	}
-	if strings.EqualFold(strings.TrimSpace(req.ArtworkGenerationMode), studioArtworkGenerationModeHotReference) && len(studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)) == 1 {
-		return nil
+	referenceURLs, err := validateStudioDesignReferenceImageURLs(req)
+	if err != nil {
+		return err
 	}
-	if strings.TrimSpace(req.Prompt) == "" {
-		return fmt.Errorf("invalid request: prompt is required")
-	}
-	return nil
+	return validateStudioDesignPromptRequirement(req, referenceURLs)
 }
 
 func validateStudioBatchRecordDesignSource(batch *StudioBatchRecord) error {
