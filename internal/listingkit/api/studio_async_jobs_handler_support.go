@@ -41,8 +41,21 @@ func studioAsyncLogFields(ctx context.Context, fields logrus.Fields) logrus.Fiel
 
 func requestBaseURL(c *gin.Context) string {
 	scheme := "http"
-	if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
+	forwardedProto := firstForwardedValue(c.GetHeader("X-Forwarded-Proto"))
+	if c.Request.TLS != nil || strings.EqualFold(forwardedProto, "https") {
 		scheme = "https"
 	}
-	return scheme + "://" + c.Request.Host
+	host := firstForwardedValue(c.GetHeader("X-Forwarded-Host"))
+	if !validForwardedHost(host) {
+		host = c.Request.Host
+	}
+	return scheme + "://" + host
+}
+
+func firstForwardedValue(value string) string {
+	return strings.TrimSpace(strings.Split(value, ",")[0])
+}
+
+func validForwardedHost(host string) bool {
+	return host != "" && !strings.ContainsAny(host, "\r\n /\\")
 }

@@ -18,6 +18,7 @@ func (h *handler) UploadListingKitImages(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
+	defer form.RemoveAll()
 
 	files := form.File["files"]
 	if len(files) == 0 {
@@ -119,11 +120,7 @@ func absolutizeUploadedImageURLs(c *gin.Context, urls []string) []string {
 	if len(urls) == 0 {
 		return nil
 	}
-	scheme := "http"
-	if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
-		scheme = "https"
-	}
-	return absolutizeUploadedImageURLsWithBase(scheme+"://"+c.Request.Host, urls)
+	return absolutizeUploadedImageURLsWithBase(requestBaseURL(c), urls)
 }
 
 func absolutizeUploadedImageURLsWithBase(baseURL string, urls []string) []string {
