@@ -303,19 +303,36 @@ describe("SHEIN Studio generation controller", () => {
     });
   });
 
-  it("uses the hot style reference image directly in hot reference mode", () => {
+  it("uses the persisted artwork prompt instead of the ordinary theme prompt in hot reference mode", () => {
     expect(
       buildHotStyleReferenceGenerationInput({
         artworkGenerationMode: "hot_reference",
-        prompt: "summer flowers",
+        prompt: "hoodie product mockup",
+        hotStyleReferenceBrief: "bold retro eagle badge",
+        hotStyleReferencePrompt: "Original eagle badge artwork, red and cream palette",
         productReferenceImageUrls: ["https://example.com/mockup.png"],
         hotStyleReferenceImageUrls: [
-          "https://example.com/hot-ref.png",
+          " https://example.com/hot-ref.png ",
           "https://example.com/hot-ref-2.png",
         ],
       }),
     ).toEqual({
-      prompt: "summer flowers",
+      prompt: "Original eagle badge artwork, red and cream palette",
+      productReferenceImageUrls: ["https://example.com/hot-ref.png"],
+    });
+  });
+
+  it("falls back to the persisted artwork brief when the extracted prompt is empty", () => {
+    expect(
+      buildHotStyleReferenceGenerationInput({
+        artworkGenerationMode: "hot_reference",
+        prompt: "mug product mockup",
+        hotStyleReferenceBrief: "hand-drawn botanical badge",
+        hotStyleReferencePrompt: "  ",
+        hotStyleReferenceImageUrls: ["https://example.com/hot-ref.png"],
+      }),
+    ).toEqual({
+      prompt: "hand-drawn botanical badge",
       productReferenceImageUrls: ["https://example.com/hot-ref.png"],
     });
   });
@@ -411,7 +428,7 @@ describe("SHEIN Studio generation controller", () => {
         printableWidth: 300,
         printableHeight: 400,
         artworkGenerationMode: "hot_reference",
-        prompt: "summer flowers",
+        prompt: "Create an original retro badge.",
         productReferenceImageUrls: ["https://example.com/ref.png"],
       }),
       expect.objectContaining({ onJobStarted: expect.any(Function) }),
