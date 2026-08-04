@@ -148,7 +148,7 @@ func TestUploadListingKitImagesUsesForwardedPublicBaseAndRemovesMultipartTempFil
 	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("unmarshal body: %v", err)
 	}
-	if got, want := payload.ImageURLs, []string{"https://pod.shuomiai.com/api/v1/listing-kits/uploads/files/reference.jpg"}; !reflect.DeepEqual(got, want) {
+	if got, want := payload.ImageURLs, []string{"https://pod.shuomiai.com/api/listing-kits/uploads/files/reference.jpg"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("image_urls = %#v, want %#v", got, want)
 	}
 	if req.MultipartForm == nil {
@@ -156,6 +156,27 @@ func TestUploadListingKitImagesUsesForwardedPublicBaseAndRemovesMultipartTempFil
 	}
 	if _, err := req.MultipartForm.File["files"][0].Open(); err == nil {
 		t.Fatal("multipart temporary file is still readable after request handling")
+	}
+}
+
+func TestPublicizeUploadedImageURLsMapsInternalUploadPaths(t *testing.T) {
+	t.Parallel()
+
+	urls := publicizeUploadedImageURLsWithBase(
+		"https://pod.shuomiai.com",
+		[]string{
+			"/api/v1/listing-kits/uploads/files/relative.jpg",
+			"http://product-listing-api:8085/api/v1/listing-kits/uploads/files/absolute.jpg",
+			"https://cdn.example.com/other/image.jpg",
+		},
+	)
+	want := []string{
+		"https://pod.shuomiai.com/api/listing-kits/uploads/files/relative.jpg",
+		"https://pod.shuomiai.com/api/listing-kits/uploads/files/absolute.jpg",
+		"https://cdn.example.com/other/image.jpg",
+	}
+	if !reflect.DeepEqual(urls, want) {
+		t.Fatalf("publicized URLs = %#v, want %#v", urls, want)
 	}
 }
 
