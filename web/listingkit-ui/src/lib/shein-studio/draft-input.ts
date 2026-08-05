@@ -152,7 +152,7 @@ function resolveExclusiveArtworkInputs(input: {
   if (artworkGenerationMode === "hot_reference") {
     return {
       artworkGenerationMode,
-      prompt: "",
+      prompt: input.prompt,
       hotStyleReferenceImageUrls: input.hotStyleReferenceImageUrls ?? [],
       hotStyleReferenceBrief: input.hotStyleReferenceBrief ?? "",
       hotStyleReferencePrompt: input.hotStyleReferencePrompt ?? "",

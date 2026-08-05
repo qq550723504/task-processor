@@ -85,6 +85,7 @@ func buildS3ImageUploadStore(cfg *config.Config, logger *logrus.Logger) listingk
 		Bucket: cfg.ProductImage.Publisher.S3.Bucket,
 		Uploader: storageinfra.NewS3UploaderWithOptions(client, storageinfra.S3UploaderOptions{
 			Bucket:       cfg.ProductImage.Publisher.S3.Bucket,
+			PublicBase:   cfg.ProductImage.Publisher.PublicBase,
 			Endpoint:     cfg.ProductImage.Publisher.S3.Endpoint,
 			UsePathStyle: cfg.ProductImage.Publisher.S3.UsePathStyle,
 		}),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 type taskStudioSessionRepoWiring struct {
@@ -198,6 +199,16 @@ func buildResolveUploadedImagePublicURLFunc(s *service) func(context.Context, st
 			if err == nil {
 				if publicURL, validateErr := validateStudioReferencePublicHTTPSURL(record.PublicURL); validateErr == nil {
 					return publicURL, nil
+				}
+				if store != nil && strings.TrimSpace(record.StorageKey) != "" {
+					if resolver, ok := store.(ImageUploadPublicURLResolver); ok {
+						publicURL, resolveErr := resolver.ResolvePublicURL(ctx, record.StorageKey)
+						if resolveErr == nil {
+							if validatedURL, validateErr := validateStudioReferencePublicHTTPSURL(publicURL); validateErr == nil {
+								return validatedURL, nil
+							}
+						}
+					}
 				}
 			} else if !shouldFallbackUploadedImagePublicURLLookup(err) {
 				return "", err

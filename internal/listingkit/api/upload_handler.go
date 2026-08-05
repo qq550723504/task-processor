@@ -12,12 +12,18 @@ import (
 	"task-processor/internal/listingsubscription"
 )
 
+const (
+	internalUploadedImagePathPrefix = "/api/v1/listing-kits/uploads/files/"
+	publicUploadedImagePathPrefix   = "/api/listing-kits/uploads/files/"
+)
+
 func (h *handler) UploadListingKitImages(c *gin.Context) {
 	form, err := c.MultipartForm()
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
+	defer form.RemoveAll()
 
 	files := form.File["files"]
 	if len(files) == 0 {
@@ -66,7 +72,7 @@ func (h *handler) UploadListingKitImages(c *gin.Context) {
 	}
 	h.recordSubscriptionUsage(c, listingsubscription.ModuleOSSStorage, "storage_bytes", totalBytes)
 	h.recordSubscriptionUsage(c, listingsubscription.ModuleOSSStorage, "uploaded_bytes", totalBytes)
-	response.ImageURLs = absolutizeUploadedImageURLs(c, response.ImageURLs)
+	response.ImageURLs = publicizeUploadedImageURLs(c, response.ImageURLs)
 
 	c.JSON(http.StatusOK, response)
 }
@@ -119,11 +125,7 @@ func absolutizeUploadedImageURLs(c *gin.Context, urls []string) []string {
 	if len(urls) == 0 {
 		return nil
 	}
-	scheme := "http"
-	if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
-		scheme = "https"
-	}
-	return absolutizeUploadedImageURLsWithBase(scheme+"://"+c.Request.Host, urls)
+	return absolutizeUploadedImageURLsWithBase(requestBaseURL(c), urls)
 }
 
 func absolutizeUploadedImageURLsWithBase(baseURL string, urls []string) []string {
@@ -140,4 +142,43 @@ func absolutizeUploadedImageURLsWithBase(baseURL string, urls []string) []string
 		absolute = append(absolute, baseURL+rawURL)
 	}
 	return absolute
+}
+
+func publicizeUploadedImageURLs(c *gin.Context, urls []string) []string {
+	if len(urls) == 0 {
+		return nil
+	}
+	return publicizeUploadedImageURLsWithBase(requestBaseURL(c), urls)
+}
+
+func publicizeUploadedImageURLsWithBase(baseURL string, urls []string) []string {
+	if len(urls) == 0 {
+		return nil
+	}
+
+	publicBase, _ := url.Parse(baseURL)
+	public := make([]string, 0, len(urls))
+	for _, rawURL := range urls {
+		parsed, err := url.Parse(rawURL)
+		if err == nil && parsed.IsAbs() {
+			if strings.HasPrefix(parsed.Path, internalUploadedImagePathPrefix) {
+				if publicBase != nil && publicBase.IsAbs() {
+					parsed.Scheme = publicBase.Scheme
+					parsed.Host = publicBase.Host
+				}
+				parsed.Path = publicUploadedImagePathPrefix + strings.TrimPrefix(parsed.Path, internalUploadedImagePathPrefix)
+				public = append(public, parsed.String())
+				continue
+			}
+			public = append(public, rawURL)
+			continue
+		}
+
+		path := rawURL
+		if strings.HasPrefix(path, internalUploadedImagePathPrefix) {
+			path = publicUploadedImagePathPrefix + strings.TrimPrefix(path, internalUploadedImagePathPrefix)
+		}
+		public = append(public, baseURL+path)
+	}
+	return public
 }

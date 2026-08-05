@@ -433,8 +433,8 @@ func TestBuildStudioBatchItemDesignRequestUsesHotReferenceImageDirectly(t *testi
 	if req == nil {
 		t.Fatal("buildStudioBatchItemDesignRequest() = nil")
 	}
-	if got := req.Prompt; got != "punk eagle collage" {
-		t.Fatalf("Prompt = %q, want user prompt only", got)
+	if got, want := req.Prompt, "Create an original retro badge.\nAdditional artwork constraints: punk eagle collage"; got != want {
+		t.Fatalf("Prompt = %q, want %q", got, want)
 	}
 	if got, want := req.ArtworkGenerationMode, "hot_reference"; got != want {
 		t.Fatalf("ArtworkGenerationMode = %q, want %q", got, want)
@@ -477,8 +477,8 @@ func TestBuildStudioBatchItemDesignRequestUsesHotReferenceImageWithoutAnalysis(t
 	if req == nil {
 		t.Fatal("buildStudioBatchItemDesignRequest() = nil")
 	}
-	if got := req.Prompt; got != "punk eagle collage" {
-		t.Fatalf("Prompt = %q, want user prompt only", got)
+	if got, want := req.Prompt, "Create an original retro badge.\nAdditional artwork constraints: punk eagle collage"; got != want {
+		t.Fatalf("Prompt = %q, want %q", got, want)
 	}
 	if got, want := req.ArtworkGenerationMode, "hot_reference"; got != want {
 		t.Fatalf("ArtworkGenerationMode = %q, want %q", got, want)
@@ -792,8 +792,8 @@ func TestTaskStudioBatchServiceRetryItemsUsesExistingHotReferenceImageWithPrompt
 	if capturedReq == nil {
 		t.Fatal("capturedReq = nil, want retry generation request")
 	}
-	if got := capturedReq.Prompt; got != "" {
-		t.Fatalf("captured prompt = %q, want empty user prompt", got)
+	if got, want := capturedReq.Prompt, "Create an original skull streetwear print."; got != want {
+		t.Fatalf("captured prompt = %q, want %q", got, want)
 	}
 	if got, want := capturedReq.ArtworkGenerationMode, studioArtworkGenerationModeHotReference; got != want {
 		t.Fatalf("artwork generation mode = %q, want %q", got, want)

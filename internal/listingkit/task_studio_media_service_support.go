@@ -169,6 +169,10 @@ func (s *taskStudioMediaService) resolveStudioDesignReferenceImageURL(ctx contex
 }
 
 func (s *taskStudioMediaService) generateStudioDesignImage(ctx context.Context, model string, promptText string, size string, referenceURLs []string) (*AIImageResponse, error) {
+	return s.generateStudioDesignImageWithPolicy(ctx, model, promptText, size, referenceURLs, false)
+}
+
+func (s *taskStudioMediaService) generateStudioDesignImageWithPolicy(ctx context.Context, model string, promptText string, size string, referenceURLs []string, preserveReferenceOnError bool) (*AIImageResponse, error) {
 	if len(referenceURLs) == 0 {
 		return s.generateStudioDesignImageWithoutReferences(ctx, model, promptText, size)
 	}
@@ -181,6 +185,9 @@ func (s *taskStudioMediaService) generateStudioDesignImage(ctx context.Context, 
 		if singleErr == nil {
 			return response, nil
 		}
+	}
+	if preserveReferenceOnError {
+		return nil, err
 	}
 	return s.generateStudioDesignImageWithoutReferences(ctx, model, promptText, size)
 }
@@ -201,7 +208,7 @@ func (s *taskStudioMediaService) editStudioDesignImageWithReferences(ctx context
 		if file == nil || len(file.Data) == 0 || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(file.ContentType)), "image/") {
 			return nil, fmt.Errorf("invalid uploaded image data")
 		}
-		return s.imageGenerator.EditImage(ctx, &AIImageEditRequest{
+		request := &AIImageEditRequest{
 			Model:            model,
 			Prompt:           promptText,
 			ImageData:        file.Data,
@@ -209,7 +216,19 @@ func (s *taskStudioMediaService) editStudioDesignImageWithReferences(ctx context
 			Size:             size,
 			ResponseFormat:   "b64_json",
 			N:                1,
-		})
+		}
+		if s.resolveUploadedImagePublicURL != nil {
+			publicURL, resolveErr := s.resolveUploadedImagePublicURL(ctx, key)
+			if resolveErr == nil {
+				validatedURL, validateErr := validateStudioReferencePublicHTTPSURL(publicURL)
+				if validateErr != nil {
+					return nil, fmt.Errorf("invalid uploaded reference public url: %w", validateErr)
+				}
+				request.ImageURL = validatedURL
+				request.ImageURLs = []string{validatedURL}
+			}
+		}
+		return s.imageGenerator.EditImage(ctx, request)
 	}
 	return s.imageGenerator.EditImage(ctx, &AIImageEditRequest{
 		Model:          model,

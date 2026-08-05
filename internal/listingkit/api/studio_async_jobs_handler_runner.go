@@ -51,7 +51,7 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		}
 		if response != nil {
 			for idx := range response.Images {
-				response.Images[idx].ImageURL = absolutizeUploadedImageURLsWithBase(baseURL, []string{response.Images[idx].ImageURL})[0]
+				response.Images[idx].ImageURL = publicizeUploadedImageURLsWithBase(baseURL, []string{response.Images[idx].ImageURL})[0]
 			}
 		}
 		h.syncStudioDesignAsyncJobSession(ctx, sessionID, listingkit.StudioAsyncJobStatusSucceeded, jobID, "")
@@ -70,7 +70,7 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		}
 		if response != nil {
 			for idx := range response.Images {
-				response.Images[idx].ImageURL = absolutizeUploadedImageURLsWithBase(baseURL, []string{response.Images[idx].ImageURL})[0]
+				response.Images[idx].ImageURL = publicizeUploadedImageURLsWithBase(baseURL, []string{response.Images[idx].ImageURL})[0]
 			}
 		}
 		result = response

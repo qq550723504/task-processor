@@ -123,6 +123,8 @@ async function proxyRequest(
   const headers = buildListingKitUpstreamHeaders(
     request.headers,
     verifiedIdentity,
+    request.nextUrl.protocol,
+    request.nextUrl.host,
   );
   if (zitadelToken && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${zitadelToken}`);

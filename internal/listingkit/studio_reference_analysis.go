@@ -15,6 +15,11 @@ import (
 
 const maxStudioReferenceAnalysisImages = 1
 
+const (
+	studioReferenceInternalUploadPathPrefix = "/api/v1/listing-kits/uploads/files/"
+	studioReferencePublicUploadPathPrefix   = "/api/listing-kits/uploads/files/"
+)
+
 func (s *service) AnalyzeStudioReferenceStyle(ctx context.Context, req *StudioReferenceAnalysisRequest) (*StudioReferenceAnalysisResponse, error) {
 	return s.taskStudioMediaOrDefault().AnalyzeStudioReferenceStyle(ctx, req)
 }
@@ -160,23 +165,25 @@ func studioReferenceUploadedImageKeyFromURL(rawURL string) (string, bool) {
 	if trimmed == "" {
 		return "", false
 	}
-	const prefix = "/api/v1/listing-kits/uploads/files/"
-	if strings.HasPrefix(trimmed, prefix) {
-		key := strings.TrimSpace(strings.TrimPrefix(trimmed, prefix))
-		return key, key != ""
-	}
 	parsed, err := url.ParseRequestURI(trimmed)
-	if err != nil || parsed == nil || !parsed.IsAbs() {
+	if err != nil || parsed == nil {
 		return "", false
 	}
-	if !isStudioReferenceLocalHost(parsed.Hostname()) {
-		return "", false
+	for _, prefix := range studioReferenceUploadedImageURLPrefixes {
+		if strings.HasPrefix(parsed.Path, prefix) {
+			if parsed.IsAbs() && prefix != "/api/listing-kits/uploads/files/" && !isStudioReferenceLocalHost(parsed.Hostname()) {
+				return "", false
+			}
+			key := strings.TrimSpace(strings.TrimPrefix(parsed.Path, prefix))
+			return key, key != ""
+		}
 	}
-	if !strings.HasPrefix(parsed.Path, prefix) {
-		return "", false
-	}
-	key := strings.TrimSpace(strings.TrimPrefix(parsed.Path, prefix))
-	return key, key != ""
+	return "", false
+}
+
+var studioReferenceUploadedImageURLPrefixes = []string{
+	"/api/v1/listing-kits/uploads/files/",
+	"/api/listing-kits/uploads/files/",
 }
 
 func studioReferenceUploadedImageKeyCandidates(rawURL string) []string {

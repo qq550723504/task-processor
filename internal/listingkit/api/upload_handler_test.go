@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -94,6 +95,89 @@ func TestUploadListingKitImagesReturnsImageURLs(t *testing.T) {
 		}
 	}
 	t.Fatal("oss storage entitlement view missing")
+}
+
+func TestUploadListingKitImagesUsesForwardedPublicBaseAndRemovesMultipartTempFiles(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubStudioMediaHandlerService{
+		uploadResponse: &listingkit.UploadImagesResponse{
+			ImageURLs: []string{"/api/v1/listing-kits/uploads/files/reference.jpg"},
+		},
+	}
+	h, err := NewHandler(
+		&stubHandlerCoreService{},
+		WithStudioMediaService(svc),
+		WithUploadedImageDeleteService(svc),
+		WithSubscriptionService(activeOSSStorageSubscriptionService(t, nil)),
+	)
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	file, err := writer.CreateFormFile("files", "reference.jpg")
+	if err != nil {
+		t.Fatalf("CreateFormFile() error = %v", err)
+	}
+	if _, err := file.Write(bytes.Repeat([]byte("x"), 4096)); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	router := gin.New()
+	router.MaxMultipartMemory = 1
+	router.POST("/api/v1/listing-kits/uploads/images", h.UploadListingKitImages)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/uploads/images", body)
+	req.Host = "product-listing-api:8085"
+	req.Header.Set("X-Forwarded-Host", "pod.shuomiai.com")
+	req.Header.Set("X-Forwarded-Proto", "https")
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", resp.Code, resp.Body.String())
+	}
+	var payload listingkit.UploadImagesResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal body: %v", err)
+	}
+	if got, want := payload.ImageURLs, []string{"https://pod.shuomiai.com/api/listing-kits/uploads/files/reference.jpg"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("image_urls = %#v, want %#v", got, want)
+	}
+	if req.MultipartForm == nil {
+		t.Fatal("request multipart form is nil")
+	}
+	if _, err := req.MultipartForm.File["files"][0].Open(); err == nil {
+		t.Fatal("multipart temporary file is still readable after request handling")
+	}
+}
+
+func TestPublicizeUploadedImageURLsMapsInternalUploadPaths(t *testing.T) {
+	t.Parallel()
+
+	urls := publicizeUploadedImageURLsWithBase(
+		"https://pod.shuomiai.com",
+		[]string{
+			"/api/v1/listing-kits/uploads/files/relative.jpg",
+			"http://product-listing-api:8085/api/v1/listing-kits/uploads/files/absolute.jpg",
+			"https://cdn.example.com/other/image.jpg",
+		},
+	)
+	want := []string{
+		"https://pod.shuomiai.com/api/listing-kits/uploads/files/relative.jpg",
+		"https://pod.shuomiai.com/api/listing-kits/uploads/files/absolute.jpg",
+		"https://cdn.example.com/other/image.jpg",
+	}
+	if !reflect.DeepEqual(urls, want) {
+		t.Fatalf("publicized URLs = %#v, want %#v", urls, want)
+	}
 }
 
 func TestUploadListingKitImagesReturnsBadRequestWithoutFiles(t *testing.T) {

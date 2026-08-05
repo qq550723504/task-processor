@@ -156,3 +156,57 @@ func TestClientEditImageDownloadsSourceURLsAndSendsInlineData(t *testing.T) {
 		t.Fatalf("b64_json = %q", resp.Data[0].B64JSON)
 	}
 }
+
+func TestClientEditImageUsesInlineBytesWithoutDownloadingDuplicateURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/should-not-download.png" {
+			t.Fatalf("duplicate source URL was downloaded")
+		}
+		if r.URL.Path != "/v1beta/models/gemini-2.5-flash-image:generateContent" {
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		contents, _ := req["contents"].([]any)
+		parts, _ := contents[0].(map[string]any)["parts"].([]any)
+		if len(parts) != 2 {
+			t.Fatalf("parts = %#v, want inline image and text parts", parts)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"candidates": []map[string]any{{
+				"content": map[string]any{"parts": []map[string]any{{
+					"inlineData": map[string]any{
+						"mimeType": "image/png",
+						"data":     base64.StdEncoding.EncodeToString([]byte("edited-image")),
+					},
+				}}},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		APIKey:      "test-key",
+		Model:       "gemini-2.5-flash-image",
+		BaseURL:     server.URL + "/v1beta",
+		Timeout:     time.Second,
+		MaxAttempts: 1,
+		HTTPClient:  server.Client(),
+	})
+
+	resp, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
+		Prompt:           "edit faithfully",
+		Image:            []byte("inline-image"),
+		ImageContentType: "image/png",
+		ImageURL:         server.URL + "/should-not-download.png",
+		ImageURLs:        []string{server.URL + "/should-not-download.png"},
+	})
+	if err != nil {
+		t.Fatalf("EditImage() error = %v", err)
+	}
+	if len(resp.Data) != 1 {
+		t.Fatalf("data len = %d", len(resp.Data))
+	}
+}

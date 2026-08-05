@@ -618,8 +618,8 @@ func TestExecuteStudioBatchRunItemUsesHotReferenceImageDirectlyForBatchGeneratio
 	if capturedReq == nil {
 		t.Fatal("capturedReq = nil, want batch generation request")
 	}
-	if got := capturedReq.Prompt; got != "summer flowers" {
-		t.Fatalf("capturedReq.Prompt = %q, want user prompt only", got)
+	if got, want := capturedReq.Prompt, "Create an original retro badge.\nAdditional artwork constraints: summer flowers"; got != want {
+		t.Fatalf("capturedReq.Prompt = %q, want %q", got, want)
 	}
 	if got, want := capturedReq.ArtworkGenerationMode, "hot_reference"; got != want {
 		t.Fatalf("capturedReq.ArtworkGenerationMode = %q, want %q", got, want)
@@ -683,8 +683,8 @@ func TestExecuteStudioBatchRunItemUsesHotStyleReferenceImagesWithoutAnalysis(t *
 	if capturedReq == nil {
 		t.Fatal("capturedReq = nil, want batch generation request")
 	}
-	if got := capturedReq.Prompt; got != "summer flowers" {
-		t.Fatalf("capturedReq.Prompt = %q, want user prompt only", got)
+	if got, want := capturedReq.Prompt, "Create an original retro badge.\nAdditional artwork constraints: summer flowers"; got != want {
+		t.Fatalf("capturedReq.Prompt = %q, want %q", got, want)
 	}
 	if got, want := capturedReq.ArtworkGenerationMode, "hot_reference"; got != want {
 		t.Fatalf("capturedReq.ArtworkGenerationMode = %q, want %q", got, want)

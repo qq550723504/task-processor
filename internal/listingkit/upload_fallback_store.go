@@ -51,3 +51,13 @@ func (s *fallbackImageUploadStore) Delete(ctx context.Context, key string) error
 	}
 	return s.fallback.Delete(ctx, key)
 }
+
+func (s *fallbackImageUploadStore) ResolvePublicURL(ctx context.Context, key string) (string, error) {
+	if resolver, ok := s.primary.(ImageUploadPublicURLResolver); ok {
+		return resolver.ResolvePublicURL(ctx, key)
+	}
+	if resolver, ok := s.fallback.(ImageUploadPublicURLResolver); ok {
+		return resolver.ResolvePublicURL(ctx, key)
+	}
+	return "", fmt.Errorf("public url resolver is not configured")
+}
