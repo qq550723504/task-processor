@@ -132,6 +132,22 @@ type ItemizedFailedRetryRunnerInput = ItemizedFailedRetryRequestInput & {
   ) => Promise<SheinStudioBatchDetail>;
 };
 
+type ItemizedBackgroundRemovalRetryRunnerInput = {
+  activeBatchId: string;
+  applyHydratedBatch: (batch: SheinStudioWorkbenchHydratedBatch) => void;
+  currentActiveBatch?: Partial<SheinStudioSavedBatch> | null;
+  designId: string;
+  detail?: SheinStudioBatchDetail | null;
+  getHydratedBatch: (
+    batchId: string,
+  ) => Promise<SheinStudioWorkbenchHydratedBatch | null>;
+  retryBackgroundRemoval: (
+    batchId: string,
+    designIds: string[],
+    options?: { tenantId?: string },
+  ) => Promise<SheinStudioBatchDetail>;
+};
+
 type ItemizedGenerationPollBatchInput = {
   activeBatchId: string;
   getHydratedBatch: (
@@ -492,6 +508,37 @@ export async function runItemizedFailedRetry({
     });
   }
   return retryItems(retryRequest.batchId, retryRequest.itemIds);
+}
+
+export async function runItemizedBackgroundRemovalRetry({
+  activeBatchId,
+  applyHydratedBatch,
+  currentActiveBatch,
+  designId,
+  detail,
+  getHydratedBatch,
+  retryBackgroundRemoval,
+}: ItemizedBackgroundRemovalRetryRunnerInput): Promise<SheinStudioBatchDetail> {
+  if (!activeBatchId) {
+    throw new Error("当前批次不可用，请刷新后重试。");
+  }
+
+  let resolvedDetail = detail;
+  if (!resolvedDetail) {
+    const hydratedBatch = await getHydratedBatch(activeBatchId);
+    if (!hydratedBatch) {
+      throw new Error("当前批次详情不可用，请刷新后重试。");
+    }
+    applyHydratedBatch(hydratedBatch);
+    resolvedDetail = hydratedBatch.detail;
+  }
+
+  const tenantId =
+    resolvedDetail.batch.tenantId?.trim() || currentActiveBatch?.tenantId?.trim();
+  if (tenantId) {
+    return retryBackgroundRemoval(activeBatchId, [designId], { tenantId });
+  }
+  return retryBackgroundRemoval(activeBatchId, [designId]);
 }
 
 export async function loadItemizedGenerationPollBatch({
