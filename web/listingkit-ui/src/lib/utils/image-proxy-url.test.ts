@@ -46,4 +46,11 @@ describe("toImageProxyUrl", () => {
       "/api/listing-kits/uploads/files/20260610/2ce3d54a-8ce9-459c-8118-cf8586d06e2d.png?version=1",
     );
   });
+
+  it("keeps already normalized listingkit upload URLs unchanged", () => {
+    const url =
+      "/api/listing-kits/uploads/files/8068c1dc-6383-49c6-a635-8e1d79ee6e4d";
+
+    expect(toImageProxyUrl(url)).toBe(url);
+  });
 });
