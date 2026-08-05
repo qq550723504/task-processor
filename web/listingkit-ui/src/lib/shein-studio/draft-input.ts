@@ -102,6 +102,7 @@ function toPersistedGroupedWorkspace(
     hotStyleReferencePrompt: artworkInputs.hotStyleReferencePrompt,
     artworkModel: group.artworkModel,
     transparentBackground: group.transparentBackground,
+    transparentBackgroundMode: group.transparentBackgroundMode,
     variationIntensity: group.variationIntensity,
     legacyCompatibilitySnapshot: buildLegacyCompatibilitySnapshot({
       designs: group.designs,

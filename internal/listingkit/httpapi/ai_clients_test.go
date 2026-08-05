@@ -497,6 +497,25 @@ func TestListingKitBackgroundRemoverPassesImageBytesToConfiguredClient(t *testin
 	}
 }
 
+func TestListingKitBackgroundRemoverPassesPublicURLToConfiguredClient(t *testing.T) {
+	generator := &backgroundRemovalImageGenerator{
+		response: &openaiclient.ImageResponse{
+			Data: []openaiclient.ImageData{{B64JSON: "cG5n"}},
+		},
+	}
+	remover := adaptListingKitBackgroundRemover(generator)
+
+	if _, err := remover.(listingkit.StudioBackgroundRemoverFromURL).RemoveFromURL(context.Background(), "https://cdn.example.test/source.png"); err != nil {
+		t.Fatalf("RemoveFromURL() error = %v", err)
+	}
+	if generator.editReq.ImageURL != "https://cdn.example.test/source.png" || len(generator.editReq.ImageURLs) != 1 || generator.editReq.ImageURLs[0] != generator.editReq.ImageURL {
+		t.Fatalf("edit request urls = %#v/%#v", generator.editReq.ImageURL, generator.editReq.ImageURLs)
+	}
+	if len(generator.editReq.Image) != 0 {
+		t.Fatalf("edit request unexpectedly contains image bytes: %d", len(generator.editReq.Image))
+	}
+}
+
 func TestListingKitBackgroundRemoverRejectsEmptyProviderResponse(t *testing.T) {
 	remover := adaptListingKitBackgroundRemover(&backgroundRemovalImageGenerator{})
 	if _, err := remover.Remove(context.Background(), []byte("source"), "image/png"); err == nil {

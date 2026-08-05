@@ -33,13 +33,33 @@ func (r listingKitBackgroundRemover) Remove(ctx context.Context, input []byte, c
 	if len(input) == 0 {
 		return nil, fmt.Errorf("background removal input is empty")
 	}
-	response, err := r.client.EditImage(ctx, &openaiclient.ImageEditRequest{
+	return r.remove(ctx, &openaiclient.ImageEditRequest{
 		Prompt:           studioBackgroundRemovalPrompt,
 		Image:            input,
 		ImageContentType: strings.TrimSpace(contentType),
 		ResponseFormat:   "b64_json",
 		N:                1,
 	})
+}
+
+func (r listingKitBackgroundRemover) RemoveFromURL(ctx context.Context, imageURL string) (*listingkit.StudioBackgroundRemovalResult, error) {
+	if r.client == nil {
+		return nil, fmt.Errorf("background removal client is not configured")
+	}
+	if strings.TrimSpace(imageURL) == "" {
+		return nil, fmt.Errorf("background removal image url is empty")
+	}
+	return r.remove(ctx, &openaiclient.ImageEditRequest{
+		Prompt:         studioBackgroundRemovalPrompt,
+		ImageURL:       strings.TrimSpace(imageURL),
+		ImageURLs:      []string{strings.TrimSpace(imageURL)},
+		ResponseFormat: "b64_json",
+		N:              1,
+	})
+}
+
+func (r listingKitBackgroundRemover) remove(ctx context.Context, req *openaiclient.ImageEditRequest) (*listingkit.StudioBackgroundRemovalResult, error) {
+	response, err := r.client.EditImage(ctx, req)
 	if err != nil {
 		return nil, err
 	}

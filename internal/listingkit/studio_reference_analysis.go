@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"path"
 	"strings"
@@ -224,7 +225,24 @@ func validateStudioReferencePublicHTTPSURL(rawURL string) (string, error) {
 	if isStudioReferenceLocalHost(parsed.Hostname()) {
 		return "", fmt.Errorf("public https url is required")
 	}
+	if ip := net.ParseIP(parsed.Hostname()); ip != nil && isStudioReferencePrivateIP(ip) {
+		return "", fmt.Errorf("public https url is required")
+	}
 	return parsed.String(), nil
+}
+
+func isStudioReferencePrivateIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+		return true
+	}
+	if ipv4 := ip.To4(); ipv4 != nil {
+		return ipv4[0] == 100 && ipv4[1] >= 64 && ipv4[1] <= 127 ||
+			ipv4[0] == 198 && ipv4[1] >= 18 && ipv4[1] <= 19
+	}
+	return false
 }
 
 func isStudioReferenceLocalHost(host string) bool {

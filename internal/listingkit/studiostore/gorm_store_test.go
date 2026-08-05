@@ -237,6 +237,15 @@ func TestGormRepositoryUpsertDesignsPreservesExistingSessionDesigns(t *testing.T
 
 	if err := repo.UpsertDesigns(ctx, session.ID, []string{"design-1", "design-2"}, []listingkit.SheinStudioDesign{
 		{
+			ID:                        "design-1",
+			ImageURL:                  "https://example.com/design-1-removed.png",
+			OriginalImageURL:          "https://example.com/design-1-original.png",
+			TransparentBackgroundMode: listingkit.StudioTransparencyModeRemoval,
+			BackgroundRemovalStatus:   listingkit.StudioBackgroundRemovalStatusFailed,
+			BackgroundRemovalModel:    "rmbg-v2",
+			BackgroundRemovalError:    "provider rejected image",
+		},
+		{
 			ID:       "design-2",
 			ImageURL: "https://example.com/design-2.png",
 			Prompt:   "second",
@@ -251,5 +260,14 @@ func TestGormRepositoryUpsertDesignsPreservesExistingSessionDesigns(t *testing.T
 	}
 	if len(designs) != 2 {
 		t.Fatalf("design count = %d, want 2", len(designs))
+	}
+	var updated listingkit.SheinStudioDesign
+	for _, design := range designs {
+		if design.ID == "design-1" {
+			updated = design
+		}
+	}
+	if updated.OriginalImageURL != "https://example.com/design-1-original.png" || updated.TransparentBackgroundMode != listingkit.StudioTransparencyModeRemoval || updated.BackgroundRemovalStatus != listingkit.StudioBackgroundRemovalStatusFailed || updated.BackgroundRemovalModel != "rmbg-v2" || updated.BackgroundRemovalError != "provider rejected image" {
+		t.Fatalf("upserted removal metadata = %#v", updated)
 	}
 }

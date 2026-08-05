@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -35,7 +36,7 @@ func (s *taskStudioMediaService) retryStudioBackgroundRemoval(ctx context.Contex
 	if err != nil {
 		return nil, err
 	}
-	removed, err := s.backgroundRemover.Remove(ctx, data, contentType)
+	removed, err := s.removeStudioBackground(ctx, sourceURL, data, contentType)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +83,7 @@ func loadStudioBackgroundRemovalSource(ctx context.Context, sourceURL string, lo
 	if err != nil {
 		return nil, "", fmt.Errorf("build original image request: %w", err)
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := studioPublicImageHTTPClient.Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("download original image: %w", err)
 	}
@@ -304,7 +305,7 @@ func (s *taskStudioMediaService) processStudioDesignImage(ctx context.Context, r
 		processed.BackgroundRemovalError = "background removal client is not configured"
 		return processed, nil
 	}
-	removed, removeErr := s.backgroundRemover.Remove(ctx, data, contentType)
+	removed, removeErr := s.removeStudioBackground(ctx, originalURL, data, contentType)
 	if removeErr != nil {
 		processed.BackgroundRemovalStatus = StudioBackgroundRemovalStatusFailed
 		processed.BackgroundRemovalError = compactStudioGenerationError(removeErr)
@@ -330,6 +331,113 @@ func (s *taskStudioMediaService) processStudioDesignImage(ctx context.Context, r
 	processed.BackgroundRemovalStatus = StudioBackgroundRemovalStatusSucceeded
 	processed.BackgroundRemovalModel = strings.TrimSpace(removed.Model)
 	return processed, nil
+}
+
+const defaultStudioBackgroundRemovalConcurrency = 4
+
+func (s *taskStudioMediaService) initializeBackgroundRemovalSlots() {
+	if s == nil {
+		return
+	}
+	s.backgroundRemovalOnce.Do(func() {
+		concurrency := s.backgroundRemovalConcurrency
+		if concurrency <= 0 {
+			concurrency = defaultStudioBackgroundRemovalConcurrency
+		}
+		s.backgroundRemovalSlots = make(chan struct{}, concurrency)
+	})
+}
+
+func (s *taskStudioMediaService) acquireBackgroundRemovalSlot(ctx context.Context) error {
+	if s == nil {
+		return fmt.Errorf("background removal service is not configured")
+	}
+	s.initializeBackgroundRemovalSlots()
+	select {
+	case s.backgroundRemovalSlots <- struct{}{}:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (s *taskStudioMediaService) releaseBackgroundRemovalSlot() {
+	if s != nil && s.backgroundRemovalSlots != nil {
+		<-s.backgroundRemovalSlots
+	}
+}
+
+func (s *taskStudioMediaService) removeStudioBackground(ctx context.Context, sourceURL string, data []byte, contentType string) (*StudioBackgroundRemovalResult, error) {
+	if s == nil || s.backgroundRemover == nil {
+		return nil, fmt.Errorf("background removal client is not configured")
+	}
+	if err := s.acquireBackgroundRemovalSlot(ctx); err != nil {
+		return nil, err
+	}
+	defer s.releaseBackgroundRemovalSlot()
+
+	if remover, ok := s.backgroundRemover.(StudioBackgroundRemoverFromURL); ok {
+		if publicURL, err := s.resolveStudioBackgroundRemovalURL(ctx, sourceURL); err == nil {
+			return remover.RemoveFromURL(ctx, publicURL)
+		}
+	}
+	return s.backgroundRemover.Remove(ctx, data, contentType)
+}
+
+func (s *taskStudioMediaService) resolveStudioBackgroundRemovalURL(ctx context.Context, sourceURL string) (string, error) {
+	trimmed := strings.TrimSpace(sourceURL)
+	if key, ok := studioReferenceUploadedImageKeyFromURL(trimmed); ok {
+		if s == nil || s.resolveUploadedImagePublicURL == nil {
+			return "", fmt.Errorf("uploaded image public url resolver is not configured")
+		}
+		publicURL, err := s.resolveUploadedImagePublicURL(ctx, key)
+		if err != nil {
+			return "", err
+		}
+		return validateStudioReferencePublicHTTPSURL(publicURL)
+	}
+	return validateStudioReferencePublicHTTPSURL(trimmed)
+}
+
+var studioPublicImageHTTPClient = newStudioPublicImageHTTPClient()
+
+func newStudioPublicImageHTTPClient() *http.Client {
+	transport, ok := http.DefaultTransport.(*http.Transport)
+	if ok {
+		transport = transport.Clone()
+	} else {
+		transport = &http.Transport{}
+	}
+	dialer := &net.Dialer{}
+	transport.DialContext = func(ctx context.Context, network string, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, err
+		}
+		ips, err := net.LookupIP(host)
+		if err != nil {
+			return nil, err
+		}
+		for _, ip := range ips {
+			if isStudioReferencePrivateIP(ip) {
+				continue
+			}
+			conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+			if dialErr == nil {
+				return conn, nil
+			}
+		}
+		return nil, fmt.Errorf("image host resolves only to private or unreachable addresses")
+	}
+	return &http.Client{
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+			if _, err := validateStudioReferencePublicHTTPSURL(req.URL.String()); err != nil {
+				return err
+			}
+			return nil
+		},
+	}
 }
 
 func (s *taskStudioMediaService) materializeAsyncStudioDesignResult(ctx context.Context, req *StudioDesignRequest, result *AIImageAsyncResult) (*StudioDesignResponse, error) {

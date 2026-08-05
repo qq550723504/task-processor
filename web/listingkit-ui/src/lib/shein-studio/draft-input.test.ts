@@ -201,6 +201,7 @@ describe("buildSheinStudioDraftInput", () => {
         hotStyleReferencePrompt: "group reference prompt",
         artworkModel: "",
         transparentBackground: false,
+        transparentBackgroundMode: "removal",
         variationIntensity: "medium",
           designs: [{ id: "group-design-1", imageUrl: "https://example.com/group.png" }],
           selectedIds: ["group-design-1"],
@@ -217,6 +218,7 @@ describe("buildSheinStudioDraftInput", () => {
         hotStyleReferenceBrief: "group reference brief",
         hotStyleReferencePrompt: "group reference prompt",
         artworkGenerationMode: "hot_reference",
+        transparentBackgroundMode: "removal",
         currentPrompt: "",
         promptHistory: [
           {

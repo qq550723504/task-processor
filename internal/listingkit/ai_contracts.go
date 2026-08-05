@@ -25,6 +25,12 @@ type StudioBackgroundRemover interface {
 	Remove(ctx context.Context, input []byte, contentType string) (*StudioBackgroundRemovalResult, error)
 }
 
+// StudioBackgroundRemoverFromURL is an optional capability for providers that
+// accept only publicly reachable image URLs instead of multipart image bytes.
+type StudioBackgroundRemoverFromURL interface {
+	RemoveFromURL(ctx context.Context, imageURL string) (*StudioBackgroundRemovalResult, error)
+}
+
 type StudioBackgroundRemovalResult struct {
 	Data        []byte
 	ContentType string

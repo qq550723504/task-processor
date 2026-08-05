@@ -13,6 +13,7 @@ import (
 type taskStudioMediaServiceConfig struct {
 	imageGenerator                AIImageGenerator
 	backgroundRemover             StudioBackgroundRemover
+	backgroundRemovalConcurrency  int
 	promptDiversifier             AIChatCompleter
 	uploadStoreConfigured         bool
 	uploadImages                  func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
@@ -23,6 +24,9 @@ type taskStudioMediaServiceConfig struct {
 type taskStudioMediaService struct {
 	imageGenerator                AIImageGenerator
 	backgroundRemover             StudioBackgroundRemover
+	backgroundRemovalConcurrency  int
+	backgroundRemovalSlots        chan struct{}
+	backgroundRemovalOnce         sync.Once
 	promptDiversifier             AIChatCompleter
 	uploadStoreConfigured         bool
 	uploadImages                  func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
@@ -31,15 +35,18 @@ type taskStudioMediaService struct {
 }
 
 func newTaskStudioMediaService(config taskStudioMediaServiceConfig) *taskStudioMediaService {
-	return &taskStudioMediaService{
+	service := &taskStudioMediaService{
 		imageGenerator:                config.imageGenerator,
 		backgroundRemover:             config.backgroundRemover,
+		backgroundRemovalConcurrency:  config.backgroundRemovalConcurrency,
 		promptDiversifier:             config.promptDiversifier,
 		uploadStoreConfigured:         config.uploadStoreConfigured,
 		uploadImages:                  config.uploadImages,
 		loadUploadedImage:             config.loadUploadedImage,
 		resolveUploadedImagePublicURL: config.resolveUploadedImagePublicURL,
 	}
+	service.initializeBackgroundRemovalSlots()
+	return service
 }
 
 func (s *taskStudioMediaService) SubmitStudioDesignsAsync(ctx context.Context, req *StudioDesignRequest) (*studioDesignAsyncSubmitResponse, error) {

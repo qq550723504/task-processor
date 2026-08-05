@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"sync"
 	"testing"
 )
 
@@ -71,6 +72,9 @@ func TestValidateStudioTransparentPNG(t *testing.T) {
 	if err := validateStudioTransparentPNG(studioTestAlphaPNG(t)); err != nil {
 		t.Fatalf("validateStudioTransparentPNG(alpha) error = %v", err)
 	}
+	if err := validateStudioTransparentPNG(studioTestOpaquePNG(t)); err == nil {
+		t.Fatal("validateStudioTransparentPNG(opaque) error = nil, want actual transparent pixel validation")
+	}
 	if err := validateStudioTransparentPNG([]byte("not-png")); err == nil {
 		t.Fatal("validateStudioTransparentPNG(non-png) error = nil")
 	}
@@ -108,11 +112,66 @@ func TestRetryStudioBackgroundRemovalLoadsOriginalAndPersistsPNG(t *testing.T) {
 	}
 }
 
+func TestBackgroundRemovalIsBoundedByConfiguredConcurrency(t *testing.T) {
+	started := make(chan struct{}, 3)
+	release := make(chan struct{})
+	remover := &blockingStudioBackgroundRemover{started: started, release: release}
+	service := &taskStudioMediaService{
+		backgroundRemover:            remover,
+		backgroundRemovalConcurrency: 2,
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 3; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := service.removeStudioBackground(context.Background(), "", []byte("source"), "image/png"); err != nil {
+				t.Errorf("removeStudioBackground() error = %v", err)
+			}
+		}()
+	}
+
+	<-started
+	<-started
+	select {
+	case <-started:
+		t.Fatal("background removal exceeded configured concurrency")
+	default:
+	}
+	close(release)
+	wg.Wait()
+}
+
+func TestValidateStudioReferencePublicHTTPSURLRejectsPrivateAddresses(t *testing.T) {
+	for _, rawURL := range []string{
+		"https://127.0.0.1/image.png",
+		"https://10.0.0.1/image.png",
+		"https://169.254.169.254/latest/meta-data",
+		"https://[::1]/image.png",
+	} {
+		if _, err := validateStudioReferencePublicHTTPSURL(rawURL); err == nil {
+			t.Fatalf("validateStudioReferencePublicHTTPSURL(%q) error = nil", rawURL)
+		}
+	}
+}
+
 type studioTestBackgroundRemover struct {
 	result *StudioBackgroundRemovalResult
 	err    error
 	calls  int
 	input  []byte
+}
+
+type blockingStudioBackgroundRemover struct {
+	started chan<- struct{}
+	release <-chan struct{}
+}
+
+func (s *blockingStudioBackgroundRemover) Remove(_ context.Context, _ []byte, _ string) (*StudioBackgroundRemovalResult, error) {
+	s.started <- struct{}{}
+	<-s.release
+	return &StudioBackgroundRemovalResult{Data: studioTestOpaquePNGBytes()}, nil
 }
 
 func (s *studioTestBackgroundRemover) Remove(_ context.Context, input []byte, _ string) (*StudioBackgroundRemovalResult, error) {
@@ -135,6 +194,25 @@ func studioTestAlphaPNG(t *testing.T) []byte {
 	if err := png.Encode(&output, img); err != nil {
 		t.Fatalf("encode alpha PNG: %v", err)
 	}
+	return output.bytes
+}
+
+func studioTestOpaquePNG(t *testing.T) []byte {
+	t.Helper()
+	var output bytesBuffer
+	img := image.NewNRGBA(image.Rect(0, 0, 1, 1))
+	img.SetNRGBA(0, 0, color.NRGBA{R: 255, A: 255})
+	if err := png.Encode(&output, img); err != nil {
+		t.Fatalf("encode opaque PNG: %v", err)
+	}
+	return output.bytes
+}
+
+func studioTestOpaquePNGBytes() []byte {
+	var output bytesBuffer
+	img := image.NewNRGBA(image.Rect(0, 0, 1, 1))
+	img.SetNRGBA(0, 0, color.NRGBA{R: 255, A: 255})
+	_ = png.Encode(&output, img)
 	return output.bytes
 }
 
