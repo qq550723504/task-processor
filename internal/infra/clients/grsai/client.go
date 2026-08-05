@@ -35,7 +35,7 @@ type Client struct {
 type submitRequest struct {
 	Model          string   `json:"model"`
 	Prompt         string   `json:"prompt"`
-	Image          []string `json:"image,omitempty"`
+	Images         []string `json:"images,omitempty"`
 	Size           string   `json:"size,omitempty"`
 	ResponseFormat string   `json:"response_format,omitempty"`
 }
@@ -154,18 +154,15 @@ func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEdi
 	if req == nil {
 		return nil, fmt.Errorf("image edit request cannot be nil")
 	}
-	imageURLs := cleanImageURLs(req.ImageURLs, 8)
-	if len(imageURLs) == 0 {
-		imageURLs = cleanImageURLs([]string{req.ImageURL}, 1)
-	}
-	if len(imageURLs) == 0 {
-		return nil, fmt.Errorf("grsai image edit requires image url")
+	images, err := imageInputsForRequest(req)
+	if err != nil {
+		return nil, err
 	}
 	submitReq := submitRequest{
 		Model:          defaultString(req.Model, c.cfg.Model),
 		Prompt:         req.Prompt,
 		Size:           normalizeGenerationSize(req.Size),
-		Image:          imageURLs,
+		Images:         images,
 		ResponseFormat: "url",
 	}
 	if strings.TrimSpace(submitReq.Model) == "" {
@@ -204,14 +201,14 @@ func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEdi
 
 func (c *Client) logSubmitDiagnostic(ctx context.Context, submitURL string, req submitRequest, mode string) {
 	fields := logrus.Fields{
-		"mode":                 mode,
-		"submit_url":           submitURL,
-		"model":                req.Model,
-		"size":                 req.Size,
-		"image_count":          len(req.Image),
-		"configured_timeout":   c.cfg.Timeout.String(),
-		"http_client_timeout":  c.httpClient.Timeout.String(),
-		"max_attempts":         c.cfg.MaxAttempts,
+		"mode":                mode,
+		"submit_url":          submitURL,
+		"model":               req.Model,
+		"size":                req.Size,
+		"image_count":         len(req.Images),
+		"configured_timeout":  c.cfg.Timeout.String(),
+		"http_client_timeout": c.httpClient.Timeout.String(),
+		"max_attempts":        c.cfg.MaxAttempts,
 	}
 	if deadline, ok := ctx.Deadline(); ok {
 		fields["ctx_deadline"] = deadline.UTC().Format(time.RFC3339Nano)
@@ -280,20 +277,40 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 	if req == nil {
 		return nil, fmt.Errorf("image edit request cannot be nil")
 	}
-	imageURLs := cleanImageURLs(req.ImageURLs, 8)
-	if len(imageURLs) == 0 {
-		imageURLs = cleanImageURLs([]string{req.ImageURL}, 1)
-	}
-	if len(imageURLs) == 0 {
-		return nil, fmt.Errorf("grsai image edit requires image url")
+	images, err := imageInputsForRequest(req)
+	if err != nil {
+		return nil, err
 	}
 	return c.submitImagesGeneration(ctx, submitRequest{
 		Model:          defaultString(req.Model, c.cfg.Model),
 		Prompt:         req.Prompt,
 		Size:           normalizeGenerationSize(req.Size),
-		Image:          imageURLs,
+		Images:         images,
 		ResponseFormat: "url",
 	})
+}
+
+func imageInputsForRequest(req *openaiclient.ImageEditRequest) ([]string, error) {
+	if req == nil {
+		return nil, fmt.Errorf("grsai image edit request cannot be nil")
+	}
+	if images := cleanImageURLs(req.ImageURLs, 8); len(images) > 0 {
+		return images, nil
+	}
+	if images := cleanImageURLs([]string{req.ImageURL}, 1); len(images) > 0 {
+		return images, nil
+	}
+	if len(req.Image) == 0 {
+		return nil, fmt.Errorf("grsai image edit requires image url or image data")
+	}
+	contentType := strings.TrimSpace(req.ImageContentType)
+	if contentType == "" {
+		contentType = http.DetectContentType(req.Image)
+	}
+	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		return nil, fmt.Errorf("grsai image edit requires image url or valid image data")
+	}
+	return []string{"data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(req.Image)}, nil
 }
 
 func cleanImageURLs(urls []string, max int) []string {

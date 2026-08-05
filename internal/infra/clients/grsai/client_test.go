@@ -41,9 +41,9 @@ func TestClientEditImageUsesGenerateEndpointForNanoBanana(t *testing.T) {
 			if req["response_format"] != "url" {
 				t.Fatalf("response_format = %#v", req["response_format"])
 			}
-			images, ok := req["image"].([]any)
+			images, ok := req["images"].([]any)
 			if !ok || len(images) != 2 {
-				t.Fatalf("image = %#v", req["image"])
+				t.Fatalf("images = %#v", req["images"])
 			}
 			if images[0] != "https://example.com/source.png" || images[1] != "https://example.com/side.png" {
 				t.Fatalf("image urls = %#v", images)
@@ -97,7 +97,64 @@ func TestClientEditImageUsesGenerateEndpointForNanoBanana(t *testing.T) {
 	}
 }
 
-func TestClientEditImageRequiresImageURL(t *testing.T) {
+func TestClientEditImageUsesInlineImageDataWhenURLUnavailable(t *testing.T) {
+	imageBytes := []byte("raw-image-bytes")
+	var serverURL string
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/api/generate":
+			var req map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			images, ok := req["images"].([]any)
+			if !ok || len(images) != 1 {
+				t.Fatalf("images = %#v", req["images"])
+			}
+			want := "data:image/png;base64," + base64.StdEncoding.EncodeToString(imageBytes)
+			if images[0] != want {
+				t.Fatalf("inline image = %#v, want %q", images[0], want)
+			}
+			_ = json.NewEncoder(w).Encode(submitResponse{
+				ID:     "job-inline",
+				Status: "succeeded",
+				Results: []resultItem{{
+					URL: serverURL + "/generated.png",
+				}},
+			})
+		case "/generated.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("generated-image"))
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+	serverURL = server.URL
+
+	client := NewClient(Config{
+		Model:        "nano-banana-fast",
+		SubmitURL:    server.URL + "/v1",
+		PollInterval: 10 * time.Millisecond,
+		Timeout:      time.Second,
+		HTTPClient:   server.Client(),
+	})
+
+	resp, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
+		Prompt:           "edit faithfully",
+		Image:            imageBytes,
+		ImageContentType: "image/png",
+	})
+	if err != nil {
+		t.Fatalf("EditImage() error = %v", err)
+	}
+	if len(resp.Data) != 1 {
+		t.Fatalf("data len = %d", len(resp.Data))
+	}
+}
+
+func TestClientEditImageRejectsInvalidInlineImageData(t *testing.T) {
 	client := NewClient(Config{
 		Model:        "nano-banana-fast",
 		SubmitURL:    "https://example.com/v1",
@@ -110,7 +167,7 @@ func TestClientEditImageRequiresImageURL(t *testing.T) {
 		Image:  []byte("raw-bytes-only"),
 	})
 	if err == nil {
-		t.Fatal("expected error for missing image url")
+		t.Fatal("expected error for invalid inline image data")
 	}
 }
 
@@ -182,9 +239,9 @@ func TestClientEditImageUsesGenerateEndpointForGPTImage(t *testing.T) {
 			if req["response_format"] != "url" {
 				t.Fatalf("response_format = %#v", req["response_format"])
 			}
-			images, ok := req["image"].([]any)
+			images, ok := req["images"].([]any)
 			if !ok || len(images) != 2 {
-				t.Fatalf("image = %#v", req["image"])
+				t.Fatalf("images = %#v", req["images"])
 			}
 			wantSource := serverURL + "/source.png"
 			wantSide := serverURL + "/side.png"
@@ -289,9 +346,9 @@ func TestClientSubmitImageEditReturnsDirectResultWhenGenerateAlreadySucceeded(t 
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				t.Fatalf("decode request: %v", err)
 			}
-			images, ok := req["image"].([]any)
+			images, ok := req["images"].([]any)
 			if !ok || len(images) != 1 {
-				t.Fatalf("request image = %#v, want 1 reference image", req["image"])
+				t.Fatalf("request images = %#v, want 1 reference image", req["images"])
 			}
 			want := serverURL + "/source.png"
 			if images[0] != want {
@@ -354,9 +411,9 @@ func TestClientSubmitImageEditReturnsAsyncJobMetadata(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				t.Fatalf("decode request: %v", err)
 			}
-			images, ok := req["image"].([]any)
+			images, ok := req["images"].([]any)
 			if !ok || len(images) != 2 {
-				t.Fatalf("request image = %#v, want 2 reference images", req["image"])
+				t.Fatalf("request images = %#v, want 2 reference images", req["images"])
 			}
 			wantA := serverURL + "/a.png"
 			wantB := serverURL + "/b.png"
@@ -408,9 +465,9 @@ func TestClientSubmitImageEditSendsReferenceImagesAsURLs(t *testing.T) {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				t.Fatalf("decode request: %v", err)
 			}
-			images, ok := req["image"].([]any)
+			images, ok := req["images"].([]any)
 			if !ok || len(images) != 1 {
-				t.Fatalf("request image = %#v, want 1 reference image", req["image"])
+				t.Fatalf("request images = %#v, want 1 reference image", req["images"])
 			}
 			want := serverURL + "/source.png"
 			if images[0] != want {
