@@ -12,6 +12,7 @@ import (
 
 type taskStudioMediaServiceConfig struct {
 	imageGenerator                AIImageGenerator
+	backgroundRemover             StudioBackgroundRemover
 	promptDiversifier             AIChatCompleter
 	uploadStoreConfigured         bool
 	uploadImages                  func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
@@ -21,6 +22,7 @@ type taskStudioMediaServiceConfig struct {
 
 type taskStudioMediaService struct {
 	imageGenerator                AIImageGenerator
+	backgroundRemover             StudioBackgroundRemover
 	promptDiversifier             AIChatCompleter
 	uploadStoreConfigured         bool
 	uploadImages                  func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
@@ -31,6 +33,7 @@ type taskStudioMediaService struct {
 func newTaskStudioMediaService(config taskStudioMediaServiceConfig) *taskStudioMediaService {
 	return &taskStudioMediaService{
 		imageGenerator:                config.imageGenerator,
+		backgroundRemover:             config.backgroundRemover,
 		promptDiversifier:             config.promptDiversifier,
 		uploadStoreConfigured:         config.uploadStoreConfigured,
 		uploadImages:                  config.uploadImages,

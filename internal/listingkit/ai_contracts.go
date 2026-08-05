@@ -21,6 +21,19 @@ type AIImageGenerator interface {
 	GetDefaultModel() string
 }
 
+type StudioBackgroundRemover interface {
+	Remove(ctx context.Context, input []byte, contentType string) (*StudioBackgroundRemovalResult, error)
+}
+
+type StudioBackgroundRemovalResult struct {
+	Data        []byte
+	ContentType string
+	Model       string
+	RequestID   string
+	RawResponse string
+	Usage       AIUsage
+}
+
 type AIAsyncImageGenerator interface {
 	SupportsAsyncImageGeneration() bool
 	SubmitImageGeneration(ctx context.Context, req *AIImageGenerateRequest) (*AIImageAsyncSubmit, error)
