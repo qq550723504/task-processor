@@ -31,6 +31,7 @@ func buildStudioBatchItemDesignRequest(batch *StudioBatchRecord, item StudioBatc
 		ProductReferenceImageURLs: referenceImageURLs,
 		ImageModel:                strings.TrimSpace(batch.ArtworkModel),
 		TransparentBackground:     batch.TransparentBackground,
+		TransparentBackgroundMode: batch.TransparentBackgroundMode,
 	}
 }
 
