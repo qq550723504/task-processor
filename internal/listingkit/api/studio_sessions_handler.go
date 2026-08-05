@@ -156,6 +156,20 @@ func (h *studioSessionHandler) RetryStudioBatchItems(c *gin.Context) {
 	c.JSON(http.StatusOK, detail)
 }
 
+func (h *studioSessionHandler) RetryStudioBatchDesignBackgroundRemoval(c *gin.Context) {
+	var req listingkit.RetryStudioBatchDesignBackgroundRemovalRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
+	detail, err := h.service.RetryStudioBatchDesignBackgroundRemoval(requestContext(c), c.Param("batch_id"), &req)
+	if err != nil {
+		writeStudioBatchActionError(c, "studio_background_removal_retry_failed", err)
+		return
+	}
+	c.JSON(http.StatusOK, detail)
+}
+
 func (h *studioSessionHandler) RetryStudioBatchSDSChildTasks(c *gin.Context) {
 	result, err := h.service.ScheduleStudioBatchSDSChildRetries(requestContext(c), c.Param("batch_id"))
 	if err != nil {

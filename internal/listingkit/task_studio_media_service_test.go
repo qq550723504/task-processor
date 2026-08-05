@@ -76,6 +76,38 @@ func TestValidateStudioTransparentPNG(t *testing.T) {
 	}
 }
 
+func TestRetryStudioBackgroundRemovalLoadsOriginalAndPersistsPNG(t *testing.T) {
+	alphaPNG := studioTestAlphaPNG(t)
+	remover := &studioTestBackgroundRemover{result: &StudioBackgroundRemovalResult{Data: alphaPNG, ContentType: "image/png", Model: "rmbg-model"}}
+	var uploaded []ImageUploadInput
+	service := &taskStudioMediaService{
+		backgroundRemover: remover,
+		loadUploadedImage: func(_ context.Context, key string) (*UploadedImageFile, error) {
+			if key != "original/source.png" {
+				t.Fatalf("uploaded source key = %q, want original/source.png", key)
+			}
+			return &UploadedImageFile{Data: []byte("source"), ContentType: "image/png"}, nil
+		},
+		uploadImages: func(_ context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error) {
+			uploaded = append(uploaded, req.Files...)
+			return &UploadImagesResponse{ImageURLs: []string{"https://cdn.example.test/retry.png"}}, nil
+		},
+	}
+	result, err := service.retryStudioBackgroundRemoval(context.Background(), "/api/v1/listing-kits/uploads/files/original/source.png", "studio-design-1.png")
+	if err != nil {
+		t.Fatalf("retryStudioBackgroundRemoval() error = %v", err)
+	}
+	if remover.calls != 1 || string(remover.input) != "source" {
+		t.Fatalf("remover calls/input = %d/%q, want 1/source", remover.calls, remover.input)
+	}
+	if result.ImageURL != "https://cdn.example.test/retry.png" || result.Model != "rmbg-model" {
+		t.Fatalf("retry result = %+v, want uploaded URL and model", result)
+	}
+	if len(uploaded) != 1 || uploaded[0].ContentType != "image/png" {
+		t.Fatalf("retry upload = %#v, want one PNG upload", uploaded)
+	}
+}
+
 type studioTestBackgroundRemover struct {
 	result *StudioBackgroundRemovalResult
 	err    error

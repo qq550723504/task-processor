@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"time"
 
@@ -18,6 +20,88 @@ type studioDesignAsyncQueryResponse struct {
 type studioDesignAsyncSubmitResponse struct {
 	Submit   *AIImageAsyncSubmit
 	Response *StudioDesignResponse
+}
+
+type studioBackgroundRemovalMaterialization struct {
+	ImageURL string
+	Model    string
+}
+
+func (s *taskStudioMediaService) retryStudioBackgroundRemoval(ctx context.Context, sourceURL string, filename string) (*studioBackgroundRemovalMaterialization, error) {
+	if s == nil || s.backgroundRemover == nil {
+		return nil, fmt.Errorf("background removal client is not configured")
+	}
+	data, contentType, err := loadStudioBackgroundRemovalSource(ctx, sourceURL, s.loadUploadedImage)
+	if err != nil {
+		return nil, err
+	}
+	removed, err := s.backgroundRemover.Remove(ctx, data, contentType)
+	if err != nil {
+		return nil, err
+	}
+	if removed == nil {
+		return nil, fmt.Errorf("background removal returned no result")
+	}
+	if err := validateStudioTransparentPNG(removed.Data); err != nil {
+		return nil, err
+	}
+	imageURL, err := s.persistStudioImageBytes(ctx, removed.Data, "image/png", filename)
+	if err != nil {
+		return nil, err
+	}
+	return &studioBackgroundRemovalMaterialization{
+		ImageURL: imageURL,
+		Model:    strings.TrimSpace(removed.Model),
+	}, nil
+}
+
+func loadStudioBackgroundRemovalSource(ctx context.Context, sourceURL string, loadUploadedImage func(context.Context, string) (*UploadedImageFile, error)) ([]byte, string, error) {
+	trimmed := strings.TrimSpace(sourceURL)
+	if key, ok := studioReferenceUploadedImageKeyFromURL(trimmed); ok {
+		if loadUploadedImage == nil {
+			return nil, "", fmt.Errorf("original uploaded image loader is not configured")
+		}
+		file, err := loadUploadedImage(ctx, key)
+		if err != nil {
+			return nil, "", fmt.Errorf("load original uploaded image: %w", err)
+		}
+		if file == nil || len(file.Data) == 0 {
+			return nil, "", fmt.Errorf("original uploaded image is empty")
+		}
+		contentType := strings.TrimSpace(file.ContentType)
+		if contentType == "" {
+			contentType = http.DetectContentType(file.Data)
+		}
+		return file.Data, contentType, nil
+	}
+	validated, err := validateStudioReferencePublicHTTPSURL(trimmed)
+	if err != nil {
+		return nil, "", fmt.Errorf("load original image: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, validated, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("build original image request: %w", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("download original image: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, "", fmt.Errorf("download original image returned status %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	if err != nil {
+		return nil, "", fmt.Errorf("read original image: %w", err)
+	}
+	if len(data) == 0 {
+		return nil, "", fmt.Errorf("original image is empty")
+	}
+	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
+	if contentType == "" || !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		contentType = http.DetectContentType(data)
+	}
+	return data, contentType, nil
 }
 
 func (s *taskStudioMediaService) generateStudioDesignSiblingThemes(ctx context.Context, req *StudioDesignRequest, count int) ([]string, error) {
