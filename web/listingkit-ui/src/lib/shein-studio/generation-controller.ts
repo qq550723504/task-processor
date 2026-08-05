@@ -274,8 +274,19 @@ export function buildHotStyleReferenceGenerationInput(input: {
     input.hotStyleReferenceImageUrls,
   );
   if (artworkGenerationMode === "hot_reference") {
+    const artworkPrompt = [
+      input.hotStyleReferencePrompt?.trim() ||
+      input.hotStyleReferenceBrief?.trim() ||
+      "",
+      input.prompt.trim()
+        ? `Additional artwork constraints: ${input.prompt.trim()}`
+        : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
     return {
-      prompt: input.prompt.trim(),
+      prompt: artworkPrompt,
       productReferenceImageUrls: normalizedHotStyleReferences.slice(0, 1),
     };
   }

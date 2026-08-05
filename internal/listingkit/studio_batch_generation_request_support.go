@@ -20,8 +20,16 @@ func buildStudioBatchItemDesignRequest(batch *StudioBatchRecord, item StudioBatc
 	if len(referenceImageURLs) == 1 {
 		artworkGenerationMode = studioArtworkGenerationModeHotReference
 	}
+	promptText := strings.TrimSpace(batch.Prompt)
+	if artworkGenerationMode == studioArtworkGenerationModeHotReference {
+		promptText = buildStudioHotReferenceArtworkPrompt(
+			batch.HotStyleReferencePrompt,
+			batch.HotStyleReferenceBrief,
+			promptText,
+		)
+	}
 	return &StudioDesignRequest{
-		Prompt:                    strings.TrimSpace(batch.Prompt),
+		Prompt:                    promptText,
 		ArtworkGenerationMode:     artworkGenerationMode,
 		PromptMode:                strings.TrimSpace(batch.PromptMode),
 		Count:                     parseStudioBatchRunStyleCount(strings.TrimSpace(batch.StyleCount)),
