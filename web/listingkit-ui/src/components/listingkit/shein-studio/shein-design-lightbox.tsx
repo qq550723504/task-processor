@@ -87,7 +87,12 @@ export function SheinDesignLightbox({
   }
 
   const designSrc = resolveGeneratedDesignSrc(design);
-  const originalDesignSrc = design.originalImageUrl;
+  const originalDesignSrc = design.originalImageUrl
+    ? resolveGeneratedDesignSrc({
+        ...design,
+        imageUrl: design.originalImageUrl,
+      })
+    : "";
   const displayedDesignSrc =
     activeImageView === "original" && originalDesignSrc
       ? originalDesignSrc

@@ -1,9 +1,13 @@
 import type { SheinStudioGeneratedDesign } from "@/lib/types/shein-studio";
 
 function normalizeListingKitUploadFetchUrl(url: string) {
+  const prefix = "/api/v1/listing-kits/uploads/files/";
+  if (url.startsWith(prefix)) {
+    return url.replace(prefix, "/api/listing-kits/uploads/files/");
+  }
+
   try {
     const parsed = new URL(url);
-    const prefix = "/api/v1/listing-kits/uploads/files/";
     if (!parsed.pathname.startsWith(prefix)) {
       return url;
     }
