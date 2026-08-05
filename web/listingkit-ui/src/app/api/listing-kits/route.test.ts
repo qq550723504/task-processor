@@ -206,6 +206,26 @@ describe("buildListingKitUpstreamHeaders", () => {
     expect(headers.get("X-Forwarded-Proto")).toBe("https");
   });
 
+  it("ignores caller-supplied forwarded host and protocol", () => {
+    const request = new Request("https://pod.shuomiai.com/api/listing-kits/uploads/images", {
+      headers: {
+        host: "pod.shuomiai.com",
+        "x-forwarded-host": "attacker.example",
+        "x-forwarded-proto": "http",
+      },
+    });
+
+    const headers = buildListingKitUpstreamHeaders(
+      request.headers,
+      undefined,
+      "https",
+      "pod.shuomiai.com",
+    );
+
+    expect(headers.get("X-Forwarded-Host")).toBe("pod.shuomiai.com");
+    expect(headers.get("X-Forwarded-Proto")).toBe("https");
+  });
+
   it("maps verified ZITADEL identity to listingkit identity headers", () => {
     const request = new Request("http://localhost/api/listing-kits/tasks", {
       headers: {

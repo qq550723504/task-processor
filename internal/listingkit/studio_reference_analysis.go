@@ -14,6 +14,11 @@ import (
 
 const maxStudioReferenceAnalysisImages = 1
 
+const (
+	studioReferenceInternalUploadPathPrefix = "/api/v1/listing-kits/uploads/files/"
+	studioReferencePublicUploadPathPrefix   = "/api/listing-kits/uploads/files/"
+)
+
 func (s *service) AnalyzeStudioReferenceStyle(ctx context.Context, req *StudioReferenceAnalysisRequest) (*StudioReferenceAnalysisResponse, error) {
 	return s.taskStudioMediaOrDefault().AnalyzeStudioReferenceStyle(ctx, req)
 }

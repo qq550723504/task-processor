@@ -514,7 +514,7 @@ func TestSubmitStudioDesignsAsyncFallsBackToSyncEditForOwnedUploadReference(t *t
 		Prompt:                    "retro cherries",
 		ArtworkGenerationMode:     "hot_reference",
 		Count:                     1,
-		ProductReferenceImageURLs: []string{"/api/v1/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901"},
+		ProductReferenceImageURLs: []string{"https://pod.shuomiai.com/api/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901"},
 	})
 	if err != nil {
 		t.Fatalf("SubmitStudioDesignsAsync() error = %v", err)
