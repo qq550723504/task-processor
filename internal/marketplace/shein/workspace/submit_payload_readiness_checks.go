@@ -10,13 +10,21 @@ func BuildSubmitPayloadReadinessChecks(pkg *sheinpub.Package, action string) []R
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	checks := make([]ReadinessCheckSpec, 0, 11)
 
-	requestDraftReady := pkg != nil && pkg.DraftPayload != nil
+	draft := sheinpub.DraftPayloadOf(pkg)
+	draftIssues := sheinpub.ValidateDraftPayload(draft)
+	requestDraftReady := len(draftIssues) == 0
+	requestDraftMessage := "request_draft 尚未生成，当前无法作为提交草稿继续流转"
+	requestDraftPaths := []string{"shein.draft_payload"}
+	if len(draftIssues) > 0 {
+		requestDraftMessage = draftIssues[0].Message
+		requestDraftPaths = append(requestDraftPaths, "shein.draft_payload."+draftIssues[0].Path)
+	}
 	checks = append(checks, BuildSubmitReadinessCheck(
 		"request_draft",
 		"请求草稿",
 		requestDraftReady,
-		"request_draft 尚未生成，当前无法作为提交草稿继续流转",
-		[]string{"shein.request_draft"},
+		requestDraftMessage,
+		requestDraftPaths,
 		"重新生成预览草稿",
 		false,
 	))
@@ -37,7 +45,7 @@ func BuildSubmitPayloadReadinessChecks(pkg *sheinpub.Package, action string) []R
 		"主图资产",
 		sheinpub.HasSubmitImage(pkg),
 		"主图还没有准备好，提交前至少需要一张可用主图",
-		[]string{"shein.images.main_image", "shein.request_draft.image_info.main_image"},
+		[]string{"shein.images.main_image", "shein.draft_payload.image_info.main_image"},
 		"补充主图",
 		false,
 	))
@@ -59,7 +67,7 @@ func BuildSubmitPayloadReadinessChecks(pkg *sheinpub.Package, action string) []R
 		"变体图片覆盖",
 		!coverageBlocked,
 		firstNonEmpty(coverageMessage, "变体图片覆盖不完整，请为每个颜色规格补齐独立商品图后再提交"),
-		[]string{"shein.metadata.variant_image_coverage_status", "shein.metadata.variant_image_coverage_message", "shein.request_draft.skc_list"},
+		[]string{"shein.metadata.variant_image_coverage_status", "shein.metadata.variant_image_coverage_message", "shein.draft_payload.skc_list"},
 		"确认图片",
 		false,
 	))
@@ -69,7 +77,7 @@ func BuildSubmitPayloadReadinessChecks(pkg *sheinpub.Package, action string) []R
 		"规格结构",
 		submitVariantStructureReady(pkg),
 		"当前还没有完整的 SKC/SKU 结构，提交前需要至少一个 SKC 和一个 SKU",
-		[]string{"shein.skc_list", "shein.request_draft.skc_list"},
+		[]string{"shein.skc_list", "shein.draft_payload.skc_list"},
 		"补充规格",
 		false,
 	))
@@ -80,7 +88,7 @@ func BuildSubmitPayloadReadinessChecks(pkg *sheinpub.Package, action string) []R
 		"价格确认",
 		pricingReady,
 		"SKU 价格尚未全部生成或确认，提交前需要完成价格规则预览和人工覆盖确认",
-		[]string{"shein.pricing", "shein.request_draft.skc_list.sku_list.base_price"},
+		[]string{"shein.pricing", "shein.draft_payload.skc_list.sku_list.base_price"},
 		"确认价格",
 		false,
 	))
@@ -104,9 +112,9 @@ func submitVariantStructureReady(pkg *sheinpub.Package) bool {
 	if pkg == nil {
 		return false
 	}
-	skcCount := len(pkg.SkcList)
-	if skcCount == 0 && pkg.DraftPayload != nil {
-		skcCount = len(pkg.DraftPayload.SKCList)
+	draft := sheinpub.DraftPayloadOf(pkg)
+	if draft != nil {
+		return len(draft.SKCList) > 0 && sheinpub.HasAnySubmitSKU(pkg)
 	}
-	return skcCount > 0 && sheinpub.HasAnySubmitSKU(pkg)
+	return len(pkg.SkcList) > 0 && sheinpub.HasAnySubmitSKU(pkg)
 }

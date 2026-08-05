@@ -54,37 +54,32 @@ func findSheinPackageSKU(skc *sheinpub.SKCPackage, supplierSKU string) *common.V
 }
 
 func ensureSheinRequestDraft(pkg *sheinpub.Package) {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.DraftPayload != nil {
-		return
-	}
-	pkg.DraftPayload = &sheinpub.RequestDraft{}
-	sheinpub.NormalizePackageSemanticFields(pkg)
+	sheinpub.EnsureDraftPayload(pkg)
 }
 
 func syncSheinDraftFromPackage(pkg *sheinpub.Package) {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.DraftPayload == nil {
+	draft := sheinpub.DraftPayloadOf(pkg)
+	if pkg == nil || draft == nil {
 		return
 	}
 	if strings.TrimSpace(pkg.SpuName) != "" {
-		pkg.DraftPayload.SpuName = pkg.SpuName
+		draft.SpuName = pkg.SpuName
 	}
 	if pkg.Images != nil {
-		pkg.DraftPayload.ImageInfo = sheinpub.BuildImageDraft(pkg.Images)
+		draft.ImageInfo = sheinpub.BuildImageDraft(pkg.Images)
 	}
 	if pkg.ProductAttributes != nil {
-		pkg.DraftPayload.ProductAttributeList = append([]common.Attribute(nil), pkg.ProductAttributes...)
+		draft.ProductAttributeList = append([]common.Attribute(nil), pkg.ProductAttributes...)
 	}
 	if pkg.ResolvedAttributes != nil {
-		pkg.DraftPayload.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), pkg.ResolvedAttributes...)
+		draft.ResolvedAttributes = append([]sheinpub.ResolvedAttribute(nil), pkg.ResolvedAttributes...)
 	}
 	if strings.TrimSpace(pkg.Description) != "" {
-		updateLocalizedTexts(&pkg.DraftPayload.MultiLanguageDescList, pkg.Description)
+		updateLocalizedTexts(&draft.MultiLanguageDescList, pkg.Description)
 	}
 	name := firstNonEmpty(pkg.ProductNameEn, pkg.SpuName)
 	if strings.TrimSpace(name) != "" {
-		updateLocalizedTexts(&pkg.DraftPayload.MultiLanguageNameList, name)
+		updateLocalizedTexts(&draft.MultiLanguageNameList, name)
 	}
 	sheinpub.NormalizePackageSemanticFields(pkg)
 }

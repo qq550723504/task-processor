@@ -241,6 +241,13 @@ Use this table when adding new code:
 | OpenAI client adapter | `internal/infra/clients/openai` now; later `internal/integration/openai` |
 | S3/object storage adapter | current object storage package now; later `internal/platform/objectstore` or `internal/integration/s3` |
 
+For product modeling, keep `internal/catalog/canonical.Product` as the
+platform-neutral source of product facts. `internal/publishing/shein.Package`
+owns SHEIN workflow state, and its `DraftPayload` is the SHEIN draft contract
+for new reads and writes. `RequestDraft` and the package-level `SkcList` are
+compatibility/display surfaces during migration; they must not become a second
+source of truth.
+
 ## 7. Review Checklist
 
 Before merging a refactoring or feature PR, check:

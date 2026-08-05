@@ -27,6 +27,7 @@ func TestLegacySemanticFieldsStayInsideCompatibilityBoundaries(t *testing.T) {
 		"internal/listingkit/revision_apply_shein.go":           {"RequestDraft"},
 		"internal/listingkit/semantic_fields.go":                {"SDSSync"},
 		"internal/listingkit/service_revision_recompute.go":     {"RequestDraft"},
+		"internal/publishing/shein/model_contract.go":           {"RequestDraft"},
 		"internal/publishing/shein/semantic_fields.go":          {"RequestDraft", "PreviewProduct", "FinalDraft"},
 	}
 

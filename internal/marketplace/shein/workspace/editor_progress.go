@@ -90,7 +90,8 @@ func buildAttributeProgressSection(pkg *sheinpub.Package) EditorProgressSection 
 func buildSaleProgressSection(pkg *sheinpub.Package) EditorProgressSection {
 	total := 2
 	completed := 0
-	if pkg != nil && pkg.RequestDraft != nil && len(pkg.RequestDraft.SKCList) > 0 {
+	draft := sheinpub.DraftPayloadOf(pkg)
+	if draft != nil && len(draft.SKCList) > 0 {
 		completed++
 	}
 	if pkg != nil && IsSaleAttributeResolved(pkg) {

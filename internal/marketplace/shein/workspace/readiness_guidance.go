@@ -161,15 +161,15 @@ func BuildReadinessGuidanceSpec(key string, warningOnly bool) *ReadinessGuidance
 			Reason: &ReadinessReasonSpec{
 				Code:     "request_draft_missing",
 				Category: "payload",
-				Summary:  "当前还没有生成 request_draft，无法继续作为提交草稿流转。",
+				Summary:  "当前还没有生成 SHEIN 草稿，无法继续作为提交草稿流转。",
 			},
 			Hints: []ReadinessHintSpec{{
 				Priority:      "medium",
 				Target:        "system.preview",
 				EditorSection: "category",
-				EditorFocus:   []string{"request_draft"},
-				RevisionPath:  "shein.request_draft",
-				Description:   "先重新生成 request_draft，再继续做提交前预览。",
+				EditorFocus:   []string{"draft_payload"},
+				RevisionPath:  "shein.draft_payload",
+				Description:   "先重新生成 SHEIN 草稿，再继续做提交前预览。",
 			}},
 		}
 	case "preview_product":

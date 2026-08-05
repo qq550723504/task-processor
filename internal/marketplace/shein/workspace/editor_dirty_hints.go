@@ -137,7 +137,8 @@ func collectSaleDirtyFields(pkg *sheinpub.Package) []string {
 	if pkg.SaleAttributeResolution != nil {
 		fields = append(fields, "shein.sale_attribute_resolution")
 	}
-	if pkg.RequestDraft != nil && len(pkg.RequestDraft.SKCList) > 0 {
+	draft := sheinpub.DraftPayloadOf(pkg)
+	if draft != nil && len(draft.SKCList) > 0 {
 		fields = append(fields, "shein.skc_patches")
 	}
 	return fields
