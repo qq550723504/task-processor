@@ -6,6 +6,7 @@ import {
   type SheinStudioGroupedGenerationTarget,
 } from "@/lib/shein-studio/grouped-image-mode";
 import { buildSDSProductReferenceImageUrls } from "@/lib/shein-studio/sds-reference-images";
+import { resolveSheinStudioTransparencyMode } from "@/lib/types/shein-studio-generation";
 import type {
   SheinStudioArtworkModel,
   SheinStudioArtworkGenerationMode,
@@ -17,6 +18,7 @@ import type {
   SheinStudioGroupedImageMode,
   SheinStudioGroupedWorkspace,
   SheinStudioVariationIntensity,
+  SheinStudioTransparencyMode,
 } from "@/lib/types/shein-studio";
 
 type GenerationField =
@@ -68,6 +70,7 @@ type ExecuteStandaloneGenerationInput = {
   setField: GenerationSetField;
   styleCount: string;
   transparentBackground: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   variationIntensity: SheinStudioVariationIntensity;
   formatError?: (error: unknown) => string;
   onJobStarted?: (input: {
@@ -331,6 +334,7 @@ export async function executeStandaloneGeneration({
   setField,
   styleCount,
   transparentBackground,
+  transparentBackgroundMode,
   variationIntensity,
   formatError = (error) =>
     error instanceof Error ? error.message : "款式图生成失败。",
@@ -410,6 +414,7 @@ export async function executeStandaloneGeneration({
           styleCount: parsePositiveInt(styleCount) ?? 1,
           artworkModel,
           transparentBackground,
+          transparentBackgroundMode,
         }),
         {
           onJobStarted: (jobId) => {
@@ -544,6 +549,7 @@ export function buildSheinStudioGenerateRequest({
   productReferenceImageUrls,
   styleCount,
   transparentBackground,
+  transparentBackgroundMode,
   variationIntensity,
 }: {
   artworkGenerationMode: SheinStudioArtworkGenerationMode;
@@ -555,9 +561,14 @@ export function buildSheinStudioGenerateRequest({
   productReferenceImageUrls?: string[];
   styleCount: number;
   transparentBackground: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   variationIntensity: SheinStudioVariationIntensity;
 }): SheinStudioGenerateRequest {
   const trimmedModel = artworkModel.trim();
+  const transparencyMode = resolveSheinStudioTransparencyMode({
+    mode: transparentBackgroundMode,
+    transparentBackground,
+  });
   const normalizedPrompt =
     artworkGenerationMode === "hot_reference"
       ? prompt.trim()
@@ -569,14 +580,18 @@ export function buildSheinStudioGenerateRequest({
   return {
     prompt: normalizedPrompt,
     artworkGenerationMode,
-    promptMode,
+    ...(promptMode ? { promptMode } : {}),
     count: styleCount,
     variationIntensity,
     printableWidth,
     printableHeight,
     productReferenceImageUrls,
-    imageModel: transparentBackground ? "gpt-image-2" : trimmedModel || undefined,
-    transparentBackground,
+    imageModel:
+      transparencyMode === "native" ? "gpt-image-2" : trimmedModel || undefined,
+    transparentBackground: transparencyMode === "native",
+    ...(transparentBackgroundMode
+      ? { transparentBackgroundMode: transparencyMode }
+      : {}),
   };
 }
 

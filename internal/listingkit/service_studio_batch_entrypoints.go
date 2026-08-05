@@ -26,6 +26,10 @@ func (s *service) RetryStudioBatchItems(ctx context.Context, batchID string, req
 	return s.taskStudioBatchOrDefault().RetryStudioBatchItems(ctx, batchID, req)
 }
 
+func (s *service) RetryStudioBatchDesignBackgroundRemoval(ctx context.Context, batchID string, req *RetryStudioBatchDesignBackgroundRemovalRequest) (*StudioBatchDetail, error) {
+	return s.taskStudioBatchOrDefault().RetryStudioBatchDesignBackgroundRemoval(ctx, batchID, req)
+}
+
 func (s *service) ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error) {
 	return s.taskStudioBatchOrDefault().ApproveStudioBatchDesigns(ctx, batchID, req)
 }

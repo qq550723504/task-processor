@@ -27,6 +27,7 @@ import type {
   SheinStudioProductImagePrompt,
   SheinStudioSavedBatch,
   SheinStudioSelectedSDSImage,
+  SheinStudioTransparencyMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 
@@ -55,6 +56,7 @@ type ItemizedTaskCreationProjectionInput = {
   sheinStoreId: string;
   styleCount: string;
   transparentBackground: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   variationIntensity: SheinStudioVariationIntensity;
 };
 
@@ -540,6 +542,7 @@ export function projectItemizedBatchDetail({
   sheinStoreId,
   styleCount,
   transparentBackground,
+  transparentBackgroundMode,
   variationIntensity,
 }: ItemizedBatchDetailProjectionInput): {
   detail: SheinStudioBatchDetail;
@@ -562,6 +565,7 @@ export function projectItemizedBatchDetail({
       hotStyleReferencePrompt,
       artworkModel,
       transparentBackground,
+      transparentBackgroundMode,
       sheinStoreId,
       imageStrategy,
       groupedImageMode,
@@ -613,6 +617,7 @@ export function projectItemizedTaskCreationResult({
   sheinStoreId,
   styleCount,
   transparentBackground,
+  transparentBackgroundMode,
   variationIntensity,
 }: ItemizedTaskCreationProjectionInput): {
   detail: SheinStudioBatchDetail;
@@ -656,6 +661,7 @@ export function projectItemizedTaskCreationResult({
     sheinStoreId,
     styleCount,
     transparentBackground,
+    transparentBackgroundMode,
     variationIntensity,
   });
   return {

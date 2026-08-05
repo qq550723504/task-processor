@@ -9,24 +9,27 @@ import (
 )
 
 type listingKitRoutedImageClient struct {
-	defaultModel string
-	defaultImage openaiclient.ImageGenerator
-	gptImage2    openaiclient.ImageGenerator
-	nanobanana   openaiclient.ImageGenerator
+	defaultModel      string
+	defaultImage      openaiclient.ImageGenerator
+	gptImage2         openaiclient.ImageGenerator
+	nanobanana        openaiclient.ImageGenerator
+	backgroundRemoval openaiclient.ImageGenerator
 }
 
 func buildListingKitRoutedImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {
 	nanoClient := buildStrictListingKitNanobananaImageClient(cfg, resolver, listingKitImageClientNameNanobanana)
 	gptClient := buildStrictListingKitImageClient(cfg, resolver, listingKitImageClientNameGPTImage2)
+	backgroundRemovalClient := buildStrictListingKitImageClient(cfg, resolver, listingKitImageClientNameBackgroundRemoval)
 	defaultClient := nanoClient
 	if resolver == nil {
 		defaultClient = buildStrictListingKitImageClient(cfg, resolver, listingKitImageClientName)
 	}
 	return &listingKitRoutedImageClient{
-		defaultModel: listingKitImageModelSelectorGPTImage2,
-		defaultImage: defaultClient,
-		gptImage2:    gptClient,
-		nanobanana:   nanoClient,
+		defaultModel:      listingKitImageModelSelectorGPTImage2,
+		defaultImage:      defaultClient,
+		gptImage2:         gptClient,
+		nanobanana:        nanoClient,
+		backgroundRemoval: backgroundRemovalClient,
 	}
 }
 
@@ -122,6 +125,11 @@ func (c *listingKitRoutedImageClient) resolveBySelector(selector string) (openai
 		return c.gptImage2, true, nil
 	case listingKitImageModelSelectorNano:
 		return c.nanobanana, true, nil
+	case listingKitImageModelSelectorBackgroundRemoval:
+		if c.backgroundRemoval == nil {
+			return nil, false, errListingKitAIClientNotConfigured(listingKitImageClientNameBackgroundRemoval)
+		}
+		return c.backgroundRemoval, true, nil
 	default:
 		if c.defaultImage == nil {
 			return nil, false, errListingKitAIClientNotConfigured(listingKitImageClientName)
@@ -137,6 +145,8 @@ func normalizeListingKitImageSelector(selector string) string {
 		return listingKitImageModelSelectorGPTImage2
 	case strings.Contains(normalized, "banana"):
 		return listingKitImageModelSelectorNano
+	case normalized == listingKitImageModelSelectorBackgroundRemoval || strings.Contains(normalized, "background-remov"):
+		return listingKitImageModelSelectorBackgroundRemoval
 	default:
 		return normalized
 	}
@@ -147,7 +157,7 @@ func enforceListingKitImageClientTimeout(clientName string, cfg *openaiclient.Cl
 		return nil
 	}
 	switch clientName {
-	case listingKitImageClientName, listingKitImageClientNameGPTImage2, listingKitImageClientNameNanobanana:
+	case listingKitImageClientName, listingKitImageClientNameGPTImage2, listingKitImageClientNameNanobanana, listingKitImageClientNameBackgroundRemoval:
 		if cfg.Timeout >= listingKitStudioImageMinTimeout {
 			return cfg
 		}

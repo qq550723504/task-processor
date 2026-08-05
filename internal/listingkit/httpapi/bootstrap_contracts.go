@@ -150,6 +150,7 @@ type BuildServiceHooks struct {
 	SheinTranslateAPIBuilderFactory   func(listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder
 	SheinAPIClientFactoryBuilder      func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory
 	StudioImageGeneratorBuilder       func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator
+	StudioBackgroundRemoverBuilder    func(*config.Config, openaiclient.ClientConfigResolver) listingkit.StudioBackgroundRemover
 	ConfigureZitadelAuth              func(config.ListingKitZitadelConfig)
 	ConfigureAuthorization            func([]string, []string) error
 }

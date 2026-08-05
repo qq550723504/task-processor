@@ -20,6 +20,7 @@ import type {
   SheinStudioSelectedSDSImage,
   SheinStudioSavedBatch,
   SheinStudioStorageData,
+  SheinStudioTransparencyMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 import { normalizeSelectedSDSImages } from "@/lib/shein-studio/sds-selectable-images";
@@ -142,6 +143,17 @@ export function normalizeArtworkGenerationMode(
   return value === "hot_reference" || value === "theme_prompt"
     ? value
     : undefined;
+}
+
+export function normalizeTransparencyMode(
+  value: unknown,
+  transparentBackground?: boolean,
+): SheinStudioTransparencyMode {
+  return value === "native" || value === "removal" || value === "none"
+    ? value
+    : transparentBackground
+      ? "native"
+      : "none";
 }
 
 function normalizeHotStyleReferenceImageUrls(value: unknown) {
@@ -451,6 +463,10 @@ function normalizeGroupedWorkspace(
     productImagePrompts: normalizeProductImagePrompts(candidate.productImagePrompts),
     artworkModel: normalizeArtworkModel(candidate.artworkModel),
     transparentBackground: candidate.transparentBackground ?? false,
+    transparentBackgroundMode: normalizeTransparencyMode(
+      candidate.transparentBackgroundMode,
+      candidate.transparentBackground,
+    ),
     variationIntensity: normalizeVariationIntensity(candidate.variationIntensity),
     designs: Array.isArray(candidate.designs)
       ? candidate.designs.filter(isGeneratedDesign).map(normalizeGeneratedDesign)
@@ -595,6 +611,10 @@ export function normalizeDraft(raw: Partial<SheinStudioDraft> | null | undefined
     productImagePrompts: normalizeProductImagePrompts(raw.productImagePrompts),
     artworkModel: normalizeArtworkModel(raw.artworkModel),
     transparentBackground: raw.transparentBackground ?? false,
+    transparentBackgroundMode: normalizeTransparencyMode(
+      raw.transparentBackgroundMode,
+      raw.transparentBackground,
+    ),
     sheinStoreId: raw.sheinStoreId ?? "",
     imageStrategy: normalizeImageStrategy(raw.imageStrategy),
     groupedImageMode: normalizeGroupedImageMode(raw.groupedImageMode),
@@ -721,6 +741,10 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
     productImagePrompts: normalizeProductImagePrompts(raw.productImagePrompts),
     artworkModel: normalizeArtworkModel(raw.artworkModel),
     transparentBackground: raw.transparentBackground ?? false,
+    transparentBackgroundMode: normalizeTransparencyMode(
+      raw.transparentBackgroundMode,
+      raw.transparentBackground,
+    ),
     sheinStoreId: raw.sheinStoreId ?? "",
     imageStrategy: normalizeImageStrategy(raw.imageStrategy),
     groupedImageMode: normalizeGroupedImageMode(raw.groupedImageMode),

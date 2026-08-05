@@ -577,7 +577,7 @@ describe("SheinStudioGenerationPanel", () => {
     expect(screen.getByLabelText("款式数量")).toBeDisabled();
     expect(screen.getByDisplayValue("中变化")).toBeDisabled();
     expect(screen.getByDisplayValue("gpt-image-2")).toBeDisabled();
-    expect(screen.getByRole("checkbox")).toBeDisabled();
+    expect(screen.getByDisplayValue("模型直接生成透明背景")).toBeDisabled();
 
     expect(screen.getByLabelText("商品图数量")).toBeEnabled();
     expect(

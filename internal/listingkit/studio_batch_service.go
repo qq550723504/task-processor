@@ -33,9 +33,14 @@ type StudioBatchService interface {
 	StartStudioBatchGeneration(ctx context.Context, batchID string) (*StudioBatchDetail, error)
 	PrepareRetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error)
 	RetryStudioBatchItems(ctx context.Context, batchID string, req *RetryStudioBatchItemsRequest) (*StudioBatchDetail, error)
+	RetryStudioBatchDesignBackgroundRemoval(ctx context.Context, batchID string, req *RetryStudioBatchDesignBackgroundRemovalRequest) (*StudioBatchDetail, error)
 	ApproveStudioBatchDesigns(ctx context.Context, batchID string, req *ApproveStudioBatchDesignsRequest) (*StudioBatchDetail, error)
 	PrepareCreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error)
 	CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error)
+}
+
+type RetryStudioBatchDesignBackgroundRemovalRequest struct {
+	DesignIDs []string `json:"design_ids,omitempty"`
 }
 
 type StudioBatchDetail struct {
@@ -87,6 +92,7 @@ type taskStudioBatchServiceConfig struct {
 	generator                studioBatchGenerator
 	createGenerateTask       func(ctx context.Context, req *GenerateRequest) (*Task, error)
 	getTask                  func(ctx context.Context, taskID string) (*Task, error)
+	retryBackgroundRemoval   func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error)
 	serviceRunner            *listingStudioBatchServiceRunner
 	batchRunner              *listingStudioBatchGenerationRunner
 	detailRunner             *listingStudioBatchDetailRunner

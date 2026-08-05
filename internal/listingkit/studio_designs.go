@@ -46,7 +46,7 @@ func buildStudioDesignPromptWithContext(ctx context.Context, req *StudioDesignRe
 		referenceHint = studioDesignReferenceHint(req)
 	}
 	transparentHint := ""
-	if req.TransparentBackground {
+	if studioDesignUsesNativeTransparency(req) {
 		transparentHint = "Output the artwork on a true transparent background with alpha channel. Do not simulate transparency with checkerboard, paper texture, white fill, colored fill, or any background pattern."
 	}
 	vars := map[string]any{
@@ -91,7 +91,7 @@ func buildHotReferenceStudioDesignPromptWithContext(ctx context.Context, req *St
 		printableHint = studioDesignPrintableHint(req.PrintableWidth, req.PrintableHeight)
 	}
 	transparentHint := ""
-	if req != nil && req.TransparentBackground {
+	if studioDesignUsesNativeTransparency(req) {
 		transparentHint = "Output on a true transparent background with alpha channel."
 	}
 	vars := map[string]any{
@@ -207,7 +207,7 @@ func buildStudioDesignSiblingPromptRequest(req *StudioDesignRequest, count int) 
 	if req.PrintableWidth > 0 && req.PrintableHeight > 0 {
 		builder.WriteString(fmt.Sprintf("Print area hint: %d x %d pixels.\n", req.PrintableWidth, req.PrintableHeight))
 	}
-	if req.TransparentBackground {
+	if studioDesignUsesNativeTransparency(req) {
 		builder.WriteString("Keep the artwork compatible with transparent-background output.\n")
 	}
 	if len(studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)) > 0 {
@@ -253,7 +253,7 @@ func parseStudioDesignSiblingThemes(raw string, count int) ([]string, error) {
 }
 
 func resolveStudioDesignImageModel(req *StudioDesignRequest, fallback string) string {
-	if req != nil && req.TransparentBackground {
+	if studioDesignUsesNativeTransparency(req) {
 		return studioDesignTransparentModel
 	}
 	if req != nil {

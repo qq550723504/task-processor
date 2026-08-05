@@ -23,6 +23,7 @@ func TestBuildSubmitPayloadReadinessChecksUsesPackagePredicates(t *testing.T) {
 
 	pkg := &sheinpub.Package{
 		DraftPayload: &sheinpub.RequestDraft{
+			SpuName:   "Ready product",
 			ImageInfo: &sheinpub.ImageDraft{MainImage: "https://img.example/main.jpg"},
 			SKCList: []sheinpub.SKCRequestDraft{{
 				SupplierCode: "SKC-1",
@@ -60,6 +61,22 @@ func TestBuildSubmitPayloadReadinessChecksUsesPackagePredicates(t *testing.T) {
 	assertReadinessCheck(t, checks, "final_review", true)
 }
 
+func TestBuildSubmitPayloadReadinessChecksRejectsStructurallyIncompleteDraft(t *testing.T) {
+	t.Parallel()
+
+	checks := BuildSubmitPayloadReadinessChecks(&sheinpub.Package{
+		DraftPayload: &sheinpub.RequestDraft{},
+	}, "publish")
+
+	check := findReadinessCheck(t, checks, "request_draft")
+	if check.OK {
+		t.Fatalf("request_draft check = %+v, want blocked", check)
+	}
+	if check.Message != "SHEIN draft must contain at least one SKC" {
+		t.Fatalf("request_draft message = %q, want structural validation message", check.Message)
+	}
+}
+
 func TestBuildSubmitPayloadReadinessChecksIncludesReviewAndFactsChecks(t *testing.T) {
 	t.Parallel()
 
@@ -89,4 +106,15 @@ func assertReadinessCheck(t *testing.T, checks []ReadinessCheckSpec, key string,
 		return
 	}
 	t.Fatalf("missing readiness check %q in %+v", key, checks)
+}
+
+func findReadinessCheck(t *testing.T, checks []ReadinessCheckSpec, key string) ReadinessCheckSpec {
+	t.Helper()
+	for _, check := range checks {
+		if check.Key == key {
+			return check
+		}
+	}
+	t.Fatalf("missing readiness check %q in %+v", key, checks)
+	return ReadinessCheckSpec{}
 }

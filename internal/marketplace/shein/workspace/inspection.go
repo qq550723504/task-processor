@@ -447,11 +447,12 @@ func buildPendingAttributeCandidates(pkg *sheinpub.Package) []sheinpub.PendingAt
 }
 
 func buildSKCPatchSuggestions(pkg *sheinpub.Package) []sheinpub.InspectionSKCPatchPayload {
-	if pkg == nil || pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 {
+	draft := sheinpub.DraftPayloadOf(pkg)
+	if draft == nil || len(draft.SKCList) == 0 {
 		return nil
 	}
-	patches := make([]sheinpub.InspectionSKCPatchPayload, 0, len(pkg.RequestDraft.SKCList))
-	for _, skc := range pkg.RequestDraft.SKCList {
+	patches := make([]sheinpub.InspectionSKCPatchPayload, 0, len(draft.SKCList))
+	for _, skc := range draft.SKCList {
 		entry := sheinpub.InspectionSKCPatchPayload{
 			SupplierCode: skc.SupplierCode,
 			SkcName:      skc.SkcName,

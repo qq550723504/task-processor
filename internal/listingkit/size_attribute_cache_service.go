@@ -184,12 +184,13 @@ func attachSizeAttributeCacheInfo(
 }
 
 func sheinSizeAttributeCacheSkipReason(pkg *sheinpub.Package) string {
+	draft := sheinpub.DraftPayloadOf(pkg)
 	switch {
 	case pkg == nil:
 		return "package_nil"
 	case pkg.SizeAttributes != nil && pkg.SizeAttributes.Ready:
 		return "existing_ready_size_attributes"
-	case pkg.DraftPayload == nil || len(pkg.DraftPayload.SizeAttributeList) == 0:
+	case draft == nil || len(draft.SizeAttributeList) == 0:
 		return "empty_size_attribute_list"
 	default:
 		return ""

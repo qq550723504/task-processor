@@ -75,6 +75,7 @@ func buildListingKitSheinDependencies(in buildListingKitServiceConfigInput) list
 		SheinContentOptimizer:      in.submit.shein.contentOptimizer,
 		StudioPromptDiversifier:    in.submit.shein.contentOptimizer,
 		StudioImageGenerator:       in.submit.studio.imageGenerator,
+		StudioBackgroundRemover:    in.submit.studio.backgroundRemover,
 	}
 }
 

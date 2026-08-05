@@ -37,7 +37,7 @@ func TestBuildSubmitTemplateReadinessChecksKeepsFieldPathsAndActions(t *testing.
 	if check.SuggestedAction != "确认规格" {
 		t.Fatalf("sale_attributes suggested action = %q, want %q", check.SuggestedAction, "确认规格")
 	}
-	assertContainsFieldPath(t, check.FieldPaths, "shein.request_draft.skc_list")
+	assertContainsFieldPath(t, check.FieldPaths, "shein.draft_payload.skc_list")
 }
 
 func assertTemplateReadinessCheck(t *testing.T, checks []ReadinessCheckSpec, key string, ok bool, message string) {

@@ -68,7 +68,7 @@ func applySheinRevision(pkg *sheinpub.Package, req *SheinRevisionInput) {
 	}
 	if req.RequestDraft != nil {
 		draftCopy := *req.RequestDraft
-		pkg.DraftPayload = &draftCopy
+		sheinpub.SetDraftPayload(pkg, &draftCopy)
 	}
 	ensureSheinRequestDraft(pkg)
 	if req.SaleAttributeResolution != nil {
@@ -109,7 +109,8 @@ func normalizeSheinSaleAttributeState(pkg *sheinpub.Package) {
 		return
 	}
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg.DraftPayload == nil || len(pkg.DraftPayload.SKCList) == 0 {
+	draft := sheinpub.DraftPayloadOf(pkg)
+	if draft == nil || len(draft.SKCList) == 0 {
 		return
 	}
 	if sheinpub.SaleAttributesReadyForSubmit(pkg) {

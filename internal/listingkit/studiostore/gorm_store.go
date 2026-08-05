@@ -86,21 +86,26 @@ func (r *GormRepository) ReplaceDesigns(ctx context.Context, sessionID string, a
 			if err := tx.Clauses(clause.OnConflict{
 				Columns: []clause.Column{{Name: "id"}},
 				DoUpdates: clause.Assignments(map[string]any{
-					"tenant_id":              clause.Expr{SQL: "excluded.tenant_id"},
-					"session_id":             clause.Expr{SQL: "excluded.session_id"},
-					"image_url":              clause.Expr{SQL: "excluded.image_url"},
-					"product_image_urls":     clause.Expr{SQL: "excluded.product_image_urls"},
-					"prompt":                 clause.Expr{SQL: "excluded.prompt"},
-					"revised_prompt":         clause.Expr{SQL: "excluded.revised_prompt"},
-					"image_model":            clause.Expr{SQL: "excluded.image_model"},
-					"transparent_background": clause.Expr{SQL: "excluded.transparent_background"},
-					"variation_intensity":    clause.Expr{SQL: "excluded.variation_intensity"},
-					"role":                   clause.Expr{SQL: "excluded.role"},
-					"role_label":             clause.Expr{SQL: "excluded.role_label"},
-					"review_note":            clause.Expr{SQL: "excluded.review_note"},
-					"sort_order":             clause.Expr{SQL: "excluded.sort_order"},
-					"approved":               clause.Expr{SQL: "excluded.approved"},
-					"updated_at":             clause.Expr{SQL: "excluded.updated_at"},
+					"tenant_id":                   clause.Expr{SQL: "excluded.tenant_id"},
+					"session_id":                  clause.Expr{SQL: "excluded.session_id"},
+					"image_url":                   clause.Expr{SQL: "excluded.image_url"},
+					"product_image_urls":          clause.Expr{SQL: "excluded.product_image_urls"},
+					"prompt":                      clause.Expr{SQL: "excluded.prompt"},
+					"revised_prompt":              clause.Expr{SQL: "excluded.revised_prompt"},
+					"image_model":                 clause.Expr{SQL: "excluded.image_model"},
+					"transparent_background":      clause.Expr{SQL: "excluded.transparent_background"},
+					"original_image_url":          clause.Expr{SQL: "excluded.original_image_url"},
+					"transparent_background_mode": clause.Expr{SQL: "excluded.transparent_background_mode"},
+					"background_removal_status":   clause.Expr{SQL: "excluded.background_removal_status"},
+					"background_removal_model":    clause.Expr{SQL: "excluded.background_removal_model"},
+					"background_removal_error":    clause.Expr{SQL: "excluded.background_removal_error"},
+					"variation_intensity":         clause.Expr{SQL: "excluded.variation_intensity"},
+					"role":                        clause.Expr{SQL: "excluded.role"},
+					"role_label":                  clause.Expr{SQL: "excluded.role_label"},
+					"review_note":                 clause.Expr{SQL: "excluded.review_note"},
+					"sort_order":                  clause.Expr{SQL: "excluded.sort_order"},
+					"approved":                    clause.Expr{SQL: "excluded.approved"},
+					"updated_at":                  clause.Expr{SQL: "excluded.updated_at"},
 				}),
 			}).Create(&designs).Error; err != nil {
 				return err
@@ -134,21 +139,26 @@ func (r *GormRepository) UpsertDesigns(ctx context.Context, sessionID string, ap
 	return r.db.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "id"}},
 		DoUpdates: clause.Assignments(map[string]any{
-			"tenant_id":              clause.Expr{SQL: "excluded.tenant_id"},
-			"session_id":             clause.Expr{SQL: "excluded.session_id"},
-			"image_url":              clause.Expr{SQL: "excluded.image_url"},
-			"product_image_urls":     clause.Expr{SQL: "excluded.product_image_urls"},
-			"prompt":                 clause.Expr{SQL: "excluded.prompt"},
-			"revised_prompt":         clause.Expr{SQL: "excluded.revised_prompt"},
-			"image_model":            clause.Expr{SQL: "excluded.image_model"},
-			"transparent_background": clause.Expr{SQL: "excluded.transparent_background"},
-			"variation_intensity":    clause.Expr{SQL: "excluded.variation_intensity"},
-			"role":                   clause.Expr{SQL: "excluded.role"},
-			"role_label":             clause.Expr{SQL: "excluded.role_label"},
-			"review_note":            clause.Expr{SQL: "excluded.review_note"},
-			"sort_order":             clause.Expr{SQL: "excluded.sort_order"},
-			"approved":               clause.Expr{SQL: "excluded.approved"},
-			"updated_at":             clause.Expr{SQL: "excluded.updated_at"},
+			"tenant_id":                   clause.Expr{SQL: "excluded.tenant_id"},
+			"session_id":                  clause.Expr{SQL: "excluded.session_id"},
+			"image_url":                   clause.Expr{SQL: "excluded.image_url"},
+			"product_image_urls":          clause.Expr{SQL: "excluded.product_image_urls"},
+			"prompt":                      clause.Expr{SQL: "excluded.prompt"},
+			"revised_prompt":              clause.Expr{SQL: "excluded.revised_prompt"},
+			"image_model":                 clause.Expr{SQL: "excluded.image_model"},
+			"transparent_background":      clause.Expr{SQL: "excluded.transparent_background"},
+			"original_image_url":          clause.Expr{SQL: "excluded.original_image_url"},
+			"transparent_background_mode": clause.Expr{SQL: "excluded.transparent_background_mode"},
+			"background_removal_status":   clause.Expr{SQL: "excluded.background_removal_status"},
+			"background_removal_model":    clause.Expr{SQL: "excluded.background_removal_model"},
+			"background_removal_error":    clause.Expr{SQL: "excluded.background_removal_error"},
+			"variation_intensity":         clause.Expr{SQL: "excluded.variation_intensity"},
+			"role":                        clause.Expr{SQL: "excluded.role"},
+			"role_label":                  clause.Expr{SQL: "excluded.role_label"},
+			"review_note":                 clause.Expr{SQL: "excluded.review_note"},
+			"sort_order":                  clause.Expr{SQL: "excluded.sort_order"},
+			"approved":                    clause.Expr{SQL: "excluded.approved"},
+			"updated_at":                  clause.Expr{SQL: "excluded.updated_at"},
 		}),
 	}).Create(&designs).Error
 }
@@ -230,20 +240,25 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 	}
 
 	rows := make([]struct {
-		SessionID             string
-		TenantID              string
-		DesignID              string
-		ImageURL              string
-		Prompt                string
-		SelectionJSON         string
-		Status                string
-		CreatedAt             time.Time
-		UpdatedAt             time.Time
-		ReviewNote            string
-		RevisedPrompt         string
-		ImageModel            string
-		TransparentBackground bool
-		VariationIntensity    string
+		SessionID                 string
+		TenantID                  string
+		DesignID                  string
+		ImageURL                  string
+		OriginalImageURL          string
+		Prompt                    string
+		SelectionJSON             string
+		Status                    string
+		CreatedAt                 time.Time
+		UpdatedAt                 time.Time
+		ReviewNote                string
+		RevisedPrompt             string
+		ImageModel                string
+		TransparentBackground     bool
+		TransparentBackgroundMode string
+		BackgroundRemovalStatus   string
+		BackgroundRemovalModel    string
+		BackgroundRemovalError    string
+		VariationIntensity        string
 	}, 0, limit)
 
 	if err := r.db.WithContext(ctx).
@@ -253,6 +268,7 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 			"d.tenant_id AS tenant_id",
 			"d.id AS design_id",
 			"d.image_url AS image_url",
+			"d.original_image_url AS original_image_url",
 			"s.prompt AS prompt",
 			"s.selection AS selection_json",
 			"s.status AS status",
@@ -262,6 +278,10 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 			"d.revised_prompt AS revised_prompt",
 			"d.image_model AS image_model",
 			"d.transparent_background AS transparent_background",
+			"d.transparent_background_mode AS transparent_background_mode",
+			"d.background_removal_status AS background_removal_status",
+			"d.background_removal_model AS background_removal_model",
+			"d.background_removal_error AS background_removal_error",
 			"d.variation_intensity AS variation_intensity",
 		}).
 		Joins("JOIN shein_studio_sessions AS s ON s.id = d.session_id").
@@ -277,20 +297,25 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 		var selection listingkit.SheinStudioSelectionSnapshot
 		_ = selection.Scan(row.SelectionJSON)
 		items = append(items, listingkit.SheinStudioSessionGalleryItem{
-			SessionID:             row.SessionID,
-			TenantID:              row.TenantID,
-			DesignID:              row.DesignID,
-			ImageURL:              row.ImageURL,
-			Prompt:                row.Prompt,
-			ProductName:           selection.ProductName,
-			Status:                row.Status,
-			CreatedAt:             row.CreatedAt.UTC().Format(time.RFC3339),
-			UpdatedAt:             row.UpdatedAt.UTC().Format(time.RFC3339),
-			ReviewNote:            row.ReviewNote,
-			RevisedPrompt:         row.RevisedPrompt,
-			ImageModel:            row.ImageModel,
-			TransparentBackground: row.TransparentBackground,
-			VariationIntensity:    row.VariationIntensity,
+			SessionID:                 row.SessionID,
+			TenantID:                  row.TenantID,
+			DesignID:                  row.DesignID,
+			ImageURL:                  row.ImageURL,
+			OriginalImageURL:          row.OriginalImageURL,
+			Prompt:                    row.Prompt,
+			ProductName:               selection.ProductName,
+			Status:                    row.Status,
+			CreatedAt:                 row.CreatedAt.UTC().Format(time.RFC3339),
+			UpdatedAt:                 row.UpdatedAt.UTC().Format(time.RFC3339),
+			ReviewNote:                row.ReviewNote,
+			RevisedPrompt:             row.RevisedPrompt,
+			ImageModel:                row.ImageModel,
+			TransparentBackground:     row.TransparentBackground,
+			TransparentBackgroundMode: listingkit.StudioTransparencyMode(row.TransparentBackgroundMode),
+			BackgroundRemovalStatus:   listingkit.StudioBackgroundRemovalStatus(row.BackgroundRemovalStatus),
+			BackgroundRemovalModel:    row.BackgroundRemovalModel,
+			BackgroundRemovalError:    row.BackgroundRemovalError,
+			VariationIntensity:        row.VariationIntensity,
 		})
 	}
 	return items, nil

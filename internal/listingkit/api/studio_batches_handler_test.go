@@ -139,6 +139,10 @@ func (s *stubStudioBatchActionService) RetryStudioBatchItems(ctx context.Context
 	return s.retryResult, s.retryErr
 }
 
+func (s *stubStudioBatchActionService) RetryStudioBatchDesignBackgroundRemoval(context.Context, string, *listingkit.RetryStudioBatchDesignBackgroundRemovalRequest) (*listingkit.StudioBatchDetail, error) {
+	return s.prepareRetryResult, s.prepareRetryErr
+}
+
 func (s *stubStudioBatchActionService) ScheduleStudioBatchSDSChildRetries(_ context.Context, batchID string) (*listingkit.StudioBatchSDSChildRetryResult, error) {
 	s.scheduleSDSBatchID = batchID
 	return s.scheduleSDSResult, s.scheduleSDSErr
@@ -371,6 +375,27 @@ func TestStudioBatchRetryItemsHandlerBindsIDs(t *testing.T) {
 	case <-svc.resumeCalled:
 	case <-time.After(time.Second):
 		t.Fatal("background resume was not launched for retry")
+	}
+}
+
+func TestStudioBatchBackgroundRemovalRetryHandlerBindsDesignIDs(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubStudioBatchActionService{
+		prepareRetryResult: &listingkit.StudioBatchDetail{Batch: &listingkit.StudioBatchRecord{ID: "batch-1"}},
+	}
+	h := &studioSessionHandler{service: svc}
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/studio/batches/:batch_id/designs/background-removal/retry", h.RetryStudioBatchDesignBackgroundRemoval)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/batches/batch-1/designs/background-removal/retry", strings.NewReader(`{"design_ids":["design-1"]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", rec.Code, rec.Body.String())
 	}
 }
 

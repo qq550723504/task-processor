@@ -7,5 +7,6 @@ type studioDependencies struct {
 	batchTaskLinkRepo StudioBatchTaskLinkRepository
 	promptDiversifier AIChatCompleter
 	imageGenerator    AIImageGenerator
+	backgroundRemover StudioBackgroundRemover
 	uploadStore       ImageUploadStore
 }

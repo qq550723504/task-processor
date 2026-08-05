@@ -395,16 +395,21 @@ func (g *studioBatchGenerationService) materializeAttempt(ctx context.Context, b
 			designID = buildStudioBatchDesignID(attempt.ID, index)
 		}
 		designs = append(designs, StudioMaterializedDesignRecord{
-			ID:               designID,
-			BatchID:          item.BatchID,
-			ItemID:           item.ID,
-			SourceAttemptID:  attempt.ID,
-			TargetGroupKey:   item.TargetGroupKey,
-			TargetGroupLabel: item.TargetGroupLabel,
-			ImageURL:         strings.TrimSpace(image.ImageURL),
-			SortOrder:        index,
-			CreatedAt:        now,
-			UpdatedAt:        now,
+			ID:                        designID,
+			BatchID:                   item.BatchID,
+			ItemID:                    item.ID,
+			SourceAttemptID:           attempt.ID,
+			TargetGroupKey:            item.TargetGroupKey,
+			TargetGroupLabel:          item.TargetGroupLabel,
+			ImageURL:                  strings.TrimSpace(image.ImageURL),
+			OriginalImageURL:          strings.TrimSpace(image.OriginalImageURL),
+			TransparentBackgroundMode: image.TransparentBackgroundMode,
+			BackgroundRemovalStatus:   image.BackgroundRemovalStatus,
+			BackgroundRemovalModel:    strings.TrimSpace(image.BackgroundRemovalModel),
+			BackgroundRemovalError:    strings.TrimSpace(image.BackgroundRemovalError),
+			SortOrder:                 index,
+			CreatedAt:                 now,
+			UpdatedAt:                 now,
 		})
 	}
 	if err := g.repo.ReplaceStudioItemMaterializedDesigns(ctx, item.ID, designs); err != nil {

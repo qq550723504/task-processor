@@ -106,9 +106,7 @@ func (s *service) refreshSheinAttributeDerivedState(task *Task, buildReq *sheinp
 	pkg := task.Result.Shein
 	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
 	pkg.ProductAttributes = common.BuildAttributes(task.Result.CanonicalProduct.Attributes)
-	if pkg.DraftPayload == nil {
-		pkg.DraftPayload = &sheinpub.RequestDraft{}
-	}
+	sheinpub.EnsureDraftPayload(pkg)
 	if attributeResolver != nil {
 		pkg.AttributeResolution = attributeResolver.Resolve(buildReq, task.Result.CanonicalProduct, pkg)
 		sheinpub.ApplyAttributeResolution(pkg, pkg.AttributeResolution)

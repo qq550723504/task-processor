@@ -39,6 +39,7 @@ type taskStudioSessionCollaborators struct {
 
 type taskStudioMediaWiring struct {
 	imageGenerator                AIImageGenerator
+	backgroundRemover             StudioBackgroundRemover
 	promptDiversifier             AIChatCompleter
 	uploadStoreConfigured         bool
 	uploadImages                  func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
@@ -139,6 +140,7 @@ func (w taskStudioSessionCollaboratorWiring) resolve(existing taskStudioSessionC
 func buildTaskStudioMediaWiring(s *service) taskStudioMediaWiring {
 	return taskStudioMediaWiring{
 		imageGenerator:                resolveStudioImageGenerator(s),
+		backgroundRemover:             resolveStudioBackgroundRemover(s),
 		promptDiversifier:             resolveStudioPromptDiversifier(s),
 		uploadStoreConfigured:         resolveStudioUploadStore(s) != nil,
 		uploadImages:                  s.UploadImages,
@@ -170,6 +172,7 @@ func buildTaskStudioBatchDraftServiceConfigWithWiring(config taskStudioSessionCo
 func buildTaskStudioMediaServiceConfigWithWiring(wiring taskStudioMediaWiring) taskStudioMediaServiceConfig {
 	return taskStudioMediaServiceConfig{
 		imageGenerator:                wiring.imageGenerator,
+		backgroundRemover:             wiring.backgroundRemover,
 		promptDiversifier:             wiring.promptDiversifier,
 		uploadStoreConfigured:         wiring.uploadStoreConfigured,
 		uploadImages:                  wiring.uploadImages,

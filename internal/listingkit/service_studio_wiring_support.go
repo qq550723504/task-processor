@@ -35,6 +35,13 @@ func resolveStudioImageGenerator(s *service) AIImageGenerator {
 	return s.studioDeps.imageGenerator
 }
 
+func resolveStudioBackgroundRemover(s *service) StudioBackgroundRemover {
+	if s == nil {
+		return nil
+	}
+	return s.studioDeps.backgroundRemover
+}
+
 func resolveStudioUploadStore(s *service) ImageUploadStore {
 	if s == nil {
 		return nil

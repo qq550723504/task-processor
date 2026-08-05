@@ -21,6 +21,7 @@ export async function generateSheinStudioDesigns(
     printable_height?: number;
     image_model?: string;
     transparent_background?: boolean;
+    transparent_background_mode?: SheinStudioGenerateRequest["transparentBackgroundMode"];
     warnings?: string[];
     images?: Array<{
       id: string;
@@ -32,6 +33,11 @@ export async function generateSheinStudioDesigns(
       image_model?: string;
       imageModel?: string;
       transparent_background?: boolean;
+      transparent_background_mode?: SheinStudioGenerateRequest["transparentBackgroundMode"];
+      original_image_url?: string;
+      background_removal_status?: SheinStudioGeneratedDesign["backgroundRemovalStatus"];
+      background_removal_model?: string;
+      background_removal_error?: string;
       transparentBackground?: boolean;
       variation_intensity?: SheinStudioGenerateRequest["variationIntensity"];
       variationIntensity?: SheinStudioGenerateRequest["variationIntensity"];
@@ -50,10 +56,11 @@ export async function generateSheinStudioDesigns(
       printable_height: body.printableHeight,
       product_reference_image_urls: body.productReferenceImageUrls,
       image_model:
-        body.transparentBackground
+        body.transparentBackgroundMode === "native" || body.transparentBackground
           ? "gpt-image-2"
           : body.imageModel?.trim() || undefined,
       transparent_background: body.transparentBackground,
+      transparent_background_mode: body.transparentBackgroundMode,
     },
     timeoutMs: 3600000,
     onJobStarted: options?.onJobStarted,
@@ -65,6 +72,7 @@ export async function generateSheinStudioDesigns(
     printableHeight: payload.printable_height,
     imageModel: payload.image_model,
     transparentBackground: payload.transparent_background,
+    transparentBackgroundMode: payload.transparent_background_mode,
     warnings: payload.warnings ?? [],
     images: (payload.images ?? []).map((image) => ({
       id: image.id,
@@ -78,6 +86,14 @@ export async function generateSheinStudioDesigns(
         payload.transparent_background ??
         body.transparentBackground ??
         false,
+      transparentBackgroundMode:
+        image.transparent_background_mode ??
+        payload.transparent_background_mode ??
+        body.transparentBackgroundMode,
+      originalImageUrl: image.original_image_url,
+      backgroundRemovalStatus: image.background_removal_status,
+      backgroundRemovalModel: image.background_removal_model,
+      backgroundRemovalError: image.background_removal_error,
       variationIntensity:
         image.variationIntensity ?? image.variation_intensity ?? body.variationIntensity,
     })),

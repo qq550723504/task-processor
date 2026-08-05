@@ -14,6 +14,7 @@ import type {
   SheinStudioPersistedGroupedWorkspace,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
+  SheinStudioTransparencyMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 import type { SheinStudioSaveInput } from "@/lib/utils/shein-studio-batches";
@@ -33,6 +34,7 @@ type BuildSheinStudioDraftInputArgs = {
   hotStyleReferencePrompt?: string;
   artworkModel: SheinStudioArtworkModel;
   transparentBackground: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   sheinStoreId: string;
   imageStrategy: SheinStudioImageStrategy;
   groupedImageMode: SheinStudioGroupedImageMode;
@@ -100,6 +102,7 @@ function toPersistedGroupedWorkspace(
     hotStyleReferencePrompt: artworkInputs.hotStyleReferencePrompt,
     artworkModel: group.artworkModel,
     transparentBackground: group.transparentBackground,
+    transparentBackgroundMode: group.transparentBackgroundMode,
     variationIntensity: group.variationIntensity,
     legacyCompatibilitySnapshot: buildLegacyCompatibilitySnapshot({
       designs: group.designs,
@@ -236,6 +239,7 @@ export function buildSheinStudioDraftInput(
     hotStyleReferencePrompt: artworkInputs.hotStyleReferencePrompt,
     artworkModel: args.artworkModel,
     transparentBackground: args.transparentBackground,
+    transparentBackgroundMode: args.transparentBackgroundMode,
     sheinStoreId: args.sheinStoreId,
     imageStrategy: args.imageStrategy,
     groupedImageMode: args.groupedImageMode,

@@ -150,7 +150,9 @@ func (s *taskStudioBatchDraftService) UpsertStudioBatch(ctx context.Context, req
 	session.GroupedImageMode = normalizedReq.GroupedImageMode
 	session.SelectedSDSImages = toStudioSelectedSDSImageList(normalizedReq.SelectedSDSImages)
 	session.GroupedSelections = toStudioGroupedSelectionList(normalizedReq.GroupedSelections)
-	session.TransparentBackground = normalizedReq.TransparentBackground
+	legacyTransparentBackground := normalizedReq.TransparentBackground
+	session.TransparentBackgroundMode = NormalizeStudioTransparencyMode(string(normalizedReq.TransparentBackgroundMode), &legacyTransparentBackground)
+	session.TransparentBackground = session.TransparentBackgroundMode != StudioTransparencyModeNone
 	session.RenderSizeImagesWithSDS = normalizedReq.RenderSizeImagesWithSDS
 	session.HotStyleReferenceImageURLs = normalizeStudioHotStyleReferenceImageURLs(normalizedReq.HotStyleReferenceImageURLs)
 	session.HotStyleReferenceBrief = strings.TrimSpace(normalizedReq.HotStyleReferenceBrief)
