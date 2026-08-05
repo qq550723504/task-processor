@@ -444,8 +444,16 @@ func buildStudioBatchRunDesignRequest(session *SheinStudioSession) *StudioDesign
 	if len(referenceImageURLs) == 1 {
 		artworkGenerationMode = studioArtworkGenerationModeHotReference
 	}
+	promptText := strings.TrimSpace(session.Prompt)
+	if artworkGenerationMode == studioArtworkGenerationModeHotReference {
+		promptText = buildStudioHotReferenceArtworkPrompt(
+			session.HotStyleReferencePrompt,
+			session.HotStyleReferenceBrief,
+			promptText,
+		)
+	}
 	return &StudioDesignRequest{
-		Prompt:                    strings.TrimSpace(session.Prompt),
+		Prompt:                    promptText,
 		ArtworkGenerationMode:     artworkGenerationMode,
 		PromptMode:                session.PromptMode,
 		Count:                     parseStudioBatchRunStyleCount(session.StyleCount),

@@ -4,7 +4,7 @@
 
 **Goal:** Make hot-reference generation and per-design regeneration reuse the persisted artwork description without changing theme-prompt generation.
 
-**Architecture:** Keep `theme_prompt` and `hot_reference` as mutually exclusive inputs. Update the shared frontend generation-input builder so hot-reference mode selects the saved `hotStyleReferencePrompt`, falls back to `hotStyleReferenceBrief`, and ignores the ordinary theme prompt; keep exactly one hot-reference URL. The existing regeneration handler already calls this builder and replaces only the selected design, so no new API is needed.
+**Architecture:** Keep `theme_prompt` and `hot_reference` as mutually exclusive reference modes. Update the shared frontend generation-input builder so hot-reference mode selects the saved `hotStyleReferencePrompt`, falls back to `hotStyleReferenceBrief`, appends optional supplemental artwork constraints, and keeps exactly one hot-reference URL. Apply the same composition to the backend batch request path. The existing regeneration handler already calls this builder and replaces only the selected design, so no new API is needed.
 
 **Tech Stack:** Next.js/TypeScript, Vitest, existing Studio generation API, Go backend validation unchanged.
 
@@ -12,8 +12,8 @@
 
 - `theme_prompt` sends no reference images.
 - `hot_reference` sends exactly one hot-reference image when available.
-- Hot-reference text comes from the saved extracted artwork prompt, then the saved brief.
-- Do not put product types such as shirt, mug, or poster into the artwork prompt.
+- Hot-reference text comes from the saved extracted artwork prompt, then the saved brief, followed by optional supplemental artwork constraints.
+- Do not inject product types such as shirt, mug, or poster into the artwork prompt; preserve only the user's explicit supplemental artwork constraints.
 - Regeneration remains one-image generation and preserves the target design metadata.
 
 ---
@@ -30,12 +30,12 @@
 
 - [ ] **Step 1: Replace the hot-reference expectation that currently uses `prompt`**
 
-Add a case where `prompt` contains theme/product text but `hotStyleReferencePrompt` contains the extracted artwork description. Assert that the returned prompt is the extracted prompt and the returned references contain only the first hot-reference URL:
+Add a case where `prompt` contains supplemental artwork constraints and `hotStyleReferencePrompt` contains the extracted artwork description. Assert that the returned prompt contains both in order and the returned references contain only the first hot-reference URL:
 
 ```ts
 expect(buildHotStyleReferenceGenerationInput({
   artworkGenerationMode: "hot_reference",
-  prompt: "hoodie product mockup",
+  prompt: "Use the red and cream palette with no text",
   hotStyleReferenceBrief: "bold retro eagle badge",
   hotStyleReferencePrompt: "Original eagle badge artwork, red and cream palette",
   hotStyleReferenceImageUrls: [
@@ -43,14 +43,14 @@ expect(buildHotStyleReferenceGenerationInput({
     "https://example.com/other.png",
   ],
 })).toEqual({
-  prompt: "Original eagle badge artwork, red and cream palette",
+  prompt: "Original eagle badge artwork, red and cream palette\nAdditional artwork constraints: Use the red and cream palette with no text",
   productReferenceImageUrls: ["https://example.com/hot-ref.png"],
 });
 ```
 
 - [ ] **Step 2: Add a brief fallback case**
 
-Assert that a blank saved extracted prompt uses the saved brief, while the ordinary theme prompt remains ignored in hot-reference mode.
+Assert that a blank saved extracted prompt uses the saved brief and still preserves the supplemental artwork constraints.
 
 - [ ] **Step 3: Keep the theme-mode assertion explicit**
 
@@ -78,11 +78,13 @@ Expected: the new hot-reference assertions fail because the builder currently re
 
 - [ ] **Step 1: Implement the minimal hot-reference selection**
 
-In the `hot_reference` branch, select the first non-empty trimmed value from `hotStyleReferencePrompt` and `hotStyleReferenceBrief`. Do not use `input.prompt` in that branch. Continue normalizing and limiting reference URLs to one.
+In the `hot_reference` branch, select the first non-empty trimmed value from `hotStyleReferencePrompt` and `hotStyleReferenceBrief`, then append `input.prompt` as optional supplemental artwork constraints when present. Continue normalizing and limiting reference URLs to one.
 
 ```ts
-const artworkPrompt =
-  input.hotStyleReferencePrompt?.trim() || input.hotStyleReferenceBrief?.trim() || "";
+const artworkPrompt = [
+  input.hotStyleReferencePrompt?.trim() || input.hotStyleReferenceBrief?.trim() || "",
+  input.prompt.trim() ? `Additional artwork constraints: ${input.prompt.trim()}` : "",
+].filter(Boolean).join("\n");
 return {
   prompt: artworkPrompt,
   productReferenceImageUrls: normalizedHotStyleReferences.slice(0, 1),
@@ -101,7 +103,7 @@ Run:
 pnpm --dir web/listingkit-ui test -- src/lib/shein-studio/draft-input.test.ts src/lib/shein-studio/batch-hydration.test.ts
 ```
 
-Expected: existing mode-exclusivity and batch hydration tests pass, confirming saved hot-reference fields remain available while ordinary prompt remains cleared.
+Expected: existing mode-exclusivity and batch hydration tests pass, confirming saved hot-reference fields and supplemental artwork constraints remain available.
 
 ### Task 3: Verify regeneration uses the corrected builder and preserves replacement behavior
 
@@ -111,7 +113,7 @@ Expected: existing mode-exclusivity and batch hydration tests pass, confirming s
 - Test: `web/listingkit-ui/src/lib/shein-studio/generation-controller.test.ts:254-275`
 
 **Interfaces:**
-- Consumes: the corrected `buildHotStyleReferenceGenerationInput` result.
+- Consumes: the corrected `buildHotStyleReferenceGenerationInput` result and the backend batch prompt composer.
 - Produces: one-image regeneration request and stable design replacement.
 
 - [ ] **Step 1: Reuse the existing replacement-semantics regression test**

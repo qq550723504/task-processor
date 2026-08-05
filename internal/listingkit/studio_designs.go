@@ -70,6 +70,21 @@ func buildHotReferenceStudioDesignPrompt(req *StudioDesignRequest, theme string)
 	return buildHotReferenceStudioDesignPromptWithContext(context.Background(), req, theme)
 }
 
+func buildStudioHotReferenceArtworkPrompt(artworkPrompt, artworkBrief, supplemental string) string {
+	basePrompt := strings.TrimSpace(artworkPrompt)
+	if basePrompt == "" {
+		basePrompt = strings.TrimSpace(artworkBrief)
+	}
+	supplemental = strings.TrimSpace(supplemental)
+	if basePrompt == "" {
+		return supplemental
+	}
+	if supplemental == "" {
+		return basePrompt
+	}
+	return basePrompt + "\nAdditional artwork constraints: " + supplemental
+}
+
 func buildHotReferenceStudioDesignPromptWithContext(ctx context.Context, req *StudioDesignRequest, theme string) string {
 	printableHint := ""
 	if req != nil && req.PrintableWidth > 0 && req.PrintableHeight > 0 {
