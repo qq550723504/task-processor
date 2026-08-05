@@ -151,13 +151,21 @@ func (s *taskStudioMediaService) persistGeneratedStudioImage(ctx context.Context
 	if response == nil || len(response.Data) == 0 {
 		return "", "", fmt.Errorf("studio image generation returned no image data")
 	}
-	if s == nil || s.uploadImages == nil {
-		return "", "", fmt.Errorf("image upload store is not configured")
-	}
 	first := response.Data[0]
 	data, contentType, err := decodeGeneratedImageData(ctx, first)
 	if err != nil {
 		return "", "", err
+	}
+	imageURL, err := s.persistStudioImageBytes(ctx, data, contentType, filename)
+	if err != nil {
+		return "", "", err
+	}
+	return imageURL, first.RevisedPrompt, nil
+}
+
+func (s *taskStudioMediaService) persistStudioImageBytes(ctx context.Context, data []byte, contentType string, filename string) (string, error) {
+	if s == nil || s.uploadImages == nil {
+		return "", fmt.Errorf("image upload store is not configured")
 	}
 	upload, err := s.uploadImages(ctx, &UploadImagesRequest{Files: []ImageUploadInput{{
 		Filename:    filename,
@@ -165,12 +173,79 @@ func (s *taskStudioMediaService) persistGeneratedStudioImage(ctx context.Context
 		Data:        data,
 	}}})
 	if err != nil {
-		return "", "", err
+		return "", err
 	}
-	if len(upload.ImageURLs) == 0 {
-		return "", "", fmt.Errorf("uploaded generated image but no url returned")
+	if upload == nil || len(upload.ImageURLs) == 0 {
+		return "", fmt.Errorf("uploaded studio image but no url returned")
 	}
-	return upload.ImageURLs[0], first.RevisedPrompt, nil
+	return upload.ImageURLs[0], nil
+}
+
+type studioProcessedImage struct {
+	ImageURL                  string
+	OriginalImageURL          string
+	RevisedPrompt             string
+	TransparentBackgroundMode StudioTransparencyMode
+	BackgroundRemovalStatus   StudioBackgroundRemovalStatus
+	BackgroundRemovalModel    string
+	BackgroundRemovalError    string
+}
+
+func (s *taskStudioMediaService) processStudioDesignImage(ctx context.Context, req *StudioDesignRequest, generated *AIImageResponse, filename string) (studioProcessedImage, error) {
+	if generated == nil || len(generated.Data) == 0 {
+		return studioProcessedImage{}, fmt.Errorf("studio image generation returned no image data")
+	}
+	first := generated.Data[0]
+	data, contentType, err := decodeGeneratedImageData(ctx, first)
+	if err != nil {
+		return studioProcessedImage{}, err
+	}
+	originalURL, err := s.persistStudioImageBytes(ctx, data, contentType, strings.TrimSuffix(filename, ".png")+"-original.png")
+	if err != nil {
+		return studioProcessedImage{}, err
+	}
+	processed := studioProcessedImage{
+		ImageURL:                  originalURL,
+		OriginalImageURL:          originalURL,
+		RevisedPrompt:             first.RevisedPrompt,
+		TransparentBackgroundMode: studioDesignTransparencyMode(req),
+		BackgroundRemovalStatus:   StudioBackgroundRemovalStatusNotRequested,
+	}
+	if processed.TransparentBackgroundMode != StudioTransparencyModeRemoval {
+		return processed, nil
+	}
+	processed.BackgroundRemovalStatus = StudioBackgroundRemovalStatusPending
+	if s.backgroundRemover == nil {
+		processed.BackgroundRemovalStatus = StudioBackgroundRemovalStatusFailed
+		processed.BackgroundRemovalError = "background removal client is not configured"
+		return processed, nil
+	}
+	removed, removeErr := s.backgroundRemover.Remove(ctx, data, contentType)
+	if removeErr != nil {
+		processed.BackgroundRemovalStatus = StudioBackgroundRemovalStatusFailed
+		processed.BackgroundRemovalError = compactStudioGenerationError(removeErr)
+		return processed, nil
+	}
+	if removed == nil {
+		processed.BackgroundRemovalStatus = StudioBackgroundRemovalStatusFailed
+		processed.BackgroundRemovalError = "background removal returned no result"
+		return processed, nil
+	}
+	if err := validateStudioTransparentPNG(removed.Data); err != nil {
+		processed.BackgroundRemovalStatus = StudioBackgroundRemovalStatusFailed
+		processed.BackgroundRemovalError = err.Error()
+		return processed, nil
+	}
+	finalURL, uploadErr := s.persistStudioImageBytes(ctx, removed.Data, "image/png", filename)
+	if uploadErr != nil {
+		processed.BackgroundRemovalStatus = StudioBackgroundRemovalStatusFailed
+		processed.BackgroundRemovalError = compactStudioGenerationError(uploadErr)
+		return processed, nil
+	}
+	processed.ImageURL = finalURL
+	processed.BackgroundRemovalStatus = StudioBackgroundRemovalStatusSucceeded
+	processed.BackgroundRemovalModel = strings.TrimSpace(removed.Model)
+	return processed, nil
 }
 
 func (s *taskStudioMediaService) materializeAsyncStudioDesignResult(ctx context.Context, req *StudioDesignRequest, result *AIImageAsyncResult) (*StudioDesignResponse, error) {
@@ -180,16 +255,17 @@ func (s *taskStudioMediaService) materializeAsyncStudioDesignResult(ctx context.
 
 	model := resolveStudioDesignImageModel(req, s.imageGenerator.GetDefaultModel())
 	response := &StudioDesignResponse{
-		Prompt:                strings.TrimSpace(req.Prompt),
-		PrintableWidth:        req.PrintableWidth,
-		PrintableHeight:       req.PrintableHeight,
-		ImageModel:            model,
-		TransparentBackground: req.TransparentBackground && model == studioDesignTransparentModel,
-		RequestID:             strings.TrimSpace(firstNonEmpty(result.RequestID, result.Response.RequestID)),
-		UpstreamJobID:         strings.TrimSpace(result.JobID),
-		RawResponse:           strings.TrimSpace(result.RawResultResponse),
-		Usage:                 result.Usage,
-		Images:                make([]StudioGeneratedImage, 0, len(result.Response.Data)),
+		Prompt:                    strings.TrimSpace(req.Prompt),
+		PrintableWidth:            req.PrintableWidth,
+		PrintableHeight:           req.PrintableHeight,
+		ImageModel:                model,
+		TransparentBackground:     studioDesignTransparencyMode(req) != StudioTransparencyModeNone,
+		TransparentBackgroundMode: studioDesignTransparencyMode(req),
+		RequestID:                 strings.TrimSpace(firstNonEmpty(result.RequestID, result.Response.RequestID)),
+		UpstreamJobID:             strings.TrimSpace(result.JobID),
+		RawResponse:               strings.TrimSpace(result.RawResultResponse),
+		Usage:                     result.Usage,
+		Images:                    make([]StudioGeneratedImage, 0, len(result.Response.Data)),
 	}
 
 	for index, item := range result.Response.Data {
@@ -200,22 +276,27 @@ func (s *taskStudioMediaService) materializeAsyncStudioDesignResult(ctx context.
 			UpstreamJobID: response.UpstreamJobID,
 			RawResponse:   response.RawResponse,
 		}
-		imageURL, revisedPrompt, err := s.persistGeneratedStudioImage(ctx, generated, fmt.Sprintf("studio-design-%d.png", index+1))
+		processed, err := s.processStudioDesignImage(ctx, req, generated, fmt.Sprintf("studio-design-%d.png", index+1))
 		if err != nil {
 			return nil, fmt.Errorf("persist async studio design %d: %w", index+1, err)
 		}
 		response.Images = append(response.Images, StudioGeneratedImage{
-			ID:                    uuid.NewString(),
-			ImageURL:              imageURL,
-			Prompt:                response.Prompt,
-			RevisedPrompt:         revisedPrompt,
-			ImageModel:            model,
-			TransparentBackground: response.TransparentBackground,
-			VariationIntensity:    req.VariationIntensity,
-			RequestID:             response.RequestID,
-			UpstreamJobID:         response.UpstreamJobID,
-			RawResponse:           response.RawResponse,
-			Usage:                 result.Usage,
+			ID:                        uuid.NewString(),
+			ImageURL:                  processed.ImageURL,
+			OriginalImageURL:          processed.OriginalImageURL,
+			Prompt:                    response.Prompt,
+			RevisedPrompt:             processed.RevisedPrompt,
+			ImageModel:                model,
+			TransparentBackground:     response.TransparentBackground,
+			TransparentBackgroundMode: processed.TransparentBackgroundMode,
+			BackgroundRemovalStatus:   processed.BackgroundRemovalStatus,
+			BackgroundRemovalModel:    processed.BackgroundRemovalModel,
+			BackgroundRemovalError:    processed.BackgroundRemovalError,
+			VariationIntensity:        req.VariationIntensity,
+			RequestID:                 response.RequestID,
+			UpstreamJobID:             response.UpstreamJobID,
+			RawResponse:               response.RawResponse,
+			Usage:                     result.Usage,
 		})
 	}
 	return response, nil

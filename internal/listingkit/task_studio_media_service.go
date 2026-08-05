@@ -187,12 +187,13 @@ func (s *taskStudioMediaService) GenerateStudioDesigns(ctx context.Context, req 
 	}
 	size := resolveStudioDesignSize(req.PrintableWidth, req.PrintableHeight)
 	response := &StudioDesignResponse{
-		Prompt:                theme,
-		PrintableWidth:        req.PrintableWidth,
-		PrintableHeight:       req.PrintableHeight,
-		ImageModel:            model,
-		TransparentBackground: req.TransparentBackground && model == studioDesignTransparentModel,
-		Images:                make([]StudioGeneratedImage, 0, count),
+		Prompt:                    theme,
+		PrintableWidth:            req.PrintableWidth,
+		PrintableHeight:           req.PrintableHeight,
+		ImageModel:                model,
+		TransparentBackground:     studioDesignTransparencyMode(req) != StudioTransparencyModeNone,
+		TransparentBackgroundMode: studioDesignTransparencyMode(req),
+		Images:                    make([]StudioGeneratedImage, 0, count),
 	}
 	images := make([]StudioGeneratedImage, count)
 	errs := make([]error, count)
@@ -205,24 +206,29 @@ func (s *taskStudioMediaService) GenerateStudioDesigns(ctx context.Context, req 
 			return
 		}
 		generatedResponses[idx] = generated
-		imageURL, revisedPrompt, err := s.persistGeneratedStudioImage(ctx, generated, fmt.Sprintf("studio-design-%d.png", idx+1))
+		processed, err := s.processStudioDesignImage(ctx, req, generated, fmt.Sprintf("studio-design-%d.png", idx+1))
 		if err != nil {
 			errs[idx] = fmt.Errorf("persist studio design %d: %w", idx+1, err)
 			return
 		}
 		errs[idx] = nil
 		images[idx] = StudioGeneratedImage{
-			ID:                    uuid.NewString(),
-			ImageURL:              imageURL,
-			Prompt:                theme,
-			RevisedPrompt:         revisedPrompt,
-			ImageModel:            model,
-			TransparentBackground: response.TransparentBackground,
-			VariationIntensity:    req.VariationIntensity,
-			RequestID:             strings.TrimSpace(generated.RequestID),
-			UpstreamJobID:         strings.TrimSpace(generated.UpstreamJobID),
-			RawResponse:           strings.TrimSpace(generated.RawResponse),
-			Usage:                 generated.Usage,
+			ID:                        uuid.NewString(),
+			ImageURL:                  processed.ImageURL,
+			OriginalImageURL:          processed.OriginalImageURL,
+			Prompt:                    theme,
+			RevisedPrompt:             processed.RevisedPrompt,
+			ImageModel:                model,
+			TransparentBackground:     response.TransparentBackground,
+			TransparentBackgroundMode: processed.TransparentBackgroundMode,
+			BackgroundRemovalStatus:   processed.BackgroundRemovalStatus,
+			BackgroundRemovalModel:    processed.BackgroundRemovalModel,
+			BackgroundRemovalError:    processed.BackgroundRemovalError,
+			VariationIntensity:        req.VariationIntensity,
+			RequestID:                 strings.TrimSpace(generated.RequestID),
+			UpstreamJobID:             strings.TrimSpace(generated.UpstreamJobID),
+			RawResponse:               strings.TrimSpace(generated.RawResponse),
+			Usage:                     generated.Usage,
 		}
 	}
 	var wg sync.WaitGroup

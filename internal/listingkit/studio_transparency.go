@@ -44,6 +44,18 @@ func NormalizeStudioTransparencyMode(mode string, legacy *bool) StudioTransparen
 	return StudioTransparencyModeNone
 }
 
+func studioDesignTransparencyMode(req *StudioDesignRequest) StudioTransparencyMode {
+	if req == nil {
+		return StudioTransparencyModeNone
+	}
+	legacy := req.TransparentBackground
+	return NormalizeStudioTransparencyMode(string(req.TransparentBackgroundMode), &legacy)
+}
+
+func studioDesignUsesNativeTransparency(req *StudioDesignRequest) bool {
+	return studioDesignTransparencyMode(req) == StudioTransparencyModeNative
+}
+
 func validateStudioTransparentPNG(data []byte) error {
 	if len(data) == 0 {
 		return fmt.Errorf("transparent image is empty")
