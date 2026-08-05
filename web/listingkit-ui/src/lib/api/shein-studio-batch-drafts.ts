@@ -24,6 +24,7 @@ import type {
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
+  SheinStudioTransparencyMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 import { normalizeSelectedSDSImages } from "@/lib/shein-studio/sds-selectable-images";
@@ -59,6 +60,11 @@ type StudioBatchDraftRecordResponse = {
   groups?: Array<Record<string, unknown>>;
   grouped_selections?: Array<Record<string, unknown>>;
   transparent_background?: boolean;
+  transparent_background_mode?: SheinStudioTransparencyMode;
+  original_image_url?: string;
+  background_removal_status?: SheinStudioGeneratedDesign["backgroundRemovalStatus"];
+  background_removal_model?: string;
+  background_removal_error?: string;
   render_size_images_with_sds?: boolean;
   shein_store_id?: string;
   legacy_compatibility_snapshot?: Record<string, unknown>;
@@ -83,6 +89,11 @@ type StudioBatchDraftDesignResponse = {
   revised_prompt?: string;
   image_model?: string;
   transparent_background?: boolean;
+  transparent_background_mode?: SheinStudioTransparencyMode;
+  original_image_url?: string;
+  background_removal_status?: SheinStudioGeneratedDesign["backgroundRemovalStatus"];
+  background_removal_model?: string;
+  background_removal_error?: string;
   variation_intensity?: SheinStudioVariationIntensity;
   review_note?: string;
   role?: string;
@@ -127,6 +138,7 @@ type StudioBatchListResponse = {
     image_strategy?: SheinStudioImageStrategy;
     grouped_image_mode?: SheinStudioGroupedImageMode;
     transparent_background?: boolean;
+    transparent_background_mode?: SheinStudioTransparencyMode;
     render_size_images_with_sds?: boolean;
     shein_store_id?: string;
     selection?: Record<string, unknown>;
@@ -218,6 +230,7 @@ export async function upsertSheinStudioBatchDraft(
         grouped_image_mode: input.groupedImageMode,
         selected_sds_images: input.selectedSdsImages,
         transparent_background: input.transparentBackground,
+        transparent_background_mode: input.transparentBackgroundMode,
         render_size_images_with_sds: input.renderSizeImagesWithSds,
         shein_store_id: input.sheinStoreId,
         selection: input.selection ? selectionToPayload(input.selection) : undefined,
@@ -342,6 +355,13 @@ export function mapStudioBatchDraftDetailToDraft(
           imageModel: design.image_model ?? detail.batch?.artwork_model,
           transparentBackground:
             design.transparent_background ?? detail.batch?.transparent_background,
+          transparentBackgroundMode:
+            design.transparent_background_mode ??
+            detail.batch?.transparent_background_mode,
+          originalImageUrl: design.original_image_url,
+          backgroundRemovalStatus: design.background_removal_status,
+          backgroundRemovalModel: design.background_removal_model,
+          backgroundRemovalError: design.background_removal_error,
           variationIntensity:
             design.variation_intensity ?? detail.batch?.variation_intensity,
           reviewNote: design.review_note,
@@ -376,6 +396,7 @@ export function mapStudioBatchDraftDetailToDraft(
     productImagePrompts: detail.batch.product_image_prompts ?? [],
     artworkModel: detail.batch.artwork_model,
     transparentBackground: detail.batch.transparent_background ?? false,
+    transparentBackgroundMode: detail.batch.transparent_background_mode,
     sheinStoreId: detail.batch.shein_store_id ?? "",
     imageStrategy: detail.batch.image_strategy,
     groupedImageMode: detail.batch.grouped_image_mode,
@@ -521,6 +542,7 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
     productImagePrompts: item.product_image_prompts ?? [],
     artworkModel: item.artwork_model ?? "",
     transparentBackground: item.transparent_background ?? false,
+    transparentBackgroundMode: item.transparent_background_mode,
     sheinStoreId: item.shein_store_id ?? "",
     imageStrategy: item.image_strategy,
     groupedImageMode: item.grouped_image_mode,
@@ -730,6 +752,7 @@ function groupedWorkspaceToPayload(group: SheinStudioPersistedGroupedWorkspace) 
     product_image_prompts: group.productImagePrompts,
     artwork_model: group.artworkModel,
     transparent_background: group.transparentBackground,
+    transparent_background_mode: group.transparentBackgroundMode,
     variation_intensity: group.variationIntensity,
     legacy_compatibility_snapshot: legacyCompatibilitySnapshotToPayload(
       group.legacyCompatibilitySnapshot,
@@ -778,6 +801,7 @@ function legacyCompatibilitySnapshotToPayload(
       revised_prompt: design.revisedPrompt,
       image_model: design.imageModel,
       transparent_background: design.transparentBackground,
+      transparent_background_mode: design.transparentBackgroundMode,
       variation_intensity: design.variationIntensity,
       review_note: design.reviewNote,
       role: design.role,

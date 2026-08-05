@@ -18,8 +18,10 @@ export function SheinDesignPreviewGrid({
   selectedIds,
   onToggle,
   onRegenerate,
+  onRetryBackgroundRemoval,
   onBackToGenerate,
   regeneratingId,
+  retryingBackgroundRemovalId,
   selection,
   selectionByTargetGroupKey,
   readOnly = false,
@@ -36,8 +38,10 @@ export function SheinDesignPreviewGrid({
   selectedIds: string[];
   onToggle: (designId: string) => void;
   onRegenerate: (designId: string) => void;
+  onRetryBackgroundRemoval?: (designId: string) => void;
   onBackToGenerate?: () => void;
   regeneratingId?: string;
+  retryingBackgroundRemovalId?: string;
   selection?: SDSProductVariantSelection;
   selectionByTargetGroupKey?: Map<string, SDSProductVariantSelection>;
   readOnly?: boolean;
@@ -153,6 +157,40 @@ export function SheinDesignPreviewGrid({
                       </Button>
                     </div>
                   )}
+
+                  {design.transparentBackgroundMode === "removal" ? (
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span
+                        className={`rounded-full px-2.5 py-1 font-medium ${
+                          design.backgroundRemovalStatus === "failed"
+                            ? "bg-rose-100 text-rose-800"
+                            : design.backgroundRemovalStatus === "pending"
+                              ? "bg-amber-100 text-amber-800"
+                              : "bg-emerald-100 text-emerald-800"
+                        }`}
+                      >
+                        {design.backgroundRemovalStatus === "failed"
+                          ? "抠图失败，当前显示原图"
+                          : design.backgroundRemovalStatus === "pending"
+                            ? "抠图处理中"
+                            : "抠图完成"}
+                      </span>
+                      {design.backgroundRemovalStatus === "failed" &&
+                      onRetryBackgroundRemoval ? (
+                        <Button
+                          disabled={retryingBackgroundRemovalId === design.id}
+                          onClick={() => onRetryBackgroundRemoval(design.id)}
+                          size="sm"
+                          type="button"
+                          variant="ghost"
+                        >
+                          {retryingBackgroundRemovalId === design.id
+                            ? "重试中..."
+                            : "重试抠图"}
+                        </Button>
+                      ) : null}
+                    </div>
+                  ) : null}
 
                   <div className="space-y-3">
                     <Button

@@ -87,6 +87,9 @@ function mergeDedicatedBatchWithLocalSnapshot(
       ),
       transparentBackground:
         localDraft.transparentBackground ?? savedBatch.transparentBackground,
+      transparentBackgroundMode:
+        localDraft.transparentBackgroundMode ??
+        savedBatch.transparentBackgroundMode,
       sheinStoreId: pickLocalStringValue(
         localDraft.sheinStoreId,
         savedBatch.sheinStoreId,

@@ -1451,6 +1451,24 @@ describe("shein studio workbench model", () => {
     });
   });
 
+  it("keeps the selected artwork model for the post-generation removal mode", () => {
+    expect(
+      buildSheinStudioGenerateRequest({
+        artworkGenerationMode: "theme_prompt",
+        artworkModel: "nanobanana",
+        prompt: "retro cherries",
+        styleCount: 1,
+        transparentBackground: false,
+        transparentBackgroundMode: "removal",
+        variationIntensity: "medium",
+      }),
+    ).toMatchObject({
+      imageModel: "nanobanana",
+      transparentBackground: false,
+      transparentBackgroundMode: "removal",
+    });
+  });
+
   it("does not append the SDS size twice when the prompt already contains it", () => {
     expect(
       buildSheinStudioGenerateRequest({

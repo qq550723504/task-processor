@@ -34,6 +34,9 @@ export function SheinDesignLightbox({
   const surfaces = useMemo(() => resolveMockupSurfaces(selection), [selection]);
   const [activeSurfaceIndex, setActiveSurfaceIndex] = useState(0);
   const [zoomMode, setZoomMode] = useState<"fit" | "detail">("fit");
+  const [activeImageView, setActiveImageView] = useState<"final" | "original">(
+    "final",
+  );
 
   const printableWidth = selection?.printableWidth ?? 1;
   const printableHeight = selection?.printableHeight ?? 1;
@@ -84,6 +87,11 @@ export function SheinDesignLightbox({
   }
 
   const designSrc = resolveGeneratedDesignSrc(design);
+  const originalDesignSrc = design.originalImageUrl;
+  const displayedDesignSrc =
+    activeImageView === "original" && originalDesignSrc
+      ? originalDesignSrc
+      : designSrc;
 
   function showPreviousSurface() {
     setActiveSurfaceIndex((current) =>
@@ -135,6 +143,16 @@ export function SheinDesignLightbox({
             >
               原图
             </Button>
+            {originalDesignSrc ? (
+              <Button
+                onClick={() => setActiveImageView((current) =>
+                  current === "final" ? "original" : "final",
+                )}
+                variant={activeImageView === "original" ? "primary" : "secondary"}
+              >
+                {activeImageView === "original" ? "查看最终图" : "查看生成原图"}
+              </Button>
+            ) : null}
             <Button
               onClick={() => onViewChange("mockup")}
               variant={activeView === "mockup" ? "primary" : "secondary"}
@@ -164,7 +182,7 @@ export function SheinDesignLightbox({
                 alt="生成款式预览"
                 className="object-contain"
                 fill
-                src={designSrc}
+                src={displayedDesignSrc}
                 unoptimized
               />
             </div>
@@ -189,7 +207,7 @@ export function SheinDesignLightbox({
                       alt="效果图中的款式预览"
                       className={imageFitClass}
                       fill
-                      src={designSrc}
+                      src={displayedDesignSrc}
                       unoptimized
                     />
                   </div>

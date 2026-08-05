@@ -7,6 +7,7 @@ import type {
 import type {
   SheinStudioArtworkModel,
   SheinStudioPromptMode,
+  SheinStudioTransparencyMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio-generation";
 import type {
@@ -72,6 +73,7 @@ export type SheinStudioBatchRecord = {
   variationIntensity?: SheinStudioVariationIntensity;
   artworkModel?: SheinStudioArtworkModel;
   transparentBackground?: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   groupedImageMode?: SheinStudioGroupedImageMode;
   selectedSdsImages?: SheinStudioSelectedSDSImage[];
   selectionVariantId?: number;
@@ -90,6 +92,15 @@ export type SheinStudioMaterializedDesign = {
   targetGroupKey: string;
   targetGroupLabel?: string;
   imageUrl: string;
+  originalImageUrl?: string;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
+  backgroundRemovalStatus?:
+    | "not_requested"
+    | "pending"
+    | "succeeded"
+    | "failed";
+  backgroundRemovalModel?: string;
+  backgroundRemovalError?: string;
   reviewStatus: SheinStudioMaterializedDesignReviewStatus;
   reviewNote?: string;
   role?: string;
