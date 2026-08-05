@@ -199,6 +199,10 @@ func TestStudioDesignPromptUsesHotReferenceImageHint(t *testing.T) {
 		"dominant silhouette",
 		"color palette",
 		"recognizably related to the reference",
+		"make subtle but clearly visible controlled changes",
+		"modify at least 2–4",
+		"do not create a near-duplicate",
+		"do not trace or reproduce the exact contour",
 		"target print area: 1626 by 2000 pixels",
 	} {
 		if !strings.Contains(lower, required) {
