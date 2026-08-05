@@ -68,6 +68,7 @@ import {
   projectItemizedTaskCreationProgressEffects,
   projectItemizedTaskCreationProgress,
   loadItemizedGenerationPollBatch,
+  runItemizedBackgroundRemovalRetry,
   runItemizedDesignApproval,
   runItemizedFailedRetry,
   usePendingItemizedTaskDesignIds,
@@ -1341,22 +1342,25 @@ export function SheinStudioWorkbench({
   }
 
   async function handleRetryBackgroundRemoval(designId: string) {
-    if (!activeBatchId || !itemizedBatchDetail) {
+    if (!activeBatchId) {
+      workbenchController.setField(
+        "generationError",
+        "当前批次不可用，请刷新后重试。",
+      );
       return;
     }
     setRetryingBackgroundRemovalId(designId);
     clearWorkbenchTaskRecoveryAlerts(workbenchController);
     try {
-      const tenantId =
-        itemizedBatchDetail.batch.tenantId?.trim() ||
-        currentActiveBatch?.tenantId?.trim();
-      const nextDetail = tenantId
-        ? await retrySheinStudioBatchBackgroundRemoval(
-            activeBatchId,
-            [designId],
-            { tenantId },
-          )
-        : await retrySheinStudioBatchBackgroundRemoval(activeBatchId, [designId]);
+      const nextDetail = await runItemizedBackgroundRemovalRetry({
+        activeBatchId,
+        applyHydratedBatch: handleLoadHydratedBatchRef.current,
+        currentActiveBatch,
+        designId,
+        detail: itemizedBatchDetail,
+        getHydratedBatch: getSheinStudioHydratedBatch,
+        retryBackgroundRemoval: retrySheinStudioBatchBackgroundRemoval,
+      });
       applyItemizedBatchDetail(nextDetail);
     } catch (error) {
       workbenchController.setField(
