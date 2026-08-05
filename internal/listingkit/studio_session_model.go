@@ -85,24 +85,28 @@ type SheinStudioSession struct {
 }
 
 type SheinStudioDesign struct {
-	ID                        string                 `json:"id" gorm:"primaryKey;type:varchar(64)"`
-	TenantID                  string                 `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
-	SessionID                 string                 `json:"session_id" gorm:"type:varchar(64);index:idx_shein_studio_design_session_sort,priority:1"`
-	ImageURL                  string                 `json:"image_url" gorm:"type:text"`
-	ProductImageURLs          SheinStudioStringList  `json:"product_image_urls,omitempty" gorm:"type:text"`
-	Prompt                    string                 `json:"prompt,omitempty" gorm:"type:text"`
-	RevisedPrompt             string                 `json:"revised_prompt,omitempty" gorm:"type:text"`
-	ImageModel                string                 `json:"image_model,omitempty" gorm:"type:varchar(64)"`
-	TransparentBackground     bool                   `json:"transparent_background,omitempty"`
-	TransparentBackgroundMode StudioTransparencyMode `json:"transparent_background_mode,omitempty"`
-	VariationIntensity        string                 `json:"variation_intensity,omitempty" gorm:"type:varchar(16)"`
-	Role                      string                 `json:"role,omitempty" gorm:"type:varchar(64)"`
-	RoleLabel                 string                 `json:"role_label,omitempty" gorm:"type:varchar(128)"`
-	ReviewNote                string                 `json:"review_note,omitempty" gorm:"type:text"`
-	SortOrder                 int                    `json:"sort_order" gorm:"index:idx_shein_studio_design_session_sort,priority:2"`
-	Approved                  bool                   `json:"approved"`
-	CreatedAt                 time.Time              `json:"created_at"`
-	UpdatedAt                 time.Time              `json:"updated_at"`
+	ID                        string                        `json:"id" gorm:"primaryKey;type:varchar(64)"`
+	TenantID                  string                        `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
+	SessionID                 string                        `json:"session_id" gorm:"type:varchar(64);index:idx_shein_studio_design_session_sort,priority:1"`
+	ImageURL                  string                        `json:"image_url" gorm:"type:text"`
+	OriginalImageURL          string                        `json:"original_image_url,omitempty" gorm:"type:text"`
+	ProductImageURLs          SheinStudioStringList         `json:"product_image_urls,omitempty" gorm:"type:text"`
+	Prompt                    string                        `json:"prompt,omitempty" gorm:"type:text"`
+	RevisedPrompt             string                        `json:"revised_prompt,omitempty" gorm:"type:text"`
+	ImageModel                string                        `json:"image_model,omitempty" gorm:"type:varchar(64)"`
+	TransparentBackground     bool                          `json:"transparent_background,omitempty"`
+	TransparentBackgroundMode StudioTransparencyMode        `json:"transparent_background_mode,omitempty"`
+	BackgroundRemovalStatus   StudioBackgroundRemovalStatus `json:"background_removal_status,omitempty" gorm:"type:varchar(24)"`
+	BackgroundRemovalModel    string                        `json:"background_removal_model,omitempty" gorm:"type:varchar(128)"`
+	BackgroundRemovalError    string                        `json:"background_removal_error,omitempty" gorm:"type:text"`
+	VariationIntensity        string                        `json:"variation_intensity,omitempty" gorm:"type:varchar(16)"`
+	Role                      string                        `json:"role,omitempty" gorm:"type:varchar(64)"`
+	RoleLabel                 string                        `json:"role_label,omitempty" gorm:"type:varchar(128)"`
+	ReviewNote                string                        `json:"review_note,omitempty" gorm:"type:text"`
+	SortOrder                 int                           `json:"sort_order" gorm:"index:idx_shein_studio_design_session_sort,priority:2"`
+	Approved                  bool                          `json:"approved"`
+	CreatedAt                 time.Time                     `json:"created_at"`
+	UpdatedAt                 time.Time                     `json:"updated_at"`
 }
 
 type SheinStudioSessionDetail struct {

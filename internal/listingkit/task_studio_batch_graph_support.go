@@ -48,7 +48,9 @@ func (s *taskStudioBatchService) syncStudioBatchRetryExecutionConfigFromDraft(ct
 	batch.HotStyleReferenceImageURLs = append(SheinStudioStringList(nil), session.HotStyleReferenceImageURLs...)
 	batch.HotStyleReferenceBrief = session.HotStyleReferenceBrief
 	batch.HotStyleReferencePrompt = session.HotStyleReferencePrompt
-	batch.TransparentBackground = session.TransparentBackground
+	legacyTransparentBackground := session.TransparentBackground
+	batch.TransparentBackgroundMode = NormalizeStudioTransparencyMode(string(session.TransparentBackgroundMode), &legacyTransparentBackground)
+	batch.TransparentBackground = batch.TransparentBackgroundMode != StudioTransparencyModeNone
 	if storeID, convErr := strconv.ParseInt(strings.TrimSpace(session.SheinStoreID), 10, 64); convErr == nil {
 		batch.SheinStoreID = storeID
 	}
@@ -135,6 +137,8 @@ func ensureStudioBatchGenerationGraphForResume(
 }
 
 func buildStudioBatchRecordFromSessionDraft(session *SheinStudioSession, now time.Time) *StudioBatchRecord {
+	legacyTransparentBackground := session.TransparentBackground
+	transparencyMode := NormalizeStudioTransparencyMode(string(session.TransparentBackgroundMode), &legacyTransparentBackground)
 	batch := &StudioBatchRecord{
 		ID:                         session.ID,
 		Status:                     StudioBatchStatusGenerating,
@@ -150,7 +154,8 @@ func buildStudioBatchRecordFromSessionDraft(session *SheinStudioSession, now tim
 		HotStyleReferenceImageURLs: append(SheinStudioStringList(nil), session.HotStyleReferenceImageURLs...),
 		HotStyleReferenceBrief:     session.HotStyleReferenceBrief,
 		HotStyleReferencePrompt:    session.HotStyleReferencePrompt,
-		TransparentBackground:      session.TransparentBackground,
+		TransparentBackground:      transparencyMode != StudioTransparencyModeNone,
+		TransparentBackgroundMode:  transparencyMode,
 		CreatedAt:                  now,
 		UpdatedAt:                  now,
 	}

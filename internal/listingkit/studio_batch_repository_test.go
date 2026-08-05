@@ -80,6 +80,10 @@ func TestMemStudioBatchRepositoryCreatesDetailGraph(t *testing.T) {
 	if len(detail.DesignsByItem["item-1"]) != 1 || detail.DesignsByItem["item-1"][0].ID != "design-1" {
 		t.Fatalf("detail.DesignsByItem = %+v, want design-1", detail.DesignsByItem)
 	}
+	design := detail.DesignsByItem["item-1"][0]
+	if design.OriginalImageURL != "https://cdn.example.com/design-1-original.png" || design.TransparentBackgroundMode != StudioTransparencyModeRemoval || design.BackgroundRemovalStatus != StudioBackgroundRemovalStatusSucceeded {
+		t.Fatalf("design transparency metadata = %+v, want persisted source and removal metadata", design)
+	}
 }
 
 func TestMemStudioBatchRepositoryGetBatchAndItemAndListDesignsAndUpdate(t *testing.T) {
@@ -661,11 +665,13 @@ func openStudioBatchSQLiteForTest(t *testing.T) *gorm.DB {
 
 func newStudioBatchRecordForTest(batchID string, now time.Time) *StudioBatchRecord {
 	return &StudioBatchRecord{
-		ID:               batchID,
-		Status:           StudioBatchStatusDraft,
-		GroupedImageMode: "shared_by_size",
-		Prompt:           "botanical summer",
-		SheinStoreID:     9001,
+		ID:                        batchID,
+		Status:                    StudioBatchStatusDraft,
+		GroupedImageMode:          "shared_by_size",
+		Prompt:                    "botanical summer",
+		TransparentBackground:     true,
+		TransparentBackgroundMode: StudioTransparencyModeRemoval,
+		SheinStoreID:              9001,
 		GroupedSelections: SheinStudioGroupedSelectionList{{
 			SelectionID:  "selection-1",
 			SheinStoreID: "9001",
@@ -718,14 +724,18 @@ func newStudioBatchAttemptsForTest(itemID string, now time.Time) []StudioGenerat
 
 func newStudioBatchDesignsForTest(batchID string, itemID string, now time.Time) []StudioMaterializedDesignRecord {
 	return []StudioMaterializedDesignRecord{{
-		ID:              "design-1",
-		BatchID:         batchID,
-		ItemID:          itemID,
-		SourceAttemptID: "attempt-1",
-		TargetGroupKey:  "size:1200x1200",
-		ImageURL:        "https://cdn.example.com/design-1.png",
-		ReviewStatus:    StudioMaterializedDesignReviewStatusApproved,
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		ID:                        "design-1",
+		BatchID:                   batchID,
+		ItemID:                    itemID,
+		SourceAttemptID:           "attempt-1",
+		TargetGroupKey:            "size:1200x1200",
+		ImageURL:                  "https://cdn.example.com/design-1.png",
+		OriginalImageURL:          "https://cdn.example.com/design-1-original.png",
+		TransparentBackgroundMode: StudioTransparencyModeRemoval,
+		BackgroundRemovalStatus:   StudioBackgroundRemovalStatusSucceeded,
+		BackgroundRemovalModel:    "rmbg-test",
+		ReviewStatus:              StudioMaterializedDesignReviewStatusApproved,
+		CreatedAt:                 now,
+		UpdatedAt:                 now,
 	}}
 }

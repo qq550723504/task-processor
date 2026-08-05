@@ -76,21 +76,25 @@ type StudioBatchDraftDetail struct {
 }
 
 type SheinStudioSessionGalleryItem struct {
-	TenantID                  string                 `json:"tenant_id,omitempty"`
-	SessionID                 string                 `json:"session_id"`
-	DesignID                  string                 `json:"design_id"`
-	ImageURL                  string                 `json:"image_url"`
-	Prompt                    string                 `json:"prompt,omitempty"`
-	ProductName               string                 `json:"product_name,omitempty"`
-	Status                    string                 `json:"status,omitempty"`
-	CreatedAt                 string                 `json:"created_at,omitempty"`
-	UpdatedAt                 string                 `json:"updated_at,omitempty"`
-	ReviewNote                string                 `json:"review_note,omitempty"`
-	RevisedPrompt             string                 `json:"revised_prompt,omitempty"`
-	ImageModel                string                 `json:"image_model,omitempty"`
-	TransparentBackground     bool                   `json:"transparent_background,omitempty"`
-	TransparentBackgroundMode StudioTransparencyMode `json:"transparent_background_mode,omitempty"`
-	VariationIntensity        string                 `json:"variation_intensity,omitempty"`
+	TenantID                  string                        `json:"tenant_id,omitempty"`
+	SessionID                 string                        `json:"session_id"`
+	DesignID                  string                        `json:"design_id"`
+	ImageURL                  string                        `json:"image_url"`
+	OriginalImageURL          string                        `json:"original_image_url,omitempty"`
+	Prompt                    string                        `json:"prompt,omitempty"`
+	ProductName               string                        `json:"product_name,omitempty"`
+	Status                    string                        `json:"status,omitempty"`
+	CreatedAt                 string                        `json:"created_at,omitempty"`
+	UpdatedAt                 string                        `json:"updated_at,omitempty"`
+	ReviewNote                string                        `json:"review_note,omitempty"`
+	RevisedPrompt             string                        `json:"revised_prompt,omitempty"`
+	ImageModel                string                        `json:"image_model,omitempty"`
+	TransparentBackground     bool                          `json:"transparent_background,omitempty"`
+	TransparentBackgroundMode StudioTransparencyMode        `json:"transparent_background_mode,omitempty"`
+	BackgroundRemovalStatus   StudioBackgroundRemovalStatus `json:"background_removal_status,omitempty"`
+	BackgroundRemovalModel    string                        `json:"background_removal_model,omitempty"`
+	BackgroundRemovalError    string                        `json:"background_removal_error,omitempty"`
+	VariationIntensity        string                        `json:"variation_intensity,omitempty"`
 }
 
 type UpsertStudioBatchRequest struct {

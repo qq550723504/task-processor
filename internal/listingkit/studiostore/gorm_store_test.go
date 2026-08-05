@@ -98,9 +98,14 @@ func TestGormRepositoryReplaceDesignsAssignsSessionIDForBatchGallery(t *testing.
 
 	if err := repo.ReplaceDesigns(ctx, session.ID, []string{"design-1"}, []listingkit.SheinStudioDesign{
 		{
-			ID:       "design-1",
-			ImageURL: "https://oss.example.com/design-1.png",
-			Prompt:   "retro cherries",
+			ID:                        "design-1",
+			ImageURL:                  "https://oss.example.com/design-1.png",
+			OriginalImageURL:          "https://oss.example.com/design-1-original.png",
+			Prompt:                    "retro cherries",
+			TransparentBackground:     true,
+			TransparentBackgroundMode: listingkit.StudioTransparencyModeRemoval,
+			BackgroundRemovalStatus:   listingkit.StudioBackgroundRemovalStatusSucceeded,
+			BackgroundRemovalModel:    "rmbg-test",
 		},
 	}); err != nil {
 		t.Fatalf("replace designs: %v", err)
@@ -126,6 +131,9 @@ func TestGormRepositoryReplaceDesignsAssignsSessionIDForBatchGallery(t *testing.
 	}
 	if items[0].SessionID != session.ID || items[0].DesignID != "design-1" {
 		t.Fatalf("gallery item = %#v, want linked session/design", items[0])
+	}
+	if items[0].OriginalImageURL != "https://oss.example.com/design-1-original.png" || items[0].TransparentBackgroundMode != listingkit.StudioTransparencyModeRemoval || items[0].BackgroundRemovalStatus != listingkit.StudioBackgroundRemovalStatusSucceeded {
+		t.Fatalf("gallery transparency metadata = %#v, want persisted source and removal metadata", items[0])
 	}
 }
 

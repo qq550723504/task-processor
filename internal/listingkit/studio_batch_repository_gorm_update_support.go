@@ -116,6 +116,7 @@ func (r *GormStudioBatchRepository) UpdateStudioBatch(ctx context.Context, batch
 			"hot_style_reference_brief":      row.HotStyleReferenceBrief,
 			"hot_style_reference_prompt":     row.HotStyleReferencePrompt,
 			"transparent_background":         row.TransparentBackground,
+			"transparent_background_mode":    row.TransparentBackgroundMode,
 			"shein_store_id":                 row.SheinStoreID,
 			"updated_at":                     row.UpdatedAt,
 		})
@@ -240,13 +241,18 @@ func (r *GormStudioBatchRepository) UpdateStudioMaterializedDesign(ctx context.C
 		Model(&StudioMaterializedDesignRecord{}).
 		Where("id = ?", row.ID).
 		Updates(map[string]any{
-			"target_group_key":   row.TargetGroupKey,
-			"target_group_label": row.TargetGroupLabel,
-			"image_url":          row.ImageURL,
-			"review_status":      row.ReviewStatus,
-			"sort_order":         row.SortOrder,
-			"review_note":        row.ReviewNote,
-			"updated_at":         row.UpdatedAt,
+			"target_group_key":            row.TargetGroupKey,
+			"target_group_label":          row.TargetGroupLabel,
+			"image_url":                   row.ImageURL,
+			"original_image_url":          row.OriginalImageURL,
+			"transparent_background_mode": row.TransparentBackgroundMode,
+			"background_removal_status":   row.BackgroundRemovalStatus,
+			"background_removal_model":    row.BackgroundRemovalModel,
+			"background_removal_error":    row.BackgroundRemovalError,
+			"review_status":               row.ReviewStatus,
+			"sort_order":                  row.SortOrder,
+			"review_note":                 row.ReviewNote,
+			"updated_at":                  row.UpdatedAt,
 		})
 	if result.Error != nil {
 		return result.Error

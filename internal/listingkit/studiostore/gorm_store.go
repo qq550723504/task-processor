@@ -230,20 +230,25 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 	}
 
 	rows := make([]struct {
-		SessionID             string
-		TenantID              string
-		DesignID              string
-		ImageURL              string
-		Prompt                string
-		SelectionJSON         string
-		Status                string
-		CreatedAt             time.Time
-		UpdatedAt             time.Time
-		ReviewNote            string
-		RevisedPrompt         string
-		ImageModel            string
-		TransparentBackground bool
-		VariationIntensity    string
+		SessionID                 string
+		TenantID                  string
+		DesignID                  string
+		ImageURL                  string
+		OriginalImageURL          string
+		Prompt                    string
+		SelectionJSON             string
+		Status                    string
+		CreatedAt                 time.Time
+		UpdatedAt                 time.Time
+		ReviewNote                string
+		RevisedPrompt             string
+		ImageModel                string
+		TransparentBackground     bool
+		TransparentBackgroundMode string
+		BackgroundRemovalStatus   string
+		BackgroundRemovalModel    string
+		BackgroundRemovalError    string
+		VariationIntensity        string
 	}, 0, limit)
 
 	if err := r.db.WithContext(ctx).
@@ -253,6 +258,7 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 			"d.tenant_id AS tenant_id",
 			"d.id AS design_id",
 			"d.image_url AS image_url",
+			"d.original_image_url AS original_image_url",
 			"s.prompt AS prompt",
 			"s.selection AS selection_json",
 			"s.status AS status",
@@ -262,6 +268,10 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 			"d.revised_prompt AS revised_prompt",
 			"d.image_model AS image_model",
 			"d.transparent_background AS transparent_background",
+			"d.transparent_background_mode AS transparent_background_mode",
+			"d.background_removal_status AS background_removal_status",
+			"d.background_removal_model AS background_removal_model",
+			"d.background_removal_error AS background_removal_error",
 			"d.variation_intensity AS variation_intensity",
 		}).
 		Joins("JOIN shein_studio_sessions AS s ON s.id = d.session_id").
@@ -277,20 +287,25 @@ func (r *GormRepository) ListGalleryItems(ctx context.Context, limit int) ([]lis
 		var selection listingkit.SheinStudioSelectionSnapshot
 		_ = selection.Scan(row.SelectionJSON)
 		items = append(items, listingkit.SheinStudioSessionGalleryItem{
-			SessionID:             row.SessionID,
-			TenantID:              row.TenantID,
-			DesignID:              row.DesignID,
-			ImageURL:              row.ImageURL,
-			Prompt:                row.Prompt,
-			ProductName:           selection.ProductName,
-			Status:                row.Status,
-			CreatedAt:             row.CreatedAt.UTC().Format(time.RFC3339),
-			UpdatedAt:             row.UpdatedAt.UTC().Format(time.RFC3339),
-			ReviewNote:            row.ReviewNote,
-			RevisedPrompt:         row.RevisedPrompt,
-			ImageModel:            row.ImageModel,
-			TransparentBackground: row.TransparentBackground,
-			VariationIntensity:    row.VariationIntensity,
+			SessionID:                 row.SessionID,
+			TenantID:                  row.TenantID,
+			DesignID:                  row.DesignID,
+			ImageURL:                  row.ImageURL,
+			OriginalImageURL:          row.OriginalImageURL,
+			Prompt:                    row.Prompt,
+			ProductName:               selection.ProductName,
+			Status:                    row.Status,
+			CreatedAt:                 row.CreatedAt.UTC().Format(time.RFC3339),
+			UpdatedAt:                 row.UpdatedAt.UTC().Format(time.RFC3339),
+			ReviewNote:                row.ReviewNote,
+			RevisedPrompt:             row.RevisedPrompt,
+			ImageModel:                row.ImageModel,
+			TransparentBackground:     row.TransparentBackground,
+			TransparentBackgroundMode: listingkit.StudioTransparencyMode(row.TransparentBackgroundMode),
+			BackgroundRemovalStatus:   listingkit.StudioBackgroundRemovalStatus(row.BackgroundRemovalStatus),
+			BackgroundRemovalModel:    row.BackgroundRemovalModel,
+			BackgroundRemovalError:    row.BackgroundRemovalError,
+			VariationIntensity:        row.VariationIntensity,
 		})
 	}
 	return items, nil
