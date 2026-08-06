@@ -9,7 +9,7 @@ func ValidateAICapabilityConfig(aiCapability *AICapabilityConfig) []error {
 
 	mode := strings.ToLower(strings.TrimSpace(aiCapability.StudioImageRoutingMode))
 	switch mode {
-	case "", "legacy", "shadow", "active":
+	case "legacy", "shadow", "active":
 		return nil
 	default:
 		return []error{&ValidationError{
