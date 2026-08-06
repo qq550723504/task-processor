@@ -93,6 +93,14 @@ func (c *listingKitRoutedImageClient) QueryImageGeneration(ctx context.Context, 
 	return client.QueryImageGeneration(ctx, jobID)
 }
 
+func (c *listingKitRoutedImageClient) QueryImageGenerationForRoutingKey(ctx context.Context, routingKey, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
+	client, _, err := c.resolveBySelector(routingKey)
+	if err != nil {
+		return nil, err
+	}
+	return client.QueryImageGeneration(ctx, jobID)
+}
+
 func (c *listingKitRoutedImageClient) resolve(req *openaiclient.ImageGenerateRequest) (openaiclient.ImageGenerator, *openaiclient.ImageGenerateRequest, error) {
 	selector := c.defaultModel
 	if req != nil && strings.TrimSpace(req.Model) != "" {

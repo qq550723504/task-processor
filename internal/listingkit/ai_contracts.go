@@ -47,6 +47,12 @@ type AIAsyncImageGenerator interface {
 	QueryImageGeneration(ctx context.Context, jobID string) (*AIImageAsyncResult, error)
 }
 
+// AIAsyncImageQueryByRoutingKey is an optional seam for clients that can
+// recover the Provider route selected when an async job was submitted.
+type AIAsyncImageQueryByRoutingKey interface {
+	QueryImageGenerationForRoutingKey(ctx context.Context, routingKey, jobID string) (*AIImageAsyncResult, error)
+}
+
 type AIImageGenerateRequest struct {
 	Model          string
 	Prompt         string
