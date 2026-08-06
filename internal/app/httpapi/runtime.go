@@ -59,6 +59,7 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 			openaiMgr:            openaiDeps.openaiMgr,
 			aiCredentialStore:    openaiDeps.aiCredentialStore,
 			aiInvocationRecorder: aiCapabilityDeps.invocationRecorder,
+			aiAsyncJobStore:      aiCapabilityDeps.asyncJobStore,
 			tenantPromptStore:    promptDeps.tenantPromptStore,
 			llmMgr:               productEnrichDeps.llmMgr,
 			inputParser:          productEnrichDeps.inputParser,

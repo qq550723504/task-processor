@@ -35,6 +35,7 @@ type submitModuleInput struct {
 	Logger               *logrus.Logger
 	AICredentialStore    aiCredentialStore
 	AIInvocationRecorder aicapability.InvocationRecorder
+	AIAsyncJobStore      aicapability.AsyncJobBindingStore
 	Hooks                submitModuleHooks
 	StoreRepository      listingadmin.StoreRepository
 	ResolutionCacheStore sheinpub.ResolutionCacheStore
@@ -95,6 +96,7 @@ func newSubmitModuleInput(input BuildServiceInput, repos *builtRepositories) sub
 		Logger:               input.Logger,
 		AICredentialStore:    input.AICredentialStore,
 		AIInvocationRecorder: input.AIInvocationRecorder,
+		AIAsyncJobStore:      input.AIAsyncJobStore,
 		Hooks:                newSubmitModuleHooks(input.Hooks),
 		StoreRepository:      repos.storeRepository,
 		ResolutionCacheStore: repos.resolutionCacheStore,
@@ -210,15 +212,19 @@ func buildSubmitModule(in submitModuleInput) (submitModule, error) {
 	if in.AICredentialStore == nil || in.Hooks.StudioAICapabilityRouterBuilder == nil || in.AIInvocationRecorder == nil || module.studio.imageGenerator == nil {
 		return submitModule{}, fmt.Errorf("Studio AI capability routing requires credential resolver, router builder, invocation recorder, and legacy image generator")
 	}
+	if mode == aicapability.RoutingModeActive && in.AIAsyncJobStore == nil {
+		return submitModule{}, fmt.Errorf("Studio AI capability active routing requires async job binding store")
+	}
 	router := in.Hooks.StudioAICapabilityRouterBuilder(in.AICredentialStore)
 	if router == nil {
 		return submitModule{}, fmt.Errorf("Studio AI capability routing requires router builder to return a router")
 	}
 	adapter, err := listingkit.NewStudioAIImageCapabilityAdapter(listingkit.StudioAIImageCapabilityAdapterConfig{
-		Legacy:   module.studio.imageGenerator,
-		Router:   router,
-		Recorder: in.AIInvocationRecorder,
-		Mode:     mode,
+		Legacy:        module.studio.imageGenerator,
+		Router:        router,
+		Recorder:      in.AIInvocationRecorder,
+		AsyncJobStore: in.AIAsyncJobStore,
+		Mode:          mode,
 		OnRecordError: func(record aicapability.InvocationRecord, err error) {
 			if in.Logger != nil {
 				in.Logger.WithError(err).WithFields(logrus.Fields{

@@ -22,6 +22,9 @@ func TestBuildAICapabilityRuntimeDepsKeepsLegacyModeDependencyFree(t *testing.T)
 	if deps.invocationRecorder != nil {
 		t.Fatal("expected legacy mode to omit invocation recorder")
 	}
+	if deps.asyncJobStore != nil {
+		t.Fatal("expected legacy mode to omit async job binding store")
+	}
 	if len(deps.closers) != 0 {
 		t.Fatalf("closers = %d, want 0", len(deps.closers))
 	}
@@ -57,5 +60,8 @@ func TestAutoMigrateProductListingAPIRuntimeSchemaCreatesAIInvocationsTable(t *t
 	}
 	if !db.Migrator().HasTable("ai_invocations") {
 		t.Fatal("expected ai_invocations table to be created")
+	}
+	if !db.Migrator().HasTable("ai_async_jobs") {
+		t.Fatal("expected ai_async_jobs table to be created")
 	}
 }

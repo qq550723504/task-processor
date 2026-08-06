@@ -11,6 +11,7 @@ import (
 
 type aiCapabilityRuntimeDeps struct {
 	invocationRecorder aicapability.InvocationRecorder
+	asyncJobStore      aicapability.AsyncJobBindingStore
 	closers            []func() error
 }
 
@@ -29,11 +30,12 @@ func buildAICapabilityRuntimeDeps(cfg *config.Config, logger *logrus.Logger) (*a
 	if cfg.Database == nil {
 		return nil, fmt.Errorf("AI capability invocation ledger requires database configuration for %s mode", mode)
 	}
-	recorder, closer, err := newDBAIInvocationRecorder(cfg.Database, logger)
+	recorder, asyncJobStore, closer, err := newDBAICapabilityStores(cfg.Database, logger)
 	if err != nil {
 		return nil, fmt.Errorf("create AI capability invocation recorder: %w", err)
 	}
 	deps.invocationRecorder = recorder
+	deps.asyncJobStore = asyncJobStore
 	if closer != nil {
 		deps.closers = append(deps.closers, closer)
 	}
