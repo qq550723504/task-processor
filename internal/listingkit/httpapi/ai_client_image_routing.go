@@ -13,6 +13,13 @@ type listingKitRoutedImageClient struct {
 	defaultImage openaiclient.ImageGenerator
 	gptImage2    openaiclient.ImageGenerator
 	nanobanana   openaiclient.ImageGenerator
+	hasResolver  bool
+}
+
+type listingKitImageRoute struct {
+	RoutingKey          string
+	CredentialReference string
+	UsesConfiguredModel bool
 }
 
 func buildListingKitRoutedImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {
@@ -27,6 +34,7 @@ func buildListingKitRoutedImageClient(cfg *config.Config, resolver openaiclient.
 		defaultImage: defaultClient,
 		gptImage2:    gptClient,
 		nanobanana:   nanoClient,
+		hasResolver:  resolver != nil,
 	}
 }
 
@@ -117,16 +125,45 @@ func (c *listingKitRoutedImageClient) resolveEdit(req *openaiclient.ImageEditReq
 }
 
 func (c *listingKitRoutedImageClient) resolveBySelector(selector string) (openaiclient.ImageGenerator, bool, error) {
-	switch normalizeListingKitImageSelector(selector) {
-	case listingKitImageModelSelectorGPTImage2:
-		return c.gptImage2, true, nil
-	case listingKitImageModelSelectorNano:
-		return c.nanobanana, true, nil
+	route := resolveListingKitImageRoute(selector, c.hasResolver)
+	switch route.CredentialReference {
+	case listingKitImageClientNameGPTImage2:
+		return c.gptImage2, route.UsesConfiguredModel, nil
+	case listingKitImageClientNameNanobanana:
+		return c.nanobanana, route.UsesConfiguredModel, nil
 	default:
 		if c.defaultImage == nil {
 			return nil, false, errListingKitAIClientNotConfigured(listingKitImageClientName)
 		}
-		return c.defaultImage, false, nil
+		return c.defaultImage, route.UsesConfiguredModel, nil
+	}
+}
+
+func resolveListingKitImageRoute(selector string, hasResolver bool) listingKitImageRoute {
+	routingKey := strings.TrimSpace(selector)
+	normalized := normalizeListingKitImageSelector(routingKey)
+	switch normalized {
+	case "", listingKitImageModelSelectorGPTImage2:
+		return listingKitImageRoute{
+			RoutingKey:          listingKitImageModelSelectorGPTImage2,
+			CredentialReference: listingKitImageClientNameGPTImage2,
+			UsesConfiguredModel: true,
+		}
+	case listingKitImageModelSelectorNano:
+		return listingKitImageRoute{
+			RoutingKey:          listingKitImageModelSelectorNano,
+			CredentialReference: listingKitImageClientNameNanobanana,
+			UsesConfiguredModel: true,
+		}
+	default:
+		credentialReference := listingKitImageClientName
+		if hasResolver {
+			credentialReference = listingKitImageClientNameNanobanana
+		}
+		return listingKitImageRoute{
+			RoutingKey:          routingKey,
+			CredentialReference: credentialReference,
+		}
 	}
 }
 
