@@ -33,6 +33,15 @@ func TestAICapabilityRoutingModeUsesEnvironmentOverride(t *testing.T) {
 	assert.Equal(t, "shadow", cfg.AICapability.StudioImageRoutingMode)
 }
 
+func TestAICapabilityRoutingAcceptsCaseInsensitiveModes(t *testing.T) {
+	for _, mode := range []string{"SHADOW", "Active"} {
+		t.Run(mode, func(t *testing.T) {
+			errors := ValidateAICapabilityConfig(&AICapabilityConfig{StudioImageRoutingMode: mode})
+			require.Empty(t, errors)
+		})
+	}
+}
+
 func TestAICapabilityRoutingRejectsUnknownMode(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_AI_CAPABILITY_STUDIO_IMAGE_ROUTING_MODE", "")
 

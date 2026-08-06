@@ -10,7 +10,9 @@ func TestParseRoutingMode(t *testing.T) {
 	}{
 		{value: "", want: RoutingModeLegacy},
 		{value: " shadow ", want: RoutingModeShadow},
+		{value: "SHADOW", want: RoutingModeShadow},
 		{value: "active", want: RoutingModeActive},
+		{value: " Active ", want: RoutingModeActive},
 		{value: "automatic", err: ErrorInvalidInput},
 	} {
 		t.Run(tc.value, func(t *testing.T) {

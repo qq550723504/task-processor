@@ -28,7 +28,7 @@ func TestBuildAICapabilityRuntimeDepsKeepsLegacyModeDependencyFree(t *testing.T)
 }
 
 func TestBuildAICapabilityRuntimeDepsRequiresDatabaseOutsideLegacy(t *testing.T) {
-	for _, mode := range []string{"shadow", "active"} {
+	for _, mode := range []string{"shadow", "active", "SHADOW", "Active"} {
 		t.Run(mode, func(t *testing.T) {
 			_, err := buildAICapabilityRuntimeDeps(&config.Config{
 				AICapability: config.AICapabilityConfig{StudioImageRoutingMode: mode},
@@ -38,6 +38,9 @@ func TestBuildAICapabilityRuntimeDepsRequiresDatabaseOutsideLegacy(t *testing.T)
 			}
 			if !strings.Contains(err.Error(), "AI capability") {
 				t.Fatalf("error = %q, want AI capability resource context", err)
+			}
+			if strings.Contains(err.Error(), "parse AI capability") {
+				t.Fatalf("error = %q, case-insensitive validated mode must reach runtime dependency checks", err)
 			}
 		})
 	}

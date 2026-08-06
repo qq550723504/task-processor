@@ -7,24 +7,19 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit"
 )
 
 func requestContext(c *gin.Context, candidates ...string) context.Context {
 	tenantID := requestTenantID(c, candidates...)
 	ctx := listingkit.WithTenantID(c.Request.Context(), tenantID)
-	ctx = openaiclient.WithIdentity(ctx, openaiclient.Identity{TenantID: tenantID, UserID: requestUserID(c)})
+	ctx = listingkit.WithRequestIdentity(ctx, listingkit.RequestIdentity{TenantID: tenantID, UserID: requestUserID(c)})
 	ctx = listingkit.WithRequestRoles(ctx, requestRoles(c))
 	return listingkit.WithRequestTrace(ctx, requestTrace(c))
 }
 
 func detachedRequestContext(c *gin.Context, candidates ...string) context.Context {
-	tenantID := requestTenantID(c, candidates...)
-	ctx := listingkit.WithTenantID(context.Background(), tenantID)
-	ctx = openaiclient.WithIdentity(ctx, openaiclient.Identity{TenantID: tenantID, UserID: requestUserID(c)})
-	ctx = listingkit.WithRequestRoles(ctx, requestRoles(c))
-	return listingkit.WithRequestTrace(ctx, requestTrace(c))
+	return listingkit.DetachedRequestContext(requestContext(c, candidates...))
 }
 
 func requestTenantID(c *gin.Context, candidates ...string) string {

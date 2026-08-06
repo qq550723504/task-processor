@@ -40,6 +40,9 @@ func (c *studioCredentialModelCatalog) ResolveModel(ctx context.Context, routing
 	}
 	features := []aicapability.ModelFeature{aicapability.FeatureImageGenerate, aicapability.FeatureImageEdit}
 	style := normalizeImageAPIStyle(configured)
+	if route.CredentialReference == listingKitImageClientNameNanobanana {
+		style = normalizeNanobananaImageAPIStyle(configured)
+	}
 	supportsAsync := style == imageAPIStyleGRSAI
 	if supportsAsync {
 		features = append(features, aicapability.FeatureAsyncImageJob)

@@ -63,7 +63,7 @@ func buildStrictListingKitNanobananaImageClient(cfg *config.Config, resolver ope
 		fallback:   buildListingKitClientFallback(cfg, clientName),
 		cache:      make(map[string]openaiclient.ImageGenerator),
 		build: func(cfg *openaiclient.ClientConfig) (openaiclient.ImageGenerator, error) {
-			switch normalizeImageAPIStyle(cfg) {
+			switch normalizeNanobananaImageAPIStyle(cfg) {
 			case imageAPIStyleGemini:
 				return geminiimage.NewClient(geminiimage.Config{
 					APIKey:      cfg.APIKey,
@@ -114,6 +114,16 @@ func normalizeImageAPIStyle(cfg *openaiclient.ClientConfig) string {
 		return imageAPIStyleGemini
 	}
 	return imageAPIStyleOpenAI
+}
+
+// normalizeNanobananaImageAPIStyle mirrors the nanobanana client constructor:
+// Gemini is used only when explicitly/inferred as Gemini; every compatibility
+// style otherwise uses the legacy GrsAI client.
+func normalizeNanobananaImageAPIStyle(cfg *openaiclient.ClientConfig) string {
+	if normalizeImageAPIStyle(cfg) == imageAPIStyleGemini {
+		return imageAPIStyleGemini
+	}
+	return imageAPIStyleGRSAI
 }
 
 func maxImageClientAttempts(retries int) int {

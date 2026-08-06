@@ -11,7 +11,7 @@ const (
 )
 
 func ParseRoutingMode(value string) (RoutingMode, error) {
-	switch RoutingMode(strings.TrimSpace(value)) {
+	switch RoutingMode(strings.ToLower(strings.TrimSpace(value))) {
 	case "", RoutingModeLegacy:
 		return RoutingModeLegacy, nil
 	case RoutingModeShadow:
