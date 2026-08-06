@@ -848,7 +848,7 @@ func TestBuildSubmitModuleResolvesSheinRegistrarDependencies(t *testing.T) {
 	attributeResolverBuilt := false
 	saleAttributeResolverBuilt := false
 
-	module := buildSubmitModule(submitModuleInput{
+	module, err := buildSubmitModule(submitModuleInput{
 		Config:            &config.Config{},
 		Logger:            logrus.New(),
 		AICredentialStore: nil,
@@ -917,6 +917,9 @@ func TestBuildSubmitModuleResolvesSheinRegistrarDependencies(t *testing.T) {
 		StoreRepository:      storeRepo,
 		ResolutionCacheStore: resolutionCache,
 	})
+	if err != nil {
+		t.Fatalf("buildSubmitModule() error = %v", err)
+	}
 
 	if module.assets.imageUploadStore != uploadStore {
 		t.Fatal("expected submit asset dependencies to preserve image upload store")
@@ -1010,7 +1013,7 @@ func TestBuildSubmitModuleResolvesSubmitScopedHooks(t *testing.T) {
 	t.Parallel()
 
 	uploadStore := &httpapiStubImageUploadStore{}
-	module := buildSubmitModule(submitModuleInput{
+	module, err := buildSubmitModule(submitModuleInput{
 		Config: &config.Config{},
 		Logger: logrus.New(),
 		Hooks: submitModuleHooks{
@@ -1019,6 +1022,9 @@ func TestBuildSubmitModuleResolvesSubmitScopedHooks(t *testing.T) {
 			},
 		},
 	})
+	if err != nil {
+		t.Fatalf("buildSubmitModule() error = %v", err)
+	}
 
 	if module.assets.imageUploadStore != uploadStore {
 		t.Fatal("expected submit image upload store to be built from scoped hooks")
@@ -1037,6 +1043,35 @@ func TestBuildSubmitModuleResolvesSubmitScopedHooks(t *testing.T) {
 	}
 	if module.assets.assembler == nil {
 		t.Fatal("expected assembler to still be built when optional hooks are omitted")
+	}
+}
+
+func TestBuildSubmitModuleKeepsLegacyModeDependencyFree(t *testing.T) {
+	module, err := buildSubmitModule(submitModuleInput{
+		Config: &config.Config{AICapability: config.AICapabilityConfig{StudioImageRoutingMode: "legacy"}},
+		Hooks: submitModuleHooks{
+			StudioImageGeneratorBuilder: func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {
+				return &httpapiStubImageGenerator{}
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("buildSubmitModule() error = %v", err)
+	}
+	if module.studio.imageGenerator == nil {
+		t.Fatal("expected legacy Studio image generator")
+	}
+}
+
+func TestBuildSubmitModuleRejectsShadowWithoutGovernanceDependencies(t *testing.T) {
+	_, err := buildSubmitModule(submitModuleInput{
+		Config: &config.Config{AICapability: config.AICapabilityConfig{StudioImageRoutingMode: "shadow"}},
+	})
+	if err == nil {
+		t.Fatal("expected shadow routing to require governance dependencies")
+	}
+	if !strings.Contains(err.Error(), "Studio AI capability routing requires") {
+		t.Fatalf("error = %q, want governance dependency message", err)
 	}
 }
 
@@ -1185,7 +1220,10 @@ func TestBuildServiceRuntimeModulesComposeTaskAdminAndSubmitRegistrars(t *testin
 		t.Fatalf("buildRepositories: %v", err)
 	}
 
-	modules := buildServiceRuntimeModules(input, repositories)
+	modules, err := buildServiceRuntimeModules(input, repositories)
+	if err != nil {
+		t.Fatalf("buildServiceRuntimeModules: %v", err)
+	}
 	if modules.task.handlerDependencies.Admin.StoreRepository != nil {
 		t.Fatal("expected task module to remain admin-agnostic before composition")
 	}

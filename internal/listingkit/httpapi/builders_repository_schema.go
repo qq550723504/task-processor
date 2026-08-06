@@ -8,6 +8,7 @@ import (
 
 	"gorm.io/gorm"
 
+	aicapabilitystore "task-processor/internal/aicapability/store"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingadmin"
@@ -104,6 +105,9 @@ func runListingKitRepositoryAutoMigrations(db *gorm.DB) error {
 	}
 	if err := autoMigrateListingKitTaskRepository(db); err != nil {
 		return fmt.Errorf("migrate listingkit task repository: %w", err)
+	}
+	if err := aicapabilitystore.AutoMigrateInvocationLedger(db); err != nil {
+		return fmt.Errorf("ai invocation ledger auto-migrate failed: %w", err)
 	}
 	if err := listingkit.AutoMigrateStudioAsyncJobRepository(db); err != nil {
 		return fmt.Errorf("migrate listingkit studio async job repository: %w", err)

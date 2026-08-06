@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"fmt"
+
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingadmin"
@@ -23,12 +26,14 @@ type submitModuleHooks struct {
 	SheinTranslateAPIBuilderFactory   func(listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder
 	SheinAPIClientFactoryBuilder      func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory
 	StudioImageGeneratorBuilder       func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator
+	StudioAICapabilityRouterBuilder   func(openaiclient.ClientConfigResolver) aicapability.Router
 }
 
 type submitModuleInput struct {
 	Config               *config.Config
 	Logger               *logrus.Logger
 	AICredentialStore    aiCredentialStore
+	AIInvocationRecorder aicapability.InvocationRecorder
 	Hooks                submitModuleHooks
 	StoreRepository      listingadmin.StoreRepository
 	ResolutionCacheStore sheinpub.ResolutionCacheStore
@@ -77,6 +82,7 @@ func newSubmitModuleHooks(hooks BuildServiceHooks) submitModuleHooks {
 		SheinTranslateAPIBuilderFactory:   hooks.SheinTranslateAPIBuilderFactory,
 		SheinAPIClientFactoryBuilder:      hooks.SheinAPIClientFactoryBuilder,
 		StudioImageGeneratorBuilder:       hooks.StudioImageGeneratorBuilder,
+		StudioAICapabilityRouterBuilder:   hooks.StudioAICapabilityRouterBuilder,
 	}
 }
 
@@ -85,13 +91,14 @@ func newSubmitModuleInput(input BuildServiceInput, repos *builtRepositories) sub
 		Config:               input.Config,
 		Logger:               input.Logger,
 		AICredentialStore:    input.AICredentialStore,
+		AIInvocationRecorder: input.AIInvocationRecorder,
 		Hooks:                newSubmitModuleHooks(input.Hooks),
 		StoreRepository:      repos.storeRepository,
 		ResolutionCacheStore: repos.resolutionCacheStore,
 	}
 }
 
-func buildSubmitModule(in submitModuleInput) submitModule {
+func buildSubmitModule(in submitModuleInput) (submitModule, error) {
 	var sheinCategoryLLMClient openaiclient.ChatCompleter
 	if in.Hooks.SheinCategoryLLMClientBuilder != nil {
 		sheinCategoryLLMClient = in.Hooks.SheinCategoryLLMClientBuilder(in.Config, in.AICredentialStore)
@@ -153,7 +160,7 @@ func buildSubmitModule(in submitModuleInput) submitModule {
 		studioImageGenerator = in.Hooks.StudioImageGeneratorBuilder(in.Config, in.AICredentialStore)
 	}
 
-	return submitModule{
+	module := submitModule{
 		assets: submitAssetDependencies{
 			assembler: listingkit.NewAssemblerWithConfig(listingkit.AssemblerConfig{
 				SheinCategoryResolver:      sheinCategoryResolver,
@@ -181,4 +188,43 @@ func buildSubmitModule(in submitModuleInput) submitModule {
 			imageGenerator: adaptListingKitAIImageGenerator(studioImageGenerator),
 		},
 	}
+	mode := aicapability.RoutingModeLegacy
+	if in.Config != nil {
+		var err error
+		mode, err = aicapability.ParseRoutingMode(in.Config.AICapability.StudioImageRoutingMode)
+		if err != nil {
+			return submitModule{}, fmt.Errorf("parse Studio AI capability routing mode: %w", err)
+		}
+	}
+	if mode == aicapability.RoutingModeLegacy {
+		return module, nil
+	}
+	if in.AICredentialStore == nil || in.Hooks.StudioAICapabilityRouterBuilder == nil || in.AIInvocationRecorder == nil || module.studio.imageGenerator == nil {
+		return submitModule{}, fmt.Errorf("Studio AI capability routing requires credential resolver, router builder, invocation recorder, and legacy image generator")
+	}
+	router := in.Hooks.StudioAICapabilityRouterBuilder(in.AICredentialStore)
+	if router == nil {
+		return submitModule{}, fmt.Errorf("Studio AI capability routing requires router builder to return a router")
+	}
+	adapter, err := listingkit.NewStudioAIImageCapabilityAdapter(listingkit.StudioAIImageCapabilityAdapterConfig{
+		Legacy:   module.studio.imageGenerator,
+		Router:   router,
+		Recorder: in.AIInvocationRecorder,
+		Mode:     mode,
+		OnRecordError: func(record aicapability.InvocationRecord, err error) {
+			if in.Logger != nil {
+				in.Logger.WithError(err).WithFields(logrus.Fields{
+					"invocation_id": record.InvocationID,
+					"tenant_id":     record.TenantID,
+					"capability":    record.Capability,
+					"operation":     record.Operation,
+				}).Warn("record Studio AI capability invocation")
+			}
+		},
+	})
+	if err != nil {
+		return submitModule{}, fmt.Errorf("create Studio AI capability adapter: %w", err)
+	}
+	module.studio.imageGenerator = adapter
+	return module, nil
 }
