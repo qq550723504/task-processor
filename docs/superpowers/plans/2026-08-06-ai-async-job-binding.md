@@ -324,6 +324,3 @@ Confirm that all schema migration entry points include `ai_async_jobs`, all acti
 git add docs/superpowers/plans/2026-08-06-ai-async-job-binding.md
 git commit -m "docs: mark async job binding verification complete"
 ```
-
-
-
