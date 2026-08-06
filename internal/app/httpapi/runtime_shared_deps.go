@@ -15,6 +15,7 @@ type sharedRuntimeDeps struct {
 	openaiMgr            *openaiclient.Manager
 	aiCredentialStore    *openaiclient.GormCredentialResolver
 	aiInvocationRecorder aicapability.InvocationRecorder
+	aiAsyncJobStore      aicapability.AsyncJobBindingStore
 	tenantPromptStore    prompt.TenantPromptStore
 	llmMgr               productenrich.LLMManager
 	inputParser          productenrich.InputParser

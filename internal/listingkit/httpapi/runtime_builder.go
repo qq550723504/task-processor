@@ -28,6 +28,7 @@ type RuntimeDependencies struct {
 	ImageSceneRenderer                 productimage.SceneRenderer
 	AICredentialStore                  aiCredentialStore
 	AIInvocationRecorder               aicapability.InvocationRecorder
+	AIAsyncJobStore                    aicapability.AsyncJobBindingStore
 	Support                            RuntimeSupport
 	Repositories                       BuildServiceRepositories
 	Hooks                              BuildServiceHooks
@@ -56,6 +57,7 @@ func buildRuntimeServiceInput(logger *logrus.Logger, runtime RuntimeDependencies
 		ImageSceneRenderer:         runtime.ImageSceneRenderer,
 		AICredentialStore:          runtime.AICredentialStore,
 		AIInvocationRecorder:       runtime.AIInvocationRecorder,
+		AIAsyncJobStore:            runtime.AIAsyncJobStore,
 		Repositories:               support.Repositories,
 		Hooks:                      support.Hooks,
 	}
