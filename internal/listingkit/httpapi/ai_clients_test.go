@@ -24,6 +24,8 @@ type stubListingKitClientResolver struct {
 type stubListingKitImageGenerator struct {
 	lastGenerate   *openaiclient.ImageGenerateRequest
 	lastEdit       *openaiclient.ImageEditRequest
+	lastQueryJobID string
+	lastQueryRoute string
 	asyncSupported bool
 	submitResponse *openaiclient.ImageAsyncSubmitResponse
 	queryResponse  *openaiclient.ImageAsyncQueryResponse
@@ -57,7 +59,14 @@ func (s *stubListingKitImageGenerator) SubmitImageEdit(_ context.Context, req *o
 	return s.submitResponse, nil
 }
 
-func (s *stubListingKitImageGenerator) QueryImageGeneration(_ context.Context, _ string) (*openaiclient.ImageAsyncQueryResponse, error) {
+func (s *stubListingKitImageGenerator) QueryImageGeneration(_ context.Context, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
+	s.lastQueryJobID = jobID
+	return s.queryResponse, nil
+}
+
+func (s *stubListingKitImageGenerator) QueryImageGenerationForRoutingKey(_ context.Context, routingKey, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
+	s.lastQueryRoute = routingKey
+	s.lastQueryJobID = jobID
 	return s.queryResponse, nil
 }
 
@@ -246,6 +255,50 @@ func TestListingKitRoutedImageClientUsesGPTImage2ByDefault(t *testing.T) {
 	}
 	if nano.lastGenerate != nil {
 		t.Fatal("did not expect nanobanana client to receive default request")
+	}
+}
+
+func TestListingKitRoutedImageClientQueriesByRoutingKey(t *testing.T) {
+	nano := &stubListingKitImageGenerator{queryResponse: &openaiclient.ImageAsyncQueryResponse{JobID: "nano-job"}}
+	gpt := &stubListingKitImageGenerator{queryResponse: &openaiclient.ImageAsyncQueryResponse{JobID: "gpt-job"}}
+	router := &listingKitRoutedImageClient{
+		defaultModel: listingKitImageModelSelectorGPTImage2,
+		defaultImage: gpt,
+		gptImage2:    gpt,
+		nanobanana:   nano,
+	}
+
+	nanoResponse, err := router.QueryImageGenerationForRoutingKey(context.Background(), listingKitImageModelSelectorNano, "job-nano")
+	if err != nil {
+		t.Fatalf("nano query returned error: %v", err)
+	}
+	if nanoResponse == nil || nanoResponse.JobID != "nano-job" || nano.lastQueryJobID != "job-nano" || gpt.lastQueryJobID != "" {
+		t.Fatalf("nano query response=%+v job=%q; gpt job %q", nanoResponse, nano.lastQueryJobID, gpt.lastQueryJobID)
+	}
+
+	gptResponse, err := router.QueryImageGenerationForRoutingKey(context.Background(), listingKitImageModelSelectorGPTImage2, "job-gpt")
+	if err != nil {
+		t.Fatalf("gpt query returned error: %v", err)
+	}
+	if gptResponse == nil || gptResponse.JobID != "gpt-job" || gpt.lastQueryJobID != "job-gpt" {
+		t.Fatalf("gpt query response=%+v job=%q", gptResponse, gpt.lastQueryJobID)
+	}
+}
+
+func TestAdaptListingKitAIImageGeneratorForwardsRouteAwareQuery(t *testing.T) {
+	upstream := &stubListingKitImageGenerator{queryResponse: &openaiclient.ImageAsyncQueryResponse{JobID: "job-a"}}
+	generator := adaptListingKitAIImageGenerator(upstream)
+	routeAware, ok := generator.(listingkit.AIAsyncImageQueryByRoutingKey)
+	if !ok {
+		t.Fatal("adapted generator does not expose route-aware async query")
+	}
+
+	response, err := routeAware.QueryImageGenerationForRoutingKey(context.Background(), "nano", "job-a")
+	if err != nil || response == nil || response.JobID != "job-a" {
+		t.Fatalf("route-aware query = (%+v, %v)", response, err)
+	}
+	if upstream.lastQueryRoute != "nano" || upstream.lastQueryJobID != "job-a" {
+		t.Fatalf("upstream route-aware query = route %q job %q", upstream.lastQueryRoute, upstream.lastQueryJobID)
 	}
 }
 
