@@ -52,6 +52,7 @@ func NewPolicyRouter(catalog ModelCatalog, policies PolicyResolver) *PolicyRoute
 
 func (r *PolicyRouter) Decide(ctx context.Context, request RouteRequest) (RouteDecision, error) {
 	request.TenantID = strings.TrimSpace(request.TenantID)
+	request.UserID = strings.TrimSpace(request.UserID)
 	request.Capability = Capability(strings.TrimSpace(string(request.Capability)))
 	request.Operation = Operation(strings.TrimSpace(string(request.Operation)))
 	request.RequestedRoutingKey = strings.TrimSpace(request.RequestedRoutingKey)

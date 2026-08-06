@@ -19,13 +19,15 @@ func (s stubCatalog) ResolveModel(_ context.Context, routingKey string) (ModelDe
 }
 
 type staticPolicyResolver struct {
-	policy TenantModelPolicy
-	err    error
-	calls  int
+	policy  TenantModelPolicy
+	err     error
+	calls   int
+	request RouteRequest
 }
 
-func (s *staticPolicyResolver) ResolvePolicy(_ context.Context, _ RouteRequest) (TenantModelPolicy, error) {
+func (s *staticPolicyResolver) ResolvePolicy(_ context.Context, request RouteRequest) (TenantModelPolicy, error) {
 	s.calls++
+	s.request = request
 	return s.policy, s.err
 }
 
@@ -53,6 +55,7 @@ func TestPolicyRouterUsesRequestedRoutingKeyWhenAllowed(t *testing.T) {
 
 	decision, err := router.Decide(context.Background(), RouteRequest{
 		TenantID:            " tenant-a ",
+		UserID:              " user-a ",
 		Capability:          CapabilityListingKitStudioImage,
 		Operation:           OperationImageEdit,
 		RequestedRoutingKey: " nanobanana ",
@@ -63,6 +66,9 @@ func TestPolicyRouterUsesRequestedRoutingKeyWhenAllowed(t *testing.T) {
 	}
 	if resolver.calls != 1 {
 		t.Fatalf("ResolvePolicy calls = %d, want 1", resolver.calls)
+	}
+	if resolver.request.UserID != "user-a" {
+		t.Fatalf("policy resolver received UserID = %q, want user-a", resolver.request.UserID)
 	}
 	if decision.ProviderID != "grsai" || decision.ModelID != "nano-banana-pro" || decision.RoutingKey != "nanobanana" {
 		t.Fatalf("unexpected decision: %#v", decision)
