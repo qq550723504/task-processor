@@ -5,6 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
+	aicapabilitystore "task-processor/internal/aicapability/store"
 	"task-processor/internal/amazonlisting"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
@@ -23,6 +24,9 @@ func AutoMigrateProductListingAPIRuntimeSchema(db *gorm.DB) error {
 	}
 	if err := db.AutoMigrate(&openaiclient.AIClientCredential{}); err != nil {
 		return fmt.Errorf("openai credential auto-migrate failed: %w", err)
+	}
+	if err := aicapabilitystore.AutoMigrateInvocationLedger(db); err != nil {
+		return fmt.Errorf("ai invocation ledger auto-migrate failed: %w", err)
 	}
 	if err := db.AutoMigrate(&prompt.TenantPromptTemplate{}); err != nil {
 		return fmt.Errorf("tenant prompt auto-migrate failed: %w", err)

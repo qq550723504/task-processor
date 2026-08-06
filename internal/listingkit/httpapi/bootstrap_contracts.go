@@ -5,6 +5,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/aicapability"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
@@ -150,6 +151,7 @@ type BuildServiceHooks struct {
 	SheinTranslateAPIBuilderFactory   func(listingadmin.StoreRepository) sheinpub.TranslateAPIBuilder
 	SheinAPIClientFactoryBuilder      func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory
 	StudioImageGeneratorBuilder       func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator
+	StudioAICapabilityRouterBuilder   func(openaiclient.ClientConfigResolver) aicapability.Router
 	StudioBackgroundRemoverBuilder    func(*config.Config, openaiclient.ClientConfigResolver) listingkit.StudioBackgroundRemover
 	ConfigureZitadelAuth              func(config.ListingKitZitadelConfig)
 	ConfigureAuthorization            func([]string, []string) error
@@ -167,6 +169,7 @@ type BuildServiceInput struct {
 	ImageWhiteBackgroundRender productimage.WhiteBackgroundRenderer
 	ImageSceneRenderer         productimage.SceneRenderer
 	AICredentialStore          aiCredentialStore
+	AIInvocationRecorder       aicapability.InvocationRecorder
 	Repositories               BuildServiceRepositories
 	Hooks                      BuildServiceHooks
 }

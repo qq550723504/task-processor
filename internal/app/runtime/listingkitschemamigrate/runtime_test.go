@@ -88,6 +88,17 @@ func TestAutoMigrateListingKitRuntimeSchemaCreatesSheinPODImageLookupIndexTable(
 	}
 }
 
+func TestAutoMigrateListingKitRuntimeSchemaCreatesAIInvocationsTable(t *testing.T) {
+	db := openRuntimeSchemaTestDB(t)
+
+	if err := autoMigrateListingKitRuntimeSchema(db); err != nil {
+		t.Fatalf("autoMigrateListingKitRuntimeSchema() error = %v", err)
+	}
+	if !db.Migrator().HasTable("ai_invocations") {
+		t.Fatal("expected ai_invocations table to be created")
+	}
+}
+
 func openRuntimeSchemaTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 

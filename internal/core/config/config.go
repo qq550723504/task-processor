@@ -41,6 +41,7 @@ type Config struct {
 	Debug               DebugConfig               `yaml:"debug"`
 	ListingKit          ListingKitConfig          `yaml:"listingkit"`
 	ListingControlPlane ListingControlPlaneConfig `yaml:"listingControlPlane"`
+	AICapability        AICapabilityConfig        `yaml:"aiCapability"`
 }
 
 type DebugConfig struct {
@@ -223,6 +224,9 @@ func bindKnownEnvs(v *viper.Viper) {
 
 func knownEnvBindings() map[string]envBinding {
 	return map[string]envBinding{
+		"aiCapability.studioImageRoutingMode": {
+			Primary: "TASK_PROCESSOR_AI_CAPABILITY_STUDIO_IMAGE_ROUTING_MODE",
+		},
 		"openai.apiKey": {
 			Primary:    "TASK_PROCESSOR_OPENAI_API_KEY",
 			Deprecated: []string{"OPENAI_API_KEY"},

@@ -176,6 +176,23 @@ Must not depend on:
 - Marketplace business rules.
 - HTTP handlers.
 
+### 3.7 `internal/aicapability`
+
+Current role: neutral platform and integration module for AI capability
+selection.
+
+Owns:
+
+- Model catalog, policy, routing, and invocation contracts.
+- Provider-neutral routing decisions and invocation observability records.
+
+Does not own:
+
+- Product facts or marketplace rules.
+- Prompt meaning or prompt construction.
+- Provider SDKs, provider request/response DTOs, or concrete credential
+  adapters.
+
 ## 4. Forbidden Import Directions
 
 These import directions are forbidden by default:
@@ -355,6 +372,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile`
 - `TestBootstrapKeepsImagePipelineComponentAssemblyInDedicatedFile`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
+- `TestAICapabilityModuleDoesNotImportBusinessOrProviderPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
