@@ -5,6 +5,9 @@ import (
 	"testing"
 
 	"github.com/sirupsen/logrus"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	_ "modernc.org/sqlite"
 
 	"task-processor/internal/core/config"
 )
@@ -37,5 +40,19 @@ func TestBuildAICapabilityRuntimeDepsRequiresDatabaseOutsideLegacy(t *testing.T)
 				t.Fatalf("error = %q, want AI capability resource context", err)
 			}
 		})
+	}
+}
+
+func TestAutoMigrateProductListingAPIRuntimeSchemaCreatesAIInvocationsTable(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+
+	if err := AutoMigrateProductListingAPIRuntimeSchema(db); err != nil {
+		t.Fatalf("AutoMigrateProductListingAPIRuntimeSchema() error = %v", err)
+	}
+	if !db.Migrator().HasTable("ai_invocations") {
+		t.Fatal("expected ai_invocations table to be created")
 	}
 }
