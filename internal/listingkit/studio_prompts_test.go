@@ -22,9 +22,10 @@ import (
 )
 
 type studioPromptRegistryStub struct {
-	key       string
-	tenantKey string
-	vars      map[string]any
+	key             string
+	tenantKey       string
+	vars            map[string]any
+	renderTenantErr error
 }
 
 func (s *studioPromptRegistryStub) Get(string, string) string { return "" }
@@ -38,6 +39,9 @@ func (s *studioPromptRegistryStub) Render(key string, vars map[string]any, _ str
 func (s *studioPromptRegistryStub) RenderTenantFromContext(_ context.Context, key string, vars map[string]any) (string, error) {
 	s.tenantKey = key
 	s.vars = vars
+	if s.renderTenantErr != nil {
+		return "", s.renderTenantErr
+	}
 	return "tenant-hot-reference-template", nil
 }
 
@@ -200,7 +204,7 @@ func TestStudioDesignPromptUsesHotReferenceImageHint(t *testing.T) {
 		"color palette",
 		"recognizably related to the reference",
 		"make subtle but clearly visible controlled changes",
-		"modify at least 2–4",
+		"modify 2–4",
 		"do not create a near-duplicate",
 		"do not trace or reproduce the exact contour",
 		"target print area: 1626 by 2000 pixels",
@@ -239,6 +243,41 @@ func TestHotReferenceStudioDesignPromptUsesDedicatedTemplate(t *testing.T) {
 	}
 	if registry.vars["ThemePrompt"] != "floral line art" {
 		t.Fatalf("ThemePrompt = %#v, want supplemental theme", registry.vars["ThemePrompt"])
+	}
+}
+
+func TestHotReferenceStudioDesignPromptFallbackKeepsVariationConstraints(t *testing.T) {
+	previous := prompt.GlobalRegistry
+	t.Cleanup(func() { prompt.GlobalRegistry = previous })
+
+	cases := []struct {
+		name     string
+		registry prompt.PromptRegistry
+	}{
+		{name: "global registry unavailable", registry: nil},
+		{name: "tenant rendering fails", registry: &studioPromptRegistryStub{renderTenantErr: errors.New("tenant prompt unavailable")}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			prompt.GlobalRegistry = tc.registry
+			text := buildHotReferenceStudioDesignPrompt(&StudioDesignRequest{
+				ArtworkGenerationMode: studioArtworkGenerationModeHotReference,
+				PrintableWidth:        1626,
+				PrintableHeight:       2000,
+			}, "")
+			lower := strings.ToLower(text)
+			for _, required := range []string{
+				"make subtle but clearly visible controlled changes",
+				"modify 2–4",
+				"do not create a near-duplicate",
+				"do not trace or reproduce the exact contour",
+			} {
+				if !strings.Contains(lower, required) {
+					t.Fatalf("fallback hot-reference prompt missing %q:\n%s", required, text)
+				}
+			}
+		})
 	}
 }
 
