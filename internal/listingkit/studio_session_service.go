@@ -63,6 +63,8 @@ func mapStudioBatchListItem(session *SheinStudioSession, designCount int) SheinS
 		return SheinStudioBatchListItem{}
 	}
 	selection := SheinStudioSelection(session.Selection)
+	legacyTransparentBackground := session.TransparentBackground
+	transparencyMode := NormalizeStudioTransparencyMode(string(session.TransparentBackgroundMode), &legacyTransparentBackground)
 	return SheinStudioBatchListItem{
 		ID:                         session.ID,
 		BatchName:                  session.BatchName,
@@ -77,7 +79,8 @@ func mapStudioBatchListItem(session *SheinStudioSession, designCount int) SheinS
 		ArtworkModel:               session.ArtworkModel,
 		ImageStrategy:              session.ImageStrategy,
 		GroupedImageMode:           session.GroupedImageMode,
-		TransparentBackground:      session.TransparentBackground,
+		TransparentBackground:      transparencyMode != StudioTransparencyModeNone,
+		TransparentBackgroundMode:  transparencyMode,
 		RenderSizeImagesWithSDS:    session.RenderSizeImagesWithSDS,
 		HotStyleReferenceImageURLs: append([]string(nil), session.HotStyleReferenceImageURLs...),
 		HotStyleReferenceBrief:     session.HotStyleReferenceBrief,

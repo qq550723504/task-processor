@@ -14,3 +14,10 @@ type KeyedImageUploadStore interface {
 	ImageUploadStore
 	SaveWithKey(ctx context.Context, key string, input *ImageUploadInput) (*StoredUploadedImage, error)
 }
+
+// ImageUploadPublicURLResolver resolves an object key to a URL that external
+// providers can fetch. It is optional because some local/private stores only
+// support inline image bytes.
+type ImageUploadPublicURLResolver interface {
+	ResolvePublicURL(ctx context.Context, key string) (string, error)
+}

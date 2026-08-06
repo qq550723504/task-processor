@@ -23,15 +23,19 @@ const (
 )
 
 func buildStudioDesignPrompt(req *StudioDesignRequest) string {
-	return buildStudioDesignPromptWithTheme(req, strings.TrimSpace(req.Prompt))
+	return buildStudioDesignPromptWithContext(context.Background(), req, strings.TrimSpace(req.Prompt))
 }
 
 func buildStudioDesignPromptWithTheme(req *StudioDesignRequest, theme string) string {
+	return buildStudioDesignPromptWithContext(context.Background(), req, theme)
+}
+
+func buildStudioDesignPromptWithContext(ctx context.Context, req *StudioDesignRequest, theme string) string {
+	if req != nil && strings.EqualFold(strings.TrimSpace(req.ArtworkGenerationMode), studioArtworkGenerationModeHotReference) {
+		return buildHotReferenceStudioDesignPromptWithContext(ctx, req, theme)
+	}
 	if isStudioRawPromptMode(req.PromptMode) {
 		return buildRawStudioDesignPrompt(req, theme)
-	}
-	if req != nil && strings.EqualFold(strings.TrimSpace(req.ArtworkGenerationMode), studioArtworkGenerationModeHotReference) {
-		return buildHotReferenceStudioDesignPrompt(req, theme)
 	}
 	printableHint := ""
 	if req.PrintableWidth > 0 && req.PrintableHeight > 0 {
@@ -42,7 +46,7 @@ func buildStudioDesignPromptWithTheme(req *StudioDesignRequest, theme string) st
 		referenceHint = studioDesignReferenceHint(req)
 	}
 	transparentHint := ""
-	if req.TransparentBackground {
+	if studioDesignUsesNativeTransparency(req) {
 		transparentHint = "Output the artwork on a true transparent background with alpha channel. Do not simulate transparency with checkerboard, paper texture, white fill, colored fill, or any background pattern."
 	}
 	vars := map[string]any{
@@ -63,24 +67,65 @@ func buildStudioDesignPromptWithTheme(req *StudioDesignRequest, theme string) st
 }
 
 func buildHotReferenceStudioDesignPrompt(req *StudioDesignRequest, theme string) string {
-	parts := append([]string(nil), studioHotReferenceInstructionParts...)
+	return buildHotReferenceStudioDesignPromptWithContext(context.Background(), req, theme)
+}
+
+func buildStudioHotReferenceArtworkPrompt(artworkPrompt, artworkBrief, supplemental string) string {
+	basePrompt := strings.TrimSpace(artworkPrompt)
+	if basePrompt == "" {
+		basePrompt = strings.TrimSpace(artworkBrief)
+	}
+	supplemental = strings.TrimSpace(supplemental)
+	if basePrompt == "" {
+		return supplemental
+	}
+	if supplemental == "" {
+		return basePrompt
+	}
+	return basePrompt + "\nAdditional artwork constraints: " + supplemental
+}
+
+func buildHotReferenceStudioDesignPromptWithContext(ctx context.Context, req *StudioDesignRequest, theme string) string {
+	printableHint := ""
 	if req != nil && req.PrintableWidth > 0 && req.PrintableHeight > 0 {
-		parts = append(parts, studioDesignPrintableHint(req.PrintableWidth, req.PrintableHeight))
+		printableHint = studioDesignPrintableHint(req.PrintableWidth, req.PrintableHeight)
 	}
-	if req != nil && req.TransparentBackground {
-		parts = append(parts, "Output on a true transparent background with alpha channel.")
+	transparentHint := ""
+	if studioDesignUsesNativeTransparency(req) {
+		transparentHint = "Output on a true transparent background with alpha channel."
 	}
-	if promptText := strings.TrimSpace(theme); promptText != "" {
-		parts = append(parts, "Theme prompt: "+promptText)
+	vars := map[string]any{
+		"PrintableHint":   printableHint,
+		"TransparentHint": transparentHint,
+		"ThemePrompt":     strings.TrimSpace(theme),
 	}
-	return strings.TrimSpace(strings.Join(parts, "\n"))
+	fallbackParts := append([]string{}, studioHotReferenceInstructionParts...)
+	fallbackParts = append(fallbackParts,
+		"{{.PrintableHint}}",
+		"{{.TransparentHint}}",
+		"{{if .ThemePrompt}}Theme prompt: {{.ThemePrompt}}{{end}}",
+	)
+	fallback := strings.Join(fallbackParts, "\n")
+	if prompt.GlobalRegistry == nil {
+		return renderPromptFallback(fallback, vars)
+	}
+	rendered, err := prompt.RenderTenantFromContextWithGlobalFallback(ctx, prompt.KProductImageStudioGenerationPodDesignHotReference, vars)
+	if err != nil {
+		return renderPromptFallback(fallback, vars)
+	}
+	return strings.TrimSpace(rendered)
 }
 
 var studioHotReferenceInstructionParts = []string{
-	"Use the provided hot-selling artwork reference image as a strong visual reference for a new original flat POD artwork.",
-	"Ignore the garment, background, watermark, and product mockup; focus on the printed artwork.",
+	"Use the provided hot-selling product reference image as a strong visual reference for a new original flat POD artwork.",
+	"Extract the artwork, pattern, or design from the product shown in the reference.",
+	"Ignore the physical product, its material and shape, background, watermark, and mockup framing; focus on the product's visible artwork or pattern.",
 	"Preserve the main subject family, dominant silhouette, composition direction, color palette, stroke/line style, and graphic energy so the result is recognizably related to the reference.",
-	"Redraw everything with original details; do not copy exact text, logos, watermarks, brand marks, or protected characters.",
+	"Make subtle but clearly visible controlled changes while keeping the result recognizably related to the reference.",
+	"Modify 2–4 of the following elements: subject pose, orientation, or facial expression; secondary decorative elements; composition spacing and element placement; border or background treatment; color balance or accent colors; typography layout or decorative treatment.",
+	"Do not create a near-duplicate. Do not trace or reproduce the exact contour, exact layout, exact decorative details, or exact text from the reference.",
+	"Redraw everything with original details; do not copy logos, watermarks, brand marks, or protected characters.",
+	"Do not make a radical redesign; preserve the original design's core style and commercial appeal.",
 }
 
 func studioDesignReferenceHint(req *StudioDesignRequest) string {
@@ -163,7 +208,7 @@ func buildStudioDesignSiblingPromptRequest(req *StudioDesignRequest, count int) 
 	if req.PrintableWidth > 0 && req.PrintableHeight > 0 {
 		builder.WriteString(fmt.Sprintf("Print area hint: %d x %d pixels.\n", req.PrintableWidth, req.PrintableHeight))
 	}
-	if req.TransparentBackground {
+	if studioDesignUsesNativeTransparency(req) {
 		builder.WriteString("Keep the artwork compatible with transparent-background output.\n")
 	}
 	if len(studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)) > 0 {
@@ -209,7 +254,7 @@ func parseStudioDesignSiblingThemes(raw string, count int) ([]string, error) {
 }
 
 func resolveStudioDesignImageModel(req *StudioDesignRequest, fallback string) string {
-	if req != nil && req.TransparentBackground {
+	if studioDesignUsesNativeTransparency(req) {
 		return studioDesignTransparentModel
 	}
 	if req != nil {
@@ -248,6 +293,19 @@ func validateStudioDesignReferenceImageURLs(req *StudioDesignRequest) ([]string,
 	default:
 		return nil, fmt.Errorf("invalid request: unknown artwork generation mode %q", mode)
 	}
+}
+
+func validateStudioDesignPromptRequirement(req *StudioDesignRequest, referenceURLs []string) error {
+	if req == nil {
+		return fmt.Errorf("invalid request: prompt is required")
+	}
+	if strings.EqualFold(strings.TrimSpace(req.ArtworkGenerationMode), studioArtworkGenerationModeHotReference) && len(referenceURLs) == 1 {
+		return nil
+	}
+	if strings.TrimSpace(req.Prompt) == "" {
+		return fmt.Errorf("invalid request: prompt is required")
+	}
+	return nil
 }
 
 func studioDesignReferenceImageURLs(urls []string) []string {

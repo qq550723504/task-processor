@@ -53,6 +53,7 @@ var promptTemplateCatalogKeys = []string{
 	prompt.KProductImageSceneBags,
 	prompt.KProductImageReviewDefault,
 	prompt.KProductImageStudioGenerationPodDesign,
+	prompt.KProductImageStudioGenerationPodDesignHotReference,
 	prompt.KProductImageStudioGenerationAmazonProductImage,
 }
 

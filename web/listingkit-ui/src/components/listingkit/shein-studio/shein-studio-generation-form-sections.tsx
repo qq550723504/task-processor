@@ -24,6 +24,7 @@ import type {
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
+  SheinStudioTransparencyMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 
@@ -51,10 +52,12 @@ export function ArtworkGenerationSettings({
   setPromptMode,
   setStyleCount,
   setTransparentBackground,
+  setTransparentBackgroundMode,
   setVariationIntensity,
   showVariationIntensity,
   styleCount,
   transparentBackground,
+  transparentBackgroundMode,
   variationIntensity,
 }: {
   artworkModel: SheinStudioArtworkModel;
@@ -80,13 +83,17 @@ export function ArtworkGenerationSettings({
   setPromptMode: (value: "managed" | "raw") => void;
   setStyleCount: (value: string) => void;
   setTransparentBackground: (value: boolean) => void;
+  setTransparentBackgroundMode: (value: SheinStudioTransparencyMode) => void;
   setVariationIntensity: (value: SheinStudioVariationIntensity) => void;
   showVariationIntensity: boolean;
   styleCount: string;
   transparentBackground: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   variationIntensity: SheinStudioVariationIntensity;
 }) {
   const isHotReferenceMode = artworkGenerationMode === "hot_reference";
+  const activeTransparencyMode =
+    transparentBackgroundMode ?? (transparentBackground ? "native" : "none");
 
   return (
     <div className="space-y-4 rounded-[1.5rem] border border-emerald-200 bg-[linear-gradient(135deg,_#ecfdf5,_#f8fafc)] px-4 py-4 dark:border-emerald-500/25 dark:bg-emerald-950/15">
@@ -307,13 +314,18 @@ export function ArtworkGenerationSettings({
             list="shein-studio-artwork-models"
             onChange={(event) => {
               const nextModel = event.target.value.trim();
-              setArtworkModel(nextModel);
-              if (nextModel !== "gpt-image-2" && transparentBackground) {
-                setTransparentBackground(false);
+              if (activeTransparencyMode === "native") {
+                setArtworkModel("gpt-image-2");
+                return;
               }
+              setArtworkModel(nextModel);
             }}
             placeholder="留空时跟随后端 image client 默认模型"
-            value={transparentBackground ? "gpt-image-2" : artworkModel}
+            value={
+              activeTransparencyMode === "native"
+                ? "gpt-image-2"
+                : artworkModel
+            }
           />
           <datalist id="shein-studio-artwork-models">
             <option value="gpt-image-2" />
@@ -326,25 +338,35 @@ export function ArtworkGenerationSettings({
             保存的默认模型，也可以直接手填覆盖。
           </p>
         </Label>
-        <Label className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-background/80 px-4 py-3 dark:border-emerald-500/25 dark:bg-card/90">
-          <Checkbox
-            checked={transparentBackground}
-            className="mt-1 border-emerald-300"
+        <Label className="space-y-2 rounded-2xl border border-emerald-200 bg-background/80 px-4 py-3 dark:border-emerald-500/25 dark:bg-card/90">
+          <span className="text-sm font-medium text-foreground">
+            透明背景处理方式
+          </span>
+          <Select
+            className="h-11 rounded-2xl border-emerald-200 bg-background/90 px-4 py-2 leading-5 focus:border-emerald-900 focus:bg-background dark:border-emerald-500/25 dark:bg-background/80"
             disabled={disabled}
             onChange={(event) => {
-              const checked = event.target.checked;
-              setTransparentBackground(checked);
-              if (checked) {
+              const nextMode = event.target.value as SheinStudioTransparencyMode;
+              setTransparentBackgroundMode(nextMode);
+              setTransparentBackground(nextMode === "native");
+              if (nextMode === "native") {
                 setArtworkModel("gpt-image-2");
               }
             }}
-          />
-          <span className="text-sm leading-6 text-emerald-950">
-            <span className="block font-semibold">生成透明背景图案</span>
-            <span className="block text-xs text-emerald-800">
-              开启后仍会强制切换到 `gpt-image-2`，并要求输出真正 alpha
-              透明背景。
-            </span>
+            value={
+              activeTransparencyMode
+            }
+          >
+            <option value="none">不生成透明背景</option>
+            <option value="native">模型直接生成透明背景</option>
+            <option value="removal">普通生成后调用抠图模型</option>
+          </Select>
+          <span className="block text-xs leading-6 text-emerald-800">
+            {activeTransparencyMode === "removal"
+              ? "先按当前款式图模型生成普通图片，再调用 background-removal 模型输出 alpha PNG；失败时保留原图并可重试。"
+              : activeTransparencyMode === "native"
+                ? "使用 gpt-image-2 直接生成真正 alpha 透明背景。"
+                : "保留生成模型的普通图片输出。"}
           </span>
         </Label>
       </div>

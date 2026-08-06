@@ -266,6 +266,12 @@ function mapStudioBatch(
       typeof payload.transparent_background === "boolean"
         ? payload.transparent_background
         : undefined,
+    transparentBackgroundMode:
+      payload.transparent_background_mode === "native" ||
+      payload.transparent_background_mode === "removal" ||
+      payload.transparent_background_mode === "none"
+        ? payload.transparent_background_mode
+        : undefined,
     groupedImageMode:
       payload.grouped_image_mode === "per_product" ||
       payload.grouped_image_mode === "shared_by_size"
@@ -348,6 +354,31 @@ function mapStudioMaterializedDesign(
     targetGroupKey: payload.target_group_key,
     targetGroupLabel: payload.target_group_label,
     imageUrl: payload.image_url,
+    originalImageUrl:
+      typeof payload.original_image_url === "string"
+        ? payload.original_image_url
+        : undefined,
+    transparentBackgroundMode:
+      payload.transparent_background_mode === "native" ||
+      payload.transparent_background_mode === "removal" ||
+      payload.transparent_background_mode === "none"
+        ? payload.transparent_background_mode
+        : undefined,
+    backgroundRemovalStatus:
+      payload.background_removal_status === "not_requested" ||
+      payload.background_removal_status === "pending" ||
+      payload.background_removal_status === "succeeded" ||
+      payload.background_removal_status === "failed"
+        ? payload.background_removal_status
+        : undefined,
+    backgroundRemovalModel:
+      typeof payload.background_removal_model === "string"
+        ? payload.background_removal_model
+        : undefined,
+    backgroundRemovalError:
+      typeof payload.background_removal_error === "string"
+        ? payload.background_removal_error
+        : undefined,
     reviewStatus: payload.review_status,
     reviewNote: payload.review_note,
     role: payload.role,
@@ -594,6 +625,22 @@ export async function approveSheinStudioBatchDesigns(
 ): Promise<SheinStudioBatchDetail> {
   const payload = await apiRequest<unknown>(
     `/studio/batches/${batchId}/design-approvals`,
+    {
+      method: "POST",
+      query: buildStudioBatchQuery(options),
+      body: { design_ids: designIds },
+    },
+  );
+  return parseSheinStudioBatchDetailResponse(payload);
+}
+
+export async function retrySheinStudioBatchBackgroundRemoval(
+  batchId: string,
+  designIds: string[] = [],
+  options?: SheinStudioBatchRequestOptions,
+): Promise<SheinStudioBatchDetail> {
+  const payload = await apiRequest<unknown>(
+    `/studio/batches/${batchId}/designs/background-removal/retry`,
     {
       method: "POST",
       query: buildStudioBatchQuery(options),

@@ -76,6 +76,7 @@ const studioBatchDraftRecordSchema = z
     selected_sds_images: z.array(selectedSdsImageSchema).optional(),
     grouped_selections: z.array(groupedSelectionSchema).optional(),
     transparent_background: z.boolean().optional(),
+    transparent_background_mode: z.enum(["none", "native", "removal"]).optional(),
     render_size_images_with_sds: z.boolean().optional(),
     shein_store_id: z.string().optional(),
     generation_job_id: z.string().optional(),
@@ -96,6 +97,13 @@ const studioDesignSchema = z
     revised_prompt: z.string().optional(),
     image_model: z.string().optional(),
     transparent_background: z.boolean().optional(),
+    transparent_background_mode: z.enum(["none", "native", "removal"]).optional(),
+    original_image_url: z.string().optional(),
+    background_removal_status: z
+      .enum(["not_requested", "pending", "succeeded", "failed"])
+      .optional(),
+    background_removal_model: z.string().optional(),
+    background_removal_error: z.string().optional(),
     variation_intensity: z.string().optional(),
     review_note: z.string().optional(),
     role: z.string().optional(),

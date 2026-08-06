@@ -167,8 +167,8 @@ func appendSalePatchChange(changes *[]RevisionFieldChange, pkg *sheinpub.Package
 		return
 	}
 	beforeCount := 0
-	if pkg != nil && pkg.RequestDraft != nil {
-		beforeCount = len(pkg.RequestDraft.SKCList)
+	if draft := sheinpub.DraftPayloadOf(pkg); draft != nil {
+		beforeCount = len(draft.SKCList)
 	}
 	if beforeCount == len(after) {
 		return

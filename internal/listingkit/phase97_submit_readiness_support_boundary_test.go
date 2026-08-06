@@ -147,7 +147,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 	}
 	for _, needle := range []string{
 		`"发布载荷结构"`,
-		`"shein.preview_product", "shein.request_draft.skc_list"`,
+		`"shein.preview_product", "shein.draft_payload.skc_list"`,
 	} {
 		if strings.Contains(buildValidationContent, needle) {
 			t.Fatalf("shein_build_validation.go should delegate payload validation check construction, found %q", needle)
@@ -243,7 +243,7 @@ func TestSheinSubmitReadinessSupportFilesOwnHelperFamilies(t *testing.T) {
 	for _, needle := range []string{
 		"func BuildSubmitPayloadValidationReadinessChecks(input SubmitPayloadValidationReadinessInput) []ReadinessCheckSpec {",
 		`"发布载荷结构"`,
-		`"shein.preview_product", "shein.request_draft.skc_list"`,
+		`"shein.preview_product", "shein.draft_payload.skc_list"`,
 	} {
 		if !strings.Contains(workspacePayloadValidationContent, needle) {
 			t.Fatalf("workspace payload validation readiness checks should contain %q", needle)

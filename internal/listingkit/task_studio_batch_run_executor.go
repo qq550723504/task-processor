@@ -444,8 +444,16 @@ func buildStudioBatchRunDesignRequest(session *SheinStudioSession) *StudioDesign
 	if len(referenceImageURLs) == 1 {
 		artworkGenerationMode = studioArtworkGenerationModeHotReference
 	}
+	promptText := strings.TrimSpace(session.Prompt)
+	if artworkGenerationMode == studioArtworkGenerationModeHotReference {
+		promptText = buildStudioHotReferenceArtworkPrompt(
+			session.HotStyleReferencePrompt,
+			session.HotStyleReferenceBrief,
+			promptText,
+		)
+	}
 	return &StudioDesignRequest{
-		Prompt:                    strings.TrimSpace(session.Prompt),
+		Prompt:                    promptText,
 		ArtworkGenerationMode:     artworkGenerationMode,
 		PromptMode:                session.PromptMode,
 		Count:                     parseStudioBatchRunStyleCount(session.StyleCount),
@@ -455,6 +463,7 @@ func buildStudioBatchRunDesignRequest(session *SheinStudioSession) *StudioDesign
 		ProductReferenceImageURLs: referenceImageURLs,
 		ImageModel:                session.ArtworkModel,
 		TransparentBackground:     session.TransparentBackground,
+		TransparentBackgroundMode: session.TransparentBackgroundMode,
 	}
 }
 
@@ -465,17 +474,22 @@ func buildStudioBatchRunDesigns(execution *StudioBatchGenerateExecutionOutput) [
 	designs := make([]SheinStudioDesign, 0, len(execution.Response.Images))
 	for index, image := range execution.Response.Images {
 		designs = append(designs, SheinStudioDesign{
-			ID:                    strings.TrimSpace(image.ID),
-			SessionID:             strings.TrimSpace(execution.SessionID),
-			ImageURL:              strings.TrimSpace(image.ImageURL),
-			Prompt:                strings.TrimSpace(image.Prompt),
-			RevisedPrompt:         strings.TrimSpace(image.RevisedPrompt),
-			ImageModel:            strings.TrimSpace(image.ImageModel),
-			TransparentBackground: image.TransparentBackground,
-			VariationIntensity:    strings.TrimSpace(image.VariationIntensity),
-			Role:                  strings.TrimSpace(image.Role),
-			RoleLabel:             strings.TrimSpace(image.RoleLabel),
-			SortOrder:             index,
+			ID:                        strings.TrimSpace(image.ID),
+			SessionID:                 strings.TrimSpace(execution.SessionID),
+			ImageURL:                  strings.TrimSpace(image.ImageURL),
+			Prompt:                    strings.TrimSpace(image.Prompt),
+			RevisedPrompt:             strings.TrimSpace(image.RevisedPrompt),
+			ImageModel:                strings.TrimSpace(image.ImageModel),
+			TransparentBackground:     image.TransparentBackground,
+			TransparentBackgroundMode: image.TransparentBackgroundMode,
+			OriginalImageURL:          strings.TrimSpace(image.OriginalImageURL),
+			BackgroundRemovalStatus:   image.BackgroundRemovalStatus,
+			BackgroundRemovalModel:    strings.TrimSpace(image.BackgroundRemovalModel),
+			BackgroundRemovalError:    strings.TrimSpace(image.BackgroundRemovalError),
+			VariationIntensity:        strings.TrimSpace(image.VariationIntensity),
+			Role:                      strings.TrimSpace(image.Role),
+			RoleLabel:                 strings.TrimSpace(image.RoleLabel),
+			SortOrder:                 index,
 		})
 	}
 	return designs

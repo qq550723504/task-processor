@@ -12,6 +12,7 @@ import {
   projectItemizedTaskRecoveryState,
   projectItemizedTaskCreationProgress,
   projectItemizedTaskCreationResult,
+  runItemizedBackgroundRemovalRetry,
   runItemizedDesignApproval,
   runItemizedFailedRetry,
   loadItemizedGenerationPollBatch,
@@ -1018,6 +1019,36 @@ describe("runItemizedFailedRetry", () => {
     expect(retryItems).toHaveBeenCalledWith("batch-1", ["item-1"], {
       tenantId: "tenant-detail",
     });
+  });
+});
+
+describe("runItemizedBackgroundRemovalRetry", () => {
+  it("hydrates missing batch detail before retrying background removal", async () => {
+    const hydratedBatch = buildHydratedBatch();
+    const getHydratedBatch = vi.fn().mockResolvedValue(hydratedBatch);
+    const applyHydratedBatch = vi.fn();
+    const retryBackgroundRemoval = vi.fn().mockResolvedValue(hydratedBatch.detail);
+
+    await expect(
+      runItemizedBackgroundRemovalRetry({
+        activeBatchId: "batch-1",
+        applyHydratedBatch,
+        currentActiveBatch: buildCurrentBatch(),
+        designId: "design-1",
+        detail: null,
+        getHydratedBatch,
+        retryBackgroundRemoval,
+      }),
+    ).resolves.toBe(hydratedBatch.detail);
+
+    expect(getHydratedBatch).toHaveBeenCalledWith("batch-1");
+    expect(applyHydratedBatch).toHaveBeenCalledWith(hydratedBatch);
+    expect(retryBackgroundRemoval).toHaveBeenCalledWith("batch-1", ["design-1"], {
+      tenantId: "tenant-detail",
+    });
+    expect(applyHydratedBatch.mock.invocationCallOrder[0]).toBeLessThan(
+      retryBackgroundRemoval.mock.invocationCallOrder[0],
+    );
   });
 });
 

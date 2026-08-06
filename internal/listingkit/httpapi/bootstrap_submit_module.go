@@ -27,6 +27,7 @@ type submitModuleHooks struct {
 	SheinAPIClientFactoryBuilder      func(listingadmin.StoreRepository) listingkit.SheinAPIClientFactory
 	StudioImageGeneratorBuilder       func(*config.Config, openaiclient.ClientConfigResolver) openaiclient.ImageGenerator
 	StudioAICapabilityRouterBuilder   func(openaiclient.ClientConfigResolver) aicapability.Router
+	StudioBackgroundRemoverBuilder    func(*config.Config, openaiclient.ClientConfigResolver) listingkit.StudioBackgroundRemover
 }
 
 type submitModuleInput struct {
@@ -59,7 +60,8 @@ type submitSheinDependencies struct {
 }
 
 type submitStudioDependencies struct {
-	imageGenerator listingkit.AIImageGenerator
+	imageGenerator    listingkit.AIImageGenerator
+	backgroundRemover listingkit.StudioBackgroundRemover
 }
 
 type submitModule struct {
@@ -83,6 +85,7 @@ func newSubmitModuleHooks(hooks BuildServiceHooks) submitModuleHooks {
 		SheinAPIClientFactoryBuilder:      hooks.SheinAPIClientFactoryBuilder,
 		StudioImageGeneratorBuilder:       hooks.StudioImageGeneratorBuilder,
 		StudioAICapabilityRouterBuilder:   hooks.StudioAICapabilityRouterBuilder,
+		StudioBackgroundRemoverBuilder:    hooks.StudioBackgroundRemoverBuilder,
 	}
 }
 
@@ -159,6 +162,10 @@ func buildSubmitModule(in submitModuleInput) (submitModule, error) {
 	if in.Hooks.StudioImageGeneratorBuilder != nil {
 		studioImageGenerator = in.Hooks.StudioImageGeneratorBuilder(in.Config, in.AICredentialStore)
 	}
+	var studioBackgroundRemover listingkit.StudioBackgroundRemover
+	if in.Hooks.StudioBackgroundRemoverBuilder != nil {
+		studioBackgroundRemover = in.Hooks.StudioBackgroundRemoverBuilder(in.Config, in.AICredentialStore)
+	}
 
 	module := submitModule{
 		assets: submitAssetDependencies{
@@ -185,7 +192,8 @@ func buildSubmitModule(in submitModuleInput) (submitModule, error) {
 			contentOptimizer:      sheinCategoryLLMClient,
 		},
 		studio: submitStudioDependencies{
-			imageGenerator: adaptListingKitAIImageGenerator(studioImageGenerator),
+			imageGenerator:    adaptListingKitAIImageGenerator(studioImageGenerator),
+			backgroundRemover: studioBackgroundRemover,
 		},
 	}
 	mode := aicapability.RoutingModeLegacy

@@ -201,6 +201,7 @@ describe("buildSheinStudioDraftInput", () => {
         hotStyleReferencePrompt: "group reference prompt",
         artworkModel: "",
         transparentBackground: false,
+        transparentBackgroundMode: "removal",
         variationIntensity: "medium",
           designs: [{ id: "group-design-1", imageUrl: "https://example.com/group.png" }],
           selectedIds: ["group-design-1"],
@@ -217,7 +218,8 @@ describe("buildSheinStudioDraftInput", () => {
         hotStyleReferenceBrief: "group reference brief",
         hotStyleReferencePrompt: "group reference prompt",
         artworkGenerationMode: "hot_reference",
-        currentPrompt: "",
+        transparentBackgroundMode: "removal",
+        currentPrompt: "prompt a",
         promptHistory: [
           {
             prompt: "prompt old",
@@ -311,7 +313,7 @@ describe("buildSheinStudioDraftInput", () => {
     );
   });
 
-  it("keeps theme prompt and hot style reference fields mutually exclusive", () => {
+  it("keeps theme fields exclusive while preserving hot-reference supplemental prompt text", () => {
     const baseInput = {
       prompt: "summer flowers",
       styleCount: "1",
@@ -352,7 +354,7 @@ describe("buildSheinStudioDraftInput", () => {
       }),
     ).toEqual(
       expect.objectContaining({
-        prompt: "",
+        prompt: "summer flowers",
         hotStyleReferenceImageUrls: ["https://example.com/ref.png"],
         hotStyleReferenceBrief: "reference brief",
         hotStyleReferencePrompt: "reference prompt",

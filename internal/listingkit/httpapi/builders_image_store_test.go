@@ -6,14 +6,12 @@ import (
 	"testing"
 )
 
-func TestBuildS3ImageUploadStoreDoesNotConstructPublicObjectURL(t *testing.T) {
+func TestBuildS3ImageUploadStorePassesPublicBaseToS3Uploader(t *testing.T) {
 	source, err := os.ReadFile("builders_image_store.go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, forbidden := range []string{"BuildS3PublicBase", "PublicBase:"} {
-		if strings.Contains(string(source), forbidden) {
-			t.Fatalf("builders_image_store.go must not contain %q", forbidden)
-		}
+	if !strings.Contains(string(source), "PublicBase:") || !strings.Contains(string(source), "cfg.ProductImage.Publisher.PublicBase") {
+		t.Fatal("builders_image_store.go must pass the configured public base to the S3 uploader")
 	}
 }

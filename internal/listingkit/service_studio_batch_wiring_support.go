@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -19,6 +20,7 @@ type taskStudioBatchServiceWiring struct {
 	generator                *studioBatchGenerationService
 	createGenerateTask       func(context.Context, *GenerateRequest) (*Task, error)
 	getTask                  func(context.Context, string) (*Task, error)
+	retryBackgroundRemoval   func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error)
 	ensureGraph              func(context.Context, string) error
 	loadDetail               func(context.Context, string) (*StudioBatchDetail, error)
 	resetRetryItems          func(context.Context, []StudioBatchItemRecord) error
@@ -68,6 +70,13 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 		generator:                generator,
 		createGenerateTask:       s.CreateGenerateTask,
 		getTask:                  repository.getTask,
+		retryBackgroundRemoval: func(ctx context.Context, sourceURL string, filename string) (*studioBackgroundRemovalMaterialization, error) {
+			media := s.taskStudioMediaOrDefault()
+			if media == nil {
+				return nil, fmt.Errorf("studio media service is not configured")
+			}
+			return media.retryStudioBackgroundRemoval(ctx, sourceURL, filename)
+		},
 		ensureGraph: func(ctx context.Context, batchID string) error {
 			return ensureStudioBatchGenerationGraphForResume(ctx, repo, studioSessionRepo, time.Now, batchID)
 		},
@@ -283,6 +292,7 @@ func buildTaskStudioBatchServiceConfigWithCollaborators(
 		generator:                config.batch.generator,
 		createGenerateTask:       config.batch.createGenerateTask,
 		getTask:                  config.batch.getTask,
+		retryBackgroundRemoval:   config.batch.retryBackgroundRemoval,
 		detailRunner:             config.detailRunner,
 		reviewRunner:             config.reviewRunner,
 		retryRunner:              config.retryRunner,

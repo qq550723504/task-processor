@@ -7,22 +7,25 @@ import (
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
-// HasAnySubmitSKU reports whether the package has at least one SKU in package or draft data.
+// HasAnySubmitSKU reports whether the package has at least one SKU. When a
+// semantic draft exists, it is authoritative; the package summary is only a
+// compatibility fallback for historical packages without a draft payload.
 func HasAnySubmitSKU(pkg *Package) bool {
-	pkg = NormalizePackageSemanticFields(pkg)
+	draft := DraftPayloadOf(pkg)
 	if pkg == nil {
+		return false
+	}
+	if draft != nil {
+		for _, skc := range draft.SKCList {
+			if len(skc.SKUList) > 0 {
+				return true
+			}
+		}
 		return false
 	}
 	for _, skc := range pkg.SkcList {
 		if len(skc.SKUs) > 0 {
 			return true
-		}
-	}
-	if pkg.DraftPayload != nil {
-		for _, skc := range pkg.DraftPayload.SKCList {
-			if len(skc.SKUList) > 0 {
-				return true
-			}
 		}
 	}
 	return false

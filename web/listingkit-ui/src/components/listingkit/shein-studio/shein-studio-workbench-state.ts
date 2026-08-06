@@ -31,6 +31,7 @@ import type {
   SheinStudioPromptMode,
   SheinStudioSavedBatch,
   SheinStudioSelectedSDSImage,
+  SheinStudioTransparencyMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 
@@ -49,6 +50,7 @@ export type SheinStudioWorkbenchState = {
   hotStyleReferencePrompt: string;
   artworkModel: SheinStudioArtworkModel;
   transparentBackground: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   sheinStoreId: string;
   imageStrategy: SheinStudioImageStrategy;
   groupedImageMode: SheinStudioGroupedImageMode;
@@ -109,6 +111,7 @@ export type SheinStudioWorkbenchDraftPatch = Partial<
     | "hotStyleReferencePrompt"
     | "artworkModel"
     | "transparentBackground"
+    | "transparentBackgroundMode"
     | "sheinStoreId"
     | "imageStrategy"
     | "groupedImageMode"
@@ -174,6 +177,7 @@ export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchSta
     hotStyleReferencePrompt: "",
     artworkModel: DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground: false,
+    transparentBackgroundMode: "none",
     sheinStoreId: DEFAULT_SHEIN_STORE_ID,
     imageStrategy: DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     groupedImageMode: DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
@@ -342,6 +346,9 @@ export function buildSheinStudioWorkbenchSetters(
     setTransparentBackground: (
       value: SheinStudioWorkbenchStateUpdater<"transparentBackground">,
     ) => setField("transparentBackground", value),
+    setTransparentBackgroundMode: (
+      value: SheinStudioWorkbenchStateUpdater<"transparentBackgroundMode">,
+    ) => setField("transparentBackgroundMode", value),
     setVariationIntensity: (
       value: SheinStudioWorkbenchStateUpdater<"variationIntensity">,
     ) => setField("variationIntensity", value),
@@ -420,6 +427,7 @@ const ACTIVE_GROUP_SYNC_FIELDS = new Set<keyof SheinStudioWorkbenchState>([
   "hotStyleReferencePrompt",
   "artworkModel",
   "transparentBackground",
+  "transparentBackgroundMode",
   "sheinStoreId",
   "imageStrategy",
   "groupedImageMode",
@@ -507,6 +515,12 @@ function syncActiveGroupFromState(
           artworkModel: patch.artworkModel ?? state.artworkModel,
           transparentBackground:
             patch.transparentBackground ?? state.transparentBackground,
+          transparentBackgroundMode:
+            patch.transparentBackgroundMode ??
+            state.transparentBackgroundMode ??
+            (patch.transparentBackground ?? state.transparentBackground
+              ? "native"
+              : "none"),
           sheinStoreId:
             typeof patch.sheinStoreId === "string"
               ? patch.sheinStoreId

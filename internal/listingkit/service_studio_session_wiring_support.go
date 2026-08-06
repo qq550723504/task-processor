@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 type taskStudioSessionRepoWiring struct {
@@ -38,6 +39,7 @@ type taskStudioSessionCollaborators struct {
 
 type taskStudioMediaWiring struct {
 	imageGenerator                AIImageGenerator
+	backgroundRemover             StudioBackgroundRemover
 	promptDiversifier             AIChatCompleter
 	uploadStoreConfigured         bool
 	uploadImages                  func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error)
@@ -138,6 +140,7 @@ func (w taskStudioSessionCollaboratorWiring) resolve(existing taskStudioSessionC
 func buildTaskStudioMediaWiring(s *service) taskStudioMediaWiring {
 	return taskStudioMediaWiring{
 		imageGenerator:                resolveStudioImageGenerator(s),
+		backgroundRemover:             resolveStudioBackgroundRemover(s),
 		promptDiversifier:             resolveStudioPromptDiversifier(s),
 		uploadStoreConfigured:         resolveStudioUploadStore(s) != nil,
 		uploadImages:                  s.UploadImages,
@@ -169,6 +172,7 @@ func buildTaskStudioBatchDraftServiceConfigWithWiring(config taskStudioSessionCo
 func buildTaskStudioMediaServiceConfigWithWiring(wiring taskStudioMediaWiring) taskStudioMediaServiceConfig {
 	return taskStudioMediaServiceConfig{
 		imageGenerator:                wiring.imageGenerator,
+		backgroundRemover:             wiring.backgroundRemover,
 		promptDiversifier:             wiring.promptDiversifier,
 		uploadStoreConfigured:         wiring.uploadStoreConfigured,
 		uploadImages:                  wiring.uploadImages,
@@ -195,6 +199,16 @@ func buildResolveUploadedImagePublicURLFunc(s *service) func(context.Context, st
 			if err == nil {
 				if publicURL, validateErr := validateStudioReferencePublicHTTPSURL(record.PublicURL); validateErr == nil {
 					return publicURL, nil
+				}
+				if store != nil && strings.TrimSpace(record.StorageKey) != "" {
+					if resolver, ok := store.(ImageUploadPublicURLResolver); ok {
+						publicURL, resolveErr := resolver.ResolvePublicURL(ctx, record.StorageKey)
+						if resolveErr == nil {
+							if validatedURL, validateErr := validateStudioReferencePublicHTTPSURL(publicURL); validateErr == nil {
+								return validatedURL, nil
+							}
+						}
+					}
 				}
 			} else if !shouldFallbackUploadedImagePublicURLLookup(err) {
 				return "", err

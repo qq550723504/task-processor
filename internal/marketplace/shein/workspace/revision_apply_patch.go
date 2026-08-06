@@ -162,15 +162,15 @@ func ApplySaleAttributeResolutionPatch(pkg *sheinpub.Package, patch *SaleAttribu
 
 // ApplySKCRevisionPatches applies editor SKC and nested SKU changes to a SHEIN package.
 func ApplySKCRevisionPatches(pkg *sheinpub.Package, patches []SKCRevisionPatch) {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if pkg == nil || pkg.DraftPayload == nil || len(patches) == 0 {
+	draftPayload := sheinpub.DraftPayloadOf(pkg)
+	if pkg == nil || draftPayload == nil || len(patches) == 0 {
 		return
 	}
 	for _, patch := range patches {
 		if strings.TrimSpace(patch.SupplierCode) == "" {
 			continue
 		}
-		draft := findRequestSKC(pkg.DraftPayload.SKCList, patch.SupplierCode)
+		draft := findRequestSKC(draftPayload.SKCList, patch.SupplierCode)
 		pkgSKC := findPackageSKC(pkg.SkcList, patch.SupplierCode)
 		if draft == nil {
 			continue

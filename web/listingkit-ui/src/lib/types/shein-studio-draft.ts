@@ -5,6 +5,7 @@ import type {
   SheinStudioGeneratedDesign,
   SheinStudioGenerationJob,
   SheinStudioPromptMode,
+  SheinStudioTransparencyMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio-generation";
 import type { SheinStudioCreatedTask } from "@/lib/types/shein-studio-task";
@@ -74,6 +75,7 @@ export type SheinStudioGroupedWorkspace = {
   hotStyleReferencePrompt?: string;
   artworkModel?: SheinStudioArtworkModel;
   transparentBackground?: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   variationIntensity?: SheinStudioVariationIntensity;
   designs: SheinStudioGeneratedDesign[];
   selectedIds: string[];
@@ -103,6 +105,7 @@ export type SheinStudioPersistedBatchView = {
   productImagePrompts?: SheinStudioProductImagePrompt[];
   artworkModel?: SheinStudioArtworkModel;
   transparentBackground?: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
   groupedImageMode?: SheinStudioGroupedImageMode;
@@ -139,6 +142,7 @@ export type SheinStudioSavedBatch = {
   productImagePrompts?: SheinStudioProductImagePrompt[];
   artworkModel?: SheinStudioArtworkModel;
   transparentBackground?: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
   groupedImageMode?: SheinStudioGroupedImageMode;
@@ -175,6 +179,7 @@ export type SheinStudioDraft = {
   productImagePrompts?: SheinStudioProductImagePrompt[];
   artworkModel?: SheinStudioArtworkModel;
   transparentBackground?: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   sheinStoreId: string;
   imageStrategy?: SheinStudioImageStrategy;
   groupedImageMode?: SheinStudioGroupedImageMode;

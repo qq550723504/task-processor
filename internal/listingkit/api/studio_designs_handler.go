@@ -30,7 +30,7 @@ func (h *handler) GenerateStudioDesigns(c *gin.Context) {
 		return
 	}
 	for idx := range response.Images {
-		response.Images[idx].ImageURL = absolutizeUploadedImageURLs(c, []string{response.Images[idx].ImageURL})[0]
+		response.Images[idx].ImageURL = publicizeUploadedImageURLs(c, []string{response.Images[idx].ImageURL})[0]
 	}
 	h.recordSubscriptionUsage(c, listingsubscription.ModuleStudio, "design_jobs", 1)
 

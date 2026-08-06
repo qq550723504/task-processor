@@ -61,6 +61,7 @@ type StudioBatchRecord struct {
 	ArtworkModel               string                          `json:"artwork_model,omitempty" gorm:"type:varchar(32)"`
 	SelectedSDSImages          SheinStudioSelectedSDSImageList `json:"selected_sds_images,omitempty" gorm:"type:text"`
 	TransparentBackground      bool                            `json:"transparent_background"`
+	TransparentBackgroundMode  StudioTransparencyMode          `json:"transparent_background_mode,omitempty" gorm:"type:varchar(16)"`
 	HotStyleReferenceImageURLs SheinStudioStringList           `json:"hot_style_reference_image_urls" gorm:"type:text"`
 	HotStyleReferenceBrief     string                          `json:"hot_style_reference_brief" gorm:"type:text"`
 	HotStyleReferencePrompt    string                          `json:"hot_style_reference_prompt" gorm:"type:text"`
@@ -122,20 +123,25 @@ func (StudioGenerationAttemptRecord) TableName() string {
 }
 
 type StudioMaterializedDesignRecord struct {
-	ID               string                               `json:"id" gorm:"primaryKey;type:varchar(96)"`
-	BatchID          string                               `json:"batch_id" gorm:"type:varchar(64);index"`
-	ItemID           string                               `json:"item_id" gorm:"type:varchar(96);index:idx_listingkit_studio_materialized_designs_item_sort,priority:1"`
-	TenantID         string                               `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
-	UserID           string                               `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
-	SourceAttemptID  string                               `json:"source_attempt_id,omitempty" gorm:"type:varchar(96);index"`
-	TargetGroupKey   string                               `json:"target_group_key,omitempty" gorm:"type:varchar(255);index"`
-	TargetGroupLabel string                               `json:"target_group_label,omitempty" gorm:"type:varchar(255)"`
-	ImageURL         string                               `json:"image_url,omitempty" gorm:"type:text"`
-	ReviewStatus     StudioMaterializedDesignReviewStatus `json:"review_status" gorm:"type:varchar(32);index;not null;default:'approved'"`
-	SortOrder        int                                  `json:"sort_order" gorm:"index:idx_listingkit_studio_materialized_designs_item_sort,priority:2;not null;default:0"`
-	ReviewNote       string                               `json:"review_note,omitempty" gorm:"type:text"`
-	CreatedAt        time.Time                            `json:"created_at"`
-	UpdatedAt        time.Time                            `json:"updated_at"`
+	ID                        string                               `json:"id" gorm:"primaryKey;type:varchar(96)"`
+	BatchID                   string                               `json:"batch_id" gorm:"type:varchar(64);index"`
+	ItemID                    string                               `json:"item_id" gorm:"type:varchar(96);index:idx_listingkit_studio_materialized_designs_item_sort,priority:1"`
+	TenantID                  string                               `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
+	UserID                    string                               `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
+	SourceAttemptID           string                               `json:"source_attempt_id,omitempty" gorm:"type:varchar(96);index"`
+	TargetGroupKey            string                               `json:"target_group_key,omitempty" gorm:"type:varchar(255);index"`
+	TargetGroupLabel          string                               `json:"target_group_label,omitempty" gorm:"type:varchar(255)"`
+	ImageURL                  string                               `json:"image_url,omitempty" gorm:"type:text"`
+	OriginalImageURL          string                               `json:"original_image_url,omitempty" gorm:"type:text"`
+	TransparentBackgroundMode StudioTransparencyMode               `json:"transparent_background_mode,omitempty" gorm:"type:varchar(16)"`
+	BackgroundRemovalStatus   StudioBackgroundRemovalStatus        `json:"background_removal_status,omitempty" gorm:"type:varchar(24)"`
+	BackgroundRemovalModel    string                               `json:"background_removal_model,omitempty" gorm:"type:varchar(128)"`
+	BackgroundRemovalError    string                               `json:"background_removal_error,omitempty" gorm:"type:text"`
+	ReviewStatus              StudioMaterializedDesignReviewStatus `json:"review_status" gorm:"type:varchar(32);index;not null;default:'approved'"`
+	SortOrder                 int                                  `json:"sort_order" gorm:"index:idx_listingkit_studio_materialized_designs_item_sort,priority:2;not null;default:0"`
+	ReviewNote                string                               `json:"review_note,omitempty" gorm:"type:text"`
+	CreatedAt                 time.Time                            `json:"created_at"`
+	UpdatedAt                 time.Time                            `json:"updated_at"`
 }
 
 func (StudioMaterializedDesignRecord) TableName() string {

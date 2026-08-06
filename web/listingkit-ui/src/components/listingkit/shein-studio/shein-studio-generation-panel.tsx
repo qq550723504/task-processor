@@ -27,6 +27,7 @@ import type {
   SheinStudioRejectedTask,
   SheinStudioSelectedSDSImage,
   SheinStudioSavedBatch,
+  SheinStudioTransparencyMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 
@@ -44,6 +45,7 @@ export type SheinStudioGenerationFormModel = {
   artworkGenerationMode: SheinStudioArtworkGenerationMode;
   renderSizeImagesWithSds: boolean;
   transparentBackground: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   prompt: string;
   promptMode: "managed" | "raw";
   promptHistory: SDSGroupedPromptHistoryEntry[];
@@ -115,6 +117,7 @@ export type SheinStudioGenerationActions = {
   setStyleCount: (value: string) => void;
   setVariationIntensity: (value: SheinStudioVariationIntensity) => void;
   setTransparentBackground: (value: boolean) => void;
+  setTransparentBackgroundMode?: (value: SheinStudioTransparencyMode) => void;
 };
 
 function areHotStyleReferenceUrlsEqual(current: string[], next: string[]) {
@@ -151,6 +154,7 @@ export function SheinStudioGenerationPanel({
     selectedSdsImages,
     styleCount,
     transparentBackground,
+    transparentBackgroundMode,
     variationIntensity,
   } = form;
   const {
@@ -205,6 +209,7 @@ export function SheinStudioGenerationPanel({
     setSelectedSdsImages,
     setStyleCount,
     setTransparentBackground,
+    setTransparentBackgroundMode,
     setVariationIntensity,
   } = actions;
   const hasSdsSizeReferenceImages = availableSdsImages.some(
@@ -408,10 +413,14 @@ export function SheinStudioGenerationPanel({
           setPromptMode={setPromptMode}
           setStyleCount={setStyleCount}
           setTransparentBackground={setTransparentBackground}
+          setTransparentBackgroundMode={
+            setTransparentBackgroundMode ?? (() => undefined)
+          }
           setVariationIntensity={setVariationIntensity}
           showVariationIntensity={showVariationIntensity}
           styleCount={styleCount}
           transparentBackground={transparentBackground}
+          transparentBackgroundMode={transparentBackgroundMode}
           variationIntensity={variationIntensity}
         />
         <ProductImageGenerationSettings

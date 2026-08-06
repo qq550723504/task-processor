@@ -37,6 +37,7 @@ func buildStudioDependencies(config *ServiceConfig) studioDependencies {
 		batchTaskLinkRepo: config.Core.StudioBatchTaskLinkRepository,
 		promptDiversifier: config.Shein.StudioPromptDiversifier,
 		imageGenerator:    config.Shein.StudioImageGenerator,
+		backgroundRemover: config.Shein.StudioBackgroundRemover,
 		uploadStore:       config.Core.ImageUploadStore,
 	}
 }

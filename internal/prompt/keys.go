@@ -66,13 +66,14 @@ const (
 	KProductEnrichGenerationExtractWeight     = "productenrich.generation.extract_weight"
 
 	// ── productimage/generation.yaml ───────────────────────────────────────
-	KProductImageSubjectExtract                     = "productimage.subject.extract"
-	KProductImageWhiteBackgroundDefault             = "productimage.white_background.default"
-	KProductImageSceneDefault                       = "productimage.scene.default"
-	KProductImageSceneShoes                         = "productimage.scene.shoes"
-	KProductImageSceneJewelry                       = "productimage.scene.jewelry"
-	KProductImageSceneBags                          = "productimage.scene.bags"
-	KProductImageReviewDefault                      = "productimage.review.default"
-	KProductImageStudioGenerationPodDesign          = "productimage.studio_generation.pod_design"
-	KProductImageStudioGenerationAmazonProductImage = "productimage.studio_generation.amazon_product_image"
+	KProductImageSubjectExtract                        = "productimage.subject.extract"
+	KProductImageWhiteBackgroundDefault                = "productimage.white_background.default"
+	KProductImageSceneDefault                          = "productimage.scene.default"
+	KProductImageSceneShoes                            = "productimage.scene.shoes"
+	KProductImageSceneJewelry                          = "productimage.scene.jewelry"
+	KProductImageSceneBags                             = "productimage.scene.bags"
+	KProductImageReviewDefault                         = "productimage.review.default"
+	KProductImageStudioGenerationPodDesign             = "productimage.studio_generation.pod_design"
+	KProductImageStudioGenerationPodDesignHotReference = "productimage.studio_generation.pod_design_hot_reference"
+	KProductImageStudioGenerationAmazonProductImage    = "productimage.studio_generation.amazon_product_image"
 )

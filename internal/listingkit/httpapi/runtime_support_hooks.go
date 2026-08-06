@@ -36,9 +36,10 @@ func buildRuntimeSupportHooks(cookieStore *sheinlogin.RedisStore) BuildServiceHo
 		SheinAPIClientFactoryBuilder: func(storeRepo listingadmin.StoreRepository) listingkit.SheinAPIClientFactory {
 			return listingKitSheinAPIClientFactory{repo: storeRepo, cookieStore: cookieStore}
 		},
-		StudioImageGeneratorBuilder: BuildStudioImageGenerator,
-
+		// StudioImageGeneratorBuilder: BuildStudioImageGenerator,
+		StudioImageGeneratorBuilder:     BuildStudioImageGenerator,
 		StudioAICapabilityRouterBuilder: BuildStudioAICapabilityRouter,
+		StudioBackgroundRemoverBuilder:  BuildStudioBackgroundRemover,
 		ConfigureZitadelAuth:            ConfigureListingKitZitadelAuth,
 		ConfigureAuthorization:          ConfigureListingKitAuthorization,
 	}

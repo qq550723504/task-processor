@@ -129,9 +129,20 @@ export function hasStoredListingKitSession(request: NextRequest) {
 export function buildListingKitUpstreamHeaders(
   requestHeaders: Headers,
   verifiedIdentity?: VerifiedIdentity,
+  requestProtocol?: string,
+  requestHost?: string,
 ) {
   const headers = new Headers();
   headers.set("Accept", requestHeaders.get("accept") ?? "application/json");
+
+  const publicHost = requestHost?.trim() || requestHeaders.get("host");
+  if (publicHost) {
+    headers.set("X-Forwarded-Host", publicHost);
+  }
+  const publicProtocol = requestProtocol?.trim();
+  if (publicProtocol) {
+    headers.set("X-Forwarded-Proto", publicProtocol.replace(/:$/, ""));
+  }
 
   copyHeader(requestHeaders, headers, "if-none-match", "If-None-Match");
   copyHeader(requestHeaders, headers, "content-type", "Content-Type");

@@ -34,7 +34,7 @@ func (h *handler) RegenerateSheinDataImage(c *gin.Context) {
 		return
 	}
 	if strings.TrimSpace(response.Image.ImageURL) != "" {
-		response.Image.ImageURL = absolutizeUploadedImageURLs(c, []string{response.Image.ImageURL})[0]
+		response.Image.ImageURL = publicizeUploadedImageURLs(c, []string{response.Image.ImageURL})[0]
 	}
 	h.recordSubscriptionUsage(c, listingsubscription.ModuleStudio, "image_regenerations", 1)
 

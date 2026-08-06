@@ -17,7 +17,7 @@ func BuildSubmitPayloadValidationReadinessChecks(input SubmitPayloadValidationRe
 			"发布载荷结构",
 			false,
 			input.Message,
-			[]string{"shein.preview_product", "shein.request_draft.skc_list"},
+			[]string{"shein.preview_product", "shein.draft_payload.skc_list"},
 			"确认规格",
 			false,
 		),
