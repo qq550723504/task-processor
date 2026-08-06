@@ -99,16 +99,13 @@ func buildHotReferenceStudioDesignPromptWithContext(ctx context.Context, req *St
 		"TransparentHint": transparentHint,
 		"ThemePrompt":     strings.TrimSpace(theme),
 	}
-	fallback := strings.Join([]string{
-		studioHotReferenceInstructionParts[0],
-		studioHotReferenceInstructionParts[1],
-		studioHotReferenceInstructionParts[2],
-		studioHotReferenceInstructionParts[3],
-		studioHotReferenceInstructionParts[4],
+	fallbackParts := append([]string{}, studioHotReferenceInstructionParts...)
+	fallbackParts = append(fallbackParts,
 		"{{.PrintableHint}}",
 		"{{.TransparentHint}}",
 		"{{if .ThemePrompt}}Theme prompt: {{.ThemePrompt}}{{end}}",
-	}, "\n")
+	)
+	fallback := strings.Join(fallbackParts, "\n")
 	if prompt.GlobalRegistry == nil {
 		return renderPromptFallback(fallback, vars)
 	}
@@ -124,7 +121,11 @@ var studioHotReferenceInstructionParts = []string{
 	"Extract the artwork, pattern, or design from the product shown in the reference.",
 	"Ignore the physical product, its material and shape, background, watermark, and mockup framing; focus on the product's visible artwork or pattern.",
 	"Preserve the main subject family, dominant silhouette, composition direction, color palette, stroke/line style, and graphic energy so the result is recognizably related to the reference.",
-	"Redraw everything with original details; do not copy exact text, logos, watermarks, brand marks, or protected characters.",
+	"Make subtle but clearly visible controlled changes while keeping the result recognizably related to the reference.",
+	"Modify 2–4 of the following elements: subject pose, orientation, or facial expression; secondary decorative elements; composition spacing and element placement; border or background treatment; color balance or accent colors; typography layout or decorative treatment.",
+	"Do not create a near-duplicate. Do not trace or reproduce the exact contour, exact layout, exact decorative details, or exact text from the reference.",
+	"Redraw everything with original details; do not copy logos, watermarks, brand marks, or protected characters.",
+	"Do not make a radical redesign; preserve the original design's core style and commercial appeal.",
 }
 
 func studioDesignReferenceHint(req *StudioDesignRequest) string {
