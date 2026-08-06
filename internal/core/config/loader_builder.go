@@ -185,6 +185,9 @@ func BuildConfig(v *viper.Viper) *Config {
 			SavePublishJSON:      v.GetBool("debug.save_publish_json"),
 			ProductEnrichMockLLM: v.GetBool("debug.productEnrichMockLLM"),
 		},
+		AICapability: AICapabilityConfig{
+			StudioImageRoutingMode: v.GetString("aiCapability.studioImageRoutingMode"),
+		},
 		ListingControlPlane: ListingControlPlaneConfig{
 			Enabled:                    v.GetBool("listingControlPlane.enabled"),
 			Platform:                   v.GetString("listingControlPlane.platform"),

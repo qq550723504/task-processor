@@ -65,6 +65,9 @@ openai:
   
   # 请求池配置 - 更保守的设置
 
+aiCapability:
+  studioImageRoutingMode: legacy
+
 listingkit:
   sheinSubmitDebugDumpDir: ""
   platformAdminUsers: []
