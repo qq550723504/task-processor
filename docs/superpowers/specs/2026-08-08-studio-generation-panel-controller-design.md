@@ -233,14 +233,15 @@ The backend baseline is not affected. The isolated worktree started from a clean
 
 ## Acceptance criteria
 
-- Workbench renders GenerationPanel from one controller-produced props object.
+- Workbench renders GenerationPanel through one React-safe boundary; that
+  boundary obtains one controller-produced props object.
 - The inline `actions`, `form`, and `status` literals are removed from the JSX.
 - Focused tests cover normal generation and failed-batch retry projection.
 - No product behavior, API call, persistence sequence, UI copy, or visual layout
   changes.
 - Frontend lint, typecheck, tests, and build pass.
-- The diff contains only the design/plan, GenerationPanel contract, generation
-  controller, Workbench integration, and focused tests.
+- The diff contains only the design/plan, GenerationPanel contract and boundary,
+  generation controller, Workbench integration, and focused tests.
 
 ## Follow-up boundary
 
