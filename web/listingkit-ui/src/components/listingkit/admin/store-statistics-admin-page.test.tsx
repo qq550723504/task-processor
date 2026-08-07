@@ -74,7 +74,7 @@ describe("StoreStatisticsAdminPage", () => {
   it("loads and renders ListingKit store statistics", async () => {
     vi.spyOn(
       adminStoreStatisticsApi,
-      "getListingStoreStatistics",
+      "getPlatformStoreStatistics",
     ).mockResolvedValue(buildStatisticsPage());
 
     renderPage(<StoreStatisticsAdminPage />);
@@ -97,13 +97,13 @@ describe("StoreStatisticsAdminPage", () => {
   it("keeps summary cards and the table mobile-friendly", async () => {
     vi.spyOn(
       adminStoreStatisticsApi,
-      "getListingStoreStatistics",
+      "getPlatformStoreStatistics",
     ).mockResolvedValue(buildStatisticsPage({ items: [], total: 0 }));
 
     const { container } = renderPage(<StoreStatisticsAdminPage />);
 
     await waitFor(() => {
-      expect(adminStoreStatisticsApi.getListingStoreStatistics).toHaveBeenCalled();
+      expect(adminStoreStatisticsApi.getPlatformStoreStatistics).toHaveBeenCalled();
     });
 
     expect(screen.getByRole("button", { name: "刷新" })).toHaveClass("w-full");
@@ -132,7 +132,7 @@ describe("StoreStatisticsAdminPage", () => {
   it("uses full-scope totals and paginates the statistics page", async () => {
     const user = userEvent.setup();
     const getStatisticsSpy = vi
-      .spyOn(adminStoreStatisticsApi, "getListingStoreStatistics")
+      .spyOn(adminStoreStatisticsApi, "getPlatformStoreStatistics")
       .mockResolvedValue(
         buildStatisticsPage({
           total: 41,
@@ -171,7 +171,7 @@ describe("StoreStatisticsAdminPage", () => {
   it("offers only 20, 50, and 100 as page-size options", async () => {
     vi.spyOn(
       adminStoreStatisticsApi,
-      "getListingStoreStatistics",
+      "getPlatformStoreStatistics",
     ).mockResolvedValue(
       buildStatisticsPage({
         total: 41,
@@ -193,7 +193,7 @@ describe("StoreStatisticsAdminPage", () => {
   it("resets pagination to the first page when the date filter changes", async () => {
     const user = userEvent.setup();
     const getStatisticsSpy = vi
-      .spyOn(adminStoreStatisticsApi, "getListingStoreStatistics")
+      .spyOn(adminStoreStatisticsApi, "getPlatformStoreStatistics")
       .mockResolvedValue(
         buildStatisticsPage({
           total: 41,
@@ -251,7 +251,7 @@ describe("StoreStatisticsAdminPage", () => {
   it("falls back to the last valid page after refresh returns an out-of-range page", async () => {
     const user = userEvent.setup();
     const getStatisticsSpy = vi
-      .spyOn(adminStoreStatisticsApi, "getListingStoreStatistics")
+      .spyOn(adminStoreStatisticsApi, "getPlatformStoreStatistics")
       .mockResolvedValueOnce(
         buildStatisticsPage({
           total: 41,

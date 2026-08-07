@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   getListingStoreStatistics,
+  getPlatformStoreStatistics,
   parseStoreStatisticsResponse,
 } from "@/lib/api/admin-store-statistics";
 
@@ -115,6 +116,34 @@ describe("admin store statistics API", () => {
 
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       "/api/listing-kits/admin/store-statistics?date=2026-05-15&page=3&page_size=50",
+    );
+  });
+
+  it("requests platform store statistics through the platform API proxy", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          items: [],
+          total: 0,
+          page: 1,
+          page_size: 20,
+          summary: {
+            completed_count: 0,
+            daily_limit: 0,
+            remaining_count: 0,
+            queued_count: 0,
+            hold_count: 0,
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getPlatformStoreStatistics({ date: "2026-05-15" });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/listing-kits/platform/store-statistics?date=2026-05-15&page=1&page_size=20",
     );
   });
 });

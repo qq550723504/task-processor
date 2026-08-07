@@ -77,11 +77,18 @@ func (h *handler) ListSimpleAdminStores(c *gin.Context) {
 }
 
 func (h *handler) ListAdminStoreStatistics(c *gin.Context) {
-	listingadmin.MarkPlatformStoreAccess(c)
 	if !h.requireStoreStatisticsHandler(c) {
 		return
 	}
 	h.storeStatisticsHandler.ListStoreStatistics(c)
+}
+
+func (h *handler) ListPlatformStoreStatistics(c *gin.Context) {
+	listingadmin.MarkPlatformStoreAccess(c)
+	if !h.requireStoreStatisticsHandler(c) {
+		return
+	}
+	h.storeStatisticsHandler.ListPlatformStoreStatistics(c)
 }
 
 func (h *handler) GetAdminDispatchEventSummary(c *gin.Context) {

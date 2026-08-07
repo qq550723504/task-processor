@@ -325,6 +325,10 @@ func (s *stubListingKitHandler) ListAdminStoreStatistics(c *gin.Context) {
 	c.JSON(http.StatusOK, []any{})
 }
 
+func (s *stubListingKitHandler) ListPlatformStoreStatistics(c *gin.Context) {
+	c.JSON(http.StatusOK, []any{})
+}
+
 func (s *stubListingKitHandler) GetAdminDispatchEventSummary(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{})
 }
