@@ -25,6 +25,8 @@ server:
       datastores:
         default:
           sql:
+            createDatabase: false
+            manageSchema: true
             pluginName: postgres12
             databaseName: temporal
             connectAddr: shared-postgresql.platform-data.svc.cluster.local:5432
@@ -37,6 +39,8 @@ server:
             maxConnLifetime: 1h
         visibility:
           sql:
+            createDatabase: false
+            manageSchema: true
             pluginName: postgres12
             databaseName: temporal_visibility
             connectAddr: shared-postgresql.platform-data.svc.cluster.local:5432

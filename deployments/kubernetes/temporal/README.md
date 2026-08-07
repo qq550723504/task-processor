@@ -66,3 +66,21 @@ ordering, and database credentials have been recovered and reviewed.
   `ttlSecondsAfterFinished` of 86400, so an absent historical Job is
   consistent with a completed-and-cleaned hook, but the next upgrade must
   still preserve schema-before-server ordering.
+
+## Helm adoption result (2026-08-07)
+
+- The first adoption attempt exposed that `temporal_app` cannot create
+  databases. Both SQL stores are therefore explicitly configured with
+  `createDatabase: false` and `manageSchema: true`; the existing schema hook
+  completed successfully against the already-provisioned databases.
+- Helm 4 server-side adoption was not compatible with the existing headless
+  Service and Deployment managed fields. The final adoption used
+  `--take-ownership --no-hooks --server-side=false --rollback-on-failure` and
+  created release `temporal` revision 1 without changing the database schema a
+  second time.
+- After adoption, all six Deployments were Ready, the API health endpoint
+  returned `{"status":"ok"}`, no Temporal startup errors appeared in the
+  final 45-second check, and PostgreSQL reported 44 active connections.
+- `--no-hooks` was used only for the initial adoption after the schema hook had
+  completed. The stored values retain `schema.useHelmHooks: true`, so future
+  upgrades must run the pre-upgrade schema hook normally.
