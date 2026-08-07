@@ -759,6 +759,29 @@ function TaskRow({
             任务 ID
           </p>
           <p className="mt-1 break-all text-sm text-muted-foreground">{task.task_id}</p>
+          {task.source_reference &&
+          (task.source_reference.platform ||
+            task.source_reference.id ||
+            task.source_reference.url) ? (
+            <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+              <span>
+                来源{" "}
+                {[task.source_reference.platform, task.source_reference.id]
+                  .filter(Boolean)
+                  .join(" · ") || "已记录"}
+              </span>
+              {task.source_reference.url ? (
+                <a
+                  href={task.source_reference.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="font-medium text-teal-700 underline underline-offset-2 hover:text-teal-800"
+                >
+                  查看来源
+                </a>
+              ) : null}
+            </div>
+          ) : null}
           {task.shein_store_id ? (
             <p className="mt-1 text-sm text-muted-foreground" title={storeResolutionAuditTitle(task)}>
               SHEIN 店铺 {task.shein_store_id}

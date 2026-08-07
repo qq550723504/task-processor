@@ -214,6 +214,17 @@ export function ListingKitHomeTaskCard({
           <p className="mt-1 line-clamp-2 break-all text-sm text-muted-foreground">
             {task.variant_label || task.task_id}
           </p>
+          {task.source_reference &&
+          (task.source_reference.platform ||
+            task.source_reference.id ||
+            task.source_reference.url) ? (
+            <p className="mt-1 text-xs font-medium text-muted-foreground">
+              来源{" "}
+              {[task.source_reference.platform, task.source_reference.id]
+                .filter(Boolean)
+                .join(" · ") || "已记录"}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {signals.map((signal) => (

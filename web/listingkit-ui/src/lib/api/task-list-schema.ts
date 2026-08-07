@@ -56,6 +56,16 @@ const taskListItemSchema = z
       .passthrough()
       .optional(),
     source_type: z.string().optional(),
+    source_reference: z
+      .object({
+        key: z.string().optional(),
+        type: z.string().optional(),
+        platform: z.string().optional(),
+        id: z.string().optional(),
+        url: z.string().optional(),
+      })
+      .passthrough()
+      .optional(),
     product_name: z.string().optional(),
     source_product_sku: z.string().optional(),
     source_variant_sku: z.string().optional(),
