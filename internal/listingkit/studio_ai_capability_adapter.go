@@ -15,6 +15,7 @@ import (
 )
 
 const studioAIInvocationRecordTimeout = 2 * time.Second
+const studioAIAsyncJobBindingTimeout = 2 * time.Second
 
 // StudioAIImageCapabilityAdapterConfig adds capability routing and observability
 // around the existing Studio image generator without changing its provider contract.
@@ -193,20 +194,35 @@ func (a *studioAIImageCapabilityAdapter) queryAsyncJob(ctx context.Context, jobI
 		unknownErr := aicapability.NewError(aicapability.ErrorUnknownRemoteState, string(aicapability.OperationAsyncImageQuery), errors.New("route-aware async image query is not supported"))
 		return nil, unknownErr, decision, aicapability.RouteOutcomeActive, unknownErr
 	}
-	response, queryErr := a.legacyRouteAware.QueryImageGenerationForRoutingKey(ctx, binding.RoutingKey, jobID)
+	queryCtx := ctx
+	if binding.TenantID != "" || binding.UserID != "" {
+		queryCtx = WithRequestIdentity(queryCtx, RequestIdentity{TenantID: binding.TenantID, UserID: binding.UserID})
+	}
+	queryCtx = WithAIAsyncImageQueryContext(queryCtx, AIAsyncImageQueryContext{
+		TenantID: binding.TenantID, UserID: binding.UserID, CredentialReference: binding.CredentialReference, ConfigurationVersion: binding.ConfigurationVersion,
+	})
+	response, queryErr := a.legacyRouteAware.QueryImageGenerationForRoutingKey(queryCtx, binding.RoutingKey, jobID)
 	return response, queryErr, decision, aicapability.RouteOutcomeActive, nil
 }
 
 func (a *studioAIImageCapabilityAdapter) persistAsyncJobBinding(ctx context.Context, operation aicapability.Operation, decision aicapability.RouteDecision, response *AIImageAsyncSubmit) error {
-	if a.mode != aicapability.RoutingModeActive || response == nil || strings.TrimSpace(response.JobID) == "" {
-		if a.mode == aicapability.RoutingModeActive && response != nil && strings.TrimSpace(response.JobID) == "" {
-			return aicapability.NewError(aicapability.ErrorInvalidProviderResponse, string(operation), errors.New("async Provider response has no job ID"))
-		}
+	if a.mode != aicapability.RoutingModeActive {
 		return nil
+	}
+	if response == nil {
+		return aicapability.NewError(aicapability.ErrorInvalidProviderResponse, string(operation), errors.New("async Provider response is nil"))
+	}
+	if strings.TrimSpace(response.JobID) == "" {
+		return aicapability.NewError(aicapability.ErrorInvalidProviderResponse, string(operation), errors.New("async Provider response has no job ID"))
 	}
 	identity := requestIdentity(ctx)
 	trace := requestTrace(ctx)
-	err := a.asyncJobStore.PutAsyncJobBinding(ctx, aicapability.AsyncJobBinding{
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	bindingCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), studioAIAsyncJobBindingTimeout)
+	defer cancel()
+	err := a.asyncJobStore.PutAsyncJobBinding(bindingCtx, aicapability.AsyncJobBinding{
 		JobID: response.JobID, TenantID: identity.TenantID, UserID: identity.UserID, BusinessTaskID: businessTaskID(trace), TraceID: trace.BatchID,
 		Capability: aicapability.CapabilityListingKitStudioImage, Operation: operation, ProviderID: decision.ProviderID, ModelID: decision.ModelID,
 		RoutingKey: decision.RoutingKey, CredentialReference: decision.CredentialReference, PolicyVersion: decision.PolicyVersion, ConfigurationVersion: decision.ConfigurationVersion,

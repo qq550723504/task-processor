@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	"task-processor/internal/aicapability"
 )
 
@@ -34,13 +35,19 @@ func (s *GormAsyncJobBindingStore) PutAsyncJobBinding(ctx context.Context, bindi
 		return err
 	}
 	binding = normalizeAsyncJobBinding(binding)
+	result := s.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "job_id"}},
+		DoNothing: true,
+	}).Create(asyncJobRowFromBinding(binding))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected > 0 {
+		return nil
+	}
 
 	var existing asyncJobRow
-	err := s.db.WithContext(ctx).Where("job_id = ?", binding.JobID).First(&existing).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return s.db.WithContext(ctx).Create(asyncJobRowFromBinding(binding)).Error
-	}
-	if err != nil {
+	if err := s.db.WithContext(ctx).Where("job_id = ?", binding.JobID).First(&existing).Error; err != nil {
 		return err
 	}
 	if sameAsyncJobRoute(existing, binding) {

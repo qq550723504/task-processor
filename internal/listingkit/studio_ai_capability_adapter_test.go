@@ -35,6 +35,7 @@ type studioCapabilityGeneratorStub struct {
 	submitEditReq   *AIImageEditRequest
 	queryJobID      string
 	queryRoute      string
+	queryIdentity   RequestIdentity
 	response        *AIImageResponse
 	submit          *AIImageAsyncSubmit
 	query           *AIImageAsyncResult
@@ -77,25 +78,32 @@ func (s *studioCapabilityGeneratorStub) QueryImageGeneration(_ context.Context, 
 	return s.query, s.err
 }
 
-func (s *studioCapabilityGeneratorStub) QueryImageGenerationForRoutingKey(_ context.Context, routingKey, jobID string) (*AIImageAsyncResult, error) {
+func (s *studioCapabilityGeneratorStub) QueryImageGenerationForRoutingKey(ctx context.Context, routingKey, jobID string) (*AIImageAsyncResult, error) {
 	s.queryCalls++
 	s.queryRoute = routingKey
 	s.queryJobID = jobID
+	s.queryIdentity = RequestIdentityFromContext(ctx)
 	return s.query, s.err
 }
 
 type studioCapabilityAsyncJobStoreStub struct {
-	binding     aicapability.AsyncJobBinding
-	putCalls    int
-	getCalls    int
-	statusCalls int
-	putErr      error
-	getErr      error
-	statusErr   error
+	binding        aicapability.AsyncJobBinding
+	putCalls       int
+	getCalls       int
+	statusCalls    int
+	putErr         error
+	getErr         error
+	statusErr      error
+	putCtxErr      error
+	requireLivePut bool
 }
 
-func (s *studioCapabilityAsyncJobStoreStub) PutAsyncJobBinding(_ context.Context, binding aicapability.AsyncJobBinding) error {
+func (s *studioCapabilityAsyncJobStoreStub) PutAsyncJobBinding(ctx context.Context, binding aicapability.AsyncJobBinding) error {
 	s.putCalls++
+	s.putCtxErr = ctx.Err()
+	if s.requireLivePut && s.putCtxErr != nil {
+		return s.putCtxErr
+	}
 	if s.putErr != nil {
 		return s.putErr
 	}
@@ -379,6 +387,34 @@ func TestStudioAIImageCapabilityAdapterActiveBindsSubmitAndQueriesByRoute(t *tes
 	}
 }
 
+func TestStudioAIImageCapabilityAdapterQueryRestoresSubmitIdentity(t *testing.T) {
+	legacy := &studioCapabilityGeneratorStub{
+		supportsAsync: true,
+		query:         &AIImageAsyncResult{JobID: "job-a"},
+	}
+	store := &studioCapabilityAsyncJobStoreStub{binding: aicapability.AsyncJobBinding{
+		JobID: "job-a", TenantID: "tenant-submit", UserID: "user-submit", Capability: aicapability.CapabilityListingKitStudioImage,
+		Operation: aicapability.OperationAsyncImageGenerate, ProviderID: "provider-a", ModelID: "model-a", RoutingKey: "route-model-a",
+		CredentialReference: "credential-a", ConfigurationVersion: "config-submit",
+	}}
+	adapterValue, err := NewStudioAIImageCapabilityAdapter(StudioAIImageCapabilityAdapterConfig{
+		Legacy: legacy, Router: &studioCapabilityRouterStub{decision: routeDecision()}, Recorder: &studioCapabilityRecorderStub{},
+		AsyncJobStore: store, Mode: aicapability.RoutingModeActive,
+	})
+	if err != nil {
+		t.Fatalf("NewStudioAIImageCapabilityAdapter() error = %v", err)
+	}
+	adapter := adapterValue.(*studioAIImageCapabilityAdapter)
+	currentCtx := WithRequestIdentity(context.Background(), RequestIdentity{TenantID: "tenant-current", UserID: "user-current"})
+
+	if _, err := adapter.QueryImageGeneration(currentCtx, "job-a"); err != nil {
+		t.Fatalf("QueryImageGeneration() error = %v", err)
+	}
+	if legacy.queryIdentity.TenantID != "tenant-submit" || legacy.queryIdentity.UserID != "user-submit" {
+		t.Fatalf("query used current identity %+v, want submit identity", legacy.queryIdentity)
+	}
+}
+
 func TestStudioAIImageCapabilityAdapterActiveMissingBindingFallsBackAndRecordsUnknownState(t *testing.T) {
 	legacy := &studioCapabilityGeneratorStub{supportsAsync: true, query: &AIImageAsyncResult{JobID: "legacy-job"}}
 	recorder := &studioCapabilityRecorderStub{}
@@ -441,6 +477,44 @@ func TestStudioAIImageCapabilityAdapterActiveRejectsEmptyAsyncJobID(t *testing.T
 	_, err = adapter.SubmitImageGeneration(studioCapabilityContext(), &AIImageGenerateRequest{Model: "original", Prompt: "generate"})
 	if aicapability.CategoryOf(err) != aicapability.ErrorInvalidProviderResponse {
 		t.Fatalf("SubmitImageGeneration() category = %q, want %q", aicapability.CategoryOf(err), aicapability.ErrorInvalidProviderResponse)
+	}
+}
+
+func TestStudioAIImageCapabilityAdapterActiveRejectsNilAsyncSubmit(t *testing.T) {
+	legacy := &studioCapabilityGeneratorStub{supportsAsync: true}
+	recorder := &studioCapabilityRecorderStub{}
+	adapterValue, err := NewStudioAIImageCapabilityAdapter(StudioAIImageCapabilityAdapterConfig{
+		Legacy: legacy, Router: &studioCapabilityRouterStub{decision: routeDecision()}, Recorder: recorder,
+		AsyncJobStore: &studioCapabilityAsyncJobStoreStub{}, Mode: aicapability.RoutingModeActive,
+	})
+	if err != nil {
+		t.Fatalf("NewStudioAIImageCapabilityAdapter() error = %v", err)
+	}
+
+	_, err = adapterValue.(*studioAIImageCapabilityAdapter).SubmitImageGeneration(studioCapabilityContext(), &AIImageGenerateRequest{Model: "original", Prompt: "generate"})
+	if aicapability.CategoryOf(err) != aicapability.ErrorInvalidProviderResponse {
+		t.Fatalf("SubmitImageGeneration() category = %q, want %q", aicapability.CategoryOf(err), aicapability.ErrorInvalidProviderResponse)
+	}
+}
+
+func TestStudioAIImageCapabilityAdapterAsyncBindingWriteSurvivesRequestCancellation(t *testing.T) {
+	legacy := &studioCapabilityGeneratorStub{supportsAsync: true, submit: &AIImageAsyncSubmit{JobID: "job-a"}}
+	store := &studioCapabilityAsyncJobStoreStub{requireLivePut: true}
+	adapterValue, err := NewStudioAIImageCapabilityAdapter(StudioAIImageCapabilityAdapterConfig{
+		Legacy: legacy, Router: &studioCapabilityRouterStub{decision: routeDecision()}, Recorder: &studioCapabilityRecorderStub{},
+		AsyncJobStore: store, Mode: aicapability.RoutingModeActive,
+	})
+	if err != nil {
+		t.Fatalf("NewStudioAIImageCapabilityAdapter() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(studioCapabilityContext())
+	cancel()
+	if _, err := adapterValue.(*studioAIImageCapabilityAdapter).SubmitImageGeneration(ctx, &AIImageGenerateRequest{Model: "original", Prompt: "generate"}); err != nil {
+		t.Fatalf("SubmitImageGeneration() error = %v", err)
+	}
+	if store.putCalls != 1 || store.putCtxErr != nil {
+		t.Fatalf("binding write context = %v, calls=%d; want live context and one write", store.putCtxErr, store.putCalls)
 	}
 }
 
