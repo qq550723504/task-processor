@@ -103,13 +103,13 @@ function buildPanelProps(options?: {
       prompt: options?.prompt ?? "",
       promptMode: "managed",
       promptHistory: options?.promptHistory ?? [],
-      promptInputRef: { current: null },
       renderSizeImagesWithSds: true,
       selectedSdsImages: [],
       styleCount: options?.styleCount ?? "1",
       transparentBackground: options?.transparentBackground ?? false,
       variationIntensity: "medium",
     },
+    promptInputRef: { current: null },
     status: {
       batchProductCount: 4,
       batchStoreLabel: options?.storeRequiredMessage

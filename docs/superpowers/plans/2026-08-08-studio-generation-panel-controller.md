@@ -36,8 +36,14 @@
 export type SheinStudioGenerationPanelProps = {
   actions: SheinStudioGenerationActions;
   form: SheinStudioGenerationFormModel;
+  promptInputRef: RefObject<HTMLTextAreaElement | null>;
   status: SheinStudioGenerationStatusModel;
 };
+
+export type SheinStudioGenerationPanelProjectedProps = Omit<
+  SheinStudioGenerationPanelProps,
+  "promptInputRef"
+>;
 
 export type SheinStudioGenerationPanelProjectionInput = {
   actions: SheinStudioGenerationPanelActionProjection;
@@ -47,7 +53,7 @@ export type SheinStudioGenerationPanelProjectionInput = {
 
 export function buildSheinStudioGenerationPanelProps(
   input: SheinStudioGenerationPanelProjectionInput,
-): SheinStudioGenerationPanelProps;
+): SheinStudioGenerationPanelProjectedProps;
 ```
 
 - [ ] **Step 1: Install the frontend dependencies in the isolated worktree**
@@ -67,7 +73,6 @@ Add imports for the desired builder and types, then add this focused helper and 
 ```ts
 import type {
   SheinStudioGenerationFormModel,
-  SheinStudioGenerationPanelProps,
 } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
 import {
   buildSheinStudioGenerationPanelProps,
@@ -114,8 +119,7 @@ describe("buildSheinStudioGenerationPanelProps", () => {
   it("projects the normal generation panel contract", () => {
     const input = buildGenerationPanelProjectionInput();
 
-    const result: SheinStudioGenerationPanelProps =
-      buildSheinStudioGenerationPanelProps(input);
+    const result = buildSheinStudioGenerationPanelProps(input);
 
     expect(result.actions.onGenerate).toBe(input.actions.generate);
     expect(result.form).toBe(input.form);
@@ -181,6 +185,7 @@ In `shein-studio-generation-panel.tsx`, add:
 export type SheinStudioGenerationPanelProps = {
   actions: SheinStudioGenerationActions;
   form: SheinStudioGenerationFormModel;
+  promptInputRef: RefObject<HTMLTextAreaElement | null>;
   status: SheinStudioGenerationStatusModel;
 };
 ```
@@ -191,6 +196,7 @@ Change the component signature to:
 export function SheinStudioGenerationPanel({
   actions,
   form,
+  promptInputRef,
   status,
 }: SheinStudioGenerationPanelProps) {
 ```
@@ -244,6 +250,11 @@ export type SheinStudioGenerationPanelProjectionInput = {
   form: SheinStudioGenerationFormModel;
   status: SheinStudioGenerationPanelStatusProjection;
 };
+
+export type SheinStudioGenerationPanelProjectedProps = Omit<
+  SheinStudioGenerationPanelProps,
+  "promptInputRef"
+>;
 ```
 
 - [ ] **Step 6: Implement the normal and retry-mode projection without item filtering**
@@ -256,7 +267,7 @@ export function buildSheinStudioGenerationPanelProps({
   actions,
   form,
   status,
-}: SheinStudioGenerationPanelProjectionInput): SheinStudioGenerationPanelProps {
+}: SheinStudioGenerationPanelProjectionInput): SheinStudioGenerationPanelProjectedProps {
   const {
     generate,
     retryFailedItem,
@@ -462,157 +473,45 @@ git commit -m "refactor: project studio generation retry state"
 ### Task 3: Route Workbench composition through the controller
 
 **Files:**
-- Create: `web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-boundary.test.ts`
-- Modify: `web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-workbench.tsx:19-32,1380-1400,1694-1801`
+- Create: `web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-panel-boundary.tsx`
+- Modify: `web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-panel.tsx`
+- Modify: `web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-panel.test.tsx`
+- Modify: `web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-controller.ts`
+- Modify: `web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-controller.test.tsx`
+- Modify: `web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-workbench.tsx`
 
 **Interfaces:**
-- Consumes: `buildSheinStudioGenerationPanelProps` from Tasks 1-2.
-- Produces: a Workbench that renders `<SheinStudioGenerationPanel {...generationPanelProps} />` and contains no inline panel contract.
+- Consumes: `buildSheinStudioGenerationPanelProps` and its input type from Tasks 1-2.
+- Produces: a Workbench that sends the raw contract through a React-safe boundary and contains no inline Panel contract.
 
-- [ ] **Step 1: Write the failing structural boundary test**
+- [ ] **Step 1: Move the imperative prompt ref out of the form model**
 
-Create `shein-studio-generation-boundary.test.ts`:
+Make `promptInputRef` a top-level `SheinStudioGenerationPanelProps` field and
+remove it from `SheinStudioGenerationFormModel`. Update Panel and controller
+test fixtures accordingly. The pure builder returns
+`SheinStudioGenerationPanelProjectedProps`, which omits only the ref.
 
-```ts
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+- [ ] **Step 2: Add the React-safe boundary and raw input composition**
 
-import { describe, expect, it } from "vitest";
-
-describe("SheinStudioWorkbench generation boundary", () => {
-  it("renders the controller-projected GenerationPanel contract", () => {
-    const source = readFileSync(
-      join(
-        process.cwd(),
-        "src/components/listingkit/shein-studio/shein-studio-workbench.tsx",
-      ),
-      "utf8",
-    );
-
-    expect(source).toContain("buildSheinStudioGenerationPanelProps({");
-    expect(source).toContain(
-      "<SheinStudioGenerationPanel {...generationPanelProps} />",
-    );
-    expect(source).not.toMatch(
-      /<SheinStudioGenerationPanel\s+actions=\{\{/,
-    );
-  });
-});
-```
-
-- [ ] **Step 2: Run the boundary test and verify RED**
-
-Run:
-
-```powershell
-npm.cmd test -- src/components/listingkit/shein-studio/shein-studio-generation-boundary.test.ts
-```
-
-Expected: FAIL because the Workbench still renders three inline object literals and does not call the builder.
-
-- [ ] **Step 3: Import the builder and build the complete projection**
-
-Add `buildSheinStudioGenerationPanelProps` to the existing generation-controller import. After `projectItemizedTaskRecoveryState(...)` and before JSX composition, add:
-
-```ts
-const generationPanelProps = buildSheinStudioGenerationPanelProps({
-  actions: {
-    analyzeReferenceStyle,
-    generate: handleGenerate,
-    onCreateTasks: handleCreateTasks,
-    onDeleteBatch: handleDeleteBatch,
-    onLoadBatch: handleLoadBatch,
-    onRestorePrompt: handlePromptChange,
-    onSaveBatch: handleSaveBatch,
-    retryFailedItem: handleRetryFailedItem,
-    retryFailedItems: handleRetryFailedItems,
-    setArtworkGenerationMode,
-    setArtworkModel,
-    setGroupedImageMode,
-    setHotStyleReferenceBrief,
-    setHotStyleReferenceImageUrls: handleHotStyleReferenceImageUrlsChange,
-    setHotStyleReferencePrompt,
-    setImageStrategy,
-    setProductImageCount,
-    setProductImagePrompt,
-    setProductImagePrompts,
-    setPrompt: handlePromptChange,
-    setPromptMode,
-    setRenderSizeImagesWithSds,
-    setSelectedSdsImages: (value) => {
-      hasCustomizedSdsSelectionRef.current = true;
-      setSelectedSdsImages(value);
-    },
-    setStyleCount,
-    setTransparentBackground,
-    setTransparentBackgroundMode,
-    setVariationIntensity,
-    uploadHotStyleReferenceImages,
-  },
-  form: {
-    artworkGenerationMode,
-    artworkModel,
-    availableSdsImages,
-    groupedImageMode,
-    hotStyleReferenceBrief,
-    hotStyleReferenceImageUrls,
-    hotStyleReferencePrompt,
-    imageStrategy,
-    productImageCount,
-    productImagePrompt,
-    productImagePrompts,
-    prompt,
-    promptHistory: activeGroupPromptHistory,
-    promptInputRef,
-    promptMode,
-    renderSizeImagesWithSds,
-    selectedSdsImages,
-    styleCount,
-    transparentBackground,
-    transparentBackgroundMode,
-    variationIntensity,
-  },
-  status: {
-    activeSelection,
-    createdTasks,
-    creatingError,
-    creatingMessage,
-    currentStoreLabel,
-    generationError,
-    groupedSelections,
-    hasRetryableFailedItems,
-    initialBatchId,
-    isCreatingTasks,
-    isGenerating: effectiveIsGenerating,
-    itemizedBatchDetail,
-    retryableFailedItemCount,
-    retryingFailedItemId,
-    savedBatches,
-    saveMessage,
-    selectedStyleCount: selectedIds.length,
-    storeRequiredMessage,
-    subscriptionBlockedMessage,
-  },
-});
-```
-
-- [ ] **Step 4: Replace the inline JSX contract**
-
-Replace the current `actions={{...}}`, `form={{...}}`, and `status={{...}}` block with:
+Create a stateless `SheinStudioGenerationPanelBoundary` that accepts the typed
+projection input plus `promptInputRef`, invokes the pure builder, and renders the
+Panel. Build `generationPanelInput` in the Workbench and render:
 
 ```tsx
-<SheinStudioGenerationPanel {...generationPanelProps} />
+<SheinStudioGenerationPanelBoundary
+  input={generationPanelInput}
+  promptInputRef={promptInputRef}
+/>
 ```
 
 Remove the Workbench import of `countSelectionsWithPrimary` if no other call remains. Keep `buildGroupedSDSSelectionID` imported.
 
-- [ ] **Step 5: Run boundary and focused behavior tests**
+- [ ] **Step 3: Run focused behavior tests**
 
 Run:
 
 ```powershell
 npm.cmd test -- `
-  src/components/listingkit/shein-studio/shein-studio-generation-boundary.test.ts `
   src/components/listingkit/shein-studio/shein-studio-generation-controller.test.tsx `
   src/components/listingkit/shein-studio/shein-studio-generation-panel.test.tsx `
   src/components/listingkit/shein-studio/shein-studio-workbench.test.tsx
@@ -620,7 +519,7 @@ npm.cmd test -- `
 
 Expected: PASS with no warnings or changed snapshots.
 
-- [ ] **Step 6: Run typecheck and lint for the integrated boundary**
+- [ ] **Step 4: Run typecheck and lint for the integrated boundary**
 
 Run:
 
@@ -631,11 +530,17 @@ npm.cmd run lint
 
 Expected: both commands exit `0`.
 
-- [ ] **Step 7: Commit Task 3**
+- [ ] **Step 5: Commit Task 3**
 
 ```powershell
 git add -- `
-  web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-boundary.test.ts `
+  docs/superpowers/specs/2026-08-08-studio-generation-panel-controller-design.md `
+  docs/superpowers/plans/2026-08-08-studio-generation-panel-controller.md `
+  web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-panel-boundary.tsx `
+  web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-panel.tsx `
+  web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-panel.test.tsx `
+  web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-controller.ts `
+  web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-controller.test.tsx `
   web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-workbench.tsx
 git diff --cached --check
 git commit -m "refactor: route studio generation panel through controller"
@@ -693,9 +598,10 @@ git diff master...HEAD --stat
 git diff master...HEAD --check
 git diff master...HEAD -- `
   web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-panel.tsx `
+  web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-panel.test.tsx `
+  web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-panel-boundary.tsx `
   web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-controller.ts `
   web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-controller.test.tsx `
-  web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-generation-boundary.test.ts `
   web/listingkit-ui/src/components/listingkit/shein-studio/shein-studio-workbench.tsx
 ```
 

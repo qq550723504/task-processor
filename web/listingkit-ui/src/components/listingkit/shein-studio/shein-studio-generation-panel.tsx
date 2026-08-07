@@ -49,7 +49,6 @@ export type SheinStudioGenerationFormModel = {
   prompt: string;
   promptMode: "managed" | "raw";
   promptHistory: SDSGroupedPromptHistoryEntry[];
-  promptInputRef: RefObject<HTMLTextAreaElement | null>;
   selectedSdsImages: SheinStudioSelectedSDSImage[];
   styleCount: string;
   variationIntensity: SheinStudioVariationIntensity;
@@ -123,6 +122,7 @@ export type SheinStudioGenerationActions = {
 export type SheinStudioGenerationPanelProps = {
   actions: SheinStudioGenerationActions;
   form: SheinStudioGenerationFormModel;
+  promptInputRef: RefObject<HTMLTextAreaElement | null>;
   status: SheinStudioGenerationStatusModel;
 };
 
@@ -136,6 +136,7 @@ function areHotStyleReferenceUrlsEqual(current: string[], next: string[]) {
 export function SheinStudioGenerationPanel({
   actions,
   form,
+  promptInputRef,
   status,
 }: SheinStudioGenerationPanelProps) {
   const {
@@ -151,7 +152,6 @@ export function SheinStudioGenerationPanel({
     prompt,
     promptMode,
     promptHistory,
-    promptInputRef,
     renderSizeImagesWithSds,
     selectedSdsImages,
     styleCount,

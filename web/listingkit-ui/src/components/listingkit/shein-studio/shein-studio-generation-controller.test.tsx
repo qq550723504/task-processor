@@ -59,7 +59,6 @@ function buildGenerationPanelForm(): SheinStudioGenerationFormModel {
     productImagePrompts: [],
     prompt: "",
     promptHistory: [],
-    promptInputRef: { current: null },
     promptMode: "managed",
     renderSizeImagesWithSds: true,
     selectedSdsImages: [],

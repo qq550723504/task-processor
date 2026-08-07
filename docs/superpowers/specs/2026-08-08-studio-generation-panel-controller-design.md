@@ -86,6 +86,7 @@ approved scope.
 export type SheinStudioGenerationPanelProps = {
   actions: SheinStudioGenerationActions;
   form: SheinStudioGenerationFormModel;
+  promptInputRef: RefObject<HTMLTextAreaElement | null>;
   status: SheinStudioGenerationStatusModel;
 };
 ```
@@ -100,14 +101,14 @@ internal behavior remain unchanged.
 ```ts
 export function buildSheinStudioGenerationPanelProps(
   input: SheinStudioGenerationPanelProjectionInput,
-): SheinStudioGenerationPanelProps;
+): SheinStudioGenerationPanelProjectedProps;
 ```
 
 The input will be grouped into three explicit sections:
 
 - `actions`: current handlers and setters, plus the normal-generate and
   retry-failed-batch handlers needed to select `onGenerate`;
-- `form`: current controlled form values and refs;
+- `form`: current controlled form values;
 - `status`: current task/batch state plus the raw values needed for derived
   labels, notices, failed items, product count, and readiness.
 
@@ -115,21 +116,30 @@ The builder will own only deterministic projection. It will not call APIs,
 dispatch reducer actions, mutate refs, perform persistence, or create new
 callbacks with hidden side effects.
 
-Callback wrappers that intentionally mutate Workbench-owned refs before calling
-a setter remain explicit inputs. For example, the selected-SDS-image callback
-continues to mark `hasCustomizedSdsSelectionRef` in the Workbench before updating
-the selection.
+`promptInputRef` is an imperative React handle, not form data. It remains a
+top-level Panel prop and does not pass through the pure builder. Callback
+wrappers that intentionally mutate Workbench-owned refs before calling a setter
+remain explicit inputs. For example, the selected-SDS-image callback continues
+to mark `hasCustomizedSdsSelectionRef` in the Workbench before updating the
+selection.
 
 ### Workbench composition
 
-The Workbench will build the controller result before the JSX return and render:
+The Workbench will build a typed raw projection input before the JSX return and
+hand it to a thin React boundary:
 
 ```tsx
-<SheinStudioGenerationPanel {...generationPanelProps} />
+<SheinStudioGenerationPanelBoundary
+  input={generationPanelInput}
+  promptInputRef={promptInputRef}
+/>
 ```
 
-It will no longer contain the three large inline object literals. The Workbench
-retains:
+The boundary calls the pure builder and renders `SheinStudioGenerationPanel`.
+This component boundary is required by React 19's ref rules: Workbench callbacks
+that capture refs must cross JSX rather than an opaque render-time function
+call. It has no state or effects. The Workbench no longer contains the three
+large inline JSX object literals and retains:
 
 - reducer and local state;
 - refs and their mutations;
@@ -141,14 +151,15 @@ retains:
 
 ```text
 Workbench state, refs, and existing callbacks
+  -> SheinStudioGenerationPanelBoundary JSX props
   -> buildSheinStudioGenerationPanelProps
   -> { actions, form, status }
-  -> SheinStudioGenerationPanel
+  -> SheinStudioGenerationPanel + promptInputRef
   -> existing callbacks back into Workbench-owned orchestration
 ```
 
-No extra render layer, context provider, cache, or state synchronization step is
-introduced.
+No context provider, cache, or state synchronization step is introduced. The
+single boundary render layer exists only to preserve React's ref semantics.
 
 ## Preserved projection rules
 
@@ -192,8 +203,10 @@ real builder:
    notice, and exposes only failed items.
 3. Task creation label and selection readiness match current behavior.
 
-Each test is written first and observed failing because the builder does not yet
-exist or does not yet implement the asserted projection.
+Each controller test is written first and observed failing because the builder
+does not yet exist or does not yet implement the asserted projection. The React
+boundary is covered through the existing Panel and Workbench behavior suites;
+no source-text structural test is added.
 
 ### Regression tests
 

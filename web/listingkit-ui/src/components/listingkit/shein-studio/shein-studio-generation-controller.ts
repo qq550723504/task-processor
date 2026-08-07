@@ -73,11 +73,16 @@ export type SheinStudioGenerationPanelProjectionInput = {
   status: SheinStudioGenerationPanelStatusProjection;
 };
 
+export type SheinStudioGenerationPanelProjectedProps = Omit<
+  SheinStudioGenerationPanelProps,
+  "promptInputRef"
+>;
+
 export function buildSheinStudioGenerationPanelProps({
   actions,
   form,
   status,
-}: SheinStudioGenerationPanelProjectionInput): SheinStudioGenerationPanelProps {
+}: SheinStudioGenerationPanelProjectionInput): SheinStudioGenerationPanelProjectedProps {
   const { generate, retryFailedItem, retryFailedItems, ...panelActions } =
     actions;
   const {
