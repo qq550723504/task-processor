@@ -58,3 +58,6 @@ ordering, and database credentials have been recovered and reviewed.
   all six live Temporal Deployments.
 - `kubectl apply --dry-run=server` accepted the complete rendered resource set;
   no resource was applied.
+- The rendered chart includes `temporal-schema-1-2-0-1`, while the live
+  namespace currently has no Temporal Job. Schema-job ownership and ordering
+  remain an explicit upgrade gate.
