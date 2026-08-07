@@ -3,6 +3,7 @@ import { getListingKitTaskResult } from "@/lib/api/task-result";
 import type {
   CanonicalFieldTrace,
   CanonicalProduct,
+  ListingKitSourceReference,
   ListingKitTaskListQuery,
   ListingKitTaskListItem,
   ListingKitTaskResult,
@@ -26,6 +27,7 @@ export type CanonicalProductListItem = {
 export type CanonicalProductDetail = {
   taskId: string;
   tenantId?: string;
+  sourceReference?: ListingKitSourceReference;
   product: CanonicalProduct;
   summary: CanonicalProductListItem;
   reviewFieldCount: number;
@@ -132,6 +134,9 @@ export function buildCanonicalProductDetail(
   return {
     taskId: summary.taskId,
     tenantId: summary.tenantId,
+    sourceReference: result.source_reference
+      ? { ...result.source_reference }
+      : undefined,
     product,
     summary,
     fieldTraces,
