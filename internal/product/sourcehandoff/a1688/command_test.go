@@ -57,6 +57,15 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 	if creator.request == nil || creator.request.ProductURL != "https://detail.1688.com/offer/888.html" {
 		t.Fatalf("creator request = %+v, want normalized request", creator.request)
 	}
+	if creator.request.Source == nil {
+		t.Fatal("creator request Source = nil, want 1688 source reference")
+	}
+	if creator.request.Source.Key != "crawler:1688:888" ||
+		creator.request.Source.Platform != "1688" ||
+		creator.request.Source.ID != "888" ||
+		creator.request.Source.URL != "https://detail.1688.com/offer/888.html" {
+		t.Fatalf("creator request Source = %+v, want normalized 1688 identity", creator.request.Source)
+	}
 }
 
 func TestTaskCommandServiceRejectsWrongStorePlatform(t *testing.T) {
