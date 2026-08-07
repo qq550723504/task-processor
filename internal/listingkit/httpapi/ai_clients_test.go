@@ -19,14 +19,18 @@ type stubListingKitClientResolver struct {
 	err          error
 	lastName     string
 	lastFallback *openaiclient.ClientConfig
+	lastIdentity openaiclient.Identity
 }
 
 type stubListingKitImageGenerator struct {
-	lastGenerate   *openaiclient.ImageGenerateRequest
-	lastEdit       *openaiclient.ImageEditRequest
-	asyncSupported bool
-	submitResponse *openaiclient.ImageAsyncSubmitResponse
-	queryResponse  *openaiclient.ImageAsyncQueryResponse
+	lastGenerate      *openaiclient.ImageGenerateRequest
+	lastEdit          *openaiclient.ImageEditRequest
+	lastQueryJobID    string
+	lastQueryRoute    string
+	lastQueryIdentity openaiclient.Identity
+	asyncSupported    bool
+	submitResponse    *openaiclient.ImageAsyncSubmitResponse
+	queryResponse     *openaiclient.ImageAsyncQueryResponse
 }
 
 func (s *stubListingKitImageGenerator) GenerateImage(_ context.Context, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageResponse, error) {
@@ -57,13 +61,23 @@ func (s *stubListingKitImageGenerator) SubmitImageEdit(_ context.Context, req *o
 	return s.submitResponse, nil
 }
 
-func (s *stubListingKitImageGenerator) QueryImageGeneration(_ context.Context, _ string) (*openaiclient.ImageAsyncQueryResponse, error) {
+func (s *stubListingKitImageGenerator) QueryImageGeneration(ctx context.Context, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
+	s.lastQueryJobID = jobID
+	s.lastQueryIdentity = openaiclient.IdentityFromContext(ctx)
 	return s.queryResponse, nil
 }
 
-func (r *stubListingKitClientResolver) ResolveClientConfig(_ context.Context, clientName string, fallback *openaiclient.ClientConfig) (*openaiclient.ResolvedClientConfig, error) {
+func (s *stubListingKitImageGenerator) QueryImageGenerationForRoutingKey(ctx context.Context, routingKey, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
+	s.lastQueryRoute = routingKey
+	s.lastQueryJobID = jobID
+	s.lastQueryIdentity = openaiclient.IdentityFromContext(ctx)
+	return s.queryResponse, nil
+}
+
+func (r *stubListingKitClientResolver) ResolveClientConfig(ctx context.Context, clientName string, fallback *openaiclient.ClientConfig) (*openaiclient.ResolvedClientConfig, error) {
 	r.lastName = clientName
 	r.lastFallback = fallback
+	r.lastIdentity = openaiclient.IdentityFromContext(ctx)
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -175,6 +189,44 @@ func TestResolveStrictListingKitClientCachesResolvedClient(t *testing.T) {
 	}
 }
 
+func TestStrictListingKitConfiguredImageClientRecoversExactConfigurationVersion(t *testing.T) {
+	resolver := &stubListingKitClientResolver{resolved: &openaiclient.ResolvedClientConfig{
+		CacheKey: "config-submit",
+		Config:   &openaiclient.ClientConfig{APIKey: "submit-key", BaseURL: "https://submit.example.test/v1", Model: "submit-model"},
+	}}
+	client := &strictListingKitConfiguredImageClient{
+		clientName: listingKitImageClientNameNanobanana,
+		resolver:   resolver,
+		cache:      make(map[string]openaiclient.ImageGenerator),
+		build: func(*openaiclient.ClientConfig) (openaiclient.ImageGenerator, error) {
+			return &stubListingKitImageGenerator{queryResponse: &openaiclient.ImageAsyncQueryResponse{JobID: "job-a"}}, nil
+		},
+	}
+	ctx := listingkit.WithRequestIdentity(context.Background(), listingkit.RequestIdentity{TenantID: "tenant-submit", UserID: "user-submit"})
+
+	response, err := client.QueryImageGenerationForConfigurationVersion(ctx, "config-submit", "job-a")
+	if err != nil || response == nil || response.JobID != "job-a" {
+		t.Fatalf("versioned query = (%+v, %v)", response, err)
+	}
+	if resolver.lastIdentity.TenantID != "tenant-submit" || resolver.lastIdentity.UserID != "user-submit" {
+		t.Fatalf("resolver identity = %+v", resolver.lastIdentity)
+	}
+	resolver.resolved.CacheKey = "config-current"
+	if _, err := client.QueryImageGenerationForConfigurationVersion(ctx, "config-submit", "job-a"); err != nil {
+		t.Fatalf("cached submit-time client should remain usable: %v", err)
+	}
+
+	newClient := &strictListingKitConfiguredImageClient{
+		clientName: listingKitImageClientNameNanobanana,
+		resolver:   resolver,
+		cache:      make(map[string]openaiclient.ImageGenerator),
+		build:      client.build,
+	}
+	if _, err := newClient.QueryImageGenerationForConfigurationVersion(ctx, "config-submit", "job-a"); err == nil {
+		t.Fatal("expected unavailable submit-time configuration after cache restart")
+	}
+}
+
 func TestListingKitRoutedImageClientRoutesNanobananaWithConfiguredModel(t *testing.T) {
 	nano := &stubListingKitImageGenerator{}
 	gpt := &stubListingKitImageGenerator{}
@@ -246,6 +298,82 @@ func TestListingKitRoutedImageClientUsesGPTImage2ByDefault(t *testing.T) {
 	}
 	if nano.lastGenerate != nil {
 		t.Fatal("did not expect nanobanana client to receive default request")
+	}
+}
+
+func TestListingKitRoutedImageClientQueriesByRoutingKey(t *testing.T) {
+	nano := &stubListingKitImageGenerator{queryResponse: &openaiclient.ImageAsyncQueryResponse{JobID: "nano-job"}}
+	gpt := &stubListingKitImageGenerator{queryResponse: &openaiclient.ImageAsyncQueryResponse{JobID: "gpt-job"}}
+	router := &listingKitRoutedImageClient{
+		defaultModel: listingKitImageModelSelectorGPTImage2,
+		defaultImage: gpt,
+		gptImage2:    gpt,
+		nanobanana:   nano,
+	}
+
+	nanoResponse, err := router.QueryImageGenerationForRoutingKey(context.Background(), listingKitImageModelSelectorNano, "job-nano")
+	if err != nil {
+		t.Fatalf("nano query returned error: %v", err)
+	}
+	if nanoResponse == nil || nanoResponse.JobID != "nano-job" || nano.lastQueryJobID != "job-nano" || gpt.lastQueryJobID != "" {
+		t.Fatalf("nano query response=%+v job=%q; gpt job %q", nanoResponse, nano.lastQueryJobID, gpt.lastQueryJobID)
+	}
+
+	gptResponse, err := router.QueryImageGenerationForRoutingKey(context.Background(), listingKitImageModelSelectorGPTImage2, "job-gpt")
+	if err != nil {
+		t.Fatalf("gpt query returned error: %v", err)
+	}
+	if gptResponse == nil || gptResponse.JobID != "gpt-job" || gpt.lastQueryJobID != "job-gpt" {
+		t.Fatalf("gpt query response=%+v job=%q", gptResponse, gpt.lastQueryJobID)
+	}
+}
+
+func TestListingKitRoutedImageClientQueriesWithSubmitIdentity(t *testing.T) {
+	nano := &stubListingKitImageGenerator{queryResponse: &openaiclient.ImageAsyncQueryResponse{JobID: "job-nano"}}
+	router := &listingKitRoutedImageClient{
+		defaultModel: listingKitImageModelSelectorGPTImage2,
+		defaultImage: nano,
+		nanobanana:   nano,
+	}
+	ctx := listingkit.WithRequestIdentity(context.Background(), listingkit.RequestIdentity{TenantID: "tenant-submit", UserID: "user-submit"})
+	ctx = listingkit.WithAIAsyncImageQueryContext(ctx, listingkit.AIAsyncImageQueryContext{CredentialReference: listingKitImageClientNameNanobanana})
+
+	if _, err := router.QueryImageGenerationForRoutingKey(ctx, listingKitImageModelSelectorNano, "job-nano"); err != nil {
+		t.Fatalf("query returned error: %v", err)
+	}
+	if nano.lastQueryIdentity.TenantID != "tenant-submit" || nano.lastQueryIdentity.UserID != "user-submit" {
+		t.Fatalf("query identity = %+v", nano.lastQueryIdentity)
+	}
+}
+
+func TestListingKitRoutedImageClientRejectsUnavailableConfigurationVersion(t *testing.T) {
+	nano := &stubListingKitImageGenerator{queryResponse: &openaiclient.ImageAsyncQueryResponse{JobID: "job-nano"}}
+	router := &listingKitRoutedImageClient{
+		defaultModel: listingKitImageModelSelectorGPTImage2,
+		defaultImage: nano,
+		nanobanana:   nano,
+	}
+	ctx := listingkit.WithAIAsyncImageQueryContext(context.Background(), listingkit.AIAsyncImageQueryContext{ConfigurationVersion: "config-submit"})
+
+	if _, err := router.QueryImageGenerationForRoutingKey(ctx, listingKitImageModelSelectorNano, "job-nano"); err == nil {
+		t.Fatal("expected query to reject a client without configuration-version recovery")
+	}
+}
+
+func TestAdaptListingKitAIImageGeneratorForwardsRouteAwareQuery(t *testing.T) {
+	upstream := &stubListingKitImageGenerator{queryResponse: &openaiclient.ImageAsyncQueryResponse{JobID: "job-a"}}
+	generator := adaptListingKitAIImageGenerator(upstream)
+	routeAware, ok := generator.(listingkit.AIAsyncImageQueryByRoutingKey)
+	if !ok {
+		t.Fatal("adapted generator does not expose route-aware async query")
+	}
+
+	response, err := routeAware.QueryImageGenerationForRoutingKey(context.Background(), "nano", "job-a")
+	if err != nil || response == nil || response.JobID != "job-a" {
+		t.Fatalf("route-aware query = (%+v, %v)", response, err)
+	}
+	if upstream.lastQueryRoute != "nano" || upstream.lastQueryJobID != "job-a" {
+		t.Fatalf("upstream route-aware query = route %q job %q", upstream.lastQueryRoute, upstream.lastQueryJobID)
 	}
 }
 

@@ -94,6 +94,7 @@ func newListingKitRuntimeBuildInput(logger *logrus.Logger, deps *runtimeDeps) li
 			ImageSceneRenderer:         deps.features.imageSceneRenderer,
 			AICredentialStore:          deps.shared.aiCredentialStore,
 			AIInvocationRecorder:       deps.shared.aiInvocationRecorder,
+			AIAsyncJobStore:            deps.shared.aiAsyncJobStore,
 			Support: listingkithttpapi.BuildRuntimeSupport(listingkithttpapi.RuntimeSupportInput{
 				SheinCookieStore:          ensureListingKitSheinCookieStore(logger, deps),
 				SDSSyncService:            buildSDSSyncService(logger, deps),

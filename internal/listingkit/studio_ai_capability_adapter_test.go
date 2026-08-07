@@ -34,6 +34,8 @@ type studioCapabilityGeneratorStub struct {
 	submitGenReq    *AIImageGenerateRequest
 	submitEditReq   *AIImageEditRequest
 	queryJobID      string
+	queryRoute      string
+	queryIdentity   RequestIdentity
 	response        *AIImageResponse
 	submit          *AIImageAsyncSubmit
 	query           *AIImageAsyncResult
@@ -76,6 +78,52 @@ func (s *studioCapabilityGeneratorStub) QueryImageGeneration(_ context.Context, 
 	return s.query, s.err
 }
 
+func (s *studioCapabilityGeneratorStub) QueryImageGenerationForRoutingKey(ctx context.Context, routingKey, jobID string) (*AIImageAsyncResult, error) {
+	s.queryCalls++
+	s.queryRoute = routingKey
+	s.queryJobID = jobID
+	s.queryIdentity = RequestIdentityFromContext(ctx)
+	return s.query, s.err
+}
+
+type studioCapabilityAsyncJobStoreStub struct {
+	binding        aicapability.AsyncJobBinding
+	putCalls       int
+	getCalls       int
+	statusCalls    int
+	putErr         error
+	getErr         error
+	statusErr      error
+	putCtxErr      error
+	requireLivePut bool
+}
+
+func (s *studioCapabilityAsyncJobStoreStub) PutAsyncJobBinding(ctx context.Context, binding aicapability.AsyncJobBinding) error {
+	s.putCalls++
+	s.putCtxErr = ctx.Err()
+	if s.requireLivePut && s.putCtxErr != nil {
+		return s.putCtxErr
+	}
+	if s.putErr != nil {
+		return s.putErr
+	}
+	s.binding = binding
+	return nil
+}
+
+func (s *studioCapabilityAsyncJobStoreStub) GetAsyncJobBinding(_ context.Context, _ string) (aicapability.AsyncJobBinding, error) {
+	s.getCalls++
+	if s.getErr != nil {
+		return aicapability.AsyncJobBinding{}, s.getErr
+	}
+	return s.binding, nil
+}
+
+func (s *studioCapabilityAsyncJobStoreStub) UpdateAsyncJobBindingStatus(_ context.Context, _ string, _ string, _ aicapability.ErrorCategory) error {
+	s.statusCalls++
+	return s.statusErr
+}
+
 type studioCapabilityRecorderStub struct {
 	mu      sync.Mutex
 	records []aicapability.InvocationRecord
@@ -107,9 +155,15 @@ func newStudioCapabilityAdapterForTest(t *testing.T, mode aicapability.RoutingMo
 		Legacy:   legacy,
 		Router:   router,
 		Recorder: recorder,
-		Mode:     mode,
-		Now:      func() time.Time { return time.Date(2026, 8, 6, 1, 2, 3, 0, time.UTC) },
-		NewID:    func() string { return "invocation-1" },
+		AsyncJobStore: func() aicapability.AsyncJobBindingStore {
+			if mode == aicapability.RoutingModeActive {
+				return &studioCapabilityAsyncJobStoreStub{}
+			}
+			return nil
+		}(),
+		Mode:  mode,
+		Now:   func() time.Time { return time.Date(2026, 8, 6, 1, 2, 3, 0, time.UTC) },
+		NewID: func() string { return "invocation-1" },
 	})
 	if err != nil {
 		t.Fatalf("NewStudioAIImageCapabilityAdapter() error = %v", err)
@@ -220,7 +274,7 @@ func TestStudioAIImageCapabilityAdapterProviderFailureIsClassifiedAndRecorderNev
 	recorder := &studioCapabilityRecorderStub{err: errors.New("ledger unavailable")}
 	callbackCalls := 0
 	adapter, err := NewStudioAIImageCapabilityAdapter(StudioAIImageCapabilityAdapterConfig{
-		Legacy: legacy, Router: &studioCapabilityRouterStub{decision: routeDecision()}, Recorder: recorder, Mode: aicapability.RoutingModeActive,
+		Legacy: legacy, Router: &studioCapabilityRouterStub{decision: routeDecision()}, Recorder: recorder, AsyncJobStore: &studioCapabilityAsyncJobStoreStub{}, Mode: aicapability.RoutingModeActive,
 		OnRecordError: func(aicapability.InvocationRecord, error) { callbackCalls++ },
 	})
 	if err != nil {
@@ -293,8 +347,174 @@ func TestStudioAIImageCapabilityAdapterAsyncAndQueryPreserveLegacyContract(t *te
 	if legacy.queryCalls != 1 || legacy.queryJobID != "job-a" || router.calls != 2 {
 		t.Fatalf("query rerouted or did not pass through: calls=%d router=%d", legacy.queryCalls, router.calls)
 	}
-	if record := recorder.last(t); record.Operation != aicapability.OperationAsyncImageQuery || record.ProviderID != "" || record.RoutingKey != "" {
-		t.Fatalf("query record should keep route unknown: %+v", record)
+	if legacy.queryRoute != "route-model-a" || legacy.queryJobID != "job-a" {
+		t.Fatalf("query did not recover submit route: route=%q job=%q", legacy.queryRoute, legacy.queryJobID)
+	}
+	if record := recorder.last(t); record.Operation != aicapability.OperationAsyncImageQuery || record.ProviderID != "provider-a" || record.RoutingKey != "route-model-a" || record.RouteOutcome != aicapability.RouteOutcomeActive {
+		t.Fatalf("query record did not include bound route: %+v", record)
+	}
+}
+
+func TestStudioAIImageCapabilityAdapterActiveBindsSubmitAndQueriesByRoute(t *testing.T) {
+	legacy := &studioCapabilityGeneratorStub{
+		supportsAsync: true,
+		submit:        &AIImageAsyncSubmit{JobID: "job-a", RequestID: "request-a", Provider: "provider-a"},
+		query:         &AIImageAsyncResult{JobID: "job-a", RequestID: "request-b", Provider: "provider-a"},
+	}
+	store := &studioCapabilityAsyncJobStoreStub{}
+	adapterValue, err := NewStudioAIImageCapabilityAdapter(StudioAIImageCapabilityAdapterConfig{
+		Legacy: legacy, Router: &studioCapabilityRouterStub{decision: routeDecision()}, Recorder: &studioCapabilityRecorderStub{},
+		AsyncJobStore: store, Mode: aicapability.RoutingModeActive,
+		Now: func() time.Time { return time.Date(2026, 8, 6, 1, 2, 3, 0, time.UTC) }, NewID: func() string { return "invocation-1" },
+	})
+	if err != nil {
+		t.Fatalf("NewStudioAIImageCapabilityAdapter() error = %v", err)
+	}
+	adapter := adapterValue.(*studioAIImageCapabilityAdapter)
+
+	if _, err := adapter.SubmitImageGeneration(studioCapabilityContext(), &AIImageGenerateRequest{Model: "original", Prompt: "generate"}); err != nil {
+		t.Fatalf("SubmitImageGeneration() error = %v", err)
+	}
+	if store.putCalls != 1 || store.binding.JobID != "job-a" || store.binding.RoutingKey != "route-model-a" || store.binding.ProviderID != "provider-a" {
+		t.Fatalf("unexpected binding after submit: calls=%d binding=%+v", store.putCalls, store.binding)
+	}
+
+	if _, err := adapter.QueryImageGeneration(studioCapabilityContext(), "job-a"); err != nil {
+		t.Fatalf("QueryImageGeneration() error = %v", err)
+	}
+	if store.getCalls != 1 || legacy.queryRoute != "route-model-a" || legacy.queryJobID != "job-a" {
+		t.Fatalf("query did not use stored route: gets=%d route=%q job=%q", store.getCalls, legacy.queryRoute, legacy.queryJobID)
+	}
+}
+
+func TestStudioAIImageCapabilityAdapterQueryRestoresSubmitIdentity(t *testing.T) {
+	legacy := &studioCapabilityGeneratorStub{
+		supportsAsync: true,
+		query:         &AIImageAsyncResult{JobID: "job-a"},
+	}
+	store := &studioCapabilityAsyncJobStoreStub{binding: aicapability.AsyncJobBinding{
+		JobID: "job-a", TenantID: "tenant-submit", UserID: "user-submit", Capability: aicapability.CapabilityListingKitStudioImage,
+		Operation: aicapability.OperationAsyncImageGenerate, ProviderID: "provider-a", ModelID: "model-a", RoutingKey: "route-model-a",
+		CredentialReference: "credential-a", ConfigurationVersion: "config-submit",
+	}}
+	adapterValue, err := NewStudioAIImageCapabilityAdapter(StudioAIImageCapabilityAdapterConfig{
+		Legacy: legacy, Router: &studioCapabilityRouterStub{decision: routeDecision()}, Recorder: &studioCapabilityRecorderStub{},
+		AsyncJobStore: store, Mode: aicapability.RoutingModeActive,
+	})
+	if err != nil {
+		t.Fatalf("NewStudioAIImageCapabilityAdapter() error = %v", err)
+	}
+	adapter := adapterValue.(*studioAIImageCapabilityAdapter)
+	currentCtx := WithRequestIdentity(context.Background(), RequestIdentity{TenantID: "tenant-current", UserID: "user-current"})
+
+	if _, err := adapter.QueryImageGeneration(currentCtx, "job-a"); err != nil {
+		t.Fatalf("QueryImageGeneration() error = %v", err)
+	}
+	if legacy.queryIdentity.TenantID != "tenant-submit" || legacy.queryIdentity.UserID != "user-submit" {
+		t.Fatalf("query used current identity %+v, want submit identity", legacy.queryIdentity)
+	}
+}
+
+func TestStudioAIImageCapabilityAdapterActiveMissingBindingFallsBackAndRecordsUnknownState(t *testing.T) {
+	legacy := &studioCapabilityGeneratorStub{supportsAsync: true, query: &AIImageAsyncResult{JobID: "legacy-job"}}
+	recorder := &studioCapabilityRecorderStub{}
+	store := &studioCapabilityAsyncJobStoreStub{getErr: aicapability.ErrAsyncJobBindingNotFound}
+	adapterValue, err := NewStudioAIImageCapabilityAdapter(StudioAIImageCapabilityAdapterConfig{
+		Legacy: legacy, Router: &studioCapabilityRouterStub{decision: routeDecision()}, Recorder: recorder,
+		AsyncJobStore: store, Mode: aicapability.RoutingModeActive,
+	})
+	if err != nil {
+		t.Fatalf("NewStudioAIImageCapabilityAdapter() error = %v", err)
+	}
+	adapter := adapterValue.(*studioAIImageCapabilityAdapter)
+
+	if _, err := adapter.QueryImageGeneration(studioCapabilityContext(), "legacy-job"); err != nil {
+		t.Fatalf("QueryImageGeneration() error = %v", err)
+	}
+	if legacy.queryCalls != 1 || legacy.queryJobID != "legacy-job" {
+		t.Fatalf("legacy fallback query calls=%d job=%q", legacy.queryCalls, legacy.queryJobID)
+	}
+	record := recorder.last(t)
+	if record.ErrorCategory != aicapability.ErrorUnknownRemoteState || record.RouteOutcome != aicapability.RouteOutcomeLegacy {
+		t.Fatalf("unexpected missing binding record: %+v", record)
+	}
+}
+
+func TestStudioAIImageCapabilityAdapterActiveBindingFailureReturnsUnknownState(t *testing.T) {
+	legacy := &studioCapabilityGeneratorStub{supportsAsync: true, submit: &AIImageAsyncSubmit{JobID: "job-a"}}
+	recorder := &studioCapabilityRecorderStub{}
+	store := &studioCapabilityAsyncJobStoreStub{putErr: errors.New("binding database unavailable")}
+	adapterValue, err := NewStudioAIImageCapabilityAdapter(StudioAIImageCapabilityAdapterConfig{
+		Legacy: legacy, Router: &studioCapabilityRouterStub{decision: routeDecision()}, Recorder: recorder,
+		AsyncJobStore: store, Mode: aicapability.RoutingModeActive,
+	})
+	if err != nil {
+		t.Fatalf("NewStudioAIImageCapabilityAdapter() error = %v", err)
+	}
+	adapter := adapterValue.(*studioAIImageCapabilityAdapter)
+
+	response, err := adapter.SubmitImageGeneration(studioCapabilityContext(), &AIImageGenerateRequest{Model: "original", Prompt: "generate"})
+	if response == nil || aicapability.CategoryOf(err) != aicapability.ErrorUnknownRemoteState {
+		t.Fatalf("SubmitImageGeneration() = (%+v, %v), want remote-unknown error", response, err)
+	}
+	if record := recorder.last(t); record.ErrorCategory != aicapability.ErrorUnknownRemoteState || record.Outcome != aicapability.InvocationFailed {
+		t.Fatalf("unexpected binding failure record: %+v", record)
+	}
+}
+
+func TestStudioAIImageCapabilityAdapterActiveRejectsEmptyAsyncJobID(t *testing.T) {
+	legacy := &studioCapabilityGeneratorStub{supportsAsync: true, submit: &AIImageAsyncSubmit{RequestID: "request-a"}}
+	recorder := &studioCapabilityRecorderStub{}
+	adapterValue, err := NewStudioAIImageCapabilityAdapter(StudioAIImageCapabilityAdapterConfig{
+		Legacy: legacy, Router: &studioCapabilityRouterStub{decision: routeDecision()}, Recorder: recorder,
+		AsyncJobStore: &studioCapabilityAsyncJobStoreStub{}, Mode: aicapability.RoutingModeActive,
+	})
+	if err != nil {
+		t.Fatalf("NewStudioAIImageCapabilityAdapter() error = %v", err)
+	}
+	adapter := adapterValue.(*studioAIImageCapabilityAdapter)
+
+	_, err = adapter.SubmitImageGeneration(studioCapabilityContext(), &AIImageGenerateRequest{Model: "original", Prompt: "generate"})
+	if aicapability.CategoryOf(err) != aicapability.ErrorInvalidProviderResponse {
+		t.Fatalf("SubmitImageGeneration() category = %q, want %q", aicapability.CategoryOf(err), aicapability.ErrorInvalidProviderResponse)
+	}
+}
+
+func TestStudioAIImageCapabilityAdapterActiveRejectsNilAsyncSubmit(t *testing.T) {
+	legacy := &studioCapabilityGeneratorStub{supportsAsync: true}
+	recorder := &studioCapabilityRecorderStub{}
+	adapterValue, err := NewStudioAIImageCapabilityAdapter(StudioAIImageCapabilityAdapterConfig{
+		Legacy: legacy, Router: &studioCapabilityRouterStub{decision: routeDecision()}, Recorder: recorder,
+		AsyncJobStore: &studioCapabilityAsyncJobStoreStub{}, Mode: aicapability.RoutingModeActive,
+	})
+	if err != nil {
+		t.Fatalf("NewStudioAIImageCapabilityAdapter() error = %v", err)
+	}
+
+	_, err = adapterValue.(*studioAIImageCapabilityAdapter).SubmitImageGeneration(studioCapabilityContext(), &AIImageGenerateRequest{Model: "original", Prompt: "generate"})
+	if aicapability.CategoryOf(err) != aicapability.ErrorInvalidProviderResponse {
+		t.Fatalf("SubmitImageGeneration() category = %q, want %q", aicapability.CategoryOf(err), aicapability.ErrorInvalidProviderResponse)
+	}
+}
+
+func TestStudioAIImageCapabilityAdapterAsyncBindingWriteSurvivesRequestCancellation(t *testing.T) {
+	legacy := &studioCapabilityGeneratorStub{supportsAsync: true, submit: &AIImageAsyncSubmit{JobID: "job-a"}}
+	store := &studioCapabilityAsyncJobStoreStub{requireLivePut: true}
+	adapterValue, err := NewStudioAIImageCapabilityAdapter(StudioAIImageCapabilityAdapterConfig{
+		Legacy: legacy, Router: &studioCapabilityRouterStub{decision: routeDecision()}, Recorder: &studioCapabilityRecorderStub{},
+		AsyncJobStore: store, Mode: aicapability.RoutingModeActive,
+	})
+	if err != nil {
+		t.Fatalf("NewStudioAIImageCapabilityAdapter() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(studioCapabilityContext())
+	cancel()
+	if _, err := adapterValue.(*studioAIImageCapabilityAdapter).SubmitImageGeneration(ctx, &AIImageGenerateRequest{Model: "original", Prompt: "generate"}); err != nil {
+		t.Fatalf("SubmitImageGeneration() error = %v", err)
+	}
+	if store.putCalls != 1 || store.putCtxErr != nil {
+		t.Fatalf("binding write context = %v, calls=%d; want live context and one write", store.putCtxErr, store.putCalls)
 	}
 }
 

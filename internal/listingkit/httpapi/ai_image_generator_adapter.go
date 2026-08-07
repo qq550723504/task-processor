@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit"
@@ -112,6 +113,32 @@ func (g listingKitAIImageGenerator) SubmitImageEdit(ctx context.Context, req *li
 
 func (g listingKitAIImageGenerator) QueryImageGeneration(ctx context.Context, jobID string) (*listingkit.AIImageAsyncResult, error) {
 	response, err := g.generator.QueryImageGeneration(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+	if response == nil {
+		return nil, nil
+	}
+	return &listingkit.AIImageAsyncResult{
+		JobID:             response.JobID,
+		RequestID:         response.RequestID,
+		Provider:          response.Provider,
+		Status:            listingkit.AIImageAsyncResultStatus(response.Status),
+		RawResultResponse: response.RawResultResponse,
+		Error:             response.Error,
+		Usage:             listingkit.AIUsage(response.Usage),
+		Response:          adaptListingKitAIImageResponse(&openaiclient.ImageResponse{Data: response.Data, Usage: response.Usage, RequestID: response.RequestID}),
+	}, nil
+}
+
+func (g listingKitAIImageGenerator) QueryImageGenerationForRoutingKey(ctx context.Context, routingKey, jobID string) (*listingkit.AIImageAsyncResult, error) {
+	queryer, ok := g.generator.(interface {
+		QueryImageGenerationForRoutingKey(context.Context, string, string) (*openaiclient.ImageAsyncQueryResponse, error)
+	})
+	if !ok {
+		return nil, fmt.Errorf("route-aware async image query is not supported")
+	}
+	response, err := queryer.QueryImageGenerationForRoutingKey(ctx, routingKey, jobID)
 	if err != nil {
 		return nil, err
 	}
