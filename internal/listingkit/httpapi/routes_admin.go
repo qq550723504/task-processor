@@ -11,6 +11,7 @@ type AdminRouteHandler interface {
 	DeleteAdminStore(c *gin.Context)
 	ListSimpleAdminStores(c *gin.Context)
 	ListAdminStoreStatistics(c *gin.Context)
+	ListPlatformStoreStatistics(c *gin.Context)
 	GetAdminDispatchEventSummary(c *gin.Context)
 	ListAdminDispatchEvents(c *gin.Context)
 	ListDeletedAdminStores(c *gin.Context)

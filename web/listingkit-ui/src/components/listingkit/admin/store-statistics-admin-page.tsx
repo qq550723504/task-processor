@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import {
   getListingStoreStatistics,
+  getPlatformStoreStatistics,
   type ListingStoreStatistics,
   type ListingStoreStatisticsSummary,
 } from "@/lib/api/admin-store-statistics";
@@ -63,8 +64,11 @@ export function StoreStatisticsAdminPage({
   );
 
   const statisticsQuery = useQuery({
-    queryKey: ["listingkit-admin-store-statistics", query],
-    queryFn: () => getListingStoreStatistics(query),
+    queryKey: ["listingkit-store-statistics", variant, query],
+    queryFn: () =>
+      isTenantView
+        ? getListingStoreStatistics(query)
+        : getPlatformStoreStatistics(query),
     refetchInterval: 30_000,
     placeholderData: (previousData) => previousData,
   });

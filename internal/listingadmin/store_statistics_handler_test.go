@@ -166,7 +166,7 @@ func TestStoreStatisticsHandlerOwnerScopeFiltersStoresByUser(t *testing.T) {
 	}
 }
 
-func TestStoreStatisticsHandlerPlatformAdminBypassesOwnerScope(t *testing.T) {
+func TestStoreStatisticsHandlerPlatformRoleStillUsesTenantAndOwnerScope(t *testing.T) {
 	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
 
 	router := newStoreStatisticsTestRouter(t)
@@ -204,7 +204,7 @@ func TestStoreStatisticsHandlerPlatformAdminBypassesOwnerScope(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/store-statistics", nil)
 	req.Header.Set("X-Tenant-ID", "101")
-	req.Header.Set("X-User-ID", "platform-admin")
+	req.Header.Set("X-User-ID", "user-a")
 	req.Header.Set("X-User-Roles", "platform_admin")
 	resp := httptest.NewRecorder()
 	router.engine.ServeHTTP(resp, req)
@@ -217,7 +217,36 @@ func TestStoreStatisticsHandlerPlatformAdminBypassesOwnerScope(t *testing.T) {
 		t.Fatalf("decode response: %v", err)
 	}
 	if len(page.Items) != 2 {
-		t.Fatalf("statistics items = %+v, want both stores", page.Items)
+		t.Fatalf("statistics items = %+v, want both stores from tenant 101 only", page.Items)
+	}
+	for _, item := range page.Items {
+		if item.TenantID != 101 {
+			t.Fatalf("statistics item = %+v, want tenant 101", item)
+		}
+	}
+}
+
+func TestStoreStatisticsHandlerPlatformStatisticsUsesGlobalScope(t *testing.T) {
+	repo := &captureStoreStatisticsRepository{page: &StoreStatisticsPage{Items: []StoreStatistics{}}}
+	handler := NewStoreStatisticsHandler(repo)
+	gin.SetMode(gin.TestMode)
+	engine := gin.New()
+	engine.GET("/store-statistics", func(c *gin.Context) {
+		MarkPlatformStoreAccess(c)
+		handler.ListPlatformStoreStatistics(c)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/store-statistics", nil)
+	req.Header.Set("X-Tenant-ID", "101")
+	req.Header.Set("X-User-ID", "platform-admin")
+	resp := httptest.NewRecorder()
+	engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET /store-statistics = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	if repo.query.TenantID != 0 || repo.query.OwnerUserID != "" {
+		t.Fatalf("repo query = %+v, want global scope", repo.query)
 	}
 }
 
@@ -431,7 +460,7 @@ func TestStoreStatisticsHandlerPlatformAccessClearsTenantAndOwnerScope(t *testin
 	engine := gin.New()
 	engine.GET("/store-statistics", func(c *gin.Context) {
 		MarkPlatformStoreAccess(c)
-		handler.ListStoreStatistics(c)
+		handler.ListPlatformStoreStatistics(c)
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/store-statistics", nil)

@@ -95,13 +95,17 @@ func requestHasTenantAdminAccess(ctx context.Context) bool {
 }
 
 func applyOwnerScope(db *gorm.DB, ctx context.Context, ownerColumn string) *gorm.DB {
+	return applyOwnerScopeForUser(db, ctx, requestUserIDFromContext(ctx), ownerColumn)
+}
+
+func applyOwnerScopeForUser(db *gorm.DB, ctx context.Context, ownerUserID, ownerColumn string) *gorm.DB {
 	if db == nil || !ownerScopeEnabled() {
 		return db
 	}
 	if requestHasTenantAdminAccess(ctx) {
 		return db
 	}
-	ownerUserID := requestUserIDFromContext(ctx)
+	ownerUserID = strings.TrimSpace(ownerUserID)
 	if ownerUserID == "" || strings.TrimSpace(ownerColumn) == "" {
 		return db
 	}

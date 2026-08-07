@@ -73,13 +73,26 @@ export function parseStoreStatisticsResponse(
 export async function getListingStoreStatistics(
   query: ListingStoreStatisticsQuery = {},
 ): Promise<ListingStoreStatisticsPage> {
+  return getStoreStatistics("/admin/store-statistics", query);
+}
+
+export async function getPlatformStoreStatistics(
+  query: ListingStoreStatisticsQuery = {},
+): Promise<ListingStoreStatisticsPage> {
+  return getStoreStatistics("/platform/store-statistics", query);
+}
+
+async function getStoreStatistics(
+  path: string,
+  query: ListingStoreStatisticsQuery,
+): Promise<ListingStoreStatisticsPage> {
   const normalizedQuery = {
     ...query,
     page: normalizePage(query.page),
     page_size: normalizePageSize(query.page_size),
   };
 
-  const payload = await apiRequest<unknown>("/admin/store-statistics", {
+  const payload = await apiRequest<unknown>(path, {
     query: normalizedQuery,
   });
   return parseStoreStatisticsResponse(payload);

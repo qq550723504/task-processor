@@ -164,7 +164,7 @@ const ADMIN_NAV_ITEMS = [
         href: "/listing-kits/admin/store-statistics",
         icon: LayoutDashboard,
         match: "prefix",
-        requiredRoles: MENU_ROLES.operator,
+        requiredRoles: MENU_ROLES.platformAdmin,
       },
     ],
   },
