@@ -61,3 +61,8 @@ ordering, and database credentials have been recovered and reviewed.
 - The rendered chart includes `temporal-schema-1-2-0-1`, while the live
   namespace currently has no Temporal Job. Schema-job ownership and ordering
   remain an explicit upgrade gate.
+- The Temporal databases currently report `temporal=1.19` and
+  `temporal_visibility=1.14`. The rendered chart's schema hook uses a
+  `ttlSecondsAfterFinished` of 86400, so an absent historical Job is
+  consistent with a completed-and-cleaned hook, but the next upgrade must
+  still preserve schema-before-server ordering.
