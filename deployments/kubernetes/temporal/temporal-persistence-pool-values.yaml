@@ -1,0 +1,19 @@
+# Merge this file after recovering the original Temporal release values.
+# It is intentionally an override, not a standalone Temporal installation.
+#
+# The current live cluster uses the two existing Secrets below. Do not replace
+# them with plaintext passwords in a values file.
+server:
+  config:
+    persistence:
+      datastores:
+        default:
+          sql:
+            maxConnLifetime: 1h
+            maxConns: 20
+            maxIdleConns: 5
+        visibility:
+          sql:
+            maxConnLifetime: 1h
+            maxConns: 20
+            maxIdleConns: 5

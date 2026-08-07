@@ -324,3 +324,17 @@ Confirm that all schema migration entry points include `ai_async_jobs`, all acti
 git add docs/superpowers/plans/2026-08-06-ai-async-job-binding.md
 git commit -m "docs: mark async job binding verification complete"
 ```
+
+## Verification evidence (2026-08-07)
+
+- Production schema migration Job `listingkit-schema-migrate-5csm9` completed with image tag `1350baac`.
+- Production `ai_async_jobs` exists in `ruoyi-vue-pro`; the active submit binding for the verified Studio batch persisted the selected Provider, model, and routing key.
+- The verified production Provider returned `direct_response=true`, so that request materialized without entering `async_image_query`; no production data was modified to force the query path.
+- Local fake-Provider coverage passed for active submit/query route binding and the complete `submitted -> polling -> succeeded -> materialized` recovery path.
+- Fresh `go vet` and `go test ./...` passed; the production API health endpoint returned `{"status":"ok"}` and no attempts remained in `submitted` or `polling` state.
+
+## Temporal connection-pressure hardening (2026-08-07)
+
+- The production Temporal ConfigMap uses PostgreSQL pools with `maxConns: 20` and `maxIdleConns: 5` for both the default and visibility stores; the idle limit was reduced from `20` to `5` to lower retained connection pressure without changing burst capacity.
+- The four core Temporal Deployments (`frontend`, `history`, `matching`, and `worker`) rolled out successfully. After the startup window, all Pods were Ready with zero restarts, no recent connection or membership errors were observed, the API health endpoint remained `{"status":"ok"}`, and PostgreSQL reported `50/100` active connections.
+- The repository does not currently contain the Temporal Helm values or release state. Cluster resources retain Helm metadata, but `helm list -A` has no Temporal release and `temporal-config` has no owner reference. The live setting is therefore verified but not yet backed by an authoritative deployment source; the infrastructure owner must reconcile this ConfigMap with the missing Helm/GitOps source before the next Temporal upgrade.
