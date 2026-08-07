@@ -19,6 +19,13 @@ const taskResult: ListingKitTaskResult = {
   task_id: "task-1",
   tenant_id: "tenant-a",
   status: "completed",
+  source_reference: {
+    key: "crawler:1688:888",
+    type: "crawler",
+    platform: "1688",
+    id: "888",
+    url: "https://detail.1688.com/offer/888.html",
+  },
   created_at: "2026-05-09T01:00:00Z",
   completed_at: "2026-05-09T01:03:00Z",
   result: {
@@ -121,5 +128,22 @@ describe("buildCanonicalProductDetail", () => {
     expect(detail?.trustedFieldCount).toBe(1);
     expect(detail?.product.title).toBe("Bluetooth Headphones");
     expect(detail?.summary?.variantCount).toBe(2);
+    expect(detail?.sourceReference).toEqual({
+      key: "crawler:1688:888",
+      type: "crawler",
+      platform: "1688",
+      id: "888",
+      url: "https://detail.1688.com/offer/888.html",
+    });
+    expect(detail?.sourceReference).not.toBe(taskResult.source_reference);
+  });
+
+  it("omits source lineage for legacy task results", () => {
+    const detail = buildCanonicalProductDetail({
+      ...taskResult,
+      source_reference: undefined,
+    });
+
+    expect(detail?.sourceReference).toBeUndefined();
   });
 });
