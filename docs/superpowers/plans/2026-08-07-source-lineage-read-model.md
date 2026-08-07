@@ -132,7 +132,7 @@ git commit -m "feat: expose source lineage in task list items"
 **Interfaces:**
 
 - Consumes: optional API object source_reference with five optional string fields.
-- Produces: typed, schema-validated source metadata and an accessible external source link without changing task navigation.
+- Produces: typed, schema-validated source metadata, an external source link in the task-list row, and plain source summary text in the home card without changing task navigation.
 
 - [ ] **Step 1: Add the failing schema test**
 
@@ -140,7 +140,7 @@ Extend task-list-schema.test.ts with a complete source_reference object and asse
 
 - [ ] **Step 2: Add the failing card test**
 
-Extend listingkit-home-task-card.test.tsx with the same source reference. Assert the card renders 1688 and an external link with the normalized URL, target="_blank", and rel="noreferrer". Keep the workspace link assertion unchanged.
+Extend listingkit-home-task-card.test.tsx with the same source reference. Assert the card renders 1688 and 888 as source summary text, and does not create a second source link inside the workspace link. Keep the workspace link assertion unchanged.
 
 - [ ] **Step 3: Run the UI red tests**
 
@@ -158,7 +158,7 @@ Add ListingKitSourceReference with optional key, type, platform, id, and url str
 
 - [ ] **Step 5: Render source metadata**
 
-In the existing task row and home task card, render metadata only when the reference has a non-empty platform, ID, or URL. Show platform/ID as text and render the URL as an accessible external link. Do not make the whole task card navigate to the source URL and do not render an empty anchor.
+In the existing task row, render metadata only when the reference has a non-empty platform, ID, or URL. Show platform/ID as text and render the URL as an accessible external link with target="_blank" and rel="noreferrer". In the home task card, show platform/ID as plain text only because the card root is already the workspace link; do not create nested anchors or empty anchors.
 
 - [ ] **Step 6: Run UI green checks and commit**
 
