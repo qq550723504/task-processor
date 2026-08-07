@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Images, LoaderCircle, ShieldAlert } from "lucide-react";
 
 import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
+import { TaskPersistedSourceReference } from "@/components/listingkit/tasks/task-persisted-source-reference";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -74,6 +75,8 @@ export function CanonicalProductDetailPage({ taskId }: { taskId: string }) {
           </div>
         </Card>
       </section>
+
+      <TaskPersistedSourceReference source={detail.data.sourceReference} />
 
       <div className="grid gap-5 xl:grid-cols-[360px_1fr]">
         <Card className="overflow-hidden">

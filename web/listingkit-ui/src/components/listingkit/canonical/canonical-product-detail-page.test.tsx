@@ -9,6 +9,13 @@ vi.mock("@/lib/query/use-canonical-products", () => ({
     isError: false,
     data: {
       taskId: "task-1",
+      sourceReference: {
+        key: "crawler:1688:888",
+        type: "crawler",
+        platform: "1688",
+        id: "888",
+        url: "https://detail.1688.com/offer/888.html",
+      },
       product: {
         title: "Canvas Tote",
         brand: "Studio",
@@ -44,5 +51,15 @@ describe("CanonicalProductDetailPage", () => {
     expect(screen.getByText("main")).toBeInTheDocument();
     expect(screen.getByText("gallery")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: /Canvas Tote/i })).toHaveLength(2);
+  });
+
+  it("shows the persisted source lineage", () => {
+    render(<CanonicalProductDetailPage taskId="task-1" />);
+
+    expect(screen.getByText("来源 1688 · 888")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看来源" })).toHaveAttribute(
+      "href",
+      "https://detail.1688.com/offer/888.html",
+    );
   });
 });
