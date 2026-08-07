@@ -90,6 +90,90 @@ func TestAlibaba1688HTTPReplayCreatesTaskAndPreservesSourceFacts(t *testing.T) {
 	}
 }
 
+func TestAlibaba1688HTTPReplayRejectsMissingFacts(t *testing.T) {
+	creator := &replayGenerateTaskCreator{}
+	router := newAlibaba1688ReplayRouter(creator)
+	product := replayProduct1688("322")
+	product.Title = ""
+	product.MainImage = ""
+	product.Images = nil
+	product.ProductDetails = nil
+	product.Variants = nil
+	rec := performAuthenticatedReplayRequest(t, router, sourcea1688.CreateListingKitTaskRequest{
+		URL:           "https://detail.1688.com/offer/322.html",
+		Product:       product,
+		SourceStoreID: 3001,
+		Platforms:     []string{"shein"},
+		SheinStoreID:  168811,
+	}, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-1688"})
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if body["error"] != "task_creation_failed" {
+		t.Fatalf("error = %#v, want task_creation_failed", body["error"])
+	}
+	if !strings.Contains(body["message"].(string), "1688 source cannot create listingkit task") {
+		t.Fatalf("message = %#v, want source task creation explanation", body["message"])
+	}
+	identity, ok := body["source_identity"].(map[string]any)
+	if !ok || identity["SourceID"] != "322" {
+		t.Fatalf("source identity = %#v, want source id 322", body["source_identity"])
+	}
+	warnings, ok := body["source_warnings"].([]any)
+	if !ok || len(warnings) == 0 {
+		t.Fatalf("source warnings = %#v, want missing-facts warning", body["source_warnings"])
+	}
+	if creator.calls != 0 {
+		t.Fatalf("creator calls = %d, want no task creation", creator.calls)
+	}
+}
+
+func TestAlibaba1688HTTPReplayPreservesSourceError(t *testing.T) {
+	creator := &replayGenerateTaskCreator{}
+	router := newAlibaba1688ReplayRouter(creator)
+	rec := performAuthenticatedReplayRequest(t, router, sourcea1688.CreateListingKitTaskRequest{
+		URL:           "https://detail.1688.com/offer/323.html",
+		SourceError:   "controlled crawler failed",
+		SourceStoreID: 3001,
+		Platforms:     []string{"shein"},
+		SheinStoreID:  168811,
+	}, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-1688"})
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if body["error"] != "task_creation_failed" {
+		t.Fatalf("error = %#v, want task_creation_failed", body["error"])
+	}
+	identity, ok := body["source_identity"].(map[string]any)
+	if !ok || identity["SourceID"] != "323" {
+		t.Fatalf("source identity = %#v, want source id 323", body["source_identity"])
+	}
+	warnings, ok := body["source_warnings"].([]any)
+	foundSourceError := false
+	for _, warning := range warnings {
+		if strings.Contains(fmt.Sprint(warning), "controlled crawler failed") {
+			foundSourceError = true
+			break
+		}
+	}
+	if !ok || len(warnings) == 0 || !foundSourceError {
+		t.Fatalf("source warnings = %#v, want controlled source error", body["source_warnings"])
+	}
+	if creator.calls != 0 {
+		t.Fatalf("creator calls = %d, want no task creation", creator.calls)
+	}
+}
+
 type replayGenerateTaskCreator struct {
 	request *listingkit.GenerateRequest
 	calls   int
