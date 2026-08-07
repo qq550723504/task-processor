@@ -109,6 +109,9 @@ func runListingKitRepositoryAutoMigrations(db *gorm.DB) error {
 	if err := aicapabilitystore.AutoMigrateInvocationLedger(db); err != nil {
 		return fmt.Errorf("ai invocation ledger auto-migrate failed: %w", err)
 	}
+	if err := aicapabilitystore.AutoMigrateAsyncJobBindings(db); err != nil {
+		return fmt.Errorf("ai async job binding auto-migrate failed: %w", err)
+	}
 	if err := listingkit.AutoMigrateStudioAsyncJobRepository(db); err != nil {
 		return fmt.Errorf("migrate listingkit studio async job repository: %w", err)
 	}

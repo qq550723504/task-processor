@@ -15,6 +15,7 @@ import (
 )
 
 const studioAIInvocationRecordTimeout = 2 * time.Second
+const studioAIAsyncJobBindingTimeout = 2 * time.Second
 
 // StudioAIImageCapabilityAdapterConfig adds capability routing and observability
 // around the existing Studio image generator without changing its provider contract.
@@ -22,6 +23,7 @@ type StudioAIImageCapabilityAdapterConfig struct {
 	Legacy        AIImageGenerator
 	Router        aicapability.Router
 	Recorder      aicapability.InvocationRecorder
+	AsyncJobStore aicapability.AsyncJobBindingStore
 	Mode          aicapability.RoutingMode
 	OnRecordError func(aicapability.InvocationRecord, error)
 	Now           func() time.Time
@@ -29,14 +31,16 @@ type StudioAIImageCapabilityAdapterConfig struct {
 }
 
 type studioAIImageCapabilityAdapter struct {
-	legacy        AIImageGenerator
-	legacyAsync   AIAsyncImageGenerator
-	router        aicapability.Router
-	recorder      aicapability.InvocationRecorder
-	mode          aicapability.RoutingMode
-	onRecordError func(aicapability.InvocationRecord, error)
-	now           func() time.Time
-	newID         func() string
+	legacy           AIImageGenerator
+	legacyAsync      AIAsyncImageGenerator
+	legacyRouteAware AIAsyncImageQueryByRoutingKey
+	router           aicapability.Router
+	recorder         aicapability.InvocationRecorder
+	asyncJobStore    aicapability.AsyncJobBindingStore
+	mode             aicapability.RoutingMode
+	onRecordError    func(aicapability.InvocationRecord, error)
+	now              func() time.Time
+	newID            func() string
 }
 
 // NewStudioAIImageCapabilityAdapter returns the original generator in legacy mode.
@@ -55,6 +59,9 @@ func NewStudioAIImageCapabilityAdapter(config StudioAIImageCapabilityAdapterConf
 	if config.Router == nil || config.Recorder == nil {
 		return nil, aicapability.NewError(aicapability.ErrorInvalidInput, "", nil)
 	}
+	if mode == aicapability.RoutingModeActive && config.AsyncJobStore == nil {
+		return nil, aicapability.NewError(aicapability.ErrorInvalidInput, "", nil)
+	}
 	if config.Now == nil {
 		config.Now = time.Now
 	}
@@ -62,15 +69,18 @@ func NewStudioAIImageCapabilityAdapter(config StudioAIImageCapabilityAdapterConf
 		config.NewID = uuid.NewString
 	}
 	async, _ := config.Legacy.(AIAsyncImageGenerator)
+	routeAware, _ := config.Legacy.(AIAsyncImageQueryByRoutingKey)
 	return &studioAIImageCapabilityAdapter{
-		legacy:        config.Legacy,
-		legacyAsync:   async,
-		router:        config.Router,
-		recorder:      config.Recorder,
-		mode:          mode,
-		onRecordError: config.OnRecordError,
-		now:           config.Now,
-		newID:         config.NewID,
+		legacy:           config.Legacy,
+		legacyAsync:      async,
+		legacyRouteAware: routeAware,
+		router:           config.Router,
+		recorder:         config.Recorder,
+		asyncJobStore:    config.AsyncJobStore,
+		mode:             mode,
+		onRecordError:    config.OnRecordError,
+		now:              config.Now,
+		newID:            config.NewID,
 	}, nil
 }
 
@@ -123,10 +133,18 @@ func (a *studioAIImageCapabilityAdapter) SubmitImageGeneration(ctx context.Conte
 		return nil, routeErr
 	}
 	next := request
+	submitCtx := ctx
 	if a.mode == aicapability.RoutingModeActive {
 		next = activeGenerateRequest(request, decision.RoutingKey)
+		identity := requestIdentity(ctx)
+		submitCtx = WithAIAsyncImageQueryContext(WithRequestIdentity(submitCtx, identity), AIAsyncImageQueryContext{
+			TenantID: identity.TenantID, UserID: identity.UserID, CredentialReference: decision.CredentialReference, ConfigurationVersion: decision.ConfigurationVersion,
+		})
 	}
-	response, err := a.submitImageGeneration(ctx, next)
+	response, err := a.submitImageGeneration(submitCtx, next)
+	if err == nil {
+		err = a.persistAsyncJobBinding(ctx, aicapability.OperationAsyncImageGenerate, decision, response)
+	}
 	a.record(ctx, a.newRecord(ctx, startedAt, aicapability.OperationAsyncImageGenerate, requestedGenerateModel(request), routeOutcome, decision, routeErr, err, asyncSubmitResult(response), hashPrompt(generatePrompt(request)), hashGenerateInput(request)))
 	return response, err
 }
@@ -140,20 +158,128 @@ func (a *studioAIImageCapabilityAdapter) SubmitImageEdit(ctx context.Context, re
 		return nil, routeErr
 	}
 	next := request
+	submitCtx := ctx
 	if a.mode == aicapability.RoutingModeActive {
 		next = activeEditRequest(request, decision.RoutingKey)
+		identity := requestIdentity(ctx)
+		submitCtx = WithAIAsyncImageQueryContext(WithRequestIdentity(submitCtx, identity), AIAsyncImageQueryContext{
+			TenantID: identity.TenantID, UserID: identity.UserID, CredentialReference: decision.CredentialReference, ConfigurationVersion: decision.ConfigurationVersion,
+		})
 	}
-	response, err := a.submitImageEdit(ctx, next)
+	response, err := a.submitImageEdit(submitCtx, next)
+	if err == nil {
+		err = a.persistAsyncJobBinding(ctx, aicapability.OperationAsyncImageEdit, decision, response)
+	}
 	a.record(ctx, a.newRecord(ctx, startedAt, aicapability.OperationAsyncImageEdit, requestedEditModel(request), routeOutcome, decision, routeErr, err, asyncSubmitResult(response), hashPrompt(editPrompt(request)), hashEditInput(request)))
 	return response, err
 }
 
 func (a *studioAIImageCapabilityAdapter) QueryImageGeneration(ctx context.Context, jobID string) (*AIImageAsyncResult, error) {
 	startedAt := a.now()
-	response, err := a.queryImageGeneration(ctx, jobID)
-	decision := aicapability.RouteDecision{}
-	a.record(ctx, a.newRecord(ctx, startedAt, aicapability.OperationAsyncImageQuery, "", aicapability.RouteOutcomeLegacy, decision, nil, err, asyncQueryResult(response), "", hashFields(jobID)))
+	response, err, decision, routeOutcome, routeErr, binding := a.queryAsyncJob(ctx, jobID)
+	if a.mode == aicapability.RoutingModeActive && routeOutcome == aicapability.RouteOutcomeActive && binding.JobID != "" {
+		status := binding.Status
+		category := aicapability.ErrorCategory("")
+		if response != nil {
+			status = string(response.Status)
+		}
+		if err != nil {
+			category = classifyInvocationError(err)
+		} else {
+			category = asyncQueryResponseErrorCategory(response)
+		}
+		_ = a.updateAsyncJobStatus(ctx, jobID, status, category)
+	}
+	a.record(ctx, a.newRecord(ctx, startedAt, aicapability.OperationAsyncImageQuery, "", routeOutcome, decision, routeErr, err, asyncQueryResult(response), "", hashFields(jobID)))
 	return response, err
+}
+
+func (a *studioAIImageCapabilityAdapter) queryAsyncJob(ctx context.Context, jobID string) (*AIImageAsyncResult, error, aicapability.RouteDecision, aicapability.RouteOutcome, error, aicapability.AsyncJobBinding) {
+	decision := aicapability.RouteDecision{}
+	var binding aicapability.AsyncJobBinding
+	if a.mode != aicapability.RoutingModeActive {
+		response, err := a.queryImageGeneration(ctx, jobID)
+		return response, err, decision, aicapability.RouteOutcomeLegacy, nil, binding
+	}
+	var bindingErr error
+	binding, bindingErr = a.asyncJobStore.GetAsyncJobBinding(ctx, jobID)
+	if bindingErr != nil {
+		unknownErr := aicapability.NewError(aicapability.ErrorUnknownRemoteState, string(aicapability.OperationAsyncImageQuery), bindingErr)
+		if errors.Is(bindingErr, aicapability.ErrAsyncJobBindingNotFound) {
+			response, queryErr := a.queryImageGeneration(ctx, jobID)
+			return response, queryErr, decision, aicapability.RouteOutcomeLegacy, unknownErr, binding
+		}
+		return nil, unknownErr, decision, aicapability.RouteOutcomeActive, unknownErr, binding
+	}
+	decision = routeDecisionFromAsyncJobBinding(binding)
+	if a.legacyRouteAware == nil {
+		unknownErr := aicapability.NewError(aicapability.ErrorUnknownRemoteState, string(aicapability.OperationAsyncImageQuery), errors.New("route-aware async image query is not supported"))
+		return nil, unknownErr, decision, aicapability.RouteOutcomeActive, unknownErr, binding
+	}
+	queryCtx := ctx
+	if binding.TenantID != "" || binding.UserID != "" {
+		queryCtx = WithRequestIdentity(queryCtx, RequestIdentity{TenantID: binding.TenantID, UserID: binding.UserID})
+	}
+	queryCtx = WithAIAsyncImageQueryContext(queryCtx, AIAsyncImageQueryContext{
+		TenantID: binding.TenantID, UserID: binding.UserID, CredentialReference: binding.CredentialReference, ConfigurationVersion: binding.ConfigurationVersion,
+	})
+	response, queryErr := a.legacyRouteAware.QueryImageGenerationForRoutingKey(queryCtx, binding.RoutingKey, jobID)
+	return response, queryErr, decision, aicapability.RouteOutcomeActive, nil, binding
+}
+
+func asyncQueryResponseErrorCategory(response *AIImageAsyncResult) aicapability.ErrorCategory {
+	if response == nil {
+		return ""
+	}
+	switch strings.ToLower(strings.TrimSpace(string(response.Status))) {
+	case string(AIImageAsyncResultFailed), "violation":
+		return aicapability.ErrorProviderRejected
+	default:
+		return ""
+	}
+}
+
+func (a *studioAIImageCapabilityAdapter) persistAsyncJobBinding(ctx context.Context, operation aicapability.Operation, decision aicapability.RouteDecision, response *AIImageAsyncSubmit) error {
+	if a.mode != aicapability.RoutingModeActive {
+		return nil
+	}
+	if response == nil {
+		return aicapability.NewError(aicapability.ErrorInvalidProviderResponse, string(operation), errors.New("async Provider response is nil"))
+	}
+	if strings.TrimSpace(response.JobID) == "" {
+		return aicapability.NewError(aicapability.ErrorInvalidProviderResponse, string(operation), errors.New("async Provider response has no job ID"))
+	}
+	identity := requestIdentity(ctx)
+	trace := requestTrace(ctx)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	bindingCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), studioAIAsyncJobBindingTimeout)
+	defer cancel()
+	err := a.asyncJobStore.PutAsyncJobBinding(bindingCtx, aicapability.AsyncJobBinding{
+		JobID: response.JobID, TenantID: identity.TenantID, UserID: identity.UserID, BusinessTaskID: businessTaskID(trace), TraceID: trace.BatchID,
+		Capability: aicapability.CapabilityListingKitStudioImage, Operation: operation, ProviderID: decision.ProviderID, ModelID: decision.ModelID,
+		RoutingKey: decision.RoutingKey, CredentialReference: decision.CredentialReference, PolicyVersion: decision.PolicyVersion, ConfigurationVersion: decision.ConfigurationVersion,
+		SubmittedAt: a.now(), UpdatedAt: a.now(), Status: string(response.Status),
+	})
+	if err != nil {
+		return aicapability.NewError(aicapability.ErrorUnknownRemoteState, string(operation), err)
+	}
+	return nil
+}
+
+func (a *studioAIImageCapabilityAdapter) updateAsyncJobStatus(ctx context.Context, jobID, status string, category aicapability.ErrorCategory) error {
+	if a.asyncJobStore == nil || strings.TrimSpace(jobID) == "" {
+		return nil
+	}
+	return a.asyncJobStore.UpdateAsyncJobBindingStatus(ctx, jobID, status, category)
+}
+
+func routeDecisionFromAsyncJobBinding(binding aicapability.AsyncJobBinding) aicapability.RouteDecision {
+	return aicapability.RouteDecision{
+		Capability: binding.Capability, Operation: binding.Operation, ProviderID: binding.ProviderID, ModelID: binding.ModelID,
+		RoutingKey: binding.RoutingKey, CredentialReference: binding.CredentialReference, PolicyVersion: binding.PolicyVersion, ConfigurationVersion: binding.ConfigurationVersion,
+	}
 }
 
 func (a *studioAIImageCapabilityAdapter) submitImageGeneration(ctx context.Context, request *AIImageGenerateRequest) (*AIImageAsyncSubmit, error) {

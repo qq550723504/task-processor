@@ -170,6 +170,7 @@ type BuildServiceInput struct {
 	ImageSceneRenderer         productimage.SceneRenderer
 	AICredentialStore          aiCredentialStore
 	AIInvocationRecorder       aicapability.InvocationRecorder
+	AIAsyncJobStore            aicapability.AsyncJobBindingStore
 	Repositories               BuildServiceRepositories
 	Hooks                      BuildServiceHooks
 }

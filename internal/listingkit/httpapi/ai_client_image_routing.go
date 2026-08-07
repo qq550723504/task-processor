@@ -2,10 +2,12 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/listingkit"
 )
 
 type listingKitRoutedImageClient struct {
@@ -70,6 +72,28 @@ func (c *listingKitRoutedImageClient) SupportsAsyncImageGeneration() bool {
 }
 
 func (c *listingKitRoutedImageClient) SubmitImageGeneration(ctx context.Context, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	if routeContext := listingkit.AIAsyncImageQueryContextFromContext(ctx); routeContext.CredentialReference != "" || routeContext.ConfigurationVersion != "" {
+		client, useConfiguredModel, err := c.resolveByAsyncJob(routeContext.CredentialReference, requestModel(req, c.defaultModel))
+		if err != nil {
+			return nil, err
+		}
+		nextReq := req
+		if useConfiguredModel && req != nil {
+			cloned := *req
+			cloned.Model = ""
+			nextReq = &cloned
+		}
+		if version := routeContext.ConfigurationVersion; version != "" {
+			versioned, ok := client.(interface {
+				SubmitImageGenerationForConfigurationVersion(context.Context, string, *openaiclient.ImageGenerateRequest) (*openaiclient.ImageAsyncSubmitResponse, error)
+			})
+			if !ok {
+				return nil, fmt.Errorf("async image client does not support configuration version recovery")
+			}
+			return versioned.SubmitImageGenerationForConfigurationVersion(ctx, version, nextReq)
+		}
+		return client.SubmitImageGeneration(ctx, nextReq)
+	}
 	client, nextReq, err := c.resolve(req)
 	if err != nil {
 		return nil, err
@@ -78,11 +102,47 @@ func (c *listingKitRoutedImageClient) SubmitImageGeneration(ctx context.Context,
 }
 
 func (c *listingKitRoutedImageClient) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEditRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	if routeContext := listingkit.AIAsyncImageQueryContextFromContext(ctx); routeContext.CredentialReference != "" || routeContext.ConfigurationVersion != "" {
+		client, useConfiguredModel, err := c.resolveByAsyncJob(routeContext.CredentialReference, requestEditModel(req, c.defaultModel))
+		if err != nil {
+			return nil, err
+		}
+		nextReq := req
+		if useConfiguredModel && req != nil {
+			cloned := *req
+			cloned.Model = ""
+			nextReq = &cloned
+		}
+		if version := routeContext.ConfigurationVersion; version != "" {
+			versioned, ok := client.(interface {
+				SubmitImageEditForConfigurationVersion(context.Context, string, *openaiclient.ImageEditRequest) (*openaiclient.ImageAsyncSubmitResponse, error)
+			})
+			if !ok {
+				return nil, fmt.Errorf("async image client does not support configuration version recovery")
+			}
+			return versioned.SubmitImageEditForConfigurationVersion(ctx, version, nextReq)
+		}
+		return client.SubmitImageEdit(ctx, nextReq)
+	}
 	client, nextReq, err := c.resolveEdit(req)
 	if err != nil {
 		return nil, err
 	}
 	return client.SubmitImageEdit(ctx, nextReq)
+}
+
+func requestModel(req *openaiclient.ImageGenerateRequest, fallback string) string {
+	if req != nil && strings.TrimSpace(req.Model) != "" {
+		return req.Model
+	}
+	return fallback
+}
+
+func requestEditModel(req *openaiclient.ImageEditRequest, fallback string) string {
+	if req != nil && strings.TrimSpace(req.Model) != "" {
+		return req.Model
+	}
+	return fallback
 }
 
 func (c *listingKitRoutedImageClient) QueryImageGeneration(ctx context.Context, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
@@ -91,6 +151,45 @@ func (c *listingKitRoutedImageClient) QueryImageGeneration(ctx context.Context, 
 		return nil, err
 	}
 	return client.QueryImageGeneration(ctx, jobID)
+}
+
+func (c *listingKitRoutedImageClient) QueryImageGenerationForRoutingKey(ctx context.Context, routingKey, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
+	queryContext := listingkit.AIAsyncImageQueryContextFromContext(ctx)
+	client, _, err := c.resolveByAsyncJob(queryContext.CredentialReference, routingKey)
+	if err != nil {
+		return nil, err
+	}
+	if version := queryContext.ConfigurationVersion; version != "" {
+		versioned, ok := client.(interface {
+			QueryImageGenerationForConfigurationVersion(context.Context, string, string) (*openaiclient.ImageAsyncQueryResponse, error)
+		})
+		if !ok {
+			return nil, fmt.Errorf("async image client does not support configuration version recovery")
+		}
+		return versioned.QueryImageGenerationForConfigurationVersion(ctx, version, jobID)
+	}
+	return client.QueryImageGeneration(ctx, jobID)
+}
+
+func (c *listingKitRoutedImageClient) resolveByAsyncJob(credentialReference, routingKey string) (openaiclient.ImageGenerator, bool, error) {
+	switch strings.TrimSpace(credentialReference) {
+	case listingKitImageClientName:
+		if c.defaultImage == nil {
+			return nil, false, errListingKitAIClientNotConfigured(listingKitImageClientName)
+		}
+		return c.defaultImage, false, nil
+	case listingKitImageClientNameGPTImage2:
+		return c.gptImage2, true, nil
+	case listingKitImageClientNameNanobanana:
+		return c.nanobanana, true, nil
+	case listingKitImageClientNameBackgroundRemoval:
+		if c.backgroundRemoval == nil {
+			return nil, false, errListingKitAIClientNotConfigured(listingKitImageClientNameBackgroundRemoval)
+		}
+		return c.backgroundRemoval, true, nil
+	default:
+		return c.resolveBySelector(routingKey)
+	}
 }
 
 func (c *listingKitRoutedImageClient) resolve(req *openaiclient.ImageGenerateRequest) (openaiclient.ImageGenerator, *openaiclient.ImageGenerateRequest, error) {
