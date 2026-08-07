@@ -5,6 +5,7 @@
 - Repository: `task-processor`
 - Branch: `codex/1688-controlled-replay`
 - Replay validation commit: `51a1be28d78f5cf57192b14c533c02314d52ae28`
+- Full-gate verification commit: `10a83339` (documentation-only commit after the replay code)
 - Scope: deterministic in-process replay through the existing 1688 HTTP handler and ListingKit task-creation boundary.
 - Excluded: live 1688 crawling, real store access, database persistence, worker execution, real preview/readiness generation, and SHEIN submission.
 
@@ -49,13 +50,13 @@ This includes the three replay scenarios and the existing source, handoff, Listi
 
 ### Full backend test gate
 
-Not completed:
+Passed on the extended command timeout:
 
 ```powershell
 $env:GOWORK='off'; go test ./... -count=1
 ```
 
-The command timed out after approximately 124 seconds with exit code `124`. This is recorded as unresolved environment/test-suite evidence, not as a passing result.
+The first 120-second attempt timed out with exit code `124` and was not counted as success. A rerun with a 600-second command limit completed successfully in approximately 138 seconds; all reported packages passed.
 
 ### Maintained entrypoint build equivalent
 
