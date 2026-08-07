@@ -16,6 +16,7 @@ vi.mock("@/lib/query/use-canonical-products", () => ({
         id: "888",
         url: "https://detail.1688.com/offer/888.html",
       },
+      workspaceHref: "/listing-kits/task-1/workspace?platform=shein",
       product: {
         title: "Canvas Tote",
         brand: "Studio",
@@ -60,6 +61,19 @@ describe("CanonicalProductDetailPage", () => {
     expect(screen.getByRole("link", { name: "查看来源" })).toHaveAttribute(
       "href",
       "https://detail.1688.com/offer/888.html",
+    );
+  });
+
+  it("links back to the task status and platform workspace", () => {
+    render(<CanonicalProductDetailPage taskId="task-1" />);
+
+    expect(screen.getByRole("link", { name: "查看原任务" })).toHaveAttribute(
+      "href",
+      "/listing-kits/task-1/status",
+    );
+    expect(screen.getByRole("link", { name: "进入工作台" })).toHaveAttribute(
+      "href",
+      "/listing-kits/task-1/workspace?platform=shein",
     );
   });
 });
