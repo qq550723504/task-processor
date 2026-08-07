@@ -1,37 +1,43 @@
 # Temporal configuration recovery
 
-The production Temporal resources were created from the Temporal Helm chart
-(chart label `temporal-1.2.0`), but the cluster currently has no Helm release
-secret or GitOps owner for that release. The complete original values file is
-therefore required before a Helm upgrade can be performed safely.
+The production Temporal resources are now managed by Helm release `temporal`
+(chart `temporal-1.2.0`, revision 1). The original pre-adoption values file was
+not recovered; the checked-in recovery baseline below is the reviewed source
+for the adopted release and should be compared with `helm get values` before
+future upgrades.
 
-`temporal-persistence-pool-values.yaml` is the tracked source for the verified
-PostgreSQL pool hardening only:
+`temporal-persistence-pool-values.yaml` is a pool-only override for the
+verified PostgreSQL connection hardening:
 
 - both `default` and `visibility` stores keep `maxConns: 20`;
 - both stores use `maxIdleConns: 5`;
-- credentials remain in the existing Kubernetes Secrets.
+- it intentionally does not set schema ownership, database creation, or
+  credentials; those remain in the recovered release values and existing
+  Kubernetes Secrets.
 
-`temporal-recovered-server-values.yaml` is a larger recovery baseline rebuilt
+`temporal-recovered-server-values.yaml` is the larger recovery baseline rebuilt
 from the live server ConfigMap, Deployment resources, and the official
-`temporal-1.2.0` chart defaults. It is not treated as authoritative until a
-rendered diff confirms the service, resource, image, persistence, and schema
-settings against the live cluster.
+`temporal-1.2.0` chart defaults. It contains the adopted persistence and
+schema settings, including `createDatabase: false` and `manageSchema: true`.
+The baseline was rendered and compared with the live release before adoption.
 
-This file must be merged after the recovered release values, for example:
+For a future upgrade, inspect the stored release values first, then render the
+recovery baseline and apply the optional pool-only override last:
 
 ```powershell
+helm status temporal --namespace temporal
+helm get values temporal --namespace temporal --all
 helm upgrade --install temporal temporal `
   --repo https://go.temporal.io/helm-charts `
   --namespace temporal `
   --version 1.2.0 `
-  -f <recovered-original-values.yaml> `
+  -f deployments/kubernetes/temporal/temporal-recovered-server-values.yaml `
   -f deployments/kubernetes/temporal/temporal-persistence-pool-values.yaml
 ```
 
-If the original values cannot be recovered, use the recovery baseline as the
-starting input instead, but review the chart's schema-management settings
-before running any upgrade.
+Do not remove the schema settings from the recovery baseline. They keep the
+existing PostgreSQL databases authoritative while allowing the normal Helm
+schema hook to run before future server upgrades.
 
 Before applying, render and compare the result with the live resources:
 
@@ -45,8 +51,8 @@ helm template temporal temporal `
   | kubectl diff -f -
 ```
 
-Do not run the upgrade until the original values, chart version, schema-job
-ordering, and database credentials have been recovered and reviewed.
+Do not run the upgrade until the stored values, chart version, schema-job
+ordering, and database credentials have been reviewed.
 
 ## Recovery baseline verification (2026-08-07)
 

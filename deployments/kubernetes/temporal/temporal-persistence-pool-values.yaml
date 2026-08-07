@@ -9,19 +9,11 @@ server:
       datastores:
         default:
           sql:
-            createDatabase: false
-            manageSchema: true
-            existingSecret: temporal-default-store
-            secretKey: password
             maxConnLifetime: 1h
             maxConns: 20
             maxIdleConns: 5
         visibility:
           sql:
-            createDatabase: false
-            manageSchema: true
-            existingSecret: temporal-visibility-store
-            secretKey: password
             maxConnLifetime: 1h
             maxConns: 20
             maxIdleConns: 5
