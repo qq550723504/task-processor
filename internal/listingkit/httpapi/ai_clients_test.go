@@ -360,6 +360,22 @@ func TestListingKitRoutedImageClientRejectsUnavailableConfigurationVersion(t *te
 	}
 }
 
+func TestListingKitRoutedImageClientRejectsUnavailableConfigurationVersionOnSubmit(t *testing.T) {
+	nano := &stubListingKitImageGenerator{submitResponse: &openaiclient.ImageAsyncSubmitResponse{JobID: "job-nano"}}
+	router := &listingKitRoutedImageClient{
+		defaultModel: listingKitImageModelSelectorGPTImage2,
+		defaultImage: nano,
+		nanobanana:   nano,
+	}
+	ctx := listingkit.WithAIAsyncImageQueryContext(context.Background(), listingkit.AIAsyncImageQueryContext{
+		CredentialReference: listingKitImageClientNameNanobanana, ConfigurationVersion: "config-submit",
+	})
+
+	if _, err := router.SubmitImageGeneration(ctx, &openaiclient.ImageGenerateRequest{Model: listingKitImageModelSelectorNano}); err == nil {
+		t.Fatal("expected submit to reject a client without configuration-version recovery")
+	}
+}
+
 func TestAdaptListingKitAIImageGeneratorForwardsRouteAwareQuery(t *testing.T) {
 	upstream := &stubListingKitImageGenerator{queryResponse: &openaiclient.ImageAsyncQueryResponse{JobID: "job-a"}}
 	generator := adaptListingKitAIImageGenerator(upstream)

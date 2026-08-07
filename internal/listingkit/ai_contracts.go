@@ -55,7 +55,8 @@ type AIAsyncImageQueryByRoutingKey interface {
 }
 
 // AIAsyncImageQueryContext carries the submit-time identity and configuration
-// metadata needed to query an async job without silently switching credentials.
+// metadata needed to execute an async job operation without silently switching
+// credentials. It is used by both submission and query paths.
 type AIAsyncImageQueryContext struct {
 	TenantID             string
 	UserID               string

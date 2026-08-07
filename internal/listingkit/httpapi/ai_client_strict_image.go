@@ -168,6 +168,22 @@ func (c *strictListingKitConfiguredImageClient) SubmitImageEdit(ctx context.Cont
 	return client.SubmitImageEdit(ctx, req)
 }
 
+func (c *strictListingKitConfiguredImageClient) SubmitImageGenerationForConfigurationVersion(ctx context.Context, configurationVersion string, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	client, err := c.resolveAtConfigurationVersion(ctx, configurationVersion)
+	if err != nil {
+		return nil, err
+	}
+	return client.SubmitImageGeneration(ctx, req)
+}
+
+func (c *strictListingKitConfiguredImageClient) SubmitImageEditForConfigurationVersion(ctx context.Context, configurationVersion string, req *openaiclient.ImageEditRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+	client, err := c.resolveAtConfigurationVersion(ctx, configurationVersion)
+	if err != nil {
+		return nil, err
+	}
+	return client.SubmitImageEdit(ctx, req)
+}
+
 func (c *strictListingKitConfiguredImageClient) QueryImageGeneration(ctx context.Context, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
 	client, err := c.resolve(ctx)
 	if err != nil {

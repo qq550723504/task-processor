@@ -49,6 +49,26 @@ func TestGormAsyncJobBindingRejectsConflictingRouteWithoutOverwrite(t *testing.T
 	require.Equal(t, "route-a", got.RoutingKey)
 }
 
+func TestGormAsyncJobBindingRejectsConflictingIdentityAndConfiguration(t *testing.T) {
+	db := newAsyncJobBindingDB(t)
+	store := NewGormAsyncJobBindingStore(db)
+	binding := validAsyncJobBinding()
+	binding.UserID = "user-a"
+	binding.ConfigurationVersion = "config-a"
+	require.NoError(t, store.PutAsyncJobBinding(context.Background(), binding))
+
+	for _, mutate := range []func(*aicapability.AsyncJobBinding){
+		func(conflict *aicapability.AsyncJobBinding) { conflict.TenantID = "tenant-b" },
+		func(conflict *aicapability.AsyncJobBinding) { conflict.UserID = "user-b" },
+		func(conflict *aicapability.AsyncJobBinding) { conflict.ConfigurationVersion = "config-b" },
+	} {
+		conflict := binding
+		mutate(&conflict)
+		err := store.PutAsyncJobBinding(context.Background(), conflict)
+		require.ErrorIs(t, err, aicapability.ErrAsyncJobBindingConflict)
+	}
+}
+
 func TestGormAsyncJobBindingConcurrentSameRouteInsertIsIdempotent(t *testing.T) {
 	db := newAsyncJobBindingDB(t)
 	store := NewGormAsyncJobBindingStore(db)

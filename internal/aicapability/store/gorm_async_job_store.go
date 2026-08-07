@@ -166,5 +166,5 @@ func asyncJobBindingFromRow(row asyncJobRow) aicapability.AsyncJobBinding {
 
 func sameAsyncJobRoute(row asyncJobRow, binding aicapability.AsyncJobBinding) bool {
 	binding = normalizeAsyncJobBinding(binding)
-	return row.JobID == binding.JobID && row.ProviderID == binding.ProviderID && row.ModelID == binding.ModelID && row.RoutingKey == binding.RoutingKey && row.CredentialReference == binding.CredentialReference
+	return row.JobID == binding.JobID && row.TenantID == binding.TenantID && row.UserID == binding.UserID && row.Capability == string(binding.Capability) && row.Operation == string(binding.Operation) && row.ProviderID == binding.ProviderID && row.ModelID == binding.ModelID && row.RoutingKey == binding.RoutingKey && row.CredentialReference == binding.CredentialReference && row.PolicyVersion == binding.PolicyVersion && row.ConfigurationVersion == binding.ConfigurationVersion
 }
