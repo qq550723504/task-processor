@@ -1,12 +1,17 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { SheinStudioGenerationFormModel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
 import {
   applyBaselineWarmupResult,
+  buildSheinStudioGenerationPanelProps,
   projectActiveSelectionBaselineState,
   projectBaselineWarmupFeedback,
   resolveBaselineReadinessEntries,
   runBaselineWarmup,
+  type SheinStudioGenerationPanelActionProjection,
+  type SheinStudioGenerationPanelProjectionInput,
+  type SheinStudioGenerationPanelStatusProjection,
   useActiveSelectionBaselineStatuses,
   useBaselineWarmupAction,
   useSheinStudioBatchGenerationContext,
@@ -38,6 +43,185 @@ const selection = {
   variantId: 100,
   variantLabel: "Black / M",
 };
+
+function buildGenerationPanelForm(): SheinStudioGenerationFormModel {
+  return {
+    artworkGenerationMode: "theme_prompt",
+    artworkModel: "nanobanana",
+    availableSdsImages: [],
+    groupedImageMode: "shared_by_size",
+    hotStyleReferenceBrief: "",
+    hotStyleReferenceImageUrls: [],
+    hotStyleReferencePrompt: "",
+    imageStrategy: "ai_generated",
+    productImageCount: "5",
+    productImagePrompt: "",
+    productImagePrompts: [],
+    prompt: "",
+    promptHistory: [],
+    promptInputRef: { current: null },
+    promptMode: "managed",
+    renderSizeImagesWithSds: true,
+    selectedSdsImages: [],
+    styleCount: "2",
+    transparentBackground: false,
+    variationIntensity: "medium",
+  };
+}
+
+function buildGenerationPanelActions(
+  overrides: Partial<SheinStudioGenerationPanelActionProjection> = {},
+): SheinStudioGenerationPanelActionProjection {
+  const noop = () => undefined;
+  return {
+    analyzeReferenceStyle: async () => ({
+      referenceStyleBrief: "",
+      sanitizedPrompt: "",
+      warnings: [],
+    }),
+    generate: noop,
+    onCreateTasks: noop,
+    onDeleteBatch: noop,
+    onLoadBatch: noop,
+    onRestorePrompt: noop,
+    onSaveBatch: noop,
+    retryFailedItem: async () => undefined,
+    retryFailedItems: async () => undefined,
+    setArtworkGenerationMode: noop,
+    setArtworkModel: noop,
+    setGroupedImageMode: noop,
+    setHotStyleReferenceBrief: noop,
+    setHotStyleReferenceImageUrls: noop,
+    setHotStyleReferencePrompt: noop,
+    setImageStrategy: noop,
+    setProductImageCount: noop,
+    setProductImagePrompt: noop,
+    setProductImagePrompts: noop,
+    setPrompt: noop,
+    setPromptMode: noop,
+    setRenderSizeImagesWithSds: noop,
+    setSelectedSdsImages: noop,
+    setStyleCount: noop,
+    setTransparentBackground: noop,
+    setVariationIntensity: noop,
+    uploadHotStyleReferenceImages: async () => [],
+    ...overrides,
+  };
+}
+
+function buildGenerationPanelStatus(
+  overrides: Partial<SheinStudioGenerationPanelStatusProjection> = {},
+): SheinStudioGenerationPanelStatusProjection {
+  return {
+    activeSelection: selection,
+    createdTasks: [],
+    creatingError: "",
+    creatingMessage: "",
+    currentStoreLabel: "Store 869",
+    generationError: "",
+    groupedSelections: [],
+    hasRetryableFailedItems: false,
+    initialBatchId: undefined,
+    isCreatingTasks: false,
+    isGenerating: false,
+    itemizedBatchDetail: undefined,
+    retryableFailedItemCount: 0,
+    retryingFailedItemId: "",
+    savedBatches: [],
+    saveMessage: "",
+    selectedStyleCount: 2,
+    storeRequiredMessage: "",
+    subscriptionBlockedMessage: "",
+    ...overrides,
+  };
+}
+
+function buildGenerationPanelProjectionInput(
+  overrides: {
+    actions?: Partial<SheinStudioGenerationPanelActionProjection>;
+    form?: SheinStudioGenerationFormModel;
+    status?: Partial<SheinStudioGenerationPanelStatusProjection>;
+  } = {},
+): SheinStudioGenerationPanelProjectionInput {
+  return {
+    actions: buildGenerationPanelActions(overrides.actions),
+    form: overrides.form ?? buildGenerationPanelForm(),
+    status: buildGenerationPanelStatus(overrides.status),
+  };
+}
+
+describe("buildSheinStudioGenerationPanelProps", () => {
+  it("projects the normal generation panel contract", () => {
+    const generate = vi.fn();
+    const retryFailedItem = vi.fn().mockResolvedValue(undefined);
+    const groupedSelection = {
+      baselineReason: "",
+      baselineStatus: "ready" as const,
+      eligible: true,
+      selection: {
+        ...selection,
+        selectedVariantIds: [102],
+        variantId: 102,
+        variantLabel: "White / L",
+      },
+      selectionId: "grouped-102",
+      sheinStoreId: "869",
+    };
+    const input = buildGenerationPanelProjectionInput({
+      actions: { generate, retryFailedItem },
+      status: {
+        currentStoreLabel: "",
+        groupedSelections: [groupedSelection],
+      },
+    });
+
+    const result = buildSheinStudioGenerationPanelProps(input);
+    result.actions.onRetryFailedItem?.("failed-item-1");
+
+    expect(result.actions.onGenerate).toBe(generate);
+    expect(retryFailedItem).toHaveBeenCalledWith("failed-item-1");
+    expect(result.form).toBe(input.form);
+    expect(result.status).toMatchObject({
+      batchProductCount: 2,
+      batchStoreLabel: "未设置",
+      createTaskButtonLabel: "为 2 款商品生成 SHEIN 资料",
+      failedBatchItems: [],
+      generateButtonLabel: "生成款式图",
+      generationNotice: "",
+      isRetryingFailedItems: false,
+      selectedStyleCount: 2,
+      selectionReady: true,
+      showSavedBatches: true,
+    });
+  });
+
+  it("projects retry mode as the generation action", () => {
+    const generate = vi.fn();
+    const retryFailedItems = vi.fn().mockResolvedValue(undefined);
+    const input = buildGenerationPanelProjectionInput({
+      actions: { generate, retryFailedItems },
+      status: {
+        hasRetryableFailedItems: true,
+        initialBatchId: "batch-1",
+        retryableFailedItemCount: 1,
+      },
+    });
+
+    const result = buildSheinStudioGenerationPanelProps(input);
+    result.actions.onGenerate();
+
+    expect(retryFailedItems).toHaveBeenCalledTimes(1);
+    expect(generate).not.toHaveBeenCalled();
+    expect(result.status).toMatchObject({
+      failedBatchItems: [],
+      generateButtonLabel: "重试失败批次",
+      generationNotice:
+        "当前批次有 1 个失败项。点击“重试失败批次”只会重试失败部分，不会重复生成已成功内容。",
+      isRetryingFailedItems: true,
+      showSavedBatches: false,
+    });
+  });
+});
 
 describe("projectBaselineWarmupFeedback", () => {
   it("announces ready baseline warmup without follow-up action", () => {

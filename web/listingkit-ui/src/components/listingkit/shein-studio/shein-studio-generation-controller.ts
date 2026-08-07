@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 
+import type {
+  SheinStudioGenerationActions,
+  SheinStudioGenerationFormModel,
+  SheinStudioGenerationPanelProps,
+  SheinStudioGenerationStatusModel,
+} from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
 import { upsertRecentSavedBatch } from "@/components/listingkit/shein-studio/shein-studio-recent-batch-controller";
 import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 import {
@@ -9,17 +15,124 @@ import {
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import {
   buildGroupedSDSSelectionID,
+  countSelectionsWithPrimary,
+  type GroupedSDSSelectionEligibility,
   type SDSBaselineReadiness,
   type SDSBaselineReadinessRequest,
   type SDSBaselineStatus,
 } from "@/lib/types/sds-baseline";
 import type {
+  SheinStudioBatchDetail,
   SheinStudioCreatedTask,
   SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
   SheinStudioSavedBatch,
 } from "@/lib/types/shein-studio";
 import type { SheinStudioSaveInput } from "@/lib/utils/shein-studio-batches";
+
+type ProjectedGenerationStatusKey =
+  | "batchProductCount"
+  | "batchStoreLabel"
+  | "createTaskButtonLabel"
+  | "failedBatchItems"
+  | "failedTasks"
+  | "generateButtonLabel"
+  | "generationNotice"
+  | "isRetryingFailedItems"
+  | "rejectedTasks"
+  | "reusedTasks"
+  | "selectionReady"
+  | "showSavedBatches"
+  | "statusGroups";
+
+export type SheinStudioGenerationPanelActionProjection = Omit<
+  SheinStudioGenerationActions,
+  "onGenerate" | "onRetryFailedItem"
+> & {
+  generate: SheinStudioGenerationActions["onGenerate"];
+  retryFailedItem: (itemId: string) => Promise<void>;
+  retryFailedItems: () => Promise<void>;
+};
+
+export type SheinStudioGenerationPanelStatusProjection = Omit<
+  SheinStudioGenerationStatusModel,
+  ProjectedGenerationStatusKey
+> & {
+  activeSelection?: SDSProductVariantSelection;
+  currentStoreLabel: string;
+  groupedSelections: GroupedSDSSelectionEligibility[];
+  hasRetryableFailedItems: boolean;
+  initialBatchId?: string;
+  itemizedBatchDetail?: SheinStudioBatchDetail | null;
+  retryableFailedItemCount: number;
+};
+
+export type SheinStudioGenerationPanelProjectionInput = {
+  actions: SheinStudioGenerationPanelActionProjection;
+  form: SheinStudioGenerationFormModel;
+  status: SheinStudioGenerationPanelStatusProjection;
+};
+
+export function buildSheinStudioGenerationPanelProps({
+  actions,
+  form,
+  status,
+}: SheinStudioGenerationPanelProjectionInput): SheinStudioGenerationPanelProps {
+  const { generate, retryFailedItem, retryFailedItems, ...panelActions } =
+    actions;
+  const {
+    activeSelection,
+    currentStoreLabel,
+    groupedSelections,
+    hasRetryableFailedItems,
+    initialBatchId,
+    itemizedBatchDetail,
+    retryableFailedItemCount,
+    ...panelStatus
+  } = status;
+  const batchProductCount = countSelectionsWithPrimary(
+    activeSelection,
+    groupedSelections,
+  );
+
+  return {
+    actions: {
+      ...panelActions,
+      onGenerate: hasRetryableFailedItems
+        ? () => {
+            void retryFailedItems();
+          }
+        : generate,
+      onRetryFailedItem: (itemId) => {
+        void retryFailedItem(itemId);
+      },
+    },
+    form,
+    status: {
+      ...panelStatus,
+      batchProductCount,
+      batchStoreLabel: currentStoreLabel || "未设置",
+      createTaskButtonLabel:
+        groupedSelections.length > 0
+          ? `为 ${batchProductCount} 款商品生成 SHEIN 资料`
+          : "生成 SHEIN 资料",
+      failedBatchItems: [],
+      failedTasks: itemizedBatchDetail?.failedTasks ?? [],
+      generateButtonLabel: hasRetryableFailedItems
+        ? "重试失败批次"
+        : "生成款式图",
+      generationNotice: hasRetryableFailedItems
+        ? `当前批次有 ${retryableFailedItemCount} 个失败项。点击“重试失败批次”只会重试失败部分，不会重复生成已成功内容。`
+        : "",
+      isRetryingFailedItems: hasRetryableFailedItems,
+      rejectedTasks: itemizedBatchDetail?.rejectedTasks ?? [],
+      reusedTasks: itemizedBatchDetail?.reusedTasks ?? [],
+      selectionReady: Boolean(activeSelection?.variantId),
+      showSavedBatches: !initialBatchId,
+      statusGroups: itemizedBatchDetail?.statusGroups,
+    },
+  };
+}
 
 type BatchGenerationContext = {
   ensureBatch: () => Promise<SheinStudioSavedBatch | null>;

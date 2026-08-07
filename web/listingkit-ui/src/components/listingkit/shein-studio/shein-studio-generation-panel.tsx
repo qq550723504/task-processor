@@ -120,6 +120,12 @@ export type SheinStudioGenerationActions = {
   setTransparentBackgroundMode?: (value: SheinStudioTransparencyMode) => void;
 };
 
+export type SheinStudioGenerationPanelProps = {
+  actions: SheinStudioGenerationActions;
+  form: SheinStudioGenerationFormModel;
+  status: SheinStudioGenerationStatusModel;
+};
+
 function areHotStyleReferenceUrlsEqual(current: string[], next: string[]) {
   if (current.length !== next.length) {
     return false;
@@ -131,11 +137,7 @@ export function SheinStudioGenerationPanel({
   actions,
   form,
   status,
-}: {
-  actions: SheinStudioGenerationActions;
-  form: SheinStudioGenerationFormModel;
-  status: SheinStudioGenerationStatusModel;
-}) {
+}: SheinStudioGenerationPanelProps) {
   const {
     artworkModel,
     availableSdsImages,
