@@ -19,14 +19,19 @@
 
 ---
 
-### Task 1: Lock the Missing CLI Migration Regression
+### Task 1: Unify the Migration Sequence with TDD
 
 **Files:**
 - Modify: internal/app/runtime/listingkitschemamigrate/runtime_test.go
+- Modify: internal/app/runtime/listingkitschemamigrate/runtime.go
+- Create: internal/listingkit/schema/runtime_test.go
+- Create: internal/listingkit/schema/runtime.go
+- Modify: internal/listingkit/httpapi/builders_repository_schema.go
+- Modify: internal/listingkit/httpapi/builders_test.go
 
 **Interfaces:**
 - Consumes: autoMigrateListingKitRuntimeSchema(*gorm.DB) error and openRuntimeSchemaTestDB(*testing.T) *gorm.DB.
-- Produces: a regression test that fails until the standalone all migration creates listingkit.SDSChildRetryJob.
+- Produces: a failing regression test followed by one authoritative schema.AutoMigrateRuntime(*gorm.DB) error implementation, delegating HTTP/CLI entry points, and a green targeted suite. Do not commit or request review while the test is red or while duplicate concrete migration lists remain.
 
 - [ ] **Step 1: Add the failing regression test**
 
@@ -57,7 +62,7 @@ Expected: FAIL with expected SDS child retry table to be created. A compilation 
 
 ---
 
-### Task 2: Create the Authoritative Schema Package
+#### Phase 2: Create the Authoritative Schema Package
 
 **Files:**
 - Create: internal/listingkit/schema/runtime_test.go
@@ -300,7 +305,7 @@ Expected: PASS.
 
 ---
 
-### Task 3: Delegate CLI and HTTP Entry Points
+#### Phase 3: Delegate CLI and HTTP Entry Points
 
 **Files:**
 - Modify: internal/app/runtime/listingkitschemamigrate/runtime.go
@@ -405,11 +410,11 @@ Expected: all three packages PASS.
 
 ---
 
-### Task 4: Prove Single Ownership and Complete Verification
+### Task 2: Prove Single Ownership and Complete Verification
 
 **Files:**
-- Verify: all files changed in Tasks 1-3.
-- Commit: the plan, implementation, and tests scoped to this worktree.
+- Verify: all files changed in Task 1.
+- Commit: the implementation and tests scoped to this worktree; the design and plan remain in their existing documentation commits.
 
 **Interfaces:**
 - Consumes: the finished shared migration package and delegating entry points.
@@ -453,17 +458,17 @@ Run:
 ~~~powershell
 git status --short
 git diff --stat HEAD
-git diff HEAD -- internal/listingkit/schema internal/listingkit/httpapi/builders_repository_schema.go internal/listingkit/httpapi/builders_test.go internal/app/runtime/listingkitschemamigrate/runtime.go internal/app/runtime/listingkitschemamigrate/runtime_test.go docs/superpowers/plans/2026-08-08-listingkit-schema-migration-unification.md
+git diff HEAD -- internal/listingkit/schema internal/listingkit/httpapi/builders_repository_schema.go internal/listingkit/httpapi/builders_test.go internal/app/runtime/listingkitschemamigrate/runtime.go internal/app/runtime/listingkitschemamigrate/runtime_test.go
 ~~~
 
-Expected: only schema-unification implementation, tests, and the implementation plan are uncommitted; the design document is already committed separately.
+Expected: only schema-unification implementation and tests are uncommitted; the design and implementation plan are already committed separately.
 
 - [ ] **Step 5: Commit the implementation intentionally**
 
 Run:
 
 ~~~powershell
-git add -- internal/listingkit/schema/runtime.go internal/listingkit/schema/runtime_test.go internal/listingkit/httpapi/builders_repository_schema.go internal/listingkit/httpapi/builders_test.go internal/app/runtime/listingkitschemamigrate/runtime.go internal/app/runtime/listingkitschemamigrate/runtime_test.go docs/superpowers/plans/2026-08-08-listingkit-schema-migration-unification.md
+git add -- internal/listingkit/schema/runtime.go internal/listingkit/schema/runtime_test.go internal/listingkit/httpapi/builders_repository_schema.go internal/listingkit/httpapi/builders_test.go internal/app/runtime/listingkitschemamigrate/runtime.go internal/app/runtime/listingkitschemamigrate/runtime_test.go
 git diff --cached --check
 git diff --cached --stat
 git commit -m "refactor: unify ListingKit schema migrations"
