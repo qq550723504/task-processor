@@ -12,6 +12,12 @@ PostgreSQL pool hardening only:
 - both stores use `maxIdleConns: 5`;
 - credentials remain in the existing Kubernetes Secrets.
 
+`temporal-recovered-server-values.yaml` is a larger recovery baseline rebuilt
+from the live server ConfigMap, Deployment resources, and the official
+`temporal-1.2.0` chart defaults. It is not treated as authoritative until a
+rendered diff confirms the service, resource, image, persistence, and schema
+settings against the live cluster.
+
 This file must be merged after the recovered release values, for example:
 
 ```powershell
@@ -22,6 +28,10 @@ helm upgrade --install temporal temporal `
   -f <recovered-original-values.yaml> `
   -f deployments/kubernetes/temporal/temporal-persistence-pool-values.yaml
 ```
+
+If the original values cannot be recovered, use the recovery baseline as the
+starting input instead, but review the chart's schema-management settings
+before running any upgrade.
 
 Before applying, render and compare the result with the live resources:
 

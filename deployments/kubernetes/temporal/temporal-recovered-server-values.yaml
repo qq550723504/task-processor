@@ -1,0 +1,49 @@
+# Recovery baseline reconstructed from the live Temporal 1.2.0 resources and
+# the official chart defaults. Review with `helm template` and `kubectl diff`
+# before using it for a release recovery. This file intentionally contains no
+# database passwords.
+server:
+  enabled: true
+  image:
+    repository: temporalio/server
+    tag: 1.31.0
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  resources:
+    limits:
+      cpu: "1"
+      memory: "1Gi"
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+  config:
+    logLevel: "debug,info"
+    persistence:
+      defaultStore: default
+      visibilityStore: visibility
+      numHistoryShards: 16
+      datastores:
+        default:
+          sql:
+            pluginName: postgres12
+            databaseName: temporal
+            connectAddr: shared-postgresql.platform-data.svc.cluster.local:5432
+            connectProtocol: tcp
+            user: temporal_app
+            existingSecret: temporal-default-store
+            secretKey: password
+            maxConns: 20
+            maxIdleConns: 5
+            maxConnLifetime: 1h
+        visibility:
+          sql:
+            pluginName: postgres12
+            databaseName: temporal_visibility
+            connectAddr: shared-postgresql.platform-data.svc.cluster.local:5432
+            connectProtocol: tcp
+            user: temporal_app
+            existingSecret: temporal-visibility-store
+            secretKey: password
+            maxConns: 20
+            maxIdleConns: 5
+            maxConnLifetime: 1h
