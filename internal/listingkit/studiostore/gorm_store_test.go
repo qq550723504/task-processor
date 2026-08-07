@@ -98,9 +98,14 @@ func TestGormRepositoryReplaceDesignsAssignsSessionIDForBatchGallery(t *testing.
 
 	if err := repo.ReplaceDesigns(ctx, session.ID, []string{"design-1"}, []listingkit.SheinStudioDesign{
 		{
-			ID:       "design-1",
-			ImageURL: "https://oss.example.com/design-1.png",
-			Prompt:   "retro cherries",
+			ID:                        "design-1",
+			ImageURL:                  "https://oss.example.com/design-1.png",
+			OriginalImageURL:          "https://oss.example.com/design-1-original.png",
+			Prompt:                    "retro cherries",
+			TransparentBackground:     true,
+			TransparentBackgroundMode: listingkit.StudioTransparencyModeRemoval,
+			BackgroundRemovalStatus:   listingkit.StudioBackgroundRemovalStatusSucceeded,
+			BackgroundRemovalModel:    "rmbg-test",
 		},
 	}); err != nil {
 		t.Fatalf("replace designs: %v", err)
@@ -126,6 +131,9 @@ func TestGormRepositoryReplaceDesignsAssignsSessionIDForBatchGallery(t *testing.
 	}
 	if items[0].SessionID != session.ID || items[0].DesignID != "design-1" {
 		t.Fatalf("gallery item = %#v, want linked session/design", items[0])
+	}
+	if items[0].OriginalImageURL != "https://oss.example.com/design-1-original.png" || items[0].TransparentBackgroundMode != listingkit.StudioTransparencyModeRemoval || items[0].BackgroundRemovalStatus != listingkit.StudioBackgroundRemovalStatusSucceeded {
+		t.Fatalf("gallery transparency metadata = %#v, want persisted source and removal metadata", items[0])
 	}
 }
 
@@ -229,6 +237,15 @@ func TestGormRepositoryUpsertDesignsPreservesExistingSessionDesigns(t *testing.T
 
 	if err := repo.UpsertDesigns(ctx, session.ID, []string{"design-1", "design-2"}, []listingkit.SheinStudioDesign{
 		{
+			ID:                        "design-1",
+			ImageURL:                  "https://example.com/design-1-removed.png",
+			OriginalImageURL:          "https://example.com/design-1-original.png",
+			TransparentBackgroundMode: listingkit.StudioTransparencyModeRemoval,
+			BackgroundRemovalStatus:   listingkit.StudioBackgroundRemovalStatusFailed,
+			BackgroundRemovalModel:    "rmbg-v2",
+			BackgroundRemovalError:    "provider rejected image",
+		},
+		{
 			ID:       "design-2",
 			ImageURL: "https://example.com/design-2.png",
 			Prompt:   "second",
@@ -243,5 +260,14 @@ func TestGormRepositoryUpsertDesignsPreservesExistingSessionDesigns(t *testing.T
 	}
 	if len(designs) != 2 {
 		t.Fatalf("design count = %d, want 2", len(designs))
+	}
+	var updated listingkit.SheinStudioDesign
+	for _, design := range designs {
+		if design.ID == "design-1" {
+			updated = design
+		}
+	}
+	if updated.OriginalImageURL != "https://example.com/design-1-original.png" || updated.TransparentBackgroundMode != listingkit.StudioTransparencyModeRemoval || updated.BackgroundRemovalStatus != listingkit.StudioBackgroundRemovalStatusFailed || updated.BackgroundRemovalModel != "rmbg-v2" || updated.BackgroundRemovalError != "provider rejected image" {
+		t.Fatalf("upserted removal metadata = %#v", updated)
 	}
 }

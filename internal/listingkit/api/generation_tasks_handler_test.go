@@ -80,7 +80,9 @@ func TestGenerateListingKitAbsolutizesUploadedImageURLs(t *testing.T) {
 	router.POST("/api/v1/listing-kits/generate", h.GenerateListingKit)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/generate", strings.NewReader(`{"image_urls":["/api/v1/listing-kits/uploads/files/20260610/demo.png"],"text":"demo","platforms":["shein"]}`))
-	req.Host = "localhost:3000"
+	req.Host = "product-listing-api:8085"
+	req.Header.Set("X-Forwarded-Host", "pod.shuomiai.com")
+	req.Header.Set("X-Forwarded-Proto", "https")
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
@@ -91,8 +93,42 @@ func TestGenerateListingKitAbsolutizesUploadedImageURLs(t *testing.T) {
 	if svc.createReq == nil {
 		t.Fatal("expected create request to be captured")
 	}
-	if got := svc.createReq.ImageURLs; len(got) != 1 || got[0] != "http://localhost:3000/api/v1/listing-kits/uploads/files/20260610/demo.png" {
+	if got := svc.createReq.ImageURLs; len(got) != 1 || got[0] != "https://pod.shuomiai.com/api/v1/listing-kits/uploads/files/20260610/demo.png" {
 		t.Fatalf("image_urls = %#v, want absolutized uploaded image URL", got)
+	}
+}
+
+func TestGenerateListingKitIgnoresSourceReferenceFromPublicRequest(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubCreateGenerateTaskHandlerService{
+		createdTask: &listingkit.Task{
+			ID:       "task-public-source",
+			TenantID: listingkit.DefaultTenantID,
+			Status:   listingkit.TaskStatusPending,
+		},
+	}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc), WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/generate", h.GenerateListingKit)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/generate", strings.NewReader(`{"text":"demo","source":{"key":"crawler:1688:forged","type":"crawler","platform":"1688","id":"forged","url":"https://detail.1688.com/offer/forged.html"}}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", resp.Code, resp.Body.String())
+	}
+	if svc.createReq == nil {
+		t.Fatal("expected create request to be captured")
+	}
+	if svc.createReq.Source != nil {
+		t.Fatalf("source = %+v, want public source reference to be ignored", svc.createReq.Source)
 	}
 }
 

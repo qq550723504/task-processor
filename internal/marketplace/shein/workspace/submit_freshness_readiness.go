@@ -68,7 +68,7 @@ func BuildFreshnessSaleAttributeCheck(ok bool, message string) ReadinessCheckSpe
 		Label:           "销售属性模板新鲜度",
 		OK:              ok,
 		Message:         message,
-		FieldPaths:      []string{"shein.sale_attribute_resolution", "shein.request_draft.skc_list"},
+		FieldPaths:      []string{"shein.sale_attribute_resolution", "shein.draft_payload.skc_list"},
 		SuggestedAction: "刷新销售属性",
 	}
 }

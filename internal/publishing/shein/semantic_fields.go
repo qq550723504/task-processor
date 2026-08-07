@@ -14,9 +14,10 @@ func NormalizePackageSemanticFields(pkg *Package) *Package {
 	// older JSON consumers continue to work while new business logic uses the
 	// semantic field names exclusively.
 	if pkg.DraftPayload == nil {
-		pkg.DraftPayload = pkg.RequestDraft
+		SetDraftPayload(pkg, pkg.RequestDraft)
+	} else {
+		pkg.RequestDraft = pkg.DraftPayload
 	}
-	pkg.RequestDraft = pkg.DraftPayload
 	if pkg.PreviewPayload == nil {
 		pkg.PreviewPayload = pkg.PreviewProduct
 	}

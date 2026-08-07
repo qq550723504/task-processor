@@ -88,6 +88,12 @@ func (u *S3Uploader) Upload(
 	return url, nil
 }
 
+// PublicURL returns the externally reachable URL for an object key using the
+// same public-base and endpoint rules as Upload.
+func (u *S3Uploader) PublicURL(key string) string {
+	return u.resolveObjectURL(key)
+}
+
 // UploadMultiple 批量上传图片
 func (u *S3Uploader) UploadMultiple(
 	ctx context.Context,

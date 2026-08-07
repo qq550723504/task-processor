@@ -20,8 +20,16 @@ func buildStudioBatchItemDesignRequest(batch *StudioBatchRecord, item StudioBatc
 	if len(referenceImageURLs) == 1 {
 		artworkGenerationMode = studioArtworkGenerationModeHotReference
 	}
+	promptText := strings.TrimSpace(batch.Prompt)
+	if artworkGenerationMode == studioArtworkGenerationModeHotReference {
+		promptText = buildStudioHotReferenceArtworkPrompt(
+			batch.HotStyleReferencePrompt,
+			batch.HotStyleReferenceBrief,
+			promptText,
+		)
+	}
 	return &StudioDesignRequest{
-		Prompt:                    strings.TrimSpace(batch.Prompt),
+		Prompt:                    promptText,
 		ArtworkGenerationMode:     artworkGenerationMode,
 		PromptMode:                strings.TrimSpace(batch.PromptMode),
 		Count:                     parseStudioBatchRunStyleCount(strings.TrimSpace(batch.StyleCount)),
@@ -31,6 +39,7 @@ func buildStudioBatchItemDesignRequest(batch *StudioBatchRecord, item StudioBatc
 		ProductReferenceImageURLs: referenceImageURLs,
 		ImageModel:                strings.TrimSpace(batch.ArtworkModel),
 		TransparentBackground:     batch.TransparentBackground,
+		TransparentBackgroundMode: batch.TransparentBackgroundMode,
 	}
 }
 
@@ -38,13 +47,11 @@ func validateStudioBatchDesignRequest(req *StudioDesignRequest) error {
 	if req == nil {
 		return fmt.Errorf("invalid request: prompt is required")
 	}
-	if strings.EqualFold(strings.TrimSpace(req.ArtworkGenerationMode), studioArtworkGenerationModeHotReference) && len(studioDesignReferenceImageURLs(req.ProductReferenceImageURLs)) == 1 {
-		return nil
+	referenceURLs, err := validateStudioDesignReferenceImageURLs(req)
+	if err != nil {
+		return err
 	}
-	if strings.TrimSpace(req.Prompt) == "" {
-		return fmt.Errorf("invalid request: prompt is required")
-	}
-	return nil
+	return validateStudioDesignPromptRequirement(req, referenceURLs)
 }
 
 func validateStudioBatchRecordDesignSource(batch *StudioBatchRecord) error {

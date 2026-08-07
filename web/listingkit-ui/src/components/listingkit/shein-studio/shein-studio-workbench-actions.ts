@@ -44,6 +44,7 @@ import type {
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
   SheinStudioSavedBatch,
+  SheinStudioTransparencyMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 import type { SheinStudioBatchTaskCreationResult } from "@/lib/api/shein-studio-batches";
@@ -115,6 +116,7 @@ type UseSheinStudioDesignActionsParams = {
   sheinStoreId: string;
   styleCount: string;
   transparentBackground: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   variationIntensity: SheinStudioVariationIntensity;
   hasLocalWorkflowStateRef: MutableRefObject<boolean>;
   batchTraceContext: {
@@ -163,6 +165,7 @@ export function useSheinStudioDesignActions({
   sheinStoreId,
   styleCount,
   transparentBackground,
+  transparentBackgroundMode,
   variationIntensity,
   hasLocalWorkflowStateRef,
   batchTraceContext,
@@ -314,6 +317,7 @@ export function useSheinStudioDesignActions({
         },
         styleCount,
         transparentBackground,
+        transparentBackgroundMode,
         variationIntensity,
         formatError: formatSubscriptionApiError,
         onJobStarted: ({ jobId, target }) => {
@@ -433,6 +437,7 @@ export function useSheinStudioDesignActions({
           styleCount: 1,
           artworkModel,
           transparentBackground,
+          transparentBackgroundMode,
         }),
       );
       const replacement = response.images[0];

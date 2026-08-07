@@ -9,24 +9,35 @@ import (
 )
 
 type listingKitRoutedImageClient struct {
-	defaultModel string
-	defaultImage openaiclient.ImageGenerator
-	gptImage2    openaiclient.ImageGenerator
-	nanobanana   openaiclient.ImageGenerator
+	defaultModel      string
+	defaultImage      openaiclient.ImageGenerator
+	gptImage2         openaiclient.ImageGenerator
+	nanobanana        openaiclient.ImageGenerator
+	backgroundRemoval openaiclient.ImageGenerator
+	hasResolver       bool
+}
+
+type listingKitImageRoute struct {
+	RoutingKey          string
+	CredentialReference string
+	UsesConfiguredModel bool
 }
 
 func buildListingKitRoutedImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {
 	nanoClient := buildStrictListingKitNanobananaImageClient(cfg, resolver, listingKitImageClientNameNanobanana)
 	gptClient := buildStrictListingKitImageClient(cfg, resolver, listingKitImageClientNameGPTImage2)
+	backgroundRemovalClient := buildStrictListingKitImageClient(cfg, resolver, listingKitImageClientNameBackgroundRemoval)
 	defaultClient := nanoClient
 	if resolver == nil {
 		defaultClient = buildStrictListingKitImageClient(cfg, resolver, listingKitImageClientName)
 	}
 	return &listingKitRoutedImageClient{
-		defaultModel: listingKitImageModelSelectorGPTImage2,
-		defaultImage: defaultClient,
-		gptImage2:    gptClient,
-		nanobanana:   nanoClient,
+		defaultModel:      listingKitImageModelSelectorGPTImage2,
+		defaultImage:      defaultClient,
+		gptImage2:         gptClient,
+		nanobanana:        nanoClient,
+		backgroundRemoval: backgroundRemovalClient,
+		hasResolver:       resolver != nil,
 	}
 }
 
@@ -117,16 +128,56 @@ func (c *listingKitRoutedImageClient) resolveEdit(req *openaiclient.ImageEditReq
 }
 
 func (c *listingKitRoutedImageClient) resolveBySelector(selector string) (openaiclient.ImageGenerator, bool, error) {
-	switch normalizeListingKitImageSelector(selector) {
-	case listingKitImageModelSelectorGPTImage2:
-		return c.gptImage2, true, nil
-	case listingKitImageModelSelectorNano:
-		return c.nanobanana, true, nil
+	route := resolveListingKitImageRoute(selector, c.hasResolver)
+	switch route.CredentialReference {
+	case listingKitImageClientNameGPTImage2:
+		return c.gptImage2, route.UsesConfiguredModel, nil
+	case listingKitImageClientNameNanobanana:
+		return c.nanobanana, route.UsesConfiguredModel, nil
+	case listingKitImageClientNameBackgroundRemoval:
+		if c.backgroundRemoval == nil {
+			return nil, false, errListingKitAIClientNotConfigured(listingKitImageClientNameBackgroundRemoval)
+		}
+		return c.backgroundRemoval, route.UsesConfiguredModel, nil
 	default:
 		if c.defaultImage == nil {
 			return nil, false, errListingKitAIClientNotConfigured(listingKitImageClientName)
 		}
-		return c.defaultImage, false, nil
+		return c.defaultImage, route.UsesConfiguredModel, nil
+	}
+}
+
+func resolveListingKitImageRoute(selector string, hasResolver bool) listingKitImageRoute {
+	routingKey := strings.TrimSpace(selector)
+	normalized := normalizeListingKitImageSelector(routingKey)
+	switch normalized {
+	case "", listingKitImageModelSelectorGPTImage2:
+		return listingKitImageRoute{
+			RoutingKey:          listingKitImageModelSelectorGPTImage2,
+			CredentialReference: listingKitImageClientNameGPTImage2,
+			UsesConfiguredModel: true,
+		}
+	case listingKitImageModelSelectorNano:
+		return listingKitImageRoute{
+			RoutingKey:          listingKitImageModelSelectorNano,
+			CredentialReference: listingKitImageClientNameNanobanana,
+			UsesConfiguredModel: true,
+		}
+	case listingKitImageModelSelectorBackgroundRemoval:
+		return listingKitImageRoute{
+			RoutingKey:          listingKitImageModelSelectorBackgroundRemoval,
+			CredentialReference: listingKitImageClientNameBackgroundRemoval,
+			UsesConfiguredModel: true,
+		}
+	default:
+		credentialReference := listingKitImageClientName
+		if hasResolver {
+			credentialReference = listingKitImageClientNameNanobanana
+		}
+		return listingKitImageRoute{
+			RoutingKey:          routingKey,
+			CredentialReference: credentialReference,
+		}
 	}
 }
 
@@ -137,6 +188,8 @@ func normalizeListingKitImageSelector(selector string) string {
 		return listingKitImageModelSelectorGPTImage2
 	case strings.Contains(normalized, "banana"):
 		return listingKitImageModelSelectorNano
+	case normalized == listingKitImageModelSelectorBackgroundRemoval || strings.Contains(normalized, "background-remov"):
+		return listingKitImageModelSelectorBackgroundRemoval
 	default:
 		return normalized
 	}
@@ -147,7 +200,7 @@ func enforceListingKitImageClientTimeout(clientName string, cfg *openaiclient.Cl
 		return nil
 	}
 	switch clientName {
-	case listingKitImageClientName, listingKitImageClientNameGPTImage2, listingKitImageClientNameNanobanana:
+	case listingKitImageClientName, listingKitImageClientNameGPTImage2, listingKitImageClientNameNanobanana, listingKitImageClientNameBackgroundRemoval:
 		if cfg.Timeout >= listingKitStudioImageMinTimeout {
 			return cfg
 		}

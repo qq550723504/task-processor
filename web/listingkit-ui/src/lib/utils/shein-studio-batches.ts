@@ -290,6 +290,7 @@ export async function saveSheinStudioBatch(
       groupedImageMode: input.groupedImageMode,
       selectedSdsImages: input.selectedSdsImages,
       transparentBackground: input.transparentBackground,
+      transparentBackgroundMode: input.transparentBackgroundMode,
       renderSizeImagesWithSds: input.renderSizeImagesWithSds,
       hotStyleReferenceImageUrls: input.hotStyleReferenceImageUrls,
       hotStyleReferenceBrief: input.hotStyleReferenceBrief,
@@ -400,6 +401,7 @@ function projectItemizedBatchSavedBatchCompatibility(
     variationIntensity: detail.batch.variationIntensity,
     artworkModel: detail.batch.artworkModel,
     transparentBackground: detail.batch.transparentBackground,
+    transparentBackgroundMode: detail.batch.transparentBackgroundMode,
     sheinStoreId:
       detail.batch.sheinStoreId > 0 ? String(detail.batch.sheinStoreId) : "",
     groupedImageMode: detail.batch.groupedImageMode,
@@ -518,6 +520,8 @@ function mergeBatchDetailWithSavedBatchContext(
     productImagePrompts: savedBatch?.productImagePrompts,
     artworkModel: itemized.artworkModel || savedBatch?.artworkModel,
     transparentBackground: itemized.transparentBackground ?? savedBatch?.transparentBackground,
+    transparentBackgroundMode:
+      itemized.transparentBackgroundMode ?? savedBatch?.transparentBackgroundMode,
     sheinStoreId: itemized.sheinStoreId || savedBatch?.sheinStoreId || "",
     imageStrategy: savedBatch?.imageStrategy,
     groupedImageMode: itemized.groupedImageMode ?? savedBatch?.groupedImageMode,

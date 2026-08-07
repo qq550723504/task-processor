@@ -905,6 +905,8 @@ func TestListingKitHTTPAPIExternalClientImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "ai_client_strict_image.go")):                {},
 		filepath.Clean(filepath.Join(root, "ai_clients.go")):                            {},
 		filepath.Clean(filepath.Join(root, "ai_clients_test.go")):                       {},
+		filepath.Clean(filepath.Join(root, "ai_capability_studio_catalog.go")):          {},
+		filepath.Clean(filepath.Join(root, "ai_capability_studio_catalog_test.go")):     {},
 		filepath.Clean(filepath.Join(root, "bootstrap_contracts.go")):                   {},
 		filepath.Clean(filepath.Join(root, "bootstrap_submit_module.go")):               {},
 		filepath.Clean(filepath.Join(root, "bootstrap_test.go")):                        {},
@@ -4055,6 +4057,23 @@ func TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages(t *testing.T) 
 		"task-processor/internal/marketplace",
 		"task-processor/internal/productimage",
 		"task-processor/internal/publishing",
+		"task-processor/internal/workspace",
+	}, nil)
+}
+
+func TestAICapabilityModuleDoesNotImportBusinessOrProviderPackages(t *testing.T) {
+	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "aicapability"), []string{
+		"task-processor/internal/app",
+		"task-processor/internal/asset",
+		"task-processor/internal/catalog",
+		"task-processor/internal/infra/clients",
+		"task-processor/internal/listingkit",
+		"task-processor/internal/marketplace",
+		"task-processor/internal/productenrich",
+		"task-processor/internal/productimage",
+		"task-processor/internal/publishing",
+		"task-processor/internal/shein",
+		"task-processor/internal/temu",
 		"task-processor/internal/workspace",
 	}, nil)
 }

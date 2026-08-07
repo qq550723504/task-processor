@@ -318,6 +318,12 @@ var promptCatalogMetadata = map[string]promptMetadata{
 		Scopes:      tenantOnlyScopes,
 		Variables:   promptVars("TransparentHint", "ReferenceHint", "PrintableHint", "ThemePrompt"),
 	},
+	prompt.KProductImageStudioGenerationPodDesignHotReference: {
+		Label:       "Studio 热销参考设计稿生成",
+		Description: "从热销商品参考图中提取图案并生成 POD 设计稿的提示词。",
+		Scopes:      tenantOnlyScopes,
+		Variables:   promptVars("PrintableHint", "TransparentHint", "ThemePrompt"),
+	},
 	prompt.KProductImageStudioGenerationAmazonProductImage: {
 		Label:       "Studio Amazon 主图生成",
 		Description: "Studio Amazon 商品主图生成提示词。",

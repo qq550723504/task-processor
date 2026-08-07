@@ -21,6 +21,40 @@ import (
 	"task-processor/internal/prompt"
 )
 
+type studioPromptRegistryStub struct {
+	key             string
+	tenantKey       string
+	vars            map[string]any
+	renderTenantErr error
+}
+
+func (s *studioPromptRegistryStub) Get(string, string) string { return "" }
+
+func (s *studioPromptRegistryStub) Render(key string, vars map[string]any, _ string) (string, error) {
+	s.key = key
+	s.vars = vars
+	return "global-hot-reference-template", nil
+}
+
+func (s *studioPromptRegistryStub) RenderTenantFromContext(_ context.Context, key string, vars map[string]any) (string, error) {
+	s.tenantKey = key
+	s.vars = vars
+	if s.renderTenantErr != nil {
+		return "", s.renderTenantErr
+	}
+	return "tenant-hot-reference-template", nil
+}
+
+func (s *studioPromptRegistryStub) GetTenant(string, string) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (s *studioPromptRegistryStub) RenderTenant(string, string, map[string]any) (string, error) {
+	return "", errors.New("not implemented")
+}
+
+func (s *studioPromptRegistryStub) Keys() []string { return nil }
+
 func TestParseStudioDesignSiblingThemesParsesPromptObject(t *testing.T) {
 	themes, err := parseStudioDesignSiblingThemes(`{"prompts":["bold vintage badge","dense collage badge","hero emblem badge"]}`, 3)
 	if err != nil {
@@ -161,18 +195,89 @@ func TestStudioDesignPromptUsesHotReferenceImageHint(t *testing.T) {
 		}
 	}
 	for _, required := range []string{
-		"hot-selling artwork reference",
-		"ignore the garment",
-		"focus on the printed artwork",
+		"hot-selling product reference image",
+		"extract the artwork, pattern, or design from the product",
+		"ignore the physical product",
+		"focus on the product's visible artwork or pattern",
 		"preserve the main subject family",
 		"dominant silhouette",
 		"color palette",
 		"recognizably related to the reference",
+		"make subtle but clearly visible controlled changes",
+		"modify 2–4",
+		"do not create a near-duplicate",
+		"do not trace or reproduce the exact contour",
 		"target print area: 1626 by 2000 pixels",
 	} {
 		if !strings.Contains(lower, required) {
 			t.Fatalf("hot-reference prompt missing %q:\n%s", required, text)
 		}
+	}
+	for _, forbidden := range []string{"garment", "apparel", "shirt", "mug", "canvas"} {
+		if strings.Contains(lower, forbidden) {
+			t.Fatalf("hot-reference prompt is tied to a specific product category %q:\n%s", forbidden, text)
+		}
+	}
+}
+
+func TestHotReferenceStudioDesignPromptUsesDedicatedTemplate(t *testing.T) {
+	registry := &studioPromptRegistryStub{}
+	previous := prompt.GlobalRegistry
+	prompt.GlobalRegistry = registry
+	t.Cleanup(func() { prompt.GlobalRegistry = previous })
+
+	text := buildStudioDesignPromptWithTheme(&StudioDesignRequest{
+		ArtworkGenerationMode: studioArtworkGenerationModeHotReference,
+		PromptMode:            studioPromptModeRaw,
+		PrintableWidth:        1200,
+		PrintableHeight:       1600,
+		TransparentBackground: true,
+	}, "floral line art")
+
+	if text != "tenant-hot-reference-template" {
+		t.Fatalf("prompt = %q, want dedicated template output", text)
+	}
+	const hotReferencePromptKey = "productimage.studio_generation.pod_design_hot_reference"
+	if registry.tenantKey != hotReferencePromptKey {
+		t.Fatalf("tenant rendered key = %q, want %q", registry.tenantKey, hotReferencePromptKey)
+	}
+	if registry.vars["ThemePrompt"] != "floral line art" {
+		t.Fatalf("ThemePrompt = %#v, want supplemental theme", registry.vars["ThemePrompt"])
+	}
+}
+
+func TestHotReferenceStudioDesignPromptFallbackKeepsVariationConstraints(t *testing.T) {
+	previous := prompt.GlobalRegistry
+	t.Cleanup(func() { prompt.GlobalRegistry = previous })
+
+	cases := []struct {
+		name     string
+		registry prompt.PromptRegistry
+	}{
+		{name: "global registry unavailable", registry: nil},
+		{name: "tenant rendering fails", registry: &studioPromptRegistryStub{renderTenantErr: errors.New("tenant prompt unavailable")}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			prompt.GlobalRegistry = tc.registry
+			text := buildHotReferenceStudioDesignPrompt(&StudioDesignRequest{
+				ArtworkGenerationMode: studioArtworkGenerationModeHotReference,
+				PrintableWidth:        1626,
+				PrintableHeight:       2000,
+			}, "")
+			lower := strings.ToLower(text)
+			for _, required := range []string{
+				"make subtle but clearly visible controlled changes",
+				"modify 2–4",
+				"do not create a near-duplicate",
+				"do not trace or reproduce the exact contour",
+			} {
+				if !strings.Contains(lower, required) {
+					t.Fatalf("fallback hot-reference prompt missing %q:\n%s", required, text)
+				}
+			}
+		})
 	}
 }
 
@@ -433,26 +538,44 @@ func TestSubmitStudioDesignsAsyncUsesEditPathWhenReferenceImagesExist(t *testing
 	}
 }
 
-func TestSubmitStudioDesignsAsyncRejectsOwnedUploadReference(t *testing.T) {
-	generator := &stubStudioImageGenerator{asyncSubmit: &AIImageAsyncSubmit{JobID: "job-1"}}
+func TestSubmitStudioDesignsAsyncFallsBackToSyncEditForOwnedUploadReference(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		asyncSubmit:      &AIImageAsyncSubmit{JobID: "job-1"},
+		generateResponse: &AIImageResponse{Data: []AIImageData{{B64JSON: base64.StdEncoding.EncodeToString([]byte("generated"))}}},
+	}
 	svc := &taskStudioMediaService{
 		imageGenerator: generator,
 		loadUploadedImage: func(context.Context, string) (*UploadedImageFile, error) {
 			return &UploadedImageFile{ContentType: "image/webp", Data: validWebPData(t)}, nil
 		},
+		uploadImages: func(context.Context, *UploadImagesRequest) (*UploadImagesResponse, error) {
+			return &UploadImagesResponse{ImageURLs: []string{"/api/v1/listing-kits/uploads/files/generated.png"}}, nil
+		},
 	}
 
-	_, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
+	result, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
 		Prompt:                    "retro cherries",
 		ArtworkGenerationMode:     "hot_reference",
 		Count:                     1,
-		ProductReferenceImageURLs: []string{"/api/v1/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901"},
+		ProductReferenceImageURLs: []string{"https://pod.shuomiai.com/api/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901"},
 	})
-	if err == nil || !strings.Contains(err.Error(), "async editing does not support uploaded listingkit images") {
+	if err != nil {
 		t.Fatalf("SubmitStudioDesignsAsync() error = %v", err)
+	}
+	if result == nil || result.Submit == nil || result.Submit.Status != AIImageAsyncResultSucceeded {
+		t.Fatalf("result = %+v, want a completed direct result", result)
+	}
+	if result.Response == nil || len(result.Response.Images) != 1 || result.Response.Images[0].ImageURL != "/api/v1/listing-kits/uploads/files/generated.png" {
+		t.Fatalf("response = %+v, want persisted generated image", result.Response)
 	}
 	if generator.asyncEditCalls != 0 {
 		t.Fatalf("async edit calls = %d, want 0", generator.asyncEditCalls)
+	}
+	if generator.editCalls != 1 {
+		t.Fatalf("sync edit calls = %d, want 1", generator.editCalls)
+	}
+	if len(generator.editRequests) != 1 || len(generator.editRequests[0].ImageData) == 0 || generator.editRequests[0].ImageURL != "" {
+		t.Fatalf("sync edit request = %+v, want uploaded image bytes", generator.editRequests)
 	}
 }
 
@@ -683,6 +806,89 @@ func TestGenerateStudioDesignsRejectsReferenceImagesWithoutHotReferenceMode(t *t
 	}
 }
 
+func TestGenerateStudioDesignsAllowsPromptlessHotReference(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		generateResponse: &AIImageResponse{Data: []AIImageData{{
+			B64JSON: base64.StdEncoding.EncodeToString([]byte{0xFF, 0xD8, 0xFF, 0xD9}),
+		}}},
+	}
+	svc := &service{studioDeps: studioDependencies{
+		imageGenerator: generator,
+		uploadStore:    &stubImageUploadStore{},
+	}}
+
+	response, err := svc.GenerateStudioDesigns(context.Background(), &StudioDesignRequest{
+		ArtworkGenerationMode:     studioArtworkGenerationModeHotReference,
+		Count:                     1,
+		ProductReferenceImageURLs: []string{"https://example.com/hot-ref.png"},
+	})
+	if err != nil {
+		t.Fatalf("GenerateStudioDesigns() error = %v", err)
+	}
+	if response == nil || len(response.Images) != 1 {
+		t.Fatalf("response = %#v, want one generated image", response)
+	}
+	if generator.editCalls != 1 {
+		t.Fatalf("editCalls = %d, want 1", generator.editCalls)
+	}
+	if len(generator.editRequests) != 1 || !strings.Contains(
+		strings.ToLower(generator.editRequests[0].Prompt),
+		"hot-selling product reference image",
+	) {
+		t.Fatalf("edit request = %#v, want hot-reference internal prompt", generator.editRequests)
+	}
+}
+
+func TestGenerateStudioDesignsDoesNotFallbackOnHotReferenceEditFailure(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		editErr: errors.New("provider rejected reference image"),
+		generateResponse: &AIImageResponse{Data: []AIImageData{{
+			B64JSON: base64.StdEncoding.EncodeToString([]byte{0xFF, 0xD8, 0xFF, 0xD9}),
+		}}},
+	}
+	svc := &service{studioDeps: studioDependencies{
+		imageGenerator: generator,
+		uploadStore:    &stubImageUploadStore{},
+	}}
+
+	response, err := svc.GenerateStudioDesigns(context.Background(), &StudioDesignRequest{
+		ArtworkGenerationMode:     studioArtworkGenerationModeHotReference,
+		Count:                     1,
+		ProductReferenceImageURLs: []string{"https://example.com/hot-ref.png"},
+	})
+	if err == nil {
+		t.Fatalf("GenerateStudioDesigns() error = nil, response = %#v; want reference edit failure", response)
+	}
+	if generator.generateCalls != 0 {
+		t.Fatalf("generateCalls = %d, want no no-reference fallback", generator.generateCalls)
+	}
+}
+
+func TestSubmitStudioDesignsAsyncAllowsPromptlessHotReference(t *testing.T) {
+	generator := &stubStudioImageGenerator{
+		asyncSubmit: &AIImageAsyncSubmit{JobID: "hot-reference-job"},
+	}
+	svc := &taskStudioMediaService{imageGenerator: generator}
+
+	result, err := svc.SubmitStudioDesignsAsync(context.Background(), &StudioDesignRequest{
+		ArtworkGenerationMode:     studioArtworkGenerationModeHotReference,
+		Count:                     1,
+		ProductReferenceImageURLs: []string{"https://example.com/hot-ref.png"},
+	})
+	if err != nil {
+		t.Fatalf("SubmitStudioDesignsAsync() error = %v", err)
+	}
+	if result == nil || result.Submit == nil || result.Submit.JobID != "hot-reference-job" {
+		t.Fatalf("result = %#v, want hot-reference async submission", result)
+	}
+	if len(generator.asyncEditReqs) != 1 || !strings.Contains(
+		strings.ToLower(generator.asyncEditReqs[0].Prompt),
+		"hot-selling product reference image",
+	) {
+		t.Fatalf("async edit request = %#v, want hot-reference internal prompt", generator.asyncEditReqs)
+	}
+}
+
 func TestGenerateStudioDesignsRetriesFailedVariantsSequentially(t *testing.T) {
 	generator := &stubStudioImageGenerator{
 		generateErrs: []error{
@@ -900,6 +1106,70 @@ func TestStudioEditPassesOwnedUploadBytesInsteadOfObjectURL(t *testing.T) {
 	req := generator.editRequests[0]
 	if len(req.ImageData) == 0 || req.ImageContentType != "image/webp" || req.ImageURL != "" || len(req.ImageURLs) != 0 {
 		t.Fatalf("edit request = %#v, want owned image bytes without URLs", req)
+	}
+}
+
+func TestStudioEditAddsPublicURLForFrontendProxyUploadReference(t *testing.T) {
+	generator := &stubStudioImageGenerator{generateResponse: &AIImageResponse{Data: []AIImageData{{B64JSON: "generated"}}}}
+	publicURL := "https://cdn.example.com/listingkit/reference.png"
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
+		imageGenerator: generator,
+		loadUploadedImage: func(_ context.Context, key string) (*UploadedImageFile, error) {
+			if key != "0b15bb5e-9f9e-4952-9a06-fd31aab99901" {
+				t.Fatalf("unexpected uploaded image key = %q", key)
+			}
+			return &UploadedImageFile{ContentType: "image/webp", Data: validWebPData(t)}, nil
+		},
+		resolveUploadedImagePublicURL: func(_ context.Context, key string) (string, error) {
+			if key != "0b15bb5e-9f9e-4952-9a06-fd31aab99901" {
+				t.Fatalf("unexpected public URL key = %q", key)
+			}
+			return publicURL, nil
+		},
+	})
+
+	_, err := svc.editStudioDesignImageWithReferences(context.Background(), "test-model", "prompt", "1024x1024", []string{
+		"https://pod.shuomiai.com/api/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(generator.editRequests) != 1 {
+		t.Fatalf("edit requests = %d, want 1", len(generator.editRequests))
+	}
+	req := generator.editRequests[0]
+	if len(req.ImageData) == 0 || req.ImageContentType != "image/webp" {
+		t.Fatalf("edit request image data = %d bytes, content type %q, want uploaded bytes", len(req.ImageData), req.ImageContentType)
+	}
+	if req.ImageURL != publicURL || len(req.ImageURLs) != 1 || req.ImageURLs[0] != publicURL {
+		t.Fatalf("edit request public URLs = (%q, %#v), want %q", req.ImageURL, req.ImageURLs, publicURL)
+	}
+}
+
+func TestStudioEditKeepsInlineBytesWhenPublicURLUnavailable(t *testing.T) {
+	generator := &stubStudioImageGenerator{generateResponse: &AIImageResponse{Data: []AIImageData{{B64JSON: "generated"}}}}
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
+		imageGenerator: generator,
+		loadUploadedImage: func(context.Context, string) (*UploadedImageFile, error) {
+			return &UploadedImageFile{ContentType: "image/webp", Data: validWebPData(t)}, nil
+		},
+		resolveUploadedImagePublicURL: func(context.Context, string) (string, error) {
+			return "", errors.New("public https url is required")
+		},
+	})
+
+	_, err := svc.editStudioDesignImageWithReferences(context.Background(), "test-model", "prompt", "1024x1024", []string{
+		"https://pod.shuomiai.com/api/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(generator.editRequests) != 1 {
+		t.Fatalf("edit requests = %d, want 1", len(generator.editRequests))
+	}
+	request := generator.editRequests[0]
+	if len(request.ImageData) == 0 || request.ImageURL != "" || len(request.ImageURLs) != 0 {
+		t.Fatalf("edit request = %#v, want inline bytes without public URL", request)
 	}
 }
 

@@ -6,6 +6,9 @@ export function toImageProxyUrl(url?: string | null) {
   if (trimmed.startsWith("data:") || trimmed.startsWith("/api/image-proxy")) {
     return trimmed;
   }
+  if (trimmed.startsWith("/api/listing-kits/uploads/files/")) {
+    return trimmed;
+  }
   const listingKitUploadPrefix = "/api/v1/listing-kits/uploads/files/";
   if (trimmed.startsWith(listingKitUploadPrefix)) {
     return trimmed.replace(

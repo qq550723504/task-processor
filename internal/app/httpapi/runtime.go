@@ -29,6 +29,13 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 		return nil, err
 	}
 	closers := openaiDeps.closers
+	done = timer.phase("buildAICapabilityRuntimeDeps")
+	aiCapabilityDeps, err := buildAICapabilityRuntimeDeps(cfg, logger)
+	done()
+	if err != nil {
+		return nil, err
+	}
+	closers = append(closers, aiCapabilityDeps.closers...)
 	closers = append(closers, promptDeps.closers...)
 	done = timer.phase("buildProductEnrichRuntimeDeps")
 	productEnrichDeps, err := buildProductEnrichRuntimeDeps(logger, cfg, openaiDeps.openaiMgr)
@@ -47,16 +54,17 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	timer.total("buildRuntimeDeps")
 	return &runtimeDeps{
 		shared: &sharedRuntimeDeps{
-			cfg:               cfg,
-			closers:           closers,
-			openaiMgr:         openaiDeps.openaiMgr,
-			aiCredentialStore: openaiDeps.aiCredentialStore,
-			tenantPromptStore: promptDeps.tenantPromptStore,
-			llmMgr:            productEnrichDeps.llmMgr,
-			inputParser:       productEnrichDeps.inputParser,
-			understanding:     productEnrichDeps.understanding,
-			imageWorkDir:      imageWorkDir,
-			storeAPI:          storeAPI,
+			cfg:                  cfg,
+			closers:              closers,
+			openaiMgr:            openaiDeps.openaiMgr,
+			aiCredentialStore:    openaiDeps.aiCredentialStore,
+			aiInvocationRecorder: aiCapabilityDeps.invocationRecorder,
+			tenantPromptStore:    promptDeps.tenantPromptStore,
+			llmMgr:               productEnrichDeps.llmMgr,
+			inputParser:          productEnrichDeps.inputParser,
+			understanding:        productEnrichDeps.understanding,
+			imageWorkDir:         imageWorkDir,
+			storeAPI:             storeAPI,
 		},
 		features: &featureRuntimeState{},
 	}, nil

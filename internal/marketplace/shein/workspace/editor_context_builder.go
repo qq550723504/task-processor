@@ -199,11 +199,12 @@ func clonePendingAttributeCandidates(items []sheinpub.PendingAttributeCandidate)
 }
 
 func BuildEditorSKCPatches(pkg *sheinpub.Package) []SKCRevisionPatch {
-	if pkg == nil || pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 {
+	draft := sheinpub.DraftPayloadOf(pkg)
+	if draft == nil || len(draft.SKCList) == 0 {
 		return nil
 	}
-	patches := make([]SKCRevisionPatch, 0, len(pkg.RequestDraft.SKCList))
-	for _, skc := range pkg.RequestDraft.SKCList {
+	patches := make([]SKCRevisionPatch, 0, len(draft.SKCList))
+	for _, skc := range draft.SKCList {
 		patch := SKCRevisionPatch{
 			SupplierCode: skc.SupplierCode,
 			SKUPatches:   buildEditorSKUPatches(skc.SKUList),

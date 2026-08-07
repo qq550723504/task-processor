@@ -98,19 +98,25 @@ func buildModuleRuntime(input BuildModuleInput, bundle *ServiceBundle) (_ *Modul
 	return createModuleRuntime(input, bundle, closers)
 }
 
-func buildServiceRuntimeModules(input BuildServiceInput, repositories *builtRepositories) serviceRuntimeModules {
+func buildServiceRuntimeModules(input BuildServiceInput, repositories *builtRepositories) (serviceRuntimeModules, error) {
 	task := buildTaskModule(newTaskModuleInput(input, repositories))
 	admin := buildAdminModule(newAdminModuleInput(repositories))
-	submit := buildSubmitModule(newSubmitModuleInput(input, repositories))
+	submit, err := buildSubmitModule(newSubmitModuleInput(input, repositories))
+	if err != nil {
+		return serviceRuntimeModules{}, fmt.Errorf("build submit module: %w", err)
+	}
 	return serviceRuntimeModules{
 		task:   task,
 		admin:  admin,
 		submit: submit,
-	}
+	}, nil
 }
 
 func assembleServiceRuntime(input BuildServiceInput, repositories *builtRepositories, closers *closerStack) (serviceRuntimeAssembly, error) {
-	modules := buildServiceRuntimeModules(input, repositories)
+	modules, err := buildServiceRuntimeModules(input, repositories)
+	if err != nil {
+		return serviceRuntimeAssembly{}, err
+	}
 	moduleSvc, err := buildModuleService(input, repositories, modules.submit, closers)
 	if err != nil {
 		return serviceRuntimeAssembly{}, err

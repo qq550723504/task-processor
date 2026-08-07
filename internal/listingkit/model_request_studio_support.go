@@ -49,46 +49,53 @@ type StudioProductImageResponse struct {
 }
 
 type StudioGeneratedImage struct {
-	ID                    string  `json:"id"`
-	ImageURL              string  `json:"image_url"`
-	Prompt                string  `json:"prompt,omitempty"`
-	RevisedPrompt         string  `json:"revised_prompt,omitempty"`
-	ImageModel            string  `json:"image_model,omitempty"`
-	TransparentBackground bool    `json:"transparent_background,omitempty"`
-	VariationIntensity    string  `json:"variation_intensity,omitempty"`
-	Role                  string  `json:"role,omitempty"`
-	RoleLabel             string  `json:"role_label,omitempty"`
-	RequestID             string  `json:"request_id,omitempty"`
-	UpstreamJobID         string  `json:"upstream_job_id,omitempty"`
-	RawResponse           string  `json:"raw_response,omitempty"`
-	Usage                 AIUsage `json:"usage,omitempty"`
+	ID                        string                        `json:"id"`
+	ImageURL                  string                        `json:"image_url"`
+	OriginalImageURL          string                        `json:"original_image_url,omitempty"`
+	Prompt                    string                        `json:"prompt,omitempty"`
+	RevisedPrompt             string                        `json:"revised_prompt,omitempty"`
+	ImageModel                string                        `json:"image_model,omitempty"`
+	TransparentBackground     bool                          `json:"transparent_background,omitempty"`
+	TransparentBackgroundMode StudioTransparencyMode        `json:"transparent_background_mode,omitempty"`
+	BackgroundRemovalStatus   StudioBackgroundRemovalStatus `json:"background_removal_status,omitempty"`
+	BackgroundRemovalModel    string                        `json:"background_removal_model,omitempty"`
+	BackgroundRemovalError    string                        `json:"background_removal_error,omitempty"`
+	VariationIntensity        string                        `json:"variation_intensity,omitempty"`
+	Role                      string                        `json:"role,omitempty"`
+	RoleLabel                 string                        `json:"role_label,omitempty"`
+	RequestID                 string                        `json:"request_id,omitempty"`
+	UpstreamJobID             string                        `json:"upstream_job_id,omitempty"`
+	RawResponse               string                        `json:"raw_response,omitempty"`
+	Usage                     AIUsage                       `json:"usage,omitempty"`
 }
 
 type StudioDesignRequest struct {
-	Prompt                    string   `json:"prompt,omitempty"`
-	ArtworkGenerationMode     string   `json:"artwork_generation_mode,omitempty"`
-	PromptMode                string   `json:"prompt_mode,omitempty"`
-	Count                     int      `json:"count,omitempty"`
-	VariationIntensity        string   `json:"variation_intensity,omitempty"`
-	PrintableWidth            int      `json:"printable_width,omitempty"`
-	PrintableHeight           int      `json:"printable_height,omitempty"`
-	ProductReferenceImageURLs []string `json:"product_reference_image_urls,omitempty"`
-	ImageModel                string   `json:"image_model,omitempty"`
-	TransparentBackground     bool     `json:"transparent_background,omitempty"`
+	Prompt                    string                 `json:"prompt,omitempty"`
+	ArtworkGenerationMode     string                 `json:"artwork_generation_mode,omitempty"`
+	PromptMode                string                 `json:"prompt_mode,omitempty"`
+	Count                     int                    `json:"count,omitempty"`
+	VariationIntensity        string                 `json:"variation_intensity,omitempty"`
+	PrintableWidth            int                    `json:"printable_width,omitempty"`
+	PrintableHeight           int                    `json:"printable_height,omitempty"`
+	ProductReferenceImageURLs []string               `json:"product_reference_image_urls,omitempty"`
+	ImageModel                string                 `json:"image_model,omitempty"`
+	TransparentBackground     bool                   `json:"transparent_background,omitempty"`
+	TransparentBackgroundMode StudioTransparencyMode `json:"transparent_background_mode,omitempty"`
 }
 
 type StudioDesignResponse struct {
-	Prompt                string                 `json:"prompt"`
-	PrintableWidth        int                    `json:"printable_width,omitempty"`
-	PrintableHeight       int                    `json:"printable_height,omitempty"`
-	ImageModel            string                 `json:"image_model,omitempty"`
-	TransparentBackground bool                   `json:"transparent_background"`
-	RequestID             string                 `json:"request_id,omitempty"`
-	UpstreamJobID         string                 `json:"upstream_job_id,omitempty"`
-	RawResponse           string                 `json:"raw_response,omitempty"`
-	Usage                 AIUsage                `json:"usage,omitempty"`
-	Images                []StudioGeneratedImage `json:"images,omitempty"`
-	Warnings              []string               `json:"warnings,omitempty"`
+	Prompt                    string                 `json:"prompt"`
+	PrintableWidth            int                    `json:"printable_width,omitempty"`
+	PrintableHeight           int                    `json:"printable_height,omitempty"`
+	ImageModel                string                 `json:"image_model,omitempty"`
+	TransparentBackground     bool                   `json:"transparent_background"`
+	TransparentBackgroundMode StudioTransparencyMode `json:"transparent_background_mode,omitempty"`
+	RequestID                 string                 `json:"request_id,omitempty"`
+	UpstreamJobID             string                 `json:"upstream_job_id,omitempty"`
+	RawResponse               string                 `json:"raw_response,omitempty"`
+	Usage                     AIUsage                `json:"usage,omitempty"`
+	Images                    []StudioGeneratedImage `json:"images,omitempty"`
+	Warnings                  []string               `json:"warnings,omitempty"`
 }
 
 type StudioReferenceAnalysisRequest struct {

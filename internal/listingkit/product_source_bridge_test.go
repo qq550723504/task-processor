@@ -14,6 +14,7 @@ func TestGenerateRequestFromSourceFactsMapsNeutralFacts(t *testing.T) {
 		UserID:   " user-1 ",
 		Product: catalog.ProductFacts{
 			SourceKey:      "crawler:amazon:B001",
+			SourceType:     "crawler",
 			SourcePlatform: "amazon",
 			SourceID:       "B001",
 			SourceURL:      " https://www.amazon.com/dp/B001 ",
@@ -44,6 +45,16 @@ func TestGenerateRequestFromSourceFactsMapsNeutralFacts(t *testing.T) {
 	if req.ProductURL != "https://www.amazon.com/dp/B001" {
 		t.Fatalf("ProductURL = %q, want source URL", req.ProductURL)
 	}
+	if req.Source == nil {
+		t.Fatal("Source = nil, want normalized source reference")
+	}
+	if req.Source.Key != "crawler:amazon:B001" ||
+		req.Source.Type != "crawler" ||
+		req.Source.Platform != "amazon" ||
+		req.Source.ID != "B001" ||
+		req.Source.URL != "https://www.amazon.com/dp/B001" {
+		t.Fatalf("Source = %+v, want normalized source identity", req.Source)
+	}
 	if len(req.ImageURLs) != 2 || req.ImageURLs[0] != "https://img.example/primary.jpg" || req.ImageURLs[1] != "https://img.example/side.jpg" {
 		t.Fatalf("ImageURLs = %#v, want deduped source asset URLs", req.ImageURLs)
 	}
@@ -68,7 +79,7 @@ func TestGenerateRequestFromSourceFactsMapsNeutralFacts(t *testing.T) {
 
 func TestGenerateRequestFromSourceFactsKeepsExplicitCategoryHint(t *testing.T) {
 	req := GenerateRequestFromSourceFacts(SourceFactsGenerateRequestInput{
-		Product: catalog.ProductFacts{Attributes: map[string]string{"category": "Source Category"}},
+		Product:            catalog.ProductFacts{Attributes: map[string]string{"category": "Source Category"}},
 		TargetCategoryHint: " Explicit Category ",
 	})
 
@@ -90,5 +101,18 @@ func TestGenerateRequestFromSourceFactsDoesNotRequireAssetsOrPlatforms(t *testin
 	}
 	if req.Platforms != nil {
 		t.Fatalf("Platforms = %#v, want nil", req.Platforms)
+	}
+}
+
+func TestGenerateRequestFromSourceFactsKeepsEmptySourceReference(t *testing.T) {
+	req := GenerateRequestFromSourceFacts(SourceFactsGenerateRequestInput{
+		Product: catalog.ProductFacts{Title: "Only Title"},
+	})
+
+	if req.Source != nil {
+		t.Fatalf("Source = %+v, want nil for facts without source identity", req.Source)
+	}
+	if req.Text != "Title: Only Title" {
+		t.Fatalf("Text = %q, want title-only prompt", req.Text)
 	}
 }

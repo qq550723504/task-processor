@@ -15,6 +15,7 @@ import type {
   SheinStudioImageStrategy,
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
+  SheinStudioTransparencyMode,
   SheinStudioVariationIntensity,
   SheinStudioDraft,
 } from "@/lib/types/shein-studio";
@@ -92,6 +93,7 @@ type DraftPersistenceProjectionParams = {
   sheinStoreId: string;
   styleCount: string;
   transparentBackground: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   variationIntensity: SheinStudioVariationIntensity;
 };
 
@@ -131,6 +133,7 @@ export function buildSheinStudioDraftPersistenceState({
   sheinStoreId,
   styleCount,
   transparentBackground,
+  transparentBackgroundMode,
   variationIntensity,
 }: DraftPersistenceProjectionParams) {
   return {
@@ -167,6 +170,7 @@ export function buildSheinStudioDraftPersistenceState({
     sheinStoreId,
     styleCount,
     transparentBackground,
+    transparentBackgroundMode,
     variationIntensity,
   };
 }
@@ -188,6 +192,7 @@ export function projectLocalDraftRecovery({ draft }: LocalDraftRecoveryParams) {
       artworkGenerationMode: draftState.artworkGenerationMode,
       artworkModel: draftState.artworkModel,
       transparentBackground: draftState.transparentBackground,
+      transparentBackgroundMode: draft.transparentBackgroundMode,
       sheinStoreId: draftState.sheinStoreId,
       imageStrategy: draftState.imageStrategy,
       groupedImageMode: draftState.groupedImageMode,

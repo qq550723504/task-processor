@@ -97,6 +97,7 @@ func (r *GormStudioBatchRepository) ReplaceStudioBatchGenerationGraph(ctx contex
 					"hot_style_reference_brief":      batchRow.HotStyleReferenceBrief,
 					"hot_style_reference_prompt":     batchRow.HotStyleReferencePrompt,
 					"transparent_background":         batchRow.TransparentBackground,
+					"transparent_background_mode":    batchRow.TransparentBackgroundMode,
 					"shein_store_id":                 batchRow.SheinStoreID,
 					"updated_at":                     batchRow.UpdatedAt,
 				}).Error; err != nil {

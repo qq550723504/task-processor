@@ -41,6 +41,11 @@ Current direct dependency hotspots are:
 
 - `internal/listingkit`
   - broad `openai` coupling across facade, studio, task, and settings code
+  - Studio AI capability direction is `ListingKit local AI port -> Studio
+    capability adapter -> aicapability router -> existing provider seam`.
+    `internal/listingkit/httpapi` keeps the compatibility credential/provider
+    adapter in Phase 1; other direct OpenAI imports remain unchanged and are
+    not silently migrated by this capability slice.
   - a narrow `management` retirement seam remains in `internal/listingkit/httpapi`
     for SHEIN sync runtime strategy wiring
   - a separate legacy promotion bridge seam remains in
@@ -302,9 +307,14 @@ paths such as pricing, platformbase, platformtask, TEMU, SHEIN legacy packages,
 and Amazon DTO/test seams.
 
 1. ListingKit AI settings and studio media generation seams currently importing
-   `internal/infra/clients/openai`. The HTTPAPI runtime/bootstrap seam is now
-   explicitly allowlisted; root facade OpenAI seams are also explicitly
-   allowlisted. The next ListingKit cleanup should move one service-facing
+   `internal/infra/clients/openai`. Studio now directs new image capability
+   decisions through `ListingKit local AI port -> Studio capability adapter ->
+   aicapability router -> existing provider seam`, while
+   `internal/listingkit/httpapi` retains the compatibility credential/provider
+   adapter in Phase 1. The HTTPAPI runtime/bootstrap seam is explicitly
+   allowlisted; root facade OpenAI seams are also explicitly allowlisted.
+   Other direct OpenAI imports remain unchanged and must not be silently
+   migrated. The next ListingKit cleanup should move one service-facing
    capability at a time behind ListingKit-owned interfaces before adding new
    concrete OpenAI adapter call sites.
 2. ListingKit HTTPAPI SHEIN sync runtime strategy wiring currently imports

@@ -36,6 +36,7 @@ func GenerateRequestFromSourceFacts(input SourceFactsGenerateRequestInput) Gener
 		ImageURLs:          imageURLsFromAssetFacts(input.Assets),
 		Text:               sourceFactsPromptText(product),
 		ProductURL:         strings.TrimSpace(product.SourceURL),
+		Source:             sourceReferenceFromProductFacts(product),
 		Platforms:          normalizedSourceFactsPlatforms(input.Platforms),
 		Country:            strings.TrimSpace(input.Country),
 		Language:           strings.TrimSpace(input.Language),
@@ -43,6 +44,23 @@ func GenerateRequestFromSourceFacts(input SourceFactsGenerateRequestInput) Gener
 		TargetCategoryHint: sourceFactsCategoryHint(input.TargetCategoryHint, product),
 		BrandHint:          strings.TrimSpace(product.Brand),
 		Options:            input.Options,
+	}
+}
+
+func sourceReferenceFromProductFacts(product catalog.ProductFacts) *SourceReference {
+	if strings.TrimSpace(product.SourceKey) == "" &&
+		strings.TrimSpace(product.SourceType) == "" &&
+		strings.TrimSpace(product.SourcePlatform) == "" &&
+		strings.TrimSpace(product.SourceID) == "" &&
+		strings.TrimSpace(product.SourceURL) == "" {
+		return nil
+	}
+	return &SourceReference{
+		Key:      strings.TrimSpace(product.SourceKey),
+		Type:     strings.TrimSpace(product.SourceType),
+		Platform: strings.TrimSpace(product.SourcePlatform),
+		ID:       strings.TrimSpace(product.SourceID),
+		URL:      strings.TrimSpace(product.SourceURL),
 	}
 }
 

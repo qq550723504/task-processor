@@ -9,8 +9,8 @@ import (
 type sheinStudioSupplierSKURename = sheinpub.SupplierSKURename
 
 func normalizeSheinStudioSubmitSupplierSKUs(task *Task, pkg *sheinpub.Package, submitRequestID string) bool {
-	pkg = sheinpub.NormalizePackageSemanticFields(pkg)
-	if task == nil || task.Request == nil || task.Request.Options == nil || pkg == nil || pkg.DraftPayload == nil {
+	draft := sheinpub.DraftPayloadOf(pkg)
+	if task == nil || task.Request == nil || task.Request.Options == nil || pkg == nil || draft == nil {
 		return false
 	}
 	sds := task.Request.Options.SDS

@@ -46,6 +46,7 @@ import type {
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
   SheinStudioSavedBatch,
+  SheinStudioTransparencyMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 import type { SheinStudioBatchDetail } from "@/lib/types/shein-studio-batch";
@@ -112,6 +113,7 @@ type WorkbenchDraftState = {
   sheinStoreId: string;
   styleCount: string;
   transparentBackground: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   variationIntensity: SheinStudioVariationIntensity;
 };
 
@@ -515,6 +517,7 @@ export function useSheinStudioDraftPersistence(
         hotStyleReferencePrompt: state.hotStyleReferencePrompt,
         artworkModel: state.artworkModel,
         transparentBackground: state.transparentBackground,
+        transparentBackgroundMode: state.transparentBackgroundMode,
         sheinStoreId: state.sheinStoreId,
         imageStrategy: state.imageStrategy,
         groupedImageMode: state.groupedImageMode,

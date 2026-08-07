@@ -75,6 +75,7 @@ type ServiceSheinDependencies struct {
 	SheinContentOptimizer      AIChatCompleter
 	StudioPromptDiversifier    AIChatCompleter
 	StudioImageGenerator       AIImageGenerator
+	StudioBackgroundRemover    StudioBackgroundRemover
 }
 
 type ServiceWorkflowDependencies struct {

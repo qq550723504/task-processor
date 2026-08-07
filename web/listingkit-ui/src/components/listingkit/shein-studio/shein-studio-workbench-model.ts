@@ -157,6 +157,7 @@ export function projectGroupToWorkbench(group: SheinStudioGroupedWorkspace) {
     hotStyleReferencePrompt: group.hotStyleReferencePrompt ?? "",
     artworkModel: group.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground: group.transparentBackground ?? false,
+    transparentBackgroundMode: group.transparentBackgroundMode,
     sheinStoreId: group.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
     imageStrategy: group.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     groupedImageMode:
@@ -218,6 +219,7 @@ function projectItemizedBatchCompatibilityFields(
     variationIntensity: detail.batch.variationIntensity,
     artworkModel: detail.batch.artworkModel,
     transparentBackground: detail.batch.transparentBackground,
+    transparentBackgroundMode: detail.batch.transparentBackgroundMode,
     sheinStoreId:
       detail.batch.sheinStoreId > 0
         ? String(detail.batch.sheinStoreId)
@@ -480,6 +482,7 @@ export function projectSavedBatchToWorkbench(
     hotStyleReferencePrompt: savedBatch.hotStyleReferencePrompt ?? "",
     artworkModel: savedBatch.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground: savedBatch.transparentBackground ?? false,
+    transparentBackgroundMode: savedBatch.transparentBackgroundMode,
     sheinStoreId: savedBatch.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
     imageStrategy:
       savedBatch.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
@@ -578,6 +581,8 @@ export function projectHydratedBatchToWorkbench(
       DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground:
       itemized.transparentBackground ?? saved.transparentBackground ?? false,
+    transparentBackgroundMode:
+      itemized.transparentBackgroundMode ?? saved.transparentBackgroundMode,
     sheinStoreId:
       itemized.sheinStoreId || saved.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
     imageStrategy: saved.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,

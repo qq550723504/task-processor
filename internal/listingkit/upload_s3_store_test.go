@@ -22,7 +22,7 @@ func TestS3ImageUploadStoreDoesNotRetainPublicBaseConfiguration(t *testing.T) {
 	}
 }
 
-func TestS3ImageUploadStoreSavesPrivateTenantScopedKeyWithoutPublicURL(t *testing.T) {
+func TestS3ImageUploadStoreSavesTenantScopedKeyWithUploaderPublicURL(t *testing.T) {
 	t.Parallel()
 
 	uploader := &stubS3ImageUploadUploader{
@@ -61,8 +61,8 @@ func TestS3ImageUploadStoreSavesPrivateTenantScopedKeyWithoutPublicURL(t *testin
 	if file.ContentType != "image/png" {
 		t.Fatalf("content type = %q, want image/png", file.ContentType)
 	}
-	if file.PublicURL != "" {
-		t.Fatalf("PublicURL = %q, want empty", file.PublicURL)
+	if file.PublicURL != uploader.url {
+		t.Fatalf("PublicURL = %q, want %q", file.PublicURL, uploader.url)
 	}
 	if uploader.lastKey != key {
 		t.Fatalf("uploaded key = %q, want %q", uploader.lastKey, key)

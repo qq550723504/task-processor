@@ -68,6 +68,7 @@ import {
   projectItemizedTaskCreationProgressEffects,
   projectItemizedTaskCreationProgress,
   loadItemizedGenerationPollBatch,
+  runItemizedBackgroundRemovalRetry,
   runItemizedDesignApproval,
   runItemizedFailedRetry,
   usePendingItemizedTaskDesignIds,
@@ -133,6 +134,7 @@ import { formatSubscriptionApiError } from "@/lib/api/subscription";
 import { useSheinStoreSelector } from "@/lib/query/use-shein-store-selector";
 import {
   approveSheinStudioBatchDesigns,
+  retrySheinStudioBatchBackgroundRemoval,
   retrySheinStudioBatchItems,
 } from "@/lib/api/shein-studio-batches";
 import { useToast } from "@/components/providers/toast-provider";
@@ -233,6 +235,7 @@ export function SheinStudioWorkbench({
     sheinStoreId,
     styleCount,
     transparentBackground,
+    transparentBackgroundMode,
     variationIntensity,
   } = workbenchState;
   const {
@@ -262,6 +265,7 @@ export function SheinStudioWorkbench({
     setSheinStoreId,
     setStyleCount,
     setTransparentBackground,
+    setTransparentBackgroundMode,
     setVariationIntensity,
   } = workbenchSetters;
   const hasLocalWorkflowStateRef = useRef(false);
@@ -281,6 +285,8 @@ export function SheinStudioWorkbench({
   const activeSelection =
     directSelection ?? activeGroupSelection ?? loadedBatchSelection;
   const [retryingFailedItemId, setRetryingFailedItemId] = useState("");
+  const [retryingBackgroundRemovalId, setRetryingBackgroundRemovalId] =
+    useState("");
   const [
     rawSelectedRecentBatchSummaryIds,
     setRawSelectedRecentBatchSummaryIds,
@@ -473,6 +479,7 @@ export function SheinStudioWorkbench({
         sheinStoreId,
         styleCount,
         transparentBackground,
+        transparentBackgroundMode,
         variationIntensity,
       }),
     [
@@ -509,6 +516,7 @@ export function SheinStudioWorkbench({
       sheinStoreId,
       styleCount,
       transparentBackground,
+      transparentBackgroundMode,
       variationIntensity,
     ],
   );
@@ -582,6 +590,7 @@ export function SheinStudioWorkbench({
     sheinStoreId,
     styleCount,
     transparentBackground,
+    transparentBackgroundMode,
     variationIntensity,
   });
   const createActionDisabledReason = useSheinStudioCreateActionDisabledReason({
@@ -781,6 +790,7 @@ export function SheinStudioWorkbench({
       sheinStoreId,
       styleCount,
       transparentBackground,
+      transparentBackgroundMode,
       variationIntensity,
       hasLocalWorkflowStateRef,
       itemizedBatchContext,
@@ -1130,6 +1140,7 @@ export function SheinStudioWorkbench({
         sheinStoreId,
         styleCount,
         transparentBackground,
+        transparentBackgroundMode,
         variationIntensity,
       });
       workbenchController.setField("savedBatches", (current) =>
@@ -1165,6 +1176,7 @@ export function SheinStudioWorkbench({
       sheinStoreId,
       styleCount,
       transparentBackground,
+      transparentBackgroundMode,
       variationIntensity,
       workbenchController,
     ],
@@ -1326,6 +1338,37 @@ export function SheinStudioWorkbench({
       );
     } finally {
       setRetryingFailedItemId("");
+    }
+  }
+
+  async function handleRetryBackgroundRemoval(designId: string) {
+    if (!activeBatchId) {
+      workbenchController.setField(
+        "generationError",
+        "当前批次不可用，请刷新后重试。",
+      );
+      return;
+    }
+    setRetryingBackgroundRemovalId(designId);
+    clearWorkbenchTaskRecoveryAlerts(workbenchController);
+    try {
+      const nextDetail = await runItemizedBackgroundRemovalRetry({
+        activeBatchId,
+        applyHydratedBatch: handleLoadHydratedBatchRef.current,
+        currentActiveBatch,
+        designId,
+        detail: itemizedBatchDetail,
+        getHydratedBatch: getSheinStudioHydratedBatch,
+        retryBackgroundRemoval: retrySheinStudioBatchBackgroundRemoval,
+      });
+      applyItemizedBatchDetail(nextDetail);
+    } catch (error) {
+      workbenchController.setField(
+        "generationError",
+        `重试抠图失败：${formatSubscriptionApiError(error)}`,
+      );
+    } finally {
+      setRetryingBackgroundRemovalId("");
     }
   }
 
@@ -1685,6 +1728,7 @@ export function SheinStudioWorkbench({
                   },
                   setStyleCount,
                   setTransparentBackground,
+                  setTransparentBackgroundMode,
                   setVariationIntensity,
                 }}
                 form={{
@@ -1707,6 +1751,7 @@ export function SheinStudioWorkbench({
                   selectedSdsImages,
                   styleCount,
                   transparentBackground,
+                  transparentBackgroundMode,
                   variationIntensity,
                 }}
                 status={{
@@ -1770,9 +1815,11 @@ export function SheinStudioWorkbench({
               onCreateReviewTasks={handleCreateTasks}
               onNoteChange={handleNoteChange}
               onRegenerate={handleRegenerate}
+              onRetryBackgroundRemoval={handleRetryBackgroundRemoval}
               onToggle={toggleSelection}
               productImageCount={productImageCount}
               regeneratingId={regeneratingId || undefined}
+              retryingBackgroundRemovalId={retryingBackgroundRemovalId || undefined}
               renderSizeImagesWithSds={renderSizeImagesWithSds}
               selectedIds={selectedIds}
               selection={activeSelection}

@@ -9,6 +9,11 @@ export type SheinStudioGeneratedDesign = {
   revisedPrompt?: string;
   imageModel?: SheinStudioArtworkModel | string;
   transparentBackground?: boolean;
+  originalImageUrl?: string;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
+  backgroundRemovalStatus?: SheinStudioBackgroundRemovalStatus;
+  backgroundRemovalModel?: string;
+  backgroundRemovalError?: string;
   variationIntensity?: SheinStudioVariationIntensity;
   role?: string;
   roleLabel?: string;
@@ -18,6 +23,25 @@ export type SheinStudioGeneratedDesign = {
 };
 
 export type SheinStudioArtworkModel = string;
+export type SheinStudioTransparencyMode = "none" | "native" | "removal";
+export type SheinStudioBackgroundRemovalStatus =
+  | "not_requested"
+  | "pending"
+  | "succeeded"
+  | "failed";
+
+export function resolveSheinStudioTransparencyMode({
+  mode,
+  transparentBackground,
+}: {
+  mode?: string;
+  transparentBackground?: boolean;
+}): SheinStudioTransparencyMode {
+  if (mode === "native" || mode === "removal" || mode === "none") {
+    return mode;
+  }
+  return transparentBackground ? "native" : "none";
+}
 export type SheinStudioPromptMode = "managed" | "raw";
 export type SheinStudioVariationIntensity = "light" | "medium" | "strong";
 
@@ -44,6 +68,7 @@ export type SheinStudioGenerateRequest = {
   productReferenceImageUrls?: string[];
   imageModel?: string;
   transparentBackground?: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
 };
 
 export type SheinStudioGenerateResponse = {
@@ -52,6 +77,7 @@ export type SheinStudioGenerateResponse = {
   printableHeight?: number;
   imageModel?: SheinStudioArtworkModel | string;
   transparentBackground?: boolean;
+  transparentBackgroundMode?: SheinStudioTransparencyMode;
   images: SheinStudioGeneratedDesign[];
   warnings?: string[];
 };

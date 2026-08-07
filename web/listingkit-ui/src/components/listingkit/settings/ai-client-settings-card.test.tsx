@@ -158,9 +158,13 @@ describe("AIClientSettingsCard", () => {
     const gptImageClientButton = optionButtons.find((button) =>
       button.textContent?.startsWith("GPT Image 2"),
     );
+    const backgroundRemovalClientButton = optionButtons.find((button) =>
+      button.textContent?.startsWith("背景抠图"),
+    );
 
     expect(defaultClientButton).toHaveClass("w-full");
     expect(nanoClientButton).toHaveClass("w-full");
     expect(gptImageClientButton).not.toHaveClass("min-w-[160px]");
+    expect(backgroundRemovalClientButton).toHaveClass("w-full");
   });
 });

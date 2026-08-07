@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net"
 	"net/url"
 	"path"
 	"strings"
@@ -13,6 +14,11 @@ import (
 )
 
 const maxStudioReferenceAnalysisImages = 1
+
+const (
+	studioReferenceInternalUploadPathPrefix = "/api/v1/listing-kits/uploads/files/"
+	studioReferencePublicUploadPathPrefix   = "/api/listing-kits/uploads/files/"
+)
 
 func (s *service) AnalyzeStudioReferenceStyle(ctx context.Context, req *StudioReferenceAnalysisRequest) (*StudioReferenceAnalysisResponse, error) {
 	return s.taskStudioMediaOrDefault().AnalyzeStudioReferenceStyle(ctx, req)
@@ -159,23 +165,25 @@ func studioReferenceUploadedImageKeyFromURL(rawURL string) (string, bool) {
 	if trimmed == "" {
 		return "", false
 	}
-	const prefix = "/api/v1/listing-kits/uploads/files/"
-	if strings.HasPrefix(trimmed, prefix) {
-		key := strings.TrimSpace(strings.TrimPrefix(trimmed, prefix))
-		return key, key != ""
-	}
 	parsed, err := url.ParseRequestURI(trimmed)
-	if err != nil || parsed == nil || !parsed.IsAbs() {
+	if err != nil || parsed == nil {
 		return "", false
 	}
-	if !isStudioReferenceLocalHost(parsed.Hostname()) {
-		return "", false
+	for _, prefix := range studioReferenceUploadedImageURLPrefixes {
+		if strings.HasPrefix(parsed.Path, prefix) {
+			if parsed.IsAbs() && prefix != "/api/listing-kits/uploads/files/" && !isStudioReferenceLocalHost(parsed.Hostname()) {
+				return "", false
+			}
+			key := strings.TrimSpace(strings.TrimPrefix(parsed.Path, prefix))
+			return key, key != ""
+		}
 	}
-	if !strings.HasPrefix(parsed.Path, prefix) {
-		return "", false
-	}
-	key := strings.TrimSpace(strings.TrimPrefix(parsed.Path, prefix))
-	return key, key != ""
+	return "", false
+}
+
+var studioReferenceUploadedImageURLPrefixes = []string{
+	"/api/v1/listing-kits/uploads/files/",
+	"/api/listing-kits/uploads/files/",
 }
 
 func studioReferenceUploadedImageKeyCandidates(rawURL string) []string {
@@ -224,7 +232,24 @@ func validateStudioReferencePublicHTTPSURL(rawURL string) (string, error) {
 	if isStudioReferenceLocalHost(parsed.Hostname()) {
 		return "", fmt.Errorf("public https url is required")
 	}
+	if ip := net.ParseIP(parsed.Hostname()); ip != nil && isStudioReferencePrivateIP(ip) {
+		return "", fmt.Errorf("public https url is required")
+	}
 	return parsed.String(), nil
+}
+
+func isStudioReferencePrivateIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
+		return true
+	}
+	if ipv4 := ip.To4(); ipv4 != nil {
+		return ipv4[0] == 100 && ipv4[1] >= 64 && ipv4[1] <= 127 ||
+			ipv4[0] == 198 && ipv4[1] >= 18 && ipv4[1] <= 19
+	}
+	return false
 }
 
 func isStudioReferenceLocalHost(host string) bool {

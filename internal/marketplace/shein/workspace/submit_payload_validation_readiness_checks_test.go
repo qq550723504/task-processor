@@ -33,5 +33,5 @@ func TestBuildSubmitPayloadValidationReadinessChecksReportsPreparedPayloadFailur
 		t.Fatalf("variants message = %q, want %q", check.Message, "missing stock_info_list")
 	}
 	assertContainsFieldPath(t, check.FieldPaths, "shein.preview_product")
-	assertContainsFieldPath(t, check.FieldPaths, "shein.request_draft.skc_list")
+	assertContainsFieldPath(t, check.FieldPaths, "shein.draft_payload.skc_list")
 }

@@ -303,19 +303,38 @@ describe("SHEIN Studio generation controller", () => {
     });
   });
 
-  it("uses the hot style reference image directly in hot reference mode", () => {
+  it("uses the persisted artwork prompt and preserves supplemental constraints in hot reference mode", () => {
     expect(
       buildHotStyleReferenceGenerationInput({
         artworkGenerationMode: "hot_reference",
-        prompt: "summer flowers",
+        prompt: "Use the red and cream palette with no text",
+        hotStyleReferenceBrief: "bold retro eagle badge",
+        hotStyleReferencePrompt: "Original eagle badge artwork, red and cream palette",
         productReferenceImageUrls: ["https://example.com/mockup.png"],
         hotStyleReferenceImageUrls: [
-          "https://example.com/hot-ref.png",
+          " https://example.com/hot-ref.png ",
           "https://example.com/hot-ref-2.png",
         ],
       }),
     ).toEqual({
-      prompt: "summer flowers",
+      prompt:
+        "Original eagle badge artwork, red and cream palette\nAdditional artwork constraints: Use the red and cream palette with no text",
+      productReferenceImageUrls: ["https://example.com/hot-ref.png"],
+    });
+  });
+
+  it("falls back to the persisted artwork brief when the extracted prompt is empty", () => {
+    expect(
+      buildHotStyleReferenceGenerationInput({
+        artworkGenerationMode: "hot_reference",
+        prompt: "Keep the composition centered",
+        hotStyleReferenceBrief: "hand-drawn botanical badge",
+        hotStyleReferencePrompt: "  ",
+        hotStyleReferenceImageUrls: ["https://example.com/hot-ref.png"],
+      }),
+    ).toEqual({
+      prompt:
+        "hand-drawn botanical badge\nAdditional artwork constraints: Keep the composition centered",
       productReferenceImageUrls: ["https://example.com/hot-ref.png"],
     });
   });
@@ -390,7 +409,7 @@ describe("SHEIN Studio generation controller", () => {
       hotStyleReferencePrompt: "Create an original retro badge.",
       navigateToStep,
       persistDraft,
-      prompt: " summer flowers ",
+        prompt: " add cream highlights ",
       setField,
       styleCount: "1",
       transparentBackground: false,
@@ -411,7 +430,7 @@ describe("SHEIN Studio generation controller", () => {
         printableWidth: 300,
         printableHeight: 400,
         artworkGenerationMode: "hot_reference",
-        prompt: "summer flowers",
+        prompt: "Create an original retro badge.\nAdditional artwork constraints: add cream highlights",
         productReferenceImageUrls: ["https://example.com/ref.png"],
       }),
       expect.objectContaining({ onJobStarted: expect.any(Function) }),

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/productenrich"
@@ -26,6 +27,7 @@ type RuntimeDependencies struct {
 	ImageWhiteBackgroundRender         productimage.WhiteBackgroundRenderer
 	ImageSceneRenderer                 productimage.SceneRenderer
 	AICredentialStore                  aiCredentialStore
+	AIInvocationRecorder               aicapability.InvocationRecorder
 	Support                            RuntimeSupport
 	Repositories                       BuildServiceRepositories
 	Hooks                              BuildServiceHooks
@@ -53,6 +55,7 @@ func buildRuntimeServiceInput(logger *logrus.Logger, runtime RuntimeDependencies
 		ImageWhiteBackgroundRender: runtime.ImageWhiteBackgroundRender,
 		ImageSceneRenderer:         runtime.ImageSceneRenderer,
 		AICredentialStore:          runtime.AICredentialStore,
+		AIInvocationRecorder:       runtime.AIInvocationRecorder,
 		Repositories:               support.Repositories,
 		Hooks:                      support.Hooks,
 	}

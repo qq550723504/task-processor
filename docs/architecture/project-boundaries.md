@@ -176,6 +176,23 @@ Must not depend on:
 - Marketplace business rules.
 - HTTP handlers.
 
+### 3.7 `internal/aicapability`
+
+Current role: neutral platform and integration module for AI capability
+selection.
+
+Owns:
+
+- Model catalog, policy, routing, and invocation contracts.
+- Provider-neutral routing decisions and invocation observability records.
+
+Does not own:
+
+- Product facts or marketplace rules.
+- Prompt meaning or prompt construction.
+- Provider SDKs, provider request/response DTOs, or concrete credential
+  adapters.
+
 ## 4. Forbidden Import Directions
 
 These import directions are forbidden by default:
@@ -240,6 +257,13 @@ Use this table when adding new code:
 | TEMU-specific rules | `internal/temu` now; later `internal/marketplace/temu` |
 | OpenAI client adapter | `internal/infra/clients/openai` now; later `internal/integration/openai` |
 | S3/object storage adapter | current object storage package now; later `internal/platform/objectstore` or `internal/integration/s3` |
+
+For product modeling, keep `internal/catalog/canonical.Product` as the
+platform-neutral source of product facts. `internal/publishing/shein.Package`
+owns SHEIN workflow state, and its `DraftPayload` is the SHEIN draft contract
+for new reads and writes. `RequestDraft` and the package-level `SkcList` are
+compatibility/display surfaces during migration; they must not become a second
+source of truth.
 
 ## 7. Review Checklist
 
@@ -348,6 +372,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestBootstrapKeepsAssetPublisherAssemblyInDedicatedFile`
 - `TestBootstrapKeepsImagePipelineComponentAssemblyInDedicatedFile`
 - `TestPlatformModulesDoNotImportBusinessOrHTTPAssemblyPackages`
+- `TestAICapabilityModuleDoesNotImportBusinessOrProviderPackages`
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`

@@ -45,8 +45,8 @@ func TestUploadImagesRecordsUploadedImageMetadata(t *testing.T) {
 	if record.TenantID != "227" || record.UploadID != uploadID || !strings.HasPrefix(record.StorageKey, "listingkit/tenants/227/uploads/") || record.Size != int64(len(validWebPData(t))) {
 		t.Fatalf("record = %#v", record)
 	}
-	if record.PublicURL != "" {
-		t.Fatalf("public url = %q, want empty", record.PublicURL)
+	if record.PublicURL != "https://cdn.example.com/20260515/a.jpg" {
+		t.Fatalf("public url = %q, want stored public url", record.PublicURL)
 	}
 }
 
@@ -219,9 +219,14 @@ func (s *stubMetadataImageUploadStore) Save(context.Context, *ImageUploadInput) 
 func (s *stubMetadataImageUploadStore) SaveWithKey(_ context.Context, key string, input *ImageUploadInput) (*StoredUploadedImage, error) {
 	s.saveCalls++
 	s.savedKey = key
+	publicURL := ""
+	if s.saveResult != nil {
+		publicURL = s.saveResult.PublicURL
+	}
 	return &StoredUploadedImage{
 		Key:          key,
 		Filename:     input.Filename,
+		PublicURL:    publicURL,
 		ContentType:  input.ContentType,
 		Size:         int64(len(input.Data)),
 		OriginalName: input.Filename,

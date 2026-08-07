@@ -60,17 +60,19 @@ func IsSaleAttributeResolved(pkg *sheinpub.Package) bool {
 	if firstNonEmpty(pkg.SaleAttributeResolution.Status, "unresolved") != "resolved" {
 		return false
 	}
-	if pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 {
+	draft := sheinpub.DraftPayloadOf(pkg)
+	if draft == nil || len(draft.SKCList) == 0 {
 		return true
 	}
 	return hasResolvedSaleAttributeDraft(pkg)
 }
 
 func hasResolvedSaleAttributeDraft(pkg *sheinpub.Package) bool {
-	if pkg == nil || pkg.RequestDraft == nil || len(pkg.RequestDraft.SKCList) == 0 {
+	draft := sheinpub.DraftPayloadOf(pkg)
+	if draft == nil || len(draft.SKCList) == 0 {
 		return false
 	}
-	for _, skc := range pkg.RequestDraft.SKCList {
+	for _, skc := range draft.SKCList {
 		if skc.SaleAttribute == nil || skc.SaleAttribute.AttributeID <= 0 || skc.SaleAttribute.AttributeValueID == nil || *skc.SaleAttribute.AttributeValueID <= 0 {
 			return false
 		}
