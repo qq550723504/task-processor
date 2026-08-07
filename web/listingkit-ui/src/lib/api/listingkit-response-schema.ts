@@ -55,11 +55,22 @@ const taskResultDataSchema = z
   })
   .passthrough();
 
+const sourceReferenceSchema = z
+  .object({
+    key: z.string().optional(),
+    type: z.string().optional(),
+    platform: z.string().optional(),
+    id: z.string().optional(),
+    url: z.string().optional(),
+  })
+  .passthrough();
+
 const taskResultSchema = z
   .object({
     task_id: z.string().optional(),
     tenant_id: z.string().optional(),
     status: z.string().optional(),
+    source_reference: sourceReferenceSchema.optional(),
     shein_workflow_status: z.string().optional(),
     shein_latest_submission_status: z.string().optional(),
     shein_latest_submission_error: z.string().optional(),

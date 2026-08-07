@@ -138,6 +138,7 @@ export type ListingKitTaskResult = {
   task_id?: string;
   tenant_id?: string;
   status?: string;
+  source_reference?: ListingKitSourceReference;
   shein_workflow_status?: string;
   shein_latest_submission_status?: string;
   shein_latest_submission_error?: string;
