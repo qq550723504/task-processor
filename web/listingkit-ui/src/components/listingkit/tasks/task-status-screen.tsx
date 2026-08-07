@@ -9,6 +9,10 @@ import { ReviewReasonsCard } from "@/components/listingkit/review/review-reasons
 import { TaskRevisionHistoryPanel } from "@/components/listingkit/tasks/task-revision-history-panel";
 import { TaskPodExecutionCard } from "@/components/listingkit/tasks/task-pod-execution-card";
 import { loadTaskCreateDraft } from "@/components/listingkit/tasks/task-create-draft";
+import {
+  hasPersistedSourceReference,
+  TaskPersistedSourceReference,
+} from "@/components/listingkit/tasks/task-persisted-source-reference";
 import { TaskSourceSummary } from "@/components/listingkit/tasks/task-source-summary";
 import { shouldAutoOpenWorkspace } from "@/components/listingkit/tasks/task-status-transition";
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
@@ -265,7 +269,11 @@ export function TaskStatusScreen({
       </Card>
       <TaskRevisionHistoryPanel taskId={taskId} />
       <TaskPodExecutionCard task={task} />
-      <TaskSourceSummary draft={taskDraft} />
+      {hasPersistedSourceReference(task.source_reference) ? (
+        <TaskPersistedSourceReference source={task.source_reference} />
+      ) : (
+        <TaskSourceSummary draft={taskDraft} />
+      )}
       <TaskProgressNotice task={task} />
 
       {task.status === "failed" && taskFixes.length > 0 ? (

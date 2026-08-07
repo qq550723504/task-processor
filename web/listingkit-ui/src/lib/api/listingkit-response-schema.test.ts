@@ -62,6 +62,45 @@ describe("listingkit response schemas", () => {
     ).toThrow("unexpected task result response");
   });
 
+  it("parses persisted source references on task results and keeps them optional", () => {
+    const parsed = parseTaskResultResponse({
+      task_id: "task-source",
+      status: "completed",
+      source_reference: {
+        key: "crawler:1688:888",
+        type: "crawler",
+        platform: "1688",
+        id: "888",
+        url: "https://detail.1688.com/offer/888.html",
+      },
+    });
+    expect(parsed.source_reference).toMatchObject({
+      key: "crawler:1688:888",
+      type: "crawler",
+      platform: "1688",
+      id: "888",
+      url: "https://detail.1688.com/offer/888.html",
+    });
+
+    expect(
+      parseTaskResultResponse({
+        task_id: "task-source",
+        status: "completed",
+        source_reference: {
+          key: "crawler:1688:888",
+          type: "crawler",
+          platform: "1688",
+          id: "888",
+          url: "https://detail.1688.com/offer/888.html",
+        },
+      }),
+    ).toMatchObject({ source_reference: parsed.source_reference });
+
+    expect(
+      parseTaskResultResponse({ task_id: "legacy-task", status: "completed" }),
+    ).not.toHaveProperty("source_reference");
+  });
+
   it("parses preview responses and requires the basic preview shape", () => {
     expect(
       parsePreviewResponse({

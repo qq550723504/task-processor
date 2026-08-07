@@ -85,6 +85,7 @@ func buildTaskResult(task *Task, resultPayload *ListingKitResult) *TaskResult {
 			TenantID: task.TenantID,
 		},
 		TaskResultLifecycleFields: projection.Lifecycle,
+		SourceReference:           projection.SourceReference,
 		Result:                    resultPayload,
 		ReviewReasons:             projection.ReviewReasons,
 		RetryableBlock:            projection.RetryableBlock,

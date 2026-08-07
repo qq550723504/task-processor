@@ -231,6 +231,38 @@ describe("TaskStatusScreen", () => {
     expect(screen.getByText("来自商品链接")).toBeInTheDocument();
   });
 
+  it("prefers the persisted source reference over the local creation draft", () => {
+    saveTaskCreateDraft("task_123", {
+      text: "",
+      imageUrls: "",
+      productUrl: "https://detail.1688.com/offer/local-draft.html",
+      platforms: ["shein"],
+    });
+
+    render(
+      <TaskStatusScreen
+        taskId="task_123"
+        task={{
+          task_id: "task_123",
+          status: "processing",
+          source_reference: {
+            type: "crawler",
+            platform: "1688",
+            id: "888",
+            url: "https://detail.1688.com/offer/888.html",
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("来源 1688 · 888")).toBeInTheDocument();
+    expect(screen.queryByText("来自商品链接")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "查看来源" })).toHaveAttribute(
+      "href",
+      "https://detail.1688.com/offer/888.html",
+    );
+  });
+
   it("shows revision history with store resolution audit when revisions exist", () => {
     revisionHistoryMock.mockReturnValue({
       data: {
