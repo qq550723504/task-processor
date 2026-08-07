@@ -6,6 +6,7 @@ import { ArrowLeft, CheckCircle2, Images, LoaderCircle, ShieldAlert } from "luci
 import { ListingKitPageShell } from "@/components/listingkit/shared/listingkit-page-shell";
 import { TaskPersistedSourceReference } from "@/components/listingkit/tasks/task-persisted-source-reference";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -66,6 +67,14 @@ export function CanonicalProductDetailPage({ taskId }: { taskId: string }) {
           <p className="mt-2 text-sm text-muted-foreground">
             {product.brand || "未知品牌"} · {product.category_path?.join(" / ") || "未分类"}
           </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <Button asChild>
+              <Link href={detail.data.workspaceHref}>进入工作台</Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/listing-kits/${detail.data.taskId}/status`}>查看原任务</Link>
+            </Button>
+          </div>
         </div>
         <Card className="p-4">
           <div className="grid gap-3 text-center sm:grid-cols-3">

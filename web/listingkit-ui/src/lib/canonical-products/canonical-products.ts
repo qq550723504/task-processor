@@ -1,4 +1,5 @@
 import { getListingKitTasks } from "@/lib/api/task-list";
+import { buildTaskWorkspaceHref } from "@/lib/listingkit/task-workspace-href";
 import { getListingKitTaskResult } from "@/lib/api/task-result";
 import type {
   CanonicalFieldTrace,
@@ -28,6 +29,7 @@ export type CanonicalProductDetail = {
   taskId: string;
   tenantId?: string;
   sourceReference?: ListingKitSourceReference;
+  workspaceHref: string;
   product: CanonicalProduct;
   summary: CanonicalProductListItem;
   reviewFieldCount: number;
@@ -137,6 +139,11 @@ export function buildCanonicalProductDetail(
     sourceReference: result.source_reference
       ? { ...result.source_reference }
       : undefined,
+    workspaceHref: buildTaskWorkspaceHref({
+      task_id: summary.taskId,
+      platforms: result.result?.platforms,
+      shein_workflow_status: result.shein_workflow_status,
+    }),
     product,
     summary,
     fieldTraces,

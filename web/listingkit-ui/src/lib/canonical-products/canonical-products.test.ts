@@ -136,6 +136,22 @@ describe("buildCanonicalProductDetail", () => {
       url: "https://detail.1688.com/offer/888.html",
     });
     expect(detail?.sourceReference).not.toBe(taskResult.source_reference);
+    expect(detail?.workspaceHref).toBe(
+      "/listing-kits/task-1/workspace?platform=shein",
+    );
+  });
+
+  it("uses the base workspace route when a legacy result has no platform", () => {
+    const detail = buildCanonicalProductDetail({
+      ...taskResult,
+      task_id: "task-legacy",
+      result: {
+        ...taskResult.result,
+        platforms: [],
+      },
+    });
+
+    expect(detail?.workspaceHref).toBe("/listing-kits/task-legacy/workspace");
   });
 
   it("omits source lineage for legacy task results", () => {
