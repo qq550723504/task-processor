@@ -29,9 +29,10 @@ type TaskResult struct {
 	TaskIdentityFields
 	TaskResultLifecycleFields
 	SheinSubmissionStatusFields
-	Result         *ListingKitResult `json:"result,omitempty"`
-	ReviewReasons  []string          `json:"review_reasons,omitempty"`
-	RetryableBlock *RetryableBlock   `json:"retryable_block,omitempty"`
+	SourceReference *SourceReference  `json:"source_reference,omitempty"`
+	Result          *ListingKitResult `json:"result,omitempty"`
+	ReviewReasons   []string          `json:"review_reasons,omitempty"`
+	RetryableBlock  *RetryableBlock   `json:"retryable_block,omitempty"`
 }
 
 type TaskListQuery struct {

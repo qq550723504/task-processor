@@ -132,13 +132,7 @@ func applyTaskListRequestFields(item *TaskListItem, task *Task) {
 		item.Title = task.Request.ProductURL
 	}
 	if source := task.Request.Source; source != nil {
-		item.SourceReference = &SourceReference{
-			Key:      source.Key,
-			Type:     source.Type,
-			Platform: source.Platform,
-			ID:       source.ID,
-			URL:      source.URL,
-		}
+		item.SourceReference = cloneSourceReference(source)
 		if item.SourceType == "" {
 			item.SourceType = strings.TrimSpace(source.Type)
 		}

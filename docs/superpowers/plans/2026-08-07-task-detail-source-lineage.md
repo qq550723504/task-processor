@@ -85,7 +85,7 @@ func cloneSourceReference(source *SourceReference) *SourceReference {
 }
 ```
 
-Add `SourceReference *SourceReference `json:"source_reference,omitempty"`` to `TaskResult`, set it in `buildTaskResultProjection` from `task.Request.Source`, and replace the task-list projection's inline field copy with `cloneSourceReference`. Keep the existing `source.Type` fallback for `TaskListItem.SourceType`.
+Add `SourceReference *SourceReference `json:"source_reference,omitempty"`` to `TaskResult`, carry a defensive copy through `buildTaskResultProjection` from `task.Request.Source`, and assign it in `buildTaskResult`. Replace the task-list projection's inline field copy with `cloneSourceReference`. Keep the existing `source.Type` fallback for `TaskListItem.SourceType`.
 
 - [ ] **Step 4: Run focused projection tests**
 

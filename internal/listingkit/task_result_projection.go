@@ -1,9 +1,10 @@
 package listingkit
 
 type listingKitTaskResultProjection struct {
-	Lifecycle      TaskResultLifecycleFields
-	ReviewReasons  []string
-	RetryableBlock *RetryableBlock
+	Lifecycle       TaskResultLifecycleFields
+	SourceReference *SourceReference
+	ReviewReasons   []string
+	RetryableBlock  *RetryableBlock
 }
 
 func buildTaskResultProjection(task *Task, resultPayload *ListingKitResult) *listingKitTaskResultProjection {
@@ -20,6 +21,9 @@ func buildTaskResultProjection(task *Task, resultPayload *ListingKitResult) *lis
 		},
 		ReviewReasons:  reviewReasons,
 		RetryableBlock: cloneRetryableBlock(task.RetryableBlock),
+	}
+	if task.Request != nil {
+		projection.SourceReference = cloneSourceReference(task.Request.Source)
 	}
 	if taskStatusIsTerminal(task.Status) {
 		projection.Lifecycle.CompletedAt = &task.UpdatedAt
