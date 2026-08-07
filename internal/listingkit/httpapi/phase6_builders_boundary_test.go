@@ -89,9 +89,11 @@ func TestBuildersFamiliesOwnSeparatedResponsibilities(t *testing.T) {
 
 	assertContainsAll(t, dbRepositorySupportFile,
 		"func openListingKitRepositoryDB",
-		"func autoMigrateListingKitTaskRepository",
 	)
 	assertNotContainsAny(t, dbRepositorySupportFile,
+		"func autoMigrateListingKitTaskRepository",
+		"listingkit.SDSBaselineCacheEntry",
+		"listingkitstore.AutoMigrateSheinPODImageLookupIndex",
 		"func newDBListingKitTaskRepository",
 		"func newDBListingAdminStoreRepository",
 		"func newDBListingSubscriptionRepository",
