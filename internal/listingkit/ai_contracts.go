@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
@@ -51,6 +52,40 @@ type AIAsyncImageGenerator interface {
 // recover the Provider route selected when an async job was submitted.
 type AIAsyncImageQueryByRoutingKey interface {
 	QueryImageGenerationForRoutingKey(ctx context.Context, routingKey, jobID string) (*AIImageAsyncResult, error)
+}
+
+// AIAsyncImageQueryContext carries the submit-time identity and configuration
+// metadata needed to query an async job without silently switching credentials.
+type AIAsyncImageQueryContext struct {
+	TenantID             string
+	UserID               string
+	CredentialReference  string
+	ConfigurationVersion string
+}
+
+type aiAsyncImageQueryContextKey struct{}
+
+func WithAIAsyncImageQueryContext(ctx context.Context, query AIAsyncImageQueryContext) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	query.TenantID = strings.TrimSpace(query.TenantID)
+	query.UserID = strings.TrimSpace(query.UserID)
+	query.CredentialReference = strings.TrimSpace(query.CredentialReference)
+	query.ConfigurationVersion = strings.TrimSpace(query.ConfigurationVersion)
+	return context.WithValue(ctx, aiAsyncImageQueryContextKey{}, query)
+}
+
+func AIAsyncImageQueryContextFromContext(ctx context.Context) AIAsyncImageQueryContext {
+	if ctx == nil {
+		return AIAsyncImageQueryContext{}
+	}
+	query, _ := ctx.Value(aiAsyncImageQueryContextKey{}).(AIAsyncImageQueryContext)
+	query.TenantID = strings.TrimSpace(query.TenantID)
+	query.UserID = strings.TrimSpace(query.UserID)
+	query.CredentialReference = strings.TrimSpace(query.CredentialReference)
+	query.ConfigurationVersion = strings.TrimSpace(query.ConfigurationVersion)
+	return query
 }
 
 type AIImageGenerateRequest struct {

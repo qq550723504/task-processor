@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -46,6 +47,33 @@ func TestGormAsyncJobBindingRejectsConflictingRouteWithoutOverwrite(t *testing.T
 	got, err := store.GetAsyncJobBinding(context.Background(), binding.JobID)
 	require.NoError(t, err)
 	require.Equal(t, "route-a", got.RoutingKey)
+}
+
+func TestGormAsyncJobBindingConcurrentSameRouteInsertIsIdempotent(t *testing.T) {
+	db := newAsyncJobBindingDB(t)
+	store := NewGormAsyncJobBindingStore(db)
+	binding := validAsyncJobBinding()
+	start := make(chan struct{})
+	errs := make(chan error, 2)
+	var wg sync.WaitGroup
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			errs <- store.PutAsyncJobBinding(context.Background(), binding)
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		require.NoError(t, err)
+	}
+
+	var count int64
+	require.NoError(t, db.Model(&asyncJobRow{}).Where("job_id = ?", binding.JobID).Count(&count).Error)
+	require.Equal(t, int64(1), count)
 }
 
 func TestGormAsyncJobBindingLookupStatusAndSensitiveColumns(t *testing.T) {

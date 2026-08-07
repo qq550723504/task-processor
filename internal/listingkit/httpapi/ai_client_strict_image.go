@@ -176,8 +176,55 @@ func (c *strictListingKitConfiguredImageClient) QueryImageGeneration(ctx context
 	return client.QueryImageGeneration(ctx, jobID)
 }
 
+func (c *strictListingKitConfiguredImageClient) QueryImageGenerationForConfigurationVersion(ctx context.Context, configurationVersion, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
+	client, err := c.resolveAtConfigurationVersion(ctx, configurationVersion)
+	if err != nil {
+		return nil, err
+	}
+	return client.QueryImageGeneration(ctx, jobID)
+}
+
 func (c *strictListingKitConfiguredImageClient) resolve(ctx context.Context) (openaiclient.ImageGenerator, error) {
 	return resolveStrictListingKitImageClient(ctx, c.clientName, c.resolver, c.fallback, &c.mu, c.cache, c.build)
+}
+
+func (c *strictListingKitConfiguredImageClient) resolveAtConfigurationVersion(ctx context.Context, configurationVersion string) (openaiclient.ImageGenerator, error) {
+	configurationVersion = strings.TrimSpace(configurationVersion)
+	if configurationVersion == "" {
+		return c.resolve(ctx)
+	}
+	c.mu.Lock()
+	if client := c.cache[configurationVersion]; client != nil {
+		c.mu.Unlock()
+		return client, nil
+	}
+	c.mu.Unlock()
+	if c.resolver == nil {
+		return nil, errListingKitAIClientNotConfigured(c.clientName)
+	}
+	resolved, err := c.resolver.ResolveClientConfig(ctx, c.clientName, c.fallback)
+	if err != nil {
+		return nil, err
+	}
+	if resolved == nil || resolved.Config == nil || strings.TrimSpace(resolved.CacheKey) != configurationVersion {
+		return nil, fmt.Errorf("listingkit ai configuration version %q is unavailable", configurationVersion)
+	}
+	config := enforceListingKitImageClientTimeout(normalizeListingKitClientName(c.clientName), resolved.Config)
+	if strings.TrimSpace(config.APIKey) == "" || strings.TrimSpace(config.BaseURL) == "" || strings.TrimSpace(config.Model) == "" {
+		return nil, errListingKitAIClientNotConfigured(c.clientName)
+	}
+	client, err := c.build(config)
+	if err != nil {
+		return nil, fmt.Errorf("create listingkit ai client %q: %w", normalizeListingKitClientName(c.clientName), err)
+	}
+	c.mu.Lock()
+	if cached := c.cache[configurationVersion]; cached != nil {
+		client = cached
+	} else {
+		c.cache[configurationVersion] = client
+	}
+	c.mu.Unlock()
+	return client, nil
 }
 
 func resolveStrictListingKitImageClient(

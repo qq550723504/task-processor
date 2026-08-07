@@ -2,10 +2,12 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/listingkit"
 )
 
 type listingKitRoutedImageClient struct {
@@ -94,11 +96,42 @@ func (c *listingKitRoutedImageClient) QueryImageGeneration(ctx context.Context, 
 }
 
 func (c *listingKitRoutedImageClient) QueryImageGenerationForRoutingKey(ctx context.Context, routingKey, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
-	client, _, err := c.resolveBySelector(routingKey)
+	queryContext := listingkit.AIAsyncImageQueryContextFromContext(ctx)
+	client, _, err := c.resolveByAsyncJob(queryContext.CredentialReference, routingKey)
 	if err != nil {
 		return nil, err
 	}
+	if version := queryContext.ConfigurationVersion; version != "" {
+		versioned, ok := client.(interface {
+			QueryImageGenerationForConfigurationVersion(context.Context, string, string) (*openaiclient.ImageAsyncQueryResponse, error)
+		})
+		if !ok {
+			return nil, fmt.Errorf("async image client does not support configuration version recovery")
+		}
+		return versioned.QueryImageGenerationForConfigurationVersion(ctx, version, jobID)
+	}
 	return client.QueryImageGeneration(ctx, jobID)
+}
+
+func (c *listingKitRoutedImageClient) resolveByAsyncJob(credentialReference, routingKey string) (openaiclient.ImageGenerator, bool, error) {
+	switch strings.TrimSpace(credentialReference) {
+	case listingKitImageClientName:
+		if c.defaultImage == nil {
+			return nil, false, errListingKitAIClientNotConfigured(listingKitImageClientName)
+		}
+		return c.defaultImage, false, nil
+	case listingKitImageClientNameGPTImage2:
+		return c.gptImage2, true, nil
+	case listingKitImageClientNameNanobanana:
+		return c.nanobanana, true, nil
+	case listingKitImageClientNameBackgroundRemoval:
+		if c.backgroundRemoval == nil {
+			return nil, false, errListingKitAIClientNotConfigured(listingKitImageClientNameBackgroundRemoval)
+		}
+		return c.backgroundRemoval, true, nil
+	default:
+		return c.resolveBySelector(routingKey)
+	}
 }
 
 func (c *listingKitRoutedImageClient) resolve(req *openaiclient.ImageGenerateRequest) (openaiclient.ImageGenerator, *openaiclient.ImageGenerateRequest, error) {
