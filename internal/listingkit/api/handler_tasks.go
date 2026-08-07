@@ -20,6 +20,9 @@ func (h *handler) GenerateListingKit(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
+	// Source is internal lineage populated by the normalized source-facts bridge,
+	// not a field callers may forge through the legacy public endpoint.
+	req.Source = nil
 	req.ImageURLs = absolutizeUploadedImageURLs(c, req.ImageURLs)
 	req.TenantID = requestTenantID(c, req.TenantID)
 	if req.UserID == "" {

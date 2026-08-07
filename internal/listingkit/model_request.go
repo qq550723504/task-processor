@@ -4,12 +4,21 @@ import (
 	"task-processor/internal/productimage"
 )
 
+type SourceReference struct {
+	Key      string `json:"key,omitempty"`
+	Type     string `json:"type,omitempty"`
+	Platform string `json:"platform,omitempty"`
+	ID       string `json:"id,omitempty"`
+	URL      string `json:"url,omitempty"`
+}
+
 type GenerateRequest struct {
 	TenantID           string           `json:"tenant_id,omitempty"`
 	UserID             string           `json:"user_id,omitempty"`
 	ImageURLs          []string         `json:"image_urls,omitempty"`
 	Text               string           `json:"text,omitempty"`
 	ProductURL         string           `json:"product_url,omitempty"`
+	Source             *SourceReference `json:"source,omitempty"`
 	Platforms          []string         `json:"platforms,omitempty"`
 	Country            string           `json:"country,omitempty"`
 	Language           string           `json:"language,omitempty"`
