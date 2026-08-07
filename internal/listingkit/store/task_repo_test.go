@@ -76,6 +76,49 @@ func TestTaskRepositoryListTasksFiltersBeforePaginationAndPreservesOrder(t *test
 	}
 }
 
+func TestTaskRepositoryListTasksFiltersPendingTasksByPersistedSourceType(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+		t.Fatalf("auto migrate: %v", err)
+	}
+
+	repo := store.NewTaskRepository(db)
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
+	task := &listingkit.Task{
+		ID:       "task-pending-source",
+		TenantID: "tenant-a",
+		Status:   listingkit.TaskStatusPending,
+		Request: &listingkit.GenerateRequest{Source: &listingkit.SourceReference{
+			Key:      "crawler:1688:888",
+			Type:     "crawler",
+			Platform: "1688",
+			ID:       "888",
+		}},
+		CreatedAt: time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC),
+		UpdatedAt: time.Date(2026, 8, 7, 12, 0, 0, 0, time.UTC),
+	}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	items, total, err := repo.ListTasks(ctx, &listingkit.TaskListQuery{
+		SourceType: "crawler",
+		Page:       1,
+		PageSize:   10,
+	})
+	if err != nil {
+		t.Fatalf("list tasks: %v", err)
+	}
+	if total != 1 || len(items) != 1 || items[0].ID != task.ID {
+		t.Fatalf("items = %+v, total = %d, want pending source task", items, total)
+	}
+}
+
 func TestTaskRepositoryListTasksFiltersCanonicalProductsBeforePagination(t *testing.T) {
 	t.Parallel()
 

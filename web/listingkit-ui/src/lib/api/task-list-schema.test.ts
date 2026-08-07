@@ -89,4 +89,32 @@ describe("task list schema", () => {
       ],
     });
   });
+
+  it("parses normalized source lineage fields", () => {
+    const parsed = parseTaskListResponse({
+      page: 1,
+      page_size: 20,
+      total: 1,
+      items: [
+        {
+          task_id: "task-1688",
+          source_reference: {
+            key: "crawler:1688:888",
+            type: "crawler",
+            platform: "1688",
+            id: "888",
+            url: "https://detail.1688.com/offer/888.html",
+          },
+        },
+      ],
+    });
+
+    expect(parsed.items?.[0]?.source_reference).toEqual({
+      key: "crawler:1688:888",
+      type: "crawler",
+      platform: "1688",
+      id: "888",
+      url: "https://detail.1688.com/offer/888.html",
+    });
+  });
 });

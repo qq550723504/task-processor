@@ -51,6 +51,25 @@ describe("ListingKitHomeTaskCard", () => {
     expect(screen.getByText("SHEIN 草稿已保存")).toBeInTheDocument();
   });
 
+  it("shows source lineage summary without nesting another link", () => {
+    render(
+      <ListingKitHomeTaskCard
+        task={makeTask({
+          source_reference: {
+            key: "crawler:1688:888",
+            type: "crawler",
+            platform: "1688",
+            id: "888",
+            url: "https://detail.1688.com/offer/888.html",
+          },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("来源 1688 · 888")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /1688/ })).not.toBeInTheDocument();
+  });
+
   it("shows the SHEIN remote submission status badge when present", () => {
     render(
       <ListingKitHomeTaskCard

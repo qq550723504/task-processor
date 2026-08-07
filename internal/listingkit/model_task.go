@@ -98,6 +98,7 @@ type TaskListDisplayFields struct {
 	Title              string                   `json:"title,omitempty"`
 	ImageCount         int                      `json:"image_count"`
 	CanonicalProduct   *CanonicalProductSummary `json:"canonical_product,omitempty"`
+	SourceReference    *SourceReference         `json:"source_reference,omitempty"`
 	SourceType         string                   `json:"source_type,omitempty"`
 	ProductName        string                   `json:"product_name,omitempty"`
 	SourceProductSKU   string                   `json:"source_product_sku,omitempty"`

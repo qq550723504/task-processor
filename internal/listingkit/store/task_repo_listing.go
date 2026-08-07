@@ -152,8 +152,9 @@ type taskListFilterRow struct {
 }
 
 type taskListFilterRequest struct {
-	Platforms []string `json:"platforms,omitempty"`
-	UserID    string   `json:"user_id,omitempty"`
+	Platforms []string                    `json:"platforms,omitempty"`
+	UserID    string                      `json:"user_id,omitempty"`
+	Source    *listingkit.SourceReference `json:"source,omitempty"`
 }
 
 type taskListFilterResult struct {
@@ -172,7 +173,11 @@ func matchesTaskListFilterRow(row *taskListFilterRow, query *listingkit.TaskList
 	if row.Request != "" {
 		var request taskListFilterRequest
 		if err := json.Unmarshal([]byte(row.Request), &request); err == nil {
-			task.Request = &listingkit.GenerateRequest{Platforms: request.Platforms, UserID: request.UserID}
+			task.Request = &listingkit.GenerateRequest{
+				Platforms: request.Platforms,
+				UserID:    request.UserID,
+				Source:    request.Source,
+			}
 			row.RequestUserID = request.UserID
 		}
 	}

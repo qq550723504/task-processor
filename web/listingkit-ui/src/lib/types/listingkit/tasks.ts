@@ -191,10 +191,18 @@ export type ListingKitTaskListQuery = {
 };
 
 export type ListingKitTaskFacetDescriptor = {
-  key: string;
-  label?: string;
-  description?: string;
-  severity?: string;
+	key: string;
+	label?: string;
+	description?: string;
+	severity?: string;
+};
+
+export type ListingKitSourceReference = {
+	key?: string;
+	type?: string;
+	platform?: string;
+	id?: string;
+	url?: string;
 };
 
 export type ListingKitTaskListItem = {
@@ -213,9 +221,10 @@ export type ListingKitTaskListItem = {
     image_count?: number;
     variant_count?: number;
     needs_review?: boolean;
-  };
-  source_type?: string;
-  product_name?: string;
+	};
+	source_type?: string;
+	source_reference?: ListingKitSourceReference;
+	product_name?: string;
   source_product_sku?: string;
   source_variant_sku?: string;
   source_variant_price?: number;
