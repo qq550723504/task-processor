@@ -94,6 +94,11 @@ export function buildSheinStudioGenerationPanelProps({
     activeSelection,
     groupedSelections,
   );
+  const failedBatchItems = hasRetryableFailedItems
+    ? (itemizedBatchDetail?.items
+        .filter((entry) => entry.item.status === "failed")
+        .map((entry) => entry.item) ?? [])
+    : [];
 
   return {
     actions: {
@@ -116,7 +121,7 @@ export function buildSheinStudioGenerationPanelProps({
         groupedSelections.length > 0
           ? `为 ${batchProductCount} 款商品生成 SHEIN 资料`
           : "生成 SHEIN 资料",
-      failedBatchItems: [],
+      failedBatchItems,
       failedTasks: itemizedBatchDetail?.failedTasks ?? [],
       generateButtonLabel: hasRetryableFailedItems
         ? "重试失败批次"

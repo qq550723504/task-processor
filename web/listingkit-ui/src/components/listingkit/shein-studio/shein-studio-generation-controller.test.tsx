@@ -221,6 +221,51 @@ describe("buildSheinStudioGenerationPanelProps", () => {
       showSavedBatches: false,
     });
   });
+
+  it("projects only failed entries as retryable batch items", () => {
+    const failedItem = {
+      batchId: "batch-1",
+      createdAt: "2026-08-08T00:00:00.000Z",
+      id: "item-failed",
+      lastError: "upstream timeout",
+      selectionCount: 1,
+      status: "failed" as const,
+      targetGroupKey: "size:1000x1000",
+      targetGroupLabel: "黑色 M",
+      updatedAt: "2026-08-08T00:01:00.000Z",
+    };
+    const readyItem = {
+      ...failedItem,
+      id: "item-ready",
+      lastError: undefined,
+      status: "review_ready" as const,
+    };
+    const input = buildGenerationPanelProjectionInput({
+      status: {
+        hasRetryableFailedItems: true,
+        itemizedBatchDetail: {
+          batch: {
+            createdAt: "2026-08-08T00:00:00.000Z",
+            id: "batch-1",
+            prompt: "studio prompt",
+            sheinStoreId: 869,
+            status: "partially_failed",
+            styleCount: "2",
+            updatedAt: "2026-08-08T00:01:00.000Z",
+          },
+          items: [
+            { designs: [], item: failedItem },
+            { designs: [], item: readyItem },
+          ],
+        },
+        retryableFailedItemCount: 1,
+      },
+    });
+
+    const result = buildSheinStudioGenerationPanelProps(input);
+
+    expect(result.status.failedBatchItems).toEqual([failedItem]);
+  });
 });
 
 describe("projectBaselineWarmupFeedback", () => {
