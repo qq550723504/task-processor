@@ -29,6 +29,14 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 	require.Contains(t, keys, "GET /api/v1/listing-kits/settings-health")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/studio/reference-style/analyze")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/tasks/requeue")
+	foundStoreStatisticsRoute := false
+	for _, route := range reg.Routes() {
+		if route.Method == "GET" && route.Path == "/api/v1/listing-kits/admin/store-statistics" {
+			foundStoreStatisticsRoute = true
+			require.Equal(t, "listing-kit-platform-admin", route.Module)
+		}
+	}
+	require.True(t, foundStoreStatisticsRoute)
 	require.Contains(t, keys, "POST /api/v1/listing-kits/sds/retirements")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/sds/retirements/:run_id")
 	require.Contains(t, keys, "PATCH /api/v1/listing-kits/sds/retirements/:run_id/items")
