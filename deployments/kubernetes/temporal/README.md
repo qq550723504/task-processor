@@ -47,3 +47,14 @@ helm template temporal temporal `
 
 Do not run the upgrade until the original values, chart version, schema-job
 ordering, and database credentials have been recovered and reviewed.
+
+## Recovery baseline verification (2026-08-07)
+
+- The official `temporal-1.2.0` chart was rendered locally with the recovery
+  values file.
+- The rendered `temporal-config` `config_template.yaml` matched the live
+  ConfigMap exactly.
+- Rendered Deployment images, replica counts, and container resources matched
+  all six live Temporal Deployments.
+- `kubectl apply --dry-run=server` accepted the complete rendered resource set;
+  no resource was applied.
