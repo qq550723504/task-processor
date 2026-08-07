@@ -131,6 +131,18 @@ func applyTaskListRequestFields(item *TaskListItem, task *Task) {
 	if item.Title == "" {
 		item.Title = task.Request.ProductURL
 	}
+	if source := task.Request.Source; source != nil {
+		item.SourceReference = &SourceReference{
+			Key:      source.Key,
+			Type:     source.Type,
+			Platform: source.Platform,
+			ID:       source.ID,
+			URL:      source.URL,
+		}
+		if item.SourceType == "" {
+			item.SourceType = strings.TrimSpace(source.Type)
+		}
+	}
 	if task.Request.Options != nil && task.Request.Options.SDS != nil {
 		sds := task.Request.Options.SDS
 		item.ProductName = sds.ProductName
