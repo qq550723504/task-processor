@@ -8,9 +8,12 @@ describe("downloadStudioImage", () => {
   });
 
   it("downloads a remote Studio image through the same-origin proxy", async () => {
-    const blob = new Blob(["image-bytes"], { type: "image/png" });
+    const responseBody = "image-bytes";
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
-      new Response(blob, { status: 200 }),
+      new Response(responseBody, {
+        headers: { "content-type": "image/png" },
+        status: 200,
+      }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -42,7 +45,12 @@ describe("downloadStudioImage", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/image-proxy?url=https%3A%2F%2Fcos-1303159911.cos.na-ashburn.myqcloud.com%2F20260705%2Fdesign-1.png",
     );
-    expect(createObjectURL).toHaveBeenCalledWith(blob);
+    expect(createObjectURL).toHaveBeenCalledWith(
+      expect.objectContaining({
+        size: responseBody.length,
+        type: "image/png",
+      }),
+    );
     expect(createElement).toHaveBeenCalledWith("a");
     expect(anchor.href).toBe("blob:studio-design-1");
     expect(anchor.download).toBe("studio-design-1-original.png");
