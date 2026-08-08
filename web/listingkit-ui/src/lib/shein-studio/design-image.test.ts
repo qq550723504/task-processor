@@ -69,10 +69,20 @@ describe("resolveGeneratedDesignFinalSrc", () => {
     ).toBe("");
   });
 
-  it("returns the normalized image url after background removal succeeds", () => {
+  it("does not fall back to data url when background removal succeeds without image url", () => {
     expect(
       resolveGeneratedDesignFinalSrc({
         id: "design-4",
+        dataUrl: "data:image/png;base64,abc",
+        backgroundRemovalStatus: "succeeded",
+      }),
+    ).toBe("");
+  });
+
+  it("returns the normalized image url after background removal succeeds", () => {
+    expect(
+      resolveGeneratedDesignFinalSrc({
+        id: "design-5",
         imageUrl: "/api/v1/listing-kits/uploads/files/final.png",
         backgroundRemovalStatus: "succeeded",
       }),

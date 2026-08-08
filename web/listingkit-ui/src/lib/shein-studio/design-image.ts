@@ -42,9 +42,12 @@ export function resolveGeneratedDesignOriginalSrc(
 export function resolveGeneratedDesignFinalSrc(
   design: SheinStudioGeneratedDesign,
 ) {
-  return design.backgroundRemovalStatus === "succeeded"
-    ? resolveGeneratedDesignSrc(design)
-    : "";
+  const imageUrl = design.imageUrl?.trim();
+  if (design.backgroundRemovalStatus !== "succeeded" || !imageUrl) {
+    return "";
+  }
+
+  return normalizeListingKitUploadFetchUrl(imageUrl);
 }
 
 export function hasGeneratedDesignSrc(design: SheinStudioGeneratedDesign) {
