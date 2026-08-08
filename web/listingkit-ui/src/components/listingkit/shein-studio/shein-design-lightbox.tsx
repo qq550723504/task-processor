@@ -25,12 +25,14 @@ function resolveMockupSurfaces(selection?: SDSProductVariantSelection) {
 export function SheinDesignLightbox({
   activeView,
   design,
+  initialImageView = "final",
   onClose,
   onViewChange,
   selection,
 }: {
   activeView: "design" | "mockup";
   design?: SheinStudioGeneratedDesign | null;
+  initialImageView?: "final" | "original";
   onClose: () => void;
   onViewChange: (view: "design" | "mockup") => void;
   selection?: SDSProductVariantSelection;
@@ -39,7 +41,7 @@ export function SheinDesignLightbox({
   const [activeSurfaceIndex, setActiveSurfaceIndex] = useState(0);
   const [zoomMode, setZoomMode] = useState<"fit" | "detail">("fit");
   const [activeImageView, setActiveImageView] = useState<"final" | "original">(
-    "final",
+    initialImageView,
   );
 
   const printableWidth = selection?.printableWidth ?? 1;

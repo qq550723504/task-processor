@@ -196,6 +196,9 @@ func (s *taskStudioBatchService) RetryStudioBatchDesignBackgroundRemoval(ctx con
 			if sourceURL == "" {
 				return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s has no original image", design.ID))
 			}
+			if design.BackgroundRemovalStatus == StudioBackgroundRemovalStatusPending {
+				return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s background removal is already in progress", design.ID))
+			}
 			targets = append(targets, retryTarget{itemIndex: itemIndex, designIndex: designIndex, sourceURL: sourceURL})
 		}
 	}
@@ -214,8 +217,12 @@ func (s *taskStudioBatchService) RetryStudioBatchDesignBackgroundRemoval(ctx con
 		design.BackgroundRemovalError = ""
 		design.BackgroundRemovalModel = ""
 		design.UpdatedAt = now
-		if err := s.repo.UpdateStudioMaterializedDesign(ctx, design); err != nil {
+		claimed, err := s.claimStudioBackgroundRemoval(ctx, design)
+		if err != nil {
 			return nil, err
+		}
+		if !claimed {
+			return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s background removal is already in progress", design.ID))
 		}
 		materialized, removeErr := s.retryBackgroundRemoval(ctx, target.sourceURL, "studio-design-background-removal-retry.png")
 		if removeErr != nil || materialized == nil || strings.TrimSpace(materialized.ImageURL) == "" {
@@ -228,7 +235,7 @@ func (s *taskStudioBatchService) RetryStudioBatchDesignBackgroundRemoval(ctx con
 			design.BackgroundRemovalError = compactStudioGenerationError(errors.New(removalMessage))
 			design.BackgroundRemovalModel = ""
 			design.UpdatedAt = now
-			if err := s.repo.UpdateStudioMaterializedDesign(ctx, design); err != nil {
+			if err := s.updateStudioBackgroundRemoval(ctx, design); err != nil {
 				return nil, err
 			}
 			continue
@@ -238,11 +245,28 @@ func (s *taskStudioBatchService) RetryStudioBatchDesignBackgroundRemoval(ctx con
 		design.BackgroundRemovalModel = strings.TrimSpace(materialized.Model)
 		design.BackgroundRemovalError = ""
 		design.UpdatedAt = now
-		if err := s.repo.UpdateStudioMaterializedDesign(ctx, design); err != nil {
+		if err := s.updateStudioBackgroundRemoval(ctx, design); err != nil {
 			return nil, err
 		}
 	}
 	return s.GetStudioBatchDetail(ctx, batchID)
+}
+
+func (s *taskStudioBatchService) claimStudioBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) (bool, error) {
+	if repository, ok := s.repo.(studioBackgroundRemovalRepository); ok {
+		return repository.ClaimStudioMaterializedDesignBackgroundRemoval(ctx, design)
+	}
+	if design.BackgroundRemovalStatus == StudioBackgroundRemovalStatusPending {
+		return false, nil
+	}
+	return true, s.repo.UpdateStudioMaterializedDesign(ctx, design)
+}
+
+func (s *taskStudioBatchService) updateStudioBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) error {
+	if repository, ok := s.repo.(studioBackgroundRemovalRepository); ok {
+		return repository.UpdateStudioMaterializedDesignBackgroundRemoval(ctx, design)
+	}
+	return s.repo.UpdateStudioMaterializedDesign(ctx, design)
 }
 
 func (s *taskStudioBatchService) CreateStudioBatchTasks(ctx context.Context, batchID string, req *CreateStudioBatchTasksRequest) (*CreateStudioBatchTasksResult, error) {

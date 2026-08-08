@@ -88,6 +88,16 @@ describe("resolveGeneratedDesignFinalSrc", () => {
       }),
     ).toBe("/api/listing-kits/uploads/files/final.png");
   });
+
+  it("infers a legacy removed image from a distinct original/current pair", () => {
+    expect(
+      resolveGeneratedDesignFinalSrc({
+        id: "design-legacy",
+        imageUrl: "/api/v1/listing-kits/uploads/files/final.png",
+        originalImageUrl: "/api/v1/listing-kits/uploads/files/original.png",
+      }),
+    ).toBe("/api/listing-kits/uploads/files/final.png");
+  });
 });
 
 describe("hasGeneratedDesignSrc", () => {

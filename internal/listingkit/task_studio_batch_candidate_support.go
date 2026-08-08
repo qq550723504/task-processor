@@ -363,7 +363,7 @@ func studioBatchCandidateEvaluationInput(
 ) studiobatch.EvaluationInput {
 	input := studiobatch.EvaluationInput{
 		Item:                       studiobatch.Item{ID: item.ID, TargetGroupKey: item.TargetGroupKey, TargetGroupLabel: item.TargetGroupLabel, GroupMode: item.GroupMode},
-		Design:                     studiobatch.Design{ID: design.ID, TargetGroupKey: design.TargetGroupKey, TargetGroupLabel: design.TargetGroupLabel},
+		Design:                     studiobatch.Design{ID: design.ID, BatchID: design.BatchID, ItemID: design.ItemID, TargetGroupKey: design.TargetGroupKey, TargetGroupLabel: design.TargetGroupLabel, Approved: design.ReviewStatus == StudioMaterializedDesignReviewStatusApproved, ImageURL: design.ImageURL, BackgroundRemovalStatus: string(design.BackgroundRemovalStatus)},
 		ResolvedSelections:         make([]studiobatch.GroupedSelection, 0, len(selections)),
 		ExplicitSelectionOwnership: true,
 	}

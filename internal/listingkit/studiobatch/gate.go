@@ -33,6 +33,10 @@ func evaluateGateDesign(input GateInput) GateResult {
 		if !design.Approved || !input.Candidate.Design.Approved {
 			return rejectGate("design_not_approved", fmt.Sprintf("design %s is not approved", designID))
 		}
+		if strings.EqualFold(strings.TrimSpace(design.BackgroundRemovalStatus), "pending") ||
+			strings.EqualFold(strings.TrimSpace(input.Candidate.Design.BackgroundRemovalStatus), "pending") {
+			return rejectGate("background_removal_pending", fmt.Sprintf("design %s background removal is still in progress", designID))
+		}
 		if strings.TrimSpace(design.ImageURL) == "" || strings.TrimSpace(input.Candidate.Design.ImageURL) == "" {
 			return rejectGate("design_image_missing", fmt.Sprintf("design %s is missing an image URL", designID))
 		}

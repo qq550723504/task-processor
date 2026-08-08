@@ -87,4 +87,27 @@ describe("SheinDesignLightbox", () => {
 
     expect(screen.getByRole("button", { name: "查看抠图后" })).toBeInTheDocument();
   });
+
+  it("opens the image pane selected from the grid", () => {
+    render(
+      <SheinDesignLightbox
+        activeView="design"
+        design={{
+          id: "design-1",
+          imageUrl: "/api/v1/listing-kits/uploads/files/final-image.png",
+          originalImageUrl: "/api/v1/listing-kits/uploads/files/original-image.png",
+          backgroundRemovalStatus: "succeeded",
+          transparentBackgroundMode: "removal",
+        }}
+        initialImageView="original"
+        onClose={vi.fn()}
+        onViewChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByAltText("生成款式预览")).toHaveAttribute(
+      "src",
+      "/api/listing-kits/uploads/files/original-image.png",
+    );
+  });
 });

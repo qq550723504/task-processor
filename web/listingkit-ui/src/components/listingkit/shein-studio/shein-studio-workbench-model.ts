@@ -913,15 +913,20 @@ export function getSheinStudioCreateActionDisabledReason({
   selection,
   galleryRatioCheck,
   hasItemizedBatchContext = false,
+  hasPendingBackgroundRemoval = false,
   itemizedApprovedCount,
   selectedIds,
 }: {
   selection?: SDSProductVariantSelection;
   galleryRatioCheck?: SDSRatioMatch | null;
   hasItemizedBatchContext?: boolean;
+  hasPendingBackgroundRemoval?: boolean;
   itemizedApprovedCount?: number;
   selectedIds: string[];
 }) {
+  if (hasPendingBackgroundRemoval) {
+    return "请等待抠图完成后再生成 SHEIN 资料。";
+  }
   if (hasItemizedBatchContext) {
     const approvedCount = itemizedApprovedCount ?? selectedIds.length;
     if (approvedCount === 0) {

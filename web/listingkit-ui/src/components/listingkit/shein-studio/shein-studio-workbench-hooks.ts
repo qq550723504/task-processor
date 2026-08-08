@@ -353,12 +353,14 @@ export function useSheinStudioSubscriptionGate(
 export function useSheinStudioCreateActionDisabledReason({
   galleryRatioCheck,
   hasItemizedBatchContext,
+  hasPendingBackgroundRemoval,
   itemizedApprovedCount,
   selectedIds,
   selection,
 }: {
   galleryRatioCheck?: SDSRatioMatch | null;
   hasItemizedBatchContext?: boolean;
+  hasPendingBackgroundRemoval?: boolean;
   itemizedApprovedCount?: number;
   selectedIds: string[];
   selection?: SDSProductVariantSelection;
@@ -368,6 +370,7 @@ export function useSheinStudioCreateActionDisabledReason({
       getSheinStudioCreateActionDisabledReason({
         galleryRatioCheck,
         hasItemizedBatchContext,
+        hasPendingBackgroundRemoval,
         itemizedApprovedCount,
         selectedIds,
         selection,
@@ -375,6 +378,7 @@ export function useSheinStudioCreateActionDisabledReason({
     [
       galleryRatioCheck,
       hasItemizedBatchContext,
+      hasPendingBackgroundRemoval,
       itemizedApprovedCount,
       selectedIds,
       selection,

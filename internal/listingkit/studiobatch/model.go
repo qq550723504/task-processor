@@ -42,13 +42,14 @@ type Item struct {
 }
 
 type Design struct {
-	ID               string
-	BatchID          string
-	ItemID           string
-	TargetGroupKey   string
-	TargetGroupLabel string
-	Approved         bool
-	ImageURL         string
+	ID                      string
+	BatchID                 string
+	ItemID                  string
+	TargetGroupKey          string
+	TargetGroupLabel        string
+	Approved                bool
+	ImageURL                string
+	BackgroundRemovalStatus string
 }
 
 type GateInput struct {

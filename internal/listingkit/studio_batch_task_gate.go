@@ -205,13 +205,14 @@ func studioBatchGateInput(eval *studioBatchTaskGateEvaluation) studiobatch.GateI
 
 func studioBatchGateDesign(design StudioMaterializedDesignRecord) studiobatch.Design {
 	return studiobatch.Design{
-		ID:               design.ID,
-		BatchID:          design.BatchID,
-		ItemID:           design.ItemID,
-		TargetGroupKey:   design.TargetGroupKey,
-		TargetGroupLabel: design.TargetGroupLabel,
-		Approved:         design.ReviewStatus == StudioMaterializedDesignReviewStatusApproved,
-		ImageURL:         design.ImageURL,
+		ID:                      design.ID,
+		BatchID:                 design.BatchID,
+		ItemID:                  design.ItemID,
+		TargetGroupKey:          design.TargetGroupKey,
+		TargetGroupLabel:        design.TargetGroupLabel,
+		Approved:                design.ReviewStatus == StudioMaterializedDesignReviewStatusApproved,
+		ImageURL:                design.ImageURL,
+		BackgroundRemovalStatus: string(design.BackgroundRemovalStatus),
 	}
 }
 

@@ -210,6 +210,60 @@ func (r *MemStudioBatchRepository) UpdateStudioMaterializedDesign(ctx context.Co
 	return nil
 }
 
+func (r *MemStudioBatchRepository) ClaimStudioMaterializedDesignBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) (bool, error) {
+	if design == nil {
+		return false, nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	existing, ok := r.designs[design.ID]
+	if !ok || !matchesStudioBatchScope(ctx, existing.TenantID, existing.UserID) {
+		return false, gorm.ErrRecordNotFound
+	}
+	if err := resolveStudioMaterializedDesignOwnership(existing, design); err != nil {
+		return false, err
+	}
+	if existing.BackgroundRemovalStatus == StudioBackgroundRemovalStatusPending {
+		return false, nil
+	}
+	row := existing
+	row.OriginalImageURL = design.OriginalImageURL
+	row.TransparentBackgroundMode = design.TransparentBackgroundMode
+	row.BackgroundRemovalStatus = design.BackgroundRemovalStatus
+	row.BackgroundRemovalModel = design.BackgroundRemovalModel
+	row.BackgroundRemovalError = design.BackgroundRemovalError
+	row.UpdatedAt = design.UpdatedAt
+	r.designs[row.ID] = row
+	return true, nil
+}
+
+func (r *MemStudioBatchRepository) UpdateStudioMaterializedDesignBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) error {
+	if design == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	existing, ok := r.designs[design.ID]
+	if !ok || !matchesStudioBatchScope(ctx, existing.TenantID, existing.UserID) {
+		return gorm.ErrRecordNotFound
+	}
+	if err := resolveStudioMaterializedDesignOwnership(existing, design); err != nil {
+		return err
+	}
+	row := existing
+	row.ImageURL = design.ImageURL
+	row.OriginalImageURL = design.OriginalImageURL
+	row.TransparentBackgroundMode = design.TransparentBackgroundMode
+	row.BackgroundRemovalStatus = design.BackgroundRemovalStatus
+	row.BackgroundRemovalModel = design.BackgroundRemovalModel
+	row.BackgroundRemovalError = design.BackgroundRemovalError
+	row.UpdatedAt = design.UpdatedAt
+	r.designs[row.ID] = row
+	return nil
+}
+
 func (r *MemStudioBatchRepository) buildDetailGraphLocked(ctx context.Context, batch StudioBatchRecord) *StudioBatchDetailGraph {
 	items := make([]StudioBatchItemRecord, 0)
 	for _, item := range r.items {

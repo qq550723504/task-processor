@@ -1402,6 +1402,17 @@ describe("shein studio workbench model", () => {
     ).toBe("请至少批准 1 个款式后再生成 SHEIN 资料。");
   });
 
+  it("blocks task creation while background removal is pending", () => {
+    expect(
+      getSheinStudioCreateActionDisabledReason({
+        hasItemizedBatchContext: true,
+        hasPendingBackgroundRemoval: true,
+        itemizedApprovedCount: 1,
+        selectedIds: ["design-1"],
+      }),
+    ).toBe("请等待抠图完成后再生成 SHEIN 资料。");
+  });
+
   it("builds generation requests with transparent-background model override", () => {
     expect(
       buildSheinStudioGenerateRequest({

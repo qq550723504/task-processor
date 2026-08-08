@@ -17,6 +17,20 @@ func TestEvaluateGateRejectsUnapprovedDesign(t *testing.T) {
 	}
 }
 
+func TestEvaluateGateRejectsPendingBackgroundRemoval(t *testing.T) {
+	result := EvaluateGate(GateInput{
+		BatchID: "batch-1",
+		Candidate: Candidate{
+			Design: Design{ID: "design-1", BatchID: "batch-1", ItemID: "item-1", Approved: true, ImageURL: "https://cdn.example.com/design.png", BackgroundRemovalStatus: "pending"},
+			Item:   Item{ID: "item-1"},
+		},
+		Designs: []Design{{ID: "design-1", BatchID: "batch-1", ItemID: "item-1", Approved: true, ImageURL: "https://cdn.example.com/design.png", BackgroundRemovalStatus: "pending"}},
+	})
+	if result.Eligible || result.ReasonCode != "background_removal_pending" {
+		t.Fatalf("result = %+v", result)
+	}
+}
+
 func TestEvaluateGateRejectsDesignOutsideCandidateTarget(t *testing.T) {
 	result := EvaluateGate(GateInput{
 		BatchID:   "batch-1",

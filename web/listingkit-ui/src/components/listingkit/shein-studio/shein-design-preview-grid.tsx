@@ -63,6 +63,9 @@ export function SheinDesignPreviewGrid({
   const [activePreviewView, setActivePreviewView] = useState<"design" | "mockup">(
     "design",
   );
+  const [activePreviewImageView, setActivePreviewImageView] = useState<
+    "final" | "original"
+  >("final");
 
   if (designs.length === 0) {
     return null;
@@ -221,6 +224,7 @@ export function SheinDesignPreviewGrid({
                         onClick={() => {
                           setActivePreviewId(design.id);
                           setActivePreviewView("design");
+                          setActivePreviewImageView("original");
                         }}
                         type="button"
                         variant="outline"
@@ -244,6 +248,7 @@ export function SheinDesignPreviewGrid({
                           onClick={() => {
                             setActivePreviewId(design.id);
                             setActivePreviewView("design");
+                            setActivePreviewImageView("final");
                           }}
                           type="button"
                           variant="outline"
@@ -322,7 +327,8 @@ export function SheinDesignPreviewGrid({
       <SheinDesignLightbox
         activeView={activePreviewView}
         design={activeDesign}
-        key={`${activeDesign?.id ?? "none"}:${activeSelectionForPreview?.variantId ?? 0}`}
+        initialImageView={activePreviewImageView}
+        key={`${activeDesign?.id ?? "none"}:${activeSelectionForPreview?.variantId ?? 0}:${activePreviewImageView}`}
         onClose={() => setActivePreviewId("")}
         onViewChange={setActivePreviewView}
         selection={activeSelectionForPreview}
