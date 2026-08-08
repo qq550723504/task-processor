@@ -28,13 +28,13 @@ func NewHandler(service TaskCommandService) *Handler {
 }
 
 type CreateListingKitTaskRequest struct {
-	URL           string                        `json:"url"`
-	Product       *alibaba1688model.Product1688 `json:"product"`
-	RawSnapshot   string                        `json:"raw_snapshot"`
-	SourceRunID   string                        `json:"source_run_id"`
-	RequestID     string                        `json:"request_id"`
-	SourceError   string                        `json:"source_error"`
-	SourceStoreID int64                         `json:"source_store_id"`
+	URL             string                        `json:"url"`
+	Product         *alibaba1688model.Product1688 `json:"product"`
+	RawSnapshot     string                        `json:"raw_snapshot"`
+	SourceRunID     string                        `json:"source_run_id"`
+	RequestID       string                        `json:"request_id"`
+	SourceError     string                        `json:"source_error"`
+	SourceAccountID int64                         `json:"source_account_id"`
 
 	Platforms          []string                    `json:"platforms"`
 	Country            string                      `json:"country"`
@@ -126,7 +126,7 @@ func (r CreateListingKitTaskRequest) toCommand(identity listingkit.RequestIdenti
 		SourceRunID:        r.SourceRunID,
 		RequestID:          r.RequestID,
 		Error:              sourceErr,
-		SourceStoreID:      r.SourceStoreID,
+		SourceAccountID:    r.SourceAccountID,
 		TenantID:           identity.TenantID,
 		UserID:             identity.UserID,
 		Platforms:          r.Platforms,

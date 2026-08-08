@@ -7,13 +7,14 @@ import (
 
 // CrawlerTask 爬虫任务
 type CrawlerTask struct {
-	TaskID    string    // 任务唯一标识
-	URL       string    // 目标 URL
-	ASIN      string    // Amazon 产品 ASIN（可选）
-	Region    string    // 地区代码（如 us, uk, jp）
-	Zipcode   string    // 邮编（可选）
-	Priority  int       // 优先级
-	CreatedAt time.Time // 创建时间
+	TaskID          string    // 任务唯一标识
+	URL             string    // 目标 URL
+	ASIN            string    // Amazon 产品 ASIN（可选）
+	Region          string    // 地区代码（如 us, uk, jp）
+	Zipcode         string    // 邮编（可选）
+	Priority        int       // 优先级
+	SourceAccountID int64     // 1688 source login account/profile identifier (optional)
+	CreatedAt       time.Time // 创建时间
 }
 
 // NewCrawlerTask 创建爬虫任务

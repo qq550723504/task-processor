@@ -14,18 +14,18 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 	service := NewTaskCommandService(creator, validStoreAccessValidator())
 
 	result, err := service.CreateTask(authenticatedCommandContext("101", "user-1688"), CreateTaskCommand{
-		URL:           " https://detail.1688.com/offer/888.html?spm=command ",
-		Product:       commandProduct1688("888"),
-		RawSnapshot:   "raw-888",
-		SourceRunID:   "run-888",
-		RequestID:     "request-888",
-		SourceStoreID: 3001,
-		TenantID:      " 101 ",
-		UserID:        " user-1688 ",
-		Platforms:     []string{" SHEIN ", "shein"},
-		Country:       " US ",
-		Language:      " en_US ",
-		SheinStoreID:  168811,
+		URL:             " https://detail.1688.com/offer/888.html?spm=command ",
+		Product:         commandProduct1688("888"),
+		RawSnapshot:     "raw-888",
+		SourceRunID:     "run-888",
+		RequestID:       "request-888",
+		SourceAccountID: 3001,
+		TenantID:        " 101 ",
+		UserID:          " user-1688 ",
+		Platforms:       []string{" SHEIN ", "shein"},
+		Country:         " US ",
+		Language:        " en_US ",
+		SheinStoreID:    168811,
 	})
 	if err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
@@ -39,8 +39,8 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 	if got := result.Handoff.Envelope.Identity.SourceKey(); got != "crawler:1688:888" {
 		t.Fatalf("SourceKey() = %q, want crawler:1688:888", got)
 	}
-	if got := result.Handoff.Envelope.Identity.Key(); got != "1688:cn:888:3001" {
-		t.Fatalf("Key() = %q, want source store identity", got)
+	if got := result.Handoff.Envelope.Identity.Key(); got != "1688:cn:888" {
+		t.Fatalf("Key() = %q, want neutral source identity", got)
 	}
 	if result.Handoff.Request.ProductURL != "https://detail.1688.com/offer/888.html" {
 		t.Fatalf("ProductURL = %q, want normalized command URL", result.Handoff.Request.ProductURL)
@@ -68,6 +68,30 @@ func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) 
 	}
 }
 
+func TestTaskCommandServiceNormalizesSourceAccountAndValidatesSheinTargetStore(t *testing.T) {
+	creator := &fakeGenerateTaskCreator{}
+	validator := validStoreAccessValidator()
+
+	result, err := NewTaskCommandService(creator, validator).CreateTask(authenticatedCommandContext("101", "user-1688"), CreateTaskCommand{
+		URL:             "https://detail.1688.com/offer/3001.html",
+		Product:         commandProduct1688("3001"),
+		SourceAccountID: 3001,
+		TenantID:        "101",
+		UserID:          "user-1688",
+		SheinStoreID:    168811,
+		Platforms:       []string{"shein"},
+	})
+	if err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if result.Handoff.Envelope.Identity.StoreID != 0 {
+		t.Fatalf("source identity store id = %d, want neutral store id omitted", result.Handoff.Envelope.Identity.StoreID)
+	}
+	if len(validator.calls) != 2 || validator.calls[0].storeID != 3001 || validator.calls[0].platform != "1688" || validator.calls[1].storeID != 168811 || validator.calls[1].platform != "SHEIN" {
+		t.Fatalf("validator calls = %+v, want source account and SHEIN target validation", validator.calls)
+	}
+}
+
 func TestTaskCommandServiceRejectsWrongStorePlatform(t *testing.T) {
 	creator := &fakeGenerateTaskCreator{}
 	validator := &storeAccessValidatorFake{errs: map[int64]error{
@@ -75,7 +99,7 @@ func TestTaskCommandServiceRejectsWrongStorePlatform(t *testing.T) {
 	}}
 	ctx := listingkit.WithTenantID(context.Background(), "101")
 	ctx = listingkit.WithRequestIdentity(ctx, listingkit.RequestIdentity{TenantID: "101", UserID: "user-1"})
-	_, err := NewTaskCommandService(creator, validator).CreateTask(ctx, CreateTaskCommand{URL: "https://detail.1688.com/offer/893.html", Product: commandProduct1688("893"), TenantID: "101", UserID: "user-1", SourceStoreID: 3001, SheinStoreID: 168811, Platforms: []string{"shein"}})
+	_, err := NewTaskCommandService(creator, validator).CreateTask(ctx, CreateTaskCommand{URL: "https://detail.1688.com/offer/893.html", Product: commandProduct1688("893"), TenantID: "101", UserID: "user-1", SourceAccountID: 3001, SheinStoreID: 168811, Platforms: []string{"shein"}})
 	if listingkit.StoreAccessErrorCode(err) != listingkit.StoreAccessUnavailable {
 		t.Fatalf("StoreAccessErrorCode() = %q, want unavailable (err=%v)", listingkit.StoreAccessErrorCode(err), err)
 	}
@@ -84,30 +108,30 @@ func TestTaskCommandServiceRejectsWrongStorePlatform(t *testing.T) {
 	}
 }
 
-func TestTaskCommandServiceRejectsDisabledSourceStore(t *testing.T) {
+func TestTaskCommandServiceRejectsDisabledSourceAccount(t *testing.T) {
 	creator := &fakeGenerateTaskCreator{}
 	validator := validStoreAccessValidator()
 	validator.errs[3001] = listingkit.NewStoreAccessError(listingkit.StoreAccessDisabled, "store is disabled")
-	_, err := NewTaskCommandService(creator, validator).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{URL: "https://detail.1688.com/offer/894.html", Product: commandProduct1688("894"), TenantID: "101", UserID: "user-1", SourceStoreID: 3001, SheinStoreID: 168811, Platforms: []string{"shein"}})
+	_, err := NewTaskCommandService(creator, validator).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{URL: "https://detail.1688.com/offer/894.html", Product: commandProduct1688("894"), TenantID: "101", UserID: "user-1", SourceAccountID: 3001, SheinStoreID: 168811, Platforms: []string{"shein"}})
 	if listingkit.StoreAccessErrorCode(err) != listingkit.StoreAccessDisabled || creator.request != nil {
 		t.Fatalf("err=%v request=%+v, want disabled store rejection", err, creator.request)
 	}
 }
 
-func TestTaskCommandServiceRejectsUnavailableSourceStoreBeforeTaskCreation(t *testing.T) {
+func TestTaskCommandServiceRejectsUnavailableSourceAccountBeforeTaskCreation(t *testing.T) {
 	creator := &fakeGenerateTaskCreator{}
 	validator := &storeAccessValidatorFake{
 		errs: map[int64]error{3001: listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")},
 	}
 
 	_, err := NewTaskCommandService(creator, validator).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{
-		URL:           "https://detail.1688.com/offer/895.html",
-		Product:       commandProduct1688("895"),
-		TenantID:      "101",
-		UserID:        "user-1",
-		SourceStoreID: 3001,
-		SheinStoreID:  168811,
-		Platforms:     []string{"shein"},
+		URL:             "https://detail.1688.com/offer/895.html",
+		Product:         commandProduct1688("895"),
+		TenantID:        "101",
+		UserID:          "user-1",
+		SourceAccountID: 3001,
+		SheinStoreID:    168811,
+		Platforms:       []string{"shein"},
 	})
 
 	if listingkit.StoreAccessErrorCode(err) != listingkit.StoreAccessUnavailable {
@@ -117,7 +141,7 @@ func TestTaskCommandServiceRejectsUnavailableSourceStoreBeforeTaskCreation(t *te
 		t.Fatalf("creator request = %+v, want nil", creator.request)
 	}
 	if len(validator.calls) != 1 || validator.calls[0].platform != "1688" {
-		t.Fatalf("validator calls = %+v, want source store only", validator.calls)
+		t.Fatalf("validator calls = %+v, want source account only", validator.calls)
 	}
 }
 
@@ -167,7 +191,7 @@ func TestTaskCommandServiceCreateTaskFallsBackToProductURL(t *testing.T) {
 
 	result, err := NewTaskCommandService(creator, validStoreAccessValidator()).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{
 		Product:  product,
-		TenantID: "101", UserID: "user-1", SourceStoreID: 3001, SheinStoreID: 168811,
+		TenantID: "101", UserID: "user-1", SourceAccountID: 3001, SheinStoreID: 168811,
 		Platforms: []string{"shein"},
 	})
 	if err != nil {
@@ -202,7 +226,7 @@ func TestTaskCommandServiceCreateTaskReturnsHandoffOnSourceError(t *testing.T) {
 	creator := &fakeGenerateTaskCreator{}
 	result, err := NewTaskCommandService(creator, validStoreAccessValidator()).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{
 		URL:      "https://detail.1688.com/offer/891.html",
-		TenantID: "101", UserID: "user-1", SourceStoreID: 3001, SheinStoreID: 168811,
+		TenantID: "101", UserID: "user-1", SourceAccountID: 3001, SheinStoreID: 168811,
 		Error:     errors.New("crawler failed"),
 		Platforms: []string{"shein"},
 	})

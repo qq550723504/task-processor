@@ -10,9 +10,11 @@ import (
 
 var alibaba1688OfferIDPattern = regexp.MustCompile(`(?i)(?:/offer/|offer[/=])(\d+)`)
 
-// Alibaba1688CrawlRequestInput is the source-side identity for a 1688 product URL.
+// Alibaba1688CrawlRequestInput is the source-side request context for a 1688 product URL.
 type Alibaba1688CrawlRequestInput struct {
-	URL     string
+	URL       string
+	AccountID int64
+	// StoreID belongs to neutral source identity and is not the login account.
 	StoreID int64
 }
 

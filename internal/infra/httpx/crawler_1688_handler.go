@@ -38,17 +38,18 @@ func (h *Crawler1688Handler) handleCrawl(w http.ResponseWriter, r *http.Request)
 	}
 
 	var req struct {
-		URL      string `json:"url"`
-		OfferID  string `json:"offer_id,omitempty"`
-		Priority int    `json:"priority"`
+		URL             string `json:"url"`
+		OfferID         string `json:"offer_id,omitempty"`
+		Priority        int    `json:"priority"`
+		SourceAccountID int64  `json:"source_account_id,omitempty"`
 	}
 
 	if err := ParseJSON(r, &req); err != nil {
 		BadRequest(w, err.Error())
 		return
 	}
-
 	crawlerTask := shared.NewCrawlerTask(req.URL)
+	crawlerTask.SourceAccountID = req.SourceAccountID
 	if req.OfferID != "" {
 		crawlerTask.WithASIN(req.OfferID) // 复用ASIN字段存储OfferID
 	}
