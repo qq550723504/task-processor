@@ -1050,6 +1050,58 @@ describe("runItemizedBackgroundRemovalRetry", () => {
       retryBackgroundRemoval.mock.invocationCallOrder[0],
     );
   });
+
+  it("forwards an ordinary design id without client filtering", async () => {
+    const hydratedBatch: SheinStudioWorkbenchHydratedBatch = {
+      savedBatch: buildCurrentBatch(),
+      detail: {
+        ...buildCurrentDetail(),
+        items: [
+          {
+            item: {
+              id: "item-1",
+              batchId: "batch-1",
+              targetGroupKey: "group-1",
+              targetGroupLabel: "Group 1",
+              status: "review_ready",
+              selectionCount: 1,
+              createdAt: "2026-06-22T02:00:00.000Z",
+              updatedAt: "2026-06-22T02:30:00.000Z",
+            },
+            designs: [
+              {
+                id: "design-1",
+                batchId: "batch-1",
+                itemId: "item-1",
+                imageUrl: "https://example.test/ordinary-design.png",
+                transparentBackgroundMode: "none",
+                backgroundRemovalStatus: "not_requested",
+                createdAt: "2026-06-22T02:30:00.000Z",
+                updatedAt: "2026-06-22T02:45:00.000Z",
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const retryBackgroundRemoval = vi.fn().mockResolvedValue(hydratedBatch.detail);
+
+    await expect(
+      runItemizedBackgroundRemovalRetry({
+        activeBatchId: "batch-1",
+        applyHydratedBatch: vi.fn(),
+        currentActiveBatch: buildCurrentBatch(),
+        designId: "design-1",
+        detail: hydratedBatch.detail,
+        getHydratedBatch: vi.fn(),
+        retryBackgroundRemoval,
+      }),
+    ).resolves.toBe(hydratedBatch.detail);
+
+    expect(retryBackgroundRemoval).toHaveBeenCalledWith("batch-1", ["design-1"], {
+      tenantId: "tenant-detail",
+    });
+  });
 });
 
 describe("loadItemizedGenerationPollBatch", () => {
