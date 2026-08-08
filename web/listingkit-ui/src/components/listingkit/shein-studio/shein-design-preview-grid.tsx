@@ -5,7 +5,11 @@ import Image from "next/image";
 
 import { SheinDesignLightbox } from "@/components/listingkit/shein-studio/shein-design-lightbox";
 import { Button } from "@/components/ui/button";
-import { resolveGeneratedDesignSrc } from "@/lib/shein-studio/design-image";
+import {
+  resolveGeneratedDesignFinalSrc,
+  resolveGeneratedDesignOriginalSrc,
+  resolveGeneratedDesignSrc,
+} from "@/lib/shein-studio/design-image";
 import { toThumbnailPreviewUrl } from "@/lib/utils/imgproxy-url";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
@@ -95,6 +99,17 @@ export function SheinDesignPreviewGrid({
               width: 720,
               height: 720,
             });
+            const originalSrc = resolveGeneratedDesignOriginalSrc(design);
+            const finalSrc = resolveGeneratedDesignFinalSrc(design);
+            const originalThumbSrc = toThumbnailPreviewUrl(originalSrc, {
+              width: 720,
+              height: 720,
+            });
+            const finalThumbSrc = toThumbnailPreviewUrl(finalSrc, {
+              width: 720,
+              height: 720,
+            });
+            const isRemovalMode = design.transparentBackgroundMode === "removal";
             return (
               <article
                 className={`overflow-hidden rounded-[1.5rem] border transition hover:-translate-y-0.5 hover:shadow-[0_18px_45px_rgba(24,24,27,0.10)] ${
@@ -155,10 +170,23 @@ export function SheinDesignPreviewGrid({
                       >
                         {regeneratingId === design.id ? "重新生成中..." : "重新生成"}
                       </Button>
+                      {onRetryBackgroundRemoval ? (
+                        <Button
+                          className="flex-1"
+                          disabled={retryingBackgroundRemovalId === design.id}
+                          onClick={() => onRetryBackgroundRemoval(design.id)}
+                          type="button"
+                          variant="ghost"
+                        >
+                          {retryingBackgroundRemovalId === design.id
+                            ? "抠图中..."
+                            : "重新抠图"}
+                        </Button>
+                      ) : null}
                     </div>
                   )}
 
-                  {design.transparentBackgroundMode === "removal" ? (
+                  {isRemovalMode ? (
                     <div className="flex flex-wrap items-center gap-2 text-xs">
                       <span
                         className={`rounded-full px-2.5 py-1 font-medium ${
@@ -169,48 +197,89 @@ export function SheinDesignPreviewGrid({
                               : "bg-emerald-100 text-emerald-800"
                         }`}
                       >
-                        {design.backgroundRemovalStatus === "failed"
-                          ? "抠图失败，当前显示原图"
-                          : design.backgroundRemovalStatus === "pending"
-                            ? "抠图处理中"
-                            : "抠图完成"}
+                        {formatBackgroundRemovalStatus(design.backgroundRemovalStatus)}
                       </span>
                       {design.backgroundRemovalStatus === "failed" &&
-                      onRetryBackgroundRemoval ? (
-                        <Button
-                          disabled={retryingBackgroundRemovalId === design.id}
-                          onClick={() => onRetryBackgroundRemoval(design.id)}
-                          size="sm"
-                          type="button"
-                          variant="ghost"
-                        >
-                          {retryingBackgroundRemovalId === design.id
-                            ? "重试中..."
-                            : "重试抠图"}
-                        </Button>
+                      design.backgroundRemovalError ? (
+                        <span className="text-rose-700">{design.backgroundRemovalError}</span>
                       ) : null}
                     </div>
                   ) : null}
 
-                  <div className="space-y-3">
-                    <Button
-                      className="relative block aspect-square h-auto w-full overflow-hidden rounded-[1.25rem] border-zinc-200 bg-zinc-950/5 p-0"
-                      onClick={() => {
-                        setActivePreviewId(design.id);
-                        setActivePreviewView("design");
-                      }}
-                      type="button"
-                      variant="outline"
-                    >
-                      <Image
-                        alt={`生成款式 ${index + 1}`}
-                        className="h-full w-full object-cover"
-                        height={1024}
-                        src={designThumbSrc || designSrc}
-                        unoptimized
-                        width={1024}
-                      />
-                    </Button>
+                  <div className={isRemovalMode ? "grid gap-3 md:grid-cols-2" : "space-y-3"}>
+                    {isRemovalMode ? (
+                      <>
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-zinc-600">原图</div>
+                          <Button
+                            aria-label="原图"
+                            className="relative block aspect-square h-auto w-full overflow-hidden rounded-[1.25rem] border-zinc-200 bg-zinc-950/5 p-0"
+                            onClick={() => {
+                              setActivePreviewId(design.id);
+                              setActivePreviewView("design");
+                            }}
+                            type="button"
+                            variant="outline"
+                          >
+                            <Image
+                              alt={`款式 ${index + 1} 原图预览`}
+                              className="h-full w-full object-cover"
+                              height={1024}
+                              src={originalThumbSrc || originalSrc || designThumbSrc || designSrc}
+                              unoptimized
+                              width={1024}
+                            />
+                          </Button>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-zinc-600">抠图后</div>
+                          {finalSrc ? (
+                            <Button
+                              aria-label="抠图后"
+                              className="relative block aspect-square h-auto w-full overflow-hidden rounded-[1.25rem] border-zinc-200 bg-zinc-950/5 p-0"
+                              onClick={() => {
+                                setActivePreviewId(design.id);
+                                setActivePreviewView("design");
+                              }}
+                              type="button"
+                              variant="outline"
+                            >
+                              <Image
+                                alt={`款式 ${index + 1} 抠图后预览`}
+                                className="h-full w-full object-cover"
+                                height={1024}
+                                src={finalThumbSrc || finalSrc}
+                                unoptimized
+                                width={1024}
+                              />
+                            </Button>
+                          ) : (
+                            <div className="flex aspect-square items-center justify-center rounded-[1.25rem] border border-dashed border-zinc-200 bg-zinc-100/80 px-4 text-center text-sm text-zinc-500">
+                              {formatBackgroundRemovalStatus(design.backgroundRemovalStatus)}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <Button
+                        className="relative block aspect-square h-auto w-full overflow-hidden rounded-[1.25rem] border-zinc-200 bg-zinc-950/5 p-0"
+                        onClick={() => {
+                          setActivePreviewId(design.id);
+                          setActivePreviewView("design");
+                        }}
+                        type="button"
+                        variant="outline"
+                      >
+                        <Image
+                          alt={`生成款式 ${index + 1}`}
+                          className="h-full w-full object-cover"
+                          height={1024}
+                          src={designThumbSrc || designSrc}
+                          unoptimized
+                          width={1024}
+                        />
+                      </Button>
+                    )}
                   </div>
                 </div>
               </article>
@@ -285,5 +354,19 @@ function formatImageStrategyLabel(strategy: SheinStudioImageStrategy) {
     case "ai_generated":
     default:
       return "AI 生成商品图";
+  }
+}
+
+function formatBackgroundRemovalStatus(status?: string) {
+  switch (status) {
+    case "failed":
+      return "抠图失败，当前显示原图";
+    case "pending":
+      return "抠图处理中";
+    case "succeeded":
+      return "抠图完成";
+    case "not_requested":
+    default:
+      return "尚未抠图";
   }
 }

@@ -27,11 +27,15 @@ describe("SheinDesignLightbox", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "查看生成原图" }));
+    expect(screen.getByRole("button", { name: "抠图后" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看原图" }));
 
     expect(screen.getByAltText("生成款式预览")).toHaveAttribute(
       "src",
       "/api/listing-kits/uploads/files/original-image.png",
     );
+
+    expect(screen.getByRole("button", { name: "查看抠图后" })).toBeInTheDocument();
   });
 });

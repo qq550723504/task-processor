@@ -4,7 +4,10 @@ import { MouseEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
-import { resolveGeneratedDesignSrc } from "@/lib/shein-studio/design-image";
+import {
+  resolveGeneratedDesignFinalSrc,
+  resolveGeneratedDesignOriginalSrc,
+} from "@/lib/shein-studio/design-image";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { SheinStudioGeneratedDesign } from "@/lib/types/shein-studio";
 
@@ -86,12 +89,9 @@ export function SheinDesignLightbox({
     return null;
   }
 
-  const designSrc = resolveGeneratedDesignSrc(design);
+  const designSrc = resolveGeneratedDesignFinalSrc(design) || design.imageUrl || design.dataUrl || "";
   const originalDesignSrc = design.originalImageUrl
-    ? resolveGeneratedDesignSrc({
-        ...design,
-        imageUrl: design.originalImageUrl,
-      })
+    ? resolveGeneratedDesignOriginalSrc(design)
     : "";
   const displayedDesignSrc =
     activeImageView === "original" && originalDesignSrc
@@ -146,7 +146,7 @@ export function SheinDesignLightbox({
               onClick={() => onViewChange("design")}
               variant={activeView === "design" ? "primary" : "secondary"}
             >
-              原图
+              抠图后
             </Button>
             {originalDesignSrc ? (
               <Button
@@ -155,7 +155,7 @@ export function SheinDesignLightbox({
                 )}
                 variant={activeImageView === "original" ? "primary" : "secondary"}
               >
-                {activeImageView === "original" ? "查看最终图" : "查看生成原图"}
+                {activeImageView === "original" ? "查看抠图后" : "查看原图"}
               </Button>
             ) : null}
             <Button
