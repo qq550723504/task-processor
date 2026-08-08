@@ -1,8 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -62,6 +64,12 @@ type stubStudioBatchActionService struct {
 	prepareCreateTasksReq     *listingkit.CreateStudioBatchTasksRequest
 	prepareCreateTasksResult  *listingkit.CreateStudioBatchTasksResult
 	prepareCreateTasksErr     error
+	manualBackgroundCtx       context.Context
+	manualBackgroundBatchID   string
+	manualBackgroundDesignID  string
+	manualBackgroundInput     *listingkit.ImageUploadInput
+	manualBackgroundResult    *listingkit.StudioBatchDetail
+	manualBackgroundErr       error
 	upsertCtx                 context.Context
 	upsertReq                 *listingkit.UpsertStudioBatchRequest
 	upsertResult              *listingkit.StudioBatchDraftDetail
@@ -141,6 +149,20 @@ func (s *stubStudioBatchActionService) RetryStudioBatchItems(ctx context.Context
 
 func (s *stubStudioBatchActionService) RetryStudioBatchDesignBackgroundRemoval(context.Context, string, *listingkit.RetryStudioBatchDesignBackgroundRemovalRequest) (*listingkit.StudioBatchDetail, error) {
 	return s.prepareRetryResult, s.prepareRetryErr
+}
+
+func (s *stubStudioBatchActionService) ApplyManualStudioBatchDesignBackgroundRemoval(ctx context.Context, batchID string, designID string, input *listingkit.ImageUploadInput) (*listingkit.StudioBatchDetail, error) {
+	s.manualBackgroundCtx = ctx
+	s.manualBackgroundBatchID = batchID
+	s.manualBackgroundDesignID = designID
+	if input != nil {
+		copyInput := *input
+		copyInput.Data = append([]byte(nil), input.Data...)
+		s.manualBackgroundInput = &copyInput
+	} else {
+		s.manualBackgroundInput = nil
+	}
+	return s.manualBackgroundResult, s.manualBackgroundErr
 }
 
 func (s *stubStudioBatchActionService) ScheduleStudioBatchSDSChildRetries(_ context.Context, batchID string) (*listingkit.StudioBatchSDSChildRetryResult, error) {
@@ -396,6 +418,77 @@ func TestStudioBatchBackgroundRemovalRetryHandlerBindsDesignIDs(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestStudioBatchManualBackgroundRemovalHandlerBindsMultipartPNG(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubStudioBatchActionService{
+		manualBackgroundResult: &listingkit.StudioBatchDetail{Batch: &listingkit.StudioBatchRecord{ID: "batch-1"}},
+	}
+	h := &studioSessionHandler{service: svc}
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/studio/batches/:batch_id/designs/:design_id/manual-background-removal", h.ApplyManualStudioBatchDesignBackgroundRemoval)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	fileWriter, err := writer.CreateFormFile("file", "manual.png")
+	if err != nil {
+		t.Fatalf("CreateFormFile() error = %v", err)
+	}
+	if _, err := fileWriter.Write([]byte("png-bytes")); err != nil {
+		t.Fatalf("fileWriter.Write() error = %v", err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatalf("writer.Close() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/batches/batch-1/designs/design-1/manual-background-removal", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 body=%s", rec.Code, rec.Body.String())
+	}
+	if svc.manualBackgroundBatchID != "batch-1" || svc.manualBackgroundDesignID != "design-1" {
+		t.Fatalf("manual background ids = %q/%q, want batch-1/design-1", svc.manualBackgroundBatchID, svc.manualBackgroundDesignID)
+	}
+	if svc.manualBackgroundInput == nil || svc.manualBackgroundInput.Filename != "manual.png" || string(svc.manualBackgroundInput.Data) != "png-bytes" {
+		t.Fatalf("manual background input = %#v, want multipart file bytes", svc.manualBackgroundInput)
+	}
+	if !strings.Contains(rec.Body.String(), "\"batch\"") {
+		t.Fatalf("body = %s, want JSON studio batch detail", rec.Body.String())
+	}
+}
+
+func TestStudioBatchManualBackgroundRemovalHandlerRequiresFile(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubStudioBatchActionService{}
+	h := &studioSessionHandler{service: svc}
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/studio/batches/:batch_id/designs/:design_id/manual-background-removal", h.ApplyManualStudioBatchDesignBackgroundRemoval)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.Close(); err != nil {
+		t.Fatalf("writer.Close() error = %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/studio/batches/batch-1/designs/design-1/manual-background-removal", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 body=%s", rec.Code, rec.Body.String())
+	}
+	if svc.manualBackgroundInput != nil {
+		t.Fatalf("manual background input = %#v, want nil when file is missing", svc.manualBackgroundInput)
 	}
 }
 
