@@ -594,6 +594,9 @@ export function SheinStudioWorkbench({
   const createActionDisabledReason = useSheinStudioCreateActionDisabledReason({
     galleryRatioCheck,
     hasItemizedBatchContext: Boolean(itemizedBatchContext),
+    hasPendingBackgroundRemoval:
+      Boolean(retryingBackgroundRemovalId) ||
+      designs.some((design) => design.backgroundRemovalStatus === "pending"),
     itemizedApprovedCount: itemizedBatchContext
       ? getApprovedItemizedBatchDesignIDs(itemizedBatchContext.detail).length
       : undefined,
@@ -1787,7 +1790,9 @@ export function SheinStudioWorkbench({
               onCreateReviewTasks={handleCreateTasks}
               onNoteChange={handleNoteChange}
               onRegenerate={handleRegenerate}
-              onRetryBackgroundRemoval={handleRetryBackgroundRemoval}
+              onRetryBackgroundRemoval={
+                itemizedBatchContext ? handleRetryBackgroundRemoval : undefined
+              }
               onToggle={toggleSelection}
               productImageCount={productImageCount}
               regeneratingId={regeneratingId || undefined}

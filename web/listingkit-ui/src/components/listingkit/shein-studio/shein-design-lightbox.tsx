@@ -4,7 +4,11 @@ import { MouseEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
-import { resolveGeneratedDesignSrc } from "@/lib/shein-studio/design-image";
+import {
+  resolveGeneratedDesignFinalSrc,
+  resolveGeneratedDesignOriginalSrc,
+  resolveGeneratedDesignSrc,
+} from "@/lib/shein-studio/design-image";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { SheinStudioGeneratedDesign } from "@/lib/types/shein-studio";
 
@@ -21,12 +25,14 @@ function resolveMockupSurfaces(selection?: SDSProductVariantSelection) {
 export function SheinDesignLightbox({
   activeView,
   design,
+  initialImageView = "final",
   onClose,
   onViewChange,
   selection,
 }: {
   activeView: "design" | "mockup";
   design?: SheinStudioGeneratedDesign | null;
+  initialImageView?: "final" | "original";
   onClose: () => void;
   onViewChange: (view: "design" | "mockup") => void;
   selection?: SDSProductVariantSelection;
@@ -35,7 +41,7 @@ export function SheinDesignLightbox({
   const [activeSurfaceIndex, setActiveSurfaceIndex] = useState(0);
   const [zoomMode, setZoomMode] = useState<"fit" | "detail">("fit");
   const [activeImageView, setActiveImageView] = useState<"final" | "original">(
-    "final",
+    initialImageView,
   );
 
   const printableWidth = selection?.printableWidth ?? 1;
@@ -86,12 +92,11 @@ export function SheinDesignLightbox({
     return null;
   }
 
-  const designSrc = resolveGeneratedDesignSrc(design);
+  const finalDesignSrc = resolveGeneratedDesignFinalSrc(design);
+  const hasConfirmedFinal = Boolean(finalDesignSrc);
+  const designSrc = finalDesignSrc || resolveGeneratedDesignSrc(design);
   const originalDesignSrc = design.originalImageUrl
-    ? resolveGeneratedDesignSrc({
-        ...design,
-        imageUrl: design.originalImageUrl,
-      })
+    ? resolveGeneratedDesignOriginalSrc(design)
     : "";
   const displayedDesignSrc =
     activeImageView === "original" && originalDesignSrc
@@ -146,7 +151,7 @@ export function SheinDesignLightbox({
               onClick={() => onViewChange("design")}
               variant={activeView === "design" ? "primary" : "secondary"}
             >
-              原图
+              {hasConfirmedFinal ? "抠图后" : "原图"}
             </Button>
             {originalDesignSrc ? (
               <Button
@@ -155,7 +160,7 @@ export function SheinDesignLightbox({
                 )}
                 variant={activeImageView === "original" ? "primary" : "secondary"}
               >
-                {activeImageView === "original" ? "查看最终图" : "查看生成原图"}
+                {activeImageView === "original" ? "查看抠图后" : "查看原图"}
               </Button>
             ) : null}
             <Button

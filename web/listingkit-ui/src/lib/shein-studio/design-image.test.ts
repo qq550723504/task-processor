@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   hasGeneratedDesignSrc,
+  resolveGeneratedDesignFinalSrc,
+  resolveGeneratedDesignOriginalSrc,
   resolveGeneratedDesignSrc,
 } from "@/lib/shein-studio/design-image";
 
@@ -32,6 +34,69 @@ describe("resolveGeneratedDesignSrc", () => {
         dataUrl: "data:image/png;base64,abc",
       }),
     ).toBe("data:image/png;base64,abc");
+  });
+});
+
+describe("resolveGeneratedDesignOriginalSrc", () => {
+  it("uses the original image url when available", () => {
+    expect(
+      resolveGeneratedDesignOriginalSrc({
+        id: "design-1",
+        imageUrl: "/api/v1/listing-kits/uploads/files/final.png",
+        originalImageUrl: "/api/v1/listing-kits/uploads/files/original.png",
+      }),
+    ).toBe("/api/listing-kits/uploads/files/original.png");
+  });
+
+  it("falls back to the current image url when original image url is missing", () => {
+    expect(
+      resolveGeneratedDesignOriginalSrc({
+        id: "design-2",
+        imageUrl: "https://cdn.example.test/ordinary.png",
+      }),
+    ).toBe("https://cdn.example.test/ordinary.png");
+  });
+});
+
+describe("resolveGeneratedDesignFinalSrc", () => {
+  it("returns an empty string until background removal succeeds", () => {
+    expect(
+      resolveGeneratedDesignFinalSrc({
+        id: "design-3",
+        imageUrl: "/api/v1/listing-kits/uploads/files/final.png",
+        backgroundRemovalStatus: "pending",
+      }),
+    ).toBe("");
+  });
+
+  it("does not fall back to data url when background removal succeeds without image url", () => {
+    expect(
+      resolveGeneratedDesignFinalSrc({
+        id: "design-4",
+        dataUrl: "data:image/png;base64,abc",
+        backgroundRemovalStatus: "succeeded",
+      }),
+    ).toBe("");
+  });
+
+  it("returns the normalized image url after background removal succeeds", () => {
+    expect(
+      resolveGeneratedDesignFinalSrc({
+        id: "design-5",
+        imageUrl: "/api/v1/listing-kits/uploads/files/final.png",
+        backgroundRemovalStatus: "succeeded",
+      }),
+    ).toBe("/api/listing-kits/uploads/files/final.png");
+  });
+
+  it("infers a legacy removed image from a distinct original/current pair", () => {
+    expect(
+      resolveGeneratedDesignFinalSrc({
+        id: "design-legacy",
+        imageUrl: "/api/v1/listing-kits/uploads/files/final.png",
+        originalImageUrl: "/api/v1/listing-kits/uploads/files/original.png",
+      }),
+    ).toBe("/api/listing-kits/uploads/files/final.png");
   });
 });
 

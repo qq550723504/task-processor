@@ -81,6 +81,17 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				return SheinStudioCreatedTask{}, fmt.Errorf("listing task creator is not configured")
 			}
 			taskCandidate := candidate.state.Candidates[0]
+			latestDesigns, err := s.repo.ListStudioMaterializedDesignsByIDs(ctx, taskCandidate.Design.BatchID, []string{taskCandidate.Design.ID})
+			if err != nil {
+				return SheinStudioCreatedTask{}, err
+			}
+			if len(latestDesigns) != 1 {
+				return SheinStudioCreatedTask{}, fmt.Errorf("studio design %s is no longer available", taskCandidate.Design.ID)
+			}
+			if latestDesigns[0].BackgroundRemovalStatus == StudioBackgroundRemovalStatusPending {
+				return SheinStudioCreatedTask{}, fmt.Errorf("studio design %s background removal is still in progress", taskCandidate.Design.ID)
+			}
+			taskCandidate.Design = latestDesigns[0]
 			if err := s.reserveStudioBatchTaskCandidate(ctx, taskCandidate); err != nil {
 				return SheinStudioCreatedTask{}, err
 			}

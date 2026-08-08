@@ -2,6 +2,8 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
+import { resolveGeneratedDesignFinalSrc, resolveGeneratedDesignOriginalSrc } from "@/lib/shein-studio/design-image";
+import { toThumbnailPreviewUrl } from "@/lib/utils/imgproxy-url";
 
 vi.mock("next/image", () => ({
   default: (props: React.ImgHTMLAttributes<HTMLImageElement>) => (
@@ -15,6 +17,207 @@ vi.mock("@/components/listingkit/shein-studio/shein-design-lightbox", () => ({
 }));
 
 describe("SheinDesignPreviewGrid", () => {
+  it("shows original and removed previews plus the manual retry action after removal succeeds", () => {
+    const onRetryBackgroundRemoval = vi.fn();
+
+    render(
+      <SheinDesignPreviewGrid
+        createActionDisabledReason={undefined}
+        designs={[
+          {
+            id: "design-1",
+            imageUrl: "https://cdn.example.test/final.png",
+            originalImageUrl: "https://cdn.example.test/original.png",
+            backgroundRemovalStatus: "succeeded",
+            transparentBackgroundMode: "removal",
+          },
+        ]}
+        imageStrategy="hybrid"
+        onCreateReviewTasks={vi.fn()}
+        onRegenerate={vi.fn()}
+        onRetryBackgroundRemoval={onRetryBackgroundRemoval}
+        onToggle={vi.fn()}
+        productImageCount="3"
+        renderSizeImagesWithSds
+        selectedIds={[]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "重新抠图" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "原图" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "抠图后" })).toBeInTheDocument();
+
+    const originalPreview = screen.getByAltText("款式 1 原图预览");
+    const finalPreview = screen.getByAltText("款式 1 抠图后预览");
+
+    expect(originalPreview).toHaveAttribute(
+      "src",
+      toThumbnailPreviewUrl(
+        resolveGeneratedDesignOriginalSrc({
+          id: "design-1",
+          imageUrl: "https://cdn.example.test/final.png",
+          originalImageUrl: "https://cdn.example.test/original.png",
+          backgroundRemovalStatus: "succeeded",
+          transparentBackgroundMode: "removal",
+        }),
+        { width: 720, height: 720 },
+      ),
+    );
+    expect(finalPreview).toHaveAttribute(
+      "src",
+      toThumbnailPreviewUrl(
+        resolveGeneratedDesignFinalSrc({
+          id: "design-1",
+          imageUrl: "https://cdn.example.test/final.png",
+          originalImageUrl: "https://cdn.example.test/original.png",
+          backgroundRemovalStatus: "succeeded",
+          transparentBackgroundMode: "removal",
+        }),
+        { width: 720, height: 720 },
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "重新抠图" }));
+    expect(onRetryBackgroundRemoval).toHaveBeenCalledWith("design-1");
+  });
+
+  it("keeps the manual retry action and not-yet-removed status when no original image exists", () => {
+    render(
+      <SheinDesignPreviewGrid
+        createActionDisabledReason={undefined}
+        designs={[
+          {
+            id: "design-1",
+            imageUrl: "https://cdn.example.test/final.png",
+            backgroundRemovalStatus: "not_requested",
+            transparentBackgroundMode: "removal",
+          },
+        ]}
+        imageStrategy="hybrid"
+        onCreateReviewTasks={vi.fn()}
+        onRegenerate={vi.fn()}
+        onRetryBackgroundRemoval={vi.fn()}
+        onToggle={vi.fn()}
+        productImageCount="3"
+        renderSizeImagesWithSds
+        selectedIds={[]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "重新抠图" })).toBeInTheDocument();
+    expect(screen.getAllByText("尚未抠图")).not.toHaveLength(0);
+  });
+
+  it("renders both panes and the neutral not-requested state for ordinary cards", () => {
+    const onRetryBackgroundRemoval = vi.fn();
+
+    render(
+      <SheinDesignPreviewGrid
+        canRegenerate={false}
+        createActionDisabledReason={undefined}
+        designs={[
+          {
+            id: "design-ordinary",
+            imageUrl: "https://cdn.example.test/ordinary.png",
+            backgroundRemovalStatus: "not_requested",
+            transparentBackgroundMode: "none",
+          },
+        ]}
+        imageStrategy="hybrid"
+        onCreateReviewTasks={vi.fn()}
+        onRegenerate={vi.fn()}
+        onRetryBackgroundRemoval={onRetryBackgroundRemoval}
+        onToggle={vi.fn()}
+        productImageCount="3"
+        renderSizeImagesWithSds
+        selectedIds={[]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "重新抠图" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新生成" })).not.toBeInTheDocument();
+    expect(screen.getByText("原图")).toBeInTheDocument();
+    expect(screen.getByText("抠图后")).toBeInTheDocument();
+    expect(screen.getByAltText("款式 1 原图预览")).toBeInTheDocument();
+    const notRequestedLabels = screen.getAllByText("尚未抠图");
+    expect(notRequestedLabels).not.toHaveLength(0);
+    expect(notRequestedLabels[0]).toHaveClass("bg-zinc-100", "text-zinc-600");
+    expect(screen.queryByText("抠图完成")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "重新抠图" }));
+    expect(onRetryBackgroundRemoval).toHaveBeenCalledWith("design-ordinary");
+  });
+
+  it("disables the other operation while regenerating or removing the same design", () => {
+    const props = {
+      createActionDisabledReason: undefined,
+      designs: [
+        {
+          id: "design-1",
+          imageUrl: "https://cdn.example.test/design.png",
+          backgroundRemovalStatus: "pending" as const,
+        },
+      ],
+      imageStrategy: "hybrid" as const,
+      onCreateReviewTasks: vi.fn(),
+      onRegenerate: vi.fn(),
+      onRetryBackgroundRemoval: vi.fn(),
+      onToggle: vi.fn(),
+      productImageCount: "3",
+      renderSizeImagesWithSds: true,
+      selectedIds: [] as string[],
+    };
+    const { rerender } = render(
+      <SheinDesignPreviewGrid
+        {...props}
+        retryingBackgroundRemovalId="design-1"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "重新生成" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "抠图中..." })).toBeDisabled();
+
+    rerender(
+      <SheinDesignPreviewGrid
+        {...props}
+        regeneratingId="design-1"
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "重新生成中..." })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新抠图" })).toBeDisabled();
+  });
+
+  it("keeps both previews visible in read-only mode while hiding the manual retry action", () => {
+    render(
+      <SheinDesignPreviewGrid
+        createActionDisabledReason={undefined}
+        designs={[
+          {
+            id: "design-1",
+            imageUrl: "https://cdn.example.test/final.png",
+            originalImageUrl: "https://cdn.example.test/original.png",
+            backgroundRemovalStatus: "succeeded",
+            transparentBackgroundMode: "removal",
+          },
+        ]}
+        imageStrategy="hybrid"
+        onCreateReviewTasks={vi.fn()}
+        onRegenerate={vi.fn()}
+        onRetryBackgroundRemoval={vi.fn()}
+        onToggle={vi.fn()}
+        productImageCount="3"
+        readOnly
+        renderSizeImagesWithSds
+        selectedIds={["design-1"]}
+      />,
+    );
+
+    expect(screen.getByAltText("款式 1 原图预览")).toBeInTheDocument();
+    expect(screen.getByAltText("款式 1 抠图后预览")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "重新抠图" })).not.toBeInTheDocument();
+  });
+
   it("uses imgproxy thumbnails for oss-hosted design cards when configured", () => {
     process.env.NEXT_PUBLIC_LISTINGKIT_IMGPROXY_BASE_URL = "https://pod.shuomiai.com/img";
 
@@ -37,7 +240,7 @@ describe("SheinDesignPreviewGrid", () => {
       />,
     );
 
-    expect(screen.getByAltText("生成款式 1")).toHaveAttribute(
+    expect(screen.getByAltText("款式 1 原图预览")).toHaveAttribute(
       "src",
       "https://pod.shuomiai.com/img/insecure/rs:fit:720:720/plain/s3://listingkit-assets/20260529/design-1.png@webp",
     );

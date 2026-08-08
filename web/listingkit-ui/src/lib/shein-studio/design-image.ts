@@ -30,6 +30,33 @@ export function resolveGeneratedDesignSrc(design: SheinStudioGeneratedDesign) {
   return design.dataUrl || "";
 }
 
+export function resolveGeneratedDesignOriginalSrc(
+  design: SheinStudioGeneratedDesign,
+) {
+  return resolveGeneratedDesignSrc({
+    ...design,
+    imageUrl: design.originalImageUrl || design.imageUrl,
+  });
+}
+
+export function resolveGeneratedDesignFinalSrc(
+  design: SheinStudioGeneratedDesign,
+) {
+  const imageUrl = design.imageUrl?.trim();
+  const originalImageUrl = design.originalImageUrl?.trim();
+  const hasLegacyFinalImage =
+    !design.backgroundRemovalStatus &&
+    Boolean(originalImageUrl && imageUrl && originalImageUrl !== imageUrl);
+  if (
+    (!hasLegacyFinalImage && design.backgroundRemovalStatus !== "succeeded") ||
+    !imageUrl
+  ) {
+    return "";
+  }
+
+  return normalizeListingKitUploadFetchUrl(imageUrl);
+}
+
 export function hasGeneratedDesignSrc(design: SheinStudioGeneratedDesign) {
   return Boolean(resolveGeneratedDesignSrc(design));
 }
