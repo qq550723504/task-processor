@@ -262,7 +262,9 @@ export function SheinStudioWorkbench({
     variationIntensity,
   } = workbenchState;
   const itemizedBatchDetailRef = useRef(itemizedBatchDetail);
-  itemizedBatchDetailRef.current = itemizedBatchDetail;
+  useEffect(() => {
+    itemizedBatchDetailRef.current = itemizedBatchDetail;
+  }, [itemizedBatchDetail]);
   const {
     setArtworkModel,
     setBatchQueueMode,
