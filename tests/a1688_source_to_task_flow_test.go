@@ -23,16 +23,16 @@ func TestAlibaba1688HTTPReplayCreatesTaskAndPreservesSourceFacts(t *testing.T) {
 	creator := &replayGenerateTaskCreator{}
 	router := newAlibaba1688ReplayRouter(creator)
 	rec := performAuthenticatedReplayRequest(t, router, sourcea1688.CreateListingKitTaskRequest{
-		URL:           "https://detail.1688.com/offer/321.html?spm=replay",
-		Product:       replayProduct1688("321"),
-		RawSnapshot:   "replay-snapshot-321",
-		SourceRunID:   "replay-run-321",
-		RequestID:     "replay-request-321",
-		SourceStoreID: 3001,
-		Platforms:     []string{" SHEIN ", "shein"},
-		Country:       " US ",
-		Language:      " en_US ",
-		SheinStoreID:  168811,
+		URL:             "https://detail.1688.com/offer/321.html?spm=replay",
+		Product:         replayProduct1688("321"),
+		RawSnapshot:     "replay-snapshot-321",
+		SourceRunID:     "replay-run-321",
+		RequestID:       "replay-request-321",
+		SourceAccountID: 3001,
+		Platforms:       []string{" SHEIN ", "shein"},
+		Country:         " US ",
+		Language:        " en_US ",
+		SheinStoreID:    168811,
 	}, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-1688"})
 
 	if rec.Code != http.StatusOK {
@@ -74,6 +74,15 @@ func TestAlibaba1688HTTPReplayCreatesTaskAndPreservesSourceFacts(t *testing.T) {
 		creator.request.Source.URL != "https://detail.1688.com/offer/321.html" {
 		t.Fatalf("request source = %+v, want normalized source reference", creator.request.Source)
 	}
+	requestJSON, err := json.Marshal(creator.request)
+	if err != nil {
+		t.Fatalf("marshal generated request: %v", err)
+	}
+	for _, forbidden := range []string{"password", "cookie", "user_data_dir", "profile_path", "proxy"} {
+		if strings.Contains(strings.ToLower(string(requestJSON)), forbidden) {
+			t.Fatalf("generated request JSON = %s, must not contain %q", requestJSON, forbidden)
+		}
+	}
 	for _, want := range []string{
 		"Title: Insulated Lunch Bag",
 		"Brand: Factory Lunch",
@@ -101,11 +110,11 @@ func TestAlibaba1688HTTPReplayRejectsMissingFacts(t *testing.T) {
 	product.ProductDetails = nil
 	product.Variants = nil
 	rec := performAuthenticatedReplayRequest(t, router, sourcea1688.CreateListingKitTaskRequest{
-		URL:           "https://detail.1688.com/offer/322.html",
-		Product:       product,
-		SourceStoreID: 3001,
-		Platforms:     []string{"shein"},
-		SheinStoreID:  168811,
+		URL:             "https://detail.1688.com/offer/322.html",
+		Product:         product,
+		SourceAccountID: 3001,
+		Platforms:       []string{"shein"},
+		SheinStoreID:    168811,
 	}, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-1688"})
 
 	if rec.Code != http.StatusBadRequest {
@@ -138,11 +147,11 @@ func TestAlibaba1688HTTPReplayPreservesSourceError(t *testing.T) {
 	creator := &replayGenerateTaskCreator{}
 	router := newAlibaba1688ReplayRouter(creator)
 	rec := performAuthenticatedReplayRequest(t, router, sourcea1688.CreateListingKitTaskRequest{
-		URL:           "https://detail.1688.com/offer/323.html",
-		SourceError:   "controlled crawler failed",
-		SourceStoreID: 3001,
-		Platforms:     []string{"shein"},
-		SheinStoreID:  168811,
+		URL:             "https://detail.1688.com/offer/323.html",
+		SourceError:     "controlled crawler failed",
+		SourceAccountID: 3001,
+		Platforms:       []string{"shein"},
+		SheinStoreID:    168811,
 	}, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-1688"})
 
 	if rec.Code != http.StatusBadRequest {
@@ -192,9 +201,92 @@ func (f *replayGenerateTaskCreator) CreateGenerateTask(_ context.Context, reques
 	}, nil
 }
 
-type replayStoreAccessValidator struct{}
+func TestAlibaba1688HTTPReplayRejectsUnavailableSourceAccountAndPreservesSheinTargetValidation(t *testing.T) {
+	tests := []struct {
+		name      string
+		validator replayStoreAccessValidator
+		wantCode  string
+		wantText  string
+	}{
+		{
+			name: "disabled source account",
+			validator: replayStoreAccessValidator{errs: map[replayStoreAccessKey]error{
+				{storeID: 3001, platform: "1688"}: listingkit.NewStoreAccessError(listingkit.StoreAccessDisabled, "store is disabled"),
+			}},
+			wantCode: listingkit.StoreAccessDisabled,
+			wantText: "1688 login account",
+		},
+		{
+			name: "foreign source account",
+			validator: replayStoreAccessValidator{errs: map[replayStoreAccessKey]error{
+				{storeID: 3001, platform: "1688"}: listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable"),
+			}},
+			wantCode: listingkit.StoreAccessUnavailable,
+			wantText: "1688 login account",
+		},
+		{
+			name: "disabled SHEIN target store",
+			validator: replayStoreAccessValidator{errs: map[replayStoreAccessKey]error{
+				{storeID: 168811, platform: "SHEIN"}: listingkit.NewStoreAccessError(listingkit.StoreAccessDisabled, "store is disabled"),
+			}},
+			wantCode: listingkit.StoreAccessDisabled,
+			wantText: "SHEIN target store",
+		},
+		{
+			name: "foreign SHEIN target store",
+			validator: replayStoreAccessValidator{errs: map[replayStoreAccessKey]error{
+				{storeID: 168811, platform: "SHEIN"}: listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable"),
+			}},
+			wantCode: listingkit.StoreAccessUnavailable,
+			wantText: "SHEIN target store",
+		},
+	}
 
-func (replayStoreAccessValidator) ValidateStoreAccess(_ context.Context, tenantID, storeID int64, platform string) (listingkit.StoreAccess, error) {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			creator := &replayGenerateTaskCreator{}
+			router := newAlibaba1688ReplayRouterWithValidator(creator, tt.validator)
+			rec := performAuthenticatedReplayRequest(t, router, sourcea1688.CreateListingKitTaskRequest{
+				URL:             "https://detail.1688.com/offer/324.html",
+				Product:         replayProduct1688("324"),
+				SourceAccountID: 3001,
+				Platforms:       []string{"shein"},
+				SheinStoreID:    168811,
+			}, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-1688"})
+
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+			}
+			var body map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode error response: %v", err)
+			}
+			if body["error"] != tt.wantCode {
+				t.Fatalf("error = %#v, want %q", body["error"], tt.wantCode)
+			}
+			if !strings.Contains(body["message"].(string), tt.wantText) {
+				t.Fatalf("message = %#v, want %q", body["message"], tt.wantText)
+			}
+			if creator.calls != 0 {
+				t.Fatalf("creator calls = %d, want no task creation", creator.calls)
+			}
+		})
+	}
+}
+
+type replayStoreAccessKey struct {
+	storeID  int64
+	platform string
+}
+
+type replayStoreAccessValidator struct {
+	errs map[replayStoreAccessKey]error
+}
+
+func (v replayStoreAccessValidator) ValidateStoreAccess(_ context.Context, tenantID, storeID int64, platform string) (listingkit.StoreAccess, error) {
+	if err := v.errs[replayStoreAccessKey{storeID: storeID, platform: platform}]; err != nil {
+		return listingkit.StoreAccess{}, err
+	}
 	if tenantID == 101 &&
 		((storeID == 3001 && platform == "1688") || (storeID == 168811 && platform == "SHEIN")) {
 		return listingkit.StoreAccess{ID: storeID, TenantID: tenantID, Platform: platform, Enabled: true}, nil
@@ -203,8 +295,12 @@ func (replayStoreAccessValidator) ValidateStoreAccess(_ context.Context, tenantI
 }
 
 func newAlibaba1688ReplayRouter(creator *replayGenerateTaskCreator) http.Handler {
+	return newAlibaba1688ReplayRouterWithValidator(creator, replayStoreAccessValidator{})
+}
+
+func newAlibaba1688ReplayRouterWithValidator(creator *replayGenerateTaskCreator, validator replayStoreAccessValidator) http.Handler {
 	gin.SetMode(gin.TestMode)
-	service := a1688.NewTaskCommandService(creator, replayStoreAccessValidator{})
+	service := a1688.NewTaskCommandService(creator, validator)
 	router := gin.New()
 	router.POST("/api/v1/product-sourcing/1688/listingkit/tasks", sourcea1688.NewHandler(service).CreateListingKitTask)
 	return router

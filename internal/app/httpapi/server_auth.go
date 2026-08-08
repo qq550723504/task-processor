@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/httproute"
@@ -8,6 +10,9 @@ import (
 )
 
 func routeAuthHandlers(route httproute.Descriptor, zitadelAuth gin.HandlerFunc) []gin.HandlerFunc {
+	if route.Method == http.MethodOptions {
+		return nil
+	}
 	if zitadelAuth == nil || !listingkithttpapi.RouteRequiresZitadelAuth(route) {
 		return nil
 	}

@@ -75,6 +75,7 @@ func TestAlibaba1688ConfigDefaults(t *testing.T) {
 	assert.False(t, v.GetBool("platforms.alibaba1688.enabled"))
 	assert.Equal(t, 120, v.GetInt("platforms.alibaba1688.timeout"))
 	assert.Equal(t, 2, v.GetInt("platforms.alibaba1688.poolSize"))
+	assert.Equal(t, "./.local/tmp/browser-profiles/1688-accounts", v.GetString("platforms.alibaba1688.profileRootDir"))
 }
 
 func TestPlatformFetchModeDefaults(t *testing.T) {
@@ -115,6 +116,7 @@ func TestConfigBuild(t *testing.T) {
 	v.Set("amazon.enabled", true)
 	v.Set("amazon.dataFreshnessDays", 10)
 	v.Set("platforms.shein.fetchMode", "local")
+	v.Set("platforms.alibaba1688.profileRootDir", "C:/task-processor-test/1688-profiles")
 	v.Set("platforms.temu.httpClient.insecureSkipVerify", true)
 	v.Set("platforms.shein.loginService.tenantID", "1")
 	v.Set("platforms.shein.loginService.identifier", "869")
@@ -154,6 +156,7 @@ func TestConfigBuild(t *testing.T) {
 	assert.Equal(t, 10, cfg.Amazon.DataFreshnessDays)
 	assert.True(t, cfg.Platforms.Temu.HTTPClient.InsecureSkipVerify)
 	assert.Equal(t, "local", cfg.Platforms.Shein.FetchMode)
+	assert.Equal(t, "C:/task-processor-test/1688-profiles", cfg.Platforms.Alibaba1688.ProfileRootDir)
 	assert.Equal(t, "1", cfg.Platforms.Shein.LoginService.TenantID)
 	assert.Equal(t, "869", cfg.Platforms.Shein.LoginService.Identifier)
 	assert.Equal(t, "http://login:8000", cfg.Platforms.SDS.LoginService.BaseURL)

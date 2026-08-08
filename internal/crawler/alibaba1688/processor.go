@@ -41,6 +41,14 @@ func (ap *Alibaba1688Processor) Process(url string) (*model.Product1688, error) 
 	return ap.singleProcessor.ProcessWithSingleBrowser(url, startTime)
 }
 
+// ProcessWithAccountProfile handles a product page with one account-bound browser profile.
+func (ap *Alibaba1688Processor) ProcessWithAccountProfile(url string, profile AccountProfile) (*model.Product1688, error) {
+	startTime := time.Now()
+	logger.GetGlobalLogger("crawler/alibaba1688").Infof("开始处理1688产品: %s", url)
+
+	return ap.singleProcessor.ProcessWithAccountProfile(url, startTime, profile)
+}
+
 // ProcessBatch 批量处理多个1688产品页面
 func (ap *Alibaba1688Processor) ProcessBatch(requests []model.Product1688Request) []model.Product1688Result {
 	if len(requests) == 0 {

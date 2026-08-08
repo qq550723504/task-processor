@@ -5,29 +5,76 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
+
+	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/httpx"
-
-	"github.com/sirupsen/logrus"
+	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingkit"
+	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	"task-processor/internal/tenantbridge"
 )
+
+var buildListingAdminStoreRepository = listingkithttpapi.BuildListingAdminStoreRepository
 
 // APIService 1688 爬虫 HTTP API 服务
 type APIService struct {
-	config         *config.Config
-	logger         *logrus.Logger
-	crawlerService *Service
-	httpServer     *http.Server
-	port           int
+	config            *config.Config
+	logger            *logrus.Logger
+	crawlerService    *Service
+	httpServer        *http.Server
+	port              int
+	repositoryClosers []func() error
 }
 
 // NewAPIService 创建 1688 API 服务
 func NewAPIService(cfg *config.Config, logger *logrus.Logger, port int) *APIService {
+	legacyClosers := configureLegacyTenantBridge(cfg, logger)
+	if !hasConfiguredDatabase(cfg) {
+		return newAPIService(cfg, logger, port, nil, legacyClosers)
+	}
+	repository, closers, err := buildListingAdminStoreRepository(cfg, logger)
+	if err != nil {
+		if logger != nil {
+			logger.Warn("1688 account profile repository unavailable")
+		}
+		return newAPIService(cfg, logger, port, nil, legacyClosers)
+	}
+	if repository == nil {
+		return newAPIService(cfg, logger, port, nil, append(legacyClosers, closers...))
+	}
+	return newAPIService(cfg, logger, port, NewAccountProfileResolver(repository, cfg.Platforms.Alibaba1688.ProfileRootDir), append(legacyClosers, closers...))
+}
+
+// NewAPIServiceWithStoreRepository creates an API service that can resolve tenant-owned 1688 account profiles.
+func NewAPIServiceWithStoreRepository(cfg *config.Config, logger *logrus.Logger, port int, repository listingadmin.StoreRepository) *APIService {
+	resolver := NewAccountProfileResolver(repository, cfg.Platforms.Alibaba1688.ProfileRootDir)
+	return newAPIService(cfg, logger, port, resolver, configureLegacyTenantBridge(cfg, logger))
+}
+
+func configureLegacyTenantBridge(cfg *config.Config, logger *logrus.Logger) []func() error {
+	closer, err := listingkithttpapi.ConfigureLegacyTenantResolver(cfg, logger)
+	if err != nil {
+		if logger != nil {
+			logger.Warn("1688 legacy tenant bridge unavailable")
+		}
+		return nil
+	}
+	if closer == nil {
+		return nil
+	}
+	return []func() error{closer}
+}
+
+func newAPIService(cfg *config.Config, logger *logrus.Logger, port int, resolver AccountProfileResolver, repositoryClosers []func() error) *APIService {
 	return &APIService{
-		config:         cfg,
-		logger:         logger,
-		crawlerService: NewService(cfg, logger),
-		port:           port,
+		config:            cfg,
+		logger:            logger,
+		crawlerService:    NewService(cfg, logger, resolver),
+		port:              port,
+		repositoryClosers: append([]func() error(nil), repositoryClosers...),
 	}
 }
 
@@ -37,12 +84,16 @@ func (s *APIService) Start(ctx context.Context) error {
 		return fmt.Errorf("启动1688爬虫服务失败: %w", err)
 	}
 
-	httpHandler := httpx.NewCrawler1688Handler(s.crawlerService, s.logger)
+	if s.config != nil {
+		listingkithttpapi.ConfigureListingKitZitadelAuth(s.config.ListingKit.Zitadel)
+	}
+	httpHandler := httpx.NewCrawler1688Handler(s.crawlerService, s.logger, verifiedCrawlerTenantResolver)
 	mux := httpHandler.RegisterRoutes()
+	handler := listingkithttpapi.WrapZitadelAuthMiddleware(mux, listingkithttpapi.NewZitadelAuthMiddlewareFromEnv())
 
 	s.httpServer = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
-		Handler: mux,
+		Handler: handler,
 	}
 
 	go func() {
@@ -68,7 +119,35 @@ func (s *APIService) Stop(ctx context.Context) error {
 	if err := s.crawlerService.Stop(ctx); err != nil {
 		s.logger.Errorf("停止1688爬虫服务失败: %v", err)
 	}
+	for _, closeRepository := range s.repositoryClosers {
+		if closeRepository != nil {
+			if err := closeRepository(); err != nil && s.logger != nil {
+				s.logger.Warn("关闭1688账号配置仓储失败")
+			}
+		}
+	}
+	s.repositoryClosers = nil
 
 	s.logger.Info("✅ 1688 爬虫 API 服务已停止")
 	return nil
+}
+
+func hasConfiguredDatabase(cfg *config.Config) bool {
+	return cfg != nil && cfg.Database != nil && strings.TrimSpace(cfg.Database.Host) != ""
+}
+
+func VerifiedCrawlerTenantResolver(ctx context.Context) (int64, bool) {
+	identity, ok := listingkit.AuthenticatedIdentityFromContext(ctx)
+	if !ok {
+		return 0, false
+	}
+	tenantID, err := tenantbridge.ResolveLegacyTenantID(ctx, strings.TrimSpace(identity.TenantID))
+	if err != nil || tenantID <= 0 {
+		return 0, false
+	}
+	return tenantID, true
+}
+
+func verifiedCrawlerTenantResolver(ctx context.Context) (int64, bool) {
+	return VerifiedCrawlerTenantResolver(ctx)
 }

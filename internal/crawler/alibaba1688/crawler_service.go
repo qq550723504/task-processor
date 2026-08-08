@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/crawler/shared"
 	"task-processor/internal/infra/httpx"
 	"task-processor/internal/infra/worker"
@@ -21,19 +23,34 @@ var _ httpx.CrawlerService = (*Service)(nil)
 // Service 1688爬虫应用服务
 type Service struct {
 	shared.BaseService
-	config        *config.Config
-	logger        *logrus.Logger
-	processor1688 *Alibaba1688Processor
+	config                 *config.Config
+	logger                 *logrus.Logger
+	processor1688          alibaba1688TaskProcessor
+	accountProfileResolver AccountProfileResolver
+	profileLocksMu         sync.Mutex
+	profileLocks           map[string]*sync.Mutex
+}
+
+type alibaba1688TaskProcessor interface {
+	Process(string) (*model.Product1688, error)
+	ProcessWithAccountProfile(string, AccountProfile) (*model.Product1688, error)
+	Shutdown()
 }
 
 // NewService 创建1688爬虫应用服务
-func NewService(cfg *config.Config, logger *logrus.Logger) *Service {
+func NewService(cfg *config.Config, logger *logrus.Logger, resolvers ...AccountProfileResolver) *Service {
 	processor1688 := NewAlibaba1688Processor(cfg)
+	var resolver AccountProfileResolver
+	if len(resolvers) > 0 {
+		resolver = resolvers[0]
+	}
 
 	svc := &Service{
-		config:        cfg,
-		logger:        logger,
-		processor1688: processor1688,
+		config:                 cfg,
+		logger:                 logger,
+		processor1688:          processor1688,
+		accountProfileResolver: resolver,
+		profileLocks:           make(map[string]*sync.Mutex),
 	}
 
 	poolConfig := worker.DefaultPoolConfig()
@@ -46,6 +63,9 @@ func NewService(cfg *config.Config, logger *logrus.Logger) *Service {
 		Name:         "1688",
 		Logger:       logger,
 		UpdateResult: svc.UpdateResult,
+		UpdateResultForTask: func(task *shared.CrawlerTask, fn func(*shared.CrawlerResult)) error {
+			return svc.UpdateResultForTenant(task.TenantID, task.TaskID, fn)
+		},
 	})
 	svc.SetWorkerPool(pool)
 	if err := svc.ConfigureRedisResultStore(cfg.Redis, logger, "crawler:1688:task-result", 6*time.Hour); err != nil {
@@ -79,7 +99,9 @@ func (s *Service) SubmitTask(crawlerTask *shared.CrawlerTask) error {
 		return err
 	}
 
-	if err := s.StoreResult(crawlerTask.TaskID, shared.NewCrawlerResult(crawlerTask.TaskID)); err != nil {
+	result := shared.NewCrawlerResult(crawlerTask.TaskID)
+	result.TenantID = crawlerTask.TenantID
+	if err := s.StoreResult(crawlerTask.TaskID, result); err != nil {
 		return fmt.Errorf("persist crawler task result: %w", err)
 	}
 

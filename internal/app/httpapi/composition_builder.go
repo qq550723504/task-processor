@@ -86,6 +86,11 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 		return composition, err
 	}
 	composition.listingKitModule = listingKitFeatures.listingKitModule
+	if composition.listingKitModule != nil && deps.shared.cfg != nil && deps.shared.cfg.Platforms.Alibaba1688.Enabled {
+		crawlerModule := newCrawler1688HTTPModule(deps.shared.cfg, logger, composition.listingKitModule.StoreRepository)
+		composition.crawler1688Module = crawlerModule
+		deps.addClosers(crawlerModule.Close)
+	}
 	if composition.listingKitModule != nil && composition.listingKitModule.TaskLifecycleService != nil && composition.listingKitModule.StoreAccessValidator != nil {
 		composition.productSourcingModule = sourcea1688httpapi.BuildModule(
 			a1688handoff.NewTaskCommandService(composition.listingKitModule.TaskLifecycleService, composition.listingKitModule.StoreAccessValidator),

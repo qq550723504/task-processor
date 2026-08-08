@@ -13,9 +13,10 @@ import (
 // BaseJobHandler 通用任务钩子处理器，amazon 和 alibaba1688 均可复用。
 // Name 用于日志前缀区分来源（如 "Amazon"、"1688"）。
 type BaseJobHandler struct {
-	Name         string
-	Logger       *logrus.Logger
-	UpdateResult func(taskID string, fn func(*CrawlerResult)) error
+	Name                string
+	Logger              *logrus.Logger
+	UpdateResult        func(taskID string, fn func(*CrawlerResult)) error
+	UpdateResultForTask func(task *CrawlerTask, fn func(*CrawlerResult)) error
 }
 
 // parseCrawlTask 从 WorkerJob 中解析 CrawlerTask
@@ -35,7 +36,7 @@ func (h *BaseJobHandler) OnJobStart(job worker.WorkerJob) {
 		return
 	}
 	h.Logger.Infof("🕷️ 开始处理%s任务: %s (URL: %s)", h.Name, task.TaskID, task.URL)
-	if err := h.UpdateResult(task.TaskID, func(r *CrawlerResult) { r.MarkProcessing() }); err != nil {
+	if err := h.updateResult(task, func(r *CrawlerResult) { r.MarkProcessing() }); err != nil {
 		h.Logger.Errorf("更新%s任务开始状态失败: taskID=%s err=%v", h.Name, task.TaskID, err)
 	}
 }
@@ -47,7 +48,7 @@ func (h *BaseJobHandler) OnJobSuccess(job worker.WorkerJob) {
 		return
 	}
 	h.Logger.Infof("✅ %s任务成功: %s", h.Name, task.TaskID)
-	if err := h.UpdateResult(task.TaskID, func(r *CrawlerResult) {
+	if err := h.updateResult(task, func(r *CrawlerResult) {
 		if r.ProductData != nil {
 			r.MarkSuccess(r.ProductData)
 		}
@@ -63,7 +64,7 @@ func (h *BaseJobHandler) OnJobFailure(job worker.WorkerJob, err error) {
 		return
 	}
 	h.Logger.Errorf("❌ %s任务失败: %s, 错误: %v", h.Name, task.TaskID, err)
-	if updateErr := h.UpdateResult(task.TaskID, func(r *CrawlerResult) { r.MarkFailed(err) }); updateErr != nil {
+	if updateErr := h.updateResult(task, func(r *CrawlerResult) { r.MarkFailed(err) }); updateErr != nil {
 		h.Logger.Errorf("更新%s任务失败状态失败: taskID=%s err=%v", h.Name, task.TaskID, updateErr)
 	}
 }
@@ -75,11 +76,21 @@ func (h *BaseJobHandler) OnJobPanic(job worker.WorkerJob, panicValue any, _ stri
 		return
 	}
 	h.Logger.Errorf("💥 %s任务Panic: %s, 错误: %v", h.Name, task.TaskID, panicValue)
-	if err := h.UpdateResult(task.TaskID, func(r *CrawlerResult) {
+	if err := h.updateResult(task, func(r *CrawlerResult) {
 		r.MarkFailed(fmt.Errorf("panic: %v", panicValue))
 	}); err != nil {
 		h.Logger.Errorf("更新%s任务 panic 状态失败: taskID=%s err=%v", h.Name, task.TaskID, err)
 	}
+}
+
+func (h *BaseJobHandler) updateResult(task *CrawlerTask, fn func(*CrawlerResult)) error {
+	if h.UpdateResultForTask != nil {
+		return h.UpdateResultForTask(task, fn)
+	}
+	if h.UpdateResult == nil {
+		return ErrTaskNotFound
+	}
+	return h.UpdateResult(task.TaskID, fn)
 }
 
 // OnJobCompleted 任务处理完成（留空，子类可按需覆盖）
