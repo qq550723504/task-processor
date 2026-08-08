@@ -59,7 +59,7 @@ data before removing fallback reads.
 
 ## Considered approaches
 
-### 1. Request codec, response codec, legacy adapter, and thin transport — selected
+### 1. Directional codecs, shared codec primitives, legacy adapter, and thin transport — selected
 
 Create one module per direction, isolate legacy behavior in a third module, and
 leave the existing file responsible only for HTTP operations.
@@ -72,8 +72,8 @@ Benefits:
 - allows transport and mapping behavior to evolve independently.
 
 Trade-off: callers of moved pure functions must update imports, and the feature
-gains three focused modules. That explicit migration is preferred over keeping
-an obsolete facade.
+gains four focused modules. That explicit migration is preferred over keeping
+an obsolete facade or duplicating normalizers.
 
 ### 2. One bidirectional codec plus thin transport
 
@@ -154,11 +154,28 @@ Detail decoding retains the existing strict Zod validation. List
 decoding/mapping retains the current permissive treatment of the top-level
 payload; adding strict list validation would be a separate behavior change.
 Currently shared selection/group normalizers remain public only where existing
-consumers require them. Internal design, prompt, task, and generation-job
-normalizers remain private.
+consumers require them. Response composition and prompt normalizers remain
+private.
 
 The module depends on domain types, Zod, `parseApiResponseShape`, and the legacy
 adapter. It never imports the transport module.
+
+### Shared codec primitives
+
+`src/lib/api/shein-studio-batch-draft-codec-primitives.ts` owns only pure
+helpers that are used by more than one codec path:
+
+- batch-name derivation used by request and response mapping;
+- hot-style reference URL normalization used by request and response mapping;
+- generated design normalization;
+- created-task normalization;
+- generation-job normalization.
+
+The request codec, response codec, and legacy adapter depend on this module only
+for the helpers they actually use. The shared module imports none of them,
+preventing dependency cycles and avoiding duplicate implementations. These are
+codec primitives, not business-facing API; components and transport do not
+import them directly.
 
 ### Legacy compatibility adapter
 
@@ -281,16 +298,19 @@ otherwise readable historical draft fail as a whole.
 
 1. Add characterization tests at the future codec interfaces before moving
    implementation.
-2. Introduce the legacy adapter and move the existing encode/decode behavior
-   without semantic changes.
-3. Introduce the request codec and route upsert payload construction through its
+2. Extract the shared batch-name, hot-style URL, design, created-task, and
+   generation-job codec primitives with characterization coverage.
+3. Introduce the legacy adapter and move the existing encode/decode behavior
+   without semantic changes, using the shared codec primitives rather than
+   importing the response codec.
+4. Introduce the request codec and route upsert payload construction through its
    high-level builder.
-4. Introduce the response codec, move Zod schemas and mapping functions, and
+5. Introduce the response codec, move Zod schemas and mapping functions, and
    remove the old schema file.
-5. Reduce the original module to transport operations.
-6. Update each caller to import pure functions and wire types from their owning
+6. Reduce the original module to transport operations.
+7. Update each caller to import pure functions and wire types from their owning
    codec. Do not add compatibility re-exports.
-7. Run focused and full regression gates.
+8. Run focused and full regression gates.
 
 Each move is mechanical after its characterization test passes. No cleanup that
 changes fallback or omission behavior is combined with the move.
@@ -339,6 +359,8 @@ Review and static checks must show that:
 
 - the response codec does not import transport;
 - transport and business modules do not import the legacy adapter;
+- request codec, response codec, and legacy adapter share only cross-path logic
+  through the acyclic codec-primitives module;
 - the original transport does not re-export moved pure functions;
 - no old schema imports remain.
 
@@ -364,6 +386,8 @@ go test ./... -count=1
 - `shein-studio-batch-drafts.ts` contains only transport responsibilities.
 - Request encoding, response decoding, and legacy snapshot conversion have one
   named owner each.
+- Shared name, hot-style URL, design, task, and job normalization has one acyclic
+  owner and is not duplicated between codec paths.
 - The response schema no longer imports types from transport, and the old schema
   module is removed.
 - Callers import moved pure functions directly from codec modules; no facade
