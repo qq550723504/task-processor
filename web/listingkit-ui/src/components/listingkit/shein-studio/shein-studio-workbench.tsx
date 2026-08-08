@@ -16,7 +16,7 @@ import { SheinStudioBatchQueueBanner } from "@/components/listingkit/shein-studi
 import { SheinStudioBatchRunProgress } from "@/components/listingkit/shein-studio/shein-studio-batch-run-progress";
 import { SheinStudioBusyOverlay } from "@/components/listingkit/shein-studio/shein-studio-busy-overlay";
 import { BatchStoreSettings } from "@/components/listingkit/shein-studio/shein-studio-generation-form-sections";
-import { SheinStudioGenerationPanel } from "@/components/listingkit/shein-studio/shein-studio-generation-panel";
+import { SheinStudioGenerationPanelBoundary } from "@/components/listingkit/shein-studio/shein-studio-generation-panel-boundary";
 import {
   projectGroupedSelectionBaselineEligibility,
   SheinStudioGroupedSelectionPanel,
@@ -26,6 +26,7 @@ import { SheinStudioTasksStep } from "@/components/listingkit/shein-studio/shein
 import { useSheinStudioDedicatedBatchRunController } from "@/components/listingkit/shein-studio/shein-studio-dedicated-batch-run-controller";
 import {
   projectActiveSelectionBaselineState,
+  type SheinStudioGenerationPanelProjectionInput,
   useActiveSelectionBaselineStatuses,
   useBaselineWarmupAction,
   useSheinStudioBatchGenerationContext,
@@ -144,10 +145,7 @@ import {
   saveSheinStudioBatch,
   setActiveSheinStudioBatchId,
 } from "@/lib/utils/shein-studio-batches";
-import {
-  buildGroupedSDSSelectionID,
-  countSelectionsWithPrimary,
-} from "@/lib/types/sds-baseline";
+import { buildGroupedSDSSelectionID } from "@/lib/types/sds-baseline";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 
 type SheinStudioWorkbenchProps = {
@@ -1392,6 +1390,84 @@ export function SheinStudioWorkbench({
     message:
       "当前正在生成款式图或创建 SHEIN 资料。现在离开会中断当前页面上的进度承接，确认还要离开吗？",
   });
+  const generationPanelInput: SheinStudioGenerationPanelProjectionInput = {
+    actions: {
+      analyzeReferenceStyle,
+      generate: handleGenerate,
+      onCreateTasks: handleCreateTasks,
+      onDeleteBatch: handleDeleteBatch,
+      onLoadBatch: handleLoadBatch,
+      onRestorePrompt: handlePromptChange,
+      onSaveBatch: handleSaveBatch,
+      retryFailedItem: handleRetryFailedItem,
+      retryFailedItems: handleRetryFailedItems,
+      setArtworkGenerationMode,
+      setArtworkModel,
+      setGroupedImageMode,
+      setHotStyleReferenceBrief,
+      setHotStyleReferenceImageUrls: handleHotStyleReferenceImageUrlsChange,
+      setHotStyleReferencePrompt,
+      setImageStrategy,
+      setProductImageCount,
+      setProductImagePrompt,
+      setProductImagePrompts,
+      setPrompt: handlePromptChange,
+      setPromptMode,
+      setRenderSizeImagesWithSds,
+      setSelectedSdsImages: (value) => {
+        hasCustomizedSdsSelectionRef.current = true;
+        setSelectedSdsImages(value);
+      },
+      setStyleCount,
+      setTransparentBackground,
+      setTransparentBackgroundMode,
+      setVariationIntensity,
+      uploadHotStyleReferenceImages,
+    },
+    form: {
+      artworkGenerationMode,
+      artworkModel,
+      availableSdsImages,
+      groupedImageMode,
+      hotStyleReferenceBrief,
+      hotStyleReferenceImageUrls,
+      hotStyleReferencePrompt,
+      imageStrategy,
+      productImageCount,
+      productImagePrompt,
+      productImagePrompts,
+      prompt,
+      promptHistory: activeGroupPromptHistory,
+      promptMode,
+      renderSizeImagesWithSds,
+      selectedSdsImages,
+      styleCount,
+      transparentBackground,
+      transparentBackgroundMode,
+      variationIntensity,
+    },
+    status: {
+      activeSelection,
+      createdTasks,
+      creatingError,
+      creatingMessage,
+      currentStoreLabel,
+      generationError,
+      groupedSelections,
+      hasRetryableFailedItems,
+      initialBatchId,
+      isCreatingTasks,
+      isGenerating: effectiveIsGenerating,
+      itemizedBatchDetail,
+      retryableFailedItemCount,
+      retryingFailedItemId,
+      savedBatches,
+      saveMessage,
+      selectedStyleCount: selectedIds.length,
+      storeRequiredMessage,
+      subscriptionBlockedMessage,
+    },
+  };
   const dedicatedBatchHeader = initialBatchId ? (
     <div className="rounded-[1.75rem] border border-border bg-card px-5 py-5 shadow-sm">
       <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
@@ -1691,113 +1767,9 @@ export function SheinStudioWorkbench({
                 selectedVariantCount={selectedVariants.length}
                 storeOptions={enabledProfiles}
               />
-              <SheinStudioGenerationPanel
-                actions={{
-                  onCreateTasks: handleCreateTasks,
-                  onDeleteBatch: handleDeleteBatch,
-                  onGenerate: hasRetryableFailedItems
-                    ? () => {
-                        void handleRetryFailedItems();
-                      }
-                    : handleGenerate,
-                  onLoadBatch: handleLoadBatch,
-                  onRetryFailedItem: (itemId) => {
-                    void handleRetryFailedItem(itemId);
-                  },
-                  onRestorePrompt: handlePromptChange,
-                  onSaveBatch: handleSaveBatch,
-                  analyzeReferenceStyle,
-                  uploadHotStyleReferenceImages,
-                  setArtworkModel,
-                  setGroupedImageMode,
-                  setArtworkGenerationMode,
-                  setHotStyleReferenceBrief,
-                  setHotStyleReferenceImageUrls:
-                    handleHotStyleReferenceImageUrlsChange,
-                  setHotStyleReferencePrompt,
-                  setImageStrategy,
-                  setProductImageCount,
-                  setProductImagePrompt,
-                  setProductImagePrompts,
-                  setPrompt: handlePromptChange,
-                  setPromptMode,
-                  setRenderSizeImagesWithSds,
-                  setSelectedSdsImages: (value) => {
-                    hasCustomizedSdsSelectionRef.current = true;
-                    setSelectedSdsImages(value);
-                  },
-                  setStyleCount,
-                  setTransparentBackground,
-                  setTransparentBackgroundMode,
-                  setVariationIntensity,
-                }}
-                form={{
-                  artworkModel,
-                  availableSdsImages,
-                  groupedImageMode,
-                  artworkGenerationMode,
-                  hotStyleReferenceBrief,
-                  hotStyleReferenceImageUrls,
-                  hotStyleReferencePrompt,
-                  imageStrategy,
-                  productImageCount,
-                  productImagePrompt,
-                  productImagePrompts,
-                  prompt,
-                  promptMode,
-                  promptHistory: activeGroupPromptHistory,
-                  promptInputRef,
-                  renderSizeImagesWithSds,
-                  selectedSdsImages,
-                  styleCount,
-                  transparentBackground,
-                  transparentBackgroundMode,
-                  variationIntensity,
-                }}
-                status={{
-                  batchProductCount: countSelectionsWithPrimary(
-                    activeSelection,
-                    groupedSelections,
-                  ),
-                  batchStoreLabel: currentStoreLabel || "未设置",
-                  createTaskButtonLabel:
-                    groupedSelections.length > 0
-                      ? `为 ${countSelectionsWithPrimary(
-                          activeSelection,
-                          groupedSelections,
-                        )} 款商品生成 SHEIN 资料`
-                      : "生成 SHEIN 资料",
-                  createdTasks,
-                  creatingError,
-                  creatingMessage,
-                  failedBatchItems: hasRetryableFailedItems
-                    ? (itemizedBatchDetail?.items
-                        .filter((entry) => entry.item.status === "failed")
-                        .map((entry) => entry.item) ?? [])
-                    : [],
-                  failedTasks: itemizedBatchDetail?.failedTasks ?? [],
-                  generateButtonLabel: hasRetryableFailedItems
-                    ? "重试失败批次"
-                    : "生成款式图",
-                  generationError,
-                  generationNotice: hasRetryableFailedItems
-                    ? `当前批次有 ${retryableFailedItemCount} 个失败项。点击“重试失败批次”只会重试失败部分，不会重复生成已成功内容。`
-                    : "",
-                  isCreatingTasks,
-                  isGenerating: effectiveIsGenerating,
-                  isRetryingFailedItems: hasRetryableFailedItems,
-                  rejectedTasks: itemizedBatchDetail?.rejectedTasks ?? [],
-                  retryingFailedItemId,
-                  reusedTasks: itemizedBatchDetail?.reusedTasks ?? [],
-                  savedBatches,
-                  saveMessage,
-                  selectedStyleCount: selectedIds.length,
-                  selectionReady: Boolean(activeSelection?.variantId),
-                  showSavedBatches: !initialBatchId,
-                  statusGroups: itemizedBatchDetail?.statusGroups,
-                  storeRequiredMessage,
-                  subscriptionBlockedMessage,
-                }}
+              <SheinStudioGenerationPanelBoundary
+                input={generationPanelInput}
+                promptInputRef={promptInputRef}
               />
             </div>
           ) : null}
