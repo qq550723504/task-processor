@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"task-processor/internal/listingkit/core"
 	"time"
 
 	"gorm.io/gorm"
@@ -170,7 +171,7 @@ func backfillLegacyStudioBatchCreatedTask(
 		summary.MissingTasks = append(summary.MissingTasks, backfillIssue(session, created, "task_cross_tenant", "legacy created task belongs to a different tenant"))
 		return
 	}
-	if task.Status == TaskStatusFailed {
+	if task.Status == core.TaskStatusFailed {
 		summary.MissingTasks = append(summary.MissingTasks, backfillIssue(session, created, "task_failed", "legacy created task is failed and will not be linked"))
 		return
 	}

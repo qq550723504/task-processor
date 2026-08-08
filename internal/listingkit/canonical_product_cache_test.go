@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
@@ -142,7 +143,7 @@ func (a *canonicalProductCacheAssembler) Assemble(task *Task, canonical *canonic
 	a.calls++
 	return &ListingKitResult{
 		TaskID:           task.ID,
-		Status:           string(TaskStatusProcessing),
+		Status:           string(core.TaskStatusProcessing),
 		Platforms:        append([]string(nil), task.Request.Platforms...),
 		CanonicalProduct: cloneCanonicalProductForCacheTest(canonical),
 		Summary:          &GenerationSummary{SourceType: "text", NeedsReview: false},
@@ -174,7 +175,7 @@ func (r *canonicalProductCacheTestRepo) GetTask(_ context.Context, taskID string
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	return cloneCanonicalProductCacheTestTask(task), nil
 }
@@ -188,12 +189,12 @@ func (r *canonicalProductCacheTestRepo) MarkProcessing(_ context.Context, taskID
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	if task.Status != TaskStatusPending {
-		return ErrTaskNotPending
+	if task.Status != core.TaskStatusPending {
+		return core.ErrTaskNotPending
 	}
-	task.Status = TaskStatusProcessing
+	task.Status = core.TaskStatusProcessing
 	task.UpdatedAt = time.Now()
 	return nil
 }
@@ -205,7 +206,7 @@ func (r *canonicalProductCacheTestRepo) MarkCompleted(ctx context.Context, taskI
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task := r.tasks[taskID]
-	task.Status = TaskStatusCompleted
+	task.Status = core.TaskStatusCompleted
 	task.Error = ""
 	task.UpdatedAt = time.Now()
 	return nil
@@ -218,7 +219,7 @@ func (r *canonicalProductCacheTestRepo) MarkNeedsReview(ctx context.Context, tas
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task := r.tasks[taskID]
-	task.Status = TaskStatusNeedsReview
+	task.Status = core.TaskStatusNeedsReview
 	task.Error = reason
 	task.UpdatedAt = time.Now()
 	return nil
@@ -229,9 +230,9 @@ func (r *canonicalProductCacheTestRepo) MarkFailed(_ context.Context, taskID str
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	task.Status = TaskStatusFailed
+	task.Status = core.TaskStatusFailed
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now()
 	return nil
@@ -242,9 +243,9 @@ func (r *canonicalProductCacheTestRepo) MarkBlockedRetryable(_ context.Context, 
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	task.Status = TaskStatusBlockedRetryable
+	task.Status = core.TaskStatusBlockedRetryable
 	task.RetryableBlock = block
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now()
@@ -260,9 +261,9 @@ func (r *canonicalProductCacheTestRepo) RecoverBlockedTaskNow(_ context.Context,
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	task.Status = TaskStatusPending
+	task.Status = core.TaskStatusPending
 	task.RetryableBlock = nil
 	task.Error = ""
 	task.UpdatedAt = recoveredAt
@@ -278,9 +279,9 @@ func (r *canonicalProductCacheTestRepo) PrepareRetry(_ context.Context, taskID s
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	task.Status = TaskStatusPending
+	task.Status = core.TaskStatusPending
 	task.Error = ""
 	task.UpdatedAt = time.Now()
 	return nil
@@ -291,7 +292,7 @@ func (r *canonicalProductCacheTestRepo) IncrementRetryCount(_ context.Context, t
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	task.RetryCount++
 	task.UpdatedAt = time.Now()
@@ -303,7 +304,7 @@ func (r *canonicalProductCacheTestRepo) SaveTaskResult(_ context.Context, taskID
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	task.Result = result
 	task.UpdatedAt = time.Now()

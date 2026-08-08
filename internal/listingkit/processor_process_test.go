@@ -9,6 +9,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingkit/core"
 )
 
 type stubProcessorService struct {
@@ -55,7 +56,7 @@ func (r *stubProcessorRepo) GetTask(context.Context, string) (*Task, error) {
 		return nil, r.getTaskErr
 	}
 	if r.task == nil {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	copied := *r.task
 	return &copied, nil
@@ -75,9 +76,9 @@ func (r *stubProcessorRepo) MarkNeedsReview(context.Context, string, *ListingKit
 func (r *stubProcessorRepo) MarkFailed(context.Context, string, string) error { return nil }
 func (r *stubProcessorRepo) MarkBlockedRetryable(_ context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
 	if r.task == nil || r.task.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	r.task.Status = TaskStatusBlockedRetryable
+	r.task.Status = core.TaskStatusBlockedRetryable
 	r.task.RetryableBlock = block
 	r.task.Error = errorMsg
 	return nil
@@ -87,9 +88,9 @@ func (r *stubProcessorRepo) ListRecoverableTasks(context.Context, *RecoverableTa
 }
 func (r *stubProcessorRepo) RecoverBlockedTaskNow(_ context.Context, taskID string, _ time.Time) error {
 	if r.task == nil || r.task.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	r.task.Status = TaskStatusPending
+	r.task.Status = core.TaskStatusPending
 	r.task.RetryableBlock = nil
 	r.task.Error = ""
 	return nil
@@ -121,7 +122,7 @@ func TestProcessorProcessTaskSkipsNonPendingTasks(t *testing.T) {
 	t.Parallel()
 
 	svc := &stubProcessorService{}
-	repo := &stubProcessorRepo{task: &Task{ID: "task-1", Status: TaskStatusCompleted}}
+	repo := &stubProcessorRepo{task: &Task{ID: "task-1", Status: core.TaskStatusCompleted}}
 	processor, err := NewProcessor(svc, repo, logrus.New(), 2)
 	if err != nil {
 		t.Fatalf("NewProcessor() error = %v", err)
@@ -139,8 +140,8 @@ func TestProcessorProcessTaskSkipsNonPendingTasks(t *testing.T) {
 func TestProcessorProcessTaskTreatsErrTaskNotPendingAsSkip(t *testing.T) {
 	t.Parallel()
 
-	svc := &stubProcessorService{err: ErrTaskNotPending}
-	repo := &stubProcessorRepo{task: &Task{ID: "task-2", Status: TaskStatusPending}}
+	svc := &stubProcessorService{err: core.ErrTaskNotPending}
+	repo := &stubProcessorRepo{task: &Task{ID: "task-2", Status: core.TaskStatusPending}}
 	processor, err := NewProcessor(svc, repo, logrus.New(), 2)
 	if err != nil {
 		t.Fatalf("NewProcessor() error = %v", err)
@@ -159,7 +160,7 @@ func TestProcessorProcessTaskSchedulesRetryForRetryableFailure(t *testing.T) {
 	t.Parallel()
 
 	svc := &stubProcessorService{err: errors.New("workflow failed")}
-	repo := &stubProcessorRepo{task: &Task{ID: "task-3", Status: TaskStatusPending, RetryCount: 0}}
+	repo := &stubProcessorRepo{task: &Task{ID: "task-3", Status: core.TaskStatusPending, RetryCount: 0}}
 	submitter := &stubProcessorSubmitter{}
 	processor, err := NewProcessor(svc, repo, logrus.New(), 2)
 	if err != nil {
@@ -186,11 +187,11 @@ func TestProcessorProcessTaskDoesNotLegacyRetryWhenServicePersistedBlockedRetrya
 	t.Parallel()
 
 	workflowErr := errors.New("workflow failed")
-	repo := &stubProcessorRepo{task: &Task{ID: "task-blocked", Status: TaskStatusPending, RetryCount: 0}}
+	repo := &stubProcessorRepo{task: &Task{ID: "task-blocked", Status: core.TaskStatusPending, RetryCount: 0}}
 	svc := &stubProcessorService{
 		err: workflowErr,
 		onCall: func(context.Context, *Task) {
-			repo.task.Status = TaskStatusBlockedRetryable
+			repo.task.Status = core.TaskStatusBlockedRetryable
 			repo.task.RetryableBlock = &RetryableBlock{ReasonCode: "openai_rate_limited"}
 			repo.task.Error = "rate limited"
 		},
@@ -209,7 +210,7 @@ func TestProcessorProcessTaskDoesNotLegacyRetryWhenServicePersistedBlockedRetrya
 	if repo.incrementRetryCalls != 0 || repo.prepareRetryCalls != 0 || submitter.calls != 0 {
 		t.Fatalf("legacy retry path = increment:%d prepare:%d submit:%d, want all 0", repo.incrementRetryCalls, repo.prepareRetryCalls, submitter.calls)
 	}
-	if repo.task.Status != TaskStatusBlockedRetryable || repo.task.RetryableBlock == nil {
+	if repo.task.Status != core.TaskStatusBlockedRetryable || repo.task.RetryableBlock == nil {
 		t.Fatalf("stored task = %+v, want blocked_retryable state preserved", repo.task)
 	}
 }
@@ -218,11 +219,11 @@ func TestProcessorProcessTaskDoesNotLegacyRetryWhenServicePersistedFailed(t *tes
 	t.Parallel()
 
 	workflowErr := errors.New("workflow failed")
-	repo := &stubProcessorRepo{task: &Task{ID: "task-failed", Status: TaskStatusPending, RetryCount: 0}}
+	repo := &stubProcessorRepo{task: &Task{ID: "task-failed", Status: core.TaskStatusPending, RetryCount: 0}}
 	svc := &stubProcessorService{
 		err: workflowErr,
 		onCall: func(context.Context, *Task) {
-			repo.task.Status = TaskStatusFailed
+			repo.task.Status = core.TaskStatusFailed
 			repo.task.Error = "non-retryable failure"
 		},
 	}
@@ -240,7 +241,7 @@ func TestProcessorProcessTaskDoesNotLegacyRetryWhenServicePersistedFailed(t *tes
 	if repo.incrementRetryCalls != 0 || repo.prepareRetryCalls != 0 || submitter.calls != 0 {
 		t.Fatalf("legacy retry path = increment:%d prepare:%d submit:%d, want all 0", repo.incrementRetryCalls, repo.prepareRetryCalls, submitter.calls)
 	}
-	if repo.task.Status != TaskStatusFailed {
+	if repo.task.Status != core.TaskStatusFailed {
 		t.Fatalf("stored status = %q, want failed", repo.task.Status)
 	}
 }
@@ -249,7 +250,7 @@ func TestProcessorProcessTaskDoesNotRetryWhenMaxRetriesReached(t *testing.T) {
 	t.Parallel()
 
 	svc := &stubProcessorService{err: errors.New("workflow failed")}
-	repo := &stubProcessorRepo{task: &Task{ID: "task-4", Status: TaskStatusPending, RetryCount: 2}}
+	repo := &stubProcessorRepo{task: &Task{ID: "task-4", Status: core.TaskStatusPending, RetryCount: 2}}
 	submitter := &stubProcessorSubmitter{}
 	processor, err := NewProcessor(svc, repo, logrus.New(), 2)
 	if err != nil {
@@ -272,7 +273,7 @@ func TestProcessorProcessTaskInjectsTenantAndIdentityBeforeServiceExecution(t *t
 	svc := &stubProcessorService{result: &ListingKitResult{}}
 	repo := &stubProcessorRepo{task: &Task{
 		ID:       "task-5",
-		Status:   TaskStatusPending,
+		Status:   core.TaskStatusPending,
 		TenantID: "tenant-a",
 		Request:  &GenerateRequest{UserID: "user-a"},
 	}}

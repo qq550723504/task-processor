@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"task-processor/internal/listingkit/core"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -119,13 +120,13 @@ func refreshRevisionTaskLifecycle(task *Task) {
 		return
 	}
 	switch deriveProcessTerminalStatus(task.Result) {
-	case TaskStatusNeedsReview:
-		task.Result = applyProcessTerminalResult(task.Result, TaskStatusNeedsReview)
-		task.Status = TaskStatusNeedsReview
+	case core.TaskStatusNeedsReview:
+		task.Result = applyProcessTerminalResult(task.Result, core.TaskStatusNeedsReview)
+		task.Status = core.TaskStatusNeedsReview
 		task.Error = taskNeedsReviewReason(task.Result)
 	default:
-		task.Result = applyProcessTerminalResult(task.Result, TaskStatusCompleted)
-		task.Status = TaskStatusCompleted
+		task.Result = applyProcessTerminalResult(task.Result, core.TaskStatusCompleted)
+		task.Status = core.TaskStatusCompleted
 		task.Error = ""
 		task.RetryableBlock = nil
 	}

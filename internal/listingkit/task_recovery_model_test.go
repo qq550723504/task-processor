@@ -7,13 +7,14 @@ import (
 	"time"
 
 	submissiondomain "task-processor/internal/listing/submission"
+	"task-processor/internal/listingkit/core"
 )
 
 func TestTaskStatusBlockedRetryable_IsNotTerminal(t *testing.T) {
 	t.Parallel()
 
-	if taskStatusIsTerminal(TaskStatusBlockedRetryable) {
-		t.Fatalf("taskStatusIsTerminal(%q) = true, want false", TaskStatusBlockedRetryable)
+	if taskStatusIsTerminal(core.TaskStatusBlockedRetryable) {
+		t.Fatalf("taskStatusIsTerminal(%q) = true, want false", core.TaskStatusBlockedRetryable)
 	}
 }
 
@@ -25,7 +26,7 @@ func TestTaskResultLifecycleCarriesRetryableBlock(t *testing.T) {
 	task := &Task{
 		ID:        "task-retryable-block-1",
 		TenantID:  "tenant-1",
-		Status:    TaskStatusBlockedRetryable,
+		Status:    core.TaskStatusBlockedRetryable,
 		Error:     "worker queue temporarily unavailable",
 		CreatedAt: now.Add(-time.Hour),
 		UpdatedAt: now,

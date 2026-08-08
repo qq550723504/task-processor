@@ -6,6 +6,7 @@ import (
 	"time"
 
 	submissiondomain "task-processor/internal/listing/submission"
+	"task-processor/internal/listingkit/core"
 )
 
 func TestBackfillRetryableFailuresReclassifiesKnownCreditErrors(t *testing.T) {
@@ -18,7 +19,7 @@ func TestBackfillRetryableFailuresReclassifiesKnownCreditErrors(t *testing.T) {
 	retryableTask := &Task{
 		ID:        "task-backfill-retryable",
 		TenantID:  "tenant-backfill",
-		Status:    TaskStatusFailed,
+		Status:    core.TaskStatusFailed,
 		Request:   &GenerateRequest{TenantID: "tenant-backfill", Platforms: []string{"shein"}, Text: "retryable"},
 		Error:     "openai request failed: insufficient credits",
 		CreatedAt: now.Add(-time.Hour),
@@ -31,7 +32,7 @@ func TestBackfillRetryableFailuresReclassifiesKnownCreditErrors(t *testing.T) {
 	nonRetryableTask := &Task{
 		ID:        "task-backfill-non-retryable",
 		TenantID:  "tenant-backfill",
-		Status:    TaskStatusFailed,
+		Status:    core.TaskStatusFailed,
 		Request:   &GenerateRequest{TenantID: "tenant-backfill", Platforms: []string{"shein"}, Text: "non-retryable"},
 		Error:     "validation failed: missing required category_id",
 		CreatedAt: now.Add(-30 * time.Minute),
@@ -53,8 +54,8 @@ func TestBackfillRetryableFailuresReclassifiesKnownCreditErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTask(retryable) error = %v", err)
 	}
-	if storedRetryable.Status != TaskStatusBlockedRetryable {
-		t.Fatalf("retryable status = %q, want %q", storedRetryable.Status, TaskStatusBlockedRetryable)
+	if storedRetryable.Status != core.TaskStatusBlockedRetryable {
+		t.Fatalf("retryable status = %q, want %q", storedRetryable.Status, core.TaskStatusBlockedRetryable)
 	}
 	if storedRetryable.RetryableBlock == nil {
 		t.Fatal("retryable RetryableBlock = nil, want backfilled retryable metadata")
@@ -73,8 +74,8 @@ func TestBackfillRetryableFailuresReclassifiesKnownCreditErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTask(non-retryable) error = %v", err)
 	}
-	if storedNonRetryable.Status != TaskStatusFailed {
-		t.Fatalf("non-retryable status = %q, want %q", storedNonRetryable.Status, TaskStatusFailed)
+	if storedNonRetryable.Status != core.TaskStatusFailed {
+		t.Fatalf("non-retryable status = %q, want %q", storedNonRetryable.Status, core.TaskStatusFailed)
 	}
 	if storedNonRetryable.RetryableBlock != nil {
 		t.Fatalf("non-retryable RetryableBlock = %+v, want nil", storedNonRetryable.RetryableBlock)
@@ -99,7 +100,7 @@ func (r *taskRecoveryBackfillTestRepo) CreateTask(_ context.Context, task *Task)
 func (r *taskRecoveryBackfillTestRepo) GetTask(_ context.Context, taskID string) (*Task, error) {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	copied := *task
 	copied.RetryableBlock = cloneRetryableBlock(task.RetryableBlock)
@@ -155,9 +156,9 @@ func (r *taskRecoveryBackfillTestRepo) MarkNeedsReview(context.Context, string, 
 func (r *taskRecoveryBackfillTestRepo) MarkFailed(_ context.Context, taskID string, errorMsg string) error {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	task.Status = TaskStatusFailed
+	task.Status = core.TaskStatusFailed
 	task.Error = errorMsg
 	return nil
 }
@@ -165,9 +166,9 @@ func (r *taskRecoveryBackfillTestRepo) MarkFailed(_ context.Context, taskID stri
 func (r *taskRecoveryBackfillTestRepo) MarkBlockedRetryable(_ context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	task.Status = TaskStatusBlockedRetryable
+	task.Status = core.TaskStatusBlockedRetryable
 	task.Error = errorMsg
 	task.RetryableBlock = cloneRetryableBlock(block)
 	return nil

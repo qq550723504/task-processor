@@ -1,6 +1,9 @@
 package listingkit
 
-import previewdomain "task-processor/internal/listing/preview"
+import (
+	previewdomain "task-processor/internal/listing/preview"
+	"task-processor/internal/listingkit/core"
+)
 
 func previewPlatforms(task *Task) []string {
 	if task == nil {
@@ -45,6 +48,6 @@ func previewStatusFromReviewNotes(reviewNotes []string) string {
 	return previewdomain.StatusFromReviewReasons(reviewNotes)
 }
 
-func previewStatusMessage(status TaskStatus) string {
+func previewStatusMessage(status core.TaskStatus) string {
 	return previewdomain.StatusMessage(string(status))
 }

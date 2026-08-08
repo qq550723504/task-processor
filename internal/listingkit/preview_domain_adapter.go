@@ -4,6 +4,7 @@ import (
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog"
 	previewdomain "task-processor/internal/listing/preview"
+	"task-processor/internal/listingkit/core"
 )
 
 func adaptPreviewDomainShell(base *previewdomain.Preview) *ListingKitPreview {
@@ -12,7 +13,7 @@ func adaptPreviewDomainShell(base *previewdomain.Preview) *ListingKitPreview {
 	}
 	return &ListingKitPreview{
 		TaskID:              base.TaskID,
-		Status:              TaskStatus(base.Status),
+		Status:              core.TaskStatus(base.Status),
 		SelectedPlatform:    base.SelectedPlatform,
 		Platforms:           append([]string(nil), base.Platforms...),
 		NeedsReview:         base.NeedsReview,

@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingkit/reviewstore"
 	common "task-processor/internal/publishing/common"
 )
@@ -24,7 +25,7 @@ func TestGetTaskGenerationQueueReturnsNotModifiedWhenDeltaMatches(t *testing.T) 
 
 	task := &Task{
 		ID:        "task-generation-queue-delta-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -79,7 +80,7 @@ func TestGetTaskGenerationQueueBuildsEmptyQueueFinalResponseShape(t *testing.T) 
 	updatedAt := time.Date(2026, 5, 30, 11, 0, 0, 0, time.UTC)
 	task := &Task{
 		ID:        "task-generation-queue-empty-final-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: updatedAt,
 		UpdatedAt: updatedAt,
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -134,7 +135,7 @@ func TestGetTaskGenerationQueueFinalResponseRetainsReviewSummaryAndDeltaSensitiv
 	updatedAt := time.Date(2026, 5, 30, 11, 5, 0, 0, time.UTC)
 	task := &Task{
 		ID:        "task-generation-queue-review-final-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: updatedAt,
 		UpdatedAt: updatedAt,
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -224,7 +225,7 @@ func TestGetTaskGenerationQueueFinalResponseIncludesQueueResourceDescriptors(t *
 	updatedAt := time.Date(2026, 5, 30, 11, 10, 0, 0, time.UTC)
 	task := &Task{
 		ID:        "task-generation-queue-descriptors-final-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: updatedAt,
 		UpdatedAt: updatedAt,
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -347,7 +348,7 @@ func TestGetTaskGenerationQueueDeferredOnlyReviewSummaryChangeInvalidatesOldToke
 	now := time.Date(2026, 5, 30, 12, 5, 0, 0, time.UTC)
 	task := &Task{
 		ID:        "task-generation-queue-deferred-not-modified-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: now,
 		UpdatedAt: now,
 		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
@@ -554,7 +555,7 @@ func TestTaskGenerationQueueReadSnapshotRunPropagatesLoadErrors(t *testing.T) {
 			name:    "repo get task",
 			service: &taskGenerationService{repo: &stubGenerationRepo{}},
 			taskID:  "task-generation-queue-snapshot-missing-1",
-			wantErr: ErrTaskNotFound,
+			wantErr: core.ErrTaskNotFound,
 		},
 		{
 			name: "list asset generation tasks",
@@ -1043,7 +1044,7 @@ func TestTaskGenerationReviewReadsPropagateSnapshotLoadErrors(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-review-error-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -1531,7 +1532,7 @@ func TestGetTaskGenerationQueueAppliesFilteringSortingAndPaging(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-queue-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
@@ -1610,7 +1611,7 @@ func TestGetTaskGenerationQueueFiltersByExecutionQuality(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-queue-quality-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
@@ -1684,7 +1685,7 @@ func TestGetTaskGenerationQueueFiltersByRenderPreviewAvailability(t *testing.T) 
 
 	task := &Task{
 		ID:        "task-generation-queue-preview-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
@@ -1772,7 +1773,7 @@ func TestGetTaskGenerationQueueBuildsOperationalSummaryAndTemplateSort(t *testin
 
 	task := &Task{
 		ID:        "task-generation-queue-summary-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
@@ -1874,7 +1875,7 @@ func TestGetTaskGenerationQueueFiltersByQualityGrade(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-queue-grade-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},

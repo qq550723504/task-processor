@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"task-processor/internal/asset"
+	"task-processor/internal/listingkit/core"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -65,7 +66,7 @@ func TestGetTaskGenerationReviewPreviewIncludesScenePreset(t *testing.T) {
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-scene-preset-preview-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},

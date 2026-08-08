@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 func (h *handler) RequeuePendingTasks(c *gin.Context) {
@@ -20,7 +21,7 @@ func (h *handler) RequeuePendingTasks(c *gin.Context) {
 		return
 	}
 	if len(req.TaskIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": listingkit.ErrTaskRequeueInvalidRequest.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": core.ErrTaskRequeueInvalidRequest.Error()})
 		return
 	}
 	result, err := h.taskRequeueService.RequeuePendingTasks(requestContext(c), &req)
@@ -33,9 +34,9 @@ func (h *handler) RequeuePendingTasks(c *gin.Context) {
 
 func taskRequeueErrorStatus(err error) int {
 	switch {
-	case errors.Is(err, listingkit.ErrTaskRequeueInvalidRequest):
+	case errors.Is(err, core.ErrTaskRequeueInvalidRequest):
 		return http.StatusBadRequest
-	case errors.Is(err, listingkit.ErrTaskRequeueUnavailable):
+	case errors.Is(err, core.ErrTaskRequeueUnavailable):
 		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError

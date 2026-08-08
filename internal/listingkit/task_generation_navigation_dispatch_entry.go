@@ -3,6 +3,7 @@ package listingkit
 import (
 	"fmt"
 	"strings"
+	"task-processor/internal/listingkit/core"
 )
 
 type taskGenerationNavigationDispatchEntry struct{}
@@ -19,7 +20,7 @@ func buildTaskGenerationNavigationDispatchEntry() *taskGenerationNavigationDispa
 
 func (e *taskGenerationNavigationDispatchEntry) run(req *GenerationReviewNavigationDispatchRequest) (*taskGenerationNavigationDispatchInput, error) {
 	if req == nil || req.Target == nil {
-		return nil, fmt.Errorf("%w: missing navigation target", ErrGenerationActionNotFound)
+		return nil, fmt.Errorf("%w: missing navigation target", core.ErrGenerationActionNotFound)
 	}
 
 	target := cloneGenerationReviewNavigationTarget(req.Target)

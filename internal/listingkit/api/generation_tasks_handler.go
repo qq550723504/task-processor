@@ -9,6 +9,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 func (h *handler) GetTaskGenerationTasks(c *gin.Context) {
@@ -20,7 +21,7 @@ func (h *handler) GetTaskGenerationTasks(c *gin.Context) {
 	page, err := h.generationTaskService.GetTaskGenerationTasks(requestContext(c), c.Param("task_id"), &query)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, listingkit.ErrTaskNotFound) {
+		if errors.Is(err, core.ErrTaskNotFound) {
 			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": "generation_tasks_query_failed", "message": err.Error()})
@@ -45,7 +46,7 @@ func (h *handler) GetTaskGenerationQueue(c *gin.Context) {
 	page, err := h.generationTaskService.GetTaskGenerationQueue(requestContext(c), c.Param("task_id"), &query)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, listingkit.ErrTaskNotFound) {
+		if errors.Is(err, core.ErrTaskNotFound) {
 			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": "generation_queue_query_failed", "message": err.Error()})
@@ -64,7 +65,7 @@ func (h *handler) GetTaskGenerationReviewSession(c *gin.Context) {
 	result, err := h.generationTaskService.GetTaskGenerationReviewSession(requestContext(c), c.Param("task_id"), &query)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, listingkit.ErrTaskNotFound) {
+		if errors.Is(err, core.ErrTaskNotFound) {
 			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": "generation_review_session_failed", "message": err.Error()})
@@ -83,7 +84,7 @@ func (h *handler) GetTaskGenerationReviewPreview(c *gin.Context) {
 	result, err := h.generationTaskService.GetTaskGenerationReviewPreview(requestContext(c), c.Param("task_id"), &query)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, listingkit.ErrTaskNotFound) {
+		if errors.Is(err, core.ErrTaskNotFound) {
 			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": "generation_review_preview_failed", "message": err.Error()})
@@ -102,9 +103,9 @@ func (h *handler) RetryTaskGenerationTasks(c *gin.Context) {
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {
-		case errors.Is(err, listingkit.ErrTaskNotFound):
+		case errors.Is(err, core.ErrTaskNotFound):
 			status = http.StatusNotFound
-		case errors.Is(err, listingkit.ErrGenerationTaskNotFound), errors.Is(err, listingkit.ErrGenerationTaskNotRetryable):
+		case errors.Is(err, core.ErrGenerationTaskNotFound), errors.Is(err, core.ErrGenerationTaskNotRetryable):
 			status = http.StatusBadRequest
 		}
 		c.JSON(status, gin.H{"error": "generation_tasks_retry_failed", "message": err.Error()})
@@ -131,11 +132,11 @@ func (h *handler) RetryTaskChildTask(c *gin.Context) {
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {
-		case errors.Is(err, listingkit.ErrTaskNotFound), errors.Is(err, listingkit.ErrTaskResultUnavailable), errors.Is(err, listingkit.ErrChildTaskNotFound):
+		case errors.Is(err, core.ErrTaskNotFound), errors.Is(err, listingkit.ErrTaskResultUnavailable), errors.Is(err, core.ErrChildTaskNotFound):
 			status = http.StatusNotFound
-		case errors.Is(err, listingkit.ErrChildTaskRetryInvalidRequest):
+		case errors.Is(err, core.ErrChildTaskRetryInvalidRequest):
 			status = http.StatusBadRequest
-		case errors.Is(err, listingkit.ErrChildTaskNotRetryable), errors.Is(err, listingkit.ErrChildTaskRetryConflict):
+		case errors.Is(err, core.ErrChildTaskNotRetryable), errors.Is(err, core.ErrChildTaskRetryConflict):
 			status = http.StatusConflict
 		}
 		c.JSON(status, gin.H{"error": "child_task_retry_failed", "message": err.Error()})
@@ -154,9 +155,9 @@ func (h *handler) ExecuteTaskGenerationAction(c *gin.Context) {
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {
-		case errors.Is(err, listingkit.ErrTaskNotFound), errors.Is(err, listingkit.ErrGenerationActionNotFound):
+		case errors.Is(err, core.ErrTaskNotFound), errors.Is(err, core.ErrGenerationActionNotFound):
 			status = http.StatusNotFound
-		case errors.Is(err, listingkit.ErrGenerationTaskNotFound), errors.Is(err, listingkit.ErrGenerationTaskNotRetryable):
+		case errors.Is(err, core.ErrGenerationTaskNotFound), errors.Is(err, core.ErrGenerationTaskNotRetryable):
 			status = http.StatusBadRequest
 		}
 		c.JSON(status, gin.H{"error": "generation_action_execute_failed", "message": err.Error()})

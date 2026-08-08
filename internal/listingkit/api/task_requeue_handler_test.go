@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 func TestRequeuePendingTasksHandlerBindsBodyAndReturnsResult(t *testing.T) {
@@ -20,7 +21,7 @@ func TestRequeuePendingTasksHandlerBindsBodyAndReturnsResult(t *testing.T) {
 		requeueResult: &listingkit.RequeuePendingTasksResult{
 			RequeuedTaskIDs: []string{"task-pending"},
 			Skipped: []listingkit.TaskRequeueSkip{
-				{TaskID: "task-review", Status: listingkit.TaskStatusNeedsReview, Reason: "task status \"needs_review\" is not processable"},
+				{TaskID: "task-review", Status: core.TaskStatusNeedsReview, Reason: "task status \"needs_review\" is not processable"},
 			},
 		},
 	}

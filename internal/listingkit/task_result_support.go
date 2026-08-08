@@ -9,6 +9,7 @@ import (
 
 	"task-processor/internal/catalog"
 	submissiondomain "task-processor/internal/listing/submission"
+	"task-processor/internal/listingkit/core"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 )
 
@@ -96,8 +97,8 @@ func buildTaskResult(task *Task, resultPayload *ListingKitResult) *TaskResult {
 	return result
 }
 
-func taskStatusIsTerminal(status TaskStatus) bool {
-	return status == TaskStatusCompleted || status == TaskStatusNeedsReview || status == TaskStatusFailed
+func taskStatusIsTerminal(status core.TaskStatus) bool {
+	return status == core.TaskStatusCompleted || status == core.TaskStatusNeedsReview || status == core.TaskStatusFailed
 }
 
 func (s *service) refreshSheinTaskResultState(ctx context.Context, task *Task, result *ListingKitResult) {
@@ -198,12 +199,12 @@ func markTaskCompleted(task *Task) {
 	if task == nil {
 		return
 	}
-	task.Status = TaskStatusCompleted
+	task.Status = core.TaskStatusCompleted
 	task.Error = ""
 	if task.Result == nil {
 		return
 	}
-	task.Result.Status = string(TaskStatusCompleted)
+	task.Result.Status = string(core.TaskStatusCompleted)
 	task.Result.ReviewReasons = nil
 	clearWorkflowIssuesForStage(task.Result, "shein_review")
 	task.Result.UpdatedAt = time.Now()

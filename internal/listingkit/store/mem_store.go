@@ -8,6 +8,7 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/shared/tenantctx"
 )
 
@@ -53,7 +54,7 @@ func (r *MemTaskRepository) GetTask(ctx context.Context, taskID string) (*listin
 	defer r.mu.RUnlock()
 	task, ok := r.tasks[taskID]
 	if !ok || !matchesTenantScope(ctx, task.TenantID) || !taskVisibleToUser(ctx, task) {
-		return nil, listingkit.ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	copied := *task
 	return &copied, nil
@@ -114,12 +115,12 @@ func (r *MemTaskRepository) MarkProcessing(ctx context.Context, taskID string) e
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok || !matchesTenantScope(ctx, task.TenantID) {
-		return listingkit.ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	if task.Status != listingkit.TaskStatusPending {
-		return listingkit.ErrTaskNotPending
+	if task.Status != core.TaskStatusPending {
+		return core.ErrTaskNotPending
 	}
-	task.Status = listingkit.TaskStatusProcessing
+	task.Status = core.TaskStatusProcessing
 	task.UpdatedAt = time.Now()
 	return nil
 }
@@ -160,7 +161,7 @@ func (r *MemTaskRepository) MarkCompleted(ctx context.Context, taskID string, re
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task := r.tasks[taskID]
-	task.Status = listingkit.TaskStatusCompleted
+	task.Status = core.TaskStatusCompleted
 	task.Error = ""
 	task.UpdatedAt = time.Now()
 	return nil
@@ -173,7 +174,7 @@ func (r *MemTaskRepository) MarkNeedsReview(ctx context.Context, taskID string, 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	task := r.tasks[taskID]
-	task.Status = listingkit.TaskStatusNeedsReview
+	task.Status = core.TaskStatusNeedsReview
 	task.Error = reason
 	task.UpdatedAt = time.Now()
 	return nil
@@ -184,9 +185,9 @@ func (r *MemTaskRepository) MarkFailed(ctx context.Context, taskID string, error
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok || !matchesTenantScope(ctx, task.TenantID) {
-		return listingkit.ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	task.Status = listingkit.TaskStatusFailed
+	task.Status = core.TaskStatusFailed
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now()
 	return nil
@@ -197,9 +198,9 @@ func (r *MemTaskRepository) MarkBlockedRetryable(ctx context.Context, taskID str
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok || !matchesTenantScope(ctx, task.TenantID) {
-		return listingkit.ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	task.Status = listingkit.TaskStatusBlockedRetryable
+	task.Status = core.TaskStatusBlockedRetryable
 	task.RetryableBlock = copyRetryableBlock(block)
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now()
@@ -255,15 +256,15 @@ func (r *MemTaskRepository) RecoverBlockedTaskNow(ctx context.Context, taskID st
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok || !matchesTenantScope(ctx, task.TenantID) {
-		return listingkit.ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	force := recoveredAt.IsZero()
 	effectiveRecoveredAt := normalizeRecoverTimestamp(recoveredAt)
 	if !taskIsRecoverable(task, effectiveRecoveredAt, force) {
-		return listingkit.ErrTaskNotRecoverable
+		return core.ErrTaskNotRecoverable
 	}
 	block := listingkit.BuildRecoveredRetryableBlock(task.RetryableBlock, effectiveRecoveredAt)
-	task.Status = listingkit.TaskStatusPending
+	task.Status = core.TaskStatusPending
 	task.RetryableBlock = block
 	task.Error = ""
 	task.UpdatedAt = time.Now()
@@ -288,7 +289,7 @@ func (r *MemTaskRepository) BulkRecoverBlockedTasks(ctx context.Context, query *
 	var recovered int64
 	for i := range items {
 		if err := r.RecoverBlockedTaskNow(ctx, items[i].ID, recoverAt); err != nil {
-			if err == listingkit.ErrTaskNotRecoverable {
+			if err == core.ErrTaskNotRecoverable {
 				continue
 			}
 			return recovered, err
@@ -303,9 +304,9 @@ func (r *MemTaskRepository) PrepareRetry(ctx context.Context, taskID string) err
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok || !matchesTenantScope(ctx, task.TenantID) {
-		return listingkit.ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	task.Status = listingkit.TaskStatusPending
+	task.Status = core.TaskStatusPending
 	task.Error = ""
 	task.UpdatedAt = time.Now()
 	return nil
@@ -316,7 +317,7 @@ func (r *MemTaskRepository) IncrementRetryCount(ctx context.Context, taskID stri
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok || !matchesTenantScope(ctx, task.TenantID) {
-		return listingkit.ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	task.RetryCount++
 	task.UpdatedAt = time.Now()
@@ -328,7 +329,7 @@ func (r *MemTaskRepository) SaveTaskResult(ctx context.Context, taskID string, r
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok || !matchesTenantScope(ctx, task.TenantID) {
-		return listingkit.ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	task.Result = result
 	task.UpdatedAt = time.Now()
@@ -340,7 +341,7 @@ func (r *MemTaskRepository) MutateTaskResult(ctx context.Context, taskID string,
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok || !matchesTenantScope(ctx, task.TenantID) {
-		return nil, listingkit.ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	copied := *task
 	out := &copied
@@ -359,7 +360,7 @@ func (r *MemTaskRepository) ReplaceTaskSDSOptionsForRetry(ctx context.Context, t
 	defer r.mu.Unlock()
 	task, ok := r.tasks[taskID]
 	if !ok || !matchesTenantScope(ctx, task.TenantID) {
-		return nil, listingkit.ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	if !listingkit.TaskEligibleForSDSRepair(task) || task.Request == nil || task.Request.Options == nil || options == nil {
 		return nil, listingkit.ErrSDSRepairNotEligible

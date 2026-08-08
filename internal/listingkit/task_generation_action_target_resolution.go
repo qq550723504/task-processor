@@ -3,6 +3,7 @@ package listingkit
 import (
 	"fmt"
 	"strings"
+	"task-processor/internal/listingkit/core"
 )
 
 type taskGenerationActionTargetResolutionPhase struct{}
@@ -31,10 +32,10 @@ func (p *taskGenerationActionTargetResolutionPhase) run(queue *GenerationWorkQue
 func resolveAssetGenerationActionTarget(overview *AssetGenerationOverview, req *ExecuteGenerationActionRequest) (*AssetGenerationActionTarget, string, error) {
 	actionKey := requestedAssetGenerationActionKey(req)
 	if actionKey == "" {
-		return nil, "", fmt.Errorf("%w: missing action key", ErrGenerationActionNotFound)
+		return nil, "", fmt.Errorf("%w: missing action key", core.ErrGenerationActionNotFound)
 	}
 	if !isAllowedAssetGenerationActionKey(actionKey) {
-		return nil, "", fmt.Errorf("%w: %s", ErrGenerationActionNotFound, actionKey)
+		return nil, "", fmt.Errorf("%w: %s", core.ErrGenerationActionNotFound, actionKey)
 	}
 	for _, candidate := range collectAssetGenerationActionTargets(overview) {
 		if candidate == nil {
@@ -51,7 +52,7 @@ func resolveAssetGenerationActionTarget(overview *AssetGenerationOverview, req *
 		}
 		return cloned, "request_target", nil
 	}
-	return nil, "", fmt.Errorf("%w: %s", ErrGenerationActionNotFound, actionKey)
+	return nil, "", fmt.Errorf("%w: %s", core.ErrGenerationActionNotFound, actionKey)
 }
 
 func collectAssetGenerationActionTargets(overview *AssetGenerationOverview) []*AssetGenerationActionTarget {

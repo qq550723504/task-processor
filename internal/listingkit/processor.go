@@ -8,6 +8,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingkit/core"
 )
 
 type Processor struct {
@@ -65,7 +66,7 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 	}
 	ctx = WithRequestIdentity(ctx, RequestIdentity{TenantID: task.TenantID, UserID: userID})
 	if _, err := p.service.ProcessListingKit(ctx, task); err != nil {
-		if errors.Is(err, ErrTaskNotPending) {
+		if errors.Is(err, core.ErrTaskNotPending) {
 			return nil
 		}
 		if refreshedTask, refreshErr := p.repo.GetTask(ctx, task.ID); refreshErr == nil && refreshedTask != nil {

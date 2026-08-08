@@ -6,6 +6,7 @@ import (
 	"time"
 
 	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingkit/reviewstore"
 	common "task-processor/internal/publishing/common"
 )
@@ -268,7 +269,7 @@ func TestDispatchTaskGenerationNavigationUsesTargetConditionalBaseline(t *testin
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-conditional-baseline-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -338,7 +339,7 @@ func TestDispatchTaskGenerationNavigationKeepsExplicitQueryOverConditionalBaseli
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-conditional-baseline-2",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -45,7 +46,7 @@ func (r *stubSubmitRepo) GetTask(ctx context.Context, taskID string) (*Task, err
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.task == nil || r.task.ID != taskID {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	copied, err := cloneSubmitTestTask(r.task)
 	if err != nil {
@@ -72,9 +73,9 @@ func (r *stubSubmitRepo) MarkCompleted(ctx context.Context, taskID string, resul
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.task == nil || r.task.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	r.task.Status = TaskStatusCompleted
+	r.task.Status = core.TaskStatusCompleted
 	r.task.Error = ""
 	r.task.UpdatedAt = time.Now()
 	return nil
@@ -89,9 +90,9 @@ func (r *stubSubmitRepo) MarkBlockedRetryable(ctx context.Context, taskID string
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.task == nil || r.task.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	r.task.Status = TaskStatusBlockedRetryable
+	r.task.Status = core.TaskStatusBlockedRetryable
 	r.task.RetryableBlock = block
 	r.task.Error = errorMsg
 	r.task.UpdatedAt = time.Now()
@@ -104,9 +105,9 @@ func (r *stubSubmitRepo) RecoverBlockedTaskNow(_ context.Context, taskID string,
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.task == nil || r.task.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	r.task.Status = TaskStatusPending
+	r.task.Status = core.TaskStatusPending
 	r.task.RetryableBlock = nil
 	r.task.Error = ""
 	r.task.UpdatedAt = recoveredAt
@@ -124,7 +125,7 @@ func (r *stubSubmitRepo) SaveTaskResult(ctx context.Context, taskID string, resu
 	defer r.mu.Unlock()
 	r.saveCalls++
 	if r.task == nil || r.task.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	if r.failSaveWhenCurrentPhaseCleared && !r.saveFailed && result != nil && result.Shein != nil && result.Shein.Submission != nil && result.Shein.Submission.CurrentPhase == "" {
 		r.saveFailed = true
@@ -151,7 +152,7 @@ func (r *stubSubmitRepo) MutateTaskResult(ctx context.Context, taskID string, mu
 	defer r.mu.Unlock()
 	r.mutateCalls++
 	if r.task == nil || r.task.ID != taskID {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	copied, err := cloneSubmitTestTask(r.task)
 	if err != nil {
@@ -567,7 +568,7 @@ func makeReadySheinTask() *Task {
 		Request: &GenerateRequest{
 			SheinStoreID: 869,
 		},
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "submit-task-1",
 			Shein: &SheinPackage{

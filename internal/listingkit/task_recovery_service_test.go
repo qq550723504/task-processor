@@ -7,6 +7,7 @@ import (
 	"time"
 
 	listingsubmission "task-processor/internal/listing/submission"
+	"task-processor/internal/listingkit/core"
 )
 
 type taskRecoveryTestSubmitter func(taskID string) error
@@ -23,7 +24,7 @@ func TestRecoverTaskNowRequeuesBlockedTask(t *testing.T) {
 	task := &Task{
 		ID:        "task-recover-now",
 		TenantID:  "tenant-recovery",
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &GenerateRequest{TenantID: "tenant-recovery", Platforms: []string{"amazon"}, Text: "recover now"},
 		CreatedAt: now.Add(-10 * time.Minute),
 		UpdatedAt: now.Add(-10 * time.Minute),
@@ -60,8 +61,8 @@ func TestRecoverTaskNowRequeuesBlockedTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecoverTaskNow() error = %v", err)
 	}
-	if recovered.Status != TaskStatusPending {
-		t.Fatalf("status = %q, want %q", recovered.Status, TaskStatusPending)
+	if recovered.Status != core.TaskStatusPending {
+		t.Fatalf("status = %q, want %q", recovered.Status, core.TaskStatusPending)
 	}
 	if recovered.RetryableBlock == nil || recovered.RetryableBlock.LastRetryAt == nil {
 		t.Fatalf("LastRetryAt = %+v, want non-nil", recovered.RetryableBlock)
@@ -81,7 +82,7 @@ func TestRecoverTaskNowForcesImmediateRecoveryBeforeNextRetryAt(t *testing.T) {
 	task := &Task{
 		ID:        "task-force-recover-now",
 		TenantID:  "tenant-force-recovery",
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &GenerateRequest{TenantID: "tenant-force-recovery", Platforms: []string{"amazon"}, Text: "force recover now"},
 		CreatedAt: now.Add(-10 * time.Minute),
 		UpdatedAt: now.Add(-10 * time.Minute),
@@ -118,8 +119,8 @@ func TestRecoverTaskNowForcesImmediateRecoveryBeforeNextRetryAt(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RecoverTaskNow() error = %v", err)
 	}
-	if recovered.Status != TaskStatusPending {
-		t.Fatalf("status = %q, want %q", recovered.Status, TaskStatusPending)
+	if recovered.Status != core.TaskStatusPending {
+		t.Fatalf("status = %q, want %q", recovered.Status, core.TaskStatusPending)
 	}
 	if recovered.RetryableBlock == nil || recovered.RetryableBlock.LastRetryAt == nil {
 		t.Fatalf("LastRetryAt = %+v, want non-nil", recovered.RetryableBlock)
@@ -148,7 +149,7 @@ func TestRunRecoverySweepRequeuesDueBlockedTasksOnly(t *testing.T) {
 		task := &Task{
 			ID:        fixture.id,
 			TenantID:  "tenant-sweep",
-			Status:    TaskStatusPending,
+			Status:    core.TaskStatusPending,
 			Request:   &GenerateRequest{TenantID: "tenant-sweep", Platforms: []string{"amazon"}, Text: fixture.id},
 			CreatedAt: now.Add(-10 * time.Minute),
 			UpdatedAt: now.Add(-10 * time.Minute),
@@ -197,16 +198,16 @@ func TestRunRecoverySweepRequeuesDueBlockedTasksOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTask(task-due) error = %v", err)
 	}
-	if dueTask.Status != TaskStatusPending {
-		t.Fatalf("task-due status = %q, want %q", dueTask.Status, TaskStatusPending)
+	if dueTask.Status != core.TaskStatusPending {
+		t.Fatalf("task-due status = %q, want %q", dueTask.Status, core.TaskStatusPending)
 	}
 
 	futureTask, err := repo.GetTask(ctx, "task-future")
 	if err != nil {
 		t.Fatalf("GetTask(task-future) error = %v", err)
 	}
-	if futureTask.Status != TaskStatusBlockedRetryable {
-		t.Fatalf("task-future status = %q, want %q", futureTask.Status, TaskStatusBlockedRetryable)
+	if futureTask.Status != core.TaskStatusBlockedRetryable {
+		t.Fatalf("task-future status = %q, want %q", futureTask.Status, core.TaskStatusBlockedRetryable)
 	}
 }
 
@@ -229,7 +230,7 @@ func TestBulkRecoverTasksSkipsNotRecoverableItems(t *testing.T) {
 		task := &Task{
 			ID:        fixture.id,
 			TenantID:  "tenant-bulk",
-			Status:    TaskStatusPending,
+			Status:    core.TaskStatusPending,
 			Request:   &GenerateRequest{TenantID: "tenant-bulk", Platforms: []string{"amazon"}, Text: fixture.id},
 			CreatedAt: now.Add(-10 * time.Minute),
 			UpdatedAt: now.Add(-10 * time.Minute),
@@ -282,8 +283,8 @@ func TestBulkRecoverTasksSkipsNotRecoverableItems(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTask(task-bulk-future) error = %v", err)
 	}
-	if futureTask.Status != TaskStatusBlockedRetryable {
-		t.Fatalf("task-bulk-future status = %q, want %q", futureTask.Status, TaskStatusBlockedRetryable)
+	if futureTask.Status != core.TaskStatusBlockedRetryable {
+		t.Fatalf("task-bulk-future status = %q, want %q", futureTask.Status, core.TaskStatusBlockedRetryable)
 	}
 }
 
@@ -305,7 +306,7 @@ func TestRecoverTaskNowRejectsWhenSubmitterUnavailable(t *testing.T) {
 		now:  func() time.Time { return now },
 	})
 
-	if _, err := svc.RecoverTaskNow(ctx, "task-no-submitter"); !errors.Is(err, ErrTaskRecoveryUnavailable) {
+	if _, err := svc.RecoverTaskNow(ctx, "task-no-submitter"); !errors.Is(err, core.ErrTaskRecoveryUnavailable) {
 		t.Fatalf("RecoverTaskNow() error = %v, want ErrTaskRecoveryUnavailable", err)
 	}
 
@@ -313,8 +314,8 @@ func TestRecoverTaskNowRejectsWhenSubmitterUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if stored.Status != TaskStatusBlockedRetryable {
-		t.Fatalf("status = %q, want %q", stored.Status, TaskStatusBlockedRetryable)
+	if stored.Status != core.TaskStatusBlockedRetryable {
+		t.Fatalf("status = %q, want %q", stored.Status, core.TaskStatusBlockedRetryable)
 	}
 	if stored.RetryableBlock == nil || stored.RetryableBlock.LastRetryAt != nil {
 		t.Fatalf("RetryableBlock = %+v, want blocked state unchanged", stored.RetryableBlock)
@@ -330,7 +331,7 @@ func TestRecoverTaskNowRejectsNonRecoverableTask(t *testing.T) {
 	task := &Task{
 		ID:        "task-invalid",
 		TenantID:  "tenant-invalid",
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &GenerateRequest{TenantID: "tenant-invalid", Platforms: []string{"amazon"}, Text: "invalid"},
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now.Add(-time.Minute),
@@ -351,7 +352,7 @@ func TestRecoverTaskNowRejectsNonRecoverableTask(t *testing.T) {
 		now: func() time.Time { return now },
 	})
 
-	if _, err := svc.RecoverTaskNow(ctx, task.ID); !errors.Is(err, ErrTaskNotRecoverable) {
+	if _, err := svc.RecoverTaskNow(ctx, task.ID); !errors.Is(err, core.ErrTaskNotRecoverable) {
 		t.Fatalf("RecoverTaskNow() error = %v, want ErrTaskNotRecoverable", err)
 	}
 	if submitted {
@@ -369,7 +370,7 @@ func TestRecoverTaskNowReblocksRetryableSubmitFailures(t *testing.T) {
 	task := &Task{
 		ID:        "task-reblock",
 		TenantID:  "tenant-reblock",
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &GenerateRequest{TenantID: "tenant-reblock", Platforms: []string{"amazon"}, Text: "reblock"},
 		CreatedAt: now.Add(-10 * time.Minute),
 		UpdatedAt: now.Add(-10 * time.Minute),
@@ -408,8 +409,8 @@ func TestRecoverTaskNowReblocksRetryableSubmitFailures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if stored.Status != TaskStatusBlockedRetryable {
-		t.Fatalf("status = %q, want %q", stored.Status, TaskStatusBlockedRetryable)
+	if stored.Status != core.TaskStatusBlockedRetryable {
+		t.Fatalf("status = %q, want %q", stored.Status, core.TaskStatusBlockedRetryable)
 	}
 	if stored.RetryableBlock == nil || stored.RetryableBlock.NextRetryAt == nil {
 		t.Fatalf("RetryableBlock = %+v, want NextRetryAt after reblock", stored.RetryableBlock)
@@ -501,8 +502,8 @@ func TestRecoverTaskNowRestoresBlockedStateWhenReblockPersistenceFails(t *testin
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if stored.Status != TaskStatusBlockedRetryable {
-		t.Fatalf("status = %q, want %q after rollback restore", stored.Status, TaskStatusBlockedRetryable)
+	if stored.Status != core.TaskStatusBlockedRetryable {
+		t.Fatalf("status = %q, want %q after rollback restore", stored.Status, core.TaskStatusBlockedRetryable)
 	}
 	if stored.RetryableBlock == nil {
 		t.Fatal("RetryableBlock = nil, want restored blocked metadata")
@@ -570,7 +571,7 @@ func createBlockedRecoveryTask(t *testing.T, repo *taskRecoveryServiceTestRepo, 
 	task := &Task{
 		ID:        taskID,
 		TenantID:  TenantIDFromContext(ctx),
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &GenerateRequest{TenantID: TenantIDFromContext(ctx), Platforms: []string{"amazon"}, Text: taskID},
 		CreatedAt: now.Add(-10 * time.Minute),
 		UpdatedAt: now.Add(-10 * time.Minute),
@@ -602,7 +603,7 @@ func (r *taskRecoveryServiceTestRepo) CreateTask(_ context.Context, task *Task) 
 func (r *taskRecoveryServiceTestRepo) GetTask(_ context.Context, taskID string) (*Task, error) {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	copied := *task
 	copied.RetryableBlock = cloneRetryableBlock(task.RetryableBlock)
@@ -628,9 +629,9 @@ func (r *taskRecoveryServiceTestRepo) MarkNeedsReview(context.Context, string, *
 func (r *taskRecoveryServiceTestRepo) MarkFailed(_ context.Context, taskID string, errorMsg string) error {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	task.Status = TaskStatusFailed
+	task.Status = core.TaskStatusFailed
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now().UTC()
 	return nil
@@ -639,7 +640,7 @@ func (r *taskRecoveryServiceTestRepo) MarkFailed(_ context.Context, taskID strin
 func (r *taskRecoveryServiceTestRepo) MarkBlockedRetryable(_ context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	r.markBlockedRetryableCallCount++
 	if len(r.markBlockedRetryableErrors) > 0 {
@@ -649,7 +650,7 @@ func (r *taskRecoveryServiceTestRepo) MarkBlockedRetryable(_ context.Context, ta
 			return err
 		}
 	}
-	task.Status = TaskStatusBlockedRetryable
+	task.Status = core.TaskStatusBlockedRetryable
 	task.Error = errorMsg
 	task.RetryableBlock = cloneRetryableBlock(block)
 	task.UpdatedAt = time.Now().UTC()
@@ -679,12 +680,12 @@ func (r *taskRecoveryServiceTestRepo) ListRecoverableTasks(_ context.Context, qu
 func (r *taskRecoveryServiceTestRepo) RecoverBlockedTaskNow(_ context.Context, taskID string, recoveredAt time.Time) error {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	force := recoveredAt.IsZero()
 	effectiveRecoveredAt := firstNonZeroTime(recoveredAt, time.Now().UTC())
 	if !taskRecoveryServiceTaskIsRecoverable(task, effectiveRecoveredAt, force) {
-		return ErrTaskNotRecoverable
+		return core.ErrTaskNotRecoverable
 	}
 	block := cloneRetryableBlock(task.RetryableBlock)
 	if block == nil {
@@ -693,7 +694,7 @@ func (r *taskRecoveryServiceTestRepo) RecoverBlockedTaskNow(_ context.Context, t
 	block.LastRetryAt = timestampTaskRecoveryServiceTest(effectiveRecoveredAt)
 	block.NextRetryAt = nil
 	block.AutoRetryPaused = false
-	task.Status = TaskStatusPending
+	task.Status = core.TaskStatusPending
 	task.Error = ""
 	task.RetryableBlock = block
 	task.UpdatedAt = effectiveRecoveredAt
@@ -711,7 +712,7 @@ func (r *taskRecoveryServiceTestRepo) BulkRecoverBlockedTasks(ctx context.Contex
 	}
 	for i := range items {
 		if err := r.RecoverBlockedTaskNow(ctx, items[i].ID, query.RecoverAt); err != nil {
-			if errors.Is(err, ErrTaskNotRecoverable) {
+			if errors.Is(err, core.ErrTaskNotRecoverable) {
 				continue
 			}
 			return recovered, err
@@ -734,7 +735,7 @@ func (r *taskRecoveryServiceTestRepo) SaveTaskResult(context.Context, string, *L
 }
 
 func taskRecoveryServiceTaskIsRecoverable(task *Task, dueBefore time.Time, force bool) bool {
-	if task == nil || task.Status != TaskStatusBlockedRetryable {
+	if task == nil || task.Status != core.TaskStatusBlockedRetryable {
 		return false
 	}
 	if force {

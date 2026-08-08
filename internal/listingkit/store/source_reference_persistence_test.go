@@ -9,6 +9,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingkit/store"
 )
 
@@ -27,7 +28,7 @@ func TestTaskRepositoryPersistsSourceReference(t *testing.T) {
 		ID:       "task-source-reference",
 		TenantID: "tenant-a",
 		UserID:   "user-a",
-		Status:   listingkit.TaskStatusPending,
+		Status:   core.TaskStatusPending,
 		Request: &listingkit.GenerateRequest{
 			TenantID: "tenant-a",
 			UserID:   "user-a",

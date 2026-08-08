@@ -1,6 +1,9 @@
 package listingkit
 
-import "strings"
+import (
+	"strings"
+	"task-processor/internal/listingkit/core"
+)
 
 func initResult(task *Task) *ListingKitResult {
 	if task == nil || task.Request == nil {
@@ -8,7 +11,7 @@ func initResult(task *Task) *ListingKitResult {
 	}
 	result := normalizeListingKitResultSemanticFields(&ListingKitResult{
 		TaskID:    task.ID,
-		Status:    string(TaskStatusProcessing),
+		Status:    string(core.TaskStatusProcessing),
 		Platforms: append([]string(nil), task.Request.Platforms...),
 		Country:   task.Request.Country,
 		Language:  task.Request.Language,

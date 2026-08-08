@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 func TestGetTaskGenerationTasksReturnsPage(t *testing.T) {
@@ -68,7 +69,7 @@ func TestGenerateListingKitAbsolutizesUploadedImageURLs(t *testing.T) {
 		createdTask: &listingkit.Task{
 			ID:       "task-abs-url",
 			TenantID: listingkit.DefaultTenantID,
-			Status:   listingkit.TaskStatusPending,
+			Status:   core.TaskStatusPending,
 		},
 	}
 	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc), WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
@@ -106,7 +107,7 @@ func TestGenerateListingKitIgnoresSourceReferenceFromPublicRequest(t *testing.T)
 		createdTask: &listingkit.Task{
 			ID:       "task-public-source",
 			TenantID: listingkit.DefaultTenantID,
-			Status:   listingkit.TaskStatusPending,
+			Status:   core.TaskStatusPending,
 		},
 	}
 	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc), WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
@@ -277,7 +278,7 @@ func TestRetryTaskGenerationTasksReturnsBadRequestForNonRetryableTask(t *testing
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubGenerationTaskService{
-		err: listingkit.ErrGenerationTaskNotRetryable,
+		err: core.ErrGenerationTaskNotRetryable,
 	}
 	h := newGenerationTaskHandler(t, svc)
 
@@ -577,7 +578,7 @@ func TestExecuteTaskGenerationActionReturnsNotFoundForUnknownAction(t *testing.T
 
 	gin.SetMode(gin.TestMode)
 	svc := &stubGenerationTaskService{
-		err: listingkit.ErrGenerationActionNotFound,
+		err: core.ErrGenerationActionNotFound,
 	}
 	h := newGenerationTaskHandler(t, svc)
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"time"
 
+	"task-processor/internal/listingkit/core"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -16,7 +17,7 @@ type Task struct {
 	UserID                       string                        `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
 	Request                      *GenerateRequest              `json:"request" gorm:"type:text"`
 	SheinStoreResolutionSnapshot *SheinStoreResolutionSnapshot `json:"shein_store_resolution_snapshot,omitempty" gorm:"type:text"`
-	Status                       TaskStatus                    `json:"status" gorm:"type:varchar(20);index"`
+	Status                       core.TaskStatus               `json:"status" gorm:"type:varchar(20);index"`
 	Result                       *ListingKitResult             `json:"result,omitempty" gorm:"type:text"`
 	RetryableBlock               *RetryableBlock               `json:"retryable_block,omitempty" gorm:"type:text"`
 	Error                        string                        `json:"error,omitempty" gorm:"type:text"`
@@ -80,18 +81,18 @@ type TaskIdentityFields struct {
 }
 
 type TaskResultLifecycleFields struct {
-	Status      TaskStatus `json:"status"`
-	Error       string     `json:"error,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	Status      core.TaskStatus `json:"status"`
+	Error       string          `json:"error,omitempty"`
+	CreatedAt   time.Time       `json:"created_at"`
+	CompletedAt *time.Time      `json:"completed_at,omitempty"`
 }
 
 type TaskListLifecycleFields struct {
-	Status      TaskStatus `json:"status"`
-	Error       string     `json:"error,omitempty"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
+	Status      core.TaskStatus `json:"status"`
+	Error       string          `json:"error,omitempty"`
+	CreatedAt   time.Time       `json:"created_at"`
+	UpdatedAt   time.Time       `json:"updated_at"`
+	CompletedAt *time.Time      `json:"completed_at,omitempty"`
 }
 
 type TaskListDisplayFields struct {

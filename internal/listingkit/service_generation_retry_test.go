@@ -16,6 +16,7 @@ import (
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/catalog"
 	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/listingkit/core"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -148,7 +149,7 @@ func (r *sequencedTaskSnapshotsRepo) CreateTask(ctx context.Context, task *Task)
 
 func (r *sequencedTaskSnapshotsRepo) GetTask(ctx context.Context, taskID string) (*Task, error) {
 	if len(r.snapshots) == 0 {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	index := r.getCalls
 	if index >= len(r.snapshots) {
@@ -157,7 +158,7 @@ func (r *sequencedTaskSnapshotsRepo) GetTask(ctx context.Context, taskID string)
 	snapshot := r.snapshots[index]
 	r.getCalls++
 	if snapshot == nil || snapshot.ID != taskID {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	copied := *snapshot
 	return &copied, nil
@@ -189,14 +190,14 @@ func (r *sequencedTaskSnapshotsRepo) MarkFailed(ctx context.Context, taskID stri
 
 func (r *sequencedTaskSnapshotsRepo) MarkBlockedRetryable(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
 	if len(r.snapshots) == 0 {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	latest := r.snapshots[len(r.snapshots)-1]
 	if latest == nil || latest.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	copied := *latest
-	copied.Status = TaskStatusBlockedRetryable
+	copied.Status = core.TaskStatusBlockedRetryable
 	copied.RetryableBlock = block
 	copied.Error = errorMsg
 	r.snapshots[len(r.snapshots)-1] = &copied
@@ -209,14 +210,14 @@ func (r *sequencedTaskSnapshotsRepo) ListRecoverableTasks(context.Context, *Reco
 
 func (r *sequencedTaskSnapshotsRepo) RecoverBlockedTaskNow(_ context.Context, taskID string, recoveredAt time.Time) error {
 	if len(r.snapshots) == 0 {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	latest := r.snapshots[len(r.snapshots)-1]
 	if latest == nil || latest.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	copied := *latest
-	copied.Status = TaskStatusPending
+	copied.Status = core.TaskStatusPending
 	copied.RetryableBlock = nil
 	copied.Error = ""
 	copied.UpdatedAt = recoveredAt
@@ -238,11 +239,11 @@ func (r *sequencedTaskSnapshotsRepo) IncrementRetryCount(ctx context.Context, ta
 
 func (r *sequencedTaskSnapshotsRepo) SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {
 	if len(r.snapshots) == 0 {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	latest := r.snapshots[len(r.snapshots)-1]
 	if latest == nil || latest.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	copiedTask := *latest
 	if result != nil {
@@ -286,7 +287,7 @@ func newRetryPersistenceFailureFixture(t *testing.T, taskID string) *retryPersis
 	assetRepository := newRecordingRetryPersistenceAssetRepo()
 	task := &Task{
 		ID:        taskID,
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -412,7 +413,7 @@ func newTaskGenerationActionQueueFixture(t *testing.T, taskID string) (*Task, *t
 	repo := &stubGenerationRepo{}
 	task := &Task{
 		ID:        taskID,
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -757,7 +758,7 @@ func TestRetryTaskGenerationTasksIncludesMatchedQueueSummary(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-retry-match-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -885,7 +886,7 @@ func TestRetryTaskGenerationTasksFiltersByExecutionQuality(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-retry-quality-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
@@ -983,7 +984,7 @@ func TestRetryTaskGenerationTasksFiltersByExecutionQualityLabel(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-retry-quality-label-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -1051,7 +1052,7 @@ func TestRetryTaskGenerationTasksFiltersByQualityGradeLabel(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-retry-grade-label-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -1119,7 +1120,7 @@ func TestRetryTaskGenerationTasksFiltersByQualityGrade(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-retry-grade-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -1187,7 +1188,7 @@ func TestRetryTaskGenerationTasksReturnsEmptyPageWhenQueueFilterMatchesNothing(t
 
 	task := &Task{
 		ID:        "task-generation-retry-empty-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -1276,7 +1277,7 @@ func TestRetryTaskGenerationTasksReplacesFallbackAssetAndPersistsResult(t *testi
 
 	task := &Task{
 		ID:        "task-generation-retry-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -1399,7 +1400,7 @@ func TestRetryTaskGenerationTasksMergesReturnedTasksAndRefreshesRetriedAssets(t 
 
 	task := &Task{
 		ID:        "task-generation-retry-merge-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -3196,7 +3197,7 @@ func TestTaskGenerationActionRefreshRehydratesOverviewAndRenderPreviews(t *testi
 	repo := &sequencedTaskSnapshotsRepo{snapshots: []*Task{
 		{
 			ID:        taskID,
-			Status:    TaskStatusCompleted,
+			Status:    core.TaskStatusCompleted,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 			Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -3224,7 +3225,7 @@ func TestTaskGenerationActionRefreshRehydratesOverviewAndRenderPreviews(t *testi
 		},
 		{
 			ID:        taskID,
-			Status:    TaskStatusCompleted,
+			Status:    core.TaskStatusCompleted,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 			Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -3250,7 +3251,7 @@ func TestTaskGenerationActionRefreshRehydratesOverviewAndRenderPreviews(t *testi
 		},
 		{
 			ID:        taskID,
-			Status:    TaskStatusCompleted,
+			Status:    core.TaskStatusCompleted,
 			CreatedAt: time.Now(),
 			UpdatedAt: time.Now(),
 			Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -3371,7 +3372,7 @@ func TestTaskGenerationActionRefreshHydratesCurrentResultFallbacks(t *testing.T)
 	repo := &stubGenerationRepo{}
 	task := &Task{
 		ID:        "task-generation-action-refresh-fallbacks-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -3567,7 +3568,7 @@ func TestRetryTaskGenerationTasksNilDispatchResultIsSafe(t *testing.T) {
 	assetRepository := newRecordingRetryPersistenceAssetRepo()
 	task := &Task{
 		ID:        "task-generation-retry-nil-dispatch-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -3751,7 +3752,7 @@ func TestRetryTaskGenerationTasksEmptySelectionSkipsPersistence(t *testing.T) {
 	assetRepository := newRecordingRetryPersistenceAssetRepo()
 	task := &Task{
 		ID:        "task-generation-retry-empty-selection-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -3819,7 +3820,7 @@ func TestRetryTaskGenerationTasksCanFilterFallbackSlotsOnly(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-retry-filter-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -3911,7 +3912,7 @@ func TestRetryTaskGenerationTasksPlansMissingQueueFallbackSlot(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-retry-plan-missing-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},

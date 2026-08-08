@@ -10,6 +10,7 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	sheinpub "task-processor/internal/publishing/shein"
 	"task-processor/internal/shared/tenantctx"
 )
@@ -46,12 +47,12 @@ func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*listingki
 	db := applyTaskAccessScope(r.db.WithContext(ctx), ctx)
 	if err := db.Where("id = ?", taskID).First(&task).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, listingkit.ErrTaskNotFound
+			return nil, core.ErrTaskNotFound
 		}
 		return nil, err
 	}
 	if !taskVisibleToUser(ctx, &task) {
-		return nil, listingkit.ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	return &task, nil
 }
@@ -169,7 +170,7 @@ func matchesTaskListFilterRow(row *taskListFilterRow, query *listingkit.TaskList
 		return false
 	}
 	task := &listingkit.Task{}
-	task.Status = listingkit.TaskStatus(row.Status)
+	task.Status = core.TaskStatus(row.Status)
 	if row.Request != "" {
 		var request taskListFilterRequest
 		if err := json.Unmarshal([]byte(row.Request), &request); err == nil {

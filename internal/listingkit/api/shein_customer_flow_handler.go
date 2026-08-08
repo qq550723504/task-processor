@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingsubscription"
 )
 
@@ -50,7 +51,7 @@ func (h *handler) PreviewSheinPrice(c *gin.Context) {
 	preview, err := h.storeAdminService.PreviewSheinPrice(requestContext(c), c.Param("task_id"), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, listingkit.ErrTaskNotFound) || errors.Is(err, listingkit.ErrTaskResultUnavailable) {
+		if errors.Is(err, core.ErrTaskNotFound) || errors.Is(err, listingkit.ErrTaskResultUnavailable) {
 			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": "price_preview_failed", "message": err.Error()})
@@ -71,7 +72,7 @@ func (h *handler) UpdateSheinFinalDraft(c *gin.Context) {
 	preview, err := h.storeAdminService.UpdateSheinFinalDraft(requestContext(c), c.Param("task_id"), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, listingkit.ErrTaskNotFound) || errors.Is(err, listingkit.ErrTaskResultUnavailable) {
+		if errors.Is(err, core.ErrTaskNotFound) || errors.Is(err, listingkit.ErrTaskResultUnavailable) {
 			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": "final_draft_failed", "message": err.Error()})
@@ -84,7 +85,7 @@ func (h *handler) GetSubmissionEvents(c *gin.Context) {
 	events, err := h.storeAdminService.GetSubmissionEvents(requestContext(c), c.Param("task_id"))
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, listingkit.ErrTaskNotFound) || errors.Is(err, listingkit.ErrTaskResultUnavailable) {
+		if errors.Is(err, core.ErrTaskNotFound) || errors.Is(err, listingkit.ErrTaskResultUnavailable) {
 			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": "submission_events_failed", "message": err.Error()})

@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"task-processor/internal/listingkit/core"
 	"testing"
 	"time"
 
@@ -223,7 +224,7 @@ func newStudioBatchTaskLinkBackfillFixture(t *testing.T, ctx context.Context) *s
 	task := &Task{
 		ID:       "task-1",
 		TenantID: "tenant-a",
-		Status:   TaskStatusPending,
+		Status:   core.TaskStatusPending,
 		Request: &GenerateRequest{
 			TenantID:  "tenant-a",
 			ImageURLs: []string{"https://example.com/design.png"},
@@ -288,7 +289,7 @@ type studioBatchTaskLinkBackfillTaskRepo struct {
 func (r *studioBatchTaskLinkBackfillTaskRepo) GetTask(_ context.Context, taskID string) (*Task, error) {
 	task := r.tasks[taskID]
 	if task == nil {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	cloned := *task
 	return &cloned, nil

@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 type stubSDSRepairHandlerService struct {
@@ -54,7 +55,7 @@ func TestRepairAndRetryTaskSDSReturnsUnprocessableForUnavailableLayer(t *testing
 
 func TestGetTaskSDSRepairReturnsNotFound(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	h := &handler{taskSDSRepairService: &stubSDSRepairHandlerService{err: errors.New("wrapped: " + listingkit.ErrTaskNotFound.Error())}}
+	h := &handler{taskSDSRepairService: &stubSDSRepairHandlerService{err: errors.New("wrapped: " + core.ErrTaskNotFound.Error())}}
 	router := gin.New()
 	router.GET("/api/v1/listing-kits/tasks/:task_id/sds-repair", h.GetTaskSDSRepair)
 	w := httptest.NewRecorder()

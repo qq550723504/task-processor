@@ -1,6 +1,9 @@
 package listingkit
 
-import "strings"
+import (
+	"strings"
+	"task-processor/internal/listingkit/core"
+)
 
 func summarizeReviewReasons(reasons []string, fallback string) string {
 	if len(reasons) == 0 {
@@ -22,7 +25,7 @@ func buildTaskResultReviewState(task *Task, resultPayload *ListingKitResult) ([]
 	}
 
 	effectiveError := task.Error
-	if task.Status == TaskStatusNeedsReview {
+	if task.Status == core.TaskStatusNeedsReview {
 		effectiveError = summarizeReviewReasons(reviewReasons, effectiveError)
 	}
 	return reviewReasons, effectiveError

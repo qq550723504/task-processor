@@ -1,6 +1,7 @@
 package listingkit
 
 import (
+	"task-processor/internal/listingkit/core"
 	"testing"
 	"time"
 )
@@ -10,7 +11,7 @@ func TestBuildTaskResultProjectionIncludesTerminalLifecycleAndReviewState(t *tes
 
 	now := time.Now().UTC()
 	task := &Task{
-		Status:    TaskStatusNeedsReview,
+		Status:    core.TaskStatusNeedsReview,
 		Error:     "legacy error",
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now,
@@ -23,7 +24,7 @@ func TestBuildTaskResultProjectionIncludesTerminalLifecycleAndReviewState(t *tes
 	if projection == nil {
 		t.Fatal("projection = nil")
 	}
-	if projection.Lifecycle.Status != TaskStatusNeedsReview || projection.Lifecycle.Error != "payload reason" {
+	if projection.Lifecycle.Status != core.TaskStatusNeedsReview || projection.Lifecycle.Error != "payload reason" {
 		t.Fatalf("Lifecycle = %+v", projection.Lifecycle)
 	}
 	if projection.Lifecycle.CompletedAt == nil || !projection.Lifecycle.CompletedAt.Equal(now) {

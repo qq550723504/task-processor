@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"task-processor/internal/listingkit/core"
 	"testing"
 	"time"
 )
@@ -169,7 +170,7 @@ func TestTaskLifecycleServiceListTasksIncludesSummaryWhenRequested(t *testing.T)
 	if page.Summary == nil {
 		t.Fatalf("page summary = nil, want populated summary")
 	}
-	if page.Summary.StatusCounts[string(TaskStatusCompleted)] != 2 {
+	if page.Summary.StatusCounts[string(core.TaskStatusCompleted)] != 2 {
 		t.Fatalf("page summary = %+v, want completed count for both tasks", page.Summary)
 	}
 }

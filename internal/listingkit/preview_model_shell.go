@@ -7,12 +7,13 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	"task-processor/internal/catalog"
 	previewdomain "task-processor/internal/listing/preview"
+	"task-processor/internal/listingkit/core"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 )
 
 type ListingKitPreview struct {
 	TaskID                      string                         `json:"task_id"`
-	Status                      TaskStatus                     `json:"status"`
+	Status                      core.TaskStatus                `json:"status"`
 	SelectedPlatform            string                         `json:"selected_platform,omitempty"`
 	Platforms                   []string                       `json:"platforms,omitempty"`
 	NeedsReview                 bool                           `json:"needs_review"`

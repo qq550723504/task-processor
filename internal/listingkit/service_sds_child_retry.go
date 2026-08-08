@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"task-processor/internal/listingkit/core"
 	"time"
 
 	"github.com/google/uuid"
@@ -113,7 +114,7 @@ func (s *service) ScheduleStudioBatchSDSChildRetries(ctx context.Context, batchI
 			continue
 		}
 		state, found := childTaskStateByKind(task.Result, string(SDSChildRetryKindDesignSync))
-		if !found || state.Status != string(TaskStatusFailed) {
+		if !found || state.Status != string(core.TaskStatusFailed) {
 			result.Skipped++
 			continue
 		}

@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 // The in-memory implementation keeps local and fallback deployments on the
@@ -95,7 +96,7 @@ func (r *MemTaskRepository) SaveSDSChildRetry(ctx context.Context, job *listingk
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, ok := r.ensureSDSChildRetryJobsLocked()[job.ID]; !ok || !matchesTenantScope(ctx, job.TenantID) {
-		return listingkit.ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	copy := *job
 	r.sdsChildRetryJobs[job.ID] = copy

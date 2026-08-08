@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog"
 	legacylistingkit "task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 func TestAdaptLegacyPreviewShell(t *testing.T) {
@@ -16,7 +17,7 @@ func TestAdaptLegacyPreviewShell(t *testing.T) {
 	createdAt := completedAt.Add(-5 * time.Minute)
 	adapted := AdaptLegacyPreviewShell(&legacylistingkit.ListingKitPreview{
 		TaskID:           "task-1",
-		Status:           legacylistingkit.TaskStatusCompleted,
+		Status:           core.TaskStatusCompleted,
 		SelectedPlatform: "shein",
 		Platforms:        []string{"shein", "amazon"},
 		NeedsReview:      true,
@@ -60,7 +61,7 @@ func TestAdaptLegacyPreviewShell(t *testing.T) {
 	if adapted == nil {
 		t.Fatal("adapted = nil")
 	}
-	if adapted.TaskID != "task-1" || adapted.Status != string(legacylistingkit.TaskStatusCompleted) {
+	if adapted.TaskID != "task-1" || adapted.Status != string(core.TaskStatusCompleted) {
 		t.Fatalf("adapted shell = %+v", adapted)
 	}
 	if adapted.Overview == nil {

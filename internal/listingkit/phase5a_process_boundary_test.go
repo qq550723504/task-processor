@@ -63,8 +63,8 @@ func TestServiceProcessFilesKeepTerminalizationInsideProcessFlowSeam(t *testing.
 	}
 	persistContent := string(persistSrc)
 	for _, needle := range []string{
-		"func deriveProcessTerminalStatus(result *ListingKitResult) TaskStatus {",
-		"func applyProcessTerminalResult(result *ListingKitResult, status TaskStatus) *ListingKitResult {",
+		"func deriveProcessTerminalStatus(result *ListingKitResult) core.TaskStatus {",
+		"func applyProcessTerminalResult(result *ListingKitResult, status core.TaskStatus) *ListingKitResult {",
 		"func (s *service) persistProcessFailure(ctx context.Context, taskID string, result *ListingKitResult, err error) error {",
 		"func (s *service) persistProcessSuccess(ctx context.Context, taskID string, result *ListingKitResult) error {",
 		"func taskNeedsReviewReason(result *ListingKitResult) string {",
@@ -102,7 +102,7 @@ func TestProcessorFilesKeepSkipAndRetryDecisionsInsideStateHelper(t *testing.T) 
 	}
 
 	for _, needle := range []string{
-		"if task.Status != TaskStatusPending {",
+		"if task.Status != core.TaskStatusPending {",
 		"if task.RetryCount < p.maxRetries {",
 	} {
 		if strings.Contains(processorContent, needle) {

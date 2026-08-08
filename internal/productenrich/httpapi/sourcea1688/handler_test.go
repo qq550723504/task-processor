@@ -14,6 +14,7 @@ import (
 	"task-processor/internal/authz"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	a1688 "task-processor/internal/product/sourcehandoff/a1688"
 	"task-processor/internal/product/sourcing"
 )
@@ -48,7 +49,7 @@ func TestCreateListingKitTaskReturnsCreatedTask(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if got.TaskID != "task-http" || got.TenantID != "tenant-http" || got.Status != listingkit.TaskStatusPending {
+	if got.TaskID != "task-http" || got.TenantID != "tenant-http" || got.Status != core.TaskStatusPending {
 		t.Fatalf("response task = (%q, %q, %q), want created task", got.TaskID, got.TenantID, got.Status)
 	}
 	if got.SourceIdentity.SourceID != "999" || got.ProductURL != "https://detail.1688.com/offer/999.html" {
@@ -261,7 +262,7 @@ func (f *fakeTaskCommandService) CreateTask(_ context.Context, command a1688.Cre
 		Product: command.Product,
 	})
 	return &a1688.CreateTaskResult{
-		Task: &listingkit.Task{ID: "task-http", TenantID: command.TenantID, Status: listingkit.TaskStatusPending},
+		Task: &listingkit.Task{ID: "task-http", TenantID: command.TenantID, Status: core.TaskStatusPending},
 		Handoff: &a1688.ListingKitTaskHandoff{
 			Envelope: envelope,
 			Request:  listingkit.GenerateRequest{ProductURL: sourcing.NormalizeAlibaba1688URL(command.URL)},

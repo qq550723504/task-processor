@@ -7,6 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/listingkit/core"
 	listingworkflow "task-processor/internal/listingkit/workflow"
 	"task-processor/internal/productimage"
 	sdsusecase "task-processor/internal/sds/usecase"
@@ -114,7 +115,7 @@ func (s *service) syncSDSDesignVariantsFromRemote(ctx context.Context, task *Tas
 	if len(representatives) == 0 {
 		return
 	}
-	markChildTask(result, "sds_design_sync", "", string(TaskStatusProcessing), "")
+	markChildTask(result, "sds_design_sync", "", string(core.TaskStatusProcessing), "")
 	ensureResultPodExecution(result, task.Request)
 	markPodExecutionStatus(result, podStatusProcessing, time.Now())
 

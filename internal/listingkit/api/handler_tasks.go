@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingsubscription"
 )
 
@@ -75,7 +76,7 @@ func (h *handler) GetTaskResult(c *gin.Context) {
 	result, err := h.taskLifecycleService.GetTaskResult(requestContext(c), c.Param("task_id"))
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, listingkit.ErrTaskNotFound) {
+		if errors.Is(err, core.ErrTaskNotFound) {
 			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": "query_failed", "message": err.Error()})

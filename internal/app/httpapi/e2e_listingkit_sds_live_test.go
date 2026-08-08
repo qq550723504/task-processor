@@ -14,6 +14,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	"task-processor/internal/productimage"
@@ -141,7 +142,7 @@ func TestHTTPLiveE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 	})
 
 	task := waitForTaskResult[listingkit.TaskResult](t, testServer.Client(), testServer.URL+"/api/v1/listing-kits/tasks/"+taskID, listingKitTaskTerminal)
-	require.NotEqual(t, listingkit.TaskStatusFailed, task.Status)
+	require.NotEqual(t, core.TaskStatusFailed, task.Status)
 	require.NotNil(t, task.Result)
 	require.NotNil(t, task.Result.ImageAssets)
 	require.NotNil(t, task.Result.SDSSync)
@@ -155,7 +156,7 @@ func TestHTTPLiveE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 	require.Greater(t, task.Result.SDSSync.PrototypeGroupID, int64(0))
 	require.Condition(t, func() bool {
 		for _, child := range task.Result.ChildTasks {
-			if child.Kind == "sds_design_sync" && child.Status == string(listingkit.TaskStatusCompleted) {
+			if child.Kind == "sds_design_sync" && child.Status == string(core.TaskStatusCompleted) {
 				return true
 			}
 		}

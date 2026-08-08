@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
@@ -43,7 +44,7 @@ func (r *stubProcessStatusRepo) MarkCompleted(ctx context.Context, taskID string
 	if err := r.SaveTaskResult(ctx, taskID, result); err != nil {
 		return err
 	}
-	r.task.Status = TaskStatusCompleted
+	r.task.Status = core.TaskStatusCompleted
 	return nil
 }
 
@@ -52,7 +53,7 @@ func (r *stubProcessStatusRepo) MarkFailed(_ context.Context, taskID string, err
 	r.failedError = errorMsg
 	r.failedCalls++
 	if r.task != nil && r.task.ID == taskID {
-		r.task.Status = TaskStatusFailed
+		r.task.Status = core.TaskStatusFailed
 		r.task.Error = errorMsg
 	}
 	return nil
@@ -97,7 +98,7 @@ func TestProcessListingKitMarksNeedsReviewWhenSummaryRequiresReview(t *testing.T
 
 	task := &Task{
 		ID:        "listingkit-needs-review-1",
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -110,17 +111,17 @@ func TestProcessListingKitMarksNeedsReviewWhenSummaryRequiresReview(t *testing.T
 	if err != nil {
 		t.Fatalf("ProcessListingKit() error = %v", err)
 	}
-	if result.Status != string(TaskStatusNeedsReview) {
-		t.Fatalf("result status = %q, want %q", result.Status, TaskStatusNeedsReview)
+	if result.Status != string(core.TaskStatusNeedsReview) {
+		t.Fatalf("result status = %q, want %q", result.Status, core.TaskStatusNeedsReview)
 	}
 	stored, err := repo.GetTask(context.Background(), task.ID)
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if stored.Status != TaskStatusNeedsReview {
-		t.Fatalf("stored status = %q, want %q", stored.Status, TaskStatusNeedsReview)
+	if stored.Status != core.TaskStatusNeedsReview {
+		t.Fatalf("stored status = %q, want %q", stored.Status, core.TaskStatusNeedsReview)
 	}
-	if stored.Result == nil || stored.Result.Status != string(TaskStatusNeedsReview) {
+	if stored.Result == nil || stored.Result.Status != string(core.TaskStatusNeedsReview) {
 		t.Fatalf("stored result = %+v, want needs_review result status", stored.Result)
 	}
 	if got, want := stored.Result.ReviewReasons, []string{"scene images require manual review"}; len(got) != len(want) || got[0] != want[0] {
@@ -165,7 +166,7 @@ func TestProcessListingKitMarksCompletedWhenSummaryDoesNotRequireReview(t *testi
 
 	task := &Task{
 		ID:        "listingkit-completed-1",
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -178,17 +179,17 @@ func TestProcessListingKitMarksCompletedWhenSummaryDoesNotRequireReview(t *testi
 	if err != nil {
 		t.Fatalf("ProcessListingKit() error = %v", err)
 	}
-	if result.Status != string(TaskStatusCompleted) {
-		t.Fatalf("result status = %q, want %q", result.Status, TaskStatusCompleted)
+	if result.Status != string(core.TaskStatusCompleted) {
+		t.Fatalf("result status = %q, want %q", result.Status, core.TaskStatusCompleted)
 	}
 	stored, err := repo.GetTask(context.Background(), task.ID)
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if stored.Status != TaskStatusCompleted {
-		t.Fatalf("stored status = %q, want %q", stored.Status, TaskStatusCompleted)
+	if stored.Status != core.TaskStatusCompleted {
+		t.Fatalf("stored status = %q, want %q", stored.Status, core.TaskStatusCompleted)
 	}
-	if stored.Result == nil || stored.Result.Status != string(TaskStatusCompleted) {
+	if stored.Result == nil || stored.Result.Status != string(core.TaskStatusCompleted) {
 		t.Fatalf("stored result = %+v, want completed result status", stored.Result)
 	}
 	if repo.completedCalls != 1 || repo.completedTaskID != task.ID {
@@ -215,12 +216,12 @@ func TestDeriveProcessTerminalStatusMarksNeedsReviewWhenRequiredPODExecutionFail
 		},
 	}
 
-	if status := deriveProcessTerminalStatus(result); status != TaskStatusNeedsReview {
-		t.Fatalf("deriveProcessTerminalStatus() = %q, want %q", status, TaskStatusNeedsReview)
+	if status := deriveProcessTerminalStatus(result); status != core.TaskStatusNeedsReview {
+		t.Fatalf("deriveProcessTerminalStatus() = %q, want %q", status, core.TaskStatusNeedsReview)
 	}
-	applied := applyProcessTerminalResult(result, TaskStatusNeedsReview)
-	if applied.Status != string(TaskStatusNeedsReview) {
-		t.Fatalf("result status = %q, want %q", applied.Status, TaskStatusNeedsReview)
+	applied := applyProcessTerminalResult(result, core.TaskStatusNeedsReview)
+	if applied.Status != string(core.TaskStatusNeedsReview) {
+		t.Fatalf("result status = %q, want %q", applied.Status, core.TaskStatusNeedsReview)
 	}
 	if got := applied.ReviewReasons; len(got) != 1 || !strings.Contains(got[0], "SDS render failed") {
 		t.Fatalf("review reasons = %#v, want SDS failure reason", got)
@@ -264,7 +265,7 @@ func TestProcessListingKitMarksSheinCookieUnavailableAsBlockingIssue(t *testing.
 
 	task := &Task{
 		ID:        "listingkit-cookie-blocking-1",
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -277,8 +278,8 @@ func TestProcessListingKitMarksSheinCookieUnavailableAsBlockingIssue(t *testing.
 	if err != nil {
 		t.Fatalf("ProcessListingKit() error = %v", err)
 	}
-	if result.Status != string(TaskStatusNeedsReview) {
-		t.Fatalf("result status = %q, want %q", result.Status, TaskStatusNeedsReview)
+	if result.Status != string(core.TaskStatusNeedsReview) {
+		t.Fatalf("result status = %q, want %q", result.Status, core.TaskStatusNeedsReview)
 	}
 	var cookieIssue *WorkflowIssue
 	for i := range result.WorkflowIssues {
@@ -328,7 +329,7 @@ func TestProcessListingKitPersistsPartialResultBeforeMarkingFailed(t *testing.T)
 
 	task := &Task{
 		ID:        "listingkit-failed-1",
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -360,12 +361,12 @@ func TestProcessListingKitPersistsPartialResultBeforeMarkingFailed(t *testing.T)
 	if stored.Result == nil {
 		t.Fatal("stored result = nil, want persisted partial workflow result")
 	}
-	if stored.Status != TaskStatusFailed {
-		t.Fatalf("stored status = %q, want %q", stored.Status, TaskStatusFailed)
+	if stored.Status != core.TaskStatusFailed {
+		t.Fatalf("stored status = %q, want %q", stored.Status, core.TaskStatusFailed)
 	}
 	foundFailedChild := false
 	for _, child := range stored.Result.ChildTasks {
-		if child.Kind == "product_enrich" && child.Status == string(TaskStatusFailed) {
+		if child.Kind == "product_enrich" && child.Status == string(core.TaskStatusFailed) {
 			foundFailedChild = true
 			break
 		}
@@ -382,7 +383,7 @@ func TestGetTaskResultTreatsNeedsReviewAsTerminal(t *testing.T) {
 	now := time.Now()
 	task := &Task{
 		ID:        "listingkit-terminal-needs-review-1",
-		Status:    TaskStatusNeedsReview,
+		Status:    core.TaskStatusNeedsReview,
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
 		Result:    &ListingKitResult{TaskID: "listingkit-terminal-needs-review-1"},
 		CreatedAt: now.Add(-time.Minute),
@@ -412,13 +413,13 @@ func TestGetTaskResultReturnsStructuredReviewReasons(t *testing.T) {
 	now := time.Now()
 	task := &Task{
 		ID:     "listingkit-review-reasons-1",
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
 		},
 		Result: &ListingKitResult{
 			TaskID:        "listingkit-review-reasons-1",
-			Status:        string(TaskStatusNeedsReview),
+			Status:        string(core.TaskStatusNeedsReview),
 			ReviewReasons: []string{"reason one", "reason two"},
 			Summary:       &GenerationSummary{Warnings: []string{"legacy warning"}},
 		},
@@ -447,7 +448,7 @@ func TestGetTaskResultIncludesDerivedSheinSubmissionStatus(t *testing.T) {
 	now := time.Now()
 	task := &Task{
 		ID:     "listingkit-shein-published-1",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
 		},
@@ -499,7 +500,7 @@ func TestGetTaskResultDerivesPodExecutionForLegacyStoredResults(t *testing.T) {
 	now := time.Now()
 	task := &Task{
 		ID:     "listingkit-pod-execution-legacy-1",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
 			ImageURLs: []string{"https://cdn.example.com/source.png"},
@@ -551,13 +552,13 @@ func TestGetTaskResultPrefersWorkflowIssuesForReviewReasons(t *testing.T) {
 	now := time.Now()
 	task := &Task{
 		ID:     "listingkit-review-reasons-workflow-1",
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
 		},
 		Result: &ListingKitResult{
 			TaskID:        "listingkit-review-reasons-workflow-1",
-			Status:        string(TaskStatusNeedsReview),
+			Status:        string(core.TaskStatusNeedsReview),
 			ReviewReasons: []string{"legacy review reason"},
 			WorkflowIssues: []WorkflowIssue{
 				{
@@ -594,7 +595,7 @@ func TestGetTaskResultFallsBackToTaskErrorForReviewReasons(t *testing.T) {
 	now := time.Now()
 	task := &Task{
 		ID:     "listingkit-review-reasons-fallback-1",
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
 		},
@@ -623,13 +624,13 @@ func TestGetTaskResultFallsBackToSummaryWarningsForReviewReasons(t *testing.T) {
 	now := time.Now()
 	task := &Task{
 		ID:     "listingkit-review-reasons-summary-1",
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
 		},
 		Result: &ListingKitResult{
 			TaskID:  "listingkit-review-reasons-summary-1",
-			Status:  string(TaskStatusNeedsReview),
+			Status:  string(core.TaskStatusNeedsReview),
 			Summary: &GenerationSummary{NeedsReview: true, Warnings: []string{"reason one", "reason one", "reason two"}},
 		},
 		CreatedAt: now.Add(-time.Minute),
@@ -656,13 +657,13 @@ func TestGetTaskResultRefreshesStaleSheinCookieReviewState(t *testing.T) {
 	now := time.Now()
 	task := &Task{
 		ID:     "listingkit-review-reasons-cookie-refresh-1",
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
 		},
 		Result: &ListingKitResult{
 			TaskID:        "listingkit-review-reasons-cookie-refresh-1",
-			Status:        string(TaskStatusNeedsReview),
+			Status:        string(core.TaskStatusNeedsReview),
 			ReviewReasons: []string{sheinCookieUnavailableMessage},
 			WorkflowIssues: []WorkflowIssue{{
 				Code:     sheinCookieUnavailableIssueCode,
@@ -773,7 +774,7 @@ func TestProcessListingKitInitializesDefaultSheinPricing(t *testing.T) {
 
 	task := &Task{
 		ID:        "listingkit-pricing-1",
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -945,7 +946,7 @@ func TestProcessListingKitReusesPublishedSheinPricingCache(t *testing.T) {
 
 	task := &Task{
 		ID:        "listingkit-pricing-cache-1",
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}, SheinStoreID: 869},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),

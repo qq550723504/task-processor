@@ -12,6 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingkit/store"
 )
 
@@ -23,7 +24,7 @@ func TestBackfillSheinPODImageLookupIndexesSkipsMalformedTaskAndIndexesValidRows
 		`INSERT INTO listing_kit_tasks (id, status, result, created_at, updated_at, retry_count)
 		 VALUES (?, ?, ?, ?, ?, ?)`,
 		"task-2-malformed",
-		listingkit.TaskStatusCompleted,
+		core.TaskStatusCompleted,
 		`{"secret":"must-not-leak"`,
 		now,
 		now,

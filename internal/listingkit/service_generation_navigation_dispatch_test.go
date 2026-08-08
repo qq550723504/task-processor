@@ -7,6 +7,7 @@ import (
 	"time"
 
 	assetgeneration "task-processor/internal/asset/generation"
+	"task-processor/internal/listingkit/core"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -17,7 +18,7 @@ func TestTaskGenerationNavigationPrimaryRunRoutesDispatchKinds(t *testing.T) {
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-primary-route-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -241,7 +242,7 @@ func TestTaskGenerationNavigationPrimaryServiceDelegatesToPhase(t *testing.T) {
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-service-guard-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -283,7 +284,7 @@ func TestTaskGenerationNavigationPrimaryPhaseOwnsPrimaryRouting(t *testing.T) {
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-primary-guard-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -482,7 +483,7 @@ func TestTaskGenerationNavigationDispatchEntryRunRejectsMissingTarget(t *testing
 			t.Parallel()
 
 			input, err := entry.run(tc.req)
-			if !errors.Is(err, ErrGenerationActionNotFound) {
+			if !errors.Is(err, core.ErrGenerationActionNotFound) {
 				t.Fatalf("run() error = %v, want ErrGenerationActionNotFound", err)
 			}
 			if input != nil {
@@ -499,7 +500,7 @@ func TestDispatchTaskGenerationNavigationDefaultsPlanModeToPrimaryOnly(t *testin
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-default-plan-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -550,7 +551,7 @@ func TestDispatchTaskGenerationNavigationRoutesSessionTarget(t *testing.T) {
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-session-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -604,7 +605,7 @@ func TestDispatchTaskGenerationNavigationReturnsPatchOnlyPanelUpdateForSession(t
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-session-patch-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -673,7 +674,7 @@ func TestDispatchTaskGenerationNavigationRoutesActionTarget(t *testing.T) {
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-action-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -731,7 +732,7 @@ func TestDispatchTaskGenerationNavigationBuildsChangedDescriptorsForReviewWorkfl
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-action-descriptor-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -798,7 +799,7 @@ func TestDispatchTaskGenerationNavigationReturnsPatchOnlyPanelUpdateForAction(t 
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-action-patch-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -850,7 +851,7 @@ func TestDispatchTaskGenerationNavigationReturnsNoChangesForPreviewNotModified(t
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-preview-not-modified-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -921,7 +922,7 @@ func TestDispatchTaskGenerationNavigationReturnsNoChangesForQueueNotModified(t *
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-queue-not-modified-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -980,7 +981,7 @@ func TestDispatchTaskGenerationNavigationExecutesDispatchPlanForSessionTarget(t 
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-session-plan-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -1076,7 +1077,7 @@ func TestDispatchTaskGenerationNavigationExecutesDispatchPlanForActionTarget(t *
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-action-plan-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -1326,7 +1327,7 @@ func TestTaskGenerationNavigationDispatchPlanRunChoosesExecutionModeAndAppliesRu
 	}
 	task := &Task{
 		ID:        "task-generation-navigation-plan-mode-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -1429,7 +1430,7 @@ func TestExecuteGenerationNavigationDispatchPlanDeduplicatesDuplicateSteps(t *te
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-navigation-plan-dedupe-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -1499,7 +1500,7 @@ func TestTaskGenerationNavigationDispatchParallelPhaseDeduplicatesAndReplaysSour
 	}
 	task := &Task{
 		ID:        "task-generation-navigation-plan-parallel-seam-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -1587,7 +1588,7 @@ func TestTaskGenerationNavigationDispatchStepExecutionRunBuildsStepResults(t *te
 	}
 	task := &Task{
 		ID:        "task-generation-navigation-step-seam-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -1708,7 +1709,7 @@ func TestTaskGenerationNavigationDispatchStepExecutionRunSequentialBackfillsSkip
 	}
 	task := &Task{
 		ID:        "task-generation-navigation-step-sequential-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},

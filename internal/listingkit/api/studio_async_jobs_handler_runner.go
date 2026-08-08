@@ -10,6 +10,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingsubscription"
 )
 
@@ -75,7 +76,7 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		}
 		result = response
 	default:
-		err = listingkit.ErrTaskNotFound
+		err = core.ErrTaskNotFound
 		status = http.StatusBadRequest
 	}
 

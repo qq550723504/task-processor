@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"task-processor/internal/listingkit/core"
 	sheinpub "task-processor/internal/publishing/shein"
 
 	"gorm.io/gorm"
@@ -130,7 +131,7 @@ func loadStudioBatchCreatedTasksFromLinks(
 		var task *Task
 		if getTask != nil {
 			task, err = getTask(ctx, taskID)
-			if err != nil || task == nil || task.Status == TaskStatusFailed {
+			if err != nil || task == nil || task.Status == core.TaskStatusFailed {
 				continue
 			}
 		}
@@ -203,9 +204,9 @@ func projectStudioBatchCreatedTaskFromListingTask(created SheinStudioCreatedTask
 		created.Status = studioBatchCreatedTaskStatus
 	}
 	switch task.Status {
-	case TaskStatusNeedsReview:
+	case core.TaskStatusNeedsReview:
 		created.Status = "needs_review"
-	case TaskStatusFailed:
+	case core.TaskStatusFailed:
 		created.Status = "submit_failed"
 		if strings.TrimSpace(created.Message) == "" {
 			created.Message = strings.TrimSpace(task.Error)
@@ -216,7 +217,7 @@ func projectStudioBatchCreatedTaskFromListingTask(created SheinStudioCreatedTask
 	}
 	pkg := sheinpub.NormalizePackageSemanticFields(task.Result.Shein)
 	if pkg == nil || pkg.SubmissionState == nil {
-		if task.Status == TaskStatusCompleted && sheinSubmitReadinessReady(buildSheinSubmitReadiness(pkg)) {
+		if task.Status == core.TaskStatusCompleted && sheinSubmitReadinessReady(buildSheinSubmitReadiness(pkg)) {
 			created.Status = "ready_to_submit"
 		}
 		return created

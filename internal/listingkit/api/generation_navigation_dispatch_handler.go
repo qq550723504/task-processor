@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 func (h *handler) DispatchTaskGenerationNavigation(c *gin.Context) {
@@ -20,7 +21,7 @@ func (h *handler) DispatchTaskGenerationNavigation(c *gin.Context) {
 	result, err := h.generationTaskService.DispatchTaskGenerationNavigation(requestContext(c), c.Param("task_id"), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if errors.Is(err, listingkit.ErrTaskNotFound) || errors.Is(err, listingkit.ErrGenerationActionNotFound) {
+		if errors.Is(err, core.ErrTaskNotFound) || errors.Is(err, core.ErrGenerationActionNotFound) {
 			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": "generation_navigation_dispatch_failed", "message": err.Error()})

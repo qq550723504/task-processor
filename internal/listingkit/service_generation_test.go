@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
+	"task-processor/internal/listingkit/core"
 )
 
 type stubServiceDeferredRenderer struct {
@@ -24,7 +25,7 @@ func (r *stubGenerationRepo) CreateTask(ctx context.Context, task *Task) error {
 
 func (r *stubGenerationRepo) GetTask(ctx context.Context, taskID string) (*Task, error) {
 	if r.task == nil || r.task.ID != taskID {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	copied := *r.task
 	return &copied, nil
@@ -46,7 +47,7 @@ func (r *stubGenerationRepo) MarkNeedsReview(ctx context.Context, taskID string,
 	if err := r.SaveTaskResult(ctx, taskID, result); err != nil {
 		return err
 	}
-	r.task.Status = TaskStatusNeedsReview
+	r.task.Status = core.TaskStatusNeedsReview
 	r.task.Error = reason
 	return nil
 }
@@ -55,9 +56,9 @@ func (r *stubGenerationRepo) MarkFailed(ctx context.Context, taskID string, erro
 }
 func (r *stubGenerationRepo) MarkBlockedRetryable(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
 	if r.task == nil || r.task.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	r.task.Status = TaskStatusBlockedRetryable
+	r.task.Status = core.TaskStatusBlockedRetryable
 	r.task.RetryableBlock = block
 	r.task.Error = errorMsg
 	r.task.UpdatedAt = time.Now()
@@ -68,9 +69,9 @@ func (r *stubGenerationRepo) ListRecoverableTasks(context.Context, *RecoverableT
 }
 func (r *stubGenerationRepo) RecoverBlockedTaskNow(_ context.Context, taskID string, recoveredAt time.Time) error {
 	if r.task == nil || r.task.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	r.task.Status = TaskStatusPending
+	r.task.Status = core.TaskStatusPending
 	r.task.RetryableBlock = nil
 	r.task.Error = ""
 	r.task.UpdatedAt = recoveredAt
@@ -85,7 +86,7 @@ func (r *stubGenerationRepo) IncrementRetryCount(ctx context.Context, taskID str
 }
 func (r *stubGenerationRepo) SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {
 	if r.task == nil || r.task.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	r.task.Result = result
 	r.task.UpdatedAt = time.Now()

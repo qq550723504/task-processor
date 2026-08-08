@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/catalog"
 	"task-processor/internal/catalog/canonical"
 	listingplatform "task-processor/internal/listing/platform"
+	"task-processor/internal/listingkit/core"
 	common "task-processor/internal/publishing/common"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
@@ -111,7 +112,7 @@ func TestBuildListingKitPreviewFiltersSelectedPlatform(t *testing.T) {
 	now := time.Now()
 	task := &Task{
 		ID:        "task-preview-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now,
 		Request: &GenerateRequest{
@@ -430,7 +431,7 @@ func TestBuildListingKitPreviewReturnsPendingHeaderWhenResultMissing(t *testing.
 
 	preview, err := buildListingKitPreview(&Task{
 		ID:     "task-preview-pending",
-		Status: TaskStatusProcessing,
+		Status: core.TaskStatusProcessing,
 	}, "")
 	if err != nil {
 		t.Fatalf("build preview: %v", err)
@@ -449,7 +450,7 @@ func TestBuildListingKitPreviewIncludesRevisionHistoryMeta(t *testing.T) {
 	now := time.Now()
 	task := &Task{
 		ID:        "task-preview-history",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now,
 		Result: &ListingKitResult{

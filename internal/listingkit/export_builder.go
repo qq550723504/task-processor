@@ -5,11 +5,12 @@ import (
 	"time"
 
 	listingplatform "task-processor/internal/listing/platform"
+	"task-processor/internal/listingkit/core"
 )
 
 func buildListingKitExport(task *Task, selectedPlatform string) (*ListingKitExport, error) {
 	if task == nil {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 
 	var ok bool

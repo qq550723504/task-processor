@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"task-processor/internal/asset"
+	"task-processor/internal/listingkit/core"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -15,7 +16,7 @@ func TestTaskRevisionServiceApplyTaskRevisionInvokesSheinCollaborators(t *testin
 	repo := &stubApplyRevisionRepo{}
 	task := &Task{
 		ID:     "task-revision-service-1",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "task-revision-service-1",
 			AssetBundle: &asset.Bundle{

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"task-processor/internal/listingkit/core"
 )
 
 type taskGenerationNavigationDispatchStepExecutionPhase struct {
@@ -114,9 +115,9 @@ func classifyGenerationNavigationDispatchStepError(err error) string {
 	switch {
 	case err == nil:
 		return ""
-	case errors.Is(err, ErrTaskNotFound), errors.Is(err, ErrGenerationTaskNotFound), errors.Is(err, ErrGenerationActionNotFound):
+	case errors.Is(err, core.ErrTaskNotFound), errors.Is(err, core.ErrGenerationTaskNotFound), errors.Is(err, core.ErrGenerationActionNotFound):
 		return "not_found"
-	case errors.Is(err, ErrTaskNotPending), errors.Is(err, ErrGenerationTaskNotRetryable):
+	case errors.Is(err, core.ErrTaskNotPending), errors.Is(err, core.ErrGenerationTaskNotRetryable):
 		return "conflict"
 	default:
 		return "internal"

@@ -3,6 +3,7 @@ package listingkit
 import (
 	"encoding/json"
 	"strings"
+	"task-processor/internal/listingkit/core"
 	"testing"
 )
 
@@ -11,7 +12,7 @@ func TestBuildTaskListItemIncludesSourceReferenceForPendingTask(t *testing.T) {
 
 	task := &Task{
 		ID:     "task-source-reference",
-		Status: TaskStatusPending,
+		Status: core.TaskStatusPending,
 		Request: &GenerateRequest{Source: &SourceReference{
 			Key:      "crawler:1688:888",
 			Type:     "crawler",
@@ -45,7 +46,7 @@ func TestBuildTaskListItemOmitsLegacySourceReference(t *testing.T) {
 
 	item := buildTaskListItem(&Task{
 		ID:      "task-legacy",
-		Status:  TaskStatusPending,
+		Status:  core.TaskStatusPending,
 		Request: &GenerateRequest{Text: "legacy"},
 	})
 	if item.SourceReference != nil {
