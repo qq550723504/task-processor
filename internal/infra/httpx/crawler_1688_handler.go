@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"task-processor/internal/crawler/shared"
-	"task-processor/internal/shared/tenantctx"
+	"task-processor/internal/listingkit"
 
 	"github.com/sirupsen/logrus"
 )
@@ -89,11 +89,11 @@ func trustedCrawlerTenantID(r *http.Request) (int64, bool) {
 	if r == nil {
 		return 0, false
 	}
-	tenantScope, ok := tenantctx.TenantScopeFromContext(r.Context())
+	identity, ok := listingkit.AuthenticatedIdentityFromContext(r.Context())
 	if !ok {
 		return 0, false
 	}
-	tenantID, err := strconv.ParseInt(strings.TrimSpace(tenantScope), 10, 64)
+	tenantID, err := strconv.ParseInt(strings.TrimSpace(identity.TenantID), 10, 64)
 	if err != nil || tenantID <= 0 {
 		return 0, false
 	}

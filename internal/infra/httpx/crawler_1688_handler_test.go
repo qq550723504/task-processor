@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"task-processor/internal/crawler/shared"
+	"task-processor/internal/listingkit"
 	"task-processor/internal/shared/tenantctx"
 
 	"github.com/sirupsen/logrus"
@@ -17,7 +18,7 @@ func TestCrawler1688HandlerUsesTrustedTenantContextForSourceAccountID(t *testing
 	handler := NewCrawler1688Handler(service, logrus.New())
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", strings.NewReader(`{"url":"https://detail.1688.com/offer/3001.html","source_account_id":3001}`))
-	req = req.WithContext(tenantctx.WithTenantID(req.Context(), "101"))
+	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-101"}))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -49,12 +50,12 @@ func TestCrawler1688HandlerRejectsSourceAccountIDWithoutTrustedTenantContext(t *
 	}
 }
 
-func TestCrawler1688HandlerRejectsNonNumericTrustedTenantContext(t *testing.T) {
+func TestCrawler1688HandlerRejectsGenericTenantScope(t *testing.T) {
 	service := &stub1688CrawlerService{}
 	handler := NewCrawler1688Handler(service, logrus.New())
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", strings.NewReader(`{"url":"https://detail.1688.com/offer/3001.html","source_account_id":3001}`))
-	req = req.WithContext(tenantctx.WithTenantID(req.Context(), "tenant-a"))
+	req = req.WithContext(tenantctx.WithTenantID(req.Context(), "101"))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -64,7 +65,26 @@ func TestCrawler1688HandlerRejectsNonNumericTrustedTenantContext(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	if service.task != nil {
-		t.Fatalf("task = %+v, want no submission for non-numeric tenant context", service.task)
+		t.Fatalf("task = %+v, want no submission for generic tenant context", service.task)
+	}
+}
+
+func TestCrawler1688HandlerRejectsNonNumericVerifiedTenantIdentity(t *testing.T) {
+	service := &stub1688CrawlerService{}
+	handler := NewCrawler1688Handler(service, logrus.New())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", strings.NewReader(`{"url":"https://detail.1688.com/offer/3001.html","source_account_id":3001}`))
+	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-101"}))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.RegisterRoutes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if service.task != nil {
+		t.Fatalf("task = %+v, want no submission for non-numeric verified tenant identity", service.task)
 	}
 }
 
