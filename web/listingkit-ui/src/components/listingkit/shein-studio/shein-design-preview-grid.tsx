@@ -173,6 +173,7 @@ export function SheinDesignPreviewGrid({
                         </div>
                       ) : (
                         <Button
+                          disabled={isUploadingManualBackgroundRemoval}
                           onClick={() => onToggle(design.id)}
                           variant={selected ? "primary" : "secondary"}
                         >
@@ -188,7 +189,8 @@ export function SheinDesignPreviewGrid({
                           className="flex-1"
                           disabled={
                             regeneratingId === design.id ||
-                            retryingBackgroundRemovalId === design.id
+                            retryingBackgroundRemovalId === design.id ||
+                            isUploadingManualBackgroundRemoval
                           }
                           onClick={() => onRegenerate(design.id)}
                           variant="ghost"
@@ -201,7 +203,8 @@ export function SheinDesignPreviewGrid({
                           className="flex-1"
                           disabled={
                             retryingBackgroundRemovalId === design.id ||
-                            regeneratingId === design.id
+                            regeneratingId === design.id ||
+                            isUploadingManualBackgroundRemoval
                           }
                           onClick={() => onRetryBackgroundRemoval(design.id)}
                           type="button"

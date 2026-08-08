@@ -131,6 +131,11 @@ vi.mock(
           {uploadError ? <div>{uploadError}</div> : null}
           {designs.map((design) => (
             <div key={design.id}>
+              <div>design-image-{design.id}: {(design as { imageUrl?: string }).imageUrl || "none"}</div>
+              <div>
+                design-original-{design.id}:{" "}
+                {(design as { originalImageUrl?: string }).originalImageUrl || "none"}
+              </div>
               {onToggle ? (
                 <button onClick={() => onToggle(design.id)} type="button">
                   toggle-{design.id}

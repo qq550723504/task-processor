@@ -346,7 +346,7 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.getByText("approved styles: 1")).toBeInTheDocument();
   });
 
-  it("uploads a manual cutout for the active batch, applies returned detail, and clears uploading state after failures", async () => {
+  it("hydrates the returned manual cutout detail and clears the active uploading id after resolution and rejection", async () => {
     const batchDetail = buildHydratedBatch(
       {
         id: "batch-1",
@@ -424,10 +424,11 @@ describe("SheinStudioWorkbench", () => {
       "manual-cutout.png",
       { type: "image/png" },
     );
-    uploadManualSheinStudioBackgroundRemoval.mockResolvedValueOnce(uploadedDetail);
-    uploadManualSheinStudioBackgroundRemoval.mockRejectedValueOnce(
-      new Error("network timeout"),
-    );
+    const firstUpload = createDeferred<typeof uploadedDetail>();
+    const secondUpload = createDeferred<typeof uploadedDetail>();
+    uploadManualSheinStudioBackgroundRemoval
+      .mockImplementationOnce(() => firstUpload.promise)
+      .mockImplementationOnce(() => secondUpload.promise);
 
     render(
       <SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />,
@@ -448,17 +449,54 @@ describe("SheinStudioWorkbench", () => {
         pngFile,
       ),
     );
+    expect(
+      screen.getByText("uploading manual background removal: design-1"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "design-image-design-1: https://example.com/design-1-final.png",
+      ),
+    ).toBeInTheDocument();
+    act(() => {
+      firstUpload.resolve(uploadedDetail);
+    });
     await waitFor(() =>
-      expect(screen.getByText("uploading manual background removal: none")).toBeInTheDocument(),
+      expect(
+        screen.getByText(
+          "design-image-design-1: https://example.com/design-1-manual-final.png",
+        ),
+      ).toBeInTheDocument(),
     );
+    expect(
+      screen.getByText(
+        "design-original-design-1: https://example.com/design-1-original.png",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("uploading manual background removal: none"),
+    ).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("upload-design-1"), {
       target: { files: [pngFile] },
     });
 
     await waitFor(() =>
+      expect(uploadManualSheinStudioBackgroundRemoval).toHaveBeenNthCalledWith(
+        2,
+        "batch-1",
+        "design-1",
+        pngFile,
+      ),
+    );
+    expect(
+      screen.getByText("uploading manual background removal: design-1"),
+    ).toBeInTheDocument();
+    act(() => {
+      secondUpload.reject(new Error("network timeout"));
+    });
+    await waitFor(() =>
       expect(
-        screen.getByText(/上传手动抠图失败：/),
+        screen.getByText(/上传手动抠图失败：network timeout/),
       ).toBeInTheDocument(),
     );
     expect(screen.getByText("uploading manual background removal: none")).toBeInTheDocument();

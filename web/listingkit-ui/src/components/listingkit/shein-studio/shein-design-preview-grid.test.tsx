@@ -336,6 +336,52 @@ describe("SheinDesignPreviewGrid", () => {
     expect(screen.queryByRole("button", { name: "上传手动抠图" })).not.toBeInTheDocument();
   });
 
+  it("disables only the uploading card's mutating controls while leaving other cards enabled", () => {
+    render(
+      <SheinDesignPreviewGrid
+        createActionDisabledReason={undefined}
+        designs={[
+          {
+            id: "design-1",
+            imageUrl: "https://cdn.example.test/design-1-final.png",
+            originalImageUrl: "https://cdn.example.test/design-1-original.png",
+            backgroundRemovalStatus: "succeeded",
+            transparentBackgroundMode: "removal",
+          },
+          {
+            id: "design-2",
+            imageUrl: "https://cdn.example.test/design-2-final.png",
+            originalImageUrl: "https://cdn.example.test/design-2-original.png",
+            backgroundRemovalStatus: "succeeded",
+            transparentBackgroundMode: "removal",
+          },
+        ]}
+        imageStrategy="hybrid"
+        onCreateReviewTasks={vi.fn()}
+        onRegenerate={vi.fn()}
+        onRetryBackgroundRemoval={vi.fn()}
+        onToggle={vi.fn()}
+        onUploadManualBackgroundRemoval={vi.fn()}
+        productImageCount="3"
+        renderSizeImagesWithSds
+        selectedIds={[]}
+        uploadingManualBackgroundRemovalId="design-1"
+      />,
+    );
+
+    const approveButtons = screen.getAllByRole("button", { name: "批准" });
+    const regenerateButtons = screen.getAllByRole("button", { name: "重新生成" });
+    const retryButtons = screen.getAllByRole("button", { name: "重新抠图" });
+
+    expect(approveButtons[0]).toBeDisabled();
+    expect(regenerateButtons[0]).toBeDisabled();
+    expect(retryButtons[0]).toBeDisabled();
+
+    expect(approveButtons[1]).toBeEnabled();
+    expect(regenerateButtons[1]).toBeEnabled();
+    expect(retryButtons[1]).toBeEnabled();
+  });
+
   it("ignores non-png uploads at the UI boundary and shows a local error", async () => {
     const onUploadManualBackgroundRemoval = vi.fn().mockResolvedValue(undefined);
     const { container } = render(
