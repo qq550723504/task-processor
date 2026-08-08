@@ -16,7 +16,7 @@
 - Do not migrate unrelated task status or task error definitions in other domains.
 - Use `core` as the import name for `task-processor/internal/listingkit/core`.
 - Observe the ownership regression test fail before removing root declarations.
-- Do not commit an intermediate revision that fails to compile or test.
+- Do not commit an intermediate revision that fails to compile or test. Task 1's expected-red test is staged for review but remains uncommitted until Task 2 makes it pass.
 - Use `gofmt -r` and `gopls imports`; do not add a custom source-rewriting utility.
 
 ---
@@ -114,6 +114,17 @@ go test ./internal/listingkit/core -run TestRootPackageDoesNotDeclareCoreTaskLif
 ```
 
 Expected: FAIL listing the 13 duplicate sentinels, `TaskStatus`, and six status constants from `model.go`. A parser or compile failure is not the expected RED state.
+
+- [ ] **Step 3: Stage the test for review without committing a red revision**
+
+Run:
+
+```powershell
+git add -- internal/listingkit/core/model_ownership_test.go
+git diff --cached --check
+```
+
+Leave this staged test in the worktree. Task 2 will make it pass and commit it together with the production migration.
 
 ---
 
