@@ -14,7 +14,8 @@ var alibaba1688OfferIDPattern = regexp.MustCompile(`(?i)(?:/offer/|offer[/=])(\d
 type Alibaba1688CrawlRequestInput struct {
 	URL       string
 	AccountID int64
-	// StoreID belongs to neutral source identity and is not the login account.
+	// StoreID is reserved for neutral source identity only. It is not accepted
+	// as the 1688 login-account identifier at the HTTP/application boundary.
 	StoreID int64
 }
 

@@ -259,6 +259,18 @@ node .next/standalone/server.js
 - SHEIN cookie 阻断是否会在更早阶段暴露
 - 手工搜类目、缓存命中、重试子任务等依赖 Redis 的链路
 
+## 1688 来源账户预检
+
+1688 在 Product Sourcing 中是来源侧的“登录账户”，不是 SHEIN 那样的目标店铺。
+请求只传 `source_account_id` 作为账户配置 ID；`source_store_id` 不支持。创建
+ListingKit 任务前，服务会验证该账户属于当前租户且已启用，并独立验证所选
+SHEIN 目标店铺同样属于当前租户且已启用。
+
+不要把账户密码、cookie、浏览器 Profile 目录、`user_data_dir`、代理用户名或密码
+写入请求、日志、回放 fixture 或 ListingKit task payload。账户配置存在且启用只说明
+可以选择该账户 Profile；它不证明该 Profile 已有有效的实时 1688 登录态。运行复验
+仍应先人工完成该 Profile 的登录，然后执行只读 crawl probe，最后才考虑受控的任务创建。
+
 ## 不建议直接依赖的内容
 
 - 完整线上鉴权链路

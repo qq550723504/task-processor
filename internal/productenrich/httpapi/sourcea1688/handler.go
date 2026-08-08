@@ -119,9 +119,9 @@ func writeStoreAccessError(c *gin.Context, err error) bool {
 	if code == "" {
 		return false
 	}
-	message := "Choose enabled source and target stores available to your tenant and try again."
+	message := "Choose an enabled 1688 login account and SHEIN target store available to your tenant and try again."
 	if code == listingkit.StoreAccessDisabled {
-		message = "Enable the selected store or choose another available store and try again."
+		message = "Enable the selected 1688 login account or SHEIN target store, or choose another available option and try again."
 	}
 	c.JSON(http.StatusForbidden, gin.H{"error": code, "message": message})
 	return true

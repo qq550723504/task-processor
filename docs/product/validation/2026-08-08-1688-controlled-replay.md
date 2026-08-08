@@ -19,7 +19,7 @@ The replay uses a fixed `Product1688` fixture and an authenticated request conte
 | Missing title and assets | `322` | `crawler:1688:322` | rejected before task creation |
 | Controlled source failure | `323` | `crawler:1688:323` | rejected before task creation |
 
-The successful replay uses tenant `101`, user `user-1688`, source store `3001`, target SHEIN store `168811`, and target platform `shein`.
+The successful replay uses tenant `101`, user `user-1688`, 1688 login account configuration `3001`, target SHEIN store `168811`, and target platform `shein`. The source-side request field is `source_account_id`; `source_store_id` is rejected and has no compatibility path.
 
 ## Evidence recorded
 
@@ -31,9 +31,13 @@ The successful replay exercised the real `sourcea1688.Handler` and `a1688.TaskCo
 - the request contains the normalized `crawler:1688:321` source reference;
 - the source title, brand, category, description, price, variant, and four image URLs reach the request text/assets;
 - the platform list is normalized to one `shein` entry and the target store ID is retained;
+- the normalized 1688 source identity remains product-based while the authenticated login account is used only for tenant-scoped authorization;
+- the generated ListingKit request JSON contains no password, cookie, browser `user_data_dir`, profile path, or proxy credentials;
 - the deterministic creator is called exactly once.
 
 The missing-facts replay returned `task_creation_failed`, exposed the source identity and warnings, and called the task creator zero times. The source-error replay returned `task_creation_failed`, retained source ID `323` and the `controlled crawler failed` warning, and called the task creator zero times.
+
+The account authorization replay also confirms that disabled and foreign-tenant 1688 login-account configurations are rejected before the creator is called. Disabled and foreign SHEIN target stores continue to be rejected on the same boundary with their existing stable access codes.
 
 ## Commands and results
 
@@ -142,7 +146,14 @@ that were checked. The platform store listing currently contains SHEIN/TEMU
 stores and the `platform=1688` read returned zero stores.
 
 Conclusion remains `blocked`: infrastructure is healthy, but there is no
-current tenant-scoped 1688 source store plus eligible SHEIN target pair for a
-real handoff. The historical `source_store_id=3001` and
-`shein_store_id=168811` values are test fixtures, not runtime acceptance data.
-No POST request or task creation was made.
+current tenant-owned 1688 login-account configuration plus eligible SHEIN
+target-store pair for a real handoff. The historical
+`source_account_id=3001` and `shein_store_id=168811` values are test fixtures,
+not runtime acceptance data. No POST request or task creation was made.
+
+An enabled tenant-owned 1688 account configuration only establishes that the
+handoff may select its browser Profile. It does not establish a valid live 1688
+login session. Runtime acceptance still requires an account row, a completed
+manual login in that account Profile, a read-only crawl probe, and only then a
+later controlled ListingKit task run. No credentials, cookies, profile
+contents, or live task IDs are recorded here.
