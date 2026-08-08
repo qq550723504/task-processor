@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/crawler/shared"
@@ -30,6 +32,43 @@ func TestCrawler1688ProcessorUsesTrustedTenantAccountProfile(t *testing.T) {
 	}
 	if processor.globalCalled {
 		t.Fatal("account-bound task used the global processor path")
+	}
+}
+
+func TestCrawler1688ProcessorSerializesSameAccountProfile(t *testing.T) {
+	processor := &blockingProfileProcessor{
+		started: make(chan struct{}, 2),
+		release: make(chan struct{}),
+	}
+	resolver := &staticAccountProfileResolver{profile: AccountProfile{ID: 3001, TenantID: 101, ProfileDir: "C:/profiles/101/3001"}}
+	service := newTestAlibaba1688Service(processor, resolver)
+	p := &Crawler1688Processor{service: service}
+
+	firstDone := make(chan error, 1)
+	go func() { firstDone <- p.ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, 3001)) }()
+	select {
+	case <-processor.started:
+	case <-time.After(time.Second):
+		t.Fatal("first profile crawl did not start")
+	}
+
+	secondDone := make(chan error, 1)
+	go func() { secondDone <- p.ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, 3001)) }()
+	select {
+	case <-processor.started:
+		t.Fatal("same profile started concurrently")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(processor.release)
+
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first ProcessTask() error = %v", err)
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatalf("second ProcessTask() error = %v", err)
+	}
+	if processor.maxActive != 1 {
+		t.Fatalf("max concurrent profile crawls = %d, want 1", processor.maxActive)
 	}
 }
 
@@ -189,6 +228,12 @@ type fakeAccountProfileResolver struct {
 	called    bool
 }
 
+type staticAccountProfileResolver struct{ profile AccountProfile }
+
+func (r *staticAccountProfileResolver) ResolveAlibaba1688Account(context.Context, int64, int64) (AccountProfile, error) {
+	return r.profile, nil
+}
+
 func (r *fakeAccountProfileResolver) ResolveAlibaba1688Account(_ context.Context, tenantID, accountID int64) (AccountProfile, error) {
 	r.called = true
 	r.tenantID = tenantID
@@ -219,3 +264,32 @@ func (p *fakeAlibaba1688TaskProcessor) Shutdown() {}
 func (p *fakeAlibaba1688TaskProcessor) called() bool {
 	return p.globalCalled || p.profile != nil
 }
+
+type blockingProfileProcessor struct {
+	mu        sync.Mutex
+	active    int
+	maxActive int
+	started   chan struct{}
+	release   chan struct{}
+}
+
+func (p *blockingProfileProcessor) Process(string) (*model.Product1688, error) {
+	return &model.Product1688{}, nil
+}
+
+func (p *blockingProfileProcessor) ProcessWithAccountProfile(string, AccountProfile) (*model.Product1688, error) {
+	p.mu.Lock()
+	p.active++
+	if p.active > p.maxActive {
+		p.maxActive = p.active
+	}
+	p.mu.Unlock()
+	p.started <- struct{}{}
+	<-p.release
+	p.mu.Lock()
+	p.active--
+	p.mu.Unlock()
+	return &model.Product1688{}, nil
+}
+
+func (p *blockingProfileProcessor) Shutdown() {}

@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
+	"sync"
 
 	"task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/crawler/shared"
@@ -40,6 +42,8 @@ func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.Worke
 		if err != nil {
 			return err
 		}
+		unlock := p.service.lockAccountProfile(profile)
+		defer unlock()
 		product, err = p.service.processor1688.ProcessWithAccountProfile(crawlerTask.URL, profile)
 		if err != nil {
 			return err
@@ -52,11 +56,33 @@ func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.Worke
 		product = resolvedProduct
 	}
 
-	p.service.UpdateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
+	updateResult := p.service.UpdateResult
+	if crawlerTask.TenantID > 0 {
+		updateResult = func(taskID string, fn func(*shared.CrawlerResult)) error {
+			return p.service.UpdateResultForTenant(crawlerTask.TenantID, taskID, fn)
+		}
+	}
+	_ = updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.ProductData = shared.ProductToMap(product)
 	})
 
 	return nil
+}
+
+func (s *Service) lockAccountProfile(profile AccountProfile) func() {
+	key := strconv.FormatInt(profile.TenantID, 10) + ":" + strconv.FormatInt(profile.ID, 10)
+	s.profileLocksMu.Lock()
+	if s.profileLocks == nil {
+		s.profileLocks = make(map[string]*sync.Mutex)
+	}
+	lock := s.profileLocks[key]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		s.profileLocks[key] = lock
+	}
+	s.profileLocksMu.Unlock()
+	lock.Lock()
+	return lock.Unlock
 }
 
 func (s *Service) resolveAccountProfile(ctx context.Context, tenantID, accountID int64) (AccountProfile, error) {

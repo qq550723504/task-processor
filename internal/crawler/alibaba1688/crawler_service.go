@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"task-processor/internal/core/config"
@@ -26,6 +27,8 @@ type Service struct {
 	logger                 *logrus.Logger
 	processor1688          alibaba1688TaskProcessor
 	accountProfileResolver AccountProfileResolver
+	profileLocksMu         sync.Mutex
+	profileLocks           map[string]*sync.Mutex
 }
 
 type alibaba1688TaskProcessor interface {
@@ -47,6 +50,7 @@ func NewService(cfg *config.Config, logger *logrus.Logger, resolvers ...AccountP
 		logger:                 logger,
 		processor1688:          processor1688,
 		accountProfileResolver: resolver,
+		profileLocks:           make(map[string]*sync.Mutex),
 	}
 
 	poolConfig := worker.DefaultPoolConfig()
@@ -59,6 +63,9 @@ func NewService(cfg *config.Config, logger *logrus.Logger, resolvers ...AccountP
 		Name:         "1688",
 		Logger:       logger,
 		UpdateResult: svc.UpdateResult,
+		UpdateResultForTask: func(task *shared.CrawlerTask, fn func(*shared.CrawlerResult)) error {
+			return svc.UpdateResultForTenant(task.TenantID, task.TaskID, fn)
+		},
 	})
 	svc.SetWorkerPool(pool)
 	if err := svc.ConfigureRedisResultStore(cfg.Redis, logger, "crawler:1688:task-result", 6*time.Hour); err != nil {
@@ -92,7 +99,9 @@ func (s *Service) SubmitTask(crawlerTask *shared.CrawlerTask) error {
 		return err
 	}
 
-	if err := s.StoreResult(crawlerTask.TaskID, shared.NewCrawlerResult(crawlerTask.TaskID)); err != nil {
+	result := shared.NewCrawlerResult(crawlerTask.TaskID)
+	result.TenantID = crawlerTask.TenantID
+	if err := s.StoreResult(crawlerTask.TaskID, result); err != nil {
 		return fmt.Errorf("persist crawler task result: %w", err)
 	}
 

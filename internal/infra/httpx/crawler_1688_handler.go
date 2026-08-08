@@ -29,6 +29,7 @@ func NewCrawler1688Handler(crawlerService CrawlerService, logger *logrus.Logger,
 		baseCrawlerHandler: baseCrawlerHandler{
 			crawlerService: crawlerService,
 			logger:         logger,
+			tenantResolver: tenantResolver,
 		},
 		tenantResolver: tenantResolver,
 	}
@@ -63,7 +64,7 @@ func (h *Crawler1688Handler) handleCrawl(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	var tenantID int64
-	if req.SourceAccountID > 0 {
+	if req.SourceAccountID > 0 || h.tenantResolver != nil {
 		var ok bool
 		tenantID, ok = h.resolveTenant(r.Context())
 		if !ok {

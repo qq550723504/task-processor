@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/tenantbridge"
 )
 
 func TestNewAPIServiceWithStoreRepositoryWiresAccountProfileResolver(t *testing.T) {
@@ -118,4 +119,23 @@ func TestVerifiedCrawlerTenantResolverRejectsNonNumericTenantIdentity(t *testing
 	if ok || tenantID != 0 {
 		t.Fatalf("resolver = (%d, %t), want (0, false)", tenantID, ok)
 	}
+}
+
+func TestVerifiedCrawlerTenantResolverUsesLegacyTenantBridge(t *testing.T) {
+	restore := tenantbridge.ConfigureLegacyTenantResolver(staticLegacyTenantResolver{value: 227})
+	defer restore()
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", nil)
+	request = request.WithContext(listingkit.WithAuthenticatedIdentity(request.Context(), listingkit.AuthenticatedIdentity{TenantID: "373211199677923496"}))
+
+	tenantID, ok := verifiedCrawlerTenantResolver(request.Context())
+
+	if !ok || tenantID != 227 {
+		t.Fatalf("resolver = (%d, %t), want (227, true)", tenantID, ok)
+	}
+}
+
+type staticLegacyTenantResolver struct{ value int64 }
+
+func (r staticLegacyTenantResolver) ResolveLegacyTenantID(context.Context, string) (int64, bool, error) {
+	return r.value, true, nil
 }

@@ -38,7 +38,7 @@ func newAlibaba1688BrowserManager(cfg *config.Config, profile *AccountProfile) *
 	manager := sharedbrowser.NewManager(runtimeConfig.browser)
 	manager.SetUserDataDir(runtimeConfig.userDataDir)
 
-	logger.GetGlobalLogger("crawler/alibaba1688").Infof("创建1688浏览器管理器，使用共享浏览器组件，profile目录: %s", runtimeConfig.userDataDir)
+	logger.GetGlobalLogger("crawler/alibaba1688").Info("创建1688浏览器管理器，使用共享持久化浏览器组件")
 
 	return &BrowserManager{
 		Manager: manager,

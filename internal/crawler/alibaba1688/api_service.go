@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/sirupsen/logrus"
@@ -15,6 +14,7 @@ import (
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	"task-processor/internal/tenantbridge"
 )
 
 var buildListingAdminStoreRepository = listingkithttpapi.BuildListingAdminStoreRepository
@@ -31,26 +31,41 @@ type APIService struct {
 
 // NewAPIService 创建 1688 API 服务
 func NewAPIService(cfg *config.Config, logger *logrus.Logger, port int) *APIService {
+	legacyClosers := configureLegacyTenantBridge(cfg, logger)
 	if !hasConfiguredDatabase(cfg) {
-		return newAPIService(cfg, logger, port, nil, nil)
+		return newAPIService(cfg, logger, port, nil, legacyClosers)
 	}
 	repository, closers, err := buildListingAdminStoreRepository(cfg, logger)
 	if err != nil {
 		if logger != nil {
 			logger.Warn("1688 account profile repository unavailable")
 		}
-		return newAPIService(cfg, logger, port, nil, nil)
+		return newAPIService(cfg, logger, port, nil, legacyClosers)
 	}
 	if repository == nil {
-		return newAPIService(cfg, logger, port, nil, closers)
+		return newAPIService(cfg, logger, port, nil, append(legacyClosers, closers...))
 	}
-	return newAPIService(cfg, logger, port, NewAccountProfileResolver(repository, cfg.Platforms.Alibaba1688.ProfileRootDir), closers)
+	return newAPIService(cfg, logger, port, NewAccountProfileResolver(repository, cfg.Platforms.Alibaba1688.ProfileRootDir), append(legacyClosers, closers...))
 }
 
 // NewAPIServiceWithStoreRepository creates an API service that can resolve tenant-owned 1688 account profiles.
 func NewAPIServiceWithStoreRepository(cfg *config.Config, logger *logrus.Logger, port int, repository listingadmin.StoreRepository) *APIService {
 	resolver := NewAccountProfileResolver(repository, cfg.Platforms.Alibaba1688.ProfileRootDir)
-	return newAPIService(cfg, logger, port, resolver, nil)
+	return newAPIService(cfg, logger, port, resolver, configureLegacyTenantBridge(cfg, logger))
+}
+
+func configureLegacyTenantBridge(cfg *config.Config, logger *logrus.Logger) []func() error {
+	closer, err := listingkithttpapi.ConfigureLegacyTenantResolver(cfg, logger)
+	if err != nil {
+		if logger != nil {
+			logger.Warn("1688 legacy tenant bridge unavailable")
+		}
+		return nil
+	}
+	if closer == nil {
+		return nil
+	}
+	return []func() error{closer}
 }
 
 func newAPIService(cfg *config.Config, logger *logrus.Logger, port int, resolver AccountProfileResolver, repositoryClosers []func() error) *APIService {
@@ -121,14 +136,18 @@ func hasConfiguredDatabase(cfg *config.Config) bool {
 	return cfg != nil && cfg.Database != nil && strings.TrimSpace(cfg.Database.Host) != ""
 }
 
-func verifiedCrawlerTenantResolver(ctx context.Context) (int64, bool) {
+func VerifiedCrawlerTenantResolver(ctx context.Context) (int64, bool) {
 	identity, ok := listingkit.AuthenticatedIdentityFromContext(ctx)
 	if !ok {
 		return 0, false
 	}
-	tenantID, err := strconv.ParseInt(strings.TrimSpace(identity.TenantID), 10, 64)
+	tenantID, err := tenantbridge.ResolveLegacyTenantID(ctx, strings.TrimSpace(identity.TenantID))
 	if err != nil || tenantID <= 0 {
 		return 0, false
 	}
 	return tenantID, true
+}
+
+func verifiedCrawlerTenantResolver(ctx context.Context) (int64, bool) {
+	return VerifiedCrawlerTenantResolver(ctx)
 }
