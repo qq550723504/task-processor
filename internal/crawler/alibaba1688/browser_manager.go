@@ -18,27 +18,51 @@ type BrowserManager struct {
 	config *config.Config
 }
 
+type alibaba1688BrowserRuntimeConfig struct {
+	browser     *sharedbrowser.BrowserConfig
+	userDataDir string
+}
+
 // NewBrowserManager 创建1688浏览器管理器
 func NewBrowserManager(cfg *config.Config) *BrowserManager {
-	// 创建浏览器配置
-	browserConfig := &sharedbrowser.BrowserConfig{
-		Headless:       cfg.Browser.Headless,
-		BrowserPath:    cfg.Browser.BrowserPath,
-		ViewportWidth:  cfg.Browser.ViewportWidth,
-		ViewportHeight: cfg.Browser.ViewportHeight,
-		UserAgent:      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-	}
+	return newAlibaba1688BrowserManager(cfg, nil)
+}
 
-	manager := sharedbrowser.NewManager(browserConfig)
-	userDataDir := resolveAlibaba1688UserDataDir(cfg)
-	manager.SetUserDataDir(userDataDir)
+// NewBrowserManagerForAccountProfile creates an isolated browser manager for one account profile.
+func NewBrowserManagerForAccountProfile(cfg *config.Config, profile AccountProfile) *BrowserManager {
+	return newAlibaba1688BrowserManager(cfg, &profile)
+}
 
-	logger.GetGlobalLogger("crawler/alibaba1688").Infof("创建1688浏览器管理器，使用共享浏览器组件，profile目录: %s", userDataDir)
+func newAlibaba1688BrowserManager(cfg *config.Config, profile *AccountProfile) *BrowserManager {
+	runtimeConfig := newAlibaba1688BrowserRuntimeConfig(cfg, profile)
+	manager := sharedbrowser.NewManager(runtimeConfig.browser)
+	manager.SetUserDataDir(runtimeConfig.userDataDir)
+
+	logger.GetGlobalLogger("crawler/alibaba1688").Infof("创建1688浏览器管理器，使用共享浏览器组件，profile目录: %s", runtimeConfig.userDataDir)
 
 	return &BrowserManager{
 		Manager: manager,
 		config:  cfg,
 	}
+}
+
+func newAlibaba1688BrowserRuntimeConfig(cfg *config.Config, profile *AccountProfile) alibaba1688BrowserRuntimeConfig {
+	browserConfig := &sharedbrowser.BrowserConfig{
+		UserAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+	}
+	userDataDir := resolveAlibaba1688UserDataDir(cfg)
+	if cfg != nil {
+		browserConfig.Headless = cfg.Browser.Headless
+		browserConfig.BrowserPath = cfg.Browser.BrowserPath
+		browserConfig.ProxyServer = cfg.Browser.ProxyServer
+		browserConfig.ViewportWidth = cfg.Browser.ViewportWidth
+		browserConfig.ViewportHeight = cfg.Browser.ViewportHeight
+	}
+	if profile != nil {
+		userDataDir = profile.ProfileDir
+		browserConfig.ProxyServer = profile.ProxyServer
+	}
+	return alibaba1688BrowserRuntimeConfig{browser: browserConfig, userDataDir: userDataDir}
 }
 
 func resolveAlibaba1688UserDataDir(cfg *config.Config) string {

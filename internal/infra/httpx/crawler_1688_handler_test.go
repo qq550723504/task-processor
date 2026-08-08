@@ -47,6 +47,24 @@ func TestCrawler1688HandlerRejectsLegacySourceStoreID(t *testing.T) {
 	}
 }
 
+func TestCrawler1688HandlerRejectsNegativeSourceAccountID(t *testing.T) {
+	service := &stub1688CrawlerService{}
+	handler := NewCrawler1688Handler(service, logrus.New())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", strings.NewReader(`{"url":"https://detail.1688.com/offer/3001.html","source_account_id":-1}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.RegisterRoutes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if service.task != nil {
+		t.Fatalf("task = %+v, want no crawler submission for negative source account id", service.task)
+	}
+}
+
 type stub1688CrawlerService struct {
 	task *shared.CrawlerTask
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/crawler/shared"
 	"task-processor/internal/infra/httpx"
 	"task-processor/internal/infra/worker"
@@ -21,19 +22,31 @@ var _ httpx.CrawlerService = (*Service)(nil)
 // Service 1688爬虫应用服务
 type Service struct {
 	shared.BaseService
-	config        *config.Config
-	logger        *logrus.Logger
-	processor1688 *Alibaba1688Processor
+	config                 *config.Config
+	logger                 *logrus.Logger
+	processor1688          alibaba1688TaskProcessor
+	accountProfileResolver AccountProfileResolver
+}
+
+type alibaba1688TaskProcessor interface {
+	Process(string) (*model.Product1688, error)
+	ProcessWithAccountProfile(string, AccountProfile) (*model.Product1688, error)
+	Shutdown()
 }
 
 // NewService 创建1688爬虫应用服务
-func NewService(cfg *config.Config, logger *logrus.Logger) *Service {
+func NewService(cfg *config.Config, logger *logrus.Logger, resolvers ...AccountProfileResolver) *Service {
 	processor1688 := NewAlibaba1688Processor(cfg)
+	var resolver AccountProfileResolver
+	if len(resolvers) > 0 {
+		resolver = resolvers[0]
+	}
 
 	svc := &Service{
-		config:        cfg,
-		logger:        logger,
-		processor1688: processor1688,
+		config:                 cfg,
+		logger:                 logger,
+		processor1688:          processor1688,
+		accountProfileResolver: resolver,
 	}
 
 	poolConfig := worker.DefaultPoolConfig()

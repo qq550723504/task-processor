@@ -48,6 +48,10 @@ func (h *Crawler1688Handler) handleCrawl(w http.ResponseWriter, r *http.Request)
 		BadRequest(w, err.Error())
 		return
 	}
+	if req.SourceAccountID < 0 {
+		BadRequest(w, "source_account_id must not be negative")
+		return
+	}
 	crawlerTask := shared.NewCrawlerTask(req.URL)
 	crawlerTask.SourceAccountID = req.SourceAccountID
 	if req.OfferID != "" {

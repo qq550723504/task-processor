@@ -5,10 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
+	"task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/crawler/shared"
 	"task-processor/internal/infra/worker"
 )
+
+type globallyUniqueAccountProfileResolver interface {
+	AccountProfileResolver
+	ResolveAlibaba1688AccountByUniqueID(context.Context, int64) (AccountProfile, error)
+}
 
 // Crawler1688Processor 实现 worker.Processor 接口
 type Crawler1688Processor struct {
@@ -28,9 +35,22 @@ func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.Worke
 		return fmt.Errorf("解析任务数据失败: %w", err)
 	}
 
-	product, err := p.service.processor1688.Process(crawlerTask.URL)
-	if err != nil {
-		return err
+	var product *model.Product1688
+	if crawlerTask.SourceAccountID > 0 {
+		profile, err := p.service.resolveAccountProfile(ctx, crawlerTask.SourceAccountID)
+		if err != nil {
+			return err
+		}
+		product, err = p.service.processor1688.ProcessWithAccountProfile(crawlerTask.URL, profile)
+		if err != nil {
+			return err
+		}
+	} else {
+		resolvedProduct, err := p.service.processor1688.Process(crawlerTask.URL)
+		if err != nil {
+			return err
+		}
+		product = resolvedProduct
 	}
 
 	p.service.UpdateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
@@ -38,4 +58,23 @@ func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.Worke
 	})
 
 	return nil
+}
+
+func (s *Service) resolveAccountProfile(ctx context.Context, accountID int64) (AccountProfile, error) {
+	if s == nil || accountID <= 0 || s.accountProfileResolver == nil {
+		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+	}
+
+	resolver, ok := s.accountProfileResolver.(globallyUniqueAccountProfileResolver)
+	if !ok {
+		// The worker task has no trusted tenant context. A tenant-scoped resolver
+		// must never be invoked with caller-controlled or invented tenant data.
+		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+	}
+
+	profile, err := resolver.ResolveAlibaba1688AccountByUniqueID(ctx, accountID)
+	if err != nil || profile.ID != accountID || profile.TenantID <= 0 || strings.TrimSpace(profile.ProfileDir) == "" {
+		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+	}
+	return profile, nil
 }
