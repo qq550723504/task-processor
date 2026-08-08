@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { vi } from "vitest";
 
+import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
+
 export const useQuery = vi.fn();
 export const generateSheinStudioDesigns = vi.fn();
 export const analyzeSheinStudioReferenceStyle = vi.fn();
@@ -444,7 +446,7 @@ export const groupedSelection = {
 export function buildHydratedBatch(
   savedBatchOverrides: Record<string, unknown> = {},
   detailOverrides: Record<string, unknown> = {},
-) {
+): SheinStudioWorkbenchHydratedBatch {
   return {
     savedBatch: {
       id: "batch-1",
@@ -468,6 +470,7 @@ export function buildHydratedBatch(
         prompt: "retro cherries",
         styleCount: "1",
         sheinStoreId: 869,
+        transparentBackgroundMode: "none",
         createdAt: "2026-05-26T09:59:00.000Z",
         updatedAt: "2026-05-26T10:00:00.000Z",
       },
