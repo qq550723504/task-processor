@@ -292,3 +292,104 @@ func TestRetryStudioBatchDesignBackgroundRemovalClearsStaleModelOnFailure(t *tes
 		t.Fatalf("failed retry model = %q, want stale model cleared", model)
 	}
 }
+
+func TestRetryStudioBatchDesignBackgroundRemovalPersistsPendingWithBaseRepositoryFallback(t *testing.T) {
+	t.Parallel()
+
+	inner := NewMemStudioBatchRepository()
+	repo := &studioBackgroundRemovalBaseRepository{StudioBatchRepository: inner}
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+	if err := inner.CreateStudioBatchGraph(ctx, &StudioBatchRecord{ID: "batch-1", Status: StudioBatchStatusReviewReady, CreatedAt: now, UpdatedAt: now}, []StudioBatchItemRecord{{ID: "item-1", BatchID: "batch-1", Status: StudioBatchItemStatusReviewReady, CreatedAt: now, UpdatedAt: now}}, nil, []StudioMaterializedDesignRecord{{
+		ID:                      "design-1",
+		BatchID:                 "batch-1",
+		ItemID:                  "item-1",
+		ImageURL:                "https://cdn.example.test/original.png",
+		BackgroundRemovalStatus: StudioBackgroundRemovalStatusNotRequested,
+		CreatedAt:               now,
+		UpdatedAt:               now,
+	}}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	providerCalls := 0
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo: repo,
+		retryBackgroundRemoval: func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error) {
+			providerCalls++
+			return &studioBackgroundRemovalMaterialization{ImageURL: "https://cdn.example.test/removed.png"}, nil
+		},
+	})
+
+	if _, err := svc.RetryStudioBatchDesignBackgroundRemoval(ctx, "batch-1", &RetryStudioBatchDesignBackgroundRemovalRequest{DesignIDs: []string{"design-1"}}); err != nil {
+		t.Fatalf("RetryStudioBatchDesignBackgroundRemoval() error = %v", err)
+	}
+	if providerCalls != 1 {
+		t.Fatalf("provider calls = %d, want 1", providerCalls)
+	}
+	if repo.updates < 2 {
+		t.Fatalf("base repository updates = %d, want pending and completion updates", repo.updates)
+	}
+}
+
+func TestRetryStudioBatchDesignBackgroundRemovalRejectsDesignWithOwnedTask(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+	if err := repo.CreateStudioBatchGraph(ctx, &StudioBatchRecord{ID: "batch-1", Status: StudioBatchStatusReviewReady, CreatedAt: now, UpdatedAt: now}, []StudioBatchItemRecord{{ID: "item-1", BatchID: "batch-1", Status: StudioBatchItemStatusReviewReady, CreatedAt: now, UpdatedAt: now}}, nil, []StudioMaterializedDesignRecord{{
+		ID:                        "design-1",
+		BatchID:                   "batch-1",
+		ItemID:                    "item-1",
+		ImageURL:                  "https://cdn.example.test/original.png",
+		BackgroundRemovalStatus:   StudioBackgroundRemovalStatusFailed,
+		TransparentBackgroundMode: StudioTransparencyModeRemoval,
+		CreatedAt:                 now,
+		UpdatedAt:                 now,
+	}}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+	if err := linkRepo.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID:               "link-1",
+		BatchID:          "batch-1",
+		ItemID:           "item-1",
+		DesignID:         "design-1",
+		SelectionID:      "selection-1",
+		CandidateKey:     "candidate-1",
+		ListingKitTaskID: "task-1",
+		Status:           studioBatchTaskLinkStatusCreated,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+
+	providerCalls := 0
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              repo,
+		batchTaskLinkRepo: linkRepo,
+		retryBackgroundRemoval: func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error) {
+			providerCalls++
+			return &studioBackgroundRemovalMaterialization{ImageURL: "https://cdn.example.test/removed.png"}, nil
+		},
+	})
+
+	if _, err := svc.RetryStudioBatchDesignBackgroundRemoval(ctx, "batch-1", &RetryStudioBatchDesignBackgroundRemovalRequest{DesignIDs: []string{"design-1"}}); err == nil {
+		t.Fatal("RetryStudioBatchDesignBackgroundRemoval() error = nil, want owned-task validation error")
+	}
+	if providerCalls != 0 {
+		t.Fatalf("provider calls = %d, want 0", providerCalls)
+	}
+}
+
+type studioBackgroundRemovalBaseRepository struct {
+	StudioBatchRepository
+	updates int
+}
+
+func (r *studioBackgroundRemovalBaseRepository) UpdateStudioMaterializedDesign(ctx context.Context, design *StudioMaterializedDesignRecord) error {
+	r.updates++
+	return r.StudioBatchRepository.UpdateStudioMaterializedDesign(ctx, design)
+}

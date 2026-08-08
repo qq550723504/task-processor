@@ -188,6 +188,67 @@ describe("SheinDesignPreviewGrid", () => {
     expect(screen.getByRole("button", { name: "重新抠图" })).toBeDisabled();
   });
 
+  it("disables both conflicting operations for a persisted pending removal", () => {
+    render(
+      <SheinDesignPreviewGrid
+        createActionDisabledReason={undefined}
+        designs={[{
+          id: "design-1",
+          imageUrl: "https://cdn.example.test/design.png",
+          backgroundRemovalStatus: "pending",
+        }]}
+        imageStrategy="hybrid"
+        onCreateReviewTasks={vi.fn()}
+        onRegenerate={vi.fn()}
+        onRetryBackgroundRemoval={vi.fn()}
+        onToggle={vi.fn()}
+        productImageCount="3"
+        renderSizeImagesWithSds
+        selectedIds={[]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "重新生成" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新抠图" })).toBeDisabled();
+  });
+
+  it("blocks task creation while any background removal request is running", () => {
+    const onCreateReviewTasks = vi.fn();
+
+    render(
+      <SheinDesignPreviewGrid
+        createActionDisabledReason={undefined}
+        designs={[
+          {
+            id: "design-1",
+            imageUrl: "https://cdn.example.test/design-1.png",
+          },
+          {
+            id: "design-2",
+            imageUrl: "https://cdn.example.test/design-2.png",
+          },
+        ]}
+        imageStrategy="hybrid"
+        onCreateReviewTasks={onCreateReviewTasks}
+        onRegenerate={vi.fn()}
+        onRetryBackgroundRemoval={vi.fn()}
+        onToggle={vi.fn()}
+        productImageCount="3"
+        renderSizeImagesWithSds
+        retryingBackgroundRemovalId="design-2"
+        selectedIds={["design-1"]}
+      />,
+    );
+
+    const createButton = screen.getByRole("button", {
+      name: "为已批准款式生成 SHEIN 资料",
+    });
+    expect(createButton).toBeDisabled();
+
+    fireEvent.click(createButton);
+    expect(onCreateReviewTasks).not.toHaveBeenCalled();
+  });
+
   it("keeps both previews visible in read-only mode while hiding the manual retry action", () => {
     render(
       <SheinDesignPreviewGrid
