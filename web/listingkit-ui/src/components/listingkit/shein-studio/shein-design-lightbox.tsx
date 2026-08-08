@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   resolveGeneratedDesignFinalSrc,
   resolveGeneratedDesignOriginalSrc,
+  resolveGeneratedDesignSrc,
 } from "@/lib/shein-studio/design-image";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type { SheinStudioGeneratedDesign } from "@/lib/types/shein-studio";
@@ -89,7 +90,8 @@ export function SheinDesignLightbox({
     return null;
   }
 
-  const designSrc = resolveGeneratedDesignFinalSrc(design) || design.imageUrl || design.dataUrl || "";
+  const designSrc =
+    resolveGeneratedDesignFinalSrc(design) || resolveGeneratedDesignSrc(design);
   const originalDesignSrc = design.originalImageUrl
     ? resolveGeneratedDesignOriginalSrc(design)
     : "";

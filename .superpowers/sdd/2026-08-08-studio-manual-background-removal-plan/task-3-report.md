@@ -77,3 +77,37 @@ Result: `2 passed, 9 passed`.
 ## Concerns
 
 - Focused component tests pass, but I did not run broader Studio suites in this task because the brief explicitly asked for focused test coverage.
+
+## Task 3 fix round 1
+
+Review finding: when `resolveGeneratedDesignFinalSrc` returned an empty string for a pending, failed, or not-requested removal, the lightbox fell back to raw `imageUrl`/`dataUrl` values and could render a legacy `/api/v1/...` upload path.
+
+### TDD RED
+
+Added a pending-state lightbox regression test using:
+
+```text
+/api/v1/listing-kits/uploads/files/pending-image.png
+```
+
+Command:
+
+```powershell
+npm.cmd test -- src/components/listingkit/shein-studio/shein-design-lightbox.test.tsx
+```
+
+Result: `1 failed | 1 passed`; the rendered image still had the legacy `/api/v1/listing-kits/uploads/files/pending-image.png` source, confirming the expected failure.
+
+### TDD GREEN
+
+Changed the lightbox fallback to `resolveGeneratedDesignSrc(design)`, preserving the succeeded final-image preference while normalizing the current image in every removal state.
+
+Command:
+
+```powershell
+npm.cmd test -- src/components/listingkit/shein-studio/shein-design-preview-grid.test.tsx src/components/listingkit/shein-studio/shein-design-lightbox.test.tsx
+```
+
+Result: `2 passed`; `10 passed` tests.
+
+No backend files or `design-image.ts` changes were made.

@@ -11,6 +11,27 @@ vi.mock("next/image", () => ({
 import { SheinDesignLightbox } from "@/components/listingkit/shein-studio/shein-design-lightbox";
 
 describe("SheinDesignLightbox", () => {
+  it("normalizes the current image URL when background removal is not complete", () => {
+    render(
+      <SheinDesignLightbox
+        activeView="design"
+        design={{
+          id: "design-pending",
+          imageUrl:
+            "/api/v1/listing-kits/uploads/files/pending-image.png",
+          backgroundRemovalStatus: "pending",
+        }}
+        onClose={vi.fn()}
+        onViewChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByAltText("生成款式预览")).toHaveAttribute(
+      "src",
+      "/api/listing-kits/uploads/files/pending-image.png",
+    );
+  });
+
   it("normalizes uploaded original image URLs before rendering the original view", () => {
     render(
       <SheinDesignLightbox
