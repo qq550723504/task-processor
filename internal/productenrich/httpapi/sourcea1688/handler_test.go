@@ -127,6 +127,26 @@ func TestCreateListingKitTaskRejectsInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestCreateListingKitTaskRejectsLegacySourceStoreID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &fakeTaskCommandService{}
+	router := gin.New()
+	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
+
+	req := httptest.NewRequest(http.MethodPost, "/tasks", bytes.NewBufferString(`{"url":"https://detail.1688.com/offer/1005.html","source_store_id":3001}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-http"}))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if service.command.URL != "" {
+		t.Fatalf("command = %+v, want no service call for source_store_id", service.command)
+	}
+}
+
 func TestCreateListingKitTaskRequiresVerifiedIdentity(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	service := &fakeTaskCommandService{}

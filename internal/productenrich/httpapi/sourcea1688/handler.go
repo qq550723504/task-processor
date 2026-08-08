@@ -1,8 +1,11 @@
 package sourcea1688
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -59,6 +62,10 @@ func (h *Handler) CreateListingKitTask(c *gin.Context) {
 		return
 	}
 	var req CreateListingKitTaskRequest
+	if err := rejectLegacySourceStoreID(c); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
@@ -86,6 +93,25 @@ func (h *Handler) CreateListingKitTask(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, responseFromCreateTaskResult(result))
+}
+
+func rejectLegacySourceStoreID(c *gin.Context) error {
+	if c == nil || c.Request == nil || c.Request.Body == nil {
+		return errors.New("request body is required")
+	}
+	payload, err := c.GetRawData()
+	if err != nil {
+		return err
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(payload))
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		return err
+	}
+	if _, ok := fields["source_store_id"]; ok {
+		return errors.New("source_store_id is not supported; use source_account_id")
+	}
+	return nil
 }
 
 func writeStoreAccessError(c *gin.Context, err error) bool {
