@@ -111,3 +111,49 @@ npm.cmd test -- src/components/listingkit/shein-studio/shein-design-preview-grid
 Result: `2 passed`; `10 passed` tests.
 
 No backend files or `design-image.ts` changes were made.
+
+## Final whole-branch review fix wave
+
+### Findings addressed
+
+- Ordinary `none` / `not_requested` cards now render the same original and removed panes as removal-mode cards, including the neutral `尚未抠图` state.
+- Pending and failed cards keep their exact `抠图处理中` and `抠图失败，当前显示原图` states; failed removal errors remain visible without hiding the original pane.
+- The lightbox design-view label is `抠图后` only when `resolveGeneratedDesignFinalSrc` returns a confirmed final URL; ordinary, pending, and failed current images are labeled `原图` while their normalized current source remains intact.
+- Regeneration and background-removal retry are mutually disabled for the same design ID, while each action keeps its independent loading label.
+- `重新抠图` is now gated by `readOnly` and the optional callback independently of `canRegenerate`; `canRegenerate` only controls `重新生成`.
+- `not_requested` and succeeded-without-final-result states use neutral status styling and `尚未抠图`, never the success styling.
+
+### TDD RED
+
+Added or updated focused regression tests in:
+
+- `web/listingkit-ui/src/components/listingkit/shein-studio/shein-design-preview-grid.test.tsx`
+- `web/listingkit-ui/src/components/listingkit/shein-studio/shein-design-lightbox.test.tsx`
+
+Command:
+
+```powershell
+npm.cmd test -- src/components/listingkit/shein-studio/shein-design-preview-grid.test.tsx src/components/listingkit/shein-studio/shein-design-lightbox.test.tsx
+```
+
+Result: expected RED — `5 failed | 9 passed` across the two files. The failures covered the missing ordinary dual panes/action, missing cross-operation disabling, and static lightbox `抠图后` labels for ordinary, pending, and failed states.
+
+### TDD GREEN and typecheck
+
+Implemented the minimal UI changes only in the preview grid and lightbox. The focused suite then passed:
+
+```powershell
+npm.cmd test -- src/components/listingkit/shein-studio/shein-design-preview-grid.test.tsx src/components/listingkit/shein-studio/shein-design-lightbox.test.tsx
+```
+
+Result: `2 passed`; `14 passed` tests.
+
+Typecheck:
+
+```powershell
+npm.cmd run typecheck
+```
+
+Result: exit code `0`; `tsc --noEmit` completed successfully.
+
+No backend files or `design-image.ts` changes were made in this fix wave.

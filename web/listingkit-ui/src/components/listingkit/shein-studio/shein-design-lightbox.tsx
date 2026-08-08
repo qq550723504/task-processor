@@ -90,8 +90,9 @@ export function SheinDesignLightbox({
     return null;
   }
 
-  const designSrc =
-    resolveGeneratedDesignFinalSrc(design) || resolveGeneratedDesignSrc(design);
+  const finalDesignSrc = resolveGeneratedDesignFinalSrc(design);
+  const hasConfirmedFinal = Boolean(finalDesignSrc);
+  const designSrc = finalDesignSrc || resolveGeneratedDesignSrc(design);
   const originalDesignSrc = design.originalImageUrl
     ? resolveGeneratedDesignOriginalSrc(design)
     : "";
@@ -148,7 +149,7 @@ export function SheinDesignLightbox({
               onClick={() => onViewChange("design")}
               variant={activeView === "design" ? "primary" : "secondary"}
             >
-              抠图后
+              {hasConfirmedFinal ? "抠图后" : "原图"}
             </Button>
             {originalDesignSrc ? (
               <Button
