@@ -101,6 +101,24 @@ func TestCrawler1688ProcessorStopsBeforeProcessingWhenAccountResolutionFails(t *
 	}
 }
 
+func TestCrawler1688ProcessorPreservesDisabledAccountError(t *testing.T) {
+	resolver := &fakeAccountProfileResolver{err: newAccountProfileError(AccountProfileDisabled, "resolver says disabled")}
+	processor := &fakeAlibaba1688TaskProcessor{}
+	service := newTestAlibaba1688Service(processor, resolver)
+
+	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, 3001))
+
+	if AccountProfileErrorCode(err) != AccountProfileDisabled {
+		t.Fatalf("account profile error code = %q, want %q", AccountProfileErrorCode(err), AccountProfileDisabled)
+	}
+	if err.Error() != "1688 account is disabled" {
+		t.Fatalf("error = %q, want stable disabled message", err)
+	}
+	if processor.called() {
+		t.Fatal("processor was called after disabled account resolution")
+	}
+}
+
 func TestCrawler1688ProcessorUsesGlobalFallbackWithoutAccountID(t *testing.T) {
 	processor := &fakeAlibaba1688TaskProcessor{}
 	service := newTestAlibaba1688Service(processor, nil)

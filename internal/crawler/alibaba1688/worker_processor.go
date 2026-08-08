@@ -65,7 +65,13 @@ func (s *Service) resolveAccountProfile(ctx context.Context, tenantID, accountID
 	}
 
 	profile, err := s.accountProfileResolver.ResolveAlibaba1688Account(ctx, tenantID, accountID)
-	if err != nil || profile.ID != accountID || profile.TenantID != tenantID || strings.TrimSpace(profile.ProfileDir) == "" {
+	if err != nil {
+		if AccountProfileErrorCode(err) == AccountProfileDisabled {
+			return AccountProfile{}, newAccountProfileError(AccountProfileDisabled, "1688 account is disabled")
+		}
+		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+	}
+	if profile.ID != accountID || profile.TenantID != tenantID || strings.TrimSpace(profile.ProfileDir) == "" {
 		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
 	}
 	return profile, nil
