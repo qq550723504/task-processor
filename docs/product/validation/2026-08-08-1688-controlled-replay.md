@@ -80,3 +80,20 @@ This replay closes the deterministic data-propagation and failure-reporting evid
 - live 1688 crawler behavior and real SHEIN submission.
 
 No source-specific marketplace preview or submission owner was added.
+
+## Local runtime preflight entrypoint follow-up
+
+The existing `scripts/start-listingkit-api-local-replay.ps1` entry point was made
+checkout-path independent by resolving the repository root from `$PSScriptRoot`.
+The focused PowerShell regression test passed (2 passed, 0 failed), including the
+PowerShell parser check and the stale-path assertion. This only proves that the
+local process can be started from the current checkout; it does not prove that
+the API is running or that credentials, port-forwarding, tenant access, and store
+access are available.
+
+The next operator run must remain GET-only until all preflight checks pass:
+
+1. Start the existing local database/Redis/Temporal port-forward stack.
+2. Start the local API from the corrected entry point.
+3. Check `/health`, bearer-token authentication, tenant visibility, and store visibility.
+4. Stop and record a blocker if any dependency is unavailable; do not create a 1688 task automatically.
