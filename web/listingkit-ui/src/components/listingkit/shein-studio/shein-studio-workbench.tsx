@@ -148,6 +148,7 @@ import {
 } from "@/lib/utils/shein-studio-batches";
 import { buildGroupedSDSSelectionID } from "@/lib/types/sds-baseline";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
+import type { SheinStudioBatchDetail } from "@/lib/types/shein-studio-batch";
 
 type SheinStudioWorkbenchProps = {
   activeStep?: SheinStudioStepKey;
@@ -156,6 +157,29 @@ type SheinStudioWorkbenchProps = {
 };
 
 export { resetDedicatedBatchPromptOverrides };
+
+function mergeManualUploadDetail(
+  current: SheinStudioBatchDetail,
+  response: SheinStudioBatchDetail,
+  designId: string,
+): SheinStudioBatchDetail {
+  const responseDesign = response.items
+    .flatMap((item) => item.designs)
+    .find((design) => design.id === designId);
+  if (!responseDesign) {
+    return current;
+  }
+  return {
+    ...current,
+    batch: response.batch,
+    items: current.items.map((item) => ({
+      ...item,
+      designs: item.designs.map((design) =>
+        design.id === designId ? responseDesign : design,
+      ),
+    })),
+  };
+}
 
 export function SheinStudioWorkbench({
   activeStep = "generate",
@@ -237,6 +261,8 @@ export function SheinStudioWorkbench({
     transparentBackgroundMode,
     variationIntensity,
   } = workbenchState;
+  const itemizedBatchDetailRef = useRef(itemizedBatchDetail);
+  itemizedBatchDetailRef.current = itemizedBatchDetail;
   const {
     setArtworkModel,
     setBatchQueueMode,
@@ -1419,12 +1445,27 @@ export function SheinStudioWorkbench({
     clearWorkbenchTaskRecoveryAlerts(workbenchController);
 
     try {
-      const nextDetail = await uploadManualSheinStudioBackgroundRemoval(
-        activeBatchId,
-        designId,
-        file,
+      const tenantId =
+        itemizedBatchDetail.batch.tenantId?.trim() ||
+        currentActiveBatch?.tenantId?.trim();
+      const nextDetail = tenantId
+        ? await uploadManualSheinStudioBackgroundRemoval(
+            activeBatchId,
+            designId,
+            file,
+            { tenantId },
+          )
+        : await uploadManualSheinStudioBackgroundRemoval(
+            activeBatchId,
+            designId,
+            file,
+          );
+      const currentDetail = itemizedBatchDetailRef.current;
+      applyItemizedBatchDetail(
+        currentDetail
+          ? mergeManualUploadDetail(currentDetail, nextDetail, designId)
+          : nextDetail,
       );
-      applyItemizedBatchDetail(nextDetail);
     } catch (error) {
       const message = `上传手动抠图失败：${formatSubscriptionApiError(error)}`;
       workbenchController.setField(

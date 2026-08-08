@@ -18,6 +18,11 @@ import type {
   SheinStudioImageStrategy,
 } from "@/lib/types/shein-studio";
 
+function originalDownloadFilename(designId: string, src: string): string {
+  const extension = src.match(/\.([a-z0-9]{2,5})(?:[?#]|$)/i)?.[1];
+  return `studio-${designId}-original${extension ? `.${extension}` : ""}`;
+}
+
 export function SheinDesignPreviewGrid({
   designs,
   selectedIds,
@@ -77,6 +82,9 @@ export function SheinDesignPreviewGrid({
   const [manualUploadErrors, setManualUploadErrors] = useState<
     Record<string, string>
   >({});
+  const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>(
+    {},
+  );
   const activeManualUploadIds =
     uploadingManualBackgroundRemovalIds ??
     (uploadingManualBackgroundRemovalId
@@ -135,7 +143,8 @@ export function SheinDesignPreviewGrid({
               readOnly ||
               !onUploadManualBackgroundRemoval ||
               design.backgroundRemovalStatus === "pending" ||
-              retryingBackgroundRemovalId === design.id;
+              retryingBackgroundRemovalId === design.id ||
+              regeneratingId === design.id;
             const isUploadingManualBackgroundRemoval =
               activeManualUploadIds.includes(design.id);
             return (
@@ -254,10 +263,27 @@ export function SheinDesignPreviewGrid({
                           <Button
                             disabled={isUploadingManualBackgroundRemoval}
                             onClick={() => {
-                              void downloadStudioImage(
-                                originalSrc,
-                                `studio-${design.id}-original.png`,
-                              );
+                              void Promise.resolve(
+                                downloadStudioImage(
+                                  originalSrc,
+                                  originalDownloadFilename(design.id, originalSrc),
+                                ),
+                              )
+                                .then(() => {
+                                  setDownloadErrors((current) => ({
+                                    ...current,
+                                    [design.id]: "",
+                                  }));
+                                })
+                                .catch((error) => {
+                                  setDownloadErrors((current) => ({
+                                    ...current,
+                                    [design.id]:
+                                      error instanceof Error
+                                        ? error.message
+                                        : "下载原图失败，请重试。",
+                                  }));
+                                });
                             }}
                             size="sm"
                             type="button"
@@ -267,6 +293,11 @@ export function SheinDesignPreviewGrid({
                           </Button>
                         ) : null}
                       </div>
+                      {downloadErrors[design.id] ? (
+                        <div className="text-xs text-rose-700">
+                          {downloadErrors[design.id]}
+                        </div>
+                      ) : null}
                       <Button
                         aria-label="原图"
                         className="relative block aspect-square h-auto w-full overflow-hidden rounded-[1.25rem] border-zinc-200 bg-zinc-950/5 p-0"

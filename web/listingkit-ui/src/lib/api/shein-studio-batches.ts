@@ -339,7 +339,7 @@ function mapStudioBatch(
   return batch;
 }
 
-type SheinStudioBatchRequestOptions = {
+export type SheinStudioBatchRequestOptions = {
   allowPartialWhileGenerating?: boolean;
   tenantId?: string;
 };
@@ -707,6 +707,7 @@ export async function uploadManualSheinStudioBackgroundRemoval(
   batchId: string,
   designId: string,
   file: File,
+  options?: SheinStudioBatchRequestOptions,
 ): Promise<SheinStudioBatchDetail> {
   await assertRealPngUpload(file);
   const formData = new FormData();
@@ -715,6 +716,7 @@ export async function uploadManualSheinStudioBackgroundRemoval(
     `/studio/batches/${batchId}/designs/${designId}/manual-background-removal`,
     {
       method: "POST",
+      query: buildStudioBatchQuery(options),
       formData,
     },
   );

@@ -10,20 +10,27 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingsubscription"
 )
 
 type studioSessionHandler struct {
-	service          listingkit.StudioSessionHandlerService
-	resumeDispatcher *studioBatchResumeDispatcher
+	service             listingkit.StudioSessionHandlerService
+	subscriptionService *listingsubscription.Service
+	resumeDispatcher    *studioBatchResumeDispatcher
 }
 
-func NewStudioSessionHandler(service listingkit.StudioSessionHandlerService) (listingkit.StudioSessionHandler, error) {
+func NewStudioSessionHandler(service listingkit.StudioSessionHandlerService, subscriptionServices ...*listingsubscription.Service) (listingkit.StudioSessionHandler, error) {
 	if service == nil {
 		return nil, errors.New("service cannot be nil")
 	}
+	var subscriptionService *listingsubscription.Service
+	if len(subscriptionServices) > 0 {
+		subscriptionService = subscriptionServices[0]
+	}
 	return &studioSessionHandler{
-		service:          service,
-		resumeDispatcher: newStudioBatchResumeDispatcher(),
+		service:             service,
+		subscriptionService: subscriptionService,
+		resumeDispatcher:    newStudioBatchResumeDispatcher(),
 	}, nil
 }
 
@@ -187,6 +194,9 @@ func (h *studioSessionHandler) ApplyManualStudioBatchDesignBackgroundRemoval(c *
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
+	if h.subscriptionService != nil && !authorizeSubscriptionUsage(c, h.subscriptionService, listingsubscription.ModuleOSSStorage, "storage_bytes", len(data)) {
+		return
+	}
 
 	detail, err := h.service.ApplyManualStudioBatchDesignBackgroundRemoval(requestContext(c), c.Param("batch_id"), c.Param("design_id"), &listingkit.ImageUploadInput{
 		Filename:    fileHeader.Filename,
@@ -196,6 +206,10 @@ func (h *studioSessionHandler) ApplyManualStudioBatchDesignBackgroundRemoval(c *
 	if err != nil {
 		writeStudioBatchActionError(c, "studio_manual_background_removal_failed", err)
 		return
+	}
+	if h.subscriptionService != nil {
+		_, _ = h.subscriptionService.RecordUsage(requestContext(c), subscriptionTenantID(c), listingsubscription.ModuleOSSStorage, "storage_bytes", len(data))
+		_, _ = h.subscriptionService.RecordUsage(requestContext(c), subscriptionTenantID(c), listingsubscription.ModuleOSSStorage, "uploaded_bytes", len(data))
 	}
 	c.JSON(http.StatusOK, detail)
 }

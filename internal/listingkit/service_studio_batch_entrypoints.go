@@ -67,7 +67,10 @@ func (s *service) ApplyManualStudioBatchDesignBackgroundRemoval(ctx context.Cont
 	}
 	var committedErr *studioManualBackgroundRemovalCommittedError
 	if materialized.cleanup != nil && !errors.As(applyErr, &committedErr) {
-		materialized.cleanup(ctx)
+		cleanupErr := materialized.cleanup(context.WithoutCancel(ctx))
+		if cleanupErr != nil && !errors.Is(cleanupErr, ErrUploadedImageNotFound) {
+			return nil, errors.Join(applyErr, fmt.Errorf("cleanup manual background removal upload: %w", cleanupErr))
+		}
 	}
 	return nil, applyErr
 }

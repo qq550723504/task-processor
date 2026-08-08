@@ -14,7 +14,7 @@ import (
 
 type uploadedImageMaterialization struct {
 	imageURL string
-	cleanup  func(context.Context)
+	cleanup  func(context.Context) error
 }
 
 func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error) {
@@ -86,8 +86,9 @@ func (s *service) uploadListingKitImage(ctx context.Context, file ImageUploadInp
 	}
 	return &uploadedImageMaterialization{
 		imageURL: buildUploadedImagePath(uploadID),
-		cleanup: func(cleanupCtx context.Context) {
-			_, _ = s.DeleteUploadedImage(cleanupCtx, uploadID)
+		cleanup: func(cleanupCtx context.Context) error {
+			_, err := s.DeleteUploadedImage(cleanupCtx, uploadID)
+			return err
 		},
 	}, nil
 }
@@ -116,11 +117,11 @@ func uploadImageWithLegacyStore(ctx context.Context, file ImageUploadInput, uplo
 	storageKey := strings.TrimSpace(stored.Key)
 	return &uploadedImageMaterialization{
 		imageURL: imageURL,
-		cleanup: func(cleanupCtx context.Context) {
+		cleanup: func(cleanupCtx context.Context) error {
 			if storageKey == "" {
-				return
+				return nil
 			}
-			_ = uploadStore.Delete(cleanupCtx, storageKey)
+			return uploadStore.Delete(cleanupCtx, storageKey)
 		},
 	}, nil
 }

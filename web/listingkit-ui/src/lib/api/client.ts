@@ -30,6 +30,7 @@ type RequestOptions = {
 type FormRequestOptions = {
   method?: "POST";
   formData: FormData;
+  query?: QueueQuery;
 };
 
 export { ApiError };
@@ -204,9 +205,9 @@ function buildAsyncJobPollRequest(jobId: string) {
 
 export async function apiFormRequest<T>(
   path: string,
-  { method = "POST", formData }: FormRequestOptions,
+  { method = "POST", formData, query }: FormRequestOptions,
 ): Promise<T> {
-  const response = await fetch(buildApiUrl(path), {
+  const response = await fetch(buildApiUrl(path, query), {
     method,
     headers: new Headers(),
     body: formData,
