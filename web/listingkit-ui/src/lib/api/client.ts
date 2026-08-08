@@ -217,7 +217,7 @@ export async function apiFormRequest<T>(
 
   if (!response.ok) {
     throw new ApiError(
-      `ListingKit API request failed: ${response.status}`,
+      apiErrorMessage(response.status, payload),
       response.status,
       payload,
     );

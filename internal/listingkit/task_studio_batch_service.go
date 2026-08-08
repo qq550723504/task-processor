@@ -263,48 +263,31 @@ func (s *taskStudioBatchService) ApplyManualStudioBatchDesignBackgroundRemoval(c
 	if s == nil || s.repo == nil {
 		return nil, fmt.Errorf("studio batch repository is not configured")
 	}
-	detail, err := s.GetStudioBatchDetail(ctx, batchID)
+	_, target, err := s.validateManualStudioBatchDesignBackgroundRemoval(ctx, batchID, designID)
 	if err != nil {
 		return nil, err
 	}
-	if detail == nil {
-		return nil, fmt.Errorf("studio batch %s not found", strings.TrimSpace(batchID))
-	}
+	return s.applyManualStudioBatchDesignBackgroundRemovalTarget(ctx, batchID, target, imageURL)
+}
 
-	trimmedDesignID := strings.TrimSpace(designID)
-	if trimmedDesignID == "" {
-		return nil, NewStudioBatchActionValidationError("design_id is required")
+func (s *taskStudioBatchService) applyManualStudioBatchDesignBackgroundRemovalTarget(ctx context.Context, batchID string, target *StudioMaterializedDesignRecord, imageURL string) (*StudioBatchDetail, error) {
+	if target == nil {
+		return nil, NewStudioBatchActionValidationError("manual background removal design is required")
 	}
 	trimmedImageURL := strings.TrimSpace(imageURL)
 	if trimmedImageURL == "" {
 		return nil, NewStudioBatchActionValidationError("manual background removal image URL is required")
 	}
 
-	var target *StudioMaterializedDesignRecord
-	for itemIndex := range detail.Items {
-		for designIndex := range detail.Items[itemIndex].Designs {
-			design := &detail.Items[itemIndex].Designs[designIndex]
-			if design.ID == trimmedDesignID {
-				target = design
-				break
-			}
-		}
-		if target != nil {
-			break
-		}
-	}
-	if target == nil {
-		return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s is not part of batch %s", trimmedDesignID, strings.TrimSpace(batchID)))
-	}
-	if target.BackgroundRemovalStatus == StudioBackgroundRemovalStatusPending {
-		return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s background removal is already in progress", target.ID))
-	}
 	sourceURL := strings.TrimSpace(target.OriginalImageURL)
 	if sourceURL == "" {
 		sourceURL = strings.TrimSpace(target.ImageURL)
 	}
 	if sourceURL == "" {
 		return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s has no original image", target.ID))
+	}
+	if err := s.rejectStudioBackgroundRemovalForOwnedTasks(ctx, batchID, []string{target.ID}); err != nil {
+		return nil, err
 	}
 
 	now := time.Now().UTC()
@@ -329,11 +312,53 @@ func (s *taskStudioBatchService) ApplyManualStudioBatchDesignBackgroundRemoval(c
 	if !applied {
 		return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s background removal is already in progress", target.ID))
 	}
-	detail, err = s.GetStudioBatchDetail(ctx, batchID)
+	detail, err := s.GetStudioBatchDetail(ctx, batchID)
 	if err != nil {
 		return nil, &studioManualBackgroundRemovalCommittedError{err: err}
 	}
 	return detail, nil
+}
+
+func (s *taskStudioBatchService) validateManualStudioBatchDesignBackgroundRemoval(ctx context.Context, batchID string, designID string) (*StudioBatchDetail, *StudioMaterializedDesignRecord, error) {
+	if s == nil || s.repo == nil {
+		return nil, nil, fmt.Errorf("studio batch repository is not configured")
+	}
+	detail, err := s.GetStudioBatchDetail(ctx, batchID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if detail == nil {
+		return nil, nil, fmt.Errorf("studio batch %s not found", strings.TrimSpace(batchID))
+	}
+
+	trimmedDesignID := strings.TrimSpace(designID)
+	if trimmedDesignID == "" {
+		return nil, nil, NewStudioBatchActionValidationError("design_id is required")
+	}
+
+	var target *StudioMaterializedDesignRecord
+	for itemIndex := range detail.Items {
+		for designIndex := range detail.Items[itemIndex].Designs {
+			design := &detail.Items[itemIndex].Designs[designIndex]
+			if design.ID == trimmedDesignID {
+				target = design
+				break
+			}
+		}
+		if target != nil {
+			break
+		}
+	}
+	if target == nil {
+		return nil, nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s is not part of batch %s", trimmedDesignID, strings.TrimSpace(batchID)))
+	}
+	if target.BackgroundRemovalStatus == StudioBackgroundRemovalStatusPending {
+		return nil, nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s background removal is already in progress", target.ID))
+	}
+	if err := s.rejectStudioBackgroundRemovalForOwnedTasks(ctx, batchID, []string{target.ID}); err != nil {
+		return nil, nil, err
+	}
+	return detail, target, nil
 }
 
 type studioManualBackgroundRemovalCommittedError struct {

@@ -48,6 +48,13 @@ func (s *service) ApplyManualStudioBatchDesignBackgroundRemoval(ctx context.Cont
 	if validated.ContentType != "image/png" {
 		return nil, NewStudioBatchActionValidationError("manual background removal upload must be a PNG image")
 	}
+	batchService := s.taskStudioBatchOrDefault()
+	var preflightTarget *StudioMaterializedDesignRecord
+	if batchService != nil && batchService.repo != nil {
+		if _, preflightTarget, err = batchService.validateManualStudioBatchDesignBackgroundRemoval(ctx, batchID, designID); err != nil {
+			return nil, err
+		}
+	}
 
 	materialized, err := s.uploadListingKitImage(ctx, ImageUploadInput{
 		Filename:    input.Filename,
@@ -61,7 +68,13 @@ func (s *service) ApplyManualStudioBatchDesignBackgroundRemoval(ctx context.Cont
 		return nil, fmt.Errorf("manual background removal upload returned no image url")
 	}
 
-	detail, applyErr := s.taskStudioBatchOrDefault().ApplyManualStudioBatchDesignBackgroundRemoval(ctx, batchID, designID, materialized.imageURL)
+	var detail *StudioBatchDetail
+	var applyErr error
+	if preflightTarget != nil {
+		detail, applyErr = batchService.applyManualStudioBatchDesignBackgroundRemovalTarget(ctx, batchID, preflightTarget, materialized.imageURL)
+	} else {
+		detail, applyErr = s.taskStudioBatchOrDefault().ApplyManualStudioBatchDesignBackgroundRemoval(ctx, batchID, designID, materialized.imageURL)
+	}
 	if applyErr == nil {
 		return detail, nil
 	}
