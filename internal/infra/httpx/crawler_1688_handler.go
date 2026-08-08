@@ -3,8 +3,11 @@ package httpx
 
 import (
 	"net/http"
+	"strconv"
+	"strings"
 
 	"task-processor/internal/crawler/shared"
+	"task-processor/internal/shared/tenantctx"
 
 	"github.com/sirupsen/logrus"
 )
@@ -52,8 +55,18 @@ func (h *Crawler1688Handler) handleCrawl(w http.ResponseWriter, r *http.Request)
 		BadRequest(w, "source_account_id must not be negative")
 		return
 	}
+	var tenantID int64
+	if req.SourceAccountID > 0 {
+		var ok bool
+		tenantID, ok = trustedCrawlerTenantID(r)
+		if !ok {
+			BadRequest(w, "trusted tenant context is required for source_account_id")
+			return
+		}
+	}
 	crawlerTask := shared.NewCrawlerTask(req.URL)
 	crawlerTask.SourceAccountID = req.SourceAccountID
+	crawlerTask.TenantID = tenantID
 	if req.OfferID != "" {
 		crawlerTask.WithASIN(req.OfferID) // 复用ASIN字段存储OfferID
 	}
@@ -70,4 +83,19 @@ func (h *Crawler1688Handler) handleCrawl(w http.ResponseWriter, r *http.Request)
 		"task_id": crawlerTask.TaskID,
 		"url":     crawlerTask.URL,
 	})
+}
+
+func trustedCrawlerTenantID(r *http.Request) (int64, bool) {
+	if r == nil {
+		return 0, false
+	}
+	tenantScope, ok := tenantctx.TenantScopeFromContext(r.Context())
+	if !ok {
+		return 0, false
+	}
+	tenantID, err := strconv.ParseInt(strings.TrimSpace(tenantScope), 10, 64)
+	if err != nil || tenantID <= 0 {
+		return 0, false
+	}
+	return tenantID, true
 }
