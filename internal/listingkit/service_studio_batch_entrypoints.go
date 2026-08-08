@@ -3,7 +3,6 @@ package listingkit
 import (
 	"context"
 	"fmt"
-	"strings"
 )
 
 func (s *service) GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetail, error) {
@@ -46,26 +45,24 @@ func (s *service) ApplyManualStudioBatchDesignBackgroundRemoval(ctx context.Cont
 		return nil, NewStudioBatchActionValidationError("manual background removal upload must be a PNG image")
 	}
 
-	upload, err := s.UploadImages(ctx, &UploadImagesRequest{Files: []ImageUploadInput{{
+	materialized, err := s.uploadListingKitImage(ctx, ImageUploadInput{
 		Filename:    input.Filename,
 		ContentType: validated.ContentType,
 		Data:        append([]byte(nil), input.Data...),
-	}}})
+	})
 	if err != nil {
 		return nil, err
 	}
-	if upload == nil || len(upload.ImageURLs) == 0 || strings.TrimSpace(upload.ImageURLs[0]) == "" {
+	if materialized == nil || materialized.imageURL == "" {
 		return nil, fmt.Errorf("manual background removal upload returned no image url")
 	}
 
-	imageURL := strings.TrimSpace(upload.ImageURLs[0])
-	detail, applyErr := s.taskStudioBatchOrDefault().ApplyManualStudioBatchDesignBackgroundRemoval(ctx, batchID, designID, imageURL)
+	detail, applyErr := s.taskStudioBatchOrDefault().ApplyManualStudioBatchDesignBackgroundRemoval(ctx, batchID, designID, materialized.imageURL)
 	if applyErr == nil {
 		return detail, nil
 	}
-	uploadID := strings.TrimPrefix(imageURL, buildUploadedImagePath(""))
-	if uploadID != "" {
-		_, _ = s.DeleteUploadedImage(ctx, uploadID)
+	if materialized.cleanup != nil {
+		materialized.cleanup(ctx)
 	}
 	return nil, applyErr
 }

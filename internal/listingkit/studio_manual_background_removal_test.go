@@ -154,6 +154,41 @@ func TestStudioBatchManualBackgroundRemovalDeletesNewUploadWhenApplyFails(t *tes
 	}
 }
 
+func TestStudioBatchManualBackgroundRemovalDeletesLegacyUploadByStoredKeyWhenApplyFails(t *testing.T) {
+	t.Parallel()
+
+	ctx := tenantctx.WithTenantID(context.Background(), "227")
+	store := &stubLegacyManualUploadStore{
+		saveResult: &StoredUploadedImage{
+			Key:       "legacy/manual-upload.png",
+			PublicURL: "https://cdn.example.test/manual-upload.png",
+			Filename:  "manual-upload.png",
+		},
+	}
+	svc := &service{
+		studioDeps: studioDependencies{uploadStore: store},
+		studio: studioCollaborators{
+			batchGroup: taskStudioBatchCollaborators{
+				batch: newTaskStudioBatchService(taskStudioBatchServiceConfig{}),
+			},
+		},
+	}
+
+	_, err := svc.ApplyManualStudioBatchDesignBackgroundRemoval(ctx, "batch-1", "design-1", &ImageUploadInput{
+		Filename: "manual.png",
+		Data:     studioTestOpaquePNG(t),
+	})
+	if err == nil {
+		t.Fatal("ApplyManualStudioBatchDesignBackgroundRemoval() error = nil, want batch apply failure")
+	}
+	if store.saveCalls != 1 {
+		t.Fatalf("legacy upload save calls = %d, want 1", store.saveCalls)
+	}
+	if store.deletedKey != "legacy/manual-upload.png" {
+		t.Fatalf("legacy deleted key = %q, want stored key cleanup", store.deletedKey)
+	}
+}
+
 func TestStudioBatchManualBackgroundRemovalRejectsJPEGBytesBeforeUpload(t *testing.T) {
 	t.Parallel()
 
@@ -192,4 +227,36 @@ func studioTestJPEG(t *testing.T) []byte {
 		t.Fatalf("encode JPEG: %v", err)
 	}
 	return output.bytes
+}
+
+type stubLegacyManualUploadStore struct {
+	saveResult *StoredUploadedImage
+	savedInput *ImageUploadInput
+	saveCalls  int
+	deletedKey string
+	deleteCalls int
+}
+
+func (s *stubLegacyManualUploadStore) Save(_ context.Context, input *ImageUploadInput) (*StoredUploadedImage, error) {
+	s.saveCalls++
+	if input != nil {
+		copyInput := *input
+		copyInput.Data = append([]byte(nil), input.Data...)
+		s.savedInput = &copyInput
+	}
+	if s.saveResult != nil {
+		result := *s.saveResult
+		return &result, nil
+	}
+	return &StoredUploadedImage{}, nil
+}
+
+func (s *stubLegacyManualUploadStore) Open(context.Context, string) (*StoredUploadedImage, error) {
+	return nil, ErrUploadedImageNotFound
+}
+
+func (s *stubLegacyManualUploadStore) Delete(_ context.Context, key string) error {
+	s.deletedKey = key
+	s.deleteCalls++
+	return nil
 }
