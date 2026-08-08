@@ -1,4 +1,11 @@
-export function toImageProxyUrl(url?: string | null) {
+type ImageProxyUrlOptions = {
+  forceProxy?: boolean;
+};
+
+export function toImageProxyUrl(
+  url?: string | null,
+  options?: ImageProxyUrlOptions,
+) {
   const trimmed = typeof url === "string" ? url.trim() : "";
   if (!trimmed) {
     return "";
@@ -21,7 +28,7 @@ export function toImageProxyUrl(url?: string | null) {
     if (parsed.pathname.startsWith(listingKitUploadPrefix)) {
       return `${parsed.pathname.replace(listingKitUploadPrefix, "/api/listing-kits/uploads/files/")}${parsed.search}`;
     }
-    if (isDirectPublicImageHost(parsed.hostname)) {
+    if (!options?.forceProxy && isDirectPublicImageHost(parsed.hostname)) {
       return trimmed;
     }
   } catch {

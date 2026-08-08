@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api/client";
+import { apiFormRequest, apiRequest } from "@/lib/api/client";
 import { parseApiResponseShape } from "@/lib/api/response-schema";
 import {
   normalizeGroupedSelectionsResponse,
@@ -676,6 +676,23 @@ export async function retrySheinStudioBatchItems(
       method: "POST",
       query: buildStudioBatchQuery(options),
       body: { item_ids: itemIds },
+    },
+  );
+  return parseSheinStudioBatchDetailResponse(payload);
+}
+
+export async function uploadManualSheinStudioBackgroundRemoval(
+  batchId: string,
+  designId: string,
+  file: File,
+): Promise<SheinStudioBatchDetail> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const payload = await apiFormRequest<unknown>(
+    `/studio/batches/${batchId}/designs/${designId}/manual-background-removal`,
+    {
+      method: "POST",
+      formData,
     },
   );
   return parseSheinStudioBatchDetailResponse(payload);
