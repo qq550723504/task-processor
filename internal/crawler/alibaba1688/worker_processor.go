@@ -12,11 +12,6 @@ import (
 	"task-processor/internal/infra/worker"
 )
 
-type globallyUniqueAccountProfileResolver interface {
-	AccountProfileResolver
-	ResolveAlibaba1688AccountByUniqueID(context.Context, int64) (AccountProfile, error)
-}
-
 // Crawler1688Processor 实现 worker.Processor 接口
 type Crawler1688Processor struct {
 	service *Service
@@ -37,7 +32,7 @@ func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.Worke
 
 	var product *model.Product1688
 	if crawlerTask.SourceAccountID > 0 {
-		profile, err := p.service.resolveAccountProfile(ctx, crawlerTask.SourceAccountID)
+		profile, err := p.service.resolveAccountProfile(ctx, crawlerTask.TenantID, crawlerTask.SourceAccountID)
 		if err != nil {
 			return err
 		}
@@ -60,20 +55,13 @@ func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.Worke
 	return nil
 }
 
-func (s *Service) resolveAccountProfile(ctx context.Context, accountID int64) (AccountProfile, error) {
-	if s == nil || accountID <= 0 || s.accountProfileResolver == nil {
+func (s *Service) resolveAccountProfile(ctx context.Context, tenantID, accountID int64) (AccountProfile, error) {
+	if s == nil || tenantID <= 0 || accountID <= 0 || s.accountProfileResolver == nil {
 		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
 	}
 
-	resolver, ok := s.accountProfileResolver.(globallyUniqueAccountProfileResolver)
-	if !ok {
-		// The worker task has no trusted tenant context. A tenant-scoped resolver
-		// must never be invoked with caller-controlled or invented tenant data.
-		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
-	}
-
-	profile, err := resolver.ResolveAlibaba1688AccountByUniqueID(ctx, accountID)
-	if err != nil || profile.ID != accountID || profile.TenantID <= 0 || strings.TrimSpace(profile.ProfileDir) == "" {
+	profile, err := s.accountProfileResolver.ResolveAlibaba1688Account(ctx, tenantID, accountID)
+	if err != nil || profile.ID != accountID || profile.TenantID != tenantID || strings.TrimSpace(profile.ProfileDir) == "" {
 		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
 	}
 	return profile, nil

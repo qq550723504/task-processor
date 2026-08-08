@@ -29,6 +29,43 @@ func TestCrawler1688HandlerUsesSourceAccountID(t *testing.T) {
 	}
 }
 
+func TestCrawler1688HandlerRejectsTenantIDFromBody(t *testing.T) {
+	service := &stub1688CrawlerService{}
+	handler := NewCrawler1688Handler(service, logrus.New())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", strings.NewReader(`{"url":"https://detail.1688.com/offer/3001.html","source_account_id":3001,"tenant_id":999}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.RegisterRoutes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if service.task != nil {
+		t.Fatalf("task = %+v, want no public tenant binding", service.task)
+	}
+}
+
+func TestCrawler1688HandlerIgnoresTenantHeader(t *testing.T) {
+	service := &stub1688CrawlerService{}
+	handler := NewCrawler1688Handler(service, logrus.New())
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", strings.NewReader(`{"url":"https://detail.1688.com/offer/3001.html","source_account_id":3001}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "999")
+	rec := httptest.NewRecorder()
+
+	handler.RegisterRoutes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if service.task == nil || service.task.TenantID != 0 {
+		t.Fatalf("task tenant id = %d, want no tenant binding from header", service.task.TenantID)
+	}
+}
+
 func TestCrawler1688HandlerRejectsLegacySourceStoreID(t *testing.T) {
 	service := &stub1688CrawlerService{}
 	handler := NewCrawler1688Handler(service, logrus.New())

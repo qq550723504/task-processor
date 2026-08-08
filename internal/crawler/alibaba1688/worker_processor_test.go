@@ -12,18 +12,18 @@ import (
 	"task-processor/internal/infra/worker"
 )
 
-func TestCrawler1688ProcessorUsesAccountBoundProfile(t *testing.T) {
+func TestCrawler1688ProcessorUsesTrustedTenantAccountProfile(t *testing.T) {
 	resolver := &fakeAccountProfileResolver{profile: AccountProfile{ID: 3001, TenantID: 101, ProfileDir: "C:/profiles/101/3001", ProxyServer: "http://proxy:8080"}}
 	processor := &fakeAlibaba1688TaskProcessor{}
 	service := newTestAlibaba1688Service(processor, resolver)
 
-	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 3001))
+	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, 3001))
 
 	if err != nil {
 		t.Fatalf("ProcessTask() error = %v", err)
 	}
-	if resolver.accountID != 3001 {
-		t.Fatalf("resolver account id = %d, want 3001", resolver.accountID)
+	if resolver.tenantID != 101 || resolver.accountID != 3001 {
+		t.Fatalf("resolver = tenant %d account %d, want tenant 101 account 3001", resolver.tenantID, resolver.accountID)
 	}
 	if processor.profile == nil || processor.profile.ProfileDir != "C:/profiles/101/3001" || processor.profile.ProxyServer != "http://proxy:8080" {
 		t.Fatalf("profile-aware processor received %+v", processor.profile)
@@ -37,7 +37,7 @@ func TestCrawler1688ProcessorFailsClosedWithoutResolverForAccountBoundTask(t *te
 	processor := &fakeAlibaba1688TaskProcessor{}
 	service := newTestAlibaba1688Service(processor, nil)
 
-	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 3001))
+	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, 3001))
 
 	if AccountProfileErrorCode(err) != AccountProfileUnavailable {
 		t.Fatalf("account profile error code = %q, want %q", AccountProfileErrorCode(err), AccountProfileUnavailable)
@@ -47,18 +47,18 @@ func TestCrawler1688ProcessorFailsClosedWithoutResolverForAccountBoundTask(t *te
 	}
 }
 
-func TestCrawler1688ProcessorDoesNotInventTenantForTenantScopedResolver(t *testing.T) {
-	resolver := &tenantScopedOnlyAccountProfileResolver{}
+func TestCrawler1688ProcessorDoesNotCallResolverWithoutTrustedTenant(t *testing.T) {
+	resolver := &fakeAccountProfileResolver{}
 	processor := &fakeAlibaba1688TaskProcessor{}
 	service := newTestAlibaba1688Service(processor, resolver)
 
-	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 3001))
+	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 0, 3001))
 
 	if AccountProfileErrorCode(err) != AccountProfileUnavailable {
 		t.Fatalf("account profile error code = %q, want %q", AccountProfileErrorCode(err), AccountProfileUnavailable)
 	}
 	if resolver.called {
-		t.Fatal("worker attempted tenant-scoped resolution without trusted tenant context")
+		t.Fatal("worker called the resolver without trusted tenant context")
 	}
 	if processor.called() {
 		t.Fatal("account-bound task used a processor without trusted account resolution")
@@ -70,10 +70,13 @@ func TestCrawler1688ProcessorStopsBeforeProcessingWhenAccountResolutionFails(t *
 	processor := &fakeAlibaba1688TaskProcessor{}
 	service := newTestAlibaba1688Service(processor, resolver)
 
-	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 3001))
+	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, 3001))
 
 	if AccountProfileErrorCode(err) != AccountProfileUnavailable {
 		t.Fatalf("account profile error code = %q, want %q", AccountProfileErrorCode(err), AccountProfileUnavailable)
+	}
+	if !resolver.called || resolver.tenantID != 101 || resolver.accountID != 3001 {
+		t.Fatalf("resolver = called %t tenant %d account %d, want called tenant 101 account 3001", resolver.called, resolver.tenantID, resolver.accountID)
 	}
 	if processor.called() {
 		t.Fatal("processor was called after account resolution failed")
@@ -84,7 +87,7 @@ func TestCrawler1688ProcessorUsesGlobalFallbackWithoutAccountID(t *testing.T) {
 	processor := &fakeAlibaba1688TaskProcessor{}
 	service := newTestAlibaba1688Service(processor, nil)
 
-	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 0))
+	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 0, 0))
 
 	if err != nil {
 		t.Fatalf("ProcessTask() error = %v", err)
@@ -97,6 +100,7 @@ func TestCrawler1688ProcessorUsesGlobalFallbackWithoutAccountID(t *testing.T) {
 func TestCrawler1688WorkerTaskJSONRetainsAccountIDWithoutSecrets(t *testing.T) {
 	task := shared.NewCrawlerTask("https://detail.1688.com/offer/3001.html")
 	task.SourceAccountID = 3001
+	task.TenantID = 101
 
 	payload, err := json.Marshal(task)
 	if err != nil {
@@ -109,6 +113,9 @@ func TestCrawler1688WorkerTaskJSONRetainsAccountIDWithoutSecrets(t *testing.T) {
 	if restored.SourceAccountID != 3001 {
 		t.Fatalf("restored source account id = %d, want 3001", restored.SourceAccountID)
 	}
+	if restored.TenantID != 101 {
+		t.Fatalf("restored tenant id = %d, want 101", restored.TenantID)
+	}
 	lowerPayload := strings.ToLower(string(payload))
 	for _, forbidden := range []string{"password", "cookie", "proxy"} {
 		if strings.Contains(lowerPayload, forbidden) {
@@ -117,10 +124,11 @@ func TestCrawler1688WorkerTaskJSONRetainsAccountIDWithoutSecrets(t *testing.T) {
 	}
 }
 
-func crawler1688WorkerJob(t *testing.T, accountID int64) worker.WorkerJob {
+func crawler1688WorkerJob(t *testing.T, tenantID, accountID int64) worker.WorkerJob {
 	t.Helper()
 	task := shared.NewCrawlerTask("https://detail.1688.com/offer/3001.html")
 	task.TaskID = "task-3001"
+	task.TenantID = tenantID
 	task.SourceAccountID = accountID
 	payload, err := json.Marshal(task)
 	if err != nil {
@@ -140,23 +148,14 @@ func newTestAlibaba1688Service(processor alibaba1688TaskProcessor, resolver Acco
 type fakeAccountProfileResolver struct {
 	profile   AccountProfile
 	err       error
+	tenantID  int64
 	accountID int64
+	called    bool
 }
 
-type tenantScopedOnlyAccountProfileResolver struct {
-	called bool
-}
-
-func (r *tenantScopedOnlyAccountProfileResolver) ResolveAlibaba1688Account(context.Context, int64, int64) (AccountProfile, error) {
+func (r *fakeAccountProfileResolver) ResolveAlibaba1688Account(_ context.Context, tenantID, accountID int64) (AccountProfile, error) {
 	r.called = true
-	return AccountProfile{}, errors.New("unexpected tenant-scoped resolution")
-}
-
-func (r *fakeAccountProfileResolver) ResolveAlibaba1688Account(context.Context, int64, int64) (AccountProfile, error) {
-	return AccountProfile{}, errors.New("tenant-scoped resolver must not be used without trusted tenant context")
-}
-
-func (r *fakeAccountProfileResolver) ResolveAlibaba1688AccountByUniqueID(_ context.Context, accountID int64) (AccountProfile, error) {
+	r.tenantID = tenantID
 	r.accountID = accountID
 	if r.err != nil {
 		return AccountProfile{}, r.err

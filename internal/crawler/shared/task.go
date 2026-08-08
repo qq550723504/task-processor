@@ -13,6 +13,7 @@ type CrawlerTask struct {
 	Region          string    // 地区代码（如 us, uk, jp）
 	Zipcode         string    // 邮编（可选）
 	Priority        int       // 优先级
+	TenantID        int64     // trusted internal tenant context for worker execution
 	SourceAccountID int64     // 1688 source login account/profile identifier (optional)
 	CreatedAt       time.Time // 创建时间
 }
