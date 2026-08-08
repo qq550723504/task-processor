@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
@@ -99,24 +98,24 @@ func TestNewAPIServiceDoesNotLogRepositoryBuilderErrorDetails(t *testing.T) {
 	}
 }
 
-func TestWrapZitadelAuthMiddlewareForwardsVerifiedIdentity(t *testing.T) {
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		identity, ok := listingkit.AuthenticatedIdentityFromContext(r.Context())
-		if !ok || identity.TenantID != "101" {
-			http.Error(w, "verified identity missing", http.StatusUnauthorized)
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-	})
-	middleware := func(c *gin.Context) {
-		c.Request = c.Request.WithContext(listingkit.WithAuthenticatedIdentity(c.Request.Context(), listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-101"}))
-		c.Next()
+func TestVerifiedCrawlerTenantResolverUsesAuthenticatedListingKitIdentity(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", nil)
+	request = request.WithContext(listingkit.WithAuthenticatedIdentity(request.Context(), listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-101"}))
+
+	tenantID, ok := verifiedCrawlerTenantResolver(request.Context())
+
+	if !ok || tenantID != 101 {
+		t.Fatalf("resolver = (%d, %t), want (101, true)", tenantID, ok)
 	}
+}
 
-	response := httptest.NewRecorder()
-	wrapZitadelAuthMiddleware(next, middleware).ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/crawl", nil))
+func TestVerifiedCrawlerTenantResolverRejectsNonNumericTenantIdentity(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", nil)
+	request = request.WithContext(listingkit.WithAuthenticatedIdentity(request.Context(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-101"}))
 
-	if response.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, body = %s", response.Code, response.Body.String())
+	tenantID, ok := verifiedCrawlerTenantResolver(request.Context())
+
+	if ok || tenantID != 0 {
+		t.Fatalf("resolver = (%d, %t), want (0, false)", tenantID, ok)
 	}
 }

@@ -5,14 +5,15 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
-	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/httpx"
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 )
 
@@ -71,9 +72,9 @@ func (s *APIService) Start(ctx context.Context) error {
 	if s.config != nil {
 		listingkithttpapi.ConfigureListingKitZitadelAuth(s.config.ListingKit.Zitadel)
 	}
-	httpHandler := httpx.NewCrawler1688Handler(s.crawlerService, s.logger)
+	httpHandler := httpx.NewCrawler1688Handler(s.crawlerService, s.logger, verifiedCrawlerTenantResolver)
 	mux := httpHandler.RegisterRoutes()
-	handler := wrapZitadelAuthMiddleware(mux, listingkithttpapi.NewZitadelAuthMiddlewareFromEnv())
+	handler := listingkithttpapi.WrapZitadelAuthMiddleware(mux, listingkithttpapi.NewZitadelAuthMiddlewareFromEnv())
 
 	s.httpServer = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
@@ -120,14 +121,14 @@ func hasConfiguredDatabase(cfg *config.Config) bool {
 	return cfg != nil && cfg.Database != nil && strings.TrimSpace(cfg.Database.Host) != ""
 }
 
-func wrapZitadelAuthMiddleware(next http.Handler, middleware gin.HandlerFunc) http.Handler {
-	if middleware == nil {
-		return next
+func verifiedCrawlerTenantResolver(ctx context.Context) (int64, bool) {
+	identity, ok := listingkit.AuthenticatedIdentityFromContext(ctx)
+	if !ok {
+		return 0, false
 	}
-	router := gin.New()
-	router.Use(middleware)
-	router.Any("/*path", func(c *gin.Context) {
-		next.ServeHTTP(c.Writer, c.Request)
-	})
-	return router
+	tenantID, err := strconv.ParseInt(strings.TrimSpace(identity.TenantID), 10, 64)
+	if err != nil || tenantID <= 0 {
+		return 0, false
+	}
+	return tenantID, true
 }

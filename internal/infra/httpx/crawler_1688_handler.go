@@ -2,12 +2,10 @@
 package httpx
 
 import (
+	"context"
 	"net/http"
-	"strconv"
-	"strings"
 
 	"task-processor/internal/crawler/shared"
-	"task-processor/internal/listingkit"
 
 	"github.com/sirupsen/logrus"
 )
@@ -15,15 +13,24 @@ import (
 // Crawler1688Handler 1688爬虫 HTTP 处理器
 type Crawler1688Handler struct {
 	baseCrawlerHandler
+	tenantResolver TenantResolver
 }
 
+// TenantResolver resolves a tenant from caller-provided trusted request context.
+type TenantResolver func(context.Context) (int64, bool)
+
 // NewCrawler1688Handler 创建处理器
-func NewCrawler1688Handler(crawlerService CrawlerService, logger *logrus.Logger) *Crawler1688Handler {
+func NewCrawler1688Handler(crawlerService CrawlerService, logger *logrus.Logger, tenantResolvers ...TenantResolver) *Crawler1688Handler {
+	var tenantResolver TenantResolver
+	if len(tenantResolvers) > 0 {
+		tenantResolver = tenantResolvers[0]
+	}
 	return &Crawler1688Handler{
 		baseCrawlerHandler: baseCrawlerHandler{
 			crawlerService: crawlerService,
 			logger:         logger,
 		},
+		tenantResolver: tenantResolver,
 	}
 }
 
@@ -58,7 +65,7 @@ func (h *Crawler1688Handler) handleCrawl(w http.ResponseWriter, r *http.Request)
 	var tenantID int64
 	if req.SourceAccountID > 0 {
 		var ok bool
-		tenantID, ok = trustedCrawlerTenantID(r)
+		tenantID, ok = h.resolveTenant(r.Context())
 		if !ok {
 			BadRequest(w, "trusted tenant context is required for source_account_id")
 			return
@@ -85,16 +92,12 @@ func (h *Crawler1688Handler) handleCrawl(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-func trustedCrawlerTenantID(r *http.Request) (int64, bool) {
-	if r == nil {
+func (h *Crawler1688Handler) resolveTenant(ctx context.Context) (int64, bool) {
+	if h.tenantResolver == nil {
 		return 0, false
 	}
-	identity, ok := listingkit.AuthenticatedIdentityFromContext(r.Context())
-	if !ok {
-		return 0, false
-	}
-	tenantID, err := strconv.ParseInt(strings.TrimSpace(identity.TenantID), 10, 64)
-	if err != nil || tenantID <= 0 {
+	tenantID, ok := h.tenantResolver(ctx)
+	if !ok || tenantID <= 0 {
 		return 0, false
 	}
 	return tenantID, true
