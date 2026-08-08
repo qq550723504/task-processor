@@ -54,9 +54,10 @@ func BuildConfig(v *viper.Viper) *Config {
 				AuthBootstrap: BuildSDSAuthBootstrapConfig(v, "platforms.sds.authBootstrap"),
 			},
 			Alibaba1688: Alibaba1688Config{
-				Enabled:  v.GetBool("platforms.alibaba1688.enabled"),
-				Timeout:  v.GetInt("platforms.alibaba1688.timeout"),
-				PoolSize: v.GetInt("platforms.alibaba1688.poolSize"),
+				Enabled:        v.GetBool("platforms.alibaba1688.enabled"),
+				Timeout:        v.GetInt("platforms.alibaba1688.timeout"),
+				PoolSize:       v.GetInt("platforms.alibaba1688.poolSize"),
+				ProfileRootDir: v.GetString("platforms.alibaba1688.profileRootDir"),
 			},
 		},
 		Browser: BrowserConfig{

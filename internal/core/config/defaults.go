@@ -381,4 +381,5 @@ func setAlibaba1688Defaults(v *viper.Viper, p *Alibaba1688Config) {
 	v.SetDefault("platforms.alibaba1688.enabled", p.Enabled)
 	v.SetDefault("platforms.alibaba1688.timeout", p.Timeout)
 	v.SetDefault("platforms.alibaba1688.poolSize", p.PoolSize)
+	v.SetDefault("platforms.alibaba1688.profileRootDir", p.ProfileRootDir)
 }
