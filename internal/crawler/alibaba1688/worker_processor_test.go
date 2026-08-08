@@ -65,6 +65,24 @@ func TestCrawler1688ProcessorDoesNotCallResolverWithoutTrustedTenant(t *testing.
 	}
 }
 
+func TestCrawler1688ProcessorRejectsNegativeAccountIDBeforeResolverAndProcessor(t *testing.T) {
+	resolver := &fakeAccountProfileResolver{}
+	processor := &fakeAlibaba1688TaskProcessor{}
+	service := newTestAlibaba1688Service(processor, resolver)
+
+	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, -1))
+
+	if AccountProfileErrorCode(err) != AccountProfileUnavailable {
+		t.Fatalf("account profile error code = %q, want %q", AccountProfileErrorCode(err), AccountProfileUnavailable)
+	}
+	if resolver.called {
+		t.Fatal("worker called resolver for negative source account id")
+	}
+	if processor.called() {
+		t.Fatal("worker used a processor for negative source account id")
+	}
+}
+
 func TestCrawler1688ProcessorStopsBeforeProcessingWhenAccountResolutionFails(t *testing.T) {
 	resolver := &fakeAccountProfileResolver{err: errors.New("repository unavailable")}
 	processor := &fakeAlibaba1688TaskProcessor{}

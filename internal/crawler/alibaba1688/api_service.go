@@ -8,6 +8,7 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/httpx"
+	"task-processor/internal/listingadmin"
 
 	"github.com/sirupsen/logrus"
 )
@@ -23,10 +24,20 @@ type APIService struct {
 
 // NewAPIService 创建 1688 API 服务
 func NewAPIService(cfg *config.Config, logger *logrus.Logger, port int) *APIService {
+	return newAPIService(cfg, logger, port, nil)
+}
+
+// NewAPIServiceWithStoreRepository creates an API service that can resolve tenant-owned 1688 account profiles.
+func NewAPIServiceWithStoreRepository(cfg *config.Config, logger *logrus.Logger, port int, repository listingadmin.StoreRepository) *APIService {
+	resolver := NewAccountProfileResolver(repository, cfg.Platforms.Alibaba1688.ProfileRootDir)
+	return newAPIService(cfg, logger, port, resolver)
+}
+
+func newAPIService(cfg *config.Config, logger *logrus.Logger, port int, resolver AccountProfileResolver) *APIService {
 	return &APIService{
 		config:         cfg,
 		logger:         logger,
-		crawlerService: NewService(cfg, logger),
+		crawlerService: NewService(cfg, logger, resolver),
 		port:           port,
 	}
 }

@@ -30,6 +30,10 @@ func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.Worke
 		return fmt.Errorf("解析任务数据失败: %w", err)
 	}
 
+	if crawlerTask.SourceAccountID < 0 {
+		return newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+	}
+
 	var product *model.Product1688
 	if crawlerTask.SourceAccountID > 0 {
 		profile, err := p.service.resolveAccountProfile(ctx, crawlerTask.TenantID, crawlerTask.SourceAccountID)
