@@ -137,6 +137,7 @@ import {
   approveSheinStudioBatchDesigns,
   retrySheinStudioBatchBackgroundRemoval,
   retrySheinStudioBatchItems,
+  uploadManualSheinStudioBackgroundRemoval,
 } from "@/lib/api/shein-studio-batches";
 import { useToast } from "@/components/providers/toast-provider";
 import {
@@ -285,6 +286,10 @@ export function SheinStudioWorkbench({
   const [retryingFailedItemId, setRetryingFailedItemId] = useState("");
   const [retryingBackgroundRemovalId, setRetryingBackgroundRemovalId] =
     useState("");
+  const [
+    uploadingManualBackgroundRemovalId,
+    setUploadingManualBackgroundRemovalId,
+  ] = useState("");
   const [
     rawSelectedRecentBatchSummaryIds,
     setRawSelectedRecentBatchSummaryIds,
@@ -1373,6 +1378,40 @@ export function SheinStudioWorkbench({
     }
   }
 
+  async function handleUploadManualBackgroundRemoval(
+    designId: string,
+    file: File,
+  ) {
+    if (!activeBatchId || !itemizedBatchDetail) {
+      workbenchController.setField(
+        "generationError",
+        "当前批次不可用，请刷新后重试。",
+      );
+      return;
+    }
+
+    setUploadingManualBackgroundRemovalId(designId);
+    clearWorkbenchTaskRecoveryAlerts(workbenchController);
+
+    try {
+      const nextDetail = await uploadManualSheinStudioBackgroundRemoval(
+        activeBatchId,
+        designId,
+        file,
+      );
+      applyItemizedBatchDetail(nextDetail);
+    } catch (error) {
+      const message = `上传手动抠图失败：${formatSubscriptionApiError(error)}`;
+      workbenchController.setField(
+        "generationError",
+        message,
+      );
+      throw new Error(message);
+    } finally {
+      setUploadingManualBackgroundRemovalId("");
+    }
+  }
+
   const busyMessage = useSheinStudioBusyMessage({
     isCreatingTasks,
     isGenerating: effectiveIsGenerating,
@@ -1793,10 +1832,18 @@ export function SheinStudioWorkbench({
               onRetryBackgroundRemoval={
                 itemizedBatchContext ? handleRetryBackgroundRemoval : undefined
               }
+              onUploadManualBackgroundRemoval={
+                itemizedBatchContext
+                  ? handleUploadManualBackgroundRemoval
+                  : undefined
+              }
               onToggle={toggleSelection}
               productImageCount={productImageCount}
               regeneratingId={regeneratingId || undefined}
               retryingBackgroundRemovalId={retryingBackgroundRemovalId || undefined}
+              uploadingManualBackgroundRemovalId={
+                uploadingManualBackgroundRemovalId || undefined
+              }
               renderSizeImagesWithSds={renderSizeImagesWithSds}
               selectedIds={selectedIds}
               selection={activeSelection}

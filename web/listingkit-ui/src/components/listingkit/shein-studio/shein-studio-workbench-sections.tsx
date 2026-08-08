@@ -107,10 +107,12 @@ export function SheinStudioReviewStep({
   onNoteChange,
   onRegenerate,
   onRetryBackgroundRemoval,
+  onUploadManualBackgroundRemoval,
   onToggle,
   productImageCount,
   regeneratingId,
   retryingBackgroundRemovalId,
+  uploadingManualBackgroundRemovalId,
   renderSizeImagesWithSds,
   selectedIds,
   selection,
@@ -127,10 +129,12 @@ export function SheinStudioReviewStep({
   onNoteChange: (designId: string, note: string) => void;
   onRegenerate: (designId: string) => void;
   onRetryBackgroundRemoval?: (designId: string) => void;
+  onUploadManualBackgroundRemoval?: (designId: string, file: File) => Promise<void>;
   onToggle: (designId: string) => void;
   productImageCount: string;
   regeneratingId?: string;
   retryingBackgroundRemovalId?: string;
+  uploadingManualBackgroundRemovalId?: string;
   renderSizeImagesWithSds: boolean;
   selectedIds: string[];
   selection?: SDSProductVariantSelection;
@@ -160,10 +164,12 @@ export function SheinStudioReviewStep({
         onNoteChange={onNoteChange}
         onRegenerate={onRegenerate}
         onRetryBackgroundRemoval={onRetryBackgroundRemoval}
+        onUploadManualBackgroundRemoval={onUploadManualBackgroundRemoval}
         retryingBackgroundRemovalId={retryingBackgroundRemovalId}
         onToggle={onToggle}
         productImageCount={productImageCount}
         regeneratingId={regeneratingId}
+        uploadingManualBackgroundRemovalId={uploadingManualBackgroundRemovalId}
         renderSizeImagesWithSds={renderSizeImagesWithSds}
         selectedIds={selectedIds}
         selection={selection}
