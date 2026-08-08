@@ -166,11 +166,11 @@ func (s *taskStudioBatchService) RetryStudioBatchDesignBackgroundRemoval(ctx con
 	for _, designID := range requested {
 		requestedSet[designID] = struct{}{}
 	}
-	now := time.Now().UTC()
-	if s.currentTime != nil {
-		now = s.currentTime().UTC()
+	type retryTarget struct {
+		itemIndex   int
+		designIndex int
 	}
-	matched := 0
+	targets := make([]retryTarget, 0)
 	for itemIndex := range detail.Items {
 		for designIndex := range detail.Items[itemIndex].Designs {
 			design := &detail.Items[itemIndex].Designs[designIndex]
@@ -184,44 +184,52 @@ func (s *taskStudioBatchService) RetryStudioBatchDesignBackgroundRemoval(ctx con
 			if design.TransparentBackgroundMode != StudioTransparencyModeRemoval {
 				return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s does not use background removal", design.ID))
 			}
-			matched++
 			if strings.TrimSpace(design.OriginalImageURL) == "" {
 				return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s has no original image", design.ID))
 			}
-
-			design.BackgroundRemovalStatus = StudioBackgroundRemovalStatusPending
-			design.BackgroundRemovalError = ""
-			design.UpdatedAt = now
-			if err := s.repo.UpdateStudioMaterializedDesign(ctx, design); err != nil {
-				return nil, err
-			}
-			materialized, removeErr := s.retryBackgroundRemoval(ctx, design.OriginalImageURL, "studio-design-background-removal-retry.png")
-			if removeErr != nil || materialized == nil || strings.TrimSpace(materialized.ImageURL) == "" {
-				design.ImageURL = design.OriginalImageURL
-				design.BackgroundRemovalStatus = StudioBackgroundRemovalStatusFailed
-				removalMessage := "background removal returned no result"
-				if removeErr != nil {
-					removalMessage = removeErr.Error()
-				}
-				design.BackgroundRemovalError = compactStudioGenerationError(errors.New(removalMessage))
-				design.UpdatedAt = now
-				if err := s.repo.UpdateStudioMaterializedDesign(ctx, design); err != nil {
-					return nil, err
-				}
-				continue
-			}
-			design.ImageURL = strings.TrimSpace(materialized.ImageURL)
-			design.BackgroundRemovalStatus = StudioBackgroundRemovalStatusSucceeded
-			design.BackgroundRemovalModel = strings.TrimSpace(materialized.Model)
-			design.BackgroundRemovalError = ""
-			design.UpdatedAt = now
-			if err := s.repo.UpdateStudioMaterializedDesign(ctx, design); err != nil {
-				return nil, err
-			}
+			targets = append(targets, retryTarget{itemIndex: itemIndex, designIndex: designIndex})
 		}
 	}
-	if len(requestedSet) > 0 && matched != len(requestedSet) {
+	if len(requestedSet) > 0 && len(targets) != len(requestedSet) {
 		return nil, NewStudioBatchActionValidationError("one or more requested designs are not eligible for background removal")
+	}
+	now := time.Now().UTC()
+	if s.currentTime != nil {
+		now = s.currentTime().UTC()
+	}
+	for _, target := range targets {
+		design := &detail.Items[target.itemIndex].Designs[target.designIndex]
+		design.BackgroundRemovalStatus = StudioBackgroundRemovalStatusPending
+		design.BackgroundRemovalError = ""
+		design.BackgroundRemovalModel = ""
+		design.UpdatedAt = now
+		if err := s.repo.UpdateStudioMaterializedDesign(ctx, design); err != nil {
+			return nil, err
+		}
+		materialized, removeErr := s.retryBackgroundRemoval(ctx, design.OriginalImageURL, "studio-design-background-removal-retry.png")
+		if removeErr != nil || materialized == nil || strings.TrimSpace(materialized.ImageURL) == "" {
+			design.ImageURL = design.OriginalImageURL
+			design.BackgroundRemovalStatus = StudioBackgroundRemovalStatusFailed
+			removalMessage := "background removal returned no result"
+			if removeErr != nil {
+				removalMessage = removeErr.Error()
+			}
+			design.BackgroundRemovalError = compactStudioGenerationError(errors.New(removalMessage))
+			design.BackgroundRemovalModel = ""
+			design.UpdatedAt = now
+			if err := s.repo.UpdateStudioMaterializedDesign(ctx, design); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		design.ImageURL = strings.TrimSpace(materialized.ImageURL)
+		design.BackgroundRemovalStatus = StudioBackgroundRemovalStatusSucceeded
+		design.BackgroundRemovalModel = strings.TrimSpace(materialized.Model)
+		design.BackgroundRemovalError = ""
+		design.UpdatedAt = now
+		if err := s.repo.UpdateStudioMaterializedDesign(ctx, design); err != nil {
+			return nil, err
+		}
 	}
 	return s.GetStudioBatchDetail(ctx, batchID)
 }
