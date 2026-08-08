@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/api/client";
+import { apiFormRequest, apiRequest } from "@/lib/api/client";
 import { parseApiResponseShape } from "@/lib/api/response-schema";
 import {
   normalizeGroupedSelectionsResponse,
@@ -42,6 +42,11 @@ const studioBatchItemStatusSchema = z.enum([
   "failed",
 ]);
 
+const MANUAL_BACKGROUND_REMOVAL_PNG_ERROR =
+  "Manual background-removal upload requires a real PNG file.";
+const PNG_SIGNATURE_BYTES = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const PNG_IHDR_CHUNK_TYPE = [0x49, 0x48, 0x44, 0x52];
+
 const studioBatchSchema = z
   .object({
     id: z.string(),
@@ -76,6 +81,23 @@ function normalizeHotStyleReferenceImageUrls(value: unknown) {
     }
   }
   return result;
+}
+
+async function assertRealPngUpload(file: File): Promise<void> {
+  const headerBytes = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+  if (headerBytes.length < 16) {
+    throw new Error(MANUAL_BACKGROUND_REMOVAL_PNG_ERROR);
+  }
+
+  const hasPngSignature = PNG_SIGNATURE_BYTES.every(
+    (byte, index) => headerBytes[index] === byte,
+  );
+  const hasIhdrChunk = PNG_IHDR_CHUNK_TYPE.every(
+    (byte, index) => headerBytes[12 + index] === byte,
+  );
+  if (!hasPngSignature || !hasIhdrChunk) {
+    throw new Error(MANUAL_BACKGROUND_REMOVAL_PNG_ERROR);
+  }
 }
 
 const studioMaterializedDesignReviewStatusSchema = z.enum([
@@ -317,7 +339,7 @@ function mapStudioBatch(
   return batch;
 }
 
-type SheinStudioBatchRequestOptions = {
+export type SheinStudioBatchRequestOptions = {
   allowPartialWhileGenerating?: boolean;
   tenantId?: string;
 };
@@ -676,6 +698,26 @@ export async function retrySheinStudioBatchItems(
       method: "POST",
       query: buildStudioBatchQuery(options),
       body: { item_ids: itemIds },
+    },
+  );
+  return parseSheinStudioBatchDetailResponse(payload);
+}
+
+export async function uploadManualSheinStudioBackgroundRemoval(
+  batchId: string,
+  designId: string,
+  file: File,
+  options?: SheinStudioBatchRequestOptions,
+): Promise<SheinStudioBatchDetail> {
+  await assertRealPngUpload(file);
+  const formData = new FormData();
+  formData.append("file", file);
+  const payload = await apiFormRequest<unknown>(
+    `/studio/batches/${batchId}/designs/${designId}/manual-background-removal`,
+    {
+      method: "POST",
+      query: buildStudioBatchQuery(options),
+      formData,
     },
   );
   return parseSheinStudioBatchDetailResponse(payload);

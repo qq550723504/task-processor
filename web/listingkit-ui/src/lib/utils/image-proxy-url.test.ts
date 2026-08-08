@@ -21,6 +21,15 @@ describe("toImageProxyUrl", () => {
     expect(toImageProxyUrl(url)).toBe(url);
   });
 
+  it("can force public remote image URLs through the proxy for downloads", () => {
+    const url =
+      "https://cos-1303159911.cos.na-ashburn.myqcloud.com/20260705/test.png";
+
+    expect(toImageProxyUrl(url, { forceProxy: true })).toBe(
+      `/api/image-proxy?url=${encodeURIComponent(url)}`,
+    );
+  });
+
   it("proxies other remote images", () => {
     const url = "https://cdn.sdspod.com/images/test.jpg";
 
@@ -52,5 +61,18 @@ describe("toImageProxyUrl", () => {
       "/api/listing-kits/uploads/files/8068c1dc-6383-49c6-a635-8e1d79ee6e4d";
 
     expect(toImageProxyUrl(url)).toBe(url);
+  });
+
+  it("keeps data URLs usable even when forceProxy is requested", () => {
+    const url = "data:image/png;base64,abc123";
+
+    expect(toImageProxyUrl(url, { forceProxy: true })).toBe(url);
+  });
+
+  it("keeps same-origin listingkit upload URLs usable when forceProxy is requested", () => {
+    const url =
+      "/api/listing-kits/uploads/files/20260610/2ce3d54a-8ce9-459c-8118-cf8586d06e2d.png";
+
+    expect(toImageProxyUrl(url, { forceProxy: true })).toBe(url);
   });
 });

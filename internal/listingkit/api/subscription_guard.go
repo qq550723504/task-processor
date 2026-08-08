@@ -54,12 +54,16 @@ func (h *handler) requireSubscriptionUsage(c *gin.Context, moduleCode, metric st
 }
 
 func (h *handler) authorizeSubscriptionUsage(c *gin.Context, moduleCode, metric string, increment int) bool {
-	if h.subscriptionService == nil {
+	return authorizeSubscriptionUsage(c, h.subscriptionService, moduleCode, metric, increment)
+}
+
+func authorizeSubscriptionUsage(c *gin.Context, service *listingsubscription.Service, moduleCode, metric string, increment int) bool {
+	if service == nil {
 		writeSubscriptionRequired(c, listingsubscription.GuardResult{ModuleCode: moduleCode, Reason: "not_configured"})
 		return false
 	}
-	result, err := h.checkSubscriptionWithLegacyFallback(c, func(tenantID string) (listingsubscription.GuardResult, error) {
-		return h.subscriptionService.AuthorizeUsage(c.Request.Context(), tenantID, moduleCode, metric, increment)
+	result, err := checkSubscriptionWithLegacyFallback(c, service, func(tenantID string) (listingsubscription.GuardResult, error) {
+		return service.AuthorizeUsage(c.Request.Context(), tenantID, moduleCode, metric, increment)
 	})
 	if err == nil && result.Allowed {
 		return true
@@ -80,6 +84,13 @@ func (h *handler) recordSubscriptionUsage(c *gin.Context, moduleCode, metric str
 }
 
 func (h *handler) checkSubscriptionWithLegacyFallback(c *gin.Context, check func(tenantID string) (listingsubscription.GuardResult, error)) (listingsubscription.GuardResult, error) {
+	return checkSubscriptionWithLegacyFallback(c, h.subscriptionService, check)
+}
+
+func checkSubscriptionWithLegacyFallback(c *gin.Context, service *listingsubscription.Service, check func(tenantID string) (listingsubscription.GuardResult, error)) (listingsubscription.GuardResult, error) {
+	if service == nil {
+		return listingsubscription.GuardResult{}, listingsubscription.ErrSubscriptionRequired
+	}
 	tenantID := requestTenantID(c)
 	result, err := check(tenantID)
 	if err == nil && result.Allowed {

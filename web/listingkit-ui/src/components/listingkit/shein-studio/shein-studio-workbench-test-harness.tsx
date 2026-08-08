@@ -1,4 +1,7 @@
+import { useState } from "react";
 import { vi } from "vitest";
+
+import type { SheinStudioWorkbenchHydratedBatch } from "@/components/listingkit/shein-studio/shein-studio-workbench-model";
 
 export const useQuery = vi.fn();
 export const generateSheinStudioDesigns = vi.fn();
@@ -20,6 +23,7 @@ export const startSheinStudioBatchRun = vi.fn();
 export const deleteSheinStudioBatch = vi.fn();
 export const approveSheinStudioBatchDesigns = vi.fn();
 export const createSheinStudioBatchTasks = vi.fn();
+export const uploadManualSheinStudioBackgroundRemoval = vi.fn();
 export const retrySheinStudioBatchBackgroundRemoval = vi.fn();
 export const push = vi.fn();
 export let lastGenerationPanelProps: Record<string, unknown> | null = null;
@@ -101,55 +105,114 @@ vi.mock(
     SheinDesignPreviewGrid: ({
       designs,
       selectedIds,
+      uploadingManualBackgroundRemovalIds,
+      createActionDisabledReason,
       onToggle,
       onNoteChange,
       onCreateReviewTasks,
+      onUploadManualBackgroundRemoval,
       onRetryBackgroundRemoval,
     }: {
       designs: Array<{ id: string }>;
       selectedIds?: string[];
+      uploadingManualBackgroundRemovalIds?: string[];
+      createActionDisabledReason?: string;
       onToggle?: (designId: string) => void;
       onNoteChange?: (designId: string, note: string) => void;
       onCreateReviewTasks?: () => void;
+      onUploadManualBackgroundRemoval?: (designId: string, file: File) => Promise<void>;
       onRetryBackgroundRemoval?: (designId: string) => void;
-    }) => (
-      <div>
-        <div>review grid: {designs.length}</div>
+    }) => {
+      const [uploadError, setUploadError] = useState("");
+
+      return (
         <div>
-          approved styles: {Array.isArray(selectedIds) ? selectedIds.length : 0}
-        </div>
-        {designs.map((design) => (
-          <div key={design.id}>
-            {onToggle ? (
-              <button onClick={() => onToggle(design.id)} type="button">
-                toggle-{design.id}
-              </button>
-            ) : null}
-            {onNoteChange ? (
-              <button
-                onClick={() => onNoteChange(design.id, `note-${design.id}`)}
-                type="button"
-              >
-                note-{design.id}
-              </button>
-            ) : null}
-            {onRetryBackgroundRemoval ? (
-              <button
-                onClick={() => onRetryBackgroundRemoval(design.id)}
-                type="button"
-              >
-                retry-background-removal-{design.id}
-              </button>
-            ) : null}
+          <div>review grid: {designs.length}</div>
+          <div>
+            approved styles: {Array.isArray(selectedIds) ? selectedIds.length : 0}
           </div>
-        ))}
-        {onCreateReviewTasks ? (
-          <button onClick={onCreateReviewTasks} type="button">
-            create review tasks
-          </button>
-        ) : null}
-      </div>
-    ),
+          <div>
+            uploading manual background removal:{" "}
+            {uploadingManualBackgroundRemovalIds?.join(",") || "none"}
+          </div>
+          {uploadError ? <div>{uploadError}</div> : null}
+          {designs.map((design) => (
+            <div key={design.id}>
+              <div>design-image-{design.id}: {(design as { imageUrl?: string }).imageUrl || "none"}</div>
+              <div>
+                design-original-{design.id}:{" "}
+                {(design as { originalImageUrl?: string }).originalImageUrl || "none"}
+              </div>
+              <div>
+                design-background-removal-status-{design.id}:{" "}
+                {(design as { backgroundRemovalStatus?: string }).backgroundRemovalStatus ||
+                  "none"}
+              </div>
+              <div>
+                design-background-removal-error-{design.id}:{" "}
+                {(design as { backgroundRemovalError?: string }).backgroundRemovalError ||
+                  "none"}
+              </div>
+              <div>
+                design-transparent-background-mode-{design.id}:{" "}
+                {(design as { transparentBackgroundMode?: string }).transparentBackgroundMode ||
+                  "none"}
+              </div>
+              {onToggle ? (
+                <button onClick={() => onToggle(design.id)} type="button">
+                  toggle-{design.id}
+                </button>
+              ) : null}
+              {onNoteChange ? (
+                <button
+                  onClick={() => onNoteChange(design.id, `note-${design.id}`)}
+                  type="button"
+                >
+                  note-{design.id}
+                </button>
+              ) : null}
+              {onUploadManualBackgroundRemoval ? (
+                <input
+                  aria-label={`upload-${design.id}`}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) {
+                      return;
+                    }
+                    setUploadError("");
+                    void onUploadManualBackgroundRemoval(design.id, file).catch(
+                      (error) => {
+                        setUploadError(
+                          error instanceof Error ? error.message : String(error),
+                        );
+                      },
+                    );
+                  }}
+                  type="file"
+                />
+              ) : null}
+              {onRetryBackgroundRemoval ? (
+                <button
+                  onClick={() => onRetryBackgroundRemoval(design.id)}
+                  type="button"
+                >
+                  retry-background-removal-{design.id}
+                </button>
+              ) : null}
+            </div>
+          ))}
+          {onCreateReviewTasks ? (
+            <button
+              disabled={Boolean(createActionDisabledReason)}
+              onClick={onCreateReviewTasks}
+              type="button"
+            >
+              create review tasks
+            </button>
+          ) : null}
+        </div>
+      );
+    },
   }),
 );
 
@@ -332,6 +395,8 @@ vi.mock("@/lib/api/shein-studio-batches", () => ({
     retrySheinStudioBatchItems(...args),
   createSheinStudioBatchTasks: (...args: unknown[]) =>
     createSheinStudioBatchTasks(...args),
+  uploadManualSheinStudioBackgroundRemoval: (...args: unknown[]) =>
+    uploadManualSheinStudioBackgroundRemoval(...args),
   retrySheinStudioBatchBackgroundRemoval: (...args: unknown[]) =>
     retrySheinStudioBatchBackgroundRemoval(...args),
 }));
@@ -400,7 +465,7 @@ export const groupedSelection = {
 export function buildHydratedBatch(
   savedBatchOverrides: Record<string, unknown> = {},
   detailOverrides: Record<string, unknown> = {},
-) {
+): SheinStudioWorkbenchHydratedBatch {
   return {
     savedBatch: {
       id: "batch-1",
@@ -424,6 +489,7 @@ export function buildHydratedBatch(
         prompt: "retro cherries",
         styleCount: "1",
         sheinStoreId: 869,
+        transparentBackgroundMode: "none",
         createdAt: "2026-05-26T09:59:00.000Z",
         updatedAt: "2026-05-26T10:00:00.000Z",
       },
@@ -554,6 +620,7 @@ export function resetSheinStudioWorkbenchHarness(
   deleteSheinStudioBatch.mockResolvedValue(undefined);
   approveSheinStudioBatchDesigns.mockReset();
   createSheinStudioBatchTasks.mockReset();
+  uploadManualSheinStudioBackgroundRemoval.mockReset();
   retrySheinStudioBatchBackgroundRemoval.mockReset();
   push.mockReset();
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Image from "next/image";
 
 import { SheinDesignLightbox } from "@/components/listingkit/shein-studio/shein-design-lightbox";
@@ -10,12 +10,18 @@ import {
   resolveGeneratedDesignOriginalSrc,
   resolveGeneratedDesignSrc,
 } from "@/lib/shein-studio/design-image";
+import { downloadStudioImage } from "@/lib/shein-studio/download-image";
 import { toThumbnailPreviewUrl } from "@/lib/utils/imgproxy-url";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import type {
   SheinStudioGeneratedDesign,
   SheinStudioImageStrategy,
 } from "@/lib/types/shein-studio";
+
+function originalDownloadFilename(designId: string, src: string): string {
+  const extension = src.match(/\.([a-z0-9]{2,5})(?:[?#]|$)/i)?.[1];
+  return `studio-${designId}-original${extension ? `.${extension}` : ""}`;
+}
 
 export function SheinDesignPreviewGrid({
   designs,
@@ -26,6 +32,9 @@ export function SheinDesignPreviewGrid({
   onBackToGenerate,
   regeneratingId,
   retryingBackgroundRemovalId,
+  onUploadManualBackgroundRemoval,
+  uploadingManualBackgroundRemovalIds,
+  uploadingManualBackgroundRemovalId,
   selection,
   selectionByTargetGroupKey,
   readOnly = false,
@@ -46,6 +55,10 @@ export function SheinDesignPreviewGrid({
   onBackToGenerate?: () => void;
   regeneratingId?: string;
   retryingBackgroundRemovalId?: string;
+  onUploadManualBackgroundRemoval?: (designId: string, file: File) => Promise<void>;
+  uploadingManualBackgroundRemovalIds?: string[];
+  /** @deprecated Use uploadingManualBackgroundRemovalIds. */
+  uploadingManualBackgroundRemovalId?: string;
   selection?: SDSProductVariantSelection;
   selectionByTargetGroupKey?: Map<string, SDSProductVariantSelection>;
   readOnly?: boolean;
@@ -66,6 +79,20 @@ export function SheinDesignPreviewGrid({
   const [activePreviewImageView, setActivePreviewImageView] = useState<
     "final" | "original"
   >("final");
+  const [manualUploadErrors, setManualUploadErrors] = useState<
+    Record<string, string>
+  >({});
+  const [downloadErrors, setDownloadErrors] = useState<Record<string, string>>(
+    {},
+  );
+  const activeManualUploadIds =
+    uploadingManualBackgroundRemovalIds ??
+    (uploadingManualBackgroundRemovalId
+      ? [uploadingManualBackgroundRemovalId]
+      : []);
+  const manualUploadInputRefs = useRef<
+    Record<string, HTMLInputElement | null>
+  >({});
 
   if (designs.length === 0) {
     return null;
@@ -112,6 +139,14 @@ export function SheinDesignPreviewGrid({
               width: 720,
               height: 720,
             });
+            const manualUploadBlocked =
+              readOnly ||
+              !onUploadManualBackgroundRemoval ||
+              design.backgroundRemovalStatus === "pending" ||
+              retryingBackgroundRemovalId === design.id ||
+              regeneratingId === design.id;
+            const isUploadingManualBackgroundRemoval =
+              activeManualUploadIds.includes(design.id);
             return (
               <article
                 className={`overflow-hidden rounded-[1.5rem] border transition hover:-translate-y-0.5 hover:shadow-[0_18px_45px_rgba(24,24,27,0.10)] ${
@@ -155,6 +190,7 @@ export function SheinDesignPreviewGrid({
                         </div>
                       ) : (
                         <Button
+                          disabled={isUploadingManualBackgroundRemoval}
                           onClick={() => onToggle(design.id)}
                           variant={selected ? "primary" : "secondary"}
                         >
@@ -171,6 +207,7 @@ export function SheinDesignPreviewGrid({
                           disabled={
                             regeneratingId === design.id ||
                             retryingBackgroundRemovalId === design.id ||
+                            isUploadingManualBackgroundRemoval ||
                             design.backgroundRemovalStatus === "pending"
                           }
                           onClick={() => onRegenerate(design.id)}
@@ -185,6 +222,7 @@ export function SheinDesignPreviewGrid({
                           disabled={
                             retryingBackgroundRemovalId === design.id ||
                             regeneratingId === design.id ||
+                            isUploadingManualBackgroundRemoval ||
                             design.backgroundRemovalStatus === "pending"
                           }
                           onClick={() => onRetryBackgroundRemoval(design.id)}
@@ -219,7 +257,47 @@ export function SheinDesignPreviewGrid({
 
                   <div className="grid gap-3 md:grid-cols-2">
                     <div className="space-y-2">
-                      <div className="text-xs font-semibold text-zinc-600">原图</div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs font-semibold text-zinc-600">原图</div>
+                        {originalSrc ? (
+                          <Button
+                            disabled={isUploadingManualBackgroundRemoval}
+                            onClick={() => {
+                              void Promise.resolve(
+                                downloadStudioImage(
+                                  originalSrc,
+                                  originalDownloadFilename(design.id, originalSrc),
+                                ),
+                              )
+                                .then(() => {
+                                  setDownloadErrors((current) => ({
+                                    ...current,
+                                    [design.id]: "",
+                                  }));
+                                })
+                                .catch((error) => {
+                                  setDownloadErrors((current) => ({
+                                    ...current,
+                                    [design.id]:
+                                      error instanceof Error
+                                        ? error.message
+                                        : "下载原图失败，请重试。",
+                                  }));
+                                });
+                            }}
+                            size="sm"
+                            type="button"
+                            variant="ghost"
+                          >
+                            下载原图
+                          </Button>
+                        ) : null}
+                      </div>
+                      {downloadErrors[design.id] ? (
+                        <div className="text-xs text-rose-700">
+                          {downloadErrors[design.id]}
+                        </div>
+                      ) : null}
                       <Button
                         aria-label="原图"
                         className="relative block aspect-square h-auto w-full overflow-hidden rounded-[1.25rem] border-zinc-200 bg-zinc-950/5 p-0"
@@ -242,7 +320,66 @@ export function SheinDesignPreviewGrid({
                       </Button>
                     </div>
                     <div className="space-y-2">
-                      <div className="text-xs font-semibold text-zinc-600">抠图后</div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-xs font-semibold text-zinc-600">抠图后</div>
+                        {manualUploadBlocked ? null : (
+                          <>
+                            <input
+                              accept="image/png,.png"
+                              className="sr-only"
+                              onChange={(event) => {
+                                const input = event.currentTarget;
+                                const file = input.files?.[0];
+                                if (!file) {
+                                  input.value = "";
+                                  return;
+                                }
+
+                                void (async () => {
+                                  try {
+                                    await assertRealPngFile(file);
+                                    setManualUploadErrors((current) => ({
+                                      ...current,
+                                      [design.id]: "",
+                                    }));
+                                    await onUploadManualBackgroundRemoval?.(
+                                      design.id,
+                                      file,
+                                    );
+                                  } catch (error) {
+                                    setManualUploadErrors((current) => ({
+                                      ...current,
+                                      [design.id]:
+                                        error instanceof Error
+                                          ? error.message
+                                          : "上传手动抠图失败，请重试。",
+                                    }));
+                                  } finally {
+                                    input.value = "";
+                                  }
+                                })();
+                              }}
+                              ref={(node) => {
+                                manualUploadInputRefs.current[design.id] = node;
+                              }}
+                              type="file"
+                            />
+                            <Button
+                              disabled={isUploadingManualBackgroundRemoval}
+                              onClick={() =>
+                                manualUploadInputRefs.current[design.id]?.click()
+                              }
+                              size="sm"
+                              type="button"
+                              variant="ghost"
+                            >
+                              {isUploadingManualBackgroundRemoval
+                                ? "上传中..."
+                                : "上传手动抠图"}
+                            </Button>
+                          </>
+                        )}
+                      </div>
                       {finalSrc ? (
                         <Button
                           aria-label="抠图后"
@@ -272,6 +409,11 @@ export function SheinDesignPreviewGrid({
                           )}
                         </div>
                       )}
+                      {manualUploadErrors[design.id] ? (
+                        <div className="text-xs text-rose-700">
+                          {manualUploadErrors[design.id]}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -338,6 +480,27 @@ export function SheinDesignPreviewGrid({
       />
     </>
   );
+}
+
+const MANUAL_BACKGROUND_REMOVAL_PNG_ERROR = "仅支持上传真实 PNG 图片。";
+const PNG_SIGNATURE_BYTES = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const PNG_IHDR_CHUNK_TYPE = [0x49, 0x48, 0x44, 0x52];
+
+async function assertRealPngFile(file: File) {
+  const headerBytes = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+  if (headerBytes.length < 16) {
+    throw new Error(MANUAL_BACKGROUND_REMOVAL_PNG_ERROR);
+  }
+
+  const hasPngSignature = PNG_SIGNATURE_BYTES.every(
+    (byte, index) => headerBytes[index] === byte,
+  );
+  const hasIhdrChunk = PNG_IHDR_CHUNK_TYPE.every(
+    (byte, index) => headerBytes[12 + index] === byte,
+  );
+  if (!hasPngSignature || !hasIhdrChunk) {
+    throw new Error(MANUAL_BACKGROUND_REMOVAL_PNG_ERROR);
+  }
 }
 
 function formatImageStrategyLabel(strategy: SheinStudioImageStrategy) {

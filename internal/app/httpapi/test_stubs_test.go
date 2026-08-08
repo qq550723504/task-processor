@@ -74,6 +74,10 @@ func (stubStudioSessionHandler) RetryStudioBatchDesignBackgroundRemoval(c *gin.C
 	c.JSON(http.StatusAccepted, gin.H{"batch_id": c.Param("batch_id")})
 }
 
+func (stubStudioSessionHandler) ApplyManualStudioBatchDesignBackgroundRemoval(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"batch_id": c.Param("batch_id")})
+}
+
 func (stubStudioSessionHandler) RetryStudioBatchSDSChildTasks(c *gin.Context) {
 	c.JSON(http.StatusAccepted, gin.H{"batch_id": c.Param("batch_id")})
 }

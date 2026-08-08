@@ -8,6 +8,7 @@ import {
   parseSheinStudioBatchDetailResponse,
   parseSheinStudioBatchTaskCreationResponse,
   retrySheinStudioBatchItems,
+  uploadManualSheinStudioBackgroundRemoval,
 } from "@/lib/api/shein-studio-batches";
 import { sheinStudioBatchTaskCreationContractFixture } from "@/lib/api/__fixtures__/shein-studio-batch-contract";
 
@@ -922,5 +923,137 @@ describe("shein studio batches API", () => {
         allow_partial_while_generating: true,
       }),
     });
+  });
+
+  const validPngBytes = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+    0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00, 0x00, 0x00,
+    0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49,
+    0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+  ]);
+
+  it("uploads a manual background-removal file as multipart form data", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          batch: {
+            id: "batch-1",
+            status: "review_ready",
+            prompt: "botanical",
+            style_count: "3",
+            shein_store_id: 7,
+            created_at: "2026-06-01T10:00:00Z",
+            updated_at: "2026-06-01T10:10:00Z",
+          },
+          items: [],
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const pngFile = new File([validPngBytes], "design-1.png", {
+      type: "image/png",
+    });
+
+    await expect(
+      uploadManualSheinStudioBackgroundRemoval("batch-1", "design-1", pngFile),
+    ).resolves.toMatchObject({
+      batch: { id: "batch-1", status: "review_ready" },
+      items: [],
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/listing-kits/studio/batches/batch-1/designs/design-1/manual-background-removal",
+    );
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
+      method: "POST",
+    });
+    expect(fetchMock.mock.calls[0]?.[1]?.body).toBeInstanceOf(FormData);
+    const body = fetchMock.mock.calls[0]?.[1]?.body as FormData;
+    expect(body.get("file")).toBe(pngFile);
+  });
+
+  it("accepts PNG content when MIME metadata is misleading", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          batch: {
+            id: "batch-1",
+            status: "review_ready",
+            created_at: "2026-06-01T10:00:00Z",
+            updated_at: "2026-06-01T10:10:00Z",
+          },
+          items: [],
+        }),
+        {
+        status: 200,
+        headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const jpegTypedFile = new File([validPngBytes], "design-1.png", {
+      type: "image/jpeg",
+    });
+
+    await expect(
+      uploadManualSheinStudioBackgroundRemoval(
+        "batch-1",
+        "design-1",
+        jpegTypedFile,
+      ),
+    ).resolves.toMatchObject({ batch: { id: "batch-1" }, items: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts PNG content when the filename extension is misleading", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          batch: {
+            id: "batch-1",
+            status: "review_ready",
+            created_at: "2026-06-01T10:00:00Z",
+            updated_at: "2026-06-01T10:10:00Z",
+          },
+          items: [],
+        }),
+        {
+        status: 200,
+        headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const wrongExtensionFile = new File([validPngBytes], "design-1.jpg", {
+      type: "image/png",
+    });
+
+    await expect(
+      uploadManualSheinStudioBackgroundRemoval(
+        "batch-1",
+        "design-1",
+        wrongExtensionFile,
+      ),
+    ).resolves.toMatchObject({ batch: { id: "batch-1" }, items: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects disguised fake PNG content before upload", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    vi.stubGlobal("fetch", fetchMock);
+    const fakePngFile = new File(["not-a-real-png"], "design-1.png", {
+      type: "image/png",
+    });
+
+    await expect(
+      uploadManualSheinStudioBackgroundRemoval("batch-1", "design-1", fakePngFile),
+    ).rejects.toThrow("Manual background-removal upload requires a real PNG file.");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
