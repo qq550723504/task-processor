@@ -978,8 +978,24 @@ describe("shein studio batches API", () => {
     expect(body.get("file")).toBe(pngFile);
   });
 
-  it("rejects files with a non-PNG MIME type before upload", async () => {
-    const fetchMock = vi.fn<typeof fetch>();
+  it("accepts PNG content when MIME metadata is misleading", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          batch: {
+            id: "batch-1",
+            status: "review_ready",
+            created_at: "2026-06-01T10:00:00Z",
+            updated_at: "2026-06-01T10:10:00Z",
+          },
+          items: [],
+        }),
+        {
+        status: 200,
+        headers: { "content-type": "application/json" },
+        },
+      ),
+    );
     vi.stubGlobal("fetch", fetchMock);
     const jpegTypedFile = new File([validPngBytes], "design-1.png", {
       type: "image/jpeg",
@@ -991,12 +1007,28 @@ describe("shein studio batches API", () => {
         "design-1",
         jpegTypedFile,
       ),
-    ).rejects.toThrow("Manual background-removal upload requires a real PNG file.");
-    expect(fetchMock).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({ batch: { id: "batch-1" }, items: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects files without a .png extension before upload", async () => {
-    const fetchMock = vi.fn<typeof fetch>();
+  it("accepts PNG content when the filename extension is misleading", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          batch: {
+            id: "batch-1",
+            status: "review_ready",
+            created_at: "2026-06-01T10:00:00Z",
+            updated_at: "2026-06-01T10:10:00Z",
+          },
+          items: [],
+        }),
+        {
+        status: 200,
+        headers: { "content-type": "application/json" },
+        },
+      ),
+    );
     vi.stubGlobal("fetch", fetchMock);
     const wrongExtensionFile = new File([validPngBytes], "design-1.jpg", {
       type: "image/png",
@@ -1008,8 +1040,8 @@ describe("shein studio batches API", () => {
         "design-1",
         wrongExtensionFile,
       ),
-    ).rejects.toThrow("Manual background-removal upload requires a real PNG file.");
-    expect(fetchMock).not.toHaveBeenCalled();
+    ).resolves.toMatchObject({ batch: { id: "batch-1" }, items: [] });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("rejects disguised fake PNG content before upload", async () => {

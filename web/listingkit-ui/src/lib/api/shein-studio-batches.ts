@@ -84,11 +84,6 @@ function normalizeHotStyleReferenceImageUrls(value: unknown) {
 }
 
 async function assertRealPngUpload(file: File): Promise<void> {
-  const lowerName = file.name.toLowerCase();
-  if (file.type !== "image/png" || !lowerName.endsWith(".png")) {
-    throw new Error(MANUAL_BACKGROUND_REMOVAL_PNG_ERROR);
-  }
-
   const headerBytes = new Uint8Array(await file.slice(0, 32).arrayBuffer());
   if (headerBytes.length < 16) {
     throw new Error(MANUAL_BACKGROUND_REMOVAL_PNG_ERROR);

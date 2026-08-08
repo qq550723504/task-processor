@@ -459,6 +459,9 @@ describe("SheinStudioWorkbench", () => {
       screen.getByText("uploading manual background removal: design-1"),
     ).toBeInTheDocument();
     expect(
+      screen.getByRole("button", { name: "create review tasks" }),
+    ).toBeDisabled();
+    expect(
       screen.getByText(
         "design-image-design-1: https://example.com/design-1-final.png",
       ),
@@ -492,6 +495,9 @@ describe("SheinStudioWorkbench", () => {
     expect(
       screen.getByText("uploading manual background removal: none"),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "create review tasks" }),
+    ).toBeEnabled();
 
     fireEvent.change(screen.getByLabelText("upload-design-1"), {
       target: { files: [pngFile] },

@@ -104,7 +104,8 @@ vi.mock(
     SheinDesignPreviewGrid: ({
       designs,
       selectedIds,
-      uploadingManualBackgroundRemovalId,
+      uploadingManualBackgroundRemovalIds,
+      createActionDisabledReason,
       onToggle,
       onNoteChange,
       onCreateReviewTasks,
@@ -112,7 +113,8 @@ vi.mock(
     }: {
       designs: Array<{ id: string }>;
       selectedIds?: string[];
-      uploadingManualBackgroundRemovalId?: string;
+      uploadingManualBackgroundRemovalIds?: string[];
+      createActionDisabledReason?: string;
       onToggle?: (designId: string) => void;
       onNoteChange?: (designId: string, note: string) => void;
       onCreateReviewTasks?: () => void;
@@ -128,7 +130,7 @@ vi.mock(
           </div>
           <div>
             uploading manual background removal:{" "}
-            {uploadingManualBackgroundRemovalId || "none"}
+            {uploadingManualBackgroundRemovalIds?.join(",") || "none"}
           </div>
           {uploadError ? <div>{uploadError}</div> : null}
           {designs.map((design) => (
@@ -189,7 +191,11 @@ vi.mock(
             </div>
           ))}
           {onCreateReviewTasks ? (
-            <button onClick={onCreateReviewTasks} type="button">
+            <button
+              disabled={Boolean(createActionDisabledReason)}
+              onClick={onCreateReviewTasks}
+              type="button"
+            >
               create review tasks
             </button>
           ) : null}

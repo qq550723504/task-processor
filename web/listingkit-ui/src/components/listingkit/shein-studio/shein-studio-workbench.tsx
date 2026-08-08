@@ -287,9 +287,9 @@ export function SheinStudioWorkbench({
   const [retryingBackgroundRemovalId, setRetryingBackgroundRemovalId] =
     useState("");
   const [
-    uploadingManualBackgroundRemovalId,
-    setUploadingManualBackgroundRemovalId,
-  ] = useState("");
+    uploadingManualBackgroundRemovalIds,
+    setUploadingManualBackgroundRemovalIds,
+  ] = useState<string[]>([]);
   const [
     rawSelectedRecentBatchSummaryIds,
     setRawSelectedRecentBatchSummaryIds,
@@ -596,7 +596,7 @@ export function SheinStudioWorkbench({
     transparentBackgroundMode,
     variationIntensity,
   });
-  const createActionDisabledReason = useSheinStudioCreateActionDisabledReason({
+  const baseCreateActionDisabledReason = useSheinStudioCreateActionDisabledReason({
     galleryRatioCheck,
     hasItemizedBatchContext: Boolean(itemizedBatchContext),
     hasPendingBackgroundRemoval:
@@ -608,6 +608,10 @@ export function SheinStudioWorkbench({
     selectedIds,
     selection: activeSelection,
   });
+  const createActionDisabledReason =
+    uploadingManualBackgroundRemovalIds.length > 0
+      ? "请等待手动抠图上传完成后再生成 SHEIN 资料。"
+      : baseCreateActionDisabledReason;
   const handlePromptChange = useCallback(
     (value: string) => {
       saveDedicatedBatchDraftSnapshot({
@@ -763,7 +767,11 @@ export function SheinStudioWorkbench({
     [],
   );
 
-  const { handleCreateTasks, handleGenerate, handleRegenerate } =
+  const {
+    handleCreateTasks: createTasksAction,
+    handleGenerate,
+    handleRegenerate,
+  } =
     useSheinStudioDesignActions({
       activeGroupId,
       activeSelection,
@@ -802,6 +810,21 @@ export function SheinStudioWorkbench({
       itemizedBatchContext,
       batchTraceContext,
     });
+
+  const handleCreateTasks = useCallback(async () => {
+    if (uploadingManualBackgroundRemovalIds.length > 0) {
+      workbenchController.setField(
+        "generationError",
+        "请等待手动抠图上传完成后再生成 SHEIN 资料。",
+      );
+      return;
+    }
+    await createTasksAction();
+  }, [
+    createTasksAction,
+    uploadingManualBackgroundRemovalIds.length,
+    workbenchController,
+  ]);
 
   const {
     handleDeleteBatch,
@@ -1390,7 +1413,9 @@ export function SheinStudioWorkbench({
       return;
     }
 
-    setUploadingManualBackgroundRemovalId(designId);
+    setUploadingManualBackgroundRemovalIds((current) =>
+      current.includes(designId) ? current : [...current, designId],
+    );
     clearWorkbenchTaskRecoveryAlerts(workbenchController);
 
     try {
@@ -1408,7 +1433,9 @@ export function SheinStudioWorkbench({
       );
       throw new Error(message);
     } finally {
-      setUploadingManualBackgroundRemovalId("");
+      setUploadingManualBackgroundRemovalIds((current) =>
+        current.filter((id) => id !== designId),
+      );
     }
   }
 
@@ -1841,8 +1868,8 @@ export function SheinStudioWorkbench({
               productImageCount={productImageCount}
               regeneratingId={regeneratingId || undefined}
               retryingBackgroundRemovalId={retryingBackgroundRemovalId || undefined}
-              uploadingManualBackgroundRemovalId={
-                uploadingManualBackgroundRemovalId || undefined
+              uploadingManualBackgroundRemovalIds={
+                uploadingManualBackgroundRemovalIds
               }
               renderSizeImagesWithSds={renderSizeImagesWithSds}
               selectedIds={selectedIds}

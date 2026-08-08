@@ -295,6 +295,39 @@ func (r *GormStudioBatchRepository) ClaimStudioMaterializedDesignBackgroundRemov
 	return false, nil
 }
 
+func (r *GormStudioBatchRepository) ApplyManualStudioMaterializedDesignBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) (bool, error) {
+	if design == nil {
+		return false, nil
+	}
+	row := *design
+	applyStudioBatchScopeDefaults(ctx, &row.TenantID, &row.UserID)
+	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
+		Model(&StudioMaterializedDesignRecord{}).
+		Where("id = ? AND batch_id = ? AND item_id = ? AND (background_removal_status IS NULL OR background_removal_status = '' OR background_removal_status <> ?)", row.ID, row.BatchID, row.ItemID, StudioBackgroundRemovalStatusPending).
+		Updates(map[string]any{
+			"image_url":                   row.ImageURL,
+			"original_image_url":          row.OriginalImageURL,
+			"transparent_background_mode": row.TransparentBackgroundMode,
+			"background_removal_status":   row.BackgroundRemovalStatus,
+			"background_removal_model":    row.BackgroundRemovalModel,
+			"background_removal_error":    row.BackgroundRemovalError,
+			"updated_at":                  row.UpdatedAt,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected > 0 {
+		return true, nil
+	}
+	var existing StudioMaterializedDesignRecord
+	if err := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
+		Where("id = ?", row.ID).
+		First(&existing).Error; err != nil {
+		return false, err
+	}
+	return false, nil
+}
+
 func (r *GormStudioBatchRepository) UpdateStudioMaterializedDesignBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) error {
 	if design == nil {
 		return nil

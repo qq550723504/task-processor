@@ -552,6 +552,70 @@ func TestGormStudioBatchRepositoryRejectsOwnershipCorruptionOnUpdates(t *testing
 	}
 }
 
+func TestStudioBatchRepositoriesRejectManualBackgroundRemovalAfterAutomaticClaim(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		new  func(*testing.T) StudioBatchRepository
+	}{
+		{
+			name: "memory",
+			new: func(*testing.T) StudioBatchRepository {
+				return NewMemStudioBatchRepository()
+			},
+		},
+		{
+			name: "gorm",
+			new: func(t *testing.T) StudioBatchRepository {
+				db := openStudioBatchSQLiteForTest(t)
+				if err := AutoMigrateStudioBatchRepository(db); err != nil {
+					t.Fatalf("AutoMigrateStudioBatchRepository() error = %v", err)
+				}
+				return NewGormStudioBatchRepository(db)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := tt.new(t)
+			ctx := WithTenantID(context.Background(), "tenant-a")
+			now := time.Now().UTC()
+			designs := newStudioBatchDesignsForTest("batch-1", "item-1", now)
+			designs[0].ImageURL = "https://cdn.example.com/generated.png"
+			designs[0].BackgroundRemovalStatus = StudioBackgroundRemovalStatusPending
+			if err := repo.CreateStudioBatchGraph(ctx, newStudioBatchRecordForTest("batch-1", now), newStudioBatchItemsForTest("batch-1", now), newStudioBatchAttemptsForTest("item-1", now), designs); err != nil {
+				t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+			}
+
+			applier, ok := repo.(manualBackgroundRemovalApplier)
+			if !ok {
+				t.Fatal("repository does not implement atomic manual background-removal writes")
+			}
+			manual := designs[0]
+			manual.ImageURL = "https://cdn.example.com/manual.png"
+			manual.BackgroundRemovalStatus = StudioBackgroundRemovalStatusSucceeded
+			applied, err := applier.ApplyManualStudioMaterializedDesignBackgroundRemoval(ctx, &manual)
+			if err != nil {
+				t.Fatalf("ApplyManualStudioMaterializedDesignBackgroundRemoval() error = %v", err)
+			}
+			if applied {
+				t.Fatal("ApplyManualStudioMaterializedDesignBackgroundRemoval() applied = true, want false while automatic removal is pending")
+			}
+
+			detail, err := repo.GetStudioBatchDetail(ctx, "batch-1")
+			if err != nil {
+				t.Fatalf("GetStudioBatchDetail() error = %v", err)
+			}
+			stored := detail.DesignsByItem["item-1"][0]
+			if stored.BackgroundRemovalStatus != StudioBackgroundRemovalStatusPending || stored.ImageURL != "https://cdn.example.com/generated.png" {
+				t.Fatalf("stored design = %+v, want pending automatic removal with generated image retained", stored)
+			}
+		})
+	}
+}
+
 func TestMemStudioBatchRepositoryReplaceDesignReviewsIsAtomic(t *testing.T) {
 	t.Parallel()
 

@@ -28,6 +28,7 @@ export function SheinDesignPreviewGrid({
   regeneratingId,
   retryingBackgroundRemovalId,
   onUploadManualBackgroundRemoval,
+  uploadingManualBackgroundRemovalIds,
   uploadingManualBackgroundRemovalId,
   selection,
   selectionByTargetGroupKey,
@@ -50,6 +51,8 @@ export function SheinDesignPreviewGrid({
   regeneratingId?: string;
   retryingBackgroundRemovalId?: string;
   onUploadManualBackgroundRemoval?: (designId: string, file: File) => Promise<void>;
+  uploadingManualBackgroundRemovalIds?: string[];
+  /** @deprecated Use uploadingManualBackgroundRemovalIds. */
   uploadingManualBackgroundRemovalId?: string;
   selection?: SDSProductVariantSelection;
   selectionByTargetGroupKey?: Map<string, SDSProductVariantSelection>;
@@ -74,6 +77,11 @@ export function SheinDesignPreviewGrid({
   const [manualUploadErrors, setManualUploadErrors] = useState<
     Record<string, string>
   >({});
+  const activeManualUploadIds =
+    uploadingManualBackgroundRemovalIds ??
+    (uploadingManualBackgroundRemovalId
+      ? [uploadingManualBackgroundRemovalId]
+      : []);
   const manualUploadInputRefs = useRef<
     Record<string, HTMLInputElement | null>
   >({});
@@ -129,7 +137,7 @@ export function SheinDesignPreviewGrid({
               design.backgroundRemovalStatus === "pending" ||
               retryingBackgroundRemovalId === design.id;
             const isUploadingManualBackgroundRemoval =
-              uploadingManualBackgroundRemovalId === design.id;
+              activeManualUploadIds.includes(design.id);
             return (
               <article
                 className={`overflow-hidden rounded-[1.5rem] border transition hover:-translate-y-0.5 hover:shadow-[0_18px_45px_rgba(24,24,27,0.10)] ${
@@ -445,11 +453,6 @@ const PNG_SIGNATURE_BYTES = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 const PNG_IHDR_CHUNK_TYPE = [0x49, 0x48, 0x44, 0x52];
 
 async function assertRealPngFile(file: File) {
-  const lowerName = file.name.toLowerCase();
-  if (file.type !== "image/png" || !lowerName.endsWith(".png")) {
-    throw new Error(MANUAL_BACKGROUND_REMOVAL_PNG_ERROR);
-  }
-
   const headerBytes = new Uint8Array(await file.slice(0, 32).arrayBuffer());
   if (headerBytes.length < 16) {
     throw new Error(MANUAL_BACKGROUND_REMOVAL_PNG_ERROR);

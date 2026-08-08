@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 )
 
@@ -39,6 +40,9 @@ func (s *service) ApplyManualStudioBatchDesignBackgroundRemoval(ctx context.Cont
 	}
 	validated, err := validateUploadedImage(*input)
 	if err != nil {
+		if errors.Is(err, errInvalidUploadedImage) {
+			return nil, NewStudioBatchActionValidationError("manual background removal upload must be a valid image")
+		}
 		return nil, fmt.Errorf("invalid manual background removal image: %w", err)
 	}
 	if validated.ContentType != "image/png" {
@@ -61,7 +65,8 @@ func (s *service) ApplyManualStudioBatchDesignBackgroundRemoval(ctx context.Cont
 	if applyErr == nil {
 		return detail, nil
 	}
-	if materialized.cleanup != nil {
+	var committedErr *studioManualBackgroundRemovalCommittedError
+	if materialized.cleanup != nil && !errors.As(applyErr, &committedErr) {
 		materialized.cleanup(ctx)
 	}
 	return nil, applyErr

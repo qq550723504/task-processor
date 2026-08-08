@@ -15,3 +15,10 @@ type studioBackgroundRemovalRepository interface {
 		design *StudioMaterializedDesignRecord,
 	) error
 }
+
+type manualBackgroundRemovalApplier interface {
+	ApplyManualStudioMaterializedDesignBackgroundRemoval(
+		ctx context.Context,
+		design *StudioMaterializedDesignRecord,
+	) (bool, error)
+}

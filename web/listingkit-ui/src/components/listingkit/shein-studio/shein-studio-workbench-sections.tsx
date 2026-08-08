@@ -112,6 +112,7 @@ export function SheinStudioReviewStep({
   productImageCount,
   regeneratingId,
   retryingBackgroundRemovalId,
+  uploadingManualBackgroundRemovalIds,
   uploadingManualBackgroundRemovalId,
   renderSizeImagesWithSds,
   selectedIds,
@@ -134,6 +135,8 @@ export function SheinStudioReviewStep({
   productImageCount: string;
   regeneratingId?: string;
   retryingBackgroundRemovalId?: string;
+  uploadingManualBackgroundRemovalIds?: string[];
+  /** @deprecated Use uploadingManualBackgroundRemovalIds. */
   uploadingManualBackgroundRemovalId?: string;
   renderSizeImagesWithSds: boolean;
   selectedIds: string[];
@@ -169,7 +172,12 @@ export function SheinStudioReviewStep({
         onToggle={onToggle}
         productImageCount={productImageCount}
         regeneratingId={regeneratingId}
-        uploadingManualBackgroundRemovalId={uploadingManualBackgroundRemovalId}
+        uploadingManualBackgroundRemovalIds={
+          uploadingManualBackgroundRemovalIds ??
+          (uploadingManualBackgroundRemovalId
+            ? [uploadingManualBackgroundRemovalId]
+            : undefined)
+        }
         renderSizeImagesWithSds={renderSizeImagesWithSds}
         selectedIds={selectedIds}
         selection={selection}

@@ -13,12 +13,14 @@ export const runtime = "nodejs";
 
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
-const DEFAULT_ALLOWED_HOSTS = [
+export const DEFAULT_ALLOWED_HOSTS = [
   "cdn.sdspod.com",
   "e.sdspod.com",
   "img.sdspod.com",
   "sdspod.com",
   "oss.shuomiai.com",
+  "cos-1303159911.cos.na-ashburn.myqcloud.com",
+  "shuomi-1303159911.cos.ap-hongkong.myqcloud.com",
 ];
 const REQUEST_HEADERS = {
   Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",

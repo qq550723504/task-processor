@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -63,6 +64,58 @@ func TestApplyManualStudioBatchDesignBackgroundRemovalPersistsFirstManualResult(
 		design.BackgroundRemovalStatus != StudioBackgroundRemovalStatusSucceeded ||
 		design.ReviewStatus != StudioMaterializedDesignReviewStatusApproved {
 		t.Fatalf("manual result design = %+v, want original snapshot, manual image, removal mode, succeeded status, and preserved review state", design)
+	}
+}
+
+func TestApplyManualStudioBatchDesignBackgroundRemovalDoesNotOverwriteAutomaticClaim(t *testing.T) {
+	t.Parallel()
+
+	baseRepo := NewMemStudioBatchRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+	if err := baseRepo.CreateStudioBatchGraph(ctx, &StudioBatchRecord{
+		ID:        "batch-1",
+		Status:    StudioBatchStatusReviewReady,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, []StudioBatchItemRecord{{
+		ID:        "item-1",
+		BatchID:   "batch-1",
+		Status:    StudioBatchItemStatusReviewReady,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}}, nil, []StudioMaterializedDesignRecord{{
+		ID:                      "design-1",
+		BatchID:                 "batch-1",
+		ItemID:                  "item-1",
+		ImageURL:                "https://cdn.example.test/generated.png",
+		BackgroundRemovalStatus: StudioBackgroundRemovalStatusNotRequested,
+		CreatedAt:               now,
+		UpdatedAt:               now,
+	}}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	repo := &automaticClaimBeforeManualWriteRepository{StudioBatchRepository: baseRepo}
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{repo: repo})
+
+	_, err := svc.ApplyManualStudioBatchDesignBackgroundRemoval(
+		ctx,
+		"batch-1",
+		"design-1",
+		"https://cdn.example.test/manual.png",
+	)
+	if !errors.Is(err, ErrStudioBatchActionValidation) {
+		t.Fatalf("ApplyManualStudioBatchDesignBackgroundRemoval() error = %v, want ErrStudioBatchActionValidation", err)
+	}
+
+	detail, getErr := baseRepo.GetStudioBatchDetail(ctx, "batch-1")
+	if getErr != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", getErr)
+	}
+	design := detail.DesignsByItem["item-1"][0]
+	if design.BackgroundRemovalStatus != StudioBackgroundRemovalStatusPending || design.ImageURL != "https://cdn.example.test/generated.png" {
+		t.Fatalf("design after race = %+v, want pending automatic claim with original image retained", design)
 	}
 }
 
@@ -189,6 +242,91 @@ func TestStudioBatchManualBackgroundRemovalDeletesLegacyUploadByStoredKeyWhenApp
 	}
 }
 
+func TestStudioBatchManualBackgroundRemovalRetainsCommittedUploadWhenDetailReadFails(t *testing.T) {
+	t.Parallel()
+
+	baseRepo := NewMemStudioBatchRepository()
+	ctx := tenantctx.WithTenantID(context.Background(), "227")
+	now := time.Now().UTC()
+	if err := baseRepo.CreateStudioBatchGraph(ctx, &StudioBatchRecord{
+		ID:        "batch-1",
+		Status:    StudioBatchStatusReviewReady,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, []StudioBatchItemRecord{{
+		ID:        "item-1",
+		BatchID:   "batch-1",
+		Status:    StudioBatchItemStatusReviewReady,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}}, nil, []StudioMaterializedDesignRecord{{
+		ID:                      "design-1",
+		BatchID:                 "batch-1",
+		ItemID:                  "item-1",
+		ImageURL:                "https://cdn.example.test/generated.png",
+		BackgroundRemovalStatus: StudioBackgroundRemovalStatusNotRequested,
+		CreatedAt:               now,
+		UpdatedAt:               now,
+	}}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+
+	detailReadErr := errors.New("detail read unavailable")
+	repo := &failSecondDetailReadStudioBatchRepository{
+		StudioBatchRepository: baseRepo,
+		err:                   detailReadErr,
+	}
+	store := &stubMetadataImageUploadStore{saveResult: &StoredUploadedImage{PublicURL: "https://cdn.example.test/manual-upload.png"}}
+	svc := seedSupportDeps(&service{
+		studioDeps: studioDependencies{uploadStore: store},
+		studio: studioCollaborators{
+			batchGroup: taskStudioBatchCollaborators{
+				batch: newTaskStudioBatchService(taskStudioBatchServiceConfig{repo: repo}),
+			},
+		},
+	}, supportDependencySeed{uploadedImageRepository: NewMemUploadedImageRepository()})
+
+	_, err := svc.ApplyManualStudioBatchDesignBackgroundRemoval(ctx, "batch-1", "design-1", &ImageUploadInput{
+		Filename: "manual.png",
+		Data:     studioTestOpaquePNG(t),
+	})
+	if !errors.Is(err, detailReadErr) {
+		t.Fatalf("ApplyManualStudioBatchDesignBackgroundRemoval() error = %v, want detail read error", err)
+	}
+	if store.deleteCalls != 0 {
+		t.Fatalf("upload delete calls = %d, want 0 after committed manual write", store.deleteCalls)
+	}
+	detail, getErr := baseRepo.GetStudioBatchDetail(ctx, "batch-1")
+	if getErr != nil {
+		t.Fatalf("GetStudioBatchDetail() error = %v", getErr)
+	}
+	if got := detail.DesignsByItem["item-1"][0].ImageURL; got == "" || got == "https://cdn.example.test/generated.png" {
+		t.Fatalf("committed design image URL = %q, want retained uploaded image URL", got)
+	}
+}
+
+func TestStudioBatchManualBackgroundRemovalClassifiesTruncatedPNGAsValidation(t *testing.T) {
+	t.Parallel()
+
+	ctx := tenantctx.WithTenantID(context.Background(), "227")
+	store := &stubMetadataImageUploadStore{}
+	svc := seedSupportDeps(&service{
+		studioDeps: studioDependencies{uploadStore: store},
+	}, supportDependencySeed{uploadedImageRepository: NewMemUploadedImageRepository()})
+	pngData := studioTestOpaquePNG(t)
+
+	_, err := svc.ApplyManualStudioBatchDesignBackgroundRemoval(ctx, "batch-1", "design-1", &ImageUploadInput{
+		Filename: "truncated.png",
+		Data:     pngData[:len(pngData)/2],
+	})
+	if !errors.Is(err, ErrStudioBatchActionValidation) {
+		t.Fatalf("ApplyManualStudioBatchDesignBackgroundRemoval() error = %v, want ErrStudioBatchActionValidation", err)
+	}
+	if store.saveCalls != 0 {
+		t.Fatalf("upload save calls = %d, want 0", store.saveCalls)
+	}
+}
+
 func TestStudioBatchManualBackgroundRemovalRejectsJPEGBytesBeforeUpload(t *testing.T) {
 	t.Parallel()
 
@@ -230,11 +368,73 @@ func studioTestJPEG(t *testing.T) []byte {
 }
 
 type stubLegacyManualUploadStore struct {
-	saveResult *StoredUploadedImage
-	savedInput *ImageUploadInput
-	saveCalls  int
-	deletedKey string
+	saveResult  *StoredUploadedImage
+	savedInput  *ImageUploadInput
+	saveCalls   int
+	deletedKey  string
 	deleteCalls int
+}
+
+type automaticClaimBeforeManualWriteRepository struct {
+	StudioBatchRepository
+	claimed bool
+}
+
+func (r *automaticClaimBeforeManualWriteRepository) claimAutomatic(ctx context.Context, design *StudioMaterializedDesignRecord) error {
+	if r.claimed {
+		return nil
+	}
+	r.claimed = true
+	pending := *design
+	pending.BackgroundRemovalStatus = StudioBackgroundRemovalStatusPending
+	pending.BackgroundRemovalModel = ""
+	pending.BackgroundRemovalError = ""
+	_, err := r.StudioBatchRepository.(studioBackgroundRemovalRepository).ClaimStudioMaterializedDesignBackgroundRemoval(ctx, &pending)
+	return err
+}
+
+func (r *automaticClaimBeforeManualWriteRepository) ClaimStudioMaterializedDesignBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) (bool, error) {
+	return r.StudioBatchRepository.(studioBackgroundRemovalRepository).ClaimStudioMaterializedDesignBackgroundRemoval(ctx, design)
+}
+
+func (r *automaticClaimBeforeManualWriteRepository) UpdateStudioMaterializedDesignBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) error {
+	if err := r.claimAutomatic(ctx, design); err != nil {
+		return err
+	}
+	return r.StudioBatchRepository.(studioBackgroundRemovalRepository).UpdateStudioMaterializedDesignBackgroundRemoval(ctx, design)
+}
+
+func (r *automaticClaimBeforeManualWriteRepository) ApplyManualStudioMaterializedDesignBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) (bool, error) {
+	if err := r.claimAutomatic(ctx, design); err != nil {
+		return false, err
+	}
+	return r.StudioBatchRepository.(manualBackgroundRemovalApplier).ApplyManualStudioMaterializedDesignBackgroundRemoval(ctx, design)
+}
+
+type failSecondDetailReadStudioBatchRepository struct {
+	StudioBatchRepository
+	reads int
+	err   error
+}
+
+func (r *failSecondDetailReadStudioBatchRepository) GetStudioBatchDetail(ctx context.Context, batchID string) (*StudioBatchDetailGraph, error) {
+	r.reads++
+	if r.reads == 2 {
+		return nil, r.err
+	}
+	return r.StudioBatchRepository.GetStudioBatchDetail(ctx, batchID)
+}
+
+func (r *failSecondDetailReadStudioBatchRepository) ClaimStudioMaterializedDesignBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) (bool, error) {
+	return r.StudioBatchRepository.(studioBackgroundRemovalRepository).ClaimStudioMaterializedDesignBackgroundRemoval(ctx, design)
+}
+
+func (r *failSecondDetailReadStudioBatchRepository) UpdateStudioMaterializedDesignBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) error {
+	return r.StudioBatchRepository.(studioBackgroundRemovalRepository).UpdateStudioMaterializedDesignBackgroundRemoval(ctx, design)
+}
+
+func (r *failSecondDetailReadStudioBatchRepository) ApplyManualStudioMaterializedDesignBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) (bool, error) {
+	return r.StudioBatchRepository.(manualBackgroundRemovalApplier).ApplyManualStudioMaterializedDesignBackgroundRemoval(ctx, design)
 }
 
 func (s *stubLegacyManualUploadStore) Save(_ context.Context, input *ImageUploadInput) (*StoredUploadedImage, error) {

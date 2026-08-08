@@ -311,10 +311,40 @@ func (s *taskStudioBatchService) ApplyManualStudioBatchDesignBackgroundRemoval(c
 	target.BackgroundRemovalError = ""
 	target.BackgroundRemovalModel = ""
 	target.UpdatedAt = now
-	if err := s.updateStudioBackgroundRemoval(ctx, target); err != nil {
+	repository, ok := s.repo.(manualBackgroundRemovalApplier)
+	if !ok {
+		return nil, fmt.Errorf("studio batch repository does not support atomic manual background removal")
+	}
+	applied, err := repository.ApplyManualStudioMaterializedDesignBackgroundRemoval(ctx, target)
+	if err != nil {
 		return nil, err
 	}
-	return s.GetStudioBatchDetail(ctx, batchID)
+	if !applied {
+		return nil, NewStudioBatchActionValidationError(fmt.Sprintf("design %s background removal is already in progress", target.ID))
+	}
+	detail, err = s.GetStudioBatchDetail(ctx, batchID)
+	if err != nil {
+		return nil, &studioManualBackgroundRemovalCommittedError{err: err}
+	}
+	return detail, nil
+}
+
+type studioManualBackgroundRemovalCommittedError struct {
+	err error
+}
+
+func (e *studioManualBackgroundRemovalCommittedError) Error() string {
+	if e == nil || e.err == nil {
+		return "manual background removal committed but detail read failed"
+	}
+	return e.err.Error()
+}
+
+func (e *studioManualBackgroundRemovalCommittedError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
 }
 
 func (s *taskStudioBatchService) claimStudioBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) (bool, error) {
