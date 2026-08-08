@@ -7,6 +7,12 @@ import {
   normalizeStudioBatchGenerationJobs,
   normalizeStudioHotStyleReferenceImageUrls,
 } from "@/lib/api/shein-studio-batch-draft-codec-primitives";
+import {
+  decodeStudioBatchDraftLegacySnapshot,
+  encodeStudioBatchDraftLegacySnapshot,
+  mergeStudioBatchDraftLegacySnapshot,
+  type StudioBatchDraftLegacySnapshotOverrides,
+} from "@/lib/api/shein-studio-batch-draft-legacy-adapter";
 import { normalizeDraft } from "@/lib/shein-studio/storage-shared";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import {
@@ -18,7 +24,6 @@ import {
 import type {
   SDSGroupedPromptHistoryEntry,
   SheinStudioArtworkModel,
-  SheinStudioLegacyCompatibilitySnapshot,
   SheinStudioPersistedBatchView,
   SheinStudioPersistedGroupedWorkspace,
   SheinStudioSavedBatch,
@@ -238,7 +243,7 @@ export async function upsertSheinStudioBatchDraft(
         render_size_images_with_sds: input.renderSizeImagesWithSds,
         shein_store_id: input.sheinStoreId,
         selection: input.selection ? selectionToPayload(input.selection) : undefined,
-        legacy_compatibility_snapshot: legacyCompatibilitySnapshotToPayload(
+        legacy_compatibility_snapshot: encodeStudioBatchDraftLegacySnapshot(
           input.legacyCompatibilitySnapshot,
         ),
         groups: input.groups?.map(groupedWorkspaceToPayload),
@@ -305,30 +310,7 @@ export function mapStudioBatchDraftDetailToDraft(
   const generationJobs = normalizeStudioBatchGenerationJobs(
     detail.batch.generation_jobs,
   );
-  const legacyCompatibilitySnapshot = normalizeLegacyCompatibilitySnapshotResponse({
-    ...(rawBatchLegacyCompatibilitySnapshot ?? {}),
-    approved_design_ids:
-      selectedIds.length > 0
-        ? selectedIds
-        : rawBatchLegacyCompatibilitySnapshot?.approved_design_ids,
-    created_tasks:
-      detail.batch.created_tasks ?? rawBatchLegacyCompatibilitySnapshot?.created_tasks,
-    generation_jobs:
-      generationJobs.length > 0
-        ? detail.batch.generation_jobs
-        : detail.batch.generation_job_id
-          ? [{ job_id: detail.batch.generation_job_id, status: "running" }]
-          : rawBatchLegacyCompatibilitySnapshot?.generation_jobs,
-    generation_error:
-      detail.batch.generation_error ?? rawBatchLegacyCompatibilitySnapshot?.generation_error,
-    generation_job_id:
-      detail.batch.generation_job_id ?? rawBatchLegacyCompatibilitySnapshot?.generation_job_id,
-    designs:
-      detail.designs && detail.designs.length > 0
-        ? detail.designs
-        : rawBatchLegacyCompatibilitySnapshot?.designs,
-  });
-  const normalizedDesigns =
+  const canonicalDesigns =
     detail.designs && detail.designs.length > 0
       ? detail.designs.map((design) => ({
           id: design.id,
@@ -354,6 +336,53 @@ export function mapStudioBatchDraftDetailToDraft(
           targetGroupLabel: design.target_group_label,
           productImageUrls: design.product_image_urls,
         }))
+      : [];
+  const decodedLegacyCompatibilitySnapshot =
+    decodeStudioBatchDraftLegacySnapshot(rawBatchLegacyCompatibilitySnapshot);
+  const snapshotSelectedIds =
+    selectedIds.length > 0
+      ? selectedIds
+      : (decodedLegacyCompatibilitySnapshot?.selectedIds ?? []);
+  const snapshotDesigns =
+    canonicalDesigns.length > 0
+      ? canonicalDesigns
+      : (decodedLegacyCompatibilitySnapshot?.designs ?? []);
+  const createdTasksSource =
+    detail.batch.created_tasks ?? rawBatchLegacyCompatibilitySnapshot?.created_tasks;
+  const legacyOverrides: StudioBatchDraftLegacySnapshotOverrides = {};
+  if (selectedIds.length > 0) {
+    legacyOverrides.selectedIds = selectedIds;
+  }
+  if (createdTasksSource != null) {
+    legacyOverrides.createdTasks = normalizeStudioBatchCreatedTasks(
+      createdTasksSource,
+      snapshotSelectedIds,
+      snapshotDesigns,
+    );
+  }
+  if (generationJobs.length > 0) {
+    legacyOverrides.generationJobs = generationJobs;
+  } else if (detail.batch.generation_job_id) {
+    legacyOverrides.generationJobs = [
+      { jobId: detail.batch.generation_job_id, status: "running" },
+    ];
+  }
+  if (detail.batch.generation_error != null) {
+    legacyOverrides.generationError = detail.batch.generation_error;
+  }
+  if (detail.batch.generation_job_id != null) {
+    legacyOverrides.generationJobId = detail.batch.generation_job_id;
+  }
+  if (canonicalDesigns.length > 0) {
+    legacyOverrides.designs = canonicalDesigns;
+  }
+  const legacyCompatibilitySnapshot = mergeStudioBatchDraftLegacySnapshot(
+    decodedLegacyCompatibilitySnapshot,
+    legacyOverrides,
+  );
+  const normalizedDesigns =
+    canonicalDesigns.length > 0
+      ? canonicalDesigns
       : (legacyCompatibilitySnapshot?.designs ?? []);
   const normalizedSelectedIds =
     selectedIds.length > 0 ? selectedIds : (legacyCompatibilitySnapshot?.selectedIds ?? []);
@@ -394,11 +423,7 @@ export function mapStudioBatchDraftDetailToDraft(
     ),
     designs: normalizedDesigns,
     selectedIds: normalizedSelectedIds,
-    createdTasks: normalizeStudioBatchCreatedTasks(
-      detail.batch.created_tasks ?? rawBatchLegacyCompatibilitySnapshot?.created_tasks,
-      normalizedSelectedIds,
-      normalizedDesigns,
-    ),
+    createdTasks: legacyCompatibilitySnapshot?.createdTasks ?? [],
     legacyCompatibilitySnapshot,
     generationError:
       detail.batch.generation_error ?? legacyCompatibilitySnapshot?.generationError ?? "",
@@ -503,7 +528,7 @@ export function normalizeSelectionResponse(
 
 function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse["items"]>[number]) {
   const primarySelection = normalizeSelectionResponse(item.selection);
-  const legacyCompatibilitySnapshot = normalizeLegacyCompatibilitySnapshotResponse(
+  const legacyCompatibilitySnapshot = decodeStudioBatchDraftLegacySnapshot(
     item.legacy_compatibility_snapshot,
   );
   const normalizedSelectedIds =
@@ -668,113 +693,10 @@ function groupedWorkspaceToPayload(group: SheinStudioPersistedGroupedWorkspace) 
     transparent_background: group.transparentBackground,
     transparent_background_mode: group.transparentBackgroundMode,
     variation_intensity: group.variationIntensity,
-    legacy_compatibility_snapshot: legacyCompatibilitySnapshotToPayload(
+    legacy_compatibility_snapshot: encodeStudioBatchDraftLegacySnapshot(
       group.legacyCompatibilitySnapshot,
     ),
     updated_at: group.updatedAt,
-  };
-}
-
-function legacyCompatibilitySnapshotToPayload(
-  snapshot: SheinStudioLegacyCompatibilitySnapshot | undefined,
-) {
-  if (!snapshot) {
-    return undefined;
-  }
-
-  const hasDesigns = (snapshot.designs?.length ?? 0) > 0;
-  const hasSelectedIds = (snapshot.selectedIds?.length ?? 0) > 0;
-  const hasCreatedTasks = (snapshot.createdTasks?.length ?? 0) > 0;
-  const hasGenerationJobs = (snapshot.generationJobs?.length ?? 0) > 0;
-  if (
-    !hasDesigns &&
-    !hasSelectedIds &&
-    !hasCreatedTasks &&
-    !hasGenerationJobs &&
-    !snapshot.generationError &&
-    !snapshot.generationJobId
-  ) {
-    return undefined;
-  }
-
-  return {
-    approved_design_ids: snapshot.selectedIds,
-    created_tasks: snapshot.createdTasks,
-    generation_jobs: snapshot.generationJobs?.map((job) => ({
-      job_id: job.jobId,
-      target_group_key: job.targetGroupKey,
-      target_group_label: job.targetGroupLabel,
-      status: job.status,
-    })),
-    generation_error: snapshot.generationError,
-    generation_job_id: snapshot.generationJobId,
-    designs: (snapshot.designs ?? []).map((design) => ({
-      id: design.id,
-      image_url: design.imageUrl ?? design.dataUrl,
-      prompt: design.prompt,
-      revised_prompt: design.revisedPrompt,
-      image_model: design.imageModel,
-      transparent_background: design.transparentBackground,
-      transparent_background_mode: design.transparentBackgroundMode,
-      variation_intensity: design.variationIntensity,
-      review_note: design.reviewNote,
-      role: design.role,
-      role_label: design.roleLabel,
-      target_group_key: design.targetGroupKey,
-      target_group_label: design.targetGroupLabel,
-      product_image_urls: design.productImageUrls,
-    })),
-  };
-}
-
-function normalizeLegacyCompatibilitySnapshotResponse(
-  value: Record<string, unknown> | undefined,
-): SheinStudioLegacyCompatibilitySnapshot | undefined {
-  if (!value) {
-    return undefined;
-  }
-
-  const selectedIds = Array.isArray(value.approved_design_ids)
-    ? (value.approved_design_ids as unknown[]).filter(
-        (item): item is string => typeof item === "string",
-      )
-    : [];
-  const designs = Array.isArray(value.designs)
-    ? (value.designs as Array<Record<string, unknown>>)
-        .map((design) => normalizeStudioBatchDesignResponse(design))
-        .filter((design): design is NonNullable<typeof design> => Boolean(design))
-    : [];
-  const createdTasks = normalizeStudioBatchCreatedTasks(
-    Array.isArray(value.created_tasks) ? value.created_tasks : undefined,
-    selectedIds,
-    designs,
-  );
-  const generationJobs = normalizeStudioBatchGenerationJobs(
-    Array.isArray(value.generation_jobs) ? value.generation_jobs : undefined,
-  );
-  const generationError =
-    typeof value.generation_error === "string" ? value.generation_error : undefined;
-  const generationJobId =
-    typeof value.generation_job_id === "string" ? value.generation_job_id : undefined;
-
-  if (
-    designs.length === 0 &&
-    selectedIds.length === 0 &&
-    createdTasks.length === 0 &&
-    generationJobs.length === 0 &&
-    !generationError &&
-    !generationJobId
-  ) {
-    return undefined;
-  }
-
-  return {
-    designs,
-    selectedIds,
-    createdTasks,
-    generationJobs,
-    generationError,
-    generationJobId,
   };
 }
 
@@ -913,7 +835,7 @@ function normalizeGroupsResponse(
           : typeof group.updatedAt === "string"
             ? group.updatedAt
             : new Date().toISOString();
-      const legacyCompatibilitySnapshot = normalizeLegacyCompatibilitySnapshotResponse(
+      const legacyCompatibilitySnapshot = decodeStudioBatchDraftLegacySnapshot(
         (group.legacy_compatibility_snapshot ??
           group.legacyCompatibilitySnapshot) as Record<string, unknown> | undefined,
       );
