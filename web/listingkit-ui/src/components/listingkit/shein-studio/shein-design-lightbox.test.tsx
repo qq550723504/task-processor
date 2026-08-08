@@ -86,6 +86,13 @@ describe("SheinDesignLightbox", () => {
     );
 
     expect(screen.getByRole("button", { name: "查看抠图后" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看抠图后" }));
+
+    expect(screen.getByAltText("生成款式预览")).toHaveAttribute(
+      "src",
+      "/api/listing-kits/uploads/files/final-image.png",
+    );
   });
 
   it("opens the image pane selected from the grid", () => {

@@ -365,7 +365,7 @@ describe("SheinDesignPreviewGrid", () => {
         productImageCount="3"
         renderSizeImagesWithSds
         selectedIds={[]}
-        uploadingManualBackgroundRemovalId="design-1"
+        uploadingManualBackgroundRemovalIds={["design-1"]}
       />,
     );
 
@@ -420,6 +420,35 @@ describe("SheinDesignPreviewGrid", () => {
     expect(
       await screen.findByText("仅支持上传真实 PNG 图片。"),
     ).toBeInTheDocument();
+  });
+
+  it("blocks task creation while any background removal request is running", () => {
+    const onCreateReviewTasks = vi.fn();
+
+    render(
+      <SheinDesignPreviewGrid
+        createActionDisabledReason="请等待手动抠图上传完成后再生成 SHEIN 资料。"
+        designs={[
+          { id: "design-1", imageUrl: "https://cdn.example.test/design-1.png" },
+          { id: "design-2", imageUrl: "https://cdn.example.test/design-2.png" },
+        ]}
+        imageStrategy="hybrid"
+        onCreateReviewTasks={onCreateReviewTasks}
+        onRegenerate={vi.fn()}
+        onRetryBackgroundRemoval={vi.fn()}
+        onToggle={vi.fn()}
+        productImageCount="3"
+        renderSizeImagesWithSds
+        selectedIds={["design-1"]}
+      />,
+    );
+
+    const createButton = screen.getByRole("button", {
+      name: "为已批准款式生成 SHEIN 资料",
+    });
+    expect(createButton).toBeDisabled();
+    fireEvent.click(createButton);
+    expect(onCreateReviewTasks).not.toHaveBeenCalled();
   });
 
   it("keeps download visible in read-only mode while hiding manual upload", () => {

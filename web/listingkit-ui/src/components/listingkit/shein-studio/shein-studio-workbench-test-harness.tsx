@@ -24,6 +24,7 @@ export const deleteSheinStudioBatch = vi.fn();
 export const approveSheinStudioBatchDesigns = vi.fn();
 export const createSheinStudioBatchTasks = vi.fn();
 export const uploadManualSheinStudioBackgroundRemoval = vi.fn();
+export const retrySheinStudioBatchBackgroundRemoval = vi.fn();
 export const push = vi.fn();
 export let lastGenerationPanelProps: Record<string, unknown> | null = null;
 
@@ -110,6 +111,7 @@ vi.mock(
       onNoteChange,
       onCreateReviewTasks,
       onUploadManualBackgroundRemoval,
+      onRetryBackgroundRemoval,
     }: {
       designs: Array<{ id: string }>;
       selectedIds?: string[];
@@ -119,6 +121,7 @@ vi.mock(
       onNoteChange?: (designId: string, note: string) => void;
       onCreateReviewTasks?: () => void;
       onUploadManualBackgroundRemoval?: (designId: string, file: File) => Promise<void>;
+      onRetryBackgroundRemoval?: (designId: string) => void;
     }) => {
       const [uploadError, setUploadError] = useState("");
 
@@ -187,6 +190,14 @@ vi.mock(
                   }}
                   type="file"
                 />
+              ) : null}
+              {onRetryBackgroundRemoval ? (
+                <button
+                  onClick={() => onRetryBackgroundRemoval(design.id)}
+                  type="button"
+                >
+                  retry-background-removal-{design.id}
+                </button>
               ) : null}
             </div>
           ))}
@@ -386,6 +397,8 @@ vi.mock("@/lib/api/shein-studio-batches", () => ({
     createSheinStudioBatchTasks(...args),
   uploadManualSheinStudioBackgroundRemoval: (...args: unknown[]) =>
     uploadManualSheinStudioBackgroundRemoval(...args),
+  retrySheinStudioBatchBackgroundRemoval: (...args: unknown[]) =>
+    retrySheinStudioBatchBackgroundRemoval(...args),
 }));
 
 vi.mock("@/lib/api/shein-studio-batch-runs", () => ({
@@ -608,5 +621,6 @@ export function resetSheinStudioWorkbenchHarness(
   approveSheinStudioBatchDesigns.mockReset();
   createSheinStudioBatchTasks.mockReset();
   uploadManualSheinStudioBackgroundRemoval.mockReset();
+  retrySheinStudioBatchBackgroundRemoval.mockReset();
   push.mockReset();
 }

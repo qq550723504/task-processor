@@ -29,6 +29,7 @@ import {
   push,
   resetSheinStudioWorkbenchHarness,
   retrySheinStudioBatchItems,
+  retrySheinStudioBatchBackgroundRemoval,
   saveSheinStudioBatch,
   saveSheinStudioDraftWithOptions,
   selection,
@@ -1879,6 +1880,94 @@ describe("SheinStudioWorkbench", () => {
       expect.objectContaining({ id: "batch-1" }),
       expect.objectContaining({ makeActive: false }),
     );
+  });
+
+  it("disables dedicated batch task recovery while background removal is running", async () => {
+    const hydratedBatch = buildHydratedBatch(
+      {
+        designs: [
+          {
+            id: "design-1",
+            imageUrl: "https://example.com/design-1.png",
+            reviewStatus: "approved",
+          },
+          {
+            id: "design-2",
+            imageUrl: "https://example.com/design-2.png",
+            reviewStatus: "approved",
+          },
+        ],
+        selectedIds: ["design-1", "design-2"],
+        createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+      },
+      {
+        batch: {
+          ...buildHydratedBatch().detail.batch,
+          status: "tasks_created",
+        },
+        items: [
+          {
+            item: {
+              id: "item-1",
+              batchId: "batch-1",
+              targetGroupKey: "size:1000x1000",
+              status: "review_ready",
+              selectionCount: 2,
+              createdAt: "2026-05-26T09:59:00.000Z",
+              updatedAt: "2026-05-26T10:06:00.000Z",
+            },
+            designs: [
+              {
+                id: "design-1",
+                batchId: "batch-1",
+                itemId: "item-1",
+                sourceAttemptId: "attempt-1",
+                targetGroupKey: "size:1000x1000",
+                imageUrl: "https://example.com/design-1.png",
+                reviewStatus: "approved",
+                createdAt: "2026-05-26T10:01:00.000Z",
+                updatedAt: "2026-05-26T10:06:00.000Z",
+              },
+              {
+                id: "design-2",
+                batchId: "batch-1",
+                itemId: "item-1",
+                sourceAttemptId: "attempt-2",
+                targetGroupKey: "size:1000x1000",
+                imageUrl: "https://example.com/design-2.png",
+                reviewStatus: "approved",
+                createdAt: "2026-05-26T10:02:00.000Z",
+                updatedAt: "2026-05-26T10:06:00.000Z",
+              },
+            ],
+          },
+        ],
+        createdTasks: [{ id: "task-1", title: "Task 1", designId: "design-1" }],
+      },
+    );
+    const removalRequest = createDeferred<typeof hydratedBatch.detail>();
+    getSheinStudioHydratedBatch.mockResolvedValue(hydratedBatch);
+    retrySheinStudioBatchBackgroundRemoval.mockReturnValue(
+      removalRequest.promise,
+    );
+
+    render(
+      <SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />,
+    );
+
+    const recoveryButton = await screen.findByRole("button", {
+      name: "补建 SHEIN 资料",
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "retry-background-removal-design-2",
+      }),
+    );
+
+    await waitFor(() => expect(recoveryButton).toBeDisabled());
+    expect(createSheinStudioBatchTasks).not.toHaveBeenCalled();
+
+    removalRequest.resolve(hydratedBatch.detail);
   });
 
   it("keeps the dedicated batch page busy when generate times out but the batch is still running", async () => {

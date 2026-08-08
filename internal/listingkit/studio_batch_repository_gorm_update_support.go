@@ -271,7 +271,7 @@ func (r *GormStudioBatchRepository) ClaimStudioMaterializedDesignBackgroundRemov
 	applyStudioBatchScopeDefaults(ctx, &row.TenantID, &row.UserID)
 	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
 		Model(&StudioMaterializedDesignRecord{}).
-		Where("id = ? AND batch_id = ? AND item_id = ? AND (background_removal_status IS NULL OR background_removal_status = '' OR background_removal_status <> ?)", row.ID, row.BatchID, row.ItemID, StudioBackgroundRemovalStatusPending).
+		Where("id = ? AND batch_id = ? AND item_id = ? AND source_attempt_id = ? AND (background_removal_status IS NULL OR background_removal_status = '' OR background_removal_status <> ?)", row.ID, row.BatchID, row.ItemID, row.SourceAttemptID, StudioBackgroundRemovalStatusPending).
 		Updates(map[string]any{
 			"original_image_url":          row.OriginalImageURL,
 			"transparent_background_mode": row.TransparentBackgroundMode,
@@ -336,7 +336,7 @@ func (r *GormStudioBatchRepository) UpdateStudioMaterializedDesignBackgroundRemo
 	applyStudioBatchScopeDefaults(ctx, &row.TenantID, &row.UserID)
 	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
 		Model(&StudioMaterializedDesignRecord{}).
-		Where("id = ? AND batch_id = ? AND item_id = ?", row.ID, row.BatchID, row.ItemID).
+		Where("id = ? AND batch_id = ? AND item_id = ? AND source_attempt_id = ?", row.ID, row.BatchID, row.ItemID, row.SourceAttemptID).
 		Updates(map[string]any{
 			"image_url":                   row.ImageURL,
 			"original_image_url":          row.OriginalImageURL,

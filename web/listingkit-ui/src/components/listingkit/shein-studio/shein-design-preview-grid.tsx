@@ -198,7 +198,8 @@ export function SheinDesignPreviewGrid({
                           disabled={
                             regeneratingId === design.id ||
                             retryingBackgroundRemovalId === design.id ||
-                            isUploadingManualBackgroundRemoval
+                            isUploadingManualBackgroundRemoval ||
+                            design.backgroundRemovalStatus === "pending"
                           }
                           onClick={() => onRegenerate(design.id)}
                           variant="ghost"
@@ -212,7 +213,8 @@ export function SheinDesignPreviewGrid({
                           disabled={
                             retryingBackgroundRemovalId === design.id ||
                             regeneratingId === design.id ||
-                            isUploadingManualBackgroundRemoval
+                            isUploadingManualBackgroundRemoval ||
+                            design.backgroundRemovalStatus === "pending"
                           }
                           onClick={() => onRetryBackgroundRemoval(design.id)}
                           type="button"
@@ -424,6 +426,7 @@ export function SheinDesignPreviewGrid({
               <Button
                 disabled={
                   isCreatingTasks ||
+                  Boolean(retryingBackgroundRemovalId) ||
                   selectedIds.length === 0 ||
                   Boolean(createActionDisabledReason)
                 }
