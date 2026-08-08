@@ -102,6 +102,17 @@ func TestAutoMigrateListingKitRuntimeSchemaCreatesAIInvocationsTable(t *testing.
 	}
 }
 
+func TestAutoMigrateListingKitRuntimeSchemaCreatesSDSChildRetryTable(t *testing.T) {
+	db := openRuntimeSchemaTestDB(t)
+
+	if err := autoMigrateListingKitRuntimeSchema(db); err != nil {
+		t.Fatalf("autoMigrateListingKitRuntimeSchema() error = %v", err)
+	}
+	if !db.Migrator().HasTable(&listingkit.SDSChildRetryJob{}) {
+		t.Fatal("expected SDS child retry table to be created")
+	}
+}
+
 func openRuntimeSchemaTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 

@@ -8,8 +8,6 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/database"
-	"task-processor/internal/listingkit"
-	listingkitstore "task-processor/internal/listingkit/store"
 )
 
 func openListingKitRepositoryDB(cfg *config.DatabaseConfig, logger *logrus.Logger) (*gorm.DB, func() error, error) {
@@ -26,15 +24,4 @@ func openListingKitRepositoryDB(cfg *config.DatabaseConfig, logger *logrus.Logge
 		return nil, nil, fmt.Errorf("listingkit schema bootstrap failed: %w", err)
 	}
 	return db, func() error { return database.CloseSharedDatabase(cfg, db) }, nil
-}
-
-func autoMigrateListingKitTaskRepository(db *gorm.DB) error {
-	if err := db.AutoMigrate(
-		&listingkit.Task{},
-		&listingkit.CanonicalProductCacheEntry{},
-		&listingkit.SDSBaselineCacheEntry{},
-	); err != nil {
-		return err
-	}
-	return listingkitstore.AutoMigrateSheinPODImageLookupIndex(db)
 }
