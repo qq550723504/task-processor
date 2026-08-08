@@ -3,7 +3,7 @@ import { parseApiResponseShape } from "@/lib/api/response-schema";
 import {
   normalizeGroupedSelectionsResponse,
   normalizeSelectionResponse,
-} from "@/lib/api/shein-studio-batch-drafts";
+} from "@/lib/api/shein-studio-batch-draft-response-codec";
 import { normalizeSelectedSDSImages } from "@/lib/shein-studio/sds-selectable-images";
 import type {
   SheinStudioBatchDetail,

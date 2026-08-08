@@ -1,4 +1,4 @@
-import type { UpsertSheinStudioBatchDraftInput } from "@/lib/api/shein-studio-batch-drafts";
+import type { UpsertSheinStudioBatchDraftInput } from "@/lib/api/shein-studio-batch-draft-request-codec";
 
 export const sheinStudioBatchTaskCreationContractFixture = {
   response: {

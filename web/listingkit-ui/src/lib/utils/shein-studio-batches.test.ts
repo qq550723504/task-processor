@@ -27,11 +27,14 @@ const selection = {
 };
 
 vi.mock("@/lib/api/shein-studio-batch-drafts", () => ({
-  buildStudioBatchDraftSelectionKey: (...args: unknown[]) =>
-    buildStudioBatchDraftSelectionKey(...args),
   listSheinStudioBatchDrafts: (...args: unknown[]) => listSheinStudioBatchDrafts(...args),
   upsertSheinStudioBatchDraft: (...args: unknown[]) => upsertSheinStudioBatchDraft(...args),
   deleteSheinStudioBatchDraft: (...args: unknown[]) => deleteSheinStudioBatchDraft(...args),
+}));
+
+vi.mock("@/lib/api/shein-studio-batch-draft-request-codec", () => ({
+  buildStudioBatchDraftSelectionKey: (...args: unknown[]) =>
+    buildStudioBatchDraftSelectionKey(...args),
 }));
 
 vi.mock("@/lib/api/shein-studio-batches", () => ({

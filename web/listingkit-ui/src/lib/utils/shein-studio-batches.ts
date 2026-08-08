@@ -1,9 +1,9 @@
 import {
-  buildStudioBatchDraftSelectionKey,
   deleteSheinStudioBatchDraft,
   listSheinStudioBatchDrafts,
   upsertSheinStudioBatchDraft,
 } from "@/lib/api/shein-studio-batch-drafts";
+import { buildStudioBatchDraftSelectionKey } from "@/lib/api/shein-studio-batch-draft-request-codec";
 import { ApiError } from "@/lib/api/client";
 import { getSheinStudioBatchDetail } from "@/lib/api/shein-studio-batches";
 import {

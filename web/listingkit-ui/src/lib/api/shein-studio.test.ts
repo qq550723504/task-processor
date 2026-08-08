@@ -6,11 +6,13 @@ import {
 } from "@/lib/api/shein-studio";
 import {
   listSheinStudioBatchDrafts,
-  mapStudioBatchDraftDetailToBatch,
-  mapStudioBatchDraftDetailToDraft,
   upsertSheinStudioBatchDraft,
 } from "@/lib/api/shein-studio-batch-drafts";
-import { parseStudioBatchDraftDetailResponse } from "@/lib/api/shein-studio-batch-draft-schema";
+import {
+  mapStudioBatchDraftDetailToBatch,
+  mapStudioBatchDraftDetailToDraft,
+  parseStudioBatchDraftDetailResponse,
+} from "@/lib/api/shein-studio-batch-draft-response-codec";
 import {
   sheinStudioBatchDraftDetailContractFixture,
   sheinStudioBatchListContractFixture,
