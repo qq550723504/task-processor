@@ -1,7 +1,9 @@
 // Package handler 提供 HTTP 处理器
 package httpx
 
-import "task-processor/internal/crawler/shared"
+import (
+	"task-processor/internal/crawler/shared"
+)
 
 // CrawlerService 爬虫服务接口，由 HTTP handler 消费
 type CrawlerService interface {
@@ -21,4 +23,12 @@ type CrawlerService interface {
 
 	// GetStats 获取统计信息
 	GetStats() map[string]any
+}
+
+// TenantScopedCrawlerService is implemented by crawler services whose results
+// must be read and mutated within an authenticated tenant boundary.
+type TenantScopedCrawlerService interface {
+	GetTaskForTenant(tenantID int64, taskID string) (*shared.CrawlerResult, error)
+	DeleteTaskForTenant(tenantID int64, taskID string)
+	GetAllTasksForTenant(tenantID int64) []*shared.CrawlerResult
 }

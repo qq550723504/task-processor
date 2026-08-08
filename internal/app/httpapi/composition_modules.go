@@ -20,6 +20,7 @@ func (c httpFeatureComposition) runtimeModules() []kernelmodule.Module {
 		c.sdsHTTPModule(),
 		c.sheinLoginHTTPModule(),
 		c.sdsLoginHTTPModule(),
+		c.crawler1688Module,
 	}
 }
 

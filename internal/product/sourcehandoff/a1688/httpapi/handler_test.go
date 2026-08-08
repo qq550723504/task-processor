@@ -25,13 +25,13 @@ func TestCreateListingKitTaskReturnsCreatedTask(t *testing.T) {
 	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
 
 	body := CreateListingKitTaskRequest{
-		URL:           "https://detail.1688.com/offer/999.html?spm=http",
-		Product:       httpProduct1688("999"),
-		SourceStoreID: 3001,
-		Platforms:     []string{" SHEIN ", "shein"},
-		Country:       "US",
-		Language:      "en_US",
-		SheinStoreID:  168811,
+		URL:             "https://detail.1688.com/offer/999.html?spm=http",
+		Product:         httpProduct1688("999"),
+		SourceAccountID: 3001,
+		Platforms:       []string{" SHEIN ", "shein"},
+		Country:         "US",
+		Language:        "en_US",
+		SheinStoreID:    168811,
 	}
 	rec := performJSONRequestWithAuthenticatedIdentity(t, router, http.MethodPost, "/tasks", body, map[string]string{"X-Tenant-ID": " tenant-http ", "X-User-ID": " user-http "}, listingkit.AuthenticatedIdentity{TenantID: "tenant-http", UserID: "user-http"})
 
@@ -41,8 +41,8 @@ func TestCreateListingKitTaskReturnsCreatedTask(t *testing.T) {
 	if service.command.TenantID != "tenant-http" || service.command.UserID != "user-http" {
 		t.Fatalf("command tenant/user = %q/%q, want header fallback", service.command.TenantID, service.command.UserID)
 	}
-	if service.command.SourceStoreID != 3001 || service.command.SheinStoreID != 168811 {
-		t.Fatalf("store ids = (%d, %d), want source and shein stores preserved", service.command.SourceStoreID, service.command.SheinStoreID)
+	if service.command.SourceAccountID != 3001 || service.command.SheinStoreID != 168811 {
+		t.Fatalf("account and target ids = (%d, %d), want source account and shein target preserved", service.command.SourceAccountID, service.command.SheinStoreID)
 	}
 	var got CreateListingKitTaskResponse
 	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
@@ -159,7 +159,7 @@ func (f *fakeTaskCommandService) CreateTask(_ context.Context, command a1688.Cre
 		return f.result, nil
 	}
 	envelope := sourcing.Alibaba1688SourceEnvelope(sourcing.Alibaba1688SourceEnvelopeInput{
-		Request: sourcing.Alibaba1688CrawlRequestInput{URL: command.URL, StoreID: command.SourceStoreID},
+		Request: sourcing.Alibaba1688CrawlRequestInput{URL: command.URL, AccountID: command.SourceAccountID},
 		Product: command.Product,
 	})
 	return &a1688.CreateTaskResult{

@@ -130,3 +130,33 @@ func TestBaseServiceStoreResultReturnsErrorWhenSharedStoreWriteFails(t *testing.
 		t.Fatal("StoreResult() error = nil, want write failure")
 	}
 }
+
+func TestBaseServiceTenantScopedResultsCannotCrossTenant(t *testing.T) {
+	store := newStubResultStore()
+	var writer BaseService
+	writer.ConfigureSharedResultStore(store, "crawler:tenant-test", time.Hour)
+	result := NewCrawlerResult("task-tenant")
+	result.TenantID = 101
+	if err := writer.StoreResult(result.TaskID, result); err != nil {
+		t.Fatalf("StoreResult() error = %v", err)
+	}
+
+	var reader BaseService
+	reader.ConfigureSharedResultStore(store, "crawler:tenant-test", time.Hour)
+	if _, err := reader.GetTaskForTenant(202, result.TaskID); err == nil {
+		t.Fatal("GetTaskForTenant() exposed another tenant's result")
+	}
+	got, err := reader.GetTaskForTenant(101, result.TaskID)
+	if err != nil || got.TenantID != 101 {
+		t.Fatalf("GetTaskForTenant() = %+v, %v; want tenant 101", got, err)
+	}
+
+	reader.DeleteTaskForTenant(202, result.TaskID)
+	if _, err := reader.GetTaskForTenant(101, result.TaskID); err != nil {
+		t.Fatalf("wrong-tenant delete removed result: %v", err)
+	}
+	reader.DeleteTaskForTenant(101, result.TaskID)
+	if _, err := reader.GetTaskForTenant(101, result.TaskID); err == nil {
+		t.Fatal("owner delete did not remove result")
+	}
+}

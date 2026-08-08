@@ -109,7 +109,7 @@ func (cl *ContextLauncher) launchPersistentContext(userAgent string) (playwright
 		}
 	}
 
-	logger.GetGlobalLogger("crawler/shared").Infof("使用持久化上下文启动浏览器，用户数据目录: %s", userDataDir)
+	logger.GetGlobalLogger("crawler/shared").Info("使用持久化上下文启动浏览器")
 
 	// 启动持久化上下文
 	context, err := (*cl.pw).Chromium.LaunchPersistentContext(userDataDir, options)

@@ -16,13 +16,13 @@ import (
 // already-fetched 1688 product into a ListingKit task through the existing
 // CreateGenerateTask boundary.
 type CreateTaskCommand struct {
-	URL           string
-	Product       *alibaba1688model.Product1688
-	RawSnapshot   string
-	SourceRunID   string
-	RequestID     string
-	Error         error
-	SourceStoreID int64
+	URL             string
+	Product         *alibaba1688model.Product1688
+	RawSnapshot     string
+	SourceRunID     string
+	RequestID       string
+	Error           error
+	SourceAccountID int64
 
 	TenantID           string
 	UserID             string
@@ -80,7 +80,7 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 
 	task, handoff, err := CreateListingKitTask(ctx, s.creator, ListingKitTaskInput{
 		Source: sourcing.Alibaba1688SourceEnvelopeInput{
-			Request:     sourcing.Alibaba1688CrawlRequestInput{URL: url, StoreID: command.SourceStoreID},
+			Request:     sourcing.Alibaba1688CrawlRequestInput{URL: url, AccountID: command.SourceAccountID},
 			Product:     command.Product,
 			RawSnapshot: command.RawSnapshot,
 			SourceRunID: command.SourceRunID,
@@ -114,7 +114,7 @@ func (s *TaskCommandService) validateStores(ctx context.Context, command CreateT
 	for _, item := range []struct {
 		id       int64
 		platform string
-	}{{command.SourceStoreID, "1688"}, {command.SheinStoreID, "SHEIN"}} {
+	}{{command.SourceAccountID, "1688"}, {command.SheinStoreID, "SHEIN"}} {
 		if item.id <= 0 {
 			return listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
 		}

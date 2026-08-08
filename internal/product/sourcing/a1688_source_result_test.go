@@ -9,15 +9,26 @@ import (
 
 func TestAlibaba1688SourceRequestUsesOfferIDIdentity(t *testing.T) {
 	got := Alibaba1688SourceRequest(Alibaba1688CrawlRequestInput{
-		URL:     " HTTPS://DETAIL.1688.COM/offer/123456789.html?spm=abc#sku ",
-		StoreID: 42,
+		URL:       " HTTPS://DETAIL.1688.COM/offer/123456789.html?spm=abc#sku ",
+		AccountID: 42,
 	}).Identity()
 
-	if got.Platform != "1688" || got.Region != "cn" || got.ProductID != "123456789" || got.StoreID != 42 {
+	if got.Platform != "1688" || got.Region != "cn" || got.ProductID != "123456789" || got.StoreID != 0 {
 		t.Fatalf("Identity() = %+v, want 1688 cn offer identity", got)
 	}
-	if key := got.Key(); key != "1688:cn:123456789:42" {
-		t.Fatalf("Key() = %q, want 1688:cn:123456789:42", key)
+	if key := got.Key(); key != "1688:cn:123456789" {
+		t.Fatalf("Key() = %q, want 1688:cn:123456789", key)
+	}
+}
+
+func TestAlibaba1688SourceRequestDoesNotProjectAccountIntoNeutralStoreIdentity(t *testing.T) {
+	got := Alibaba1688SourceRequest(Alibaba1688CrawlRequestInput{
+		URL:       "https://detail.1688.com/offer/123.html",
+		AccountID: 3001,
+	}).Identity()
+
+	if got.StoreID != 0 {
+		t.Fatalf("Identity().StoreID = %d, want neutral store id omitted", got.StoreID)
 	}
 }
 

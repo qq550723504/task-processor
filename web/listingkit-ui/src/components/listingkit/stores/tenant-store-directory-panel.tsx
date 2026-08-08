@@ -179,6 +179,7 @@ export function TenantStoreDirectoryPanel() {
                 <option value="">全部</option>
                 <option value="SHEIN">SHEIN</option>
                 <option value="TEMU">TEMU</option>
+                <option value="1688">1688 登录账号</option>
               </Select>
             </Label>
             <Label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
@@ -327,6 +328,12 @@ export function TenantStoreDirectoryPanel() {
               value={form.password ?? ""}
               onChange={(password) => setForm({ ...form, password })}
             />
+            {form.platform === "1688" ? (
+              <>
+                <StoreInput label="登录网址" value={form.loginUrl ?? ""} onChange={(loginUrl) => setForm({ ...form, loginUrl })} />
+                <StoreInput label="代理地址" value={form.proxy ?? ""} onChange={(proxy) => setForm({ ...form, proxy })} />
+              </>
+            ) : null}
           </FormSection>
 
           <FormSection
@@ -338,7 +345,7 @@ export function TenantStoreDirectoryPanel() {
                 label="平台"
                 value={form.platform}
                 onChange={(platformValue) => setForm({ ...form, platform: platformValue })}
-                options={["SHEIN", "TEMU"]}
+                options={["SHEIN", "TEMU", "1688"]}
               />
               <StoreSelect
                 label="地区"
