@@ -30,6 +30,23 @@ export function resolveGeneratedDesignSrc(design: SheinStudioGeneratedDesign) {
   return design.dataUrl || "";
 }
 
+export function resolveGeneratedDesignOriginalSrc(
+  design: SheinStudioGeneratedDesign,
+) {
+  return resolveGeneratedDesignSrc({
+    ...design,
+    imageUrl: design.originalImageUrl || design.imageUrl,
+  });
+}
+
+export function resolveGeneratedDesignFinalSrc(
+  design: SheinStudioGeneratedDesign,
+) {
+  return design.backgroundRemovalStatus === "succeeded"
+    ? resolveGeneratedDesignSrc(design)
+    : "";
+}
+
 export function hasGeneratedDesignSrc(design: SheinStudioGeneratedDesign) {
   return Boolean(resolveGeneratedDesignSrc(design));
 }
