@@ -1528,7 +1528,7 @@ export function SheinStudioWorkbench({
         <div className="flex flex-wrap gap-2 xl:justify-end">
           {shouldPrioritizeTaskCreationRecovery ? (
             <Button
-              disabled={isCreatingTasks}
+              disabled={isCreatingTasks || Boolean(retryingBackgroundRemovalId)}
               onClick={() => {
                 void handleCreateTasks();
               }}

@@ -20,6 +20,7 @@ export const startSheinStudioBatchRun = vi.fn();
 export const deleteSheinStudioBatch = vi.fn();
 export const approveSheinStudioBatchDesigns = vi.fn();
 export const createSheinStudioBatchTasks = vi.fn();
+export const retrySheinStudioBatchBackgroundRemoval = vi.fn();
 export const push = vi.fn();
 export let lastGenerationPanelProps: Record<string, unknown> | null = null;
 
@@ -103,12 +104,14 @@ vi.mock(
       onToggle,
       onNoteChange,
       onCreateReviewTasks,
+      onRetryBackgroundRemoval,
     }: {
       designs: Array<{ id: string }>;
       selectedIds?: string[];
       onToggle?: (designId: string) => void;
       onNoteChange?: (designId: string, note: string) => void;
       onCreateReviewTasks?: () => void;
+      onRetryBackgroundRemoval?: (designId: string) => void;
     }) => (
       <div>
         <div>review grid: {designs.length}</div>
@@ -128,6 +131,14 @@ vi.mock(
                 type="button"
               >
                 note-{design.id}
+              </button>
+            ) : null}
+            {onRetryBackgroundRemoval ? (
+              <button
+                onClick={() => onRetryBackgroundRemoval(design.id)}
+                type="button"
+              >
+                retry-background-removal-{design.id}
               </button>
             ) : null}
           </div>
@@ -321,6 +332,8 @@ vi.mock("@/lib/api/shein-studio-batches", () => ({
     retrySheinStudioBatchItems(...args),
   createSheinStudioBatchTasks: (...args: unknown[]) =>
     createSheinStudioBatchTasks(...args),
+  retrySheinStudioBatchBackgroundRemoval: (...args: unknown[]) =>
+    retrySheinStudioBatchBackgroundRemoval(...args),
 }));
 
 vi.mock("@/lib/api/shein-studio-batch-runs", () => ({
@@ -541,5 +554,6 @@ export function resetSheinStudioWorkbenchHarness(
   deleteSheinStudioBatch.mockResolvedValue(undefined);
   approveSheinStudioBatchDesigns.mockReset();
   createSheinStudioBatchTasks.mockReset();
+  retrySheinStudioBatchBackgroundRemoval.mockReset();
   push.mockReset();
 }
