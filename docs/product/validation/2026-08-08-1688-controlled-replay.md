@@ -117,3 +117,32 @@ credentials. No port-forward, API process, 1688 crawler request, task creation,
 or marketplace operation was started by this run. Resume only after the
 operator supplies a valid worktree runtime configuration and bearer token, or
 points the scripts at the current cluster services.
+
+## Preflight run — infrastructure passed, business gate blocked
+
+After correcting the port-forward defaults to the current cluster services, a
+second read-only run reached the local API successfully:
+
+| Check | Result |
+| --- | --- |
+| PostgreSQL forward | `platform-data/shared-postgresql` → `127.0.0.1:15432` |
+| Redis forward | `platform-data/redis` → `127.0.0.1:16379` |
+| Temporal forward | `temporal/temporal-frontend` → `127.0.0.1:7233` |
+| API database connection | `127.0.0.1:15432/ruoyi-vue-pro` |
+| `/health` | HTTP 200 |
+| `/readyz` | HTTP 200 |
+| `/api/v1/listing-kits/settings-health` | HTTP 200 |
+
+The controlled request context used tenant `101` only for GET checks. Its
+subscription summary reported `store_management.allowed=false` with reason
+`not_configured`, so tenant-store endpoints correctly returned HTTP 402. The
+platform subscription read model contained eight configured tenants, but the
+tenant-scoped simple-store reads returned no stores for the configured tenants
+that were checked. The platform store listing currently contains SHEIN/TEMU
+stores and the `platform=1688` read returned zero stores.
+
+Conclusion remains `blocked`: infrastructure is healthy, but there is no
+current tenant-scoped 1688 source store plus eligible SHEIN target pair for a
+real handoff. The historical `source_store_id=3001` and
+`shein_store_id=168811` values are test fixtures, not runtime acceptance data.
+No POST request or task creation was made.

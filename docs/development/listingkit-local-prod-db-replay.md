@@ -33,8 +33,8 @@
 
 脚本会：
 
-- 转发 `yudao-cloud/postgresql-v18` 到 `127.0.0.1:15432`
-- 转发 `yudao-cloud/redis-master` 到 `127.0.0.1:16379`
+- 转发 `platform-data/shared-postgresql` 到 `127.0.0.1:15432`
+- 转发 `platform-data/redis` 到 `127.0.0.1:16379`
 - 打印本地 API / UI 的建议启动命令
 - 保持窗口常驻，直到你 `Ctrl+C`
 

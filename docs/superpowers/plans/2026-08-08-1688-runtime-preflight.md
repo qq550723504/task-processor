@@ -157,3 +157,36 @@
   git add scripts/start-listingkit-api-local-replay.ps1 scripts/start-listingkit-api-local-replay.Tests.ps1 docs/product/validation/2026-08-08-1688-controlled-replay.md
   git commit -m "fix: make 1688 replay entry point portable"
   ```
+
+### Task 4: Converge local port-forward defaults with the current cluster
+
+**Files:**
+- Modify: `scripts/start-listingkit-local-portforward.ps1`
+- Create: `scripts/start-listingkit-local-portforward.Tests.ps1`
+- Modify: `docs/development/listingkit-local-prod-db-replay.md`
+- Modify: `docs/product/validation/2026-08-08-1688-controlled-replay.md`
+
+**Interfaces:**
+- Consumes: the current Kubernetes service inventory and the existing watcher script defaults.
+- Produces: a local port-forward entry point targeting `platform-data/shared-postgresql`, `platform-data/redis`, and `temporal/temporal-frontend`.
+
+- [x] **Step 1: Write and run the failing parameter-default test**
+
+  The test parses the PowerShell parameter block and asserts the four database/Redis defaults. With the historical script values, the focused run failed because `DbNamespace` was `yudao-cloud` instead of `platform-data`.
+
+- [x] **Step 2: Change only the stale database and Redis defaults**
+
+  Set `DbNamespace` to `platform-data`, `DbService` to `shared-postgresql`, `RedisNamespace` to `platform-data`, and `RedisService` to `redis`. Preserve all fixed local ports and Temporal defaults.
+
+- [x] **Step 3: Verify the focused scripts and parser**
+
+  ```powershell
+  Invoke-Pester -Path scripts/start-listingkit-local-portforward.Tests.ps1
+  Invoke-Pester -Path scripts/start-listingkit-api-local-replay.Tests.ps1
+  ```
+
+  Expected: 4 passed tests and no PowerShell parser errors.
+
+- [x] **Step 4: Record the live read-only preflight boundary**
+
+  Record successful infrastructure probes and the remaining subscription/store blocker in `docs/product/validation/2026-08-08-1688-controlled-replay.md`. Do not record credentials or create a task.

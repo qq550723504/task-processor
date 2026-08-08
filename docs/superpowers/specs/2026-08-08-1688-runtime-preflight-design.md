@@ -8,13 +8,20 @@ Make the existing local ListingKit API replay entry point runnable from the curr
 
 `scripts/start-listingkit-api-local-replay.ps1` hard-codes the historical checkout path `D:\code\task-processor`. The script therefore fails or runs against the wrong directory when the repository is checked out elsewhere. The maintained `start-listingkit-local-api.ps1` already resolves the repository root from `$PSScriptRoot`; the replay entry point should use the same boundary.
 
+The local port-forward entry point also used historical Kubernetes defaults
+(`yudao-cloud/postgresql-v18` and `yudao-cloud/redis`). The current cluster and
+the existing watcher script use `platform-data/shared-postgresql` and
+`platform-data/redis`, so the maintained port-forward entry point must converge
+on those service targets.
+
 ## Design
 
 - Resolve the repository root from the replay script's own directory with `$PSScriptRoot`.
 - Keep the existing fixed local database, Redis, cookie-Redis, API port, config path, and log-level settings unchanged.
 - Change directory to the resolved repository root before invoking `go run`, so relative config and package paths remain valid regardless of the caller's current directory.
+- Default local database forwarding to `platform-data/shared-postgresql` and Redis forwarding to `platform-data/redis`; keep the Temporal target in `temporal/temporal-frontend`.
 - Do not add task creation, crawler invocation, store mutation, or platform submission to this change.
-- Add a Pester regression test that parses the script and asserts the dynamic-root contract and absence of the stale hard-coded path.
+- Add Pester regression tests that parse both scripts and assert the dynamic-root contract, absence of the stale hard-coded path, and current Kubernetes service defaults.
 
 ## Validation boundary
 
