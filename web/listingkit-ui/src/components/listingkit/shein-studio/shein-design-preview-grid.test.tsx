@@ -188,6 +188,30 @@ describe("SheinDesignPreviewGrid", () => {
     expect(screen.getByRole("button", { name: "重新抠图" })).toBeDisabled();
   });
 
+  it("disables both conflicting operations for a persisted pending removal", () => {
+    render(
+      <SheinDesignPreviewGrid
+        createActionDisabledReason={undefined}
+        designs={[{
+          id: "design-1",
+          imageUrl: "https://cdn.example.test/design.png",
+          backgroundRemovalStatus: "pending",
+        }]}
+        imageStrategy="hybrid"
+        onCreateReviewTasks={vi.fn()}
+        onRegenerate={vi.fn()}
+        onRetryBackgroundRemoval={vi.fn()}
+        onToggle={vi.fn()}
+        productImageCount="3"
+        renderSizeImagesWithSds
+        selectedIds={[]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "重新生成" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "重新抠图" })).toBeDisabled();
+  });
+
   it("blocks task creation while any background removal request is running", () => {
     const onCreateReviewTasks = vi.fn();
 

@@ -205,6 +205,13 @@ func (s *taskStudioBatchService) RetryStudioBatchDesignBackgroundRemoval(ctx con
 	if len(requestedSet) > 0 && len(targets) != len(requestedSet) {
 		return nil, NewStudioBatchActionValidationError("one or more requested designs are not eligible for background removal")
 	}
+	designIDs := make([]string, 0, len(targets))
+	for _, target := range targets {
+		designIDs = append(designIDs, detail.Items[target.itemIndex].Designs[target.designIndex].ID)
+	}
+	if err := s.rejectStudioBackgroundRemovalForOwnedTasks(ctx, batchID, designIDs); err != nil {
+		return nil, err
+	}
 	now := time.Now().UTC()
 	if s.currentTime != nil {
 		now = s.currentTime().UTC()
@@ -256,10 +263,32 @@ func (s *taskStudioBatchService) claimStudioBackgroundRemoval(ctx context.Contex
 	if repository, ok := s.repo.(studioBackgroundRemovalRepository); ok {
 		return repository.ClaimStudioMaterializedDesignBackgroundRemoval(ctx, design)
 	}
-	if design.BackgroundRemovalStatus == StudioBackgroundRemovalStatusPending {
-		return false, nil
-	}
 	return true, s.repo.UpdateStudioMaterializedDesign(ctx, design)
+}
+
+func (s *taskStudioBatchService) rejectStudioBackgroundRemovalForOwnedTasks(ctx context.Context, batchID string, designIDs []string) error {
+	if s == nil || s.batchTaskLinkRepo == nil || len(designIDs) == 0 {
+		return nil
+	}
+	links, err := s.batchTaskLinkRepo.ListStudioBatchTaskLinksByBatchID(ctx, batchID)
+	if err != nil {
+		return err
+	}
+	targetDesignIDs := make(map[string]struct{}, len(designIDs))
+	for _, designID := range designIDs {
+		targetDesignIDs[strings.TrimSpace(designID)] = struct{}{}
+	}
+	for _, link := range links {
+		if strings.TrimSpace(link.ListingKitTaskID) == "" {
+			continue
+		}
+		designID := strings.TrimSpace(link.DesignID)
+		if _, ok := targetDesignIDs[designID]; !ok {
+			continue
+		}
+		return NewStudioBatchActionValidationError(fmt.Sprintf("design %s already owns ListingKit task %s", designID, strings.TrimSpace(link.ListingKitTaskID)))
+	}
+	return nil
 }
 
 func (s *taskStudioBatchService) updateStudioBackgroundRemoval(ctx context.Context, design *StudioMaterializedDesignRecord) error {

@@ -170,7 +170,8 @@ export function SheinDesignPreviewGrid({
                           className="flex-1"
                           disabled={
                             regeneratingId === design.id ||
-                            retryingBackgroundRemovalId === design.id
+                            retryingBackgroundRemovalId === design.id ||
+                            design.backgroundRemovalStatus === "pending"
                           }
                           onClick={() => onRegenerate(design.id)}
                           variant="ghost"
@@ -183,7 +184,8 @@ export function SheinDesignPreviewGrid({
                           className="flex-1"
                           disabled={
                             retryingBackgroundRemovalId === design.id ||
-                            regeneratingId === design.id
+                            regeneratingId === design.id ||
+                            design.backgroundRemovalStatus === "pending"
                           }
                           onClick={() => onRetryBackgroundRemoval(design.id)}
                           type="button"
