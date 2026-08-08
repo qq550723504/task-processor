@@ -262,7 +262,9 @@ export function SheinStudioWorkbench({
     variationIntensity,
   } = workbenchState;
   const itemizedBatchDetailRef = useRef(itemizedBatchDetail);
-  itemizedBatchDetailRef.current = itemizedBatchDetail;
+  useEffect(() => {
+    itemizedBatchDetailRef.current = itemizedBatchDetail;
+  }, [itemizedBatchDetail]);
   const {
     setArtworkModel,
     setBatchQueueMode,
@@ -1198,6 +1200,7 @@ export function SheinStudioWorkbench({
         transparentBackgroundMode,
         variationIntensity,
       });
+      itemizedBatchDetailRef.current = nextDetail;
       workbenchController.setField("savedBatches", (current) =>
         upsertRecentSavedBatch(current, savedBatch),
       );

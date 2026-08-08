@@ -526,6 +526,89 @@ describe("SheinStudioWorkbench", () => {
     expect(screen.getByText("uploading manual background removal: none")).toBeInTheDocument();
   });
 
+  it("preserves both results when manual cutout uploads finish concurrently", async () => {
+    const detail = buildReviewReadyHydratedBatchDetail();
+    detail.batch.transparentBackgroundMode = "removal";
+    detail.items[0].designs.push({
+      ...detail.items[0].designs[0],
+      id: "design-2",
+      imageUrl: "https://example.com/design-2-final.png",
+    });
+    const batchDetail = buildHydratedBatch({}, detail);
+    getSheinStudioHydratedBatch.mockResolvedValue(batchDetail);
+    const firstUploadedDetail = {
+      ...batchDetail.detail,
+      items: [
+        {
+          ...batchDetail.detail.items[0],
+          designs: [
+            {
+              ...batchDetail.detail.items[0].designs[0],
+              imageUrl: "https://example.com/design-1-manual-final.png",
+            },
+          ],
+        },
+      ],
+    };
+    const secondUploadedDetail = {
+      ...batchDetail.detail,
+      items: [
+        {
+          ...batchDetail.detail.items[0],
+          designs: [
+            {
+              ...batchDetail.detail.items[0].designs[1],
+              imageUrl: "https://example.com/design-2-manual-final.png",
+            },
+          ],
+        },
+      ],
+    };
+    const pngFile = new File(
+      [new Uint8Array([0x89, 0x50, 0x4e, 0x47])],
+      "manual-cutout.png",
+      { type: "image/png" },
+    );
+    const firstUpload = createDeferred<typeof firstUploadedDetail>();
+    const secondUpload = createDeferred<typeof secondUploadedDetail>();
+    uploadManualSheinStudioBackgroundRemoval
+      .mockImplementationOnce(() => firstUpload.promise)
+      .mockImplementationOnce(() => secondUpload.promise);
+
+    render(
+      <SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("review grid: 2")).toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByLabelText("upload-design-1"), {
+      target: { files: [pngFile] },
+    });
+    fireEvent.change(screen.getByLabelText("upload-design-2"), {
+      target: { files: [pngFile] },
+    });
+    await waitFor(() =>
+      expect(uploadManualSheinStudioBackgroundRemoval).toHaveBeenCalledTimes(2),
+    );
+
+    firstUpload.resolve(firstUploadedDetail);
+    await Promise.resolve();
+    secondUpload.resolve(secondUploadedDetail);
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "design-image-design-2: https://example.com/design-2-manual-final.png",
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(
+        "design-image-design-1: https://example.com/design-1-manual-final.png",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("does not let a newer dedicated-batch local snapshot override hydrated detail results", async () => {
     saveLocalSheinStudioDraftSnapshot(
       {
