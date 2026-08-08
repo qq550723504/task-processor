@@ -396,6 +396,7 @@ describe("SheinStudioWorkbench", () => {
       ...batchDetail.detail,
       batch: {
         ...batchDetail.detail.batch,
+        transparentBackgroundMode: "native",
         updatedAt: "2026-05-26T10:05:00.000Z",
       },
       items: [
@@ -405,6 +406,9 @@ describe("SheinStudioWorkbench", () => {
             {
               ...batchDetail.detail.items[0].designs[0],
               imageUrl: "https://example.com/design-1-manual-final.png",
+              originalImageUrl: "https://example.com/design-1-manual-original.png",
+              backgroundRemovalStatus: "failed",
+              backgroundRemovalError: "manual cutout failed after upload",
               updatedAt: "2026-05-26T10:05:00.000Z",
             },
           ],
@@ -471,17 +475,19 @@ describe("SheinStudioWorkbench", () => {
     );
     expect(
       screen.getByText(
-        "design-original-design-1: https://example.com/design-1-original.png",
+        "design-original-design-1: https://example.com/design-1-manual-original.png",
       ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("design-background-removal-status-design-1: succeeded"),
+      screen.getByText("design-background-removal-status-design-1: failed"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("design-background-removal-error-design-1: manual cutout warning"),
+      screen.getByText(
+        "design-background-removal-error-design-1: manual cutout failed after upload",
+      ),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("design-transparent-background-mode-design-1: removal"),
+      screen.getByText("design-transparent-background-mode-design-1: native"),
     ).toBeInTheDocument();
     expect(
       screen.getByText("uploading manual background removal: none"),
