@@ -84,6 +84,28 @@ export function clearWorkbenchTaskRecoveryAlerts(
   workbench.setField("creatingWarning", "");
 }
 
+export async function persistRegeneratedStudioDraft({
+  designs,
+  groups,
+  persistDraft,
+  selectedIds,
+}: {
+  designs: SheinStudioGeneratedDesign[];
+  groups: SheinStudioGroupedWorkspace[];
+  persistDraft: PersistDraft;
+  selectedIds: string[];
+}) {
+  try {
+    await persistDraft(
+      { designs, groups, selectedIds },
+      { source: "regenerate_success" },
+    );
+    return "";
+  } catch (error) {
+    return formatSubscriptionApiError(error);
+  }
+}
+
 type UseSheinStudioDesignActionsParams = {
   activeGroupId: string;
   activeSelection?: SDSProductVariantSelection;
@@ -465,16 +487,22 @@ export function useSheinStudioDesignActions({
       logListingKitTraceEvent("info", "studio regenerate completed", {
         designId,
       });
-      void persistDraft(
-        {
-          designs: nextDesigns,
-          groups: nextGroups,
-          selectedIds: nextSelectedIds,
-        },
-        {
-          source: "regenerate_success",
-        },
-      ).catch(() => undefined);
+      const persistenceError = await persistRegeneratedStudioDraft({
+        designs: nextDesigns,
+        groups: nextGroups,
+        persistDraft,
+        selectedIds: nextSelectedIds,
+      });
+      if (persistenceError) {
+        logListingKitTraceEvent("warn", "studio regenerate draft save failed", {
+          designId,
+          error: persistenceError,
+        });
+        workbench.setField(
+          "generationError",
+          `重新生成成功，但保存失败：${persistenceError}`,
+        );
+      }
     } catch (error) {
       const message = formatSubscriptionApiError(error);
       logListingKitTraceEvent("warn", "studio regenerate failed", {

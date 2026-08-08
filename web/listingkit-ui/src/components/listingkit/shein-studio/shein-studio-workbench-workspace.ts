@@ -33,6 +33,26 @@ import {
   type SheinStudioSaveInput,
 } from "@/lib/utils/shein-studio-batches";
 
+export function getSheinStudioBatchSaveValidationError({
+  artworkGenerationMode,
+  hotStyleReferenceImageUrls,
+  prompt,
+}: Pick<
+  SheinStudioSaveInput,
+  "artworkGenerationMode" | "hotStyleReferenceImageUrls" | "prompt"
+>) {
+  if (
+    artworkGenerationMode === "hot_reference" &&
+    (hotStyleReferenceImageUrls ?? []).length !== 1
+  ) {
+    return "保存批次前请先提供 1 张热销款参考图。";
+  }
+  if (artworkGenerationMode !== "hot_reference" && !prompt?.trim()) {
+    return "保存批次前请先填写主题提示词。";
+  }
+  return "";
+}
+
 function pickRecentGroupedBatch(batches: SheinStudioSavedBatch[]) {
   return (
     [...batches]
@@ -248,22 +268,9 @@ export function useSheinStudioBatchActions({
       ...buildDraftInput(),
       id: currentBatchId || undefined,
     };
-    const hotStyleReferenceReady =
-      (draftInput.hotStyleReferenceImageUrls ?? []).length > 0 ||
-      Boolean(draftInput.hotStyleReferenceBrief?.trim()) ||
-      Boolean(draftInput.hotStyleReferencePrompt?.trim());
-    if (
-      draftInput.artworkGenerationMode === "hot_reference" &&
-      !hotStyleReferenceReady
-    ) {
-      workbench.setField("saveMessage", "保存批次前请先提供热销款参考。");
-      return;
-    }
-    if (
-      draftInput.artworkGenerationMode !== "hot_reference" &&
-      !draftInput.prompt?.trim()
-    ) {
-      workbench.setField("saveMessage", "保存批次前请先填写主题提示词。");
+    const validationError = getSheinStudioBatchSaveValidationError(draftInput);
+    if (validationError) {
+      workbench.setField("saveMessage", validationError);
       return;
     }
     if (!currentBatchId && !draftInput.selection?.variantId) {
