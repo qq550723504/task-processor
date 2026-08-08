@@ -76,7 +76,12 @@ func crawler1688Routes(handler gin.HandlerFunc) []httproute.Descriptor {
 	add(http.MethodGet, "/api/v1/stats")
 	add(http.MethodGet, "/metrics")
 	add(http.MethodGet, "/ready")
+	optionPaths := make(map[string]struct{}, len(routes))
 	for _, route := range append([]httproute.Descriptor(nil), routes...) {
+		if _, exists := optionPaths[route.Path]; exists {
+			continue
+		}
+		optionPaths[route.Path] = struct{}{}
 		route.Method = http.MethodOptions
 		routes = append(routes, route)
 	}
