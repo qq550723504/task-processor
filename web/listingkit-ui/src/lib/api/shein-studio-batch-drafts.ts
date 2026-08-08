@@ -1,5 +1,12 @@
 import { apiRequest } from "@/lib/api/client";
 import { parseStudioBatchDraftDetailResponse } from "@/lib/api/shein-studio-batch-draft-schema";
+import {
+  deriveStudioBatchDraftName,
+  normalizeStudioBatchCreatedTasks,
+  normalizeStudioBatchDesignResponse,
+  normalizeStudioBatchGenerationJobs,
+  normalizeStudioHotStyleReferenceImageUrls,
+} from "@/lib/api/shein-studio-batch-draft-codec-primitives";
 import { normalizeDraft } from "@/lib/shein-studio/storage-shared";
 import type { SDSProductVariantSelection } from "@/lib/types/sds";
 import {
@@ -15,9 +22,7 @@ import type {
   SheinStudioPersistedBatchView,
   SheinStudioPersistedGroupedWorkspace,
   SheinStudioSavedBatch,
-  SheinStudioCreatedTask,
   SheinStudioDraft,
-  SheinStudioGenerationJob,
   SheinStudioGeneratedDesign,
   SheinStudioGroupedWorkspace,
   SheinStudioGroupedImageMode,
@@ -116,8 +121,6 @@ type RawCreatedTask = {
   design_id?: string;
 };
 
-type RawStudioGenerationJob = StudioBatchDraftRecordResponse["generation_jobs"];
-
 type StudioBatchListResponse = {
   items?: Array<{
     id: string;
@@ -205,7 +208,8 @@ export async function upsertSheinStudioBatchDraft(
 ) {
   const explicitBatchName = input.name?.trim() || undefined;
   const batchName =
-    explicitBatchName ?? (input.id ? undefined : deriveBatchName(input.prompt));
+    explicitBatchName ??
+    (input.id ? undefined : deriveStudioBatchDraftName(input.prompt));
   const detail = parseStudioBatchDraftDetailResponse(
     await apiRequest<unknown>("/studio/batches", {
       method: "POST",
@@ -216,7 +220,7 @@ export async function upsertSheinStudioBatchDraft(
         prompt: input.prompt,
         prompt_mode: input.promptMode,
         style_count: input.styleCount,
-        hot_style_reference_image_urls: normalizeHotStyleReferenceImageUrls(
+        hot_style_reference_image_urls: normalizeStudioHotStyleReferenceImageUrls(
           input.hotStyleReferenceImageUrls,
         ),
         hot_style_reference_brief: input.hotStyleReferenceBrief,
@@ -245,29 +249,6 @@ export async function upsertSheinStudioBatchDraft(
     }),
   );
   return mapStudioBatchDraftDetailToBatch(detail);
-}
-
-function normalizeHotStyleReferenceImageUrls(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  const result: string[] = [];
-  const seen = new Set<string>();
-  for (const item of value) {
-    if (typeof item !== "string") {
-      continue;
-    }
-    const trimmed = item.trim();
-    if (!trimmed || seen.has(trimmed)) {
-      continue;
-    }
-    seen.add(trimmed);
-    result.push(trimmed);
-    if (result.length === 1) {
-      break;
-    }
-  }
-  return result;
 }
 
 export async function deleteSheinStudioBatchDraft(
@@ -321,7 +302,9 @@ export function mapStudioBatchDraftDetailToDraft(
       .map((design) => design.id) ??
     [];
 
-  const generationJobs = normalizeGenerationJobs(detail.batch.generation_jobs);
+  const generationJobs = normalizeStudioBatchGenerationJobs(
+    detail.batch.generation_jobs,
+  );
   const legacyCompatibilitySnapshot = normalizeLegacyCompatibilitySnapshotResponse({
     ...(rawBatchLegacyCompatibilitySnapshot ?? {}),
     approved_design_ids:
@@ -385,7 +368,7 @@ export function mapStudioBatchDraftDetailToDraft(
     prompt: detail.batch.prompt ?? "",
     promptMode: detail.batch.prompt_mode ?? "managed",
     styleCount: detail.batch.style_count ?? "1",
-    hotStyleReferenceImageUrls: normalizeHotStyleReferenceImageUrls(
+    hotStyleReferenceImageUrls: normalizeStudioHotStyleReferenceImageUrls(
       detail.batch.hot_style_reference_image_urls,
     ),
     hotStyleReferenceBrief: detail.batch.hot_style_reference_brief ?? "",
@@ -411,7 +394,7 @@ export function mapStudioBatchDraftDetailToDraft(
     ),
     designs: normalizedDesigns,
     selectedIds: normalizedSelectedIds,
-    createdTasks: normalizeCreatedTasks(
+    createdTasks: normalizeStudioBatchCreatedTasks(
       detail.batch.created_tasks ?? rawBatchLegacyCompatibilitySnapshot?.created_tasks,
       normalizedSelectedIds,
       normalizedDesigns,
@@ -440,7 +423,9 @@ export function mapStudioBatchDraftDetailToBatch(
   }
   return {
     id: detail.batch.id,
-    name: detail.batch.batch_name ?? deriveBatchName(detail.batch.prompt ?? draft.prompt),
+    name:
+      detail.batch.batch_name ??
+      deriveStudioBatchDraftName(detail.batch.prompt ?? draft.prompt),
     ...draft,
   };
 }
@@ -527,11 +512,11 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
   const batch = {
     id: item.id,
     tenantId: item.tenant_id?.trim() || undefined,
-    name: item.batch_name ?? deriveBatchName(item.prompt ?? ""),
+    name: item.batch_name ?? deriveStudioBatchDraftName(item.prompt ?? ""),
     prompt: item.prompt ?? "",
     promptMode: item.prompt_mode ?? "managed",
     styleCount: item.style_count ?? "1",
-    hotStyleReferenceImageUrls: normalizeHotStyleReferenceImageUrls(
+    hotStyleReferenceImageUrls: normalizeStudioHotStyleReferenceImageUrls(
       item.hot_style_reference_image_urls,
     ),
     hotStyleReferenceBrief: item.hot_style_reference_brief ?? "",
@@ -558,7 +543,7 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
     designs: normalizedDesigns,
     persistedDesignCount: item.design_count ?? normalizedDesigns.length,
     selectedIds: normalizedSelectedIds,
-    createdTasks: normalizeCreatedTasks(
+    createdTasks: normalizeStudioBatchCreatedTasks(
       item.created_tasks ?? legacyCompatibilitySnapshot?.createdTasks,
       normalizedSelectedIds,
       normalizedDesigns,
@@ -574,79 +559,8 @@ function mapStudioBatchListItemToBatch(item: NonNullable<StudioBatchListResponse
   return preserveHotStyleReferencePresence(batch, item);
 }
 
-function deriveBatchName(prompt: string) {
-  const trimmed = prompt.trim();
-  if (!trimmed) {
-    return "未命名批次";
-  }
-  return trimmed.length > 36 ? `${trimmed.slice(0, 36)}...` : trimmed;
-}
-
 function asString(value: unknown) {
   return typeof value === "string" && value.trim() ? value : undefined;
-}
-
-function normalizeCreatedTasks(
-  input: unknown,
-  fallbackDesignIds?: string[],
-  fallbackDesigns?: Array<{ id: string } | undefined>,
-): SheinStudioCreatedTask[] {
-  if (!Array.isArray(input)) {
-    return [];
-  }
-
-  return input
-    .map((item, index) => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
-      const raw = item as RawCreatedTask;
-      const id = asString(raw.id);
-      const title = asString(raw.title);
-      if (!id || !title) {
-        return null;
-      }
-      return {
-        id,
-        title,
-        designId:
-          asString(raw.designId ?? raw.design_id) ??
-          fallbackDesignIds?.[index] ??
-          fallbackDesigns?.[index]?.id ??
-          "",
-      } satisfies SheinStudioCreatedTask;
-    })
-    .filter((item): item is SheinStudioCreatedTask => Boolean(item));
-}
-
-function normalizeGenerationJobs(
-  input: RawStudioGenerationJob | undefined,
-): SheinStudioGenerationJob[] {
-  if (!Array.isArray(input)) {
-    return [];
-  }
-  return input.reduce<SheinStudioGenerationJob[]>((jobs, job) => {
-      const jobId = typeof job?.job_id === "string" ? job.job_id.trim() : "";
-      if (!jobId) {
-        return jobs;
-      }
-      jobs.push({
-        jobId,
-        targetGroupKey:
-          typeof job.target_group_key === "string"
-            ? job.target_group_key
-            : undefined,
-        targetGroupLabel:
-          typeof job.target_group_label === "string"
-            ? job.target_group_label
-            : undefined,
-        status:
-          job.status === "succeeded" || job.status === "failed"
-            ? job.status
-            : "running",
-      } satisfies SheinStudioGenerationJob);
-      return jobs;
-    }, []);
 }
 
 function asStringArray(value: unknown) {
@@ -827,15 +741,15 @@ function normalizeLegacyCompatibilitySnapshotResponse(
     : [];
   const designs = Array.isArray(value.designs)
     ? (value.designs as Array<Record<string, unknown>>)
-        .map((design) => normalizeDesignResponse(design))
+        .map((design) => normalizeStudioBatchDesignResponse(design))
         .filter((design): design is NonNullable<typeof design> => Boolean(design))
     : [];
-  const createdTasks = normalizeCreatedTasks(
+  const createdTasks = normalizeStudioBatchCreatedTasks(
     Array.isArray(value.created_tasks) ? value.created_tasks : undefined,
     selectedIds,
     designs,
   );
-  const generationJobs = normalizeGenerationJobs(
+  const generationJobs = normalizeStudioBatchGenerationJobs(
     Array.isArray(value.generation_jobs) ? value.generation_jobs : undefined,
   );
   const generationError =
@@ -965,82 +879,6 @@ function normalizePromptHistoryResponse(
     .filter((item): item is SDSGroupedPromptHistoryEntry => Boolean(item));
 }
 
-function normalizeDesignResponse(
-  design: Record<string, unknown>,
-): SheinStudioGeneratedDesign | null {
-  if (!design || typeof design !== "object" || typeof design.id !== "string") {
-    return null;
-  }
-  return {
-    id: design.id,
-    imageUrl:
-      typeof design.image_url === "string"
-        ? design.image_url
-        : typeof design.imageUrl === "string"
-          ? design.imageUrl
-          : undefined,
-    prompt: typeof design.prompt === "string" ? design.prompt : undefined,
-    revisedPrompt:
-      typeof design.revised_prompt === "string"
-        ? design.revised_prompt
-        : typeof design.revisedPrompt === "string"
-          ? design.revisedPrompt
-          : undefined,
-    imageModel:
-      typeof design.image_model === "string"
-        ? design.image_model
-        : typeof design.imageModel === "string"
-          ? design.imageModel
-          : undefined,
-    transparentBackground:
-      typeof design.transparent_background === "boolean"
-        ? design.transparent_background
-        : typeof design.transparentBackground === "boolean"
-          ? design.transparentBackground
-          : undefined,
-    variationIntensity:
-      design.variation_intensity === "light" ||
-      design.variation_intensity === "medium" ||
-      design.variation_intensity === "strong"
-        ? design.variation_intensity
-        : design.variationIntensity === "light" ||
-            design.variationIntensity === "medium" ||
-            design.variationIntensity === "strong"
-          ? design.variationIntensity
-          : undefined,
-    reviewNote:
-      typeof design.review_note === "string"
-        ? design.review_note
-        : typeof design.reviewNote === "string"
-          ? design.reviewNote
-          : undefined,
-    role: typeof design.role === "string" ? design.role : undefined,
-    roleLabel:
-      typeof design.role_label === "string"
-        ? design.role_label
-        : typeof design.roleLabel === "string"
-          ? design.roleLabel
-          : undefined,
-    targetGroupKey:
-      typeof design.target_group_key === "string"
-        ? design.target_group_key
-        : typeof design.targetGroupKey === "string"
-          ? design.targetGroupKey
-          : undefined,
-    targetGroupLabel:
-      typeof design.target_group_label === "string"
-        ? design.target_group_label
-        : typeof design.targetGroupLabel === "string"
-          ? design.targetGroupLabel
-          : undefined,
-    productImageUrls: Array.isArray(design.product_image_urls)
-      ? (design.product_image_urls as string[])
-      : Array.isArray(design.productImageUrls)
-        ? (design.productImageUrls as string[])
-        : undefined,
-  } satisfies SheinStudioGeneratedDesign;
-}
-
 function normalizeGroupsResponse(
   items: Array<Record<string, unknown>> | undefined,
 ): SheinStudioGroupedWorkspace[] {
@@ -1084,7 +922,7 @@ function normalizeGroupsResponse(
       }
       const normalizedDesigns = Array.isArray(group.designs)
         ? (group.designs as Array<Record<string, unknown>>)
-            .map((design) => normalizeDesignResponse(design))
+            .map((design) => normalizeStudioBatchDesignResponse(design))
             .filter((design): design is NonNullable<typeof design> => Boolean(design))
         : legacyCompatibilitySnapshot?.designs ?? [];
       const normalizedSelectedIds = Array.isArray(group.approved_design_ids)
@@ -1192,7 +1030,7 @@ function normalizeGroupsResponse(
               : "medium",
         designs: normalizedDesigns,
         selectedIds: normalizedSelectedIds,
-        createdTasks: normalizeCreatedTasks(
+        createdTasks: normalizeStudioBatchCreatedTasks(
           Array.isArray(group.created_tasks) ? group.created_tasks : group.createdTasks,
           normalizedSelectedIds,
           normalizedDesigns,
