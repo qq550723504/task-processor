@@ -1,7 +1,139 @@
 import { z } from "zod";
 
 import { parseApiResponseShape } from "@/lib/api/response-schema";
-import type { StudioBatchDraftDetailResponse } from "@/lib/api/shein-studio-batch-drafts";
+import type {
+  SheinStudioArtworkModel,
+  SheinStudioGeneratedDesign,
+  SheinStudioGroupedImageMode,
+  SheinStudioImageStrategy,
+  SheinStudioProductImagePrompt,
+  SheinStudioSelectedSDSImage,
+  SheinStudioTransparencyMode,
+  SheinStudioVariationIntensity,
+} from "@/lib/types/shein-studio";
+
+export type StudioBatchDraftStatus =
+  | "selecting"
+  | "generating"
+  | "generated"
+  | "reviewing"
+  | "failed"
+  | "tasks_created";
+
+type RawCreatedTask = {
+  id?: string;
+  title?: string;
+  designId?: string;
+  design_id?: string;
+};
+
+export type StudioBatchDraftRecordResponse = {
+  id: string;
+  tenant_id?: string;
+  batch_name?: string;
+  status?: StudioBatchDraftStatus;
+  selection?: Record<string, unknown>;
+  prompt?: string;
+  prompt_mode?: "managed" | "raw";
+  style_count?: string;
+  hot_style_reference_image_urls?: string[];
+  hot_style_reference_brief?: string;
+  hot_style_reference_prompt?: string;
+  variation_intensity?: SheinStudioVariationIntensity;
+  product_image_count?: string;
+  product_image_prompt?: string;
+  product_image_prompts?: SheinStudioProductImagePrompt[];
+  artwork_model?: SheinStudioArtworkModel;
+  image_strategy?: SheinStudioImageStrategy;
+  grouped_image_mode?: SheinStudioGroupedImageMode;
+  selected_sds_images?: SheinStudioSelectedSDSImage[];
+  groups?: Array<Record<string, unknown>>;
+  grouped_selections?: Array<Record<string, unknown>>;
+  transparent_background?: boolean;
+  transparent_background_mode?: SheinStudioTransparencyMode;
+  original_image_url?: string;
+  background_removal_status?: SheinStudioGeneratedDesign["backgroundRemovalStatus"];
+  background_removal_model?: string;
+  background_removal_error?: string;
+  render_size_images_with_sds?: boolean;
+  shein_store_id?: string;
+  legacy_compatibility_snapshot?: Record<string, unknown>;
+  generation_job_id?: string;
+  generation_jobs?: Array<{
+    job_id?: string;
+    target_group_key?: string;
+    target_group_label?: string;
+    status?: "running" | "succeeded" | "failed";
+  }>;
+  generation_error?: string;
+  approved_design_ids?: string[];
+  created_tasks?: RawCreatedTask[];
+  updated_at?: string;
+};
+
+export type StudioBatchDraftDesignResponse = {
+  id: string;
+  tenant_id?: string;
+  image_url?: string;
+  prompt?: string;
+  revised_prompt?: string;
+  image_model?: string;
+  transparent_background?: boolean;
+  transparent_background_mode?: SheinStudioTransparencyMode;
+  original_image_url?: string;
+  background_removal_status?: SheinStudioGeneratedDesign["backgroundRemovalStatus"];
+  background_removal_model?: string;
+  background_removal_error?: string;
+  variation_intensity?: SheinStudioVariationIntensity;
+  review_note?: string;
+  role?: string;
+  role_label?: string;
+  target_group_key?: string;
+  target_group_label?: string;
+  product_image_urls?: string[];
+  approved?: boolean;
+};
+
+export type StudioBatchDraftDetailResponse = {
+  batch?: StudioBatchDraftRecordResponse;
+  designs?: StudioBatchDraftDesignResponse[];
+};
+
+export type StudioBatchListItemResponse = {
+  id: string;
+  tenant_id?: string;
+  batch_name?: string;
+  status?: StudioBatchDraftStatus;
+  prompt?: string;
+  prompt_mode?: "managed" | "raw";
+  style_count?: string;
+  hot_style_reference_image_urls?: string[];
+  hot_style_reference_brief?: string;
+  hot_style_reference_prompt?: string;
+  variation_intensity?: SheinStudioVariationIntensity;
+  product_image_count?: string;
+  product_image_prompt?: string;
+  product_image_prompts?: SheinStudioProductImagePrompt[];
+  artwork_model?: SheinStudioArtworkModel;
+  image_strategy?: SheinStudioImageStrategy;
+  grouped_image_mode?: SheinStudioGroupedImageMode;
+  transparent_background?: boolean;
+  transparent_background_mode?: SheinStudioTransparencyMode;
+  render_size_images_with_sds?: boolean;
+  shein_store_id?: string;
+  selection?: Record<string, unknown>;
+  groups?: Array<Record<string, unknown>>;
+  grouped_selections?: Array<Record<string, unknown>>;
+  legacy_compatibility_snapshot?: Record<string, unknown>;
+  approved_design_ids?: string[];
+  created_tasks?: RawCreatedTask[];
+  design_count?: number;
+  updated_at?: string;
+};
+
+export type StudioBatchListResponse = {
+  items?: StudioBatchListItemResponse[];
+};
 
 const productImagePromptSchema = z
   .object({
@@ -131,4 +263,3 @@ export function parseStudioBatchDraftDetailResponse(
     "ListingKit API returned an unexpected studio batch draft response",
   ) as StudioBatchDraftDetailResponse;
 }
-

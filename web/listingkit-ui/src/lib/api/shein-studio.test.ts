@@ -10,7 +10,7 @@ import {
   mapStudioBatchDraftDetailToDraft,
   upsertSheinStudioBatchDraft,
 } from "@/lib/api/shein-studio-batch-drafts";
-import { parseStudioBatchDraftDetailResponse } from "@/lib/api/shein-studio-batch-draft-schema";
+import { parseStudioBatchDraftDetailResponse } from "@/lib/api/shein-studio-batch-draft-response-codec";
 import {
   sheinStudioBatchDraftDetailContractFixture,
   sheinStudioBatchListContractFixture,
