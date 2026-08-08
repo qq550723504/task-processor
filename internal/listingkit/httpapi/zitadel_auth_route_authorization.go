@@ -19,7 +19,8 @@ func RouteRequiresZitadelAuth(route httproute.Descriptor) bool {
 		route.Module == "shein-login" ||
 		route.Module == "sds" ||
 		route.Module == "sds-login" ||
-		route.Module == "product-sourcing"
+		route.Module == "product-sourcing" ||
+		route.Module == "crawler-1688"
 }
 
 func listingKitRouteRequiredPermission(route httproute.Descriptor) string {

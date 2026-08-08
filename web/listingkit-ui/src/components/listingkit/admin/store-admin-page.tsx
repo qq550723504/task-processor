@@ -284,6 +284,7 @@ export function StoreAdminPage() {
                 <option value="">全部</option>
                 <option value="SHEIN">SHEIN</option>
                 <option value="TEMU">TEMU</option>
+                <option value="1688">1688 登录账号</option>
               </Select>
             </Label>
             <Label className="flex flex-col gap-1 text-xs font-medium text-zinc-500">
@@ -518,7 +519,13 @@ export function StoreAdminPage() {
             >
               <StoreInput label="店铺名称" value={form.name} onChange={(name) => setForm({ ...form, name })} />
               <StoreInput label="登录用户名" value={form.username} onChange={(username) => setForm({ ...form, username })} />
-              <StoreInput label="登录密码" type="password" value={form.password ?? ""} onChange={(password) => setForm({ ...form, password })} />
+          <StoreInput label="登录密码" type="password" value={form.password ?? ""} onChange={(password) => setForm({ ...form, password })} />
+          {form.platform === "1688" ? (
+            <>
+              <StoreInput label="登录网址" value={form.loginUrl ?? ""} onChange={(loginUrl) => setForm({ ...form, loginUrl })} />
+              <StoreInput label="代理地址" value={form.proxy ?? ""} onChange={(proxy) => setForm({ ...form, proxy })} />
+            </>
+          ) : null}
             </FormSection>
 
             <FormSection
@@ -526,7 +533,7 @@ export function StoreAdminPage() {
               description="站点、类型和上架限制决定店铺的投放边界。"
             >
               <div className="grid gap-3 sm:grid-cols-2">
-                <StoreSelect label="平台" value={form.platform} onChange={(platformValue) => setForm({ ...form, platform: platformValue })} options={["SHEIN", "TEMU"]} />
+                <StoreSelect label="平台" value={form.platform} onChange={(platformValue) => setForm({ ...form, platform: platformValue })} options={["SHEIN", "TEMU", "1688"]} />
                 <StoreSelect label="地区" value={form.region ?? ""} onChange={(region) => setForm({ ...form, region })} options={REGION_OPTIONS} />
               </div>
               <StoreSelect

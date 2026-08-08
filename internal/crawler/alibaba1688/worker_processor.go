@@ -5,7 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
+	"sync"
 
+	"task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/crawler/shared"
 	"task-processor/internal/infra/worker"
 )
@@ -28,14 +32,73 @@ func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.Worke
 		return fmt.Errorf("解析任务数据失败: %w", err)
 	}
 
-	product, err := p.service.processor1688.Process(crawlerTask.URL)
-	if err != nil {
-		return err
+	if crawlerTask.SourceAccountID < 0 {
+		return newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
 	}
 
-	p.service.UpdateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
+	var product *model.Product1688
+	if crawlerTask.SourceAccountID > 0 {
+		profile, err := p.service.resolveAccountProfile(ctx, crawlerTask.TenantID, crawlerTask.SourceAccountID)
+		if err != nil {
+			return err
+		}
+		unlock := p.service.lockAccountProfile(profile)
+		defer unlock()
+		product, err = p.service.processor1688.ProcessWithAccountProfile(crawlerTask.URL, profile)
+		if err != nil {
+			return err
+		}
+	} else {
+		resolvedProduct, err := p.service.processor1688.Process(crawlerTask.URL)
+		if err != nil {
+			return err
+		}
+		product = resolvedProduct
+	}
+
+	updateResult := p.service.UpdateResult
+	if crawlerTask.TenantID > 0 {
+		updateResult = func(taskID string, fn func(*shared.CrawlerResult)) error {
+			return p.service.UpdateResultForTenant(crawlerTask.TenantID, taskID, fn)
+		}
+	}
+	_ = updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.ProductData = shared.ProductToMap(product)
 	})
 
 	return nil
+}
+
+func (s *Service) lockAccountProfile(profile AccountProfile) func() {
+	key := strconv.FormatInt(profile.TenantID, 10) + ":" + strconv.FormatInt(profile.ID, 10)
+	s.profileLocksMu.Lock()
+	if s.profileLocks == nil {
+		s.profileLocks = make(map[string]*sync.Mutex)
+	}
+	lock := s.profileLocks[key]
+	if lock == nil {
+		lock = &sync.Mutex{}
+		s.profileLocks[key] = lock
+	}
+	s.profileLocksMu.Unlock()
+	lock.Lock()
+	return lock.Unlock
+}
+
+func (s *Service) resolveAccountProfile(ctx context.Context, tenantID, accountID int64) (AccountProfile, error) {
+	if s == nil || tenantID <= 0 || accountID <= 0 || s.accountProfileResolver == nil {
+		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+	}
+
+	profile, err := s.accountProfileResolver.ResolveAlibaba1688Account(ctx, tenantID, accountID)
+	if err != nil {
+		if AccountProfileErrorCode(err) == AccountProfileDisabled {
+			return AccountProfile{}, newAccountProfileError(AccountProfileDisabled, "1688 account is disabled")
+		}
+		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+	}
+	if profile.ID != accountID || profile.TenantID != tenantID || strings.TrimSpace(profile.ProfileDir) == "" {
+		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+	}
+	return profile, nil
 }

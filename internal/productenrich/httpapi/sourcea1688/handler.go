@@ -1,8 +1,11 @@
 package sourcea1688
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -28,13 +31,13 @@ func NewHandler(service TaskCommandService) *Handler {
 }
 
 type CreateListingKitTaskRequest struct {
-	URL           string                        `json:"url"`
-	Product       *alibaba1688model.Product1688 `json:"product"`
-	RawSnapshot   string                        `json:"raw_snapshot"`
-	SourceRunID   string                        `json:"source_run_id"`
-	RequestID     string                        `json:"request_id"`
-	SourceError   string                        `json:"source_error"`
-	SourceStoreID int64                         `json:"source_store_id"`
+	URL             string                        `json:"url"`
+	Product         *alibaba1688model.Product1688 `json:"product"`
+	RawSnapshot     string                        `json:"raw_snapshot"`
+	SourceRunID     string                        `json:"source_run_id"`
+	RequestID       string                        `json:"request_id"`
+	SourceError     string                        `json:"source_error"`
+	SourceAccountID int64                         `json:"source_account_id"`
 
 	Platforms          []string                    `json:"platforms"`
 	Country            string                      `json:"country"`
@@ -59,6 +62,10 @@ func (h *Handler) CreateListingKitTask(c *gin.Context) {
 		return
 	}
 	var req CreateListingKitTaskRequest
+	if err := rejectLegacySourceStoreID(c); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
+		return
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
@@ -88,14 +95,33 @@ func (h *Handler) CreateListingKitTask(c *gin.Context) {
 	c.JSON(http.StatusOK, responseFromCreateTaskResult(result))
 }
 
+func rejectLegacySourceStoreID(c *gin.Context) error {
+	if c == nil || c.Request == nil || c.Request.Body == nil {
+		return errors.New("request body is required")
+	}
+	payload, err := c.GetRawData()
+	if err != nil {
+		return err
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(payload))
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		return err
+	}
+	if _, ok := fields["source_store_id"]; ok {
+		return errors.New("source_store_id is not supported; use source_account_id")
+	}
+	return nil
+}
+
 func writeStoreAccessError(c *gin.Context, err error) bool {
 	code := listingkit.StoreAccessErrorCode(err)
 	if code == "" {
 		return false
 	}
-	message := "Choose enabled source and target stores available to your tenant and try again."
+	message := "Choose an enabled 1688 login account and SHEIN target store available to your tenant and try again."
 	if code == listingkit.StoreAccessDisabled {
-		message = "Enable the selected store or choose another available store and try again."
+		message = "Enable the selected 1688 login account or SHEIN target store, or choose another available option and try again."
 	}
 	c.JSON(http.StatusForbidden, gin.H{"error": code, "message": message})
 	return true
@@ -126,7 +152,7 @@ func (r CreateListingKitTaskRequest) toCommand(identity listingkit.RequestIdenti
 		SourceRunID:        r.SourceRunID,
 		RequestID:          r.RequestID,
 		Error:              sourceErr,
-		SourceStoreID:      r.SourceStoreID,
+		SourceAccountID:    r.SourceAccountID,
 		TenantID:           identity.TenantID,
 		UserID:             identity.UserID,
 		Platforms:          r.Platforms,

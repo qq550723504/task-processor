@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	productenrich "task-processor/internal/productenrich"
@@ -38,14 +39,15 @@ type listingKitSupport struct {
 }
 
 type httpFeatureComposition struct {
-	productModule        *productenrichhttpapi.Module
-	imageModule          *productimagehttpapi.Module
-	amazonListingModule  *amazonlistinghttpapi.Module
-	listingKitModule     *listingkithttpapi.Module
+	productModule         *productenrichhttpapi.Module
+	imageModule           *productimagehttpapi.Module
+	amazonListingModule   *amazonlistinghttpapi.Module
+	listingKitModule      *listingkithttpapi.Module
 	productSourcingModule *sourcea1688httpapi.BuildResult
-	promptModule         *promptmgmtapi.BuildResult
-	sdsModule            *sdshttpapi.BuildResult
-	taskRPCResult        *taskrpcapi.BuildResult
-	sheinLoginResult     *sheinloginbootstrap.BuildResult
-	sdsLoginResult       *sdsloginbootstrap.BuildResult
+	promptModule          *promptmgmtapi.BuildResult
+	sdsModule             *sdshttpapi.BuildResult
+	taskRPCResult         *taskrpcapi.BuildResult
+	sheinLoginResult      *sheinloginbootstrap.BuildResult
+	sdsLoginResult        *sdsloginbootstrap.BuildResult
+	crawler1688Module     kernelmodule.Module
 }

@@ -2,16 +2,22 @@
 package httpx
 
 import (
+	"errors"
 	"net/http"
+
+	"task-processor/internal/crawler/shared"
 
 	"github.com/sirupsen/logrus"
 )
+
+var errTenantScopeRequired = errors.New("trusted tenant context is required")
 
 // baseCrawlerHandler 爬虫处理器公共基础，包含所有平台共享的路由逻辑。
 // 各平台处理器通过嵌入此结构体复用公共方法，只需实现自己的 handleCrawl。
 type baseCrawlerHandler struct {
 	crawlerService CrawlerService
 	logger         *logrus.Logger
+	tenantResolver TenantResolver
 }
 
 // registerCommonRoutes 注册公共路由（任务查询/删除、统计、健康检查）。
@@ -39,8 +45,11 @@ func (b *baseCrawlerHandler) handleTask(w http.ResponseWriter, r *http.Request) 
 
 	switch r.Method {
 	case http.MethodGet:
-		result, err := b.crawlerService.GetTask(taskID)
+		result, err := b.getTask(w, r, taskID)
 		if err != nil {
+			if errors.Is(err, errTenantScopeRequired) {
+				return
+			}
 			if b.logger != nil {
 				b.logger.WithFields(logrus.Fields{
 					"task_id": taskID,
@@ -61,7 +70,9 @@ func (b *baseCrawlerHandler) handleTask(w http.ResponseWriter, r *http.Request) 
 		}
 		Success(w, "查询成功", result)
 	case http.MethodDelete:
-		b.crawlerService.DeleteTask(taskID)
+		if !b.deleteTask(w, r, taskID) {
+			return
+		}
 		if b.logger != nil {
 			b.logger.WithFields(logrus.Fields{
 				"task_id": taskID,
@@ -81,11 +92,67 @@ func (b *baseCrawlerHandler) handleTasks(w http.ResponseWriter, r *http.Request)
 		MethodNotAllowed(w, "只支持 GET 方法")
 		return
 	}
-	tasks := b.crawlerService.GetAllTasks()
+	tasks, ok := b.getAllTasks(w, r)
+	if !ok {
+		return
+	}
 	Success(w, "查询成功", map[string]any{
 		"total": len(tasks),
 		"tasks": tasks,
 	})
+}
+
+func (b *baseCrawlerHandler) tenantScopedService(w http.ResponseWriter, r *http.Request) (TenantScopedCrawlerService, int64, bool) {
+	svc, scoped := b.crawlerService.(TenantScopedCrawlerService)
+	if !scoped {
+		return nil, 0, false
+	}
+	if b.tenantResolver == nil {
+		return nil, 0, false
+	}
+	tenantID, ok := b.tenantResolver(r.Context())
+	if !ok || tenantID <= 0 {
+		return nil, 0, false
+	}
+	return svc, tenantID, true
+}
+
+func (b *baseCrawlerHandler) getTask(w http.ResponseWriter, r *http.Request, taskID string) (*shared.CrawlerResult, error) {
+	if _, isScoped := b.crawlerService.(TenantScopedCrawlerService); isScoped {
+		svc, tenantID, ok := b.tenantScopedService(w, r)
+		if !ok {
+			Error(w, http.StatusForbidden, errTenantScopeRequired.Error())
+			return nil, errTenantScopeRequired
+		}
+		return svc.GetTaskForTenant(tenantID, taskID)
+	}
+	return b.crawlerService.GetTask(taskID)
+}
+
+func (b *baseCrawlerHandler) deleteTask(w http.ResponseWriter, r *http.Request, taskID string) bool {
+	if _, isScoped := b.crawlerService.(TenantScopedCrawlerService); isScoped {
+		svc, tenantID, scoped := b.tenantScopedService(w, r)
+		if !scoped {
+			Error(w, http.StatusForbidden, errTenantScopeRequired.Error())
+			return false
+		}
+		svc.DeleteTaskForTenant(tenantID, taskID)
+		return true
+	}
+	b.crawlerService.DeleteTask(taskID)
+	return true
+}
+
+func (b *baseCrawlerHandler) getAllTasks(w http.ResponseWriter, r *http.Request) ([]*shared.CrawlerResult, bool) {
+	if _, isScoped := b.crawlerService.(TenantScopedCrawlerService); isScoped {
+		svc, tenantID, scoped := b.tenantScopedService(w, r)
+		if !scoped {
+			Error(w, http.StatusForbidden, errTenantScopeRequired.Error())
+			return nil, false
+		}
+		return svc.GetAllTasksForTenant(tenantID), true
+	}
+	return b.crawlerService.GetAllTasks(), true
 }
 
 // handleStats 处理统计信息查询

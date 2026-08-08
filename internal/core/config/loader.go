@@ -329,9 +329,10 @@ func NewDefaultConfig() *Config {
 				},
 			},
 			Alibaba1688: Alibaba1688Config{
-				Enabled:  false,
-				Timeout:  120,
-				PoolSize: 2,
+				Enabled:        false,
+				Timeout:        120,
+				PoolSize:       2,
+				ProfileRootDir: "./.local/tmp/browser-profiles/1688-accounts",
 			},
 		},
 		RabbitMQ: &RabbitMQConfig{

@@ -125,6 +125,30 @@ func (b *BaseService) GetTask(taskID string) (*CrawlerResult, error) {
 	return result, nil
 }
 
+// GetTaskForTenant returns a result only when it belongs to tenantID.
+func (b *BaseService) GetTaskForTenant(tenantID int64, taskID string) (*CrawlerResult, error) {
+	if tenantID <= 0 {
+		return nil, ErrTaskNotFound
+	}
+	if value, ok := b.results.Load(taskID); ok {
+		result := value.(*CrawlerResult)
+		if result.TenantID != tenantID {
+			return nil, ErrTaskNotFound
+		}
+		return result, nil
+	}
+
+	result, found, err := b.loadSharedResultForTenant(tenantID, taskID)
+	if err != nil {
+		return nil, err
+	}
+	if !found || result.TenantID != tenantID {
+		return nil, ErrTaskNotFound
+	}
+	b.results.Store(taskID, result)
+	return result, nil
+}
+
 // DeleteTask 删除任务
 func (b *BaseService) DeleteTask(taskID string) {
 	b.results.Delete(taskID)
@@ -133,11 +157,40 @@ func (b *BaseService) DeleteTask(taskID string) {
 	}
 }
 
+// DeleteTaskForTenant deletes a result only from the owning tenant's scope.
+func (b *BaseService) DeleteTaskForTenant(tenantID int64, taskID string) {
+	if tenantID <= 0 {
+		return
+	}
+	if value, ok := b.results.Load(taskID); ok && value.(*CrawlerResult).TenantID == tenantID {
+		b.results.Delete(taskID)
+	}
+	if b.sharedResultStore != nil {
+		_ = b.sharedResultStore.Delete(context.Background(), b.resultKeyForTenant(tenantID, taskID))
+	}
+}
+
 // GetAllTasks 获取所有任务
 func (b *BaseService) GetAllTasks() []*CrawlerResult {
 	tasks := make([]*CrawlerResult, 0)
 	b.results.Range(func(_, value any) bool {
 		tasks = append(tasks, value.(*CrawlerResult))
+		return true
+	})
+	return tasks
+}
+
+// GetAllTasksForTenant returns only results owned by tenantID.
+func (b *BaseService) GetAllTasksForTenant(tenantID int64) []*CrawlerResult {
+	if tenantID <= 0 {
+		return nil
+	}
+	tasks := make([]*CrawlerResult, 0)
+	b.results.Range(func(_, value any) bool {
+		result := value.(*CrawlerResult)
+		if result.TenantID == tenantID {
+			tasks = append(tasks, result)
+		}
 		return true
 	})
 	return tasks
@@ -153,6 +206,26 @@ func (b *BaseService) UpdateResult(taskID string, fn func(*CrawlerResult)) error
 		return err
 	}
 
+	fn(result)
+	b.results.Store(taskID, result)
+	return b.persistSharedResult(taskID, result)
+}
+
+// UpdateResultForTenant updates a result only within the owning tenant scope.
+func (b *BaseService) UpdateResultForTenant(tenantID int64, taskID string, fn func(*CrawlerResult)) error {
+	if tenantID <= 0 {
+		return ErrTaskNotFound
+	}
+	b.resultMu.Lock()
+	defer b.resultMu.Unlock()
+
+	result, found, err := b.loadResultForTenant(tenantID, taskID)
+	if err != nil {
+		return err
+	}
+	if !found || result.TenantID != tenantID {
+		return ErrTaskNotFound
+	}
 	fn(result)
 	b.results.Store(taskID, result)
 	return b.persistSharedResult(taskID, result)
@@ -217,12 +290,28 @@ func (b *BaseService) loadResult(taskID string) (*CrawlerResult, bool, error) {
 	return b.loadSharedResult(taskID)
 }
 
+func (b *BaseService) loadResultForTenant(tenantID int64, taskID string) (*CrawlerResult, bool, error) {
+	if value, ok := b.results.Load(taskID); ok {
+		result := value.(*CrawlerResult)
+		return result, result.TenantID == tenantID, nil
+	}
+	return b.loadSharedResultForTenant(tenantID, taskID)
+}
+
 func (b *BaseService) loadSharedResult(taskID string) (*CrawlerResult, bool, error) {
+	return b.loadSharedResultByKey(b.resultKey(taskID))
+}
+
+func (b *BaseService) loadSharedResultForTenant(tenantID int64, taskID string) (*CrawlerResult, bool, error) {
+	return b.loadSharedResultByKey(b.resultKeyForTenant(tenantID, taskID))
+}
+
+func (b *BaseService) loadSharedResultByKey(key string) (*CrawlerResult, bool, error) {
 	if b.sharedResultStore == nil {
 		return nil, false, nil
 	}
 
-	payload, err := b.sharedResultStore.Get(context.Background(), b.resultKey(taskID))
+	payload, err := b.sharedResultStore.Get(context.Background(), key)
 	if err != nil {
 		if isSharedResultNotFound(err) {
 			return nil, false, nil
@@ -246,13 +335,27 @@ func (b *BaseService) persistSharedResult(taskID string, result *CrawlerResult) 
 	if err != nil {
 		return err
 	}
-	return b.sharedResultStore.Set(context.Background(), b.resultKey(taskID), string(payload), b.resultStoreTTL)
+	return b.sharedResultStore.Set(context.Background(), b.resultKeyForResult(taskID, result), string(payload), b.resultStoreTTL)
 }
 
 func (b *BaseService) resultKey(taskID string) string {
+	return b.resultKeyForTenant(0, taskID)
+}
+
+func (b *BaseService) resultKeyForResult(taskID string, result *CrawlerResult) string {
+	if result == nil {
+		return b.resultKey(taskID)
+	}
+	return b.resultKeyForTenant(result.TenantID, taskID)
+}
+
+func (b *BaseService) resultKeyForTenant(tenantID int64, taskID string) string {
 	prefix := b.resultStorePrefix
 	if strings.TrimSpace(prefix) == "" {
 		prefix = defaultResultStorePrefix
+	}
+	if tenantID > 0 {
+		return fmt.Sprintf("%s:tenant:%d:%s", prefix, tenantID, taskID)
 	}
 	return fmt.Sprintf("%s:%s", prefix, taskID)
 }
