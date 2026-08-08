@@ -379,6 +379,7 @@ describe("SheinStudioWorkbench", () => {
                 imageUrl: "https://example.com/design-1-final.png",
                 originalImageUrl: "https://example.com/design-1-original.png",
                 backgroundRemovalStatus: "succeeded",
+                backgroundRemovalError: "manual cutout warning",
                 transparentBackgroundMode: "removal",
                 reviewStatus: "approved",
                 createdAt: "2026-05-26T09:59:30.000Z",
@@ -389,6 +390,7 @@ describe("SheinStudioWorkbench", () => {
         ],
       },
     );
+    batchDetail.detail.batch.transparentBackgroundMode = "removal";
     getSheinStudioHydratedBatch.mockResolvedValue(batchDetail);
     const uploadedDetail = {
       ...batchDetail.detail,
@@ -471,6 +473,15 @@ describe("SheinStudioWorkbench", () => {
       screen.getByText(
         "design-original-design-1: https://example.com/design-1-original.png",
       ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("design-background-removal-status-design-1: succeeded"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("design-background-removal-error-design-1: manual cutout warning"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("design-transparent-background-mode-design-1: removal"),
     ).toBeInTheDocument();
     expect(
       screen.getByText("uploading manual background removal: none"),

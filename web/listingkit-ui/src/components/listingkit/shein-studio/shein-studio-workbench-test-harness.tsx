@@ -136,6 +136,21 @@ vi.mock(
                 design-original-{design.id}:{" "}
                 {(design as { originalImageUrl?: string }).originalImageUrl || "none"}
               </div>
+              <div>
+                design-background-removal-status-{design.id}:{" "}
+                {(design as { backgroundRemovalStatus?: string }).backgroundRemovalStatus ||
+                  "none"}
+              </div>
+              <div>
+                design-background-removal-error-{design.id}:{" "}
+                {(design as { backgroundRemovalError?: string }).backgroundRemovalError ||
+                  "none"}
+              </div>
+              <div>
+                design-transparent-background-mode-{design.id}:{" "}
+                {(design as { transparentBackgroundMode?: string }).transparentBackgroundMode ||
+                  "none"}
+              </div>
               {onToggle ? (
                 <button onClick={() => onToggle(design.id)} type="button">
                   toggle-{design.id}
