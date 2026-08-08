@@ -22,7 +22,7 @@ package marketing
 //     PageSize:            30,
 // }
 //
-// marketingAPI := repo.NewMarketingAPI(baseClient)
+// marketingAPI := NewClient(baseClient)
 // queryResp, err := marketingAPI.QueryPromotionGoods(queryReq)
 // if err != nil {
 //     log.Printf("查询商品失败: %v", err)
