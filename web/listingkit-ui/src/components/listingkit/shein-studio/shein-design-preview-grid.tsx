@@ -313,6 +313,7 @@ export function SheinDesignPreviewGrid({
               <Button
                 disabled={
                   isCreatingTasks ||
+                  Boolean(retryingBackgroundRemovalId) ||
                   selectedIds.length === 0 ||
                   Boolean(createActionDisabledReason)
                 }
