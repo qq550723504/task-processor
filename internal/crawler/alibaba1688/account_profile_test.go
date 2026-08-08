@@ -3,6 +3,7 @@ package alibaba1688
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -47,7 +48,7 @@ func TestAccountProfileResolverResolveAlibaba1688Account(t *testing.T) {
 				ID:          3001,
 				TenantID:    101,
 				Label:       "1688 sourcing account",
-				ProfileDir:  `C:\task-processor-test\1688-profiles\101\3001`,
+				ProfileDir:  filepath.Join(accountProfileTestRoot, "101", "3001"),
 				ProxyServer: "http://proxy.example:8080",
 				LoginURL:    "https://login.1688.example",
 			},
@@ -57,6 +58,18 @@ func TestAccountProfileResolverResolveAlibaba1688Account(t *testing.T) {
 			tenantID:     101,
 			accountID:    3001,
 			getStoreErr:  listingadmin.ErrStoreNotFound,
+			wantCode:     AccountProfileUnavailable,
+			wantGetCalls: 1,
+		},
+		{
+			name:      "proxy userinfo is unavailable without exposing credentials",
+			tenantID:  101,
+			accountID: 3001,
+			store: func() *listingadmin.Store {
+				store := baseStore
+				store.Proxy = "http://proxy-user:proxy-secret@proxy.example:8080"
+				return &store
+			}(),
 			wantCode:     AccountProfileUnavailable,
 			wantGetCalls: 1,
 		},
@@ -112,6 +125,7 @@ func TestAccountProfileResolverResolveAlibaba1688Account(t *testing.T) {
 				require.Error(t, err)
 				assert.Equal(t, tt.wantCode, AccountProfileErrorCode(err))
 				assert.NotContains(t, err.Error(), secret)
+				assert.NotContains(t, err.Error(), "proxy-secret")
 				return
 			}
 			require.NoError(t, err)

@@ -3,6 +3,7 @@ package alibaba1688
 import (
 	"context"
 	"errors"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -55,13 +56,20 @@ func (r *repositoryAccountProfileResolver) ResolveAlibaba1688Account(ctx context
 	if store.Status != 0 {
 		return AccountProfile{}, newAccountProfileError(AccountProfileDisabled, "1688 account is disabled")
 	}
+	proxyServer := strings.TrimSpace(store.Proxy)
+	if proxyServer != "" {
+		proxyURL, err := url.Parse(proxyServer)
+		if err != nil || proxyURL.User != nil {
+			return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+		}
+	}
 
 	return AccountProfile{
 		ID:          store.ID,
 		TenantID:    store.TenantID,
 		Label:       strings.TrimSpace(store.Name),
 		ProfileDir:  filepath.Join(r.profileRootDir, strconv.FormatInt(store.TenantID, 10), strconv.FormatInt(store.ID, 10)),
-		ProxyServer: strings.TrimSpace(store.Proxy),
+		ProxyServer: proxyServer,
 		LoginURL:    strings.TrimSpace(store.LoginURL),
 	}, nil
 }
