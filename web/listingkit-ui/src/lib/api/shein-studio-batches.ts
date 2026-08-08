@@ -42,6 +42,11 @@ const studioBatchItemStatusSchema = z.enum([
   "failed",
 ]);
 
+const MANUAL_BACKGROUND_REMOVAL_PNG_ERROR =
+  "Manual background-removal upload requires a real PNG file.";
+const PNG_SIGNATURE_BYTES = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const PNG_IHDR_CHUNK_TYPE = [0x49, 0x48, 0x44, 0x52];
+
 const studioBatchSchema = z
   .object({
     id: z.string(),
@@ -76,6 +81,28 @@ function normalizeHotStyleReferenceImageUrls(value: unknown) {
     }
   }
   return result;
+}
+
+async function assertRealPngUpload(file: File): Promise<void> {
+  const lowerName = file.name.toLowerCase();
+  if (file.type !== "image/png" || !lowerName.endsWith(".png")) {
+    throw new Error(MANUAL_BACKGROUND_REMOVAL_PNG_ERROR);
+  }
+
+  const headerBytes = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+  if (headerBytes.length < 16) {
+    throw new Error(MANUAL_BACKGROUND_REMOVAL_PNG_ERROR);
+  }
+
+  const hasPngSignature = PNG_SIGNATURE_BYTES.every(
+    (byte, index) => headerBytes[index] === byte,
+  );
+  const hasIhdrChunk = PNG_IHDR_CHUNK_TYPE.every(
+    (byte, index) => headerBytes[12 + index] === byte,
+  );
+  if (!hasPngSignature || !hasIhdrChunk) {
+    throw new Error(MANUAL_BACKGROUND_REMOVAL_PNG_ERROR);
+  }
 }
 
 const studioMaterializedDesignReviewStatusSchema = z.enum([
@@ -686,6 +713,7 @@ export async function uploadManualSheinStudioBackgroundRemoval(
   designId: string,
   file: File,
 ): Promise<SheinStudioBatchDetail> {
+  await assertRealPngUpload(file);
   const formData = new FormData();
   formData.append("file", file);
   const payload = await apiFormRequest<unknown>(
