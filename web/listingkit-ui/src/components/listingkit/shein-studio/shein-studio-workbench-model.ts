@@ -339,6 +339,11 @@ export function flattenItemizedBatchDesigns(
     entry.designs.map((design) => ({
       id: design.id,
       imageUrl: design.imageUrl,
+      originalImageUrl: design.originalImageUrl,
+      backgroundRemovalStatus: design.backgroundRemovalStatus,
+      backgroundRemovalError: design.backgroundRemovalError,
+      transparentBackgroundMode: detail.batch.transparentBackgroundMode,
+      reviewStatus: design.reviewStatus,
       prompt: detail.batch.prompt,
       reviewNote: design.reviewNote,
       role: design.role,

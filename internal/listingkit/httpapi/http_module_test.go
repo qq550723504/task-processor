@@ -59,6 +59,7 @@ func TestNewStudioHTTPModuleRegistersStudioRoutes(t *testing.T) {
 	require.NotContains(t, keys, "POST /api/v1/listing-kits/generate")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/studio/batches/:batch_id/designs/background-removal/retry")
+	require.Contains(t, keys, "POST /api/v1/listing-kits/studio/batches/:batch_id/designs/:design_id/manual-background-removal")
 	require.NotContains(t, keys, "POST /api/v1/listing-kits/studio/sessions")
 	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/:session_id")
 	require.NotContains(t, keys, "PATCH /api/v1/listing-kits/studio/sessions/:session_id")
@@ -123,6 +124,8 @@ func (stubStudioSessionRouteHandler) GetStudioBatch(*gin.Context)               
 func (stubStudioSessionRouteHandler) StartStudioBatchGeneration(*gin.Context)              {}
 func (stubStudioSessionRouteHandler) RetryStudioBatchItems(*gin.Context)                   {}
 func (stubStudioSessionRouteHandler) RetryStudioBatchDesignBackgroundRemoval(*gin.Context) {}
+func (stubStudioSessionRouteHandler) ApplyManualStudioBatchDesignBackgroundRemoval(*gin.Context) {
+}
 func (stubStudioSessionRouteHandler) RetryStudioBatchSDSChildTasks(*gin.Context)           {}
 func (stubStudioSessionRouteHandler) ApproveStudioBatchDesigns(*gin.Context)               {}
 func (stubStudioSessionRouteHandler) CreateStudioBatchTasks(*gin.Context)                  {}

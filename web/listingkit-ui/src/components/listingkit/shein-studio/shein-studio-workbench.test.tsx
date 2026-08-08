@@ -35,6 +35,7 @@ import {
   selection,
   setActiveSheinStudioBatchId,
   startSheinStudioBatchRun,
+  uploadManualSheinStudioBackgroundRemoval,
   useQuery,
   warmSDSBaselineForSelection,
 } from "@/components/listingkit/shein-studio/shein-studio-workbench-test-harness";
@@ -344,6 +345,185 @@ describe("SheinStudioWorkbench", () => {
       expect(screen.getByText("review grid: 2")).toBeInTheDocument(),
     );
     expect(screen.getByText("approved styles: 1")).toBeInTheDocument();
+  });
+
+  it("hydrates the returned manual cutout detail and clears the active uploading id after resolution and rejection", async () => {
+    const batchDetail = buildHydratedBatch(
+      {
+        id: "batch-1",
+        name: "Retro Cherries",
+        prompt: "retro cherries",
+        selection,
+        designs: [],
+        selectedIds: [],
+        createdTasks: [],
+      },
+      {
+        items: [
+          {
+            item: {
+              id: "item-1",
+              batchId: "batch-1",
+              targetGroupKey: "size:1000x1000",
+              status: "review_ready",
+              selectionCount: 1,
+              createdAt: "2026-05-26T09:59:00.000Z",
+              updatedAt: "2026-05-26T10:00:00.000Z",
+            },
+            designs: [
+              {
+                id: "design-1",
+                batchId: "batch-1",
+                itemId: "item-1",
+                sourceAttemptId: "attempt-1",
+                targetGroupKey: "size:1000x1000",
+                imageUrl: "https://example.com/design-1-final.png",
+                originalImageUrl: "https://example.com/design-1-original.png",
+                backgroundRemovalStatus: "succeeded",
+                backgroundRemovalError: "manual cutout warning",
+                transparentBackgroundMode: "removal",
+                reviewStatus: "approved",
+                createdAt: "2026-05-26T09:59:30.000Z",
+                updatedAt: "2026-05-26T10:00:00.000Z",
+              },
+            ],
+          },
+        ],
+      },
+    );
+    batchDetail.detail.batch.transparentBackgroundMode = "removal";
+    getSheinStudioHydratedBatch.mockResolvedValue(batchDetail);
+    const uploadedDetail = {
+      ...batchDetail.detail,
+      batch: {
+        ...batchDetail.detail.batch,
+        transparentBackgroundMode: "native",
+        updatedAt: "2026-05-26T10:05:00.000Z",
+      },
+      items: [
+        {
+          ...batchDetail.detail.items[0],
+          designs: [
+            {
+              ...batchDetail.detail.items[0].designs[0],
+              imageUrl: "https://example.com/design-1-manual-final.png",
+              originalImageUrl: "https://example.com/design-1-manual-original.png",
+              backgroundRemovalStatus: "failed",
+              backgroundRemovalError: "manual cutout failed after upload",
+              updatedAt: "2026-05-26T10:05:00.000Z",
+            },
+          ],
+        },
+      ],
+    };
+    const pngFile = new File(
+      [
+        new Uint8Array([
+          0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+          0x00, 0x00, 0x00, 0x0d,
+          0x49, 0x48, 0x44, 0x52,
+          0x00, 0x00, 0x00, 0x01,
+          0x00, 0x00, 0x00, 0x01,
+          0x08, 0x06, 0x00, 0x00, 0x00,
+          0x1f, 0x15, 0xc4, 0x89,
+        ]),
+      ],
+      "manual-cutout.png",
+      { type: "image/png" },
+    );
+    const firstUpload = createDeferred<typeof uploadedDetail>();
+    const secondUpload = createDeferred<typeof uploadedDetail>();
+    uploadManualSheinStudioBackgroundRemoval
+      .mockImplementationOnce(() => firstUpload.promise)
+      .mockImplementationOnce(() => secondUpload.promise);
+
+    render(
+      <SheinStudioWorkbench activeStep="review" initialBatchId="batch-1" />,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("review grid: 1")).toBeInTheDocument(),
+    );
+
+    fireEvent.change(screen.getByLabelText("upload-design-1"), {
+      target: { files: [pngFile] },
+    });
+
+    await waitFor(() =>
+      expect(uploadManualSheinStudioBackgroundRemoval).toHaveBeenCalledWith(
+        "batch-1",
+        "design-1",
+        pngFile,
+      ),
+    );
+    expect(
+      screen.getByText("uploading manual background removal: design-1"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "create review tasks" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(
+        "design-image-design-1: https://example.com/design-1-final.png",
+      ),
+    ).toBeInTheDocument();
+    act(() => {
+      firstUpload.resolve(uploadedDetail);
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "design-image-design-1: https://example.com/design-1-manual-final.png",
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      screen.getByText(
+        "design-original-design-1: https://example.com/design-1-manual-original.png",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("design-background-removal-status-design-1: failed"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "design-background-removal-error-design-1: manual cutout failed after upload",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("design-transparent-background-mode-design-1: native"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("uploading manual background removal: none"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "create review tasks" }),
+    ).toBeEnabled();
+
+    fireEvent.change(screen.getByLabelText("upload-design-1"), {
+      target: { files: [pngFile] },
+    });
+
+    await waitFor(() =>
+      expect(uploadManualSheinStudioBackgroundRemoval).toHaveBeenNthCalledWith(
+        2,
+        "batch-1",
+        "design-1",
+        pngFile,
+      ),
+    );
+    expect(
+      screen.getByText("uploading manual background removal: design-1"),
+    ).toBeInTheDocument();
+    act(() => {
+      secondUpload.reject(new Error("network timeout"));
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByText(/上传手动抠图失败：network timeout/),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByText("uploading manual background removal: none")).toBeInTheDocument();
   });
 
   it("does not let a newer dedicated-batch local snapshot override hydrated detail results", async () => {

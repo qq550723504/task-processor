@@ -1,8 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { SheinDesignPreviewGrid } from "@/components/listingkit/shein-studio/shein-design-preview-grid";
 import { resolveGeneratedDesignFinalSrc, resolveGeneratedDesignOriginalSrc } from "@/lib/shein-studio/design-image";
+import { downloadStudioImage } from "@/lib/shein-studio/download-image";
 import { toThumbnailPreviewUrl } from "@/lib/utils/imgproxy-url";
 
 vi.mock("next/image", () => ({
@@ -15,6 +16,23 @@ vi.mock("next/image", () => ({
 vi.mock("@/components/listingkit/shein-studio/shein-design-lightbox", () => ({
   SheinDesignLightbox: () => null,
 }));
+
+vi.mock("@/lib/shein-studio/download-image", () => ({
+  downloadStudioImage: vi.fn(),
+}));
+
+function createPngFile(name = "manual-cutout.png") {
+  const pngBytes = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    0x00, 0x00, 0x00, 0x0d,
+    0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01,
+    0x00, 0x00, 0x00, 0x01,
+    0x08, 0x06, 0x00, 0x00, 0x00,
+    0x1f, 0x15, 0xc4, 0x89,
+  ]);
+  return new File([pngBytes], name, { type: "image/png" });
+}
 
 describe("SheinDesignPreviewGrid", () => {
   it("shows original and removed previews plus the manual retry action after removal succeeds", () => {
@@ -79,6 +97,110 @@ describe("SheinDesignPreviewGrid", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "重新抠图" }));
     expect(onRetryBackgroundRemoval).toHaveBeenCalledWith("design-1");
+  });
+
+  it("shows download and manual upload actions for completed designs", () => {
+    const { container } = render(
+      <SheinDesignPreviewGrid
+        createActionDisabledReason={undefined}
+        designs={[
+          {
+            id: "design-1",
+            imageUrl: "https://cdn.example.test/final.png",
+            originalImageUrl: "https://cdn.example.test/original.png",
+            backgroundRemovalStatus: "succeeded",
+            transparentBackgroundMode: "removal",
+          },
+        ]}
+        imageStrategy="hybrid"
+        onCreateReviewTasks={vi.fn()}
+        onRegenerate={vi.fn()}
+        onToggle={vi.fn()}
+        onUploadManualBackgroundRemoval={vi.fn()}
+        productImageCount="3"
+        renderSizeImagesWithSds
+        selectedIds={[]}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: "下载原图" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "上传手动抠图" })).toBeInTheDocument();
+    expect(container.querySelector('input[type="file"]')).toHaveAttribute(
+      "accept",
+      "image/png,.png",
+    );
+  });
+
+  it("downloads the original image with a stable original filename", async () => {
+    render(
+      <SheinDesignPreviewGrid
+        createActionDisabledReason={undefined}
+        designs={[
+          {
+            id: "design-1",
+            imageUrl: "https://cdn.example.test/final.png",
+            originalImageUrl: "https://cdn.example.test/original.png",
+            backgroundRemovalStatus: "succeeded",
+            transparentBackgroundMode: "removal",
+          },
+        ]}
+        imageStrategy="hybrid"
+        onCreateReviewTasks={vi.fn()}
+        onRegenerate={vi.fn()}
+        onToggle={vi.fn()}
+        productImageCount="3"
+        renderSizeImagesWithSds
+        selectedIds={[]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "下载原图" }));
+
+    await waitFor(() =>
+      expect(downloadStudioImage).toHaveBeenCalledWith(
+        "https://cdn.example.test/original.png",
+        "studio-design-1-original.png",
+      ),
+    );
+  });
+
+  it("selecting a png uploads it with the design id and file", async () => {
+    const onUploadManualBackgroundRemoval = vi.fn().mockResolvedValue(undefined);
+    const pngFile = createPngFile();
+    const { container } = render(
+      <SheinDesignPreviewGrid
+        createActionDisabledReason={undefined}
+        designs={[
+          {
+            id: "design-1",
+            imageUrl: "https://cdn.example.test/final.png",
+            originalImageUrl: "https://cdn.example.test/original.png",
+            backgroundRemovalStatus: "succeeded",
+            transparentBackgroundMode: "removal",
+          },
+        ]}
+        imageStrategy="hybrid"
+        onCreateReviewTasks={vi.fn()}
+        onRegenerate={vi.fn()}
+        onToggle={vi.fn()}
+        onUploadManualBackgroundRemoval={onUploadManualBackgroundRemoval}
+        productImageCount="3"
+        renderSizeImagesWithSds
+        selectedIds={[]}
+      />,
+    );
+
+    const input = container.querySelector('input[type="file"]');
+    expect(input).not.toBeNull();
+
+    fireEvent.change(input!, { target: { files: [pngFile] } });
+
+    await waitFor(() =>
+      expect(onUploadManualBackgroundRemoval).toHaveBeenCalledWith(
+        "design-1",
+        pngFile,
+      ),
+    );
   });
 
   it("keeps the manual retry action and not-yet-removed status when no original image exists", () => {
@@ -188,28 +310,116 @@ describe("SheinDesignPreviewGrid", () => {
     expect(screen.getByRole("button", { name: "重新抠图" })).toBeDisabled();
   });
 
-  it("disables both conflicting operations for a persisted pending removal", () => {
+  it("hides manual upload while background removal is pending", () => {
     render(
       <SheinDesignPreviewGrid
         createActionDisabledReason={undefined}
-        designs={[{
-          id: "design-1",
-          imageUrl: "https://cdn.example.test/design.png",
-          backgroundRemovalStatus: "pending",
-        }]}
+        designs={[
+          {
+            id: "design-1",
+            imageUrl: "https://cdn.example.test/design.png",
+            backgroundRemovalStatus: "pending",
+            transparentBackgroundMode: "removal",
+          },
+        ]}
         imageStrategy="hybrid"
         onCreateReviewTasks={vi.fn()}
         onRegenerate={vi.fn()}
-        onRetryBackgroundRemoval={vi.fn()}
         onToggle={vi.fn()}
+        onUploadManualBackgroundRemoval={vi.fn()}
         productImageCount="3"
         renderSizeImagesWithSds
         selectedIds={[]}
       />,
     );
 
-    expect(screen.getByRole("button", { name: "重新生成" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "重新抠图" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "上传手动抠图" })).not.toBeInTheDocument();
+  });
+
+  it("disables only the uploading card's mutating controls while leaving other cards enabled", () => {
+    render(
+      <SheinDesignPreviewGrid
+        createActionDisabledReason={undefined}
+        designs={[
+          {
+            id: "design-1",
+            imageUrl: "https://cdn.example.test/design-1-final.png",
+            originalImageUrl: "https://cdn.example.test/design-1-original.png",
+            backgroundRemovalStatus: "succeeded",
+            transparentBackgroundMode: "removal",
+          },
+          {
+            id: "design-2",
+            imageUrl: "https://cdn.example.test/design-2-final.png",
+            originalImageUrl: "https://cdn.example.test/design-2-original.png",
+            backgroundRemovalStatus: "succeeded",
+            transparentBackgroundMode: "removal",
+          },
+        ]}
+        imageStrategy="hybrid"
+        onCreateReviewTasks={vi.fn()}
+        onRegenerate={vi.fn()}
+        onRetryBackgroundRemoval={vi.fn()}
+        onToggle={vi.fn()}
+        onUploadManualBackgroundRemoval={vi.fn()}
+        productImageCount="3"
+        renderSizeImagesWithSds
+        selectedIds={[]}
+        uploadingManualBackgroundRemovalIds={["design-1"]}
+      />,
+    );
+
+    const approveButtons = screen.getAllByRole("button", { name: "批准" });
+    const regenerateButtons = screen.getAllByRole("button", { name: "重新生成" });
+    const retryButtons = screen.getAllByRole("button", { name: "重新抠图" });
+
+    expect(approveButtons[0]).toBeDisabled();
+    expect(regenerateButtons[0]).toBeDisabled();
+    expect(retryButtons[0]).toBeDisabled();
+
+    expect(approveButtons[1]).toBeEnabled();
+    expect(regenerateButtons[1]).toBeEnabled();
+    expect(retryButtons[1]).toBeEnabled();
+  });
+
+  it("ignores non-png uploads at the UI boundary and shows a local error", async () => {
+    const onUploadManualBackgroundRemoval = vi.fn().mockResolvedValue(undefined);
+    const { container } = render(
+      <SheinDesignPreviewGrid
+        createActionDisabledReason={undefined}
+        designs={[
+          {
+            id: "design-1",
+            imageUrl: "https://cdn.example.test/final.png",
+            originalImageUrl: "https://cdn.example.test/original.png",
+            backgroundRemovalStatus: "succeeded",
+            transparentBackgroundMode: "removal",
+          },
+        ]}
+        imageStrategy="hybrid"
+        onCreateReviewTasks={vi.fn()}
+        onRegenerate={vi.fn()}
+        onToggle={vi.fn()}
+        onUploadManualBackgroundRemoval={onUploadManualBackgroundRemoval}
+        productImageCount="3"
+        renderSizeImagesWithSds
+        selectedIds={[]}
+      />,
+    );
+
+    const input = container.querySelector('input[type="file"]');
+    expect(input).not.toBeNull();
+
+    fireEvent.change(input!, {
+      target: {
+        files: [new File(["fake"], "fake.jpg", { type: "image/jpeg" })],
+      },
+    });
+
+    expect(onUploadManualBackgroundRemoval).not.toHaveBeenCalled();
+    expect(
+      await screen.findByText("仅支持上传真实 PNG 图片。"),
+    ).toBeInTheDocument();
   });
 
   it("blocks task creation while any background removal request is running", () => {
@@ -217,16 +427,10 @@ describe("SheinDesignPreviewGrid", () => {
 
     render(
       <SheinDesignPreviewGrid
-        createActionDisabledReason={undefined}
+        createActionDisabledReason="请等待手动抠图上传完成后再生成 SHEIN 资料。"
         designs={[
-          {
-            id: "design-1",
-            imageUrl: "https://cdn.example.test/design-1.png",
-          },
-          {
-            id: "design-2",
-            imageUrl: "https://cdn.example.test/design-2.png",
-          },
+          { id: "design-1", imageUrl: "https://cdn.example.test/design-1.png" },
+          { id: "design-2", imageUrl: "https://cdn.example.test/design-2.png" },
         ]}
         imageStrategy="hybrid"
         onCreateReviewTasks={onCreateReviewTasks}
@@ -235,7 +439,6 @@ describe("SheinDesignPreviewGrid", () => {
         onToggle={vi.fn()}
         productImageCount="3"
         renderSizeImagesWithSds
-        retryingBackgroundRemovalId="design-2"
         selectedIds={["design-1"]}
       />,
     );
@@ -244,12 +447,11 @@ describe("SheinDesignPreviewGrid", () => {
       name: "为已批准款式生成 SHEIN 资料",
     });
     expect(createButton).toBeDisabled();
-
     fireEvent.click(createButton);
     expect(onCreateReviewTasks).not.toHaveBeenCalled();
   });
 
-  it("keeps both previews visible in read-only mode while hiding the manual retry action", () => {
+  it("keeps download visible in read-only mode while hiding manual upload", () => {
     render(
       <SheinDesignPreviewGrid
         createActionDisabledReason={undefined}
@@ -276,6 +478,8 @@ describe("SheinDesignPreviewGrid", () => {
 
     expect(screen.getByAltText("款式 1 原图预览")).toBeInTheDocument();
     expect(screen.getByAltText("款式 1 抠图后预览")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下载原图" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "上传手动抠图" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "重新抠图" })).not.toBeInTheDocument();
   });
 

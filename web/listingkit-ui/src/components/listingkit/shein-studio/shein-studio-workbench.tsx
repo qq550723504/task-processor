@@ -137,6 +137,7 @@ import {
   approveSheinStudioBatchDesigns,
   retrySheinStudioBatchBackgroundRemoval,
   retrySheinStudioBatchItems,
+  uploadManualSheinStudioBackgroundRemoval,
 } from "@/lib/api/shein-studio-batches";
 import { useToast } from "@/components/providers/toast-provider";
 import {
@@ -285,6 +286,10 @@ export function SheinStudioWorkbench({
   const [retryingFailedItemId, setRetryingFailedItemId] = useState("");
   const [retryingBackgroundRemovalId, setRetryingBackgroundRemovalId] =
     useState("");
+  const [
+    uploadingManualBackgroundRemovalIds,
+    setUploadingManualBackgroundRemovalIds,
+  ] = useState<string[]>([]);
   const [
     rawSelectedRecentBatchSummaryIds,
     setRawSelectedRecentBatchSummaryIds,
@@ -591,7 +596,7 @@ export function SheinStudioWorkbench({
     transparentBackgroundMode,
     variationIntensity,
   });
-  const createActionDisabledReason = useSheinStudioCreateActionDisabledReason({
+  const baseCreateActionDisabledReason = useSheinStudioCreateActionDisabledReason({
     galleryRatioCheck,
     hasItemizedBatchContext: Boolean(itemizedBatchContext),
     hasPendingBackgroundRemoval:
@@ -603,6 +608,10 @@ export function SheinStudioWorkbench({
     selectedIds,
     selection: activeSelection,
   });
+  const createActionDisabledReason =
+    uploadingManualBackgroundRemovalIds.length > 0
+      ? "请等待手动抠图上传完成后再生成 SHEIN 资料。"
+      : baseCreateActionDisabledReason;
   const handlePromptChange = useCallback(
     (value: string) => {
       saveDedicatedBatchDraftSnapshot({
@@ -758,7 +767,11 @@ export function SheinStudioWorkbench({
     [],
   );
 
-  const { handleCreateTasks, handleGenerate, handleRegenerate } =
+  const {
+    handleCreateTasks: createTasksAction,
+    handleGenerate,
+    handleRegenerate,
+  } =
     useSheinStudioDesignActions({
       activeGroupId,
       activeSelection,
@@ -797,6 +810,21 @@ export function SheinStudioWorkbench({
       itemizedBatchContext,
       batchTraceContext,
     });
+
+  const handleCreateTasks = useCallback(async () => {
+    if (uploadingManualBackgroundRemovalIds.length > 0) {
+      workbenchController.setField(
+        "generationError",
+        "请等待手动抠图上传完成后再生成 SHEIN 资料。",
+      );
+      return;
+    }
+    await createTasksAction();
+  }, [
+    createTasksAction,
+    uploadingManualBackgroundRemovalIds.length,
+    workbenchController,
+  ]);
 
   const {
     handleDeleteBatch,
@@ -1373,6 +1401,44 @@ export function SheinStudioWorkbench({
     }
   }
 
+  async function handleUploadManualBackgroundRemoval(
+    designId: string,
+    file: File,
+  ) {
+    if (!activeBatchId || !itemizedBatchDetail) {
+      workbenchController.setField(
+        "generationError",
+        "当前批次不可用，请刷新后重试。",
+      );
+      return;
+    }
+
+    setUploadingManualBackgroundRemovalIds((current) =>
+      current.includes(designId) ? current : [...current, designId],
+    );
+    clearWorkbenchTaskRecoveryAlerts(workbenchController);
+
+    try {
+      const nextDetail = await uploadManualSheinStudioBackgroundRemoval(
+        activeBatchId,
+        designId,
+        file,
+      );
+      applyItemizedBatchDetail(nextDetail);
+    } catch (error) {
+      const message = `上传手动抠图失败：${formatSubscriptionApiError(error)}`;
+      workbenchController.setField(
+        "generationError",
+        message,
+      );
+      throw new Error(message);
+    } finally {
+      setUploadingManualBackgroundRemovalIds((current) =>
+        current.filter((id) => id !== designId),
+      );
+    }
+  }
+
   const busyMessage = useSheinStudioBusyMessage({
     isCreatingTasks,
     isGenerating: effectiveIsGenerating,
@@ -1793,10 +1859,18 @@ export function SheinStudioWorkbench({
               onRetryBackgroundRemoval={
                 itemizedBatchContext ? handleRetryBackgroundRemoval : undefined
               }
+              onUploadManualBackgroundRemoval={
+                itemizedBatchContext
+                  ? handleUploadManualBackgroundRemoval
+                  : undefined
+              }
               onToggle={toggleSelection}
               productImageCount={productImageCount}
               regeneratingId={regeneratingId || undefined}
               retryingBackgroundRemovalId={retryingBackgroundRemovalId || undefined}
+              uploadingManualBackgroundRemovalIds={
+                uploadingManualBackgroundRemovalIds
+              }
               renderSizeImagesWithSds={renderSizeImagesWithSds}
               selectedIds={selectedIds}
               selection={activeSelection}

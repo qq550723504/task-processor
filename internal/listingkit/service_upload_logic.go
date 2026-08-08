@@ -12,17 +12,38 @@ import (
 	"task-processor/internal/tenantbridge"
 )
 
+type uploadedImageMaterialization struct {
+	imageURL string
+	cleanup  func(context.Context)
+}
+
 func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*UploadImagesResponse, error) {
+	if req == nil || len(req.Files) == 0 {
+		return nil, fmt.Errorf("invalid request: files are required")
+	}
+
+	response := &UploadImagesResponse{
+		ImageURLs: make([]string, 0, len(req.Files)),
+	}
+	for _, file := range req.Files {
+		materialized, err := s.uploadListingKitImage(ctx, file)
+		if err != nil {
+			return nil, err
+		}
+		response.ImageURLs = append(response.ImageURLs, materialized.imageURL)
+	}
+
+	return response, nil
+}
+
+func (s *service) uploadListingKitImage(ctx context.Context, file ImageUploadInput) (*uploadedImageMaterialization, error) {
 	uploadStore := resolveStudioUploadStore(s)
 	if uploadStore == nil {
 		return nil, fmt.Errorf("image upload store is not configured")
 	}
-	if req == nil || len(req.Files) == 0 {
-		return nil, fmt.Errorf("invalid request: files are required")
-	}
 	keyedUploadStore, ok := uploadStore.(KeyedImageUploadStore)
 	if !ok {
-		return uploadImagesWithLegacyStore(ctx, req, uploadStore)
+		return uploadImageWithLegacyStore(ctx, file, uploadStore)
 	}
 	uploadedImageRepo := resolveUploadedImageRepository(s)
 	if uploadedImageRepo == nil {
@@ -36,57 +57,72 @@ func (s *service) UploadImages(ctx context.Context, req *UploadImagesRequest) (*
 		return nil, fmt.Errorf("resolve legacy tenant id: no legacy tenant id")
 	}
 
-	response := &UploadImagesResponse{
-		ImageURLs: make([]string, 0, len(req.Files)),
+	validated, err := validateUploadedImage(file)
+	if err != nil {
+		return nil, fmt.Errorf("invalid image upload: %w", err)
 	}
-	for _, file := range req.Files {
-		validated, err := validateUploadedImage(file)
-		if err != nil {
-			return nil, fmt.Errorf("invalid image upload: %w", err)
-		}
-		file.ContentType = validated.ContentType
-		uploadID := uuid.NewString()
-		storageKey := fmt.Sprintf("listingkit/tenants/%d/uploads/%s%s", legacyTenantID, uploadID, validated.Extension)
-		stored, err := keyedUploadStore.SaveWithKey(ctx, storageKey, &file)
-		if err != nil {
-			return nil, fmt.Errorf("save uploaded image: %w", err)
-		}
-		if err := uploadedImageRepo.SaveUploadedImage(ctx, &UploadedImageRecord{
-			Key:          stored.Key,
-			UploadID:     uploadID,
-			StorageKey:   stored.Key,
-			Filename:     stored.Filename,
-			PublicURL:    strings.TrimSpace(stored.PublicURL),
-			ContentType:  stored.ContentType,
-			Size:         stored.Size,
-			OriginalName: stored.OriginalName,
-		}); err != nil {
-			cleanupErr := uploadStore.Delete(ctx, stored.Key)
-			if cleanupErr != nil && !errors.Is(cleanupErr, ErrUploadedImageNotFound) {
-				return nil, errors.Join(fmt.Errorf("save uploaded image metadata: %w", err), fmt.Errorf("delete uploaded image after metadata failure: %w", cleanupErr))
-			}
-			return nil, fmt.Errorf("save uploaded image metadata: %w", err)
-		}
-		response.ImageURLs = append(response.ImageURLs, buildUploadedImagePath(uploadID))
+	file.ContentType = validated.ContentType
+	uploadID := uuid.NewString()
+	storageKey := fmt.Sprintf("listingkit/tenants/%d/uploads/%s%s", legacyTenantID, uploadID, validated.Extension)
+	stored, err := keyedUploadStore.SaveWithKey(ctx, storageKey, &file)
+	if err != nil {
+		return nil, fmt.Errorf("save uploaded image: %w", err)
 	}
-
-	return response, nil
+	if err := uploadedImageRepo.SaveUploadedImage(ctx, &UploadedImageRecord{
+		Key:          stored.Key,
+		UploadID:     uploadID,
+		StorageKey:   stored.Key,
+		Filename:     stored.Filename,
+		PublicURL:    strings.TrimSpace(stored.PublicURL),
+		ContentType:  stored.ContentType,
+		Size:         stored.Size,
+		OriginalName: stored.OriginalName,
+	}); err != nil {
+		cleanupErr := uploadStore.Delete(ctx, stored.Key)
+		if cleanupErr != nil && !errors.Is(cleanupErr, ErrUploadedImageNotFound) {
+			return nil, errors.Join(fmt.Errorf("save uploaded image metadata: %w", err), fmt.Errorf("delete uploaded image after metadata failure: %w", cleanupErr))
+		}
+		return nil, fmt.Errorf("save uploaded image metadata: %w", err)
+	}
+	return &uploadedImageMaterialization{
+		imageURL: buildUploadedImagePath(uploadID),
+		cleanup: func(cleanupCtx context.Context) {
+			_, _ = s.DeleteUploadedImage(cleanupCtx, uploadID)
+		},
+	}, nil
 }
 
 func uploadImagesWithLegacyStore(ctx context.Context, req *UploadImagesRequest, uploadStore ImageUploadStore) (*UploadImagesResponse, error) {
 	response := &UploadImagesResponse{ImageURLs: make([]string, 0, len(req.Files))}
 	for _, file := range req.Files {
-		stored, err := uploadStore.Save(ctx, &file)
+		materialized, err := uploadImageWithLegacyStore(ctx, file, uploadStore)
 		if err != nil {
-			return nil, fmt.Errorf("save uploaded image: %w", err)
+			return nil, err
 		}
-		imageURL := strings.TrimSpace(stored.PublicURL)
-		if imageURL == "" {
-			imageURL = buildUploadedImagePath(stored.Key)
-		}
-		response.ImageURLs = append(response.ImageURLs, imageURL)
+		response.ImageURLs = append(response.ImageURLs, materialized.imageURL)
 	}
 	return response, nil
+}
+
+func uploadImageWithLegacyStore(ctx context.Context, file ImageUploadInput, uploadStore ImageUploadStore) (*uploadedImageMaterialization, error) {
+	stored, err := uploadStore.Save(ctx, &file)
+	if err != nil {
+		return nil, fmt.Errorf("save uploaded image: %w", err)
+	}
+	imageURL := strings.TrimSpace(stored.PublicURL)
+	if imageURL == "" {
+		imageURL = buildUploadedImagePath(stored.Key)
+	}
+	storageKey := strings.TrimSpace(stored.Key)
+	return &uploadedImageMaterialization{
+		imageURL: imageURL,
+		cleanup: func(cleanupCtx context.Context) {
+			if storageKey == "" {
+				return
+			}
+			_ = uploadStore.Delete(cleanupCtx, storageKey)
+		},
+	}, nil
 }
 
 func (s *service) GetUploadedImage(ctx context.Context, uploadID string) (*UploadedImageFile, error) {
