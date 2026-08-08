@@ -75,7 +75,6 @@ func crawler1688Routes(handler gin.HandlerFunc) []httproute.Descriptor {
 	add(http.MethodDelete, "/api/v1/tasks/*task_id")
 	add(http.MethodGet, "/api/v1/stats")
 	add(http.MethodGet, "/metrics")
-	add(http.MethodGet, "/health")
 	add(http.MethodGet, "/ready")
 	for _, route := range append([]httproute.Descriptor(nil), routes...) {
 		route.Method = http.MethodOptions
