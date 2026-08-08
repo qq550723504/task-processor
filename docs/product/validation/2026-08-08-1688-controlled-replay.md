@@ -97,3 +97,23 @@ The next operator run must remain GET-only until all preflight checks pass:
 2. Start the local API from the corrected entry point.
 3. Check `/health`, bearer-token authentication, tenant visibility, and store visibility.
 4. Stop and record a blocker if any dependency is unavailable; do not create a 1688 task automatically.
+
+## Preflight run — blocked
+
+The first read-only preflight from the isolated worktree was stopped before
+starting the API or creating a task:
+
+| Check | Result |
+| --- | --- |
+| Worktree `.env` | missing |
+| ListingKit bearer token | not present in the root or worktree token file |
+| Local API `127.0.0.1:8085` | not running; health request timed out |
+| Kubernetes context | reachable (`default`) |
+| `yudao-cloud` namespace | missing, so the documented PostgreSQL/Redis services could not be found |
+| `temporal/temporal-frontend` | service exists |
+
+Conclusion: `blocked` on local database/Redis configuration and ListingKit
+credentials. No port-forward, API process, 1688 crawler request, task creation,
+or marketplace operation was started by this run. Resume only after the
+operator supplies a valid worktree runtime configuration and bearer token, or
+points the scripts at the current cluster services.
