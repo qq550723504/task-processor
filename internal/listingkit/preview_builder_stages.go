@@ -1,10 +1,13 @@
 package listingkit
 
-import listingplatform "task-processor/internal/listing/platform"
+import (
+	listingplatform "task-processor/internal/listing/platform"
+	"task-processor/internal/listingkit/core"
+)
 
 func initializeListingKitPreview(task *Task, selectedPlatform string) (*ListingKitPreview, string, error) {
 	if task == nil {
-		return nil, "", ErrTaskNotFound
+		return nil, "", core.ErrTaskNotFound
 	}
 	normalizedPlatform, ok := listingplatform.ValidateSelectedPlatform(selectedPlatform)
 	if !ok {

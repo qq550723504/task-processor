@@ -16,6 +16,7 @@ import (
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingkit/sheinpodimage"
 	"task-processor/internal/listingkit/store"
 	commonpub "task-processor/internal/publishing/common"
@@ -268,7 +269,7 @@ func TestTaskRepositoryMarkProcessingSynchronizesSheinPODImageLookupIndex(t *tes
 	ctx := tenantContext("tenant-a")
 	base := time.Now().Add(-time.Hour).UTC()
 	target := makeSheinPODLookupTask("task-mark-processing", 869, "PROCESSING-SCOPE", "SKU-TARGET", base)
-	target.Status = listingkit.TaskStatusPending
+	target.Status = core.TaskStatusPending
 	previouslyNewer := makeSheinPODLookupTask("task-previously-newer", 869, "PROCESSING-SCOPE", "SKU-OTHER", base.Add(time.Minute))
 	for _, task := range []*listingkit.Task{target, previouslyNewer} {
 		if err := repo.CreateTask(ctx, task); err != nil {
@@ -287,7 +288,7 @@ func TestTaskRepositoryMarkProcessingSynchronizesSheinPODImageLookupIndex(t *tes
 	if err != nil || total != 2 || len(items) != 2 {
 		t.Fatalf("items=%+v total=%d err=%v", items, total, err)
 	}
-	if items[0].TaskID != target.ID || items[0].Status != string(listingkit.TaskStatusProcessing) {
+	if items[0].TaskID != target.ID || items[0].Status != string(core.TaskStatusProcessing) {
 		t.Fatalf("first item=%+v, want freshly processing target first", items[0])
 	}
 	var finalTask listingkit.Task
@@ -439,7 +440,7 @@ func TestTaskRepositorySynchronizesSheinPODImageLookupIndexOnResultUpdates(t *te
 		ctx := tenantContext("tenant-a")
 		task := makeSheinPODLookupTask("task-replace-sds", 869, "SUPPLIER", "SKU-REPAIR", time.Now().Add(-time.Hour))
 		task.Request.Options = &listingkit.GenerateOptions{SDS: &listingkit.SDSSyncOptions{ProductName: "old"}}
-		task.Result.ChildTasks = []listingkit.ChildTaskState{{Kind: "sds_design_sync", Status: string(listingkit.TaskStatusFailed)}}
+		task.Result.ChildTasks = []listingkit.ChildTaskState{{Kind: "sds_design_sync", Status: string(core.TaskStatusFailed)}}
 		if err := repo.CreateTask(ctx, task); err != nil {
 			t.Fatal(err)
 		}
@@ -551,10 +552,10 @@ func makeSheinPODLookupTask(taskID string, storeID int64, supplierCode, sellerSK
 			},
 		},
 		SheinStoreResolutionSnapshot: &listingkit.SheinStoreResolutionSnapshot{StoreID: storeID, Site: "US"},
-		Status:                       listingkit.TaskStatusCompleted,
+		Status:                       core.TaskStatusCompleted,
 		Result: &listingkit.ListingKitResult{
 			TaskID: taskID,
-			Status: string(listingkit.TaskStatusCompleted),
+			Status: string(core.TaskStatusCompleted),
 			Shein: &sheinpub.Package{
 				Images: &commonpub.ImageSet{
 					MainImage: "https://cdn.sdspod.com/out/0/202605/f95d77f558fa121c28ba51b1f1926f5d.jpg",

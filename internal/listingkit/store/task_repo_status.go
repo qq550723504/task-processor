@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) error {
@@ -19,9 +20,9 @@ func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) erro
 		result := tx.
 			Model(&listingkit.Task{}).
 			Scopes(taskAccessScope(ctx)).
-			Where("id = ? AND status = ?", taskID, listingkit.TaskStatusPending).
+			Where("id = ? AND status = ?", taskID, core.TaskStatusPending).
 			Updates(map[string]any{
-				"status":     listingkit.TaskStatusProcessing,
+				"status":     core.TaskStatusProcessing,
 				"updated_at": currentTimestampValue(tx),
 			})
 		if result.Error != nil {
@@ -50,16 +51,16 @@ func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) erro
 	if err != nil {
 		return err
 	}
-	if task.Status != listingkit.TaskStatusPending {
-		return listingkit.ErrTaskNotPending
+	if task.Status != core.TaskStatusPending {
+		return core.ErrTaskNotPending
 	}
-	return listingkit.ErrTaskNotFound
+	return core.ErrTaskNotFound
 }
 
 func (r *taskRepository) MarkCompleted(ctx context.Context, taskID string, result *listingkit.ListingKitResult) error {
 	return r.updateTaskFields(ctx, taskID, map[string]any{
 		"result": result,
-		"status": listingkit.TaskStatusCompleted,
+		"status": core.TaskStatusCompleted,
 		"error":  "",
 	})
 }
@@ -67,21 +68,21 @@ func (r *taskRepository) MarkCompleted(ctx context.Context, taskID string, resul
 func (r *taskRepository) MarkNeedsReview(ctx context.Context, taskID string, result *listingkit.ListingKitResult, reason string) error {
 	return r.updateTaskFields(ctx, taskID, map[string]any{
 		"result": result,
-		"status": listingkit.TaskStatusNeedsReview,
+		"status": core.TaskStatusNeedsReview,
 		"error":  reason,
 	})
 }
 
 func (r *taskRepository) MarkFailed(ctx context.Context, taskID string, errorMsg string) error {
 	return r.updateTaskFields(ctx, taskID, map[string]any{
-		"status": listingkit.TaskStatusFailed,
+		"status": core.TaskStatusFailed,
 		"error":  errorMsg,
 	})
 }
 
 func (r *taskRepository) MarkBlockedRetryable(ctx context.Context, taskID string, block *listingkit.RetryableBlock, errorMsg string) error {
 	return r.updateTaskFields(ctx, taskID, map[string]any{
-		"status":          listingkit.TaskStatusBlockedRetryable,
+		"status":          core.TaskStatusBlockedRetryable,
 		"retryable_block": copyRetryableBlock(block),
 		"error":           errorMsg,
 	})
@@ -90,7 +91,7 @@ func (r *taskRepository) MarkBlockedRetryable(ctx context.Context, taskID string
 func (r *taskRepository) ListRecoverableTasks(ctx context.Context, query *listingkit.RecoverableTaskQuery) ([]listingkit.Task, error) {
 	var tasks []listingkit.Task
 	db := applyTaskAccessScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx)
-	if err := db.Where("status = ?", listingkit.TaskStatusBlockedRetryable).Find(&tasks).Error; err != nil {
+	if err := db.Where("status = ?", core.TaskStatusBlockedRetryable).Find(&tasks).Error; err != nil {
 		return nil, err
 	}
 
@@ -114,11 +115,11 @@ func (r *taskRepository) RecoverBlockedTaskNow(ctx context.Context, taskID strin
 	force := recoveredAt.IsZero()
 	effectiveRecoveredAt := normalizeRecoverTimestamp(recoveredAt)
 	if !taskIsRecoverable(task, effectiveRecoveredAt, force) {
-		return listingkit.ErrTaskNotRecoverable
+		return core.ErrTaskNotRecoverable
 	}
 	block := listingkit.BuildRecoveredRetryableBlock(task.RetryableBlock, effectiveRecoveredAt)
 	return r.updateTaskFields(ctx, taskID, map[string]any{
-		"status":          listingkit.TaskStatusPending,
+		"status":          core.TaskStatusPending,
 		"retryable_block": block,
 		"error":           "",
 	})
@@ -142,7 +143,7 @@ func (r *taskRepository) BulkRecoverBlockedTasks(ctx context.Context, query *lis
 	var recovered int64
 	for i := range tasks {
 		if err := r.RecoverBlockedTaskNow(ctx, tasks[i].ID, recoverAt); err != nil {
-			if errors.Is(err, listingkit.ErrTaskNotRecoverable) {
+			if errors.Is(err, core.ErrTaskNotRecoverable) {
 				continue
 			}
 			return recovered, err
@@ -154,7 +155,7 @@ func (r *taskRepository) BulkRecoverBlockedTasks(ctx context.Context, query *lis
 
 func (r *taskRepository) PrepareRetry(ctx context.Context, taskID string) error {
 	return r.updateTaskFields(ctx, taskID, map[string]any{
-		"status": listingkit.TaskStatusPending,
+		"status": core.TaskStatusPending,
 		"error":  "",
 	})
 }
@@ -173,7 +174,7 @@ func (r *taskRepository) MutateTaskResult(ctx context.Context, taskID string, mu
 		var task listingkit.Task
 		if err := applyTaskAccessScope(tx.Clauses(clause.Locking{Strength: "UPDATE"}), ctx).Where("id = ?", taskID).First(&task).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return listingkit.ErrTaskNotFound
+				return core.ErrTaskNotFound
 			}
 			return err
 		}
@@ -216,7 +217,7 @@ func (r *taskRepository) ReplaceTaskSDSOptionsForRetry(ctx context.Context, task
 		var task listingkit.Task
 		if err := applyTaskAccessScope(tx.Clauses(clause.Locking{Strength: "UPDATE"}), ctx).Where("id = ?", taskID).First(&task).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return listingkit.ErrTaskNotFound
+				return core.ErrTaskNotFound
 			}
 			return err
 		}
@@ -260,7 +261,7 @@ func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, up
 			return fmt.Errorf("failed to update task: %w", result.Error)
 		}
 		if result.RowsAffected == 0 {
-			return listingkit.ErrTaskNotFound
+			return core.ErrTaskNotFound
 		}
 		finalTask, err := loadTaskForSheinPODImageLookupIndex(ctx, tx, taskID)
 		if err != nil {
@@ -300,7 +301,7 @@ func collectRecoverableTasks(tasks []listingkit.Task, dueBefore time.Time) []lis
 }
 
 func taskIsRecoverable(task *listingkit.Task, dueBefore time.Time, force bool) bool {
-	if task == nil || task.Status != listingkit.TaskStatusBlockedRetryable || task.RetryableBlock == nil {
+	if task == nil || task.Status != core.TaskStatusBlockedRetryable || task.RetryableBlock == nil {
 		return false
 	}
 	if force {

@@ -7,6 +7,7 @@ import (
 
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
+	"task-processor/internal/listingkit/core"
 )
 
 func (s *service) ProcessStandardProductLayer(ctx context.Context, taskID string) (*StandardProductSnapshot, error) {
@@ -20,13 +21,13 @@ func (s *service) ProcessStandardProductLayer(ctx context.Context, taskID string
 	state, err := s.runStandardProductWorkflow(ctx, task)
 	if err != nil {
 		if state != nil && state.result != nil {
-			state.result.Status = string(TaskStatusProcessing)
+			state.result.Status = string(core.TaskStatusProcessing)
 			_ = s.repo.SaveTaskResult(ctx, task.ID, mergeStandardProductLayerResult(task.Result, state.result))
 		}
 		_ = s.repo.MarkFailed(ctx, task.ID, err.Error())
 		return nil, err
 	}
-	state.result.Status = string(TaskStatusProcessing)
+	state.result.Status = string(core.TaskStatusProcessing)
 	if err := s.repo.SaveTaskResult(ctx, task.ID, mergeStandardProductLayerResult(task.Result, state.result)); err != nil {
 		return nil, err
 	}

@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"task-processor/internal/listingkit/core"
 )
 
-func deriveProcessTerminalStatus(result *ListingKitResult) TaskStatus {
+func deriveProcessTerminalStatus(result *ListingKitResult) core.TaskStatus {
 	if resultRequiresTerminalReview(result) {
-		return TaskStatusNeedsReview
+		return core.TaskStatusNeedsReview
 	}
-	return TaskStatusCompleted
+	return core.TaskStatusCompleted
 }
 
 func resultRequiresTerminalReview(result *ListingKitResult) bool {
@@ -26,12 +27,12 @@ func resultRequiresTerminalReview(result *ListingKitResult) bool {
 	return false
 }
 
-func applyProcessTerminalResult(result *ListingKitResult, status TaskStatus) *ListingKitResult {
+func applyProcessTerminalResult(result *ListingKitResult, status core.TaskStatus) *ListingKitResult {
 	if result == nil {
 		return nil
 	}
 	result.Status = string(status)
-	if status == TaskStatusNeedsReview {
+	if status == core.TaskStatusNeedsReview {
 		result.ReviewReasons = reviewReasonsFromResult(result)
 	} else {
 		result.ReviewReasons = nil
@@ -54,11 +55,11 @@ func (s *service) persistProcessFailure(ctx context.Context, taskID string, resu
 
 func (s *service) persistProcessSuccess(ctx context.Context, taskID string, result *ListingKitResult) error {
 	switch deriveProcessTerminalStatus(result) {
-	case TaskStatusNeedsReview:
-		result = applyProcessTerminalResult(result, TaskStatusNeedsReview)
+	case core.TaskStatusNeedsReview:
+		result = applyProcessTerminalResult(result, core.TaskStatusNeedsReview)
 		return s.repo.MarkNeedsReview(ctx, taskID, result, taskNeedsReviewReason(result))
 	default:
-		result = applyProcessTerminalResult(result, TaskStatusCompleted)
+		result = applyProcessTerminalResult(result, core.TaskStatusCompleted)
 		return s.repo.MarkCompleted(ctx, taskID, result)
 	}
 }

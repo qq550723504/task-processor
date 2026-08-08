@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingkit/store"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -92,7 +93,7 @@ func TestTaskRepositoryListTasksFiltersPendingTasksByPersistedSourceType(t *test
 	task := &listingkit.Task{
 		ID:       "task-pending-source",
 		TenantID: "tenant-a",
-		Status:   listingkit.TaskStatusPending,
+		Status:   core.TaskStatusPending,
 		Request: &listingkit.GenerateRequest{Source: &listingkit.SourceReference{
 			Key:      "crawler:1688:888",
 			Type:     "crawler",
@@ -263,7 +264,7 @@ func TestTaskRepositoryListTasksAcceptsLegacyKeyedCatalogAttributes(t *testing.T
 		`insert into listing_kit_tasks (id, tenant_id, status, request, result, created_at, updated_at, retry_count) values (?, ?, ?, ?, ?, ?, ?, ?)`,
 		"task-legacy-keyed-attrs",
 		"tenant-a",
-		string(listingkit.TaskStatusNeedsReview),
+		string(core.TaskStatusNeedsReview),
 		`{"platforms":["shein"]}`,
 		resultJSON,
 		createdAt,
@@ -354,7 +355,7 @@ func TestTaskRepositoryListTasksFiltersBySheinWorkQueue(t *testing.T) {
 	pending := &listingkit.Task{
 		ID:        "task-generation",
 		TenantID:  "tenant-a",
-		Status:    listingkit.TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &listingkit.GenerateRequest{Platforms: []string{"shein"}},
 		CreatedAt: base.Add(3 * time.Minute),
 		UpdatedAt: base.Add(3 * time.Minute),
@@ -547,7 +548,7 @@ func TestTaskRepositoryOwnerScopeFiltersTasksByUser(t *testing.T) {
 		t.Fatalf("owner scoped tasks = %+v total=%d, want only task-user-a", items, total)
 	}
 
-	if _, err := repo.GetTask(adminCtx, "task-user-b"); err != listingkit.ErrTaskNotFound {
+	if _, err := repo.GetTask(adminCtx, "task-user-b"); err != core.ErrTaskNotFound {
 		t.Fatalf("GetTask err = %v, want ErrTaskNotFound", err)
 	}
 }
@@ -729,7 +730,7 @@ func TestTaskRepositoryListSheinSourceSDSMetadataMatchesSameUserAcrossLegacyTena
 		ID:       "task-source-sds",
 		TenantID: "373211199677923496",
 		UserID:   "373211204509761704",
-		Status:   listingkit.TaskStatusCompleted,
+		Status:   core.TaskStatusCompleted,
 		Request: &listingkit.GenerateRequest{
 			UserID:       "373211204509761704",
 			Platforms:    []string{"shein"},
@@ -802,7 +803,7 @@ func TestTaskRepositoryListSheinSourceSDSMetadataExpandsProductSKUToSiblingVaria
 		ID:       "task-source-sds-sibling-variants",
 		TenantID: "373211199677923496",
 		UserID:   "373211204509761704",
-		Status:   listingkit.TaskStatusCompleted,
+		Status:   core.TaskStatusCompleted,
 		Request: &listingkit.GenerateRequest{
 			UserID:       "373211204509761704",
 			Platforms:    []string{"shein"},
@@ -870,7 +871,7 @@ func TestTaskRepositoryListSheinSourceSDSMetadataExpandsSeparateVariantTasksByFa
 			ID:       "task-source-sds-family-12",
 			TenantID: "373211199677923496",
 			UserID:   "373211204509761704",
-			Status:   listingkit.TaskStatusCompleted,
+			Status:   core.TaskStatusCompleted,
 			Request: &listingkit.GenerateRequest{
 				UserID:       "373211204509761704",
 				Platforms:    []string{"shein"},
@@ -890,7 +891,7 @@ func TestTaskRepositoryListSheinSourceSDSMetadataExpandsSeparateVariantTasksByFa
 			ID:       "task-source-sds-family-20",
 			TenantID: "373211199677923496",
 			UserID:   "373211204509761704",
-			Status:   listingkit.TaskStatusCompleted,
+			Status:   core.TaskStatusCompleted,
 			Request: &listingkit.GenerateRequest{
 				UserID:       "373211204509761704",
 				Platforms:    []string{"shein"},
@@ -954,7 +955,7 @@ func TestTaskRepositoryListSheinSourceSDSMetadataUsesRequestUserWhenOwnerScopeDi
 		ID:       "task-source-sds-owner-scope-off",
 		TenantID: "373211199677923496",
 		UserID:   "373211204509761704",
-		Status:   listingkit.TaskStatusCompleted,
+		Status:   core.TaskStatusCompleted,
 		Request: &listingkit.GenerateRequest{
 			UserID:       "373211204509761704",
 			Platforms:    []string{"shein"},
@@ -1015,7 +1016,7 @@ func TestTaskRepositoryListSheinSourceSDSMetadataFallsBackToStoreSourceWhenZitad
 		ID:       "task-source-sds-zitadel-subject-fallback",
 		TenantID: "373211199677923496",
 		UserID:   "373211204509761704",
-		Status:   listingkit.TaskStatusCompleted,
+		Status:   core.TaskStatusCompleted,
 		Request: &listingkit.GenerateRequest{
 			UserID:       "373211204509761704",
 			Platforms:    []string{"shein"},
@@ -1037,7 +1038,7 @@ func TestTaskRepositoryListSheinSourceSDSMetadataFallsBackToStoreSourceWhenZitad
 		ID:       "task-source-sds-other-store",
 		TenantID: "373211199677923496",
 		UserID:   "other-user",
-		Status:   listingkit.TaskStatusCompleted,
+		Status:   core.TaskStatusCompleted,
 		Request: &listingkit.GenerateRequest{
 			UserID:       "other-user",
 			Platforms:    []string{"shein"},
@@ -1083,7 +1084,7 @@ func makeTaskRepoFixture(id string, createdAt time.Time, platforms []string, she
 	task := &listingkit.Task{
 		ID:        id,
 		TenantID:  "tenant-a",
-		Status:    listingkit.TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		Request:   &listingkit.GenerateRequest{Platforms: append([]string(nil), platforms...)},
 		CreatedAt: createdAt,
 		UpdatedAt: createdAt,

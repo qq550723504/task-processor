@@ -8,6 +8,7 @@ import (
 
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog"
+	"task-processor/internal/listingkit/core"
 )
 
 func (s *service) retrySDSCatalogProduct(ctx context.Context, task *Task, result *ListingKitResult, recorder *workflowRecorder) error {
@@ -23,7 +24,7 @@ func (s *service) retrySDSCatalogProduct(ctx context.Context, task *Task, result
 		result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
 	}
 	result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
-	markChildTask(result, "sds_catalog_product", "", string(TaskStatusCompleted), "")
+	markChildTask(result, "sds_catalog_product", "", string(core.TaskStatusCompleted), "")
 	stage.Complete()
 
 	var sdsOptions *SDSSyncOptions
@@ -56,14 +57,14 @@ func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *Li
 		sdsOptions = task.Request.Options.SDS
 	}
 	if sdsOptions == nil {
-		return ErrChildTaskNotRetryable
+		return core.ErrChildTaskNotRetryable
 	}
 	if result.ImageAssets != nil {
 		s.syncSDSDesign(ctx, task, result, result.ImageAssets, recorder)
 	} else if shouldRunRemoteSDSDesignSync(task.Request) {
 		s.syncSDSDesignFromRemote(ctx, task, result, recorder)
 	} else {
-		return ErrChildTaskNotRetryable
+		return core.ErrChildTaskNotRetryable
 	}
 	if result.CanonicalProduct != nil {
 		if applySDSSyncMetadataToCanonical(result.CanonicalProduct, result.SDSDesignResult, sdsOptions) {
@@ -88,7 +89,7 @@ func (s *service) persistRetriedChildTaskResult(ctx context.Context, task *Task,
 	if result == nil || task == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	result.Status = string(TaskStatusProcessing)
+	result.Status = string(core.TaskStatusProcessing)
 	if retryErr != nil {
 		result.Summary = ensureGenerationSummary(result.Summary)
 		result.Summary.NeedsReview = true
@@ -101,25 +102,25 @@ func (s *service) persistRetriedChildTaskResult(ctx context.Context, task *Task,
 		}
 	}
 	if childTaskHasFailed(result, kind) {
-		result = applyProcessTerminalResult(result, TaskStatusNeedsReview)
+		result = applyProcessTerminalResult(result, core.TaskStatusNeedsReview)
 		if err := s.repo.MarkNeedsReview(ctx, task.ID, result, taskNeedsReviewReason(result)); err != nil {
 			return nil, err
 		}
-		task.Status = TaskStatusNeedsReview
+		task.Status = core.TaskStatusNeedsReview
 		task.Error = taskNeedsReviewReason(result)
 	} else if result.Summary != nil && result.Summary.NeedsReview {
-		result = applyProcessTerminalResult(result, TaskStatusNeedsReview)
+		result = applyProcessTerminalResult(result, core.TaskStatusNeedsReview)
 		if err := s.repo.MarkNeedsReview(ctx, task.ID, result, taskNeedsReviewReason(result)); err != nil {
 			return nil, err
 		}
-		task.Status = TaskStatusNeedsReview
+		task.Status = core.TaskStatusNeedsReview
 		task.Error = taskNeedsReviewReason(result)
 	} else {
-		result = applyProcessTerminalResult(result, TaskStatusCompleted)
+		result = applyProcessTerminalResult(result, core.TaskStatusCompleted)
 		if err := s.repo.MarkCompleted(ctx, task.ID, result); err != nil {
 			return nil, err
 		}
-		task.Status = TaskStatusCompleted
+		task.Status = core.TaskStatusCompleted
 		task.Error = ""
 	}
 	task.Result = result
@@ -150,7 +151,7 @@ func childTaskStateByKind(result *ListingKitResult, kind string) (*ChildTaskStat
 
 func childTaskHasFailed(result *ListingKitResult, kind string) bool {
 	state, ok := childTaskStateByKind(result, kind)
-	return ok && state.Status == string(TaskStatusFailed)
+	return ok && state.Status == string(core.TaskStatusFailed)
 }
 
 func pruneChildTaskRetryArtifacts(result *ListingKitResult, kind string) {

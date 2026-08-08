@@ -12,6 +12,7 @@ import (
 	"time"
 
 	studiodomain "task-processor/internal/listing/studio"
+	"task-processor/internal/listingkit/core"
 	sheinpub "task-processor/internal/publishing/shein"
 	sdstemplate "task-processor/internal/sds/template"
 
@@ -3728,7 +3729,7 @@ func TestServiceCreateStudioBatchTasks_ReusesLegacyLinkWriteFailureSurfacesFaile
 
 	taskRepo.tasks["legacy-task-1"] = &Task{
 		ID:     "legacy-task-1",
-		Status: TaskStatusPending,
+		Status: core.TaskStatusPending,
 		Request: &GenerateRequest{
 			ImageURLs: []string{"https://cdn.example.com/design-1.png"},
 			Options: &GenerateOptions{
@@ -3887,7 +3888,7 @@ func TestServiceCreateStudioBatchTasks_ConcurrentSlowOwnerReturnsOneTask(t *test
 			startedOnce.Do(func() { close(started) })
 			createCalls.Add(1)
 			<-release
-			task := &Task{ID: "slow-task-1", Status: TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
+			task := &Task{ID: "slow-task-1", Status: core.TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
 			if err := taskRepo.CreateTask(ctx, task); err != nil {
 				return nil, err
 			}
@@ -3998,7 +3999,7 @@ func TestServiceCreateStudioBatchTasks_ConcurrentStaleCreatingRecoveryCreatesOne
 		batchTaskLinkRepo: linkRepo,
 		createGenerateTask: func(ctx context.Context, req *GenerateRequest) (*Task, error) {
 			id := fmt.Sprintf("stale-recovery-task-%d", sequence.Add(1))
-			task := &Task{ID: id, Status: TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
+			task := &Task{ID: id, Status: core.TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
 			if err := taskRepo.CreateTask(ctx, task); err != nil {
 				return nil, err
 			}
@@ -4124,7 +4125,7 @@ func TestStudioBatchDetail_LoadsCreatedTasksPreservesLegacyMetadataFromDurableLi
 	}
 	taskRepo.tasks["task-1"] = &Task{
 		ID:     "task-1",
-		Status: TaskStatusPending,
+		Status: core.TaskStatusPending,
 		Request: &GenerateRequest{Options: &GenerateOptions{
 			SheinStudio: &SheinStudioOptions{StyleID: "legacy-style-1"},
 		}},
@@ -4210,7 +4211,7 @@ func TestStudioBatchDetail_ProjectsCreatedTaskSubmissionStateFromListingKitTask(
 	}
 	taskRepo.tasks["task-1"] = &Task{
 		ID:     "task-1",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			Shein: &SheinPackage{
 				Submission: &sheinpub.SubmissionReport{
@@ -4463,7 +4464,7 @@ func TestServiceCreateStudioBatchTasks_RecoversStaleCreatingCandidate(t *testing
 		repo:              batchRepo,
 		batchTaskLinkRepo: linkRepo,
 		createGenerateTask: func(ctx context.Context, req *GenerateRequest) (*Task, error) {
-			task := &Task{ID: "recovered-task-1", Status: TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
+			task := &Task{ID: "recovered-task-1", Status: core.TaskStatusPending, Request: req, CreatedAt: now, UpdatedAt: now}
 			if err := taskRepo.CreateTask(ctx, task); err != nil {
 				return nil, err
 			}
@@ -4589,7 +4590,7 @@ func TestServiceCreateStudioBatchTasksReusesLegacyStyleIDTasks(t *testing.T) {
 	}
 	taskRepo.tasks["legacy-task-1"] = &Task{
 		ID:     "legacy-task-1",
-		Status: TaskStatusPending,
+		Status: core.TaskStatusPending,
 		Request: &GenerateRequest{
 			ImageURLs: []string{"https://cdn.example.com/design-1.png"},
 			Options: &GenerateOptions{
@@ -4822,7 +4823,7 @@ func (r *studioBatchTaskRepositoryStub) MarkBlockedRetryable(_ context.Context, 
 	if !ok {
 		return gorm.ErrRecordNotFound
 	}
-	task.Status = TaskStatusBlockedRetryable
+	task.Status = core.TaskStatusBlockedRetryable
 	task.RetryableBlock = block
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now()
@@ -4836,7 +4837,7 @@ func (r *studioBatchTaskRepositoryStub) RecoverBlockedTaskNow(_ context.Context,
 	if !ok {
 		return gorm.ErrRecordNotFound
 	}
-	task.Status = TaskStatusPending
+	task.Status = core.TaskStatusPending
 	task.RetryableBlock = nil
 	task.Error = ""
 	task.UpdatedAt = recoveredAt

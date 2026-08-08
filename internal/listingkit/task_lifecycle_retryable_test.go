@@ -10,6 +10,7 @@ import (
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
 	submissiondomain "task-processor/internal/listing/submission"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
 )
 
@@ -53,8 +54,8 @@ func TestCreateGenerateTaskHandlesWorkerQueueFullAsAsyncRetry(t *testing.T) {
 	if getErr != nil {
 		t.Fatalf("GetTask() error = %v", getErr)
 	}
-	if stored.Status != TaskStatusPending {
-		t.Fatalf("stored status = %q, want %q while async retry succeeds without terminalization", stored.Status, TaskStatusPending)
+	if stored.Status != core.TaskStatusPending {
+		t.Fatalf("stored status = %q, want %q while async retry succeeds without terminalization", stored.Status, core.TaskStatusPending)
 	}
 	if stored.RetryableBlock != nil {
 		t.Fatalf("stored RetryableBlock = %+v, want nil for worker.ErrQueueFull async retry", stored.RetryableBlock)
@@ -93,7 +94,7 @@ func TestCreateGenerateTaskAsyncRetryMarksRetryableFailureWhenRetryStops(t *test
 	waitForRetryableLifecycleSubmitAttempt(t, submitter.calls, "initial submit attempt")
 	waitForRetryableLifecycleSubmitAttempt(t, submitter.calls, "async retry attempt")
 
-	stored := waitForRetryableLifecycleTaskStatus(t, repo, task.ID, TaskStatusBlockedRetryable)
+	stored := waitForRetryableLifecycleTaskStatus(t, repo, task.ID, core.TaskStatusBlockedRetryable)
 	if repo.blockedTaskID != task.ID {
 		t.Fatalf("MarkBlockedRetryable task ID = %q, want %q", repo.blockedTaskID, task.ID)
 	}
@@ -140,7 +141,7 @@ func TestCreateGenerateTaskAsyncRetryPreservesRequestScopeOnFinalFailure(t *test
 
 	waitForRetryableLifecycleSubmitAttempt(t, submitter.calls, "initial submit attempt")
 	waitForRetryableLifecycleSubmitAttempt(t, submitter.calls, "async retry attempt")
-	waitForRetryableLifecycleTaskStatus(t, repo, task.ID, TaskStatusBlockedRetryable)
+	waitForRetryableLifecycleTaskStatus(t, repo, task.ID, core.TaskStatusBlockedRetryable)
 
 	if got := TenantIDFromContext(repo.blockedCtx); got != "tenant-async" {
 		t.Fatalf("blocked tenant context = %q, want tenant-async", got)
@@ -166,7 +167,7 @@ func TestProcessFlowMarksOpenAICreditFailureAsBlockedRetryable(t *testing.T) {
 
 	task := &Task{
 		ID:        "retryable-openai-credits-1",
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"amazon"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -193,8 +194,8 @@ func TestProcessFlowMarksOpenAICreditFailureAsBlockedRetryable(t *testing.T) {
 	if getErr != nil {
 		t.Fatalf("GetTask() error = %v", getErr)
 	}
-	if stored.Status != TaskStatusBlockedRetryable {
-		t.Fatalf("stored status = %q, want %q", stored.Status, TaskStatusBlockedRetryable)
+	if stored.Status != core.TaskStatusBlockedRetryable {
+		t.Fatalf("stored status = %q, want %q", stored.Status, core.TaskStatusBlockedRetryable)
 	}
 	if stored.Result == nil {
 		t.Fatal("stored result = nil, want partial workflow result persisted")
@@ -224,7 +225,7 @@ func TestProcessFlowReturnsPersistenceErrorWhenFailureStateCannotBeStored(t *tes
 
 	task := &Task{
 		ID:        "retryable-openai-persist-failure-1",
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"amazon"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -262,7 +263,7 @@ func TestProcessFlowReturnsPartialResultSaveErrorWhenFailureResultCannotBeStored
 
 	task := &Task{
 		ID:        "retryable-openai-save-failure-1",
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"amazon"}},
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
@@ -288,8 +289,8 @@ func TestProcessFlowReturnsPartialResultSaveErrorWhenFailureResultCannotBeStored
 	if getErr != nil {
 		t.Fatalf("GetTask() error = %v", getErr)
 	}
-	if stored.Status != TaskStatusBlockedRetryable {
-		t.Fatalf("stored status = %q, want %q so task does not remain processing", stored.Status, TaskStatusBlockedRetryable)
+	if stored.Status != core.TaskStatusBlockedRetryable {
+		t.Fatalf("stored status = %q, want %q so task does not remain processing", stored.Status, core.TaskStatusBlockedRetryable)
 	}
 }
 
@@ -323,8 +324,8 @@ func TestCreateGenerateTaskMarksNonRetryableSubmitFailureAsFailed(t *testing.T) 
 	if getErr != nil {
 		t.Fatalf("GetTask() error = %v", getErr)
 	}
-	if stored.Status != TaskStatusFailed {
-		t.Fatalf("stored status = %q, want %q", stored.Status, TaskStatusFailed)
+	if stored.Status != core.TaskStatusFailed {
+		t.Fatalf("stored status = %q, want %q", stored.Status, core.TaskStatusFailed)
 	}
 	if stored.RetryableBlock != nil {
 		t.Fatalf("stored RetryableBlock = %+v, want nil for non-retryable failure", stored.RetryableBlock)
@@ -394,7 +395,7 @@ func (r *retryableLifecycleTestRepo) CreateTask(_ context.Context, task *Task) e
 func (r *retryableLifecycleTestRepo) GetTask(_ context.Context, taskID string) (*Task, error) {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	copied := *task
 	return &copied, nil
@@ -407,9 +408,9 @@ func (r *retryableLifecycleTestRepo) ListTasks(context.Context, *TaskListQuery) 
 func (r *retryableLifecycleTestRepo) MarkProcessing(_ context.Context, taskID string) error {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	task.Status = TaskStatusProcessing
+	task.Status = core.TaskStatusProcessing
 	task.UpdatedAt = time.Now()
 	return nil
 }
@@ -417,9 +418,9 @@ func (r *retryableLifecycleTestRepo) MarkProcessing(_ context.Context, taskID st
 func (r *retryableLifecycleTestRepo) MarkCompleted(_ context.Context, taskID string, result *ListingKitResult) error {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	task.Status = TaskStatusCompleted
+	task.Status = core.TaskStatusCompleted
 	task.Result = result
 	task.Error = ""
 	task.RetryableBlock = nil
@@ -430,9 +431,9 @@ func (r *retryableLifecycleTestRepo) MarkCompleted(_ context.Context, taskID str
 func (r *retryableLifecycleTestRepo) MarkNeedsReview(_ context.Context, taskID string, result *ListingKitResult, reason string) error {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	task.Status = TaskStatusNeedsReview
+	task.Status = core.TaskStatusNeedsReview
 	task.Result = result
 	task.Error = reason
 	task.RetryableBlock = nil
@@ -443,7 +444,7 @@ func (r *retryableLifecycleTestRepo) MarkNeedsReview(_ context.Context, taskID s
 func (r *retryableLifecycleTestRepo) MarkFailed(ctx context.Context, taskID string, errorMsg string) error {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	r.failedTaskID = taskID
 	r.failedError = errorMsg
@@ -451,7 +452,7 @@ func (r *retryableLifecycleTestRepo) MarkFailed(ctx context.Context, taskID stri
 	if r.failedErr != nil {
 		return r.failedErr
 	}
-	task.Status = TaskStatusFailed
+	task.Status = core.TaskStatusFailed
 	task.Error = errorMsg
 	task.RetryableBlock = nil
 	task.UpdatedAt = time.Now()
@@ -461,7 +462,7 @@ func (r *retryableLifecycleTestRepo) MarkFailed(ctx context.Context, taskID stri
 func (r *retryableLifecycleTestRepo) MarkBlockedRetryable(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	r.blockedTaskID = taskID
 	r.blockedError = errorMsg
@@ -470,7 +471,7 @@ func (r *retryableLifecycleTestRepo) MarkBlockedRetryable(ctx context.Context, t
 	if r.blockedErr != nil {
 		return r.blockedErr
 	}
-	task.Status = TaskStatusBlockedRetryable
+	task.Status = core.TaskStatusBlockedRetryable
 	task.Error = errorMsg
 	task.RetryableBlock = cloneRetryableBlock(block)
 	task.UpdatedAt = time.Now()
@@ -500,7 +501,7 @@ func (r *retryableLifecycleTestRepo) IncrementRetryCount(context.Context, string
 func (r *retryableLifecycleTestRepo) SaveTaskResult(_ context.Context, taskID string, result *ListingKitResult) error {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
 	if r.saveResultErr != nil {
 		return r.saveResultErr
@@ -548,7 +549,7 @@ func waitForRetryableLifecycleSubmitAttempt(t *testing.T, calls <-chan int, labe
 	}
 }
 
-func waitForRetryableLifecycleTaskStatus(t *testing.T, repo *retryableLifecycleTestRepo, taskID string, want TaskStatus) *Task {
+func waitForRetryableLifecycleTaskStatus(t *testing.T, repo *retryableLifecycleTestRepo, taskID string, want core.TaskStatus) *Task {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {

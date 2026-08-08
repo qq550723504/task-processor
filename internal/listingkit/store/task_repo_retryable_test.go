@@ -12,6 +12,7 @@ import (
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingkit/store"
 )
 
@@ -52,8 +53,8 @@ func TestTaskRepositoryMarkBlockedRetryablePersistsMetadata(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GetTask() error = %v", err)
 			}
-			if got.Status != listingkit.TaskStatusBlockedRetryable {
-				t.Fatalf("Status = %q, want %q", got.Status, listingkit.TaskStatusBlockedRetryable)
+			if got.Status != core.TaskStatusBlockedRetryable {
+				t.Fatalf("Status = %q, want %q", got.Status, core.TaskStatusBlockedRetryable)
 			}
 			if got.Error != "queue temporarily full" {
 				t.Fatalf("Error = %q, want queue temporarily full", got.Error)
@@ -187,8 +188,8 @@ func TestTaskRepositoryRecoverBlockedTaskNowResetsBlockedState(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GetTask() error = %v", err)
 			}
-			if got.Status != listingkit.TaskStatusPending {
-				t.Fatalf("Status = %q, want %q", got.Status, listingkit.TaskStatusPending)
+			if got.Status != core.TaskStatusPending {
+				t.Fatalf("Status = %q, want %q", got.Status, core.TaskStatusPending)
 			}
 			if got.Error != "" {
 				t.Fatalf("Error = %q, want empty", got.Error)
@@ -229,7 +230,7 @@ func TestTaskRepositoryRecoverBlockedTaskNowRejectsNotEligibleTasks(t *testing.T
 
 			for _, taskID := range []string{pendingTask.ID, futureBlockedTask.ID} {
 				err := repo.RecoverBlockedTaskNow(ctx, taskID, recoverAt)
-				if !errors.Is(err, listingkit.ErrTaskNotRecoverable) {
+				if !errors.Is(err, core.ErrTaskNotRecoverable) {
 					t.Fatalf("RecoverBlockedTaskNow(%s) error = %v, want ErrTaskNotRecoverable", taskID, err)
 				}
 			}
@@ -238,16 +239,16 @@ func TestTaskRepositoryRecoverBlockedTaskNowRejectsNotEligibleTasks(t *testing.T
 			if err != nil {
 				t.Fatalf("GetTask(%s) error = %v", pendingTask.ID, err)
 			}
-			if gotPending.Status != listingkit.TaskStatusPending {
-				t.Fatalf("pending task status = %q, want %q", gotPending.Status, listingkit.TaskStatusPending)
+			if gotPending.Status != core.TaskStatusPending {
+				t.Fatalf("pending task status = %q, want %q", gotPending.Status, core.TaskStatusPending)
 			}
 
 			gotFuture, err := repo.GetTask(ctx, futureBlockedTask.ID)
 			if err != nil {
 				t.Fatalf("GetTask(%s) error = %v", futureBlockedTask.ID, err)
 			}
-			if gotFuture.Status != listingkit.TaskStatusBlockedRetryable {
-				t.Fatalf("future blocked status = %q, want %q", gotFuture.Status, listingkit.TaskStatusBlockedRetryable)
+			if gotFuture.Status != core.TaskStatusBlockedRetryable {
+				t.Fatalf("future blocked status = %q, want %q", gotFuture.Status, core.TaskStatusBlockedRetryable)
 			}
 			if gotFuture.RetryableBlock == nil || gotFuture.RetryableBlock.NextRetryAt == nil || !gotFuture.RetryableBlock.NextRetryAt.Equal(recoverAt.Add(10*time.Minute)) {
 				t.Fatalf("future blocked RetryableBlock = %+v, want unchanged NextRetryAt", gotFuture.RetryableBlock)
@@ -298,8 +299,8 @@ func TestTaskRepositoryBulkRecoverBlockedTasksCountsRecoveredItems(t *testing.T)
 				if err != nil {
 					t.Fatalf("GetTask(%s) error = %v", taskID, err)
 				}
-				if got.Status != listingkit.TaskStatusPending {
-					t.Fatalf("%s status = %q, want %q", taskID, got.Status, listingkit.TaskStatusPending)
+				if got.Status != core.TaskStatusPending {
+					t.Fatalf("%s status = %q, want %q", taskID, got.Status, core.TaskStatusPending)
 				}
 				if got.RetryableBlock == nil || got.RetryableBlock.NextRetryAt != nil {
 					t.Fatalf("%s retryable block = %+v, want NextRetryAt cleared", taskID, got.RetryableBlock)
@@ -310,8 +311,8 @@ func TestTaskRepositoryBulkRecoverBlockedTasksCountsRecoveredItems(t *testing.T)
 			if err != nil {
 				t.Fatalf("GetTask(%s) error = %v", future.ID, err)
 			}
-			if futureTask.Status != listingkit.TaskStatusBlockedRetryable {
-				t.Fatalf("future status = %q, want %q", futureTask.Status, listingkit.TaskStatusBlockedRetryable)
+			if futureTask.Status != core.TaskStatusBlockedRetryable {
+				t.Fatalf("future status = %q, want %q", futureTask.Status, core.TaskStatusBlockedRetryable)
 			}
 		})
 	}
@@ -356,16 +357,16 @@ func TestTaskRepositoryBulkRecoverBlockedTasksSkipsItemsThatAreNotRecoverableAtR
 			if err != nil {
 				t.Fatalf("GetTask(%s) error = %v", stillEligible.ID, err)
 			}
-			if gotEligible.Status != listingkit.TaskStatusPending {
-				t.Fatalf("eligible status = %q, want %q", gotEligible.Status, listingkit.TaskStatusPending)
+			if gotEligible.Status != core.TaskStatusPending {
+				t.Fatalf("eligible status = %q, want %q", gotEligible.Status, core.TaskStatusPending)
 			}
 
 			gotIneligible, err := repo.GetTask(ctx, noLongerEligible.ID)
 			if err != nil {
 				t.Fatalf("GetTask(%s) error = %v", noLongerEligible.ID, err)
 			}
-			if gotIneligible.Status != listingkit.TaskStatusBlockedRetryable {
-				t.Fatalf("ineligible status = %q, want %q", gotIneligible.Status, listingkit.TaskStatusBlockedRetryable)
+			if gotIneligible.Status != core.TaskStatusBlockedRetryable {
+				t.Fatalf("ineligible status = %q, want %q", gotIneligible.Status, core.TaskStatusBlockedRetryable)
 			}
 			if gotIneligible.RetryableBlock == nil || gotIneligible.RetryableBlock.NextRetryAt == nil || !gotIneligible.RetryableBlock.NextRetryAt.Equal(recoverAt.Add(3*time.Minute)) {
 				t.Fatalf("ineligible RetryableBlock = %+v, want unchanged NextRetryAt", gotIneligible.RetryableBlock)
@@ -430,7 +431,7 @@ func TestTaskRepositoryOwnerScopeParityAcrossRepos(t *testing.T) {
 			}
 
 			_, err = repo.GetTask(userCtx, hidden.ID)
-			if !errors.Is(err, listingkit.ErrTaskNotFound) {
+			if !errors.Is(err, core.ErrTaskNotFound) {
 				t.Fatalf("GetTask(userCtx, %s) error = %v, want ErrTaskNotFound", hidden.ID, err)
 			}
 		})
@@ -473,7 +474,7 @@ func retryableTaskFixture(id string, createdAt time.Time) *listingkit.Task {
 	return &listingkit.Task{
 		ID:        id,
 		TenantID:  "tenant-a",
-		Status:    listingkit.TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		Request:   &listingkit.GenerateRequest{Platforms: []string{"shein"}},
 		CreatedAt: createdAt,
 		UpdatedAt: createdAt,

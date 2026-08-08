@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"task-processor/internal/listingkit/core"
 	"time"
 )
 
@@ -102,7 +103,7 @@ func TaskEligibleForSDSRepair(task *Task) bool {
 	if task == nil || task.Request == nil || task.Request.Options == nil || task.Request.Options.SDS == nil {
 		return false
 	}
-	if task.Status == TaskStatusPending || task.Status == TaskStatusProcessing || task.Result == nil {
+	if task.Status == core.TaskStatusPending || task.Status == core.TaskStatusProcessing || task.Result == nil {
 		return false
 	}
 	return childTaskHasFailed(task.Result, "sds_design_sync")

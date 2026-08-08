@@ -11,6 +11,7 @@ import (
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/catalog"
+	"task-processor/internal/listingkit/core"
 )
 
 func TestGetTaskPreviewIncludesGenerationTasks(t *testing.T) {
@@ -24,7 +25,7 @@ func TestGetTaskPreviewIncludesGenerationTasks(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-preview-generation-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -75,7 +76,7 @@ func TestGetTaskGenerationTasksAppliesQueryFiltersAndRebuildsSummary(t *testing.
 
 	task := &Task{
 		ID:        "task-generation-query-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
@@ -122,7 +123,7 @@ func TestGetTaskGenerationTasksAppliesPaginationAndSorting(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-query-page-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},

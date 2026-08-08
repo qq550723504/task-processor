@@ -1,6 +1,9 @@
 package listingkit
 
-import "testing"
+import (
+	"task-processor/internal/listingkit/core"
+	"testing"
+)
 
 func TestSummarizeReviewReasonsUsesFallbackWhenEmpty(t *testing.T) {
 	t.Parallel()
@@ -14,7 +17,7 @@ func TestBuildTaskResultReviewStatePrefersPayloadReasonsForNeedsReview(t *testin
 	t.Parallel()
 
 	task := &Task{
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Error:  "legacy error",
 		Result: &ListingKitResult{
 			ReviewReasons: []string{"task reason"},

@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"task-processor/internal/listingkit/core"
 	"testing"
 	"time"
 )
@@ -47,12 +48,12 @@ func TestScheduleStudioBatchSDSChildRetriesQueuesOnlyFailedSDSChildren(t *testin
 		TenantID: "tenant-1",
 		Request:  &GenerateRequest{SheinStoreID: 177},
 		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
-			Kind: string(SDSChildRetryKindDesignSync), Status: string(TaskStatusFailed), Error: "upload timed out",
+			Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusFailed), Error: "upload timed out",
 		}}},
 	}
 	completed := &Task{
 		ID: "task-completed", Request: &GenerateRequest{SheinStoreID: 177},
-		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: string(SDSChildRetryKindDesignSync), Status: string(TaskStatusCompleted)}}},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusCompleted)}}},
 	}
 	if err := repo.CreateTask(ctx, failed); err != nil {
 		t.Fatalf("create failed task: %v", err)

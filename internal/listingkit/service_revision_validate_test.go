@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"task-processor/internal/asset"
+	"task-processor/internal/listingkit/core"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -38,9 +39,9 @@ func (r *stubValidateRepo) MarkFailed(ctx context.Context, taskID string, errorM
 }
 func (r *stubValidateRepo) MarkBlockedRetryable(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
 	if r.task == nil || r.task.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	r.task.Status = TaskStatusBlockedRetryable
+	r.task.Status = core.TaskStatusBlockedRetryable
 	r.task.RetryableBlock = block
 	r.task.Error = errorMsg
 	r.task.UpdatedAt = time.Now()
@@ -51,9 +52,9 @@ func (r *stubValidateRepo) ListRecoverableTasks(context.Context, *RecoverableTas
 }
 func (r *stubValidateRepo) RecoverBlockedTaskNow(ctx context.Context, taskID string, recoveredAt time.Time) error {
 	if r.task == nil || r.task.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	r.task.Status = TaskStatusPending
+	r.task.Status = core.TaskStatusPending
 	r.task.RetryableBlock = nil
 	r.task.Error = ""
 	r.task.UpdatedAt = recoveredAt

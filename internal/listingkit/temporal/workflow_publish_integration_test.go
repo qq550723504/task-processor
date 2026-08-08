@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/productenrich"
 	common "task-processor/internal/publishing/common"
@@ -275,7 +276,7 @@ func makeTemporalReadySheinTask() *listingkit.Task {
 		Request: &listingkit.GenerateRequest{
 			SheinStoreID: 869,
 		},
-		Status: listingkit.TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Result: &listingkit.ListingKitResult{
 			TaskID: "submit-task-1",
 			Shein: &listingkit.SheinPackage{

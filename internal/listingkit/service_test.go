@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -432,7 +433,7 @@ func TestCreateGenerateTaskRunsInlineWithoutSubmitter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateGenerateTask error = %v", err)
 	}
-	if task.Status == TaskStatusPending {
+	if task.Status == core.TaskStatusPending {
 		t.Fatalf("task status = %q, want non-pending after inline execution", task.Status)
 	}
 	if task.Result == nil {
@@ -584,7 +585,7 @@ func TestCreateGenerateTaskStartsStandardProductTemporalWhenEnabled(t *testing.T
 	if len(standardClient.calls) != 1 || standardClient.calls[0].TaskID != task.ID {
 		t.Fatalf("standard temporal calls = %+v, want single call for %s", standardClient.calls, task.ID)
 	}
-	if task.Status != TaskStatusPending {
+	if task.Status != core.TaskStatusPending {
 		t.Fatalf("task status = %q, want pending while temporal workflow runs", task.Status)
 	}
 	if task.Result != nil {
@@ -614,7 +615,7 @@ func TestCreateGenerateTaskRetriesQueueFullAsynchronously(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateGenerateTask error = %v, want nil when queue is temporarily full", err)
 	}
-	if task.Status != TaskStatusPending {
+	if task.Status != core.TaskStatusPending {
 		t.Fatalf("task status = %q, want pending while waiting for async enqueue retry", task.Status)
 	}
 
@@ -634,7 +635,7 @@ func TestCreateGenerateTaskRetriesQueueFullAsynchronously(t *testing.T) {
 	if getErr != nil {
 		t.Fatalf("GetTask error = %v", getErr)
 	}
-	if stored.Status != TaskStatusPending {
+	if stored.Status != core.TaskStatusPending {
 		t.Fatalf("stored task status = %q, want pending after async retry scheduling", stored.Status)
 	}
 	if stored.Error != "" {
@@ -677,7 +678,7 @@ func TestCreateGenerateTaskKeepsTaskPendingWhileQueueRemainsFull(t *testing.T) {
 	if getErr != nil {
 		t.Fatalf("GetTask error = %v", getErr)
 	}
-	if stored.Status != TaskStatusPending {
+	if stored.Status != core.TaskStatusPending {
 		t.Fatalf("stored task status = %q, want pending while async retry continues", stored.Status)
 	}
 	if stored.Error != "" {
@@ -694,7 +695,7 @@ type stubTaskListRepo struct {
 
 func (r *stubTaskListRepo) CreateTask(context.Context, *Task) error { return nil }
 func (r *stubTaskListRepo) GetTask(context.Context, string) (*Task, error) {
-	return nil, ErrTaskNotFound
+	return nil, core.ErrTaskNotFound
 }
 func (r *stubTaskListRepo) ListTasks(_ context.Context, query *TaskListQuery) ([]Task, int64, error) {
 	if query != nil {
@@ -766,7 +767,7 @@ func makeTaskListFixture(id string, createdAt time.Time, workflowStatus string, 
 	colorValueID := 271
 	task := Task{
 		ID:        id,
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: createdAt,
 		UpdatedAt: createdAt,
 		Request: &GenerateRequest{
@@ -908,7 +909,7 @@ func (r *stubInlineTaskRepo) CreateTask(_ context.Context, task *Task) error {
 func (r *stubInlineTaskRepo) GetTask(_ context.Context, taskID string) (*Task, error) {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	copied := *task
 	return &copied, nil
@@ -920,7 +921,7 @@ func (r *stubInlineTaskRepo) ListTasks(context.Context, *TaskListQuery) ([]Task,
 
 func (r *stubInlineTaskRepo) MarkProcessing(_ context.Context, taskID string) error {
 	task := r.tasks[taskID]
-	task.Status = TaskStatusProcessing
+	task.Status = core.TaskStatusProcessing
 	task.UpdatedAt = time.Now()
 	return nil
 }
@@ -928,7 +929,7 @@ func (r *stubInlineTaskRepo) MarkProcessing(_ context.Context, taskID string) er
 func (r *stubInlineTaskRepo) MarkCompleted(_ context.Context, taskID string, result *ListingKitResult) error {
 	task := r.tasks[taskID]
 	task.Result = result
-	task.Status = TaskStatusCompleted
+	task.Status = core.TaskStatusCompleted
 	task.Error = ""
 	task.UpdatedAt = time.Now()
 	return nil
@@ -937,7 +938,7 @@ func (r *stubInlineTaskRepo) MarkCompleted(_ context.Context, taskID string, res
 func (r *stubInlineTaskRepo) MarkNeedsReview(_ context.Context, taskID string, result *ListingKitResult, reason string) error {
 	task := r.tasks[taskID]
 	task.Result = result
-	task.Status = TaskStatusNeedsReview
+	task.Status = core.TaskStatusNeedsReview
 	task.Error = reason
 	task.UpdatedAt = time.Now()
 	return nil
@@ -945,7 +946,7 @@ func (r *stubInlineTaskRepo) MarkNeedsReview(_ context.Context, taskID string, r
 
 func (r *stubInlineTaskRepo) MarkFailed(_ context.Context, taskID string, errorMsg string) error {
 	task := r.tasks[taskID]
-	task.Status = TaskStatusFailed
+	task.Status = core.TaskStatusFailed
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now()
 	return nil
@@ -953,7 +954,7 @@ func (r *stubInlineTaskRepo) MarkFailed(_ context.Context, taskID string, errorM
 
 func (r *stubInlineTaskRepo) MarkBlockedRetryable(_ context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
 	task := r.tasks[taskID]
-	task.Status = TaskStatusBlockedRetryable
+	task.Status = core.TaskStatusBlockedRetryable
 	task.RetryableBlock = block
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now()
@@ -966,7 +967,7 @@ func (r *stubInlineTaskRepo) ListRecoverableTasks(context.Context, *RecoverableT
 
 func (r *stubInlineTaskRepo) RecoverBlockedTaskNow(_ context.Context, taskID string, recoveredAt time.Time) error {
 	task := r.tasks[taskID]
-	task.Status = TaskStatusPending
+	task.Status = core.TaskStatusPending
 	task.RetryableBlock = nil
 	task.Error = ""
 	task.UpdatedAt = recoveredAt
@@ -1038,7 +1039,7 @@ func (r *stubInlineTaskRepo) SaveSDSBaselineCache(ctx context.Context, entry *SD
 func (r *stubInlineTaskRepo) MutateTaskResult(_ context.Context, taskID string, mutate TaskResultMutation) (*Task, error) {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	if mutate != nil {
 		if err := mutate(task); err != nil {
@@ -1053,7 +1054,7 @@ func (r *stubInlineTaskRepo) MutateTaskResult(_ context.Context, taskID string, 
 func (r *stubInlineTaskRepo) ReplaceTaskSDSOptionsForRetry(_ context.Context, taskID string, options *SDSSyncOptions, audit PodExecutionAuditEvent) (*Task, error) {
 	task, ok := r.tasks[taskID]
 	if !ok {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	if !TaskEligibleForSDSRepair(task) || task.Request == nil || task.Request.Options == nil || options == nil {
 		return nil, ErrSDSRepairNotEligible

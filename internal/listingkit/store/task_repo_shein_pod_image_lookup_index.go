@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingkit/sheinpodimage"
 )
 
@@ -111,7 +112,7 @@ func loadTaskForSheinPODImageLookupIndex(ctx context.Context, tx *gorm.DB, taskI
 		Where("id = ?", taskID).
 		First(&task).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, listingkit.ErrTaskNotFound
+			return nil, core.ErrTaskNotFound
 		}
 		return nil, err
 	}

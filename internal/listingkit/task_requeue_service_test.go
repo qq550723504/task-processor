@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"task-processor/internal/listingkit/core"
 	"testing"
 )
 
@@ -15,19 +16,19 @@ func TestRequeuePendingTasksRequeuesOnlyPendingTasks(t *testing.T) {
 		{
 			ID:       "task-pending",
 			TenantID: "tenant-requeue",
-			Status:   TaskStatusPending,
+			Status:   core.TaskStatusPending,
 			Request:  &GenerateRequest{TenantID: "tenant-requeue", Platforms: []string{"shein"}, Text: "pending"},
 		},
 		{
 			ID:       "task-review",
 			TenantID: "tenant-requeue",
-			Status:   TaskStatusNeedsReview,
+			Status:   core.TaskStatusNeedsReview,
 			Request:  &GenerateRequest{TenantID: "tenant-requeue", Platforms: []string{"shein"}, Text: "review"},
 		},
 		{
 			ID:       "task-processing",
 			TenantID: "tenant-requeue",
-			Status:   TaskStatusProcessing,
+			Status:   core.TaskStatusProcessing,
 			Request:  &GenerateRequest{TenantID: "tenant-requeue", Platforms: []string{"shein"}, Text: "processing"},
 		},
 	} {
@@ -73,7 +74,7 @@ func TestRequeuePendingTasksUsesStandardWorkflowWhenEnabled(t *testing.T) {
 	task := &Task{
 		ID:       "task-pending-temporal",
 		TenantID: "tenant-requeue-temporal",
-		Status:   TaskStatusPending,
+		Status:   core.TaskStatusPending,
 		Request:  &GenerateRequest{TenantID: "tenant-requeue-temporal", Platforms: []string{"shein"}, Text: "pending temporal"},
 	}
 	if err := repo.CreateTask(ctx, task); err != nil {
@@ -121,7 +122,7 @@ func TestRequeuePendingTasksReportsSubmitFailures(t *testing.T) {
 	task := &Task{
 		ID:       "task-submit-fail",
 		TenantID: "tenant-requeue-fail",
-		Status:   TaskStatusPending,
+		Status:   core.TaskStatusPending,
 		Request:  &GenerateRequest{TenantID: "tenant-requeue-fail", Platforms: []string{"shein"}, Text: "pending"},
 	}
 	if err := repo.CreateTask(ctx, task); err != nil {
@@ -152,7 +153,7 @@ func TestRequeuePendingTasksRejectsUnavailableSubmitter(t *testing.T) {
 	t.Parallel()
 
 	svc := newTaskRequeueService(taskRequeueServiceConfig{repo: newTaskRecoveryServiceTestRepo()})
-	if _, err := svc.RequeuePendingTasks(context.Background(), &RequeuePendingTasksRequest{TaskIDs: []string{"task-1"}}); !errors.Is(err, ErrTaskRequeueUnavailable) {
+	if _, err := svc.RequeuePendingTasks(context.Background(), &RequeuePendingTasksRequest{TaskIDs: []string{"task-1"}}); !errors.Is(err, core.ErrTaskRequeueUnavailable) {
 		t.Fatalf("RequeuePendingTasks() error = %v, want ErrTaskRequeueUnavailable", err)
 	}
 }

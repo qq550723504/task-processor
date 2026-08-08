@@ -10,6 +10,7 @@ import (
 
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	a1688 "task-processor/internal/product/sourcehandoff/a1688"
 	"task-processor/internal/product/sourcing"
 )
@@ -46,7 +47,7 @@ type CreateListingKitTaskRequest struct {
 type CreateListingKitTaskResponse struct {
 	TaskID         string                   `json:"task_id,omitempty"`
 	TenantID       string                   `json:"tenant_id,omitempty"`
-	Status         listingkit.TaskStatus    `json:"status,omitempty"`
+	Status         core.TaskStatus          `json:"status,omitempty"`
 	SourceIdentity sourcing.SourceIdentity  `json:"source_identity"`
 	SourceWarnings []sourcing.SourceWarning `json:"source_warnings,omitempty"`
 	ProductURL     string                   `json:"product_url,omitempty"`

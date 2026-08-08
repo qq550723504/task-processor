@@ -1,6 +1,9 @@
 package listingkit
 
-import submissiondomain "task-processor/internal/listing/submission"
+import (
+	submissiondomain "task-processor/internal/listing/submission"
+	"task-processor/internal/listingkit/core"
+)
 
 func adaptSubmissionDomainRequeueResult(result *submissiondomain.RequeueResult) *RequeuePendingTasksResult {
 	if result == nil {
@@ -14,14 +17,14 @@ func adaptSubmissionDomainRequeueResult(result *submissiondomain.RequeueResult) 
 	for _, skip := range result.Skipped {
 		adapted.Skipped = append(adapted.Skipped, TaskRequeueSkip{
 			TaskID: skip.TaskID,
-			Status: TaskStatus(skip.Status),
+			Status: core.TaskStatus(skip.Status),
 			Reason: skip.Reason,
 		})
 	}
 	for _, failure := range result.Failed {
 		adapted.Failed = append(adapted.Failed, TaskRequeueFailure{
 			TaskID: failure.TaskID,
-			Status: TaskStatus(failure.Status),
+			Status: core.TaskStatus(failure.Status),
 			Error:  failure.Error,
 		})
 	}

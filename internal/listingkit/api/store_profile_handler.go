@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingsubscription"
 )
 
@@ -51,7 +52,7 @@ func (h *handler) DeleteSheinStoreProfile(c *gin.Context) {
 	}
 	if err := h.storeAdminService.DeleteSheinStoreProfile(requestContext(c), id); err != nil {
 		status := http.StatusBadRequest
-		if errors.Is(err, listingkit.ErrTaskNotFound) {
+		if errors.Is(err, core.ErrTaskNotFound) {
 			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": "store_profile_delete_failed", "message": err.Error()})

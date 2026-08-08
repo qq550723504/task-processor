@@ -1,6 +1,7 @@
 package listingkit
 
 import (
+	"task-processor/internal/listingkit/core"
 	"testing"
 	"time"
 )
@@ -215,7 +216,7 @@ func TestDerivePodExecutionSummaryUsesProcessingChildTaskOverStaleSDSFailure(t *
 		},
 		[]ChildTaskState{{
 			Kind:   "sds_design_sync",
-			Status: string(TaskStatusProcessing),
+			Status: string(core.TaskStatusProcessing),
 		}},
 		&GenerateRequest{
 			Platforms: []string{"shein"},

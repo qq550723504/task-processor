@@ -7,6 +7,7 @@ import (
 
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -40,7 +41,7 @@ func TestProcessStandardProductLayerStartsPlatformAdaptTemporalWhenEnabled(t *te
 	task := &Task{
 		ID:        "standard-layer-task-1",
 		TenantID:  "tenant-1",
-		Status:    TaskStatusPending,
+		Status:    core.TaskStatusPending,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request: &GenerateRequest{
@@ -93,7 +94,7 @@ func TestProcessStandardProductLayerPreservesExistingPlatformCache(t *testing.T)
 	task := &Task{
 		ID:        "standard-layer-cache-task",
 		TenantID:  "tenant-1",
-		Status:    TaskStatusNeedsReview,
+		Status:    core.TaskStatusNeedsReview,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request: &GenerateRequest{
@@ -104,7 +105,7 @@ func TestProcessStandardProductLayerPreservesExistingPlatformCache(t *testing.T)
 		},
 		Result: &ListingKitResult{
 			TaskID:          "standard-layer-cache-task",
-			Status:          string(TaskStatusNeedsReview),
+			Status:          string(core.TaskStatusNeedsReview),
 			Shein:           &sheinpub.Package{SpuName: "cached shein package"},
 			SDSDesignResult: &SDSSyncSummary{Status: "completed", MockupImageURLs: []string{"https://cdn.sdspod.com/out/cached.jpg"}},
 		},

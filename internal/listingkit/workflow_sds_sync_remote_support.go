@@ -6,6 +6,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/listingkit/core"
 	sdsclient "task-processor/internal/sds/client"
 	sdsusecase "task-processor/internal/sds/usecase"
 	sdsworkflow "task-processor/internal/sds/workflow"
@@ -151,11 +152,11 @@ func finalizeSDSVariantRemoteSummaries(result *ListingKitResult, req *GenerateRe
 	result.SDSDesignResult = mergeSDSVariantSyncSummaries(options, summaries)
 	if result.SDSDesignResult.Status == "failed" {
 		appendWarning(result, result.SDSDesignResult.Error)
-		markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), result.SDSDesignResult.Error)
+		markChildTask(result, "sds_design_sync", "", string(core.TaskStatusFailed), result.SDSDesignResult.Error)
 		recorder.AddIssue(WorkflowIssueSeverityWarning, "sds_design_sync", "sds_variant_render_failed", result.SDSDesignResult.Error, "")
 		ensureResultPodExecution(result, req)
 		return
 	}
-	markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
+	markChildTask(result, "sds_design_sync", "", string(core.TaskStatusCompleted), "")
 	ensureResultPodExecution(result, req)
 }

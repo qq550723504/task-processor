@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/listingkit/core"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -91,7 +92,7 @@ func buildTaskListItem(task *Task) TaskListItem {
 	if task.Result != nil && task.Result.Shein != nil {
 		applySheinTaskListFields(&item, task, task.Result.Shein)
 	}
-	if task.Status == TaskStatusCompleted || task.Status == TaskStatusNeedsReview || task.Status == TaskStatusFailed {
+	if task.Status == core.TaskStatusCompleted || task.Status == core.TaskStatusNeedsReview || task.Status == core.TaskStatusFailed {
 		completedAt := task.UpdatedAt
 		item.CompletedAt = &completedAt
 	}

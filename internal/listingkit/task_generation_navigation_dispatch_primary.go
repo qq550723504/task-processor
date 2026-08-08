@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"task-processor/internal/listingkit/core"
 )
 
 type taskGenerationNavigationDispatchPrimaryPhase struct {
@@ -19,7 +20,7 @@ func (p *taskGenerationNavigationDispatchPrimaryPhase) run(ctx context.Context, 
 	case "action":
 		actionTarget := cloneAssetGenerationActionTarget(target.ActionTarget)
 		if actionTarget == nil {
-			return nil, fmt.Errorf("%w: missing action target", ErrGenerationActionNotFound)
+			return nil, fmt.Errorf("%w: missing action target", core.ErrGenerationActionNotFound)
 		}
 		actionReq := &ExecuteGenerationActionRequest{
 			ResponseMode: responseMode,

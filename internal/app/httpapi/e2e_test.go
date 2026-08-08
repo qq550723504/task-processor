@@ -23,6 +23,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
@@ -255,7 +256,7 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 	})
 
 	task := waitForTaskResult[listingkit.TaskResult](t, testServer.Client(), testServer.URL+"/api/v1/listing-kits/tasks/"+taskID, listingKitTaskTerminal)
-	require.NotEqual(t, listingkit.TaskStatusFailed, task.Status)
+	require.NotEqual(t, core.TaskStatusFailed, task.Status)
 	require.NotNil(t, task.Result)
 	require.NotNil(t, task.Result.CanonicalProduct)
 	require.Equal(t, "1688 蓝牙耳机源商品", task.Result.CanonicalProduct.Title)

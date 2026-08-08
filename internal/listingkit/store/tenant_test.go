@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingkit/store"
 )
 
@@ -14,10 +15,10 @@ func TestMemTaskRepositoryScopesTasksByTenant(t *testing.T) {
 	ctxA := listingkit.WithTenantID(context.Background(), "tenant-a")
 	ctxB := listingkit.WithTenantID(context.Background(), "tenant-b")
 
-	if err := repo.CreateTask(ctxA, &listingkit.Task{ID: "task-a", Status: listingkit.TaskStatusPending, Request: &listingkit.GenerateRequest{Text: "a"}}); err != nil {
+	if err := repo.CreateTask(ctxA, &listingkit.Task{ID: "task-a", Status: core.TaskStatusPending, Request: &listingkit.GenerateRequest{Text: "a"}}); err != nil {
 		t.Fatalf("CreateTask tenant-a: %v", err)
 	}
-	if err := repo.CreateTask(ctxB, &listingkit.Task{ID: "task-b", Status: listingkit.TaskStatusPending, Request: &listingkit.GenerateRequest{Text: "b"}}); err != nil {
+	if err := repo.CreateTask(ctxB, &listingkit.Task{ID: "task-b", Status: core.TaskStatusPending, Request: &listingkit.GenerateRequest{Text: "b"}}); err != nil {
 		t.Fatalf("CreateTask tenant-b: %v", err)
 	}
 
@@ -29,10 +30,10 @@ func TestMemTaskRepositoryScopesTasksByTenant(t *testing.T) {
 		t.Fatalf("tenant-a list = total %d tasks %#v", total, tasks)
 	}
 
-	if _, err := repo.GetTask(ctxB, "task-a"); !errors.Is(err, listingkit.ErrTaskNotFound) {
+	if _, err := repo.GetTask(ctxB, "task-a"); !errors.Is(err, core.ErrTaskNotFound) {
 		t.Fatalf("GetTask cross tenant error = %v, want ErrTaskNotFound", err)
 	}
-	if err := repo.MarkFailed(ctxB, "task-a", "failed"); !errors.Is(err, listingkit.ErrTaskNotFound) {
+	if err := repo.MarkFailed(ctxB, "task-a", "failed"); !errors.Is(err, core.ErrTaskNotFound) {
 		t.Fatalf("MarkFailed cross tenant error = %v, want ErrTaskNotFound", err)
 	}
 }

@@ -169,9 +169,9 @@ func TestSubmitTaskClearsNeedsReviewAfterPublishSuccess(t *testing.T) {
 
 	repo := &stubSubmitRepo{}
 	task := makeReadySheinTask()
-	task.Status = TaskStatusNeedsReview
+	task.Status = core.TaskStatusNeedsReview
 	task.Error = "旧的待审核原因"
-	task.Result.Status = string(TaskStatusNeedsReview)
+	task.Result.Status = string(core.TaskStatusNeedsReview)
 	task.Result.ReviewReasons = []string{"需要人工确认类目"}
 	task.Result.Summary = &GenerationSummary{
 		NeedsReview:   true,
@@ -215,8 +215,8 @@ func TestSubmitTaskClearsNeedsReviewAfterPublishSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("submit task: %v", err)
 	}
-	if preview.Status != TaskStatusCompleted {
-		t.Fatalf("preview status = %q, want %q", preview.Status, TaskStatusCompleted)
+	if preview.Status != core.TaskStatusCompleted {
+		t.Fatalf("preview status = %q, want %q", preview.Status, core.TaskStatusCompleted)
 	}
 	if preview.NeedsReview {
 		t.Fatalf("preview needs_review = true, want false")
@@ -229,13 +229,13 @@ func TestSubmitTaskClearsNeedsReviewAfterPublishSuccess(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get task: %v", err)
 	}
-	if saved.Status != TaskStatusCompleted {
-		t.Fatalf("saved status = %q, want %q", saved.Status, TaskStatusCompleted)
+	if saved.Status != core.TaskStatusCompleted {
+		t.Fatalf("saved status = %q, want %q", saved.Status, core.TaskStatusCompleted)
 	}
 	if saved.Error != "" {
 		t.Fatalf("saved error = %q, want empty", saved.Error)
 	}
-	if saved.Result == nil || saved.Result.Status != string(TaskStatusCompleted) {
+	if saved.Result == nil || saved.Result.Status != string(core.TaskStatusCompleted) {
 		t.Fatalf("saved result status = %+v, want completed", saved.Result)
 	}
 	if len(saved.Result.ReviewReasons) != 0 {

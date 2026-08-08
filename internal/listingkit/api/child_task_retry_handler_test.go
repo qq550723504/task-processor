@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 type stubChildTaskRetryService struct {
@@ -51,7 +52,7 @@ func TestRetryTaskChildTaskReturnsConflictWhenRetryBlocked(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubChildTaskRetryService{err: listingkit.ErrChildTaskRetryConflict}
+	svc := &stubChildTaskRetryService{err: core.ErrChildTaskRetryConflict}
 	h, err := NewHandler(&stubHandlerCoreService{}, WithChildTaskRetryService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
@@ -78,11 +79,11 @@ func TestRetryTaskChildTaskReturnsTaskResultPayload(t *testing.T) {
 		result: &listingkit.TaskResult{
 			TaskIdentityFields: listingkit.TaskIdentityFields{TaskID: "task-1"},
 			TaskResultLifecycleFields: listingkit.TaskResultLifecycleFields{
-				Status: listingkit.TaskStatusCompleted,
+				Status: core.TaskStatusCompleted,
 			},
 			Result: &listingkit.ListingKitResult{
 				TaskID: "task-1",
-				Status: string(listingkit.TaskStatusCompleted),
+				Status: string(core.TaskStatusCompleted),
 			},
 		},
 	}
@@ -106,7 +107,7 @@ func TestRetryTaskChildTaskReturnsTaskResultPayload(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
 		t.Fatalf("unmarshal body: %v", err)
 	}
-	if body.TaskID != "task-1" || body.Status != listingkit.TaskStatusCompleted {
+	if body.TaskID != "task-1" || body.Status != core.TaskStatusCompleted {
 		t.Fatalf("body = %+v, want completed task result", body)
 	}
 }

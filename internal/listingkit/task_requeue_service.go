@@ -7,6 +7,7 @@ import (
 	"time"
 
 	submissiondomain "task-processor/internal/listing/submission"
+	"task-processor/internal/listingkit/core"
 )
 
 const taskRequeueMaxWait = 5 * time.Second
@@ -37,8 +38,8 @@ func newTaskRequeueService(config taskRequeueServiceConfig) *taskRequeueService 
 		IsTaskNotFound:    wiring.isTaskNotFound,
 		CanRequeue:        wiring.canRequeue,
 		SubmitTask:        wiring.submitTask,
-		ErrUnavailable:    ErrTaskRequeueUnavailable,
-		ErrInvalidRequest: ErrTaskRequeueInvalidRequest,
+		ErrUnavailable:    core.ErrTaskRequeueUnavailable,
+		ErrInvalidRequest: core.ErrTaskRequeueInvalidRequest,
 	})
 	return svc
 }
@@ -71,11 +72,11 @@ func (w taskRequeueRunnerWiring) currentSubmitter() submissiondomain.RequeueSubm
 }
 
 func (w taskRequeueRunnerWiring) isTaskNotFound(err error) bool {
-	return errors.Is(err, ErrTaskNotFound)
+	return errors.Is(err, core.ErrTaskNotFound)
 }
 
 func (w taskRequeueRunnerWiring) canRequeue(task *submissiondomain.RequeueTask) (bool, string) {
-	return submissiondomain.CanRequeueTaskWithStatus(task, string(TaskStatusPending))
+	return submissiondomain.CanRequeueTaskWithStatus(task, string(core.TaskStatusPending))
 }
 
 func (w taskRequeueRunnerWiring) submitTask(ctx context.Context, submit submissiondomain.RequeueSubmitFunc, taskID string) error {
@@ -86,7 +87,7 @@ func (w taskRequeueRunnerWiring) submitTask(ctx context.Context, submit submissi
 		})
 	}
 	if submit == nil {
-		return ErrTaskRequeueUnavailable
+		return core.ErrTaskRequeueUnavailable
 	}
 	return submissiondomain.RetryEnqueueSubmit(taskID, taskRequeueMaxWait, submit)
 }

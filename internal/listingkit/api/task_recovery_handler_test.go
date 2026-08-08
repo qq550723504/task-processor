@@ -13,6 +13,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 type stubTaskRecoveryHandlerService struct {
@@ -53,7 +54,7 @@ func TestRecoverTaskNowHandlerBindsTaskIDAndReturnsTask(t *testing.T) {
 		task: &listingkit.Task{
 			ID:       "task-123",
 			TenantID: "tenant-1",
-			Status:   listingkit.TaskStatusPending,
+			Status:   core.TaskStatusPending,
 		},
 	}
 	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskRecoveryService(svc))
@@ -81,7 +82,7 @@ func TestRecoverTaskNowHandlerBindsTaskIDAndReturnsTask(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
 		t.Fatalf("unmarshal body: %v", err)
 	}
-	if body.Task == nil || body.Task.ID != "task-123" || body.Task.Status != listingkit.TaskStatusPending {
+	if body.Task == nil || body.Task.ID != "task-123" || body.Task.Status != core.TaskStatusPending {
 		t.Fatalf("body = %+v, want recovered task payload", body)
 	}
 }
@@ -141,7 +142,7 @@ func TestRecoverTaskNowHandlerReturnsNotFoundForMissingTask(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
-	svc := &stubTaskRecoveryHandlerService{err: listingkit.ErrTaskNotFound}
+	svc := &stubTaskRecoveryHandlerService{err: core.ErrTaskNotFound}
 	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskRecoveryService(svc))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)

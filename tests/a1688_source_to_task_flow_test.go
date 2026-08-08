@@ -14,6 +14,7 @@ import (
 
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	a1688 "task-processor/internal/product/sourcehandoff/a1688"
 	sourcea1688 "task-processor/internal/productenrich/httpapi/sourcea1688"
 )
@@ -187,7 +188,7 @@ func (f *replayGenerateTaskCreator) CreateGenerateTask(_ context.Context, reques
 		TenantID: request.TenantID,
 		UserID:   request.UserID,
 		Request:  request,
-		Status:   listingkit.TaskStatusPending,
+		Status:   core.TaskStatusPending,
 	}, nil
 }
 

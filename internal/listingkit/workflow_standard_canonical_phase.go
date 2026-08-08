@@ -7,6 +7,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
 )
 
@@ -40,7 +41,7 @@ func (p *standardWorkflowCanonicalPhase) run(
 			recorder.FinalizeSummary()
 			return nil, fmt.Errorf("failed to build SDS studio product")
 		}
-		markChildTask(result, "sds_catalog_product", "", string(TaskStatusCompleted), "")
+		markChildTask(result, "sds_catalog_product", "", string(core.TaskStatusCompleted), "")
 		stage.Complete()
 		return canonicalProduct, nil
 	}
@@ -59,7 +60,7 @@ func (p *standardWorkflowCanonicalPhase) run(
 	productSvc := resolveWorkflowProductService(p.service)
 	productTask, err := productSvc.CreateGenerateTask(productenrich.WithInlineTaskExecution(ctx), toProductGenerateRequest(task))
 	if err != nil {
-		markChildTask(result, "product_enrich", "", string(TaskStatusFailed), err.Error())
+		markChildTask(result, "product_enrich", "", string(core.TaskStatusFailed), err.Error())
 		stage.Fail("product_task_creation_failed", "Product enrichment task creation failed", err.Error())
 		recorder.FinalizeSummary()
 		return nil, fmt.Errorf("failed to create product task: %w", err)
@@ -69,7 +70,7 @@ func (p *standardWorkflowCanonicalPhase) run(
 
 	productJSON, err := productSvc.ProcessProduct(ctx, productTask)
 	if err != nil {
-		markChildTask(result, "product_enrich", productTask.ID, string(TaskStatusFailed), err.Error())
+		markChildTask(result, "product_enrich", productTask.ID, string(core.TaskStatusFailed), err.Error())
 		if !shouldUseStudioProductFallback(task) {
 			stage.Fail("product_enrich_failed", "Product enrichment failed", err.Error())
 			recorder.FinalizeSummary()

@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 func newSDSRetirementRepoHarness(t *testing.T) (*taskRepository, *gorm.DB) {
@@ -92,7 +93,7 @@ func TestSDSRetirementRepositoryGetRunHonorsTenantScope(t *testing.T) {
 		t.Fatalf("create run: %v", err)
 	}
 
-	if _, _, err := repo.GetSDSRetirementRun(ctxB, run.ID); !errors.Is(err, listingkit.ErrTaskNotFound) {
+	if _, _, err := repo.GetSDSRetirementRun(ctxB, run.ID); !errors.Is(err, core.ErrTaskNotFound) {
 		t.Fatalf("GetSDSRetirementRun() error = %v, want ErrTaskNotFound for foreign tenant", err)
 	}
 }
@@ -111,7 +112,7 @@ func TestSDSRetirementRepositoryGetRunRequiresExplicitTenantScope(t *testing.T) 
 		t.Fatalf("create run: %v", err)
 	}
 
-	if _, _, err := repo.GetSDSRetirementRun(context.Background(), run.ID); !errors.Is(err, listingkit.ErrTaskNotFound) {
+	if _, _, err := repo.GetSDSRetirementRun(context.Background(), run.ID); !errors.Is(err, core.ErrTaskNotFound) {
 		t.Fatalf("GetSDSRetirementRun() error = %v, want ErrTaskNotFound without tenant scope", err)
 	}
 }
@@ -249,7 +250,7 @@ func TestSDSRetirementRepositoryUpdateItemsReturnsDomainNotFound(t *testing.T) {
 		Selected:      true,
 		SiteSelection: `[{"site_abbr":"US","store_type":1}]`,
 	}})
-	if !errors.Is(err, listingkit.ErrTaskNotFound) {
+	if !errors.Is(err, core.ErrTaskNotFound) {
 		t.Fatalf("UpdateSDSRetirementItems error = %v, want ErrTaskNotFound", err)
 	}
 }
@@ -282,7 +283,7 @@ func TestSDSRetirementRepositoryUpdateItemsHonorsTenantScope(t *testing.T) {
 		Selected:      false,
 		SiteSelection: `[{"site_abbr":"US","store_type":1}]`,
 	}})
-	if !errors.Is(err, listingkit.ErrTaskNotFound) {
+	if !errors.Is(err, core.ErrTaskNotFound) {
 		t.Fatalf("UpdateSDSRetirementItems() error = %v, want ErrTaskNotFound for foreign tenant", err)
 	}
 
@@ -322,7 +323,7 @@ func TestSDSRetirementRepositoryUpdateItemsRequiresExplicitTenantScope(t *testin
 		Selected:      false,
 		SiteSelection: `[{"site_abbr":"US","store_type":1}]`,
 	}})
-	if !errors.Is(err, listingkit.ErrTaskNotFound) {
+	if !errors.Is(err, core.ErrTaskNotFound) {
 		t.Fatalf("UpdateSDSRetirementItems() error = %v, want ErrTaskNotFound without tenant scope", err)
 	}
 }
@@ -378,7 +379,7 @@ func TestSDSRetirementRepositorySaveExecutionRejectsItemFromAnotherRun(t *testin
 	itemsB[0].FinishedAt = &finishedAt
 
 	err := repo.SaveSDSRetirementExecution(ctx, runA, itemsB)
-	if !errors.Is(err, listingkit.ErrTaskNotFound) {
+	if !errors.Is(err, core.ErrTaskNotFound) {
 		t.Fatalf("SaveSDSRetirementExecution error = %v, want ErrTaskNotFound for foreign run item", err)
 	}
 

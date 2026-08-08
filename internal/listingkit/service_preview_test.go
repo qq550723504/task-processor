@@ -7,6 +7,7 @@ import (
 	"time"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/listingkit/core"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinclient "task-processor/internal/shein/client"
 )
@@ -19,7 +20,7 @@ func TestGetTaskPreviewIncludesSheinStoreResolution(t *testing.T) {
 	task := &Task{
 		ID:        "task-preview-store-resolution",
 		TenantID:  "505",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now,
 		Request: &GenerateRequest{
@@ -122,7 +123,7 @@ func TestGetTaskPreviewMarksCookieBlockerBeforeManualCategorySearch(t *testing.T
 	task := &Task{
 		ID:        "task-preview-cookie-blocker",
 		TenantID:  "373211199677923496",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: now.Add(-time.Minute),
 		UpdatedAt: now,
 		Request: &GenerateRequest{

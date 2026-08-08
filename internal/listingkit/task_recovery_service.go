@@ -7,6 +7,7 @@ import (
 	"time"
 
 	submissiondomain "task-processor/internal/listing/submission"
+	"task-processor/internal/listingkit/core"
 )
 
 type taskRecoveryServiceConfig struct {
@@ -45,8 +46,8 @@ func newTaskRecoveryService(config taskRecoveryServiceConfig) *taskRecoveryServi
 		MarkRecovered:    wiring.markRecoveredNow,
 		SubmitRecovered:  wiring.submitRecoveredNow,
 		ReloadTask:       wiring.loadTask,
-		ErrUnavailable:   ErrTaskRecoveryUnavailable,
-		ErrEmptyTaskID:   ErrTaskNotFound,
+		ErrUnavailable:   core.ErrTaskRecoveryUnavailable,
+		ErrEmptyTaskID:   core.ErrTaskNotFound,
 	})
 	svc.recoveryBatch = submissiondomain.NewRecoveryBatchService(submissiondomain.RecoveryBatchServiceConfig[Task]{
 		ListCandidates:       wiring.listCandidates,
@@ -56,7 +57,7 @@ func newTaskRecoveryService(config taskRecoveryServiceConfig) *taskRecoveryServi
 		TaskID:               wiring.taskID,
 		IsTaskNotRecoverable: wiring.isTaskNotRecoverable,
 		Now:                  svc.currentTime,
-		ErrUnavailable:       ErrTaskRecoveryUnavailable,
+		ErrUnavailable:       core.ErrTaskRecoveryUnavailable,
 	})
 	return svc
 }
@@ -109,7 +110,7 @@ func (w taskRecoveryRunnerWiring) taskID(task Task) string {
 }
 
 func (w taskRecoveryRunnerWiring) isTaskNotRecoverable(err error) bool {
-	return errors.Is(err, ErrTaskNotRecoverable)
+	return errors.Is(err, core.ErrTaskNotRecoverable)
 }
 
 func (s *taskRecoveryService) RecoverTaskNow(ctx context.Context, taskID string) (*Task, error) {
@@ -148,7 +149,7 @@ func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *Recov
 
 func (s *taskRecoveryService) submitRecoveredTask(ctx context.Context, submit submissiondomain.RecoverySubmitFunc, taskID string, previousBlock *RetryableBlock, recoveredAt time.Time) error {
 	if submit == nil {
-		return ErrTaskRecoveryUnavailable
+		return core.ErrTaskRecoveryUnavailable
 	}
 	return submissiondomain.SubmitRecoveredWithRetryablePersistence(submissiondomain.RecoveredSubmitPersistenceRequest{
 		TaskID:               taskID,

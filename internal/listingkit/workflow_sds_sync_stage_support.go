@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"strings"
+	"task-processor/internal/listingkit/core"
 	"time"
 )
 
@@ -16,7 +17,7 @@ func normalizeSDSSyncRecorder(result *ListingKitResult, recorder *workflowRecord
 func beginSDSSyncStage(result *ListingKitResult, req *GenerateRequest, recorder *workflowRecorder) (*workflowRecorder, *workflowStageHandle) {
 	recorder = normalizeSDSSyncRecorder(result, recorder)
 	stage := recorder.Start("sds_design_sync", "")
-	markChildTask(result, "sds_design_sync", "", string(TaskStatusProcessing), "")
+	markChildTask(result, "sds_design_sync", "", string(core.TaskStatusProcessing), "")
 	ensureResultPodExecution(result, req)
 	markPodExecutionStatus(result, podStatusProcessing, time.Now())
 	return recorder, stage
@@ -28,7 +29,7 @@ func failSDSSyncStage(result *ListingKitResult, req *GenerateRequest, recorder *
 		Status:    "failed",
 		Error:     err.Error(),
 	}
-	markChildTask(result, "sds_design_sync", "", string(TaskStatusFailed), err.Error())
+	markChildTask(result, "sds_design_sync", "", string(core.TaskStatusFailed), err.Error())
 	appendWarning(result, warningPrefix+err.Error())
 	finishSDSStageWithError(stage, recorder, code, message, err)
 	ensureResultPodExecution(result, req)
@@ -49,7 +50,7 @@ func finalizeSDSSyncSummary(ctx context.Context, result *ListingKitResult, req *
 		ensureResultPodExecution(result, req)
 		return false
 	}
-	markChildTask(result, "sds_design_sync", "", string(TaskStatusCompleted), "")
+	markChildTask(result, "sds_design_sync", "", string(core.TaskStatusCompleted), "")
 	stage.Complete()
 	ensureResultPodExecution(result, req)
 	return true

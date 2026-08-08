@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"task-processor/internal/listingkit/core"
 
 	"github.com/sirupsen/logrus"
 )
@@ -38,7 +39,7 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 
 	status := deriveProcessTerminalStatus(result)
 	result = applyProcessTerminalResult(result, status)
-	if status == TaskStatusNeedsReview {
+	if status == core.TaskStatusNeedsReview {
 		log.WithField("review_reason_count", len(result.ReviewReasons)).Info("marking listing kit task as needs_review")
 		if err := f.service.persistProcessSuccess(ctx, task.ID, result); err != nil {
 			log.WithError(err).Error("failed to mark listing kit task as needs_review")
@@ -59,8 +60,8 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 
 func (f *listingKitProcessFlow) claimTask(ctx context.Context, task *Task) error {
 	if err := f.service.repo.MarkProcessing(ctx, task.ID); err != nil {
-		if errors.Is(err, ErrTaskNotPending) {
-			return ErrTaskNotPending
+		if errors.Is(err, core.ErrTaskNotPending) {
+			return core.ErrTaskNotPending
 		}
 		return fmt.Errorf("failed to mark task as processing: %w", err)
 	}

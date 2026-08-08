@@ -9,6 +9,7 @@ import (
 	assetpkg "task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/listingkit/core"
 )
 
 func (s *service) loadTaskExecutionContext(ctx context.Context, taskID string) (context.Context, *Task, error) {
@@ -29,16 +30,16 @@ func (s *service) loadTaskExecutionContext(ctx context.Context, taskID string) (
 }
 
 func (s *service) markTaskProcessingIfPending(ctx context.Context, task *Task) error {
-	if task == nil || task.Status != TaskStatusPending {
+	if task == nil || task.Status != core.TaskStatusPending {
 		return nil
 	}
 	if err := s.repo.MarkProcessing(ctx, task.ID); err != nil {
-		if errors.Is(err, ErrTaskNotPending) {
+		if errors.Is(err, core.ErrTaskNotPending) {
 			return nil
 		}
 		return fmt.Errorf("failed to mark task as processing: %w", err)
 	}
-	task.Status = TaskStatusProcessing
+	task.Status = core.TaskStatusProcessing
 	return nil
 }
 
@@ -84,10 +85,10 @@ func (s *service) persistProcessedTaskResult(ctx context.Context, taskID string,
 		return fmt.Errorf("listing kit result is nil")
 	}
 	if result.Summary != nil && result.Summary.NeedsReview {
-		result.Status = string(TaskStatusNeedsReview)
+		result.Status = string(core.TaskStatusNeedsReview)
 		result.ReviewReasons = reviewReasonsFromResult(result)
 		return s.repo.MarkNeedsReview(ctx, taskID, result, taskNeedsReviewReason(result))
 	}
-	result.Status = string(TaskStatusCompleted)
+	result.Status = string(core.TaskStatusCompleted)
 	return s.repo.MarkCompleted(ctx, taskID, result)
 }

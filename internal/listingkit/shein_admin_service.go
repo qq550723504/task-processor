@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/listingkit/core"
 	sheinworkspace "task-processor/internal/marketplace/shein/workspace"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheincategory "task-processor/internal/shein/api/category"
@@ -158,7 +159,7 @@ func (s *sheinAdminService) UpdateSheinFinalDraft(ctx context.Context, taskID st
 
 func (s *sheinAdminService) ClearSheinResolutionCache(ctx context.Context, taskID string, kind string) (*SheinResolutionCacheClearResult, error) {
 	if s == nil {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	task, pkg, err := s.loadAdminTaskPackage(ctx, taskID)
 	if err != nil {
@@ -188,7 +189,7 @@ func (s *sheinAdminService) ClearSheinResolutionCache(ctx context.Context, taskI
 
 func (s *sheinAdminService) loadAdminTask(ctx context.Context, taskID string) (*Task, error) {
 	if s == nil || s.repo == nil {
-		return nil, ErrTaskNotFound
+		return nil, core.ErrTaskNotFound
 	}
 	return s.repo.GetTask(ctx, taskID)
 }

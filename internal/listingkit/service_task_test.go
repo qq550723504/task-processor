@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/listingkit/core"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinproduct "task-processor/internal/shein/api/product"
@@ -15,7 +16,7 @@ func TestBuildTaskListItemIncludesCanonicalProductSummary(t *testing.T) {
 
 	item := buildTaskListItem(&Task{
 		ID:      "task-canonical-summary",
-		Status:  TaskStatusCompleted,
+		Status:  core.TaskStatusCompleted,
 		Request: &GenerateRequest{Platforms: []string{"shein"}},
 		Result: &ListingKitResult{CanonicalProduct: &canonical.Product{
 			Title:        "  Canvas Tote  ",
@@ -47,7 +48,7 @@ func TestBuildTaskListItemIncludesSheinRemoteSubmissionSummary(t *testing.T) {
 	checkedAt := time.Date(2026, 5, 7, 12, 30, 0, 0, time.UTC)
 	task := &Task{
 		ID:     "task-remote-summary",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			Shein: &SheinPackage{
 				Submission: &sheinpub.SubmissionReport{
@@ -137,7 +138,7 @@ func TestBuildTaskListItemUsesLatestSubmissionOutcomeInsteadOfPhaseEvent(t *test
 
 	task := &Task{
 		ID:     "task-phase-event-summary",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
 		},
@@ -176,7 +177,7 @@ func TestBuildTaskListItemPrefersRenderedImageCount(t *testing.T) {
 		Request: &GenerateRequest{
 			ImageURLs: []string{"https://cdn.example.com/input.png"},
 		},
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			SDSSync: &SDSSyncSummary{
 				Status: "completed",
@@ -208,7 +209,7 @@ func TestBuildTaskListItemDoesNotCountSourceImagesAsRenderedImages(t *testing.T)
 		Request: &GenerateRequest{
 			ImageURLs: []string{"https://cdn.example.com/input.png"},
 		},
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			Shein: &SheinPackage{
 				RequestDraft: &sheinpub.RequestDraft{
@@ -238,7 +239,7 @@ func TestBuildTaskListItemIncludesSheinStatusOverview(t *testing.T) {
 	colorValueID := 271
 	task := &Task{
 		ID:     "task-status-overview",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			Shein: &SheinPackage{
 				ReviewNotes: []string{"需要人工确认吊牌文案"},
@@ -340,7 +341,7 @@ func TestBuildTaskListItemIncludesResolvedSheinStoreContext(t *testing.T) {
 
 	task := &Task{
 		ID:     "task-store-context",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Request: &GenerateRequest{
 			SheinStoreID: 869,
 			Country:      "US",
@@ -388,7 +389,7 @@ func TestBuildTaskListItemIncludesPodExecutionSummary(t *testing.T) {
 
 	task := &Task{
 		ID:     "task-pod-summary",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Request: &GenerateRequest{
 			Platforms: []string{"shein"},
 		},

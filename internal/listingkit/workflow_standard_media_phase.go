@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog"
 	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productimage"
 )
 
@@ -33,7 +34,7 @@ func (p *standardWorkflowMediaPhase) run(
 		stage := recorder.Start("product_image", "")
 		imageTask, imageErr := imageSvc.CreateProcessTask(productimage.WithInlineTaskExecution(ctx), toImageProcessRequest(task))
 		if imageErr != nil {
-			markChildTask(result, "product_image", "", string(TaskStatusFailed), imageErr.Error())
+			markChildTask(result, "product_image", "", string(core.TaskStatusFailed), imageErr.Error())
 			appendWarning(result, "image processing skipped: "+imageErr.Error())
 			stage.Degrade("image_processing_skipped", "Image processing skipped", imageErr.Error())
 		} else {
@@ -41,7 +42,7 @@ func (p *standardWorkflowMediaPhase) run(
 			markChildTask(result, "product_image", imageTask.ID, string(productimage.TaskStatusPending), "")
 			imageResult, imageErr = imageSvc.ProcessImages(ctx, imageTask)
 			if imageErr != nil {
-				markChildTask(result, "product_image", imageTask.ID, string(TaskStatusFailed), imageErr.Error())
+				markChildTask(result, "product_image", imageTask.ID, string(core.TaskStatusFailed), imageErr.Error())
 				appendWarning(result, "image processing failed: "+imageErr.Error())
 				stage.Degrade("image_processing_failed", "Image processing failed", imageErr.Error())
 			} else {

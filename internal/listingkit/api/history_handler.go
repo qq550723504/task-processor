@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 func (h *handler) GetTaskRevisionHistory(c *gin.Context) {
@@ -20,7 +21,7 @@ func (h *handler) GetTaskRevisionHistory(c *gin.Context) {
 	if err != nil {
 		status := http.StatusInternalServerError
 		switch {
-		case errors.Is(err, listingkit.ErrTaskNotFound), errors.Is(err, listingkit.ErrTaskResultUnavailable):
+		case errors.Is(err, core.ErrTaskNotFound), errors.Is(err, listingkit.ErrTaskResultUnavailable):
 			status = http.StatusNotFound
 		case errors.Is(err, listingkit.ErrInvalidRevisionHistoryCursor), errors.Is(err, listingkit.ErrInvalidRevisionHistoryActionType):
 			status = http.StatusBadRequest

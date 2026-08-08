@@ -6,6 +6,7 @@ import (
 	"time"
 
 	listingsubmission "task-processor/internal/listing/submission"
+	"task-processor/internal/listingkit/core"
 )
 
 func backfillRetryableBlockedTasks(ctx context.Context, repo Repository, createdAfter time.Time) (int, error) {
@@ -15,7 +16,7 @@ func backfillRetryableBlockedTasks(ctx context.Context, repo Repository, created
 	service := listingsubmission.NewRetryableBackfillService(listingsubmission.RetryableBackfillServiceConfig[Task]{
 		ListFailedTasks: func(ctx context.Context) ([]Task, error) {
 			tasks, _, err := repo.ListTasks(ctx, &TaskListQuery{
-				Status:   string(TaskStatusFailed),
+				Status:   string(core.TaskStatusFailed),
 				Page:     1,
 				PageSize: taskRecoveryBackfillPageSize,
 			})

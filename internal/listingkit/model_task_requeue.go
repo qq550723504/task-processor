@@ -1,5 +1,7 @@
 package listingkit
 
+import "task-processor/internal/listingkit/core"
+
 type RequeuePendingTasksRequest struct {
 	TaskIDs []string `json:"task_ids"`
 }
@@ -11,13 +13,13 @@ type RequeuePendingTasksResult struct {
 }
 
 type TaskRequeueSkip struct {
-	TaskID string     `json:"task_id"`
-	Status TaskStatus `json:"status,omitempty"`
-	Reason string     `json:"reason,omitempty"`
+	TaskID string          `json:"task_id"`
+	Status core.TaskStatus `json:"status,omitempty"`
+	Reason string          `json:"reason,omitempty"`
 }
 
 type TaskRequeueFailure struct {
-	TaskID string     `json:"task_id"`
-	Status TaskStatus `json:"status,omitempty"`
-	Error  string     `json:"error,omitempty"`
+	TaskID string          `json:"task_id"`
+	Status core.TaskStatus `json:"status,omitempty"`
+	Error  string          `json:"error,omitempty"`
 }

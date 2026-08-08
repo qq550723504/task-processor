@@ -12,6 +12,7 @@ import (
 
 	"task-processor/internal/infra/worker"
 	listingsubmission "task-processor/internal/listing/submission"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/tenantbridge"
 )
 
@@ -132,7 +133,7 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 		TenantID:   TenantIDFromContext(ctx),
 		UserID:     strings.TrimSpace(req.UserID),
 		Request:    req,
-		Status:     TaskStatusPending,
+		Status:     core.TaskStatusPending,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 		RetryCount: 0,

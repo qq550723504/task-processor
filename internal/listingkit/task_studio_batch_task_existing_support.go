@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"task-processor/internal/listingkit/core"
 	"time"
 
 	"gorm.io/gorm"
@@ -57,7 +58,7 @@ func (s *taskStudioBatchService) findLegacyStudioBatchTask(
 			continue
 		}
 		task, err := s.getTask(ctx, created.ID)
-		if err != nil || task == nil || task.Status == TaskStatusFailed {
+		if err != nil || task == nil || task.Status == core.TaskStatusFailed {
 			continue
 		}
 		if !studioBatchTaskMatchesSelection(task, candidate) {
@@ -117,7 +118,7 @@ func (s *taskStudioBatchService) createdTaskFromDurableLink(ctx context.Context,
 	if s != nil && s.getTask != nil {
 		var err error
 		task, err = s.getTask(ctx, link.ListingKitTaskID)
-		if err != nil || task == nil || task.Status == TaskStatusFailed {
+		if err != nil || task == nil || task.Status == core.TaskStatusFailed {
 			if link.Status == studioBatchTaskLinkStatusCreated {
 				link.Status = studioBatchTaskLinkStatusFailed
 				link.ReasonCode = "linked_task_invalid"

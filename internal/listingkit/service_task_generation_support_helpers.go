@@ -7,6 +7,7 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
+	"task-processor/internal/listingkit/core"
 	listinggeneration "task-processor/internal/listingkit/generation"
 )
 
@@ -68,13 +69,13 @@ func selectGenerationTasksForRetry(existing []assetgeneration.Task, result *List
 	for _, id := range req.TaskIDs {
 		item, ok := byID[id]
 		if !ok {
-			return nil, ErrGenerationTaskNotFound
+			return nil, core.ErrGenerationTaskNotFound
 		}
 		if !listinggeneration.TaskRetryable(item) {
-			return nil, ErrGenerationTaskNotRetryable
+			return nil, core.ErrGenerationTaskNotRetryable
 		}
 		if !listinggeneration.MatchesTaskRetryFilter(item, retryQueueItem(queueIndex, item), slotFilters, filter) {
-			return nil, ErrGenerationTaskNotRetryable
+			return nil, core.ErrGenerationTaskNotRetryable
 		}
 		out = append(out, listinggeneration.PrepareTaskRetry(item))
 	}

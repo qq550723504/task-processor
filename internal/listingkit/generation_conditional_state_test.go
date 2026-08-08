@@ -6,6 +6,7 @@ import (
 	"time"
 
 	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingkit/reviewstore"
 	common "task-processor/internal/publishing/common"
 )
@@ -271,7 +272,7 @@ func newConditionalContractTestTask(taskID string) *Task {
 	now := time.Now()
 	return &Task{
 		ID:        taskID,
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: now,
 		UpdatedAt: now,
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},

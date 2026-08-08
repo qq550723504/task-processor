@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/shared/tenantctx"
 )
 
@@ -41,7 +42,7 @@ func (r *taskRepository) GetSDSRetirementRun(ctx context.Context, runID string) 
 	scopedDB := applySDSRetirementRunScope(r.db.WithContext(ctx), ctx)
 	if err := scopedDB.Where("id = ?", runID).First(&run).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil, listingkit.ErrTaskNotFound
+			return nil, nil, core.ErrTaskNotFound
 		}
 		return nil, nil, err
 	}
@@ -60,7 +61,7 @@ func (r *taskRepository) UpdateSDSRetirementItems(ctx context.Context, runID str
 		var run listingkit.SDSRetirementRunRecord
 		if err := applySDSRetirementRunScope(tx, ctx).Where("id = ?", runID).First(&run).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return listingkit.ErrTaskNotFound
+				return core.ErrTaskNotFound
 			}
 			return err
 		}
@@ -81,7 +82,7 @@ func (r *taskRepository) UpdateSDSRetirementItems(ctx context.Context, runID str
 				return result.Error
 			}
 			if result.RowsAffected == 0 {
-				return listingkit.ErrTaskNotFound
+				return core.ErrTaskNotFound
 			}
 		}
 		return nil
@@ -102,11 +103,11 @@ func (r *taskRepository) SaveSDSRetirementExecution(ctx context.Context, run *li
 			return result.Error
 		}
 		if result.RowsAffected == 0 {
-			return listingkit.ErrTaskNotFound
+			return core.ErrTaskNotFound
 		}
 		for i := range items {
 			if items[i].RunID != run.ID || items[i].TenantID != "" && items[i].TenantID != run.TenantID {
-				return listingkit.ErrTaskNotFound
+				return core.ErrTaskNotFound
 			}
 			result := tx.Model(&listingkit.SDSRetirementItemRecord{}).
 				Where("run_id = ? AND tenant_id = ? AND id = ?", run.ID, run.TenantID, items[i].ID).
@@ -117,7 +118,7 @@ func (r *taskRepository) SaveSDSRetirementExecution(ctx context.Context, run *li
 				return result.Error
 			}
 			if result.RowsAffected == 0 {
-				return listingkit.ErrTaskNotFound
+				return core.ErrTaskNotFound
 			}
 		}
 		return nil

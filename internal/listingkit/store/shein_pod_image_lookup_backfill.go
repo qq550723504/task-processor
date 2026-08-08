@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 const defaultSheinPODImageLookupBackfillBatchSize = 200
@@ -37,7 +38,7 @@ type sheinPODImageLookupBackfillTaskRow struct {
 	UserID                       string
 	Request                      sql.NullString
 	SheinStoreResolutionSnapshot sql.NullString
-	Status                       listingkit.TaskStatus
+	Status                       core.TaskStatus
 	Result                       sql.NullString
 	CreatedAt                    time.Time
 	UpdatedAt                    time.Time

@@ -10,6 +10,7 @@ import (
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/listingkit/core"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinattribute "task-processor/internal/shein/api/attribute"
@@ -178,9 +179,9 @@ func (r *stubApplyRevisionRepo) MarkFailed(ctx context.Context, taskID string, e
 }
 func (r *stubApplyRevisionRepo) MarkBlockedRetryable(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
 	if r.task == nil || r.task.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	r.task.Status = TaskStatusBlockedRetryable
+	r.task.Status = core.TaskStatusBlockedRetryable
 	r.task.RetryableBlock = block
 	r.task.Error = errorMsg
 	r.task.UpdatedAt = time.Now()
@@ -191,9 +192,9 @@ func (r *stubApplyRevisionRepo) ListRecoverableTasks(context.Context, *Recoverab
 }
 func (r *stubApplyRevisionRepo) RecoverBlockedTaskNow(ctx context.Context, taskID string, recoveredAt time.Time) error {
 	if r.task == nil || r.task.ID != taskID {
-		return ErrTaskNotFound
+		return core.ErrTaskNotFound
 	}
-	r.task.Status = TaskStatusPending
+	r.task.Status = core.TaskStatusPending
 	r.task.RetryableBlock = nil
 	r.task.Error = ""
 	r.task.UpdatedAt = recoveredAt
@@ -221,7 +222,7 @@ func TestApplyTaskRevisionReturnsAppliedChanges(t *testing.T) {
 	repo := &stubApplyRevisionRepo{}
 	task := &Task{
 		ID:     "task-apply-1",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-1",
 			AssetBundle: &asset.Bundle{
@@ -334,9 +335,9 @@ func TestApplyTaskRevisionClearsStaleNeedsReviewStateWhenSheinBecomesReady(t *te
 
 	repo := &stubApplyRevisionRepo{}
 	task := makeReadySheinTask()
-	task.Status = TaskStatusNeedsReview
+	task.Status = core.TaskStatusNeedsReview
 	task.Error = "SHEIN 销售属性尚未完成真实 sale attribute 映射，当前仍需要人工确认变体规格"
-	task.Result.Status = string(TaskStatusNeedsReview)
+	task.Result.Status = string(core.TaskStatusNeedsReview)
 	task.Result.ReviewReasons = []string{task.Error}
 	task.Result.Summary = &GenerationSummary{}
 	task.Result.Summary.NeedsReview = true
@@ -354,14 +355,14 @@ func TestApplyTaskRevisionClearsStaleNeedsReviewStateWhenSheinBecomesReady(t *te
 		t.Fatalf("apply task revision: %v", err)
 	}
 
-	if repo.task.Status != TaskStatusCompleted {
-		t.Fatalf("task status = %q, want %q", repo.task.Status, TaskStatusCompleted)
+	if repo.task.Status != core.TaskStatusCompleted {
+		t.Fatalf("task status = %q, want %q", repo.task.Status, core.TaskStatusCompleted)
 	}
 	if repo.task.Error != "" {
 		t.Fatalf("task error = %q, want empty", repo.task.Error)
 	}
-	if repo.task.Result.Status != string(TaskStatusCompleted) {
-		t.Fatalf("result status = %q, want %q", repo.task.Result.Status, TaskStatusCompleted)
+	if repo.task.Result.Status != string(core.TaskStatusCompleted) {
+		t.Fatalf("result status = %q, want %q", repo.task.Result.Status, core.TaskStatusCompleted)
 	}
 	if len(repo.task.Result.ReviewReasons) != 0 {
 		t.Fatalf("review reasons = %#v, want none", repo.task.Result.ReviewReasons)
@@ -386,7 +387,7 @@ func TestApplyTaskRevisionTrimsRevisionHistory(t *testing.T) {
 	}
 	task := &Task{
 		ID:     "task-apply-2",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID:               "task-apply-2",
 			RevisionHistoryTotal: maxRevisionHistoryRecords,
@@ -446,7 +447,7 @@ func TestApplyTaskRevisionRefreshesSheinDerivedStateAfterCategoryChange(t *testi
 			SheinStoreID: 869,
 			Text:         "420ml stainless steel tumbler",
 		},
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-shein-category-refresh",
 			CanonicalProduct: &canonical.Product{
@@ -565,7 +566,7 @@ func TestApplyTaskRevisionKeepsManualCategoryReviewConfirmationAfterRefresh(t *t
 			SheinStoreID: 869,
 			Text:         "pet bandana",
 		},
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-shein-category-confirm",
 			CanonicalProduct: &canonical.Product{
@@ -667,7 +668,7 @@ func TestApplyTaskRevisionDowngradesSaleAttributesWhenCategoryRefreshLacksValueI
 			SheinStoreID: 869,
 			Text:         "metal wall sign",
 		},
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-shein-category-rerun-sale-attributes",
 			CanonicalProduct: &canonical.Product{
@@ -764,7 +765,7 @@ func TestApplyTaskRevisionDowngradesManualResolvedSaleAttributesWithoutValueIDs(
 			SheinStoreID: 869,
 			Text:         "metal wall sign",
 		},
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-shein-sale-confirm-without-value-ids",
 			CanonicalProduct: &canonical.Product{
@@ -851,7 +852,7 @@ func TestApplyTaskRevisionRefreshUsesTaskIdentityForSheinRuntime(t *testing.T) {
 			SheinStoreID: 870,
 			Text:         "insulated cooler bag",
 		},
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-shein-runtime-context",
 			CanonicalProduct: &canonical.Product{
@@ -935,7 +936,7 @@ func TestApplyTaskRevisionClearsStaleSheinCookieBlockersAfterOnlineRefresh(t *te
 			SheinStoreID: 870,
 			Text:         "insulated cooler bag",
 		},
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-shein-cookie-stale",
 			CanonicalProduct: &canonical.Product{
@@ -1062,7 +1063,7 @@ func TestApplyTaskRevisionDecoratesPreviewWithLiveSheinCookieBlocker(t *testing.
 			SheinStoreID: 870,
 			Text:         "insulated cooler bag",
 		},
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-shein-cookie-live-blocker",
 			CanonicalProduct: &canonical.Product{
@@ -1174,7 +1175,7 @@ func TestApplyTaskRevisionRegeneratesSheinSaleAttributesWithoutCategoryConfirmat
 			SheinStoreID: 869,
 			Text:         "metal wall sign",
 		},
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-shein-regenerate-sale-attributes",
 			CanonicalProduct: &canonical.Product{
@@ -1256,7 +1257,7 @@ func TestApplyTaskRevisionRegeneratesSheinAttributesWithoutTouchingSaleAttribute
 			SheinStoreID: 869,
 			Text:         "metal wall sign",
 		},
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-shein-regenerate-attributes",
 			CanonicalProduct: &canonical.Product{
@@ -1495,7 +1496,7 @@ func TestApplyTaskRevisionSupportsRestoreFromRevisionID(t *testing.T) {
 	restoreName := "Restored Bottle"
 	task := &Task{
 		ID:     "task-apply-restore",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-restore",
 			AssetBundle: &asset.Bundle{
@@ -1656,7 +1657,7 @@ func TestApplyTaskRevisionReturnsNotFoundForMissingRestoreRevision(t *testing.T)
 	repo := &stubApplyRevisionRepo{}
 	task := &Task{
 		ID:     "task-apply-restore-missing",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-restore-missing",
 			Shein: &SheinPackage{
@@ -1687,7 +1688,7 @@ func TestApplyTaskRevisionPersistsAtomically(t *testing.T) {
 	repo := &stubApplyRevisionRepo{failOnSaveCall: 2}
 	task := &Task{
 		ID:     "task-apply-atomic",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Result: &ListingKitResult{
 			TaskID: "task-apply-atomic",
 			Shein: &SheinPackage{

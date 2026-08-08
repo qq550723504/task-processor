@@ -7,6 +7,7 @@ import (
 
 	"task-processor/internal/catalog"
 	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productimage"
 	sdsadapter "task-processor/internal/sds/adapter"
 	sdsdesign "task-processor/internal/sds/design"
@@ -17,7 +18,7 @@ func TestRetryTaskChildTaskRejectsEmptyKind(t *testing.T) {
 	t.Parallel()
 
 	svc := &service{repo: NewInMemoryRepositoryForTest()}
-	if _, err := svc.RetryTaskChildTask(context.Background(), "task-1", &RetryChildTaskRequest{}); !errors.Is(err, ErrChildTaskRetryInvalidRequest) {
+	if _, err := svc.RetryTaskChildTask(context.Background(), "task-1", &RetryChildTaskRequest{}); !errors.Is(err, core.ErrChildTaskRetryInvalidRequest) {
 		t.Fatalf("RetryTaskChildTask() error = %v, want ErrChildTaskRetryInvalidRequest", err)
 	}
 }
@@ -28,16 +29,16 @@ func TestRetryTaskChildTaskRejectsProcessingTask(t *testing.T) {
 	repo := NewInMemoryRepositoryForTest()
 	task := &Task{
 		ID:     "task-1",
-		Status: TaskStatusProcessing,
+		Status: core.TaskStatusProcessing,
 		Result: &ListingKitResult{
-			ChildTasks: []ChildTaskState{{Kind: "sds_design_sync", Status: string(TaskStatusFailed)}},
+			ChildTasks: []ChildTaskState{{Kind: "sds_design_sync", Status: string(core.TaskStatusFailed)}},
 		},
 	}
 	if err := repo.CreateTask(context.Background(), task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
 	svc := &service{repo: repo}
-	if _, err := svc.RetryTaskChildTask(context.Background(), task.ID, &RetryChildTaskRequest{Kind: "sds_design_sync"}); !errors.Is(err, ErrChildTaskRetryConflict) {
+	if _, err := svc.RetryTaskChildTask(context.Background(), task.ID, &RetryChildTaskRequest{Kind: "sds_design_sync"}); !errors.Is(err, core.ErrChildTaskRetryConflict) {
 		t.Fatalf("RetryTaskChildTask() error = %v, want ErrChildTaskRetryConflict", err)
 	}
 }
@@ -48,7 +49,7 @@ func TestRetryTaskChildTaskRetriesSDSDesignSync(t *testing.T) {
 	repo := NewInMemoryRepositoryForTest()
 	task := &Task{
 		ID:     "task-sds-design",
-		Status: TaskStatusCompleted,
+		Status: core.TaskStatusCompleted,
 		Request: &GenerateRequest{
 			ImageURLs: []string{"https://example.com/source.jpg"},
 			Text:      "floor mat",
@@ -71,7 +72,7 @@ func TestRetryTaskChildTaskRetriesSDSDesignSync(t *testing.T) {
 		},
 		Result: &ListingKitResult{
 			TaskID:    "task-sds-design",
-			Status:    string(TaskStatusCompleted),
+			Status:    string(core.TaskStatusCompleted),
 			Platforms: []string{"shein"},
 			CatalogProduct: &catalog.Product{
 				Title: "Floor Mat",
@@ -88,7 +89,7 @@ func TestRetryTaskChildTaskRetriesSDSDesignSync(t *testing.T) {
 				Status:    "failed",
 				Error:     "old failure",
 			},
-			ChildTasks:     []ChildTaskState{{Kind: "sds_design_sync", Status: string(TaskStatusFailed), Error: "old failure"}},
+			ChildTasks:     []ChildTaskState{{Kind: "sds_design_sync", Status: string(core.TaskStatusFailed), Error: "old failure"}},
 			WorkflowStages: []WorkflowStage{{Kind: "sds_design_sync", Status: WorkflowStageStatusFailed}},
 			WorkflowIssues: []WorkflowIssue{{Stage: "sds_design_sync", Severity: WorkflowIssueSeverityWarning, Message: "old failure"}},
 			Summary:        &GenerationSummary{Warnings: []string{"old failure", "keep me"}},
@@ -148,7 +149,7 @@ func TestRetryTaskChildTaskRetriesSDSDesignSync(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RetryTaskChildTask() error = %v", err)
 	}
-	if result.Status != TaskStatusCompleted && result.Status != TaskStatusNeedsReview {
+	if result.Status != core.TaskStatusCompleted && result.Status != core.TaskStatusNeedsReview {
 		t.Fatalf("task status = %q, want completed or needs_review", result.Status)
 	}
 	if result.Result == nil || result.Result.SDSSync == nil {
@@ -163,7 +164,7 @@ func TestRetryTaskChildTaskRetriesSDSDesignSync(t *testing.T) {
 	if len(result.Result.SDSSync.MockupImageURLs) != 1 || result.Result.SDSSync.MockupImageURLs[0] != "https://example.com/rendered.jpg" {
 		t.Fatalf("sds sync = %+v, want refreshed mockup urls", result.Result.SDSSync)
 	}
-	if !hasChildTaskStatus(result.Result.ChildTasks, "sds_design_sync", string(TaskStatusCompleted)) {
+	if !hasChildTaskStatus(result.Result.ChildTasks, "sds_design_sync", string(core.TaskStatusCompleted)) {
 		t.Fatalf("child tasks = %+v, want completed sds_design_sync", result.Result.ChildTasks)
 	}
 	var completedSDSStage bool
@@ -209,7 +210,7 @@ func TestRetryTaskChildTaskRetriesSDSCatalogProduct(t *testing.T) {
 	repo := NewInMemoryRepositoryForTest()
 	task := &Task{
 		ID:     "task-sds-catalog",
-		Status: TaskStatusNeedsReview,
+		Status: core.TaskStatusNeedsReview,
 		Request: &GenerateRequest{
 			ImageURLs: []string{"https://example.com/source.jpg"},
 			Text:      "fallback title",
@@ -227,9 +228,9 @@ func TestRetryTaskChildTaskRetriesSDSCatalogProduct(t *testing.T) {
 		},
 		Result: &ListingKitResult{
 			TaskID:         "task-sds-catalog",
-			Status:         string(TaskStatusNeedsReview),
+			Status:         string(core.TaskStatusNeedsReview),
 			Platforms:      []string{"shein"},
-			ChildTasks:     []ChildTaskState{{Kind: "sds_catalog_product", Status: string(TaskStatusFailed), Error: "catalog failed"}},
+			ChildTasks:     []ChildTaskState{{Kind: "sds_catalog_product", Status: string(core.TaskStatusFailed), Error: "catalog failed"}},
 			WorkflowStages: []WorkflowStage{{Kind: "sds_catalog_product", Status: WorkflowStageStatusFailed}},
 			WorkflowIssues: []WorkflowIssue{{Stage: "sds_catalog_product", Severity: WorkflowIssueSeverityBlocking, Message: "catalog failed"}},
 			Summary:        &GenerationSummary{Warnings: []string{"catalog failed"}, NeedsReview: true},
@@ -249,7 +250,7 @@ func TestRetryTaskChildTaskRetriesSDSCatalogProduct(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RetryTaskChildTask() error = %v", err)
 	}
-	if result.Status != TaskStatusCompleted && result.Status != TaskStatusNeedsReview {
+	if result.Status != core.TaskStatusCompleted && result.Status != core.TaskStatusNeedsReview {
 		t.Fatalf("task status = %q, want completed or needs_review", result.Status)
 	}
 	if result.Result == nil || result.Result.CanonicalProduct == nil {
@@ -258,7 +259,7 @@ func TestRetryTaskChildTaskRetriesSDSCatalogProduct(t *testing.T) {
 	if result.Result.CanonicalProduct.Title != "Retry Catalog Product" {
 		t.Fatalf("canonical product = %+v, want rebuilt SDS catalog title", result.Result.CanonicalProduct)
 	}
-	if !hasChildTaskStatus(result.Result.ChildTasks, "sds_catalog_product", string(TaskStatusCompleted)) {
+	if !hasChildTaskStatus(result.Result.ChildTasks, "sds_catalog_product", string(core.TaskStatusCompleted)) {
 		t.Fatalf("child tasks = %+v, want completed sds_catalog_product", result.Result.ChildTasks)
 	}
 	var completedCatalogStage bool

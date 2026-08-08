@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/listingkit/core"
 )
 
 func TestTaskGenerationServiceGetTaskGenerationTasksAppliesFilters(t *testing.T) {
@@ -17,7 +18,7 @@ func TestTaskGenerationServiceGetTaskGenerationTasksAppliesFilters(t *testing.T)
 	repo := &stubGenerationRepo{}
 	task := &Task{
 		ID:        "task-generation-service-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Result:    &ListingKitResult{TaskID: "task-generation-service-1"},
@@ -133,7 +134,7 @@ func TestTaskGenerationTasksReadSnapshotRunPropagatesLoadErrors(t *testing.T) {
 			name:    "repo get task",
 			service: &taskGenerationService{repo: &stubGenerationRepo{}},
 			taskID:  "task-generation-tasks-snapshot-missing-1",
-			wantErr: ErrTaskNotFound,
+			wantErr: core.ErrTaskNotFound,
 		},
 		{
 			name: "list asset generation tasks",
@@ -329,7 +330,7 @@ func TestTaskGenerationCurrentStateSnapshotPropagatesLoadErrors(t *testing.T) {
 			name:    "repo get task",
 			service: &taskGenerationService{repo: &stubGenerationRepo{}},
 			taskID:  "task-generation-current-state-missing-1",
-			wantErr: ErrTaskNotFound,
+			wantErr: core.ErrTaskNotFound,
 		},
 		{
 			name: "list asset generation tasks",
@@ -550,7 +551,7 @@ func TestTaskGenerationServiceRetryTaskGenerationTasksReturnsEmptyPageWithoutSel
 	assetRepository := assetrepo.NewMemRepository()
 	task := &Task{
 		ID:        "task-generation-retry-service-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},

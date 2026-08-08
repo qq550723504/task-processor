@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrepo "task-processor/internal/asset/repository"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
@@ -1648,7 +1649,7 @@ func TestRunStandardProductWorkflowRunsRemoteSDSSyncWhenImageProcessingIsDisable
 	if state.result.CanonicalProduct == nil || len(state.result.CanonicalProduct.Images) != 1 || state.result.CanonicalProduct.Images[0].URL != "https://cdn.sdspod.com/out/remote-main.jpg" {
 		t.Fatalf("canonical product = %+v, want remote rendered image applied", state.result.CanonicalProduct)
 	}
-	if !hasChildTaskStatus(state.result.ChildTasks, "sds_design_sync", string(TaskStatusCompleted)) {
+	if !hasChildTaskStatus(state.result.ChildTasks, "sds_design_sync", string(core.TaskStatusCompleted)) {
 		t.Fatalf("child tasks = %+v, want completed sds_design_sync", state.result.ChildTasks)
 	}
 }
@@ -2317,7 +2318,7 @@ func TestRunWorkflowSyncsSDSDesignWhenConfigured(t *testing.T) {
 	if result.SDSSync.MaterialID != 396548287 {
 		t.Fatalf("sds sync = %+v, want material id", result.SDSSync)
 	}
-	if !hasChildTaskStatus(result.ChildTasks, "sds_design_sync", string(TaskStatusCompleted)) {
+	if !hasChildTaskStatus(result.ChildTasks, "sds_design_sync", string(core.TaskStatusCompleted)) {
 		t.Fatalf("child tasks = %+v, want completed sds_design_sync", result.ChildTasks)
 	}
 	if sdsSvc.lastInput.Sync.VariantID != 89764 {
@@ -2472,7 +2473,7 @@ func TestSyncSDSDesignFromRemoteUsesLocalFileForUploadedImagePath(t *testing.T) 
 	if result.SDSSync == nil || result.SDSSync.Status != "completed" {
 		t.Fatalf("sds sync = %+v, want completed local-file SDS sync", result.SDSSync)
 	}
-	if !hasChildTaskStatus(result.ChildTasks, "sds_design_sync", string(TaskStatusCompleted)) {
+	if !hasChildTaskStatus(result.ChildTasks, "sds_design_sync", string(core.TaskStatusCompleted)) {
 		t.Fatalf("child tasks = %+v, want completed sds_design_sync", result.ChildTasks)
 	}
 }
@@ -2688,7 +2689,7 @@ func TestRunWorkflowKeepsMainFlowWhenSDSSyncFails(t *testing.T) {
 	if len(result.Summary.Warnings) == 0 {
 		t.Fatalf("warnings = %+v, want sds warning", result.Summary)
 	}
-	if !hasChildTaskStatus(result.ChildTasks, "sds_design_sync", string(TaskStatusFailed)) {
+	if !hasChildTaskStatus(result.ChildTasks, "sds_design_sync", string(core.TaskStatusFailed)) {
 		t.Fatalf("child tasks = %+v, want failed sds_design_sync", result.ChildTasks)
 	}
 	if result.ImageAssets == nil {

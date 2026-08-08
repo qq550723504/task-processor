@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 func (h *handler) GetTaskSDSRepair(c *gin.Context) {
@@ -44,7 +45,7 @@ func (h *handler) RepairAndRetryTaskSDS(c *gin.Context) {
 func writeSDSRepairError(c *gin.Context, err error) {
 	status, code := http.StatusInternalServerError, "sds_repair_failed"
 	switch {
-	case errors.Is(err, listingkit.ErrTaskNotFound):
+	case errors.Is(err, core.ErrTaskNotFound):
 		status, code = http.StatusNotFound, "task_not_found"
 	case errors.Is(err, listingkit.ErrSDSRepairInvalidRequest):
 		status, code = http.StatusBadRequest, "invalid_request"

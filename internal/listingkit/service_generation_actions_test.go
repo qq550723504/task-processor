@@ -16,6 +16,7 @@ import (
 	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/catalog"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingkit/reviewstore"
 	common "task-processor/internal/publishing/common"
 )
@@ -104,7 +105,7 @@ func newTaskGenerationActionEntryReviewFixture(t *testing.T, taskID string) (*Ta
 	repo := &stubGenerationRepo{}
 	task := &Task{
 		ID:        taskID,
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -493,7 +494,7 @@ func TestExecuteTaskGenerationActionStartsStandardProductTemporalWorkflow(t *tes
 
 	task := &Task{
 		ID:        "task-generation-action-standard-temporal-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -550,7 +551,7 @@ func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflow(t *testi
 
 	task := &Task{
 		ID:        "task-generation-action-platform-temporal-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -610,7 +611,7 @@ func TestExecuteTaskGenerationActionStartsPlatformAdaptTemporalWorkflowUsesParse
 
 	task := &Task{
 		ID:        "task-generation-action-platform-temporal-navigation-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -1110,7 +1111,7 @@ func TestExecuteTaskGenerationActionRunsRetryableTarget(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-action-retry-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -1206,7 +1207,7 @@ func TestExecuteTaskGenerationActionRunsQueueOnlyTarget(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-action-queue-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"amazon"}},
@@ -1328,7 +1329,7 @@ func TestExecuteTaskGenerationActionSupportsPatchOnlyResponseMode(t *testing.T) 
 
 	task := &Task{
 		ID:        "task-generation-action-patch-only-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -1405,7 +1406,7 @@ func TestGetTaskGenerationReviewSessionReturnsNotModifiedWhenDeltaMatches(t *tes
 
 	task := &Task{
 		ID:        "task-generation-review-session-delta-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -1473,7 +1474,7 @@ func TestGetTaskGenerationReviewPreviewReturnsNotModifiedWhenDeltaMatches(t *tes
 
 	task := &Task{
 		ID:        "task-generation-review-preview-delta-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -1541,7 +1542,7 @@ func TestGetTaskGenerationReviewSessionSupportsPatchOnlyNavigationRead(t *testin
 
 	task := &Task{
 		ID:        "task-generation-review-session-patch-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -1621,7 +1622,7 @@ func TestExecuteTaskGenerationActionBuildsRetryReviewSessionFromExecutedQueue(t 
 
 	task := &Task{
 		ID:        "task-generation-action-retry-review-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -1800,7 +1801,7 @@ func TestExecuteTaskGenerationActionAppliesSectionReviewOutcome(t *testing.T) {
 
 	task := &Task{
 		ID:        "task-generation-action-section-review-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},
@@ -2081,7 +2082,7 @@ func TestResolveAssetGenerationActionTargetKeepsCurrentErrorSurfaceForInvalidOrM
 			t.Parallel()
 
 			target, source, err := resolveAssetGenerationActionTarget(nil, tt.req)
-			if !errors.Is(err, ErrGenerationActionNotFound) {
+			if !errors.Is(err, core.ErrGenerationActionNotFound) {
 				t.Fatalf("error = %v, want ErrGenerationActionNotFound", err)
 			}
 			if err == nil || err.Error() != tt.wantErr {
@@ -2332,7 +2333,7 @@ func TestGetTaskGenerationReviewPreviewReportsRevisionMismatch(t *testing.T) {
 	svc := &service{repo: repo}
 	task := &Task{
 		ID:        "task-generation-preview-mismatch-1",
-		Status:    TaskStatusCompleted,
+		Status:    core.TaskStatusCompleted,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 		Request:   &GenerateRequest{Platforms: []string{"shein"}},

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"task-processor/internal/listingkit/core"
 	sdsdesign "task-processor/internal/sds/design"
 )
 
@@ -15,7 +16,7 @@ func TestGetTaskSDSRepairReturnsCurrentLayersForFailedVariant(t *testing.T) {
 	if err := repo.CreateTask(context.Background(), &Task{
 		ID:       "task-sds-repair-1",
 		TenantID: "tenant-1",
-		Status:   TaskStatusNeedsReview,
+		Status:   core.TaskStatusNeedsReview,
 		Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
 			VariantID:        101,
 			ParentProductID:  200,
@@ -32,7 +33,7 @@ func TestGetTaskSDSRepairReturnsCurrentLayersForFailedVariant(t *testing.T) {
 		}}},
 		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
 			Kind:   "sds_design_sync",
-			Status: string(TaskStatusFailed),
+			Status: string(core.TaskStatusFailed),
 		}}},
 	}); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
@@ -75,14 +76,14 @@ func TestRepairAndRetryTaskSDSRejectsLayerMissingFromCurrentVariantPage(t *testi
 	if err := repo.CreateTask(context.Background(), &Task{
 		ID:       "task-sds-repair-invalid-layer",
 		TenantID: "tenant-1",
-		Status:   TaskStatusNeedsReview,
+		Status:   core.TaskStatusNeedsReview,
 		Request: &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{
 			VariantID: 101, ParentProductID: 200, PrototypeGroupID: 300, LayerID: "10033204",
 			Variants: []SDSSyncVariantOption{{
 				VariantID: 101, VariantSKU: "white-s", Color: "white", PrototypeGroupID: 300, LayerID: "10033204",
 			}},
 		}}},
-		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: "sds_design_sync", Status: string(TaskStatusFailed)}}},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: "sds_design_sync", Status: string(core.TaskStatusFailed)}}},
 	}); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -114,7 +115,7 @@ func TestRepairAndRetryTaskSDSReplacesPersistedVariantLayerBeforeRetry(t *testin
 	if err := repo.CreateTask(context.Background(), &Task{
 		ID:       "task-sds-repair-success",
 		TenantID: "tenant-1",
-		Status:   TaskStatusNeedsReview,
+		Status:   core.TaskStatusNeedsReview,
 		Request: &GenerateRequest{
 			ImageURLs: []string{"https://example.com/source.png"},
 			Options: &GenerateOptions{SDS: &SDSSyncOptions{
@@ -124,7 +125,7 @@ func TestRepairAndRetryTaskSDSReplacesPersistedVariantLayerBeforeRetry(t *testin
 				}},
 			}},
 		},
-		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: "sds_design_sync", Status: string(TaskStatusFailed)}}},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: "sds_design_sync", Status: string(core.TaskStatusFailed)}}},
 	}); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}

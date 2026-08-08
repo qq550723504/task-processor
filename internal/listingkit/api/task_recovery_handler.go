@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 func (h *handler) RecoverTaskNow(c *gin.Context) {
@@ -47,11 +48,11 @@ func (h *handler) BulkRecoverTasks(c *gin.Context) {
 
 func taskRecoveryErrorStatus(err error) int {
 	switch {
-	case errors.Is(err, listingkit.ErrTaskNotFound):
+	case errors.Is(err, core.ErrTaskNotFound):
 		return http.StatusNotFound
-	case errors.Is(err, listingkit.ErrTaskNotRecoverable):
+	case errors.Is(err, core.ErrTaskNotRecoverable):
 		return http.StatusConflict
-	case errors.Is(err, listingkit.ErrTaskRecoveryUnavailable):
+	case errors.Is(err, core.ErrTaskRecoveryUnavailable):
 		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError

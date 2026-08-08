@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/core"
 )
 
 func (h *handler) ValidateTaskRevision(c *gin.Context) {
@@ -18,7 +19,7 @@ func (h *handler) ValidateTaskRevision(c *gin.Context) {
 	result, err := h.taskLifecycleService.ValidateTaskRevision(requestContext(c), c.Param("task_id"), &req)
 	if err != nil {
 		status := http.StatusInternalServerError
-		if err == listingkit.ErrTaskNotFound || err == listingkit.ErrTaskResultUnavailable || err == listingkit.ErrRevisionHistoryRecordNotFound {
+		if err == core.ErrTaskNotFound || err == listingkit.ErrTaskResultUnavailable || err == listingkit.ErrRevisionHistoryRecordNotFound {
 			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": "revision_validate_failed", "message": err.Error()})
