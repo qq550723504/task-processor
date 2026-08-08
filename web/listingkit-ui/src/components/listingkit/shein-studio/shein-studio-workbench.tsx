@@ -1200,6 +1200,7 @@ export function SheinStudioWorkbench({
         transparentBackgroundMode,
         variationIntensity,
       });
+      itemizedBatchDetailRef.current = nextDetail;
       workbenchController.setField("savedBatches", (current) =>
         upsertRecentSavedBatch(current, savedBatch),
       );
