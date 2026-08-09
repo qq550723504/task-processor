@@ -60,6 +60,7 @@ func (p *zitadelProvider) Invite(ctx context.Context, request InviteRequest) (In
 		TenantID:        request.TenantID,
 		UserID:          userID,
 		Email:           request.Email,
+		Phone:           request.Phone,
 		Role:            request.Role,
 		AuthorizationID: authorizationID,
 	}, nil
@@ -67,6 +68,7 @@ func (p *zitadelProvider) Invite(ctx context.Context, request InviteRequest) (In
 
 func (p *zitadelProvider) createHumanUser(ctx context.Context, request InviteRequest) (string, error) {
 	body := struct {
+		Username     string `json:"username,omitempty"`
 		Organization struct {
 			OrganizationID string `json:"orgId"`
 		} `json:"organization"`
@@ -78,11 +80,22 @@ func (p *zitadelProvider) createHumanUser(ctx context.Context, request InviteReq
 			Email    string   `json:"email"`
 			SendCode struct{} `json:"sendCode"`
 		} `json:"email"`
+		Phone *struct {
+			Phone    string   `json:"phone"`
+			SendCode struct{} `json:"sendCode"`
+		} `json:"phone,omitempty"`
 	}{}
+	body.Username = request.Username
 	body.Organization.OrganizationID = request.TenantID
 	body.Profile.GivenName = request.GivenName
 	body.Profile.FamilyName = request.FamilyName
 	body.Email.Email = request.Email
+	if request.Phone != "" {
+		body.Phone = &struct {
+			Phone    string   `json:"phone"`
+			SendCode struct{} `json:"sendCode"`
+		}{Phone: request.Phone}
+	}
 
 	var response struct {
 		UserID string `json:"userId"`

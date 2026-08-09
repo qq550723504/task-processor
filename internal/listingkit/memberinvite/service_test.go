@@ -74,6 +74,64 @@ func TestServiceInviteNormalizesRequestBeforePassingItToProvider(t *testing.T) {
 	}
 }
 
+func TestInviteAcceptsEmailWithVerifiedPhoneDeliveryRequest(t *testing.T) {
+	var received InviteRequest
+	provider := providerStub{
+		invitation: Invitation{UserID: "user-1", AuthorizationID: "authorization-1"},
+		onInvite:   func(request InviteRequest) { received = request },
+	}
+	request := validInviteRequest()
+	request.Phone = "+8613712345678"
+	request.Username = "jane-phone"
+
+	if _, err := NewService(provider).Invite(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	if got := received.Phone; got != "+8613712345678" {
+		t.Fatalf("provider phone = %q", got)
+	}
+	if got := received.Username; got != "jane-phone" {
+		t.Fatalf("provider username = %q", got)
+	}
+}
+
+func TestInviteRejectsPhoneWithoutRequiredEmail(t *testing.T) {
+	request := validInviteRequest()
+	request.Email = ""
+	request.Phone = "+8613712345678"
+	request.Username = "jane-phone"
+
+	_, err := NewService(providerStub{}).Invite(context.Background(), request)
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestInviteRejectsMalformedPhone(t *testing.T) {
+	request := validInviteRequest()
+	request.Phone = "13712345678"
+	request.Username = "jane-phone"
+
+	_, err := NewService(providerStub{}).Invite(context.Background(), request)
+	if !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestInviteRejectsUnpairedPhoneFields(t *testing.T) {
+	for name, request := range map[string]InviteRequest{
+		"phone without username": {TenantID: "org-1", GivenName: "Jane", FamilyName: "Doe", Email: "jane@example.com", Phone: "+8613712345678", Role: "listingkit_viewer"},
+		"username without phone": {TenantID: "org-1", GivenName: "Jane", FamilyName: "Doe", Email: "jane@example.com", Username: "jane-phone", Role: "listingkit_viewer"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := NewService(providerStub{}).Invite(context.Background(), request)
+			if !errors.Is(err, ErrInvalidRequest) {
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+}
+
 type providerStub struct {
 	invitation Invitation
 	err        error

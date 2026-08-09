@@ -244,6 +244,31 @@ func TestInviteTenantMemberReturnsCreatedInvitationAndRecordsActor(t *testing.T)
 	}
 }
 
+func TestInviteTenantMemberPassesPairedPhoneAndUsernameToProvider(t *testing.T) {
+	audit := &invitationAuditStub{}
+	var received memberinvite.InviteRequest
+	provider := invitationProviderStub{
+		invitation: memberinvite.Invitation{UserID: "user-1", AuthorizationID: "authorization-1"},
+		onInviteRequest: func(request memberinvite.InviteRequest) {
+			received = request
+		},
+	}
+	request := invitationRequest("org-1", "platform_admin", "admin-1")
+	request.Body = io.NopCloser(bytes.NewBufferString(`{"given_name":"Jane","family_name":"Doe","email":"jane@example.com","phone":"+8613712345678","username":"jane-phone","role":"listingkit_viewer"}`))
+	response := httptest.NewRecorder()
+
+	invitationRouter(t, provider, audit).ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status = %d; body=%s", response.Code, response.Body.String())
+	}
+	if got := received.Phone; got != "+8613712345678" {
+		t.Fatalf("provider phone = %q", got)
+	}
+	if got := received.Username; got != "jane-phone" {
+		t.Fatalf("provider username = %q", got)
+	}
+}
+
 func TestInviteTenantMemberMapsProviderConflictTo409(t *testing.T) {
 	audit := &invitationAuditStub{}
 	response := invokeInvitation(t, invitationProviderStub{err: memberinvite.ErrConflict}, audit)
@@ -352,14 +377,18 @@ func TestInviteTenantMemberMapsInvalidAndProviderFailures(t *testing.T) {
 }
 
 type invitationProviderStub struct {
-	invitation memberinvite.Invitation
-	err        error
-	onInvite   func()
+	invitation      memberinvite.Invitation
+	err             error
+	onInvite        func()
+	onInviteRequest func(memberinvite.InviteRequest)
 }
 
-func (p invitationProviderStub) Invite(_ context.Context, _ memberinvite.InviteRequest) (memberinvite.Invitation, error) {
+func (p invitationProviderStub) Invite(_ context.Context, request memberinvite.InviteRequest) (memberinvite.Invitation, error) {
 	if p.onInvite != nil {
 		p.onInvite()
+	}
+	if p.onInviteRequest != nil {
+		p.onInviteRequest(request)
 	}
 	return p.invitation, p.err
 }

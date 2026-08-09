@@ -14,6 +14,8 @@ type inviteTenantMemberRequest struct {
 	GivenName  string `json:"given_name"`
 	FamilyName string `json:"family_name"`
 	Email      string `json:"email"`
+	Phone      string `json:"phone"`
+	Username   string `json:"username"`
 	Role       string `json:"role"`
 }
 
@@ -38,6 +40,8 @@ func (h *handler) InviteTenantMember(c *gin.Context) {
 		GivenName:  strings.TrimSpace(body.GivenName),
 		FamilyName: strings.TrimSpace(body.FamilyName),
 		Email:      strings.TrimSpace(body.Email),
+		Phone:      strings.TrimSpace(body.Phone),
+		Username:   strings.TrimSpace(body.Username),
 		Role:       strings.TrimSpace(body.Role),
 	}
 	if h.memberInvitationService == nil {
@@ -136,6 +140,7 @@ func (h *handler) recordMemberInvitationOutcome(c *gin.Context, request memberin
 		ActorUserID:     strings.TrimSpace(c.GetHeader("X-User-ID")),
 		TenantID:        request.TenantID,
 		Email:           request.Email,
+		Phone:           request.Phone,
 		Role:            request.Role,
 		UserID:          invitation.UserID,
 		AuthorizationID: invitation.AuthorizationID,
