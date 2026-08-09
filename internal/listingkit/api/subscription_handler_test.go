@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/tenantdirectory"
 	"task-processor/internal/listingsubscription"
@@ -42,7 +43,7 @@ func TestPlatformSubscriptionCanOpenModuleForTenant(t *testing.T) {
 	}
 	putReq := httptest.NewRequest(http.MethodPut, "/platform/subscriptions/org-target/entitlements/studio", bytes.NewReader(body))
 	putReq.Header.Set("Content-Type", "application/json")
-	putReq.Header.Set("X-User-Roles", "platform_admin")
+	putReq = withAuthenticatedIdentity(putReq, "admin-tenant", "admin-1", "platform_admin")
 	putResp := httptest.NewRecorder()
 	router.ServeHTTP(putResp, putReq)
 
@@ -51,7 +52,7 @@ func TestPlatformSubscriptionCanOpenModuleForTenant(t *testing.T) {
 	}
 
 	getReq := httptest.NewRequest(http.MethodGet, "/platform/subscriptions/org-target", nil)
-	getReq.Header.Set("X-User-Roles", "platform_admin")
+	getReq = withAuthenticatedIdentity(getReq, "admin-tenant", "admin-1", "platform_admin")
 	getResp := httptest.NewRecorder()
 	router.ServeHTTP(getResp, getReq)
 
@@ -77,7 +78,7 @@ func TestPlatformSubscriptionCanOpenModuleForTenant(t *testing.T) {
 	}
 
 	listReq := httptest.NewRequest(http.MethodGet, "/platform/subscriptions", nil)
-	listReq.Header.Set("X-User-Roles", "platform_admin")
+	listReq = withAuthenticatedIdentity(listReq, "admin-tenant", "admin-1", "platform_admin")
 	listResp := httptest.NewRecorder()
 	router.ServeHTTP(listResp, listReq)
 	if listResp.Code != http.StatusOK {
@@ -119,7 +120,7 @@ func TestPlatformSubscriptionListReturnsResolvedTenantDisplayName(t *testing.T) 
 	}
 	putReq := httptest.NewRequest(http.MethodPut, "/platform/subscriptions/org-target/entitlements/studio", bytes.NewReader(body))
 	putReq.Header.Set("Content-Type", "application/json")
-	putReq.Header.Set("X-User-Roles", "platform_admin")
+	putReq = withAuthenticatedIdentity(putReq, "admin-tenant", "admin-1", "platform_admin")
 	putResp := httptest.NewRecorder()
 	fullRouter := gin.New()
 	fullRouter.GET("/platform/subscriptions", h.ListPlatformTenantSubscriptions)
@@ -130,7 +131,7 @@ func TestPlatformSubscriptionListReturnsResolvedTenantDisplayName(t *testing.T) 
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/platform/subscriptions", nil)
-	req.Header.Set("X-User-Roles", "platform_admin")
+	req = withAuthenticatedIdentity(req, "admin-tenant", "admin-1", "platform_admin")
 	resp := httptest.NewRecorder()
 	fullRouter.ServeHTTP(resp, req)
 	if resp.Code != http.StatusOK {
@@ -171,7 +172,7 @@ func TestPlatformTenantDirectoryRequiresPlatformRole(t *testing.T) {
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/platform/tenant-directory", nil)
-	req.Header.Set("X-User-Roles", "platform_admin")
+	req = withAuthenticatedIdentity(req, "admin-tenant", "admin-1", "platform_admin")
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 	if resp.Code != http.StatusOK {
@@ -412,7 +413,15 @@ func invitationRequest(tenantID, role, actorID string) *http.Request {
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("X-User-Roles", role)
 	request.Header.Set("X-User-ID", actorID)
-	return request
+	return withAuthenticatedIdentity(request, "admin-tenant", actorID, role)
+}
+
+func withAuthenticatedIdentity(request *http.Request, tenantID, userID string, roles ...string) *http.Request {
+	return request.WithContext(listingkit.WithAuthenticatedIdentity(request.Context(), listingkit.AuthenticatedIdentity{
+		TenantID: tenantID,
+		UserID:   userID,
+		Roles:    roles,
+	}))
 }
 
 func invokeInvitation(t *testing.T, provider memberinvite.Provider, audit memberinvite.AuditRepository) *httptest.ResponseRecorder {
@@ -453,7 +462,7 @@ func TestPlatformSubscriptionCanApplyPlanForTenant(t *testing.T) {
 	router := platformSubscriptionTestRouter(t)
 
 	listReq := httptest.NewRequest(http.MethodGet, "/platform/subscription-plans", nil)
-	listReq.Header.Set("X-User-Roles", "platform_admin")
+	listReq = withAuthenticatedIdentity(listReq, "admin-tenant", "admin-1", "platform_admin")
 	listResp := httptest.NewRecorder()
 	router.ServeHTTP(listResp, listReq)
 	if listResp.Code != http.StatusOK {
@@ -478,7 +487,7 @@ func TestPlatformSubscriptionCanApplyPlanForTenant(t *testing.T) {
 	}
 	applyReq := httptest.NewRequest(http.MethodPut, "/platform/subscriptions/org-target/plan", bytes.NewReader(body))
 	applyReq.Header.Set("Content-Type", "application/json")
-	applyReq.Header.Set("X-User-Roles", "platform_admin")
+	applyReq = withAuthenticatedIdentity(applyReq, "admin-tenant", "admin-1", "platform_admin")
 	applyResp := httptest.NewRecorder()
 	router.ServeHTTP(applyResp, applyReq)
 	if applyResp.Code != http.StatusOK {
@@ -486,7 +495,7 @@ func TestPlatformSubscriptionCanApplyPlanForTenant(t *testing.T) {
 	}
 
 	getReq := httptest.NewRequest(http.MethodGet, "/platform/subscriptions/org-target", nil)
-	getReq.Header.Set("X-User-Roles", "platform_admin")
+	getReq = withAuthenticatedIdentity(getReq, "admin-tenant", "admin-1", "platform_admin")
 	getResp := httptest.NewRecorder()
 	router.ServeHTTP(getResp, getReq)
 	if getResp.Code != http.StatusOK {
@@ -522,7 +531,7 @@ func TestPlatformSubscriptionCanManagePlans(t *testing.T) {
 	}
 	createReq := httptest.NewRequest(http.MethodPost, "/platform/subscription-plans", bytes.NewReader(createBody))
 	createReq.Header.Set("Content-Type", "application/json")
-	createReq.Header.Set("X-User-Roles", "platform_admin")
+	createReq = withAuthenticatedIdentity(createReq, "admin-tenant", "admin-1", "platform_admin")
 	createResp := httptest.NewRecorder()
 	router.ServeHTTP(createResp, createReq)
 	if createResp.Code != http.StatusOK {
@@ -538,7 +547,7 @@ func TestPlatformSubscriptionCanManagePlans(t *testing.T) {
 	}
 	moduleReq := httptest.NewRequest(http.MethodPut, "/platform/subscription-plans/growth/modules/oss_storage", bytes.NewReader(moduleBody))
 	moduleReq.Header.Set("Content-Type", "application/json")
-	moduleReq.Header.Set("X-User-Roles", "platform_admin")
+	moduleReq = withAuthenticatedIdentity(moduleReq, "admin-tenant", "admin-1", "platform_admin")
 	moduleResp := httptest.NewRecorder()
 	router.ServeHTTP(moduleResp, moduleReq)
 	if moduleResp.Code != http.StatusOK {
@@ -551,7 +560,7 @@ func TestPlatformSubscriptionCanManagePlans(t *testing.T) {
 	}
 	statusReq := httptest.NewRequest(http.MethodPut, "/platform/subscription-plans/growth/status", bytes.NewReader(statusBody))
 	statusReq.Header.Set("Content-Type", "application/json")
-	statusReq.Header.Set("X-User-Roles", "platform_admin")
+	statusReq = withAuthenticatedIdentity(statusReq, "admin-tenant", "admin-1", "platform_admin")
 	statusResp := httptest.NewRecorder()
 	router.ServeHTTP(statusResp, statusReq)
 	if statusResp.Code != http.StatusOK {
@@ -559,7 +568,7 @@ func TestPlatformSubscriptionCanManagePlans(t *testing.T) {
 	}
 
 	deleteReq := httptest.NewRequest(http.MethodDelete, "/platform/subscription-plans/growth/modules/studio", nil)
-	deleteReq.Header.Set("X-User-Roles", "platform_admin")
+	deleteReq = withAuthenticatedIdentity(deleteReq, "admin-tenant", "admin-1", "platform_admin")
 	deleteResp := httptest.NewRecorder()
 	router.ServeHTTP(deleteResp, deleteReq)
 	if deleteResp.Code != http.StatusOK {
@@ -590,7 +599,7 @@ func TestPlatformSubscriptionPlanTenantsAndAuditLogs(t *testing.T) {
 	}
 	applyReq := httptest.NewRequest(http.MethodPut, "/platform/subscriptions/org-alpha/plan", bytes.NewReader(applyBody))
 	applyReq.Header.Set("Content-Type", "application/json")
-	applyReq.Header.Set("X-User-Roles", "platform_admin")
+	applyReq = withAuthenticatedIdentity(applyReq, "admin-tenant", "admin-1", "platform_admin")
 	applyResp := httptest.NewRecorder()
 	router.ServeHTTP(applyResp, applyReq)
 	if applyResp.Code != http.StatusOK {
@@ -598,7 +607,7 @@ func TestPlatformSubscriptionPlanTenantsAndAuditLogs(t *testing.T) {
 	}
 
 	tenantsReq := httptest.NewRequest(http.MethodGet, "/platform/subscription-plans/professional/tenants", nil)
-	tenantsReq.Header.Set("X-User-Roles", "platform_admin")
+	tenantsReq = withAuthenticatedIdentity(tenantsReq, "admin-tenant", "admin-1", "platform_admin")
 	tenantsResp := httptest.NewRecorder()
 	router.ServeHTTP(tenantsResp, tenantsReq)
 	if tenantsResp.Code != http.StatusOK {
@@ -615,7 +624,7 @@ func TestPlatformSubscriptionPlanTenantsAndAuditLogs(t *testing.T) {
 	}
 
 	auditReq := httptest.NewRequest(http.MethodGet, "/platform/subscription-plans/professional/audit-logs", nil)
-	auditReq.Header.Set("X-User-Roles", "platform_admin")
+	auditReq = withAuthenticatedIdentity(auditReq, "admin-tenant", "admin-1", "platform_admin")
 	auditResp := httptest.NewRecorder()
 	router.ServeHTTP(auditResp, auditReq)
 	if auditResp.Code != http.StatusOK {
@@ -637,6 +646,7 @@ func TestPlatformSubscriptionCanUseConfiguredAdminUser(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/platform/subscriptions/org-target", nil)
 	req.Header.Set("X-User-ID", "admin-user")
+	req = withAuthenticatedIdentity(req, "admin-tenant", "admin-user")
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 

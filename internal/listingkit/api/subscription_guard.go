@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/listingkit"
 	"task-processor/internal/listingsubscription"
 	"task-processor/internal/tenantbridge"
 )
@@ -149,16 +150,31 @@ func (h *handler) requireSubscriptionHandler(c *gin.Context) bool {
 }
 
 func (h *handler) requirePlatformSubscriptionAccess(c *gin.Context) bool {
-	userID := strings.TrimSpace(c.GetHeader("X-User-ID"))
-	if userID != "" && slices.Contains(h.platformAdminUsers, userID) {
+	identity, ok := authenticatedActor(c)
+	if !ok {
+		return false
+	}
+	return h.authorizePlatformSubscriptionIdentity(c, identity)
+}
+
+func (h *handler) requirePlatformSubscriptionActor(c *gin.Context) (listingkit.AuthenticatedIdentity, bool) {
+	identity, ok := authenticatedActor(c)
+	if !ok || !h.authorizePlatformSubscriptionIdentity(c, identity) {
+		return listingkit.AuthenticatedIdentity{}, false
+	}
+	return identity, true
+}
+
+func (h *handler) authorizePlatformSubscriptionIdentity(c *gin.Context, identity listingkit.AuthenticatedIdentity) bool {
+	if slices.Contains(h.platformAdminUsers, identity.UserID) {
 		return true
 	}
 	allowedRoles := h.platformAdminRoles
 	if len(allowedRoles) == 0 {
 		allowedRoles = []string{"platform_admin", "admin"}
 	}
-	for _, role := range splitCSVHeaders(c.GetHeader("X-User-Roles"), c.GetHeader("X-Zitadel-Roles")) {
-		if slices.Contains(allowedRoles, role) {
+	for _, role := range identity.Roles {
+		if slices.Contains(allowedRoles, strings.TrimSpace(role)) {
 			return true
 		}
 	}
@@ -187,23 +203,4 @@ func writeQuotaExceeded(c *gin.Context, result listingsubscription.GuardResult) 
 		"used":        result.Used,
 		"message":     "subscription quota exceeded",
 	})
-}
-
-func splitCSVHeaders(values ...string) []string {
-	out := []string{}
-	seen := map[string]struct{}{}
-	for _, value := range values {
-		for _, part := range strings.Split(value, ",") {
-			item := strings.TrimSpace(part)
-			if item == "" {
-				continue
-			}
-			if _, ok := seen[item]; ok {
-				continue
-			}
-			seen[item] = struct{}{}
-			out = append(out, item)
-		}
-	}
-	return out
 }

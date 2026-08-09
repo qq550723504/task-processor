@@ -18,7 +18,8 @@ type inviteTenantMemberRequest struct {
 }
 
 func (h *handler) InviteTenantMember(c *gin.Context) {
-	if !h.requirePlatformSubscriptionAccess(c) {
+	identity, ok := h.requirePlatformSubscriptionActor(c)
+	if !ok {
 		return
 	}
 	if h.memberInvitationAudit == nil {
@@ -30,7 +31,7 @@ func (h *handler) InviteTenantMember(c *gin.Context) {
 	var body inviteTenantMemberRequest
 	request := memberinvite.InviteRequest{TenantID: tenantID}
 	if err := c.ShouldBindJSON(&body); err != nil {
-		h.finishMemberInvitation(c, request, memberinvite.Invitation{}, memberinvite.OutcomeFailed, http.StatusBadRequest, "invalid_member_invitation", "member invitation request is invalid")
+		h.finishMemberInvitation(c, identity.UserID, request, memberinvite.Invitation{}, memberinvite.OutcomeFailed, http.StatusBadRequest, "invalid_member_invitation", "member invitation request is invalid")
 		return
 	}
 	request = memberinvite.InviteRequest{
@@ -41,19 +42,19 @@ func (h *handler) InviteTenantMember(c *gin.Context) {
 		Role:       strings.TrimSpace(body.Role),
 	}
 	if h.memberInvitationService == nil {
-		h.finishMemberInvitation(c, request, memberinvite.Invitation{}, memberinvite.OutcomeFailed, http.StatusServiceUnavailable, "member_invitation_unavailable", "member invitation service is not configured")
+		h.finishMemberInvitation(c, identity.UserID, request, memberinvite.Invitation{}, memberinvite.OutcomeFailed, http.StatusServiceUnavailable, "member_invitation_unavailable", "member invitation service is not configured")
 		return
 	}
-	if !h.requireKnownInvitationTenant(c, request) {
+	if !h.requireKnownInvitationTenant(c, identity.UserID, request) {
 		return
 	}
 	invitation, err := h.memberInvitationService.Invite(c.Request.Context(), request)
 	if err != nil {
-		h.writeMemberInvitationFailure(c, request, err)
+		h.writeMemberInvitationFailure(c, identity.UserID, request, err)
 		return
 	}
 
-	if !h.recordMemberInvitationOutcome(c, request, invitation, memberinvite.OutcomeSucceeded, "") {
+	if !h.recordMemberInvitationOutcome(c, identity.UserID, request, invitation, memberinvite.OutcomeSucceeded, "") {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{
@@ -66,18 +67,18 @@ func (h *handler) InviteTenantMember(c *gin.Context) {
 	})
 }
 
-func (h *handler) requireKnownInvitationTenant(c *gin.Context, request memberinvite.InviteRequest) bool {
+func (h *handler) requireKnownInvitationTenant(c *gin.Context, actorUserID string, request memberinvite.InviteRequest) bool {
 	if request.TenantID == "" {
-		h.finishMemberInvitation(c, request, memberinvite.Invitation{}, memberinvite.OutcomeFailed, http.StatusNotFound, "tenant_not_found", "tenant was not found")
+		h.finishMemberInvitation(c, actorUserID, request, memberinvite.Invitation{}, memberinvite.OutcomeFailed, http.StatusNotFound, "tenant_not_found", "tenant was not found")
 		return false
 	}
 	if h.tenantDirectory == nil {
-		h.finishMemberInvitation(c, request, memberinvite.Invitation{}, memberinvite.OutcomeFailed, http.StatusServiceUnavailable, "member_invitation_unavailable", "member invitation service is not configured")
+		h.finishMemberInvitation(c, actorUserID, request, memberinvite.Invitation{}, memberinvite.OutcomeFailed, http.StatusServiceUnavailable, "member_invitation_unavailable", "member invitation service is not configured")
 		return false
 	}
 	tenants, err := h.tenantDirectory.List(c.Request.Context())
 	if err != nil {
-		h.finishMemberInvitation(c, request, memberinvite.Invitation{}, memberinvite.OutcomeFailed, http.StatusBadGateway, "zitadel_member_invitation_failed", "ZITADEL member invitation failed")
+		h.finishMemberInvitation(c, actorUserID, request, memberinvite.Invitation{}, memberinvite.OutcomeFailed, http.StatusBadGateway, "zitadel_member_invitation_failed", "ZITADEL member invitation failed")
 		return false
 	}
 	for _, tenant := range tenants {
@@ -85,11 +86,11 @@ func (h *handler) requireKnownInvitationTenant(c *gin.Context, request memberinv
 			return true
 		}
 	}
-	h.finishMemberInvitation(c, request, memberinvite.Invitation{}, memberinvite.OutcomeFailed, http.StatusNotFound, "tenant_not_found", "tenant was not found")
+	h.finishMemberInvitation(c, actorUserID, request, memberinvite.Invitation{}, memberinvite.OutcomeFailed, http.StatusNotFound, "tenant_not_found", "tenant was not found")
 	return false
 }
 
-func (h *handler) writeMemberInvitationFailure(c *gin.Context, request memberinvite.InviteRequest, err error) {
+func (h *handler) writeMemberInvitationFailure(c *gin.Context, actorUserID string, request memberinvite.InviteRequest, err error) {
 	status := http.StatusBadGateway
 	errorCode := "zitadel_member_invitation_failed"
 	message := "ZITADEL member invitation failed"
@@ -113,11 +114,11 @@ func (h *handler) writeMemberInvitationFailure(c *gin.Context, request memberinv
 		message = "member invitation conflicts with an existing identity or role assignment"
 	}
 
-	h.finishMemberInvitation(c, request, invitation, outcome, status, errorCode, message)
+	h.finishMemberInvitation(c, actorUserID, request, invitation, outcome, status, errorCode, message)
 }
 
-func (h *handler) finishMemberInvitation(c *gin.Context, request memberinvite.InviteRequest, invitation memberinvite.Invitation, outcome memberinvite.Outcome, status int, errorCode, message string) {
-	if !h.recordMemberInvitationOutcome(c, request, invitation, outcome, errorCode) {
+func (h *handler) finishMemberInvitation(c *gin.Context, actorUserID string, request memberinvite.InviteRequest, invitation memberinvite.Invitation, outcome memberinvite.Outcome, status int, errorCode, message string) {
+	if !h.recordMemberInvitationOutcome(c, actorUserID, request, invitation, outcome, errorCode) {
 		return
 	}
 	payload := gin.H{"error": errorCode, "message": message}
@@ -127,13 +128,13 @@ func (h *handler) finishMemberInvitation(c *gin.Context, request memberinvite.In
 	c.JSON(status, payload)
 }
 
-func (h *handler) recordMemberInvitationOutcome(c *gin.Context, request memberinvite.InviteRequest, invitation memberinvite.Invitation, outcome memberinvite.Outcome, errorCode string) bool {
+func (h *handler) recordMemberInvitationOutcome(c *gin.Context, actorUserID string, request memberinvite.InviteRequest, invitation memberinvite.Invitation, outcome memberinvite.Outcome, errorCode string) bool {
 	if h.memberInvitationAudit == nil {
 		writeMemberInvitationError(c, http.StatusServiceUnavailable, "member_invitation_unavailable", "member invitation service is not configured")
 		return false
 	}
 	err := h.memberInvitationAudit.Record(c.Request.Context(), memberinvite.AuditRecord{
-		ActorUserID:     strings.TrimSpace(c.GetHeader("X-User-ID")),
+		ActorUserID:     actorUserID,
 		TenantID:        request.TenantID,
 		Email:           request.Email,
 		Role:            request.Role,
