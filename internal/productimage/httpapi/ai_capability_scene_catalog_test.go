@@ -10,7 +10,7 @@ import (
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
-func TestProductImageSceneCatalogMapsImageCredentialWithoutExposingSecret(t *testing.T) {
+func TestProductImageSceneCatalogMapsGPTImageCredentialWithoutExposingSecret(t *testing.T) {
 	resolver := &productImageSceneResolver{resolved: &openaiclient.ResolvedClientConfig{
 		CacheKey: "image-config-v1",
 		Config: &openaiclient.ClientConfig{
@@ -34,8 +34,11 @@ func TestProductImageSceneCatalogMapsImageCredentialWithoutExposingSecret(t *tes
 	if decision.ModelID != "gpt-image-2" || decision.ProviderID != "openai" {
 		t.Fatalf("decision = %+v", decision)
 	}
-	if decision.CredentialReference != "image" || decision.ConfigurationVersion != "image-config-v1" {
+	if decision.CredentialReference != productImageSceneClientName || decision.ConfigurationVersion != "image-config-v1" {
 		t.Fatalf("credential binding = %+v", decision)
+	}
+	if resolver.requestedClientName != productImageSceneClientName {
+		t.Fatalf("resolver client name = %q, want %q", resolver.requestedClientName, productImageSceneClientName)
 	}
 	if strings.Contains(strings.Join([]string{decision.ProviderID, decision.ModelID, decision.RoutingKey, decision.CredentialReference}, " "), "super-secret") {
 		t.Fatal("route decision exposed API key")
@@ -86,10 +89,12 @@ func TestProductImageSceneCatalogRejectsMissingConfigurationVersion(t *testing.T
 }
 
 type productImageSceneResolver struct {
-	resolved *openaiclient.ResolvedClientConfig
-	err      error
+	resolved            *openaiclient.ResolvedClientConfig
+	err                 error
+	requestedClientName string
 }
 
-func (r *productImageSceneResolver) ResolveClientConfig(context.Context, string, *openaiclient.ClientConfig) (*openaiclient.ResolvedClientConfig, error) {
+func (r *productImageSceneResolver) ResolveClientConfig(_ context.Context, clientName string, _ *openaiclient.ClientConfig) (*openaiclient.ResolvedClientConfig, error) {
+	r.requestedClientName = clientName
 	return r.resolved, r.err
 }

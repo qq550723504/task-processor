@@ -94,7 +94,7 @@ func (m *Manager) GetClient(name string) (ChatCompleter, error) {
 func (m *Manager) GetImageClient(name string) (ImageGenerator, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if _, exists := m.clients[name]; !exists {
+	if _, exists := m.clients[name]; !exists && m.configResolver == nil {
 		return nil, fmt.Errorf("client %s not found", name)
 	}
 	return &contextualImageClient{manager: m, name: name}, nil

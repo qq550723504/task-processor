@@ -8,7 +8,10 @@ import (
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
-const productImageSceneRoutingKey = "productimage-image"
+const (
+	productImageSceneRoutingKey = "productimage-image"
+	productImageSceneClientName = "image_gpt_image_2"
+)
 
 // BuildProductImageSceneCapabilityRouter exposes the existing image client
 // configuration as a provider-neutral route for the new scene capability.
@@ -27,7 +30,7 @@ func (c *productImageSceneModelCatalog) ResolveModel(ctx context.Context, routin
 	if c == nil || c.resolver == nil || strings.TrimSpace(routingKey) != productImageSceneRoutingKey {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
 	}
-	resolved, err := c.resolver.ResolveClientConfig(ctx, "image", nil)
+	resolved, err := c.resolver.ResolveClientConfig(ctx, productImageSceneClientName, nil)
 	if err != nil || resolved == nil || resolved.Config == nil || strings.TrimSpace(resolved.CacheKey) == "" {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", err)
 	}
@@ -45,7 +48,7 @@ func (c *productImageSceneModelCatalog) ResolveModel(ctx context.Context, routin
 		ProviderID:           providerID,
 		ModelID:              strings.TrimSpace(configured.Model),
 		RoutingKey:           productImageSceneRoutingKey,
-		CredentialReference:  "image",
+		CredentialReference:  productImageSceneClientName,
 		Features:             []aicapability.ModelFeature{aicapability.FeatureImageGenerate, aicapability.FeatureImageEdit},
 		SupportsAsync:        false,
 		Enabled:              true,

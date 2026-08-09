@@ -15,15 +15,31 @@ func buildModelProvider(cfg *config.Config, llmMgr productenrich.LLMManager, ope
 	if cfg == nil {
 		return nil, nil
 	}
-	if cfg.AICapability.ProductImageSceneEnabled {
-		if imageCfg, ok := cfg.OpenAI.Clients["image"]; ok && imageCfg.APIStyle == "nanobanana" {
-			return nil, fmt.Errorf("productimage scene governance requires a resolver-backed OpenAI image provider; nanobanana static provider is unsupported")
-		}
-	}
 
 	var faithfulEditor productimage.FaithfulEditor
 	var sceneGenerator productimage.SceneGenerator
-	if imageCfg, ok := cfg.OpenAI.Clients["image"]; ok && imageCfg.APIStyle == "nanobanana" {
+	if cfg.AICapability.ProductImageSceneEnabled {
+		if openaiMgr == nil {
+			return nil, fmt.Errorf("productimage scene governance requires a resolver-backed image client")
+		}
+		imageClient, err := openaiMgr.GetImageClient(productImageSceneClientName)
+		if err != nil || imageClient == nil {
+			if err == nil {
+				err = fmt.Errorf("image client is nil")
+			}
+			return nil, fmt.Errorf("build productimage scene client %q: %w", productImageSceneClientName, err)
+		}
+		editor, err := productimage.NewOpenAICompatibleFaithfulEditor(imageWorkDir, imageClient)
+		if err != nil {
+			return nil, err
+		}
+		generator, err := productimage.NewOpenAICompatibleSceneGenerator(imageWorkDir, imageClient)
+		if err != nil {
+			return nil, err
+		}
+		faithfulEditor = editor
+		sceneGenerator = generator
+	} else if imageCfg, ok := cfg.OpenAI.Clients["image"]; ok && imageCfg.APIStyle == "nanobanana" {
 		imageClient := grsai.NewClient(grsai.Config{
 			APIKey:       firstNonEmpty(imageCfg.APIKey, cfg.OpenAI.APIKey),
 			Model:        imageCfg.Model,
