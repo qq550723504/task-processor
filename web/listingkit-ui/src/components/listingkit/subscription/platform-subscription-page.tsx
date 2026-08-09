@@ -192,6 +192,9 @@ export function PlatformSubscriptionPage() {
 
   function handleLoad(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (invitingMember) {
+      return;
+    }
     setError("");
     setEditingModule("");
     setShowMemberInvitation(false);
@@ -207,10 +210,15 @@ export function PlatformSubscriptionPage() {
     if (!normalizedTenantId || !givenName || !familyName || !email) {
       return;
     }
+    const requestContext = {
+      tenantId: normalizedTenantId,
+      email,
+      role: invitationRole,
+    };
     if (
       typeof window !== "undefined" &&
       !window.confirm(
-        `确认向租户 ${normalizedTenantId} 邀请 ${email}，并授予角色 ${invitationRole} 吗？`,
+        `确认向租户 ${requestContext.tenantId} 邀请 ${requestContext.email}，并授予角色 ${requestContext.role} 吗？`,
       )
     ) {
       return;
@@ -220,11 +228,11 @@ export function PlatformSubscriptionPage() {
     setError("");
     setInvitationFeedback("");
     try {
-      await invitePlatformTenantMember(normalizedTenantId, {
+      await invitePlatformTenantMember(requestContext.tenantId, {
         given_name: givenName,
         family_name: familyName,
-        email,
-        role: invitationRole,
+        email: requestContext.email,
+        role: requestContext.role,
       });
       setInvitationGivenName("");
       setInvitationFamilyName("");
@@ -232,13 +240,13 @@ export function PlatformSubscriptionPage() {
       setInvitationRole("listingkit_viewer");
       setShowMemberInvitation(false);
       setInvitationFeedback(
-        `ZITADEL 已向 ${email} 发送初始化邮件。`,
+        `租户 ${requestContext.tenantId} 的成员 ${requestContext.email}（角色 ${requestContext.role}）：ZITADEL 已发送初始化邮件。`,
       );
       await auditQuery.refetch();
     } catch (err) {
       if (isIncompleteMemberInvitationError(err)) {
         setError(
-          `ZITADEL 已创建用户 ${err.payload.user_id}，但该用户尚未获得访问权限。请在 ZITADEL 中为该用户补充分配 ${invitationRole} 角色后再通知用户登录。`,
+          `ZITADEL 已创建用户 ${err.payload.user_id}，但该用户尚未获得访问权限。请在 ZITADEL 中为该用户补充分配 ${requestContext.role} 角色后再通知用户登录。`,
         );
       } else {
         setError(formatSubscriptionApiError(err));
@@ -459,6 +467,7 @@ export function PlatformSubscriptionPage() {
           </div>
           <form onSubmit={handleLoad} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <Input
+              disabled={invitingMember}
               value={tenantInput}
               onChange={(event) => setTenantInput(event.target.value)}
               className="h-9 w-full font-mono sm:min-w-[260px] sm:flex-1"
@@ -473,7 +482,7 @@ export function PlatformSubscriptionPage() {
             </datalist>
             <Button
               type="submit"
-              disabled={!tenantInput.trim()}
+              disabled={!tenantInput.trim() || invitingMember}
               className="h-9 w-full gap-2 px-3 sm:w-auto"
             >
               <Search className="size-4" />
@@ -491,6 +500,7 @@ export function PlatformSubscriptionPage() {
             </Button>
             <Button
               type="button"
+              disabled={invitingMember}
               onClick={() => {
                 setShowTenantOnboarding((visible) => !visible);
                 setError("");
@@ -523,6 +533,7 @@ export function PlatformSubscriptionPage() {
               <Label className="block text-xs text-zinc-600">
                 新租户 ID
                 <Input
+                  disabled={invitingMember}
                   value={newTenantId}
                   onChange={(event) => setNewTenantId(event.target.value)}
                   className="mt-1 h-9 bg-white font-mono"
@@ -534,6 +545,7 @@ export function PlatformSubscriptionPage() {
               <Label className="block text-xs text-zinc-600">
                 开通套餐
                 <Select
+                  disabled={invitingMember}
                   value={newTenantPlan}
                   onChange={(event) => setNewTenantPlan(event.target.value)}
                   className="mt-1 h-9 bg-white"
@@ -550,6 +562,7 @@ export function PlatformSubscriptionPage() {
               <Label className="block text-xs text-zinc-600">
                 到期时间（可选）
                 <Input
+                  disabled={invitingMember}
                   type="datetime-local"
                   value={newTenantExpiresAt}
                   onChange={(event) => setNewTenantExpiresAt(event.target.value)}
@@ -558,7 +571,12 @@ export function PlatformSubscriptionPage() {
               </Label>
               <Button
                 type="submit"
-                disabled={!newTenantId.trim() || !newTenantPlan || openingTenant}
+                disabled={
+                  !newTenantId.trim() ||
+                  !newTenantPlan ||
+                  openingTenant ||
+                  invitingMember
+                }
                 className="h-9 gap-2 px-3"
               >
                 {openingTenant ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
@@ -598,6 +616,7 @@ export function PlatformSubscriptionPage() {
                   <Button
                     key={tenant.tenant_id}
                     type="button"
+                    disabled={invitingMember}
                     variant={tenant.tenant_id === normalizedTenantId ? "default" : "outline"}
                     onClick={() => {
                       setTenantInput(tenant.tenant_id);
@@ -711,6 +730,7 @@ export function PlatformSubscriptionPage() {
                   </div>
                   <Button
                     type="button"
+                    disabled={invitingMember}
                     variant={showMemberInvitation ? "outline" : "default"}
                     onClick={() => {
                       setShowMemberInvitation((visible) => !visible);
@@ -732,70 +752,78 @@ export function PlatformSubscriptionPage() {
                 ) : null}
                 {showMemberInvitation ? (
                   <form onSubmit={handleMemberInvitation} className="space-y-3">
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <fieldset disabled={invitingMember} className="space-y-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Label className="block text-xs text-zinc-500">
+                          名字
+                          <Input
+                            required
+                            value={invitationGivenName}
+                            onChange={(event) =>
+                              setInvitationGivenName(event.target.value)
+                            }
+                            className="mt-1 h-9"
+                            aria-label="名字"
+                          />
+                        </Label>
+                        <Label className="block text-xs text-zinc-500">
+                          姓氏
+                          <Input
+                            required
+                            value={invitationFamilyName}
+                            onChange={(event) =>
+                              setInvitationFamilyName(event.target.value)
+                            }
+                            className="mt-1 h-9"
+                            aria-label="姓氏"
+                          />
+                        </Label>
+                      </div>
                       <Label className="block text-xs text-zinc-500">
-                        名字
+                        邮箱
                         <Input
                           required
-                          value={invitationGivenName}
-                          onChange={(event) => setInvitationGivenName(event.target.value)}
+                          type="email"
+                          value={invitationEmail}
+                          onChange={(event) =>
+                            setInvitationEmail(event.target.value)
+                          }
                           className="mt-1 h-9"
-                          aria-label="名字"
+                          aria-label="邮箱"
                         />
                       </Label>
                       <Label className="block text-xs text-zinc-500">
-                        姓氏
-                        <Input
-                          required
-                          value={invitationFamilyName}
-                          onChange={(event) => setInvitationFamilyName(event.target.value)}
+                        角色
+                        <Select
+                          value={invitationRole}
+                          onChange={(event) =>
+                            setInvitationRole(
+                              event.target.value as PlatformTenantMemberRole,
+                            )
+                          }
                           className="mt-1 h-9"
-                          aria-label="姓氏"
-                        />
+                          aria-label="角色"
+                        >
+                          {MEMBER_ROLE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label} ({option.value})
+                            </option>
+                          ))}
+                        </Select>
                       </Label>
-                    </div>
-                    <Label className="block text-xs text-zinc-500">
-                      邮箱
-                      <Input
-                        required
-                        type="email"
-                        value={invitationEmail}
-                        onChange={(event) => setInvitationEmail(event.target.value)}
-                        className="mt-1 h-9"
-                        aria-label="邮箱"
-                      />
-                    </Label>
-                    <Label className="block text-xs text-zinc-500">
-                      角色
-                      <Select
-                        value={invitationRole}
-                        onChange={(event) =>
-                          setInvitationRole(
-                            event.target.value as PlatformTenantMemberRole,
-                          )
-                        }
-                        className="mt-1 h-9"
-                        aria-label="角色"
+                      <Button
+                        type="submit"
+                        disabled={invitingMember}
+                        className="h-9 w-full gap-2 px-3"
                       >
-                        {MEMBER_ROLE_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label} ({option.value})
-                          </option>
-                        ))}
-                      </Select>
-                    </Label>
-                    <Button
-                      type="submit"
-                      disabled={invitingMember}
-                      className="h-9 w-full gap-2 px-3"
-                    >
-                      {invitingMember ? (
-                        <RefreshCw className="size-4 animate-spin" />
-                      ) : (
-                        <UserPlus className="size-4" />
-                      )}
-                      发送邀请
-                    </Button>
+                        {invitingMember ? (
+                          <RefreshCw className="size-4 animate-spin" />
+                        ) : (
+                          <UserPlus className="size-4" />
+                        )}
+                        发送邀请
+                      </Button>
+                    </fieldset>
                   </form>
                 ) : null}
               </CardContent>

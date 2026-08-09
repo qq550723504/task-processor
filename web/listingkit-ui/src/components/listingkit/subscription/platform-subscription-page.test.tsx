@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
@@ -518,7 +518,11 @@ describe("PlatformSubscriptionPage", () => {
     await fillValidInvitation(user);
     await user.click(screen.getByRole("button", { name: "发送邀请" }));
 
-    expect(await screen.findByText(/ZITADEL.*初始化邮件/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(
+        /org-target.*jane@example\.com.*listingkit_viewer.*初始化邮件/,
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText("邮箱")).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "邀请成员" }));
@@ -545,10 +549,94 @@ describe("PlatformSubscriptionPage", () => {
     renderWithQueryClient(<PlatformSubscriptionPage />);
     await selectTenantAndOpenInvitation(user);
     await fillValidInvitation(user);
+    await user.selectOptions(
+      screen.getByLabelText("角色"),
+      "listingkit_operator",
+    );
     await user.click(screen.getByRole("button", { name: "发送邀请" }));
 
-    expect(await screen.findByText(/user-1/)).toBeInTheDocument();
-    expect(screen.getByText(/尚未获得访问权限/)).toBeInTheDocument();
+    const guidance = await screen.findByText(/user-1/);
+    expect(guidance).toHaveTextContent("尚未获得访问权限");
+    expect(guidance).toHaveTextContent("listingkit_operator");
+  });
+
+  it("uses native validation to block missing or invalid invitation fields", async () => {
+    const user = userEvent.setup();
+    const confirmMock = vi.mocked(globalThis.confirm);
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+    expect(mockedInvitePlatformTenantMember).not.toHaveBeenCalled();
+    expect(confirmMock).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText("名字"), "Jane");
+    await user.type(screen.getByLabelText("姓氏"), "Doe");
+    await user.type(screen.getByLabelText("邮箱"), "not-an-email");
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    expect(mockedInvitePlatformTenantMember).not.toHaveBeenCalled();
+    expect(confirmMock).not.toHaveBeenCalled();
+  });
+
+  it("locks the invitation and tenant context while the request is pending", async () => {
+    const user = userEvent.setup();
+    const invitationRequest = createDeferred<
+      Awaited<ReturnType<typeof invitePlatformTenantMember>>
+    >();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+    mockedInvitePlatformTenantMember.mockReturnValue(invitationRequest.promise);
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await fillValidInvitation(user);
+    await user.selectOptions(
+      screen.getByLabelText("角色"),
+      "listingkit_operator",
+    );
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    await waitFor(() => {
+      expect(mockedInvitePlatformTenantMember).toHaveBeenCalledOnce();
+    });
+    expect(screen.getByLabelText("租户 ID")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "查询" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "开通新租户" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
+    expect(screen.getByLabelText("名字")).toBeDisabled();
+    expect(screen.getByLabelText("姓氏")).toBeDisabled();
+    expect(screen.getByLabelText("邮箱")).toBeDisabled();
+    expect(screen.getByLabelText("角色")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发送邀请" })).toBeDisabled();
+    expect(screen.getByText("目标租户").closest("button")).toBeDisabled();
+
+    await act(async () => {
+      invitationRequest.resolve({
+        tenant_id: "org-target",
+        user_id: "user-2",
+        email: "jane@example.com",
+        role: "listingkit_operator",
+        authorization_id: "authorization-2",
+        invitation_email_sent: true,
+      });
+      await invitationRequest.promise;
+    });
+
+    expect(
+      await screen.findByText(
+        /org-target.*jane@example\.com.*listingkit_operator.*初始化邮件/,
+      ),
+    ).toBeInTheDocument();
   });
 
   it("formats remaining invitation failures with the subscription API formatter", async () => {
@@ -586,6 +674,16 @@ async function fillValidInvitation(user: ReturnType<typeof userEvent.setup>) {
   await user.type(screen.getByLabelText("名字"), "Jane");
   await user.type(screen.getByLabelText("姓氏"), "Doe");
   await user.type(screen.getByLabelText("邮箱"), "jane@example.com");
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
 }
 
 function renderWithQueryClient(ui: ReactElement) {

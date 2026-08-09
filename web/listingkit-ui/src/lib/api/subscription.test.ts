@@ -54,6 +54,34 @@ describe("subscription API client", () => {
       }),
     );
   });
+
+  it("encodes reserved characters in the invitation tenant path", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          tenant_id: "org /?#",
+          user_id: "user-1",
+          email: "jane@example.com",
+          role: "listingkit_viewer",
+          authorization_id: "authorization-1",
+          invitation_email_sent: true,
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await invitePlatformTenantMember("org /?#", {
+      given_name: "Jane",
+      family_name: "Doe",
+      email: "jane@example.com",
+      role: "listingkit_viewer",
+    });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      "/api/listing-kits/platform/tenants/org%20%2F%3F%23/members/invitations",
+    );
+  });
 });
 
 describe("subscription API schema", () => {
