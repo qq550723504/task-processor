@@ -32,11 +32,21 @@ Required ZITADEL values:
 ZITADEL_ISSUER_URL=https://auth.example.com
 ZITADEL_CLIENT_ID=<oidc-web-client-id>
 ZITADEL_CLIENT_SECRET=<oidc-web-client-secret>
+TASK_PROCESSOR_LISTINGKIT_ZITADEL_TENANT_DIRECTORY_TOKEN=<read-only-tenant-directory-token>
+TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN=<dedicated-member-invitation-token>
+TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<existing-listingkit-project-id>
 # Auth.js callback URI:
 # https://<workbench-host>/api/auth/callback/zitadel
 ZITADEL_POST_LOGOUT_REDIRECT_URI=https://<workbench-host>
 NEXT_PUBLIC_ZITADEL_CONSOLE_URL=https://auth.example.com/ui/console
 ```
+
+Use three separate credentials. `ZITADEL_CLIENT_SECRET` is only the Auth.js
+OIDC web-client secret. The tenant-directory token is read-only and is only for
+listing and validating tenants. The member-invitation token is a dedicated
+write-capable service-account token; never copy the OIDC client secret or the
+tenant-directory token into
+`TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN`.
 
 Keep `urn:zitadel:iam:user:resourceowner` in `ZITADEL_SCOPES`; ListingKit uses
 that claim as the tenant id. The Go API reads ZITADEL settings from core
@@ -83,7 +93,7 @@ platform_admin
 Copy the command output into the workbench secret/config:
 
 ```text
-LISTINGKIT_ZITADEL_PROJECT_ID=<project-id>
+TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<project-id>
 LISTINGKIT_ZITADEL_ALLOWED_ROLES=listingkit_admin,listingkit_operator,listingkit_viewer,platform_admin
 ZITADEL_SCOPES=<printed scope string>
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED=1
@@ -97,6 +107,90 @@ TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED=1
 The Go API enforces the same role model as the sidebar. If a user can sign in
 but receives `listingkit_role_denied`, confirm the OIDC runtime uses the printed
 `ZITADEL_SCOPES` value so access tokens contain the ZITADEL project role claim.
+
+## Configure member invitations
+
+Create a dedicated ZITADEL service account for member invitations after the
+ListingKit project and its roles exist. Limit it to the target pilot
+organizations and the configured ListingKit project. It needs only these two
+operations:
+
+- create a human user in the selected organization (`POST /v2/users/human`);
+- assign one existing ListingKit project role to that user
+  (`AuthorizationService/CreateAuthorization`).
+
+Do not grant tenant or project creation, role-definition changes, user deletion,
+or unrelated administration permissions. The application accepts only
+`listingkit_viewer`, `listingkit_operator`, or `listingkit_admin`; the invitation
+flow cannot grant `platform_admin`.
+
+Store the dedicated token and existing project id under these exact keys in
+`listingkit-workbench-secret`:
+
+```text
+TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN=<dedicated-service-account-token>
+TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<existing-listingkit-project-id>
+```
+
+Inject the token through the approved secret manager; never commit it, print it,
+or paste it into the OIDC or tenant-directory fields. Apply the Secret and
+restart only the API deployment:
+
+```powershell
+kubectl apply -n task-processor -f tmp/listingkit-workbench-secret.yaml
+
+$requiredKeys = @(
+  "TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN",
+  "TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID"
+)
+$secret = kubectl -n task-processor get secret listingkit-workbench-secret -o json |
+  ConvertFrom-Json
+$presentKeys = @($secret.data.PSObject.Properties.Name)
+$missingKeys = @($requiredKeys | Where-Object { $_ -notin $presentKeys })
+if ($missingKeys.Count -ne 0) {
+  throw "Missing ListingKit invitation Secret keys: $($missingKeys -join ', ')"
+}
+
+kubectl -n task-processor rollout restart deployment/product-listing-api
+kubectl -n task-processor rollout status deployment/product-listing-api --timeout=5m
+```
+
+This validation inspects key names only and does not decode or print values.
+After rollout, sign in as a `platform_admin`, select an existing target tenant
+on the platform subscription page, invite a test user with
+`listingkit_viewer`, and verify the response contains the expected tenant, user,
+role, and authorization IDs. Confirm a `succeeded` row exists in
+`listingkit_member_invitation_audits`, then have the user complete the emailed
+verification flow and confirm the issued access token contains only the
+intended ListingKit role for that tenant. These runtime checks are required;
+a successful manifest render alone does not prove the ZITADEL permissions.
+
+### Repair an incomplete invitation
+
+`zitadel_member_invitation_incomplete` means ZITADEL created the human user and
+sent the verification code, but the project role assignment failed. Do not
+submit the invitation again: first repair the existing identity recorded by the
+audit row.
+
+1. Find the latest `listingkit_member_invitation_audits` row whose
+   `error_code` is `zitadel_member_invitation_incomplete`. Read its `user_id`,
+   `tenant_id`, `role`, `email`, and `created_at`; do not use a user id copied
+   from the request or UI.
+2. Confirm the recorded tenant is the intended target and the recorded role is
+   one of `listingkit_viewer`, `listingkit_operator`, or `listingkit_admin`.
+3. In ZITADEL Console or approved Management API tooling, create an
+   authorization for that exact `user_id`, the configured
+   `TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID`, the audit-recorded
+   `tenant_id` as organization, and a single `roleKeys` entry equal to the
+   audit-recorded role. Do not create another user and do not substitute
+   `platform_admin`.
+4. Verify ZITADEL returns an authorization id and shows that exact
+   user/project/organization/role tuple. Have the user finish email verification
+   and sign in, then verify the tenant and role claims and the expected
+   least-privilege UI/API access.
+5. Preserve the immutable incomplete audit row and record the repair operator,
+   time, authorization id, and verification evidence in the incident/change
+   record. Do not rewrite the row to make the original attempt look successful.
 
 ## CI/CD deploy
 

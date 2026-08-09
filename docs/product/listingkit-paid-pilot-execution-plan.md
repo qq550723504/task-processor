@@ -869,15 +869,22 @@ backup
 
 **必须包含**
 
-1. 建立 tenant 和用户。
-2. 绑定合同/订单和套餐。
-3. 配置店铺并验证归属。
-4. 运行 preflight。
-5. 创建第一条测试任务。
-6. 保存第一条草稿。
-7. 培训 readiness、重试和支持流程。
-8. 仅在验收后启用正式发布。
-9. 明确数据保留、服务时间和不支持范围。
+1. 先建立 tenant；平台管理员在平台订阅页选中该 tenant，通过“邀请成员”填写姓名、邮箱和预期的
+   `listingkit_viewer`、`listingkit_operator` 或 `listingkit_admin` 角色。邀请流程不得授予
+   `platform_admin`，也不得用 OIDC client secret 或只读 tenant-directory token 代替专用邀请 token。
+2. 邀请成功后核对返回的 tenant、user、role、authorization ID 和
+   `listingkit_member_invitation_audits` 成功记录，再让用户完成邮件验证和首次登录，确认 token 中只有目标
+   tenant 的预期角色。若返回 `zitadel_member_invitation_incomplete`，必须使用审计记录中的 user ID、
+   tenant ID 和 role 补建 ZITADEL project authorization，不能重新创建用户；修复后保留原始审计记录并
+   另行记录人工修复证据。
+3. 绑定合同/订单和套餐。
+4. 配置店铺并验证归属。
+5. 运行 preflight。
+6. 创建第一条测试任务。
+7. 保存第一条草稿。
+8. 培训 readiness、重试和支持流程。
+9. 仅在验收后启用正式发布。
+10. 明确数据保留、服务时间和不支持范围。
 
 ### PAY-072：发布和回滚流程
 
