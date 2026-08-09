@@ -4,9 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -26,17 +31,8 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 
 	shutdownCh := make(chan os.Signal, 1)
 	port := 18084
-	// config-test.yaml needs openai.apiKey; inject it for tests instead of editing the shared file.
-	oldOpenAIKey := os.Getenv("TASK_PROCESSOR_OPENAI_API_KEY")
-	os.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
-	defer func() {
-		if oldOpenAIKey == "" {
-			os.Unsetenv("TASK_PROCESSOR_OPENAI_API_KEY")
-		} else {
-			os.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", oldOpenAIKey)
-		}
-	}()
-	client := authenticatedProductListingAPITestClient(t)
+	fixture := newProductListingAPITestFixture(t)
+	client := fixture.authenticatedClient()
 
 	options := httpapi.Options{
 		ConfigPath:      "../../config/config-test.yaml",
@@ -95,7 +91,7 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	resp.Body.Close()
 
 	// 创建图片处理任务
-	imgReqBody := productimage.ImageProcessRequest{ImageURLs: []string{"https://example.com/photo.jpg"}, Marketplace: "amazon"}
+	imgReqBody := productimage.ImageProcessRequest{ImageURLs: []string{fixture.imageURL("photo.png")}, Marketplace: "amazon"}
 	b2, err := json.Marshal(imgReqBody)
 	require.NoError(t, err)
 	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/images/process", "application/json", bytes.NewReader(b2))
@@ -118,7 +114,7 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	amazonReqBody := amazonlisting.GenerateRequest{
 		Marketplace: "amazon",
 		Text:        "高品质运动鞋",
-		ImageURLs:   []string{"https://example.com/amazon-listing.jpg"},
+		ImageURLs:   []string{fixture.imageURL("amazon-listing.png")},
 	}
 	b3, err := json.Marshal(amazonReqBody)
 	require.NoError(t, err)
@@ -155,16 +151,8 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 
 	shutdownCh := make(chan os.Signal, 1)
 	port := 18085
-	oldOpenAIKey := os.Getenv("TASK_PROCESSOR_OPENAI_API_KEY")
-	os.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
-	defer func() {
-		if oldOpenAIKey == "" {
-			os.Unsetenv("TASK_PROCESSOR_OPENAI_API_KEY")
-		} else {
-			os.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", oldOpenAIKey)
-		}
-	}()
-	client := authenticatedProductListingAPITestClient(t)
+	fixture := newProductListingAPITestFixture(t)
+	client := fixture.authenticatedClient()
 
 	options := httpapi.Options{
 		ConfigPath:     "../../config/config-test.yaml",
@@ -255,7 +243,7 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 	amazonReqBody := amazonlisting.GenerateRequest{
 		Marketplace: "amazon",
 		Text:        "检测内容",
-		ImageURLs:   []string{"https://example.com/amazon-review.jpg"},
+		ImageURLs:   []string{fixture.imageURL("amazon-review.png")},
 	}
 	b3, err := json.Marshal(amazonReqBody)
 	require.NoError(t, err)
@@ -276,8 +264,8 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	resp.Body.Close()
 
-	// 400 for submit if task result is empty (invalid state for submission)
-	submitBody2 := bytes.NewReader([]byte(`{"action":"preview"}`))
+	// 400 for invalid submit body on an existing Amazon listing task.
+	submitBody2 := bytes.NewReader([]byte(`{"action":`))
 	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/tasks/"+amazonTaskID+"/submit", "application/json", submitBody2)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
@@ -295,13 +283,25 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 
 const productListingAPITestBearerToken = "product-listing-api-test-token"
 
-func authenticatedProductListingAPITestClient(t *testing.T) *http.Client {
+type productListingAPITestFixture struct {
+	server    *httptest.Server
+	t         *testing.T
+	mu        sync.Mutex
+	unhandled []string
+}
+
+func newProductListingAPITestFixture(t *testing.T) *productListingAPITestFixture {
 	t.Helper()
-	var zitadel *httptest.Server
-	zitadel = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	fixture := &productListingAPITestFixture{t: t}
+	imageBuffer := &bytes.Buffer{}
+	imageData := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	imageData.Set(0, 0, color.RGBA{R: 20, G: 40, B: 60, A: 255})
+	require.NoError(t, png.Encode(imageBuffer, imageData))
+	imageBytes := imageBuffer.Bytes()
+	fixture.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
-			_ = json.NewEncoder(w).Encode(map[string]string{"introspection_endpoint": zitadel.URL + "/oauth/v2/introspect"})
+			_ = json.NewEncoder(w).Encode(map[string]string{"introspection_endpoint": fixture.server.URL + "/oauth/v2/introspect"})
 		case "/oauth/v2/introspect":
 			if r.FormValue("token") != productListingAPITestBearerToken {
 				http.Error(w, "unexpected bearer token", http.StatusUnauthorized)
@@ -316,15 +316,70 @@ func authenticatedProductListingAPITestClient(t *testing.T) *http.Client {
 					"listingkit_admin": map[string]any{},
 				},
 			})
+		case "/v1/chat/completions":
+			if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer sk-test" {
+				fixture.recordUnhandled(r.Method + " " + r.URL.Path + " with invalid OpenAI request")
+				http.Error(w, "invalid OpenAI request", http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":      "chatcmpl-product-listing-api-test",
+				"object":  "chat.completion",
+				"created": 0,
+				"model":   "product-listing-api-test-model",
+				"choices": []map[string]any{{
+					"index": 0,
+					"message": map[string]string{
+						"role":    "assistant",
+						"content": "{}",
+					},
+					"finish_reason": "stop",
+				}},
+			})
 		default:
+			if strings.HasPrefix(r.URL.Path, "/images/") && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
+				w.Header().Set("Content-Type", "image/png")
+				w.Header().Set("Content-Length", fmt.Sprint(len(imageBytes)))
+				if r.Method == http.MethodGet {
+					_, _ = w.Write(imageBytes)
+				}
+				return
+			}
+			fixture.recordUnhandled(r.Method + " " + r.URL.Path)
 			http.NotFound(w, r)
 		}
 	}))
-	t.Cleanup(zitadel.Close)
-	t.Setenv("ZITADEL_ISSUER_URL", zitadel.URL)
+	t.Cleanup(fixture.server.Close)
+	t.Cleanup(fixture.assertNoUnhandled)
+	t.Setenv("ZITADEL_ISSUER_URL", fixture.server.URL)
 	t.Setenv("ZITADEL_CLIENT_ID", "product-listing-api-test-client")
+	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
+	t.Setenv("TASK_PROCESSOR_OPENAI_BASE_URL", fixture.server.URL+"/v1")
+	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_KEY", "sk-image-test")
+	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASE_URL", fixture.server.URL+"/v1")
 
+	return fixture
+}
+
+func (f *productListingAPITestFixture) authenticatedClient() *http.Client {
 	return &http.Client{Transport: productListingAPITestBearerTransport{base: http.DefaultTransport}}
+}
+
+func (f *productListingAPITestFixture) imageURL(name string) string {
+	return f.server.URL + "/images/" + name
+}
+
+func (f *productListingAPITestFixture) recordUnhandled(request string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.unhandled = append(f.unhandled, request)
+}
+
+func (f *productListingAPITestFixture) assertNoUnhandled() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	require.Empty(f.t, f.unhandled, "test dependency fixture received unsupported requests")
 }
 
 type productListingAPITestBearerTransport struct {
