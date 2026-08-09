@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
@@ -387,7 +389,7 @@ func TestListingKitZitadelAuthRoleMiddlewareRejectsForgedPermittedHeader(t *test
 	}
 }
 
-func TestListingKitZitadelAuthPrefersBusinessUserIDOverSubject(t *testing.T) {
+func TestListingKitZitadelAuthUsesSubjectWhenClaimsDiffer(t *testing.T) {
 	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
@@ -399,9 +401,10 @@ func TestListingKitZitadelAuthPrefersBusinessUserIDOverSubject(t *testing.T) {
 		case "/oauth/v2/introspect":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"active":                                true,
-				"sub":                                   "zitadel-subject-42",
-				"user_id":                               "373211204509761704",
-				"urn:zitadel:iam:user:resourceowner:id": "org-286",
+				"sub":                                   "zitadel-subject-123",
+				"user_id":                               "legacy-business-user-456",
+				"username":                              "display-name",
+				"urn:zitadel:iam:user:resourceowner:id": "tenant-789",
 			})
 		default:
 			http.NotFound(w, r)
@@ -423,26 +426,80 @@ func TestListingKitZitadelAuthPrefersBusinessUserIDOverSubject(t *testing.T) {
 			Path:   "/api/v1/listing-kits/tasks",
 			Module: "listing-kit",
 			Handler: func(c *gin.Context) {
-				c.JSON(http.StatusOK, gin.H{"user_id": c.GetHeader("X-User-ID")})
+				identity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+				require.True(t, ok)
+				assert.Equal(t, "tenant-789", identity.TenantID)
+				assert.Equal(t, "zitadel-subject-123", identity.UserID)
+				assert.Equal(t, "zitadel-subject-123", c.GetHeader("X-User-ID"))
+				assert.Equal(t, "tenant-789", c.GetHeader("X-Tenant-ID"))
+				c.Status(http.StatusOK)
 			},
 		},
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
 	req.Header.Set("Authorization", "Bearer access-token-1")
+	req.Header.Set("X-User-ID", "forged-user")
+	req.Header.Set("X-Tenant-ID", "forged-tenant")
+	req.Header.Set("X-User-Roles", "forged-role")
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
-	}
-	var body map[string]string
-	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if body["user_id"] != "373211204509761704" {
-		t.Fatalf("user_id = %q, want business user_id from ZITADEL introspection", body["user_id"])
-	}
+	assert.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+}
+
+func TestListingKitZitadelAuthRejectsMissingSubject(t *testing.T) {
+	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"authorization_endpoint": r.Host + "/oauth/v2/authorize",
+				"token_endpoint":         r.Host + "/oauth/v2/token",
+				"introspection_endpoint": zitadelURL(r) + "/oauth/v2/introspect",
+			})
+		case "/oauth/v2/introspect":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"active":                                true,
+				"user_id":                               "legacy-business-user-456",
+				"username":                              "display-name",
+				"urn:zitadel:iam:user:resourceowner:id": "tenant-789",
+				"urn:zitadel:iam:org:project:roles": map[string]any{
+					"listingkit_operator": map[string]any{},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer zitadel.Close()
+
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{IssuerURL: zitadel.URL, ClientID: "listingkit-client"},
+	})
+
+	handlerCalled := false
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{{
+		Method: http.MethodGet,
+		Path:   "/api/v1/listing-kits/tasks",
+		Module: "listing-kit",
+		Handler: func(c *gin.Context) {
+			handlerCalled = true
+			c.Status(http.StatusOK)
+		},
+	}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusForbidden, recorder.Code)
+	assert.JSONEq(t, `{
+  "error":"zitadel_user_missing",
+  "message":"ZITADEL subject is required"
+}`, recorder.Body.String())
+	assert.False(t, handlerCalled)
 }
 
 func TestListingKitZitadelAuthOverwritesCallerSuppliedIdentityHeaders(t *testing.T) {

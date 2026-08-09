@@ -41,17 +41,26 @@ func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
 		})
 		return
 	}
-	trustedIdentity := listingkit.AuthenticatedIdentity{
-		TenantID: identity.ResourceID,
-		UserID:   firstNonEmptyZitadelValue(identity.UserID, identity.Subject, identity.Username),
-		Roles:    identity.Roles,
-	}
-	if strings.TrimSpace(trustedIdentity.TenantID) == "" {
+	tenantID := strings.TrimSpace(identity.ResourceID)
+	userID := strings.TrimSpace(identity.Subject)
+	if tenantID == "" {
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 			"error":   "zitadel_tenant_missing",
-			"message": "ZITADEL identity has no tenant",
+			"message": "ZITADEL resource owner is required",
 		})
 		return
+	}
+	if userID == "" {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"error":   "zitadel_user_missing",
+			"message": "ZITADEL subject is required",
+		})
+		return
+	}
+	trustedIdentity := listingkit.AuthenticatedIdentity{
+		TenantID: tenantID,
+		UserID:   userID,
+		Roles:    append([]string{}, identity.Roles...),
 	}
 	for _, header := range []string{
 		"X-User-ID",
@@ -67,16 +76,12 @@ func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
 	}
 	c.Request = c.Request.WithContext(listingkit.WithAuthenticatedIdentity(c.Request.Context(), trustedIdentity))
 
-	if identity.ResourceID != "" {
-		c.Request.Header.Set("X-Tenant-ID", identity.ResourceID)
-		c.Request.Header.Set("tenant-id", identity.ResourceID)
-	}
-	if userID := firstNonEmptyZitadelValue(identity.UserID, identity.Subject, identity.Username); userID != "" {
-		c.Request.Header.Set("X-User-ID", userID)
-		c.Request.Header.Set("X-User-Type", "zitadel")
-	}
-	if len(identity.Roles) > 0 {
-		c.Request.Header.Set("X-User-Roles", strings.Join(identity.Roles, ","))
+	c.Request.Header.Set("X-Tenant-ID", tenantID)
+	c.Request.Header.Set("tenant-id", tenantID)
+	c.Request.Header.Set("X-User-ID", userID)
+	c.Request.Header.Set("X-User-Type", "zitadel")
+	if len(trustedIdentity.Roles) > 0 {
+		c.Request.Header.Set("X-User-Roles", strings.Join(trustedIdentity.Roles, ","))
 	}
 	if m.authz.Required {
 		if ok, reason := authorizeZitadelIdentity(identity, m.authz); !ok {
