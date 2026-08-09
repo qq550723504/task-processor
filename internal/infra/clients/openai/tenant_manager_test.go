@@ -15,6 +15,22 @@ type capturedOpenAIRequest struct {
 	Model string
 }
 
+func TestManagerReportsResolverWiring(t *testing.T) {
+	static, err := NewManager(&ManagerConfig{
+		Clients: map[string]*ClientConfig{"default": testClientConfig("key", "model", "https://example.test/v1")},
+	})
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	if static.HasConfigResolver() {
+		t.Fatal("static manager unexpectedly reports resolver wiring")
+	}
+	static.SetConfigResolver(fakeClientConfigResolver{})
+	if !static.HasConfigResolver() {
+		t.Fatal("resolver-backed manager does not report resolver wiring")
+	}
+}
+
 func newCaptureChatServer(t *testing.T, requests *[]capturedOpenAIRequest, mu *sync.Mutex) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -97,6 +113,40 @@ func TestManagerRoutesChatClientByTenantOrUserContext(t *testing.T) {
 	}
 	if len(userRequests) != 1 || userRequests[0].Auth != "Bearer user-key" || userRequests[0].Model != "user-model" {
 		t.Fatalf("user requests = %#v", userRequests)
+	}
+}
+
+func TestManagerRouteBoundImageClientRejectsCredentialConfigurationDrift(t *testing.T) {
+	mgr, err := NewManager(&ManagerConfig{
+		Clients: map[string]*ClientConfig{
+			"image": testClientConfig("static-key", "static-model", "https://example.test/v1"),
+		},
+		ConfigResolver: fakeClientConfigResolver{
+			tenantConfigs: map[string]*ClientConfig{
+				"tenant-a": testClientConfig("tenant-key", "tenant-model", "https://example.test/v1"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	client, err := mgr.GetImageClient("image")
+	if err != nil {
+		t.Fatalf("GetImageClient() error = %v", err)
+	}
+	routed, ok := client.(interface {
+		EditImageWithRoute(context.Context, *ImageEditRequest, ImageRouteSelection) (*ImageResponse, error)
+	})
+	if !ok {
+		t.Fatal("image client does not expose route-bound edit")
+	}
+	_, err = routed.EditImageWithRoute(
+		WithTenantID(context.Background(), "tenant-a"),
+		&ImageEditRequest{Model: "tenant-model"},
+		ImageRouteSelection{CredentialReference: "image", ConfigurationVersion: "stale-config"},
+	)
+	if err == nil {
+		t.Fatal("expected configuration drift to reject route-bound image call")
 	}
 }
 

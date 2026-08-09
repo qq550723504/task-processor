@@ -3230,12 +3230,17 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "productimage")
 	allowedFiles := map[string]struct{}{
-		filepath.Clean(filepath.Join(root, "failure_test.go")):                            {},
-		filepath.Clean(filepath.Join(root, "httpapi", "model_provider_builder.go")):       {},
-		filepath.Clean(filepath.Join(root, "httpapi", "model_provider_defaults_test.go")): {},
-		filepath.Clean(filepath.Join(root, "httpapi", "runtime_builder.go")):              {},
-		filepath.Clean(filepath.Join(root, "openai_image_edit_adapter.go")):               {},
-		filepath.Clean(filepath.Join(root, "pipeline_test.go")):                           {},
+		filepath.Clean(filepath.Join(root, "failure_test.go")):                                {},
+		filepath.Clean(filepath.Join(root, "openai_scene_generator_route_test.go")):           {},
+		filepath.Clean(filepath.Join(root, "httpapi", "model_provider_builder.go")):           {},
+		filepath.Clean(filepath.Join(root, "httpapi", "model_provider_defaults_test.go")):     {},
+		filepath.Clean(filepath.Join(root, "httpapi", "ai_capability_scene_catalog.go")):      {},
+		filepath.Clean(filepath.Join(root, "httpapi", "ai_capability_scene_catalog_test.go")): {},
+		filepath.Clean(filepath.Join(root, "httpapi", "scene_governance_builder.go")):         {},
+		filepath.Clean(filepath.Join(root, "httpapi", "scene_governance_builder_test.go")):    {},
+		filepath.Clean(filepath.Join(root, "httpapi", "runtime_builder.go")):                  {},
+		filepath.Clean(filepath.Join(root, "openai_image_edit_adapter.go")):                   {},
+		filepath.Clean(filepath.Join(root, "pipeline_test.go")):                               {},
 	}
 
 	index, err := loadGoFileIndex(root, "")

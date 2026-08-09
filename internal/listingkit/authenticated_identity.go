@@ -3,6 +3,8 @@ package listingkit
 import (
 	"context"
 	"strings"
+
+	"task-processor/internal/shared/aiidentity"
 )
 
 type authenticatedIdentityContextKey struct{}
@@ -22,7 +24,11 @@ func WithAuthenticatedIdentity(ctx context.Context, identity AuthenticatedIdenti
 	identity.TenantID = strings.TrimSpace(identity.TenantID)
 	identity.UserID = strings.TrimSpace(identity.UserID)
 	identity.Roles = append([]string(nil), identity.Roles...)
-	return context.WithValue(ctx, authenticatedIdentityContextKey{}, identity)
+	ctx = context.WithValue(ctx, authenticatedIdentityContextKey{}, identity)
+	ai := aiidentity.FromContext(ctx)
+	ai.TenantID = identity.TenantID
+	ai.UserID = identity.UserID
+	return aiidentity.WithIdentity(ctx, ai)
 }
 
 // AuthenticatedIdentityFromContext returns the verified identity stored in ctx.

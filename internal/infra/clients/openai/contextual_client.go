@@ -62,6 +62,14 @@ func (c *contextualImageClient) EditImage(ctx context.Context, req *ImageEditReq
 	return client.EditImage(ctx, req)
 }
 
+func (c *contextualImageClient) EditImageWithRoute(ctx context.Context, req *ImageEditRequest, selection ImageRouteSelection) (*ImageResponse, error) {
+	client, err := c.manager.resolveClientWithSelection(ctx, c.name, &selection)
+	if err != nil {
+		return nil, err
+	}
+	return client.EditImage(ctx, req)
+}
+
 func (c *contextualImageClient) GetDefaultModel() string {
 	client, err := c.manager.resolveClient(context.Background(), c.name)
 	if err != nil {

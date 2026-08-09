@@ -12,10 +12,12 @@ import (
 )
 
 type stubImageService struct {
-	err error
+	err     error
+	lastCtx context.Context
 }
 
-func (s *stubImageService) ProcessImages(_ context.Context, _ *productimage.Task) (*productimage.ImageProcessResult, error) {
+func (s *stubImageService) ProcessImages(ctx context.Context, _ *productimage.Task) (*productimage.ImageProcessResult, error) {
+	s.lastCtx = ctx
 	return nil, s.err
 }
 
@@ -138,5 +140,29 @@ func TestProcessorProcessTaskReturnsErrorWhenRetrySubmitFails(t *testing.T) {
 	}
 	if !repo.markFailedCalled {
 		t.Fatalf("expected MarkFailed() after submit failure")
+	}
+}
+
+func TestProcessorRestoresTaskAIIdentityIntoWorkerContext(t *testing.T) {
+	task := &productimage.Task{
+		ID:       "task-identity",
+		TenantID: "tenant-a",
+		UserID:   "user-a",
+		Status:   productimage.TaskStatusPending,
+		Request:  &productimage.ImageProcessRequest{Marketplace: "shein"},
+	}
+	repo := &stubTaskRepo{task: task}
+	service := &stubImageService{}
+	processor, err := NewProcessor(service, repo, logrus.New(), 0)
+	if err != nil {
+		t.Fatalf("NewProcessor() error = %v", err)
+	}
+
+	if err := processor.ProcessTask(context.Background(), worker.WorkerJob{TaskData: task.ID}); err != nil {
+		t.Fatalf("ProcessTask() error = %v", err)
+	}
+	identity := productimage.AIIdentityFromContext(service.lastCtx)
+	if identity.TenantID != "tenant-a" || identity.UserID != "user-a" || identity.BusinessTaskID != "task-identity" {
+		t.Fatalf("worker identity = %+v", identity)
 	}
 }

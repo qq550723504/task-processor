@@ -74,6 +74,7 @@ type service struct {
 	reviewAssessor        ReviewAssessor
 	cleanupTemporaryFiles bool
 	reuseExistingAssets   bool
+	requireAIIdentity     bool
 }
 
 type ServiceConfig struct {
@@ -97,6 +98,7 @@ type ServiceConfig struct {
 	ReviewAssessor        ReviewAssessor
 	CleanupTemporaryFiles bool
 	ReuseExistingAssets   bool
+	RequireAIIdentity     bool
 }
 
 func NewService(config *ServiceConfig) (Service, error) {
@@ -179,6 +181,7 @@ func NewService(config *ServiceConfig) (Service, error) {
 		reviewAssessor:        config.ReviewAssessor,
 		cleanupTemporaryFiles: config.CleanupTemporaryFiles,
 		reuseExistingAssets:   config.ReuseExistingAssets,
+		requireAIIdentity:     config.RequireAIIdentity,
 	}, nil
 }
 

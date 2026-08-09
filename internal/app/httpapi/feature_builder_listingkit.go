@@ -55,13 +55,15 @@ func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps
 
 	if options.includeImage {
 		imageModule, err := b.buildImage(productimagehttpapi.RuntimeBuildInput{
-			Logger:        logger,
-			Config:        deps.shared.cfg,
-			LLMManager:    deps.shared.llmMgr,
-			OpenAIManager: deps.shared.openaiMgr,
-			InputParser:   deps.shared.inputParser,
-			Understanding: deps.shared.understanding,
-			ImageWorkDir:  deps.shared.imageWorkDir,
+			Logger:               logger,
+			Config:               deps.shared.cfg,
+			LLMManager:           deps.shared.llmMgr,
+			OpenAIManager:        deps.shared.openaiMgr,
+			AICredentialResolver: deps.shared.aiCredentialStore,
+			AIInvocationRecorder: deps.shared.aiInvocationRecorder,
+			InputParser:          deps.shared.inputParser,
+			Understanding:        deps.shared.understanding,
+			ImageWorkDir:         deps.shared.imageWorkDir,
 		})
 		if err != nil {
 			return features, err

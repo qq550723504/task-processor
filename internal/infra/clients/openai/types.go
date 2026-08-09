@@ -173,3 +173,10 @@ type ImageGenerator interface {
 	SubmitImageEdit(ctx context.Context, req *ImageEditRequest) (*ImageAsyncSubmitResponse, error)
 	QueryImageGeneration(ctx context.Context, jobID string) (*ImageAsyncQueryResponse, error)
 }
+
+// ImageRouteSelection binds an image call to the credential configuration
+// selected by the capability router.
+type ImageRouteSelection struct {
+	CredentialReference  string
+	ConfigurationVersion string
+}

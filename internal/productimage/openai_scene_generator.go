@@ -28,6 +28,10 @@ func NewOpenAICompatibleSceneGenerator(workDir string, client openAICompatibleIm
 }
 
 func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req *SceneGenerationRequest) (*SceneGenerationResult, error) {
+	return g.GenerateSceneWithRoute(ctx, req, SceneGenerationRoute{ModelID: g.client.GetDefaultModel()})
+}
+
+func (g *openAICompatibleSceneGenerator) GenerateSceneWithRoute(ctx context.Context, req *SceneGenerationRequest, route SceneGenerationRoute) (*SceneGenerationResult, error) {
 	if req == nil || req.SourceAsset == nil {
 		return nil, fmt.Errorf("scene generation request requires source asset")
 	}
@@ -37,15 +41,29 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 	}
 	options := resolveScenePromptOptions(req, req.ProductContext)
 	resolvedPrompt := buildSceneGenerationResolvedPrompt(req)
-	response, err := g.client.EditImage(ctx, imageEditRequest{
-		Model:          g.client.GetDefaultModel(),
+	modelID := strings.TrimSpace(route.ModelID)
+	if modelID == "" {
+		return nil, fmt.Errorf("scene generation route model is required")
+	}
+	editRequest := imageEditRequest{
+		Model:          modelID,
 		Prompt:         resolvedPrompt.Text,
 		Image:          data,
 		ImageURL:       editableAssetURL(req.SourceAsset),
 		ResponseFormat: "b64_json",
 		N:              1,
 		Size:           "auto",
-	})
+	}
+	var response *imageEditResponse
+	if strings.TrimSpace(route.CredentialReference) != "" || strings.TrimSpace(route.ConfigurationVersion) != "" {
+		routeClient, ok := g.client.(routeBoundImageEditClient)
+		if !ok {
+			return nil, fmt.Errorf("scene generation route credential pinning is unsupported")
+		}
+		response, err = routeClient.EditImageWithRoute(ctx, editRequest, route)
+	} else {
+		response, err = g.client.EditImage(ctx, editRequest)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +81,7 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 	}
 	metadata := applyPromptObservabilityMetadata(map[string]string{
 		"provider":        "openai_compatible",
-		"model_family":    g.client.GetDefaultModel(),
+		"model_family":    modelID,
 		"generation_mode": "scene_generation",
 		"scene_intent":    req.SceneIntent,
 		"local_path":      path,
@@ -89,7 +107,7 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 			options,
 			resolvedPrompt,
 			"openai_compatible",
-			g.client.GetDefaultModel(),
+			modelID,
 			"scene_generation",
 		),
 	}, nil

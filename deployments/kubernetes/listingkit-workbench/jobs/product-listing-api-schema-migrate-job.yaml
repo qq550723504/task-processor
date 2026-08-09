@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: product-listing-api-schema-migrate-
+  labels:
+    app: product-listing-api-schema-migrate
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: product-listing-api-schema-migrate
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: product-listing-api-schema-migrate
+          image: docker.io/xuwei190/task-processor-product-listing-api:REPLACE_WITH_DEPLOYED_TAG
+          imagePullPolicy: IfNotPresent
+          command: ["/app/product-listing-api-schema-migrate"]
+          args: ["-config", "/app/config/config-prod.yaml"]
+          envFrom:
+            - configMapRef:
+                name: listingkit-workbench-config
+            - secretRef:
+                name: listingkit-workbench-secret
+                optional: true

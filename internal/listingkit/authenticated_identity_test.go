@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"task-processor/internal/shared/aiidentity"
 )
 
 func TestAuthenticatedIdentityRoundTripsThroughContext(t *testing.T) {
@@ -14,10 +16,12 @@ func TestAuthenticatedIdentityRoundTripsThroughContext(t *testing.T) {
 		Roles:    []string{"listingkit_operator"},
 	}
 
-	got, ok := AuthenticatedIdentityFromContext(WithAuthenticatedIdentity(context.Background(), want))
+	ctx := WithAuthenticatedIdentity(context.Background(), want)
+	got, ok := AuthenticatedIdentityFromContext(ctx)
 
 	require.True(t, ok)
 	require.Equal(t, want, got)
+	require.Equal(t, aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"}, aiidentity.FromContext(ctx))
 }
 
 func TestAuthenticatedIdentityFromContextRejectsMissingOrBlankTenant(t *testing.T) {

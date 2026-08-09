@@ -187,7 +187,8 @@ func BuildConfig(v *viper.Viper) *Config {
 			ProductEnrichMockLLM: v.GetBool("debug.productEnrichMockLLM"),
 		},
 		AICapability: AICapabilityConfig{
-			StudioImageRoutingMode: v.GetString("aiCapability.studioImageRoutingMode"),
+			StudioImageRoutingMode:   v.GetString("aiCapability.studioImageRoutingMode"),
+			ProductImageSceneEnabled: v.GetBool("aiCapability.productImageSceneEnabled"),
 		},
 		ListingControlPlane: ListingControlPlaneConfig{
 			Enabled:                    v.GetBool("listingControlPlane.enabled"),

@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/listingkit"
 	productimage "task-processor/internal/productimage"
 )
 
@@ -26,9 +27,11 @@ type mockImageHandlerSvc struct {
 	getErr       error
 	reviewResult *productimage.TaskResult
 	reviewErr    error
+	createCtx    context.Context
 }
 
-func (m *mockImageHandlerSvc) CreateProcessTask(_ context.Context, _ *productimage.ImageProcessRequest) (*productimage.Task, error) {
+func (m *mockImageHandlerSvc) CreateProcessTask(ctx context.Context, _ *productimage.ImageProcessRequest) (*productimage.Task, error) {
+	m.createCtx = ctx
 	return m.createResult, m.createErr
 }
 
@@ -76,6 +79,25 @@ func TestProcessImages_ValidRequest_Returns200(t *testing.T) {
 	}
 	if resp["task_id"] != "img-123" {
 		t.Errorf("task_id = %v, want img-123", resp["task_id"])
+	}
+}
+
+func TestProcessImagesPropagatesVerifiedIdentityToTaskCreation(t *testing.T) {
+	svc := &mockImageHandlerSvc{createResult: &productimage.Task{ID: "img-identity", Status: productimage.TaskStatusPending}}
+	r := newTestRouter(svc)
+	body := `{"image_urls":["http://example.com/img.jpg"],"marketplace":"amazon"}`
+	req := httptest.NewRequest(http.MethodPost, "/images/process", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"}))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	identity := productimage.AIIdentityFromContext(svc.createCtx)
+	if identity.TenantID != "tenant-a" || identity.UserID != "user-a" {
+		t.Fatalf("task creation identity = %+v", identity)
 	}
 }
 

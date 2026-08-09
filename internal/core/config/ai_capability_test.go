@@ -9,10 +9,12 @@ import (
 
 func TestAICapabilityRoutingDefaultsToLegacy(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_AI_CAPABILITY_STUDIO_IMAGE_ROUTING_MODE", "")
+	t.Setenv("TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED", "")
 
 	cfg, err := LoadFromBytes(validMinimalConfigYAML())
 	require.NoError(t, err)
 	assert.Equal(t, "legacy", cfg.AICapability.StudioImageRoutingMode)
+	assert.False(t, cfg.AICapability.ProductImageSceneEnabled)
 }
 
 func validMinimalConfigYAML() []byte {
@@ -31,6 +33,22 @@ func TestAICapabilityRoutingModeUsesEnvironmentOverride(t *testing.T) {
 	cfg, err := LoadFromBytes(validMinimalConfigYAML())
 	require.NoError(t, err)
 	assert.Equal(t, "shadow", cfg.AICapability.StudioImageRoutingMode)
+}
+
+func TestProductImageSceneGovernanceUsesEnvironmentOverride(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED", "true")
+
+	cfg, err := LoadFromBytes(validMinimalConfigYAML())
+	require.NoError(t, err)
+	assert.True(t, cfg.AICapability.ProductImageSceneEnabled)
+}
+
+func TestProductImageSceneGovernanceRejectsInvalidEnvironmentValue(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED", "maybe")
+
+	_, err := LoadFromBytes(validMinimalConfigYAML())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "aiCapability.productImageSceneEnabled")
 }
 
 func TestAICapabilityRoutingAcceptsCaseInsensitiveModes(t *testing.T) {

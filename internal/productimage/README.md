@@ -247,6 +247,14 @@ parse_source
 
 这条路径会优先于 `productimage.segmenter / whiteBackground / scene` 的独立 HTTP endpoint 配置。
 
+### ProductImage 场景生成治理入口
+
+新的 `productimage.scene_generation` 治理入口默认关闭：
+
+- `TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED=false`
+
+显式开启后，bootstrap 会要求 AI credential resolver、调用账本和 route-aware 图片 provider 同时存在。已验证的身份会通过 shared AI context 进入 ProductImage；创建任务时固化 `tenant_id/user_id`，worker 执行时恢复该 context，缺少任一身份会直接拒绝。该入口直接使用模型路由决定和 `ai_invocations` 账本；当前不做旧场景路径的 shadow、双写或兼容迁移。任务字段由现有 ProductImage AutoMigrate/schema wiring 管理；部署前运行 `product-listing-api-schema-migrate` Job。关闭开关即可回到默认行为。
+
 ### 主体提取
 
 - 优先走外部分割模型

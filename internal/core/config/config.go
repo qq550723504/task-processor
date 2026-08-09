@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"task-processor/internal/core/logger"
@@ -226,6 +227,9 @@ func knownEnvBindings() map[string]envBinding {
 	return map[string]envBinding{
 		"aiCapability.studioImageRoutingMode": {
 			Primary: "TASK_PROCESSOR_AI_CAPABILITY_STUDIO_IMAGE_ROUTING_MODE",
+		},
+		"aiCapability.productImageSceneEnabled": {
+			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED",
 		},
 		"openai.apiKey": {
 			Primary:    "TASK_PROCESSOR_OPENAI_API_KEY",
@@ -719,11 +723,43 @@ func logDeprecatedEnvUsage() {
 }
 
 func loadWithViper(v *viper.Viper) (*Config, error) {
+	if err := validateProductImageSceneEnabledValue(v); err != nil {
+		return nil, err
+	}
 	cfg := BuildConfig(v)
 	if err := cfg.ValidateWithError(); err != nil {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+func validateProductImageSceneEnabledValue(v *viper.Viper) error {
+	if v == nil {
+		return nil
+	}
+	raw := v.Get("aiCapability.productImageSceneEnabled")
+	if raw == nil {
+		return nil
+	}
+	switch value := raw.(type) {
+	case bool:
+		return nil
+	case string:
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			return nil
+		}
+		lowered := strings.ToLower(trimmed)
+		if lowered != "true" && lowered != "false" {
+			return fmt.Errorf("invalid boolean value for aiCapability.productImageSceneEnabled: %q", value)
+		}
+		if _, err := strconv.ParseBool(trimmed); err != nil {
+			return fmt.Errorf("invalid boolean value for aiCapability.productImageSceneEnabled: %q", value)
+		}
+		return nil
+	default:
+		return fmt.Errorf("invalid boolean value for aiCapability.productImageSceneEnabled: %v", raw)
+	}
 }
 
 func loadWithViperWithoutValidation(v *viper.Viper) *Config {
