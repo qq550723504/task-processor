@@ -17,7 +17,8 @@ import (
 )
 
 func TestRunLoadConfigFailureDoesNotOpenDatabase(t *testing.T) {
-	errLoad := errors.New("config file is unavailable")
+	const sentinel = "postgres://operator:loader-secret@db.example/listingkit"
+	errLoad := errors.New("config file is unavailable: " + sentinel)
 	err := runWithDependencies(context.Background(), Options{}, runtimeDependencies{
 		LoadConfig: func(string) (*config.Config, error) { return nil, errLoad },
 		OpenDB: func(*config.DatabaseConfig) (*gorm.DB, error) {
@@ -29,8 +30,11 @@ func TestRunLoadConfigFailureDoesNotOpenDatabase(t *testing.T) {
 			return nil, nil
 		},
 	})
-	if !errors.Is(err, errLoad) || !strings.Contains(err.Error(), "load config") {
-		t.Fatalf("run error = %v, want wrapped config-load error", err)
+	if got, want := err.Error(), "load config failed"; got != want {
+		t.Fatalf("run error = %q, want %q", got, want)
+	}
+	if strings.Contains(err.Error(), sentinel) {
+		t.Fatalf("run error leaked loader secret %q: %q", sentinel, err)
 	}
 }
 

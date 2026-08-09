@@ -90,7 +90,7 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 
 	cfg, err := deps.LoadConfig(opts.ConfigPath())
 	if err != nil {
-		return fmt.Errorf("load config failed: %w", err)
+		return errors.New("load config failed")
 	}
 	if cfg == nil || cfg.Database == nil {
 		return errors.New("database is required for identity preflight")
