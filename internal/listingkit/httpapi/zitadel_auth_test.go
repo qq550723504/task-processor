@@ -106,7 +106,7 @@ func TestListingKitZitadelAuthRejectsMissingBearerToken(t *testing.T) {
 	}
 }
 
-func TestListingKitZitadelAuthStaysDisabledWhenConfigDisablesAuthWithIssuerConfigured(t *testing.T) {
+func TestListingKitZitadelAuthCannotBeDisabledWithIssuerConfigured(t *testing.T) {
 	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: "https://issuer.example",
@@ -130,12 +130,12 @@ func TestListingKitZitadelAuthStaysDisabledWhenConfigDisablesAuthWithIssuerConfi
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil))
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusUnauthorized, resp.Body.String())
 	}
 }
 
-func TestListingKitZitadelAuthStaysDisabledWhenAuthorizationIsDisabledWithAllowlists(t *testing.T) {
+func TestListingKitZitadelAuthStillRequiresIdentityWhenAuthorizationIsDisabledWithAllowlists(t *testing.T) {
 	t.Cleanup(SetListingKitZitadelAuthConfigForTesting(nil))
 	ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
 		IssuerURL:             "https://issuer.example",
@@ -161,8 +161,8 @@ func TestListingKitZitadelAuthStaysDisabledWhenAuthorizationIsDisabledWithAllowl
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil))
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusUnauthorized, resp.Body.String())
 	}
 }
 
@@ -194,7 +194,7 @@ func TestListingKitZitadelAuthReturnsUnavailableWhenRequiredButNotConfigured(t *
 	}
 }
 
-func TestListingKitZitadelAuthStaysDisabledWhenConfigIsOptionalAndEmpty(t *testing.T) {
+func TestListingKitZitadelAuthFailsClosedWhenConfigIsEmpty(t *testing.T) {
 	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
 		AuthConfig: zitadelAuthConfig{Required: false},
 	})
@@ -214,19 +214,19 @@ func TestListingKitZitadelAuthStaysDisabledWhenConfigIsOptionalAndEmpty(t *testi
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil))
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	if resp.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusServiceUnavailable, resp.Body.String())
 	}
 }
 
-func TestConfigureListingKitZitadelAuthKeepsOptionalEmptyConfigDisabled(t *testing.T) {
+func TestConfigureListingKitZitadelAuthKeepsMiddlewareEnabledWithEmptyConfig(t *testing.T) {
 	t.Cleanup(SetListingKitZitadelAuthConfigForTesting(nil))
 	ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
 		AuthRequired: false,
 	})
 
-	if middleware := NewZitadelAuthMiddlewareFromEnv(); middleware != nil {
-		t.Fatal("expected nil middleware for optional empty ZITADEL config")
+	if middleware := NewZitadelAuthMiddlewareFromEnv(); middleware == nil {
+		t.Fatal("expected fail-closed middleware for empty ZITADEL config")
 	}
 }
 

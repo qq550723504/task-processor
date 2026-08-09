@@ -31,6 +31,44 @@ func init() {
 	gin.SetMode(gin.TestMode)
 }
 
+func TestListingKitInvitationRouteRejectsForgedAdminHeadersWhenGlobalFlagsAreFalse(t *testing.T) {
+	restore := listingkithttpapi.SetListingKitZitadelAuthConfigForTesting(nil)
+	t.Cleanup(restore)
+	listingkithttpapi.ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
+		IssuerURL:             "https://issuer.example",
+		ClientID:              "listingkit-client",
+		AuthRequired:          false,
+		AuthorizationRequired: false,
+	})
+	if err := listingkithttpapi.ConfigureListingKitAuthorization(nil, []string{"platform_admin"}); err != nil {
+		t.Fatal(err)
+	}
+
+	handlerCalled := false
+	server := buildHTTPServerFromRoutes(0, []httproute.Descriptor{{
+		Method: http.MethodPost,
+		Path:   "/api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations",
+		Module: "listing-kit-platform-admin",
+		Handler: func(c *gin.Context) {
+			handlerCalled = true
+			c.Status(http.StatusCreated)
+		},
+	}})
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/platform/tenants/org-1/members/invitations", strings.NewReader(`{"email":"victim@example.com"}`))
+	request.Header.Set("X-User-ID", "forged-admin")
+	request.Header.Set("X-User-Roles", "platform_admin")
+	response := httptest.NewRecorder()
+
+	server.Handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusUnauthorized, response.Body.String())
+	}
+	if handlerCalled {
+		t.Fatal("invitation handler ran for forged identity headers")
+	}
+}
+
 type stubAmazonListingHandler struct {
 	generateCalled  bool
 	listQueueCalled bool
@@ -757,6 +795,10 @@ func (s *stubListingKitHandler) SetPlatformTenantSubscriptionUsage(c *gin.Contex
 
 func (s *stubListingKitHandler) ListPlatformTenantSubscriptionAuditLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": []gin.H{}})
+}
+
+func (s *stubListingKitHandler) InviteTenantMember(c *gin.Context) {
+	c.JSON(http.StatusCreated, gin.H{"tenant_id": c.Param("tenant_id")})
 }
 
 func (s *stubListingKitHandler) GetTaskResult(c *gin.Context) {
@@ -2158,7 +2200,7 @@ func TestBuildHTTPServerBundleFromModulesMountsRegisteredRoutes(t *testing.T) {
 		t.Fatalf("server handler type = %T, want *gin.Engine", server.Handler)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sds/categories", nil)
+	req := withAppHTTPTestBearer(httptest.NewRequest(http.MethodGet, "/api/v1/sds/categories", nil))
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 	if resp.Code != http.StatusOK {
@@ -2260,11 +2302,14 @@ func TestSingleSDSCatalogHandlerPanicsOnMultipleHandlers(t *testing.T) {
 func mustBuildTestRouterFromModules(t *testing.T, modules ...kernelmodule.Module) *gin.Engine {
 	t.Helper()
 
-	server, _, err := buildHTTPServerBundleFromModules(0, nil, testHTTPModules(modules...))
+	routes, err := buildRegisteredRoutesForModules(nil, testHTTPModules(modules...))
 	require.NoError(t, err)
-
-	router, ok := server.Handler.(*gin.Engine)
-	require.True(t, ok)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		withAppHTTPTestBearer(c.Request)
+		c.Next()
+	})
+	mountRoutes(router, routes)
 	return router
 }
 

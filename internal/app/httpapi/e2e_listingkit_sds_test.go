@@ -135,13 +135,14 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 	require.NoError(t, err)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
-	enableListingKitSubscriptionModule(t, testServer.Client(), testServer.URL, "studio")
+	client := authenticatedAppHTTPTestClient(testServer.Client())
+	enableListingKitSubscriptionModule(t, client, testServer.URL, "studio")
 
 	imageServer := newE2EImageServer()
 	defer imageServer.Close()
 	imageURL := imageServer.URL + "/product.png"
 
-	taskID := createTaskViaAPI[map[string]any](t, testServer.Client(), testServer.URL+"/api/v1/listing-kits/generate", map[string]any{
+	taskID := createTaskViaAPI[map[string]any](t, client, testServer.URL+"/api/v1/listing-kits/generate", map[string]any{
 		"text":       "高品质蓝牙耳机，支持主动降噪、蓝牙 5.3、30 小时续航和舒适佩戴。",
 		"image_urls": []string{imageURL},
 		"platforms":  []string{"amazon"},
@@ -156,7 +157,7 @@ func TestHTTPE2E_ListingKitGenerateSyncsSDSDesign(t *testing.T) {
 		return taskID
 	})
 
-	task := waitForTaskResult[listingkit.TaskResult](t, testServer.Client(), testServer.URL+"/api/v1/listing-kits/tasks/"+taskID, listingKitTaskTerminal)
+	task := waitForTaskResult[listingkit.TaskResult](t, client, testServer.URL+"/api/v1/listing-kits/tasks/"+taskID, listingKitTaskTerminal)
 	require.NotEqual(t, core.TaskStatusFailed, task.Status)
 	require.NotNil(t, task.Result)
 	require.NotNil(t, task.Result.ImageAssets)

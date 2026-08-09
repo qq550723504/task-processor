@@ -238,7 +238,9 @@ func NewDefaultConfig() *Config {
 			StudioImageRoutingMode:   "legacy",
 			ProductImageSceneEnabled: false,
 		},
-		ListingKit: ListingKitConfig{},
+		ListingKit: ListingKitConfig{
+			Zitadel: ListingKitZitadelConfig{AuthRequired: true},
+		},
 		ListingControlPlane: ListingControlPlaneConfig{
 			Enabled:                    false,
 			Platform:                   "shein",

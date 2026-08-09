@@ -586,7 +586,7 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, cfg.ListingKit.Zitadel.AllowedRoles)
 }
 
-func TestLoadConfigFromFile_HonorsExplicitListingKitZitadelAuthzDisabledWithAllowlists(t *testing.T) {
+func TestLoadConfigFromFile_CannotDisableListingKitAuthentication(t *testing.T) {
 	tempDir := t.TempDir()
 	configPath := filepath.Join(tempDir, "config-test.yaml")
 	configBody := strings.Join([]string{
@@ -611,7 +611,7 @@ func TestLoadConfigFromFile_HonorsExplicitListingKitZitadelAuthzDisabledWithAllo
 	cfg, err := LoadConfigFromFile(configPath)
 	require.NoError(t, err)
 
-	assert.False(t, cfg.ListingKit.Zitadel.AuthRequired)
+	assert.True(t, cfg.ListingKit.Zitadel.AuthRequired)
 	assert.False(t, cfg.ListingKit.Zitadel.AuthorizationRequired)
 	assert.Equal(t, []string{"1-admin"}, cfg.ListingKit.Zitadel.AllowedUsernames)
 	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, cfg.ListingKit.Zitadel.AllowedRoles)

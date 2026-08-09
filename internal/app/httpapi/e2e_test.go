@@ -113,23 +113,24 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 	require.NoError(t, err)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
+	client := authenticatedAppHTTPTestClient(testServer.Client())
 
 	imageServer := newE2EImageServer()
 	defer imageServer.Close()
 	imageURL := imageServer.URL + "/product.png"
 	imageURLs := []string{imageURL, imageURL + "?v=2", imageURL + "?v=3"}
 
-	productTaskID := createTaskViaAPI[productenrich.TaskResponse](t, testServer.Client(), testServer.URL+"/api/v1/products/generate", map[string]any{
+	productTaskID := createTaskViaAPI[productenrich.TaskResponse](t, client, testServer.URL+"/api/v1/products/generate", map[string]any{
 		"text":       "高品质蓝牙耳机，支持主动降噪、蓝牙 5.3、30 小时续航、双麦克风通话降噪和轻量化佩戴，适合通勤、会议与运动等多种使用场景。",
 		"image_urls": imageURLs,
 	}, func(resp productenrich.TaskResponse) string { return resp.TaskID })
 
-	productTask := waitForTaskResult[productenrich.TaskResult](t, testServer.Client(), testServer.URL+"/api/v1/products/tasks/"+productTaskID, productTaskTerminal)
+	productTask := waitForTaskResult[productenrich.TaskResult](t, client, testServer.URL+"/api/v1/products/tasks/"+productTaskID, productTaskTerminal)
 	require.Equal(t, productenrich.TaskStatusCompleted, productTask.Status)
 	require.NotNil(t, productTask.ProductJSON)
 	require.NotEmpty(t, productTask.ProductJSON.Title)
 
-	imageTaskID := createTaskViaAPI[map[string]any](t, testServer.Client(), testServer.URL+"/api/v1/images/process", map[string]any{
+	imageTaskID := createTaskViaAPI[map[string]any](t, client, testServer.URL+"/api/v1/images/process", map[string]any{
 		"marketplace": "amazon",
 		"text":        "蓝牙耳机主图",
 		"image_urls":  imageURLs,
@@ -138,13 +139,13 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 		return taskID
 	})
 
-	imageTask := waitForTaskResult[productimage.TaskResult](t, testServer.Client(), testServer.URL+"/api/v1/images/tasks/"+imageTaskID, imageTaskTerminal)
+	imageTask := waitForTaskResult[productimage.TaskResult](t, client, testServer.URL+"/api/v1/images/tasks/"+imageTaskID, imageTaskTerminal)
 	require.NotEqual(t, productimage.TaskStatusFailed, imageTask.Status)
 	require.NotNil(t, imageTask.Result)
 	require.NotNil(t, imageTask.Result.MainImage)
 	require.NotNil(t, imageTask.Result.WhiteBgImage)
 
-	amazonTaskID := createTaskViaAPI[map[string]any](t, testServer.Client(), testServer.URL+"/api/v1/amazon/listings/generate", map[string]any{
+	amazonTaskID := createTaskViaAPI[map[string]any](t, client, testServer.URL+"/api/v1/amazon/listings/generate", map[string]any{
 		"marketplace": "amazon",
 		"text":        "高品质蓝牙耳机，支持主动降噪、蓝牙 5.3、30 小时续航和舒适佩戴，适合通勤、会议与运动使用。",
 		"image_urls":  imageURLs,
@@ -153,13 +154,13 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 		return taskID
 	})
 
-	amazonTask := waitForTaskResult[amazonlisting.TaskResult](t, testServer.Client(), testServer.URL+"/api/v1/amazon/listings/tasks/"+amazonTaskID, amazonTaskTerminal)
+	amazonTask := waitForTaskResult[amazonlisting.TaskResult](t, client, testServer.URL+"/api/v1/amazon/listings/tasks/"+amazonTaskID, amazonTaskTerminal)
 	require.NotEqual(t, amazonlisting.TaskStatusFailed, amazonTask.Status)
 	require.NotNil(t, amazonTask.Result)
 	require.NotNil(t, amazonTask.Result.Export)
 	require.NotEmpty(t, amazonTask.Result.Title)
 
-	workbench := getJSON[amazonlisting.TaskWorkbench](t, testServer.Client(), testServer.URL+"/api/v1/amazon/listings/tasks/"+amazonTaskID+"/workbench")
+	workbench := getJSON[amazonlisting.TaskWorkbench](t, client, testServer.URL+"/api/v1/amazon/listings/tasks/"+amazonTaskID+"/workbench")
 	require.Equal(t, amazonTaskID, workbench.TaskID)
 	require.True(t, workbench.Ready)
 	require.Len(t, workbench.ChildTasks, 2)
@@ -240,9 +241,10 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 	require.NoError(t, err)
 	testServer := httptest.NewServer(routerServer.Handler)
 	defer testServer.Close()
-	enableListingKitSubscriptionModule(t, testServer.Client(), testServer.URL, "studio")
+	client := authenticatedAppHTTPTestClient(testServer.Client())
+	enableListingKitSubscriptionModule(t, client, testServer.URL, "studio")
 
-	taskID := createTaskViaAPI[map[string]any](t, testServer.Client(), testServer.URL+"/api/v1/listing-kits/generate", map[string]any{
+	taskID := createTaskViaAPI[map[string]any](t, client, testServer.URL+"/api/v1/listing-kits/generate", map[string]any{
 		"product_url": "https://detail.1688.com/offer/123456789.html",
 		"platforms":   []string{"shein"},
 		"country":     "US",
@@ -255,7 +257,7 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 		return taskID
 	})
 
-	task := waitForTaskResult[listingkit.TaskResult](t, testServer.Client(), testServer.URL+"/api/v1/listing-kits/tasks/"+taskID, listingKitTaskTerminal)
+	task := waitForTaskResult[listingkit.TaskResult](t, client, testServer.URL+"/api/v1/listing-kits/tasks/"+taskID, listingKitTaskTerminal)
 	require.NotEqual(t, core.TaskStatusFailed, task.Status)
 	require.NotNil(t, task.Result)
 	require.NotNil(t, task.Result.CanonicalProduct)
