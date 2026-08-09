@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -147,6 +148,23 @@ func TestPostgresOwnerRepositoryPropagatesQueryCancellation(t *testing.T) {
 	}
 }
 
+func TestPostgresOwnerRepositoryCancellationWinsOverUndefinedTable(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	repository := newPostgresOwnerRepository(cancelingErrorOwnerQueryer{
+		cancel: cancel,
+		err:    fmt.Errorf("wrapped database error: %w", postgresStateError{state: "42P01", message: "relation does not exist"}),
+	}, []OwnerTable{
+		{Table: "optional_table", TenantColumn: "tenant_id", UserColumn: "user_id"},
+	})
+
+	owners, err := repository.List(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("List owners, error = %#v, %v; want context cancellation", owners, err)
+	}
+}
+
 func TestPostgresOwnerRepositoryRejectsUnsafeInventoryBeforeQuerying(t *testing.T) {
 	t.Parallel()
 
@@ -181,6 +199,16 @@ func openOwnerRepositorySQLMock(t *testing.T, matcher sqlmock.QueryMatcher) (*sq
 		}
 	})
 	return database, mock
+}
+
+type cancelingErrorOwnerQueryer struct {
+	cancel context.CancelFunc
+	err    error
+}
+
+func (queryer cancelingErrorOwnerQueryer) QueryContext(context.Context, string) (ownerRows, error) {
+	queryer.cancel()
+	return nil, queryer.err
 }
 
 func matchReadOnlyInventoryQuery(expectedTable, actualQuery string) error {

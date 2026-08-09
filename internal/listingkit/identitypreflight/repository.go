@@ -70,11 +70,11 @@ func (repository *postgresOwnerRepository) List(ctx context.Context) ([]Persiste
 	for _, table := range repository.inventory {
 		rows, err := repository.database.QueryContext(ctx, ownerAggregateQuery(table))
 		if err != nil {
-			if isPostgresUndefinedTable(err) {
-				continue
-			}
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return nil, fmt.Errorf("list persisted owners from %s: %w", table.Table, ctxErr)
+			}
+			if isPostgresUndefinedTable(err) {
+				continue
 			}
 			return nil, fmt.Errorf("list persisted owners from %s: database query failed", table.Table)
 		}

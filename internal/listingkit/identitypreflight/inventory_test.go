@@ -21,6 +21,7 @@ func TestOwnerTableInventoryMatchesOwnerScopedModels(t *testing.T) {
 
 	repositoryRoot := testRepositoryRoot(t)
 	discovered, err := discoverOwnerTables(
+		productionNonPersistentOwnerModelExclusions(repositoryRoot),
 		filepath.Join(repositoryRoot, "internal", "listingkit"),
 		filepath.Join(repositoryRoot, "internal", "listingadmin"),
 	)
@@ -91,13 +92,38 @@ func (ownerRecord) TableName() string { return "sample_owner_records" }
 		t.Fatalf("write model fixture: %v", err)
 	}
 
-	tables, err := discoverOwnerTables(root)
+	tables, err := discoverOwnerTables(nil, root)
 	if err != nil {
 		t.Fatalf("discover owner tables: %v", err)
 	}
 	want := OwnerTable{Table: "sample_owner_records", TenantColumn: "tenant_id", UserColumn: "user_id"}
 	if got, ok := tables[want.Table]; !ok || got != want {
 		t.Fatalf("convention-based owner table = %#v, %v; want %#v", got, ok, want)
+	}
+}
+
+func TestDiscoverOwnerTablesRequiresLiteralTableNameForConventionOnlyCandidate(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+	source := `package sample
+
+type conventionOnlyOwnerRecord struct {
+	TenantID string
+	OwnerUserID string
+}
+`
+	if err := os.WriteFile(filepath.Join(root, "model.go"), []byte(source), 0o600); err != nil {
+		t.Fatalf("write model fixture: %v", err)
+	}
+
+	_, err := discoverOwnerTables(nil, root)
+	if err == nil {
+		t.Fatal("discover owner tables error = nil, want missing literal TableName failure")
+	}
+	if !strings.Contains(err.Error(), "conventionOnlyOwnerRecord") ||
+		!strings.Contains(err.Error(), "add an explicit production TableName method") {
+		t.Fatalf("error = %q, want candidate name and explicit TableName instruction", err)
 	}
 }
 
@@ -111,12 +137,11 @@ func testRepositoryRoot(t *testing.T) string {
 }
 
 type ownerModel struct {
-	TypeName        string
-	TenantColumn    string
-	UserColumn      string
-	Table           string
-	Source          string
-	HasGORMMetadata bool
+	TypeName     string
+	TenantColumn string
+	UserColumn   string
+	Table        string
+	Source       string
 }
 
 type ownerModelKey struct {
@@ -125,10 +150,61 @@ type ownerModelKey struct {
 	TypeName  string
 }
 
-func discoverOwnerTables(roots ...string) (map[string]OwnerTable, error) {
+func productionNonPersistentOwnerModelExclusions(repositoryRoot string) map[ownerModelKey]string {
+	listingKitDirectory := filepath.Join(repositoryRoot, "internal", "listingkit")
+	listingAdminDirectory := filepath.Join(repositoryRoot, "internal", "listingadmin")
+	identityPreflightDirectory := filepath.Join(listingKitDirectory, "identitypreflight")
+	memberInviteDirectory := filepath.Join(listingKitDirectory, "memberinvite")
+	storeDirectory := filepath.Join(listingKitDirectory, "store")
+
+	return map[ownerModelKey]string{
+		{Directory: identityPreflightDirectory, Package: "identitypreflight", TypeName: "PersistedOwner"}:      "read-only aggregate result returned by the preflight repository",
+		{Directory: identityPreflightDirectory, Package: "identitypreflight", TypeName: "unknownOwnerFinding"}: "in-memory comparison finding, never passed to GORM",
+
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "CategoryQuery"}:                "repository filter input; Category is represented by a separate persistence row",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "FilterRuleQuery"}:              "repository filter input; FilterRule is represented by a separate persistence row",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "GenerationTopicOverrideQuery"}: "repository filter input; GenerationTopicOverride is represented by a separate persistence row",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "GenerationTopicPolicyQuery"}:   "repository filter input; GenerationTopicPolicy is represented by a separate persistence row",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "ImportTaskQuery"}:              "repository filter input; ImportTask is represented by a separate persistence row",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "OperationStrategyQuery"}:       "repository filter input; OperationStrategy is represented by a separate persistence row",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "PricingRuleQuery"}:             "repository filter input; PricingRule is represented by a separate persistence row",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "ProductDataQuery"}:             "repository filter input; ProductData is represented by a separate persistence row",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "ProductImportMappingQuery"}:    "repository filter input; ProductImportMapping is represented by a separate persistence row",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "ProfitRuleQuery"}:              "repository filter input; ProfitRule is represented by a separate persistence row",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "ScheduledTaskConfigQuery"}:     "repository filter input; ScheduledTaskConfig is represented by a separate persistence row",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "SensitiveWordQuery"}:           "repository filter input; SensitiveWord is represented by a separate persistence row",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "StoreQuery"}:                   "repository filter input; Store is represented by listingStore for persistence",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "StoreStatisticsQuery"}:         "repository aggregate filter input, never passed to GORM as a model",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "listQueryScope"}:               "HTTP handler pagination and authorization input, never passed to GORM as a model",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "Store"}:                        "API and domain view mapped to listingStore before persistence",
+
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "DailyListingCountGetReqDTO"}: "management API transport DTO, never passed to GORM as a model",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "DailyListingCountRespDTO"}:   "management API transport DTO, never passed to GORM as a model",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "DailyListingCountSetReqDTO"}: "management API transport DTO, never passed to GORM as a model",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "RollbackDailyQuotaReqDTO"}:   "management API transport DTO, never passed to GORM as a model",
+		{Directory: listingAdminDirectory, Package: "listingadmin", TypeName: "TryConsumeDailyQuotaReqDTO"}: "management API transport DTO, never passed to GORM as a model",
+
+		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "AIAsyncImageQueryContext"}:        "request context value, never passed to GORM as a model",
+		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "AIClientCredential"}:              "service contract mapped to the infrastructure credential store",
+		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "AuthenticatedIdentity"}:           "verified request context value, never passed to GORM as a model",
+		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "GenerateRequest"}:                 "orchestration request input, never passed to GORM as a model",
+		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "RequestIdentity"}:                 "request context value, never passed to GORM as a model",
+		{Directory: listingKitDirectory, Package: "listingkit", TypeName: "SourceFactsGenerateRequestInput"}: "source-facts bridge input, never passed to GORM as a model",
+		{Directory: memberInviteDirectory, Package: "memberinvite", TypeName: "AuditRecord"}:                 "repository command mapped to memberInvitationAuditRow before persistence",
+		{Directory: memberInviteDirectory, Package: "memberinvite", TypeName: "Invitation"}:                  "identity-provider response value, never passed to GORM as a model",
+		{Directory: storeDirectory, Package: "store", TypeName: "sheinPODImageLookupBackfillTaskRow"}:        "read projection selected through the explicit listingkit.Task GORM model",
+	}
+}
+
+func discoverOwnerTables(exclusions map[ownerModelKey]string, roots ...string) (map[string]OwnerTable, error) {
 	models := make(map[ownerModelKey]*ownerModel)
 	tableNames := make(map[ownerModelKey]string)
 	fset := token.NewFileSet()
+	for key, rationale := range exclusions {
+		if strings.TrimSpace(rationale) == "" {
+			return nil, fmt.Errorf("owner-scoped candidate exclusion %s.%s has no rationale", key.Package, key.TypeName)
+		}
+	}
 
 	for _, root := range roots {
 		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -162,21 +238,39 @@ func discoverOwnerTables(roots ...string) (map[string]OwnerTable, error) {
 	}
 
 	result := make(map[string]OwnerTable)
+	usedExclusions := make(map[ownerModelKey]struct{}, len(exclusions))
+	var missingTableNames []string
 	for key, model := range models {
 		if model.TenantColumn == "" || model.UserColumn == "" {
 			continue
 		}
 		tableName, ok := tableNames[key]
-		if !model.HasGORMMetadata && !ok {
-			continue
-		}
 		if !ok {
-			return nil, fmt.Errorf("owner-scoped model %s in %s has no literal TableName method", model.TypeName, model.Source)
+			if _, excluded := exclusions[key]; excluded {
+				usedExclusions[key] = struct{}{}
+				continue
+			}
+			missingTableNames = append(missingTableNames, fmt.Sprintf("%s.%s in %s", key.Package, model.TypeName, model.Source))
+			continue
 		}
 		if _, exists := result[tableName]; exists {
 			return nil, fmt.Errorf("multiple owner-scoped models resolve to table %s", tableName)
 		}
 		result[tableName] = OwnerTable{Table: tableName, TenantColumn: model.TenantColumn, UserColumn: model.UserColumn}
+	}
+	if len(missingTableNames) > 0 {
+		sort.Strings(missingTableNames)
+		return nil, fmt.Errorf("owner-scoped candidates have no literal TableName method: %v; add an explicit production TableName method or a narrowly named exclusion with rationale", missingTableNames)
+	}
+	var staleExclusions []string
+	for key := range exclusions {
+		if _, used := usedExclusions[key]; !used {
+			staleExclusions = append(staleExclusions, fmt.Sprintf("%s.%s", key.Package, key.TypeName))
+		}
+	}
+	if len(staleExclusions) > 0 {
+		sort.Strings(staleExclusions)
+		return nil, fmt.Errorf("stale non-persistent owner-model exclusions: %v", staleExclusions)
 	}
 	return result, nil
 }
@@ -196,8 +290,7 @@ func collectOwnerStructs(models map[ownerModelKey]*ownerModel, directory, packag
 		}
 		model := &ownerModel{TypeName: typeSpec.Name.Name, Source: path}
 		for _, field := range structure.Fields.List {
-			column, hasGORMMetadata := gormColumn(field)
-			model.HasGORMMetadata = model.HasGORMMetadata || hasGORMMetadata
+			column := gormColumn(field)
 			switch column {
 			case "tenant_id":
 				model.TenantColumn = column
@@ -211,36 +304,34 @@ func collectOwnerStructs(models map[ownerModelKey]*ownerModel, directory, packag
 	}
 }
 
-func gormColumn(field *ast.Field) (string, bool) {
+func gormColumn(field *ast.Field) string {
 	if len(field.Names) != 1 {
-		return "", false
+		return ""
 	}
-	hasGORMMetadata := false
 	if field.Tag != nil {
 		tag, err := strconv.Unquote(field.Tag.Value)
 		if err != nil {
-			return "", false
+			return ""
 		}
-		gormTag, hasGORMTag := reflect.StructTag(tag).Lookup("gorm")
-		hasGORMMetadata = hasGORMMetadata || hasGORMTag
+		gormTag := reflect.StructTag(tag).Get("gorm")
 		for _, option := range strings.Split(gormTag, ";") {
 			if option == "-" || strings.HasPrefix(option, "-:") {
-				return "", hasGORMMetadata
+				return ""
 			}
 			if column, ok := strings.CutPrefix(option, "column:"); ok {
-				return column, hasGORMMetadata
+				return column
 			}
 		}
 	}
 	switch field.Names[0].Name {
 	case "TenantID":
-		return "tenant_id", hasGORMMetadata
+		return "tenant_id"
 	case "UserID":
-		return "user_id", hasGORMMetadata
+		return "user_id"
 	case "OwnerUserID":
-		return "owner_user_id", hasGORMMetadata
+		return "owner_user_id"
 	default:
-		return "", hasGORMMetadata
+		return ""
 	}
 }
 
