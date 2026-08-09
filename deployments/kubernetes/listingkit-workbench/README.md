@@ -28,8 +28,8 @@ kubectl apply -n task-processor -f tmp/listingkit-member-invitation-secret.yaml
 
 Do not commit the filled secret file.
 
-When migrating an existing deployment, first set the non-secret project id in
-`listingkit-workbench-config` and create `listingkit-member-invitation-secret`.
+When migrating an existing deployment, create
+`listingkit-member-invitation-secret` with both the token and project id.
 Then remove both invitation keys from the already deployed shared Secret and
 restart every long-lived consumer so no UI, worker, or imgproxy Pod retains the
 write token in its process environment. The API Secret reference is required:
@@ -67,7 +67,7 @@ ZITADEL_CLIENT_SECRET=<oidc-web-client-secret>
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_TENANT_DIRECTORY_TOKEN=<read-only-tenant-directory-token>
 # API-only listingkit-member-invitation-secret:
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN=<dedicated-member-invitation-token>
-# listingkit-workbench-config ConfigMap (non-secret identifier):
+# API-only listingkit-member-invitation-secret:
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<existing-listingkit-project-id>
 # Auth.js callback URI:
 # https://<workbench-host>/api/auth/callback/zitadel
@@ -158,10 +158,8 @@ or unrelated administration permissions. The application accepts only
 `listingkit_viewer`, `listingkit_operator`, or `listingkit_admin`; the invitation
 flow cannot grant `platform_admin`.
 
-Store the dedicated token only in the API-only
-`listingkit-member-invitation-secret`; store the existing project id as the
-non-secret `TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID` value in
-`listingkit-workbench-config`:
+Store the dedicated token and existing project id only in the API-only
+`listingkit-member-invitation-secret`:
 
 ```text
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN=<dedicated-service-account-token>
@@ -171,11 +169,11 @@ TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<existing-listingkit-project-id>
 Inject the token through the approved secret manager; never commit it, print it,
 or paste it into the OIDC or tenant-directory fields. Do not add the dedicated
 Secret to UI, worker, imgproxy, or migration Job `envFrom` lists. Apply the
-dedicated Secret and ConfigMap, then restart only the API deployment:
+dedicated Secret and API Deployment, then restart only the API deployment:
 
 ```powershell
 kubectl apply -n task-processor -f tmp/listingkit-member-invitation-secret.yaml
-kubectl apply -n task-processor -f deployments/kubernetes/listingkit-workbench/base/configmap.yaml
+kubectl apply -n task-processor -f deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml
 
 $requiredKeys = @(
   "TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN"
@@ -187,10 +185,12 @@ $missingKeys = @($requiredKeys | Where-Object { $_ -notin $presentKeys })
 if ($missingKeys.Count -ne 0) {
   throw "Missing ListingKit invitation Secret keys: $($missingKeys -join ', ')"
 }
-$configMap = kubectl -n task-processor get configmap listingkit-workbench-config -o json |
-  ConvertFrom-Json
-if ([string]::IsNullOrWhiteSpace($configMap.data.TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID)) {
-  throw "Missing ListingKit invitation project id in ConfigMap"
+$requiredKeys = @(
+  "TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN",
+  "TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID"
+)
+if (@($requiredKeys | Where-Object { $_ -notin $presentKeys }).Count -ne 0) {
+  throw "Missing ListingKit invitation credentials in API-only Secret"
 }
 
 kubectl -n task-processor rollout restart deployment/product-listing-api
@@ -504,7 +504,8 @@ The UI uses:
   redirect URIs from `listingkit-workbench-secret`
 - `TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN` only from
   `listingkit-member-invitation-secret` in `product-listing-api`; the project
-  id is a non-secret ConfigMap value.
+  id is co-located there so the deployment cannot overwrite it with an empty
+  shared ConfigMap value.
 
 The Go API still reads `config/config-prod.yaml` baked into the image, with
 secret values expected to be supplied by runtime configuration. For ListingKit

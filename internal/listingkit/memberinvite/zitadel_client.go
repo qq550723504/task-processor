@@ -68,7 +68,7 @@ func (p *zitadelProvider) Invite(ctx context.Context, request InviteRequest) (In
 func (p *zitadelProvider) createHumanUser(ctx context.Context, request InviteRequest) (string, error) {
 	body := struct {
 		Organization struct {
-			OrganizationID string `json:"organizationId"`
+			OrganizationID string `json:"orgId"`
 		} `json:"organization"`
 		Profile struct {
 			GivenName  string `json:"givenName"`

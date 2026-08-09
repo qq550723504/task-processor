@@ -126,7 +126,7 @@ func newZitadelProviderTestServer(t *testing.T, roleStatus int) (Provider, *[]ca
 		case "/v2/users/human":
 			var body struct {
 				Organization struct {
-					OrganizationID string `json:"organizationId"`
+					OrganizationID string `json:"orgId"`
 				} `json:"organization"`
 				Email struct {
 					SendCode *struct{} `json:"sendCode"`

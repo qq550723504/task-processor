@@ -151,6 +151,7 @@ jobs:
 
       - name: Update API deployment image
         run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} apply -f deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml
           kubectl -n ${{ env.K8S_NAMESPACE }} set image deployment/product-listing-api product-listing-api=${{ needs.prepare.outputs.api_image }}
 
       - name: Wait for API rollout

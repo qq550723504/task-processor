@@ -28,6 +28,11 @@ spec:
                 secretKeyRef:
                   name: listingkit-member-invitation-secret
                   key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN
+            - name: TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-member-invitation-secret
+                  key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID
             - name: TASK_PROCESSOR_SDS_LOGIN_SERVICE_DEFAULT_HEADLESS
               valueFrom:
                 configMapKeyRef:
