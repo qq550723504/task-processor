@@ -113,7 +113,7 @@ func TestBuildModelProviderBuildsNanobananaCapabilities(t *testing.T) {
 	}
 }
 
-func TestBuildModelProviderRejectsNanobananaWhenProductImageSceneGovernanceEnabled(t *testing.T) {
+func TestBuildModelProviderRejectsGovernanceWithoutResolverBackedGPTImage(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.AICapability.ProductImageSceneEnabled = true
 	cfg.OpenAI.APIKey = "test-key"
@@ -139,8 +139,56 @@ func TestBuildModelProviderRejectsNanobananaWhenProductImageSceneGovernanceEnabl
 	}
 
 	if _, err := buildModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir()); err == nil {
-		t.Fatal("buildModelProvider() error = nil, want explicit rejection")
+		t.Fatal("buildModelProvider() error = nil, want resolver-backed client rejection")
 	}
+}
+
+func TestBuildModelProviderUsesResolverBackedGPTImageWhenGovernanceEnabled(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.AICapability.ProductImageSceneEnabled = true
+	cfg.OpenAI.APIKey = "test-key"
+	cfg.OpenAI.Model = "gpt-5.1"
+	cfg.OpenAI.BaseURL = "http://example.com/v1"
+	cfg.OpenAI.Timeout = 30
+	cfg.OpenAI.Clients = map[string]config.OpenAIClientConfig{
+		"image": {
+			APIKey:   "test-key",
+			Model:    "nano-banana-fast",
+			BaseURL:  "https://grsai.dakka.com.cn/v1/draw/nano-banana",
+			Timeout:  30,
+			APIStyle: "nanobanana",
+		},
+	}
+
+	openaiMgr, err := openaiclient.NewManager(&openaiclient.ManagerConfig{
+		Clients:       cfg.OpenAI.ToClientConfigs(),
+		DefaultClient: "default",
+		ConfigResolver: staticImageConfigResolver{config: &openaiclient.ClientConfig{
+			APIKey:   "tenant-key",
+			Model:    "gpt-image-2",
+			BaseURL:  "https://image.example.test/v1",
+			APIStyle: "openai",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	provider, err := buildModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir())
+	if err != nil {
+		t.Fatalf("buildModelProvider() error = %v", err)
+	}
+	if provider == nil || provider.SceneGenerator() == nil || provider.FaithfulEditor() == nil {
+		t.Fatalf("provider = %#v, want resolver-backed model components", provider)
+	}
+}
+
+type staticImageConfigResolver struct {
+	config *openaiclient.ClientConfig
+}
+
+func (r staticImageConfigResolver) ResolveClientConfig(context.Context, string, *openaiclient.ClientConfig) (*openaiclient.ResolvedClientConfig, error) {
+	return &openaiclient.ResolvedClientConfig{CacheKey: "image-config-v1", Config: r.config}, nil
 }
 
 func TestResolveImagePipelineComponentsBackfillsModelBackedDependencies(t *testing.T) {

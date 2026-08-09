@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -147,6 +148,70 @@ func TestManagerRouteBoundImageClientRejectsCredentialConfigurationDrift(t *test
 	)
 	if err == nil {
 		t.Fatal("expected configuration drift to reject route-bound image call")
+	}
+}
+
+func TestManagerAllowsResolverBackedUnregisteredImageClient(t *testing.T) {
+	mgr, err := NewManager(&ManagerConfig{
+		Clients: map[string]*ClientConfig{
+			"default": testClientConfig("default-key", "default-model", "https://example.test/v1"),
+		},
+		ConfigResolver: fakeClientConfigResolver{
+			tenantConfigs: map[string]*ClientConfig{
+				"tenant-a": testClientConfig("tenant-key", "gpt-image-2", "https://example.test/v1"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	client, err := mgr.GetImageClient("image_gpt_image_2")
+	if err != nil {
+		t.Fatalf("GetImageClient() error = %v", err)
+	}
+	if got := client.GetDefaultModel(); got != "" {
+		t.Fatalf("resolver-only image client default model = %q, want empty without identity-bound configuration", got)
+	}
+	routed, ok := client.(interface {
+		EditImageWithRoute(context.Context, *ImageEditRequest, ImageRouteSelection) (*ImageResponse, error)
+	})
+	if !ok {
+		t.Fatal("resolver-backed image client does not expose route-bound edit")
+	}
+	_, err = routed.EditImageWithRoute(
+		WithTenantID(context.Background(), "tenant-a"),
+		&ImageEditRequest{Model: "gpt-image-2"},
+		ImageRouteSelection{
+			CredentialReference:  "image_gpt_image_2",
+			ConfigurationVersion: "tenant:tenant-a:image_gpt_image_2",
+		},
+	)
+	if err == nil || !strings.Contains(err.Error(), "image edit request requires image bytes") {
+		t.Fatalf("route-bound resolver-backed call error = %v, want request validation after resolution", err)
+	}
+}
+
+func TestManagerFailsClosedForResolverOnlyImageWithoutIdentityConfiguration(t *testing.T) {
+	mgr, err := NewManager(&ManagerConfig{
+		Clients: map[string]*ClientConfig{
+			"default": testClientConfig("default-key", "default-model", "https://example.test/v1"),
+		},
+		ConfigResolver: fakeClientConfigResolver{
+			tenantConfigs: map[string]*ClientConfig{
+				"tenant-a": testClientConfig("tenant-key", "gpt-image-2", "https://example.test/v1"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	client, err := mgr.GetImageClient("image_gpt_image_2")
+	if err != nil {
+		t.Fatalf("GetImageClient() error = %v", err)
+	}
+	_, err = client.EditImage(context.Background(), &ImageEditRequest{Image: []byte("image")})
+	if err == nil || !strings.Contains(err.Error(), "image credential configuration is unavailable") {
+		t.Fatalf("resolver-only image call error = %v, want missing identity configuration", err)
 	}
 }
 

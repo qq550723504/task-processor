@@ -94,7 +94,7 @@ func (m *Manager) GetClient(name string) (ChatCompleter, error) {
 func (m *Manager) GetImageClient(name string) (ImageGenerator, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if _, exists := m.clients[name]; !exists {
+	if _, exists := m.clients[name]; !exists && m.configResolver == nil {
 		return nil, fmt.Errorf("client %s not found", name)
 	}
 	return &contextualImageClient{manager: m, name: name}, nil
@@ -163,20 +163,24 @@ func (m *Manager) resolveClientWithSelection(ctx context.Context, name string, s
 			return nil, fmt.Errorf("image route credential resolver is not configured")
 		}
 	}
-	fallback, err := m.resolveStaticClient(name)
-	if err != nil {
-		return nil, err
+	fallback, staticErr := m.resolveStaticClient(name)
+	if staticErr != nil && m.configResolver == nil {
+		return nil, staticErr
 	}
 	if m.configResolver == nil {
 		return fallback, nil
 	}
-	resolved, err := m.configResolver.ResolveClientConfig(ctx, name, fallback.config)
+	var fallbackConfig *ClientConfig
+	if fallback != nil {
+		fallbackConfig = fallback.config
+	}
+	resolved, err := m.configResolver.ResolveClientConfig(ctx, name, fallbackConfig)
 	if err != nil {
 		return nil, err
 	}
 	if resolved == nil || resolved.Config == nil {
-		if selection != nil {
-			return nil, fmt.Errorf("image route credential configuration is unavailable")
+		if selection != nil || fallback == nil {
+			return nil, fmt.Errorf("image credential configuration is unavailable")
 		}
 		return fallback, nil
 	}
@@ -205,11 +209,6 @@ func (m *Manager) resolveStaticClient(name string) (*Client, error) {
 	defer m.mu.RUnlock()
 	if client := m.clients[name]; client != nil {
 		return client, nil
-	}
-	if name != "default" {
-		if client := m.clients["default"]; client != nil {
-			return client, nil
-		}
 	}
 	return nil, fmt.Errorf("client %s not found", name)
 }
