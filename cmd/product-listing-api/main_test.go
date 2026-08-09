@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -109,12 +110,17 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
+	waitForProductImageTaskSuccess(t, client, port, imgTaskID)
 
 	// 创建 Amazon listing 任务
 	amazonReqBody := amazonlisting.GenerateRequest{
 		Marketplace: "amazon",
-		Text:        "高品质运动鞋",
-		ImageURLs:   []string{fixture.imageURL("amazon-listing.png")},
+		Text:        strings.Repeat("durable blue running shoe with breathable mesh upper, cushioned sole, stable fit, and everyday training comfort ", 12),
+		ImageURLs: []string{
+			fixture.imageURL("amazon-listing.png"),
+			fixture.imageURL("amazon-listing-2.png"),
+			fixture.imageURL("amazon-listing-3.png"),
+		},
 	}
 	b3, err := json.Marshal(amazonReqBody)
 	require.NoError(t, err)
@@ -133,6 +139,8 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
+	waitForAmazonListingTaskTerminal(t, client, port, amazonTaskID)
+	fixture.assertNoUnhandled()
 
 	// 优雅退出
 	shutdownCh <- syscall.SIGTERM
@@ -242,8 +250,12 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 	// Create an amazon listing task for review/submit branch coverage
 	amazonReqBody := amazonlisting.GenerateRequest{
 		Marketplace: "amazon",
-		Text:        "检测内容",
-		ImageURLs:   []string{fixture.imageURL("amazon-review.png")},
+		Text:        strings.Repeat("durable blue running shoe with breathable mesh upper, cushioned sole, stable fit, and everyday training comfort ", 12),
+		ImageURLs: []string{
+			fixture.imageURL("amazon-listing.png"),
+			fixture.imageURL("amazon-listing-2.png"),
+			fixture.imageURL("amazon-listing-3.png"),
+		},
 	}
 	b3, err := json.Marshal(amazonReqBody)
 	require.NoError(t, err)
@@ -270,6 +282,8 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	resp.Body.Close()
+	waitForAmazonListingTaskTerminal(t, client, port, amazonTaskID)
+	fixture.assertNoUnhandled()
 
 	// 优雅退出并确保关闭
 	shutdownCh <- syscall.SIGTERM
@@ -322,6 +336,20 @@ func newProductListingAPITestFixture(t *testing.T) *productListingAPITestFixture
 				http.Error(w, "invalid OpenAI request", http.StatusBadRequest)
 				return
 			}
+			content, err := json.Marshal(map[string]any{
+				"title":          "Durable Blue Running Shoe",
+				"category":       []string{"Shoes", "Running"},
+				"attributes":     map[string]string{"color": "blue", "material": "mesh"},
+				"selling_points": []string{"Breathable mesh", "Cushioned sole", "Stable fit"},
+				"seo_keywords":   []string{"running shoe", "blue trainer"},
+				"description":    "Durable blue running shoe with breathable mesh upper, cushioned sole, and stable fit for everyday training comfort.",
+				"images": []string{
+					fixture.imageURL("amazon-listing.png"),
+					fixture.imageURL("amazon-listing-2.png"),
+					fixture.imageURL("amazon-listing-3.png"),
+				},
+			})
+			require.NoError(t, err)
 			w.Header().Set("Content-Type", "application/json")
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"id":      "chatcmpl-product-listing-api-test",
@@ -332,9 +360,22 @@ func newProductListingAPITestFixture(t *testing.T) *productListingAPITestFixture
 					"index": 0,
 					"message": map[string]string{
 						"role":    "assistant",
-						"content": "{}",
+						"content": string(content),
 					},
 					"finish_reason": "stop",
+				}},
+			})
+		case "/v1/images/edits", "/v1/images/generations":
+			if r.Method != http.MethodPost || r.Header.Get("Authorization") != "Bearer sk-image-test" {
+				fixture.recordUnhandled(r.Method + " " + r.URL.Path + " with invalid image request")
+				http.Error(w, "invalid image request", http.StatusBadRequest)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"created": 0,
+				"data": []map[string]string{{
+					"b64_json": base64.StdEncoding.EncodeToString(imageBytes),
 				}},
 			})
 		default:
@@ -356,8 +397,13 @@ func newProductListingAPITestFixture(t *testing.T) *productListingAPITestFixture
 	t.Setenv("ZITADEL_CLIENT_ID", "product-listing-api-test-client")
 	t.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", "sk-test")
 	t.Setenv("TASK_PROCESSOR_OPENAI_BASE_URL", fixture.server.URL+"/v1")
+	t.Setenv("TASK_PROCESSOR_OPENAI_MODEL", "product-listing-api-test-model")
+	t.Setenv("TASK_PROCESSOR_OPENAI_TIMEOUT", "5")
 	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_KEY", "sk-image-test")
 	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_BASE_URL", fixture.server.URL+"/v1")
+	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_API_STYLE", "openai")
+	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_MODEL", "product-listing-api-image-test-model")
+	t.Setenv("TASK_PROCESSOR_OPENAI_CLIENTS_IMAGE_TIMEOUT", "5")
 
 	return fixture
 }
@@ -380,6 +426,46 @@ func (f *productListingAPITestFixture) assertNoUnhandled() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	require.Empty(f.t, f.unhandled, "test dependency fixture received unsupported requests")
+}
+
+func waitForProductImageTaskSuccess(t *testing.T, client *http.Client, port int, taskID string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		response, err := client.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/images/tasks/" + taskID)
+		require.NoError(t, err)
+		var task productimage.TaskResult
+		require.NoError(t, json.NewDecoder(response.Body).Decode(&task))
+		response.Body.Close()
+		switch task.Status {
+		case productimage.TaskStatusCompleted, productimage.TaskStatusNeedsReview:
+			return
+		case productimage.TaskStatusFailed, productimage.TaskStatusRejected:
+			t.Fatalf("image task %s ended unsuccessfully: %s", taskID, task.Error)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("image task %s did not reach a terminal successful status", taskID)
+}
+
+func waitForAmazonListingTaskTerminal(t *testing.T, client *http.Client, port int, taskID string) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		response, err := client.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/amazon/listings/tasks/" + taskID)
+		require.NoError(t, err)
+		var task amazonlisting.TaskResult
+		require.NoError(t, json.NewDecoder(response.Body).Decode(&task))
+		response.Body.Close()
+		switch task.Status {
+		case amazonlisting.TaskStatusCompleted, amazonlisting.TaskStatusNeedsReview:
+			return
+		case amazonlisting.TaskStatusFailed, amazonlisting.TaskStatusRejected:
+			t.Fatalf("Amazon listing task %s ended unsuccessfully: %s", taskID, task.Error)
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatalf("Amazon listing task %s did not reach a terminal status", taskID)
 }
 
 type productListingAPITestBearerTransport struct {
