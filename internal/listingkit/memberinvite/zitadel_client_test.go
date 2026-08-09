@@ -61,6 +61,29 @@ func TestZitadelProviderRedactsProviderTextFromErrorAndUnwrapChain(t *testing.T)
 	}
 }
 
+func TestZitadelProviderRedactsTransportErrorFromErrorAndUnwrapChain(t *testing.T) {
+	provider, err := NewZitadelProvider(ZitadelConfig{
+		IssuerURL: "https://zitadel.example",
+		Token:     "token",
+		ProjectID: "project-1",
+		HTTPClient: &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+			return nil, errors.New("provider-secret")
+		})},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = provider.Invite(context.Background(), validInviteRequest())
+	if err == nil {
+		t.Fatal("Invite returned nil error")
+	}
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		if strings.Contains(current.Error(), "provider-secret") {
+			t.Fatalf("error leaked transport text: %v", current)
+		}
+	}
+}
+
 func TestNewZitadelProviderRejectsIncompleteConfiguration(t *testing.T) {
 	if _, err := NewZitadelProvider(ZitadelConfig{}); err == nil {
 		t.Fatal("NewZitadelProvider accepted an incomplete configuration")
@@ -141,4 +164,10 @@ func writeMemberInviteJSON(t *testing.T, w http.ResponseWriter, status int, body
 	if err := json.NewEncoder(w).Encode(body); err != nil {
 		t.Fatalf("write response: %v", err)
 	}
+}
+
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
 }

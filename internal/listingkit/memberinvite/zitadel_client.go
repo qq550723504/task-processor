@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -140,7 +139,7 @@ func (p *zitadelProvider) doJSON(ctx context.Context, path string, body, target 
 
 	response, err := p.http.Do(request)
 	if err != nil {
-		return fmt.Errorf("ZITADEL request failed: %w", err)
+		return safeProviderError(err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {

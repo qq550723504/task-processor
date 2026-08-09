@@ -109,6 +109,12 @@ func safeProviderError(err error) error {
 	if err == nil {
 		return nil
 	}
+	if errors.Is(err, context.Canceled) {
+		return context.Canceled
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return context.DeadlineExceeded
+	}
 	if errors.Is(err, ErrConflict) {
 		return ErrConflict
 	}
