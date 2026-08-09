@@ -137,7 +137,8 @@ func validateZitadelSignature(payload []byte, header, signingKey string, now tim
 		return false
 	}
 	timestamp, signatures, ok := parseZitadelSignatureHeader(header)
-	if !ok || now.Sub(timestamp) > zitadelSignatureTolerance {
+	skew := now.Sub(timestamp)
+	if !ok || skew > zitadelSignatureTolerance || skew < -zitadelSignatureTolerance {
 		return false
 	}
 

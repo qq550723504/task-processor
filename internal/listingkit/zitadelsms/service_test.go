@@ -40,6 +40,17 @@ func TestDeliverRejectsInvalidOrStaleSignatureWithoutCallingTencent(t *testing.T
 	}
 }
 
+func TestDeliverRejectsFutureSignatureWithoutCallingTencent(t *testing.T) {
+	sender := &senderStub{}
+	service := newTestSMSService(t, sender)
+	body := validZitadelSMSPayload(t, "+8613800138000", "123456", "user.human.phone.code.added")
+
+	err := service.Deliver(context.Background(), body, signedHeader(t, body, time.Now().Add(6*time.Minute)))
+
+	require.ErrorIs(t, err, ErrUnauthorizedWebhook)
+	require.Empty(t, sender.messages)
+}
+
 func TestDeliverMapsVerifiedPayloadToConfiguredTencentTemplate(t *testing.T) {
 	sender := &senderStub{}
 	service := newTestSMSService(t, sender)
