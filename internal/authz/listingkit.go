@@ -11,6 +11,7 @@ import (
 const (
 	PermissionListingKitAdminRead   = "listingkit.admin.read"
 	PermissionListingKitAdminWrite  = "listingkit.admin.write"
+	PermissionListingKitPromptWrite = "listingkit.prompt.write"
 	PermissionListingKitPlatformAdm = "listingkit.platform_admin"
 	PermissionProductSourcingWrite  = "product_sourcing.write"
 )
@@ -57,12 +58,15 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		{"listingkit_operator", PermissionProductSourcingWrite},
 		{"listingkit_admin", PermissionListingKitAdminRead},
 		{"listingkit_admin", PermissionListingKitAdminWrite},
+		{"listingkit_admin", PermissionListingKitPromptWrite},
 		{"listingkit_admin", PermissionProductSourcingWrite},
 		{"platform_admin", PermissionListingKitAdminRead},
 		{"platform_admin", PermissionListingKitAdminWrite},
+		{"platform_admin", PermissionListingKitPromptWrite},
 		{"platform_admin", PermissionListingKitPlatformAdm},
 		{"platform_admin", PermissionProductSourcingWrite},
 		{"admin", PermissionListingKitPlatformAdm},
+		{"admin", PermissionListingKitPromptWrite},
 	} {
 		if _, err := enforcer.AddPolicy(policy); err != nil {
 			return nil, err
@@ -73,10 +77,16 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		if _, err := enforcer.AddPolicy(role, PermissionListingKitPlatformAdm); err != nil {
 			return nil, err
 		}
+		if _, err := enforcer.AddPolicy(role, PermissionListingKitPromptWrite); err != nil {
+			return nil, err
+		}
 	}
 	for _, userID := range normalizeUnique(platformAdminUsers) {
 		subject := userSubject(userID)
 		if _, err := enforcer.AddPolicy(subject, PermissionListingKitPlatformAdm); err != nil {
+			return nil, err
+		}
+		if _, err := enforcer.AddPolicy(subject, PermissionListingKitPromptWrite); err != nil {
 			return nil, err
 		}
 	}

@@ -88,6 +88,7 @@ func TestListingKitMemberInvitationTokenIsAPIScoped(t *testing.T) {
 	for _, required := range []string{
 		"name: listingkit-member-invitation-secret",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID",
 	} {
 		if !strings.Contains(string(invitationSecret), required) {
 			t.Errorf("member invitation Secret must contain %q", required)
@@ -132,8 +133,28 @@ func TestListingKitMemberInvitationTokenIsAPIScoped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read ListingKit ConfigMap: %v", err)
 	}
-	if !strings.Contains(string(configMap), "TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID") {
-		t.Fatal("ListingKit ConfigMap must carry the non-secret invitation project id")
+	if strings.Contains(string(configMap), "TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID") {
+		t.Fatal("ListingKit base ConfigMap must not overwrite the manually provisioned invitation project id during deploy")
+	}
+	if !strings.Contains(string(apiManifest), "key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID") {
+		t.Fatal("ListingKit API deployment must read the invitation project id from the API-only Secret")
+	}
+
+	deployWorkflow, err := os.ReadFile(filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml"))
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+	for _, required := range []string{
+		"Reject legacy invitation credentials in shared Secret",
+		"listingkit-workbench-secret",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID",
+		"NotFound",
+		"jq -e --arg key \"$key\"",
+	} {
+		if !strings.Contains(string(deployWorkflow), required) {
+			t.Errorf("ListingKit deploy workflow must contain %q", required)
+		}
 	}
 }
 

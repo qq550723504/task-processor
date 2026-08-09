@@ -24,6 +24,16 @@ func TestListingKitAuthorizerDoesNotTreatListingKitAdminAsPlatformAdmin(t *testi
 	require.True(t, authorizer.Authorize("", []string{"platform_admin"}, PermissionListingKitPlatformAdm))
 }
 
+func TestListingKitAuthorizerRestrictsPromptWritesToTenantAndPlatformAdmins(t *testing.T) {
+	authorizer, err := NewListingKitAuthorizer(nil, nil)
+	require.NoError(t, err)
+
+	require.False(t, authorizer.Authorize("", []string{"listingkit_viewer"}, "listingkit.prompt.write"))
+	require.False(t, authorizer.Authorize("", []string{"listingkit_operator"}, "listingkit.prompt.write"))
+	require.True(t, authorizer.Authorize("", []string{"listingkit_admin"}, "listingkit.prompt.write"))
+	require.True(t, authorizer.Authorize("", []string{"platform_admin"}, "listingkit.prompt.write"))
+}
+
 func TestIsListingKitTenantAdminIncludesTenantAndPlatformAdmins(t *testing.T) {
 	require.True(t, IsListingKitTenantAdmin("", []string{"listingkit_admin"}))
 	require.True(t, IsListingKitTenantAdmin("", []string{"platform_admin"}))

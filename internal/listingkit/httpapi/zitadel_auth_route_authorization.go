@@ -40,11 +40,16 @@ func listingKitRouteRequiredPermission(route httproute.Descriptor) string {
 		return authz.PermissionListingKitAdminWrite
 	case "listing-kit-platform-admin":
 		return authz.PermissionListingKitPlatformAdm
+	case "listing-kit-prompts":
+		if route.Method == http.MethodPut || route.Method == http.MethodPatch {
+			return authz.PermissionListingKitPromptWrite
+		}
 	case "sds-login":
 		return authz.PermissionListingKitPlatformAdm
 	default:
 		return ""
 	}
+	return ""
 }
 
 func NewRouteRoleMiddleware(route httproute.Descriptor) gin.HandlerFunc {

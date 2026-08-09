@@ -109,6 +109,19 @@ func TestListingKitPromptRoutesAllowVerifiedIdentity(t *testing.T) {
 	}
 }
 
+func TestListingKitPromptWritesRejectVerifiedViewer(t *testing.T) {
+	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}))
+	request := httptest.NewRequest(http.MethodPut, "/api/v1/listing-kits/prompts", strings.NewReader(`{}`))
+	request.Header.Set("Authorization", "Bearer "+appHTTPTestViewerBearerToken)
+	response := httptest.NewRecorder()
+
+	server.Handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusForbidden, response.Body.String())
+	}
+}
+
 type stubAmazonListingHandler struct {
 	generateCalled  bool
 	listQueueCalled bool

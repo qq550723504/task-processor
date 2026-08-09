@@ -149,6 +149,28 @@ jobs:
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} apply -f deployments/kubernetes/listingkit-workbench/base/configmap.yaml
 
+      - name: Reject legacy invitation credentials in shared Secret
+        shell: bash
+        run: |
+          set -euo pipefail
+          shared_secret="listingkit-workbench-secret"
+          if ! shared_secret_json="$(kubectl -n ${{ env.K8S_NAMESPACE }} get secret "$shared_secret" -o json 2>&1)"; then
+            if grep -q "NotFound" <<<"$shared_secret_json"; then
+              echo "Shared Secret $shared_secret is absent; no legacy invitation credentials can be injected."
+              exit 0
+            fi
+            echo "::error::Could not inspect $shared_secret for legacy invitation credentials: $shared_secret_json"
+            exit 1
+          fi
+          for key in \
+            TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN \
+            TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID; do
+            if jq -e --arg key "$key" '.data[$key] != null and .data[$key] != ""' <<<"$shared_secret_json" >/dev/null; then
+              echo "::error::Remove legacy $key from $shared_secret before deploying ListingKit invitations."
+              exit 1
+            fi
+          done
+
       - name: Update API deployment image
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} apply -f deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml
