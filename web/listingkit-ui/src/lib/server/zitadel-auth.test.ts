@@ -66,16 +66,20 @@ describe("verifyZitadelAccessToken", () => {
     vi.unstubAllGlobals();
   });
 
-  it("prefers the business user_id over the ZITADEL subject", async () => {
+  it("uses sub when user_id and username differ", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>().mockResolvedValueOnce(
         new Response(
           JSON.stringify({
             active: true,
-            sub: "zitadel-subject-42",
+            sub: "zitadel-subject-123",
             user_id: "373211204509761704",
+            username: "legacy-username",
             "urn:zitadel:iam:user:resourceowner:id": "org-286",
+            "urn:zitadel:iam:org:project:roles": {
+              listingkit_admin: {},
+            },
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         ),
@@ -100,9 +104,49 @@ describe("verifyZitadelAccessToken", () => {
       ),
     ).resolves.toMatchObject({
       tenantId: "org-286",
-      userId: "373211204509761704",
+      userId: "zitadel-subject-123",
+      username: "legacy-username",
+      roles: ["listingkit_admin"],
       userType: "zitadel",
     });
+  });
+
+  it("rejects an otherwise valid token without sub", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            active: true,
+            user_id: "373211204509761704",
+            username: "legacy-username",
+            "urn:zitadel:iam:user:resourceowner:id": "org-286",
+            "urn:zitadel:iam:org:project:roles": {
+              listingkit_admin: {},
+            },
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      ),
+    );
+
+    await expect(
+      verifyZitadelAccessToken(
+        "access-token-1",
+        {
+          issuerUrl: "https://issuer.example.com",
+          clientId: "client-1",
+          scopes: "openid profile",
+        },
+        {
+          authorization_endpoint:
+            "https://issuer.example.com/oauth/v2/authorize",
+          token_endpoint: "https://issuer.example.com/oauth/v2/token",
+          introspection_endpoint:
+            "https://issuer.example.com/oauth/v2/introspect",
+        },
+      ),
+    ).resolves.toBeNull();
   });
 });
 

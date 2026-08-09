@@ -2,9 +2,14 @@ import type { Session } from "next-auth";
 
 import {
   getZitadelAuthOptions,
-  type ListingKitSessionIdentity,
   type ZitadelAuthOptions,
 } from "@/auth.config";
+import {
+  extractZitadelIdentityFromClaims,
+  normalizeClaim,
+  type ListingKitSessionIdentity,
+  type ZitadelTokenPayload,
+} from "@/lib/server/zitadel-identity";
 
 export type ZitadelDiscovery = {
   authorization_endpoint: string;
@@ -22,16 +27,7 @@ export type ZitadelAuthorizationResult = {
   reason?: string;
 };
 
-type ZitadelIntrospectionResponse = {
-  active?: boolean;
-  sub?: string;
-  username?: string;
-  user_id?: string;
-  "urn:zitadel:iam:user:resourceowner:id"?: string;
-  "urn:zitadel:iam:org:project:roles"?: Record<string, unknown> | string[] | string;
-  roles?: string[] | string;
-  role?: string;
-};
+type ZitadelIntrospectionResponse = ZitadelTokenPayload & { active?: boolean };
 
 export { getZitadelAuthOptions };
 
@@ -80,9 +76,14 @@ export function readZitadelIdentityFromSession(
   if (!identity) {
     return null;
   }
+  const tenantId = normalizeClaim(identity.tenantId);
+  const userId = normalizeClaim(identity.userId);
+  if (!tenantId || !userId) {
+    return null;
+  }
   return {
-    tenantId: identity.tenantId,
-    userId: identity.userId,
+    tenantId,
+    userId,
     username: identity.username,
     userType: identity.userType ?? "zitadel",
     roles: identity.roles ?? [],
@@ -134,7 +135,7 @@ export async function verifyZitadelAccessToken(
   token: string,
   options: ZitadelAuthOptions,
   discovery?: ZitadelDiscovery,
-): Promise<ZitadelVerifiedIdentity> {
+): Promise<ZitadelVerifiedIdentity | null> {
   if (!token) {
     throw new Error("Missing ZITADEL bearer token");
   }
@@ -161,13 +162,7 @@ export async function verifyZitadelAccessToken(
     throw new Error(`ZITADEL token introspection failed: ${response.status}`);
   }
 
-  return {
-    tenantId: payload["urn:zitadel:iam:user:resourceowner:id"],
-    userId: payload.user_id ?? payload.sub ?? payload.username,
-    username: payload.username,
-    userType: "zitadel",
-    roles: parseZitadelRoles(payload),
-  };
+  return extractZitadelIdentityFromClaims(payload);
 }
 
 export function authorizeZitadelIdentity(
@@ -233,38 +228,6 @@ function buildZitadelClientAuthHeaders(options: ZitadelAuthOptions) {
   return headers;
 }
 
-function parseZitadelRoles(payload: ZitadelIntrospectionResponse) {
-  const seen = new Set<string>();
-  const roles: string[] = [];
-  const add = (value: string) => {
-    const role = value.trim();
-    if (!role || seen.has(role)) {
-      return;
-    }
-    seen.add(role);
-    roles.push(role);
-  };
-  for (const value of [
-    payload["urn:zitadel:iam:org:project:roles"],
-    payload.roles,
-    payload.role,
-  ]) {
-    if (!value) {
-      continue;
-    }
-    if (Array.isArray(value)) {
-      value.forEach(add);
-      continue;
-    }
-    if (typeof value === "string") {
-      value.split(",").forEach(add);
-      continue;
-    }
-    Object.keys(value).forEach(add);
-  }
-  return roles;
-}
-
 function readZitadelAuthorizationConfig() {
   const allowedTenantIds = readDelimitedEnvSet(
     "LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS",
@@ -314,11 +277,5 @@ function readDelimitedEnvSet(...names: string[]) {
 }
 
 function stringifyIdentityValue(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
-  }
-  if (typeof value === "string" && value.trim()) {
-    return value.trim();
-  }
-  return "";
+  return normalizeClaim(value);
 }

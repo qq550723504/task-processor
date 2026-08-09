@@ -4,14 +4,13 @@ import type { JWT } from "next-auth/jwt";
 import ZITADEL from "next-auth/providers/zitadel";
 
 import { createResilientOidcFetch } from "@/lib/server/auth-fetch";
+import {
+  extractZitadelIdentityFromClaims,
+  type ListingKitSessionIdentity,
+  type ZitadelTokenPayload,
+} from "@/lib/server/zitadel-identity";
 
-export type ListingKitSessionIdentity = {
-  tenantId?: string | number;
-  userId?: string | number;
-  username?: string;
-  userType?: string | number;
-  roles?: string[];
-};
+export type { ListingKitSessionIdentity };
 
 declare module "next-auth" {
   interface Session {
@@ -177,17 +176,11 @@ export function buildAuthConfig(): NextAuthConfig {
             issuerUrl: zitadel?.issuerUrl,
             clientId: zitadel?.clientId,
             error: undefined,
-            identity: extractIdentity({
-              preferredUsername:
-                asString(profile?.preferred_username) ||
-                asString(profile?.username),
-              businessUserId: asString(profile?.user_id),
-              subject: asString(profile?.sub),
-              resourceOwnerId: asString(
-                profile?.["urn:zitadel:iam:user:resourceowner:id"],
-              ),
-              roles: extractRoles(profile),
-            }),
+            identity: profile
+              ? extractZitadelIdentityFromClaims(
+                  profile as ZitadelTokenPayload,
+                )
+              : null,
           } satisfies JWT;
         }
 
@@ -341,83 +334,16 @@ function extractIdentityFromTokenPayload(
   if (!payload) {
     return null;
   }
-  return extractIdentity({
-    preferredUsername:
-      asString(payload.preferred_username) || asString(payload.username),
-    businessUserId: asString(payload.user_id),
-    subject: asString(payload.sub),
-    resourceOwnerId: asString(
-      payload["urn:zitadel:iam:user:resourceowner:id"],
-    ),
-    roles: extractRoles(payload),
-  });
+  return extractZitadelIdentityFromClaims(payload);
 }
 
-function extractIdentity(input: {
-  preferredUsername?: string;
-  businessUserId?: string;
-  subject?: string;
-  resourceOwnerId?: string;
-  roles?: string[];
-}) {
-  return {
-    tenantId: input.resourceOwnerId,
-    userId: input.businessUserId ?? input.subject ?? input.preferredUsername,
-    username: input.preferredUsername,
-    userType: "zitadel",
-    roles: input.roles ?? [],
-  } satisfies ListingKitSessionIdentity;
-}
-
-function extractRoles(payload: Record<string, unknown> | null | undefined) {
-  if (!payload) {
-    return [];
-  }
-  const seen = new Set<string>();
-  const roles: string[] = [];
-  const addRole = (value: unknown) => {
-    if (typeof value !== "string") {
-      return;
-    }
-    const normalized = value.trim();
-    if (!normalized || seen.has(normalized)) {
-      return;
-    }
-    seen.add(normalized);
-    roles.push(normalized);
-  };
-
-  for (const raw of [
-    payload["urn:zitadel:iam:org:project:roles"],
-    payload.roles,
-    payload.role,
-  ]) {
-    if (!raw) {
-      continue;
-    }
-    if (Array.isArray(raw)) {
-      raw.forEach(addRole);
-      continue;
-    }
-    if (typeof raw === "string") {
-      raw.split(",").forEach(addRole);
-      continue;
-    }
-    if (typeof raw === "object") {
-      Object.keys(raw).forEach(addRole);
-    }
-  }
-
-  return roles;
-}
-
-function parseJWTClaims(token: string) {
+function parseJWTClaims(token: string): ZitadelTokenPayload | null {
   const [, payload = ""] = token.split(".");
   if (!payload) {
     return null;
   }
   try {
-    return JSON.parse(base64UrlDecode(payload)) as Record<string, unknown>;
+    return JSON.parse(base64UrlDecode(payload)) as ZitadelTokenPayload;
   } catch {
     return null;
   }
@@ -426,11 +352,4 @@ function parseJWTClaims(token: string) {
 function base64UrlDecode(value: string) {
   const padded = value.replace(/-/g, "+").replace(/_/g, "/");
   return Buffer.from(padded, "base64").toString("utf8");
-}
-
-function asString(value: unknown) {
-  if (typeof value === "string" && value.trim()) {
-    return value.trim();
-  }
-  return undefined;
 }

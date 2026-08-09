@@ -64,6 +64,28 @@ describe("ListingKit ZITADEL proxy", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
+  it("redirects sessions without a ZITADEL subject to login", async () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    mockedAuthState.session = {
+      accessToken: "token-1",
+      identity: {
+        tenantId: "org-1",
+        userId: "",
+        user_id: "legacy-user-1",
+        roles: ["listingkit_admin"],
+      },
+    };
+
+    const response = await callProxy("/listing-kits/style-gallery");
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost/login?returnTo=%2Flisting-kits%2Fstyle-gallery",
+    );
+    expect(response.headers.get("X-User-ID")).toBeNull();
+  });
+
   it("redirects non-platform administrators away from the SDS login page", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example");
     vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
