@@ -144,6 +144,7 @@ func TestListingKitMemberInvitationTokenIsAPIScoped(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read ListingKit deploy workflow: %v", err)
 	}
+	deployAPIJob := listingKitDeployAPIJob(t, string(deployWorkflow))
 	for _, required := range []string{
 		"Reject legacy invitation credentials in shared Secret",
 		"Validate dedicated member invitation Secret",
@@ -154,15 +155,34 @@ func TestListingKitMemberInvitationTokenIsAPIScoped(t *testing.T) {
 		"NotFound",
 		"jq -e --arg key \"$key\"",
 	} {
-		if !strings.Contains(string(deployWorkflow), required) {
+		if !strings.Contains(deployAPIJob, required) {
 			t.Errorf("ListingKit deploy workflow must contain %q", required)
 		}
 	}
-	preflight := strings.Index(string(deployWorkflow), "Validate dedicated member invitation Secret")
-	deploymentUpdate := strings.Index(string(deployWorkflow), "Update API deployment image")
+	preflight := strings.Index(deployAPIJob, "Validate dedicated member invitation Secret")
+	deploymentUpdate := strings.Index(deployAPIJob, "Update API deployment image")
 	if preflight == -1 || deploymentUpdate == -1 || preflight > deploymentUpdate {
 		t.Fatal("ListingKit invitation Secret preflight must run before the API Deployment is updated")
 	}
+}
+
+func listingKitDeployAPIJob(t *testing.T, workflow string) string {
+	t.Helper()
+	workflow = strings.ReplaceAll(workflow, "\r\n", "\n")
+	const marker = "\n  deploy-api:\n"
+	start := strings.Index(workflow, marker)
+	if start == -1 {
+		t.Fatal("ListingKit deploy workflow must define deploy-api job")
+	}
+	job := workflow[start+len(marker):]
+	offset := 0
+	for _, line := range strings.SplitAfter(job, "\n") {
+		if strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "   ") && strings.HasSuffix(strings.TrimSpace(line), ":") {
+			return job[:offset]
+		}
+		offset += len(line)
+	}
+	return job
 }
 
 func TestListingKitSchemaMigrationJobUsesTheReleaseImage(t *testing.T) {

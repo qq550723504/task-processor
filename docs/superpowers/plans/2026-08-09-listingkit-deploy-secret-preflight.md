@@ -4,9 +4,9 @@
 
 **Goal:** Stop the ListingKit API deployment before any Deployment mutation when its API-only invitation Secret is missing or incomplete.
 
-**Architecture:** Add a versioned Bash preflight script that obtains the dedicated Secret as JSON, fails on a missing Secret, and checks the two required data keys without emitting their values. The workflow calls it after the legacy shared-Secret guard and before the API Deployment apply/set-image step. A Go test runs it with fake `kubectl` and `jq` commands.
+**Architecture:** Add a versioned Bash preflight script that reads the dedicated Secret with `kubectl`, fails on a missing Secret, and checks the two required data keys without emitting their values. The workflow calls it after the legacy shared-Secret guard and before the API Deployment apply/set-image step. A Go test runs it with a fake `kubectl` command.
 
-**Tech Stack:** GitHub Actions YAML, Bash, kubectl, jq, Go test.
+**Tech Stack:** GitHub Actions YAML, Bash, kubectl, Go test.
 
 ## Global Constraints
 
@@ -31,7 +31,7 @@
 
 - [x] **Step 1: Write the failing workflow-contract test**
 
-Add a table-driven test that invokes `scripts/validate-listingkit-invitation-secret.sh` with fake commands for a missing Secret, a missing project-ID key, and both required keys. Assert missing Secret/key names are reported, fake data values are never reported, and the ready case exits 0. Add a workflow-contract assertion that this command appears before `Update API deployment image`:
+Add a table-driven test that invokes `scripts/validate-listingkit-invitation-secret.sh` with a fake `kubectl` command for a missing Secret, a missing token key, an empty project-ID key, and both required keys. Assert missing Secret/key names are reported, fake data values are never reported, and the ready case exits 0. Add a workflow-contract assertion that this command appears before `Update API deployment image`:
 
 ```go
 "Validate dedicated member invitation Secret",
@@ -71,7 +71,7 @@ git diff --check
 
 Expected: each command exits 0.
 
-- [ ] **Step 6: Commit the implementation**
+- [x] **Step 6: Commit the implementation**
 
 ```bash
 git add .github/workflows/listingkit-deploy.yml scripts/validate-listingkit-invitation-secret.sh tests/listingkit_invitation_secret_preflight_test.go tests/commercial_readiness_workflow_test.go

@@ -159,7 +159,7 @@ jobs:
               echo "Shared Secret $shared_secret is absent; no legacy invitation credentials can be injected."
               exit 0
             fi
-            echo "::error::Could not inspect $shared_secret for legacy invitation credentials: $shared_secret_json"
+            echo "::error::Could not inspect shared Secret for legacy invitation credentials: $shared_secret"
             exit 1
           fi
           for key in \
