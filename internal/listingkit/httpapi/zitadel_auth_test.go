@@ -517,6 +517,68 @@ func TestListingKitZitadelAuthOverwritesCallerSuppliedIdentityHeaders(t *testing
 	}
 }
 
+func TestListingKitZitadelAuthRemovesSpoofedIdentityHeadersWhenTokenHasNoRoles(t *testing.T) {
+	zitadel := newZitadelRoleServer(t)
+	defer zitadel.Close()
+
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{
+			IssuerURL: zitadel.URL,
+			ClientID:  "listingkit-client",
+			Required:  true,
+		},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{{
+		Method: http.MethodGet,
+		Path:   "/api/v1/listing-kits/tasks",
+		Module: "listing-kit",
+		Handler: func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"tenant_id":     c.GetHeader("X-Tenant-ID"),
+				"tenant_alias":  c.GetHeader("tenant-id"),
+				"tenant_legacy": c.GetHeader("X-Tenant"),
+				"user_id":       c.GetHeader("X-User-ID"),
+				"user_type":     c.GetHeader("X-User-Type"),
+				"user_legacy":   c.GetHeader("X-User"),
+				"user_roles":    c.GetHeader("X-User-Roles"),
+				"zitadel_roles": c.GetHeader("X-Zitadel-Roles"),
+			})
+		},
+	}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+	req.Header.Set("X-Tenant-ID", "spoofed-tenant")
+	req.Header.Set("tenant-id", "spoofed-tenant")
+	req.Header.Set("X-Tenant", "spoofed-tenant")
+	req.Header.Set("X-User-ID", "spoofed-user")
+	req.Header.Set("X-User-Type", "spoofed")
+	req.Header.Set("X-User", "spoofed-user")
+	req.Header.Set("X-User-Roles", "platform_admin")
+	req.Header.Set("X-Zitadel-Roles", "platform_admin")
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["tenant_id"] != "org-286" || body["tenant_alias"] != "org-286" || body["user_id"] != "user-42" || body["user_type"] != "zitadel" {
+		t.Fatalf("trusted identity headers = %#v", body)
+	}
+	for _, key := range []string{"tenant_legacy", "user_legacy", "user_roles", "zitadel_roles"} {
+		if body[key] != "" {
+			t.Fatalf("%s = %q, want sanitized", key, body[key])
+		}
+	}
+}
+
 func TestListingKitZitadelAuthRejectsUnauthorizedIdentity(t *testing.T) {
 	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {

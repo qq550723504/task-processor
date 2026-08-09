@@ -69,6 +69,47 @@ func TestListingKitInvitationRouteRejectsForgedAdminHeadersWhenGlobalFlagsAreFal
 	}
 }
 
+func TestListingKitPromptRoutesRequireVerifiedIdentity(t *testing.T) {
+	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}))
+	tests := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/listing-kits/prompts/catalog"},
+		{method: http.MethodPut, path: "/api/v1/listing-kits/prompts", body: `{}`},
+		{method: http.MethodPatch, path: "/api/v1/listing-kits/prompts/prompt-key/status", body: `{}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
+			request := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			response := httptest.NewRecorder()
+
+			server.Handler.ServeHTTP(response, request)
+
+			if response.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusUnauthorized, response.Body.String())
+			}
+			if !strings.Contains(response.Body.String(), "zitadel_token_missing") {
+				t.Fatalf("body = %s, want zitadel_token_missing", response.Body.String())
+			}
+		})
+	}
+}
+
+func TestListingKitPromptRoutesAllowVerifiedIdentity(t *testing.T) {
+	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}))
+	request := withAppHTTPTestBearer(httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/prompts/catalog", nil))
+	response := httptest.NewRecorder()
+
+	server.Handler.ServeHTTP(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", response.Code, http.StatusOK, response.Body.String())
+	}
+}
+
 type stubAmazonListingHandler struct {
 	generateCalled  bool
 	listQueueCalled bool
