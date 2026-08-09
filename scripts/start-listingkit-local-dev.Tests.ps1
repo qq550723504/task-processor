@@ -10,8 +10,8 @@ function Get-StartDevScriptAst {
     return $ast
 }
 
-Describe "start-listingkit-local-dev auth defaults" {
-    It "defaults the local dev stack to bypass ZITADEL auth" {
+Describe "start-listingkit-local-dev authentication" {
+    It "does not expose API or UI authentication bypass parameters" {
         $ast = Get-StartDevScriptAst
         $paramBlock = $ast.ParamBlock
 
@@ -22,16 +22,7 @@ Describe "start-listingkit-local-dev auth defaults" {
             Where-Object { $_.Name.VariablePath.UserPath -eq "ZitadelAuthMode" } |
             Select-Object -First 1
 
-        $bypassParameter | Should Not Be $null
-        $bypassParameter.DefaultValue.Extent.Text | Should Be '"1"'
-        $zitadelModeParameter | Should Not Be $null
-        $zitadelModeParameter.DefaultValue.Extent.Text | Should Be '"Disabled"'
-    }
-
-    It "passes the selected ZITADEL auth mode to the local API starter" {
-        $content = Get-Content -LiteralPath $scriptPath -Raw
-
-        $content | Should Match 'ZitadelAuthMode'
-        $content | Should Match '-ZitadelAuthMode'
+        $bypassParameter | Should Be $null
+        $zitadelModeParameter | Should Be $null
     }
 }

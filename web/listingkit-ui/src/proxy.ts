@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Session } from "next-auth";
 
 import { auth } from "@/auth";
-import {
+	import {
   authorizeZitadelIdentity,
-  isListingKitLocalAuthBypassed,
-  isZitadelAuthConfigured,
+	  isZitadelAuthConfigured,
   readZitadelAccessTokenFromSession,
   readZitadelIdentityFromSession,
   readZitadelSessionError,
@@ -25,10 +24,6 @@ export default authenticatedProxy;
 
 async function handleProxy(request: AuthenticatedProxyRequest) {
   if (!isListingKitPagePath(request.nextUrl.pathname)) {
-    return NextResponse.next();
-  }
-
-  if (isListingKitLocalAuthBypassed()) {
     return NextResponse.next();
   }
 

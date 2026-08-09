@@ -3,9 +3,7 @@ param(
     [string]$ConfigPath = "config/config-dev.yaml",
     [string]$LogLevel = "info",
     [Alias("RequireSettingsHealth")]
-    [switch]$RequireReadiness,
-    [ValidateSet("Disabled", "Required")]
-    [string]$ZitadelAuthMode = "Disabled"
+    [switch]$RequireReadiness
 )
 
 $ErrorActionPreference = "Stop"
@@ -102,38 +100,6 @@ function Import-DotEnvFile {
     if ($loadedCount -gt 0) {
         Write-Host "Loaded local .env values for local API startup." -ForegroundColor DarkGreen
     }
-}
-
-function Configure-ListingKitLocalZitadelAuth {
-    param(
-        [ValidateSet("Disabled", "Required")]
-        [string]$Mode = "Disabled"
-    )
-
-    if ($Mode -eq "Required") {
-        Write-Host "ListingKit ZITADEL auth: required for this local process." -ForegroundColor DarkYellow
-        return
-    }
-
-    $zitadelEnvNames = @(
-        "ZITADEL_ISSUER_URL",
-        "ZITADEL_CLIENT_ID",
-        "ZITADEL_CLIENT_SECRET",
-        "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS",
-        "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS",
-        "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES",
-        "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES",
-        "LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS",
-        "LISTINGKIT_ZITADEL_ALLOWED_USER_IDS",
-        "LISTINGKIT_ZITADEL_ALLOWED_USERNAMES",
-        "LISTINGKIT_ZITADEL_ALLOWED_ROLES"
-    )
-
-    foreach ($name in $zitadelEnvNames) {
-        [Environment]::SetEnvironmentVariable($name, "", "Process")
-    }
-
-    Write-Host "ListingKit ZITADEL auth: disabled for this local process." -ForegroundColor DarkGreen
 }
 
 function Initialize-ListingKitObjectStorageEnvFromK8s {
@@ -273,7 +239,6 @@ $env:TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE = "false"
 $env:TASK_PROCESSOR_LISTINGKIT_RUNTIME_AUTOMIGRATE = "false"
 $env:LISTINGKIT_TEMPORAL_TASK_QUEUE = "listingkit-local-$env:COMPUTERNAME-$Port"
 Import-DotEnvFile -Path (Join-Path $repoRoot ".env")
-Configure-ListingKitLocalZitadelAuth -Mode $ZitadelAuthMode
 Initialize-ListingKitObjectStorageEnvFromK8s
 
 Write-Host "Building local product-listing-api..." -ForegroundColor Cyan
@@ -335,7 +300,6 @@ Write-Host "  browser proxy: cleared for this local process (TASK_PROCESSOR_BROW
 Write-Host "  api runtime auto-migrate: disabled for this local process (TASK_PROCESSOR_API_RUNTIME_AUTOMIGRATE=false)"
 Write-Host "  listingkit auto-migrate: disabled for this local process (TASK_PROCESSOR_LISTINGKIT_RUNTIME_AUTOMIGRATE=false)"
 Write-Host "  listingkit temporal task queue: $env:LISTINGKIT_TEMPORAL_TASK_QUEUE"
-Write-Host "  listingkit zitadel auth mode: $ZitadelAuthMode"
 if (-not $RequireReadiness) {
     Write-Host "  ListingKit readiness: not verified (use -RequireReadiness after DB/Redis/Temporal port-forward is ready)" -ForegroundColor DarkYellow
 }

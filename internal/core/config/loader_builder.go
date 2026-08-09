@@ -217,7 +217,6 @@ func BuildConfig(v *viper.Viper) *Config {
 				TenantDirectoryToken:  v.GetString("listingkit.zitadel.tenantDirectoryToken"),
 				MemberInvitationToken: v.GetString("listingkit.zitadel.memberInvitationToken"),
 				ProjectID:             v.GetString("listingkit.zitadel.projectID"),
-				AuthRequired:          true,
 				AuthorizationRequired: v.GetBool("listingkit.zitadel.authorizationRequired"),
 				AllowedTenantIDs:      listingKitAllowedTenantIDs,
 				AllowedUserIDs:        listingKitAllowedUserIDs,

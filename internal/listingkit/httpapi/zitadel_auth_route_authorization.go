@@ -12,6 +12,9 @@ import (
 )
 
 func RouteRequiresZitadelAuth(route httproute.Descriptor) bool {
+	if route.Method == http.MethodGet && (route.Path == "/api/v1/shein-login/health" || route.Path == "/api/v1/sds-login/health") {
+		return false
+	}
 	return route.Module == "listing-kit" ||
 		route.Module == "listing-kit-admin" ||
 		route.Module == "listing-kit-platform-admin" ||

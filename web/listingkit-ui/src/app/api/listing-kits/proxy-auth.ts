@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { auth } from "@/auth";
 import { LISTINGKIT_TRACE_HEADER_NAMES } from "@/lib/listingkit/request-trace";
-import {
+	import {
   getZitadelAuthOptions,
-  getListingKitLocalDebugIdentity,
-  isListingKitLocalAuthBypassed,
   readZitadelAccessTokenFromSession,
   readZitadelSessionClientID,
   readZitadelIdentityFromSession,
@@ -27,13 +25,6 @@ export type VerifiedIdentityResult =
 export async function verifyListingKitRequestIdentity(
   request: NextRequest,
 ): Promise<VerifiedIdentityResult> {
-  if (isListingKitLocalAuthBypassed()) {
-    return {
-      identity: getListingKitLocalDebugIdentity(),
-      token: "",
-    };
-  }
-
   const zitadelOptions = getZitadelAuthOptions();
   if (!zitadelOptions) {
     return {

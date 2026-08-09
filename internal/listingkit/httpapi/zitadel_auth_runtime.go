@@ -20,7 +20,6 @@ func ConfigureListingKitZitadelAuth(cfg config.ListingKitZitadelConfig) {
 			IssuerURL:    strings.TrimRight(strings.TrimSpace(cfg.IssuerURL), "/"),
 			ClientID:     strings.TrimSpace(cfg.ClientID),
 			ClientSecret: strings.TrimSpace(cfg.ClientSecret),
-			Required:     true,
 			HTTPClient:   &http.Client{Timeout: 5 * time.Second},
 		},
 		AuthzConfig: zitadelAuthorizationConfig{
@@ -78,7 +77,6 @@ func NewZitadelAuthMiddlewareFromEnv() gin.HandlerFunc {
 	if runtimeCfg == nil {
 		runtimeCfg = &listingKitZitadelRuntimeConfig{}
 	}
-	runtimeCfg.AuthConfig.Required = true
 	return newListingKitZitadelAuthMiddleware(runtimeCfg.AuthConfig, runtimeCfg.AuthzConfig).Handle
 }
 

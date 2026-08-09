@@ -15,9 +15,6 @@ type ListingKitZitadelConfig struct {
 	TenantDirectoryToken  string   `mapstructure:"tenantDirectoryToken" yaml:"tenantDirectoryToken"`
 	MemberInvitationToken string   `mapstructure:"memberInvitationToken" yaml:"memberInvitationToken"`
 	ProjectID             string   `mapstructure:"projectID" yaml:"projectID"`
-	// AuthRequired is retained for configuration compatibility. ListingKit
-	// authentication is mandatory and false values are ignored.
-	AuthRequired          bool     `mapstructure:"authRequired" yaml:"authRequired"`
 	AuthorizationRequired bool     `mapstructure:"authorizationRequired" yaml:"authorizationRequired"`
 	AllowedTenantIDs      []string `mapstructure:"allowedTenantIDs" yaml:"allowedTenantIDs"`
 	AllowedUserIDs        []string `mapstructure:"allowedUserIDs" yaml:"allowedUserIDs"`

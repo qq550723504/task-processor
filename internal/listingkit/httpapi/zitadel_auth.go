@@ -12,7 +12,6 @@ type zitadelAuthConfig struct {
 	IssuerURL    string
 	ClientID     string
 	ClientSecret string
-	Required     bool
 	HTTPClient   *http.Client
 }
 

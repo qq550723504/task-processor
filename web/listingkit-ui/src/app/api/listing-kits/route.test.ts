@@ -249,30 +249,6 @@ describe("buildListingKitUpstreamHeaders", () => {
     expect(headers.get("X-User-Roles")).toBe("platform_admin,listingkit_admin");
   });
 
-  it("forwards local debug identity as listingkit data permission headers", () => {
-    const request = new Request("http://localhost/api/listing-kits/tasks", {
-      headers: {
-        accept: "application/json",
-      },
-    });
-
-    const headers = buildListingKitUpstreamHeaders(request.headers, {
-      tenantId: "default",
-      userId: "local-debug",
-      username: "local-debug",
-      userType: "local_debug",
-      roles: ["platform_admin", "listingkit_admin", "listingkit_operator"],
-    });
-
-    expect(headers.get("tenant-id")).toBe("default");
-    expect(headers.get("X-Tenant-ID")).toBe("default");
-    expect(headers.get("X-User-ID")).toBe("local-debug");
-    expect(headers.get("X-User-Type")).toBe("local_debug");
-    expect(headers.get("X-User-Roles")).toBe(
-      "platform_admin,listingkit_admin,listingkit_operator",
-    );
-  });
-
   it("does not forward legacy gateway-only headers", () => {
     const request = new Request("http://localhost/api/listing-kits/tasks", {
       headers: {
@@ -341,22 +317,16 @@ describe("verifyListingKitRequestIdentity", () => {
     expect(result.response?.status).toBe(503);
   });
 
-  it("returns a local debug identity when auth gate bypass is enabled", async () => {
+  it("does not return a local debug identity when a retired auth bypass variable is set", async () => {
     vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
 
     const result = await verifyListingKitRequestIdentity(
       new NextRequest("http://localhost/api/listing-kits/tasks"),
     );
 
-    expect(result.response).toBeUndefined();
-    expect(result.token).toBe("");
-    expect(result.identity).toEqual({
-      tenantId: "default",
-      userId: "local-debug",
-      username: "local-debug",
-      userType: "local_debug",
-      roles: ["platform_admin", "listingkit_admin", "listingkit_operator"],
-    });
+    expect(result.identity).toBeUndefined();
+    expect(result.token).toBeUndefined();
+    expect(result.response?.status).toBe(503);
   });
 
   it("rejects requests when no real ZITADEL session is present", async () => {

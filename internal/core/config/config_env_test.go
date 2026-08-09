@@ -297,7 +297,6 @@ func TestNewViper_BindsListingKitEnvironmentVariables(t *testing.T) {
 	t.Setenv("ZITADEL_CLIENT_ID", "listingkit-client")
 	t.Setenv("ZITADEL_CLIENT_SECRET", "listingkit-secret")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_TENANT_DIRECTORY_TOKEN", "directory-token")
-	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED", "true")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED", "true")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS", "tenant-a,tenant-b")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS", "user-a,user-b")
@@ -314,12 +313,16 @@ func TestNewViper_BindsListingKitEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "listingkit-client", v.GetString("listingkit.zitadel.clientID"))
 	assert.Equal(t, "listingkit-secret", v.GetString("listingkit.zitadel.clientSecret"))
 	assert.Equal(t, "directory-token", v.GetString("listingkit.zitadel.tenantDirectoryToken"))
-	assert.True(t, v.GetBool("listingkit.zitadel.authRequired"))
 	assert.True(t, v.GetBool("listingkit.zitadel.authorizationRequired"))
 	assert.Equal(t, []string{"tenant-a", "tenant-b"}, getStringSlice(v, "listingkit.zitadel.allowedTenantIDs"))
 	assert.Equal(t, []string{"user-a", "user-b"}, getStringSlice(v, "listingkit.zitadel.allowedUserIDs"))
 	assert.Equal(t, []string{"alice", "bob"}, getStringSlice(v, "listingkit.zitadel.allowedUsernames"))
 	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, getStringSlice(v, "listingkit.zitadel.allowedRoles"))
+}
+
+func TestKnownEnvBindingsDoesNotExposeListingKitAuthenticationToggle(t *testing.T) {
+	_, exists := knownEnvBindings()["listingkit.zitadel.authRequired"]
+	assert.False(t, exists, "ListingKit authentication must not be configurable")
 }
 
 func TestBuildConfigReadsMemberInvitationCredentials(t *testing.T) {
@@ -559,7 +562,6 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 		"    issuerURL: \"https://issuer.file.example\"",
 		"    clientID: \"file-client\"",
 		"    clientSecret: \"file-secret\"",
-		"    authRequired: false",
 		"    authorizationRequired: false",
 		"    allowedUsernames: [\"file-admin\"]",
 	}, "\n")
@@ -568,7 +570,6 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES", "listingkit_admin,platform_admin")
 	t.Setenv("LISTINGKIT_PLATFORM_ADMIN_USERS", "user-b,user-c")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED", "1")
-	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED", "1")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED", "1")
 
 	cfg, err := LoadConfigFromFile(configPath)
@@ -578,7 +579,6 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 	assert.Equal(t, []string{"user-b", "user-c"}, cfg.ListingKit.PlatformAdminUsers)
 	assert.Equal(t, []string{"platform_admin"}, cfg.ListingKit.PlatformAdminRoles)
 	assert.True(t, cfg.ListingKit.OwnerScopeRequired)
-	assert.True(t, cfg.ListingKit.Zitadel.AuthRequired)
 	assert.True(t, cfg.ListingKit.Zitadel.AuthorizationRequired)
 	assert.Equal(t, "https://issuer.file.example", cfg.ListingKit.Zitadel.IssuerURL)
 	assert.Equal(t, "file-client", cfg.ListingKit.Zitadel.ClientID)
@@ -597,13 +597,11 @@ func TestLoadConfigFromFile_CannotDisableListingKitAuthentication(t *testing.T) 
 		"  timeout: 30",
 		"listingkit:",
 		"  zitadel:",
-		"    authRequired: false",
 		"    authorizationRequired: false",
 		"    allowedUsernames: [\"file-admin\"]",
 	}, "\n")
 	require.NoError(t, os.WriteFile(configPath, []byte(configBody), 0o600))
 
-	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED", "0")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED", "0")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES", "listingkit_admin,platform_admin")
 	t.Setenv("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "1-admin")
@@ -611,7 +609,6 @@ func TestLoadConfigFromFile_CannotDisableListingKitAuthentication(t *testing.T) 
 	cfg, err := LoadConfigFromFile(configPath)
 	require.NoError(t, err)
 
-	assert.True(t, cfg.ListingKit.Zitadel.AuthRequired)
 	assert.False(t, cfg.ListingKit.Zitadel.AuthorizationRequired)
 	assert.Equal(t, []string{"1-admin"}, cfg.ListingKit.Zitadel.AllowedUsernames)
 	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, cfg.ListingKit.Zitadel.AllowedRoles)

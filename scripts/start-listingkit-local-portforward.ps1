@@ -161,7 +161,6 @@ try {
     Write-Host "  Set-Location web/listingkit-ui"
     Write-Host "  `$env:LISTINGKIT_API_BASE='http://localhost:8085/api/v1/listing-kits'"
     Write-Host "  `$env:LISTINGKIT_SERVICE_API_BASE='http://localhost:8085/api/v1'"
-    Write-Host "  `$env:LISTINGKIT_UI_BYPASS_AUTH_GATE='1'"
     Write-Host "  npm run dev"
     Write-Host ""
     if ($SkipRedis) {

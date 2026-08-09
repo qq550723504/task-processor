@@ -239,7 +239,7 @@ func NewDefaultConfig() *Config {
 			ProductImageSceneEnabled: false,
 		},
 		ListingKit: ListingKitConfig{
-			Zitadel: ListingKitZitadelConfig{AuthRequired: true},
+			Zitadel: ListingKitZitadelConfig{},
 		},
 		ListingControlPlane: ListingControlPlaneConfig{
 			Enabled:                    false,

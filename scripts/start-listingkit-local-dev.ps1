@@ -8,10 +8,7 @@ param(
     [switch]$SkipRedis,
     [switch]$IncludeTemporal,
     [switch]$SkipTemporal,
-    [int]$LocalTemporalPort = 7233,
-    [ValidateSet("Disabled", "Required")]
-    [string]$ZitadelAuthMode = "Disabled",
-    [string]$BypassAuthGate = "1"
+    [int]$LocalTemporalPort = 7233
 )
 
 $ErrorActionPreference = "Stop"
@@ -221,8 +218,7 @@ $apiArgs = @(
     "-Port", $ApiPort,
     "-ConfigPath", $ConfigPath,
     "-LogLevel", $LogLevel,
-    "-RequireReadiness",
-    "-ZitadelAuthMode", $ZitadelAuthMode
+    "-RequireReadiness"
 )
 & powershell @apiArgs
 if ($LASTEXITCODE -ne 0) {
@@ -237,9 +233,6 @@ $uiArgs = @(
     "-ApiBase", "http://localhost:${ApiPort}/api/v1/listing-kits",
     "-ServiceApiBase", "http://localhost:${ApiPort}/api/v1"
 )
-if (-not [string]::IsNullOrWhiteSpace($BypassAuthGate)) {
-    $uiArgs += @("-BypassAuthGate", $BypassAuthGate)
-}
 & powershell @uiArgs
 if ($LASTEXITCODE -ne 0) {
     throw "Failed to start local UI"

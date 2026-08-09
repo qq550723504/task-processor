@@ -85,8 +85,9 @@ tenant-directory token into
 Keep `urn:zitadel:iam:user:resourceowner` in `ZITADEL_SCOPES`; ListingKit uses
 that claim as the tenant id. The Go API reads ZITADEL settings from core
 config `listingkit.zitadel.*`; in Kubernetes we currently populate those config
-keys through env binding such as `ZITADEL_ISSUER_URL`,
-`ZITADEL_CLIENT_ID`, and `TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED`.
+keys through env binding such as `ZITADEL_ISSUER_URL` and
+`ZITADEL_CLIENT_ID`. Authentication is mandatory; missing issuer/client
+configuration fails closed for protected ListingKit routes.
 For the full migration checklist, including owner-scope and allowlist rollout
 checks, see
 [listingkit-config-migration-checklist.md](/D:/code/task-processor/docs/development/listingkit-config-migration-checklist.md).

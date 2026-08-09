@@ -673,9 +673,6 @@ func knownEnvBindings() map[string]envBinding {
 		"listingkit.zitadel.projectID": {
 			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID",
 		},
-		"listingkit.zitadel.authRequired": {
-			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED",
-		},
 		"listingkit.zitadel.authorizationRequired": {
 			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED",
 		},

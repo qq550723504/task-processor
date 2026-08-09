@@ -37,7 +37,6 @@ func TestListingKitInvitationRouteRejectsForgedAdminHeadersWhenGlobalFlagsAreFal
 	listingkithttpapi.ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
 		IssuerURL:             "https://issuer.example",
 		ClientID:              "listingkit-client",
-		AuthRequired:          false,
 		AuthorizationRequired: false,
 	})
 	if err := listingkithttpapi.ConfigureListingKitAuthorization(nil, []string{"platform_admin"}); err != nil {
