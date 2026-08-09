@@ -2,19 +2,22 @@
 
 ## Goal
 
-Allow a platform administrator to invite a ListingKit member who has no email
-address. The invited person verifies a phone number and initializes their first
-ZITADEL login method from a ZITADEL-managed SMS message, while receiving only
-the selected ListingKit role in the selected tenant.
+Allow a platform administrator to invite a ListingKit member with an email
+address and, when desired, an E.164 phone number. ZITADEL sends its normal
+email-based first-login initialization and verifies the phone number by SMS,
+while the person receives only the selected ListingKit role in the selected
+tenant. ZITADEL's supported Human-user APIs require email, so ListingKit does
+not claim or emulate phone-only registration.
 
 ## Chosen architecture
 
 Keep identity lifecycle inside ZITADEL. ListingKit will create a human user
-with an E.164 phone number and request ZITADEL to send the user initialization
-message. ZITADEL's active HTTP SMS Provider will call a dedicated webhook in
-the existing `product-listing-api`; that webhook verifies the ZITADEL request
-signature and delivers the supplied message through Tencent Cloud SMS using
-Tencent's official Go SDK.
+with the required email and optional E.164 phone number. For a phone-assisted
+invite it requests ZITADEL phone verification by SMS; ZITADEL retains its
+normal email-based first-login initialization. ZITADEL's active HTTP SMS
+Provider will call a dedicated webhook in the existing `product-listing-api`;
+that webhook verifies the ZITADEL request signature and delivers the supplied
+message through Tencent Cloud SMS using Tencent's official Go SDK.
 
 The webhook is not a normal end-user route: it must never accept bearer-less
 traffic merely because ListingKit authentication is disabled. Its sole
@@ -25,16 +28,18 @@ signatures or failed SMS delivery so ZITADEL can report delivery failure.
 ## User-facing contract
 
 `POST /api/v1/listing-kits/platform/tenants/{tenant_id}/members/invitations`
-accepts exactly one contact channel:
+accepts one of these validation modes:
 
 * Existing email invitation: `email`, no `phone` or `username`.
-* SMS invitation: `phone` in E.164 format and a stable `username`, no email.
+* Phone-assisted invitation: required `email`, E.164 `phone`, and a stable
+  `username`. ZITADEL sends the phone verification SMS; first-login
+  initialization remains email based.
 
-Both channels use the existing tenant-directory check and allow only
+Both modes use the existing tenant-directory check and allow only
 `listingkit_viewer`, `listingkit_operator`, or `listingkit_admin`. Successful
-responses and audit records expose the selected delivery channel and a masked
-contact value; they never expose an initialization code, URL, HMAC value, or
-Tencent request identifier.
+responses and audit records expose the selected delivery mode and masked
+contact value(s); they never expose an initialization code, URL, HMAC value,
+or Tencent request identifier.
 
 ## Security and operations
 
@@ -60,11 +65,12 @@ Tencent request identifier.
 2. A valid ZITADEL SMS payload maps only the approved template parameters to
    Tencent SMS; raw code, URL, phone number, and credentials are absent from
    errors and logs.
-3. Platform administrators can submit an E.164 phone invitation; email-only
-   and phone-only validation is deterministic and retains the existing role and
-   tenant checks.
-4. The ZITADEL provider creates the phone identity, requests its initialization
-   notification, then assigns exactly one ListingKit role. Partial failures
-   retain the created user ID in the durable audit record.
+3. Platform administrators can submit an email-only invitation or a
+   phone-assisted invite containing email, E.164 phone, and username;
+   validation is deterministic and retains the existing role and tenant checks.
+4. The ZITADEL provider creates the human identity, requests phone
+   verification when supplied, retains ZITADEL's email first-login flow, then
+   assigns exactly one ListingKit role. Partial failures retain the created user
+   ID in the durable audit record.
 5. Production manifests keep all SMS credentials API-only, render successfully,
    and document a manual provider activation plus a real-device delivery test.
