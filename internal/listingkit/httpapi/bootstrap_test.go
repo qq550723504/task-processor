@@ -1021,6 +1021,31 @@ func TestNewTaskModuleInputBuildsInvitationProviderOnlyWithCompleteConfiguration
 	}
 }
 
+func TestBuildZitadelSMSServiceFailsClosedUntilAllCredentialsAreConfigured(t *testing.T) {
+	service := buildZitadelSMSService(config.ListingKitZitadelSMSConfig{
+		SigningKey:       "signing-key",
+		TencentSecretID:  "secret-id",
+		TencentSecretKey: "secret-key",
+		TencentAppID:     "1400000000",
+		TencentSignName:  "ListingKit",
+	})
+	if service != nil {
+		t.Fatal("ZITADEL SMS service should not initialize without a Tencent template ID")
+	}
+
+	service = buildZitadelSMSService(config.ListingKitZitadelSMSConfig{
+		SigningKey:        "signing-key",
+		TencentSecretID:   "secret-id",
+		TencentSecretKey:  "secret-key",
+		TencentAppID:      "1400000000",
+		TencentSignName:   "ListingKit",
+		TencentTemplateID: "100001",
+	})
+	if service == nil {
+		t.Fatal("ZITADEL SMS service should initialize with complete credentials")
+	}
+}
+
 type memberInvitationProviderNoop struct{}
 
 func (memberInvitationProviderNoop) Invite(context.Context, memberinvite.InviteRequest) (memberinvite.Invitation, error) {

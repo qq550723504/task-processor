@@ -335,6 +335,24 @@ func TestBuildConfigReadsMemberInvitationCredentials(t *testing.T) {
 	assert.Equal(t, "project-1", cfg.ListingKit.Zitadel.ProjectID)
 }
 
+func TestBuildConfigReadsTencentSMSWebhookCredentials(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_SMS_SIGNING_KEY", "signing-key")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SECRET_ID", "secret-id")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SECRET_KEY", "secret-key")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_APP_ID", "1400000000")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SIGN_NAME", "ListingKit")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_TEMPLATE_ID", "100001")
+
+	cfg := BuildConfig(newViper())
+
+	assert.Equal(t, "signing-key", cfg.ListingKit.Zitadel.SMS.SigningKey)
+	assert.Equal(t, "secret-id", cfg.ListingKit.Zitadel.SMS.TencentSecretID)
+	assert.Equal(t, "secret-key", cfg.ListingKit.Zitadel.SMS.TencentSecretKey)
+	assert.Equal(t, "1400000000", cfg.ListingKit.Zitadel.SMS.TencentAppID)
+	assert.Equal(t, "ListingKit", cfg.ListingKit.Zitadel.SMS.TencentSignName)
+	assert.Equal(t, "100001", cfg.ListingKit.Zitadel.SMS.TencentTemplateID)
+}
+
 func TestDeprecatedEnvWarnings_ReportsLegacyAliases(t *testing.T) {
 	t.Setenv("RABBITMQ_URL", "amqp://legacy")
 	t.Setenv("OPENAI_API_KEY", "legacy")

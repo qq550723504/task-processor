@@ -673,6 +673,24 @@ func knownEnvBindings() map[string]envBinding {
 		"listingkit.zitadel.projectID": {
 			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID",
 		},
+		"listingkit.zitadel.sms.signingKey": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_SMS_SIGNING_KEY",
+		},
+		"listingkit.zitadel.sms.tencentSecretID": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SECRET_ID",
+		},
+		"listingkit.zitadel.sms.tencentSecretKey": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SECRET_KEY",
+		},
+		"listingkit.zitadel.sms.tencentAppID": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_APP_ID",
+		},
+		"listingkit.zitadel.sms.tencentSignName": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SIGN_NAME",
+		},
+		"listingkit.zitadel.sms.tencentTemplateID": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_TEMPLATE_ID",
+		},
 		"listingkit.zitadel.authorizationRequired": {
 			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED",
 		},

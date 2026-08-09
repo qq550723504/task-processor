@@ -68,6 +68,41 @@ func TestListingKitInvitationRouteRejectsForgedAdminHeadersWhenGlobalFlagsAreFal
 	}
 }
 
+func TestZitadelSMSWebhookBypassesBearerWithoutRelaxingListingKitRoutes(t *testing.T) {
+	webhookCalled := false
+	listingKitCalled := false
+	server := buildHTTPServerFromRoutes(0, []httproute.Descriptor{
+		{
+			Method: http.MethodPost,
+			Path:   "/api/v1/listing-kits/integrations/zitadel/sms",
+			Module: "listing-kit-zitadel-sms-webhook",
+			Handler: func(c *gin.Context) {
+				webhookCalled = true
+				c.Status(http.StatusNoContent)
+			},
+		},
+		{
+			Method: http.MethodGet,
+			Path:   "/api/v1/listing-kits/tasks",
+			Module: "listing-kit",
+			Handler: func(c *gin.Context) {
+				listingKitCalled = true
+				c.Status(http.StatusOK)
+			},
+		},
+	})
+
+	webhookResponse := httptest.NewRecorder()
+	server.Handler.ServeHTTP(webhookResponse, httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/integrations/zitadel/sms", nil))
+	require.Equal(t, http.StatusNoContent, webhookResponse.Code)
+	require.True(t, webhookCalled)
+
+	listingKitResponse := httptest.NewRecorder()
+	server.Handler.ServeHTTP(listingKitResponse, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil))
+	require.Equal(t, http.StatusUnauthorized, listingKitResponse.Code)
+	require.False(t, listingKitCalled)
+}
+
 func TestListingKitPromptRoutesRequireVerifiedIdentity(t *testing.T) {
 	server := buildHTTPServerFromRoutes(0, promptmgmtapi.AppendRouteDescriptors(nil, &stubPromptTemplateHandler{}))
 	tests := []struct {
@@ -353,6 +388,10 @@ type stubListingKitHandler struct {
 func (s *stubListingKitHandler) GenerateListingKit(c *gin.Context) {
 	s.generateCalled = true
 	c.JSON(http.StatusOK, gin.H{"task_id": "listing-kit-task"})
+}
+
+func (s *stubListingKitHandler) DeliverZitadelSMS(c *gin.Context) {
+	c.Status(http.StatusNoContent)
 }
 
 func (s *stubListingKitHandler) AnalyzeStudioReferenceStyle(c *gin.Context) {

@@ -36,6 +36,23 @@ func TestRouteRequiresZitadelAuthLeavesLoginHealthProbesPublic(t *testing.T) {
 	}
 }
 
+func TestRouteRequiresZitadelAuthExemptsOnlyExactZitadelSMSWebhook(t *testing.T) {
+	if RouteRequiresZitadelAuth(routeDescriptor{
+		Method: http.MethodPost,
+		Path:   "/api/v1/listing-kits/integrations/zitadel/sms",
+		Module: "listing-kit-zitadel-sms-webhook",
+	}) {
+		t.Fatal("exact ZITADEL SMS webhook should use raw-body signature authentication instead of Bearer authentication")
+	}
+	if !RouteRequiresZitadelAuth(routeDescriptor{
+		Method: http.MethodPost,
+		Path:   "/api/v1/listing-kits/integrations/zitadel/sms/other",
+		Module: "listing-kit-zitadel-sms-webhook",
+	}) {
+		t.Fatal("unrecognized ZITADEL SMS webhook path must not bypass Bearer authentication")
+	}
+}
+
 func TestListingKitZitadelAuthStoresIdentityForProductImageRoute(t *testing.T) {
 	zitadel := newZitadelRoleServer(t)
 	defer zitadel.Close()

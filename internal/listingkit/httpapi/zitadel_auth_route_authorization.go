@@ -15,6 +15,11 @@ func RouteRequiresZitadelAuth(route httproute.Descriptor) bool {
 	if route.Method == http.MethodGet && (route.Path == "/api/v1/shein-login/health" || route.Path == "/api/v1/sds-login/health") {
 		return false
 	}
+	if route.Module == "listing-kit-zitadel-sms-webhook" {
+		// ZITADEL does not send a user Bearer token. Only this exact callback
+		// authenticates with the fresh raw-body HMAC validated by its handler.
+		return route.Method != http.MethodPost || route.Path != "/api/v1/listing-kits/integrations/zitadel/sms"
+	}
 	return route.Module == "listing-kit" ||
 		route.Module == "listing-kit-admin" ||
 		route.Module == "listing-kit-platform-admin" ||

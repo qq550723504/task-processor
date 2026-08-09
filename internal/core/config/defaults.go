@@ -43,6 +43,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("listingkit.zitadel.allowedUserIDs", defaults.ListingKit.Zitadel.AllowedUserIDs)
 	v.SetDefault("listingkit.zitadel.allowedUsernames", defaults.ListingKit.Zitadel.AllowedUsernames)
 	v.SetDefault("listingkit.zitadel.allowedRoles", defaults.ListingKit.Zitadel.AllowedRoles)
+	v.SetDefault("listingkit.zitadel.sms.signingKey", defaults.ListingKit.Zitadel.SMS.SigningKey)
+	v.SetDefault("listingkit.zitadel.sms.tencentSecretID", defaults.ListingKit.Zitadel.SMS.TencentSecretID)
+	v.SetDefault("listingkit.zitadel.sms.tencentSecretKey", defaults.ListingKit.Zitadel.SMS.TencentSecretKey)
+	v.SetDefault("listingkit.zitadel.sms.tencentAppID", defaults.ListingKit.Zitadel.SMS.TencentAppID)
+	v.SetDefault("listingkit.zitadel.sms.tencentSignName", defaults.ListingKit.Zitadel.SMS.TencentSignName)
+	v.SetDefault("listingkit.zitadel.sms.tencentTemplateID", defaults.ListingKit.Zitadel.SMS.TencentTemplateID)
 
 	setListingControlPlaneDefaults(v, defaults)
 	setBrowserDefaults(v, defaults)
