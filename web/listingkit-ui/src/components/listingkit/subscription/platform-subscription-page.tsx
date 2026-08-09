@@ -3,7 +3,7 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Power, RefreshCw, Save, Search, UserPlus, XCircle } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 
 import {
   applyPlatformTenantSubscriptionPlan,
@@ -97,6 +97,9 @@ const MODULE_GUIDANCE: Record<string, { recommendedMetrics?: Array<{ key: string
 };
 
 export function PlatformSubscriptionPage() {
+  const tenantContextOperationRef = useRef<"invitation" | "onboarding" | null>(
+    null,
+  );
   const [tenantInput, setTenantInput] = useState("");
   const [tenantId, setTenantId] = useState("");
   const [editingModule, setEditingModule] = useState("");
@@ -130,6 +133,7 @@ export function PlatformSubscriptionPage() {
   const [error, setError] = useState("");
 
   const normalizedTenantId = useMemo(() => tenantId.trim(), [tenantId]);
+  const tenantContextBusy = invitingMember || openingTenant;
   const query = useQuery({
     queryKey: ["listingkit-platform-subscription", normalizedTenantId],
     queryFn: () => getPlatformTenantSubscription(normalizedTenantId),
@@ -192,7 +196,7 @@ export function PlatformSubscriptionPage() {
 
   function handleLoad(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (invitingMember) {
+    if (tenantContextOperationRef.current !== null) {
       return;
     }
     setError("");
@@ -204,6 +208,9 @@ export function PlatformSubscriptionPage() {
 
   async function handleMemberInvitation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (tenantContextOperationRef.current !== null) {
+      return;
+    }
     const givenName = invitationGivenName.trim();
     const familyName = invitationFamilyName.trim();
     const email = invitationEmail.trim();
@@ -224,6 +231,7 @@ export function PlatformSubscriptionPage() {
       return;
     }
 
+    tenantContextOperationRef.current = "invitation";
     setInvitingMember(true);
     setError("");
     setInvitationFeedback("");
@@ -252,12 +260,18 @@ export function PlatformSubscriptionPage() {
         setError(formatSubscriptionApiError(err));
       }
     } finally {
+      if (tenantContextOperationRef.current === "invitation") {
+        tenantContextOperationRef.current = null;
+      }
       setInvitingMember(false);
     }
   }
 
   async function handleTenantOnboarding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (tenantContextOperationRef.current !== null) {
+      return;
+    }
     const nextTenantId = newTenantId.trim();
     if (!nextTenantId || !newTenantPlan) {
       return;
@@ -271,6 +285,7 @@ export function PlatformSubscriptionPage() {
       return;
     }
 
+    tenantContextOperationRef.current = "onboarding";
     setOpeningTenant(true);
     setError("");
     try {
@@ -294,6 +309,9 @@ export function PlatformSubscriptionPage() {
     } catch (err) {
       setError(formatSubscriptionApiError(err));
     } finally {
+      if (tenantContextOperationRef.current === "onboarding") {
+        tenantContextOperationRef.current = null;
+      }
       setOpeningTenant(false);
     }
   }
@@ -467,7 +485,7 @@ export function PlatformSubscriptionPage() {
           </div>
           <form onSubmit={handleLoad} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <Input
-              disabled={invitingMember}
+              disabled={tenantContextBusy}
               value={tenantInput}
               onChange={(event) => setTenantInput(event.target.value)}
               className="h-9 w-full font-mono sm:min-w-[260px] sm:flex-1"
@@ -482,7 +500,7 @@ export function PlatformSubscriptionPage() {
             </datalist>
             <Button
               type="submit"
-              disabled={!tenantInput.trim() || invitingMember}
+              disabled={!tenantInput.trim() || tenantContextBusy}
               className="h-9 w-full gap-2 px-3 sm:w-auto"
             >
               <Search className="size-4" />
@@ -500,7 +518,7 @@ export function PlatformSubscriptionPage() {
             </Button>
             <Button
               type="button"
-              disabled={invitingMember}
+              disabled={tenantContextBusy}
               onClick={() => {
                 setShowTenantOnboarding((visible) => !visible);
                 setError("");
@@ -533,7 +551,7 @@ export function PlatformSubscriptionPage() {
               <Label className="block text-xs text-zinc-600">
                 新租户 ID
                 <Input
-                  disabled={invitingMember}
+                  disabled={tenantContextBusy}
                   value={newTenantId}
                   onChange={(event) => setNewTenantId(event.target.value)}
                   className="mt-1 h-9 bg-white font-mono"
@@ -545,7 +563,7 @@ export function PlatformSubscriptionPage() {
               <Label className="block text-xs text-zinc-600">
                 开通套餐
                 <Select
-                  disabled={invitingMember}
+                  disabled={tenantContextBusy}
                   value={newTenantPlan}
                   onChange={(event) => setNewTenantPlan(event.target.value)}
                   className="mt-1 h-9 bg-white"
@@ -562,7 +580,7 @@ export function PlatformSubscriptionPage() {
               <Label className="block text-xs text-zinc-600">
                 到期时间（可选）
                 <Input
-                  disabled={invitingMember}
+                  disabled={tenantContextBusy}
                   type="datetime-local"
                   value={newTenantExpiresAt}
                   onChange={(event) => setNewTenantExpiresAt(event.target.value)}
@@ -574,8 +592,7 @@ export function PlatformSubscriptionPage() {
                 disabled={
                   !newTenantId.trim() ||
                   !newTenantPlan ||
-                  openingTenant ||
-                  invitingMember
+                  tenantContextBusy
                 }
                 className="h-9 gap-2 px-3"
               >
@@ -616,7 +633,7 @@ export function PlatformSubscriptionPage() {
                   <Button
                     key={tenant.tenant_id}
                     type="button"
-                    disabled={invitingMember}
+                    disabled={tenantContextBusy}
                     variant={tenant.tenant_id === normalizedTenantId ? "default" : "outline"}
                     onClick={() => {
                       setTenantInput(tenant.tenant_id);
@@ -730,7 +747,7 @@ export function PlatformSubscriptionPage() {
                   </div>
                   <Button
                     type="button"
-                    disabled={invitingMember}
+                    disabled={tenantContextBusy}
                     variant={showMemberInvitation ? "outline" : "default"}
                     onClick={() => {
                       setShowMemberInvitation((visible) => !visible);
@@ -752,7 +769,7 @@ export function PlatformSubscriptionPage() {
                 ) : null}
                 {showMemberInvitation ? (
                   <form onSubmit={handleMemberInvitation} className="space-y-3">
-                    <fieldset disabled={invitingMember} className="space-y-3">
+                    <fieldset disabled={tenantContextBusy} className="space-y-3">
                       <div className="grid gap-3 sm:grid-cols-2">
                         <Label className="block text-xs text-zinc-500">
                           名字
@@ -813,7 +830,7 @@ export function PlatformSubscriptionPage() {
                       </Label>
                       <Button
                         type="submit"
-                        disabled={invitingMember}
+                        disabled={tenantContextBusy}
                         className="h-9 w-full gap-2 px-3"
                       >
                         {invitingMember ? (

@@ -639,6 +639,110 @@ describe("PlatformSubscriptionPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("blocks invitations while tenant onboarding is pending", async () => {
+    const user = userEvent.setup();
+    const openingRequest = createDeferred<
+      Awaited<ReturnType<typeof applyPlatformTenantSubscriptionPlan>>
+    >();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+    mockedApplyPlatformTenantSubscriptionPlan.mockReturnValue(
+      openingRequest.promise,
+    );
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await fillValidInvitation(user);
+    await user.click(screen.getByRole("button", { name: "开通新租户" }));
+    await user.type(screen.getByLabelText("新租户 ID"), "org-new");
+    await user.selectOptions(screen.getByLabelText("新租户套餐"), "professional");
+    await user.click(screen.getByRole("button", { name: "确认开通" }));
+
+    await waitFor(() => {
+      expect(mockedApplyPlatformTenantSubscriptionPlan).toHaveBeenCalledOnce();
+    });
+    const invitationForm = screen
+      .getByRole("button", { name: "发送邀请" })
+      .closest("form");
+    expect(invitationForm).not.toBeNull();
+    expect(screen.getByRole("button", { name: "发送邀请" })).toBeDisabled();
+    fireEvent.submit(invitationForm!);
+    expect(mockedInvitePlatformTenantMember).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("租户 ID")).toHaveValue("org-target");
+
+    await act(async () => {
+      openingRequest.resolve({
+        id: 2,
+        tenant_id: "org-new",
+        plan_code: "professional",
+        status: "active",
+      });
+      await openingRequest.promise;
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText("租户 ID")).toHaveValue("org-new");
+    });
+  });
+
+  it("blocks onboarding while an invitation refreshes its frozen tenant audit", async () => {
+    const user = userEvent.setup();
+    const invitationRequest = createDeferred<
+      Awaited<ReturnType<typeof invitePlatformTenantMember>>
+    >();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+    mockedInvitePlatformTenantMember.mockReturnValue(invitationRequest.promise);
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await fillValidInvitation(user);
+    await user.click(screen.getByRole("button", { name: "开通新租户" }));
+    await user.type(screen.getByLabelText("新租户 ID"), "org-new");
+    await user.selectOptions(screen.getByLabelText("新租户套餐"), "professional");
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    await waitFor(() => {
+      expect(mockedInvitePlatformTenantMember).toHaveBeenCalledOnce();
+    });
+    const onboardingForm = screen
+      .getByRole("button", { name: "确认开通" })
+      .closest("form");
+    expect(onboardingForm).not.toBeNull();
+    fireEvent.submit(onboardingForm!);
+    expect(mockedApplyPlatformTenantSubscriptionPlan).not.toHaveBeenCalled();
+
+    await act(async () => {
+      invitationRequest.resolve({
+        tenant_id: "org-target",
+        user_id: "user-3",
+        email: "jane@example.com",
+        role: "listingkit_viewer",
+        authorization_id: "authorization-3",
+        invitation_email_sent: true,
+      });
+      await invitationRequest.promise;
+    });
+
+    await screen.findByText(
+      /org-target.*jane@example\.com.*listingkit_viewer.*初始化邮件/,
+    );
+    expect(screen.getByLabelText("租户 ID")).toHaveValue("org-target");
+    await waitFor(() => {
+      expect(mockedGetPlatformTenantSubscriptionAuditLogs.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    expect(
+      mockedGetPlatformTenantSubscriptionAuditLogs.mock.calls.every(
+        ([tenantId]) => tenantId === "org-target",
+      ),
+    ).toBe(true);
+  });
+
   it("formats remaining invitation failures with the subscription API formatter", async () => {
     const user = userEvent.setup();
     mockedGetPlatformTenantSubscription.mockResolvedValue({
