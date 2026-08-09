@@ -120,6 +120,34 @@ func TestAutoMigrateAuditRepositoryPreservesAndRedactsLegacyRecords(t *testing.T
 	}
 }
 
+func TestAutoMigrateAuditRepositoryDoesNotRewriteMigratedRecords(t *testing.T) {
+	db := openAuditTestDB(t)
+	if err := db.AutoMigrate(&legacyMemberInvitationAuditRow{}); err != nil {
+		t.Fatalf("migrate legacy audit table: %v", err)
+	}
+	if err := db.Create(&legacyMemberInvitationAuditRow{
+		ActorUserID: "admin-1", TenantID: "org-1", Email: "jane@example.com", Role: "listingkit_viewer", Outcome: OutcomeSucceeded,
+	}).Error; err != nil {
+		t.Fatalf("create legacy audit row: %v", err)
+	}
+	if err := AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("first AutoMigrateAuditRepository() error = %v", err)
+	}
+
+	updates := 0
+	if err := db.Callback().Update().After("gorm:update").Register("test:count-audit-migration-updates", func(*gorm.DB) {
+		updates++
+	}); err != nil {
+		t.Fatalf("register update callback: %v", err)
+	}
+	if err := AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("second AutoMigrateAuditRepository() error = %v", err)
+	}
+	if updates != 0 {
+		t.Fatalf("second migration rewrote %d audit records", updates)
+	}
+}
+
 type legacyMemberInvitationAuditRow struct {
 	ID              uint64    `gorm:"primaryKey"`
 	ActorUserID     string    `gorm:"type:varchar(128);not null;index"`

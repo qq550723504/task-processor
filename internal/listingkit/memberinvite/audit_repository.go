@@ -11,9 +11,10 @@ import (
 type Outcome string
 
 const (
-	OutcomeSucceeded  Outcome = "succeeded"
-	OutcomeFailed     Outcome = "failed"
-	OutcomeIncomplete Outcome = "incomplete"
+	OutcomeSucceeded        Outcome = "succeeded"
+	OutcomeFailed           Outcome = "failed"
+	OutcomeIncomplete       Outcome = "incomplete"
+	auditMigrationBatchSize         = 200
 )
 
 // AuditRecord is the non-sensitive, durable record of one member invitation attempt.
@@ -67,28 +68,27 @@ func AutoMigrateAuditRepository(db *gorm.DB) error {
 		return err
 	}
 	var rows []memberInvitationAuditRow
-	if err := db.Find(&rows).Error; err != nil {
-		return err
-	}
-	for _, row := range rows {
-		email := maskEmail(row.Email)
-		mode := row.DeliveryMode
-		if mode == "" {
-			mode = "email"
+	return db.Where("delivery_mode = ? OR contact = ?", "", "").FindInBatches(&rows, auditMigrationBatchSize, func(tx *gorm.DB, _ int) error {
+		for _, row := range rows {
+			email := maskEmail(row.Email)
+			mode := row.DeliveryMode
+			if mode == "" {
+				mode = "email"
+			}
+			contact := row.Contact
+			if contact == "" {
+				contact = email
+			}
+			if err := tx.Model(&memberInvitationAuditRow{}).Where("id = ?", row.ID).Updates(map[string]any{
+				"email":         email,
+				"delivery_mode": mode,
+				"contact":       contact,
+			}).Error; err != nil {
+				return err
+			}
 		}
-		contact := row.Contact
-		if contact == "" {
-			contact = email
-		}
-		if err := db.Model(&memberInvitationAuditRow{}).Where("id = ?", row.ID).Updates(map[string]any{
-			"email":         email,
-			"delivery_mode": mode,
-			"contact":       contact,
-		}).Error; err != nil {
-			return err
-		}
-	}
-	return nil
+		return nil
+	}).Error
 }
 
 func (r *gormAuditRepository) Record(ctx context.Context, record AuditRecord) error {
