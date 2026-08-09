@@ -163,8 +163,8 @@ func (h *handler) requirePlatformSubscriptionAccess(c *gin.Context) bool {
 		}
 	}
 	c.JSON(http.StatusForbidden, gin.H{
-		"error":   "platform_subscription_forbidden",
-		"message": "platform subscription management requires a platform admin role",
+		"error":   "listingkit_permission_denied",
+		"message": "ListingKit platform administration requires a platform admin role",
 	})
 	return false
 }

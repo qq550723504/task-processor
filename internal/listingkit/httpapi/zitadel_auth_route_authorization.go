@@ -12,9 +12,13 @@ import (
 )
 
 func RouteRequiresZitadelAuth(route httproute.Descriptor) bool {
+	if route.Method == http.MethodGet && (route.Path == "/api/v1/shein-login/health" || route.Path == "/api/v1/sds-login/health") {
+		return false
+	}
 	return route.Module == "listing-kit" ||
 		route.Module == "listing-kit-admin" ||
 		route.Module == "listing-kit-platform-admin" ||
+		route.Module == "listing-kit-prompts" ||
 		route.Module == "listing-kit-studio" ||
 		route.Module == "shein-login" ||
 		route.Module == "sds" ||
@@ -36,11 +40,16 @@ func listingKitRouteRequiredPermission(route httproute.Descriptor) string {
 		return authz.PermissionListingKitAdminWrite
 	case "listing-kit-platform-admin":
 		return authz.PermissionListingKitPlatformAdm
+	case "listing-kit-prompts":
+		if route.Method == http.MethodPut || route.Method == http.MethodPatch {
+			return authz.PermissionListingKitPromptWrite
+		}
 	case "sds-login":
 		return authz.PermissionListingKitPlatformAdm
 	default:
 		return ""
 	}
+	return ""
 }
 
 func NewRouteRoleMiddleware(route httproute.Descriptor) gin.HandlerFunc {

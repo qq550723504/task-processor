@@ -55,3 +55,19 @@ func TestWrapZitadelAuthMiddlewareLetsCorsPreflightReachInnerHandler(t *testing.
 		t.Fatalf("CORS header = %q, want inner handler header", response.Header().Get("Access-Control-Allow-Origin"))
 	}
 }
+
+func TestWrapZitadelAuthMiddlewareLetsCrawlerProbesReachInnerHandler(t *testing.T) {
+	for _, path := range []string{"/health", "/ready"} {
+		t.Run(path, func(t *testing.T) {
+			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+			middleware := func(c *gin.Context) { c.AbortWithStatus(http.StatusServiceUnavailable) }
+			response := httptest.NewRecorder()
+			WrapZitadelAuthMiddleware(next, middleware).ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, nil))
+			if response.Code != http.StatusOK {
+				t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+			}
+		})
+	}
+}

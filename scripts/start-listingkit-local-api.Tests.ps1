@@ -33,8 +33,7 @@ function Import-StartScriptFunctions {
 
     $functionNames = @(
         "Set-EnvValue",
-        "Import-DotEnvFile",
-        "Configure-ListingKitLocalZitadelAuth"
+        "Import-DotEnvFile"
     )
     $functions = $ast.FindAll({
         param($node)
@@ -85,38 +84,10 @@ Describe "start-listingkit-local-api env loading" {
         [Environment]::GetEnvironmentVariable("TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_BUCKET", "Process") | Should Be "cos-bucket"
     }
 
-    It "clears ZITADEL values in disabled local debug mode after loading .env" {
-        $envPath = Join-Path $TestDrive ".env"
-        Set-Content -LiteralPath $envPath -Value @(
-            "ZITADEL_ISSUER_URL=https://auth.example.com",
-            "ZITADEL_CLIENT_ID=listingkit-client",
-            "ZITADEL_CLIENT_SECRET=listingkit-secret",
-            "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES=listingkit_admin",
-            "LISTINGKIT_ZITADEL_ALLOWED_USERNAMES=1-admin"
-        )
+    It "does not expose a ZITADEL authentication disable mode" {
+        $content = Get-Content -LiteralPath $scriptPath -Raw
 
-        Import-DotEnvFile -Path $envPath
-        Configure-ListingKitLocalZitadelAuth -Mode "Disabled"
-
-        [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable("ZITADEL_ISSUER_URL", "Process")) | Should Be $true
-        [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable("ZITADEL_CLIENT_ID", "Process")) | Should Be $true
-        [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES", "Process")) | Should Be $true
-        [string]::IsNullOrEmpty([Environment]::GetEnvironmentVariable("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "Process")) | Should Be $true
-    }
-
-    It "keeps loaded ZITADEL values when required local debug mode is requested" {
-        $envPath = Join-Path $TestDrive ".env"
-        Set-Content -LiteralPath $envPath -Value @(
-            "ZITADEL_ISSUER_URL=https://auth.example.com",
-            "ZITADEL_CLIENT_ID=listingkit-client",
-            "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES=listingkit_admin"
-        )
-
-        Import-DotEnvFile -Path $envPath
-        Configure-ListingKitLocalZitadelAuth -Mode "Required"
-
-        [Environment]::GetEnvironmentVariable("ZITADEL_ISSUER_URL", "Process") | Should Be "https://auth.example.com"
-        [Environment]::GetEnvironmentVariable("ZITADEL_CLIENT_ID", "Process") | Should Be "listingkit-client"
-        [Environment]::GetEnvironmentVariable("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES", "Process") | Should Be "listingkit_admin"
+        $content | Should Not Match 'ZitadelAuthMode'
+        $content | Should Not Match 'Configure-ListingKitLocalZitadelAuth'
     }
 }

@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	listingkitapi "task-processor/internal/listingkit/api"
+	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/listingsubscription"
 	productenrich "task-processor/internal/productenrich"
@@ -117,19 +118,20 @@ type AdminRepositoryBuilders struct {
 }
 
 type CoreRepositoryBuilders struct {
-	Task                 func(*config.Config, *logrus.Logger) (listingkit.Repository, []func() error, error)
-	StudioAsyncJob       func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error)
-	StudioBatch          func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRepository, []func() error, error)
-	StudioBatchRun       func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error)
-	StudioBatchTaskLink  func(*config.Config, *logrus.Logger) (listingkit.StudioBatchTaskLinkRepository, []func() error, error)
-	SheinSync            func(*config.Config, *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error)
-	Subscription         func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error)
-	Asset                func(*config.Config, *logrus.Logger) (assetrepo.Repository, []func() error, error)
-	Review               func(*config.Config, *logrus.Logger) (reviewstore.Repository, []func() error, error)
-	StudioSession        func(*config.Config, *logrus.Logger) (listingkit.StudioSessionRepository, []func() error, error)
-	UploadedImage        func(*config.Config, *logrus.Logger) (listingkit.UploadedImageRepository, []func() error, error)
-	StoreProfile         func(*config.Config, *logrus.Logger) (listingkit.StoreProfileRepository, []func() error, error)
-	SheinResolutionCache func(*config.Config, *logrus.Logger) (sheinpub.ResolutionCacheStore, []func() error, error)
+	Task                  func(*config.Config, *logrus.Logger) (listingkit.Repository, []func() error, error)
+	StudioAsyncJob        func(*config.Config, *logrus.Logger) (listingkit.StudioAsyncJobRepository, []func() error, error)
+	StudioBatch           func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRepository, []func() error, error)
+	StudioBatchRun        func(*config.Config, *logrus.Logger) (listingkit.StudioBatchRunRepository, []func() error, error)
+	StudioBatchTaskLink   func(*config.Config, *logrus.Logger) (listingkit.StudioBatchTaskLinkRepository, []func() error, error)
+	SheinSync             func(*config.Config, *logrus.Logger) (listingkit.SheinSyncRepository, []func() error, error)
+	Subscription          func(*config.Config, *logrus.Logger) (listingsubscription.Repository, []func() error, error)
+	MemberInvitationAudit func(*config.Config, *logrus.Logger) (memberinvite.AuditRepository, []func() error, error)
+	Asset                 func(*config.Config, *logrus.Logger) (assetrepo.Repository, []func() error, error)
+	Review                func(*config.Config, *logrus.Logger) (reviewstore.Repository, []func() error, error)
+	StudioSession         func(*config.Config, *logrus.Logger) (listingkit.StudioSessionRepository, []func() error, error)
+	UploadedImage         func(*config.Config, *logrus.Logger) (listingkit.UploadedImageRepository, []func() error, error)
+	StoreProfile          func(*config.Config, *logrus.Logger) (listingkit.StoreProfileRepository, []func() error, error)
+	SheinResolutionCache  func(*config.Config, *logrus.Logger) (sheinpub.ResolutionCacheStore, []func() error, error)
 }
 
 type BuildServiceRepositories struct {

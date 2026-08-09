@@ -196,6 +196,23 @@ const subscriptionRequiredPayloadSchema = z
   })
   .passthrough();
 
+export const platformTenantMemberRoleSchema = z.enum([
+  "listingkit_viewer",
+  "listingkit_operator",
+  "listingkit_admin",
+]);
+
+const platformTenantMemberInvitationSchema = z
+  .object({
+    tenant_id: z.string(),
+    user_id: z.string(),
+    email: z.string(),
+    role: platformTenantMemberRoleSchema,
+    authorization_id: z.string(),
+    invitation_email_sent: z.boolean(),
+  })
+  .passthrough();
+
 export type SubscriptionStatus = z.infer<typeof subscriptionStatusSchema>;
 export type SubscriptionModule = z.infer<typeof subscriptionModuleSchema>;
 export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>;
@@ -219,6 +236,19 @@ export type SubscriptionAuditLog = z.infer<typeof subscriptionAuditLogSchema>;
 export type SubscriptionRequiredPayload = z.infer<
   typeof subscriptionRequiredPayloadSchema
 >;
+export type PlatformTenantMemberRole = z.infer<
+  typeof platformTenantMemberRoleSchema
+>;
+export type PlatformTenantMemberInvitation = z.infer<
+  typeof platformTenantMemberInvitationSchema
+>;
+
+export type PlatformTenantMemberInvitationInput = {
+  given_name: string;
+  family_name: string;
+  email: string;
+  role: PlatformTenantMemberRole;
+};
 
 export type SubscriptionEntitlementInput = {
   status: SubscriptionStatus;
@@ -569,4 +599,22 @@ export async function getPlatformTenantSubscriptionAuditLogs(
     `/platform/subscriptions/${encodeURIComponent(tenantId)}/audit-logs`,
   );
   return parseSubscriptionAuditLogList(payload);
+}
+
+export async function invitePlatformTenantMember(
+  tenantId: string,
+  input: PlatformTenantMemberInvitationInput,
+): Promise<PlatformTenantMemberInvitation> {
+  const payload = await apiRequest<unknown>(
+    `/platform/tenants/${encodeURIComponent(tenantId)}/members/invitations`,
+    {
+      method: "POST",
+      body: input,
+    },
+  );
+  return parseApiResponseShape(
+    payload,
+    platformTenantMemberInvitationSchema,
+    "ListingKit API returned an unexpected member invitation response",
+  );
 }

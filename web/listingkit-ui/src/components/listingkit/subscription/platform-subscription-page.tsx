@@ -3,7 +3,7 @@
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Power, RefreshCw, Save, Search, UserPlus, XCircle } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useMemo, useRef, useState } from "react";
 
 import {
   applyPlatformTenantSubscriptionPlan,
@@ -13,11 +13,14 @@ import {
   getPlatformTenantDirectory,
   getPlatformTenantSubscriptions,
   getPlatformTenantSubscription,
+  invitePlatformTenantMember,
   updatePlatformTenantSubscriptionUsage,
   updatePlatformTenantSubscriptionEntitlement,
+  type PlatformTenantMemberRole,
   type SubscriptionEntitlementView,
   type SubscriptionStatus,
 } from "@/lib/api/subscription";
+import { ApiError } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -61,6 +64,15 @@ const STATUS_LABEL: Record<SubscriptionStatus, string> = {
   disabled: "已停用",
 };
 
+const MEMBER_ROLE_OPTIONS: Array<{
+  value: PlatformTenantMemberRole;
+  label: string;
+}> = [
+  { value: "listingkit_viewer", label: "查看者" },
+  { value: "listingkit_operator", label: "运营人员" },
+  { value: "listingkit_admin", label: "租户管理员" },
+];
+
 const OSS_STORAGE_LIMIT_PRESETS = [
   { label: "1 GB", bytes: 1 * 1024 * 1024 * 1024 },
   { label: "10 GB", bytes: 10 * 1024 * 1024 * 1024 },
@@ -85,6 +97,9 @@ const MODULE_GUIDANCE: Record<string, { recommendedMetrics?: Array<{ key: string
 };
 
 export function PlatformSubscriptionPage() {
+  const tenantContextOperationRef = useRef<"invitation" | "onboarding" | null>(
+    null,
+  );
   const [tenantInput, setTenantInput] = useState("");
   const [tenantId, setTenantId] = useState("");
   const [editingModule, setEditingModule] = useState("");
@@ -103,6 +118,14 @@ export function PlatformSubscriptionPage() {
   const [newTenantId, setNewTenantId] = useState("");
   const [newTenantPlan, setNewTenantPlan] = useState("");
   const [newTenantExpiresAt, setNewTenantExpiresAt] = useState("");
+  const [showMemberInvitation, setShowMemberInvitation] = useState(false);
+  const [invitationGivenName, setInvitationGivenName] = useState("");
+  const [invitationFamilyName, setInvitationFamilyName] = useState("");
+  const [invitationEmail, setInvitationEmail] = useState("");
+  const [invitationRole, setInvitationRole] =
+    useState<PlatformTenantMemberRole>("listingkit_viewer");
+  const [invitingMember, setInvitingMember] = useState(false);
+  const [invitationFeedback, setInvitationFeedback] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingUsage, setSavingUsage] = useState(false);
   const [applyingPlan, setApplyingPlan] = useState(false);
@@ -110,6 +133,7 @@ export function PlatformSubscriptionPage() {
   const [error, setError] = useState("");
 
   const normalizedTenantId = useMemo(() => tenantId.trim(), [tenantId]);
+  const tenantContextBusy = invitingMember || openingTenant;
   const query = useQuery({
     queryKey: ["listingkit-platform-subscription", normalizedTenantId],
     queryFn: () => getPlatformTenantSubscription(normalizedTenantId),
@@ -172,13 +196,82 @@ export function PlatformSubscriptionPage() {
 
   function handleLoad(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (tenantContextOperationRef.current !== null) {
+      return;
+    }
     setError("");
     setEditingModule("");
+    setShowMemberInvitation(false);
+    setInvitationFeedback("");
     setTenantId(tenantInput);
+  }
+
+  async function handleMemberInvitation(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (tenantContextOperationRef.current !== null) {
+      return;
+    }
+    const givenName = invitationGivenName.trim();
+    const familyName = invitationFamilyName.trim();
+    const email = invitationEmail.trim();
+    if (!normalizedTenantId || !givenName || !familyName || !email) {
+      return;
+    }
+    const requestContext = {
+      tenantId: normalizedTenantId,
+      email,
+      role: invitationRole,
+    };
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm(
+        `确认向租户 ${requestContext.tenantId} 邀请 ${requestContext.email}，并授予角色 ${requestContext.role} 吗？`,
+      )
+    ) {
+      return;
+    }
+
+    tenantContextOperationRef.current = "invitation";
+    setInvitingMember(true);
+    setError("");
+    setInvitationFeedback("");
+    try {
+      await invitePlatformTenantMember(requestContext.tenantId, {
+        given_name: givenName,
+        family_name: familyName,
+        email: requestContext.email,
+        role: requestContext.role,
+      });
+      setInvitationGivenName("");
+      setInvitationFamilyName("");
+      setInvitationEmail("");
+      setInvitationRole("listingkit_viewer");
+      setShowMemberInvitation(false);
+      setInvitationFeedback(
+        `租户 ${requestContext.tenantId} 的成员 ${requestContext.email}（角色 ${requestContext.role}）：ZITADEL 已发送初始化邮件。`,
+      );
+      await auditQuery.refetch();
+    } catch (err) {
+      if (isIncompleteMemberInvitationError(err)) {
+        setError(
+          `ZITADEL 已创建用户 ${err.payload.user_id}，但该用户尚未获得访问权限。请在 ZITADEL 中为该用户补充分配 ${requestContext.role} 角色后再通知用户登录。`,
+        );
+      } else {
+        setError(formatSubscriptionApiError(err));
+      }
+    } finally {
+      if (tenantContextOperationRef.current === "invitation") {
+        tenantContextOperationRef.current = null;
+      }
+      setInvitingMember(false);
+    }
   }
 
   async function handleTenantOnboarding(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (tenantContextOperationRef.current !== null) {
+      return;
+    }
     const nextTenantId = newTenantId.trim();
     if (!nextTenantId || !newTenantPlan) {
       return;
@@ -192,6 +285,7 @@ export function PlatformSubscriptionPage() {
       return;
     }
 
+    tenantContextOperationRef.current = "onboarding";
     setOpeningTenant(true);
     setError("");
     try {
@@ -215,6 +309,9 @@ export function PlatformSubscriptionPage() {
     } catch (err) {
       setError(formatSubscriptionApiError(err));
     } finally {
+      if (tenantContextOperationRef.current === "onboarding") {
+        tenantContextOperationRef.current = null;
+      }
       setOpeningTenant(false);
     }
   }
@@ -388,6 +485,7 @@ export function PlatformSubscriptionPage() {
           </div>
           <form onSubmit={handleLoad} className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
             <Input
+              disabled={tenantContextBusy}
               value={tenantInput}
               onChange={(event) => setTenantInput(event.target.value)}
               className="h-9 w-full font-mono sm:min-w-[260px] sm:flex-1"
@@ -402,7 +500,7 @@ export function PlatformSubscriptionPage() {
             </datalist>
             <Button
               type="submit"
-              disabled={!tenantInput.trim()}
+              disabled={!tenantInput.trim() || tenantContextBusy}
               className="h-9 w-full gap-2 px-3 sm:w-auto"
             >
               <Search className="size-4" />
@@ -420,6 +518,7 @@ export function PlatformSubscriptionPage() {
             </Button>
             <Button
               type="button"
+              disabled={tenantContextBusy}
               onClick={() => {
                 setShowTenantOnboarding((visible) => !visible);
                 setError("");
@@ -452,6 +551,7 @@ export function PlatformSubscriptionPage() {
               <Label className="block text-xs text-zinc-600">
                 新租户 ID
                 <Input
+                  disabled={tenantContextBusy}
                   value={newTenantId}
                   onChange={(event) => setNewTenantId(event.target.value)}
                   className="mt-1 h-9 bg-white font-mono"
@@ -463,6 +563,7 @@ export function PlatformSubscriptionPage() {
               <Label className="block text-xs text-zinc-600">
                 开通套餐
                 <Select
+                  disabled={tenantContextBusy}
                   value={newTenantPlan}
                   onChange={(event) => setNewTenantPlan(event.target.value)}
                   className="mt-1 h-9 bg-white"
@@ -479,6 +580,7 @@ export function PlatformSubscriptionPage() {
               <Label className="block text-xs text-zinc-600">
                 到期时间（可选）
                 <Input
+                  disabled={tenantContextBusy}
                   type="datetime-local"
                   value={newTenantExpiresAt}
                   onChange={(event) => setNewTenantExpiresAt(event.target.value)}
@@ -487,7 +589,11 @@ export function PlatformSubscriptionPage() {
               </Label>
               <Button
                 type="submit"
-                disabled={!newTenantId.trim() || !newTenantPlan || openingTenant}
+                disabled={
+                  !newTenantId.trim() ||
+                  !newTenantPlan ||
+                  tenantContextBusy
+                }
                 className="h-9 gap-2 px-3"
               >
                 {openingTenant ? <RefreshCw className="size-4 animate-spin" /> : <Save className="size-4" />}
@@ -527,11 +633,14 @@ export function PlatformSubscriptionPage() {
                   <Button
                     key={tenant.tenant_id}
                     type="button"
+                    disabled={tenantContextBusy}
                     variant={tenant.tenant_id === normalizedTenantId ? "default" : "outline"}
                     onClick={() => {
                       setTenantInput(tenant.tenant_id);
                       setTenantId(tenant.tenant_id);
                       setEditingModule("");
+                      setShowMemberInvitation(false);
+                      setInvitationFeedback("");
                       setError("");
                     }}
                     className={[
@@ -626,6 +735,118 @@ export function PlatformSubscriptionPage() {
         </Card>
 
         <div className="space-y-4">
+          {normalizedTenantId ? (
+            <Card>
+              <CardHeader className="p-4 pb-0">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <CardTitle className="text-base">成员邀请</CardTitle>
+                    <CardDescription className="mt-1 text-xs">
+                      为租户 {normalizedTenantId} 创建 ZITADEL 用户并授予 ListingKit 访问权限。
+                    </CardDescription>
+                  </div>
+                  <Button
+                    type="button"
+                    disabled={tenantContextBusy}
+                    variant={showMemberInvitation ? "outline" : "default"}
+                    onClick={() => {
+                      setShowMemberInvitation((visible) => !visible);
+                      setError("");
+                      setInvitationFeedback("");
+                    }}
+                    className="h-8 shrink-0 gap-2 px-3 text-xs"
+                  >
+                    <UserPlus className="size-3.5" />
+                    {showMemberInvitation ? "取消" : "邀请成员"}
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4">
+                {invitationFeedback ? (
+                  <Alert className="mb-3 border-emerald-200 bg-emerald-50 text-emerald-800">
+                    <AlertDescription>{invitationFeedback}</AlertDescription>
+                  </Alert>
+                ) : null}
+                {showMemberInvitation ? (
+                  <form onSubmit={handleMemberInvitation} className="space-y-3">
+                    <fieldset disabled={tenantContextBusy} className="space-y-3">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <Label className="block text-xs text-zinc-500">
+                          名字
+                          <Input
+                            required
+                            value={invitationGivenName}
+                            onChange={(event) =>
+                              setInvitationGivenName(event.target.value)
+                            }
+                            className="mt-1 h-9"
+                            aria-label="名字"
+                          />
+                        </Label>
+                        <Label className="block text-xs text-zinc-500">
+                          姓氏
+                          <Input
+                            required
+                            value={invitationFamilyName}
+                            onChange={(event) =>
+                              setInvitationFamilyName(event.target.value)
+                            }
+                            className="mt-1 h-9"
+                            aria-label="姓氏"
+                          />
+                        </Label>
+                      </div>
+                      <Label className="block text-xs text-zinc-500">
+                        邮箱
+                        <Input
+                          required
+                          type="email"
+                          value={invitationEmail}
+                          onChange={(event) =>
+                            setInvitationEmail(event.target.value)
+                          }
+                          className="mt-1 h-9"
+                          aria-label="邮箱"
+                        />
+                      </Label>
+                      <Label className="block text-xs text-zinc-500">
+                        角色
+                        <Select
+                          value={invitationRole}
+                          onChange={(event) =>
+                            setInvitationRole(
+                              event.target.value as PlatformTenantMemberRole,
+                            )
+                          }
+                          className="mt-1 h-9"
+                          aria-label="角色"
+                        >
+                          {MEMBER_ROLE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label} ({option.value})
+                            </option>
+                          ))}
+                        </Select>
+                      </Label>
+                      <Button
+                        type="submit"
+                        disabled={tenantContextBusy}
+                        className="h-9 w-full gap-2 px-3"
+                      >
+                        {invitingMember ? (
+                          <RefreshCw className="size-4 animate-spin" />
+                        ) : (
+                          <UserPlus className="size-4" />
+                        )}
+                        发送邀请
+                      </Button>
+                    </fieldset>
+                  </form>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+
           <Card>
             <form onSubmit={handlePlanApply}>
               <CardHeader className="p-4 pb-0">
@@ -1017,4 +1238,24 @@ function parseLimits(value: string): Record<string, number> {
 
 function currentPeriodKey() {
   return new Date().toISOString().slice(0, 7);
+}
+
+function isIncompleteMemberInvitationError(
+  error: unknown,
+): error is ApiError & {
+  payload: { error: "zitadel_member_invitation_incomplete"; user_id: string };
+} {
+  if (!(error instanceof ApiError)) {
+    return false;
+  }
+  const payload = error.payload;
+  return Boolean(
+    payload &&
+      typeof payload === "object" &&
+      "error" in payload &&
+      payload.error === "zitadel_member_invitation_incomplete" &&
+      "user_id" in payload &&
+      typeof payload.user_id === "string" &&
+      payload.user_id.trim(),
+  );
 }

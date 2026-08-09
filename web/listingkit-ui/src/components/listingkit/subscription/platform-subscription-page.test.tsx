@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 
@@ -11,9 +12,11 @@ import {
   getPlatformTenantDirectory,
   getPlatformTenantSubscriptions,
   getPlatformTenantSubscription,
+  invitePlatformTenantMember,
   updatePlatformTenantSubscriptionUsage,
   updatePlatformTenantSubscriptionEntitlement,
 } from "@/lib/api/subscription";
+import { ApiError } from "@/lib/api/client";
 
 vi.mock("@/lib/api/subscription", async (importOriginal) => {
   const actual =
@@ -26,6 +29,7 @@ vi.mock("@/lib/api/subscription", async (importOriginal) => {
     getPlatformTenantDirectory: vi.fn(),
     getPlatformTenantSubscriptions: vi.fn(),
     getPlatformTenantSubscription: vi.fn(),
+    invitePlatformTenantMember: vi.fn(),
     updatePlatformTenantSubscriptionUsage: vi.fn(),
     updatePlatformTenantSubscriptionEntitlement: vi.fn(),
   };
@@ -43,6 +47,7 @@ const mockedGetPlatformTenantSubscriptions = vi.mocked(
   getPlatformTenantSubscriptions,
 );
 const mockedGetPlatformTenantSubscription = vi.mocked(getPlatformTenantSubscription);
+const mockedInvitePlatformTenantMember = vi.mocked(invitePlatformTenantMember);
 const mockedUpdatePlatformTenantSubscriptionUsage = vi.mocked(
   updatePlatformTenantSubscriptionUsage,
 );
@@ -59,8 +64,17 @@ describe("PlatformSubscriptionPage", () => {
     mockedGetPlatformSubscriptionPlans.mockReset();
     mockedGetPlatformTenantSubscriptions.mockReset();
     mockedGetPlatformTenantSubscription.mockReset();
+    mockedInvitePlatformTenantMember.mockReset();
     mockedUpdatePlatformTenantSubscriptionUsage.mockReset();
     mockedUpdatePlatformTenantSubscriptionEntitlement.mockReset();
+    mockedInvitePlatformTenantMember.mockResolvedValue({
+      tenant_id: "org-target",
+      user_id: "user-1",
+      email: "jane@example.com",
+      role: "listingkit_viewer",
+      authorization_id: "authorization-1",
+      invitation_email_sent: true,
+    });
     mockedGetPlatformSubscriptionPlans.mockResolvedValue([
       {
         plan: {
@@ -450,7 +464,331 @@ describe("PlatformSubscriptionPage", () => {
     expect(screen.getByRole("button", { name: "查询" })).toHaveClass("w-full");
     expect(screen.getAllByRole("button", { name: "刷新" })[0]).toHaveClass("w-full");
   });
+
+  it("submits a viewer invitation only after a tenant is selected", async () => {
+    const user = userEvent.setup();
+    const confirmMock = vi.mocked(globalThis.confirm);
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+
+    expect(screen.queryByRole("button", { name: "邀请成员" })).not.toBeInTheDocument();
+    await user.click(await screen.findByText("目标租户"));
+    await user.click(await screen.findByRole("button", { name: "邀请成员" }));
+
+    const roleSelect = screen.getByLabelText("角色");
+    expect(roleSelect).toHaveValue("listingkit_viewer");
+    expect(roleSelect.querySelector('option[value="platform_admin"]')).toBeNull();
+
+    await user.type(screen.getByLabelText("名字"), "Jane");
+    await user.type(screen.getByLabelText("姓氏"), "Doe");
+    await user.type(screen.getByLabelText("邮箱"), "jane@example.com");
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    await waitFor(() => {
+      expect(confirmMock).toHaveBeenCalledWith(
+        expect.stringMatching(/org-target.*jane@example\.com.*listingkit_viewer/),
+      );
+      expect(mockedInvitePlatformTenantMember).toHaveBeenCalledWith(
+        "org-target",
+        {
+          given_name: "Jane",
+          family_name: "Doe",
+          email: "jane@example.com",
+          role: "listingkit_viewer",
+        },
+      );
+    });
+  });
+
+  it("clears and closes the form after ZITADEL sends initialization mail", async () => {
+    const user = userEvent.setup();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await fillValidInvitation(user);
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    expect(
+      await screen.findByText(
+        /org-target.*jane@example\.com.*listingkit_viewer.*初始化邮件/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("邮箱")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "邀请成员" }));
+    expect(screen.getByLabelText("名字")).toHaveValue("");
+    expect(screen.getByLabelText("姓氏")).toHaveValue("");
+    expect(screen.getByLabelText("邮箱")).toHaveValue("");
+    expect(screen.getByLabelText("角色")).toHaveValue("listingkit_viewer");
+  });
+
+  it("shows incomplete access guidance when the API returns an incomplete invitation", async () => {
+    const user = userEvent.setup();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+    mockedInvitePlatformTenantMember.mockRejectedValue(
+      new ApiError("ListingKit API request failed: 502", 502, {
+        error: "zitadel_member_invitation_incomplete",
+        user_id: "user-1",
+      }),
+    );
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await fillValidInvitation(user);
+    await user.selectOptions(
+      screen.getByLabelText("角色"),
+      "listingkit_operator",
+    );
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    const guidance = await screen.findByText(/user-1/);
+    expect(guidance).toHaveTextContent("尚未获得访问权限");
+    expect(guidance).toHaveTextContent("listingkit_operator");
+  });
+
+  it("uses native validation to block missing or invalid invitation fields", async () => {
+    const user = userEvent.setup();
+    const confirmMock = vi.mocked(globalThis.confirm);
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+    expect(mockedInvitePlatformTenantMember).not.toHaveBeenCalled();
+    expect(confirmMock).not.toHaveBeenCalled();
+
+    await user.type(screen.getByLabelText("名字"), "Jane");
+    await user.type(screen.getByLabelText("姓氏"), "Doe");
+    await user.type(screen.getByLabelText("邮箱"), "not-an-email");
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    expect(mockedInvitePlatformTenantMember).not.toHaveBeenCalled();
+    expect(confirmMock).not.toHaveBeenCalled();
+  });
+
+  it("locks the invitation and tenant context while the request is pending", async () => {
+    const user = userEvent.setup();
+    const invitationRequest = createDeferred<
+      Awaited<ReturnType<typeof invitePlatformTenantMember>>
+    >();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+    mockedInvitePlatformTenantMember.mockReturnValue(invitationRequest.promise);
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await fillValidInvitation(user);
+    await user.selectOptions(
+      screen.getByLabelText("角色"),
+      "listingkit_operator",
+    );
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    await waitFor(() => {
+      expect(mockedInvitePlatformTenantMember).toHaveBeenCalledOnce();
+    });
+    expect(screen.getByLabelText("租户 ID")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "查询" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "开通新租户" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "取消" })).toBeDisabled();
+    expect(screen.getByLabelText("名字")).toBeDisabled();
+    expect(screen.getByLabelText("姓氏")).toBeDisabled();
+    expect(screen.getByLabelText("邮箱")).toBeDisabled();
+    expect(screen.getByLabelText("角色")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "发送邀请" })).toBeDisabled();
+    expect(screen.getByText("目标租户").closest("button")).toBeDisabled();
+
+    await act(async () => {
+      invitationRequest.resolve({
+        tenant_id: "org-target",
+        user_id: "user-2",
+        email: "jane@example.com",
+        role: "listingkit_operator",
+        authorization_id: "authorization-2",
+        invitation_email_sent: true,
+      });
+      await invitationRequest.promise;
+    });
+
+    expect(
+      await screen.findByText(
+        /org-target.*jane@example\.com.*listingkit_operator.*初始化邮件/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("blocks invitations while tenant onboarding is pending", async () => {
+    const user = userEvent.setup();
+    const openingRequest = createDeferred<
+      Awaited<ReturnType<typeof applyPlatformTenantSubscriptionPlan>>
+    >();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+    mockedApplyPlatformTenantSubscriptionPlan.mockReturnValue(
+      openingRequest.promise,
+    );
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await fillValidInvitation(user);
+    await user.click(screen.getByRole("button", { name: "开通新租户" }));
+    await user.type(screen.getByLabelText("新租户 ID"), "org-new");
+    await user.selectOptions(screen.getByLabelText("新租户套餐"), "professional");
+    await user.click(screen.getByRole("button", { name: "确认开通" }));
+
+    await waitFor(() => {
+      expect(mockedApplyPlatformTenantSubscriptionPlan).toHaveBeenCalledOnce();
+    });
+    const invitationForm = screen
+      .getByRole("button", { name: "发送邀请" })
+      .closest("form");
+    expect(invitationForm).not.toBeNull();
+    expect(screen.getByRole("button", { name: "发送邀请" })).toBeDisabled();
+    fireEvent.submit(invitationForm!);
+    expect(mockedInvitePlatformTenantMember).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("租户 ID")).toHaveValue("org-target");
+
+    await act(async () => {
+      openingRequest.resolve({
+        id: 2,
+        tenant_id: "org-new",
+        plan_code: "professional",
+        status: "active",
+      });
+      await openingRequest.promise;
+    });
+    await waitFor(() => {
+      expect(screen.getByLabelText("租户 ID")).toHaveValue("org-new");
+    });
+  });
+
+  it("blocks onboarding while an invitation refreshes its frozen tenant audit", async () => {
+    const user = userEvent.setup();
+    const invitationRequest = createDeferred<
+      Awaited<ReturnType<typeof invitePlatformTenantMember>>
+    >();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+    mockedInvitePlatformTenantMember.mockReturnValue(invitationRequest.promise);
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await fillValidInvitation(user);
+    await user.click(screen.getByRole("button", { name: "开通新租户" }));
+    await user.type(screen.getByLabelText("新租户 ID"), "org-new");
+    await user.selectOptions(screen.getByLabelText("新租户套餐"), "professional");
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    await waitFor(() => {
+      expect(mockedInvitePlatformTenantMember).toHaveBeenCalledOnce();
+    });
+    const onboardingForm = screen
+      .getByRole("button", { name: "确认开通" })
+      .closest("form");
+    expect(onboardingForm).not.toBeNull();
+    fireEvent.submit(onboardingForm!);
+    expect(mockedApplyPlatformTenantSubscriptionPlan).not.toHaveBeenCalled();
+
+    await act(async () => {
+      invitationRequest.resolve({
+        tenant_id: "org-target",
+        user_id: "user-3",
+        email: "jane@example.com",
+        role: "listingkit_viewer",
+        authorization_id: "authorization-3",
+        invitation_email_sent: true,
+      });
+      await invitationRequest.promise;
+    });
+
+    await screen.findByText(
+      /org-target.*jane@example\.com.*listingkit_viewer.*初始化邮件/,
+    );
+    expect(screen.getByLabelText("租户 ID")).toHaveValue("org-target");
+    await waitFor(() => {
+      expect(mockedGetPlatformTenantSubscriptionAuditLogs.mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+    expect(
+      mockedGetPlatformTenantSubscriptionAuditLogs.mock.calls.every(
+        ([tenantId]) => tenantId === "org-target",
+      ),
+    ).toBe(true);
+  });
+
+  it("formats remaining invitation failures with the subscription API formatter", async () => {
+    const user = userEvent.setup();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+    mockedInvitePlatformTenantMember.mockRejectedValue(
+      new ApiError("ListingKit API request failed: 409", 409, {
+        error: "member_invitation_conflict",
+      }),
+    );
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await fillValidInvitation(user);
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    expect(
+      await screen.findByText("ListingKit API request failed: 409"),
+    ).toBeInTheDocument();
+  });
 });
+
+async function selectTenantAndOpenInvitation(
+  user: ReturnType<typeof userEvent.setup>,
+) {
+  await user.click(await screen.findByText("目标租户"));
+  await user.click(await screen.findByRole("button", { name: "邀请成员" }));
+}
+
+async function fillValidInvitation(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByLabelText("名字"), "Jane");
+  await user.type(screen.getByLabelText("姓氏"), "Doe");
+  await user.type(screen.getByLabelText("邮箱"), "jane@example.com");
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
 
 function renderWithQueryClient(ui: ReactElement) {
   const queryClient = new QueryClient({

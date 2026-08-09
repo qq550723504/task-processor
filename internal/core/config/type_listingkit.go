@@ -13,7 +13,8 @@ type ListingKitZitadelConfig struct {
 	ClientID              string   `mapstructure:"clientID" yaml:"clientID"`
 	ClientSecret          string   `mapstructure:"clientSecret" yaml:"clientSecret"`
 	TenantDirectoryToken  string   `mapstructure:"tenantDirectoryToken" yaml:"tenantDirectoryToken"`
-	AuthRequired          bool     `mapstructure:"authRequired" yaml:"authRequired"`
+	MemberInvitationToken string   `mapstructure:"memberInvitationToken" yaml:"memberInvitationToken"`
+	ProjectID             string   `mapstructure:"projectID" yaml:"projectID"`
 	AuthorizationRequired bool     `mapstructure:"authorizationRequired" yaml:"authorizationRequired"`
 	AllowedTenantIDs      []string `mapstructure:"allowedTenantIDs" yaml:"allowedTenantIDs"`
 	AllowedUserIDs        []string `mapstructure:"allowedUserIDs" yaml:"allowedUserIDs"`

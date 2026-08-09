@@ -38,6 +38,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("listingkit.zitadel.issuerURL", defaults.ListingKit.Zitadel.IssuerURL)
 	v.SetDefault("listingkit.zitadel.clientID", defaults.ListingKit.Zitadel.ClientID)
 	v.SetDefault("listingkit.zitadel.clientSecret", defaults.ListingKit.Zitadel.ClientSecret)
+	v.SetDefault("listingkit.zitadel.authorizationRequired", defaults.ListingKit.Zitadel.AuthorizationRequired)
 	v.SetDefault("listingkit.zitadel.allowedTenantIDs", defaults.ListingKit.Zitadel.AllowedTenantIDs)
 	v.SetDefault("listingkit.zitadel.allowedUserIDs", defaults.ListingKit.Zitadel.AllowedUserIDs)
 	v.SetDefault("listingkit.zitadel.allowedUsernames", defaults.ListingKit.Zitadel.AllowedUsernames)

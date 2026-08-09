@@ -42,5 +42,6 @@ func appendPlatformAdminRouteDescriptors(routes []httproute.Descriptor, handler 
 		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/plan", Module: "listing-kit-platform-admin", Handler: handler.ApplyPlatformTenantSubscriptionPlan},
 		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/entitlements/:module_code", Module: "listing-kit-platform-admin", Handler: handler.UpsertPlatformTenantSubscriptionEntitlement},
 		httproute.Descriptor{Method: http.MethodPut, Path: "/api/v1/listing-kits/platform/subscriptions/:tenant_id/usage/:module_code/:period_key/:metric", Module: "listing-kit-platform-admin", Handler: handler.SetPlatformTenantSubscriptionUsage},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations", Module: "listing-kit-platform-admin", Handler: handler.InviteTenantMember},
 	)
 }

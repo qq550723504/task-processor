@@ -25,11 +25,22 @@ func TestRouteRequiresZitadelAuthProtectsProductImageRoutes(t *testing.T) {
 	}
 }
 
+func TestRouteRequiresZitadelAuthLeavesLoginHealthProbesPublic(t *testing.T) {
+	for _, route := range []routeDescriptor{
+		{Method: http.MethodGet, Path: "/api/v1/shein-login/health", Module: "shein-login"},
+		{Method: http.MethodGet, Path: "/api/v1/sds-login/health", Module: "sds-login"},
+	} {
+		if RouteRequiresZitadelAuth(route) {
+			t.Fatalf("RouteRequiresZitadelAuth(%s %s) = true, want false", route.Method, route.Path)
+		}
+	}
+}
+
 func TestListingKitZitadelAuthStoresIdentityForProductImageRoute(t *testing.T) {
 	zitadel := newZitadelRoleServer(t)
 	defer zitadel.Close()
 	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
-		AuthConfig: zitadelAuthConfig{IssuerURL: zitadel.URL, ClientID: "listingkit-client", Required: true},
+		AuthConfig: zitadelAuthConfig{IssuerURL: zitadel.URL, ClientID: "listingkit-client"},
 	})
 
 	router := gin.New()
@@ -79,7 +90,6 @@ func TestListingKitZitadelAuthRejectsMissingBearerToken(t *testing.T) {
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: "https://issuer.example",
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -106,12 +116,11 @@ func TestListingKitZitadelAuthRejectsMissingBearerToken(t *testing.T) {
 	}
 }
 
-func TestListingKitZitadelAuthStaysDisabledWhenConfigDisablesAuthWithIssuerConfigured(t *testing.T) {
+func TestListingKitZitadelAuthCannotBeDisabledWithIssuerConfigured(t *testing.T) {
 	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: "https://issuer.example",
 			ClientID:  "listingkit-client",
-			Required:  false,
 		},
 	})
 
@@ -130,17 +139,16 @@ func TestListingKitZitadelAuthStaysDisabledWhenConfigDisablesAuthWithIssuerConfi
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil))
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusUnauthorized, resp.Body.String())
 	}
 }
 
-func TestListingKitZitadelAuthStaysDisabledWhenAuthorizationIsDisabledWithAllowlists(t *testing.T) {
+func TestListingKitZitadelAuthStillRequiresIdentityWhenAuthorizationIsDisabledWithAllowlists(t *testing.T) {
 	t.Cleanup(SetListingKitZitadelAuthConfigForTesting(nil))
 	ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
 		IssuerURL:             "https://issuer.example",
 		ClientID:              "listingkit-client",
-		AuthRequired:          false,
 		AuthorizationRequired: false,
 		AllowedRoles:          []string{"listingkit_admin"},
 		AllowedUsernames:      []string{"1-admin"},
@@ -161,14 +169,14 @@ func TestListingKitZitadelAuthStaysDisabledWhenAuthorizationIsDisabledWithAllowl
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil))
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	if resp.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusUnauthorized, resp.Body.String())
 	}
 }
 
 func TestListingKitZitadelAuthReturnsUnavailableWhenRequiredButNotConfigured(t *testing.T) {
 	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
-		AuthConfig: zitadelAuthConfig{Required: true},
+		AuthConfig: zitadelAuthConfig{},
 	})
 
 	router := gin.New()
@@ -194,9 +202,9 @@ func TestListingKitZitadelAuthReturnsUnavailableWhenRequiredButNotConfigured(t *
 	}
 }
 
-func TestListingKitZitadelAuthStaysDisabledWhenConfigIsOptionalAndEmpty(t *testing.T) {
+func TestListingKitZitadelAuthFailsClosedWhenConfigIsEmpty(t *testing.T) {
 	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
-		AuthConfig: zitadelAuthConfig{Required: false},
+		AuthConfig: zitadelAuthConfig{},
 	})
 
 	router := gin.New()
@@ -214,19 +222,17 @@ func TestListingKitZitadelAuthStaysDisabledWhenConfigIsOptionalAndEmpty(t *testi
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil))
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	if resp.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusServiceUnavailable, resp.Body.String())
 	}
 }
 
-func TestConfigureListingKitZitadelAuthKeepsOptionalEmptyConfigDisabled(t *testing.T) {
+func TestConfigureListingKitZitadelAuthKeepsMiddlewareEnabledWithEmptyConfig(t *testing.T) {
 	t.Cleanup(SetListingKitZitadelAuthConfigForTesting(nil))
-	ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
-		AuthRequired: false,
-	})
+	ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{})
 
-	if middleware := NewZitadelAuthMiddlewareFromEnv(); middleware != nil {
-		t.Fatal("expected nil middleware for optional empty ZITADEL config")
+	if middleware := NewZitadelAuthMiddlewareFromEnv(); middleware == nil {
+		t.Fatal("expected fail-closed middleware for empty ZITADEL config")
 	}
 }
 
@@ -260,7 +266,6 @@ func TestListingKitZitadelAuthMapsVerifiedIdentityToHeaders(t *testing.T) {
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -306,7 +311,7 @@ func TestListingKitZitadelAuthStoresVerifiedIdentityInContext(t *testing.T) {
 	defer zitadel.Close()
 
 	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
-		AuthConfig: zitadelAuthConfig{IssuerURL: zitadel.URL, ClientID: "listingkit-client", Required: true},
+		AuthConfig: zitadelAuthConfig{IssuerURL: zitadel.URL, ClientID: "listingkit-client"},
 	})
 
 	router := gin.New()
@@ -337,7 +342,7 @@ func TestListingKitZitadelAuthRoleMiddlewareIgnoresForgedHeaders(t *testing.T) {
 	defer zitadel.Close()
 
 	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
-		AuthConfig: zitadelAuthConfig{IssuerURL: zitadel.URL, ClientID: "listingkit-client", Required: true},
+		AuthConfig: zitadelAuthConfig{IssuerURL: zitadel.URL, ClientID: "listingkit-client"},
 	})
 
 	router := gin.New()
@@ -362,7 +367,7 @@ func TestListingKitZitadelAuthRoleMiddlewareRejectsForgedPermittedHeader(t *test
 	defer zitadel.Close()
 
 	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
-		AuthConfig: zitadelAuthConfig{IssuerURL: zitadel.URL, ClientID: "listingkit-client", Required: true},
+		AuthConfig: zitadelAuthConfig{IssuerURL: zitadel.URL, ClientID: "listingkit-client"},
 	})
 
 	router := gin.New()
@@ -408,7 +413,6 @@ func TestListingKitZitadelAuthPrefersBusinessUserIDOverSubject(t *testing.T) {
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -471,7 +475,6 @@ func TestListingKitZitadelAuthOverwritesCallerSuppliedIdentityHeaders(t *testing
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -517,6 +520,67 @@ func TestListingKitZitadelAuthOverwritesCallerSuppliedIdentityHeaders(t *testing
 	}
 }
 
+func TestListingKitZitadelAuthRemovesSpoofedIdentityHeadersWhenTokenHasNoRoles(t *testing.T) {
+	zitadel := newZitadelRoleServer(t)
+	defer zitadel.Close()
+
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{
+			IssuerURL: zitadel.URL,
+			ClientID:  "listingkit-client",
+		},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{{
+		Method: http.MethodGet,
+		Path:   "/api/v1/listing-kits/tasks",
+		Module: "listing-kit",
+		Handler: func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{
+				"tenant_id":     c.GetHeader("X-Tenant-ID"),
+				"tenant_alias":  c.GetHeader("tenant-id"),
+				"tenant_legacy": c.GetHeader("X-Tenant"),
+				"user_id":       c.GetHeader("X-User-ID"),
+				"user_type":     c.GetHeader("X-User-Type"),
+				"user_legacy":   c.GetHeader("X-User"),
+				"user_roles":    c.GetHeader("X-User-Roles"),
+				"zitadel_roles": c.GetHeader("X-Zitadel-Roles"),
+			})
+		},
+	}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+	req.Header.Set("X-Tenant-ID", "spoofed-tenant")
+	req.Header.Set("tenant-id", "spoofed-tenant")
+	req.Header.Set("X-Tenant", "spoofed-tenant")
+	req.Header.Set("X-User-ID", "spoofed-user")
+	req.Header.Set("X-User-Type", "spoofed")
+	req.Header.Set("X-User", "spoofed-user")
+	req.Header.Set("X-User-Roles", "platform_admin")
+	req.Header.Set("X-Zitadel-Roles", "platform_admin")
+	resp := httptest.NewRecorder()
+
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	}
+	var body map[string]string
+	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if body["tenant_id"] != "org-286" || body["tenant_alias"] != "org-286" || body["user_id"] != "user-42" || body["user_type"] != "zitadel" {
+		t.Fatalf("trusted identity headers = %#v", body)
+	}
+	for _, key := range []string{"tenant_legacy", "user_legacy", "user_roles", "zitadel_roles"} {
+		if body[key] != "" {
+			t.Fatalf("%s = %q, want sanitized", key, body[key])
+		}
+	}
+}
+
 func TestListingKitZitadelAuthRejectsUnauthorizedIdentity(t *testing.T) {
 	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -543,7 +607,6 @@ func TestListingKitZitadelAuthRejectsUnauthorizedIdentity(t *testing.T) {
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 		AuthzConfig: zitadelAuthorizationConfig{
 			Required:         true,
@@ -602,7 +665,6 @@ func TestListingKitZitadelAuthAllowsConfiguredUsername(t *testing.T) {
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 		AuthzConfig: zitadelAuthorizationConfig{
 			Required:         true,
@@ -640,7 +702,6 @@ func TestListingKitZitadelAuthRejectsAuthenticatedUserForOperationalAdminRoutesW
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -677,7 +738,6 @@ func TestListingKitZitadelAuthAllowsOperatorForOperationalAdminRoutes(t *testing
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -711,7 +771,6 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForSDSRoutes(t *testing.T) 
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -745,7 +804,6 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForTaskRoutes(t *testing.T)
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -794,7 +852,6 @@ func TestListingKitZitadelAuthExplainsInactiveTokens(t *testing.T) {
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -831,7 +888,6 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForAISettingsRoute(t *testi
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -865,7 +921,6 @@ func TestListingKitZitadelAuthAllowsPlatformAdminForSDSLoginRoutes(t *testing.T)
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -899,7 +954,6 @@ func TestListingKitZitadelAuthRejectsListingKitAdminForSDSLoginRoutes(t *testing
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -936,7 +990,6 @@ func TestListingKitZitadelAuthAllowsAuthenticatedUserForRuleAdminRoutes(t *testi
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -970,7 +1023,6 @@ func TestListingKitZitadelAuthAllowsListingKitAdminForSimpleStoreLookup(t *testi
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -1004,7 +1056,6 @@ func TestListingKitZitadelAuthRejectsListingKitAdminForPlatformRoutes(t *testing
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 
@@ -1041,7 +1092,6 @@ func TestListingKitZitadelAuthRejectsOperatorForPlatformRoutes(t *testing.T) {
 		AuthConfig: zitadelAuthConfig{
 			IssuerURL: zitadel.URL,
 			ClientID:  "listingkit-client",
-			Required:  true,
 		},
 	})
 

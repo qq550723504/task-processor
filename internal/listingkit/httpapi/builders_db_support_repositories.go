@@ -6,6 +6,7 @@ import (
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/listingkit/studiostore"
 	"task-processor/internal/listingsubscription"
@@ -50,4 +51,12 @@ func newDBListingSubscriptionRepository(cfg *config.DatabaseConfig, logger *logr
 		return nil, nil, err
 	}
 	return listingsubscription.NewGormRepository(db), closer, nil
+}
+
+func newDBMemberInvitationAuditRepository(cfg *config.DatabaseConfig, logger *logrus.Logger) (memberinvite.AuditRepository, func() error, error) {
+	db, closer, err := openListingKitRepositoryDB(cfg, logger)
+	if err != nil {
+		return nil, nil, err
+	}
+	return memberinvite.NewGormAuditRepository(db), closer, nil
 }

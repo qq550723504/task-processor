@@ -53,4 +53,3 @@ data:
   # These env vars are bound into Go API core config at listingkit.zitadel.*.
   # The resourceowner scope is required so the Go API can scope ListingKit data by ZITADEL tenant.
   ZITADEL_SCOPES: "openid profile email urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:zitadel:aud"
-  TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED: "1"

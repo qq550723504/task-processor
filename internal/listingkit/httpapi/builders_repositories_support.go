@@ -5,6 +5,7 @@ import (
 
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
+	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingsubscription"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -13,6 +14,13 @@ func BuildListingSubscriptionRepository(cfg *config.Config, logger *logrus.Logge
 	return buildRepositoryWithFallback(cfg, logger, newDBListingSubscriptionRepository, func(logger *logrus.Logger) (listingsubscription.Repository, []func() error, error) {
 		logger.Warn("database not configured, using in-memory ListingKit subscription repository")
 		return listingsubscription.NewMemRepository(), nil, nil
+	})
+}
+
+func BuildMemberInvitationAuditRepository(cfg *config.Config, logger *logrus.Logger) (memberinvite.AuditRepository, []func() error, error) {
+	return buildRepositoryWithFallback(cfg, logger, newDBMemberInvitationAuditRepository, func(logger *logrus.Logger) (memberinvite.AuditRepository, []func() error, error) {
+		logger.Warn("database not configured, ListingKit member invitation audit repository disabled")
+		return nil, nil, nil
 	})
 }
 

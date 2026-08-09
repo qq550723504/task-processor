@@ -227,7 +227,6 @@ func TestConfigBuildIncludesListingKitConfig(t *testing.T) {
 	v.Set("listingkit.zitadel.issuerURL", "https://issuer.example")
 	v.Set("listingkit.zitadel.clientID", "listingkit-client")
 	v.Set("listingkit.zitadel.clientSecret", "listingkit-secret")
-	v.Set("listingkit.zitadel.authRequired", true)
 	v.Set("listingkit.zitadel.authorizationRequired", true)
 	v.Set("listingkit.zitadel.allowedTenantIDs", []string{"tenant-a", "tenant-b"})
 	v.Set("listingkit.zitadel.allowedUserIDs", []string{"user-a", "user-b"})
@@ -243,7 +242,6 @@ func TestConfigBuildIncludesListingKitConfig(t *testing.T) {
 	assert.Equal(t, "https://issuer.example", cfg.ListingKit.Zitadel.IssuerURL)
 	assert.Equal(t, "listingkit-client", cfg.ListingKit.Zitadel.ClientID)
 	assert.Equal(t, "listingkit-secret", cfg.ListingKit.Zitadel.ClientSecret)
-	assert.True(t, cfg.ListingKit.Zitadel.AuthRequired)
 	assert.True(t, cfg.ListingKit.Zitadel.AuthorizationRequired)
 	assert.Equal(t, []string{"tenant-a", "tenant-b"}, cfg.ListingKit.Zitadel.AllowedTenantIDs)
 	assert.Equal(t, []string{"user-a", "user-b"}, cfg.ListingKit.Zitadel.AllowedUserIDs)
@@ -436,16 +434,6 @@ func TestConfigValidation(t *testing.T) {
 	errors = invalidConfig.Validate()
 	assert.NotEmpty(t, errors)
 	assert.True(t, len(errors) >= 4)
-}
-
-func TestBuildConfigRespectsDisabledListingKitZitadelAuth(t *testing.T) {
-	v := viper.New()
-	setDefaults(v)
-	v.Set("listingkit.zitadel.authRequired", false)
-
-	cfg := BuildConfig(v)
-
-	assert.False(t, cfg.ListingKit.Zitadel.AuthRequired)
 }
 
 func TestBrowserConfigValidation(t *testing.T) {

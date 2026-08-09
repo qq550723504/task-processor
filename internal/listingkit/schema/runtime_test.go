@@ -30,6 +30,7 @@ func TestAutoMigrateRuntimeCreatesRepresentativeTables(t *testing.T) {
 		"ai_invocations",
 		"ai_async_jobs",
 		"listing_kit_sds_baseline_cache",
+		&memberinviteAuditTable{},
 		&listingkit.SDSChildRetryJob{},
 		&listingkit.SheinPODImageLookupIndex{},
 	} {
@@ -40,6 +41,12 @@ func TestAutoMigrateRuntimeCreatesRepresentativeTables(t *testing.T) {
 	if !db.Migrator().HasColumn(&listingkit.SheinPODImageLookupIndex{}, "sds_gallery_image_urls") {
 		t.Fatal("expected POD image lookup index table to store SDS gallery image URLs")
 	}
+}
+
+type memberinviteAuditTable struct{}
+
+func (memberinviteAuditTable) TableName() string {
+	return "listingkit_member_invitation_audits"
 }
 
 func openSchemaTestDB(t *testing.T) *gorm.DB {

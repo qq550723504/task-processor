@@ -53,6 +53,18 @@ func (m *zitadelAuthMiddleware) Handle(c *gin.Context) {
 		})
 		return
 	}
+	for _, header := range []string{
+		"X-User-ID",
+		"X-User-Type",
+		"X-User-Roles",
+		"X-Zitadel-Roles",
+		"X-User",
+		"X-Tenant-ID",
+		"tenant-id",
+		"X-Tenant",
+	} {
+		c.Request.Header.Del(header)
+	}
 	c.Request = c.Request.WithContext(listingkit.WithAuthenticatedIdentity(c.Request.Context(), trustedIdentity))
 
 	if identity.ResourceID != "" {

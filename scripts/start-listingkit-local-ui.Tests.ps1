@@ -10,15 +10,14 @@ function Get-StartUiScriptAst {
     return $ast
 }
 
-Describe "start-listingkit-local-ui auth defaults" {
-    It "enables the local auth gate bypass by default" {
+Describe "start-listingkit-local-ui authentication" {
+    It "does not expose a local auth gate bypass" {
         $ast = Get-StartUiScriptAst
         $paramBlock = $ast.ParamBlock
         $parameter = $paramBlock.Parameters |
             Where-Object { $_.Name.VariablePath.UserPath -eq "BypassAuthGate" } |
             Select-Object -First 1
 
-        $parameter | Should Not Be $null
-        $parameter.DefaultValue.Extent.Text | Should Be '"1"'
+        $parameter | Should Be $null
     }
 }

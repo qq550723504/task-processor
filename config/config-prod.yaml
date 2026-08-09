@@ -64,7 +64,6 @@ listingkit:
     issuerURL: "https://auth.shuomiai.com"
     clientID: ""
     clientSecret: ""
-    authRequired: true
     authorizationRequired: false
     allowedTenantIDs: []
     allowedUserIDs: []

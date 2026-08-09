@@ -17,7 +17,7 @@ func WrapZitadelAuthMiddleware(next http.Handler, middleware gin.HandlerFunc) ht
 		next.ServeHTTP(c.Writer, c.Request)
 	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodOptions {
+		if r.Method == http.MethodOptions || r.URL.Path == "/health" || r.URL.Path == "/ready" {
 			next.ServeHTTP(w, r)
 			return
 		}

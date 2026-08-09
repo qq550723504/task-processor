@@ -1,8 +1,7 @@
 param(
     [int]$Port = 3000,
     [string]$ApiBase = "http://localhost:8085/api/v1/listing-kits",
-    [string]$ServiceApiBase = "http://localhost:8085/api/v1",
-    [string]$BypassAuthGate = ""
+    [string]$ServiceApiBase = "http://localhost:8085/api/v1"
 )
 
 $ErrorActionPreference = "Stop"
@@ -222,14 +221,10 @@ Import-DotEnvFile -Path (Join-Path $repoRoot ".env")
 Import-DeployedListingKitAuthSecrets
 Set-EnvIfMissing -Name "LISTINGKIT_API_BASE" -Value $ApiBase
 Set-EnvIfMissing -Name "LISTINGKIT_SERVICE_API_BASE" -Value $ServiceApiBase
-if (-not [string]::IsNullOrWhiteSpace($BypassAuthGate)) {
-    Set-EnvIfMissing -Name "LISTINGKIT_UI_BYPASS_AUTH_GATE" -Value $BypassAuthGate
-}
 
 $command = @"
 `$env:LISTINGKIT_API_BASE = '$ApiBase'
 `$env:LISTINGKIT_SERVICE_API_BASE = '$ServiceApiBase'
-if ('${BypassAuthGate}' -ne '') { `$env:LISTINGKIT_UI_BYPASS_AUTH_GATE = '${BypassAuthGate}' }
 & '$nextScript' dev -p $Port
 "@
 
@@ -283,9 +278,6 @@ Write-Host "  stdout: $stdoutLog"
 Write-Host "  stderr: $stderrLog"
 Write-Host "  LISTINGKIT_API_BASE: $ApiBase"
 Write-Host "  LISTINGKIT_SERVICE_API_BASE: $ServiceApiBase"
-if (-not [string]::IsNullOrWhiteSpace($BypassAuthGate)) {
-    Write-Host "  LISTINGKIT_UI_BYPASS_AUTH_GATE: $BypassAuthGate"
-}
 Write-Host ""
 Write-Host "Stop command:" -ForegroundColor Yellow
 Write-Host "  Stop-Process -Id $($listenerPid[0])"

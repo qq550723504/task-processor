@@ -667,8 +667,11 @@ func knownEnvBindings() map[string]envBinding {
 		"listingkit.zitadel.tenantDirectoryToken": {
 			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_TENANT_DIRECTORY_TOKEN",
 		},
-		"listingkit.zitadel.authRequired": {
-			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTH_REQUIRED",
+		"listingkit.zitadel.memberInvitationToken": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN",
+		},
+		"listingkit.zitadel.projectID": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID",
 		},
 		"listingkit.zitadel.authorizationRequired": {
 			Primary: "TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED",

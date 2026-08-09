@@ -134,13 +134,15 @@ describe("ListingKit ZITADEL proxy", () => {
     });
   });
 
-  it("allows ListingKit pages when local auth gate bypass is enabled", async () => {
+  it("does not allow ListingKit pages when a retired local auth bypass variable is set", async () => {
     vi.stubEnv("LISTINGKIT_UI_BYPASS_AUTH_GATE", "1");
 
     const response = await callProxy("/listing-kits/sds?step=generate");
 
-    expect(response.status).toBe(200);
-    expect(response.headers.get("location")).toBeNull();
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: "ZITADEL auth is not configured",
+    });
   });
 
   it("keeps the public product homepage outside the auth gate", async () => {

@@ -78,7 +78,6 @@ listingkit:
     issuerURL: ""
     clientID: ""
     clientSecret: ""
-    authRequired: false
     authorizationRequired: false
     allowedTenantIDs: []
     allowedUserIDs: []
