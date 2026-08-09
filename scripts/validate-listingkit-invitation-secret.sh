@@ -16,7 +16,7 @@ fi
 for key in \
   TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN \
   TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID; do
-  if ! value="$(kubectl -n "$namespace" get secret "$secret" -o "jsonpath={.data.$key}" 2>&1)"; then
+  if ! value="$(kubectl -n "$namespace" get secret "$secret" -o "jsonpath={.data.$key}" 2>/dev/null)"; then
     echo "::error::Could not inspect required ListingKit invitation Secret key: $key"
     exit 1
   fi

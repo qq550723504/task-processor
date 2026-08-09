@@ -37,6 +37,12 @@ func TestListingKitInvitationSecretPreflight(t *testing.T) {
 			secretValue: "sensitive-token",
 		},
 		{
+			name:        "rejects empty project ID despite kubectl warning",
+			kubectlMode: "warning-empty-project",
+			tokenValue:  "present",
+			wantErr:     "Missing required ListingKit invitation Secret key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID",
+		},
+		{
 			name:           "accepts complete Secret",
 			tokenValue:     "present",
 			projectIDValue: "present",
@@ -72,12 +78,16 @@ if [[ "${FAKE_KUBECTL_MODE:-ready}" == "missing" ]]; then
   exit 1
 fi
 case "$*" in
-  *"jsonpath={.data.TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN}"*)
-    printf '%s' "${FAKE_TOKEN_VALUE}"
-    ;;
-  *"jsonpath={.data.TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID}"*)
-    printf '%s' "${FAKE_PROJECT_ID_VALUE}"
-    ;;
+	*"jsonpath={.data.TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID}"*)
+		if [[ "${FAKE_KUBECTL_MODE:-ready}" == "warning-empty-project" ]]; then
+			printf 'Warning: deprecated API response field\n' >&2
+			exit 0
+		fi
+		printf '%s' "${FAKE_PROJECT_ID_VALUE}"
+		;;
+	*"jsonpath={.data.TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN}"*)
+	    printf '%s' "${FAKE_TOKEN_VALUE}"
+	    ;;
 esac
 `)
 

@@ -148,7 +148,10 @@ func TestListingKitMemberInvitationTokenIsAPIScoped(t *testing.T) {
 	for _, required := range []string{
 		"Reject legacy invitation credentials in shared Secret",
 		"Validate dedicated member invitation Secret",
-		"bash ./scripts/validate-listingkit-invitation-secret.sh",
+		"path: .workflow-tools",
+		"ref: ${{ github.workflow_sha }}",
+		"sparse-checkout: scripts/validate-listingkit-invitation-secret.sh",
+		"bash .workflow-tools/scripts/validate-listingkit-invitation-secret.sh",
 		"listingkit-workbench-secret",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID",

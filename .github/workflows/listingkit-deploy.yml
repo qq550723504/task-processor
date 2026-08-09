@@ -132,6 +132,15 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.source_ref }}
 
+      - name: Checkout workflow tooling
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.workflow_sha }}
+          path: .workflow-tools
+          sparse-checkout: scripts/validate-listingkit-invitation-secret.sh
+          sparse-checkout-cone-mode: false
+
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
         with:
@@ -173,7 +182,7 @@ jobs:
 
       - name: Validate dedicated member invitation Secret
         run: |
-          bash ./scripts/validate-listingkit-invitation-secret.sh ${{ env.K8S_NAMESPACE }}
+          bash .workflow-tools/scripts/validate-listingkit-invitation-secret.sh ${{ env.K8S_NAMESPACE }}
 
       - name: Update API deployment image
         run: |
