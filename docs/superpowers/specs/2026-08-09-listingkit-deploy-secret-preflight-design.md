@@ -7,9 +7,9 @@ API-only member-invitation Secret is not ready.
 
 ## Design
 
-The deploy workflow will add one shell step before applying
-`product-listing-api-deployment.yaml`. It reads only the metadata and key
-presence of `listingkit-member-invitation-secret` in the target namespace.
+The deploy workflow will run a versioned preflight script before applying
+`product-listing-api-deployment.yaml`. The script reads only the metadata and
+key presence of `listingkit-member-invitation-secret` in the target namespace.
 
 The step fails when the Secret is absent or either required key is absent or
 empty:
@@ -22,6 +22,8 @@ remains unchanged and still runs before any Deployment mutation.
 
 ## Validation
 
-Extend the existing Go workflow-contract test to assert the dedicated-Secret
-guard exists, checks both keys, and appears before the Deployment apply step.
-Run the focused Go test and workflow YAML rendering/checks before delivery.
+Add a Go test that executes the script with fake `kubectl` and `jq` commands
+for missing-Secret, missing-key, and ready-Secret cases. Keep a small
+workflow-contract assertion that the preflight step appears before the
+Deployment apply step. Run the focused Go test and workflow YAML
+rendering/checks before delivery.

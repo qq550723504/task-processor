@@ -171,6 +171,10 @@ jobs:
             fi
           done
 
+      - name: Validate dedicated member invitation Secret
+        run: |
+          bash ./scripts/validate-listingkit-invitation-secret.sh ${{ env.K8S_NAMESPACE }}
+
       - name: Update API deployment image
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} apply -f deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml

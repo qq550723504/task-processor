@@ -146,6 +146,8 @@ func TestListingKitMemberInvitationTokenIsAPIScoped(t *testing.T) {
 	}
 	for _, required := range []string{
 		"Reject legacy invitation credentials in shared Secret",
+		"Validate dedicated member invitation Secret",
+		"bash ./scripts/validate-listingkit-invitation-secret.sh",
 		"listingkit-workbench-secret",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID",
@@ -155,6 +157,11 @@ func TestListingKitMemberInvitationTokenIsAPIScoped(t *testing.T) {
 		if !strings.Contains(string(deployWorkflow), required) {
 			t.Errorf("ListingKit deploy workflow must contain %q", required)
 		}
+	}
+	preflight := strings.Index(string(deployWorkflow), "Validate dedicated member invitation Secret")
+	deploymentUpdate := strings.Index(string(deployWorkflow), "Update API deployment image")
+	if preflight == -1 || deploymentUpdate == -1 || preflight > deploymentUpdate {
+		t.Fatal("ListingKit invitation Secret preflight must run before the API Deployment is updated")
 	}
 }
 
