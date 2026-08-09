@@ -3,6 +3,7 @@ package memberinvite
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -35,6 +36,19 @@ func TestServiceInvitePreservesCreatedUserOnRoleFailure(t *testing.T) {
 	var incomplete *IncompleteError
 	if !errors.As(err, &incomplete) || incomplete.UserID != "user-1" {
 		t.Fatalf("err = %#v", err)
+	}
+}
+
+func TestServiceInviteRedactsIncompleteProviderCauseFromErrorChain(t *testing.T) {
+	service := NewService(providerStub{err: &IncompleteError{UserID: "user-1", Err: errors.New("provider-secret")}})
+	_, err := service.Invite(context.Background(), validInviteRequest())
+	if err == nil {
+		t.Fatal("Invite returned nil error")
+	}
+	for current := err; current != nil; current = errors.Unwrap(current) {
+		if strings.Contains(current.Error(), "provider-secret") {
+			t.Fatalf("error leaked provider text: %v", current)
+		}
 	}
 }
 

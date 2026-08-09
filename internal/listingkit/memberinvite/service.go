@@ -42,6 +42,17 @@ type IncompleteError struct {
 	Err    error
 }
 
+type providerStatusError struct {
+	statusCode int
+}
+
+func (e *providerStatusError) Error() string {
+	if e == nil || e.statusCode == 0 {
+		return "ZITADEL request failed"
+	}
+	return fmt.Sprintf("ZITADEL request failed with HTTP status %d", e.statusCode)
+}
+
 func (e *IncompleteError) Error() string {
 	if e == nil {
 		return ""
@@ -56,7 +67,7 @@ func (e *IncompleteError) Unwrap() error {
 	if e == nil {
 		return nil
 	}
-	return e.Err
+	return safeProviderError(e.Err)
 }
 
 type Service struct {
@@ -78,12 +89,34 @@ func (s *Service) Invite(ctx context.Context, request InviteRequest) (Invitation
 
 	invitation, err := s.provider.Invite(ctx, request)
 	if err != nil {
-		return Invitation{}, err
+		var incomplete *IncompleteError
+		if errors.As(err, &incomplete) {
+			return Invitation{}, newIncompleteError(incomplete.UserID, incomplete.Err)
+		}
+		return Invitation{}, safeProviderError(err)
 	}
 	invitation.TenantID = request.TenantID
 	invitation.Email = request.Email
 	invitation.Role = request.Role
 	return invitation, nil
+}
+
+func newIncompleteError(userID string, err error) *IncompleteError {
+	return &IncompleteError{UserID: strings.TrimSpace(userID), Err: safeProviderError(err)}
+}
+
+func safeProviderError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if errors.Is(err, ErrConflict) {
+		return ErrConflict
+	}
+	var statusError *providerStatusError
+	if errors.As(err, &statusError) && statusError.statusCode > 0 {
+		return &providerStatusError{statusCode: statusError.statusCode}
+	}
+	return errors.New("ZITADEL member invitation provider request failed")
 }
 
 func AllowedRole(role string) bool {

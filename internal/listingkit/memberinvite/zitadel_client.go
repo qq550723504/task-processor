@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -15,7 +14,6 @@ import (
 const (
 	createHumanUserPath     = "/v2/users/human"
 	createAuthorizationPath = "/zitadel.authorization.v2.AuthorizationService/CreateAuthorization"
-	maxProviderDetailBytes  = 256
 )
 
 type ZitadelConfig struct {
@@ -57,7 +55,7 @@ func (p *zitadelProvider) Invite(ctx context.Context, request InviteRequest) (In
 	}
 	authorizationID, err := p.createAuthorization(ctx, request.TenantID, userID, request.Role)
 	if err != nil {
-		return Invitation{}, &IncompleteError{UserID: userID, Err: err}
+		return Invitation{}, newIncompleteError(userID, err)
 	}
 	return Invitation{
 		TenantID:        request.TenantID,
@@ -155,42 +153,8 @@ func (p *zitadelProvider) doJSON(ctx context.Context, path string, body, target 
 }
 
 func zitadelRequestError(response *http.Response) error {
-	body, _ := io.ReadAll(io.LimitReader(response.Body, 2048))
-	detail := providerDetail(body)
-	if response.StatusCode == http.StatusConflict || strings.EqualFold(providerErrorCode(body), "already_exists") {
+	if response.StatusCode == http.StatusConflict {
 		return ErrConflict
 	}
-	if detail == "" {
-		return fmt.Errorf("ZITADEL request failed: %s", response.Status)
-	}
-	return fmt.Errorf("ZITADEL request failed: %s: %s", response.Status, detail)
-}
-
-func providerErrorCode(body []byte) string {
-	var payload struct {
-		Code string `json:"code"`
-	}
-	if json.Unmarshal(body, &payload) != nil {
-		return ""
-	}
-	return strings.TrimSpace(payload.Code)
-}
-
-// providerDetail selects one text field rather than returning the raw provider body.
-func providerDetail(body []byte) string {
-	var payload struct {
-		Message string `json:"message"`
-		Error   string `json:"error"`
-	}
-	if json.Unmarshal(body, &payload) != nil {
-		return ""
-	}
-	detail := strings.TrimSpace(payload.Message)
-	if detail == "" {
-		detail = strings.TrimSpace(payload.Error)
-	}
-	if len(detail) > maxProviderDetailBytes {
-		return detail[:maxProviderDetailBytes]
-	}
-	return detail
+	return &providerStatusError{statusCode: response.StatusCode}
 }
