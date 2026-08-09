@@ -29,14 +29,21 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 	require.Contains(t, keys, "GET /api/v1/listing-kits/settings-health")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/studio/reference-style/analyze")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/tasks/requeue")
+	require.Contains(t, keys, "POST /api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations")
 	foundStoreStatisticsRoute := false
+	foundMemberInvitationRoute := false
 	for _, route := range reg.Routes() {
 		if route.Method == "GET" && route.Path == "/api/v1/listing-kits/admin/store-statistics" {
 			foundStoreStatisticsRoute = true
 			require.Equal(t, "listing-kit-platform-admin", route.Module)
 		}
+		if route.Method == "POST" && route.Path == "/api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations" {
+			foundMemberInvitationRoute = true
+			require.Equal(t, "listing-kit-platform-admin", route.Module)
+		}
 	}
 	require.True(t, foundStoreStatisticsRoute)
+	require.True(t, foundMemberInvitationRoute)
 	require.Contains(t, keys, "POST /api/v1/listing-kits/sds/retirements")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/sds/retirements/:run_id")
 	require.Contains(t, keys, "PATCH /api/v1/listing-kits/sds/retirements/:run_id/items")
@@ -126,11 +133,11 @@ func (stubStudioSessionRouteHandler) RetryStudioBatchItems(*gin.Context)        
 func (stubStudioSessionRouteHandler) RetryStudioBatchDesignBackgroundRemoval(*gin.Context) {}
 func (stubStudioSessionRouteHandler) ApplyManualStudioBatchDesignBackgroundRemoval(*gin.Context) {
 }
-func (stubStudioSessionRouteHandler) RetryStudioBatchSDSChildTasks(*gin.Context)           {}
-func (stubStudioSessionRouteHandler) ApproveStudioBatchDesigns(*gin.Context)               {}
-func (stubStudioSessionRouteHandler) CreateStudioBatchTasks(*gin.Context)                  {}
-func (stubStudioSessionRouteHandler) UpsertStudioBatch(*gin.Context)                       {}
-func (stubStudioSessionRouteHandler) DeleteStudioBatch(*gin.Context)                       {}
+func (stubStudioSessionRouteHandler) RetryStudioBatchSDSChildTasks(*gin.Context) {}
+func (stubStudioSessionRouteHandler) ApproveStudioBatchDesigns(*gin.Context)     {}
+func (stubStudioSessionRouteHandler) CreateStudioBatchTasks(*gin.Context)        {}
+func (stubStudioSessionRouteHandler) UpsertStudioBatch(*gin.Context)             {}
+func (stubStudioSessionRouteHandler) DeleteStudioBatch(*gin.Context)             {}
 
 type stubRouteHandler struct{}
 
@@ -235,6 +242,7 @@ func (stubRouteHandler) ApplyPlatformTenantSubscriptionPlan(*gin.Context)       
 func (stubRouteHandler) UpsertPlatformTenantSubscriptionEntitlement(*gin.Context) {}
 func (stubRouteHandler) SetPlatformTenantSubscriptionUsage(*gin.Context)          {}
 func (stubRouteHandler) ListPlatformTenantSubscriptionAuditLogs(*gin.Context)     {}
+func (stubRouteHandler) InviteTenantMember(*gin.Context)                          {}
 func (stubRouteHandler) ListAdminStores(*gin.Context)                             {}
 func (stubRouteHandler) GetAdminStore(*gin.Context)                               {}
 func (stubRouteHandler) CreateAdminStore(*gin.Context)                            {}

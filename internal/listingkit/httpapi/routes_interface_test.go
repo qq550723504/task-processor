@@ -101,6 +101,7 @@ func (platformAdminSubscriptionRouteHandler) SetPlatformTenantSubscriptionUsage(
 }
 func (platformAdminSubscriptionRouteHandler) ListPlatformTenantSubscriptionAuditLogs(c *gin.Context) {
 }
+func (platformAdminSubscriptionRouteHandler) InviteTenantMember(c *gin.Context) {}
 
 type storeOnlyRouteHandler struct{}
 

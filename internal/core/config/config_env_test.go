@@ -322,6 +322,16 @@ func TestNewViper_BindsListingKitEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, getStringSlice(v, "listingkit.zitadel.allowedRoles"))
 }
 
+func TestBuildConfigReadsMemberInvitationCredentials(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN", "write-token")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID", "project-1")
+
+	cfg := BuildConfig(newViper())
+
+	assert.Equal(t, "write-token", cfg.ListingKit.Zitadel.MemberInvitationToken)
+	assert.Equal(t, "project-1", cfg.ListingKit.Zitadel.ProjectID)
+}
+
 func TestDeprecatedEnvWarnings_ReportsLegacyAliases(t *testing.T) {
 	t.Setenv("RABBITMQ_URL", "amqp://legacy")
 	t.Setenv("OPENAI_API_KEY", "legacy")

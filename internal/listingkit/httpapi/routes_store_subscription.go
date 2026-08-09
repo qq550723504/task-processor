@@ -32,4 +32,5 @@ type PlatformAdminRouteHandler interface {
 	UpsertPlatformTenantSubscriptionEntitlement(c *gin.Context)
 	SetPlatformTenantSubscriptionUsage(c *gin.Context)
 	ListPlatformTenantSubscriptionAuditLogs(c *gin.Context)
+	InviteTenantMember(c *gin.Context)
 }

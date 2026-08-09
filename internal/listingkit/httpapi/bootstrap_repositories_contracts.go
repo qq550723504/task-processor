@@ -4,6 +4,7 @@ import (
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/reviewstore"
 	"task-processor/internal/listingsubscription"
 	sheinpub "task-processor/internal/publishing/shein"
@@ -32,6 +33,7 @@ type builtRepositories struct {
 	categoryRepository                listingadmin.CategoryRepository
 	productDataRepository             listingadmin.ProductDataRepository
 	subscriptionService               *listingsubscription.Service
+	memberInvitationAuditRepository   memberinvite.AuditRepository
 	assetRepository                   assetrepo.Repository
 	reviewRepository                  reviewstore.Repository
 	studioSessionRepository           listingkit.StudioSessionRepository
@@ -62,13 +64,14 @@ type coreAsyncRepositories struct {
 }
 
 type builtLateCoreRepositories struct {
-	subscriptionService     *listingsubscription.Service
-	assetRepository         assetrepo.Repository
-	reviewRepository        reviewstore.Repository
-	studioSessionRepository listingkit.StudioSessionRepository
-	uploadedImageRepository listingkit.UploadedImageRepository
-	storeProfileRepository  listingkit.StoreProfileRepository
-	resolutionCacheStore    sheinpub.ResolutionCacheStore
+	subscriptionService             *listingsubscription.Service
+	memberInvitationAuditRepository memberinvite.AuditRepository
+	assetRepository                 assetrepo.Repository
+	reviewRepository                reviewstore.Repository
+	studioSessionRepository         listingkit.StudioSessionRepository
+	uploadedImageRepository         listingkit.UploadedImageRepository
+	storeProfileRepository          listingkit.StoreProfileRepository
+	resolutionCacheStore            sheinpub.ResolutionCacheStore
 }
 
 type lateCoreRepositoryDependencies struct {

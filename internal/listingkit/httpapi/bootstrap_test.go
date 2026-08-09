@@ -18,6 +18,7 @@ import (
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/reviewstore"
 	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/listingsubscription"
@@ -969,12 +970,16 @@ func TestBuildTaskModuleScopesRuntimeHandlerDependencies(t *testing.T) {
 	t.Parallel()
 
 	subscriptionService := &listingsubscription.Service{}
+	provider := memberInvitationProviderNoop{}
+	audit := &memberInvitationAuditNoop{}
 	module := buildTaskModule(taskModuleInput{
-		TaskRepository:           listingkitstore.NewMemTaskRepository(),
-		SubscriptionService:      subscriptionService,
-		PlatformAdminUsers:       []string{"task-admin"},
-		PlatformAdminRoles:       []string{"task-role"},
-		StudioAsyncJobRepository: nil,
+		TaskRepository:                  listingkitstore.NewMemTaskRepository(),
+		SubscriptionService:             subscriptionService,
+		PlatformAdminUsers:              []string{"task-admin"},
+		PlatformAdminRoles:              []string{"task-role"},
+		StudioAsyncJobRepository:        nil,
+		MemberInvitationProvider:        provider,
+		MemberInvitationAuditRepository: audit,
 	})
 
 	if module.taskRepository == nil {
@@ -989,7 +994,42 @@ func TestBuildTaskModuleScopesRuntimeHandlerDependencies(t *testing.T) {
 	if !reflect.DeepEqual(module.handlerDependencies.Subscription.PlatformAdminRoles, []string{"task-role"}) {
 		t.Fatalf("platform admin roles = %v, want [task-role]", module.handlerDependencies.Subscription.PlatformAdminRoles)
 	}
+	if module.handlerDependencies.Subscription.MemberInvitationProvider == nil {
+		t.Fatal("expected member invitation provider to be mapped into handler dependencies")
+	}
+	if module.handlerDependencies.Subscription.MemberInvitationAuditRepository != audit {
+		t.Fatal("expected member invitation audit repository to be mapped into handler dependencies")
+	}
 }
+
+func TestNewTaskModuleInputBuildsInvitationProviderOnlyWithCompleteConfiguration(t *testing.T) {
+	audit := &memberInvitationAuditNoop{}
+	repositories := &builtRepositories{memberInvitationAuditRepository: audit}
+	input := BuildServiceInput{Config: &config.Config{ListingKit: config.ListingKitConfig{Zitadel: config.ListingKitZitadelConfig{
+		IssuerURL: "https://issuer.example", MemberInvitationToken: "write-token", ProjectID: "project-1",
+	}}}}
+
+	configured := newTaskModuleInput(input, repositories)
+	if configured.MemberInvitationProvider == nil || configured.MemberInvitationAuditRepository != audit {
+		t.Fatalf("configured invitation dependencies = provider:%T audit:%T", configured.MemberInvitationProvider, configured.MemberInvitationAuditRepository)
+	}
+
+	input.Config.ListingKit.Zitadel.ProjectID = ""
+	unconfigured := newTaskModuleInput(input, repositories)
+	if unconfigured.MemberInvitationProvider != nil {
+		t.Fatalf("provider built with incomplete configuration: %T", unconfigured.MemberInvitationProvider)
+	}
+}
+
+type memberInvitationProviderNoop struct{}
+
+func (memberInvitationProviderNoop) Invite(context.Context, memberinvite.InviteRequest) (memberinvite.Invitation, error) {
+	return memberinvite.Invitation{}, nil
+}
+
+type memberInvitationAuditNoop struct{}
+
+func (*memberInvitationAuditNoop) Record(context.Context, memberinvite.AuditRecord) error { return nil }
 
 func TestBuildAdminModuleMapsAdminRepositories(t *testing.T) {
 	t.Parallel()

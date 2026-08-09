@@ -3,6 +3,7 @@ package httpapi
 import (
 	"fmt"
 
+	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingsubscription"
 )
 
@@ -70,20 +71,33 @@ func buildLateCoreRepositories(input BuildServiceInput, closers *closerStack) (*
 	if err != nil {
 		return nil, err
 	}
+	memberInvitationAuditRepository, err := buildMemberInvitationAuditRepository(input, closers)
+	if err != nil {
+		return nil, err
+	}
 	dependencies, err := buildLateCoreRepositoryDependencies(input, closers)
 	if err != nil {
 		return nil, err
 	}
 
 	return &builtLateCoreRepositories{
-		subscriptionService:     subscriptionService,
-		assetRepository:         dependencies.assetRepository,
-		reviewRepository:        dependencies.reviewRepository,
-		studioSessionRepository: dependencies.studioSessionRepository,
-		uploadedImageRepository: dependencies.uploadedImageRepository,
-		storeProfileRepository:  dependencies.storeProfileRepository,
-		resolutionCacheStore:    dependencies.resolutionCacheStore,
+		subscriptionService:             subscriptionService,
+		memberInvitationAuditRepository: memberInvitationAuditRepository,
+		assetRepository:                 dependencies.assetRepository,
+		reviewRepository:                dependencies.reviewRepository,
+		studioSessionRepository:         dependencies.studioSessionRepository,
+		uploadedImageRepository:         dependencies.uploadedImageRepository,
+		storeProfileRepository:          dependencies.storeProfileRepository,
+		resolutionCacheStore:            dependencies.resolutionCacheStore,
 	}, nil
+}
+
+func buildMemberInvitationAuditRepository(input BuildServiceInput, closers *closerStack) (memberinvite.AuditRepository, error) {
+	builder := input.Repositories.Core.MemberInvitationAudit
+	if builder == nil {
+		return nil, nil
+	}
+	return buildNamedWithClosers("core.member_invitation_audit", builder, input.Config, input.Logger, closers)
 }
 
 func buildSubscriptionService(input BuildServiceInput, closers *closerStack) (*listingsubscription.Service, error) {

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/tenantdirectory"
 	"task-processor/internal/listingsubscription"
 )
@@ -26,6 +27,7 @@ func withSubscriptionConfig(deps SubscriptionDependencies) HandlerOption {
 		WithPlatformSubscriptionAccess(deps.PlatformAdminUsers, deps.PlatformAdminRoles),
 		WithSubscriptionService(deps.Service),
 		WithTenantDirectory(deps.TenantDirectory),
+		WithMemberInvitationDependencies(deps.MemberInvitationProvider, deps.MemberInvitationAuditRepository),
 	}
 	return func(h *handler) {
 		for _, option := range options {
@@ -34,6 +36,15 @@ func withSubscriptionConfig(deps SubscriptionDependencies) HandlerOption {
 			}
 		}
 	}
+}
+
+func WithMemberInvitationDependencies(provider memberinvite.Provider, audit memberinvite.AuditRepository) HandlerOption {
+	return withSubscriptionDependencies(func(subscription *subscriptionDependencies) {
+		if provider != nil {
+			subscription.memberInvitationService = memberinvite.NewService(provider)
+		}
+		subscription.memberInvitationAudit = audit
+	})
 }
 
 func WithTenantDirectory(directory tenantdirectory.Directory) HandlerOption {

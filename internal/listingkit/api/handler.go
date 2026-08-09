@@ -5,6 +5,7 @@ import (
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/sheinpodimage"
 	"task-processor/internal/listingkit/tenantdirectory"
 	"task-processor/internal/listingsubscription"
@@ -68,11 +69,13 @@ type adminHandlers struct {
 }
 
 type subscriptionDependencies struct {
-	subscriptionService *listingsubscription.Service
-	subscriptionHandler *listingsubscription.Handler
-	platformAdminUsers  []string
-	platformAdminRoles  []string
-	tenantDirectory     tenantdirectory.Directory
+	subscriptionService     *listingsubscription.Service
+	subscriptionHandler     *listingsubscription.Handler
+	platformAdminUsers      []string
+	platformAdminRoles      []string
+	tenantDirectory         tenantdirectory.Directory
+	memberInvitationService *memberinvite.Service
+	memberInvitationAudit   memberinvite.AuditRepository
 }
 
 type handlerCoreService interface {
@@ -142,10 +145,12 @@ type AdminHandlerDependencies struct {
 }
 
 type SubscriptionDependencies struct {
-	Service            *listingsubscription.Service
-	PlatformAdminUsers []string
-	PlatformAdminRoles []string
-	TenantDirectory    tenantdirectory.Directory
+	Service                         *listingsubscription.Service
+	PlatformAdminUsers              []string
+	PlatformAdminRoles              []string
+	TenantDirectory                 tenantdirectory.Directory
+	MemberInvitationProvider        memberinvite.Provider
+	MemberInvitationAuditRepository memberinvite.AuditRepository
 }
 
 type HandlerDependencies struct {

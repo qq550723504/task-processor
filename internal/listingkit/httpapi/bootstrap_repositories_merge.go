@@ -17,6 +17,7 @@ func applyLateCoreRepositories(repos *builtRepositories, lateCore *builtLateCore
 		return
 	}
 	repos.subscriptionService = lateCore.subscriptionService
+	repos.memberInvitationAuditRepository = lateCore.memberInvitationAuditRepository
 	repos.assetRepository = lateCore.assetRepository
 	repos.reviewRepository = lateCore.reviewRepository
 	repos.studioSessionRepository = lateCore.studioSessionRepository
