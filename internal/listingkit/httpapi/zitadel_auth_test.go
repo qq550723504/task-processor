@@ -666,8 +666,8 @@ func TestListingKitZitadelAuthRejectsUnauthorizedIdentity(t *testing.T) {
 			ClientID:  "listingkit-client",
 		},
 		AuthzConfig: zitadelAuthorizationConfig{
-			Required:         true,
-			AllowedUsernames: map[string]struct{}{"1-admin": {}},
+			Required:       true,
+			AllowedUserIDs: map[string]struct{}{"other-subject": {}},
 		},
 	})
 
@@ -696,7 +696,7 @@ func TestListingKitZitadelAuthRejectsUnauthorizedIdentity(t *testing.T) {
 	}
 }
 
-func TestListingKitZitadelAuthAllowsConfiguredUsername(t *testing.T) {
+func TestListingKitZitadelAuthRejectsAllowedUsernameWhenSubjectIsNotAllowed(t *testing.T) {
 	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
@@ -708,7 +708,7 @@ func TestListingKitZitadelAuthAllowsConfiguredUsername(t *testing.T) {
 		case "/oauth/v2/introspect":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"active":                                true,
-				"sub":                                   "user-1",
+				"sub":                                   "unapproved-zitadel-subject",
 				"username":                              "1-admin",
 				"urn:zitadel:iam:user:resourceowner:id": "org-286",
 			})
@@ -718,15 +718,12 @@ func TestListingKitZitadelAuthAllowsConfiguredUsername(t *testing.T) {
 	}))
 	defer zitadel.Close()
 
-	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
-		AuthConfig: zitadelAuthConfig{
-			IssuerURL: zitadel.URL,
-			ClientID:  "listingkit-client",
-		},
-		AuthzConfig: zitadelAuthorizationConfig{
-			Required:         true,
-			AllowedUsernames: map[string]struct{}{"1-admin": {}},
-		},
+	t.Cleanup(SetListingKitZitadelAuthConfigForTesting(nil))
+	ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
+		IssuerURL:             zitadel.URL,
+		ClientID:              "listingkit-client",
+		AuthorizationRequired: true,
+		AllowedUsernames:      []string{"1-admin"},
 	})
 
 	router := gin.New()
@@ -746,8 +743,11 @@ func TestListingKitZitadelAuthAllowsConfiguredUsername(t *testing.T) {
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusForbidden, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "zitadel_access_denied") {
+		t.Fatalf("body = %s, want zitadel_access_denied", resp.Body.String())
 	}
 }
 

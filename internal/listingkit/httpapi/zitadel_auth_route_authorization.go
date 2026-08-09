@@ -120,17 +120,13 @@ func authorizeZitadelIdentity(identity *zitadelIntrospectionResponse, cfg zitade
 	}
 	if len(cfg.AllowedTenantIDs) == 0 &&
 		len(cfg.AllowedUserIDs) == 0 &&
-		len(cfg.AllowedUsernames) == 0 &&
 		len(cfg.AllowedRoles) == 0 {
 		return false, "ZITADEL authorization is required but no allowlist is configured"
 	}
 	if valueInSet(firstNonEmptyZitadelValue(identity.ResourceID), cfg.AllowedTenantIDs) {
 		return true, ""
 	}
-	if valueInSet(firstNonEmptyZitadelValue(identity.Subject, identity.UserID), cfg.AllowedUserIDs) {
-		return true, ""
-	}
-	if valueInSet(firstNonEmptyZitadelValue(identity.Username), cfg.AllowedUsernames) {
+	if valueInSet(strings.TrimSpace(identity.Subject), cfg.AllowedUserIDs) {
 		return true, ""
 	}
 	for _, role := range identity.Roles {

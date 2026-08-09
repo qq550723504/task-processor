@@ -40,7 +40,6 @@ type zitadelAuthorizationConfig struct {
 	Required         bool
 	AllowedTenantIDs map[string]struct{}
 	AllowedUserIDs   map[string]struct{}
-	AllowedUsernames map[string]struct{}
 	AllowedRoles     map[string]struct{}
 }
 
