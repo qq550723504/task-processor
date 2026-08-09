@@ -158,6 +158,103 @@ func TestListingKitMemberInvitationTokenIsAPIScoped(t *testing.T) {
 	}
 }
 
+func TestTencentSMSSecretIsAPIScopedAndWebhookIngressIsExact(t *testing.T) {
+	base := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "base")
+	const secretName = "listingkit-tencent-sms-secret"
+	requiredKeys := []string{
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_SMS_SIGNING_KEY",
+		"TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SECRET_ID",
+		"TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SECRET_KEY",
+		"TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_APP_ID",
+		"TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SIGN_NAME",
+		"TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_TEMPLATE_ID",
+	}
+
+	example, err := os.ReadFile(filepath.Join(base, "tencent-sms-secret.example.yaml"))
+	if err != nil {
+		t.Fatalf("read Tencent SMS Secret example: %v", err)
+	}
+	for _, required := range append([]string{"name: " + secretName}, requiredKeys...) {
+		if !strings.Contains(string(example), required) {
+			t.Errorf("Tencent SMS Secret example must contain %q", required)
+		}
+	}
+	for _, key := range requiredKeys {
+		if !strings.Contains(string(example), key+`: ""`) {
+			t.Errorf("Tencent SMS Secret example must keep %s blank", key)
+		}
+	}
+
+	sharedSecret, err := os.ReadFile(filepath.Join(base, "secret.example.yaml"))
+	if err != nil {
+		t.Fatalf("read shared ListingKit Secret: %v", err)
+	}
+	for _, key := range requiredKeys {
+		if strings.Contains(string(sharedSecret), key) {
+			t.Errorf("shared ListingKit Secret must not contain %s", key)
+		}
+	}
+	configMap, err := os.ReadFile(filepath.Join(base, "configmap.yaml"))
+	if err != nil {
+		t.Fatalf("read ListingKit ConfigMap: %v", err)
+	}
+	for _, key := range requiredKeys {
+		if strings.Contains(string(configMap), key) {
+			t.Errorf("ListingKit ConfigMap must not contain %s", key)
+		}
+	}
+
+	apiManifest, err := os.ReadFile(filepath.Join(base, "product-listing-api-deployment.yaml"))
+	if err != nil {
+		t.Fatalf("read ListingKit API deployment: %v", err)
+	}
+	for _, key := range requiredKeys {
+		expected := "- name: " + key + "\n              valueFrom:\n                secretKeyRef:\n                  name: " + secretName + "\n                  key: " + key
+		if !strings.Contains(string(apiManifest), expected) {
+			t.Errorf("ListingKit API deployment must require %s from %s", key, secretName)
+		}
+		if strings.Contains(string(apiManifest), expected+"\n                  optional: true") {
+			t.Errorf("ListingKit API must not make %s optional", key)
+		}
+	}
+
+	for _, name := range []string{
+		"listingkit-ui-deployment.yaml",
+		"imgproxy-deployment.yaml",
+		"shein-login-worker-deployment.yaml",
+		filepath.Join("..", "jobs", "product-listing-api-schema-migrate-job.yaml"),
+		filepath.Join("..", "jobs", "listingkit-schema-migrate-job.yaml"),
+		filepath.Join("..", "jobs", "pod-image-index-backfill-job.yaml"),
+	} {
+		manifest, err := os.ReadFile(filepath.Join(base, name))
+		if err != nil {
+			t.Fatalf("read %s: %v", name, err)
+		}
+		if strings.Contains(string(manifest), secretName) {
+			t.Errorf("%s must not consume the Tencent SMS Secret", name)
+		}
+	}
+
+	const webhookPath = "/api/v1/listing-kits/integrations/zitadel/sms"
+	webhookRoute := "- path: " + webhookPath + "\n            pathType: Prefix\n            backend:\n              service:\n                name: product-listing-api\n                port:\n                  name: http"
+	for _, ingressPath := range []string{
+		filepath.Join(base, "ingress.yaml"),
+		filepath.Join(base, "..", "overlays", "prod", "patch-ingress.yaml"),
+	} {
+		ingress, err := os.ReadFile(ingressPath)
+		if err != nil {
+			t.Fatalf("read ListingKit Ingress %s: %v", ingressPath, err)
+		}
+		manifest := strings.ReplaceAll(string(ingress), "\r\n", "\n")
+		if !strings.Contains(manifest, webhookRoute) {
+			t.Fatalf("Ingress %s must route only the signed Zitadel SMS webhook to product-listing-api", ingressPath)
+		}
+		if strings.Index(manifest, webhookRoute) > strings.Index(manifest, "- path: /\n            pathType: Prefix") {
+			t.Fatalf("Ingress %s must route the SMS webhook before the UI catch-all", ingressPath)
+		}
+	}
+}
+
 func TestListingKitSchemaMigrationJobUsesTheReleaseImage(t *testing.T) {
 	dockerfilePath := filepath.Join("..", "deployments", "docker", "Dockerfile.product-listing-api")
 	dockerfile, err := os.ReadFile(dockerfilePath)

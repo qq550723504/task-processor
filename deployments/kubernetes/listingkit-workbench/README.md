@@ -5,7 +5,12 @@ This deploys the customer SHEIN Studio workbench as two services:
 - `product-listing-api`: Go API on port `8085`.
 - `listingkit-ui`: Next.js UI on port `3000`.
 
-The browser talks to the Next.js UI. The UI proxies `/api/listing-kits/*` and `/api/sds/*` to `product-listing-api` through the cluster Service, so the backend does not need a public Ingress.
+The browser talks to the Next.js UI. The UI proxies normal
+`/api/listing-kits/*` and `/api/sds/*` requests to `product-listing-api`
+through the cluster Service. The sole backend Ingress exception is the signed
+ZITADEL SMS webhook at
+`/api/v1/listing-kits/integrations/zitadel/sms`; it is routed directly to the
+API before the UI catch-all.
 
 ## Prerequisites
 
@@ -234,6 +239,76 @@ audit row.
 5. Preserve the immutable incomplete audit row and record the repair operator,
    time, authorization id, and verification evidence in the incident/change
    record. Do not rewrite the row to make the original attempt look successful.
+
+## Configure Tencent SMS relay for ZITADEL
+
+This integration is intentionally a signed ZITADEL webhook plus the official
+Tencent Cloud SMS API. ZITADEL owns verification codes and message templates;
+the workbench only verifies the webhook signature and delivers the approved
+message. Do not build or operate a second OTP system.
+
+1. In Tencent Cloud SMS, complete required sign and template review first. Use
+   the approved sign name and template ID issued by Tencent; confirm the
+   template supports the ZITADEL notification values without placing a code or
+   phone number in source control, tickets, or logs.
+2. Have the approved secret manager materialize a Kubernetes Secret named
+   `listingkit-tencent-sms-secret` from
+   `base/tencent-sms-secret.example.yaml`. Populate all six listed keys only in
+   that secret. The signing key must be a newly generated secret shared only
+   with the ZITADEL HTTP SMS Provider configuration. Never place these values
+   in `listingkit-workbench-secret`, a ConfigMap, UI, worker, imgproxy, or a
+   migration Job.
+3. Apply the secret-manager output before applying the API Deployment. Inspect
+   only key names, never decode or print values:
+
+   ```powershell
+   kubectl apply -n task-processor -f <secret-manager-output>.yaml
+   $requiredKeys = @(
+     "TASK_PROCESSOR_LISTINGKIT_ZITADEL_SMS_SIGNING_KEY",
+     "TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SECRET_ID",
+     "TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SECRET_KEY",
+     "TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_APP_ID",
+     "TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SIGN_NAME",
+     "TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_TEMPLATE_ID"
+   )
+   $secret = kubectl -n task-processor get secret listingkit-tencent-sms-secret -o json | ConvertFrom-Json
+   $presentKeys = @($secret.data.PSObject.Properties.Name)
+   if (@($requiredKeys | Where-Object { $_ -notin $presentKeys }).Count -ne 0) {
+     throw "Missing Tencent SMS credentials in API-only Secret"
+   }
+   ```
+
+4. Render and apply the production overlay. The provider endpoint is the
+   public HTTPS URL
+   `https://<workbench-host>/api/v1/listing-kits/integrations/zitadel/sms`.
+   It is the only newly public API path and must resolve to
+   `product-listing-api` before the UI catch-all:
+
+   ```powershell
+   kubectl kustomize deployments/kubernetes/listingkit-workbench/overlays/prod
+   kubectl apply -k deployments/kubernetes/listingkit-workbench/overlays/prod
+   kubectl -n task-processor rollout restart deployment/product-listing-api
+   kubectl -n task-processor rollout status deployment/product-listing-api --timeout=5m
+   ```
+
+5. In the ZITADEL Console, configure an HTTP SMS Provider with that exact
+   HTTPS endpoint and the same signing key from the API-only Secret. Verify
+   the provider endpoint and template mapping, then activate the provider.
+   Do not disable signature validation or add bearer authentication as a
+   replacement; invalid, stale, or unsigned requests must fail.
+6. Test once with a controlled disposable device and a non-production user.
+   Confirm delivery, one-time-code verification in ZITADEL, and only masked
+   audit/log data. Do not record the phone number or verification code. Then
+   test a deliberately invalid signature and confirm no SMS is sent.
+
+### Rotate Tencent SMS credentials
+
+Rotate the Tencent credentials and ZITADEL signing key through the secret
+manager. Update both the API Secret and ZITADEL Provider for the signing-key
+change within the approved maintenance window, then restart only
+`product-listing-api` and repeat the rendered-manifest and controlled-device
+checks above. Do not roll the UI, workers, imgproxy, or migration Jobs: they
+must never consume this Secret.
 
 ## CI/CD deploy
 
@@ -507,6 +582,9 @@ The UI uses:
   `listingkit-member-invitation-secret` in `product-listing-api`; the project
   id is co-located there so the deployment cannot overwrite it with an empty
   shared ConfigMap value.
+- Tencent SMS and ZITADEL webhook signing values only from
+  `listingkit-tencent-sms-secret` in `product-listing-api`; no other workload
+  may receive that Secret.
 
 The Go API still reads `config/config-prod.yaml` baked into the image, with
 secret values expected to be supplied by runtime configuration. For ListingKit

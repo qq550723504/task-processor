@@ -12,6 +12,13 @@ spec:
     - host: listingkit.example.com
       http:
         paths:
+          - path: /api/v1/listing-kits/integrations/zitadel/sms
+            pathType: Prefix
+            backend:
+              service:
+                name: product-listing-api
+                port:
+                  name: http
           - path: /img
             pathType: Prefix
             backend:
