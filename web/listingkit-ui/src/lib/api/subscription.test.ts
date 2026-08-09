@@ -1,14 +1,60 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/lib/api/client";
 import {
   formatSubscriptionApiError,
+  invitePlatformTenantMember,
   parseSubscriptionEntitlement,
   parseSubscriptionPlanList,
   parseSubscriptionRequiredPayload,
   parseSubscriptionSummary,
   parseSubscriptionTenantOverviewList,
 } from "@/lib/api/subscription";
+
+describe("subscription API client", () => {
+  it("posts a tenant member invitation through the ListingKit API proxy", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          tenant_id: "org-1",
+          user_id: "user-1",
+          email: "jane@example.com",
+          role: "listingkit_viewer",
+          authorization_id: "authorization-1",
+          invitation_email_sent: true,
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      invitePlatformTenantMember("org-1", {
+        given_name: "Jane",
+        family_name: "Doe",
+        email: "jane@example.com",
+        role: "listingkit_viewer",
+      }),
+    ).resolves.toMatchObject({
+      tenant_id: "org-1",
+      user_id: "user-1",
+      invitation_email_sent: true,
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/listing-kits/platform/tenants/org-1/members/invitations",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          given_name: "Jane",
+          family_name: "Doe",
+          email: "jane@example.com",
+          role: "listingkit_viewer",
+        }),
+      }),
+    );
+  });
+});
 
 describe("subscription API schema", () => {
   it("parses a tenant subscription summary", () => {

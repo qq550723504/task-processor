@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 
@@ -11,9 +12,11 @@ import {
   getPlatformTenantDirectory,
   getPlatformTenantSubscriptions,
   getPlatformTenantSubscription,
+  invitePlatformTenantMember,
   updatePlatformTenantSubscriptionUsage,
   updatePlatformTenantSubscriptionEntitlement,
 } from "@/lib/api/subscription";
+import { ApiError } from "@/lib/api/client";
 
 vi.mock("@/lib/api/subscription", async (importOriginal) => {
   const actual =
@@ -26,6 +29,7 @@ vi.mock("@/lib/api/subscription", async (importOriginal) => {
     getPlatformTenantDirectory: vi.fn(),
     getPlatformTenantSubscriptions: vi.fn(),
     getPlatformTenantSubscription: vi.fn(),
+    invitePlatformTenantMember: vi.fn(),
     updatePlatformTenantSubscriptionUsage: vi.fn(),
     updatePlatformTenantSubscriptionEntitlement: vi.fn(),
   };
@@ -43,6 +47,7 @@ const mockedGetPlatformTenantSubscriptions = vi.mocked(
   getPlatformTenantSubscriptions,
 );
 const mockedGetPlatformTenantSubscription = vi.mocked(getPlatformTenantSubscription);
+const mockedInvitePlatformTenantMember = vi.mocked(invitePlatformTenantMember);
 const mockedUpdatePlatformTenantSubscriptionUsage = vi.mocked(
   updatePlatformTenantSubscriptionUsage,
 );
@@ -59,8 +64,17 @@ describe("PlatformSubscriptionPage", () => {
     mockedGetPlatformSubscriptionPlans.mockReset();
     mockedGetPlatformTenantSubscriptions.mockReset();
     mockedGetPlatformTenantSubscription.mockReset();
+    mockedInvitePlatformTenantMember.mockReset();
     mockedUpdatePlatformTenantSubscriptionUsage.mockReset();
     mockedUpdatePlatformTenantSubscriptionEntitlement.mockReset();
+    mockedInvitePlatformTenantMember.mockResolvedValue({
+      tenant_id: "org-target",
+      user_id: "user-1",
+      email: "jane@example.com",
+      role: "listingkit_viewer",
+      authorization_id: "authorization-1",
+      invitation_email_sent: true,
+    });
     mockedGetPlatformSubscriptionPlans.mockResolvedValue([
       {
         plan: {
@@ -450,7 +464,129 @@ describe("PlatformSubscriptionPage", () => {
     expect(screen.getByRole("button", { name: "查询" })).toHaveClass("w-full");
     expect(screen.getAllByRole("button", { name: "刷新" })[0]).toHaveClass("w-full");
   });
+
+  it("submits a viewer invitation only after a tenant is selected", async () => {
+    const user = userEvent.setup();
+    const confirmMock = vi.mocked(globalThis.confirm);
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+
+    expect(screen.queryByRole("button", { name: "邀请成员" })).not.toBeInTheDocument();
+    await user.click(await screen.findByText("目标租户"));
+    await user.click(await screen.findByRole("button", { name: "邀请成员" }));
+
+    const roleSelect = screen.getByLabelText("角色");
+    expect(roleSelect).toHaveValue("listingkit_viewer");
+    expect(roleSelect.querySelector('option[value="platform_admin"]')).toBeNull();
+
+    await user.type(screen.getByLabelText("名字"), "Jane");
+    await user.type(screen.getByLabelText("姓氏"), "Doe");
+    await user.type(screen.getByLabelText("邮箱"), "jane@example.com");
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    await waitFor(() => {
+      expect(confirmMock).toHaveBeenCalledWith(
+        expect.stringMatching(/org-target.*jane@example\.com.*listingkit_viewer/),
+      );
+      expect(mockedInvitePlatformTenantMember).toHaveBeenCalledWith(
+        "org-target",
+        {
+          given_name: "Jane",
+          family_name: "Doe",
+          email: "jane@example.com",
+          role: "listingkit_viewer",
+        },
+      );
+    });
+  });
+
+  it("clears and closes the form after ZITADEL sends initialization mail", async () => {
+    const user = userEvent.setup();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await fillValidInvitation(user);
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    expect(await screen.findByText(/ZITADEL.*初始化邮件/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("邮箱")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "邀请成员" }));
+    expect(screen.getByLabelText("名字")).toHaveValue("");
+    expect(screen.getByLabelText("姓氏")).toHaveValue("");
+    expect(screen.getByLabelText("邮箱")).toHaveValue("");
+    expect(screen.getByLabelText("角色")).toHaveValue("listingkit_viewer");
+  });
+
+  it("shows incomplete access guidance when the API returns an incomplete invitation", async () => {
+    const user = userEvent.setup();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+    mockedInvitePlatformTenantMember.mockRejectedValue(
+      new ApiError("ListingKit API request failed: 502", 502, {
+        error: "zitadel_member_invitation_incomplete",
+        user_id: "user-1",
+      }),
+    );
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await fillValidInvitation(user);
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    expect(await screen.findByText(/user-1/)).toBeInTheDocument();
+    expect(screen.getByText(/尚未获得访问权限/)).toBeInTheDocument();
+  });
+
+  it("formats remaining invitation failures with the subscription API formatter", async () => {
+    const user = userEvent.setup();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+    mockedInvitePlatformTenantMember.mockRejectedValue(
+      new ApiError("ListingKit API request failed: 409", 409, {
+        error: "member_invitation_conflict",
+      }),
+    );
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await fillValidInvitation(user);
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    expect(
+      await screen.findByText("ListingKit API request failed: 409"),
+    ).toBeInTheDocument();
+  });
 });
+
+async function selectTenantAndOpenInvitation(
+  user: ReturnType<typeof userEvent.setup>,
+) {
+  await user.click(await screen.findByText("目标租户"));
+  await user.click(await screen.findByRole("button", { name: "邀请成员" }));
+}
+
+async function fillValidInvitation(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByLabelText("名字"), "Jane");
+  await user.type(screen.getByLabelText("姓氏"), "Doe");
+  await user.type(screen.getByLabelText("邮箱"), "jane@example.com");
+}
 
 function renderWithQueryClient(ui: ReactElement) {
   const queryClient = new QueryClient({
