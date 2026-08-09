@@ -88,8 +88,9 @@ config `listingkit.zitadel.*`; in Kubernetes we currently populate those config
 keys through env binding such as `ZITADEL_ISSUER_URL` and
 `ZITADEL_CLIENT_ID`. Authentication is mandatory; missing issuer/client
 configuration fails closed for protected ListingKit routes.
-For the full migration checklist, including owner-scope and allowlist rollout
-checks, see
+Owner filtering is a fixed ListingKit startup invariant; deployment
+configuration cannot disable it. For the full migration checklist, including
+allowlist checks, see
 [listingkit-config-migration-checklist.md](/D:/code/task-processor/docs/development/listingkit-config-migration-checklist.md).
 
 ## Provision ZITADEL roles
@@ -417,8 +418,8 @@ diagnostics (`task_id`, JSON field name, and reason only) are written to stderr;
 persisted request/result JSON is never logged. A failed Job may be safely rerun
 after fixing the cause; upserts are idempotent. Verify a known full SKU through
 `GET /api/v1/listing-kits/shein-pod-image-lookup/stores/<store_id>?q=<sku>`,
-then inspect API/proxy logs for errors. Keep owner-scope rollout disabled until
-the backfill and tenant/user sampling are complete.
+then inspect API/proxy logs for errors. Owner filtering remains enabled while
+you complete backfill and tenant/user sampling.
 
 ## Temporal rollout
 

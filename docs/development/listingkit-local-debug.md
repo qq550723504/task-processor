@@ -42,4 +42,6 @@ The helper writes the token under `.local\listingkit-api-token.txt` and can expo
 Do not use caller-supplied `X-User-*` or tenant headers as identity. ListingKit
 derives identity from the verified ZITADEL bearer token in every environment.
 
-`listingkit.ownerScopeRequired` is controlled by config or `TASK_PROCESSOR_LISTINGKIT_OWNER_SCOPE_REQUIRED`. The older `TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED` alias is still accepted for local `.env` compatibility.
+Owner filtering is a fixed ListingKit startup invariant. Tests may use their
+package-local state helpers to model legacy data, but local configuration and
+environment variables cannot disable owner filtering.

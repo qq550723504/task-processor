@@ -43,7 +43,6 @@ listingkit:
   sheinSubmitDebugDumpDir: ""
   platformAdminUsers: []
   platformAdminRoles: []
-  ownerScopeRequired: false
   zitadel:
     issuerURL: ""
     clientID: ""

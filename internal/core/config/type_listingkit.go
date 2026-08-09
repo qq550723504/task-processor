@@ -4,7 +4,6 @@ type ListingKitConfig struct {
 	SheinSubmitDebugDumpDir string                  `mapstructure:"sheinSubmitDebugDumpDir" yaml:"sheinSubmitDebugDumpDir"`
 	PlatformAdminUsers      []string                `mapstructure:"platformAdminUsers" yaml:"platformAdminUsers"`
 	PlatformAdminRoles      []string                `mapstructure:"platformAdminRoles" yaml:"platformAdminRoles"`
-	OwnerScopeRequired      bool                    `mapstructure:"ownerScopeRequired" yaml:"ownerScopeRequired"`
 	Zitadel                 ListingKitZitadelConfig `mapstructure:"zitadel" yaml:"zitadel"`
 }
 

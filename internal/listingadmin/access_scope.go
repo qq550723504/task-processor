@@ -38,6 +38,10 @@ func ownerScopeEnabled() bool {
 	return ownerScopeRequired.Load()
 }
 
+func OwnerScopeEnabled() bool {
+	return ownerScopeRequired.Load()
+}
+
 func requestUserIDHeader(value string) string {
 	return strings.TrimSpace(value)
 }
