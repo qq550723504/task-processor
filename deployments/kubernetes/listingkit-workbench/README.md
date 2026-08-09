@@ -110,27 +110,34 @@ checks, and recovery decision, follow the
 
 Use a release image built by an approved CI run and its immutable tag. Before
 applying the API or UI deployment, create the namespace, ConfigMap, and real
-Secret, then run the schema migration Job once. The API does not auto-migrate
+Secret, then run the schema migration Jobs once. The API does not auto-migrate
 at startup.
 
 ```powershell
 $tag = "<immutable-release-tag>"
-$migrationFile = Join-Path $env:TEMP "listingkit-schema-migrate-job.yaml"
 
 kubectl apply -f deployments/kubernetes/listingkit-workbench/base/namespace.yaml
 kubectl apply -f deployments/kubernetes/listingkit-workbench/base/configmap.yaml
 # Apply the real Secret created outside Git before continuing.
 
-Copy-Item deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml $migrationFile
-(Get-Content -Raw $migrationFile).Replace("REPLACE_WITH_DEPLOYED_TAG", $tag) |
-  Set-Content -NoNewline $migrationFile
-$jobName = kubectl create -n task-processor -f $migrationFile -o jsonpath='{.metadata.name}'
-kubectl -n task-processor wait --for=condition=complete "job/$jobName" --timeout=15m
-kubectl -n task-processor logs "job/$jobName"
+$migrationJobs = @(
+  "product-listing-api-schema-migrate-job.yaml",
+  "listingkit-schema-migrate-job.yaml"
+)
+foreach ($jobFile in $migrationJobs) {
+  $migrationFile = Join-Path $env:TEMP $jobFile
+  Copy-Item (Join-Path "deployments/kubernetes/listingkit-workbench/jobs" $jobFile) $migrationFile
+  (Get-Content -Raw $migrationFile).Replace("REPLACE_WITH_DEPLOYED_TAG", $tag) |
+    Set-Content -NoNewline $migrationFile
+  $jobName = kubectl create -n task-processor -f $migrationFile -o jsonpath='{.metadata.name}'
+  kubectl -n task-processor wait --for=condition=complete "job/$jobName" --timeout=15m
+  kubectl -n task-processor logs "job/$jobName"
+}
 ```
 
-The Job shares only the production ConfigMap and Secret references required by
-the API, runs `/app/listingkit-schema-migrate -scope all`, and uses the same
+The two Jobs share only the production ConfigMap and Secret references required
+by the API. They run `/app/product-listing-api-schema-migrate` and
+`/app/listingkit-schema-migrate -scope all` respectively, using the same
 immutable API image that will be released. A failed Job is a No-Go: investigate
 and use an approved roll-forward or restore procedure instead of deleting or
 editing the production schema manually.

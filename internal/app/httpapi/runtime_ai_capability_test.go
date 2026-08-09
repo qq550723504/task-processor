@@ -49,6 +49,21 @@ func TestBuildAICapabilityRuntimeDepsRequiresDatabaseOutsideLegacy(t *testing.T)
 	}
 }
 
+func TestBuildAICapabilityRuntimeDepsRequiresDatabaseWhenProductImageSceneEnabled(t *testing.T) {
+	_, err := buildAICapabilityRuntimeDeps(&config.Config{
+		AICapability: config.AICapabilityConfig{
+			StudioImageRoutingMode:   "legacy",
+			ProductImageSceneEnabled: true,
+		},
+	}, logrus.New())
+	if err == nil {
+		t.Fatal("expected missing database error")
+	}
+	if !strings.Contains(err.Error(), "AI capability") {
+		t.Fatalf("error = %q, want AI capability resource context", err)
+	}
+}
+
 func TestAutoMigrateProductListingAPIRuntimeSchemaCreatesAIInvocationsTable(t *testing.T) {
 	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
 	if err != nil {

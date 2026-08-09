@@ -235,7 +235,8 @@ func NewDefaultConfig() *Config {
 			ProductEnrichMockLLM: false,
 		},
 		AICapability: AICapabilityConfig{
-			StudioImageRoutingMode: "legacy",
+			StudioImageRoutingMode:   "legacy",
+			ProductImageSceneEnabled: false,
 		},
 		ListingKit: ListingKitConfig{},
 		ListingControlPlane: ListingControlPlaneConfig{

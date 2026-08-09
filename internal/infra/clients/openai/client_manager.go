@@ -113,6 +113,18 @@ func (m *Manager) SetConfigResolver(resolver ClientConfigResolver) {
 	m.dynamicClients = make(map[string]*Client)
 }
 
+// HasConfigResolver reports whether tenant-aware client configuration is wired.
+// Governance-enabled callers use this to fail closed instead of silently using
+// the manager's static API key and endpoint.
+func (m *Manager) HasConfigResolver() bool {
+	if m == nil {
+		return false
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.configResolver != nil
+}
+
 // RegisterClient 注册新的客户端
 func (m *Manager) RegisterClient(name string, client *Client) error {
 	if name == "" || client == nil {

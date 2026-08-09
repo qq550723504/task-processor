@@ -31,6 +31,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("debug.save_publish_json", defaults.Debug.SavePublishJSON)
 	v.SetDefault("debug.productEnrichMockLLM", defaults.Debug.ProductEnrichMockLLM)
 	v.SetDefault("aiCapability.studioImageRoutingMode", defaults.AICapability.StudioImageRoutingMode)
+	v.SetDefault("aiCapability.productImageSceneEnabled", defaults.AICapability.ProductImageSceneEnabled)
 	v.SetDefault("listingkit.sheinSubmitDebugDumpDir", defaults.ListingKit.SheinSubmitDebugDumpDir)
 	v.SetDefault("listingkit.platformAdminUsers", defaults.ListingKit.PlatformAdminUsers)
 	v.SetDefault("listingkit.platformAdminRoles", defaults.ListingKit.PlatformAdminRoles)

@@ -16,9 +16,15 @@ func (s *service) CreateProcessTask(ctx context.Context, req *ImageProcessReques
 	if err := s.validateRequest(req); err != nil {
 		return nil, fmt.Errorf("invalid request: %w", err)
 	}
+	identity := AIIdentityFromContext(ctx)
+	if s.requireAIIdentity && (identity.TenantID == "" || identity.UserID == "") {
+		return nil, fmt.Errorf("invalid request: tenant and user identity are required")
+	}
 
 	task := &Task{
 		ID:         uuid.New().String(),
+		TenantID:   identity.TenantID,
+		UserID:     identity.UserID,
 		Request:    req,
 		Status:     TaskStatusPending,
 		CreatedAt:  time.Now(),

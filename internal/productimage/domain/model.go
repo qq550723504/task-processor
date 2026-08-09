@@ -49,6 +49,8 @@ type ReviewTaskRequest struct {
 
 type Task struct {
 	ID         string               `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	TenantID   string               `json:"-" gorm:"type:varchar(128);index"`
+	UserID     string               `json:"-" gorm:"type:varchar(128);index"`
 	Request    *ImageProcessRequest `json:"request" gorm:"type:text"`
 	Status     TaskStatus           `json:"status" gorm:"type:varchar(20);index"`
 	Result     *ImageProcessResult  `json:"result,omitempty" gorm:"type:text"`

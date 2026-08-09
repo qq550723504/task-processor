@@ -79,6 +79,16 @@ type SceneGenerator interface {
 	GenerateScene(ctx context.Context, req *SceneGenerationRequest) (*SceneGenerationResult, error)
 }
 
+type SceneGenerationRoute struct {
+	RoutingKey string
+	ModelID    string
+}
+
+type SceneGeneratorWithRoute interface {
+	SceneGenerator
+	GenerateSceneWithRoute(ctx context.Context, req *SceneGenerationRequest, route SceneGenerationRoute) (*SceneGenerationResult, error)
+}
+
 type ImageReviewModel interface {
 	Review(ctx context.Context, req *ReviewModelRequest) (*ReviewModelResult, error)
 }

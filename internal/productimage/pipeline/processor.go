@@ -66,6 +66,7 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 		log.WithError(err).WithField("status", task.Status).Warn("skipping productimage task")
 		return err
 	}
+	ctx = productimage.WithTaskIdentity(ctx, task)
 
 	if _, err := p.service.ProcessImages(ctx, task); err != nil {
 		if errors.Is(err, productimage.ErrTaskNotPending) {

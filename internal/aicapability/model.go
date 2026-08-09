@@ -5,16 +5,20 @@ import "time"
 
 type Capability string
 
-const CapabilityListingKitStudioImage Capability = "listingkit.studio.image"
+const (
+	CapabilityListingKitStudioImage Capability = "listingkit.studio.image"
+	CapabilityProductImageScene     Capability = "productimage.scene_generation"
+)
 
 type Operation string
 
 const (
-	OperationImageGenerate      Operation = "image_generate"
-	OperationImageEdit          Operation = "image_edit"
-	OperationAsyncImageGenerate Operation = "async_image_generate"
-	OperationAsyncImageEdit     Operation = "async_image_edit"
-	OperationAsyncImageQuery    Operation = "async_image_query"
+	OperationImageGenerate             Operation = "image_generate"
+	OperationImageEdit                 Operation = "image_edit"
+	OperationAsyncImageGenerate        Operation = "async_image_generate"
+	OperationAsyncImageEdit            Operation = "async_image_edit"
+	OperationAsyncImageQuery           Operation = "async_image_query"
+	OperationProductImageSceneGenerate Operation = "productimage_scene_generate"
 )
 
 type ModelFeature string

@@ -15,6 +15,22 @@ type capturedOpenAIRequest struct {
 	Model string
 }
 
+func TestManagerReportsResolverWiring(t *testing.T) {
+	static, err := NewManager(&ManagerConfig{
+		Clients: map[string]*ClientConfig{"default": testClientConfig("key", "model", "https://example.test/v1")},
+	})
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	if static.HasConfigResolver() {
+		t.Fatal("static manager unexpectedly reports resolver wiring")
+	}
+	static.SetConfigResolver(fakeClientConfigResolver{})
+	if !static.HasConfigResolver() {
+		t.Fatal("resolver-backed manager does not report resolver wiring")
+	}
+}
+
 func newCaptureChatServer(t *testing.T, requests *[]capturedOpenAIRequest, mu *sync.Mutex) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

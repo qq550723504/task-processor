@@ -28,6 +28,10 @@ func NewOpenAICompatibleSceneGenerator(workDir string, client openAICompatibleIm
 }
 
 func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req *SceneGenerationRequest) (*SceneGenerationResult, error) {
+	return g.GenerateSceneWithRoute(ctx, req, SceneGenerationRoute{ModelID: g.client.GetDefaultModel()})
+}
+
+func (g *openAICompatibleSceneGenerator) GenerateSceneWithRoute(ctx context.Context, req *SceneGenerationRequest, route SceneGenerationRoute) (*SceneGenerationResult, error) {
 	if req == nil || req.SourceAsset == nil {
 		return nil, fmt.Errorf("scene generation request requires source asset")
 	}
@@ -37,8 +41,12 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 	}
 	options := resolveScenePromptOptions(req, req.ProductContext)
 	resolvedPrompt := buildSceneGenerationResolvedPrompt(req)
+	modelID := strings.TrimSpace(route.ModelID)
+	if modelID == "" {
+		return nil, fmt.Errorf("scene generation route model is required")
+	}
 	response, err := g.client.EditImage(ctx, imageEditRequest{
-		Model:          g.client.GetDefaultModel(),
+		Model:          modelID,
 		Prompt:         resolvedPrompt.Text,
 		Image:          data,
 		ImageURL:       editableAssetURL(req.SourceAsset),
@@ -63,7 +71,7 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 	}
 	metadata := applyPromptObservabilityMetadata(map[string]string{
 		"provider":        "openai_compatible",
-		"model_family":    g.client.GetDefaultModel(),
+		"model_family":    modelID,
 		"generation_mode": "scene_generation",
 		"scene_intent":    req.SceneIntent,
 		"local_path":      path,
@@ -89,7 +97,7 @@ func (g *openAICompatibleSceneGenerator) GenerateScene(ctx context.Context, req 
 			options,
 			resolvedPrompt,
 			"openai_compatible",
-			g.client.GetDefaultModel(),
+			modelID,
 			"scene_generation",
 		),
 	}, nil

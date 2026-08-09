@@ -16,6 +16,7 @@ func (s *service) ProcessImages(ctx context.Context, task *Task) (*ImageProcessR
 	if task == nil {
 		return nil, fmt.Errorf("task cannot be nil")
 	}
+	ctx = WithTaskIdentity(ctx, task)
 
 	log := loggerForImageProcess(task.ID)
 	startedAt := time.Now()

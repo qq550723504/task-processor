@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"time"
 
 	"task-processor/internal/core/config"
@@ -13,6 +14,11 @@ import (
 func buildModelProvider(cfg *config.Config, llmMgr productenrich.LLMManager, openaiMgr *openaiclient.Manager, imageWorkDir string) (productimage.ProductImageModelProvider, error) {
 	if cfg == nil {
 		return nil, nil
+	}
+	if cfg.AICapability.ProductImageSceneEnabled {
+		if imageCfg, ok := cfg.OpenAI.Clients["image"]; ok && imageCfg.APIStyle == "nanobanana" {
+			return nil, fmt.Errorf("productimage scene governance requires a resolver-backed OpenAI image provider; nanobanana static provider is unsupported")
+		}
 	}
 
 	var faithfulEditor productimage.FaithfulEditor

@@ -46,6 +46,19 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 	if err != nil {
 		return nil, fmt.Errorf("create productimage model provider: %w", err)
 	}
+	if input.Config != nil && input.Config.AICapability.ProductImageSceneEnabled {
+		if input.OpenAIManager == nil || !input.OpenAIManager.HasConfigResolver() {
+			return nil, fmt.Errorf("create governed productimage scene generator: resolver-backed OpenAI manager is not configured")
+		}
+		if modelProvider == nil {
+			return nil, fmt.Errorf("create governed productimage scene generator: model provider is not configured")
+		}
+		governedScene, governanceErr := buildGovernedProductImageSceneGenerator(input.Config, modelProvider.SceneGenerator(), input.AICredentialResolver, input.AIInvocationRecorder, input.Logger)
+		if governanceErr != nil {
+			return nil, fmt.Errorf("create governed productimage scene generator: %w", governanceErr)
+		}
+		modelProvider = productimage.NewModelProvider(modelProvider.FaithfulEditor(), governedScene, modelProvider.ReviewModel())
+	}
 
 	var subjectExtractor productimage.SubjectExtractor
 	var whiteBgRenderer productimage.WhiteBackgroundRenderer
@@ -90,6 +103,7 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 		AssetPublisher:        buildAssetPublisher(input.Config, input.Logger),
 		CleanupTemporaryFiles: input.Config.ProductImage.Lifecycle.CleanupTemporaryFiles,
 		ReuseExistingAssets:   input.Config.ProductImage.Lifecycle.ReuseExistingAssets,
+		RequireAIIdentity:     input.Config != nil && input.Config.AICapability.ProductImageSceneEnabled,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create image service: %w", err)

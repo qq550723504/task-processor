@@ -113,6 +113,36 @@ func TestBuildModelProviderBuildsNanobananaCapabilities(t *testing.T) {
 	}
 }
 
+func TestBuildModelProviderRejectsNanobananaWhenProductImageSceneGovernanceEnabled(t *testing.T) {
+	cfg := &config.Config{}
+	cfg.AICapability.ProductImageSceneEnabled = true
+	cfg.OpenAI.APIKey = "test-key"
+	cfg.OpenAI.Model = "gpt-5.1"
+	cfg.OpenAI.BaseURL = "http://example.com/v1"
+	cfg.OpenAI.Timeout = 30
+	cfg.OpenAI.Clients = map[string]config.OpenAIClientConfig{
+		"image": {
+			APIKey:   "test-key",
+			Model:    "nano-banana-fast",
+			BaseURL:  "https://grsai.dakka.com.cn/v1/draw/nano-banana",
+			Timeout:  30,
+			APIStyle: "nanobanana",
+		},
+	}
+
+	openaiMgr, err := openaiclient.NewManager(&openaiclient.ManagerConfig{
+		Clients:       cfg.OpenAI.ToClientConfigs(),
+		DefaultClient: "default",
+	})
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	if _, err := buildModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir()); err == nil {
+		t.Fatal("buildModelProvider() error = nil, want explicit rejection")
+	}
+}
+
 func TestResolveImagePipelineComponentsBackfillsModelBackedDependencies(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.OpenAI.APIKey = "test-key"
