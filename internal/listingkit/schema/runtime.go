@@ -9,6 +9,7 @@ import (
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/reviewstore"
 	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/listingsubscription"
@@ -22,6 +23,9 @@ func AutoMigrateRuntime(db *gorm.DB) error {
 	}
 	if err := autoMigrateTaskRepository(db); err != nil {
 		return fmt.Errorf("migrate listingkit task repository: %w", err)
+	}
+	if err := memberinvite.AutoMigrateAuditRepository(db); err != nil {
+		return fmt.Errorf("migrate listingkit member invitation audit repository: %w", err)
 	}
 	if err := aicapabilitystore.AutoMigrateInvocationLedger(db); err != nil {
 		return fmt.Errorf("ai invocation ledger auto-migrate failed: %w", err)
