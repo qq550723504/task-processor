@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"syscall"
 	"testing"
@@ -35,6 +36,7 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 			os.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", oldOpenAIKey)
 		}
 	}()
+	client := authenticatedProductListingAPITestClient(t)
 
 	options := httpapi.Options{
 		ConfigPath:      "../../config/config-test.yaml",
@@ -77,7 +79,7 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	b, err := json.Marshal(reqBody)
 	require.NoError(t, err)
 
-	resp, err := http.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/products/generate", "application/json", bytes.NewReader(b))
+	resp, err := client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/products/generate", "application/json", bytes.NewReader(b))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -87,7 +89,7 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	require.NotEmpty(t, taskResp.TaskID)
 
 	// 查询产品任务
-	resp, err = http.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/products/tasks/" + taskResp.TaskID)
+	resp, err = client.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/products/tasks/" + taskResp.TaskID)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
@@ -96,7 +98,7 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	imgReqBody := productimage.ImageProcessRequest{ImageURLs: []string{"https://example.com/photo.jpg"}, Marketplace: "amazon"}
 	b2, err := json.Marshal(imgReqBody)
 	require.NoError(t, err)
-	resp, err = http.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/images/process", "application/json", bytes.NewReader(b2))
+	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/images/process", "application/json", bytes.NewReader(b2))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	var imgResp map[string]any
@@ -107,7 +109,7 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	require.NotEmpty(t, imgTaskID)
 
 	// 查询图片任务
-	resp, err = http.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/images/tasks/" + imgTaskID)
+	resp, err = client.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/images/tasks/" + imgTaskID)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
@@ -120,7 +122,7 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	}
 	b3, err := json.Marshal(amazonReqBody)
 	require.NoError(t, err)
-	resp, err = http.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/generate", "application/json", bytes.NewReader(b3))
+	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/generate", "application/json", bytes.NewReader(b3))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	var amazonResp map[string]any
@@ -131,7 +133,7 @@ func TestStart_GenerateProductAndQueryTask(t *testing.T) {
 	require.NotEmpty(t, amazonTaskID)
 
 	// 查询 Amazon task
-	resp, err = http.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/amazon/listings/tasks/" + amazonTaskID)
+	resp, err = client.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/amazon/listings/tasks/" + amazonTaskID)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	resp.Body.Close()
@@ -162,6 +164,7 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 			os.Setenv("TASK_PROCESSOR_OPENAI_API_KEY", oldOpenAIKey)
 		}
 	}()
+	client := authenticatedProductListingAPITestClient(t)
 
 	options := httpapi.Options{
 		ConfigPath:     "../../config/config-test.yaml",
@@ -199,51 +202,51 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 	}
 
 	// 400 invalid request for product generation
-	resp, err := http.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/products/generate", "application/json", bytes.NewReader([]byte(`{"text":""}`)))
+	resp, err := client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/products/generate", "application/json", bytes.NewReader([]byte(`{"text":""}`)))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	resp.Body.Close()
 
 	// 404 when product task not found
-	resp, err = http.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/products/tasks/nonexistent-id")
+	resp, err = client.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/products/tasks/nonexistent-id")
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	resp.Body.Close()
 
 	// 404 for image task not found
-	resp, err = http.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/images/tasks/nonexistent-id")
+	resp, err = client.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/images/tasks/nonexistent-id")
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	resp.Body.Close()
 
 	// 404 for amazon listing task not found
-	resp, err = http.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/amazon/listings/tasks/nonexistent-id")
+	resp, err = client.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/amazon/listings/tasks/nonexistent-id")
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	resp.Body.Close()
 
 	// 404 for amazon listing review nonexistent task
 	reviewBody := bytes.NewReader([]byte(`{"action":"approve"}`))
-	resp, err = http.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/tasks/nonexistent-id/review", "application/json", reviewBody)
+	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/tasks/nonexistent-id/review", "application/json", reviewBody)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	resp.Body.Close()
 
 	// 404 for amazon listing submit nonexistent task
 	submitBody := bytes.NewReader([]byte(`{"action":"preview"}`))
-	resp, err = http.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/tasks/nonexistent-id/submit", "application/json", submitBody)
+	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/tasks/nonexistent-id/submit", "application/json", submitBody)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	resp.Body.Close()
 
 	// 404 for amazon listing workbench nonexistent task
-	resp, err = http.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/amazon/listings/tasks/nonexistent-id/workbench")
+	resp, err = client.Get("http://127.0.0.1:" + fmt.Sprint(port) + "/api/v1/amazon/listings/tasks/nonexistent-id/workbench")
 	require.NoError(t, err)
 	require.Equal(t, http.StatusNotFound, resp.StatusCode)
 	resp.Body.Close()
 
 	// 400 for amazon listing generate invalid request
-	resp, err = http.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/generate", "application/json", bytes.NewReader([]byte(`{"text":""}`)))
+	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/generate", "application/json", bytes.NewReader([]byte(`{"text":""}`)))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	resp.Body.Close()
@@ -256,7 +259,7 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 	}
 	b3, err := json.Marshal(amazonReqBody)
 	require.NoError(t, err)
-	resp, err = http.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/generate", "application/json", bytes.NewReader(b3))
+	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/generate", "application/json", bytes.NewReader(b3))
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	var amazonResp map[string]any
@@ -268,14 +271,14 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 
 	// 400 for unsupported review action on existing task
 	reviewBody2 := bytes.NewReader([]byte(`{"action":"unsupported"}`))
-	resp, err = http.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/tasks/"+amazonTaskID+"/review", "application/json", reviewBody2)
+	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/tasks/"+amazonTaskID+"/review", "application/json", reviewBody2)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	resp.Body.Close()
 
 	// 400 for submit if task result is empty (invalid state for submission)
 	submitBody2 := bytes.NewReader([]byte(`{"action":"preview"}`))
-	resp, err = http.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/tasks/"+amazonTaskID+"/submit", "application/json", submitBody2)
+	resp, err = client.Post("http://127.0.0.1:"+fmt.Sprint(port)+"/api/v1/amazon/listings/tasks/"+amazonTaskID+"/submit", "application/json", submitBody2)
 	require.NoError(t, err)
 	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
 	resp.Body.Close()
@@ -288,4 +291,49 @@ func TestStart_ErrorPathsAndCleanup(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("service did not exit after SIGTERM")
 	}
+}
+
+const productListingAPITestBearerToken = "product-listing-api-test-token"
+
+func authenticatedProductListingAPITestClient(t *testing.T) *http.Client {
+	t.Helper()
+	var zitadel *httptest.Server
+	zitadel = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_ = json.NewEncoder(w).Encode(map[string]string{"introspection_endpoint": zitadel.URL + "/oauth/v2/introspect"})
+		case "/oauth/v2/introspect":
+			if r.FormValue("token") != productListingAPITestBearerToken {
+				http.Error(w, "unexpected bearer token", http.StatusUnauthorized)
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"active":                                true,
+				"sub":                                   "product-listing-api-test-user",
+				"user_id":                               "product-listing-api-test-user",
+				"urn:zitadel:iam:user:resourceowner:id": "product-listing-api-test-tenant",
+				"urn:zitadel:iam:org:project:roles": map[string]any{
+					"listingkit_admin": map[string]any{},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(zitadel.Close)
+	t.Setenv("ZITADEL_ISSUER_URL", zitadel.URL)
+	t.Setenv("ZITADEL_CLIENT_ID", "product-listing-api-test-client")
+
+	return &http.Client{Transport: productListingAPITestBearerTransport{base: http.DefaultTransport}}
+}
+
+type productListingAPITestBearerTransport struct {
+	base http.RoundTripper
+}
+
+func (t productListingAPITestBearerTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	clone := request.Clone(request.Context())
+	clone.Header = request.Header.Clone()
+	clone.Header.Set("Authorization", "Bearer "+productListingAPITestBearerToken)
+	return t.base.RoundTrip(clone)
 }
