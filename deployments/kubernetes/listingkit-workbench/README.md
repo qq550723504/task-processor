@@ -280,6 +280,62 @@ immutable API image that will be released. A failed Job is a No-Go: investigate
 and use an approved roll-forward or restore procedure instead of deleting or
 editing the production schema manually.
 
+### Identity preflight release gate
+
+Every API release must pass the read-only identity preflight in the target
+environment before either the API or its matching UI is updated. The directory
+credential needs read access sufficient to query `POST /v2/users` for every
+ZITADEL organization represented by persisted tenant-owned rows. It does not
+need user-create, update, invitation, or membership-write permission. The Job
+uses the shared ConfigMap and shared Secret for the database and read-only
+directory credential; it never references the API-only member-invitation
+Secret.
+
+Run the tested driver with the exact immutable API image tag:
+
+```bash
+bash scripts/listingkit-identity-preflight-job.sh \
+  --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml \
+  --namespace task-processor \
+  --image-tag "<immutable-release-tag>"
+```
+
+The driver renders a temporary manifest, creates one generated Job, waits up to
+15 minutes, and prints its logs. A failure or timeout also prints `describe`
+output and returns non-zero before any Deployment image update. The Job only
+reads owner identifiers from the database and users from ZITADEL; it never
+mutates either system.
+
+Successful output ends with:
+
+```text
+status=ok identity_preflight=passed
+```
+
+A blocked finding has this safe shape:
+
+```text
+status=blocked table=listing_store tenant=sha256:<12-hex> owner=sha256:<12-hex> rows=3 reason=unknown_subject
+```
+
+`unknown_subject` means a persisted owner value is not a current ZITADEL `sub`
+in the same organization. Stop the release and investigate the source mapping,
+deleted account, or organization mismatch; do not add a fallback or rewrite
+data automatically. Fingerprints, table names, and aggregate row counts are
+safe correlation fields, but no complete tenant ID, subject, personal data, or
+secret may be pasted into an issue, change record, or release log.
+
+Treat the API and UI as one coordinated release:
+
+1. Confirm the legacy `user_id` claim is absent or exactly equals `sub`.
+2. Pass this preflight against the target environment.
+3. Deploy and verify the canonical-subject API image.
+4. Deploy the matching ListingKit UI/Auth.js image.
+5. Complete the real-token role and owner-scope checks.
+
+A partial API/UI rollout is not release acceptance. The preflight is
+release-scoped and intentionally absent from the base Kustomization.
+
 For a new cluster, render the existing production overlay from a temporary
 copy, pin both image names to the same immutable tag, and apply that rendered
 manifest only after the Job succeeds. This prevents the overlay's development
@@ -355,12 +411,15 @@ GitHub Actions itself is unavailable.
 
 Standard rollback path:
 
-1. Identify the prior API and UI image tags from a successful release record.
-2. Run `ListingKit API Deploy` with its prior immutable tag, then wait for the
+1. Confirm the legacy ZITADEL `user_id` claim is absent or exactly equals
+   `sub`; otherwise rollback can restore split ownership semantics and is not
+   allowed.
+2. Identify the prior API and UI image tags from a successful release record.
+3. Run `ListingKit API Deploy` with its prior immutable tag, then wait for the
    API rollout and readiness probe.
-3. Run `ListingKit UI Deploy` with its prior immutable tag, then wait for the
+4. Run `ListingKit UI Deploy` with its prior immutable tag, then wait for the
    UI rollout.
-4. Record the rollback decision, deployed tags, probe results, and any data
+5. Record the rollback decision, deployed tags, probe results, and any data
    recovery action in the validation run.
 
 This reuses the same deployment logic as a normal release and keeps the

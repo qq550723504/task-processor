@@ -37,6 +37,39 @@ repeatedly copying browser tokens:
 
 The helper writes the token under `.local\listingkit-api-token.txt` and can export `LISTINGKIT_API_TOKEN` for scripted checks.
 
+## Identity preflight before a coordinated release
+
+Before deploying the canonical-subject API or its matching UI, run the
+read-only identity preflight against the target Kubernetes namespace with the
+exact immutable API image tag:
+
+```bash
+bash scripts/listingkit-identity-preflight-job.sh \
+  --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml \
+  --namespace task-processor \
+  --image-tag "<immutable-release-tag>"
+```
+
+The shared tenant-directory credential must be able to read `POST /v2/users`
+for every ZITADEL organization represented in the database. It does not need
+user or membership write access, and the preflight Job does not receive the
+dedicated member-invitation write token. The preflight only reads persisted
+owner mappings and the ZITADEL directory; it never changes data.
+
+Success ends with `status=ok identity_preflight=passed`. A blocker is reported
+as `status=blocked`, a table name, 12-hex SHA-256 fingerprints for tenant and
+owner, an aggregate row count, and `reason=unknown_subject`. This means the
+persisted owner is not a current ZITADEL `sub` in the same organization. Stop
+and investigate; do not add a compatibility fallback or rewrite data from the
+report. Never paste a complete tenant ID, subject, personal identifier, token,
+or other secret into an issue or release log.
+
+The controlled order is: confirm legacy `user_id` is absent or equals `sub`,
+pass preflight, deploy and verify the API, deploy the matching UI, then run the
+real-token role/owner-scope checks. A partial API/UI rollout is not acceptance.
+Rollback is allowed only when the same `user_id` prerequisite has been
+confirmed; the read-only preflight itself needs no data rollback.
+
 ## Safety
 
 Do not use caller-supplied `X-User-*` or tenant headers as identity. ListingKit

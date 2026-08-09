@@ -184,6 +184,16 @@ jobs:
         run: |
           bash .workflow-tools/scripts/validate-listingkit-invitation-secret.sh ${{ env.K8S_NAMESPACE }}
 
+      - name: Run identity preflight release gate
+        shell: bash
+        env:
+          IDENTITY_PREFLIGHT_IMAGE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          scripts/listingkit-identity-preflight-job.sh \
+            --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml \
+            --namespace "$K8S_NAMESPACE" \
+            --image-tag "$IDENTITY_PREFLIGHT_IMAGE_TAG"
+
       - name: Update API deployment image
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} apply -f deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml

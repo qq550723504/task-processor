@@ -1,0 +1,27 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: listingkit-identity-preflight-
+  labels:
+    app: listingkit-identity-preflight
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    metadata:
+      labels:
+        app: listingkit-identity-preflight
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: listingkit-identity-preflight
+          image: docker.io/xuwei190/task-processor-product-listing-api:REPLACE_WITH_DEPLOYED_TAG
+          imagePullPolicy: IfNotPresent
+          command: ["/app/listingkit-identity-preflight"]
+          args: ["-config", "/app/config/config-prod.yaml", "-log-level", "info"]
+          envFrom:
+            - configMapRef:
+                name: listingkit-workbench-config
+            - secretRef:
+                name: listingkit-workbench-secret
+                optional: false
