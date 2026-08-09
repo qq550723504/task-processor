@@ -23,6 +23,11 @@ spec:
           env:
             - name: TASK_PROCESSOR_BROWSER_PATH
               value: /opt/fingerprint-chrome/chrome-144/chrome
+            - name: TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-member-invitation-secret
+                  key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN
             - name: TASK_PROCESSOR_SDS_LOGIN_SERVICE_DEFAULT_HEADLESS
               valueFrom:
                 configMapKeyRef:

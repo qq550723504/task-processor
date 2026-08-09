@@ -21,10 +21,42 @@ Create a real Secret from your secret manager or copy the example and fill it ou
 
 ```powershell
 Copy-Item deployments/kubernetes/listingkit-workbench/base/secret.example.yaml tmp/listingkit-workbench-secret.yaml
+Copy-Item deployments/kubernetes/listingkit-workbench/base/member-invitation-secret.example.yaml tmp/listingkit-member-invitation-secret.yaml
 kubectl apply -n task-processor -f tmp/listingkit-workbench-secret.yaml
+kubectl apply -n task-processor -f tmp/listingkit-member-invitation-secret.yaml
 ```
 
 Do not commit the filled secret file.
+
+When migrating an existing deployment, first set the non-secret project id in
+`listingkit-workbench-config` and create `listingkit-member-invitation-secret`.
+Then remove both invitation keys from the already deployed shared Secret and
+restart every long-lived consumer so no UI, worker, or imgproxy Pod retains the
+write token in its process environment. The API Secret reference is required:
+do not restart the API until the dedicated Secret has been created, because a
+missing token must fail Pod startup instead of falling back to a legacy shared
+Secret value.
+
+```powershell
+$legacy = kubectl -n task-processor get secret listingkit-workbench-secret -o json | ConvertFrom-Json
+foreach ($key in @(
+  "TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN",
+  "TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID"
+)) {
+  if ($legacy.data.PSObject.Properties.Name -contains $key) {
+    $memberInvitationPatch = '[{"op":"remove","path":"/data/' + $key + '"}]'
+    kubectl -n task-processor patch secret listingkit-workbench-secret --type=json `
+      -p $memberInvitationPatch
+  }
+}
+kubectl -n task-processor rollout restart deployment/product-listing-api,listingkit-ui,imgproxy,shein-login-worker
+kubectl -n task-processor rollout status deployment/product-listing-api --timeout=5m
+kubectl -n task-processor rollout status deployment/listingkit-ui --timeout=5m
+kubectl -n task-processor rollout status deployment/imgproxy --timeout=5m
+kubectl -n task-processor rollout status deployment/shein-login-worker --timeout=5m
+```
+
+The commands inspect only key names and do not decode or print Secret values.
 
 Required ZITADEL values:
 
@@ -33,7 +65,9 @@ ZITADEL_ISSUER_URL=https://auth.example.com
 ZITADEL_CLIENT_ID=<oidc-web-client-id>
 ZITADEL_CLIENT_SECRET=<oidc-web-client-secret>
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_TENANT_DIRECTORY_TOKEN=<read-only-tenant-directory-token>
+# API-only listingkit-member-invitation-secret:
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN=<dedicated-member-invitation-token>
+# listingkit-workbench-config ConfigMap (non-secret identifier):
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<existing-listingkit-project-id>
 # Auth.js callback URI:
 # https://<workbench-host>/api/auth/callback/zitadel
@@ -90,7 +124,7 @@ listingkit_admin
 platform_admin
 ```
 
-Copy the command output into the workbench secret/config:
+Copy the command output into the workbench shared Secret/config:
 
 ```text
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<project-id>
@@ -124,8 +158,10 @@ or unrelated administration permissions. The application accepts only
 `listingkit_viewer`, `listingkit_operator`, or `listingkit_admin`; the invitation
 flow cannot grant `platform_admin`.
 
-Store the dedicated token and existing project id under these exact keys in
-`listingkit-workbench-secret`:
+Store the dedicated token only in the API-only
+`listingkit-member-invitation-secret`; store the existing project id as the
+non-secret `TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID` value in
+`listingkit-workbench-config`:
 
 ```text
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN=<dedicated-service-account-token>
@@ -133,22 +169,28 @@ TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<existing-listingkit-project-id>
 ```
 
 Inject the token through the approved secret manager; never commit it, print it,
-or paste it into the OIDC or tenant-directory fields. Apply the Secret and
-restart only the API deployment:
+or paste it into the OIDC or tenant-directory fields. Do not add the dedicated
+Secret to UI, worker, imgproxy, or migration Job `envFrom` lists. Apply the
+dedicated Secret and ConfigMap, then restart only the API deployment:
 
 ```powershell
-kubectl apply -n task-processor -f tmp/listingkit-workbench-secret.yaml
+kubectl apply -n task-processor -f tmp/listingkit-member-invitation-secret.yaml
+kubectl apply -n task-processor -f deployments/kubernetes/listingkit-workbench/base/configmap.yaml
 
 $requiredKeys = @(
-  "TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN",
-  "TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID"
+  "TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN"
 )
-$secret = kubectl -n task-processor get secret listingkit-workbench-secret -o json |
+$secret = kubectl -n task-processor get secret listingkit-member-invitation-secret -o json |
   ConvertFrom-Json
 $presentKeys = @($secret.data.PSObject.Properties.Name)
 $missingKeys = @($requiredKeys | Where-Object { $_ -notin $presentKeys })
 if ($missingKeys.Count -ne 0) {
   throw "Missing ListingKit invitation Secret keys: $($missingKeys -join ', ')"
+}
+$configMap = kubectl -n task-processor get configmap listingkit-workbench-config -o json |
+  ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace($configMap.data.TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID)) {
+  throw "Missing ListingKit invitation project id in ConfigMap"
 }
 
 kubectl -n task-processor rollout restart deployment/product-listing-api
@@ -460,6 +502,9 @@ The UI uses:
 - `LISTINGKIT_SERVICE_API_BASE=http://product-listing-api:8085/api/v1`
 - `ZITADEL_ISSUER_URL`, `ZITADEL_CLIENT_ID`, `ZITADEL_CLIENT_SECRET`, and
   redirect URIs from `listingkit-workbench-secret`
+- `TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN` only from
+  `listingkit-member-invitation-secret` in `product-listing-api`; the project
+  id is a non-secret ConfigMap value.
 
 The Go API still reads `config/config-prod.yaml` baked into the image, with
 secret values expected to be supplied by runtime configuration. For ListingKit

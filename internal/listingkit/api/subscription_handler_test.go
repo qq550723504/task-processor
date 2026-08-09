@@ -270,6 +270,22 @@ func TestInviteTenantMemberRecordsIncompleteProviderState(t *testing.T) {
 	assertInvitationAudit(t, audit, memberinvite.OutcomeIncomplete, "zitadel_member_invitation_incomplete", "user-1")
 }
 
+func TestInviteTenantMemberRecordsIncompleteProviderConflict(t *testing.T) {
+	audit := &invitationAuditStub{}
+	response := invokeInvitation(t, invitationProviderStub{err: &memberinvite.IncompleteError{UserID: "user-1", Err: memberinvite.ErrConflict}}, audit)
+	assertInvitationErrorResponse(t, response, http.StatusBadGateway, "zitadel_member_invitation_incomplete")
+	var body struct {
+		UserID string `json:"user_id"`
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.UserID != "user-1" {
+		t.Fatalf("user_id = %q", body.UserID)
+	}
+	assertInvitationAudit(t, audit, memberinvite.OutcomeIncomplete, "zitadel_member_invitation_incomplete", "user-1")
+}
+
 func TestInviteTenantMemberReturns503WhenProviderIsNotConfigured(t *testing.T) {
 	audit := &invitationAuditStub{}
 	router := invitationRouter(t, nil, audit)

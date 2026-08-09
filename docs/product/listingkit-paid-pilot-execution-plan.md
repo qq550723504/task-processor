@@ -872,11 +872,13 @@ backup
 1. 先建立 tenant；平台管理员在平台订阅页选中该 tenant，通过“邀请成员”填写姓名、邮箱和预期的
    `listingkit_viewer`、`listingkit_operator` 或 `listingkit_admin` 角色。邀请流程不得授予
    `platform_admin`，也不得用 OIDC client secret 或只读 tenant-directory token 代替专用邀请 token。
+   该 write token 只能注入 `product-listing-api` 的专用 Secret，不得进入 UI、worker、imgproxy 或迁移 Job；
+   既有 ListingKit project id 可作为非 Secret 配置共享。
 2. 邀请成功后核对返回的 tenant、user、role、authorization ID 和
    `listingkit_member_invitation_audits` 成功记录，再让用户完成邮件验证和首次登录，确认 token 中只有目标
    tenant 的预期角色。若返回 `zitadel_member_invitation_incomplete`，必须使用审计记录中的 user ID、
    tenant ID 和 role 补建 ZITADEL project authorization，不能重新创建用户；修复后保留原始审计记录并
-   另行记录人工修复证据。
+   另行记录人工修复证据。该状态包括创建用户后 authorization 返回 409 的情况。
 3. 绑定合同/订单和套餐。
 4. 配置店铺并验证归属。
 5. 运行 preflight。

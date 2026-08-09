@@ -48,6 +48,18 @@ func TestZitadelProviderPreservesUserIDWhenRoleAssignmentFails(t *testing.T) {
 	}
 }
 
+func TestZitadelProviderPreservesUserIDWhenRoleAssignmentConflicts(t *testing.T) {
+	provider, _ := newZitadelProviderTestServer(t, http.StatusConflict)
+	_, err := provider.Invite(context.Background(), validInviteRequest())
+	var incomplete *IncompleteError
+	if !errors.As(err, &incomplete) || incomplete.UserID != "user-1" {
+		t.Fatalf("err = %#v", err)
+	}
+	if !errors.Is(err, ErrConflict) {
+		t.Fatalf("err = %v, want ErrConflict cause", err)
+	}
+}
+
 func TestZitadelProviderRedactsProviderTextFromErrorAndUnwrapChain(t *testing.T) {
 	provider, _ := newZitadelProviderTestServer(t, http.StatusForbidden)
 	_, err := provider.Invite(context.Background(), validInviteRequest())

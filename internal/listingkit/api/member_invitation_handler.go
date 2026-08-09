@@ -98,6 +98,11 @@ func (h *handler) writeMemberInvitationFailure(c *gin.Context, request memberinv
 
 	var incomplete *memberinvite.IncompleteError
 	switch {
+	case errors.As(err, &incomplete):
+		errorCode = "zitadel_member_invitation_incomplete"
+		message = "ZITADEL user was created, but ListingKit access was not assigned"
+		outcome = memberinvite.OutcomeIncomplete
+		invitation.UserID = strings.TrimSpace(incomplete.UserID)
 	case errors.Is(err, memberinvite.ErrInvalidRequest):
 		status = http.StatusBadRequest
 		errorCode = "invalid_member_invitation"
@@ -106,11 +111,6 @@ func (h *handler) writeMemberInvitationFailure(c *gin.Context, request memberinv
 		status = http.StatusConflict
 		errorCode = "member_invitation_conflict"
 		message = "member invitation conflicts with an existing identity or role assignment"
-	case errors.As(err, &incomplete):
-		errorCode = "zitadel_member_invitation_incomplete"
-		message = "ZITADEL user was created, but ListingKit access was not assigned"
-		outcome = memberinvite.OutcomeIncomplete
-		invitation.UserID = strings.TrimSpace(incomplete.UserID)
 	}
 
 	h.finishMemberInvitation(c, request, invitation, outcome, status, errorCode, message)
