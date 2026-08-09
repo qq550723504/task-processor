@@ -169,6 +169,9 @@ func TestManagerAllowsResolverBackedUnregisteredImageClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetImageClient() error = %v", err)
 	}
+	if got := client.GetDefaultModel(); got != "" {
+		t.Fatalf("resolver-only image client default model = %q, want empty without identity-bound configuration", got)
+	}
 	routed, ok := client.(interface {
 		EditImageWithRoute(context.Context, *ImageEditRequest, ImageRouteSelection) (*ImageResponse, error)
 	})
