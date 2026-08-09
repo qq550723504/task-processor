@@ -29,6 +29,26 @@ func TestBuildGovernedProductImageSceneGeneratorRequiresDependenciesWhenEnabled(
 	}
 }
 
+func TestBuildGovernedProductImageSceneGeneratorCarriesTaskAndTraceIdentity(t *testing.T) {
+	recorder := &sceneGovernanceRecorderCapture{}
+	legacy := &sceneGovernanceGeneratorStub{}
+	resolver := &productImageSceneResolver{resolved: &openaiclient.ResolvedClientConfig{
+		CacheKey: "image-config-v1",
+		Config:   &openaiclient.ClientConfig{APIKey: "key", BaseURL: "https://example.test/v1", Model: "image-model", APIStyle: "openai"},
+	}}
+	generator, err := buildGovernedProductImageSceneGenerator(&config.Config{AICapability: config.AICapabilityConfig{ProductImageSceneEnabled: true}}, legacy, resolver, recorder, nil)
+	if err != nil {
+		t.Fatalf("buildGovernedProductImageSceneGenerator: %v", err)
+	}
+	ctx := productimage.WithAIIdentity(context.Background(), productimage.AIIdentity{TenantID: "tenant-a", UserID: "user-a", BusinessTaskID: "task-a", TraceID: "trace-a"})
+	if _, err := generator.GenerateScene(ctx, &productimage.SceneGenerationRequest{}); err != nil {
+		t.Fatalf("GenerateScene: %v", err)
+	}
+	if recorder.record.BusinessTaskID != "task-a" || recorder.record.TraceID != "trace-a" {
+		t.Fatalf("record identity = %+v", recorder.record)
+	}
+}
+
 type sceneGovernanceGeneratorStub struct{}
 
 func (*sceneGovernanceGeneratorStub) GenerateScene(context.Context, *productimage.SceneGenerationRequest) (*productimage.SceneGenerationResult, error) {
@@ -46,5 +66,14 @@ var _ aicapability.InvocationRecorder = (*sceneGovernanceRecorderStub)(nil)
 type sceneGovernanceRecorderStub struct{}
 
 func (*sceneGovernanceRecorderStub) RecordInvocation(context.Context, aicapability.InvocationRecord) error {
+	return nil
+}
+
+type sceneGovernanceRecorderCapture struct {
+	record aicapability.InvocationRecord
+}
+
+func (r *sceneGovernanceRecorderCapture) RecordInvocation(_ context.Context, record aicapability.InvocationRecord) error {
+	r.record = record
 	return nil
 }

@@ -116,6 +116,40 @@ func TestManagerRoutesChatClientByTenantOrUserContext(t *testing.T) {
 	}
 }
 
+func TestManagerRouteBoundImageClientRejectsCredentialConfigurationDrift(t *testing.T) {
+	mgr, err := NewManager(&ManagerConfig{
+		Clients: map[string]*ClientConfig{
+			"image": testClientConfig("static-key", "static-model", "https://example.test/v1"),
+		},
+		ConfigResolver: fakeClientConfigResolver{
+			tenantConfigs: map[string]*ClientConfig{
+				"tenant-a": testClientConfig("tenant-key", "tenant-model", "https://example.test/v1"),
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+	client, err := mgr.GetImageClient("image")
+	if err != nil {
+		t.Fatalf("GetImageClient() error = %v", err)
+	}
+	routed, ok := client.(interface {
+		EditImageWithRoute(context.Context, *ImageEditRequest, ImageRouteSelection) (*ImageResponse, error)
+	})
+	if !ok {
+		t.Fatal("image client does not expose route-bound edit")
+	}
+	_, err = routed.EditImageWithRoute(
+		WithTenantID(context.Background(), "tenant-a"),
+		&ImageEditRequest{Model: "tenant-model"},
+		ImageRouteSelection{CredentialReference: "image", ConfigurationVersion: "stale-config"},
+	)
+	if err == nil {
+		t.Fatal("expected configuration drift to reject route-bound image call")
+	}
+}
+
 type fakeClientConfigResolver struct {
 	tenantConfigs map[string]*ClientConfig
 	userConfigs   map[string]*ClientConfig

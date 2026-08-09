@@ -28,7 +28,12 @@ func buildGovernedProductImageSceneGenerator(cfg *config.Config, legacy producti
 		Provider: routed,
 		Identity: func(ctx context.Context) productimage.SceneAIIdentity {
 			identity := productimage.AIIdentityFromContext(ctx)
-			return productimage.SceneAIIdentity{TenantID: identity.TenantID, UserID: identity.UserID}
+			return productimage.SceneAIIdentity{
+				TenantID:       identity.TenantID,
+				UserID:         identity.UserID,
+				BusinessTaskID: identity.BusinessTaskID,
+				TraceID:        identity.TraceID,
+			}
 		},
 		OnRecordError: func(record aicapability.InvocationRecord, err error) {
 			if logger != nil {

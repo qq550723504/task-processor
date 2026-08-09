@@ -162,7 +162,7 @@ func TestProcessorRestoresTaskAIIdentityIntoWorkerContext(t *testing.T) {
 		t.Fatalf("ProcessTask() error = %v", err)
 	}
 	identity := productimage.AIIdentityFromContext(service.lastCtx)
-	if identity.TenantID != "tenant-a" || identity.UserID != "user-a" {
+	if identity.TenantID != "tenant-a" || identity.UserID != "user-a" || identity.BusinessTaskID != "task-identity" {
 		t.Fatalf("worker identity = %+v", identity)
 	}
 }

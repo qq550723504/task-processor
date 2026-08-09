@@ -25,7 +25,10 @@ func WithAuthenticatedIdentity(ctx context.Context, identity AuthenticatedIdenti
 	identity.UserID = strings.TrimSpace(identity.UserID)
 	identity.Roles = append([]string(nil), identity.Roles...)
 	ctx = context.WithValue(ctx, authenticatedIdentityContextKey{}, identity)
-	return aiidentity.WithIdentity(ctx, aiidentity.Identity{TenantID: identity.TenantID, UserID: identity.UserID})
+	ai := aiidentity.FromContext(ctx)
+	ai.TenantID = identity.TenantID
+	ai.UserID = identity.UserID
+	return aiidentity.WithIdentity(ctx, ai)
 }
 
 // AuthenticatedIdentityFromContext returns the verified identity stored in ctx.

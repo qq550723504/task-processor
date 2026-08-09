@@ -70,6 +70,21 @@ func TestProductImageSceneCatalogRejectsUnsupportedAPIStyle(t *testing.T) {
 	}
 }
 
+func TestProductImageSceneCatalogRejectsMissingConfigurationVersion(t *testing.T) {
+	resolver := &productImageSceneResolver{resolved: &openaiclient.ResolvedClientConfig{
+		Config: &openaiclient.ClientConfig{
+			APIKey:   "secret",
+			BaseURL:  "https://example.test/v1",
+			Model:    "image-model",
+			APIStyle: "openai",
+		},
+	}}
+	_, err := (&productImageSceneModelCatalog{resolver: resolver}).ResolveModel(context.Background(), productImageSceneRoutingKey)
+	if aicapability.CategoryOf(err) != aicapability.ErrorCredentialUnavailable {
+		t.Fatalf("error category = %q, want %q", aicapability.CategoryOf(err), aicapability.ErrorCredentialUnavailable)
+	}
+}
+
 type productImageSceneResolver struct {
 	resolved *openaiclient.ResolvedClientConfig
 	err      error

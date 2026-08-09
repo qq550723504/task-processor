@@ -4,6 +4,7 @@ package openai
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"task-processor/internal/core/logger"
@@ -150,6 +151,18 @@ func (m *Manager) defaultClientNameLocked() string {
 }
 
 func (m *Manager) resolveClient(ctx context.Context, name string) (*Client, error) {
+	return m.resolveClientWithSelection(ctx, name, nil)
+}
+
+func (m *Manager) resolveClientWithSelection(ctx context.Context, name string, selection *ImageRouteSelection) (*Client, error) {
+	if selection != nil {
+		if reference := normalizeClientName(selection.CredentialReference); reference != normalizeClientName(name) {
+			return nil, fmt.Errorf("image route credential reference %q does not match client %q", selection.CredentialReference, name)
+		}
+		if m.configResolver == nil {
+			return nil, fmt.Errorf("image route credential resolver is not configured")
+		}
+	}
 	fallback, err := m.resolveStaticClient(name)
 	if err != nil {
 		return nil, err
@@ -162,11 +175,17 @@ func (m *Manager) resolveClient(ctx context.Context, name string) (*Client, erro
 		return nil, err
 	}
 	if resolved == nil || resolved.Config == nil {
+		if selection != nil {
+			return nil, fmt.Errorf("image route credential configuration is unavailable")
+		}
 		return fallback, nil
 	}
 	cacheKey := resolved.CacheKey
 	if cacheKey == "" {
 		cacheKey = name + ":" + resolved.Config.APIKey + ":" + resolved.Config.BaseURL + ":" + resolved.Config.Model
+	}
+	if selection != nil && strings.TrimSpace(selection.ConfigurationVersion) != strings.TrimSpace(cacheKey) {
+		return nil, fmt.Errorf("image route credential configuration changed: selected %q, current %q", selection.ConfigurationVersion, cacheKey)
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

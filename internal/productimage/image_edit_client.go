@@ -7,6 +7,10 @@ type imageEditClient interface {
 	GetDefaultModel() string
 }
 
+type routeBoundImageEditClient interface {
+	EditImageWithRoute(ctx context.Context, req imageEditRequest, route SceneGenerationRoute) (*imageEditResponse, error)
+}
+
 type imageEditRequest struct {
 	Model          string
 	Prompt         string

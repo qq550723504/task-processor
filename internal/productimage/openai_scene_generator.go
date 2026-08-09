@@ -45,7 +45,7 @@ func (g *openAICompatibleSceneGenerator) GenerateSceneWithRoute(ctx context.Cont
 	if modelID == "" {
 		return nil, fmt.Errorf("scene generation route model is required")
 	}
-	response, err := g.client.EditImage(ctx, imageEditRequest{
+	editRequest := imageEditRequest{
 		Model:          modelID,
 		Prompt:         resolvedPrompt.Text,
 		Image:          data,
@@ -53,7 +53,17 @@ func (g *openAICompatibleSceneGenerator) GenerateSceneWithRoute(ctx context.Cont
 		ResponseFormat: "b64_json",
 		N:              1,
 		Size:           "auto",
-	})
+	}
+	var response *imageEditResponse
+	if strings.TrimSpace(route.CredentialReference) != "" || strings.TrimSpace(route.ConfigurationVersion) != "" {
+		routeClient, ok := g.client.(routeBoundImageEditClient)
+		if !ok {
+			return nil, fmt.Errorf("scene generation route credential pinning is unsupported")
+		}
+		response, err = routeClient.EditImageWithRoute(ctx, editRequest, route)
+	} else {
+		response, err = g.client.EditImage(ctx, editRequest)
+	}
 	if err != nil {
 		return nil, err
 	}

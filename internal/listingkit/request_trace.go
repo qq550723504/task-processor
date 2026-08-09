@@ -4,6 +4,8 @@ import (
 	"context"
 	"strconv"
 	"strings"
+
+	"task-processor/internal/shared/aiidentity"
 )
 
 type RequestTrace struct {
@@ -25,7 +27,10 @@ func WithRequestTrace(ctx context.Context, trace RequestTrace) context.Context {
 	if normalized.IsZero() {
 		return ctx
 	}
-	return context.WithValue(ctx, requestTraceContextKey{}, normalized)
+	ctx = context.WithValue(ctx, requestTraceContextKey{}, normalized)
+	identity := aiidentity.FromContext(ctx)
+	identity.TraceID = normalized.BatchID
+	return aiidentity.WithIdentity(ctx, identity)
 }
 
 func RequestTraceFromContext(ctx context.Context) RequestTrace {

@@ -17,6 +17,43 @@ import (
 
 type routeDescriptor = httproute.Descriptor
 
+func TestRouteRequiresZitadelAuthProtectsProductImageRoutes(t *testing.T) {
+	for _, method := range []string{http.MethodPost, http.MethodGet} {
+		if !RouteRequiresZitadelAuth(routeDescriptor{Method: method, Path: "/api/v1/images/process", Module: "images"}) {
+			t.Fatalf("RouteRequiresZitadelAuth(%s images) = false, want true", method)
+		}
+	}
+}
+
+func TestListingKitZitadelAuthStoresIdentityForProductImageRoute(t *testing.T) {
+	zitadel := newZitadelRoleServer(t)
+	defer zitadel.Close()
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{IssuerURL: zitadel.URL, ClientID: "listingkit-client", Required: true},
+	})
+
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{{
+		Method: http.MethodPost, Path: "/api/v1/images/process", Module: "images",
+		Handler: func(c *gin.Context) {
+			identity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+			if !ok {
+				c.JSON(http.StatusForbidden, gin.H{"error": "missing_identity"})
+				return
+			}
+			c.JSON(http.StatusOK, gin.H{"tenant_id": identity.TenantID, "user_id": identity.UserID})
+		},
+	}})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/images/process", nil)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK || !strings.Contains(resp.Body.String(), "org-286") || !strings.Contains(resp.Body.String(), "user-42") {
+		t.Fatalf("status = %d, body = %s", resp.Code, resp.Body.String())
+	}
+}
+
 func mountRoutes(r *gin.Engine, routes []routeDescriptor) {
 	zitadelAuth := NewZitadelAuthMiddlewareFromEnv()
 	for _, route := range routes {

@@ -80,8 +80,10 @@ type SceneGenerator interface {
 }
 
 type SceneGenerationRoute struct {
-	RoutingKey string
-	ModelID    string
+	RoutingKey           string
+	ModelID              string
+	CredentialReference  string
+	ConfigurationVersion string
 }
 
 type SceneGeneratorWithRoute interface {

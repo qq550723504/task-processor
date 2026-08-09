@@ -17,7 +17,10 @@ type Identity struct {
 func WithIdentity(ctx context.Context, identity Identity) context.Context {
 	identity.TenantID = strings.TrimSpace(identity.TenantID)
 	identity.UserID = strings.TrimSpace(identity.UserID)
-	return aiidentity.WithIdentity(ctx, aiidentity.Identity{TenantID: identity.TenantID, UserID: identity.UserID})
+	current := aiidentity.FromContext(ctx)
+	current.TenantID = identity.TenantID
+	current.UserID = identity.UserID
+	return aiidentity.WithIdentity(ctx, current)
 }
 
 func WithTenantID(ctx context.Context, tenantID string) context.Context {

@@ -101,8 +101,10 @@ func (g *governedSceneGenerator) GenerateScene(ctx context.Context, req *SceneGe
 	}
 
 	result, providerErr := g.provider.GenerateSceneWithRoute(ctx, req, SceneGenerationRoute{
-		RoutingKey: decision.RoutingKey,
-		ModelID:    decision.ModelID,
+		RoutingKey:           decision.RoutingKey,
+		ModelID:              decision.ModelID,
+		CredentialReference:  decision.CredentialReference,
+		ConfigurationVersion: decision.ConfigurationVersion,
 	})
 	if providerErr != nil {
 		wrapped := aicapability.NewError(classifySceneError(providerErr), string(aicapability.OperationProductImageSceneGenerate), providerErr)
@@ -196,13 +198,30 @@ func hashSceneRequest(req *SceneGenerationRequest) string {
 		AudienceHint   string
 		CustomHint     string
 		ProductContext *ProductContext
+		SourceAsset    any
 	}{
 		PromptRef: req.PromptRef, SceneIntent: req.SceneIntent, SceneCategory: req.SceneCategory,
 		SceneStyle: req.SceneStyle, BackgroundTone: req.BackgroundTone, Composition: req.Composition,
 		PropsLevel: req.PropsLevel, AudienceHint: req.AudienceHint, CustomHint: req.CustomSceneHint,
 		ProductContext: req.ProductContext,
+		SourceAsset:    sourceAssetFingerprint(req.SourceAsset),
 	}
 	return hashJSON(payload)
+}
+
+func sourceAssetFingerprint(asset *ImageAsset) any {
+	if asset == nil {
+		return nil
+	}
+	return struct {
+		URL       string
+		SourceURL string
+		Type      AssetType
+		Width     int
+		Height    int
+	}{
+		URL: asset.URL, SourceURL: asset.SourceURL, Type: asset.Type, Width: asset.Width, Height: asset.Height,
+	}
 }
 
 func hashSceneResult(result *SceneGenerationResult) string {

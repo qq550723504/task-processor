@@ -28,7 +28,7 @@ func (c *productImageSceneModelCatalog) ResolveModel(ctx context.Context, routin
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
 	}
 	resolved, err := c.resolver.ResolveClientConfig(ctx, "image", nil)
-	if err != nil || resolved == nil || resolved.Config == nil {
+	if err != nil || resolved == nil || resolved.Config == nil || strings.TrimSpace(resolved.CacheKey) == "" {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", err)
 	}
 	configured := resolved.Config

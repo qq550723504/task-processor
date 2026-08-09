@@ -52,7 +52,7 @@ func TestGovernedSceneGeneratorRoutesOnceAndRecordsDecision(t *testing.T) {
 	if result == nil || len(result.Assets) != 1 || provider.calls != 1 || router.calls != 1 {
 		t.Fatalf("result=%+v provider_calls=%d router_calls=%d", result, provider.calls, router.calls)
 	}
-	if provider.route.ModelID != "routed-model" || provider.route.RoutingKey != "productimage-image" {
+	if provider.route.ModelID != "routed-model" || provider.route.RoutingKey != "productimage-image" || provider.route.CredentialReference != "image" || provider.route.ConfigurationVersion != "config-v1" {
 		t.Fatalf("provider route = %+v", provider.route)
 	}
 	if recorder.record.Outcome != aicapability.InvocationSucceeded || recorder.record.ModelID != "routed-model" || recorder.record.TenantID != "tenant-a" || recorder.record.ImageCount != 1 {
@@ -153,6 +153,14 @@ func TestGovernedSceneGeneratorClassifiesProviderDeadlineAsTimeout(t *testing.T)
 	}
 	if recorder.record.ErrorCategory != aicapability.ErrorProviderTimeout {
 		t.Fatalf("record error category = %q, want %q", recorder.record.ErrorCategory, aicapability.ErrorProviderTimeout)
+	}
+}
+
+func TestHashSceneRequestIncludesSourceAssetFingerprint(t *testing.T) {
+	first := hashSceneRequest(&SceneGenerationRequest{SourceAsset: &ImageAsset{URL: "source-a", SourceURL: "origin-a", Width: 100, Height: 200}})
+	second := hashSceneRequest(&SceneGenerationRequest{SourceAsset: &ImageAsset{URL: "source-b", SourceURL: "origin-b", Width: 100, Height: 200}})
+	if first == second {
+		t.Fatalf("source asset changes must change input hash: %q", first)
 	}
 }
 

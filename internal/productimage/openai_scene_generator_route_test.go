@@ -48,12 +48,15 @@ func TestOpenAICompatibleSceneGeneratorAppliesRouteModel(t *testing.T) {
 
 	_, err = routed.GenerateSceneWithRoute(context.Background(), &SceneGenerationRequest{
 		SourceAsset: &ImageAsset{URL: sourcePath, Metadata: map[string]string{"local_path": sourcePath}},
-	}, SceneGenerationRoute{RoutingKey: "productimage-image", ModelID: "routed-model"})
+	}, SceneGenerationRoute{RoutingKey: "productimage-image", ModelID: "routed-model", CredentialReference: "image", ConfigurationVersion: "config-v1"})
 	if err != nil {
 		t.Fatalf("GenerateSceneWithRoute: %v", err)
 	}
 	if client.lastRequest == nil || client.lastRequest.Model != "routed-model" {
 		t.Fatalf("request = %+v, want routed model", client.lastRequest)
+	}
+	if client.lastSelection == nil || client.lastSelection.CredentialReference != "image" || client.lastSelection.ConfigurationVersion != "config-v1" {
+		t.Fatalf("route selection = %+v", client.lastSelection)
 	}
 }
 
@@ -61,11 +64,17 @@ type recordingSceneImageClient struct {
 	defaultModel  string
 	responseImage []byte
 	lastRequest   *openaiclient.ImageEditRequest
+	lastSelection *openaiclient.ImageRouteSelection
 }
 
 func (c *recordingSceneImageClient) EditImage(_ context.Context, req *openaiclient.ImageEditRequest) (*openaiclient.ImageResponse, error) {
 	c.lastRequest = req
 	return &openaiclient.ImageResponse{Data: []openaiclient.ImageData{{B64JSON: base64.StdEncoding.EncodeToString(c.responseImage)}}}, nil
+}
+
+func (c *recordingSceneImageClient) EditImageWithRoute(ctx context.Context, req *openaiclient.ImageEditRequest, selection openaiclient.ImageRouteSelection) (*openaiclient.ImageResponse, error) {
+	c.lastSelection = &selection
+	return c.EditImage(ctx, req)
 }
 
 func (c *recordingSceneImageClient) GetDefaultModel() string { return c.defaultModel }
