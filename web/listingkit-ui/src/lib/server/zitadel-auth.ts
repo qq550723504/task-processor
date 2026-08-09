@@ -170,6 +170,13 @@ export function authorizeZitadelIdentity(
   identity: ZitadelVerifiedIdentity,
 ): ZitadelAuthorizationResult {
   const config = readZitadelAuthorizationConfig();
+  if (config.hasLegacyUsernameAllowlist) {
+    return {
+      authorized: false,
+      required: true,
+      reason: "ZITADEL username allowlists are obsolete; configure canonical allowlists",
+    };
+  }
   if (!config.required) {
     return { authorized: true, required: false };
   }
@@ -236,6 +243,10 @@ function readZitadelAuthorizationConfig() {
     "LISTINGKIT_ZITADEL_ALLOWED_ROLES",
     "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES",
   );
+  const hasLegacyUsernameAllowlist = hasConfiguredEnvValue(
+    "LISTINGKIT_ZITADEL_ALLOWED_USERNAMES",
+    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES",
+  );
 
   return {
     required:
@@ -245,7 +256,12 @@ function readZitadelAuthorizationConfig() {
     allowedTenantIds,
     allowedUserIds,
     allowedRoles,
+    hasLegacyUsernameAllowlist,
   };
+}
+
+function hasConfiguredEnvValue(...names: string[]) {
+  return names.some((name) => Boolean(process.env[name]?.trim()));
 }
 
 function readDelimitedEnvSet(...names: string[]) {

@@ -44,7 +44,24 @@ describe("authorizeZitadelIdentity", () => {
     ).toEqual({
       authorized: false,
       required: true,
-      reason: "ZITADEL identity is not allowed to access ListingKit",
+      reason: "ZITADEL username allowlists are obsolete; configure canonical allowlists",
+    });
+  });
+
+  it("fails closed when only an obsolete username allowlist is configured", () => {
+    vi.stubEnv("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "legacy-admin");
+
+    expect(
+      authorizeZitadelIdentity({
+        tenantId: "org-1",
+        userId: "zitadel-subject-123",
+        username: "legacy-admin",
+        roles: ["listingkit_admin"],
+      }),
+    ).toEqual({
+      authorized: false,
+      required: true,
+      reason: "ZITADEL username allowlists are obsolete; configure canonical allowlists",
     });
   });
 
