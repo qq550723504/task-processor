@@ -30,21 +30,26 @@ describe("authorizeZitadelIdentity", () => {
     vi.unstubAllEnvs();
   });
 
-  it("allows a configured username allowlist entry", () => {
+  it("does not authorize a disallowed subject from a configured username", () => {
     vi.stubEnv("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "1-admin");
+    vi.stubEnv("LISTINGKIT_ZITADEL_ALLOWED_USER_IDS", "allowed-subject");
 
     expect(
       authorizeZitadelIdentity({
         tenantId: "org-1",
-        userId: "user-1",
+        userId: "disallowed-subject",
         username: "1-admin",
         roles: ["listingkit_viewer"],
       }),
-    ).toEqual({ authorized: true, required: true });
+    ).toEqual({
+      authorized: false,
+      required: true,
+      reason: "ZITADEL identity is not allowed to access ListingKit",
+    });
   });
 
   it("denies access when authorization is required but identity does not match", () => {
-    vi.stubEnv("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "1-admin");
+    vi.stubEnv("LISTINGKIT_ZITADEL_ALLOWED_USER_IDS", "allowed-subject");
 
     expect(
       authorizeZitadelIdentity({
@@ -156,6 +161,7 @@ describe("readZitadelIdentityFromSession", () => {
       readZitadelIdentityFromSession({
         expires: "2026-05-17T00:00:00.000Z",
         accessToken: "access-token-1",
+        identityVersion: 1,
         identity: {
           tenantId: "org-1",
           userId: "user-1",
@@ -171,5 +177,21 @@ describe("readZitadelIdentityFromSession", () => {
       userType: "zitadel",
       roles: ["listingkit_admin"],
     });
+  });
+
+  it("rejects an unmarked legacy Auth.js identity", () => {
+    expect(
+      readZitadelIdentityFromSession({
+        expires: "2026-05-17T00:00:00.000Z",
+        accessToken: "access-token-1",
+        identity: {
+          tenantId: "org-1",
+          userId: "legacy-user-id",
+          username: "admin",
+          userType: "zitadel",
+          roles: ["listingkit_admin"],
+        },
+      }),
+    ).toBeNull();
   });
 });

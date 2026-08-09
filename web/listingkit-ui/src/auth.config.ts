@@ -6,8 +6,10 @@ import ZITADEL from "next-auth/providers/zitadel";
 import { createResilientOidcFetch } from "@/lib/server/auth-fetch";
 import {
   extractZitadelIdentityFromClaims,
+  normalizeClaim,
   type ListingKitSessionIdentity,
   type ZitadelTokenPayload,
+  ZITADEL_IDENTITY_VERSION,
 } from "@/lib/server/zitadel-identity";
 
 export type { ListingKitSessionIdentity };
@@ -21,6 +23,7 @@ declare module "next-auth" {
     issuerUrl?: string;
     clientId?: string;
     identity?: ListingKitSessionIdentity | null;
+    identityVersion?: number;
   }
 }
 
@@ -34,6 +37,7 @@ declare module "next-auth/jwt" {
     issuerUrl?: string;
     clientId?: string;
     identity?: ListingKitSessionIdentity | null;
+    identityVersion?: number;
   }
 }
 
@@ -162,6 +166,9 @@ export function buildAuthConfig(): NextAuthConfig {
     callbacks: {
       async jwt({ token, account, profile }) {
         if (account?.provider === "zitadel") {
+          const identity = profile
+            ? extractZitadelIdentityFromClaims(profile as ZitadelTokenPayload)
+            : null;
           return {
             ...token,
             accessToken: account.access_token,
@@ -176,11 +183,8 @@ export function buildAuthConfig(): NextAuthConfig {
             issuerUrl: zitadel?.issuerUrl,
             clientId: zitadel?.clientId,
             error: undefined,
-            identity: profile
-              ? extractZitadelIdentityFromClaims(
-                  profile as ZitadelTokenPayload,
-                )
-              : null,
+            identity,
+            identityVersion: identity ? ZITADEL_IDENTITY_VERSION : undefined,
           } satisfies JWT;
         }
 
@@ -204,14 +208,12 @@ export function buildAuthConfig(): NextAuthConfig {
             issuerUrl: zitadel.issuerUrl,
             clientId: zitadel.clientId,
             error: undefined,
-            identity:
-              refreshed.identity ??
-              token.identity ??
-              extractIdentityFromTokenPayload(refreshed.idToken),
           } satisfies JWT;
         } catch (error) {
           return {
             ...token,
+            identity: null,
+            identityVersion: undefined,
             error:
               error instanceof Error
                 ? error.message
@@ -226,7 +228,12 @@ export function buildAuthConfig(): NextAuthConfig {
         session.error = token.error;
         session.issuerUrl = token.issuerUrl;
         session.clientId = token.clientId;
-        session.identity = token.identity ?? null;
+        session.identity = hasCurrentZitadelIdentity(token)
+          ? token.identity
+          : null;
+        session.identityVersion = hasCurrentZitadelIdentity(token)
+          ? ZITADEL_IDENTITY_VERSION
+          : undefined;
         return session;
       },
       async redirect({ url, baseUrl }) {
@@ -283,6 +290,16 @@ async function refreshZitadelToken(
     );
   }
 
+  const includesIDToken = Object.hasOwn(payload, "id_token");
+  const identity = includesIDToken
+    ? extractIdentityFromTokenPayload(payload.id_token)
+    : hasCurrentZitadelIdentity(token)
+      ? token.identity
+      : null;
+  if (includesIDToken && !identity) {
+    throw new Error("Refreshed ZITADEL ID token is missing a canonical subject");
+  }
+
   return {
     accessToken: payload.access_token,
     refreshToken: payload.refresh_token ?? token.refreshToken,
@@ -290,11 +307,19 @@ async function refreshZitadelToken(
     expiresAt: payload.expires_in
       ? Math.floor(Date.now() / 1000) + payload.expires_in
       : token.expiresAt,
-    identity:
-      extractIdentityFromTokenPayload(payload.id_token) ??
-      token.identity ??
-      null,
+    identity,
+    identityVersion: identity ? ZITADEL_IDENTITY_VERSION : undefined,
   } satisfies Partial<JWT>;
+}
+
+function hasCurrentZitadelIdentity(
+  token: Pick<JWT, "identity" | "identityVersion">,
+): token is JWT & { identity: ListingKitSessionIdentity } {
+  return Boolean(
+    token.identityVersion === ZITADEL_IDENTITY_VERSION &&
+      normalizeClaim(token.identity?.tenantId) &&
+      normalizeClaim(token.identity?.userId),
+  );
 }
 
 async function fetchZitadelDiscovery(

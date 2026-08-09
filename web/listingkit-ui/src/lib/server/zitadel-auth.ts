@@ -9,6 +9,7 @@ import {
   normalizeClaim,
   type ListingKitSessionIdentity,
   type ZitadelTokenPayload,
+  ZITADEL_IDENTITY_VERSION,
 } from "@/lib/server/zitadel-identity";
 
 export type ZitadelDiscovery = {
@@ -73,7 +74,7 @@ export function readZitadelIdentityFromSession(
   session: Session | null | undefined,
 ): ZitadelVerifiedIdentity | null {
   const identity = session?.identity;
-  if (!identity) {
+  if (!identity || session?.identityVersion !== ZITADEL_IDENTITY_VERSION) {
     return null;
   }
   const tenantId = normalizeClaim(identity.tenantId);
@@ -176,7 +177,6 @@ export function authorizeZitadelIdentity(
   if (
     config.allowedTenantIds.size === 0 &&
     config.allowedUserIds.size === 0 &&
-    config.allowedUsernames.size === 0 &&
     config.allowedRoles.size === 0
   ) {
     return {
@@ -193,11 +193,6 @@ export function authorizeZitadelIdentity(
 
   const userId = stringifyIdentityValue(identity.userId);
   if (userId && config.allowedUserIds.has(userId)) {
-    return { authorized: true, required: true };
-  }
-
-  const username = stringifyIdentityValue(identity.username);
-  if (username && config.allowedUsernames.has(username)) {
     return { authorized: true, required: true };
   }
 
@@ -237,10 +232,6 @@ function readZitadelAuthorizationConfig() {
     "LISTINGKIT_ZITADEL_ALLOWED_USER_IDS",
     "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS",
   );
-  const allowedUsernames = readDelimitedEnvSet(
-    "LISTINGKIT_ZITADEL_ALLOWED_USERNAMES",
-    "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES",
-  );
   const allowedRoles = readDelimitedEnvSet(
     "LISTINGKIT_ZITADEL_ALLOWED_ROLES",
     "TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES",
@@ -250,11 +241,9 @@ function readZitadelAuthorizationConfig() {
     required:
       allowedTenantIds.size > 0 ||
       allowedUserIds.size > 0 ||
-      allowedUsernames.size > 0 ||
       allowedRoles.size > 0,
     allowedTenantIds,
     allowedUserIds,
-    allowedUsernames,
     allowedRoles,
   };
 }

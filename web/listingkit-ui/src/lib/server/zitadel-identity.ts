@@ -1,5 +1,6 @@
 export const RESOURCE_OWNER_CLAIM =
   "urn:zitadel:iam:user:resourceowner:id";
+export const ZITADEL_IDENTITY_VERSION = 1;
 
 export type ListingKitSessionIdentity = {
   tenantId?: string | number;
@@ -41,7 +42,7 @@ export function normalizeClaim(value: unknown) {
   if (typeof value === "string" && value.trim()) {
     return value.trim();
   }
-  return "";
+  return undefined;
 }
 
 function extractProjectRoles(payload: ZitadelTokenPayload) {

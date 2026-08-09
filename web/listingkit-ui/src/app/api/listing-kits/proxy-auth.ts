@@ -76,6 +76,9 @@ export async function verifyListingKitRequestIdentity(
     if (!zitadelToken) {
       throw new Error("Missing ZITADEL session");
     }
+    if (!identity) {
+      throw new Error("Missing current ZITADEL identity");
+    }
 
     if (
       (storedIssuerURL && storedIssuerURL !== zitadelOptions.issuerUrl) ||
