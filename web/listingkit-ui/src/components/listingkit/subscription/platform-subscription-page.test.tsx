@@ -491,8 +491,111 @@ describe("PlatformSubscriptionPage", () => {
 
     await waitFor(() => {
       expect(confirmMock).toHaveBeenCalledWith(
-        expect.stringMatching(/org-target.*jane@example\.com.*listingkit_viewer/),
+        expect.stringMatching(/org-target.*j\*\*\*@example\.com.*listingkit_viewer/),
       );
+      expect(mockedInvitePlatformTenantMember).toHaveBeenCalledWith(
+        "org-target",
+        {
+          given_name: "Jane",
+          family_name: "Doe",
+          email: "jane@example.com",
+          role: "listingkit_viewer",
+        },
+      );
+    });
+  });
+
+  it("submits an email invitation with E.164 phone verification and a username", async () => {
+    const user = userEvent.setup();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await user.selectOptions(screen.getByLabelText("邀请方式"), "email_phone");
+    await fillValidInvitation(user);
+    await user.type(screen.getByLabelText("手机号"), "+8613812345678");
+    await user.type(screen.getByLabelText("用户名"), "jane.doe");
+    expect(screen.getByLabelText("手机号")).toHaveValue("+8613812345678");
+    expect(screen.getByLabelText("手机号")).toBeValid();
+    expect(screen.getByLabelText("用户名")).toHaveValue("jane.doe");
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    await waitFor(() => {
+      expect(mockedInvitePlatformTenantMember).toHaveBeenCalledWith(
+        "org-target",
+        {
+          given_name: "Jane",
+          family_name: "Doe",
+          email: "jane@example.com",
+          phone: "+8613812345678",
+          username: "jane.doe",
+          role: "listingkit_viewer",
+        },
+      );
+    });
+  });
+
+  it("blocks a phone-verification invitation without an email", async () => {
+    const user = userEvent.setup();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await user.selectOptions(screen.getByLabelText("邀请方式"), "email_phone");
+    await user.type(screen.getByLabelText("名字"), "Jane");
+    await user.type(screen.getByLabelText("姓氏"), "Doe");
+    await user.type(screen.getByLabelText("手机号"), "+8613812345678");
+    await user.type(screen.getByLabelText("用户名"), "jane.doe");
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    expect(mockedInvitePlatformTenantMember).not.toHaveBeenCalled();
+  });
+
+  it("rejects a phone-verification invitation with a non-E.164 phone", async () => {
+    const user = userEvent.setup();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await user.selectOptions(screen.getByLabelText("邀请方式"), "email_phone");
+    await fillValidInvitation(user);
+    await user.type(screen.getByLabelText("手机号"), "13812345678");
+    await user.type(screen.getByLabelText("用户名"), "jane.doe");
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    expect(mockedInvitePlatformTenantMember).not.toHaveBeenCalled();
+  });
+
+  it("omits stale phone verification fields after switching back to email-only", async () => {
+    const user = userEvent.setup();
+    mockedGetPlatformTenantSubscription.mockResolvedValue({
+      tenant_id: "org-target",
+      modules: [],
+      entitlements: [],
+    });
+
+    renderWithQueryClient(<PlatformSubscriptionPage />);
+    await selectTenantAndOpenInvitation(user);
+    await user.selectOptions(screen.getByLabelText("邀请方式"), "email_phone");
+    await fillValidInvitation(user);
+    await user.type(screen.getByLabelText("手机号"), "+8613812345678");
+    await user.type(screen.getByLabelText("用户名"), "jane.doe");
+    await user.selectOptions(screen.getByLabelText("邀请方式"), "email_only");
+    await user.click(screen.getByRole("button", { name: "发送邀请" }));
+
+    await waitFor(() => {
       expect(mockedInvitePlatformTenantMember).toHaveBeenCalledWith(
         "org-target",
         {
@@ -520,7 +623,7 @@ describe("PlatformSubscriptionPage", () => {
 
     expect(
       await screen.findByText(
-        /org-target.*jane@example\.com.*listingkit_viewer.*初始化邮件/,
+        /org-target.*j\*\*\*@example\.com.*listingkit_viewer.*初始化邮件/,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText("邮箱")).not.toBeInTheDocument();
@@ -555,7 +658,7 @@ describe("PlatformSubscriptionPage", () => {
     );
     await user.click(screen.getByRole("button", { name: "发送邀请" }));
 
-    const guidance = await screen.findByText(/user-1/);
+    const guidance = await screen.findByText(/u\*\*\*1/);
     expect(guidance).toHaveTextContent("尚未获得访问权限");
     expect(guidance).toHaveTextContent("listingkit_operator");
   });
@@ -600,6 +703,9 @@ describe("PlatformSubscriptionPage", () => {
     renderWithQueryClient(<PlatformSubscriptionPage />);
     await selectTenantAndOpenInvitation(user);
     await fillValidInvitation(user);
+    await user.selectOptions(screen.getByLabelText("邀请方式"), "email_phone");
+    await user.type(screen.getByLabelText("手机号"), "+8613812345678");
+    await user.type(screen.getByLabelText("用户名"), "jane.doe");
     await user.selectOptions(
       screen.getByLabelText("角色"),
       "listingkit_operator",
@@ -616,6 +722,9 @@ describe("PlatformSubscriptionPage", () => {
     expect(screen.getByLabelText("名字")).toBeDisabled();
     expect(screen.getByLabelText("姓氏")).toBeDisabled();
     expect(screen.getByLabelText("邮箱")).toBeDisabled();
+    expect(screen.getByLabelText("邀请方式")).toBeDisabled();
+    expect(screen.getByLabelText("手机号")).toBeDisabled();
+    expect(screen.getByLabelText("用户名")).toBeDisabled();
     expect(screen.getByLabelText("角色")).toBeDisabled();
     expect(screen.getByRole("button", { name: "发送邀请" })).toBeDisabled();
     expect(screen.getByText("目标租户").closest("button")).toBeDisabled();
@@ -634,7 +743,7 @@ describe("PlatformSubscriptionPage", () => {
 
     expect(
       await screen.findByText(
-        /org-target.*jane@example\.com.*listingkit_operator.*初始化邮件/,
+        /org-target.*j\*\*\*@example\.com.*listingkit_operator.*初始化邮件/,
       ),
     ).toBeInTheDocument();
   });
@@ -730,7 +839,7 @@ describe("PlatformSubscriptionPage", () => {
     });
 
     await screen.findByText(
-      /org-target.*jane@example\.com.*listingkit_viewer.*初始化邮件/,
+      /org-target.*j\*\*\*@example\.com.*listingkit_viewer.*初始化邮件/,
     );
     expect(screen.getByLabelText("租户 ID")).toHaveValue("org-target");
     await waitFor(() => {

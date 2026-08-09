@@ -55,6 +55,47 @@ describe("subscription API client", () => {
     );
   });
 
+  it("posts an email invitation with phone verification fields unchanged", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          tenant_id: "org-1",
+          user_id: "user-1",
+          email: "jane@example.com",
+          role: "listingkit_viewer",
+          authorization_id: "authorization-1",
+          invitation_email_sent: true,
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await invitePlatformTenantMember("org-1", {
+      given_name: "Jane",
+      family_name: "Doe",
+      email: "jane@example.com",
+      phone: "+8613812345678",
+      username: "jane.doe",
+      role: "listingkit_viewer",
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/listing-kits/platform/tenants/org-1/members/invitations",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          given_name: "Jane",
+          family_name: "Doe",
+          email: "jane@example.com",
+          phone: "+8613812345678",
+          username: "jane.doe",
+          role: "listingkit_viewer",
+        }),
+      }),
+    );
+  });
+
   it("encodes reserved characters in the invitation tenant path", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

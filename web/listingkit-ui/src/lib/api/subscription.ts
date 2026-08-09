@@ -243,12 +243,21 @@ export type PlatformTenantMemberInvitation = z.infer<
   typeof platformTenantMemberInvitationSchema
 >;
 
-export type PlatformTenantMemberInvitationInput = {
-  given_name: string;
-  family_name: string;
-  email: string;
-  role: PlatformTenantMemberRole;
-};
+export type PlatformTenantMemberInvitationInput =
+  | {
+      given_name: string;
+      family_name: string;
+      email: string;
+      role: PlatformTenantMemberRole;
+    }
+  | {
+      given_name: string;
+      family_name: string;
+      email: string;
+      phone: string;
+      username: string;
+      role: PlatformTenantMemberRole;
+    };
 
 export type SubscriptionEntitlementInput = {
   status: SubscriptionStatus;

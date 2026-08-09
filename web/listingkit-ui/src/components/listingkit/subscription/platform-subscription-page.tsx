@@ -16,6 +16,7 @@ import {
   invitePlatformTenantMember,
   updatePlatformTenantSubscriptionUsage,
   updatePlatformTenantSubscriptionEntitlement,
+  type PlatformTenantMemberInvitationInput,
   type PlatformTenantMemberRole,
   type SubscriptionEntitlementView,
   type SubscriptionStatus,
@@ -96,6 +97,9 @@ const MODULE_GUIDANCE: Record<string, { recommendedMetrics?: Array<{ key: string
   },
 };
 
+const E164_PHONE_PATTERN = /^\+[1-9]\d{6,14}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export function PlatformSubscriptionPage() {
   const tenantContextOperationRef = useRef<"invitation" | "onboarding" | null>(
     null,
@@ -122,6 +126,11 @@ export function PlatformSubscriptionPage() {
   const [invitationGivenName, setInvitationGivenName] = useState("");
   const [invitationFamilyName, setInvitationFamilyName] = useState("");
   const [invitationEmail, setInvitationEmail] = useState("");
+  const [invitationMode, setInvitationMode] = useState<
+    "email_only" | "email_phone"
+  >("email_only");
+  const [invitationPhone, setInvitationPhone] = useState("");
+  const [invitationUsername, setInvitationUsername] = useState("");
   const [invitationRole, setInvitationRole] =
     useState<PlatformTenantMemberRole>("listingkit_viewer");
   const [invitingMember, setInvitingMember] = useState(false);
@@ -214,18 +223,46 @@ export function PlatformSubscriptionPage() {
     const givenName = invitationGivenName.trim();
     const familyName = invitationFamilyName.trim();
     const email = invitationEmail.trim();
-    if (!normalizedTenantId || !givenName || !familyName || !email) {
+    const phone = invitationPhone.trim();
+    const username = invitationUsername.trim();
+    if (
+      !normalizedTenantId ||
+      !givenName ||
+      !familyName ||
+      !email ||
+      !EMAIL_PATTERN.test(email) ||
+      (invitationMode === "email_phone" &&
+        (!E164_PHONE_PATTERN.test(phone) || !username))
+    ) {
+      event.currentTarget.reportValidity();
       return;
     }
+    const invitationInput: PlatformTenantMemberInvitationInput =
+      invitationMode === "email_phone"
+        ? {
+            given_name: givenName,
+            family_name: familyName,
+            email,
+            phone,
+            username,
+            role: invitationRole,
+          }
+        : {
+            given_name: givenName,
+            family_name: familyName,
+            email,
+            role: invitationRole,
+          };
     const requestContext = {
       tenantId: normalizedTenantId,
       email,
       role: invitationRole,
+      mode: invitationMode,
     };
     if (
       typeof window !== "undefined" &&
       !window.confirm(
-        `确认向租户 ${requestContext.tenantId} 邀请 ${requestContext.email}，并授予角色 ${requestContext.role} 吗？`,
+        `确认向租户 ${requestContext.tenantId} 邀请 ${maskEmail(requestContext.email)}，并授予角色 ${requestContext.role} 吗？`,
       )
     ) {
       return;
@@ -236,25 +273,23 @@ export function PlatformSubscriptionPage() {
     setError("");
     setInvitationFeedback("");
     try {
-      await invitePlatformTenantMember(requestContext.tenantId, {
-        given_name: givenName,
-        family_name: familyName,
-        email: requestContext.email,
-        role: requestContext.role,
-      });
+      await invitePlatformTenantMember(requestContext.tenantId, invitationInput);
       setInvitationGivenName("");
       setInvitationFamilyName("");
       setInvitationEmail("");
+      setInvitationMode("email_only");
+      setInvitationPhone("");
+      setInvitationUsername("");
       setInvitationRole("listingkit_viewer");
       setShowMemberInvitation(false);
       setInvitationFeedback(
-        `租户 ${requestContext.tenantId} 的成员 ${requestContext.email}（角色 ${requestContext.role}）：ZITADEL 已发送初始化邮件。`,
+        `租户 ${requestContext.tenantId} 的成员 ${maskEmail(requestContext.email)}（角色 ${requestContext.role}）：ZITADEL 已发送初始化邮件${requestContext.mode === "email_phone" ? "，并会通过短信验证手机号" : ""}。`,
       );
       await auditQuery.refetch();
     } catch (err) {
       if (isIncompleteMemberInvitationError(err)) {
         setError(
-          `ZITADEL 已创建用户 ${err.payload.user_id}，但该用户尚未获得访问权限。请在 ZITADEL 中为该用户补充分配 ${requestContext.role} 角色后再通知用户登录。`,
+          `ZITADEL 已创建用户 ${maskIdentifier(err.payload.user_id)}，但该用户尚未获得访问权限。请在 ZITADEL 中为该用户补充分配 ${requestContext.role} 角色后再通知用户登录。`,
         );
       } else {
         setError(formatSubscriptionApiError(err));
@@ -810,6 +845,59 @@ export function PlatformSubscriptionPage() {
                         />
                       </Label>
                       <Label className="block text-xs text-zinc-500">
+                        邀请方式
+                        <Select
+                          value={invitationMode}
+                          onChange={(event) =>
+                            setInvitationMode(
+                              event.target.value as "email_only" | "email_phone",
+                            )
+                          }
+                          className="mt-1 h-9"
+                          aria-label="邀请方式"
+                        >
+                          <option value="email_only">仅邮箱邀请</option>
+                          <option value="email_phone">邮箱邀请并验证手机号</option>
+                        </Select>
+                      </Label>
+                      {invitationMode === "email_phone" ? (
+                        <>
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <Label className="block text-xs text-zinc-500">
+                              手机号
+                              <Input
+                                required
+                                type="tel"
+                                inputMode="tel"
+                                pattern="\+[1-9][0-9]{6,14}"
+                                title="请输入国际 E.164 格式手机号，例如 +8613812345678"
+                                value={invitationPhone}
+                                onChange={(event) =>
+                                  setInvitationPhone(event.target.value)
+                                }
+                                className="mt-1 h-9"
+                                aria-label="手机号"
+                              />
+                            </Label>
+                            <Label className="block text-xs text-zinc-500">
+                              用户名
+                              <Input
+                                required
+                                value={invitationUsername}
+                                onChange={(event) =>
+                                  setInvitationUsername(event.target.value)
+                                }
+                                className="mt-1 h-9"
+                                aria-label="用户名"
+                              />
+                            </Label>
+                          </div>
+                          <p className="text-xs text-zinc-500">
+                            首次登录链接会发送到邮箱；手机号将由 ZITADEL 通过短信验证。
+                          </p>
+                        </>
+                      ) : null}
+                      <Label className="block text-xs text-zinc-500">
                         角色
                         <Select
                           value={invitationRole}
@@ -1193,6 +1281,21 @@ function setStorageLimitPresetBytes(limits: Record<string, number>, bytes: numbe
 function tenantDisplayName(displayName: string | undefined, tenantId: string) {
   const normalizedDisplayName = displayName?.trim();
   return normalizedDisplayName || tenantId;
+}
+
+function maskEmail(email: string) {
+  const [localPart, domain] = email.split("@");
+  if (!localPart || !domain) {
+    return "***";
+  }
+  return `${localPart.slice(0, 1)}***@${domain}`;
+}
+
+function maskIdentifier(value: string) {
+  if (value.length <= 2) {
+    return "***";
+  }
+  return `${value.slice(0, 1)}***${value.slice(-1)}`;
 }
 
 function StatusBadge({ view }: { view: SubscriptionEntitlementView }) {
