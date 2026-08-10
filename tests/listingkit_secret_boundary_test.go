@@ -184,8 +184,14 @@ func TestListingKitSecretExamplesDefineCanonicalUIAllowlists(t *testing.T) {
 					t.Errorf("%s must define required canonical UI allowlist key %s", relativePath, key)
 				}
 			}
-			if _, ok := secret.StringData["LISTINGKIT_ZITADEL_ALLOWED_ROLES"]; ok {
-				t.Errorf("%s must not define deprecated UI allowlist key LISTINGKIT_ZITADEL_ALLOWED_ROLES", relativePath)
+			for _, key := range []string{
+				"LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS",
+				"LISTINGKIT_ZITADEL_ALLOWED_USER_IDS",
+				"LISTINGKIT_ZITADEL_ALLOWED_ROLES",
+			} {
+				if _, ok := secret.StringData[key]; ok {
+					t.Errorf("%s must not define deprecated UI allowlist key %s", relativePath, key)
+				}
 			}
 		})
 	}
