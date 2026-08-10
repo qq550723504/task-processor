@@ -41,8 +41,8 @@ func TestPostgresOwnerRepositoryAggregatesConfiguredTablesWithReadOnlyQueries(t 
 		WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "user_id", "row_count"}).AddRow("tenant-b", "subject-b", int64(3))).
 		RowsWillBeClosed()
 	repository := newPostgresOwnerRepository(sqlOwnerQueryer{db: database}, []OwnerTable{
-		{Table: "listing_kit_tasks", TenantColumn: "tenant_id", UserColumn: "user_id"},
-		{Table: "listing_store", TenantColumn: "tenant_id", UserColumn: "owner_user_id"},
+		{Table: "listing_kit_tasks", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization},
+		{Table: "listing_store", TenantColumn: "tenant_id", UserColumn: "owner_user_id", TenantDomain: TenantDomainLegacyNumeric},
 	})
 
 	owners, err := repository.List(context.Background())
@@ -50,8 +50,8 @@ func TestPostgresOwnerRepositoryAggregatesConfiguredTablesWithReadOnlyQueries(t 
 		t.Fatalf("List: %v", err)
 	}
 	want := []PersistedOwner{
-		{Table: "listing_kit_tasks", TenantID: "tenant-a", UserID: "subject-a", RowCount: 2},
-		{Table: "listing_store", TenantID: "tenant-b", UserID: "subject-b", RowCount: 3},
+		{Table: "listing_kit_tasks", TenantID: "tenant-a", TenantDomain: TenantDomainZITADELOrganization, UserID: "subject-a", RowCount: 2},
+		{Table: "listing_store", TenantID: "tenant-b", TenantDomain: TenantDomainLegacyNumeric, UserID: "subject-b", RowCount: 3},
 	}
 	if !reflect.DeepEqual(owners, want) {
 		t.Fatalf("owners = %#v, want %#v", owners, want)

@@ -14,6 +14,7 @@ import (
 	"task-processor/internal/infra/database"
 	"task-processor/internal/listingkit/identitypreflight"
 	"task-processor/internal/listingkit/userdirectory"
+	"task-processor/internal/tenantbridge"
 
 	"gorm.io/gorm"
 )
@@ -25,6 +26,15 @@ func TestDefaultRuntimeDependenciesUseNonCreatingDatabaseFactory(t *testing.T) {
 	want := reflect.ValueOf(database.NewDatabaseFromConfigWithoutCreate).Pointer()
 	if got != want {
 		t.Fatal("identity preflight runtime is not wired to the non-creating database factory")
+	}
+}
+
+func TestDefaultRuntimeDependenciesUseMetadataBridgeResolver(t *testing.T) {
+	t.Parallel()
+
+	resolver := defaultRuntimeDependencies().NewLegacyTenantResolver(&gorm.DB{})
+	if _, ok := resolver.(*tenantbridge.MetadataResolver); !ok {
+		t.Fatalf("legacy tenant resolver = %T, want *tenantbridge.MetadataResolver", resolver)
 	}
 }
 
@@ -108,7 +118,7 @@ func TestRunDatabaseOpenFailureStopsBeforeDirectoryOrPreflight(t *testing.T) {
 			t.Fatal("directory must not be configured when strict database open fails")
 			return nil, nil
 		},
-		NewPreflight: func(identitypreflight.OwnerRepository, userdirectory.Directory, io.Writer) preflightRunner {
+		NewPreflight: func(identitypreflight.OwnerRepository, userdirectory.Directory, identitypreflight.LegacyTenantOrganizationResolver, io.Writer) preflightRunner {
 			t.Fatal("preflight must not run when strict database open fails")
 			return nil
 		},
@@ -165,7 +175,21 @@ func TestRunClosesDatabaseAndWritesOnlySafeSuccessSummary(t *testing.T) {
 			}
 			return stubOwners{}
 		},
-		NewPreflight: func(identitypreflight.OwnerRepository, userdirectory.Directory, io.Writer) preflightRunner {
+		NewLegacyTenantResolver: func(got *gorm.DB) identitypreflight.LegacyTenantOrganizationResolver {
+			if got != db {
+				t.Fatalf("legacy tenant resolver received database = %p, want %p", got, db)
+			}
+			return stubLegacyTenantResolver{}
+		},
+		NewPreflight: func(
+			_ identitypreflight.OwnerRepository,
+			_ userdirectory.Directory,
+			resolver identitypreflight.LegacyTenantOrganizationResolver,
+			_ io.Writer,
+		) preflightRunner {
+			if _, ok := resolver.(stubLegacyTenantResolver); !ok {
+				t.Fatalf("preflight resolver = %T, want stubLegacyTenantResolver", resolver)
+			}
 			return runnerFunc(func(context.Context) error { return nil })
 		},
 		Output: &output,
@@ -192,15 +216,17 @@ func TestRunReturnsCorePreflightFailureAndClosesDatabase(t *testing.T) {
 	var closed bool
 
 	err := runWithDependencies(context.Background(), Options{}, runtimeDependencies{
-		LoadConfig: func(string) (*config.Config, error) { return configuredRuntimeConfig("https://issuer.example", "directory-token"), nil },
-		OpenDB:     func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
-		CloseDB:    func(*gorm.DB) error { closed = true; return nil },
+		LoadConfig: func(string) (*config.Config, error) {
+			return configuredRuntimeConfig("https://issuer.example", "directory-token"), nil
+		},
+		OpenDB:  func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
+		CloseDB: func(*gorm.DB) error { closed = true; return nil },
 		NewDirectory: func(userdirectory.ClientConfig) (userdirectory.Directory, error) {
 			return stubDirectory{}, nil
 		},
 		DatabaseSQL:        func(*gorm.DB) (*sql.DB, error) { return &sql.DB{}, nil },
 		NewOwnerRepository: func(*sql.DB) identitypreflight.OwnerRepository { return stubOwners{} },
-		NewPreflight: func(identitypreflight.OwnerRepository, userdirectory.Directory, io.Writer) preflightRunner {
+		NewPreflight: func(identitypreflight.OwnerRepository, userdirectory.Directory, identitypreflight.LegacyTenantOrganizationResolver, io.Writer) preflightRunner {
 			return runnerFunc(func(context.Context) error { return coreFailure })
 		},
 		Output: &bytes.Buffer{},
@@ -229,8 +255,16 @@ func (fn runnerFunc) Run(ctx context.Context) error { return fn(ctx) }
 
 type stubDirectory struct{}
 
-func (stubDirectory) ListByTenant(context.Context, string) ([]userdirectory.User, error) { return nil, nil }
+func (stubDirectory) ListByTenant(context.Context, string) ([]userdirectory.User, error) {
+	return nil, nil
+}
 
 type stubOwners struct{}
 
 func (stubOwners) List(context.Context) ([]identitypreflight.PersistedOwner, error) { return nil, nil }
+
+type stubLegacyTenantResolver struct{}
+
+func (stubLegacyTenantResolver) ResolveOrganizationID(context.Context, int64) (string, bool, error) {
+	return "", false, nil
+}

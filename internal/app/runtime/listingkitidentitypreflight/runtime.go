@@ -14,6 +14,7 @@ import (
 	"task-processor/internal/listingkit/identitypreflight"
 	"task-processor/internal/listingkit/userdirectory"
 	"task-processor/internal/pkg/appenv"
+	"task-processor/internal/tenantbridge"
 
 	"gorm.io/gorm"
 )
@@ -23,14 +24,15 @@ type preflightRunner interface {
 }
 
 type runtimeDependencies struct {
-	LoadConfig         func(string) (*config.Config, error)
-	OpenDB             func(*config.DatabaseConfig) (*gorm.DB, error)
-	CloseDB            func(*gorm.DB) error
-	DatabaseSQL        func(*gorm.DB) (*sql.DB, error)
-	NewDirectory       func(userdirectory.ClientConfig) (userdirectory.Directory, error)
-	NewOwnerRepository func(*sql.DB) identitypreflight.OwnerRepository
-	NewPreflight       func(identitypreflight.OwnerRepository, userdirectory.Directory, io.Writer) preflightRunner
-	Output             io.Writer
+	LoadConfig              func(string) (*config.Config, error)
+	OpenDB                  func(*config.DatabaseConfig) (*gorm.DB, error)
+	CloseDB                 func(*gorm.DB) error
+	DatabaseSQL             func(*gorm.DB) (*sql.DB, error)
+	NewDirectory            func(userdirectory.ClientConfig) (userdirectory.Directory, error)
+	NewOwnerRepository      func(*sql.DB) identitypreflight.OwnerRepository
+	NewLegacyTenantResolver func(*gorm.DB) identitypreflight.LegacyTenantOrganizationResolver
+	NewPreflight            func(identitypreflight.OwnerRepository, userdirectory.Directory, identitypreflight.LegacyTenantOrganizationResolver, io.Writer) preflightRunner
+	Output                  io.Writer
 }
 
 func defaultRuntimeDependencies() runtimeDependencies {
@@ -47,8 +49,11 @@ func defaultRuntimeDependencies() runtimeDependencies {
 		DatabaseSQL:        func(db *gorm.DB) (*sql.DB, error) { return db.DB() },
 		NewDirectory:       userdirectory.NewClient,
 		NewOwnerRepository: identitypreflight.NewPostgresOwnerRepository,
-		NewPreflight: func(owners identitypreflight.OwnerRepository, directory userdirectory.Directory, output io.Writer) preflightRunner {
-			return identitypreflight.NewService(owners, directory, output)
+		NewLegacyTenantResolver: func(db *gorm.DB) identitypreflight.LegacyTenantOrganizationResolver {
+			return tenantbridge.NewMetadataResolver(db)
+		},
+		NewPreflight: func(owners identitypreflight.OwnerRepository, directory userdirectory.Directory, resolver identitypreflight.LegacyTenantOrganizationResolver, output io.Writer) preflightRunner {
+			return identitypreflight.NewService(owners, directory, resolver, output)
 		},
 		Output: os.Stdout,
 	}
@@ -77,6 +82,9 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	}
 	if deps.NewOwnerRepository == nil {
 		deps.NewOwnerRepository = defaults.NewOwnerRepository
+	}
+	if deps.NewLegacyTenantResolver == nil {
+		deps.NewLegacyTenantResolver = defaults.NewLegacyTenantResolver
 	}
 	if deps.NewPreflight == nil {
 		deps.NewPreflight = defaults.NewPreflight
@@ -124,7 +132,11 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	if err != nil || directory == nil {
 		return errors.New("configure ZITADEL user directory failed")
 	}
-	preflight := deps.NewPreflight(deps.NewOwnerRepository(sqlDB), directory, deps.Output)
+	legacyTenantResolver := deps.NewLegacyTenantResolver(db)
+	if legacyTenantResolver == nil {
+		return errors.New("configure legacy tenant resolver failed")
+	}
+	preflight := deps.NewPreflight(deps.NewOwnerRepository(sqlDB), directory, legacyTenantResolver, deps.Output)
 	if preflight == nil {
 		return errors.New("configure identity preflight failed")
 	}

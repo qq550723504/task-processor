@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -25,7 +26,7 @@ func TestServiceRunSucceedsAndFetchesEachTenantDirectoryOnce(t *testing.T) {
 	}}
 	var output bytes.Buffer
 
-	err := NewService(repository, directory, &output).Run(context.Background())
+	err := NewService(repository, directory, nil, &output).Run(context.Background())
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
@@ -46,7 +47,7 @@ func TestServiceRunReportsUnknownOwnerWithTypedError(t *testing.T) {
 	directory := &recordingUserDirectory{}
 	var output bytes.Buffer
 
-	err := NewService(repository, directory, &output).Run(context.Background())
+	err := NewService(repository, directory, nil, &output).Run(context.Background())
 	var unknownOwners *ErrUnknownOwners
 	if !errors.As(err, &unknownOwners) {
 		t.Fatalf("Run error = %v, want *ErrUnknownOwners", err)
@@ -71,7 +72,7 @@ func TestServiceRunRejectsSameSubjectFromWrongTenant(t *testing.T) {
 	}}
 	var output bytes.Buffer
 
-	err := NewService(repository, directory, &output).Run(context.Background())
+	err := NewService(repository, directory, nil, &output).Run(context.Background())
 	var unknownOwners *ErrUnknownOwners
 	if !errors.As(err, &unknownOwners) {
 		t.Fatalf("Run error = %v, want *ErrUnknownOwners", err)
@@ -96,7 +97,7 @@ func TestServiceRunSanitizesDirectoryFailureAndEmitsNoPartialReport(t *testing.T
 	}}
 	var output bytes.Buffer
 
-	err := NewService(repository, directory, &output).Run(context.Background())
+	err := NewService(repository, directory, nil, &output).Run(context.Background())
 	if err == nil {
 		t.Fatal("Run error = nil, want directory failure")
 	}
@@ -124,7 +125,7 @@ func TestServiceRunOrdersFindingsDeterministically(t *testing.T) {
 	directory := &recordingUserDirectory{}
 	var output bytes.Buffer
 
-	_ = NewService(repository, directory, &output).Run(context.Background())
+	_ = NewService(repository, directory, nil, &output).Run(context.Background())
 	want := "" +
 		"status=blocked table=listing_category tenant=sha256:80a707af7dc7 owner=sha256:1ffc71997096 rows=2 reason=unknown_subject\n" +
 		"status=blocked table=listing_store tenant=sha256:80a707af7dc7 owner=sha256:c0f704a39dcc rows=1 reason=unknown_subject\n" +
@@ -147,7 +148,7 @@ func TestServiceRunRedactsAllRawIdentityAndResponseValues(t *testing.T) {
 	directory := &recordingUserDirectory{}
 	var output bytes.Buffer
 
-	err := NewService(repository, directory, &output).Run(context.Background())
+	err := NewService(repository, directory, nil, &output).Run(context.Background())
 	var unknownOwners *ErrUnknownOwners
 	if !errors.As(err, &unknownOwners) {
 		t.Fatalf("Run error = %v, want *ErrUnknownOwners", err)
@@ -168,6 +169,122 @@ func TestFingerprintTrimsAndUsesFirstSixSHA256Bytes(t *testing.T) {
 
 	if got, want := fingerprint("  subject-x  "), "sha256:c0f704a39dcc"; got != want {
 		t.Fatalf("fingerprint = %q, want %q", got, want)
+	}
+}
+
+func TestServiceRunResolvesLegacyNumericTenantBeforeDirectoryComparison(t *testing.T) {
+	t.Parallel()
+
+	repository := stubOwnerRepository{owners: []PersistedOwner{
+		{Table: "listing_store", TenantID: "101", TenantDomain: TenantDomainLegacyNumeric, UserID: "subject-x", RowCount: 2},
+	}}
+	resolver := &recordingLegacyTenantResolver{organizations: map[int64]string{101: "org-X"}}
+	directory := &recordingUserDirectory{usersByTenant: map[string][]userdirectory.User{
+		"org-X": {{Subject: "subject-x", TenantID: "org-X"}},
+	}}
+	var output bytes.Buffer
+
+	err := NewService(repository, directory, resolver, &output).Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("output = %q, want no findings", output.String())
+	}
+	if want := []int64{101}; !reflect.DeepEqual(resolver.calls, want) {
+		t.Fatalf("resolver calls = %#v, want %#v", resolver.calls, want)
+	}
+	if want := []string{"org-X"}; !reflect.DeepEqual(directory.calls, want) {
+		t.Fatalf("directory calls = %#v, want %#v", directory.calls, want)
+	}
+}
+
+func TestServiceRunRejectsLegacyOwnerSubjectFromDifferentOrganization(t *testing.T) {
+	t.Parallel()
+
+	repository := stubOwnerRepository{owners: []PersistedOwner{
+		{Table: "listing_store", TenantID: "101", TenantDomain: TenantDomainLegacyNumeric, UserID: "subject-x", RowCount: 1},
+	}}
+	resolver := &recordingLegacyTenantResolver{organizations: map[int64]string{101: "org-X"}}
+	directory := &recordingUserDirectory{usersByTenant: map[string][]userdirectory.User{
+		"org-X": {{Subject: "subject-x", TenantID: "org-Y"}},
+	}}
+	var output bytes.Buffer
+
+	err := NewService(repository, directory, resolver, &output).Run(context.Background())
+	var unknownOwners *ErrUnknownOwners
+	if !errors.As(err, &unknownOwners) || unknownOwners.Count != 1 {
+		t.Fatalf("Run error = %v, want one unknown owner", err)
+	}
+	if !strings.Contains(output.String(), "reason=unknown_subject") {
+		t.Fatalf("output = %q, want unknown subject finding", output.String())
+	}
+	for _, raw := range []string{"101", "org-X", "org-Y", "subject-x"} {
+		if strings.Contains(output.String(), raw) {
+			t.Errorf("output contains raw identifier %q: %q", raw, output.String())
+		}
+	}
+}
+
+func TestServiceRunFailsClosedWhenLegacyTenantCannotBeResolved(t *testing.T) {
+	t.Parallel()
+
+	const resolverSecret = "resolver-secret private@example.test"
+	tests := []struct {
+		name     string
+		resolver *recordingLegacyTenantResolver
+	}{
+		{name: "unmapped", resolver: &recordingLegacyTenantResolver{}},
+		{name: "resolver failure", resolver: &recordingLegacyTenantResolver{errors: map[int64]error{101: errors.New(resolverSecret + " 101")}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			repository := stubOwnerRepository{owners: []PersistedOwner{
+				{Table: "listing_kit_tasks", TenantID: "org-direct", UserID: "subject-direct", RowCount: 1},
+				{Table: "listing_store", TenantID: "101", TenantDomain: TenantDomainLegacyNumeric, UserID: "subject-secret", RowCount: 1},
+			}}
+			directory := &recordingUserDirectory{}
+			var output bytes.Buffer
+
+			err := NewService(repository, directory, test.resolver, &output).Run(context.Background())
+			if err == nil || !strings.Contains(err.Error(), "resolve tenant organization") {
+				t.Fatalf("Run error = %v, want tenant organization resolution failure", err)
+			}
+			for _, raw := range []string{"101", resolverSecret, "private@example.test"} {
+				if strings.Contains(err.Error(), raw) {
+					t.Errorf("error contains sensitive value %q: %q", raw, err)
+				}
+			}
+			if len(directory.calls) != 0 {
+				t.Fatalf("directory calls = %#v, want none", directory.calls)
+			}
+			if output.Len() != 0 {
+				t.Fatalf("output = %q, want no partial report", output.String())
+			}
+		})
+	}
+}
+
+func TestServiceRunCachesOrganizationResolutionPerDistinctLegacyTenant(t *testing.T) {
+	t.Parallel()
+
+	repository := stubOwnerRepository{owners: []PersistedOwner{
+		{Table: "listing_store", TenantID: "101", TenantDomain: TenantDomainLegacyNumeric, UserID: "subject-x", RowCount: 1},
+		{Table: "listing_category", TenantID: "0101", TenantDomain: TenantDomainLegacyNumeric, UserID: "subject-x", RowCount: 1},
+		{Table: "listing_filter_rule", TenantID: "202", TenantDomain: TenantDomainLegacyNumeric, UserID: "subject-y", RowCount: 1},
+	}}
+	resolver := &recordingLegacyTenantResolver{organizations: map[int64]string{101: "org-X", 202: "org-Y"}}
+	directory := &recordingUserDirectory{usersByTenant: map[string][]userdirectory.User{
+		"org-X": {{Subject: "subject-x", TenantID: "org-X"}},
+		"org-Y": {{Subject: "subject-y", TenantID: "org-Y"}},
+	}}
+
+	err := NewService(repository, directory, resolver, io.Discard).Run(context.Background())
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if want := []int64{101, 202}; !reflect.DeepEqual(resolver.calls, want) {
+		t.Fatalf("resolver calls = %#v, want %#v", resolver.calls, want)
 	}
 }
 
@@ -192,4 +309,19 @@ func (directory *recordingUserDirectory) ListByTenant(_ context.Context, tenantI
 		return nil, err
 	}
 	return append([]userdirectory.User(nil), directory.usersByTenant[tenantID]...), nil
+}
+
+type recordingLegacyTenantResolver struct {
+	organizations map[int64]string
+	errors        map[int64]error
+	calls         []int64
+}
+
+func (resolver *recordingLegacyTenantResolver) ResolveOrganizationID(_ context.Context, legacyTenantID int64) (string, bool, error) {
+	resolver.calls = append(resolver.calls, legacyTenantID)
+	if err := resolver.errors[legacyTenantID]; err != nil {
+		return "", false, err
+	}
+	organizationID, ok := resolver.organizations[legacyTenantID]
+	return organizationID, ok, nil
 }

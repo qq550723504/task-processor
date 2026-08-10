@@ -58,13 +58,13 @@ func TestOwnerTableInventoryMatchesOwnerScopedModels(t *testing.T) {
 	var missing, stale []string
 	for name, model := range discovered {
 		entry, ok := inventory[name]
-		if !ok || entry.TenantColumn != model.TenantColumn || entry.UserColumn != model.UserColumn {
+		if !ok || entry.TenantColumn != model.TenantColumn || entry.UserColumn != model.UserColumn || entry.TenantDomain != model.TenantDomain {
 			missing = append(missing, formatOwnerTable(model))
 		}
 	}
 	for name, entry := range inventory {
 		model, ok := discovered[name]
-		if !ok || entry.TenantColumn != model.TenantColumn || entry.UserColumn != model.UserColumn {
+		if !ok || entry.TenantColumn != model.TenantColumn || entry.UserColumn != model.UserColumn || entry.TenantDomain != model.TenantDomain {
 			stale = append(stale, formatOwnerTable(entry))
 		}
 	}
@@ -96,7 +96,7 @@ func (ownerRecord) TableName() string { return "sample_owner_records" }
 	if err != nil {
 		t.Fatalf("discover owner tables: %v", err)
 	}
-	want := OwnerTable{Table: "sample_owner_records", TenantColumn: "tenant_id", UserColumn: "user_id"}
+	want := OwnerTable{Table: "sample_owner_records", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization}
 	if got, ok := tables[want.Table]; !ok || got != want {
 		t.Fatalf("convention-based owner table = %#v, %v; want %#v", got, ok, want)
 	}
@@ -140,6 +140,7 @@ type ownerModel struct {
 	TypeName     string
 	TenantColumn string
 	UserColumn   string
+	TenantDomain TenantDomain
 	Table        string
 	Source       string
 }
@@ -256,7 +257,7 @@ func discoverOwnerTables(exclusions map[ownerModelKey]string, roots ...string) (
 		if _, exists := result[tableName]; exists {
 			return nil, fmt.Errorf("multiple owner-scoped models resolve to table %s", tableName)
 		}
-		result[tableName] = OwnerTable{Table: tableName, TenantColumn: model.TenantColumn, UserColumn: model.UserColumn}
+		result[tableName] = OwnerTable{Table: tableName, TenantColumn: model.TenantColumn, UserColumn: model.UserColumn, TenantDomain: model.TenantDomain}
 	}
 	if len(missingTableNames) > 0 {
 		sort.Strings(missingTableNames)
@@ -288,7 +289,11 @@ func collectOwnerStructs(models map[ownerModelKey]*ownerModel, directory, packag
 		if !ok {
 			continue
 		}
-		model := &ownerModel{TypeName: typeSpec.Name.Name, Source: path}
+		tenantDomain := TenantDomainZITADELOrganization
+		if packageName == "listingadmin" {
+			tenantDomain = TenantDomainLegacyNumeric
+		}
+		model := &ownerModel{TypeName: typeSpec.Name.Name, TenantDomain: tenantDomain, Source: path}
 		for _, field := range structure.Fields.List {
 			column := gormColumn(field)
 			switch column {

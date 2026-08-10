@@ -13,10 +13,11 @@ const postgresUndefinedTableSQLState = "42P01"
 var sqlIdentifierPattern = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 type PersistedOwner struct {
-	Table    string
-	TenantID string
-	UserID   string
-	RowCount int64
+	Table        string
+	TenantID     string
+	TenantDomain TenantDomain
+	UserID       string
+	RowCount     int64
 }
 
 type OwnerRepository interface {
@@ -78,7 +79,7 @@ func (repository *postgresOwnerRepository) List(ctx context.Context) ([]Persiste
 			}
 			return nil, fmt.Errorf("list persisted owners from %s: database query failed", table.Table)
 		}
-		tableOwners, err := scanOwnerRows(ctx, table.Table, rows)
+		tableOwners, err := scanOwnerRows(ctx, table, rows)
 		if err != nil {
 			return nil, err
 		}
@@ -91,7 +92,8 @@ func validateOwnerTableInventory(inventory []OwnerTable) error {
 	for _, table := range inventory {
 		if !sqlIdentifierPattern.MatchString(table.Table) ||
 			!sqlIdentifierPattern.MatchString(table.TenantColumn) ||
-			!sqlIdentifierPattern.MatchString(table.UserColumn) {
+			!sqlIdentifierPattern.MatchString(table.UserColumn) ||
+			(table.TenantDomain != TenantDomainZITADELOrganization && table.TenantDomain != TenantDomainLegacyNumeric) {
 			return errors.New("identity preflight inventory contains an invalid SQL identifier")
 		}
 	}
@@ -116,28 +118,28 @@ GROUP BY %s, %s`,
 	)
 }
 
-func scanOwnerRows(ctx context.Context, table string, rows ownerRows) (owners []PersistedOwner, resultErr error) {
+func scanOwnerRows(ctx context.Context, table OwnerTable, rows ownerRows) (owners []PersistedOwner, resultErr error) {
 	defer func() {
 		if err := rows.Close(); err != nil && resultErr == nil {
-			resultErr = fmt.Errorf("list persisted owners from %s: close aggregate rows failed", table)
+			resultErr = fmt.Errorf("list persisted owners from %s: close aggregate rows failed", table.Table)
 		}
 	}()
 
 	for rows.Next() {
-		owner := PersistedOwner{Table: table}
+		owner := PersistedOwner{Table: table.Table, TenantDomain: table.TenantDomain}
 		if err := rows.Scan(&owner.TenantID, &owner.UserID, &owner.RowCount); err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, fmt.Errorf("list persisted owners from %s: %w", table, ctxErr)
+				return nil, fmt.Errorf("list persisted owners from %s: %w", table.Table, ctxErr)
 			}
-			return nil, fmt.Errorf("list persisted owners from %s: scan aggregate row failed", table)
+			return nil, fmt.Errorf("list persisted owners from %s: scan aggregate row failed", table.Table)
 		}
 		owners = append(owners, owner)
 	}
 	if err := rows.Err(); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, fmt.Errorf("list persisted owners from %s: %w", table, ctxErr)
+			return nil, fmt.Errorf("list persisted owners from %s: %w", table.Table, ctxErr)
 		}
-		return nil, fmt.Errorf("list persisted owners from %s: iterate aggregate rows failed", table)
+		return nil, fmt.Errorf("list persisted owners from %s: iterate aggregate rows failed", table.Table)
 	}
 	return owners, nil
 }

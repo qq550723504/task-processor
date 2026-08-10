@@ -8,22 +8,38 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strconv"
 	"strings"
 
 	"task-processor/internal/listingkit/userdirectory"
 )
 
 type Service struct {
-	owners    OwnerRepository
-	directory userdirectory.Directory
-	output    io.Writer
+	owners               OwnerRepository
+	directory            userdirectory.Directory
+	legacyTenantResolver LegacyTenantOrganizationResolver
+	output               io.Writer
 }
 
-func NewService(owners OwnerRepository, directory userdirectory.Directory, output io.Writer) *Service {
+type LegacyTenantOrganizationResolver interface {
+	ResolveOrganizationID(ctx context.Context, legacyTenantID int64) (string, bool, error)
+}
+
+func NewService(
+	owners OwnerRepository,
+	directory userdirectory.Directory,
+	legacyTenantResolver LegacyTenantOrganizationResolver,
+	output io.Writer,
+) *Service {
 	if output == nil {
 		output = io.Discard
 	}
-	return &Service{owners: owners, directory: directory, output: output}
+	return &Service{
+		owners:               owners,
+		directory:            directory,
+		legacyTenantResolver: legacyTenantResolver,
+		output:               output,
+	}
 }
 
 // ErrUnknownOwners reports the safe count of persisted owner mappings that do
@@ -48,6 +64,11 @@ type unknownOwnerFinding struct {
 	RowCount int64
 }
 
+type normalizedOwner struct {
+	PersistedOwner
+	OrganizationID string
+}
+
 func (service *Service) Run(ctx context.Context) error {
 	owners, err := service.owners.List(ctx)
 	if err != nil {
@@ -57,9 +78,14 @@ func (service *Service) Run(ctx context.Context) error {
 		return errors.New("identity preflight: list persisted owners failed")
 	}
 
-	ownersByTenant := make(map[string][]PersistedOwner)
-	for _, owner := range owners {
-		ownersByTenant[owner.TenantID] = append(ownersByTenant[owner.TenantID], owner)
+	normalizedOwners, err := service.normalizeOwnerTenants(ctx, owners)
+	if err != nil {
+		return err
+	}
+
+	ownersByTenant := make(map[string][]normalizedOwner)
+	for _, owner := range normalizedOwners {
+		ownersByTenant[owner.OrganizationID] = append(ownersByTenant[owner.OrganizationID], owner)
 	}
 	tenants := make([]string, 0, len(ownersByTenant))
 	for tenantID := range ownersByTenant {
@@ -82,8 +108,8 @@ func (service *Service) Run(ctx context.Context) error {
 	}
 
 	findings := make([]unknownOwnerFinding, 0)
-	for _, owner := range owners {
-		key := identityKey{TenantID: owner.TenantID, Subject: owner.UserID}
+	for _, owner := range normalizedOwners {
+		key := identityKey{TenantID: owner.OrganizationID, Subject: owner.UserID}
 		if _, found := knownIdentities[key]; found {
 			continue
 		}
@@ -124,6 +150,39 @@ func (service *Service) Run(ctx context.Context) error {
 		return &ErrUnknownOwners{Count: len(findings)}
 	}
 	return nil
+}
+
+func (service *Service) normalizeOwnerTenants(ctx context.Context, owners []PersistedOwner) ([]normalizedOwner, error) {
+	legacyOrganizations := make(map[int64]string)
+	normalized := make([]normalizedOwner, 0, len(owners))
+	for _, owner := range owners {
+		organizationID := owner.TenantID
+		if owner.TenantDomain == TenantDomainLegacyNumeric {
+			legacyTenantID := strings.TrimSpace(owner.TenantID)
+			parsed, parseErr := strconv.ParseInt(legacyTenantID, 10, 64)
+			if parseErr != nil || parsed <= 0 || service.legacyTenantResolver == nil {
+				return nil, errors.New("identity preflight: resolve tenant organization failed")
+			}
+			if cached, ok := legacyOrganizations[parsed]; ok {
+				organizationID = cached
+			} else {
+				resolved, found, resolveErr := service.legacyTenantResolver.ResolveOrganizationID(ctx, parsed)
+				if resolveErr != nil {
+					if ctxErr := ctx.Err(); ctxErr != nil {
+						return nil, fmt.Errorf("identity preflight: %w", ctxErr)
+					}
+					return nil, errors.New("identity preflight: resolve tenant organization failed")
+				}
+				organizationID = strings.TrimSpace(resolved)
+				if !found || organizationID == "" {
+					return nil, errors.New("identity preflight: resolve tenant organization failed")
+				}
+				legacyOrganizations[parsed] = organizationID
+			}
+		}
+		normalized = append(normalized, normalizedOwner{PersistedOwner: owner, OrganizationID: organizationID})
+	}
+	return normalized, nil
 }
 
 func fingerprint(value string) string {
