@@ -177,3 +177,22 @@ func TestListingKitDeployWorkflowPassesDispatchInputsThroughStepEnvironment(t *t
 	}
 	t.Fatal("ListingKit deploy workflow is missing prepare metadata step")
 }
+
+func TestListingKitPreflightRunnerUsesCandidateSourceExceptDigestRollback(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+	workflow := string(content)
+	for _, required := range []string{
+		"runner_source_ref: ${{ steps.meta.outputs.runner_source_ref }}",
+		"runner_source_ref=\"$source_ref\"",
+		"runner_source_ref=\"$WORKFLOW_SOURCE_REF\"",
+		"ref: ${{ needs.prepare.outputs.runner_source_ref }}",
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Errorf("ListingKit runner source selection is missing %q", required)
+		}
+	}
+}

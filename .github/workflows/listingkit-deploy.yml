@@ -53,6 +53,7 @@ jobs:
       api_tags: ${{ steps.meta.outputs.api_tags }}
       api_runtime_base_image: ${{ steps.meta.outputs.api_runtime_base_image }}
       candidate_api_image: ${{ steps.meta.outputs.candidate_api_image }}
+      runner_source_ref: ${{ steps.meta.outputs.runner_source_ref }}
     steps:
       - name: Resolve release tag
         id: meta
@@ -63,6 +64,7 @@ jobs:
           RELEASE_API_IMAGE_DIGEST: ${{ inputs.api_image_digest }}
           RELEASE_API_RUNTIME_BASE_IMAGE: ${{ inputs.api_runtime_base_image }}
           RELEASE_PUBLISH_LATEST: ${{ inputs.publish_latest }}
+          WORKFLOW_SOURCE_REF: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
           source_ref="$RELEASE_SOURCE_REF"
@@ -84,6 +86,11 @@ jobs:
             echo "::error::api_image_digest cannot be combined with source or build-image inputs"
             exit 1
           fi
+
+          runner_source_ref="$source_ref"
+          if [[ -n "$candidate_api_image" ]]; then
+            runner_source_ref="$WORKFLOW_SOURCE_REF"
+          fi
           if [[ -z "$tag" ]]; then
             tag="${source_ref:0:8}"
           fi
@@ -99,6 +106,7 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "api_runtime_base_image=$api_runtime_base_image" >> "$GITHUB_OUTPUT"
           echo "candidate_api_image=$candidate_api_image" >> "$GITHUB_OUTPUT"
+          echo "runner_source_ref=$runner_source_ref" >> "$GITHUB_OUTPUT"
           {
             echo "api_tags<<EOF"
             echo "${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:$tag"
@@ -159,7 +167,7 @@ jobs:
       - name: Checkout gate runner source
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.workflow_sha }}
+          ref: ${{ needs.prepare.outputs.runner_source_ref }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
