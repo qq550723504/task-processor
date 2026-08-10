@@ -17,6 +17,9 @@ type ListingKitZitadelConfig struct {
 	AuthorizationRequired bool     `mapstructure:"authorizationRequired" yaml:"authorizationRequired"`
 	AllowedTenantIDs      []string `mapstructure:"allowedTenantIDs" yaml:"allowedTenantIDs"`
 	AllowedUserIDs        []string `mapstructure:"allowedUserIDs" yaml:"allowedUserIDs"`
-	AllowedUsernames      []string `mapstructure:"allowedUsernames" yaml:"allowedUsernames"`
-	AllowedRoles          []string `mapstructure:"allowedRoles" yaml:"allowedRoles"`
+	// AllowedUsernames is retained only to detect and reject obsolete configuration.
+	// It must never participate in authorization decisions.
+	AllowedUsernames                  []string `mapstructure:"allowedUsernames" yaml:"allowedUsernames"`
+	LegacyUsernameAllowlistConfigured bool     `mapstructure:"-" yaml:"-"`
+	AllowedRoles                      []string `mapstructure:"allowedRoles" yaml:"allowedRoles"`
 }

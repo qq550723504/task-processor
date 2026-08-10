@@ -12,10 +12,8 @@ import (
 )
 
 func ConfigureListingKitZitadelAuth(cfg config.ListingKitZitadelConfig) {
-	authzRequired := cfg.AuthorizationRequired
-	// The legacy username allowlist is interpreted as ZITADEL subjects during migration.
-	allowedSubjects := append([]string{}, cfg.AllowedUserIDs...)
-	allowedSubjects = append(allowedSubjects, cfg.AllowedUsernames...)
+	legacyUsernameAllowlistConfigured := cfg.LegacyUsernameAllowlistConfigured || len(cfg.AllowedUsernames) > 0
+	authzRequired := cfg.AuthorizationRequired || legacyUsernameAllowlistConfigured
 	listingKitZitadelRuntimeConfigMu.Lock()
 	defer listingKitZitadelRuntimeConfigMu.Unlock()
 	listingKitZitadelRuntimeConfigV = &listingKitZitadelRuntimeConfig{
@@ -26,10 +24,11 @@ func ConfigureListingKitZitadelAuth(cfg config.ListingKitZitadelConfig) {
 			HTTPClient:   &http.Client{Timeout: 5 * time.Second},
 		},
 		AuthzConfig: zitadelAuthorizationConfig{
-			Required:         authzRequired,
-			AllowedTenantIDs: stringSliceToSet(cfg.AllowedTenantIDs),
-			AllowedUserIDs:   stringSliceToSet(allowedSubjects),
-			AllowedRoles:     stringSliceToSet(cfg.AllowedRoles),
+			Required:                          authzRequired,
+			LegacyUsernameAllowlistConfigured: legacyUsernameAllowlistConfigured,
+			AllowedTenantIDs:                  stringSliceToSet(cfg.AllowedTenantIDs),
+			AllowedUserIDs:                    stringSliceToSet(cfg.AllowedUserIDs),
+			AllowedRoles:                      stringSliceToSet(cfg.AllowedRoles),
 		},
 	}
 }

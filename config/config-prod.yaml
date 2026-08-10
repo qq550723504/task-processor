@@ -63,7 +63,6 @@ listingkit:
     authorizationRequired: false
     allowedTenantIDs: []
     allowedUserIDs: []
-    allowedUsernames: []
     allowedRoles: []
 
 platforms:

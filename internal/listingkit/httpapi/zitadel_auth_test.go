@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -696,7 +698,7 @@ func TestListingKitZitadelAuthRejectsUnauthorizedIdentity(t *testing.T) {
 	}
 }
 
-func TestListingKitZitadelAuthRejectsAllowedUsernameWhenSubjectIsNotAllowed(t *testing.T) {
+func TestListingKitZitadelAuthFailsClosedWhenOnlyLegacyUsernameAllowlistMatchesSubject(t *testing.T) {
 	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
@@ -708,8 +710,8 @@ func TestListingKitZitadelAuthRejectsAllowedUsernameWhenSubjectIsNotAllowed(t *t
 		case "/oauth/v2/introspect":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"active":                                true,
-				"sub":                                   "unapproved-zitadel-subject",
-				"username":                              "1-admin",
+				"sub":                                   "legacy-subject-value",
+				"username":                              "display-name",
 				"urn:zitadel:iam:user:resourceowner:id": "org-286",
 			})
 		default:
@@ -718,13 +720,28 @@ func TestListingKitZitadelAuthRejectsAllowedUsernameWhenSubjectIsNotAllowed(t *t
 	}))
 	defer zitadel.Close()
 
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "   ")
+	t.Setenv("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "")
+	configPath := filepath.Join(t.TempDir(), "config-test.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(strings.Join([]string{
+		"listingkit:",
+		"  zitadel:",
+		"    issuerURL: \"" + zitadel.URL + "\"",
+		"    clientID: listingkit-client",
+		"    allowedUsernames: [\"legacy-subject-value\"]",
+	}, "\n")), 0o600))
+	loadedCfg, err := config.LoadConfigFromFileWithoutValidation(configPath)
+	require.NoError(t, err)
+
 	t.Cleanup(SetListingKitZitadelAuthConfigForTesting(nil))
-	ConfigureListingKitZitadelAuth(config.ListingKitZitadelConfig{
-		IssuerURL:             zitadel.URL,
-		ClientID:              "listingkit-client",
-		AuthorizationRequired: true,
-		AllowedUsernames:      []string{"1-admin"},
-	})
+	ConfigureListingKitZitadelAuth(loadedCfg.ListingKit.Zitadel)
+	runtimeCfg := currentListingKitZitadelRuntimeConfig()
+	if !runtimeCfg.AuthzConfig.Required {
+		t.Fatal("legacy username allowlist must force fail-closed authorization")
+	}
+	if _, ok := runtimeCfg.AuthzConfig.AllowedUserIDs["legacy-subject-value"]; ok {
+		t.Fatal("legacy username allowlist value was added to canonical subject allowlist")
+	}
 
 	router := gin.New()
 	mountRoutes(router, []routeDescriptor{
@@ -748,6 +765,9 @@ func TestListingKitZitadelAuthRejectsAllowedUsernameWhenSubjectIsNotAllowed(t *t
 	}
 	if !strings.Contains(resp.Body.String(), "zitadel_access_denied") {
 		t.Fatalf("body = %s, want zitadel_access_denied", resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "username allowlists are obsolete") {
+		t.Fatalf("body = %s, want obsolete username allowlist reason", resp.Body.String())
 	}
 }
 

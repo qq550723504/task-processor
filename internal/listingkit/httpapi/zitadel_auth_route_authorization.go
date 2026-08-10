@@ -115,6 +115,9 @@ func roleHeaderValues(value string) []string {
 }
 
 func authorizeZitadelIdentity(identity *zitadelIntrospectionResponse, cfg zitadelAuthorizationConfig) (bool, string) {
+	if cfg.LegacyUsernameAllowlistConfigured {
+		return false, "ZITADEL username allowlists are obsolete; configure canonical allowlists"
+	}
 	if identity == nil {
 		return false, "ZITADEL identity is missing"
 	}

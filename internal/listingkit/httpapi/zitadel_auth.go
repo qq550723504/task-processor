@@ -37,10 +37,11 @@ type zitadelAuthMiddleware struct {
 }
 
 type zitadelAuthorizationConfig struct {
-	Required         bool
-	AllowedTenantIDs map[string]struct{}
-	AllowedUserIDs   map[string]struct{}
-	AllowedRoles     map[string]struct{}
+	Required                          bool
+	LegacyUsernameAllowlistConfigured bool
+	AllowedTenantIDs                  map[string]struct{}
+	AllowedUserIDs                    map[string]struct{}
+	AllowedRoles                      map[string]struct{}
 }
 
 type listingKitZitadelRuntimeConfig struct {

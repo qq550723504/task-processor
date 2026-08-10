@@ -613,7 +613,6 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 		"    clientID: \"file-client\"",
 		"    clientSecret: \"file-secret\"",
 		"    authorizationRequired: false",
-		"    allowedUsernames: [\"file-admin\"]",
 	}, "\n")
 	require.NoError(t, os.WriteFile(configPath, []byte(configBody), 0o600))
 
@@ -630,7 +629,6 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 	assert.True(t, cfg.ListingKit.Zitadel.AuthorizationRequired)
 	assert.Equal(t, "https://issuer.file.example", cfg.ListingKit.Zitadel.IssuerURL)
 	assert.Equal(t, "file-client", cfg.ListingKit.Zitadel.ClientID)
-	assert.Equal(t, []string{"file-admin"}, cfg.ListingKit.Zitadel.AllowedUsernames)
 	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, cfg.ListingKit.Zitadel.AllowedRoles)
 }
 
@@ -646,18 +644,15 @@ func TestLoadConfigFromFile_CannotDisableListingKitAuthentication(t *testing.T) 
 		"listingkit:",
 		"  zitadel:",
 		"    authorizationRequired: false",
-		"    allowedUsernames: [\"file-admin\"]",
 	}, "\n")
 	require.NoError(t, os.WriteFile(configPath, []byte(configBody), 0o600))
 
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED", "0")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES", "listingkit_admin,platform_admin")
-	t.Setenv("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "1-admin")
 
 	cfg, err := LoadConfigFromFile(configPath)
 	require.NoError(t, err)
 
 	assert.False(t, cfg.ListingKit.Zitadel.AuthorizationRequired)
-	assert.Equal(t, []string{"1-admin"}, cfg.ListingKit.Zitadel.AllowedUsernames)
 	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, cfg.ListingKit.Zitadel.AllowedRoles)
 }
