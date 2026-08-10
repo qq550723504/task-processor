@@ -109,6 +109,32 @@ func TestListingKitIdentityPreflightJobDeadlineMatchesDriverWait(t *testing.T) {
 	}
 }
 
+func TestListingKitPreflightDocumentationUsesDigestPinnedCandidateAndRunner(t *testing.T) {
+	for _, path := range []string{
+		filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "README.md"),
+		filepath.Join("..", "docs", "development", "listingkit-local-debug.md"),
+	} {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read ListingKit preflight documentation %q: %v", path, err)
+		}
+		text := string(content)
+		for _, required := range []string{
+			"API_CANDIDATE_IMAGE=\"docker.io/xuwei190/task-processor-product-listing-api@sha256:<64-hex-api-digest>\"",
+			"PREFLIGHT_RUNNER_IMAGE=\"docker.io/xuwei190/task-processor-listingkit-identity-preflight@sha256:<64-hex-runner-digest>\"",
+			"--image \"$API_CANDIDATE_IMAGE\"",
+			"--runner-image \"$PREFLIGHT_RUNNER_IMAGE\"",
+		} {
+			if !strings.Contains(text, required) {
+				t.Errorf("ListingKit preflight documentation %q must contain %q", path, required)
+			}
+		}
+		if strings.Contains(text, "--image \"docker.io/xuwei190/task-processor-product-listing-api:<immutable-release-tag>\"") {
+			t.Errorf("ListingKit preflight documentation %q must not pass a mutable image tag to the driver", path)
+		}
+	}
+}
+
 func TestListingKitDeployWorkflowSupportsDigestPinnedRollbackWithoutRebuild(t *testing.T) {
 	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
 	content, err := os.ReadFile(workflowPath)

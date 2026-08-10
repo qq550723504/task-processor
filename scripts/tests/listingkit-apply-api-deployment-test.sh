@@ -5,9 +5,15 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 driver="$repo_root/scripts/listingkit-apply-api-deployment.sh"
 manifest="$repo_root/deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml"
+ui_driver="$repo_root/scripts/listingkit-apply-ui-deployment.sh"
+ui_manifest="$repo_root/deployments/kubernetes/listingkit-workbench/base/listingkit-ui-deployment.yaml"
 
 if [[ ! -x "$driver" ]]; then
   printf 'missing executable immutable deployment driver: %s\n' "$driver" >&2
+  exit 1
+fi
+if [[ ! -x "$ui_driver" ]]; then
+  printf 'missing executable immutable UI deployment driver: %s\n' "$ui_driver" >&2
   exit 1
 fi
 
@@ -24,7 +30,7 @@ set -euo pipefail
 normalized=()
 for argument in "$@"; do
   case "$argument" in
-    */listingkit-api-deployment.*.yaml)
+    */listingkit-*-deployment.*.yaml|*/listingkit-deployment.*.yaml)
       normalized+=("<rendered-manifest>")
       ;;
     *)
@@ -38,6 +44,10 @@ if [[ "${1:-}" == "-n" && "${3:-}" == "apply" && "${4:-}" == "-f" ]]; then
   printf '%s\n' "$5" >"$FAKE_RENDERED_PATH_LOG"
   cp "$5" "$FAKE_RENDERED_MANIFEST"
   exit "${FAKE_KUBECTL_APPLY_STATUS:-0}"
+fi
+
+if [[ "${1:-}" == "-n" && "${3:-}" == "patch" && "${4:-}" == "deployment" && "${6:-}" == "--type=strategic" ]]; then
+  exit "${FAKE_KUBECTL_PATCH_STATUS:-0}"
 fi
 
 printf 'unexpected kubectl invocation:' >&2
@@ -111,6 +121,28 @@ run_success_case() {
   assert_temporary_manifest_removed "$rendered_path_log"
 }
 
+run_ui_success_case() {
+  local command_log="$test_root/ui-success.commands"
+  local rendered_manifest="$test_root/ui-success.rendered.yaml"
+  local rendered_path_log="$test_root/ui-success.rendered-path"
+  local immutable_image='docker.io/xuwei190/task-processor-listingkit-ui@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+
+  PATH="$fake_bin:$PATH" \
+    FAKE_KUBECTL_LOG="$command_log" \
+    FAKE_RENDERED_MANIFEST="$rendered_manifest" \
+    FAKE_RENDERED_PATH_LOG="$rendered_path_log" \
+    FAKE_KUBECTL_APPLY_STATUS=0 \
+    "$ui_driver" \
+      --manifest "$ui_manifest" \
+      --namespace test-namespace \
+      --image "$immutable_image"
+
+  assert_file_equals $'-n|test-namespace|patch|deployment|listingkit-ui|--type=strategic|--patch|{"spec":{"template":{"spec":{"containers":[{"name":"listingkit-ui","envFrom":[{"configMapRef":{"name":"listingkit-workbench-config"}}]}]}}}}\n-n|test-namespace|apply|-f|<rendered-manifest>' "$command_log"
+  assert_contains "$(cat "$rendered_manifest")" "image: $immutable_image"
+  assert_not_contains "$(cat "$rendered_manifest")" 'task-processor-listingkit-ui:latest'
+  assert_temporary_manifest_removed "$rendered_path_log"
+}
+
 run_apply_failure_case() {
   local command_log="$test_root/apply-failure.commands"
   local rendered_manifest="$test_root/apply-failure.rendered.yaml"
@@ -174,6 +206,7 @@ run_invalid_image_case() {
 }
 
 run_success_case
+run_ui_success_case
 run_apply_failure_case
 run_invalid_image_case '' empty-image
 run_invalid_image_case 'docker.io/xuwei190/task-processor-product-listing-api:latest' latest-image

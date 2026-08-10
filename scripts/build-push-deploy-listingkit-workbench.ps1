@@ -23,8 +23,10 @@ $PreflightDockerfile = "deployments/docker/Dockerfile.listingkit-identity-prefli
 $UiDockerfile = "deployments/docker/Dockerfile.listingkit-ui"
 $IdentityPreflightDriver = Join-Path $PSScriptRoot "listingkit-identity-preflight-job.sh"
 $ImmutableApiApplyDriver = Join-Path $PSScriptRoot "listingkit-apply-api-deployment.sh"
+$ImmutableUiApplyDriver = Join-Path $PSScriptRoot "listingkit-apply-ui-deployment.sh"
 $IdentityPreflightManifest = "deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml"
 $ApiDeploymentManifest = "deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml"
+$UiDeploymentManifest = "deployments/kubernetes/listingkit-workbench/base/listingkit-ui-deployment.yaml"
 
 if ($PSBoundParameters.ContainsKey("Tag") -and [string]::IsNullOrWhiteSpace($Tag)) {
     throw "ListingKit release requires a non-empty immutable API image tag"
@@ -153,6 +155,7 @@ if (-not $SkipApply) {
     $BashExecutable = Resolve-BashExecutable
     $ApiCandidateImage = Resolve-PushedImageDigest $ApiImage
     $PreflightRunnerImage = Resolve-PushedImageDigest $PreflightImage
+    $UiCandidateImage = Resolve-PushedImageDigest $UiImage
 
     Invoke-Step "[7/10] Running identity preflight release gate..." {
         & $BashExecutable $IdentityPreflightDriver `
@@ -171,9 +174,12 @@ if (-not $SkipApply) {
         if ($LASTEXITCODE -ne 0) { throw "immutable API deployment apply failed" }
     }
 
-    Invoke-Step "[9/10] Updating matching UI deployment image..." {
-        kubectl -n $Namespace set image deployment/listingkit-ui "listingkit-ui=$UiImage"
-        if ($LASTEXITCODE -ne 0) { throw "kubectl set image failed for listingkit-ui" }
+    Invoke-Step "[9/10] Applying immutable UI deployment..." {
+        & $BashExecutable $ImmutableUiApplyDriver `
+            --manifest $UiDeploymentManifest `
+            --namespace $Namespace `
+            --image $UiCandidateImage
+        if ($LASTEXITCODE -ne 0) { throw "immutable UI deployment apply failed" }
     }
 
     Invoke-Step "[10/10] Waiting for rollouts..." {

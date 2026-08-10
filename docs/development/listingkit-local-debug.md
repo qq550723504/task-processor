@@ -41,13 +41,18 @@ The helper writes the token under `.local\listingkit-api-token.txt` and can expo
 
 Before deploying the canonical-subject API or its matching UI, run the
 read-only identity preflight against the target Kubernetes namespace with the
-exact full immutable API image:
+exact full immutable API and preflight-runner images. Copy each digest from
+the release build output; do not substitute a mutable tag.
 
 ```bash
+API_CANDIDATE_IMAGE="docker.io/xuwei190/task-processor-product-listing-api@sha256:<64-hex-api-digest>"
+PREFLIGHT_RUNNER_IMAGE="docker.io/xuwei190/task-processor-listingkit-identity-preflight@sha256:<64-hex-runner-digest>"
+
 bash scripts/listingkit-identity-preflight-job.sh \
   --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml \
   --namespace task-processor \
-  --image "docker.io/xuwei190/task-processor-product-listing-api:<immutable-release-tag>"
+  --image "$API_CANDIDATE_IMAGE" \
+  --runner-image "$PREFLIGHT_RUNNER_IMAGE"
 ```
 
 The shared tenant-directory credential must be able to read `POST /v2/users`

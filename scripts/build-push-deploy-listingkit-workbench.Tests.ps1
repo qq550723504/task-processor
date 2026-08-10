@@ -62,21 +62,23 @@ Describe "build-push-deploy-listingkit-workbench release gate" {
         @($commandLog | Where-Object { $_ -match "^(bash|kubectl) " }).Count | Should Be 0
     }
 
-    It "runs preflight then immutable API apply before the matching UI update" {
+    It "runs preflight then immutable API and UI manifest applies" {
         & $scriptPath -Tag "release-20260810" -SkipTests
 
         $preflightIndex = $commandLog.FindIndex([Predicate[string]]{ param($command) $command -match "listingkit-identity-preflight-job\.sh" })
         $apiApplyIndex = $commandLog.FindIndex([Predicate[string]]{ param($command) $command -match "listingkit-apply-api-deployment\.sh" })
-        $uiUpdateIndex = $commandLog.FindIndex([Predicate[string]]{ param($command) $command -match "set image deployment/listingkit-ui" })
+        $uiApplyIndex = $commandLog.FindIndex([Predicate[string]]{ param($command) $command -match "listingkit-apply-ui-deployment\.sh" })
 
         $preflightIndex | Should BeGreaterThan -1
         $apiApplyIndex | Should BeGreaterThan $preflightIndex
-        $uiUpdateIndex | Should BeGreaterThan $apiApplyIndex
+        $uiApplyIndex | Should BeGreaterThan $apiApplyIndex
         $commandLog[$preflightIndex] | Should Match "--image xuwei190/task-processor-product-listing-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         $commandLog[$preflightIndex] | Should Match "--runner-image xuwei190/task-processor-listingkit-identity-preflight@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         $commandLog[$apiApplyIndex] | Should Match "--image xuwei190/task-processor-product-listing-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        $commandLog[$uiApplyIndex] | Should Match "--image xuwei190/task-processor-listingkit-ui@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         ($commandLog -join "`n") | Should Not Match "apply -k"
         ($commandLog -join "`n") | Should Not Match "set image deployment/product-listing-api"
+        ($commandLog -join "`n") | Should Not Match "set image deployment/listingkit-ui"
     }
 
     It "preflights and applies the same custom-registry API image" {
