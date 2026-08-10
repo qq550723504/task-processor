@@ -26,13 +26,13 @@ type ReportSummary struct {
 }
 
 type Report struct {
-	SchemaVersion    int           `json:"schema_version"`
-	GeneratedAt      time.Time     `json:"generated_at"`
-	ConfigName       string        `json:"config_name"`
-	DatabaseName     string        `json:"database_name"`
+	SchemaVersion     int           `json:"schema_version"`
+	GeneratedAt       time.Time     `json:"generated_at"`
+	ConfigName        string        `json:"config_name"`
+	DatabaseName      string        `json:"database_name"`
 	ReportFingerprint string        `json:"report_fingerprint,omitempty"`
-	Summary          ReportSummary `json:"summary"`
-	Findings         []Finding     `json:"findings"`
+	Summary           ReportSummary `json:"summary"`
+	Findings          []Finding     `json:"findings"`
 }
 
 func NewReport(configName, databaseName string, findings []Finding, autoRows int64) Report {
@@ -80,14 +80,16 @@ func (report Report) Fingerprint() (string, error) {
 	findings := append([]Finding(nil), report.Findings...)
 	sortFindings(findings)
 	canonical := struct {
-		SchemaVersion int       `json:"schema_version"`
-		ConfigName    string    `json:"config_name"`
-		DatabaseName  string    `json:"database_name"`
-		Findings      []Finding `json:"findings"`
+		SchemaVersion int           `json:"schema_version"`
+		ConfigName    string        `json:"config_name"`
+		DatabaseName  string        `json:"database_name"`
+		Summary       ReportSummary `json:"summary"`
+		Findings      []Finding     `json:"findings"`
 	}{
 		SchemaVersion: report.SchemaVersion,
 		ConfigName:    report.ConfigName,
 		DatabaseName:  report.DatabaseName,
+		Summary:       report.Summary,
 		Findings:      findings,
 	}
 	encoded, err := json.Marshal(canonical)
