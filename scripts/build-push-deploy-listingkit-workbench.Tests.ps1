@@ -17,6 +17,14 @@ Describe "build-push-deploy-listingkit-workbench release gate" {
 
         function global:docker {
             $commandLog.Add("docker " + ($args -join " "))
+            if ($args[0] -eq "image" -and $args[1] -eq "inspect") {
+                $repository = ($args[-1] -replace ':[^/:]+$', '')
+                if ($args[-1] -match "identity-preflight") {
+                    Write-Output "$repository@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                } else {
+                    Write-Output "$repository@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                }
+            }
             $global:LASTEXITCODE = 0
         }
 
@@ -64,8 +72,9 @@ Describe "build-push-deploy-listingkit-workbench release gate" {
         $preflightIndex | Should BeGreaterThan -1
         $apiApplyIndex | Should BeGreaterThan $preflightIndex
         $uiUpdateIndex | Should BeGreaterThan $apiApplyIndex
-        $commandLog[$preflightIndex] | Should Match "--image xuwei190/task-processor-product-listing-api:release-20260810"
-        $commandLog[$apiApplyIndex] | Should Match "--image xuwei190/task-processor-product-listing-api:release-20260810"
+        $commandLog[$preflightIndex] | Should Match "--image xuwei190/task-processor-product-listing-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        $commandLog[$preflightIndex] | Should Match "--runner-image xuwei190/task-processor-listingkit-identity-preflight@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        $commandLog[$apiApplyIndex] | Should Match "--image xuwei190/task-processor-product-listing-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         ($commandLog -join "`n") | Should Not Match "apply -k"
         ($commandLog -join "`n") | Should Not Match "set image deployment/product-listing-api"
     }
@@ -77,8 +86,8 @@ Describe "build-push-deploy-listingkit-workbench release gate" {
         $apiApplyCommand = @($commandLog | Where-Object { $_ -match "listingkit-apply-api-deployment\.sh" })
         $preflightCommand.Count | Should Be 1
         $apiApplyCommand.Count | Should Be 1
-        $preflightCommand[0] | Should Match "--image alternate-registry/task-processor-product-listing-api:release-20260810"
-        $apiApplyCommand[0] | Should Match "--image alternate-registry/task-processor-product-listing-api:release-20260810"
+        $preflightCommand[0] | Should Match "--image alternate-registry/task-processor-product-listing-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        $apiApplyCommand[0] | Should Match "--image alternate-registry/task-processor-product-listing-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     }
 
     It "prevents every deployment mutation when the identity preflight fails" {

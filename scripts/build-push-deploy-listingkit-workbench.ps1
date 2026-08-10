@@ -16,8 +16,10 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ApiImageName = "task-processor-product-listing-api"
+$PreflightImageName = "task-processor-listingkit-identity-preflight"
 $UiImageName = "task-processor-listingkit-ui"
 $ApiDockerfile = "deployments/docker/Dockerfile.product-listing-api"
+$PreflightDockerfile = "deployments/docker/Dockerfile.listingkit-identity-preflight"
 $UiDockerfile = "deployments/docker/Dockerfile.listingkit-ui"
 $IdentityPreflightDriver = Join-Path $PSScriptRoot "listingkit-identity-preflight-job.sh"
 $ImmutableApiApplyDriver = Join-Path $PSScriptRoot "listingkit-apply-api-deployment.sh"
@@ -44,6 +46,7 @@ if ([string]::IsNullOrWhiteSpace($Tag) -or $Tag -eq "latest") {
 }
 
 $ApiImage = "$DockerHubUser/${ApiImageName}:$Tag"
+$PreflightImage = "$DockerHubUser/${PreflightImageName}:$Tag"
 $UiImage = "$DockerHubUser/${UiImageName}:$Tag"
 $ApiLatestImage = "$DockerHubUser/${ApiImageName}:latest"
 $UiLatestImage = "$DockerHubUser/${UiImageName}:latest"
@@ -71,6 +74,16 @@ function Resolve-BashExecutable {
     }
 
     throw "Git Bash is required to run the ListingKit identity preflight release gate; set LISTINGKIT_BASH only when using an explicit trusted Bash executable"
+}
+
+function Resolve-PushedImageDigest {
+    param([string]$Image)
+
+    $digestReference = (docker image inspect --format '{{index .RepoDigests 0}}' $Image 2>$null).Trim()
+    if ($LASTEXITCODE -ne 0 -or $digestReference -notmatch '^[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[A-Fa-f0-9]{64}$') {
+        throw "could not resolve a digest-pinned reference for $Image"
+    }
+    return $digestReference
 }
 
 Write-Host "========================================" -ForegroundColor Cyan
@@ -112,7 +125,12 @@ Invoke-Step "[4/8] Building UI image..." {
     if ($LASTEXITCODE -ne 0) { throw "UI docker build failed" }
 }
 
-Invoke-Step "[5/8] Pushing images..." {
+Invoke-Step "[5/9] Building identity preflight runner..." {
+    docker build -f $PreflightDockerfile -t $PreflightImage .
+    if ($LASTEXITCODE -ne 0) { throw "identity preflight runner docker build failed" }
+}
+
+Invoke-Step "[6/9] Pushing images..." {
     docker push $ApiImage
     if ($LASTEXITCODE -ne 0) { throw "docker push $ApiImage failed" }
 
@@ -126,33 +144,39 @@ Invoke-Step "[5/8] Pushing images..." {
         docker push $UiLatestImage
         if ($LASTEXITCODE -ne 0) { throw "docker push $UiLatestImage failed" }
     }
+
+    docker push $PreflightImage
+    if ($LASTEXITCODE -ne 0) { throw "docker push $PreflightImage failed" }
 }
 
 if (-not $SkipApply) {
     $BashExecutable = Resolve-BashExecutable
+    $ApiCandidateImage = Resolve-PushedImageDigest $ApiImage
+    $PreflightRunnerImage = Resolve-PushedImageDigest $PreflightImage
 
-    Invoke-Step "[6/9] Running identity preflight release gate..." {
+    Invoke-Step "[7/10] Running identity preflight release gate..." {
         & $BashExecutable $IdentityPreflightDriver `
             --manifest $IdentityPreflightManifest `
             --namespace $Namespace `
-            --image $ApiImage
+            --image $ApiCandidateImage `
+            --runner-image $PreflightRunnerImage
         if ($LASTEXITCODE -ne 0) { throw "identity preflight failed" }
     }
 
-    Invoke-Step "[7/9] Applying immutable API deployment..." {
+    Invoke-Step "[8/10] Applying immutable API deployment..." {
         & $BashExecutable $ImmutableApiApplyDriver `
             --manifest $ApiDeploymentManifest `
             --namespace $Namespace `
-            --image $ApiImage
+            --image $ApiCandidateImage
         if ($LASTEXITCODE -ne 0) { throw "immutable API deployment apply failed" }
     }
 
-    Invoke-Step "[8/9] Updating matching UI deployment image..." {
+    Invoke-Step "[9/10] Updating matching UI deployment image..." {
         kubectl -n $Namespace set image deployment/listingkit-ui "listingkit-ui=$UiImage"
         if ($LASTEXITCODE -ne 0) { throw "kubectl set image failed for listingkit-ui" }
     }
 
-    Invoke-Step "[9/9] Waiting for rollouts..." {
+    Invoke-Step "[10/10] Waiting for rollouts..." {
         kubectl -n $Namespace rollout status deployment/product-listing-api --timeout=5m
         if ($LASTEXITCODE -ne 0) { throw "product-listing-api rollout failed" }
 

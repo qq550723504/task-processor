@@ -453,8 +453,11 @@ Standard rollback path:
 1. Confirm the legacy ZITADEL `user_id` claim is absent or exactly equals
    `sub`; otherwise rollback can restore split ownership semantics and is not
    allowed.
-2. Identify the prior API and UI image tags from a successful release record.
-3. Run `ListingKit API Deploy` with its prior immutable tag, then wait for the
+2. Identify the prior API and UI image digests from a successful release record.
+   Also identify the current `task-processor-listingkit-identity-preflight`
+   runner digest; the gate runner is deliberately separate from the rollback
+   candidate and must be available even when that candidate predates preflight.
+3. Run `ListingKit API Deploy` with its prior immutable digest, then wait for the
    API rollout and readiness probe.
 4. Run `ListingKit UI Deploy` with its prior immutable tag, then wait for the
    UI rollout.
@@ -474,11 +477,13 @@ Emergency fallback from a workstation (use the same preflight and immutable
 apply drivers; do not use a direct API `set image`):
 
 ```powershell
-$apiImage = "docker.io/xuwei190/task-processor-product-listing-api:496ca069"
+$apiImage = "docker.io/xuwei190/task-processor-product-listing-api@sha256:<64-hex-api-digest>"
+$preflightRunnerImage = "docker.io/xuwei190/task-processor-listingkit-identity-preflight@sha256:<64-hex-runner-digest>"
 & "C:\Program Files\Git\bin\bash.exe" scripts/listingkit-identity-preflight-job.sh `
   --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml `
   --namespace task-processor `
-  --image $apiImage
+  --image $apiImage `
+  --runner-image $preflightRunnerImage
 if ($LASTEXITCODE -ne 0) { throw "Identity preflight failed; refusing rollback deployment" }
 & "C:\Program Files\Git\bin\bash.exe" scripts/listingkit-apply-api-deployment.sh `
   --manifest deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml `

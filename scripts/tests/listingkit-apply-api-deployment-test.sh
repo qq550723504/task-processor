@@ -93,7 +93,7 @@ run_success_case() {
   local command_log="$test_root/success.commands"
   local rendered_manifest="$test_root/success.rendered.yaml"
   local rendered_path_log="$test_root/success.rendered-path"
-  local immutable_image='docker.io/xuwei190/task-processor-product-listing-api:release-20260810-abc123'
+  local immutable_image='docker.io/xuwei190/task-processor-product-listing-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
 
   PATH="$fake_bin:$PATH" \
     FAKE_KUBECTL_LOG="$command_log" \
@@ -126,7 +126,7 @@ run_apply_failure_case() {
     "$driver" \
       --manifest "$manifest" \
       --namespace test-namespace \
-      --image docker.io/xuwei190/task-processor-product-listing-api:release-20260810-abc123 \
+      --image docker.io/xuwei190/task-processor-product-listing-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
       >/dev/null 2>&1
   status=$?
   set -e
@@ -177,4 +177,5 @@ run_success_case
 run_apply_failure_case
 run_invalid_image_case '' empty-image
 run_invalid_image_case 'docker.io/xuwei190/task-processor-product-listing-api:latest' latest-image
+run_invalid_image_case 'docker.io/xuwei190/task-processor-product-listing-api:release-20260810' tagged-image
 printf '%s\n' 'ListingKit immutable API deployment driver tests passed'

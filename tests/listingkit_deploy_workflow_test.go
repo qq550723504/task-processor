@@ -43,8 +43,11 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 			if step.ContinueOnError {
 				t.Error("identity preflight step must block deployment when its caller returns failure")
 			}
-			if !strings.Contains(step.Run, "--image \"${{ needs.prepare.outputs.api_image }}\"") {
+			if !strings.Contains(step.Run, "--image \"${{ needs.build-api.outputs.api_image }}\"") {
 				t.Error("identity preflight must receive the exact immutable API image that will be deployed")
+			}
+			if !strings.Contains(step.Run, "--runner-image \"${{ needs.build-preflight-runner.outputs.runner_image }}\"") {
+				t.Error("identity preflight must run in its distinct digest-pinned runner image")
 			}
 			if strings.Contains(step.Run, "--image-tag") {
 				t.Error("identity preflight must not infer a fixed-registry image from a tag")
@@ -56,8 +59,8 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 				t.Errorf("immutable deployment step must require prior success, got if: %q", step.If)
 			}
 			for _, required := range []string{
-				"--image \"${{ needs.prepare.outputs.api_image }}\"",
-				"--manifest deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml",
+				"--image \"${{ needs.build-api.outputs.api_image }}\"",
+				"--manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml",
 			} {
 				if !strings.Contains(step.Run, required) {
 					t.Errorf("immutable deployment step must contain %q", required)

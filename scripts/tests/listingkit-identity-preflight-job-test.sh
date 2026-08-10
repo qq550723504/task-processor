@@ -110,13 +110,15 @@ run_success_case() {
       "$driver" \
         --manifest "$manifest" \
         --namespace test-namespace \
-        --image docker.io/alternate-registry/task-processor-product-listing-api:release-20260810-abc123
+        --image docker.io/alternate-registry/task-processor-product-listing-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+        --runner-image docker.io/xuwei190/task-processor-listingkit-identity-preflight@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
   } 2>&1)"
 
   local expected_commands
   expected_commands=$'create|-n|test-namespace|-f|<rendered-manifest>|-o|jsonpath={.metadata.name}\n-n|test-namespace|wait|--for=condition=complete|job/listingkit-identity-preflight-test-abc12|--timeout=15m\n-n|test-namespace|logs|job/listingkit-identity-preflight-test-abc12'
   assert_file_equals "$expected_commands" "$command_log"
-  assert_contains "$(cat "$rendered_manifest")" 'docker.io/alternate-registry/task-processor-product-listing-api:release-20260810-abc123'
+  assert_contains "$(cat "$rendered_manifest")" 'docker.io/alternate-registry/task-processor-product-listing-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+  assert_contains "$(cat "$rendered_manifest")" 'docker.io/xuwei190/task-processor-listingkit-identity-preflight@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
   assert_not_contains "$(cat "$rendered_manifest")" 'REPLACE_WITH_DEPLOYED_IMAGE'
   assert_contains "$output" 'identity preflight logs'
   if [[ -e "$(cat "$rendered_path_log")" ]]; then
@@ -140,7 +142,8 @@ run_failure_case() {
       "$driver" \
         --manifest "$manifest" \
         --namespace test-namespace \
-        --image docker.io/alternate-registry/task-processor-product-listing-api:release-20260810-abc123
+        --image docker.io/alternate-registry/task-processor-product-listing-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+        --runner-image docker.io/xuwei190/task-processor-listingkit-identity-preflight@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
   } 2>&1)"
   status=$?
   set -e
@@ -186,7 +189,26 @@ run_mutable_image_case() {
   fi
 }
 
+run_tagged_image_case() {
+  local command_log="$test_root/tagged-image.commands"
+  local status
+
+  set +e
+  PATH="$fake_bin:$PATH" FAKE_KUBECTL_LOG="$command_log" "$driver" \
+    --manifest "$manifest" --namespace test-namespace \
+    --image docker.io/alternate-registry/task-processor-product-listing-api:release-20260810 >/dev/null 2>&1
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    printf '%s\n' 'expected a tagged image to be rejected before kubectl' >&2
+    exit 1
+  fi
+  [[ ! -s "$command_log" ]]
+}
+
 run_success_case
 run_failure_case
 run_mutable_image_case
+run_tagged_image_case
 printf '%s\n' 'listingkit identity preflight Job driver tests passed'

@@ -7,12 +7,13 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$script_dir/lib/listingkit-immutable-image.sh"
 
 usage() {
-  printf 'Usage: %s --manifest PATH --namespace NAMESPACE --image IMMUTABLE_IMAGE\n' "$0" >&2
+  printf 'Usage: %s --manifest PATH --namespace NAMESPACE --image API_CANDIDATE_DIGEST --runner-image PREFLIGHT_RUNNER_DIGEST\n' "$0" >&2
 }
 
 MANIFEST=""
 K8S_NAMESPACE=""
 IMAGE=""
+RUNNER_IMAGE=""
 
 while [[ "$#" -gt 0 ]]; do
   case "$1" in
@@ -31,6 +32,11 @@ while [[ "$#" -gt 0 ]]; do
       IMAGE="$2"
       shift 2
       ;;
+    --runner-image)
+      [[ "$#" -ge 2 ]] || { usage; exit 2; }
+      RUNNER_IMAGE="$2"
+      shift 2
+      ;;
     *)
       usage
       exit 2
@@ -38,7 +44,7 @@ while [[ "$#" -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$MANIFEST" || -z "$K8S_NAMESPACE" || -z "$IMAGE" ]]; then
+if [[ -z "$MANIFEST" || -z "$K8S_NAMESPACE" || -z "$IMAGE" || -z "$RUNNER_IMAGE" ]]; then
   usage
   exit 2
 fi
@@ -53,15 +59,23 @@ if ! listingkit_is_immutable_image "$IMAGE"; then
   exit 2
 fi
 
-if ! grep -q 'REPLACE_WITH_DEPLOYED_IMAGE' "$MANIFEST"; then
-  printf 'Identity preflight Job manifest is missing the image placeholder: %s\n' "$MANIFEST" >&2
+if ! listingkit_is_immutable_image "$RUNNER_IMAGE"; then
+  printf 'Identity preflight requires a valid digest-pinned runner image, got: %s\n' "$RUNNER_IMAGE" >&2
+  exit 2
+fi
+
+if ! grep -q 'REPLACE_WITH_API_CANDIDATE_IMAGE' "$MANIFEST" || ! grep -q 'REPLACE_WITH_PREFLIGHT_RUNNER_IMAGE' "$MANIFEST"; then
+  printf 'Identity preflight Job manifest is missing a required image placeholder: %s\n' "$MANIFEST" >&2
   exit 2
 fi
 
 rendered_manifest="$(mktemp "${TMPDIR:-/tmp}/listingkit-identity-preflight.XXXXXX.yaml")"
 trap 'rm -f "$rendered_manifest"' EXIT
 
-sed "s|REPLACE_WITH_DEPLOYED_IMAGE|$IMAGE|g" "$MANIFEST" >"$rendered_manifest"
+sed \
+  -e "s|REPLACE_WITH_API_CANDIDATE_IMAGE|$IMAGE|g" \
+  -e "s|REPLACE_WITH_PREFLIGHT_RUNNER_IMAGE|$RUNNER_IMAGE|g" \
+  "$MANIFEST" >"$rendered_manifest"
 
 job_name="$(kubectl create -n "$K8S_NAMESPACE" -f "$rendered_manifest" -o 'jsonpath={.metadata.name}')"
 if [[ -z "$job_name" ]]; then
