@@ -82,11 +82,11 @@ Run: `git add deployments/kubernetes/listingkit-workbench/base/listingkit-ui-dep
 
 **Files:** `.github/workflows/listingkit-deploy.yml`, `tests/listingkit_deploy_workflow_test.go`, and `tests/commercial_readiness_workflow_test.go`.
 
-**Interfaces:** `prepare.outputs.runner_source_ref` is candidate `source_ref` for normal builds and `github.workflow_sha` when `candidate_api_image` is non-empty. Runner checkout and image tag consume this output.
+**Interfaces:** `prepare.outputs.runner_source_ref` is candidate `source_ref` for normal builds and `github.workflow_sha` when `candidate_api_image` is non-empty. Runner checkout consumes this output; its Docker tag remains workflow SHA because a source ref can contain `/`.
 
 - [ ] **Step 1: Write the failing parsed-workflow test**
 
-Add `TestListingKitPreflightRunnerUsesCandidateSourceExceptDigestRollback`. Require `runner_source_ref` selection, its use in runner checkout, and its use in runner tag.
+Add `TestListingKitPreflightRunnerUsesCandidateSourceExceptDigestRollback`. Require `runner_source_ref` selection and its use in runner checkout.
 
 - [ ] **Step 2: Verify RED**
 

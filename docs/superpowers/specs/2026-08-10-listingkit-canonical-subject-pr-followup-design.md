@@ -35,7 +35,7 @@ The runner build job selects its checkout ref from release mode:
 - normal source release: `needs.prepare.outputs.source_ref`;
 - digest rollback: `github.workflow_sha`.
 
-The runner image tag follows that selected ref, while its deployed reference remains the Buildx-produced digest. The deploy job continues to use workflow-version scripts and receives the runner digest output. This keeps the gate compiler aligned with new source schemas but makes rollback independent of the rollback candidate image.
+The runner image keeps a workflow-SHA tag because a permitted source ref can contain characters invalid in Docker tags; its deployed reference remains the Buildx-produced digest. The deploy job continues to use workflow-version scripts and receives the runner digest output. This keeps the gate compiler aligned with new source schemas but makes rollback independent of the rollback candidate image.
 
 ## Error Handling and Safety
 
