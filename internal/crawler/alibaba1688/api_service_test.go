@@ -125,7 +125,7 @@ func TestVerifiedCrawlerTenantResolverUsesLegacyTenantBridge(t *testing.T) {
 	restore := tenantbridge.ConfigureLegacyTenantResolver(staticLegacyTenantResolver{value: 227})
 	defer restore()
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/crawl", nil)
-	request = request.WithContext(listingkit.WithAuthenticatedIdentity(request.Context(), listingkit.AuthenticatedIdentity{TenantID: "373211199677923496"}))
+	request = request.WithContext(listingkit.WithAuthenticatedIdentity(request.Context(), listingkit.AuthenticatedIdentity{TenantID: "373211199677923496", UserID: "zitadel-subject-227"}))
 
 	tenantID, ok := verifiedCrawlerTenantResolver(request.Context())
 
