@@ -1,0 +1,101 @@
+package tests
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"gopkg.in/yaml.v3"
+)
+
+func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name            string `yaml:"name"`
+				Run             string `yaml:"run"`
+				If              string `yaml:"if"`
+				ContinueOnError bool   `yaml:"continue-on-error"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(content, &workflow); err != nil {
+		t.Fatalf("parse ListingKit deploy workflow: %v", err)
+	}
+
+	deployJob, ok := workflow.Jobs["deploy-api"]
+	if !ok {
+		t.Fatal("ListingKit deploy workflow is missing deploy-api job")
+	}
+
+	preflightIndex := -1
+	deploymentMutationIndexes := make([]int, 0, 1)
+	for index, step := range deployJob.Steps {
+		if strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
+			preflightIndex = index
+			if step.ContinueOnError {
+				t.Error("identity preflight step must block deployment when its caller returns failure")
+			}
+		}
+		if strings.Contains(step.Run, "scripts/listingkit-apply-api-deployment.sh") {
+			deploymentMutationIndexes = append(deploymentMutationIndexes, index)
+			if step.If != "" && step.If != "${{ success() }}" {
+				t.Errorf("immutable deployment step must require prior success, got if: %q", step.If)
+			}
+			for _, required := range []string{
+				"--image \"${{ needs.prepare.outputs.api_image }}\"",
+				"--manifest deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml",
+			} {
+				if !strings.Contains(step.Run, required) {
+					t.Errorf("immutable deployment step must contain %q", required)
+				}
+			}
+		}
+		for _, forbidden := range []string{
+			"kubectl set image",
+			"kubectl -n ${{ env.K8S_NAMESPACE }} apply -f deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml",
+		} {
+			if strings.Contains(step.Run, forbidden) {
+				t.Errorf("deploy-api step %q contains forbidden deployment mutation %q", step.Name, forbidden)
+			}
+		}
+	}
+
+	if preflightIndex < 0 {
+		t.Fatal("deploy-api job is missing the identity preflight driver")
+	}
+	if len(deploymentMutationIndexes) != 1 {
+		t.Fatalf("deploy-api job must contain exactly one immutable deployment mutation, got %d", len(deploymentMutationIndexes))
+	}
+	if deploymentMutationIndexes[0] <= preflightIndex {
+		t.Fatalf("deployment mutation step %d must run after identity preflight step %d", deploymentMutationIndexes[0], preflightIndex)
+	}
+}
+
+func TestListingKitIdentityPreflightJobDeadlineMatchesDriverWait(t *testing.T) {
+	manifestPath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "jobs", "listingkit-identity-preflight-job.yaml")
+	content, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read ListingKit identity preflight Job manifest: %v", err)
+	}
+
+	var job struct {
+		Spec struct {
+			ActiveDeadlineSeconds int `yaml:"activeDeadlineSeconds"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(content, &job); err != nil {
+		t.Fatalf("parse ListingKit identity preflight Job manifest: %v", err)
+	}
+
+	if job.Spec.ActiveDeadlineSeconds != 15*60 {
+		t.Fatalf("identity preflight Job deadline must match the driver's 15-minute wait, got %d seconds", job.Spec.ActiveDeadlineSeconds)
+	}
+}

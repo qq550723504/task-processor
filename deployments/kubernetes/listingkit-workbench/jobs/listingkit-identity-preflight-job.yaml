@@ -6,6 +6,8 @@ metadata:
     app: listingkit-identity-preflight
 spec:
   backoffLimit: 0
+  # Keep aligned with the release-gate driver's kubectl wait --timeout=15m.
+  activeDeadlineSeconds: 900
   ttlSecondsAfterFinished: 86400
   template:
     metadata:

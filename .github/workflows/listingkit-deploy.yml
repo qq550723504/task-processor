@@ -194,10 +194,13 @@ jobs:
             --namespace "$K8S_NAMESPACE" \
             --image-tag "$IDENTITY_PREFLIGHT_IMAGE_TAG"
 
-      - name: Update API deployment image
+      - name: Apply immutable API deployment
+        shell: bash
         run: |
-          kubectl -n ${{ env.K8S_NAMESPACE }} apply -f deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml
-          kubectl -n ${{ env.K8S_NAMESPACE }} set image deployment/product-listing-api product-listing-api=${{ needs.prepare.outputs.api_image }}
+          scripts/listingkit-apply-api-deployment.sh \
+            --manifest deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml \
+            --namespace "$K8S_NAMESPACE" \
+            --image "${{ needs.prepare.outputs.api_image }}"
 
       - name: Wait for API rollout
         run: |

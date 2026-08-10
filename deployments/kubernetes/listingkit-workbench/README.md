@@ -328,10 +328,12 @@ bash scripts/listingkit-identity-preflight-job.sh \
 ```
 
 The driver renders a temporary manifest, creates one generated Job, waits up to
-15 minutes, and prints its logs. A failure or timeout also prints `describe`
-output and returns non-zero before any Deployment image update. The Job only
-reads owner identifiers from the database and users from ZITADEL; it never
-mutates either system.
+15 minutes, and prints its logs. The Job's 900-second active deadline matches
+that driver wait, so a timed-out release gate cannot leave the preflight
+running indefinitely. A failure or timeout also prints `describe` output and
+returns non-zero before any Deployment image update. The Job only reads owner
+identifiers from the database and users from ZITADEL; it never mutates either
+system.
 
 Successful output ends with:
 
