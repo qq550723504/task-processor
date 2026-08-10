@@ -163,7 +163,7 @@ func TestListingKitMemberInvitationTokenIsAPIScoped(t *testing.T) {
 		}
 	}
 	preflight := strings.Index(deployAPIJob, "Validate dedicated member invitation Secret")
-	deploymentUpdate := strings.Index(deployAPIJob, "Update API deployment image")
+	deploymentUpdate := strings.Index(deployAPIJob, "scripts/listingkit-apply-api-deployment.sh")
 	if preflight == -1 || deploymentUpdate == -1 || preflight > deploymentUpdate {
 		t.Fatal("ListingKit invitation Secret preflight must run before the API Deployment is updated")
 	}

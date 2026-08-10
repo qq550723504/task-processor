@@ -5,19 +5,18 @@ Date: 2026-08-10 (final local verification from base `877fcfee344c534f62336cf722
 ## Scope under review
 
 Reviewed all committed changes from base
-`877fcfee344c534f62336cf7226fc9df97121226` through `f3af69aa0`, plus the
-scoped manual-deploy closure in the working tree. The range canonicalizes
+`877fcfee344c534f62336cf7226fc9df97121226` through the current branch tip,
+after rebasing onto `origin/master` `92e145ae1`. The range canonicalizes
 ListingKit identity to the verified ZITADEL subject, removes owner-scope
 configuration, adds an identity-preflight release gate, scopes workload secret
 references, and includes follow-up fixes for the two prior review findings.
 
-The follow-up repairs include `3a84bad95` (owner scope enabled by default with
-no production disable setter), `9ed8198d9` (legacy username allowlists are
-validation traps and fail closed), `8d748f739` (strict non-creating read-only
-preflight database connections), `35b3bb313` plus `0f8aba6dc` (legacy tenant
-organization normalization through the distinct metadata database), `c0d75c62e`
-(immutable CI API apply), and `f3af69aa0` (bounded directory client and
-canonical-sub documentation). This final closure additionally unifies every
+The follow-up repairs make owner scope enabled by default with no production
+disable setter; legacy username allowlists validation traps that fail closed;
+preflight database connections strict, non-creating, and read-only; legacy
+tenant organization normalization use the distinct metadata database; CI API
+apply immutable; and directory requests bounded with canonical-sub
+documentation. This final closure additionally unifies every
 documented API deploy or rollback path on the same full immutable-image
 preflight and apply drivers.
 
