@@ -119,7 +119,7 @@ func TestListingKitDeployWorkflowSupportsDigestPinnedRollbackWithoutRebuild(t *t
 	for _, required := range []string{
 		"api_image_digest:",
 		"candidate_api_image",
-		"expected_api_repository=\"${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}\"",
+		"expected_api_repository=\"${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}\"",
 		"api_image_digest must reference $expected_api_repository",
 		"api_image_digest cannot be combined with source or build-image inputs",
 		"needs.prepare.outputs.candidate_api_image == ''",
@@ -129,4 +129,51 @@ func TestListingKitDeployWorkflowSupportsDigestPinnedRollbackWithoutRebuild(t *t
 			t.Errorf("ListingKit workflow must contain digest rollback behavior %q", required)
 		}
 	}
+}
+
+func TestListingKitDeployWorkflowPassesDispatchInputsThroughStepEnvironment(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				ID  string            `yaml:"id"`
+				Run string            `yaml:"run"`
+				Env map[string]string `yaml:"env"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(content, &workflow); err != nil {
+		t.Fatalf("parse ListingKit deploy workflow: %v", err)
+	}
+
+	prepareJob, ok := workflow.Jobs["prepare"]
+	if !ok {
+		t.Fatal("ListingKit deploy workflow is missing prepare job")
+	}
+	for _, step := range prepareJob.Steps {
+		if step.ID != "meta" {
+			continue
+		}
+		for name, want := range map[string]string{
+			"RELEASE_SOURCE_REF":             "${{ inputs.source_ref }}",
+			"RELEASE_IMAGE_TAG":              "${{ inputs.image_tag }}",
+			"RELEASE_API_IMAGE_DIGEST":       "${{ inputs.api_image_digest }}",
+			"RELEASE_API_RUNTIME_BASE_IMAGE": "${{ inputs.api_runtime_base_image }}",
+			"RELEASE_PUBLISH_LATEST":         "${{ inputs.publish_latest }}",
+		} {
+			if got := step.Env[name]; got != want {
+				t.Errorf("prepare metadata step environment %s = %q, want %q", name, got, want)
+			}
+		}
+		if strings.Contains(step.Run, "${{ inputs.") {
+			t.Error("prepare metadata shell must not interpolate workflow_dispatch inputs directly")
+		}
+		return
+	}
+	t.Fatal("ListingKit deploy workflow is missing prepare metadata step")
 }

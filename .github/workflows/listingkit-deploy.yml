@@ -57,15 +57,21 @@ jobs:
       - name: Resolve release tag
         id: meta
         shell: bash
+        env:
+          RELEASE_SOURCE_REF: ${{ inputs.source_ref }}
+          RELEASE_IMAGE_TAG: ${{ inputs.image_tag }}
+          RELEASE_API_IMAGE_DIGEST: ${{ inputs.api_image_digest }}
+          RELEASE_API_RUNTIME_BASE_IMAGE: ${{ inputs.api_runtime_base_image }}
+          RELEASE_PUBLISH_LATEST: ${{ inputs.publish_latest }}
         run: |
           set -euo pipefail
-          source_ref="${{ inputs.source_ref }}"
+          source_ref="$RELEASE_SOURCE_REF"
           if [[ -z "$source_ref" ]]; then
             source_ref="${GITHUB_SHA}"
           fi
-          tag="${{ inputs.image_tag }}"
-          candidate_api_image="${{ inputs.api_image_digest }}"
-          expected_api_repository="${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}"
+          tag="$RELEASE_IMAGE_TAG"
+          candidate_api_image="$RELEASE_API_IMAGE_DIGEST"
+          expected_api_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}"
           if [[ -n "$candidate_api_image" && ! "$candidate_api_image" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[A-Fa-f0-9]{64}$ ]]; then
             echo "::error::api_image_digest must be a digest-pinned image reference"
             exit 1
@@ -74,19 +80,19 @@ jobs:
             echo "::error::api_image_digest must reference $expected_api_repository"
             exit 1
           fi
-          if [[ -n "$candidate_api_image" && ( -n "${{ inputs.source_ref }}" || -n "${{ inputs.image_tag }}" || -n "${{ inputs.api_runtime_base_image }}" || "${{ inputs.publish_latest }}" == "true" ) ]]; then
+          if [[ -n "$candidate_api_image" && ( -n "$RELEASE_SOURCE_REF" || -n "$RELEASE_IMAGE_TAG" || -n "$RELEASE_API_RUNTIME_BASE_IMAGE" || "$RELEASE_PUBLISH_LATEST" == "true" ) ]]; then
             echo "::error::api_image_digest cannot be combined with source or build-image inputs"
             exit 1
           fi
           if [[ -z "$tag" ]]; then
             tag="${source_ref:0:8}"
           fi
-          api_runtime_base_image="${{ env.API_RUNTIME_BASE_IMAGE }}"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && -n "${{ inputs.api_runtime_base_image }}" ]]; then
-            api_runtime_base_image="${{ inputs.api_runtime_base_image }}"
+          api_runtime_base_image="${API_RUNTIME_BASE_IMAGE}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -n "$RELEASE_API_RUNTIME_BASE_IMAGE" ]]; then
+            api_runtime_base_image="$RELEASE_API_RUNTIME_BASE_IMAGE"
           fi
           publish_latest="false"
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.publish_latest }}" == "true" ]]; then
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && "$RELEASE_PUBLISH_LATEST" == "true" ]]; then
             publish_latest="true"
           fi
           echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
