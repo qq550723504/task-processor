@@ -28,6 +28,33 @@ kubectl apply -n task-processor -f tmp/listingkit-member-invitation-secret.yaml
 
 Do not commit the filled secret file.
 
+The application does not consume `TASK_PROCESSOR_DATABASE_DSN`. Before
+applying this least-privilege manifest revision, make sure the existing
+`listingkit-workbench-secret` contains the five bound database keys from the
+example: `TASK_PROCESSOR_DATABASE_HOST`, `TASK_PROCESSOR_DATABASE_PORT`,
+`TASK_PROCESSOR_DATABASE_USER`, `TASK_PROCESSOR_DATABASE_PASSWORD`, and
+`TASK_PROCESSOR_DATABASE_NAME`. Copy the existing connection values in the
+secret manager without printing or changing them; do not rely on the baked
+example database settings.
+
+The shared Secret name is reused, but its values are not shared with every
+Pod. `product-listing-api` and the release-scoped identity preflight import the
+whole Secret because they need the database plus API/read-only-directory
+configuration. Every other manifest has an explicit key allowlist:
+
+- `listingkit-ui`: Auth.js secret, ZITADEL issuer/client credentials, role
+  allowlist, and demo webhook only. Public origins and redirect URIs come from
+  `listingkit-workbench-config`.
+- `shein-login-worker`: the five database keys, four SHEIN cookie Redis keys,
+  and the SHEIN account identifier only.
+- `imgproxy`: signing key/salt and the two ProductImage S3 credential keys.
+- both schema migration Jobs: the five database keys only.
+
+None of those five workloads receives the read-only directory token or the
+member-invitation write token. The worker and migration binaries use scoped
+configuration loading so they do not require unrelated OpenAI, RabbitMQ,
+Amazon, or ZITADEL credentials merely to pass startup validation.
+
 When migrating an existing deployment, create
 `listingkit-member-invitation-secret` with both the token and project id.
 Then remove both invitation keys from the already deployed shared Secret and
@@ -273,8 +300,8 @@ foreach ($jobFile in $migrationJobs) {
 }
 ```
 
-The two Jobs share only the production ConfigMap and Secret references required
-by the API. They run `/app/product-listing-api-schema-migrate` and
+The two Jobs import the production ConfigMap plus only the five database keys
+from `listingkit-workbench-secret`. They run `/app/product-listing-api-schema-migrate` and
 `/app/listingkit-schema-migrate -scope all` respectively, using the same
 immutable API image that will be released. A failed Job is a No-Go: investigate
 and use an approved roll-forward or restore procedure instead of deleting or
@@ -561,8 +588,12 @@ The UI uses:
 
 - `LISTINGKIT_API_BASE=http://product-listing-api:8085/api/v1/listing-kits`
 - `LISTINGKIT_SERVICE_API_BASE=http://product-listing-api:8085/api/v1`
-- `ZITADEL_ISSUER_URL`, `ZITADEL_CLIENT_ID`, `ZITADEL_CLIENT_SECRET`, and
-  redirect URIs from `listingkit-workbench-secret`
+- `AUTH_SECRET`, `ZITADEL_ISSUER_URL`, `ZITADEL_CLIENT_ID`,
+  `ZITADEL_CLIENT_SECRET`, `LISTINGKIT_ZITADEL_ALLOWED_ROLES`, and
+  `LISTINGKIT_DEMO_WEBHOOK_URL` from explicit keys in
+  `listingkit-workbench-secret`
+- public Auth.js origins and redirect URIs from
+  `listingkit-workbench-config`, not the shared Secret
 - `TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN` only from
   `listingkit-member-invitation-secret` in `product-listing-api`; the project
   id is co-located there so the deployment cannot overwrite it with an empty

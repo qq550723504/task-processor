@@ -10,13 +10,16 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/core/config"
+	"task-processor/internal/listingadmin"
+	localruntime "task-processor/internal/listingruntime/local"
 	sheinclient "task-processor/internal/shein/client"
 )
 
 // RunSheinLoginWorker starts only the dependencies required by the dedicated
 // browser worker. It deliberately does not construct an HTTP server.
 func RunSheinLoginWorker(logger *logrus.Logger, options Options) error {
-	deps, err := buildRuntimeDeps(logger, options.ConfigPath)
+	deps, err := buildSheinLoginWorkerRuntimeDeps(options.ConfigPath)
 	if err != nil {
 		return fmt.Errorf("build runtime deps: %w", err)
 	}
@@ -71,4 +74,40 @@ func RunSheinLoginWorker(logger *logrus.Logger, options Options) error {
 	}()
 
 	return result.Service.RunWorker(ctx, "")
+}
+
+func loadSheinLoginWorkerConfig(configPath string) (*config.Config, error) {
+	cfg, err := config.LoadConfigFromFileWithoutValidation(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("load config: %w", err)
+	}
+	return cfg, nil
+}
+
+func buildSheinLoginWorkerRuntimeDeps(configPath string) (*runtimeDeps, error) {
+	cfg, err := loadSheinLoginWorkerConfig(configPath)
+	if err != nil {
+		return nil, err
+	}
+
+	provider, err := localruntime.NewLocalDataProvider(cfg.Database, nil)
+	if err != nil {
+		return nil, fmt.Errorf("build SHEIN login worker StoreAPI: %w", err)
+	}
+
+	var storeAPI listingadmin.StoreAPI
+	var closers []func() error
+	if provider != nil {
+		storeAPI = localruntime.NewLocalRuntime(provider, localruntime.LocalRuntimeOptions{}).GetStoreAPI()
+		closers = append(closers, provider.Close)
+	}
+
+	return &runtimeDeps{
+		shared: &sharedRuntimeDeps{
+			cfg:      cfg,
+			closers:  closers,
+			storeAPI: storeAPI,
+		},
+		features: &featureRuntimeState{},
+	}, nil
 }

@@ -24,12 +24,69 @@ spec:
           env:
             - name: TASK_PROCESSOR_BROWSER_PATH
               value: /app/chrome/chrome-144/chrome
+            - name: TASK_PROCESSOR_DATABASE_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_HOST
+                  optional: false
+            - name: TASK_PROCESSOR_DATABASE_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_PORT
+                  optional: false
+            - name: TASK_PROCESSOR_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_USER
+                  optional: false
+            - name: TASK_PROCESSOR_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_PASSWORD
+                  optional: false
+            - name: TASK_PROCESSOR_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_NAME
+                  optional: false
+            - name: TASK_PROCESSOR_SHEIN_COOKIE_REDIS_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_SHEIN_COOKIE_REDIS_HOST
+                  optional: false
+            - name: TASK_PROCESSOR_SHEIN_COOKIE_REDIS_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_SHEIN_COOKIE_REDIS_PORT
+                  optional: false
+            - name: TASK_PROCESSOR_SHEIN_COOKIE_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_SHEIN_COOKIE_REDIS_PASSWORD
+                  optional: false
+            - name: TASK_PROCESSOR_SHEIN_COOKIE_REDIS_DB
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_SHEIN_COOKIE_REDIS_DB
+                  optional: false
+            - name: TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_IDENTIFIER
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_IDENTIFIER
+                  optional: false
           envFrom:
             - configMapRef:
                 name: listingkit-workbench-config
-            - secretRef:
-                name: listingkit-workbench-secret
-                optional: true
           ports:
             - name: health
               containerPort: 8086

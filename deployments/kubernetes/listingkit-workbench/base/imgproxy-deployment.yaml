@@ -24,22 +24,31 @@ spec:
           envFrom:
             - configMapRef:
                 name: listingkit-workbench-config
-            - secretRef:
-                name: listingkit-workbench-secret
-                optional: true
           env:
+            - name: IMGPROXY_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: IMGPROXY_KEY
+                  optional: true
+            - name: IMGPROXY_SALT
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: IMGPROXY_SALT
+                  optional: true
             - name: AWS_ACCESS_KEY_ID
               valueFrom:
                 secretKeyRef:
                   name: listingkit-workbench-secret
                   key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_ACCESSKEYID
-                  optional: true
+                  optional: false
             - name: AWS_SECRET_ACCESS_KEY
               valueFrom:
                 secretKeyRef:
                   name: listingkit-workbench-secret
                   key: TASK_PROCESSOR_PRODUCTIMAGE_PUBLISHER_S3_SECRETACCESSKEY
-                  optional: true
+                  optional: false
           readinessProbe:
             httpGet: null
             tcpSocket:

@@ -56,6 +56,13 @@ user or membership write access, and the preflight Job does not receive the
 dedicated member-invitation write token. The preflight only reads persisted
 owner mappings and the ZITADEL directory; it never changes data.
 
+In Kubernetes, only the API and this preflight import the shared Secret. The
+UI, SHEIN login worker, imgproxy, and both schema migration Jobs use explicit
+per-key `secretKeyRef` allowlists and receive neither the directory token nor
+the member-invitation token. Database settings are the five
+`TASK_PROCESSOR_DATABASE_{HOST,PORT,USER,PASSWORD,NAME}` keys;
+`TASK_PROCESSOR_DATABASE_DSN` is not a supported core-config binding.
+
 Success ends with `status=ok identity_preflight=passed`. A blocker is reported
 as `status=blocked`, a table name, 12-hex SHA-256 fingerprints for tenant and
 owner, an aggregate row count, and `reason=unknown_subject`. This means the

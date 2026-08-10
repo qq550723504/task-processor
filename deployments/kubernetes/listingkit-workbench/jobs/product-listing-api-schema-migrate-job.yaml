@@ -22,6 +22,34 @@ spec:
           envFrom:
             - configMapRef:
                 name: listingkit-workbench-config
-            - secretRef:
-                name: listingkit-workbench-secret
-                optional: true
+          env:
+            - name: TASK_PROCESSOR_DATABASE_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_HOST
+                  optional: false
+            - name: TASK_PROCESSOR_DATABASE_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_PORT
+                  optional: false
+            - name: TASK_PROCESSOR_DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_USER
+                  optional: false
+            - name: TASK_PROCESSOR_DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_PASSWORD
+                  optional: false
+            - name: TASK_PROCESSOR_DATABASE_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_DATABASE_NAME
+                  optional: false
