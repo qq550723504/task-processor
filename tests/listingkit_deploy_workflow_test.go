@@ -43,7 +43,7 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 			if step.ContinueOnError {
 				t.Error("identity preflight step must block deployment when its caller returns failure")
 			}
-			if !strings.Contains(step.Run, "--image \"${{ needs.build-api.outputs.api_image }}\"") {
+			if !strings.Contains(step.Run, "--image \"${{ needs.prepare.outputs.candidate_api_image || needs.build-api.outputs.api_image }}\"") {
 				t.Error("identity preflight must receive the exact immutable API image that will be deployed")
 			}
 			if !strings.Contains(step.Run, "--runner-image \"${{ needs.build-preflight-runner.outputs.runner_image }}\"") {
@@ -59,7 +59,7 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 				t.Errorf("immutable deployment step must require prior success, got if: %q", step.If)
 			}
 			for _, required := range []string{
-				"--image \"${{ needs.build-api.outputs.api_image }}\"",
+				"--image \"${{ needs.prepare.outputs.candidate_api_image || needs.build-api.outputs.api_image }}\"",
 				"--manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml",
 			} {
 				if !strings.Contains(step.Run, required) {
@@ -106,5 +106,24 @@ func TestListingKitIdentityPreflightJobDeadlineMatchesDriverWait(t *testing.T) {
 
 	if job.Spec.ActiveDeadlineSeconds != 15*60 {
 		t.Fatalf("identity preflight Job deadline must match the driver's 15-minute wait, got %d seconds", job.Spec.ActiveDeadlineSeconds)
+	}
+}
+
+func TestListingKitDeployWorkflowSupportsDigestPinnedRollbackWithoutRebuild(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+	workflow := string(content)
+	for _, required := range []string{
+		"api_image_digest:",
+		"candidate_api_image",
+		"needs.prepare.outputs.candidate_api_image == ''",
+		"needs.prepare.outputs.candidate_api_image || needs.build-api.outputs.api_image",
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Errorf("ListingKit workflow must contain digest rollback behavior %q", required)
+		}
 	}
 }
