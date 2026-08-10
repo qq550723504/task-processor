@@ -50,9 +50,9 @@ jobs:
     outputs:
       source_ref: ${{ steps.meta.outputs.source_ref }}
       tag: ${{ steps.meta.outputs.tag }}
-      api_tags: ${{ steps.meta.outputs.api_tags }}
+      publish_latest: ${{ steps.meta.outputs.publish_latest }}
       api_runtime_base_image: ${{ steps.meta.outputs.api_runtime_base_image }}
-      candidate_api_image: ${{ steps.meta.outputs.candidate_api_image }}
+      candidate_api_digest: ${{ steps.meta.outputs.candidate_api_digest }}
       runner_source_ref: ${{ steps.meta.outputs.runner_source_ref }}
     steps:
       - name: Resolve release tag
@@ -76,6 +76,7 @@ jobs:
           fi
           tag="$RELEASE_IMAGE_TAG"
           candidate_api_image="$RELEASE_API_IMAGE_DIGEST"
+          candidate_api_digest=""
           expected_api_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}"
           if [[ -n "$candidate_api_image" && ! "$candidate_api_image" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[A-Fa-f0-9]{64}$ ]]; then
             echo "::error::api_image_digest must be a digest-pinned image reference"
@@ -84,6 +85,9 @@ jobs:
           if [[ -n "$candidate_api_image" && "$candidate_api_image" != "$expected_api_repository"@sha256:* ]]; then
             echo "::error::api_image_digest must reference $expected_api_repository"
             exit 1
+          fi
+          if [[ -n "$candidate_api_image" ]]; then
+            candidate_api_digest="${candidate_api_image##*@}"
           fi
           if [[ -n "$candidate_api_image" && ( -n "$RELEASE_SOURCE_REF" || -n "$RELEASE_IMAGE_TAG" || -n "$RELEASE_API_RUNTIME_BASE_IMAGE" || "$RELEASE_PUBLISH_LATEST" == "true" ) ]]; then
             echo "::error::api_image_digest cannot be combined with source or build-image inputs"
@@ -111,25 +115,18 @@ jobs:
           fi
           echo "source_ref=$source_ref" >> "$GITHUB_OUTPUT"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "publish_latest=$publish_latest" >> "$GITHUB_OUTPUT"
           echo "api_runtime_base_image=$api_runtime_base_image" >> "$GITHUB_OUTPUT"
-          echo "candidate_api_image=$candidate_api_image" >> "$GITHUB_OUTPUT"
+          echo "candidate_api_digest=$candidate_api_digest" >> "$GITHUB_OUTPUT"
           echo "runner_source_ref=$runner_source_ref" >> "$GITHUB_OUTPUT"
-          {
-            echo "api_tags<<EOF"
-            echo "${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:$tag"
-            if [[ "$publish_latest" == "true" ]]; then
-              echo "${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:latest"
-            fi
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
 
   build-api:
     name: Build API Image
     runs-on: ubuntu-latest
     needs: prepare
-    if: ${{ needs.prepare.outputs.candidate_api_image == '' }}
+    if: ${{ needs.prepare.outputs.candidate_api_digest == '' }}
     outputs:
-      api_image: ${{ steps.export-image.outputs.api_image }}
+      api_digest: ${{ steps.export-image.outputs.api_digest }}
     steps:
       - name: Checkout API source
         uses: actions/checkout@v4
@@ -153,7 +150,9 @@ jobs:
           context: .
           file: deployments/docker/Dockerfile.product-listing-api
           push: true
-          tags: ${{ needs.prepare.outputs.api_tags }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}:${{ needs.prepare.outputs.tag }}
+            ${{ needs.prepare.outputs.publish_latest == 'true' && format('{0}/{1}/{2}:latest', env.REGISTRY, env.DOCKERHUB_NAMESPACE, env.API_IMAGE_NAME) || '' }}
           build-args: |
             API_RUNTIME_BASE_IMAGE=${{ needs.prepare.outputs.api_runtime_base_image }}
           cache-from: type=gha,scope=listingkit-api
@@ -162,14 +161,14 @@ jobs:
       - name: Export API digest reference
         id: export-image
         shell: bash
-        run: echo "api_image=${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}@${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+        run: echo "api_digest=${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
   build-preflight-runner:
     name: Build Identity Preflight Runner
     runs-on: ubuntu-latest
     needs: prepare
     outputs:
-      runner_image: ${{ steps.export-image.outputs.runner_image }}
+      runner_digest: ${{ steps.export-image.outputs.runner_digest }}
     steps:
       - name: Checkout gate runner source
         uses: actions/checkout@v4
@@ -200,7 +199,7 @@ jobs:
       - name: Export preflight runner digest reference
         id: export-image
         shell: bash
-        run: echo "runner_image=${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/task-processor-listingkit-identity-preflight@${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
+        run: echo "runner_digest=${{ steps.build.outputs.digest }}" >> "$GITHUB_OUTPUT"
 
   deploy-api:
     name: Deploy ListingKit API
@@ -275,12 +274,22 @@ jobs:
 
       - name: Run identity preflight release gate
         shell: bash
+        env:
+          API_CANDIDATE_DIGEST: ${{ needs.prepare.outputs.candidate_api_digest || needs.build-api.outputs.api_digest }}
+          PREFLIGHT_RUNNER_DIGEST: ${{ needs.build-preflight-runner.outputs.runner_digest }}
         run: |
+          set -euo pipefail
+          source .workflow-tools/scripts/lib/listingkit-immutable-image.sh
+          api_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}"
+          runner_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/task-processor-listingkit-identity-preflight"
+          API_CANDIDATE_IMAGE="$(listingkit_compose_immutable_image "$api_repository" "$API_CANDIDATE_DIGEST")"
+          PREFLIGHT_RUNNER_IMAGE="$(listingkit_compose_immutable_image "$runner_repository" "$PREFLIGHT_RUNNER_DIGEST")"
+          echo "API_CANDIDATE_IMAGE=$API_CANDIDATE_IMAGE" >> "$GITHUB_ENV"
           .workflow-tools/scripts/listingkit-identity-preflight-job.sh \
             --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml \
             --namespace "$K8S_NAMESPACE" \
-            --image "${{ needs.prepare.outputs.candidate_api_image || needs.build-api.outputs.api_image }}" \
-            --runner-image "${{ needs.build-preflight-runner.outputs.runner_image }}"
+            --image "$API_CANDIDATE_IMAGE" \
+            --runner-image "$PREFLIGHT_RUNNER_IMAGE"
 
       - name: Apply immutable API deployment
         shell: bash
@@ -288,7 +297,7 @@ jobs:
           .workflow-tools/scripts/listingkit-apply-api-deployment.sh \
             --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml \
             --namespace "$K8S_NAMESPACE" \
-            --image "${{ needs.prepare.outputs.candidate_api_image || needs.build-api.outputs.api_image }}"
+            --image "$API_CANDIDATE_IMAGE"
 
       - name: Wait for API rollout
         run: |

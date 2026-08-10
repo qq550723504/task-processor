@@ -43,10 +43,10 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 			if step.ContinueOnError {
 				t.Error("identity preflight step must block deployment when its caller returns failure")
 			}
-			if !strings.Contains(step.Run, "--image \"${{ needs.prepare.outputs.candidate_api_image || needs.build-api.outputs.api_image }}\"") {
+			if !strings.Contains(step.Run, "--image \"$API_CANDIDATE_IMAGE\"") {
 				t.Error("identity preflight must receive the exact immutable API image that will be deployed")
 			}
-			if !strings.Contains(step.Run, "--runner-image \"${{ needs.build-preflight-runner.outputs.runner_image }}\"") {
+			if !strings.Contains(step.Run, "--runner-image \"$PREFLIGHT_RUNNER_IMAGE\"") {
 				t.Error("identity preflight must run in its distinct digest-pinned runner image")
 			}
 			if strings.Contains(step.Run, "--image-tag") {
@@ -59,7 +59,7 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 				t.Errorf("immutable deployment step must require prior success, got if: %q", step.If)
 			}
 			for _, required := range []string{
-				"--image \"${{ needs.prepare.outputs.candidate_api_image || needs.build-api.outputs.api_image }}\"",
+				"--image \"$API_CANDIDATE_IMAGE\"",
 				"--manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml",
 			} {
 				if !strings.Contains(step.Run, required) {
@@ -144,12 +144,12 @@ func TestListingKitDeployWorkflowSupportsDigestPinnedRollbackWithoutRebuild(t *t
 	workflow := string(content)
 	for _, required := range []string{
 		"api_image_digest:",
-		"candidate_api_image",
+		"candidate_api_digest",
 		"expected_api_repository=\"${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}\"",
 		"api_image_digest must reference $expected_api_repository",
 		"api_image_digest cannot be combined with source or build-image inputs",
-		"needs.prepare.outputs.candidate_api_image == ''",
-		"needs.prepare.outputs.candidate_api_image || needs.build-api.outputs.api_image",
+		"needs.prepare.outputs.candidate_api_digest == ''",
+		"needs.prepare.outputs.candidate_api_digest || needs.build-api.outputs.api_digest",
 	} {
 		if !strings.Contains(workflow, required) {
 			t.Errorf("ListingKit workflow must contain digest rollback behavior %q", required)
@@ -202,6 +202,73 @@ func TestListingKitDeployWorkflowPassesDispatchInputsThroughStepEnvironment(t *t
 		return
 	}
 	t.Fatal("ListingKit deploy workflow is missing prepare metadata step")
+}
+
+func TestListingKitDeployWorkflowPassesOnlyDigestsAcrossBuildJobBoundaries(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+
+	var workflow struct {
+		Jobs map[string]struct {
+			Outputs map[string]string `yaml:"outputs"`
+			Steps   []struct {
+				Name string            `yaml:"name"`
+				Run  string            `yaml:"run"`
+				Env  map[string]string `yaml:"env"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(content, &workflow); err != nil {
+		t.Fatalf("parse ListingKit deploy workflow: %v", err)
+	}
+
+	for jobName, outputName := range map[string]string{
+		"build-api":              "api_digest",
+		"build-preflight-runner": "runner_digest",
+	} {
+		job, ok := workflow.Jobs[jobName]
+		if !ok {
+			t.Fatalf("ListingKit deploy workflow is missing %s job", jobName)
+		}
+		if _, ok := job.Outputs[outputName]; !ok {
+			t.Errorf("%s must expose only its immutable digest as %s", jobName, outputName)
+		}
+		for name, value := range job.Outputs {
+			if strings.Contains(value, "docker.io/") {
+				t.Errorf("%s output %s must not contain a full registry image reference", jobName, name)
+			}
+		}
+	}
+	if _, ok := workflow.Jobs["prepare"].Outputs["api_tags"]; ok {
+		t.Error("prepare must not pass full API image tags across a job boundary")
+	}
+
+	deployJob := workflow.Jobs["deploy-api"]
+	for _, step := range deployJob.Steps {
+		if !strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
+			continue
+		}
+		if got, want := step.Env["API_CANDIDATE_DIGEST"], "${{ needs.prepare.outputs.candidate_api_digest || needs.build-api.outputs.api_digest }}"; got != want {
+			t.Errorf("preflight API digest environment = %q, want %q", got, want)
+		}
+		if got, want := step.Env["PREFLIGHT_RUNNER_DIGEST"], "${{ needs.build-preflight-runner.outputs.runner_digest }}"; got != want {
+			t.Errorf("preflight runner digest environment = %q, want %q", got, want)
+		}
+		for _, required := range []string{
+			"listingkit_compose_immutable_image",
+			"--image \"$API_CANDIDATE_IMAGE\"",
+			"--runner-image \"$PREFLIGHT_RUNNER_IMAGE\"",
+		} {
+			if !strings.Contains(step.Run, required) {
+				t.Errorf("preflight step must contain %q", required)
+			}
+		}
+		return
+	}
+	t.Fatal("ListingKit deploy workflow is missing the identity preflight driver")
 }
 
 func TestListingKitDeployWorkflowDerivesDefaultTagFromResolvedCommit(t *testing.T) {
