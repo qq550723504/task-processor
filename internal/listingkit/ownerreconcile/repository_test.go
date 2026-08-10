@@ -76,6 +76,30 @@ func TestRepositoryDryRunReportsConflictsWithoutLeakingCandidates(t *testing.T) 
 	}
 }
 
+func TestRepositoryDryRunDoesNotAutoResolveUnmappedNonEmptyCandidate(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	query := `SELECT tenant_id, creator, COUNT(*) FROM listing_store WHERE owner_user_id IS NULL GROUP BY tenant_id, creator`
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "creator", "row_count"}).AddRow("tenant-1", "legacy-unknown", int64(2)))
+	repository := Repository{Queryer: db, Inventory: []TableSpec{{
+		Table: "listing_store", Query: query, Columns: []string{"tenant_id", "creator", "row_count"},
+		CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}},
+	}}}
+	report, err := repository.DryRun(context.Background(), []LegacyIdentity{{TenantID: "tenant-1", LegacyUserID: "legacy-other", Subject: "subject-1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.AutoRows != 0 || len(report.Findings) != 1 || report.Findings[0].Reason != "unmapped_candidate" {
+		t.Fatalf("report = %+v, want unmapped candidate finding", report)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRepositoryDryRunRejectsNonSelectInventoryAndPreservesCancellation(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -143,6 +167,65 @@ func TestLoadLegacyIdentitiesFailsClosedOnTenantMismatch(t *testing.T) {
 
 	if _, err := LoadLegacyIdentities(context.Background(), db); err == nil {
 		t.Fatal("expected tenant mismatch to fail closed")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRepositoryApplyUniqueRequiresExactConfirmationBeforeAnyWrite(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	repository := Repository{Queryer: db, Beginner: db, Inventory: []TableSpec{{
+		Table: "listing_store", Query: "SELECT tenant_id, creator, COUNT(*) FROM listing_store WHERE owner_user_id IS NULL GROUP BY tenant_id, creator",
+		Columns: []string{"tenant_id", "creator", "row_count"}, CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}},
+		UpdateQuery: "UPDATE listing_store SET owner_user_id = $1 WHERE tenant_id = $2 AND creator::text = $3",
+	}}, Identities: []LegacyIdentity{{TenantID: "tenant-1", LegacyUserID: "legacy-1", Subject: "subject-1"}}}
+	if _, err := repository.ApplyUnique(context.Background(), "abc123", "different", 10); !errors.Is(err, ErrReportConfirmationMismatch) {
+		t.Fatalf("error = %v, want confirmation mismatch", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRepositoryApplyUniqueRechecksReportAndUpdatesOnlyUniqueRows(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	query := "SELECT tenant_id, creator, COUNT(*) FROM listing_store WHERE owner_user_id IS NULL GROUP BY tenant_id, creator"
+	rows := func() *sqlmock.Rows {
+		return sqlmock.NewRows([]string{"tenant_id", "creator", "row_count"}).AddRow("tenant-1", "legacy-1", int64(4))
+	}
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(rows())
+	base := Repository{Queryer: db, Beginner: db, Inventory: []TableSpec{{
+		Table: "listing_store", Query: query, Columns: []string{"tenant_id", "creator", "row_count"},
+		CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}},
+		UpdateQuery:      "UPDATE listing_store SET owner_user_id = $1 WHERE tenant_id = $2 AND creator::text = $3",
+	}}, Identities: []LegacyIdentity{{TenantID: "tenant-1", LegacyUserID: "legacy-1", Subject: "subject-1"}}}
+	report, err := base.DryRun(context.Background(), base.Identities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := report.SetFingerprint(); err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(rows())
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(rows())
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE listing_store SET owner_user_id = $1 WHERE tenant_id = $2 AND creator::text = $3")).WithArgs("subject-1", "tenant-1", "legacy-1").WillReturnResult(sqlmock.NewResult(0, 4))
+	mock.ExpectCommit()
+	summary, err := base.ApplyUnique(context.Background(), report.ReportFingerprint, report.ReportFingerprint, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.RowsUpdated != 4 || summary.Batches != 1 {
+		t.Fatalf("summary = %+v, want four rows in one batch", summary)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

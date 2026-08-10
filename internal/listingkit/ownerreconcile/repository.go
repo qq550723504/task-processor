@@ -26,6 +26,7 @@ type TableSpec struct {
 	Table            string
 	TenantDomain     TenantDomain
 	Query            string
+	UpdateQuery      string
 	Columns          []string
 	CandidateColumns []CandidateColumn
 }
@@ -35,9 +36,20 @@ type Queryer interface {
 }
 
 type Repository struct {
-	Queryer   Queryer
-	Inventory []TableSpec
+	Queryer    Queryer
+	Inventory  []TableSpec
+	Identities []LegacyIdentity
+	Beginner   interface {
+		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
+	}
 }
+
+type ApplySummary struct {
+	RowsUpdated int64
+	Batches     int
+}
+
+var ErrReportConfirmationMismatch = errors.New("owner reconciliation report confirmation mismatch")
 
 var ownerReconcileIdentifier = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
@@ -72,6 +84,173 @@ func (repository Repository) DryRun(ctx context.Context, identities []LegacyIden
 	return NewReport("", "", findings, autoRows), nil
 }
 
+// ApplyUnique revalidates the redacted report and applies only uniquely
+// resolved groups through fixed, parameterized UPDATE statements. The caller
+// must provide the exact report fingerprint it reviewed and the same value as
+// the confirmation token.
+func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint, expected string, batchSize int) (ApplySummary, error) {
+	if strings.TrimSpace(reportFingerprint) == "" || strings.TrimSpace(reportFingerprint) != strings.TrimSpace(expected) {
+		return ApplySummary{}, ErrReportConfirmationMismatch
+	}
+	if batchSize <= 0 {
+		return ApplySummary{}, errors.New("batch size must be positive")
+	}
+	if repository.Queryer == nil || len(repository.Identities) == 0 {
+		return ApplySummary{}, errors.New("owner reconciliation identities are unavailable")
+	}
+	current, err := repository.DryRun(ctx, repository.Identities)
+	if err != nil {
+		return ApplySummary{}, err
+	}
+	if err := current.SetFingerprint(); err != nil || current.ReportFingerprint != reportFingerprint {
+		return ApplySummary{}, ErrReportConfirmationMismatch
+	}
+	beginner := repository.Beginner
+	if beginner == nil {
+		if db, ok := repository.Queryer.(*sql.DB); ok {
+			beginner = db
+		}
+	}
+	if beginner == nil {
+		return ApplySummary{}, errors.New("owner reconciliation database cannot begin a write transaction")
+	}
+	identityMap, err := indexLegacyIdentities(repository.Identities)
+	if err != nil {
+		return ApplySummary{}, err
+	}
+	var summary ApplySummary
+	for _, spec := range repository.Inventory {
+		if strings.TrimSpace(spec.UpdateQuery) == "" || len(spec.CandidateColumns) == 0 {
+			continue
+		}
+		groups, err := collectCandidateGroups(ctx, repository.Queryer, spec, identityMap)
+		if err != nil {
+			return ApplySummary{}, err
+		}
+		var tx *sql.Tx
+		var txRows int64
+		commit := func() error {
+			if tx == nil {
+				return nil
+			}
+			if err := tx.Commit(); err != nil {
+				return errors.New("commit owner reconciliation transaction failed")
+			}
+			summary.Batches++
+			tx = nil
+			txRows = 0
+			return nil
+		}
+		for _, group := range groups {
+			if tx == nil {
+				tx, err = beginner.BeginTx(ctx, nil)
+				if err != nil {
+					return ApplySummary{}, errors.New("begin owner reconciliation transaction failed")
+				}
+			}
+			args := []any{group.Subject, group.TenantID}
+			for _, value := range group.CandidateValues {
+				args = append(args, value)
+			}
+			result, execErr := tx.ExecContext(ctx, spec.UpdateQuery, args...)
+			if execErr != nil {
+				_ = tx.Rollback()
+				tx = nil
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return ApplySummary{}, ctxErr
+				}
+				return ApplySummary{}, fmt.Errorf("apply owner reconciliation for %s failed", spec.Table)
+			}
+			updated, err := result.RowsAffected()
+			if err != nil {
+				_ = tx.Rollback()
+				tx = nil
+				return ApplySummary{}, errors.New("read owner reconciliation update count failed")
+			}
+			summary.RowsUpdated += updated
+			txRows += updated
+			if txRows >= int64(batchSize) {
+				if err := commit(); err != nil {
+					return ApplySummary{}, err
+				}
+			}
+		}
+		if err := commit(); err != nil {
+			return ApplySummary{}, err
+		}
+	}
+	return summary, nil
+}
+
+type candidateGroup struct {
+	TenantID        string
+	CandidateValues []string
+	Subject         string
+}
+
+func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec, identities map[string]string) (groups []candidateGroup, resultErr error) {
+	if err := validateTableSpec(spec); err != nil {
+		return nil, err
+	}
+	rows, err := queryer.QueryContext(ctx, spec.Query)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return nil, fmt.Errorf("query owner reconciliation table %s failed", spec.Table)
+	}
+	defer func() {
+		if closeErr := rows.Close(); closeErr != nil && resultErr == nil {
+			resultErr = fmt.Errorf("close owner reconciliation rows for %s failed", spec.Table)
+		}
+	}()
+	columnIndex := make(map[string]int, len(spec.Columns))
+	for index, column := range spec.Columns {
+		columnIndex[column] = index
+	}
+	tenantIndex := columnIndex["tenant_id"]
+	groups = make([]candidateGroup, 0)
+	for rows.Next() {
+		values := make([]any, len(spec.Columns))
+		pointers := make([]any, len(values))
+		for index := range values {
+			pointers[index] = &values[index]
+		}
+		if err := rows.Scan(pointers...); err != nil {
+			return nil, fmt.Errorf("scan owner reconciliation rows for %s failed", spec.Table)
+		}
+		tenantID := sqlText(values[tenantIndex])
+		candidates := make([]Candidate, 0, len(spec.CandidateColumns))
+		candidateValues := make([]string, 0, len(spec.CandidateColumns))
+		unmappedCandidate := false
+		for _, candidateColumn := range spec.CandidateColumns {
+			value := sqlText(values[columnIndex[candidateColumn.Name]])
+			candidateValues = append(candidateValues, value)
+			if value != "" {
+				if subject := identities[legacyIdentityKey(tenantID, value)]; subject != "" {
+					candidates = append(candidates, Candidate{Source: candidateColumn.Source, Subject: subject})
+				} else {
+					unmappedCandidate = true
+				}
+			}
+		}
+		subject, _ := ResolveCandidates(candidates)
+		if unmappedCandidate {
+			subject = ""
+		}
+		if subject != "" {
+			groups = append(groups, candidateGroup{TenantID: tenantID, CandidateValues: candidateValues, Subject: subject})
+		}
+	}
+	if err := rows.Err(); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+		return nil, fmt.Errorf("iterate owner reconciliation rows for %s failed", spec.Table)
+	}
+	return groups, nil
+}
+
 func validateTableSpec(spec TableSpec) error {
 	if !ownerReconcileIdentifier.MatchString(spec.Table) {
 		return errors.New("owner reconciliation inventory contains an invalid table identifier")
@@ -101,6 +280,11 @@ func validateTableSpec(spec TableSpec) error {
 		}
 		if !found {
 			return fmt.Errorf("owner reconciliation table %s omitted candidate column %s", spec.Table, candidate.Name)
+		}
+	}
+	if update := strings.TrimSpace(spec.UpdateQuery); update != "" {
+		if !strings.EqualFold(strings.TrimSpace(strings.SplitN(update, " ", 2)[0]), "update") || strings.Contains(update, ";") {
+			return fmt.Errorf("owner reconciliation table %s has an invalid update query", spec.Table)
 		}
 	}
 	return nil
@@ -163,6 +347,7 @@ func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identiti
 		}
 		candidates := make([]Candidate, 0, len(spec.CandidateColumns))
 		fingerprintParts := make([]string, 0, len(spec.CandidateColumns))
+		unmappedCandidate := false
 		for _, candidateColumn := range spec.CandidateColumns {
 			value := sqlText(values[columnIndex[candidateColumn.Name]])
 			if value == "" {
@@ -171,9 +356,14 @@ func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identiti
 			fingerprintParts = append(fingerprintParts, candidateColumn.Source+"="+value)
 			if subject := identities[legacyIdentityKey(tenantID, value)]; subject != "" {
 				candidates = append(candidates, Candidate{Source: candidateColumn.Source, Subject: subject})
+			} else {
+				unmappedCandidate = true
 			}
 		}
 		subject, reason := ResolveCandidates(candidates)
+		if unmappedCandidate {
+			subject, reason = "", "unmapped_candidate"
+		}
 		if subject != "" {
 			autoRows += rowCount
 			continue

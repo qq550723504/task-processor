@@ -42,12 +42,71 @@ func TestRunWithDependenciesWritesReportInDryRunAndDoesNotExecute(t *testing.T) 
 	}
 }
 
-func TestRunWithDependenciesRejectsExecuteUntilReportConfirmationIsImplemented(t *testing.T) {
-	deps := runtimeDependencies{LoadConfig: func(string) (*config.Config, error) {
-		return &config.Config{Database: &config.DatabaseConfig{Database: "app-db"}}, nil
-	}}
-	err := runWithDependencies(context.Background(), Options{Execute: true, ConfirmReport: "abc123"}, deps)
-	if err == nil || !errors.Is(err, ErrExecuteRequiresConfirmation) {
-		t.Fatalf("error = %v, want execute confirmation error", err)
+func TestRunWithDependenciesRejectsExecuteWithoutConfirmationBeforeApply(t *testing.T) {
+	applyCalled := false
+	deps := runtimeDependencies{
+		LoadConfig: func(string) (*config.Config, error) {
+			return &config.Config{Database: &config.DatabaseConfig{Database: "app-db"}}, nil
+		},
+		OpenDB:         func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
+		OpenMetadataDB: func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
+		CloseDB:        func(*sql.DB) error { return nil },
+		RunReconciliation: func(context.Context, *sql.DB, *sql.DB) (ownerreconcile.Report, error) {
+			return ownerreconcile.NewReport("config.yaml", "app-db", nil, 0), nil
+		},
+		ApplyReconciliation: func(context.Context, *sql.DB, *sql.DB, string, string, int) (ownerreconcile.ApplySummary, error) {
+			applyCalled = true
+			return ownerreconcile.ApplySummary{}, nil
+		},
+	}
+	err := runWithDependencies(context.Background(), Options{Config: "config.yaml", Execute: true, Output: filepath.Join(t.TempDir(), "report.json"), BatchSize: 500}, deps)
+	if err == nil || !errors.Is(err, ownerreconcile.ErrReportConfirmationMismatch) {
+		t.Fatalf("error = %v, want confirmation mismatch", err)
+	}
+	if applyCalled {
+		t.Fatal("apply must not run without confirmation")
+	}
+}
+
+func TestRunWithDependenciesExecutesOnlyAfterFreshReportConfirmation(t *testing.T) {
+	outputDir := t.TempDir()
+	var confirmed string
+	deps := runtimeDependencies{
+		LoadConfig: func(string) (*config.Config, error) {
+			return &config.Config{Database: &config.DatabaseConfig{Database: "app-db"}}, nil
+		},
+		OpenDB:         func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
+		OpenMetadataDB: func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
+		CloseDB:        func(*sql.DB) error { return nil },
+		RunReconciliation: func(context.Context, *sql.DB, *sql.DB) (ownerreconcile.Report, error) {
+			return ownerreconcile.NewReport("config.yaml", "app-db", nil, 4), nil
+		},
+		ApplyReconciliation: func(_ context.Context, _ *sql.DB, _ *sql.DB, reportFingerprint, expected string, batchSize int) (ownerreconcile.ApplySummary, error) {
+			if batchSize != 20 || reportFingerprint != expected || reportFingerprint == "" {
+				t.Fatalf("unsafe apply arguments: report=%q expected=%q batch=%d", reportFingerprint, expected, batchSize)
+			}
+			confirmed = reportFingerprint
+			return ownerreconcile.ApplySummary{RowsUpdated: 4, Batches: 1}, nil
+		},
+	}
+	opts := Options{Config: "config.yaml", Execute: true, ConfirmReport: "", Output: filepath.Join(outputDir, "report.json"), BatchSize: 20}
+	first := runWithDependencies(context.Background(), opts, deps)
+	if first == nil {
+		t.Fatal("expected missing confirmation to fail")
+	}
+
+	// Generate the expected confirmation from the same deterministic report
+	// shape; the runtime must still pass it through the callback unchanged.
+	report := ownerreconcile.NewReport("config.yaml", "app-db", nil, 4)
+	report.SetMetadata("config.yaml", "app-db")
+	if err := report.SetFingerprint(); err != nil {
+		t.Fatal(err)
+	}
+	opts.ConfirmReport = report.ReportFingerprint
+	if err := runWithDependencies(context.Background(), opts, deps); err != nil {
+		t.Fatal(err)
+	}
+	if confirmed != report.ReportFingerprint {
+		t.Fatalf("confirmed fingerprint = %q, want %q", confirmed, report.ReportFingerprint)
 	}
 }

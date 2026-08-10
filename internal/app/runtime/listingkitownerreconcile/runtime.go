@@ -17,15 +17,14 @@ import (
 	"task-processor/internal/listingkit/ownerreconcile"
 )
 
-var ErrExecuteRequiresConfirmation = errors.New("execute mode requires the explicit backfill implementation and report confirmation")
-
 type runtimeDependencies struct {
-	LoadConfig        func(string) (*config.Config, error)
-	OpenDB            func(*config.DatabaseConfig) (*sql.DB, error)
-	OpenMetadataDB    func(*config.DatabaseConfig) (*sql.DB, error)
-	CloseDB           func(*sql.DB) error
-	RunReconciliation func(context.Context, *sql.DB, *sql.DB) (ownerreconcile.Report, error)
-	Output            io.Writer
+	LoadConfig          func(string) (*config.Config, error)
+	OpenDB              func(*config.DatabaseConfig) (*sql.DB, error)
+	OpenMetadataDB      func(*config.DatabaseConfig) (*sql.DB, error)
+	CloseDB             func(*sql.DB) error
+	RunReconciliation   func(context.Context, *sql.DB, *sql.DB) (ownerreconcile.Report, error)
+	ApplyReconciliation func(context.Context, *sql.DB, *sql.DB, string, string, int) (ownerreconcile.ApplySummary, error)
+	Output              io.Writer
 }
 
 func defaultRuntimeDependencies() runtimeDependencies {
@@ -51,15 +50,29 @@ func defaultRuntimeDependencies() runtimeDependencies {
 			return db.Close()
 		},
 		RunReconciliation: func(ctx context.Context, ownerDB, metadataDB *sql.DB) (ownerreconcile.Report, error) {
-			identities, err := ownerreconcile.LoadLegacyIdentities(ctx, metadataDB)
+			repository, err := reconciliationRepository(ctx, ownerDB, metadataDB)
 			if err != nil {
 				return ownerreconcile.Report{}, err
 			}
-			repository := ownerreconcile.Repository{Queryer: ownerDB, Inventory: ownerreconcile.Inventory()}
-			return repository.DryRun(ctx, identities)
+			return repository.DryRun(ctx, repository.Identities)
+		},
+		ApplyReconciliation: func(ctx context.Context, ownerDB, metadataDB *sql.DB, reportFingerprint, expected string, batchSize int) (ownerreconcile.ApplySummary, error) {
+			repository, err := reconciliationRepository(ctx, ownerDB, metadataDB)
+			if err != nil {
+				return ownerreconcile.ApplySummary{}, err
+			}
+			return repository.ApplyUnique(ctx, reportFingerprint, expected, batchSize)
 		},
 		Output: os.Stdout,
 	}
+}
+
+func reconciliationRepository(ctx context.Context, ownerDB, metadataDB *sql.DB) (ownerreconcile.Repository, error) {
+	identities, err := ownerreconcile.LoadLegacyIdentities(ctx, metadataDB)
+	if err != nil {
+		return ownerreconcile.Repository{}, err
+	}
+	return ownerreconcile.Repository{Queryer: ownerDB, Inventory: ownerreconcile.Inventory(), Identities: identities, Beginner: ownerDB}, nil
 }
 
 func Run(ctx context.Context, options Options) error {
@@ -83,11 +96,11 @@ func runWithDependencies(ctx context.Context, options Options, deps runtimeDepen
 	if deps.RunReconciliation == nil {
 		deps.RunReconciliation = defaults.RunReconciliation
 	}
+	if deps.ApplyReconciliation == nil {
+		deps.ApplyReconciliation = defaults.ApplyReconciliation
+	}
 	if deps.Output == nil {
 		deps.Output = defaults.Output
-	}
-	if options.Execute {
-		return ErrExecuteRequiresConfirmation
 	}
 	if options.BatchSize <= 0 {
 		return errors.New("batch size must be positive")
@@ -119,6 +132,17 @@ func runWithDependencies(ctx context.Context, options Options, deps runtimeDepen
 	}
 	if err := writeArtifacts(options, report); err != nil {
 		return err
+	}
+	if options.Execute {
+		if strings.TrimSpace(options.ConfirmReport) == "" {
+			return ownerreconcile.ErrReportConfirmationMismatch
+		}
+		applied, err := deps.ApplyReconciliation(ctx, ownerDB, metadataDB, report.ReportFingerprint, options.ConfirmReport, options.BatchSize)
+		if err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintf(deps.Output, "owner_reconciliation_report=%s rows=%d unresolved=%d updated=%d batches=%d\n", report.ReportFingerprint, report.Summary.AffectedRows, report.Summary.UnresolvedRows, applied.RowsUpdated, applied.Batches)
+		return nil
 	}
 	_, _ = fmt.Fprintf(deps.Output, "owner_reconciliation_report=%s rows=%d unresolved=%d\n", report.ReportFingerprint, report.Summary.AffectedRows, report.Summary.UnresolvedRows)
 	return nil

@@ -55,6 +55,7 @@ func legacySimpleSpec(table string) TableSpec {
 	return TableSpec{
 		Table:        table,
 		TenantDomain: TenantDomainLegacyNumeric,
+		UpdateQuery:  fmt.Sprintf("UPDATE %s SET owner_user_id = $1 WHERE tenant_id = $2 AND NULLIF(BTRIM(owner_user_id::text), '') IS NULL AND creator::text = $3", table),
 		Query: fmt.Sprintf(`SELECT tenant_id::text, creator::text, COUNT(*)::bigint AS row_count
 FROM %s
 WHERE NULLIF(BTRIM(owner_user_id::text), '') IS NULL
@@ -68,6 +69,7 @@ func legacyImportTaskSpec() TableSpec {
 	return TableSpec{
 		Table:        "listing_product_import_task",
 		TenantDomain: TenantDomainLegacyNumeric,
+		UpdateQuery:  `UPDATE listing_product_import_task AS t SET owner_user_id = $1 FROM listing_store AS s WHERE t.tenant_id = $2 AND NULLIF(BTRIM(t.owner_user_id::text), '') IS NULL AND t.store_id = s.id AND s.tenant_id = t.tenant_id AND ($3 = '' OR t.creator::text = $3) AND ($4 = '' OR s.creator::text = $4)`,
 		Query: `SELECT t.tenant_id::text, t.creator::text AS own_creator, s.creator::text AS store_creator, COUNT(*)::bigint AS row_count
 FROM listing_product_import_task AS t
 LEFT JOIN listing_store AS s ON s.id = t.store_id AND s.tenant_id = t.tenant_id
@@ -85,6 +87,7 @@ func legacyImportRelationSpec(table string) TableSpec {
 	return TableSpec{
 		Table:        table,
 		TenantDomain: TenantDomainLegacyNumeric,
+		UpdateQuery:  fmt.Sprintf("UPDATE %s AS row SET owner_user_id = $1 FROM listing_product_import_task AS task LEFT JOIN listing_store AS store ON store.id = row.store_id AND store.tenant_id = row.tenant_id WHERE row.tenant_id = $2 AND NULLIF(BTRIM(row.owner_user_id::text), '') IS NULL AND task.id = row.import_task_id AND task.tenant_id = row.tenant_id AND ($3 = '' OR row.creator::text = $3) AND ($4 = '' OR task.creator::text = $4) AND ($5 = '' OR store.creator::text = $5)", table),
 		Query: fmt.Sprintf(`SELECT row.tenant_id::text, row.creator::text AS own_creator, task.creator::text AS task_creator, store.creator::text AS store_creator, COUNT(*)::bigint AS row_count
 FROM %s AS row
 LEFT JOIN listing_product_import_task AS task ON task.id = row.import_task_id AND task.tenant_id = row.tenant_id
