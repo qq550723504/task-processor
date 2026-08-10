@@ -34,19 +34,17 @@ type Report struct {
 	Findings      []Finding     `json:"findings"`
 }
 
-func NewReport(configName, databaseName string, findings []Finding) Report {
+func NewReport(configName, databaseName string, findings []Finding, autoRows int64) Report {
 	copyFindings := append([]Finding(nil), findings...)
 	sortFindings(copyFindings)
 	var summary ReportSummary
+	summary.AutoRows = autoRows
 	for _, finding := range copyFindings {
 		summary.FindingGroups++
 		summary.AffectedRows += finding.Rows
-		if finding.Reason == "" {
-			summary.AutoRows += finding.Rows
-		} else {
-			summary.UnresolvedRows += finding.Rows
-		}
+		summary.UnresolvedRows += finding.Rows
 	}
+	summary.AffectedRows += autoRows
 	return Report{
 		SchemaVersion: 1,
 		GeneratedAt:   time.Now().UTC(),
@@ -77,6 +75,11 @@ func (report Report) Fingerprint() (string, error) {
 	}
 	digest := sha256.Sum256(encoded)
 	return hex.EncodeToString(digest[:6]), nil
+}
+
+func shortFingerprint(value string) string {
+	digest := sha256.Sum256([]byte(value))
+	return "sha256:" + hex.EncodeToString(digest[:6])
 }
 
 func sortFindings(findings []Finding) {

@@ -10,7 +10,7 @@ func TestReportFingerprintAndJSONAreDeterministicAndRedacted(t *testing.T) {
 	report := NewReport("config-prod.yaml", "ruoyi-vue-pro", []Finding{
 		{Table: "listing_store", TenantFingerprint: "sha256:tenant", OwnerFingerprint: "sha256:owner", Rows: 2, Reason: "no_candidate"},
 		{Table: "listing_product_data", TenantFingerprint: "sha256:tenant2", OwnerFingerprint: "sha256:owner2", Rows: 1, Reason: "conflicting_candidates"},
-	})
+	}, 0)
 	first, err := report.Fingerprint()
 	if err != nil {
 		t.Fatal(err)
@@ -38,8 +38,8 @@ func TestReportFingerprintAndJSONAreDeterministicAndRedacted(t *testing.T) {
 }
 
 func TestReportSortsFindingsBeforeFingerprinting(t *testing.T) {
-	left := NewReport("config.yaml", "db", []Finding{{Table: "b", TenantFingerprint: "t", OwnerFingerprint: "o", Rows: 1, Reason: "no_candidate"}, {Table: "a", TenantFingerprint: "t", OwnerFingerprint: "o", Rows: 1, Reason: "no_candidate"}})
-	right := NewReport("config.yaml", "db", []Finding{{Table: "a", TenantFingerprint: "t", OwnerFingerprint: "o", Rows: 1, Reason: "no_candidate"}, {Table: "b", TenantFingerprint: "t", OwnerFingerprint: "o", Rows: 1, Reason: "no_candidate"}})
+	left := NewReport("config.yaml", "db", []Finding{{Table: "b", TenantFingerprint: "t", OwnerFingerprint: "o", Rows: 1, Reason: "no_candidate"}, {Table: "a", TenantFingerprint: "t", OwnerFingerprint: "o", Rows: 1, Reason: "no_candidate"}}, 0)
+	right := NewReport("config.yaml", "db", []Finding{{Table: "a", TenantFingerprint: "t", OwnerFingerprint: "o", Rows: 1, Reason: "no_candidate"}, {Table: "b", TenantFingerprint: "t", OwnerFingerprint: "o", Rows: 1, Reason: "no_candidate"}}, 0)
 	leftFingerprint, err := left.Fingerprint()
 	if err != nil {
 		t.Fatal(err)
