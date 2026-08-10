@@ -11,9 +11,38 @@ param(
     [string]$UnresolvedTasksCsvPath = ".local/tmp/listingkit-owner-scope-unresolved-tasks.csv",
     [string]$UnresolvedStudioJsonPath = ".local/tmp/listingkit-owner-scope-unresolved-studio-sessions.json",
     [string]$UnresolvedStudioCsvPath = ".local/tmp/listingkit-owner-scope-unresolved-studio-sessions.csv",
-    [string]$UnresolvedSummaryJsonPath = ".local/tmp/listingkit-owner-scope-unresolved-summary.json"
+    [string]$UnresolvedSummaryJsonPath = ".local/tmp/listingkit-owner-scope-unresolved-summary.json",
+    [switch]$Execute,
+    [string]$ConfirmReport = "",
+    [int]$BatchSize = 500
 )
 
 $ErrorActionPreference = "Stop"
 
-go run ./cmd/listingkit-owner-scope-dry-run --config $ConfigPath --output $OutputPath --sql-output $SqlOutputPath --schema-output $SchemaOutputPath --backfill-output $BackfillOutputPath --safe-backfill-output $SafeBackfillOutputPath --manual-review-output $ManualReviewOutputPath --unresolved-tasks-json $UnresolvedTasksJsonPath --unresolved-tasks-csv $UnresolvedTasksCsvPath --unresolved-studio-json $UnresolvedStudioJsonPath --unresolved-studio-csv $UnresolvedStudioCsvPath --unresolved-summary-json $UnresolvedSummaryJsonPath
+$args = @(
+    "run", "./cmd/listingkit-owner-scope-dry-run",
+    "--config", $ConfigPath,
+    "--output", $OutputPath,
+    "--sql-output", $SqlOutputPath,
+    "--schema-output", $SchemaOutputPath,
+    "--backfill-output", $BackfillOutputPath,
+    "--safe-backfill-output", $SafeBackfillOutputPath,
+    "--manual-review-output", $ManualReviewOutputPath,
+    "--unresolved-tasks-json", $UnresolvedTasksJsonPath,
+    "--unresolved-tasks-csv", $UnresolvedTasksCsvPath,
+    "--unresolved-studio-json", $UnresolvedStudioJsonPath,
+    "--unresolved-studio-csv", $UnresolvedStudioCsvPath,
+    "--unresolved-summary-json", $UnresolvedSummaryJsonPath,
+    "--batch-size", $BatchSize
+)
+if ($Execute) {
+    $args += "--execute"
+    if ([string]::IsNullOrWhiteSpace($ConfirmReport)) {
+        throw "-ConfirmReport is required with -Execute"
+    }
+    $args += @("--confirm-report", $ConfirmReport)
+}
+& go @args
+if ($LASTEXITCODE -ne 0) {
+    throw "owner reconciliation command failed with exit code $LASTEXITCODE"
+}

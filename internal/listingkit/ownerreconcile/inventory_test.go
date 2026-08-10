@@ -26,3 +26,16 @@ func TestOwnerReconciliationInventoryIsFixedAndComplete(t *testing.T) {
 		}
 	}
 }
+
+func TestInventoryReturnsDefensiveCopy(t *testing.T) {
+	first := Inventory()
+	if len(first) == 0 {
+		t.Fatal("expected fixed inventory")
+	}
+	original := first[0].Table
+	first[0].Table = "mutated"
+	second := Inventory()
+	if second[0].Table != original {
+		t.Fatalf("inventory was mutated through returned slice: %q", second[0].Table)
+	}
+}

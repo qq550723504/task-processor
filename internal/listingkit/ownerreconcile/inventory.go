@@ -4,6 +4,13 @@ import "fmt"
 
 var ownerReconciliationInventory = buildOwnerReconciliationInventory()
 
+// Inventory returns a defensive copy of the fixed owner reconciliation inventory.
+// Keeping the SQL identifiers in this package prevents runtime callers from
+// turning them into user-controlled input.
+func Inventory() []TableSpec {
+	return append([]TableSpec(nil), ownerReconciliationInventory...)
+}
+
 func buildOwnerReconciliationInventory() []TableSpec {
 	legacySimple := []string{
 		"listing_store",

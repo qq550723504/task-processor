@@ -26,12 +26,13 @@ type ReportSummary struct {
 }
 
 type Report struct {
-	SchemaVersion int           `json:"schema_version"`
-	GeneratedAt   time.Time     `json:"generated_at"`
-	ConfigName    string        `json:"config_name"`
-	DatabaseName  string        `json:"database_name"`
-	Summary       ReportSummary `json:"summary"`
-	Findings      []Finding     `json:"findings"`
+	SchemaVersion    int           `json:"schema_version"`
+	GeneratedAt      time.Time     `json:"generated_at"`
+	ConfigName       string        `json:"config_name"`
+	DatabaseName     string        `json:"database_name"`
+	ReportFingerprint string        `json:"report_fingerprint,omitempty"`
+	Summary          ReportSummary `json:"summary"`
+	Findings         []Finding     `json:"findings"`
 }
 
 func NewReport(configName, databaseName string, findings []Finding, autoRows int64) Report {
@@ -53,6 +54,26 @@ func NewReport(configName, databaseName string, findings []Finding, autoRows int
 		Summary:       summary,
 		Findings:      copyFindings,
 	}
+}
+
+func (report *Report) SetMetadata(configName, databaseName string) {
+	if report == nil {
+		return
+	}
+	report.ConfigName = filepath.Base(strings.TrimSpace(configName))
+	report.DatabaseName = strings.TrimSpace(databaseName)
+}
+
+func (report *Report) SetFingerprint() error {
+	if report == nil {
+		return nil
+	}
+	fingerprint, err := report.Fingerprint()
+	if err != nil {
+		return err
+	}
+	report.ReportFingerprint = fingerprint
+	return nil
 }
 
 func (report Report) Fingerprint() (string, error) {
