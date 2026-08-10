@@ -61,6 +61,29 @@ func TestServiceRunReportsUnknownOwnerWithTypedError(t *testing.T) {
 	}
 }
 
+func TestServiceRunBlocksBlankOwnerWithoutDirectoryLookup(t *testing.T) {
+	t.Parallel()
+
+	repository := stubOwnerRepository{owners: []PersistedOwner{
+		{Table: "listing_store", TenantID: "tenant-a", UserID: "", RowCount: 3},
+	}}
+	directory := &recordingUserDirectory{}
+	var output bytes.Buffer
+
+	err := NewService(repository, directory, nil, &output).Run(context.Background())
+	var unknownOwners *ErrUnknownOwners
+	if !errors.As(err, &unknownOwners) || unknownOwners.Count != 1 {
+		t.Fatalf("Run error = %v, want one blocking missing owner finding", err)
+	}
+	if len(directory.calls) != 0 {
+		t.Fatalf("directory calls = %#v, want none", directory.calls)
+	}
+	want := "status=blocked table=listing_store tenant=sha256:80a707af7dc7 owner=sha256:e3b0c44298fc rows=3 reason=missing_subject\n"
+	if output.String() != want {
+		t.Fatalf("output = %q, want %q", output.String(), want)
+	}
+}
+
 func TestServiceRunRejectsSameSubjectFromWrongTenant(t *testing.T) {
 	t.Parallel()
 

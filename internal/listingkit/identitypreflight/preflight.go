@@ -62,6 +62,7 @@ type unknownOwnerFinding struct {
 	TenantID string
 	UserID   string
 	RowCount int64
+	Reason   string
 }
 
 type normalizedOwner struct {
@@ -76,6 +77,21 @@ func (service *Service) Run(ctx context.Context) error {
 			return fmt.Errorf("identity preflight: %w", ctxErr)
 		}
 		return errors.New("identity preflight: list persisted owners failed")
+	}
+	missingSubjectFindings := make([]unknownOwnerFinding, 0)
+	for _, owner := range owners {
+		if strings.TrimSpace(owner.UserID) == "" {
+			missingSubjectFindings = append(missingSubjectFindings, unknownOwnerFinding{
+				Table:    owner.Table,
+				TenantID: owner.TenantID,
+				UserID:   owner.UserID,
+				RowCount: owner.RowCount,
+				Reason:   "missing_subject",
+			})
+		}
+	}
+	if len(missingSubjectFindings) > 0 {
+		return service.reportFindings(missingSubjectFindings)
 	}
 
 	normalizedOwners, err := service.normalizeOwnerTenants(ctx, owners)
@@ -118,8 +134,13 @@ func (service *Service) Run(ctx context.Context) error {
 			TenantID: owner.TenantID,
 			UserID:   owner.UserID,
 			RowCount: owner.RowCount,
+			Reason:   "unknown_subject",
 		})
 	}
+	return service.reportFindings(findings)
+}
+
+func (service *Service) reportFindings(findings []unknownOwnerFinding) error {
 	sort.Slice(findings, func(i, j int) bool {
 		left, right := findings[i], findings[j]
 		if left.Table != right.Table {
@@ -131,17 +152,21 @@ func (service *Service) Run(ctx context.Context) error {
 		if left.UserID != right.UserID {
 			return left.UserID < right.UserID
 		}
+		if left.Reason != right.Reason {
+			return left.Reason < right.Reason
+		}
 		return left.RowCount < right.RowCount
 	})
 
 	for _, finding := range findings {
 		if _, err := fmt.Fprintf(
 			service.output,
-			"status=blocked table=%s tenant=%s owner=%s rows=%d reason=unknown_subject\n",
+			"status=blocked table=%s tenant=%s owner=%s rows=%d reason=%s\n",
 			finding.Table,
 			fingerprint(finding.TenantID),
 			fingerprint(finding.UserID),
 			finding.RowCount,
+			finding.Reason,
 		); err != nil {
 			return errors.New("identity preflight: write report failed")
 		}

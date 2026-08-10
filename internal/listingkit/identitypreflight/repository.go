@@ -102,17 +102,15 @@ func validateOwnerTableInventory(inventory []OwnerTable) error {
 
 func ownerAggregateQuery(table OwnerTable) string {
 	return fmt.Sprintf(`SELECT CAST(%s AS text) AS tenant_id,
-       CAST(%s AS text) AS user_id,
+       COALESCE(NULLIF(BTRIM(CAST(%s AS text)), ''), '') AS user_id,
        COUNT(*) AS row_count
 FROM %s
 WHERE NULLIF(BTRIM(CAST(%s AS text)), '') IS NOT NULL
-  AND NULLIF(BTRIM(CAST(%s AS text)), '') IS NOT NULL
-GROUP BY %s, %s`,
+GROUP BY %s, COALESCE(NULLIF(BTRIM(CAST(%s AS text)), ''), '')`,
 		table.TenantColumn,
 		table.UserColumn,
 		table.Table,
 		table.TenantColumn,
-		table.UserColumn,
 		table.TenantColumn,
 		table.UserColumn,
 	)

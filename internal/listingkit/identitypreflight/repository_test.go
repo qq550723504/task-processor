@@ -14,21 +14,46 @@ import (
 )
 
 const (
-	listingTasksAggregateQuery = `SELECT CAST(tenant_id AS text) AS tenant_id,
-       CAST(user_id AS text) AS user_id,
+	listingTasksIncludingBlankOwnerAggregateQuery = `SELECT CAST(tenant_id AS text) AS tenant_id,
+       COALESCE(NULLIF(BTRIM(CAST(user_id AS text)), ''), '') AS user_id,
        COUNT(*) AS row_count
 FROM listing_kit_tasks
 WHERE NULLIF(BTRIM(CAST(tenant_id AS text)), '') IS NOT NULL
-  AND NULLIF(BTRIM(CAST(user_id AS text)), '') IS NOT NULL
-GROUP BY tenant_id, user_id`
+GROUP BY tenant_id, COALESCE(NULLIF(BTRIM(CAST(user_id AS text)), ''), '')`
+	listingTasksAggregateQuery = `SELECT CAST(tenant_id AS text) AS tenant_id,
+       COALESCE(NULLIF(BTRIM(CAST(user_id AS text)), ''), '') AS user_id,
+       COUNT(*) AS row_count
+FROM listing_kit_tasks
+WHERE NULLIF(BTRIM(CAST(tenant_id AS text)), '') IS NOT NULL
+GROUP BY tenant_id, COALESCE(NULLIF(BTRIM(CAST(user_id AS text)), ''), '')`
 	listingStoreAggregateQuery = `SELECT CAST(tenant_id AS text) AS tenant_id,
-       CAST(owner_user_id AS text) AS user_id,
+       COALESCE(NULLIF(BTRIM(CAST(owner_user_id AS text)), ''), '') AS user_id,
        COUNT(*) AS row_count
 FROM listing_store
 WHERE NULLIF(BTRIM(CAST(tenant_id AS text)), '') IS NOT NULL
-  AND NULLIF(BTRIM(CAST(owner_user_id AS text)), '') IS NOT NULL
-GROUP BY tenant_id, owner_user_id`
+GROUP BY tenant_id, COALESCE(NULLIF(BTRIM(CAST(owner_user_id AS text)), ''), '')`
 )
+
+func TestPostgresOwnerRepositoryIncludesBlankOwnerForNonBlankTenant(t *testing.T) {
+	t.Parallel()
+
+	database, mock := openOwnerRepositorySQLMock(t, sqlmock.QueryMatcherEqual)
+	mock.ExpectQuery(listingTasksIncludingBlankOwnerAggregateQuery).
+		WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "user_id", "row_count"}).AddRow("tenant-a", "", int64(2))).
+		RowsWillBeClosed()
+	repository := newPostgresOwnerRepository(sqlOwnerQueryer{db: database}, []OwnerTable{
+		{Table: "listing_kit_tasks", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization},
+	})
+
+	owners, err := repository.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	want := []PersistedOwner{{Table: "listing_kit_tasks", TenantID: "tenant-a", TenantDomain: TenantDomainZITADELOrganization, UserID: "", RowCount: 2}}
+	if !reflect.DeepEqual(owners, want) {
+		t.Fatalf("owners = %#v, want %#v", owners, want)
+	}
+}
 
 func TestPostgresOwnerRepositoryAggregatesConfiguredTablesWithReadOnlyQueries(t *testing.T) {
 	t.Parallel()
@@ -82,12 +107,11 @@ func TestPostgresOwnerRepositorySkipsOnlyPostgresUndefinedTables(t *testing.T) {
 
 	database, mock := openOwnerRepositorySQLMock(t, sqlmock.QueryMatcherEqual)
 	optionalQuery := `SELECT CAST(tenant_id AS text) AS tenant_id,
-       CAST(user_id AS text) AS user_id,
+       COALESCE(NULLIF(BTRIM(CAST(user_id AS text)), ''), '') AS user_id,
        COUNT(*) AS row_count
 FROM optional_table
 WHERE NULLIF(BTRIM(CAST(tenant_id AS text)), '') IS NOT NULL
-  AND NULLIF(BTRIM(CAST(user_id AS text)), '') IS NOT NULL
-GROUP BY tenant_id, user_id`
+GROUP BY tenant_id, COALESCE(NULLIF(BTRIM(CAST(user_id AS text)), ''), '')`
 	mock.ExpectQuery(optionalQuery).
 		WillReturnError(postgresStateError{state: "42P01", message: "relation optional_table does not exist"})
 	mock.ExpectQuery(listingTasksAggregateQuery).
