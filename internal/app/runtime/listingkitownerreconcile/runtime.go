@@ -21,6 +21,7 @@ type runtimeDependencies struct {
 	LoadConfig          func(string) (*config.Config, error)
 	OpenDB              func(*config.DatabaseConfig) (*sql.DB, error)
 	OpenMetadataDB      func(*config.DatabaseConfig) (*sql.DB, error)
+	MetadataTableExists func(context.Context, *sql.DB) (bool, error)
 	CloseDB             func(*sql.DB) error
 	RunReconciliation   func(context.Context, *sql.DB, *sql.DB) (ownerreconcile.Report, error)
 	ApplyReconciliation func(context.Context, *sql.DB, *sql.DB, string, string, int) (ownerreconcile.ApplySummary, error)
@@ -43,6 +44,16 @@ func defaultRuntimeDependencies() runtimeDependencies {
 		LoadConfig:     config.LoadConfigFromFileWithoutValidation,
 		OpenDB:         open,
 		OpenMetadataDB: open,
+		MetadataTableExists: func(ctx context.Context, db *sql.DB) (bool, error) {
+			if db == nil {
+				return false, nil
+			}
+			var name sql.NullString
+			if err := db.QueryRowContext(ctx, "SELECT to_regclass($1)", "projections.org_metadata2").Scan(&name); err != nil {
+				return false, err
+			}
+			return name.Valid && strings.TrimSpace(name.String) != "", nil
+		},
 		CloseDB: func(db *sql.DB) error {
 			if db == nil {
 				return nil
@@ -90,6 +101,9 @@ func runWithDependencies(ctx context.Context, options Options, deps runtimeDepen
 	if deps.OpenMetadataDB == nil {
 		deps.OpenMetadataDB = defaults.OpenMetadataDB
 	}
+	if deps.MetadataTableExists == nil {
+		deps.MetadataTableExists = defaults.MetadataTableExists
+	}
 	if deps.CloseDB == nil {
 		deps.CloseDB = defaults.CloseDB
 	}
@@ -117,7 +131,7 @@ func runWithDependencies(ctx context.Context, options Options, deps runtimeDepen
 		return errors.New("connect application database failed")
 	}
 	defer func() { _ = deps.CloseDB(ownerDB) }()
-	metadataDB, err := openMetadataDB(cfg.Database, deps)
+	metadataDB, err := openMetadataDB(ctx, cfg.Database, deps)
 	if err != nil {
 		return errors.New("connect legacy identity metadata database failed")
 	}
@@ -148,17 +162,35 @@ func runWithDependencies(ctx context.Context, options Options, deps runtimeDepen
 	return nil
 }
 
-func openMetadataDB(base *config.DatabaseConfig, deps runtimeDependencies) (*sql.DB, error) {
+func openMetadataDB(ctx context.Context, base *config.DatabaseConfig, deps runtimeDependencies) (*sql.DB, error) {
 	if base == nil {
 		return nil, errors.New("metadata database base config is missing")
 	}
+	var selected *sql.DB
 	for _, name := range []string{"zitadel_auth", "zitadel"} {
 		candidate := *base
 		candidate.Database = name
 		db, err := deps.OpenMetadataDB(&candidate)
-		if err == nil && db != nil {
-			return db, nil
+		if err != nil || db == nil {
+			if db != nil {
+				_ = deps.CloseDB(db)
+			}
+			continue
 		}
+		exists, probeErr := deps.MetadataTableExists(ctx, db)
+		if probeErr != nil || !exists {
+			_ = deps.CloseDB(db)
+			continue
+		}
+		if selected != nil {
+			_ = deps.CloseDB(db)
+			_ = deps.CloseDB(selected)
+			return nil, errors.New("multiple legacy identity metadata databases are available")
+		}
+		selected = db
+	}
+	if selected != nil {
+		return selected, nil
 	}
 	return nil, errors.New("no legacy identity metadata database available")
 }

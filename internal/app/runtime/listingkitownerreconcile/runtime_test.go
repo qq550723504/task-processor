@@ -21,9 +21,15 @@ func TestRunWithDependenciesWritesReportInDryRunAndDoesNotExecute(t *testing.T) 
 		LoadConfig: func(string) (*config.Config, error) {
 			return &config.Config{Database: &config.DatabaseConfig{Database: "app-db"}}, nil
 		},
-		OpenDB:         func(*config.DatabaseConfig) (*sql.DB, error) { return ownerDB, nil },
-		OpenMetadataDB: func(*config.DatabaseConfig) (*sql.DB, error) { return metadataDB, nil },
-		CloseDB:        func(*sql.DB) error { return nil },
+		OpenDB: func(*config.DatabaseConfig) (*sql.DB, error) { return ownerDB, nil },
+		OpenMetadataDB: func(candidate *config.DatabaseConfig) (*sql.DB, error) {
+			if candidate.Database != "zitadel_auth" {
+				return nil, errors.New("missing")
+			}
+			return metadataDB, nil
+		},
+		MetadataTableExists: func(context.Context, *sql.DB) (bool, error) { return true, nil },
+		CloseDB:             func(*sql.DB) error { return nil },
 		RunReconciliation: func(context.Context, *sql.DB, *sql.DB) (ownerreconcile.Report, error) {
 			called = true
 			return ownerreconcile.NewReport("config.yaml", "app-db", nil, 4), nil
@@ -48,9 +54,15 @@ func TestRunWithDependenciesRejectsExecuteWithoutConfirmationBeforeApply(t *test
 		LoadConfig: func(string) (*config.Config, error) {
 			return &config.Config{Database: &config.DatabaseConfig{Database: "app-db"}}, nil
 		},
-		OpenDB:         func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
-		OpenMetadataDB: func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
-		CloseDB:        func(*sql.DB) error { return nil },
+		OpenDB: func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
+		OpenMetadataDB: func(candidate *config.DatabaseConfig) (*sql.DB, error) {
+			if candidate.Database != "zitadel_auth" {
+				return nil, errors.New("missing")
+			}
+			return &sql.DB{}, nil
+		},
+		MetadataTableExists: func(context.Context, *sql.DB) (bool, error) { return true, nil },
+		CloseDB:             func(*sql.DB) error { return nil },
 		RunReconciliation: func(context.Context, *sql.DB, *sql.DB) (ownerreconcile.Report, error) {
 			return ownerreconcile.NewReport("config.yaml", "app-db", nil, 0), nil
 		},
@@ -75,9 +87,15 @@ func TestRunWithDependenciesExecutesOnlyAfterFreshReportConfirmation(t *testing.
 		LoadConfig: func(string) (*config.Config, error) {
 			return &config.Config{Database: &config.DatabaseConfig{Database: "app-db"}}, nil
 		},
-		OpenDB:         func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
-		OpenMetadataDB: func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
-		CloseDB:        func(*sql.DB) error { return nil },
+		OpenDB: func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
+		OpenMetadataDB: func(candidate *config.DatabaseConfig) (*sql.DB, error) {
+			if candidate.Database != "zitadel_auth" {
+				return nil, errors.New("missing")
+			}
+			return &sql.DB{}, nil
+		},
+		MetadataTableExists: func(context.Context, *sql.DB) (bool, error) { return true, nil },
+		CloseDB:             func(*sql.DB) error { return nil },
 		RunReconciliation: func(context.Context, *sql.DB, *sql.DB) (ownerreconcile.Report, error) {
 			return ownerreconcile.NewReport("config.yaml", "app-db", nil, 4), nil
 		},
