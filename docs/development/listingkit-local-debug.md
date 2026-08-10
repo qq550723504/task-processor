@@ -41,13 +41,13 @@ The helper writes the token under `.local\listingkit-api-token.txt` and can expo
 
 Before deploying the canonical-subject API or its matching UI, run the
 read-only identity preflight against the target Kubernetes namespace with the
-exact immutable API image tag:
+exact full immutable API image:
 
 ```bash
 bash scripts/listingkit-identity-preflight-job.sh \
   --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml \
   --namespace task-processor \
-  --image-tag "<immutable-release-tag>"
+  --image "docker.io/xuwei190/task-processor-product-listing-api:<immutable-release-tag>"
 ```
 
 The shared tenant-directory credential must be able to read `POST /v2/users`
@@ -55,6 +55,14 @@ for every ZITADEL organization represented in the database. It does not need
 user or membership write access, and the preflight Job does not receive the
 dedicated member-invitation write token. The preflight only reads persisted
 owner mappings and the ZITADEL directory; it never changes data.
+
+For legacy ListingAdmin numeric tenant rows, the Job also performs a read-only
+reverse lookup in `projections.org_metadata2`. Exactly one of the PostgreSQL
+databases named `zitadel_auth` or `zitadel` must contain that table using the
+configured database host and account. Grant only `CONNECT` and `SELECT` there.
+Missing, dual, or unreadable candidates intentionally fail the preflight;
+correct the selected metadata database or its grant without logging a DSN,
+subject, tenant ID, or credential.
 
 In Kubernetes, only the API and this preflight import the shared Secret. The
 UI, SHEIN login worker, imgproxy, and both schema migration Jobs use explicit

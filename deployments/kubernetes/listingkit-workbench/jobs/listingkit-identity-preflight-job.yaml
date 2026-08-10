@@ -17,7 +17,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: listingkit-identity-preflight
-          image: docker.io/xuwei190/task-processor-product-listing-api:REPLACE_WITH_DEPLOYED_TAG
+          image: REPLACE_WITH_DEPLOYED_IMAGE
           imagePullPolicy: IfNotPresent
           command: ["/app/listingkit-identity-preflight"]
           args: ["-config", "/app/config/config-prod.yaml", "-log-level", "info"]

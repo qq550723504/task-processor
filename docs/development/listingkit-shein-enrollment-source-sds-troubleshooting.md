@@ -9,7 +9,7 @@
 这次问题不是单纯的前端展示问题，而是多层问题叠加：
 
 1. 前端已经发起了来源元数据请求，但接口返回 `200 {"items":[]}`。
-2. 后端鉴权链路里，ZITADEL/Auth.js session 的业务用户 ID 与 Go 后端 bearer introspection 得到的 subject 可能不一致。
+2. 旧 session 的 `user_id`/`username` 只能作为诊断信息；当前 Auth.js 与 Go bearer introspection 都以已验证的 ZITADEL `sub` 为唯一身份。
 3. 当前用户具备 `platform_admin`，会被识别为 ListingKit 平台管理员。
 4. 来源 SDS 历史任务使用的 tenant 可能是旧 tenant ID，和当前请求解析出的 tenant scope 不一致。
 5. 原实现对平台管理员跳过了跨 tenant fallback，导致明明数据库里有 SDS 任务，接口仍返回空数组。

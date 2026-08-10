@@ -43,6 +43,12 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 			if step.ContinueOnError {
 				t.Error("identity preflight step must block deployment when its caller returns failure")
 			}
+			if !strings.Contains(step.Run, "--image \"${{ needs.prepare.outputs.api_image }}\"") {
+				t.Error("identity preflight must receive the exact immutable API image that will be deployed")
+			}
+			if strings.Contains(step.Run, "--image-tag") {
+				t.Error("identity preflight must not infer a fixed-registry image from a tag")
+			}
 		}
 		if strings.Contains(step.Run, "scripts/listingkit-apply-api-deployment.sh") {
 			deploymentMutationIndexes = append(deploymentMutationIndexes, index)

@@ -110,14 +110,14 @@ run_success_case() {
       "$driver" \
         --manifest "$manifest" \
         --namespace test-namespace \
-        --image-tag release-20260810-abc123
+        --image docker.io/alternate-registry/task-processor-product-listing-api:release-20260810-abc123
   } 2>&1)"
 
   local expected_commands
   expected_commands=$'create|-n|test-namespace|-f|<rendered-manifest>|-o|jsonpath={.metadata.name}\n-n|test-namespace|wait|--for=condition=complete|job/listingkit-identity-preflight-test-abc12|--timeout=15m\n-n|test-namespace|logs|job/listingkit-identity-preflight-test-abc12'
   assert_file_equals "$expected_commands" "$command_log"
-  assert_contains "$(cat "$rendered_manifest")" 'docker.io/xuwei190/task-processor-product-listing-api:release-20260810-abc123'
-  assert_not_contains "$(cat "$rendered_manifest")" 'REPLACE_WITH_DEPLOYED_TAG'
+  assert_contains "$(cat "$rendered_manifest")" 'docker.io/alternate-registry/task-processor-product-listing-api:release-20260810-abc123'
+  assert_not_contains "$(cat "$rendered_manifest")" 'REPLACE_WITH_DEPLOYED_IMAGE'
   assert_contains "$output" 'identity preflight logs'
   if [[ -e "$(cat "$rendered_path_log")" ]]; then
     printf 'expected temporary rendered manifest to be removed: %s\n' "$(cat "$rendered_path_log")" >&2
@@ -140,7 +140,7 @@ run_failure_case() {
       "$driver" \
         --manifest "$manifest" \
         --namespace test-namespace \
-        --image-tag release-20260810-abc123
+        --image docker.io/alternate-registry/task-processor-product-listing-api:release-20260810-abc123
   } 2>&1)"
   status=$?
   set -e
@@ -158,9 +158,9 @@ run_failure_case() {
   assert_not_contains "$(cat "$command_log")" 'set|image'
 }
 
-run_mutable_tag_case() {
-  local command_log="$test_root/mutable-tag.commands"
-  local rendered_manifest="$test_root/mutable-tag.rendered.yaml"
+run_mutable_image_case() {
+  local command_log="$test_root/mutable-image.commands"
+  local rendered_manifest="$test_root/mutable-image.rendered.yaml"
   local status
 
   set +e
@@ -171,16 +171,16 @@ run_mutable_tag_case() {
     "$driver" \
       --manifest "$manifest" \
       --namespace test-namespace \
-      --image-tag latest >/dev/null 2>&1
+      --image docker.io/alternate-registry/task-processor-product-listing-api:latest >/dev/null 2>&1
   status=$?
   set -e
 
   if [[ "$status" -eq 0 ]]; then
-    printf 'expected mutable latest tag to exit non-zero\n' >&2
+    printf 'expected mutable latest image to exit non-zero\n' >&2
     exit 1
   fi
   if [[ -s "$command_log" ]]; then
-    printf 'expected mutable latest tag to be rejected before kubectl, got:\n' >&2
+    printf 'expected mutable latest image to be rejected before kubectl, got:\n' >&2
     cat "$command_log" >&2
     exit 1
   fi
@@ -188,5 +188,5 @@ run_mutable_tag_case() {
 
 run_success_case
 run_failure_case
-run_mutable_tag_case
+run_mutable_image_case
 printf '%s\n' 'listingkit identity preflight Job driver tests passed'

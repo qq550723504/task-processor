@@ -198,11 +198,12 @@ TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<existing-listingkit-project-id>
 Inject the token through the approved secret manager; never commit it, print it,
 or paste it into the OIDC or tenant-directory fields. Do not add the dedicated
 Secret to UI, worker, imgproxy, or migration Job `envFrom` lists. Apply the
-dedicated Secret and API Deployment, then restart only the API deployment:
+dedicated Secret, verify its key names, then restart only the already-pinned
+API deployment. Do not apply the base API Deployment here: its image is a
+development default and is not a release target.
 
 ```powershell
 kubectl apply -n task-processor -f tmp/listingkit-member-invitation-secret.yaml
-kubectl apply -n task-processor -f deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml
 
 $requiredKeys = @(
   "TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN"
@@ -318,13 +319,22 @@ uses the shared ConfigMap and shared Secret for the database and read-only
 directory credential; it never references the API-only member-invitation
 Secret.
 
-Run the tested driver with the exact immutable API image tag:
+Legacy ListingAdmin owner rows use numeric tenant IDs. For those rows, the
+preflight must find `projections.org_metadata2` in exactly one of the
+`zitadel_auth` or `zitadel` PostgreSQL databases that share the configured
+database host and credentials. Grant the Job account only `CONNECT` plus
+`SELECT` on that table in the selected database. Neither candidate, both
+candidates, or an unreadable metadata table blocks the release without printing
+database connection details; verify the one intended metadata database and its
+read-only grant before retrying.
+
+Run the tested driver with the exact full immutable API image:
 
 ```bash
 bash scripts/listingkit-identity-preflight-job.sh \
   --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml \
   --namespace task-processor \
-  --image-tag "<immutable-release-tag>"
+  --image "docker.io/xuwei190/task-processor-product-listing-api:<immutable-release-tag>"
 ```
 
 The driver renders a temporary manifest, creates one generated Job, waits up to
@@ -460,13 +470,27 @@ To find a rollback target:
 - Or inspect the currently deployed / previously deployed image tags in Docker
   Hub or Kubernetes rollout history.
 
-Emergency fallback from a workstation:
+Emergency fallback from a workstation (use the same preflight and immutable
+apply drivers; do not use a direct API `set image`):
 
 ```powershell
-kubectl -n task-processor set image deployment/product-listing-api product-listing-api=docker.io/xuwei190/task-processor-product-listing-api:496ca069
+$apiImage = "docker.io/xuwei190/task-processor-product-listing-api:496ca069"
+& "C:\Program Files\Git\bin\bash.exe" scripts/listingkit-identity-preflight-job.sh `
+  --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml `
+  --namespace task-processor `
+  --image $apiImage
+if ($LASTEXITCODE -ne 0) { throw "Identity preflight failed; refusing rollback deployment" }
+& "C:\Program Files\Git\bin\bash.exe" scripts/listingkit-apply-api-deployment.sh `
+  --manifest deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml `
+  --namespace task-processor `
+  --image $apiImage
+if ($LASTEXITCODE -ne 0) { throw "Immutable API rollback apply failed" }
 kubectl -n task-processor set image deployment/listingkit-ui listingkit-ui=docker.io/xuwei190/task-processor-listingkit-ui:496ca069
+if ($LASTEXITCODE -ne 0) { throw "ListingKit UI rollback image update failed" }
 kubectl -n task-processor rollout status deployment/product-listing-api --timeout=5m
+if ($LASTEXITCODE -ne 0) { throw "ListingKit API rollback rollout failed" }
 kubectl -n task-processor rollout status deployment/listingkit-ui --timeout=5m
+if ($LASTEXITCODE -ne 0) { throw "ListingKit UI rollback rollout failed" }
 ```
 
 Use the emergency path only when GitHub Actions cannot be used. If you do use
@@ -569,16 +593,24 @@ Important current behavior:
 ## Manual deploy fallback
 
 ```powershell
-.\scripts\build-push-deploy-listingkit-workbench.ps1 -Tag v20260428-1 -PublishLatest
+.\scripts\build-push-deploy-listingkit-workbench.ps1 -Tag v20260428-1
 ```
+
+This uses the same target-namespace identity preflight and immutable API
+Deployment driver as CI. It requires Git Bash (automatically preferred when
+installed) to run the tested release drivers. A failed preflight stops before
+any API or UI Deployment mutation; the API is applied once with the exact
+versioned image, and only then is the matching UI image updated. `latest` is
+never accepted as the candidate release tag.
 
 Useful switches:
 
 - `-DockerHubUser xuwei190`: image namespace.
 - `-Namespace task-processor`: Kubernetes namespace.
-- `-OverlayPath deployments/kubernetes/listingkit-workbench/overlays/prod`: Kustomize overlay.
 - `-SkipTests`: skip local test/build checks before Docker build.
-- `-SkipApply`: update images without applying manifests.
+- `-SkipApply`: build and push images only; it performs no Kubernetes command.
+- `-PublishLatest`: additionally refreshes floating tags for development only;
+  the gated release still uses the versioned tag.
 
 ## Change public host
 

@@ -186,13 +186,11 @@ jobs:
 
       - name: Run identity preflight release gate
         shell: bash
-        env:
-          IDENTITY_PREFLIGHT_IMAGE_TAG: ${{ needs.prepare.outputs.tag }}
         run: |
           scripts/listingkit-identity-preflight-job.sh \
             --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml \
             --namespace "$K8S_NAMESPACE" \
-            --image-tag "$IDENTITY_PREFLIGHT_IMAGE_TAG"
+            --image "${{ needs.prepare.outputs.api_image }}"
 
       - name: Apply immutable API deployment
         shell: bash

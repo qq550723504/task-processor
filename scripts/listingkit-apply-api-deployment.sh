@@ -2,6 +2,10 @@
 
 set -euo pipefail
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/listingkit-immutable-image.sh
+source "$script_dir/lib/listingkit-immutable-image.sh"
+
 usage() {
   printf 'Usage: %s --manifest PATH --namespace NAMESPACE --image IMMUTABLE_IMAGE\n' "$0" >&2
 }
@@ -44,7 +48,7 @@ if [[ ! -f "$MANIFEST" ]]; then
   exit 2
 fi
 
-if [[ -z "$IMAGE" || "$IMAGE" == "latest" || "$IMAGE" == *:latest || ! "$IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}|@sha256:[A-Fa-f0-9]{64})$ ]]; then
+if ! listingkit_is_immutable_image "$IMAGE"; then
   printf 'ListingKit API deployment requires a valid immutable image, got: %s\n' "$IMAGE" >&2
   exit 2
 fi

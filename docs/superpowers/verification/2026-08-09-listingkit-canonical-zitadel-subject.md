@@ -1,19 +1,25 @@
 # ListingKit canonical ZITADEL-subject verification
 
-Date: 2026-08-10 (fresh local verification at `9ed8198d9`)
+Date: 2026-08-10 (final local verification from base `877fcfee344c534f62336cf7226fc9df97121226` through the scoped working-tree closure)
 
 ## Scope under review
 
-Reviewed commits `c71ce2e1e` through `9ed8198d9` against base
-`877fcfee344c534f62336cf7226fc9df97121226`. The range canonicalizes
+Reviewed all committed changes from base
+`877fcfee344c534f62336cf7226fc9df97121226` through `f3af69aa0`, plus the
+scoped manual-deploy closure in the working tree. The range canonicalizes
 ListingKit identity to the verified ZITADEL subject, removes owner-scope
 configuration, adds an identity-preflight release gate, scopes workload secret
 references, and includes follow-up fixes for the two prior review findings.
 
-The follow-up repairs are `3a84bad95` (owner scope enabled by default with no
-production disable setter) and `9ed8198d9` (legacy username allowlists are
-validation traps and fail closed). They were independently reviewed before
-this fresh verification run.
+The follow-up repairs include `3a84bad95` (owner scope enabled by default with
+no production disable setter), `9ed8198d9` (legacy username allowlists are
+validation traps and fail closed), `8d748f739` (strict non-creating read-only
+preflight database connections), `35b3bb313` plus `0f8aba6dc` (legacy tenant
+organization normalization through the distinct metadata database), `c0d75c62e`
+(immutable CI API apply), and `f3af69aa0` (bounded directory client and
+canonical-sub documentation). This final closure additionally unifies every
+documented API deploy or rollback path on the same full immutable-image
+preflight and apply drivers.
 
 ## Fresh local verification
 
@@ -74,3 +80,27 @@ this note does not claim a fully passing repository suite. Remaining gates are:
 
 No push, pull request, deployment, merge, live token use, or platform mutation
 was performed.
+
+## Final local refresh after closing documented deployment and rollback bypasses
+
+The documented PowerShell manual-deploy helper and workstation rollback now
+reuse the same Bash identity-preflight and immutable-API-apply drivers as CI.
+The preflight Job renders the full exact candidate image, so a custom registry
+cannot cause it to verify one image and deploy another. This evidence was
+collected from the final working tree immediately before its scoped commit.
+
+| Command | Result |
+| --- | --- |
+| `Invoke-Pester .\\scripts\\build-push-deploy-listingkit-workbench.Tests.ps1 -EnableExit` | PASS, exit 0; 8 tests. The real helper ran against stubbed external commands: `-SkipApply` made no Kubernetes call or Bash-resolution attempt; normal order was preflight, immutable API apply, then UI update; preflight or API-apply failures stopped every later Deployment/Kubernetes mutation; explicit blank and `latest` candidates were rejected before any external command; custom registries passed the same full image to both drivers. |
+| `C:\\Program Files\\Git\\bin\\bash.exe scripts/tests/listingkit-identity-preflight-job-test.sh` and `...listingkit-apply-api-deployment-test.sh` | PASS, exit 0. The preflight driver rendered a complete custom-registry image rather than inferring a fixed registry; both release-driver behavior suites passed. |
+| `go test ./internal/infra/database ./internal/app/runtime/listingkitidentitypreflight ./internal/listingkit/identitypreflight ./internal/listingkit/userdirectory ./internal/tenantbridge ./internal/listingkit/httpapi ./internal/listingkit ./internal/listingadmin ./internal/core/config ./tests -count=1` | PASS, exit 0. |
+| `go vet ./...` | PASS, exit 0. |
+| `go test ./... -count=1 -timeout=30m` | FAIL, exit 1, 90.5 s. The only failure remains `internal/crawler/alibaba1688/TestVerifiedCrawlerTenantResolverUsesLegacyTenantBridge` when its metadata table is absent and the legacy bridge is disabled. No review-range path touches `internal/crawler/alibaba1688`; `internal/sheinlogin` passed. This is recorded as a failing full suite, not a pass. |
+| UI `npm.cmd test -- --run`, `typecheck`, `lint`, `build` | PASS, exit 0. Vitest: 258 files / 1486 tests. Lint: 0 errors and 14 existing warnings. |
+| API Docker build plus `docker run --rm --entrypoint /app/listingkit-identity-preflight ... -h` | PASS, exit 0, 56 s. One prior Docker Hub metadata TLS timeout occurred before compilation; a single rerun succeeded with the same current source and the freshly built runtime image includes the preflight executable. |
+| Production Kustomize render plus client dry-runs of overlay, identity-preflight Job, and API Deployment | PASS, exit 0. The generated-name Job was validated with `kubectl create --dry-run=client`, matching the release driver's create semantics. |
+| Static release-boundary search | PASS. The manual helper, rollback instructions, and `listingkit-deploy.yml` contain no raw API `apply -k`, `set image deployment/product-listing-api`, `--image-tag`, or API `latest` mutation. |
+
+The remaining target-environment preflight, coordinated rollout, real-token
+authorization matrix, and audited platform-mutation acceptance remain external
+release gates. No external state was changed by this verification.
