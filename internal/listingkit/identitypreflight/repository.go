@@ -93,7 +93,8 @@ func validateOwnerTableInventory(inventory []OwnerTable) error {
 		if !sqlIdentifierPattern.MatchString(table.Table) ||
 			!sqlIdentifierPattern.MatchString(table.TenantColumn) ||
 			!sqlIdentifierPattern.MatchString(table.UserColumn) ||
-			(table.TenantDomain != TenantDomainZITADELOrganization && table.TenantDomain != TenantDomainLegacyNumeric) {
+			(table.TenantDomain != TenantDomainZITADELOrganization && table.TenantDomain != TenantDomainLegacyNumeric) ||
+			(table.BlankUserPolicy != BlankUserPolicyBlock && table.BlankUserPolicy != BlankUserPolicyIgnore) {
 			return errors.New("identity preflight inventory contains an invalid SQL identifier")
 		}
 	}
@@ -101,16 +102,21 @@ func validateOwnerTableInventory(inventory []OwnerTable) error {
 }
 
 func ownerAggregateQuery(table OwnerTable) string {
+	userFilter := ""
+	if table.BlankUserPolicy == BlankUserPolicyIgnore {
+		userFilter = fmt.Sprintf("\n  AND NULLIF(BTRIM(CAST(%s AS text)), '') IS NOT NULL", table.UserColumn)
+	}
 	return fmt.Sprintf(`SELECT CAST(%s AS text) AS tenant_id,
        COALESCE(NULLIF(BTRIM(CAST(%s AS text)), ''), '') AS user_id,
        COUNT(*) AS row_count
 FROM %s
-WHERE NULLIF(BTRIM(CAST(%s AS text)), '') IS NOT NULL
+WHERE NULLIF(BTRIM(CAST(%s AS text)), '') IS NOT NULL%s
 GROUP BY %s, COALESCE(NULLIF(BTRIM(CAST(%s AS text)), ''), '')`,
 		table.TenantColumn,
 		table.UserColumn,
 		table.Table,
 		table.TenantColumn,
+		userFilter,
 		table.TenantColumn,
 		table.UserColumn,
 	)

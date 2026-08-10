@@ -61,6 +61,28 @@ func TestServiceRunReportsUnknownOwnerWithTypedError(t *testing.T) {
 	}
 }
 
+func TestServiceRunBlocksUserScopedAIClientCredential(t *testing.T) {
+	t.Parallel()
+
+	repository := stubOwnerRepository{owners: []PersistedOwner{
+		{Table: "ai_client_credentials", TenantID: "tenant-a", UserID: "legacy-user-id", RowCount: 1},
+	}}
+	directory := &recordingUserDirectory{}
+	var output bytes.Buffer
+
+	err := NewService(repository, directory, nil, &output).Run(context.Background())
+	var unknownOwners *ErrUnknownOwners
+	if !errors.As(err, &unknownOwners) || unknownOwners.Count != 1 {
+		t.Fatalf("Run error = %v, want one blocking credential owner", err)
+	}
+	if want := []string{"tenant-a"}; !reflect.DeepEqual(directory.calls, want) {
+		t.Fatalf("directory calls = %#v, want %#v", directory.calls, want)
+	}
+	if !strings.Contains(output.String(), "status=blocked table=ai_client_credentials") || !strings.Contains(output.String(), "reason=unknown_subject") {
+		t.Fatalf("output = %q, want blocked AI credential finding", output.String())
+	}
+}
+
 func TestServiceRunBlocksBlankOwnerWithoutDirectoryLookup(t *testing.T) {
 	t.Parallel()
 

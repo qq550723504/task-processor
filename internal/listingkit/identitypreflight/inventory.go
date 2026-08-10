@@ -7,13 +7,24 @@ const (
 	TenantDomainLegacyNumeric
 )
 
+// BlankUserPolicy controls how the preflight treats blank user IDs for one table.
+// Most owner-scoped rows become inaccessible when blank and must block rollout.
+// Tenant-wide credential rows intentionally use BlankUserPolicyIgnore.
+type BlankUserPolicy uint8
+
+const (
+	BlankUserPolicyBlock BlankUserPolicy = iota
+	BlankUserPolicyIgnore
+)
+
 // OwnerTable identifies one direct tenant-and-user-owned persistence table.
 // Every identifier is a compile-time repository constant, never external input.
 type OwnerTable struct {
-	Table        string
-	TenantColumn string
-	UserColumn   string
-	TenantDomain TenantDomain
+	Table           string
+	TenantColumn    string
+	UserColumn      string
+	TenantDomain    TenantDomain
+	BlankUserPolicy BlankUserPolicy
 }
 
 var ownerTableInventory = [...]OwnerTable{
@@ -28,6 +39,7 @@ var ownerTableInventory = [...]OwnerTable{
 	{Table: "listingkit_studio_batch_runs", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization},
 	{Table: "listingkit_studio_batch_run_items", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization},
 	{Table: "shein_studio_sessions", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization},
+	{Table: "ai_client_credentials", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization, BlankUserPolicy: BlankUserPolicyIgnore},
 	{Table: "listing_store", TenantColumn: "tenant_id", UserColumn: "owner_user_id", TenantDomain: TenantDomainLegacyNumeric},
 	{Table: "listing_category", TenantColumn: "tenant_id", UserColumn: "owner_user_id", TenantDomain: TenantDomainLegacyNumeric},
 	{Table: "listing_filter_rule", TenantColumn: "tenant_id", UserColumn: "owner_user_id", TenantDomain: TenantDomainLegacyNumeric},

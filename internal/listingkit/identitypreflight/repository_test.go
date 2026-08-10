@@ -32,6 +32,13 @@ GROUP BY tenant_id, COALESCE(NULLIF(BTRIM(CAST(user_id AS text)), ''), '')`
 FROM listing_store
 WHERE NULLIF(BTRIM(CAST(tenant_id AS text)), '') IS NOT NULL
 GROUP BY tenant_id, COALESCE(NULLIF(BTRIM(CAST(owner_user_id AS text)), ''), '')`
+	aiClientCredentialsUserScopedAggregateQuery = `SELECT CAST(tenant_id AS text) AS tenant_id,
+       COALESCE(NULLIF(BTRIM(CAST(user_id AS text)), ''), '') AS user_id,
+       COUNT(*) AS row_count
+FROM ai_client_credentials
+WHERE NULLIF(BTRIM(CAST(tenant_id AS text)), '') IS NOT NULL
+  AND NULLIF(BTRIM(CAST(user_id AS text)), '') IS NOT NULL
+GROUP BY tenant_id, COALESCE(NULLIF(BTRIM(CAST(user_id AS text)), ''), '')`
 )
 
 func TestPostgresOwnerRepositoryIncludesBlankOwnerForNonBlankTenant(t *testing.T) {
@@ -50,6 +57,27 @@ func TestPostgresOwnerRepositoryIncludesBlankOwnerForNonBlankTenant(t *testing.T
 		t.Fatalf("List: %v", err)
 	}
 	want := []PersistedOwner{{Table: "listing_kit_tasks", TenantID: "tenant-a", TenantDomain: TenantDomainZITADELOrganization, UserID: "", RowCount: 2}}
+	if !reflect.DeepEqual(owners, want) {
+		t.Fatalf("owners = %#v, want %#v", owners, want)
+	}
+}
+
+func TestPostgresOwnerRepositorySkipsBlankAIClientCredentialUser(t *testing.T) {
+	t.Parallel()
+
+	database, mock := openOwnerRepositorySQLMock(t, sqlmock.QueryMatcherEqual)
+	mock.ExpectQuery(aiClientCredentialsUserScopedAggregateQuery).
+		WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "user_id", "row_count"}).AddRow("tenant-a", "subject-a", int64(2))).
+		RowsWillBeClosed()
+	repository := newPostgresOwnerRepository(sqlOwnerQueryer{db: database}, []OwnerTable{
+		{Table: "ai_client_credentials", TenantColumn: "tenant_id", UserColumn: "user_id", TenantDomain: TenantDomainZITADELOrganization, BlankUserPolicy: BlankUserPolicyIgnore},
+	})
+
+	owners, err := repository.List(context.Background())
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	want := []PersistedOwner{{Table: "ai_client_credentials", TenantID: "tenant-a", TenantDomain: TenantDomainZITADELOrganization, UserID: "subject-a", RowCount: 2}}
 	if !reflect.DeepEqual(owners, want) {
 		t.Fatalf("owners = %#v, want %#v", owners, want)
 	}

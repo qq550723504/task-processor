@@ -24,6 +24,7 @@ func TestOwnerTableInventoryMatchesOwnerScopedModels(t *testing.T) {
 		productionNonPersistentOwnerModelExclusions(repositoryRoot),
 		filepath.Join(repositoryRoot, "internal", "listingkit"),
 		filepath.Join(repositoryRoot, "internal", "listingadmin"),
+		filepath.Join(repositoryRoot, "internal", "infra", "clients", "openai"),
 	)
 	if err != nil {
 		t.Fatalf("discover owner-scoped models: %v", err)
@@ -157,6 +158,7 @@ func productionNonPersistentOwnerModelExclusions(repositoryRoot string) map[owne
 	identityPreflightDirectory := filepath.Join(listingKitDirectory, "identitypreflight")
 	memberInviteDirectory := filepath.Join(listingKitDirectory, "memberinvite")
 	storeDirectory := filepath.Join(listingKitDirectory, "store")
+	openAIDirectory := filepath.Join(repositoryRoot, "internal", "infra", "clients", "openai")
 
 	return map[ownerModelKey]string{
 		{Directory: identityPreflightDirectory, Package: "identitypreflight", TypeName: "PersistedOwner"}:      "read-only aggregate result returned by the preflight repository",
@@ -194,6 +196,7 @@ func productionNonPersistentOwnerModelExclusions(repositoryRoot string) map[owne
 		{Directory: memberInviteDirectory, Package: "memberinvite", TypeName: "AuditRecord"}:                 "repository command mapped to memberInvitationAuditRow before persistence",
 		{Directory: memberInviteDirectory, Package: "memberinvite", TypeName: "Invitation"}:                  "identity-provider response value, never passed to GORM as a model",
 		{Directory: storeDirectory, Package: "store", TypeName: "sheinPODImageLookupBackfillTaskRow"}:        "read projection selected through the explicit listingkit.Task GORM model",
+		{Directory: openAIDirectory, Package: "openai", TypeName: "Identity"}:                                "request identity context, never persisted as a GORM model",
 	}
 }
 
