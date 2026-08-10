@@ -51,11 +51,23 @@ spec:
                   name: listingkit-workbench-secret
                   key: ZITADEL_CLIENT_SECRET
                   optional: false
-            - name: LISTINGKIT_ZITADEL_ALLOWED_ROLES
+            - name: TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS
               valueFrom:
                 secretKeyRef:
                   name: listingkit-workbench-secret
-                  key: LISTINGKIT_ZITADEL_ALLOWED_ROLES
+                  key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS
+                  optional: false
+            - name: TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS
+                  optional: false
+            - name: TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES
                   optional: false
             - name: LISTINGKIT_DEMO_WEBHOOK_URL
               valueFrom:
