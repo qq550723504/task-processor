@@ -383,6 +383,31 @@ Treat the API and UI as one coordinated release:
 A partial API/UI rollout is not release acceptance. The preflight is
 release-scoped and intentionally absent from the base Kustomization.
 
+### One-time owner reconciliation
+
+The release preflight is a blocker, not a migration command. For a database
+that has already completed the legacy migration, run the reconciliation tool
+in its default read-only mode and review the redacted report:
+
+```powershell
+pwsh -File scripts/listingkit-owner-scope-dry-run.ps1 -ConfigPath config/config-prod.yaml
+```
+
+The command uses the non-validating configuration loader and strict,
+non-creating database connections because this job mounts only database and
+ZITADEL directory settings. It writes only aggregate counts and short
+fingerprints; it never writes raw tenant IDs, legacy IDs, subjects, tokens, or
+SQL bodies. Unmapped and conflicting candidates remain unresolved and must be
+handled explicitly; the tool never assigns an arbitrary current member.
+
+Only after the report has been reviewed may an operator repeat the command with
+`-Execute -ConfirmReport <exact-12-hex-report-fingerprint>`. The command
+re-runs the read-only scan, compares the fingerprint before opening a write
+transaction, and updates only blank owner fields for uniquely verified
+candidates. Use a small `-BatchSize` first and preserve the report and command
+output in the change record. A mismatch, missing confirmation, metadata error,
+or unresolved candidate fails closed before any `UPDATE`.
+
 For a new cluster, render the existing production overlay from a temporary
 copy, pin both image names to the same immutable tag, and apply that rendered
 manifest only after the Job succeeds. This prevents the overlay's development
