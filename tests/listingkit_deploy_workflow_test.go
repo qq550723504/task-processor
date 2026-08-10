@@ -204,6 +204,29 @@ func TestListingKitDeployWorkflowPassesDispatchInputsThroughStepEnvironment(t *t
 	t.Fatal("ListingKit deploy workflow is missing prepare metadata step")
 }
 
+func TestListingKitDeployWorkflowDerivesDefaultTagFromResolvedCommit(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+	workflow := string(content)
+	for _, required := range []string{
+		"GH_TOKEN: ${{ github.token }}",
+		"source_ref=\"$(gh api \"repos/${GITHUB_REPOSITORY}/commits/$source_ref\" --jq .sha)\"",
+		"runner_source_ref=\"$source_ref\"",
+		"tag=\"${source_ref:0:12}\"",
+		"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$",
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Errorf("ListingKit deploy workflow must contain %q", required)
+		}
+	}
+	if strings.Contains(workflow, "tag=\"${source_ref:0:8}\"") {
+		t.Error("ListingKit deploy workflow must not derive a Docker tag directly from an arbitrary ref")
+	}
+}
+
 func TestListingKitPreflightRunnerUsesCandidateSourceExceptDigestRollback(t *testing.T) {
 	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
 	content, err := os.ReadFile(workflowPath)

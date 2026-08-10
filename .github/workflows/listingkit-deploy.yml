@@ -65,11 +65,14 @@ jobs:
           RELEASE_API_RUNTIME_BASE_IMAGE: ${{ inputs.api_runtime_base_image }}
           RELEASE_PUBLISH_LATEST: ${{ inputs.publish_latest }}
           WORKFLOW_SOURCE_REF: ${{ github.workflow_sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           source_ref="$RELEASE_SOURCE_REF"
           if [[ -z "$source_ref" ]]; then
             source_ref="${GITHUB_SHA}"
+          else
+            source_ref="$(gh api "repos/${GITHUB_REPOSITORY}/commits/$source_ref" --jq .sha)"
           fi
           tag="$RELEASE_IMAGE_TAG"
           candidate_api_image="$RELEASE_API_IMAGE_DIGEST"
@@ -92,7 +95,11 @@ jobs:
             runner_source_ref="$WORKFLOW_SOURCE_REF"
           fi
           if [[ -z "$tag" ]]; then
-            tag="${source_ref:0:8}"
+            tag="${source_ref:0:12}"
+          fi
+          if [[ ! "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+            echo "::error::image tag must match Docker tag syntax"
+            exit 1
           fi
           api_runtime_base_image="${API_RUNTIME_BASE_IMAGE}"
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" && -n "$RELEASE_API_RUNTIME_BASE_IMAGE" ]]; then

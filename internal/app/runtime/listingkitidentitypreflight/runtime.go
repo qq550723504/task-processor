@@ -39,7 +39,7 @@ type runtimeDependencies struct {
 
 func defaultRuntimeDependencies() runtimeDependencies {
 	return runtimeDependencies{
-		LoadConfig:     config.LoadConfigFromFile,
+		LoadConfig:     config.LoadConfigFromFileWithoutValidation,
 		OpenDB:         database.NewDatabaseFromConfigWithoutCreate,
 		OpenMetadataDB: database.NewDatabaseFromConfigWithoutCreate,
 		CloseDB: func(db *gorm.DB) error {

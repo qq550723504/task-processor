@@ -35,6 +35,15 @@ func TestDefaultRuntimeDependenciesUseNonCreatingDatabaseFactory(t *testing.T) {
 	}
 }
 
+func TestDefaultRuntimeDependenciesUseNonValidatingConfigLoader(t *testing.T) {
+	t.Parallel()
+
+	want := reflect.ValueOf(config.LoadConfigFromFileWithoutValidation).Pointer()
+	if got := reflect.ValueOf(defaultRuntimeDependencies().LoadConfig).Pointer(); got != want {
+		t.Fatal("identity preflight must use the non-validating config loader because its Job mounts only preflight credentials")
+	}
+}
+
 func TestDefaultRuntimeDependenciesUseMetadataBridgeResolver(t *testing.T) {
 	t.Parallel()
 
