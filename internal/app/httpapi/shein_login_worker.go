@@ -13,7 +13,6 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingadmin"
 	localruntime "task-processor/internal/listingruntime/local"
-	sheinclient "task-processor/internal/shein/client"
 )
 
 // RunSheinLoginWorker starts only the dependencies required by the dedicated
@@ -25,7 +24,6 @@ func RunSheinLoginWorker(logger *logrus.Logger, options Options) error {
 	}
 	defer closeResources(logger, deps.shared.closers)
 
-	sheinclient.ConfigureLoginAccountFromConfig(deps.shared.cfg)
 	result, closer, err := buildSheinLoginModuleResult(deps)
 	if err != nil {
 		return fmt.Errorf("build SHEIN login worker: %w", err)
@@ -81,6 +79,14 @@ func loadSheinLoginWorkerConfig(configPath string) (*config.Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
+	login := &cfg.Platforms.Shein.LoginService
+	login.BaseURL = ""
+	login.SharedKey = ""
+	login.TenantID = ""
+	login.Identifier = ""
+	login.MerchantName = ""
+	login.Username = ""
+	login.Password = ""
 	return cfg, nil
 }
 

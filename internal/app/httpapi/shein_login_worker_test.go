@@ -16,6 +16,15 @@ func TestLoadSheinLoginWorkerConfigAcceptsDatabaseAndRedisOnly(t *testing.T) {
   database: listingkit
 platforms:
   shein:
+    loginService:
+      baseURL: https://login.example.invalid
+      sharedKey: must-not-reach-worker
+      tenantID: legacy-tenant
+      identifier: legacy-store
+      merchantName: legacy-merchant
+      username: legacy-user
+      password: legacy-password
+      maxConcurrentLogins: 3
     cookieRedis:
       host: redis.internal
       port: 6379
@@ -36,5 +45,12 @@ platforms:
 	redis := cfg.EffectiveSheinCookieRedis()
 	if redis.Host != "redis.internal" || redis.DB != 9 {
 		t.Fatalf("cookie redis config = %#v", redis)
+	}
+	login := cfg.Platforms.Shein.LoginService
+	if login.BaseURL != "" || login.SharedKey != "" || login.TenantID != "" || login.Identifier != "" || login.MerchantName != "" || login.Username != "" || login.Password != "" {
+		t.Fatalf("worker retained unused login client/account values: %#v", login)
+	}
+	if login.MaxConcurrentLogins != 3 {
+		t.Fatalf("worker max concurrent logins = %d, want 3", login.MaxConcurrentLogins)
 	}
 }

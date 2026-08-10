@@ -78,12 +78,6 @@ spec:
                   name: listingkit-workbench-secret
                   key: TASK_PROCESSOR_SHEIN_COOKIE_REDIS_DB
                   optional: false
-            - name: TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_IDENTIFIER
-              valueFrom:
-                secretKeyRef:
-                  name: listingkit-workbench-secret
-                  key: TASK_PROCESSOR_SHEIN_LOGIN_SERVICE_IDENTIFIER
-                  optional: false
           envFrom:
             - configMapRef:
                 name: listingkit-workbench-config

@@ -45,8 +45,8 @@ configuration. Every other manifest has an explicit key allowlist:
 - `listingkit-ui`: Auth.js secret, ZITADEL issuer/client credentials, role
   allowlist, and demo webhook only. Public origins and redirect URIs come from
   `listingkit-workbench-config`.
-- `shein-login-worker`: the five database keys, four SHEIN cookie Redis keys,
-  and the SHEIN account identifier only.
+- `shein-login-worker`: the five database keys and four SHEIN cookie Redis
+  keys only. Each queued account already supplies its tenant and store id.
 - `imgproxy`: signing key/salt and the two ProductImage S3 credential keys.
 - both schema migration Jobs: the five database keys only.
 
