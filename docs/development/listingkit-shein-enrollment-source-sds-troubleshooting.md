@@ -63,18 +63,17 @@
 
 也就是说，页面没有标题是后端没有返回来源 SDS 元数据，不是 React 没有渲染 title。
 
-### 2. session 里的用户 ID 和后端上下文用户 ID 可能不是一回事
+### 2. 已验证的 ZITADEL `sub` 是唯一的规范身份
 
-前端 `/api/zitadel-auth/session` 能看到 Auth.js session 中的 `identity.userId`，但 Go 后端还会对 bearer token 做 introspection。
+Go 后端必须以 bearer token introspection 中已验证的 ZITADEL `sub` 作为规范业务身份。`sub` 缺失时请求必须 fail closed，不能以任何其他字段继续做所有权或授权判断。
 
-如果 introspection payload 里没有业务 `user_id`，中间件可能会退回使用 subject。排查时要同时看：
+前端 `/api/zitadel-auth/session` 中的 `identity.userId`、introspection payload 中的 `user_id` 或 `username`，以及请求上下文的 `X-User-ID` 都只能用于诊断；它们绝不能作为 `sub` 的优先级替代、回退身份、所有权或授权依据。排查时可同时看：
 
-- 浏览器 session 里的业务用户 ID
-- Go 请求上下文里的 `X-User-ID`
+- 已验证的 ZITADEL `sub`
+- 浏览器 session 中的 `identity.userId`、`user_id` 和 `username`（仅诊断）
+- Go 请求上下文里的 `X-User-ID`（仅诊断）
 - `X-Tenant-ID`
 - 当前角色是否包含 `listingkit_admin`
-
-这次已调整过优先级：有业务 `identity.UserID` 时优先使用它，不优先用 subject 覆盖。
 
 ### 3. 平台管理员也需要跨 tenant fallback
 

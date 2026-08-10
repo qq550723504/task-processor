@@ -9,9 +9,13 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
-const listUsersPageSize = 100
+const (
+	listUsersPageSize        = 100
+	defaultHTTPClientTimeout = 15 * time.Second
+)
 
 // User is the non-PII subset of a directory user needed by the preflight.
 type User struct {
@@ -48,7 +52,7 @@ func NewClient(cfg ClientConfig) (Directory, error) {
 	}
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
-		httpClient = http.DefaultClient
+		httpClient = &http.Client{Timeout: defaultHTTPClientTimeout}
 	}
 	return &client{baseURL: issuerURL, token: token, http: httpClient}, nil
 }

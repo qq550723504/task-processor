@@ -225,6 +225,46 @@ func TestNewClientRequiresIssuerAndReadOnlyToken(t *testing.T) {
 	}
 }
 
+func TestNewClientUsesBoundedDefaultHTTPClient(t *testing.T) {
+	t.Parallel()
+
+	directory, err := NewClient(ClientConfig{IssuerURL: "https://issuer.example", Token: "directory-token"})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	actual, ok := directory.(*client)
+	if !ok {
+		t.Fatalf("NewClient returned %T, want *client", directory)
+	}
+	if actual.http == http.DefaultClient {
+		t.Fatal("default HTTP client = http.DefaultClient, want dedicated bounded client")
+	}
+	if actual.http.Timeout <= 0 {
+		t.Fatalf("default HTTP client timeout = %s, want bounded timeout", actual.http.Timeout)
+	}
+}
+
+func TestNewClientRetainsConfiguredHTTPClient(t *testing.T) {
+	t.Parallel()
+
+	expected := &http.Client{}
+	directory, err := NewClient(ClientConfig{
+		IssuerURL:  "https://issuer.example",
+		Token:      "directory-token",
+		HTTPClient: expected,
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	actual, ok := directory.(*client)
+	if !ok {
+		t.Fatalf("NewClient returned %T, want *client", directory)
+	}
+	if actual.http != expected {
+		t.Fatalf("HTTP client = %p, want configured client %p", actual.http, expected)
+	}
+}
+
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
