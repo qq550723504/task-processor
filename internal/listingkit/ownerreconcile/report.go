@@ -81,14 +81,10 @@ func (report Report) Fingerprint() (string, error) {
 	sortFindings(findings)
 	canonical := struct {
 		SchemaVersion int           `json:"schema_version"`
-		ConfigName    string        `json:"config_name"`
-		DatabaseName  string        `json:"database_name"`
 		Summary       ReportSummary `json:"summary"`
 		Findings      []Finding     `json:"findings"`
 	}{
 		SchemaVersion: report.SchemaVersion,
-		ConfigName:    report.ConfigName,
-		DatabaseName:  report.DatabaseName,
 		Summary:       report.Summary,
 		Findings:      findings,
 	}
