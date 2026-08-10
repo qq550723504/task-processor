@@ -26,8 +26,10 @@ type preflightRunner interface {
 type runtimeDependencies struct {
 	LoadConfig              func(string) (*config.Config, error)
 	OpenDB                  func(*config.DatabaseConfig) (*gorm.DB, error)
+	OpenMetadataDB          func(*config.DatabaseConfig) (*gorm.DB, error)
 	CloseDB                 func(*gorm.DB) error
 	DatabaseSQL             func(*gorm.DB) (*sql.DB, error)
+	MetadataTableExists     func(*gorm.DB) (bool, error)
 	NewDirectory            func(userdirectory.ClientConfig) (userdirectory.Directory, error)
 	NewOwnerRepository      func(*sql.DB) identitypreflight.OwnerRepository
 	NewLegacyTenantResolver func(*gorm.DB) identitypreflight.LegacyTenantOrganizationResolver
@@ -37,8 +39,9 @@ type runtimeDependencies struct {
 
 func defaultRuntimeDependencies() runtimeDependencies {
 	return runtimeDependencies{
-		LoadConfig: config.LoadConfigFromFile,
-		OpenDB:     database.NewDatabaseFromConfigWithoutCreate,
+		LoadConfig:     config.LoadConfigFromFile,
+		OpenDB:         database.NewDatabaseFromConfigWithoutCreate,
+		OpenMetadataDB: database.NewDatabaseFromConfigWithoutCreate,
 		CloseDB: func(db *gorm.DB) error {
 			sqlDB, err := db.DB()
 			if err != nil {
@@ -46,9 +49,10 @@ func defaultRuntimeDependencies() runtimeDependencies {
 			}
 			return sqlDB.Close()
 		},
-		DatabaseSQL:        func(db *gorm.DB) (*sql.DB, error) { return db.DB() },
-		NewDirectory:       userdirectory.NewClient,
-		NewOwnerRepository: identitypreflight.NewPostgresOwnerRepository,
+		DatabaseSQL:         func(db *gorm.DB) (*sql.DB, error) { return db.DB() },
+		MetadataTableExists: legacyTenantMetadataTableExists,
+		NewDirectory:        userdirectory.NewClient,
+		NewOwnerRepository:  identitypreflight.NewPostgresOwnerRepository,
 		NewLegacyTenantResolver: func(db *gorm.DB) identitypreflight.LegacyTenantOrganizationResolver {
 			return tenantbridge.NewMetadataResolver(db)
 		},
@@ -71,11 +75,17 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	if deps.OpenDB == nil {
 		deps.OpenDB = defaults.OpenDB
 	}
+	if deps.OpenMetadataDB == nil {
+		deps.OpenMetadataDB = defaults.OpenMetadataDB
+	}
 	if deps.CloseDB == nil {
 		deps.CloseDB = defaults.CloseDB
 	}
 	if deps.DatabaseSQL == nil {
 		deps.DatabaseSQL = defaults.DatabaseSQL
+	}
+	if deps.MetadataTableExists == nil {
+		deps.MetadataTableExists = defaults.MetadataTableExists
 	}
 	if deps.NewDirectory == nil {
 		deps.NewDirectory = defaults.NewDirectory
@@ -125,6 +135,15 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	if err != nil || sqlDB == nil {
 		return errors.New("access database failed")
 	}
+	metadataDB, err := openLegacyTenantMetadataDatabase(cfg.Database, deps)
+	if err != nil || metadataDB == nil {
+		return errors.New("configure legacy tenant metadata database failed")
+	}
+	defer func() {
+		if err := deps.CloseDB(metadataDB); err != nil {
+			logger.WithError(err).Warn("close legacy tenant metadata database failed")
+		}
+	}()
 	directory, err := deps.NewDirectory(userdirectory.ClientConfig{
 		IssuerURL: zitadel.IssuerURL,
 		Token:     zitadel.TenantDirectoryToken,
@@ -132,7 +151,7 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	if err != nil || directory == nil {
 		return errors.New("configure ZITADEL user directory failed")
 	}
-	legacyTenantResolver := deps.NewLegacyTenantResolver(db)
+	legacyTenantResolver := deps.NewLegacyTenantResolver(metadataDB)
 	if legacyTenantResolver == nil {
 		return errors.New("configure legacy tenant resolver failed")
 	}
@@ -147,4 +166,57 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 		return errors.New("write identity preflight summary failed")
 	}
 	return nil
+}
+
+func openLegacyTenantMetadataDatabase(base *config.DatabaseConfig, deps runtimeDependencies) (*gorm.DB, error) {
+	var selected *gorm.DB
+	for _, candidate := range legacyTenantMetadataDatabaseConfigs(base) {
+		db, err := deps.OpenMetadataDB(&candidate)
+		if err != nil || db == nil {
+			continue
+		}
+		exists, probeErr := deps.MetadataTableExists(db)
+		if probeErr != nil || !exists {
+			_ = deps.CloseDB(db)
+			continue
+		}
+		if selected != nil {
+			_ = deps.CloseDB(db)
+			_ = deps.CloseDB(selected)
+			return nil, errors.New("multiple legacy tenant metadata databases are available")
+		}
+		selected = db
+	}
+	if selected == nil {
+		return nil, errors.New("legacy tenant metadata database is unavailable")
+	}
+	return selected, nil
+}
+
+func legacyTenantMetadataDatabaseConfigs(base *config.DatabaseConfig) []config.DatabaseConfig {
+	if base == nil {
+		return nil
+	}
+	const firstCandidate = "zitadel_auth"
+	const secondCandidate = "zitadel"
+	result := make([]config.DatabaseConfig, 0, 2)
+	for _, databaseName := range [...]string{firstCandidate, secondCandidate} {
+		candidate := *base
+		candidate.Database = databaseName
+		result = append(result, candidate)
+	}
+	return result
+}
+
+func legacyTenantMetadataTableExists(db *gorm.DB) (bool, error) {
+	if db == nil {
+		return false, nil
+	}
+	result := struct {
+		Name *string `gorm:"column:name"`
+	}{}
+	if err := db.Raw("select to_regclass(?) as name", "projections.org_metadata2").Scan(&result).Error; err != nil {
+		return false, err
+	}
+	return result.Name != nil && strings.TrimSpace(*result.Name) != "", nil
 }

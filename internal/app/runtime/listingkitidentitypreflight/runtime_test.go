@@ -16,16 +16,22 @@ import (
 	"task-processor/internal/listingkit/userdirectory"
 	"task-processor/internal/tenantbridge"
 
+	"github.com/DATA-DOG/go-sqlmock"
+	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
 func TestDefaultRuntimeDependenciesUseNonCreatingDatabaseFactory(t *testing.T) {
 	t.Parallel()
 
-	got := reflect.ValueOf(defaultRuntimeDependencies().OpenDB).Pointer()
 	want := reflect.ValueOf(database.NewDatabaseFromConfigWithoutCreate).Pointer()
-	if got != want {
-		t.Fatal("identity preflight runtime is not wired to the non-creating database factory")
+	for name, factory := range map[string]func(*config.DatabaseConfig) (*gorm.DB, error){
+		"owner":    defaultRuntimeDependencies().OpenDB,
+		"metadata": defaultRuntimeDependencies().OpenMetadataDB,
+	} {
+		if got := reflect.ValueOf(factory).Pointer(); got != want {
+			t.Fatalf("%s database factory is not the non-creating factory", name)
+		}
 	}
 }
 
@@ -35,6 +41,34 @@ func TestDefaultRuntimeDependenciesUseMetadataBridgeResolver(t *testing.T) {
 	resolver := defaultRuntimeDependencies().NewLegacyTenantResolver(&gorm.DB{})
 	if _, ok := resolver.(*tenantbridge.MetadataResolver); !ok {
 		t.Fatalf("legacy tenant resolver = %T, want *tenantbridge.MetadataResolver", resolver)
+	}
+}
+
+func TestLegacyTenantMetadataTableExistsUsesReadOnlyRegclassProbe(t *testing.T) {
+	t.Parallel()
+
+	sqlDB, mock, err := sqlmock.New(sqlmock.QueryMatcherOption(sqlmock.QueryMatcherEqual))
+	if err != nil {
+		t.Fatalf("open SQL mock: %v", err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	db, err := gorm.Open(postgres.New(postgres.Config{Conn: sqlDB}), &gorm.Config{DisableAutomaticPing: true})
+	if err != nil {
+		t.Fatalf("open GORM database: %v", err)
+	}
+	mock.ExpectQuery("select to_regclass($1) as name").
+		WithArgs("projections.org_metadata2").
+		WillReturnRows(sqlmock.NewRows([]string{"name"}).AddRow("projections.org_metadata2"))
+
+	exists, err := legacyTenantMetadataTableExists(db)
+	if err != nil {
+		t.Fatalf("metadata table probe: %v", err)
+	}
+	if !exists {
+		t.Fatal("metadata table probe = false, want true")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("SQL expectations: %v", err)
 	}
 }
 
@@ -141,9 +175,10 @@ func TestRunClosesDatabaseAndWritesOnlySafeSuccessSummary(t *testing.T) {
 		token  = "directory-token-private"
 	)
 	db := &gorm.DB{}
+	metadataDB := &gorm.DB{}
 	sqlDB := &sql.DB{}
 	var output bytes.Buffer
-	var closed bool
+	var closed []*gorm.DB
 
 	err := runWithDependencies(context.Background(), Options{}, runtimeDependencies{
 		LoadConfig: func(string) (*config.Config, error) {
@@ -151,11 +186,23 @@ func TestRunClosesDatabaseAndWritesOnlySafeSuccessSummary(t *testing.T) {
 		},
 		OpenDB: func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
 		CloseDB: func(got *gorm.DB) error {
-			if got != db {
-				t.Fatalf("closed database = %p, want %p", got, db)
-			}
-			closed = true
+			closed = append(closed, got)
 			return nil
+		},
+		OpenMetadataDB: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+			if cfg.Database == "zitadel_auth" {
+				return nil, errors.New("candidate is absent")
+			}
+			if cfg.Database != "zitadel" {
+				t.Fatalf("metadata database candidate = %q", cfg.Database)
+			}
+			return metadataDB, nil
+		},
+		MetadataTableExists: func(got *gorm.DB) (bool, error) {
+			if got != metadataDB {
+				t.Fatalf("metadata probe database = %p, want %p", got, metadataDB)
+			}
+			return true, nil
 		},
 		NewDirectory: func(cfg userdirectory.ClientConfig) (userdirectory.Directory, error) {
 			if cfg.IssuerURL != issuer || cfg.Token != token {
@@ -176,8 +223,8 @@ func TestRunClosesDatabaseAndWritesOnlySafeSuccessSummary(t *testing.T) {
 			return stubOwners{}
 		},
 		NewLegacyTenantResolver: func(got *gorm.DB) identitypreflight.LegacyTenantOrganizationResolver {
-			if got != db {
-				t.Fatalf("legacy tenant resolver received database = %p, want %p", got, db)
+			if got != metadataDB || got == db {
+				t.Fatalf("legacy tenant resolver received database = %p, want metadata %p and not owner %p", got, metadataDB, db)
 			}
 			return stubLegacyTenantResolver{}
 		},
@@ -197,8 +244,8 @@ func TestRunClosesDatabaseAndWritesOnlySafeSuccessSummary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("run error = %v", err)
 	}
-	if !closed {
-		t.Fatal("database was not closed")
+	if want := []*gorm.DB{metadataDB, db}; !reflect.DeepEqual(closed, want) {
+		t.Fatalf("closed databases = %#v, want metadata then owner %#v", closed, want)
 	}
 	if got, want := output.String(), "status=ok identity_preflight=passed\n"; got != want {
 		t.Fatalf("output = %q, want %q", got, want)
@@ -213,14 +260,24 @@ func TestRunClosesDatabaseAndWritesOnlySafeSuccessSummary(t *testing.T) {
 func TestRunReturnsCorePreflightFailureAndClosesDatabase(t *testing.T) {
 	coreFailure := &identitypreflight.ErrUnknownOwners{Count: 2}
 	db := &gorm.DB{}
-	var closed bool
+	metadataDB := &gorm.DB{}
+	var closed []*gorm.DB
 
 	err := runWithDependencies(context.Background(), Options{}, runtimeDependencies{
 		LoadConfig: func(string) (*config.Config, error) {
 			return configuredRuntimeConfig("https://issuer.example", "directory-token"), nil
 		},
 		OpenDB:  func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
-		CloseDB: func(*gorm.DB) error { closed = true; return nil },
+		CloseDB: func(got *gorm.DB) error { closed = append(closed, got); return nil },
+		OpenMetadataDB: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+			if cfg.Database == "zitadel" {
+				return nil, errors.New("candidate is absent")
+			}
+			return metadataDB, nil
+		},
+		MetadataTableExists: func(got *gorm.DB) (bool, error) {
+			return got == metadataDB, nil
+		},
 		NewDirectory: func(userdirectory.ClientConfig) (userdirectory.Directory, error) {
 			return stubDirectory{}, nil
 		},
@@ -234,8 +291,71 @@ func TestRunReturnsCorePreflightFailureAndClosesDatabase(t *testing.T) {
 	if !errors.Is(err, coreFailure) {
 		t.Fatalf("run error = %v, want core preflight failure", err)
 	}
-	if !closed {
-		t.Fatal("database was not closed after core preflight failure")
+	if want := []*gorm.DB{metadataDB, db}; !reflect.DeepEqual(closed, want) {
+		t.Fatalf("closed databases after core failure = %#v, want %#v", closed, want)
+	}
+}
+
+func TestRunFailsClosedWhenMetadataDatabaseCandidateIsMissingOrAmbiguous(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		exists map[string]bool
+	}{
+		{name: "missing", exists: map[string]bool{}},
+		{name: "ambiguous", exists: map[string]bool{"zitadel_auth": true, "zitadel": true}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ownerDB := &gorm.DB{}
+			candidateDBs := map[string]*gorm.DB{
+				"zitadel_auth": {},
+				"zitadel":      {},
+			}
+			databaseNames := make(map[*gorm.DB]string, len(candidateDBs))
+			for name, candidateDB := range candidateDBs {
+				databaseNames[candidateDB] = name
+			}
+			var closed []*gorm.DB
+			var output bytes.Buffer
+
+			err := runWithDependencies(context.Background(), Options{}, runtimeDependencies{
+				LoadConfig: func(string) (*config.Config, error) {
+					return configuredRuntimeConfig("https://issuer.example", "directory-token"), nil
+				},
+				OpenDB:      func(*config.DatabaseConfig) (*gorm.DB, error) { return ownerDB, nil },
+				DatabaseSQL: func(*gorm.DB) (*sql.DB, error) { return &sql.DB{}, nil },
+				CloseDB: func(got *gorm.DB) error {
+					closed = append(closed, got)
+					return nil
+				},
+				OpenMetadataDB: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+					return candidateDBs[cfg.Database], nil
+				},
+				MetadataTableExists: func(got *gorm.DB) (bool, error) {
+					if got == ownerDB {
+						t.Fatal("owner database must not be probed for ZITADEL metadata")
+					}
+					return test.exists[databaseNames[got]], nil
+				},
+				NewDirectory: func(userdirectory.ClientConfig) (userdirectory.Directory, error) {
+					t.Fatal("directory must not be configured without exactly one metadata database")
+					return nil, nil
+				},
+				NewPreflight: func(identitypreflight.OwnerRepository, userdirectory.Directory, identitypreflight.LegacyTenantOrganizationResolver, io.Writer) preflightRunner {
+					t.Fatal("preflight must not run without exactly one metadata database")
+					return nil
+				},
+				Output: &output,
+			})
+			if err == nil || !strings.Contains(err.Error(), "metadata database") {
+				t.Fatalf("run error = %v, want sanitized metadata database failure", err)
+			}
+			if output.Len() != 0 {
+				t.Fatalf("output = %q, want no partial output", output.String())
+			}
+			if len(closed) != 3 {
+				t.Fatalf("closed database count = %d, want two candidates plus owner", len(closed))
+			}
+		})
 	}
 }
 
