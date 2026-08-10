@@ -157,7 +157,9 @@ Copy the command output into the workbench shared Secret/config:
 
 ```text
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID=<project-id>
-LISTINGKIT_ZITADEL_ALLOWED_ROLES=listingkit_admin,listingkit_operator,listingkit_viewer,platform_admin
+TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS=
+TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS=
+TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES=listingkit_admin,listingkit_operator,listingkit_viewer,platform_admin
 ZITADEL_SCOPES=<printed scope string>
 TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED=1
 ```
@@ -628,8 +630,10 @@ The UI uses:
 - `LISTINGKIT_API_BASE=http://product-listing-api:8085/api/v1/listing-kits`
 - `LISTINGKIT_SERVICE_API_BASE=http://product-listing-api:8085/api/v1`
 - `AUTH_SECRET`, `ZITADEL_ISSUER_URL`, `ZITADEL_CLIENT_ID`,
-  `ZITADEL_CLIENT_SECRET`, `LISTINGKIT_ZITADEL_ALLOWED_ROLES`, and
-  `LISTINGKIT_DEMO_WEBHOOK_URL` from explicit keys in
+  `ZITADEL_CLIENT_SECRET`, the canonical `TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS`,
+  `TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS`, and
+  `TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES` keys, plus
+  `LISTINGKIT_DEMO_WEBHOOK_URL`, from explicit keys in
   `listingkit-workbench-secret`
 - public Auth.js origins and redirect URIs from
   `listingkit-workbench-config`, not the shared Secret

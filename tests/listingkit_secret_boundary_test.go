@@ -158,6 +158,39 @@ func TestListingKitIdentityPreflightUsesExactSharedSecretKeys(t *testing.T) {
 	}
 }
 
+func TestListingKitSecretExamplesDefineCanonicalUIAllowlists(t *testing.T) {
+	for _, relativePath := range []string{
+		"listingkit-workbench/base/secret.example.yaml",
+		"zitadel/local/listingkit-workbench-zitadel-secret.example.yaml",
+	} {
+		t.Run(relativePath, func(t *testing.T) {
+			path := filepath.Join("..", "deployments", "kubernetes", filepath.FromSlash(relativePath))
+			contents, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", relativePath, err)
+			}
+			var secret struct {
+				StringData map[string]string `yaml:"stringData"`
+			}
+			if err := yaml.Unmarshal(contents, &secret); err != nil {
+				t.Fatalf("parse %s: %v", relativePath, err)
+			}
+			for _, key := range []string{
+				"TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS",
+				"TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS",
+				"TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES",
+			} {
+				if _, ok := secret.StringData[key]; !ok {
+					t.Errorf("%s must define required canonical UI allowlist key %s", relativePath, key)
+				}
+			}
+			if _, ok := secret.StringData["LISTINGKIT_ZITADEL_ALLOWED_ROLES"]; ok {
+				t.Errorf("%s must not define deprecated UI allowlist key LISTINGKIT_ZITADEL_ALLOWED_ROLES", relativePath)
+			}
+		})
+	}
+}
+
 func databaseSecretKeys() map[string]string {
 	return map[string]string{
 		"TASK_PROCESSOR_DATABASE_HOST":     "TASK_PROCESSOR_DATABASE_HOST",
