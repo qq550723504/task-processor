@@ -119,6 +119,9 @@ func TestListingKitDeployWorkflowSupportsDigestPinnedRollbackWithoutRebuild(t *t
 	for _, required := range []string{
 		"api_image_digest:",
 		"candidate_api_image",
+		"expected_api_repository=\"${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}\"",
+		"api_image_digest must reference $expected_api_repository",
+		"api_image_digest cannot be combined with source or build-image inputs",
 		"needs.prepare.outputs.candidate_api_image == ''",
 		"needs.prepare.outputs.candidate_api_image || needs.build-api.outputs.api_image",
 	} {

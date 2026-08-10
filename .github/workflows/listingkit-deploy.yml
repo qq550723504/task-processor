@@ -65,12 +65,17 @@ jobs:
           fi
           tag="${{ inputs.image_tag }}"
           candidate_api_image="${{ inputs.api_image_digest }}"
+          expected_api_repository="${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ env.API_IMAGE_NAME }}"
           if [[ -n "$candidate_api_image" && ! "$candidate_api_image" =~ ^[A-Za-z0-9][A-Za-z0-9._:/-]*@sha256:[A-Fa-f0-9]{64}$ ]]; then
             echo "::error::api_image_digest must be a digest-pinned image reference"
             exit 1
           fi
-          if [[ -n "$candidate_api_image" && ( -n "${{ inputs.image_tag }}" || -n "${{ inputs.api_runtime_base_image }}" || "${{ inputs.publish_latest }}" == "true" ) ]]; then
-            echo "::error::api_image_digest cannot be combined with build-image inputs"
+          if [[ -n "$candidate_api_image" && "$candidate_api_image" != "$expected_api_repository"@sha256:* ]]; then
+            echo "::error::api_image_digest must reference $expected_api_repository"
+            exit 1
+          fi
+          if [[ -n "$candidate_api_image" && ( -n "${{ inputs.source_ref }}" || -n "${{ inputs.image_tag }}" || -n "${{ inputs.api_runtime_base_image }}" || "${{ inputs.publish_latest }}" == "true" ) ]]; then
+            echo "::error::api_image_digest cannot be combined with source or build-image inputs"
             exit 1
           fi
           if [[ -z "$tag" ]]; then
