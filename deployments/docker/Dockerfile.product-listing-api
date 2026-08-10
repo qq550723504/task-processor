@@ -16,6 +16,7 @@ RUN go mod download
 COPY cmd/product-listing-api/ cmd/product-listing-api/
 COPY cmd/product-listing-api-schema-migrate/ cmd/product-listing-api-schema-migrate/
 COPY cmd/listingkit-schema-migrate/ cmd/listingkit-schema-migrate/
+COPY cmd/listingkit-identity-preflight/ cmd/listingkit-identity-preflight/
 COPY scripts/listingkit-shein-pod-image-index-backfill/ scripts/listingkit-shein-pod-image-index-backfill/
 COPY internal/ internal/
 COPY config/ config/
@@ -25,6 +26,7 @@ COPY prompts/ prompts/
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/product-listing-api ./cmd/product-listing-api/main.go
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/product-listing-api-schema-migrate ./cmd/product-listing-api-schema-migrate
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/listingkit-schema-migrate ./cmd/listingkit-schema-migrate
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/listingkit-identity-preflight ./cmd/listingkit-identity-preflight
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/listingkit-shein-pod-image-index-backfill ./scripts/listingkit-shein-pod-image-index-backfill
 
 FROM ${API_RUNTIME_BASE_IMAGE}
@@ -34,12 +36,13 @@ WORKDIR /app
 COPY --from=builder /out/product-listing-api /app/product-listing-api
 COPY --from=builder /out/product-listing-api-schema-migrate /app/product-listing-api-schema-migrate
 COPY --from=builder /out/listingkit-schema-migrate /app/listingkit-schema-migrate
+COPY --from=builder /out/listingkit-identity-preflight /app/listingkit-identity-preflight
 COPY --from=builder /out/listingkit-shein-pod-image-index-backfill /app/listingkit-shein-pod-image-index-backfill
 COPY --from=builder /src/config /app/config
 COPY --from=builder /src/prompts /app/prompts
 
 RUN mkdir -p /app/logs /app/tmp /app/chrome && \
-    chmod +x /app/product-listing-api /app/product-listing-api-schema-migrate /app/listingkit-schema-migrate /app/listingkit-shein-pod-image-index-backfill
+    chmod +x /app/product-listing-api /app/product-listing-api-schema-migrate /app/listingkit-schema-migrate /app/listingkit-identity-preflight /app/listingkit-shein-pod-image-index-backfill
 
 EXPOSE 8085
 

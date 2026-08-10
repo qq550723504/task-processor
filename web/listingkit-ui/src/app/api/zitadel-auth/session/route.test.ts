@@ -35,4 +35,22 @@ describe("GET /api/zitadel-auth/session", () => {
     const response = await GET();
     expect(response.status).toBe(503);
   });
+
+  it("rejects a session identity without a ZITADEL subject", async () => {
+    vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
+    vi.stubEnv("ZITADEL_CLIENT_ID", "listingkit-client");
+    mockedAuthState.session = {
+      accessToken: "access-token-1",
+      identity: {
+        tenantId: "org-286",
+        user_id: "373211204509761704",
+        roles: ["listingkit_admin"],
+      },
+    };
+
+    const response = await GET();
+
+    expect(response.status).toBe(401);
+    expect(response.headers.get("X-User-ID")).toBeNull();
+  });
 });

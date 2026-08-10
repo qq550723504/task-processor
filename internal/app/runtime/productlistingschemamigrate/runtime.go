@@ -21,7 +21,7 @@ type Dependencies struct {
 func Run(ctx context.Context, configPath string, deps Dependencies) error {
 	_ = ctx
 	if deps.LoadConfig == nil {
-		deps.LoadConfig = config.LoadConfigFromFile
+		deps.LoadConfig = config.LoadConfigFromFileWithoutValidation
 	}
 	if deps.OpenDB == nil {
 		deps.OpenDB = database.NewDatabaseFromConfig

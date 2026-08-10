@@ -12,7 +12,8 @@ import (
 )
 
 func ConfigureListingKitZitadelAuth(cfg config.ListingKitZitadelConfig) {
-	authzRequired := cfg.AuthorizationRequired
+	legacyUsernameAllowlistConfigured := cfg.LegacyUsernameAllowlistConfigured || len(cfg.AllowedUsernames) > 0
+	authzRequired := cfg.AuthorizationRequired || legacyUsernameAllowlistConfigured
 	listingKitZitadelRuntimeConfigMu.Lock()
 	defer listingKitZitadelRuntimeConfigMu.Unlock()
 	listingKitZitadelRuntimeConfigV = &listingKitZitadelRuntimeConfig{
@@ -23,11 +24,11 @@ func ConfigureListingKitZitadelAuth(cfg config.ListingKitZitadelConfig) {
 			HTTPClient:   &http.Client{Timeout: 5 * time.Second},
 		},
 		AuthzConfig: zitadelAuthorizationConfig{
-			Required:         authzRequired,
-			AllowedTenantIDs: stringSliceToSet(cfg.AllowedTenantIDs),
-			AllowedUserIDs:   stringSliceToSet(cfg.AllowedUserIDs),
-			AllowedUsernames: stringSliceToSet(cfg.AllowedUsernames),
-			AllowedRoles:     stringSliceToSet(cfg.AllowedRoles),
+			Required:                          authzRequired,
+			LegacyUsernameAllowlistConfigured: legacyUsernameAllowlistConfigured,
+			AllowedTenantIDs:                  stringSliceToSet(cfg.AllowedTenantIDs),
+			AllowedUserIDs:                    stringSliceToSet(cfg.AllowedUserIDs),
+			AllowedRoles:                      stringSliceToSet(cfg.AllowedRoles),
 		},
 	}
 }

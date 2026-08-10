@@ -4,12 +4,14 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 type stubConfigSource struct {
@@ -308,7 +310,6 @@ func TestNewViper_BindsListingKitEnvironmentVariables(t *testing.T) {
 	assert.Equal(t, "D:/tmp/shein-submit-dumps", v.GetString("listingkit.sheinSubmitDebugDumpDir"))
 	assert.Equal(t, []string{"user-a", "user-b"}, getStringSlice(v, "listingkit.platformAdminUsers"))
 	assert.Equal(t, []string{"role-a", "role-b"}, getStringSlice(v, "listingkit.platformAdminRoles"))
-	assert.False(t, v.IsSet("listingkit.ownerScopeRequired"))
 	assert.Equal(t, "https://issuer.example", v.GetString("listingkit.zitadel.issuerURL"))
 	assert.Equal(t, "listingkit-client", v.GetString("listingkit.zitadel.clientID"))
 	assert.Equal(t, "listingkit-secret", v.GetString("listingkit.zitadel.clientSecret"))
@@ -323,6 +324,56 @@ func TestNewViper_BindsListingKitEnvironmentVariables(t *testing.T) {
 func TestKnownEnvBindingsDoesNotExposeListingKitAuthenticationToggle(t *testing.T) {
 	_, exists := knownEnvBindings()["listingkit.zitadel.authRequired"]
 	assert.False(t, exists, "ListingKit authentication must not be configurable")
+}
+
+func TestKnownEnvBindingsDoNotExposeListingKitOwnerScopeToggle(t *testing.T) {
+	bindings := knownEnvBindings()
+	_, ok := bindings["listingkit.ownerScopeRequired"]
+	assert.False(t, ok)
+
+	for _, binding := range bindings {
+		assert.NotEqual(t, "TASK_PROCESSOR_LISTINGKIT_OWNER_SCOPE_REQUIRED", binding.Primary)
+		assert.NotContains(t, binding.Deprecated, "TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED")
+	}
+}
+
+func TestCommittedListingKitConfigArtifactsDoNotExposeOwnerScopeToggle(t *testing.T) {
+	for _, configName := range []string{"config-dev.yaml", "config-prod.yaml", "config-test.yaml"} {
+		t.Run(configName, func(t *testing.T) {
+			contents, err := os.ReadFile(filepath.Join("..", "..", "..", "config", configName))
+			require.NoError(t, err)
+
+			var document map[string]any
+			require.NoError(t, yaml.Unmarshal(contents, &document))
+			listingKit, ok := document["listingkit"].(map[string]any)
+			require.True(t, ok, "listingkit must be a YAML mapping")
+			_, exposed := listingKit["ownerScopeRequired"]
+			assert.False(t, exposed, "committed config must not offer an owner scope toggle")
+		})
+	}
+}
+
+func TestLoadConfigFromFileDoesNotExposeListingKitOwnerScopeToggle(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_OWNER_SCOPE_REQUIRED", "false")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED", "false")
+
+	configPath := filepath.Join(t.TempDir(), "config-test.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(strings.Join([]string{
+		"openai:",
+		"  apiKey: test-openai-key",
+		"  model: gemini-2.5-flash",
+		"  baseURL: https://api.example.test/v1",
+		"  timeout: 30",
+		"listingkit:",
+		"  zitadel:",
+		"    issuerURL: https://issuer.file.example",
+	}, "\n")), 0o600))
+
+	cfg, err := LoadConfigFromFile(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, "https://issuer.file.example", cfg.ListingKit.Zitadel.IssuerURL)
+	_, exposed := reflect.TypeOf(cfg.ListingKit).FieldByName("OwnerScopeRequired")
+	assert.False(t, exposed, "real config loading must not expose either former owner scope environment variable")
 }
 
 func TestBuildConfigReadsMemberInvitationCredentials(t *testing.T) {
@@ -557,19 +608,16 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 		"  sheinSubmitDebugDumpDir: \"./.local/tmp/shein-dumps\"",
 		"  platformAdminUsers: [\"user-a\"]",
 		"  platformAdminRoles: [\"platform_admin\"]",
-		"  ownerScopeRequired: false",
 		"  zitadel:",
 		"    issuerURL: \"https://issuer.file.example\"",
 		"    clientID: \"file-client\"",
 		"    clientSecret: \"file-secret\"",
 		"    authorizationRequired: false",
-		"    allowedUsernames: [\"file-admin\"]",
 	}, "\n")
 	require.NoError(t, os.WriteFile(configPath, []byte(configBody), 0o600))
 
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES", "listingkit_admin,platform_admin")
 	t.Setenv("LISTINGKIT_PLATFORM_ADMIN_USERS", "user-b,user-c")
-	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED", "1")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED", "1")
 
 	cfg, err := LoadConfigFromFile(configPath)
@@ -578,11 +626,9 @@ func TestLoadConfigFromFile_AssemblesListingKitAndZitadelConfig(t *testing.T) {
 	assert.Equal(t, "./.local/tmp/shein-dumps", cfg.ListingKit.SheinSubmitDebugDumpDir)
 	assert.Equal(t, []string{"user-b", "user-c"}, cfg.ListingKit.PlatformAdminUsers)
 	assert.Equal(t, []string{"platform_admin"}, cfg.ListingKit.PlatformAdminRoles)
-	assert.True(t, cfg.ListingKit.OwnerScopeRequired)
 	assert.True(t, cfg.ListingKit.Zitadel.AuthorizationRequired)
 	assert.Equal(t, "https://issuer.file.example", cfg.ListingKit.Zitadel.IssuerURL)
 	assert.Equal(t, "file-client", cfg.ListingKit.Zitadel.ClientID)
-	assert.Equal(t, []string{"file-admin"}, cfg.ListingKit.Zitadel.AllowedUsernames)
 	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, cfg.ListingKit.Zitadel.AllowedRoles)
 }
 
@@ -598,18 +644,15 @@ func TestLoadConfigFromFile_CannotDisableListingKitAuthentication(t *testing.T) 
 		"listingkit:",
 		"  zitadel:",
 		"    authorizationRequired: false",
-		"    allowedUsernames: [\"file-admin\"]",
 	}, "\n")
 	require.NoError(t, os.WriteFile(configPath, []byte(configBody), 0o600))
 
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_AUTHZ_REQUIRED", "0")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES", "listingkit_admin,platform_admin")
-	t.Setenv("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "1-admin")
 
 	cfg, err := LoadConfigFromFile(configPath)
 	require.NoError(t, err)
 
 	assert.False(t, cfg.ListingKit.Zitadel.AuthorizationRequired)
-	assert.Equal(t, []string{"1-admin"}, cfg.ListingKit.Zitadel.AllowedUsernames)
 	assert.Equal(t, []string{"listingkit_admin", "platform_admin"}, cfg.ListingKit.Zitadel.AllowedRoles)
 }

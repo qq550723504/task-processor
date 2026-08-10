@@ -1,0 +1,22 @@
+# syntax=docker/dockerfile:1
+
+FROM golang:1.26-alpine AS builder
+
+WORKDIR /src
+RUN apk add --no-cache git make
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd/listingkit-identity-preflight/ cmd/listingkit-identity-preflight/
+COPY internal/ internal/
+COPY config/ config/
+COPY prompts/ prompts/
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/listingkit-identity-preflight ./cmd/listingkit-identity-preflight
+
+FROM gcr.io/distroless/static-debian12:nonroot
+
+WORKDIR /app
+COPY --from=builder --chown=nonroot:nonroot /out/listingkit-identity-preflight /app/listingkit-identity-preflight
+COPY --from=builder --chown=nonroot:nonroot /src/config /app/config
+COPY --from=builder --chown=nonroot:nonroot /src/prompts /app/prompts
+USER nonroot:nonroot
+ENTRYPOINT ["/app/listingkit-identity-preflight"]

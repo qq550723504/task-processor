@@ -22,10 +22,11 @@ type Resolver interface {
 }
 
 type MetadataResolver struct {
-	db          *gorm.DB
-	tableName   string
-	metadataKey string
-	cache       sync.Map
+	db           *gorm.DB
+	tableName    string
+	metadataKey  string
+	cache        sync.Map
+	reverseCache sync.Map
 }
 
 type metadataRow struct {
@@ -99,6 +100,43 @@ func (r *MetadataResolver) ResolveLegacyTenantID(ctx context.Context, tenantID s
 	}
 	r.cache.Store(trimmed, value)
 	return value, true, nil
+}
+
+// ResolveOrganizationID performs the inverse, read-only bridge lookup needed
+// by tools that inspect legacy numeric tenant-owned rows in a ZITADEL domain.
+func (r *MetadataResolver) ResolveOrganizationID(ctx context.Context, legacyTenantID int64) (string, bool, error) {
+	if r == nil || r.db == nil || legacyTenantID <= 0 {
+		return "", false, nil
+	}
+	if cached, ok := r.reverseCache.Load(legacyTenantID); ok {
+		return cached.(string), true, nil
+	}
+
+	var rows []metadataRow
+	err := r.db.WithContext(ctx).
+		Table(r.tableName).
+		Distinct("org_id").
+		Where("key = ? AND value = ? AND owner_removed = ?", r.metadataKey, []byte(strconv.FormatInt(legacyTenantID, 10)), false).
+		Limit(2).
+		Find(&rows).Error
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return "", false, fmt.Errorf("resolve organization id: %w", ctxErr)
+		}
+		return "", false, fmt.Errorf("resolve organization id: database query failed")
+	}
+	if len(rows) == 0 {
+		return "", false, nil
+	}
+	if len(rows) > 1 {
+		return "", false, fmt.Errorf("resolve organization id: metadata mapping is ambiguous")
+	}
+	organizationID := strings.TrimSpace(rows[0].OrgID)
+	if organizationID == "" {
+		return "", false, fmt.Errorf("resolve organization id: metadata mapping is invalid")
+	}
+	r.reverseCache.Store(legacyTenantID, organizationID)
+	return organizationID, true, nil
 }
 
 var resolverState struct {

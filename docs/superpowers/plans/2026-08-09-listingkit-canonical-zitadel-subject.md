@@ -299,10 +299,14 @@ func TestKnownEnvBindingsDoNotExposeListingKitOwnerScopeToggle(t *testing.T) {
 }
 ```
 
-Add a YAML repository-boundary assertion that searches the three committed
-config files and deployment examples for both `ownerScopeRequired` and
-`OWNER_SCOPE_REQUIRED` and expects neither. Keep it in
-`internal/core/config/config_env_test.go` so a future reintroduction fails CI.
+Add a YAML configuration-boundary test that parses the three committed config
+files with `yaml.v3` and inspects the decoded `listingkit` mapping. Assert that
+the removed `ownerScopeRequired` key is not part of the accepted configuration
+artifact. Exercise environment behavior by setting both former environment
+variable names, loading configuration through the real loader, and proving
+they do not bind or change the fixed owner-scope startup behavior. Keep these
+tests in `internal/core/config/config_env_test.go` so a future reintroduction
+fails on observable configuration behavior rather than raw source text.
 
 Run:
 
@@ -799,26 +803,37 @@ git commit -m "build: package ListingKit identity preflight"
 **Files:**
 
 - Create: `deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml`
+- Create: `scripts/listingkit-identity-preflight-job.sh`
+- Create: `scripts/tests/listingkit-identity-preflight-job-test.sh`
 - Modify: `.github/workflows/listingkit-deploy.yml`
 - Modify: `deployments/kubernetes/listingkit-workbench/README.md`
 - Modify: `deployments/kubernetes/listingkit-workbench/base/secret.example.yaml`
 - Modify: `docs/development/listingkit-local-debug.md`
 
-### Step 1: Add a manifest/config boundary test before the manifest
+### Step 1: Write a failing executable release-gate test
 
-Add the deployment assertions to the most relevant existing Go config test or
-a new focused test under `internal/app/runtime/listingkitidentitypreflight`:
+Create `scripts/tests/listingkit-identity-preflight-job-test.sh`. Put a fake
+`kubectl` earlier on `PATH`, record every argument it receives, and execute the
+wished-for `scripts/listingkit-identity-preflight-job.sh` interface with a
+manifest path, namespace, and immutable image tag.
 
-- Job command is `/app/listingkit-identity-preflight`.
-- Job image contains `REPLACE_WITH_DEPLOYED_TAG`.
-- Job uses only `listingkit-workbench-config` and the existing
-  `listingkit-workbench-secret`.
-- Job has `restartPolicy: Never`, `backoffLimit: 0`, and no service account with
-  write privileges.
-- workflow runs the Job after the image build and before `set image`.
-- workflow waits for completion and prints logs on success or failure.
+Cover two observable behaviors:
 
-Run the test and confirm it fails because the gate is absent.
+1. Success: the script renders the immutable tag, creates one generated Job,
+   waits for completion, prints logs, and exits zero.
+2. Failure/timeout: the script prints Job logs and description, exits non-zero,
+   and never invokes any deployment image update.
+
+Use literal expected command arguments in the test. Do not grep the workflow
+source or assert implementation-only shell formatting.
+
+Run:
+
+```powershell
+bash scripts/tests/listingkit-identity-preflight-job-test.sh
+```
+
+Expected: FAIL because the release-gate script does not exist yet.
 
 ### Step 2: Create the one-shot Job
 
@@ -858,19 +873,24 @@ The shared secret is required here because it carries both DB credentials and
 the existing read-only directory token. Do not mount the dedicated member
 invitation write token.
 
-### Step 3: Insert the GitHub Actions release gate
+### Step 3: Implement and insert the GitHub Actions release gate
+
+Implement `scripts/listingkit-identity-preflight-job.sh` as the behavior tested
+in Step 1. It must accept explicit `--manifest`, `--namespace`, and
+`--image-tag` arguments, use a temporary rendered manifest, install cleanup
+with `trap`, and never mutate a Deployment. Keep all `kubectl` operations in
+this script so the failure semantics are exercised outside GitHub Actions.
 
 In `deploy-api`, after applying runtime configuration and checking legacy
 invitation secrets, but before updating the API deployment image:
 
-1. Copy the Job manifest to `$RUNNER_TEMP`.
-2. Replace `REPLACE_WITH_DEPLOYED_TAG` with `${{ needs.prepare.outputs.tag }}`.
-3. Create it and capture the generated name.
-4. Wait up to 15 minutes for completion.
-5. Always print the Job logs when the wait succeeds or fails.
-6. Exit non-zero on a failed/timeout Job so `kubectl set image` never runs.
+1. Invoke the tested script with the Job manifest, namespace, and
+   `${{ needs.prepare.outputs.tag }}`.
+2. Let the script create the generated Job and wait up to 15 minutes.
+3. Let the script always print Job logs when the wait succeeds or fails.
+4. Rely on its non-zero exit to ensure `kubectl set image` never runs.
 
-Use a shell `trap` or explicit failure branch so logs are not lost:
+The script uses a failure branch so logs are not lost:
 
 ```bash
 if ! kubectl -n "$K8S_NAMESPACE" wait --for=condition=complete "job/$job_name" --timeout=15m; then
@@ -905,17 +925,19 @@ or schema migration Jobs.
 
 ```powershell
 go test ./internal/app/runtime/listingkitidentitypreflight -count=1
+bash scripts/tests/listingkit-identity-preflight-job-test.sh
 kubectl create --dry-run=client -f deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml -o yaml | Out-Null
-rg -n 'listingkit-identity-preflight|REPLACE_WITH_DEPLOYED_TAG' .github/workflows/listingkit-deploy.yml deployments/kubernetes/listingkit-workbench
+actionlint .github/workflows/listingkit-deploy.yml
 ```
 
-Expected: PASS, and manual inspection confirms the preflight step precedes
-`Update API deployment image`.
+Expected: PASS. Manual review confirms the tested script invocation precedes
+`Update API deployment image`; this integration ordering is also covered by
+the final code review rather than a source-text change-detector test.
 
 ### Step 6: Commit the release gate
 
 ```powershell
-git add deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml .github/workflows/listingkit-deploy.yml deployments/kubernetes/listingkit-workbench/README.md deployments/kubernetes/listingkit-workbench/base/secret.example.yaml docs/development/listingkit-local-debug.md internal/app/runtime/listingkitidentitypreflight
+git add deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml scripts/listingkit-identity-preflight-job.sh scripts/tests/listingkit-identity-preflight-job-test.sh .github/workflows/listingkit-deploy.yml deployments/kubernetes/listingkit-workbench/README.md deployments/kubernetes/listingkit-workbench/base/secret.example.yaml docs/development/listingkit-local-debug.md internal/app/runtime/listingkitidentitypreflight
 git commit -m "ci: gate ListingKit deploys on identity preflight"
 ```
 

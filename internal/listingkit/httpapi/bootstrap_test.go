@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/core/config"
@@ -345,6 +346,30 @@ func TestPrepareModuleServiceEnvironmentAddsLegacyTenantResolverCloser(t *testin
 	if !closed {
 		t.Fatal("expected legacy tenant resolver closer to run")
 	}
+}
+
+func TestPrepareModuleServiceEnvironmentEnablesOwnerScopesWhenTestsTemporarilyDisableThem(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_OWNER_SCOPE_REQUIRED", "false")
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED", "false")
+
+	restoreListingKit := listingkit.SetOwnerScopeRequiredForTesting(false)
+	restoreListingAdmin := listingadmin.SetOwnerScopeRequiredForTesting(false)
+	t.Cleanup(func() {
+		restoreListingAdmin()
+		restoreListingKit()
+	})
+
+	input := buildServiceInputFixture()
+	input.Config = &config.Config{}
+	input.Hooks.ConfigureAuthorization = func([]string, []string) error { return nil }
+	input.Hooks.LegacyTenantResolverConfigurator = func(*config.Config, *logrus.Logger) (func() error, error) {
+		return nil, nil
+	}
+
+	err := prepareModuleServiceEnvironment(input, &closerStack{})
+	assert.NoError(t, err)
+	assert.True(t, listingkit.OwnerScopeEnabled())
+	assert.True(t, listingadmin.OwnerScopeEnabled())
 }
 
 func TestConfigureModuleServiceAuthorizationWrapsAuthorizationError(t *testing.T) {

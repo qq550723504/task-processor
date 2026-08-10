@@ -55,10 +55,6 @@ listingkit:
   sheinSubmitDebugDumpDir: ""
   platformAdminUsers: []
   platformAdminRoles: []
-  # Owner scope rollout depends on historical data backfill. Keep this off in the
-  # baked production template until every owner-aware table has reliable
-  # owner_user_id / created_by / updated_by values.
-  ownerScopeRequired: false
   zitadel:
     # issuer/client secret are injected at runtime in Kubernetes.
     issuerURL: "https://auth.shuomiai.com"
@@ -67,7 +63,6 @@ listingkit:
     authorizationRequired: false
     allowedTenantIDs: []
     allowedUserIDs: []
-    allowedUsernames: []
     allowedRoles: []
 
 platforms:

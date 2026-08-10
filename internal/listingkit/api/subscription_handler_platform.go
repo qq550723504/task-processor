@@ -14,7 +14,8 @@ func (h *handler) UpsertSubscriptionEntitlement(c *gin.Context) {
 	if !h.requireSubscriptionHandler(c) {
 		return
 	}
-	if !h.requirePlatformSubscriptionAccess(c) {
+	identity, ok := h.requirePlatformSubscriptionActor(c)
+	if !ok {
 		return
 	}
 	var req listingsubscription.EntitlementInput
@@ -22,7 +23,7 @@ func (h *handler) UpsertSubscriptionEntitlement(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_subscription_entitlement", "message": err.Error()})
 		return
 	}
-	entitlement, err := h.subscriptionService.UpsertEntitlementWithAudit(c.Request.Context(), requestTenantID(c), strings.TrimSpace(c.Param("module_code")), req, c.GetHeader("X-User-ID"), "")
+	entitlement, err := h.subscriptionService.UpsertEntitlementWithAudit(c.Request.Context(), requestTenantID(c), strings.TrimSpace(c.Param("module_code")), req, identity.UserID, "")
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, listingsubscription.ErrModuleNotFound) {
@@ -90,7 +91,8 @@ func (h *handler) UpsertPlatformSubscriptionPlan(c *gin.Context) {
 	if !h.requireSubscriptionHandler(c) {
 		return
 	}
-	if !h.requirePlatformSubscriptionAccess(c) {
+	identity, ok := h.requirePlatformSubscriptionActor(c)
+	if !ok {
 		return
 	}
 	var req listingsubscription.PlanInput
@@ -101,7 +103,7 @@ func (h *handler) UpsertPlatformSubscriptionPlan(c *gin.Context) {
 	if pathCode := strings.TrimSpace(c.Param("plan_code")); pathCode != "" {
 		req.Code = pathCode
 	}
-	bundle, err := h.subscriptionService.UpsertPlan(c.Request.Context(), req, c.GetHeader("X-User-ID"))
+	bundle, err := h.subscriptionService.UpsertPlan(c.Request.Context(), req, identity.UserID)
 	if err != nil {
 		h.writeSubscriptionPlanError(c, err)
 		return
@@ -113,7 +115,8 @@ func (h *handler) UpsertPlatformSubscriptionPlanModule(c *gin.Context) {
 	if !h.requireSubscriptionHandler(c) {
 		return
 	}
-	if !h.requirePlatformSubscriptionAccess(c) {
+	identity, ok := h.requirePlatformSubscriptionActor(c)
+	if !ok {
 		return
 	}
 	planCode := strings.TrimSpace(c.Param("plan_code"))
@@ -124,7 +127,7 @@ func (h *handler) UpsertPlatformSubscriptionPlanModule(c *gin.Context) {
 		return
 	}
 	req.ModuleCode = moduleCode
-	bundle, err := h.subscriptionService.UpsertPlanModule(c.Request.Context(), planCode, moduleCode, req, c.GetHeader("X-User-ID"))
+	bundle, err := h.subscriptionService.UpsertPlanModule(c.Request.Context(), planCode, moduleCode, req, identity.UserID)
 	if err != nil {
 		h.writeSubscriptionPlanError(c, err)
 		return
@@ -136,14 +139,15 @@ func (h *handler) DeletePlatformSubscriptionPlanModule(c *gin.Context) {
 	if !h.requireSubscriptionHandler(c) {
 		return
 	}
-	if !h.requirePlatformSubscriptionAccess(c) {
+	identity, ok := h.requirePlatformSubscriptionActor(c)
+	if !ok {
 		return
 	}
 	bundle, err := h.subscriptionService.DeletePlanModule(
 		c.Request.Context(),
 		strings.TrimSpace(c.Param("plan_code")),
 		strings.TrimSpace(c.Param("module_code")),
-		c.GetHeader("X-User-ID"),
+		identity.UserID,
 	)
 	if err != nil {
 		h.writeSubscriptionPlanError(c, err)
@@ -156,7 +160,8 @@ func (h *handler) SetPlatformSubscriptionPlanStatus(c *gin.Context) {
 	if !h.requireSubscriptionHandler(c) {
 		return
 	}
-	if !h.requirePlatformSubscriptionAccess(c) {
+	identity, ok := h.requirePlatformSubscriptionActor(c)
+	if !ok {
 		return
 	}
 	var req struct {
@@ -166,7 +171,7 @@ func (h *handler) SetPlatformSubscriptionPlanStatus(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_subscription_plan_status", "message": err.Error()})
 		return
 	}
-	bundle, err := h.subscriptionService.SetPlanActive(c.Request.Context(), strings.TrimSpace(c.Param("plan_code")), req.Active, c.GetHeader("X-User-ID"))
+	bundle, err := h.subscriptionService.SetPlanActive(c.Request.Context(), strings.TrimSpace(c.Param("plan_code")), req.Active, identity.UserID)
 	if err != nil {
 		h.writeSubscriptionPlanError(c, err)
 		return
@@ -228,7 +233,8 @@ func (h *handler) ApplyPlatformTenantSubscriptionPlan(c *gin.Context) {
 	if !h.requireSubscriptionHandler(c) {
 		return
 	}
-	if !h.requirePlatformSubscriptionAccess(c) {
+	identity, ok := h.requirePlatformSubscriptionActor(c)
+	if !ok {
 		return
 	}
 	tenantID := strings.TrimSpace(c.Param("tenant_id"))
@@ -241,7 +247,7 @@ func (h *handler) ApplyPlatformTenantSubscriptionPlan(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_subscription_plan", "message": err.Error()})
 		return
 	}
-	subscription, err := h.subscriptionService.ApplyPlan(c.Request.Context(), tenantID, req, c.GetHeader("X-User-ID"))
+	subscription, err := h.subscriptionService.ApplyPlan(c.Request.Context(), tenantID, req, identity.UserID)
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, listingsubscription.ErrModuleNotFound) {
@@ -257,7 +263,8 @@ func (h *handler) UpsertPlatformTenantSubscriptionEntitlement(c *gin.Context) {
 	if !h.requireSubscriptionHandler(c) {
 		return
 	}
-	if !h.requirePlatformSubscriptionAccess(c) {
+	identity, ok := h.requirePlatformSubscriptionActor(c)
+	if !ok {
 		return
 	}
 	tenantID := strings.TrimSpace(c.Param("tenant_id"))
@@ -271,7 +278,7 @@ func (h *handler) UpsertPlatformTenantSubscriptionEntitlement(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_subscription_entitlement", "message": err.Error()})
 		return
 	}
-	entitlement, err := h.subscriptionService.UpsertEntitlementWithAudit(c.Request.Context(), tenantID, moduleCode, req, c.GetHeader("X-User-ID"), "")
+	entitlement, err := h.subscriptionService.UpsertEntitlementWithAudit(c.Request.Context(), tenantID, moduleCode, req, identity.UserID, "")
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, listingsubscription.ErrModuleNotFound) {
@@ -287,7 +294,8 @@ func (h *handler) SetPlatformTenantSubscriptionUsage(c *gin.Context) {
 	if !h.requireSubscriptionHandler(c) {
 		return
 	}
-	if !h.requirePlatformSubscriptionAccess(c) {
+	identity, ok := h.requirePlatformSubscriptionActor(c)
+	if !ok {
 		return
 	}
 	tenantID := strings.TrimSpace(c.Param("tenant_id"))
@@ -303,7 +311,7 @@ func (h *handler) SetPlatformTenantSubscriptionUsage(c *gin.Context) {
 	if req.Metric == "" {
 		req.Metric = strings.TrimSpace(c.Param("metric"))
 	}
-	counter, err := h.subscriptionService.SetUsage(c.Request.Context(), tenantID, moduleCode, req, c.GetHeader("X-User-ID"))
+	counter, err := h.subscriptionService.SetUsage(c.Request.Context(), tenantID, moduleCode, req, identity.UserID)
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, listingsubscription.ErrModuleNotFound) {

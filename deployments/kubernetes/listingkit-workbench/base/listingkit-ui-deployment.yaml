@@ -24,12 +24,57 @@ spec:
           envFrom:
             - configMapRef:
                 name: listingkit-workbench-config
-            - secretRef:
-                name: listingkit-workbench-secret
-                optional: true
           # These public OIDC addresses must not be overridden by an
           # externally recreated Secret with stale or Pod-local values.
           env:
+            - name: AUTH_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: AUTH_SECRET
+                  optional: false
+            - name: ZITADEL_ISSUER_URL
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: ZITADEL_ISSUER_URL
+                  optional: false
+            - name: ZITADEL_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: ZITADEL_CLIENT_ID
+                  optional: false
+            - name: ZITADEL_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: ZITADEL_CLIENT_SECRET
+                  optional: false
+            - name: TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_TENANT_IDS
+                  optional: false
+            - name: TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USER_IDS
+                  optional: false
+            - name: TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES
+                  optional: false
+            - name: LISTINGKIT_DEMO_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-workbench-secret
+                  key: LISTINGKIT_DEMO_WEBHOOK_URL
+                  optional: false
             - name: AUTH_URL
               valueFrom:
                 configMapKeyRef:

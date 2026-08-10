@@ -150,7 +150,7 @@ func TestListingKitMemberInvitationTokenIsAPIScoped(t *testing.T) {
 		"Validate dedicated member invitation Secret",
 		"path: .workflow-tools",
 		"ref: ${{ github.workflow_sha }}",
-		"sparse-checkout: scripts/validate-listingkit-invitation-secret.sh",
+		"scripts/validate-listingkit-invitation-secret.sh",
 		"bash .workflow-tools/scripts/validate-listingkit-invitation-secret.sh",
 		"listingkit-workbench-secret",
 		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_MEMBER_INVITATION_TOKEN",
@@ -163,7 +163,7 @@ func TestListingKitMemberInvitationTokenIsAPIScoped(t *testing.T) {
 		}
 	}
 	preflight := strings.Index(deployAPIJob, "Validate dedicated member invitation Secret")
-	deploymentUpdate := strings.Index(deployAPIJob, "Update API deployment image")
+	deploymentUpdate := strings.Index(deployAPIJob, ".workflow-tools/scripts/listingkit-apply-api-deployment.sh")
 	if preflight == -1 || deploymentUpdate == -1 || preflight > deploymentUpdate {
 		t.Fatal("ListingKit invitation Secret preflight must run before the API Deployment is updated")
 	}

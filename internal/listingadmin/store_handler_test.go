@@ -21,14 +21,15 @@ import (
 func TestStoreHandlerListsStoresWithinRequestTenant(t *testing.T) {
 	router := newStoreTestRouter(t)
 	seedStore(t, router.db, listingStore{
-		TenantID: 101,
-		Name:     "SHEIN US",
-		Username: "shein-us",
-		Password: "secret",
-		Platform: "SHEIN",
-		ShopType: "semi",
-		Region:   "US",
-		Status:   0,
+		TenantID:    101,
+		OwnerUserID: "user-101",
+		Name:        "SHEIN US",
+		Username:    "shein-us",
+		Password:    "secret",
+		Platform:    "SHEIN",
+		ShopType:    "semi",
+		Region:      "US",
+		Status:      0,
 	})
 	seedStore(t, router.db, listingStore{
 		TenantID: 202,
@@ -150,14 +151,15 @@ func TestStoreHandlerResolvesLegacyTenantIDFromMappedZitadelTenant(t *testing.T)
 
 	router := newStoreTestRouter(t)
 	seedStore(t, router.db, listingStore{
-		TenantID: 227,
-		Name:     "Mapped SHEIN",
-		Username: "mapped-user",
-		Password: "secret",
-		Platform: "SHEIN",
-		ShopType: "semi",
-		Region:   "US",
-		Status:   0,
+		TenantID:    227,
+		OwnerUserID: "user-227",
+		Name:        "Mapped SHEIN",
+		Username:    "mapped-user",
+		Password:    "secret",
+		Platform:    "SHEIN",
+		ShopType:    "semi",
+		Region:      "US",
+		Status:      0,
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/stores?page=1&page_size=20", nil)
@@ -307,14 +309,15 @@ func TestStoreHandlerPlatformRouteListsStoresAcrossTenants(t *testing.T) {
 func TestStoreHandlerSoftDeletesWithinTenant(t *testing.T) {
 	router := newStoreTestRouter(t)
 	store := seedStore(t, router.db, listingStore{
-		TenantID: 404,
-		Name:     "SHEIN US",
-		Username: "shein-us",
-		Password: "secret",
-		Platform: "SHEIN",
-		ShopType: "semi",
-		Region:   "US",
-		Status:   0,
+		TenantID:    404,
+		OwnerUserID: "user-404",
+		Name:        "SHEIN US",
+		Username:    "shein-us",
+		Password:    "secret",
+		Platform:    "SHEIN",
+		ShopType:    "semi",
+		Region:      "US",
+		Status:      0,
 	})
 
 	req := httptest.NewRequest(http.MethodDelete, "/stores/1", nil)
@@ -352,14 +355,15 @@ func TestStoreHandlerSoftDeletesWithinTenant(t *testing.T) {
 func TestStoreHandlerListsDeletedStoresWithinTenant(t *testing.T) {
 	router := newStoreTestRouter(t)
 	seedStore(t, router.db, listingStore{
-		TenantID: 505,
-		Name:     "Deleted SHEIN",
-		Username: "deleted",
-		Password: "secret",
-		Platform: "SHEIN",
-		ShopType: "semi",
-		Status:   0,
-		Deleted:  1,
+		TenantID:    505,
+		OwnerUserID: "user-505",
+		Name:        "Deleted SHEIN",
+		Username:    "deleted",
+		Password:    "secret",
+		Platform:    "SHEIN",
+		ShopType:    "semi",
+		Status:      0,
+		Deleted:     1,
 	})
 	seedStore(t, router.db, listingStore{
 		TenantID: 606,
@@ -393,14 +397,15 @@ func TestStoreHandlerListsDeletedStoresWithinTenant(t *testing.T) {
 func TestStoreHandlerRestoresAndPermanentlyDeletesWithinTenant(t *testing.T) {
 	router := newStoreTestRouter(t)
 	store := seedStore(t, router.db, listingStore{
-		TenantID: 707,
-		Name:     "Deleted SHEIN",
-		Username: "deleted",
-		Password: "secret",
-		Platform: "SHEIN",
-		ShopType: "semi",
-		Status:   0,
-		Deleted:  1,
+		TenantID:    707,
+		OwnerUserID: "user-707",
+		Name:        "Deleted SHEIN",
+		Username:    "deleted",
+		Password:    "secret",
+		Platform:    "SHEIN",
+		ShopType:    "semi",
+		Status:      0,
+		Deleted:     1,
 	})
 
 	restoreReq := httptest.NewRequest(http.MethodPut, "/stores/1/restore", nil)
@@ -445,14 +450,15 @@ func TestStoreHandlerExtendsValidityFromExistingDate(t *testing.T) {
 	router := newStoreTestRouter(t)
 	validUntil := time.Date(2026, 5, 15, 0, 0, 0, 0, time.UTC)
 	seedStore(t, router.db, listingStore{
-		TenantID:   808,
-		Name:       "SHEIN US",
-		Username:   "shein",
-		Password:   "secret",
-		Platform:   "SHEIN",
-		ShopType:   "semi",
-		Status:     0,
-		ValidUntil: &validUntil,
+		TenantID:    808,
+		OwnerUserID: "user-808",
+		Name:        "SHEIN US",
+		Username:    "shein",
+		Password:    "secret",
+		Platform:    "SHEIN",
+		ShopType:    "semi",
+		Status:      0,
+		ValidUntil:  &validUntil,
 	})
 
 	req := httptest.NewRequest(http.MethodPut, "/stores/1/extend-validity?days=30", nil)

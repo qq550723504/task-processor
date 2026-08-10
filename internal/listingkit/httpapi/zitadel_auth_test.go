@@ -4,10 +4,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"task-processor/internal/authz"
 	"task-processor/internal/core/config"
@@ -387,7 +391,7 @@ func TestListingKitZitadelAuthRoleMiddlewareRejectsForgedPermittedHeader(t *test
 	}
 }
 
-func TestListingKitZitadelAuthPrefersBusinessUserIDOverSubject(t *testing.T) {
+func TestListingKitZitadelAuthUsesSubjectWhenClaimsDiffer(t *testing.T) {
 	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
@@ -399,9 +403,10 @@ func TestListingKitZitadelAuthPrefersBusinessUserIDOverSubject(t *testing.T) {
 		case "/oauth/v2/introspect":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"active":                                true,
-				"sub":                                   "zitadel-subject-42",
-				"user_id":                               "373211204509761704",
-				"urn:zitadel:iam:user:resourceowner:id": "org-286",
+				"sub":                                   "zitadel-subject-123",
+				"user_id":                               "legacy-business-user-456",
+				"username":                              "display-name",
+				"urn:zitadel:iam:user:resourceowner:id": "tenant-789",
 			})
 		default:
 			http.NotFound(w, r)
@@ -423,26 +428,80 @@ func TestListingKitZitadelAuthPrefersBusinessUserIDOverSubject(t *testing.T) {
 			Path:   "/api/v1/listing-kits/tasks",
 			Module: "listing-kit",
 			Handler: func(c *gin.Context) {
-				c.JSON(http.StatusOK, gin.H{"user_id": c.GetHeader("X-User-ID")})
+				identity, ok := listingkit.AuthenticatedIdentityFromContext(c.Request.Context())
+				require.True(t, ok)
+				assert.Equal(t, "tenant-789", identity.TenantID)
+				assert.Equal(t, "zitadel-subject-123", identity.UserID)
+				assert.Equal(t, "zitadel-subject-123", c.GetHeader("X-User-ID"))
+				assert.Equal(t, "tenant-789", c.GetHeader("X-Tenant-ID"))
+				c.Status(http.StatusOK)
 			},
 		},
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
 	req.Header.Set("Authorization", "Bearer access-token-1")
+	req.Header.Set("X-User-ID", "forged-user")
+	req.Header.Set("X-Tenant-ID", "forged-tenant")
+	req.Header.Set("X-User-Roles", "forged-role")
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
-	}
-	var body map[string]string
-	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if body["user_id"] != "373211204509761704" {
-		t.Fatalf("user_id = %q, want business user_id from ZITADEL introspection", body["user_id"])
-	}
+	assert.Equal(t, http.StatusOK, resp.Code, resp.Body.String())
+}
+
+func TestListingKitZitadelAuthRejectsMissingSubject(t *testing.T) {
+	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"authorization_endpoint": r.Host + "/oauth/v2/authorize",
+				"token_endpoint":         r.Host + "/oauth/v2/token",
+				"introspection_endpoint": zitadelURL(r) + "/oauth/v2/introspect",
+			})
+		case "/oauth/v2/introspect":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"active":                                true,
+				"user_id":                               "legacy-business-user-456",
+				"username":                              "display-name",
+				"urn:zitadel:iam:user:resourceowner:id": "tenant-789",
+				"urn:zitadel:iam:org:project:roles": map[string]any{
+					"listingkit_operator": map[string]any{},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer zitadel.Close()
+
+	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
+		AuthConfig: zitadelAuthConfig{IssuerURL: zitadel.URL, ClientID: "listingkit-client"},
+	})
+
+	handlerCalled := false
+	router := gin.New()
+	mountRoutes(router, []routeDescriptor{{
+		Method: http.MethodGet,
+		Path:   "/api/v1/listing-kits/tasks",
+		Module: "listing-kit",
+		Handler: func(c *gin.Context) {
+			handlerCalled = true
+			c.Status(http.StatusOK)
+		},
+	}})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/listing-kits/tasks", nil)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusForbidden, recorder.Code)
+	assert.JSONEq(t, `{
+  "error":"zitadel_user_missing",
+  "message":"ZITADEL subject is required"
+}`, recorder.Body.String())
+	assert.False(t, handlerCalled)
 }
 
 func TestListingKitZitadelAuthOverwritesCallerSuppliedIdentityHeaders(t *testing.T) {
@@ -609,8 +668,8 @@ func TestListingKitZitadelAuthRejectsUnauthorizedIdentity(t *testing.T) {
 			ClientID:  "listingkit-client",
 		},
 		AuthzConfig: zitadelAuthorizationConfig{
-			Required:         true,
-			AllowedUsernames: map[string]struct{}{"1-admin": {}},
+			Required:       true,
+			AllowedUserIDs: map[string]struct{}{"other-subject": {}},
 		},
 	})
 
@@ -639,7 +698,7 @@ func TestListingKitZitadelAuthRejectsUnauthorizedIdentity(t *testing.T) {
 	}
 }
 
-func TestListingKitZitadelAuthAllowsConfiguredUsername(t *testing.T) {
+func TestListingKitZitadelAuthFailsClosedWhenOnlyLegacyUsernameAllowlistMatchesSubject(t *testing.T) {
 	zitadel := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/openid-configuration":
@@ -651,8 +710,8 @@ func TestListingKitZitadelAuthAllowsConfiguredUsername(t *testing.T) {
 		case "/oauth/v2/introspect":
 			_ = json.NewEncoder(w).Encode(map[string]any{
 				"active":                                true,
-				"sub":                                   "user-1",
-				"username":                              "1-admin",
+				"sub":                                   "legacy-subject-value",
+				"username":                              "display-name",
 				"urn:zitadel:iam:user:resourceowner:id": "org-286",
 			})
 		default:
@@ -661,16 +720,28 @@ func TestListingKitZitadelAuthAllowsConfiguredUsername(t *testing.T) {
 	}))
 	defer zitadel.Close()
 
-	useListingKitZitadelTestConfig(t, &listingKitZitadelRuntimeConfig{
-		AuthConfig: zitadelAuthConfig{
-			IssuerURL: zitadel.URL,
-			ClientID:  "listingkit-client",
-		},
-		AuthzConfig: zitadelAuthorizationConfig{
-			Required:         true,
-			AllowedUsernames: map[string]struct{}{"1-admin": {}},
-		},
-	})
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "   ")
+	t.Setenv("LISTINGKIT_ZITADEL_ALLOWED_USERNAMES", "")
+	configPath := filepath.Join(t.TempDir(), "config-test.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(strings.Join([]string{
+		"listingkit:",
+		"  zitadel:",
+		"    issuerURL: \"" + zitadel.URL + "\"",
+		"    clientID: listingkit-client",
+		"    allowedUsernames: [\"legacy-subject-value\"]",
+	}, "\n")), 0o600))
+	loadedCfg, err := config.LoadConfigFromFileWithoutValidation(configPath)
+	require.NoError(t, err)
+
+	t.Cleanup(SetListingKitZitadelAuthConfigForTesting(nil))
+	ConfigureListingKitZitadelAuth(loadedCfg.ListingKit.Zitadel)
+	runtimeCfg := currentListingKitZitadelRuntimeConfig()
+	if !runtimeCfg.AuthzConfig.Required {
+		t.Fatal("legacy username allowlist must force fail-closed authorization")
+	}
+	if _, ok := runtimeCfg.AuthzConfig.AllowedUserIDs["legacy-subject-value"]; ok {
+		t.Fatal("legacy username allowlist value was added to canonical subject allowlist")
+	}
 
 	router := gin.New()
 	mountRoutes(router, []routeDescriptor{
@@ -689,8 +760,14 @@ func TestListingKitZitadelAuthAllowsConfiguredUsername(t *testing.T) {
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
 
-	if resp.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusOK, resp.Body.String())
+	if resp.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", resp.Code, http.StatusForbidden, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "zitadel_access_denied") {
+		t.Fatalf("body = %s, want zitadel_access_denied", resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), "username allowlists are obsolete") {
+		t.Fatalf("body = %s, want obsolete username allowlist reason", resp.Body.String())
 	}
 }
 

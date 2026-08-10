@@ -3,6 +3,8 @@ package listingkitschemamigrate
 import (
 	"context"
 	"flag"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"task-processor/internal/core/config"
@@ -12,6 +14,22 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 )
+
+func TestDefaultLoaderAcceptsDatabaseOnlyConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "database-only.yaml")
+	contents := []byte("database:\n  host: database.internal\n  port: 5432\n  user: listingkit\n  password: test-only\n  database: listingkit\n")
+	if err := os.WriteFile(path, contents, 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := defaultRuntimeDependencies().LoadConfig(path)
+	if err != nil {
+		t.Fatalf("load database-only config: %v", err)
+	}
+	if cfg.Database == nil || cfg.Database.Host != "database.internal" {
+		t.Fatalf("database config = %#v", cfg.Database)
+	}
+}
 
 func TestResolveConfigPathAndParseFlags(t *testing.T) {
 	if got := ResolveConfigPath(""); got != "config/config-dev.yaml" {

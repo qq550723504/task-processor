@@ -367,6 +367,7 @@ describe("verifyListingKitRequestIdentity", () => {
       accessToken: "session-token-1",
       issuerUrl: "https://issuer.example.com",
       clientId: "client-1",
+      identityVersion: 1,
       identity: {
         tenantId: "org-286",
         userId: "user-42",
@@ -398,6 +399,7 @@ describe("verifyListingKitRequestIdentity", () => {
       accessToken: "session-token-1",
       issuerUrl: "https://issuer.example.com",
       clientId: "client-1",
+      identityVersion: 1,
       identity: {
         tenantId: "org-286",
         userId: "user-42",
@@ -425,7 +427,7 @@ describe("verifyListingKitRequestIdentity", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("forwards legacy stored sessions without proxy-side introspection", async () => {
+  it("rejects unmarked legacy stored sessions without proxy-side introspection", async () => {
     vi.stubEnv("ZITADEL_ISSUER_URL", "https://issuer.example.com");
     vi.stubEnv("ZITADEL_CLIENT_ID", "client-1");
     mockedAuthState.session = {
@@ -445,15 +447,9 @@ describe("verifyListingKitRequestIdentity", () => {
       new NextRequest("http://localhost/api/listing-kits/tasks"),
     );
 
-    expect(result.response).toBeUndefined();
-    expect(result.token).toBe("session-token-1");
-    expect(result.identity).toEqual({
-      tenantId: "org-286",
-      userId: "user-42",
-      username: "admin",
-      userType: "zitadel",
-      roles: ["listingkit_admin"],
-    });
+    expect(result.identity).toBeUndefined();
+    expect(result.token).toBeUndefined();
+    expect(result.response?.status).toBe(401);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

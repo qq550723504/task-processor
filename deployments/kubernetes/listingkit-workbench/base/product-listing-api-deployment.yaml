@@ -51,7 +51,7 @@ spec:
                 name: listingkit-workbench-config
             - secretRef:
                 name: listingkit-workbench-secret
-                optional: true
+                optional: false
           volumeMounts:
             - name: tmp
               mountPath: /app/tmp
