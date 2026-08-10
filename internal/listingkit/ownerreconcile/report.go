@@ -1,0 +1,99 @@
+package ownerreconcile
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"path/filepath"
+	"sort"
+	"strings"
+	"time"
+)
+
+type Finding struct {
+	Table             string `json:"table"`
+	TenantFingerprint string `json:"tenant_fingerprint"`
+	OwnerFingerprint  string `json:"owner_fingerprint"`
+	Rows              int64  `json:"rows"`
+	Reason            string `json:"reason"`
+}
+
+type ReportSummary struct {
+	FindingGroups  int   `json:"finding_groups"`
+	AffectedRows   int64 `json:"affected_rows"`
+	AutoRows       int64 `json:"auto_rows"`
+	UnresolvedRows int64 `json:"unresolved_rows"`
+}
+
+type Report struct {
+	SchemaVersion int           `json:"schema_version"`
+	GeneratedAt   time.Time     `json:"generated_at"`
+	ConfigName    string        `json:"config_name"`
+	DatabaseName  string        `json:"database_name"`
+	Summary       ReportSummary `json:"summary"`
+	Findings      []Finding     `json:"findings"`
+}
+
+func NewReport(configName, databaseName string, findings []Finding) Report {
+	copyFindings := append([]Finding(nil), findings...)
+	sortFindings(copyFindings)
+	var summary ReportSummary
+	for _, finding := range copyFindings {
+		summary.FindingGroups++
+		summary.AffectedRows += finding.Rows
+		if finding.Reason == "" {
+			summary.AutoRows += finding.Rows
+		} else {
+			summary.UnresolvedRows += finding.Rows
+		}
+	}
+	return Report{
+		SchemaVersion: 1,
+		GeneratedAt:   time.Now().UTC(),
+		ConfigName:    filepath.Base(strings.TrimSpace(configName)),
+		DatabaseName:  strings.TrimSpace(databaseName),
+		Summary:       summary,
+		Findings:      copyFindings,
+	}
+}
+
+func (report Report) Fingerprint() (string, error) {
+	findings := append([]Finding(nil), report.Findings...)
+	sortFindings(findings)
+	canonical := struct {
+		SchemaVersion int       `json:"schema_version"`
+		ConfigName    string    `json:"config_name"`
+		DatabaseName  string    `json:"database_name"`
+		Findings      []Finding `json:"findings"`
+	}{
+		SchemaVersion: report.SchemaVersion,
+		ConfigName:    report.ConfigName,
+		DatabaseName:  report.DatabaseName,
+		Findings:      findings,
+	}
+	encoded, err := json.Marshal(canonical)
+	if err != nil {
+		return "", err
+	}
+	digest := sha256.Sum256(encoded)
+	return hex.EncodeToString(digest[:6]), nil
+}
+
+func sortFindings(findings []Finding) {
+	sort.Slice(findings, func(i, j int) bool {
+		left, right := findings[i], findings[j]
+		if left.Table != right.Table {
+			return left.Table < right.Table
+		}
+		if left.TenantFingerprint != right.TenantFingerprint {
+			return left.TenantFingerprint < right.TenantFingerprint
+		}
+		if left.OwnerFingerprint != right.OwnerFingerprint {
+			return left.OwnerFingerprint < right.OwnerFingerprint
+		}
+		if left.Reason != right.Reason {
+			return left.Reason < right.Reason
+		}
+		return left.Rows < right.Rows
+	})
+}
