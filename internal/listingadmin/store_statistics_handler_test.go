@@ -41,6 +41,7 @@ func TestStoreStatisticsHandlerListsAutoListingStoresWithinTenant(t *testing.T) 
 	seedStore(t, router.db, listingStore{
 		ID:                1,
 		TenantID:          101,
+		OwnerUserID:       "user-101",
 		StoreID:           "SHEIN-US",
 		Name:              "SHEIN US",
 		Username:          "shein-us",

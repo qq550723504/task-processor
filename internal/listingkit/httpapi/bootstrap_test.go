@@ -348,7 +348,7 @@ func TestPrepareModuleServiceEnvironmentAddsLegacyTenantResolverCloser(t *testin
 	}
 }
 
-func TestPrepareModuleServiceEnvironmentAlwaysEnablesOwnerScopes(t *testing.T) {
+func TestPrepareModuleServiceEnvironmentEnablesOwnerScopesWhenTestsTemporarilyDisableThem(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_OWNER_SCOPE_REQUIRED", "false")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED", "false")
 
@@ -357,8 +357,6 @@ func TestPrepareModuleServiceEnvironmentAlwaysEnablesOwnerScopes(t *testing.T) {
 	t.Cleanup(func() {
 		restoreListingAdmin()
 		restoreListingKit()
-		listingkit.ConfigureOwnerScopeRequired(true)
-		listingadmin.ConfigureOwnerScopeRequired(true)
 	})
 
 	input := buildServiceInputFixture()

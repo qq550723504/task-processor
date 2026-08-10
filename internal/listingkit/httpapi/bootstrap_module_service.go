@@ -19,8 +19,8 @@ func prepareModuleServiceEnvironment(input BuildServiceInput, closers *closerSta
 
 func configureModuleServicePolicies(input BuildServiceInput) {
 	listingkit.ConfigureSheinSubmitDebugDumpDir(input.Config.ListingKit.SheinSubmitDebugDumpDir)
-	listingkit.ConfigureOwnerScopeRequired(true)
-	listingadmin.ConfigureOwnerScopeRequired(true)
+	listingkit.EnableOwnerScope()
+	listingadmin.EnableOwnerScope()
 	input.Hooks.ConfigureZitadelAuth(input.Config.ListingKit.Zitadel)
 }
 
