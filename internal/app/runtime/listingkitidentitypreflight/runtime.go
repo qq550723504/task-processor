@@ -36,7 +36,7 @@ type runtimeDependencies struct {
 func defaultRuntimeDependencies() runtimeDependencies {
 	return runtimeDependencies{
 		LoadConfig: config.LoadConfigFromFile,
-		OpenDB:     database.NewDatabaseFromConfig,
+		OpenDB:     database.NewDatabaseFromConfigWithoutCreate,
 		CloseDB: func(db *gorm.DB) error {
 			sqlDB, err := db.DB()
 			if err != nil {
@@ -103,13 +103,6 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 		return errors.New("ZITADEL directory token is required for the identity directory")
 	}
 
-	directory, err := deps.NewDirectory(userdirectory.ClientConfig{
-		IssuerURL: zitadel.IssuerURL,
-		Token:     zitadel.TenantDirectoryToken,
-	})
-	if err != nil || directory == nil {
-		return errors.New("configure ZITADEL user directory failed")
-	}
 	db, err := deps.OpenDB(cfg.Database)
 	if err != nil || db == nil {
 		return errors.New("connect database failed")
@@ -123,6 +116,13 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	sqlDB, err := deps.DatabaseSQL(db)
 	if err != nil || sqlDB == nil {
 		return errors.New("access database failed")
+	}
+	directory, err := deps.NewDirectory(userdirectory.ClientConfig{
+		IssuerURL: zitadel.IssuerURL,
+		Token:     zitadel.TenantDirectoryToken,
+	})
+	if err != nil || directory == nil {
+		return errors.New("configure ZITADEL user directory failed")
 	}
 	preflight := deps.NewPreflight(deps.NewOwnerRepository(sqlDB), directory, deps.Output)
 	if preflight == nil {

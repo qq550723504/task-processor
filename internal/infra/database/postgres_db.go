@@ -75,30 +75,50 @@ func createDatabaseIfNotExists(cfg *config.DatabaseConfig) error {
 	return nil
 }
 
-// NewDatabaseFromConfig 从 config.DatabaseConfig 创建数据库连接，cfg 为 nil 时返回 (nil, nil)。
-func NewDatabaseFromConfig(cfg *config.DatabaseConfig) (*gorm.DB, error) {
-	if cfg == nil {
-		return nil, nil
-	}
+type databaseOpenOptions struct {
+	readOnly        bool
+	createIfMissing bool
+}
 
+type databaseOpener func(string) (*gorm.DB, error)
+type databaseCreator func(*config.DatabaseConfig) error
+
+func databaseDSN(cfg *config.DatabaseConfig, readOnly bool) string {
 	dsn := fmt.Sprintf(
 		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable TimeZone=Asia/Shanghai",
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.Database,
 	)
+	if readOnly {
+		dsn += " default_transaction_read_only=on"
+	}
+	return dsn
+}
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+func openPostgresDatabase(dsn string) (*gorm.DB, error) {
+	return gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger:  logger.Default.LogMode(logger.Silent),
 		NowFunc: func() time.Time { return time.Now().UTC() },
 	})
+}
+
+func newDatabaseFromConfig(
+	cfg *config.DatabaseConfig,
+	options databaseOpenOptions,
+	open databaseOpener,
+	create databaseCreator,
+) (*gorm.DB, error) {
+	if cfg == nil {
+		return nil, nil
+	}
+
+	dsn := databaseDSN(cfg, options.readOnly)
+	db, err := open(dsn)
 	if err != nil {
-		if strings.Contains(err.Error(), "does not exist") || strings.Contains(err.Error(), "database \""+cfg.Database+"\" does not exist") {
-			if err2 := createDatabaseIfNotExists(cfg); err2 != nil {
+		if options.createIfMissing && (strings.Contains(err.Error(), "does not exist") || strings.Contains(err.Error(), "database \""+cfg.Database+"\" does not exist")) {
+			if err2 := create(cfg); err2 != nil {
 				return nil, err2
 			}
-			db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-				Logger:  logger.Default.LogMode(logger.Silent),
-				NowFunc: func() time.Time { return time.Now().UTC() },
-			})
+			db, err = open(dsn)
 			if err != nil {
 				return nil, fmt.Errorf("连接数据库失败: %w", err)
 			}
@@ -152,6 +172,32 @@ func NewDatabaseFromConfig(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 	}
 
 	return db, nil
+}
+
+// NewDatabaseFromConfig 从 config.DatabaseConfig 创建数据库连接，cfg 为 nil 时返回 (nil, nil)。
+// 普通应用启动保持既有行为：目标数据库缺失时尝试创建后重连。
+func NewDatabaseFromConfig(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+	return newDatabaseFromConfig(
+		cfg,
+		databaseOpenOptions{createIfMissing: true},
+		openPostgresDatabase,
+		createDatabaseIfNotExists,
+	)
+}
+
+func newDatabaseFromConfigWithoutCreate(cfg *config.DatabaseConfig, open databaseOpener) (*gorm.DB, error) {
+	return newDatabaseFromConfig(
+		cfg,
+		databaseOpenOptions{readOnly: true},
+		open,
+		nil,
+	)
+}
+
+// NewDatabaseFromConfigWithoutCreate opens an existing target database with a
+// read-only PostgreSQL session and never attempts to create a missing database.
+func NewDatabaseFromConfigWithoutCreate(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+	return newDatabaseFromConfigWithoutCreate(cfg, openPostgresDatabase)
 }
 
 // NewSharedDatabaseFromConfig returns a process-local shared *gorm.DB for the

@@ -6,15 +6,27 @@ import (
 	"database/sql"
 	"errors"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 
 	"task-processor/internal/core/config"
+	"task-processor/internal/infra/database"
 	"task-processor/internal/listingkit/identitypreflight"
 	"task-processor/internal/listingkit/userdirectory"
 
 	"gorm.io/gorm"
 )
+
+func TestDefaultRuntimeDependenciesUseNonCreatingDatabaseFactory(t *testing.T) {
+	t.Parallel()
+
+	got := reflect.ValueOf(defaultRuntimeDependencies().OpenDB).Pointer()
+	want := reflect.ValueOf(database.NewDatabaseFromConfigWithoutCreate).Pointer()
+	if got != want {
+		t.Fatal("identity preflight runtime is not wired to the non-creating database factory")
+	}
+}
 
 func TestRunLoadConfigFailureDoesNotOpenDatabase(t *testing.T) {
 	const sentinel = "postgres://operator:loader-secret@db.example/listingkit"
@@ -78,6 +90,38 @@ func TestRunRejectsMissingIssuerOrDirectoryToken(t *testing.T) {
 		if err == nil || !strings.Contains(err.Error(), "directory") {
 			t.Fatalf("run error = %v, want missing directory configuration failure", err)
 		}
+	}
+}
+
+func TestRunDatabaseOpenFailureStopsBeforeDirectoryOrPreflight(t *testing.T) {
+	const databaseSecret = "postgres://operator:private-password@db.internal/missing_listingkit"
+	var output bytes.Buffer
+
+	err := runWithDependencies(context.Background(), Options{}, runtimeDependencies{
+		LoadConfig: func(string) (*config.Config, error) {
+			return configuredRuntimeConfig("https://issuer.example", "directory-token"), nil
+		},
+		OpenDB: func(*config.DatabaseConfig) (*gorm.DB, error) {
+			return nil, errors.New("database does not exist: " + databaseSecret)
+		},
+		NewDirectory: func(userdirectory.ClientConfig) (userdirectory.Directory, error) {
+			t.Fatal("directory must not be configured when strict database open fails")
+			return nil, nil
+		},
+		NewPreflight: func(identitypreflight.OwnerRepository, userdirectory.Directory, io.Writer) preflightRunner {
+			t.Fatal("preflight must not run when strict database open fails")
+			return nil
+		},
+		Output: &output,
+	})
+	if got, want := err.Error(), "connect database failed"; got != want {
+		t.Fatalf("run error = %q, want %q", got, want)
+	}
+	if strings.Contains(err.Error(), databaseSecret) {
+		t.Fatalf("run error leaked database details: %q", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("output = %q, want no successful preflight summary", output.String())
 	}
 }
 
