@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/database"
 	"task-processor/internal/listingkit/identitypreflight"
+	"task-processor/internal/listingkit/ownerreconcile"
 	"task-processor/internal/listingkit/userdirectory"
 	"task-processor/internal/pkg/appenv"
 	"task-processor/internal/tenantbridge"
@@ -32,6 +33,7 @@ type runtimeDependencies struct {
 	MetadataTableExists     func(*gorm.DB) (bool, error)
 	NewDirectory            func(userdirectory.ClientConfig) (userdirectory.Directory, error)
 	NewOwnerRepository      func(*sql.DB) identitypreflight.OwnerRepository
+	RunOwnerReconciliation  func(context.Context, *gorm.DB, *gorm.DB) (ownerreconcile.Report, error)
 	NewLegacyTenantResolver func(*gorm.DB) identitypreflight.LegacyTenantOrganizationResolver
 	NewPreflight            func(identitypreflight.OwnerRepository, userdirectory.Directory, identitypreflight.LegacyTenantOrganizationResolver, io.Writer) preflightRunner
 	Output                  io.Writer
@@ -49,10 +51,11 @@ func defaultRuntimeDependencies() runtimeDependencies {
 			}
 			return sqlDB.Close()
 		},
-		DatabaseSQL:         func(db *gorm.DB) (*sql.DB, error) { return db.DB() },
-		MetadataTableExists: legacyTenantMetadataTableExists,
-		NewDirectory:        userdirectory.NewClient,
-		NewOwnerRepository:  identitypreflight.NewPostgresOwnerRepository,
+		DatabaseSQL:            func(db *gorm.DB) (*sql.DB, error) { return db.DB() },
+		MetadataTableExists:    legacyTenantMetadataTableExists,
+		NewDirectory:           userdirectory.NewClient,
+		NewOwnerRepository:     identitypreflight.NewPostgresOwnerRepository,
+		RunOwnerReconciliation: runOwnerReconciliation,
 		NewLegacyTenantResolver: func(db *gorm.DB) identitypreflight.LegacyTenantOrganizationResolver {
 			return tenantbridge.NewMetadataResolver(db)
 		},
@@ -69,6 +72,7 @@ func Run(ctx context.Context, opts Options) error {
 
 func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependencies) error {
 	defaults := defaultRuntimeDependencies()
+	customOpenDB := deps.OpenDB != nil
 	if deps.LoadConfig == nil {
 		deps.LoadConfig = defaults.LoadConfig
 	}
@@ -92,6 +96,9 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 	}
 	if deps.NewOwnerRepository == nil {
 		deps.NewOwnerRepository = defaults.NewOwnerRepository
+	}
+	if deps.RunOwnerReconciliation == nil && !customOpenDB {
+		deps.RunOwnerReconciliation = defaults.RunOwnerReconciliation
 	}
 	if deps.NewLegacyTenantResolver == nil {
 		deps.NewLegacyTenantResolver = defaults.NewLegacyTenantResolver
@@ -144,6 +151,21 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 			logger.WithError(err).Warn("close legacy tenant metadata database failed")
 		}
 	}()
+	if deps.RunOwnerReconciliation != nil {
+		report, reconcileErr := deps.RunOwnerReconciliation(ctx, db, metadataDB)
+		if reconcileErr != nil {
+			return errors.New("owner reconciliation preflight failed")
+		}
+		if report.Summary.UnresolvedRows > 0 {
+			if err := report.SetFingerprint(); err != nil {
+				return errors.New("owner reconciliation preflight failed")
+			}
+			if _, err := fmt.Fprintf(deps.Output, "status=blocked owner_reconciliation=unresolved rows=%d system_owned_rows=%d report=%s\n", report.Summary.UnresolvedRows, report.Summary.SystemOwnedRows, report.ReportFingerprint); err != nil {
+				return errors.New("write owner reconciliation summary failed")
+			}
+			return errors.New("owner reconciliation preflight blocked")
+		}
+	}
 	directory, err := deps.NewDirectory(userdirectory.ClientConfig{
 		IssuerURL: zitadel.IssuerURL,
 		Token:     zitadel.TenantDirectoryToken,
@@ -166,6 +188,28 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 		return errors.New("write identity preflight summary failed")
 	}
 	return nil
+}
+
+func runOwnerReconciliation(ctx context.Context, ownerDB, metadataDB *gorm.DB) (ownerreconcile.Report, error) {
+	ownerSQL, err := ownerDB.DB()
+	if err != nil {
+		return ownerreconcile.Report{}, err
+	}
+	metadataSQL, err := metadataDB.DB()
+	if err != nil {
+		return ownerreconcile.Report{}, err
+	}
+	identities, err := ownerreconcile.LoadLegacyIdentities(ctx, metadataSQL)
+	if err != nil {
+		return ownerreconcile.Report{}, err
+	}
+	repository := ownerreconcile.Repository{
+		Queryer:    ownerSQL,
+		Inventory:  ownerreconcile.Inventory(),
+		Identities: identities,
+		Beginner:   ownerSQL,
+	}
+	return repository.DryRun(ctx, identities)
 }
 
 func openLegacyTenantMetadataDatabase(base *config.DatabaseConfig, deps runtimeDependencies) (*gorm.DB, error) {
@@ -220,3 +264,4 @@ func legacyTenantMetadataTableExists(db *gorm.DB) (bool, error) {
 	}
 	return result.Name != nil && strings.TrimSpace(*result.Name) != "", nil
 }
+
