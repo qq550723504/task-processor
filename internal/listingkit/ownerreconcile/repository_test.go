@@ -120,6 +120,24 @@ func TestRepositoryDryRunSkipsOnlyPostgresUndefinedTables(t *testing.T) {
 	}
 }
 
+func TestCollectCandidateGroupsSkipsPostgresUndefinedTables(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	query := "SELECT tenant_id, creator, COUNT(*) FROM future_table WHERE owner_user_id IS NULL GROUP BY tenant_id, creator"
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnError(postgresStateError{state: "42P01", message: "relation future_table does not exist"})
+	spec := TableSpec{Table: "future_table", Query: query, Columns: []string{"tenant_id", "creator", "row_count"}, CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}}}
+	groups, err := collectCandidateGroups(context.Background(), db, spec, nil)
+	if err != nil || len(groups) != 0 {
+		t.Fatalf("groups = %+v, err = %v, want missing table skipped", groups, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRepositoryDryRunClassifiesSystemOwnedRowsOutsideOwnerScope(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -326,6 +344,55 @@ func TestRepositoryApplyUniqueRechecksReportAndUpdatesOnlyUniqueRows(t *testing.
 	}
 	if summary.RowsUpdated != 4 || summary.Batches != 1 {
 		t.Fatalf("summary = %+v, want four rows in one batch", summary)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRepositoryApplyUniqueAllowsSystemOwnedRowsAfterAutoResolution(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	autoQuery := "SELECT tenant_id, creator, COUNT(*) FROM listing_store WHERE owner_user_id IS NULL GROUP BY tenant_id, creator"
+	systemQuery := "SELECT tenant_id, COUNT(*) FROM listing_kit_tasks WHERE user_id IS NULL GROUP BY tenant_id"
+	update := "WITH target AS (SELECT id FROM listing_store WHERE tenant_id = $2 AND creator::text = $3 ORDER BY id LIMIT $4) UPDATE listing_store AS row SET owner_user_id = $1 FROM target WHERE row.id = target.id"
+	autoRows := func() *sqlmock.Rows {
+		return sqlmock.NewRows([]string{"tenant_id", "creator", "row_count"}).AddRow("tenant-1", "legacy-1", int64(4))
+	}
+	systemRows := func() *sqlmock.Rows {
+		return sqlmock.NewRows([]string{"tenant_id", "row_count"}).AddRow("tenant-1", int64(7))
+	}
+	repository := Repository{Queryer: db, Beginner: db, Inventory: []TableSpec{
+		{Table: "listing_store", Query: autoQuery, Columns: []string{"tenant_id", "creator", "row_count"}, CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}}, UpdateQuery: update, UpdateLimitArg: 4},
+		{Table: "listing_kit_tasks", Query: systemQuery, CandidatePolicy: CandidatePolicySystemOwned, Columns: []string{"tenant_id", "row_count"}},
+	}, Identities: []LegacyIdentity{{TenantID: "tenant-1", LegacyUserID: "legacy-1", Subject: "subject-1"}}}
+	mock.ExpectQuery(regexp.QuoteMeta(autoQuery)).WillReturnRows(autoRows())
+	mock.ExpectQuery(regexp.QuoteMeta(systemQuery)).WillReturnRows(systemRows())
+	report, err := repository.DryRun(context.Background(), repository.Identities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.AutoRows != 4 || report.Summary.SystemOwnedRows != 7 {
+		t.Fatalf("report summary = %+v, want four auto and seven system-owned rows", report.Summary)
+	}
+	if err := report.SetFingerprint(); err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(autoQuery)).WillReturnRows(autoRows())
+	mock.ExpectQuery(regexp.QuoteMeta(systemQuery)).WillReturnRows(systemRows())
+	mock.ExpectQuery(regexp.QuoteMeta(autoQuery)).WillReturnRows(autoRows())
+	mock.ExpectRollback()
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(update)).WithArgs("subject-1", "tenant-1", "legacy-1", int64(4)).WillReturnResult(sqlmock.NewResult(0, 4))
+	mock.ExpectCommit()
+	mock.ExpectQuery(regexp.QuoteMeta(autoQuery)).WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "creator", "row_count"}))
+	mock.ExpectQuery(regexp.QuoteMeta(systemQuery)).WillReturnRows(systemRows())
+	if _, err := repository.ApplyUnique(context.Background(), report.ReportFingerprint, report.ReportFingerprint, 10); err != nil {
+		t.Fatalf("apply error = %v, want system-owned rows to be allowed after auto resolution", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
