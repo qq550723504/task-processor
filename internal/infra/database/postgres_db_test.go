@@ -89,3 +89,25 @@ func TestNewDatabaseFromConfigStillCreatesAndRetriesMissingDatabase(t *testing.T
 		t.Fatalf("normal database create calls = %d, want 1", createCalls)
 	}
 }
+
+func TestNewDatabaseFromConfigWithoutCreateWritableDoesNotCreateOrForceReadOnly(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.DatabaseConfig{Database: "missing_listingkit"}
+	openCalls := 0
+	var openedDSN string
+	_, err := newDatabaseFromConfig(cfg, databaseOpenOptions{createIfMissing: false}, func(dsn string) (*gorm.DB, error) {
+		openCalls++
+		openedDSN = dsn
+		return nil, errors.New(`database "missing_listingkit" does not exist`)
+	}, nil)
+	if err == nil {
+		t.Fatal("writable strict database open error = nil, want missing database failure")
+	}
+	if openCalls != 1 {
+		t.Fatalf("writable strict database open calls = %d, want 1", openCalls)
+	}
+	if strings.Contains(openedDSN, "default_transaction_read_only=on") {
+		t.Fatalf("writable strict database DSN unexpectedly forces read-only: %q", openedDSN)
+	}
+}

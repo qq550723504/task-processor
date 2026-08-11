@@ -1,0 +1,74 @@
+package ownerreconcile
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestOwnerReconciliationInventoryIsFixedAndComplete(t *testing.T) {
+	if len(ownerReconciliationInventory) != 24 {
+		t.Fatalf("inventory length = %d, want 24", len(ownerReconciliationInventory))
+	}
+	seen := make(map[string]struct{}, len(ownerReconciliationInventory))
+	for _, spec := range ownerReconciliationInventory {
+		if _, exists := seen[spec.Table]; exists {
+			t.Fatalf("duplicate inventory table %q", spec.Table)
+		}
+		seen[spec.Table] = struct{}{}
+		if !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(spec.Query)), "SELECT ") {
+			t.Fatalf("inventory query for %s is not SELECT-only: %s", spec.Table, spec.Query)
+		}
+		if strings.Contains(spec.Query, "ai_client_credentials") {
+			t.Fatalf("tenant-wide AI credentials must be excluded from reconciliation")
+		}
+		if err := validateTableSpec(spec); err != nil {
+			t.Fatalf("inventory spec %s invalid: %v", spec.Table, err)
+		}
+		if spec.TenantDomain == TenantDomainLegacyNumeric && len(spec.CandidateColumns) > 0 {
+			if !strings.Contains(spec.Query, "created_by") || !strings.Contains(spec.UpdateQuery, "created_by") {
+				t.Fatalf("legacy inventory spec %s omits created_by candidate handling", spec.Table)
+			}
+		}
+	}
+}
+
+func TestInventoryReturnsDefensiveCopy(t *testing.T) {
+	first := Inventory()
+	if len(first) == 0 {
+		t.Fatal("expected fixed inventory")
+	}
+	original := first[0].Table
+	first[0].Table = "mutated"
+	second := Inventory()
+	if second[0].Table != original {
+		t.Fatalf("inventory was mutated through returned slice: %q", second[0].Table)
+	}
+}
+
+func TestInventoryUpdatesMatchBlankCandidatesExactly(t *testing.T) {
+	for _, spec := range ownerReconciliationInventory {
+		if spec.UpdateQuery == "" {
+			continue
+		}
+		if strings.Contains(spec.UpdateQuery, "($3 = '' OR") || strings.Contains(spec.UpdateQuery, "($4 = '' OR") {
+			t.Fatalf("inventory spec %s wildcarded a blank candidate", spec.Table)
+		}
+		if !strings.Contains(spec.UpdateQuery, "NULLIF(BTRIM(") {
+			t.Fatalf("inventory spec %s does not match blank candidates explicitly", spec.Table)
+		}
+	}
+}
+
+func TestInventoryUpdatesPreserveAbsentOptionalRelations(t *testing.T) {
+	for _, spec := range ownerReconciliationInventory {
+		if spec.Table != "listing_product_import_task" && spec.Table != "listing_product_import_mapping" && spec.Table != "listing_product_data" {
+			continue
+		}
+		if !strings.Contains(spec.UpdateQuery, "($5 = '' AND $6 = '') OR EXISTS") {
+			t.Fatalf("inventory spec %s does not preserve absent task relation", spec.Table)
+		}
+		if spec.Table != "listing_product_import_task" && !strings.Contains(spec.UpdateQuery, "($7 = '' AND $8 = '') OR EXISTS") {
+			t.Fatalf("inventory spec %s does not preserve absent store relation", spec.Table)
+		}
+	}
+}
