@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-const legacyOrganizationMetadataQuery = `SELECT org_id::text, convert_from(value, 'UTF8') AS legacy_tenant_id FROM projections.org_metadata2 WHERE key = 'yudao_tenant_id'`
+const legacyOrganizationMetadataQuery = `SELECT org_id::text, convert_from(value, 'UTF8') AS legacy_tenant_id FROM projections.org_metadata2 WHERE key = 'yudao_tenant_id' AND owner_removed = false`
 
 const legacyUserMetadataQuery = `SELECT user_id::text, resource_owner::text, max(convert_from(value, 'UTF8')) FILTER (WHERE key = 'yudao_user_id') AS legacy_user_id, max(convert_from(value, 'UTF8')) FILTER (WHERE key = 'yudao_tenant_id') AS legacy_tenant_id FROM projections.user_metadata5 WHERE key IN ('yudao_user_id', 'yudao_tenant_id') GROUP BY user_id, resource_owner`
 
@@ -74,6 +74,7 @@ func loadLegacyOrganizations(ctx context.Context, queryer Queryer) (map[string]s
 	}
 	defer rows.Close()
 	organizations := make(map[string]string)
+	legacyTenantOrganizations := make(map[string]string)
 	for rows.Next() {
 		var organizationID, legacyTenantID string
 		if err := rows.Scan(&organizationID, &legacyTenantID); err != nil {
@@ -90,7 +91,11 @@ func loadLegacyOrganizations(ctx context.Context, queryer Queryer) (map[string]s
 		if previous, exists := organizations[organizationID]; exists && previous != legacyTenantID {
 			return nil, fmt.Errorf("legacy organization metadata contains a duplicate organization mapping")
 		}
+		if previous, exists := legacyTenantOrganizations[legacyTenantID]; exists && previous != organizationID {
+			return nil, errors.New("legacy organization metadata contains an ambiguous tenant mapping")
+		}
 		organizations[organizationID] = legacyTenantID
+		legacyTenantOrganizations[legacyTenantID] = organizationID
 	}
 	if err := rows.Err(); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {

@@ -52,3 +52,31 @@ func TestReportSortsFindingsBeforeFingerprinting(t *testing.T) {
 		t.Fatalf("sorted fingerprints differ: %q != %q", leftFingerprint, rightFingerprint)
 	}
 }
+
+func TestReportFingerprintIncludesRedactedAutoResolutions(t *testing.T) {
+	rawSubject := "subject-a"
+	base := NewReportWithResolutions("config.yaml", "db", nil, 4, []Resolution{{
+		Table: "listing_store", TenantFingerprint: "sha256:tenant", CandidateFingerprint: "sha256:candidate", SubjectFingerprint: shortFingerprint(rawSubject), Rows: 4,
+	}})
+	changed := NewReportWithResolutions("config.yaml", "db", nil, 4, []Resolution{{
+		Table: "listing_store", TenantFingerprint: "sha256:tenant", CandidateFingerprint: "sha256:candidate", SubjectFingerprint: "sha256:subject-b", Rows: 4,
+	}})
+	left, err := base.Fingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := changed.Fingerprint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if left == right {
+		t.Fatalf("fingerprint did not change when auto-resolved subject changed: %q", left)
+	}
+	encoded, err := json.Marshal(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), rawSubject) || strings.Contains(string(encoded), "legacy") {
+		t.Fatalf("resolution report leaked raw identity: %s", encoded)
+	}
+}

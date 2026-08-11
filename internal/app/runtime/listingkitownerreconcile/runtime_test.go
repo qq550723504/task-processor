@@ -83,11 +83,14 @@ func TestRunWithDependenciesRejectsExecuteWithoutConfirmationBeforeApply(t *test
 func TestRunWithDependenciesExecutesOnlyAfterFreshReportConfirmation(t *testing.T) {
 	outputDir := t.TempDir()
 	var confirmed string
+	readOpens := 0
+	writableOpens := 0
 	deps := runtimeDependencies{
 		LoadConfig: func(string) (*config.Config, error) {
 			return &config.Config{Database: &config.DatabaseConfig{Database: "app-db"}}, nil
 		},
-		OpenDB: func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
+		OpenDB:         func(*config.DatabaseConfig) (*sql.DB, error) { readOpens++; return &sql.DB{}, nil },
+		OpenWritableDB: func(*config.DatabaseConfig) (*sql.DB, error) { writableOpens++; return &sql.DB{}, nil },
 		OpenMetadataDB: func(candidate *config.DatabaseConfig) (*sql.DB, error) {
 			if candidate.Database != "zitadel_auth" {
 				return nil, errors.New("missing")
@@ -126,5 +129,33 @@ func TestRunWithDependenciesExecutesOnlyAfterFreshReportConfirmation(t *testing.
 	}
 	if confirmed != report.ReportFingerprint {
 		t.Fatalf("confirmed fingerprint = %q, want %q", confirmed, report.ReportFingerprint)
+	}
+	if readOpens != 0 || writableOpens != 2 {
+		t.Fatalf("read opens=%d writable opens=%d, want 0 and 2", readOpens, writableOpens)
+	}
+}
+
+func TestOpenMetadataDBFailsClosedOnProbeError(t *testing.T) {
+	db := &sql.DB{}
+	opened := 0
+	closed := 0
+	deps := runtimeDependencies{
+		OpenMetadataDB: func(*config.DatabaseConfig) (*sql.DB, error) {
+			opened++
+			return db, nil
+		},
+		MetadataTableExists: func(context.Context, *sql.DB) (bool, error) {
+			return false, errors.New("metadata probe denied")
+		},
+		CloseDB: func(*sql.DB) error {
+			closed++
+			return nil
+		},
+	}
+	if _, err := openMetadataDB(context.Background(), &config.DatabaseConfig{Database: "app-db"}, deps); err == nil {
+		t.Fatal("expected metadata probe error to fail closed")
+	}
+	if opened != 1 || closed != 1 {
+		t.Fatalf("opened=%d closed=%d, want one attempted and closed candidate", opened, closed)
 	}
 }

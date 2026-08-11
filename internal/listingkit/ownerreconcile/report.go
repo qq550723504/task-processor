@@ -18,6 +18,14 @@ type Finding struct {
 	Reason            string `json:"reason"`
 }
 
+type Resolution struct {
+	Table                string `json:"table"`
+	TenantFingerprint    string `json:"tenant_fingerprint"`
+	CandidateFingerprint string `json:"candidate_fingerprint"`
+	SubjectFingerprint   string `json:"subject_fingerprint"`
+	Rows                 int64  `json:"rows"`
+}
+
 type ReportSummary struct {
 	FindingGroups  int   `json:"finding_groups"`
 	AffectedRows   int64 `json:"affected_rows"`
@@ -33,11 +41,18 @@ type Report struct {
 	ReportFingerprint string        `json:"report_fingerprint,omitempty"`
 	Summary           ReportSummary `json:"summary"`
 	Findings          []Finding     `json:"findings"`
+	Resolutions       []Resolution  `json:"resolutions,omitempty"`
 }
 
 func NewReport(configName, databaseName string, findings []Finding, autoRows int64) Report {
+	return NewReportWithResolutions(configName, databaseName, findings, autoRows, nil)
+}
+
+func NewReportWithResolutions(configName, databaseName string, findings []Finding, autoRows int64, resolutions []Resolution) Report {
 	copyFindings := append([]Finding(nil), findings...)
+	copyResolutions := append([]Resolution(nil), resolutions...)
 	sortFindings(copyFindings)
+	sortResolutions(copyResolutions)
 	var summary ReportSummary
 	summary.AutoRows = autoRows
 	for _, finding := range copyFindings {
@@ -53,6 +68,7 @@ func NewReport(configName, databaseName string, findings []Finding, autoRows int
 		DatabaseName:  strings.TrimSpace(databaseName),
 		Summary:       summary,
 		Findings:      copyFindings,
+		Resolutions:   copyResolutions,
 	}
 }
 
@@ -78,15 +94,19 @@ func (report *Report) SetFingerprint() error {
 
 func (report Report) Fingerprint() (string, error) {
 	findings := append([]Finding(nil), report.Findings...)
+	resolutions := append([]Resolution(nil), report.Resolutions...)
 	sortFindings(findings)
+	sortResolutions(resolutions)
 	canonical := struct {
 		SchemaVersion int           `json:"schema_version"`
 		Summary       ReportSummary `json:"summary"`
 		Findings      []Finding     `json:"findings"`
+		Resolutions   []Resolution  `json:"resolutions"`
 	}{
 		SchemaVersion: report.SchemaVersion,
 		Summary:       report.Summary,
 		Findings:      findings,
+		Resolutions:   resolutions,
 	}
 	encoded, err := json.Marshal(canonical)
 	if err != nil {
@@ -115,6 +135,25 @@ func sortFindings(findings []Finding) {
 		}
 		if left.Reason != right.Reason {
 			return left.Reason < right.Reason
+		}
+		return left.Rows < right.Rows
+	})
+}
+
+func sortResolutions(resolutions []Resolution) {
+	sort.Slice(resolutions, func(i, j int) bool {
+		left, right := resolutions[i], resolutions[j]
+		if left.Table != right.Table {
+			return left.Table < right.Table
+		}
+		if left.TenantFingerprint != right.TenantFingerprint {
+			return left.TenantFingerprint < right.TenantFingerprint
+		}
+		if left.CandidateFingerprint != right.CandidateFingerprint {
+			return left.CandidateFingerprint < right.CandidateFingerprint
+		}
+		if left.SubjectFingerprint != right.SubjectFingerprint {
+			return left.SubjectFingerprint < right.SubjectFingerprint
 		}
 		return left.Rows < right.Rows
 	})

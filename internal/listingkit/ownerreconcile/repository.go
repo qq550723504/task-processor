@@ -27,6 +27,7 @@ type TableSpec struct {
 	TenantDomain     TenantDomain
 	Query            string
 	UpdateQuery      string
+	UpdateLimitArg   int
 	Columns          []string
 	CandidateColumns []CandidateColumn
 }
@@ -62,6 +63,7 @@ func (repository Repository) DryRun(ctx context.Context, identities []LegacyIden
 		return Report{}, err
 	}
 	findings := make([]Finding, 0)
+	resolutions := make([]Resolution, 0)
 	var autoRows int64
 	for _, spec := range repository.Inventory {
 		if err := validateTableSpec(spec); err != nil {
@@ -74,14 +76,15 @@ func (repository Repository) DryRun(ctx context.Context, identities []LegacyIden
 			}
 			return Report{}, fmt.Errorf("query owner reconciliation table %s failed", spec.Table)
 		}
-		rowsFindings, rowsAuto, scanErr := scanTableRows(ctx, rows, spec, identityMap)
+		rowsFindings, rowsAuto, rowsResolutions, scanErr := scanTableRows(ctx, rows, spec, identityMap)
 		if scanErr != nil {
 			return Report{}, scanErr
 		}
 		findings = append(findings, rowsFindings...)
+		resolutions = append(resolutions, rowsResolutions...)
 		autoRows += rowsAuto
 	}
-	return NewReport("", "", findings, autoRows), nil
+	return NewReportWithResolutions("", "", findings, autoRows, resolutions), nil
 }
 
 // ApplyUnique revalidates the redacted report and applies only uniquely
@@ -123,60 +126,57 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 		if strings.TrimSpace(spec.UpdateQuery) == "" || len(spec.CandidateColumns) == 0 {
 			continue
 		}
+		if spec.UpdateLimitArg <= 0 {
+			return ApplySummary{}, fmt.Errorf("owner reconciliation table %s has no bounded update limit", spec.Table)
+		}
 		groups, err := collectCandidateGroups(ctx, repository.Queryer, spec, identityMap)
 		if err != nil {
 			return ApplySummary{}, err
 		}
-		var tx *sql.Tx
-		var txRows int64
-		commit := func() error {
-			if tx == nil {
-				return nil
-			}
-			if err := tx.Commit(); err != nil {
-				return errors.New("commit owner reconciliation transaction failed")
-			}
-			summary.Batches++
-			tx = nil
-			txRows = 0
-			return nil
-		}
 		for _, group := range groups {
-			if tx == nil {
-				tx, err = beginner.BeginTx(ctx, nil)
-				if err != nil {
+			remaining := group.Rows
+			for remaining > 0 {
+				limit := int64(batchSize)
+				if remaining < limit {
+					limit = remaining
+				}
+				tx, beginErr := beginner.BeginTx(ctx, nil)
+				if beginErr != nil {
 					return ApplySummary{}, errors.New("begin owner reconciliation transaction failed")
 				}
-			}
-			args := []any{group.Subject, group.TenantID}
-			for _, value := range group.CandidateValues {
-				args = append(args, value)
-			}
-			result, execErr := tx.ExecContext(ctx, spec.UpdateQuery, args...)
-			if execErr != nil {
-				_ = tx.Rollback()
-				tx = nil
-				if ctxErr := ctx.Err(); ctxErr != nil {
-					return ApplySummary{}, ctxErr
+				args := []any{group.Subject, group.TenantID}
+				for _, value := range group.CandidateValues {
+					args = append(args, value)
 				}
-				return ApplySummary{}, fmt.Errorf("apply owner reconciliation for %s failed", spec.Table)
-			}
-			updated, err := result.RowsAffected()
-			if err != nil {
-				_ = tx.Rollback()
-				tx = nil
-				return ApplySummary{}, errors.New("read owner reconciliation update count failed")
-			}
-			summary.RowsUpdated += updated
-			txRows += updated
-			if txRows >= int64(batchSize) {
-				if err := commit(); err != nil {
-					return ApplySummary{}, err
+				if len(args)+1 != spec.UpdateLimitArg {
+					_ = tx.Rollback()
+					return ApplySummary{}, fmt.Errorf("owner reconciliation table %s has an invalid update limit parameter", spec.Table)
 				}
+				args = append(args, limit)
+				result, execErr := tx.ExecContext(ctx, spec.UpdateQuery, args...)
+				if execErr != nil {
+					_ = tx.Rollback()
+					if ctxErr := ctx.Err(); ctxErr != nil {
+						return ApplySummary{}, ctxErr
+					}
+					return ApplySummary{}, fmt.Errorf("apply owner reconciliation for %s failed", spec.Table)
+				}
+				updated, rowsErr := result.RowsAffected()
+				if rowsErr != nil || updated <= 0 || updated > limit {
+					_ = tx.Rollback()
+					return ApplySummary{}, fmt.Errorf("owner reconciliation update count for %s failed postcondition", spec.Table)
+				}
+				if updated != limit && updated != remaining {
+					_ = tx.Rollback()
+					return ApplySummary{}, fmt.Errorf("owner reconciliation update for %s changed during execution", spec.Table)
+				}
+				if err := tx.Commit(); err != nil {
+					return ApplySummary{}, errors.New("commit owner reconciliation transaction failed")
+				}
+				summary.RowsUpdated += updated
+				summary.Batches++
+				remaining -= updated
 			}
-		}
-		if err := commit(); err != nil {
-			return ApplySummary{}, err
 		}
 	}
 	return summary, nil
@@ -186,6 +186,7 @@ type candidateGroup struct {
 	TenantID        string
 	CandidateValues []string
 	Subject         string
+	Rows            int64
 }
 
 func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec, identities map[string]string) (groups []candidateGroup, resultErr error) {
@@ -209,6 +210,7 @@ func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec
 		columnIndex[column] = index
 	}
 	tenantIndex := columnIndex["tenant_id"]
+	countIndex := columnIndex["row_count"]
 	groups = make([]candidateGroup, 0)
 	for rows.Next() {
 		values := make([]any, len(spec.Columns))
@@ -220,6 +222,10 @@ func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec
 			return nil, fmt.Errorf("scan owner reconciliation rows for %s failed", spec.Table)
 		}
 		tenantID := sqlText(values[tenantIndex])
+		rowCount, err := sqlInt64(values[countIndex])
+		if err != nil {
+			return nil, fmt.Errorf("scan row count for %s failed", spec.Table)
+		}
 		candidates := make([]Candidate, 0, len(spec.CandidateColumns))
 		candidateValues := make([]string, 0, len(spec.CandidateColumns))
 		unmappedCandidate := false
@@ -239,7 +245,7 @@ func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec
 			subject = ""
 		}
 		if subject != "" {
-			groups = append(groups, candidateGroup{TenantID: tenantID, CandidateValues: candidateValues, Subject: subject})
+			groups = append(groups, candidateGroup{TenantID: tenantID, CandidateValues: candidateValues, Subject: subject, Rows: rowCount})
 		}
 	}
 	if err := rows.Err(); err != nil {
@@ -283,8 +289,12 @@ func validateTableSpec(spec TableSpec) error {
 		}
 	}
 	if update := strings.TrimSpace(spec.UpdateQuery); update != "" {
-		if !strings.EqualFold(strings.TrimSpace(strings.SplitN(update, " ", 2)[0]), "update") || strings.Contains(update, ";") {
+		firstToken := strings.ToUpper(strings.TrimSpace(strings.SplitN(update, " ", 2)[0]))
+		if firstToken != "UPDATE" && firstToken != "WITH" || strings.Contains(update, ";") {
 			return fmt.Errorf("owner reconciliation table %s has an invalid update query", spec.Table)
+		}
+		if spec.UpdateLimitArg != len(spec.CandidateColumns)+3 {
+			return fmt.Errorf("owner reconciliation table %s has an invalid update limit parameter", spec.Table)
 		}
 	}
 	return nil
@@ -312,7 +322,7 @@ func legacyIdentityKey(tenantID, legacyUserID string) string {
 	return tenantID + "\x00" + legacyUserID
 }
 
-func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identities map[string]string) (findings []Finding, autoRows int64, resultErr error) {
+func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identities map[string]string) (findings []Finding, autoRows int64, resolutions []Resolution, resultErr error) {
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil && resultErr == nil {
 			resultErr = fmt.Errorf("close owner reconciliation rows for %s failed", spec.Table)
@@ -326,7 +336,7 @@ func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identiti
 	tenantIndex, tenantOK := columnIndex["tenant_id"]
 	countIndex, countOK := columnIndex["row_count"]
 	if !tenantOK || !countOK {
-		return nil, 0, fmt.Errorf("owner reconciliation table %s omitted tenant_id or row_count", spec.Table)
+		return nil, 0, nil, fmt.Errorf("owner reconciliation table %s omitted tenant_id or row_count", spec.Table)
 	}
 	for rows.Next() {
 		values := make([]any, len(spec.Columns))
@@ -336,14 +346,14 @@ func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identiti
 		}
 		if err := rows.Scan(pointers...); err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, 0, ctxErr
+				return nil, 0, nil, ctxErr
 			}
-			return nil, 0, fmt.Errorf("scan owner reconciliation rows for %s failed", spec.Table)
+			return nil, 0, nil, fmt.Errorf("scan owner reconciliation rows for %s failed", spec.Table)
 		}
 		tenantID := sqlText(values[tenantIndex])
 		rowCount, err := sqlInt64(values[countIndex])
 		if err != nil {
-			return nil, 0, fmt.Errorf("scan row count for %s failed", spec.Table)
+			return nil, 0, nil, fmt.Errorf("scan row count for %s failed", spec.Table)
 		}
 		candidates := make([]Candidate, 0, len(spec.CandidateColumns))
 		fingerprintParts := make([]string, 0, len(spec.CandidateColumns))
@@ -366,6 +376,13 @@ func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identiti
 		}
 		if subject != "" {
 			autoRows += rowCount
+			resolutions = append(resolutions, Resolution{
+				Table:                spec.Table,
+				TenantFingerprint:    shortFingerprint(tenantID),
+				CandidateFingerprint: shortFingerprint(strings.Join(fingerprintParts, ";")),
+				SubjectFingerprint:   shortFingerprint(subject),
+				Rows:                 rowCount,
+			})
 			continue
 		}
 		findings = append(findings, Finding{
@@ -378,11 +395,11 @@ func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identiti
 	}
 	if err := rows.Err(); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, 0, ctxErr
+			return nil, 0, nil, ctxErr
 		}
-		return nil, 0, fmt.Errorf("iterate owner reconciliation rows for %s failed", spec.Table)
+		return nil, 0, nil, fmt.Errorf("iterate owner reconciliation rows for %s failed", spec.Table)
 	}
-	return findings, autoRows, nil
+	return findings, autoRows, resolutions, nil
 }
 
 func sqlText(value any) string {

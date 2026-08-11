@@ -24,6 +24,11 @@ func TestOwnerReconciliationInventoryIsFixedAndComplete(t *testing.T) {
 		if err := validateTableSpec(spec); err != nil {
 			t.Fatalf("inventory spec %s invalid: %v", spec.Table, err)
 		}
+		if spec.TenantDomain == TenantDomainLegacyNumeric && len(spec.CandidateColumns) > 0 {
+			if !strings.Contains(spec.Query, "created_by") || !strings.Contains(spec.UpdateQuery, "created_by") {
+				t.Fatalf("legacy inventory spec %s omits created_by candidate handling", spec.Table)
+			}
+		}
 	}
 }
 

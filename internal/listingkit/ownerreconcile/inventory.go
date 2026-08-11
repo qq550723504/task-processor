@@ -53,52 +53,60 @@ func buildOwnerReconciliationInventory() []TableSpec {
 
 func legacySimpleSpec(table string) TableSpec {
 	return TableSpec{
-		Table:        table,
-		TenantDomain: TenantDomainLegacyNumeric,
-		UpdateQuery:  fmt.Sprintf("UPDATE %s SET owner_user_id = $1 WHERE tenant_id = $2 AND NULLIF(BTRIM(owner_user_id::text), '') IS NULL AND creator::text = $3", table),
-		Query: fmt.Sprintf(`SELECT tenant_id::text, creator::text, COUNT(*)::bigint AS row_count
+		Table:          table,
+		TenantDomain:   TenantDomainLegacyNumeric,
+		UpdateQuery:    fmt.Sprintf("WITH target AS (SELECT id FROM %s WHERE tenant_id = $2 AND NULLIF(BTRIM(owner_user_id::text), '') IS NULL AND ($3 = '' OR creator::text = $3) AND ($4 = '' OR created_by::text = $4) ORDER BY id LIMIT $5) UPDATE %s AS row SET owner_user_id = $1 FROM target WHERE row.id = target.id", table, table),
+		UpdateLimitArg: 5,
+		Query: fmt.Sprintf(`SELECT tenant_id::text, creator::text, created_by::text, COUNT(*)::bigint AS row_count
 FROM %s
 WHERE NULLIF(BTRIM(owner_user_id::text), '') IS NULL
-GROUP BY tenant_id, creator`, table),
-		Columns:          []string{"tenant_id", "creator", "row_count"},
-		CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}},
+GROUP BY tenant_id, creator, created_by`, table),
+		Columns:          []string{"tenant_id", "creator", "created_by", "row_count"},
+		CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}, {Name: "created_by", Source: "created_by"}},
 	}
 }
 
 func legacyImportTaskSpec() TableSpec {
 	return TableSpec{
-		Table:        "listing_product_import_task",
-		TenantDomain: TenantDomainLegacyNumeric,
-		UpdateQuery:  `UPDATE listing_product_import_task AS t SET owner_user_id = $1 FROM listing_store AS s WHERE t.tenant_id = $2 AND NULLIF(BTRIM(t.owner_user_id::text), '') IS NULL AND t.store_id = s.id AND s.tenant_id = t.tenant_id AND ($3 = '' OR t.creator::text = $3) AND ($4 = '' OR s.creator::text = $4)`,
-		Query: `SELECT t.tenant_id::text, t.creator::text AS own_creator, s.creator::text AS store_creator, COUNT(*)::bigint AS row_count
+		Table:          "listing_product_import_task",
+		TenantDomain:   TenantDomainLegacyNumeric,
+		UpdateQuery:    `WITH target AS (SELECT t.id FROM listing_product_import_task AS t WHERE t.tenant_id = $2 AND NULLIF(BTRIM(t.owner_user_id::text), '') IS NULL AND ($3 = '' OR t.creator::text = $3) AND ($4 = '' OR t.created_by::text = $4) AND ($5 = '' OR EXISTS (SELECT 1 FROM listing_store AS s WHERE s.id = t.store_id AND s.tenant_id = t.tenant_id AND s.creator::text = $5)) AND ($6 = '' OR EXISTS (SELECT 1 FROM listing_store AS s WHERE s.id = t.store_id AND s.tenant_id = t.tenant_id AND s.created_by::text = $6)) ORDER BY t.id LIMIT $7) UPDATE listing_product_import_task AS row SET owner_user_id = $1 FROM target WHERE row.id = target.id`,
+		UpdateLimitArg: 7,
+		Query: `SELECT t.tenant_id::text, t.creator::text AS own_creator, t.created_by::text AS own_created_by, s.creator::text AS store_creator, s.created_by::text AS store_created_by, COUNT(*)::bigint AS row_count
 FROM listing_product_import_task AS t
 LEFT JOIN listing_store AS s ON s.id = t.store_id AND s.tenant_id = t.tenant_id
 WHERE NULLIF(BTRIM(t.owner_user_id::text), '') IS NULL
-GROUP BY t.tenant_id, t.creator, s.creator`,
-		Columns: []string{"tenant_id", "own_creator", "store_creator", "row_count"},
+		GROUP BY t.tenant_id, t.creator, t.created_by, s.creator, s.created_by`,
+		Columns: []string{"tenant_id", "own_creator", "own_created_by", "store_creator", "store_created_by", "row_count"},
 		CandidateColumns: []CandidateColumn{
 			{Name: "own_creator", Source: "creator"},
+			{Name: "own_created_by", Source: "created_by"},
 			{Name: "store_creator", Source: "store"},
+			{Name: "store_created_by", Source: "store_created_by"},
 		},
 	}
 }
 
 func legacyImportRelationSpec(table string) TableSpec {
 	return TableSpec{
-		Table:        table,
-		TenantDomain: TenantDomainLegacyNumeric,
-		UpdateQuery:  fmt.Sprintf("UPDATE %s AS row SET owner_user_id = $1 FROM listing_product_import_task AS task LEFT JOIN listing_store AS store ON store.id = row.store_id AND store.tenant_id = row.tenant_id WHERE row.tenant_id = $2 AND NULLIF(BTRIM(row.owner_user_id::text), '') IS NULL AND task.id = row.import_task_id AND task.tenant_id = row.tenant_id AND ($3 = '' OR row.creator::text = $3) AND ($4 = '' OR task.creator::text = $4) AND ($5 = '' OR store.creator::text = $5)", table),
-		Query: fmt.Sprintf(`SELECT row.tenant_id::text, row.creator::text AS own_creator, task.creator::text AS task_creator, store.creator::text AS store_creator, COUNT(*)::bigint AS row_count
+		Table:          table,
+		TenantDomain:   TenantDomainLegacyNumeric,
+		UpdateQuery:    fmt.Sprintf("WITH target AS (SELECT row.id FROM %s AS row WHERE row.tenant_id = $2 AND NULLIF(BTRIM(row.owner_user_id::text), '') IS NULL AND ($3 = '' OR row.creator::text = $3) AND ($4 = '' OR row.created_by::text = $4) AND ($5 = '' OR EXISTS (SELECT 1 FROM listing_product_import_task AS task WHERE task.id = row.import_task_id AND task.tenant_id = row.tenant_id AND task.creator::text = $5)) AND ($6 = '' OR EXISTS (SELECT 1 FROM listing_product_import_task AS task WHERE task.id = row.import_task_id AND task.tenant_id = row.tenant_id AND task.created_by::text = $6)) AND ($7 = '' OR EXISTS (SELECT 1 FROM listing_store AS store WHERE store.id = row.store_id AND store.tenant_id = row.tenant_id AND store.creator::text = $7)) AND ($8 = '' OR EXISTS (SELECT 1 FROM listing_store AS store WHERE store.id = row.store_id AND store.tenant_id = row.tenant_id AND store.created_by::text = $8)) ORDER BY row.id LIMIT $9) UPDATE %s AS row SET owner_user_id = $1 FROM target WHERE row.id = target.id", table, table),
+		UpdateLimitArg: 9,
+		Query: fmt.Sprintf(`SELECT row.tenant_id::text, row.creator::text AS own_creator, row.created_by::text AS own_created_by, task.creator::text AS task_creator, task.created_by::text AS task_created_by, store.creator::text AS store_creator, store.created_by::text AS store_created_by, COUNT(*)::bigint AS row_count
 FROM %s AS row
 LEFT JOIN listing_product_import_task AS task ON task.id = row.import_task_id AND task.tenant_id = row.tenant_id
 LEFT JOIN listing_store AS store ON store.id = row.store_id AND store.tenant_id = row.tenant_id
 WHERE NULLIF(BTRIM(row.owner_user_id::text), '') IS NULL
-GROUP BY row.tenant_id, row.creator, task.creator, store.creator`, table),
-		Columns: []string{"tenant_id", "own_creator", "task_creator", "store_creator", "row_count"},
+GROUP BY row.tenant_id, row.creator, row.created_by, task.creator, task.created_by, store.creator, store.created_by`, table),
+		Columns: []string{"tenant_id", "own_creator", "own_created_by", "task_creator", "task_created_by", "store_creator", "store_created_by", "row_count"},
 		CandidateColumns: []CandidateColumn{
 			{Name: "own_creator", Source: "creator"},
+			{Name: "own_created_by", Source: "created_by"},
 			{Name: "task_creator", Source: "task"},
+			{Name: "task_created_by", Source: "task_created_by"},
 			{Name: "store_creator", Source: "store"},
+			{Name: "store_created_by", Source: "store_created_by"},
 		},
 	}
 }

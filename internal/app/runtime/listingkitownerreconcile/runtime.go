@@ -20,6 +20,7 @@ import (
 type runtimeDependencies struct {
 	LoadConfig          func(string) (*config.Config, error)
 	OpenDB              func(*config.DatabaseConfig) (*sql.DB, error)
+	OpenWritableDB      func(*config.DatabaseConfig) (*sql.DB, error)
 	OpenMetadataDB      func(*config.DatabaseConfig) (*sql.DB, error)
 	MetadataTableExists func(context.Context, *sql.DB) (bool, error)
 	CloseDB             func(*sql.DB) error
@@ -41,8 +42,15 @@ func defaultRuntimeDependencies() runtimeDependencies {
 		return sqlDB, nil
 	}
 	return runtimeDependencies{
-		LoadConfig:     config.LoadConfigFromFileWithoutValidation,
-		OpenDB:         open,
+		LoadConfig: config.LoadConfigFromFileWithoutValidation,
+		OpenDB:     open,
+		OpenWritableDB: func(databaseConfig *config.DatabaseConfig) (*sql.DB, error) {
+			gormDB, err := database.NewDatabaseFromConfigWithoutCreateWritable(databaseConfig)
+			if err != nil || gormDB == nil {
+				return nil, err
+			}
+			return gormDB.DB()
+		},
 		OpenMetadataDB: open,
 		MetadataTableExists: func(ctx context.Context, db *sql.DB) (bool, error) {
 			if db == nil {
@@ -92,11 +100,19 @@ func Run(ctx context.Context, options Options) error {
 
 func runWithDependencies(ctx context.Context, options Options, deps runtimeDependencies) error {
 	defaults := defaultRuntimeDependencies()
+	customOpenDB := deps.OpenDB != nil
 	if deps.LoadConfig == nil {
 		deps.LoadConfig = defaults.LoadConfig
 	}
 	if deps.OpenDB == nil {
 		deps.OpenDB = defaults.OpenDB
+	}
+	if deps.OpenWritableDB == nil {
+		if customOpenDB {
+			deps.OpenWritableDB = deps.OpenDB
+		} else {
+			deps.OpenWritableDB = defaults.OpenWritableDB
+		}
 	}
 	if deps.OpenMetadataDB == nil {
 		deps.OpenMetadataDB = defaults.OpenMetadataDB
@@ -126,7 +142,11 @@ func runWithDependencies(ctx context.Context, options Options, deps runtimeDepen
 	if cfg == nil || cfg.Database == nil {
 		return errors.New("database is required for owner reconciliation")
 	}
-	ownerDB, err := deps.OpenDB(cfg.Database)
+	openOwnerDB := deps.OpenDB
+	if options.Execute {
+		openOwnerDB = deps.OpenWritableDB
+	}
+	ownerDB, err := openOwnerDB(cfg.Database)
 	if err != nil || ownerDB == nil {
 		return errors.New("connect application database failed")
 	}
@@ -178,7 +198,14 @@ func openMetadataDB(ctx context.Context, base *config.DatabaseConfig, deps runti
 			continue
 		}
 		exists, probeErr := deps.MetadataTableExists(ctx, db)
-		if probeErr != nil || !exists {
+		if probeErr != nil {
+			_ = deps.CloseDB(db)
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
+			return nil, errors.New("probe legacy identity metadata database failed")
+		}
+		if !exists {
 			_ = deps.CloseDB(db)
 			continue
 		}
