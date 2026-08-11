@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/database"
 	"task-processor/internal/listingkit/identitypreflight"
+	"task-processor/internal/listingkit/ownerreconcile"
 	"task-processor/internal/listingkit/userdirectory"
 	"task-processor/internal/tenantbridge"
 
@@ -175,6 +176,41 @@ func TestRunDatabaseOpenFailureStopsBeforeDirectoryOrPreflight(t *testing.T) {
 	}
 	if output.Len() != 0 {
 		t.Fatalf("output = %q, want no successful preflight summary", output.String())
+	}
+}
+
+func TestRunBlocksOnUnresolvedOwnerReconciliationBeforeDirectory(t *testing.T) {
+	var output bytes.Buffer
+	db := &gorm.DB{}
+	metadataDB := &gorm.DB{}
+	err := runWithDependencies(context.Background(), Options{}, runtimeDependencies{
+		LoadConfig: func(string) (*config.Config, error) {
+			return configuredRuntimeConfig("https://issuer.example", "directory-token"), nil
+		},
+		OpenDB:      func(*config.DatabaseConfig) (*gorm.DB, error) { return db, nil },
+		CloseDB:     func(*gorm.DB) error { return nil },
+		DatabaseSQL: func(*gorm.DB) (*sql.DB, error) { return &sql.DB{}, nil },
+		OpenMetadataDB: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+			if cfg.Database == "zitadel_auth" {
+				return nil, errors.New("candidate is absent")
+			}
+			return metadataDB, nil
+		},
+		MetadataTableExists: func(*gorm.DB) (bool, error) { return true, nil },
+		RunOwnerReconciliation: func(context.Context, *gorm.DB, *gorm.DB) (ownerreconcile.Report, error) {
+			return ownerreconcile.NewReport("config.yaml", "db", []ownerreconcile.Finding{{Rows: 3, Reason: "unmapped_candidate"}}, 0), nil
+		},
+		NewDirectory: func(userdirectory.ClientConfig) (userdirectory.Directory, error) {
+			t.Fatal("directory must not run while owner reconciliation is unresolved")
+			return nil, nil
+		},
+		Output: &output,
+	})
+	if err == nil || !strings.Contains(err.Error(), "owner reconciliation") {
+		t.Fatalf("run error = %v, want owner reconciliation blocker", err)
+	}
+	if !strings.Contains(output.String(), "status=blocked owner_reconciliation") {
+		t.Fatalf("output = %q, want redacted owner reconciliation blocker", output.String())
 	}
 }
 
@@ -397,3 +433,4 @@ type stubLegacyTenantResolver struct{}
 func (stubLegacyTenantResolver) ResolveOrganizationID(context.Context, int64) (string, bool, error) {
 	return "", false, nil
 }
+
