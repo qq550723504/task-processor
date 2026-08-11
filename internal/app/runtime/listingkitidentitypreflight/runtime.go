@@ -207,6 +207,7 @@ func runOwnerReconciliation(ctx context.Context, ownerDB, metadataDB *gorm.DB) (
 		Queryer:    ownerSQL,
 		Inventory:  ownerreconcile.Inventory(),
 		Identities: identities,
+		Exceptions: ownerreconcile.NewPostgresExceptionStore(ownerSQL),
 		Beginner:   ownerSQL,
 	}
 	return repository.DryRun(ctx, identities)

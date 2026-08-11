@@ -91,7 +91,7 @@ func reconciliationRepository(ctx context.Context, ownerDB, metadataDB *sql.DB) 
 	if err != nil {
 		return ownerreconcile.Repository{}, err
 	}
-	return ownerreconcile.Repository{Queryer: ownerDB, Inventory: ownerreconcile.Inventory(), Identities: identities, Beginner: ownerDB}, nil
+	return ownerreconcile.Repository{Queryer: ownerDB, Inventory: ownerreconcile.Inventory(), Identities: identities, Exceptions: ownerreconcile.NewPostgresExceptionStore(ownerDB), Beginner: ownerDB}, nil
 }
 
 func Run(ctx context.Context, options Options) error {
