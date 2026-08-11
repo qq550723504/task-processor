@@ -37,19 +37,23 @@ WHERE active = TRUE
 ORDER BY table_name, tenant_fingerprint, candidate_fingerprint`
 
 type postgresExceptionStore struct {
-	db *sql.DB
+	queryer Queryer
 }
 
 // NewPostgresExceptionStore constructs the read-only exception registry store.
 func NewPostgresExceptionStore(db *sql.DB) ExceptionStore {
-	return postgresExceptionStore{db: db}
+	return postgresExceptionStore{queryer: db}
+}
+
+func newPostgresExceptionStore(queryer Queryer) ExceptionStore {
+	return postgresExceptionStore{queryer: queryer}
 }
 
 func (store postgresExceptionStore) ListActive(ctx context.Context) ([]SystemOwnedException, error) {
-	if store.db == nil {
+	if store.queryer == nil {
 		return nil, errors.New("owner exception registry is unavailable")
 	}
-	rows, err := store.db.QueryContext(ctx, systemOwnedExceptionQuery)
+	rows, err := store.queryer.QueryContext(ctx, systemOwnedExceptionQuery)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr

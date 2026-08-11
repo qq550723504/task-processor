@@ -199,6 +199,9 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 	}
 	snapshotRepository := repository
 	snapshotRepository.Queryer = snapshotTx
+	if _, ok := repository.Exceptions.(postgresExceptionStore); ok {
+		snapshotRepository.Exceptions = newPostgresExceptionStore(snapshotTx)
+	}
 	current, err := snapshotRepository.DryRun(ctx, repository.Identities)
 	if err != nil {
 		_ = snapshotTx.Rollback()
@@ -217,7 +220,7 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 		_ = snapshotTx.Rollback()
 		return ApplySummary{}, err
 	}
-	exceptionIndex, err := repository.systemOwnedExceptionIndex(ctx)
+	exceptionIndex, err := snapshotRepository.systemOwnedExceptionIndex(ctx)
 	if err != nil {
 		_ = snapshotTx.Rollback()
 		return ApplySummary{}, err

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
@@ -386,6 +387,58 @@ func TestRepositoryApplyUniqueRequiresExactConfirmationBeforeAnyWrite(t *testing
 	}}, Identities: []LegacyIdentity{{TenantID: "tenant-1", LegacyUserID: "legacy-1", Subject: "subject-1"}}}
 	if _, err := repository.ApplyUnique(context.Background(), "abc123", "different", 10); !errors.Is(err, ErrReportConfirmationMismatch) {
 		t.Fatalf("error = %v, want confirmation mismatch", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRepositoryApplyUniqueUsesSnapshotTransactionForExceptionRegistry(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	query := "SELECT tenant_id, creator, COUNT(*) FROM listing_store WHERE owner_user_id IS NULL GROUP BY tenant_id, creator"
+	exceptionQuery := regexp.QuoteMeta(systemOwnedExceptionQuery)
+	mock.ExpectBegin()
+	emptyExceptionRows := func() *sqlmock.Rows {
+		return sqlmock.NewRows([]string{"table_name", "tenant_fingerprint", "candidate_fingerprint", "report_fingerprint", "reason"})
+	}
+	emptyInventoryRows := func() *sqlmock.Rows {
+		return sqlmock.NewRows([]string{"tenant_id", "creator", "row_count"})
+	}
+	mock.ExpectQuery(exceptionQuery).WillReturnRows(emptyExceptionRows())
+	mock.ExpectExec("SAVEPOINT owner_reconcile_table").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(emptyInventoryRows())
+	mock.ExpectExec("RELEASE SAVEPOINT owner_reconcile_table").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(exceptionQuery).WillReturnRows(emptyExceptionRows())
+	mock.ExpectRollback()
+	mock.ExpectQuery(exceptionQuery).WillReturnRows(emptyExceptionRows())
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(emptyInventoryRows())
+
+	emptyReport := NewReportWithClassifiedFindings("", "", nil, nil, 0, nil)
+	if err := emptyReport.SetFingerprint(); err != nil {
+		t.Fatal(err)
+	}
+	repository := Repository{
+		Queryer:  db,
+		Beginner: db,
+		Inventory: []TableSpec{{
+			Table: "listing_store", Query: query,
+			Columns:          []string{"tenant_id", "creator", "row_count"},
+			CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}},
+		}},
+		Identities: []LegacyIdentity{{TenantID: "tenant-1", LegacyUserID: "legacy-1", Subject: "subject-1"}},
+		Exceptions: NewPostgresExceptionStore(db),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err := repository.ApplyUnique(ctx, emptyReport.ReportFingerprint, emptyReport.ReportFingerprint, 10); err != nil {
+		t.Fatalf("apply error = %v, want snapshot transaction to provide exception registry connection", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

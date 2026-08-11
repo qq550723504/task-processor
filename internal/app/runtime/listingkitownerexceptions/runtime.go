@@ -20,6 +20,7 @@ const approvedExceptionReason = "approved current orphaned owner"
 type runtimeDependencies struct {
 	LoadConfig          func(string) (*config.Config, error)
 	OpenDB              func(*config.DatabaseConfig) (*sql.DB, error)
+	OpenWritableDB      func(*config.DatabaseConfig) (*sql.DB, error)
 	OpenMetadataDB      func(*config.DatabaseConfig) (*sql.DB, error)
 	CloseDB             func(*sql.DB) error
 	MetadataTableExists func(context.Context, *sql.DB) (bool, error)
@@ -38,8 +39,15 @@ func openSQL(databaseConfig *config.DatabaseConfig) (*sql.DB, error) {
 
 func defaultRuntimeDependencies() runtimeDependencies {
 	return runtimeDependencies{
-		LoadConfig:     config.LoadConfigFromFileWithoutValidation,
-		OpenDB:         openSQL,
+		LoadConfig: config.LoadConfigFromFileWithoutValidation,
+		OpenDB:     openSQL,
+		OpenWritableDB: func(databaseConfig *config.DatabaseConfig) (*sql.DB, error) {
+			gormDB, err := database.NewDatabaseFromConfigWithoutCreateWritable(databaseConfig)
+			if err != nil || gormDB == nil {
+				return nil, err
+			}
+			return gormDB.DB()
+		},
 		OpenMetadataDB: openSQL,
 		CloseDB: func(db *sql.DB) error {
 			if db == nil {
@@ -97,6 +105,9 @@ func runWithDependencies(ctx context.Context, options Options, deps runtimeDepen
 	if deps.OpenDB == nil {
 		deps.OpenDB = defaults.OpenDB
 	}
+	if deps.OpenWritableDB == nil {
+		deps.OpenWritableDB = defaults.OpenWritableDB
+	}
 	if deps.OpenMetadataDB == nil {
 		deps.OpenMetadataDB = defaults.OpenMetadataDB
 	}
@@ -126,7 +137,7 @@ func runWithDependencies(ctx context.Context, options Options, deps runtimeDepen
 	if err != nil || cfg == nil || cfg.Database == nil {
 		return errors.New("load owner exception database config failed")
 	}
-	ownerDB, err := deps.OpenDB(cfg.Database)
+	ownerDB, err := deps.OpenWritableDB(cfg.Database)
 	if err != nil || ownerDB == nil {
 		return errors.New("connect owner exception database failed")
 	}
