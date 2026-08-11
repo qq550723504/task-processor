@@ -230,7 +230,7 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 	if err != nil {
 		return ApplySummary{}, err
 	}
-	if finalReport.Summary.AffectedRows > 0 {
+	if finalReport.Summary.UnresolvedRows > 0 || finalReport.Summary.AutoRows > 0 {
 		return ApplySummary{}, errors.New("owner reconciliation left blank owner rows")
 	}
 	return summary, nil
@@ -297,6 +297,9 @@ func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return nil, ctxErr
+		}
+		if isPostgresUndefinedTable(err) {
+			return nil, nil
 		}
 		return nil, fmt.Errorf("query owner reconciliation table %s failed", spec.Table)
 	}
