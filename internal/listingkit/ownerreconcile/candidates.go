@@ -61,6 +61,13 @@ func resolveCandidateValues(policy CandidatePolicy, tenantID string, candidates 
 				selected = append(selected, candidate)
 			}
 		}
+	} else if policy == CandidatePolicyCreatorFirst {
+		selected = make([]Candidate, 0, 2)
+		for _, candidate := range candidates {
+			if candidate.Source == "creator" || candidate.Source == "created_by" {
+				selected = append(selected, candidate)
+			}
+		}
 	}
 	mapped := make([]Candidate, 0, len(selected))
 	for _, candidate := range selected {
@@ -87,7 +94,13 @@ func resolveCandidatePolicy(policy CandidatePolicy, candidates []Candidate) (sub
 		}
 		return resolvePreferredCreator(filtered)
 	}
-	return resolvePreferredCreator(candidates)
+	filtered := make([]Candidate, 0, 2)
+	for _, candidate := range candidates {
+		if candidate.Source == "creator" || candidate.Source == "created_by" {
+			filtered = append(filtered, candidate)
+		}
+	}
+	return resolvePreferredCreator(filtered)
 }
 
 func resolvePreferredCreator(candidates []Candidate) (subject, reason string) {
