@@ -3,9 +3,11 @@ package listingkitownerreconcile
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"task-processor/internal/core/config"
@@ -218,5 +220,47 @@ func TestRunWithDependenciesPropagatesSummaryWriteFailure(t *testing.T) {
 	err := runWithDependencies(context.Background(), Options{Config: "config.yaml", Output: filepath.Join(t.TempDir(), "report.json"), BatchSize: 10}, deps)
 	if err == nil || err.Error() != "write owner reconciliation summary failed" {
 		t.Fatalf("error = %v, want summary write failure", err)
+	}
+}
+
+func TestWriteArtifactsSeparatesTaskAndStudioFindings(t *testing.T) {
+	directory := t.TempDir()
+	taskJSON := filepath.Join(directory, "tasks.json")
+	studioJSON := filepath.Join(directory, "studio.json")
+	taskCSV := filepath.Join(directory, "tasks.csv")
+	studioCSV := filepath.Join(directory, "studio.csv")
+	report := ownerreconcile.NewReport("config.yaml", "app-db", []ownerreconcile.Finding{
+		{Table: "listing_product_import_task", Rows: 2, Reason: "no_candidate"},
+		{Table: "listingkit_studio_batches", Rows: 3, Reason: "conflicting_candidates"},
+		{Table: "listing_store", Rows: 4, Reason: "unmapped_candidate"},
+	}, 0)
+	options := Options{UnresolvedTasksJSON: taskJSON, UnresolvedStudioJSON: studioJSON, UnresolvedTasksCSV: taskCSV, UnresolvedStudioCSV: studioCSV}
+	if err := writeArtifacts(options, report); err != nil {
+		t.Fatal(err)
+	}
+	var tasksReport, studioReport ownerreconcile.Report
+	for path, target := range map[string]*ownerreconcile.Report{taskJSON: &tasksReport, studioJSON: &studioReport} {
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(contents, target); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(tasksReport.Findings) != 1 || tasksReport.Findings[0].Table != "listing_product_import_task" {
+		t.Fatalf("task report = %+v, want only task findings", tasksReport.Findings)
+	}
+	if len(studioReport.Findings) != 1 || studioReport.Findings[0].Table != "listingkit_studio_batches" {
+		t.Fatalf("studio report = %+v, want only studio findings", studioReport.Findings)
+	}
+	for path := range map[string]struct{}{taskCSV: {}, studioCSV: {}} {
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(contents), "listing_store") {
+			t.Fatalf("specialized artifact %s contains unrelated finding", path)
+		}
 	}
 }

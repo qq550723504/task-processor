@@ -230,9 +230,19 @@ func openMetadataDB(ctx context.Context, base *config.DatabaseConfig, deps runti
 }
 
 func writeArtifacts(options Options, report ownerreconcile.Report) error {
-	encoded, err := json.MarshalIndent(report, "", "  ")
+	encoded, err := marshalReport(report)
 	if err != nil {
 		return errors.New("marshal owner reconciliation report failed")
+	}
+	tasksReport := filteredFindingReport(report, findingTask)
+	tasksEncoded, err := marshalReport(tasksReport)
+	if err != nil {
+		return errors.New("marshal unresolved task report failed")
+	}
+	studioReport := filteredFindingReport(report, findingStudio)
+	studioEncoded, err := marshalReport(studioReport)
+	if err != nil {
+		return errors.New("marshal unresolved studio report failed")
 	}
 	if err := writeFile(options.Output, append(encoded, '\n')); err != nil {
 		return err
@@ -246,19 +256,55 @@ func writeArtifacts(options Options, report ownerreconcile.Report) error {
 	if err := writeFile(options.ManualReviewOutput, append(encoded, '\n')); err != nil {
 		return err
 	}
-	if err := writeFile(options.UnresolvedTasksJSON, append(encoded, '\n')); err != nil {
+	if err := writeFile(options.UnresolvedTasksJSON, append(tasksEncoded, '\n')); err != nil {
 		return err
 	}
-	if err := writeFile(options.UnresolvedStudioJSON, append(encoded, '\n')); err != nil {
+	if err := writeFile(options.UnresolvedStudioJSON, append(studioEncoded, '\n')); err != nil {
 		return err
 	}
-	if err := writeFindingCSV(options.UnresolvedTasksCSV, report); err != nil {
+	if err := writeFindingCSV(options.UnresolvedTasksCSV, tasksReport); err != nil {
 		return err
 	}
-	if err := writeFindingCSV(options.UnresolvedStudioCSV, report); err != nil {
+	if err := writeFindingCSV(options.UnresolvedStudioCSV, studioReport); err != nil {
 		return err
 	}
 	return writeFile(options.UnresolvedSummaryJSON, append(encoded, '\n'))
+}
+
+type findingFamily uint8
+
+const (
+	findingOther findingFamily = iota
+	findingTask
+	findingStudio
+)
+
+func filteredFindingReport(report ownerreconcile.Report, family findingFamily) ownerreconcile.Report {
+	findings := make([]ownerreconcile.Finding, 0, len(report.Findings))
+	for _, finding := range report.Findings {
+		if classifyFindingTable(finding.Table) == family {
+			findings = append(findings, finding)
+		}
+	}
+	filtered := ownerreconcile.NewReport(report.ConfigName, report.DatabaseName, findings, 0)
+	filtered.GeneratedAt = report.GeneratedAt
+	_ = filtered.SetFingerprint()
+	return filtered
+}
+
+func classifyFindingTable(table string) findingFamily {
+	switch strings.TrimSpace(table) {
+	case "listing_kit_tasks", "listing_product_import_task", "listing_product_import_mapping", "listing_product_data":
+		return findingTask
+	case "listingkit_studio_async_jobs", "listingkit_studio_batches", "listingkit_studio_batch_items", "listingkit_studio_generation_attempts", "listingkit_studio_materialized_designs", "listingkit_studio_batch_task_links", "listingkit_studio_batch_runs", "listingkit_studio_batch_run_items", "shein_studio_sessions":
+		return findingStudio
+	default:
+		return findingOther
+	}
+}
+
+func marshalReport(report ownerreconcile.Report) ([]byte, error) {
+	return json.MarshalIndent(report, "", "  ")
 }
 
 func writeFindingCSV(path string, report ownerreconcile.Report) error {

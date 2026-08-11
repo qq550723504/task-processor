@@ -58,3 +58,17 @@ func TestInventoryUpdatesMatchBlankCandidatesExactly(t *testing.T) {
 		}
 	}
 }
+
+func TestInventoryUpdatesPreserveAbsentOptionalRelations(t *testing.T) {
+	for _, spec := range ownerReconciliationInventory {
+		if spec.Table != "listing_product_import_task" && spec.Table != "listing_product_import_mapping" && spec.Table != "listing_product_data" {
+			continue
+		}
+		if !strings.Contains(spec.UpdateQuery, "($5 = '' AND $6 = '') OR EXISTS") {
+			t.Fatalf("inventory spec %s does not preserve absent task relation", spec.Table)
+		}
+		if spec.Table != "listing_product_import_task" && !strings.Contains(spec.UpdateQuery, "($7 = '' AND $8 = '') OR EXISTS") {
+			t.Fatalf("inventory spec %s does not preserve absent store relation", spec.Table)
+		}
+	}
+}

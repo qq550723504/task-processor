@@ -110,92 +110,111 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 	if beginner == nil {
 		return ApplySummary{}, errors.New("owner reconciliation database cannot begin a write transaction")
 	}
-	tx, err := beginner.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+	snapshotTx, err := beginner.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ApplySummary{}, ctxErr
 		}
 		return ApplySummary{}, errors.New("begin owner reconciliation transaction failed")
 	}
-	committed := false
-	defer func() {
-		if !committed {
-			_ = tx.Rollback()
-		}
-	}()
-
 	snapshotRepository := repository
-	snapshotRepository.Queryer = tx
+	snapshotRepository.Queryer = snapshotTx
 	current, err := snapshotRepository.DryRun(ctx, repository.Identities)
 	if err != nil {
+		_ = snapshotTx.Rollback()
 		return ApplySummary{}, err
 	}
 	if err := current.SetFingerprint(); err != nil || current.ReportFingerprint != reportFingerprint {
+		_ = snapshotTx.Rollback()
 		return ApplySummary{}, ErrReportConfirmationMismatch
 	}
 	if current.Summary.UnresolvedRows > 0 {
+		_ = snapshotTx.Rollback()
 		return ApplySummary{}, errors.New("owner reconciliation report contains unresolved rows")
 	}
 	identityMap, err := indexLegacyIdentities(repository.Identities)
 	if err != nil {
+		_ = snapshotTx.Rollback()
 		return ApplySummary{}, err
 	}
-	var summary ApplySummary
+	planned := make([]plannedGroup, 0)
 	for _, spec := range repository.Inventory {
 		if strings.TrimSpace(spec.UpdateQuery) == "" || len(spec.CandidateColumns) == 0 {
 			continue
 		}
 		if spec.UpdateLimitArg <= 0 {
+			_ = snapshotTx.Rollback()
 			return ApplySummary{}, fmt.Errorf("owner reconciliation table %s has no bounded update limit", spec.Table)
 		}
-		groups, err := collectCandidateGroups(ctx, tx, spec, identityMap)
+		groups, err := collectCandidateGroups(ctx, snapshotTx, spec, identityMap)
 		if err != nil {
+			_ = snapshotTx.Rollback()
 			return ApplySummary{}, err
 		}
 		if err := compareCandidateGroups(current, spec, groups); err != nil {
+			_ = snapshotTx.Rollback()
 			return ApplySummary{}, err
 		}
 		for _, group := range groups {
-			remaining := group.Rows
-			for remaining > 0 {
-				limit := int64(batchSize)
-				if remaining < limit {
-					limit = remaining
-				}
-				args := []any{group.Subject, group.TenantID}
-				for _, value := range group.CandidateValues {
-					args = append(args, value)
-				}
-				if len(args)+1 != spec.UpdateLimitArg {
-					_ = tx.Rollback()
-					return ApplySummary{}, fmt.Errorf("owner reconciliation table %s has an invalid update limit parameter", spec.Table)
-				}
-				args = append(args, limit)
-				result, execErr := tx.ExecContext(ctx, spec.UpdateQuery, args...)
-				if execErr != nil {
-					if ctxErr := ctx.Err(); ctxErr != nil {
-						return ApplySummary{}, ctxErr
-					}
-					return ApplySummary{}, fmt.Errorf("apply owner reconciliation for %s failed", spec.Table)
-				}
-				updated, rowsErr := result.RowsAffected()
-				if rowsErr != nil || updated <= 0 || updated > limit {
-					return ApplySummary{}, fmt.Errorf("owner reconciliation update count for %s failed postcondition", spec.Table)
-				}
-				if updated != limit && updated != remaining {
-					return ApplySummary{}, fmt.Errorf("owner reconciliation update for %s changed during execution", spec.Table)
-				}
-				summary.RowsUpdated += updated
-				summary.Batches++
-				remaining -= updated
-			}
+			planned = append(planned, plannedGroup{Spec: spec, Group: group})
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return ApplySummary{}, errors.New("commit owner reconciliation transaction failed")
+	if err := snapshotTx.Rollback(); err != nil {
+		return ApplySummary{}, errors.New("close owner reconciliation validation snapshot failed")
 	}
-	committed = true
+	var summary ApplySummary
+	for _, item := range planned {
+		remaining := item.Group.Rows
+		for remaining > 0 {
+			limit := int64(batchSize)
+			if remaining < limit {
+				limit = remaining
+			}
+			tx, beginErr := beginner.BeginTx(ctx, nil)
+			if beginErr != nil {
+				return ApplySummary{}, errors.New("begin owner reconciliation transaction failed")
+			}
+			args := []any{item.Group.Subject, item.Group.TenantID}
+			for _, value := range item.Group.CandidateValues {
+				args = append(args, value)
+			}
+			if len(args)+1 != item.Spec.UpdateLimitArg {
+				_ = tx.Rollback()
+				return ApplySummary{}, fmt.Errorf("owner reconciliation table %s has an invalid update limit parameter", item.Spec.Table)
+			}
+			args = append(args, limit)
+			result, execErr := tx.ExecContext(ctx, item.Spec.UpdateQuery, args...)
+			if execErr != nil {
+				_ = tx.Rollback()
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return ApplySummary{}, ctxErr
+				}
+				return ApplySummary{}, fmt.Errorf("apply owner reconciliation for %s failed", item.Spec.Table)
+			}
+			updated, rowsErr := result.RowsAffected()
+			if rowsErr != nil || updated <= 0 || updated > limit {
+				_ = tx.Rollback()
+				return ApplySummary{}, fmt.Errorf("owner reconciliation update count for %s failed postcondition", item.Spec.Table)
+			}
+			if updated != limit && updated != remaining {
+				_ = tx.Rollback()
+				return ApplySummary{}, fmt.Errorf("owner reconciliation update for %s changed during execution", item.Spec.Table)
+			}
+			if err := tx.Commit(); err != nil {
+				_ = tx.Rollback()
+				return ApplySummary{}, errors.New("commit owner reconciliation transaction failed")
+			}
+			summary.RowsUpdated += updated
+			summary.Batches++
+			remaining -= updated
+		}
+	}
 	return summary, nil
+}
+
+type plannedGroup struct {
+	Spec  TableSpec
+	Group candidateGroup
 }
 
 func compareCandidateGroups(report Report, spec TableSpec, groups []candidateGroup) error {
@@ -206,7 +225,11 @@ func compareCandidateGroups(report Report, spec TableSpec, groups []candidateGro
 	for _, group := range groups {
 		parts := make([]string, 0, len(spec.CandidateColumns))
 		for index, candidate := range spec.CandidateColumns {
-			parts = append(parts, candidate.Source+"="+group.CandidateValues[index])
+			value := group.CandidateValues[index]
+			if value == "" {
+				continue
+			}
+			parts = append(parts, candidate.Source+"="+value)
 		}
 		resolution := Resolution{
 			Table:                spec.Table,

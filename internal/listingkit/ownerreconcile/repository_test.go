@@ -241,6 +241,8 @@ func TestRepositoryApplyUniqueRechecksReportAndUpdatesOnlyUniqueRows(t *testing.
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(rows())
 	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(rows())
+	mock.ExpectRollback()
+	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta("WITH target AS (SELECT id FROM listing_store WHERE tenant_id = $2 AND creator::text = $3 ORDER BY id LIMIT $4) UPDATE listing_store AS row SET owner_user_id = $1 FROM target WHERE row.id = target.id")).WithArgs("subject-1", "tenant-1", "legacy-1", int64(4)).WillReturnResult(sqlmock.NewResult(0, 4))
 	mock.ExpectCommit()
 	summary, err := base.ApplyUnique(context.Background(), report.ReportFingerprint, report.ReportFingerprint, 10)
@@ -280,10 +282,12 @@ func TestRepositoryApplyUniqueLimitsEachUpdateBatch(t *testing.T) {
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(rows())
 	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(rows())
+	mock.ExpectRollback()
 	for _, affected := range []int64{10, 10, 5} {
+		mock.ExpectBegin()
 		mock.ExpectExec(regexp.QuoteMeta(update)).WithArgs("subject-1", "tenant-1", "legacy-1", affected).WillReturnResult(sqlmock.NewResult(0, affected))
+		mock.ExpectCommit()
 	}
-	mock.ExpectCommit()
 	summary, err := repository.ApplyUnique(context.Background(), report.ReportFingerprint, report.ReportFingerprint, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -320,6 +324,7 @@ func TestRepositoryApplyUniqueRejectsCandidateChangesAfterConfirmation(t *testin
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(first)
 	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(changed)
+	mock.ExpectRollback()
 	if _, err := repository.ApplyUnique(context.Background(), report.ReportFingerprint, report.ReportFingerprint, 10); !errors.Is(err, ErrReportConfirmationMismatch) {
 		t.Fatalf("error = %v, want confirmation mismatch", err)
 	}
