@@ -200,6 +200,19 @@ func NewDatabaseFromConfigWithoutCreate(cfg *config.DatabaseConfig) (*gorm.DB, e
 	return newDatabaseFromConfigWithoutCreate(cfg, openPostgresDatabase)
 }
 
+// NewDatabaseFromConfigWithoutCreateWritable opens an existing target database
+// without creating it and without forcing the session read-only. It is reserved
+// for explicitly confirmed maintenance operations; normal readers must use
+// NewDatabaseFromConfigWithoutCreate.
+func NewDatabaseFromConfigWithoutCreateWritable(cfg *config.DatabaseConfig) (*gorm.DB, error) {
+	return newDatabaseFromConfig(
+		cfg,
+		databaseOpenOptions{createIfMissing: false},
+		openPostgresDatabase,
+		nil,
+	)
+}
+
 // NewSharedDatabaseFromConfig returns a process-local shared *gorm.DB for the
 // given config. Repeated calls with the same config reuse one underlying sql.DB.
 func NewSharedDatabaseFromConfig(cfg *config.DatabaseConfig) (*gorm.DB, error) {
