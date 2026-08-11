@@ -134,6 +134,7 @@ func TestListingKitDeployRemovesDeprecatedIdentityKeysBeforePreflight(t *testing
 			Steps []struct {
 				Name string `yaml:"name"`
 				Run  string `yaml:"run"`
+				If   string `yaml:"if"`
 			} `yaml:"steps"`
 		} `yaml:"jobs"`
 	}
@@ -145,6 +146,9 @@ func TestListingKitDeployRemovesDeprecatedIdentityKeysBeforePreflight(t *testing
 	for index, step := range steps {
 		if strings.Contains(step.Run, "scripts/listingkit-clean-legacy-identity-secret.sh") {
 			cleanupIndex = index
+			if got, want := step.If, "${{ needs.prepare.outputs.candidate_api_digest == '' }}"; got != want {
+				t.Errorf("legacy identity Secret cleanup must be skipped for digest rollbacks, got if: %q", got)
+			}
 			if !strings.Contains(step.Run, "listingkit-workbench-secret") {
 				t.Fatal("legacy identity Secret cleanup must target the shared ListingKit Secret")
 			}
@@ -174,6 +178,27 @@ func TestListingKitDeployRemovesDeprecatedIdentityKeysBeforePreflight(t *testing
 	}
 	if !strings.Contains(string(content), "scripts/listingkit-clean-legacy-identity-secret.sh") {
 		t.Error("deploy-api sparse checkout must include the legacy identity Secret cleanup driver")
+	}
+}
+
+func TestListingKitManualDeployCleansSecretAfterPreflight(t *testing.T) {
+	scriptPath := filepath.Join("..", "scripts", "build-push-deploy-listingkit-workbench.ps1")
+	content, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read ListingKit manual deploy script: %v", err)
+	}
+	text := string(content)
+	preflightCall := strings.Index(text, "& $BashExecutable $IdentityPreflightDriver")
+	cleanupCall := strings.Index(text, "& $BashExecutable $LegacyIdentitySecretCleanupDriver")
+	apiApplyCall := strings.Index(text, "& $BashExecutable $ImmutableApiApplyDriver")
+	if preflightCall < 0 || cleanupCall < 0 || apiApplyCall < 0 {
+		t.Fatalf("manual deploy must invoke preflight, legacy Secret cleanup, and API apply drivers: preflight=%d cleanup=%d api=%d", preflightCall, cleanupCall, apiApplyCall)
+	}
+	if !(preflightCall < cleanupCall && cleanupCall < apiApplyCall) {
+		t.Fatalf("manual deploy must clean the Secret after preflight and before API apply: preflight=%d cleanup=%d api=%d", preflightCall, cleanupCall, apiApplyCall)
+	}
+	if !strings.Contains(text, "listingkit-workbench-secret") {
+		t.Error("manual deploy cleanup must target the shared ListingKit Secret")
 	}
 }
 
