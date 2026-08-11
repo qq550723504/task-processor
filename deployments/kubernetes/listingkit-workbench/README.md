@@ -283,24 +283,24 @@ at startup.
 
 ```powershell
 $tag = "<immutable-release-tag>"
+$apiCandidateImage = "docker.io/xuwei190/task-processor-product-listing-api@sha256:<64-hex-api-digest>"
 
 kubectl apply -f deployments/kubernetes/listingkit-workbench/base/namespace.yaml
 kubectl apply -f deployments/kubernetes/listingkit-workbench/base/configmap.yaml
 # Apply the real Secret created outside Git before continuing.
 
-$migrationJobs = @(
-  "product-listing-api-schema-migrate-job.yaml",
-  "listingkit-schema-migrate-job.yaml"
-)
-foreach ($jobFile in $migrationJobs) {
-  $migrationFile = Join-Path $env:TEMP $jobFile
-  Copy-Item (Join-Path "deployments/kubernetes/listingkit-workbench/jobs" $jobFile) $migrationFile
-  (Get-Content -Raw $migrationFile).Replace("REPLACE_WITH_DEPLOYED_TAG", $tag) |
-    Set-Content -NoNewline $migrationFile
-  $jobName = kubectl create -n task-processor -f $migrationFile -o jsonpath='{.metadata.name}'
-  kubectl -n task-processor wait --for=condition=complete "job/$jobName" --timeout=15m
-  kubectl -n task-processor logs "job/$jobName"
-}
+$productMigrationFile = Join-Path $env:TEMP "product-listing-api-schema-migrate-job.yaml"
+Copy-Item "deployments/kubernetes/listingkit-workbench/jobs/product-listing-api-schema-migrate-job.yaml" $productMigrationFile
+(Get-Content -Raw $productMigrationFile).Replace("REPLACE_WITH_DEPLOYED_TAG", $tag) |
+  Set-Content -NoNewline $productMigrationFile
+$jobName = kubectl create -n task-processor -f $productMigrationFile -o jsonpath='{.metadata.name}'
+kubectl -n task-processor wait --for=condition=complete "job/$jobName" --timeout=15m
+kubectl -n task-processor logs "job/$jobName"
+
+bash scripts/listingkit-schema-migrate-job.sh `
+  --manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml `
+  --namespace task-processor `
+  --image "$apiCandidateImage"
 ```
 
 The two Jobs import the production ConfigMap plus only the five database keys
@@ -309,6 +309,14 @@ from `listingkit-workbench-secret`. They run `/app/product-listing-api-schema-mi
 immutable API image that will be released. A failed Job is a No-Go: investigate
 and use an approved roll-forward or restore procedure instead of deleting or
 editing the production schema manually.
+
+The ListingKit deployment workflow runs the ListingKit schema migration Job
+before the identity preflight. For an environment carrying the reviewed
+system-owned exception set, run the one-shot
+`scripts/listingkit-owner-scope-exceptions.ps1` seeder after that migration and
+before the preflight. The seeder validates the live report fingerprint and
+counts, so an empty or newly changed exception set remains a release blocker;
+the workflow never copies approved exceptions into an unrelated database.
 
 ### Identity preflight release gate
 

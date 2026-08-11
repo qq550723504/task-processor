@@ -7,8 +7,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/DATA-DOG/go-sqlmock"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/listingkit/ownerreconcile"
@@ -279,5 +282,26 @@ func TestWriteArtifactsSeparatesTaskAndStudioFindings(t *testing.T) {
 		if strings.Contains(string(contents), "listing_store") {
 			t.Fatalf("specialized artifact %s contains unrelated finding", path)
 		}
+	}
+}
+
+func TestReconciliationRepositoryUsesSystemOwnedExceptionStore(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT org_id::text, convert_from(value, 'UTF8') AS legacy_tenant_id FROM projections.org_metadata2 WHERE key = 'yudao_tenant_id' AND owner_removed = false")).WillReturnRows(sqlmock.NewRows([]string{"org_id", "legacy_tenant_id"}))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT user_id::text, resource_owner::text, max(convert_from(value, 'UTF8')) FILTER (WHERE key = 'yudao_user_id') AS legacy_user_id, max(convert_from(value, 'UTF8')) FILTER (WHERE key = 'yudao_tenant_id') AS legacy_tenant_id FROM projections.user_metadata5 WHERE key IN ('yudao_user_id', 'yudao_tenant_id') GROUP BY user_id, resource_owner")).WillReturnRows(sqlmock.NewRows([]string{"user_id", "resource_owner", "legacy_user_id", "legacy_tenant_id"}))
+
+	repository, err := reconciliationRepository(context.Background(), db, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repository.Exceptions == nil {
+		t.Fatal("repository exception store is nil")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

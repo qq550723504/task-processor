@@ -211,7 +211,7 @@ func TestListingKitSchemaMigrationJobUsesTheReleaseImage(t *testing.T) {
 	}
 	for _, required := range []string{
 		"kind: Job",
-		"REPLACE_WITH_DEPLOYED_TAG",
+		"REPLACE_WITH_API_IMAGE",
 		"/app/listingkit-schema-migrate",
 		"listingkit-workbench-config",
 		"listingkit-workbench-secret",

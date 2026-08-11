@@ -88,6 +88,41 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 	}
 }
 
+func TestListingKitSchemaMigrationRunsBeforeIdentityPreflight(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string `yaml:"name"`
+				Run  string `yaml:"run"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(content, &workflow); err != nil {
+		t.Fatalf("parse ListingKit deploy workflow: %v", err)
+	}
+	deployJob := workflow.Jobs["deploy-api"]
+	schemaIndex, preflightIndex := -1, -1
+	for index, step := range deployJob.Steps {
+		if strings.Contains(step.Run, "scripts/listingkit-schema-migrate-job.sh") {
+			schemaIndex = index
+			if !strings.Contains(step.Run, "listingkit-schema-migrate-job.yaml") || !strings.Contains(step.Run, "--image \"$API_CANDIDATE_IMAGE\"") {
+				t.Errorf("schema migration step must use the immutable API candidate and ListingKit schema manifest")
+			}
+		}
+		if strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
+			preflightIndex = index
+		}
+	}
+	if schemaIndex < 0 || preflightIndex < 0 || schemaIndex >= preflightIndex {
+		t.Fatalf("schema migration must run before identity preflight, schema=%d preflight=%d", schemaIndex, preflightIndex)
+	}
+}
+
 func TestListingKitIdentityPreflightJobDeadlineMatchesDriverWait(t *testing.T) {
 	manifestPath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "jobs", "listingkit-identity-preflight-job.yaml")
 	content, err := os.ReadFile(manifestPath)
@@ -106,6 +141,54 @@ func TestListingKitIdentityPreflightJobDeadlineMatchesDriverWait(t *testing.T) {
 
 	if job.Spec.ActiveDeadlineSeconds != 15*60 {
 		t.Fatalf("identity preflight Job deadline must match the driver's 15-minute wait, got %d seconds", job.Spec.ActiveDeadlineSeconds)
+	}
+}
+
+func TestListingKitSchemaMigrationJobDeadlineMatchesDriverWait(t *testing.T) {
+	manifestPath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "jobs", "listingkit-schema-migrate-job.yaml")
+	content, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read ListingKit schema migration Job manifest: %v", err)
+	}
+
+	var job struct {
+		Spec struct {
+			ActiveDeadlineSeconds int `yaml:"activeDeadlineSeconds"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(content, &job); err != nil {
+		t.Fatalf("parse ListingKit schema migration Job: %v", err)
+	}
+
+	if job.Spec.ActiveDeadlineSeconds != 15*60 {
+		t.Fatalf("schema migration Job deadline must match the driver's 15-minute wait, got %d seconds", job.Spec.ActiveDeadlineSeconds)
+	}
+}
+
+func TestListingKitFirstControlledDeploymentUsesSchemaMigrationDriver(t *testing.T) {
+	readmePath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "README.md")
+	content, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read ListingKit deployment README: %v", err)
+	}
+	text := string(content)
+	start := strings.Index(text, "### First controlled deployment")
+	end := strings.Index(text, "The two Jobs import the production ConfigMap")
+	if start < 0 || end <= start {
+		t.Fatal("could not isolate the first controlled deployment procedure")
+	}
+	procedure := text[start:end]
+	for _, required := range []string{
+		"bash scripts/listingkit-schema-migrate-job.sh",
+		"--manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml",
+		"--image \"$apiCandidateImage\"",
+	} {
+		if !strings.Contains(procedure, required) {
+			t.Errorf("first controlled deployment procedure must contain %q", required)
+		}
+	}
+	if strings.Contains(procedure, `"listingkit-schema-migrate-job.yaml"`) {
+		t.Error("first controlled deployment must not render the ListingKit schema manifest with the legacy tag replacement loop")
 	}
 }
 

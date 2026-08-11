@@ -21,6 +21,9 @@ func AutoMigrateRuntime(db *gorm.DB) error {
 	if db == nil {
 		return fmt.Errorf("database is nil")
 	}
+	if err := autoMigrateSystemOwnedExceptionRegistry(db); err != nil {
+		return fmt.Errorf("migrate listingkit owner exception registry: %w", err)
+	}
 	if err := autoMigrateTaskRepository(db); err != nil {
 		return fmt.Errorf("migrate listingkit task repository: %w", err)
 	}

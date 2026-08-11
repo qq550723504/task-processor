@@ -6,6 +6,7 @@ import (
 	"errors"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
@@ -103,6 +104,79 @@ func TestRepositoryDryRunDoesNotAutoResolveUnmappedNonEmptyCandidate(t *testing.
 	}
 }
 
+type exceptionStoreStub struct {
+	items []SystemOwnedException
+	err   error
+}
+
+func (stub exceptionStoreStub) ListActive(context.Context) ([]SystemOwnedException, error) {
+	return stub.items, stub.err
+}
+
+func TestRepositoryDryRunClassifiesExactExceptionAsSystemOwned(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	query := `SELECT tenant_id, creator, COUNT(*) FROM listing_store WHERE owner_user_id IS NULL GROUP BY tenant_id, creator`
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "creator", "row_count"}).AddRow("tenant-1", "legacy-unknown", int64(2)))
+
+	repository := Repository{
+		Queryer: db,
+		Inventory: []TableSpec{{
+			Table: "listing_store", TenantDomain: TenantDomainLegacyNumeric, Query: query,
+			Columns:          []string{"tenant_id", "creator", "row_count"},
+			CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}},
+		}},
+		Exceptions: exceptionStoreStub{items: []SystemOwnedException{{
+			Table:                "listing_store",
+			TenantFingerprint:    shortFingerprint("tenant-1"),
+			CandidateFingerprint: shortFingerprint("creator=legacy-unknown"),
+			ReportFingerprint:    "648cdfab03c4",
+			Rows:                 2,
+			Reason:               "legacy orphaned owner",
+		}}},
+	}
+	report, err := repository.DryRun(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.UnresolvedRows != 0 || report.Summary.AutoRows != 0 || report.Summary.SystemOwnedRows != 2 || len(report.Findings) != 0 || len(report.SystemOwnedFindings) != 1 {
+		t.Fatalf("report = %+v, want exact exception to be system-owned", report)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRepositoryDryRunDoesNotExemptRowsOutsideApprovedGroupCount(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	query := `SELECT tenant_id, creator, COUNT(*) FROM listing_store WHERE owner_user_id IS NULL GROUP BY tenant_id, creator`
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "creator", "row_count"}).AddRow("tenant-1", "legacy-unknown", int64(3)))
+	repository := Repository{Queryer: db, Inventory: []TableSpec{{
+		Table: "listing_store", Query: query, Columns: []string{"tenant_id", "creator", "row_count"}, CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}},
+	}}, Exceptions: exceptionStoreStub{items: []SystemOwnedException{{
+		Table: "listing_store", TenantFingerprint: shortFingerprint("tenant-1"), CandidateFingerprint: shortFingerprint("creator=legacy-unknown"), ReportFingerprint: ApprovedSystemOwnedExceptionReport, Rows: 2, Reason: "legacy orphaned owner",
+	}}}}
+	report, err := repository.DryRun(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.UnresolvedRows != 3 || report.Summary.SystemOwnedRows != 0 || len(report.Findings) != 1 {
+		t.Fatalf("report = %+v, want mismatched exception count to remain unresolved", report)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRepositoryDryRunSkipsOnlyPostgresUndefinedTables(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -129,7 +203,7 @@ func TestCollectCandidateGroupsSkipsPostgresUndefinedTables(t *testing.T) {
 	query := "SELECT tenant_id, creator, COUNT(*) FROM future_table WHERE owner_user_id IS NULL GROUP BY tenant_id, creator"
 	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnError(postgresStateError{state: "42P01", message: "relation future_table does not exist"})
 	spec := TableSpec{Table: "future_table", Query: query, Columns: []string{"tenant_id", "creator", "row_count"}, CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}}, UpdateQuery: "UPDATE future_table SET owner_user_id = $1", UpdateLimitArg: 4}
-	groups, err := collectCandidateGroups(context.Background(), db, spec, nil)
+	groups, err := collectCandidateGroups(context.Background(), db, spec, nil, nil)
 	if err != nil || len(groups) != 0 {
 		t.Fatalf("groups = %+v, err = %v, want missing table skipped", groups, err)
 	}
@@ -339,6 +413,58 @@ func TestRepositoryApplyUniqueRequiresExactConfirmationBeforeAnyWrite(t *testing
 	}}, Identities: []LegacyIdentity{{TenantID: "tenant-1", LegacyUserID: "legacy-1", Subject: "subject-1"}}}
 	if _, err := repository.ApplyUnique(context.Background(), "abc123", "different", 10); !errors.Is(err, ErrReportConfirmationMismatch) {
 		t.Fatalf("error = %v, want confirmation mismatch", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRepositoryApplyUniqueUsesSnapshotTransactionForExceptionRegistry(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+
+	query := "SELECT tenant_id, creator, COUNT(*) FROM listing_store WHERE owner_user_id IS NULL GROUP BY tenant_id, creator"
+	exceptionQuery := regexp.QuoteMeta(systemOwnedExceptionQuery)
+	mock.ExpectBegin()
+	emptyExceptionRows := func() *sqlmock.Rows {
+		return sqlmock.NewRows([]string{"table_name", "tenant_fingerprint", "candidate_fingerprint", "report_fingerprint", "reason"})
+	}
+	emptyInventoryRows := func() *sqlmock.Rows {
+		return sqlmock.NewRows([]string{"tenant_id", "creator", "row_count"})
+	}
+	mock.ExpectQuery(exceptionQuery).WillReturnRows(emptyExceptionRows())
+	mock.ExpectExec("SAVEPOINT owner_reconcile_table").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(emptyInventoryRows())
+	mock.ExpectExec("RELEASE SAVEPOINT owner_reconcile_table").WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery(exceptionQuery).WillReturnRows(emptyExceptionRows())
+	mock.ExpectRollback()
+	mock.ExpectQuery(exceptionQuery).WillReturnRows(emptyExceptionRows())
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(emptyInventoryRows())
+
+	emptyReport := NewReportWithClassifiedFindings("", "", nil, nil, 0, nil)
+	if err := emptyReport.SetFingerprint(); err != nil {
+		t.Fatal(err)
+	}
+	repository := Repository{
+		Queryer:  db,
+		Beginner: db,
+		Inventory: []TableSpec{{
+			Table: "listing_store", Query: query,
+			Columns:          []string{"tenant_id", "creator", "row_count"},
+			CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}},
+		}},
+		Identities: []LegacyIdentity{{TenantID: "tenant-1", LegacyUserID: "legacy-1", Subject: "subject-1"}},
+		Exceptions: NewPostgresExceptionStore(db),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, err := repository.ApplyUnique(ctx, emptyReport.ReportFingerprint, emptyReport.ReportFingerprint, 10); err != nil {
+		t.Fatalf("apply error = %v, want snapshot transaction to provide exception registry connection", err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -574,4 +700,3 @@ func TestRepositoryApplyUniqueRejectsRowsLeftByFinalRescan(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-

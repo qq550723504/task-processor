@@ -30,6 +30,7 @@ func TestAutoMigrateRuntimeCreatesRepresentativeTables(t *testing.T) {
 		"ai_invocations",
 		"ai_async_jobs",
 		"listing_kit_sds_baseline_cache",
+		"listingkit_owner_scope_system_owned_exceptions",
 		&memberinviteAuditTable{},
 		&listingkit.SDSChildRetryJob{},
 		&listingkit.SheinPODImageLookupIndex{},
