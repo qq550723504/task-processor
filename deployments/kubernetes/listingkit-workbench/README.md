@@ -322,13 +322,14 @@ directory credential; it never references the API-only member-invitation
 Secret.
 
 Legacy ListingAdmin owner rows use numeric tenant IDs. For those rows, the
-preflight must find `projections.org_metadata2` in exactly one of the
-`zitadel_auth` or `zitadel` PostgreSQL databases that share the configured
-database host and credentials. Grant the Job account only `CONNECT` plus
-`SELECT` on that table in the selected database. Neither candidate, both
-candidates, or an unreadable metadata table blocks the release without printing
-database connection details; verify the one intended metadata database and its
-read-only grant before retrying.
+preflight must find both `projections.org_metadata2` and
+`projections.user_metadata5` in exactly one of the `zitadel_auth` or `zitadel`
+PostgreSQL databases that share the configured database host and credentials.
+Grant the Job account only `CONNECT` plus `SELECT` on both projection tables in
+the selected database. Neither candidate, both candidates, or an unreadable
+metadata table blocks the release without printing database connection details;
+verify the one intended metadata database and both read-only grants before
+retrying.
 
 Run the tested driver with the exact full immutable API and preflight-runner
 images. Copy each digest from the release build output; do not substitute a
@@ -677,3 +678,4 @@ The Go API still reads `config/config-prod.yaml` baked into the image, with
 secret values expected to be supplied by runtime configuration. For ListingKit
 auth, use `listingkit.zitadel.*` in YAML or the bound env vars above; the
 middleware no longer reads process env directly.
+
