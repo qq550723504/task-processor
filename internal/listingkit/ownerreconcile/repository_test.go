@@ -127,6 +127,31 @@ func TestRepositoryDryRunClassifiesSystemOwnedRowsOutsideOwnerScope(t *testing.T
 	}
 }
 
+func TestRepositoryDryRunClassifiesRowsWithoutAnyCandidateAsSystemOwned(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	query := `SELECT tenant_id, creator, created_by, COUNT(*) FROM listing_store WHERE owner_user_id IS NULL GROUP BY tenant_id, creator, created_by`
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "creator", "created_by", "row_count"}).AddRow("tenant-1", "", "", int64(9)))
+	repository := Repository{Queryer: db, Inventory: []TableSpec{{
+		Table: "listing_store", Query: query, CandidatePolicy: CandidatePolicyCreatorFirst,
+		Columns:          []string{"tenant_id", "creator", "created_by", "row_count"},
+		CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}, {Name: "created_by", Source: "created_by"}},
+	}}}
+	report, err := repository.DryRun(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.UnresolvedRows != 0 || report.Summary.SystemOwnedRows != 9 || len(report.Findings) != 0 || len(report.SystemOwnedFindings) != 1 {
+		t.Fatalf("report = %+v, want no-candidate rows outside unresolved findings", report)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRepositoryDryRunRejectsNonSelectInventoryAndPreservesCancellation(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

@@ -462,7 +462,10 @@ func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identiti
 			Rows:              rowCount,
 			Reason:            reason,
 		}
-		if reason == "system_owned" {
+		if reason == "system_owned" || reason == "no_candidate" {
+			if reason == "no_candidate" {
+				finding.Reason = "system_owned"
+			}
 			systemOwnedFindings = append(systemOwnedFindings, finding)
 		} else {
 			findings = append(findings, finding)
