@@ -249,14 +249,6 @@ jobs:
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} apply -f .workflow-tools/deployments/kubernetes/listingkit-workbench/base/configmap.yaml
 
-      - name: Remove deprecated ListingKit identity keys from shared Secret
-        if: ${{ needs.prepare.outputs.candidate_api_digest == '' }}
-        shell: bash
-        run: |
-          .workflow-tools/scripts/listingkit-clean-legacy-identity-secret.sh \
-            "${{ env.K8S_NAMESPACE }}" \
-            listingkit-workbench-secret
-
       - name: Reject legacy invitation credentials in shared Secret
         shell: bash
         run: |
@@ -315,6 +307,49 @@ jobs:
             --namespace "$K8S_NAMESPACE" \
             --image "$API_CANDIDATE_IMAGE" \
             --runner-image "$PREFLIGHT_RUNNER_IMAGE"
+
+      - name: Log in to Docker Hub for candidate inspection
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Inspect candidate identity compatibility
+        id: candidate-identity-compatibility
+        shell: bash
+        env:
+          CANDIDATE_API_DIGEST: ${{ needs.prepare.outputs.candidate_api_digest }}
+        run: |
+          set -euo pipefail
+          docker pull "$API_CANDIDATE_IMAGE" >/dev/null
+          identity_mode="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.listingkit.identity" }}' "$API_CANDIDATE_IMAGE")"
+          case "$identity_mode" in
+            canonical-subject-v1)
+              echo "cleanup_legacy_identity=true" >> "$GITHUB_OUTPUT"
+              ;;
+            "")
+              if [[ -n "$CANDIDATE_API_DIGEST" ]]; then
+                echo "::error::digest candidate has no canonical-subject compatibility label; rebuild it with the current ListingKit API Dockerfile before deploying"
+                exit 1
+              fi
+              echo "::warning::candidate image has no canonical-subject compatibility label; preserving legacy identity keys for rollback safety"
+              echo "cleanup_legacy_identity=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::unsupported ListingKit identity compatibility label: $identity_mode"
+              exit 1
+              ;;
+          esac
+
+      - name: Remove deprecated ListingKit identity keys from shared Secret
+        if: ${{ steps.candidate-identity-compatibility.outputs.cleanup_legacy_identity == 'true' }}
+        shell: bash
+        run: |
+          .workflow-tools/scripts/listingkit-clean-legacy-identity-secret.sh \
+            "${{ env.K8S_NAMESPACE }}" \
+            listingkit-workbench-secret \
+            product-listing-api
 
       - name: Apply immutable API deployment
         shell: bash

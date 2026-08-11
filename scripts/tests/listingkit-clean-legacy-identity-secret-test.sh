@@ -19,7 +19,7 @@ if [[ "$*" == *"get secret listingkit-workbench-secret -o json"* ]]; then
   if [[ "${FAKE_KUBECTL_MODE:-normal}" == "annotation-only" ]]; then
     printf '%s\n' '{"data":{"TASK_PROCESSOR_DATABASE_HOST":"c2VydmljZQ=="},"metadata":{"resourceVersion":"rv-123","annotations":{"LISTINGKIT_ZITADEL_ALLOWED_USERNAMES":"annotation-only"}}}'
   else
-    printf '%s\n' '{"data":{"LISTINGKIT_ZITADEL_ALLOWED_USERNAMES":"bGVnYWN5","TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES":"cHJpbWFyeQ==","LISTINGKIT_ZITADEL_ALLOWED_ROLES":"bGVnYWN5","TASK_PROCESSOR_DATABASE_HOST":"c2VydmljZQ=="},"metadata":{"resourceVersion":"rv-123","annotations":{"LISTINGKIT_ZITADEL_ALLOWED_USERNAMES":"annotation-only"}}}'
+    printf '%s\n' '{"data":{"LISTINGKIT_ZITADEL_ALLOWED_USERNAMES":"bGVnYWN5","TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES":"cHJpbWFyeQ==","LISTINGKIT_ZITADEL_ALLOWED_ROLES":"bGVnYWN5","TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES":"","TASK_PROCESSOR_DATABASE_HOST":"c2VydmljZQ=="},"metadata":{"resourceVersion":"rv-123","annotations":{"LISTINGKIT_ZITADEL_ALLOWED_USERNAMES":"annotation-only"}}}'
   fi
   exit 0
 fi
@@ -53,6 +53,7 @@ fi
 if [[ "$*" == *"// empty"* ]]; then
   case "$key" in
     LISTINGKIT_ZITADEL_ALLOWED_ROLES) printf '%s\n' 'bGVnYWN5' ;;
+    TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES) printf '\n' ;;
     *) exit 1 ;;
   esac
   exit 0

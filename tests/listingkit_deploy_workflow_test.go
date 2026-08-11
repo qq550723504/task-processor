@@ -146,8 +146,8 @@ func TestListingKitDeployRemovesDeprecatedIdentityKeysBeforePreflight(t *testing
 	for index, step := range steps {
 		if strings.Contains(step.Run, "scripts/listingkit-clean-legacy-identity-secret.sh") {
 			cleanupIndex = index
-			if got, want := step.If, "${{ needs.prepare.outputs.candidate_api_digest == '' }}"; got != want {
-				t.Errorf("legacy identity Secret cleanup must be skipped for digest rollbacks, got if: %q", got)
+			if got, want := step.If, "${{ steps.candidate-identity-compatibility.outputs.cleanup_legacy_identity == 'true' }}"; got != want {
+				t.Errorf("legacy identity Secret cleanup must require candidate compatibility, got if: %q", got)
 			}
 			if !strings.Contains(step.Run, "listingkit-workbench-secret") {
 				t.Fatal("legacy identity Secret cleanup must target the shared ListingKit Secret")
@@ -157,8 +157,8 @@ func TestListingKitDeployRemovesDeprecatedIdentityKeysBeforePreflight(t *testing
 			preflightIndex = index
 		}
 	}
-	if cleanupIndex < 0 || preflightIndex < 0 || cleanupIndex >= preflightIndex {
-		t.Fatalf("legacy identity Secret cleanup must run before identity preflight, cleanup=%d preflight=%d", cleanupIndex, preflightIndex)
+	if cleanupIndex < 0 || preflightIndex < 0 || cleanupIndex <= preflightIndex {
+		t.Fatalf("legacy identity Secret cleanup must run after identity preflight, cleanup=%d preflight=%d", cleanupIndex, preflightIndex)
 	}
 
 	scriptPath := filepath.Join("..", "scripts", "listingkit-clean-legacy-identity-secret.sh")
@@ -178,6 +178,66 @@ func TestListingKitDeployRemovesDeprecatedIdentityKeysBeforePreflight(t *testing
 	}
 	if !strings.Contains(string(content), "scripts/listingkit-clean-legacy-identity-secret.sh") {
 		t.Error("deploy-api sparse checkout must include the legacy identity Secret cleanup driver")
+	}
+}
+
+func TestListingKitDeployInspectsCandidateCompatibilityBeforeSecretCleanup(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string `yaml:"name"`
+				ID   string `yaml:"id"`
+				Run  string `yaml:"run"`
+				If   string `yaml:"if"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(content, &workflow); err != nil {
+		t.Fatalf("parse ListingKit deploy workflow: %v", err)
+	}
+	steps := workflow.Jobs["deploy-api"].Steps
+	preflightIndex, compatibilityIndex, cleanupIndex, applyIndex := -1, -1, -1, -1
+	for index, step := range steps {
+		if strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
+			preflightIndex = index
+		}
+		if step.ID == "candidate-identity-compatibility" {
+			compatibilityIndex = index
+			for _, required := range []string{
+				"docker pull \"$API_CANDIDATE_IMAGE\"",
+				"docker image inspect",
+				"org.opencontainers.image.listingkit.identity",
+			} {
+				if !strings.Contains(step.Run, required) {
+					t.Errorf("candidate compatibility step must contain %q", required)
+				}
+			}
+		}
+		if strings.Contains(step.Run, "scripts/listingkit-clean-legacy-identity-secret.sh") {
+			cleanupIndex = index
+		}
+		if strings.Contains(step.Run, "scripts/listingkit-apply-api-deployment.sh") {
+			applyIndex = index
+		}
+	}
+	if preflightIndex < 0 || compatibilityIndex < 0 || cleanupIndex < 0 || applyIndex < 0 || !(preflightIndex < compatibilityIndex && compatibilityIndex < cleanupIndex && cleanupIndex < applyIndex) {
+		t.Fatalf("candidate compatibility, cleanup, and apply ordering invalid: preflight=%d compatibility=%d cleanup=%d apply=%d", preflightIndex, compatibilityIndex, cleanupIndex, applyIndex)
+	}
+}
+
+func TestListingKitAPIImageDeclaresCandidateIdentityCompatibilityLabel(t *testing.T) {
+	dockerfilePath := filepath.Join("..", "deployments", "docker", "Dockerfile.product-listing-api")
+	content, err := os.ReadFile(dockerfilePath)
+	if err != nil {
+		t.Fatalf("read ListingKit API Dockerfile: %v", err)
+	}
+	if !strings.Contains(string(content), `org.opencontainers.image.listingkit.identity="canonical-subject-v1"`) {
+		t.Fatal("ListingKit API image must declare the canonical-subject compatibility label")
 	}
 }
 

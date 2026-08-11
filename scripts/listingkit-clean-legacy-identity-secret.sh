@@ -57,7 +57,7 @@ done
 legacy_roles_key=LISTINGKIT_ZITADEL_ALLOWED_ROLES
 canonical_roles_key=TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES
 if has_key "$legacy_roles_key"; then
-  if has_key "$canonical_roles_key"; then
+  if has_key "$canonical_roles_key" && [[ -n "$(json_value "$canonical_roles_key")" ]]; then
     patch_parts+=("{\"op\":\"remove\",\"path\":\"/data/${legacy_roles_key}\"}")
   else
     legacy_roles_value="$(json_value "$legacy_roles_key")"
