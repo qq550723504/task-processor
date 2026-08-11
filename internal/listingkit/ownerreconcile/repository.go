@@ -25,6 +25,7 @@ type CandidateColumn struct {
 type TableSpec struct {
 	Table            string
 	TenantDomain     TenantDomain
+	CandidatePolicy  CandidatePolicy
 	Query            string
 	UpdateQuery      string
 	UpdateLimitArg   int
@@ -63,6 +64,7 @@ func (repository Repository) DryRun(ctx context.Context, identities []LegacyIden
 		return Report{}, err
 	}
 	findings := make([]Finding, 0)
+	systemOwnedFindings := make([]Finding, 0)
 	resolutions := make([]Resolution, 0)
 	var autoRows int64
 	for _, spec := range repository.Inventory {
@@ -76,15 +78,16 @@ func (repository Repository) DryRun(ctx context.Context, identities []LegacyIden
 			}
 			return Report{}, fmt.Errorf("query owner reconciliation table %s failed", spec.Table)
 		}
-		rowsFindings, rowsAuto, rowsResolutions, scanErr := scanTableRows(ctx, rows, spec, identityMap)
+		rowsFindings, rowsSystemOwned, rowsAuto, rowsResolutions, scanErr := scanTableRows(ctx, rows, spec, identityMap)
 		if scanErr != nil {
 			return Report{}, scanErr
 		}
 		findings = append(findings, rowsFindings...)
+		systemOwnedFindings = append(systemOwnedFindings, rowsSystemOwned...)
 		resolutions = append(resolutions, rowsResolutions...)
 		autoRows += rowsAuto
 	}
-	return NewReportWithResolutions("", "", findings, autoRows, resolutions), nil
+	return NewReportWithClassifiedFindings("", "", findings, systemOwnedFindings, autoRows, resolutions), nil
 }
 
 // ApplyUnique revalidates the redacted report and applies only uniquely
@@ -309,24 +312,16 @@ func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec
 		if err != nil {
 			return nil, fmt.Errorf("scan row count for %s failed", spec.Table)
 		}
-		candidates := make([]Candidate, 0, len(spec.CandidateColumns))
 		candidateValues := make([]string, 0, len(spec.CandidateColumns))
-		unmappedCandidate := false
 		for _, candidateColumn := range spec.CandidateColumns {
 			value := sqlText(values[columnIndex[candidateColumn.Name]])
 			candidateValues = append(candidateValues, value)
-			if value != "" {
-				if subject := identities[legacyIdentityKey(tenantID, value)]; subject != "" {
-					candidates = append(candidates, Candidate{Source: candidateColumn.Source, Subject: subject})
-				} else {
-					unmappedCandidate = true
-				}
-			}
 		}
-		subject, _ := ResolveCandidates(candidates)
-		if unmappedCandidate {
-			subject = ""
+		rawCandidates := make([]Candidate, 0, len(spec.CandidateColumns))
+		for index, candidateColumn := range spec.CandidateColumns {
+			rawCandidates = append(rawCandidates, Candidate{Source: candidateColumn.Source, Subject: candidateValues[index]})
 		}
+		subject, _ := resolveCandidateValues(spec.CandidatePolicy, tenantID, rawCandidates, identities)
 		if subject != "" {
 			groups = append(groups, candidateGroup{TenantID: tenantID, CandidateValues: candidateValues, Subject: subject, Rows: rowCount})
 		}
@@ -405,7 +400,7 @@ func legacyIdentityKey(tenantID, legacyUserID string) string {
 	return tenantID + "\x00" + legacyUserID
 }
 
-func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identities map[string]string) (findings []Finding, autoRows int64, resolutions []Resolution, resultErr error) {
+func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identities map[string]string) (findings []Finding, systemOwnedFindings []Finding, autoRows int64, resolutions []Resolution, resultErr error) {
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil && resultErr == nil {
 			resultErr = fmt.Errorf("close owner reconciliation rows for %s failed", spec.Table)
@@ -419,7 +414,7 @@ func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identiti
 	tenantIndex, tenantOK := columnIndex["tenant_id"]
 	countIndex, countOK := columnIndex["row_count"]
 	if !tenantOK || !countOK {
-		return nil, 0, nil, fmt.Errorf("owner reconciliation table %s omitted tenant_id or row_count", spec.Table)
+		return nil, nil, 0, nil, fmt.Errorf("owner reconciliation table %s omitted tenant_id or row_count", spec.Table)
 	}
 	for rows.Next() {
 		values := make([]any, len(spec.Columns))
@@ -429,34 +424,26 @@ func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identiti
 		}
 		if err := rows.Scan(pointers...); err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, 0, nil, ctxErr
+				return nil, nil, 0, nil, ctxErr
 			}
-			return nil, 0, nil, fmt.Errorf("scan owner reconciliation rows for %s failed", spec.Table)
+			return nil, nil, 0, nil, fmt.Errorf("scan owner reconciliation rows for %s failed", spec.Table)
 		}
 		tenantID := sqlText(values[tenantIndex])
 		rowCount, err := sqlInt64(values[countIndex])
 		if err != nil {
-			return nil, 0, nil, fmt.Errorf("scan row count for %s failed", spec.Table)
+			return nil, nil, 0, nil, fmt.Errorf("scan row count for %s failed", spec.Table)
 		}
-		candidates := make([]Candidate, 0, len(spec.CandidateColumns))
 		fingerprintParts := make([]string, 0, len(spec.CandidateColumns))
-		unmappedCandidate := false
+		rawCandidates := make([]Candidate, 0, len(spec.CandidateColumns))
 		for _, candidateColumn := range spec.CandidateColumns {
 			value := sqlText(values[columnIndex[candidateColumn.Name]])
+			rawCandidates = append(rawCandidates, Candidate{Source: candidateColumn.Source, Subject: value})
 			if value == "" {
 				continue
 			}
 			fingerprintParts = append(fingerprintParts, candidateColumn.Source+"="+value)
-			if subject := identities[legacyIdentityKey(tenantID, value)]; subject != "" {
-				candidates = append(candidates, Candidate{Source: candidateColumn.Source, Subject: subject})
-			} else {
-				unmappedCandidate = true
-			}
 		}
-		subject, reason := ResolveCandidates(candidates)
-		if unmappedCandidate {
-			subject, reason = "", "unmapped_candidate"
-		}
+		subject, reason := resolveCandidateValues(spec.CandidatePolicy, tenantID, rawCandidates, identities)
 		if subject != "" {
 			autoRows += rowCount
 			resolutions = append(resolutions, Resolution{
@@ -468,21 +455,26 @@ func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identiti
 			})
 			continue
 		}
-		findings = append(findings, Finding{
+		finding := Finding{
 			Table:             spec.Table,
 			TenantFingerprint: shortFingerprint(tenantID),
 			OwnerFingerprint:  shortFingerprint(strings.Join(fingerprintParts, ";")),
 			Rows:              rowCount,
 			Reason:            reason,
-		})
+		}
+		if reason == "system_owned" {
+			systemOwnedFindings = append(systemOwnedFindings, finding)
+		} else {
+			findings = append(findings, finding)
+		}
 	}
 	if err := rows.Err(); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return nil, 0, nil, ctxErr
+			return nil, nil, 0, nil, ctxErr
 		}
-		return nil, 0, nil, fmt.Errorf("iterate owner reconciliation rows for %s failed", spec.Table)
+		return nil, nil, 0, nil, fmt.Errorf("iterate owner reconciliation rows for %s failed", spec.Table)
 	}
-	return findings, autoRows, resolutions, nil
+	return findings, systemOwnedFindings, autoRows, resolutions, nil
 }
 
 func sqlText(value any) string {

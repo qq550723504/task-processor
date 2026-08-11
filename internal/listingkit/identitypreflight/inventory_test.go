@@ -76,6 +76,17 @@ func TestOwnerTableInventoryMatchesOwnerScopedModels(t *testing.T) {
 	}
 }
 
+func TestSystemOwnedNativeTablesIgnoreBlankOwnerRows(t *testing.T) {
+	for _, table := range ownerTableInventory {
+		switch table.Table {
+		case "listing_kit_tasks", "listingkit_shein_pod_image_indexes", "listingkit_studio_async_jobs", "listingkit_studio_batches", "listingkit_studio_batch_items", "listingkit_studio_generation_attempts", "listingkit_studio_materialized_designs", "listingkit_studio_batch_task_links", "listingkit_studio_batch_runs", "listingkit_studio_batch_run_items", "shein_studio_sessions":
+			if table.BlankUserPolicy != BlankUserPolicyIgnore {
+				t.Fatalf("%s blank policy = %v, want system-owned rows ignored", table.Table, table.BlankUserPolicy)
+			}
+		}
+	}
+}
+
 func TestDiscoverOwnerTablesIncludesConventionBasedGORMColumns(t *testing.T) {
 	t.Parallel()
 

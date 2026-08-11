@@ -32,6 +32,21 @@ func TestOwnerReconciliationInventoryIsFixedAndComplete(t *testing.T) {
 	}
 }
 
+func TestOwnerReconciliationInventoryUsesApprovedCandidatePolicies(t *testing.T) {
+	for _, spec := range ownerReconciliationInventory {
+		switch spec.Table {
+		case "listing_product_import_mapping":
+			if spec.CandidatePolicy != CandidatePolicyStoreOnly {
+				t.Fatalf("%s policy = %v, want store-only", spec.Table, spec.CandidatePolicy)
+			}
+		default:
+			if spec.CandidatePolicy != CandidatePolicyCreatorFirst && spec.CandidatePolicy != CandidatePolicySystemOwned {
+				t.Fatalf("%s policy = %v, want an approved policy", spec.Table, spec.CandidatePolicy)
+			}
+		}
+	}
+}
+
 func TestInventoryReturnsDefensiveCopy(t *testing.T) {
 	first := Inventory()
 	if len(first) == 0 {
@@ -64,10 +79,10 @@ func TestInventoryUpdatesPreserveAbsentOptionalRelations(t *testing.T) {
 		if spec.Table != "listing_product_import_task" && spec.Table != "listing_product_import_mapping" && spec.Table != "listing_product_data" {
 			continue
 		}
-		if !strings.Contains(spec.UpdateQuery, "($5 = '' AND $6 = '') OR EXISTS") {
+		if spec.Table == "listing_product_import_task" && !strings.Contains(spec.UpdateQuery, "($5 = '' AND $6 = '') OR EXISTS") {
 			t.Fatalf("inventory spec %s does not preserve absent task relation", spec.Table)
 		}
-		if spec.Table != "listing_product_import_task" && !strings.Contains(spec.UpdateQuery, "($7 = '' AND $8 = '') OR EXISTS") {
+		if spec.Table == "listing_product_data" && !strings.Contains(spec.UpdateQuery, "($7 = '' AND $8 = '') OR EXISTS") {
 			t.Fatalf("inventory spec %s does not preserve absent store relation", spec.Table)
 		}
 	}
