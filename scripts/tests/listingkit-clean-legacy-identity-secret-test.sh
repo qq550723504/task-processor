@@ -15,8 +15,12 @@ cat > "$temp_dir/kubectl" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "${FAKE_KUBECTL_LOG:?}"
+if [[ "$*" == *"get secret listingkit-workbench-secret -o jsonpath="* ]]; then
+  printf '%s\n' 'bGVnYWN5'
+  exit 0
+fi
 if [[ "$*" == *"get secret listingkit-workbench-secret -o json"* ]]; then
-  printf '%s\n' '{"data":{"LISTINGKIT_ZITADEL_ALLOWED_USERNAMES":"bGVnYWN5","LISTINGKIT_ZITADEL_ALLOWED_ROLES":"bGVnYWN5","TASK_PROCESSOR_DATABASE_HOST":"c2VydmljZQ=="}}'
+  printf '%s\n' '{"data":{"LISTINGKIT_ZITADEL_ALLOWED_USERNAMES":"bGVnYWN5","TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES":"cHJpbWFyeQ==","LISTINGKIT_ZITADEL_ALLOWED_ROLES":"bGVnYWN5","TASK_PROCESSOR_DATABASE_HOST":"c2VydmljZQ=="}}'
   exit 0
 fi
 if [[ "$*" == *"patch secret listingkit-workbench-secret"* ]]; then
@@ -34,7 +38,9 @@ export FAKE_KUBECTL_PATCH="$temp_dir/kubectl.patch"
 "$driver" task-processor listingkit-workbench-secret
 patch_call="$(cat "$FAKE_KUBECTL_PATCH")"
 [[ "$patch_call" == *'/data/LISTINGKIT_ZITADEL_ALLOWED_USERNAMES'* ]]
+[[ "$patch_call" == *'/data/TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES'* ]]
 [[ "$patch_call" == *'/data/LISTINGKIT_ZITADEL_ALLOWED_ROLES'* ]]
-[[ "$patch_call" != *'bGVnYWN5'* ]]
+[[ "$patch_call" == *'/data/TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES'* ]]
+[[ "$patch_call" == *'bGVnYWN5'* ]]
 
 printf '%s\n' 'listingkit legacy identity Secret cleanup tests passed'

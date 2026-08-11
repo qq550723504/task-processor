@@ -222,6 +222,7 @@ jobs:
           sparse-checkout: |
             scripts/validate-listingkit-invitation-secret.sh
             scripts/listingkit-schema-migrate-job.sh
+            scripts/listingkit-clean-legacy-identity-secret.sh
             scripts/listingkit-identity-preflight-job.sh
             scripts/listingkit-apply-api-deployment.sh
             scripts/lib/listingkit-immutable-image.sh

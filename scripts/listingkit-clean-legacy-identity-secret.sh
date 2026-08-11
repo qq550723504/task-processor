@@ -9,14 +9,33 @@ if ! secret_json="$(kubectl -n "$namespace" get secret "$secret" -o json 2>&1)";
   exit 1
 fi
 
+has_key() {
+  grep -Eq "\"$1\"[[:space:]]*:" <<<"$secret_json"
+}
+
 patch_parts=()
 for key in \
   LISTINGKIT_ZITADEL_ALLOWED_USERNAMES \
-  LISTINGKIT_ZITADEL_ALLOWED_ROLES; do
-  if grep -Eq "\"${key}\"[[:space:]]*:" <<<"$secret_json"; then
+  TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES; do
+  if has_key "$key"; then
     patch_parts+=("{\"op\":\"remove\",\"path\":\"/data/${key}\"}")
   fi
 done
+
+legacy_roles_key=LISTINGKIT_ZITADEL_ALLOWED_ROLES
+canonical_roles_key=TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES
+if has_key "$legacy_roles_key"; then
+  if has_key "$canonical_roles_key"; then
+    patch_parts+=("{\"op\":\"remove\",\"path\":\"/data/${legacy_roles_key}\"}")
+  else
+    if ! legacy_roles_value="$(kubectl -n "$namespace" get secret "$secret" -o "jsonpath={.data.${legacy_roles_key}}" 2>&1)"; then
+      printf 'could not read deprecated ListingKit roles from shared Secret %s\n' "$secret" >&2
+      exit 1
+    fi
+    patch_parts+=("{\"op\":\"add\",\"path\":\"/data/${canonical_roles_key}\",\"value\":\"${legacy_roles_value}\"}")
+    patch_parts+=("{\"op\":\"remove\",\"path\":\"/data/${legacy_roles_key}\"}")
+  fi
+fi
 
 patch="[$(IFS=,; printf '%s' "${patch_parts[*]}")]"
 

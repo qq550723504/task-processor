@@ -164,11 +164,16 @@ func TestListingKitDeployRemovesDeprecatedIdentityKeysBeforePreflight(t *testing
 	}
 	for _, key := range []string{
 		"LISTINGKIT_ZITADEL_ALLOWED_USERNAMES",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES",
 		"LISTINGKIT_ZITADEL_ALLOWED_ROLES",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES",
 	} {
 		if !strings.Contains(string(script), key) {
 			t.Errorf("cleanup script must remove deprecated key %q", key)
 		}
+	}
+	if !strings.Contains(string(content), "scripts/listingkit-clean-legacy-identity-secret.sh") {
+		t.Error("deploy-api sparse checkout must include the legacy identity Secret cleanup driver")
 	}
 }
 
