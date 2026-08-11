@@ -144,6 +144,54 @@ func TestListingKitIdentityPreflightJobDeadlineMatchesDriverWait(t *testing.T) {
 	}
 }
 
+func TestListingKitSchemaMigrationJobDeadlineMatchesDriverWait(t *testing.T) {
+	manifestPath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "jobs", "listingkit-schema-migrate-job.yaml")
+	content, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read ListingKit schema migration Job manifest: %v", err)
+	}
+
+	var job struct {
+		Spec struct {
+			ActiveDeadlineSeconds int `yaml:"activeDeadlineSeconds"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(content, &job); err != nil {
+		t.Fatalf("parse ListingKit schema migration Job: %v", err)
+	}
+
+	if job.Spec.ActiveDeadlineSeconds != 15*60 {
+		t.Fatalf("schema migration Job deadline must match the driver's 15-minute wait, got %d seconds", job.Spec.ActiveDeadlineSeconds)
+	}
+}
+
+func TestListingKitFirstControlledDeploymentUsesSchemaMigrationDriver(t *testing.T) {
+	readmePath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "README.md")
+	content, err := os.ReadFile(readmePath)
+	if err != nil {
+		t.Fatalf("read ListingKit deployment README: %v", err)
+	}
+	text := string(content)
+	start := strings.Index(text, "### First controlled deployment")
+	end := strings.Index(text, "The two Jobs import the production ConfigMap")
+	if start < 0 || end <= start {
+		t.Fatal("could not isolate the first controlled deployment procedure")
+	}
+	procedure := text[start:end]
+	for _, required := range []string{
+		"bash scripts/listingkit-schema-migrate-job.sh",
+		"--manifest deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml",
+		"--image \"$apiCandidateImage\"",
+	} {
+		if !strings.Contains(procedure, required) {
+			t.Errorf("first controlled deployment procedure must contain %q", required)
+		}
+	}
+	if strings.Contains(procedure, `"listingkit-schema-migrate-job.yaml"`) {
+		t.Error("first controlled deployment must not render the ListingKit schema manifest with the legacy tag replacement loop")
+	}
+}
+
 func TestListingKitPreflightDocumentationUsesDigestPinnedCandidateAndRunner(t *testing.T) {
 	for _, path := range []string{
 		filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "README.md"),
