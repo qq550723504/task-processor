@@ -3,6 +3,7 @@ package schema
 import "gorm.io/gorm"
 
 const systemOwnedExceptionRegistryTable = "listingkit_owner_scope_system_owned_exceptions"
+const systemOwnedExceptionRegistryIndex = "listingkit_owner_scope_system_owned_exceptions_active_idx"
 
 func autoMigrateSystemOwnedExceptionRegistry(db *gorm.DB) error {
 	if err := db.Exec(`CREATE TABLE IF NOT EXISTS listingkit_owner_scope_system_owned_exceptions (
@@ -37,6 +38,9 @@ func autoMigrateSystemOwnedExceptionRegistry(db *gorm.DB) error {
 			return err
 		}
 	}
-	return db.Exec(`CREATE INDEX IF NOT EXISTS listingkit_owner_scope_system_owned_exceptions_active_idx
-        ON listingkit_owner_scope_system_owned_exceptions (active, table_name, tenant_fingerprint)`).Error
+	if db.Migrator().HasIndex(systemOwnedExceptionRegistryTable, systemOwnedExceptionRegistryIndex) {
+		return nil
+	}
+	return db.Exec(`CREATE INDEX listingkit_owner_scope_system_owned_exceptions_active_idx
+		ON listingkit_owner_scope_system_owned_exceptions (active, table_name, tenant_fingerprint)`).Error
 }
