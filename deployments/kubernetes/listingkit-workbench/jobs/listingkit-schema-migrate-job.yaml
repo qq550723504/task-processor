@@ -15,7 +15,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: listingkit-schema-migrate
-          image: docker.io/xuwei190/task-processor-product-listing-api:REPLACE_WITH_DEPLOYED_TAG
+          image: REPLACE_WITH_API_IMAGE
           imagePullPolicy: IfNotPresent
           command: ["/app/listingkit-schema-migrate"]
           args: ["-config", "/app/config/config-prod.yaml", "-scope", "all", "-log-level", "info"]

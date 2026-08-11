@@ -113,15 +113,15 @@ func (repository Repository) DryRun(ctx context.Context, identities []LegacyIden
 	return NewReportWithClassifiedFindings("", "", findings, systemOwnedFindings, autoRows, resolutions), nil
 }
 
-func (repository Repository) systemOwnedExceptionIndex(ctx context.Context) (map[string]struct{}, error) {
+func (repository Repository) systemOwnedExceptionIndex(ctx context.Context) (map[string]int64, error) {
 	if repository.Exceptions == nil {
-		return map[string]struct{}{}, nil
+		return map[string]int64{}, nil
 	}
 	items, err := repository.Exceptions.ListActive(ctx)
 	if err != nil {
 		return nil, err
 	}
-	index := make(map[string]struct{}, len(items))
+	index := make(map[string]int64, len(items))
 	for _, item := range items {
 		if err := validateSystemOwnedException(item); err != nil {
 			return nil, err
@@ -130,7 +130,7 @@ func (repository Repository) systemOwnedExceptionIndex(ctx context.Context) (map
 		if _, exists := index[key]; exists {
 			return nil, errors.New("owner exception registry contains duplicate keys")
 		}
-		index[key] = struct{}{}
+		index[key] = item.Rows
 	}
 	return index, nil
 }
@@ -360,7 +360,7 @@ type candidateGroup struct {
 	Rows            int64
 }
 
-func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec, identities map[string]string, exceptionIndex map[string]struct{}) (groups []candidateGroup, resultErr error) {
+func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec, identities map[string]string, exceptionIndex map[string]int64) (groups []candidateGroup, resultErr error) {
 	if err := validateTableSpec(spec); err != nil {
 		return nil, err
 	}
@@ -425,7 +425,7 @@ func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec
 			}
 		}
 		candidateFingerprint := shortFingerprint(strings.Join(fingerprintParts, ";"))
-		if _, exempted := exceptionIndex[systemOwnedExceptionKey(spec.Table, shortFingerprint(tenantID), candidateFingerprint)]; exempted {
+		if expectedRows, exempted := exceptionIndex[systemOwnedExceptionKey(spec.Table, shortFingerprint(tenantID), candidateFingerprint)]; exempted && expectedRows == rowCount {
 			continue
 		}
 		subject, _ := resolveCandidateValues(spec.CandidatePolicy, tenantID, rawCandidates, identities)
@@ -510,7 +510,7 @@ func legacyIdentityKey(tenantID, legacyUserID string) string {
 	return tenantID + "\x00" + legacyUserID
 }
 
-func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identities map[string]string, exceptionIndex map[string]struct{}) (findings []Finding, systemOwnedFindings []Finding, autoRows int64, resolutions []Resolution, resultErr error) {
+func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identities map[string]string, exceptionIndex map[string]int64) (findings []Finding, systemOwnedFindings []Finding, autoRows int64, resolutions []Resolution, resultErr error) {
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil && resultErr == nil {
 			resultErr = fmt.Errorf("close owner reconciliation rows for %s failed", spec.Table)
@@ -554,7 +554,7 @@ func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identiti
 			fingerprintParts = append(fingerprintParts, candidateColumn.Source+"="+value)
 		}
 		candidateFingerprint := shortFingerprint(strings.Join(fingerprintParts, ";"))
-		if _, exempted := exceptionIndex[systemOwnedExceptionKey(spec.Table, shortFingerprint(tenantID), candidateFingerprint)]; exempted {
+		if expectedRows, exempted := exceptionIndex[systemOwnedExceptionKey(spec.Table, shortFingerprint(tenantID), candidateFingerprint)]; exempted && expectedRows == rowCount {
 			systemOwnedFindings = append(systemOwnedFindings, Finding{
 				Table: spec.Table, TenantFingerprint: shortFingerprint(tenantID), OwnerFingerprint: candidateFingerprint,
 				Rows: rowCount, Reason: "system_owned",
@@ -625,4 +625,3 @@ func sqlInt64(value any) (int64, error) {
 		return 0, fmt.Errorf("unsupported count type %T", value)
 	}
 }
-

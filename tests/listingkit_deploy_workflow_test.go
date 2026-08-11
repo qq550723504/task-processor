@@ -88,6 +88,41 @@ func TestListingKitDeployPreflightsBeforeItsOnlyDeploymentMutation(t *testing.T)
 	}
 }
 
+func TestListingKitSchemaMigrationRunsBeforeIdentityPreflight(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string `yaml:"name"`
+				Run  string `yaml:"run"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(content, &workflow); err != nil {
+		t.Fatalf("parse ListingKit deploy workflow: %v", err)
+	}
+	deployJob := workflow.Jobs["deploy-api"]
+	schemaIndex, preflightIndex := -1, -1
+	for index, step := range deployJob.Steps {
+		if strings.Contains(step.Run, "scripts/listingkit-schema-migrate-job.sh") {
+			schemaIndex = index
+			if !strings.Contains(step.Run, "listingkit-schema-migrate-job.yaml") || !strings.Contains(step.Run, "--image \"$API_CANDIDATE_IMAGE\"") {
+				t.Errorf("schema migration step must use the immutable API candidate and ListingKit schema manifest")
+			}
+		}
+		if strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
+			preflightIndex = index
+		}
+	}
+	if schemaIndex < 0 || preflightIndex < 0 || schemaIndex >= preflightIndex {
+		t.Fatalf("schema migration must run before identity preflight, schema=%d preflight=%d", schemaIndex, preflightIndex)
+	}
+}
+
 func TestListingKitIdentityPreflightJobDeadlineMatchesDriverWait(t *testing.T) {
 	manifestPath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "jobs", "listingkit-identity-preflight-job.yaml")
 	content, err := os.ReadFile(manifestPath)

@@ -310,6 +310,14 @@ immutable API image that will be released. A failed Job is a No-Go: investigate
 and use an approved roll-forward or restore procedure instead of deleting or
 editing the production schema manually.
 
+The ListingKit deployment workflow runs the ListingKit schema migration Job
+before the identity preflight. For an environment carrying the reviewed
+system-owned exception set, run the one-shot
+`scripts/listingkit-owner-scope-exceptions.ps1` seeder after that migration and
+before the preflight. The seeder validates the live report fingerprint and
+counts, so an empty or newly changed exception set remains a release blocker;
+the workflow never copies approved exceptions into an unrelated database.
+
 ### Identity preflight release gate
 
 Every API release must pass the read-only identity preflight in the target

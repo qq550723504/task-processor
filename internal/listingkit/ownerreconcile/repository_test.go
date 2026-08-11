@@ -136,6 +136,7 @@ func TestRepositoryDryRunClassifiesExactExceptionAsSystemOwned(t *testing.T) {
 			TenantFingerprint:    shortFingerprint("tenant-1"),
 			CandidateFingerprint: shortFingerprint("creator=legacy-unknown"),
 			ReportFingerprint:    "648cdfab03c4",
+			Rows:                 2,
 			Reason:               "legacy orphaned owner",
 		}}},
 	}
@@ -145,6 +146,31 @@ func TestRepositoryDryRunClassifiesExactExceptionAsSystemOwned(t *testing.T) {
 	}
 	if report.Summary.UnresolvedRows != 0 || report.Summary.AutoRows != 0 || report.Summary.SystemOwnedRows != 2 || len(report.Findings) != 0 || len(report.SystemOwnedFindings) != 1 {
 		t.Fatalf("report = %+v, want exact exception to be system-owned", report)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRepositoryDryRunDoesNotExemptRowsOutsideApprovedGroupCount(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	query := `SELECT tenant_id, creator, COUNT(*) FROM listing_store WHERE owner_user_id IS NULL GROUP BY tenant_id, creator`
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "creator", "row_count"}).AddRow("tenant-1", "legacy-unknown", int64(3)))
+	repository := Repository{Queryer: db, Inventory: []TableSpec{{
+		Table: "listing_store", Query: query, Columns: []string{"tenant_id", "creator", "row_count"}, CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}},
+	}}, Exceptions: exceptionStoreStub{items: []SystemOwnedException{{
+		Table: "listing_store", TenantFingerprint: shortFingerprint("tenant-1"), CandidateFingerprint: shortFingerprint("creator=legacy-unknown"), ReportFingerprint: ApprovedSystemOwnedExceptionReport, Rows: 2, Reason: "legacy orphaned owner",
+	}}}}
+	report, err := repository.DryRun(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.UnresolvedRows != 3 || report.Summary.SystemOwnedRows != 0 || len(report.Findings) != 1 {
+		t.Fatalf("report = %+v, want mismatched exception count to remain unresolved", report)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)
@@ -674,4 +700,3 @@ func TestRepositoryApplyUniqueRejectsRowsLeftByFinalRescan(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-

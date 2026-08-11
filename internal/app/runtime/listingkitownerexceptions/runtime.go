@@ -59,11 +59,16 @@ func defaultRuntimeDependencies() runtimeDependencies {
 			if db == nil {
 				return false, nil
 			}
-			var name sql.NullString
-			if err := db.QueryRowContext(ctx, "SELECT to_regclass($1)", "projections.org_metadata2").Scan(&name); err != nil {
-				return false, err
+			for _, table := range []string{"projections.org_metadata2", "projections.user_metadata5"} {
+				var name sql.NullString
+				if err := db.QueryRowContext(ctx, "SELECT to_regclass($1)", table).Scan(&name); err != nil {
+					return false, err
+				}
+				if !name.Valid || strings.TrimSpace(name.String) == "" {
+					return false, nil
+				}
 			}
-			return name.Valid && strings.TrimSpace(name.String) != "", nil
+			return true, nil
 		},
 		RunReconciliation: func(ctx context.Context, ownerDB, metadataDB *sql.DB) (ownerreconcile.Report, error) {
 			identities, err := ownerreconcile.LoadLegacyIdentities(ctx, metadataDB)
@@ -165,22 +170,52 @@ func runWithDependencies(ctx context.Context, options Options, deps runtimeDepen
 }
 
 func openMetadataDB(ctx context.Context, base *config.DatabaseConfig, deps runtimeDependencies) (*sql.DB, error) {
+	var selected *sql.DB
 	for _, name := range []string{"zitadel_auth", "zitadel"} {
 		candidate := *base
 		candidate.Database = name
 		db, err := deps.OpenMetadataDB(&candidate)
-		if err != nil || db == nil {
+		if err != nil {
+			if !isMissingMetadataDatabaseError(err) {
+				return nil, errors.New("connect owner exception metadata database failed")
+			}
 			continue
+		}
+		if db == nil {
+			return nil, errors.New("connect owner exception metadata database failed")
 		}
 		exists, probeErr := deps.MetadataTableExists(ctx, db)
 		if probeErr != nil {
 			_ = deps.CloseDB(db)
 			return nil, errors.New("probe owner exception metadata failed")
 		}
-		if exists {
-			return db, nil
+		if !exists {
+			_ = deps.CloseDB(db)
+			continue
 		}
-		_ = deps.CloseDB(db)
+		if selected != nil {
+			_ = deps.CloseDB(db)
+			_ = deps.CloseDB(selected)
+			return nil, errors.New("multiple owner exception metadata databases are available")
+		}
+		selected = db
+	}
+	if selected != nil {
+		return selected, nil
 	}
 	return nil, errors.New("owner exception metadata database is unavailable")
+}
+
+func isMissingMetadataDatabaseError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var stateErr interface{ SQLState() string }
+	if errors.As(err, &stateErr) && stateErr.SQLState() == "3D000" {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "sqlstate 3d000") ||
+		strings.Contains(message, "sqlstate=3d000") ||
+		(strings.Contains(message, `database "`) && strings.Contains(message, " does not exist"))
 }

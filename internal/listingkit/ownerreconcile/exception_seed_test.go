@@ -37,10 +37,14 @@ func TestInsertSystemOwnedExceptionsUsesOneTransaction(t *testing.T) {
 	}
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO listingkit_owner_scope_system_owned_exceptions
-    (table_name, tenant_fingerprint, candidate_fingerprint, report_fingerprint, reason, active)
-VALUES ($1, $2, $3, $4, $5, TRUE)
-ON CONFLICT (table_name, tenant_fingerprint, candidate_fingerprint) DO NOTHING`)).
-		WithArgs("listing_store", "sha256:000000000000", "sha256:111111111111", "648cdfab03c4", "approved current orphaned owner").
+	(table_name, tenant_fingerprint, candidate_fingerprint, report_fingerprint, reason, row_count, active)
+VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+ON CONFLICT (table_name, tenant_fingerprint, candidate_fingerprint) DO UPDATE SET
+    report_fingerprint = EXCLUDED.report_fingerprint,
+    reason = EXCLUDED.reason,
+    row_count = EXCLUDED.row_count,
+    active = TRUE`)).
+		WithArgs("listing_store", "sha256:000000000000", "sha256:111111111111", "648cdfab03c4", "approved current orphaned owner", int64(1)).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 

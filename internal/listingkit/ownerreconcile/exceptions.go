@@ -24,6 +24,7 @@ type SystemOwnedException struct {
 	CandidateFingerprint string
 	ReportFingerprint    string
 	Reason               string
+	Rows                 int64
 }
 
 // ExceptionStore supplies the active, explicitly approved system-owned keys.
@@ -31,7 +32,7 @@ type ExceptionStore interface {
 	ListActive(context.Context) ([]SystemOwnedException, error)
 }
 
-const systemOwnedExceptionQuery = `SELECT table_name, tenant_fingerprint, candidate_fingerprint, report_fingerprint, reason
+const systemOwnedExceptionQuery = `SELECT table_name, tenant_fingerprint, candidate_fingerprint, report_fingerprint, reason, row_count
 FROM listingkit_owner_scope_system_owned_exceptions
 WHERE active = TRUE
 ORDER BY table_name, tenant_fingerprint, candidate_fingerprint`
@@ -65,7 +66,7 @@ func (store postgresExceptionStore) ListActive(ctx context.Context) ([]SystemOwn
 	seen := make(map[string]struct{})
 	for rows.Next() {
 		var item SystemOwnedException
-		if err := rows.Scan(&item.Table, &item.TenantFingerprint, &item.CandidateFingerprint, &item.ReportFingerprint, &item.Reason); err != nil {
+		if err := rows.Scan(&item.Table, &item.TenantFingerprint, &item.CandidateFingerprint, &item.ReportFingerprint, &item.Reason, &item.Rows); err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return nil, ctxErr
 			}
@@ -98,6 +99,8 @@ func validateSystemOwnedException(item SystemOwnedException) error {
 		!fingerprintPattern.MatchString(strings.TrimSpace(item.TenantFingerprint)) ||
 		!fingerprintPattern.MatchString(strings.TrimSpace(item.CandidateFingerprint)) ||
 		!reportFingerprintPattern.MatchString(strings.TrimSpace(item.ReportFingerprint)) ||
+		strings.TrimSpace(item.ReportFingerprint) != ApprovedSystemOwnedExceptionReport ||
+		item.Rows <= 0 ||
 		strings.TrimSpace(item.Reason) == "" {
 		return errors.New("owner exception registry contains an invalid exception")
 	}
@@ -154,11 +157,15 @@ func InsertSystemOwnedExceptions(ctx context.Context, db *sql.DB, report Report,
 	}
 	inserted := 0
 	const insertQuery = `INSERT INTO listingkit_owner_scope_system_owned_exceptions
-    (table_name, tenant_fingerprint, candidate_fingerprint, report_fingerprint, reason, active)
-VALUES ($1, $2, $3, $4, $5, TRUE)
-ON CONFLICT (table_name, tenant_fingerprint, candidate_fingerprint) DO NOTHING`
+    (table_name, tenant_fingerprint, candidate_fingerprint, report_fingerprint, reason, row_count, active)
+VALUES ($1, $2, $3, $4, $5, $6, TRUE)
+ON CONFLICT (table_name, tenant_fingerprint, candidate_fingerprint) DO UPDATE SET
+    report_fingerprint = EXCLUDED.report_fingerprint,
+    reason = EXCLUDED.reason,
+    row_count = EXCLUDED.row_count,
+    active = TRUE`
 	for _, finding := range report.Findings {
-		result, execErr := tx.ExecContext(ctx, insertQuery, finding.Table, finding.TenantFingerprint, finding.OwnerFingerprint, report.ReportFingerprint, reason)
+		result, execErr := tx.ExecContext(ctx, insertQuery, finding.Table, finding.TenantFingerprint, finding.OwnerFingerprint, report.ReportFingerprint, reason, finding.Rows)
 		if execErr != nil {
 			_ = tx.Rollback()
 			if ctxErr := ctx.Err(); ctxErr != nil {
