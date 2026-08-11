@@ -87,6 +87,14 @@ func TestSystemOwnedNativeTablesIgnoreBlankOwnerRows(t *testing.T) {
 	}
 }
 
+func TestLegacyOwnerTablesIgnoreBlankOwnerRows(t *testing.T) {
+	for _, table := range ownerTableInventory {
+		if table.TenantDomain == TenantDomainLegacyNumeric && table.BlankUserPolicy != BlankUserPolicyIgnore {
+			t.Fatalf("%s blank policy = %v, want ownerless system rows ignored", table.Table, table.BlankUserPolicy)
+		}
+	}
+}
+
 func TestDiscoverOwnerTablesIncludesConventionBasedGORMColumns(t *testing.T) {
 	t.Parallel()
 
