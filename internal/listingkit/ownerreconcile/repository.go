@@ -53,6 +53,8 @@ type ApplySummary struct {
 
 var ErrReportConfirmationMismatch = errors.New("owner reconciliation report confirmation mismatch")
 
+const postgresUndefinedTableSQLState = "42P01"
+
 var ownerReconcileIdentifier = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 func (repository Repository) DryRun(ctx context.Context, identities []LegacyIdentity) (Report, error) {
@@ -71,16 +73,32 @@ func (repository Repository) DryRun(ctx context.Context, identities []LegacyIden
 		if err := validateTableSpec(spec); err != nil {
 			return Report{}, err
 		}
+		releaseSavepoint, err := beginTableSavepoint(ctx, repository.Queryer)
+		if err != nil {
+			return Report{}, err
+		}
 		rows, err := repository.Queryer.QueryContext(ctx, spec.Query)
 		if err != nil {
 			if ctxErr := ctx.Err(); ctxErr != nil {
+				_ = releaseSavepoint(false)
 				return Report{}, ctxErr
 			}
+			if isPostgresUndefinedTable(err) {
+				if savepointErr := releaseSavepoint(false); savepointErr != nil {
+					return Report{}, savepointErr
+				}
+				continue
+			}
+			_ = releaseSavepoint(false)
 			return Report{}, fmt.Errorf("query owner reconciliation table %s failed", spec.Table)
 		}
 		rowsFindings, rowsSystemOwned, rowsAuto, rowsResolutions, scanErr := scanTableRows(ctx, rows, spec, identityMap)
 		if scanErr != nil {
+			_ = releaseSavepoint(false)
 			return Report{}, scanErr
+		}
+		if err := releaseSavepoint(true); err != nil {
+			return Report{}, err
 		}
 		findings = append(findings, rowsFindings...)
 		systemOwnedFindings = append(systemOwnedFindings, rowsSystemOwned...)
@@ -88,6 +106,38 @@ func (repository Repository) DryRun(ctx context.Context, identities []LegacyIden
 		autoRows += rowsAuto
 	}
 	return NewReportWithClassifiedFindings("", "", findings, systemOwnedFindings, autoRows, resolutions), nil
+}
+
+const ownerReconcileTableSavepoint = "owner_reconcile_table"
+
+func beginTableSavepoint(ctx context.Context, queryer Queryer) (func(bool) error, error) {
+	tx, ok := queryer.(*sql.Tx)
+	if !ok {
+		return func(bool) error { return nil }, nil
+	}
+	if _, err := tx.ExecContext(ctx, "SAVEPOINT "+ownerReconcileTableSavepoint); err != nil {
+		return nil, errors.New("owner reconciliation savepoint failed")
+	}
+	return func(keep bool) error {
+		if !keep {
+			if _, err := tx.ExecContext(ctx, "ROLLBACK TO SAVEPOINT "+ownerReconcileTableSavepoint); err != nil {
+				return errors.New("owner reconciliation savepoint rollback failed")
+			}
+		}
+		if _, err := tx.ExecContext(ctx, "RELEASE SAVEPOINT "+ownerReconcileTableSavepoint); err != nil {
+			return errors.New("owner reconciliation savepoint release failed")
+		}
+		return nil
+	}, nil
+}
+
+type sqlStateError interface {
+	SQLState() string
+}
+
+func isPostgresUndefinedTable(err error) bool {
+	var stateError sqlStateError
+	return errors.As(err, &stateError) && stateError.SQLState() == postgresUndefinedTableSQLState
 }
 
 // ApplyUnique revalidates the redacted report and applies only uniquely
@@ -216,7 +266,7 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 	if err != nil {
 		return ApplySummary{}, err
 	}
-	if finalReport.Summary.AffectedRows > 0 {
+	if finalReport.Summary.UnresolvedRows > 0 || finalReport.Summary.AutoRows > 0 {
 		return ApplySummary{}, errors.New("owner reconciliation left blank owner rows")
 	}
 	return summary, nil
@@ -279,11 +329,23 @@ func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec
 	if err := validateTableSpec(spec); err != nil {
 		return nil, err
 	}
+	releaseSavepoint, err := beginTableSavepoint(ctx, queryer)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := queryer.QueryContext(ctx, spec.Query)
 	if err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
+			_ = releaseSavepoint(false)
 			return nil, ctxErr
 		}
+		if isPostgresUndefinedTable(err) {
+			if savepointErr := releaseSavepoint(false); savepointErr != nil {
+				return nil, savepointErr
+			}
+			return nil, nil
+		}
+		_ = releaseSavepoint(false)
 		return nil, fmt.Errorf("query owner reconciliation table %s failed", spec.Table)
 	}
 	defer func() {
@@ -331,6 +393,9 @@ func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec
 			return nil, ctxErr
 		}
 		return nil, fmt.Errorf("iterate owner reconciliation rows for %s failed", spec.Table)
+	}
+	if err := releaseSavepoint(true); err != nil {
+		return nil, err
 	}
 	return groups, nil
 }
@@ -507,3 +572,4 @@ func sqlInt64(value any) (int64, error) {
 		return 0, fmt.Errorf("unsupported count type %T", value)
 	}
 }
+
