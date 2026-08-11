@@ -156,11 +156,11 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 		if reconcileErr != nil {
 			return errors.New("owner reconciliation preflight failed")
 		}
-		if report.Summary.UnresolvedRows > 0 {
+		if report.Summary.UnresolvedRows > 0 || report.Summary.AutoRows > 0 {
 			if err := report.SetFingerprint(); err != nil {
 				return errors.New("owner reconciliation preflight failed")
 			}
-			if _, err := fmt.Fprintf(deps.Output, "status=blocked owner_reconciliation=unresolved rows=%d system_owned_rows=%d report=%s\n", report.Summary.UnresolvedRows, report.Summary.SystemOwnedRows, report.ReportFingerprint); err != nil {
+			if _, err := fmt.Fprintf(deps.Output, "status=blocked owner_reconciliation=unresolved rows=%d auto_rows=%d system_owned_rows=%d report=%s\n", report.Summary.UnresolvedRows, report.Summary.AutoRows, report.Summary.SystemOwnedRows, report.ReportFingerprint); err != nil {
 				return errors.New("write owner reconciliation summary failed")
 			}
 			return errors.New("owner reconciliation preflight blocked")
@@ -256,12 +256,17 @@ func legacyTenantMetadataTableExists(db *gorm.DB) (bool, error) {
 	if db == nil {
 		return false, nil
 	}
-	result := struct {
-		Name *string `gorm:"column:name"`
-	}{}
-	if err := db.Raw("select to_regclass(?) as name", "projections.org_metadata2").Scan(&result).Error; err != nil {
-		return false, err
+	for _, table := range []string{"projections.org_metadata2", "projections.user_metadata5"} {
+		result := struct {
+			Name *string `gorm:"column:name"`
+		}{}
+		if err := db.Raw("select to_regclass(?) as name", table).Scan(&result).Error; err != nil {
+			return false, err
+		}
+		if result.Name == nil || strings.TrimSpace(*result.Name) == "" {
+			return false, nil
+		}
 	}
-	return result.Name != nil && strings.TrimSpace(*result.Name) != "", nil
+	return true, nil
 }
 
