@@ -9,6 +9,12 @@ import (
 	"strings"
 )
 
+const (
+	ApprovedSystemOwnedExceptionReport = "648cdfab03c4"
+	ApprovedSystemOwnedExceptionGroups = 312
+	ApprovedSystemOwnedExceptionRows   = int64(874891)
+)
+
 // SystemOwnedException is an audited, exact exception for one persisted
 // owner-reconciliation candidate group. Fingerprints intentionally avoid
 // carrying raw tenant or legacy-user identifiers outside the database scan.
@@ -96,4 +102,73 @@ func validateSystemOwnedException(item SystemOwnedException) error {
 
 func systemOwnedExceptionKey(table, tenantFingerprint, candidateFingerprint string) string {
 	return fmt.Sprintf("%s|%s|%s", table, tenantFingerprint, candidateFingerprint)
+}
+
+// ValidateApprovedExceptionReport accepts only the reviewed production
+// snapshot. The fixed fingerprint and counts prevent accidentally seeding a
+// later or broader report through the one-shot operator command.
+func ValidateApprovedExceptionReport(report Report, confirmation string) error {
+	if strings.TrimSpace(confirmation) != ApprovedSystemOwnedExceptionReport ||
+		strings.TrimSpace(report.ReportFingerprint) != ApprovedSystemOwnedExceptionReport {
+		return errors.New("approved owner exception report confirmation mismatch")
+	}
+	if len(report.Findings) != ApprovedSystemOwnedExceptionGroups ||
+		report.Summary.FindingGroups != ApprovedSystemOwnedExceptionGroups ||
+		report.Summary.UnresolvedRows != ApprovedSystemOwnedExceptionRows {
+		return errors.New("approved owner exception report shape changed")
+	}
+	for _, finding := range report.Findings {
+		if finding.Reason != "unmapped_candidate" {
+			return errors.New("approved owner exception report contains a non-unmapped finding")
+		}
+		if !fingerprintPattern.MatchString(finding.TenantFingerprint) || !fingerprintPattern.MatchString(finding.OwnerFingerprint) || !ownerReconcileIdentifier.MatchString(finding.Table) {
+			return errors.New("approved owner exception report contains an invalid finding")
+		}
+	}
+	fingerprint, err := report.Fingerprint()
+	if err != nil || fingerprint != ApprovedSystemOwnedExceptionReport {
+		return errors.New("approved owner exception report fingerprint changed")
+	}
+	return nil
+}
+
+// InsertSystemOwnedExceptions inserts the approved exception set without
+// touching any business table. Re-running the command is idempotent.
+func InsertSystemOwnedExceptions(ctx context.Context, db *sql.DB, report Report, reason string) (int, error) {
+	if db == nil {
+		return 0, errors.New("owner exception registry is unavailable")
+	}
+	if strings.TrimSpace(reason) == "" {
+		return 0, errors.New("owner exception reason is required")
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return 0, ctxErr
+		}
+		return 0, errors.New("begin owner exception registry transaction failed")
+	}
+	inserted := 0
+	const insertQuery = `INSERT INTO listingkit_owner_scope_system_owned_exceptions
+    (table_name, tenant_fingerprint, candidate_fingerprint, report_fingerprint, reason, active)
+VALUES ($1, $2, $3, $4, $5, TRUE)
+ON CONFLICT (table_name, tenant_fingerprint, candidate_fingerprint) DO NOTHING`
+	for _, finding := range report.Findings {
+		result, execErr := tx.ExecContext(ctx, insertQuery, finding.Table, finding.TenantFingerprint, finding.OwnerFingerprint, report.ReportFingerprint, reason)
+		if execErr != nil {
+			_ = tx.Rollback()
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return 0, ctxErr
+			}
+			return 0, errors.New("insert owner exception registry failed")
+		}
+		if affected, rowsErr := result.RowsAffected(); rowsErr == nil && affected > 0 {
+			inserted += int(affected)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		_ = tx.Rollback()
+		return 0, errors.New("commit owner exception registry failed")
+	}
+	return inserted, nil
 }
