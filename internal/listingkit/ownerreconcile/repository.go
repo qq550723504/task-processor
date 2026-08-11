@@ -41,6 +41,7 @@ type Repository struct {
 	Queryer    Queryer
 	Inventory  []TableSpec
 	Identities []LegacyIdentity
+	Exceptions ExceptionStore
 	Beginner   interface {
 		BeginTx(context.Context, *sql.TxOptions) (*sql.Tx, error)
 	}
@@ -62,6 +63,10 @@ func (repository Repository) DryRun(ctx context.Context, identities []LegacyIden
 		return Report{}, errors.New("owner reconciliation database is unavailable")
 	}
 	identityMap, err := indexLegacyIdentities(identities)
+	if err != nil {
+		return Report{}, err
+	}
+	exceptionIndex, err := repository.systemOwnedExceptionIndex(ctx)
 	if err != nil {
 		return Report{}, err
 	}
@@ -92,7 +97,7 @@ func (repository Repository) DryRun(ctx context.Context, identities []LegacyIden
 			_ = releaseSavepoint(false)
 			return Report{}, fmt.Errorf("query owner reconciliation table %s failed", spec.Table)
 		}
-		rowsFindings, rowsSystemOwned, rowsAuto, rowsResolutions, scanErr := scanTableRows(ctx, rows, spec, identityMap)
+		rowsFindings, rowsSystemOwned, rowsAuto, rowsResolutions, scanErr := scanTableRows(ctx, rows, spec, identityMap, exceptionIndex)
 		if scanErr != nil {
 			_ = releaseSavepoint(false)
 			return Report{}, scanErr
@@ -106,6 +111,28 @@ func (repository Repository) DryRun(ctx context.Context, identities []LegacyIden
 		autoRows += rowsAuto
 	}
 	return NewReportWithClassifiedFindings("", "", findings, systemOwnedFindings, autoRows, resolutions), nil
+}
+
+func (repository Repository) systemOwnedExceptionIndex(ctx context.Context) (map[string]struct{}, error) {
+	if repository.Exceptions == nil {
+		return map[string]struct{}{}, nil
+	}
+	items, err := repository.Exceptions.ListActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+	index := make(map[string]struct{}, len(items))
+	for _, item := range items {
+		if err := validateSystemOwnedException(item); err != nil {
+			return nil, err
+		}
+		key := systemOwnedExceptionKey(item.Table, item.TenantFingerprint, item.CandidateFingerprint)
+		if _, exists := index[key]; exists {
+			return nil, errors.New("owner exception registry contains duplicate keys")
+		}
+		index[key] = struct{}{}
+	}
+	return index, nil
 }
 
 const ownerReconcileTableSavepoint = "owner_reconcile_table"
@@ -190,6 +217,11 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 		_ = snapshotTx.Rollback()
 		return ApplySummary{}, err
 	}
+	exceptionIndex, err := repository.systemOwnedExceptionIndex(ctx)
+	if err != nil {
+		_ = snapshotTx.Rollback()
+		return ApplySummary{}, err
+	}
 	planned := make([]plannedGroup, 0)
 	for _, spec := range repository.Inventory {
 		if strings.TrimSpace(spec.UpdateQuery) == "" || len(spec.CandidateColumns) == 0 {
@@ -199,7 +231,7 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 			_ = snapshotTx.Rollback()
 			return ApplySummary{}, fmt.Errorf("owner reconciliation table %s has no bounded update limit", spec.Table)
 		}
-		groups, err := collectCandidateGroups(ctx, snapshotTx, spec, identityMap)
+		groups, err := collectCandidateGroups(ctx, snapshotTx, spec, identityMap, exceptionIndex)
 		if err != nil {
 			_ = snapshotTx.Rollback()
 			return ApplySummary{}, err
@@ -325,7 +357,7 @@ type candidateGroup struct {
 	Rows            int64
 }
 
-func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec, identities map[string]string) (groups []candidateGroup, resultErr error) {
+func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec, identities map[string]string, exceptionIndex map[string]struct{}) (groups []candidateGroup, resultErr error) {
 	if err := validateTableSpec(spec); err != nil {
 		return nil, err
 	}
@@ -382,6 +414,16 @@ func collectCandidateGroups(ctx context.Context, queryer Queryer, spec TableSpec
 		rawCandidates := make([]Candidate, 0, len(spec.CandidateColumns))
 		for index, candidateColumn := range spec.CandidateColumns {
 			rawCandidates = append(rawCandidates, Candidate{Source: candidateColumn.Source, Subject: candidateValues[index]})
+		}
+		fingerprintParts := make([]string, 0, len(spec.CandidateColumns))
+		for index, candidateColumn := range spec.CandidateColumns {
+			if candidateValues[index] != "" {
+				fingerprintParts = append(fingerprintParts, candidateColumn.Source+"="+candidateValues[index])
+			}
+		}
+		candidateFingerprint := shortFingerprint(strings.Join(fingerprintParts, ";"))
+		if _, exempted := exceptionIndex[systemOwnedExceptionKey(spec.Table, shortFingerprint(tenantID), candidateFingerprint)]; exempted {
+			continue
 		}
 		subject, _ := resolveCandidateValues(spec.CandidatePolicy, tenantID, rawCandidates, identities)
 		if subject != "" {
@@ -465,7 +507,7 @@ func legacyIdentityKey(tenantID, legacyUserID string) string {
 	return tenantID + "\x00" + legacyUserID
 }
 
-func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identities map[string]string) (findings []Finding, systemOwnedFindings []Finding, autoRows int64, resolutions []Resolution, resultErr error) {
+func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identities map[string]string, exceptionIndex map[string]struct{}) (findings []Finding, systemOwnedFindings []Finding, autoRows int64, resolutions []Resolution, resultErr error) {
 	defer func() {
 		if closeErr := rows.Close(); closeErr != nil && resultErr == nil {
 			resultErr = fmt.Errorf("close owner reconciliation rows for %s failed", spec.Table)
@@ -507,6 +549,14 @@ func scanTableRows(ctx context.Context, rows *sql.Rows, spec TableSpec, identiti
 				continue
 			}
 			fingerprintParts = append(fingerprintParts, candidateColumn.Source+"="+value)
+		}
+		candidateFingerprint := shortFingerprint(strings.Join(fingerprintParts, ";"))
+		if _, exempted := exceptionIndex[systemOwnedExceptionKey(spec.Table, shortFingerprint(tenantID), candidateFingerprint)]; exempted {
+			systemOwnedFindings = append(systemOwnedFindings, Finding{
+				Table: spec.Table, TenantFingerprint: shortFingerprint(tenantID), OwnerFingerprint: candidateFingerprint,
+				Rows: rowCount, Reason: "system_owned",
+			})
+			continue
 		}
 		subject, reason := resolveCandidateValues(spec.CandidatePolicy, tenantID, rawCandidates, identities)
 		if subject != "" {

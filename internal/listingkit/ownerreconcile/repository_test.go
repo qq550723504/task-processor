@@ -103,6 +103,53 @@ func TestRepositoryDryRunDoesNotAutoResolveUnmappedNonEmptyCandidate(t *testing.
 	}
 }
 
+type exceptionStoreStub struct {
+	items []SystemOwnedException
+	err   error
+}
+
+func (stub exceptionStoreStub) ListActive(context.Context) ([]SystemOwnedException, error) {
+	return stub.items, stub.err
+}
+
+func TestRepositoryDryRunClassifiesExactExceptionAsSystemOwned(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	query := `SELECT tenant_id, creator, COUNT(*) FROM listing_store WHERE owner_user_id IS NULL GROUP BY tenant_id, creator`
+	mock.ExpectQuery(regexp.QuoteMeta(query)).
+		WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "creator", "row_count"}).AddRow("tenant-1", "legacy-unknown", int64(2)))
+
+	repository := Repository{
+		Queryer: db,
+		Inventory: []TableSpec{{
+			Table: "listing_store", TenantDomain: TenantDomainLegacyNumeric, Query: query,
+			Columns:          []string{"tenant_id", "creator", "row_count"},
+			CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}},
+		}},
+		Exceptions: exceptionStoreStub{items: []SystemOwnedException{{
+			Table:                "listing_store",
+			TenantFingerprint:    shortFingerprint("tenant-1"),
+			CandidateFingerprint: shortFingerprint("creator=legacy-unknown"),
+			ReportFingerprint:    "648cdfab03c4",
+			Reason:               "legacy orphaned owner",
+		}}},
+	}
+	report, err := repository.DryRun(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.UnresolvedRows != 0 || report.Summary.AutoRows != 0 || report.Summary.SystemOwnedRows != 2 || len(report.Findings) != 0 || len(report.SystemOwnedFindings) != 1 {
+		t.Fatalf("report = %+v, want exact exception to be system-owned", report)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRepositoryDryRunSkipsOnlyPostgresUndefinedTables(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -129,7 +176,7 @@ func TestCollectCandidateGroupsSkipsPostgresUndefinedTables(t *testing.T) {
 	query := "SELECT tenant_id, creator, COUNT(*) FROM future_table WHERE owner_user_id IS NULL GROUP BY tenant_id, creator"
 	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnError(postgresStateError{state: "42P01", message: "relation future_table does not exist"})
 	spec := TableSpec{Table: "future_table", Query: query, Columns: []string{"tenant_id", "creator", "row_count"}, CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}}, UpdateQuery: "UPDATE future_table SET owner_user_id = $1", UpdateLimitArg: 4}
-	groups, err := collectCandidateGroups(context.Background(), db, spec, nil)
+	groups, err := collectCandidateGroups(context.Background(), db, spec, nil, nil)
 	if err != nil || len(groups) != 0 {
 		t.Fatalf("groups = %+v, err = %v, want missing table skipped", groups, err)
 	}
