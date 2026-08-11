@@ -44,3 +44,17 @@ func TestInventoryReturnsDefensiveCopy(t *testing.T) {
 		t.Fatalf("inventory was mutated through returned slice: %q", second[0].Table)
 	}
 }
+
+func TestInventoryUpdatesMatchBlankCandidatesExactly(t *testing.T) {
+	for _, spec := range ownerReconciliationInventory {
+		if spec.UpdateQuery == "" {
+			continue
+		}
+		if strings.Contains(spec.UpdateQuery, "($3 = '' OR") || strings.Contains(spec.UpdateQuery, "($4 = '' OR") {
+			t.Fatalf("inventory spec %s wildcarded a blank candidate", spec.Table)
+		}
+		if !strings.Contains(spec.UpdateQuery, "NULLIF(BTRIM(") {
+			t.Fatalf("inventory spec %s does not match blank candidates explicitly", spec.Table)
+		}
+	}
+}

@@ -159,3 +159,64 @@ func TestOpenMetadataDBFailsClosedOnProbeError(t *testing.T) {
 		t.Fatalf("opened=%d closed=%d, want one attempted and closed candidate", opened, closed)
 	}
 }
+
+func TestRunWithDependenciesBlocksExecuteWhenReportHasUnresolvedRows(t *testing.T) {
+	applyCalled := false
+	deps := runtimeDependencies{
+		LoadConfig: func(string) (*config.Config, error) {
+			return &config.Config{Database: &config.DatabaseConfig{Database: "app-db"}}, nil
+		},
+		OpenWritableDB: func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
+		OpenMetadataDB: func(candidate *config.DatabaseConfig) (*sql.DB, error) {
+			if candidate.Database != "zitadel_auth" {
+				return nil, errors.New("missing")
+			}
+			return &sql.DB{}, nil
+		},
+		MetadataTableExists: func(context.Context, *sql.DB) (bool, error) { return true, nil },
+		CloseDB:             func(*sql.DB) error { return nil },
+		RunReconciliation: func(context.Context, *sql.DB, *sql.DB) (ownerreconcile.Report, error) {
+			return ownerreconcile.NewReport("config.yaml", "app-db", []ownerreconcile.Finding{{Table: "listing_store", Rows: 1, Reason: "no_candidate"}}, 0), nil
+		},
+		ApplyReconciliation: func(context.Context, *sql.DB, *sql.DB, string, string, int) (ownerreconcile.ApplySummary, error) {
+			applyCalled = true
+			return ownerreconcile.ApplySummary{}, nil
+		},
+	}
+	err := runWithDependencies(context.Background(), Options{Config: "config.yaml", Execute: true, ConfirmReport: "confirmed", Output: filepath.Join(t.TempDir(), "report.json"), BatchSize: 10}, deps)
+	if err == nil || err.Error() != "owner reconciliation report contains unresolved rows" {
+		t.Fatalf("error = %v, want unresolved-row rejection", err)
+	}
+	if applyCalled {
+		t.Fatal("apply must not run when unresolved rows remain")
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("closed") }
+
+func TestRunWithDependenciesPropagatesSummaryWriteFailure(t *testing.T) {
+	deps := runtimeDependencies{
+		LoadConfig: func(string) (*config.Config, error) {
+			return &config.Config{Database: &config.DatabaseConfig{Database: "app-db"}}, nil
+		},
+		OpenDB: func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
+		OpenMetadataDB: func(candidate *config.DatabaseConfig) (*sql.DB, error) {
+			if candidate.Database != "zitadel_auth" {
+				return nil, errors.New("missing")
+			}
+			return &sql.DB{}, nil
+		},
+		MetadataTableExists: func(context.Context, *sql.DB) (bool, error) { return true, nil },
+		CloseDB:             func(*sql.DB) error { return nil },
+		RunReconciliation: func(context.Context, *sql.DB, *sql.DB) (ownerreconcile.Report, error) {
+			return ownerreconcile.NewReport("config.yaml", "app-db", nil, 0), nil
+		},
+		Output: failingWriter{},
+	}
+	err := runWithDependencies(context.Background(), Options{Config: "config.yaml", Output: filepath.Join(t.TempDir(), "report.json"), BatchSize: 10}, deps)
+	if err == nil || err.Error() != "write owner reconciliation summary failed" {
+		t.Fatalf("error = %v, want summary write failure", err)
+	}
+}

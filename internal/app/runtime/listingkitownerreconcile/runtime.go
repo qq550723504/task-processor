@@ -168,6 +168,9 @@ func runWithDependencies(ctx context.Context, options Options, deps runtimeDepen
 		return err
 	}
 	if options.Execute {
+		if report.Summary.UnresolvedRows > 0 {
+			return errors.New("owner reconciliation report contains unresolved rows")
+		}
 		if strings.TrimSpace(options.ConfirmReport) == "" {
 			return ownerreconcile.ErrReportConfirmationMismatch
 		}
@@ -175,10 +178,14 @@ func runWithDependencies(ctx context.Context, options Options, deps runtimeDepen
 		if err != nil {
 			return err
 		}
-		_, _ = fmt.Fprintf(deps.Output, "owner_reconciliation_report=%s rows=%d unresolved=%d updated=%d batches=%d\n", report.ReportFingerprint, report.Summary.AffectedRows, report.Summary.UnresolvedRows, applied.RowsUpdated, applied.Batches)
+		if _, err := fmt.Fprintf(deps.Output, "owner_reconciliation_report=%s rows=%d unresolved=%d updated=%d batches=%d\n", report.ReportFingerprint, report.Summary.AffectedRows, report.Summary.UnresolvedRows, applied.RowsUpdated, applied.Batches); err != nil {
+			return errors.New("write owner reconciliation summary failed")
+		}
 		return nil
 	}
-	_, _ = fmt.Fprintf(deps.Output, "owner_reconciliation_report=%s rows=%d unresolved=%d\n", report.ReportFingerprint, report.Summary.AffectedRows, report.Summary.UnresolvedRows)
+	if _, err := fmt.Fprintf(deps.Output, "owner_reconciliation_report=%s rows=%d unresolved=%d\n", report.ReportFingerprint, report.Summary.AffectedRows, report.Summary.UnresolvedRows); err != nil {
+		return errors.New("write owner reconciliation summary failed")
+	}
 	return nil
 }
 

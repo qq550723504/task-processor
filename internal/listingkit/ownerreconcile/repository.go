@@ -101,13 +101,6 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 	if repository.Queryer == nil || len(repository.Identities) == 0 {
 		return ApplySummary{}, errors.New("owner reconciliation identities are unavailable")
 	}
-	current, err := repository.DryRun(ctx, repository.Identities)
-	if err != nil {
-		return ApplySummary{}, err
-	}
-	if err := current.SetFingerprint(); err != nil || current.ReportFingerprint != reportFingerprint {
-		return ApplySummary{}, ErrReportConfirmationMismatch
-	}
 	beginner := repository.Beginner
 	if beginner == nil {
 		if db, ok := repository.Queryer.(*sql.DB); ok {
@@ -116,6 +109,32 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 	}
 	if beginner == nil {
 		return ApplySummary{}, errors.New("owner reconciliation database cannot begin a write transaction")
+	}
+	tx, err := beginner.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead})
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ApplySummary{}, ctxErr
+		}
+		return ApplySummary{}, errors.New("begin owner reconciliation transaction failed")
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+
+	snapshotRepository := repository
+	snapshotRepository.Queryer = tx
+	current, err := snapshotRepository.DryRun(ctx, repository.Identities)
+	if err != nil {
+		return ApplySummary{}, err
+	}
+	if err := current.SetFingerprint(); err != nil || current.ReportFingerprint != reportFingerprint {
+		return ApplySummary{}, ErrReportConfirmationMismatch
+	}
+	if current.Summary.UnresolvedRows > 0 {
+		return ApplySummary{}, errors.New("owner reconciliation report contains unresolved rows")
 	}
 	identityMap, err := indexLegacyIdentities(repository.Identities)
 	if err != nil {
@@ -129,8 +148,11 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 		if spec.UpdateLimitArg <= 0 {
 			return ApplySummary{}, fmt.Errorf("owner reconciliation table %s has no bounded update limit", spec.Table)
 		}
-		groups, err := collectCandidateGroups(ctx, repository.Queryer, spec, identityMap)
+		groups, err := collectCandidateGroups(ctx, tx, spec, identityMap)
 		if err != nil {
+			return ApplySummary{}, err
+		}
+		if err := compareCandidateGroups(current, spec, groups); err != nil {
 			return ApplySummary{}, err
 		}
 		for _, group := range groups {
@@ -139,10 +161,6 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 				limit := int64(batchSize)
 				if remaining < limit {
 					limit = remaining
-				}
-				tx, beginErr := beginner.BeginTx(ctx, nil)
-				if beginErr != nil {
-					return ApplySummary{}, errors.New("begin owner reconciliation transaction failed")
 				}
 				args := []any{group.Subject, group.TenantID}
 				for _, value := range group.CandidateValues {
@@ -155,7 +173,6 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 				args = append(args, limit)
 				result, execErr := tx.ExecContext(ctx, spec.UpdateQuery, args...)
 				if execErr != nil {
-					_ = tx.Rollback()
 					if ctxErr := ctx.Err(); ctxErr != nil {
 						return ApplySummary{}, ctxErr
 					}
@@ -163,15 +180,10 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 				}
 				updated, rowsErr := result.RowsAffected()
 				if rowsErr != nil || updated <= 0 || updated > limit {
-					_ = tx.Rollback()
 					return ApplySummary{}, fmt.Errorf("owner reconciliation update count for %s failed postcondition", spec.Table)
 				}
 				if updated != limit && updated != remaining {
-					_ = tx.Rollback()
 					return ApplySummary{}, fmt.Errorf("owner reconciliation update for %s changed during execution", spec.Table)
-				}
-				if err := tx.Commit(); err != nil {
-					return ApplySummary{}, errors.New("commit owner reconciliation transaction failed")
 				}
 				summary.RowsUpdated += updated
 				summary.Batches++
@@ -179,7 +191,48 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 			}
 		}
 	}
+	if err := tx.Commit(); err != nil {
+		return ApplySummary{}, errors.New("commit owner reconciliation transaction failed")
+	}
+	committed = true
 	return summary, nil
+}
+
+func compareCandidateGroups(report Report, spec TableSpec, groups []candidateGroup) error {
+	confirmed := make(map[string]int, len(report.Resolutions))
+	for _, resolution := range report.Resolutions {
+		confirmed[resolutionKey(resolution)]++
+	}
+	for _, group := range groups {
+		parts := make([]string, 0, len(spec.CandidateColumns))
+		for index, candidate := range spec.CandidateColumns {
+			parts = append(parts, candidate.Source+"="+group.CandidateValues[index])
+		}
+		resolution := Resolution{
+			Table:                spec.Table,
+			TenantFingerprint:    shortFingerprint(group.TenantID),
+			CandidateFingerprint: shortFingerprint(strings.Join(parts, ";")),
+			SubjectFingerprint:   shortFingerprint(group.Subject),
+			Rows:                 group.Rows,
+		}
+		key := resolutionKey(resolution)
+		if confirmed[key] == 0 {
+			return ErrReportConfirmationMismatch
+		}
+		confirmed[key]--
+	}
+	// The caller compares each table's groups; a resolution from this table
+	// that disappeared between the two snapshot reads must also fail closed.
+	for _, resolution := range report.Resolutions {
+		if resolution.Table == spec.Table && confirmed[resolutionKey(resolution)] > 0 {
+			return ErrReportConfirmationMismatch
+		}
+	}
+	return nil
+}
+
+func resolutionKey(resolution Resolution) string {
+	return fmt.Sprintf("%s|%s|%s|%s|%d", resolution.Table, resolution.TenantFingerprint, resolution.CandidateFingerprint, resolution.SubjectFingerprint, resolution.Rows)
 }
 
 type candidateGroup struct {

@@ -55,7 +55,7 @@ func legacySimpleSpec(table string) TableSpec {
 	return TableSpec{
 		Table:          table,
 		TenantDomain:   TenantDomainLegacyNumeric,
-		UpdateQuery:    fmt.Sprintf("WITH target AS (SELECT id FROM %s WHERE tenant_id = $2 AND NULLIF(BTRIM(owner_user_id::text), '') IS NULL AND ($3 = '' OR creator::text = $3) AND ($4 = '' OR created_by::text = $4) ORDER BY id LIMIT $5) UPDATE %s AS row SET owner_user_id = $1 FROM target WHERE row.id = target.id", table, table),
+		UpdateQuery:    fmt.Sprintf("WITH target AS (SELECT id FROM %s WHERE tenant_id = $2 AND NULLIF(BTRIM(owner_user_id::text), '') IS NULL AND %s AND %s ORDER BY id LIMIT $5) UPDATE %s AS row SET owner_user_id = $1 FROM target WHERE row.id = target.id", table, exactCandidate("creator", "$3"), exactCandidate("created_by", "$4"), table),
 		UpdateLimitArg: 5,
 		Query: fmt.Sprintf(`SELECT tenant_id::text, creator::text, created_by::text, COUNT(*)::bigint AS row_count
 FROM %s
@@ -70,7 +70,7 @@ func legacyImportTaskSpec() TableSpec {
 	return TableSpec{
 		Table:          "listing_product_import_task",
 		TenantDomain:   TenantDomainLegacyNumeric,
-		UpdateQuery:    `WITH target AS (SELECT t.id FROM listing_product_import_task AS t WHERE t.tenant_id = $2 AND NULLIF(BTRIM(t.owner_user_id::text), '') IS NULL AND ($3 = '' OR t.creator::text = $3) AND ($4 = '' OR t.created_by::text = $4) AND ($5 = '' OR EXISTS (SELECT 1 FROM listing_store AS s WHERE s.id = t.store_id AND s.tenant_id = t.tenant_id AND s.creator::text = $5)) AND ($6 = '' OR EXISTS (SELECT 1 FROM listing_store AS s WHERE s.id = t.store_id AND s.tenant_id = t.tenant_id AND s.created_by::text = $6)) ORDER BY t.id LIMIT $7) UPDATE listing_product_import_task AS row SET owner_user_id = $1 FROM target WHERE row.id = target.id`,
+		UpdateQuery:    fmt.Sprintf("WITH target AS (SELECT t.id FROM listing_product_import_task AS t WHERE t.tenant_id = $2 AND NULLIF(BTRIM(t.owner_user_id::text), '') IS NULL AND %s AND %s AND EXISTS (SELECT 1 FROM listing_store AS s WHERE s.id = t.store_id AND s.tenant_id = t.tenant_id AND %s) ORDER BY t.id LIMIT $7) UPDATE listing_product_import_task AS row SET owner_user_id = $1 FROM target WHERE row.id = target.id", exactCandidate("t.creator", "$3"), exactCandidate("t.created_by", "$4"), optionalCandidatePair("s.creator", "$5", "s.created_by", "$6")),
 		UpdateLimitArg: 7,
 		Query: `SELECT t.tenant_id::text, t.creator::text AS own_creator, t.created_by::text AS own_created_by, s.creator::text AS store_creator, s.created_by::text AS store_created_by, COUNT(*)::bigint AS row_count
 FROM listing_product_import_task AS t
@@ -91,7 +91,7 @@ func legacyImportRelationSpec(table string) TableSpec {
 	return TableSpec{
 		Table:          table,
 		TenantDomain:   TenantDomainLegacyNumeric,
-		UpdateQuery:    fmt.Sprintf("WITH target AS (SELECT row.id FROM %s AS row WHERE row.tenant_id = $2 AND NULLIF(BTRIM(row.owner_user_id::text), '') IS NULL AND ($3 = '' OR row.creator::text = $3) AND ($4 = '' OR row.created_by::text = $4) AND ($5 = '' OR EXISTS (SELECT 1 FROM listing_product_import_task AS task WHERE task.id = row.import_task_id AND task.tenant_id = row.tenant_id AND task.creator::text = $5)) AND ($6 = '' OR EXISTS (SELECT 1 FROM listing_product_import_task AS task WHERE task.id = row.import_task_id AND task.tenant_id = row.tenant_id AND task.created_by::text = $6)) AND ($7 = '' OR EXISTS (SELECT 1 FROM listing_store AS store WHERE store.id = row.store_id AND store.tenant_id = row.tenant_id AND store.creator::text = $7)) AND ($8 = '' OR EXISTS (SELECT 1 FROM listing_store AS store WHERE store.id = row.store_id AND store.tenant_id = row.tenant_id AND store.created_by::text = $8)) ORDER BY row.id LIMIT $9) UPDATE %s AS row SET owner_user_id = $1 FROM target WHERE row.id = target.id", table, table),
+		UpdateQuery:    fmt.Sprintf("WITH target AS (SELECT row.id FROM %s AS row WHERE row.tenant_id = $2 AND NULLIF(BTRIM(row.owner_user_id::text), '') IS NULL AND %s AND %s AND EXISTS (SELECT 1 FROM listing_product_import_task AS task WHERE task.id = row.import_task_id AND task.tenant_id = row.tenant_id AND %s) AND EXISTS (SELECT 1 FROM listing_store AS store WHERE store.id = row.store_id AND store.tenant_id = row.tenant_id AND %s) ORDER BY row.id LIMIT $9) UPDATE %s AS row SET owner_user_id = $1 FROM target WHERE row.id = target.id", table, exactCandidate("row.creator", "$3"), exactCandidate("row.created_by", "$4"), optionalCandidatePair("task.creator", "$5", "task.created_by", "$6"), optionalCandidatePair("store.creator", "$7", "store.created_by", "$8"), table),
 		UpdateLimitArg: 9,
 		Query: fmt.Sprintf(`SELECT row.tenant_id::text, row.creator::text AS own_creator, row.created_by::text AS own_created_by, task.creator::text AS task_creator, task.created_by::text AS task_created_by, store.creator::text AS store_creator, store.created_by::text AS store_created_by, COUNT(*)::bigint AS row_count
 FROM %s AS row
@@ -109,6 +109,14 @@ GROUP BY row.tenant_id, row.creator, row.created_by, task.creator, task.created_
 			{Name: "store_created_by", Source: "store_created_by"},
 		},
 	}
+}
+
+func exactCandidate(column, parameter string) string {
+	return fmt.Sprintf("((%s = '' AND NULLIF(BTRIM(%s::text), '') IS NULL) OR (%s <> '' AND %s::text = %s))", parameter, column, parameter, column, parameter)
+}
+
+func optionalCandidatePair(firstColumn, firstParameter, secondColumn, secondParameter string) string {
+	return fmt.Sprintf("((%s = '' AND %s = '') OR (%s AND %s))", firstParameter, secondParameter, exactCandidate(firstColumn, firstParameter), exactCandidate(secondColumn, secondParameter))
 }
 
 func nativeSpec(table string) TableSpec {
