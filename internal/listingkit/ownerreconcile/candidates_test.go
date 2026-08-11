@@ -56,3 +56,16 @@ func TestResolveCandidatePolicyStoreOnly(t *testing.T) {
 		t.Fatalf("resolveCandidatePolicy() = (%q, %q), want store subject without a reason", got, reason)
 	}
 }
+
+func TestResolveCandidateValuesCreatorFirstDoesNotUseStoreAsFallback(t *testing.T) {
+	subject, reason := resolveCandidateValues(CandidatePolicyCreatorFirst, "tenant-1", []Candidate{
+		{Source: "creator", Subject: "legacy-missing"},
+		{Source: "created_by", Subject: ""},
+		{Source: "store", Subject: "legacy-store"},
+	}, map[string]string{
+		legacyIdentityKey("tenant-1", "legacy-store"): "subject-store",
+	})
+	if subject != "" || reason != "unmapped_candidate" {
+		t.Fatalf("resolveCandidateValues() = (%q, %q), want unmapped row creator without store fallback", subject, reason)
+	}
+}
