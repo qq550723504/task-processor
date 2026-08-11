@@ -162,8 +162,7 @@ VALUES ($1, $2, $3, $4, $5, $6, TRUE)
 ON CONFLICT (table_name, tenant_fingerprint, candidate_fingerprint) DO UPDATE SET
     report_fingerprint = EXCLUDED.report_fingerprint,
     reason = EXCLUDED.reason,
-    row_count = EXCLUDED.row_count,
-    active = TRUE`
+    row_count = EXCLUDED.row_count`
 	for _, finding := range report.Findings {
 		result, execErr := tx.ExecContext(ctx, insertQuery, finding.Table, finding.TenantFingerprint, finding.OwnerFingerprint, report.ReportFingerprint, reason, finding.Rows)
 		if execErr != nil {

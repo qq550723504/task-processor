@@ -22,7 +22,7 @@ func TestValidateApprovedExceptionReportRejectsWrongConfirmation(t *testing.T) {
 	}
 }
 
-func TestInsertSystemOwnedExceptionsUsesOneTransaction(t *testing.T) {
+func TestInsertSystemOwnedExceptionsPreservesRevokedState(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatal(err)
@@ -42,8 +42,7 @@ VALUES ($1, $2, $3, $4, $5, $6, TRUE)
 ON CONFLICT (table_name, tenant_fingerprint, candidate_fingerprint) DO UPDATE SET
     report_fingerprint = EXCLUDED.report_fingerprint,
     reason = EXCLUDED.reason,
-    row_count = EXCLUDED.row_count,
-    active = TRUE`)).
+    row_count = EXCLUDED.row_count`)+`\z`).
 		WithArgs("listing_store", "sha256:000000000000", "sha256:111111111111", "648cdfab03c4", "approved current orphaned owner", int64(1)).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
