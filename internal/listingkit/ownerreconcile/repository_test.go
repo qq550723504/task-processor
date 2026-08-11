@@ -103,6 +103,23 @@ func TestRepositoryDryRunDoesNotAutoResolveUnmappedNonEmptyCandidate(t *testing.
 	}
 }
 
+func TestRepositoryDryRunSkipsOnlyPostgresUndefinedTables(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	missing := "SELECT tenant_id, creator, COUNT(*) FROM future_table WHERE owner_user_id IS NULL GROUP BY tenant_id, creator"
+	mock.ExpectQuery(regexp.QuoteMeta(missing)).WillReturnError(postgresStateError{state: "42P01", message: "relation future_table does not exist"})
+	repository := Repository{Queryer: db, Inventory: []TableSpec{{Table: "future_table", Query: missing, Columns: []string{"tenant_id", "creator", "row_count"}, CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}}}}}
+	if report, err := repository.DryRun(context.Background(), nil); err != nil || report.Summary.AffectedRows != 0 {
+		t.Fatalf("report = %+v, err = %v, want undefined table skipped", report, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRepositoryDryRunClassifiesSystemOwnedRowsOutsideOwnerScope(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -179,6 +196,14 @@ func TestRepositoryDryRunRejectsNonSelectInventoryAndPreservesCancellation(t *te
 }
 
 var _ Queryer = (*sql.DB)(nil)
+
+type postgresStateError struct {
+	state   string
+	message string
+}
+
+func (err postgresStateError) Error() string    { return err.message }
+func (err postgresStateError) SQLState() string { return err.state }
 
 func TestLoadLegacyIdentitiesValidatesOrganizationAndUserMetadata(t *testing.T) {
 	db, mock, err := sqlmock.New()
@@ -421,3 +446,4 @@ func TestRepositoryApplyUniqueRejectsRowsLeftByFinalRescan(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
