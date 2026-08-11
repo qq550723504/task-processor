@@ -47,6 +47,11 @@ if [[ "${1:-}" == "-n" && "${3:-}" == "wait" ]]; then
   exit "${FAKE_KUBECTL_WAIT_STATUS:-0}"
 fi
 
+if [[ "${1:-}" == "-n" && "${3:-}" == "get" ]]; then
+  printf '%s\n' "${FAKE_JOB_STATUS:-1,0}"
+  exit 0
+fi
+
 if [[ "${1:-}" == "-n" && "${3:-}" == "logs" ]]; then
   printf '%s\n' 'identity preflight logs'
   exit 0
@@ -115,7 +120,7 @@ run_success_case() {
   } 2>&1)"
 
   local expected_commands
-  expected_commands=$'create|-n|test-namespace|-f|<rendered-manifest>|-o|jsonpath={.metadata.name}\n-n|test-namespace|wait|--for=condition=complete|job/listingkit-identity-preflight-test-abc12|--timeout=15m\n-n|test-namespace|logs|job/listingkit-identity-preflight-test-abc12'
+  expected_commands=$'create|-n|test-namespace|-f|<rendered-manifest>|-o|jsonpath={.metadata.name}\n-n|test-namespace|get|job/listingkit-identity-preflight-test-abc12|-o|jsonpath={.status.succeeded},{.status.failed}\n-n|test-namespace|logs|job/listingkit-identity-preflight-test-abc12'
   assert_file_equals "$expected_commands" "$command_log"
   assert_contains "$(cat "$rendered_manifest")" 'docker.io/alternate-registry/task-processor-product-listing-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
   assert_contains "$(cat "$rendered_manifest")" 'docker.io/xuwei190/task-processor-listingkit-identity-preflight@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
@@ -138,7 +143,7 @@ run_failure_case() {
     PATH="$fake_bin:$PATH" \
       FAKE_KUBECTL_LOG="$command_log" \
       FAKE_RENDERED_MANIFEST="$rendered_manifest" \
-      FAKE_KUBECTL_WAIT_STATUS=1 \
+      FAKE_JOB_STATUS='0,1' \
       "$driver" \
         --manifest "$manifest" \
         --namespace test-namespace \
@@ -154,11 +159,44 @@ run_failure_case() {
   fi
 
   local expected_commands
-  expected_commands=$'create|-n|test-namespace|-f|<rendered-manifest>|-o|jsonpath={.metadata.name}\n-n|test-namespace|wait|--for=condition=complete|job/listingkit-identity-preflight-test-abc12|--timeout=15m\n-n|test-namespace|logs|job/listingkit-identity-preflight-test-abc12\n-n|test-namespace|describe|job/listingkit-identity-preflight-test-abc12'
+  expected_commands=$'create|-n|test-namespace|-f|<rendered-manifest>|-o|jsonpath={.metadata.name}\n-n|test-namespace|get|job/listingkit-identity-preflight-test-abc12|-o|jsonpath={.status.succeeded},{.status.failed}\n-n|test-namespace|logs|job/listingkit-identity-preflight-test-abc12\n-n|test-namespace|describe|job/listingkit-identity-preflight-test-abc12'
   assert_file_equals "$expected_commands" "$command_log"
   assert_contains "$output" 'identity preflight logs'
   assert_contains "$output" 'identity preflight description'
   assert_not_contains "$(cat "$command_log")" 'set|image'
+}
+
+run_fast_failure_case() {
+  local command_log="$test_root/fast-failure.commands"
+  local rendered_manifest="$test_root/fast-failure.rendered.yaml"
+  local output
+  local status
+
+  set +e
+  output="$(
+    PATH="$fake_bin:$PATH" \
+      FAKE_KUBECTL_LOG="$command_log" \
+      FAKE_RENDERED_MANIFEST="$rendered_manifest" \
+      FAKE_JOB_STATUS='0,1' \
+      "$driver" \
+        --manifest "$manifest" \
+        --namespace test-namespace \
+        --image docker.io/alternate-registry/task-processor-product-listing-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+        --runner-image docker.io/xuwei190/task-processor-listingkit-identity-preflight@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+  )"
+  status=$?
+  set -e
+
+  if [[ "$status" -eq 0 ]]; then
+    printf 'expected failed Job to exit non-zero\n' >&2
+    exit 1
+  fi
+
+  local expected_commands
+  expected_commands=$'create|-n|test-namespace|-f|<rendered-manifest>|-o|jsonpath={.metadata.name}\n-n|test-namespace|get|job/listingkit-identity-preflight-test-abc12|-o|jsonpath={.status.succeeded},{.status.failed}\n-n|test-namespace|logs|job/listingkit-identity-preflight-test-abc12\n-n|test-namespace|describe|job/listingkit-identity-preflight-test-abc12'
+  assert_file_equals "$expected_commands" "$command_log"
+  assert_contains "$output" 'identity preflight logs'
+  assert_contains "$output" 'identity preflight description'
 }
 
 run_mutable_image_case() {
@@ -208,6 +246,7 @@ run_tagged_image_case() {
 }
 
 run_success_case
+run_fast_failure_case
 run_failure_case
 run_mutable_image_case
 run_tagged_image_case

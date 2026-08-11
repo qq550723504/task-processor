@@ -25,3 +25,34 @@ func TestResolveCandidatesRequiresOneUniqueSubject(t *testing.T) {
 		})
 	}
 }
+
+func TestResolveCandidatePolicyCreatorFirst(t *testing.T) {
+	got, reason := resolveCandidatePolicy(CandidatePolicyCreatorFirst, []Candidate{
+		{Source: "creator", Subject: "subject-creator"},
+		{Source: "created_by", Subject: "subject-auditor"},
+	})
+	if got != "subject-creator" || reason != "" {
+		t.Fatalf("resolveCandidatePolicy() = (%q, %q), want creator subject without a reason", got, reason)
+	}
+}
+
+func TestResolveCandidatePolicyUnmappedCreatorDoesNotFallback(t *testing.T) {
+	got, reason := resolveCandidatePolicy(CandidatePolicyCreatorFirst, []Candidate{
+		{Source: "creator", Subject: ""},
+		{Source: "created_by", Subject: "subject-auditor"},
+	})
+	if got != "" || reason != "unmapped_candidate" {
+		t.Fatalf("resolveCandidatePolicy() = (%q, %q), want unmapped creator blocker", got, reason)
+	}
+}
+
+func TestResolveCandidatePolicyStoreOnly(t *testing.T) {
+	got, reason := resolveCandidatePolicy(CandidatePolicyStoreOnly, []Candidate{
+		{Source: "creator", Subject: "subject-row"},
+		{Source: "store", Subject: "subject-store"},
+		{Source: "store_created_by", Subject: "subject-auditor"},
+	})
+	if got != "subject-store" || reason != "" {
+		t.Fatalf("resolveCandidatePolicy() = (%q, %q), want store subject without a reason", got, reason)
+	}
+}

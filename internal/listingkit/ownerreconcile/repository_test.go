@@ -103,6 +103,30 @@ func TestRepositoryDryRunDoesNotAutoResolveUnmappedNonEmptyCandidate(t *testing.
 	}
 }
 
+func TestRepositoryDryRunClassifiesSystemOwnedRowsOutsideOwnerScope(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	query := `SELECT tenant_id, COUNT(*) FROM listing_kit_tasks WHERE user_id IS NULL GROUP BY tenant_id`
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "row_count"}).AddRow("org-1", int64(5)))
+	repository := Repository{Queryer: db, Inventory: []TableSpec{{
+		Table: "listing_kit_tasks", Query: query, CandidatePolicy: CandidatePolicySystemOwned,
+		Columns: []string{"tenant_id", "row_count"},
+	}}}
+	report, err := repository.DryRun(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Summary.UnresolvedRows != 0 || report.Summary.SystemOwnedRows != 5 || len(report.Findings) != 0 || len(report.SystemOwnedFindings) != 1 {
+		t.Fatalf("report = %+v, want system-owned rows outside unresolved findings", report)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRepositoryDryRunRejectsNonSelectInventoryAndPreservesCancellation(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

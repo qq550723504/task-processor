@@ -83,10 +83,26 @@ if [[ -z "$job_name" ]]; then
   exit 1
 fi
 
-if ! kubectl -n "$K8S_NAMESPACE" wait --for=condition=complete "job/$job_name" --timeout=15m; then
-  kubectl -n "$K8S_NAMESPACE" logs "job/$job_name" || true
-  kubectl -n "$K8S_NAMESPACE" describe "job/$job_name" || true
-  exit 1
-fi
+wait_deadline=$((SECONDS + 900))
+while :; do
+  if job_status="$(kubectl -n "$K8S_NAMESPACE" get "job/$job_name" -o 'jsonpath={.status.succeeded},{.status.failed}' 2>/dev/null)"; then
+    succeeded_count="${job_status%,*}"
+    failed_count="${job_status#*,}"
+    if [[ "$succeeded_count" =~ ^[1-9][0-9]*$ ]]; then
+      kubectl -n "$K8S_NAMESPACE" logs "job/$job_name"
+      exit 0
+    fi
+    if [[ "$failed_count" =~ ^[1-9][0-9]*$ ]]; then
+      kubectl -n "$K8S_NAMESPACE" logs "job/$job_name" || true
+      kubectl -n "$K8S_NAMESPACE" describe "job/$job_name" || true
+      exit 1
+    fi
+  fi
 
-kubectl -n "$K8S_NAMESPACE" logs "job/$job_name"
+  if (( SECONDS >= wait_deadline )); then
+    kubectl -n "$K8S_NAMESPACE" logs "job/$job_name" || true
+    kubectl -n "$K8S_NAMESPACE" describe "job/$job_name" || true
+    exit 1
+  fi
+  sleep 5
+done

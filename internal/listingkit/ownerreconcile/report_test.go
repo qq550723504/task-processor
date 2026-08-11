@@ -80,3 +80,20 @@ func TestReportFingerprintIncludesRedactedAutoResolutions(t *testing.T) {
 		t.Fatalf("resolution report leaked raw identity: %s", encoded)
 	}
 }
+
+func TestReportSeparatesSystemOwnedRowsFromUnresolvedFindings(t *testing.T) {
+	report := NewReportWithClassifiedFindings("config.yaml", "db", []Finding{{
+		Table: "listing_store", TenantFingerprint: "sha256:t", OwnerFingerprint: "sha256:u", Rows: 2, Reason: "no_candidate",
+	}}, []Finding{{
+		Table: "listing_kit_tasks", TenantFingerprint: "sha256:s", OwnerFingerprint: "sha256:e", Rows: 7, Reason: "system_owned",
+	}}, 3, nil)
+	if report.Summary.AffectedRows != 12 || report.Summary.UnresolvedRows != 2 || report.Summary.SystemOwnedRows != 7 {
+		t.Fatalf("summary = %+v, want affected=12 unresolved=2 system_owned=7", report.Summary)
+	}
+	if len(report.Findings) != 1 || len(report.SystemOwnedFindings) != 1 {
+		t.Fatalf("report findings = %+v/%+v, want separate lists", report.Findings, report.SystemOwnedFindings)
+	}
+	if report.Summary.FindingGroups != 1 || report.Summary.SystemOwnedGroups != 1 {
+		t.Fatalf("summary groups = %+v, want unresolved/system-owned split", report.Summary)
+	}
+}
