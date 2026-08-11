@@ -248,6 +248,13 @@ jobs:
         run: |
           kubectl -n ${{ env.K8S_NAMESPACE }} apply -f .workflow-tools/deployments/kubernetes/listingkit-workbench/base/configmap.yaml
 
+      - name: Remove deprecated ListingKit identity keys from shared Secret
+        shell: bash
+        run: |
+          .workflow-tools/scripts/listingkit-clean-legacy-identity-secret.sh \
+            "${{ env.K8S_NAMESPACE }}" \
+            listingkit-workbench-secret
+
       - name: Reject legacy invitation credentials in shared Secret
         shell: bash
         run: |

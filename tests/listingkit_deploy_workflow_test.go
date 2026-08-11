@@ -123,6 +123,55 @@ func TestListingKitSchemaMigrationRunsBeforeIdentityPreflight(t *testing.T) {
 	}
 }
 
+func TestListingKitDeployRemovesDeprecatedIdentityKeysBeforePreflight(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string `yaml:"name"`
+				Run  string `yaml:"run"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(content, &workflow); err != nil {
+		t.Fatalf("parse ListingKit deploy workflow: %v", err)
+	}
+	steps := workflow.Jobs["deploy-api"].Steps
+	cleanupIndex, preflightIndex := -1, -1
+	for index, step := range steps {
+		if strings.Contains(step.Run, "scripts/listingkit-clean-legacy-identity-secret.sh") {
+			cleanupIndex = index
+			if !strings.Contains(step.Run, "listingkit-workbench-secret") {
+				t.Fatal("legacy identity Secret cleanup must target the shared ListingKit Secret")
+			}
+		}
+		if strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
+			preflightIndex = index
+		}
+	}
+	if cleanupIndex < 0 || preflightIndex < 0 || cleanupIndex >= preflightIndex {
+		t.Fatalf("legacy identity Secret cleanup must run before identity preflight, cleanup=%d preflight=%d", cleanupIndex, preflightIndex)
+	}
+
+	scriptPath := filepath.Join("..", "scripts", "listingkit-clean-legacy-identity-secret.sh")
+	script, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read legacy identity Secret cleanup script: %v", err)
+	}
+	for _, key := range []string{
+		"LISTINGKIT_ZITADEL_ALLOWED_USERNAMES",
+		"LISTINGKIT_ZITADEL_ALLOWED_ROLES",
+	} {
+		if !strings.Contains(string(script), key) {
+			t.Errorf("cleanup script must remove deprecated key %q", key)
+		}
+	}
+}
+
 func TestListingKitIdentityPreflightJobDeadlineMatchesDriverWait(t *testing.T) {
 	manifestPath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "jobs", "listingkit-identity-preflight-job.yaml")
 	content, err := os.ReadFile(manifestPath)
