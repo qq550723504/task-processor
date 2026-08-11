@@ -53,6 +53,8 @@ type ApplySummary struct {
 
 var ErrReportConfirmationMismatch = errors.New("owner reconciliation report confirmation mismatch")
 
+const postgresUndefinedTableSQLState = "42P01"
+
 var ownerReconcileIdentifier = regexp.MustCompile(`^[a-z][a-z0-9_]*$`)
 
 func (repository Repository) DryRun(ctx context.Context, identities []LegacyIdentity) (Report, error) {
@@ -76,6 +78,9 @@ func (repository Repository) DryRun(ctx context.Context, identities []LegacyIden
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return Report{}, ctxErr
 			}
+			if isPostgresUndefinedTable(err) {
+				continue
+			}
 			return Report{}, fmt.Errorf("query owner reconciliation table %s failed", spec.Table)
 		}
 		rowsFindings, rowsSystemOwned, rowsAuto, rowsResolutions, scanErr := scanTableRows(ctx, rows, spec, identityMap)
@@ -88,6 +93,15 @@ func (repository Repository) DryRun(ctx context.Context, identities []LegacyIden
 		autoRows += rowsAuto
 	}
 	return NewReportWithClassifiedFindings("", "", findings, systemOwnedFindings, autoRows, resolutions), nil
+}
+
+type sqlStateError interface {
+	SQLState() string
+}
+
+func isPostgresUndefinedTable(err error) bool {
+	var stateError sqlStateError
+	return errors.As(err, &stateError) && stateError.SQLState() == postgresUndefinedTableSQLState
 }
 
 // ApplyUnique revalidates the redacted report and applies only uniquely
@@ -507,3 +521,4 @@ func sqlInt64(value any) (int64, error) {
 		return 0, fmt.Errorf("unsupported count type %T", value)
 	}
 }
+
