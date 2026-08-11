@@ -198,11 +198,14 @@ func openMetadataDB(ctx context.Context, base *config.DatabaseConfig, deps runti
 		candidate := *base
 		candidate.Database = name
 		db, err := deps.OpenMetadataDB(&candidate)
-		if err != nil || db == nil {
-			if db != nil {
-				_ = deps.CloseDB(db)
+		if err != nil {
+			if !isMissingMetadataDatabaseError(err) {
+				return nil, errors.New("connect legacy identity metadata database failed")
 			}
 			continue
+		}
+		if db == nil {
+			return nil, errors.New("connect legacy identity metadata database failed")
 		}
 		exists, probeErr := deps.MetadataTableExists(ctx, db)
 		if probeErr != nil {
@@ -227,6 +230,20 @@ func openMetadataDB(ctx context.Context, base *config.DatabaseConfig, deps runti
 		return selected, nil
 	}
 	return nil, errors.New("no legacy identity metadata database available")
+}
+
+func isMissingMetadataDatabaseError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var stateErr interface{ SQLState() string }
+	if errors.As(err, &stateErr) && stateErr.SQLState() == "3D000" {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "sqlstate 3d000") ||
+		strings.Contains(message, "sqlstate=3d000") ||
+		(strings.Contains(message, `database "`) && strings.Contains(message, " does not exist"))
 }
 
 func writeArtifacts(options Options, report ownerreconcile.Report) error {

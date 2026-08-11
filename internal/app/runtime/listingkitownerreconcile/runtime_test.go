@@ -26,7 +26,7 @@ func TestRunWithDependenciesWritesReportInDryRunAndDoesNotExecute(t *testing.T) 
 		OpenDB: func(*config.DatabaseConfig) (*sql.DB, error) { return ownerDB, nil },
 		OpenMetadataDB: func(candidate *config.DatabaseConfig) (*sql.DB, error) {
 			if candidate.Database != "zitadel_auth" {
-				return nil, errors.New("missing")
+				return nil, errors.New(`database "zitadel" does not exist`)
 			}
 			return metadataDB, nil
 		},
@@ -59,7 +59,7 @@ func TestRunWithDependenciesRejectsExecuteWithoutConfirmationBeforeApply(t *test
 		OpenDB: func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
 		OpenMetadataDB: func(candidate *config.DatabaseConfig) (*sql.DB, error) {
 			if candidate.Database != "zitadel_auth" {
-				return nil, errors.New("missing")
+				return nil, errors.New(`database "zitadel" does not exist`)
 			}
 			return &sql.DB{}, nil
 		},
@@ -95,7 +95,7 @@ func TestRunWithDependenciesExecutesOnlyAfterFreshReportConfirmation(t *testing.
 		OpenWritableDB: func(*config.DatabaseConfig) (*sql.DB, error) { writableOpens++; return &sql.DB{}, nil },
 		OpenMetadataDB: func(candidate *config.DatabaseConfig) (*sql.DB, error) {
 			if candidate.Database != "zitadel_auth" {
-				return nil, errors.New("missing")
+				return nil, errors.New(`database "zitadel" does not exist`)
 			}
 			return &sql.DB{}, nil
 		},
@@ -171,7 +171,7 @@ func TestRunWithDependenciesBlocksExecuteWhenReportHasUnresolvedRows(t *testing.
 		OpenWritableDB: func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
 		OpenMetadataDB: func(candidate *config.DatabaseConfig) (*sql.DB, error) {
 			if candidate.Database != "zitadel_auth" {
-				return nil, errors.New("missing")
+				return nil, errors.New(`database "zitadel" does not exist`)
 			}
 			return &sql.DB{}, nil
 		},
@@ -206,7 +206,7 @@ func TestRunWithDependenciesPropagatesSummaryWriteFailure(t *testing.T) {
 		OpenDB: func(*config.DatabaseConfig) (*sql.DB, error) { return &sql.DB{}, nil },
 		OpenMetadataDB: func(candidate *config.DatabaseConfig) (*sql.DB, error) {
 			if candidate.Database != "zitadel_auth" {
-				return nil, errors.New("missing")
+				return nil, errors.New(`database "zitadel" does not exist`)
 			}
 			return &sql.DB{}, nil
 		},
@@ -220,6 +220,23 @@ func TestRunWithDependenciesPropagatesSummaryWriteFailure(t *testing.T) {
 	err := runWithDependencies(context.Background(), Options{Config: "config.yaml", Output: filepath.Join(t.TempDir(), "report.json"), BatchSize: 10}, deps)
 	if err == nil || err.Error() != "write owner reconciliation summary failed" {
 		t.Fatalf("error = %v, want summary write failure", err)
+	}
+}
+
+func TestOpenMetadataDBFailsClosedOnCandidateConnectionError(t *testing.T) {
+	opened := 0
+	deps := runtimeDependencies{
+		OpenMetadataDB: func(*config.DatabaseConfig) (*sql.DB, error) {
+			opened++
+			return nil, errors.New("permission denied")
+		},
+		CloseDB: func(*sql.DB) error { return nil },
+	}
+	if _, err := openMetadataDB(context.Background(), &config.DatabaseConfig{Database: "app-db"}, deps); err == nil {
+		t.Fatal("expected metadata connection error to fail closed")
+	}
+	if opened != 1 {
+		t.Fatalf("opened=%d, want no fallback after an unreadable candidate", opened)
 	}
 }
 

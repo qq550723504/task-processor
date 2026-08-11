@@ -245,6 +245,7 @@ func TestRepositoryApplyUniqueRechecksReportAndUpdatesOnlyUniqueRows(t *testing.
 	mock.ExpectBegin()
 	mock.ExpectExec(regexp.QuoteMeta("WITH target AS (SELECT id FROM listing_store WHERE tenant_id = $2 AND creator::text = $3 ORDER BY id LIMIT $4) UPDATE listing_store AS row SET owner_user_id = $1 FROM target WHERE row.id = target.id")).WithArgs("subject-1", "tenant-1", "legacy-1", int64(4)).WillReturnResult(sqlmock.NewResult(0, 4))
 	mock.ExpectCommit()
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "creator", "row_count"}))
 	summary, err := base.ApplyUnique(context.Background(), report.ReportFingerprint, report.ReportFingerprint, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -288,6 +289,7 @@ func TestRepositoryApplyUniqueLimitsEachUpdateBatch(t *testing.T) {
 		mock.ExpectExec(regexp.QuoteMeta(update)).WithArgs("subject-1", "tenant-1", "legacy-1", affected).WillReturnResult(sqlmock.NewResult(0, affected))
 		mock.ExpectCommit()
 	}
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(sqlmock.NewRows([]string{"tenant_id", "creator", "row_count"}))
 	summary, err := repository.ApplyUnique(context.Background(), report.ReportFingerprint, report.ReportFingerprint, 10)
 	if err != nil {
 		t.Fatal(err)
@@ -327,6 +329,44 @@ func TestRepositoryApplyUniqueRejectsCandidateChangesAfterConfirmation(t *testin
 	mock.ExpectRollback()
 	if _, err := repository.ApplyUnique(context.Background(), report.ReportFingerprint, report.ReportFingerprint, 10); !errors.Is(err, ErrReportConfirmationMismatch) {
 		t.Fatalf("error = %v, want confirmation mismatch", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRepositoryApplyUniqueRejectsRowsLeftByFinalRescan(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	query := "SELECT tenant_id, creator, COUNT(*) FROM listing_store WHERE owner_user_id IS NULL GROUP BY tenant_id, creator"
+	update := "WITH target AS (SELECT id FROM listing_store WHERE tenant_id = $2 AND creator::text = $3 ORDER BY id LIMIT $4) UPDATE listing_store AS row SET owner_user_id = $1 FROM target WHERE row.id = target.id"
+	rows := func() *sqlmock.Rows {
+		return sqlmock.NewRows([]string{"tenant_id", "creator", "row_count"}).AddRow("tenant-1", "legacy-1", int64(1))
+	}
+	repository := Repository{Queryer: db, Beginner: db, Inventory: []TableSpec{{
+		Table: "listing_store", Query: query, Columns: []string{"tenant_id", "creator", "row_count"}, CandidateColumns: []CandidateColumn{{Name: "creator", Source: "creator"}}, UpdateQuery: update, UpdateLimitArg: 4,
+	}}, Identities: []LegacyIdentity{{TenantID: "tenant-1", LegacyUserID: "legacy-1", Subject: "subject-1"}}}
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(rows())
+	report, err := repository.DryRun(context.Background(), repository.Identities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := report.SetFingerprint(); err != nil {
+		t.Fatal(err)
+	}
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(rows())
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(rows())
+	mock.ExpectRollback()
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(update)).WithArgs("subject-1", "tenant-1", "legacy-1", int64(1)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectQuery(regexp.QuoteMeta(query)).WillReturnRows(rows())
+	if _, err := repository.ApplyUnique(context.Background(), report.ReportFingerprint, report.ReportFingerprint, 10); err == nil {
+		t.Fatal("expected final rescan to reject a remaining blank-owner row")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatal(err)

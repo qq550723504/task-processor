@@ -209,6 +209,13 @@ func (repository Repository) ApplyUnique(ctx context.Context, reportFingerprint,
 			remaining -= updated
 		}
 	}
+	finalReport, err := repository.DryRun(ctx, repository.Identities)
+	if err != nil {
+		return ApplySummary{}, err
+	}
+	if finalReport.Summary.AffectedRows > 0 {
+		return ApplySummary{}, errors.New("owner reconciliation left blank owner rows")
+	}
 	return summary, nil
 }
 

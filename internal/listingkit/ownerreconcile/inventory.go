@@ -112,7 +112,7 @@ GROUP BY row.tenant_id, row.creator, row.created_by, task.creator, task.created_
 }
 
 func exactCandidate(column, parameter string) string {
-	return fmt.Sprintf("((%s = '' AND NULLIF(BTRIM(%s::text), '') IS NULL) OR (%s <> '' AND %s::text = %s))", parameter, column, parameter, column, parameter)
+	return fmt.Sprintf("((%s = '' AND NULLIF(BTRIM(%s::text), '') IS NULL) OR (%s <> '' AND BTRIM(%s::text) = %s))", parameter, column, parameter, column, parameter)
 }
 
 func optionalCandidatePair(firstColumn, firstParameter, secondColumn, secondParameter string) string {
