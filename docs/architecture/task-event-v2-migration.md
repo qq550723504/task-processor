@@ -60,9 +60,17 @@ For two released consumer versions, retain the adapter's legacy decode branch.
 Every legacy decode increments the existing consumer Prometheus registry metric
 `task_event_decoded_total{schema_version="legacy"}`. It is exposed from the
 consumer `/metrics` endpoint through `internal/infra/metrics/ConsumerRegistry`.
-Use `increase(task_event_decoded_total{schema_version="legacy"}[14d])` for the
-legacy-event observation gate. The label is deliberately limited to the stable
-`schema_version` value; queue, task ID, tenant, and store are not metric labels.
+Use `increase(task_event_decoded_total{schema_version="legacy",kubernetes_namespace="task-processor"}[14d])`
+for the legacy-event observation gate. The label is deliberately limited to the
+stable `schema_version` value; queue, task ID, tenant, and store are not metric
+labels. The Kubernetes namespace is attached by the repository-owned
+`PodMonitor`, rather than by application code.
+
+The operational implementation, pinned monitoring chart and one-pod canary
+procedure are documented in
+[`2026-08-12-task-event-v2-production-observability.md`](../superpowers/plans/2026-08-12-task-event-v2-production-observability.md).
+The query is valid only while all active consumer scrape targets are healthy;
+any legacy event, consumer rollback or scrape gap restarts the 14-day window.
 
 Track `legacy_task_event_consumers` from the Kubernetes workload inventory:
 list every consumer deployment/statefulset image digest and release label, then
