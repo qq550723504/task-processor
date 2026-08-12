@@ -12,12 +12,9 @@ import type {
   SheinStatusOverview,
 } from "./shein";
 import type { AssetGenerationOverview } from "./review";
+import type { ListingKitPreview as GeneratedListingKitPreview } from "@/lib/api/generated";
 
-export type ListingKitPreview = {
-  task_id: string;
-  status: string;
-  selected_platform?: string;
-  platforms?: string[];
+export type ListingKitPreview = GeneratedListingKitPreview & {
   needs_review?: boolean;
   overview?: ListingKitPreviewHeader;
   asset_generation_overview?: AssetGenerationOverview;

@@ -1,4 +1,4 @@
-# Generated TypeScript output: npm.cmd exec -- openapi-typescript docs/api/listingkit-asset.openapi.yaml -o web/listingkit-ui/src/lib/api/generated/listingkit-asset.ts
+# Generated TypeScript output: node web/listingkit-ui/node_modules/@hey-api/openapi-ts/bin/run.js -i docs/api/listingkit-asset.openapi.yaml -o web/listingkit-ui/src/lib/api/generated -p @hey-api/typescript
 # Deterministic regeneration and drift verification: make api-contract-check
 openapi: 3.1.0
 info:
@@ -51,6 +51,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Persisted task has no supported target platform and cannot be returned as a target-specific result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
   /api/v1/listing-kits/tasks/{task_id}/preview:
     get:
       operationId: getListingKitPreview
@@ -97,6 +103,9 @@ components:
     ImageProcessRequest:
       type: object
       required: [target_platform]
+      anyOf:
+        - required: [image_urls]
+        - required: [product_url]
       properties:
         image_urls:
           type: array
@@ -104,10 +113,9 @@ components:
           maxItems: 20
           items:
             type: string
-            format: uri
         product_url:
           type: string
-          format: uri
+          minLength: 1
         text:
           type: string
         target_platform:

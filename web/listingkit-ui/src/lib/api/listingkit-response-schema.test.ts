@@ -113,6 +113,15 @@ describe("listingkit response schemas", () => {
     expect(() => parsePreviewResponse({ status: "completed" })).toThrow(
       "unexpected preview response",
     );
+
+    expect(() =>
+      parsePreviewResponse({
+        task_id: "task-unsupported-platform",
+        status: "completed",
+        selected_platform: "etsy",
+        platforms: ["shein", "etsy"],
+      }),
+    ).toThrow("unexpected preview response");
   });
 
   it("parses review preview responses", () => {

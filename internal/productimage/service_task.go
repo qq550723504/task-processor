@@ -57,11 +57,15 @@ func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult
 	if err != nil {
 		return nil, err
 	}
+	targetPlatform, err := taskTargetPlatform(task)
+	if err != nil {
+		return nil, err
+	}
 
 	result := &TaskResult{
 		TaskID:         task.ID,
 		Status:         task.Status,
-		TargetPlatform: task.Request.TargetPlatform,
+		TargetPlatform: targetPlatform,
 		Result:         task.Result,
 		Error:          task.Error,
 		CreatedAt:      task.CreatedAt,
@@ -70,6 +74,19 @@ func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult
 		result.CompletedAt = &task.UpdatedAt
 	}
 	return result, nil
+}
+
+func taskTargetPlatform(task *Task) (string, error) {
+	if task == nil || task.Request == nil {
+		return "", ErrTaskTargetUnavailable
+	}
+	if target := listingplatform.Normalize(task.Request.TargetPlatform); listingplatform.IsSupported(target) {
+		return target, nil
+	}
+	if legacy := listingplatform.Normalize(task.Request.Marketplace); listingplatform.IsSupported(legacy) {
+		return legacy, nil
+	}
+	return "", ErrTaskTargetUnavailable
 }
 
 func (s *service) ReviewTask(ctx context.Context, taskID string, req *ReviewTaskRequest) (*TaskResult, error) {

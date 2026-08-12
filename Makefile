@@ -109,7 +109,7 @@ fmt:
 # Node script avoids shell-specific path and mkdir semantics on Windows/macOS/Linux.
 api-contract-check:
 	node scripts/generate-api-contract.mjs
-	git diff --exit-code -- docs/api/listingkit-asset.openapi.yaml web/listingkit-ui/src/lib/api/generated/listingkit-asset.ts
+	git diff --exit-code -- docs/api/listingkit-asset.openapi.yaml web/listingkit-ui/src/lib/api/generated
 
 # 本地运行 Listing Control Plane
 run-listing-control-plane:
