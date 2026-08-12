@@ -194,7 +194,7 @@ Describe "Get-RolloutBatches" {
 }
 ~~~
 
-Run: Invoke-Pester -Script ./scripts/rollout-shein-shard-statefulset.Tests.ps1 -Verbose  
+Run: Invoke-Pester -Script ./scripts/rollout-shein-shard-statefulset.Tests.ps1 -Verbose
 Expected: FAIL because Get-RolloutBatches and -CanaryOnly do not exist.
 
 - [ ] **Step 2: Implement the minimum pure batch contract**
@@ -248,7 +248,7 @@ require.NotContains(t, output, `tenant_id=`)
 require.NotContains(t, output, `store_id=`)
 ~~~
 
-Run: go test ./internal/infra/metrics -run TestConsumerRegistryExportsSnapshotMetrics -count=1  
+Run: go test ./internal/infra/metrics -run TestConsumerRegistryExportsSnapshotMetrics -count=1
 Expected: PASS. Temporarily changing schema_version in the assertion must fail, proving the test binds the external metric contract.
 
 - [ ] **Step 2: Keep production code unchanged unless the test proves it broken**
