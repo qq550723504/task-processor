@@ -235,6 +235,8 @@ export function TaskStatusScreen({
         onRetryChildTask={handleRetrySDSDesignSync}
         recoveringNow={taskRecovery.isPending}
         retryingChildTaskKind={childTaskRetry.isPending ? "sds_design_sync" : null}
+        retryQueued={childTaskRetry.data?.status === "queued"}
+        retryError={childTaskRetry.error}
       />
       <ReviewReasonsCard task={task} taskId={taskId} />
       <Card className="p-6">

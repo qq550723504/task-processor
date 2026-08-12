@@ -148,6 +148,12 @@ export type ListingKitTaskResult = {
   completed_at?: string;
 };
 
+export type TaskChildRetryAccepted = {
+  task_id: string;
+  kind: string;
+  status: "queued" | string;
+};
+
 export type RecoverTaskNowResponse = {
   task?: {
     id?: string;

@@ -227,6 +227,8 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         task={taskResult.data}
         onRetryChildTask={(kind) => childTaskRetry.mutate({ kind })}
         retryingChildTaskKind={childTaskRetry.isPending ? childTaskRetry.variables?.kind ?? null : null}
+        retryQueued={childTaskRetry.data?.status === "queued"}
+        retryError={childTaskRetry.error}
       />
       <ReviewReasonsCard
         task={taskResult.data}

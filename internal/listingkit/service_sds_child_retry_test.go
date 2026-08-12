@@ -88,3 +88,39 @@ func TestScheduleStudioBatchSDSChildRetriesQueuesOnlyFailedSDSChildren(t *testin
 		t.Fatalf("job = %#v, want immediate manual retry", job)
 	}
 }
+
+func TestScheduleTaskChildRetryQueuesSDSDesignSyncWithoutRunningRemoteWork(t *testing.T) {
+	ctx := context.Background()
+	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest()}
+	task := &Task{
+		ID:       "task-manual-retry",
+		TenantID: "tenant-1",
+		Status:   core.TaskStatusNeedsReview,
+		Request:  &GenerateRequest{SheinStoreID: 1038},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
+			Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusFailed), Error: "SHEIN cookie unavailable",
+		}}},
+	}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	result, err := (&service{repo: repo}).ScheduleTaskChildRetry(ctx, task.ID, &RetryChildTaskRequest{Kind: string(SDSChildRetryKindDesignSync)})
+	if err != nil {
+		t.Fatalf("ScheduleTaskChildRetry() error = %v", err)
+	}
+	if result == nil || result.TaskID != task.ID || result.Kind != string(SDSChildRetryKindDesignSync) || result.Status != "queued" {
+		t.Fatalf("result = %#v, want queued retry acknowledgement", result)
+	}
+	if len(repo.jobs) != 1 {
+		t.Fatalf("scheduled jobs = %#v, want one job", repo.jobs)
+	}
+	for _, job := range repo.jobs {
+		if job.ReasonCode != "manual_child_task_retry" {
+			t.Fatalf("job reason code = %q, want manual_child_task_retry", job.ReasonCode)
+		}
+		if job.NextRetryAt.After(time.Now().UTC().Add(time.Second)) {
+			t.Fatalf("job next retry at = %s, want immediate scheduling", job.NextRetryAt)
+		}
+	}
+}

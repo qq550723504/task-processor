@@ -7,6 +7,7 @@ import type {
   NavigationDispatchResponse,
   ReviewPreviewResponse,
 } from "@/lib/types/listingkit";
+import type { TaskChildRetryAccepted } from "@/lib/types/listingkit/tasks";
 import type { TargetPlatform } from "@/lib/api/generated";
 
 const targetPlatformSchema = z.enum(["amazon", "shein", "temu", "walmart"] satisfies TargetPlatform[]);
@@ -101,6 +102,14 @@ const taskResultSchema = z
   })
   .passthrough();
 
+const taskChildRetryAcceptedSchema = z
+  .object({
+    task_id: z.string(),
+    kind: z.string(),
+    status: z.string(),
+  })
+  .passthrough();
+
 const previewSlotSchema = z.record(z.string(), z.unknown());
 
 const previewSchema = z
@@ -168,6 +177,14 @@ export function parseTaskResultResponse(payload: unknown): ListingKitTaskResult 
     payload,
     taskResultSchema,
     "ListingKit API returned an unexpected task result response",
+  );
+}
+
+export function parseTaskChildRetryAcceptedResponse(payload: unknown): TaskChildRetryAccepted {
+  return parseApiResponseShape(
+    payload,
+    taskChildRetryAcceptedSchema,
+    "ListingKit API returned an unexpected child retry response",
   );
 }
 

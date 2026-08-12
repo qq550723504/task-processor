@@ -46,6 +46,15 @@ type SDSChildRetryJobRepository interface {
 	SaveSDSChildRetry(ctx context.Context, job *SDSChildRetryJob) error
 }
 
+// TaskChildRetryAccepted is returned when a retry has been durably queued.
+// The worker owns the long-running domain retry and will update the task result
+// when it finishes.
+type TaskChildRetryAccepted struct {
+	TaskID string `json:"task_id"`
+	Kind   string `json:"kind"`
+	Status string `json:"status"`
+}
+
 // StudioBatchSDSChildRetryResult records the tasks accepted by an explicit
 // Studio batch retry request. Each accepted task is retried by the same durable
 // worker used for automatically classified OSS failures.

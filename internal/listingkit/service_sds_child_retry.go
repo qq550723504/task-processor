@@ -37,6 +37,65 @@ func (s *service) RunDueSDSChildRetries(ctx context.Context, now time.Time, limi
 	return int64(len(jobs)), nil
 }
 
+// ScheduleTaskChildRetry validates a user-requested retry and persists it for
+// the existing SDS retry sweep. It deliberately does not execute remote SDS or
+// SHEIN work on the HTTP request goroutine.
+func (s *service) ScheduleTaskChildRetry(ctx context.Context, taskID string, req *RetryChildTaskRequest) (*TaskChildRetryAccepted, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" || req == nil || strings.TrimSpace(req.Kind) == "" {
+		return nil, core.ErrChildTaskRetryInvalidRequest
+	}
+	if s == nil || s.repo == nil {
+		return nil, core.ErrTaskNotFound
+	}
+	if strings.TrimSpace(req.Kind) != string(SDSChildRetryKindDesignSync) {
+		return nil, core.ErrChildTaskNotRetryable
+	}
+
+	task, err := s.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return nil, err
+	}
+	if task == nil {
+		return nil, core.ErrTaskNotFound
+	}
+	if task.Status == core.TaskStatusPending || task.Status == core.TaskStatusProcessing {
+		return nil, core.ErrChildTaskRetryConflict
+	}
+	if task.Result == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	if task.Request == nil {
+		return nil, ErrTaskResultUnavailable
+	}
+	state, ok := childTaskStateByKind(task.Result, string(SDSChildRetryKindDesignSync))
+	if !ok {
+		return nil, core.ErrChildTaskNotFound
+	}
+	if state.Status != string(core.TaskStatusFailed) && state.Status != string(core.TaskStatusCompleted) {
+		return nil, core.ErrChildTaskNotRetryable
+	}
+
+	repo, ok := s.repo.(SDSChildRetryJobRepository)
+	if !ok {
+		return nil, fmt.Errorf("SDS child retry repository is not configured")
+	}
+	_, err = repo.ScheduleSDSChildRetry(ctx, &SDSChildRetryJob{
+		TenantID:    task.TenantID,
+		TaskID:      task.ID,
+		StoreID:     task.Request.SheinStoreID,
+		Kind:        SDSChildRetryKindDesignSync,
+		NextRetryAt: time.Now().UTC(),
+		ReasonCode:  "manual_child_task_retry",
+		LastError:   "manual child task retry queued",
+		Status:      SDSChildRetryJobStatusPending,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &TaskChildRetryAccepted{TaskID: task.ID, Kind: string(SDSChildRetryKindDesignSync), Status: "queued"}, nil
+}
+
 func (s *service) runSDSChildRetry(ctx context.Context, job *SDSChildRetryJob) error {
 	result, err := s.RetryTaskChildTask(ctx, job.TaskID, &RetryChildTaskRequest{Kind: string(job.Kind)})
 	if err == nil && (result == nil || result.Result == nil || childTaskHasFailed(result.Result, string(job.Kind))) {

@@ -32,4 +32,24 @@ describe("useRetryChildTask", () => {
     await waitFor(() => expect(retryChildTaskMock).toHaveBeenCalled());
     await waitFor(() => expect(invalidateQueries).toHaveBeenCalled());
   });
+
+  it("returns the queued acknowledgement from the retry endpoint", async () => {
+    retryChildTaskMock.mockResolvedValue({
+      task_id: "task-1",
+      kind: "sds_design_sync",
+      status: "queued",
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useRetryChildTask("task-1"), { wrapper });
+
+    result.current.mutate({ kind: "sds_design_sync" });
+
+    await waitFor(() => expect(result.current.data?.status).toBe("queued"));
+  });
 });

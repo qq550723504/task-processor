@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
+import { ApiError } from "@/lib/api/client";
 
 describe("TaskStatusPanel", () => {
   it("renders nothing for completed tasks", () => {
@@ -204,8 +205,28 @@ describe("TaskStatusPanel", () => {
       screen.queryByText("The IP risk level is 'medium' due to using scraped 1688 source images."),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText("legacy semicolon string should not be used here"),
-    ).not.toBeInTheDocument();
+      screen.getByText("legacy semicolon string should not be used here"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the latest retry error alongside review reasons", () => {
+    render(
+      <TaskStatusPanel
+        task={{
+          status: "needs_review",
+          review_reasons: ["SHEIN 店铺登录态不可用"],
+          error: "SHEIN 验证码等待超时",
+        }}
+        retryQueued
+        retryError={new ApiError("ListingKit API request failed: 504", 504, {
+          message: "SHEIN 店铺登录态不可用，请重新登录后重试",
+        })}
+      />,
+    );
+
+    expect(screen.getByText("SHEIN 验证码等待超时")).toBeInTheDocument();
+    expect(screen.getByText(/SHEIN 店铺登录态不可用，请重新登录后重试/)).toBeInTheDocument();
+    expect(screen.getByText(/重试已加入队列/)).toBeInTheDocument();
   });
 
   it("splits semicolon-joined review reasons into separate items", () => {
