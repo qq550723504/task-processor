@@ -1,322 +1,282 @@
-# Next Phase Execution Plan
+# Platform-aware Asset Refactoring Implementation Plan
 
-> Status: active execution plan after the ListingKit boundary checkpoint and Product Sourcing foundation implementation.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Make ListingKit's image and asset flow explicitly target-platform-aware, then use that vertical slice to establish reusable configuration, event, and HTTP-contract boundaries.
+
+**Architecture:** Preserve the modular monolith and existing Product Sourcing/SHEIN boundaries. `internal/listingkit` remains an orchestration and compatibility facade; product-image behavior moves behind narrow product/asset-facing contracts, while marketplace-specific validation receives an explicit target rather than inferring or defaulting one. Runtime configuration is constructed in application/bootstrap packages and injected into feature packages.
+
+**Tech Stack:** Go 1.26, Gin, GORM, Temporal, RabbitMQ, Next.js/TypeScript, Vitest, Go standard testing.
+
+## Global constraints
+
+- Do not create a new service, scheduler, queue owner, or workflow engine.
+- Do not combine behavior changes with broad package renames or cosmetic file moves.
+- `internal/app/*` remains runtime assembly; it may read the global configuration, domain packages may not add new direct dependencies on `internal/core/config`.
+- A missing target platform is an input error. It must never silently select Amazon, SHEIN, or the first platform in an array.
+- Preserve tenant/user AI identity and fail-closed resolver behavior; never restore a static default credential/model fallback.
+- Preserve Temporal determinism and existing RabbitMQ acknowledgement/recovery semantics unless a task explicitly changes and tests them.
+- Do not begin another product-source integration or a TEMU/Amazon workbench expansion in these PRs.
+- Every temporary import-boundary exception must name an owner, reason, and retirement condition.
+
+---
+
+> Status: active implementation plan, re-baselined on 2026-08-12.
 >
-> Last reviewed: 2026-07-13.
+> Calibrated against: `master` at `858fac46804895fe107d7aa20cdc13906f102f4b`.
 >
-> Calibrated against: `master` at `5c72f406c18b40d3860fb8f0c7518c6606f38b85`.
->
-> Scope: current-baseline validation, SHEIN production stabilization, Product Sourcing MVP closeout, and selection of one next product source.
+> Supersedes: the 2026-07 queue that made next-source selection the next structural milestone. Product Sourcing closeout remains required product work, but it is not a reason to defer the contained asset-boundary correction below.
 
 ## 1. Current position
 
-The project has moved beyond the early “split large files” phase. It has also moved beyond the initial Product Sourcing modeling phase.
+- The repository is a ListingKit-centred modular-monolith migration, not a candidate for a broad microservice split.
+- `internal/listingkit` remains the complexity sink and still owns API, HTTP assembly, persistence, orchestration, and compatibility concerns.
+- Product Sourcing foundations (`SourceEnvelope`, catalog/asset facts, and the ListingKit bridge) exist; the controlled 1688 path still needs business-flow acceptance evidence.
+- SHEIN is the production-critical target path. TEMU/Amazon runtime assets remain maintained but their full workbenches are deferred.
+- The image flow currently derives one `Marketplace` from `GenerateRequest.Platforms`; empty input falls back to `amazon`, and a multi-platform request selects the first normalized value. This is a correctness and ownership problem, not just a naming problem.
+- `internal/core/config` is still a broad dependency. The first remediation must demonstrate constructor injection on one vertical slice before applying a repository-wide rule.
+- Existing import-boundary tests pass, but many exception allowlists show that structural migration must reduce real dependencies instead of adding further exemptions.
 
-Current read:
+## 2. Sequencing decision
 
-- ListingKit file-group slimming has reached a checkpoint.
-- Preview and submission work is now boundary migration and guardrail work, not file-size reduction.
-- `internal/app/httpapi` is primarily runtime assembly and should remain closed to feature policy.
-- Import-boundary tests are active architecture enforcement.
-- `SourceIdentity`, `SourceEnvelope`, Amazon and 1688 mappings, catalog/asset handoff, a ListingKit request bridge, and source-boundary guards are implemented.
-- The recent SHEIN change stream contains production-sensitive pricing, promotion, cache, readiness, and publishing-boundary changes.
-- Exact current-baseline CI and smoke evidence is more important than starting another structural migration.
-- Generated package/dependency baselines remain local evidence, not committed architecture authority.
+The next structural PR is **not** a large ListingKit extraction. It is the platform-aware asset slice:
 
-This plan supersedes the earlier queue that began with introducing Product Sourcing identity and envelope types. Those foundation slices now exist.
+```text
+ListingKit GenerateRequest (one or more requested targets)
+  -> explicit per-target image/asset request
+  -> productimage processing and reusable asset persistence
+  -> marketplace-specific validation for that exact target
+  -> ListingKit aggregation of target-keyed results
+```
 
-## 2. Main conclusion
+This ordering removes the incorrect fallback before it can spread into new sources or platforms. It also gives later configuration and API-contract work one stable, narrow interface to adopt.
 
-The next phase should focus on:
+## 3. Work that remains parallel, not coupled
 
-1. making the current baseline release-decision-ready;
-2. validating the recent SHEIN production-sensitive changes;
-3. closing the implemented Product Sourcing MVP through one controlled 1688 flow;
-4. preserving runtime and package boundaries;
-5. selecting exactly one next warehouse/catalog source only after closeout.
-
-Do **not** continue extracting details from root `internal/listingkit` merely because a file can be made smaller.
-
-## 3. Current phase status
-
-| Area | Status | Next posture |
+| Track | Required outcome | Boundary |
 | --- | --- | --- |
-| Current `master` validation | Evidence incomplete | Record exact CI, race, build, frontend, and smoke results for the commit used in release decisions. |
-| SHEIN production path | Active stabilization | Validate synchronized pricing, promotion calculations, resolution caches, readiness, save-draft, publish, and recovery behavior. |
-| Preview | Checkpointed | Continue only when ownership clearly moves to `internal/listing/preview`. |
-| Submission | Late boundary migration | Continue only small policy seams that do not change Temporal determinism or introduce another submission owner. |
-| Service slimming | First wave complete | Freeze as compatibility/facade shell; avoid cosmetic splitting. |
-| HTTPAPI runtime | Inventory complete | Keep app/runtime assembly thin and feature policy in feature-owned packages. |
-| Product Sourcing foundation | Implemented | Validate and close the MVP rather than recreating its model or package structure. |
-| 1688 source handoff | Implemented; controlled-flow evidence pending | Exercise source-to-task-to-preview behavior and verify lineage/warnings. |
-| Amazon source mapping | Implemented boundary-validation path | Maintain tests; do not interpret it as an active full Amazon workbench. |
-| Next warehouse source | Not started | Define one source contract only after Product Sourcing closeout. |
-| Boundary tests | Active | Keep guards stable and explain every temporary allowlist exception. |
-| Generated baselines | Local evidence only | Write outputs under `.local/` or summarize them in a dated validation note. |
+| SHEIN stabilization | Focused evidence for pricing, readiness, publish/recovery, and production-sensitive changes | No package migration bundled with business-policy fixes |
+| Product Sourcing MVP | One controlled `1688 -> SourceEnvelope -> facts -> ListingKit task -> preview/readiness` flow, with lineage and warnings | No new source until the result is recorded as closed or blocked |
+| Platform-aware asset refactor | Explicit target selection, target-keyed image/asset outputs, and no Amazon/order fallback | The next structural PR sequence below |
+| Baseline evidence | Exact command/CI output recorded for the commit under review | A failing environment gate is classified, never silently ignored |
 
-## 4. Immediate priorities
+## 4. Implementation queue
 
-### Priority 1: Validate the exact baseline
+### Task 1: Make image-target selection explicit
 
-Run focused checks first:
+**Files:**
+
+- Modify: `internal/listingkit/model_request.go`
+- Modify: `internal/listingkit/service.go`
+- Modify: `internal/listingkit/workflow_requests.go`
+- Modify: `internal/listingkit/workflow_standard_media_phase.go`
+- Modify: `internal/listingkit/model_result.go`
+- Modify: `internal/listingkit/assembler.go`
+- Modify: `internal/listingkit/platform_payload_result_context.go` and every production consumer found by `rg -l 'result\.(ImageAssets|AssetBundle|AssetInventorySummary)' internal/listingkit -g '*.go'`
+- Modify: `internal/productimage/domain/model.go`
+- Modify: `internal/productimage/service_task.go`
+- Modify: `internal/listingkit/workflow_assets_test.go`
+- Modify: `internal/listingkit/workflow_scene_options_test.go`
+- Modify: `internal/productimage/service_task_test.go`
+- Create: `internal/listingkit/workflow_requests_test.go`
+
+**Consumes:** `GenerateRequest.Platforms`, `listing/platform.NormalizeSupportedPlatforms`, and `productimage.ImageProcessRequest`.
+
+**Produces:** an explicit target-platform value for every image-processing request and a target-keyed `ListingKitResult` projection for a multi-target listing request. The legacy scalar asset fields remain compatibility projections only; they are populated for a single target or for an explicitly selected compatibility target, never from array order.
+
+- [ ] Write failing tests that assert all of the following:
+  - a request that enables image processing with an empty or unsupported target list is rejected before an image task is created;
+  - a request for `["shein", "temu"]` creates independent requests whose targets are `shein` and `temu`, regardless of input order;
+  - neither `nil` nor an empty target list produces an `amazon` request;
+  - image validation receives the same explicit target that was selected for the corresponding asset output.
+  - a multi-target result exposes both target-keyed outputs, while legacy scalar fields are populated only for one target or for an explicitly requested compatibility target.
+- [ ] Run the focused tests and confirm that the current fallback/first-element behavior fails those assertions:
+
+  ```powershell
+  go test ./internal/listingkit -run "Test.*Image.*Target|Test.*Workflow.*Request" -count=1
+  go test ./internal/productimage -run "TestCreateProcessTask" -count=1
+  ```
+
+- [ ] Add a target-specific request field or value object in `productimage/domain/model.go`. Keep the existing serialized `Marketplace` field readable only as a compatibility input during this PR; normalize it at the ingress boundary and reject disagreement with the explicit target.
+- [ ] Replace `detectImageMarketplace` in `workflow_requests.go` with a helper that returns one validated request per normalized target. It must return an error for missing targets and must not choose the first item as the sole target.
+- [ ] Add target-keyed result containers and lookup helpers in `model_result.go`. Update platform-payload consumers to ask for their own target rather than read the scalar compatibility fields.
+- [ ] Update `workflow_standard_media_phase.go` to process the returned requests independently and aggregate results by target. Record target-specific child-task/stage identity; do not overwrite one target's validation or asset result with another's.
+- [ ] Update `service.go` validation so an image-processing request cannot reach the workflow without at least one supported target. Requests that do not process images retain their existing non-image behavior.
+- [ ] Re-run the focused tests, then run:
+
+  ```powershell
+  go test ./internal/listingkit ./internal/productimage -count=1
+  go test ./tests -count=1
+  ```
+
+- [ ] Update `docs/architecture/listingkit-refactor-status.md` so it describes the implemented explicit-target behavior, not the retired fixed-Amazon implementation.
+- [ ] Commit only this behavior/documentation slice:
+
+  ```text
+  refactor(asset): require explicit image target platforms
+  ```
+
+### Task 2: Establish a product-image configuration seam
+
+**Files:**
+
+- Modify: `internal/productimage/asset_publisher.go`
+- Modify: `internal/productimage/httpapi/asset_publisher_builder.go`
+- Modify: `internal/productimage/httpapi/image_pipeline_component_builder.go`
+- Modify: `internal/productimage/httpapi/model_provider_builder.go`
+- Modify: `internal/productimage/httpapi/runtime_builder.go`
+- Modify: `internal/productimage/httpapi/runtime_module.go`
+- Modify: `internal/productimage/*_test.go` tests covering the touched constructors
+- Modify: `tests/import_boundaries_test.go`
+
+**Consumes:** the explicit target produced by Task 1 and existing resolver-only provider interfaces.
+
+**Produces:** typed product-image constructor options assembled in `productimage/httpapi`, with no new configuration reads from product-image business behavior.
+
+- [ ] Write failing constructor tests that build the product-image runtime from a small options struct and prove that missing tenant-bound model routing fails closed.
+- [ ] Run only those tests and confirm that the desired constructor cannot yet be used without a broad `*config.Config` dependency.
+- [ ] Define focused options in the HTTP/runtime builder for object storage, model/provider resolution, scene policy, and identity requirements. Do not pass the entire global config through a new wrapper.
+- [ ] Move configuration interpretation into the existing `productimage/httpapi/*builder.go` files. `asset_publisher.go` and other product-image behavior must receive interfaces or typed values, not read global configuration.
+- [ ] Add an import-boundary rule preventing new production imports of `internal/core/config` below `internal/productimage`, while allowing the existing HTTP/runtime composition package to construct options.
+- [ ] Re-run product-image tests, targeted architecture tests, and the existing resolver-only regression test:
+
+  ```powershell
+  go test ./internal/productimage/... -count=1
+  go test ./internal/infra/clients/openai -run TenantManager -count=1
+  go test ./tests -count=1
+  ```
+
+- [ ] Commit only the configuration seam:
+
+  ```text
+  refactor(productimage): inject runtime options at the HTTP boundary
+  ```
+
+### Task 3: Version the task-routing event at the messaging boundary
+
+**Files:**
+
+- Modify: `internal/domain/task/message.go`
+- Modify: `internal/domain/task/normalize.go`
+- Modify: `internal/domain/task/normalize_test.go`
+- Modify: `internal/app/task/message_adapter.go`
+- Modify: `internal/app/task/message_adapter_test.go`
+- Modify: `internal/app/task/message_types.go`
+- Modify: `internal/app/task/message_types_test.go`
+- Modify: message producers/consumers found by `rg -l 'TaskMessage' internal -g '*.go'`
+- Create: `docs/architecture/task-event-v2-migration.md`
+
+**Consumes:** canonical source/target values from Task 1 and the current RabbitMQ task message path.
+
+**Produces:** `TaskEventV2` with string task ID, explicit source/target platforms, schema version, and trace metadata; a bounded adapter for legacy messages.
+
+- [ ] Write failing normalization tests for a V2 event with explicit source and target, and for rejection of missing/contradictory values.
+- [ ] Keep current legacy-message tests, but change them to assert conversion at the adapter boundary rather than allowing domain consumers to depend on the ambiguous `platform` field.
+- [ ] Introduce `TaskEventV2`; require `schemaVersion`, `taskId` as a string, `sourcePlatform`, and `targetPlatform` for new producer output.
+- [ ] Keep legacy decoding only in `app/task/message_adapter.go`. Remove the unknown-queue fallback to `amazon.crawler`; unknown routes must return a classified error/metric.
+- [ ] Publish dual-readable events only for the agreed compatibility window. Record the exit condition in `task-event-v2-migration.md`: zero legacy consumers and zero legacy event observations for a defined release window.
+- [ ] Re-run task/domain/consumer tests and one RabbitMQ integration path without changing acknowledgement ordering:
+
+  ```powershell
+  go test ./internal/domain/task ./internal/app/task ./internal/app/consumer -count=1
+  go test ./tests -count=1
+  ```
+
+- [ ] Commit the event migration separately:
+
+  ```text
+  refactor(task): introduce explicit platform routing event v2
+  ```
+
+### Task 4: Pilot a generated HTTP contract for the asset slice
+
+**Files:**
+
+- Create: `docs/api/listingkit-asset.openapi.yaml`
+- Modify: `internal/productimage/httpapi/handler.go`
+- Modify: `internal/listingkit/api/handler_tasks.go` only if the public request/response changes
+- Modify: `web/listingkit-ui/src/lib/api/client.ts`
+- Modify: the affected files under `web/listingkit-ui/src/lib/api/`
+- Create: generated artifacts only in an existing approved generated-code location, with its generator command documented in the OpenAPI file header or Makefile
+- Modify: `Makefile`
+
+**Consumes:** stable request/response and error semantics from Tasks 1 and 2.
+
+**Produces:** one machine-readable contract and generated TypeScript types/client bindings for the asset endpoints; this is a pilot, not a repository-wide API migration.
+
+- [ ] Write contract tests that validate a representative valid request, a missing-target 4xx response, and a target-specific result against the OpenAPI schema.
+- [ ] Add the smallest OpenAPI document that describes only the selected asset endpoints, error envelope, target-platform enum, and async result shape. Do not hand-maintain a second Go or TypeScript model.
+- [ ] Use an established OpenAPI generator already compatible with the repository toolchain to generate TypeScript client/types. Check generated output into the approved location only when generation is deterministic; otherwise generate in CI and verify a clean diff.
+- [ ] Replace the corresponding hand-written response casts in the UI client with generated contract types at the pilot endpoints. Keep the existing proxy/auth boundary unchanged.
+- [ ] Add `make api-contract-check` to regenerate/validate the pilot contract and fail on drift.
+- [ ] Run backend focused tests plus frontend checks:
+
+  ```powershell
+  go test ./internal/productimage/... ./internal/listingkit/... -count=1
+  Set-Location web/listingkit-ui
+  npm.cmd run typecheck
+  npm.cmd test
+  ```
+
+- [ ] Commit the contract pilot separately:
+
+  ```text
+  build(api): add generated asset endpoint contract
+  ```
+
+## 5. Baseline and product-flow gates
+
+These are required evidence tracks, but they must not be bundled with Tasks 1-4 unless they expose a direct regression in that task.
 
 ```powershell
-go test ./internal/product/sourcing/... -count=1
-go test ./internal/catalog/... -count=1
-go test ./internal/asset/... -count=1
-go test ./internal/product/sourcehandoff/... -count=1
-go test ./internal/listingkit/... -count=1
-go test ./internal/listingkit/httpapi/... -count=1
-go test ./internal/app/httpapi/... -count=1
-go test ./tests/... -count=1
-```
-
-Run the full backend and runtime gates:
-
-```powershell
-go test ./... -count=1
-
-go test -race ./internal/app/runtime/listingcontrol `
-  -run TestControlPlaneService -count=1
-
-go test -race ./internal/listingadmin `
-  -run "TestConcurrentClaimForDispatchOnlyOneWorkerWins|TestConcurrentRollbackDispatchOnlyOriginalQueuedClaimIsRestoredOnce|TestConcurrentRecoveryOnlyUpdatesStillEligibleRowsOnce" `
-  -count=1
-
-make build-all
-```
-
-Run frontend gates:
-
-```powershell
+go test ./tests -count=1
+go test ./internal/listingkit ./internal/productimage -count=1
+go test ./internal/product/sourcing/... ./internal/catalog/... ./internal/asset/... ./internal/product/sourcehandoff/... -count=1
 Set-Location web/listingkit-ui
-npm ci
-npm run lint
-npm run typecheck
-npm test
-npm run build
+npm.cmd run typecheck
 ```
 
-Acceptance criteria:
-
-- The exact commit is named in the result.
-- Every failure is classified as a regression, stale expectation, flaky fixture, legacy exception, or environment issue.
-- No release note says “green” without a visible command result or workflow run.
-- Generated dependency/package output stays local unless deliberately summarized in a dated note.
-
-### Priority 2: Validate the SHEIN stabilization wave
-
-Maintain a focused regression and smoke matrix for:
-
-1. synchronized supply price used by activity enrollment;
-2. promotion drop-rate and breakeven calculations;
-3. multi-SKU retail-price and cost completeness;
-4. fallback behavior when synchronized supply price is absent;
-5. final resolution-cache preservation during republish;
-6. SDS baseline and canonical metadata behavior;
-7. action-aware submit-readiness and POD-readiness policy;
-8. save-draft and publish idempotency/recovery;
-9. SHEIN listing browser startup;
-10. rollout and rollback behavior when the change is release-sensitive.
-
-Acceptance criteria:
-
-- Focused unit or integration coverage exists for each changed business rule.
-- At least one real or controlled smoke run records task ID, store, action, result, and failure context.
-- Pricing and promotion behavior is reviewed as business semantics, not only as package refactoring.
-- Missing smoke coverage is explicitly called out before release.
-
-### Priority 3: Close the Product Sourcing MVP
-
-The implemented path is:
+Before calling the Product Sourcing MVP closed, run and record one controlled flow:
 
 ```text
-Amazon / 1688 source result
-  -> internal/product/sourcing.SourceIdentity + SourceEnvelope
-  -> internal/catalog.ProductFacts + internal/asset.Facts
-  -> internal/product/sourcehandoff.ListingKitRequestInput
-  -> internal/listingkit.GenerateRequest
-  -> existing task creation and SHEIN preview/submission path
+1688 source request
+  -> SourceEnvelope
+  -> catalog and asset facts
+  -> ListingKit task
+  -> preview/readiness
 ```
 
-Required closeout:
+The validation note must name the commit, describe source lineage, list missing-fact warnings/errors, and distinguish controlled evidence from a real tenant/store acceptance run.
 
-1. validate identity normalization, fingerprinting, and weak-identity behavior;
-2. validate Amazon and 1688 envelope mapping without browser automation;
-3. validate catalog and asset fact handoff;
-4. validate the ListingKit request bridge and 1688 command/HTTP adapter;
-5. exercise one controlled 1688 source-to-task-to-preview flow;
-6. verify source lineage or a durable source reference is retained;
-7. verify missing facts remain explicit warnings/errors;
-8. record the result in a dated validation note;
-9. declare the MVP closed or list the exact remaining blockers.
+## 6. Stop conditions
 
-Do not start 大建云仓 or another source merely because the model exists. Close the current loop first.
+Pause the affected task and update this plan if it would:
 
-### Priority 4: Keep runtime and boundaries closed
+- require a new global configuration read in a product, listing, marketplace, or integration package;
+- make an unspecified target silently choose a platform;
+- change Temporal activity retry/determinism or RabbitMQ acknowledgement ordering without a dedicated design and test plan;
+- add marketplace-specific policy to root `internal/listingkit`;
+- require broad import allowlist expansion instead of removing a dependency;
+- couple the asset refactor to a new source integration, a platform workbench, or a database rewrite;
+- expose tenant credentials, browser state, provider responses, or assets across tenant boundaries.
 
-- Keep `internal/app/*` as runtime assembly.
-- Keep root `internal/listingkit` as orchestration, compatibility, DTO adaptation, persistence ordering, and API-shell glue.
-- Keep source normalization in `internal/product/sourcing`.
-- Keep crawler access/execution in `internal/integration/crawler/*` or an approved adapter boundary.
-- Keep generic submission mechanics in `internal/listing/submission`.
-- Keep marketplace rules in marketplace/publishing/workspace packages.
-- Hide concrete infrastructure and external clients behind small interfaces.
-- Add owner, reason, and retirement condition to every import allowlist expansion.
+## 7. Definition of done
 
-## 5. Recommended PR queue
+The next refactoring phase is complete when:
 
-### PR A: Record current-baseline validation
+- all newly created image-processing requests have an explicit target platform;
+- a multi-target listing has independent target-keyed image/asset processing and validation results;
+- no image request path defaults to Amazon or relies on the first input platform;
+- product-image business behavior no longer acquires global configuration directly;
+- TaskEventV2 is the only new task-event output and legacy conversion has a measured retirement path;
+- the asset HTTP pilot has a machine-readable contract and a deterministic drift check;
+- targeted tests, `go test ./tests -count=1`, and UI typecheck pass for the exact commit under review;
+- SHEIN stabilization and controlled 1688 acceptance remain separately recorded rather than implicitly claimed by refactoring tests.
 
-Suggested title:
+## 8. Explicitly deferred
 
-```text
-test: record current listingkit baseline validation
-```
-
-Scope:
-
-- run focused, full, race, build, and frontend gates;
-- classify failures;
-- fix only true regressions or stale test expectations needed to establish the baseline;
-- add a dated validation note with exact evidence.
-
-Do not:
-
-- move packages;
-- introduce new product features;
-- combine unrelated refactoring.
-
-### PR B: Close SHEIN stabilization evidence
-
-Suggested title:
-
-```text
-test: validate shein pricing readiness and republish behavior
-```
-
-Scope:
-
-- consolidate focused tests for recent pricing, promotion, cache, and readiness changes;
-- add or update a real-flow validation note;
-- call out any release blocker explicitly.
-
-### PR C: Validate the controlled 1688 Product Sourcing path
-
-Suggested title:
-
-```text
-test: close product sourcing mvp with 1688 flow
-```
-
-Scope:
-
-- run source, facts, bridge, and boundary tests;
-- exercise one controlled import-to-task-to-preview path;
-- verify lineage, warnings, and operator-visible failures;
-- update `docs/product/product-sourcing-mvp-plan.md` with the final closeout result.
-
-### PR D: Inventory one next warehouse source
-
-Suggested title:
-
-```text
-docs: define next warehouse source contract
-```
-
-Scope:
-
-- select exactly one source, currently expected to be 大建云仓 if its contract is available;
-- document identity, product, variant, asset, cost, pagination, authentication, and error fields;
-- map fields to the existing `SourceEnvelope` without changing runtime behavior.
-
-### PR E: Implement the selected source adapter
-
-Start only after PR D is approved and the current MVP is closed.
-
-Scope:
-
-- implement source access through an approved adapter boundary;
-- normalize into the existing source contract;
-- reuse catalog, asset, and ListingKit handoff paths;
-- add boundary and fixture-based tests.
-
-Do not combine this PR with a TEMU, Amazon, or Walmart workbench expansion.
-
-## 6. Boundary rules for new code
-
-| Kind of code | Preferred home |
-| --- | --- |
-| Product-source identity and normalization | `internal/product/sourcing` |
-| Product/catalog facts | `internal/catalog` or approved product/catalog target |
-| Product image/design/asset facts | `internal/asset` or approved asset target |
-| Source access and crawler execution adapters | `internal/integration/crawler/*` or approved integration adapter |
-| Source-to-ListingKit adaptation | `internal/product/sourcehandoff` |
-| Generic listing submission policy | `internal/listing/submission` |
-| Listing preview rules | `internal/listing/preview` |
-| SHEIN publishing rules | `internal/marketplace/shein/publishing` or `internal/publishing/shein` according to the current compatibility seam |
-| SHEIN workspace/editor presentation rules | `internal/marketplace/shein/workspace` |
-| HTTP runtime assembly | `internal/app/httpapi` or feature-owned `*/httpapi` packages |
-| Legacy compatibility / API-shell glue | `internal/listingkit` |
-
-## 7. Stop conditions
-
-Pause and document instead of continuing if a proposed slice:
-
-- depends on an unverified current baseline;
-- requires a target package to import root `internal/listingkit` outside an approved compatibility bridge;
-- touches Temporal determinism or activity retry semantics without explicit review;
-- moves runtime client construction into a business package;
-- combines behavior changes with package movement;
-- only reduces file size without changing ownership or dependency direction;
-- requires broad allowlist expansion without an owner and retirement condition;
-- depends on stale generated package/dependency snapshots;
-- starts another product source before the current source loop is closed;
-- starts a full new sales-platform workbench during current stabilization;
-- treats an official command or deployment manifest as proof of product maturity.
-
-## 8. Main risks
-
-The main risks are now:
-
-```text
-production-sensitive SHEIN changes without exact current-baseline evidence;
-implemented Product Sourcing code being mistaken for a fully validated business flow;
-status documents drifting behind code;
-continued helper/package churn that does not improve ownership.
-```
-
-Mitigation:
-
-- name the exact baseline;
-- keep tests, smoke results, and release evidence visible;
-- close one source loop before selecting the next;
-- update status documents when implementation state changes;
-- tie every structural PR to an explicit ownership improvement.
-
-## 9. Definition of done for this phase
-
-This phase is complete when:
-
-- focused and full backend tests are green or explicitly classified for the exact baseline;
-- listing-control and listingadmin race tests are green or explicitly classified;
-- all maintained runtime commands build through `make build-all`;
-- frontend lint, typecheck, tests, and build are green or explicitly classified;
-- recent SHEIN pricing, promotion, cache, readiness, and republish behavior has focused evidence;
-- one controlled 1688 path reaches the existing task/preview flow with lineage and warnings verified;
-- the Product Sourcing MVP is explicitly marked closed or has a short blocker list;
-- source/crawler/catalog/asset/bridge boundary guards remain green;
-- import-boundary allowlists are stable and explained;
-- root `internal/listingkit` receives no new broad policy ownership;
-- generated baseline outputs are not committed as long-lived documentation;
-- exactly one next product source is selected through a documented contract.
-
-## 10. Recommended immediate next step
-
-Start with PR A:
-
-```text
-test: record current listingkit baseline validation
-```
-
-Until that evidence exists, treat the calibrated baseline as implemented but not independently confirmed release-ready.
+- Broad `internal/listingkit` renames or a one-shot compatibility-package migration.
+- New scheduler/watchdog/worker ownership.
+- A LangGraph or microservice replacement for Go/Temporal/RabbitMQ orchestration.
+- Full TEMU, Amazon, or Walmart workbench expansion.
+- A second product-source adapter before the controlled 1688 loop is closed.
