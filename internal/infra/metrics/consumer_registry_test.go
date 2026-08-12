@@ -97,3 +97,32 @@ func TestConsumerRegistryIncludesPrometheusBuiltInCollectors(t *testing.T) {
 		t.Fatalf("process_start_time_seconds collector missing or empty: %+v", names)
 	}
 }
+
+func TestConsumerRegistryKeepsLegacyTaskEventMetricLowCardinality(t *testing.T) {
+	registry := NewConsumerRegistry()
+	registry.UpdateConsumerSnapshot(ConsumerSnapshot{
+		Task: coremetrics.TaskMetricsSnapshot{LegacyTaskEventDecodedCount: 2},
+	})
+
+	families, err := registry.Registry().Gather()
+	if err != nil {
+		t.Fatalf("Gather() error = %v", err)
+	}
+
+	for _, family := range families {
+		if family.GetName() != "task_event_decoded_total" {
+			continue
+		}
+		if len(family.GetMetric()) != 1 {
+			t.Fatalf("task_event_decoded_total metric count = %d, want 1", len(family.GetMetric()))
+		}
+
+		labels := family.GetMetric()[0].GetLabel()
+		if len(labels) != 1 || labels[0].GetName() != "schema_version" || labels[0].GetValue() != "legacy" {
+			t.Fatalf("task_event_decoded_total labels = %+v, want only schema_version=legacy", labels)
+		}
+		return
+	}
+
+	t.Fatal("task_event_decoded_total metric family missing")
+}
