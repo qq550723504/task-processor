@@ -142,7 +142,7 @@ This ordering removes the incorrect fallback before it can spread into new sourc
 
   ```powershell
   go test ./internal/productimage/... -count=1
-  go test ./internal/infra/clients/openai -run TenantManager -count=1
+  go test ./internal/infra/clients/openai -run TestManagerFailsClosedForResolverOnlyImageWithoutIdentityConfiguration -count=1
   go test ./tests -count=1
   ```
 
