@@ -61,6 +61,27 @@ func TestBuildGovernedProductImageSceneGeneratorCarriesTaskAndTraceIdentity(t *t
 	}
 }
 
+func TestGovernedFaithfulEditorRecordsAllowlistedInvocation(t *testing.T) {
+	recorder := &sceneGovernanceRecorderCapture{}
+	editor := &faithfulEditorCapture{called: new(bool)}
+	governed := &governedFaithfulEditor{
+		inner: editor,
+		router: BuildProductImageSceneCapabilityRouter(&productImageSceneResolver{resolved: &openaiclient.ResolvedClientConfig{
+			CacheKey: "config-v1",
+			Config:   &openaiclient.ClientConfig{APIKey: "key", BaseURL: "https://example.test/v1", Model: "image-model", APIStyle: "openai"},
+		}}, []string{"tenant-a"}),
+		recorder: recorder,
+	}
+	ctx := productimage.WithAIIdentity(context.Background(), productimage.AIIdentity{TenantID: "tenant-a", UserID: "user-a"})
+
+	if _, err := governed.Edit(ctx, &productimage.FaithfulEditRequest{Operation: "extract_subject", PromptRef: "productimage.subject.extract"}); err != nil {
+		t.Fatalf("Edit() error = %v", err)
+	}
+	if recorder.record.Operation != aicapability.OperationProductImageSubjectExtract || recorder.record.ModelID != "image-model" {
+		t.Fatalf("record = %+v", recorder.record)
+	}
+}
+
 type sceneGovernanceGeneratorStub struct{}
 
 func (*sceneGovernanceGeneratorStub) GenerateScene(context.Context, *productimage.SceneGenerationRequest) (*productimage.SceneGenerationResult, error) {

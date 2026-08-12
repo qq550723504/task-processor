@@ -218,7 +218,8 @@ func (s *service) runSubjectStage(ctx context.Context, state *PipelineState) err
 						"pass_through_subject",
 					},
 					Metadata: map[string]string{
-						"fallback_reason": "subject_extraction_no_retry",
+						"fallback_reason":   "subject_extraction_no_retry",
+						"tenant_model_gate": "true",
 					},
 				}
 				reason := fmt.Sprintf("extract_subject degraded to pass-through subject: %v", err)
@@ -277,7 +278,7 @@ func (s *service) runWhiteBgStage(ctx context.Context, state *PipelineState) err
 		asset, err := s.whiteBgRenderer.Render(ctx, state.Result.MainImage, state.Context)
 		if err != nil {
 			if IsTenantModelAccessDenied(err) {
-				state.Result.WhiteBgImage = &ImageAsset{URL: state.Result.MainImage.URL, Type: AssetTypeWhiteBgImage, SourceURL: state.Result.MainImage.SourceURL, Operations: append(append([]string{}, state.Result.MainImage.Operations...), "pass_through_white_bg_tenant_gate")}
+				state.Result.WhiteBgImage = &ImageAsset{URL: state.Result.MainImage.URL, Type: AssetTypeWhiteBgImage, SourceURL: state.Result.MainImage.SourceURL, Operations: append(append([]string{}, state.Result.MainImage.Operations...), "pass_through_white_bg_tenant_gate"), Metadata: map[string]string{"tenant_model_gate": "true"}}
 				state.addTrace("render_white_bg", state.Result.MainImage.SourceURL, string(AssetTypeWhiteBgImage), "fallback", time.Since(startedAt), "pass through white background because tenant model access is denied")
 				state.markNeedsReviewStage("render_white_bg", time.Since(startedAt).Milliseconds(), "white background model skipped because tenant model access is denied")
 				return nil
@@ -306,7 +307,7 @@ func (s *service) runGalleryStage(ctx context.Context, state *PipelineState) err
 			if IsTenantModelAccessDenied(err) {
 				state.Result.GalleryImages = make([]ImageAsset, 0, len(state.Candidates.SceneCandidates))
 				for _, imageURL := range state.Candidates.SceneCandidates {
-					state.Result.GalleryImages = append(state.Result.GalleryImages, ImageAsset{URL: imageURL, Type: AssetTypeGalleryImage, SourceURL: imageURL, Operations: []string{"pass_through_gallery_tenant_gate"}})
+					state.Result.GalleryImages = append(state.Result.GalleryImages, ImageAsset{URL: imageURL, Type: AssetTypeGalleryImage, SourceURL: imageURL, Operations: []string{"pass_through_gallery_tenant_gate"}, Metadata: map[string]string{"tenant_model_gate": "true"}})
 					state.addTrace("render_gallery", imageURL, string(AssetTypeGalleryImage), "fallback", time.Since(startedAt), "pass through gallery because tenant model access is denied")
 				}
 				state.markNeedsReviewStage("render_gallery", time.Since(startedAt).Milliseconds(), "scene model skipped because tenant model access is denied")

@@ -60,11 +60,21 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 		allowed := tenantIDSet(input.Config.AICapability.ProductImageSceneAllowedTenantIDs)
 		var faithfulEditor productimage.FaithfulEditor
 		if editor := modelProvider.FaithfulEditor(); editor != nil {
-			faithfulEditor = &tenantAllowlistedFaithfulEditor{inner: editor, allowed: allowed}
+			faithfulEditor = &tenantAllowlistedFaithfulEditor{
+				inner: &governedFaithfulEditor{
+					inner: editor, router: BuildProductImageSceneCapabilityRouter(input.AICredentialResolver, input.Config.AICapability.ProductImageSceneAllowedTenantIDs), recorder: input.AIInvocationRecorder, logger: input.Logger,
+				},
+				allowed: allowed,
+			}
 		}
 		var reviewModel productimage.ImageReviewModel
 		if review := modelProvider.ReviewModel(); review != nil {
-			reviewModel = &tenantAllowlistedReviewModel{inner: review, allowed: allowed}
+			reviewModel = &tenantAllowlistedReviewModel{
+				inner: &governedReviewModel{
+					inner: review, router: BuildProductImageSceneCapabilityRouter(input.AICredentialResolver, input.Config.AICapability.ProductImageSceneAllowedTenantIDs), recorder: input.AIInvocationRecorder, logger: input.Logger,
+				},
+				allowed: allowed,
+			}
 		}
 		modelProvider = productimage.NewModelProvider(faithfulEditor, &tenantAllowlistedSceneGenerator{inner: governedScene, allowed: allowed}, reviewModel)
 	}

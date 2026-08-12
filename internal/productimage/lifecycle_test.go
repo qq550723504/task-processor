@@ -82,4 +82,8 @@ func TestCanReuseAssetAndPublishedAsset(t *testing.T) {
 
 	asset.Metadata["uploaded_url"] = "https://cdn.example.com/main.jpg"
 	require.True(t, canReusePublishedAsset(asset))
+
+	asset.Metadata["tenant_model_gate"] = "true"
+	require.False(t, canReuseAsset(asset))
+	require.False(t, canReusePublishedAsset(asset))
 }

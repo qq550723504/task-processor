@@ -10,6 +10,9 @@ func canReuseAsset(asset *ImageAsset) bool {
 		return false
 	}
 	if asset.Metadata != nil {
+		if asset.Metadata["tenant_model_gate"] == "true" {
+			return false
+		}
 		if publishedPath := asset.Metadata["published_path"]; publishedPath != "" {
 			if _, err := os.Stat(publishedPath); err == nil {
 				return true
@@ -34,6 +37,9 @@ func canReuseAsset(asset *ImageAsset) bool {
 
 func canReusePublishedAsset(asset *ImageAsset) bool {
 	if asset == nil || asset.Metadata == nil {
+		return false
+	}
+	if asset.Metadata["tenant_model_gate"] == "true" {
 		return false
 	}
 	if publishedPath := asset.Metadata["published_path"]; publishedPath != "" {
