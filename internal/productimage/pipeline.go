@@ -218,9 +218,11 @@ func (s *service) runSubjectStage(ctx context.Context, state *PipelineState) err
 						"pass_through_subject",
 					},
 					Metadata: map[string]string{
-						"fallback_reason":   "subject_extraction_no_retry",
-						"tenant_model_gate": "true",
+						"fallback_reason": "subject_extraction_no_retry",
 					},
+				}
+				if IsTenantModelAccessDenied(err) {
+					state.Result.SubjectCutout.Metadata["tenant_model_gate"] = "true"
 				}
 				reason := fmt.Sprintf("extract_subject degraded to pass-through subject: %v", err)
 				state.addTrace("extract_subject", state.Candidates.PrimarySource, string(AssetTypeSubjectCutout), "fallback", time.Since(startedAt), reason)

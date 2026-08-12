@@ -554,6 +554,9 @@ func TestService_ProcessImages_DowngradesSubjectModerationToNeedsReview(t *testi
 	if got := result.SubjectCutout.Metadata["fallback_reason"]; got != "subject_extraction_no_retry" {
 		t.Fatalf("fallback_reason = %q, want subject_extraction_no_retry", got)
 	}
+	if _, ok := result.SubjectCutout.Metadata["tenant_model_gate"]; ok {
+		t.Fatalf("moderation fallback must not be marked tenant_model_gate: %+v", result.SubjectCutout.Metadata)
+	}
 	if result.SubjectCutout.SourceURL != "https://example.com/a.jpg" {
 		t.Fatalf("subject cutout source URL = %q, want primary source", result.SubjectCutout.SourceURL)
 	}
