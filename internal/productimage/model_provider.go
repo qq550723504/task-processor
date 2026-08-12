@@ -71,6 +71,18 @@ type ReviewModelResult struct {
 	Confidence float64
 }
 
+type ReviewModelRoute struct {
+	CredentialReference  string
+	ModelID              string
+	RoutingKey           string
+	ConfigurationVersion string
+}
+
+type ReviewModelWithRoute interface {
+	ImageReviewModel
+	ReviewWithRoute(ctx context.Context, req *ReviewModelRequest, route ReviewModelRoute) (*ReviewModelResult, error)
+}
+
 type FaithfulEditor interface {
 	Edit(ctx context.Context, req *FaithfulEditRequest) (*FaithfulEditResult, error)
 }

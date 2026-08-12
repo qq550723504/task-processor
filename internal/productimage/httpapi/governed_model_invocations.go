@@ -14,7 +14,6 @@ import (
 
 	"task-processor/internal/aicapability"
 	productimage "task-processor/internal/productimage"
-	"task-processor/internal/prompt"
 )
 
 const governedModelRecordTimeout = 2 * time.Second
@@ -40,7 +39,7 @@ func (e *governedFaithfulEditor) Edit(ctx context.Context, req *productimage.Fai
 	}
 	startedAt := time.Now()
 	inputHash := hashGovernedValue(req)
-	promptHash := hashGovernedValue(req.PromptRef)
+	promptHash := hashGovernedValue(productimage.FaithfulEditPromptText(req))
 	decision, err := e.router.Decide(ctx, aicapability.RouteRequest{
 		TenantID: identity.TenantID, UserID: identity.UserID,
 		Capability: aicapability.CapabilityProductImageScene, Operation: operation,
@@ -83,11 +82,20 @@ func (m *governedReviewModel) Review(ctx context.Context, req *productimage.Revi
 	operation := aicapability.OperationProductImageReview
 	startedAt := time.Now()
 	inputHash := hashGovernedValue(req)
-	promptHash := hashGovernedValue(prompt.KProductImageReviewDefault)
+	resolvedPrompt, promptErr := productimage.ReviewPromptText(req)
+	if promptErr != nil {
+		return nil, promptErr
+	}
+	promptHash := hashGovernedValue(resolvedPrompt)
+	requestedRoutingKey := ""
+	// Review routing prefers the vision client when a reviewable image URL is present.
+	if req.Result != nil && req.Result.MainImage != nil && strings.HasPrefix(strings.ToLower(strings.TrimSpace(req.Result.MainImage.URL)), "http") {
+		requestedRoutingKey = productImageReviewVisionRoutingKey
+	}
 	decision, err := m.router.Decide(ctx, aicapability.RouteRequest{
 		TenantID: identity.TenantID, UserID: identity.UserID,
 		Capability: aicapability.CapabilityProductImageScene, Operation: operation,
-		TraceID: identity.TraceID,
+		RequestedRoutingKey: requestedRoutingKey, TraceID: identity.TraceID,
 	})
 	if err != nil {
 		m.record(ctx, identity, operation, startedAt, inputHash, promptHash, decision, nil, err, true)
@@ -98,7 +106,11 @@ func (m *governedReviewModel) Review(ctx context.Context, req *productimage.Revi
 		m.record(ctx, identity, operation, startedAt, inputHash, promptHash, decision, nil, err, true)
 		return nil, err
 	}
-	result, providerErr := m.inner.Review(ctx, req)
+	routed, ok := m.inner.(productimage.ReviewModelWithRoute)
+	if !ok {
+		return nil, aicapability.NewError(aicapability.ErrorCapabilityUnavailable, string(operation), nil)
+	}
+	result, providerErr := routed.ReviewWithRoute(ctx, req, productimage.ReviewModelRoute{CredentialReference: decision.CredentialReference, ModelID: decision.ModelID, RoutingKey: decision.RoutingKey, ConfigurationVersion: decision.ConfigurationVersion})
 	if providerErr != nil {
 		wrapped := aicapability.NewError(classifyGovernedModelError(providerErr), string(operation), providerErr)
 		m.record(ctx, identity, operation, startedAt, inputHash, promptHash, decision, result, wrapped, false)

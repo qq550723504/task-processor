@@ -71,7 +71,7 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 		if review := modelProvider.ReviewModel(); review != nil {
 			reviewModel = &tenantAllowlistedReviewModel{
 				inner: &governedReviewModel{
-					inner: review, router: BuildProductImageSceneCapabilityRouter(input.AICredentialResolver, input.Config.AICapability.ProductImageSceneAllowedTenantIDs), recorder: input.AIInvocationRecorder, logger: input.Logger,
+					inner: review, router: BuildProductImageReviewCapabilityRouter(input.AICredentialResolver, input.Config.AICapability.ProductImageSceneAllowedTenantIDs), recorder: input.AIInvocationRecorder, logger: input.Logger,
 				},
 				allowed: allowed,
 			}

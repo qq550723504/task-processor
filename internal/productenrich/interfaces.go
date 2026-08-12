@@ -33,6 +33,16 @@ type LLMManager interface {
 	GetDefaultClient() LLMClient
 }
 
+type LLMClientRoute struct {
+	CredentialReference  string
+	ConfigurationVersion string
+}
+
+type RoutedLLMManager interface {
+	LLMManager
+	GetClientWithRoute(ctx context.Context, clientName string, route LLMClientRoute) (LLMClient, error)
+}
+
 // LLMClient LLM 客户端接口
 type LLMClient interface {
 	Generate(ctx context.Context, prompt string) (string, error)

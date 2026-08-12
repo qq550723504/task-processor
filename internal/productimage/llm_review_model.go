@@ -61,6 +61,39 @@ func (m *llmReviewModel) Review(ctx context.Context, req *ReviewModelRequest) (*
 	}, nil
 }
 
+func (m *llmReviewModel) ReviewWithRoute(ctx context.Context, req *ReviewModelRequest, route ReviewModelRoute) (*ReviewModelResult, error) {
+	if req == nil {
+		return nil, fmt.Errorf("review model request cannot be nil")
+	}
+	payload, err := json.Marshal(buildReviewSummary(req))
+	if err != nil {
+		return nil, fmt.Errorf("marshal review summary: %w", err)
+	}
+	resolvedPrompt := buildReviewResolvedPrompt(req, string(payload))
+	routedManager, ok := m.llmManager.(productenrich.RoutedLLMManager)
+	if !ok {
+		return nil, fmt.Errorf("review model manager does not support routed clients")
+	}
+	client, err := routedManager.GetClientWithRoute(ctx, route.CredentialReference, productenrich.LLMClientRoute{CredentialReference: route.CredentialReference, ConfigurationVersion: route.ConfigurationVersion})
+	if err != nil {
+		return nil, err
+	}
+	var response string
+	if mainURL := reviewableAssetURL(req); mainURL != "" && route.CredentialReference == "vision" {
+		response, err = client.AnalyzeImage(ctx, mainURL, resolvedPrompt.Text)
+	} else {
+		response, err = client.Generate(ctx, resolvedPrompt.Text)
+	}
+	if err != nil {
+		return nil, err
+	}
+	var parsed llmReviewDecisionPayload
+	if err := json.Unmarshal([]byte(jsonx.CleanLLMResponse(response)), &parsed); err != nil {
+		return &ReviewModelResult{Decision: &ReviewDecision{NeedsReview: false}}, nil
+	}
+	return &ReviewModelResult{Decision: &ReviewDecision{NeedsReview: parsed.NeedsReview, Reasons: uniqueStrings(parsed.Reasons)}, Confidence: parsed.Confidence}, nil
+}
+
 func buildReviewResolvedPrompt(req *ReviewModelRequest, summaryJSON string) resolvedProductImagePrompt {
 	fallback := "Review this product image processing result and return JSON only: " +
 		`{"needs_review":true|false,"reasons":["..."],"confidence":0.0}` +
@@ -102,6 +135,14 @@ func (m *llmReviewModel) generateReviewResponse(ctx context.Context, req *Review
 		return "", fmt.Errorf("failed to get default review client: %w", err)
 	}
 	return defaultClient.Generate(ctx, prompt)
+}
+
+func ReviewPromptText(req *ReviewModelRequest) (string, error) {
+	payload, err := json.Marshal(buildReviewSummary(req))
+	if err != nil {
+		return "", err
+	}
+	return buildReviewResolvedPrompt(req, string(payload)).Text, nil
 }
 
 func buildReviewSummary(req *ReviewModelRequest) map[string]any {

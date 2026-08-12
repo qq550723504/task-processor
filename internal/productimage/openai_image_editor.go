@@ -122,6 +122,10 @@ func buildFaithfulEditPrompt(req *FaithfulEditRequest) string {
 	return buildFaithfulEditResolvedPrompt(req).Text
 }
 
+func FaithfulEditPromptText(req *FaithfulEditRequest) string {
+	return buildFaithfulEditResolvedPrompt(req).Text
+}
+
 func buildFaithfulEditResolvedPrompt(req *FaithfulEditRequest) resolvedProductImagePrompt {
 	productType := ""
 	if req.ProductContext != nil {

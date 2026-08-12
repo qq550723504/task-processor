@@ -26,6 +26,59 @@ func BuildProductImageSceneCapabilityRouter(resolver openaiclient.ClientConfigRe
 	)
 }
 
+func BuildProductImageReviewCapabilityRouter(resolver openaiclient.ClientConfigResolver, allowedTenantIDs []string) aicapability.Router {
+	return aicapability.NewPolicyRouter(
+		&productImageReviewModelCatalog{resolver: resolver},
+		productImageReviewPolicyResolver{allowedTenantIDs: tenantIDSet(allowedTenantIDs)},
+	)
+}
+
+const (
+	productImageReviewVisionRoutingKey  = "productimage-review-vision"
+	productImageReviewDefaultRoutingKey = "productimage-review-default"
+)
+
+type productImageReviewModelCatalog struct {
+	resolver openaiclient.ClientConfigResolver
+}
+
+func (c *productImageReviewModelCatalog) ResolveModel(ctx context.Context, routingKey string) (aicapability.ModelDefinition, error) {
+	clientName := ""
+	switch strings.TrimSpace(routingKey) {
+	case productImageReviewVisionRoutingKey:
+		clientName = "vision"
+	case productImageReviewDefaultRoutingKey:
+		clientName = "default"
+	default:
+		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
+	}
+	if c == nil || c.resolver == nil {
+		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
+	}
+	resolved, err := c.resolver.ResolveClientConfig(ctx, clientName, nil)
+	if err != nil || resolved == nil || resolved.Config == nil || strings.TrimSpace(resolved.CacheKey) == "" {
+		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", err)
+	}
+	configured := resolved.Config
+	if strings.TrimSpace(configured.APIKey) == "" || strings.TrimSpace(configured.BaseURL) == "" || strings.TrimSpace(configured.Model) == "" {
+		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
+	}
+	return aicapability.ModelDefinition{ProviderID: "openai", ModelID: strings.TrimSpace(configured.Model), RoutingKey: routingKey, CredentialReference: clientName, Enabled: true, ConfigurationVersion: strings.TrimSpace(resolved.CacheKey)}, nil
+}
+
+type productImageReviewPolicyResolver struct{ allowedTenantIDs map[string]struct{} }
+
+func (r productImageReviewPolicyResolver) ResolvePolicy(_ context.Context, request aicapability.RouteRequest) (aicapability.TenantModelPolicy, error) {
+	if _, ok := r.allowedTenantIDs[strings.TrimSpace(request.TenantID)]; !ok {
+		return aicapability.TenantModelPolicy{}, aicapability.NewError(aicapability.ErrorPolicyDenied, string(request.Operation), nil)
+	}
+	preferred := []string{productImageReviewDefaultRoutingKey}
+	if strings.TrimSpace(request.RequestedRoutingKey) == productImageReviewVisionRoutingKey {
+		preferred = []string{productImageReviewVisionRoutingKey}
+	}
+	return aicapability.TenantModelPolicy{TenantID: strings.TrimSpace(request.TenantID), Capability: aicapability.CapabilityProductImageScene, PreferredRoutingKeys: preferred, AllowCrossProviderFallback: false, Version: "productimage-review-v1"}, nil
+}
+
 type productImageSceneModelCatalog struct {
 	resolver openaiclient.ClientConfigResolver
 }
