@@ -7,15 +7,30 @@ import (
 	productimage "task-processor/internal/productimage"
 )
 
-func buildSubjectExtractor(cfg *config.Config, imageWorkDir string) (productimage.SubjectExtractor, error) {
-	if cfg == nil || !cfg.ProductImage.Segmenter.Enabled || cfg.ProductImage.Segmenter.Endpoint == "" {
+type imagePipelineComponentOptions struct {
+	segmenter       *remoteImageServiceOptions
+	whiteBackground *remoteImageServiceOptions
+}
+
+func newImagePipelineComponentOptions(cfg *config.Config) imagePipelineComponentOptions {
+	if cfg == nil {
+		return imagePipelineComponentOptions{}
+	}
+	return imagePipelineComponentOptions{
+		segmenter:       remoteImageServiceOptionsFromConfig(cfg.ProductImage.Segmenter),
+		whiteBackground: remoteImageServiceOptionsFromConfig(cfg.ProductImage.WhiteBackground),
+	}
+}
+
+func buildSubjectExtractor(options imagePipelineComponentOptions, imageWorkDir string) (productimage.SubjectExtractor, error) {
+	if options.segmenter == nil {
 		return productimage.NewHybridSubjectExtractor(imageWorkDir, nil)
 	}
 
 	client, err := productimage.NewHTTPSegmentationClient(productimage.HTTPSegmentationClientConfig{
-		Endpoint: cfg.ProductImage.Segmenter.Endpoint,
-		APIKey:   cfg.ProductImage.Segmenter.APIKey,
-		Timeout:  time.Duration(cfg.ProductImage.Segmenter.Timeout) * time.Second,
+		Endpoint: options.segmenter.endpoint,
+		APIKey:   options.segmenter.apiKey,
+		Timeout:  time.Duration(options.segmenter.timeout) * time.Second,
 	})
 	if err != nil {
 		return nil, err
@@ -24,15 +39,15 @@ func buildSubjectExtractor(cfg *config.Config, imageWorkDir string) (productimag
 	return productimage.NewHybridSubjectExtractor(imageWorkDir, client)
 }
 
-func buildWhiteBackgroundRenderer(cfg *config.Config, imageWorkDir string) (productimage.WhiteBackgroundRenderer, error) {
-	if cfg == nil || !cfg.ProductImage.WhiteBackground.Enabled || cfg.ProductImage.WhiteBackground.Endpoint == "" {
+func buildWhiteBackgroundRenderer(options imagePipelineComponentOptions, imageWorkDir string) (productimage.WhiteBackgroundRenderer, error) {
+	if options.whiteBackground == nil {
 		return productimage.NewHybridWhiteBackgroundRenderer(imageWorkDir, nil)
 	}
 
 	client, err := productimage.NewHTTPWhiteBackgroundClient(productimage.HTTPWhiteBackgroundClientConfig{
-		Endpoint: cfg.ProductImage.WhiteBackground.Endpoint,
-		APIKey:   cfg.ProductImage.WhiteBackground.APIKey,
-		Timeout:  time.Duration(cfg.ProductImage.WhiteBackground.Timeout) * time.Second,
+		Endpoint: options.whiteBackground.endpoint,
+		APIKey:   options.whiteBackground.apiKey,
+		Timeout:  time.Duration(options.whiteBackground.timeout) * time.Second,
 	})
 	if err != nil {
 		return nil, err

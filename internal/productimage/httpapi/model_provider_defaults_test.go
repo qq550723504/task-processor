@@ -53,7 +53,7 @@ func TestBuildModelProviderBuildsConfiguredCapabilities(t *testing.T) {
 		t.Fatalf("NewManager() error = %v", err)
 	}
 
-	provider, err := buildModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir())
+	provider, err := buildModelProvider(newModelProviderOptions(cfg), stubLLMManager{}, openaiMgr, t.TempDir())
 	if err != nil {
 		t.Fatalf("buildModelProvider() error = %v", err)
 	}
@@ -98,7 +98,7 @@ func TestBuildModelProviderBuildsNanobananaCapabilities(t *testing.T) {
 		t.Fatalf("NewManager() error = %v", err)
 	}
 
-	provider, err := buildModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir())
+	provider, err := buildModelProvider(newModelProviderOptions(cfg), stubLLMManager{}, openaiMgr, t.TempDir())
 	if err != nil {
 		t.Fatalf("buildModelProvider() error = %v", err)
 	}
@@ -138,7 +138,7 @@ func TestBuildModelProviderRejectsGovernanceWithoutResolverBackedGPTImage(t *tes
 		t.Fatalf("NewManager() error = %v", err)
 	}
 
-	if _, err := buildModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir()); err == nil {
+	if _, err := buildModelProvider(newModelProviderOptions(cfg), stubLLMManager{}, openaiMgr, t.TempDir()); err == nil {
 		t.Fatal("buildModelProvider() error = nil, want resolver-backed client rejection")
 	}
 }
@@ -174,7 +174,7 @@ func TestBuildModelProviderUsesResolverBackedGPTImageWhenGovernanceEnabled(t *te
 		t.Fatalf("NewManager() error = %v", err)
 	}
 
-	provider, err := buildModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir())
+	provider, err := buildModelProvider(newModelProviderOptions(cfg), stubLLMManager{}, openaiMgr, t.TempDir())
 	if err != nil {
 		t.Fatalf("buildModelProvider() error = %v", err)
 	}
@@ -215,7 +215,7 @@ func TestResolveImagePipelineComponentsBackfillsModelBackedDependencies(t *testi
 		t.Fatalf("NewManager() error = %v", err)
 	}
 
-	provider, err := buildModelProvider(cfg, stubLLMManager{}, openaiMgr, t.TempDir())
+	provider, err := buildModelProvider(newModelProviderOptions(cfg), stubLLMManager{}, openaiMgr, t.TempDir())
 	if err != nil {
 		t.Fatalf("buildModelProvider() error = %v", err)
 	}
