@@ -70,19 +70,19 @@ func TestAssetOpenAPIContractValidatesRealGinHandlerResponses(t *testing.T) {
 	}{
 		{
 			name:             "image URLs only",
-			body:             `{"image_urls":["source.jpg"],"target_platform":"shein"}`,
+			body:             `{"image_urls":["source.jpg"],"target_platform":"shein","country":"US","scene":{"scene_category":"shoes","scene_style":"lifestyle","background_tone":"warm","composition":"close_up","props_level":"light","audience_hint":"sporty","custom_scene_hint":"show subtle motion energy"}}`,
 			wantStatus:       http.StatusOK,
 			wantCreatedTasks: 1,
 		},
 		{
 			name:             "product URL only",
-			body:             `{"product_url":"product-ref","target_platform":"shein"}`,
+			body:             `{"product_url":"product-ref","marketplace":"shein","country":"DE","scene":{"scene_category":"home","scene_style":"studio"}}`,
 			wantStatus:       http.StatusOK,
 			wantCreatedTasks: 1,
 		},
 		{
 			name:             "both sources",
-			body:             `{"image_urls":["source.jpg"],"product_url":"product-ref","target_platform":"shein"}`,
+			body:             `{"image_urls":["source.jpg"],"product_url":"product-ref","target_platform":"shein","marketplace":"shein","country":"SG","scene":{"composition":"centered","custom_scene_hint":"keep reflections controlled"}}`,
 			wantStatus:       http.StatusOK,
 			wantCreatedTasks: 1,
 		},

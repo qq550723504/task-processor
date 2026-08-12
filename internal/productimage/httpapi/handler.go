@@ -36,8 +36,8 @@ func (h *imageHandler) ProcessImages(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
-	if strings.TrimSpace(req.TargetPlatform) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "target_platform is required"})
+	if strings.TrimSpace(req.TargetPlatform) == "" && strings.TrimSpace(req.Marketplace) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "target_platform or marketplace is required"})
 		return
 	}
 

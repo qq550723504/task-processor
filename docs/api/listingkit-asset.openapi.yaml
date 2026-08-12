@@ -12,7 +12,7 @@ paths:
   /api/v1/images/process:
     post:
       operationId: processImages
-      summary: Queue asynchronous image processing for an explicit target platform.
+      summary: Queue asynchronous image processing for a canonical or compatibility target platform.
       requestBody:
         required: true
         content:
@@ -106,6 +106,10 @@ components:
         - $ref: '#/components/schemas/ProductURLOnlyProcessRequest'
         - $ref: '#/components/schemas/CombinedImageSourcesProcessRequest'
     ImageURLsOnlyProcessRequest:
+      anyOf:
+        - $ref: '#/components/schemas/ImageURLsOnlyTargetProcessRequest'
+        - $ref: '#/components/schemas/ImageURLsOnlyMarketplaceProcessRequest'
+    ImageURLsOnlyTargetProcessRequest:
       type: object
       additionalProperties: false
       required: [image_urls, target_platform]
@@ -121,10 +125,41 @@ components:
         target_platform:
           $ref: '#/components/schemas/TargetPlatform'
         marketplace:
-          description: Legacy compatibility input; if supplied it must equal target_platform.
+          description: Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
           allOf:
             - $ref: '#/components/schemas/TargetPlatform'
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        scene:
+          $ref: '#/components/schemas/SceneGenerationOptions'
+    ImageURLsOnlyMarketplaceProcessRequest:
+      type: object
+      additionalProperties: false
+      required: [image_urls, marketplace]
+      properties:
+        image_urls:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+        text:
+          type: string
+        target_platform:
+          $ref: '#/components/schemas/TargetPlatform'
+        marketplace:
+          description: Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
+          allOf:
+            - $ref: '#/components/schemas/TargetPlatform'
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        scene:
+          $ref: '#/components/schemas/SceneGenerationOptions'
     ProductURLOnlyProcessRequest:
+      anyOf:
+        - $ref: '#/components/schemas/ProductURLOnlyTargetProcessRequest'
+        - $ref: '#/components/schemas/ProductURLOnlyMarketplaceProcessRequest'
+    ProductURLOnlyTargetProcessRequest:
       type: object
       additionalProperties: false
       required: [product_url, target_platform]
@@ -137,10 +172,38 @@ components:
         target_platform:
           $ref: '#/components/schemas/TargetPlatform'
         marketplace:
-          description: Legacy compatibility input; if supplied it must equal target_platform.
+          description: Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
           allOf:
             - $ref: '#/components/schemas/TargetPlatform'
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        scene:
+          $ref: '#/components/schemas/SceneGenerationOptions'
+    ProductURLOnlyMarketplaceProcessRequest:
+      type: object
+      additionalProperties: false
+      required: [product_url, marketplace]
+      properties:
+        product_url:
+          type: string
+          minLength: 1
+        text:
+          type: string
+        target_platform:
+          $ref: '#/components/schemas/TargetPlatform'
+        marketplace:
+          description: Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
+          allOf:
+            - $ref: '#/components/schemas/TargetPlatform'
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        scene:
+          $ref: '#/components/schemas/SceneGenerationOptions'
     CombinedImageSourcesProcessRequest:
+      anyOf:
+        - $ref: '#/components/schemas/CombinedImageSourcesTargetProcessRequest'
+        - $ref: '#/components/schemas/CombinedImageSourcesMarketplaceProcessRequest'
+    CombinedImageSourcesTargetProcessRequest:
       type: object
       additionalProperties: false
       required: [image_urls, product_url, target_platform]
@@ -159,9 +222,63 @@ components:
         target_platform:
           $ref: '#/components/schemas/TargetPlatform'
         marketplace:
-          description: Legacy compatibility input; if supplied it must equal target_platform.
+          description: Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
           allOf:
             - $ref: '#/components/schemas/TargetPlatform'
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        scene:
+          $ref: '#/components/schemas/SceneGenerationOptions'
+    CombinedImageSourcesMarketplaceProcessRequest:
+      type: object
+      additionalProperties: false
+      required: [image_urls, product_url, marketplace]
+      properties:
+        image_urls:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+        product_url:
+          type: string
+          minLength: 1
+        text:
+          type: string
+        target_platform:
+          $ref: '#/components/schemas/TargetPlatform'
+        marketplace:
+          description: Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
+          allOf:
+            - $ref: '#/components/schemas/TargetPlatform'
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        scene:
+          $ref: '#/components/schemas/SceneGenerationOptions'
+    CountryCode:
+      type: string
+      minLength: 2
+      maxLength: 2
+      pattern: '^[A-Za-z]{2}$'
+      description: ISO 3166-1 alpha-2 country code consumed by the ProductImage marketplace profile.
+    SceneGenerationOptions:
+      type: object
+      additionalProperties: false
+      properties:
+        scene_category:
+          type: string
+        scene_style:
+          type: string
+        background_tone:
+          type: string
+        composition:
+          type: string
+        props_level:
+          type: string
+        audience_hint:
+          type: string
+        custom_scene_hint:
+          type: string
     ImageTaskCreated:
       type: object
       required: [task_id, status, created_at]

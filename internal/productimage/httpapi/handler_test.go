@@ -28,10 +28,12 @@ type mockImageHandlerSvc struct {
 	reviewResult *productimage.TaskResult
 	reviewErr    error
 	createCtx    context.Context
+	createReq    *productimage.ImageProcessRequest
 }
 
-func (m *mockImageHandlerSvc) CreateProcessTask(ctx context.Context, _ *productimage.ImageProcessRequest) (*productimage.Task, error) {
+func (m *mockImageHandlerSvc) CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error) {
 	m.createCtx = ctx
+	m.createReq = req
 	return m.createResult, m.createErr
 }
 
@@ -125,10 +127,27 @@ func TestProcessImages_InvalidRequestError_Returns400(t *testing.T) {
 	}
 }
 
-func TestProcessImages_MissingTargetPlatform_Returns400WithoutCreatingTask(t *testing.T) {
-	svc := &mockImageHandlerSvc{createResult: &productimage.Task{ID: "must-not-create"}}
+func TestProcessImages_MarketplaceOnly_ReachesServiceCompatibilityNormalization(t *testing.T) {
+	svc := &mockImageHandlerSvc{createResult: &productimage.Task{ID: "legacy-marketplace", Status: productimage.TaskStatusPending}}
 	r := newTestRouter(svc)
 	body := `{"image_urls":["http://example.com/img.jpg"],"marketplace":"amazon"}`
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/images/process", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
+	}
+	if svc.createReq == nil || svc.createReq.Marketplace != "amazon" || svc.createReq.TargetPlatform != "" {
+		t.Fatalf("service request = %+v, want marketplace-only compatibility input", svc.createReq)
+	}
+}
+
+func TestProcessImages_MissingTargetAndMarketplace_Returns400WithoutCreatingTask(t *testing.T) {
+	svc := &mockImageHandlerSvc{createResult: &productimage.Task{ID: "must-not-create"}}
+	r := newTestRouter(svc)
+	body := `{"image_urls":["http://example.com/img.jpg"]}`
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/images/process", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -137,8 +156,8 @@ func TestProcessImages_MissingTargetPlatform_Returns400WithoutCreatingTask(t *te
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", w.Code)
 	}
-	if svc.createCtx != nil {
-		t.Fatal("CreateProcessTask called for a request without target_platform")
+	if svc.createReq != nil {
+		t.Fatal("CreateProcessTask called for a request without target_platform or marketplace")
 	}
 }
 

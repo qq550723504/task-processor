@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -156,6 +157,10 @@ type stubWorkflowSDSSyncService struct {
 	remoteErr        error
 	localFileErr     error
 	lastInput        sdsusecase.ImageResultInput
+	imageInputs      []sdsusecase.ImageResultInput
+	imageResults     []*sdsadapter.SyncResult
+	imageErrs        []error
+	imageCalls       int
 	lastRemoteInput  sdsusecase.RemoteImageInput
 	lastRemoteInputs []sdsusecase.RemoteImageInput
 	lastLocalFile    sdsusecase.LocalFileInput
@@ -298,6 +303,108 @@ func TestStandardWorkflowKeepsSuccessfulTargetAfterOtherTargetFails(t *testing.T
 	}
 }
 
+func TestRunWorkflowKeepsPlatformImageBundlesIsolatedAcrossTargetOrder(t *testing.T) {
+	for _, platforms := range [][]string{{"shein", "temu"}, {"temu", "shein"}} {
+		platforms := append([]string(nil), platforms...)
+		t.Run(strings.Join(platforms, "_then_"), func(t *testing.T) {
+			productSvc := &stubWorkflowProductService{
+				task: &productenrich.Task{ID: "product-task-target-bundles"},
+				product: &productenrich.ProductJSON{
+					Title:  "Target-isolated product",
+					Images: []string{"https://source.example.test/product.jpg"},
+				},
+			}
+			imageSvc := &stubWorkflowImageService{
+				taskByTarget: map[string]*productimage.Task{
+					"shein": {ID: "image-shein"},
+					"temu":  {ID: "image-temu"},
+				},
+				resultByTarget: map[string]*productimage.ImageProcessResult{
+					"shein": {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/shein-main.jpg", Type: productimage.AssetTypeMainImage}},
+					"temu":  {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/temu-main.jpg", Type: productimage.AssetTypeMainImage}},
+				},
+			}
+			assetGenerator := &stubWorkflowAssetGenerator{planResult: &assetgeneration.Result{}}
+			svc := seedWorkflowServices(seedWorkflowAssets(
+				seedSupportDeps(&service{}, supportDependencySeed{
+					assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+				}),
+				assetrepo.NewMemRepository(),
+				newDefaultAssetRecipeResolver(),
+				newDefaultAssetBundleBuilder(),
+				assetGenerator,
+			), productSvc, imageSvc)
+			task := &Task{ID: "listing-task-target-bundles", Request: &GenerateRequest{
+				ImageURLs: []string{"https://source.example.test/product.jpg"},
+				Platforms: platforms,
+				Options:   &GenerateOptions{ProcessImages: true},
+			}}
+
+			result, err := svc.runWorkflow(context.Background(), task)
+			if err != nil {
+				t.Fatalf("runWorkflow() error = %v", err)
+			}
+			if result.Shein == nil || result.Shein.ImageBundle == nil || result.Shein.ImageBundle.Main == nil {
+				t.Fatalf("shein package image bundle = %+v", result.Shein)
+			}
+			if got := result.Shein.ImageBundle.Main.URL; got != "https://cdn.example.test/shein-main.jpg" {
+				t.Fatalf("shein package main URL = %q, want isolated SHEIN URL", got)
+			}
+			if result.Temu == nil || result.Temu.ImageBundle == nil || result.Temu.ImageBundle.Main == nil {
+				t.Fatalf("temu package image bundle = %+v", result.Temu)
+			}
+			if got := result.Temu.ImageBundle.Main.URL; got != "https://cdn.example.test/temu-main.jpg" {
+				t.Fatalf("temu package main URL = %q, want isolated TEMU URL", got)
+			}
+		})
+	}
+}
+
+func TestRunWorkflowDoesNotProjectSuccessfulTargetAssetsIntoFailedTargetPackage(t *testing.T) {
+	productSvc := &stubWorkflowProductService{
+		task:    &productenrich.Task{ID: "product-task-partial-target-bundles"},
+		product: &productenrich.ProductJSON{Title: "Partial target product", Images: []string{"https://source.example.test/product.jpg"}},
+	}
+	imageSvc := &stubWorkflowImageService{
+		taskByTarget: map[string]*productimage.Task{
+			"shein": {ID: "image-shein-success"},
+			"temu":  {ID: "image-temu-failure"},
+		},
+		resultByTarget: map[string]*productimage.ImageProcessResult{
+			"shein": {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/shein-success.jpg", Type: productimage.AssetTypeMainImage}},
+		},
+		processErrByTarget: map[string]error{"temu": errors.New("temu media failed")},
+	}
+	svc := seedWorkflowServices(seedWorkflowAssets(
+		seedSupportDeps(&service{}, supportDependencySeed{
+			assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		}),
+		assetrepo.NewMemRepository(),
+		newDefaultAssetRecipeResolver(),
+		newDefaultAssetBundleBuilder(),
+		&stubWorkflowAssetGenerator{planResult: &assetgeneration.Result{}},
+	), productSvc, imageSvc)
+	task := &Task{ID: "listing-task-partial-target-bundles", Request: &GenerateRequest{
+		ImageURLs: []string{"https://source.example.test/product.jpg"},
+		Platforms: []string{"temu", "shein"},
+		Options:   &GenerateOptions{ProcessImages: true},
+	}}
+
+	result, err := svc.runWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runWorkflow() error = %v", err)
+	}
+	if result.Shein == nil || result.Shein.ImageBundle == nil || result.Shein.ImageBundle.Main == nil || result.Shein.ImageBundle.Main.URL != "https://cdn.example.test/shein-success.jpg" {
+		t.Fatalf("SHEIN package image bundle = %+v, want successful target URL", result.Shein)
+	}
+	if result.Temu == nil || result.Temu.ImageBundle == nil {
+		t.Fatalf("TEMU package image bundle = %+v, want observable empty bundle", result.Temu)
+	}
+	if result.Temu.ImageBundle.Main != nil {
+		t.Fatalf("TEMU package main = %+v, want no cross-target fallback after media failure", result.Temu.ImageBundle.Main)
+	}
+}
+
 func (s *stubWorkflowSDSSyncService) SyncFromRemoteImage(ctx context.Context, input sdsusecase.RemoteImageInput) (*sdsworkflow.SyncResult, error) {
 	s.remoteCalls++
 	s.lastRemoteInput = input
@@ -330,7 +437,16 @@ func (s *stubWorkflowSDSSyncService) SyncFromLocalFile(ctx context.Context, inpu
 }
 
 func (s *stubWorkflowSDSSyncService) SyncFromImageResult(ctx context.Context, input sdsusecase.ImageResultInput) (*sdsadapter.SyncResult, error) {
+	s.imageCalls++
 	s.lastInput = input
+	s.imageInputs = append(s.imageInputs, input)
+	index := s.imageCalls - 1
+	if index < len(s.imageErrs) && s.imageErrs[index] != nil {
+		return nil, s.imageErrs[index]
+	}
+	if index < len(s.imageResults) && s.imageResults[index] != nil {
+		return s.imageResults[index], nil
+	}
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -338,6 +454,115 @@ func (s *stubWorkflowSDSSyncService) SyncFromImageResult(ctx context.Context, in
 		return s.result, nil
 	}
 	return &sdsadapter.SyncResult{}, nil
+}
+
+func TestStandardWorkflowSyncsSDSOnceForMultipleTargetsIndependentOfOrder(t *testing.T) {
+	for _, platforms := range [][]string{{"shein", "temu"}, {"temu", "shein"}} {
+		platforms := append([]string(nil), platforms...)
+		t.Run(strings.Join(platforms, "_then_"), func(t *testing.T) {
+			sdsSvc := &stubWorkflowSDSSyncService{result: successfulWorkflowSDSSyncResult()}
+			state := runTwoTargetSDSWorkflow(t, platforms, sdsSvc)
+
+			if sdsSvc.imageCalls != 1 {
+				t.Fatalf("SDS image-result sync calls = %d, want exactly 1", sdsSvc.imageCalls)
+			}
+			if len(sdsSvc.imageInputs) != 1 || sdsSvc.imageInputs[0].ImageResult == nil || sdsSvc.imageInputs[0].ImageResult.MainImage == nil {
+				t.Fatalf("SDS image inputs = %+v", sdsSvc.imageInputs)
+			}
+			if got := sdsSvc.imageInputs[0].ImageResult.MainImage.URL; got != "https://cdn.example.test/shein-sds.jpg" {
+				t.Fatalf("SDS input main URL = %q, want deterministic SHEIN result", got)
+			}
+			if state.result.SDSDesignResult == nil || state.result.SDSDesignResult.Status != "completed" {
+				t.Fatalf("SDS design result = %+v, want completed", state.result.SDSDesignResult)
+			}
+			assertSingleSDSWorkflowStage(t, state.result, WorkflowStageStatusCompleted)
+		})
+	}
+}
+
+func TestStandardWorkflowDoesNotOverwriteSingleSDSFailureForMultipleTargets(t *testing.T) {
+	for _, platforms := range [][]string{{"shein", "temu"}, {"temu", "shein"}} {
+		platforms := append([]string(nil), platforms...)
+		t.Run(strings.Join(platforms, "_then_"), func(t *testing.T) {
+			sdsSvc := &stubWorkflowSDSSyncService{
+				imageErrs:    []error{errors.New("stable SDS failure"), nil},
+				imageResults: []*sdsadapter.SyncResult{nil, successfulWorkflowSDSSyncResult()},
+			}
+			state := runTwoTargetSDSWorkflow(t, platforms, sdsSvc)
+
+			if sdsSvc.imageCalls != 1 {
+				t.Fatalf("SDS image-result sync calls = %d, want exactly 1 so failure cannot be overwritten", sdsSvc.imageCalls)
+			}
+			if state.result.SDSDesignResult == nil || state.result.SDSDesignResult.Status != "failed" || !strings.Contains(state.result.SDSDesignResult.Error, "stable SDS failure") {
+				t.Fatalf("SDS design result = %+v, want stable failed result", state.result.SDSDesignResult)
+			}
+			assertSingleSDSWorkflowStage(t, state.result, WorkflowStageStatusDegraded)
+		})
+	}
+}
+
+func runTwoTargetSDSWorkflow(t *testing.T, platforms []string, sdsSvc *stubWorkflowSDSSyncService) *standardWorkflowState {
+	t.Helper()
+	productSvc := &stubWorkflowProductService{
+		task:    &productenrich.Task{ID: "product-task-two-target-sds"},
+		product: &productenrich.ProductJSON{Title: "Two target SDS product", Images: []string{"https://source.example.test/product.jpg"}},
+	}
+	imageSvc := &stubWorkflowImageService{
+		taskByTarget: map[string]*productimage.Task{
+			"shein": {ID: "image-shein-sds"},
+			"temu":  {ID: "image-temu-sds"},
+		},
+		resultByTarget: map[string]*productimage.ImageProcessResult{
+			"shein": {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/shein-sds.jpg", Type: productimage.AssetTypeMainImage}},
+			"temu":  {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/temu-sds.jpg", Type: productimage.AssetTypeMainImage}},
+		},
+	}
+	svc := seedWorkflowServices(seedWorkflowAssets(seedSupportDeps(&service{}, supportDependencySeed{
+		sdsSyncService: sdsSvc,
+		assembler:      NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+	}), assetrepo.NewMemRepository(), newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), &stubWorkflowAssetGenerator{}), productSvc, imageSvc)
+	task := &Task{ID: "listing-task-two-target-sds", Request: &GenerateRequest{
+		ImageURLs: []string{"https://source.example.test/product.jpg"},
+		Platforms: append([]string(nil), platforms...),
+		Options: &GenerateOptions{
+			ProcessImages: true,
+			SDS:           &SDSSyncOptions{VariantID: 89764},
+		},
+	}}
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v", err)
+	}
+	return state
+}
+
+func successfulWorkflowSDSSyncResult() *sdsadapter.SyncResult {
+	return &sdsadapter.SyncResult{DesignSync: &sdsworkflow.SyncResult{DesignResult: &sdsdesign.PrepareSyncDesignResult{
+		Page: &sdsdesign.DesignProductPage{Product: sdsdesign.DesignProduct{ID: 89764}},
+		Request: &sdsdesign.SyncDesignRequest{
+			PrototypeGroupID: 14555,
+			Prototypes:       []sdsdesign.SyncDesignPrototype{{Layers: []sdsdesign.SyncDesignLayer{{LayerID: "layer-1"}}}},
+		},
+		Material:          &sdsdesign.UploadedMaterial{Material: &sdsdesign.Material{ID: 396548287}},
+		RenderedImageURLs: []string{"https://cdn.example.test/rendered-sds.jpg"},
+	}}}
+}
+
+func assertSingleSDSWorkflowStage(t *testing.T, result *ListingKitResult, wantStatus WorkflowStageStatus) {
+	t.Helper()
+	count := 0
+	for _, stage := range result.WorkflowStages {
+		if stage.Kind != "sds_design_sync" {
+			continue
+		}
+		count++
+		if stage.Status != wantStatus {
+			t.Fatalf("SDS workflow stage = %+v, want status %q", stage, wantStatus)
+		}
+	}
+	if count != 1 {
+		t.Fatalf("SDS workflow stage count = %d, want 1; stages=%+v", count, result.WorkflowStages)
+	}
 }
 
 func (s *stubWorkflowSDSSyncService) SyncFromImageRequest(ctx context.Context, input sdsusecase.ImageRequestInput) (*sdsadapter.SyncResult, error) {

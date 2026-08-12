@@ -57,9 +57,7 @@ func (s *service) retrySDSDesignSync(ctx context.Context, task *Task, result *Li
 		return core.ErrChildTaskNotRetryable
 	}
 	if len(result.ImageAssetsByTarget) > 0 {
-		for _, target := range sortedImageAssetTargets(result.ImageAssetsByTarget) {
-			s.syncSDSDesign(ctx, task, result, result.ImageAssetsByTarget[target], recorder)
-		}
+		s.syncSDSDesign(ctx, task, result, deterministicSDSImageResult(result), recorder)
 	} else if result.ImageAssets != nil {
 		s.syncSDSDesign(ctx, task, result, result.ImageAssets, recorder)
 	} else if shouldRunRemoteSDSDesignSync(task.Request) {

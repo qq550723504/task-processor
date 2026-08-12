@@ -8,35 +8,99 @@ export type TargetPlatform = 'amazon' | 'shein' | 'temu' | 'walmart';
 
 export type ImageProcessRequest = ImageUrlsOnlyProcessRequest | ProductUrlOnlyProcessRequest | CombinedImageSourcesProcessRequest;
 
-export type ImageUrlsOnlyProcessRequest = {
+export type ImageUrlsOnlyProcessRequest = ImageUrlsOnlyTargetProcessRequest | ImageUrlsOnlyMarketplaceProcessRequest;
+
+export type ImageUrlsOnlyTargetProcessRequest = {
     image_urls: Array<string>;
     text?: string;
     target_platform: TargetPlatform;
     /**
-     * Legacy compatibility input; if supplied it must equal target_platform.
+     * Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
      */
     marketplace?: TargetPlatform;
+    country?: CountryCode;
+    scene?: SceneGenerationOptions;
 };
 
-export type ProductUrlOnlyProcessRequest = {
+export type ImageUrlsOnlyMarketplaceProcessRequest = {
+    image_urls: Array<string>;
+    text?: string;
+    target_platform?: TargetPlatform;
+    /**
+     * Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
+     */
+    marketplace: TargetPlatform;
+    country?: CountryCode;
+    scene?: SceneGenerationOptions;
+};
+
+export type ProductUrlOnlyProcessRequest = ProductUrlOnlyTargetProcessRequest | ProductUrlOnlyMarketplaceProcessRequest;
+
+export type ProductUrlOnlyTargetProcessRequest = {
     product_url: string;
     text?: string;
     target_platform: TargetPlatform;
     /**
-     * Legacy compatibility input; if supplied it must equal target_platform.
+     * Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
      */
     marketplace?: TargetPlatform;
+    country?: CountryCode;
+    scene?: SceneGenerationOptions;
 };
 
-export type CombinedImageSourcesProcessRequest = {
+export type ProductUrlOnlyMarketplaceProcessRequest = {
+    product_url: string;
+    text?: string;
+    target_platform?: TargetPlatform;
+    /**
+     * Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
+     */
+    marketplace: TargetPlatform;
+    country?: CountryCode;
+    scene?: SceneGenerationOptions;
+};
+
+export type CombinedImageSourcesProcessRequest = CombinedImageSourcesTargetProcessRequest | CombinedImageSourcesMarketplaceProcessRequest;
+
+export type CombinedImageSourcesTargetProcessRequest = {
     image_urls: Array<string>;
     product_url: string;
     text?: string;
     target_platform: TargetPlatform;
     /**
-     * Legacy compatibility input; if supplied it must equal target_platform.
+     * Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
      */
     marketplace?: TargetPlatform;
+    country?: CountryCode;
+    scene?: SceneGenerationOptions;
+};
+
+export type CombinedImageSourcesMarketplaceProcessRequest = {
+    image_urls: Array<string>;
+    product_url: string;
+    text?: string;
+    target_platform?: TargetPlatform;
+    /**
+     * Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
+     */
+    marketplace: TargetPlatform;
+    country?: CountryCode;
+    scene?: SceneGenerationOptions;
+};
+
+/**
+ * ISO 3166-1 alpha-2 country code consumed by the ProductImage marketplace profile.
+ */
+export type CountryCode = string;
+
+export type SceneGenerationOptions = {
+    scene_category?: string;
+    scene_style?: string;
+    background_tone?: string;
+    composition?: string;
+    props_level?: string;
+    audience_hint?: string;
+    custom_scene_hint?: string;
 };
 
 export type ImageTaskCreated = {

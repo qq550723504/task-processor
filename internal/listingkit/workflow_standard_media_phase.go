@@ -63,10 +63,10 @@ func (p *standardWorkflowMediaPhase) run(
 				stage.Complete()
 				bundle := asset.BuildBundle(canonicalProduct, targetResult)
 				result.recordTargetImageAssets(target, targetResult, bundle, asset.InventorySummaryFromBundle(bundle))
-				if imageResult == nil {
-					imageResult = targetResult
-				}
-				p.service.syncSDSDesign(ctx, task, result, targetResult, recorder)
+			}
+			imageResult = deterministicSDSImageResult(result)
+			if imageResult != nil {
+				p.service.syncSDSDesign(ctx, task, result, imageResult, recorder)
 			}
 		}
 	}
@@ -102,6 +102,18 @@ func (p *standardWorkflowMediaPhase) run(
 	}
 	result.applyCompatibilityAssetProjectionForRequest(task.Request)
 	return imageResult, sdsOptions
+}
+
+func deterministicSDSImageResult(result *ListingKitResult) *productimage.ImageProcessResult {
+	if result == nil {
+		return nil
+	}
+	for _, target := range sortedImageAssetTargets(result.ImageAssetsByTarget) {
+		if imageResult := result.ImageAssetsByTarget[target]; imageResult != nil {
+			return imageResult
+		}
+	}
+	return result.ImageAssets
 }
 
 func compatibilityTargetPlatform(req *GenerateRequest) string {

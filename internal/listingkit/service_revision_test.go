@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit/core"
+	"task-processor/internal/productimage"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinattribute "task-processor/internal/shein/api/attribute"
@@ -1378,6 +1379,32 @@ func TestRefreshSheinDerivedStateClearsAttributeCacheForRegeneration(t *testing.
 
 	if resolver.clearCalls != 1 {
 		t.Fatalf("clear calls = %d, want 1 before regenerating attributes", resolver.clearCalls)
+	}
+}
+
+func TestRefreshSheinDerivedStateUsesSheinTargetImagesWithoutCompatibilityScalar(t *testing.T) {
+	task := &Task{
+		Request: &GenerateRequest{Platforms: []string{"temu", "shein"}},
+		Result: &ListingKitResult{
+			CanonicalProduct: &canonical.Product{Title: "Target-aware refresh"},
+			ImageAssetsByTarget: map[string]*productimage.ImageProcessResult{
+				"temu":  {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/temu-revision.jpg"}},
+				"shein": {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/shein-revision.jpg"}},
+			},
+			Shein: &SheinPackage{RequestDraft: &SheinRequestDraft{}},
+		},
+	}
+
+	(&service{}).refreshSheinDerivedState(task, &ApplyRevisionRequest{
+		Platform: "shein",
+		Shein:    &SheinRevisionInput{RegenerateSaleAttributes: true},
+	})
+
+	if task.Result.ImageAssets != nil {
+		t.Fatalf("compatibility image scalar = %+v, want nil for multi-target result", task.Result.ImageAssets)
+	}
+	if task.Result.Shein.Images == nil || task.Result.Shein.Images.MainImage != "https://cdn.example.test/shein-revision.jpg" {
+		t.Fatalf("refreshed SHEIN images = %+v, want SHEIN target image", task.Result.Shein.Images)
 	}
 }
 
