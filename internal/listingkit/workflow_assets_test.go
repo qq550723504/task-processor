@@ -59,6 +59,7 @@ type stubWorkflowAssetGenerator struct {
 	dispatchCalls   int
 	dispatchErrAt   map[int]error
 	lastDispatchReq *assetgeneration.DispatchRequest
+	lastPlanReq     *assetgeneration.Request
 }
 
 type targetURLDeferredRenderer struct{}
@@ -74,6 +75,9 @@ func (targetURLDeferredRenderer) Render(_ context.Context, req assetgeneration.D
 }
 
 func (s *stubWorkflowAssetGenerator) Plan(ctx context.Context, req assetgeneration.Request) (*assetgeneration.Result, error) {
+	clonedReq := req
+	clonedReq.TargetPlatforms = append([]string(nil), req.TargetPlatforms...)
+	s.lastPlanReq = &clonedReq
 	if s.planErr != nil {
 		return nil, s.planErr
 	}
@@ -434,6 +438,129 @@ func TestPlatformAssetInventoryRejectsUntaggedSharedGeneratedRecords(t *testing.
 	}
 	if !hasInventoryURL(got, "https://cdn.example.test/shein-main.jpg") {
 		t.Fatalf("target inventory = %+v, want explicitly reconstructed target bundle preserved", got)
+	}
+}
+
+func TestPlatformAssetInventoryEmptyTargetMapFailsClosedAcrossRecordOrder(t *testing.T) {
+	t.Parallel()
+
+	for _, records := range [][]asset.AssetRecord{
+		{
+			{ID: "unknown", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/unknown.jpg"},
+			{ID: "amazon", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/amazon.jpg", PlatformTags: []string{"amazon"}},
+			{ID: "shein", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/shein.jpg", PlatformTags: []string{" SHEIN "}},
+		},
+		{
+			{ID: "shein", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/shein.jpg", PlatformTags: []string{" SHEIN "}},
+			{ID: "amazon", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/amazon.jpg", PlatformTags: []string{"amazon"}},
+			{ID: "unknown", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/unknown.jpg"},
+		},
+	} {
+		shared := &asset.Inventory{
+			Ref:     asset.InventoryRef{TaskID: "task-all-targets-failed"},
+			Records: append([]asset.AssetRecord(nil), records...),
+		}
+		got := platformAssetInventory(&ListingKitResult{
+			Platforms: []string{"shein", "amazon"},
+		}, "shein", shared)
+
+		if got == shared {
+			t.Fatal("platformAssetInventory() returned the shared inventory, want a filtered target inventory")
+		}
+		if !hasInventoryURL(got, "https://generated.example.test/shein.jpg") {
+			t.Fatalf("target inventory = %+v, want matching tagged record", got)
+		}
+		for _, rejected := range []string{
+			"https://generated.example.test/amazon.jpg",
+			"https://generated.example.test/unknown.jpg",
+		} {
+			if hasInventoryURL(got, rejected) {
+				t.Fatalf("target inventory = %+v, want %q rejected", got, rejected)
+			}
+		}
+	}
+}
+
+func TestPlatformAssetInventoryPreservesOnlySafeSingleTargetLegacyBaseAssets(t *testing.T) {
+	t.Parallel()
+
+	legacyBase := &asset.Bundle{Assets: []asset.Asset{{
+		ID: "legacy-shein-main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/legacy-shein-main.jpg",
+	}}}
+	shared := asset.BuildInventory("task-legacy-single-target", legacyBase)
+	shared.Records = append(shared.Records,
+		asset.AssetRecord{ID: "tagged-shein", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/tagged-shein.jpg", PlatformTags: []string{"shein"}},
+		asset.AssetRecord{ID: "tagged-amazon", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/tagged-amazon.jpg", PlatformTags: []string{"amazon"}},
+		asset.AssetRecord{ID: "unknown", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/unknown-legacy.jpg"},
+	)
+	result := &ListingKitResult{Platforms: []string{" SHEIN "}, AssetBundle: legacyBase}
+
+	got := platformAssetInventory(result, "shein", shared)
+	for _, accepted := range []string{
+		"https://cdn.example.test/legacy-shein-main.jpg",
+		"https://generated.example.test/tagged-shein.jpg",
+	} {
+		if !hasInventoryURL(got, accepted) {
+			t.Fatalf("target inventory = %+v, want %q preserved", got, accepted)
+		}
+	}
+	for _, rejected := range []string{
+		"https://generated.example.test/tagged-amazon.jpg",
+		"https://generated.example.test/unknown-legacy.jpg",
+	} {
+		if hasInventoryURL(got, rejected) {
+			t.Fatalf("target inventory = %+v, want %q rejected", got, rejected)
+		}
+	}
+
+	multiTarget := platformAssetInventory(&ListingKitResult{
+		Platforms:   []string{"shein", "amazon"},
+		AssetBundle: legacyBase,
+	}, "shein", shared)
+	if hasInventoryURL(multiTarget, "https://cdn.example.test/legacy-shein-main.jpg") {
+		t.Fatalf("multi-target inventory = %+v, want ambiguous scalar legacy base rejected", multiTarget)
+	}
+}
+
+func TestRunWorkflowPassesNormalizedRequestedTargetsToPlatformGenerationPlan(t *testing.T) {
+	t.Parallel()
+
+	productSvc := &stubWorkflowProductService{
+		task:    &productenrich.Task{ID: "product-task-platform-plan-targets"},
+		product: &productenrich.ProductJSON{Title: "Plan targets", Images: []string{"https://source.example.test/plan-targets.jpg"}},
+	}
+	imageSvc := &stubWorkflowImageService{
+		taskByTarget: map[string]*productimage.Task{
+			"shein":  {ID: "image-shein-plan-targets"},
+			"amazon": {ID: "image-amazon-plan-targets"},
+		},
+		resultByTarget: map[string]*productimage.ImageProcessResult{
+			"shein":  {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/shein-plan-targets.jpg", Type: productimage.AssetTypeMainImage}},
+			"amazon": {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/amazon-plan-targets.jpg", Type: productimage.AssetTypeMainImage}},
+		},
+	}
+	assetGenerator := &stubWorkflowAssetGenerator{planResult: &assetgeneration.Result{}}
+	svc := seedWorkflowServices(seedWorkflowAssets(
+		seedSupportDeps(&service{}, supportDependencySeed{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})}),
+		assetrepo.NewMemRepository(),
+		newDefaultAssetRecipeResolver(),
+		newDefaultAssetBundleBuilder(),
+		assetGenerator,
+	), productSvc, imageSvc)
+	task := &Task{ID: "listing-task-platform-plan-targets", Request: &GenerateRequest{
+		ImageURLs: []string{"https://source.example.test/plan-targets.jpg"},
+		Platforms: []string{" SHEIN ", "amazon", "shein", "unsupported"},
+		Options:   &GenerateOptions{ProcessImages: true},
+	}}
+
+	if _, err := svc.runWorkflow(context.Background(), task); err != nil {
+		t.Fatalf("runWorkflow() error = %v", err)
+	}
+	if assetGenerator.lastPlanReq == nil {
+		t.Fatal("platform generation Plan request = nil")
+	}
+	if got, want := assetGenerator.lastPlanReq.TargetPlatforms, []string{"shein", "amazon"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("platform generation Plan targets = %#v, want normalized requested targets %#v", got, want)
 	}
 }
 
@@ -991,7 +1118,8 @@ func TestApplyPlatformAssetDispatchMutationShapesBundlesWhenDispatchReturnsAsset
 	t.Parallel()
 
 	final := &ListingKitResult{
-		Shein: &SheinPackage{},
+		Shein:     &SheinPackage{},
+		Platforms: []string{"shein"},
 		AssetBundle: &asset.Bundle{
 			Assets: []asset.Asset{
 				{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.com/source-1.jpg"},
@@ -1012,12 +1140,13 @@ func TestApplyPlatformAssetDispatchMutationShapesBundlesWhenDispatchReturnsAsset
 	dispatchResult := &assetgeneration.Result{
 		Assets: []asset.AssetRecord{
 			{
-				ID:       "generated-1",
-				Kind:     asset.KindSceneImage,
-				Origin:   asset.OriginGenerated,
-				URL:      "https://example.com/generated-1.jpg",
-				RecipeID: "scene",
-				Lineage:  &asset.AssetLineage{SourceAssetIDs: []string{"source-1"}},
+				ID:           "generated-1",
+				Kind:         asset.KindSceneImage,
+				Origin:       asset.OriginGenerated,
+				URL:          "https://example.com/generated-1.jpg",
+				RecipeID:     "scene",
+				Lineage:      &asset.AssetLineage{SourceAssetIDs: []string{"source-1"}},
+				PlatformTags: []string{"shein"},
 			},
 		},
 	}
@@ -1596,18 +1725,20 @@ func TestPlatformAssetDispatchPhaseRunOrchestratesDispatchMutationAndPersistence
 				ExecutionStatus: "completed",
 			}},
 			Assets: []asset.AssetRecord{{
-				ID:       "generated-main",
-				Kind:     asset.KindSceneImage,
-				Origin:   asset.OriginGenerated,
-				URL:      "https://cdn.example.com/generated-main.jpg",
-				RecipeID: "amazon-lifestyle",
+				ID:           "generated-main",
+				Kind:         asset.KindSceneImage,
+				Origin:       asset.OriginGenerated,
+				URL:          "https://cdn.example.com/generated-main.jpg",
+				RecipeID:     "amazon-lifestyle",
+				PlatformTags: []string{"amazon"},
 			}},
 		},
 	}
 	phase := buildPlatformAssetDispatchPhase(seedWorkflowAssets(seedWorkflowDeps(&service{}), assetRepository, nil, newDefaultAssetBundleBuilder(), assetGenerator))
 	final := &ListingKitResult{
-		Summary: &GenerationSummary{},
-		Amazon:  &AmazonPackage{},
+		Summary:   &GenerationSummary{},
+		Amazon:    &AmazonPackage{},
+		Platforms: []string{"amazon"},
 		AssetBundle: &asset.Bundle{
 			Assets: []asset.Asset{{
 				ID:   "source-1",

@@ -7,6 +7,7 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	"task-processor/internal/catalog/canonical"
+	listingplatform "task-processor/internal/listing/platform"
 )
 
 type standardWorkflowAssetPhase struct {
@@ -74,10 +75,11 @@ func (p *standardWorkflowAssetPhase) run(
 			stage := recorder.Start("asset_generation_platform", "")
 			var planErr error
 			generationPlan, planErr = assetGenerator.Plan(ctx, assetgeneration.Request{
-				TaskID:    task.ID,
-				Product:   result.CatalogProduct,
-				Inventory: inventory,
-				Recipes:   assetrecipe.FlattenResolved(recipesByPlatform),
+				TaskID:          task.ID,
+				TargetPlatforms: listingplatform.NormalizeSupportedPlatforms(task.Request.Platforms),
+				Product:         result.CatalogProduct,
+				Inventory:       inventory,
+				Recipes:         assetrecipe.FlattenResolved(recipesByPlatform),
 			})
 			if planErr != nil {
 				stage.Degrade("asset_generation_platform_plan_failed", "Platform asset generation planning failed", planErr.Error())

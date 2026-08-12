@@ -50,18 +50,24 @@ func attachPlatformImageBundles(result *ListingKitResult, inventory *asset.Inven
 }
 
 func platformAssetInventory(result *ListingKitResult, platform string, shared *asset.Inventory) *asset.Inventory {
-	if result == nil || shared == nil || len(result.AssetBundlesByTarget) == 0 {
-		return shared
-	}
-	targetBundle := result.AssetBundleForTarget(platform)
-	if targetBundle == nil {
+	if result == nil || shared == nil {
 		return nil
+	}
+	platform = listingplatform.Normalize(platform)
+	if platform == "" {
+		return nil
+	}
+	targetBundle := explicitTargetAssetBundle(result, platform)
+	if targetBundle == nil {
+		targetBundle = &asset.Bundle{}
 	}
 	targetInventory := asset.BuildInventory(shared.Ref.TaskID, targetBundle)
 	if targetInventory == nil {
 		return nil
 	}
+	targetInventory.Ref = shared.Ref
 	baseRecords := targetBaseAssetRecordKeys(result)
+	addAssetBundleRecordKeys(baseRecords, targetBundle)
 	for _, record := range shared.Records {
 		if _, isTargetBaseRecord := baseRecords[assetRecordKey(record.ID, record.Kind)]; isTargetBaseRecord {
 			continue
@@ -75,20 +81,42 @@ func platformAssetInventory(result *ListingKitResult, platform string, shared *a
 	return targetInventory
 }
 
+func explicitTargetAssetBundle(result *ListingKitResult, platform string) *asset.Bundle {
+	if result == nil {
+		return nil
+	}
+	platform = listingplatform.Normalize(platform)
+	if platform == "" {
+		return nil
+	}
+	if len(result.AssetBundlesByTarget) > 0 {
+		return result.AssetBundlesByTarget[platform]
+	}
+	targets := listingplatform.NormalizeSupportedPlatforms(result.Platforms)
+	if len(targets) == 1 && targets[0] == platform {
+		return result.AssetBundle
+	}
+	return nil
+}
+
 func targetBaseAssetRecordKeys(result *ListingKitResult) map[string]struct{} {
 	keys := map[string]struct{}{}
 	if result == nil {
 		return keys
 	}
 	for _, bundle := range result.AssetBundlesByTarget {
-		if bundle == nil {
-			continue
-		}
-		for _, item := range bundle.Assets {
-			keys[assetRecordKey(item.ID, item.Kind)] = struct{}{}
-		}
+		addAssetBundleRecordKeys(keys, bundle)
 	}
 	return keys
+}
+
+func addAssetBundleRecordKeys(keys map[string]struct{}, bundle *asset.Bundle) {
+	if keys == nil || bundle == nil {
+		return
+	}
+	for _, item := range bundle.Assets {
+		keys[assetRecordKey(item.ID, item.Kind)] = struct{}{}
+	}
 }
 
 func assetRecordKey(id string, kind asset.Kind) string {

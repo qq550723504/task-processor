@@ -20,7 +20,9 @@ import (
 	common "task-processor/internal/publishing/common"
 )
 
-type stubRetryNilDispatchGenerator struct{}
+type stubRetryNilDispatchGenerator struct {
+	lastPlanReq *assetgeneration.Request
+}
 
 type stubRetryDispatchGenerator struct {
 	dispatchResult *assetgeneration.Result
@@ -257,6 +259,9 @@ func (r *sequencedTaskSnapshotsRepo) SaveTaskResult(ctx context.Context, taskID 
 }
 
 func (s *stubRetryNilDispatchGenerator) Plan(ctx context.Context, req assetgeneration.Request) (*assetgeneration.Result, error) {
+	clonedReq := req
+	clonedReq.TargetPlatforms = append([]string(nil), req.TargetPlatforms...)
+	s.lastPlanReq = &clonedReq
 	return &assetgeneration.Result{}, nil
 }
 
@@ -3984,5 +3989,62 @@ func TestRetryTaskGenerationTasksPlansMissingQueueFallbackSlot(t *testing.T) {
 	}
 	if !foundCompletedGallery {
 		t.Fatalf("executed queue items = %+v, want completed renderer-backed gallery item", page.ExecutedQueue.Items)
+	}
+}
+
+func TestRetryTaskGenerationTasksPassesNormalizedRequestedTargetsToMissingTaskPlan(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	assetRepository := assetrepo.NewMemRepository()
+	assetGenerator := &stubRetryNilDispatchGenerator{}
+	owner := seedWorkflowAssets(seedWorkflowDeps(&service{}), assetRepository, assetrecipe.NewStaticResolver(), assetbundle.NewBuilder(), assetGenerator)
+	task := &Task{
+		ID:        "task-generation-retry-plan-targets-1",
+		Status:    core.TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request: &GenerateRequest{Platforms: []string{
+			" SHEIN ", "amazon", "shein", "unsupported",
+		}},
+		Result: &ListingKitResult{
+			TaskID:           "task-generation-retry-plan-targets-1",
+			Platforms:        []string{"shein", "amazon"},
+			CanonicalProduct: &canonical.Product{CategoryPath: []string{"Home"}},
+			CatalogProduct:   &catalog.Product{Title: "Retry plan targets", CategoryPath: []string{"Home"}},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := assetRepository.SaveInventory(context.Background(), &asset.Inventory{
+		Ref:     asset.InventoryRef{TaskID: task.ID},
+		Summary: &asset.InventorySummary{},
+	}); err != nil {
+		t.Fatalf("SaveInventory() error = %v", err)
+	}
+	generation := newTaskGenerationService(taskGenerationServiceConfig{
+		repo:                repo,
+		assetRepo:           assetRepository,
+		assetRecipeResolver: assetrecipe.NewStaticResolver(),
+		assetBundleBuilder:  assetbundle.NewBuilder(),
+		assetGenerator:      assetGenerator,
+		listAssetGenerationTasks: func(context.Context, string) ([]assetgeneration.Task, error) {
+			return nil, nil
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+		buildRetryGenerationTaskSelection: owner.buildRetryGenerationTaskSelection,
+	})
+
+	if _, err := generation.RetryTaskGenerationTasks(context.Background(), task.ID, &RetryGenerationTasksRequest{}); err != nil {
+		t.Fatalf("RetryTaskGenerationTasks() error = %v", err)
+	}
+	if assetGenerator.lastPlanReq == nil {
+		t.Fatal("missing-task Plan request = nil")
+	}
+	if got, want := assetGenerator.lastPlanReq.TargetPlatforms, []string{"shein", "amazon"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("missing-task Plan targets = %#v, want normalized requested targets %#v", got, want)
 	}
 }
