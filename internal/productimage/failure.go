@@ -3,6 +3,8 @@ package productimage
 import (
 	"errors"
 	"strings"
+
+	"task-processor/internal/aicapability"
 )
 
 type FailureDisposition string
@@ -89,8 +91,12 @@ func isNoRetryMessage(err error) bool {
 }
 
 func ClassifyProcessFailure(err error) FailureDisposition {
-	if IsNoRetryError(err) || isNoRetryProviderError(err) || isNoRetryMessage(err) {
+	if IsNoRetryError(err) || isNoRetryCapabilityError(err) || isNoRetryProviderError(err) || isNoRetryMessage(err) {
 		return FailureDispositionNoRetry
 	}
 	return FailureDispositionRetryable
+}
+
+func isNoRetryCapabilityError(err error) bool {
+	return aicapability.CategoryOf(err) == aicapability.ErrorPolicyDenied
 }

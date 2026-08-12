@@ -57,7 +57,16 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 		if governanceErr != nil {
 			return nil, fmt.Errorf("create governed productimage scene generator: %w", governanceErr)
 		}
-		modelProvider = productimage.NewModelProvider(modelProvider.FaithfulEditor(), governedScene, modelProvider.ReviewModel())
+		allowed := tenantIDSet(input.Config.AICapability.ProductImageSceneAllowedTenantIDs)
+		var faithfulEditor productimage.FaithfulEditor
+		if editor := modelProvider.FaithfulEditor(); editor != nil {
+			faithfulEditor = &tenantAllowlistedFaithfulEditor{inner: editor, allowed: allowed}
+		}
+		var reviewModel productimage.ImageReviewModel
+		if review := modelProvider.ReviewModel(); review != nil {
+			reviewModel = &tenantAllowlistedReviewModel{inner: review, allowed: allowed}
+		}
+		modelProvider = productimage.NewModelProvider(faithfulEditor, governedScene, reviewModel)
 	}
 
 	var subjectExtractor productimage.SubjectExtractor
@@ -103,7 +112,10 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 		AssetPublisher:        buildAssetPublisher(input.Config, input.Logger),
 		CleanupTemporaryFiles: input.Config.ProductImage.Lifecycle.CleanupTemporaryFiles,
 		ReuseExistingAssets:   input.Config.ProductImage.Lifecycle.ReuseExistingAssets,
-		RequireAIIdentity:     input.Config != nil && input.Config.AICapability.ProductImageSceneEnabled,
+		// Identity is enforced by governed model stages for allowlisted tenants.
+		// Keep task creation compatible with legacy callers (for example Amazon)
+		// that do not enter the authenticated canary path.
+		RequireAIIdentity: false,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("create image service: %w", err)

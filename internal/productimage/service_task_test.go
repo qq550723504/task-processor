@@ -71,3 +71,19 @@ func TestCreateProcessTaskRejectsMissingAIIdentityWhenRequired(t *testing.T) {
 		t.Fatal("CreateProcessTask error = nil, want missing identity rejection")
 	}
 }
+
+func TestCreateProcessTaskAllowsMissingAIIdentityForLegacyCaller(t *testing.T) {
+	repo := &contextAwareTaskRepo{}
+	svc := &service{taskRepo: repo, requireAIIdentity: false}
+
+	task, err := svc.CreateProcessTask(context.Background(), &ImageProcessRequest{
+		ProductURL:  "https://example.test/product",
+		Marketplace: "amazon",
+	})
+	if err != nil {
+		t.Fatalf("CreateProcessTask: %v", err)
+	}
+	if task.TenantID != "" || task.UserID != "" {
+		t.Fatalf("task identity = %q/%q, want empty legacy identity", task.TenantID, task.UserID)
+	}
+}

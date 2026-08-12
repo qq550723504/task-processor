@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"testing"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/infra/clients/grsai"
 )
 
@@ -39,6 +40,14 @@ func TestClassifyProcessFailureTreatsAPIKeyErrorsAsNoRetry(t *testing.T) {
 
 func TestClassifyProcessFailureTreatsQuotaErrorsAsNoRetry(t *testing.T) {
 	err := fmt.Errorf("render_gallery failed: provider returned insufficient balance")
+
+	if got := ClassifyProcessFailure(err); got != FailureDispositionNoRetry {
+		t.Fatalf("ClassifyProcessFailure() = %q, want %q", got, FailureDispositionNoRetry)
+	}
+}
+
+func TestClassifyProcessFailureTreatsCapabilityPolicyDenialAsNoRetry(t *testing.T) {
+	err := aicapability.NewError(aicapability.ErrorPolicyDenied, string(aicapability.OperationProductImageSceneGenerate), nil)
 
 	if got := ClassifyProcessFailure(err); got != FailureDispositionNoRetry {
 		t.Fatalf("ClassifyProcessFailure() = %q, want %q", got, FailureDispositionNoRetry)
