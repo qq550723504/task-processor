@@ -159,8 +159,8 @@ func TestSettingsServiceHealthReadsExistingAIAndSheinSettings(t *testing.T) {
 				Model:      "gpt-test",
 				APIKeySet:  true,
 			},
-			"image": {
-				ClientName: "image",
+			listingkit.ImageAIClientNameGPTImage2: {
+				ClientName: listingkit.ImageAIClientNameGPTImage2,
 				Enabled:    true,
 				BaseURL:    "https://api.example.test/v1",
 				Model:      "image-test",

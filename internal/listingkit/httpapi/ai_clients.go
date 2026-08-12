@@ -11,7 +11,7 @@ import (
 
 const (
 	listingKitImageClientName                     = "image"
-	listingKitImageClientNameGPTImage2            = "image_gpt_image_2"
+	listingKitImageClientNameGPTImage2            = listingkit.ImageAIClientNameGPTImage2
 	listingKitImageClientNameNanobanana           = "image_nanobanana"
 	listingKitImageClientNameBackgroundRemoval    = "image_background_removal"
 	listingKitImageModelSelectorGPTImage2         = "gpt-image-2"
