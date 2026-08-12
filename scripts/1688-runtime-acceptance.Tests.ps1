@@ -15,7 +15,7 @@ Describe "1688 runtime acceptance safety" {
 
     It "maps crawler product data without adding the rejected source store field" {
         $payload = New-ListingKitHandoffPayload `
-            -ProductData @{ id = "321"; title = "Test product"; url = "https://detail.1688.com/offer/321.html" } `
+            -ProductData ([pscustomobject]@{ id = "321"; title = "Test product"; url = "https://detail.1688.com/offer/321.html" }) `
             -SourceAccountID 3001 -SheinStoreID 168811 -CrawlerTaskID "crawler-task-1"
 
         $payload.source_account_id | Should Be 3001
@@ -75,7 +75,7 @@ Describe "1688 runtime acceptance safety" {
                 return @{ data = @{ task_id = "crawler-task-1" } }
             }
             $status = if ($script:pollCount++ -eq 0) { "processing" } else { "success" }
-            return @{ data = @{ task_id = "crawler-task-1"; status = $status; product_data = @{ id = "321"; title = "Test product"; url = "https://detail.1688.com/offer/321.html" } } }
+            return @{ data = @{ task_id = "crawler-task-1"; status = $status; product_data = [pscustomobject]@{ id = "321"; title = "Test product"; url = "https://detail.1688.com/offer/321.html" } } }
         }
 
         $result = Invoke-Crawl -Url "https://detail.1688.com/offer/321.html" -SourceAccountID 3001 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0
@@ -93,7 +93,7 @@ Describe "1688 runtime acceptance safety" {
                 return @{ data = @{ task_id = "crawler-task-2" } }
             }
             if ($Path -eq "/api/v1/tasks/crawler-task-2") {
-                return @{ data = @{ task_id = "crawler-task-2"; status = "success"; product_data = @{ id = "322"; title = "End-to-end product"; url = "https://detail.1688.com/offer/322.html" } } }
+                return @{ data = @{ task_id = "crawler-task-2"; status = "success"; product_data = [pscustomobject]@{ id = "322"; title = "End-to-end product"; url = "https://detail.1688.com/offer/322.html" } } }
             }
             $script:lastHandoffBody = $Body
             return @{ data = @{ task_id = "listing-task-2"; status = "pending" } }

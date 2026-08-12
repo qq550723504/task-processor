@@ -142,7 +142,7 @@ function Get-ResponseData {
 
 function New-ListingKitHandoffPayload {
     param(
-        [hashtable]$ProductData,
+        [object]$ProductData,
         [long]$SourceAccountID,
         [long]$SheinStoreID,
         [string]$CrawlerTaskID
