@@ -21,6 +21,15 @@
 
 ---
 
+## Execution Status (2026-08-13)
+
+- Task 1 complete in `f726f4dd5`: strategy order is Phase 2A Tool Foundation, Phase 2B Product Agent, then Phase 3 Tool expansion and hardening.
+- Task 2 complete in `bede51542`: the active current-state authority is calibrated to `49815aad9` and separates merged 1688/TaskEvent V2 assets from controlled and production acceptance.
+- Task 3 complete in `0d68d5b31`: the completed platform-aware asset plan is explicitly historical evidence.
+- Task 4 verification passed: placeholder and phase-order scans returned no errors, `go test ./tests -count=1` passed, `git diff --check origin/master...HEAD` passed, and exactly the five approved documentation paths changed.
+- Task 5 remains the next repository action: fetch, reverify, push the dedicated branch, and open a Draft PR without merging.
+- Task 6 remains blocked by design until the documentation PR is explicitly authorized and confirmed merged.
+
 ### Task 1: Align the long-term strategy phase model
 
 **Files:**
@@ -31,7 +40,7 @@
 - Consumes: the approved Phase 0, Phase 1, Phase 2A, Phase 2B, Phase 3, and Phase 4 ordering from the design.
 - Produces: the canonical long-term phase model consumed by the current-state document and issue #137.
 
-- [ ] **Step 1: Capture the superseded phase order**
+- [x] **Step 1: Capture the superseded phase order**
 
 Run:
 
@@ -41,7 +50,7 @@ rg -n '^### Phase|^### Now|^### Next|^### Later' docs/product/ai-commerce-agent-
 
 Expected: Phase 2 is Product Agent PoC and Phase 3 is Commerce Tool Contract, proving the dependency is reversed before the edit.
 
-- [ ] **Step 2: Replace the Phase 2 and Phase 3 roadmap sections**
+- [x] **Step 2: Replace the Phase 2 and Phase 3 roadmap sections**
 
 Replace the old sections with this order and meaning:
 
@@ -86,7 +95,7 @@ Phase 2A 的同一合同，包括更多领域工具、版本迁移策略、运�
 write / publish tools 仍需独立的审批、幂等、权限与审计门禁。
 ```
 
-- [ ] **Step 3: Align Now, Next, and Later**
+- [x] **Step 3: Align Now, Next, and Later**
 
 Keep Now focused on SHEIN stability, current-baseline validation, controlled 1688 closure, and AI Capability stabilization. Set Next to this exact order:
 
@@ -101,11 +110,11 @@ Keep Now focused on SHEIN stability, current-baseline validation, controlled 168
 
 Keep Sourcing Agent, controlled write tools, additional marketplace Agents, and multi-Agent handoff in Later.
 
-- [ ] **Step 4: Align the documented authority order**
+- [x] **Step 4: Align the documented authority order**
 
 Keep the strategy first and current-refactoring-status second. Add issue #137 immediately after them as the executable backlog mapping. Move the detailed Agent platform design after issue #137. State that completed implementation plans are historical evidence and cannot override the current-state document.
 
-- [ ] **Step 5: Verify the strategy ordering**
+- [x] **Step 5: Verify the strategy ordering**
 
 Run:
 
@@ -121,7 +130,7 @@ rg -n 'Product Agent PoC|Commerce Tool|current-refactoring-status|issue #137' $p
 
 Expected: Phase 2A appears before Phase 2B, Phase 2B before Phase 3, and issue #137 appears in the authority section.
 
-- [ ] **Step 6: Commit the strategy slice**
+- [x] **Step 6: Commit the strategy slice**
 
 ```powershell
 git add -- docs/product/ai-commerce-agent-platform-strategy.md
@@ -140,7 +149,7 @@ git commit -m "docs: order tool foundation before product agent"
 - Consumes: repository baseline `49815aad922d98bc4c7d12b90dcabf86b541df2a` and the Phase 2A/2B order from Task 1.
 - Produces: the active Now/Next/Later execution gate consumed by issue #137.
 
-- [ ] **Step 1: Reproduce the stale calibration**
+- [x] **Step 1: Reproduce the stale calibration**
 
 Run:
 
@@ -150,7 +159,7 @@ Select-String -Path docs/refactoring/current-refactoring-status.md -Pattern 'Las
 
 Expected: the file names 2026-07-13, commit `5c72f406`, and next-source selection as the next growth action.
 
-- [ ] **Step 2: Update metadata and current posture**
+- [x] **Step 2: Update metadata and current posture**
 
 Set:
 
@@ -170,13 +179,13 @@ establish the minimum Commerce Tool Foundation before Product Agent code;
 defer new product sources and target workbenches until their explicit gates are met.
 ```
 
-- [ ] **Step 3: Record current merged-versus-accepted reality**
+- [x] **Step 3: Record current merged-versus-accepted reality**
 
 Update the Product Sourcing section to say the guarded operator tool from PR #141 is merged, while a live tenant-owned 1688 account run, durable lineage evidence, and the complete preview/readiness result remain open.
 
 Add a TaskEvent V2 operational paragraph stating that repository observability and canary tooling from PR #142 are merged, while monitoring installation, production canary/full rollout, and the 14-day zero-legacy observation gate remain open. Do not call the legacy decoder removable.
 
-- [ ] **Step 4: Replace the Next section**
+- [x] **Step 4: Replace the Next section**
 
 Replace next-source selection with these subsections:
 
@@ -190,7 +199,7 @@ Replace next-source selection with these subsections:
 
 Move the next warehouse/catalog source, with 大建云仓 as a candidate rather than a commitment, to Later under a Sourcing Agent/product-source heading.
 
-- [ ] **Step 5: Replace the source-of-truth summary**
+- [x] **Step 5: Replace the source-of-truth summary**
 
 Use this order:
 
@@ -202,7 +211,7 @@ Use this order:
 5. `next-phase-plan.md` and other completed implementation plans as historical execution evidence only.
 ```
 
-- [ ] **Step 6: Verify evidence language and ordering**
+- [x] **Step 6: Verify evidence language and ordering**
 
 Run:
 
@@ -214,7 +223,7 @@ if (Select-String -Path $path -Pattern 'preferred next growth direction is one w
 
 Expected: merged tooling and runtime acceptance remain separate, Phase 2A precedes Phase 2B, and the old preferred-next-source statement is absent.
 
-- [ ] **Step 7: Commit the current-state slice**
+- [x] **Step 7: Commit the current-state slice**
 
 ```powershell
 git add -- docs/refactoring/current-refactoring-status.md
@@ -232,7 +241,7 @@ git commit -m "docs: recalibrate current roadmap authority"
 - Consumes: the authority order from Task 2.
 - Produces: an immutable completed-plan record that no longer claims to be the live queue.
 
-- [ ] **Step 1: Capture the misleading active-plan wording**
+- [x] **Step 1: Capture the misleading active-plan wording**
 
 Run:
 
@@ -242,7 +251,7 @@ Get-Content docs/refactoring/next-phase-plan.md -TotalCount 32
 
 Expected: the title and agentic-worker instruction still present the file as an implementation plan even though its status says implementation complete.
 
-- [ ] **Step 2: Add an explicit historical-authority banner**
+- [x] **Step 2: Add an explicit historical-authority banner**
 
 Immediately below the title, add:
 
@@ -252,7 +261,7 @@ Immediately below the title, add:
 
 Change the agentic-worker instruction to state that the checklist is retained as execution evidence and must not be re-executed as a current plan. Preserve all task content and completion evidence below the banner.
 
-- [ ] **Step 3: Verify no implementation evidence was removed**
+- [x] **Step 3: Verify no implementation evidence was removed**
 
 Run:
 
@@ -263,7 +272,7 @@ git diff -- docs/refactoring/next-phase-plan.md
 
 Expected: the authority banner is present and the completed tasks, commits, gates, and deferred scope remain in the file.
 
-- [ ] **Step 4: Commit the historical-plan slice**
+- [x] **Step 4: Commit the historical-plan slice**
 
 ```powershell
 git add -- docs/refactoring/next-phase-plan.md
@@ -284,7 +293,7 @@ git commit -m "docs: retire completed next-phase plan authority"
 - Consumes: Tasks 1-3.
 - Produces: one internally consistent documentation-only branch ready for review.
 
-- [ ] **Step 1: Run the placeholder and ambiguity scan**
+- [x] **Step 1: Run the placeholder and ambiguity scan**
 
 Run:
 
@@ -302,7 +311,7 @@ if ($LASTEXITCODE -eq 0) { $hits; throw 'Documentation placeholder scan found ma
 
 Expected: no matches.
 
-- [ ] **Step 2: Verify phase order across active authority documents**
+- [x] **Step 2: Verify phase order across active authority documents**
 
 Run:
 
@@ -317,7 +326,7 @@ foreach ($path in @('docs/product/ai-commerce-agent-platform-strategy.md','docs/
 
 Expected: both active documents order Phase 2A before Phase 2B.
 
-- [ ] **Step 3: Run repository documentation and architecture guards**
+- [x] **Step 3: Run repository documentation and architecture guards**
 
 Run:
 
@@ -328,7 +337,7 @@ git diff --check origin/master...HEAD
 
 Expected: tests pass and no whitespace errors are reported.
 
-- [ ] **Step 4: Review scope and commit the plan evidence**
+- [x] **Step 4: Review scope and commit the plan evidence**
 
 Run:
 
