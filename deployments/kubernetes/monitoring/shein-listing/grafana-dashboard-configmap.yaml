@@ -313,7 +313,7 @@ data:
           "targets": [
             {
               "editorMode": "code",
-              "expr": "sum by (pod) (up{namespace=\"$namespace\", job=~\"podMonitor/monitoring/(shein-listing|shein-listing-store-883)/.*\"})",
+              "expr": "sum by (pod) (up{namespace=\"$namespace\", job=~\"monitoring/(shein-listing|shein-listing-store-883)\"})",
               "legendFormat": "{{ pod }}",
               "range": true,
               "refId": "A"
@@ -369,7 +369,7 @@ data:
           "targets": [
             {
               "editorMode": "code",
-              "expr": "count(up{namespace=\"$namespace\", job=~\"podMonitor/monitoring/(shein-listing|shein-listing-store-883)/.*\"} == 1)",
+              "expr": "count(up{namespace=\"$namespace\", job=~\"monitoring/(shein-listing|shein-listing-store-883)\"} == 1)",
               "legendFormat": "",
               "range": true,
               "refId": "A"

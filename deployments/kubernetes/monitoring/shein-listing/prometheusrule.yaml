@@ -123,7 +123,7 @@ spec:
             description: 最近 15 分钟至少有一条 legacy TaskEvent 被兼容解码。
             action: 排查仍在发布 legacy 消息的生产者；该事件会重置 14 天兼容性移除观察窗口。
         - alert: TaskEventV2MetricsScrapeMissing
-          expr: (count(up{namespace="task-processor",job=~"podMonitor/monitoring/(shein-listing|shein-listing-store-883)/.*"} == 1) or vector(0)) < 11
+          expr: (count(up{namespace="task-processor",job=~"monitoring/(shein-listing|shein-listing-store-883)"} == 1) or vector(0)) < 11
           for: 5m
           labels:
             namespace: task-processor

@@ -137,7 +137,7 @@ Append to the existing shein-listing group:
   expr: increase(task_event_decoded_total{schema_version="legacy",kubernetes_namespace="task-processor"}[15m]) > 0
   for: 0m
 - alert: TaskEventV2MetricsScrapeMissing
-  expr: (count(up{job=~"podMonitor/monitoring/(shein-listing|shein-listing-store-883)/.*"} == 1) or vector(0)) < 11
+  expr: (count(up{job=~"monitoring/(shein-listing|shein-listing-store-883)"} == 1) or vector(0)) < 11
   for: 5m
 ~~~
 
@@ -304,11 +304,11 @@ go test ./... -count=1
 kubectl -n task-processor get statefulset shein-listing-shard deployment/shein-listing-store-883 -o wide
 kubectl get storageclass local-path
 kubectl top node
-helm template monitoring oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack --version 88.3.0 --namespace monitoring -f deployments/kubernetes/monitoring/kube-prometheus-stack-values.yaml | kubectl apply --dry-run=client -f -
-kubectl kustomize deployments/kubernetes/monitoring/shein-listing | kubectl apply --dry-run=client -f -
+helm template monitoring oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack --include-crds --version 88.3.0 --namespace monitoring -f deployments/kubernetes/monitoring/kube-prometheus-stack-values.yaml | Set-Content "$env:TEMP\task-event-v2-monitoring-rendered.yaml"
+kubectl kustomize deployments/kubernetes/monitoring/shein-listing | Set-Content "$env:TEMP\task-event-v2-shein-monitoring-rendered.yaml"
 ~~~
 
-Expected: clean tree, full Go suite green, both active workload identities present, storage present, approved memory headroom, and valid rendered manifests.
+Expected: clean tree, full Go suite green, both active workload identities present, storage present, approved memory headroom, and two reviewable rendered manifest files. Custom-resource validation is intentionally deferred until the Operator CRDs are installed in Step 2.
 
 - [ ] **Step 2: Obtain explicit production authorization and install monitoring atomically**
 
@@ -316,6 +316,8 @@ Do not execute this step without a new explicit user authorization for productio
 
 ~~~powershell
 helm upgrade --install monitoring oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack --version 88.3.0 --namespace monitoring --create-namespace --atomic --timeout 10m -f deployments/kubernetes/monitoring/kube-prometheus-stack-values.yaml
+kubectl api-resources --api-group=monitoring.coreos.com
+kubectl apply --dry-run=server -k deployments/kubernetes/monitoring/shein-listing
 kubectl apply -k deployments/kubernetes/monitoring/shein-listing
 kubectl -n monitoring get podmonitor,prometheusrule,prometheus,pod
 ~~~
