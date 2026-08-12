@@ -50,10 +50,11 @@ func (p *standardWorkflowAssetPhase) run(
 		if enableAssetGeneration && assetGenerator != nil && len(baseRecipes) > 0 {
 			stage := recorder.Start("asset_generation_baseline", "")
 			execution, execErr := assetGenerator.Execute(ctx, assetgeneration.Request{
-				TaskID:    task.ID,
-				Product:   result.CatalogProduct,
-				Inventory: inventory,
-				Recipes:   append([]assetrecipe.AssetRecipe(nil), baseRecipes...),
+				TaskID:          task.ID,
+				TargetPlatforms: append([]string(nil), task.Request.Platforms...),
+				Product:         result.CatalogProduct,
+				Inventory:       inventory,
+				Recipes:         append([]assetrecipe.AssetRecipe(nil), baseRecipes...),
 			})
 			if execErr != nil {
 				stage.Degrade("asset_generation_baseline_execute_failed", "Baseline asset generation failed", execErr.Error())

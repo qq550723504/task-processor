@@ -61,6 +61,18 @@ type stubWorkflowAssetGenerator struct {
 	lastDispatchReq *assetgeneration.DispatchRequest
 }
 
+type targetURLDeferredRenderer struct{}
+
+func (targetURLDeferredRenderer) Render(_ context.Context, req assetgeneration.DeferredRenderRequest) (*asset.AssetRecord, error) {
+	return &asset.AssetRecord{
+		ID:       req.Task.Platform + ":" + req.Task.RecipeID,
+		Kind:     req.Task.AssetKind,
+		Origin:   asset.OriginGenerated,
+		URL:      "https://generated.example.test/" + req.Task.Platform + "/" + req.Task.RecipeID + ".jpg",
+		RecipeID: req.Task.RecipeID,
+	}, nil
+}
+
 func (s *stubWorkflowAssetGenerator) Plan(ctx context.Context, req assetgeneration.Request) (*assetgeneration.Result, error) {
 	if s.planErr != nil {
 		return nil, s.planErr
@@ -357,6 +369,102 @@ func TestRunWorkflowKeepsPlatformImageBundlesIsolatedAcrossTargetOrder(t *testin
 				t.Fatalf("temu package main URL = %q, want isolated TEMU URL", got)
 			}
 		})
+	}
+}
+
+func TestRunWorkflowKeepsGeneratedAssetsIsolatedAcrossTargetOrder(t *testing.T) {
+	for _, platforms := range [][]string{{"shein", "amazon"}, {"amazon", "shein"}} {
+		platforms := append([]string(nil), platforms...)
+		t.Run(strings.Join(platforms, "_then_"), func(t *testing.T) {
+			productSvc := &stubWorkflowProductService{
+				task:    &productenrich.Task{ID: "product-task-generated-target-bundles"},
+				product: &productenrich.ProductJSON{Title: "Generated target product", Images: []string{"https://source.example.test/product.jpg"}},
+			}
+			imageSvc := &stubWorkflowImageService{
+				taskByTarget: map[string]*productimage.Task{
+					"shein":  {ID: "image-shein-generated"},
+					"amazon": {ID: "image-amazon-generated"},
+				},
+				resultByTarget: map[string]*productimage.ImageProcessResult{
+					"shein":  {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/shein-main.jpg", Type: productimage.AssetTypeMainImage}},
+					"amazon": {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/amazon-main.jpg", Type: productimage.AssetTypeMainImage}},
+				},
+			}
+			assetGenerator := assetgeneration.NewService(assetgeneration.Config{DeferredRenderer: targetURLDeferredRenderer{}})
+			svc := seedWorkflowServices(seedWorkflowAssets(
+				seedSupportDeps(&service{}, supportDependencySeed{
+					assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+				}),
+				assetrepo.NewMemRepository(),
+				newDefaultAssetRecipeResolver(),
+				newDefaultAssetBundleBuilder(),
+				assetGenerator,
+			), productSvc, imageSvc)
+			task := &Task{ID: "listing-task-generated-target-bundles", Request: &GenerateRequest{
+				ImageURLs: []string{"https://source.example.test/product.jpg"},
+				Platforms: platforms,
+				Options:   &GenerateOptions{ProcessImages: true},
+			}}
+
+			result, err := svc.runWorkflow(context.Background(), task)
+			if err != nil {
+				t.Fatalf("runWorkflow() error = %v", err)
+			}
+			assertPublishBundleHasOnlyTargetGeneratedURLs(t, "shein", result.Shein.ImageBundle)
+			assertPublishBundleHasOnlyTargetGeneratedURLs(t, "amazon", result.Amazon.ImageBundle)
+		})
+	}
+}
+
+func TestPlatformAssetInventoryRejectsUntaggedSharedGeneratedRecords(t *testing.T) {
+	t.Parallel()
+
+	result := &ListingKitResult{AssetBundlesByTarget: map[string]*asset.Bundle{
+		"shein": {Assets: []asset.Asset{{ID: "shein-main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/shein-main.jpg"}}},
+	}}
+	shared := asset.BuildInventory("task-untagged-generated", result.assetBundleForInventory())
+	shared.Records = append(shared.Records, asset.AssetRecord{
+		ID: "untagged-generated", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated,
+		URL: "https://generated.example.test/untagged.jpg",
+	})
+
+	got := platformAssetInventory(result, "shein", shared)
+	if hasInventoryURL(got, "https://generated.example.test/untagged.jpg") {
+		t.Fatalf("target inventory = %+v, want untagged shared generated record rejected", got)
+	}
+	if !hasInventoryURL(got, "https://cdn.example.test/shein-main.jpg") {
+		t.Fatalf("target inventory = %+v, want explicitly reconstructed target bundle preserved", got)
+	}
+}
+
+func assertPublishBundleHasOnlyTargetGeneratedURLs(t *testing.T, target string, bundle *common.PublishImageBundle) {
+	t.Helper()
+	if bundle == nil {
+		t.Fatalf("%s image bundle = nil", target)
+	}
+	urls := make([]string, 0, 1+len(bundle.Gallery)+len(bundle.Auxiliary))
+	if bundle.Main != nil {
+		urls = append(urls, bundle.Main.URL)
+	}
+	for _, slot := range bundle.Gallery {
+		urls = append(urls, slot.URL)
+	}
+	for _, slot := range bundle.Auxiliary {
+		urls = append(urls, slot.URL)
+	}
+	wantPrefix := "https://generated.example.test/" + target + "/"
+	otherPrefix := "https://generated.example.test/"
+	foundTarget := false
+	for _, url := range urls {
+		if strings.HasPrefix(url, wantPrefix) {
+			foundTarget = true
+		}
+		if strings.HasPrefix(url, otherPrefix) && !strings.HasPrefix(url, wantPrefix) {
+			t.Fatalf("%s bundle URLs = %#v, found another target's generated URL %q", target, urls, url)
+		}
+	}
+	if !foundTarget {
+		t.Fatalf("%s bundle URLs = %#v, want a target-specific generated URL with prefix %q", target, urls, wantPrefix)
 	}
 }
 
@@ -2181,8 +2289,9 @@ func TestRunWorkflowPersistsDeferredPlatformDispatchOutputs(t *testing.T) {
 				ExecutionStatus: "completed",
 			}},
 			Assets: []asset.AssetRecord{{
-				Kind: asset.KindGalleryImage,
-				URL:  "https://cdn.example.com/generated-gallery.jpg",
+				Kind:         asset.KindGalleryImage,
+				URL:          "https://cdn.example.com/generated-gallery.jpg",
+				PlatformTags: []string{"amazon"},
 			}},
 		},
 	}

@@ -5,6 +5,7 @@ import (
 	assetbundle "task-processor/internal/asset/bundle"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
+	listingplatform "task-processor/internal/listing/platform"
 )
 
 func attachPlatformImageBundles(result *ListingKitResult, inventory *asset.Inventory, recipesByPlatform map[string][]assetrecipe.AssetRecipe, generationPlan *assetgeneration.Result, builder assetbundle.Builder) {
@@ -65,7 +66,7 @@ func platformAssetInventory(result *ListingKitResult, platform string, shared *a
 		if _, isTargetBaseRecord := baseRecords[assetRecordKey(record.ID, record.Kind)]; isTargetBaseRecord {
 			continue
 		}
-		if len(record.PlatformTags) > 0 && !assetRecordTargetsPlatform(record, platform) {
+		if !assetRecordTargetsPlatform(record, platform) {
 			continue
 		}
 		targetInventory.Records = append(targetInventory.Records, record)
@@ -95,8 +96,12 @@ func assetRecordKey(id string, kind asset.Kind) string {
 }
 
 func assetRecordTargetsPlatform(record asset.AssetRecord, platform string) bool {
+	platform = listingplatform.Normalize(platform)
+	if platform == "" {
+		return false
+	}
 	for _, tag := range record.PlatformTags {
-		if tag == platform {
+		if listingplatform.Normalize(tag) == platform {
 			return true
 		}
 	}

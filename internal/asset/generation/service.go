@@ -3,6 +3,7 @@ package generation
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"task-processor/internal/asset"
 	assetrecipe "task-processor/internal/asset/recipe"
@@ -46,6 +47,7 @@ func (s *service) Plan(ctx context.Context, req Request) (*Result, error) {
 			TaskID:          req.TaskID,
 			ID:              fmt.Sprintf("%s-%d", item.Platform, idx+1),
 			Platform:        item.Platform,
+			TargetPlatforms: targetPlatformsForRecipe(item.Platform, req.TargetPlatforms),
 			RecipeID:        item.ID,
 			AssetKind:       item.AssetKind,
 			Slot:            recipeSlot(item),
@@ -74,10 +76,12 @@ func (s *service) Execute(ctx context.Context, req Request) (*Result, error) {
 		if !ok {
 			continue
 		}
+		stampGeneratedRecordPlatform(&record, item.Platform, req.TargetPlatforms)
 		result.Tasks = append(result.Tasks, Task{
 			TaskID:           req.TaskID,
 			ID:               fmt.Sprintf("%s-exec-%d", item.Platform, idx+1),
 			Platform:         item.Platform,
+			TargetPlatforms:  targetPlatformsForRecipe(item.Platform, req.TargetPlatforms),
 			RecipeID:         item.ID,
 			AssetKind:        item.AssetKind,
 			Slot:             recipeSlot(item),
@@ -129,6 +133,7 @@ func (s *service) dispatchTask(ctx context.Context, req DispatchRequest, idx int
 	if task.ExecutionMode == ExecutionModeRendererBacked && s.deferredRenderer != nil {
 		record, ok := s.executeRendererBackedTask(ctx, req, task)
 		if ok {
+			stampGeneratedRecordPlatform(&record, task.Platform, task.TargetPlatforms)
 			updated.Status = "completed"
 			updated.ExecutionStatus = "completed"
 			updated.ExecutionMode = ExecutionModeRendererBacked
@@ -145,6 +150,7 @@ func (s *service) dispatchTask(ctx context.Context, req DispatchRequest, idx int
 	if !ok {
 		return updated, nil
 	}
+	stampGeneratedRecordPlatform(&record, task.Platform, task.TargetPlatforms)
 	updated.Status = "completed"
 	updated.ExecutionStatus = "completed"
 	updated.ExecutionMode = ExecutionModeDeferredStub
@@ -152,4 +158,44 @@ func (s *service) dispatchTask(ctx context.Context, req DispatchRequest, idx int
 	updated.Metadata = taskMetadataFromAssetMetadata(record.Metadata)
 	updated.ReviewConfidence = reviewConfidenceFromMetadata(record.Metadata)
 	return updated, []asset.AssetRecord{record}
+}
+
+func stampGeneratedRecordPlatform(record *asset.AssetRecord, platform string, targetPlatforms []string) {
+	if record == nil {
+		return
+	}
+	platform = strings.ToLower(strings.TrimSpace(platform))
+	if platform != "common" {
+		if platform == "" {
+			record.PlatformTags = nil
+			return
+		}
+		record.PlatformTags = []string{platform}
+		return
+	}
+	record.PlatformTags = normalizedUniquePlatforms(targetPlatforms)
+}
+
+func normalizedUniquePlatforms(platforms []string) []string {
+	seen := make(map[string]struct{}, len(platforms))
+	out := make([]string, 0, len(platforms))
+	for _, platform := range platforms {
+		platform = strings.ToLower(strings.TrimSpace(platform))
+		if platform == "" || platform == "common" {
+			continue
+		}
+		if _, ok := seen[platform]; ok {
+			continue
+		}
+		seen[platform] = struct{}{}
+		out = append(out, platform)
+	}
+	return out
+}
+
+func targetPlatformsForRecipe(platform string, targets []string) []string {
+	if strings.ToLower(strings.TrimSpace(platform)) != "common" {
+		return nil
+	}
+	return normalizedUniquePlatforms(targets)
 }
