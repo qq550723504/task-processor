@@ -22,6 +22,7 @@ $ApiDockerfile = "deployments/docker/Dockerfile.product-listing-api"
 $PreflightDockerfile = "deployments/docker/Dockerfile.listingkit-identity-preflight"
 $UiDockerfile = "deployments/docker/Dockerfile.listingkit-ui"
 $IdentityPreflightDriver = Join-Path $PSScriptRoot "listingkit-identity-preflight-job.sh"
+$LegacyIdentitySecretCleanupDriver = Join-Path $PSScriptRoot "listingkit-clean-legacy-identity-secret.sh"
 $ImmutableApiApplyDriver = Join-Path $PSScriptRoot "listingkit-apply-api-deployment.sh"
 $ImmutableUiApplyDriver = Join-Path $PSScriptRoot "listingkit-apply-ui-deployment.sh"
 $IdentityPreflightManifest = "deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml"
@@ -166,7 +167,15 @@ if (-not $SkipApply) {
         if ($LASTEXITCODE -ne 0) { throw "identity preflight failed" }
     }
 
-    Invoke-Step "[8/10] Applying immutable API deployment..." {
+    Invoke-Step "[8/11] Removing deprecated ListingKit identity keys..." {
+        & $BashExecutable $LegacyIdentitySecretCleanupDriver `
+            $Namespace `
+            "listingkit-workbench-secret" `
+            "product-listing-api"
+        if ($LASTEXITCODE -ne 0) { throw "legacy ListingKit identity Secret cleanup failed" }
+    }
+
+    Invoke-Step "[9/11] Applying immutable API deployment..." {
         & $BashExecutable $ImmutableApiApplyDriver `
             --manifest $ApiDeploymentManifest `
             --namespace $Namespace `
@@ -174,7 +183,7 @@ if (-not $SkipApply) {
         if ($LASTEXITCODE -ne 0) { throw "immutable API deployment apply failed" }
     }
 
-    Invoke-Step "[9/10] Applying immutable UI deployment..." {
+    Invoke-Step "[10/11] Applying immutable UI deployment..." {
         & $BashExecutable $ImmutableUiApplyDriver `
             --manifest $UiDeploymentManifest `
             --namespace $Namespace `
@@ -182,7 +191,7 @@ if (-not $SkipApply) {
         if ($LASTEXITCODE -ne 0) { throw "immutable UI deployment apply failed" }
     }
 
-    Invoke-Step "[10/10] Waiting for rollouts..." {
+    Invoke-Step "[11/11] Waiting for rollouts..." {
         kubectl -n $Namespace rollout status deployment/product-listing-api --timeout=5m
         if ($LASTEXITCODE -ne 0) { throw "product-listing-api rollout failed" }
 

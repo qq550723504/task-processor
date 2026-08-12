@@ -123,6 +123,168 @@ func TestListingKitSchemaMigrationRunsBeforeIdentityPreflight(t *testing.T) {
 	}
 }
 
+func TestListingKitDeployRemovesDeprecatedIdentityKeysBeforePreflight(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string `yaml:"name"`
+				Run  string `yaml:"run"`
+				If   string `yaml:"if"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(content, &workflow); err != nil {
+		t.Fatalf("parse ListingKit deploy workflow: %v", err)
+	}
+	steps := workflow.Jobs["deploy-api"].Steps
+	cleanupIndex, preflightIndex := -1, -1
+	for index, step := range steps {
+		if strings.Contains(step.Run, "scripts/listingkit-clean-legacy-identity-secret.sh") {
+			cleanupIndex = index
+			if got, want := step.If, "${{ steps.candidate-identity-compatibility.outputs.cleanup_legacy_identity == 'true' }}"; got != want {
+				t.Errorf("legacy identity Secret cleanup must require candidate compatibility, got if: %q", got)
+			}
+			if !strings.Contains(step.Run, "listingkit-workbench-secret") {
+				t.Fatal("legacy identity Secret cleanup must target the shared ListingKit Secret")
+			}
+		}
+		if strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
+			preflightIndex = index
+		}
+	}
+	if cleanupIndex < 0 || preflightIndex < 0 || cleanupIndex <= preflightIndex {
+		t.Fatalf("legacy identity Secret cleanup must run after identity preflight, cleanup=%d preflight=%d", cleanupIndex, preflightIndex)
+	}
+
+	scriptPath := filepath.Join("..", "scripts", "listingkit-clean-legacy-identity-secret.sh")
+	script, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read legacy identity Secret cleanup script: %v", err)
+	}
+	for _, key := range []string{
+		"LISTINGKIT_ZITADEL_ALLOWED_USERNAMES",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES",
+		"LISTINGKIT_ZITADEL_ALLOWED_ROLES",
+		"TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES",
+	} {
+		if !strings.Contains(string(script), key) {
+			t.Errorf("cleanup script must remove deprecated key %q", key)
+		}
+	}
+	if !strings.Contains(string(content), "scripts/listingkit-clean-legacy-identity-secret.sh") {
+		t.Error("deploy-api sparse checkout must include the legacy identity Secret cleanup driver")
+	}
+}
+
+func TestListingKitDeployInspectsCandidateCompatibilityBeforeSecretCleanup(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			Steps []struct {
+				Name string `yaml:"name"`
+				ID   string `yaml:"id"`
+				Run  string `yaml:"run"`
+				If   string `yaml:"if"`
+			} `yaml:"steps"`
+		} `yaml:"jobs"`
+	}
+	if err := yaml.Unmarshal(content, &workflow); err != nil {
+		t.Fatalf("parse ListingKit deploy workflow: %v", err)
+	}
+	steps := workflow.Jobs["deploy-api"].Steps
+	preflightIndex, compatibilityIndex, cleanupIndex, applyIndex := -1, -1, -1, -1
+	for index, step := range steps {
+		if strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
+			preflightIndex = index
+		}
+		if step.ID == "candidate-identity-compatibility" {
+			compatibilityIndex = index
+			for _, required := range []string{
+				"docker pull \"$API_CANDIDATE_IMAGE\"",
+				"docker image inspect",
+				"org.opencontainers.image.listingkit.identity",
+			} {
+				if !strings.Contains(step.Run, required) {
+					t.Errorf("candidate compatibility step must contain %q", required)
+				}
+			}
+		}
+		if strings.Contains(step.Run, "scripts/listingkit-clean-legacy-identity-secret.sh") {
+			cleanupIndex = index
+		}
+		if strings.Contains(step.Run, "scripts/listingkit-apply-api-deployment.sh") {
+			applyIndex = index
+		}
+	}
+	if preflightIndex < 0 || compatibilityIndex < 0 || cleanupIndex < 0 || applyIndex < 0 || !(compatibilityIndex < preflightIndex && preflightIndex < cleanupIndex && cleanupIndex < applyIndex) {
+		t.Fatalf("candidate compatibility, cleanup, and apply ordering invalid: preflight=%d compatibility=%d cleanup=%d apply=%d", preflightIndex, compatibilityIndex, cleanupIndex, applyIndex)
+	}
+}
+
+func TestListingKitDeployUsesSelectedSourceCompatibilityForUnlabeledBuilds(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+	workflow := string(content)
+	for _, required := range []string{
+		"source_identity_compatibility",
+		"internal/core/config/validator_listingkit.go",
+		"obsolete ZITADEL username allowlist configuration",
+		"SOURCE_IDENTITY_COMPATIBILITY: ${{ needs.prepare.outputs.source_identity_compatibility }}",
+		"source build declares canonical-subject compatibility; cleaning legacy identity keys",
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Errorf("ListingKit deploy workflow must contain source compatibility check %q", required)
+		}
+	}
+	if !strings.Contains(workflow, "if [[ \"$SOURCE_IDENTITY_COMPATIBILITY\" == \"true\" ]]") {
+		t.Error("unlabeled source builds must use the selected source compatibility result")
+	}
+}
+
+func TestListingKitAPIImageDeclaresCandidateIdentityCompatibilityLabel(t *testing.T) {
+	dockerfilePath := filepath.Join("..", "deployments", "docker", "Dockerfile.product-listing-api")
+	content, err := os.ReadFile(dockerfilePath)
+	if err != nil {
+		t.Fatalf("read ListingKit API Dockerfile: %v", err)
+	}
+	if !strings.Contains(string(content), `org.opencontainers.image.listingkit.identity="canonical-subject-v1"`) {
+		t.Fatal("ListingKit API image must declare the canonical-subject compatibility label")
+	}
+}
+
+func TestListingKitManualDeployCleansSecretAfterPreflight(t *testing.T) {
+	scriptPath := filepath.Join("..", "scripts", "build-push-deploy-listingkit-workbench.ps1")
+	content, err := os.ReadFile(scriptPath)
+	if err != nil {
+		t.Fatalf("read ListingKit manual deploy script: %v", err)
+	}
+	text := string(content)
+	preflightCall := strings.Index(text, "& $BashExecutable $IdentityPreflightDriver")
+	cleanupCall := strings.Index(text, "& $BashExecutable $LegacyIdentitySecretCleanupDriver")
+	apiApplyCall := strings.Index(text, "& $BashExecutable $ImmutableApiApplyDriver")
+	if preflightCall < 0 || cleanupCall < 0 || apiApplyCall < 0 {
+		t.Fatalf("manual deploy must invoke preflight, legacy Secret cleanup, and API apply drivers: preflight=%d cleanup=%d api=%d", preflightCall, cleanupCall, apiApplyCall)
+	}
+	if !(preflightCall < cleanupCall && cleanupCall < apiApplyCall) {
+		t.Fatalf("manual deploy must clean the Secret after preflight and before API apply: preflight=%d cleanup=%d api=%d", preflightCall, cleanupCall, apiApplyCall)
+	}
+	if !strings.Contains(text, "listingkit-workbench-secret") {
+		t.Error("manual deploy cleanup must target the shared ListingKit Secret")
+	}
+}
+
 func TestListingKitIdentityPreflightJobDeadlineMatchesDriverWait(t *testing.T) {
 	manifestPath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "jobs", "listingkit-identity-preflight-job.yaml")
 	content, err := os.ReadFile(manifestPath)
@@ -333,9 +495,6 @@ func TestListingKitDeployWorkflowPassesOnlyDigestsAcrossBuildJobBoundaries(t *te
 	for _, step := range deployJob.Steps {
 		if !strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
 			continue
-		}
-		if got, want := step.Env["API_CANDIDATE_DIGEST"], "${{ needs.prepare.outputs.candidate_api_digest || needs.build-api.outputs.api_digest }}"; got != want {
-			t.Errorf("preflight API digest environment = %q, want %q", got, want)
 		}
 		if got, want := step.Env["PREFLIGHT_RUNNER_DIGEST"], "${{ needs.build-preflight-runner.outputs.runner_digest }}"; got != want {
 			t.Errorf("preflight runner digest environment = %q, want %q", got, want)

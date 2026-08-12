@@ -54,6 +54,7 @@ jobs:
       api_runtime_base_image: ${{ steps.meta.outputs.api_runtime_base_image }}
       candidate_api_digest: ${{ steps.meta.outputs.candidate_api_digest }}
       runner_source_ref: ${{ steps.meta.outputs.runner_source_ref }}
+      source_identity_compatibility: ${{ steps.meta.outputs.source_identity_compatibility }}
     steps:
       - name: Resolve release tag
         id: meta
@@ -101,6 +102,11 @@ jobs:
           if [[ -z "$tag" ]]; then
             tag="${source_ref:0:12}"
           fi
+          source_identity_compatibility="false"
+          validator_content="$(gh api "repos/${GITHUB_REPOSITORY}/contents/internal/core/config/validator_listingkit.go?ref=$source_ref" --jq .content | base64 --decode)"
+          if grep -Fq 'obsolete ZITADEL username allowlist configuration' <<<"$validator_content"; then
+            source_identity_compatibility="true"
+          fi
           if [[ ! "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
             echo "::error::image tag must match Docker tag syntax"
             exit 1
@@ -119,6 +125,7 @@ jobs:
           echo "api_runtime_base_image=$api_runtime_base_image" >> "$GITHUB_OUTPUT"
           echo "candidate_api_digest=$candidate_api_digest" >> "$GITHUB_OUTPUT"
           echo "runner_source_ref=$runner_source_ref" >> "$GITHUB_OUTPUT"
+          echo "source_identity_compatibility=$source_identity_compatibility" >> "$GITHUB_OUTPUT"
 
   build-api:
     name: Build API Image
@@ -222,6 +229,7 @@ jobs:
           sparse-checkout: |
             scripts/validate-listingkit-invitation-secret.sh
             scripts/listingkit-schema-migrate-job.sh
+            scripts/listingkit-clean-legacy-identity-secret.sh
             scripts/listingkit-identity-preflight-job.sh
             scripts/listingkit-apply-api-deployment.sh
             scripts/lib/listingkit-immutable-image.sh
@@ -274,7 +282,7 @@ jobs:
         run: |
           bash .workflow-tools/scripts/validate-listingkit-invitation-secret.sh ${{ env.K8S_NAMESPACE }}
 
-      - name: Migrate ListingKit schema before owner exception seeding and preflight
+      - name: Prepare immutable API candidate image
         shell: bash
         env:
           API_CANDIDATE_DIGEST: ${{ needs.prepare.outputs.candidate_api_digest || needs.build-api.outputs.api_digest }}
@@ -283,6 +291,52 @@ jobs:
           source .workflow-tools/scripts/lib/listingkit-immutable-image.sh
           api_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}"
           API_CANDIDATE_IMAGE="$(listingkit_compose_immutable_image "$api_repository" "$API_CANDIDATE_DIGEST")"
+          echo "API_CANDIDATE_IMAGE=$API_CANDIDATE_IMAGE" >> "$GITHUB_ENV"
+
+      - name: Log in to Docker Hub for candidate inspection
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Inspect candidate identity compatibility
+        id: candidate-identity-compatibility
+        shell: bash
+        env:
+          CANDIDATE_API_DIGEST: ${{ needs.prepare.outputs.candidate_api_digest }}
+          SOURCE_IDENTITY_COMPATIBILITY: ${{ needs.prepare.outputs.source_identity_compatibility }}
+        run: |
+          set -euo pipefail
+          docker pull "$API_CANDIDATE_IMAGE" >/dev/null
+          identity_mode="$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.listingkit.identity" }}' "$API_CANDIDATE_IMAGE")"
+          case "$identity_mode" in
+            canonical-subject-v1)
+              echo "cleanup_legacy_identity=true" >> "$GITHUB_OUTPUT"
+              ;;
+            "")
+              if [[ -n "$CANDIDATE_API_DIGEST" ]]; then
+                echo "::error::digest candidate has no canonical-subject compatibility label; rebuild it with the current ListingKit API Dockerfile before deploying"
+                exit 1
+              fi
+              if [[ "$SOURCE_IDENTITY_COMPATIBILITY" == "true" ]]; then
+                echo "::notice::source build declares canonical-subject compatibility; cleaning legacy identity keys"
+                echo "cleanup_legacy_identity=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "::warning::candidate image has no canonical-subject compatibility label; preserving legacy identity keys for rollback safety"
+                echo "cleanup_legacy_identity=false" >> "$GITHUB_OUTPUT"
+              fi
+              ;;
+            *)
+              echo "::error::unsupported ListingKit identity compatibility label: $identity_mode"
+              exit 1
+              ;;
+          esac
+
+      - name: Migrate ListingKit schema before owner exception seeding and preflight
+        shell: bash
+        run: |
+          set -euo pipefail
           .workflow-tools/scripts/listingkit-schema-migrate-job.sh \
             --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml \
             --namespace "$K8S_NAMESPACE" \
@@ -291,21 +345,26 @@ jobs:
       - name: Run identity preflight release gate
         shell: bash
         env:
-          API_CANDIDATE_DIGEST: ${{ needs.prepare.outputs.candidate_api_digest || needs.build-api.outputs.api_digest }}
           PREFLIGHT_RUNNER_DIGEST: ${{ needs.build-preflight-runner.outputs.runner_digest }}
         run: |
           set -euo pipefail
           source .workflow-tools/scripts/lib/listingkit-immutable-image.sh
-          api_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/${API_IMAGE_NAME}"
           runner_repository="${REGISTRY}/${DOCKERHUB_NAMESPACE}/task-processor-listingkit-identity-preflight"
-          API_CANDIDATE_IMAGE="$(listingkit_compose_immutable_image "$api_repository" "$API_CANDIDATE_DIGEST")"
           PREFLIGHT_RUNNER_IMAGE="$(listingkit_compose_immutable_image "$runner_repository" "$PREFLIGHT_RUNNER_DIGEST")"
-          echo "API_CANDIDATE_IMAGE=$API_CANDIDATE_IMAGE" >> "$GITHUB_ENV"
           .workflow-tools/scripts/listingkit-identity-preflight-job.sh \
             --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml \
             --namespace "$K8S_NAMESPACE" \
             --image "$API_CANDIDATE_IMAGE" \
             --runner-image "$PREFLIGHT_RUNNER_IMAGE"
+
+      - name: Remove deprecated ListingKit identity keys from shared Secret
+        if: ${{ steps.candidate-identity-compatibility.outputs.cleanup_legacy_identity == 'true' }}
+        shell: bash
+        run: |
+          .workflow-tools/scripts/listingkit-clean-legacy-identity-secret.sh \
+            "${{ env.K8S_NAMESPACE }}" \
+            listingkit-workbench-secret \
+            product-listing-api
 
       - name: Apply immutable API deployment
         shell: bash
