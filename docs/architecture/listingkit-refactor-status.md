@@ -121,6 +121,10 @@ Current migrated helper slices:
 
 ## What `internal/listingkit` Still Owns
 
+### Platform-aware asset orchestration
+
+ListingKit accepts one or more explicit target platforms for image processing and constructs one normalized ProductImage request per target. Workflow results retain target-keyed image assets and asset bundles; consumers retrieve their own target rather than reading a shared scalar value. Compatibility scalar projections remain only for a single target or an explicit compatibility target, never as a fallback from request ordering. Shared generated records must carry their target tag, and target inventory fails closed for untagged or mismatched records.
+
 ### Stable and expected to remain
 
 - Task orchestration

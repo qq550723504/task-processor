@@ -21,9 +21,9 @@
 
 ---
 
-> Status: active implementation plan, re-baselined on 2026-08-12.
+> Status: implementation complete; operational compatibility and product-flow gates remain, re-baselined on 2026-08-12.
 >
-> Calibrated against: `master` at `858fac46804895fe107d7aa20cdc13906f102f4b`.
+> Calibrated against: `master` at `a463998b53ebb628a51b13db4292f463363e376a`.
 >
 > Supersedes: the 2026-07 queue that made next-source selection the next structural milestone. Product Sourcing closeout remains required product work, but it is not a reason to defer the contained asset-boundary correction below.
 
@@ -33,13 +33,13 @@
 - `internal/listingkit` remains the complexity sink and still owns API, HTTP assembly, persistence, orchestration, and compatibility concerns.
 - Product Sourcing foundations (`SourceEnvelope`, catalog/asset facts, and the ListingKit bridge) exist; the controlled 1688 path still needs business-flow acceptance evidence.
 - SHEIN is the production-critical target path. TEMU/Amazon runtime assets remain maintained but their full workbenches are deferred.
-- The image flow currently derives one `Marketplace` from `GenerateRequest.Platforms`; empty input falls back to `amazon`, and a multi-platform request selects the first normalized value. This is a correctness and ownership problem, not just a naming problem.
-- `internal/core/config` is still a broad dependency. The first remediation must demonstrate constructor injection on one vertical slice before applying a repository-wide rule.
+- Image processing now requires explicit supported targets; multi-target requests execute and project results independently by target. Legacy scalar fields remain explicitly selected compatibility projections and no longer derive from input-array order or an Amazon fallback.
+- ProductImage runtime configuration is now interpreted at the HTTP composition boundary and passed inward as typed options. Product-image business packages have an import-boundary guard against new `internal/core/config` dependencies.
 - Existing import-boundary tests pass, but many exception allowlists show that structural migration must reduce real dependencies instead of adding further exemptions.
 
-## 2. Sequencing decision
+## 2. Sequencing decision (completed)
 
-The next structural PR is **not** a large ListingKit extraction. It is the platform-aware asset slice:
+The completed structural sequence was **not** a large ListingKit extraction. It was the platform-aware asset slice:
 
 ```text
 ListingKit GenerateRequest (one or more requested targets)
@@ -49,7 +49,7 @@ ListingKit GenerateRequest (one or more requested targets)
   -> ListingKit aggregation of target-keyed results
 ```
 
-This ordering removes the incorrect fallback before it can spread into new sources or platforms. It also gives later configuration and API-contract work one stable, narrow interface to adopt.
+This ordering removed the incorrect fallback before it could spread into new sources or platforms, and gave the configuration and API-contract work one stable, narrow interface to adopt. The remaining work is the operational gate in Task 3 and the independent product-flow gates below.
 
 ## 3. Work that remains parallel, not coupled
 
@@ -63,6 +63,8 @@ This ordering removes the incorrect fallback before it can spread into new sourc
 ## 4. Implementation queue
 
 ### Task 1: Make image-target selection explicit
+
+**Status:** Complete — merged in [PR #138](https://github.com/qq550723504/task-processor/pull/138) (`8b212af53`). CI backend and frontend checks passed. Follow-up target-tagging and inventory-isolation fixes are included in the merged result.
 
 **Files:**
 
@@ -84,39 +86,41 @@ This ordering removes the incorrect fallback before it can spread into new sourc
 
 **Produces:** an explicit target-platform value for every image-processing request and a target-keyed `ListingKitResult` projection for a multi-target listing request. The legacy scalar asset fields remain compatibility projections only; they are populated for a single target or for an explicitly selected compatibility target, never from array order.
 
-- [ ] Write failing tests that assert all of the following:
+- [x] Write failing tests that assert all of the following:
   - a request that enables image processing with an empty or unsupported target list is rejected before an image task is created;
   - a request for `["shein", "temu"]` creates independent requests whose targets are `shein` and `temu`, regardless of input order;
   - neither `nil` nor an empty target list produces an `amazon` request;
   - image validation receives the same explicit target that was selected for the corresponding asset output.
   - a multi-target result exposes both target-keyed outputs, while legacy scalar fields are populated only for one target or for an explicitly requested compatibility target.
-- [ ] Run the focused tests and confirm that the current fallback/first-element behavior fails those assertions:
+- [x] Run the focused tests and confirm that the current fallback/first-element behavior fails those assertions:
 
   ```powershell
   go test ./internal/listingkit -run "Test.*Image.*Target|Test.*Workflow.*Request" -count=1
   go test ./internal/productimage -run "TestCreateProcessTask" -count=1
   ```
 
-- [ ] Add a target-specific request field or value object in `productimage/domain/model.go`. Keep the existing serialized `Marketplace` field readable only as a compatibility input during this PR; normalize it at the ingress boundary and reject disagreement with the explicit target.
-- [ ] Replace `detectImageMarketplace` in `workflow_requests.go` with a helper that returns one validated request per normalized target. It must return an error for missing targets and must not choose the first item as the sole target.
-- [ ] Add target-keyed result containers and lookup helpers in `model_result.go`. Update platform-payload consumers to ask for their own target rather than read the scalar compatibility fields.
-- [ ] Update `workflow_standard_media_phase.go` to process the returned requests independently and aggregate results by target. Record target-specific child-task/stage identity; do not overwrite one target's validation or asset result with another's.
-- [ ] Update `service.go` validation so an image-processing request cannot reach the workflow without at least one supported target. Requests that do not process images retain their existing non-image behavior.
-- [ ] Re-run the focused tests, then run:
+- [x] Add a target-specific request field or value object in `productimage/domain/model.go`. Keep the existing serialized `Marketplace` field readable only as a compatibility input during this PR; normalize it at the ingress boundary and reject disagreement with the explicit target.
+- [x] Replace `detectImageMarketplace` in `workflow_requests.go` with a helper that returns one validated request per normalized target. It must return an error for missing targets and must not choose the first item as the sole target.
+- [x] Add target-keyed result containers and lookup helpers in `model_result.go`. Update platform-payload consumers to ask for their own target rather than read the scalar compatibility fields.
+- [x] Update `workflow_standard_media_phase.go` to process the returned requests independently and aggregate results by target. Record target-specific child-task/stage identity; do not overwrite one target's validation or asset result with another's.
+- [x] Update `service.go` validation so an image-processing request cannot reach the workflow without at least one supported target. Requests that do not process images retain their existing non-image behavior.
+- [x] Re-run the focused tests, then run:
 
   ```powershell
   go test ./internal/listingkit ./internal/productimage -count=1
   go test ./tests -count=1
   ```
 
-- [ ] Update `docs/architecture/listingkit-refactor-status.md` so it describes the implemented explicit-target behavior, not the retired fixed-Amazon implementation.
-- [ ] Commit only this behavior/documentation slice:
+- [x] Update `docs/architecture/listingkit-refactor-status.md` so it describes the implemented explicit-target behavior, not the retired fixed-Amazon implementation.
+- [x] Commit only this behavior/documentation slice:
 
   ```text
   refactor(asset): require explicit image target platforms
   ```
 
 ### Task 2: Establish a product-image configuration seam
+
+**Status:** Complete — merged in [PR #138](https://github.com/qq550723504/task-processor/pull/138) (`8b212af53`). CI backend and frontend checks passed.
 
 **Files:**
 
@@ -133,12 +137,12 @@ This ordering removes the incorrect fallback before it can spread into new sourc
 
 **Produces:** typed product-image constructor options assembled in `productimage/httpapi`, with no new configuration reads from product-image business behavior.
 
-- [ ] Write failing constructor tests that build the product-image runtime from a small options struct and prove that missing tenant-bound model routing fails closed.
-- [ ] Run only those tests and confirm that the desired constructor cannot yet be used without a broad `*config.Config` dependency.
-- [ ] Define focused options in the HTTP/runtime builder for object storage, model/provider resolution, scene policy, and identity requirements. Do not pass the entire global config through a new wrapper.
-- [ ] Move configuration interpretation into the existing `productimage/httpapi/*builder.go` files. `asset_publisher.go` and other product-image behavior must receive interfaces or typed values, not read global configuration.
-- [ ] Add an import-boundary rule preventing new production imports of `internal/core/config` below `internal/productimage`, while allowing the existing HTTP/runtime composition package to construct options.
-- [ ] Re-run product-image tests, targeted architecture tests, and the existing resolver-only regression test:
+- [x] Write failing constructor tests that build the product-image runtime from a small options struct and prove that missing tenant-bound model routing fails closed.
+- [x] Run only those tests and confirm that the desired constructor cannot yet be used without a broad `*config.Config` dependency.
+- [x] Define focused options in the HTTP/runtime builder for object storage, model/provider resolution, scene policy, and identity requirements. Do not pass the entire global config through a new wrapper.
+- [x] Move configuration interpretation into the existing `productimage/httpapi/*builder.go` files. `asset_publisher.go` and other product-image behavior must receive interfaces or typed values, not read global configuration.
+- [x] Add an import-boundary rule preventing new production imports of `internal/core/config` below `internal/productimage`, while allowing the existing HTTP/runtime composition package to construct options.
+- [x] Re-run product-image tests, targeted architecture tests, and the existing resolver-only regression test:
 
   ```powershell
   go test ./internal/productimage/... -count=1
@@ -146,7 +150,7 @@ This ordering removes the incorrect fallback before it can spread into new sourc
   go test ./tests -count=1
   ```
 
-- [ ] Commit only the configuration seam:
+- [x] Commit only the configuration seam:
 
   ```text
   refactor(productimage): inject runtime options at the HTTP boundary
@@ -184,13 +188,15 @@ This ordering removes the incorrect fallback before it can spread into new sourc
   go test ./tests -count=1
   ```
 
-- [ ] Commit the event migration separately:
+- [x] Commit the event migration separately:
 
   ```text
   refactor(task): introduce explicit platform routing event v2
   ```
 
 ### Task 4: Pilot a generated HTTP contract for the asset slice
+
+**Status:** Complete — merged in [PR #138](https://github.com/qq550723504/task-processor/pull/138) (`8b212af53`). CI backend and frontend checks passed.
 
 **Files:**
 
@@ -211,7 +217,7 @@ This ordering removes the incorrect fallback before it can spread into new sourc
 - [x] Use `openapi-typescript` to generate deterministic TypeScript types; commit the output only under `web/listingkit-ui/src/lib/api/generated/`.
 - [x] Replace the corresponding hand-written response cast in the UI preview client with a generated contract type while retaining runtime Zod validation and the existing proxy/auth boundary.
 - [x] Add `make api-contract-check` to regenerate the pilot contract and fail on drift.
-- [ ] Run backend focused tests plus frontend checks:
+- [x] Run backend focused tests plus frontend checks:
 
   ```powershell
   go test ./internal/productimage/... ./internal/listingkit/... -count=1
@@ -220,7 +226,7 @@ This ordering removes the incorrect fallback before it can spread into new sourc
   npm.cmd test
   ```
 
-- [ ] Commit the contract pilot separately:
+- [x] Commit the contract pilot separately:
 
   ```text
   build(api): add generated asset endpoint contract
