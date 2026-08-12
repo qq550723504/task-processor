@@ -13,6 +13,23 @@ type tenantAllowlistedFaithfulEditor struct {
 	allowed map[string]struct{}
 }
 
+type tenantAllowlistedContextAnalyzer struct {
+	inner   productimage.ProductContextAnalyzer
+	allowed map[string]struct{}
+}
+
+func (a *tenantAllowlistedContextAnalyzer) Analyze(ctx context.Context, source *productimage.SourceBundle) (*productimage.ProductContext, error) {
+	if a == nil || a.inner == nil {
+		return &productimage.ProductContext{}, nil
+	}
+	if !tenantAllowed(ctx, a.allowed) {
+		// Keep denied/legacy requests on the non-model pipeline; later model stages
+		// apply the same tenant gate and degrade to review without provider calls.
+		return &productimage.ProductContext{}, nil
+	}
+	return a.inner.Analyze(ctx, source)
+}
+
 func (e *tenantAllowlistedFaithfulEditor) Edit(ctx context.Context, req *productimage.FaithfulEditRequest) (*productimage.FaithfulEditResult, error) {
 	if e == nil || e.inner == nil {
 		return nil, productimage.NewNoRetryError(fmt.Errorf("faithful editor is not configured"))

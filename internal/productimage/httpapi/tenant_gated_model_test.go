@@ -53,6 +53,21 @@ func TestTenantAllowlistedFaithfulEditorRequiresUserIdentity(t *testing.T) {
 	}
 }
 
+func TestTenantAllowlistedContextAnalyzerSkipsDeniedProvider(t *testing.T) {
+	called := false
+	analyzer := &contextAnalyzerCapture{called: &called}
+	gated := &tenantAllowlistedContextAnalyzer{inner: analyzer, allowed: tenantIDSet([]string{"tenant-a"})}
+
+	ctx := productimage.WithAIIdentity(context.Background(), productimage.AIIdentity{TenantID: "tenant-b", UserID: "user-b"})
+	got, err := gated.Analyze(ctx, &productimage.SourceBundle{})
+	if err != nil {
+		t.Fatalf("Analyze() error = %v", err)
+	}
+	if got == nil || called {
+		t.Fatalf("Analyze() result/call = (%+v, %v), want empty context without provider call", got, called)
+	}
+}
+
 func TestTenantAllowlistedSceneGeneratorFallsBackBeforeGovernedCall(t *testing.T) {
 	called := false
 	generator := &sceneGeneratorCapture{called: &called}
@@ -82,6 +97,15 @@ func (e *faithfulEditorCapture) EditWithRoute(ctx context.Context, req *producti
 
 type sceneGeneratorCapture struct {
 	called *bool
+}
+
+type contextAnalyzerCapture struct {
+	called *bool
+}
+
+func (a *contextAnalyzerCapture) Analyze(context.Context, *productimage.SourceBundle) (*productimage.ProductContext, error) {
+	*a.called = true
+	return &productimage.ProductContext{ProductType: "should-not-run"}, nil
 }
 
 func (g *sceneGeneratorCapture) GenerateScene(context.Context, *productimage.SceneGenerationRequest) (*productimage.SceneGenerationResult, error) {

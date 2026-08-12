@@ -77,6 +77,7 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 			}
 		}
 		modelProvider = productimage.NewModelProvider(faithfulEditor, &tenantAllowlistedSceneGenerator{inner: governedScene, allowed: allowed}, reviewModel)
+		contextAnalyzer = &tenantAllowlistedContextAnalyzer{inner: contextAnalyzer, allowed: allowed}
 	}
 
 	var subjectExtractor productimage.SubjectExtractor
