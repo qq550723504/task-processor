@@ -19,6 +19,8 @@ type settingsNamespaceQuery struct {
 	ClientName string
 }
 
+const healthImageAIClientName = listingkit.ImageAIClientNameGPTImage2
+
 type settingsScopeDefinition struct {
 	ID          string `json:"id"`
 	Label       string `json:"label"`
@@ -123,7 +125,7 @@ func (s *settingsService) Health(ctx context.Context) (listingkit.SettingsHealth
 	if err != nil {
 		return listingkit.SettingsHealthPage{}, err
 	}
-	imageAI, err := s.service.GetAIClientSettings(ctx, "tenant", "image")
+	imageAI, err := s.service.GetAIClientSettings(ctx, "tenant", healthImageAIClientName)
 	if err != nil {
 		return listingkit.SettingsHealthPage{}, err
 	}

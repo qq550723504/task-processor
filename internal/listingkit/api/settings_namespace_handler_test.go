@@ -19,6 +19,7 @@ import (
 type stubSettingsNamespaceService struct {
 	aiSettings         *listingkit.AIClientSettings
 	aiSettingsByClient map[string]*listingkit.AIClientSettings
+	gotAIClientNames   []string
 	aiSettingsReq      *listingkit.AIClientSettings
 	sheinSettings      *listingkit.SheinSettings
 	err                error
@@ -36,6 +37,7 @@ func (s *stubSettingsNamespaceService) UpdateSheinSettings(context.Context, *lis
 }
 
 func (s *stubSettingsNamespaceService) GetAIClientSettings(_ context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error) {
+	s.gotAIClientNames = append(s.gotAIClientNames, clientName)
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -74,8 +76,8 @@ func TestGetSettingsHealthReturnsConfigurationImpact(t *testing.T) {
 				Enabled:    true,
 				APIKeySet:  true,
 			},
-			"image": {
-				ClientName: "image",
+			"image_gpt_image_2": {
+				ClientName: "image_gpt_image_2",
 				BaseURL:    "https://tenant-scope.local/v1",
 				Model:      "image-model-v1",
 				Enabled:    true,
@@ -118,6 +120,9 @@ func TestGetSettingsHealthReturnsConfigurationImpact(t *testing.T) {
 	}
 	if payload.Status != "warning" {
 		t.Fatalf("status = %q, want warning because runtime probes are unknown", payload.Status)
+	}
+	if len(svc.gotAIClientNames) != 2 || svc.gotAIClientNames[0] != "default" || svc.gotAIClientNames[1] != "image_gpt_image_2" {
+		t.Fatalf("health requested AI clients = %#v, want [default image_gpt_image_2]", svc.gotAIClientNames)
 	}
 	var hasSDSUnknown bool
 	for _, item := range payload.Items {
