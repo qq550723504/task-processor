@@ -5,7 +5,10 @@ Describe "1688 runtime acceptance safety" {
     }
 
     It "requires an exact confirmation before task creation" {
-        { Assert-TaskCreationConfirmation -Mode "Crawl" -Confirmation "" } | Should Throw
+        $threw = $false
+        try { Assert-TaskCreationConfirmation -Mode "Crawl" -Confirmation "" } catch { $threw = $true }
+        $threw | Should Be $true
+
         { Assert-TaskCreationConfirmation -Mode "Crawl" -Confirmation "CREATE-1688-TASK" } | Should Not Throw
         { Assert-TaskCreationConfirmation -Mode "Preflight" -Confirmation "" } | Should Not Throw
     }
@@ -18,7 +21,7 @@ Describe "1688 runtime acceptance safety" {
         $payload.source_account_id | Should Be 3001
         $payload.shein_store_id | Should Be 168811
         $payload.product.id | Should Be "321"
-        $payload.PSObject.Properties.Name | Should Not Contain "source_store_id"
+        ($payload.Keys -contains "source_store_id") | Should Be $false
     }
 
     It "does not expose token or profile values in redacted errors" {
