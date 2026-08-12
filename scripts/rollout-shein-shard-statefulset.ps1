@@ -2,6 +2,7 @@
 # Usage:
 #   .\scripts\rollout-shein-shard-statefulset.ps1 -Image xuwei190/task-processor-shein-listing:tag
 #   .\scripts\rollout-shein-shard-statefulset.ps1 -Image xuwei190/task-processor-shein-listing:tag -BatchSize 4
+#   .\scripts\rollout-shein-shard-statefulset.ps1 -Image xuwei190/task-processor-shein-listing:tag -CanaryOnly
 
 [CmdletBinding()]
 param(
@@ -12,10 +13,12 @@ param(
     [string]$Image,
     [int]$BatchSize = 4,
     [int]$BatchTimeoutSeconds = 600,
-    [int]$PollSeconds = 5
+    [int]$PollSeconds = 5,
+    [switch]$CanaryOnly
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "lib/shein-rollout-batches.ps1")
 
 function Invoke-Step {
     param(
@@ -106,18 +109,14 @@ Write-Host "  SHEIN Shard StatefulSet Batch Rollout" -ForegroundColor Cyan
 Write-Host "  StatefulSet: $StatefulSetName" -ForegroundColor Cyan
 Write-Host "  Image: $Image" -ForegroundColor Cyan
 Write-Host "  Batch size: $BatchSize" -ForegroundColor Cyan
+Write-Host "  Canary only: $CanaryOnly" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 
 $replicas = [int](Get-JsonPathValue -Resource "statefulset/$StatefulSetName" -JsonPath "{.spec.replicas}")
 if ($replicas -le 0) {
     throw "invalid replicas for ${StatefulSetName}: $replicas"
 }
-if ($BatchSize -le 0) {
-    throw "BatchSize must be > 0"
-}
-if ($BatchSize -gt $replicas) {
-    $BatchSize = $replicas
-}
+$rolloutBatches = @(Get-RolloutBatches -Replicas $replicas -BatchSize $BatchSize -CanaryOnly:$CanaryOnly)
 
 Invoke-Step "[1/4] Freezing rollout at partition=$replicas ..." {
     Set-Partition -Partition $replicas
@@ -149,16 +148,10 @@ Invoke-Step "[3/4] Reading update revision..." {
 }
 
 Invoke-Step "[4/4] Rolling out batches..." {
-    for ($start = $replicas; $start -gt 0; $start -= $BatchSize) {
-        $partition = [Math]::Max(0, $start - $BatchSize)
-        $batchOrdinals = @()
-        for ($ordinal = $start - 1; $ordinal -ge $partition; $ordinal--) {
-            $batchOrdinals += $ordinal
-        }
-
-        Write-Host "Updating ordinals: $($batchOrdinals -join ', ') with partition=$partition" -ForegroundColor Cyan
-        Set-Partition -Partition $partition
-        Wait-BatchReady -Ordinals $batchOrdinals -ExpectedRevision $script:updateRevision
+    foreach ($batch in $rolloutBatches) {
+        Write-Host "Updating ordinals: $($batch.Ordinals -join ', ') with partition=$($batch.Partition)" -ForegroundColor Cyan
+        Set-Partition -Partition $batch.Partition
+        Wait-BatchReady -Ordinals $batch.Ordinals -ExpectedRevision $script:updateRevision
     }
 }
 
