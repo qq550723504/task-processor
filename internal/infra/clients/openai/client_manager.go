@@ -95,7 +95,7 @@ func (m *Manager) GetClient(name string) (ChatCompleter, error) {
 func (m *Manager) GetClientWithRoute(name string, selection ImageRouteSelection) (ChatCompleter, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if _, exists := m.clients[name]; !exists {
+	if _, exists := m.clients[name]; !exists && m.configResolver == nil {
 		return nil, fmt.Errorf("client %s not found", name)
 	}
 	return &contextualChatClient{manager: m, name: name, selection: &selection}, nil

@@ -54,7 +54,13 @@ func (e *governedFaithfulEditor) Edit(ctx context.Context, req *productimage.Fai
 		e.record(ctx, identity, operation, startedAt, inputHash, promptHash, decision, nil, err, true)
 		return nil, err
 	}
-	result, providerErr := e.inner.Edit(ctx, req)
+	routedEditor, routed := e.inner.(productimage.FaithfulEditorWithRoute)
+	if !routed {
+		err = aicapability.NewError(aicapability.ErrorCapabilityUnavailable, string(operation), nil)
+		e.record(ctx, identity, operation, startedAt, inputHash, promptHash, decision, nil, err, true)
+		return nil, err
+	}
+	result, providerErr := routedEditor.EditWithRoute(ctx, req, productimage.FaithfulEditRoute{CredentialReference: decision.CredentialReference, ModelID: decision.ModelID, RoutingKey: decision.RoutingKey, ConfigurationVersion: decision.ConfigurationVersion})
 	if providerErr != nil {
 		wrapped := aicapability.NewError(classifyGovernedModelError(providerErr), string(operation), providerErr)
 		e.record(ctx, identity, operation, startedAt, inputHash, promptHash, decision, result, wrapped, false)

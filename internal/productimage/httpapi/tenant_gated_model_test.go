@@ -76,6 +76,10 @@ func (e *faithfulEditorCapture) Edit(context.Context, *productimage.FaithfulEdit
 	return &productimage.FaithfulEditResult{}, nil
 }
 
+func (e *faithfulEditorCapture) EditWithRoute(ctx context.Context, req *productimage.FaithfulEditRequest, _ productimage.FaithfulEditRoute) (*productimage.FaithfulEditResult, error) {
+	return e.Edit(ctx, req)
+}
+
 type sceneGeneratorCapture struct {
 	called *bool
 }

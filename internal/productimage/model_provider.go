@@ -36,6 +36,18 @@ type FaithfulEditRequest struct {
 	PromptRef      string
 }
 
+type FaithfulEditRoute struct {
+	CredentialReference  string
+	ModelID              string
+	RoutingKey           string
+	ConfigurationVersion string
+}
+
+type FaithfulEditorWithRoute interface {
+	FaithfulEditor
+	EditWithRoute(ctx context.Context, req *FaithfulEditRequest, route FaithfulEditRoute) (*FaithfulEditResult, error)
+}
+
 type FaithfulEditResult struct {
 	Asset    *ImageAsset
 	Metadata *GenerationMetadata

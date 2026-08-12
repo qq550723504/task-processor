@@ -73,10 +73,12 @@ func (r productImageReviewPolicyResolver) ResolvePolicy(_ context.Context, reque
 		return aicapability.TenantModelPolicy{}, aicapability.NewError(aicapability.ErrorPolicyDenied, string(request.Operation), nil)
 	}
 	preferred := []string{productImageReviewDefaultRoutingKey}
+	allowFallback := false
 	if strings.TrimSpace(request.RequestedRoutingKey) == productImageReviewVisionRoutingKey {
-		preferred = []string{productImageReviewVisionRoutingKey}
+		preferred = []string{productImageReviewVisionRoutingKey, productImageReviewDefaultRoutingKey}
+		allowFallback = true
 	}
-	return aicapability.TenantModelPolicy{TenantID: strings.TrimSpace(request.TenantID), Capability: aicapability.CapabilityProductImageScene, PreferredRoutingKeys: preferred, AllowCrossProviderFallback: false, Version: "productimage-review-v1"}, nil
+	return aicapability.TenantModelPolicy{TenantID: strings.TrimSpace(request.TenantID), Capability: aicapability.CapabilityProductImageScene, PreferredRoutingKeys: preferred, AllowCrossProviderFallback: allowFallback, Version: "productimage-review-v1"}, nil
 }
 
 type productImageSceneModelCatalog struct {
