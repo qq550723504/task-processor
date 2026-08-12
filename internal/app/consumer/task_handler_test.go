@@ -2,12 +2,14 @@ package consumer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"sync/atomic"
 	"testing"
 
+	apptask "task-processor/internal/app/task"
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
@@ -20,17 +22,165 @@ import (
 
 type stubProcessor struct {
 	processCalls int
+	lastJob      worker.WorkerJob
 	onProcess    func()
+}
+
+func TestTaskHandlerExtractNestedPayloadKeepsV2EventForAdapter(t *testing.T) {
+	handler := NewTaskHandler(TaskHandlerConfig{Platform: "amazon.crawler", Logger: logrus.New()})
+	message := &apptask.Message{Payload: map[string]any{
+		"schemaVersion": float64(2),
+		"taskId":        "430604922543791994",
+		"payload": map[string]any{
+			"taskId":   "430604922543791994",
+			"reply_to": "crawler.results.node-1",
+		},
+	}}
+
+	originalPayload := handler.extractNestedPayload(message)
+
+	if originalPayload["reply_to"] != "crawler.results.node-1" {
+		t.Fatalf("expected worker payload, got %#v", originalPayload)
+	}
+	if message.Payload["schemaVersion"] != float64(2) {
+		t.Fatalf("V2 event was replaced before adapter decoding: %#v", message.Payload)
+	}
 }
 
 func (s *stubProcessor) Start(ctx context.Context) error { return nil }
 
 func (s *stubProcessor) ProcessTask(ctx context.Context, job worker.WorkerJob) error {
 	s.processCalls++
+	s.lastJob = job
 	if s.onProcess != nil {
 		s.onProcess()
 	}
 	return nil
+}
+
+func TestTaskHandlerCrawlerWorkerReceivesV2EnvelopeObservability(t *testing.T) {
+	processor := &stubProcessor{}
+	handler := NewTaskHandler(TaskHandlerConfig{
+		Platform:  "amazon.crawler",
+		Processor: processor,
+		Logger:    logrus.New(),
+	})
+
+	err := handler.HandleMessage(context.Background(), &rabbitmq.Message{
+		ID: "v2-crawler-observability",
+		Payload: map[string]any{
+			"schemaVersion":  float64(2),
+			"taskId":         "7812030",
+			"sourcePlatform": "amazon",
+			"targetPlatform": "amazon",
+			"traceId":        "trace-crawler-1",
+			"metadata":       map[string]any{"request_id": "request-crawler-1"},
+			"control":        "must-not-reach-worker",
+			"payload": map[string]any{
+				"taskId":         "7812030",
+				"tenantId":       float64(286),
+				"storeId":        float64(846),
+				"sourcePlatform": "amazon",
+				"targetPlatform": "amazon",
+				"productId":      "B0CRAWLER",
+				"reply_to":       "crawler.results.node-1",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected V2 crawler event to reach worker, got %v", err)
+	}
+
+	var workerPayload map[string]any
+	if err := json.Unmarshal([]byte(processor.lastJob.TaskData), &workerPayload); err != nil {
+		t.Fatalf("decode worker task data: %v", err)
+	}
+	if workerPayload["traceId"] != "trace-crawler-1" {
+		t.Fatalf("worker traceId = %#v, want envelope value", workerPayload["traceId"])
+	}
+	if workerPayload["id"] != "7812030" {
+		t.Fatalf("worker id = %#v, want V2 taskId alias", workerPayload["id"])
+	}
+	metadata, ok := workerPayload["metadata"].(map[string]any)
+	if !ok || metadata["request_id"] != "request-crawler-1" {
+		t.Fatalf("worker metadata = %#v, want envelope metadata", workerPayload["metadata"])
+	}
+	if _, ok := workerPayload["schemaVersion"]; ok {
+		t.Fatalf("worker received envelope schemaVersion: %#v", workerPayload)
+	}
+	if _, ok := workerPayload["control"]; ok {
+		t.Fatalf("worker received unrelated envelope field: %#v", workerPayload)
+	}
+}
+
+func TestTaskHandlerRuntimeReloadPreservesV2EnvelopeObservabilityForWorker(t *testing.T) {
+	runtime := &stubRuntimeWithImportTask{task: &listingruntime.ImportTask{
+		ID:         7812031,
+		TenantID:   286,
+		StoreID:    846,
+		Platform:   "amazon.crawler",
+		ProductID:  "B0RUNTIME",
+		Status:     model.TaskStatusQueued.Int16(),
+		CreateTime: 1710000000000,
+	}}
+	processor := &stubProcessorWithManagement{runtime: runtime}
+	handler := NewTaskHandler(TaskHandlerConfig{
+		Platform:  "amazon.crawler",
+		Processor: processor,
+		Logger:    logrus.New(),
+	})
+
+	msg := &rabbitmq.Message{
+		ID: "v2-runtime-observability",
+		Payload: map[string]any{
+			"schemaVersion":  float64(2),
+			"taskId":         "7812031",
+			"sourcePlatform": "amazon",
+			"targetPlatform": "amazon",
+			"traceId":        "trace-runtime-1",
+			"metadata":       map[string]any{"request_id": "request-runtime-1"},
+			"payload": map[string]any{
+				"taskId":         "7812031",
+				"tenantId":       float64(286),
+				"storeId":        float64(846),
+				"sourcePlatform": "amazon",
+				"targetPlatform": "amazon",
+				"productId":      "B0EVENTPAYLOAD",
+				"reply_to":       "crawler.results.node-2",
+			},
+		},
+	}
+	runtimeTask, _, err := handler.convertAndValidateMessage(msg)
+	if err != nil {
+		t.Fatalf("expected runtime reload to retain V2 observability, got %v", err)
+	}
+	if runtimeTask.TraceID != "trace-runtime-1" {
+		t.Fatalf("runtime task traceId = %q, want envelope value", runtimeTask.TraceID)
+	}
+	if runtimeTask.Metadata["request_id"] != "request-runtime-1" {
+		t.Fatalf("runtime task metadata = %#v, want envelope metadata", runtimeTask.Metadata)
+	}
+	runtime.getTaskCalls = 0
+
+	err = handler.HandleMessage(context.Background(), msg)
+	if err != nil {
+		t.Fatalf("expected runtime-reloaded V2 event to reach worker, got %v", err)
+	}
+	if runtime.getTaskCalls != 1 {
+		t.Fatalf("runtime reload calls = %d, want 1", runtime.getTaskCalls)
+	}
+
+	var workerPayload map[string]any
+	if err := json.Unmarshal([]byte(processor.lastJob.TaskData), &workerPayload); err != nil {
+		t.Fatalf("decode worker task data: %v", err)
+	}
+	if workerPayload["traceId"] != "trace-runtime-1" {
+		t.Fatalf("worker traceId = %#v, want envelope value", workerPayload["traceId"])
+	}
+	metadata, ok := workerPayload["metadata"].(map[string]any)
+	if !ok || metadata["request_id"] != "request-runtime-1" {
+		t.Fatalf("worker metadata = %#v, want envelope metadata", workerPayload["metadata"])
+	}
 }
 
 func (s *stubProcessor) Close(ctx context.Context) {}
@@ -70,9 +220,10 @@ func (s stubClaimRuntime) GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSna
 }
 
 type stubRuntimeWithImportTask struct {
-	task    *listingruntime.ImportTask
-	status  *taskstatus.TaskStatusSnapshot
-	updates int
+	task         *listingruntime.ImportTask
+	status       *taskstatus.TaskStatusSnapshot
+	updates      int
+	getTaskCalls int
 }
 
 func (s *stubRuntimeWithImportTask) UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error {
@@ -100,11 +251,39 @@ func (s *stubRuntimeWithImportTask) GetTaskStatus(taskID int64) (*taskstatus.Tas
 }
 
 func (s *stubRuntimeWithImportTask) GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error) {
+	s.getTaskCalls++
 	if s.task == nil || s.task.ID != taskID {
 		return nil, fmt.Errorf("task %d not found", taskID)
 	}
 	taskCopy := *s.task
 	return &taskCopy, nil
+}
+
+func TestTaskHandlerRejectsInvalidV2BeforeRuntimeReload(t *testing.T) {
+	runtime := &stubRuntimeWithImportTask{task: &listingruntime.ImportTask{ID: 7812024}}
+	handler := NewTaskHandler(TaskHandlerConfig{
+		Platform:  "shein",
+		Processor: &stubProcessorWithManagement{runtime: runtime},
+		Logger:    logrus.New(),
+	})
+
+	err := handler.HandleMessage(context.Background(), &rabbitmq.Message{
+		ID: "invalid-v2-runtime-hit",
+		Payload: map[string]any{
+			"schemaVersion":  float64(1),
+			"taskId":         "7812024",
+			"sourcePlatform": "amazon",
+			"targetPlatform": "shein",
+			"payload":        map[string]any{"taskId": "7812024", "sourcePlatform": "amazon", "targetPlatform": "shein"},
+		},
+	})
+
+	if err == nil {
+		t.Fatal("expected invalid V2 event to be rejected")
+	}
+	if runtime.getTaskCalls != 0 {
+		t.Fatalf("runtime reload bypassed V2 validation: calls=%d", runtime.getTaskCalls)
+	}
 }
 
 type stubStoreAPI struct {

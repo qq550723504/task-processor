@@ -77,18 +77,24 @@ func TestValidateTaskRevisionReturnsFieldErrorsAndHints(t *testing.T) {
 		ID: "task-validate-1",
 		Result: &ListingKitResult{
 			TaskID: "task-validate-1",
-			AssetBundle: &asset.Bundle{
-				Assets: []asset.Asset{{
+			AssetBundlesByTarget: map[string]*asset.Bundle{
+				"temu": {Assets: []asset.Asset{{
+					ID:       "asset-main",
+					Kind:     asset.KindMainImage,
+					URL:      "https://cdn.example.com/temu-main.jpg",
+					Metadata: map[string]string{"prompt_key": "productimage.scene.temu"},
+				}}},
+				"shein": {Assets: []asset.Asset{{
 					ID:   "asset-main",
 					Kind: asset.KindMainImage,
-					URL:  "https://cdn.example.com/main.jpg",
+					URL:  "https://cdn.example.com/shein-main.jpg",
 					Metadata: map[string]string{
 						"prompt_key":            "productimage.scene.bags",
 						"scene_defaults_source": "explicit",
 						"scene_category":        "bags",
 						"scene_style":           "studio",
 					},
-				}},
+				}}},
 			},
 			Shein: &SheinPackage{
 				CategoryID: 123,

@@ -11,14 +11,29 @@ import (
 	productimage "task-processor/internal/productimage"
 )
 
-func buildGovernedProductImageSceneGenerator(cfg *config.Config, legacy productimage.SceneGenerator, resolver openaiclient.ClientConfigResolver, recorder aicapability.InvocationRecorder, logger *logrus.Logger) (productimage.SceneGenerator, error) {
-	if cfg == nil || !cfg.AICapability.ProductImageSceneEnabled {
+type sceneGovernanceOptions struct {
+	enabled          bool
+	allowedTenantIDs []string
+}
+
+func newSceneGovernanceOptions(cfg *config.Config) sceneGovernanceOptions {
+	if cfg == nil {
+		return sceneGovernanceOptions{}
+	}
+	return sceneGovernanceOptions{
+		enabled:          cfg.AICapability.ProductImageSceneEnabled,
+		allowedTenantIDs: append([]string(nil), cfg.AICapability.ProductImageSceneAllowedTenantIDs...),
+	}
+}
+
+func buildGovernedProductImageSceneGenerator(options sceneGovernanceOptions, legacy productimage.SceneGenerator, resolver openaiclient.ClientConfigResolver, recorder aicapability.InvocationRecorder, logger *logrus.Logger) (productimage.SceneGenerator, error) {
+	if !options.enabled {
 		return legacy, nil
 	}
 	if legacy == nil || resolver == nil || recorder == nil {
 		return nil, aicapability.NewError(aicapability.ErrorInvalidInput, string(aicapability.OperationProductImageSceneGenerate), nil)
 	}
-	if len(tenantIDSet(cfg.AICapability.ProductImageSceneAllowedTenantIDs)) == 0 {
+	if len(tenantIDSet(options.allowedTenantIDs)) == 0 {
 		return nil, aicapability.NewError(aicapability.ErrorInvalidInput, string(aicapability.OperationProductImageSceneGenerate), nil)
 	}
 	routed, ok := legacy.(productimage.SceneGeneratorWithRoute)
@@ -26,7 +41,7 @@ func buildGovernedProductImageSceneGenerator(cfg *config.Config, legacy producti
 		return nil, aicapability.NewError(aicapability.ErrorCapabilityUnavailable, string(aicapability.OperationProductImageSceneGenerate), nil)
 	}
 	return productimage.NewGovernedSceneGenerator(productimage.GovernedSceneGeneratorConfig{
-		Router:   BuildProductImageSceneCapabilityRouter(resolver, cfg.AICapability.ProductImageSceneAllowedTenantIDs),
+		Router:   BuildProductImageSceneCapabilityRouter(resolver, options.allowedTenantIDs),
 		Recorder: recorder,
 		Provider: routed,
 		Identity: func(ctx context.Context) productimage.SceneAIIdentity {

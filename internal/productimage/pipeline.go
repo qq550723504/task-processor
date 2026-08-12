@@ -112,7 +112,7 @@ func (s *service) runParseStage(ctx context.Context, state *PipelineState) error
 		Images:      append([]string(nil), state.Task.Request.ImageURLs...),
 		Text:        state.Task.Request.Text,
 		ProductURL:  state.Task.Request.ProductURL,
-		Marketplace: state.Task.Request.Marketplace,
+		Marketplace: state.Task.Request.TargetPlatform,
 		Country:     state.Task.Request.Country,
 	}
 	return nil
@@ -360,7 +360,7 @@ func (s *service) runValidateStage(ctx context.Context, state *PipelineState) er
 	if !s.capabilities.AllowMissingValidator {
 		return fmt.Errorf("marketplace validator is not configured in %s mode", s.capabilities.Mode)
 	}
-	state.Result.Compliance = &ComplianceReport{Marketplace: state.Task.Request.Marketplace, Passed: true}
+	state.Result.Compliance = &ComplianceReport{Marketplace: state.Task.Request.TargetPlatform, Passed: true}
 	return nil
 }
 

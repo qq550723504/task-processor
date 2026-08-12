@@ -20,16 +20,17 @@ func TestConsumerRegistryExportsSnapshotMetrics(t *testing.T) {
 			TasksFailed:    3,
 		},
 		Task: coremetrics.TaskMetricsSnapshot{
-			ProcessingCount:     4,
-			CompletedCount:      9,
-			FailedCount:         3,
-			RequeuedCount:       2,
-			HighPriorityCount:   5,
-			MediumPriorityCount: 4,
-			LowPriorityCount:    3,
-			TotalWaitTime:       8 * time.Second,
-			TotalProcessTime:    18 * time.Second,
-			TaskCount:           4,
+			ProcessingCount:             4,
+			CompletedCount:              9,
+			FailedCount:                 3,
+			RequeuedCount:               2,
+			HighPriorityCount:           5,
+			MediumPriorityCount:         4,
+			LowPriorityCount:            3,
+			TotalWaitTime:               8 * time.Second,
+			TotalProcessTime:            18 * time.Second,
+			TaskCount:                   4,
+			LegacyTaskEventDecodedCount: 2,
 		},
 		Shein: coremetrics.SheinMetricsSnapshot{
 			PublishedCount: 7,
@@ -50,6 +51,9 @@ tasks_processed_total 12
 # HELP listing_tasks_wait_seconds_avg Average wait time for listing tasks in seconds
 # TYPE listing_tasks_wait_seconds_avg gauge
 listing_tasks_wait_seconds_avg 2
+# HELP task_event_decoded_total Total task events decoded by schema version
+# TYPE task_event_decoded_total counter
+task_event_decoded_total{schema_version="legacy"} 2
 # HELP shein_tasks_published_total Total number of SHEIN tasks published successfully
 # TYPE shein_tasks_published_total counter
 shein_tasks_published_total 7
@@ -64,6 +68,7 @@ goroutine_count 21
 	if err := promtest.GatherAndCompare(registry.Registry(), strings.NewReader(expected),
 		"tasks_processed_total",
 		"listing_tasks_wait_seconds_avg",
+		"task_event_decoded_total",
 		"shein_tasks_published_total",
 		"shein_top_success_store_published_total",
 		"goroutine_count",

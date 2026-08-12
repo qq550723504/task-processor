@@ -1,6 +1,7 @@
 package listingkit
 
 import (
+	"fmt"
 	"strings"
 
 	listingplatform "task-processor/internal/listing/platform"
@@ -20,23 +21,30 @@ func toProductGenerateRequest(task *Task) *productenrich.GenerateRequest {
 	}
 }
 
-func toImageProcessRequest(task *Task) *productimage.ImageProcessRequest {
+func toImageProcessRequests(task *Task) ([]*productimage.ImageProcessRequest, error) {
 	if task == nil || task.Request == nil {
-		return &productimage.ImageProcessRequest{}
+		return nil, fmt.Errorf("image-processing request requires a task request")
 	}
-	marketplace := detectImageMarketplace(task.Request)
+	targets := listingplatform.NormalizeSupportedPlatforms(task.Request.Platforms)
+	if len(targets) == 0 {
+		return nil, fmt.Errorf("image-processing request requires at least one supported target platform")
+	}
 	var scene *productimage.SceneGenerationOptions
 	if task.Request.Options != nil {
 		scene = task.Request.Options.Scene.Clone()
 	}
-	return &productimage.ImageProcessRequest{
-		ProductURL:  task.Request.ProductURL,
-		ImageURLs:   append([]string(nil), task.Request.ImageURLs...),
-		Text:        task.Request.Text,
-		Marketplace: marketplace,
-		Country:     task.Request.Country,
-		Scene:       scene,
+	requests := make([]*productimage.ImageProcessRequest, 0, len(targets))
+	for _, target := range targets {
+		requests = append(requests, &productimage.ImageProcessRequest{
+			ProductURL:     task.Request.ProductURL,
+			ImageURLs:      append([]string(nil), task.Request.ImageURLs...),
+			Text:           task.Request.Text,
+			TargetPlatform: target,
+			Country:        task.Request.Country,
+			Scene:          scene,
+		})
 	}
+	return requests, nil
 }
 
 func shouldProcessImages(req *GenerateRequest) bool {
@@ -87,15 +95,4 @@ func buildWorkflowRequestPolicyInput(req *GenerateRequest) listingworkflow.Reque
 		}
 	}
 	return input
-}
-
-func detectImageMarketplace(req *GenerateRequest) string {
-	if req == nil {
-		return "amazon"
-	}
-	platforms := listingplatform.NormalizeSupportedPlatforms(req.Platforms)
-	if len(platforms) == 0 {
-		return "amazon"
-	}
-	return platforms[0]
 }

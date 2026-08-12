@@ -9,6 +9,7 @@ func TestTaskValueRoundTrip(t *testing.T) {
 		TaskID:          "listing-task-1",
 		ID:              "shein:shein-main-model",
 		Platform:        "shein",
+		TargetPlatforms: []string{"shein", "amazon"},
 		RecipeID:        "shein-main-model",
 		AssetKind:       "model_image",
 		Slot:            "main",
@@ -40,5 +41,8 @@ func TestTaskValueRoundTrip(t *testing.T) {
 	}
 	if len(decoded.SourceAssetIDs) != len(original.SourceAssetIDs) || decoded.SourceAssetIDs[0] != original.SourceAssetIDs[0] {
 		t.Fatalf("decoded = %+v, want source asset ids from %+v", decoded, *original)
+	}
+	if len(decoded.TargetPlatforms) != len(original.TargetPlatforms) || decoded.TargetPlatforms[1] != original.TargetPlatforms[1] {
+		t.Fatalf("decoded = %+v, want target platforms from %+v", decoded, *original)
 	}
 }

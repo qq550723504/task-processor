@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
@@ -58,9 +59,25 @@ type stubWorkflowAssetGenerator struct {
 	dispatchCalls   int
 	dispatchErrAt   map[int]error
 	lastDispatchReq *assetgeneration.DispatchRequest
+	lastPlanReq     *assetgeneration.Request
+}
+
+type targetURLDeferredRenderer struct{}
+
+func (targetURLDeferredRenderer) Render(_ context.Context, req assetgeneration.DeferredRenderRequest) (*asset.AssetRecord, error) {
+	return &asset.AssetRecord{
+		ID:       req.Task.Platform + ":" + req.Task.RecipeID,
+		Kind:     req.Task.AssetKind,
+		Origin:   asset.OriginGenerated,
+		URL:      "https://generated.example.test/" + req.Task.Platform + "/" + req.Task.RecipeID + ".jpg",
+		RecipeID: req.Task.RecipeID,
+	}, nil
 }
 
 func (s *stubWorkflowAssetGenerator) Plan(ctx context.Context, req assetgeneration.Request) (*assetgeneration.Result, error) {
+	clonedReq := req
+	clonedReq.TargetPlatforms = append([]string(nil), req.TargetPlatforms...)
+	s.lastPlanReq = &clonedReq
 	if s.planErr != nil {
 		return nil, s.planErr
 	}
@@ -135,11 +152,16 @@ func (s *stubWorkflowAssetRepository) ListGenerationTasks(ctx context.Context, t
 }
 
 type stubWorkflowImageService struct {
-	task       *productimage.Task
-	result     *productimage.ImageProcessResult
-	createErr  error
-	processErr error
-	lastReq    *productimage.ImageProcessRequest
+	task               *productimage.Task
+	taskByTarget       map[string]*productimage.Task
+	result             *productimage.ImageProcessResult
+	resultByTarget     map[string]*productimage.ImageProcessResult
+	createErr          error
+	createErrByTarget  map[string]error
+	processErr         error
+	processErrByTarget map[string]error
+	lastReq            *productimage.ImageProcessRequest
+	requests           []*productimage.ImageProcessRequest
 }
 
 type stubWorkflowSDSSyncService struct {
@@ -151,6 +173,10 @@ type stubWorkflowSDSSyncService struct {
 	remoteErr        error
 	localFileErr     error
 	lastInput        sdsusecase.ImageResultInput
+	imageInputs      []sdsusecase.ImageResultInput
+	imageResults     []*sdsadapter.SyncResult
+	imageErrs        []error
+	imageCalls       int
 	lastRemoteInput  sdsusecase.RemoteImageInput
 	lastRemoteInputs []sdsusecase.RemoteImageInput
 	lastLocalFile    sdsusecase.LocalFileInput
@@ -160,8 +186,17 @@ type stubWorkflowSDSSyncService struct {
 
 func (s *stubWorkflowImageService) CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error) {
 	s.lastReq = req
+	s.requests = append(s.requests, req)
+	if err := s.createErrByTarget[req.TargetPlatform]; err != nil {
+		return nil, err
+	}
 	if s.createErr != nil {
 		return nil, s.createErr
+	}
+	if targetTask := s.taskByTarget[req.TargetPlatform]; targetTask != nil {
+		cloned := *targetTask
+		cloned.Request = req
+		return &cloned, nil
 	}
 	return s.task, nil
 }
@@ -171,10 +206,438 @@ func (s *stubWorkflowImageService) GetTaskResult(ctx context.Context, taskID str
 }
 
 func (s *stubWorkflowImageService) ProcessImages(ctx context.Context, task *productimage.Task) (*productimage.ImageProcessResult, error) {
+	target := ""
+	if task != nil && task.Request != nil {
+		target = task.Request.TargetPlatform
+	}
+	if err := s.processErrByTarget[target]; err != nil {
+		return nil, err
+	}
 	if s.processErr != nil {
 		return nil, s.processErr
 	}
+	if result := s.resultByTarget[target]; result != nil {
+		return result, nil
+	}
 	return s.result, nil
+}
+
+func TestStandardWorkflowProcessesImagesForEveryTarget(t *testing.T) {
+	productSvc := &stubWorkflowProductService{
+		task:    &productenrich.Task{ID: "product-task"},
+		product: &productenrich.ProductJSON{Title: "Targeted product", Images: []string{"https://example.test/image.jpg"}},
+	}
+	imageSvc := &stubWorkflowImageService{
+		task:   &productimage.Task{ID: "image-task"},
+		result: &productimage.ImageProcessResult{},
+	}
+	svc := seedWorkflowServices(seedWorkflowAssets(
+		seedSupportDeps(&service{}, supportDependencySeed{
+			assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		}),
+		assetrepo.NewMemRepository(),
+		newDefaultAssetRecipeResolver(),
+		newDefaultAssetBundleBuilder(),
+		newDefaultAssetGenerationService(),
+	), productSvc, imageSvc)
+	task := &Task{ID: "listing-task", Request: &GenerateRequest{
+		ImageURLs: []string{"https://example.test/image.jpg"},
+		Platforms: []string{"temu", "shein"},
+		Options:   &GenerateOptions{ProcessImages: true},
+	}}
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v", err)
+	}
+	if len(imageSvc.requests) != 2 || imageSvc.requests[0].TargetPlatform != "temu" || imageSvc.requests[1].TargetPlatform != "shein" {
+		t.Fatalf("image requests = %#v, want separate temu and shein requests", imageSvc.requests)
+	}
+	if state.result.ImageAssetsForTarget("temu") == nil || state.result.ImageAssetsForTarget("shein") == nil {
+		t.Fatalf("target image results = %#v", state.result.ImageAssetsByTarget)
+	}
+	if state.result.ImageAssets != nil || state.result.AssetBundle != nil {
+		t.Fatalf("legacy scalar assets = %#v/%#v, want none for multi-target request", state.result.ImageAssets, state.result.AssetBundle)
+	}
+}
+
+func TestStandardWorkflowKeepsSuccessfulTargetAfterOtherTargetFails(t *testing.T) {
+	productSvc := &stubWorkflowProductService{
+		task:    &productenrich.Task{ID: "product-task"},
+		product: &productenrich.ProductJSON{Title: "Targeted product", Images: []string{"https://example.test/image.jpg"}},
+	}
+	imageSvc := &stubWorkflowImageService{
+		taskByTarget: map[string]*productimage.Task{
+			"temu":  {ID: "image-temu"},
+			"shein": {ID: "image-shein"},
+		},
+		resultByTarget: map[string]*productimage.ImageProcessResult{
+			"shein": {MainImage: &productimage.ImageAsset{URL: "https://example.test/shein.jpg"}},
+		},
+		processErrByTarget: map[string]error{"temu": fmt.Errorf("temu image processing failed")},
+	}
+	svc := seedWorkflowServices(seedWorkflowAssets(
+		seedSupportDeps(&service{}, supportDependencySeed{
+			assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		}),
+		assetrepo.NewMemRepository(),
+		newDefaultAssetRecipeResolver(),
+		newDefaultAssetBundleBuilder(),
+		newDefaultAssetGenerationService(),
+	), productSvc, imageSvc)
+	task := &Task{ID: "listing-task", Request: &GenerateRequest{
+		ImageURLs: []string{"https://example.test/image.jpg"},
+		Platforms: []string{"temu", "shein"},
+		Options:   &GenerateOptions{ProcessImages: true},
+	}}
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v", err)
+	}
+	if state.result.ImageAssetsForTarget("shein") == nil {
+		t.Fatalf("successful shein image result missing from %#v", state.result.ImageAssetsByTarget)
+	}
+	if state.result.ImageAssetsForTarget("temu") != nil {
+		t.Fatalf("failed temu image result = %#v, want nil", state.result.ImageAssetsForTarget("temu"))
+	}
+	if state.result.ImageAssets != nil || state.result.AssetBundle != nil {
+		t.Fatalf("legacy scalar assets = %#v/%#v, want no projection for partial multi-target result", state.result.ImageAssets, state.result.AssetBundle)
+	}
+	if child, ok := childTaskStateByKind(state.result, "product_image:temu"); !ok || child.Status != string(core.TaskStatusFailed) {
+		t.Fatalf("temu child task = %#v, want failed target child task", child)
+	}
+	if child, ok := childTaskStateByKind(state.result, "product_image:shein"); !ok || child.Status != string(core.TaskStatusCompleted) {
+		t.Fatalf("shein child task = %#v, want completed target child task", child)
+	}
+	stages := map[string]WorkflowStage{}
+	for _, stage := range state.result.WorkflowStages {
+		stages[stage.Kind] = stage
+	}
+	if stages["product_image:temu"].Status != WorkflowStageStatusDegraded || stages["product_image:shein"].Status != WorkflowStageStatusCompleted {
+		t.Fatalf("target image stages = %#v, want degraded temu and completed shein", stages)
+	}
+}
+
+func TestRunWorkflowKeepsPlatformImageBundlesIsolatedAcrossTargetOrder(t *testing.T) {
+	for _, platforms := range [][]string{{"shein", "temu"}, {"temu", "shein"}} {
+		platforms := append([]string(nil), platforms...)
+		t.Run(strings.Join(platforms, "_then_"), func(t *testing.T) {
+			productSvc := &stubWorkflowProductService{
+				task: &productenrich.Task{ID: "product-task-target-bundles"},
+				product: &productenrich.ProductJSON{
+					Title:  "Target-isolated product",
+					Images: []string{"https://source.example.test/product.jpg"},
+				},
+			}
+			imageSvc := &stubWorkflowImageService{
+				taskByTarget: map[string]*productimage.Task{
+					"shein": {ID: "image-shein"},
+					"temu":  {ID: "image-temu"},
+				},
+				resultByTarget: map[string]*productimage.ImageProcessResult{
+					"shein": {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/shein-main.jpg", Type: productimage.AssetTypeMainImage}},
+					"temu":  {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/temu-main.jpg", Type: productimage.AssetTypeMainImage}},
+				},
+			}
+			assetGenerator := &stubWorkflowAssetGenerator{planResult: &assetgeneration.Result{}}
+			svc := seedWorkflowServices(seedWorkflowAssets(
+				seedSupportDeps(&service{}, supportDependencySeed{
+					assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+				}),
+				assetrepo.NewMemRepository(),
+				newDefaultAssetRecipeResolver(),
+				newDefaultAssetBundleBuilder(),
+				assetGenerator,
+			), productSvc, imageSvc)
+			task := &Task{ID: "listing-task-target-bundles", Request: &GenerateRequest{
+				ImageURLs: []string{"https://source.example.test/product.jpg"},
+				Platforms: platforms,
+				Options:   &GenerateOptions{ProcessImages: true},
+			}}
+
+			result, err := svc.runWorkflow(context.Background(), task)
+			if err != nil {
+				t.Fatalf("runWorkflow() error = %v", err)
+			}
+			if result.Shein == nil || result.Shein.ImageBundle == nil || result.Shein.ImageBundle.Main == nil {
+				t.Fatalf("shein package image bundle = %+v", result.Shein)
+			}
+			if got := result.Shein.ImageBundle.Main.URL; got != "https://cdn.example.test/shein-main.jpg" {
+				t.Fatalf("shein package main URL = %q, want isolated SHEIN URL", got)
+			}
+			if result.Temu == nil || result.Temu.ImageBundle == nil || result.Temu.ImageBundle.Main == nil {
+				t.Fatalf("temu package image bundle = %+v", result.Temu)
+			}
+			if got := result.Temu.ImageBundle.Main.URL; got != "https://cdn.example.test/temu-main.jpg" {
+				t.Fatalf("temu package main URL = %q, want isolated TEMU URL", got)
+			}
+		})
+	}
+}
+
+func TestRunWorkflowKeepsGeneratedAssetsIsolatedAcrossTargetOrder(t *testing.T) {
+	for _, platforms := range [][]string{{"shein", "amazon"}, {"amazon", "shein"}} {
+		platforms := append([]string(nil), platforms...)
+		t.Run(strings.Join(platforms, "_then_"), func(t *testing.T) {
+			productSvc := &stubWorkflowProductService{
+				task:    &productenrich.Task{ID: "product-task-generated-target-bundles"},
+				product: &productenrich.ProductJSON{Title: "Generated target product", Images: []string{"https://source.example.test/product.jpg"}},
+			}
+			imageSvc := &stubWorkflowImageService{
+				taskByTarget: map[string]*productimage.Task{
+					"shein":  {ID: "image-shein-generated"},
+					"amazon": {ID: "image-amazon-generated"},
+				},
+				resultByTarget: map[string]*productimage.ImageProcessResult{
+					"shein":  {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/shein-main.jpg", Type: productimage.AssetTypeMainImage}},
+					"amazon": {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/amazon-main.jpg", Type: productimage.AssetTypeMainImage}},
+				},
+			}
+			assetGenerator := assetgeneration.NewService(assetgeneration.Config{DeferredRenderer: targetURLDeferredRenderer{}})
+			svc := seedWorkflowServices(seedWorkflowAssets(
+				seedSupportDeps(&service{}, supportDependencySeed{
+					assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+				}),
+				assetrepo.NewMemRepository(),
+				newDefaultAssetRecipeResolver(),
+				newDefaultAssetBundleBuilder(),
+				assetGenerator,
+			), productSvc, imageSvc)
+			task := &Task{ID: "listing-task-generated-target-bundles", Request: &GenerateRequest{
+				ImageURLs: []string{"https://source.example.test/product.jpg"},
+				Platforms: platforms,
+				Options:   &GenerateOptions{ProcessImages: true},
+			}}
+
+			result, err := svc.runWorkflow(context.Background(), task)
+			if err != nil {
+				t.Fatalf("runWorkflow() error = %v", err)
+			}
+			assertPublishBundleHasOnlyTargetGeneratedURLs(t, "shein", result.Shein.ImageBundle)
+			assertPublishBundleHasOnlyTargetGeneratedURLs(t, "amazon", result.Amazon.ImageBundle)
+		})
+	}
+}
+
+func TestPlatformAssetInventoryRejectsUntaggedSharedGeneratedRecords(t *testing.T) {
+	t.Parallel()
+
+	result := &ListingKitResult{AssetBundlesByTarget: map[string]*asset.Bundle{
+		"shein": {Assets: []asset.Asset{{ID: "shein-main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/shein-main.jpg"}}},
+	}}
+	shared := asset.BuildInventory("task-untagged-generated", result.assetBundleForInventory())
+	shared.Records = append(shared.Records, asset.AssetRecord{
+		ID: "untagged-generated", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated,
+		URL: "https://generated.example.test/untagged.jpg",
+	})
+
+	got := platformAssetInventory(result, "shein", shared)
+	if hasInventoryURL(got, "https://generated.example.test/untagged.jpg") {
+		t.Fatalf("target inventory = %+v, want untagged shared generated record rejected", got)
+	}
+	if !hasInventoryURL(got, "https://cdn.example.test/shein-main.jpg") {
+		t.Fatalf("target inventory = %+v, want explicitly reconstructed target bundle preserved", got)
+	}
+}
+
+func TestPlatformAssetInventoryEmptyTargetMapFailsClosedAcrossRecordOrder(t *testing.T) {
+	t.Parallel()
+
+	for _, records := range [][]asset.AssetRecord{
+		{
+			{ID: "unknown", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/unknown.jpg"},
+			{ID: "amazon", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/amazon.jpg", PlatformTags: []string{"amazon"}},
+			{ID: "shein", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/shein.jpg", PlatformTags: []string{" SHEIN "}},
+		},
+		{
+			{ID: "shein", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/shein.jpg", PlatformTags: []string{" SHEIN "}},
+			{ID: "amazon", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/amazon.jpg", PlatformTags: []string{"amazon"}},
+			{ID: "unknown", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/unknown.jpg"},
+		},
+	} {
+		shared := &asset.Inventory{
+			Ref:     asset.InventoryRef{TaskID: "task-all-targets-failed"},
+			Records: append([]asset.AssetRecord(nil), records...),
+		}
+		got := platformAssetInventory(&ListingKitResult{
+			Platforms: []string{"shein", "amazon"},
+		}, "shein", shared)
+
+		if got == shared {
+			t.Fatal("platformAssetInventory() returned the shared inventory, want a filtered target inventory")
+		}
+		if !hasInventoryURL(got, "https://generated.example.test/shein.jpg") {
+			t.Fatalf("target inventory = %+v, want matching tagged record", got)
+		}
+		for _, rejected := range []string{
+			"https://generated.example.test/amazon.jpg",
+			"https://generated.example.test/unknown.jpg",
+		} {
+			if hasInventoryURL(got, rejected) {
+				t.Fatalf("target inventory = %+v, want %q rejected", got, rejected)
+			}
+		}
+	}
+}
+
+func TestPlatformAssetInventoryPreservesOnlySafeSingleTargetLegacyBaseAssets(t *testing.T) {
+	t.Parallel()
+
+	legacyBase := &asset.Bundle{Assets: []asset.Asset{{
+		ID: "legacy-shein-main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/legacy-shein-main.jpg",
+	}}}
+	shared := asset.BuildInventory("task-legacy-single-target", legacyBase)
+	shared.Records = append(shared.Records,
+		asset.AssetRecord{ID: "tagged-shein", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/tagged-shein.jpg", PlatformTags: []string{"shein"}},
+		asset.AssetRecord{ID: "tagged-amazon", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/tagged-amazon.jpg", PlatformTags: []string{"amazon"}},
+		asset.AssetRecord{ID: "unknown", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, URL: "https://generated.example.test/unknown-legacy.jpg"},
+	)
+	result := &ListingKitResult{Platforms: []string{" SHEIN "}, AssetBundle: legacyBase}
+
+	got := platformAssetInventory(result, "shein", shared)
+	for _, accepted := range []string{
+		"https://cdn.example.test/legacy-shein-main.jpg",
+		"https://generated.example.test/tagged-shein.jpg",
+	} {
+		if !hasInventoryURL(got, accepted) {
+			t.Fatalf("target inventory = %+v, want %q preserved", got, accepted)
+		}
+	}
+	for _, rejected := range []string{
+		"https://generated.example.test/tagged-amazon.jpg",
+		"https://generated.example.test/unknown-legacy.jpg",
+	} {
+		if hasInventoryURL(got, rejected) {
+			t.Fatalf("target inventory = %+v, want %q rejected", got, rejected)
+		}
+	}
+
+	multiTarget := platformAssetInventory(&ListingKitResult{
+		Platforms:   []string{"shein", "amazon"},
+		AssetBundle: legacyBase,
+	}, "shein", shared)
+	if hasInventoryURL(multiTarget, "https://cdn.example.test/legacy-shein-main.jpg") {
+		t.Fatalf("multi-target inventory = %+v, want ambiguous scalar legacy base rejected", multiTarget)
+	}
+}
+
+func TestRunWorkflowPassesNormalizedRequestedTargetsToPlatformGenerationPlan(t *testing.T) {
+	t.Parallel()
+
+	productSvc := &stubWorkflowProductService{
+		task:    &productenrich.Task{ID: "product-task-platform-plan-targets"},
+		product: &productenrich.ProductJSON{Title: "Plan targets", Images: []string{"https://source.example.test/plan-targets.jpg"}},
+	}
+	imageSvc := &stubWorkflowImageService{
+		taskByTarget: map[string]*productimage.Task{
+			"shein":  {ID: "image-shein-plan-targets"},
+			"amazon": {ID: "image-amazon-plan-targets"},
+		},
+		resultByTarget: map[string]*productimage.ImageProcessResult{
+			"shein":  {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/shein-plan-targets.jpg", Type: productimage.AssetTypeMainImage}},
+			"amazon": {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/amazon-plan-targets.jpg", Type: productimage.AssetTypeMainImage}},
+		},
+	}
+	assetGenerator := &stubWorkflowAssetGenerator{planResult: &assetgeneration.Result{}}
+	svc := seedWorkflowServices(seedWorkflowAssets(
+		seedSupportDeps(&service{}, supportDependencySeed{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})}),
+		assetrepo.NewMemRepository(),
+		newDefaultAssetRecipeResolver(),
+		newDefaultAssetBundleBuilder(),
+		assetGenerator,
+	), productSvc, imageSvc)
+	task := &Task{ID: "listing-task-platform-plan-targets", Request: &GenerateRequest{
+		ImageURLs: []string{"https://source.example.test/plan-targets.jpg"},
+		Platforms: []string{" SHEIN ", "amazon", "shein", "unsupported"},
+		Options:   &GenerateOptions{ProcessImages: true},
+	}}
+
+	if _, err := svc.runWorkflow(context.Background(), task); err != nil {
+		t.Fatalf("runWorkflow() error = %v", err)
+	}
+	if assetGenerator.lastPlanReq == nil {
+		t.Fatal("platform generation Plan request = nil")
+	}
+	if got, want := assetGenerator.lastPlanReq.TargetPlatforms, []string{"shein", "amazon"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("platform generation Plan targets = %#v, want normalized requested targets %#v", got, want)
+	}
+}
+
+func assertPublishBundleHasOnlyTargetGeneratedURLs(t *testing.T, target string, bundle *common.PublishImageBundle) {
+	t.Helper()
+	if bundle == nil {
+		t.Fatalf("%s image bundle = nil", target)
+	}
+	urls := make([]string, 0, 1+len(bundle.Gallery)+len(bundle.Auxiliary))
+	if bundle.Main != nil {
+		urls = append(urls, bundle.Main.URL)
+	}
+	for _, slot := range bundle.Gallery {
+		urls = append(urls, slot.URL)
+	}
+	for _, slot := range bundle.Auxiliary {
+		urls = append(urls, slot.URL)
+	}
+	wantPrefix := "https://generated.example.test/" + target + "/"
+	otherPrefix := "https://generated.example.test/"
+	foundTarget := false
+	for _, url := range urls {
+		if strings.HasPrefix(url, wantPrefix) {
+			foundTarget = true
+		}
+		if strings.HasPrefix(url, otherPrefix) && !strings.HasPrefix(url, wantPrefix) {
+			t.Fatalf("%s bundle URLs = %#v, found another target's generated URL %q", target, urls, url)
+		}
+	}
+	if !foundTarget {
+		t.Fatalf("%s bundle URLs = %#v, want a target-specific generated URL with prefix %q", target, urls, wantPrefix)
+	}
+}
+
+func TestRunWorkflowDoesNotProjectSuccessfulTargetAssetsIntoFailedTargetPackage(t *testing.T) {
+	productSvc := &stubWorkflowProductService{
+		task:    &productenrich.Task{ID: "product-task-partial-target-bundles"},
+		product: &productenrich.ProductJSON{Title: "Partial target product", Images: []string{"https://source.example.test/product.jpg"}},
+	}
+	imageSvc := &stubWorkflowImageService{
+		taskByTarget: map[string]*productimage.Task{
+			"shein": {ID: "image-shein-success"},
+			"temu":  {ID: "image-temu-failure"},
+		},
+		resultByTarget: map[string]*productimage.ImageProcessResult{
+			"shein": {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/shein-success.jpg", Type: productimage.AssetTypeMainImage}},
+		},
+		processErrByTarget: map[string]error{"temu": errors.New("temu media failed")},
+	}
+	svc := seedWorkflowServices(seedWorkflowAssets(
+		seedSupportDeps(&service{}, supportDependencySeed{
+			assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		}),
+		assetrepo.NewMemRepository(),
+		newDefaultAssetRecipeResolver(),
+		newDefaultAssetBundleBuilder(),
+		&stubWorkflowAssetGenerator{planResult: &assetgeneration.Result{}},
+	), productSvc, imageSvc)
+	task := &Task{ID: "listing-task-partial-target-bundles", Request: &GenerateRequest{
+		ImageURLs: []string{"https://source.example.test/product.jpg"},
+		Platforms: []string{"temu", "shein"},
+		Options:   &GenerateOptions{ProcessImages: true},
+	}}
+
+	result, err := svc.runWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runWorkflow() error = %v", err)
+	}
+	if result.Shein == nil || result.Shein.ImageBundle == nil || result.Shein.ImageBundle.Main == nil || result.Shein.ImageBundle.Main.URL != "https://cdn.example.test/shein-success.jpg" {
+		t.Fatalf("SHEIN package image bundle = %+v, want successful target URL", result.Shein)
+	}
+	if result.Temu == nil || result.Temu.ImageBundle == nil {
+		t.Fatalf("TEMU package image bundle = %+v, want observable empty bundle", result.Temu)
+	}
+	if result.Temu.ImageBundle.Main != nil {
+		t.Fatalf("TEMU package main = %+v, want no cross-target fallback after media failure", result.Temu.ImageBundle.Main)
+	}
 }
 
 func (s *stubWorkflowSDSSyncService) SyncFromRemoteImage(ctx context.Context, input sdsusecase.RemoteImageInput) (*sdsworkflow.SyncResult, error) {
@@ -209,7 +672,16 @@ func (s *stubWorkflowSDSSyncService) SyncFromLocalFile(ctx context.Context, inpu
 }
 
 func (s *stubWorkflowSDSSyncService) SyncFromImageResult(ctx context.Context, input sdsusecase.ImageResultInput) (*sdsadapter.SyncResult, error) {
+	s.imageCalls++
 	s.lastInput = input
+	s.imageInputs = append(s.imageInputs, input)
+	index := s.imageCalls - 1
+	if index < len(s.imageErrs) && s.imageErrs[index] != nil {
+		return nil, s.imageErrs[index]
+	}
+	if index < len(s.imageResults) && s.imageResults[index] != nil {
+		return s.imageResults[index], nil
+	}
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -217,6 +689,115 @@ func (s *stubWorkflowSDSSyncService) SyncFromImageResult(ctx context.Context, in
 		return s.result, nil
 	}
 	return &sdsadapter.SyncResult{}, nil
+}
+
+func TestStandardWorkflowSyncsSDSOnceForMultipleTargetsIndependentOfOrder(t *testing.T) {
+	for _, platforms := range [][]string{{"shein", "temu"}, {"temu", "shein"}} {
+		platforms := append([]string(nil), platforms...)
+		t.Run(strings.Join(platforms, "_then_"), func(t *testing.T) {
+			sdsSvc := &stubWorkflowSDSSyncService{result: successfulWorkflowSDSSyncResult()}
+			state := runTwoTargetSDSWorkflow(t, platforms, sdsSvc)
+
+			if sdsSvc.imageCalls != 1 {
+				t.Fatalf("SDS image-result sync calls = %d, want exactly 1", sdsSvc.imageCalls)
+			}
+			if len(sdsSvc.imageInputs) != 1 || sdsSvc.imageInputs[0].ImageResult == nil || sdsSvc.imageInputs[0].ImageResult.MainImage == nil {
+				t.Fatalf("SDS image inputs = %+v", sdsSvc.imageInputs)
+			}
+			if got := sdsSvc.imageInputs[0].ImageResult.MainImage.URL; got != "https://cdn.example.test/shein-sds.jpg" {
+				t.Fatalf("SDS input main URL = %q, want deterministic SHEIN result", got)
+			}
+			if state.result.SDSDesignResult == nil || state.result.SDSDesignResult.Status != "completed" {
+				t.Fatalf("SDS design result = %+v, want completed", state.result.SDSDesignResult)
+			}
+			assertSingleSDSWorkflowStage(t, state.result, WorkflowStageStatusCompleted)
+		})
+	}
+}
+
+func TestStandardWorkflowDoesNotOverwriteSingleSDSFailureForMultipleTargets(t *testing.T) {
+	for _, platforms := range [][]string{{"shein", "temu"}, {"temu", "shein"}} {
+		platforms := append([]string(nil), platforms...)
+		t.Run(strings.Join(platforms, "_then_"), func(t *testing.T) {
+			sdsSvc := &stubWorkflowSDSSyncService{
+				imageErrs:    []error{errors.New("stable SDS failure"), nil},
+				imageResults: []*sdsadapter.SyncResult{nil, successfulWorkflowSDSSyncResult()},
+			}
+			state := runTwoTargetSDSWorkflow(t, platforms, sdsSvc)
+
+			if sdsSvc.imageCalls != 1 {
+				t.Fatalf("SDS image-result sync calls = %d, want exactly 1 so failure cannot be overwritten", sdsSvc.imageCalls)
+			}
+			if state.result.SDSDesignResult == nil || state.result.SDSDesignResult.Status != "failed" || !strings.Contains(state.result.SDSDesignResult.Error, "stable SDS failure") {
+				t.Fatalf("SDS design result = %+v, want stable failed result", state.result.SDSDesignResult)
+			}
+			assertSingleSDSWorkflowStage(t, state.result, WorkflowStageStatusDegraded)
+		})
+	}
+}
+
+func runTwoTargetSDSWorkflow(t *testing.T, platforms []string, sdsSvc *stubWorkflowSDSSyncService) *standardWorkflowState {
+	t.Helper()
+	productSvc := &stubWorkflowProductService{
+		task:    &productenrich.Task{ID: "product-task-two-target-sds"},
+		product: &productenrich.ProductJSON{Title: "Two target SDS product", Images: []string{"https://source.example.test/product.jpg"}},
+	}
+	imageSvc := &stubWorkflowImageService{
+		taskByTarget: map[string]*productimage.Task{
+			"shein": {ID: "image-shein-sds"},
+			"temu":  {ID: "image-temu-sds"},
+		},
+		resultByTarget: map[string]*productimage.ImageProcessResult{
+			"shein": {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/shein-sds.jpg", Type: productimage.AssetTypeMainImage}},
+			"temu":  {MainImage: &productimage.ImageAsset{URL: "https://cdn.example.test/temu-sds.jpg", Type: productimage.AssetTypeMainImage}},
+		},
+	}
+	svc := seedWorkflowServices(seedWorkflowAssets(seedSupportDeps(&service{}, supportDependencySeed{
+		sdsSyncService: sdsSvc,
+		assembler:      NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+	}), assetrepo.NewMemRepository(), newDefaultAssetRecipeResolver(), newDefaultAssetBundleBuilder(), &stubWorkflowAssetGenerator{}), productSvc, imageSvc)
+	task := &Task{ID: "listing-task-two-target-sds", Request: &GenerateRequest{
+		ImageURLs: []string{"https://source.example.test/product.jpg"},
+		Platforms: append([]string(nil), platforms...),
+		Options: &GenerateOptions{
+			ProcessImages: true,
+			SDS:           &SDSSyncOptions{VariantID: 89764},
+		},
+	}}
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v", err)
+	}
+	return state
+}
+
+func successfulWorkflowSDSSyncResult() *sdsadapter.SyncResult {
+	return &sdsadapter.SyncResult{DesignSync: &sdsworkflow.SyncResult{DesignResult: &sdsdesign.PrepareSyncDesignResult{
+		Page: &sdsdesign.DesignProductPage{Product: sdsdesign.DesignProduct{ID: 89764}},
+		Request: &sdsdesign.SyncDesignRequest{
+			PrototypeGroupID: 14555,
+			Prototypes:       []sdsdesign.SyncDesignPrototype{{Layers: []sdsdesign.SyncDesignLayer{{LayerID: "layer-1"}}}},
+		},
+		Material:          &sdsdesign.UploadedMaterial{Material: &sdsdesign.Material{ID: 396548287}},
+		RenderedImageURLs: []string{"https://cdn.example.test/rendered-sds.jpg"},
+	}}}
+}
+
+func assertSingleSDSWorkflowStage(t *testing.T, result *ListingKitResult, wantStatus WorkflowStageStatus) {
+	t.Helper()
+	count := 0
+	for _, stage := range result.WorkflowStages {
+		if stage.Kind != "sds_design_sync" {
+			continue
+		}
+		count++
+		if stage.Status != wantStatus {
+			t.Fatalf("SDS workflow stage = %+v, want status %q", stage, wantStatus)
+		}
+	}
+	if count != 1 {
+		t.Fatalf("SDS workflow stage count = %d, want 1; stages=%+v", count, result.WorkflowStages)
+	}
 }
 
 func (s *stubWorkflowSDSSyncService) SyncFromImageRequest(ctx context.Context, input sdsusecase.ImageRequestInput) (*sdsadapter.SyncResult, error) {
@@ -291,14 +872,14 @@ func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T)
 	if err != nil {
 		t.Fatalf("runWorkflow() error = %v", err)
 	}
-	if result.AssetInventorySummary == nil {
-		t.Fatal("expected asset inventory summary")
+	if result.AssetInventorySummary != nil {
+		t.Fatalf("legacy asset inventory summary = %+v, want unset for unselected multi-target request", result.AssetInventorySummary)
 	}
-	if result.AssetInventorySummary.TotalRecords == 0 {
-		t.Fatalf("asset inventory summary = %+v", result.AssetInventorySummary)
+	if result.AssetInventorySummaryForTarget("amazon") == nil {
+		t.Fatal("expected amazon target inventory summary")
 	}
-	if result.AssetInventorySummary.GeneratedRecords == 0 {
-		t.Fatalf("asset inventory summary = %+v, want generated records", result.AssetInventorySummary)
+	if result.AssetInventorySummaryForTarget("amazon").TotalRecords == 0 {
+		t.Fatalf("amazon target inventory summary = %+v", result.AssetInventorySummaryForTarget("amazon"))
 	}
 	if result.StandardProductSnapshot == nil {
 		t.Fatal("expected persisted standard product snapshot")
@@ -306,11 +887,11 @@ func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T)
 	if result.StandardProductSnapshot.CanonicalProduct == nil || result.StandardProductSnapshot.CatalogProduct == nil {
 		t.Fatalf("standard snapshot = %+v, want canonical/catalog product", result.StandardProductSnapshot)
 	}
-	if result.StandardProductSnapshot.AssetInventorySummary == nil || result.StandardProductSnapshot.AssetInventorySummary.TotalRecords == 0 {
-		t.Fatalf("standard snapshot inventory = %+v, want persisted inventory summary", result.StandardProductSnapshot)
+	if result.StandardProductSnapshot.AssetInventorySummary != nil {
+		t.Fatalf("standard snapshot legacy inventory = %+v, want unset for unselected multi-target result", result.StandardProductSnapshot.AssetInventorySummary)
 	}
-	if result.StandardProductSnapshot.ImageAssets == nil {
-		t.Fatalf("standard snapshot image assets = %+v, want copied image stage output", result.StandardProductSnapshot)
+	if result.StandardProductSnapshot.ImageAssetsByTarget["amazon"] == nil || result.StandardProductSnapshot.AssetInventorySummariesByTarget["amazon"] == nil {
+		t.Fatalf("standard snapshot target assets = %+v, want copied target-keyed image and inventory output", result.StandardProductSnapshot)
 	}
 	if result.Amazon == nil || result.Amazon.ImageBundle == nil {
 		t.Fatalf("amazon image bundle = %+v", result.Amazon)
@@ -330,8 +911,8 @@ func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T)
 	if result.Walmart == nil || result.Walmart.ImageBundle == nil {
 		t.Fatalf("walmart image bundle = %+v", result.Walmart)
 	}
-	if imageSvc.lastReq == nil || imageSvc.lastReq.Marketplace != "amazon" {
-		t.Fatalf("image request = %+v, want platform-specific marketplace", imageSvc.lastReq)
+	if len(imageSvc.requests) != 4 || imageSvc.requests[0].TargetPlatform != "amazon" || imageSvc.requests[1].TargetPlatform != "shein" || imageSvc.requests[2].TargetPlatform != "temu" || imageSvc.requests[3].TargetPlatform != "walmart" {
+		t.Fatalf("image requests = %+v, want one explicit request per target", imageSvc.requests)
 	}
 
 	inventory, err := assetRepository.GetInventory(context.Background(), asset.InventoryRef{TaskID: "listingkit-task-1"})
@@ -537,7 +1118,8 @@ func TestApplyPlatformAssetDispatchMutationShapesBundlesWhenDispatchReturnsAsset
 	t.Parallel()
 
 	final := &ListingKitResult{
-		Shein: &SheinPackage{},
+		Shein:     &SheinPackage{},
+		Platforms: []string{"shein"},
 		AssetBundle: &asset.Bundle{
 			Assets: []asset.Asset{
 				{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.com/source-1.jpg"},
@@ -558,12 +1140,13 @@ func TestApplyPlatformAssetDispatchMutationShapesBundlesWhenDispatchReturnsAsset
 	dispatchResult := &assetgeneration.Result{
 		Assets: []asset.AssetRecord{
 			{
-				ID:       "generated-1",
-				Kind:     asset.KindSceneImage,
-				Origin:   asset.OriginGenerated,
-				URL:      "https://example.com/generated-1.jpg",
-				RecipeID: "scene",
-				Lineage:  &asset.AssetLineage{SourceAssetIDs: []string{"source-1"}},
+				ID:           "generated-1",
+				Kind:         asset.KindSceneImage,
+				Origin:       asset.OriginGenerated,
+				URL:          "https://example.com/generated-1.jpg",
+				RecipeID:     "scene",
+				Lineage:      &asset.AssetLineage{SourceAssetIDs: []string{"source-1"}},
+				PlatformTags: []string{"shein"},
 			},
 		},
 	}
@@ -1142,18 +1725,20 @@ func TestPlatformAssetDispatchPhaseRunOrchestratesDispatchMutationAndPersistence
 				ExecutionStatus: "completed",
 			}},
 			Assets: []asset.AssetRecord{{
-				ID:       "generated-main",
-				Kind:     asset.KindSceneImage,
-				Origin:   asset.OriginGenerated,
-				URL:      "https://cdn.example.com/generated-main.jpg",
-				RecipeID: "amazon-lifestyle",
+				ID:           "generated-main",
+				Kind:         asset.KindSceneImage,
+				Origin:       asset.OriginGenerated,
+				URL:          "https://cdn.example.com/generated-main.jpg",
+				RecipeID:     "amazon-lifestyle",
+				PlatformTags: []string{"amazon"},
 			}},
 		},
 	}
 	phase := buildPlatformAssetDispatchPhase(seedWorkflowAssets(seedWorkflowDeps(&service{}), assetRepository, nil, newDefaultAssetBundleBuilder(), assetGenerator))
 	final := &ListingKitResult{
-		Summary: &GenerationSummary{},
-		Amazon:  &AmazonPackage{},
+		Summary:   &GenerationSummary{},
+		Amazon:    &AmazonPackage{},
+		Platforms: []string{"amazon"},
 		AssetBundle: &asset.Bundle{
 			Assets: []asset.Asset{{
 				ID:   "source-1",
@@ -1509,10 +2094,10 @@ func TestRunWorkflowRecordsDegradedImageStageWhenImageProcessingFails(t *testing
 	if err != nil {
 		t.Fatalf("runWorkflow() error = %v", err)
 	}
-	if !hasWorkflowStageStatus(result.WorkflowStages, "product_image", WorkflowStageStatusDegraded) {
-		t.Fatalf("workflow stages = %+v, want degraded product_image", result.WorkflowStages)
+	if !hasWorkflowStageStatus(result.WorkflowStages, "product_image:amazon", WorkflowStageStatusDegraded) {
+		t.Fatalf("workflow stages = %+v, want degraded product_image:amazon", result.WorkflowStages)
 	}
-	if !hasWorkflowIssue(result.WorkflowIssues, "product_image", WorkflowIssueSeverityWarning, "image_processing_failed") {
+	if !hasWorkflowIssue(result.WorkflowIssues, "product_image:amazon", WorkflowIssueSeverityWarning, "image_processing_failed") {
 		t.Fatalf("workflow issues = %+v, want image processing warning", result.WorkflowIssues)
 	}
 	if result.Summary == nil || result.Summary.WarningCount == 0 || result.Summary.IssueCount == 0 {
@@ -1835,8 +2420,9 @@ func TestRunWorkflowPersistsDeferredPlatformDispatchOutputs(t *testing.T) {
 				ExecutionStatus: "completed",
 			}},
 			Assets: []asset.AssetRecord{{
-				Kind: asset.KindGalleryImage,
-				URL:  "https://cdn.example.com/generated-gallery.jpg",
+				Kind:         asset.KindGalleryImage,
+				URL:          "https://cdn.example.com/generated-gallery.jpg",
+				PlatformTags: []string{"amazon"},
 			}},
 		},
 	}

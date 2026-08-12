@@ -7,6 +7,7 @@ import (
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
 	"task-processor/internal/catalog/canonical"
+	listingplatform "task-processor/internal/listing/platform"
 )
 
 type standardWorkflowAssetPhase struct {
@@ -25,7 +26,8 @@ func (p *standardWorkflowAssetPhase) run(
 	recorder *workflowRecorder,
 	enableAssetGeneration bool,
 ) (*asset.Inventory, map[string][]assetrecipe.AssetRecipe, *assetgeneration.Result, []assetgeneration.Task) {
-	inventory := asset.BuildInventory(task.ID, result.AssetBundle)
+	workingBundle := result.assetBundleForInventory()
+	inventory := asset.BuildInventory(task.ID, workingBundle)
 	assetRepo := resolveWorkflowAssetRepository(p.service)
 	assetGenerator := resolveWorkflowAssetGenerationService(p.service)
 	assetRecipeResolver := resolveWorkflowAssetRecipeResolver(p.service)
@@ -49,10 +51,11 @@ func (p *standardWorkflowAssetPhase) run(
 		if enableAssetGeneration && assetGenerator != nil && len(baseRecipes) > 0 {
 			stage := recorder.Start("asset_generation_baseline", "")
 			execution, execErr := assetGenerator.Execute(ctx, assetgeneration.Request{
-				TaskID:    task.ID,
-				Product:   result.CatalogProduct,
-				Inventory: inventory,
-				Recipes:   append([]assetrecipe.AssetRecipe(nil), baseRecipes...),
+				TaskID:          task.ID,
+				TargetPlatforms: append([]string(nil), task.Request.Platforms...),
+				Product:         result.CatalogProduct,
+				Inventory:       inventory,
+				Recipes:         append([]assetrecipe.AssetRecipe(nil), baseRecipes...),
 			})
 			if execErr != nil {
 				stage.Degrade("asset_generation_baseline_execute_failed", "Baseline asset generation failed", execErr.Error())
@@ -62,7 +65,7 @@ func (p *standardWorkflowAssetPhase) run(
 			if execution != nil && len(execution.Assets) > 0 {
 				inventory.Records = append(inventory.Records, execution.Assets...)
 				inventory.Summary = asset.RebuildInventorySummary(inventory)
-				result.AssetBundle = asset.RebuildBundleWithRecords(result.AssetBundle, execution.Assets)
+				workingBundle = asset.RebuildBundleWithRecords(workingBundle, execution.Assets)
 				if assetRepo != nil {
 					_ = assetRepo.SaveInventory(ctx, inventory)
 				}
@@ -72,10 +75,11 @@ func (p *standardWorkflowAssetPhase) run(
 			stage := recorder.Start("asset_generation_platform", "")
 			var planErr error
 			generationPlan, planErr = assetGenerator.Plan(ctx, assetgeneration.Request{
-				TaskID:    task.ID,
-				Product:   result.CatalogProduct,
-				Inventory: inventory,
-				Recipes:   assetrecipe.FlattenResolved(recipesByPlatform),
+				TaskID:          task.ID,
+				TargetPlatforms: listingplatform.NormalizeSupportedPlatforms(task.Request.Platforms),
+				Product:         result.CatalogProduct,
+				Inventory:       inventory,
+				Recipes:         assetrecipe.FlattenResolved(recipesByPlatform),
 			})
 			if planErr != nil {
 				stage.Degrade("asset_generation_platform_plan_failed", "Platform asset generation planning failed", planErr.Error())
@@ -96,7 +100,7 @@ func (p *standardWorkflowAssetPhase) run(
 					if len(dispatchResult.Assets) > 0 {
 						inventory.Records = append(inventory.Records, dispatchResult.Assets...)
 						inventory.Summary = asset.RebuildInventorySummary(inventory)
-						result.AssetBundle = asset.RebuildBundleWithRecords(result.AssetBundle, dispatchResult.Assets)
+						workingBundle = asset.RebuildBundleWithRecords(workingBundle, dispatchResult.Assets)
 						if assetRepo != nil {
 							_ = assetRepo.SaveInventory(ctx, inventory)
 						}
@@ -107,9 +111,19 @@ func (p *standardWorkflowAssetPhase) run(
 				stage.Complete()
 			}
 		}
-		result.AssetInventorySummary = inventory.Summary
-		if result.AssetInventorySummary != nil {
-			result.AssetInventorySummary.RecipeCount = len(baseRecipes) + len(assetrecipe.FlattenResolved(recipesByPlatform))
+		if inventory.Summary != nil {
+			inventory.Summary.RecipeCount = len(baseRecipes) + len(assetrecipe.FlattenResolved(recipesByPlatform))
+		}
+		for target, bundle := range result.AssetBundlesByTarget {
+			if bundle == nil {
+				continue
+			}
+			result.AssetInventorySummariesByTarget[target] = asset.InventorySummaryFromBundle(bundle)
+		}
+		result.applyCompatibilityAssetProjectionForRequest(task.Request)
+		if result.AssetBundle != nil {
+			result.AssetBundle = workingBundle
+			result.AssetInventorySummary = inventory.Summary
 		}
 	}
 

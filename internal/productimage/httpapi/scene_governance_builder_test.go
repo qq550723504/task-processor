@@ -13,7 +13,7 @@ import (
 
 func TestBuildGovernedProductImageSceneGeneratorKeepsDisabledPathUntouched(t *testing.T) {
 	legacy := &sceneGovernanceGeneratorStub{}
-	got, err := buildGovernedProductImageSceneGenerator(&config.Config{}, legacy, nil, nil, nil)
+	got, err := buildGovernedProductImageSceneGenerator(newSceneGovernanceOptions(&config.Config{}), legacy, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("buildGovernedProductImageSceneGenerator: %v", err)
 	}
@@ -23,7 +23,7 @@ func TestBuildGovernedProductImageSceneGeneratorKeepsDisabledPathUntouched(t *te
 }
 
 func TestBuildGovernedProductImageSceneGeneratorRequiresDependenciesWhenEnabled(t *testing.T) {
-	_, err := buildGovernedProductImageSceneGenerator(&config.Config{AICapability: config.AICapabilityConfig{ProductImageSceneEnabled: true}}, &sceneGovernanceGeneratorStub{}, nil, nil, nil)
+	_, err := buildGovernedProductImageSceneGenerator(newSceneGovernanceOptions(&config.Config{AICapability: config.AICapabilityConfig{ProductImageSceneEnabled: true}}), &sceneGovernanceGeneratorStub{}, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected missing governance dependency error")
 	}
@@ -33,7 +33,7 @@ func TestBuildGovernedProductImageSceneGeneratorRequiresTenantAllowlistWhenEnabl
 	resolver := &productImageSceneResolver{}
 	recorder := &sceneGovernanceRecorderStub{}
 	_, err := buildGovernedProductImageSceneGenerator(
-		&config.Config{AICapability: config.AICapabilityConfig{ProductImageSceneEnabled: true}},
+		newSceneGovernanceOptions(&config.Config{AICapability: config.AICapabilityConfig{ProductImageSceneEnabled: true}}),
 		&sceneGovernanceGeneratorStub{}, resolver, recorder, nil,
 	)
 	if aicapability.CategoryOf(err) != aicapability.ErrorInvalidInput {
@@ -48,7 +48,7 @@ func TestBuildGovernedProductImageSceneGeneratorCarriesTaskAndTraceIdentity(t *t
 		CacheKey: "image-config-v1",
 		Config:   &openaiclient.ClientConfig{APIKey: "key", BaseURL: "https://example.test/v1", Model: "image-model", APIStyle: "openai"},
 	}}
-	generator, err := buildGovernedProductImageSceneGenerator(&config.Config{AICapability: config.AICapabilityConfig{ProductImageSceneEnabled: true, ProductImageSceneAllowedTenantIDs: []string{"tenant-a"}}}, legacy, resolver, recorder, nil)
+	generator, err := buildGovernedProductImageSceneGenerator(newSceneGovernanceOptions(&config.Config{AICapability: config.AICapabilityConfig{ProductImageSceneEnabled: true, ProductImageSceneAllowedTenantIDs: []string{"tenant-a"}}}), legacy, resolver, recorder, nil)
 	if err != nil {
 		t.Fatalf("buildGovernedProductImageSceneGenerator: %v", err)
 	}

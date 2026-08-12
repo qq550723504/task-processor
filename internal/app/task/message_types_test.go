@@ -1,6 +1,24 @@
 package task
 
-import "testing"
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestTaskPayloadV2SerializesTaskIDAsString(t *testing.T) {
+	payload, err := json.Marshal(TaskPayload{TaskID: "430604922543791994"})
+	if err != nil {
+		t.Fatalf("marshal TaskPayload: %v", err)
+	}
+
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		t.Fatalf("unmarshal TaskPayload: %v", err)
+	}
+	if got := string(raw["taskId"]); got != `"430604922543791994"` {
+		t.Fatalf("taskId must be a JSON string, got %s", got)
+	}
+}
 
 func TestNewSuccessDataIncludesSourceAndTargetPlatform(t *testing.T) {
 	successData := NewSuccessData("shein", "amazon", "B012345678", 177)

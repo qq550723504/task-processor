@@ -21,9 +21,9 @@ func (s *service) ProcessImages(ctx context.Context, task *Task) (*ImageProcessR
 	log := loggerForImageProcess(task.ID)
 	startedAt := time.Now()
 	log.WithFields(logrus.Fields{
-		"marketplace": task.Request.Marketplace,
-		"retry_count": task.RetryCount,
-		"status":      task.Status,
+		"target_platform": task.Request.TargetPlatform,
+		"retry_count":     task.RetryCount,
+		"status":          task.Status,
 	}).Info("starting productimage processing")
 
 	if err := s.taskRepo.MarkProcessing(ctx, task.ID); err != nil {

@@ -5,6 +5,7 @@ import (
 	assetbundle "task-processor/internal/asset/bundle"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
+	listingplatform "task-processor/internal/listing/platform"
 )
 
 func attachPlatformImageBundles(result *ListingKitResult, inventory *asset.Inventory, recipesByPlatform map[string][]assetrecipe.AssetRecipe, generationPlan *assetgeneration.Result, builder assetbundle.Builder) {
@@ -14,7 +15,8 @@ func attachPlatformImageBundles(result *ListingKitResult, inventory *asset.Inven
 	platforms := make([]string, 0, len(recipesByPlatform))
 	for platform, recipes := range recipesByPlatform {
 		platforms = append(platforms, platform)
-		imageBundle := builder.Build(assetbundleRequest(platform, inventory, recipes))
+		targetInventory := platformAssetInventory(result, platform, inventory)
+		imageBundle := builder.Build(assetbundleRequest(platform, targetInventory, recipes))
 		if len(platformGenerationTasks(platform, generationPlan)) > 0 {
 			imageBundle.PendingGeneration = platformGenerationTasks(platform, generationPlan)
 		}
@@ -40,6 +42,98 @@ func attachPlatformImageBundles(result *ListingKitResult, inventory *asset.Inven
 	if result.AssetInventorySummary != nil {
 		result.AssetInventorySummary.Platforms = uniqueStrings(platforms)
 	}
+	for platform, summary := range result.AssetInventorySummariesByTarget {
+		if summary != nil {
+			summary.Platforms = uniqueStrings([]string{platform})
+		}
+	}
+}
+
+func platformAssetInventory(result *ListingKitResult, platform string, shared *asset.Inventory) *asset.Inventory {
+	if result == nil || shared == nil {
+		return nil
+	}
+	platform = listingplatform.Normalize(platform)
+	if platform == "" {
+		return nil
+	}
+	targetBundle := explicitTargetAssetBundle(result, platform)
+	if targetBundle == nil {
+		targetBundle = &asset.Bundle{}
+	}
+	targetInventory := asset.BuildInventory(shared.Ref.TaskID, targetBundle)
+	if targetInventory == nil {
+		return nil
+	}
+	targetInventory.Ref = shared.Ref
+	baseRecords := targetBaseAssetRecordKeys(result)
+	addAssetBundleRecordKeys(baseRecords, targetBundle)
+	for _, record := range shared.Records {
+		if _, isTargetBaseRecord := baseRecords[assetRecordKey(record.ID, record.Kind)]; isTargetBaseRecord {
+			continue
+		}
+		if !assetRecordTargetsPlatform(record, platform) {
+			continue
+		}
+		targetInventory.Records = append(targetInventory.Records, record)
+	}
+	targetInventory.Summary = asset.RebuildInventorySummary(targetInventory)
+	return targetInventory
+}
+
+func explicitTargetAssetBundle(result *ListingKitResult, platform string) *asset.Bundle {
+	if result == nil {
+		return nil
+	}
+	platform = listingplatform.Normalize(platform)
+	if platform == "" {
+		return nil
+	}
+	if len(result.AssetBundlesByTarget) > 0 {
+		return result.AssetBundlesByTarget[platform]
+	}
+	targets := listingplatform.NormalizeSupportedPlatforms(result.Platforms)
+	if len(targets) == 1 && targets[0] == platform {
+		return result.AssetBundle
+	}
+	return nil
+}
+
+func targetBaseAssetRecordKeys(result *ListingKitResult) map[string]struct{} {
+	keys := map[string]struct{}{}
+	if result == nil {
+		return keys
+	}
+	for _, bundle := range result.AssetBundlesByTarget {
+		addAssetBundleRecordKeys(keys, bundle)
+	}
+	return keys
+}
+
+func addAssetBundleRecordKeys(keys map[string]struct{}, bundle *asset.Bundle) {
+	if keys == nil || bundle == nil {
+		return
+	}
+	for _, item := range bundle.Assets {
+		keys[assetRecordKey(item.ID, item.Kind)] = struct{}{}
+	}
+}
+
+func assetRecordKey(id string, kind asset.Kind) string {
+	return id + "\x00" + string(kind)
+}
+
+func assetRecordTargetsPlatform(record asset.AssetRecord, platform string) bool {
+	platform = listingplatform.Normalize(platform)
+	if platform == "" {
+		return false
+	}
+	for _, tag := range record.PlatformTags {
+		if listingplatform.Normalize(tag) == platform {
+			return true
+		}
+	}
+	return false
 }
 
 func platformGenerationTasks(platform string, plan *assetgeneration.Result) []assetgeneration.Task {

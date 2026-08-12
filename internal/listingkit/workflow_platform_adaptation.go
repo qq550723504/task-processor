@@ -52,13 +52,21 @@ func (s *service) runPlatformAdaptation(
 
 	var canonicalProduct *canonical.Product
 	var imageAssets *productimage.ImageProcessResult
+	var imageAssetsByTarget map[string]*productimage.ImageProcessResult
 	if snapshot != nil {
 		canonicalProduct = snapshot.CanonicalProduct
 		imageAssets = snapshot.ImageAssets
+		imageAssetsByTarget = snapshot.ImageAssetsByTarget
 	}
 
 	log.Info("starting listing kit platform adaptation")
-	final := resolveAssembler(s).Assemble(task, canonicalProduct, imageAssets)
+	assembler := resolveAssembler(s)
+	var final *ListingKitResult
+	if targetAware, ok := assembler.(TargetAwareAssembler); ok && len(imageAssetsByTarget) > 0 {
+		final = targetAware.AssembleForTargets(task, canonicalProduct, imageAssetsByTarget)
+	} else {
+		final = assembler.Assemble(task, canonicalProduct, imageAssets)
+	}
 	if final == nil {
 		final = initResult(task)
 	}

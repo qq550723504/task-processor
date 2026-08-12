@@ -128,12 +128,21 @@ func TestBuildPlatformPayloadResultContextSelectsPlatformSpecificVisuals(t *test
 	t.Parallel()
 
 	imageBundle := &common.PublishImageBundle{Platform: "amazon"}
+	amazonAssets := &asset.Bundle{}
+	temuAssets := &asset.Bundle{}
 	context := buildPlatformPayloadResultContext(&ListingKitResult{
 		AssetBundle: &asset.Bundle{},
-	}, []PlatformAssetRenderPreviews{
+		AssetBundlesByTarget: map[string]*asset.Bundle{
+			"amazon": amazonAssets,
+			"temu":   temuAssets,
+		},
+	}, "amazon", []PlatformAssetRenderPreviews{
 		{Platform: "amazon"},
 		{Platform: "temu"},
 	})
+	if context.assetBundle != amazonAssets {
+		t.Fatalf("asset bundle = %#v, want amazon target bundle", context.assetBundle)
+	}
 
 	previewBase := context.previewVisualBase("amazon", imageBundle)
 	if previewBase.renderPreviews == nil || previewBase.renderPreviews.Platform != "amazon" {

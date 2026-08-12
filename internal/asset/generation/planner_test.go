@@ -2,6 +2,7 @@ package generation_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 
 	"task-processor/internal/asset"
@@ -120,6 +121,43 @@ func TestNoopServicePlansMissingGeneratedAssetForDifferentBundleSlot(t *testing.
 	}
 }
 
+func TestServiceDispatchRestoresCommonTaskTargetPlatforms(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	request := assetgeneration.Request{
+		TaskID:          "task-common-deferred-platform-tags",
+		TargetPlatforms: []string{"shein", "amazon"},
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{{
+			ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.com/source.jpg",
+		}}},
+		Recipes: []assetrecipe.AssetRecipe{{
+			ID: "common-detail", Platform: "common", AssetKind: asset.KindDetailCrop, Generated: true,
+			Template: &assetrecipe.Template{Purpose: "detail", PreferredKinds: []asset.Kind{asset.KindDetailCrop}},
+		}},
+	}
+	plan, err := service.Plan(context.Background(), request)
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if len(plan.Tasks) != 1 {
+		t.Fatalf("planned tasks = %+v, want one common deferred task", plan.Tasks)
+	}
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: request.TaskID, Inventory: request.Inventory, Tasks: plan.Tasks,
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one common deferred asset", result.Assets)
+	}
+	want := []string{"shein", "amazon"}
+	if got := result.Assets[0].PlatformTags; !reflect.DeepEqual(got, want) {
+		t.Fatalf("common deferred asset platform tags = %#v, want %#v", got, want)
+	}
+}
+
 func TestNoopServiceExecuteMaterializesCleanImageFromMainAsset(t *testing.T) {
 	t.Parallel()
 
@@ -160,6 +198,58 @@ func TestNoopServiceExecuteMaterializesCleanImageFromMainAsset(t *testing.T) {
 	}
 	if result.Assets[0].Lineage == nil || len(result.Assets[0].Lineage.SourceAssetIDs) == 0 || result.Assets[0].Lineage.SourceAssetIDs[0] != "main-1" {
 		t.Fatalf("asset lineage = %+v, want source main-1", result.Assets[0].Lineage)
+	}
+}
+
+func TestServiceExecuteStampsNativeAssetWithCanonicalPlatformTag(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Execute(context.Background(), assetgeneration.Request{
+		TaskID: "task-native-platform-tag",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{{
+			ID: "main-1", Kind: asset.KindMainImage, URL: "https://example.com/main.jpg",
+		}}},
+		Recipes: []assetrecipe.AssetRecipe{{
+			ID: "shein-clean", Platform: " SHEIN ", AssetKind: asset.KindCleanImage, Generated: true,
+			Template: &assetrecipe.Template{Purpose: "clean", PreferredKinds: []asset.Kind{asset.KindCleanImage}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one native asset", result.Assets)
+	}
+	if got := result.Assets[0].PlatformTags; len(got) != 1 || got[0] != "shein" {
+		t.Fatalf("native asset platform tags = %#v, want [shein]", got)
+	}
+}
+
+func TestServiceExecuteExpandsCommonAssetToExplicitTargetPlatforms(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Execute(context.Background(), assetgeneration.Request{
+		TaskID:          "task-common-platform-tags",
+		TargetPlatforms: []string{" SHEIN ", "amazon", "shein", ""},
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{{
+			ID: "main-1", Kind: asset.KindMainImage, URL: "https://example.com/main.jpg",
+		}}},
+		Recipes: []assetrecipe.AssetRecipe{{
+			ID: "base-clean", Platform: "common", AssetKind: asset.KindCleanImage, Generated: true,
+			Template: &assetrecipe.Template{Purpose: "clean", PreferredKinds: []asset.Kind{asset.KindCleanImage}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one common native asset", result.Assets)
+	}
+	want := []string{"shein", "amazon"}
+	if got := result.Assets[0].PlatformTags; !reflect.DeepEqual(got, want) {
+		t.Fatalf("common asset platform tags = %#v, want %#v", got, want)
 	}
 }
 
@@ -248,6 +338,62 @@ func (s *stubWhiteBackgroundRenderer) Render(ctx context.Context, asset *product
 type stubDeferredRenderer struct {
 	lastRequest assetgeneration.DeferredRenderRequest
 	result      *asset.AssetRecord
+}
+
+func TestServiceDispatchStampsDeferredAssetWithCanonicalPlatformTag(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: "task-deferred-platform-tag",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{{
+			ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.com/source.jpg",
+		}}},
+		Tasks: []assetgeneration.Task{{
+			ID: "temu:detail", Platform: " TEMU ", RecipeID: "temu-detail", AssetKind: asset.KindDetailCrop,
+			ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "planned", CanExecute: true,
+			SourceAssetIDs: []string{"source-1"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one deferred asset", result.Assets)
+	}
+	if got := result.Assets[0].PlatformTags; len(got) != 1 || got[0] != "temu" {
+		t.Fatalf("deferred asset platform tags = %#v, want [temu]", got)
+	}
+}
+
+func TestServiceDispatchOverridesArbitraryRendererTagsWithCanonicalTaskPlatform(t *testing.T) {
+	t.Parallel()
+
+	renderer := &stubDeferredRenderer{result: &asset.AssetRecord{
+		ID: "rendered-scene", Kind: asset.KindSceneImage, URL: "https://cdn.example.com/rendered-scene.jpg",
+		PlatformTags: []string{"wrong-target"},
+	}}
+	service := assetgeneration.NewService(assetgeneration.Config{DeferredRenderer: renderer})
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: "task-renderer-platform-tag",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{{
+			ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.com/source.jpg",
+		}}},
+		Tasks: []assetgeneration.Task{{
+			ID: "shein:scene", Platform: " SHEIN ", RecipeID: "shein-scene", AssetKind: asset.KindSceneImage,
+			ExecutionMode: assetgeneration.ExecutionModeRendererBacked, ExecutionStatus: "planned", CanExecute: true,
+			SourceAssetIDs: []string{"source-1"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one renderer-backed asset", result.Assets)
+	}
+	if got := result.Assets[0].PlatformTags; len(got) != 1 || got[0] != "shein" {
+		t.Fatalf("renderer-backed asset platform tags = %#v, want [shein]", got)
+	}
 }
 
 func (s *stubDeferredRenderer) Render(ctx context.Context, req assetgeneration.DeferredRenderRequest) (*asset.AssetRecord, error) {

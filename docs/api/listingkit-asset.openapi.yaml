@@ -1,0 +1,357 @@
+# Generated TypeScript output: node web/listingkit-ui/node_modules/@hey-api/openapi-ts/bin/run.js -i docs/api/listingkit-asset.openapi.yaml -o web/listingkit-ui/src/lib/api/generated -p @hey-api/typescript
+# Deterministic regeneration and drift verification: make api-contract-check
+openapi: 3.1.0
+info:
+  title: ListingKit Asset API
+  version: 1.0.0
+  description: |
+    Focused HTTP contract pilot for explicit-target ProductImage processing and
+    ListingKit target previews. The ListingKit UI keeps its existing proxy and
+    authentication boundary; `/api/v1/images` remains server-to-server only.
+paths:
+  /api/v1/images/process:
+    post:
+      operationId: processImages
+      summary: Queue asynchronous image processing for a canonical or compatibility target platform.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageProcessRequest'
+      responses:
+        '200':
+          description: Image processing task queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageTaskCreated'
+        '400':
+          description: Invalid request, including a missing or unsupported target platform.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/images/tasks/{task_id}:
+    get:
+      operationId: getImageTask
+      summary: Read the asynchronous image processing result for its explicit target.
+      parameters:
+        - $ref: '#/components/parameters/TaskID'
+      responses:
+        '200':
+          description: Image processing task state and target-specific result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImageTaskResult'
+        '404':
+          description: Image task was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '409':
+          description: Persisted task has no supported target platform and cannot be returned as a target-specific result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /api/v1/listing-kits/tasks/{task_id}/preview:
+    get:
+      operationId: getListingKitPreview
+      summary: Read a ListingKit preview, optionally selecting one target platform.
+      parameters:
+        - $ref: '#/components/parameters/TaskID'
+        - name: platform
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/TargetPlatform'
+      responses:
+        '200':
+          description: ListingKit preview response.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListingKitPreview'
+        '400':
+          description: Unsupported preview platform.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '404':
+          description: Task or requested platform preview was not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+components:
+  parameters:
+    TaskID:
+      name: task_id
+      in: path
+      required: true
+      schema:
+        type: string
+        minLength: 1
+  schemas:
+    TargetPlatform:
+      type: string
+      enum: [amazon, shein, temu, walmart]
+    ImageProcessRequest:
+      oneOf:
+        - $ref: '#/components/schemas/ImageURLsOnlyProcessRequest'
+        - $ref: '#/components/schemas/ProductURLOnlyProcessRequest'
+        - $ref: '#/components/schemas/CombinedImageSourcesProcessRequest'
+    ImageURLsOnlyProcessRequest:
+      anyOf:
+        - $ref: '#/components/schemas/ImageURLsOnlyTargetProcessRequest'
+        - $ref: '#/components/schemas/ImageURLsOnlyMarketplaceProcessRequest'
+    ImageURLsOnlyTargetProcessRequest:
+      type: object
+      additionalProperties: false
+      required: [image_urls, target_platform]
+      properties:
+        image_urls:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+        text:
+          type: string
+        target_platform:
+          $ref: '#/components/schemas/TargetPlatform'
+        marketplace:
+          description: Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
+          allOf:
+            - $ref: '#/components/schemas/TargetPlatform'
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        scene:
+          $ref: '#/components/schemas/SceneGenerationOptions'
+    ImageURLsOnlyMarketplaceProcessRequest:
+      type: object
+      additionalProperties: false
+      required: [image_urls, marketplace]
+      properties:
+        image_urls:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+        text:
+          type: string
+        target_platform:
+          $ref: '#/components/schemas/TargetPlatform'
+        marketplace:
+          description: Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
+          allOf:
+            - $ref: '#/components/schemas/TargetPlatform'
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        scene:
+          $ref: '#/components/schemas/SceneGenerationOptions'
+    ProductURLOnlyProcessRequest:
+      anyOf:
+        - $ref: '#/components/schemas/ProductURLOnlyTargetProcessRequest'
+        - $ref: '#/components/schemas/ProductURLOnlyMarketplaceProcessRequest'
+    ProductURLOnlyTargetProcessRequest:
+      type: object
+      additionalProperties: false
+      required: [product_url, target_platform]
+      properties:
+        product_url:
+          type: string
+          minLength: 1
+        text:
+          type: string
+        target_platform:
+          $ref: '#/components/schemas/TargetPlatform'
+        marketplace:
+          description: Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
+          allOf:
+            - $ref: '#/components/schemas/TargetPlatform'
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        scene:
+          $ref: '#/components/schemas/SceneGenerationOptions'
+    ProductURLOnlyMarketplaceProcessRequest:
+      type: object
+      additionalProperties: false
+      required: [product_url, marketplace]
+      properties:
+        product_url:
+          type: string
+          minLength: 1
+        text:
+          type: string
+        target_platform:
+          $ref: '#/components/schemas/TargetPlatform'
+        marketplace:
+          description: Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
+          allOf:
+            - $ref: '#/components/schemas/TargetPlatform'
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        scene:
+          $ref: '#/components/schemas/SceneGenerationOptions'
+    CombinedImageSourcesProcessRequest:
+      anyOf:
+        - $ref: '#/components/schemas/CombinedImageSourcesTargetProcessRequest'
+        - $ref: '#/components/schemas/CombinedImageSourcesMarketplaceProcessRequest'
+    CombinedImageSourcesTargetProcessRequest:
+      type: object
+      additionalProperties: false
+      required: [image_urls, product_url, target_platform]
+      properties:
+        image_urls:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+        product_url:
+          type: string
+          minLength: 1
+        text:
+          type: string
+        target_platform:
+          $ref: '#/components/schemas/TargetPlatform'
+        marketplace:
+          description: Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
+          allOf:
+            - $ref: '#/components/schemas/TargetPlatform'
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        scene:
+          $ref: '#/components/schemas/SceneGenerationOptions'
+    CombinedImageSourcesMarketplaceProcessRequest:
+      type: object
+      additionalProperties: false
+      required: [image_urls, product_url, marketplace]
+      properties:
+        image_urls:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+        product_url:
+          type: string
+          minLength: 1
+        text:
+          type: string
+        target_platform:
+          $ref: '#/components/schemas/TargetPlatform'
+        marketplace:
+          description: Legacy compatibility target. It may be supplied alone; if target_platform is also supplied, both must match.
+          allOf:
+            - $ref: '#/components/schemas/TargetPlatform'
+        country:
+          $ref: '#/components/schemas/CountryCode'
+        scene:
+          $ref: '#/components/schemas/SceneGenerationOptions'
+    CountryCode:
+      type: string
+      minLength: 2
+      maxLength: 2
+      pattern: '^[A-Za-z]{2}$'
+      description: ISO 3166-1 alpha-2 country code consumed by the ProductImage marketplace profile.
+    SceneGenerationOptions:
+      type: object
+      additionalProperties: false
+      properties:
+        scene_category:
+          type: string
+        scene_style:
+          type: string
+        background_tone:
+          type: string
+        composition:
+          type: string
+        props_level:
+          type: string
+        audience_hint:
+          type: string
+        custom_scene_hint:
+          type: string
+    ImageTaskCreated:
+      type: object
+      required: [task_id, status, created_at]
+      properties:
+        task_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/ImageTaskStatus'
+        created_at:
+          type: string
+          format: date-time
+    ImageTaskStatus:
+      type: string
+      enum: [pending, processing, completed, needs_review, rejected, failed]
+    ImageTaskResult:
+      type: object
+      required: [task_id, status, created_at, target_platform]
+      properties:
+        task_id:
+          type: string
+        status:
+          $ref: '#/components/schemas/ImageTaskStatus'
+        target_platform:
+          $ref: '#/components/schemas/TargetPlatform'
+        result:
+          $ref: '#/components/schemas/ImageProcessResult'
+        error:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+    ImageProcessResult:
+      type: object
+      properties:
+        main_image:
+          $ref: '#/components/schemas/ImageAsset'
+        white_bg_image:
+          $ref: '#/components/schemas/ImageAsset'
+        gallery_images:
+          type: array
+          items:
+            $ref: '#/components/schemas/ImageAsset'
+    ImageAsset:
+      type: object
+      required: [url, type]
+      properties:
+        url:
+          type: string
+          format: uri
+        type:
+          type: string
+    ListingKitPreview:
+      type: object
+      required: [task_id, status]
+      properties:
+        task_id:
+          type: string
+        status:
+          type: string
+        selected_platform:
+          $ref: '#/components/schemas/TargetPlatform'
+        platforms:
+          type: array
+          items:
+            $ref: '#/components/schemas/TargetPlatform'
+    ErrorEnvelope:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+        message:
+          type: string

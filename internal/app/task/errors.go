@@ -8,10 +8,11 @@ type ErrorCode string
 
 const (
 	// 任务相关错误
-	ErrCodeInvalidTask      ErrorCode = "INVALID_TASK"
-	ErrCodeTaskNotFound     ErrorCode = "TASK_NOT_FOUND"
-	ErrCodeDuplicateTask    ErrorCode = "DUPLICATE_TASK"
-	ErrCodePlatformMismatch ErrorCode = "PLATFORM_MISMATCH"
+	ErrCodeInvalidTask         ErrorCode = "INVALID_TASK"
+	ErrCodeTaskNotFound        ErrorCode = "TASK_NOT_FOUND"
+	ErrCodeDuplicateTask       ErrorCode = "DUPLICATE_TASK"
+	ErrCodePlatformMismatch    ErrorCode = "PLATFORM_MISMATCH"
+	ErrCodeUnknownCrawlerRoute ErrorCode = "UNKNOWN_CRAWLER_ROUTE"
 
 	// 处理相关错误
 	ErrCodeProcessingFailed ErrorCode = "PROCESSING_FAILED"
@@ -72,7 +73,7 @@ func (e *TaskError) IsRetryable() bool {
 		return true
 	case ErrCodeInvalidTask, ErrCodeProductNotFound, ErrCodeAccessDenied,
 		ErrCodePlatformMismatch, ErrCodeConversionFailed, ErrCodeValidationFailed,
-		ErrCodeStoreNotOwned:
+		ErrCodeStoreNotOwned, ErrCodeUnknownCrawlerRoute:
 		return false
 	default:
 		return true
@@ -89,6 +90,11 @@ func NewPlatformMismatchError(taskID int64, taskPlatform, processorPlatform stri
 	message := fmt.Sprintf("task platform %s does not match processor platform %s",
 		taskPlatform, processorPlatform)
 	return NewTaskError(ErrCodePlatformMismatch, taskID, "validation", message, nil)
+}
+
+func NewUnknownCrawlerRouteError(platform string) *TaskError {
+	return NewTaskError(ErrCodeUnknownCrawlerRoute, 0, "crawler_routing",
+		fmt.Sprintf("unknown crawler route for platform %s", platform), nil)
 }
 
 // NewProcessingError 创建处理失败错误

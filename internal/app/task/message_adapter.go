@@ -4,8 +4,10 @@ package task
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
+	coremetrics "task-processor/internal/core/metrics"
 	taskdomain "task-processor/internal/domain/task"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
@@ -88,7 +90,7 @@ func (a *MessageAdapter) MessageToTask(msg *Message) (*model.Task, error) {
 		return nil, fmt.Errorf("消息不能为空")
 	}
 
-	taskMsg, err := a.parseTaskMessage(msg)
+	event, taskMsg, err := a.parseTaskEvent(msg)
 	if err != nil {
 		return nil, fmt.Errorf("解析任务消息失败: %w", err)
 	}
@@ -100,18 +102,13 @@ func (a *MessageAdapter) MessageToTask(msg *Message) (*model.Task, error) {
 		createTime = taskMsg.CreatedAt.Unix()
 	}
 
-	normalizedTask, err := taskdomain.NormalizeTaskMessage(taskdomain.TaskMessage{
-		TaskID:         taskMsg.TaskID.String(),
-		Platform:       taskMsg.Platform,
-		SourcePlatform: taskMsg.SourcePlatform,
-		TargetPlatform: taskMsg.TargetPlatform,
-	})
+	normalizedTask, err := taskdomain.NormalizeTaskEventV2(event)
 	if err != nil {
 		return nil, fmt.Errorf("normalize task message: %w", err)
 	}
 
 	task := &model.Task{
-		ID:             taskMsg.TaskID.Int64(),
+		ID:             flexTaskID(event.TaskID).Int64(),
 		TenantID:       taskMsg.TenantID,
 		StoreID:        taskMsg.StoreID,
 		Platform:       string(normalizedTask.Route.Target),
@@ -126,6 +123,8 @@ func (a *MessageAdapter) MessageToTask(msg *Message) (*model.Task, error) {
 		Remark:         taskMsg.Remark,
 		CreateTime:     createTime,
 		UpdateTime:     createTime,
+		TraceID:        normalizedTask.TraceID,
+		Metadata:       normalizedTask.Metadata,
 	}
 
 	return task, nil
@@ -183,17 +182,18 @@ func parseTaskIDValue(raw any) (int64, bool) {
 }
 
 // TaskToMessage 将任务对象转换为消息
-func (a *MessageAdapter) TaskToMessage(task *model.Task) (*TaskMessage, error) {
+func (a *MessageAdapter) TaskToMessage(task *model.Task) (*taskdomain.TaskEventV2, error) {
 	if task == nil {
 		return nil, fmt.Errorf("任务不能为空")
 	}
 
-	taskMsg := &TaskMessage{
-		TaskID:         flexTaskID(fmt.Sprintf("%d", task.ID)),
+	targetPlatform := strings.TrimSuffix(strings.TrimSpace(task.Platform), ".crawler")
+	payload := TaskPayload{
+		TaskID:         fmt.Sprintf("%d", task.ID),
 		TenantID:       task.TenantID,
 		StoreID:        task.StoreID,
 		SourcePlatform: task.SourcePlatform,
-		TargetPlatform: task.Platform,
+		TargetPlatform: targetPlatform,
 		Region:         task.Region,
 		CategoryID:     task.CategoryID,
 		ProductID:      task.ProductID,
@@ -207,18 +207,61 @@ func (a *MessageAdapter) TaskToMessage(task *model.Task) (*TaskMessage, error) {
 
 	if task.CreateTime > 0 {
 		t := time.Unix(task.CreateTime, 0)
-		taskMsg.CreatedAt = types.ToFlexibleTime(&t)
+		payload.CreatedAt = types.ToFlexibleTime(&t)
 	}
 
-	return taskMsg, nil
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("serialize task event payload: %w", err)
+	}
+	event := &taskdomain.TaskEventV2{
+		SchemaVersion:  taskdomain.TaskEventSchemaVersionV2,
+		TaskID:         payload.TaskID,
+		SourcePlatform: taskdomain.SourcePlatform(strings.TrimSpace(task.SourcePlatform)),
+		TargetPlatform: taskdomain.TargetPlatform(targetPlatform),
+		Payload:        payloadBytes,
+		TraceID:        strings.TrimSpace(task.TraceID),
+		Metadata:       task.Metadata,
+	}
+	if _, err := taskdomain.NormalizeTaskEventV2(*event); err != nil {
+		return nil, fmt.Errorf("normalize task event: %w", err)
+	}
+	return event, nil
 }
 
 // GetQueueName 根据平台获取爬虫队列名称（仅用于爬虫任务）
-func (a *MessageAdapter) GetQueueName(platform string) string {
-	if queue, ok := a.queueMapping[platform]; ok {
-		return queue
+func (a *MessageAdapter) GetQueueName(platform string) (string, error) {
+	base, err := ResolveCrawlerRoute(platform)
+	if err != nil {
+		return "", err
 	}
-	return "amazon.crawler"
+	return base + ".crawler", nil
+}
+
+func ResolveCrawlerRoute(platform string) (string, error) {
+	base := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(platform)), ".crawler")
+	switch base {
+	case "amazon", "1688":
+		return base, nil
+	default:
+		return "", NewUnknownCrawlerRouteError(platform)
+	}
+}
+
+func IsTaskEventV2(msg *Message) bool {
+	if msg == nil {
+		return false
+	}
+	_, ok := msg.Payload["schemaVersion"]
+	return ok
+}
+
+func (a *MessageAdapter) ValidateTaskEventV2(msg *Message) error {
+	if !IsTaskEventV2(msg) {
+		return nil
+	}
+	_, _, err := a.parseTaskEvent(msg)
+	return err
 }
 
 // CalculatePriority 将业务优先级(1-10)转换为消息优先级(0-10)
@@ -311,21 +354,56 @@ func (a *MessageAdapter) convertStatusInt16ToString(status int16) string {
 	}
 }
 
-func (a *MessageAdapter) parseTaskMessage(msg *Message) (*TaskMessage, error) {
+func (a *MessageAdapter) parseTaskEvent(msg *Message) (taskdomain.TaskEventV2, *TaskMessage, error) {
 	if len(msg.Payload) == 0 {
-		return nil, fmt.Errorf("消息载荷为空")
+		return taskdomain.TaskEventV2{}, nil, fmt.Errorf("消息载荷为空")
 	}
 
 	payloadBytes, err := json.Marshal(msg.Payload)
 	if err != nil {
-		return nil, fmt.Errorf("序列化载荷失败: %w", err)
+		return taskdomain.TaskEventV2{}, nil, fmt.Errorf("序列化载荷失败: %w", err)
+	}
+
+	var versioned struct {
+		SchemaVersion *int `json:"schemaVersion"`
+	}
+	if err = json.Unmarshal(payloadBytes, &versioned); err != nil {
+		return taskdomain.TaskEventV2{}, nil, fmt.Errorf("反序列化任务消息版本失败: %w", err)
+	}
+	if versioned.SchemaVersion != nil {
+		var event taskdomain.TaskEventV2
+		if err = json.Unmarshal(payloadBytes, &event); err != nil {
+			return taskdomain.TaskEventV2{}, nil, fmt.Errorf("反序列化 V2 任务事件失败: %w", err)
+		}
+		if _, err = taskdomain.NormalizeTaskEventV2(event); err != nil {
+			return taskdomain.TaskEventV2{}, nil, err
+		}
+
+		var taskMsg TaskMessage
+		if err = json.Unmarshal(event.Payload, &taskMsg); err != nil {
+			return taskdomain.TaskEventV2{}, nil, fmt.Errorf("反序列化 V2 任务载荷失败: %w", err)
+		}
+		if err = validatePayloadRouting(event, taskMsg); err != nil {
+			return taskdomain.TaskEventV2{}, nil, err
+		}
+		applyTransportRetryDefaults(&taskMsg, msg)
+		return event, &taskMsg, nil
 	}
 
 	var taskMsg TaskMessage
 	if err = json.Unmarshal(payloadBytes, &taskMsg); err != nil {
-		return nil, fmt.Errorf("反序列化任务消息失败: %w", err)
+		return taskdomain.TaskEventV2{}, nil, fmt.Errorf("反序列化遗留任务消息失败: %w", err)
 	}
+	event, err := legacyTaskMessageToEventV2(taskMsg)
+	if err != nil {
+		return taskdomain.TaskEventV2{}, nil, err
+	}
+	coremetrics.GlobalTaskMetrics().IncrementLegacyTaskEventDecoded()
+	applyTransportRetryDefaults(&taskMsg, msg)
+	return event, &taskMsg, nil
+}
 
+func applyTransportRetryDefaults(taskMsg *TaskMessage, msg *Message) {
 	if taskMsg.RetryCount == 0 && msg.RetryCount > 0 {
 		taskMsg.RetryCount = msg.RetryCount
 	}
@@ -335,8 +413,52 @@ func (a *MessageAdapter) parseTaskMessage(msg *Message) (*TaskMessage, error) {
 	if taskMsg.MaxRetryCount == 0 {
 		taskMsg.MaxRetryCount = 3
 	}
+}
 
-	return &taskMsg, nil
+func legacyTaskMessageToEventV2(taskMsg TaskMessage) (taskdomain.TaskEventV2, error) {
+	legacyPlatform := strings.TrimSpace(taskMsg.Platform)
+	source := strings.TrimSpace(taskMsg.SourcePlatform)
+	target := strings.TrimSpace(taskMsg.TargetPlatform)
+	if source == "" {
+		source = legacyPlatform
+	}
+	if target == "" {
+		target = legacyPlatform
+	}
+	if legacyPlatform != "" && strings.TrimSpace(taskMsg.SourcePlatform) != "" && !strings.EqualFold(legacyPlatform, source) {
+		return taskdomain.TaskEventV2{}, fmt.Errorf("platform %q conflicts with sourcePlatform %q", legacyPlatform, source)
+	}
+
+	taskMsg.SourcePlatform = source
+	taskMsg.TargetPlatform = target
+	payload, err := json.Marshal(taskMsg)
+	if err != nil {
+		return taskdomain.TaskEventV2{}, fmt.Errorf("serialize legacy task message: %w", err)
+	}
+	event := taskdomain.TaskEventV2{
+		SchemaVersion:  taskdomain.TaskEventSchemaVersionV2,
+		TaskID:         taskMsg.TaskID.String(),
+		SourcePlatform: taskdomain.SourcePlatform(source),
+		TargetPlatform: taskdomain.TargetPlatform(target),
+		Payload:        payload,
+	}
+	if _, err := taskdomain.NormalizeTaskEventV2(event); err != nil {
+		return taskdomain.TaskEventV2{}, err
+	}
+	return event, nil
+}
+
+func validatePayloadRouting(event taskdomain.TaskEventV2, taskMsg TaskMessage) error {
+	if taskID := strings.TrimSpace(taskMsg.TaskID.String()); taskID != "" && taskID != event.TaskID {
+		return fmt.Errorf("payload taskId %q conflicts with event taskId %q", taskID, event.TaskID)
+	}
+	if source := strings.TrimSpace(taskMsg.SourcePlatform); source != "" && !strings.EqualFold(source, string(event.SourcePlatform)) {
+		return fmt.Errorf("payload sourcePlatform %q conflicts with event sourcePlatform %q", source, event.SourcePlatform)
+	}
+	if target := strings.TrimSpace(taskMsg.TargetPlatform); target != "" && !strings.EqualFold(target, string(event.TargetPlatform)) {
+		return fmt.Errorf("payload targetPlatform %q conflicts with event targetPlatform %q", target, event.TargetPlatform)
+	}
+	return nil
 }
 
 func (a *MessageAdapter) getPriorityLevel(priority int) string {

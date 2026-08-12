@@ -34,9 +34,12 @@ const (
 )
 
 type ImageProcessRequest struct {
-	ProductURL  string                  `json:"product_url,omitempty"`
-	ImageURLs   []string                `json:"image_urls,omitempty"`
-	Text        string                  `json:"text,omitempty"`
+	ProductURL string   `json:"product_url,omitempty"`
+	ImageURLs  []string `json:"image_urls,omitempty"`
+	Text       string   `json:"text,omitempty"`
+	// TargetPlatform is the canonical platform for this processing request.
+	TargetPlatform string `json:"target_platform,omitempty"`
+	// Marketplace is retained as a compatibility input for persisted and legacy requests.
 	Marketplace string                  `json:"marketplace"`
 	Country     string                  `json:"country,omitempty"`
 	Scene       *SceneGenerationOptions `json:"scene,omitempty"`
@@ -174,12 +177,13 @@ type ImageProcessResult struct {
 }
 
 type TaskResult struct {
-	TaskID      string              `json:"task_id"`
-	Status      TaskStatus          `json:"status"`
-	Result      *ImageProcessResult `json:"result,omitempty"`
-	Error       string              `json:"error,omitempty"`
-	CreatedAt   time.Time           `json:"created_at"`
-	CompletedAt *time.Time          `json:"completed_at,omitempty"`
+	TaskID         string              `json:"task_id"`
+	Status         TaskStatus          `json:"status"`
+	TargetPlatform string              `json:"target_platform"`
+	Result         *ImageProcessResult `json:"result,omitempty"`
+	Error          string              `json:"error,omitempty"`
+	CreatedAt      time.Time           `json:"created_at"`
+	CompletedAt    *time.Time          `json:"completed_at,omitempty"`
 }
 
 func (r ImageProcessRequest) Value() (driver.Value, error) {

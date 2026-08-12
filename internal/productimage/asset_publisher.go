@@ -11,7 +11,6 @@ import (
 
 	amazonapi "task-processor/internal/amazon/api"
 	amazonimage "task-processor/internal/amazon/image"
-	coreconfig "task-processor/internal/core/config"
 )
 
 type multiAssetPublisher struct {
@@ -141,25 +140,33 @@ type amazonAssetPublisher struct {
 	marketplaceID string
 }
 
-func NewAmazonAssetPublisher(cfg *coreconfig.Config) (AssetPublisher, error) {
-	if cfg == nil {
-		return nil, fmt.Errorf("config cannot be nil")
-	}
-	if !cfg.Amazon.SPAPI.Enabled {
+type AmazonAssetPublisherOptions struct {
+	Enabled        bool
+	Region         string
+	MarketplaceID  string
+	ClientID       string
+	ClientSecret   string
+	RefreshToken   string
+	AWSAccessKeyID string
+	AWSSecretKey   string
+}
+
+func NewAmazonAssetPublisher(options AmazonAssetPublisherOptions) (AssetPublisher, error) {
+	if !options.Enabled {
 		return nil, fmt.Errorf("amazon SP-API is not enabled")
 	}
 	apiClient := amazonapi.NewClient(&amazonapi.Config{
-		Region:         cfg.Amazon.SPAPI.Region,
-		MarketplaceID:  resolveMarketplaceID(cfg),
-		ClientID:       cfg.Amazon.SPAPI.ClientID,
-		ClientSecret:   cfg.Amazon.SPAPI.ClientSecret,
-		RefreshToken:   cfg.Amazon.SPAPI.RefreshToken,
-		AWSAccessKeyID: cfg.Amazon.SPAPI.AWSAccessKeyID,
-		AWSSecretKey:   cfg.Amazon.SPAPI.AWSSecretKey,
+		Region:         options.Region,
+		MarketplaceID:  options.MarketplaceID,
+		ClientID:       options.ClientID,
+		ClientSecret:   options.ClientSecret,
+		RefreshToken:   options.RefreshToken,
+		AWSAccessKeyID: options.AWSAccessKeyID,
+		AWSSecretKey:   options.AWSSecretKey,
 	})
 	return &amazonAssetPublisher{
 		service:       amazonimage.NewImageManagementService(apiClient),
-		marketplaceID: resolveMarketplaceID(cfg),
+		marketplaceID: options.MarketplaceID,
 	}, nil
 }
 
@@ -220,13 +227,6 @@ func (p *amazonAssetPublisher) publishAsset(ctx context.Context, asset *ImageAss
 	asset.Metadata["published_provider"] = "amazon"
 	asset.URL = uploadResult.URL
 	return nil
-}
-
-func resolveMarketplaceID(cfg *coreconfig.Config) string {
-	if cfg == nil {
-		return ""
-	}
-	return coreconfig.ResolveAmazonMarketplaceID(cfg.Amazon.SPAPI)
 }
 
 func publisherTaskKey(req *ImageProcessRequest) string {

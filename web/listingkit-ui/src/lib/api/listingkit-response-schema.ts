@@ -7,6 +7,9 @@ import type {
   NavigationDispatchResponse,
   ReviewPreviewResponse,
 } from "@/lib/types/listingkit";
+import type { TargetPlatform } from "@/lib/api/generated";
+
+const targetPlatformSchema = z.enum(["amazon", "shein", "temu", "walmart"] satisfies TargetPlatform[]);
 
 const taskResultDataSchema = z
   .object({
@@ -104,8 +107,8 @@ const previewSchema = z
   .object({
     task_id: z.string(),
     status: z.string(),
-    selected_platform: z.string().optional(),
-    platforms: z.array(z.string()).optional(),
+    selected_platform: targetPlatformSchema.optional(),
+    platforms: z.array(targetPlatformSchema).optional(),
     needs_review: z.boolean().optional(),
     overview: z.record(z.string(), z.unknown()).optional(),
     asset_generation_overview: z.record(z.string(), z.unknown()).optional(),

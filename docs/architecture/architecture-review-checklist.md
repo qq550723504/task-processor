@@ -175,6 +175,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestAppCrawlerFetcherCompatibilityLayerIsRetired`
 - `TestCmdPackagesDoNotImportAppCompatibilityLayers`
 - `TestProductImageExternalClientImportsStayAllowlisted`
+- `TestProductImageBusinessPackagesDoNotImportGlobalConfig`
 - `TestAmazonExternalClientImportsStayAllowlisted`
 - `TestSheinBridgeExternalClientImportsStayAllowlisted`
 - `TestSheinRetiredManagementImportsStayBlocked`

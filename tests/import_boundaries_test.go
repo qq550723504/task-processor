@@ -3263,6 +3263,16 @@ func TestProductImageExternalClientImportsStayAllowlisted(t *testing.T) {
 	}
 }
 
+func TestProductImageBusinessPackagesDoNotImportGlobalConfig(t *testing.T) {
+	root := filepath.Join("..", "internal", "productimage")
+	allowedComposition := map[string]struct{}{
+		filepath.Clean(filepath.Join(root, "httpapi")) + string(os.PathSeparator): {},
+	}
+	assertNoProductionBannedImports(t, root, []string{
+		`"task-processor/internal/core/config"`,
+	}, allowedComposition)
+}
+
 func TestAmazonExternalClientImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "amazon")
 	allowedFiles := map[string]struct{}{

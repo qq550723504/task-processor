@@ -34,7 +34,7 @@ func (a *sourceParserAdapter) Parse(ctx context.Context, req *ImageProcessReques
 		Text:        parsedInput.Text,
 		TitleHint:   sourceTitleHintFromParsedInput(parsedInput),
 		ProductURL:  req.ProductURL,
-		Marketplace: req.Marketplace,
+		Marketplace: req.TargetPlatform,
 		Country:     req.Country,
 		ParsedInput: parsedInput,
 	}, nil
@@ -224,7 +224,7 @@ func (v *defaultMarketplaceValidator) Validate(_ context.Context, req *ImageProc
 	if result == nil {
 		return nil, fmt.Errorf("result cannot be nil")
 	}
-	report := &ComplianceReport{Marketplace: req.Marketplace, Passed: true}
+	report := &ComplianceReport{Marketplace: req.TargetPlatform, Passed: true}
 	if result.MainImage == nil {
 		report.Passed = false
 		report.Issues = append(report.Issues, ImageIssue{Code: "missing_main_image", Message: "main image is required", Severity: "error"})

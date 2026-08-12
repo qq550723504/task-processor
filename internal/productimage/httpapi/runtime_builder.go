@@ -6,6 +6,7 @@ import (
 	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/pkg/watermark"
 	"task-processor/internal/productenrich"
 )
 
@@ -22,7 +23,6 @@ type RuntimeBuildInput struct {
 }
 
 type BuildModuleInput struct {
-	Config               *config.Config
 	Logger               *logrus.Logger
 	LLMManager           productenrich.LLMManager
 	OpenAIManager        *openaiclient.Manager
@@ -31,11 +31,46 @@ type BuildModuleInput struct {
 	InputParser          productenrich.InputParser
 	Understanding        productenrich.ProductUnderstanding
 	ImageWorkDir         string
+	Options              productImageRuntimeOptions
+}
+
+type productImageRuntimeOptions struct {
+	database                *config.DatabaseConfig
+	watermark               *watermark.Config
+	cleanupTemporaryFiles   bool
+	reuseExistingAssets     bool
+	requireAIIdentity       bool
+	workerConcurrency       int
+	workerBufferSize        int
+	assetPublisher          assetPublisherOptions
+	modelProvider           modelProviderOptions
+	imagePipelineComponents imagePipelineComponentOptions
+	sceneGovernance         sceneGovernanceOptions
+}
+
+func newProductImageRuntimeOptions(cfg *config.Config) productImageRuntimeOptions {
+	if cfg == nil {
+		return productImageRuntimeOptions{}
+	}
+	return productImageRuntimeOptions{
+		database:                cfg.Database,
+		watermark:               cfg.Watermark,
+		cleanupTemporaryFiles:   cfg.ProductImage.Lifecycle.CleanupTemporaryFiles,
+		reuseExistingAssets:     cfg.ProductImage.Lifecycle.ReuseExistingAssets,
+		// Governed model stages enforce identity for allowlisted tenants. Task
+		// creation remains compatible with legacy callers that never enter that path.
+		requireAIIdentity:       false,
+		workerConcurrency:       cfg.Worker.Concurrency,
+		workerBufferSize:        cfg.Worker.BufferSize,
+		assetPublisher:          newAssetPublisherOptions(cfg),
+		modelProvider:           newModelProviderOptions(cfg),
+		imagePipelineComponents: newImagePipelineComponentOptions(cfg),
+		sceneGovernance:         newSceneGovernanceOptions(cfg),
+	}
 }
 
 func BuildRuntimeModule(input RuntimeBuildInput) (*Module, error) {
 	return BuildModule(BuildModuleInput{
-		Config:               input.Config,
 		Logger:               input.Logger,
 		LLMManager:           input.LLMManager,
 		OpenAIManager:        input.OpenAIManager,
@@ -44,5 +79,6 @@ func BuildRuntimeModule(input RuntimeBuildInput) (*Module, error) {
 		InputParser:          input.InputParser,
 		Understanding:        input.Understanding,
 		ImageWorkDir:         input.ImageWorkDir,
+		Options:              newProductImageRuntimeOptions(input.Config),
 	})
 }

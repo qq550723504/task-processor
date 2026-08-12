@@ -11,14 +11,61 @@ import (
 	productimage "task-processor/internal/productimage"
 )
 
-func buildModelProvider(cfg *config.Config, llmMgr productenrich.LLMManager, openaiMgr *openaiclient.Manager, imageWorkDir string) (productimage.ProductImageModelProvider, error) {
+type remoteImageServiceOptions struct {
+	endpoint string
+	apiKey   string
+	timeout  int
+}
+
+type nanobananaImageClientOptions struct {
+	apiKey  string
+	model   string
+	baseURL string
+	timeout int
+}
+
+type modelProviderOptions struct {
+	sceneGovernanceEnabled bool
+	nanobanana             *nanobananaImageClientOptions
+	segmenter              *remoteImageServiceOptions
+	whiteBackground        *remoteImageServiceOptions
+	scene                  *remoteImageServiceOptions
+}
+
+func newModelProviderOptions(cfg *config.Config) modelProviderOptions {
 	if cfg == nil {
-		return nil, nil
+		return modelProviderOptions{}
 	}
+
+	options := modelProviderOptions{
+		sceneGovernanceEnabled: cfg.AICapability.ProductImageSceneEnabled,
+		segmenter:              remoteImageServiceOptionsFromConfig(cfg.ProductImage.Segmenter),
+		whiteBackground:        remoteImageServiceOptionsFromConfig(cfg.ProductImage.WhiteBackground),
+		scene:                  remoteImageServiceOptionsFromConfig(cfg.ProductImage.Scene),
+	}
+	if imageCfg, ok := cfg.OpenAI.Clients["image"]; ok && imageCfg.APIStyle == "nanobanana" {
+		options.nanobanana = &nanobananaImageClientOptions{
+			apiKey:  firstNonEmpty(imageCfg.APIKey, cfg.OpenAI.APIKey),
+			model:   imageCfg.Model,
+			baseURL: firstNonEmpty(imageCfg.BaseURL, cfg.OpenAI.BaseURL),
+			timeout: firstNonZero(imageCfg.Timeout, cfg.OpenAI.Timeout),
+		}
+	}
+	return options
+}
+
+func remoteImageServiceOptionsFromConfig(cfg config.ProductImageModelConfig) *remoteImageServiceOptions {
+	if !cfg.Enabled || cfg.Endpoint == "" {
+		return nil
+	}
+	return &remoteImageServiceOptions{endpoint: cfg.Endpoint, apiKey: cfg.APIKey, timeout: cfg.Timeout}
+}
+
+func buildModelProvider(options modelProviderOptions, llmMgr productenrich.LLMManager, openaiMgr *openaiclient.Manager, imageWorkDir string) (productimage.ProductImageModelProvider, error) {
 
 	var faithfulEditor productimage.FaithfulEditor
 	var sceneGenerator productimage.SceneGenerator
-	if cfg.AICapability.ProductImageSceneEnabled {
+	if options.sceneGovernanceEnabled {
 		if openaiMgr == nil {
 			return nil, fmt.Errorf("productimage scene governance requires a resolver-backed image client")
 		}
@@ -39,13 +86,13 @@ func buildModelProvider(cfg *config.Config, llmMgr productenrich.LLMManager, ope
 		}
 		faithfulEditor = editor
 		sceneGenerator = generator
-	} else if imageCfg, ok := cfg.OpenAI.Clients["image"]; ok && imageCfg.APIStyle == "nanobanana" {
+	} else if options.nanobanana != nil {
 		imageClient := grsai.NewClient(grsai.Config{
-			APIKey:       firstNonEmpty(imageCfg.APIKey, cfg.OpenAI.APIKey),
-			Model:        imageCfg.Model,
-			SubmitURL:    firstNonEmpty(imageCfg.BaseURL, cfg.OpenAI.BaseURL),
+			APIKey:       options.nanobanana.apiKey,
+			Model:        options.nanobanana.model,
+			SubmitURL:    options.nanobanana.baseURL,
 			PollInterval: time.Second,
-			Timeout:      time.Duration(firstNonZero(imageCfg.Timeout, cfg.OpenAI.Timeout)) * time.Second,
+			Timeout:      time.Duration(options.nanobanana.timeout) * time.Second,
 		})
 		editor, err := productimage.NewOpenAICompatibleFaithfulEditor(imageWorkDir, imageClient)
 		if err != nil {
@@ -73,11 +120,11 @@ func buildModelProvider(cfg *config.Config, llmMgr productenrich.LLMManager, ope
 	}
 
 	var segmenter productimage.SegmentationClient
-	if faithfulEditor == nil && cfg.ProductImage.Segmenter.Enabled && cfg.ProductImage.Segmenter.Endpoint != "" {
+	if faithfulEditor == nil && options.segmenter != nil {
 		client, err := productimage.NewHTTPSegmentationClient(productimage.HTTPSegmentationClientConfig{
-			Endpoint: cfg.ProductImage.Segmenter.Endpoint,
-			APIKey:   cfg.ProductImage.Segmenter.APIKey,
-			Timeout:  time.Duration(cfg.ProductImage.Segmenter.Timeout) * time.Second,
+			Endpoint: options.segmenter.endpoint,
+			APIKey:   options.segmenter.apiKey,
+			Timeout:  time.Duration(options.segmenter.timeout) * time.Second,
 		})
 		if err != nil {
 			return nil, err
@@ -86,11 +133,11 @@ func buildModelProvider(cfg *config.Config, llmMgr productenrich.LLMManager, ope
 	}
 
 	var whiteBackground productimage.WhiteBackgroundClient
-	if faithfulEditor == nil && cfg.ProductImage.WhiteBackground.Enabled && cfg.ProductImage.WhiteBackground.Endpoint != "" {
+	if faithfulEditor == nil && options.whiteBackground != nil {
 		client, err := productimage.NewHTTPWhiteBackgroundClient(productimage.HTTPWhiteBackgroundClientConfig{
-			Endpoint: cfg.ProductImage.WhiteBackground.Endpoint,
-			APIKey:   cfg.ProductImage.WhiteBackground.APIKey,
-			Timeout:  time.Duration(cfg.ProductImage.WhiteBackground.Timeout) * time.Second,
+			Endpoint: options.whiteBackground.endpoint,
+			APIKey:   options.whiteBackground.apiKey,
+			Timeout:  time.Duration(options.whiteBackground.timeout) * time.Second,
 		})
 		if err != nil {
 			return nil, err
@@ -99,11 +146,11 @@ func buildModelProvider(cfg *config.Config, llmMgr productenrich.LLMManager, ope
 	}
 
 	var remoteSceneGenerator productimage.SceneGenerationClient
-	if sceneGenerator == nil && cfg.ProductImage.Scene.Enabled && cfg.ProductImage.Scene.Endpoint != "" {
+	if sceneGenerator == nil && options.scene != nil {
 		client, err := productimage.NewHTTPSceneGenerationClient(productimage.HTTPSceneGenerationClientConfig{
-			Endpoint: cfg.ProductImage.Scene.Endpoint,
-			APIKey:   cfg.ProductImage.Scene.APIKey,
-			Timeout:  time.Duration(cfg.ProductImage.Scene.Timeout) * time.Second,
+			Endpoint: options.scene.endpoint,
+			APIKey:   options.scene.apiKey,
+			Timeout:  time.Duration(options.scene.timeout) * time.Second,
 		})
 		if err != nil {
 			return nil, err

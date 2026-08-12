@@ -12,7 +12,7 @@ func applySceneOptionsToProductContext(context *ProductContext, req *ImageProces
 	if context.Attributes == nil {
 		context.Attributes = map[string]string{}
 	}
-	setSceneContextAttribute(context.Attributes, "marketplace", req.Marketplace)
+	setSceneContextAttribute(context.Attributes, "marketplace", req.TargetPlatform)
 	if req.Scene == nil || req.Scene.IsEmpty() {
 		return context
 	}

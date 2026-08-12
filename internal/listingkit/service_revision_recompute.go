@@ -73,7 +73,7 @@ func (s *service) refreshSheinDerivedState(task *Task, req *ApplyRevisionRequest
 	sheinpub.RefreshDerivedState(
 		buildReq,
 		task.Result.CanonicalProduct,
-		task.Result.ImageAssets,
+		task.Result.ImageAssetsForTarget("shein"),
 		task.Result.Shein,
 		categoryResolver,
 		attributeResolver,

@@ -1,9 +1,14 @@
 package productimage
 
-import "task-processor/internal/productimage/domain"
+import (
+	"errors"
+
+	"task-processor/internal/productimage/domain"
+)
 
 var ErrTaskNotFound = domain.ErrTaskNotFound
 var ErrTaskNotPending = domain.ErrTaskNotPending
+var ErrTaskTargetUnavailable = errors.New("task target platform is unavailable")
 
 type TaskStatus = domain.TaskStatus
 

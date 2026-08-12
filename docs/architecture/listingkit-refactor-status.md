@@ -259,11 +259,11 @@ This is acceptable for now because these files mostly serve service/API response
 - no new SHEIN domain rules should be added there
 - only request/response composition and service glue should remain
 
-### 3. Image processing request still uses a fixed marketplace
+### 3. Image processing uses explicit target platforms
 
-`internal/listingkit/workflow.go` still sends `"amazon"` in `toImageProcessRequest(...)`.
+ListingKit now validates processable image requests before workflow execution: they must name at least one supported target platform. The workflow creates one `productimage.ImageProcessRequest` per normalized target, with `TargetPlatform` set explicitly; it never defaults to Amazon or selects a request-array element.
 
-That is outside the current refactor boundary, but it remains an architectural limitation for future image asset strategy work.
+Image, bundle, and inventory outputs are retained in target-keyed result maps. Legacy scalar fields remain readable as compatibility projections for a single target or an explicit `compatibility_target_platform`; unselected multi-target runs leave them unset. Platform payload, preview, export, and assembly paths look up the target they are constructing.
 
 ## Recommended Rules For Next Changes
 

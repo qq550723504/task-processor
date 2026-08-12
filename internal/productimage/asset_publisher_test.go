@@ -43,6 +43,34 @@ func TestNewMultiAssetPublisher_SkipsNil(t *testing.T) {
 	require.Nil(t, publisher)
 }
 
+func TestNewAmazonAssetPublisherBuildsFromExplicitOptions(t *testing.T) {
+	t.Parallel()
+
+	publisher, err := NewAmazonAssetPublisher(AmazonAssetPublisherOptions{
+		Enabled:        true,
+		Region:         "us-east-1",
+		MarketplaceID:  "ATVPDKIKX0DER",
+		ClientID:       "client-id",
+		ClientSecret:   "client-secret",
+		RefreshToken:   "refresh-token",
+		AWSAccessKeyID: "access-key",
+		AWSSecretKey:   "secret-key",
+	})
+	require.NoError(t, err)
+
+	amazonPublisher, ok := publisher.(*amazonAssetPublisher)
+	require.True(t, ok)
+	require.Equal(t, "ATVPDKIKX0DER", amazonPublisher.marketplaceID)
+}
+
+func TestNewAmazonAssetPublisherRejectsDisabledOptions(t *testing.T) {
+	t.Parallel()
+
+	publisher, err := NewAmazonAssetPublisher(AmazonAssetPublisherOptions{})
+	require.Nil(t, publisher)
+	require.EqualError(t, err, "amazon SP-API is not enabled")
+}
+
 func TestS3AssetPublisherPublishSetsPublishedMetadata(t *testing.T) {
 	t.Parallel()
 

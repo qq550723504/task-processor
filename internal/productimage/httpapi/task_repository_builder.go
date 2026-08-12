@@ -11,9 +11,9 @@ import (
 	productimagestore "task-processor/internal/productimage/store"
 )
 
-func buildTaskRepository(cfg *config.Config, logger *logrus.Logger) (productimage.TaskRepository, []func() error, error) {
-	if cfg != nil && cfg.Database != nil && cfg.Database.Host != "" {
-		repo, closer, err := newDBTaskRepository(cfg.Database, logger)
+func buildTaskRepository(databaseConfig *config.DatabaseConfig, logger *logrus.Logger) (productimage.TaskRepository, []func() error, error) {
+	if databaseConfig != nil && databaseConfig.Host != "" {
+		repo, closer, err := newDBTaskRepository(databaseConfig, logger)
 		if err != nil {
 			return nil, nil, fmt.Errorf("create image task repository: %w", err)
 		}
