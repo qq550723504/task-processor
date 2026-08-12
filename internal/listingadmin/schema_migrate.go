@@ -59,6 +59,33 @@ func ensureTextColumn(db *gorm.DB, table, column, definition string) error {
 	return db.Exec(statement).Error
 }
 
+func ensureNullableImportTaskCategoryID(db *gorm.DB, table string) error {
+	if db == nil {
+		return fmt.Errorf("database is not configured")
+	}
+	if !db.Migrator().HasColumn(table, "category_id") {
+		return nil
+	}
+	columnTypes, err := db.Migrator().ColumnTypes(table)
+	if err != nil {
+		return err
+	}
+	for _, columnType := range columnTypes {
+		if columnType.Name() != "category_id" {
+			continue
+		}
+		nullable, ok := columnType.Nullable()
+		if !ok || nullable {
+			return nil
+		}
+		if db.Dialector != nil && db.Dialector.Name() == "postgres" {
+			return db.Exec(fmt.Sprintf(`ALTER TABLE "%s" ALTER COLUMN "category_id" DROP NOT NULL`, table)).Error
+		}
+		return db.Migrator().AlterColumn(&listingProductImportTask{}, "CategoryID")
+	}
+	return nil
+}
+
 func sensitiveWordLegacyColumnMigrations() map[string]postgresColumnTypeMigration {
 	return map[string]postgresColumnTypeMigration{
 		"status": {

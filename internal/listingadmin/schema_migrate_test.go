@@ -1,6 +1,12 @@
 package listingadmin
 
-import "testing"
+import (
+	"testing"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	_ "modernc.org/sqlite"
+)
 
 func TestSensitiveWordLegacyColumnMigrationsCoverLegacyStatusAndAuditColumns(t *testing.T) {
 	t.Parallel()
@@ -61,6 +67,57 @@ func TestPostgresColumnDefinitionNeedsTypeMigration(t *testing.T) {
 	) {
 		t.Fatal("expected varchar(128) to already match target type")
 	}
+}
+
+func TestAutoMigrateImportTaskRepositoryMakesCategoryIDNullable(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&legacyImportTaskWithRequiredCategory{}); err != nil {
+		t.Fatalf("migrate legacy import task: %v", err)
+	}
+	if nullable := importTaskCategoryNullable(t, db); nullable {
+		t.Fatal("legacy category_id unexpectedly nullable")
+	}
+
+	if err := AutoMigrateImportTaskRepository(db); err != nil {
+		t.Fatalf("AutoMigrateImportTaskRepository() error = %v", err)
+	}
+	if nullable := importTaskCategoryNullable(t, db); !nullable {
+		t.Fatal("category_id remains NOT NULL after migration")
+	}
+}
+
+type legacyImportTaskWithRequiredCategory struct {
+	ID         int64 `gorm:"column:id;primaryKey;autoIncrement"`
+	CategoryID int64 `gorm:"column:category_id;not null"`
+}
+
+func (legacyImportTaskWithRequiredCategory) TableName() string {
+	return "listing_product_import_task"
+}
+
+func importTaskCategoryNullable(t *testing.T, db *gorm.DB) bool {
+	t.Helper()
+	columns, err := db.Migrator().ColumnTypes("listing_product_import_task")
+	if err != nil {
+		t.Fatalf("load import task columns: %v", err)
+	}
+	for _, column := range columns {
+		if column.Name() != "category_id" {
+			continue
+		}
+		nullable, ok := column.Nullable()
+		if !ok {
+			t.Fatal("category_id nullability metadata unavailable")
+		}
+		return nullable
+	}
+	t.Fatal("category_id column missing")
+	return false
 }
 
 func intPtr(value int) *int {

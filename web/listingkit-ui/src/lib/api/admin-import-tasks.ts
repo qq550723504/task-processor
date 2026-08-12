@@ -12,7 +12,7 @@ export const listingImportTaskSchema = z
     targetPlatform: z.string().optional(),
     sourcePlatform: z.string().optional(),
     region: z.string().optional(),
-    categoryId: z.number().optional(),
+    categoryId: z.number().nullable().optional(),
     productId: z.string(),
     status: z.number(),
     errorMessage: z.string().optional(),
@@ -66,7 +66,7 @@ export type ListingImportTaskQuery = QueueQuery & {
 
 export type BatchCreateListingImportTaskInput = {
   storeId: number;
-  categoryId: number;
+  categoryId?: number;
   platform: string;
   targetPlatform?: string;
   region?: string;

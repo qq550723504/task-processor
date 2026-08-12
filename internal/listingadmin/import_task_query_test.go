@@ -22,9 +22,9 @@ func TestFindImportTaskRowsUsesRequestOwnerScope(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 	for _, row := range []listingProductImportTask{
-		{TenantID: 101, OwnerUserID: "user-a", StoreID: 11, Platform: "Amazon", Region: "US", CategoryID: 1, ProductID: "A-1", Status: 1, Deleted: 0},
-		{TenantID: 101, OwnerUserID: "user-b", StoreID: 11, Platform: "Amazon", Region: "US", CategoryID: 1, ProductID: "B-1", Status: 1, Deleted: 0},
-		{TenantID: 101, OwnerUserID: "user-a", StoreID: 11, Platform: "Amazon", Region: "US", CategoryID: 1, ProductID: "A-2", Status: 1, Deleted: 1},
+		{TenantID: 101, OwnerUserID: "user-a", StoreID: 11, Platform: "Amazon", Region: "US", CategoryID: int64PtrIfPositive(1), ProductID: "A-1", Status: 1, Deleted: 0},
+		{TenantID: 101, OwnerUserID: "user-b", StoreID: 11, Platform: "Amazon", Region: "US", CategoryID: int64PtrIfPositive(1), ProductID: "B-1", Status: 1, Deleted: 0},
+		{TenantID: 101, OwnerUserID: "user-a", StoreID: 11, Platform: "Amazon", Region: "US", CategoryID: int64PtrIfPositive(1), ProductID: "A-2", Status: 1, Deleted: 1},
 	} {
 		if err := db.Table("listing_product_import_task").Create(&row).Error; err != nil {
 			t.Fatalf("seed row: %v", err)
@@ -64,9 +64,9 @@ func TestFindImportTaskRowsAppliesResourceFilters(t *testing.T) {
 	categoryID := int64(31)
 	status := int16(2)
 	for _, row := range []listingProductImportTask{
-		{TenantID: 101, OwnerUserID: "user-a", StoreID: 21, Platform: "Amazon", Region: "US", CategoryID: 31, ProductID: "ABC-1", Status: 2, Deleted: 0},
-		{TenantID: 101, OwnerUserID: "user-a", StoreID: 21, Platform: "Amazon", Region: "CA", CategoryID: 31, ProductID: "ABC-1", Status: 2, Deleted: 0},
-		{TenantID: 101, OwnerUserID: "user-a", StoreID: 22, Platform: "Amazon", Region: "US", CategoryID: 31, ProductID: "XYZ-1", Status: 2, Deleted: 0},
+		{TenantID: 101, OwnerUserID: "user-a", StoreID: 21, Platform: "Amazon", Region: "US", CategoryID: int64PtrIfPositive(31), ProductID: "ABC-1", Status: 2, Deleted: 0},
+		{TenantID: 101, OwnerUserID: "user-a", StoreID: 21, Platform: "Amazon", Region: "CA", CategoryID: int64PtrIfPositive(31), ProductID: "ABC-1", Status: 2, Deleted: 0},
+		{TenantID: 101, OwnerUserID: "user-a", StoreID: 22, Platform: "Amazon", Region: "US", CategoryID: int64PtrIfPositive(31), ProductID: "XYZ-1", Status: 2, Deleted: 0},
 	} {
 		if err := db.Table("listing_product_import_task").Create(&row).Error; err != nil {
 			t.Fatalf("seed row: %v", err)

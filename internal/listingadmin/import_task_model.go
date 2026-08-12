@@ -4,7 +4,6 @@ import "strings"
 
 func (t listingProductImportTask) toImportTask() ImportTask {
 	storeID := t.StoreID
-	categoryID := t.CategoryID
 	return ImportTask{
 		ID:             t.ID,
 		TenantID:       t.TenantID,
@@ -13,7 +12,7 @@ func (t listingProductImportTask) toImportTask() ImportTask {
 		TargetPlatform: t.TargetPlatform,
 		SourcePlatform: t.SourcePlatform,
 		Region:         t.Region,
-		CategoryID:     &categoryID,
+		CategoryID:     t.CategoryID,
 		ProductID:      t.ProductID,
 		Status:         t.Status,
 		ProcessingNode: t.ProcessingNode,
@@ -37,9 +36,10 @@ func listingProductImportTaskFromImportTask(task ImportTask) listingProductImpor
 	if task.StoreID != nil {
 		storeID = *task.StoreID
 	}
-	var categoryID int64
+	var categoryID *int64
 	if task.CategoryID != nil {
-		categoryID = *task.CategoryID
+		value := *task.CategoryID
+		categoryID = &value
 	}
 	sourcePlatform := strings.TrimSpace(task.SourcePlatform)
 	if sourcePlatform == "" {

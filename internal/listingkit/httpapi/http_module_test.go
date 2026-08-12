@@ -31,10 +31,15 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 	require.Contains(t, keys, "POST /api/v1/listing-kits/tasks/requeue")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations")
 	foundStoreStatisticsRoute := false
+	foundPlatformStoreStatisticsRoute := false
 	foundMemberInvitationRoute := false
 	for _, route := range reg.Routes() {
 		if route.Method == "GET" && route.Path == "/api/v1/listing-kits/admin/store-statistics" {
 			foundStoreStatisticsRoute = true
+			require.Equal(t, "listing-kit-admin", route.Module)
+		}
+		if route.Method == "GET" && route.Path == "/api/v1/listing-kits/platform/store-statistics" {
+			foundPlatformStoreStatisticsRoute = true
 			require.Equal(t, "listing-kit-platform-admin", route.Module)
 		}
 		if route.Method == "POST" && route.Path == "/api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations" {
@@ -43,6 +48,7 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 		}
 	}
 	require.True(t, foundStoreStatisticsRoute)
+	require.True(t, foundPlatformStoreStatisticsRoute)
 	require.True(t, foundMemberInvitationRoute)
 	require.Contains(t, keys, "POST /api/v1/listing-kits/sds/retirements")
 	require.Contains(t, keys, "GET /api/v1/listing-kits/sds/retirements/:run_id")

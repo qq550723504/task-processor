@@ -20,7 +20,7 @@ func TestImportTaskHandlerListsTasksWithinRequestTenant(t *testing.T) {
 		StoreID:    1,
 		Platform:   "Amazon",
 		Region:     "US",
-		CategoryID: 10,
+		CategoryID: int64PtrIfPositive(10),
 		ProductID:  "B001",
 		Status:     0,
 		Priority:   5,
@@ -30,7 +30,7 @@ func TestImportTaskHandlerListsTasksWithinRequestTenant(t *testing.T) {
 		StoreID:    2,
 		Platform:   "Amazon",
 		Region:     "US",
-		CategoryID: 10,
+		CategoryID: int64PtrIfPositive(10),
 		ProductID:  "B002",
 		Status:     0,
 		Priority:   5,
@@ -108,6 +108,38 @@ func TestImportTaskHandlerBatchCreatesTasksWithRequestTenant(t *testing.T) {
 	}
 }
 
+func TestImportTaskHandlerBatchCreatesTasksWithoutCategory(t *testing.T) {
+	t.Parallel()
+
+	router := newImportTaskTestRouter(t)
+	body := bytes.NewBufferString(`{
+		"storeId": 11,
+		"platform": "Amazon",
+		"region": "US",
+		"priority": 8,
+		"productIds": ["B001"]
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/import-tasks/batch", body)
+	req.Header.Set("X-Tenant-ID", "303")
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("POST /import-tasks/batch without category = %d, body=%s", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"categoryId":null`) {
+		t.Fatalf("response body = %s, want categoryId null", resp.Body.String())
+	}
+	var created BatchCreateImportTaskResponse
+	if err := json.Unmarshal(resp.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(created.Items) != 1 || created.Items[0].CategoryID != nil {
+		t.Fatalf("created = %+v, want one task with nil category", created)
+	}
+}
+
 func TestImportTaskHandlerSoftDeletesWithinTenant(t *testing.T) {
 	t.Parallel()
 
@@ -117,7 +149,7 @@ func TestImportTaskHandlerSoftDeletesWithinTenant(t *testing.T) {
 		StoreID:    1,
 		Platform:   "Amazon",
 		Region:     "US",
-		CategoryID: 10,
+		CategoryID: int64PtrIfPositive(10),
 		ProductID:  "B001",
 		Status:     0,
 	})

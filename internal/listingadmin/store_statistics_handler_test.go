@@ -556,8 +556,9 @@ func newStoreStatisticsTestRouter(t *testing.T) storeStatisticsTestRouter {
 
 func seedStatisticsImportTask(t *testing.T, db *gorm.DB, task listingProductImportTask) listingProductImportTask {
 	t.Helper()
-	if task.CategoryID == 0 {
-		task.CategoryID = 1
+	if task.CategoryID == nil {
+		categoryID := int64(1)
+		task.CategoryID = &categoryID
 	}
 	if err := db.Table("listing_product_import_task").Create(&task).Error; err != nil {
 		t.Fatalf("seed import task: %v", err)

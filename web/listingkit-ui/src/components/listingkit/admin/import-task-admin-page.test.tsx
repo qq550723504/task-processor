@@ -4,12 +4,14 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ImportTaskAdminPage } from "@/components/listingkit/admin/import-task-admin-page";
+import * as adminCategoriesApi from "@/lib/api/admin-categories";
 import * as adminImportTasksApi from "@/lib/api/admin-import-tasks";
 import * as adminStoresApi from "@/lib/api/admin-stores";
 
 describe("ImportTaskAdminPage", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.spyOn(adminCategoriesApi, "getListingCategories").mockResolvedValue([]);
   });
 
   it("loads stores and renders ListingKit import tasks", async () => {
@@ -69,6 +71,28 @@ describe("ImportTaskAdminPage", () => {
     vi.spyOn(adminStoresApi, "getSimpleListingStores").mockResolvedValue([
       { id: 11, name: "SHEIN US", platform: "SHEIN", region: "US" },
     ]);
+    vi.mocked(adminCategoriesApi.getListingCategories).mockResolvedValue([
+      {
+        id: 10,
+        tenantId: 101,
+        name: "服装",
+        code: "apparel",
+        parentId: 0,
+        level: 1,
+        sort: 1,
+        status: 1,
+      },
+      {
+        id: 22,
+        tenantId: 101,
+        name: "上衣",
+        code: "tops",
+        parentId: 10,
+        level: 2,
+        sort: 1,
+        status: 1,
+      },
+    ]);
     vi.spyOn(adminImportTasksApi, "getListingImportTasks").mockResolvedValue({
       items: [],
       total: 0,
@@ -91,9 +115,14 @@ describe("ImportTaskAdminPage", () => {
     await waitFor(() => {
       expect(screen.getAllByText("SHEIN US (#11)").length).toBeGreaterThan(0);
     });
+    await waitFor(() => {
+      expect(adminCategoriesApi.getListingCategories).toHaveBeenCalledWith({
+        status: "1",
+      });
+    });
 
     await user.selectOptions(screen.getByLabelText("店铺"), "11");
-    await user.type(screen.getByLabelText("类目 ID"), "22");
+    await user.selectOptions(screen.getByLabelText("分类"), "22");
     const regionSelect = screen.getByLabelText("地区");
     expect(regionSelect.tagName).toBe("SELECT");
     await user.selectOptions(regionSelect, "CA");
@@ -115,6 +144,47 @@ describe("ImportTaskAdminPage", () => {
         productIds: ["B001", "B002"],
       }),
     );
+  });
+
+  it("allows importing product ids without a category id", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminStoresApi, "getSimpleListingStores").mockResolvedValue([
+      { id: 11, name: "SHEIN US", platform: "SHEIN", region: "US" },
+    ]);
+    vi.spyOn(adminImportTasksApi, "getListingImportTasks").mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+    });
+    const batchCreateSpy = vi
+      .spyOn(adminImportTasksApi, "batchCreateListingImportTasks")
+      .mockResolvedValue({ createdCount: 1, items: [] });
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ImportTaskAdminPage />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("SHEIN US (#11)").length).toBeGreaterThan(0);
+    });
+
+    await user.selectOptions(screen.getByLabelText("店铺"), "11");
+    const file = new File(["product_id\nB001\n"], "tasks.csv", {
+      type: "text/csv",
+    });
+    await user.upload(screen.getByLabelText("批量导入文件"), file);
+    await user.click(screen.getByRole("button", { name: "导入任务" }));
+
+    await waitFor(() => {
+      expect(batchCreateSpy).toHaveBeenCalled();
+    });
+    expect(batchCreateSpy.mock.calls[0]?.[0].categoryId).toBeUndefined();
   });
 
   it("requests the next page and resets pagination when page size changes", async () => {

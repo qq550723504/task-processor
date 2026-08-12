@@ -14,7 +14,7 @@ type ImportTaskHandler struct {
 
 type BatchCreateImportTaskRequest struct {
 	StoreID        int64    `json:"storeId"`
-	CategoryID     int64    `json:"categoryId"`
+	CategoryID     *int64   `json:"categoryId"`
 	Platform       string   `json:"platform"`
 	TargetPlatform string   `json:"targetPlatform"`
 	Region         string   `json:"region"`
@@ -74,7 +74,7 @@ func (h *ImportTaskHandler) BatchCreateImportTasks(c *gin.Context) {
 	}
 
 	storeID := req.StoreID
-	categoryID := req.CategoryID
+	categoryID := optionalPositiveInt64(req.CategoryID)
 	tasks := make([]ImportTask, 0, len(productIDs))
 	for _, productID := range productIDs {
 		tasks = append(tasks, ImportTask{
@@ -84,7 +84,7 @@ func (h *ImportTaskHandler) BatchCreateImportTasks(c *gin.Context) {
 			TargetPlatform: strings.TrimSpace(req.TargetPlatform),
 			SourcePlatform: strings.TrimSpace(req.Platform),
 			Region:         strings.TrimSpace(req.Region),
-			CategoryID:     &categoryID,
+			CategoryID:     categoryID,
 			ProductID:      productID,
 			Status:         0,
 			MaxRetryCount:  3,
@@ -135,14 +135,22 @@ func validateBatchCreateImportTask(tenantID int64, req BatchCreateImportTaskRequ
 		return errors.New("tenant id is required")
 	case req.StoreID <= 0:
 		return errors.New("storeId is required")
-	case req.CategoryID <= 0:
-		return errors.New("categoryId is required")
+	case req.CategoryID != nil && *req.CategoryID < 0:
+		return errors.New("categoryId must be greater than 0")
 	case strings.TrimSpace(req.Platform) == "":
 		return errors.New("platform is required")
 	case len(productIDs) == 0:
 		return errors.New("productIds is required")
 	}
 	return nil
+}
+
+func optionalPositiveInt64(value *int64) *int64 {
+	if value == nil || *value <= 0 {
+		return nil
+	}
+	copy := *value
+	return &copy
 }
 
 var writeImportTaskError = newMappedHandlerErrorWriter(
