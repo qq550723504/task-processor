@@ -64,9 +64,60 @@ func TestListDispatchCandidatesFairAlternatesStoresBeforeSecondTask(t *testing.T
 	}
 
 	got := taskIDs(tasks)
-	want := []int64{1, 3, 2}
+	want := []int64{6, 1, 3}
 	if !equalInt64s(got, want) {
 		t.Fatalf("task IDs = %v, want %v", got, want)
+	}
+}
+
+func TestListDispatchCandidatesFairMatchesTargetPlatformCaseInsensitively(t *testing.T) {
+	t.Parallel()
+
+	db := newImportTaskDispatchTestDB(t)
+	now := time.Now()
+	seedDispatchTasks(t, db, []listingProductImportTask{
+		{
+			ID:             101,
+			TenantID:       10,
+			StoreID:        986,
+			Platform:       "Amazon",
+			TargetPlatform: "SHEIN",
+			SourcePlatform: "Amazon",
+			Region:         "US",
+			ProductID:      "B0CASE",
+			Status:         model.TaskStatusPending.Int16(),
+			Priority:       5,
+			CreateTime:     &now,
+			UpdateTime:     &now,
+			Deleted:        0,
+		},
+		{
+			ID:             102,
+			TenantID:       10,
+			StoreID:        987,
+			Platform:       "SHEIN",
+			TargetPlatform: "",
+			Region:         "US",
+			ProductID:      "B0EMPTYTARGET",
+			Status:         model.TaskStatusPending.Int16(),
+			Priority:       5,
+			CreateTime:     &now,
+			UpdateTime:     &now,
+			Deleted:        0,
+		},
+	})
+
+	repo := NewGormImportTaskRepository(db)
+	candidates, err := repo.ListDispatchCandidatesFair(context.Background(), DispatchCandidateRequest{
+		Platform:      "shein",
+		Limit:         10,
+		PerStoreLimit: 1,
+	})
+	if err != nil {
+		t.Fatalf("ListDispatchCandidatesFair() error = %v", err)
+	}
+	if got := taskIDs(candidates); !equalInt64s(got, []int64{101, 102}) {
+		t.Fatalf("task IDs = %v, want mixed-case and empty-target SHEIN candidates", got)
 	}
 }
 
@@ -493,8 +544,8 @@ func TestCountQueuedByStoreGroupsAcrossTenantsForPlatform(t *testing.T) {
 	if _, ok := counts[300]; ok {
 		t.Fatalf("counts includes store 300: %v, want wrong platform omitted", counts)
 	}
-	if _, ok := counts[400]; ok {
-		t.Fatalf("counts includes store 400: %v, want empty target platform omitted", counts)
+	if counts[400] != 1 {
+		t.Fatalf("counts = %v, want empty target platform to fall back to legacy platform", counts)
 	}
 }
 

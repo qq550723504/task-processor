@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	taskdomain "task-processor/internal/domain/task"
 )
 
 type ImportTaskHandler struct {
@@ -75,14 +76,19 @@ func (h *ImportTaskHandler) BatchCreateImportTasks(c *gin.Context) {
 
 	storeID := req.StoreID
 	categoryID := optionalPositiveInt64(req.CategoryID)
+	platform := taskdomain.NormalizePlatform(req.Platform)
+	targetPlatform := taskdomain.NormalizePlatform(req.TargetPlatform)
+	if targetPlatform == "" {
+		targetPlatform = platform
+	}
 	tasks := make([]ImportTask, 0, len(productIDs))
 	for _, productID := range productIDs {
 		tasks = append(tasks, ImportTask{
 			TenantID:       tenantID,
 			StoreID:        &storeID,
-			Platform:       strings.TrimSpace(req.Platform),
-			TargetPlatform: strings.TrimSpace(req.TargetPlatform),
-			SourcePlatform: strings.TrimSpace(req.Platform),
+			Platform:       platform,
+			TargetPlatform: targetPlatform,
+			SourcePlatform: platform,
 			Region:         strings.TrimSpace(req.Region),
 			CategoryID:     categoryID,
 			ProductID:      productID,

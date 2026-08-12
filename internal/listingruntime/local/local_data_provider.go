@@ -754,6 +754,8 @@ func importTaskToRuntime(task *listingadmin.ImportTask) *listingruntime.ImportTa
 		TenantID:        task.TenantID,
 		StoreID:         int64FromPtr(task.StoreID),
 		Platform:        task.Platform,
+		SourcePlatform:  task.SourcePlatform,
+		TargetPlatform:  task.TargetPlatform,
 		Region:          task.Region,
 		CategoryID:      int64FromPtr(task.CategoryID),
 		ProductID:       task.ProductID,
@@ -1572,26 +1574,28 @@ func (p *LocalDataProvider) GetLatestInventoryRecord(platform, productID, region
 }
 
 type localImportTaskRow struct {
-	ID            int64      `gorm:"column:id"`
-	TenantID      int64      `gorm:"column:tenant_id"`
-	StoreID       int64      `gorm:"column:store_id"`
-	Platform      string     `gorm:"column:platform"`
-	Region        string     `gorm:"column:region"`
-	CategoryID    *int64     `gorm:"column:category_id"`
-	ProductID     string     `gorm:"column:product_id"`
-	Status        int16      `gorm:"column:status"`
-	ErrorMessage  string     `gorm:"column:error_message"`
-	ReasonCode    string     `gorm:"column:reason_code"`
-	Stage         string     `gorm:"column:stage"`
-	RetryCount    int        `gorm:"column:retry_count"`
-	MaxRetryCount int        `gorm:"column:max_retry_count"`
-	Remark        string     `gorm:"column:remark"`
-	Priority      int        `gorm:"column:priority"`
-	CreateTime    time.Time  `gorm:"column:create_time"`
-	UpdateTime    time.Time  `gorm:"column:update_time"`
-	PublishedTime *time.Time `gorm:"column:published_time"`
-	Creator       string     `gorm:"column:creator"`
-	Updater       string     `gorm:"column:updater"`
+	ID             int64      `gorm:"column:id"`
+	TenantID       int64      `gorm:"column:tenant_id"`
+	StoreID        int64      `gorm:"column:store_id"`
+	Platform       string     `gorm:"column:platform"`
+	SourcePlatform string     `gorm:"column:source_platform"`
+	TargetPlatform string     `gorm:"column:target_platform"`
+	Region         string     `gorm:"column:region"`
+	CategoryID     *int64     `gorm:"column:category_id"`
+	ProductID      string     `gorm:"column:product_id"`
+	Status         int16      `gorm:"column:status"`
+	ErrorMessage   string     `gorm:"column:error_message"`
+	ReasonCode     string     `gorm:"column:reason_code"`
+	Stage          string     `gorm:"column:stage"`
+	RetryCount     int        `gorm:"column:retry_count"`
+	MaxRetryCount  int        `gorm:"column:max_retry_count"`
+	Remark         string     `gorm:"column:remark"`
+	Priority       int        `gorm:"column:priority"`
+	CreateTime     time.Time  `gorm:"column:create_time"`
+	UpdateTime     time.Time  `gorm:"column:update_time"`
+	PublishedTime  *time.Time `gorm:"column:published_time"`
+	Creator        string     `gorm:"column:creator"`
+	Updater        string     `gorm:"column:updater"`
 }
 
 func (r localImportTaskRow) toRuntimeTask() listingruntime.ImportTask {
@@ -1601,6 +1605,8 @@ func (r localImportTaskRow) toRuntimeTask() listingruntime.ImportTask {
 		TenantID:        r.TenantID,
 		StoreID:         r.StoreID,
 		Platform:        r.Platform,
+		SourcePlatform:  r.SourcePlatform,
+		TargetPlatform:  r.TargetPlatform,
 		Region:          r.Region,
 		CategoryID:      int64FromPtr(r.CategoryID),
 		ProductID:       r.ProductID,

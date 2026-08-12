@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	taskdomain "task-processor/internal/domain/task"
 	"task-processor/internal/model"
 )
 
@@ -33,6 +34,9 @@ func AutoMigrateImportTaskRepository(db *gorm.DB) error {
 		}
 	}
 	if err := ensureNullableImportTaskCategoryID(db, table); err != nil {
+		return err
+	}
+	if err := ensureImportTaskPlatformIntegrity(db, table); err != nil {
 		return err
 	}
 	return db.AutoMigrate(&listingDispatchEvent{})
@@ -157,7 +161,7 @@ func (r *GormImportTaskRepository) ListDispatchCandidatesFair(ctx context.Contex
 		model.TaskStatusCrawled.Int16(),
 		model.TaskStatusPendingRetry.Int16(),
 	}
-	platform := strings.TrimSpace(req.Platform)
+	platform := taskdomain.NormalizePlatform(req.Platform)
 	if platform == "" {
 		return []ImportTask{}, nil
 	}
@@ -168,7 +172,7 @@ func (r *GormImportTaskRepository) ListDispatchCandidatesFair(ctx context.Contex
 			order by t.priority desc, t.update_time asc, t.id asc
 		) as rn`).
 		Where("t.deleted = 0").
-		Where("COALESCE(t.target_platform, t.platform) = ?", platform).
+		Where("LOWER(TRIM(COALESCE(NULLIF(TRIM(t.target_platform), ''), t.platform))) = ?", platform).
 		Where("t.status IN ?", statuses).
 		Where("t.store_id IS NOT NULL")
 	if len(req.ExcludedStoreIDs) > 0 {
@@ -196,7 +200,7 @@ func (r *GormImportTaskRepository) ListPausedTaskGroups(ctx context.Context, pla
 	if r == nil || r.db == nil {
 		return nil, errors.New("import task repository database is not configured")
 	}
-	platform = strings.TrimSpace(platform)
+	platform = taskdomain.NormalizePlatform(platform)
 	if platform == "" {
 		return []PausedTaskGroup{}, nil
 	}
@@ -206,7 +210,7 @@ func (r *GormImportTaskRepository) ListPausedTaskGroups(ctx context.Context, pla
 		Table("listing_product_import_task").
 		Select("tenant_id, store_id, reason_code, stage, count(*) AS count").
 		Where("deleted = 0").
-		Where("COALESCE(NULLIF(target_platform, ''), platform) = ?", platform).
+		Where("LOWER(TRIM(COALESCE(NULLIF(TRIM(target_platform), ''), platform))) = ?", platform).
 		Where("status = ?", model.TaskStatusPaused.Int16()).
 		Group("tenant_id, store_id, reason_code, stage").
 		Order("count DESC, tenant_id ASC, store_id ASC, reason_code ASC, stage ASC").
@@ -221,7 +225,7 @@ func (r *GormImportTaskRepository) RecoverPausedTaskGroup(ctx context.Context, p
 	if r == nil || r.db == nil {
 		return 0, errors.New("import task repository database is not configured")
 	}
-	platform = strings.TrimSpace(platform)
+	platform = taskdomain.NormalizePlatform(platform)
 	if platform == "" {
 		return 0, nil
 	}
@@ -232,7 +236,7 @@ func (r *GormImportTaskRepository) RecoverPausedTaskGroup(ctx context.Context, p
 	res := r.db.WithContext(ctx).
 		Table("listing_product_import_task").
 		Where("deleted = 0").
-		Where("COALESCE(NULLIF(target_platform, ''), platform) = ?", platform).
+		Where("LOWER(TRIM(COALESCE(NULLIF(TRIM(target_platform), ''), platform))) = ?", platform).
 		Where("tenant_id = ? AND store_id = ?", group.TenantID, group.StoreID).
 		Where("status = ?", model.TaskStatusPaused.Int16()).
 		Where("COALESCE(reason_code, '') = ?", strings.TrimSpace(group.ReasonCode)).
@@ -335,7 +339,7 @@ func (r *GormImportTaskRepository) CountDailyDispatchUsage(ctx context.Context, 
 	if r == nil || r.db == nil {
 		return DailyDispatchUsage{}, errors.New("import task repository database is not configured")
 	}
-	platform = strings.TrimSpace(platform)
+	platform = taskdomain.NormalizePlatform(platform)
 	if platform == "" {
 		return DailyDispatchUsage{}, nil
 	}
@@ -353,7 +357,7 @@ func (r *GormImportTaskRepository) CountDailyDispatchUsage(ctx context.Context, 
 		Select("status, count(*) as count").
 		Where("deleted = 0").
 		Where("tenant_id = ? AND store_id = ?", tenantID, storeID).
-		Where("COALESCE(NULLIF(target_platform, ''), platform) = ?", platform).
+		Where("LOWER(TRIM(COALESCE(NULLIF(TRIM(target_platform), ''), platform))) = ?", platform).
 		Where("create_time >= ? AND create_time < ?", start, end).
 		Where("status IN ?", []int16{
 			model.TaskStatusProcessing.Int16(),
@@ -442,7 +446,7 @@ func (r *GormImportTaskRepository) CountQueuedByStore(ctx context.Context, platf
 	if r == nil || r.db == nil {
 		return nil, errors.New("import task repository database is not configured")
 	}
-	trimmedPlatform := strings.TrimSpace(platform)
+	trimmedPlatform := taskdomain.NormalizePlatform(platform)
 	if trimmedPlatform == "" {
 		return map[int64]int64{}, nil
 	}
@@ -455,7 +459,7 @@ func (r *GormImportTaskRepository) CountQueuedByStore(ctx context.Context, platf
 		Select("store_id, count(*) as count").
 		Where("deleted = 0").
 		Where("status = ?", model.TaskStatusQueued.Int16()).
-		Where("COALESCE(target_platform, platform) = ?", trimmedPlatform).
+		Where("LOWER(TRIM(COALESCE(NULLIF(TRIM(target_platform), ''), platform))) = ?", trimmedPlatform).
 		Group("store_id")
 	if len(storeIDs) > 0 {
 		query = query.Where("store_id IN ?", storeIDs)

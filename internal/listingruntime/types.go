@@ -5,6 +5,8 @@ type ImportTask struct {
 	TenantID        int64
 	StoreID         int64
 	Platform        string
+	SourcePlatform  string
+	TargetPlatform  string
 	Region          string
 	CategoryID      int64
 	ProductID       string

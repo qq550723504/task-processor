@@ -1,6 +1,7 @@
 package listingadmin
 
 import (
+	"strings"
 	"testing"
 
 	"gorm.io/driver/sqlite"
@@ -89,6 +90,70 @@ func TestAutoMigrateImportTaskRepositoryMakesCategoryIDNullable(t *testing.T) {
 	if nullable := importTaskCategoryNullable(t, db); !nullable {
 		t.Fatal("category_id remains NOT NULL after migration")
 	}
+}
+
+func TestEnsureImportTaskPlatformIntegrityUsesActiveOnlyUniqueIndex(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
+		t.Fatalf("migrate import task row: %v", err)
+	}
+	if err := db.Exec(`CREATE UNIQUE INDEX idx_listing_product_import_task_unique ON listing_product_import_task (target_platform, product_id, region, store_id)`).Error; err != nil {
+		t.Fatalf("create legacy unique index: %v", err)
+	}
+
+	if err := ensureImportTaskPlatformIntegrity(db, "listing_product_import_task"); err != nil {
+		t.Fatalf("ensureImportTaskPlatformIntegrity() error = %v", err)
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{
+		Platform: "shein", TargetPlatform: "shein", ProductID: "P1", Region: "US", StoreID: 986, Deleted: 1,
+	}).Error; err != nil {
+		t.Fatalf("insert deleted duplicate: %v", err)
+	}
+}
+
+func TestEnsureNoImportTaskPlatformViolationsIgnoresDeletedRows(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
+		t.Fatalf("migrate import task row: %v", err)
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{
+		Platform: "SHEIN", SourcePlatform: "Amazon", TargetPlatform: "SHEIN",
+		ProductID: "deleted", Region: "US", StoreID: 986, Deleted: 1,
+	}).Error; err != nil {
+		t.Fatalf("insert deleted non-canonical row: %v", err)
+	}
+
+	if err := ensureNoImportTaskPlatformViolations(db, "listing_product_import_task"); err != nil {
+		t.Fatalf("deleted non-canonical row blocked validation: %v", err)
+	}
+}
+
+func TestImportTaskActiveUniqueIndexStatementIsIdempotent(t *testing.T) {
+	statement := strings.ToUpper(importTaskActiveUniqueIndexStatement("listing_product_import_task"))
+	if !strings.Contains(statement, "CREATE UNIQUE INDEX IF NOT EXISTS") {
+		t.Fatalf("statement = %q, want IF NOT EXISTS", statement)
+	}
+}
+
+type importTaskPlatformIntegrityRow struct {
+	ID             int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	Platform       string `gorm:"column:platform;not null"`
+	SourcePlatform string `gorm:"column:source_platform"`
+	TargetPlatform string `gorm:"column:target_platform"`
+	ProductID      string `gorm:"column:product_id;not null"`
+	Region         string `gorm:"column:region;not null"`
+	StoreID        int64  `gorm:"column:store_id;not null"`
+	Deleted        int16  `gorm:"column:deleted;not null"`
+}
+
+func (importTaskPlatformIntegrityRow) TableName() string {
+	return "listing_product_import_task"
 }
 
 type legacyImportTaskWithRequiredCategory struct {
