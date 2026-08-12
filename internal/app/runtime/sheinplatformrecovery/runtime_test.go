@@ -41,9 +41,13 @@ func TestRunDefaultsToDryRun(t *testing.T) {
 func TestRunRejectsAnyStoreExcept986BeforeOpeningDatabase(t *testing.T) {
 	t.Parallel()
 
+	loaded := false
 	opened := false
 	err := runWithDependencies(context.Background(), Options{StoreID: 985, ExpectedCount: 200}, runtimeDependencies{
-		LoadConfig: func(string) (*config.Config, error) { return nil, errors.New("load should not run") },
+		LoadConfig: func(string) (*config.Config, error) {
+			loaded = true
+			return nil, errors.New("load should not run")
+		},
 		OpenDB: func(*config.DatabaseConfig) (*gorm.DB, error) {
 			opened = true
 			return nil, errors.New("open should not run")
@@ -51,6 +55,9 @@ func TestRunRejectsAnyStoreExcept986BeforeOpeningDatabase(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("runWithDependencies() error = nil, want store-scope rejection")
+	}
+	if loaded {
+		t.Fatal("configuration loaded for invalid store scope")
 	}
 	if opened {
 		t.Fatal("database opened for invalid store scope")
