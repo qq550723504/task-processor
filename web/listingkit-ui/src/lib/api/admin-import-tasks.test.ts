@@ -17,7 +17,7 @@ describe("parseImportTaskPageResponse", () => {
             storeId: 11,
             platform: "Amazon",
             region: "US",
-            categoryId: 22,
+            categoryId: null,
             productId: "B001",
             status: 0,
             retryCount: 0,

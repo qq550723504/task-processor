@@ -1577,7 +1577,7 @@ type localImportTaskRow struct {
 	StoreID       int64      `gorm:"column:store_id"`
 	Platform      string     `gorm:"column:platform"`
 	Region        string     `gorm:"column:region"`
-	CategoryID    int64      `gorm:"column:category_id"`
+	CategoryID    *int64     `gorm:"column:category_id"`
 	ProductID     string     `gorm:"column:product_id"`
 	Status        int16      `gorm:"column:status"`
 	ErrorMessage  string     `gorm:"column:error_message"`
@@ -1602,7 +1602,7 @@ func (r localImportTaskRow) toRuntimeTask() listingruntime.ImportTask {
 		StoreID:         r.StoreID,
 		Platform:        r.Platform,
 		Region:          r.Region,
-		CategoryID:      r.CategoryID,
+		CategoryID:      int64FromPtr(r.CategoryID),
 		ProductID:       r.ProductID,
 		Status:          r.Status,
 		ErrorMessage:    r.ErrorMessage,

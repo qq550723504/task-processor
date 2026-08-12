@@ -16,7 +16,7 @@ type ImportTask struct {
 	TargetPlatform string     `json:"targetPlatform,omitempty"`
 	SourcePlatform string     `json:"sourcePlatform,omitempty"`
 	Region         string     `json:"region"`
-	CategoryID     *int64     `json:"categoryId,omitempty"`
+	CategoryID     *int64     `json:"categoryId"`
 	ProductID      string     `json:"productId"`
 	Status         int16      `json:"status"`
 	ProcessingNode string     `json:"processingNode,omitempty"`
@@ -162,7 +162,7 @@ type listingProductImportTask struct {
 	TargetPlatform string     `gorm:"column:target_platform"`
 	SourcePlatform string     `gorm:"column:source_platform"`
 	Region         string     `gorm:"column:region;not null"`
-	CategoryID     int64      `gorm:"column:category_id;not null;index"`
+	CategoryID     *int64     `gorm:"column:category_id;index"`
 	ProductID      string     `gorm:"column:product_id;not null;index"`
 	Status         int16      `gorm:"column:status;not null;default:0;index"`
 	ProcessingNode string     `gorm:"column:processing_node"`

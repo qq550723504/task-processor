@@ -41,13 +41,18 @@ func (p *LocalTaskRPCProvider) SubmitTask(req *api.TaskSubmitReqDTO, urgent bool
 	}
 
 	now := time.Now()
+	var categoryID *int64
+	if req.CategoryID > 0 {
+		value := req.CategoryID
+		categoryID = &value
+	}
 	row := localImportTaskRow{
 		ID:            req.TaskID,
 		TenantID:      req.TenantID,
 		StoreID:       req.StoreID,
 		Platform:      req.Platform,
 		Region:        req.Region,
-		CategoryID:    req.CategoryID,
+		CategoryID:    categoryID,
 		ProductID:     req.ProductID,
 		Status:        model.TaskStatusPending.Int16(),
 		Stage:         req.TaskType,
