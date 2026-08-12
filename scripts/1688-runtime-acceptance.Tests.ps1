@@ -61,22 +61,18 @@ Describe "1688 runtime acceptance safety" {
         ($script:requestMethods -join ",") | Should Be "Get /health,Get /readyz,Get /api/v1/listing-kits/settings-health"
     }
 
-    It "runs public preflight checks before failing at the authenticated check when the token is missing" {
+    It "runs public preflight checks then stops before settings health when the token is missing" {
         $script:requestMethods = @()
         Mock Resolve-ListingKitToken { throw "token is missing" }
         Mock Invoke-AcceptanceRequest {
             param($Method, $Path, $Token)
             $script:requestMethods += "$Method $Path"
-            if ($Path -eq "/api/v1/listing-kits/settings-health") {
-                $Token | Should Be ""
-                return @{ status = "ready" }
-            }
             return @{ status = "ok" }
         }
 
-        Invoke-Main
+        { Invoke-Main } | Should Throw "token is missing"
 
-        ($script:requestMethods -join ",") | Should Be "Get /health,Get /readyz,Get /api/v1/listing-kits/settings-health"
+        ($script:requestMethods -join ",") | Should Be "Get /health,Get /readyz"
     }
 
     It "blocks preflight when settings health is not ready" {
@@ -166,6 +162,18 @@ Describe "1688 runtime acceptance safety" {
         }
 
         { Invoke-Crawl -Url "https://detail.1688.com/offer/326.html" -SourceAccountID 3006 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0 } | Should Throw "crawler task crawler-task-invalid-status returned unexpected status 'queued'"
+    }
+
+    It "rejects a successful crawler result for a different task" {
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            if ($Path -eq "/api/v1/crawl") {
+                return @{ data = @{ task_id = "crawler-task-expected" } }
+            }
+            return @{ data = @{ TaskID = "crawler-task-other"; Status = "success"; ProductData = [pscustomobject]@{ id = "328"; title = "Wrong task"; url = "https://detail.1688.com/offer/328.html" } } }
+        }
+
+        { Invoke-Crawl -Url "https://detail.1688.com/offer/328.html" -SourceAccountID 3008 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0 } | Should Throw "crawler task crawler-task-expected response task id 'crawler-task-other' does not match"
     }
 
     It "rejects an expired crawler deadline before polling" {

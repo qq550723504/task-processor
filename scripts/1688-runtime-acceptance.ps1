@@ -246,29 +246,43 @@ function New-ListingKitHandoffPayload {
     }
 }
 
+function Invoke-PublicPreflight {
+    param(
+        [string]$BaseUrl = $script:AcceptanceApiBaseUrl
+    )
+
+    foreach ($path in @("/health", "/readyz")) {
+        Invoke-AcceptanceRequest -Method Get -Path $path -Token "" -BaseUrl $BaseUrl | Out-Null
+        Write-Output ("PASS GET {0}" -f $path)
+    }
+}
+
+function Invoke-AuthenticatedPreflight {
+    param(
+        [string]$Token,
+        [string]$BaseUrl = $script:AcceptanceApiBaseUrl
+    )
+
+    $response = Invoke-AcceptanceRequest -Method Get -Path "/api/v1/listing-kits/settings-health" -Token $Token -BaseUrl $BaseUrl
+    $health = Get-ResponseData -Response $response
+    $healthStatus = ([string]$health.status).Trim().ToLowerInvariant()
+    if ($healthStatus -ne "ready") {
+        throw "settings-health status is '$healthStatus'; task creation is not allowed"
+    }
+    Write-Output "PASS GET /api/v1/listing-kits/settings-health"
+}
+
 function Invoke-Preflight {
     param(
         [string]$Token,
         [string]$BaseUrl = $script:AcceptanceApiBaseUrl
     )
 
-    $checks = @(
-        @{ Path = "/health"; Authenticated = $false },
-        @{ Path = "/readyz"; Authenticated = $false },
-        @{ Path = "/api/v1/listing-kits/settings-health"; Authenticated = $true }
-    )
-    foreach ($check in $checks) {
-        $requestToken = if ($check.Authenticated) { $Token } else { "" }
-        $response = Invoke-AcceptanceRequest -Method Get -Path $check.Path -Token $requestToken -BaseUrl $BaseUrl
-        if ($check.Path -eq "/api/v1/listing-kits/settings-health") {
-            $health = Get-ResponseData -Response $response
-            $healthStatus = ([string]$health.status).Trim().ToLowerInvariant()
-            if ($healthStatus -ne "ready") {
-                throw "settings-health status is '$healthStatus'; task creation is not allowed"
-            }
-        }
-        Write-Output ("PASS GET {0}" -f $check.Path)
+    Invoke-PublicPreflight -BaseUrl $BaseUrl
+    if ([string]::IsNullOrWhiteSpace($Token)) {
+        throw "No ListingKit API token found; set LISTINGKIT_API_TOKEN or provide the standard token file."
     }
+    Invoke-AuthenticatedPreflight -Token $Token -BaseUrl $BaseUrl
 }
 
 function Invoke-Crawl {
@@ -302,6 +316,14 @@ function Invoke-Crawl {
         $remainingTimeoutSec = Get-RemainingRequestTimeoutSec -Deadline $deadline -TaskID $taskID
         $response = Invoke-AcceptanceRequest -Method Get -Path "/api/v1/tasks/$([Uri]::EscapeDataString($taskID))" -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $remainingTimeoutSec
         $data = Get-ResponseData -Response $response
+        $responseTaskID = [string]$data.task_id
+        if ([string]::IsNullOrWhiteSpace($responseTaskID)) { $responseTaskID = [string]$data.TaskID }
+        if ([string]::IsNullOrWhiteSpace($responseTaskID)) {
+            throw "crawler task $taskID response did not contain a task id"
+        }
+        if ($responseTaskID -cne $taskID) {
+            throw "crawler task $taskID response task id '$responseTaskID' does not match"
+        }
         $status = ([string]$data.status).Trim().ToLowerInvariant()
         if ($status -eq "success") {
             $productData = $data.product_data
@@ -344,9 +366,9 @@ function Invoke-EndToEnd {
 
 function Invoke-Main {
     if ($Mode -eq "Preflight") {
-        $token = ""
-        try { $token = Resolve-ListingKitToken } catch { }
-        Invoke-Preflight -Token $token
+        Invoke-PublicPreflight
+        $token = Resolve-ListingKitToken
+        Invoke-AuthenticatedPreflight -Token $token
         return
     }
     $token = Resolve-ListingKitToken
