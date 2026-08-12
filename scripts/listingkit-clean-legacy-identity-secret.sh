@@ -15,11 +15,28 @@ if ! kubectl -n "$namespace" get secret "$secret" -o name >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! secret_snapshot="$(kubectl -n "$namespace" get secret "$secret" -o 'jsonpath={.metadata.resourceVersion}{"\t"}{.data.LISTINGKIT_ZITADEL_ALLOWED_USERNAMES}{"\t"}{.data.TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES}{"\t"}{.data.LISTINGKIT_ZITADEL_ALLOWED_ROLES}{"\t"}{.data.TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES}{"\t"}{"END"}')"; then
+if ! secret_snapshot="$(kubectl -n "$namespace" get secret "$secret" -o 'jsonpath={.metadata.resourceVersion}{"\n"}{.data.LISTINGKIT_ZITADEL_ALLOWED_USERNAMES}{"\n"}{.data.TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES}{"\n"}{.data.LISTINGKIT_ZITADEL_ALLOWED_ROLES}{"\n"}{.data.TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES}{"\n"}{"END"}')"; then
   printf 'could not read shared Secret data %s\n' "$secret" >&2
   exit 1
 fi
-IFS=$'\t' read -r resource_version legacy_usernames primary_usernames legacy_roles canonical_roles snapshot_end <<<"$secret_snapshot"
+snapshot_fields=()
+while IFS= read -r snapshot_field; do
+  snapshot_fields+=("$snapshot_field")
+done <<<"$secret_snapshot"
+if (( ${#snapshot_fields[@]} != 6 )); then
+  printf 'shared Secret %s returned an invalid cleanup snapshot\n' "$secret" >&2
+  exit 1
+fi
+resource_version="${snapshot_fields[0]}"
+legacy_usernames="${snapshot_fields[1]}"
+primary_usernames="${snapshot_fields[2]}"
+legacy_roles="${snapshot_fields[3]}"
+canonical_roles="${snapshot_fields[4]}"
+snapshot_end="${snapshot_fields[5]}"
+if [[ "$snapshot_end" != END ]]; then
+  printf 'shared Secret %s returned an invalid cleanup marker\n' "$secret" >&2
+  exit 1
+fi
 if [[ -z "$resource_version" ]]; then
   printf 'shared Secret %s has no resourceVersion for safe cleanup\n' "$secret" >&2
   exit 1

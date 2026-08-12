@@ -22,13 +22,13 @@ fi
 if [[ "$*" == *"get secret listingkit-workbench-secret -o jsonpath="* ]]; then
   if [[ "$*" == *'metadata.resourceVersion'* && "$*" == *'END'* ]]; then
     if [[ "${FAKE_KUBECTL_MODE:-normal}" == "annotation-only" ]]; then
-      printf '%s\n' 'rv:opaque/123					END'
+      printf 'rv:opaque/123\n\n\n\n\nEND\n'
     elif [[ "${FAKE_KUBECTL_MODE:-normal}" == "no-deployment" ]]; then
-      printf '%s\n' 'rv:opaque/123	bGVnYWN5	cHJpbWFyeQ==	bGVnYWN5		END'
+      printf 'rv:opaque/123\nbGVnYWN5\ncHJpbWFyeQ==\nbGVnYWN5\n\nEND\n'
     elif [[ "${FAKE_KUBECTL_MODE:-normal}" == "canonical-whitespace" ]]; then
-      printf '%s\n' 'rv:opaque/123	bGVnYWN5	cHJpbWFyeQ==	bGVnYWN5	IA==	END'
+      printf 'rv:opaque/123\nbGVnYWN5\ncHJpbWFyeQ==\nbGVnYWN5\nIA==\nEND\n'
     else
-      printf '%s\n' 'rv:opaque/123	bGVnYWN5	cHJpbWFyeQ==	bGVnYWN5		END'
+      printf 'rv:opaque/123\nbGVnYWN5\ncHJpbWFyeQ==\nbGVnYWN5\n\nEND\n'
     fi
     exit 0
   fi
