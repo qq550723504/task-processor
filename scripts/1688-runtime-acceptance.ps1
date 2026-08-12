@@ -215,8 +215,10 @@ function Invoke-Crawl {
         $data = Get-ResponseData -Response $response
         $status = [string]$data.status
         if ($status -eq "success") {
-            if ($null -eq $data.product_data) { throw "crawler task $taskID succeeded without product_data" }
-            return [pscustomobject]@{ TaskID = $taskID; Status = $status; ProductData = $data.product_data }
+            $productData = $data.product_data
+            if ($null -eq $productData) { $productData = $data.ProductData }
+            if ($null -eq $productData) { throw "crawler task $taskID succeeded without product_data" }
+            return [pscustomobject]@{ TaskID = $taskID; Status = $status; ProductData = $productData }
         }
         if ($status -eq "failed") {
             throw "crawler task $taskID failed"
@@ -245,6 +247,8 @@ function Invoke-EndToEnd {
     $crawler = Invoke-Crawl -Url $Url -SourceAccountID $SourceAccountID -Confirmation $Confirmation -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $RequestTimeoutSec -PollIntervalSec $PollIntervalSec
     $payload = New-ListingKitHandoffPayload -ProductData $crawler.ProductData -SourceAccountID $SourceAccountID -SheinStoreID $SheinStoreID -CrawlerTaskID $crawler.TaskID
     $response = Invoke-AcceptanceRequest -Method Post -Path "/api/v1/product-sourcing/1688/listingkit/tasks" -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $RequestTimeoutSec -Body $payload
+    $handoffData = Get-ResponseData -Response $response
+    if ([string]::IsNullOrWhiteSpace([string]$handoffData.task_id)) { throw "handoff response did not contain a task id" }
     return [pscustomobject]@{ CrawlerTaskID = $crawler.TaskID; CrawlerStatus = $crawler.Status; Handoff = $response }
 }
 

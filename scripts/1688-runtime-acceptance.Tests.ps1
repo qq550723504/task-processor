@@ -85,6 +85,20 @@ Describe "1688 runtime acceptance safety" {
         $result.ProductData.id | Should Be "321"
     }
 
+    It "accepts the live ProductData response casing from the crawler task" {
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            if ($Path -eq "/api/v1/crawl") {
+                return @{ data = @{ task_id = "crawler-task-live" } }
+            }
+            return @{ data = @{ task_id = "crawler-task-live"; status = "success"; ProductData = [pscustomobject]@{ id = "323"; title = "Live casing product"; url = "https://detail.1688.com/offer/323.html" } } }
+        }
+
+        $result = Invoke-Crawl -Url "https://detail.1688.com/offer/323.html" -SourceAccountID 3003 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0
+
+        $result.ProductData.id | Should Be "323"
+    }
+
     It "sends the crawler product to the ListingKit handoff without source_store_id" {
         $script:lastHandoffBody = $null
         Mock Invoke-AcceptanceRequest {
@@ -105,5 +119,20 @@ Describe "1688 runtime acceptance safety" {
         $script:lastHandoffBody.source_account_id | Should Be 3002
         $script:lastHandoffBody.shein_store_id | Should Be 168812
         ($script:lastHandoffBody.Keys -contains "source_store_id") | Should Be $false
+    }
+
+    It "rejects an EndToEnd handoff response without a task id" {
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            if ($Path -eq "/api/v1/crawl") {
+                return @{ data = @{ task_id = "crawler-task-3" } }
+            }
+            if ($Path -eq "/api/v1/tasks/crawler-task-3") {
+                return @{ data = @{ task_id = "crawler-task-3"; status = "success"; ProductData = [pscustomobject]@{ id = "324"; title = "Missing handoff task"; url = "https://detail.1688.com/offer/324.html" } } }
+            }
+            return @{ data = @{ status = "pending" } }
+        }
+
+        { Invoke-EndToEnd -Url "https://detail.1688.com/offer/324.html" -SourceAccountID 3004 -SheinStoreID 168814 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0 } | Should Throw "handoff response did not contain a task id"
     }
 }
