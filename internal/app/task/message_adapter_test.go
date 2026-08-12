@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	coremetrics "task-processor/internal/core/metrics"
 	taskdomain "task-processor/internal/domain/task"
 	"task-processor/internal/model"
 
@@ -176,12 +177,16 @@ func TestMessageAdapterTaskToMessagePublishesTaskEventV2(t *testing.T) {
 		SourcePlatform: "amazon",
 		Platform:       "shein",
 		ProductID:      "B001TEST",
+		TraceID:        "trace-123",
+		Metadata:       map[string]string{"request_id": "request-456"},
 	})
 	require.NoError(t, err)
 	assert.Equal(t, taskdomain.TaskEventSchemaVersionV2, event.SchemaVersion)
 	assert.Equal(t, "12345", event.TaskID)
 	assert.Equal(t, taskdomain.SourcePlatformAmazon, event.SourcePlatform)
 	assert.Equal(t, taskdomain.TargetPlatformShein, event.TargetPlatform)
+	assert.Equal(t, "trace-123", event.TraceID)
+	assert.Equal(t, map[string]string{"request_id": "request-456"}, event.Metadata)
 }
 
 func TestMessageAdapterMessageToTaskDecodesTaskEventV2(t *testing.T) {
@@ -200,11 +205,28 @@ func TestMessageAdapterMessageToTaskDecodesTaskEventV2(t *testing.T) {
 		"sourcePlatform": "amazon",
 		"targetPlatform": "shein",
 		"payload":        json.RawMessage(payload),
+		"traceId":        "trace-123",
+		"metadata":       map[string]any{"request_id": "request-456"},
 	}})
 	require.NoError(t, err)
 	assert.Equal(t, int64(12345), task.ID)
 	assert.Equal(t, "amazon", task.SourcePlatform)
 	assert.Equal(t, "shein", task.Platform)
+	assert.Equal(t, "trace-123", task.TraceID)
+	assert.Equal(t, map[string]string{"request_id": "request-456"}, task.Metadata)
+}
+
+func TestMessageAdapterLegacyDecodeRecordsMetric(t *testing.T) {
+	metrics := coremetrics.GlobalTaskMetrics()
+	before := metrics.GetSnapshot().LegacyTaskEventDecodedCount
+
+	_, err := NewMessageAdapter().MessageToTask(&Message{Payload: map[string]any{
+		"taskId":    float64(12345),
+		"platform":  "shein",
+		"productId": "B001TEST",
+	}})
+	require.NoError(t, err)
+	assert.Equal(t, before+1, metrics.GetSnapshot().LegacyTaskEventDecodedCount)
 }
 
 func TestMessageAdapterMessageToTaskRejectsConflictingV2PayloadRouting(t *testing.T) {

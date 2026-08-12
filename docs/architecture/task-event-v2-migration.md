@@ -57,10 +57,18 @@ not alter that order.
 ## Compatibility measurement and removal gate
 
 For two released consumer versions, retain the adapter's legacy decode branch.
-During that window, query consumer delivery telemetry for task messages with no
-top-level `schemaVersion` and count them as `legacy_task_event_observations`.
-Track the deployed consumer image/version inventory as
-`legacy_task_event_consumers`.
+Every legacy decode increments the existing consumer Prometheus registry metric
+`task_event_decoded_total{schema_version="legacy"}`. It is exposed from the
+consumer `/metrics` endpoint through `internal/infra/metrics/ConsumerRegistry`.
+Use `increase(task_event_decoded_total{schema_version="legacy"}[14d])` for the
+legacy-event observation gate. The label is deliberately limited to the stable
+`schema_version` value; queue, task ID, tenant, and store are not metric labels.
+
+Track `legacy_task_event_consumers` from the Kubernetes workload inventory:
+list every consumer deployment/statefulset image digest and release label, then
+compare it with the release manifest that first contains V2 decoding. Keep the
+dated inventory with the release checklist; it is the source of truth for the
+zero-consumer condition.
 
 Remove the legacy branch only when all of the following are true:
 

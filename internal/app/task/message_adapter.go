@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	coremetrics "task-processor/internal/core/metrics"
 	taskdomain "task-processor/internal/domain/task"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
@@ -122,6 +123,8 @@ func (a *MessageAdapter) MessageToTask(msg *Message) (*model.Task, error) {
 		Remark:         taskMsg.Remark,
 		CreateTime:     createTime,
 		UpdateTime:     createTime,
+		TraceID:        normalizedTask.TraceID,
+		Metadata:       normalizedTask.Metadata,
 	}
 
 	return task, nil
@@ -217,6 +220,8 @@ func (a *MessageAdapter) TaskToMessage(task *model.Task) (*taskdomain.TaskEventV
 		SourcePlatform: taskdomain.SourcePlatform(strings.TrimSpace(task.SourcePlatform)),
 		TargetPlatform: taskdomain.TargetPlatform(targetPlatform),
 		Payload:        payloadBytes,
+		TraceID:        strings.TrimSpace(task.TraceID),
+		Metadata:       task.Metadata,
 	}
 	if _, err := taskdomain.NormalizeTaskEventV2(*event); err != nil {
 		return nil, fmt.Errorf("normalize task event: %w", err)
@@ -226,10 +231,37 @@ func (a *MessageAdapter) TaskToMessage(task *model.Task) (*taskdomain.TaskEventV
 
 // GetQueueName 根据平台获取爬虫队列名称（仅用于爬虫任务）
 func (a *MessageAdapter) GetQueueName(platform string) (string, error) {
-	if queue, ok := a.queueMapping[platform]; ok {
-		return queue, nil
+	base, err := ResolveCrawlerRoute(platform)
+	if err != nil {
+		return "", err
 	}
-	return "", NewUnknownCrawlerRouteError(platform)
+	return base + ".crawler", nil
+}
+
+func ResolveCrawlerRoute(platform string) (string, error) {
+	base := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(platform)), ".crawler")
+	switch base {
+	case "amazon", "1688":
+		return base, nil
+	default:
+		return "", NewUnknownCrawlerRouteError(platform)
+	}
+}
+
+func IsTaskEventV2(msg *Message) bool {
+	if msg == nil {
+		return false
+	}
+	_, ok := msg.Payload["schemaVersion"]
+	return ok
+}
+
+func (a *MessageAdapter) ValidateTaskEventV2(msg *Message) error {
+	if !IsTaskEventV2(msg) {
+		return nil
+	}
+	_, _, err := a.parseTaskEvent(msg)
+	return err
 }
 
 // CalculatePriority 将业务优先级(1-10)转换为消息优先级(0-10)
@@ -366,6 +398,7 @@ func (a *MessageAdapter) parseTaskEvent(msg *Message) (taskdomain.TaskEventV2, *
 	if err != nil {
 		return taskdomain.TaskEventV2{}, nil, err
 	}
+	coremetrics.GlobalTaskMetrics().IncrementLegacyTaskEventDecoded()
 	applyTransportRetryDefaults(&taskMsg, msg)
 	return event, &taskMsg, nil
 }

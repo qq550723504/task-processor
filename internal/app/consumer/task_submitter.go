@@ -106,6 +106,15 @@ func (ts *TaskSubmitter) markAsSubmitted(tenantID int64, region, asin string) {
 
 // SubmitTask 提交单个任务
 func (ts *TaskSubmitter) SubmitTask(ctx context.Context, t *model.Task) error {
+	crawlerRoute := ""
+	isCrawlerTask := strings.HasSuffix(strings.ToLower(strings.TrimSpace(t.Platform)), ".crawler")
+	if isCrawlerTask {
+		var err error
+		crawlerRoute, err = task.ResolveCrawlerRoute(t.Platform)
+		if err != nil {
+			return fmt.Errorf("resolve crawler route: %w", err)
+		}
+	}
 	// 1. 使用领域层适配器转换任务
 	taskMsg, err := ts.adapter.TaskToMessage(t)
 	if err != nil {
@@ -121,11 +130,11 @@ func (ts *TaskSubmitter) SubmitTask(ctx context.Context, t *model.Task) error {
 	// 3. 获取队列名称和优先级（使用领域层业务规则）
 	// 爬虫任务：有 region 时路由到 region 专属队列，否则用全局队列
 	var queueName string
-	if strings.Contains(t.Platform, ".crawler") {
+	if isCrawlerTask {
 		if t.Region != "" {
-			queueName = ts.queueNaming.BuildCrawlerQueueNameByRegion(t.Platform, t.Region, t.Priority)
+			queueName = ts.queueNaming.BuildCrawlerQueueNameByRegion(crawlerRoute, t.Region, t.Priority)
 		} else {
-			queueName = ts.queueNaming.BuildCrawlerQueueName(t.Platform, t.Priority)
+			queueName = ts.queueNaming.BuildCrawlerQueueName(crawlerRoute, t.Priority)
 		}
 	} else {
 		queueName = ts.queueNaming.BuildTaskQueueNameForStore(t.Platform, t.Priority, t.StoreID)
@@ -189,6 +198,12 @@ func (ts *TaskSubmitter) SubmitVariantTasks(ctx context.Context, parentTask *mod
 	ts.logger.Infof("📋 [变体提交] 开始提交变体任务 - 父任务ID=%d, 父ProductID=%s, 父ASIN=%s, 变体总数=%d",
 		parentTask.ID, parentTask.ProductID, parentAsin, len(variations))
 
+	parentSource, routeErr := task.ResolveCrawlerRoute(parentTask.SourcePlatform)
+	if routeErr != nil {
+		ts.logger.WithError(routeErr).Error("rejecting variant tasks without a supported explicit source platform")
+		return 0, len(variations)
+	}
+
 	for i, v := range variations {
 		// 过滤规则1: 跳过父ASIN本身
 		if v.Asin == parentAsin && parentAsin != "" {
@@ -213,24 +228,22 @@ func (ts *TaskSubmitter) SubmitVariantTasks(ctx context.Context, parentTask *mod
 
 		// 为每个变体创建任务
 		// 变体任务需要投到爬虫队列，确保 platform 包含 .crawler 后缀
-		variantPlatform := parentTask.Platform
-		if !strings.Contains(variantPlatform, ".crawler") {
-			variantPlatform = strings.ToLower(variantPlatform) + ".crawler"
-		}
+		variantPlatform := parentSource + ".crawler"
 
 		variantTask := &model.Task{
-			ID:            time.Now().UnixNano(),
-			TenantID:      parentTask.TenantID,
-			StoreID:       parentTask.StoreID,
-			Platform:      variantPlatform, // 使用爬虫队列（如 amazon.crawler）
-			Region:        parentTask.Region,
-			ProductID:     v.Asin,
-			CategoryID:    parentTask.CategoryID,
-			Priority:      parentTask.Priority + 1,
-			Remark:        "variant",
-			CreateTime:    time.Now().Unix(),
-			UpdateTime:    time.Now().Unix(),
-			MaxRetryCount: 3,
+			ID:             time.Now().UnixNano(),
+			TenantID:       parentTask.TenantID,
+			StoreID:        parentTask.StoreID,
+			Platform:       variantPlatform, // 使用爬虫队列（如 amazon.crawler）
+			SourcePlatform: parentSource,
+			Region:         parentTask.Region,
+			ProductID:      v.Asin,
+			CategoryID:     parentTask.CategoryID,
+			Priority:       parentTask.Priority + 1,
+			Remark:         "variant",
+			CreateTime:     time.Now().Unix(),
+			UpdateTime:     time.Now().Unix(),
+			MaxRetryCount:  3,
 		}
 
 		ts.logger.Infof("   [%d/%d] 📤 提交变体任务: ASIN=%s, TaskID=%d",

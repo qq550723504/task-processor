@@ -25,32 +25,34 @@ type TaskMetrics struct {
 	TotalProcessTime time.Duration
 	TaskCount        int64
 
-	HeartbeatTimeoutCount int64
-	TaskLossCount         int64
-	RequeueFailureCount   int64
-	MarkFailedErrorCount  int64
+	HeartbeatTimeoutCount       int64
+	TaskLossCount               int64
+	RequeueFailureCount         int64
+	MarkFailedErrorCount        int64
+	LegacyTaskEventDecodedCount int64
 
 	LastUpdateTime time.Time
 }
 
 // TaskMetricsSnapshot 指标快照（不含锁）
 type TaskMetricsSnapshot struct {
-	PendingCount          int64
-	ProcessingCount       int64
-	CompletedCount        int64
-	FailedCount           int64
-	RequeuedCount         int64
-	HighPriorityCount     int64
-	MediumPriorityCount   int64
-	LowPriorityCount      int64
-	TotalWaitTime         time.Duration
-	TotalProcessTime      time.Duration
-	TaskCount             int64
-	HeartbeatTimeoutCount int64
-	TaskLossCount         int64
-	RequeueFailureCount   int64
-	MarkFailedErrorCount  int64
-	LastUpdateTime        time.Time
+	PendingCount                int64
+	ProcessingCount             int64
+	CompletedCount              int64
+	FailedCount                 int64
+	RequeuedCount               int64
+	HighPriorityCount           int64
+	MediumPriorityCount         int64
+	LowPriorityCount            int64
+	TotalWaitTime               time.Duration
+	TotalProcessTime            time.Duration
+	TaskCount                   int64
+	HeartbeatTimeoutCount       int64
+	TaskLossCount               int64
+	RequeueFailureCount         int64
+	MarkFailedErrorCount        int64
+	LegacyTaskEventDecodedCount int64
+	LastUpdateTime              time.Time
 }
 
 var globalTaskMetrics = &TaskMetrics{LastUpdateTime: time.Now()}
@@ -152,6 +154,13 @@ func (m *TaskMetrics) IncrementMarkFailedError() {
 	m.LastUpdateTime = time.Now()
 }
 
+func (m *TaskMetrics) IncrementLegacyTaskEventDecoded() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.LegacyTaskEventDecodedCount++
+	m.LastUpdateTime = time.Now()
+}
+
 func (m *TaskMetrics) GetSnapshot() TaskMetricsSnapshot {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -163,7 +172,7 @@ func (m *TaskMetrics) GetSnapshot() TaskMetricsSnapshot {
 		TotalWaitTime: m.TotalWaitTime, TotalProcessTime: m.TotalProcessTime,
 		TaskCount: m.TaskCount, HeartbeatTimeoutCount: m.HeartbeatTimeoutCount,
 		TaskLossCount: m.TaskLossCount, RequeueFailureCount: m.RequeueFailureCount,
-		MarkFailedErrorCount: m.MarkFailedErrorCount, LastUpdateTime: m.LastUpdateTime,
+		MarkFailedErrorCount: m.MarkFailedErrorCount, LegacyTaskEventDecodedCount: m.LegacyTaskEventDecodedCount, LastUpdateTime: m.LastUpdateTime,
 	}
 }
 

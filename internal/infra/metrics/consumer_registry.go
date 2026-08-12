@@ -33,6 +33,7 @@ type ConsumerRegistry struct {
 	listingTasksPriorityHighTotalDesc                       *prometheus.Desc
 	listingTasksPriorityMediumTotalDesc                     *prometheus.Desc
 	listingTasksPriorityLowTotalDesc                        *prometheus.Desc
+	legacyTaskEventsDecodedTotalDesc                        *prometheus.Desc
 	sheinTasksPublishedTotalDesc                            *prometheus.Desc
 	sheinTasksPausedTotalDesc                               *prometheus.Desc
 	sheinTasksDraftTotalDesc                                *prometheus.Desc
@@ -81,6 +82,7 @@ func NewConsumerRegistry() *ConsumerRegistry {
 		listingTasksPriorityHighTotalDesc:   prometheus.NewDesc("listing_tasks_priority_high_total", "Total number of high-priority listing tasks", nil, nil),
 		listingTasksPriorityMediumTotalDesc: prometheus.NewDesc("listing_tasks_priority_medium_total", "Total number of medium-priority listing tasks", nil, nil),
 		listingTasksPriorityLowTotalDesc:    prometheus.NewDesc("listing_tasks_priority_low_total", "Total number of low-priority listing tasks", nil, nil),
+		legacyTaskEventsDecodedTotalDesc:    prometheus.NewDesc("task_event_decoded_total", "Total task events decoded by schema version", []string{"schema_version"}, nil),
 
 		sheinTasksPublishedTotalDesc:                   prometheus.NewDesc("shein_tasks_published_total", "Total number of SHEIN tasks published successfully", nil, nil),
 		sheinTasksPausedTotalDesc:                      prometheus.NewDesc("shein_tasks_paused_total", "Total number of SHEIN tasks paused", nil, nil),
@@ -156,6 +158,7 @@ func (r *ConsumerRegistry) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(r.listingTasksPriorityHighTotalDesc, prometheus.CounterValue, float64(snapshot.Task.HighPriorityCount))
 	ch <- prometheus.MustNewConstMetric(r.listingTasksPriorityMediumTotalDesc, prometheus.CounterValue, float64(snapshot.Task.MediumPriorityCount))
 	ch <- prometheus.MustNewConstMetric(r.listingTasksPriorityLowTotalDesc, prometheus.CounterValue, float64(snapshot.Task.LowPriorityCount))
+	ch <- prometheus.MustNewConstMetric(r.legacyTaskEventsDecodedTotalDesc, prometheus.CounterValue, float64(snapshot.Task.LegacyTaskEventDecodedCount), "legacy")
 
 	ch <- prometheus.MustNewConstMetric(r.sheinTasksPublishedTotalDesc, prometheus.CounterValue, float64(snapshot.Shein.PublishedCount))
 	ch <- prometheus.MustNewConstMetric(r.sheinTasksPausedTotalDesc, prometheus.CounterValue, float64(snapshot.Shein.PausedCount))
@@ -229,6 +232,7 @@ func (r *ConsumerRegistry) descriptors() []*prometheus.Desc {
 		r.listingTasksPriorityHighTotalDesc,
 		r.listingTasksPriorityMediumTotalDesc,
 		r.listingTasksPriorityLowTotalDesc,
+		r.legacyTaskEventsDecodedTotalDesc,
 		r.sheinTasksPublishedTotalDesc,
 		r.sheinTasksPausedTotalDesc,
 		r.sheinTasksDraftTotalDesc,

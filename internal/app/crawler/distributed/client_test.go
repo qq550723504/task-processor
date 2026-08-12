@@ -91,6 +91,8 @@ func TestDistributedCrawlerClient_SubmitCrawlTask_Success(t *testing.T) {
 		ProductID:      "B001TEST",
 		Zipcode:        "10001",
 		Priority:       5,
+		TraceID:        "trace-123",
+		Metadata:       map[string]string{"request_id": "request-456"},
 	}
 
 	// 在后台模拟爬虫处理器返回结果
@@ -116,6 +118,8 @@ func TestDistributedCrawlerClient_SubmitCrawlTask_Success(t *testing.T) {
 	require.NoError(t, json.Unmarshal(pub.published[0].body, &msg))
 	assert.Equal(t, float64(2), msg["schemaVersion"])
 	assert.Equal(t, "42", msg["taskId"])
+	assert.Equal(t, "trace-123", msg["traceId"])
+	assert.Equal(t, "request-456", msg["metadata"].(map[string]any)["request_id"])
 	payload := msg["payload"].(map[string]any)
 	assert.NotEmpty(t, payload["reply_to"])
 	assert.Equal(t, "10001", payload["zipcode"])
@@ -127,10 +131,28 @@ func TestDistributedCrawlerClient_SubmitCrawlTask_ListenerStartFail(t *testing.T
 	mock.declareErr = fmt.Errorf("RabbitMQ 不可用")
 	client := newTestClient(pub, mock, 5*time.Second)
 
-	_, err := client.SubmitCrawlTask(context.Background(), &CrawlRequest{TaskID: "1"})
+	_, err := client.SubmitCrawlTask(context.Background(), &CrawlRequest{TaskID: "1", Platform: "amazon"})
 	assert.ErrorContains(t, err, "启动结果监听器失败")
 	// 没有消息被发布
 	assert.Empty(t, pub.published)
+}
+
+func TestDistributedCrawlerClientRejectsUnknownRouteAtSubmitEntryBeforePublish(t *testing.T) {
+	pub := &mockPublisher{}
+	mock := newMockDeclarer()
+	client := newTestClient(pub, mock, 5*time.Second)
+
+	_, err := client.SubmitCrawlTask(context.Background(), &CrawlRequest{
+		TaskID:         "42",
+		Platform:       "unknown.crawler",
+		SourcePlatform: "unknown",
+		TargetPlatform: "amazon",
+	})
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "UNKNOWN_CRAWLER_ROUTE")
+	assert.Empty(t, pub.published)
+	assert.Empty(t, client.listener.QueueName(), "invalid route must not start a listener")
 }
 
 func TestDistributedCrawlerClient_SubmitCrawlTask_PublishFail(t *testing.T) {
@@ -138,7 +160,7 @@ func TestDistributedCrawlerClient_SubmitCrawlTask_PublishFail(t *testing.T) {
 	mock := newMockDeclarer()
 	client := newTestClient(pub, mock, 5*time.Second)
 
-	_, err := client.SubmitCrawlTask(context.Background(), &CrawlRequest{TaskID: "2"})
+	_, err := client.SubmitCrawlTask(context.Background(), &CrawlRequest{TaskID: "2", Platform: "amazon"})
 	assert.ErrorContains(t, err, "发布爬虫任务失败")
 	// 任务应从 registry 中清理
 	assert.Equal(t, 0, client.registry.Len())
@@ -151,6 +173,22 @@ func TestDistributedCrawlerClient_SubmitCrawlTask_Timeout(t *testing.T) {
 
 	_, err := client.SubmitCrawlTask(context.Background(), &CrawlRequest{TaskID: "3", Platform: "amazon", SourcePlatform: "amazon", TargetPlatform: "amazon"})
 	assert.ErrorContains(t, err, "爬虫任务超时")
+}
+
+func TestDistributedCrawlerClientRejectsUnknownRouteBeforePublish(t *testing.T) {
+	pub := &mockPublisher{}
+	client := newTestClient(pub, newMockDeclarer(), 5*time.Second)
+
+	err := client.publishCrawlTask(context.Background(), &CrawlRequest{
+		TaskID:         "42",
+		Platform:       "unknown",
+		SourcePlatform: "amazon",
+		TargetPlatform: "amazon",
+		ProductID:      "B001TEST",
+	}, "unknown.crawler", "reply", "42")
+
+	assert.ErrorContains(t, err, "UNKNOWN_CRAWLER_ROUTE")
+	assert.Empty(t, pub.published)
 }
 
 func TestDistributedCrawlerClient_EnsureListenerStarted_Idempotent(t *testing.T) {

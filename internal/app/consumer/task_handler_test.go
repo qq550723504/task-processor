@@ -92,9 +92,10 @@ func (s stubClaimRuntime) GetTaskStatus(taskID int64) (*taskstatus.TaskStatusSna
 }
 
 type stubRuntimeWithImportTask struct {
-	task    *listingruntime.ImportTask
-	status  *taskstatus.TaskStatusSnapshot
-	updates int
+	task         *listingruntime.ImportTask
+	status       *taskstatus.TaskStatusSnapshot
+	updates      int
+	getTaskCalls int
 }
 
 func (s *stubRuntimeWithImportTask) UpdateRuntimeTaskStatus(req *listingruntime.TaskStatusUpdate) error {
@@ -122,11 +123,39 @@ func (s *stubRuntimeWithImportTask) GetTaskStatus(taskID int64) (*taskstatus.Tas
 }
 
 func (s *stubRuntimeWithImportTask) GetRuntimeImportTask(taskID int64) (*listingruntime.ImportTask, error) {
+	s.getTaskCalls++
 	if s.task == nil || s.task.ID != taskID {
 		return nil, fmt.Errorf("task %d not found", taskID)
 	}
 	taskCopy := *s.task
 	return &taskCopy, nil
+}
+
+func TestTaskHandlerRejectsInvalidV2BeforeRuntimeReload(t *testing.T) {
+	runtime := &stubRuntimeWithImportTask{task: &listingruntime.ImportTask{ID: 7812024}}
+	handler := NewTaskHandler(TaskHandlerConfig{
+		Platform:  "shein",
+		Processor: &stubProcessorWithManagement{runtime: runtime},
+		Logger:    logrus.New(),
+	})
+
+	err := handler.HandleMessage(context.Background(), &rabbitmq.Message{
+		ID: "invalid-v2-runtime-hit",
+		Payload: map[string]any{
+			"schemaVersion":  float64(1),
+			"taskId":         "7812024",
+			"sourcePlatform": "amazon",
+			"targetPlatform": "shein",
+			"payload":        map[string]any{"taskId": "7812024", "sourcePlatform": "amazon", "targetPlatform": "shein"},
+		},
+	})
+
+	if err == nil {
+		t.Fatal("expected invalid V2 event to be rejected")
+	}
+	if runtime.getTaskCalls != 0 {
+		t.Fatalf("runtime reload bypassed V2 validation: calls=%d", runtime.getTaskCalls)
+	}
 }
 
 type stubStoreAPI struct {

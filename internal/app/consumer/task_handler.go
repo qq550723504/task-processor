@@ -395,6 +395,11 @@ func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model
 
 	// 提取嵌套的 payload（如果存在）
 	originalPayload := eth.extractNestedPayload(domainMsg)
+	if apptask.IsTaskEventV2(domainMsg) {
+		if err := eth.adapter.ValidateTaskEventV2(domainMsg); err != nil {
+			return nil, nil, apptask.NewConversionError(0, err)
+		}
+	}
 
 	if taskID, ok := eth.adapter.ExtractTaskID(domainMsg); ok {
 		if task, err := eth.loadTaskFromRuntime(taskID); err == nil && task != nil {
