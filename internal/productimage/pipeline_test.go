@@ -36,6 +36,12 @@ type failingSubjectExtractor struct {
 	err error
 }
 
+type passThroughSubjectExtractor struct{}
+
+func (*passThroughSubjectExtractor) Extract(_ context.Context, imageURL string, _ *productimage.ProductContext) (*productimage.ImageAsset, error) {
+	return &productimage.ImageAsset{URL: imageURL, SourceURL: imageURL, Type: productimage.AssetTypeSubjectCutout}, nil
+}
+
 func (e *failingSubjectExtractor) Extract(_ context.Context, _ string, _ *productimage.ProductContext) (*productimage.ImageAsset, error) {
 	return nil, e.err
 }
@@ -157,6 +163,71 @@ func TestService_ProcessImages_CompatPipeline(t *testing.T) {
 	}
 	if storedTask.Status != productimage.TaskStatusCompleted {
 		t.Fatalf("stored status = %q, want completed", storedTask.Status)
+	}
+}
+
+func TestService_ProcessImages_TenantModelDenialUsesRecoveryPassThrough(t *testing.T) {
+	repo := store.NewMemTaskRepository()
+	denied := productimage.NewTenantModelAccessDeniedError("")
+	svc, err := productimage.NewService(&productimage.ServiceConfig{
+		TaskRepo:         repo,
+		AssetPublisher:   &stubAssetPublisher{},
+		SubjectExtractor: &failingSubjectExtractor{err: denied},
+		WhiteBgRenderer:  &failingWhiteBackgroundRenderer{err: denied},
+		SceneRenderer:    &failingSceneRenderer{err: denied},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	task, err := svc.CreateProcessTask(context.Background(), &productimage.ImageProcessRequest{
+		ImageURLs:   []string{"https://example.com/a.jpg", "https://example.com/b.jpg"},
+		Marketplace: "amazon",
+	})
+	if err != nil {
+		t.Fatalf("CreateProcessTask() error = %v", err)
+	}
+	result, err := svc.ProcessImages(context.Background(), task)
+	if err != nil {
+		t.Fatalf("ProcessImages() error = %v", err)
+	}
+	if result == nil || result.MainImage == nil || result.WhiteBgImage == nil {
+		t.Fatalf("expected pass-through image artifacts, got %+v", result)
+	}
+	if result.WhiteBgImage.Metadata["tenant_model_gate"] != "true" || result.WhiteBgImage.Metadata["background"] != "white" {
+		t.Fatalf("expected tenant-gate white-bg metadata, got %+v", result.WhiteBgImage.Metadata)
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != productimage.TaskStatusNeedsReview {
+		t.Fatalf("stored status = %q, want needs_review", stored.Status)
+	}
+}
+
+func TestService_ProcessImages_TenantWhiteBgDenialSkipsMarketplaceValidation(t *testing.T) {
+	repo := store.NewMemTaskRepository()
+	denied := productimage.NewTenantModelAccessDeniedError("")
+	svc, err := productimage.NewService(&productimage.ServiceConfig{
+		TaskRepo:         repo,
+		AssetPublisher:   &stubAssetPublisher{},
+		WhiteBgRenderer:  &failingWhiteBackgroundRenderer{err: denied},
+		SubjectExtractor: &passThroughSubjectExtractor{},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	task, err := svc.CreateProcessTask(context.Background(), &productimage.ImageProcessRequest{ImageURLs: []string{"https://example.com/a.jpg"}, Marketplace: "amazon"})
+	if err != nil {
+		t.Fatalf("CreateProcessTask() error = %v", err)
+	}
+	result, err := svc.ProcessImages(context.Background(), task)
+	if err != nil {
+		t.Fatalf("ProcessImages() error = %v", err)
+	}
+	if result.Compliance == nil || !result.Compliance.Passed {
+		t.Fatalf("expected tenant fallback to bypass marketplace validation, got %+v", result.Compliance)
 	}
 }
 
@@ -482,6 +553,9 @@ func TestService_ProcessImages_DowngradesSubjectModerationToNeedsReview(t *testi
 	}
 	if got := result.SubjectCutout.Metadata["fallback_reason"]; got != "subject_extraction_no_retry" {
 		t.Fatalf("fallback_reason = %q, want subject_extraction_no_retry", got)
+	}
+	if _, ok := result.SubjectCutout.Metadata["tenant_model_gate"]; ok {
+		t.Fatalf("moderation fallback must not be marked tenant_model_gate: %+v", result.SubjectCutout.Metadata)
 	}
 	if result.SubjectCutout.SourceURL != "https://example.com/a.jpg" {
 		t.Fatalf("subject cutout source URL = %q, want primary source", result.SubjectCutout.SourceURL)

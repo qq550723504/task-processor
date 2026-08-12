@@ -13,12 +13,15 @@ const (
 type Operation string
 
 const (
-	OperationImageGenerate             Operation = "image_generate"
-	OperationImageEdit                 Operation = "image_edit"
-	OperationAsyncImageGenerate        Operation = "async_image_generate"
-	OperationAsyncImageEdit            Operation = "async_image_edit"
-	OperationAsyncImageQuery           Operation = "async_image_query"
-	OperationProductImageSceneGenerate Operation = "productimage_scene_generate"
+	OperationImageGenerate               Operation = "image_generate"
+	OperationImageEdit                   Operation = "image_edit"
+	OperationAsyncImageGenerate          Operation = "async_image_generate"
+	OperationAsyncImageEdit              Operation = "async_image_edit"
+	OperationAsyncImageQuery             Operation = "async_image_query"
+	OperationProductImageSceneGenerate   Operation = "productimage_scene_generate"
+	OperationProductImageSubjectExtract  Operation = "productimage_subject_extract"
+	OperationProductImageWhiteBackground Operation = "productimage_white_background"
+	OperationProductImageReview          Operation = "productimage_review"
 )
 
 type ModelFeature string

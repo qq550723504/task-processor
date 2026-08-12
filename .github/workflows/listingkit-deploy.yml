@@ -252,10 +252,6 @@ jobs:
           printf '%s' '${{ secrets.KUBE_CONFIG }}' > "$HOME/.kube/config"
           chmod 600 "$HOME/.kube/config"
 
-      - name: Apply ListingKit runtime configuration
-        run: |
-          kubectl -n ${{ env.K8S_NAMESPACE }} apply -f .workflow-tools/deployments/kubernetes/listingkit-workbench/base/configmap.yaml
-
       - name: Reject legacy invitation credentials in shared Secret
         shell: bash
         run: |
@@ -365,6 +361,10 @@ jobs:
             "${{ env.K8S_NAMESPACE }}" \
             listingkit-workbench-secret \
             product-listing-api
+
+      - name: Apply ListingKit runtime configuration for candidate
+        run: |
+          kubectl -n ${{ env.K8S_NAMESPACE }} apply -f .workflow-tools/deployments/kubernetes/listingkit-workbench/base/configmap.yaml
 
       - name: Apply immutable API deployment
         shell: bash

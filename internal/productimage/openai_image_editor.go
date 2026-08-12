@@ -29,6 +29,14 @@ func NewOpenAICompatibleFaithfulEditor(workDir string, client openAICompatibleIm
 }
 
 func (e *openAICompatibleFaithfulEditor) Edit(ctx context.Context, req *FaithfulEditRequest) (*FaithfulEditResult, error) {
+	return e.edit(ctx, req, nil)
+}
+
+func (e *openAICompatibleFaithfulEditor) EditWithRoute(ctx context.Context, req *FaithfulEditRequest, route FaithfulEditRoute) (*FaithfulEditResult, error) {
+	return e.edit(ctx, req, &route)
+}
+
+func (e *openAICompatibleFaithfulEditor) edit(ctx context.Context, req *FaithfulEditRequest, route *FaithfulEditRoute) (*FaithfulEditResult, error) {
 	if req == nil || req.SourceAsset == nil {
 		return nil, fmt.Errorf("faithful edit request requires source asset")
 	}
@@ -37,15 +45,32 @@ func (e *openAICompatibleFaithfulEditor) Edit(ctx context.Context, req *Faithful
 		return nil, err
 	}
 	resolvedPrompt := buildFaithfulEditResolvedPrompt(req)
-	response, err := e.client.EditImage(ctx, imageEditRequest{
-		Model:          e.client.GetDefaultModel(),
+	modelID := e.client.GetDefaultModel()
+	if route != nil {
+		modelID = strings.TrimSpace(route.ModelID)
+		if modelID == "" {
+			return nil, fmt.Errorf("faithful edit route model is required")
+		}
+	}
+	editRequest := imageEditRequest{
+		Model:          modelID,
 		Prompt:         resolvedPrompt.Text,
 		Image:          data,
 		ImageURL:       editableAssetURL(req.SourceAsset),
 		ResponseFormat: "b64_json",
 		N:              1,
 		Size:           "auto",
-	})
+	}
+	var response *imageEditResponse
+	if route != nil {
+		routed, ok := e.client.(routeBoundImageEditClient)
+		if !ok {
+			return nil, fmt.Errorf("faithful edit route credential pinning is unsupported")
+		}
+		response, err = routed.EditImageWithRoute(ctx, editRequest, SceneGenerationRoute{CredentialReference: route.CredentialReference, ModelID: route.ModelID, RoutingKey: route.RoutingKey, ConfigurationVersion: route.ConfigurationVersion})
+	} else {
+		response, err = e.client.EditImage(ctx, editRequest)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +99,7 @@ func (e *openAICompatibleFaithfulEditor) Edit(ctx context.Context, req *Faithful
 	}
 	metadata := applyPromptObservabilityMetadata(map[string]string{
 		"provider":        "openai_compatible",
-		"model_family":    e.client.GetDefaultModel(),
+		"model_family":    modelID,
 		"generation_mode": operationMode,
 		"local_path":      path,
 		"format":          info.Format,
@@ -98,7 +123,7 @@ func (e *openAICompatibleFaithfulEditor) Edit(ctx context.Context, req *Faithful
 		},
 		Metadata: &GenerationMetadata{
 			Provider:       "openai_compatible",
-			ModelFamily:    e.client.GetDefaultModel(),
+			ModelFamily:    modelID,
 			GenerationMode: operationMode,
 			PromptRef:      resolvedPrompt.Key,
 			PromptKey:      resolvedPrompt.Key,
@@ -119,6 +144,10 @@ func editableAssetURL(asset *ImageAsset) string {
 }
 
 func buildFaithfulEditPrompt(req *FaithfulEditRequest) string {
+	return buildFaithfulEditResolvedPrompt(req).Text
+}
+
+func FaithfulEditPromptText(req *FaithfulEditRequest) string {
 	return buildFaithfulEditResolvedPrompt(req).Text
 }
 

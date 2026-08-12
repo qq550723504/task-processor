@@ -235,8 +235,9 @@ func NewDefaultConfig() *Config {
 			ProductEnrichMockLLM: false,
 		},
 		AICapability: AICapabilityConfig{
-			StudioImageRoutingMode:   "legacy",
-			ProductImageSceneEnabled: false,
+			StudioImageRoutingMode:            "legacy",
+			ProductImageSceneEnabled:          false,
+			ProductImageSceneAllowedTenantIDs: nil,
 		},
 		ListingKit: ListingKitConfig{
 			Zitadel: ListingKitZitadelConfig{},

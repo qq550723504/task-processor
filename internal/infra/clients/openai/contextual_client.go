@@ -5,12 +5,20 @@ import (
 )
 
 type contextualChatClient struct {
-	manager *Manager
-	name    string
+	manager   *Manager
+	name      string
+	selection *ImageRouteSelection
+}
+
+func (c *contextualChatClient) resolve(ctx context.Context) (*Client, error) {
+	if c.selection != nil {
+		return c.manager.resolveClientWithSelection(ctx, c.name, c.selection)
+	}
+	return c.manager.resolveClient(ctx, c.name)
 }
 
 func (c *contextualChatClient) CreateChatCompletion(ctx context.Context, req *ChatCompletionRequest) (*ChatCompletionResponse, error) {
-	client, err := c.manager.resolveClient(ctx, c.name)
+	client, err := c.resolve(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -18,7 +26,7 @@ func (c *contextualChatClient) CreateChatCompletion(ctx context.Context, req *Ch
 }
 
 func (c *contextualChatClient) Generate(ctx context.Context, prompt string) (string, error) {
-	client, err := c.manager.resolveClient(ctx, c.name)
+	client, err := c.resolve(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -26,7 +34,7 @@ func (c *contextualChatClient) Generate(ctx context.Context, prompt string) (str
 }
 
 func (c *contextualChatClient) AnalyzeImage(ctx context.Context, imageURL string, prompt string) (string, error) {
-	client, err := c.manager.resolveClient(ctx, c.name)
+	client, err := c.resolve(ctx)
 	if err != nil {
 		return "", err
 	}
@@ -34,7 +42,7 @@ func (c *contextualChatClient) AnalyzeImage(ctx context.Context, imageURL string
 }
 
 func (c *contextualChatClient) GetDefaultModel() string {
-	client, err := c.manager.resolveClient(context.Background(), c.name)
+	client, err := c.resolve(context.Background())
 	if err != nil {
 		return ""
 	}

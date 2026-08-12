@@ -38,6 +38,7 @@ openai:
 aiCapability:
   studioImageRoutingMode: legacy
   productImageSceneEnabled: false
+  productImageSceneAllowedTenantIDs: []
 
 listingkit:
   sheinSubmitDebugDumpDir: ""
