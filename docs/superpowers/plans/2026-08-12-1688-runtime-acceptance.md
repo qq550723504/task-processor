@@ -1,6 +1,6 @@
 # 1688 Runtime Acceptance Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Add a safe PowerShell operator tool that runs read-only 1688 runtime preflight by default and can explicitly execute a crawler-only or crawler-to-ListingKit acceptance flow.
 
@@ -30,7 +30,7 @@
 - Consumes: the future script functions `Resolve-ListingKitToken`, `Assert-TaskCreationConfirmation`, `New-ListingKitHandoffPayload`, and `Get-RedactedRuntimeError`.
 - Produces: tests that fail until the safety contract and payload mapping exist.
 
-- [ ] **Step 1: Write the failing Pester tests**
+- [x] **Step 1: Write the failing Pester tests**
 
 Create the test file with these behaviors:
 
@@ -66,17 +66,17 @@ Describe "1688 runtime acceptance safety" {
 }
 ```
 
-- [ ] **Step 2: Run the focused tests and verify the expected red failure**
+- [x] **Step 2: Run the focused tests and verify the expected red failure**
 
 Run:
 
 ```powershell
-Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -Output Detailed
+Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -EnableExit
 ```
 
 Expected: the test setup or missing-function assertions fail because `scripts/1688-runtime-acceptance.ps1` does not yet provide the contract. Fix only test syntax/setup errors; do not add production script code before observing the feature-missing failure.
 
-- [ ] **Step 3: Commit the red tests**
+- [x] **Step 3: Commit the red tests**
 
 ```powershell
 git add scripts/1688-runtime-acceptance.Tests.ps1
@@ -93,7 +93,7 @@ git commit -m "test: define 1688 runtime acceptance safety contract"
 - Consumes: Task 1 Pester contract.
 - Produces: `Preflight` mode, `Resolve-ListingKitToken`, `Invoke-AcceptanceRequest`, `Assert-TaskCreationConfirmation`, and sanitized error output.
 
-- [ ] **Step 1: Add the script parameter contract and test-only guard**
+- [x] **Step 1: Add the script parameter contract and test-only guard**
 
 Use this parameter block:
 
@@ -115,7 +115,7 @@ param(
 
 Set `$ErrorActionPreference = "Stop"`, resolve the repository root from `$PSScriptRoot`, default the API URL from `LISTINGKIT_API_BASE_URL` or `http://localhost:8085`, and default the token file to `.local\listingkit-api-token.txt`.
 
-- [ ] **Step 2: Implement token resolution without secret output**
+- [x] **Step 2: Implement token resolution without secret output**
 
 Implement `Resolve-ListingKitToken` so environment wins over the token file and `Bearer ` is stripped:
 
@@ -140,22 +140,22 @@ function Resolve-ListingKitToken {
 
 The function may return the token to the caller for an HTTP header, but no log/error path may include the returned value.
 
-- [ ] **Step 3: Implement the request seam and redacted errors**
+- [x] **Step 3: Implement the request seam and redacted errors**
 
 Implement `Invoke-AcceptanceRequest` around `Invoke-RestMethod` with an `Authorization` header, JSON body only when supplied, and bounded timeout. Catch failures and throw `Get-RedactedRuntimeError` containing status code and endpoint path only. Do not include the raw response body.
 
 Implement `Get-RedactedRuntimeError` to retain only a numeric HTTP status and the URI path; it must replace or omit `token`, `cookie`, `password`, `proxy`, `user_data_dir`, and profile path text.
 
-- [ ] **Step 4: Implement preflight GET checks**
+- [x] **Step 4: Implement preflight GET checks**
 
 Implement `Invoke-Preflight` to call, in order, `GET /health`, `GET /readyz`, and `GET /api/v1/listing-kits/settings-health`. Print only endpoint path and status (`PASS`/`BLOCKED`), then return success only when all three calls succeed. Missing token must stop before the authenticated request and return a non-zero exit code.
 
-- [ ] **Step 5: Run the focused tests and parser check**
+- [x] **Step 5: Run the focused tests and parser check**
 
 Run:
 
 ```powershell
-Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -Output Detailed
+Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -EnableExit
 $tokens = $null
 $errors = $null
 [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/1688-runtime-acceptance.ps1), [ref]$tokens, [ref]$errors) | Out-Null
@@ -164,7 +164,7 @@ if ($errors.Count -gt 0) { throw $errors[0].Message }
 
 Expected: Task 1 tests pass, and the script has no parser errors.
 
-- [ ] **Step 6: Commit the preflight implementation**
+- [x] **Step 6: Commit the preflight implementation**
 
 ```powershell
 git add scripts/1688-runtime-acceptance.ps1 scripts/1688-runtime-acceptance.Tests.ps1
@@ -181,7 +181,7 @@ git commit -m "feat: add safe 1688 runtime preflight"
 - Consumes: Task 2 request seam and token handling.
 - Produces: `Crawl` and `EndToEnd` modes, `New-ListingKitHandoffPayload`, bounded polling, and redacted acceptance output.
 
-- [ ] **Step 1: Add tests for confirmation and polling behavior**
+- [x] **Step 1: Add tests for confirmation and polling behavior**
 
 Extend Pester tests with mocked `Invoke-AcceptanceRequest` responses for:
 
@@ -212,21 +212,21 @@ It "polls processing then returns a successful crawler product" {
 
 Also add a test that `EndToEnd` sends `source_account_id`, `shein_store_id`, `product`, and `source_run_id`, and never sends `source_store_id`.
 
-- [ ] **Step 2: Run the new tests and observe the expected red failure**
+- [x] **Step 2: Run the new tests and observe the expected red failure**
 
 Run:
 
 ```powershell
-Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -Output Detailed
+Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -EnableExit
 ```
 
-Expected: the new tests fail because `Invoke-Crawl` and the end-to-end path are not implemented yet.
+The initial safety-contract red test was observed before the script existed. These polling tests are added after the preflight implementation and should pass once the corresponding implementation is present; if they fail, fix the implementation rather than weakening the assertions.
 
-- [ ] **Step 3: Implement exact confirmation and required-input validation**
+- [x] **Step 3: Implement exact confirmation and required-input validation**
 
 Implement `Assert-TaskCreationConfirmation` to allow `Preflight` without confirmation and require the exact string `CREATE-1688-TASK` for `Crawl` and `EndToEnd`. Validate positive `SourceAccountID`, non-empty 1688 URL, positive `SheinStoreID` for `EndToEnd`, positive timeout, and non-negative poll interval before any POST.
 
-- [ ] **Step 4: Implement bounded crawler polling**
+- [x] **Step 4: Implement bounded crawler polling**
 
 Implement `Invoke-Crawl`:
 
@@ -238,7 +238,7 @@ Implement `Invoke-Crawl`:
 
 Return an object containing only `TaskID`, `Status`, and `ProductData` for the next step and output projection.
 
-- [ ] **Step 5: Implement the end-to-end handoff payload and mode**
+- [x] **Step 5: Implement the end-to-end handoff payload and mode**
 
 Implement `New-ListingKitHandoffPayload` with this shape:
 
@@ -256,12 +256,12 @@ Implement `New-ListingKitHandoffPayload` with this shape:
 
 Preserve all product fields returned by the crawler, do not fabricate credentials or source identity, and do not add `source_store_id`. `Invoke-EndToEnd` calls `Invoke-Crawl`, POSTs the payload to `/api/v1/product-sourcing/1688/listingkit/tasks`, and prints only crawler task ID, ListingKit task ID, status, source ID/key if present, and normalized product URL.
 
-- [ ] **Step 6: Run focused tests, parser, and diff checks**
+- [x] **Step 6: Run focused tests, parser, and diff checks**
 
 Run:
 
 ```powershell
-Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -Output Detailed
+Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -EnableExit
 $tokens = $null
 $errors = $null
 [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/1688-runtime-acceptance.ps1), [ref]$tokens, [ref]$errors) | Out-Null
@@ -271,7 +271,7 @@ git diff --check
 
 Expected: all Pester tests pass, parser reports zero errors, and diff check is clean.
 
-- [ ] **Step 7: Commit crawler and handoff modes**
+- [x] **Step 7: Commit crawler and handoff modes**
 
 ```powershell
 git add scripts/1688-runtime-acceptance.ps1 scripts/1688-runtime-acceptance.Tests.ps1
@@ -287,12 +287,12 @@ git commit -m "feat: add confirmed 1688 runtime acceptance flow"
 - Consumes: the script modes and Pester evidence from Tasks 2-3.
 - Produces: explicit operator commands and an evidence boundary separating preflight, crawler acceptance, ListingKit task creation, and SHEIN submission.
 
-- [ ] **Step 1: Add documented commands**
+- [x] **Step 1: Add documented commands**
 
 Document these commands without real credentials or IDs:
 
 ```powershell
-Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -Output Detailed
+Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -EnableExit
 .\scripts\1688-runtime-acceptance.ps1 -Mode Preflight
 .\scripts\1688-runtime-acceptance.ps1 -Mode Crawl -Url "https://detail.1688.com/offer/<offer-id>.html" -SourceAccountID <account-id> -ConfirmCreateTask CREATE-1688-TASK
 .\scripts\1688-runtime-acceptance.ps1 -Mode EndToEnd -Url "https://detail.1688.com/offer/<offer-id>.html" -SourceAccountID <account-id> -SheinStoreID <shein-store-id> -ConfirmCreateTask CREATE-1688-TASK
@@ -300,12 +300,12 @@ Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -Output Detailed
 
 State that the operator must manually complete the 1688 login in the tenant/account browser profile before `Crawl`, and that successful task creation does not prove preview/readiness or SHEIN submission.
 
-- [ ] **Step 2: Run the final validation gates**
+- [x] **Step 2: Run the final validation gates**
 
 Run:
 
 ```powershell
-Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -Output Detailed
+Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -EnableExit
 git diff --check
 $env:GOWORK='off'; go test ./... -count=1
 $env:CGO_ENABLED='0'; $env:GOOS='linux'; go build ./cmd/listing-control-plane ./cmd/product-listing-api ./cmd/shein-listing ./cmd/temu-listing
@@ -313,7 +313,7 @@ $env:CGO_ENABLED='0'; $env:GOOS='linux'; go build ./cmd/listing-control-plane ./
 
 The PowerShell tests must pass. Record the exact Go/build result; do not call a timeout a pass.
 
-- [ ] **Step 3: Review scope and commit the documentation**
+- [x] **Step 3: Review scope and commit the documentation**
 
 Run:
 
@@ -331,13 +331,12 @@ git commit -m "docs: document 1688 runtime acceptance tool"
 
 ### Final verification checklist
 
-- [ ] Latest `origin/master` is the worktree base.
-- [ ] Default mode performs no POST request.
-- [ ] Exact confirmation is required before `Crawl` and `EndToEnd`.
-- [ ] `source_account_id` is used and `source_store_id` is absent.
-- [ ] Polling handles processing, success, failure, and timeout.
-- [ ] No credential, cookie, proxy, or profile path is printed.
-- [ ] Pester and PowerShell parser checks pass.
-- [ ] Full Go test and maintained command builds are recorded accurately.
-- [ ] Live acceptance remains explicitly separate from SHEIN preview/readiness/submission.
-
+- [x] Latest `origin/master` is the worktree base.
+- [x] Default mode performs no POST request.
+- [x] Exact confirmation is required before `Crawl` and `EndToEnd`.
+- [x] `source_account_id` is used and `source_store_id` is absent.
+- [x] Polling handles processing, success, failure, and timeout.
+- [x] No credential, cookie, proxy, or profile path is printed.
+- [x] Pester and PowerShell parser checks pass.
+- [x] Full Go test and maintained command builds are recorded accurately.
+- [x] Live acceptance remains explicitly separate from SHEIN preview/readiness/submission.
