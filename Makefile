@@ -1,7 +1,7 @@
 # Makefile for Task Processor / ListingKit
 .PHONY: all build-all clean test test-fast test-all test-coverage help \
 	build-listing-control-plane build-product-listing-api build-shein build-temu \
-	run-listing-control-plane run-product-listing-api run-shein run-temu lint fmt
+	run-listing-control-plane run-product-listing-api run-shein run-temu lint fmt api-contract-check
 
 # 版本信息
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "v1.0.0")
@@ -104,6 +104,12 @@ lint:
 fmt:
 	@echo "✨ 格式化代码..."
 	go fmt ./...
+
+# Regenerate the committed OpenAPI TypeScript contract and reject drift. The
+# Node script avoids shell-specific path and mkdir semantics on Windows/macOS/Linux.
+api-contract-check:
+	node scripts/generate-api-contract.mjs
+	git diff --exit-code -- docs/api/listingkit-asset.openapi.yaml web/listingkit-ui/src/lib/api/generated/listingkit-asset.ts
 
 # 本地运行 Listing Control Plane
 run-listing-control-plane:

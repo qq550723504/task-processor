@@ -177,12 +177,13 @@ type ImageProcessResult struct {
 }
 
 type TaskResult struct {
-	TaskID      string              `json:"task_id"`
-	Status      TaskStatus          `json:"status"`
-	Result      *ImageProcessResult `json:"result,omitempty"`
-	Error       string              `json:"error,omitempty"`
-	CreatedAt   time.Time           `json:"created_at"`
-	CompletedAt *time.Time          `json:"completed_at,omitempty"`
+	TaskID         string              `json:"task_id"`
+	Status         TaskStatus          `json:"status"`
+	TargetPlatform string              `json:"target_platform"`
+	Result         *ImageProcessResult `json:"result,omitempty"`
+	Error          string              `json:"error,omitempty"`
+	CreatedAt      time.Time           `json:"created_at"`
+	CompletedAt    *time.Time          `json:"completed_at,omitempty"`
 }
 
 func (r ImageProcessRequest) Value() (driver.Value, error) {

@@ -199,18 +199,18 @@ This ordering removes the incorrect fallback before it can spread into new sourc
 - Modify: `internal/listingkit/api/handler_tasks.go` only if the public request/response changes
 - Modify: `web/listingkit-ui/src/lib/api/client.ts`
 - Modify: the affected files under `web/listingkit-ui/src/lib/api/`
-- Create: generated artifacts only in an existing approved generated-code location, with its generator command documented in the OpenAPI file header or Makefile
+- Create: generated artifacts only in `web/listingkit-ui/src/lib/api/generated/`; `openapi-typescript` is a frontend dev dependency and the deterministic generator command is documented in the OpenAPI header and Makefile
 - Modify: `Makefile`
 
 **Consumes:** stable request/response and error semantics from Tasks 1 and 2.
 
 **Produces:** one machine-readable contract and generated TypeScript types/client bindings for the asset endpoints; this is a pilot, not a repository-wide API migration.
 
-- [ ] Write contract tests that validate a representative valid request, a missing-target 4xx response, and a target-specific result against the OpenAPI schema.
-- [ ] Add the smallest OpenAPI document that describes only the selected asset endpoints, error envelope, target-platform enum, and async result shape. Do not hand-maintain a second Go or TypeScript model.
-- [ ] Use an established OpenAPI generator already compatible with the repository toolchain to generate TypeScript client/types. Check generated output into the approved location only when generation is deterministic; otherwise generate in CI and verify a clean diff.
-- [ ] Replace the corresponding hand-written response casts in the UI client with generated contract types at the pilot endpoints. Keep the existing proxy/auth boundary unchanged.
-- [ ] Add `make api-contract-check` to regenerate/validate the pilot contract and fail on drift.
+- [x] Write contract tests that validate a representative valid request, a missing-target 4xx response, and a target-specific result against the OpenAPI schema.
+- [x] Add the smallest OpenAPI document that describes only the selected asset endpoints, error envelope, target-platform enum, and async result shape. Do not hand-maintain a second Go or TypeScript model.
+- [x] Use `openapi-typescript` to generate deterministic TypeScript types; commit the output only under `web/listingkit-ui/src/lib/api/generated/`.
+- [x] Replace the corresponding hand-written response cast in the UI preview client with a generated contract type while retaining runtime Zod validation and the existing proxy/auth boundary.
+- [x] Add `make api-contract-check` to regenerate the pilot contract and fail on drift.
 - [ ] Run backend focused tests plus frontend checks:
 
   ```powershell

@@ -36,6 +36,10 @@ func (h *imageHandler) ProcessImages(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
+	if strings.TrimSpace(req.TargetPlatform) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": "target_platform is required"})
+		return
+	}
 
 	task, err := h.service.CreateProcessTask(c.Request.Context(), &req)
 	if err != nil {

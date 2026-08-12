@@ -59,11 +59,12 @@ func (s *service) GetTaskResult(ctx context.Context, taskID string) (*TaskResult
 	}
 
 	result := &TaskResult{
-		TaskID:    task.ID,
-		Status:    task.Status,
-		Result:    task.Result,
-		Error:     task.Error,
-		CreatedAt: task.CreatedAt,
+		TaskID:         task.ID,
+		Status:         task.Status,
+		TargetPlatform: task.Request.TargetPlatform,
+		Result:         task.Result,
+		Error:          task.Error,
+		CreatedAt:      task.CreatedAt,
 	}
 	if task.Status == TaskStatusCompleted || task.Status == TaskStatusNeedsReview || task.Status == TaskStatusRejected || task.Status == TaskStatusFailed {
 		result.CompletedAt = &task.UpdatedAt
