@@ -123,8 +123,31 @@ function Assert-TaskCreationConfirmation {
     if ($Mode -eq "Preflight") {
         return
     }
-    if ($Confirmation -ne "CREATE-1688-TASK") {
+    if ($Confirmation -cne "CREATE-1688-TASK") {
         throw "-ConfirmCreateTask CREATE-1688-TASK is required for $Mode mode."
+    }
+}
+
+function Assert-1688OfferUrl {
+    param([string]$Url)
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        throw "-Url must be a valid 1688 offer URL"
+    }
+    $candidate = $Url.Trim()
+    if (-not $candidate.StartsWith("http://", [System.StringComparison]::OrdinalIgnoreCase) -and
+        -not $candidate.StartsWith("https://", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $candidate = "https://$candidate"
+    }
+    try {
+        $parsed = [Uri]$candidate
+    } catch {
+        throw "-Url must be a valid 1688 offer URL"
+    }
+    if ($parsed.Scheme -notin @("http", "https") -or
+        $parsed.Host -notmatch "(^|\.)1688\.com$" -or
+        $parsed.AbsolutePath -notmatch "(?i)(^|/)offer/\d+(?:\.html)?$") {
+        throw "-Url must be a valid 1688 offer URL"
     }
 }
 
@@ -163,6 +186,17 @@ function Get-SourceIdentityEvidence {
         SourceID = $sourceID
         SourceKey = $sourceKeyParts -join ":"
     }
+}
+
+function Get-RemainingRequestTimeoutSec {
+    param([DateTime]$Deadline)
+
+    $remaining = ($Deadline - [DateTime]::UtcNow).TotalSeconds
+    $seconds = [int][Math]::Floor($remaining)
+    if ($seconds -lt 1) {
+        throw "crawler task timed out"
+    }
+    return $seconds
 }
 
 function New-ListingKitHandoffPayload {
@@ -228,6 +262,7 @@ function Invoke-Crawl {
     )
 
     Assert-TaskCreationConfirmation -Mode "Crawl" -Confirmation $Confirmation
+    Assert-1688OfferUrl -Url $Url
     if ([string]::IsNullOrWhiteSpace($Url)) { throw "-Url is required" }
     if ($SourceAccountID -le 0) { throw "-SourceAccountID must be positive" }
     if ($RequestTimeoutSec -le 0) { throw "-TimeoutSec must be positive" }
@@ -243,7 +278,8 @@ function Invoke-Crawl {
 
     $deadline = [DateTime]::UtcNow.AddSeconds($RequestTimeoutSec)
     while ($true) {
-        $response = Invoke-AcceptanceRequest -Method Get -Path "/api/v1/tasks/$([Uri]::EscapeDataString($taskID))" -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $RequestTimeoutSec
+        $remainingTimeoutSec = Get-RemainingRequestTimeoutSec -Deadline $deadline
+        $response = Invoke-AcceptanceRequest -Method Get -Path "/api/v1/tasks/$([Uri]::EscapeDataString($taskID))" -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $remainingTimeoutSec
         $data = Get-ResponseData -Response $response
         $status = ([string]$data.status).Trim().ToLowerInvariant()
         if ($status -eq "success") {

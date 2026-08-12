@@ -10,6 +10,9 @@ Describe "1688 runtime acceptance safety" {
         $threw | Should Be $true
 
         { Assert-TaskCreationConfirmation -Mode "Crawl" -Confirmation "CREATE-1688-TASK" } | Should Not Throw
+        $threw = $false
+        try { Assert-TaskCreationConfirmation -Mode "Crawl" -Confirmation "create-1688-task" } catch { $threw = $true }
+        $threw | Should Be $true
         { Assert-TaskCreationConfirmation -Mode "Preflight" -Confirmation "" } | Should Not Throw
     }
 
@@ -91,6 +94,18 @@ Describe "1688 runtime acceptance safety" {
         $script:requestCalls | Should Be 0
     }
 
+    It "rejects a non-1688 URL before making a crawler request" {
+        $script:requestCalls = 0
+        Mock Invoke-AcceptanceRequest {
+            $script:requestCalls++
+            throw "request should not run"
+        }
+
+        try { Invoke-Crawl -Url "https://example.com/product/321" -SourceAccountID 3001 -Confirmation "CREATE-1688-TASK" } catch { }
+
+        $script:requestCalls | Should Be 0
+    }
+
     It "polls processing then returns a successful crawler product" {
         $script:pollCount = 0
         Mock Invoke-AcceptanceRequest {
@@ -133,6 +148,13 @@ Describe "1688 runtime acceptance safety" {
         }
 
         { Invoke-Crawl -Url "https://detail.1688.com/offer/326.html" -SourceAccountID 3006 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0 } | Should Throw "crawler task crawler-task-invalid-status returned unexpected status 'queued'"
+    }
+
+    It "rejects an expired crawler deadline before polling" {
+        { Get-RemainingRequestTimeoutSec -Deadline ([DateTime]::UtcNow.AddSeconds(-1)) } | Should Throw "crawler task timed out"
+
+        $remaining = Get-RemainingRequestTimeoutSec -Deadline ([DateTime]::UtcNow.AddSeconds(10))
+        ($remaining -gt 0 -and $remaining -le 10) | Should Be $true
     }
 
     It "sends the crawler product to the ListingKit handoff without source_store_id" {
