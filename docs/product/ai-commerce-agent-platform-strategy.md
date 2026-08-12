@@ -638,38 +638,44 @@ Agent 是否上线不能只看“看起来更聪明”。
 
 每次只迁移一个 service-facing AI capability。
 
-### Phase 2：Product Agent PoC
+### Phase 2A：最小 Commerce Tool Foundation
 
-实现“商品资料诊断与补全 Agent”。
+在 Product Agent 之前建立一套最小、稳定、框架无关的 Tool 合同：
+
+- ToolDefinition / version / capability；
+- input/output schema；
+- read / compute / propose 风险等级；
+- tenant/user permission；
+- timeout / retry owner；
+- deterministic error taxonomy；
+- audit / trace metadata；
+- AgentDefinition allowlist 绑定。
+
+第一批只接入 Product Agent 所需的 source evidence、canonical product、
+catalog/asset facts、ProductEnrich proposal、ProductImage analysis proposal、
+marketplace rule lookup 和 deterministic validator。不得开放 write 或 publish，
+不得让 Agent 直接访问 repository、provider SDK 或 marketplace client。
+
+### Phase 2B：Product Agent PoC
+
+在 Phase 1 与 Phase 2A 达到退出门禁后，实现“商品资料诊断与补全 Agent”。
 
 门禁：
 
-- 只读/纯计算/Proposal tools；
+- 只通过 Phase 2A Tool Registry 获取 read / compute / propose tools；
 - 最多有限修复循环；
 - 所有输出进入人工审核；
-- feature flag；
-- tenant allowlist；
+- feature flag 与 tenant allowlist；
+- step、model call、token、runtime 和 cost hard budget；
 - 与固定流程做离线 A/B eval。
 
-只有证明质量或人工效率有可量化提升后才继续扩大 Agent 使用面。
+只有证明质量或人工效率有可量化提升且风险指标不恶化后，才继续扩大 Agent 使用面。
 
-### Phase 3：Commerce Tool Contract
+### Phase 3：Commerce Tool 扩展与生产级治理
 
-把现有高价值能力逐步暴露成稳定 Tool：
-
-优先顺序建议：
-
-1. Product facts read；
-2. Source evidence read；
-3. Product validator；
-4. Product enrich proposal；
-5. Image analyze / generate proposal；
-6. SHEIN category & attribute lookup；
-7. SHEIN readiness；
-8. Pricing calculator；
-9. Listing draft proposal。
-
-此阶段不是创建“万能 Tool API”，而是建立小而明确的领域合同。
+Phase 3 不再创建第一套 Tool 合同，而是在 Product Agent PoC 证明价值后扩展
+Phase 2A 的同一合同，包括更多领域工具、版本迁移策略、运行 SLO 和平台适配器。
+write / publish tools 仍需独立的审批、幂等、权限与审计门禁。
 
 ### Phase 4：SHEIN Listing Agent
 
@@ -738,11 +744,12 @@ Sourcing Agent
 
 完成上述门禁后：
 
-1. Product Agent PoC；
-2. Commerce Tool metadata / contract；
-3. Agent eval；
-4. SHEIN Listing Agent read/propose-only 版本；
-5. Agent Workspace 最小入口。
+1. 最小 Commerce Tool Foundation；
+2. Product Agent 有界运行时；
+3. Product Agent PoC 与 fixed pipeline 对照评测；
+4. Commerce Tool 扩展与生产级治理；
+5. SHEIN Listing Agent read/propose-only 版本；
+6. Agent Workspace 最小入口。
 
 ### Later
 
@@ -793,11 +800,14 @@ Sourcing Agent
 长期方向建议按以下顺序理解：
 
 1. **`docs/product/ai-commerce-agent-platform-strategy.md`**：长期产品战略、产品边界和 Agent 路线图；
-2. **`docs/superpowers/specs/2026-08-06-ai-capability-agent-platform-design.md`**：AI Control Plane 与 Agent Runtime 的详细技术设计；
-3. **`docs/refactoring/current-refactoring-status.md`**：当前代码现实、Now / Next / Later 和重构门禁；
-4. **`docs/product/listingkit-project-goals.md`**：ListingKit 子产品的使命与范围；
-5. **`docs/product/listingkit-next-execution-plan.md`**：近期 ListingKit 产品执行；
-6. Product Sourcing、SHEIN、付费试点等专项文档：各自领域内的执行 source of truth。
+2. **`docs/refactoring/current-refactoring-status.md`**：当前代码现实、Now / Next / Later 和重构门禁；
+3. **GitHub issue #137**：把长期战略和当前门禁映射为可执行 backlog；
+4. **`docs/superpowers/specs/2026-08-06-ai-capability-agent-platform-design.md`**：AI Control Plane 与 Agent Runtime 的详细技术设计；
+5. **`docs/product/listingkit-project-goals.md`**：ListingKit 子产品的使命与范围；
+6. **`docs/product/listingkit-next-execution-plan.md`**：近期 ListingKit 产品执行；
+7. Product Sourcing、SHEIN、付费试点等专项文档：各自领域内的执行 source of truth。
+
+已经完成的 implementation plan 只保留为历史执行证据，不能覆盖当前状态文档或 GitHub issue #137 的执行顺序。
 
 当长期战略与当前成熟度发生表面冲突时：
 
