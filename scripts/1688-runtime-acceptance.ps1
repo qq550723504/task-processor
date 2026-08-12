@@ -189,14 +189,35 @@ function Get-SourceIdentityEvidence {
 }
 
 function Get-RemainingRequestTimeoutSec {
-    param([DateTime]$Deadline)
+    param(
+        [DateTime]$Deadline,
+        [string]$TaskID = ""
+    )
 
     $remaining = ($Deadline - [DateTime]::UtcNow).TotalSeconds
-    $seconds = [int][Math]::Floor($remaining)
-    if ($seconds -lt 1) {
-        throw "crawler task timed out"
+    if ($remaining -le 0) {
+        if ([string]::IsNullOrWhiteSpace($TaskID)) {
+            throw "crawler task timed out"
+        }
+        throw "crawler task $TaskID timed out"
     }
-    return $seconds
+    return [int][Math]::Ceiling($remaining)
+}
+
+function Get-CappedPollSleepSec {
+    param(
+        [int]$PollIntervalSec,
+        [DateTime]$Deadline
+    )
+
+    if ($PollIntervalSec -le 0) {
+        return 0
+    }
+    $remaining = ($Deadline - [DateTime]::UtcNow).TotalSeconds
+    if ($remaining -le 0) {
+        return 0
+    }
+    return [Math]::Min($PollIntervalSec, [int][Math]::Floor($remaining))
 }
 
 function New-ListingKitHandoffPayload {
@@ -278,7 +299,7 @@ function Invoke-Crawl {
 
     $deadline = [DateTime]::UtcNow.AddSeconds($RequestTimeoutSec)
     while ($true) {
-        $remainingTimeoutSec = Get-RemainingRequestTimeoutSec -Deadline $deadline
+        $remainingTimeoutSec = Get-RemainingRequestTimeoutSec -Deadline $deadline -TaskID $taskID
         $response = Invoke-AcceptanceRequest -Method Get -Path "/api/v1/tasks/$([Uri]::EscapeDataString($taskID))" -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $remainingTimeoutSec
         $data = Get-ResponseData -Response $response
         $status = ([string]$data.status).Trim().ToLowerInvariant()
@@ -294,10 +315,8 @@ function Invoke-Crawl {
         if ($status -ne "pending" -and $status -ne "processing") {
             throw "crawler task $taskID returned unexpected status '$status'"
         }
-        if ([DateTime]::UtcNow -ge $deadline) {
-            throw "crawler task $taskID timed out"
-        }
-        if ($PollIntervalSec -gt 0) { Start-Sleep -Seconds $PollIntervalSec }
+        $sleepSec = Get-CappedPollSleepSec -PollIntervalSec $PollIntervalSec -Deadline $deadline
+        if ($sleepSec -gt 0) { Start-Sleep -Seconds $sleepSec }
     }
 }
 
@@ -324,11 +343,13 @@ function Invoke-EndToEnd {
 }
 
 function Invoke-Main {
-    $token = Resolve-ListingKitToken
     if ($Mode -eq "Preflight") {
+        $token = ""
+        try { $token = Resolve-ListingKitToken } catch { }
         Invoke-Preflight -Token $token
         return
     }
+    $token = Resolve-ListingKitToken
     if ($Mode -eq "Crawl") {
         $result = Invoke-Crawl -Url $Url -SourceAccountID $SourceAccountID -Confirmation $ConfirmCreateTask -Token $token
         Write-Output ("PASS CRAWL task_id={0} status={1}" -f $result.TaskID, $result.Status)

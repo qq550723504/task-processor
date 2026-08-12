@@ -61,6 +61,24 @@ Describe "1688 runtime acceptance safety" {
         ($script:requestMethods -join ",") | Should Be "Get /health,Get /readyz,Get /api/v1/listing-kits/settings-health"
     }
 
+    It "runs public preflight checks before failing at the authenticated check when the token is missing" {
+        $script:requestMethods = @()
+        Mock Resolve-ListingKitToken { throw "token is missing" }
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path, $Token)
+            $script:requestMethods += "$Method $Path"
+            if ($Path -eq "/api/v1/listing-kits/settings-health") {
+                $Token | Should Be ""
+                return @{ status = "ready" }
+            }
+            return @{ status = "ok" }
+        }
+
+        Invoke-Main
+
+        ($script:requestMethods -join ",") | Should Be "Get /health,Get /readyz,Get /api/v1/listing-kits/settings-health"
+    }
+
     It "blocks preflight when settings health is not ready" {
         Mock Invoke-AcceptanceRequest {
             param($Method, $Path)
@@ -151,10 +169,22 @@ Describe "1688 runtime acceptance safety" {
     }
 
     It "rejects an expired crawler deadline before polling" {
-        { Get-RemainingRequestTimeoutSec -Deadline ([DateTime]::UtcNow.AddSeconds(-1)) } | Should Throw "crawler task timed out"
+        { Get-RemainingRequestTimeoutSec -Deadline ([DateTime]::UtcNow.AddSeconds(-1)) -TaskID "crawler-task-expired" } | Should Throw "crawler task crawler-task-expired timed out"
 
         $remaining = Get-RemainingRequestTimeoutSec -Deadline ([DateTime]::UtcNow.AddSeconds(10))
-        ($remaining -gt 0 -and $remaining -le 10) | Should Be $true
+        ($remaining -ge 1 -and $remaining -le 11) | Should Be $true
+    }
+
+    It "caps polling sleep at the remaining deadline" {
+        $sleep = Get-CappedPollSleepSec -PollIntervalSec 300 -Deadline ([DateTime]::UtcNow.AddSeconds(2))
+
+        ($sleep -ge 0 -and $sleep -le 2) | Should Be $true
+    }
+
+    It "preserves a one-second request allowance while the deadline is still future" {
+        $remaining = Get-RemainingRequestTimeoutSec -Deadline ([DateTime]::UtcNow.AddMilliseconds(500)) -TaskID "crawler-task-short"
+
+        $remaining | Should Be 1
     }
 
     It "sends the crawler product to the ListingKit handoff without source_store_id" {
