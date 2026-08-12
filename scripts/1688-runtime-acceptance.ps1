@@ -84,7 +84,7 @@ function Invoke-AcceptanceRequest {
         [string]$Method,
         [string]$Path,
         [string]$Token,
-        [hashtable]$Body = $null,
+        [System.Collections.IDictionary]$Body = $null,
         [string]$BaseUrl = $script:AcceptanceApiBaseUrl,
         [int]$RequestTimeoutSec = $script:AcceptanceTimeoutSec
     )
@@ -140,6 +140,31 @@ function Get-ResponseData {
     return $Response
 }
 
+function Get-SourceIdentityEvidence {
+    param([object]$SourceIdentity)
+
+    if ($null -eq $SourceIdentity) {
+        throw "handoff response did not contain source_identity"
+    }
+    $sourceType = [string]$SourceIdentity.SourceType
+    $sourcePlatform = [string]$SourceIdentity.SourcePlatform
+    $sourceID = [string]$SourceIdentity.SourceID
+    $sourceVersion = [string]$SourceIdentity.SourceVersion
+    if ([string]::IsNullOrWhiteSpace($sourceType) -or
+        [string]::IsNullOrWhiteSpace($sourcePlatform) -or
+        [string]::IsNullOrWhiteSpace($sourceID)) {
+        throw "handoff response did not contain complete source_identity"
+    }
+    $sourceKeyParts = @($sourceType, $sourcePlatform, $sourceID)
+    if (-not [string]::IsNullOrWhiteSpace($sourceVersion)) {
+        $sourceKeyParts += @("version", $sourceVersion)
+    }
+    return [pscustomobject]@{
+        SourceID = $sourceID
+        SourceKey = $sourceKeyParts -join ":"
+    }
+}
+
 function New-ListingKitHandoffPayload {
     param(
         [object]$ProductData,
@@ -179,7 +204,14 @@ function Invoke-Preflight {
     )
     foreach ($check in $checks) {
         $requestToken = if ($check.Authenticated) { $Token } else { "" }
-        Invoke-AcceptanceRequest -Method Get -Path $check.Path -Token $requestToken -BaseUrl $BaseUrl | Out-Null
+        $response = Invoke-AcceptanceRequest -Method Get -Path $check.Path -Token $requestToken -BaseUrl $BaseUrl
+        if ($check.Path -eq "/api/v1/listing-kits/settings-health") {
+            $health = Get-ResponseData -Response $response
+            $healthStatus = ([string]$health.status).Trim().ToLowerInvariant()
+            if ($healthStatus -ne "ready") {
+                throw "settings-health status is '$healthStatus'; task creation is not allowed"
+            }
+        }
         Write-Output ("PASS GET {0}" -f $check.Path)
     }
 }
@@ -213,7 +245,7 @@ function Invoke-Crawl {
     while ($true) {
         $response = Invoke-AcceptanceRequest -Method Get -Path "/api/v1/tasks/$([Uri]::EscapeDataString($taskID))" -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $RequestTimeoutSec
         $data = Get-ResponseData -Response $response
-        $status = [string]$data.status
+        $status = ([string]$data.status).Trim().ToLowerInvariant()
         if ($status -eq "success") {
             $productData = $data.product_data
             if ($null -eq $productData) { $productData = $data.ProductData }
@@ -222,6 +254,9 @@ function Invoke-Crawl {
         }
         if ($status -eq "failed") {
             throw "crawler task $taskID failed"
+        }
+        if ($status -ne "pending" -and $status -ne "processing") {
+            throw "crawler task $taskID returned unexpected status '$status'"
         }
         if ([DateTime]::UtcNow -ge $deadline) {
             throw "crawler task $taskID timed out"
@@ -265,13 +300,13 @@ function Invoke-Main {
     }
     $result = Invoke-EndToEnd -Url $Url -SourceAccountID $SourceAccountID -SheinStoreID $SheinStoreID -Confirmation $ConfirmCreateTask -Token $token
     $handoffData = Get-ResponseData -Response $result.Handoff
-    $sourceIdentity = $handoffData.source_identity
+    $sourceEvidence = Get-SourceIdentityEvidence -SourceIdentity $handoffData.source_identity
     Write-Output ("PASS END_TO_END crawler_task_id={0} crawler_status={1} listingkit_task_id={2} source_id={3} source_key={4} product_url={5}" -f `
         $result.CrawlerTaskID,
         $result.CrawlerStatus,
         [string]$handoffData.task_id,
-        [string]$sourceIdentity.id,
-        [string]$sourceIdentity.key,
+        $sourceEvidence.SourceID,
+        $sourceEvidence.SourceKey,
         [string]$handoffData.product_url)
 }
 

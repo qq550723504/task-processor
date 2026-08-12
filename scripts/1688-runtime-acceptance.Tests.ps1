@@ -47,12 +47,36 @@ Describe "1688 runtime acceptance safety" {
         Mock Invoke-AcceptanceRequest {
             param($Method, $Path)
             $script:requestMethods += "$Method $Path"
+            if ($Path -eq "/api/v1/listing-kits/settings-health") {
+                return @{ status = "ready" }
+            }
             return @{ status = "ok" }
         }
 
         Invoke-Preflight -Token "test-token" -BaseUrl "https://example.test" | Out-Null
 
         ($script:requestMethods -join ",") | Should Be "Get /health,Get /readyz,Get /api/v1/listing-kits/settings-health"
+    }
+
+    It "blocks preflight when settings health is not ready" {
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            if ($Path -eq "/api/v1/listing-kits/settings-health") {
+                return @{ status = "blocked" }
+            }
+            return @{ status = "ok" }
+        }
+
+        { Invoke-Preflight -Token "test-token" -BaseUrl "https://example.test" } | Should Throw "settings-health status is 'blocked'; task creation is not allowed"
+    }
+
+    It "accepts the ordered handoff payload at the request boundary" {
+        Mock Invoke-RestMethod { return @{ status = "ok" } }
+        $body = New-ListingKitHandoffPayload `
+            -ProductData ([pscustomobject]@{ id = "325"; title = "Binding product"; url = "https://detail.1688.com/offer/325.html" }) `
+            -SourceAccountID 3005 -SheinStoreID 168815 -CrawlerTaskID "crawler-task-5"
+
+        { Invoke-AcceptanceRequest -Method Post -Path "/api/v1/test" -Token "test-token" -Body $body -BaseUrl "https://example.test" } | Should Not Throw
     }
 
     It "rejects Crawl without exact confirmation before making a request" {
@@ -99,6 +123,18 @@ Describe "1688 runtime acceptance safety" {
         $result.ProductData.id | Should Be "323"
     }
 
+    It "fails immediately when the crawler returns an unknown status" {
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            if ($Path -eq "/api/v1/crawl") {
+                return @{ data = @{ task_id = "crawler-task-invalid-status" } }
+            }
+            return @{ data = @{ task_id = "crawler-task-invalid-status"; status = "queued" } }
+        }
+
+        { Invoke-Crawl -Url "https://detail.1688.com/offer/326.html" -SourceAccountID 3006 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0 } | Should Throw "crawler task crawler-task-invalid-status returned unexpected status 'queued'"
+    }
+
     It "sends the crawler product to the ListingKit handoff without source_store_id" {
         $script:lastHandoffBody = $null
         Mock Invoke-AcceptanceRequest {
@@ -134,5 +170,17 @@ Describe "1688 runtime acceptance safety" {
         }
 
         { Invoke-EndToEnd -Url "https://detail.1688.com/offer/324.html" -SourceAccountID 3004 -SheinStoreID 168814 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0 } | Should Throw "handoff response did not contain a task id"
+    }
+
+    It "reports the live source identity fields and derived source key" {
+        $evidence = Get-SourceIdentityEvidence -SourceIdentity ([pscustomobject]@{
+            SourceType = "crawler"
+            SourcePlatform = "1688"
+            SourceID = "327"
+            SourceVersion = "v1"
+        })
+
+        $evidence.SourceID | Should Be "327"
+        $evidence.SourceKey | Should Be "crawler:1688:327:version:v1"
     }
 }
