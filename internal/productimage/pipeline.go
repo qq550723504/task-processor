@@ -276,6 +276,12 @@ func (s *service) runWhiteBgStage(ctx context.Context, state *PipelineState) err
 		startedAt := time.Now()
 		asset, err := s.whiteBgRenderer.Render(ctx, state.Result.MainImage, state.Context)
 		if err != nil {
+			if IsTenantModelAccessDenied(err) {
+				state.Result.WhiteBgImage = &ImageAsset{URL: state.Result.MainImage.URL, Type: AssetTypeWhiteBgImage, SourceURL: state.Result.MainImage.SourceURL, Operations: append(append([]string{}, state.Result.MainImage.Operations...), "pass_through_white_bg_tenant_gate")}
+				state.addTrace("render_white_bg", state.Result.MainImage.SourceURL, string(AssetTypeWhiteBgImage), "fallback", time.Since(startedAt), "pass through white background because tenant model access is denied")
+				state.markNeedsReviewStage("render_white_bg", time.Since(startedAt).Milliseconds(), "white background model skipped because tenant model access is denied")
+				return nil
+			}
 			state.addTrace("render_white_bg", state.Result.MainImage.SourceURL, string(AssetTypeWhiteBgImage), "failed", time.Since(startedAt), err.Error())
 			if state.Result.MainImage != nil {
 				return newNeedsReviewStageFailure("render_white_bg", err, fmt.Sprintf("render_white_bg failed: %v", err))
@@ -297,6 +303,15 @@ func (s *service) runGalleryStage(ctx context.Context, state *PipelineState) err
 		startedAt := time.Now()
 		images, err := s.sceneRenderer.Render(ctx, state.Result.SubjectCutout, state.Context)
 		if err != nil {
+			if IsTenantModelAccessDenied(err) {
+				state.Result.GalleryImages = make([]ImageAsset, 0, len(state.Candidates.SceneCandidates))
+				for _, imageURL := range state.Candidates.SceneCandidates {
+					state.Result.GalleryImages = append(state.Result.GalleryImages, ImageAsset{URL: imageURL, Type: AssetTypeGalleryImage, SourceURL: imageURL, Operations: []string{"pass_through_gallery_tenant_gate"}})
+					state.addTrace("render_gallery", imageURL, string(AssetTypeGalleryImage), "fallback", time.Since(startedAt), "pass through gallery because tenant model access is denied")
+				}
+				state.markNeedsReviewStage("render_gallery", time.Since(startedAt).Milliseconds(), "scene model skipped because tenant model access is denied")
+				return nil
+			}
 			state.addTrace("render_gallery", state.Result.SubjectCutout.SourceURL, string(AssetTypeGalleryImage), "failed", time.Since(startedAt), err.Error())
 			if state.Result.MainImage != nil || state.Result.WhiteBgImage != nil {
 				return newNeedsReviewStageFailure("render_gallery", err, fmt.Sprintf("render_gallery failed: %v", err))

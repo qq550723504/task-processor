@@ -18,9 +18,24 @@ func (e *tenantAllowlistedFaithfulEditor) Edit(ctx context.Context, req *product
 		return nil, productimage.NewNoRetryError(fmt.Errorf("faithful editor is not configured"))
 	}
 	if !tenantAllowed(ctx, e.allowed) {
-		return nil, productimage.NewNoRetryError(fmt.Errorf("productimage model access denied for tenant %q", productimage.AIIdentityFromContext(ctx).TenantID))
+		return nil, productimage.NewTenantModelAccessDeniedError(productimage.AIIdentityFromContext(ctx).TenantID)
 	}
 	return e.inner.Edit(ctx, req)
+}
+
+type tenantAllowlistedSceneGenerator struct {
+	inner   productimage.SceneGenerator
+	allowed map[string]struct{}
+}
+
+func (g *tenantAllowlistedSceneGenerator) GenerateScene(ctx context.Context, req *productimage.SceneGenerationRequest) (*productimage.SceneGenerationResult, error) {
+	if g == nil || g.inner == nil {
+		return nil, productimage.NewNoRetryError(fmt.Errorf("scene generator is not configured"))
+	}
+	if !tenantAllowed(ctx, g.allowed) {
+		return nil, productimage.NewTenantModelAccessDeniedError(productimage.AIIdentityFromContext(ctx).TenantID)
+	}
+	return g.inner.GenerateScene(ctx, req)
 }
 
 type tenantAllowlistedReviewModel struct {
@@ -45,6 +60,9 @@ func (m *tenantAllowlistedReviewModel) Review(ctx context.Context, req *producti
 
 func tenantAllowed(ctx context.Context, allowed map[string]struct{}) bool {
 	identity := productimage.AIIdentityFromContext(ctx)
+	if strings.TrimSpace(identity.TenantID) == "" || strings.TrimSpace(identity.UserID) == "" {
+		return false
+	}
 	_, ok := allowed[strings.TrimSpace(identity.TenantID)]
 	return ok
 }

@@ -66,7 +66,7 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 		if review := modelProvider.ReviewModel(); review != nil {
 			reviewModel = &tenantAllowlistedReviewModel{inner: review, allowed: allowed}
 		}
-		modelProvider = productimage.NewModelProvider(faithfulEditor, governedScene, reviewModel)
+		modelProvider = productimage.NewModelProvider(faithfulEditor, &tenantAllowlistedSceneGenerator{inner: governedScene, allowed: allowed}, reviewModel)
 	}
 
 	var subjectExtractor productimage.SubjectExtractor

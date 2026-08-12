@@ -160,6 +160,43 @@ func TestService_ProcessImages_CompatPipeline(t *testing.T) {
 	}
 }
 
+func TestService_ProcessImages_TenantModelDenialUsesRecoveryPassThrough(t *testing.T) {
+	repo := store.NewMemTaskRepository()
+	denied := productimage.NewTenantModelAccessDeniedError("")
+	svc, err := productimage.NewService(&productimage.ServiceConfig{
+		TaskRepo:         repo,
+		AssetPublisher:   &stubAssetPublisher{},
+		SubjectExtractor: &failingSubjectExtractor{err: denied},
+		WhiteBgRenderer:  &failingWhiteBackgroundRenderer{err: denied},
+		SceneRenderer:    &failingSceneRenderer{err: denied},
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	task, err := svc.CreateProcessTask(context.Background(), &productimage.ImageProcessRequest{
+		ImageURLs:   []string{"https://example.com/a.jpg", "https://example.com/b.jpg"},
+		Marketplace: "amazon",
+	})
+	if err != nil {
+		t.Fatalf("CreateProcessTask() error = %v", err)
+	}
+	result, err := svc.ProcessImages(context.Background(), task)
+	if err != nil {
+		t.Fatalf("ProcessImages() error = %v", err)
+	}
+	if result == nil || result.MainImage == nil || result.WhiteBgImage == nil {
+		t.Fatalf("expected pass-through image artifacts, got %+v", result)
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != productimage.TaskStatusNeedsReview {
+		t.Fatalf("stored status = %q, want needs_review", stored.Status)
+	}
+}
+
 func TestService_ReviewTask_ApproveRejectRetry(t *testing.T) {
 	repo := store.NewMemTaskRepository()
 	submitter := &recordingSubmitter{}
