@@ -62,7 +62,7 @@ func (p *standardWorkflowMediaPhase) run(
 				markChildTask(result, kind, imageTask.ID, string(productimage.TaskStatusCompleted), "")
 				stage.Complete()
 				bundle := asset.BuildBundle(canonicalProduct, targetResult)
-				result.recordTargetImageAssets(target, targetResult, bundle, asset.InventorySummaryFromBundle(bundle), compatibilityTargetPlatform(task.Request))
+				result.recordTargetImageAssets(target, targetResult, bundle, asset.InventorySummaryFromBundle(bundle))
 				if imageResult == nil {
 					imageResult = targetResult
 				}
@@ -96,10 +96,11 @@ func (p *standardWorkflowMediaPhase) run(
 		result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
 		for target, targetImageResult := range result.ImageAssetsByTarget {
 			bundle := asset.BuildBundle(canonicalProduct, targetImageResult)
-			result.recordTargetImageAssets(target, targetImageResult, bundle, asset.InventorySummaryFromBundle(bundle), compatibilityTargetPlatform(task.Request))
+			result.recordTargetImageAssets(target, targetImageResult, bundle, asset.InventorySummaryFromBundle(bundle))
 		}
 		log.Info("applied SDS sync metadata to canonical product")
 	}
+	result.applyCompatibilityAssetProjectionForRequest(task.Request)
 	return imageResult, sdsOptions
 }
 

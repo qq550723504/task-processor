@@ -96,11 +96,3 @@ func buildWorkflowRequestPolicyInput(req *GenerateRequest) listingworkflow.Reque
 	}
 	return input
 }
-
-func toImageProcessRequest(task *Task) *productimage.ImageProcessRequest {
-	requests, err := toImageProcessRequests(task)
-	if err != nil || len(requests) == 0 {
-		return &productimage.ImageProcessRequest{}
-	}
-	return requests[0]
-}

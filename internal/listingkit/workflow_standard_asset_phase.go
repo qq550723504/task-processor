@@ -117,7 +117,7 @@ func (p *standardWorkflowAssetPhase) run(
 			}
 			result.AssetInventorySummariesByTarget[target] = asset.InventorySummaryFromBundle(bundle)
 		}
-		result.applyCompatibilityAssetProjection(compatibilityTargetPlatform(task.Request))
+		result.applyCompatibilityAssetProjectionForRequest(task.Request)
 		if result.AssetBundle != nil {
 			result.AssetBundle = workingBundle
 			result.AssetInventorySummary = inventory.Summary

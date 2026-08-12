@@ -29,8 +29,8 @@ func TestListingKitResultKeepsMultiTargetAssetsOutOfLegacyScalars(t *testing.T) 
 	sheinBundle := &asset.Bundle{}
 	temuBundle := &asset.Bundle{}
 
-	result.recordTargetImageAssets("shein", sheinImages, sheinBundle, asset.InventorySummaryFromBundle(sheinBundle), "")
-	result.recordTargetImageAssets("temu", temuImages, temuBundle, asset.InventorySummaryFromBundle(temuBundle), "")
+	result.recordTargetImageAssets("shein", sheinImages, sheinBundle, asset.InventorySummaryFromBundle(sheinBundle))
+	result.recordTargetImageAssets("temu", temuImages, temuBundle, asset.InventorySummaryFromBundle(temuBundle))
 
 	if result.ImageAssetsForTarget("shein") != sheinImages || result.ImageAssetsForTarget("temu") != temuImages {
 		t.Fatalf("target-keyed images = %#v", result.ImageAssetsByTarget)

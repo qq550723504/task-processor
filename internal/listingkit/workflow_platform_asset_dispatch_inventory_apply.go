@@ -27,7 +27,7 @@ func (p *platformAssetDispatchInventoryApplyPhase) run(
 			final.AssetBundlesByTarget[target] = asset.RebuildBundleWithRecords(bundle, dispatchAssetsForTarget(dispatchAssets, target))
 			final.AssetInventorySummariesByTarget[target] = asset.InventorySummaryFromBundle(final.AssetBundlesByTarget[target])
 		}
-		final.applyCompatibilityAssetProjection("")
+		final.applyCompatibilityAssetProjection(final.compatibilityProjectionTarget())
 		return
 	}
 	final.AssetBundle = asset.RebuildBundleWithRecords(final.AssetBundle, dispatchAssets)

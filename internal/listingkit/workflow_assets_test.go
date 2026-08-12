@@ -135,12 +135,16 @@ func (s *stubWorkflowAssetRepository) ListGenerationTasks(ctx context.Context, t
 }
 
 type stubWorkflowImageService struct {
-	task       *productimage.Task
-	result     *productimage.ImageProcessResult
-	createErr  error
-	processErr error
-	lastReq    *productimage.ImageProcessRequest
-	requests   []*productimage.ImageProcessRequest
+	task               *productimage.Task
+	taskByTarget       map[string]*productimage.Task
+	result             *productimage.ImageProcessResult
+	resultByTarget     map[string]*productimage.ImageProcessResult
+	createErr          error
+	createErrByTarget  map[string]error
+	processErr         error
+	processErrByTarget map[string]error
+	lastReq            *productimage.ImageProcessRequest
+	requests           []*productimage.ImageProcessRequest
 }
 
 type stubWorkflowSDSSyncService struct {
@@ -162,8 +166,16 @@ type stubWorkflowSDSSyncService struct {
 func (s *stubWorkflowImageService) CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error) {
 	s.lastReq = req
 	s.requests = append(s.requests, req)
+	if err := s.createErrByTarget[req.TargetPlatform]; err != nil {
+		return nil, err
+	}
 	if s.createErr != nil {
 		return nil, s.createErr
+	}
+	if targetTask := s.taskByTarget[req.TargetPlatform]; targetTask != nil {
+		cloned := *targetTask
+		cloned.Request = req
+		return &cloned, nil
 	}
 	return s.task, nil
 }
@@ -173,8 +185,18 @@ func (s *stubWorkflowImageService) GetTaskResult(ctx context.Context, taskID str
 }
 
 func (s *stubWorkflowImageService) ProcessImages(ctx context.Context, task *productimage.Task) (*productimage.ImageProcessResult, error) {
+	target := ""
+	if task != nil && task.Request != nil {
+		target = task.Request.TargetPlatform
+	}
+	if err := s.processErrByTarget[target]; err != nil {
+		return nil, err
+	}
 	if s.processErr != nil {
 		return nil, s.processErr
+	}
+	if result := s.resultByTarget[target]; result != nil {
+		return result, nil
 	}
 	return s.result, nil
 }
@@ -215,6 +237,64 @@ func TestStandardWorkflowProcessesImagesForEveryTarget(t *testing.T) {
 	}
 	if state.result.ImageAssets != nil || state.result.AssetBundle != nil {
 		t.Fatalf("legacy scalar assets = %#v/%#v, want none for multi-target request", state.result.ImageAssets, state.result.AssetBundle)
+	}
+}
+
+func TestStandardWorkflowKeepsSuccessfulTargetAfterOtherTargetFails(t *testing.T) {
+	productSvc := &stubWorkflowProductService{
+		task:    &productenrich.Task{ID: "product-task"},
+		product: &productenrich.ProductJSON{Title: "Targeted product", Images: []string{"https://example.test/image.jpg"}},
+	}
+	imageSvc := &stubWorkflowImageService{
+		taskByTarget: map[string]*productimage.Task{
+			"temu":  {ID: "image-temu"},
+			"shein": {ID: "image-shein"},
+		},
+		resultByTarget: map[string]*productimage.ImageProcessResult{
+			"shein": {MainImage: &productimage.ImageAsset{URL: "https://example.test/shein.jpg"}},
+		},
+		processErrByTarget: map[string]error{"temu": fmt.Errorf("temu image processing failed")},
+	}
+	svc := seedWorkflowServices(seedWorkflowAssets(
+		seedSupportDeps(&service{}, supportDependencySeed{
+			assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		}),
+		assetrepo.NewMemRepository(),
+		newDefaultAssetRecipeResolver(),
+		newDefaultAssetBundleBuilder(),
+		newDefaultAssetGenerationService(),
+	), productSvc, imageSvc)
+	task := &Task{ID: "listing-task", Request: &GenerateRequest{
+		ImageURLs: []string{"https://example.test/image.jpg"},
+		Platforms: []string{"temu", "shein"},
+		Options:   &GenerateOptions{ProcessImages: true},
+	}}
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v", err)
+	}
+	if state.result.ImageAssetsForTarget("shein") == nil {
+		t.Fatalf("successful shein image result missing from %#v", state.result.ImageAssetsByTarget)
+	}
+	if state.result.ImageAssetsForTarget("temu") != nil {
+		t.Fatalf("failed temu image result = %#v, want nil", state.result.ImageAssetsForTarget("temu"))
+	}
+	if state.result.ImageAssets != nil || state.result.AssetBundle != nil {
+		t.Fatalf("legacy scalar assets = %#v/%#v, want no projection for partial multi-target result", state.result.ImageAssets, state.result.AssetBundle)
+	}
+	if child, ok := childTaskStateByKind(state.result, "product_image:temu"); !ok || child.Status != string(core.TaskStatusFailed) {
+		t.Fatalf("temu child task = %#v, want failed target child task", child)
+	}
+	if child, ok := childTaskStateByKind(state.result, "product_image:shein"); !ok || child.Status != string(core.TaskStatusCompleted) {
+		t.Fatalf("shein child task = %#v, want completed target child task", child)
+	}
+	stages := map[string]WorkflowStage{}
+	for _, stage := range state.result.WorkflowStages {
+		stages[stage.Kind] = stage
+	}
+	if stages["product_image:temu"].Status != WorkflowStageStatusDegraded || stages["product_image:shein"].Status != WorkflowStageStatusCompleted {
+		t.Fatalf("target image stages = %#v, want degraded temu and completed shein", stages)
 	}
 }
 

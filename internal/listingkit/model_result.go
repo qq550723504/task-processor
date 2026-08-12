@@ -62,6 +62,9 @@ func (r *ListingKitResult) ImageAssetsForTarget(target string) *productimage.Ima
 	if r == nil {
 		return nil
 	}
+	if listingplatform.Normalize(target) == "" {
+		return r.ImageAssets
+	}
 	if len(r.ImageAssetsByTarget) == 0 {
 		return r.ImageAssets
 	}
@@ -71,6 +74,9 @@ func (r *ListingKitResult) ImageAssetsForTarget(target string) *productimage.Ima
 func (r *ListingKitResult) AssetBundleForTarget(target string) *asset.Bundle {
 	if r == nil {
 		return nil
+	}
+	if listingplatform.Normalize(target) == "" {
+		return r.AssetBundle
 	}
 	if len(r.AssetBundlesByTarget) == 0 {
 		return r.AssetBundle
@@ -82,13 +88,16 @@ func (r *ListingKitResult) AssetInventorySummaryForTarget(target string) *asset.
 	if r == nil {
 		return nil
 	}
+	if listingplatform.Normalize(target) == "" {
+		return r.AssetInventorySummary
+	}
 	if len(r.AssetInventorySummariesByTarget) == 0 {
 		return r.AssetInventorySummary
 	}
 	return r.AssetInventorySummariesByTarget[listingplatform.Normalize(target)]
 }
 
-func (r *ListingKitResult) recordTargetImageAssets(target string, image *productimage.ImageProcessResult, bundle *asset.Bundle, summary *asset.InventorySummary, compatibilityTarget string) {
+func (r *ListingKitResult) recordTargetImageAssets(target string, image *productimage.ImageProcessResult, bundle *asset.Bundle, summary *asset.InventorySummary) {
 	if r == nil || !listingplatform.IsSupported(target) {
 		return
 	}
@@ -105,7 +114,6 @@ func (r *ListingKitResult) recordTargetImageAssets(target string, image *product
 	r.ImageAssetsByTarget[target] = image
 	r.AssetBundlesByTarget[target] = bundle
 	r.AssetInventorySummariesByTarget[target] = summary
-	r.applyCompatibilityAssetProjection(compatibilityTarget)
 }
 
 func (r *ListingKitResult) applyCompatibilityAssetProjection(compatibilityTarget string) {
@@ -116,11 +124,6 @@ func (r *ListingKitResult) applyCompatibilityAssetProjection(compatibilityTarget
 		return
 	}
 	target := listingplatform.Normalize(compatibilityTarget)
-	if target == "" && len(r.ImageAssetsByTarget) == 1 {
-		for target = range r.ImageAssetsByTarget {
-			break
-		}
-	}
 	if target == "" || r.ImageAssetsByTarget[target] == nil {
 		r.ImageAssets = nil
 		r.AssetBundle = nil
@@ -130,6 +133,37 @@ func (r *ListingKitResult) applyCompatibilityAssetProjection(compatibilityTarget
 	r.ImageAssets = r.ImageAssetsByTarget[target]
 	r.AssetBundle = r.AssetBundlesByTarget[target]
 	r.AssetInventorySummary = r.AssetInventorySummariesByTarget[target]
+}
+
+func (r *ListingKitResult) applyCompatibilityAssetProjectionForRequest(req *GenerateRequest) {
+	if r == nil || req == nil {
+		return
+	}
+	targets := listingplatform.NormalizeSupportedPlatforms(req.Platforms)
+	if len(targets) == 1 {
+		r.applyCompatibilityAssetProjection(targets[0])
+		return
+	}
+	compatibilityTarget := compatibilityTargetPlatform(req)
+	for _, target := range targets {
+		if target == listingplatform.Normalize(compatibilityTarget) {
+			r.applyCompatibilityAssetProjection(target)
+			return
+		}
+	}
+	r.applyCompatibilityAssetProjection("")
+}
+
+func (r *ListingKitResult) compatibilityProjectionTarget() string {
+	if r == nil || r.ImageAssets == nil {
+		return ""
+	}
+	for target, images := range r.ImageAssetsByTarget {
+		if images == r.ImageAssets {
+			return target
+		}
+	}
+	return ""
 }
 
 // StandardProductSnapshot captures the stable boundary between the standard

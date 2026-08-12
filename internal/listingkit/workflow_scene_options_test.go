@@ -27,7 +27,7 @@ func TestToImageProcessRequestCopiesSceneOptions(t *testing.T) {
 		},
 	}
 
-	req := toImageProcessRequest(task)
+	req := singleImageProcessRequest(t, task)
 	if req.Scene == nil {
 		t.Fatal("expected scene options to be copied")
 	}
@@ -65,7 +65,7 @@ func TestToImageProcessRequestDoesNotInjectPlatformSceneDefaults(t *testing.T) {
 		},
 	}
 
-	req := toImageProcessRequest(task)
+	req := singleImageProcessRequest(t, task)
 	if req.Scene != nil {
 		t.Fatalf("expected scene options to stay empty until productimage runtime resolution, got %+v", req.Scene)
 	}
@@ -85,7 +85,7 @@ func TestToImageProcessRequestCopiesExplicitSceneOptionsWithoutMutatingThem(t *t
 		},
 	}
 
-	req := toImageProcessRequest(task)
+	req := singleImageProcessRequest(t, task)
 	if req.Scene == nil {
 		t.Fatal("expected copied scene options")
 	}
@@ -101,4 +101,16 @@ func TestToImageProcessRequestCopiesExplicitSceneOptionsWithoutMutatingThem(t *t
 		req.Scene.AudienceHint != "" {
 		t.Fatalf("expected only explicit fields to be copied, got %+v", req.Scene)
 	}
+}
+
+func singleImageProcessRequest(t *testing.T, task *Task) *productimage.ImageProcessRequest {
+	t.Helper()
+	requests, err := toImageProcessRequests(task)
+	if err != nil {
+		t.Fatalf("toImageProcessRequests() error = %v", err)
+	}
+	if len(requests) != 1 {
+		t.Fatalf("toImageProcessRequests() = %#v, want exactly one request", requests)
+	}
+	return requests[0]
 }

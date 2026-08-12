@@ -59,7 +59,7 @@ func (a *assembler) AssembleForTargets(task *Task, canonical *canonical.Product,
 	result := a.assemble(task, canonical, func(target string) *productimage.ImageProcessResult { return images[target] })
 	result.ImageAssetsByTarget = cloneImageAssetsByTarget(images)
 	if task != nil {
-		result.applyCompatibilityAssetProjection(compatibilityTargetPlatform(task.Request))
+		result.applyCompatibilityAssetProjectionForRequest(task.Request)
 	}
 	return result
 }
