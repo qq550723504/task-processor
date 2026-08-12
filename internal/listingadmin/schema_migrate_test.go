@@ -1,7 +1,6 @@
 package listingadmin
 
 import (
-	"strings"
 	"testing"
 
 	"gorm.io/driver/sqlite"
@@ -92,52 +91,39 @@ func TestAutoMigrateImportTaskRepositoryMakesCategoryIDNullable(t *testing.T) {
 	}
 }
 
-func TestEnsureImportTaskPlatformIntegrityUsesActiveOnlyUniqueIndex(t *testing.T) {
+func TestAutoMigrateImportTaskRepositoryLeavesHistoricalPlatformsAndExistingIndexUntouched(t *testing.T) {
 	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
 	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
-		t.Fatalf("migrate import task row: %v", err)
+		t.Fatalf("migrate legacy import task row: %v", err)
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{
+		Platform: "Amazon", SourcePlatform: "Amazon", TargetPlatform: "SHEIN",
+		ProductID: "P1", Region: "US", StoreID: 986, Deleted: 0,
+	}).Error; err != nil {
+		t.Fatalf("seed historical row: %v", err)
 	}
 	if err := db.Exec(`CREATE UNIQUE INDEX idx_listing_product_import_task_unique ON listing_product_import_task (target_platform, product_id, region, store_id)`).Error; err != nil {
-		t.Fatalf("create legacy unique index: %v", err)
+		t.Fatalf("create existing unique index: %v", err)
 	}
 
-	if err := ensureImportTaskPlatformIntegrity(db, "listing_product_import_task"); err != nil {
-		t.Fatalf("ensureImportTaskPlatformIntegrity() error = %v", err)
+	if err := AutoMigrateImportTaskRepository(db); err != nil {
+		t.Fatalf("AutoMigrateImportTaskRepository() error = %v", err)
+	}
+
+	var historical importTaskPlatformIntegrityRow
+	if err := db.Where("id = ?", 1).Take(&historical).Error; err != nil {
+		t.Fatalf("load historical row: %v", err)
+	}
+	if historical.Platform != "Amazon" || historical.SourcePlatform != "Amazon" || historical.TargetPlatform != "SHEIN" {
+		t.Fatalf("historical platforms = %q/%q/%q, want unchanged", historical.Platform, historical.SourcePlatform, historical.TargetPlatform)
 	}
 	if err := db.Create(&importTaskPlatformIntegrityRow{
-		Platform: "shein", TargetPlatform: "shein", ProductID: "P1", Region: "US", StoreID: 986, Deleted: 1,
-	}).Error; err != nil {
-		t.Fatalf("insert deleted duplicate: %v", err)
-	}
-}
-
-func TestEnsureNoImportTaskPlatformViolationsIgnoresDeletedRows(t *testing.T) {
-	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
-		t.Fatalf("migrate import task row: %v", err)
-	}
-	if err := db.Create(&importTaskPlatformIntegrityRow{
-		Platform: "SHEIN", SourcePlatform: "Amazon", TargetPlatform: "SHEIN",
-		ProductID: "deleted", Region: "US", StoreID: 986, Deleted: 1,
-	}).Error; err != nil {
-		t.Fatalf("insert deleted non-canonical row: %v", err)
-	}
-
-	if err := ensureNoImportTaskPlatformViolations(db, "listing_product_import_task"); err != nil {
-		t.Fatalf("deleted non-canonical row blocked validation: %v", err)
-	}
-}
-
-func TestImportTaskActiveUniqueIndexStatementIsIdempotent(t *testing.T) {
-	statement := strings.ToUpper(importTaskActiveUniqueIndexStatement("listing_product_import_task"))
-	if !strings.Contains(statement, "CREATE UNIQUE INDEX IF NOT EXISTS") {
-		t.Fatalf("statement = %q, want IF NOT EXISTS", statement)
+		Platform: "shein", TargetPlatform: "SHEIN", ProductID: "P1", Region: "US", StoreID: 986, Deleted: 1,
+	}).Error; err == nil {
+		t.Fatal("ordinary migration replaced the existing unique index with a partial index")
 	}
 }
 

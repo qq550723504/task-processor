@@ -36,9 +36,6 @@ func AutoMigrateImportTaskRepository(db *gorm.DB) error {
 	if err := ensureNullableImportTaskCategoryID(db, table); err != nil {
 		return err
 	}
-	if err := ensureImportTaskPlatformIntegrity(db, table); err != nil {
-		return err
-	}
 	return db.AutoMigrate(&listingDispatchEvent{})
 }
 
