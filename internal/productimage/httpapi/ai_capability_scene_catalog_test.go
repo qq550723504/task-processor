@@ -21,7 +21,7 @@ func TestProductImageSceneCatalogMapsGPTImageCredentialWithoutExposingSecret(t *
 		},
 	}}
 
-	router := BuildProductImageSceneCapabilityRouter(resolver)
+	router := BuildProductImageSceneCapabilityRouter(resolver, []string{"tenant-a"})
 	decision, err := router.Decide(context.Background(), aicapability.RouteRequest{
 		TenantID:         "tenant-a",
 		Capability:       aicapability.CapabilityProductImageScene,
@@ -46,7 +46,7 @@ func TestProductImageSceneCatalogMapsGPTImageCredentialWithoutExposingSecret(t *
 }
 
 func TestProductImageSceneCatalogRejectsUnavailableCredential(t *testing.T) {
-	_, err := BuildProductImageSceneCapabilityRouter(&productImageSceneResolver{err: errors.New("credential lookup failed")}).Decide(context.Background(), aicapability.RouteRequest{
+	_, err := BuildProductImageSceneCapabilityRouter(&productImageSceneResolver{err: errors.New("credential lookup failed")}, []string{"tenant-a"}).Decide(context.Background(), aicapability.RouteRequest{
 		TenantID:         "tenant-a",
 		Capability:       aicapability.CapabilityProductImageScene,
 		Operation:        aicapability.OperationProductImageSceneGenerate,
@@ -54,6 +54,32 @@ func TestProductImageSceneCatalogRejectsUnavailableCredential(t *testing.T) {
 	})
 	if aicapability.CategoryOf(err) != aicapability.ErrorCredentialUnavailable {
 		t.Fatalf("error category = %q, want %q (err %v)", aicapability.CategoryOf(err), aicapability.ErrorCredentialUnavailable, err)
+	}
+}
+
+func TestProductImageSceneCatalogDeniesTenantOutsideAllowlistBeforeCredentialLookup(t *testing.T) {
+	resolver := &productImageSceneResolver{}
+	router := BuildProductImageSceneCapabilityRouter(resolver, []string{"tenant-a"})
+	_, err := router.Decide(context.Background(), aicapability.RouteRequest{
+		TenantID: "tenant-b", Capability: aicapability.CapabilityProductImageScene,
+		Operation: aicapability.OperationProductImageSceneGenerate,
+	})
+	if aicapability.CategoryOf(err) != aicapability.ErrorPolicyDenied {
+		t.Fatalf("category = %q, want policy_denied", aicapability.CategoryOf(err))
+	}
+	if resolver.requestedClientName != "" {
+		t.Fatalf("resolver was called for denied tenant with client %q", resolver.requestedClientName)
+	}
+}
+
+func TestProductImageSceneCatalogDeniesEveryTenantWithEmptyAllowlist(t *testing.T) {
+	router := BuildProductImageSceneCapabilityRouter(&productImageSceneResolver{}, nil)
+	_, err := router.Decide(context.Background(), aicapability.RouteRequest{
+		TenantID: "tenant-a", Capability: aicapability.CapabilityProductImageScene,
+		Operation: aicapability.OperationProductImageSceneGenerate,
+	})
+	if aicapability.CategoryOf(err) != aicapability.ErrorPolicyDenied {
+		t.Fatalf("category = %q, want policy_denied", aicapability.CategoryOf(err))
 	}
 }
 

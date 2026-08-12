@@ -29,6 +29,18 @@ func TestBuildGovernedProductImageSceneGeneratorRequiresDependenciesWhenEnabled(
 	}
 }
 
+func TestBuildGovernedProductImageSceneGeneratorRequiresTenantAllowlistWhenEnabled(t *testing.T) {
+	resolver := &productImageSceneResolver{}
+	recorder := &sceneGovernanceRecorderStub{}
+	_, err := buildGovernedProductImageSceneGenerator(
+		&config.Config{AICapability: config.AICapabilityConfig{ProductImageSceneEnabled: true}},
+		&sceneGovernanceGeneratorStub{}, resolver, recorder, nil,
+	)
+	if aicapability.CategoryOf(err) != aicapability.ErrorInvalidInput {
+		t.Fatalf("category = %q, want invalid_input", aicapability.CategoryOf(err))
+	}
+}
+
 func TestBuildGovernedProductImageSceneGeneratorCarriesTaskAndTraceIdentity(t *testing.T) {
 	recorder := &sceneGovernanceRecorderCapture{}
 	legacy := &sceneGovernanceGeneratorStub{}
@@ -36,7 +48,7 @@ func TestBuildGovernedProductImageSceneGeneratorCarriesTaskAndTraceIdentity(t *t
 		CacheKey: "image-config-v1",
 		Config:   &openaiclient.ClientConfig{APIKey: "key", BaseURL: "https://example.test/v1", Model: "image-model", APIStyle: "openai"},
 	}}
-	generator, err := buildGovernedProductImageSceneGenerator(&config.Config{AICapability: config.AICapabilityConfig{ProductImageSceneEnabled: true}}, legacy, resolver, recorder, nil)
+	generator, err := buildGovernedProductImageSceneGenerator(&config.Config{AICapability: config.AICapabilityConfig{ProductImageSceneEnabled: true, ProductImageSceneAllowedTenantIDs: []string{"tenant-a"}}}, legacy, resolver, recorder, nil)
 	if err != nil {
 		t.Fatalf("buildGovernedProductImageSceneGenerator: %v", err)
 	}

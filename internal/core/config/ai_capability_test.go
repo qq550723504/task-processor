@@ -37,10 +37,21 @@ func TestAICapabilityRoutingModeUsesEnvironmentOverride(t *testing.T) {
 
 func TestProductImageSceneGovernanceUsesEnvironmentOverride(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED", "true")
+	t.Setenv("TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS", "tenant-a, tenant-b")
 
 	cfg, err := LoadFromBytes(validMinimalConfigYAML())
 	require.NoError(t, err)
 	assert.True(t, cfg.AICapability.ProductImageSceneEnabled)
+	assert.Equal(t, []string{"tenant-a", "tenant-b"}, cfg.AICapability.ProductImageSceneAllowedTenantIDs)
+}
+
+func TestProductImageSceneGovernanceRejectsEnabledWithoutTenantAllowlist(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED", "true")
+	t.Setenv("TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS", "")
+
+	_, err := LoadFromBytes(validMinimalConfigYAML())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "productImageSceneAllowedTenantIDs")
 }
 
 func TestProductImageSceneGovernanceRejectsInvalidEnvironmentValue(t *testing.T) {

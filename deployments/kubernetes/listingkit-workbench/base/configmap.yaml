@@ -14,6 +14,9 @@ data:
   ZITADEL_POST_LOGOUT_REDIRECT_URI: "https://pod.shuomiai.com"
   LISTINGKIT_PUBLIC_BASE_URL: "https://pod.shuomiai.com"
   TASK_PROCESSOR_ENV: "prod"
+  # ProductImage scene governance canary: only the verified zone tenant is allowed.
+  TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED: "true"
+  TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS: "373211199677923496"
   # Kubernetes Pods do not have an X server. SDS browser login must run
   # headlessly unless a dedicated interactive browser environment is provided.
   TASK_PROCESSOR_SDS_LOGIN_SERVICE_DEFAULT_HEADLESS: "true"

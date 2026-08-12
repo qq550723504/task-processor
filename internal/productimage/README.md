@@ -253,6 +253,12 @@ parse_source
 
 - `TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED=false`
 
+启用治理时必须同时配置租户白名单：
+
+- `TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS=<tenant-id>[,<tenant-id>...]`
+
+白名单为空时启动会 fail-closed；生产 canary 只允许经过确认的 `zone` 租户，其他租户在路由阶段直接拒绝，不会调用模型。
+
 显式开启后，bootstrap 会要求 AI credential resolver、调用账本和 route-aware 图片 provider 同时存在。已验证的身份会通过 shared AI context 进入 ProductImage；创建任务时固化 `tenant_id/user_id`，worker 执行时恢复该 context，缺少任一身份会直接拒绝。该入口直接使用模型路由决定和 `ai_invocations` 账本；当前不做旧场景路径的 shadow、双写或兼容迁移。任务字段由现有 ProductImage AutoMigrate/schema wiring 管理；部署前运行 `product-listing-api-schema-migrate` Job。关闭开关即可回到默认行为。
 
 ### 主体提取

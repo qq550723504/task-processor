@@ -231,6 +231,9 @@ func knownEnvBindings() map[string]envBinding {
 		"aiCapability.productImageSceneEnabled": {
 			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED",
 		},
+		"aiCapability.productImageSceneAllowedTenantIDs": {
+			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS",
+		},
 		"openai.apiKey": {
 			Primary:    "TASK_PROCESSOR_OPENAI_API_KEY",
 			Deprecated: []string{"OPENAI_API_KEY"},

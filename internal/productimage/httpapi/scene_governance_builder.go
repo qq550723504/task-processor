@@ -18,12 +18,15 @@ func buildGovernedProductImageSceneGenerator(cfg *config.Config, legacy producti
 	if legacy == nil || resolver == nil || recorder == nil {
 		return nil, aicapability.NewError(aicapability.ErrorInvalidInput, string(aicapability.OperationProductImageSceneGenerate), nil)
 	}
+	if len(tenantIDSet(cfg.AICapability.ProductImageSceneAllowedTenantIDs)) == 0 {
+		return nil, aicapability.NewError(aicapability.ErrorInvalidInput, string(aicapability.OperationProductImageSceneGenerate), nil)
+	}
 	routed, ok := legacy.(productimage.SceneGeneratorWithRoute)
 	if !ok {
 		return nil, aicapability.NewError(aicapability.ErrorCapabilityUnavailable, string(aicapability.OperationProductImageSceneGenerate), nil)
 	}
 	return productimage.NewGovernedSceneGenerator(productimage.GovernedSceneGeneratorConfig{
-		Router:   BuildProductImageSceneCapabilityRouter(resolver),
+		Router:   BuildProductImageSceneCapabilityRouter(resolver, cfg.AICapability.ProductImageSceneAllowedTenantIDs),
 		Recorder: recorder,
 		Provider: routed,
 		Identity: func(ctx context.Context) productimage.SceneAIIdentity {

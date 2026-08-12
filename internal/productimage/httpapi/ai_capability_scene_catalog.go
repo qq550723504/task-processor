@@ -15,10 +15,14 @@ const (
 
 // BuildProductImageSceneCapabilityRouter exposes the existing image client
 // configuration as a provider-neutral route for the new scene capability.
-func BuildProductImageSceneCapabilityRouter(resolver openaiclient.ClientConfigResolver) aicapability.Router {
+func BuildProductImageSceneCapabilityRouter(resolver openaiclient.ClientConfigResolver, allowedTenantIDs ...[]string) aicapability.Router {
+	var tenants []string
+	if len(allowedTenantIDs) > 0 {
+		tenants = allowedTenantIDs[0]
+	}
 	return aicapability.NewPolicyRouter(
 		&productImageSceneModelCatalog{resolver: resolver},
-		productImageScenePolicyResolver{},
+		productImageScenePolicyResolver{allowedTenantIDs: tenantIDSet(tenants)},
 	)
 }
 
@@ -56,9 +60,14 @@ func (c *productImageSceneModelCatalog) ResolveModel(ctx context.Context, routin
 	}, nil
 }
 
-type productImageScenePolicyResolver struct{}
+type productImageScenePolicyResolver struct {
+	allowedTenantIDs map[string]struct{}
+}
 
-func (productImageScenePolicyResolver) ResolvePolicy(_ context.Context, request aicapability.RouteRequest) (aicapability.TenantModelPolicy, error) {
+func (r productImageScenePolicyResolver) ResolvePolicy(_ context.Context, request aicapability.RouteRequest) (aicapability.TenantModelPolicy, error) {
+	if _, ok := r.allowedTenantIDs[strings.TrimSpace(request.TenantID)]; !ok {
+		return aicapability.TenantModelPolicy{}, aicapability.NewError(aicapability.ErrorPolicyDenied, string(request.Operation), nil)
+	}
 	return aicapability.TenantModelPolicy{
 		TenantID:                   strings.TrimSpace(request.TenantID),
 		Capability:                 aicapability.CapabilityProductImageScene,
@@ -66,4 +75,14 @@ func (productImageScenePolicyResolver) ResolvePolicy(_ context.Context, request 
 		AllowCrossProviderFallback: false,
 		Version:                    "productimage-scene-v1",
 	}, nil
+}
+
+func tenantIDSet(ids []string) map[string]struct{} {
+	result := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		if normalized := strings.TrimSpace(id); normalized != "" {
+			result[normalized] = struct{}{}
+		}
+	}
+	return result
 }
