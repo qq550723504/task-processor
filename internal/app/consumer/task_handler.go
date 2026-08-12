@@ -485,6 +485,11 @@ func modelTaskFromRuntime(task *listingruntime.ImportTask) *model.Task {
 func (eth *TaskHandler) extractNestedPayload(domainMsg *apptask.Message) map[string]any {
 	if nestedPayload, ok := domainMsg.Payload["payload"]; ok {
 		if payloadMap, ok := nestedPayload.(map[string]any); ok {
+			if _, isV2 := domainMsg.Payload["schemaVersion"]; isV2 {
+				// V2 routing fields live on the event envelope. Preserve it for the
+				// adapter while passing only the full task payload to crawler workers.
+				return payloadMap
+			}
 			eth.logger.Debugf("[%s] 检测到嵌套 payload，提取内层数据", eth.platform)
 
 			// 字段名映射：分布式爬虫使用 "id"，但 TaskMessage 期望 "taskId"

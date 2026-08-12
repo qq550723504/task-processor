@@ -105,6 +105,9 @@ documents unless they say so explicitly:
 - `amazon-crawler-runtime-flow.md`
   - Amazon crawler runtime flow context; use stable boundary documents for
     review policy
+- `task-event-v2-migration.md`
+  - RabbitMQ complete-task event V2 schema, compatibility window, and removal
+    gate; Listing Control ID-only dispatch is out of scope
 
 ## Plans, runbooks, and evaluations
 

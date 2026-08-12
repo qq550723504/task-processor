@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	apptask "task-processor/internal/app/task"
 	"task-processor/internal/app/taskstatus"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
@@ -21,6 +22,27 @@ import (
 type stubProcessor struct {
 	processCalls int
 	onProcess    func()
+}
+
+func TestTaskHandlerExtractNestedPayloadKeepsV2EventForAdapter(t *testing.T) {
+	handler := NewTaskHandler(TaskHandlerConfig{Platform: "amazon.crawler", Logger: logrus.New()})
+	message := &apptask.Message{Payload: map[string]any{
+		"schemaVersion": float64(2),
+		"taskId":        "430604922543791994",
+		"payload": map[string]any{
+			"taskId":   "430604922543791994",
+			"reply_to": "crawler.results.node-1",
+		},
+	}}
+
+	originalPayload := handler.extractNestedPayload(message)
+
+	if originalPayload["reply_to"] != "crawler.results.node-1" {
+		t.Fatalf("expected worker payload, got %#v", originalPayload)
+	}
+	if message.Payload["schemaVersion"] != float64(2) {
+		t.Fatalf("V2 event was replaced before adapter decoding: %#v", message.Payload)
+	}
 }
 
 func (s *stubProcessor) Start(ctx context.Context) error { return nil }

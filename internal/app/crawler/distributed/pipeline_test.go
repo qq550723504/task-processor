@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	taskdomain "task-processor/internal/domain/task"
+
 	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
@@ -65,12 +67,14 @@ func TestPublishCrawlTask_MessageFormat(t *testing.T) {
 
 	taskID := crawlTaskIDForTest("B001TEST", "US")
 	req := &CrawlRequest{
-		TaskID:    taskID,
-		Platform:  "amazon",
-		Region:    "US",
-		ProductID: "B001TEST",
-		Zipcode:   "10001",
-		Priority:  5,
+		TaskID:         taskID,
+		Platform:       "amazon",
+		SourcePlatform: "amazon",
+		TargetPlatform: "amazon",
+		Region:         "US",
+		ProductID:      "B001TEST",
+		Zipcode:        "10001",
+		Priority:       5,
 	}
 
 	replyTo := client.listener.QueueName()
@@ -85,12 +89,10 @@ func TestPublishCrawlTask_MessageFormat(t *testing.T) {
 	payload, ok := msg["payload"].(map[string]any)
 	require.True(t, ok, "消息体应包含 payload 字段")
 
-	// taskId 在 payload 里的 "id" 字段，应为 string 类型
-	idVal, exists := payload["id"]
-	require.True(t, exists, "payload 应包含 id 字段")
-	idStr, isString := idVal.(string)
-	require.True(t, isString, "payload.id 应为 string 类型，实际类型: %T, 值: %v", idVal, idVal)
-	assert.Equal(t, taskID, idStr, "payload.id 应等于 crawlTaskID 生成的值")
+	assert.Equal(t, float64(taskdomain.TaskEventSchemaVersionV2), msg["schemaVersion"])
+	assert.Equal(t, taskID, msg["taskId"])
+	assert.Equal(t, "amazon", msg["sourcePlatform"])
+	assert.Equal(t, "amazon", msg["targetPlatform"])
 
 	// reply_to 应存在
 	replyToVal, exists := payload["reply_to"]
@@ -107,9 +109,9 @@ func TestPublishCrawlTask_MessageFormat(t *testing.T) {
 func TestExtractNestedPayload_TaskIDMapping(t *testing.T) {
 	taskID := crawlTaskIDForTest("B001TEST", "US")
 
-	// 模拟 publishCrawlTask 发出的消息结构（经过 rabbitmq.Client.ParseMessage 解析后）
+	// 模拟 V2 事件中完整 payload 的消费视图。
 	innerPayload := map[string]any{
-		"id":             taskID, // 内层 payload 里的 id（string 类型）
+		"taskId":         taskID,
 		"tenantId":       float64(1001),
 		"storeId":        float64(2001),
 		"sourcePlatform": "amazon",
@@ -211,11 +213,13 @@ func TestEndToEnd_SubmitAndReceiveResult(t *testing.T) {
 
 	taskID := crawlTaskIDForTest("B001TEST", "US")
 	req := &CrawlRequest{
-		TaskID:    taskID,
-		Platform:  "amazon",
-		Region:    "US",
-		ProductID: "B001TEST",
-		Priority:  5,
+		TaskID:         taskID,
+		Platform:       "amazon",
+		SourcePlatform: "amazon",
+		TargetPlatform: "amazon",
+		Region:         "US",
+		ProductID:      "B001TEST",
+		Priority:       5,
 	}
 
 	// 后台模拟爬虫节点：
@@ -234,8 +238,7 @@ func TestEndToEnd_SubmitAndReceiveResult(t *testing.T) {
 			t.Errorf("解析发布消息失败: %v", err)
 			return
 		}
-		payload := msg["payload"].(map[string]any)
-		publishedTaskID := payload["id"].(string)
+		publishedTaskID := msg["taskId"].(string)
 
 		// 构造结果（直接格式，RabbitMQAdapter 发原始 JSON 不包装）
 		resultMap := map[string]any{

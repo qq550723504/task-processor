@@ -9,7 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"task-processor/internal/app/task"
+	apptask "task-processor/internal/app/task"
+	taskdomain "task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
 
 	"github.com/sirupsen/logrus"
@@ -42,7 +43,7 @@ func NewDistributedCrawlerClient(rabbitmqClient *rabbitmq.Client, logger *logrus
 		publisher:   adapter,
 		listener:    listener,
 		registry:    registry,
-		taskAdapter: task.NewMessageAdapter(),
+		taskAdapter: apptask.NewMessageAdapter(),
 		queueNaming: rabbitmq.NewNamingService(),
 		logger:      logger,
 	}
@@ -163,33 +164,37 @@ func (c *DistributedCrawlerClient) publishCrawlTask(
 	now := time.Now().Unix()
 	priority := c.taskAdapter.CalculatePriority(req.Priority)
 
-	payload := map[string]any{
-		"id":             req.TaskID, // string，避免 JSON float64 精度丢失
-		"tenantId":       req.TenantID,
-		"storeId":        req.StoreID,
-		"sourcePlatform": req.Platform,
-		"region":         req.Region,
-		"productId":      req.ProductID,
-		"priority":       req.Priority,
-		"reply_to":       replyTo,
-		"createTime":     now,
-		"updateTime":     now,
-		"retryCount":     0,
-		"maxRetryCount":  3,
+	payloadBytes, err := json.Marshal(apptask.TaskPayload{
+		TaskID:         taskIDStr,
+		TenantID:       req.TenantID,
+		StoreID:        req.StoreID,
+		SourcePlatform: req.SourcePlatform,
+		TargetPlatform: req.TargetPlatform,
+		Region:         req.Region,
+		ProductID:      req.ProductID,
+		Priority:       req.Priority,
+		ReplyTo:        replyTo,
+		CreateTime:     now,
+		UpdateTime:     now,
+		RetryCount:     0,
+		MaxRetryCount:  3,
+		Zipcode:        strings.TrimSpace(req.Zipcode),
+	})
+	if err != nil {
+		return fmt.Errorf("序列化爬虫任务载荷失败: %w", err)
 	}
-	if zipcode := strings.TrimSpace(req.Zipcode); zipcode != "" {
-		payload["zipcode"] = zipcode
+	event := taskdomain.TaskEventV2{
+		SchemaVersion:  taskdomain.TaskEventSchemaVersionV2,
+		TaskID:         taskIDStr,
+		SourcePlatform: taskdomain.SourcePlatform(strings.TrimSpace(req.SourcePlatform)),
+		TargetPlatform: taskdomain.TargetPlatform(strings.TrimSpace(req.TargetPlatform)),
+		Payload:        payloadBytes,
+	}
+	if _, err := taskdomain.NormalizeTaskEventV2(event); err != nil {
+		return fmt.Errorf("normalize crawler task event: %w", err)
 	}
 
-	body, err := json.Marshal(&rabbitmq.Message{
-		ID:         taskIDStr,
-		Type:       "task",
-		Payload:    payload,
-		Priority:   priority,
-		Timestamp:  now,
-		RetryCount: 0,
-		MaxRetries: 3,
-	})
+	body, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("序列化爬虫任务消息失败: %w", err)
 	}

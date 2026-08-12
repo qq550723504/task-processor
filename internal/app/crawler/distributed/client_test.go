@@ -84,11 +84,13 @@ func TestDistributedCrawlerClient_SubmitCrawlTask_Success(t *testing.T) {
 	client := newTestClient(pub, mock, 5*time.Second)
 
 	req := &CrawlRequest{
-		TaskID:    "42",
-		Platform:  "amazon",
-		ProductID: "B001TEST",
-		Zipcode:   "10001",
-		Priority:  5,
+		TaskID:         "42",
+		Platform:       "amazon",
+		SourcePlatform: "amazon",
+		TargetPlatform: "amazon",
+		ProductID:      "B001TEST",
+		Zipcode:        "10001",
+		Priority:       5,
 	}
 
 	// 在后台模拟爬虫处理器返回结果
@@ -112,6 +114,8 @@ func TestDistributedCrawlerClient_SubmitCrawlTask_Success(t *testing.T) {
 	// 验证消息体包含 reply_to
 	var msg map[string]any
 	require.NoError(t, json.Unmarshal(pub.published[0].body, &msg))
+	assert.Equal(t, float64(2), msg["schemaVersion"])
+	assert.Equal(t, "42", msg["taskId"])
 	payload := msg["payload"].(map[string]any)
 	assert.NotEmpty(t, payload["reply_to"])
 	assert.Equal(t, "10001", payload["zipcode"])
@@ -145,7 +149,7 @@ func TestDistributedCrawlerClient_SubmitCrawlTask_Timeout(t *testing.T) {
 	mock := newMockDeclarer()
 	client := newTestClient(pub, mock, 50*time.Millisecond)
 
-	_, err := client.SubmitCrawlTask(context.Background(), &CrawlRequest{TaskID: "3"})
+	_, err := client.SubmitCrawlTask(context.Background(), &CrawlRequest{TaskID: "3", Platform: "amazon", SourcePlatform: "amazon", TargetPlatform: "amazon"})
 	assert.ErrorContains(t, err, "爬虫任务超时")
 }
 

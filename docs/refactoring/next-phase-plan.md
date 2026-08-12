@@ -170,12 +170,14 @@ This ordering removes the incorrect fallback before it can spread into new sourc
 
 **Produces:** `TaskEventV2` with string task ID, explicit source/target platforms, schema version, and trace metadata; a bounded adapter for legacy messages.
 
-- [ ] Write failing normalization tests for a V2 event with explicit source and target, and for rejection of missing/contradictory values.
-- [ ] Keep current legacy-message tests, but change them to assert conversion at the adapter boundary rather than allowing domain consumers to depend on the ambiguous `platform` field.
-- [ ] Introduce `TaskEventV2`; require `schemaVersion`, `taskId` as a string, `sourcePlatform`, and `targetPlatform` for new producer output.
-- [ ] Keep legacy decoding only in `app/task/message_adapter.go`. Remove the unknown-queue fallback to `amazon.crawler`; unknown routes must return a classified error/metric.
-- [ ] Publish dual-readable events only for the agreed compatibility window. Record the exit condition in `task-event-v2-migration.md`: zero legacy consumers and zero legacy event observations for a defined release window.
-- [ ] Re-run task/domain/consumer tests and one RabbitMQ integration path without changing acknowledgement ordering:
+**Boundary:** this task covers only RabbitMQ messages that carry a complete task payload. The Listing Control Plane's ID-only dispatch remains a separate `ListingDispatchSignal`: it causes the receiver to load a task from persistent state and does not carry source/target routing fields, so it is outside the V2 producer and compatibility window.
+
+- [x] Write failing normalization tests for a V2 event with explicit source and target, and for rejection of missing/contradictory values.
+- [x] Keep current legacy-message tests, but change them to assert conversion at the adapter boundary rather than allowing domain consumers to depend on the ambiguous `platform` field.
+- [x] Introduce `TaskEventV2`; require `schemaVersion`, `taskId` as a string, `sourcePlatform`, and `targetPlatform` for new producer output.
+- [x] Keep legacy decoding only in `app/task/message_adapter.go`. Remove the unknown-queue fallback to `amazon.crawler`; unknown routes must return a classified error/metric.
+- [x] New producers publish only V2 events. Consumers retain legacy decoding for two release cycles; remove it only after zero legacy consumers and zero legacy-event observations for 14 consecutive days. Record the measurement and exit condition in `task-event-v2-migration.md`.
+- [x] Re-run task/domain/consumer tests and one RabbitMQ integration path without changing acknowledgement ordering:
 
   ```powershell
   go test ./internal/domain/task ./internal/app/task ./internal/app/consumer -count=1
