@@ -10,6 +10,12 @@ const productURLRequest: ProcessImagesData["body"] = {
   product_url: "product-ref",
 };
 
+const combinedSourceRequest: ProcessImagesData["body"] = {
+  target_platform: "shein",
+  image_urls: ["source.jpg"],
+  product_url: "product-ref",
+};
+
 // @ts-expect-error Generated request type must require image_urls or product_url.
 const missingSourceRequest: ProcessImagesData["body"] = {
   target_platform: "shein",
@@ -17,4 +23,5 @@ const missingSourceRequest: ProcessImagesData["body"] = {
 
 void imageURLRequest;
 void productURLRequest;
+void combinedSourceRequest;
 void missingSourceRequest;

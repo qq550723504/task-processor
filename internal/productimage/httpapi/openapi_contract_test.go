@@ -111,6 +111,33 @@ func TestAssetOpenAPIContractRejectsRequestWithoutImageSource(t *testing.T) {
 	validateOpenAPIRequest(t, contractRouter, request, true)
 }
 
+func TestAssetOpenAPIContractAcceptsCombinedImageSourcesThroughRealGinHandler(t *testing.T) {
+	doc := loadAssetOpenAPI(t)
+	contractRouter, err := gorillamux.NewRouter(doc)
+	if err != nil {
+		t.Fatalf("create OpenAPI router: %v", err)
+	}
+
+	const combinedSources = `{"image_urls":["source.jpg"],"product_url":"product-ref","target_platform":"shein"}`
+	contractRequest := httptest.NewRequest(http.MethodPost, "/api/v1/images/process", bytes.NewBufferString(combinedSources))
+	contractRequest.Header.Set("Content-Type", "application/json")
+	validateOpenAPIRequest(t, contractRouter, contractRequest, false)
+
+	repo := productimagestore.NewMemTaskRepository()
+	service, err := productimage.NewService(&productimage.ServiceConfig{TaskRepo: repo})
+	if err != nil {
+		t.Fatalf("new image service: %v", err)
+	}
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/images/process", bytes.NewBufferString(combinedSources))
+	request.Header.Set("Content-Type", "application/json")
+	newTestRouter(service).ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("combined sources response = %d, body=%s", response.Code, response.Body.String())
+	}
+	validateOpenAPIResponse(t, contractRouter, withContractPath(request, "/api/v1/images/process"), response.Code, response.Body.String())
+}
+
 func TestRealGinHandlerRejectsUnresolvableLegacyTaskTarget(t *testing.T) {
 	doc := loadAssetOpenAPI(t)
 	contractRouter, err := gorillamux.NewRouter(doc)

@@ -6,11 +6,10 @@ export type ClientOptions = {
 
 export type TargetPlatform = 'amazon' | 'shein' | 'temu' | 'walmart';
 
-export type ImageProcessRequest = ImageUrlProcessRequest | ProductUrlProcessRequest;
+export type ImageProcessRequest = ImageUrlsOnlyProcessRequest | ProductUrlOnlyProcessRequest | CombinedImageSourcesProcessRequest;
 
-export type ImageUrlProcessRequest = {
+export type ImageUrlsOnlyProcessRequest = {
     image_urls: Array<string>;
-    product_url?: string;
     text?: string;
     target_platform: TargetPlatform;
     /**
@@ -19,8 +18,18 @@ export type ImageUrlProcessRequest = {
     marketplace?: TargetPlatform;
 };
 
-export type ProductUrlProcessRequest = {
-    image_urls?: Array<string>;
+export type ProductUrlOnlyProcessRequest = {
+    product_url: string;
+    text?: string;
+    target_platform: TargetPlatform;
+    /**
+     * Legacy compatibility input; if supplied it must equal target_platform.
+     */
+    marketplace?: TargetPlatform;
+};
+
+export type CombinedImageSourcesProcessRequest = {
+    image_urls: Array<string>;
     product_url: string;
     text?: string;
     target_platform: TargetPlatform;

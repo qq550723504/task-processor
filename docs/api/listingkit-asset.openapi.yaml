@@ -102,10 +102,12 @@ components:
       enum: [amazon, shein, temu, walmart]
     ImageProcessRequest:
       oneOf:
-        - $ref: '#/components/schemas/ImageURLProcessRequest'
-        - $ref: '#/components/schemas/ProductURLProcessRequest'
-    ImageURLProcessRequest:
+        - $ref: '#/components/schemas/ImageURLsOnlyProcessRequest'
+        - $ref: '#/components/schemas/ProductURLOnlyProcessRequest'
+        - $ref: '#/components/schemas/CombinedImageSourcesProcessRequest'
+    ImageURLsOnlyProcessRequest:
       type: object
+      additionalProperties: false
       required: [image_urls, target_platform]
       properties:
         image_urls:
@@ -114,6 +116,19 @@ components:
           maxItems: 20
           items:
             type: string
+        text:
+          type: string
+        target_platform:
+          $ref: '#/components/schemas/TargetPlatform'
+        marketplace:
+          description: Legacy compatibility input; if supplied it must equal target_platform.
+          allOf:
+            - $ref: '#/components/schemas/TargetPlatform'
+    ProductURLOnlyProcessRequest:
+      type: object
+      additionalProperties: false
+      required: [product_url, target_platform]
+      properties:
         product_url:
           type: string
           minLength: 1
@@ -125,9 +140,10 @@ components:
           description: Legacy compatibility input; if supplied it must equal target_platform.
           allOf:
             - $ref: '#/components/schemas/TargetPlatform'
-    ProductURLProcessRequest:
+    CombinedImageSourcesProcessRequest:
       type: object
-      required: [product_url, target_platform]
+      additionalProperties: false
+      required: [image_urls, product_url, target_platform]
       properties:
         image_urls:
           type: array
