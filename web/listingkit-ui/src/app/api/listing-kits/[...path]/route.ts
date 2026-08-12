@@ -67,15 +67,11 @@ async function proxyRequest(
       durationMs: Date.now() - startedAt,
       ...traceFields,
     });
-    const deltaToken =
-      "delta_token" in payload && typeof payload.delta_token === "string"
-        ? payload.delta_token
-        : undefined;
     return NextResponse.json(payload, {
       headers: {
         ETag:
-          conditionalETag(payload) ||
-          deltaToken ||
+          ("conditional" in payload && payload.conditional?.etag) ||
+          ("delta_token" in payload && payload.delta_token) ||
           "mock-token",
       },
     });
@@ -200,17 +196,6 @@ async function proxyRequest(
     upstream,
   });
   return response;
-}
-
-function conditionalETag(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== "object" || !("conditional" in payload)) {
-    return undefined;
-  }
-  const conditional = payload.conditional;
-  if (!conditional || typeof conditional !== "object" || !("etag" in conditional)) {
-    return undefined;
-  }
-  return typeof conditional.etag === "string" ? conditional.etag : undefined;
 }
 
 export async function GET(

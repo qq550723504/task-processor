@@ -17,6 +17,7 @@ import type {
   ScenePresetSummary,
   ToolbarAction,
 } from "./preview";
+import type { TargetPlatform } from "@/lib/api/generated";
 export type ReviewSlot = {
   platform?: string;
   slot?: string;
@@ -81,7 +82,7 @@ export type AssetGenerationOverview = {
 };
 
 export type ReviewSession = {
-  selected_platform?: string;
+  selected_platform?: TargetPlatform;
   selected_slot?: string;
   focus_capability?: string;
   focused_section_key?: string;
