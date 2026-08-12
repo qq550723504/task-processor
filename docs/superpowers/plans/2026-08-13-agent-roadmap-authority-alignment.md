@@ -27,7 +27,7 @@
 - Task 2 complete in `bede51542`: the active current-state authority is calibrated to `49815aad9` and separates merged 1688/TaskEvent V2 assets from controlled and production acceptance.
 - Task 3 complete in `0d68d5b31`: the completed platform-aware asset plan is explicitly historical evidence.
 - Task 4 verification passed: placeholder and phase-order scans returned no errors, `go test ./tests -count=1` passed, `git diff --check origin/master...HEAD` passed, and exactly the five approved documentation paths changed.
-- Task 5 remains the next repository action: fetch, reverify, push the dedicated branch, and open a Draft PR without merging.
+- Task 5 complete: the verified branch was pushed and Draft PR #143 was opened against `master`; no merge or issue mutation was performed.
 - Task 6 remains blocked by design until the documentation PR is explicitly authorized and confirmed merged.
 
 ### Task 1: Align the long-term strategy phase model
@@ -365,7 +365,7 @@ git commit -m "docs: record roadmap alignment execution"
 - Consumes: the verified documentation-only commits.
 - Produces: a reviewable Draft PR; it does not change GitHub issue authority yet.
 
-- [ ] **Step 1: Recheck branch and remote state**
+- [x] **Step 1: Recheck branch and remote state**
 
 Run:
 
@@ -378,7 +378,7 @@ git log --oneline origin/master..HEAD
 
 Expected: clean branch, known divergence, and only the roadmap-alignment commits.
 
-- [ ] **Step 2: Re-run final verification against the fetched base**
+- [x] **Step 2: Re-run final verification against the fetched base**
 
 Run:
 
@@ -389,13 +389,13 @@ git diff --check origin/master...HEAD
 
 Expected: tests pass on the exact branch proposed for publication.
 
-- [ ] **Step 3: Push the dedicated branch**
+- [x] **Step 3: Push the dedicated branch**
 
 ```powershell
 git push -u origin codex/agent-roadmap-authority-alignment
 ```
 
-- [ ] **Step 4: Open the Draft PR**
+- [x] **Step 4: Open the Draft PR**
 
 Use this title:
 
@@ -430,7 +430,7 @@ The previous Phase 2/3 order required Product Agent to use tools before the shar
 - Phase-order and placeholder scans recorded in the implementation plan.
 ```
 
-- [ ] **Step 5: Stop at the merge authorization boundary**
+- [x] **Step 5: Stop at the merge authorization boundary**
 
 Report the Draft PR URL, checks, and changed paths. Do not mark it ready, merge it, or update issues until the user explicitly authorizes the next action.
 
