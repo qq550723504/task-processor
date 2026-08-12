@@ -84,9 +84,20 @@ func normalizeGenerateRequest(req *GenerateRequest) {
 	}
 	req.Platforms = listingplatform.NormalizeSupportedPlatforms(req.Platforms)
 	req.ImageURLs = normalizeGenerateRequestImageURLs(req.ImageURLs)
+	if shouldProcessImages(req) && hasImageProcessingInput(req) && len(req.Platforms) == 0 {
+		req.Platforms = nil
+		return
+	}
 	if len(req.Platforms) == 0 {
 		req.Platforms = listingplatform.SupportedPlatforms()
 	}
+}
+
+func hasImageProcessingInput(req *GenerateRequest) bool {
+	if req == nil {
+		return false
+	}
+	return len(req.ImageURLs) > 0 || strings.TrimSpace(req.ProductURL) != ""
 }
 
 func normalizeGenerateRequestImageURLs(urls []string) []string {

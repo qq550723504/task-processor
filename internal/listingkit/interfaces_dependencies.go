@@ -89,6 +89,10 @@ type Assembler interface {
 	Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult
 }
 
+type TargetAwareAssembler interface {
+	AssembleForTargets(task *Task, canonical *canonical.Product, images map[string]*productimage.ImageProcessResult) *ListingKitResult
+}
+
 type AmazonDraftBuilder interface {
 	Build(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *amazonlisting.AmazonListingDraft
 }

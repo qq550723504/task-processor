@@ -32,6 +32,31 @@ func TestValidateRequestRequiresMarketplace(t *testing.T) {
 	}
 }
 
+func TestValidateRequestCanonicalizesLegacyMarketplaceToTargetPlatform(t *testing.T) {
+	t.Parallel()
+
+	req := &ImageProcessRequest{ProductURL: "https://example.test/product", Marketplace: " SHEIN "}
+	if err := (&service{}).validateRequest(req); err != nil {
+		t.Fatalf("validateRequest() error = %v", err)
+	}
+	if req.TargetPlatform != "shein" {
+		t.Fatalf("TargetPlatform = %q, want shein", req.TargetPlatform)
+	}
+}
+
+func TestValidateRequestRejectsContradictoryTargetPlatform(t *testing.T) {
+	t.Parallel()
+
+	req := &ImageProcessRequest{
+		ProductURL:     "https://example.test/product",
+		TargetPlatform: "temu",
+		Marketplace:    "shein",
+	}
+	if err := (&service{}).validateRequest(req); err == nil {
+		t.Fatal("validateRequest() error = nil, want conflicting target rejection")
+	}
+}
+
 func TestCreateProcessTaskPersistsAIIdentity(t *testing.T) {
 	repo := &contextAwareTaskRepo{}
 	svc := &service{taskRepo: repo, requireAIIdentity: true}

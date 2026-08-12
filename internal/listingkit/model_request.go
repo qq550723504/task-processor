@@ -35,9 +35,10 @@ type WarmSDSBaselineRequest struct {
 }
 
 type GenerateOptions struct {
-	ImageStrategy string                               `json:"image_strategy,omitempty"`
-	ProcessImages bool                                 `json:"process_images"`
-	Scene         *productimage.SceneGenerationOptions `json:"scene,omitempty"`
-	SheinStudio   *SheinStudioOptions                  `json:"shein_studio,omitempty"`
-	SDS           *SDSSyncOptions                      `json:"sds,omitempty"`
+	ImageStrategy               string                               `json:"image_strategy,omitempty"`
+	ProcessImages               bool                                 `json:"process_images"`
+	CompatibilityTargetPlatform string                               `json:"compatibility_target_platform,omitempty"`
+	Scene                       *productimage.SceneGenerationOptions `json:"scene,omitempty"`
+	SheinStudio                 *SheinStudioOptions                  `json:"shein_studio,omitempty"`
+	SDS                         *SDSSyncOptions                      `json:"sds,omitempty"`
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 
 	"task-processor/internal/infra/worker"
+	listingplatform "task-processor/internal/listing/platform"
 	listingsubmission "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/tenantbridge"
@@ -294,6 +295,9 @@ func validateRequest(req *GenerateRequest) error {
 	}
 	if len(req.Platforms) == 0 {
 		return fmt.Errorf("at least one platform is required")
+	}
+	if shouldProcessImages(req) && hasImageProcessingInput(req) && len(listingplatform.NormalizeSupportedPlatforms(req.Platforms)) == 0 {
+		return fmt.Errorf("image processing requires at least one supported target platform")
 	}
 	if err := validateSheinStudioAspectRatio(req); err != nil {
 		return err

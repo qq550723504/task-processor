@@ -7,7 +7,7 @@ func buildAmazonPreviewPayloadInputFromResult(
 	if result == nil || result.Amazon == nil {
 		return amazonPreviewPayloadInput{}, false
 	}
-	context := buildPlatformPayloadResultContext(result, platformPreviews)
+	context := buildPlatformPayloadResultContext(result, "amazon", platformPreviews)
 	return amazonPreviewPayloadInput{
 		draft:      result.Amazon.Draft,
 		visualBase: context.previewVisualBase("amazon", result.Amazon.ImageBundle),
@@ -38,7 +38,7 @@ func buildTemuPreviewPayloadInputFromResult(
 	if result == nil || result.Temu == nil {
 		return reviewablePlatformPreviewPayloadInput{}, nil, false
 	}
-	context := buildPlatformPayloadResultContext(result, platformPreviews)
+	context := buildPlatformPayloadResultContext(result, "temu", platformPreviews)
 	return buildReviewablePlatformPreviewPayloadInput(
 		result.Temu.GoodsName,
 		result.Temu.ReviewNotes,
@@ -55,7 +55,7 @@ func buildWalmartPreviewPayloadInputFromResult(
 	if result == nil || result.Walmart == nil {
 		return reviewablePlatformPreviewPayloadInput{}, nil, false
 	}
-	context := buildPlatformPayloadResultContext(result, platformPreviews)
+	context := buildPlatformPayloadResultContext(result, "walmart", platformPreviews)
 	return buildReviewablePlatformPreviewPayloadInput(
 		result.Walmart.ProductName,
 		result.Walmart.ReviewNotes,

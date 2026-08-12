@@ -25,7 +25,8 @@ func (p *standardWorkflowAssetPhase) run(
 	recorder *workflowRecorder,
 	enableAssetGeneration bool,
 ) (*asset.Inventory, map[string][]assetrecipe.AssetRecipe, *assetgeneration.Result, []assetgeneration.Task) {
-	inventory := asset.BuildInventory(task.ID, result.AssetBundle)
+	workingBundle := result.assetBundleForInventory()
+	inventory := asset.BuildInventory(task.ID, workingBundle)
 	assetRepo := resolveWorkflowAssetRepository(p.service)
 	assetGenerator := resolveWorkflowAssetGenerationService(p.service)
 	assetRecipeResolver := resolveWorkflowAssetRecipeResolver(p.service)
@@ -62,7 +63,7 @@ func (p *standardWorkflowAssetPhase) run(
 			if execution != nil && len(execution.Assets) > 0 {
 				inventory.Records = append(inventory.Records, execution.Assets...)
 				inventory.Summary = asset.RebuildInventorySummary(inventory)
-				result.AssetBundle = asset.RebuildBundleWithRecords(result.AssetBundle, execution.Assets)
+				workingBundle = asset.RebuildBundleWithRecords(workingBundle, execution.Assets)
 				if assetRepo != nil {
 					_ = assetRepo.SaveInventory(ctx, inventory)
 				}
@@ -96,7 +97,7 @@ func (p *standardWorkflowAssetPhase) run(
 					if len(dispatchResult.Assets) > 0 {
 						inventory.Records = append(inventory.Records, dispatchResult.Assets...)
 						inventory.Summary = asset.RebuildInventorySummary(inventory)
-						result.AssetBundle = asset.RebuildBundleWithRecords(result.AssetBundle, dispatchResult.Assets)
+						workingBundle = asset.RebuildBundleWithRecords(workingBundle, dispatchResult.Assets)
 						if assetRepo != nil {
 							_ = assetRepo.SaveInventory(ctx, inventory)
 						}
@@ -107,9 +108,19 @@ func (p *standardWorkflowAssetPhase) run(
 				stage.Complete()
 			}
 		}
-		result.AssetInventorySummary = inventory.Summary
-		if result.AssetInventorySummary != nil {
-			result.AssetInventorySummary.RecipeCount = len(baseRecipes) + len(assetrecipe.FlattenResolved(recipesByPlatform))
+		if inventory.Summary != nil {
+			inventory.Summary.RecipeCount = len(baseRecipes) + len(assetrecipe.FlattenResolved(recipesByPlatform))
+		}
+		for target, bundle := range result.AssetBundlesByTarget {
+			if bundle == nil {
+				continue
+			}
+			result.AssetInventorySummariesByTarget[target] = asset.InventorySummaryFromBundle(bundle)
+		}
+		result.applyCompatibilityAssetProjection(compatibilityTargetPlatform(task.Request))
+		if result.AssetBundle != nil {
+			result.AssetBundle = workingBundle
+			result.AssetInventorySummary = inventory.Summary
 		}
 	}
 

@@ -140,6 +140,7 @@ type stubWorkflowImageService struct {
 	createErr  error
 	processErr error
 	lastReq    *productimage.ImageProcessRequest
+	requests   []*productimage.ImageProcessRequest
 }
 
 type stubWorkflowSDSSyncService struct {
@@ -160,6 +161,7 @@ type stubWorkflowSDSSyncService struct {
 
 func (s *stubWorkflowImageService) CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error) {
 	s.lastReq = req
+	s.requests = append(s.requests, req)
 	if s.createErr != nil {
 		return nil, s.createErr
 	}
@@ -175,6 +177,45 @@ func (s *stubWorkflowImageService) ProcessImages(ctx context.Context, task *prod
 		return nil, s.processErr
 	}
 	return s.result, nil
+}
+
+func TestStandardWorkflowProcessesImagesForEveryTarget(t *testing.T) {
+	productSvc := &stubWorkflowProductService{
+		task:    &productenrich.Task{ID: "product-task"},
+		product: &productenrich.ProductJSON{Title: "Targeted product", Images: []string{"https://example.test/image.jpg"}},
+	}
+	imageSvc := &stubWorkflowImageService{
+		task:   &productimage.Task{ID: "image-task"},
+		result: &productimage.ImageProcessResult{},
+	}
+	svc := seedWorkflowServices(seedWorkflowAssets(
+		seedSupportDeps(&service{}, supportDependencySeed{
+			assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}}),
+		}),
+		assetrepo.NewMemRepository(),
+		newDefaultAssetRecipeResolver(),
+		newDefaultAssetBundleBuilder(),
+		newDefaultAssetGenerationService(),
+	), productSvc, imageSvc)
+	task := &Task{ID: "listing-task", Request: &GenerateRequest{
+		ImageURLs: []string{"https://example.test/image.jpg"},
+		Platforms: []string{"temu", "shein"},
+		Options:   &GenerateOptions{ProcessImages: true},
+	}}
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if err != nil {
+		t.Fatalf("runStandardProductWorkflow() error = %v", err)
+	}
+	if len(imageSvc.requests) != 2 || imageSvc.requests[0].TargetPlatform != "temu" || imageSvc.requests[1].TargetPlatform != "shein" {
+		t.Fatalf("image requests = %#v, want separate temu and shein requests", imageSvc.requests)
+	}
+	if state.result.ImageAssetsForTarget("temu") == nil || state.result.ImageAssetsForTarget("shein") == nil {
+		t.Fatalf("target image results = %#v", state.result.ImageAssetsByTarget)
+	}
+	if state.result.ImageAssets != nil || state.result.AssetBundle != nil {
+		t.Fatalf("legacy scalar assets = %#v/%#v, want none for multi-target request", state.result.ImageAssets, state.result.AssetBundle)
+	}
 }
 
 func (s *stubWorkflowSDSSyncService) SyncFromRemoteImage(ctx context.Context, input sdsusecase.RemoteImageInput) (*sdsworkflow.SyncResult, error) {
@@ -291,14 +332,14 @@ func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T)
 	if err != nil {
 		t.Fatalf("runWorkflow() error = %v", err)
 	}
-	if result.AssetInventorySummary == nil {
-		t.Fatal("expected asset inventory summary")
+	if result.AssetInventorySummary != nil {
+		t.Fatalf("legacy asset inventory summary = %+v, want unset for unselected multi-target request", result.AssetInventorySummary)
 	}
-	if result.AssetInventorySummary.TotalRecords == 0 {
-		t.Fatalf("asset inventory summary = %+v", result.AssetInventorySummary)
+	if result.AssetInventorySummaryForTarget("amazon") == nil {
+		t.Fatal("expected amazon target inventory summary")
 	}
-	if result.AssetInventorySummary.GeneratedRecords == 0 {
-		t.Fatalf("asset inventory summary = %+v, want generated records", result.AssetInventorySummary)
+	if result.AssetInventorySummaryForTarget("amazon").TotalRecords == 0 {
+		t.Fatalf("amazon target inventory summary = %+v", result.AssetInventorySummaryForTarget("amazon"))
 	}
 	if result.StandardProductSnapshot == nil {
 		t.Fatal("expected persisted standard product snapshot")
@@ -306,11 +347,11 @@ func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T)
 	if result.StandardProductSnapshot.CanonicalProduct == nil || result.StandardProductSnapshot.CatalogProduct == nil {
 		t.Fatalf("standard snapshot = %+v, want canonical/catalog product", result.StandardProductSnapshot)
 	}
-	if result.StandardProductSnapshot.AssetInventorySummary == nil || result.StandardProductSnapshot.AssetInventorySummary.TotalRecords == 0 {
-		t.Fatalf("standard snapshot inventory = %+v, want persisted inventory summary", result.StandardProductSnapshot)
+	if result.StandardProductSnapshot.AssetInventorySummary != nil {
+		t.Fatalf("standard snapshot legacy inventory = %+v, want unset for unselected multi-target result", result.StandardProductSnapshot.AssetInventorySummary)
 	}
-	if result.StandardProductSnapshot.ImageAssets == nil {
-		t.Fatalf("standard snapshot image assets = %+v, want copied image stage output", result.StandardProductSnapshot)
+	if result.StandardProductSnapshot.ImageAssetsByTarget["amazon"] == nil || result.StandardProductSnapshot.AssetInventorySummariesByTarget["amazon"] == nil {
+		t.Fatalf("standard snapshot target assets = %+v, want copied target-keyed image and inventory output", result.StandardProductSnapshot)
 	}
 	if result.Amazon == nil || result.Amazon.ImageBundle == nil {
 		t.Fatalf("amazon image bundle = %+v", result.Amazon)
@@ -330,8 +371,8 @@ func TestRunWorkflowPersistsAssetInventoryAndBuildsPlatformBundles(t *testing.T)
 	if result.Walmart == nil || result.Walmart.ImageBundle == nil {
 		t.Fatalf("walmart image bundle = %+v", result.Walmart)
 	}
-	if imageSvc.lastReq == nil || imageSvc.lastReq.Marketplace != "amazon" {
-		t.Fatalf("image request = %+v, want platform-specific marketplace", imageSvc.lastReq)
+	if len(imageSvc.requests) != 4 || imageSvc.requests[0].TargetPlatform != "amazon" || imageSvc.requests[1].TargetPlatform != "shein" || imageSvc.requests[2].TargetPlatform != "temu" || imageSvc.requests[3].TargetPlatform != "walmart" {
+		t.Fatalf("image requests = %+v, want one explicit request per target", imageSvc.requests)
 	}
 
 	inventory, err := assetRepository.GetInventory(context.Background(), asset.InventoryRef{TaskID: "listingkit-task-1"})
@@ -1509,10 +1550,10 @@ func TestRunWorkflowRecordsDegradedImageStageWhenImageProcessingFails(t *testing
 	if err != nil {
 		t.Fatalf("runWorkflow() error = %v", err)
 	}
-	if !hasWorkflowStageStatus(result.WorkflowStages, "product_image", WorkflowStageStatusDegraded) {
-		t.Fatalf("workflow stages = %+v, want degraded product_image", result.WorkflowStages)
+	if !hasWorkflowStageStatus(result.WorkflowStages, "product_image:amazon", WorkflowStageStatusDegraded) {
+		t.Fatalf("workflow stages = %+v, want degraded product_image:amazon", result.WorkflowStages)
 	}
-	if !hasWorkflowIssue(result.WorkflowIssues, "product_image", WorkflowIssueSeverityWarning, "image_processing_failed") {
+	if !hasWorkflowIssue(result.WorkflowIssues, "product_image:amazon", WorkflowIssueSeverityWarning, "image_processing_failed") {
 		t.Fatalf("workflow issues = %+v, want image processing warning", result.WorkflowIssues)
 	}
 	if result.Summary == nil || result.Summary.WarningCount == 0 || result.Summary.IssueCount == 0 {

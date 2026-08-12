@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/sirupsen/logrus"
 
@@ -31,27 +32,41 @@ func (p *standardWorkflowMediaPhase) run(
 	var imageResult *productimage.ImageProcessResult
 	imageSvc := resolveWorkflowImageService(p.service)
 	if shouldProcessImages(task.Request) && imageSvc != nil {
-		stage := recorder.Start("product_image", "")
-		imageTask, imageErr := imageSvc.CreateProcessTask(productimage.WithInlineTaskExecution(ctx), toImageProcessRequest(task))
-		if imageErr != nil {
-			markChildTask(result, "product_image", "", string(core.TaskStatusFailed), imageErr.Error())
-			appendWarning(result, "image processing skipped: "+imageErr.Error())
-			stage.Degrade("image_processing_skipped", "Image processing skipped", imageErr.Error())
+		imageRequests, requestErr := toImageProcessRequests(task)
+		if requestErr != nil {
+			stage := recorder.Start("product_image", "")
+			markChildTask(result, "product_image", "", string(core.TaskStatusFailed), requestErr.Error())
+			appendWarning(result, "image processing skipped: "+requestErr.Error())
+			stage.Degrade("image_processing_skipped", "Image processing skipped", requestErr.Error())
 		} else {
-			stage.SetTaskID(imageTask.ID)
-			markChildTask(result, "product_image", imageTask.ID, string(productimage.TaskStatusPending), "")
-			imageResult, imageErr = imageSvc.ProcessImages(ctx, imageTask)
-			if imageErr != nil {
-				markChildTask(result, "product_image", imageTask.ID, string(core.TaskStatusFailed), imageErr.Error())
-				appendWarning(result, "image processing failed: "+imageErr.Error())
-				stage.Degrade("image_processing_failed", "Image processing failed", imageErr.Error())
-			} else {
-				markChildTask(result, "product_image", imageTask.ID, string(productimage.TaskStatusCompleted), "")
+			for _, imageRequest := range imageRequests {
+				target := imageRequest.TargetPlatform
+				kind := fmt.Sprintf("product_image:%s", target)
+				stage := recorder.Start(kind, "")
+				imageTask, imageErr := imageSvc.CreateProcessTask(productimage.WithInlineTaskExecution(ctx), imageRequest)
+				if imageErr != nil {
+					markChildTask(result, kind, "", string(core.TaskStatusFailed), imageErr.Error())
+					appendWarning(result, "image processing skipped for "+target+": "+imageErr.Error())
+					stage.Degrade("image_processing_skipped", "Image processing skipped", imageErr.Error())
+					continue
+				}
+				stage.SetTaskID(imageTask.ID)
+				markChildTask(result, kind, imageTask.ID, string(productimage.TaskStatusPending), "")
+				targetResult, imageErr := imageSvc.ProcessImages(ctx, imageTask)
+				if imageErr != nil {
+					markChildTask(result, kind, imageTask.ID, string(core.TaskStatusFailed), imageErr.Error())
+					appendWarning(result, "image processing failed for "+target+": "+imageErr.Error())
+					stage.Degrade("image_processing_failed", "Image processing failed", imageErr.Error())
+					continue
+				}
+				markChildTask(result, kind, imageTask.ID, string(productimage.TaskStatusCompleted), "")
 				stage.Complete()
-				result.ImageAssets = imageResult
-				result.AssetBundle = asset.BuildBundle(canonicalProduct, imageResult)
-				result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
-				p.service.syncSDSDesign(ctx, task, result, imageResult, recorder)
+				bundle := asset.BuildBundle(canonicalProduct, targetResult)
+				result.recordTargetImageAssets(target, targetResult, bundle, asset.InventorySummaryFromBundle(bundle), compatibilityTargetPlatform(task.Request))
+				if imageResult == nil {
+					imageResult = targetResult
+				}
+				p.service.syncSDSDesign(ctx, task, result, targetResult, recorder)
 			}
 		}
 	}
@@ -79,9 +94,18 @@ func (p *standardWorkflowMediaPhase) run(
 	}
 	if applySDSSyncMetadataToCanonical(canonicalProduct, result.SDSDesignResult, sdsOptions) {
 		result.CatalogProduct = catalog.BuildProduct(canonicalProduct)
-		result.AssetBundle = asset.BuildBundle(canonicalProduct, result.ImageAssets)
-		result.AssetInventorySummary = asset.InventorySummaryFromBundle(result.AssetBundle)
+		for target, targetImageResult := range result.ImageAssetsByTarget {
+			bundle := asset.BuildBundle(canonicalProduct, targetImageResult)
+			result.recordTargetImageAssets(target, targetImageResult, bundle, asset.InventorySummaryFromBundle(bundle), compatibilityTargetPlatform(task.Request))
+		}
 		log.Info("applied SDS sync metadata to canonical product")
 	}
 	return imageResult, sdsOptions
+}
+
+func compatibilityTargetPlatform(req *GenerateRequest) string {
+	if req == nil || req.Options == nil {
+		return ""
+	}
+	return req.Options.CompatibilityTargetPlatform
 }
