@@ -1,6 +1,7 @@
 package listingadmin
 
 import (
+	"strings"
 	"testing"
 
 	"gorm.io/driver/sqlite"
@@ -110,6 +111,33 @@ func TestEnsureImportTaskPlatformIntegrityUsesActiveOnlyUniqueIndex(t *testing.T
 		Platform: "shein", TargetPlatform: "shein", ProductID: "P1", Region: "US", StoreID: 986, Deleted: 1,
 	}).Error; err != nil {
 		t.Fatalf("insert deleted duplicate: %v", err)
+	}
+}
+
+func TestEnsureNoImportTaskPlatformViolationsIgnoresDeletedRows(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
+		t.Fatalf("migrate import task row: %v", err)
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{
+		Platform: "SHEIN", SourcePlatform: "Amazon", TargetPlatform: "SHEIN",
+		ProductID: "deleted", Region: "US", StoreID: 986, Deleted: 1,
+	}).Error; err != nil {
+		t.Fatalf("insert deleted non-canonical row: %v", err)
+	}
+
+	if err := ensureNoImportTaskPlatformViolations(db, "listing_product_import_task"); err != nil {
+		t.Fatalf("deleted non-canonical row blocked validation: %v", err)
+	}
+}
+
+func TestImportTaskActiveUniqueIndexStatementIsIdempotent(t *testing.T) {
+	statement := strings.ToUpper(importTaskActiveUniqueIndexStatement("listing_product_import_task"))
+	if !strings.Contains(statement, "CREATE UNIQUE INDEX IF NOT EXISTS") {
+		t.Fatalf("statement = %q, want IF NOT EXISTS", statement)
 	}
 }
 

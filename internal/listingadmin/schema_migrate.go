@@ -260,9 +260,10 @@ func ensureNoImportTaskPlatformViolations(db *gorm.DB, table string) error {
 	query := fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM "%s"
-		WHERE platform IS DISTINCT FROM lower(btrim(platform))
-		   OR (source_platform IS NOT NULL AND source_platform IS DISTINCT FROM lower(btrim(source_platform)))
-		   OR (target_platform IS NOT NULL AND target_platform IS DISTINCT FROM lower(btrim(target_platform)))`, table)
+		WHERE deleted = 0
+		  AND (platform IS DISTINCT FROM lower(trim(platform))
+		   OR (source_platform IS NOT NULL AND source_platform IS DISTINCT FROM lower(trim(source_platform)))
+		   OR (target_platform IS NOT NULL AND target_platform IS DISTINCT FROM lower(trim(target_platform))))`, table)
 	if err := db.Raw(query).Scan(&count).Error; err != nil {
 		return err
 	}
@@ -321,16 +322,18 @@ func ensureImportTaskActiveUniqueIndex(db *gorm.DB, table string) error {
 		if importTaskUniqueIndexIsActiveOnly(db, table, indexName) {
 			return nil
 		}
-		if err := db.Migrator().DropIndex(&listingProductImportTask{}, indexName); err != nil {
+		if err := db.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, indexName)).Error; err != nil {
 			return err
 		}
 	}
-	statement := fmt.Sprintf(
-		`CREATE UNIQUE INDEX "%s" ON "%s" (target_platform, product_id, region, store_id) WHERE deleted = 0`,
-		indexName,
+	return db.Exec(importTaskActiveUniqueIndexStatement(table)).Error
+}
+
+func importTaskActiveUniqueIndexStatement(table string) string {
+	return fmt.Sprintf(
+		`CREATE UNIQUE INDEX IF NOT EXISTS "idx_listing_product_import_task_unique" ON "%s" (target_platform, product_id, region, store_id) WHERE deleted = 0`,
 		table,
 	)
-	return db.Exec(statement).Error
 }
 
 func importTaskUniqueIndexIsActiveOnly(db *gorm.DB, table, indexName string) bool {

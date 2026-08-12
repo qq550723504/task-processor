@@ -172,7 +172,7 @@ func (r *GormImportTaskRepository) ListDispatchCandidatesFair(ctx context.Contex
 			order by t.priority desc, t.update_time asc, t.id asc
 		) as rn`).
 		Where("t.deleted = 0").
-		Where("LOWER(TRIM(COALESCE(t.target_platform, t.platform))) = ?", platform).
+		Where("LOWER(TRIM(COALESCE(NULLIF(TRIM(t.target_platform), ''), t.platform))) = ?", platform).
 		Where("t.status IN ?", statuses).
 		Where("t.store_id IS NOT NULL")
 	if len(req.ExcludedStoreIDs) > 0 {
@@ -459,7 +459,7 @@ func (r *GormImportTaskRepository) CountQueuedByStore(ctx context.Context, platf
 		Select("store_id, count(*) as count").
 		Where("deleted = 0").
 		Where("status = ?", model.TaskStatusQueued.Int16()).
-		Where("LOWER(TRIM(COALESCE(target_platform, platform))) = ?", trimmedPlatform).
+		Where("LOWER(TRIM(COALESCE(NULLIF(TRIM(target_platform), ''), platform))) = ?", trimmedPlatform).
 		Group("store_id")
 	if len(storeIDs) > 0 {
 		query = query.Where("store_id IN ?", storeIDs)

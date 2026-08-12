@@ -64,7 +64,7 @@ func TestListDispatchCandidatesFairAlternatesStoresBeforeSecondTask(t *testing.T
 	}
 
 	got := taskIDs(tasks)
-	want := []int64{1, 3, 2}
+	want := []int64{6, 1, 3}
 	if !equalInt64s(got, want) {
 		t.Fatalf("task IDs = %v, want %v", got, want)
 	}
@@ -91,6 +91,20 @@ func TestListDispatchCandidatesFairMatchesTargetPlatformCaseInsensitively(t *tes
 			UpdateTime:     &now,
 			Deleted:        0,
 		},
+		{
+			ID:             102,
+			TenantID:       10,
+			StoreID:        987,
+			Platform:       "SHEIN",
+			TargetPlatform: "",
+			Region:         "US",
+			ProductID:      "B0EMPTYTARGET",
+			Status:         model.TaskStatusPending.Int16(),
+			Priority:       5,
+			CreateTime:     &now,
+			UpdateTime:     &now,
+			Deleted:        0,
+		},
 	})
 
 	repo := NewGormImportTaskRepository(db)
@@ -102,8 +116,8 @@ func TestListDispatchCandidatesFairMatchesTargetPlatformCaseInsensitively(t *tes
 	if err != nil {
 		t.Fatalf("ListDispatchCandidatesFair() error = %v", err)
 	}
-	if got := taskIDs(candidates); !equalInt64s(got, []int64{101}) {
-		t.Fatalf("task IDs = %v, want mixed-case SHEIN candidate", got)
+	if got := taskIDs(candidates); !equalInt64s(got, []int64{101, 102}) {
+		t.Fatalf("task IDs = %v, want mixed-case and empty-target SHEIN candidates", got)
 	}
 }
 
@@ -530,8 +544,8 @@ func TestCountQueuedByStoreGroupsAcrossTenantsForPlatform(t *testing.T) {
 	if _, ok := counts[300]; ok {
 		t.Fatalf("counts includes store 300: %v, want wrong platform omitted", counts)
 	}
-	if _, ok := counts[400]; ok {
-		t.Fatalf("counts includes store 400: %v, want empty target platform omitted", counts)
+	if counts[400] != 1 {
+		t.Fatalf("counts = %v, want empty target platform to fall back to legacy platform", counts)
 	}
 }
 

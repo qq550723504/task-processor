@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	taskdomain "task-processor/internal/domain/task"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
 	api "task-processor/internal/taskrpcapi"
@@ -46,24 +47,35 @@ func (p *LocalTaskRPCProvider) SubmitTask(req *api.TaskSubmitReqDTO, urgent bool
 		value := req.CategoryID
 		categoryID = &value
 	}
+	platform := taskdomain.NormalizePlatform(req.Platform)
+	sourcePlatform := taskdomain.NormalizePlatform(req.SourcePlatform)
+	if sourcePlatform == "" {
+		sourcePlatform = platform
+	}
+	targetPlatform := taskdomain.NormalizePlatform(req.TargetPlatform)
+	if targetPlatform == "" {
+		targetPlatform = platform
+	}
 	row := localImportTaskRow{
-		ID:            req.TaskID,
-		TenantID:      req.TenantID,
-		StoreID:       req.StoreID,
-		Platform:      req.Platform,
-		Region:        req.Region,
-		CategoryID:    categoryID,
-		ProductID:     req.ProductID,
-		Status:        model.TaskStatusPending.Int16(),
-		Stage:         req.TaskType,
-		RetryCount:    0,
-		MaxRetryCount: maxRetries,
-		Remark:        req.Description,
-		Priority:      priority,
-		Creator:       "local-task-rpc",
-		Updater:       "local-task-rpc",
-		CreateTime:    now,
-		UpdateTime:    now,
+		ID:             req.TaskID,
+		TenantID:       req.TenantID,
+		StoreID:        req.StoreID,
+		Platform:       platform,
+		SourcePlatform: sourcePlatform,
+		TargetPlatform: targetPlatform,
+		Region:         req.Region,
+		CategoryID:     categoryID,
+		ProductID:      req.ProductID,
+		Status:         model.TaskStatusPending.Int16(),
+		Stage:          req.TaskType,
+		RetryCount:     0,
+		MaxRetryCount:  maxRetries,
+		Remark:         req.Description,
+		Priority:       priority,
+		Creator:        "local-task-rpc",
+		Updater:        "local-task-rpc",
+		CreateTime:     now,
+		UpdateTime:     now,
 	}
 	if row.ID == 0 {
 		row.ID = time.Now().UnixNano()

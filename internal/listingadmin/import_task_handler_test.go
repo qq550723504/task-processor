@@ -142,6 +142,9 @@ func TestImportTaskHandlerBatchCreatesTasksWithoutCategory(t *testing.T) {
 	if len(created.Items) != 1 || created.Items[0].CategoryID != nil {
 		t.Fatalf("created = %+v, want one task with nil category", created)
 	}
+	if created.Items[0].TargetPlatform != "amazon" {
+		t.Fatalf("targetPlatform = %q, want legacy platform amazon", created.Items[0].TargetPlatform)
+	}
 }
 
 func TestImportTaskHandlerSoftDeletesWithinTenant(t *testing.T) {
