@@ -15,12 +15,24 @@ if ! kubectl -n "$namespace" get secret "$secret" -o name >/dev/null 2>&1; then
   exit 1
 fi
 
-secret_data_value() {
-  kubectl -n "$namespace" get secret "$secret" -o "jsonpath={.data.${1}}"
-}
+if ! secret_snapshot="$(kubectl -n "$namespace" get secret "$secret" -o 'jsonpath={.metadata.resourceVersion}{"\t"}{.data.LISTINGKIT_ZITADEL_ALLOWED_USERNAMES}{"\t"}{.data.TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES}{"\t"}{.data.LISTINGKIT_ZITADEL_ALLOWED_ROLES}{"\t"}{.data.TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES}{"\t"}{"END"}')"; then
+  printf 'could not read shared Secret data %s\n' "$secret" >&2
+  exit 1
+fi
+IFS=$'\t' read -r resource_version legacy_usernames primary_usernames legacy_roles canonical_roles snapshot_end <<<"$secret_snapshot"
+if [[ -z "$resource_version" ]]; then
+  printf 'shared Secret %s has no resourceVersion for safe cleanup\n' "$secret" >&2
+  exit 1
+fi
 
-resource_version_value() {
-  kubectl -n "$namespace" get secret "$secret" -o 'jsonpath={.metadata.resourceVersion}'
+secret_data_value() {
+  case "$1" in
+    LISTINGKIT_ZITADEL_ALLOWED_USERNAMES) printf '%s' "$legacy_usernames" ;;
+    TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_USERNAMES) printf '%s' "$primary_usernames" ;;
+    LISTINGKIT_ZITADEL_ALLOWED_ROLES) printf '%s' "$legacy_roles" ;;
+    TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES) printf '%s' "$canonical_roles" ;;
+    *) return 1 ;;
+  esac
 }
 
 has_key() {
@@ -71,21 +83,22 @@ if has_key "$legacy_roles_key"; then
   fi
 fi
 
+restart_if_present() {
+  if kubectl -n "$namespace" get "deployment/${deployment}" -o name >/dev/null 2>&1; then
+    kubectl -n "$namespace" rollout restart "deployment/${deployment}" >/dev/null
+  fi
+}
+
 if ((${#patch_parts[@]} == 0)); then
-  kubectl -n "$namespace" rollout restart "deployment/${deployment}" >/dev/null
+  restart_if_present
   printf 'shared Secret %s has no deprecated ListingKit identity keys\n' "$secret"
   exit 0
 fi
 
-resource_version="$(resource_version_value)"
-if [[ -z "$resource_version" ]]; then
-  printf 'shared Secret %s has no resourceVersion for safe cleanup\n' "$secret" >&2
-  exit 1
-fi
 escaped_resource_version="$(json_escape "$resource_version")"
 patch_parts=("{\"op\":\"test\",\"path\":\"/metadata/resourceVersion\",\"value\":\"${escaped_resource_version}\"}" "${patch_parts[@]}")
 patch="[$(IFS=,; printf '%s' "${patch_parts[*]}")]"
 
 kubectl -n "$namespace" patch secret "$secret" --type=json -p "$patch" >/dev/null
-kubectl -n "$namespace" rollout restart "deployment/${deployment}" >/dev/null
+restart_if_present
 printf 'removed deprecated ListingKit identity keys from shared Secret %s\n' "$secret"

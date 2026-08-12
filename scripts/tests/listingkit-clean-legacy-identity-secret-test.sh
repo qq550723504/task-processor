@@ -20,6 +20,18 @@ if [[ "$*" == *"get secret listingkit-workbench-secret -o name"* ]]; then
   exit 0
 fi
 if [[ "$*" == *"get secret listingkit-workbench-secret -o jsonpath="* ]]; then
+  if [[ "$*" == *'metadata.resourceVersion'* && "$*" == *'END'* ]]; then
+    if [[ "${FAKE_KUBECTL_MODE:-normal}" == "annotation-only" ]]; then
+      printf '%s\n' 'rv:opaque/123					END'
+    elif [[ "${FAKE_KUBECTL_MODE:-normal}" == "no-deployment" ]]; then
+      printf '%s\n' 'rv:opaque/123	bGVnYWN5	cHJpbWFyeQ==	bGVnYWN5		END'
+    elif [[ "${FAKE_KUBECTL_MODE:-normal}" == "canonical-whitespace" ]]; then
+      printf '%s\n' 'rv:opaque/123	bGVnYWN5	cHJpbWFyeQ==	bGVnYWN5	IA==	END'
+    else
+      printf '%s\n' 'rv:opaque/123	bGVnYWN5	cHJpbWFyeQ==	bGVnYWN5		END'
+    fi
+    exit 0
+  fi
   case "$*" in
     *'.metadata.resourceVersion}'*) printf '%s\n' 'rv:opaque/123' ;;
     *'.data.LISTINGKIT_ZITADEL_ALLOWED_USERNAMES}'*) [[ "${FAKE_KUBECTL_MODE:-normal}" != "annotation-only" ]] && printf '%s\n' 'bGVnYWN5' ;;
@@ -37,6 +49,13 @@ if [[ "$*" == *"get secret listingkit-workbench-secret -o jsonpath="* ]]; then
 fi
 if [[ "$*" == *"patch secret listingkit-workbench-secret"* ]]; then
   printf '%s\n' "$*" > "${FAKE_KUBECTL_PATCH:?}"
+  exit 0
+fi
+if [[ "$*" == *"get deployment/product-listing-api -o name"* ]]; then
+  if [[ "${FAKE_KUBECTL_MODE:-normal}" == "no-deployment" ]]; then
+    exit 1
+  fi
+  printf '%s\n' 'deployment.apps/product-listing-api'
   exit 0
 fi
 if [[ "$*" == *"rollout restart deployment/product-listing-api"* ]]; then
@@ -80,5 +99,11 @@ patch_call="$(cat "$FAKE_KUBECTL_PATCH")"
 [[ "$patch_call" == *'/data/TASK_PROCESSOR_LISTINGKIT_ZITADEL_ALLOWED_ROLES'* ]]
 [[ "$patch_call" == *'bGVnYWN5'* ]]
 [[ -e "$FAKE_KUBECTL_ROLLOUT" ]]
+
+rm -f "$FAKE_KUBECTL_PATCH" "$FAKE_KUBECTL_ROLLOUT"
+export FAKE_KUBECTL_MODE=no-deployment
+"$driver" task-processor listingkit-workbench-secret
+[[ -e "$FAKE_KUBECTL_PATCH" ]]
+[[ ! -e "$FAKE_KUBECTL_ROLLOUT" ]]
 
 printf '%s\n' 'listingkit legacy identity Secret cleanup tests passed'

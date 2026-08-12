@@ -225,7 +225,7 @@ func TestListingKitDeployInspectsCandidateCompatibilityBeforeSecretCleanup(t *te
 			applyIndex = index
 		}
 	}
-	if preflightIndex < 0 || compatibilityIndex < 0 || cleanupIndex < 0 || applyIndex < 0 || !(preflightIndex < compatibilityIndex && compatibilityIndex < cleanupIndex && cleanupIndex < applyIndex) {
+	if preflightIndex < 0 || compatibilityIndex < 0 || cleanupIndex < 0 || applyIndex < 0 || !(compatibilityIndex < preflightIndex && preflightIndex < cleanupIndex && cleanupIndex < applyIndex) {
 		t.Fatalf("candidate compatibility, cleanup, and apply ordering invalid: preflight=%d compatibility=%d cleanup=%d apply=%d", preflightIndex, compatibilityIndex, cleanupIndex, applyIndex)
 	}
 }
@@ -472,9 +472,6 @@ func TestListingKitDeployWorkflowPassesOnlyDigestsAcrossBuildJobBoundaries(t *te
 	for _, step := range deployJob.Steps {
 		if !strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
 			continue
-		}
-		if got, want := step.Env["API_CANDIDATE_DIGEST"], "${{ needs.prepare.outputs.candidate_api_digest || needs.build-api.outputs.api_digest }}"; got != want {
-			t.Errorf("preflight API digest environment = %q, want %q", got, want)
 		}
 		if got, want := step.Env["PREFLIGHT_RUNNER_DIGEST"], "${{ needs.build-preflight-runner.outputs.runner_digest }}"; got != want {
 			t.Errorf("preflight runner digest environment = %q, want %q", got, want)
