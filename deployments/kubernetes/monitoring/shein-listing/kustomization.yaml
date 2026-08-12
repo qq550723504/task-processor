@@ -5,6 +5,7 @@ namespace: monitoring
 
 resources:
   - podmonitor.yaml
+  - podmonitor-store-883.yaml
   - prometheusrule.yaml
   - grafana-dashboard-configmap.yaml
   - grafana-dashboard-business-configmap.yaml
