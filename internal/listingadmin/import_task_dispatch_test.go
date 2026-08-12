@@ -70,6 +70,43 @@ func TestListDispatchCandidatesFairAlternatesStoresBeforeSecondTask(t *testing.T
 	}
 }
 
+func TestListDispatchCandidatesFairMatchesTargetPlatformCaseInsensitively(t *testing.T) {
+	t.Parallel()
+
+	db := newImportTaskDispatchTestDB(t)
+	now := time.Now()
+	seedDispatchTasks(t, db, []listingProductImportTask{
+		{
+			ID:             101,
+			TenantID:       10,
+			StoreID:        986,
+			Platform:       "Amazon",
+			TargetPlatform: "SHEIN",
+			SourcePlatform: "Amazon",
+			Region:         "US",
+			ProductID:      "B0CASE",
+			Status:         model.TaskStatusPending.Int16(),
+			Priority:       5,
+			CreateTime:     &now,
+			UpdateTime:     &now,
+			Deleted:        0,
+		},
+	})
+
+	repo := NewGormImportTaskRepository(db)
+	candidates, err := repo.ListDispatchCandidatesFair(context.Background(), DispatchCandidateRequest{
+		Platform:      "shein",
+		Limit:         10,
+		PerStoreLimit: 1,
+	})
+	if err != nil {
+		t.Fatalf("ListDispatchCandidatesFair() error = %v", err)
+	}
+	if got := taskIDs(candidates); !equalInt64s(got, []int64{101}) {
+		t.Fatalf("task IDs = %v, want mixed-case SHEIN candidate", got)
+	}
+}
+
 func TestClaimForDispatchSucceedsOnlyFromExpectedStatus(t *testing.T) {
 	t.Parallel()
 

@@ -81,6 +81,7 @@ func TestImportTaskHandlerBatchCreatesTasksWithRequestTenant(t *testing.T) {
 		"storeId": 11,
 		"categoryId": 22,
 		"platform": "Amazon",
+		"targetPlatform": "SHEIN",
 		"region": "US",
 		"priority": 8,
 		"productIds": ["B001", "B002", "B001", " "]
@@ -104,6 +105,9 @@ func TestImportTaskHandlerBatchCreatesTasksWithRequestTenant(t *testing.T) {
 	for _, item := range created.Items {
 		if item.TenantID != 303 || item.StoreID == nil || *item.StoreID != 11 || item.Status != 0 || item.Priority != 8 {
 			t.Fatalf("item = %+v, want request tenant and defaults", item)
+		}
+		if item.Platform != "amazon" || item.SourcePlatform != "amazon" || item.TargetPlatform != "shein" {
+			t.Fatalf("item platforms = %q/%q/%q, want amazon/amazon/shein", item.Platform, item.SourcePlatform, item.TargetPlatform)
 		}
 	}
 }

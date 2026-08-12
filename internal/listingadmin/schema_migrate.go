@@ -226,3 +226,130 @@ func ensureUniqueIndex(db *gorm.DB, table, indexName string, columns ...string) 
 	)
 	return db.Exec(statement).Error
 }
+
+func ensureImportTaskPlatformIntegrity(db *gorm.DB, table string) error {
+	if db == nil {
+		return fmt.Errorf("database is not configured")
+	}
+	for _, column := range []string{"platform", "source_platform", "target_platform", "deleted"} {
+		if !db.Migrator().HasColumn(table, column) {
+			return nil
+		}
+	}
+
+	if db.Dialector == nil {
+		return nil
+	}
+	if db.Dialector.Name() == "postgres" {
+		if err := ensureNoImportTaskPlatformViolations(db, table); err != nil {
+			return err
+		}
+		if err := ensureNoImportTaskCaseFoldDuplicates(db, table); err != nil {
+			return err
+		}
+		if err := ensureImportTaskPlatformCheckConstraint(db, table); err != nil {
+			return err
+		}
+	}
+
+	return ensureImportTaskActiveUniqueIndex(db, table)
+}
+
+func ensureNoImportTaskPlatformViolations(db *gorm.DB, table string) error {
+	var count int64
+	query := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM "%s"
+		WHERE platform IS DISTINCT FROM lower(btrim(platform))
+		   OR (source_platform IS NOT NULL AND source_platform IS DISTINCT FROM lower(btrim(source_platform)))
+		   OR (target_platform IS NOT NULL AND target_platform IS DISTINCT FROM lower(btrim(target_platform)))`, table)
+	if err := db.Raw(query).Scan(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("listing_product_import_task contains %d non-canonical platform rows; normalize them before startup", count)
+	}
+	return nil
+}
+
+func ensureNoImportTaskCaseFoldDuplicates(db *gorm.DB, table string) error {
+	var count int64
+	query := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM (
+			SELECT lower(btrim(target_platform)), product_id, region, store_id
+			FROM "%s"
+			WHERE deleted = 0 AND target_platform IS NOT NULL
+			GROUP BY lower(btrim(target_platform)), product_id, region, store_id
+			HAVING COUNT(*) > 1
+		) duplicates`, table)
+	if err := db.Raw(query).Scan(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return fmt.Errorf("listing_product_import_task contains %d active case-insensitive duplicate product keys; resolve them before startup", count)
+	}
+	return nil
+}
+
+func ensureImportTaskPlatformCheckConstraint(db *gorm.DB, table string) error {
+	const constraintName = "listing_product_import_task_platform_case_chk"
+	var name string
+	if err := db.Raw(`
+		SELECT conname
+		FROM pg_constraint
+		WHERE conrelid = ?::regclass AND conname = ?`, table, constraintName).Scan(&name).Error; err != nil {
+		return err
+	}
+	if strings.TrimSpace(name) != "" {
+		return nil
+	}
+	statement := fmt.Sprintf(`
+		ALTER TABLE "%s"
+		ADD CONSTRAINT "%s"
+		CHECK (
+			platform = lower(btrim(platform))
+			AND (source_platform IS NULL OR source_platform = lower(btrim(source_platform)))
+			AND (target_platform IS NULL OR target_platform = lower(btrim(target_platform)))
+		)`, table, constraintName)
+	return db.Exec(statement).Error
+}
+
+func ensureImportTaskActiveUniqueIndex(db *gorm.DB, table string) error {
+	const indexName = "idx_listing_product_import_task_unique"
+	if db.Migrator().HasIndex(&listingProductImportTask{}, indexName) {
+		if importTaskUniqueIndexIsActiveOnly(db, table, indexName) {
+			return nil
+		}
+		if err := db.Migrator().DropIndex(&listingProductImportTask{}, indexName); err != nil {
+			return err
+		}
+	}
+	statement := fmt.Sprintf(
+		`CREATE UNIQUE INDEX "%s" ON "%s" (target_platform, product_id, region, store_id) WHERE deleted = 0`,
+		indexName,
+		table,
+	)
+	return db.Exec(statement).Error
+}
+
+func importTaskUniqueIndexIsActiveOnly(db *gorm.DB, table, indexName string) bool {
+	if db == nil || db.Dialector == nil {
+		return false
+	}
+	var definition string
+	switch db.Dialector.Name() {
+	case "postgres":
+		if err := db.Raw(`SELECT indexdef FROM pg_indexes WHERE tablename = ? AND indexname = ?`, table, indexName).Scan(&definition).Error; err != nil {
+			return false
+		}
+	case "sqlite":
+		if err := db.Raw(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`, indexName).Scan(&definition).Error; err != nil {
+			return false
+		}
+	default:
+		return false
+	}
+	definition = strings.ToLower(strings.Join(strings.Fields(definition), " "))
+	return strings.Contains(definition, "where deleted = 0")
+}

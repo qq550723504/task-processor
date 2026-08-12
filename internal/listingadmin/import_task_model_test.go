@@ -10,8 +10,8 @@ func TestApplyImportTaskDefaultsFillsSourceRegionPriorityAndRetry(t *testing.T) 
 	}
 	applyImportTaskDefaults(&row)
 
-	if row.SourcePlatform != "Amazon" {
-		t.Fatalf("sourcePlatform = %q, want Amazon", row.SourcePlatform)
+	if row.SourcePlatform != "amazon" {
+		t.Fatalf("sourcePlatform = %q, want amazon", row.SourcePlatform)
 	}
 	if row.Region != "US" {
 		t.Fatalf("region = %q, want US", row.Region)
@@ -69,10 +69,10 @@ func TestListingProductImportTaskConversionPreservesPointersAndDefaults(t *testi
 	}
 
 	row := listingProductImportTaskFromImportTask(task)
-	if row.SourcePlatform != "Amazon" {
-		t.Fatalf("sourcePlatform = %q, want Amazon fallback", row.SourcePlatform)
+	if row.SourcePlatform != "amazon" {
+		t.Fatalf("sourcePlatform = %q, want amazon fallback", row.SourcePlatform)
 	}
-	if row.Platform != "Amazon" || row.Region != "US" || row.ProductID != "B001" {
+	if row.Platform != "amazon" || row.Region != "US" || row.ProductID != "B001" {
 		t.Fatalf("trimmed row = %+v, want trimmed platform/region/productID", row)
 	}
 	if row.Creator != "creator-1" || row.Updater != "updater-1" {
@@ -86,7 +86,7 @@ func TestListingProductImportTaskConversionPreservesPointersAndDefaults(t *testi
 	if converted.CategoryID == nil || *converted.CategoryID != categoryID {
 		t.Fatalf("converted categoryID = %v, want %d", converted.CategoryID, categoryID)
 	}
-	if converted.TargetPlatform != "SHEIN" || converted.ErrorMessage != "bad" || converted.Remark != "note" {
+	if converted.TargetPlatform != "shein" || converted.ErrorMessage != "bad" || converted.Remark != "note" {
 		t.Fatalf("converted = %+v, want trimmed values preserved", converted)
 	}
 	if converted.Creator != "creator-1" || converted.Updater != "updater-1" {

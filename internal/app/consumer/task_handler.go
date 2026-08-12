@@ -13,6 +13,7 @@ import (
 
 	apptask "task-processor/internal/app/task"
 	"task-processor/internal/app/taskstatus"
+	taskdomain "task-processor/internal/domain/task"
 	"task-processor/internal/infra/rabbitmq"
 	"task-processor/internal/infra/worker"
 	api "task-processor/internal/listingadmin"
@@ -456,22 +457,27 @@ func modelTaskFromRuntime(task *listingruntime.ImportTask) *model.Task {
 	if task == nil {
 		return nil
 	}
+	targetPlatform := taskdomain.NormalizePlatform(task.TargetPlatform)
+	if targetPlatform == "" {
+		targetPlatform = taskdomain.NormalizePlatform(task.Platform)
+	}
 	return &model.Task{
-		ID:            task.ID,
-		TenantID:      task.TenantID,
-		StoreID:       task.StoreID,
-		Platform:      task.Platform,
-		Region:        task.Region,
-		CategoryID:    task.CategoryID,
-		ProductID:     task.ProductID,
-		Status:        task.Status,
-		ErrorMessage:  task.ErrorMessage,
-		RetryCount:    task.RetryCount,
-		Priority:      task.Priority,
-		CreateTime:    task.CreateTime,
-		UpdateTime:    task.CreateTime,
-		Creator:       task.Creator,
-		MaxRetryCount: task.MaxRetryCount,
+		ID:             task.ID,
+		TenantID:       task.TenantID,
+		StoreID:        task.StoreID,
+		Platform:       targetPlatform,
+		SourcePlatform: taskdomain.NormalizePlatform(task.SourcePlatform),
+		Region:         task.Region,
+		CategoryID:     task.CategoryID,
+		ProductID:      task.ProductID,
+		Status:         task.Status,
+		ErrorMessage:   task.ErrorMessage,
+		RetryCount:     task.RetryCount,
+		Priority:       task.Priority,
+		CreateTime:     task.CreateTime,
+		UpdateTime:     task.CreateTime,
+		Creator:        task.Creator,
+		MaxRetryCount:  task.MaxRetryCount,
 	}
 }
 

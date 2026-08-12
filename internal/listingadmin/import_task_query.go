@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+	taskdomain "task-processor/internal/domain/task"
 )
 
 func findImportTaskRows(ctx context.Context, db *gorm.DB, query ImportTaskQuery) ([]listingProductImportTask, int64, int, int, error) {
@@ -26,7 +27,7 @@ func applyImportTaskQuery(db *gorm.DB, query ImportTaskQuery) *gorm.DB {
 		db = db.Where("store_id = ?", *query.StoreID)
 	}
 	if query.Platform != "" {
-		db = db.Where("platform = ?", query.Platform)
+		db = db.Where("LOWER(TRIM(platform)) = ?", taskdomain.NormalizePlatform(query.Platform))
 	}
 	if query.Region != "" {
 		db = db.Where("region = ?", query.Region)

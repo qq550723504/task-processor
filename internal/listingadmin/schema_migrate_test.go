@@ -91,6 +91,43 @@ func TestAutoMigrateImportTaskRepositoryMakesCategoryIDNullable(t *testing.T) {
 	}
 }
 
+func TestEnsureImportTaskPlatformIntegrityUsesActiveOnlyUniqueIndex(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
+		t.Fatalf("migrate import task row: %v", err)
+	}
+	if err := db.Exec(`CREATE UNIQUE INDEX idx_listing_product_import_task_unique ON listing_product_import_task (target_platform, product_id, region, store_id)`).Error; err != nil {
+		t.Fatalf("create legacy unique index: %v", err)
+	}
+
+	if err := ensureImportTaskPlatformIntegrity(db, "listing_product_import_task"); err != nil {
+		t.Fatalf("ensureImportTaskPlatformIntegrity() error = %v", err)
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{
+		Platform: "shein", TargetPlatform: "shein", ProductID: "P1", Region: "US", StoreID: 986, Deleted: 1,
+	}).Error; err != nil {
+		t.Fatalf("insert deleted duplicate: %v", err)
+	}
+}
+
+type importTaskPlatformIntegrityRow struct {
+	ID             int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	Platform       string `gorm:"column:platform;not null"`
+	SourcePlatform string `gorm:"column:source_platform"`
+	TargetPlatform string `gorm:"column:target_platform"`
+	ProductID      string `gorm:"column:product_id;not null"`
+	Region         string `gorm:"column:region;not null"`
+	StoreID        int64  `gorm:"column:store_id;not null"`
+	Deleted        int16  `gorm:"column:deleted;not null"`
+}
+
+func (importTaskPlatformIntegrityRow) TableName() string {
+	return "listing_product_import_task"
+}
+
 type legacyImportTaskWithRequiredCategory struct {
 	ID         int64 `gorm:"column:id;primaryKey;autoIncrement"`
 	CategoryID int64 `gorm:"column:category_id;not null"`
