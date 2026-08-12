@@ -60,21 +60,71 @@ func TestAssetOpenAPIContractValidatesRealGinHandlerResponses(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create OpenAPI router: %v", err)
 	}
+
+	processCases := []struct {
+		name             string
+		body             string
+		wantRequestError bool
+		wantStatus       int
+		wantCreatedTasks int
+	}{
+		{
+			name:             "image URLs only",
+			body:             `{"image_urls":["source.jpg"],"target_platform":"shein"}`,
+			wantStatus:       http.StatusOK,
+			wantCreatedTasks: 1,
+		},
+		{
+			name:             "product URL only",
+			body:             `{"product_url":"product-ref","target_platform":"shein"}`,
+			wantStatus:       http.StatusOK,
+			wantCreatedTasks: 1,
+		},
+		{
+			name:             "both sources",
+			body:             `{"image_urls":["source.jpg"],"product_url":"product-ref","target_platform":"shein"}`,
+			wantStatus:       http.StatusOK,
+			wantCreatedTasks: 1,
+		},
+		{
+			name:             "no source",
+			body:             `{"target_platform":"shein"}`,
+			wantRequestError: true,
+			wantStatus:       http.StatusBadRequest,
+			wantCreatedTasks: 0,
+		},
+	}
+	for _, tc := range processCases {
+		t.Run("process "+tc.name, func(t *testing.T) {
+			contractRequest := httptest.NewRequest(http.MethodPost, "/api/v1/images/process", bytes.NewBufferString(tc.body))
+			contractRequest.Header.Set("Content-Type", "application/json")
+			validateOpenAPIRequest(t, contractRouter, contractRequest, tc.wantRequestError)
+
+			repo := &recordingTaskRepository{TaskRepository: productimagestore.NewMemTaskRepository()}
+			service, err := productimage.NewService(&productimage.ServiceConfig{TaskRepo: repo})
+			if err != nil {
+				t.Fatalf("new image service: %v", err)
+			}
+			request := httptest.NewRequest(http.MethodPost, "/images/process", bytes.NewBufferString(tc.body))
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			newTestRouter(service).ServeHTTP(response, request)
+			if response.Code != tc.wantStatus {
+				t.Fatalf("real process response = %d, want %d, body=%s", response.Code, tc.wantStatus, response.Body.String())
+			}
+			validateOpenAPIResponse(t, contractRouter, withContractPath(request, "/api/v1/images/process"), response.Code, response.Body.String())
+			if repo.createCalls != tc.wantCreatedTasks {
+				t.Fatalf("created tasks = %d, want %d", repo.createCalls, tc.wantCreatedTasks)
+			}
+		})
+	}
+
 	repo := productimagestore.NewMemTaskRepository()
 	service, err := productimage.NewService(&productimage.ServiceConfig{TaskRepo: repo})
 	if err != nil {
 		t.Fatalf("new image service: %v", err)
 	}
 	ginRouter := newTestRouter(service)
-
-	post := httptest.NewRequest(http.MethodPost, "/images/process", bytes.NewBufferString(`{"image_urls":["source.jpg"],"target_platform":"shein"}`))
-	post.Header.Set("Content-Type", "application/json")
-	postResponse := httptest.NewRecorder()
-	ginRouter.ServeHTTP(postResponse, post)
-	if postResponse.Code != http.StatusOK {
-		t.Fatalf("real process response = %d, body=%s", postResponse.Code, postResponse.Body.String())
-	}
-	validateOpenAPIResponse(t, contractRouter, withContractPath(post, "/api/v1/images/process"), postResponse.Code, postResponse.Body.String())
 
 	missingTarget := httptest.NewRequest(http.MethodPost, "/images/process", bytes.NewBufferString(`{"image_urls":["source.jpg"]}`))
 	missingTarget.Header.Set("Content-Type", "application/json")
@@ -99,45 +149,6 @@ func TestAssetOpenAPIContractValidatesRealGinHandlerResponses(t *testing.T) {
 		validateOpenAPIResponse(t, contractRouter, withContractPath(get, "/api/v1/images/tasks/"+taskID), getResponse.Code, getResponse.Body.String())
 	}
 }
-
-func TestAssetOpenAPIContractRejectsRequestWithoutImageSource(t *testing.T) {
-	doc := loadAssetOpenAPI(t)
-	contractRouter, err := gorillamux.NewRouter(doc)
-	if err != nil {
-		t.Fatalf("create OpenAPI router: %v", err)
-	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/images/process", bytes.NewBufferString(`{"target_platform":"shein"}`))
-	request.Header.Set("Content-Type", "application/json")
-	validateOpenAPIRequest(t, contractRouter, request, true)
-}
-
-func TestAssetOpenAPIContractAcceptsCombinedImageSourcesThroughRealGinHandler(t *testing.T) {
-	doc := loadAssetOpenAPI(t)
-	contractRouter, err := gorillamux.NewRouter(doc)
-	if err != nil {
-		t.Fatalf("create OpenAPI router: %v", err)
-	}
-
-	const combinedSources = `{"image_urls":["source.jpg"],"product_url":"product-ref","target_platform":"shein"}`
-	contractRequest := httptest.NewRequest(http.MethodPost, "/api/v1/images/process", bytes.NewBufferString(combinedSources))
-	contractRequest.Header.Set("Content-Type", "application/json")
-	validateOpenAPIRequest(t, contractRouter, contractRequest, false)
-
-	repo := productimagestore.NewMemTaskRepository()
-	service, err := productimage.NewService(&productimage.ServiceConfig{TaskRepo: repo})
-	if err != nil {
-		t.Fatalf("new image service: %v", err)
-	}
-	response := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodPost, "/images/process", bytes.NewBufferString(combinedSources))
-	request.Header.Set("Content-Type", "application/json")
-	newTestRouter(service).ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("combined sources response = %d, body=%s", response.Code, response.Body.String())
-	}
-	validateOpenAPIResponse(t, contractRouter, withContractPath(request, "/api/v1/images/process"), response.Code, response.Body.String())
-}
-
 func TestRealGinHandlerRejectsUnresolvableLegacyTaskTarget(t *testing.T) {
 	doc := loadAssetOpenAPI(t)
 	contractRouter, err := gorillamux.NewRouter(doc)
@@ -190,6 +201,16 @@ func TestRealGinHandlerNormalizesSupportedLegacyTaskTarget(t *testing.T) {
 	}
 }
 
+type recordingTaskRepository struct {
+	productimage.TaskRepository
+	createCalls int
+}
+
+func (r *recordingTaskRepository) CreateTask(ctx context.Context, task *productimage.Task) error {
+	r.createCalls++
+	return r.TaskRepository.CreateTask(ctx, task)
+}
+
 func withContractPath(request *http.Request, contractPath string) *http.Request {
 	clone := request.Clone(request.Context())
 	clone.URL.Path = contractPath
@@ -222,7 +243,7 @@ func validateOpenAPIRequest(t *testing.T, router routers.Router, request *http.R
 		Route:      route,
 	})
 	if wantError && err == nil {
-		t.Fatal("request validation succeeded, want missing target_platform error")
+		t.Fatal("request validation succeeded, want contract rejection")
 	}
 	if !wantError && err != nil {
 		t.Fatalf("request validation: %v", err)
