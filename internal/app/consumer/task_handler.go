@@ -395,14 +395,24 @@ func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model
 
 	// 提取嵌套的 payload（如果存在）
 	originalPayload := eth.extractNestedPayload(domainMsg)
+	var envelopeTask *model.Task
 	if apptask.IsTaskEventV2(domainMsg) {
-		if err := eth.adapter.ValidateTaskEventV2(domainMsg); err != nil {
+		// Decode the complete V2 event before a runtime reload can win. Besides
+		// validating the envelope, this is the authoritative transport carrier
+		// for observability fields that are not stored in the runtime task.
+		var err error
+		envelopeTask, err = eth.adapter.MessageToTask(domainMsg)
+		if err != nil {
 			return nil, nil, apptask.NewConversionError(0, err)
 		}
+		originalPayload = mergeV2ObservabilityIntoWorkerPayload(originalPayload, envelopeTask)
 	}
 
 	if taskID, ok := eth.adapter.ExtractTaskID(domainMsg); ok {
 		if task, err := eth.loadTaskFromRuntime(taskID); err == nil && task != nil {
+			if envelopeTask != nil {
+				attachV2Observability(task, envelopeTask)
+			}
 			return task, originalPayload, nil
 		} else if err != nil {
 			eth.logger.WithError(err).WithFields(logrus.Fields{
@@ -412,12 +422,17 @@ func (eth *TaskHandler) convertAndValidateMessage(msg *rabbitmq.Message) (*model
 		}
 	}
 
-	// 转换为任务对象
-	task, err := eth.adapter.MessageToTask(domainMsg)
-	if err != nil {
-		eth.logger.Errorf("[%s] 转换消息为任务失败: ID=%s, Error=%v",
-			eth.platform, msg.ID, err)
-		return nil, nil, apptask.NewConversionError(0, err)
+	// 转换为任务对象. V2 was decoded above to validate it before any runtime
+	// lookup, while legacy messages remain converted exclusively at the adapter.
+	task := envelopeTask
+	if task == nil {
+		var err error
+		task, err = eth.adapter.MessageToTask(domainMsg)
+		if err != nil {
+			eth.logger.Errorf("[%s] 转换消息为任务失败: ID=%s, Error=%v",
+				eth.platform, msg.ID, err)
+			return nil, nil, apptask.NewConversionError(0, err)
+		}
 	}
 
 	// 验证任务的关键字段
@@ -507,6 +522,52 @@ func (eth *TaskHandler) extractNestedPayload(domainMsg *apptask.Message) map[str
 		}
 	}
 	return domainMsg.Payload
+}
+
+// mergeV2ObservabilityIntoWorkerPayload returns a worker-only payload with the
+// V2 envelope observability fields. Routing/version/control fields intentionally
+// stay at the messaging boundary and are never forwarded to crawler workers.
+func mergeV2ObservabilityIntoWorkerPayload(payload map[string]any, envelopeTask *model.Task) map[string]any {
+	workerPayload := make(map[string]any, len(payload)+2)
+	for key, value := range payload {
+		workerPayload[key] = value
+	}
+
+	if envelopeTask == nil {
+		return workerPayload
+	}
+	if envelopeTask.TraceID == "" {
+		delete(workerPayload, "traceId")
+	} else {
+		workerPayload["traceId"] = envelopeTask.TraceID
+	}
+	if envelopeTask.Metadata == nil {
+		delete(workerPayload, "metadata")
+	} else {
+		workerPayload["metadata"] = cloneTaskMetadata(envelopeTask.Metadata)
+	}
+	return workerPayload
+}
+
+// attachV2Observability copies only envelope-owned observability values onto a
+// runtime task. Runtime state remains authoritative for all business fields.
+func attachV2Observability(runtimeTask, envelopeTask *model.Task) {
+	if runtimeTask == nil || envelopeTask == nil {
+		return
+	}
+	runtimeTask.TraceID = envelopeTask.TraceID
+	runtimeTask.Metadata = cloneTaskMetadata(envelopeTask.Metadata)
+}
+
+func cloneTaskMetadata(metadata map[string]string) map[string]string {
+	if metadata == nil {
+		return nil
+	}
+	clone := make(map[string]string, len(metadata))
+	for key, value := range metadata {
+		clone[key] = value
+	}
+	return clone
 }
 
 // shouldSkipDuplicate 检查是否应该跳过重复任务
