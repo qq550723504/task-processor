@@ -18,6 +18,14 @@
 - Recovery must not publish RabbitMQ messages or change status.
 - Exclude `deployments/kubernetes/shein-listing/overlays/prod-store-auto-shard/configmap-heavy.yaml`; it requires independent capacity evidence.
 
+## Execution Status (2026-08-12)
+
+- Task 1 complete in `b525d6652`: ordinary startup migration no longer validates historical platform case, replaces indexes, or adds platform constraints.
+- Task 2 verified as already present in `origin/master` through merged PR #123: canonical writes, normalized projections, case-compatible queries, and runtime routing passed focused coverage without copying older local-worktree changes.
+- Task 3 complete in `444e5dc07`: the recovery API is store-986-only, expected-count gated, transactional, dry-run by default, and does not change status or publish messages.
+- Task 4 complete in `b60688d0d`: the CLI uses the existing non-creating database factory and rejects invalid scope before configuration or database access.
+- Task 5 verification passed for all relevant Go packages and repository architecture tests. A live dry-run was intentionally not run because `config/config-dev.yaml` has not been confirmed as a non-production database. It needs separately verified environment scope before any database read.
+
 ## File Structure
 
 - `internal/domain/task/platform.go`: canonical platform helper.
