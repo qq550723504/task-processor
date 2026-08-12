@@ -157,3 +157,34 @@ login session. Runtime acceptance still requires an account row, a completed
 manual login in that account Profile, a read-only crawl probe, and only then a
 later controlled ListingKit task run. No credentials, cookies, profile
 contents, or live task IDs are recorded here.
+
+## Runtime acceptance tool — 2026-08-12
+
+The maintained operator tool is `scripts/1688-runtime-acceptance.ps1`. It is
+based on the latest `master` checkout and has three explicit modes:
+
+```powershell
+Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -EnableExit
+.\scripts\1688-runtime-acceptance.ps1 -Mode Preflight
+.\scripts\1688-runtime-acceptance.ps1 -Mode Crawl -Url "https://detail.1688.com/offer/<offer-id>.html" -SourceAccountID <account-id> -ConfirmCreateTask CREATE-1688-TASK
+.\scripts\1688-runtime-acceptance.ps1 -Mode EndToEnd -Url "https://detail.1688.com/offer/<offer-id>.html" -SourceAccountID <account-id> -SheinStoreID <shein-store-id> -ConfirmCreateTask CREATE-1688-TASK
+```
+
+`Preflight` is the default and only performs GET requests for `/health`,
+`/readyz`, and authenticated `/api/v1/listing-kits/settings-health`. `Crawl`
+and `EndToEnd` refuse to send any POST until the exact confirmation string is
+provided. The crawler request uses `source_account_id`; the rejected legacy
+`source_store_id` field is never generated.
+
+The tool reads the bearer token from `LISTINGKIT_API_TOKEN` first and then
+`.local/listingkit-api-token.txt`. It never prints token contents, cookies,
+passwords, proxy credentials, `user_data_dir`, or browser profile paths. Its
+automated tests use mocked requests and do not contact a cluster or create a
+task.
+
+This tool provides an execution path for the pending operator acceptance; it
+does not itself prove live acceptance. Before `Crawl`, the operator must
+manually complete 1688 login in the tenant/account browser profile. A
+successful `EndToEnd` response proves crawler-result retrieval and ListingKit
+task creation only; SHEIN preview, readiness, and submission remain separate
+acceptance gates.
