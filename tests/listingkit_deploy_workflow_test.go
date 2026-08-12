@@ -230,6 +230,29 @@ func TestListingKitDeployInspectsCandidateCompatibilityBeforeSecretCleanup(t *te
 	}
 }
 
+func TestListingKitDeployUsesSelectedSourceCompatibilityForUnlabeledBuilds(t *testing.T) {
+	workflowPath := filepath.Join("..", ".github", "workflows", "listingkit-deploy.yml")
+	content, err := os.ReadFile(workflowPath)
+	if err != nil {
+		t.Fatalf("read ListingKit deploy workflow: %v", err)
+	}
+	workflow := string(content)
+	for _, required := range []string{
+		"source_identity_compatibility",
+		"internal/core/config/validator_listingkit.go",
+		"obsolete ZITADEL username allowlist configuration",
+		"SOURCE_IDENTITY_COMPATIBILITY: ${{ needs.prepare.outputs.source_identity_compatibility }}",
+		"source build declares canonical-subject compatibility; cleaning legacy identity keys",
+	} {
+		if !strings.Contains(workflow, required) {
+			t.Errorf("ListingKit deploy workflow must contain source compatibility check %q", required)
+		}
+	}
+	if !strings.Contains(workflow, "if [[ \"$SOURCE_IDENTITY_COMPATIBILITY\" == \"true\" ]]") {
+		t.Error("unlabeled source builds must use the selected source compatibility result")
+	}
+}
+
 func TestListingKitAPIImageDeclaresCandidateIdentityCompatibilityLabel(t *testing.T) {
 	dockerfilePath := filepath.Join("..", "deployments", "docker", "Dockerfile.product-listing-api")
 	content, err := os.ReadFile(dockerfilePath)

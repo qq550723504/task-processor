@@ -54,6 +54,7 @@ jobs:
       api_runtime_base_image: ${{ steps.meta.outputs.api_runtime_base_image }}
       candidate_api_digest: ${{ steps.meta.outputs.candidate_api_digest }}
       runner_source_ref: ${{ steps.meta.outputs.runner_source_ref }}
+      source_identity_compatibility: ${{ steps.meta.outputs.source_identity_compatibility }}
     steps:
       - name: Resolve release tag
         id: meta
@@ -101,6 +102,11 @@ jobs:
           if [[ -z "$tag" ]]; then
             tag="${source_ref:0:12}"
           fi
+          source_identity_compatibility="false"
+          validator_content="$(gh api "repos/${GITHUB_REPOSITORY}/contents/internal/core/config/validator_listingkit.go?ref=$source_ref" --jq .content | base64 --decode)"
+          if grep -Fq 'obsolete ZITADEL username allowlist configuration' <<<"$validator_content"; then
+            source_identity_compatibility="true"
+          fi
           if [[ ! "$tag" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
             echo "::error::image tag must match Docker tag syntax"
             exit 1
@@ -119,6 +125,7 @@ jobs:
           echo "api_runtime_base_image=$api_runtime_base_image" >> "$GITHUB_OUTPUT"
           echo "candidate_api_digest=$candidate_api_digest" >> "$GITHUB_OUTPUT"
           echo "runner_source_ref=$runner_source_ref" >> "$GITHUB_OUTPUT"
+          echo "source_identity_compatibility=$source_identity_compatibility" >> "$GITHUB_OUTPUT"
 
   build-api:
     name: Build API Image
@@ -298,6 +305,7 @@ jobs:
         shell: bash
         env:
           CANDIDATE_API_DIGEST: ${{ needs.prepare.outputs.candidate_api_digest }}
+          SOURCE_IDENTITY_COMPATIBILITY: ${{ needs.prepare.outputs.source_identity_compatibility }}
         run: |
           set -euo pipefail
           docker pull "$API_CANDIDATE_IMAGE" >/dev/null
@@ -311,8 +319,13 @@ jobs:
                 echo "::error::digest candidate has no canonical-subject compatibility label; rebuild it with the current ListingKit API Dockerfile before deploying"
                 exit 1
               fi
-              echo "::warning::candidate image has no canonical-subject compatibility label; preserving legacy identity keys for rollback safety"
-              echo "cleanup_legacy_identity=false" >> "$GITHUB_OUTPUT"
+              if [[ "$SOURCE_IDENTITY_COMPATIBILITY" == "true" ]]; then
+                echo "::notice::source build declares canonical-subject compatibility; cleaning legacy identity keys"
+                echo "cleanup_legacy_identity=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "::warning::candidate image has no canonical-subject compatibility label; preserving legacy identity keys for rollback safety"
+                echo "cleanup_legacy_identity=false" >> "$GITHUB_OUTPUT"
+              fi
               ;;
             *)
               echo "::error::unsupported ListingKit identity compatibility label: $identity_mode"
