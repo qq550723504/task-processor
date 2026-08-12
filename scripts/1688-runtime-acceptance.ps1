@@ -261,7 +261,14 @@ function Invoke-Main {
     }
     $result = Invoke-EndToEnd -Url $Url -SourceAccountID $SourceAccountID -SheinStoreID $SheinStoreID -Confirmation $ConfirmCreateTask -Token $token
     $handoffData = Get-ResponseData -Response $result.Handoff
-    Write-Output ("PASS END_TO_END crawler_task_id={0} crawler_status={1} listingkit_task_id={2}" -f $result.CrawlerTaskID, $result.CrawlerStatus, [string]$handoffData.task_id)
+    $sourceIdentity = $handoffData.source_identity
+    Write-Output ("PASS END_TO_END crawler_task_id={0} crawler_status={1} listingkit_task_id={2} source_id={3} source_key={4} product_url={5}" -f `
+        $result.CrawlerTaskID,
+        $result.CrawlerStatus,
+        [string]$handoffData.task_id,
+        [string]$sourceIdentity.id,
+        [string]$sourceIdentity.key,
+        [string]$handoffData.product_url)
 }
 
 if (-not $TestOnly) {
