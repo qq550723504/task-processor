@@ -98,6 +98,9 @@ func TestTaskHandlerCrawlerWorkerReceivesV2EnvelopeObservability(t *testing.T) {
 	if workerPayload["traceId"] != "trace-crawler-1" {
 		t.Fatalf("worker traceId = %#v, want envelope value", workerPayload["traceId"])
 	}
+	if workerPayload["id"] != "7812030" {
+		t.Fatalf("worker id = %#v, want V2 taskId alias", workerPayload["id"])
+	}
 	metadata, ok := workerPayload["metadata"].(map[string]any)
 	if !ok || metadata["request_id"] != "request-crawler-1" {
 		t.Fatalf("worker metadata = %#v, want envelope metadata", workerPayload["metadata"])

@@ -508,6 +508,13 @@ func (eth *TaskHandler) extractNestedPayload(domainMsg *apptask.Message) map[str
 			if _, isV2 := domainMsg.Payload["schemaVersion"]; isV2 {
 				// V2 routing fields live on the event envelope. Preserve it for the
 				// adapter while passing only the full task payload to crawler workers.
+				// The legacy crawler worker still reads its reply correlation ID from
+				// "id", while V2 producers use "taskId".
+				if _, hasLegacyID := payloadMap["id"]; !hasLegacyID {
+					if taskID, hasTaskID := payloadMap["taskId"]; hasTaskID {
+						payloadMap["id"] = taskID
+					}
+				}
 				return payloadMap
 			}
 			eth.logger.Debugf("[%s] 检测到嵌套 payload，提取内层数据", eth.platform)
