@@ -15,6 +15,7 @@ func main() {
 	flag.Int64Var(&opts.StoreID, "store-id", 986, "store ID (must be 986)")
 	flag.IntVar(&opts.ExpectedCount, "expected-count", 0, "required verified cohort count")
 	flag.BoolVar(&opts.Execute, "execute", false, "apply the update; default is dry-run")
+	flag.StringVar(&opts.ConfirmFingerprint, "confirm-fingerprint", "", "required dry-run cohort fingerprint when -execute is set")
 	flag.Parse()
 
 	if err := sheinplatformrecovery.Run(context.Background(), opts); err != nil {

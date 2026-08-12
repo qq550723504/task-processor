@@ -45,6 +45,49 @@ func TestRecoverStore986PlatformCohortRejectsWrongCountWithoutWriting(t *testing
 	assertPlatformRecoveryTask(t, db, id, "Amazon", "Amazon", "SHEIN", model.TaskStatusPending.Int16())
 }
 
+func TestRecoverStore986PlatformCohortExecuteRequiresDryRunFingerprint(t *testing.T) {
+	t.Parallel()
+
+	repo, db := newPlatformRecoveryRepository(t)
+	id := seedPlatformRecoveryTask(t, db, 1, 986, "Amazon", "Amazon", "SHEIN", "P-1", model.TaskStatusPending.Int16())
+
+	if _, err := repo.RecoverStore986PlatformCohort(context.Background(), PlatformRecoveryRequest{
+		StoreID:       986,
+		ExpectedCount: 1,
+		Execute:       true,
+	}); err == nil {
+		t.Fatal("RecoverStore986PlatformCohort() error = nil, want confirmation rejection")
+	}
+	assertPlatformRecoveryTask(t, db, id, "Amazon", "Amazon", "SHEIN", model.TaskStatusPending.Int16())
+}
+
+func TestRecoverStore986PlatformCohortExecuteRejectsChangedCohortFingerprint(t *testing.T) {
+	t.Parallel()
+
+	repo, db := newPlatformRecoveryRepository(t)
+	id := seedPlatformRecoveryTask(t, db, 1, 986, "Amazon", "Amazon", "SHEIN", "P-1", model.TaskStatusPending.Int16())
+	dryRun, err := repo.RecoverStore986PlatformCohort(context.Background(), PlatformRecoveryRequest{StoreID: 986, ExpectedCount: 1})
+	if err != nil {
+		t.Fatalf("dry run error = %v", err)
+	}
+	if err := db.Model(&listingProductImportTask{}).Where("id = ?", id).Updates(map[string]any{
+		"platform": "amazon", "source_platform": "amazon", "target_platform": "shein",
+	}).Error; err != nil {
+		t.Fatalf("canonicalize original task: %v", err)
+	}
+	replacement := seedPlatformRecoveryTask(t, db, 2, 986, "Amazon", "Amazon", "SHEIN", "P-2", model.TaskStatusPending.Int16())
+
+	if _, err := repo.RecoverStore986PlatformCohort(context.Background(), PlatformRecoveryRequest{
+		StoreID:            986,
+		ExpectedCount:      1,
+		Execute:            true,
+		ConfirmFingerprint: dryRun.CohortFingerprint,
+	}); err == nil {
+		t.Fatal("RecoverStore986PlatformCohort() error = nil, want changed-cohort rejection")
+	}
+	assertPlatformRecoveryTask(t, db, replacement, "Amazon", "Amazon", "SHEIN", model.TaskStatusPending.Int16())
+}
+
 func TestRecoverStore986PlatformCohortRejectsInvalidScopeBeforeQuerying(t *testing.T) {
 	t.Parallel()
 
@@ -65,13 +108,11 @@ func TestRecoverStore986PlatformCohortRejectsActiveCaseFoldedDuplicate(t *testin
 	repo, db := newPlatformRecoveryRepository(t)
 	id := seedPlatformRecoveryTask(t, db, 1, 986, "Amazon", "Amazon", "SHEIN", "P-1", model.TaskStatusPending.Int16())
 	seedPlatformRecoveryTask(t, db, 2, 986, "amazon", "amazon", "shein", "P-1", model.TaskStatusPending.Int16())
-
 	if _, err := repo.RecoverStore986PlatformCohort(context.Background(), PlatformRecoveryRequest{
 		StoreID:       986,
-		ExpectedCount: 2,
-		Execute:       true,
+		ExpectedCount: 1,
 	}); err == nil {
-		t.Fatal("RecoverStore986PlatformCohort() error = nil, want duplicate rejection")
+		t.Fatal("RecoverStore986PlatformCohort() error = nil, want duplicate rejection during dry run")
 	}
 	assertPlatformRecoveryTask(t, db, id, "Amazon", "Amazon", "SHEIN", model.TaskStatusPending.Int16())
 }
@@ -82,11 +123,17 @@ func TestRecoverStore986PlatformCohortNormalizesOnlyEligiblePendingRows(t *testi
 	repo, db := newPlatformRecoveryRepository(t)
 	id := seedPlatformRecoveryTask(t, db, 1, 986, "Amazon", "Amazon", "SHEIN", "P-1", model.TaskStatusPending.Int16())
 	skipped := seedPlatformRecoveryTask(t, db, 2, 986, "Amazon", "Amazon", "SHEIN", "P-2", model.TaskStatusPublished.Int16())
+	canonical := seedPlatformRecoveryTask(t, db, 3, 986, "amazon", "amazon", "shein", "P-3", model.TaskStatusPending.Int16())
+	dryRun, err := repo.RecoverStore986PlatformCohort(context.Background(), PlatformRecoveryRequest{StoreID: 986, ExpectedCount: 1})
+	if err != nil {
+		t.Fatalf("dry run error = %v", err)
+	}
 
 	report, err := repo.RecoverStore986PlatformCohort(context.Background(), PlatformRecoveryRequest{
-		StoreID:       986,
-		ExpectedCount: 1,
-		Execute:       true,
+		StoreID:            986,
+		ExpectedCount:      1,
+		Execute:            true,
+		ConfirmFingerprint: dryRun.CohortFingerprint,
 	})
 	if err != nil {
 		t.Fatalf("RecoverStore986PlatformCohort() error = %v", err)
@@ -96,6 +143,7 @@ func TestRecoverStore986PlatformCohortNormalizesOnlyEligiblePendingRows(t *testi
 	}
 	assertPlatformRecoveryTask(t, db, id, "amazon", "amazon", "shein", model.TaskStatusPending.Int16())
 	assertPlatformRecoveryTask(t, db, skipped, "Amazon", "Amazon", "SHEIN", model.TaskStatusPublished.Int16())
+	assertPlatformRecoveryTask(t, db, canonical, "amazon", "amazon", "shein", model.TaskStatusPending.Int16())
 }
 
 func newPlatformRecoveryRepository(t *testing.T) (*GormImportTaskRepository, *gorm.DB) {

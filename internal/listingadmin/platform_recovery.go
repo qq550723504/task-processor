@@ -2,6 +2,7 @@ package listingadmin
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -19,18 +20,20 @@ const sheinPlatformRecoveryStoreID int64 = 986
 // PlatformRecoveryRequest explicitly scopes the one-time platform cleanup.
 // Execute is false by default and therefore never writes data.
 type PlatformRecoveryRequest struct {
-	StoreID       int64
-	ExpectedCount int
-	Execute       bool
+	StoreID            int64
+	ExpectedCount      int
+	Execute            bool
+	ConfirmFingerprint string
 }
 
 // PlatformRecoveryReport records exactly which rows the recovery inspected and
 // whether it changed them. It contains no task payloads.
 type PlatformRecoveryReport struct {
-	SelectedIDs    []int64
-	UpdatedIDs     []int64
-	ConflictingIDs []int64
-	DryRun         bool
+	SelectedIDs       []int64
+	UpdatedIDs        []int64
+	ConflictingIDs    []int64
+	CohortFingerprint string
+	DryRun            bool
 }
 
 // RecoverStore986PlatformCohort normalizes only the confirmed pending
@@ -47,26 +50,36 @@ func (r *GormImportTaskRepository) RecoverStore986PlatformCohort(ctx context.Con
 	if req.ExpectedCount <= 0 {
 		return report, errors.New("platform recovery expected_count must be positive")
 	}
+	if req.Execute && strings.TrimSpace(req.ConfirmFingerprint) == "" {
+		return report, errors.New("platform recovery execute requires a dry-run cohort fingerprint confirmation")
+	}
 
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var selected []listingProductImportTask
-		if err := tx.Table((listingProductImportTask{}).TableName()).
-			Clauses(clause.Locking{Strength: "UPDATE"}).
+		selectedQuery := tx.Table((listingProductImportTask{}).TableName()).
 			Where("store_id = ? AND deleted = ?", req.StoreID, 0).
 			Where("status = ?", model.TaskStatusPending.Int16()).
 			Where("LOWER(TRIM(platform)) = ?", "amazon").
 			Where("LOWER(TRIM(source_platform)) = ?", "amazon").
 			Where("LOWER(TRIM(target_platform)) = ?", "shein").
-			Order("id ASC").
-			Find(&selected).Error; err != nil {
+			Where("(platform <> LOWER(TRIM(platform)) OR source_platform <> LOWER(TRIM(source_platform)) OR target_platform <> LOWER(TRIM(target_platform)))").
+			Order("id ASC")
+		if req.Execute {
+			selectedQuery = selectedQuery.Clauses(clause.Locking{Strength: "UPDATE"})
+		}
+		if err := selectedQuery.Find(&selected).Error; err != nil {
 			return err
 		}
 		report.SelectedIDs = importTaskIDs(selected)
+		report.CohortFingerprint = platformRecoveryFingerprint(report.SelectedIDs)
 		if len(report.SelectedIDs) != req.ExpectedCount {
 			return fmt.Errorf("platform recovery selected %d rows, expected %d", len(report.SelectedIDs), req.ExpectedCount)
 		}
+		if req.Execute && strings.TrimSpace(req.ConfirmFingerprint) != report.CohortFingerprint {
+			return errors.New("platform recovery dry-run cohort fingerprint does not match current candidates")
+		}
 
-		conflictingIDs, err := findPlatformRecoveryConflicts(tx, req.StoreID, selected)
+		conflictingIDs, err := findPlatformRecoveryConflicts(tx, req.StoreID, selected, req.Execute)
 		if err != nil {
 			return err
 		}
@@ -105,7 +118,7 @@ func importTaskIDs(rows []listingProductImportTask) []int64 {
 	return ids
 }
 
-func findPlatformRecoveryConflicts(tx *gorm.DB, storeID int64, selected []listingProductImportTask) ([]int64, error) {
+func findPlatformRecoveryConflicts(tx *gorm.DB, storeID int64, selected []listingProductImportTask, lock bool) ([]int64, error) {
 	if len(selected) == 0 {
 		return nil, nil
 	}
@@ -115,12 +128,14 @@ func findPlatformRecoveryConflicts(tx *gorm.DB, storeID int64, selected []listin
 	}
 
 	var active []listingProductImportTask
-	if err := tx.Table((listingProductImportTask{}).TableName()).
-		Clauses(clause.Locking{Strength: "UPDATE"}).
+	activeQuery := tx.Table((listingProductImportTask{}).TableName()).
 		Where("store_id = ? AND deleted = ?", storeID, 0).
 		Where("LOWER(TRIM(COALESCE(NULLIF(TRIM(target_platform), ''), platform))) = ?", "shein").
-		Order("id ASC").
-		Find(&active).Error; err != nil {
+		Order("id ASC")
+	if lock {
+		activeQuery = activeQuery.Clauses(clause.Locking{Strength: "UPDATE"})
+	}
+	if err := activeQuery.Find(&active).Error; err != nil {
 		return nil, err
 	}
 
@@ -148,7 +163,12 @@ type platformRecoveryKey struct {
 }
 
 func (r PlatformRecoveryReport) String() string {
-	return fmt.Sprintf("dry_run=%t selected_ids=%s updated_ids=%s conflicting_ids=%s", r.DryRun, joinPlatformRecoveryIDs(r.SelectedIDs), joinPlatformRecoveryIDs(r.UpdatedIDs), joinPlatformRecoveryIDs(r.ConflictingIDs))
+	return fmt.Sprintf("dry_run=%t cohort_fingerprint=%s selected_ids=%s updated_ids=%s conflicting_ids=%s", r.DryRun, r.CohortFingerprint, joinPlatformRecoveryIDs(r.SelectedIDs), joinPlatformRecoveryIDs(r.UpdatedIDs), joinPlatformRecoveryIDs(r.ConflictingIDs))
+}
+
+func platformRecoveryFingerprint(ids []int64) string {
+	sum := sha256.Sum256([]byte(joinPlatformRecoveryIDs(ids)))
+	return fmt.Sprintf("sha256:%x", sum[:])
 }
 
 func joinPlatformRecoveryIDs(ids []int64) string {

@@ -22,8 +22,8 @@
 
 - Task 1 complete in `b525d6652`: ordinary startup migration no longer validates historical platform case, replaces indexes, or adds platform constraints.
 - Task 2 verified as already present in `origin/master` through merged PR #123: canonical writes, normalized projections, case-compatible queries, and runtime routing passed focused coverage without copying older local-worktree changes.
-- Task 3 complete in `444e5dc07`: the recovery API is store-986-only, expected-count gated, transactional, dry-run by default, and does not change status or publish messages.
-- Task 4 complete in `b60688d0d`: the CLI uses the existing non-creating database factory and rejects invalid scope before configuration or database access.
+- Task 3 complete in `444e5dc07` plus review hardening: the recovery API is store-986-only, expected-count gated, transactional, dry-run by default, and does not change status or publish messages. Execute requires a SHA-256 fingerprint of the dry-run candidate IDs, and only currently non-canonical historical rows are eligible.
+- Task 4 complete in `b60688d0d` plus review hardening: dry-run uses the existing read-only non-creating database factory with no row locks; explicit execution alone uses the existing non-creating writable maintenance factory. The CLI rejects invalid scope or a missing confirmation before configuration or database access.
 - Task 5 verification passed for all relevant Go packages and repository architecture tests. A live dry-run was intentionally not run because `config/config-dev.yaml` has not been confirmed as a non-production database. It needs separately verified environment scope before any database read.
 
 ## File Structure
