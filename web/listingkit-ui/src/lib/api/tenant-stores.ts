@@ -3,10 +3,8 @@ import {
   type ListingStoreInput,
   type ListingStorePage,
   type ListingStoreQuery,
-  parseSimpleStoreResponse,
   parseStorePageResponse,
   parseStoreResponse,
-  type SimpleListingStore,
 } from "@/lib/api/admin-stores";
 import { apiRequest } from "@/lib/api/client";
 

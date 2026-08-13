@@ -15,16 +15,6 @@ export const sdsCycleBands = [
   { value: "72h_plus", label: ">72h" },
 ] as const;
 
-function resolveWeight(product: SDSProductSummary) {
-  return (
-    product.weightMin ??
-    product.weightMax ??
-    product.minWeight ??
-    product.weight ??
-    0
-  );
-}
-
 export function formatWeight(product: SDSProductSummary) {
   const min = product.weightMin ?? product.minWeight ?? product.weight;
   const max = product.weightMax ?? product.weightMin ?? product.minWeight ?? product.weight;

@@ -19,7 +19,6 @@ import type {
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
   SheinStudioSavedBatch,
-  SheinStudioStorageData,
   SheinStudioTransparencyMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";

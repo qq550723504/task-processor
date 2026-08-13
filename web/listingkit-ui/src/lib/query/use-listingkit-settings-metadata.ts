@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 
 import {
   getListingKitSettingsHealth,
-  getListingKitSettingsSchema,
   listListingKitSettingsNamespaces,
 } from "@/lib/api/listingkit-settings";
 import { listingKitSettingsKeys } from "@/lib/query/listingkit-settings";
