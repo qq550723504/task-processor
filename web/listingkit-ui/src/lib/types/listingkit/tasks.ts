@@ -37,7 +37,7 @@ export type AmazonPreviewPayload = PlatformPreviewPayload & {
   product_type?: string;
 };
 
-export type ListingKitChildTask = {
+type ListingKitChildTask = {
   kind?: string;
   task_id?: string;
   status?: string;
@@ -54,7 +54,7 @@ export type ListingKitChildRetry = {
   updated_at?: string;
 };
 
-export type ListingKitWorkflowStage = {
+type ListingKitWorkflowStage = {
   kind?: string;
   status?: "pending" | "running" | "completed" | "skipped" | "degraded" | "failed" | string;
   task_id?: string;
@@ -64,7 +64,7 @@ export type ListingKitWorkflowStage = {
   duration_ms?: number;
 };
 
-export type ListingKitWorkflowIssue = {
+type ListingKitWorkflowIssue = {
   code?: string;
   severity?: "info" | "warning" | "review" | "blocking" | string;
   stage?: string;
@@ -72,8 +72,8 @@ export type ListingKitWorkflowIssue = {
   detail?: string;
 };
 
-export type SDSRepairLayer = { id: string; name?: string };
-export type SDSRepairVariant = {
+type SDSRepairLayer = { id: string; name?: string };
+type SDSRepairVariant = {
   variant_id: number;
   variant_sku?: string;
   color?: string;
@@ -128,7 +128,7 @@ export type ListingKitTaskResultData = {
   updated_at?: string;
 };
 
-export type RetryableBlock = {
+type RetryableBlock = {
   reason_code?: string;
   reason_message?: string;
   blocked_at?: string;
