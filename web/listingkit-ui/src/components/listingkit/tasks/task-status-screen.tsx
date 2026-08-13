@@ -99,7 +99,11 @@ export function TaskStatusScreen({
 }) {
   const router = useRouter();
   const layerAction = useExecuteAction(taskId, {});
-  const childTaskRetry = useRetryChildTask(taskId, getTaskRetryVersion(task));
+  const childTaskRetry = useRetryChildTask(
+    taskId,
+    getTaskRetryVersion(task),
+    task?.child_retries,
+  );
   const taskRecovery = useRecoverTaskNow(taskId);
   const isTerminal =
     task?.status === "completed" ||

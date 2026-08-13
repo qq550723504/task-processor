@@ -5,7 +5,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { retryChildTask } from "@/lib/api/child-task-retry";
 import { listingKitKeys } from "@/lib/query/keys";
-import type { ListingKitTaskResult } from "@/lib/types/listingkit";
+import type {
+  ListingKitChildRetry,
+  ListingKitTaskResult,
+} from "@/lib/types/listingkit";
 
 export function getTaskRetryVersion(task?: ListingKitTaskResult | null) {
   if (!task) {
@@ -15,16 +18,28 @@ export function getTaskRetryVersion(task?: ListingKitTaskResult | null) {
     task.result?.child_tasks
       ?.map((child) => `${child.kind ?? ""}:${child.status ?? ""}:${child.error ?? ""}`)
       .join("|") ?? "";
+  const childRetries =
+    task.child_retries
+      ?.map(
+        (retry) =>
+          `${retry.kind ?? ""}:${retry.status ?? ""}:${retry.attempt ?? ""}:${retry.last_error ?? ""}:${retry.updated_at ?? ""}`,
+      )
+      .join("|") ?? "";
   return [
     task.result?.updated_at ?? "",
     task.completed_at ?? "",
     task.status ?? "",
     task.error ?? "",
     childStates,
+    childRetries,
   ].join("|");
 }
 
-export function useRetryChildTask(taskId: string, taskVersion: string) {
+export function useRetryChildTask(
+  taskId: string,
+  taskVersion: string,
+  durableRetries: ListingKitChildRetry[] = [],
+) {
   const client = useQueryClient();
   const [queuedTaskVersion, setQueuedTaskVersion] = useState<string | null>(null);
 
@@ -46,9 +61,13 @@ export function useRetryChildTask(taskId: string, taskVersion: string) {
     },
   });
 
+  const durableRetryQueued = durableRetries.some(
+    (retry) => retry.status === "queued" || retry.status === "running",
+  );
   const retryQueued =
-    mutation.data?.status === "queued" &&
-    queuedTaskVersion === taskVersion;
+    durableRetries.length > 0
+      ? durableRetryQueued
+      : mutation.data?.status === "queued" && queuedTaskVersion === taskVersion;
 
   useEffect(() => {
     if (!retryQueued) {

@@ -138,4 +138,32 @@ describe("useRetryChildTask", () => {
       vi.useRealTimers();
     }
   });
+
+  it("restores queued polling from the durable retry status", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const refetchQueries = vi
+      .spyOn(queryClient, "refetchQueries")
+      .mockResolvedValue(undefined);
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    const { result, rerender } = renderHook(
+      ({ retries }: { retries: Array<{ kind: string; status: string }> }) =>
+        useRetryChildTask("task-1", "version-1", retries),
+      {
+        initialProps: {
+          retries: [{ kind: "sds_design_sync", status: "queued" }],
+        },
+        wrapper,
+      },
+    );
+
+    expect(result.current.retryQueued).toBe(true);
+    rerender({ retries: [{ kind: "sds_design_sync", status: "exhausted" }] });
+    expect(result.current.retryQueued).toBe(false);
+    expect(refetchQueries).not.toHaveBeenCalled();
+  });
 });

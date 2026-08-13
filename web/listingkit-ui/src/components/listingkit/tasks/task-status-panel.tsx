@@ -22,10 +22,23 @@ function hasFailedSheinSubmission(task?: ListingKitTaskResult | null) {
   );
 }
 
+function terminalChildRetryError(task?: ListingKitTaskResult | null) {
+  const errors =
+    task?.child_retries
+      ?.filter((retry) => retry.status === "exhausted" && retry.last_error)
+      .sort((left, right) =>
+        String(left.updated_at ?? "").localeCompare(String(right.updated_at ?? "")),
+      ) ?? [];
+  return errors[errors.length - 1]?.last_error;
+}
+
 function primaryTaskError(task: ListingKitTaskResult) {
-  const blockingIssue = task.result?.workflow_issues?.find(
+  const retryError = terminalChildRetryError(task);
+  if (retryError) return retryError;
+  const blockingIssues = task.result?.workflow_issues?.filter(
     (issue) => issue.severity === "blocking" && (issue.detail || issue.message),
-  );
+  ) ?? [];
+  const blockingIssue = blockingIssues[blockingIssues.length - 1];
   if (blockingIssue?.detail) return blockingIssue.detail;
   if (blockingIssue?.message) return blockingIssue.message;
   if (hasFailedSheinSubmission(task) && task.shein_latest_submission_error) {
@@ -96,7 +109,9 @@ export function TaskStatusPanel({
 }) {
   const keepsActionableFailureVisible =
     task?.status === "completed" &&
-    (hasFailedSDSChildTask(task) || hasFailedSheinSubmission(task));
+    (hasFailedSDSChildTask(task) ||
+      hasFailedSheinSubmission(task) ||
+      Boolean(terminalChildRetryError(task)));
   if (!task?.status || (task.status === "completed" && !keepsActionableFailureVisible)) {
     return null;
   }
@@ -284,7 +299,7 @@ export function TaskStatusPanel({
 
         {retryQueued ? (
           <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm leading-6 text-sky-900">
-            重试已加入队列，系统会在后台完成 SDS 和 SHEIN 平台适配。请刷新任务状态查看最新结果。
+            重试已加入队列，系统会在后台完成 SDS 和 SHEIN 平台适配，并自动刷新任务状态。
           </div>
         ) : null}
 

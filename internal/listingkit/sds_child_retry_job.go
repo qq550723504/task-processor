@@ -49,6 +49,23 @@ type SDSChildRetryJobRepository interface {
 	SaveSDSChildRetry(ctx context.Context, job *SDSChildRetryJob) error
 }
 
+// SDSChildRetryJobStatusSource exposes durable retry state to task-result
+// readers so queued retries remain observable across page reloads and worker
+// completion does not depend on the in-memory mutation state.
+type SDSChildRetryJobStatusSource interface {
+	ListSDSChildRetries(ctx context.Context, taskID string) ([]SDSChildRetryJob, error)
+}
+
+type SDSChildRetryStatus struct {
+	TaskID      string            `json:"task_id"`
+	Kind        SDSChildRetryKind `json:"kind"`
+	Status      string            `json:"status"`
+	Attempt     int               `json:"attempt"`
+	NextRetryAt time.Time         `json:"next_retry_at"`
+	LastError   string            `json:"last_error,omitempty"`
+	UpdatedAt   time.Time         `json:"updated_at"`
+}
+
 // TaskChildRetryAccepted is returned when a retry has been durably queued.
 // The worker owns the long-running domain retry and will update the task result
 // when it finishes.

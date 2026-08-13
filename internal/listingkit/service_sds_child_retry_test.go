@@ -46,6 +46,16 @@ func (r *sdsChildRetryTestRepository) SaveSDSChildRetry(context.Context, *SDSChi
 	return nil
 }
 
+func (r *sdsChildRetryTestRepository) ListSDSChildRetries(_ context.Context, taskID string) ([]SDSChildRetryJob, error) {
+	jobs := make([]SDSChildRetryJob, 0)
+	for _, job := range r.jobs {
+		if job.TaskID == taskID {
+			jobs = append(jobs, job)
+		}
+	}
+	return jobs, nil
+}
+
 func TestScheduleStudioBatchSDSChildRetriesQueuesOnlyFailedSDSChildren(t *testing.T) {
 	ctx := context.Background()
 	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest()}
@@ -183,5 +193,37 @@ func TestRunSDSChildRetryRestoresTenantContext(t *testing.T) {
 	}
 	if got := TenantIDFromContext(repo.retryCtx); got != task.TenantID {
 		t.Fatalf("retry tenant context = %q, want %q", got, task.TenantID)
+	}
+}
+
+func TestGetTaskResultIncludesDurableSDSChildRetryStatus(t *testing.T) {
+	ctx := context.Background()
+	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest(), jobs: map[string]SDSChildRetryJob{
+		"job-task-retry-status": {
+			ID:        "job-task-retry-status",
+			TaskID:    "task-retry-status",
+			Kind:      SDSChildRetryKindDesignSync,
+			Status:    SDSChildRetryJobStatusExhausted,
+			Attempt:   3,
+			LastError: "SDS options are missing",
+		},
+	}}
+	task := &Task{
+		ID:       "task-retry-status",
+		Status:   core.TaskStatusNeedsReview,
+		Request:  &GenerateRequest{},
+		Result:   &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusFailed)}}},
+		TenantID: "tenant-1",
+	}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	result, err := (&service{repo: repo}).GetTaskResult(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTaskResult() error = %v", err)
+	}
+	if len(result.ChildRetries) != 1 || result.ChildRetries[0].Status != string(SDSChildRetryJobStatusExhausted) || result.ChildRetries[0].LastError != "SDS options are missing" {
+		t.Fatalf("child retries = %#v, want durable exhausted status and error", result.ChildRetries)
 	}
 }

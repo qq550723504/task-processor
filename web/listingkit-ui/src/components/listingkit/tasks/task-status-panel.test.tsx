@@ -229,6 +229,59 @@ describe("TaskStatusPanel", () => {
     expect(screen.getByText(/重试已加入队列/)).toBeInTheDocument();
   });
 
+  it("shows the durable terminal retry error and prefers the newest blocking issue", () => {
+    render(
+      <TaskStatusPanel
+        task={{
+          status: "completed",
+          child_retries: [
+            {
+              kind: "sds_design_sync",
+              status: "exhausted",
+              last_error: "SDS options are missing",
+              updated_at: "2026-08-13T02:00:00Z",
+            },
+          ],
+          result: {
+            workflow_issues: [
+              {
+                severity: "blocking",
+                message: "old failure",
+              },
+              {
+                severity: "blocking",
+                message: "new retry failure",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("SDS options are missing")).toBeInTheDocument();
+    expect(screen.queryByText("old failure")).not.toBeInTheDocument();
+    expect(screen.queryByText("new retry failure")).not.toBeInTheDocument();
+  });
+
+  it("uses the newest blocking issue when no durable retry error exists", () => {
+    render(
+      <TaskStatusPanel
+        task={{
+          status: "failed",
+          result: {
+            workflow_issues: [
+              { severity: "blocking", message: "old failure" },
+              { severity: "blocking", message: "new failure" },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("new failure")).toBeInTheDocument();
+    expect(screen.queryByText("old failure")).not.toBeInTheDocument();
+  });
+
   it("splits semicolon-joined review reasons into separate items", () => {
     render(
       <TaskStatusPanel

@@ -114,6 +114,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
   const childTaskRetry = useRetryChildTask(
     taskId,
     getTaskRetryVersion(taskResult.data),
+    taskResult.data?.child_retries,
   );
   const sheinViewProps = buildSheinWorkspaceViewProps({
     shein: preview.data?.shein,

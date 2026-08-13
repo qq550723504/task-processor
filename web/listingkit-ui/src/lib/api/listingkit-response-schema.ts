@@ -95,6 +95,7 @@ const taskResultSchema = z
       .passthrough()
       .optional(),
     result: taskResultDataSchema.optional(),
+    child_retries: z.array(z.record(z.string(), z.unknown())).optional(),
     error: z.string().optional(),
     review_reasons: z.array(z.string()).optional(),
     created_at: z.string().optional(),

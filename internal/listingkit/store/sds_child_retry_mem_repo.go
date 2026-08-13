@@ -73,6 +73,24 @@ func (r *MemTaskRepository) ListDueSDSChildRetries(ctx context.Context, dueBefor
 	return jobs, nil
 }
 
+func (r *MemTaskRepository) ListSDSChildRetries(ctx context.Context, taskID string) ([]listingkit.SDSChildRetryJob, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	jobs := make([]listingkit.SDSChildRetryJob, 0)
+	for _, job := range r.ensureSDSChildRetryJobsLocked() {
+		if job.TaskID == taskID && matchesTenantScope(ctx, job.TenantID) {
+			jobs = append(jobs, job)
+		}
+	}
+	sort.SliceStable(jobs, func(i, j int) bool {
+		if jobs[i].UpdatedAt.Equal(jobs[j].UpdatedAt) {
+			return jobs[i].ID < jobs[j].ID
+		}
+		return jobs[i].UpdatedAt.After(jobs[j].UpdatedAt)
+	})
+	return jobs, nil
+}
+
 func (r *MemTaskRepository) ClaimDueSDSChildRetries(ctx context.Context, dueBefore time.Time, limit int, owner string, leaseUntil time.Time) ([]listingkit.SDSChildRetryJob, error) {
 	if strings.TrimSpace(owner) == "" {
 		return nil, fmt.Errorf("SDS child retry lease owner is required")

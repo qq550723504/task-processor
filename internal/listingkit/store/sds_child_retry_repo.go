@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/shared/tenantctx"
 )
 
 func (r *taskRepository) ScheduleSDSChildRetry(ctx context.Context, job *listingkit.SDSChildRetryJob) (*listingkit.SDSChildRetryJob, error) {
@@ -73,6 +74,15 @@ func (r *taskRepository) ListDueSDSChildRetries(ctx context.Context, dueBefore t
 		db = db.Limit(limit)
 	}
 	return jobs, db.Find(&jobs).Error
+}
+
+func (r *taskRepository) ListSDSChildRetries(ctx context.Context, taskID string) ([]listingkit.SDSChildRetryJob, error) {
+	db := r.db.WithContext(ctx).Where("listingkit_task_id = ?", taskID)
+	if tenantID := tenantctx.TenantIDFromContext(ctx); tenantID != "" {
+		db = db.Where("tenant_id = ?", tenantID)
+	}
+	var jobs []listingkit.SDSChildRetryJob
+	return jobs, db.Order("updated_at DESC, id ASC").Find(&jobs).Error
 }
 
 func (r *taskRepository) ClaimDueSDSChildRetries(ctx context.Context, dueBefore time.Time, limit int, owner string, leaseUntil time.Time) ([]listingkit.SDSChildRetryJob, error) {

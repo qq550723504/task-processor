@@ -44,6 +44,16 @@ export type ListingKitChildTask = {
   error?: string;
 };
 
+export type ListingKitChildRetry = {
+  task_id?: string;
+  kind?: string;
+  status?: string;
+  attempt?: number;
+  next_retry_at?: string;
+  last_error?: string;
+  updated_at?: string;
+};
+
 export type ListingKitWorkflowStage = {
   kind?: string;
   status?: "pending" | "running" | "completed" | "skipped" | "degraded" | "failed" | string;
@@ -141,6 +151,7 @@ export type ListingKitTaskResult = {
   shein_latest_submission_error?: string;
   shein_submission_remote_status?: string;
   result?: ListingKitTaskResultData;
+  child_retries?: ListingKitChildRetry[];
   retryable_block?: RetryableBlock;
   error?: string;
   review_reasons?: string[];
