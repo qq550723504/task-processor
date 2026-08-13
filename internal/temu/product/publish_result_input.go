@@ -290,6 +290,12 @@ func buildSavePublishResultInput(temuCtx *temucontext.TemuTaskContext) (*SavePub
 	if task == nil {
 		return nil, fmt.Errorf("task is not initialized")
 	}
+	if temuCtx.StoreInfo == nil {
+		return nil, fmt.Errorf("store info is not initialized")
+	}
+	if strings.TrimSpace(temuCtx.StoreInfo.OwnerUserID) == "" {
+		return nil, fmt.Errorf("store owner is not initialized")
+	}
 
 	submitResponse, exists := getSubmitResponseFromContext(temuCtx)
 	if !exists {
