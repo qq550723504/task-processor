@@ -250,14 +250,14 @@ Task 8's focused gates passed after the report was written:
 
 | Verification | Result |
 | --- | --- |
-| `Invoke-Pester ./scripts/openmeter-poc.Tests.ps1` | pass: 15, fail: 0, skip: 0 |
-| `Invoke-Pester ./scripts/test-all.Tests.ps1` | pass: 2, fail: 0, skip: 0 |
+| `Invoke-Pester ./scripts/openmeter-poc.Tests.ps1` | pass: 16, fail: 0, skip: 0 |
+| `Invoke-Pester ./scripts/test-all.Tests.ps1` | pass: 4, fail: 0, skip: 0 |
 | `Remove-Item Env:OPENMETER_POC ...; go test ./internal/integration/openmeter -count=1` | pass |
 | `go test ./tests -run OpenMeter -count=1` | pass |
-| Root module: `go test -count=1 ./cmd/... ./internal/... ./tests/...` | pass |
+| Root module: `go test -count=1 ./...` | pass, including all six `scripts/listingkit-shein-pod-image-index-backfill` tests |
 | Tools module: `go test -count=1 ./...` from `tools` | pass |
 | Debug module: `go test -count=1 ./...` from `hack/debug` | pass |
-| `./scripts/test-all.ps1 -count=1` | pass: root, tools, and debug modules; exit 0 in 95.7 seconds |
+| `./scripts/test-all.ps1 -count=1` | pass: complete root, tools, and debug modules; exit 0 in 93.1 seconds |
 | `git diff --check` | pass |
 
 The original `scripts/test-all.ps1` passed the nested `tools` and `hack/debug`
@@ -288,6 +288,26 @@ The metadata-only repair is commit `1d809e7f0`. A subsequent `go mod tidy -diff`
 was empty, the debug module passed, and the complete module-aware harness passed
 all three modules with exit 0. The original blocker was already documented in
 `docs/refactoring/code-health-decisions.md` before Task 8.
+
+Review then identified three additional harness/input gaps. Behavior-specific
+RED proved that the root patterns omitted the real
+`scripts/listingkit-shein-pod-image-index-backfill` package (fake exit `29`),
+that `$PSNativeCommandUseErrorActionPreference = $true` converted a nested fake
+exit `23` into process exit `1`, and that both Go and PowerShell accepted
+`run--42` and `run-`. The narrow corrections were:
+
+- test the root module with `./...`; Go excludes the nested modules, which the
+  harness still tests in their own directories;
+- catch `NativeCommandExitException`, restore the working directory, and return
+  its exact `ExitCode` without hiding native output;
+- require RunIds to match `^[a-z0-9]+(?:-[a-z0-9]+)*$` and be no longer than 40
+  characters in both the Go opt-in gate and PowerShell path gate.
+
+GREEN was harness Pester 4/4, runner Pester 16/16, focused Go RunId tests PASS,
+all six previously omitted root-package tests PASS, and the refreshed exact
+full harness PASS in 93.1 seconds. The review correction is commit `72b897b93`.
+It changes no Docker semantics, so the successful pinned PoC was not rerun and
+remains bound to source SHA `50ed0a06bd3e4248836011ba18296b283b40bdf9`.
 
 The architecture-document guard also required the fixed-name report to be
 listed in `docs/architecture/README.md`; the authorized minimal index entry was
