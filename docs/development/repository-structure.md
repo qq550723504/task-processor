@@ -20,12 +20,24 @@
 ## 顶层目录约定
 
 - `cmd/`
-  - 只放正式服务或正式任务入口。
-  - 当前官方入口只有：
+  - 只放受维护的产品运行入口或有明确所有者的运维入口。
+  - 当前四个产品运行入口为：
     - `listing-control-plane`
     - `product-listing-api`
     - `shein-listing`
     - `temu-listing`
+  - 当前十个运维入口为：
+    - `fingerprint-browser-installer`
+    - `listing-scheduler`
+    - `listingkit-identity-preflight`
+    - `listingkit-owner-scope-dry-run`
+    - `listingkit-owner-scope-exceptions`
+    - `listingkit-schema-migrate`
+    - `playwright-installer`
+    - `product-listing-api-schema-migrate`
+    - `shein-import-platform-recovery`
+    - `shein-login-worker`
+  - 每个运维入口必须由 `.github/`、`deployments/` 或 `scripts/` 中的构建、部署或脚本引用明确其维护所有者；未归类或同时归类为两类的入口不允许保留在 `cmd/`。
   - 不再新增临时调试可执行程序。
   - 历史爬虫、订阅、兼容 API、地址复制、一次性迁移或调试入口不得回流到 `cmd/`；确需保留时放到 `hack/`、`tools/` 或业务模块内。
   - 不放本地 `logs`、`tmp`、`__debug_bin*` 等运行态产物；这类文件统一放到仓库根 `.local/`。
