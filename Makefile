@@ -1,7 +1,7 @@
 # Makefile for Task Processor / ListingKit
 .PHONY: all build-all clean test test-fast test-all test-coverage help \
 	build-listing-control-plane build-product-listing-api build-shein build-temu \
-	run-listing-control-plane run-product-listing-api run-shein run-temu lint fmt api-contract-check
+	run-listing-control-plane run-product-listing-api run-shein run-temu lint fmt api-contract-check code-health-audit code-health-verify
 
 # 版本信息
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "v1.0.0")
@@ -32,6 +32,8 @@ help:
 	@echo "  make test                      - 运行常用快速测试"
 	@echo "  make test-fast                 - 运行常用快速测试"
 	@echo "  make test-all                  - 运行全部 Go 测试"
+	@echo "  make code-health-audit        - 运行只读死代码/重复代码审计"
+	@echo "  make code-health-verify       - 校验审计基线与前端未分类发现"
 	@echo ""
 
 all: build-all
@@ -110,6 +112,14 @@ fmt:
 api-contract-check:
 	node scripts/generate-api-contract.mjs
 	git diff --exit-code -- docs/api/listingkit-asset.openapi.yaml web/listingkit-ui/src/lib/api/generated
+
+# Reproducible read-only code-health audit. Reports stay under .local/.
+code-health-audit:
+	pwsh -File scripts/code-health-audit.ps1 -Mode All
+
+# CI/local ratchet: compile, run pinned analyzers, and reject new Knip findings.
+code-health-verify:
+	pwsh -File scripts/code-health-audit.ps1 -Mode Verify
 
 # 本地运行 Listing Control Plane
 run-listing-control-plane:

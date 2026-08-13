@@ -10,7 +10,7 @@ const dispatchEventWindowSchema = z
   })
   .passthrough();
 
-export const dispatchEventReasonCountSchema = z
+ const dispatchEventReasonCountSchema = z
   .object({
     reasonCode: z.string(),
     action: z.string(),
@@ -18,7 +18,7 @@ export const dispatchEventReasonCountSchema = z
   })
   .passthrough();
 
-export const dispatchEventStoreBlockerSchema = z
+ const dispatchEventStoreBlockerSchema = z
   .object({
     tenantId: z.number(),
     storeId: z.number(),
@@ -32,7 +32,7 @@ export const dispatchEventStoreBlockerSchema = z
   })
   .passthrough();
 
-export const dispatchEventSummarySchema = z
+ const dispatchEventSummarySchema = z
   .object({
     window: dispatchEventWindowSchema,
     total: z.number(),
@@ -44,7 +44,7 @@ export const dispatchEventSummarySchema = z
   })
   .passthrough();
 
-export const dispatchEventItemSchema = z
+ const dispatchEventItemSchema = z
   .object({
     id: z.number(),
     createdAt: z.string(),
@@ -79,15 +79,7 @@ const dispatchEventPageSchema = z
     ...page,
     page_size: page.page_size ?? page.pageSize ?? page.limit ?? page.items.length,
   }));
-
-export type DispatchEventReasonCount = z.infer<
-  typeof dispatchEventReasonCountSchema
->;
-export type DispatchEventStoreBlocker = z.infer<
-  typeof dispatchEventStoreBlockerSchema
->;
 export type DispatchEventSummary = z.infer<typeof dispatchEventSummarySchema>;
-export type DispatchEventItem = z.infer<typeof dispatchEventItemSchema>;
 export type DispatchEventPage = z.infer<typeof dispatchEventPageSchema>;
 
 export type DispatchEventQuery = QueueQuery & {
@@ -102,7 +94,7 @@ export type DispatchEventQuery = QueueQuery & {
   page_size?: number;
 };
 
-export function parseDispatchEventSummaryResponse(
+ function parseDispatchEventSummaryResponse(
   payload: unknown,
 ): DispatchEventSummary {
   return parseApiResponseShape(
@@ -112,7 +104,7 @@ export function parseDispatchEventSummaryResponse(
   );
 }
 
-export function parseDispatchEventPageResponse(
+ function parseDispatchEventPageResponse(
   payload: unknown,
 ): DispatchEventPage {
   return parseApiResponseShape(

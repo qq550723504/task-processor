@@ -91,7 +91,7 @@ const studioBatchRunItemsResponseSchema = z
   })
   .passthrough();
 
-export function mapStudioBatchRun(
+ function mapStudioBatchRun(
   payload: z.infer<typeof studioBatchRunSchema>,
 ): SheinStudioBatchRun {
   return {
@@ -115,7 +115,7 @@ export function mapStudioBatchRun(
   };
 }
 
-export function mapStudioBatchRunItem(
+ function mapStudioBatchRunItem(
   payload: z.infer<typeof studioBatchRunItemSchema>,
 ): SheinStudioBatchRunItem {
   return {
@@ -150,7 +150,7 @@ export function parseSheinStudioBatchRunStartResponse(
   };
 }
 
-export function parseSheinStudioBatchRunResponse(
+ function parseSheinStudioBatchRunResponse(
   payload: unknown,
 ): SheinStudioBatchRun {
   const parsed = parseApiResponseShape(
@@ -161,7 +161,7 @@ export function parseSheinStudioBatchRunResponse(
   return mapStudioBatchRun(parsed.run);
 }
 
-export function parseSheinStudioBatchRunItemsResponse(
+ function parseSheinStudioBatchRunItemsResponse(
   payload: unknown,
 ): SheinStudioBatchRunItem[] {
   const parsed = parseApiResponseShape(

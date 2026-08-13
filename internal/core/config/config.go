@@ -95,17 +95,7 @@ func dotEnvCandidates() []string {
 		)
 	}
 
-	seen := make(map[string]struct{}, len(candidates))
-	result := make([]string, 0, len(candidates))
-	for _, candidate := range candidates {
-		cleaned := filepath.Clean(candidate)
-		if _, ok := seen[cleaned]; ok {
-			continue
-		}
-		seen[cleaned] = struct{}{}
-		result = append(result, cleaned)
-	}
-	return result
+	return uniqueCleanPaths(candidates)
 }
 
 func dotEnvCandidatesForConfig(configFile string) []string {
@@ -122,6 +112,10 @@ func dotEnvCandidatesForConfig(configFile string) []string {
 	}
 	candidates = append(candidates, baseCandidates...)
 
+	return uniqueCleanPaths(candidates)
+}
+
+func uniqueCleanPaths(candidates []string) []string {
 	seen := make(map[string]struct{}, len(candidates))
 	result := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {

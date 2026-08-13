@@ -1,6 +1,8 @@
 # Platform-aware Asset Refactoring Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **Authority:** Historical implementation record. The platform-aware asset refactor is complete. This file no longer defines the active execution queue; use `docs/refactoring/current-refactoring-status.md` and GitHub issue #137 for current order.
+>
+> **For agentic workers:** Retain the checklist as execution evidence. Do not re-execute it as a current plan; use the active current-state document and backlog authority above.
 
 **Goal:** Make ListingKit's image and asset flow explicitly target-platform-aware, then use that vertical slice to establish reusable configuration, event, and HTTP-contract boundaries.
 

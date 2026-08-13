@@ -1,4 +1,4 @@
-export type SDSRetirementRunStatus =
+ type SDSRetirementRunStatus =
   | "draft"
   | "ready"
   | "running"
@@ -7,7 +7,7 @@ export type SDSRetirementRunStatus =
   | "failed"
   | "cancelled";
 
-export type SDSRetirementItemStatus =
+ type SDSRetirementItemStatus =
   | "pending"
   | "selected"
   | "running"
@@ -16,7 +16,7 @@ export type SDSRetirementItemStatus =
   | "failed"
   | "skipped";
 
-export type SDSRetirementRun = {
+ type SDSRetirementRun = {
   id: string;
   tenant_id?: string;
   platform: "shein" | string;

@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"fmt"
+	"time"
 )
 
 type taskLifecycleServiceConfig struct {
@@ -70,7 +71,15 @@ func (s *taskLifecycleService) GetTaskResult(ctx context.Context, taskID string)
 			return nil, err
 		}
 	}
-	return buildTaskResult(task, resultPayload), nil
+	result := buildTaskResult(task, resultPayload)
+	if source, ok := s.repo.(SDSChildRetryJobStatusSource); ok {
+		jobs, err := source.ListSDSChildRetries(ctx, task.ID)
+		if err != nil {
+			return nil, err
+		}
+		result.ChildRetries = projectSDSChildRetryStatuses(jobs, time.Now().UTC())
+	}
+	return result, nil
 }
 
 func (s *taskLifecycleService) GetSDSBaselineReadiness(ctx context.Context, query *SDSBaselineReadinessQuery) (*SDSBaselineReadiness, error) {

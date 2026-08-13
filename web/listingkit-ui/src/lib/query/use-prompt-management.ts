@@ -3,7 +3,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
-  getPromptTemplateSchema,
   listPromptTemplateCatalog,
   listPromptTemplates,
   setPromptTemplateStatus,
@@ -28,14 +27,6 @@ export function usePromptTemplateCatalog() {
   return useQuery({
     queryKey: listingKitPromptKeys.catalog,
     queryFn: listPromptTemplateCatalog,
-  });
-}
-
-export function usePromptTemplateSchema(key: string, enabled = true) {
-  return useQuery({
-    queryKey: listingKitPromptKeys.schema(key),
-    queryFn: () => getPromptTemplateSchema(key),
-    enabled: enabled && key.trim().length > 0,
   });
 }
 

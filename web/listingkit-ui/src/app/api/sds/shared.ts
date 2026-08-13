@@ -7,7 +7,7 @@ import {
 
 const DEFAULT_SERVICE_API_BASE = "http://localhost:8085/api/v1";
 
-export class SDSAPIError extends Error {
+ class SDSAPIError extends Error {
   code: string;
   status: number;
   detail?: string;
@@ -53,7 +53,7 @@ function buildSDSAPIBase() {
   return `${serviceBase.replace(/\/+$/, "")}/sds`;
 }
 
-export function buildSDSURL(pathname: string, query?: URLSearchParams) {
+ function buildSDSURL(pathname: string, query?: URLSearchParams) {
   const normalizedBase = buildSDSAPIBase().replace(/\/+$/, "");
   const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
   const suffix = query && query.toString() ? `?${query.toString()}` : "";

@@ -69,7 +69,7 @@ export async function getCanonicalProducts(
   };
 }
 
-export function buildCanonicalProductListItemFromTask(
+ function buildCanonicalProductListItemFromTask(
   task: ListingKitTaskListItem,
 ): CanonicalProductListItem | null {
   const product = task.canonical_product;

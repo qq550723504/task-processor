@@ -10,4 +10,5 @@ type RetryChildTaskRequest struct {
 
 type ChildTaskRetryService interface {
 	RetryTaskChildTask(ctx context.Context, taskID string, req *RetryChildTaskRequest) (*TaskResult, error)
+	ScheduleTaskChildRetry(ctx context.Context, taskID string, req *RetryChildTaskRequest) (*TaskChildRetryAccepted, error)
 }

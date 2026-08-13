@@ -37,7 +37,7 @@ import type {
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
 
-export type StudioBatchDraftStatus =
+ type StudioBatchDraftStatus =
   | "selecting"
   | "generating"
   | "generated"
@@ -52,7 +52,7 @@ type RawCreatedTask = {
   design_id?: string;
 };
 
-export type StudioBatchDraftRecordResponse = {
+ type StudioBatchDraftRecordResponse = {
   id: string;
   tenant_id?: string;
   batch_name?: string;
@@ -96,7 +96,7 @@ export type StudioBatchDraftRecordResponse = {
   updated_at?: string;
 };
 
-export type StudioBatchDraftDesignResponse = {
+ type StudioBatchDraftDesignResponse = {
   id: string;
   tenant_id?: string;
   image_url?: string;
@@ -124,7 +124,7 @@ export type StudioBatchDraftDetailResponse = {
   designs?: StudioBatchDraftDesignResponse[];
 };
 
-export type StudioBatchListItemResponse = {
+ type StudioBatchListItemResponse = {
   id: string;
   tenant_id?: string;
   batch_name?: string;
@@ -156,7 +156,7 @@ export type StudioBatchListItemResponse = {
   updated_at?: string;
 };
 
-export type StudioBatchListResponse = {
+ type StudioBatchListResponse = {
   items?: StudioBatchListItemResponse[];
 };
 

@@ -102,7 +102,7 @@ export type ReviewSession = {
   sections?: ReviewSection[];
 };
 
-export type ReviewPatch = {
+ type ReviewPatch = {
   delta_token?: string;
   selected_platform?: string;
   selected_slot?: string;
@@ -144,7 +144,7 @@ export type ReviewPreviewResponse = {
   revision_mismatch_reason?: string;
 };
 
-export type PanelUpdate = {
+ type PanelUpdate = {
   dispatch_kind?: string;
   response_mode?: string;
   delta_token?: string;

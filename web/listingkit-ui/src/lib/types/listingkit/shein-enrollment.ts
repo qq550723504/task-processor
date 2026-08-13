@@ -50,9 +50,6 @@ export type SheinReviewActivityCandidateInput = {
   selected_for_run?: boolean;
 };
 
-export type ReviewSheinActivityCandidateInput =
-  SheinReviewActivityCandidateInput;
-
 export type SheinExecuteEnrollmentInput = {
   activity_type: string;
   activity_key?: string;
@@ -189,7 +186,7 @@ export type SheinSourceSDSCostGroupRecord = {
   manual_cost_price?: number | null;
 };
 
-export type SheinSourceSDSSKUCostGroupRecord = {
+ type SheinSourceSDSSKUCostGroupRecord = {
   group_key?: string;
   group_label?: string;
   source_code?: string;
@@ -207,7 +204,7 @@ export type SheinSourceSDSCostGroupListResponse = {
   total?: number;
 };
 
-export type SheinSourceSDSMetadataRecord = {
+ type SheinSourceSDSMetadataRecord = {
   source_code?: string;
   title?: string;
   product_sku?: string;
@@ -225,7 +222,7 @@ export type UpdateSheinSDSCostGroupResponse = {
   group?: SheinSDSCostGroupRecord;
 };
 
-export type SheinSyncJobRecord = {
+ type SheinSyncJobRecord = {
   id?: number;
   tenant_id?: number;
   store_id?: number;
@@ -290,7 +287,7 @@ export type SheinActivityCandidateRecord = {
   updated_at?: string;
 };
 
-export type SheinSKUCostPrice = {
+ type SheinSKUCostPrice = {
   sku_code?: string;
   cost_price?: number;
   currency?: string;
@@ -301,7 +298,7 @@ export type SheinActivityCandidateListResponse = {
   total?: number;
 };
 
-export type SheinRefreshCandidatesResult = {
+ type SheinRefreshCandidatesResult = {
   activity_type?: string;
   activity_key?: string;
   candidate_version?: string;
@@ -318,7 +315,7 @@ export type ReviewSheinActivityCandidateResponse = {
   candidate?: SheinActivityCandidateRecord;
 };
 
-export type SheinResetCandidatesResult = {
+ type SheinResetCandidatesResult = {
   matched_count?: number;
   reset_count?: number;
   skipped_count?: number;

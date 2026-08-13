@@ -1,6 +1,4 @@
 export {
-  STYLE_GALLERY_HANDOFF_STORAGE_KEY as SHEIN_STUDIO_GALLERY_HANDOFF_STORAGE_KEY,
-  buildStyleGalleryHandoff as buildSheinStudioGalleryHandoff,
   consumeStyleGalleryHandoff as consumeSheinStudioGalleryHandoff,
   evaluateSDSRatioMatch,
   saveStyleGalleryHandoff as saveSheinStudioGalleryHandoff,
@@ -9,6 +7,4 @@ export {
 
 export type {
   SDSRatioMatch,
-  SDSRatioMatchStatus,
-  StyleGalleryHandoff as SheinStudioGalleryHandoff,
 } from "@/lib/style-gallery/gallery-handoff";
