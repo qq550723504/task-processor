@@ -1,5 +1,7 @@
 package workspace
 
+import "task-processor/internal/pkg/strx"
+
 import sheinpub "task-processor/internal/publishing/shein"
 
 func BuildPreviewCardStatus(pkg *sheinpub.Package) string {
@@ -15,7 +17,7 @@ func BuildPreviewCardSummary(pkg *sheinpub.Package) string {
 		summary = firstNonEmpty(pkg.SpuName, pkg.ProductNameEn, summary)
 	}
 	if pkg != nil && pkg.Inspection != nil {
-		summary = firstNonEmpty(joinStrings(pkg.Inspection.Summary, "；"), summary)
+		summary = firstNonEmpty(strx.JoinNonBlank(pkg.Inspection.Summary, "；"), summary)
 	}
 	return summary
 }
