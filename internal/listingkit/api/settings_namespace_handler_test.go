@@ -341,3 +341,62 @@ func TestUpdateSheinSettingsPersistsCurrentFields(t *testing.T) {
 		t.Fatalf("updated SHEIN settings = %+v, want current fields persisted", svc.sheinSettingsReq)
 	}
 }
+
+func TestUpdateSheinSettingsIgnoresLegacyUnknownField(t *testing.T) {
+	t.Parallel()
+
+	svc := &stubSettingsNamespaceService{}
+	h, err := NewHandler(
+		&stubHandlerCoreService{},
+		WithSettingsHandlerService(svc),
+		WithSubscriptionService(activeStudioOnlySubscriptionService(t)),
+	)
+	if err != nil {
+		t.Fatalf("NewHandler returned error: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.PUT("/settings/:namespace", h.UpdateSettingsNamespace)
+
+	legacyKey := strings.Join([]string{"default", "_store_id"}, "")
+	body, err := json.Marshal(map[string]any{
+		legacyKey: 9,
+		"site":    "DE",
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPut, "/settings/shein", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("PUT /settings/shein with legacy field = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("json.Unmarshal response: %v", err)
+	}
+	if _, exists := payload[legacyKey]; exists {
+		t.Fatalf("response = %#v, must not expose legacy field %q", payload, legacyKey)
+	}
+	if payload["site"] != "DE" {
+		t.Fatalf("response site = %#v, want DE", payload["site"])
+	}
+	if svc.sheinSettingsReq == nil || svc.sheinSettingsReq.Site != "DE" {
+		t.Fatalf("updated SHEIN settings = %+v, want Site DE", svc.sheinSettingsReq)
+	}
+	if svc.sheinSettings == nil || svc.sheinSettings.Site != "DE" {
+		t.Fatalf("stored SHEIN settings = %+v, want Site DE", svc.sheinSettings)
+	}
+	storedJSON, err := json.Marshal(svc.sheinSettings)
+	if err != nil {
+		t.Fatalf("json.Marshal stored settings: %v", err)
+	}
+	if bytes.Contains(storedJSON, []byte(`"`+legacyKey+`"`)) {
+		t.Fatalf("stored SHEIN settings retained legacy field %q: %s", legacyKey, storedJSON)
+	}
+}
