@@ -99,6 +99,7 @@ func (input *SavePublishResultInput) BuildImportMappingCreateReq(sku *models.Sku
 	return &listingadmin.ProductImportMappingCreateReqDTO{
 		ImportTaskId: input.Task.ID,
 		TenantID:     input.Task.TenantID,
+		OwnerUserID:  input.StoreInfo.OwnerUserID,
 		StoreId:      input.Task.StoreID,
 		Platform:     "TEMU",
 		Region:       input.Task.Region,

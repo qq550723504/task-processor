@@ -74,6 +74,7 @@ type DailyListingCountAPI interface {
 type StoreRespDTO struct {
 	ID                       int64               `json:"id"`
 	TenantID                 int64               `json:"tenantId"`
+	OwnerUserID              string              `json:"ownerUserId,omitempty"`
 	StoreID                  string              `json:"storeId"`
 	Name                     string              `json:"name"`
 	Username                 string              `json:"username"`
@@ -264,6 +265,7 @@ type PricingRuleAPI interface {
 type ProductImportMappingCreateReqDTO struct {
 	ID                      *int64   `json:"id,omitempty"`
 	TenantID                int64    `json:"tenantId"`
+	OwnerUserID             string   `json:"ownerUserId,omitempty"`
 	ImportTaskId            int64    `json:"importTaskId"`
 	StoreId                 int64    `json:"storeId"`
 	Platform                string   `json:"platform"`
@@ -299,6 +301,7 @@ type ProductImportMappingCheckReqDTO struct {
 // ProductImportMappingRespDTO 产品导入映射关系响应DTO
 type ProductImportMappingRespDTO struct {
 	ID                      int64               `json:"id"`
+	OwnerUserID             string              `json:"ownerUserId,omitempty"`
 	ImportTaskId            int64               `json:"importTaskId"`
 	StoreId                 int64               `json:"storeId"`
 	Platform                string              `json:"platform"`
