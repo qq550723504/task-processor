@@ -1,0 +1,12 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/lib/api/generated-request-constraints.type-test.ts",
+    "src/**/*.test.{ts,tsx}"
+  ],
+  "project": ["src/**/*.{ts,tsx}"],
+  // The complete generated API surface is an intentional published contract.
+  "ignore": ["src/lib/api/generated/**"],
+  // The generator is invoked by ../../scripts/generate-api-contract.mjs via its bin path.
+  "ignoreDependencies": ["@hey-api/openapi-ts"]
+}
