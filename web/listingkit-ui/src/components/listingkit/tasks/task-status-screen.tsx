@@ -19,7 +19,10 @@ import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useExecuteAction } from "@/lib/query/use-action";
-import { useRetryChildTask } from "@/lib/query/use-child-task-retry";
+import {
+  getTaskRetryVersion,
+  useRetryChildTask,
+} from "@/lib/query/use-child-task-retry";
 import { useRecoverTaskNow } from "@/lib/query/use-task-recovery";
 import {
   sheinSubmissionRemoteStatusLabel,
@@ -96,7 +99,7 @@ export function TaskStatusScreen({
 }) {
   const router = useRouter();
   const layerAction = useExecuteAction(taskId, {});
-  const childTaskRetry = useRetryChildTask(taskId);
+  const childTaskRetry = useRetryChildTask(taskId, getTaskRetryVersion(task));
   const taskRecovery = useRecoverTaskNow(taskId);
   const isTerminal =
     task?.status === "completed" ||
@@ -235,7 +238,7 @@ export function TaskStatusScreen({
         onRetryChildTask={handleRetrySDSDesignSync}
         recoveringNow={taskRecovery.isPending}
         retryingChildTaskKind={childTaskRetry.isPending ? "sds_design_sync" : null}
-        retryQueued={childTaskRetry.data?.status === "queued"}
+        retryQueued={childTaskRetry.retryQueued}
         retryError={childTaskRetry.error}
       />
       <ReviewReasonsCard task={task} taskId={taskId} />

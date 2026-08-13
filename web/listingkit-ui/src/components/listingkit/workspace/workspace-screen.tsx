@@ -39,7 +39,10 @@ import {
 import { useUpdateSheinFinalDraft } from "@/lib/query/use-shein-final-draft";
 import { useClearSheinResolutionCache } from "@/lib/query/use-shein-resolution-cache";
 import { useExecuteAction } from "@/lib/query/use-action";
-import { useRetryChildTask } from "@/lib/query/use-child-task-retry";
+import {
+  getTaskRetryVersion,
+  useRetryChildTask,
+} from "@/lib/query/use-child-task-retry";
 
 export function WorkspaceScreen({ taskId }: { taskId: string }) {
 	const [sdsRepairOpen, setSDSRepairOpen] = useState(false);
@@ -108,7 +111,10 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         sheinActions.handleRegenerateSheinSaleAttributes,
     },
   });
-  const childTaskRetry = useRetryChildTask(taskId);
+  const childTaskRetry = useRetryChildTask(
+    taskId,
+    getTaskRetryVersion(taskResult.data),
+  );
   const sheinViewProps = buildSheinWorkspaceViewProps({
     shein: preview.data?.shein,
     selectedPlatform,
@@ -227,7 +233,7 @@ export function WorkspaceScreen({ taskId }: { taskId: string }) {
         task={taskResult.data}
         onRetryChildTask={(kind) => childTaskRetry.mutate({ kind })}
         retryingChildTaskKind={childTaskRetry.isPending ? childTaskRetry.variables?.kind ?? null : null}
-        retryQueued={childTaskRetry.data?.status === "queued"}
+        retryQueued={childTaskRetry.retryQueued}
         retryError={childTaskRetry.error}
       />
       <ReviewReasonsCard

@@ -25,7 +25,7 @@ describe("useRetryChildTask", () => {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
 
-    const { result } = renderHook(() => useRetryChildTask("task-1"), { wrapper });
+    const { result } = renderHook(() => useRetryChildTask("task-1", "version-1"), { wrapper });
 
     result.current.mutate({ kind: "sds_design_sync" });
 
@@ -46,10 +46,37 @@ describe("useRetryChildTask", () => {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
 
-    const { result } = renderHook(() => useRetryChildTask("task-1"), { wrapper });
+    const { result } = renderHook(() => useRetryChildTask("task-1", "version-1"), { wrapper });
 
     result.current.mutate({ kind: "sds_design_sync" });
 
     await waitFor(() => expect(result.current.data?.status).toBe("queued"));
+  });
+
+  it("clears the queued acknowledgement after the task result version changes", async () => {
+    retryChildTaskMock.mockResolvedValue({
+      task_id: "task-1",
+      kind: "sds_design_sync",
+      status: "queued",
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    const { result, rerender } = renderHook(
+      ({ taskVersion }: { taskVersion: string }) =>
+        useRetryChildTask("task-1", taskVersion),
+      { initialProps: { taskVersion: "version-1" }, wrapper },
+    );
+
+    result.current.mutate({ kind: "sds_design_sync" });
+
+    await waitFor(() => expect(result.current.retryQueued).toBe(true));
+    rerender({ taskVersion: "version-2" });
+    await waitFor(() => expect(result.current.retryQueued).toBe(false));
+    expect(result.current.data).toBeUndefined();
   });
 });
