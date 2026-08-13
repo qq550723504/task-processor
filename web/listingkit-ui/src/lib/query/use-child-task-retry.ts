@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { retryChildTask } from "@/lib/api/child-task-retry";
+import { listingKitKeys } from "@/lib/query/keys";
 import type { ListingKitTaskResult } from "@/lib/types/listingkit";
 
 export function getTaskRetryVersion(task?: ListingKitTaskResult | null) {
@@ -45,10 +46,24 @@ export function useRetryChildTask(taskId: string, taskVersion: string) {
     },
   });
 
+  const retryQueued =
+    mutation.data?.status === "queued" &&
+    queuedTaskVersion === taskVersion;
+
+  useEffect(() => {
+    if (!retryQueued) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      void client.refetchQueries({
+        queryKey: listingKitKeys.taskResult(taskId),
+      });
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [client, retryQueued, taskId]);
+
   return {
     ...mutation,
-    retryQueued:
-      mutation.data?.status === "queued" &&
-      queuedTaskVersion === taskVersion,
+    retryQueued,
   };
 }
