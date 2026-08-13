@@ -422,6 +422,10 @@ function Invoke-OpenMeterPoCGoPhase {
         [Parameter(Mandatory = $true)]
         [string[]]$ArgumentList,
         [Parameter(Mandatory = $true)]
+        [string]$ExpectedPackage,
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedTest,
+        [Parameter(Mandatory = $true)]
         [string]$LogName,
         [Parameter(Mandatory = $true)]
         [string]$RunId,
@@ -433,6 +437,10 @@ function Invoke-OpenMeterPoCGoPhase {
         [string]$ApiKey = ""
     )
 
+    if ($ArgumentList.Count -eq 0 -or $ArgumentList[0] -ne "test") {
+        throw "OpenMeter PoC Go phase must invoke go test"
+    }
+    $jsonArguments = @($ArgumentList[0], "-json") + @($ArgumentList | Select-Object -Skip 1)
     $names = @("OPENMETER_POC", "OPENMETER_POC_URL", "OPENMETER_POC_RUN_ID", "OPENMETER_POC_PHASE", "OPENMETER_API_KEY")
     $previous = @{}
     foreach ($name in $names) {
@@ -452,12 +460,53 @@ function Invoke-OpenMeterPoCGoPhase {
         }
 
         $outputPath = Join-Path $Paths.EvidencePath $LogName
-        $null = Invoke-OpenMeterPoCRequiredCommand -CommandInvoker $CommandInvoker -FilePath "go" -ArgumentList $ArgumentList -WorkingDirectory $Paths.RepositoryRoot -Paths $Paths -ApiKey $ApiKey -OutputPath $outputPath
+        $output = Invoke-OpenMeterPoCRequiredCommand -CommandInvoker $CommandInvoker -FilePath "go" -ArgumentList $jsonArguments -WorkingDirectory $Paths.RepositoryRoot -Paths $Paths -ApiKey $ApiKey -OutputPath $outputPath
+        Assert-OpenMeterPoCTestPassed -Output $output -ExpectedPackage $ExpectedPackage -ExpectedTest $ExpectedTest
     }
     finally {
         foreach ($name in $names) {
             [Environment]::SetEnvironmentVariable($name, $previous[$name], "Process")
         }
+    }
+}
+
+function Assert-OpenMeterPoCTestPassed {
+    param(
+        [AllowEmptyString()]
+        [string]$Output,
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedPackage,
+        [Parameter(Mandatory = $true)]
+        [string]$ExpectedTest
+    )
+
+    $targetEvents = @()
+    $lineNumber = 0
+    foreach ($line in @($Output -split '\r?\n')) {
+        $lineNumber++
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+        try {
+            $event = $line | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            throw "go test -json emitted invalid JSON at line ${lineNumber}: $($_.Exception.Message)"
+        }
+        if ([string]$event.Package -eq $ExpectedPackage -and [string]$event.Test -eq $ExpectedTest) {
+            $targetEvents += $event
+        }
+    }
+
+    if (@($targetEvents | Where-Object { $_.Action -eq "skip" }).Count -ne 0) {
+        throw "required Go test $ExpectedPackage/$ExpectedTest was skipped"
+    }
+    if (@($targetEvents | Where-Object { $_.Action -eq "fail" }).Count -ne 0) {
+        throw "required Go test $ExpectedPackage/$ExpectedTest failed"
+    }
+    $passCount = @($targetEvents | Where-Object { $_.Action -eq "pass" }).Count
+    if ($passCount -ne 1) {
+        throw "required Go test $ExpectedPackage/$ExpectedTest emitted $passCount exact PASS events, want 1"
     }
 }
 
@@ -527,16 +576,16 @@ function Invoke-OpenMeterPoC {
         Save-OpenMeterPoCResourceSnapshot -Name "before" -Paths $paths -CommandInvoker $CommandInvoker -ApiKey $ApiKey
 
         $defaultArguments = @("test", "./internal/integration/openmeter", "./tests", "-run", "OpenMeter|UsageEvent|Client|PoC", "-count=1")
-        Invoke-OpenMeterPoCGoPhase -Phase $null -ArgumentList $defaultArguments -LogName "go-test-default.log" -RunId $RunId -Paths $paths -CommandInvoker $CommandInvoker -ApiKey $ApiKey
-        Invoke-OpenMeterPoCGoPhase -Phase "contract" -ArgumentList @("test", "./internal/integration/openmeter", "-run", "^TestPoC", "-count=1", "-v") -LogName "go-test-contract.log" -RunId $RunId -Paths $paths -CommandInvoker $CommandInvoker -ApiKey $ApiKey
-        Invoke-OpenMeterPoCGoPhase -Phase "seed" -ArgumentList @("test", "./internal/integration/openmeter", "-run", "^TestPoCReplaySeed$", "-count=1", "-v") -LogName "go-test-replay-seed.log" -RunId $RunId -Paths $paths -CommandInvoker $CommandInvoker -ApiKey $ApiKey
+        Invoke-OpenMeterPoCGoPhase -Phase $null -ArgumentList $defaultArguments -ExpectedPackage "task-processor/tests" -ExpectedTest "TestOpenMeterImportsStayInsideIsolatedAdapter" -LogName "go-test-default.log" -RunId $RunId -Paths $paths -CommandInvoker $CommandInvoker -ApiKey $ApiKey
+        Invoke-OpenMeterPoCGoPhase -Phase "contract" -ArgumentList @("test", "./internal/integration/openmeter", "-run", "^TestPoC", "-count=1", "-v") -ExpectedPackage "task-processor/internal/integration/openmeter" -ExpectedTest "TestPoCCountMetersAggregateCommittedSuccesses" -LogName "go-test-contract.log" -RunId $RunId -Paths $paths -CommandInvoker $CommandInvoker -ApiKey $ApiKey
+        Invoke-OpenMeterPoCGoPhase -Phase "seed" -ArgumentList @("test", "./internal/integration/openmeter", "-run", "^TestPoCReplaySeed$", "-count=1", "-v") -ExpectedPackage "task-processor/internal/integration/openmeter" -ExpectedTest "TestPoCReplaySeed" -LogName "go-test-replay-seed.log" -RunId $RunId -Paths $paths -CommandInvoker $CommandInvoker -ApiKey $ApiKey
 
         $null = Invoke-OpenMeterPoCRequiredCommand -CommandInvoker $CommandInvoker -FilePath "docker" -ArgumentList (Get-OpenMeterPoCComposeArguments -Paths $paths -Tail @("stop", "openmeter")) -WorkingDirectory (Split-Path -Parent $paths.BaseComposePath) -Paths $paths -ApiKey $ApiKey
-        Invoke-OpenMeterPoCGoPhase -Phase "unavailable" -ArgumentList @("test", "./internal/integration/openmeter", "-run", "^TestPoCUnavailableClassifiesFailureAsRetryable$", "-count=1", "-v") -LogName "go-test-replay-unavailable.log" -RunId $RunId -Paths $paths -CommandInvoker $CommandInvoker -ApiKey $ApiKey
+        Invoke-OpenMeterPoCGoPhase -Phase "unavailable" -ArgumentList @("test", "./internal/integration/openmeter", "-run", "^TestPoCUnavailableClassifiesFailureAsRetryable$", "-count=1", "-v") -ExpectedPackage "task-processor/internal/integration/openmeter" -ExpectedTest "TestPoCUnavailableClassifiesFailureAsRetryable" -LogName "go-test-replay-unavailable.log" -RunId $RunId -Paths $paths -CommandInvoker $CommandInvoker -ApiKey $ApiKey
 
         $null = Invoke-OpenMeterPoCRequiredCommand -CommandInvoker $CommandInvoker -FilePath "docker" -ArgumentList (Get-OpenMeterPoCComposeArguments -Paths $paths -Tail @("up", "-d", "--wait", "openmeter")) -WorkingDirectory (Split-Path -Parent $paths.BaseComposePath) -Paths $paths -ApiKey $ApiKey
         Assert-OpenMeterPoCHealth -HealthProbe $HealthProbe -Paths $paths -ApiKey $ApiKey
-        Invoke-OpenMeterPoCGoPhase -Phase "replay" -ArgumentList @("test", "./internal/integration/openmeter", "-run", "^TestPoCReplayAfterRecoveryConvergesExactly$", "-count=1", "-v") -LogName "go-test-replay-recovery.log" -RunId $RunId -Paths $paths -CommandInvoker $CommandInvoker -ApiKey $ApiKey
+        Invoke-OpenMeterPoCGoPhase -Phase "replay" -ArgumentList @("test", "./internal/integration/openmeter", "-run", "^TestPoCReplayAfterRecoveryConvergesExactly$", "-count=1", "-v") -ExpectedPackage "task-processor/internal/integration/openmeter" -ExpectedTest "TestPoCReplayAfterRecoveryConvergesExactly" -LogName "go-test-replay-recovery.log" -RunId $RunId -Paths $paths -CommandInvoker $CommandInvoker -ApiKey $ApiKey
 
         Save-OpenMeterPoCResourceSnapshot -Name "after" -Paths $paths -CommandInvoker $CommandInvoker -ApiKey $ApiKey
         Write-OpenMeterPoCFile -Path $paths.RunnerLogPath -AllowedRoot $paths.LocalRoot -Value "OpenMeter PoC run completed" -ApiKey $ApiKey -Append

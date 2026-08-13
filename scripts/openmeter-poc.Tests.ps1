@@ -100,7 +100,45 @@ function New-TestOpenMeterPoCFakes {
             if ($FailureMode -eq "go" -and $call.Phase -eq "contract") {
                 return [pscustomobject]@{ ExitCode = 23; Output = "contract phase failed" }
             }
-            return [pscustomobject]@{ ExitCode = 0; Output = "ok api-key=$Secret" }
+
+            $proof = switch ($call.Phase) {
+                "contract" { @{ Package = "task-processor/internal/integration/openmeter"; Test = "TestPoCCountMetersAggregateCommittedSuccesses" } }
+                "seed" { @{ Package = "task-processor/internal/integration/openmeter"; Test = "TestPoCReplaySeed" } }
+                "unavailable" { @{ Package = "task-processor/internal/integration/openmeter"; Test = "TestPoCUnavailableClassifiesFailureAsRetryable" } }
+                "replay" { @{ Package = "task-processor/internal/integration/openmeter"; Test = "TestPoCReplayAfterRecoveryConvergesExactly" } }
+                default { @{ Package = "task-processor/tests"; Test = "TestOpenMeterImportsStayInsideIsolatedAdapter" } }
+            }
+            $proofTest = $proof.Test
+            $proofAction = "pass"
+            if ($FailureMode -eq "go-skip-seed" -and $call.Phase -eq "seed") {
+                $proofAction = "skip"
+            }
+            if ($FailureMode -eq "go-missing-seed" -and $call.Phase -eq "seed") {
+                $proofTest = "TestPoCUnexpectedTarget"
+            }
+            $outputEvents = @(
+                ([ordered]@{
+                    Time = "2026-08-13T00:00:00Z"
+                    Action = "output"
+                    Package = $proof.Package
+                    Test = $proofTest
+                    Output = "api-key=$Secret`n"
+                } | ConvertTo-Json -Compress),
+                ([ordered]@{
+                    Time = "2026-08-13T00:00:00Z"
+                    Action = $proofAction
+                    Package = $proof.Package
+                    Test = $proofTest
+                    Elapsed = 0.01
+                } | ConvertTo-Json -Compress),
+                ([ordered]@{
+                    Time = "2026-08-13T00:00:00Z"
+                    Action = "pass"
+                    Package = $proof.Package
+                    Elapsed = 0.02
+                } | ConvertTo-Json -Compress)
+            )
+            return [pscustomobject]@{ ExitCode = 0; Output = $outputEvents -join "`n" }
         }
 
         return [pscustomobject]@{ ExitCode = 0; Output = "ok" }
@@ -108,6 +146,12 @@ function New-TestOpenMeterPoCFakes {
 
     $healthProbe = {
         param([string]$Uri)
+        [void]$Calls.Add([pscustomobject]@{
+            FilePath = "health"
+            Arguments = @($Uri)
+            WorkingDirectory = ""
+            Phase = [Environment]::GetEnvironmentVariable("OPENMETER_POC_PHASE", "Process")
+        })
         if ($FailureMode -eq "health") {
             return $false
         }
@@ -222,6 +266,81 @@ Describe "OpenMeter PoC runner behavior" {
         finally {
             [Environment]::SetEnvironmentVariable("OPENMETER_POC_PHASE", $oldPhase, "Process")
         }
+    }
+
+    It "runs exact JSON Go targets in deterministic outage and recovery order" {
+        $calls = New-Object System.Collections.ArrayList
+        $fakes = New-TestOpenMeterPoCFakes -Calls $calls
+        $repositoryRoot = Join-Path $TestDrive "runner-lifecycle"
+        New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+
+        $result = Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-lifecycle" -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe
+
+        $result | Should Be 0
+        $goCalls = @($calls | Where-Object { $_.FilePath -eq "go" -and $_.Arguments[0] -eq "test" })
+        $goCalls.Count | Should Be 5
+        $expectations = @(
+            @{ Phase = ""; Regex = "OpenMeter|UsageEvent|Client|PoC"; Test = "TestOpenMeterImportsStayInsideIsolatedAdapter"; Log = "go-test-default.log" },
+            @{ Phase = "contract"; Regex = "^TestPoC"; Test = "TestPoCCountMetersAggregateCommittedSuccesses"; Log = "go-test-contract.log" },
+            @{ Phase = "seed"; Regex = "^TestPoCReplaySeed$"; Test = "TestPoCReplaySeed"; Log = "go-test-replay-seed.log" },
+            @{ Phase = "unavailable"; Regex = "^TestPoCUnavailableClassifiesFailureAsRetryable$"; Test = "TestPoCUnavailableClassifiesFailureAsRetryable"; Log = "go-test-replay-unavailable.log" },
+            @{ Phase = "replay"; Regex = "^TestPoCReplayAfterRecoveryConvergesExactly$"; Test = "TestPoCReplayAfterRecoveryConvergesExactly"; Log = "go-test-replay-recovery.log" }
+        )
+        for ($index = 0; $index -lt $expectations.Count; $index++) {
+            $call = $goCalls[$index]
+            $expectation = $expectations[$index]
+            [string]$call.Phase | Should Be $expectation.Phase
+            $call.Arguments -contains "-json" | Should Be $true
+            $runIndex = [array]::IndexOf($call.Arguments, "-run")
+            $runIndex | Should BeGreaterThan -1
+            $call.Arguments[$runIndex + 1] | Should Be $expectation.Regex
+
+            $logPath = Join-Path $repositoryRoot ".local/openmeter-poc/evidence/run-lifecycle/$($expectation.Log)"
+            $events = @(Get-Content -LiteralPath $logPath | ForEach-Object { $_ | ConvertFrom-Json })
+            @($events | Where-Object { $_.Action -eq "pass" -and $_.Test -eq $expectation.Test }).Count | Should Be 1
+        }
+
+        $runnerLog = Get-Content -LiteralPath (Join-Path $repositoryRoot ".local/openmeter-poc/evidence/run-lifecycle/runner.log") -Raw
+        $seedPosition = $runnerLog.IndexOf('^TestPoCReplaySeed$')
+        $stopPosition = $runnerLog.IndexOf('stop openmeter', $seedPosition)
+        $unavailablePosition = $runnerLog.IndexOf('^TestPoCUnavailableClassifiesFailureAsRetryable$', $stopPosition)
+        $restartPosition = $runnerLog.IndexOf('up -d --wait openmeter', $unavailablePosition)
+        $healthPosition = $runnerLog.IndexOf('health verified: http://127.0.0.1:48888/api/v3', $restartPosition)
+        $replayPosition = $runnerLog.IndexOf('^TestPoCReplayAfterRecoveryConvergesExactly$', $healthPosition)
+        $seedPosition | Should BeGreaterThan -1
+        $stopPosition | Should BeGreaterThan $seedPosition
+        $unavailablePosition | Should BeGreaterThan $stopPosition
+        $restartPosition | Should BeGreaterThan $unavailablePosition
+        $healthPosition | Should BeGreaterThan $restartPosition
+        $replayPosition | Should BeGreaterThan $healthPosition
+    }
+
+    It "returns nonzero when the selected Go target skips despite exit zero" {
+        $calls = New-Object System.Collections.ArrayList
+        $fakes = New-TestOpenMeterPoCFakes -Calls $calls -FailureMode "go-skip-seed"
+        $repositoryRoot = Join-Path $TestDrive "runner-go-skip"
+        New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+
+        $result = Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-go-skip" -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe
+        $seedLog = Get-Content -LiteralPath (Join-Path $repositoryRoot ".local/openmeter-poc/evidence/run-go-skip/go-test-replay-seed.log") -Raw
+
+        $seedLog | Should Match '"Action":"skip"'
+        $seedLog | Should Match '"Test":"TestPoCReplaySeed"'
+        $result | Should Not Be 0
+    }
+
+    It "returns nonzero when the selected Go target is missing despite exit zero" {
+        $calls = New-Object System.Collections.ArrayList
+        $fakes = New-TestOpenMeterPoCFakes -Calls $calls -FailureMode "go-missing-seed"
+        $repositoryRoot = Join-Path $TestDrive "runner-go-missing"
+        New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+
+        $result = Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-go-missing" -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe
+        $seedLog = Get-Content -LiteralPath (Join-Path $repositoryRoot ".local/openmeter-poc/evidence/run-go-missing/go-test-replay-seed.log") -Raw
+
+        $seedLog | Should Match '"Action":"pass"'
+        $seedLog | Should Match '"Test":"TestPoCUnexpectedTarget"'
+        $result | Should Not Be 0
     }
 
     It "returns nonzero when the official checkout clone fails" {
