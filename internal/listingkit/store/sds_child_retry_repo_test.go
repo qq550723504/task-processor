@@ -50,6 +50,54 @@ func TestSDSChildRetryRepositoryLocksTaskBeforeSelectingRetryRows(t *testing.T) 
 	}
 }
 
+func TestSDSChildRetryRepositoryLocksOnlyClaimPageTasks(t *testing.T) {
+	var logs bytes.Buffer
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{
+		Logger: logger.New(log.New(&logs, "", 0), logger.Config{LogLevel: logger.Info}),
+	})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}, &listingkit.SDSChildRetryJob{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	for _, taskID := range []string{"task-page-a", "task-page-b"} {
+		if err := db.Create(&listingkit.Task{ID: taskID, TenantID: "tenant-1"}).Error; err != nil {
+			t.Fatalf("create task %s: %v", taskID, err)
+		}
+	}
+	now := time.Date(2026, 7, 20, 7, 0, 0, 0, time.UTC)
+	for _, job := range []listingkit.SDSChildRetryJob{
+		{ID: "job-page-a", TaskID: "task-page-a", TenantID: "tenant-1", Kind: listingkit.SDSChildRetryKindDesignSync, Status: listingkit.SDSChildRetryJobStatusPending, NextRetryAt: now},
+		{ID: "job-page-b", TaskID: "task-page-b", TenantID: "tenant-1", Kind: listingkit.SDSChildRetryKindDesignSync, Status: listingkit.SDSChildRetryJobStatusPending, NextRetryAt: now.Add(time.Minute)},
+	} {
+		if err := db.Create(&job).Error; err != nil {
+			t.Fatalf("create retry %s: %v", job.ID, err)
+		}
+	}
+
+	logs.Reset()
+	repo := any(NewTaskRepository(db)).(listingkit.SDSChildRetryJobRepository)
+	claimed, err := repo.ClaimDueSDSChildRetries(context.Background(), now, 1, "sweeper", now.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("claim due retries: %v", err)
+	}
+	if len(claimed) != 1 || claimed[0].ID != "job-page-a" {
+		t.Fatalf("claimed jobs = %#v, want only the first claim-page job", claimed)
+	}
+	logText := logs.String()
+	var parentLock string
+	for _, line := range strings.Split(logText, "\n") {
+		if strings.Contains(line, "SELECT * FROM") && strings.Contains(line, "listing_kit_tasks") {
+			parentLock = line
+			break
+		}
+	}
+	if !strings.Contains(parentLock, "LIMIT 1") || !strings.Contains(logText, "listingkit_task_id IN (\"task-page-a\")") || strings.Contains(logText, "listingkit_task_id IN (\"task-page-b\")") {
+		t.Fatalf("parent lock or retry page was not limited to the claim page; parent SQL: %s\nlogs:\n%s", parentLock, logText)
+	}
+}
+
 func TestSDSChildRetryRepositorySchedulesOneActiveJobPerTask(t *testing.T) {
 	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
 	if err != nil {

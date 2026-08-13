@@ -198,13 +198,26 @@ func (r *taskRepository) ClaimDueSDSChildRetries(ctx context.Context, dueBefore 
 	}
 	var jobs []listingkit.SDSChildRetryJob
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := lockDueRetryTasks(tx, ctx, dueBefore); err != nil {
-			return err
-		}
+		hasTaskTable := tx.Migrator().HasTable(&listingkit.Task{})
 		claimed := make([]listingkit.SDSChildRetryJob, 0, len(jobs))
 		claimedTaskIDs := make(map[string]struct{})
 		excludedTaskIDs := make(map[string]struct{})
 		for limit <= 0 || len(claimed) < limit {
+			pageSize := 0
+			if limit > 0 {
+				pageSize = limit - len(claimed)
+			}
+			var lockedTaskIDs []string
+			if hasTaskTable {
+				var err error
+				lockedTaskIDs, err = lockDueRetryTaskPage(tx, ctx, dueBefore, pageSize, excludedTaskIDs)
+				if err != nil {
+					return err
+				}
+				if len(lockedTaskIDs) == 0 {
+					break
+				}
+			}
 			db := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 				Where("status = ? AND next_retry_at <= ? AND (lease_until IS NULL OR lease_until <= ?)", listingkit.SDSChildRetryJobStatusPending, dueBefore, dueBefore).
 				Where("NOT EXISTS (SELECT 1 FROM listingkit_sds_child_retry_jobs AS sibling WHERE sibling.listingkit_task_id = listingkit_sds_child_retry_jobs.listingkit_task_id AND sibling.id <> listingkit_sds_child_retry_jobs.id AND sibling.status = ? AND sibling.lease_until > ?)", listingkit.SDSChildRetryJobStatusPending, dueBefore).
@@ -217,9 +230,8 @@ func (r *taskRepository) ClaimDueSDSChildRetries(ctx context.Context, dueBefore 
 				}
 				db = db.Where("listingkit_task_id NOT IN ?", ids)
 			}
-			pageSize := 0
-			if limit > 0 {
-				pageSize = limit - len(claimed)
+			if hasTaskTable {
+				db = db.Where("listingkit_task_id IN ?", lockedTaskIDs)
 			}
 			if pageSize > 0 {
 				db = db.Limit(pageSize)
@@ -236,9 +248,9 @@ func (r *taskRepository) ClaimDueSDSChildRetries(ctx context.Context, dueBefore 
 				if _, alreadyClaimed := claimedTaskIDs[job.TaskID]; alreadyClaimed {
 					continue
 				}
-				if tx.Migrator().HasTable(&listingkit.Task{}) {
+				if hasTaskTable {
 					var task listingkit.Task
-					if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", job.TaskID).First(&task).Error; err != nil {
+					if err := tx.Where("id = ?", job.TaskID).First(&task).Error; err != nil {
 						return err
 					}
 					var active int64
@@ -278,13 +290,31 @@ func (r *taskRepository) SaveSDSChildRetry(ctx context.Context, job *listingkit.
 	return r.db.WithContext(ctx).Save(job).Error
 }
 
-func lockDueRetryTasks(tx *gorm.DB, ctx context.Context, dueBefore time.Time) error {
+func lockDueRetryTaskPage(tx *gorm.DB, ctx context.Context, dueBefore time.Time, pageSize int, excludedTaskIDs map[string]struct{}) ([]string, error) {
 	if !tx.Migrator().HasTable(&listingkit.Task{}) {
-		return nil
+		return nil, nil
+	}
+	db := applyTaskAccessScope(tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}), ctx).
+		Where("EXISTS (SELECT 1 FROM listingkit_sds_child_retry_jobs AS retry WHERE retry.listingkit_task_id = listing_kit_tasks.id AND retry.status = ? AND retry.next_retry_at <= ? AND (retry.lease_until IS NULL OR retry.lease_until <= ?) AND NOT EXISTS (SELECT 1 FROM listingkit_sds_child_retry_jobs AS sibling WHERE sibling.listingkit_task_id = retry.listingkit_task_id AND sibling.id <> retry.id AND sibling.status = ? AND sibling.lease_until > ?) AND NOT EXISTS (SELECT 1 FROM listingkit_sds_child_retry_jobs AS repair WHERE repair.listingkit_task_id = retry.listingkit_task_id AND repair.status = ? AND repair.lease_until > ?))", listingkit.SDSChildRetryJobStatusPending, dueBefore, dueBefore, listingkit.SDSChildRetryJobStatusPending, dueBefore, listingkit.SDSChildRetryJobStatusRepairing, dueBefore).
+		Order("id ASC")
+	if len(excludedTaskIDs) > 0 {
+		ids := make([]string, 0, len(excludedTaskIDs))
+		for taskID := range excludedTaskIDs {
+			ids = append(ids, taskID)
+		}
+		db = db.Where("id NOT IN ?", ids)
+	}
+	if pageSize > 0 {
+		db = db.Limit(pageSize)
 	}
 	var tasks []listingkit.Task
-	return applyTaskAccessScope(tx.Clauses(clause.Locking{Strength: "UPDATE"}), ctx).
-		Where("EXISTS (SELECT 1 FROM listingkit_sds_child_retry_jobs AS retry WHERE retry.listingkit_task_id = listing_kit_tasks.id AND retry.status = ? AND retry.next_retry_at <= ? AND (retry.lease_until IS NULL OR retry.lease_until <= ?))", listingkit.SDSChildRetryJobStatusPending, dueBefore, dueBefore).
-		Find(&tasks).Error
+	if err := db.Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	lockedTaskIDs := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		lockedTaskIDs = append(lockedTaskIDs, task.ID)
+	}
+	return lockedTaskIDs, nil
 }
 
