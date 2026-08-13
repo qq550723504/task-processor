@@ -98,6 +98,40 @@ func TestSDSChildRetryRepositoryLocksOnlyClaimPageTasks(t *testing.T) {
 	}
 }
 
+func TestSDSChildRetryRepositoryPrioritizesEarliestDueTaskPage(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}, &listingkit.SDSChildRetryJob{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	for _, taskID := range []string{"task-page-a", "task-page-z"} {
+		if err := db.Create(&listingkit.Task{ID: taskID, TenantID: "tenant-1"}).Error; err != nil {
+			t.Fatalf("create task %s: %v", taskID, err)
+		}
+	}
+	now := time.Date(2026, 7, 20, 7, 0, 0, 0, time.UTC)
+	for _, job := range []listingkit.SDSChildRetryJob{
+		{ID: "job-page-a", TaskID: "task-page-a", TenantID: "tenant-1", Kind: listingkit.SDSChildRetryKindDesignSync, Status: listingkit.SDSChildRetryJobStatusPending, NextRetryAt: now.Add(10 * time.Minute)},
+		{ID: "job-page-z", TaskID: "task-page-z", TenantID: "tenant-1", Kind: listingkit.SDSChildRetryKindDesignSync, Status: listingkit.SDSChildRetryJobStatusPending, NextRetryAt: now},
+	} {
+		if err := db.Create(&job).Error; err != nil {
+			t.Fatalf("create retry %s: %v", job.ID, err)
+		}
+	}
+
+	repo := any(NewTaskRepository(db)).(listingkit.SDSChildRetryJobRepository)
+	cutoff := now.Add(20 * time.Minute)
+	claimed, err := repo.ClaimDueSDSChildRetries(context.Background(), cutoff, 1, "sweeper", now.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("claim due retries: %v", err)
+	}
+	if len(claimed) != 1 || claimed[0].ID != "job-page-z" {
+		t.Fatalf("claimed jobs = %#v, want earliest due job-page-z", claimed)
+	}
+}
+
 func TestSDSChildRetryRepositorySchedulesOneActiveJobPerTask(t *testing.T) {
 	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
 	if err != nil {
