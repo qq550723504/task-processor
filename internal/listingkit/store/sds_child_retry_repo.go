@@ -39,14 +39,27 @@ func (r *taskRepository) ScheduleSDSChildRetry(ctx context.Context, job *listing
 		return nil, err
 	}
 	if existing.Status == listingkit.SDSChildRetryJobStatusCompleted || existing.Status == listingkit.SDSChildRetryJobStatusExhausted {
-		existing.Attempt = copy.Attempt
-		existing.NextRetryAt = copy.NextRetryAt
-		existing.ReasonCode = copy.ReasonCode
-		existing.LastError = copy.LastError
-		existing.Status = listingkit.SDSChildRetryJobStatusPending
-		existing.LeaseOwner = ""
-		existing.LeaseUntil = nil
-		if err := r.db.WithContext(ctx).Save(&existing).Error; err != nil {
+		result := r.db.WithContext(ctx).Model(&listingkit.SDSChildRetryJob{}).
+			Where("id = ? AND status IN ?", existing.ID, []listingkit.SDSChildRetryJobStatus{
+				listingkit.SDSChildRetryJobStatusCompleted,
+				listingkit.SDSChildRetryJobStatusExhausted,
+			}).Updates(map[string]any{
+			"attempt":       copy.Attempt,
+			"next_retry_at": copy.NextRetryAt,
+			"reason_code":   copy.ReasonCode,
+			"last_error":    copy.LastError,
+			"status":        listingkit.SDSChildRetryJobStatusPending,
+			"lease_owner":   "",
+			"lease_until":   nil,
+		})
+		if result.Error != nil {
+			return nil, result.Error
+		}
+		if result.RowsAffected > 0 {
+			if err := r.db.WithContext(ctx).Where("id = ?", existing.ID).First(&existing).Error; err != nil {
+				return nil, err
+			}
+		} else if err := r.db.WithContext(ctx).Where("id = ?", existing.ID).First(&existing).Error; err != nil {
 			return nil, err
 		}
 	}

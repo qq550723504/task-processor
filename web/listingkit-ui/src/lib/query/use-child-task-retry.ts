@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { retryChildTask } from "@/lib/api/child-task-retry";
@@ -44,13 +44,6 @@ export function useRetryChildTask(taskId: string, taskVersion: string) {
       });
     },
   });
-
-  useEffect(() => {
-    if (queuedTaskVersion === null || queuedTaskVersion === taskVersion) {
-      return;
-    }
-    mutation.reset();
-  }, [mutation, queuedTaskVersion, taskVersion]);
 
   return {
     ...mutation,

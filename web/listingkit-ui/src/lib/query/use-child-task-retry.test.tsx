@@ -77,6 +77,5 @@ describe("useRetryChildTask", () => {
     await waitFor(() => expect(result.current.retryQueued).toBe(true));
     rerender({ taskVersion: "version-2" });
     await waitFor(() => expect(result.current.retryQueued).toBe(false));
-    expect(result.current.data).toBeUndefined();
   });
 });

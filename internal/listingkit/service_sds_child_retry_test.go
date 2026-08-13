@@ -9,7 +9,13 @@ import (
 
 type sdsChildRetryTestRepository struct {
 	Repository
-	jobs map[string]SDSChildRetryJob
+	jobs     map[string]SDSChildRetryJob
+	retryCtx context.Context
+}
+
+func (r *sdsChildRetryTestRepository) GetTask(ctx context.Context, taskID string) (*Task, error) {
+	r.retryCtx = ctx
+	return r.Repository.GetTask(ctx, taskID)
 }
 
 func (r *sdsChildRetryTestRepository) ScheduleSDSChildRetry(_ context.Context, job *SDSChildRetryJob) (*SDSChildRetryJob, error) {
@@ -152,5 +158,30 @@ func TestScheduleTaskChildRetryQueuesSDSCatalogProduct(t *testing.T) {
 	job, ok := repo.jobs["job-"+task.ID]
 	if !ok || job.Kind != catalogKind {
 		t.Fatalf("scheduled jobs = %#v, want catalog product retry", repo.jobs)
+	}
+}
+
+func TestRunSDSChildRetryRestoresTenantContext(t *testing.T) {
+	ctx := context.Background()
+	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest()}
+	task := &Task{
+		ID:       "task-tenant-retry",
+		TenantID: "tenant-policy-1",
+		Status:   core.TaskStatusNeedsReview,
+		Request:  &GenerateRequest{SheinStoreID: 1038},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
+			Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusFailed), Error: "retry failed",
+		}}},
+	}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	job := &SDSChildRetryJob{TaskID: task.ID, TenantID: task.TenantID, Kind: SDSChildRetryKindDesignSync}
+	if err := (&service{repo: repo}).runSDSChildRetry(ctx, job); err != nil {
+		t.Fatalf("runSDSChildRetry() error = %v", err)
+	}
+	if got := TenantIDFromContext(repo.retryCtx); got != task.TenantID {
+		t.Fatalf("retry tenant context = %q, want %q", got, task.TenantID)
 	}
 }

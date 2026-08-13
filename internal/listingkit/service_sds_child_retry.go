@@ -98,6 +98,7 @@ func (s *service) ScheduleTaskChildRetry(ctx context.Context, taskID string, req
 }
 
 func (s *service) runSDSChildRetry(ctx context.Context, job *SDSChildRetryJob) error {
+	ctx = WithTenantID(ctx, job.TenantID)
 	result, err := s.RetryTaskChildTask(ctx, job.TaskID, &RetryChildTaskRequest{Kind: string(job.Kind)})
 	if err == nil && (result == nil || result.Result == nil || childTaskHasFailed(result.Result, string(job.Kind))) {
 		err = fmt.Errorf("SDS child retry did not complete")
