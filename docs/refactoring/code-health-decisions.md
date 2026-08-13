@@ -15,6 +15,7 @@
 | `internal/listingkit/service_upload_logic.go` (`uploadImagesWithLegacyStore`) | `internal/listingkit` | The private batch wrapper appeared in all four reports and exact `rg` found only its declaration; active uploads use the per-file legacy path or keyed repository path. | removed | `go test ./internal/listingkit -count=1`; exact `rg` reference check |
 | `internal/listingkit/text_match.go` (`containsText`) | `internal/listingkit` | The private helper appeared in all four reports and exact `rg` found only its declaration; no active ListingKit workflow or test references it. | removed | `go test ./internal/listingkit -count=1`; exact `rg` reference check |
 | `internal/core/config/config.go` (`dotEnvCandidates`, `dotEnvCandidatesForConfig`) | `internal/core/config` | The normalized jscpd report `.local/code-health/20260813-021101268/jscpd.txt` found two identical path-cleaning/deduplication tails in one package. Both callers require first-occurrence order and platform-native `filepath.Clean`; extraction preserves those semantics and adds a characterization test. | consolidated | `go test ./internal/core/config -count=1`; post-edit jscpd `.local/code-health/20260813-021313565/jscpd.txt` (425 clones, target pair absent) |
+| `internal/core/config/config.go` (`LoadConfigFromFile` lines 799-813 and `LoadConfigFromFileWithoutValidation` lines 816-830) | `internal/core/config` | The post-edit jscpd report `.local/code-health/20260813-021313565/jscpd.txt` still reports this same-owner pair. The shared Viper setup/read/error path is intentional, but the return boundary is different: `LoadConfigFromFile` calls `loadWithViper` and enforces validation, while `LoadConfigFromFileWithoutValidation` calls `loadWithViperWithoutValidation` for migration/partial-config callers. `internal/core/config/config_env_test.go` covers both loading contracts; extracting the shared tail would obscure the validation distinction without reducing behavior risk. | detector-limitation | `go test ./internal/core/config -count=1`; exact function/line references above; retain as an explicitly classified clone |
 
 ## Deferred and compatibility subgraph classifications
 
@@ -61,5 +62,8 @@ Cross-owner pairs are retained when the shared shape crosses marketplace policy,
 tenant/error taxonomy, retry/transaction behavior, or runtime ownership boundaries;
 the owner-specific rows above document those boundaries. Same-owner, behavior-neutral
 deduplication is consolidated only when a characterization test protects ordering,
-error wrapping, and persistence effects. No unclassified handwritten same-owner pair
-remains after the Task 6/7 consolidations and the config helper extraction above.
+error wrapping, and persistence effects. One same-owner pair remains intentionally
+classified rather than extracted: the validated and no-validation config loaders
+share setup but have different validation contracts (see the ledger row above). No
+other unclassified handwritten same-owner pair remains after the Task 6/7
+consolidations and the config helper extraction above.
