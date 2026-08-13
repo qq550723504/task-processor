@@ -37,7 +37,7 @@ func ClassifyError(err error) FailureKind {
 		}
 	}
 
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, syscall.ECONNRESET) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) {
 		return FailureRetryable
 	}
 
