@@ -15,6 +15,7 @@ import (
 const (
 	usageEventSource     = "task-processor/listingkit"
 	usageEventTypePrefix = "listingkit.usage."
+	tenantSubjectPrefix  = "tenant:"
 )
 
 // Metric identifies the catalog meter represented by a usage event.
@@ -72,17 +73,15 @@ func ValidateUsageEvent(event openmeterapi.EventInput) error {
 	if event.Source != usageEventSource {
 		return fmt.Errorf("usage event source must be %q", usageEventSource)
 	}
-	if event.ID == "" {
-		return fmt.Errorf("usage event ID is required")
-	}
 	if event.Specversion == nil || *event.Specversion != "1.0" {
 		return fmt.Errorf("usage event specversion must be 1.0")
 	}
 	if event.Datacontenttype.GetOrEmpty() != "application/json" {
 		return fmt.Errorf("usage event datacontenttype must be application/json")
 	}
-	if event.Subject == "" {
-		return fmt.Errorf("usage event subject is required")
+	tenantID, err := tenantIDFromSubject(event.Subject)
+	if err != nil {
+		return err
 	}
 	if event.Time.GetOrEmpty().IsZero() || event.Time.GetOrEmpty().Location() != time.UTC {
 		return fmt.Errorf("usage event time must be non-zero UTC")
@@ -113,17 +112,32 @@ func ValidateUsageEvent(event openmeterapi.EventInput) error {
 	if !ok {
 		return fmt.Errorf("usage event data.quantity must be a string")
 	}
-	if _, ok := data["source_type"].(string); !ok || data["source_type"] == "" {
+	sourceType, ok := data["source_type"].(string)
+	if !ok || sourceType == "" {
 		return fmt.Errorf("usage event data.source_type must be a non-empty string")
 	}
-	if _, ok := data["source_id"].(string); !ok || data["source_id"] == "" {
+	sourceID, ok := data["source_id"].(string)
+	if !ok || sourceID == "" {
 		return fmt.Errorf("usage event data.source_id must be a non-empty string")
 	}
-	if _, ok := data["revision"].(string); !ok || data["revision"] == "" {
+	revision, ok := data["revision"].(string)
+	if !ok || revision == "" {
 		return fmt.Errorf("usage event data.revision must be a non-empty string")
 	}
-	_, err = validateMetricQuantity(metric, quantity)
-	return err
+	if _, err := validateMetricQuantity(metric, quantity); err != nil {
+		return err
+	}
+	expectedID := usageEventID(UsageFact{
+		TenantID:   tenantID,
+		Metric:     metric,
+		SourceType: sourceType,
+		SourceID:   sourceID,
+		Revision:   revision,
+	})
+	if event.ID != expectedID {
+		return fmt.Errorf("usage event ID does not match its identity")
+	}
+	return nil
 }
 
 // SubjectForTenant returns the CloudEvent subject for a tenant.
@@ -131,7 +145,22 @@ func SubjectForTenant(tenantID string) (string, error) {
 	if tenantID == "" {
 		return "", fmt.Errorf("tenant ID is required")
 	}
-	return "tenant/" + url.PathEscape(tenantID), nil
+	return tenantSubjectPrefix + url.PathEscape(tenantID), nil
+}
+
+func tenantIDFromSubject(subject string) (string, error) {
+	if !strings.HasPrefix(subject, tenantSubjectPrefix) {
+		return "", fmt.Errorf("usage event subject must identify a tenant")
+	}
+	tenantID, err := url.PathUnescape(strings.TrimPrefix(subject, tenantSubjectPrefix))
+	if err != nil || tenantID == "" {
+		return "", fmt.Errorf("usage event subject contains an invalid tenant")
+	}
+	canonicalSubject, err := SubjectForTenant(tenantID)
+	if err != nil || subject != canonicalSubject {
+		return "", fmt.Errorf("usage event subject is not canonical")
+	}
+	return tenantID, nil
 }
 
 func validateUsageFact(fact UsageFact) (string, error) {

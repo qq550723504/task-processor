@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"testing"
 	"time"
+
+	openmeterapi "github.com/openmeterio/openmeter/api/v3/client"
 )
 
 func TestBuildUsageEventCreatesStableCloudEvent(t *testing.T) {
@@ -123,6 +125,40 @@ func TestValidateUsageEventRejectsMetricTypeMismatch(t *testing.T) {
 
 	if err := ValidateUsageEvent(event); err == nil {
 		t.Fatal("ValidateUsageEvent() error = nil, want metric/type mismatch error")
+	}
+}
+
+func TestValidateUsageEventRejectsTamperedIdentity(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*openmeterapi.EventInput)
+	}{
+		{
+			name: "subject",
+			mutate: func(event *openmeterapi.EventInput) {
+				event.Subject = "account:tenant-17"
+			},
+		},
+		{
+			name: "ID",
+			mutate: func(event *openmeterapi.EventInput) {
+				event.ID = "retry-unique-event-id"
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event, err := BuildUsageEvent(validUsageFact())
+			if err != nil {
+				t.Fatalf("BuildUsageEvent() error = %v", err)
+			}
+			tt.mutate(&event)
+
+			if err := ValidateUsageEvent(event); err == nil {
+				t.Fatal("ValidateUsageEvent() error = nil, want identity validation error")
+			}
+		})
 	}
 }
 
