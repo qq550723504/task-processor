@@ -123,8 +123,6 @@ export type SheinStudioPersistedBatchView = {
   updatedAt: string;
 };
 
-export type SheinStudioPersistedDraft = SheinStudioPersistedBatchView;
-
 export type SheinStudioSavedBatch = {
   id: string;
   tenantId?: string;

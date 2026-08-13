@@ -31,14 +31,6 @@ export function usePromptTemplateCatalog() {
   });
 }
 
-export function usePromptTemplateSchema(key: string, enabled = true) {
-  return useQuery({
-    queryKey: listingKitPromptKeys.schema(key),
-    queryFn: () => getPromptTemplateSchema(key),
-    enabled: enabled && key.trim().length > 0,
-  });
-}
-
 export function useUpsertPromptTemplate() {
   const client = useQueryClient();
   return useMutation({

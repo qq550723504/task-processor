@@ -3,14 +3,14 @@ import { z } from "zod";
 import { apiRequest, ApiError } from "@/lib/api/client";
 import { parseApiResponseShape } from "@/lib/api/response-schema";
 
-export const subscriptionStatusSchema = z.enum([
+ const subscriptionStatusSchema = z.enum([
   "active",
   "trialing",
   "expired",
   "disabled",
 ]);
 
-export const subscriptionModuleSchema = z
+ const subscriptionModuleSchema = z
   .object({
     code: z.string(),
     name: z.string(),
@@ -22,7 +22,7 @@ export const subscriptionModuleSchema = z
   })
   .passthrough();
 
-export const subscriptionPlanSchema = z
+ const subscriptionPlanSchema = z
   .object({
     code: z.string(),
     name: z.string(),
@@ -34,7 +34,7 @@ export const subscriptionPlanSchema = z
   })
   .passthrough();
 
-export const subscriptionPlanModuleSchema = z
+ const subscriptionPlanModuleSchema = z
   .object({
     plan_code: z.string(),
     module_code: z.string(),
@@ -43,14 +43,14 @@ export const subscriptionPlanModuleSchema = z
   })
   .passthrough();
 
-export const subscriptionPlanBundleSchema = z
+ const subscriptionPlanBundleSchema = z
   .object({
     plan: subscriptionPlanSchema,
     modules: z.array(subscriptionPlanModuleSchema),
   })
   .passthrough();
 
-export const tenantSubscriptionSchema = z
+ const tenantSubscriptionSchema = z
   .object({
     id: z.number(),
     tenant_id: z.string(),
@@ -63,7 +63,7 @@ export const tenantSubscriptionSchema = z
   })
   .passthrough();
 
-export const subscriptionEntitlementSchema = z
+ const subscriptionEntitlementSchema = z
   .object({
     id: z.number(),
     tenant_id: z.string(),
@@ -77,7 +77,7 @@ export const subscriptionEntitlementSchema = z
   })
   .passthrough();
 
-export const subscriptionUsageCounterSchema = z
+ const subscriptionUsageCounterSchema = z
   .object({
     id: z.number(),
     tenant_id: z.string(),
@@ -94,7 +94,7 @@ const subscriptionUsageListSchema = z
   .nullish()
   .transform((value) => value ?? []);
 
-export const subscriptionAuditLogSchema = z
+ const subscriptionAuditLogSchema = z
   .object({
     id: z.number(),
     tenant_id: z.string(),
@@ -107,7 +107,7 @@ export const subscriptionAuditLogSchema = z
   })
   .passthrough();
 
-export const subscriptionEntitlementViewSchema = z
+ const subscriptionEntitlementViewSchema = z
   .object({
     module: subscriptionModuleSchema,
     entitlement: subscriptionEntitlementSchema.optional(),
@@ -119,7 +119,7 @@ export const subscriptionEntitlementViewSchema = z
   })
   .passthrough();
 
-export const subscriptionSummarySchema = z
+ const subscriptionSummarySchema = z
   .object({
     tenant_id: z.string(),
     subscription: tenantSubscriptionSchema.optional(),
@@ -129,7 +129,7 @@ export const subscriptionSummarySchema = z
   })
   .passthrough();
 
-export const subscriptionTenantOverviewSchema = z
+ const subscriptionTenantOverviewSchema = z
   .object({
     tenant_id: z.string(),
     tenant_display_name: z.string().optional(),
@@ -139,7 +139,7 @@ export const subscriptionTenantOverviewSchema = z
   })
   .passthrough();
 
-export const tenantDirectoryEntrySchema = z
+ const tenantDirectoryEntrySchema = z
   .object({
     tenant_id: z.string(),
     tenant_display_name: z.string().optional(),
@@ -196,7 +196,7 @@ const subscriptionRequiredPayloadSchema = z
   })
   .passthrough();
 
-export const platformTenantMemberRoleSchema = z.enum([
+ const platformTenantMemberRoleSchema = z.enum([
   "listingkit_viewer",
   "listingkit_operator",
   "listingkit_admin",
@@ -215,7 +215,6 @@ const platformTenantMemberInvitationSchema = z
 
 export type SubscriptionStatus = z.infer<typeof subscriptionStatusSchema>;
 export type SubscriptionModule = z.infer<typeof subscriptionModuleSchema>;
-export type SubscriptionPlan = z.infer<typeof subscriptionPlanSchema>;
 export type SubscriptionPlanBundle = z.infer<typeof subscriptionPlanBundleSchema>;
 export type TenantSubscription = z.infer<typeof tenantSubscriptionSchema>;
 export type SubscriptionEntitlement = z.infer<
@@ -294,7 +293,7 @@ export function parseSubscriptionSummary(payload: unknown): SubscriptionSummary 
   );
 }
 
-export function parseSubscriptionModuleList(
+ function parseSubscriptionModuleList(
   payload: unknown,
 ): SubscriptionModule[] {
   return parseApiResponseShape(
@@ -314,7 +313,7 @@ export function parseSubscriptionPlanList(
   ).items;
 }
 
-export function parseSubscriptionPlanBundle(
+ function parseSubscriptionPlanBundle(
   payload: unknown,
 ): SubscriptionPlanBundle {
   return parseApiResponseShape(
@@ -334,7 +333,7 @@ export function parseSubscriptionTenantOverviewList(
   ).items;
 }
 
-export function parseTenantDirectoryList(payload: unknown): TenantDirectoryEntry[] {
+ function parseTenantDirectoryList(payload: unknown): TenantDirectoryEntry[] {
   return parseApiResponseShape(
     payload,
     tenantDirectoryListSchema,
@@ -342,7 +341,7 @@ export function parseTenantDirectoryList(payload: unknown): TenantDirectoryEntry
   ).items;
 }
 
-export function parseSubscriptionAuditLogList(
+ function parseSubscriptionAuditLogList(
   payload: unknown,
 ): SubscriptionAuditLog[] {
   return parseApiResponseShape(
@@ -352,7 +351,7 @@ export function parseSubscriptionAuditLogList(
   ).items;
 }
 
-export function parseTenantSubscriptionList(
+ function parseTenantSubscriptionList(
   payload: unknown,
 ): TenantSubscription[] {
   return parseApiResponseShape(
@@ -362,7 +361,7 @@ export function parseTenantSubscriptionList(
   ).items;
 }
 
-export function parseSubscriptionUsageCounter(
+ function parseSubscriptionUsageCounter(
   payload: unknown,
 ): SubscriptionUsageCounter {
   return parseApiResponseShape(
@@ -382,7 +381,7 @@ export function parseSubscriptionEntitlement(
   );
 }
 
-export function parseTenantSubscription(payload: unknown): TenantSubscription {
+ function parseTenantSubscription(payload: unknown): TenantSubscription {
   return parseApiResponseShape(
     payload,
     tenantSubscriptionSchema,

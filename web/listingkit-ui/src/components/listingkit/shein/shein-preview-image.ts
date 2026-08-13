@@ -163,7 +163,3 @@ export function collectSheinPreviewImageGroups(
 
   return { productImages, mockupImages };
 }
-
-export function firstSheinPreviewImageUrl(shein?: SheinPreviewPayload | null) {
-  return firstUrl(collectSheinPreviewImages(shein).map((image) => image.url));
-}

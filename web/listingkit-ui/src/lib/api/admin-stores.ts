@@ -5,7 +5,7 @@ import { z } from "zod";
 
 const optionalBooleanSchema = z.boolean().optional();
 
-export const listingStoreSchema = z
+ const listingStoreSchema = z
   .object({
     id: z.number(),
     tenantId: z.number().optional(),

@@ -24,12 +24,3 @@ export function useListingKitSettingsHealth() {
     staleTime: 30_000,
   });
 }
-
-export function useListingKitSettingsSchema(namespace: string) {
-  return useQuery({
-    queryKey: listingKitSettingsKeys.schema(namespace),
-    queryFn: () => getListingKitSettingsSchema(namespace),
-    enabled: namespace.length > 0,
-    staleTime: 60_000,
-  });
-}

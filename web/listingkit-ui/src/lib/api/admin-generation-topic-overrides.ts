@@ -9,7 +9,7 @@ const generationTopicDefinitionSchema = z
   })
   .passthrough();
 
-export const listingGenerationTopicOverrideSchema = z
+ const listingGenerationTopicOverrideSchema = z
   .object({
     id: z.number(),
     tenantId: z.number().optional(),
@@ -34,7 +34,7 @@ const generationTopicOverrideViewSchema = z
   })
   .passthrough();
 
-export const generationTopicCatalogItemSchema = z
+ const generationTopicCatalogItemSchema = z
   .object({
     key: z.string(),
     priority: z.number(),
@@ -84,7 +84,7 @@ export function parseGenerationTopicCatalogResponse(
   );
 }
 
-export function parseGenerationTopicOverrideResponse(
+ function parseGenerationTopicOverrideResponse(
   payload: unknown,
 ): ListingGenerationTopicOverride {
   return parseApiResponseShape(

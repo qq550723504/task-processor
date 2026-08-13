@@ -22,7 +22,7 @@ import type { SheinResolutionCacheKind } from "@/lib/api/shein-resolution-cache"
 
 export type ResolutionCacheKind = Exclude<SheinResolutionCacheKind, "all">;
 
-export function ResolutionCacheRow({
+ function ResolutionCacheRow({
   title,
   item,
   kind,

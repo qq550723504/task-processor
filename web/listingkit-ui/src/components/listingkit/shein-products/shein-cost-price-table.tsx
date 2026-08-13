@@ -550,7 +550,7 @@ function SheinCostSourceProduct({
   );
 }
 
-export function buildSheinCostGroupRows(
+ function buildSheinCostGroupRows(
   items: SheinSyncedProductRecord[],
   groups: SheinSDSCostGroupRecord[],
 ): SheinCostGroupRow[] {
@@ -601,7 +601,7 @@ export function buildSheinCostGroupRows(
   );
 }
 
-export function buildSheinCostGroupRowsFromSourceGroups(
+ function buildSheinCostGroupRowsFromSourceGroups(
   sourceGroups: SheinSourceSDSCostGroupRecord[],
 ): SheinCostGroupRow[] {
   return sourceGroups

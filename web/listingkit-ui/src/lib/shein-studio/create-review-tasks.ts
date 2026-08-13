@@ -244,7 +244,7 @@ export function resolveApprovedSheinStudioReviewDesigns(
   return designs.filter((design) => selectedIds.includes(design.id));
 }
 
-export async function createSheinReviewTasks(input: {
+ async function createSheinReviewTasks(input: {
   prompt: string;
   promptMode?: "managed" | "raw";
   sheinStoreId: string;

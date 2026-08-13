@@ -1,4 +1,4 @@
-export const RESOURCE_OWNER_CLAIM =
+ const RESOURCE_OWNER_CLAIM =
   "urn:zitadel:iam:user:resourceowner:id";
 export const ZITADEL_IDENTITY_VERSION = 1;
 

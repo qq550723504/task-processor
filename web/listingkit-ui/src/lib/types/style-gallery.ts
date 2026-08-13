@@ -1,4 +1,4 @@
-export type StyleGallerySource =
+ type StyleGallerySource =
   | "studio_saved"
   | "studio_legacy"
   | "published_input"

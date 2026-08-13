@@ -34,7 +34,7 @@ export function SectionHeading({
   );
 }
 
-export function clampProductImageCount(value: string) {
+ function clampProductImageCount(value: string) {
   const parsed = parsePositiveInteger(value);
   if (!Number.isFinite(parsed)) {
     return 1;
@@ -120,7 +120,7 @@ export function GenerationMessages({
   );
 }
 
-export function Message({
+ function Message({
   children,
   tone,
 }: {

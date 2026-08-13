@@ -17,11 +17,6 @@ export async function getTenantListingStores(
   return parseStorePageResponse(payload);
 }
 
-export async function getSimpleTenantListingStores(): Promise<SimpleListingStore[]> {
-  const payload = await apiRequest<unknown>("/stores/simple");
-  return parseSimpleStoreResponse(payload);
-}
-
 export async function createTenantListingStore(
   input: ListingStoreInput,
 ): Promise<ListingStore> {

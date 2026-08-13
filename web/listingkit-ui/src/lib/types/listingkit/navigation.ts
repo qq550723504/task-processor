@@ -43,7 +43,7 @@ export type QueueQuery = {
   query?: string;
 };
 
-export type NavigationDispatchPlanStep = {
+ type NavigationDispatchPlanStep = {
   kind?: string;
   response_mode?: string;
   query?: QueueQuery;
@@ -63,7 +63,7 @@ export type NavigationDispatchPlan = {
   steps?: NavigationDispatchPlanStep[];
 };
 
-export type NavigationDescriptor = {
+ type NavigationDescriptor = {
   resource_kind?: string;
   cache_key?: string;
   cache_policy?: string;
@@ -75,7 +75,7 @@ export type NavigationDescriptor = {
   dispatch_plan?: NavigationDispatchPlan;
 };
 
-export type RecommendedFilters = {
+ type RecommendedFilters = {
   platforms?: string[];
   slots?: string[];
   quality_grade?: string;

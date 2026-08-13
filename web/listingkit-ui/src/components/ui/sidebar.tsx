@@ -249,7 +249,6 @@ function SidebarTrigger({
 export {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
