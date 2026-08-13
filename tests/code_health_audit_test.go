@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -47,6 +48,26 @@ func TestCodeHealthAuditConfigPinsScopeAndTools(t *testing.T) {
 	for _, forbidden := range []string{"internal/**", "cmd/**", "scripts/**", "tools/**", "web/listingkit-ui/src/**"} {
 		if slices.Contains(cfg.CloneIgnore, forbidden) {
 			t.Errorf("broad clone exclusion hides source scope: %q", forbidden)
+		}
+	}
+}
+
+func TestCodeHealthAuditRunnerIsReadOnlyAndUsesModuleMode(t *testing.T) {
+	runner, err := os.ReadFile(filepath.Join("..", "scripts", "code-health-audit.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := string(runner)
+	for _, required := range []string{
+		"ProcessStartInfo",
+		"ArgumentList",
+		"GOFLAGS",
+		"-mod=",
+		"go test",
+		"manifest.json",
+	} {
+		if !strings.Contains(script, required) {
+			t.Errorf("runner missing required safety/verification contract %q", required)
 		}
 	}
 }

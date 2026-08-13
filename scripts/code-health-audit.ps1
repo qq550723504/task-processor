@@ -44,6 +44,7 @@ function New-DeadcodePlans {
                         Arguments = @("run", "golang.org/x/tools/cmd/deadcode@$($config.deadcode_version)", "-json") + $(if ($testMode) { @("-test") } else { @() }) + @("./...")
                         GoOS = $goos
                         TestMode = $testMode
+                        ModuleMode = "mod"
                         OutputName = "deadcode-$($module.Replace('/', '-'))-$goos-$(if ($testMode) { 'test' } else { 'prod' }).json"
                     }
                 }
@@ -60,6 +61,14 @@ function Invoke-ProcessPlan($plan, [string]$outputPath) {
     $psi.UseShellExecute = $false
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
+    $moduleFiles = @()
+    if ($plan.PSObject.Properties.Name -contains "ModuleMode" -and $plan.ModuleMode) {
+        $psi.Environment["GOFLAGS"] = "-mod=$($plan.ModuleMode)"
+        foreach ($name in @("go.mod", "go.sum")) {
+            $path = Join-Path $plan.WorkingDirectory $name
+            $moduleFiles += [pscustomobject]@{ Path = $path; Exists = (Test-Path -LiteralPath $path); Bytes = if (Test-Path -LiteralPath $path) { [IO.File]::ReadAllBytes($path) } else { $null } }
+        }
+    }
     foreach ($argument in $plan.Arguments) { [void]$psi.ArgumentList.Add([string]$argument) }
     if ($plan.PSObject.Properties.Name -contains "GoOS" -and $plan.GoOS) { $psi.Environment["GOOS"] = $plan.GoOS }
     $process = [Diagnostics.Process]::new()
@@ -71,6 +80,10 @@ function Invoke-ProcessPlan($plan, [string]$outputPath) {
     $process.WaitForExit()
     $stdout = $stdoutTask.GetAwaiter().GetResult()
     $stderr = $stderrTask.GetAwaiter().GetResult()
+    foreach ($moduleFile in $moduleFiles) {
+        if ($moduleFile.Exists) { [IO.File]::WriteAllBytes($moduleFile.Path, $moduleFile.Bytes) }
+        elseif (Test-Path -LiteralPath $moduleFile.Path) { [IO.File]::Delete($moduleFile.Path) }
+    }
     $text = if ([string]::IsNullOrEmpty($stderr)) { $stdout } else { "$stdout`n$stderr" }
     Set-Content -LiteralPath $outputPath -Value $text -NoNewline
     return [pscustomobject]@{
@@ -80,6 +93,7 @@ function Invoke-ProcessPlan($plan, [string]$outputPath) {
         working_directory = [IO.Path]::GetRelativePath($repoRoot, $plan.WorkingDirectory)
         goos = if ($plan.PSObject.Properties.Name -contains "GoOS") { $plan.GoOS } else { $null }
         test_mode = if ($plan.PSObject.Properties.Name -contains "TestMode") { $plan.TestMode } else { $null }
+        module_mode = if ($plan.PSObject.Properties.Name -contains "ModuleMode") { $plan.ModuleMode } else { $null }
         output_path = [IO.Path]::GetRelativePath($repoRoot, $outputPath)
         exit_code = $process.ExitCode
         started_at = $started.ToUniversalTime().ToString("o")
@@ -127,7 +141,7 @@ $allPlans = @($goPlans + $frontendPlans + $clonePlans)
 if ($ListOnly) {
     Write-Output "code-health-audit mode=$Mode (read-only plan)"
     foreach ($plan in $allPlans) { Write-Output ("- {0}: {1} [{2}]" -f $plan.Name, $plan.FilePath, ($plan.Arguments -join " ")) }
-    if ($Mode -in @("All", "Verify")) { Write-Output "- verify: go test ./... -run ^$" }
+    Write-Output "- verify: go test ./... -run ^$"
     exit 0
 }
 
@@ -155,7 +169,7 @@ try {
             $plan.Arguments = @("-json") + $(if ($plan.TestMode) { @("-test") } else { @() }) + $packageArgs
         }
     }
-    if ($Mode -in @("All", "Go", "Verify")) {
+    if ($Mode -in @("All", "Go", "Frontend", "Clones", "Verify")) {
         $verify = [pscustomobject]@{ Name = "verify-go-compile"; FilePath = (Get-ToolPath "go"); WorkingDirectory = $repoRoot; Arguments = @("test", "./...", "-run", "^$"); OutputName = "baseline-go-test.txt" }
         $record = Invoke-ProcessPlan $verify (Join-Path $runDir $verify.OutputName)
         $manifest.commands += $record
