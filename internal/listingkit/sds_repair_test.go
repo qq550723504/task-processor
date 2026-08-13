@@ -1,9 +1,10 @@
-package listingkit
+≠rá^—f•ñÿ¶{O,y 'v√Æ∂õ≠package listingkit
 
 import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"task-processor/internal/listingkit/core"
 	sdsdesign "task-processor/internal/sds/design"
@@ -194,5 +195,44 @@ func TestRepairAndRetryTaskSDSCancelsPendingDurableRetry(t *testing.T) {
 	}
 	if got := repo.jobs["job-sds-repair-cancel"].Status; got != SDSChildRetryJobStatusCancelled {
 		t.Fatalf("durable retry status = %q, want cancelled", got)
+	}
+}
+
+func TestRepairAndRetryTaskSDSRejectsActiveDurableRetry(t *testing.T) {
+	t.Parallel()
+
+	leaseUntil := time.Now().UTC().Add(time.Hour)
+	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest(), jobs: map[string]SDSChildRetryJob{
+		"job-sds-repair-active": {
+			ID: "job-sds-repair-active", TaskID: "task-sds-repair-active",
+			Kind: SDSChildRetryKindDesignSync, Status: SDSChildRetryJobStatusPending,
+			LeaseOwner: "sweeper", LeaseUntil: &leaseUntil,
+		},
+	}}
+	if err := repo.CreateTask(context.Background(), &Task{
+		ID: "task-sds-repair-active", TenantID: "tenant-1", Status: core.TaskStatusNeedsReview,
+		Request: &GenerateRequest{ImageURLs: []string{"https://example.com/source.png"}, Options: &GenerateOptions{SDS: &SDSSyncOptions{
+			VariantID: 101, ParentProductID: 200, PrototypeGroupID: 300, LayerID: "10033204",
+			Variants: []SDSSyncVariantOption{{VariantID: 101, VariantSKU: "white-s", PrototypeGroupID: 300, LayerID: "10033204"}},
+		}}},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: "sds_design_sync", Status: string(core.TaskStatusFailed)}}},
+	}); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	remoteResult := successfulWorkflowSDSSyncResult().DesignSync
+	remoteResult.DesignResult.Page.Product.ID = 101
+	svc := seedSupportDeps(&service{repo: repo}, supportDependencySeed{
+		sdsSyncService:            &stubWorkflowSDSSyncService{remoteResult: remoteResult},
+		assembler:                 &stubProcessStatusAssembler{},
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{designProduct: &sdsdesign.DesignProductPage{Layers: []sdsdesign.DesignLayer{{ID: "10040001"}}}},
+	})
+
+	if _, err := svc.RepairAndRetryTaskSDS(context.Background(), "task-sds-repair-active", &ApplyTaskSDSRepairRequest{
+		Variants: []SDSRepairVariantSelection{{VariantID: 101, LayerID: "10040001"}},
+	}); !errors.Is(err, ErrSDSRepairRetryInProgress) {
+		t.Fatalf("RepairAndRetryTaskSDS() error = %v, want ErrSDSRepairRetryInProgress", err)
+	}
+	if got := repo.jobs["job-sds-repair-active"].Status; got != SDSChildRetryJobStatusPending {
+		t.Fatalf("durable retry status = %q, want pending", got)
 	}
 }

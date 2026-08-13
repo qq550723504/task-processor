@@ -1,4 +1,4 @@
-package api
+≠rá^—f•ñÿ¶{O,y 'v√Æ∂õ≠package api
 
 import (
 	"errors"
@@ -53,6 +53,8 @@ func writeSDSRepairError(c *gin.Context, err error) {
 		status, code = http.StatusUnprocessableEntity, "sds_repair_layer_unavailable"
 	case errors.Is(err, listingkit.ErrSDSRepairNotEligible):
 		status, code = http.StatusConflict, "sds_repair_not_eligible"
+	case errors.Is(err, listingkit.ErrSDSRepairRetryInProgress):
+		status, code = http.StatusConflict, "sds_repair_retry_in_progress"
 	case errors.Is(err, listingkit.ErrSDSRepairUnavailable):
 		status, code = http.StatusServiceUnavailable, "sds_repair_unavailable"
 	}

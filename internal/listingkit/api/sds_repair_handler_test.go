@@ -1,4 +1,4 @@
-package api
+≠rá^—f•ñÿ¶{O,y 'v√Æ∂õ≠package api
 
 import (
 	"context"
@@ -50,6 +50,24 @@ func TestRepairAndRetryTaskSDSReturnsUnprocessableForUnavailableLayer(t *testing
 	}
 	if svc.req == nil || len(svc.req.Variants) != 1 {
 		t.Fatalf("request = %+v, want bound selection", svc.req)
+	}
+}
+
+func TestRepairAndRetryTaskSDSReturnsConflictForActiveRetry(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &stubSDSRepairHandlerService{err: listingkit.ErrSDSRepairRetryInProgress}
+	h := &handler{taskSDSRepairService: svc}
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/tasks/:task_id/sds-repair/retry", h.RepairAndRetryTaskSDS)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-1/sds-repair/retry", nil))
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want %d body=%s", w.Code, http.StatusConflict, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "sds_repair_retry_in_progress") {
+		t.Fatalf("body = %s, want stable active-retry error", w.Body.String())
 	}
 }
 

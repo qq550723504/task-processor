@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+­r‡^Ñf¥–Ø¦{O,yÊ'vÃ®¶›­import { fireEvent, render, screen } from "@testing-library/react";
 
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
 import { ApiError } from "@/lib/api/client";
@@ -243,6 +243,9 @@ describe("TaskStatusPanel", () => {
             },
           ],
           result: {
+            child_tasks: [
+              { kind: "sds_design_sync", status: "failed" },
+            ],
             workflow_issues: [
               {
                 severity: "blocking",
@@ -261,6 +264,30 @@ describe("TaskStatusPanel", () => {
     expect(screen.getByText("SDS options are missing")).toBeInTheDocument();
     expect(screen.queryByText("old failure")).not.toBeInTheDocument();
     expect(screen.queryByText("new retry failure")).not.toBeInTheDocument();
+  });
+
+  it("hides an exhausted retry error after the child repair completes", () => {
+    render(
+      <TaskStatusPanel
+        task={{
+          status: "completed",
+          child_retries: [
+            {
+              kind: "sds_design_sync",
+              status: "exhausted",
+              last_error: "stale repair failure",
+            },
+          ],
+          result: {
+            child_tasks: [
+              { kind: "sds_design_sync", status: "completed" },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByText("stale repair failure")).not.toBeInTheDocument();
   });
 
   it("uses the newest blocking issue when no durable retry error exists", () => {

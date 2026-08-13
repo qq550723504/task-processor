@@ -1,4 +1,4 @@
-package store
+≠rá^—f•ñÿ¶{Oly 'v√Æ∂õ≠package store
 
 import (
 	"context"
@@ -86,14 +86,34 @@ func (r *taskRepository) ListSDSChildRetries(ctx context.Context, taskID string)
 	return jobs, db.Order("updated_at DESC, id ASC").Find(&jobs).Error
 }
 
-func (r *taskRepository) CancelSDSChildRetry(ctx context.Context, taskID string, kind listingkit.SDSChildRetryKind) error {
-	return r.db.WithContext(ctx).Model(&listingkit.SDSChildRetryJob{}).
-		Where("listingkit_task_id = ? AND kind = ? AND status = ?", taskID, kind, listingkit.SDSChildRetryJobStatusPending).
-		Updates(map[string]any{
-			"status":      listingkit.SDSChildRetryJobStatusCancelled,
-			"lease_owner": "",
-			"lease_until": nil,
-		}).Error
+func (r *taskRepository) PrepareSDSChildRetryRepair(ctx context.Context, taskID string, kind listingkit.SDSChildRetryKind) error {
+	now := time.Now().UTC()
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var jobs []listingkit.SDSChildRetryJob
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("listingkit_task_id = ? AND kind = ?", taskID, kind).
+			Find(&jobs).Error; err != nil {
+			return err
+		}
+		for _, job := range jobs {
+			if job.Status == listingkit.SDSChildRetryJobStatusPending && job.LeaseUntil != nil && job.LeaseUntil.After(now) {
+				return listingkit.ErrSDSRepairRetryInProgress
+			}
+		}
+		for _, job := range jobs {
+			if job.Status != listingkit.SDSChildRetryJobStatusPending && job.Status != listingkit.SDSChildRetryJobStatusExhausted {
+				continue
+			}
+			if err := tx.Model(&listingkit.SDSChildRetryJob{}).Where("id = ?", job.ID).Updates(map[string]any{
+				"status":      listingkit.SDSChildRetryJobStatusCancelled,
+				"lease_owner": "",
+				"lease_until": nil,
+			}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (r *taskRepository) ClaimDueSDSChildRetries(ctx context.Context, dueBefore time.Time, limit int, owner string, leaseUntil time.Time) ([]listingkit.SDSChildRetryJob, error) {

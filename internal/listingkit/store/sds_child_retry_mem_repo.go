@@ -1,4 +1,4 @@
-package store
+≠rá^—f•ñÿ¶{O,y 'v√Æ∂õ≠package store
 
 import (
 	"context"
@@ -91,17 +91,25 @@ func (r *MemTaskRepository) ListSDSChildRetries(ctx context.Context, taskID stri
 	return jobs, nil
 }
 
-func (r *MemTaskRepository) CancelSDSChildRetry(ctx context.Context, taskID string, kind listingkit.SDSChildRetryKind) error {
+func (r *MemTaskRepository) PrepareSDSChildRetryRepair(_ context.Context, taskID string, kind listingkit.SDSChildRetryKind) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	now := time.Now().UTC()
+	for _, job := range r.ensureSDSChildRetryJobsLocked() {
+		if job.TaskID == taskID && job.Kind == kind && job.Status == listingkit.SDSChildRetryJobStatusPending && job.LeaseUntil != nil && job.LeaseUntil.After(now) {
+			return listingkit.ErrSDSRepairRetryInProgress
+		}
+	}
 	for id, job := range r.ensureSDSChildRetryJobsLocked() {
-		if job.TaskID != taskID || job.Kind != kind || !matchesTenantScope(ctx, job.TenantID) {
+		if job.TaskID != taskID || job.Kind != kind {
 			continue
 		}
-		job.Status = listingkit.SDSChildRetryJobStatusCancelled
-		job.LeaseOwner = ""
-		job.LeaseUntil = nil
-		r.sdsChildRetryJobs[id] = job
+		if job.Status == listingkit.SDSChildRetryJobStatusPending || job.Status == listingkit.SDSChildRetryJobStatusExhausted {
+			job.Status = listingkit.SDSChildRetryJobStatusCancelled
+			job.LeaseOwner = ""
+			job.LeaseUntil = nil
+			r.sdsChildRetryJobs[id] = job
+		}
 	}
 	return nil
 }

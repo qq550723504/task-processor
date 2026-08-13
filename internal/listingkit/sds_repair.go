@@ -1,4 +1,4 @@
-package listingkit
+≠rá^—f•ñÿ¶{O,y 'v√Æ∂õ≠package listingkit
 
 import (
 	"context"
@@ -15,6 +15,7 @@ var (
 	ErrSDSRepairNotEligible      = errors.New("task is not eligible for SDS repair")
 	ErrSDSRepairUnavailable      = errors.New("SDS repair is unavailable")
 	ErrSDSRepairLayerUnavailable = errors.New("selected SDS layer is unavailable for this variant")
+	ErrSDSRepairRetryInProgress  = errors.New("SDS retry is already running")
 )
 
 // TaskSDSRepairService exposes the task-scoped repair flow for stale SDS layer mappings.
@@ -140,6 +141,12 @@ func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req 
 			return nil, ErrSDSRepairLayerUnavailable
 		}
 	}
+	coordinator, ok := s.repo.(SDSChildRetryRepairCoordinator)
+	if ok {
+		if err := coordinator.PrepareSDSChildRetryRepair(ctx, task.ID, SDSChildRetryKindDesignSync); err != nil {
+			return nil, err
+		}
+	}
 	options, err := cloneSDSSyncOptions(task.Request.Options.SDS)
 	if err != nil {
 		return nil, err
@@ -166,18 +173,7 @@ func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req 
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.RetryTaskChildTask(ctx, task.ID, &RetryChildTaskRequest{Kind: "sds_design_sync"})
-	if err != nil {
-		return nil, err
-	}
-	if result != nil && result.Result != nil && !childTaskHasFailed(result.Result, string(SDSChildRetryKindDesignSync)) {
-		if source, ok := s.repo.(SDSChildRetryJobCancellationSource); ok {
-			if err := source.CancelSDSChildRetry(ctx, task.ID, SDSChildRetryKindDesignSync); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return result, nil
+	return s.RetryTaskChildTask(ctx, task.ID, &RetryChildTaskRequest{Kind: "sds_design_sync"})
 }
 
 func normalizedSDSRepairSelections(req *ApplyTaskSDSRepairRequest, variants []SDSSyncVariantOption) (map[int64]string, error) {

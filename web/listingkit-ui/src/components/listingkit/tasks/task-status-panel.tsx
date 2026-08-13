@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, LoaderCircle } from "lucide-react";
+­r‡^Ñf¥–Ø¦{O,yÊ'vÃ®¶›­import { AlertTriangle, CheckCircle2, LoaderCircle } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,14 @@ function hasFailedSheinSubmission(task?: ListingKitTaskResult | null) {
 function terminalChildRetryError(task?: ListingKitTaskResult | null) {
   const errors =
     task?.child_retries
-      ?.filter((retry) => retry.status === "exhausted" && retry.last_error)
+      ?.filter(
+        (retry) =>
+          retry.status === "exhausted" &&
+          retry.last_error &&
+          (task.result?.child_tasks?.some(
+            (child) => child.kind === retry.kind && child.status === "failed",
+          ) ?? false),
+      )
       .sort((left, right) =>
         String(left.updated_at ?? "").localeCompare(String(right.updated_at ?? "")),
       ) ?? [];

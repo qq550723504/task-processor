@@ -1,4 +1,4 @@
-package listingkit
+≠rá^—f•ñÿ¶{O,y 'v√Æ∂õ≠package listingkit
 
 import (
 	"context"
@@ -46,10 +46,19 @@ func (r *sdsChildRetryTestRepository) SaveSDSChildRetry(context.Context, *SDSChi
 	return nil
 }
 
-func (r *sdsChildRetryTestRepository) CancelSDSChildRetry(_ context.Context, taskID string, kind SDSChildRetryKind) error {
+func (r *sdsChildRetryTestRepository) PrepareSDSChildRetryRepair(_ context.Context, taskID string, kind SDSChildRetryKind) error {
+	now := time.Now()
 	for id, job := range r.jobs {
-		if job.TaskID == taskID && job.Kind == kind {
+		if job.TaskID != taskID || job.Kind != kind {
+			continue
+		}
+		if job.Status == SDSChildRetryJobStatusPending && job.LeaseUntil != nil && job.LeaseUntil.After(now) {
+			return ErrSDSRepairRetryInProgress
+		}
+		if job.Status == SDSChildRetryJobStatusPending || job.Status == SDSChildRetryJobStatusExhausted {
 			job.Status = SDSChildRetryJobStatusCancelled
+			job.LeaseOwner = ""
+			job.LeaseUntil = nil
 			r.jobs[id] = job
 		}
 	}

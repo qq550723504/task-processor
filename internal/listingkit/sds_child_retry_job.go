@@ -1,4 +1,4 @@
-package listingkit
+≠rá^—f•ñÿ¶{O,y 'v√Æ∂õ≠package listingkit
 
 import (
 	"context"
@@ -57,8 +57,10 @@ type SDSChildRetryJobStatusSource interface {
 	ListSDSChildRetries(ctx context.Context, taskID string) ([]SDSChildRetryJob, error)
 }
 
-type SDSChildRetryJobCancellationSource interface {
-	CancelSDSChildRetry(ctx context.Context, taskID string, kind SDSChildRetryKind) error
+// SDSChildRetryRepairCoordinator serializes synchronous SDS repair with the
+// durable retry worker and retires stale retry failures before the repair.
+type SDSChildRetryRepairCoordinator interface {
+	PrepareSDSChildRetryRepair(ctx context.Context, taskID string, kind SDSChildRetryKind) error
 }
 
 type SDSChildRetryStatus struct {

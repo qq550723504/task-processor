@@ -1,4 +1,4 @@
-package store
+≠rá^—f•ñÿ¶{O,y 'v√Æ∂õ≠package store
 
 import (
 	"context"
@@ -207,6 +207,49 @@ func TestSDSChildRetryRepositoryReactivatesCancelledJob(t *testing.T) {
 	}
 	if reactivated.ID != first.ID || reactivated.Status != listingkit.SDSChildRetryJobStatusPending || reactivated.ReasonCode != "manual_child_task_retry" {
 		t.Fatalf("reactivated job = %+v, want same pending job with fresh reason", reactivated)
+	}
+}
+
+func TestSDSChildRetryRepositoryCoordinatesRepairWithActiveLease(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.SDSChildRetryJob{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo := any(NewTaskRepository(db)).(listingkit.SDSChildRetryRepairCoordinator)
+	jobRepo := any(NewTaskRepository(db)).(listingkit.SDSChildRetryJobRepository)
+	job, err := jobRepo.ScheduleSDSChildRetry(context.Background(), &listingkit.SDSChildRetryJob{
+		TaskID: "task-repair-coordination", TenantID: "tenant-1", Kind: listingkit.SDSChildRetryKindDesignSync,
+		Status: listingkit.SDSChildRetryJobStatusPending,
+	})
+	if err != nil {
+		t.Fatalf("schedule retry: %v", err)
+	}
+	leaseUntil := time.Now().UTC().Add(time.Hour)
+	if err := db.Model(&listingkit.SDSChildRetryJob{}).Where("id = ?", job.ID).Updates(map[string]any{
+		"lease_owner": "sweeper", "lease_until": leaseUntil,
+	}).Error; err != nil {
+		t.Fatalf("set active lease: %v", err)
+	}
+	if err := repo.PrepareSDSChildRetryRepair(context.Background(), job.TaskID, job.Kind); err != listingkit.ErrSDSRepairRetryInProgress {
+		t.Fatalf("prepare repair with active lease error = %v, want ErrSDSRepairRetryInProgress", err)
+	}
+	if err := db.Model(&listingkit.SDSChildRetryJob{}).Where("id = ?", job.ID).Updates(map[string]any{
+		"lease_until": time.Now().UTC().Add(-time.Minute),
+	}).Error; err != nil {
+		t.Fatalf("expire lease: %v", err)
+	}
+	if err := repo.PrepareSDSChildRetryRepair(context.Background(), job.TaskID, job.Kind); err != nil {
+		t.Fatalf("prepare repair after lease expiry: %v", err)
+	}
+	var after listingkit.SDSChildRetryJob
+	if err := db.Where("id = ?", job.ID).First(&after).Error; err != nil {
+		t.Fatalf("reload retry: %v", err)
+	}
+	if after.Status != listingkit.SDSChildRetryJobStatusCancelled || after.LeaseOwner != "" || after.LeaseUntil != nil {
+		t.Fatalf("retry after repair preparation = %+v, want cancelled without lease", after)
 	}
 }
 
