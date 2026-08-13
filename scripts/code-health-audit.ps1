@@ -86,8 +86,12 @@ function Invoke-ProcessPlan($plan, [string]$outputPath) {
         $process.WaitForExit()
         $stdout = $stdoutTask.GetAwaiter().GetResult()
         $stderr = $stderrTask.GetAwaiter().GetResult()
-        $text = if ([string]::IsNullOrEmpty($stderr)) { $stdout } else { "$stdout`n$stderr" }
-        Set-Content -LiteralPath $outputPath -Value $text -NoNewline
+        Set-Content -LiteralPath $outputPath -Value $stdout -NoNewline
+        $stderrPath = $null
+        if (-not [string]::IsNullOrEmpty($stderr)) {
+            $stderrPath = "$outputPath.stderr"
+            Set-Content -LiteralPath $stderrPath -Value $stderr -NoNewline
+        }
         return [pscustomobject]@{
             name = $plan.Name
             command = $plan.FilePath
@@ -97,6 +101,7 @@ function Invoke-ProcessPlan($plan, [string]$outputPath) {
             test_mode = if ($plan.PSObject.Properties.Name -contains "TestMode") { $plan.TestMode } else { $null }
             module_mode = if ($plan.PSObject.Properties.Name -contains "ModuleMode") { $plan.ModuleMode } else { $null }
             output_path = [IO.Path]::GetRelativePath($repoRoot, $outputPath)
+            stderr_path = if ($stderrPath) { [IO.Path]::GetRelativePath($repoRoot, $stderrPath) } else { $null }
             exit_code = $process.ExitCode
             started_at = $started.ToUniversalTime().ToString("o")
             finished_at = (Get-Date).ToUniversalTime().ToString("o")
@@ -125,6 +130,7 @@ function Install-Deadcode {
 
 function Get-KnipIssueCount($knip) {
     $count = 0
+    if ($null -ne $knip.files) { $count += @($knip.files).Count }
     foreach ($issue in @($knip.issues)) {
         if ($null -eq $issue) { continue }
         foreach ($property in @("file", "files", "dependencies", "devDependencies", "exports", "types")) {
@@ -218,18 +224,54 @@ try {
     $tracked = & (Get-ToolPath "git") -C $repoRoot ls-files -- scripts tools hack/debug
     $manifest.support_candidates = @($tracked | Where-Object { $_ -match '\.(ps1|sh|mjs|js|cmd|bat|go)$' })
     if ($Summarize) {
+        $records = @($manifest.commands | Where-Object { $_.name -like "deadcode-*" -and $_.exit_code -eq 0 })
+        $groups = @{}
+        foreach ($record in $records) {
+            $scope = $record.name -replace '^deadcode-(.+)-(windows|linux)-(prod|test)$', '$1'
+            if (-not $groups.ContainsKey($scope)) { $groups[$scope] = @() }
+            $groups[$scope] += $record
+        }
         $summary = @()
-        foreach ($record in $manifest.commands | Where-Object { $_.name -like "deadcode-*" -and $_.exit_code -eq 0 }) {
-            $file = Join-Path $repoRoot $record.output_path
-            if (-not (Test-Path $file)) { continue }
-            try {
-                $items = Get-Content -Raw $file | ConvertFrom-Json
-                foreach ($pkg in @($items)) {
-                    foreach ($fn in @($pkg.Funcs)) {
-                        $summary += [ordered]@{ package = $pkg.Path; name = $fn.Name; file = $fn.Position.File; line = $fn.Position.Line; source = $record.name }
+        foreach ($scope in $groups.Keys) {
+            $scopeRecords = @($groups[$scope])
+            if ($scopeRecords.Count -lt 2) { continue }
+            $occurrences = @{}
+            foreach ($record in $scopeRecords) {
+                $seen = @{}
+                $file = Join-Path $repoRoot $record.output_path
+                if (-not (Test-Path $file)) { continue }
+                try {
+                    $items = Get-Content -Raw $file | ConvertFrom-Json
+                    foreach ($pkg in @($items)) {
+                        foreach ($fn in @($pkg.Funcs)) {
+                            $identity = "$($pkg.Path)|$($fn.Name)|$($fn.Position.File)"
+                            $seen[$identity] = [ordered]@{ package = $pkg.Path; name = $fn.Name; file = $fn.Position.File; line = $fn.Position.Line }
+                        }
+                    }
+                } catch { }
+                foreach ($identity in $seen.Keys) {
+                    if (-not $occurrences.ContainsKey($identity)) { $occurrences[$identity] = @() }
+                    $occurrences[$identity] += [pscustomobject]@{ record = $record.name; finding = $seen[$identity] }
+                }
+            }
+            foreach ($identity in $occurrences.Keys) {
+                $matches = @($occurrences[$identity])
+                if ($matches.Count -eq $scopeRecords.Count) {
+                    $finding = $matches[0].finding
+                    $summary += [ordered]@{
+                        package = $finding.package
+                        name = $finding.name
+                        file = $finding.file
+                        line = $finding.line
+                        scope = $scope
+                        report_count = $matches.Count
+                        sources = @($matches | ForEach-Object { $_.record })
                     }
                 }
-            } catch { }
+            }
+        }
+        if ($summary.Count -eq 0) {
+            $summary = @()
         }
         $summary | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $runDir "deadcode-intersection.json")
     }

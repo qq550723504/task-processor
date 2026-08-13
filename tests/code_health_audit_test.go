@@ -70,6 +70,10 @@ func TestCodeHealthAuditRunnerIsReadOnlyAndUsesModuleMode(t *testing.T) {
 		"devDependencies",
 		"exports",
 		"types",
+		"stderr_path",
+		"report_count",
+		"scope",
+		"files",
 		"} finally {",
 		"go test",
 		"manifest.json",
@@ -86,6 +90,7 @@ func TestKnipFixtureDistinguishesFindingsFromEmptyIssues(t *testing.T) {
 		t.Fatal(err)
 	}
 	var report struct {
+		Files  []string                         `json:"files"`
 		Issues []map[string]json.RawMessage `json:"issues"`
 	}
 	if err := json.Unmarshal(data, &report); err != nil {
@@ -93,6 +98,9 @@ func TestKnipFixtureDistinguishesFindingsFromEmptyIssues(t *testing.T) {
 	}
 	if len(report.Issues) == 0 {
 		t.Fatal("fixture must contain a representative Knip finding")
+	}
+	if len(report.Files) != 1 || report.Files[0] != "src/orphan.ts" {
+		t.Fatalf("fixture must contain a top-level file finding, got %#v", report.Files)
 	}
 	for _, issue := range report.Issues {
 		if len(issue) == 0 {

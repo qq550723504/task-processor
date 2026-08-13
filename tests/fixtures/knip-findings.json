@@ -1,4 +1,5 @@
 {
+  "files": ["src/orphan.ts"],
   "issues": [
     {
       "file": ["src/unused.ts"],
