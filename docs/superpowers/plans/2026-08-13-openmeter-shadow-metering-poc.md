@@ -427,7 +427,7 @@ overage = max(usage - limit, 0)
 
 Assert `hasAccess` against the configured hard-limit behavior at zero, partial, exact-limit, and above-limit usage. Clearly label balance/overage as locally derived because the pinned v3 access API exposes only `hasAccess`, feature key, type, and static config.
 
-For storage, ingest 8 MiB then 3 MiB as absolute snapshots and prove access/balance recover after the lower LATEST value becomes current.
+For storage, ingest 12 MiB then 3 MiB as absolute snapshots and prove access/balance recover after the lower LATEST value becomes current. The fixture's approved hard limit remains 10 MiB, so the first snapshot must exhaust access before the second restores it.
 
 For concurrency, leave one unit and release 20 goroutines through a start barrier. Each goroutine queries access before ingesting a unique event. Record how many saw access and the final usage. The test passes only when it produces a reproducible observation and writes it to `t.Log`; it must not assert that OpenMeter provides an atomic business reservation. The report later decides whether local reservation/commit/release is mandatory.
 
