@@ -180,8 +180,8 @@ Describe "OpenMeter PoC path and Compose boundaries" {
         $thrown | Should Be $true
     }
 
-    It "rejects RunIds with repeated or trailing separators" {
-        foreach ($runId in @("run--42", "run-")) {
+    It "rejects noncanonical RunIds" {
+        foreach ($runId in @("run--42", "run-", "Run-42", "RUN-42")) {
             $thrown = $false
             try { Get-OpenMeterPoCPaths -RepositoryRoot $TestDrive -RunId $runId } catch { $thrown = $true }
             $thrown | Should Be $true

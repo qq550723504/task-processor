@@ -38,7 +38,7 @@ function Get-OpenMeterPoCPaths {
         [string]$RunId
     )
 
-    if ($RunId.Length -gt 40 -or $RunId -notmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
+    if ($RunId.Length -gt 40 -or $RunId -cnotmatch '^[a-z0-9]+(?:-[a-z0-9]+)*$') {
         throw "RunId must match ^[a-z0-9]+(?:-[a-z0-9]+)*$ and contain at most 40 characters"
     }
 
