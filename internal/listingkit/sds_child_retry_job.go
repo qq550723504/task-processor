@@ -7,7 +7,10 @@ import (
 
 type SDSChildRetryKind string
 
-const SDSChildRetryKindDesignSync SDSChildRetryKind = "sds_design_sync"
+const (
+	SDSChildRetryKindCatalogProduct SDSChildRetryKind = "sds_catalog_product"
+	SDSChildRetryKindDesignSync     SDSChildRetryKind = "sds_design_sync"
+)
 
 type SDSChildRetryJobStatus string
 
@@ -15,6 +18,8 @@ const (
 	SDSChildRetryJobStatusPending   SDSChildRetryJobStatus = "pending"
 	SDSChildRetryJobStatusCompleted SDSChildRetryJobStatus = "completed"
 	SDSChildRetryJobStatusExhausted SDSChildRetryJobStatus = "exhausted"
+	SDSChildRetryJobStatusCancelled SDSChildRetryJobStatus = "cancelled"
+	SDSChildRetryJobStatusRepairing SDSChildRetryJobStatus = "repairing"
 )
 
 // SDSChildRetryJob is durable retry state for a single ListingKit child task.
@@ -46,6 +51,44 @@ type SDSChildRetryJobRepository interface {
 	SaveSDSChildRetry(ctx context.Context, job *SDSChildRetryJob) error
 }
 
+// SDSChildRetryJobStatusSource exposes durable retry state to task-result
+// readers so queued retries remain observable across page reloads and worker
+// completion does not depend on the in-memory mutation state.
+type SDSChildRetryJobStatusSource interface {
+	ListSDSChildRetries(ctx context.Context, taskID string) ([]SDSChildRetryJob, error)
+}
+
+// SDSChildRetryRepairCoordinator serializes synchronous SDS repair with the
+// durable retry worker and retires stale retry failures before the repair.
+type SDSChildRetryRepairCoordinator interface {
+	BeginSDSChildRetryRepair(ctx context.Context, taskID string, kind SDSChildRetryKind) (*SDSChildRetryRepairLease, error)
+	EndSDSChildRetryRepair(ctx context.Context, lease *SDSChildRetryRepairLease) error
+}
+
+type SDSChildRetryRepairLease struct {
+	JobID string
+	Owner string
+}
+
+type SDSChildRetryStatus struct {
+	TaskID      string            `json:"task_id"`
+	Kind        SDSChildRetryKind `json:"kind"`
+	Status      string            `json:"status"`
+	Attempt     int               `json:"attempt"`
+	NextRetryAt time.Time         `json:"next_retry_at"`
+	LastError   string            `json:"last_error,omitempty"`
+	UpdatedAt   time.Time         `json:"updated_at"`
+}
+
+// TaskChildRetryAccepted is returned when a retry has been durably queued.
+// The worker owns the long-running domain retry and will update the task result
+// when it finishes.
+type TaskChildRetryAccepted struct {
+	TaskID string `json:"task_id"`
+	Kind   string `json:"kind"`
+	Status string `json:"status"`
+}
+
 // StudioBatchSDSChildRetryResult records the tasks accepted by an explicit
 // Studio batch retry request. Each accepted task is retried by the same durable
 // worker used for automatically classified OSS failures.
@@ -60,3 +103,4 @@ type StudioBatchSDSChildRetryFail struct {
 	TaskID  string `json:"task_id,omitempty"`
 	Message string `json:"message"`
 }
+

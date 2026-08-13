@@ -100,7 +100,7 @@ type storeAdminHandlerService interface {
 }
 
 type childTaskRetryService interface {
-	RetryTaskChildTask(ctx context.Context, taskID string, req *listingkit.RetryChildTaskRequest) (*listingkit.TaskResult, error)
+	ScheduleTaskChildRetry(ctx context.Context, taskID string, req *listingkit.RetryChildTaskRequest) (*listingkit.TaskChildRetryAccepted, error)
 }
 
 type taskSDSRepairService interface {

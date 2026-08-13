@@ -15,6 +15,7 @@ var (
 	ErrSDSRepairNotEligible      = errors.New("task is not eligible for SDS repair")
 	ErrSDSRepairUnavailable      = errors.New("SDS repair is unavailable")
 	ErrSDSRepairLayerUnavailable = errors.New("selected SDS layer is unavailable for this variant")
+	ErrSDSRepairRetryInProgress  = errors.New("SDS retry is already running")
 )
 
 // TaskSDSRepairService exposes the task-scoped repair flow for stale SDS layer mappings.
@@ -109,7 +110,7 @@ func TaskEligibleForSDSRepair(task *Task) bool {
 	return childTaskHasFailed(task.Result, "sds_design_sync")
 }
 
-func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req *ApplyTaskSDSRepairRequest) (*TaskResult, error) {
+func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req *ApplyTaskSDSRepairRequest) (taskResult *TaskResult, returnErr error) {
 	if s == nil || s.repo == nil || strings.TrimSpace(taskID) == "" || req == nil {
 		return nil, ErrSDSRepairInvalidRequest
 	}
@@ -128,16 +129,37 @@ func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req 
 	if remote == nil {
 		return nil, ErrSDSRepairUnavailable
 	}
-	for _, variant := range task.Request.Options.SDS.Variants {
-		variantOptions := *task.Request.Options.SDS
-		variantOptions.VariantID = variant.VariantID
-		variantOptions.PrototypeGroupID = variant.PrototypeGroupID
-		page, err := getSDSBaselineDesignProduct(ctx, remote, &variantOptions)
+	if err := validateSDSRepairLayers(ctx, remote, task, selected); err != nil {
+		return nil, err
+	}
+	coordinator, ok := s.repo.(SDSChildRetryRepairCoordinator)
+	var repairLease *SDSChildRetryRepairLease
+	if ok {
+		repairLease, err = coordinator.BeginSDSChildRetryRepair(ctx, task.ID, SDSChildRetryKindDesignSync)
 		if err != nil {
 			return nil, err
 		}
-		if !sdsBaselineLayerExists(page, selected[variant.VariantID]) {
-			return nil, ErrSDSRepairLayerUnavailable
+		defer func() {
+			cleanupCtx, cancel := sdsRepairCleanupContext(ctx)
+			defer cancel()
+			if err := coordinator.EndSDSChildRetryRepair(cleanupCtx, repairLease); err != nil && returnErr == nil {
+				taskResult = nil
+				returnErr = err
+			}
+		}()
+		task, err = s.repo.GetTask(ctx, task.ID)
+		if err != nil {
+			return nil, err
+		}
+		if !TaskEligibleForSDSRepair(task) {
+			return nil, ErrSDSRepairNotEligible
+		}
+		selected, err = normalizedSDSRepairSelections(req, task.Request.Options.SDS.Variants)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateSDSRepairLayers(ctx, remote, task, selected); err != nil {
+			return nil, err
 		}
 	}
 	options, err := cloneSDSSyncOptions(task.Request.Options.SDS)
@@ -167,6 +189,26 @@ func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req 
 		return nil, err
 	}
 	return s.RetryTaskChildTask(ctx, task.ID, &RetryChildTaskRequest{Kind: "sds_design_sync"})
+}
+
+func validateSDSRepairLayers(ctx context.Context, remote SDSBaselineRemoteProvider, task *Task, selected map[int64]string) error {
+	for _, variant := range task.Request.Options.SDS.Variants {
+		variantOptions := *task.Request.Options.SDS
+		variantOptions.VariantID = variant.VariantID
+		variantOptions.PrototypeGroupID = variant.PrototypeGroupID
+		page, err := getSDSBaselineDesignProduct(ctx, remote, &variantOptions)
+		if err != nil {
+			return err
+		}
+		if !sdsBaselineLayerExists(page, selected[variant.VariantID]) {
+			return ErrSDSRepairLayerUnavailable
+		}
+	}
+	return nil
+}
+
+func sdsRepairCleanupContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 }
 
 func normalizedSDSRepairSelections(req *ApplyTaskSDSRepairRequest, variants []SDSSyncVariantOption) (map[int64]string, error) {
