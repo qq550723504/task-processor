@@ -1,4 +1,4 @@
-≠rá^—f•ñÿ¶{O,y 'v√Æ∂õ≠import { AlertTriangle, CheckCircle2, LoaderCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, LoaderCircle } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";

@@ -1,4 +1,4 @@
-≠rá^—f•ñÿ¶{O,y 'v√Æ∂õ≠import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 
 import { TaskStatusPanel } from "@/components/listingkit/tasks/task-status-panel";
 import { ApiError } from "@/lib/api/client";
