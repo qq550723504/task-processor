@@ -31,7 +31,7 @@ func (r *MemTaskRepository) ScheduleSDSChildRetry(_ context.Context, job *listin
 	jobs := r.ensureSDSChildRetryJobsLocked()
 	for _, existing := range jobs {
 		if existing.TaskID == job.TaskID && existing.Kind == job.Kind {
-			if existing.Status == listingkit.SDSChildRetryJobStatusCompleted || existing.Status == listingkit.SDSChildRetryJobStatusExhausted {
+			if existing.Status == listingkit.SDSChildRetryJobStatusCompleted || existing.Status == listingkit.SDSChildRetryJobStatusExhausted || existing.Status == listingkit.SDSChildRetryJobStatusCancelled {
 				existing.Attempt = job.Attempt
 				existing.NextRetryAt = job.NextRetryAt
 				existing.ReasonCode = job.ReasonCode
@@ -91,6 +91,21 @@ func (r *MemTaskRepository) ListSDSChildRetries(ctx context.Context, taskID stri
 	return jobs, nil
 }
 
+func (r *MemTaskRepository) CancelSDSChildRetry(ctx context.Context, taskID string, kind listingkit.SDSChildRetryKind) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, job := range r.ensureSDSChildRetryJobsLocked() {
+		if job.TaskID != taskID || job.Kind != kind || !matchesTenantScope(ctx, job.TenantID) {
+			continue
+		}
+		job.Status = listingkit.SDSChildRetryJobStatusCancelled
+		job.LeaseOwner = ""
+		job.LeaseUntil = nil
+		r.sdsChildRetryJobs[id] = job
+	}
+	return nil
+}
+
 func (r *MemTaskRepository) ClaimDueSDSChildRetries(ctx context.Context, dueBefore time.Time, limit int, owner string, leaseUntil time.Time) ([]listingkit.SDSChildRetryJob, error) {
 	if strings.TrimSpace(owner) == "" {
 		return nil, fmt.Errorf("SDS child retry lease owner is required")
@@ -98,11 +113,16 @@ func (r *MemTaskRepository) ClaimDueSDSChildRetries(ctx context.Context, dueBefo
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	jobs := make([]listingkit.SDSChildRetryJob, 0)
+	claimedTaskIDs := make(map[string]struct{})
 	for _, job := range r.ensureSDSChildRetryJobsLocked() {
 		if job.Status != listingkit.SDSChildRetryJobStatusPending || job.NextRetryAt.After(dueBefore) || (job.LeaseUntil != nil && job.LeaseUntil.After(dueBefore)) || !matchesTenantScope(ctx, job.TenantID) {
 			continue
 		}
+		if _, claimed := claimedTaskIDs[job.TaskID]; claimed {
+			continue
+		}
 		jobs = append(jobs, job)
+		claimedTaskIDs[job.TaskID] = struct{}{}
 	}
 	sortSDSChildRetryJobs(jobs)
 	if limit > 0 && len(jobs) > limit {

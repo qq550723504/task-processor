@@ -166,7 +166,18 @@ func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req 
 	if err != nil {
 		return nil, err
 	}
-	return s.RetryTaskChildTask(ctx, task.ID, &RetryChildTaskRequest{Kind: "sds_design_sync"})
+	result, err := s.RetryTaskChildTask(ctx, task.ID, &RetryChildTaskRequest{Kind: "sds_design_sync"})
+	if err != nil {
+		return nil, err
+	}
+	if result != nil && result.Result != nil && !childTaskHasFailed(result.Result, string(SDSChildRetryKindDesignSync)) {
+		if source, ok := s.repo.(SDSChildRetryJobCancellationSource); ok {
+			if err := source.CancelSDSChildRetry(ctx, task.ID, SDSChildRetryKindDesignSync); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return result, nil
 }
 
 func normalizedSDSRepairSelections(req *ApplyTaskSDSRepairRequest, variants []SDSSyncVariantOption) (map[int64]string, error) {

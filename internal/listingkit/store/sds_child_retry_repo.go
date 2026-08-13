@@ -39,7 +39,7 @@ func (r *taskRepository) ScheduleSDSChildRetry(ctx context.Context, job *listing
 	if err := r.db.WithContext(ctx).Where("listingkit_task_id = ? AND kind = ?", copy.TaskID, copy.Kind).First(&existing).Error; err != nil {
 		return nil, err
 	}
-	if existing.Status == listingkit.SDSChildRetryJobStatusCompleted || existing.Status == listingkit.SDSChildRetryJobStatusExhausted {
+	if existing.Status == listingkit.SDSChildRetryJobStatusCompleted || existing.Status == listingkit.SDSChildRetryJobStatusExhausted || existing.Status == listingkit.SDSChildRetryJobStatusCancelled {
 		result := r.db.WithContext(ctx).Model(&listingkit.SDSChildRetryJob{}).
 			Where("id = ? AND status IN ?", existing.ID, []listingkit.SDSChildRetryJobStatus{
 				listingkit.SDSChildRetryJobStatusCompleted,
@@ -85,6 +85,16 @@ func (r *taskRepository) ListSDSChildRetries(ctx context.Context, taskID string)
 	return jobs, db.Order("updated_at DESC, id ASC").Find(&jobs).Error
 }
 
+func (r *taskRepository) CancelSDSChildRetry(ctx context.Context, taskID string, kind listingkit.SDSChildRetryKind) error {
+	return r.db.WithContext(ctx).Model(&listingkit.SDSChildRetryJob{}).
+		Where("listingkit_task_id = ? AND kind = ? AND status = ?", taskID, kind, listingkit.SDSChildRetryJobStatusPending).
+		Updates(map[string]any{
+			"status":      listingkit.SDSChildRetryJobStatusCancelled,
+			"lease_owner": "",
+			"lease_until": nil,
+		}).Error
+}
+
 func (r *taskRepository) ClaimDueSDSChildRetries(ctx context.Context, dueBefore time.Time, limit int, owner string, leaseUntil time.Time) ([]listingkit.SDSChildRetryJob, error) {
 	if strings.TrimSpace(owner) == "" {
 		return nil, fmt.Errorf("SDS child retry lease owner is required")
@@ -100,13 +110,37 @@ func (r *taskRepository) ClaimDueSDSChildRetries(ctx context.Context, dueBefore 
 		if err := db.Find(&jobs).Error; err != nil {
 			return err
 		}
+		claimed := make([]listingkit.SDSChildRetryJob, 0, len(jobs))
+		claimedTaskIDs := make(map[string]struct{})
 		for index := range jobs {
-			jobs[index].LeaseOwner = owner
-			jobs[index].LeaseUntil = &leaseUntil
-			if err := tx.Save(&jobs[index]).Error; err != nil {
+			job := &jobs[index]
+			if _, alreadyClaimed := claimedTaskIDs[job.TaskID]; alreadyClaimed {
+				continue
+			}
+			if tx.Migrator().HasTable(&listingkit.Task{}) {
+				var task listingkit.Task
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", job.TaskID).First(&task).Error; err != nil {
+					return err
+				}
+				var active int64
+				if err := tx.Model(&listingkit.SDSChildRetryJob{}).
+					Where("listingkit_task_id = ? AND id <> ? AND status = ? AND lease_until > ?", job.TaskID, job.ID, listingkit.SDSChildRetryJobStatusPending, dueBefore).
+					Count(&active).Error; err != nil {
+					return err
+				}
+				if active > 0 {
+					continue
+				}
+			}
+			job.LeaseOwner = owner
+			job.LeaseUntil = &leaseUntil
+			if err := tx.Save(job).Error; err != nil {
 				return err
 			}
+			claimed = append(claimed, *job)
+			claimedTaskIDs[job.TaskID] = struct{}{}
 		}
+		jobs = claimed
 		return nil
 	})
 	return jobs, err

@@ -46,6 +46,20 @@ func (r *sdsChildRetryTestRepository) SaveSDSChildRetry(context.Context, *SDSChi
 	return nil
 }
 
+func (r *sdsChildRetryTestRepository) CancelSDSChildRetry(_ context.Context, taskID string, kind SDSChildRetryKind) error {
+	for id, job := range r.jobs {
+		if job.TaskID == taskID && job.Kind == kind {
+			job.Status = SDSChildRetryJobStatusCancelled
+			r.jobs[id] = job
+		}
+	}
+	return nil
+}
+
+func (r *sdsChildRetryTestRepository) ReplaceTaskSDSOptionsForRetry(ctx context.Context, taskID string, options *SDSSyncOptions, audit PodExecutionAuditEvent) (*Task, error) {
+	return r.Repository.(TaskSDSRepairRepository).ReplaceTaskSDSOptionsForRetry(ctx, taskID, options, audit)
+}
+
 func (r *sdsChildRetryTestRepository) ListSDSChildRetries(_ context.Context, taskID string) ([]SDSChildRetryJob, error) {
 	jobs := make([]SDSChildRetryJob, 0)
 	for _, job := range r.jobs {
@@ -193,6 +207,30 @@ func TestRunSDSChildRetryRestoresTenantContext(t *testing.T) {
 	}
 	if got := TenantIDFromContext(repo.retryCtx); got != task.TenantID {
 		t.Fatalf("retry tenant context = %q, want %q", got, task.TenantID)
+	}
+}
+
+func TestRunSDSChildRetryPreservesDomainFailure(t *testing.T) {
+	ctx := context.Background()
+	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest()}
+	task := &Task{
+		ID:       "task-domain-failure",
+		TenantID: "tenant-1",
+		Status:   core.TaskStatusNeedsReview,
+		Request:  &GenerateRequest{Options: &GenerateOptions{}},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
+			Kind: string(SDSChildRetryKindDesignSync), Status: string(core.TaskStatusFailed),
+		}}},
+	}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	job := &SDSChildRetryJob{TaskID: task.ID, TenantID: task.TenantID, Kind: SDSChildRetryKindDesignSync}
+	if err := (&service{repo: repo}).runSDSChildRetry(ctx, job); err != nil {
+		t.Fatalf("runSDSChildRetry() error = %v", err)
+	}
+	if job.LastError != core.ErrChildTaskNotRetryable.Error() {
+		t.Fatalf("job.LastError = %q, want domain error %q", job.LastError, core.ErrChildTaskNotRetryable.Error())
 	}
 }
 

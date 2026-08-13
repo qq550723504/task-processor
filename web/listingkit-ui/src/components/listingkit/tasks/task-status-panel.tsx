@@ -29,7 +29,8 @@ function terminalChildRetryError(task?: ListingKitTaskResult | null) {
       .sort((left, right) =>
         String(left.updated_at ?? "").localeCompare(String(right.updated_at ?? "")),
       ) ?? [];
-  return errors[errors.length - 1]?.last_error;
+  const error = errors[errors.length - 1]?.last_error;
+  return error === "SDS child retry did not complete" ? undefined : error;
 }
 
 function primaryTaskError(task: ListingKitTaskResult) {

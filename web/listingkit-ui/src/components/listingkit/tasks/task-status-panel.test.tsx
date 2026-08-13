@@ -282,6 +282,35 @@ describe("TaskStatusPanel", () => {
     expect(screen.queryByText("old failure")).not.toBeInTheDocument();
   });
 
+  it("falls through from a generic durable retry error to the persisted child error", () => {
+    render(
+      <TaskStatusPanel
+        task={{
+          status: "needs_review",
+          child_retries: [
+            {
+              kind: "sds_design_sync",
+              status: "exhausted",
+              last_error: "SDS child retry did not complete",
+            },
+          ],
+          result: {
+            child_tasks: [
+              {
+                kind: "sds_design_sync",
+                status: "failed",
+                error: "SHEIN 登录态失效",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("SHEIN 登录态失效")).toBeInTheDocument();
+    expect(screen.queryByText("SDS child retry did not complete")).not.toBeInTheDocument();
+  });
+
   it("splits semicolon-joined review reasons into separate items", () => {
     render(
       <TaskStatusPanel

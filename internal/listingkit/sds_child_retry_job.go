@@ -18,6 +18,7 @@ const (
 	SDSChildRetryJobStatusPending   SDSChildRetryJobStatus = "pending"
 	SDSChildRetryJobStatusCompleted SDSChildRetryJobStatus = "completed"
 	SDSChildRetryJobStatusExhausted SDSChildRetryJobStatus = "exhausted"
+	SDSChildRetryJobStatusCancelled SDSChildRetryJobStatus = "cancelled"
 )
 
 // SDSChildRetryJob is durable retry state for a single ListingKit child task.
@@ -54,6 +55,10 @@ type SDSChildRetryJobRepository interface {
 // completion does not depend on the in-memory mutation state.
 type SDSChildRetryJobStatusSource interface {
 	ListSDSChildRetries(ctx context.Context, taskID string) ([]SDSChildRetryJob, error)
+}
+
+type SDSChildRetryJobCancellationSource interface {
+	CancelSDSChildRetry(ctx context.Context, taskID string, kind SDSChildRetryKind) error
 }
 
 type SDSChildRetryStatus struct {

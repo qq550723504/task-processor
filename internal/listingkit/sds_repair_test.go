@@ -160,3 +160,39 @@ func TestRepairAndRetryTaskSDSReplacesPersistedVariantLayerBeforeRetry(t *testin
 		t.Fatalf("repair audit history = %+v, want appended event", after.Result.PodExecution)
 	}
 }
+
+func TestRepairAndRetryTaskSDSCancelsPendingDurableRetry(t *testing.T) {
+	t.Parallel()
+
+	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest(), jobs: map[string]SDSChildRetryJob{
+		"job-sds-repair-cancel": {
+			ID: "job-sds-repair-cancel", TaskID: "task-sds-repair-cancel",
+			Kind: SDSChildRetryKindDesignSync, Status: SDSChildRetryJobStatusPending,
+		},
+	}}
+	if err := repo.CreateTask(context.Background(), &Task{
+		ID: "task-sds-repair-cancel", TenantID: "tenant-1", Status: core.TaskStatusNeedsReview,
+		Request: &GenerateRequest{ImageURLs: []string{"https://example.com/source.png"}, Options: &GenerateOptions{SDS: &SDSSyncOptions{
+			VariantID: 101, ParentProductID: 200, PrototypeGroupID: 300, LayerID: "10033204",
+			Variants: []SDSSyncVariantOption{{VariantID: 101, VariantSKU: "white-s", PrototypeGroupID: 300, LayerID: "10033204"}},
+		}}},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: "sds_design_sync", Status: string(core.TaskStatusFailed)}}},
+	}); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	remoteResult := successfulWorkflowSDSSyncResult().DesignSync
+	remoteResult.DesignResult.Page.Product.ID = 101
+	svc := seedSupportDeps(&service{repo: repo}, supportDependencySeed{
+		sdsSyncService: &stubWorkflowSDSSyncService{remoteResult: remoteResult}, assembler: &stubProcessStatusAssembler{},
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{designProduct: &sdsdesign.DesignProductPage{Layers: []sdsdesign.DesignLayer{{ID: "10040001"}}}},
+	})
+
+	if _, err := svc.RepairAndRetryTaskSDS(context.Background(), "task-sds-repair-cancel", &ApplyTaskSDSRepairRequest{
+		Variants: []SDSRepairVariantSelection{{VariantID: 101, LayerID: "10040001"}},
+	}); err != nil {
+		t.Fatalf("RepairAndRetryTaskSDS() error = %v", err)
+	}
+	if got := repo.jobs["job-sds-repair-cancel"].Status; got != SDSChildRetryJobStatusCancelled {
+		t.Fatalf("durable retry status = %q, want cancelled", got)
+	}
+}

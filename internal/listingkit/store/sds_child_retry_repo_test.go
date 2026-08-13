@@ -254,3 +254,30 @@ func TestMemSDSChildRetryRepositoryReactivatesTerminalJob(t *testing.T) {
 		t.Fatalf("reactivated job = %+v, want same pending job with fresh reason", reactivated)
 	}
 }
+
+func TestMemSDSChildRetryRepositoryClaimsAtMostOneJobPerTask(t *testing.T) {
+	repo, ok := NewMemTaskRepository().(listingkit.SDSChildRetryJobRepository)
+	if !ok {
+		t.Fatal("memory task repository does not implement SDSChildRetryJobRepository")
+	}
+	now := time.Now().UTC()
+	for _, kind := range []listingkit.SDSChildRetryKind{
+		listingkit.SDSChildRetryKindDesignSync,
+		listingkit.SDSChildRetryKindCatalogProduct,
+	} {
+		if _, err := repo.ScheduleSDSChildRetry(context.Background(), &listingkit.SDSChildRetryJob{
+			TaskID: "mem-task-serialized", TenantID: "tenant-1", Kind: kind,
+			NextRetryAt: now, Status: listingkit.SDSChildRetryJobStatusPending,
+		}); err != nil {
+			t.Fatalf("schedule %s retry: %v", kind, err)
+		}
+	}
+
+	claimed, err := repo.ClaimDueSDSChildRetries(context.Background(), now, 10, "sweeper-a", now.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("claim due retries: %v", err)
+	}
+	if len(claimed) != 1 || claimed[0].TaskID != "mem-task-serialized" {
+		t.Fatalf("claimed jobs = %#v, want exactly one job for the parent task", claimed)
+	}
+}
