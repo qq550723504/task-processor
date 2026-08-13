@@ -20,11 +20,9 @@ func TestListingKitSupportFileStaysRetired(t *testing.T) {
 	require.Contains(t, string(featureBuilderSrc), "BuildRuntimeSupport")
 }
 
-func TestListingKitTemporalWorkerUsesRuntimeSupportPath(t *testing.T) {
+func TestListingKitTemporalWorkerEntrypointFileStaysRetired(t *testing.T) {
 	t.Parallel()
 
-	src, err := os.ReadFile("listingkit_temporal_worker.go")
-	require.NoError(t, err)
-	require.Contains(t, string(src), "Runtime: newListingKitRuntimeBuildInput")
-	require.NotContains(t, string(src), "ServiceInput: newListingKitBuildServiceInput")
+	_, err := os.Stat("listingkit_temporal_worker.go")
+	require.True(t, os.IsNotExist(err), "listingkit_temporal_worker.go should stay retired; Temporal runtime ownership belongs in internal/listingkit/httpapi")
 }

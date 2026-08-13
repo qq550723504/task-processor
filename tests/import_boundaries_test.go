@@ -4191,8 +4191,7 @@ func TestTemporalRuntimePackagesDoNotImportHTTPAPI(t *testing.T) {
 func TestAppHTTPAPIRootListingKitHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowed := map[string]struct{}{
-		"listingkit_shein_support.go":   {},
-		"listingkit_temporal_worker.go": {},
+		"listingkit_shein_support.go": {},
 	}
 
 	entries, err := os.ReadDir(root)
@@ -4610,7 +4609,6 @@ func TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "feature_module_builders.go")):    {},
 		filepath.Clean(filepath.Join(root, "feature_builder_listingkit.go")): {},
 		filepath.Clean(filepath.Join(root, "http_modules.go")):               {},
-		filepath.Clean(filepath.Join(root, "listingkit_temporal_worker.go")): {},
 		filepath.Clean(filepath.Join(root, "runtime_login_modules.go")):      {},
 		filepath.Clean(filepath.Join(root, "runtime.go")):                    {},
 		filepath.Clean(filepath.Join(root, "runtime_deps_methods.go")):       {},
