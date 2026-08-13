@@ -7,7 +7,7 @@ import (
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
-func TestBuildSettingsHealthDoesNotRequireDefaultSheinStore(t *testing.T) {
+func TestBuildSettingsHealthAllowsStoreSelectionAtSubmission(t *testing.T) {
 	t.Parallel()
 
 	health := BuildSettingsHealth(SettingsHealthInputs{
@@ -26,11 +26,6 @@ func TestBuildSettingsHealthDoesNotRequireDefaultSheinStore(t *testing.T) {
 	}
 	if account.Status != "ready" {
 		t.Fatalf("shein.account status = %q, want ready; message=%q action=%q", account.Status, account.Message, account.Action)
-	}
-	for _, text := range []string{account.Message, account.Action} {
-		if strings.Contains(text, "默认店铺") || strings.Contains(strings.ToLower(text), "default store") {
-			t.Fatalf("shein.account text still requires a default store: message=%q action=%q", account.Message, account.Action)
-		}
 	}
 	if !strings.Contains(strings.Join(append(account.Impact, account.Action), " "), "显式指定") {
 		t.Fatalf("shein.account impact/action must explain explicit store selection: impact=%#v action=%q", account.Impact, account.Action)

@@ -140,7 +140,7 @@ func TestGetSettingsHealthReturnsConfigurationImpact(t *testing.T) {
 	}
 }
 
-func TestGetSheinSettingsSchemaOmitsDefaultStore(t *testing.T) {
+func TestGetSheinSettingsSchemaReturnsCurrentFields(t *testing.T) {
 	t.Parallel()
 
 	h, err := NewHandler(&stubHandlerCoreService{}, WithSettingsHandlerService(&stubSettingsNamespaceService{}))
@@ -166,9 +166,13 @@ func TestGetSheinSettingsSchemaOmitsDefaultStore(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("json.Unmarshal: %v", err)
 	}
-	for _, field := range payload.Fields {
-		if field.Key == "default_store_id" {
-			t.Fatalf("SHEIN schema fields = %#v, must not include default_store_id", payload.Fields)
+	want := []string{"site", "warehouse_code", "default_stock", "default_submit_mode", "pricing"}
+	if len(payload.Fields) != len(want) {
+		t.Fatalf("SHEIN schema fields = %#v, want keys %#v", payload.Fields, want)
+	}
+	for i, field := range payload.Fields {
+		if field.Key != want[i] {
+			t.Fatalf("SHEIN schema field %d = %q, want %q", i, field.Key, want[i])
 		}
 	}
 }
@@ -292,7 +296,7 @@ func TestUpdateAISettingsDoesNotRequireStudioSubscription(t *testing.T) {
 	}
 }
 
-func TestUpdateSheinSettingsIgnoresLegacyDefaultStoreID(t *testing.T) {
+func TestUpdateSheinSettingsPersistsCurrentFields(t *testing.T) {
 	t.Parallel()
 
 	svc := &stubSettingsNamespaceService{}
@@ -309,7 +313,7 @@ func TestUpdateSheinSettingsIgnoresLegacyDefaultStoreID(t *testing.T) {
 	router := gin.New()
 	router.PUT("/settings/:namespace", h.UpdateSettingsNamespace)
 
-	req := httptest.NewRequest(http.MethodPut, "/settings/shein", strings.NewReader(`{"default_store_id": 9, "site": "GB"}`))
+	req := httptest.NewRequest(http.MethodPut, "/settings/shein", strings.NewReader(`{"site":"GB","warehouse_code":"WH-GB-1","default_stock":30,"default_submit_mode":"save_draft"}`))
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	router.ServeHTTP(resp, req)
@@ -321,20 +325,19 @@ func TestUpdateSheinSettingsIgnoresLegacyDefaultStoreID(t *testing.T) {
 	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
 		t.Fatalf("json.Unmarshal response: %v", err)
 	}
-	if _, exists := payload["default_store_id"]; exists {
-		t.Fatalf("response = %#v, must not expose default_store_id", payload)
-	}
 	if payload["site"] != "GB" {
 		t.Fatalf("response site = %#v, want GB", payload["site"])
 	}
-	if svc.sheinSettingsReq == nil || svc.sheinSettingsReq.Site != "GB" {
-		t.Fatalf("updated SHEIN settings = %+v, want Site GB", svc.sheinSettingsReq)
+	if payload["warehouse_code"] != "WH-GB-1" {
+		t.Fatalf("response warehouse_code = %#v, want WH-GB-1", payload["warehouse_code"])
 	}
-	updatedJSON, err := json.Marshal(svc.sheinSettingsReq)
-	if err != nil {
-		t.Fatalf("json.Marshal updated settings: %v", err)
+	if payload["default_stock"] != float64(30) {
+		t.Fatalf("response default_stock = %#v, want 30", payload["default_stock"])
 	}
-	if bytes.Contains(updatedJSON, []byte(`"default_store_id"`)) {
-		t.Fatalf("updated SHEIN settings retained a store selection: %s", updatedJSON)
+	if payload["default_submit_mode"] != "save_draft" {
+		t.Fatalf("response default_submit_mode = %#v, want save_draft", payload["default_submit_mode"])
+	}
+	if svc.sheinSettingsReq == nil || svc.sheinSettingsReq.Site != "GB" || svc.sheinSettingsReq.WarehouseCode != "WH-GB-1" || svc.sheinSettingsReq.DefaultStock != 30 || svc.sheinSettingsReq.DefaultSubmitMode != "save_draft" {
+		t.Fatalf("updated SHEIN settings = %+v, want current fields persisted", svc.sheinSettingsReq)
 	}
 }

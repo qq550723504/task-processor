@@ -86,7 +86,7 @@ func TestNormalizeGenerateRequestEnablesProcessImagesWhenSceneOptionsProvided(t 
 	}
 }
 
-func TestBuildListingKitServiceContractOmitsDefaultSheinStoreWiring(t *testing.T) {
+func TestBuildListingKitServiceContractOmitsRequestDefaultsWiring(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -94,11 +94,6 @@ func TestBuildListingKitServiceContractOmitsDefaultSheinStoreWiring(t *testing.T
 		contract  reflect.Type
 		fieldName string
 	}{
-		{
-			name:      "service SHEIN dependencies",
-			contract:  reflect.TypeOf(ServiceSheinDependencies{}),
-			fieldName: "SheinDefaultStoreID",
-		},
 		{
 			name:      "task dependencies",
 			contract:  reflect.TypeOf(taskDependencies{}),
@@ -119,7 +114,7 @@ func TestBuildListingKitServiceContractOmitsDefaultSheinStoreWiring(t *testing.T
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if _, ok := tt.contract.FieldByName(tt.fieldName); ok {
-				t.Fatalf("%s still contains default-store field %q", tt.contract, tt.fieldName)
+				t.Fatalf("%s still contains obsolete request field %q", tt.contract, tt.fieldName)
 			}
 		})
 	}

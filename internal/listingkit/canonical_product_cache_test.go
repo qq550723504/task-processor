@@ -88,11 +88,13 @@ func (noopTaskSubmitter) Submit(string) error { return nil }
 
 func canonicalProductCacheTestRequest(sdsTitle string) *GenerateRequest {
 	req := &GenerateRequest{
-		Text:      "same source product",
-		Platforms: []string{"shein"},
-		Country:   "US",
-		Language:  "en",
-		Options:   &GenerateOptions{ProcessImages: false},
+		TenantID:     "227",
+		Text:         "same source product",
+		Platforms:    []string{"shein"},
+		Country:      "US",
+		Language:     "en",
+		SheinStoreID: 869,
+		Options:      &GenerateOptions{ProcessImages: false},
 	}
 	if sdsTitle != "" {
 		req.Options.SDS = &SDSSyncOptions{ProductName: sdsTitle}
