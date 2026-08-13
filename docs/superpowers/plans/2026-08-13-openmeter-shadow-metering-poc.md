@@ -223,7 +223,7 @@ The server must reject unexpected methods, paths, authorization headers, or JSON
 Error cases:
 
 - HTTP 408, 429, and 5xx: retryable.
-- connection reset, timeout, and temporary network errors: retryable.
+- connection reset, connection refused, timeout, and temporary network errors: retryable.
 - HTTP 400/404/409/422: permanent event or fixture rejection, preserving status and safe detail.
 - HTTP 401/403: configuration/authentication failure, not a normal retry loop.
 - malformed base URL and missing URL: configuration failure.
@@ -452,6 +452,8 @@ git commit -m "test: define OpenMeter entitlement experiments"
 **Files:**
 
 - Create: `internal/integration/openmeter/replay_contract_test.go`
+- Modify: `internal/integration/openmeter/errors.go`
+- Modify: `internal/integration/openmeter/errors_test.go`
 - Create: `scripts/lib/openmeter-poc.ps1`
 - Create: `scripts/openmeter-poc.Tests.ps1`
 - Create: `scripts/run-openmeter-poc.ps1`
@@ -473,6 +475,8 @@ Use deterministic event IDs derived from run ID plus fixed logical facts:
 - `replay`: resend all four facts, resend the fourth ten additional times, and require exact final count `4`.
 
 Each test runs only when its matching `OPENMETER_POC_PHASE` is selected.
+
+Before implementing the unavailable phase, add a regression case for a wrapped `syscall.ECONNREFUSED` error and classify it as retryable. Stopping the local `openmeter` API service commonly produces connection refused rather than a timeout or reset; without this classification, the outage contract would reject a normal recoverable transport failure. Do not weaken the unavailable assertion to accept permanent failures.
 
 **Step 2: Write failing Pester tests for the runner library**
 
