@@ -85,3 +85,28 @@ retention rather than deleting debug or operator entrypoints:
 | `scripts/**` and `scripts/tests/**` support candidates | CI workflows, deployment jobs, and local operator runbooks | Exact filename search found workflow/deployment/test/runbook references for the maintained wrappers. The two historical Yudao local migration scripts have no current filename references, but both remain migration operators with non-trivial external side effects and are not safe to delete from detector evidence alone. | retained-deferred | PowerShell parser/Pester sweep; one existing Pester 3.4.0 failure in `listingkit-regression-dataset-check.Tests.ps1` is recorded as environment/test isolation debt, not a cleanup deletion signal. |
 | `tools/db-query`, `tools/json-simplifier`, `tools/listingkit-pricing-cache-inspector` | `tools/go.mod` developer utility module and Docker/debug runbooks | Exact references include `scripts/db-query.ps1`, repository-structure checks, and deployment/architecture documentation. `tools/tools.go` is a build-tagged tool dependency manifest, not an executable entrypoint. | retained-configuration-specific | `go test ./...` in `tools` passes after replacing `fmt.Println` with `fmt.Print` for the raw multiline usage text (vet warning fix). |
 | `scripts/listingkit-shein-pod-image-index-backfill` | ListingKit backfill command and its package test | Root `go test ./...` includes the nested command; repository-structure and deployment documentation reference the command and its stdout contract. | retained-generated-contract | `go test ./tests/... -count=1`; root baseline compile remains green. |
+
+The following candidates had no direct filename hit in the reference search.
+They are listed individually because absence of a static filename reference is
+not proof of obsolescence for test discovery, manual operators, or external
+tooling:
+
+| Candidate | Concrete owner / risk | Decision |
+| --- | --- | --- |
+| `hack/debug/replay-sale-attribute/main_test.go` | Package-local replay regression test; deleting removes coverage for the sale-attribute retry fixture. | retained-deferred |
+| `scripts/install-git-hooks.ps1` | Developer setup entrypoint that configures `.githooks`; deleting silently disables the documented pre-push gate for new checkouts. | retained-configuration-specific |
+| `scripts/listingkit-shein-pod-image-index-backfill/main_test.go` | Command-owned stdout/row-parsing contract; test discovery is package-based rather than filename-based. | retained-generated-contract |
+| `scripts/migrate-yudao-all-users-to-local-zitadel.ps1` | Full Yudao→ZITADEL migration operator; external database reads and identity writes make accidental deletion a recovery risk. | retained-deferred |
+| `scripts/migrate-yudao-users-to-local-zitadel.ps1` | Single-tenant migration operator for staged/local recovery; invoked manually and has irreversible identity side effects. | retained-deferred |
+| `scripts/refresh-sds-auth-via-portforward.ps1` | Local SDS auth refresh operator backed by Redis and CloakBrowser; deleting removes the documented recovery path for expired auth. | retained-deferred |
+| `scripts/start-listingkit-local-api.Tests.ps1` | Pester test file discovered by `*.Tests.ps1`; protects local API startup environment/auth behavior. | retained-generated-contract |
+| `scripts/start-listingkit-local-dev.Tests.ps1` | Pester test file discovered by convention; protects local dev authentication defaults. | retained-generated-contract |
+| `scripts/start-listingkit-local-ui.Tests.ps1` | Pester test file discovered by convention; protects local UI authentication defaults. | retained-generated-contract |
+| `scripts/start-shein-local-rabbitmq-portforward.ps1` | Manual local dependency port-forward operator for RabbitMQ/Redis/Postgres; deleting breaks local runtime diagnostics. | retained-deferred |
+| `scripts/sync-shein-store-proxies.ps1` | SHEIN store proxy synchronization operator with optional reassignment and dry-run; external DB/config mutations make false-positive deletion unsafe. | retained-deferred |
+| `scripts/tests/listingkit-clean-legacy-identity-secret-test.sh` | Shell contract test for identity-secret cleanup used by deployment hardening; test runner discovers it through the deployment test suite. | retained-generated-contract |
+| `scripts/tests/listingkit-immutable-image-test.sh` | Shell contract test for immutable image digests; protects release integrity even without a filename consumer. | retained-generated-contract |
+| `scripts/tests/listingkit-schema-migrate-job-test.sh` | Shell contract test for schema-migration job rendering; protects the operational migration boundary. | retained-generated-contract |
+| `scripts/watch-listingkit-local-portforward.ps1` | Manual local port-forward watcher for UI/API development; deleting removes a debugging convenience with no static caller. | retained-deferred |
+| `tools/cloakbrowser-poc/sds-login-redis.mjs` | CloakBrowser SDS login PoC with Redis persistence; manually invoked through its package script and carries external auth state. | retained-deferred |
+| `tools/cloakbrowser-poc/sds-login.mjs` | CloakBrowser SDS login PoC and package-script entrypoint; deleting would remove the non-Redis recovery path. | retained-deferred |
