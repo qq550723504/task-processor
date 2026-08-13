@@ -257,7 +257,7 @@ Task 8's focused gates passed after the report was written:
 | Root module: `go test -count=1 ./...` | pass, including all six `scripts/listingkit-shein-pod-image-index-backfill` tests |
 | Tools module: `go test -count=1 ./...` from `tools` | pass |
 | Debug module: `go test -count=1 ./...` from `hack/debug` | pass |
-| `./scripts/test-all.ps1 -count=1` | pass: complete root, tools, and debug modules; exit 0 in 93.1 seconds |
+| `./scripts/test-all.ps1 -count=1` | pass: complete root, tools, and debug modules; exit 0 in 93.7 seconds |
 | `git diff --check` | pass |
 
 The original `scripts/test-all.ps1` passed the nested `tools` and `hack/debug`
@@ -308,6 +308,16 @@ all six previously omitted root-package tests PASS, and the refreshed exact
 full harness PASS in 93.1 seconds. The review correction is commit `72b897b93`.
 It changes no Docker semantics, so the successful pinned PoC was not rerun and
 remains bound to source SHA `50ed0a06bd3e4248836011ba18296b283b40bdf9`.
+
+A second review isolated PowerShell's default case-insensitive regex behavior:
+the Go gate rejected `Run-42`, while the PowerShell gate accepted `Run-42` and
+`RUN-42` despite documenting the same lowercase-only contract. RED was a
+focused Go uppercase probe PASS alongside runner Pester 15/16, with the new
+uppercase rejection case as the sole failure. The PowerShell gate now uses
+`-cnotmatch` for the exact documented regex. GREEN was runner Pester 16/16,
+focused Go RunId tests PASS, harness Pester 4/4, and the exact full harness PASS
+in 93.7 seconds. The correction is commit `c10b9a859`; no Docker rerun or
+production behavior change occurred.
 
 The architecture-document guard also required the fixed-name report to be
 listed in `docs/architecture/README.md`; the authorized minimal index entry was
