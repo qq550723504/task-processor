@@ -557,5 +557,12 @@ func TestMemSDSChildRetryRepositoryClaimsAtMostOneJobPerTask(t *testing.T) {
 	if len(claimed) != 1 || claimed[0].TaskID != "mem-task-serialized" {
 		t.Fatalf("claimed jobs = %#v, want exactly one job for the parent task", claimed)
 	}
-}
 
+	again, err := repo.ClaimDueSDSChildRetries(context.Background(), now, 10, "sweeper-b", now.Add(2*time.Hour))
+	if err != nil {
+		t.Fatalf("claim sibling while first job is leased: %v", err)
+	}
+	if len(again) != 0 {
+		t.Fatalf("claimed sibling jobs = %#v, want none while the parent task has an active lease", again)
+	}
+}

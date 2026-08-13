@@ -184,7 +184,10 @@ func (r *MemTaskRepository) ClaimDueSDSChildRetries(ctx context.Context, dueBefo
 		}
 		blocked := false
 		for _, sibling := range r.sdsChildRetryJobs {
-			if sibling.TaskID == job.TaskID && sibling.Status == listingkit.SDSChildRetryJobStatusRepairing && sibling.LeaseUntil != nil && sibling.LeaseUntil.After(dueBefore) {
+			if sibling.TaskID != job.TaskID || sibling.LeaseUntil == nil || !sibling.LeaseUntil.After(dueBefore) {
+				continue
+			}
+			if sibling.Status == listingkit.SDSChildRetryJobStatusRepairing || sibling.Status == listingkit.SDSChildRetryJobStatusPending {
 				blocked = true
 				break
 			}
