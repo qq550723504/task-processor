@@ -12,7 +12,7 @@ import {
   DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
   DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
 } from "@/lib/shein-studio/storage-shared";
-import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/constants";
+import { UNSELECTED_SHEIN_STORE_ID } from "@/lib/shein-studio/constants";
 export { buildSheinStudioGenerateRequest } from "@/lib/shein-studio/generation-controller";
 import type { SubscriptionSummary } from "@/lib/api/subscription";
 import type {
@@ -156,7 +156,7 @@ export function projectGroupToWorkbench(group: SheinStudioGroupedWorkspace) {
     artworkModel: group.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground: group.transparentBackground ?? false,
     transparentBackgroundMode: group.transparentBackgroundMode,
-    sheinStoreId: group.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
+    sheinStoreId: group.sheinStoreId || UNSELECTED_SHEIN_STORE_ID,
     imageStrategy: group.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     groupedImageMode:
       group.groupedImageMode ?? DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
@@ -486,7 +486,7 @@ export function projectSavedBatchToWorkbench(
     artworkModel: savedBatch.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground: savedBatch.transparentBackground ?? false,
     transparentBackgroundMode: savedBatch.transparentBackgroundMode,
-    sheinStoreId: savedBatch.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
+    sheinStoreId: savedBatch.sheinStoreId || UNSELECTED_SHEIN_STORE_ID,
     imageStrategy:
       savedBatch.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     groupedImageMode:
@@ -587,7 +587,7 @@ export function projectHydratedBatchToWorkbench(
     transparentBackgroundMode:
       itemized.transparentBackgroundMode ?? saved.transparentBackgroundMode,
     sheinStoreId:
-      itemized.sheinStoreId || saved.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
+      itemized.sheinStoreId || saved.sheinStoreId || UNSELECTED_SHEIN_STORE_ID,
     imageStrategy: saved.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     groupedImageMode:
       itemized.groupedImageMode ??
@@ -993,7 +993,7 @@ export function mergeSheinStudioDraftState({
     hotStyleReferencePrompt: draft?.hotStyleReferencePrompt ?? "",
     artworkModel: draft?.artworkModel ?? DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground: draft?.transparentBackground ?? false,
-    sheinStoreId: draft?.sheinStoreId || DEFAULT_SHEIN_STORE_ID,
+    sheinStoreId: draft?.sheinStoreId || UNSELECTED_SHEIN_STORE_ID,
     imageStrategy: draft?.imageStrategy ?? DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     groupedImageMode:
       draft?.groupedImageMode ?? DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,

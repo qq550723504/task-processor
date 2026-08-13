@@ -55,6 +55,9 @@ export const audienceHintOptions = [
   { value: "homey", label: "居家感" },
 ] as const;
 
+export const SHEIN_STORE_REQUIRED_MESSAGE =
+  "选择 SHEIN 平台时，必须选择有效的 SHEIN 店铺。";
+
 export const schema = z
   .object({
     text: z.string().trim(),
@@ -77,6 +80,18 @@ export const schema = z
     propsLevel: z.string().trim(),
     audienceHint: z.string().trim(),
     customSceneHint: z.string().trim(),
+  })
+  .superRefine((values, context) => {
+    const targetsShein = values.platforms.some(
+      (platform) => platform.trim().toLowerCase() === "shein",
+    );
+    if (targetsShein && parseOptionalPositiveInt(values.sheinStoreId) === undefined) {
+      context.addIssue({
+        code: "custom",
+        message: SHEIN_STORE_REQUIRED_MESSAGE,
+        path: ["sheinStoreId"],
+      });
+    }
   });
 
 export type FormValues = z.infer<typeof schema>;
@@ -151,11 +166,11 @@ export function parseImageUrls(input: string) {
 
 export function parseOptionalPositiveInt(input: string) {
   const trimmed = input.trim();
-  if (!trimmed) {
+  if (!/^[1-9]\d*$/.test(trimmed)) {
     return undefined;
   }
-  const parsed = Number.parseInt(trimmed, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed)) {
     return undefined;
   }
   return parsed;

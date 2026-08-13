@@ -54,10 +54,12 @@ export function TaskPlatformFieldset({
 }
 
 export function TaskSheinStoreField({
+  error,
   selectedPlatforms,
   selectedStoreId,
   register,
 }: {
+  error?: string;
   selectedPlatforms?: string[];
   selectedStoreId?: string;
   register: UseFormRegister<FormValues>;
@@ -88,6 +90,7 @@ export function TaskSheinStoreField({
       <span className="text-sm font-medium text-muted-foreground">SHEIN 店铺</span>
       <Select
         aria-label="SHEIN 店铺"
+        aria-invalid={Boolean(error)}
         className="rounded-xl px-4 py-3"
         {...register("sheinStoreId")}
       >
@@ -101,8 +104,9 @@ export function TaskSheinStoreField({
         ))}
       </Select>
       <p className="text-sm leading-6 text-muted-foreground">
-        这里选中的 SHEIN 店铺就是后续使用的店铺；如果不选，任务仍可创建，但后续在线解析和提交可能受阻。
+        SHEIN 任务必须显式选择目标店铺；所选店铺将用于后续在线解析和提交。
       </p>
+      {error ? <p className="text-sm text-red-600">{error}</p> : null}
       {profiles.isError ? (
         <p className="text-sm text-rose-600">店铺配置读取失败，当前无法在这里明确选择店铺。</p>
       ) : null}

@@ -169,7 +169,6 @@ type SheinTaskListStoreFields struct {
 	SheinStoreReason           string     `json:"shein_store_reason,omitempty"`
 	SheinStoreMatchedRuleKinds []string   `json:"shein_store_matched_rule_kinds,omitempty"`
 	SheinStoreManualOverride   bool       `json:"shein_store_manual_override,omitempty"`
-	SheinStoreFallback         bool       `json:"shein_store_fallback,omitempty"`
 }
 
 type SheinTaskListSubmissionFields struct {

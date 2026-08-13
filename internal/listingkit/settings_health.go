@@ -41,7 +41,7 @@ func BuildSettingsHealth(inputs SettingsHealthInputs) SettingsHealthPage {
 		aiHealthItem("ai.default", "AI 文案模型", inputs.DefaultAI, []string{"生成 ListingKit 草稿", "标题/卖点/属性推理"}),
 		aiHealthItem("ai.image", "AI 图片模型", inputs.ImageAI, []string{"图片生成与重绘", "SHEIN 图片补齐"}),
 		sheinAccountHealthItem(inputs.Shein),
-		runtimeProbeHealthItem("shein.integration", "SHEIN Token / 权限 / 类目接口", inputs.Probes.SheinIntegration, []string{"保存草稿和发布", "SHEIN 类目接口校验"}, "补齐 SHEIN loginService、Cookie Redis 或店铺 API 客户端配置，并确认当前店铺具备类目与提交流程权限。"),
+		runtimeProbeHealthItem("shein.integration", "SHEIN Token / 权限 / 类目接口", inputs.Probes.SheinIntegration, []string{"保存草稿和发布", "SHEIN 类目接口校验"}, "补齐 SHEIN loginService、Cookie Redis 或店铺 API 客户端配置，并确认任务显式选择的目标店铺具备类目与提交流程权限。"),
 		sheinPricingHealthItem(inputs.Shein),
 		runtimeProbeHealthItem("sds.session", "SDS 登录态", mergeLegacyProbe(inputs.Probes.SDSLogin, inputs.SDSProbeConfigured), []string{"SDS 属性补全", "SDS 商品库和 Studio"}, "接入 SDS 登录态探针或在环境配置中补齐 SDS loginService。"),
 		runtimeProbeHealthItem("storage.object", "对象存储", mergeLegacyProbe(inputs.Probes.ObjectStorage, inputs.ObjectStoreConfigured), []string{"图片上传", "任务素材预览"}, "接入对象存储探针或在环境配置中补齐 bucket/endpoint/credentials。"),

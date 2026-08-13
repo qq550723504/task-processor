@@ -133,6 +133,12 @@ func TestBuildSettingsHealthReportsBlockedRuntimeProbeConfiguration(t *testing.T
 	assertHealthItem(t, health, "shein.integration", "blocked", "保存草稿和发布")
 	assertHealthItem(t, health, "sds.session", "blocked", "SDS 属性补全")
 	assertHealthItem(t, health, "storage.object", "blocked", "图片上传")
+
+	for _, item := range health.Items {
+		if item.Key == "shein.integration" && !strings.Contains(item.Action, "任务显式选择的目标店铺") {
+			t.Fatalf("shein.integration action = %q, want explicit task target store wording", item.Action)
+		}
+	}
 }
 
 func assertHealthItem(t *testing.T, health SettingsHealthPage, key string, status string, impact string) {

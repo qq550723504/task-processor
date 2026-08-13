@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
-  DEFAULT_SHEIN_STORE_ID,
+  createGroupedSheinReviewTasks,
   normalizeListingKitUploadFetchUrl,
   orderGeneratedProductImageUrls,
   resolveApprovedSheinStudioReviewDesigns,
@@ -12,7 +12,25 @@ import { DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY } from "@/lib/shein-studio/storage-
 describe("SHEIN studio defaults", () => {
   it("defaults SDS source tasks to official SDS rendering for submit images", () => {
     expect(DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY).toBe("sds_official");
-    expect(DEFAULT_SHEIN_STORE_ID).toBe("");
+  });
+
+  it("rejects task creation when a group has no explicit SHEIN store", async () => {
+    const createReviewTasks = vi.fn();
+
+    await expect(
+      createGroupedSheinReviewTasks({
+        prompt: "Canvas tote",
+        groups: [
+          {
+            sheinStoreId: "",
+            selections: [],
+            approvedDesigns: [],
+          },
+        ],
+        createReviewTasks,
+      }),
+    ).rejects.toThrow("Select a SHEIN store before creating SHEIN tasks.");
+    expect(createReviewTasks).not.toHaveBeenCalled();
   });
 });
 

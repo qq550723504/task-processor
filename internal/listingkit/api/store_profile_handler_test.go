@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -68,20 +69,27 @@ func TestListSheinStoreProfilesReturnsProfiles(t *testing.T) {
 	t.Parallel()
 
 	gin.SetMode(gin.TestMode)
+	legacyFallbackKey := strings.Join([]string{"is", "_fallback"}, "")
+	legacyPayload, err := json.Marshal(map[string]any{
+		"id":              1,
+		"tenant_id":       101,
+		"store_id":        869,
+		"enabled":         true,
+		"priority":        10,
+		legacyFallbackKey: true,
+		"site":            "US",
+		"warehouse_code":  "WH-US-1",
+		"default_stock":   100,
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal legacy profile: %v", err)
+	}
+	var legacyProfile listingkit.ListingKitStoreProfile
+	if err := json.Unmarshal(legacyPayload, &legacyProfile); err != nil {
+		t.Fatalf("json.Unmarshal legacy profile: %v", err)
+	}
 	adminSvc := &stubStoreProfileAdminService{
-		profiles: []listingkit.ListingKitStoreProfile{
-			{
-				ID:                1,
-				TenantID:          101,
-				StoreID:           869,
-				Enabled:           true,
-				Priority:          10,
-				Site:              "US",
-				WarehouseCode:     "WH-US-1",
-				DefaultStock:      100,
-				DefaultSubmitMode: "publish",
-			},
-		},
+		profiles: []listingkit.ListingKitStoreProfile{legacyProfile},
 	}
 	h, err := NewHandler(&stubHandlerCoreService{}, WithStoreAdminService(adminSvc), WithSubscriptionService(activeStudioOnlySubscriptionService(t)))
 	if err != nil {
@@ -99,13 +107,16 @@ func TestListSheinStoreProfilesReturnsProfiles(t *testing.T) {
 		t.Fatalf("GET /store-profiles = %d, want 200; body=%s", resp.Code, resp.Body.String())
 	}
 	var body struct {
-		Items []listingkit.ListingKitStoreProfile `json:"items"`
+		Items []map[string]any `json:"items"`
 	}
 	if err := json.Unmarshal(resp.Body.Bytes(), &body); err != nil {
 		t.Fatalf("json.Unmarshal: %v", err)
 	}
-	if len(body.Items) != 1 || body.Items[0].StoreID != 869 {
+	if len(body.Items) != 1 || body.Items[0]["store_id"] != float64(869) {
 		t.Fatalf("body = %+v, want one shein store profile", body)
+	}
+	if _, exists := body.Items[0][legacyFallbackKey]; exists {
+		t.Fatalf("body = %+v, must not expose legacy field %q", body, legacyFallbackKey)
 	}
 }
 
@@ -134,10 +145,12 @@ func TestUpsertSheinStoreProfileBindsRequest(t *testing.T) {
 	router := gin.New()
 	router.POST("/store-profiles", h.UpsertSheinStoreProfile)
 
+	legacyFallbackKey := strings.Join([]string{"is", "_fallback"}, "")
 	body, err := json.Marshal(map[string]any{
 		"store_id":            870,
 		"enabled":             true,
 		"priority":            5,
+		legacyFallbackKey:     true,
 		"site":                "us",
 		"warehouse_code":      "WH-US-2",
 		"default_stock":       120,
@@ -160,5 +173,23 @@ func TestUpsertSheinStoreProfileBindsRequest(t *testing.T) {
 	}
 	if adminSvc.upsertReq.StoreID != 870 || adminSvc.upsertReq.DefaultSubmitMode != "save_draft" {
 		t.Fatalf("request = %+v, want bound store profile request", adminSvc.upsertReq)
+	}
+	boundJSON, err := json.Marshal(adminSvc.upsertReq)
+	if err != nil {
+		t.Fatalf("json.Marshal bound request: %v", err)
+	}
+	var bound map[string]any
+	if err := json.Unmarshal(boundJSON, &bound); err != nil {
+		t.Fatalf("json.Unmarshal bound request: %v", err)
+	}
+	if _, exists := bound[legacyFallbackKey]; exists {
+		t.Fatalf("bound request = %+v, must ignore legacy field %q", bound, legacyFallbackKey)
+	}
+	var response map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &response); err != nil {
+		t.Fatalf("json.Unmarshal response: %v", err)
+	}
+	if _, exists := response[legacyFallbackKey]; exists {
+		t.Fatalf("response = %+v, must not expose legacy field %q", response, legacyFallbackKey)
 	}
 }
