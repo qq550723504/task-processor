@@ -25,6 +25,11 @@ func (s stubConfigSource) Watch(_ context.Context, _ func([]byte)) error { retur
 
 func (s stubConfigSource) Name() string { return s.name }
 
+func TestUniqueCleanPathsPreservesFirstOccurrenceOrder(t *testing.T) {
+	got := uniqueCleanPaths([]string{"./.env", ".env", "config/../.env", "config/.env", "./config/../.env"})
+	require.Equal(t, []string{".env", filepath.Join("config", ".env")}, got)
+}
+
 func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_AMAZON_SPAPI_CLIENT_ID", "amzn-client")
 	t.Setenv("TASK_PROCESSOR_AMAZON_SPAPI_DEFAULT_MARKETPLACE", "ATVPDKIKX0DER")

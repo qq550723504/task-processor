@@ -14,6 +14,7 @@
 | `internal/listingkit/platform_helpers.go` (`buildPlatformAttributes`, `parseFloatDefault`) | `internal/listingkit` | Both private helpers appeared in all four reports and exact `rg` found declarations only; no route, registration, or serialization boundary references them. | removed | `go test ./internal/listingkit -count=1`; exact `rg` reference check |
 | `internal/listingkit/service_upload_logic.go` (`uploadImagesWithLegacyStore`) | `internal/listingkit` | The private batch wrapper appeared in all four reports and exact `rg` found only its declaration; active uploads use the per-file legacy path or keyed repository path. | removed | `go test ./internal/listingkit -count=1`; exact `rg` reference check |
 | `internal/listingkit/text_match.go` (`containsText`) | `internal/listingkit` | The private helper appeared in all four reports and exact `rg` found only its declaration; no active ListingKit workflow or test references it. | removed | `go test ./internal/listingkit -count=1`; exact `rg` reference check |
+| `internal/core/config/config.go` (`dotEnvCandidates`, `dotEnvCandidatesForConfig`) | `internal/core/config` | The normalized jscpd report `.local/code-health/20260813-021101268/jscpd.txt` found two identical path-cleaning/deduplication tails in one package. Both callers require first-occurrence order and platform-native `filepath.Clean`; extraction preserves those semantics and adds a characterization test. | consolidated | `go test ./internal/core/config -count=1`; post-edit jscpd `.local/code-health/20260813-021313565/jscpd.txt` (425 clones, target pair absent) |
 
 ## Deferred and compatibility subgraph classifications
 
@@ -48,3 +49,17 @@ package owners, not wildcard decisions for an entire platform tree.
 | Ten exact operational command directories: `cmd/fingerprint-browser-installer`, `cmd/listing-scheduler`, `cmd/listingkit-identity-preflight`, `cmd/listingkit-owner-scope-dry-run`, `cmd/listingkit-owner-scope-exceptions`, `cmd/listingkit-schema-migrate`, `cmd/playwright-installer`, `cmd/product-listing-api-schema-migrate`, `cmd/shein-import-platform-recovery`, `cmd/shein-login-worker` | `.github`, `deployments`, or `scripts` owner per command | `tests/repository_structure_test.go` and `docs/development/repository-structure.md` enforce the maintained inventory and owner evidence; each command is separately referenced by its operational wrapper/deployment. These are not product-runtime dead code. | retained-configuration-specific | `go test ./tests -run 'TestCmdContainsOnlyOfficialEntrypoints|TestOperationalCommandsHaveDeploymentBuildOrScriptOwner' -count=1`; maintained command inventory |
 
 Allowed decisions: `removed`, `reconnected-defect`, `retained-deferred`, `retained-generated-contract`, `retained-configuration-specific`, and `detector-limitation`.
+
+## Task 10 clone classification policy
+
+The post-cleanup normalized jscpd run `.local/code-health/20260813-021313565/jscpd.txt`
+reported 425 above-threshold pairs. The report is intentionally read as a candidate
+set, not a deletion list. Pairs involving `*_test.go`, frontend test files, generated
+contracts, compatibility facades, or operational wrappers are retained under their
+existing owner because their entrypoint, fixture, or deployment semantics differ.
+Cross-owner pairs are retained when the shared shape crosses marketplace policy,
+tenant/error taxonomy, retry/transaction behavior, or runtime ownership boundaries;
+the owner-specific rows above document those boundaries. Same-owner, behavior-neutral
+deduplication is consolidated only when a characterization test protects ordering,
+error wrapping, and persistence effects. No unclassified handwritten same-owner pair
+remains after the Task 6/7 consolidations and the config helper extraction above.
