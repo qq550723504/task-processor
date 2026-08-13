@@ -1,0 +1,12 @@
+{
+  "issues": [
+    {
+      "file": ["src/unused.ts"],
+      "exports": ["Unused"],
+      "types": ["UnusedType"]
+    },
+    {
+      "devDependencies": ["unused-package"]
+    }
+  ]
+}

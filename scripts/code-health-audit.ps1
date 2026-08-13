@@ -123,6 +123,23 @@ function Install-Deadcode {
     return $path
 }
 
+function Get-KnipIssueCount($knip) {
+    $count = 0
+    foreach ($issue in @($knip.issues)) {
+        if ($null -eq $issue) { continue }
+        foreach ($property in @("file", "files", "dependencies", "devDependencies", "exports", "types")) {
+            if ($issue.PSObject.Properties.Name -notcontains $property) { continue }
+            $value = $issue.$property
+            if ($value -is [System.Collections.IEnumerable] -and $value -isnot [string]) {
+                $count += @($value).Count
+            } elseif ($null -ne $value) {
+                $count++
+            }
+        }
+    }
+    return $count
+}
+
 $goPlans = @(New-DeadcodePlans)
 $frontendPlans = @()
 $clonePlans = @()
@@ -194,12 +211,7 @@ try {
         if ($record.exit_code -ne 0) { $manifest.failures += "$($plan.Name) exited $($record.exit_code)" }
         if ($Mode -eq "Verify" -and $plan.Name -eq "knip" -and $record.exit_code -eq 0) {
             $knip = Get-Content -Raw (Join-Path $runDir $plan.OutputName) | ConvertFrom-Json
-            $issueCount = 0
-            foreach ($property in @("files", "dependencies", "devDependencies", "exports", "types")) {
-                if ($knip.PSObject.Properties.Name -contains $property) {
-                    $issueCount += @($knip.$property).Count
-                }
-            }
+            $issueCount = Get-KnipIssueCount $knip
             if ($issueCount -gt 0) { $manifest.failures += "knip reported $issueCount unclassified findings" }
         }
     }

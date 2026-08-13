@@ -65,6 +65,11 @@ func TestCodeHealthAuditRunnerIsReadOnlyAndUsesModuleMode(t *testing.T) {
 		"-mod=",
 		"Mode -in @(\"All\", \"Go\", \"Verify\")",
 		"knip reported",
+		"Get-KnipIssueCount",
+		"knip.issues",
+		"devDependencies",
+		"exports",
+		"types",
 		"} finally {",
 		"go test",
 		"manifest.json",
@@ -72,5 +77,35 @@ func TestCodeHealthAuditRunnerIsReadOnlyAndUsesModuleMode(t *testing.T) {
 		if !strings.Contains(script, required) {
 			t.Errorf("runner missing required safety/verification contract %q", required)
 		}
+	}
+}
+
+func TestKnipFixtureDistinguishesFindingsFromEmptyIssues(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("fixtures", "knip-findings.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report struct {
+		Issues []map[string]json.RawMessage `json:"issues"`
+	}
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Issues) == 0 {
+		t.Fatal("fixture must contain a representative Knip finding")
+	}
+	for _, issue := range report.Issues {
+		if len(issue) == 0 {
+			t.Fatal("fixture contains an empty issue")
+		}
+	}
+	var empty struct {
+		Issues []map[string]json.RawMessage `json:"issues"`
+	}
+	if err := json.Unmarshal([]byte(`{"issues":[]}`), &empty); err != nil {
+		t.Fatal(err)
+	}
+	if len(empty.Issues) != 0 {
+		t.Fatalf("empty issues fixture unexpectedly contains %d findings", len(empty.Issues))
 	}
 }
