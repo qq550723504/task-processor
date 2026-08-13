@@ -31,6 +31,16 @@ func (r *MemTaskRepository) ScheduleSDSChildRetry(_ context.Context, job *listin
 	jobs := r.ensureSDSChildRetryJobsLocked()
 	for _, existing := range jobs {
 		if existing.TaskID == job.TaskID && existing.Kind == job.Kind {
+			if existing.Status == listingkit.SDSChildRetryJobStatusCompleted || existing.Status == listingkit.SDSChildRetryJobStatusExhausted {
+				existing.Attempt = job.Attempt
+				existing.NextRetryAt = job.NextRetryAt
+				existing.ReasonCode = job.ReasonCode
+				existing.LastError = job.LastError
+				existing.Status = listingkit.SDSChildRetryJobStatusPending
+				existing.LeaseOwner = ""
+				existing.LeaseUntil = nil
+				r.sdsChildRetryJobs[existing.ID] = existing
+			}
 			copy := existing
 			return &copy, nil
 		}

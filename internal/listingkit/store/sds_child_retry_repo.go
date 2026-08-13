@@ -38,6 +38,18 @@ func (r *taskRepository) ScheduleSDSChildRetry(ctx context.Context, job *listing
 	if err := r.db.WithContext(ctx).Where("listingkit_task_id = ? AND kind = ?", copy.TaskID, copy.Kind).First(&existing).Error; err != nil {
 		return nil, err
 	}
+	if existing.Status == listingkit.SDSChildRetryJobStatusCompleted || existing.Status == listingkit.SDSChildRetryJobStatusExhausted {
+		existing.Attempt = copy.Attempt
+		existing.NextRetryAt = copy.NextRetryAt
+		existing.ReasonCode = copy.ReasonCode
+		existing.LastError = copy.LastError
+		existing.Status = listingkit.SDSChildRetryJobStatusPending
+		existing.LeaseOwner = ""
+		existing.LeaseUntil = nil
+		if err := r.db.WithContext(ctx).Save(&existing).Error; err != nil {
+			return nil, err
+		}
+	}
 	return &existing, nil
 }
 

@@ -48,7 +48,8 @@ func (s *service) ScheduleTaskChildRetry(ctx context.Context, taskID string, req
 	if s == nil || s.repo == nil {
 		return nil, core.ErrTaskNotFound
 	}
-	if strings.TrimSpace(req.Kind) != string(SDSChildRetryKindDesignSync) {
+	kind := strings.TrimSpace(req.Kind)
+	if !childTaskRetrySupportedKind(kind) {
 		return nil, core.ErrChildTaskNotRetryable
 	}
 
@@ -68,7 +69,7 @@ func (s *service) ScheduleTaskChildRetry(ctx context.Context, taskID string, req
 	if task.Request == nil {
 		return nil, ErrTaskResultUnavailable
 	}
-	state, ok := childTaskStateByKind(task.Result, string(SDSChildRetryKindDesignSync))
+	state, ok := childTaskStateByKind(task.Result, kind)
 	if !ok {
 		return nil, core.ErrChildTaskNotFound
 	}
@@ -84,7 +85,7 @@ func (s *service) ScheduleTaskChildRetry(ctx context.Context, taskID string, req
 		TenantID:    task.TenantID,
 		TaskID:      task.ID,
 		StoreID:     task.Request.SheinStoreID,
-		Kind:        SDSChildRetryKindDesignSync,
+		Kind:        SDSChildRetryKind(kind),
 		NextRetryAt: time.Now().UTC(),
 		ReasonCode:  "manual_child_task_retry",
 		LastError:   "manual child task retry queued",
@@ -93,7 +94,7 @@ func (s *service) ScheduleTaskChildRetry(ctx context.Context, taskID string, req
 	if err != nil {
 		return nil, err
 	}
-	return &TaskChildRetryAccepted{TaskID: task.ID, Kind: string(SDSChildRetryKindDesignSync), Status: "queued"}, nil
+	return &TaskChildRetryAccepted{TaskID: task.ID, Kind: kind, Status: "queued"}, nil
 }
 
 func (s *service) runSDSChildRetry(ctx context.Context, job *SDSChildRetryJob) error {

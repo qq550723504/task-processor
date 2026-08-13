@@ -119,3 +119,91 @@ func TestSDSChildRetryRepositoryClaimsDueJobsOnceUntilLeaseExpires(t *testing.T)
 		t.Fatalf("claimed after lease expiry = %#v", again)
 	}
 }
+
+func TestSDSChildRetryRepositoryReactivatesTerminalJob(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.SDSChildRetryJob{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo, ok := any(NewTaskRepository(db)).(listingkit.SDSChildRetryJobRepository)
+	if !ok {
+		t.Fatal("task repository does not implement SDSChildRetryJobRepository")
+	}
+
+	first, err := repo.ScheduleSDSChildRetry(context.Background(), &listingkit.SDSChildRetryJob{
+		TaskID:      "task-terminal",
+		TenantID:    "tenant-1",
+		Kind:        listingkit.SDSChildRetryKindDesignSync,
+		Attempt:     1,
+		NextRetryAt: time.Now().UTC().Add(time.Minute),
+		Status:      listingkit.SDSChildRetryJobStatusPending,
+	})
+	if err != nil {
+		t.Fatalf("schedule first retry: %v", err)
+	}
+	first.Status = listingkit.SDSChildRetryJobStatusExhausted
+	first.Attempt = 3
+	first.LastError = "old failure"
+	if err := repo.SaveSDSChildRetry(context.Background(), first); err != nil {
+		t.Fatalf("save exhausted retry: %v", err)
+	}
+
+	wantNextRetryAt := time.Now().UTC()
+	reactivated, err := repo.ScheduleSDSChildRetry(context.Background(), &listingkit.SDSChildRetryJob{
+		TaskID:      "task-terminal",
+		TenantID:    "tenant-1",
+		Kind:        listingkit.SDSChildRetryKindDesignSync,
+		Attempt:     0,
+		NextRetryAt: wantNextRetryAt,
+		ReasonCode:  "manual_child_task_retry",
+		LastError:   "manual retry queued",
+		Status:      listingkit.SDSChildRetryJobStatusPending,
+	})
+	if err != nil {
+		t.Fatalf("reactivate terminal retry: %v", err)
+	}
+	if reactivated.ID != first.ID || reactivated.Status != listingkit.SDSChildRetryJobStatusPending || reactivated.Attempt != 0 {
+		t.Fatalf("reactivated job = %+v, want same pending job with reset attempt", reactivated)
+	}
+	if !reactivated.NextRetryAt.Equal(wantNextRetryAt) || reactivated.ReasonCode != "manual_child_task_retry" {
+		t.Fatalf("reactivated scheduling = %+v, want fresh manual scheduling", reactivated)
+	}
+}
+
+func TestMemSDSChildRetryRepositoryReactivatesTerminalJob(t *testing.T) {
+	repo, ok := NewMemTaskRepository().(listingkit.SDSChildRetryJobRepository)
+	if !ok {
+		t.Fatal("memory task repository does not implement SDSChildRetryJobRepository")
+	}
+
+	first, err := repo.ScheduleSDSChildRetry(context.Background(), &listingkit.SDSChildRetryJob{
+		TaskID:   "mem-task-terminal",
+		TenantID: "tenant-1",
+		Kind:     listingkit.SDSChildRetryKindDesignSync,
+		Status:   listingkit.SDSChildRetryJobStatusPending,
+	})
+	if err != nil {
+		t.Fatalf("schedule first retry: %v", err)
+	}
+	first.Status = listingkit.SDSChildRetryJobStatusCompleted
+	if err := repo.SaveSDSChildRetry(context.Background(), first); err != nil {
+		t.Fatalf("save completed retry: %v", err)
+	}
+
+	reactivated, err := repo.ScheduleSDSChildRetry(context.Background(), &listingkit.SDSChildRetryJob{
+		TaskID:     "mem-task-terminal",
+		TenantID:   "tenant-1",
+		Kind:       listingkit.SDSChildRetryKindDesignSync,
+		ReasonCode: "manual_child_task_retry",
+		Status:     listingkit.SDSChildRetryJobStatusPending,
+	})
+	if err != nil {
+		t.Fatalf("reactivate completed retry: %v", err)
+	}
+	if reactivated.ID != first.ID || reactivated.Status != listingkit.SDSChildRetryJobStatusPending || reactivated.ReasonCode != "manual_child_task_retry" {
+		t.Fatalf("reactivated job = %+v, want same pending job with fresh reason", reactivated)
+	}
+}

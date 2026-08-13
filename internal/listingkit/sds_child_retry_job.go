@@ -7,7 +7,10 @@ import (
 
 type SDSChildRetryKind string
 
-const SDSChildRetryKindDesignSync SDSChildRetryKind = "sds_design_sync"
+const (
+	SDSChildRetryKindCatalogProduct SDSChildRetryKind = "sds_catalog_product"
+	SDSChildRetryKindDesignSync     SDSChildRetryKind = "sds_design_sync"
+)
 
 type SDSChildRetryJobStatus string
 

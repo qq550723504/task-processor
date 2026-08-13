@@ -124,3 +124,33 @@ func TestScheduleTaskChildRetryQueuesSDSDesignSyncWithoutRunningRemoteWork(t *te
 		}
 	}
 }
+
+func TestScheduleTaskChildRetryQueuesSDSCatalogProduct(t *testing.T) {
+	ctx := context.Background()
+	const catalogKind = SDSChildRetryKindCatalogProduct
+	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest()}
+	task := &Task{
+		ID:       "task-catalog-retry",
+		TenantID: "tenant-1",
+		Status:   core.TaskStatusNeedsReview,
+		Request:  &GenerateRequest{SheinStoreID: 1038},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{
+			Kind: string(catalogKind), Status: string(core.TaskStatusFailed), Error: "catalog failed",
+		}}},
+	}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+
+	result, err := (&service{repo: repo}).ScheduleTaskChildRetry(ctx, task.ID, &RetryChildTaskRequest{Kind: string(catalogKind)})
+	if err != nil {
+		t.Fatalf("ScheduleTaskChildRetry() error = %v", err)
+	}
+	if result == nil || result.TaskID != task.ID || result.Kind != string(catalogKind) || result.Status != "queued" {
+		t.Fatalf("result = %#v, want queued catalog retry acknowledgement", result)
+	}
+	job, ok := repo.jobs["job-"+task.ID]
+	if !ok || job.Kind != catalogKind {
+		t.Fatalf("scheduled jobs = %#v, want catalog product retry", repo.jobs)
+	}
+}
