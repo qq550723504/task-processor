@@ -123,6 +123,9 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 	if err := validateRequest(req); err != nil {
 		return ctx, nil, fmt.Errorf("invalid request: %w", err)
 	}
+	if err := validateExplicitSheinStoreSelection(req); err != nil {
+		return ctx, nil, err
+	}
 	if err := s.validateRequestedSheinStoreAccess(ctx, req); err != nil {
 		return ctx, nil, err
 	}
@@ -139,6 +142,13 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 	}
 	s.applySheinStoreResolutionSnapshot(ctx, task)
 	return ctx, task, nil
+}
+
+func validateExplicitSheinStoreSelection(req *GenerateRequest) error {
+	if generateRequestTargetsPlatform(req, "shein") && req.SheinStoreID <= 0 {
+		return fmt.Errorf("invalid request: shein_store_id is required for SHEIN tasks")
+	}
+	return nil
 }
 
 func (s *taskLifecycleService) validateRequestedSheinStoreAccess(ctx context.Context, req *GenerateRequest) error {

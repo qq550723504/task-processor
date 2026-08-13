@@ -125,13 +125,13 @@ func TestBuildListingKitServiceContractOmitsDefaultSheinStoreWiring(t *testing.T
 	}
 }
 
-func TestBuildListingKitRequestPreparationNormalizesWithoutDefaultingSheinStore(t *testing.T) {
+func TestBuildListingKitRequestPreparationNormalizesNonSheinRequestWithoutSheinStore(t *testing.T) {
 	t.Parallel()
 
 	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{})
 	req := &GenerateRequest{
 		Text:      "demo",
-		Platforms: []string{" SHEIN "},
+		Platforms: []string{" Amazon "},
 	}
 
 	_, task, err := lifecycle.prepareGenerateTask(context.Background(), req)
@@ -148,8 +148,8 @@ func TestBuildListingKitRequestPreparationNormalizesWithoutDefaultingSheinStore(
 	if req.Country != "US" || req.Language != "en_US" {
 		t.Fatalf("normalized locale = %q/%q, want US/en_US", req.Country, req.Language)
 	}
-	if len(req.Platforms) != 1 || req.Platforms[0] != "shein" {
-		t.Fatalf("normalized platforms = %#v, want [shein]", req.Platforms)
+	if len(req.Platforms) != 1 || req.Platforms[0] != "amazon" {
+		t.Fatalf("normalized platforms = %#v, want [amazon]", req.Platforms)
 	}
 }
 
@@ -553,7 +553,7 @@ func TestCreateGenerateTaskPersistsSheinStoreResolutionSnapshot(t *testing.T) {
 	}
 }
 
-func TestCreateGenerateTaskDoesNotInferSheinStoreResolutionSnapshotFromRoutingRules(t *testing.T) {
+func TestCreateGenerateTaskRequiresExplicitSheinStoreInsteadOfInferringRoutingRules(t *testing.T) {
 	t.Parallel()
 
 	repo := NewInMemoryRepositoryForTest()
@@ -585,16 +585,13 @@ func TestCreateGenerateTaskDoesNotInferSheinStoreResolutionSnapshotFromRoutingRu
 	}); err != nil {
 		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
 	}
-	task, err := svc.CreateGenerateTask(ctx, &GenerateRequest{
+	_, err := svc.CreateGenerateTask(ctx, &GenerateRequest{
 		Text:      "snapshot demo",
 		Platforms: []string{"shein"},
 		Country:   "GB",
 	})
-	if err != nil {
-		t.Fatalf("CreateGenerateTask error = %v", err)
-	}
-	if task.SheinStoreResolutionSnapshot != nil {
-		t.Fatalf("snapshot = %+v, want nil without explicit shein_store_id", task.SheinStoreResolutionSnapshot)
+	if err == nil || err.Error() != "invalid request: shein_store_id is required for SHEIN tasks" {
+		t.Fatalf("CreateGenerateTask error = %v, want missing SHEIN store error", err)
 	}
 }
 

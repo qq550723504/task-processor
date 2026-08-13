@@ -32,6 +32,60 @@ func TestTaskLifecycleServiceRejectsForeignSheinStoreBeforePersistingTask(t *tes
 	}
 }
 
+func TestTaskLifecycleServiceRequiresExplicitSheinStoreBeforePersistingTask(t *testing.T) {
+	repo := &taskLifecycleCreateRecordingRepo{stubSubmitRepo: &stubSubmitRepo{}}
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
+		repo: repo,
+		taskSubmitter: func() TaskSubmitter {
+			return noopTaskSubmitter{}
+		},
+	})
+
+	_, err := lifecycle.CreateGenerateTask(context.Background(), &GenerateRequest{
+		ProductURL: "https://example.test/product",
+		Platforms:  []string{"shein"},
+	})
+
+	if err == nil || err.Error() != "invalid request: shein_store_id is required for SHEIN tasks" {
+		t.Fatalf("CreateGenerateTask() error = %v, want missing SHEIN store error", err)
+	}
+	if repo.createCalls != 0 {
+		t.Fatalf("CreateTask() calls = %d, want 0", repo.createCalls)
+	}
+}
+
+func TestTaskLifecycleServiceAllowsNonSheinTaskWithoutSheinStore(t *testing.T) {
+	repo := &taskLifecycleCreateRecordingRepo{stubSubmitRepo: &stubSubmitRepo{}}
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
+		repo: repo,
+		taskSubmitter: func() TaskSubmitter {
+			return noopTaskSubmitter{}
+		},
+	})
+
+	_, err := lifecycle.CreateGenerateTask(context.Background(), &GenerateRequest{
+		ProductURL: "https://example.test/product",
+		Platforms:  []string{"amazon"},
+	})
+
+	if err != nil {
+		t.Fatalf("CreateGenerateTask() error = %v", err)
+	}
+	if repo.createCalls != 1 {
+		t.Fatalf("CreateTask() calls = %d, want 1", repo.createCalls)
+	}
+}
+
+type taskLifecycleCreateRecordingRepo struct {
+	*stubSubmitRepo
+	createCalls int
+}
+
+func (r *taskLifecycleCreateRecordingRepo) CreateTask(ctx context.Context, task *Task) error {
+	r.createCalls++
+	return r.stubSubmitRepo.CreateTask(ctx, task)
+}
+
 func TestTaskLifecycleServiceValidatesOwnedSheinStoreBeforePersistingTask(t *testing.T) {
 	repo := &stubSubmitRepo{}
 	validationCalls := 0
