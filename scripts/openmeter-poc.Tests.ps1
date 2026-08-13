@@ -108,7 +108,7 @@ function New-TestOpenMeterPoCFakes {
         if ($FilePath -eq "docker" -and $ArgumentList -contains "up" -and $SensitiveValues.Count -gt 0) {
             return [pscustomobject]@{
                 ExitCode = 0
-                Output = "JWT_SECRET=$($SensitiveValues.JWTSecret)`nDATABASE_URL=$($SensitiveValues.DatabaseURL)`ncallback=$($SensitiveValues.UserInfoURL)"
+                Output = "JWT_SECRET=$($SensitiveValues.JWTSecret)`nDATABASE_URL=$($SensitiveValues.DatabaseURL)`ncallback=$($SensitiveValues.UserInfoURL)`nusername_callback=$($SensitiveValues.UsernameOnlyURL)`n$($SensitiveValues.AuthorizationJSON)"
             }
         }
         if ($FilePath -eq "docker" -and $ArgumentList -contains "inspect") {
@@ -207,7 +207,7 @@ function New-TestOpenMeterPoCFakes {
 }
 
 Describe "OpenMeter PoC path and Compose boundaries" {
-    It "rejects every nonexact SDK endpoint before invoking dependencies" {
+    It "rejects structural nonexact SDK endpoints before invoking dependencies" {
         $originalURL = $script:OpenMeterPoCURL
         $caseNumber = 0
         try {
@@ -240,6 +240,54 @@ Describe "OpenMeter PoC path and Compose boundaries" {
         finally {
             $script:OpenMeterPoCURL = $originalURL
         }
+    }
+
+    It "uses ordinal comparison for Unicode-ignorable endpoint variants" {
+        $expectedURL = "http://127.0.0.1:48888/api/v3"
+        $originalURL = $script:OpenMeterPoCURL
+        $caseNumber = 0
+        $acceptedCount = 0
+        $dependencyCallCount = 0
+        try {
+            foreach ($uri in @(
+                ($expectedURL + [char]0),
+                ("http://127.0.0.1:48888/api/v" + [char]0x00ad + "3")
+            )) {
+                $caseNumber++
+                $calls = New-Object System.Collections.ArrayList
+                $fakes = New-TestOpenMeterPoCFakes -Calls $calls
+                $repositoryRoot = Join-Path $TestDrive "runner-ordinal-url-$caseNumber"
+                New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+                $script:OpenMeterPoCURL = $uri
+
+                $result = Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-ordinal-$caseNumber" -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe
+
+                if ($result -eq 0) {
+                    $acceptedCount++
+                }
+                $dependencyCallCount += $calls.Count
+            }
+        }
+        finally {
+            $script:OpenMeterPoCURL = $originalURL
+        }
+        $acceptedCount | Should Be 0
+        $dependencyCallCount | Should Be 0
+    }
+
+    It "redacts username-only URL userinfo" {
+        $sentinel = @("userinfo", "only", "probe") -join "-"
+        $protected = Protect-OpenMeterPoCText -Text "https://$sentinel@service.example/path"
+
+        $protected.Contains($sentinel) | Should Be $false
+    }
+
+    It "redacts JSON Authorization values" {
+        $sentinel = @("bearer", "probe", "value") -join "-"
+        $inputJSON = [ordered]@{ Authorization = "Bearer $sentinel" } | ConvertTo-Json -Compress
+        $protected = Protect-OpenMeterPoCText -Text $inputJSON
+
+        $protected.Contains($sentinel) | Should Be $false
     }
 
     It "resolves checkout and evidence below the repository-local PoC root" {
@@ -362,11 +410,21 @@ Describe "OpenMeter PoC runner behavior" {
 
     It "keeps all persisted evidence free of credentials while validating raw Compose output" {
         $secret = @("api", "credential", "42") -join "-"
+        $dsnCredential = @("dsn", "credential", "42") -join "-"
+        $userInfoCredential = @("userinfo", "credential", "42") -join "-"
+        $usernameToken = @("userinfo", "only", "42") -join "-"
+        $bearerToken = @("bearer", "value", "42") -join "-"
         $sensitiveValues = @{
             DatabasePassword = @("db", "credential", "42") -join "-"
             JWTSecret = @("jwt", "credential", "42") -join "-"
-            DatabaseURL = "postgresql://writer:$(@('dsn', 'credential', '42') -join '-')@postgres/openmeter"
-            UserInfoURL = "https://callback:$(@('userinfo', 'credential', '42') -join '-')@service.example/hook"
+            DSNCredential = $dsnCredential
+            DatabaseURL = "postgresql://writer:$dsnCredential@postgres/openmeter"
+            UserInfoCredential = $userInfoCredential
+            UserInfoURL = "https://callback:$userInfoCredential@service.example/hook"
+            UsernameToken = $usernameToken
+            UsernameOnlyURL = "https://$usernameToken@service.example/hook"
+            BearerToken = $bearerToken
+            AuthorizationJSON = ([ordered]@{ Authorization = "Bearer $bearerToken" } | ConvertTo-Json -Compress)
         }
         $calls = New-Object System.Collections.ArrayList
         $fakes = New-TestOpenMeterPoCFakes -Calls $calls -Secret $secret -SensitiveValues $sensitiveValues
@@ -383,7 +441,15 @@ Describe "OpenMeter PoC runner behavior" {
             $evidenceFiles.Count | Should BeGreaterThan 0
             foreach ($file in $evidenceFiles) {
                 $content = Get-Content -LiteralPath $file.FullName -Raw
-                foreach ($sensitiveValue in @($secret) + @($sensitiveValues.Values)) {
+                foreach ($sensitiveValue in @(
+                    $secret,
+                    $sensitiveValues.DatabasePassword,
+                    $sensitiveValues.JWTSecret,
+                    $sensitiveValues.DSNCredential,
+                    $sensitiveValues.UserInfoCredential,
+                    $sensitiveValues.UsernameToken,
+                    $sensitiveValues.BearerToken
+                )) {
                     $content.Contains([string]$sensitiveValue) | Should Be $false
                 }
             }

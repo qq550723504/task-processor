@@ -252,14 +252,14 @@ Task 8's focused gates passed after the report was written:
 
 | Verification | Result |
 | --- | --- |
-| `Invoke-Pester ./scripts/openmeter-poc.Tests.ps1` | pass: 19, fail: 0, skip: 0 |
+| `Invoke-Pester ./scripts/openmeter-poc.Tests.ps1` | pass: 22, fail: 0, skip: 0 |
 | `Invoke-Pester ./scripts/test-all.Tests.ps1` | pass: 4, fail: 0, skip: 0 |
 | `Remove-Item Env:OPENMETER_POC ...; go test ./internal/integration/openmeter -count=1` | pass |
 | `go test ./tests -run OpenMeter -count=1` | pass |
 | Root module: `go test -count=1 ./...` | pass, including all six `scripts/listingkit-shein-pod-image-index-backfill` tests |
 | Tools module: `go test -count=1 ./...` from `tools` | pass |
 | Debug module: `go test -count=1 ./...` from `hack/debug` | pass |
-| `./scripts/test-all.ps1 -count=1` | pass: complete root, tools, and debug modules; exit 0 in 98.9 seconds |
+| `./scripts/test-all.ps1 -count=1` | pass: complete root, tools, and debug modules; exit 0 in 92.7 seconds |
 | `git diff --check` | pass |
 
 The original `scripts/test-all.ps1` passed the nested `tools` and `hack/debug`
@@ -335,19 +335,44 @@ userinfo, query, and fragment. Controlled evidence RED also found injected
 database-password, JWT-secret, DSN, URL-userinfo, and API-key values in
 persisted files, while cleanup made no recorded post-`down` container query.
 
-Both runtime gates now require the byte-exact local endpoint
-`http://127.0.0.1:48888/api/v3` before dependencies are invoked. The runner
+Both runtime gates require the literal local endpoint
+`http://127.0.0.1:48888/api/v3` before dependencies are invoked. Go compares
+the string exactly; the PowerShell gate now uses `StringComparison.Ordinal`
+after the second safety review described below. The runner
 validates raw Compose service/image data only in memory and persists an
 allowlisted service/image/port model; persisted command output additionally
-redacts supplied API keys, secret-named values, authorization values, DSNs, and
-URL userinfo. After `down`, it records project-scoped `ps -q` output and fails
-cleanup if any container remains. GREEN was focused Go PASS, runner Pester
-19/19, and the exact complete harness exit 0 in 98.9 seconds. These safety and
-evidence-capture tests made no network calls, and the semantic Docker PoC was
-not rerun. The successful result therefore remains bound to source SHA
+redacts supplied API keys, secret-named values, DSNs, and colon-delimited URL
+userinfo. The second safety review below closes username-only URL userinfo and
+JSON Authorization coverage. After `down`, it records project-scoped `ps -q`
+output and fails cleanup if any container remains. GREEN was focused Go PASS,
+runner Pester 19/19, and the exact complete harness exit 0 in 98.9 seconds.
+These safety and evidence-capture tests made no network calls, and the semantic
+Docker PoC was not rerun. The successful result therefore remains bound to
+source SHA
 `50ed0a06bd3e4248836011ba18296b283b40bdf9`; its ignored evidence predates the
 new capture and post-cleanup policy and was neither rewritten nor
 misrepresented as new evidence.
+
+The second safety review found that PowerShell's culture-aware `-cne` treats
+some ignorable Unicode as equal, and that the general redactor missed both a
+username-only URL userinfo form and a quoted JSON `Authorization` value. Strict
+RED was 18 passed and 4 failed: trailing-NUL and embedded-soft-hyphen endpoint
+variants reached the controlled dependency fake; the username-only and JSON
+bearer probes retained their programmatically constructed credential
+sentinels; and the every-file runner evidence scan detected a retained
+sentinel. No credential value was printed in the test output or this report.
+
+The narrow correction uses `[string]::Equals` with
+`StringComparison.Ordinal`, redacts any URL authority userinfo before `@`, and
+redacts quoted JSON `Authorization` and `Proxy-Authorization` values. GREEN was
+runner Pester 22/22, harness Pester 4/4, focused Go environment PASS, the
+OpenMeter boundary suite PASS, and exact `./scripts/test-all.ps1 -count=1`
+exit 0 across root, tools, and debug modules in 92.7 seconds. The expanded
+runner test injects distinct API-key, database-password, JWT-secret,
+DSN-password, colon-userinfo, username-only-userinfo, and JSON-bearer
+sentinels, then scans every persisted evidence/log file for each credential
+token. Raw Compose parsing and image validation remain in memory. No Docker
+semantic rerun or external network call occurred.
 
 ## PAY-041 ownership mapping
 

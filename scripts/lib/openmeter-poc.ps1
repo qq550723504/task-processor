@@ -87,6 +87,11 @@ function Protect-OpenMeterPoCText {
     )
     $value = [regex]::Replace(
         $value,
+        '(?i)("(?:authorization|proxy-authorization)"\s*:\s*)"(?:[^"\\]|\\.)*"',
+        '$1"[REDACTED]"'
+    )
+    $value = [regex]::Replace(
+        $value,
         '(?im)^(\s*[A-Za-z0-9_.-]*' + $secretName + '[A-Za-z0-9_.-]*\s*:\s*)(?:"(?:[^"\\]|\\.)*"|''[^'']*''|[^\r\n#]*)',
         '$1[REDACTED]'
     )
@@ -97,7 +102,7 @@ function Protect-OpenMeterPoCText {
     )
     $value = [regex]::Replace(
         $value,
-        '(?i)\b([a-z][a-z0-9+.-]*://)(?:[^/\s:@"]+):(?:[^@\s/"]+)@',
+        '(?i)\b([a-z][a-z0-9+.-]*://)(?:[^/\s@"]+)@',
         '$1[REDACTED]@'
     )
     $value = [regex]::Replace(
@@ -119,7 +124,8 @@ function Assert-OpenMeterPoCLocalEndpoint {
         [string]$Uri
     )
 
-    if ($Uri -cne "http://127.0.0.1:48888/api/v3") {
+    $expected = "http://127.0.0.1:48888/api/v3"
+    if (-not [string]::Equals($Uri, $expected, [System.StringComparison]::Ordinal)) {
         throw "OpenMeter PoC SDK endpoint must be exactly http://127.0.0.1:48888/api/v3"
     }
 }
