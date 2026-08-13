@@ -12,13 +12,18 @@ $configPath = Join-Path $PSScriptRoot "code-health-audit.config.json"
 $config = Get-Content -Raw $configPath | ConvertFrom-Json
 
 function Get-ToolPath([string]$name) {
-    $command = Get-Command $name -ErrorAction Stop | Select-Object -First 1
-    return $command.Source
+    $lookup = @($name)
+    if ($name -eq "npx.cmd") { $lookup += "npx" }
+    foreach ($candidate in $lookup) {
+        $command = Get-Command $candidate -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($command) { return $command.Source }
+    }
+    throw "Unable to locate required tool: $name"
 }
 
 function New-DeadcodePlans {
     $plans = @()
-    if ($Mode -in @("All", "Go")) {
+    if ($Mode -in @("All", "Go", "Verify")) {
         foreach ($goos in $config.target_goos) {
             foreach ($testMode in @($false, $true)) {
                 $plans += [pscustomobject]@{
@@ -121,7 +126,7 @@ function Install-Deadcode {
 $goPlans = @(New-DeadcodePlans)
 $frontendPlans = @()
 $clonePlans = @()
-if ($Mode -in @("All", "Frontend")) {
+if ($Mode -in @("All", "Frontend", "Verify")) {
     $frontendPlans = @([pscustomobject]@{
         Name = "knip"
         FilePath = (Get-ToolPath "npx.cmd")
@@ -130,7 +135,7 @@ if ($Mode -in @("All", "Frontend")) {
         OutputName = "knip.json"
     })
 }
-if ($Mode -in @("All", "Clones")) {
+if ($Mode -in @("All", "Clones", "Verify")) {
     $clonePlans = @([pscustomobject]@{
         Name = "jscpd"
         FilePath = (Get-ToolPath "npx.cmd")
@@ -164,7 +169,7 @@ $manifest = [ordered]@{
 }
 
 try {
-    if ($Mode -in @("All", "Go")) {
+    if ($Mode -in @("All", "Go", "Verify")) {
         $deadcodePath = Install-Deadcode
         foreach ($plan in $goPlans) {
             $plan.FilePath = $deadcodePath
@@ -178,16 +183,24 @@ try {
         $manifest.commands += $record
         if ($record.exit_code -ne 0) { throw "Go compilation baseline failed (exit $($record.exit_code))" }
     }
-    if ($Mode -ne "Verify") {
-        foreach ($plan in $allPlans) {
-            if ($plan.Name -eq "jscpd") {
-                $jscpdConfig = [ordered]@{ minLines = $config.clone_min_lines; minTokens = $config.clone_min_tokens; ignore = @($config.clone_ignore); reporters = @("ai") }
-                $jscpdConfig | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $runDir "jscpd.json")
-                $plan.Arguments = @("--yes", "jscpd@$($config.jscpd_version)", "--config", (Join-Path $runDir "jscpd.json"), "--reporters", "ai") + @($config.clone_paths)
+    foreach ($plan in $allPlans) {
+        if ($plan.Name -eq "jscpd") {
+            $jscpdConfig = [ordered]@{ minLines = $config.clone_min_lines; minTokens = $config.clone_min_tokens; ignore = @($config.clone_ignore); reporters = @("ai") }
+            $jscpdConfig | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath (Join-Path $runDir "jscpd.json")
+            $plan.Arguments = @("--yes", "jscpd@$($config.jscpd_version)", "--config", (Join-Path $runDir "jscpd.json"), "--reporters", "ai") + @($config.clone_paths)
+        }
+        $record = Invoke-ProcessPlan $plan (Join-Path $runDir $plan.OutputName)
+        $manifest.commands += $record
+        if ($record.exit_code -ne 0) { $manifest.failures += "$($plan.Name) exited $($record.exit_code)" }
+        if ($Mode -eq "Verify" -and $plan.Name -eq "knip" -and $record.exit_code -eq 0) {
+            $knip = Get-Content -Raw (Join-Path $runDir $plan.OutputName) | ConvertFrom-Json
+            $issueCount = 0
+            foreach ($property in @("files", "dependencies", "devDependencies", "exports", "types")) {
+                if ($knip.PSObject.Properties.Name -contains $property) {
+                    $issueCount += @($knip.$property).Count
+                }
             }
-            $record = Invoke-ProcessPlan $plan (Join-Path $runDir $plan.OutputName)
-            $manifest.commands += $record
-            if ($record.exit_code -ne 0) { $manifest.failures += "$($plan.Name) exited $($record.exit_code)" }
+            if ($issueCount -gt 0) { $manifest.failures += "knip reported $issueCount unclassified findings" }
         }
     }
     $tracked = & (Get-ToolPath "git") -C $repoRoot ls-files -- scripts tools hack/debug

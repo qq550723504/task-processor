@@ -51,6 +51,20 @@ package owners, not wildcard decisions for an entire platform tree.
 
 Allowed decisions: `removed`, `reconnected-defect`, `retained-deferred`, `retained-generated-contract`, `retained-configuration-specific`, and `detector-limitation`.
 
+## Dependency and prevention gates
+
+Task 12 intentionally produced no dependency-manifest change: root-module
+`go mod tidy` was a no-op after the cleanup, and nested-module tidy was not
+accepted as an opportunistic upgrade. The frontend lockfiles remain governed
+by the removal commits that changed `package.json`.
+
+The maintained prevention gates are `make code-health-audit` and
+`make code-health-verify`. CI runs the latter with the pinned analyzer
+configuration, rejects compilation failures and any new Knip file,
+dependency, export, or type findings, and uploads the timestamped `.local`
+reports only on failure. Detector candidates in Go and jscpd remain subject
+to the exact classifications in this ledger rather than a wildcard allowlist.
+
 ## Task 10 clone classification policy
 
 The post-cleanup normalized jscpd run `.local/code-health/20260813-021313565/jscpd.txt`

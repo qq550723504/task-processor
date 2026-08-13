@@ -63,6 +63,8 @@ func TestCodeHealthAuditRunnerIsReadOnlyAndUsesModuleMode(t *testing.T) {
 		"ArgumentList",
 		"GOFLAGS",
 		"-mod=",
+		"Mode -in @(\"All\", \"Go\", \"Verify\")",
+		"knip reported",
 		"} finally {",
 		"go test",
 		"manifest.json",
