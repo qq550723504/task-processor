@@ -14,7 +14,6 @@ func TestSettingsAdminServiceGetSheinSettingsAttachesAvailableStores(t *testing.
 	svc := &service{
 
 		sheinSettings: SheinSettings{
-			DefaultStoreID:    870,
 			Site:              "US",
 			WarehouseCode:     "WH-US-1",
 			DefaultSubmitMode: "publish",
@@ -31,9 +30,6 @@ func TestSettingsAdminServiceGetSheinSettingsAttachesAvailableStores(t *testing.
 	if err != nil {
 		t.Fatalf("GetSheinSettings error = %v", err)
 	}
-	if settings.DefaultStoreID != 870 {
-		t.Fatalf("default store id = %d, want 870", settings.DefaultStoreID)
-	}
 	if len(settings.AvailableStores) != 2 {
 		t.Fatalf("available stores = %+v, want 2 options", settings.AvailableStores)
 	}
@@ -47,7 +43,6 @@ func TestSettingsAdminServiceUpdateSheinSettingsNormalizesAndPersistsValues(t *t
 
 	svc := &service{
 		sheinSettings: SheinSettings{
-			DefaultStoreID:    869,
 			Site:              "US",
 			WarehouseCode:     "WH-US-1",
 			DefaultStock:      50,
@@ -64,7 +59,6 @@ func TestSettingsAdminServiceUpdateSheinSettingsNormalizesAndPersistsValues(t *t
 	}
 
 	settings, err := svc.UpdateSheinSettings(context.Background(), &SheinSettings{
-		DefaultStoreID:    900,
 		Site:              "gb",
 		WarehouseCode:     "WH-GB-1",
 		DefaultStock:      88,
@@ -79,9 +73,6 @@ func TestSettingsAdminServiceUpdateSheinSettingsNormalizesAndPersistsValues(t *t
 	})
 	if err != nil {
 		t.Fatalf("UpdateSheinSettings error = %v", err)
-	}
-	if settings.DefaultStoreID != 900 {
-		t.Fatalf("default store id = %d, want 900", settings.DefaultStoreID)
 	}
 	if settings.Site != "GB" {
 		t.Fatalf("site = %q, want GB", settings.Site)
@@ -98,7 +89,7 @@ func TestSettingsAdminServiceUpdateSheinSettingsNormalizesAndPersistsValues(t *t
 	if settings.Pricing.TargetCurrency != "EUR" {
 		t.Fatalf("pricing target currency = %q, want EUR", settings.Pricing.TargetCurrency)
 	}
-	if svc.sheinSettings.Site != "GB" || svc.sheinSettings.DefaultStoreID != 900 {
+	if svc.sheinSettings.Site != "GB" {
 		t.Fatalf("persisted shein settings = %+v, want updated values", svc.sheinSettings)
 	}
 	if svc.sheinSettings.UpdatedAt == nil || svc.sheinSettings.UpdatedAt.IsZero() {

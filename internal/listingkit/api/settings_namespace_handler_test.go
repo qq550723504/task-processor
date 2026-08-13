@@ -22,6 +22,7 @@ type stubSettingsNamespaceService struct {
 	gotAIClientNames   []string
 	aiSettingsReq      *listingkit.AIClientSettings
 	sheinSettings      *listingkit.SheinSettings
+	sheinSettingsReq   *listingkit.SheinSettings
 	err                error
 }
 
@@ -32,8 +33,13 @@ func (s *stubSettingsNamespaceService) GetSheinSettings(context.Context) (*listi
 	return s.sheinSettings, nil
 }
 
-func (s *stubSettingsNamespaceService) UpdateSheinSettings(context.Context, *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
-	return nil, errors.New("not implemented")
+func (s *stubSettingsNamespaceService) UpdateSheinSettings(_ context.Context, req *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.sheinSettingsReq = req
+	s.sheinSettings = req
+	return req, nil
 }
 
 func (s *stubSettingsNamespaceService) GetAIClientSettings(_ context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error) {
@@ -85,7 +91,6 @@ func TestGetSettingsHealthReturnsConfigurationImpact(t *testing.T) {
 			},
 		},
 		sheinSettings: &listingkit.SheinSettings{
-			DefaultStoreID:    9,
 			Site:              "US",
 			DefaultStock:      12,
 			DefaultSubmitMode: "publish",
@@ -132,6 +137,39 @@ func TestGetSettingsHealthReturnsConfigurationImpact(t *testing.T) {
 	}
 	if !hasSDSUnknown {
 		t.Fatalf("payload items = %#v", payload.Items)
+	}
+}
+
+func TestGetSheinSettingsSchemaOmitsDefaultStore(t *testing.T) {
+	t.Parallel()
+
+	h, err := NewHandler(&stubHandlerCoreService{}, WithSettingsHandlerService(&stubSettingsNamespaceService{}))
+	if err != nil {
+		t.Fatalf("NewHandler returned error: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/settings/namespaces/:namespace", h.GetSettingsNamespaceSchema)
+
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/settings/namespaces/shein", nil))
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET SHEIN settings schema = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+	var payload struct {
+		Fields []struct {
+			Key string `json:"key"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	for _, field := range payload.Fields {
+		if field.Key == "default_store_id" {
+			t.Fatalf("SHEIN schema fields = %#v, must not include default_store_id", payload.Fields)
+		}
 	}
 }
 
@@ -251,5 +289,52 @@ func TestUpdateAISettingsDoesNotRequireStudioSubscription(t *testing.T) {
 	}
 	if svc.aiSettingsReq.ClientName != "default" {
 		t.Fatalf("client name = %q, want default", svc.aiSettingsReq.ClientName)
+	}
+}
+
+func TestUpdateSheinSettingsIgnoresLegacyDefaultStoreID(t *testing.T) {
+	t.Parallel()
+
+	svc := &stubSettingsNamespaceService{}
+	h, err := NewHandler(
+		&stubHandlerCoreService{},
+		WithSettingsHandlerService(svc),
+		WithSubscriptionService(activeStudioOnlySubscriptionService(t)),
+	)
+	if err != nil {
+		t.Fatalf("NewHandler returned error: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.PUT("/settings/:namespace", h.UpdateSettingsNamespace)
+
+	req := httptest.NewRequest(http.MethodPut, "/settings/shein", strings.NewReader(`{"default_store_id": 9, "site": "GB"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("PUT /settings/shein = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("json.Unmarshal response: %v", err)
+	}
+	if _, exists := payload["default_store_id"]; exists {
+		t.Fatalf("response = %#v, must not expose default_store_id", payload)
+	}
+	if payload["site"] != "GB" {
+		t.Fatalf("response site = %#v, want GB", payload["site"])
+	}
+	if svc.sheinSettingsReq == nil || svc.sheinSettingsReq.Site != "GB" {
+		t.Fatalf("updated SHEIN settings = %+v, want Site GB", svc.sheinSettingsReq)
+	}
+	updatedJSON, err := json.Marshal(svc.sheinSettingsReq)
+	if err != nil {
+		t.Fatalf("json.Marshal updated settings: %v", err)
+	}
+	if bytes.Contains(updatedJSON, []byte(`"default_store_id"`)) {
+		t.Fatalf("updated SHEIN settings retained a store selection: %s", updatedJSON)
 	}
 }

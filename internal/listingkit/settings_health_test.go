@@ -1,10 +1,41 @@
 package listingkit
 
 import (
+	"strings"
 	"testing"
 
 	sheinpub "task-processor/internal/publishing/shein"
 )
+
+func TestBuildSettingsHealthDoesNotRequireDefaultSheinStore(t *testing.T) {
+	t.Parallel()
+
+	health := BuildSettingsHealth(SettingsHealthInputs{
+		Shein: &SheinSettings{Site: "US", DefaultStock: 20, DefaultSubmitMode: "publish"},
+	})
+
+	var account *SettingsHealthItem
+	for i := range health.Items {
+		if health.Items[i].Key == "shein.account" {
+			account = &health.Items[i]
+			break
+		}
+	}
+	if account == nil {
+		t.Fatalf("missing shein.account in %#v", health.Items)
+	}
+	if account.Status != "ready" {
+		t.Fatalf("shein.account status = %q, want ready; message=%q action=%q", account.Status, account.Message, account.Action)
+	}
+	for _, text := range []string{account.Message, account.Action} {
+		if strings.Contains(text, "默认店铺") || strings.Contains(strings.ToLower(text), "default store") {
+			t.Fatalf("shein.account text still requires a default store: message=%q action=%q", account.Message, account.Action)
+		}
+	}
+	if !strings.Contains(strings.Join(append(account.Impact, account.Action), " "), "显式指定") {
+		t.Fatalf("shein.account impact/action must explain explicit store selection: impact=%#v action=%q", account.Impact, account.Action)
+	}
+}
 
 func TestBuildSettingsHealthReportsBlockedAndUnknownConfiguration(t *testing.T) {
 	t.Parallel()
@@ -37,7 +68,7 @@ func TestBuildSettingsHealthReportsBlockedAndUnknownConfiguration(t *testing.T) 
 	}
 	assertHealthItem(t, health, "ai.default", "blocked", "生成 ListingKit 草稿")
 	assertHealthItem(t, health, "ai.image", "blocked", "图片生成与重绘")
-	assertHealthItem(t, health, "shein.account", "blocked", "SHEIN 提交")
+	assertHealthItem(t, health, "shein.account", "blocked", "显式指定店铺的 SHEIN 提交")
 	assertHealthItem(t, health, "shein.pricing", "blocked", "价格预览")
 	assertHealthItem(t, health, "sds.session", "unknown", "SDS 属性补全")
 	assertHealthItem(t, health, "storage.object", "unknown", "图片上传")
@@ -62,7 +93,6 @@ func TestBuildSettingsHealthReportsReadyConfiguration(t *testing.T) {
 			APIKeySet:  true,
 		},
 		Shein: &SheinSettings{
-			DefaultStoreID:    42,
 			Site:              "US",
 			DefaultStock:      10,
 			DefaultSubmitMode: "publish",
@@ -84,7 +114,7 @@ func TestBuildSettingsHealthReportsReadyConfiguration(t *testing.T) {
 	}
 	assertHealthItem(t, health, "ai.default", "ready", "生成 ListingKit 草稿")
 	assertHealthItem(t, health, "ai.image", "ready", "图片生成与重绘")
-	assertHealthItem(t, health, "shein.account", "ready", "SHEIN 提交")
+	assertHealthItem(t, health, "shein.account", "ready", "显式指定店铺的 SHEIN 提交")
 	assertHealthItem(t, health, "shein.integration", "ready", "保存草稿和发布")
 	assertHealthItem(t, health, "shein.pricing", "ready", "价格预览")
 	assertHealthItem(t, health, "sds.session", "ready", "SDS 属性补全")

@@ -90,13 +90,10 @@ func aiHealthItem(key string, label string, settings *AIClientSettings, impact [
 }
 
 func sheinAccountHealthItem(settings *SheinSettings) SettingsHealthItem {
-	missing := make([]string, 0, 4)
+	missing := make([]string, 0, 3)
 	if settings == nil {
 		missing = append(missing, "配置不存在")
 	} else {
-		if settings.DefaultStoreID <= 0 {
-			missing = append(missing, "默认店铺缺失")
-		}
 		if strings.TrimSpace(settings.Site) == "" {
 			missing = append(missing, "站点缺失")
 		}
@@ -113,8 +110,8 @@ func sheinAccountHealthItem(settings *SheinSettings) SettingsHealthItem {
 			Key:     "shein.account",
 			Label:   "SHEIN 店铺与提交配置",
 			Status:  "ready",
-			Message: "默认店铺、站点、库存和提交方式已配置。",
-			Impact:  []string{"SHEIN 提交", "新任务预检"},
+			Message: "站点、库存和提交方式已配置；SHEIN 任务需显式指定店铺。",
+			Impact:  []string{"显式指定店铺的 SHEIN 提交", "新任务预检"},
 		}
 	}
 	return SettingsHealthItem{
@@ -122,8 +119,8 @@ func sheinAccountHealthItem(settings *SheinSettings) SettingsHealthItem {
 		Label:   "SHEIN 店铺与提交配置",
 		Status:  "blocked",
 		Message: strings.Join(missing, "、"),
-		Impact:  []string{"SHEIN 提交", "新任务预检"},
-		Action:  "在 SHEIN 配置中选择默认店铺、站点、库存和提交方式。",
+		Impact:  []string{"显式指定店铺的 SHEIN 提交", "新任务预检"},
+		Action:  "在 SHEIN 配置中补齐站点、库存和提交方式；创建 SHEIN 任务时显式指定可用店铺。",
 	}
 }
 

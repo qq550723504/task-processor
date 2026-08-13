@@ -16,7 +16,6 @@ type SubmitTaskRequest struct {
 }
 
 type SheinSettings struct {
-	DefaultStoreID    int64                `json:"default_store_id,omitempty"`
 	AvailableStores   []SheinStoreOption   `json:"available_stores,omitempty"`
 	Site              string               `json:"site,omitempty"`
 	WarehouseCode     string               `json:"warehouse_code,omitempty"`

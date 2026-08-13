@@ -71,12 +71,11 @@ var settingsNamespaceSchemas = []settingsNamespaceSchema{
 	{
 		Namespace:   "shein",
 		Label:       "SHEIN 配置",
-		Description: "当前租户的 SHEIN 默认店铺、站点、库存和提交规则。",
+		Description: "当前租户的 SHEIN 站点、仓库、库存、提交方式和价格规则。",
 		SupportedScopes: []settingsScopeDefinition{
 			{ID: "tenant", Label: "租户", Description: "当前租户统一使用"},
 		},
 		Fields: []settingsFieldDefinition{
-			{Key: "default_store_id", Label: "默认店铺", Type: "number"},
 			{Key: "site", Label: "站点", Type: "string"},
 			{Key: "warehouse_code", Label: "仓库编码", Type: "string"},
 			{Key: "default_stock", Label: "默认库存", Type: "number"},

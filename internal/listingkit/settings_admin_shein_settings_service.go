@@ -24,9 +24,6 @@ func (s *settingsAdminService) UpdateSheinSettings(ctx context.Context, req *She
 		return nil, fmt.Errorf("shein settings are not configured")
 	}
 	settings := s.mutateSheinSettings(func(settings *SheinSettings) {
-		if req.DefaultStoreID > 0 {
-			settings.DefaultStoreID = req.DefaultStoreID
-		}
 		if value := strings.ToUpper(strings.TrimSpace(req.Site)); value != "" {
 			settings.Site = value
 		}

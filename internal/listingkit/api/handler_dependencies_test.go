@@ -168,7 +168,6 @@ func TestSettingsServiceHealthReadsExistingAIAndSheinSettings(t *testing.T) {
 			},
 		},
 		shein: &listingkit.SheinSettings{
-			DefaultStoreID:    7,
 			Site:              "US",
 			DefaultStock:      20,
 			DefaultSubmitMode: "save_draft",
