@@ -87,6 +87,20 @@ function Invoke-ProcessPlan($plan, [string]$outputPath) {
     }
 }
 
+function Install-Deadcode {
+    $gobin = (& (Get-ToolPath "go") env GOBIN).Trim()
+    if ([string]::IsNullOrWhiteSpace($gobin)) {
+        $gobin = Join-Path ((& (Get-ToolPath "go") env GOPATH).Trim()) "bin"
+    }
+    $name = if ($IsWindows) { "deadcode.exe" } else { "deadcode" }
+    $path = Join-Path $gobin $name
+    & (Get-ToolPath "go") install "golang.org/x/tools/cmd/deadcode@$($config.deadcode_version)"
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $path)) {
+        throw "Unable to install pinned deadcode $($config.deadcode_version)"
+    }
+    return $path
+}
+
 $goPlans = @(New-DeadcodePlans)
 $frontendPlans = @()
 $clonePlans = @()
@@ -133,6 +147,10 @@ $manifest = [ordered]@{
 }
 
 try {
+    if ($Mode -in @("All", "Go")) {
+        $deadcodePath = Install-Deadcode
+        foreach ($plan in $goPlans) { $plan.FilePath = $deadcodePath; $plan.Arguments = @($(if ($plan.TestMode) { @("-test") } else { @()}), "-json") + @($plan.Arguments | Select-Object -Skip 3) }
+    }
     if ($Mode -in @("All", "Go", "Verify")) {
         $verify = [pscustomobject]@{ Name = "verify-go-compile"; FilePath = (Get-ToolPath "go"); WorkingDirectory = $repoRoot; Arguments = @("test", "./...", "-run", "^$"); OutputName = "baseline-go-test.txt" }
         $record = Invoke-ProcessPlan $verify (Join-Path $runDir $verify.OutputName)
