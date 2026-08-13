@@ -138,12 +138,10 @@ Create the file with this helper and table:
 package product
 
 import (
-	"bytes"
 	"context"
 	"strings"
 	"testing"
 
-	"github.com/sirupsen/logrus"
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	temuapi "task-processor/internal/temu/api"
@@ -208,7 +206,7 @@ Expected: PASS.
 
 - [ ] **Step 5: Write the failing log test**
 
-Append:
+Add `bytes` and `github.com/sirupsen/logrus` to the test imports, then append:
 
 ```go
 func TestSavePublishResultHandlerLogsInputValidationError(t *testing.T) {
@@ -279,7 +277,6 @@ package mapping
 import (
 	"strings"
 	"testing"
-	"time"
 
 	"task-processor/internal/listingruntime"
 )
@@ -336,7 +333,7 @@ Expected: PASS.
 
 - [ ] **Step 5: Write the failing SmartRepair propagation test**
 
-Append:
+Add `time` to the test imports, then append:
 
 ```go
 func TestSmartRepairStrategyPropagatesStoreOwner(t *testing.T) {
