@@ -1,4 +1,4 @@
-≠rá^—f•ñÿ¶{O,y 'v√Æ∂õ≠package listingkit
+package listingkit
 
 import (
 	"context"
