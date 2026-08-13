@@ -4,6 +4,7 @@ package mapping
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"task-processor/internal/listingruntime"
@@ -143,101 +144,6 @@ func (b *MappingBuilder) CreateMappingFromContext(ctx *MappingRepairContext, rea
 	return b.CreateMappingRelation(options)
 }
 
-// CreateBasicMapping 创建基础映射关系（最少参数）
-func (b *MappingBuilder) CreateBasicMapping(tenantID, storeID int64, skuCode, region, reason string) (*listingruntime.ProductImportMapping, error) {
-	options := &MappingCreateOptions{
-		TenantID: tenantID,
-		StoreID:  storeID,
-		SkuCode:  skuCode,
-		Region:   region,
-		Reason:   reason,
-	}
-
-	return b.CreateMappingRelation(options)
-}
-
-// CreateMappingWithSPU 创建包含SPU信息的映射关系
-func (b *MappingBuilder) CreateMappingWithSPU(tenantID, storeID int64, skuCode, spuCode, spuName, region, reason string) (*listingruntime.ProductImportMapping, error) {
-	options := &MappingCreateOptions{
-		TenantID: tenantID,
-		StoreID:  storeID,
-		SkuCode:  skuCode,
-		SpuCode:  spuCode,
-		SpuName:  spuName,
-		Region:   region,
-		Reason:   reason,
-	}
-
-	return b.CreateMappingRelation(options)
-}
-
-// CreateMappingWithPrice 创建包含价格信息的映射关系
-func (b *MappingBuilder) CreateMappingWithPrice(tenantID, storeID int64, skuCode, region, reason string, costPrice float64) (*listingruntime.ProductImportMapping, error) {
-	options := &MappingCreateOptions{
-		TenantID:  tenantID,
-		StoreID:   storeID,
-		SkuCode:   skuCode,
-		Region:    region,
-		Reason:    reason,
-		CostPrice: &costPrice,
-	}
-
-	return b.CreateMappingRelation(options)
-}
-
-// CreateMappingWithRules 创建包含规则信息的映射关系
-func (b *MappingBuilder) CreateMappingWithRules(
-	tenantID, storeID int64,
-	skuCode, region, reason string,
-	profitRuleID, filterRuleID *int64,
-	salePriceMultiplier, discountPriceMultiplier, filterRuleRange *string,
-) (*listingruntime.ProductImportMapping, error) {
-	options := &MappingCreateOptions{
-		TenantID:                tenantID,
-		StoreID:                 storeID,
-		SkuCode:                 skuCode,
-		Region:                  region,
-		Reason:                  reason,
-		ProfitRuleID:            profitRuleID,
-		FilterRuleID:            filterRuleID,
-		SalePriceMultiplier:     salePriceMultiplier,
-		DiscountPriceMultiplier: discountPriceMultiplier,
-		FilterRuleRange:         filterRuleRange,
-	}
-
-	return b.CreateMappingRelation(options)
-}
-
-// CreateMappingFromTaskContext 从任务上下文创建映射关系（类似result_service.go的实现）
-func (b *MappingBuilder) CreateMappingFromTaskContext(
-	tenantID, storeID int64,
-	skuCode, supplierSku, productID, region, reason string,
-	parentProductID, platformParentProductID *string,
-	costPrice *float64,
-	profitRuleID, filterRuleID *int64,
-	salePriceMultiplier, discountPriceMultiplier, filterRuleRange *string,
-) (*listingruntime.ProductImportMapping, error) {
-	options := &MappingCreateOptions{
-		TenantID:                tenantID,
-		StoreID:                 storeID,
-		SkuCode:                 skuCode,
-		SupplierSku:             supplierSku,
-		ProductID:               productID,
-		ParentProductID:         parentProductID,
-		PlatformParentProductID: platformParentProductID,
-		Region:                  region,
-		Reason:                  reason,
-		CostPrice:               costPrice,
-		ProfitRuleID:            profitRuleID,
-		FilterRuleID:            filterRuleID,
-		SalePriceMultiplier:     salePriceMultiplier,
-		DiscountPriceMultiplier: discountPriceMultiplier,
-		FilterRuleRange:         filterRuleRange,
-	}
-
-	return b.CreateMappingRelation(options)
-}
-
 // validateOptions 验证创建选项
 func (b *MappingBuilder) validateOptions(options *MappingCreateOptions) error {
 	if options.TenantID <= 0 {
@@ -246,6 +152,9 @@ func (b *MappingBuilder) validateOptions(options *MappingCreateOptions) error {
 
 	if options.StoreID <= 0 {
 		return fmt.Errorf("店铺ID不能为空或小于等于0")
+	}
+	if strings.TrimSpace(options.OwnerUserID) == "" {
+		return fmt.Errorf("映射所有者不能为空")
 	}
 
 	if options.SkuCode == "" {
