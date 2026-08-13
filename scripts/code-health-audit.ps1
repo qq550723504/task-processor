@@ -149,7 +149,11 @@ $manifest = [ordered]@{
 try {
     if ($Mode -in @("All", "Go")) {
         $deadcodePath = Install-Deadcode
-        foreach ($plan in $goPlans) { $plan.FilePath = $deadcodePath; $plan.Arguments = @($(if ($plan.TestMode) { @("-test") } else { @()}), "-json") + @($plan.Arguments | Select-Object -Skip 3) }
+        foreach ($plan in $goPlans) {
+            $plan.FilePath = $deadcodePath
+            $packageArgs = if ($plan.TestMode) { @($plan.Arguments | Select-Object -Skip 4) } else { @($plan.Arguments | Select-Object -Skip 3) }
+            $plan.Arguments = @("-json") + $(if ($plan.TestMode) { @("-test") } else { @() }) + $packageArgs
+        }
     }
     if ($Mode -in @("All", "Go", "Verify")) {
         $verify = [pscustomobject]@{ Name = "verify-go-compile"; FilePath = (Get-ToolPath "go"); WorkingDirectory = $repoRoot; Arguments = @("test", "./...", "-run", "^$"); OutputName = "baseline-go-test.txt" }
