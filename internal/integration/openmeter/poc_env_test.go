@@ -68,20 +68,21 @@ func isPoCPhase(phase string) bool {
 }
 
 func pocNamesForRunID(runID string) pocNames {
-	prefix := "poc-" + runID
+	resourcePrefix := "poc_" + strings.ReplaceAll(runID, "-", "_")
+	subjectPrefix := "poc-" + runID
 	return pocNames{
-		StudioMeterKey:    prefix + "-studio-meter",
-		SheinMeterKey:     prefix + "-shein-meter",
-		StorageMeterKey:   prefix + "-storage-meter",
-		StudioFeatureKey:  prefix + "-studio-feature",
-		SheinFeatureKey:   prefix + "-shein-feature",
-		StorageFeatureKey: prefix + "-storage-feature",
-		CustomerAKey:      prefix + "-customer-a",
-		CustomerBKey:      prefix + "-customer-b",
-		SubjectA:          "tenant:" + prefix + "-a",
-		SubjectB:          "tenant:" + prefix + "-b",
-		PlanKey:           prefix + "-plan",
-		PhaseKey:          prefix + "-phase",
+		StudioMeterKey:    resourcePrefix + "_studio_meter",
+		SheinMeterKey:     resourcePrefix + "_shein_meter",
+		StorageMeterKey:   resourcePrefix + "_storage_meter",
+		StudioFeatureKey:  resourcePrefix + "_studio_feature",
+		SheinFeatureKey:   resourcePrefix + "_shein_feature",
+		StorageFeatureKey: resourcePrefix + "_storage_feature",
+		CustomerAKey:      resourcePrefix + "_customer_a",
+		CustomerBKey:      resourcePrefix + "_customer_b",
+		SubjectA:          "tenant:" + subjectPrefix + "-a",
+		SubjectB:          "tenant:" + subjectPrefix + "-b",
+		PlanKey:           resourcePrefix + "_plan",
+		PhaseKey:          resourcePrefix + "_phase",
 	}
 }
 
@@ -186,21 +187,57 @@ func TestPoCNamesDeriveOnlyFromSanitizedRunID(t *testing.T) {
 	}
 
 	want := pocNames{
-		StudioMeterKey:    "poc-run-42-studio-meter",
-		SheinMeterKey:     "poc-run-42-shein-meter",
-		StorageMeterKey:   "poc-run-42-storage-meter",
-		StudioFeatureKey:  "poc-run-42-studio-feature",
-		SheinFeatureKey:   "poc-run-42-shein-feature",
-		StorageFeatureKey: "poc-run-42-storage-feature",
-		CustomerAKey:      "poc-run-42-customer-a",
-		CustomerBKey:      "poc-run-42-customer-b",
+		StudioMeterKey:    "poc_run_42_studio_meter",
+		SheinMeterKey:     "poc_run_42_shein_meter",
+		StorageMeterKey:   "poc_run_42_storage_meter",
+		StudioFeatureKey:  "poc_run_42_studio_feature",
+		SheinFeatureKey:   "poc_run_42_shein_feature",
+		StorageFeatureKey: "poc_run_42_storage_feature",
+		CustomerAKey:      "poc_run_42_customer_a",
+		CustomerBKey:      "poc_run_42_customer_b",
 		SubjectA:          "tenant:poc-run-42-a",
 		SubjectB:          "tenant:poc-run-42-b",
-		PlanKey:           "poc-run-42-plan",
-		PhaseKey:          "poc-run-42-phase",
+		PlanKey:           "poc_run_42_plan",
+		PhaseKey:          "poc_run_42_phase",
 	}
 	if first != want {
 		t.Fatalf("pocNamesForRunID() = %+v, want %+v", first, want)
+	}
+}
+
+func TestPoCNamesUseServerCompatibleResourceKeys(t *testing.T) {
+	names := pocNamesForRunID("om-20260813-220837")
+	plan, err := pocPlanRequest(names, "feature-studio", "feature-shein", "feature-storage")
+	if err != nil {
+		t.Fatalf("pocPlanRequest() error = %v", err)
+	}
+
+	keys := []string{
+		names.StudioMeterKey,
+		names.SheinMeterKey,
+		names.StorageMeterKey,
+		names.StudioFeatureKey,
+		names.SheinFeatureKey,
+		names.StorageFeatureKey,
+		names.CustomerAKey,
+		names.CustomerBKey,
+		names.PlanKey,
+		names.PhaseKey,
+	}
+	for _, phase := range plan.Phases {
+		for _, rateCard := range phase.RateCards {
+			keys = append(keys, rateCard.Key)
+		}
+	}
+
+	serverPattern := regexp.MustCompile(`^[a-z0-9]+(?:_[a-z0-9]+)*$`)
+	for _, key := range keys {
+		if !serverPattern.MatchString(key) {
+			t.Errorf("OpenMeter resource key %q does not match %s", key, serverPattern)
+		}
+		if len(key) > 64 {
+			t.Errorf("OpenMeter resource key %q is %d bytes, want at most 64", key, len(key))
+		}
 	}
 }
 

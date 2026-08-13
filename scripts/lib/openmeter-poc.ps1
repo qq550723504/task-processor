@@ -3,6 +3,7 @@ $script:OpenMeterPoCImage = "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232"
 $script:OpenMeterPoCRepository = "https://github.com/openmeterio/openmeter.git"
 $script:OpenMeterPoCComposeProject = "task-processor-openmeter-poc"
 $script:OpenMeterPoCURL = "http://127.0.0.1:48888/api/v3"
+$script:OpenMeterPoCHealthURL = "http://127.0.0.1:48888/api/v1/debug/metrics"
 $script:OpenMeterPoCOwnedServices = @(
     "openmeter",
     "sink-worker",
@@ -330,7 +331,7 @@ function Test-OpenMeterPoCHealth {
 
 function Assert-OpenMeterPoCHealth {
     param(
-        [Parameter(Mandatory = $true)]
+        [AllowNull()]
         [scriptblock]$HealthProbe,
         [Parameter(Mandatory = $true)]
         [pscustomobject]$Paths,
@@ -338,11 +339,16 @@ function Assert-OpenMeterPoCHealth {
         [string]$ApiKey = ""
     )
 
-    $healthy = & $HealthProbe $script:OpenMeterPoCURL
-    if (-not $healthy) {
-        throw "OpenMeter API health verification failed at $script:OpenMeterPoCURL"
+    $healthy = if ($null -eq $HealthProbe) {
+        Test-OpenMeterPoCHealth -Uri $script:OpenMeterPoCHealthURL -ApiKey $ApiKey
     }
-    Write-OpenMeterPoCFile -Path $Paths.RunnerLogPath -AllowedRoot $Paths.LocalRoot -Value "health verified: $script:OpenMeterPoCURL" -ApiKey $ApiKey -Append
+    else {
+        & $HealthProbe $script:OpenMeterPoCHealthURL
+    }
+    if (-not $healthy) {
+        throw "OpenMeter API health verification failed at $script:OpenMeterPoCHealthURL"
+    }
+    Write-OpenMeterPoCFile -Path $Paths.RunnerLogPath -AllowedRoot $Paths.LocalRoot -Value "health verified: $script:OpenMeterPoCHealthURL" -ApiKey $ApiKey -Append
 }
 
 function Save-OpenMeterPoCResourceSnapshot {
@@ -449,7 +455,7 @@ function Invoke-OpenMeterPoCGoPhase {
     }
 
     try {
-        if ($null -ne $Phase) {
+        if (-not [string]::IsNullOrEmpty($Phase)) {
             [Environment]::SetEnvironmentVariable("OPENMETER_POC", "1", "Process")
             [Environment]::SetEnvironmentVariable("OPENMETER_POC_URL", $script:OpenMeterPoCURL, "Process")
             [Environment]::SetEnvironmentVariable("OPENMETER_POC_RUN_ID", $RunId, "Process")
@@ -542,14 +548,6 @@ function Invoke-OpenMeterPoC {
                 Invoke-OpenMeterPoCNativeCommand -FilePath $FilePath -ArgumentList $ArgumentList -WorkingDirectory $WorkingDirectory
             }
         }
-        if ($null -eq $HealthProbe) {
-            $healthApiKey = $ApiKey
-            $HealthProbe = {
-                param([string]$Uri)
-                Test-OpenMeterPoCHealth -Uri $Uri -ApiKey $healthApiKey
-            }.GetNewClosure()
-        }
-
         foreach ($prerequisite in @(
             @{ FilePath = "git"; Arguments = @("--version") },
             @{ FilePath = "go"; Arguments = @("version") },

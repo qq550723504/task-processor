@@ -171,9 +171,9 @@ func pocPlanRequest(names pocNames, studioFeatureID, sheinFeatureID, storageFeat
 		featureID string
 		limit     float64
 	}{
-		{key: names.StudioFeatureKey + "-rate-card", featureID: studioFeatureID, limit: 5},
-		{key: names.SheinFeatureKey + "-rate-card", featureID: sheinFeatureID, limit: 3},
-		{key: names.StorageFeatureKey + "-rate-card", featureID: storageFeatureID, limit: 10 * 1024 * 1024},
+		{key: names.StudioFeatureKey, featureID: studioFeatureID, limit: 5},
+		{key: names.SheinFeatureKey, featureID: sheinFeatureID, limit: 3},
+		{key: names.StorageFeatureKey, featureID: storageFeatureID, limit: 10 * 1024 * 1024},
 	}
 	rateCards := make([]openmeterapi.RateCardInput, 0, len(rateCardInputs))
 	for _, input := range rateCardInputs {
@@ -443,14 +443,20 @@ func findPoCCustomerByKey(ctx context.Context, sdk *openmeterapi.Client, key str
 }
 
 func ensurePoCPlan(ctx context.Context, sdk *openmeterapi.Client, request openmeterapi.CreatePlanRequest) (*openmeterapi.Plan, error) {
-	plan, err := sdk.Plans.Create(ctx, request)
+	page, err := sdk.Plans.List(ctx, openmeterapi.PlanListParams{Filter: &openmeterapi.PlanFilter{Key: &openmeterapi.StringFilter{Eq: &request.Key}}})
 	if err != nil {
-		if !isPoCConflict(err) {
-			return nil, fmt.Errorf("create OpenMeter plan %q: %w", request.Key, err)
-		}
-		plan, err = findPoCPlanByKey(ctx, sdk, request.Key)
+		return nil, fmt.Errorf("list OpenMeter plans for key %q: %w", request.Key, err)
+	}
+	if len(page.Data) > 1 {
+		return nil, fmt.Errorf("expected at most one OpenMeter plan for key %q, got %d", request.Key, len(page.Data))
+	}
+	var plan *openmeterapi.Plan
+	if len(page.Data) == 1 {
+		plan = &page.Data[0]
+	} else {
+		plan, err = sdk.Plans.Create(ctx, request)
 		if err != nil {
-			return nil, fmt.Errorf("fetch conflicting OpenMeter plan %q: %w", request.Key, err)
+			return nil, fmt.Errorf("create OpenMeter plan %q: %w", request.Key, err)
 		}
 	}
 	if err := validatePoCPlan(request, plan); err != nil {
@@ -469,17 +475,6 @@ func ensurePoCPlan(ctx context.Context, sdk *openmeterapi.Client, request openme
 		return nil, err
 	}
 	return plan, nil
-}
-
-func findPoCPlanByKey(ctx context.Context, sdk *openmeterapi.Client, key string) (*openmeterapi.Plan, error) {
-	page, err := sdk.Plans.List(ctx, openmeterapi.PlanListParams{Filter: &openmeterapi.PlanFilter{Key: &openmeterapi.StringFilter{Eq: &key}}})
-	if err != nil {
-		return nil, err
-	}
-	if len(page.Data) != 1 {
-		return nil, fmt.Errorf("expected exactly one plan for key %q, got %d", key, len(page.Data))
-	}
-	return &page.Data[0], nil
 }
 
 func ensurePoCSubscription(ctx context.Context, sdk *openmeterapi.Client, request openmeterapi.SubscriptionCreate) (*openmeterapi.BillingSubscription, error) {
@@ -598,7 +593,11 @@ func validatePoCRateCard(request openmeterapi.RateCardInput, rateCard openmetera
 	if err != nil {
 		return fmt.Errorf("rate card %q existing entitlement is incompatible: %w", request.Key, err)
 	}
-	if !equalFloatPointers(gotEntitlement.Limit, wantEntitlement.Limit) || !equalBoolPointers(gotEntitlement.IsSoftLimit, wantEntitlement.IsSoftLimit) || !equalStringPointers(gotEntitlement.UsagePeriod, wantEntitlement.UsagePeriod) {
+	wantUsagePeriod := wantEntitlement.UsagePeriod
+	if wantUsagePeriod == nil {
+		wantUsagePeriod = request.BillingCadence
+	}
+	if !equalFloatPointers(gotEntitlement.Limit, wantEntitlement.Limit) || !equalBoolPointers(gotEntitlement.IsSoftLimit, wantEntitlement.IsSoftLimit) || !equalStringPointers(gotEntitlement.UsagePeriod, wantUsagePeriod) {
 		return fmt.Errorf("rate card %q metered entitlement has incompatible configuration", request.Key)
 	}
 	return nil
@@ -652,9 +651,9 @@ func TestPoCMeterRequestsMatchUsageContract(t *testing.T) {
 		eventType     string
 		valueProperty string
 	}{
-		{key: "poc-run-42-studio-meter", aggregation: openmeterapi.MeterAggregationCount, eventType: "listingkit.usage.studio_design_jobs_succeeded"},
-		{key: "poc-run-42-shein-meter", aggregation: openmeterapi.MeterAggregationCount, eventType: "listingkit.usage.shein_drafts_succeeded"},
-		{key: "poc-run-42-storage-meter", aggregation: openmeterapi.MeterAggregationLatest, eventType: "listingkit.usage.storage_bytes_current", valueProperty: "$.quantity"},
+		{key: "poc_run_42_studio_meter", aggregation: openmeterapi.MeterAggregationCount, eventType: "listingkit.usage.studio_design_jobs_succeeded"},
+		{key: "poc_run_42_shein_meter", aggregation: openmeterapi.MeterAggregationCount, eventType: "listingkit.usage.shein_drafts_succeeded"},
+		{key: "poc_run_42_storage_meter", aggregation: openmeterapi.MeterAggregationLatest, eventType: "listingkit.usage.storage_bytes_current", valueProperty: "$.quantity"},
 	}
 	for index, request := range requests {
 		if request.Key != want[index].key || request.Aggregation != want[index].aggregation || request.EventType != want[index].eventType {
@@ -676,7 +675,7 @@ func TestPoCCustomerRequestsUseUniqueSubjects(t *testing.T) {
 		t.Fatalf("pocCustomerRequests() returned %d requests, want 2", len(requests))
 	}
 
-	wantKeys := []string{"poc-run-42-customer-a", "poc-run-42-customer-b"}
+	wantKeys := []string{"poc_run_42_customer_a", "poc_run_42_customer_b"}
 	wantSubjects := []string{"tenant:poc-run-42-a", "tenant:poc-run-42-b"}
 	for index, request := range requests {
 		if request.Key != wantKeys[index] {
@@ -695,7 +694,8 @@ func TestPoCCustomerRequestsUseUniqueSubjects(t *testing.T) {
 }
 
 func TestPoCPlanRequestUsesOfficialFreePriceAndMeteredEntitlements(t *testing.T) {
-	request, err := pocPlanRequest(pocNamesForRunID("run-42"), "feature-studio", "feature-shein", "feature-storage")
+	names := pocNamesForRunID("run-42")
+	request, err := pocPlanRequest(names, "feature-studio", "feature-shein", "feature-storage")
 	if err != nil {
 		t.Fatalf("pocPlanRequest() error = %v", err)
 	}
@@ -706,7 +706,7 @@ func TestPoCPlanRequestUsesOfficialFreePriceAndMeteredEntitlements(t *testing.T)
 		t.Fatalf("pocPlanRequest() phases = %d, want 1", len(request.Phases))
 	}
 	phase := request.Phases[0]
-	if phase.Key != "poc-run-42-phase" || phase.Duration != nil {
+	if phase.Key != "poc_run_42_phase" || phase.Duration != nil {
 		t.Fatalf("pocPlanRequest() phase = %+v, want namespaced indefinite phase", phase)
 	}
 	if len(phase.RateCards) != 3 {
@@ -714,8 +714,12 @@ func TestPoCPlanRequestUsesOfficialFreePriceAndMeteredEntitlements(t *testing.T)
 	}
 
 	wantFeatures := []string{"feature-studio", "feature-shein", "feature-storage"}
+	wantRateCardKeys := []string{names.StudioFeatureKey, names.SheinFeatureKey, names.StorageFeatureKey}
 	wantLimits := []float64{5, 3, 10 * 1024 * 1024}
 	for index, rateCard := range phase.RateCards {
+		if rateCard.Key != wantRateCardKeys[index] {
+			t.Errorf("rate card %d key = %q, want feature key %q", index, rateCard.Key, wantRateCardKeys[index])
+		}
 		if rateCard.Feature == nil || rateCard.Feature.ID != wantFeatures[index] {
 			t.Errorf("rate card %d feature = %+v, want %q", index, rateCard.Feature, wantFeatures[index])
 		}
@@ -738,6 +742,30 @@ func TestPoCPlanRequestUsesOfficialFreePriceAndMeteredEntitlements(t *testing.T)
 		if entitlement.IsSoftLimit == nil || *entitlement.IsSoftLimit {
 			t.Errorf("rate card %d soft limit = %v, want false", index, entitlement.IsSoftLimit)
 		}
+	}
+}
+
+func TestValidatePoCPlanAcceptsServerDefaultedEntitlementUsagePeriod(t *testing.T) {
+	request, err := pocPlanRequest(pocNamesForRunID("run-42"), "feature-studio", "feature-shein", "feature-storage")
+	if err != nil {
+		t.Fatalf("pocPlanRequest() error = %v", err)
+	}
+	plan := compatiblePoCPlan(request)
+	for index := range plan.Phases[0].RateCards {
+		entitlement, err := plan.Phases[0].RateCards[index].Entitlement.AsRateCardMeteredEntitlement()
+		if err != nil {
+			t.Fatalf("decode rate card %d entitlement: %v", index, err)
+		}
+		entitlement.UsagePeriod = openmeterapi.Ptr("P1M")
+		serverEntitlement, err := openmeterapi.RateCardEntitlementFromRateCardMeteredEntitlement(*entitlement)
+		if err != nil {
+			t.Fatalf("encode rate card %d entitlement: %v", index, err)
+		}
+		plan.Phases[0].RateCards[index].Entitlement = &serverEntitlement
+	}
+
+	if err := validatePoCPlan(request, &plan); err != nil {
+		t.Fatalf("validatePoCPlan() server-defaulted usage period error = %v", err)
 	}
 }
 
@@ -767,8 +795,8 @@ func TestPoCFixtureValidationRejectsIncompatibleExistingResources(t *testing.T) 
 	}
 
 	featureRequest := openmeterapi.CreateFeatureRequest{
-		Name:  "poc-run-42-studio-feature",
-		Key:   "poc-run-42-studio-feature",
+		Name:  "poc_run_42_studio_feature",
+		Key:   "poc_run_42_studio_feature",
 		Meter: &openmeterapi.FeatureMeterReferenceInput{ID: "meter-studio"},
 	}
 	feature := openmeterapi.Feature{
@@ -909,8 +937,8 @@ func TestEnsurePoCMeterConflictFetchesExactKeyAndRejectsIncompatibleConfig(t *te
 
 func TestEnsurePoCFeatureConflictFetchesExactKeyAndRejectsFilters(t *testing.T) {
 	request := openmeterapi.CreateFeatureRequest{
-		Name:  "poc-run-42-studio-feature",
-		Key:   "poc-run-42-studio-feature",
+		Name:  "poc_run_42_studio_feature",
+		Key:   "poc_run_42_studio_feature",
 		Meter: &openmeterapi.FeatureMeterReferenceInput{ID: "meter-studio"},
 	}
 	existing := openmeterapi.Feature{
@@ -971,7 +999,7 @@ func TestEnsurePoCCustomerConflictFetchesExactKeyAndRejectsAttribution(t *testin
 	transport.Verify(t)
 }
 
-func TestEnsurePoCPlanConflictFetchesExactKeyAndRejectsConfig(t *testing.T) {
+func TestEnsurePoCPlanFindsExactKeyAndRejectsIncompatibleConfig(t *testing.T) {
 	request, err := pocPlanRequest(pocNamesForRunID("run-42"), "feature-studio", "feature-shein", "feature-storage")
 	if err != nil {
 		t.Fatalf("pocPlanRequest() error = %v", err)
@@ -979,7 +1007,6 @@ func TestEnsurePoCPlanConflictFetchesExactKeyAndRejectsConfig(t *testing.T) {
 	existing := compatiblePoCPlan(request)
 	existing.Currency = "EUR"
 	sdk, transport := newPoCSequenceSDK(t,
-		pocSDKStep{Method: http.MethodPost, Path: "/api/v3/openmeter/plans", Status: http.StatusConflict, Body: pocConflictBody},
 		pocSDKStep{
 			Method: http.MethodGet,
 			Path:   "/api/v3/openmeter/plans",
@@ -994,6 +1021,35 @@ func TestEnsurePoCPlanConflictFetchesExactKeyAndRejectsConfig(t *testing.T) {
 	_, err = ensurePoCPlan(t.Context(), sdk, request)
 	if err == nil || !strings.Contains(err.Error(), "incompatible top-level configuration") {
 		t.Fatalf("ensurePoCPlan() error = %v, want incompatible plan error", err)
+	}
+	transport.Verify(t)
+}
+
+func TestEnsurePoCPlanReusesExistingActiveVersionWithoutCreatingDraft(t *testing.T) {
+	request, err := pocPlanRequest(pocNamesForRunID("run-42"), "feature-studio", "feature-shein", "feature-storage")
+	if err != nil {
+		t.Fatalf("pocPlanRequest() error = %v", err)
+	}
+	existing := compatiblePoCPlan(request)
+	existing.Status = openmeterapi.PlanStatusActive
+	sdk, transport := newPoCSequenceSDK(t,
+		pocSDKStep{
+			Method: http.MethodGet,
+			Path:   "/api/v3/openmeter/plans",
+			Query:  url.Values{"filter[key][eq]": []string{request.Key}},
+			Status: http.StatusOK,
+			Body: marshalPoCTestJSON(t, openmeterapi.PlanPagePaginatedResponse{
+				Data: []openmeterapi.Plan{existing},
+			}),
+		},
+	)
+
+	plan, err := ensurePoCPlan(t.Context(), sdk, request)
+	if err != nil {
+		t.Fatalf("ensurePoCPlan() error = %v", err)
+	}
+	if plan.ID != existing.ID || plan.Status != openmeterapi.PlanStatusActive {
+		t.Fatalf("ensurePoCPlan() = %+v, want existing active plan %+v", plan, existing)
 	}
 	transport.Verify(t)
 }
@@ -1014,6 +1070,13 @@ func TestEnsurePoCPlanPublishesDraftAndSubscriptionCreatesThenReuses(t *testing.
 		Status:     openmeterapi.SubscriptionStatusActive,
 	}
 	sdk, transport := newPoCSequenceSDK(t,
+		pocSDKStep{
+			Method: http.MethodGet,
+			Path:   "/api/v3/openmeter/plans",
+			Query:  url.Values{"filter[key][eq]": []string{planRequest.Key}},
+			Status: http.StatusOK,
+			Body:   marshalPoCTestJSON(t, openmeterapi.PlanPagePaginatedResponse{}),
+		},
 		pocSDKStep{Method: http.MethodPost, Path: "/api/v3/openmeter/plans", Status: http.StatusCreated, Body: marshalPoCTestJSON(t, draftPlan)},
 		pocSDKStep{Method: http.MethodPost, Path: "/api/v3/openmeter/plans/plan-1/publish", Status: http.StatusOK, Body: marshalPoCTestJSON(t, activePlan)},
 		pocSDKStep{
@@ -1064,13 +1127,28 @@ func compatiblePoCPlan(request openmeterapi.CreatePlanRequest) openmeterapi.Plan
 	phaseInput := request.Phases[0]
 	rateCards := make([]openmeterapi.RateCard, 0, len(phaseInput.RateCards))
 	for _, input := range phaseInput.RateCards {
+		entitlement := input.Entitlement
+		if entitlement != nil {
+			metered, err := entitlement.AsRateCardMeteredEntitlement()
+			if err != nil {
+				panic(fmt.Sprintf("decode compatible PoC entitlement: %v", err))
+			}
+			if metered.UsagePeriod == nil {
+				metered.UsagePeriod = input.BillingCadence
+			}
+			serverEntitlement, err := openmeterapi.RateCardEntitlementFromRateCardMeteredEntitlement(*metered)
+			if err != nil {
+				panic(fmt.Sprintf("encode compatible PoC entitlement: %v", err))
+			}
+			entitlement = &serverEntitlement
+		}
 		rateCards = append(rateCards, openmeterapi.RateCard{
 			Name:           input.Name,
 			Key:            input.Key,
 			Feature:        input.Feature,
 			BillingCadence: input.BillingCadence,
 			Price:          input.Price,
-			Entitlement:    input.Entitlement,
+			Entitlement:    entitlement,
 		})
 	}
 	return openmeterapi.Plan{

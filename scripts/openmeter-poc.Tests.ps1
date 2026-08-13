@@ -35,6 +35,7 @@ function New-TestOpenMeterPoCFakes {
             FilePath = $FilePath
             Arguments = @($ArgumentList)
             WorkingDirectory = $WorkingDirectory
+            Enabled = [Environment]::GetEnvironmentVariable("OPENMETER_POC", "Process")
             Phase = [Environment]::GetEnvironmentVariable("OPENMETER_POC_PHASE", "Process")
         }
         [void]$Calls.Add($call)
@@ -155,7 +156,7 @@ function New-TestOpenMeterPoCFakes {
         if ($FailureMode -eq "health") {
             return $false
         }
-        return $Uri -eq "http://127.0.0.1:48888/api/v3"
+        return $Uri -eq "http://127.0.0.1:48888/api/v1/debug/metrics"
     }.GetNewClosure()
 
     [pscustomobject]@{
@@ -214,6 +215,18 @@ Describe "OpenMeter PoC path and Compose boundaries" {
 }
 
 Describe "OpenMeter PoC runner behavior" {
+    It "uses the built-in health check when no custom probe is supplied" {
+        $repositoryRoot = Join-Path $TestDrive "runner-default-health"
+        New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+        $paths = Get-OpenMeterPoCPaths -RepositoryRoot $repositoryRoot -RunId "run-default-health"
+        New-Item -ItemType Directory -Path $paths.EvidencePath -Force | Out-Null
+        Mock Invoke-WebRequest { [pscustomobject]@{ StatusCode = 204 } }
+
+        Assert-OpenMeterPoCHealth -Paths $paths
+
+        Get-Content -LiteralPath $paths.RunnerLogPath -Raw | Should Match "health verified: http://127.0.0.1:48888/api/v1/debug/metrics"
+    }
+
     It "uses the exact Compose project and cleans up without deleting volumes or the checkout" {
         $calls = New-Object System.Collections.ArrayList
         $fakes = New-TestOpenMeterPoCFakes -Calls $calls
@@ -279,6 +292,10 @@ Describe "OpenMeter PoC runner behavior" {
         $result | Should Be 0
         $goCalls = @($calls | Where-Object { $_.FilePath -eq "go" -and $_.Arguments[0] -eq "test" })
         $goCalls.Count | Should Be 5
+        [string]::IsNullOrEmpty([string]$goCalls[0].Enabled) | Should Be $true
+        foreach ($call in @($goCalls | Select-Object -Skip 1)) {
+            $call.Enabled | Should Be "1"
+        }
         $expectations = @(
             @{ Phase = ""; Regex = "OpenMeter|UsageEvent|Client|PoC"; Test = "TestOpenMeterImportsStayInsideIsolatedAdapter"; Log = "go-test-default.log" },
             @{ Phase = "contract"; Regex = "^TestPoC"; Test = "TestPoCCountMetersAggregateCommittedSuccesses"; Log = "go-test-contract.log" },
@@ -305,7 +322,7 @@ Describe "OpenMeter PoC runner behavior" {
         $stopPosition = $runnerLog.IndexOf('stop openmeter', $seedPosition)
         $unavailablePosition = $runnerLog.IndexOf('^TestPoCUnavailableClassifiesFailureAsRetryable$', $stopPosition)
         $restartPosition = $runnerLog.IndexOf('up -d --wait openmeter', $unavailablePosition)
-        $healthPosition = $runnerLog.IndexOf('health verified: http://127.0.0.1:48888/api/v3', $restartPosition)
+        $healthPosition = $runnerLog.IndexOf('health verified: http://127.0.0.1:48888/api/v1/debug/metrics', $restartPosition)
         $replayPosition = $runnerLog.IndexOf('^TestPoCReplayAfterRecoveryConvergesExactly$', $healthPosition)
         $seedPosition | Should BeGreaterThan -1
         $stopPosition | Should BeGreaterThan $seedPosition

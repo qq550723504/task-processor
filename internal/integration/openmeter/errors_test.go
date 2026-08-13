@@ -114,6 +114,26 @@ func TestClassifyErrorHandlesNetworkAndConfigurationFailures(t *testing.T) {
 	}
 }
 
+func TestClassifyErrorRetriesPlatformConnectionRefusal(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen on loopback: %v", err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close loopback listener: %v", err)
+	}
+
+	connection, err := net.DialTimeout("tcp", address, time.Second)
+	if err == nil {
+		_ = connection.Close()
+		t.Fatal("dial closed loopback listener error = nil, want connection refusal")
+	}
+	if got := ClassifyError(fmt.Errorf("ingest request failed: %w", err)); got != FailureRetryable {
+		t.Fatalf("ClassifyError(platform connection refusal %v) = %q, want %q", err, got, FailureRetryable)
+	}
+}
+
 type temporaryNetworkError struct{}
 
 func (temporaryNetworkError) Error() string   { return "temporary network failure" }

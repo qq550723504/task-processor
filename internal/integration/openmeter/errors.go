@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net"
-	"syscall"
 
 	openmeterapi "github.com/openmeterio/openmeter/api/v3/client"
 )
@@ -37,7 +36,7 @@ func ClassifyError(err error) FailureKind {
 		}
 	}
 
-	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) {
+	if errors.Is(err, context.DeadlineExceeded) || isConnectionRefusedOrReset(err) {
 		return FailureRetryable
 	}
 

@@ -30,8 +30,8 @@ func TestPoCStorageLatestSupportsIncreaseAndDecrease(t *testing.T) {
 func TestPoCStorageLatestUsesBusinessTimeForOutOfOrderEvents(t *testing.T) {
 	fixture, client := requirePoCContractClient(t)
 	window := newPoCContractWindow(t)
-	tenantID := pocContractTenant(fixture, "storage-out-of-order")
-	subject := mustPoCSubject(t, tenantID)
+	tenantID := mustPoCTenantForSubject(t, fixture.Names.SubjectB)
+	subject := fixture.Names.SubjectB
 	newer := mustPoCUsageEvent(t, UsageFact{
 		TenantID:   tenantID,
 		Metric:     MetricStorageBytesCurrent,
