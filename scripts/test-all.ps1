@@ -10,7 +10,7 @@ $testModules = @(
     [pscustomobject]@{
         Name = "root"
         Directory = $repoRoot
-        Packages = @("./cmd/...", "./internal/...", "./tests/...")
+        Packages = @("./...")
     },
     [pscustomobject]@{
         Name = "tools"
@@ -27,10 +27,14 @@ $testModules = @(
 foreach ($module in $testModules) {
     Write-Host "Running Go test suite for $($module.Name) module..." -ForegroundColor Cyan
     Push-Location $module.Directory
+    $exitCode = 0
     try {
         $packages = $module.Packages
         & go test -v @GoTestArgs @packages
         $exitCode = $LASTEXITCODE
+    }
+    catch [System.Management.Automation.NativeCommandExitException] {
+        $exitCode = $_.Exception.ExitCode
     }
     finally {
         Pop-Location

@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-var pocRunIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,39}$`)
+var pocRunIDPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 type pocEnvironment struct {
 	Enabled bool
@@ -48,8 +48,8 @@ func loadPoCEnvironment() (pocEnvironment, error) {
 	if environment.BaseURL == "" {
 		return pocEnvironment{}, fmt.Errorf("OPENMETER_POC_URL is required when OPENMETER_POC=1")
 	}
-	if !pocRunIDPattern.MatchString(environment.RunID) {
-		return pocEnvironment{}, fmt.Errorf("OPENMETER_POC_RUN_ID must match %s", pocRunIDPattern.String())
+	if len(environment.RunID) > 40 || !pocRunIDPattern.MatchString(environment.RunID) {
+		return pocEnvironment{}, fmt.Errorf("OPENMETER_POC_RUN_ID must match %s and contain at most 40 characters", pocRunIDPattern.String())
 	}
 	if !isPoCPhase(environment.Phase) {
 		return pocEnvironment{}, fmt.Errorf("OPENMETER_POC_PHASE must be empty, contract, seed, unavailable, or replay")
@@ -118,6 +118,8 @@ func TestLoadPoCEnvironmentFailsWhenEnabledWithoutURLOrRunID(t *testing.T) {
 		{name: "missing URL", runID: "run-42", wantError: "OPENMETER_POC_URL"},
 		{name: "missing run ID", url: "http://127.0.0.1:48888/api/v3", wantError: "OPENMETER_POC_RUN_ID"},
 		{name: "unsanitized run ID", url: "http://127.0.0.1:48888/api/v3", runID: "Run_42", wantError: "OPENMETER_POC_RUN_ID"},
+		{name: "repeated run ID separator", url: "http://127.0.0.1:48888/api/v3", runID: "run--42", wantError: "OPENMETER_POC_RUN_ID"},
+		{name: "trailing run ID separator", url: "http://127.0.0.1:48888/api/v3", runID: "run-", wantError: "OPENMETER_POC_RUN_ID"},
 		{name: "overlong run ID", url: "http://127.0.0.1:48888/api/v3", runID: strings.Repeat("a", 41), wantError: "OPENMETER_POC_RUN_ID"},
 		{name: "unsupported phase", url: "http://127.0.0.1:48888/api/v3", runID: "run-42", phase: "cleanup", wantError: "OPENMETER_POC_PHASE"},
 	}

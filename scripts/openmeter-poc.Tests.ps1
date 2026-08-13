@@ -180,6 +180,14 @@ Describe "OpenMeter PoC path and Compose boundaries" {
         $thrown | Should Be $true
     }
 
+    It "rejects RunIds with repeated or trailing separators" {
+        foreach ($runId in @("run--42", "run-")) {
+            $thrown = $false
+            try { Get-OpenMeterPoCPaths -RepositoryRoot $TestDrive -RunId $runId } catch { $thrown = $true }
+            $thrown | Should Be $true
+        }
+    }
+
     It "writes an override that pins every OpenMeter-owned service" {
         $paths = Get-OpenMeterPoCPaths -RepositoryRoot $TestDrive -RunId "run-42"
         New-Item -ItemType Directory -Path $paths.LocalRoot -Force | Out-Null
