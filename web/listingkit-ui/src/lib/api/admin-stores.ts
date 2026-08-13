@@ -133,7 +133,7 @@ export function parseStoreResponse(payload: unknown): ListingStore {
   );
 }
 
-export function parseSimpleStoreResponse(payload: unknown): SimpleListingStore[] {
+function parseSimpleStoreResponse(payload: unknown): SimpleListingStore[] {
   return parseApiResponseShape(
     payload,
     simpleStorePageSchema,

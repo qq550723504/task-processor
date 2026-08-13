@@ -24,13 +24,12 @@ export type SheinStudioProductImagePrompt = {
   label: string;
   prompt: string;
 };
-
+// End of draft storage types.
 export type SheinStudioVariantProductImageSet = {
   variantSku?: string;
   color?: string;
   imageUrls: string[];
 };
-
 export type SheinStudioSelectedSDSImage = {
   imageUrl: string;
   variantSku?: string;
@@ -83,7 +82,6 @@ export type SheinStudioGroupedWorkspace = {
   legacyCompatibilitySnapshot?: SheinStudioLegacyCompatibilitySnapshot;
   updatedAt: string;
 };
-
 export type SheinStudioPersistedGroupedWorkspace = Omit<
   SheinStudioGroupedWorkspace,
   "designs" | "selectedIds" | "createdTasks"
@@ -197,9 +195,4 @@ export type SheinStudioDraft = {
   batchStatus?: string;
   draftUpdatedAt?: string;
   updatedAt: string;
-};
-
-export type SheinStudioStorageData = {
-  draft: SheinStudioDraft | null;
-  batches: SheinStudioSavedBatch[];
 };

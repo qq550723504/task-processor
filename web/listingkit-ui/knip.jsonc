@@ -16,5 +16,6 @@
   // The complete generated API surface is an intentional published contract.
   "ignore": ["src/lib/api/generated/**"],
   // The generator is invoked by ../../scripts/generate-api-contract.mjs via its bin path.
-  "ignoreDependencies": ["@hey-api/openapi-ts"]
+  // Tailwind v4 is consumed by globals.css and postcss.config.mjs, not via a TS import.
+  "ignoreDependencies": ["@hey-api/openapi-ts", "tailwindcss"]
 }
