@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"task-processor/internal/listingadmin"
 )
 
 func TestRuntimeConversionsUseListingAdminDTONames(t *testing.T) {
@@ -41,5 +43,14 @@ func TestRuntimeConversionsUseListingAdminDTONames(t *testing.T) {
 		if !strings.Contains(source, marker) {
 			t.Fatalf("runtime_conversions.go should contain %q", marker)
 		}
+	}
+}
+
+func TestRuntimeStoreFromListingPreservesOwner(t *testing.T) {
+	t.Parallel()
+
+	store := runtimeStoreFromListing(&listingadmin.Store{ID: 7, OwnerUserID: "zitadel-sub-1"})
+	if store == nil || store.OwnerUserID != "zitadel-sub-1" {
+		t.Fatalf("runtime store owner = %q, want zitadel-sub-1", store.OwnerUserID)
 	}
 }

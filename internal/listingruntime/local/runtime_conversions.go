@@ -16,6 +16,7 @@ func runtimeStoreFromListing(store *listingadmin.Store) *listingruntime.StoreInf
 	return &listingruntime.StoreInfo{
 		ID:                       store.ID,
 		TenantID:                 store.TenantID,
+		OwnerUserID:              store.OwnerUserID,
 		StoreID:                  store.StoreID,
 		Username:                 store.Username,
 		Platform:                 store.Platform,
@@ -46,6 +47,7 @@ func runtimeStoreFromListingAdminDTO(store *listingadmin.StoreRespDTO) *listingr
 	return &listingruntime.StoreInfo{
 		ID:                       store.ID,
 		TenantID:                 store.TenantID,
+		OwnerUserID:              store.OwnerUserID,
 		StoreID:                  store.StoreID,
 		Username:                 store.Username,
 		Platform:                 store.Platform,
@@ -179,6 +181,7 @@ func runtimeProductImportMappingFromListing(mapping *listingadmin.ProductImportM
 		ID:                      mapping.ID,
 		ImportTaskID:            mapping.ImportTaskID,
 		StoreID:                 mapping.StoreID,
+		OwnerUserID:             mapping.OwnerUserID,
 		Platform:                mapping.Platform,
 		Region:                  mapping.Region,
 		ProductID:               mapping.ProductID,
@@ -206,6 +209,7 @@ func runtimeProductImportMappingFromListingAdminDTO(mapping *listingadmin.Produc
 		ID:                      mapping.ID,
 		ImportTaskID:            mapping.ImportTaskId,
 		StoreID:                 mapping.StoreId,
+		OwnerUserID:             mapping.OwnerUserID,
 		Platform:                mapping.Platform,
 		Region:                  mapping.Region,
 		ProductID:               mapping.ProductId,
@@ -232,6 +236,7 @@ func listingProductImportMappingFromRuntime(req *listingruntime.ProductImportMap
 	return &listingadmin.ProductImportMapping{
 		ID:                      runtimeInt64Value(req.ID),
 		TenantID:                req.TenantID,
+		OwnerUserID:             req.OwnerUserID,
 		ImportTaskID:            req.ImportTaskID,
 		StoreID:                 req.StoreID,
 		Platform:                req.Platform,
@@ -259,6 +264,7 @@ func listingAdminProductImportMappingCreateDTOFromRuntime(req *listingruntime.Pr
 	return &listingadmin.ProductImportMappingCreateReqDTO{
 		ID:                      req.ID,
 		TenantID:                req.TenantID,
+		OwnerUserID:             req.OwnerUserID,
 		ImportTaskId:            req.ImportTaskID,
 		StoreId:                 req.StoreID,
 		Platform:                req.Platform,

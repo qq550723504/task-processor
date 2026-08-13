@@ -19,6 +19,13 @@ type MappingBuilder struct {
 	logger         *logrus.Entry
 }
 
+func ownerUserIDFromStore(store *listingruntime.StoreInfo) string {
+	if store == nil {
+		return ""
+	}
+	return store.OwnerUserID
+}
+
 type runtimeMappingGateway interface {
 	CreateMapping(req *listingruntime.ProductImportMappingUpsert) (int64, error)
 	FindMappingByPlatformProductID(platformProductID string, storeID int64) (*listingruntime.ProductImportMapping, error)
@@ -36,6 +43,7 @@ func NewMappingBuilder(mappingGateway runtimeMappingGateway) *MappingBuilder {
 type MappingCreateOptions struct {
 	TenantID                int64          `json:"tenantId"`                          // 租户ID
 	StoreID                 int64          `json:"storeId"`                           // 店铺ID
+	OwnerUserID             string         `json:"ownerUserId,omitempty"`             // canonical owner
 	SkuCode                 string         `json:"skuCode"`                           // SKU编码（平台SKU）
 	SupplierSku             string         `json:"supplierSku,omitempty"`             // 供应商SKU
 	ProductID               string         `json:"productId"`                         // 产品ID（ASIN）
@@ -112,13 +120,14 @@ func (b *MappingBuilder) CreateMappingRelation(options *MappingCreateOptions) (*
 // CreateMappingFromContext 从修复上下文创建映射关系
 func (b *MappingBuilder) CreateMappingFromContext(ctx *MappingRepairContext, reason string) (*listingruntime.ProductImportMapping, error) {
 	options := &MappingCreateOptions{
-		TenantID: ctx.Request.TenantID,
-		StoreID:  ctx.Request.StoreID,
-		SkuCode:  ctx.Request.SkuCode,
-		SpuCode:  ctx.Request.SpuCode,
-		SpuName:  ctx.Request.SpuName,
-		Region:   b.determineRegion(ctx.StoreInfo),
-		Reason:   reason,
+		TenantID:    ctx.Request.TenantID,
+		StoreID:     ctx.Request.StoreID,
+		OwnerUserID: ownerUserIDFromStore(ctx.StoreInfo),
+		SkuCode:     ctx.Request.SkuCode,
+		SpuCode:     ctx.Request.SpuCode,
+		SpuName:     ctx.Request.SpuName,
+		Region:      b.determineRegion(ctx.StoreInfo),
+		Reason:      reason,
 	}
 
 	// 如果有SKU详细信息，可以设置更多字段
@@ -266,6 +275,7 @@ func (b *MappingBuilder) buildCreateRequest(options *MappingCreateOptions) *list
 
 	createReq := &listingruntime.ProductImportMappingUpsert{
 		TenantID:          options.TenantID,
+		OwnerUserID:       options.OwnerUserID,
 		ImportTaskID:      importTaskID,
 		StoreID:           options.StoreID,
 		Platform:          "SHEIN",

@@ -292,6 +292,7 @@ func (p *LocalDataProvider) ImportTaskRepository() *listingadmin.GormImportTaskR
 type localListingStore struct {
 	ID                       int64      `gorm:"column:id"`
 	TenantID                 int64      `gorm:"column:tenant_id"`
+	OwnerUserID              string     `gorm:"column:owner_user_id"`
 	StoreID                  string     `gorm:"column:store_id"`
 	Name                     string     `gorm:"column:name"`
 	Username                 string     `gorm:"column:username"`
@@ -330,6 +331,7 @@ func (s localListingStore) toDTO() *listingadmin.StoreRespDTO {
 	return &listingadmin.StoreRespDTO{
 		ID:                       s.ID,
 		TenantID:                 s.TenantID,
+		OwnerUserID:              s.OwnerUserID,
 		StoreID:                  s.StoreID,
 		Name:                     s.Name,
 		Username:                 s.Username,
@@ -370,6 +372,7 @@ func storeToDTO(store *listingadmin.Store) *listingadmin.StoreRespDTO {
 	return &listingadmin.StoreRespDTO{
 		ID:                       store.ID,
 		TenantID:                 store.TenantID,
+		OwnerUserID:              store.OwnerUserID,
 		StoreID:                  store.StoreID,
 		Name:                     store.Name,
 		Username:                 store.Username,
@@ -534,6 +537,7 @@ func productImportMappingToDTO(mapping *listingadmin.ProductImportMapping) *list
 	}
 	dto := &listingadmin.ProductImportMappingRespDTO{
 		ID:                      mapping.ID,
+		OwnerUserID:             mapping.OwnerUserID,
 		ImportTaskId:            mapping.ImportTaskID,
 		StoreId:                 mapping.StoreID,
 		Platform:                mapping.Platform,
@@ -575,6 +579,7 @@ func productImportMappingFromCreateReq(req *listingadmin.ProductImportMappingCre
 	}
 	mapping := &listingadmin.ProductImportMapping{
 		TenantID:                req.TenantID,
+		OwnerUserID:             req.OwnerUserID,
 		ImportTaskID:            req.ImportTaskId,
 		StoreID:                 req.StoreId,
 		Platform:                req.Platform,
@@ -1339,6 +1344,7 @@ func (p *LocalDataProvider) BatchUpdateProductAttributes(req *listingadmin.Produ
 type localProductImportMappingRow struct {
 	ID                      int64      `gorm:"column:id"`
 	TenantID                int64      `gorm:"column:tenant_id"`
+	OwnerUserID             string     `gorm:"column:owner_user_id"`
 	ImportTaskID            int64      `gorm:"column:import_task_id"`
 	StoreID                 int64      `gorm:"column:store_id"`
 	Platform                string     `gorm:"column:platform"`
@@ -1382,6 +1388,7 @@ func formatOptionalFloat(raw *float64) *string {
 func (r localProductImportMappingRow) toDTO() *listingadmin.ProductImportMappingRespDTO {
 	return &listingadmin.ProductImportMappingRespDTO{
 		ID:                      r.ID,
+		OwnerUserID:             r.OwnerUserID,
 		ImportTaskId:            r.ImportTaskID,
 		StoreId:                 r.StoreID,
 		Platform:                r.Platform,

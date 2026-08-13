@@ -10,6 +10,8 @@ import (
 
 type GormProductImportMappingRepository struct{ db *gorm.DB }
 
+var ErrProductImportMappingOwnerRequired = errors.New("product import mapping owner is required")
+
 func NewGormProductImportMappingRepository(db *gorm.DB) *GormProductImportMappingRepository {
 	return &GormProductImportMappingRepository{db: db}
 }
@@ -49,8 +51,13 @@ func (r *GormProductImportMappingRepository) GetProductImportMapping(ctx context
 func (r *GormProductImportMappingRepository) CreateProductImportMapping(ctx context.Context, mapping *ProductImportMapping) (*ProductImportMapping, error) {
 	row := listingProductImportMappingFromProductImportMapping(mapping)
 	applyProductImportMappingDefaults(&row)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
+	if row.OwnerUserID != "" {
+		applyProductImportMappingAuditFields(&row, row.OwnerUserID, true)
+	} else if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
 		applyProductImportMappingAuditFields(&row, ownerUserID, true)
+	}
+	if strings.TrimSpace(row.OwnerUserID) == "" {
+		return nil, ErrProductImportMappingOwnerRequired
 	}
 	if err := r.db.WithContext(ctx).Table("listing_product_import_mapping").Create(&row).Error; err != nil {
 		return nil, err
@@ -64,6 +71,9 @@ func (r *GormProductImportMappingRepository) UpdateProductImportMapping(ctx cont
 	applyProductImportMappingDefaults(&row)
 	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
 		applyProductImportMappingAuditFields(&row, ownerUserID, false)
+	}
+	if strings.TrimSpace(row.OwnerUserID) == "" {
+		return nil, ErrProductImportMappingOwnerRequired
 	}
 	updates := map[string]any{
 		"owner_user_id":              row.OwnerUserID,

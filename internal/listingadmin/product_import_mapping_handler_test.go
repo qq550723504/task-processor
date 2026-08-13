@@ -62,6 +62,7 @@ func TestProductImportMappingHandlerCreatesMappingWithRequestTenant(t *testing.T
 
 	router := newProductImportMappingTestRouter(t)
 	body := bytes.NewBufferString(`{
+		"ownerUserId":"forged-owner",
 		"importTaskId":1001,
 		"storeId":11,
 		"platform":"SHEIN",
@@ -80,6 +81,7 @@ func TestProductImportMappingHandlerCreatesMappingWithRequestTenant(t *testing.T
 	}`)
 	req := httptest.NewRequest(http.MethodPost, "/product-import-mappings", body)
 	req.Header.Set("X-Tenant-ID", "303")
+	req.Header.Set("X-User-ID", "user-303")
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	router.engine.ServeHTTP(resp, req)
@@ -91,7 +93,7 @@ func TestProductImportMappingHandlerCreatesMappingWithRequestTenant(t *testing.T
 	if err := json.Unmarshal(resp.Body.Bytes(), &created); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if created.ID == 0 || created.TenantID != 303 || created.ProductID != "B001" || created.SKU != "SKU-001" {
+	if created.ID == 0 || created.TenantID != 303 || created.OwnerUserID != "user-303" || created.ProductID != "B001" || created.SKU != "SKU-001" {
 		t.Fatalf("created = %+v, want tenant scoped mapping", created)
 	}
 }
