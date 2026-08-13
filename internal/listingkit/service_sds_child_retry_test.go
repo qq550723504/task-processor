@@ -9,12 +9,15 @@ import (
 
 type sdsChildRetryTestRepository struct {
 	Repository
-	jobs     map[string]SDSChildRetryJob
-	retryCtx context.Context
+	jobs         map[string]SDSChildRetryJob
+	retryCtx     context.Context
+	getTaskCalls int
+	afterBegin   func()
 }
 
 func (r *sdsChildRetryTestRepository) GetTask(ctx context.Context, taskID string) (*Task, error) {
 	r.retryCtx = ctx
+	r.getTaskCalls++
 	return r.Repository.GetTask(ctx, taskID)
 }
 
@@ -49,7 +52,7 @@ func (r *sdsChildRetryTestRepository) SaveSDSChildRetry(context.Context, *SDSChi
 func (r *sdsChildRetryTestRepository) BeginSDSChildRetryRepair(_ context.Context, taskID string, kind SDSChildRetryKind) (*SDSChildRetryRepairLease, error) {
 	now := time.Now()
 	for id, job := range r.jobs {
-		if job.TaskID != taskID {
+		if job.TaskID != taskID || job.Kind != kind {
 			continue
 		}
 		if (job.Status == SDSChildRetryJobStatusPending || job.Status == SDSChildRetryJobStatusRepairing) && job.LeaseUntil != nil && job.LeaseUntil.After(now) {
@@ -73,12 +76,18 @@ func (r *sdsChildRetryTestRepository) BeginSDSChildRetryRepair(_ context.Context
 		job.LeaseUntil = &leaseUntil
 		job.ReasonCode = "sds_repair_in_progress"
 		r.jobs[id] = job
+		if r.afterBegin != nil {
+			r.afterBegin()
+		}
 		return &SDSChildRetryRepairLease{JobID: job.ID, Owner: owner}, nil
 	}
 	job := SDSChildRetryJob{ID: "repair-" + taskID, TaskID: taskID, Kind: kind, Status: SDSChildRetryJobStatusRepairing, LeaseOwner: owner, ReasonCode: "sds_repair_in_progress"}
 	leaseUntil := now.Add(30 * time.Minute)
 	job.LeaseUntil = &leaseUntil
 	r.jobs[job.ID] = job
+	if r.afterBegin != nil {
+		r.afterBegin()
+	}
 	return &SDSChildRetryRepairLease{JobID: job.ID, Owner: owner}, nil
 }
 
@@ -306,4 +315,3 @@ func TestGetTaskResultIncludesDurableSDSChildRetryStatus(t *testing.T) {
 		t.Fatalf("child retries = %#v, want durable exhausted status and error", result.ChildRetries)
 	}
 }
-

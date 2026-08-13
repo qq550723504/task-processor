@@ -212,6 +212,84 @@ func TestRepairAndRetryTaskSDSCancelsPendingDurableRetry(t *testing.T) {
 	}
 }
 
+func TestRepairAndRetryTaskSDSPreservesSiblingDurableRetry(t *testing.T) {
+	t.Parallel()
+
+	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest(), jobs: map[string]SDSChildRetryJob{
+		"job-sds-repair-design": {
+			ID: "job-sds-repair-design", TaskID: "task-sds-repair-sibling",
+			Kind: SDSChildRetryKindDesignSync, Status: SDSChildRetryJobStatusPending,
+		},
+		"job-sds-repair-catalog": {
+			ID: "job-sds-repair-catalog", TaskID: "task-sds-repair-sibling",
+			Kind: SDSChildRetryKindCatalogProduct, Status: SDSChildRetryJobStatusPending,
+		},
+	}}
+	if err := repo.CreateTask(context.Background(), &Task{
+		ID: "task-sds-repair-sibling", TenantID: "tenant-1", Status: core.TaskStatusNeedsReview,
+		Request: &GenerateRequest{ImageURLs: []string{"https://example.com/source.png"}, Options: &GenerateOptions{SDS: &SDSSyncOptions{
+			VariantID: 101, ParentProductID: 200, PrototypeGroupID: 300, LayerID: "10033204",
+			Variants: []SDSSyncVariantOption{{VariantID: 101, VariantSKU: "white-s", PrototypeGroupID: 300, LayerID: "10033204"}},
+		}}},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: "sds_design_sync", Status: string(core.TaskStatusFailed)}}},
+	}); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	remoteResult := successfulWorkflowSDSSyncResult().DesignSync
+	remoteResult.DesignResult.Page.Product.ID = 101
+	svc := seedSupportDeps(&service{repo: repo}, supportDependencySeed{
+		sdsSyncService: &stubWorkflowSDSSyncService{remoteResult: remoteResult}, assembler: &stubProcessStatusAssembler{},
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{designProduct: &sdsdesign.DesignProductPage{Layers: []sdsdesign.DesignLayer{{ID: "10040001"}}}},
+	})
+
+	if _, err := svc.RepairAndRetryTaskSDS(context.Background(), "task-sds-repair-sibling", &ApplyTaskSDSRepairRequest{
+		Variants: []SDSRepairVariantSelection{{VariantID: 101, LayerID: "10040001"}},
+	}); err != nil {
+		t.Fatalf("RepairAndRetryTaskSDS() error = %v", err)
+	}
+	if got := repo.jobs["job-sds-repair-design"].Status; got != SDSChildRetryJobStatusCancelled {
+		t.Fatalf("design retry status = %q, want cancelled", got)
+	}
+	if got := repo.jobs["job-sds-repair-catalog"].Status; got != SDSChildRetryJobStatusPending {
+		t.Fatalf("catalog retry status = %q, want pending", got)
+	}
+}
+
+func TestRepairAndRetryTaskSDSRevalidatesTaskAfterRepairLease(t *testing.T) {
+	t.Parallel()
+
+	repo := &sdsChildRetryTestRepository{Repository: NewInMemoryRepositoryForTest(), jobs: make(map[string]SDSChildRetryJob)}
+	if err := repo.CreateTask(context.Background(), &Task{
+		ID: "task-sds-repair-revalidate", TenantID: "tenant-1", Status: core.TaskStatusNeedsReview,
+		Request: &GenerateRequest{ImageURLs: []string{"https://example.com/source.png"}, Options: &GenerateOptions{SDS: &SDSSyncOptions{
+			VariantID: 101, ParentProductID: 200, PrototypeGroupID: 300, LayerID: "10033204",
+			Variants: []SDSSyncVariantOption{{VariantID: 101, VariantSKU: "white-s", PrototypeGroupID: 300, LayerID: "10033204"}},
+		}}},
+		Result: &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: "sds_design_sync", Status: string(core.TaskStatusFailed)}}},
+	}); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	repo.afterBegin = func() {
+		result := &ListingKitResult{ChildTasks: []ChildTaskState{{Kind: "sds_design_sync", Status: string(core.TaskStatusCompleted)}}}
+		if err := repo.Repository.MarkCompleted(context.Background(), "task-sds-repair-revalidate", result); err != nil {
+			t.Fatalf("MarkCompleted() error = %v", err)
+		}
+	}
+	svc := seedSupportDeps(&service{repo: repo}, supportDependencySeed{
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{designProduct: &sdsdesign.DesignProductPage{Layers: []sdsdesign.DesignLayer{{ID: "10040001"}}}},
+	})
+
+	_, err := svc.RepairAndRetryTaskSDS(context.Background(), "task-sds-repair-revalidate", &ApplyTaskSDSRepairRequest{
+		Variants: []SDSRepairVariantSelection{{VariantID: 101, LayerID: "10040001"}},
+	})
+	if !errors.Is(err, ErrSDSRepairNotEligible) {
+		t.Fatalf("RepairAndRetryTaskSDS() error = %v, want ErrSDSRepairNotEligible", err)
+	}
+	if got, want := repo.getTaskCalls, 2; got != want {
+		t.Fatalf("GetTask calls = %d, want %d after acquiring repair lease", got, want)
+	}
+}
+
 func TestRepairAndRetryTaskSDSRejectsActiveDurableRetry(t *testing.T) {
 	t.Parallel()
 
@@ -250,4 +328,3 @@ func TestRepairAndRetryTaskSDSRejectsActiveDurableRetry(t *testing.T) {
 		t.Fatalf("durable retry status = %q, want pending", got)
 	}
 }
-

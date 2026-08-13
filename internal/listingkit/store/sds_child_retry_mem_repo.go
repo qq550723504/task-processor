@@ -112,7 +112,7 @@ func (r *MemTaskRepository) BeginSDSChildRetryRepair(ctx context.Context, taskID
 		}
 	}
 	for id, job := range jobs {
-		if job.TaskID != taskID {
+		if job.TaskID != taskID || job.Kind != kind {
 			continue
 		}
 		if job.Status == listingkit.SDSChildRetryJobStatusPending || job.Status == listingkit.SDSChildRetryJobStatusExhausted {
@@ -230,4 +230,3 @@ func sortSDSChildRetryJobs(jobs []listingkit.SDSChildRetryJob) {
 		return jobs[i].NextRetryAt.Before(jobs[j].NextRetryAt)
 	})
 }
-

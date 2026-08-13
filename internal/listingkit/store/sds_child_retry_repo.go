@@ -122,6 +122,9 @@ func (r *taskRepository) BeginSDSChildRetryRepair(ctx context.Context, taskID st
 			}
 		}
 		for _, job := range jobs {
+			if job.Kind != kind {
+				continue
+			}
 			if job.Status != listingkit.SDSChildRetryJobStatusPending && job.Status != listingkit.SDSChildRetryJobStatusExhausted {
 				continue
 			}
@@ -317,4 +320,3 @@ func lockDueRetryTaskPage(tx *gorm.DB, ctx context.Context, dueBefore time.Time,
 	}
 	return lockedTaskIDs, nil
 }
-

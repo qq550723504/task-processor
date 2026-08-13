@@ -129,17 +129,8 @@ func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req 
 	if remote == nil {
 		return nil, ErrSDSRepairUnavailable
 	}
-	for _, variant := range task.Request.Options.SDS.Variants {
-		variantOptions := *task.Request.Options.SDS
-		variantOptions.VariantID = variant.VariantID
-		variantOptions.PrototypeGroupID = variant.PrototypeGroupID
-		page, err := getSDSBaselineDesignProduct(ctx, remote, &variantOptions)
-		if err != nil {
-			return nil, err
-		}
-		if !sdsBaselineLayerExists(page, selected[variant.VariantID]) {
-			return nil, ErrSDSRepairLayerUnavailable
-		}
+	if err := validateSDSRepairLayers(ctx, remote, task, selected); err != nil {
+		return nil, err
 	}
 	coordinator, ok := s.repo.(SDSChildRetryRepairCoordinator)
 	var repairLease *SDSChildRetryRepairLease
@@ -156,6 +147,20 @@ func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req 
 				returnErr = err
 			}
 		}()
+		task, err = s.repo.GetTask(ctx, task.ID)
+		if err != nil {
+			return nil, err
+		}
+		if !TaskEligibleForSDSRepair(task) {
+			return nil, ErrSDSRepairNotEligible
+		}
+		selected, err = normalizedSDSRepairSelections(req, task.Request.Options.SDS.Variants)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateSDSRepairLayers(ctx, remote, task, selected); err != nil {
+			return nil, err
+		}
 	}
 	options, err := cloneSDSSyncOptions(task.Request.Options.SDS)
 	if err != nil {
@@ -184,6 +189,22 @@ func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req 
 		return nil, err
 	}
 	return s.RetryTaskChildTask(ctx, task.ID, &RetryChildTaskRequest{Kind: "sds_design_sync"})
+}
+
+func validateSDSRepairLayers(ctx context.Context, remote SDSBaselineRemoteProvider, task *Task, selected map[int64]string) error {
+	for _, variant := range task.Request.Options.SDS.Variants {
+		variantOptions := *task.Request.Options.SDS
+		variantOptions.VariantID = variant.VariantID
+		variantOptions.PrototypeGroupID = variant.PrototypeGroupID
+		page, err := getSDSBaselineDesignProduct(ctx, remote, &variantOptions)
+		if err != nil {
+			return err
+		}
+		if !sdsBaselineLayerExists(page, selected[variant.VariantID]) {
+			return ErrSDSRepairLayerUnavailable
+		}
+	}
+	return nil
 }
 
 func sdsRepairCleanupContext(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -228,4 +249,3 @@ func cloneSDSSyncOptions(options *SDSSyncOptions) (*SDSSyncOptions, error) {
 	}
 	return &copied, nil
 }
-
