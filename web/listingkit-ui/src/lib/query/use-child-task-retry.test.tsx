@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useRetryChildTask } from "@/lib/query/use-child-task-retry";
+import { listingKitKeys } from "@/lib/query/keys";
 
 const retryChildTaskMock = vi.fn();
 
@@ -146,6 +147,9 @@ describe("useRetryChildTask", () => {
     const refetchQueries = vi
       .spyOn(queryClient, "refetchQueries")
       .mockResolvedValue(undefined);
+    const invalidateQueries = vi
+      .spyOn(queryClient, "invalidateQueries")
+      .mockResolvedValue(undefined);
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
@@ -165,5 +169,37 @@ describe("useRetryChildTask", () => {
     rerender({ retries: [{ kind: "sds_design_sync", status: "exhausted" }] });
     expect(result.current.retryQueued).toBe(false);
     expect(refetchQueries).not.toHaveBeenCalled();
+    expect(invalidateQueries).toHaveBeenCalled();
+  });
+
+  it("invalidates workspace caches when a durable retry reaches a terminal state", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries");
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+
+    const { rerender } = renderHook(
+      ({ status }: { status: string }) =>
+        useRetryChildTask("task-1", "version-1", [
+          { kind: "sds_design_sync", status },
+        ]),
+      { initialProps: { status: "queued" }, wrapper },
+    );
+
+    rerender({ status: "exhausted" });
+
+    await waitFor(() => expect(invalidateQueries).toHaveBeenCalled());
+    const filters = invalidateQueries.mock.calls.at(-1)?.[0];
+    if (!filters || typeof filters.predicate !== "function") {
+      throw new Error("workspace cache invalidation predicate was not provided");
+    }
+    expect(filters.predicate({ queryKey: listingKitKeys.reviewSession("task-1", {}) } as never)).toBe(true);
+    expect(filters.predicate({ queryKey: listingKitKeys.reviewPreview("task-1", {}) } as never)).toBe(true);
+    expect(filters.predicate({ queryKey: listingKitKeys.preview("task-1") } as never)).toBe(true);
+    expect(filters.predicate({ queryKey: ["listingkit", "other-task", "review-session"] } as never)).toBe(false);
   });
 });
+

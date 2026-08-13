@@ -46,14 +46,14 @@ func (r *sdsChildRetryTestRepository) SaveSDSChildRetry(context.Context, *SDSChi
 	return nil
 }
 
-func (r *sdsChildRetryTestRepository) PrepareSDSChildRetryRepair(_ context.Context, taskID string, kind SDSChildRetryKind) error {
+func (r *sdsChildRetryTestRepository) BeginSDSChildRetryRepair(_ context.Context, taskID string, kind SDSChildRetryKind) (*SDSChildRetryRepairLease, error) {
 	now := time.Now()
 	for id, job := range r.jobs {
-		if job.TaskID != taskID || job.Kind != kind {
+		if job.TaskID != taskID {
 			continue
 		}
-		if job.Status == SDSChildRetryJobStatusPending && job.LeaseUntil != nil && job.LeaseUntil.After(now) {
-			return ErrSDSRepairRetryInProgress
+		if (job.Status == SDSChildRetryJobStatusPending || job.Status == SDSChildRetryJobStatusRepairing) && job.LeaseUntil != nil && job.LeaseUntil.After(now) {
+			return nil, ErrSDSRepairRetryInProgress
 		}
 		if job.Status == SDSChildRetryJobStatusPending || job.Status == SDSChildRetryJobStatusExhausted {
 			job.Status = SDSChildRetryJobStatusCancelled
@@ -62,6 +62,38 @@ func (r *sdsChildRetryTestRepository) PrepareSDSChildRetryRepair(_ context.Conte
 			r.jobs[id] = job
 		}
 	}
+	owner := "repair-owner-" + taskID
+	for id, job := range r.jobs {
+		if job.TaskID != taskID || job.Kind != kind {
+			continue
+		}
+		job.Status = SDSChildRetryJobStatusRepairing
+		job.LeaseOwner = owner
+		leaseUntil := now.Add(30 * time.Minute)
+		job.LeaseUntil = &leaseUntil
+		job.ReasonCode = "sds_repair_in_progress"
+		r.jobs[id] = job
+		return &SDSChildRetryRepairLease{JobID: job.ID, Owner: owner}, nil
+	}
+	job := SDSChildRetryJob{ID: "repair-" + taskID, TaskID: taskID, Kind: kind, Status: SDSChildRetryJobStatusRepairing, LeaseOwner: owner, ReasonCode: "sds_repair_in_progress"}
+	leaseUntil := now.Add(30 * time.Minute)
+	job.LeaseUntil = &leaseUntil
+	r.jobs[job.ID] = job
+	return &SDSChildRetryRepairLease{JobID: job.ID, Owner: owner}, nil
+}
+
+func (r *sdsChildRetryTestRepository) EndSDSChildRetryRepair(_ context.Context, lease *SDSChildRetryRepairLease) error {
+	if lease == nil {
+		return nil
+	}
+	job, ok := r.jobs[lease.JobID]
+	if !ok || job.LeaseOwner != lease.Owner {
+		return nil
+	}
+	job.Status = SDSChildRetryJobStatusCancelled
+	job.LeaseOwner = ""
+	job.LeaseUntil = nil
+	r.jobs[job.ID] = job
 	return nil
 }
 
@@ -274,3 +306,4 @@ func TestGetTaskResultIncludesDurableSDSChildRetryStatus(t *testing.T) {
 		t.Fatalf("child retries = %#v, want durable exhausted status and error", result.ChildRetries)
 	}
 }
+

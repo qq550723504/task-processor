@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/listingkit"
+	"task-processor/internal/shared/tenantctx"
 )
 
 func TestSDSChildRetryRepositorySchedulesOneActiveJobPerTask(t *testing.T) {
@@ -233,16 +234,20 @@ func TestSDSChildRetryRepositoryCoordinatesRepairWithActiveLease(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("set active lease: %v", err)
 	}
-	if err := repo.PrepareSDSChildRetryRepair(context.Background(), job.TaskID, job.Kind); err != listingkit.ErrSDSRepairRetryInProgress {
-		t.Fatalf("prepare repair with active lease error = %v, want ErrSDSRepairRetryInProgress", err)
+	if _, err := repo.BeginSDSChildRetryRepair(context.Background(), job.TaskID, job.Kind); err != listingkit.ErrSDSRepairRetryInProgress {
+		t.Fatalf("begin repair with active lease error = %v, want ErrSDSRepairRetryInProgress", err)
 	}
 	if err := db.Model(&listingkit.SDSChildRetryJob{}).Where("id = ?", job.ID).Updates(map[string]any{
 		"lease_until": time.Now().UTC().Add(-time.Minute),
 	}).Error; err != nil {
 		t.Fatalf("expire lease: %v", err)
 	}
-	if err := repo.PrepareSDSChildRetryRepair(context.Background(), job.TaskID, job.Kind); err != nil {
-		t.Fatalf("prepare repair after lease expiry: %v", err)
+	lease, err := repo.BeginSDSChildRetryRepair(context.Background(), job.TaskID, job.Kind)
+	if err != nil {
+		t.Fatalf("begin repair after lease expiry: %v", err)
+	}
+	if err := repo.EndSDSChildRetryRepair(context.Background(), lease); err != nil {
+		t.Fatalf("end repair after lease expiry: %v", err)
 	}
 	var after listingkit.SDSChildRetryJob
 	if err := db.Where("id = ?", job.ID).First(&after).Error; err != nil {
@@ -250,6 +255,112 @@ func TestSDSChildRetryRepositoryCoordinatesRepairWithActiveLease(t *testing.T) {
 	}
 	if after.Status != listingkit.SDSChildRetryJobStatusCancelled || after.LeaseOwner != "" || after.LeaseUntil != nil {
 		t.Fatalf("retry after repair preparation = %+v, want cancelled without lease", after)
+	}
+}
+
+func TestSDSChildRetryRepositoryHoldsRepairLeaseUntilReleased(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}, &listingkit.SDSChildRetryJob{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.Create(&listingkit.Task{ID: "task-repair-lease", TenantID: "tenant-1"}).Error; err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	repo := any(NewTaskRepository(db)).(listingkit.SDSChildRetryRepairCoordinator)
+	jobRepo := any(NewTaskRepository(db)).(listingkit.SDSChildRetryJobRepository)
+
+	lease, err := repo.BeginSDSChildRetryRepair(context.Background(), "task-repair-lease", listingkit.SDSChildRetryKindDesignSync)
+	if err != nil {
+		t.Fatalf("begin repair: %v", err)
+	}
+	if lease == nil || lease.JobID == "" {
+		t.Fatalf("repair lease = %+v, want durable lease", lease)
+	}
+	if _, err := jobRepo.ScheduleSDSChildRetry(context.Background(), &listingkit.SDSChildRetryJob{
+		TaskID: "task-repair-lease", TenantID: "tenant-1", Kind: listingkit.SDSChildRetryKindCatalogProduct,
+		Status: listingkit.SDSChildRetryJobStatusPending,
+	}); err != listingkit.ErrSDSRepairRetryInProgress {
+		t.Fatalf("schedule during repair error = %v, want ErrSDSRepairRetryInProgress", err)
+	}
+	if err := repo.EndSDSChildRetryRepair(context.Background(), lease); err != nil {
+		t.Fatalf("end repair: %v", err)
+	}
+	if _, err := jobRepo.ScheduleSDSChildRetry(context.Background(), &listingkit.SDSChildRetryJob{
+		TaskID: "task-repair-lease", TenantID: "tenant-1", Kind: listingkit.SDSChildRetryKindCatalogProduct,
+		Status: listingkit.SDSChildRetryJobStatusPending,
+	}); err != nil {
+		t.Fatalf("schedule after repair: %v", err)
+	}
+}
+
+func TestSDSChildRetryRepositoryRefillsClaimPageAfterActiveSibling(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.SDSChildRetryJob{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo := any(NewTaskRepository(db)).(listingkit.SDSChildRetryJobRepository)
+	now := time.Now().UTC()
+	active, err := repo.ScheduleSDSChildRetry(context.Background(), &listingkit.SDSChildRetryJob{
+		TaskID: "task-active-sibling", TenantID: "tenant-1", Kind: listingkit.SDSChildRetryKindCatalogProduct,
+		NextRetryAt: now, Status: listingkit.SDSChildRetryJobStatusPending,
+	})
+	if err != nil {
+		t.Fatalf("schedule active sibling: %v", err)
+	}
+	if _, err := repo.ScheduleSDSChildRetry(context.Background(), &listingkit.SDSChildRetryJob{
+		TaskID: "task-active-sibling", TenantID: "tenant-1", Kind: listingkit.SDSChildRetryKindDesignSync,
+		NextRetryAt: now, Status: listingkit.SDSChildRetryJobStatusPending,
+	}); err != nil {
+		t.Fatalf("schedule blocked sibling: %v", err)
+	}
+	if _, err := repo.ScheduleSDSChildRetry(context.Background(), &listingkit.SDSChildRetryJob{
+		TaskID: "task-unrelated", TenantID: "tenant-1", Kind: listingkit.SDSChildRetryKindDesignSync,
+		NextRetryAt: now, Status: listingkit.SDSChildRetryJobStatusPending,
+	}); err != nil {
+		t.Fatalf("schedule unrelated retry: %v", err)
+	}
+	leaseUntil := now.Add(time.Hour)
+	if err := db.Model(&listingkit.SDSChildRetryJob{}).Where("id = ?", active.ID).Updates(map[string]any{
+		"lease_owner": "sweeper", "lease_until": leaseUntil,
+	}).Error; err != nil {
+		t.Fatalf("set active sibling lease: %v", err)
+	}
+	claimed, err := repo.ClaimDueSDSChildRetries(context.Background(), now, 1, "replacement", now.Add(2*time.Hour))
+	if err != nil {
+		t.Fatalf("claim due retries: %v", err)
+	}
+	if len(claimed) != 1 || claimed[0].TaskID != "task-unrelated" {
+		t.Fatalf("claimed jobs = %#v, want unrelated task to fill page", claimed)
+	}
+}
+
+func TestSDSChildRetryRepositoryListsLegacyDefaultTenantJobs(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.SDSChildRetryJob{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.Create(&listingkit.SDSChildRetryJob{ID: "legacy-default-retry", TaskID: "task-legacy-default", Kind: listingkit.SDSChildRetryKindDesignSync, Status: listingkit.SDSChildRetryJobStatusPending}).Error; err != nil {
+		t.Fatalf("create legacy retry: %v", err)
+	}
+	if err := db.Create(&listingkit.SDSChildRetryJob{ID: "other-tenant-retry", TaskID: "task-other-tenant", TenantID: "tenant-1", Kind: listingkit.SDSChildRetryKindDesignSync, Status: listingkit.SDSChildRetryJobStatusPending}).Error; err != nil {
+		t.Fatalf("create other retry: %v", err)
+	}
+	repo := any(NewTaskRepository(db)).(listingkit.SDSChildRetryJobStatusSource)
+	jobs, err := repo.ListSDSChildRetries(tenantctx.WithTenantID(context.Background(), tenantctx.DefaultTenantID), "task-legacy-default")
+	if err != nil {
+		t.Fatalf("list legacy retries: %v", err)
+	}
+	if len(jobs) != 1 || jobs[0].ID != "legacy-default-retry" {
+		t.Fatalf("legacy retries = %#v, want legacy default job", jobs)
 	}
 }
 
@@ -361,3 +472,4 @@ func TestMemSDSChildRetryRepositoryClaimsAtMostOneJobPerTask(t *testing.T) {
 		t.Fatalf("claimed jobs = %#v, want exactly one job for the parent task", claimed)
 	}
 }
+

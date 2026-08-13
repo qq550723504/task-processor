@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { retryChildTask } from "@/lib/api/child-task-retry";
@@ -69,6 +69,20 @@ export function useRetryChildTask(
       ? durableRetryQueued
       : mutation.data?.status === "queued" && queuedTaskVersion === taskVersion;
 
+  const previousDurableRetryQueued = useRef<boolean | null>(null);
+  useEffect(() => {
+    const previous = previousDurableRetryQueued.current;
+    if (previous === true && !durableRetryQueued) {
+      void client.invalidateQueries({
+        predicate: (query) =>
+          Array.isArray(query.queryKey) &&
+          query.queryKey[0] === "listingkit" &&
+          query.queryKey[1] === taskId,
+      });
+    }
+    previousDurableRetryQueued.current = durableRetryQueued;
+  }, [client, durableRetryQueued, taskId]);
+
   useEffect(() => {
     if (!retryQueued) {
       return;
@@ -86,3 +100,4 @@ export function useRetryChildTask(
     retryQueued,
   };
 }
+

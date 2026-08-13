@@ -19,6 +19,7 @@ const (
 	SDSChildRetryJobStatusCompleted SDSChildRetryJobStatus = "completed"
 	SDSChildRetryJobStatusExhausted SDSChildRetryJobStatus = "exhausted"
 	SDSChildRetryJobStatusCancelled SDSChildRetryJobStatus = "cancelled"
+	SDSChildRetryJobStatusRepairing SDSChildRetryJobStatus = "repairing"
 )
 
 // SDSChildRetryJob is durable retry state for a single ListingKit child task.
@@ -60,7 +61,13 @@ type SDSChildRetryJobStatusSource interface {
 // SDSChildRetryRepairCoordinator serializes synchronous SDS repair with the
 // durable retry worker and retires stale retry failures before the repair.
 type SDSChildRetryRepairCoordinator interface {
-	PrepareSDSChildRetryRepair(ctx context.Context, taskID string, kind SDSChildRetryKind) error
+	BeginSDSChildRetryRepair(ctx context.Context, taskID string, kind SDSChildRetryKind) (*SDSChildRetryRepairLease, error)
+	EndSDSChildRetryRepair(ctx context.Context, lease *SDSChildRetryRepairLease) error
+}
+
+type SDSChildRetryRepairLease struct {
+	JobID string
+	Owner string
 }
 
 type SDSChildRetryStatus struct {
@@ -96,3 +103,4 @@ type StudioBatchSDSChildRetryFail struct {
 	TaskID  string `json:"task_id,omitempty"`
 	Message string `json:"message"`
 }
+

@@ -110,7 +110,7 @@ func TaskEligibleForSDSRepair(task *Task) bool {
 	return childTaskHasFailed(task.Result, "sds_design_sync")
 }
 
-func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req *ApplyTaskSDSRepairRequest) (*TaskResult, error) {
+func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req *ApplyTaskSDSRepairRequest) (taskResult *TaskResult, returnErr error) {
 	if s == nil || s.repo == nil || strings.TrimSpace(taskID) == "" || req == nil {
 		return nil, ErrSDSRepairInvalidRequest
 	}
@@ -142,10 +142,18 @@ func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req 
 		}
 	}
 	coordinator, ok := s.repo.(SDSChildRetryRepairCoordinator)
+	var repairLease *SDSChildRetryRepairLease
 	if ok {
-		if err := coordinator.PrepareSDSChildRetryRepair(ctx, task.ID, SDSChildRetryKindDesignSync); err != nil {
+		repairLease, err = coordinator.BeginSDSChildRetryRepair(ctx, task.ID, SDSChildRetryKindDesignSync)
+		if err != nil {
 			return nil, err
 		}
+		defer func() {
+			if err := coordinator.EndSDSChildRetryRepair(ctx, repairLease); err != nil && returnErr == nil {
+				taskResult = nil
+				returnErr = err
+			}
+		}()
 	}
 	options, err := cloneSDSSyncOptions(task.Request.Options.SDS)
 	if err != nil {
@@ -214,3 +222,4 @@ func cloneSDSSyncOptions(options *SDSSyncOptions) (*SDSSyncOptions, error) {
 	}
 	return &copied, nil
 }
+

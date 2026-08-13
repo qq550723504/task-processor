@@ -11,6 +11,7 @@ import (
 
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
+	"task-processor/internal/shared/tenantctx"
 )
 
 // The in-memory implementation keeps local and fallback deployments on the
@@ -29,9 +30,15 @@ func (r *MemTaskRepository) ScheduleSDSChildRetry(_ context.Context, job *listin
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	jobs := r.ensureSDSChildRetryJobsLocked()
+	now := time.Now().UTC()
+	for _, existing := range jobs {
+		if existing.TaskID == job.TaskID && existing.Status == listingkit.SDSChildRetryJobStatusRepairing && existing.LeaseUntil != nil && existing.LeaseUntil.After(now) {
+			return nil, listingkit.ErrSDSRepairRetryInProgress
+		}
+	}
 	for _, existing := range jobs {
 		if existing.TaskID == job.TaskID && existing.Kind == job.Kind {
-			if existing.Status == listingkit.SDSChildRetryJobStatusCompleted || existing.Status == listingkit.SDSChildRetryJobStatusExhausted || existing.Status == listingkit.SDSChildRetryJobStatusCancelled {
+			if existing.Status == listingkit.SDSChildRetryJobStatusCompleted || existing.Status == listingkit.SDSChildRetryJobStatusExhausted || existing.Status == listingkit.SDSChildRetryJobStatusCancelled || existing.Status == listingkit.SDSChildRetryJobStatusRepairing {
 				existing.Attempt = job.Attempt
 				existing.NextRetryAt = job.NextRetryAt
 				existing.ReasonCode = job.ReasonCode
@@ -91,17 +98,21 @@ func (r *MemTaskRepository) ListSDSChildRetries(ctx context.Context, taskID stri
 	return jobs, nil
 }
 
-func (r *MemTaskRepository) PrepareSDSChildRetryRepair(_ context.Context, taskID string, kind listingkit.SDSChildRetryKind) error {
+func (r *MemTaskRepository) BeginSDSChildRetryRepair(ctx context.Context, taskID string, kind listingkit.SDSChildRetryKind) (*listingkit.SDSChildRetryRepairLease, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	now := time.Now().UTC()
-	for _, job := range r.ensureSDSChildRetryJobsLocked() {
-		if job.TaskID == taskID && job.Kind == kind && job.Status == listingkit.SDSChildRetryJobStatusPending && job.LeaseUntil != nil && job.LeaseUntil.After(now) {
-			return listingkit.ErrSDSRepairRetryInProgress
+	jobs := r.ensureSDSChildRetryJobsLocked()
+	for _, job := range jobs {
+		if job.TaskID != taskID {
+			continue
+		}
+		if (job.Status == listingkit.SDSChildRetryJobStatusPending || job.Status == listingkit.SDSChildRetryJobStatusRepairing) && job.LeaseUntil != nil && job.LeaseUntil.After(now) {
+			return nil, listingkit.ErrSDSRepairRetryInProgress
 		}
 	}
-	for id, job := range r.ensureSDSChildRetryJobsLocked() {
-		if job.TaskID != taskID || job.Kind != kind {
+	for id, job := range jobs {
+		if job.TaskID != taskID {
 			continue
 		}
 		if job.Status == listingkit.SDSChildRetryJobStatusPending || job.Status == listingkit.SDSChildRetryJobStatusExhausted {
@@ -111,6 +122,48 @@ func (r *MemTaskRepository) PrepareSDSChildRetryRepair(_ context.Context, taskID
 			r.sdsChildRetryJobs[id] = job
 		}
 	}
+	owner := uuid.NewString()
+	leaseUntil := now.Add(30 * time.Minute)
+	var marker *listingkit.SDSChildRetryJob
+	for id, job := range jobs {
+		if job.TaskID == taskID && job.Kind == kind {
+			job.Status = listingkit.SDSChildRetryJobStatusRepairing
+			job.LeaseOwner = owner
+			job.LeaseUntil = &leaseUntil
+			job.ReasonCode = "sds_repair_in_progress"
+			job.LastError = ""
+			jobs[id] = job
+			copy := job
+			marker = &copy
+			break
+		}
+	}
+	if marker == nil {
+		job := listingkit.SDSChildRetryJob{
+			ID: uuid.NewString(), TenantID: tenantctx.TenantIDFromContext(ctx), TaskID: taskID,
+			Kind: kind, NextRetryAt: now, ReasonCode: "sds_repair_in_progress",
+			Status: listingkit.SDSChildRetryJobStatusRepairing, LeaseOwner: owner, LeaseUntil: &leaseUntil,
+		}
+		jobs[job.ID] = job
+		marker = &job
+	}
+	return &listingkit.SDSChildRetryRepairLease{JobID: marker.ID, Owner: owner}, nil
+}
+
+func (r *MemTaskRepository) EndSDSChildRetryRepair(_ context.Context, lease *listingkit.SDSChildRetryRepairLease) error {
+	if lease == nil || strings.TrimSpace(lease.JobID) == "" || strings.TrimSpace(lease.Owner) == "" {
+		return fmt.Errorf("SDS repair lease is required")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	job, ok := r.ensureSDSChildRetryJobsLocked()[lease.JobID]
+	if !ok || job.Status != listingkit.SDSChildRetryJobStatusRepairing || job.LeaseOwner != lease.Owner {
+		return nil
+	}
+	job.Status = listingkit.SDSChildRetryJobStatusCancelled
+	job.LeaseOwner = ""
+	job.LeaseUntil = nil
+	r.sdsChildRetryJobs[job.ID] = job
 	return nil
 }
 
@@ -127,6 +180,16 @@ func (r *MemTaskRepository) ClaimDueSDSChildRetries(ctx context.Context, dueBefo
 			continue
 		}
 		if _, claimed := claimedTaskIDs[job.TaskID]; claimed {
+			continue
+		}
+		blocked := false
+		for _, sibling := range r.sdsChildRetryJobs {
+			if sibling.TaskID == job.TaskID && sibling.Status == listingkit.SDSChildRetryJobStatusRepairing && sibling.LeaseUntil != nil && sibling.LeaseUntil.After(dueBefore) {
+				blocked = true
+				break
+			}
+		}
+		if blocked {
 			continue
 		}
 		jobs = append(jobs, job)
@@ -167,3 +230,4 @@ func sortSDSChildRetryJobs(jobs []listingkit.SDSChildRetryJob) {
 		return jobs[i].NextRetryAt.Before(jobs[j].NextRetryAt)
 	})
 }
+
