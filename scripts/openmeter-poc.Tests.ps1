@@ -1,0 +1,274 @@
+$libraryPath = Join-Path $PSScriptRoot "lib/openmeter-poc.ps1"
+if (Test-Path -LiteralPath $libraryPath) {
+    . $libraryPath
+}
+
+function New-TestOpenMeterPoCFakes {
+    param(
+        [System.Collections.ArrayList]$Calls,
+        [string]$FailureMode = "",
+        [string]$Secret = ""
+    )
+
+    $renderedCompose = @'
+{
+  "services": {
+    "openmeter": { "image": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232" },
+    "sink-worker": { "image": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232" },
+    "balance-worker": { "image": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232" },
+    "notification-service": { "image": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232" },
+    "billing-worker": { "image": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232" },
+    "openmeter-jobs": { "image": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232" },
+    "postgres": { "image": "postgres:17" }
+  }
+}
+'@
+
+    $commandInvoker = {
+        param(
+            [string]$FilePath,
+            [string[]]$ArgumentList,
+            [string]$WorkingDirectory
+        )
+
+        $call = [pscustomobject]@{
+            FilePath = $FilePath
+            Arguments = @($ArgumentList)
+            WorkingDirectory = $WorkingDirectory
+            Phase = [Environment]::GetEnvironmentVariable("OPENMETER_POC_PHASE", "Process")
+        }
+        [void]$Calls.Add($call)
+
+        if ($FilePath -eq "docker" -and (($ArgumentList -contains "volume") -or ($ArgumentList -contains "-v"))) {
+            return [pscustomobject]@{ ExitCode = 91; Output = "forbidden destructive Docker operation" }
+        }
+
+        if ($FilePath -eq "git" -and $ArgumentList[0] -eq "clone") {
+            $checkoutPath = $ArgumentList[$ArgumentList.Count - 1]
+            $quickstartPath = Join-Path $checkoutPath "quickstart"
+            New-Item -ItemType Directory -Path $quickstartPath -Force | Out-Null
+            New-Item -ItemType Directory -Path (Join-Path $checkoutPath ".git") -Force | Out-Null
+            Set-Content -LiteralPath (Join-Path $quickstartPath "docker-compose.yaml") -Value "services: {}" -Encoding UTF8
+            Set-Content -LiteralPath (Join-Path $checkoutPath "sentinel.txt") -Value "preserve me" -Encoding UTF8
+            if ($FailureMode -eq "clone") {
+                return [pscustomobject]@{ ExitCode = 17; Output = "clone failed after writing a valid controlled checkout" }
+            }
+            return [pscustomobject]@{ ExitCode = 0; Output = "cloned" }
+        }
+
+        if ($FilePath -eq "git" -and $ArgumentList -contains "remote") {
+            return [pscustomobject]@{ ExitCode = 0; Output = "https://github.com/openmeterio/openmeter.git" }
+        }
+        if ($FilePath -eq "git" -and $ArgumentList -contains "describe") {
+            return [pscustomobject]@{ ExitCode = 0; Output = "v1.0.0-beta.232" }
+        }
+        if ($FilePath -eq "git" -and $ArgumentList -contains "rev-parse") {
+            return [pscustomobject]@{ ExitCode = 0; Output = "0123456789abcdef0123456789abcdef01234567" }
+        }
+        if ($FilePath -eq "git" -and $ArgumentList -contains "diff") {
+            if ($FailureMode -eq "dirty-quickstart") {
+                return [pscustomobject]@{ ExitCode = 1; Output = "quickstart/docker-compose.yaml differs from HEAD" }
+            }
+            return [pscustomobject]@{ ExitCode = 0; Output = "" }
+        }
+
+        if ($FilePath -eq "docker" -and $ArgumentList -contains "config") {
+            return [pscustomobject]@{ ExitCode = 0; Output = $renderedCompose }
+        }
+        if ($FilePath -eq "docker" -and $ArgumentList -contains "inspect") {
+            if ($FailureMode -eq "digest") {
+                return [pscustomobject]@{ ExitCode = 0; Output = "[]" }
+            }
+            $imageIndex = [array]::IndexOf($ArgumentList, "inspect") + 1
+            $imageRepository = ([string]$ArgumentList[$imageIndex] -replace ':[^/:]+$', '')
+            return [pscustomobject]@{ ExitCode = 0; Output = "[`"$imageRepository@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa`"]" }
+        }
+        if ($FilePath -eq "docker" -and $ArgumentList -contains "stats") {
+            if ($FailureMode -eq "resource") {
+                return [pscustomobject]@{ ExitCode = 29; Output = "stats failed" }
+            }
+            return [pscustomobject]@{ ExitCode = 0; Output = '{"Name":"openmeter","CPUPerc":"0.10%","MemUsage":"10MiB / 1GiB"}' }
+        }
+        if ($FilePath -eq "docker" -and $ArgumentList -contains "ps" -and $ArgumentList -contains "-q") {
+            return [pscustomobject]@{ ExitCode = 0; Output = "container-a`ncontainer-b" }
+        }
+        if ($FilePath -eq "docker" -and $ArgumentList -contains "ps") {
+            return [pscustomobject]@{ ExitCode = 0; Output = '{"Service":"openmeter","State":"running"}' }
+        }
+
+        if ($FilePath -eq "go") {
+            if ($FailureMode -eq "go" -and $call.Phase -eq "contract") {
+                return [pscustomobject]@{ ExitCode = 23; Output = "contract phase failed" }
+            }
+            return [pscustomobject]@{ ExitCode = 0; Output = "ok api-key=$Secret" }
+        }
+
+        return [pscustomobject]@{ ExitCode = 0; Output = "ok" }
+    }.GetNewClosure()
+
+    $healthProbe = {
+        param([string]$Uri)
+        if ($FailureMode -eq "health") {
+            return $false
+        }
+        return $Uri -eq "http://127.0.0.1:48888/api/v3"
+    }.GetNewClosure()
+
+    [pscustomobject]@{
+        CommandInvoker = $commandInvoker
+        HealthProbe = $healthProbe
+    }
+}
+
+Describe "OpenMeter PoC path and Compose boundaries" {
+    It "resolves checkout and evidence below the repository-local PoC root" {
+        $paths = Get-OpenMeterPoCPaths -RepositoryRoot $TestDrive -RunId "run-42"
+        $expectedRoot = [System.IO.Path]::GetFullPath((Join-Path $TestDrive ".local/openmeter-poc"))
+        $prefix = $expectedRoot.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+
+        $paths.LocalRoot | Should Be $expectedRoot
+        $paths.CheckoutPath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) | Should Be $true
+        $paths.EvidencePath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) | Should Be $true
+        $paths.OverridePath.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) | Should Be $true
+        $thrown = $false
+        try { Get-OpenMeterPoCPaths -RepositoryRoot $TestDrive -RunId "../escape" } catch { $thrown = $true }
+        $thrown | Should Be $true
+    }
+
+    It "writes an override that pins every OpenMeter-owned service" {
+        $paths = Get-OpenMeterPoCPaths -RepositoryRoot $TestDrive -RunId "run-42"
+        New-Item -ItemType Directory -Path $paths.LocalRoot -Force | Out-Null
+
+        New-OpenMeterPoCComposeOverride -Path $paths.OverridePath -AllowedRoot $paths.LocalRoot
+        $override = Get-Content -LiteralPath $paths.OverridePath -Raw
+        $image = [regex]::Escape("ghcr.io/openmeterio/openmeter:v1.0.0-beta.232")
+        foreach ($service in @("openmeter", "sink-worker", "balance-worker", "notification-service", "billing-worker", "openmeter-jobs")) {
+            $servicePattern = "(?ms)^  $([regex]::Escape($service)):\r?\n    image: $image\s*(?=^  |\z)"
+            $override | Should Match $servicePattern
+        }
+    }
+
+    It "rejects a rendered Compose model with an OpenMeter-owned latest image" {
+        $renderedPath = Join-Path $TestDrive "rendered.json"
+        Set-Content -LiteralPath $renderedPath -Encoding UTF8 -Value @'
+{
+  "services": {
+    "openmeter": { "image": "ghcr.io/openmeterio/openmeter:latest" },
+    "sink-worker": { "image": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232" },
+    "balance-worker": { "image": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232" },
+    "notification-service": { "image": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232" },
+    "billing-worker": { "image": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232" },
+    "openmeter-jobs": { "image": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232" }
+  }
+}
+'@
+
+        $thrown = $false
+        try { Assert-OpenMeterPoCRenderedCompose -Path $renderedPath } catch { $thrown = $true }
+        $thrown | Should Be $true
+    }
+}
+
+Describe "OpenMeter PoC runner behavior" {
+    It "uses the exact Compose project and cleans up without deleting volumes or the checkout" {
+        $calls = New-Object System.Collections.ArrayList
+        $fakes = New-TestOpenMeterPoCFakes -Calls $calls
+        $repositoryRoot = Join-Path $TestDrive "runner-cleanup"
+        New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+        $localRoot = Join-Path $repositoryRoot ".local/openmeter-poc"
+        $evidenceRoot = Join-Path $localRoot "evidence"
+        $nestedSentinelRoot = Join-Path $localRoot "preexisting/nested"
+        New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
+        New-Item -ItemType Directory -Path $nestedSentinelRoot -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $localRoot "local-root-sentinel.txt") -Value "preserve local root" -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $evidenceRoot "evidence-root-sentinel.txt") -Value "preserve evidence root" -Encoding UTF8
+        Set-Content -LiteralPath (Join-Path $nestedSentinelRoot "nested-sentinel.txt") -Value "preserve nested directory" -Encoding UTF8
+
+        $result = Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-cleanup" -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe
+
+        $result | Should Be 0
+        $composeCalls = @($calls | Where-Object { $_.FilePath -eq "docker" -and $_.Arguments[0] -eq "compose" -and $_.Arguments -contains "-p" })
+        $composeCalls.Count | Should BeGreaterThan 0
+        foreach ($call in $composeCalls) {
+            $projectIndex = [array]::IndexOf($call.Arguments, "-p")
+            $call.Arguments[$projectIndex + 1] | Should Be "task-processor-openmeter-poc"
+        }
+        $downCalls = @($composeCalls | Where-Object { $_.Arguments -contains "down" })
+        $downCalls.Count | Should Be 1
+        $downCalls[0].Arguments -contains "-v" | Should Be $false
+        Test-Path -LiteralPath (Join-Path $repositoryRoot ".local/openmeter-poc/upstream/sentinel.txt") | Should Be $true
+        Test-Path -LiteralPath (Join-Path $localRoot "local-root-sentinel.txt") | Should Be $true
+        Test-Path -LiteralPath (Join-Path $evidenceRoot "evidence-root-sentinel.txt") | Should Be $true
+        Test-Path -LiteralPath (Join-Path $nestedSentinelRoot "nested-sentinel.txt") | Should Be $true
+    }
+
+    It "redacts the API key from captured evidence and restores the caller environment" {
+        $secret = "never-print-this-api-key"
+        $calls = New-Object System.Collections.ArrayList
+        $fakes = New-TestOpenMeterPoCFakes -Calls $calls -Secret $secret
+        $repositoryRoot = Join-Path $TestDrive "runner-redaction"
+        New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+        $oldPhase = [Environment]::GetEnvironmentVariable("OPENMETER_POC_PHASE", "Process")
+        [Environment]::SetEnvironmentVariable("OPENMETER_POC_PHASE", "caller-phase", "Process")
+        try {
+            $result = Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-redaction" -ApiKey $secret -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe
+            $evidence = Get-ChildItem -Path (Join-Path $repositoryRoot ".local/openmeter-poc/evidence/run-redaction") -File | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
+
+            $result | Should Be 0
+            ($evidence -join "`n") | Should Not Match ([regex]::Escape($secret))
+            ($evidence -join "`n") | Should Match "\[REDACTED\]"
+            [Environment]::GetEnvironmentVariable("OPENMETER_POC_PHASE", "Process") | Should Be "caller-phase"
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable("OPENMETER_POC_PHASE", $oldPhase, "Process")
+        }
+    }
+
+    It "returns nonzero when the official checkout clone fails" {
+        $calls = New-Object System.Collections.ArrayList
+        $fakes = New-TestOpenMeterPoCFakes -Calls $calls -FailureMode "clone"
+        $repositoryRoot = Join-Path $TestDrive "runner-clone"
+        New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+        Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-clone" -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe | Should Not Be 0
+    }
+
+    It "returns nonzero when the official quickstart differs from the pinned tag" {
+        $calls = New-Object System.Collections.ArrayList
+        $fakes = New-TestOpenMeterPoCFakes -Calls $calls -FailureMode "dirty-quickstart"
+        $repositoryRoot = Join-Path $TestDrive "runner-dirty-quickstart"
+        New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+        Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-dirty" -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe | Should Not Be 0
+    }
+
+    It "returns nonzero when Compose health verification fails" {
+        $calls = New-Object System.Collections.ArrayList
+        $fakes = New-TestOpenMeterPoCFakes -Calls $calls -FailureMode "health"
+        $repositoryRoot = Join-Path $TestDrive "runner-health"
+        New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+        Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-health" -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe | Should Not Be 0
+    }
+
+    It "returns nonzero when image digest resolution is empty" {
+        $calls = New-Object System.Collections.ArrayList
+        $fakes = New-TestOpenMeterPoCFakes -Calls $calls -FailureMode "digest"
+        $repositoryRoot = Join-Path $TestDrive "runner-digest"
+        New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+        Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-digest" -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe | Should Not Be 0
+    }
+
+    It "returns nonzero when a Go phase fails" {
+        $calls = New-Object System.Collections.ArrayList
+        $fakes = New-TestOpenMeterPoCFakes -Calls $calls -FailureMode "go"
+        $repositoryRoot = Join-Path $TestDrive "runner-go"
+        New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+        Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-go" -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe | Should Not Be 0
+    }
+
+    It "returns nonzero when resource capture fails" {
+        $calls = New-Object System.Collections.ArrayList
+        $fakes = New-TestOpenMeterPoCFakes -Calls $calls -FailureMode "resource"
+        $repositoryRoot = Join-Path $TestDrive "runner-resource"
+        New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+        Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-resource" -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe | Should Not Be 0
+    }
+}
