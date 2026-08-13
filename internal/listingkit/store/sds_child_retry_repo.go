@@ -44,6 +44,7 @@ func (r *taskRepository) ScheduleSDSChildRetry(ctx context.Context, job *listing
 			Where("id = ? AND status IN ?", existing.ID, []listingkit.SDSChildRetryJobStatus{
 				listingkit.SDSChildRetryJobStatusCompleted,
 				listingkit.SDSChildRetryJobStatusExhausted,
+				listingkit.SDSChildRetryJobStatusCancelled,
 			}).Updates(map[string]any{
 			"attempt":       copy.Attempt,
 			"next_retry_at": copy.NextRetryAt,

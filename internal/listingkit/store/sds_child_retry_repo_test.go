@@ -173,6 +173,43 @@ func TestSDSChildRetryRepositoryReactivatesTerminalJob(t *testing.T) {
 	}
 }
 
+func TestSDSChildRetryRepositoryReactivatesCancelledJob(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.SDSChildRetryJob{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo, ok := any(NewTaskRepository(db)).(listingkit.SDSChildRetryJobRepository)
+	if !ok {
+		t.Fatal("task repository does not implement SDSChildRetryJobRepository")
+	}
+
+	first, err := repo.ScheduleSDSChildRetry(context.Background(), &listingkit.SDSChildRetryJob{
+		TaskID: "task-cancelled", TenantID: "tenant-1", Kind: listingkit.SDSChildRetryKindDesignSync,
+		Status: listingkit.SDSChildRetryJobStatusPending,
+	})
+	if err != nil {
+		t.Fatalf("schedule first retry: %v", err)
+	}
+	first.Status = listingkit.SDSChildRetryJobStatusCancelled
+	if err := repo.SaveSDSChildRetry(context.Background(), first); err != nil {
+		t.Fatalf("save cancelled retry: %v", err)
+	}
+
+	reactivated, err := repo.ScheduleSDSChildRetry(context.Background(), &listingkit.SDSChildRetryJob{
+		TaskID: "task-cancelled", TenantID: "tenant-1", Kind: listingkit.SDSChildRetryKindDesignSync,
+		ReasonCode: "manual_child_task_retry", Status: listingkit.SDSChildRetryJobStatusPending,
+	})
+	if err != nil {
+		t.Fatalf("reactivate cancelled retry: %v", err)
+	}
+	if reactivated.ID != first.ID || reactivated.Status != listingkit.SDSChildRetryJobStatusPending || reactivated.ReasonCode != "manual_child_task_retry" {
+		t.Fatalf("reactivated job = %+v, want same pending job with fresh reason", reactivated)
+	}
+}
+
 func TestSDSChildRetryRepositoryDoesNotOverwriteActiveLease(t *testing.T) {
 	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
 	if err != nil {
