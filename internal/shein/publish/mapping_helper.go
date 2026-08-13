@@ -17,6 +17,7 @@ func buildMappingReq(input *MappingRequestInput, asin, supplierSKU string, statu
 	s := status.Int16()
 	req := &listingruntime.ProductImportMappingUpsert{
 		TenantID:     input.Task.TenantID,
+		OwnerUserID:  input.StoreInfo.OwnerUserID,
 		ImportTaskID: input.Task.ID,
 		StoreID:      input.Task.StoreID,
 		Platform:     input.Task.Platform,

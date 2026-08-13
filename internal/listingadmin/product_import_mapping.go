@@ -11,6 +11,7 @@ var ErrProductImportMappingNotFound = errors.New("product import mapping not fou
 type ProductImportMapping struct {
 	ID                      int64      `json:"id"`
 	TenantID                int64      `json:"tenantId"`
+	OwnerUserID             string     `json:"ownerUserId,omitempty"`
 	ImportTaskID            int64      `json:"importTaskId"`
 	StoreID                 int64      `json:"storeId"`
 	Platform                string     `json:"platform"`

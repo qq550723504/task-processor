@@ -83,3 +83,14 @@ func TestListingProductImportMappingConversionPreservesOptionalFields(t *testing
 		t.Fatalf("converted = %+v, want trimmed remark and sku", converted)
 	}
 }
+
+func TestListingProductImportMappingConversionPreservesOwner(t *testing.T) {
+	t.Parallel()
+
+	mapping := &ProductImportMapping{OwnerUserID: "zitadel-sub-1"}
+	row := listingProductImportMappingFromProductImportMapping(mapping)
+
+	if row.OwnerUserID != "zitadel-sub-1" {
+		t.Fatalf("ownerUserID = %q, want zitadel-sub-1", row.OwnerUserID)
+	}
+}
