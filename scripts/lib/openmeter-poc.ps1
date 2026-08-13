@@ -78,7 +78,50 @@ function Protect-OpenMeterPoCText {
     if (-not [string]::IsNullOrEmpty($ApiKey)) {
         $value = $value.Replace($ApiKey, "[REDACTED]")
     }
+
+    $secretName = '(?:password|passwd|secret|token|api[_-]?key|private[_-]?key|dsn|connection(?:[_-]?(?:string|url))?|database[_-]?url)'
+    $value = [regex]::Replace(
+        $value,
+        '(?i)("(?:[^"\\]|\\.)*' + $secretName + '(?:[^"\\]|\\.)*"\s*:\s*)"(?:[^"\\]|\\.)*"',
+        '$1"[REDACTED]"'
+    )
+    $value = [regex]::Replace(
+        $value,
+        '(?im)^(\s*[A-Za-z0-9_.-]*' + $secretName + '[A-Za-z0-9_.-]*\s*:\s*)(?:"(?:[^"\\]|\\.)*"|''[^'']*''|[^\r\n#]*)',
+        '$1[REDACTED]'
+    )
+    $value = [regex]::Replace(
+        $value,
+        '(?i)(\b[A-Za-z0-9_.-]*' + $secretName + '[A-Za-z0-9_.-]*\s*=\s*)(?:"(?:[^"\\]|\\.)*"|''[^'']*''|[^\s,;"''\\}]+)',
+        '$1[REDACTED]'
+    )
+    $value = [regex]::Replace(
+        $value,
+        '(?i)\b([a-z][a-z0-9+.-]*://)(?:[^/\s:@"]+):(?:[^@\s/"]+)@',
+        '$1[REDACTED]@'
+    )
+    $value = [regex]::Replace(
+        $value,
+        '(?i)([?&]' + $secretName + '=)[^&#\s"]+',
+        '$1[REDACTED]'
+    )
+    $value = [regex]::Replace(
+        $value,
+        '(?im)^(\s*(?:authorization|proxy-authorization)\s*:\s*(?:bearer|basic)\s+).+$',
+        '$1[REDACTED]'
+    )
     return $value
+}
+
+function Assert-OpenMeterPoCLocalEndpoint {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Uri
+    )
+
+    if ($Uri -cne "http://127.0.0.1:48888/api/v3") {
+        throw "OpenMeter PoC SDK endpoint must be exactly http://127.0.0.1:48888/api/v3"
+    }
 }
 
 function Write-OpenMeterPoCFile {
@@ -135,11 +178,11 @@ services:
 function Assert-OpenMeterPoCRenderedCompose {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Path
+        [string]$Json
     )
 
     try {
-        $model = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        $model = $Json | ConvertFrom-Json -ErrorAction Stop
     }
     catch {
         throw "rendered Compose config is not valid JSON: $($_.Exception.Message)"
@@ -149,11 +192,36 @@ function Assert-OpenMeterPoCRenderedCompose {
     }
 
     $images = [ordered]@{}
+    $sanitizedServices = [ordered]@{}
     foreach ($property in $model.services.PSObject.Properties) {
         $serviceImage = [string]$property.Value.image
         if (-not [string]::IsNullOrWhiteSpace($serviceImage)) {
             $images[$property.Name] = $serviceImage
         }
+
+        $sanitizedService = [ordered]@{}
+        if (-not [string]::IsNullOrWhiteSpace($serviceImage)) {
+            $sanitizedService.image = $serviceImage
+        }
+        if ($null -ne $property.Value.ports) {
+            $sanitizedPorts = @()
+            foreach ($port in @($property.Value.ports)) {
+                if ($port -is [string]) {
+                    $sanitizedPorts += [string]$port
+                    continue
+                }
+                $sanitizedPort = [ordered]@{}
+                foreach ($field in @("host_ip", "target", "published", "protocol", "mode")) {
+                    $portProperty = $port.PSObject.Properties[$field]
+                    if ($null -ne $portProperty) {
+                        $sanitizedPort[$field] = $portProperty.Value
+                    }
+                }
+                $sanitizedPorts += [pscustomobject]$sanitizedPort
+            }
+            $sanitizedService.ports = $sanitizedPorts
+        }
+        $sanitizedServices[$property.Name] = [pscustomobject]$sanitizedService
     }
     foreach ($service in $script:OpenMeterPoCOwnedServices) {
         $property = $model.services.PSObject.Properties[$service]
@@ -168,7 +236,13 @@ function Assert-OpenMeterPoCRenderedCompose {
             throw "rendered Compose service $service uses $image instead of $script:OpenMeterPoCImage"
         }
     }
-    return $images
+    return [pscustomobject]@{
+        Images = $images
+        SanitizedModel = [ordered]@{
+            name = [string]$model.name
+            services = $sanitizedServices
+        }
+    }
 }
 
 function Invoke-OpenMeterPoCNativeCommand {
@@ -216,7 +290,8 @@ function Invoke-OpenMeterPoCRequiredCommand {
         [pscustomobject]$Paths,
         [AllowEmptyString()]
         [string]$ApiKey = "",
-        [string]$OutputPath = ""
+        [string]$OutputPath = "",
+        [switch]$SuppressOutputLog
     )
 
     $result = & $CommandInvoker $FilePath $ArgumentList $WorkingDirectory
@@ -227,7 +302,7 @@ function Invoke-OpenMeterPoCRequiredCommand {
     $safeOutput = Protect-OpenMeterPoCText -Text $result.Output -ApiKey $ApiKey
     $displayArguments = Protect-OpenMeterPoCText -Text ($ArgumentList -join " ") -ApiKey $ApiKey
     $logEntry = "> $FilePath $displayArguments`nexit=$($result.ExitCode)"
-    if (-not [string]::IsNullOrEmpty($safeOutput)) {
+    if (-not $SuppressOutputLog -and -not [string]::IsNullOrEmpty($safeOutput)) {
         $logEntry += "`n$safeOutput"
     }
     Write-OpenMeterPoCFile -Path $Paths.RunnerLogPath -AllowedRoot $Paths.LocalRoot -Value $logEntry -ApiKey $ApiKey -Append
@@ -238,7 +313,7 @@ function Invoke-OpenMeterPoCRequiredCommand {
     if ([int]$result.ExitCode -ne 0) {
         throw "$FilePath command failed with exit code $($result.ExitCode)"
     }
-    return $safeOutput
+    return [string]$result.Output
 }
 
 function Get-OpenMeterPoCComposeArguments {
@@ -534,6 +609,7 @@ function Invoke-OpenMeterPoC {
     $composeConfigured = $false
 
     try {
+        Assert-OpenMeterPoCLocalEndpoint -Uri $script:OpenMeterPoCURL
         $paths = Get-OpenMeterPoCPaths -RepositoryRoot $RepositoryRoot -RunId $RunId
         $null = New-Item -ItemType Directory -Path $paths.LocalRoot -Force -ErrorAction Stop
         if (Test-Path -LiteralPath $paths.EvidencePath) {
@@ -563,8 +639,10 @@ function Invoke-OpenMeterPoC {
         ) -WorkingDirectory $paths.RepositoryRoot -Paths $paths -ApiKey $ApiKey -OutputPath (Join-Path $paths.EvidencePath "task-processor-git-sha.txt")
 
         New-OpenMeterPoCComposeOverride -Path $paths.OverridePath -AllowedRoot $paths.LocalRoot
-        $null = Invoke-OpenMeterPoCRequiredCommand -CommandInvoker $CommandInvoker -FilePath "docker" -ArgumentList (Get-OpenMeterPoCComposeArguments -Paths $paths -Tail @("config", "--format", "json")) -WorkingDirectory (Split-Path -Parent $paths.BaseComposePath) -Paths $paths -ApiKey $ApiKey -OutputPath $paths.RenderedComposePath
-        $images = Assert-OpenMeterPoCRenderedCompose -Path $paths.RenderedComposePath
+        $rawCompose = Invoke-OpenMeterPoCRequiredCommand -CommandInvoker $CommandInvoker -FilePath "docker" -ArgumentList (Get-OpenMeterPoCComposeArguments -Paths $paths -Tail @("config", "--format", "json")) -WorkingDirectory (Split-Path -Parent $paths.BaseComposePath) -Paths $paths -ApiKey $ApiKey -SuppressOutputLog
+        $renderedCompose = Assert-OpenMeterPoCRenderedCompose -Json $rawCompose
+        Write-OpenMeterPoCFile -Path $paths.RenderedComposePath -AllowedRoot $paths.LocalRoot -Value ($renderedCompose.SanitizedModel | ConvertTo-Json -Depth 8) -ApiKey $ApiKey
+        $images = $renderedCompose.Images
         $composeConfigured = $true
 
         $null = Invoke-OpenMeterPoCRequiredCommand -CommandInvoker $CommandInvoker -FilePath "docker" -ArgumentList (Get-OpenMeterPoCComposeArguments -Paths $paths -Tail @("up", "-d", "--wait")) -WorkingDirectory (Split-Path -Parent $paths.BaseComposePath) -Paths $paths -ApiKey $ApiKey
@@ -600,6 +678,12 @@ function Invoke-OpenMeterPoC {
         if ($composeConfigured -and -not $KeepEnvironment -and $null -ne $CommandInvoker) {
             try {
                 $null = Invoke-OpenMeterPoCRequiredCommand -CommandInvoker $CommandInvoker -FilePath "docker" -ArgumentList (Get-OpenMeterPoCComposeArguments -Paths $paths -Tail @("down")) -WorkingDirectory (Split-Path -Parent $paths.BaseComposePath) -Paths $paths -ApiKey $ApiKey
+                $remainingOutput = Invoke-OpenMeterPoCRequiredCommand -CommandInvoker $CommandInvoker -FilePath "docker" -ArgumentList (Get-OpenMeterPoCComposeArguments -Paths $paths -Tail @("ps", "-q")) -WorkingDirectory (Split-Path -Parent $paths.BaseComposePath) -Paths $paths -ApiKey $ApiKey
+                $remainingContainers = @($remainingOutput -split '\r?\n' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+                if ($remainingContainers.Count -ne 0) {
+                    throw "cleanup verification found $($remainingContainers.Count) Compose container(s) still present"
+                }
+                Write-OpenMeterPoCFile -Path $paths.RunnerLogPath -AllowedRoot $paths.LocalRoot -Value "cleanup verified: no Compose containers remain" -ApiKey $ApiKey -Append
             }
             catch {
                 $exitCode = 1

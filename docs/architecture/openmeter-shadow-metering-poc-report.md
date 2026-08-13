@@ -104,7 +104,9 @@ The orchestrated run also required successful upstream verification, rendered
 Compose validation, image digest resolution, health verification, before/after
 resource capture, and final cleanup. `runner.log` records exit 0 for every
 required command and ends with `OpenMeter PoC run completed` followed by a
-successful `docker compose ... down` without `-v`.
+successful `docker compose ... down` without `-v`. That retained semantic-run
+log does not record a subsequent project-filtered container query; the final
+safety correction adds a recorded, fail-closed query for future runs.
 
 ## Metering, identity, isolation, and LATEST findings
 
@@ -250,14 +252,14 @@ Task 8's focused gates passed after the report was written:
 
 | Verification | Result |
 | --- | --- |
-| `Invoke-Pester ./scripts/openmeter-poc.Tests.ps1` | pass: 16, fail: 0, skip: 0 |
+| `Invoke-Pester ./scripts/openmeter-poc.Tests.ps1` | pass: 19, fail: 0, skip: 0 |
 | `Invoke-Pester ./scripts/test-all.Tests.ps1` | pass: 4, fail: 0, skip: 0 |
 | `Remove-Item Env:OPENMETER_POC ...; go test ./internal/integration/openmeter -count=1` | pass |
 | `go test ./tests -run OpenMeter -count=1` | pass |
 | Root module: `go test -count=1 ./...` | pass, including all six `scripts/listingkit-shein-pod-image-index-backfill` tests |
 | Tools module: `go test -count=1 ./...` from `tools` | pass |
 | Debug module: `go test -count=1 ./...` from `hack/debug` | pass |
-| `./scripts/test-all.ps1 -count=1` | pass: complete root, tools, and debug modules; exit 0 in 93.7 seconds |
+| `./scripts/test-all.ps1 -count=1` | pass: complete root, tools, and debug modules; exit 0 in 98.9 seconds |
 | `git diff --check` | pass |
 
 The original `scripts/test-all.ps1` passed the nested `tools` and `hack/debug`
@@ -325,6 +327,28 @@ added, after which the complete root-module suite passed. Neither harness or
 documentation-index change affects the successful Docker evidence run or its
 source SHA.
 
+Whole-branch review then found that the opt-in Go gate accepted any nonempty
+SDK URL and that the runner persisted raw Compose/command output containing
+connection credentials. Table-driven Go and behavior-level PowerShell RED
+accepted 11 nonexact endpoints, including remote hosts, URL variants,
+userinfo, query, and fragment. Controlled evidence RED also found injected
+database-password, JWT-secret, DSN, URL-userinfo, and API-key values in
+persisted files, while cleanup made no recorded post-`down` container query.
+
+Both runtime gates now require the byte-exact local endpoint
+`http://127.0.0.1:48888/api/v3` before dependencies are invoked. The runner
+validates raw Compose service/image data only in memory and persists an
+allowlisted service/image/port model; persisted command output additionally
+redacts supplied API keys, secret-named values, authorization values, DSNs, and
+URL userinfo. After `down`, it records project-scoped `ps -q` output and fails
+cleanup if any container remains. GREEN was focused Go PASS, runner Pester
+19/19, and the exact complete harness exit 0 in 98.9 seconds. These safety and
+evidence-capture tests made no network calls, and the semantic Docker PoC was
+not rerun. The successful result therefore remains bound to source SHA
+`50ed0a06bd3e4248836011ba18296b283b40bdf9`; its ignored evidence predates the
+new capture and post-cleanup policy and was neither rewritten nor
+misrepresented as new evidence.
+
 ## PAY-041 ownership mapping
 
 | Failure mode or observation | Future outbox/retry responsibility | Dead-letter/manual-adjustment responsibility |
@@ -352,8 +376,10 @@ changed, shadow-written, switched, or deleted. Running the quickstart's local
 `billing-worker` container did not exercise ListingKit billing or payment paths.
 No production application behavior or configuration was changed.
 
-The runner removed the local Compose containers and network with `down` without
-`-v`; the subsequent project-filtered Docker check returned no containers.
-Volumes and the ignored upstream/evidence checkout remain local for
-reproducibility. Raw logs, Compose secrets, API keys, and `.local` contents are
-excluded from this report commit.
+The semantic run's runner removed the local Compose containers and network with
+`down` without `-v`; its retained log does not prove a subsequent project
+query. The corrected runner now requires and records an empty project-filtered
+`ps -q` after `down`, with behavior-level tests proving both the empty and
+remaining-container paths. Volumes and the ignored upstream/evidence checkout
+remain local for reproducibility. Raw logs, Compose secrets, API keys, and
+`.local` contents are excluded from this report commit.

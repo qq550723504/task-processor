@@ -7,7 +7,8 @@ function New-TestOpenMeterPoCFakes {
     param(
         [System.Collections.ArrayList]$Calls,
         [string]$FailureMode = "",
-        [string]$Secret = ""
+        [string]$Secret = "",
+        [hashtable]$SensitiveValues = @{}
     )
 
     $renderedCompose = @'
@@ -23,6 +24,30 @@ function New-TestOpenMeterPoCFakes {
   }
 }
 '@
+
+    if ($SensitiveValues.Count -gt 0) {
+        $renderedModel = $renderedCompose | ConvertFrom-Json
+        $renderedModel.services.postgres | Add-Member -NotePropertyName environment -NotePropertyValue ([ordered]@{
+            POSTGRES_PASSWORD = $SensitiveValues.DatabasePassword
+            DATABASE_URL = $SensitiveValues.DatabaseURL
+        })
+        $renderedModel.services.openmeter | Add-Member -NotePropertyName environment -NotePropertyValue ([ordered]@{
+            JWT_SECRET = $SensitiveValues.JWTSecret
+            OPENMETER_API_KEY = $Secret
+        })
+        $renderedModel.services.openmeter | Add-Member -NotePropertyName command -NotePropertyValue @(
+            "--callback=$($SensitiveValues.UserInfoURL)"
+        )
+        $renderedCompose = $renderedModel | ConvertTo-Json -Depth 8
+    }
+    if ($FailureMode -eq "raw-compose-latest") {
+        $renderedCompose = $renderedCompose.Replace(
+            '"openmeter": { "image": "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232" }',
+            '"openmeter": { "image": "ghcr.io/openmeterio/openmeter:latest" }'
+        )
+    }
+
+    $state = [pscustomobject]@{ ComposeDown = $false }
 
     $commandInvoker = {
         param(
@@ -76,6 +101,16 @@ function New-TestOpenMeterPoCFakes {
         if ($FilePath -eq "docker" -and $ArgumentList -contains "config") {
             return [pscustomobject]@{ ExitCode = 0; Output = $renderedCompose }
         }
+        if ($FilePath -eq "docker" -and $ArgumentList -contains "down") {
+            $state.ComposeDown = $true
+            return [pscustomobject]@{ ExitCode = 0; Output = "removed" }
+        }
+        if ($FilePath -eq "docker" -and $ArgumentList -contains "up" -and $SensitiveValues.Count -gt 0) {
+            return [pscustomobject]@{
+                ExitCode = 0
+                Output = "JWT_SECRET=$($SensitiveValues.JWTSecret)`nDATABASE_URL=$($SensitiveValues.DatabaseURL)`ncallback=$($SensitiveValues.UserInfoURL)"
+            }
+        }
         if ($FilePath -eq "docker" -and $ArgumentList -contains "inspect") {
             if ($FailureMode -eq "digest") {
                 return [pscustomobject]@{ ExitCode = 0; Output = "[]" }
@@ -91,6 +126,12 @@ function New-TestOpenMeterPoCFakes {
             return [pscustomobject]@{ ExitCode = 0; Output = '{"Name":"openmeter","CPUPerc":"0.10%","MemUsage":"10MiB / 1GiB"}' }
         }
         if ($FilePath -eq "docker" -and $ArgumentList -contains "ps" -and $ArgumentList -contains "-q") {
+            if ($state.ComposeDown) {
+                if ($FailureMode -eq "cleanup-containers") {
+                    return [pscustomobject]@{ ExitCode = 0; Output = "container-still-running" }
+                }
+                return [pscustomobject]@{ ExitCode = 0; Output = "" }
+            }
             return [pscustomobject]@{ ExitCode = 0; Output = "container-a`ncontainer-b" }
         }
         if ($FilePath -eq "docker" -and $ArgumentList -contains "ps") {
@@ -166,6 +207,41 @@ function New-TestOpenMeterPoCFakes {
 }
 
 Describe "OpenMeter PoC path and Compose boundaries" {
+    It "rejects every nonexact SDK endpoint before invoking dependencies" {
+        $originalURL = $script:OpenMeterPoCURL
+        $caseNumber = 0
+        try {
+            foreach ($uri in @(
+            "http://openmeter.example:48888/api/v3",
+            "http://192.0.2.10:48888/api/v3",
+            "http://localhost:48888/api/v3",
+            "http://[::1]:48888/api/v3",
+            "https://127.0.0.1:48888/api/v3",
+            "http://127.0.0.1:48889/api/v3",
+            "http://127.0.0.1:48888/api/v2",
+            "http://127.0.0.1:48888/api/v3/",
+            "http://user:password@127.0.0.1:48888/api/v3",
+            "http://127.0.0.1:48888/api/v3?target=remote",
+            "http://127.0.0.1:48888/api/v3#remote"
+            )) {
+                $caseNumber++
+                $calls = New-Object System.Collections.ArrayList
+                $fakes = New-TestOpenMeterPoCFakes -Calls $calls
+                $repositoryRoot = Join-Path $TestDrive "runner-unsafe-url-$caseNumber"
+                New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+                $script:OpenMeterPoCURL = $uri
+
+                $result = Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-url-$caseNumber" -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe
+
+                $result | Should Not Be 0
+                $calls.Count | Should Be 0
+            }
+        }
+        finally {
+            $script:OpenMeterPoCURL = $originalURL
+        }
+    }
+
     It "resolves checkout and evidence below the repository-local PoC root" {
         $paths = Get-OpenMeterPoCPaths -RepositoryRoot $TestDrive -RunId "run-42"
         $expectedRoot = [System.IO.Path]::GetFullPath((Join-Path $TestDrive ".local/openmeter-poc"))
@@ -202,8 +278,7 @@ Describe "OpenMeter PoC path and Compose boundaries" {
     }
 
     It "rejects a rendered Compose model with an OpenMeter-owned latest image" {
-        $renderedPath = Join-Path $TestDrive "rendered.json"
-        Set-Content -LiteralPath $renderedPath -Encoding UTF8 -Value @'
+        $renderedJson = @'
 {
   "services": {
     "openmeter": { "image": "ghcr.io/openmeterio/openmeter:latest" },
@@ -217,7 +292,7 @@ Describe "OpenMeter PoC path and Compose boundaries" {
 '@
 
         $thrown = $false
-        try { Assert-OpenMeterPoCRenderedCompose -Path $renderedPath } catch { $thrown = $true }
+        try { Assert-OpenMeterPoCRenderedCompose -Json $renderedJson } catch { $thrown = $true }
         $thrown | Should Be $true
     }
 }
@@ -261,32 +336,79 @@ Describe "OpenMeter PoC runner behavior" {
         $downCalls = @($composeCalls | Where-Object { $_.Arguments -contains "down" })
         $downCalls.Count | Should Be 1
         $downCalls[0].Arguments -contains "-v" | Should Be $false
+        $downIndex = [array]::IndexOf($composeCalls, $downCalls[0])
+        $postDownChecks = @($composeCalls | Select-Object -Skip ($downIndex + 1) | Where-Object { $_.Arguments -contains "ps" -and $_.Arguments -contains "-q" })
+        $postDownChecks.Count | Should Be 1
+        $runnerLog = Get-Content -LiteralPath (Join-Path $repositoryRoot ".local/openmeter-poc/evidence/run-cleanup/runner.log") -Raw
+        $runnerLog | Should Match "cleanup verified: no Compose containers remain"
         Test-Path -LiteralPath (Join-Path $repositoryRoot ".local/openmeter-poc/upstream/sentinel.txt") | Should Be $true
         Test-Path -LiteralPath (Join-Path $localRoot "local-root-sentinel.txt") | Should Be $true
         Test-Path -LiteralPath (Join-Path $evidenceRoot "evidence-root-sentinel.txt") | Should Be $true
         Test-Path -LiteralPath (Join-Path $nestedSentinelRoot "nested-sentinel.txt") | Should Be $true
     }
 
-    It "redacts the API key from captured evidence and restores the caller environment" {
-        $secret = "never-print-this-api-key"
+    It "returns nonzero when project containers remain after Compose down" {
         $calls = New-Object System.Collections.ArrayList
-        $fakes = New-TestOpenMeterPoCFakes -Calls $calls -Secret $secret
+        $fakes = New-TestOpenMeterPoCFakes -Calls $calls -FailureMode "cleanup-containers"
+        $repositoryRoot = Join-Path $TestDrive "runner-cleanup-containers"
+        New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+
+        $result = Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-cleanup-containers" -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe
+
+        $result | Should Not Be 0
+        $runnerLog = Get-Content -LiteralPath (Join-Path $repositoryRoot ".local/openmeter-poc/evidence/run-cleanup-containers/runner.log") -Raw
+        $runnerLog | Should Match "CLEANUP FAILED"
+    }
+
+    It "keeps all persisted evidence free of credentials while validating raw Compose output" {
+        $secret = @("api", "credential", "42") -join "-"
+        $sensitiveValues = @{
+            DatabasePassword = @("db", "credential", "42") -join "-"
+            JWTSecret = @("jwt", "credential", "42") -join "-"
+            DatabaseURL = "postgresql://writer:$(@('dsn', 'credential', '42') -join '-')@postgres/openmeter"
+            UserInfoURL = "https://callback:$(@('userinfo', 'credential', '42') -join '-')@service.example/hook"
+        }
+        $calls = New-Object System.Collections.ArrayList
+        $fakes = New-TestOpenMeterPoCFakes -Calls $calls -Secret $secret -SensitiveValues $sensitiveValues
         $repositoryRoot = Join-Path $TestDrive "runner-redaction"
         New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
         $oldPhase = [Environment]::GetEnvironmentVariable("OPENMETER_POC_PHASE", "Process")
         [Environment]::SetEnvironmentVariable("OPENMETER_POC_PHASE", "caller-phase", "Process")
         try {
             $result = Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-redaction" -ApiKey $secret -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe
-            $evidence = Get-ChildItem -Path (Join-Path $repositoryRoot ".local/openmeter-poc/evidence/run-redaction") -File | ForEach-Object { Get-Content -LiteralPath $_.FullName -Raw }
+            $evidenceRoot = Join-Path $repositoryRoot ".local/openmeter-poc/evidence/run-redaction"
+            $evidenceFiles = @(Get-ChildItem -Path $evidenceRoot -File -Recurse)
 
             $result | Should Be 0
-            ($evidence -join "`n") | Should Not Match ([regex]::Escape($secret))
-            ($evidence -join "`n") | Should Match "\[REDACTED\]"
+            $evidenceFiles.Count | Should BeGreaterThan 0
+            foreach ($file in $evidenceFiles) {
+                $content = Get-Content -LiteralPath $file.FullName -Raw
+                foreach ($sensitiveValue in @($secret) + @($sensitiveValues.Values)) {
+                    $content.Contains([string]$sensitiveValue) | Should Be $false
+                }
+            }
+            $renderedModel = Get-Content -LiteralPath (Join-Path $evidenceRoot "compose.rendered.json") -Raw | ConvertFrom-Json
+            $renderedModel.services.openmeter.image | Should Be "ghcr.io/openmeterio/openmeter:v1.0.0-beta.232"
+            @($renderedModel.services.PSObject.Properties).Count | Should Be 7
+            $null -eq $renderedModel.services.openmeter.PSObject.Properties["environment"] | Should Be $true
+            $null -eq $renderedModel.services.postgres.PSObject.Properties["environment"] | Should Be $true
             [Environment]::GetEnvironmentVariable("OPENMETER_POC_PHASE", "Process") | Should Be "caller-phase"
         }
         finally {
             [Environment]::SetEnvironmentVariable("OPENMETER_POC_PHASE", $oldPhase, "Process")
         }
+    }
+
+    It "rejects an unsafe image from raw Compose output before starting services" {
+        $calls = New-Object System.Collections.ArrayList
+        $fakes = New-TestOpenMeterPoCFakes -Calls $calls -FailureMode "raw-compose-latest"
+        $repositoryRoot = Join-Path $TestDrive "runner-raw-compose-latest"
+        New-Item -ItemType Directory -Path $repositoryRoot -Force | Out-Null
+
+        $result = Invoke-OpenMeterPoC -RepositoryRoot $repositoryRoot -RunId "run-raw-compose-latest" -CommandInvoker $fakes.CommandInvoker -HealthProbe $fakes.HealthProbe
+
+        $result | Should Not Be 0
+        @($calls | Where-Object { $_.FilePath -eq "docker" -and $_.Arguments -contains "up" }).Count | Should Be 0
     }
 
     It "runs exact JSON Go targets in deterministic outage and recovery order" {

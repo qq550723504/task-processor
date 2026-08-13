@@ -10,6 +10,8 @@ import (
 
 var pocRunIDPattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
+const pocBaseURL = "http://127.0.0.1:48888/api/v3"
+
 type pocEnvironment struct {
 	Enabled bool
 	BaseURL string
@@ -45,8 +47,8 @@ func loadPoCEnvironment() (pocEnvironment, error) {
 		APIKey:  os.Getenv("OPENMETER_API_KEY"),
 		Phase:   os.Getenv("OPENMETER_POC_PHASE"),
 	}
-	if environment.BaseURL == "" {
-		return pocEnvironment{}, fmt.Errorf("OPENMETER_POC_URL is required when OPENMETER_POC=1")
+	if environment.BaseURL != pocBaseURL {
+		return pocEnvironment{}, fmt.Errorf("OPENMETER_POC_URL must be exactly %s when OPENMETER_POC=1", pocBaseURL)
 	}
 	if len(environment.RunID) > 40 || !pocRunIDPattern.MatchString(environment.RunID) {
 		return pocEnvironment{}, fmt.Errorf("OPENMETER_POC_RUN_ID must match %s and contain at most 40 characters", pocRunIDPattern.String())
@@ -138,6 +140,42 @@ func TestLoadPoCEnvironmentFailsWhenEnabledWithoutURLOrRunID(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), test.wantError) {
 				t.Fatalf("loadPoCEnvironment() error = %q, want error containing %q", err, test.wantError)
+			}
+		})
+	}
+}
+
+func TestLoadPoCEnvironmentRejectsEveryNonExactLocalEndpoint(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+	}{
+		{name: "remote host", url: "http://openmeter.example:48888/api/v3"},
+		{name: "non-loopback address", url: "http://192.0.2.10:48888/api/v3"},
+		{name: "localhost alias", url: "http://localhost:48888/api/v3"},
+		{name: "IPv6 loopback variant", url: "http://[::1]:48888/api/v3"},
+		{name: "HTTPS", url: "https://127.0.0.1:48888/api/v3"},
+		{name: "alternate port", url: "http://127.0.0.1:48889/api/v3"},
+		{name: "alternate path", url: "http://127.0.0.1:48888/api/v2"},
+		{name: "trailing slash", url: "http://127.0.0.1:48888/api/v3/"},
+		{name: "userinfo", url: "http://user:password@127.0.0.1:48888/api/v3"},
+		{name: "query", url: "http://127.0.0.1:48888/api/v3?target=remote"},
+		{name: "fragment", url: "http://127.0.0.1:48888/api/v3#remote"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			clearPoCEnvironment(t)
+			t.Setenv("OPENMETER_POC", "1")
+			t.Setenv("OPENMETER_POC_URL", test.url)
+			t.Setenv("OPENMETER_POC_RUN_ID", "run-42")
+
+			environment, err := loadPoCEnvironment()
+			if err == nil {
+				t.Fatalf("loadPoCEnvironment() = %+v, want OPENMETER_POC_URL error", environment)
+			}
+			if !strings.Contains(err.Error(), "OPENMETER_POC_URL") {
+				t.Fatalf("loadPoCEnvironment() error = %q, want OPENMETER_POC_URL error", err)
 			}
 		})
 	}
