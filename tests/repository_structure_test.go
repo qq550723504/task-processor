@@ -43,6 +43,49 @@ func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
 	}
 }
 
+func TestOperationalCommandsHaveDeploymentBuildOrScriptOwner(t *testing.T) {
+	operationalCommands := map[string]struct{}{
+		"fingerprint-browser-installer":      {},
+		"listing-scheduler":                  {},
+		"listingkit-identity-preflight":      {},
+		"listingkit-owner-scope-dry-run":     {},
+		"listingkit-owner-scope-exceptions":  {},
+		"listingkit-schema-migrate":          {},
+		"playwright-installer":               {},
+		"product-listing-api-schema-migrate": {},
+		"shein-import-platform-recovery":     {},
+		"shein-login-worker":                 {},
+	}
+	ownerRoots := []string{".github", "deployments", "scripts"}
+	repoRootBytes, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repoRoot := strings.TrimSpace(string(repoRootBytes))
+
+	for command := range operationalCommands {
+		owned := false
+		for _, ownerRoot := range ownerRoots {
+			for _, file := range trackedFiles(t, ownerRoot) {
+				contents, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(file)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(string(contents), command) {
+					owned = true
+					break
+				}
+			}
+			if owned {
+				break
+			}
+		}
+		if !owned {
+			t.Errorf("cmd/%s is an operational command without a tracked .github, deployments, or scripts owner reference", command)
+		}
+	}
+}
+
 func TestTrackedLocalArtifactsStayOutOfProductionEntrypoints(t *testing.T) {
 	assertNoTrackedLocalArtifacts(t, "cmd")
 }
