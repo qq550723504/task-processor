@@ -77,6 +77,28 @@ func TestRetryTaskChildTaskReturnsConflictWhenRetryBlocked(t *testing.T) {
 	}
 }
 
+func TestRetryTaskChildTaskReturnsConflictWhenRepairIsActive(t *testing.T) {
+	t.Parallel()
+
+	gin.SetMode(gin.TestMode)
+	svc := &stubChildTaskRetryService{err: listingkit.ErrSDSRepairRetryInProgress}
+	h, err := NewHandler(&stubHandlerCoreService{}, WithChildTaskRetryService(svc))
+	if err != nil {
+		t.Fatalf("new handler: %v", err)
+	}
+
+	router := gin.New()
+	router.POST("/api/v1/listing-kits/tasks/:task_id/child-tasks/retry", h.RetryTaskChildTask)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/listing-kits/tasks/task-1/child-tasks/retry", strings.NewReader(`{"kind":"sds_design_sync"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409", resp.Code)
+	}
+}
+
 func TestRetryTaskChildTaskReturnsQueuedPayload(t *testing.T) {
 	t.Parallel()
 
@@ -168,3 +190,4 @@ func TestRetryTaskChildTaskBindsKind(t *testing.T) {
 		t.Fatalf("child retry req = %+v, want kind bound", svc.req)
 	}
 }
+

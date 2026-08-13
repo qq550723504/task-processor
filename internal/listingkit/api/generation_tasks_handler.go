@@ -136,7 +136,7 @@ func (h *handler) RetryTaskChildTask(c *gin.Context) {
 			status = http.StatusNotFound
 		case errors.Is(err, core.ErrChildTaskRetryInvalidRequest):
 			status = http.StatusBadRequest
-		case errors.Is(err, core.ErrChildTaskNotRetryable), errors.Is(err, core.ErrChildTaskRetryConflict):
+		case errors.Is(err, core.ErrChildTaskNotRetryable), errors.Is(err, core.ErrChildTaskRetryConflict), errors.Is(err, listingkit.ErrSDSRepairRetryInProgress):
 			status = http.StatusConflict
 		}
 		c.JSON(status, gin.H{"error": "child_task_retry_failed", "message": err.Error()})
@@ -165,3 +165,4 @@ func (h *handler) ExecuteTaskGenerationAction(c *gin.Context) {
 	}
 	writeGenerationConditionalMutationResponse(c, result.DeltaToken, result)
 }
+

@@ -149,7 +149,9 @@ func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req 
 			return nil, err
 		}
 		defer func() {
-			if err := coordinator.EndSDSChildRetryRepair(ctx, repairLease); err != nil && returnErr == nil {
+			cleanupCtx, cancel := sdsRepairCleanupContext(ctx)
+			defer cancel()
+			if err := coordinator.EndSDSChildRetryRepair(cleanupCtx, repairLease); err != nil && returnErr == nil {
 				taskResult = nil
 				returnErr = err
 			}
@@ -182,6 +184,10 @@ func (s *service) RepairAndRetryTaskSDS(ctx context.Context, taskID string, req 
 		return nil, err
 	}
 	return s.RetryTaskChildTask(ctx, task.ID, &RetryChildTaskRequest{Kind: "sds_design_sync"})
+}
+
+func sdsRepairCleanupContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 }
 
 func normalizedSDSRepairSelections(req *ApplyTaskSDSRepairRequest, variants []SDSSyncVariantOption) (map[int64]string, error) {

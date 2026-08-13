@@ -1,16 +1,54 @@
 package store
 
 import (
+	"bytes"
 	"context"
+	"log"
+	"strings"
 	"testing"
 	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
 	"task-processor/internal/listingkit"
 	"task-processor/internal/shared/tenantctx"
 )
+
+func TestSDSChildRetryRepositoryLocksTaskBeforeSelectingRetryRows(t *testing.T) {
+	var logs bytes.Buffer
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{
+		Logger: logger.New(log.New(&logs, "", 0), logger.Config{LogLevel: logger.Info}),
+	})
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	if err := db.AutoMigrate(&listingkit.Task{}, &listingkit.SDSChildRetryJob{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	if err := db.Create(&listingkit.Task{ID: "task-lock-order", TenantID: "tenant-1"}).Error; err != nil {
+		t.Fatalf("create task: %v", err)
+	}
+	if err := db.Create(&listingkit.SDSChildRetryJob{
+		ID: "job-lock-order", TaskID: "task-lock-order", TenantID: "tenant-1",
+		Kind: listingkit.SDSChildRetryKindDesignSync, Status: listingkit.SDSChildRetryJobStatusPending,
+		NextRetryAt: time.Now().UTC(),
+	}).Error; err != nil {
+		t.Fatalf("create retry: %v", err)
+	}
+	logs.Reset()
+	repo := any(NewTaskRepository(db)).(listingkit.SDSChildRetryJobRepository)
+	if _, err := repo.ClaimDueSDSChildRetries(context.Background(), time.Now().UTC(), 1, "sweeper", time.Now().UTC().Add(time.Hour)); err != nil {
+		t.Fatalf("claim due retries: %v", err)
+	}
+	logText := logs.String()
+	taskIndex := strings.Index(logText, "SELECT * FROM `listing_kit_tasks`")
+	retryIndex := strings.Index(logText, "SELECT * FROM `listingkit_sds_child_retry_jobs`")
+	if taskIndex < 0 || retryIndex < 0 || taskIndex > retryIndex {
+		t.Fatalf("SQL lock order = task index %d, retry index %d; logs:\n%s", taskIndex, retryIndex, logText)
+	}
+}
 
 func TestSDSChildRetryRepositorySchedulesOneActiveJobPerTask(t *testing.T) {
 	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})

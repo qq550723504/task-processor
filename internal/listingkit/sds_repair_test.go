@@ -70,6 +70,20 @@ func TestGetTaskSDSRepairReturnsCurrentLayersForFailedVariant(t *testing.T) {
 	}
 }
 
+func TestSDSRepairCleanupContextSurvivesRequestCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	cleanupCtx, cleanupCancel := sdsRepairCleanupContext(ctx)
+	defer cleanupCancel()
+	if err := cleanupCtx.Err(); err != nil {
+		t.Fatalf("cleanup context error = %v, want nil after request cancellation", err)
+	}
+	if _, ok := cleanupCtx.Deadline(); !ok {
+		t.Fatal("cleanup context has no bounded deadline")
+	}
+}
+
 func TestRepairAndRetryTaskSDSRejectsLayerMissingFromCurrentVariantPage(t *testing.T) {
 	t.Parallel()
 
@@ -236,3 +250,4 @@ func TestRepairAndRetryTaskSDSRejectsActiveDurableRetry(t *testing.T) {
 		t.Fatalf("durable retry status = %q, want pending", got)
 	}
 }
+

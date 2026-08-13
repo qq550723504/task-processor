@@ -198,6 +198,9 @@ func (r *taskRepository) ClaimDueSDSChildRetries(ctx context.Context, dueBefore 
 	}
 	var jobs []listingkit.SDSChildRetryJob
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := lockDueRetryTasks(tx, ctx, dueBefore); err != nil {
+			return err
+		}
 		claimed := make([]listingkit.SDSChildRetryJob, 0, len(jobs))
 		claimedTaskIDs := make(map[string]struct{})
 		excludedTaskIDs := make(map[string]struct{})
@@ -273,5 +276,15 @@ func (r *taskRepository) SaveSDSChildRetry(ctx context.Context, job *listingkit.
 		return fmt.Errorf("SDS child retry job is required")
 	}
 	return r.db.WithContext(ctx).Save(job).Error
+}
+
+func lockDueRetryTasks(tx *gorm.DB, ctx context.Context, dueBefore time.Time) error {
+	if !tx.Migrator().HasTable(&listingkit.Task{}) {
+		return nil
+	}
+	var tasks []listingkit.Task
+	return applyTaskAccessScope(tx.Clauses(clause.Locking{Strength: "UPDATE"}), ctx).
+		Where("EXISTS (SELECT 1 FROM listingkit_sds_child_retry_jobs AS retry WHERE retry.listingkit_task_id = listing_kit_tasks.id AND retry.status = ? AND retry.next_retry_at <= ? AND (retry.lease_until IS NULL OR retry.lease_until <= ?))", listingkit.SDSChildRetryJobStatusPending, dueBefore, dueBefore).
+		Find(&tasks).Error
 }
 
