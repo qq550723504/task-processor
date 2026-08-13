@@ -1,0 +1,21 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/lib/api/generated-request-constraints.type-test.ts",
+    "src/**/*.test.{ts,tsx}",
+    // Next App Router files are runtime entry points, not imported by another module.
+    "src/app/**/page.{ts,tsx}",
+    "src/app/**/route.{ts,tsx}",
+    "src/app/**/layout.{ts,tsx}",
+    // Auth and proxy modules are loaded by Next/Auth conventions.
+    "src/auth.ts",
+    "src/auth.config.ts",
+    "src/proxy.ts"
+  ],
+  "project": ["src/**/*.{ts,tsx}"],
+  // The complete generated API surface is an intentional published contract.
+  "ignore": ["src/lib/api/generated/**"],
+  // The generator is invoked by ../../scripts/generate-api-contract.mjs via its bin path.
+  // Tailwind v4 is consumed by globals.css and postcss.config.mjs, not via a TS import.
+  "ignoreDependencies": ["@hey-api/openapi-ts", "tailwindcss"]
+}

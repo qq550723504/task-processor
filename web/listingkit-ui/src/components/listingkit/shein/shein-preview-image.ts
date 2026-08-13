@@ -19,10 +19,6 @@ export type SheinPreviewImageGroups = {
   mockupImages: SheinPreviewImage[];
 };
 
-function firstUrl(values: Array<string | null | undefined>) {
-  return values.find((value) => typeof value === "string" && value.trim())?.trim();
-}
-
 function pushImage(
   images: SheinPreviewImage[],
   seen: Set<string>,
@@ -162,8 +158,4 @@ export function collectSheinPreviewImageGroups(
   }
 
   return { productImages, mockupImages };
-}
-
-export function firstSheinPreviewImageUrl(shein?: SheinPreviewPayload | null) {
-  return firstUrl(collectSheinPreviewImages(shein).map((image) => image.url));
 }

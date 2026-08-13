@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/authz"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
@@ -86,6 +87,31 @@ func TestCreateListingKitTaskReturnsBadRequestWithHandoff(t *testing.T) {
 	}
 }
 
+func TestCreateListingKitTaskReturnsStableStoreAccessError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &fakeTaskCommandService{err: listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")}
+	router := gin.New()
+	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
+
+	rec := performJSONRequestWithAuthenticatedIdentity(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{
+		URL:             "https://detail.1688.com/offer/1003.html",
+		SourceAccountID: 3001,
+		SheinStoreID:    168811,
+		Platforms:       []string{"shein"},
+	}, nil, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-http"})
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if body["error"] != listingkit.StoreAccessUnavailable {
+		t.Fatalf("error = %#v, want %q", body["error"], listingkit.StoreAccessUnavailable)
+	}
+}
+
 func TestCreateListingKitTaskRejectsInvalidJSON(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -101,12 +127,105 @@ func TestCreateListingKitTaskRejectsInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestCreateListingKitTaskRejectsLegacySourceStoreID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &fakeTaskCommandService{}
+	router := gin.New()
+	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
+
+	req := httptest.NewRequest(http.MethodPost, "/tasks", bytes.NewBufferString(`{"url":"https://detail.1688.com/offer/1005.html","source_store_id":3001}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-http"}))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if service.command.URL != "" {
+		t.Fatalf("command = %+v, want no service call for source_store_id", service.command)
+	}
+}
+
+func TestCreateListingKitTaskRequiresVerifiedIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &fakeTaskCommandService{}
+	router := gin.New()
+	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
+
+	rec := performJSONRequest(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{URL: "https://detail.1688.com/offer/1001.html"}, nil)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
+	}
+	if service.command.URL != "" {
+		t.Fatalf("command = %+v, want no service call", service.command)
+	}
+}
+
+func TestCreateListingKitTaskIgnoresForgedBodyIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &fakeTaskCommandService{}
+	router := gin.New()
+	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
+	req := httptest.NewRequest(http.MethodPost, "/tasks", bytes.NewBufferString(`{"url":"https://detail.1688.com/offer/1002.html","tenant_id":"attacker","user_id":"attacker"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "verified-tenant")
+	req.Header.Set("X-User-ID", "verified-user")
+	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{TenantID: "verified-tenant", UserID: "verified-user"}))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || service.command.TenantID != "verified-tenant" || service.command.UserID != "verified-user" {
+		t.Fatalf("status=%d command=%+v, want verified identity", rec.Code, service.command)
+	}
+}
+
+func TestCreateListingKitTaskPrefersAuthenticatedIdentityOverHeaders(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &fakeTaskCommandService{}
+	router := gin.New()
+	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
+
+	payload, err := json.Marshal(CreateListingKitTaskRequest{URL: "https://detail.1688.com/offer/1003.html"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/tasks", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "tenant-b")
+	req.Header.Set("X-User-ID", "user-b")
+	req = req.WithContext(listingkit.WithAuthenticatedIdentity(req.Context(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"}))
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if service.command.TenantID != "tenant-a" || service.command.UserID != "user-a" {
+		t.Fatalf("command identity = (%q, %q), want authenticated identity", service.command.TenantID, service.command.UserID)
+	}
+}
+
+func TestCreateListingKitTaskRejectsHeaderOnlyIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &fakeTaskCommandService{}
+	router := gin.New()
+	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
+
+	rec := performJSONRequest(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{URL: "https://detail.1688.com/offer/1004.html"}, map[string]string{"X-Tenant-ID": "tenant-b", "X-User-ID": "user-b"})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s, want header-only identity rejected", rec.Code, rec.Body.String())
+	}
+	if service.command.URL != "" {
+		t.Fatalf("command = %+v, want no service call", service.command)
+	}
+}
+
 func TestAppendRouteDescriptorsIncludesCreateRoute(t *testing.T) {
 	routes := AppendRouteDescriptors(nil, NewHandler(&fakeTaskCommandService{}))
 	if len(routes) != 1 {
 		t.Fatalf("routes = %d, want 1", len(routes))
 	}
-	if routes[0].Method != http.MethodPost || routes[0].Path != "/api/v1/product-sourcing/1688/listingkit/tasks" || routes[0].Module != ModuleName || routes[0].Handler == nil {
+	if routes[0].Method != http.MethodPost || routes[0].Path != "/api/v1/product-sourcing/1688/listingkit/tasks" || routes[0].Module != ModuleName || routes[0].Permission != authz.PermissionProductSourcingWrite || routes[0].Handler == nil {
 		t.Fatalf("route = %+v, want 1688 listingkit task route", routes[0])
 	}
 }

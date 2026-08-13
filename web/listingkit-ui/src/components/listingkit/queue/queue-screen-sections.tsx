@@ -71,7 +71,7 @@ export function QueuePendingDataState({ taskId }: { taskId: string }) {
   );
 }
 
-export function QueueTaskNavigation({ taskId }: { taskId: string }) {
+ function QueueTaskNavigation({ taskId }: { taskId: string }) {
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
       <div>

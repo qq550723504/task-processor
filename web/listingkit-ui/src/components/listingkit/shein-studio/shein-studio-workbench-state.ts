@@ -355,10 +355,6 @@ export function buildSheinStudioWorkbenchSetters(
   };
 }
 
-export type SheinStudioWorkbenchSetters = ReturnType<
-  typeof buildSheinStudioWorkbenchSetters
->;
-
 export function applySheinStudioWorkbenchDraft(
   draft: SheinStudioWorkbenchDraftPatch,
 ): SheinStudioWorkbenchAction {

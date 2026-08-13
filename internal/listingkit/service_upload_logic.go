@@ -93,18 +93,6 @@ func (s *service) uploadListingKitImage(ctx context.Context, file ImageUploadInp
 	}, nil
 }
 
-func uploadImagesWithLegacyStore(ctx context.Context, req *UploadImagesRequest, uploadStore ImageUploadStore) (*UploadImagesResponse, error) {
-	response := &UploadImagesResponse{ImageURLs: make([]string, 0, len(req.Files))}
-	for _, file := range req.Files {
-		materialized, err := uploadImageWithLegacyStore(ctx, file, uploadStore)
-		if err != nil {
-			return nil, err
-		}
-		response.ImageURLs = append(response.ImageURLs, materialized.imageURL)
-	}
-	return response, nil
-}
-
 func uploadImageWithLegacyStore(ctx context.Context, file ImageUploadInput, uploadStore ImageUploadStore) (*uploadedImageMaterialization, error) {
 	stored, err := uploadStore.Save(ctx, &file)
 	if err != nil {

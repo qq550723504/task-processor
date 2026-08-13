@@ -1,6 +1,6 @@
 import type { SheinStudioSaveInput } from "@/lib/utils/shein-studio-batches";
 
-export const DRAFT_SAVE_WARNING =
+ const DRAFT_SAVE_WARNING =
   "款式图已生成，但草稿保存失败，刷新后可能丢失。可继续审核，或先保存批次。";
 
 export type DraftSaveOptions = {

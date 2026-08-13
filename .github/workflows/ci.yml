@@ -24,6 +24,9 @@ on:
       - "internal/promptmgmt/**"
       - "internal/listingsubscription/**"
       - "prompts/**"
+      - "scripts/**"
+      - "Makefile"
+      - "docs/refactoring/code-health-decisions.md"
       - "tests/**"
       - "web/listingkit-ui/**"
   pull_request:
@@ -46,6 +49,9 @@ on:
       - "internal/promptmgmt/**"
       - "internal/listingsubscription/**"
       - "prompts/**"
+      - "scripts/**"
+      - "Makefile"
+      - "docs/refactoring/code-health-decisions.md"
       - "tests/**"
       - "web/listingkit-ui/**"
 
@@ -115,6 +121,42 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+  code-health:
+    name: Code Health Ratchet
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/listingkit-ui/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+        working-directory: web/listingkit-ui
+
+      - name: Verify code-health baseline
+        shell: pwsh
+        run: ./scripts/code-health-audit.ps1 -Mode Verify
+
+      - name: Upload code-health reports on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-health-reports
+          path: .local/code-health
+          if-no-files-found: ignore
 
   notify:
     name: WeCom Notification
@@ -197,4 +239,3 @@ jobs:
 
           print("WeCom notification sent successfully.")
           PY
-

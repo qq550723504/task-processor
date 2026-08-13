@@ -8,7 +8,7 @@ export type LocalRemoteDraftState =
   | "synchronized"
   | "conflict";
 
-export type LocalRemoteDraftPersistenceState = "idle" | "saving" | "save_failed";
+ type LocalRemoteDraftPersistenceState = "idle" | "saving" | "save_failed";
 
 export type ClassifyLocalRemoteDraftStateInput = {
   localUpdatedAt?: string;

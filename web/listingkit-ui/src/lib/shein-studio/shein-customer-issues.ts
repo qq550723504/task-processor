@@ -8,7 +8,7 @@ import type {
 import { getSheinSubmissionState } from "@/lib/listingkit/semantic-fields";
 import { isPodSizeImageFallback } from "@/lib/listingkit/pod-execution";
 
-export type CustomerIssueCategory =
+ type CustomerIssueCategory =
   | "图片问题"
   | "类目问题"
   | "普通属性问题"
@@ -18,9 +18,9 @@ export type CustomerIssueCategory =
   | "提交接口问题"
   | "其他问题";
 
-export type CustomerIssueSeverity = "blocking" | "warning" | "error";
+ type CustomerIssueSeverity = "blocking" | "warning" | "error";
 
-export type CustomerIssueActionKey =
+ type CustomerIssueActionKey =
   | "store_login"
   | "images"
   | "category"

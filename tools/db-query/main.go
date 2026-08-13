@@ -100,7 +100,7 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Println(`数据库查询工具
+	fmt.Print(`数据库查询工具
 
 用法:
   db-query --table <表名> [选项]

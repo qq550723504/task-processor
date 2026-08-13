@@ -25,6 +25,11 @@ func (s stubConfigSource) Watch(_ context.Context, _ func([]byte)) error { retur
 
 func (s stubConfigSource) Name() string { return s.name }
 
+func TestUniqueCleanPathsPreservesFirstOccurrenceOrder(t *testing.T) {
+	got := uniqueCleanPaths([]string{"./.env", ".env", "config/../.env", "config/.env", "./config/../.env"})
+	require.Equal(t, []string{".env", filepath.Join("config", ".env")}, got)
+}
+
 func TestNewViper_BindsPrimaryEnvironmentVariables(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_AMAZON_SPAPI_CLIENT_ID", "amzn-client")
 	t.Setenv("TASK_PROCESSOR_AMAZON_SPAPI_DEFAULT_MARKETPLACE", "ATVPDKIKX0DER")
@@ -374,6 +379,21 @@ func TestLoadConfigFromFileDoesNotExposeListingKitOwnerScopeToggle(t *testing.T)
 	assert.Equal(t, "https://issuer.file.example", cfg.ListingKit.Zitadel.IssuerURL)
 	_, exposed := reflect.TypeOf(cfg.ListingKit).FieldByName("OwnerScopeRequired")
 	assert.False(t, exposed, "real config loading must not expose either former owner scope environment variable")
+}
+
+func TestLoadConfigFromFileWithoutValidationPreservesUnvalidatedConfig(t *testing.T) {
+	configPath := filepath.Join(t.TempDir(), "config-test.yaml")
+	require.NoError(t, os.WriteFile(configPath, []byte(strings.Join([]string{
+		"aiCapability:",
+		"  productImageSceneEnabled: not-a-boolean",
+	}, "\n")), 0o600))
+
+	_, err := LoadConfigFromFile(configPath)
+	require.Error(t, err, "validated loading must reject malformed boolean values")
+
+	cfg, err := LoadConfigFromFileWithoutValidation(configPath)
+	require.NoError(t, err)
+	assert.False(t, cfg.AICapability.ProductImageSceneEnabled, "unvalidated loading preserves the builder's zero-value conversion")
 }
 
 func TestBuildConfigReadsMemberInvitationCredentials(t *testing.T) {

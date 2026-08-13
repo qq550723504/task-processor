@@ -3,7 +3,7 @@ import { parseApiResponseShape } from "@/lib/api/response-schema";
 import type { QueueQuery } from "@/lib/types/listingkit";
 import { z } from "zod";
 
-export const listingCategorySchema: z.ZodType<{
+ const listingCategorySchema: z.ZodType<{
   id: number;
   tenantId?: number;
   name: string;
@@ -73,7 +73,7 @@ export function parseCategoryListResponse(
   );
 }
 
-export function parseCategoryResponse(payload: unknown): ListingCategory {
+ function parseCategoryResponse(payload: unknown): ListingCategory {
   return parseApiResponseShape(
     payload,
     listingCategorySchema,

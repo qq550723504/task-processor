@@ -31,7 +31,7 @@ export async function getSDSBaselineReadiness(
   );
 }
 
-export async function warmSDSBaseline(input: SDSBaselineWarmRequest) {
+ async function warmSDSBaseline(input: SDSBaselineWarmRequest) {
   return apiRequest<SDSBaselineReadiness>("/sds/baselines/warm", {
     method: "POST",
     body: {

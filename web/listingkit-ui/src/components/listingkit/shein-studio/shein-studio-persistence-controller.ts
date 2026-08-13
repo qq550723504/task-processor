@@ -228,7 +228,7 @@ export function resetDedicatedBatchPromptOverrides() {
   dedicatedBatchPromptOverrides.clear();
 }
 
-export function getDedicatedBatchPromptOverride(batchId?: string) {
+ function getDedicatedBatchPromptOverride(batchId?: string) {
   const resolvedBatchId = batchId?.trim();
   return resolvedBatchId
     ? dedicatedBatchPromptOverrides.get(resolvedBatchId)
