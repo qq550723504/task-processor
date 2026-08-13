@@ -74,30 +74,33 @@ function Invoke-ProcessPlan($plan, [string]$outputPath) {
     $process = [Diagnostics.Process]::new()
     $process.StartInfo = $psi
     $started = Get-Date
-    if (-not $process.Start()) { throw "Failed to start $($plan.FilePath)" }
-    $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-    $stderrTask = $process.StandardError.ReadToEndAsync()
-    $process.WaitForExit()
-    $stdout = $stdoutTask.GetAwaiter().GetResult()
-    $stderr = $stderrTask.GetAwaiter().GetResult()
-    foreach ($moduleFile in $moduleFiles) {
-        if ($moduleFile.Exists) { [IO.File]::WriteAllBytes($moduleFile.Path, $moduleFile.Bytes) }
-        elseif (Test-Path -LiteralPath $moduleFile.Path) { [IO.File]::Delete($moduleFile.Path) }
-    }
-    $text = if ([string]::IsNullOrEmpty($stderr)) { $stdout } else { "$stdout`n$stderr" }
-    Set-Content -LiteralPath $outputPath -Value $text -NoNewline
-    return [pscustomobject]@{
-        name = $plan.Name
-        command = $plan.FilePath
-        arguments = @($plan.Arguments)
-        working_directory = [IO.Path]::GetRelativePath($repoRoot, $plan.WorkingDirectory)
-        goos = if ($plan.PSObject.Properties.Name -contains "GoOS") { $plan.GoOS } else { $null }
-        test_mode = if ($plan.PSObject.Properties.Name -contains "TestMode") { $plan.TestMode } else { $null }
-        module_mode = if ($plan.PSObject.Properties.Name -contains "ModuleMode") { $plan.ModuleMode } else { $null }
-        output_path = [IO.Path]::GetRelativePath($repoRoot, $outputPath)
-        exit_code = $process.ExitCode
-        started_at = $started.ToUniversalTime().ToString("o")
-        finished_at = (Get-Date).ToUniversalTime().ToString("o")
+    try {
+        if (-not $process.Start()) { throw "Failed to start $($plan.FilePath)" }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $stdout = $stdoutTask.GetAwaiter().GetResult()
+        $stderr = $stderrTask.GetAwaiter().GetResult()
+        $text = if ([string]::IsNullOrEmpty($stderr)) { $stdout } else { "$stdout`n$stderr" }
+        Set-Content -LiteralPath $outputPath -Value $text -NoNewline
+        return [pscustomobject]@{
+            name = $plan.Name
+            command = $plan.FilePath
+            arguments = @($plan.Arguments)
+            working_directory = [IO.Path]::GetRelativePath($repoRoot, $plan.WorkingDirectory)
+            goos = if ($plan.PSObject.Properties.Name -contains "GoOS") { $plan.GoOS } else { $null }
+            test_mode = if ($plan.PSObject.Properties.Name -contains "TestMode") { $plan.TestMode } else { $null }
+            module_mode = if ($plan.PSObject.Properties.Name -contains "ModuleMode") { $plan.ModuleMode } else { $null }
+            output_path = [IO.Path]::GetRelativePath($repoRoot, $outputPath)
+            exit_code = $process.ExitCode
+            started_at = $started.ToUniversalTime().ToString("o")
+            finished_at = (Get-Date).ToUniversalTime().ToString("o")
+        }
+    } finally {
+        foreach ($moduleFile in $moduleFiles) {
+            if ($moduleFile.Exists) { [IO.File]::WriteAllBytes($moduleFile.Path, $moduleFile.Bytes) }
+            elseif (Test-Path -LiteralPath $moduleFile.Path) { [IO.File]::Delete($moduleFile.Path) }
+        }
     }
 }
 
