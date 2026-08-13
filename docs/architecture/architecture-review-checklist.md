@@ -84,6 +84,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestListingKitRootGenerationFilesStayAllowlisted`
 - `TestInfrastructurePackagesDoNotImportBusinessDomains`
 - `TestBusinessImplementationPackagesDoNotImportGinDirectly`
+- `TestProductSourcingHTTPStaysUnderSourceHandoff`
 - `TestDomainHTTPPackagesDoNotImportAppHTTPAPI`
 - `TestAppHTTPAPIRootListingKitHelpersStayAllowlisted`
 - `TestAppHTTPAPIModuleBuildersStayAllowlisted`

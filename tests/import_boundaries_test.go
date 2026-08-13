@@ -11,6 +11,30 @@ import (
 	"testing"
 )
 
+func TestProductSourcingHTTPStaysUnderSourceHandoff(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join("..", "internal")
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(content), `"task-processor/internal/productenrich/httpapi/sourcea1688"`) {
+			t.Errorf("%s imports the duplicate 1688 HTTP owner", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestListingKitDoesNotImportLegacySheinRuntime(t *testing.T) {
 	assertNoBannedImports(t, filepath.Join("..", "internal", "listingkit"), []string{
 		`"task-processor/internal/shein/pipeline"`,
@@ -3212,6 +3236,7 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "listingsubscription", "handler.go")):                    {},
 		filepath.Clean(filepath.Join(root, "productenrich", "handler.go")):                          {},
 	}
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "product", "sourcehandoff", "a1688", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {

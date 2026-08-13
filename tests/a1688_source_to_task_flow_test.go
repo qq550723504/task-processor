@@ -16,7 +16,7 @@ import (
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
 	a1688 "task-processor/internal/product/sourcehandoff/a1688"
-	sourcea1688 "task-processor/internal/productenrich/httpapi/sourcea1688"
+	sourcea1688 "task-processor/internal/product/sourcehandoff/a1688/httpapi"
 )
 
 func TestAlibaba1688HTTPReplayCreatesTaskAndPreservesSourceFacts(t *testing.T) {
