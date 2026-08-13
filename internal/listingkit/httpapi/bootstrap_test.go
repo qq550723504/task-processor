@@ -505,8 +505,8 @@ func TestBuildListingKitServiceConfigMapsRegistrarOutputs(t *testing.T) {
 	if cfg.Shein.SheinAPIClientFactory != apiFactory {
 		t.Fatal("expected shein api client factory to be mapped from submit module")
 	}
-	if cfg.Shein.SheinDefaultStoreID != 0 {
-		t.Fatalf("default shein store id = %d, want 0", cfg.Shein.SheinDefaultStoreID)
+	if _, ok := reflect.TypeOf(cfg.Shein).FieldByName("SheinDefaultStoreID"); ok {
+		t.Fatal("listingkit SHEIN dependencies still expose SheinDefaultStoreID")
 	}
 }
 
@@ -971,8 +971,8 @@ func TestBuildSubmitModuleResolvesSheinRegistrarDependencies(t *testing.T) {
 	if got := module.studio.imageGenerator.GetDefaultModel(); got != "studio-model" {
 		t.Fatalf("studio image generator default model = %q, want studio-model", got)
 	}
-	if module.shein.defaultStoreID != 0 {
-		t.Fatalf("default shein store id = %d, want 0", module.shein.defaultStoreID)
+	if _, ok := reflect.TypeOf(module.shein).FieldByName("defaultStoreID"); ok {
+		t.Fatal("submit SHEIN dependencies still contain defaultStoreID")
 	}
 	if module.assets.assembler == nil {
 		t.Fatal("expected assembler to be built from submit-scoped dependencies")
@@ -1094,8 +1094,8 @@ func TestBuildSubmitModuleResolvesSubmitScopedHooks(t *testing.T) {
 	if module.assets.imageUploadStore != uploadStore {
 		t.Fatal("expected submit image upload store to be built from scoped hooks")
 	}
-	if module.shein.defaultStoreID != 0 {
-		t.Fatalf("default shein store id = %d, want 0", module.shein.defaultStoreID)
+	if _, ok := reflect.TypeOf(module.shein).FieldByName("defaultStoreID"); ok {
+		t.Fatal("submit SHEIN dependencies still contain defaultStoreID")
 	}
 	if module.shein.contentOptimizer != nil {
 		t.Fatal("expected omitted shein optimizer hook to leave zero value output")

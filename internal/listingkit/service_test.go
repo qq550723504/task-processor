@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -85,34 +86,70 @@ func TestNormalizeGenerateRequestEnablesProcessImagesWhenSceneOptionsProvided(t 
 	}
 }
 
-func TestApplyGenerateRequestDefaultsSetsSheinStoreIDForSingleStoreConfig(t *testing.T) {
+func TestBuildListingKitServiceContractOmitsDefaultSheinStoreWiring(t *testing.T) {
 	t.Parallel()
 
-	req := &GenerateRequest{
-		Text:      "demo",
-		Platforms: []string{"shein"},
+	tests := []struct {
+		name      string
+		contract  reflect.Type
+		fieldName string
+	}{
+		{
+			name:      "service SHEIN dependencies",
+			contract:  reflect.TypeOf(ServiceSheinDependencies{}),
+			fieldName: "SheinDefaultStoreID",
+		},
+		{
+			name:      "task dependencies",
+			contract:  reflect.TypeOf(taskDependencies{}),
+			fieldName: "requestDefaults",
+		},
+		{
+			name:      "task lifecycle config",
+			contract:  reflect.TypeOf(taskLifecycleServiceConfig{}),
+			fieldName: "requestDefaults",
+		},
+		{
+			name:      "task lifecycle service",
+			contract:  reflect.TypeOf(taskLifecycleService{}),
+			fieldName: "requestDefaults",
+		},
 	}
 
-	applyGenerateRequestDefaults(req, generateRequestDefaults{sheinDefaultStoreID: 873})
-
-	if req.SheinStoreID != 873 {
-		t.Fatalf("shein_store_id = %d, want 873", req.SheinStoreID)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, ok := tt.contract.FieldByName(tt.fieldName); ok {
+				t.Fatalf("%s still contains default-store field %q", tt.contract, tt.fieldName)
+			}
+		})
 	}
 }
 
-func TestApplyGenerateRequestDefaultsKeepsExplicitSheinStoreID(t *testing.T) {
+func TestBuildListingKitRequestPreparationNormalizesWithoutDefaultingSheinStore(t *testing.T) {
 	t.Parallel()
 
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{})
 	req := &GenerateRequest{
-		Text:         "demo",
-		Platforms:    []string{"shein"},
-		SheinStoreID: 431,
+		Text:      "demo",
+		Platforms: []string{" SHEIN "},
 	}
 
-	applyGenerateRequestDefaults(req, generateRequestDefaults{sheinDefaultStoreID: 873})
+	_, task, err := lifecycle.prepareGenerateTask(context.Background(), req)
+	if err != nil {
+		t.Fatalf("prepareGenerateTask() error = %v", err)
+	}
 
-	if req.SheinStoreID != 431 {
-		t.Fatalf("shein_store_id = %d, want 431", req.SheinStoreID)
+	if req.SheinStoreID != 0 {
+		t.Fatalf("request shein_store_id = %d, want 0", req.SheinStoreID)
+	}
+	if task.Request.SheinStoreID != 0 {
+		t.Fatalf("task request shein_store_id = %d, want 0", task.Request.SheinStoreID)
+	}
+	if req.Country != "US" || req.Language != "en_US" {
+		t.Fatalf("normalized locale = %q/%q, want US/en_US", req.Country, req.Language)
+	}
+	if len(req.Platforms) != 1 || req.Platforms[0] != "shein" {
+		t.Fatalf("normalized platforms = %#v, want [shein]", req.Platforms)
 	}
 }
 

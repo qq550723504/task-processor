@@ -2,15 +2,6 @@ package listingkit
 
 import listingsubmission "task-processor/internal/listing/submission"
 
-func buildGenerateRequestDefaults(config *ServiceConfig) generateRequestDefaults {
-	if config == nil {
-		return generateRequestDefaults{}
-	}
-	return generateRequestDefaults{
-		sheinDefaultStoreID: config.Shein.SheinDefaultStoreID,
-	}
-}
-
 func buildTaskDependencies(config *ServiceConfig) taskDependencies {
 	if config == nil {
 		return taskDependencies{}
@@ -18,7 +9,6 @@ func buildTaskDependencies(config *ServiceConfig) taskDependencies {
 	return taskDependencies{
 		sdsLoginStatusProvider:       config.Core.SDSLoginStatusProvider,
 		taskSubmitter:                config.Core.TaskSubmitter,
-		requestDefaults:              buildGenerateRequestDefaults(config),
 		standardWorkflowClient:       config.Workflow.StandardProductWorkflowClient,
 		standardWorkflowEnabled:      config.Workflow.StandardProductWorkflowEnabled,
 		platformAdaptWorkflowClient:  config.Workflow.PlatformAdaptWorkflowClient,

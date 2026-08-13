@@ -119,9 +119,7 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 		req.TenantID = TenantIDFromContext(ctx)
 	}
 	ctx = WithTenantID(ctx, req.TenantID)
-	if s.requestDefaults != nil {
-		applyGenerateRequestDefaults(req, s.requestDefaults())
-	}
+	normalizeGenerateRequest(req)
 	if err := validateRequest(req); err != nil {
 		return ctx, nil, fmt.Errorf("invalid request: %w", err)
 	}
