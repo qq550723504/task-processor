@@ -2,10 +2,14 @@ package openmeter
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"reflect"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -33,6 +37,79 @@ type pocRoundTripFunc func(*http.Request) (*http.Response, error)
 
 func (fn pocRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
 	return fn(request)
+}
+
+const pocConflictBody = `{"status":409,"title":"Conflict","detail":"fixture key already exists"}`
+
+type pocSDKStep struct {
+	Method string
+	Path   string
+	Query  url.Values
+	Status int
+	Body   string
+}
+
+type pocSequenceTransport struct {
+	steps    []pocSDKStep
+	next     int
+	failures []string
+}
+
+func (transport *pocSequenceTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if transport.next >= len(transport.steps) {
+		transport.failures = append(transport.failures, fmt.Sprintf("unexpected request %s %s", request.Method, request.URL.String()))
+		return nil, errors.New("unexpected OpenMeter SDK request")
+	}
+
+	step := transport.steps[transport.next]
+	transport.next++
+	if request.Method != step.Method {
+		transport.failures = append(transport.failures, fmt.Sprintf("request %d method = %s, want %s", transport.next, request.Method, step.Method))
+	}
+	if request.URL.Path != step.Path {
+		transport.failures = append(transport.failures, fmt.Sprintf("request %d path = %s, want %s", transport.next, request.URL.Path, step.Path))
+	}
+	actualQuery := request.URL.Query()
+	queriesEqual := len(actualQuery) == 0 && len(step.Query) == 0
+	if !queriesEqual && !reflect.DeepEqual(actualQuery, step.Query) {
+		transport.failures = append(transport.failures, fmt.Sprintf("request %d query = %v, want %v", transport.next, request.URL.Query(), step.Query))
+	}
+
+	return &http.Response{
+		StatusCode: step.Status,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(step.Body)),
+		Request:    request,
+	}, nil
+}
+
+func (transport *pocSequenceTransport) Verify(t *testing.T) {
+	t.Helper()
+	for _, failure := range transport.failures {
+		t.Error(failure)
+	}
+	if transport.next != len(transport.steps) {
+		t.Errorf("official OpenMeter SDK made %d requests, want %d", transport.next, len(transport.steps))
+	}
+}
+
+func newPoCSequenceSDK(t *testing.T, steps ...pocSDKStep) (*openmeterapi.Client, *pocSequenceTransport) {
+	t.Helper()
+	transport := &pocSequenceTransport{steps: steps}
+	sdk, err := openmeterapi.New("http://openmeter.invalid/api/v3", openmeterapi.WithHTTPClient(&http.Client{Transport: transport}))
+	if err != nil {
+		t.Fatalf("construct official OpenMeter SDK: %v", err)
+	}
+	return sdk, transport
+}
+
+func marshalPoCTestJSON(t *testing.T, value any) string {
+	t.Helper()
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal official OpenMeter test response: %v", err)
+	}
+	return string(encoded)
 }
 
 func pocMeterRequests(names pocNames) []openmeterapi.CreateMeterRequest {
@@ -269,16 +346,24 @@ func findPoCMeterByKey(ctx context.Context, sdk *openmeterapi.Client, key string
 }
 
 func waitForPoCMeter(ctx context.Context, sdk *openmeterapi.Client, meterID string) (*openmeterapi.Meter, error) {
-	ticker := time.NewTicker(pocMeterPollInterval)
+	return waitForPoCMeterWithin(ctx, sdk, meterID, pocMeterPollInterval, pocMeterPollTimeout)
+}
+
+func waitForPoCMeterWithin(ctx context.Context, sdk *openmeterapi.Client, meterID string, interval, timeout time.Duration) (*openmeterapi.Meter, error) {
+	pollContext, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
-	timer := time.NewTimer(pocMeterPollTimeout)
-	defer timer.Stop()
 
 	lastResult := "no visibility request completed"
 	for {
-		meter, err := sdk.Meters.Get(ctx, meterID)
+		meter, err := sdk.Meters.Get(pollContext, meterID)
 		if err == nil {
 			return meter, nil
+		}
+		if pollContext.Err() != nil {
+			return nil, meterPollContextError(ctx, pollContext, timeout, lastResult)
 		}
 		apiErr, isAPIError := openmeterapi.AsAPIError(err)
 		if !isAPIError || apiErr.StatusCode != http.StatusNotFound {
@@ -287,13 +372,18 @@ func waitForPoCMeter(ctx context.Context, sdk *openmeterapi.Client, meterID stri
 		lastResult = err.Error()
 
 		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("context ended after last result %q: %w", lastResult, ctx.Err())
-		case <-timer.C:
-			return nil, fmt.Errorf("timed out after %s; last result: %s", pocMeterPollTimeout, lastResult)
+		case <-pollContext.Done():
+			return nil, meterPollContextError(ctx, pollContext, timeout, lastResult)
 		case <-ticker.C:
 		}
 	}
+}
+
+func meterPollContextError(parentContext, pollContext context.Context, timeout time.Duration, lastResult string) error {
+	if parentContext.Err() != nil {
+		return fmt.Errorf("meter visibility context ended after last result %q: %w", lastResult, parentContext.Err())
+	}
+	return fmt.Errorf("meter visibility timed out after %s; last result: %s: %w", timeout, lastResult, pollContext.Err())
 }
 
 func ensurePoCFeature(ctx context.Context, sdk *openmeterapi.Client, request openmeterapi.CreateFeatureRequest) (*openmeterapi.Feature, error) {
@@ -755,6 +845,219 @@ func TestPoCFixtureValidationRejectsIncompatibleExistingResources(t *testing.T) 
 	if err := validatePoCSubscription(subscriptionRequest, &subscription); err == nil {
 		t.Fatal("validatePoCSubscription() canceled status error = nil")
 	}
+}
+
+func TestWaitForPoCMeterCancelsInFlightRequestAtTotalDeadline(t *testing.T) {
+	var requestCanceled atomic.Bool
+	httpClient := &http.Client{Transport: pocRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+		<-request.Context().Done()
+		requestCanceled.Store(true)
+		return nil, request.Context().Err()
+	})}
+	sdk, err := openmeterapi.New("http://openmeter.invalid/api/v3", openmeterapi.WithHTTPClient(httpClient))
+	if err != nil {
+		t.Fatalf("construct official OpenMeter SDK: %v", err)
+	}
+
+	parentContext, cancel := context.WithTimeout(t.Context(), 500*time.Millisecond)
+	defer cancel()
+	startedAt := time.Now()
+	_, err = waitForPoCMeterWithin(parentContext, sdk, "meter-studio", time.Millisecond, 20*time.Millisecond)
+	elapsed := time.Since(startedAt)
+	if err == nil {
+		t.Fatal("waitForPoCMeterWithin() error = nil, want total-deadline error")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("waitForPoCMeterWithin() error = %v, want context deadline exceeded", err)
+	}
+	if !requestCanceled.Load() {
+		t.Fatal("meter visibility request context was not canceled")
+	}
+	if elapsed >= 250*time.Millisecond {
+		t.Fatalf("waitForPoCMeterWithin() elapsed = %s, want below 250ms", elapsed)
+	}
+}
+
+func TestEnsurePoCMeterConflictFetchesExactKeyAndRejectsIncompatibleConfig(t *testing.T) {
+	request := pocMeterRequests(pocNamesForRunID("run-42"))[0]
+	existing := openmeterapi.Meter{
+		ID:          "meter-studio",
+		Name:        request.Name,
+		Key:         request.Key,
+		Aggregation: request.Aggregation,
+		EventType:   "listingkit.usage.wrong",
+	}
+	sdk, transport := newPoCSequenceSDK(t,
+		pocSDKStep{Method: http.MethodPost, Path: "/api/v3/openmeter/meters", Status: http.StatusConflict, Body: pocConflictBody},
+		pocSDKStep{
+			Method: http.MethodGet,
+			Path:   "/api/v3/openmeter/meters",
+			Query:  url.Values{"filter[key][eq]": []string{request.Key}},
+			Status: http.StatusOK,
+			Body: marshalPoCTestJSON(t, openmeterapi.MeterPagePaginatedResponse{
+				Data: []openmeterapi.Meter{existing},
+			}),
+		},
+	)
+
+	_, err := ensurePoCMeter(t.Context(), sdk, request)
+	if err == nil || !strings.Contains(err.Error(), "incompatible configuration") {
+		t.Fatalf("ensurePoCMeter() error = %v, want incompatible conflict error", err)
+	}
+	transport.Verify(t)
+}
+
+func TestEnsurePoCFeatureConflictFetchesExactKeyAndRejectsFilters(t *testing.T) {
+	request := openmeterapi.CreateFeatureRequest{
+		Name:  "poc-run-42-studio-feature",
+		Key:   "poc-run-42-studio-feature",
+		Meter: &openmeterapi.FeatureMeterReferenceInput{ID: "meter-studio"},
+	}
+	existing := openmeterapi.Feature{
+		ID:   "feature-studio",
+		Name: request.Name,
+		Key:  request.Key,
+		Meter: &openmeterapi.FeatureMeterReference{
+			ID:      "meter-studio",
+			Filters: map[string]openmeterapi.QueryFilterStringMapItem{"region": {}},
+		},
+	}
+	sdk, transport := newPoCSequenceSDK(t,
+		pocSDKStep{Method: http.MethodPost, Path: "/api/v3/openmeter/features", Status: http.StatusConflict, Body: pocConflictBody},
+		pocSDKStep{
+			Method: http.MethodGet,
+			Path:   "/api/v3/openmeter/features",
+			Query:  url.Values{"filter[key][eq]": []string{request.Key}},
+			Status: http.StatusOK,
+			Body: marshalPoCTestJSON(t, openmeterapi.FeaturePagePaginatedResponse{
+				Data: []openmeterapi.Feature{existing},
+			}),
+		},
+	)
+
+	_, err := ensurePoCFeature(t.Context(), sdk, request)
+	if err == nil || !strings.Contains(err.Error(), "incompatible configuration") {
+		t.Fatalf("ensurePoCFeature() error = %v, want incompatible filters error", err)
+	}
+	transport.Verify(t)
+}
+
+func TestEnsurePoCCustomerConflictFetchesExactKeyAndRejectsAttribution(t *testing.T) {
+	request := pocCustomerRequests(pocNamesForRunID("run-42"))[0]
+	existing := openmeterapi.Customer{
+		ID:               "customer-a",
+		Name:             request.Name,
+		Key:              request.Key,
+		Currency:         request.Currency,
+		UsageAttribution: &openmeterapi.CustomerUsageAttribution{SubjectKeys: []string{"tenant:wrong"}},
+	}
+	sdk, transport := newPoCSequenceSDK(t,
+		pocSDKStep{Method: http.MethodPost, Path: "/api/v3/openmeter/customers", Status: http.StatusConflict, Body: pocConflictBody},
+		pocSDKStep{
+			Method: http.MethodGet,
+			Path:   "/api/v3/openmeter/customers",
+			Query:  url.Values{"filter[key][eq]": []string{request.Key}},
+			Status: http.StatusOK,
+			Body: marshalPoCTestJSON(t, openmeterapi.CustomerPagePaginatedResponse{
+				Data: []openmeterapi.Customer{existing},
+			}),
+		},
+	)
+
+	_, err := ensurePoCCustomer(t.Context(), sdk, request)
+	if err == nil || !strings.Contains(err.Error(), "incompatible configuration") {
+		t.Fatalf("ensurePoCCustomer() error = %v, want incompatible attribution error", err)
+	}
+	transport.Verify(t)
+}
+
+func TestEnsurePoCPlanConflictFetchesExactKeyAndRejectsConfig(t *testing.T) {
+	request, err := pocPlanRequest(pocNamesForRunID("run-42"), "feature-studio", "feature-shein", "feature-storage")
+	if err != nil {
+		t.Fatalf("pocPlanRequest() error = %v", err)
+	}
+	existing := compatiblePoCPlan(request)
+	existing.Currency = "EUR"
+	sdk, transport := newPoCSequenceSDK(t,
+		pocSDKStep{Method: http.MethodPost, Path: "/api/v3/openmeter/plans", Status: http.StatusConflict, Body: pocConflictBody},
+		pocSDKStep{
+			Method: http.MethodGet,
+			Path:   "/api/v3/openmeter/plans",
+			Query:  url.Values{"filter[key][eq]": []string{request.Key}},
+			Status: http.StatusOK,
+			Body: marshalPoCTestJSON(t, openmeterapi.PlanPagePaginatedResponse{
+				Data: []openmeterapi.Plan{existing},
+			}),
+		},
+	)
+
+	_, err = ensurePoCPlan(t.Context(), sdk, request)
+	if err == nil || !strings.Contains(err.Error(), "incompatible top-level configuration") {
+		t.Fatalf("ensurePoCPlan() error = %v, want incompatible plan error", err)
+	}
+	transport.Verify(t)
+}
+
+func TestEnsurePoCPlanPublishesDraftAndSubscriptionCreatesThenReuses(t *testing.T) {
+	planRequest, err := pocPlanRequest(pocNamesForRunID("run-42"), "feature-studio", "feature-shein", "feature-storage")
+	if err != nil {
+		t.Fatalf("pocPlanRequest() error = %v", err)
+	}
+	draftPlan := compatiblePoCPlan(planRequest)
+	activePlan := compatiblePoCPlan(planRequest)
+	activePlan.Status = openmeterapi.PlanStatusActive
+	customerID := "customer-a"
+	activeSubscription := openmeterapi.BillingSubscription{
+		ID:         "subscription-a",
+		CustomerID: customerID,
+		PlanID:     &activePlan.ID,
+		Status:     openmeterapi.SubscriptionStatusActive,
+	}
+	sdk, transport := newPoCSequenceSDK(t,
+		pocSDKStep{Method: http.MethodPost, Path: "/api/v3/openmeter/plans", Status: http.StatusCreated, Body: marshalPoCTestJSON(t, draftPlan)},
+		pocSDKStep{Method: http.MethodPost, Path: "/api/v3/openmeter/plans/plan-1/publish", Status: http.StatusOK, Body: marshalPoCTestJSON(t, activePlan)},
+		pocSDKStep{
+			Method: http.MethodGet,
+			Path:   "/api/v3/openmeter/subscriptions",
+			Query: url.Values{
+				"filter[customer_id][eq]": []string{customerID},
+				"filter[plan_id][eq]":     []string{activePlan.ID},
+			},
+			Status: http.StatusOK,
+			Body:   marshalPoCTestJSON(t, openmeterapi.SubscriptionPagePaginatedResponse{}),
+		},
+		pocSDKStep{Method: http.MethodPost, Path: "/api/v3/openmeter/subscriptions", Status: http.StatusCreated, Body: marshalPoCTestJSON(t, activeSubscription)},
+		pocSDKStep{
+			Method: http.MethodGet,
+			Path:   "/api/v3/openmeter/subscriptions",
+			Query: url.Values{
+				"filter[customer_id][eq]": []string{customerID},
+				"filter[plan_id][eq]":     []string{activePlan.ID},
+			},
+			Status: http.StatusOK,
+			Body: marshalPoCTestJSON(t, openmeterapi.SubscriptionPagePaginatedResponse{
+				Data: []openmeterapi.BillingSubscription{activeSubscription},
+			}),
+		},
+	)
+
+	plan, err := ensurePoCPlan(t.Context(), sdk, planRequest)
+	if err != nil {
+		t.Fatalf("ensurePoCPlan() error = %v", err)
+	}
+	request := pocSubscriptionRequest(customerID, plan.ID)
+	created, err := ensurePoCSubscription(t.Context(), sdk, request)
+	if err != nil {
+		t.Fatalf("ensurePoCSubscription() create error = %v", err)
+	}
+	reused, err := ensurePoCSubscription(t.Context(), sdk, request)
+	if err != nil {
+		t.Fatalf("ensurePoCSubscription() reuse error = %v", err)
+	}
+	if created.ID != "subscription-a" || reused.ID != created.ID {
+		t.Fatalf("subscription IDs = created %q, reused %q", created.ID, reused.ID)
+	}
+	transport.Verify(t)
 }
 
 func compatiblePoCPlan(request openmeterapi.CreatePlanRequest) openmeterapi.Plan {
