@@ -74,12 +74,6 @@ export function buildGroupedGenerationTargets({
   return [...buckets.values()];
 }
 
-export function buildSharedBySizeGroupKey(selection: SDSProductVariantSelection) {
-  const width = selection.printableWidth ?? 0;
-  const height = selection.printableHeight ?? 0;
-  return `size:${width}x${height}`;
-}
-
 export function buildSharedCompatibilityGroupKey(
   selection: SDSProductVariantSelection,
 ) {
@@ -87,7 +81,7 @@ export function buildSharedCompatibilityGroupKey(
   return normalized ? `compat:${sha1Hex(normalized)}` : "";
 }
 
-export function buildSharedCompatibilityRawKey(
+ function buildSharedCompatibilityRawKey(
   selection: SDSProductVariantSelection,
 ) {
   const parentProductId = selection.parentProductId ?? 0;
@@ -122,7 +116,7 @@ export function buildSharedCompatibilityRawKey(
   ].join("|");
 }
 
-export function buildSharedBySizeGroupLabel(selection: SDSProductVariantSelection) {
+ function buildSharedBySizeGroupLabel(selection: SDSProductVariantSelection) {
   const width = selection.printableWidth ?? 0;
   const height = selection.printableHeight ?? 0;
   return width > 0 && height > 0
@@ -130,7 +124,7 @@ export function buildSharedBySizeGroupLabel(selection: SDSProductVariantSelectio
     : "自动尺寸";
 }
 
-export function buildPerProductLabel(selection: SDSProductVariantSelection) {
+ function buildPerProductLabel(selection: SDSProductVariantSelection) {
   const productName = selection.productName?.trim() || "SDS 商品";
   const variantLabel = selection.variantLabel?.trim();
   return variantLabel ? `${productName} · ${variantLabel}` : productName;

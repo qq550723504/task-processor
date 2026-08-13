@@ -40,8 +40,6 @@ import {
 } from "@/lib/shein-studio/sds-selectable-images";
 import type { SheinStudioWorkbenchState } from "@/components/listingkit/shein-studio/shein-studio-workbench-state";
 
-export const STUDIO_SESSION_SYNC_TIMEOUT_MS = 15_000;
-
 type SheinStoreOptionProjectionInput = {
   currentStoreId?: string | null;
   enabledProfiles: Array<Parameters<typeof formatSheinStoreOptionLabel>[0]>;
@@ -124,7 +122,7 @@ export function selectActiveGroupPrimarySelection({
   return groups.find((group) => group.id === activeGroupId)?.primarySelection;
 }
 
-export function resolveArtworkGenerationMode(input: {
+ function resolveArtworkGenerationMode(input: {
   artworkGenerationMode?: SheinStudioArtworkGenerationMode;
   hotStyleReferenceImageUrls?: string[];
   hotStyleReferenceBrief?: string;

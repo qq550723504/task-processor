@@ -8,7 +8,7 @@ export const platformOptions = [
   { value: "temu", label: "Temu" },
 ] as const;
 
-export const supportedPlatformValues = platformOptions.map((platform) => platform.value);
+ const supportedPlatformValues = platformOptions.map((platform) => platform.value);
 
 export const sceneCategoryOptions = [
   { value: "", label: "自动" },

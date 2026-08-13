@@ -11,6 +11,30 @@ import (
 	"testing"
 )
 
+func TestProductSourcingHTTPStaysUnderSourceHandoff(t *testing.T) {
+	t.Parallel()
+	root := filepath.Join("..", "internal")
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(content), `"task-processor/internal/productenrich/httpapi/sourcea1688"`) {
+			t.Errorf("%s imports the duplicate 1688 HTTP owner", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestListingKitDoesNotImportLegacySheinRuntime(t *testing.T) {
 	assertNoBannedImports(t, filepath.Join("..", "internal", "listingkit"), []string{
 		`"task-processor/internal/shein/pipeline"`,
@@ -3212,6 +3236,7 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "listingsubscription", "handler.go")):                    {},
 		filepath.Clean(filepath.Join(root, "productenrich", "handler.go")):                          {},
 	}
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "product", "sourcehandoff", "a1688", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {
@@ -4191,8 +4216,7 @@ func TestTemporalRuntimePackagesDoNotImportHTTPAPI(t *testing.T) {
 func TestAppHTTPAPIRootListingKitHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "app", "httpapi")
 	allowed := map[string]struct{}{
-		"listingkit_shein_support.go":   {},
-		"listingkit_temporal_worker.go": {},
+		"listingkit_shein_support.go": {},
 	}
 
 	entries, err := os.ReadDir(root)
@@ -4610,7 +4634,6 @@ func TestAppHTTPAPIListingKitHTTPAPIImportsStayAllowlisted(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "feature_module_builders.go")):    {},
 		filepath.Clean(filepath.Join(root, "feature_builder_listingkit.go")): {},
 		filepath.Clean(filepath.Join(root, "http_modules.go")):               {},
-		filepath.Clean(filepath.Join(root, "listingkit_temporal_worker.go")): {},
 		filepath.Clean(filepath.Join(root, "runtime_login_modules.go")):      {},
 		filepath.Clean(filepath.Join(root, "runtime.go")):                    {},
 		filepath.Clean(filepath.Join(root, "runtime_deps_methods.go")):       {},

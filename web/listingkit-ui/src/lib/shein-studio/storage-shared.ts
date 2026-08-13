@@ -19,7 +19,6 @@ import type {
   SheinStudioProductImagePrompt,
   SheinStudioSelectedSDSImage,
   SheinStudioSavedBatch,
-  SheinStudioStorageData,
   SheinStudioTransparencyMode,
   SheinStudioVariationIntensity,
 } from "@/lib/types/shein-studio";
@@ -28,8 +27,6 @@ import { normalizeSelectedSDSImages } from "@/lib/shein-studio/sds-selectable-im
 type LegacyBatchStatusCarrier = {
   sessionStatus?: unknown;
 };
-
-export const MAX_SHEIN_STUDIO_BATCHES = 12;
 export const DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY: SheinStudioImageStrategy =
   "sds_official";
 export const DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT = "5";
@@ -105,19 +102,19 @@ export const SHEIN_STUDIO_PRODUCT_IMAGE_ROLES = [
   },
 ] as const;
 
-export function normalizeImageStrategy(value: unknown): SheinStudioImageStrategy {
+ function normalizeImageStrategy(value: unknown): SheinStudioImageStrategy {
   return value === "sds_official" || value === "hybrid" || value === "ai_generated"
     ? value
     : "sds_official";
 }
 
-export function normalizeArtworkModel(value: unknown): SheinStudioArtworkModel {
+ function normalizeArtworkModel(value: unknown): SheinStudioArtworkModel {
   return typeof value === "string"
     ? value.trim()
     : DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL;
 }
 
-export function normalizeGroupedImageMode(
+ function normalizeGroupedImageMode(
   value: unknown,
 ): SheinStudioGroupedImageMode {
   return value === "per_product" || value === "shared_by_size"
@@ -125,7 +122,7 @@ export function normalizeGroupedImageMode(
     : DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE;
 }
 
-export function normalizeVariationIntensity(
+ function normalizeVariationIntensity(
   value: unknown,
 ): SheinStudioVariationIntensity {
   return value === "light" || value === "medium" || value === "strong"
@@ -133,11 +130,11 @@ export function normalizeVariationIntensity(
     : DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY;
 }
 
-export function normalizePromptMode(value: unknown) {
+ function normalizePromptMode(value: unknown) {
   return value === "raw" ? "raw" : "managed";
 }
 
-export function normalizeArtworkGenerationMode(
+ function normalizeArtworkGenerationMode(
   value: unknown,
 ): SheinStudioArtworkGenerationMode | undefined {
   return value === "hot_reference" || value === "theme_prompt"
@@ -145,7 +142,7 @@ export function normalizeArtworkGenerationMode(
     : undefined;
 }
 
-export function normalizeTransparencyMode(
+ function normalizeTransparencyMode(
   value: unknown,
   transparentBackground?: boolean,
 ): SheinStudioTransparencyMode {
@@ -183,7 +180,7 @@ function normalizeHotStyleReferenceText(value: unknown) {
   return typeof value === "string" ? value : "";
 }
 
-export function isGeneratedDesign(item: unknown): item is SheinStudioGeneratedDesign {
+ function isGeneratedDesign(item: unknown): item is SheinStudioGeneratedDesign {
   return (
     !!item &&
     typeof item === "object" &&
@@ -203,32 +200,6 @@ function normalizeGeneratedDesign(item: SheinStudioGeneratedDesign) {
         ? item.targetGroupLabel.trim()
         : undefined,
   } satisfies SheinStudioGeneratedDesign;
-}
-
-export function dedupeGeneratedDesignsByID(
-  designs: SheinStudioGeneratedDesign[],
-): SheinStudioGeneratedDesign[] {
-  const nextByID = new Map<string, SheinStudioGeneratedDesign>();
-  for (const design of designs) {
-    if (!design?.id?.trim()) {
-      continue;
-    }
-    nextByID.set(design.id, normalizeGeneratedDesign(design));
-  }
-  return Array.from(nextByID.values());
-}
-
-export function isCreatedTask(item: unknown): item is SheinStudioCreatedTask {
-  const raw = item as
-    | (SheinStudioCreatedTask & { design_id?: string })
-    | undefined;
-  return (
-    !!item &&
-    typeof item === "object" &&
-    typeof raw?.id === "string" &&
-    typeof raw?.title === "string" &&
-    (typeof raw?.designId === "string" || typeof raw?.design_id === "string")
-  );
 }
 
 function normalizeCreatedTasks(input: unknown): SheinStudioCreatedTask[] {
@@ -392,7 +363,7 @@ function isSelection(item: unknown): item is SDSProductVariantSelection {
   );
 }
 
-export function normalizeSelection(selection: unknown) {
+ function normalizeSelection(selection: unknown) {
   return isSelection(selection) ? selection : undefined;
 }
 
@@ -804,25 +775,6 @@ export function normalizeBatch(raw: Partial<SheinStudioSavedBatch> | null | unde
   } satisfies SheinStudioSavedBatch;
 }
 
-export function normalizeStorageData(raw: unknown): SheinStudioStorageData {
-  if (!raw || typeof raw !== "object") {
-    return { draft: null, batches: [] };
-  }
-
-  const parsed = raw as Partial<SheinStudioStorageData>;
-  const batches = Array.isArray(parsed.batches)
-    ? parsed.batches
-        .map((item) => normalizeBatch(item as Partial<SheinStudioSavedBatch>))
-        .filter((item): item is NonNullable<typeof item> => Boolean(item))
-        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
-    : [];
-
-  return {
-    draft: normalizeDraft(parsed.draft),
-    batches,
-  };
-}
-
 export function buildSelectionSummary(selection?: SDSProductVariantSelection) {
   if (!selection) {
     return undefined;
@@ -863,12 +815,4 @@ export function buildSelectionSummary(selection?: SDSProductVariantSelection) {
       mockupImageUrl: variant.mockupImageUrl,
     })),
   } satisfies SDSProductVariantSelection;
-}
-
-export function deriveBatchName(prompt: string) {
-  const trimmed = prompt.trim();
-  if (!trimmed) {
-    return "未命名批次";
-  }
-  return trimmed.length > 36 ? `${trimmed.slice(0, 36)}...` : trimmed;
 }

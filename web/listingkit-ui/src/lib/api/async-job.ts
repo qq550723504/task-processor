@@ -5,7 +5,7 @@ import {
   ResponseJsonParseError,
 } from "@/lib/api/response-json";
 
-export type AsyncJobResponse<T> = {
+ type AsyncJobResponse<T> = {
   job_id: string;
   status: "running" | "succeeded" | "failed";
   result?: T;
@@ -190,7 +190,7 @@ export async function pollAsyncJob<T>(
   );
 }
 
-export async function resumeAsyncJob<T>(
+ async function resumeAsyncJob<T>(
   jobId: string,
   options: PollAsyncJobOptions,
 ): Promise<T> {

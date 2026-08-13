@@ -1,6 +1,8 @@
 package workspace
 
 import (
+	"strconv"
+	"task-processor/internal/pkg/strx"
 	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -54,15 +56,15 @@ func buildCategoryInspectionSection(pkg *sheinpub.Package) sheinpub.InspectionSe
 	}
 
 	section.Status = firstNonEmpty(pkg.CategoryResolution.Status, "unresolved")
-	section.Summary = joinStrings(pkg.CategoryPath, " > ")
+	section.Summary = strx.JoinNonBlank(pkg.CategoryPath, " > ")
 	if section.Summary == "" {
 		section.Summary = "未命中类目路径"
 	}
 	if pkg.CategoryID > 0 {
-		section.Highlights = append(section.Highlights, "category_id 已解析: "+formatInt(pkg.CategoryID))
+		section.Highlights = append(section.Highlights, "category_id 已解析: "+strconv.Itoa(pkg.CategoryID))
 	}
 	if pkg.ProductTypeID != nil {
-		section.Highlights = append(section.Highlights, "product_type_id 已解析: "+formatInt(*pkg.ProductTypeID))
+		section.Highlights = append(section.Highlights, "product_type_id 已解析: "+strconv.Itoa(*pkg.ProductTypeID))
 	}
 	section.ActionItems = append(section.ActionItems, pkg.CategoryResolution.ReviewNotes...)
 	section.Actions = buildCategoryActions(pkg)
@@ -80,13 +82,13 @@ func buildAttributeInspectionSection(pkg *sheinpub.Package) sheinpub.InspectionS
 	}
 
 	section.Status = firstNonEmpty(pkg.AttributeResolution.Status, "unresolved")
-	section.Summary = "已解析 " + formatInt(pkg.AttributeResolution.ResolvedCount) + " 个属性"
+	section.Summary = "已解析 " + strconv.Itoa(pkg.AttributeResolution.ResolvedCount) + " 个属性"
 	if pkg.AttributeResolution.UnresolvedCount > 0 {
-		section.Highlights = append(section.Highlights, "未解析属性数: "+formatInt(pkg.AttributeResolution.UnresolvedCount))
+		section.Highlights = append(section.Highlights, "未解析属性数: "+strconv.Itoa(pkg.AttributeResolution.UnresolvedCount))
 	}
 	for _, attr := range pkg.ResolvedAttributes {
 		if attr.AttributeID > 0 {
-			section.Highlights = append(section.Highlights, attr.Name+" -> "+formatInt(attr.AttributeID))
+			section.Highlights = append(section.Highlights, attr.Name+" -> "+strconv.Itoa(attr.AttributeID))
 		}
 	}
 	section.ActionItems = append(section.ActionItems, pkg.AttributeResolution.ReviewNotes...)
@@ -105,12 +107,12 @@ func buildSaleAttributeInspectionSection(pkg *sheinpub.Package) sheinpub.Inspect
 	}
 
 	section.Status = firstNonEmpty(pkg.SaleAttributeResolution.Status, "unresolved")
-	section.Summary = firstNonEmpty(joinStrings(pkg.SaleAttributeResolution.SelectionSummary, "；"), "尚未选出主副销售属性")
+	section.Summary = firstNonEmpty(strx.JoinNonBlank(pkg.SaleAttributeResolution.SelectionSummary, "；"), "尚未选出主副销售属性")
 	if pkg.SaleAttributeResolution.PrimaryAttributeID > 0 {
-		section.Highlights = append(section.Highlights, "主销售属性 ID: "+formatInt(pkg.SaleAttributeResolution.PrimaryAttributeID))
+		section.Highlights = append(section.Highlights, "主销售属性 ID: "+strconv.Itoa(pkg.SaleAttributeResolution.PrimaryAttributeID))
 	}
 	if pkg.SaleAttributeResolution.SecondaryAttributeID > 0 {
-		section.Highlights = append(section.Highlights, "次销售属性 ID: "+formatInt(pkg.SaleAttributeResolution.SecondaryAttributeID))
+		section.Highlights = append(section.Highlights, "次销售属性 ID: "+strconv.Itoa(pkg.SaleAttributeResolution.SecondaryAttributeID))
 	}
 	for _, candidate := range pkg.SaleAttributeResolution.Candidates {
 		if candidate.SelectedScope != "" {

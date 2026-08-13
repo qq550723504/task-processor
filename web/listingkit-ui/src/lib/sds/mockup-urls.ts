@@ -1,4 +1,4 @@
-export function isSDSPreviewImageUrl(url: string) {
+ function isSDSPreviewImageUrl(url: string) {
   try {
     const parsed = new URL(url);
     return parsed.hostname.toLowerCase().endsWith("sdspod.com") && parsed.pathname.includes("/images/");
@@ -7,7 +7,7 @@ export function isSDSPreviewImageUrl(url: string) {
   }
 }
 
-export function isSDSUnavailableImageUrl(url: string) {
+ function isSDSUnavailableImageUrl(url: string) {
   const value = url.trim().toLowerCase();
   if (!value) {
     return true;

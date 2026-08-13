@@ -100,20 +100,6 @@ func flattenAttributes(attributes map[string]canonical.Attribute) map[string]str
 	return result
 }
 
-func buildPlatformAttributes(attributes map[string]canonical.Attribute) []PlatformAttribute {
-	if len(attributes) == 0 {
-		return nil
-	}
-	result := make([]PlatformAttribute, 0, len(attributes))
-	for key, value := range attributes {
-		result = append(result, PlatformAttribute{
-			Name:  key,
-			Value: value.Value,
-		})
-	}
-	return result
-}
-
 func collectReviewNotes(canonical *canonical.Product, image *productimage.ImageProcessResult, extras ...string) []string {
 	notes := make([]string, 0, len(extras)+4)
 	if canonical != nil && canonical.NeedsReview {
@@ -217,16 +203,4 @@ func cloneMap(input map[string]string) map[string]string {
 		result[key] = value
 	}
 	return result
-}
-
-func parseFloatDefault(value string) float64 {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return 0
-	}
-	parsed, err := strconv.ParseFloat(value, 64)
-	if err != nil {
-		return 0
-	}
-	return parsed
 }

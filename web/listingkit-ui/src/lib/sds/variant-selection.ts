@@ -52,7 +52,7 @@ function isLikelySizeReferenceGroup(group: { sort?: number; resultImage?: string
   );
 }
 
-export function buildSDSSelectedVariant(
+ function buildSDSSelectedVariant(
   detail: SDSProductDetail | undefined,
   variant: SDSProductVariant,
 ): SDSSelectedProductVariant {

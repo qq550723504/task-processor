@@ -4,16 +4,29 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
 
 func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
-	allowed := map[string]struct{}{
+	productRuntimeCommands := map[string]struct{}{
 		"listing-control-plane": {},
 		"product-listing-api":   {},
 		"shein-listing":         {},
 		"temu-listing":          {},
+	}
+	operationalCommands := map[string]struct{}{
+		"fingerprint-browser-installer":      {},
+		"listing-scheduler":                  {},
+		"listingkit-identity-preflight":      {},
+		"listingkit-owner-scope-dry-run":     {},
+		"listingkit-owner-scope-exceptions":  {},
+		"listingkit-schema-migrate":          {},
+		"playwright-installer":               {},
+		"product-listing-api-schema-migrate": {},
+		"shein-import-platform-recovery":     {},
+		"shein-login-worker":                 {},
 	}
 
 	for _, line := range trackedFiles(t, "cmd") {
@@ -22,14 +35,71 @@ func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
 			continue
 		}
 		name := parts[1]
-		if _, ok := allowed[name]; !ok {
-			t.Errorf("cmd/%s is not an official entrypoint; put one-off debug programs under hack/debug or long-lived developer tools under tools", name)
+		_, productRuntime := productRuntimeCommands[name]
+		_, operational := operationalCommands[name]
+		if productRuntime == operational {
+			t.Errorf("cmd/%s must belong to exactly one maintained command category; put one-off debug programs under hack/debug or long-lived developer tools under tools", name)
+		}
+	}
+}
+
+func TestOperationalCommandsHaveDeploymentBuildOrScriptOwner(t *testing.T) {
+	operationalCommands := map[string]struct{}{
+		"fingerprint-browser-installer":      {},
+		"listing-scheduler":                  {},
+		"listingkit-identity-preflight":      {},
+		"listingkit-owner-scope-dry-run":     {},
+		"listingkit-owner-scope-exceptions":  {},
+		"listingkit-schema-migrate":          {},
+		"playwright-installer":               {},
+		"product-listing-api-schema-migrate": {},
+		"shein-import-platform-recovery":     {},
+		"shein-login-worker":                 {},
+	}
+	ownerRoots := []string{".github", "deployments", "scripts"}
+	repoRootBytes, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repoRoot := strings.TrimSpace(string(repoRootBytes))
+
+	for command := range operationalCommands {
+		owned := false
+		for _, ownerRoot := range ownerRoots {
+			for _, file := range trackedFiles(t, ownerRoot) {
+				contents, err := os.ReadFile(filepath.Join(repoRoot, filepath.FromSlash(file)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if strings.Contains(string(contents), command) {
+					owned = true
+					break
+				}
+			}
+			if owned {
+				break
+			}
+		}
+		if !owned {
+			t.Errorf("cmd/%s is an operational command without a tracked .github, deployments, or scripts owner reference", command)
 		}
 	}
 }
 
 func TestTrackedLocalArtifactsStayOutOfProductionEntrypoints(t *testing.T) {
 	assertNoTrackedLocalArtifacts(t, "cmd")
+}
+
+func TestTrackedFilesResolvesFromPackageDirectory(t *testing.T) {
+	t.Parallel()
+
+	files := trackedFiles(t, "cmd")
+	if len(files) == 0 {
+		t.Fatal("expected tracked cmd files when the test process runs from the tests package directory")
+	}
+	if !slices.Contains(files, "cmd/product-listing-api/main.go") {
+		t.Fatalf("tracked cmd files do not contain product-listing-api: %v", files)
+	}
 }
 
 func TestProductionEntrypointsContainNoLocalArtifacts(t *testing.T) {
@@ -110,7 +180,13 @@ func TestLocalArtifactPathDetectionCoversLocalRuntimeDirectories(t *testing.T) {
 func trackedFiles(t *testing.T, pathspec string) []string {
 	t.Helper()
 
-	out, err := exec.Command("git", "ls-files", pathspec).Output()
+	repoRootBytes, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	repoRoot := strings.TrimSpace(string(repoRootBytes))
+	cmd := exec.Command("git", "-C", repoRoot, "ls-files", "--", filepath.ToSlash(pathspec))
+	out, err := cmd.Output()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +194,7 @@ func trackedFiles(t *testing.T, pathspec string) []string {
 	if trimmed == "" {
 		return nil
 	}
-	return strings.Split(trimmed, "\n")
+	return strings.Split(strings.ReplaceAll(trimmed, "\r\n", "\n"), "\n")
 }
 
 func assertNoTrackedLocalArtifacts(t *testing.T, pathspec string) {

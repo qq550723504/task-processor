@@ -1,5 +1,7 @@
 package workspace
 
+import "strconv"
+
 import sheinpub "task-processor/internal/publishing/shein"
 
 const (
@@ -61,14 +63,14 @@ func BuildSuccessMessages(mode, headline string, changeCount int, sourceRevision
 		if sourceRevisionID != "" {
 			msg.Description = "已恢复到历史版本 " + sourceRevisionID
 			if changeCount > 0 {
-				msg.Description += "，共覆盖 " + formatInt(changeCount) + " 个字段。"
+				msg.Description += "，共覆盖 " + strconv.Itoa(changeCount) + " 个字段。"
 			} else {
 				msg.Description += "。"
 			}
 		}
 	default:
 		if changeCount > 0 {
-			msg.Description = "本次已保存 " + formatInt(changeCount) + " 个字段的更新。"
+			msg.Description = "本次已保存 " + strconv.Itoa(changeCount) + " 个字段的更新。"
 		} else {
 			msg.Description = "资料已保存。"
 		}
@@ -253,7 +255,7 @@ func buildApplyHighlights(changeCount int, appliedChanges *RevisionDiffPreview) 
 
 func buildApplySubtitle(changeCount int) string {
 	if changeCount > 0 {
-		return "本次共更新 " + formatInt(changeCount) + " 个字段。"
+		return "本次共更新 " + strconv.Itoa(changeCount) + " 个字段。"
 	}
 	return "资料已保存。"
 }

@@ -528,7 +528,7 @@ function SizeAttributeTableEditor({
   );
 }
 
-export function buildSizeAttributeTableModel(
+ function buildSizeAttributeTableModel(
   shein?: SheinPreviewPayload | null,
 ): SizeAttributeTableModel | null {
   const previewPayload = getSheinPreviewPayload(shein);

@@ -116,10 +116,6 @@ export async function verifyListingKitRequestIdentity(
   }
 }
 
-export function hasStoredListingKitSession(request: NextRequest) {
-  return Boolean(request.cookies.get("authjs.session-token") || request.cookies.get("__Secure-authjs.session-token"));
-}
-
 export function buildListingKitUpstreamHeaders(
   requestHeaders: Headers,
   verifiedIdentity?: VerifiedIdentity,

@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 
 import {
   getListingKitSettingsHealth,
-  getListingKitSettingsSchema,
   listListingKitSettingsNamespaces,
 } from "@/lib/api/listingkit-settings";
 import { listingKitSettingsKeys } from "@/lib/query/listingkit-settings";
@@ -22,14 +21,5 @@ export function useListingKitSettingsHealth() {
     queryKey: listingKitSettingsKeys.health(),
     queryFn: getListingKitSettingsHealth,
     staleTime: 30_000,
-  });
-}
-
-export function useListingKitSettingsSchema(namespace: string) {
-  return useQuery({
-    queryKey: listingKitSettingsKeys.schema(namespace),
-    queryFn: () => getListingKitSettingsSchema(namespace),
-    enabled: namespace.length > 0,
-    staleTime: 60_000,
   });
 }
