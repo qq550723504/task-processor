@@ -21,7 +21,7 @@
 
 付费试点执行计划把 PAY-041～PAY-044 放在身份/租户隔离、SHEIN 提交安全和 1688 商业闭环之后。因此当前可以做的工作只能是隔离的技术验证，不能把生产授权或计量读取切到 OpenMeter。
 
-OpenMeter 提供官方 Go SDK、CloudEvents 事件摄取、COUNT/LATEST 等 meter、entitlement 和用量查询。PoC 固定使用与被测 OpenMeter Open Source release 匹配的官方 Go SDK，不手写 OpenMeter API DTO、REST 客户端或第二套协议模型，也不使用仅面向托管产品的 API surface。
+OpenMeter 提供官方 Go SDK、CloudEvents 事件摄取、COUNT/LATEST 等 meter、entitlement 和用量查询。PoC 固定使用被测 OpenMeter Open Source release 对应的官方 v3 API 和当前已发布的官方 v3 Go SDK，不手写 OpenMeter API DTO、REST 客户端或第二套协议模型，也不使用仅面向托管产品的 API surface。若服务 release 与 SDK module 发布节奏不同，必须分别固定版本并通过真实契约测试确认兼容性，不能假设版本号相同。
 
 ## 3. 目标
 
@@ -74,8 +74,8 @@ PoC 结束时必须形成以下三种结论之一，不能只记录“API 调通
 
 PoC 由四个隔离组件组成：
 
-1. **上游 OpenMeter quickstart 环境**：使用官方仓库提供的 Docker Compose quickstart，在开发机或一次性 CI 环境运行。仓库不复制或维护 Kafka、ClickHouse、PostgreSQL 的自定义 PoC 编排。
-2. **OpenMeter 集成适配器**：位于 `internal/integration/openmeter`，使用官方 Go SDK；仅暴露 PoC 需要的事件摄取、meter 查询和 entitlement 查询能力，不进入应用 bootstrap。
+1. **上游 OpenMeter quickstart 环境**：使用官方仓库提供的 Docker Compose quickstart，在开发机或一次性 CI 环境运行。设计日固定服务 release `v1.0.0-beta.232`；官方 quickstart 中的 `latest` 镜像必须通过本地 Compose override 覆盖为该 tag，并在报告中记录实际 digest。仓库不复制或维护 Kafka、ClickHouse、PostgreSQL 的自定义 PoC 编排。
+2. **OpenMeter 集成适配器**：位于 `internal/integration/openmeter`，使用官方 v3 Go SDK module `github.com/openmeterio/openmeter/api/v3/client`。设计日该 module 最新发布版本为 `v1.0.0-beta.231`，必须显式固定并由契约测试验证它与服务 `v1.0.0-beta.232` 的兼容性；仅暴露 PoC 需要的事件摄取、meter 查询和 entitlement 查询能力，不进入应用 bootstrap。
 3. **契约测试**：位于同一集成目录，只在 `OPENMETER_POC=1` 时运行；此时 `OPENMETER_POC_URL` 必填，`OPENMETER_API_KEY` 仅在被测环境要求认证时注入。默认 `go test ./...` 不访问 OpenMeter，并把契约测试明确报告为 skip。
 4. **结果报告**：写入 `docs/architecture/openmeter-shadow-metering-poc-report.md`，记录上游版本、镜像 digest、命令、完整结果、失败证据、资源占用和最终采用结论。
 
@@ -90,7 +90,7 @@ PoC 不新增常驻命令、不注册 HTTP route、不增加生产配置字段�
 ```json
 {
   "specversion": "1.0",
-  "type": "listingkit.usage",
+  "type": "listingkit.usage.<catalog-metric>",
   "source": "task-processor/listingkit",
   "id": "<stable-business-event-id>",
   "subject": "tenant:<tenant-id>",
@@ -108,6 +108,7 @@ PoC 不新增常驻命令、不注册 HTTP route、不增加生产配置字段�
 规则：
 
 - `subject` 只使用稳定 tenant ID，不使用用户名、邮箱、店铺名或可变显示名。
+- `type` 固定为 `listingkit.usage.` 加产品目录 metric；三个 meter 使用各自的 event type，不能共用一个 event type 后假设 meter 会按 `data.metric` 自动过滤。
 - `id` 由业务事实确定，重试和恢复必须复用；不得在每次 HTTP 调用时重新生成随机 ID。
 - `source + id` 在所有租户和指标中唯一。推荐逻辑形式为 `tenant_id/metric/source_type/source_id/revision`，具体编码必须可逆或有独立审计字段。
 - `time` 是业务事实发生时间，不是异步投递时间。
@@ -118,9 +119,9 @@ PoC 不新增常驻命令、不注册 HTTP route、不增加生产配置字段�
 
 | 产品指标 | OpenMeter meter | 聚合 | 值来源 | 时间窗口 |
 | --- | --- | --- | --- | --- |
-| `studio_design_jobs_succeeded` | 同名 | `COUNT` | 匹配 `data.metric` 的事件 | 月度查询 |
-| `shein_drafts_succeeded` | 同名 | `COUNT` | 匹配 `data.metric` 的事件 | 月度查询 |
-| `storage_bytes_current` | 同名 | `LATEST` | `data.quantity` | 查询时最新业务时间 |
+| `studio_design_jobs_succeeded` | 同名 | `COUNT` | `listingkit.usage.studio_design_jobs_succeeded` | 月度查询 |
+| `shein_drafts_succeeded` | 同名 | `COUNT` | `listingkit.usage.shein_drafts_succeeded` | 月度查询 |
+| `storage_bytes_current` | 同名 | `LATEST` | `listingkit.usage.storage_bytes_current` 的 `data.quantity` | 查询时最新业务时间 |
 
 两个成功指标只发送 committed success 事实。失败、取消、平台拒绝和工程重试不创建新的客户用量事件。
 
@@ -136,7 +137,8 @@ PoC 创建三个 feature：
 
 实验分别验证：
 
-- 零用量、部分用量、达到额度和超过额度时的 usage、balance、overage、hasAccess。
+- 零用量、部分用量、达到额度和超过额度时的 meter usage 与 entitlement `hasAccess`。
+- 当前 v3 entitlement access API 不直接返回 balance/overage；PoC 只允许用配置额度与 meter usage 计算预期 balance/overage 来交叉验证 `hasAccess`，并把“缺少原生余额字段”记录为采用能力差距。不得为补齐字段而暗中引入旧版根模块 SDK 或手写 REST 客户端。
 - 两个租户使用同一 feature 时额度和用量完全隔离。
 - 月度窗口查询与产品目录语义一致。
 - 存储量下降后 entitlement 余额恢复。
@@ -154,6 +156,7 @@ PoC 创建三个 feature：
 5. 两个 tenant 使用相同 source object ID，仍因完整事件 ID 和 subject 不同而隔离。
 6. 新存储快照先到、旧快照后到，最终值仍必须是业务时间较新的快照。
 7. 非法 metric、缺少 tenant、负存储值和非十进制 quantity 被适配器或 OpenMeter明确拒绝，不得静默接受。
+8. CloudEvent type 与 `data.metric` 不一致时被适配器拒绝，不能进入 OpenMeter。
 
 PoC 不实现生产 outbox，但报告必须把每个故障场景映射到未来 outbox dispatcher 的重试、死信和人工补记责任。
 
@@ -199,7 +202,7 @@ PoC 不实现生产 outbox，但报告必须把每个故障场景映射到未来
 [ ] 服务中断后的确定性重放不会少记或多记。
 [ ] 非法事件不会被静默计量。
 [ ] storage LATEST 按业务时间保持最新快照；否则明确判定该指标不适配。
-[ ] entitlement 普通查询满足余额和访问展示语义。
+[ ] entitlement `hasAccess` 与 meter usage/配置额度推导的余额和超额一致；v3 API 缺少原生余额字段的产品影响已明确记录。
 [ ] 并发硬配额实验有可复现结论，并明确是否需要本地 reservation。
 [ ] 自托管依赖和资源开销被完整记录，没有把 quickstart 当成生产部署。
 [ ] 未修改任何生产运行时行为，默认测试不会依赖外部 OpenMeter。
