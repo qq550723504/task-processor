@@ -67,3 +67,21 @@ classified rather than extracted: the validated and no-validation config loaders
 share setup but have different validation contracts (see the ledger row above). No
 other unclassified handwritten same-owner pair remains after the Task 6/7
 consolidations and the config helper extraction above.
+
+## Task 11 support-code audit
+
+The support-candidate manifest `.local/code-health/20260813-021313565/manifest.json`
+contains 88 entries (14 `hack/debug` programs, 68 maintained scripts and their
+tests, and six tool entrypoints including the nested ListingKit backfill command). Each
+candidate was checked against `.github`, `deployments`, `docs`, `scripts`,
+`tests`, `Makefile`, and `README.md`, then checked with `git log --follow`.
+No candidate met the deletion rule (no workflow, runbook, deployment,
+operator procedure, or maintained tool reference), so this task records
+retention rather than deleting debug or operator entrypoints:
+
+| Finding | Owner | Evidence | Decision | Verification |
+| --- | --- | --- | --- | --- |
+| `hack/debug/**` (14 programs) | Debug-tool module and operator runbooks | `hack/debug/README.md` documents these as maintained non-production executables; exact reference search finds the programs in repository-structure checks, deployment runbooks, and architecture/debug plans. | retained-configuration-specific | `go test ./tests/... -count=1`; `go test ./...` in `hack/debug` is currently blocked because its pre-existing nested module requires `go mod tidy` (tidy would rewrite the module graph). |
+| `scripts/**` and `scripts/tests/**` support candidates | CI workflows, deployment jobs, and local operator runbooks | Exact filename search found workflow/deployment/test/runbook references for the maintained wrappers. The two historical Yudao local migration scripts have no current filename references, but both remain migration operators with non-trivial external side effects and are not safe to delete from detector evidence alone. | retained-deferred | PowerShell parser/Pester sweep; one existing Pester 3.4.0 failure in `listingkit-regression-dataset-check.Tests.ps1` is recorded as environment/test isolation debt, not a cleanup deletion signal. |
+| `tools/db-query`, `tools/json-simplifier`, `tools/listingkit-pricing-cache-inspector` | `tools/go.mod` developer utility module and Docker/debug runbooks | Exact references include `scripts/db-query.ps1`, repository-structure checks, and deployment/architecture documentation. `tools/tools.go` is a build-tagged tool dependency manifest, not an executable entrypoint. | retained-configuration-specific | `go test ./...` in `tools` passes after replacing `fmt.Println` with `fmt.Print` for the raw multiline usage text (vet warning fix). |
+| `scripts/listingkit-shein-pod-image-index-backfill` | ListingKit backfill command and its package test | Root `go test ./...` includes the nested command; repository-structure and deployment documentation reference the command and its stdout contract. | retained-generated-contract | `go test ./tests/... -count=1`; root baseline compile remains green. |
