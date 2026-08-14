@@ -220,6 +220,25 @@ func TestGormUsageLedgerReverseRejectsIdempotencyKeyOwnedByAnotherEvent(t *testi
 	assertUsageLedgerCounts(t, db, source.Event.EventID, 2, 1, 1, 2)
 }
 
+func TestGormUsageLedgerReverseRejectsExistingReversalForNonCommittedSource(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+	ledger := NewGormUsageLedger(repo)
+	reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-reserved-source", 1))
+	if err != nil {
+		t.Fatalf("Reserve() source error = %v", err)
+	}
+	if err := insertUsageReversal(db, "event-invalid-existing-reversal", "request-invalid-existing-reversal", reservation.Event.EventID); err != nil {
+		t.Fatalf("insert invalid existing reversal fixture: %v", err)
+	}
+	_, err = ledger.Reverse(ctx, reservation.Event.EventID, "request-retry", "retry")
+	if !errors.Is(err, ErrUsageInvalidTransition) {
+		t.Fatalf("Reverse() reserved source with existing reversal error = %v, want ErrUsageInvalidTransition", err)
+	}
+}
+
 func TestGormUsageLedgerReserveRejectsInactiveEntitlementWindow(t *testing.T) {
 	ctx := context.Background()
 	tests := []struct {

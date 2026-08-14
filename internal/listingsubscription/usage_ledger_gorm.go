@@ -130,6 +130,9 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("event_id = ?", eventID).Take(&source).Error; err != nil {
 			return err
 		}
+		if source.Status != string(UsageEventCommitted) {
+			return ValidateUsageEventTransition(UsageEventStatus(source.Status), UsageEventReversed)
+		}
 		var priorReversal usageEventRow
 		if err := tx.Where("reversal_of = ?", source.EventID).Take(&priorReversal).Error; err == nil {
 			event = usageEventFromRow(priorReversal)
@@ -146,9 +149,6 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 			return &UsageDuplicateIdentityError{TenantID: source.TenantID, IdempotencyKey: idempotencyKey}
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
-		}
-		if source.Status != string(UsageEventCommitted) {
-			return ValidateUsageEventTransition(UsageEventStatus(source.Status), UsageEventReversed)
 		}
 		quantity, ok := negateUsage(source.Quantity)
 		if !ok {
@@ -185,12 +185,6 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 		event = usageEventFromRow(reversal)
 		return nil
 	})
-	if err != nil {
-		var existing usageEventRow
-		if lookupErr := l.repo.db.WithContext(ctx).Where("reversal_of = ?", eventID).Take(&existing).Error; lookupErr == nil {
-			return usageEventFromRow(existing), nil
-		}
-	}
 	return event, err
 }
 
