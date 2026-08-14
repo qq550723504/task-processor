@@ -614,6 +614,7 @@ UsageEvent
 - 成功 commit；明确失败策略后 release/reverse。
 - 重试不会重复扣费。
 - 原有 counter 可由 ledger 重建或每日校验。
+- 已完成的 PAY-041 对账 dry-run 边界、操作证据和 PAY-042 交接见 [`../architecture/pay-041-usage-ledger.md`](../architecture/pay-041-usage-ledger.md)；该证据不接入任何收费入口，也不授权修复生产数据。
 
 **验收标准**
 
@@ -625,6 +626,8 @@ UsageEvent
 ```
 
 ### PAY-042：统一所有收费入口的 entitlement 和 usage
+
+PAY-042 是 PAY-041 之后的下一道门禁：必须按 [`../architecture/pay-041-usage-ledger.md`](../architecture/pay-041-usage-ledger.md) 中的稳定业务幂等键和 reserve/commit/release 合同接入全部入口，再单独批准 cutover；PAY-041 不改变现有生产行为。
 
 **覆盖入口**
 

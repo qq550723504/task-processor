@@ -82,6 +82,54 @@ type usageCounterRow struct {
 
 func (usageCounterRow) TableName() string { return "saas_usage_counters" }
 
+type usageEventRow struct {
+	EventID           string     `gorm:"column:event_id;primaryKey;size:128"`
+	TenantID          string     `gorm:"column:tenant_id;not null;size:128;uniqueIndex:idx_saas_usage_event_tenant_idempotency_key,priority:1;index:idx_saas_usage_event_tenant_metric_status,priority:1"`
+	ModuleCode        string     `gorm:"column:module_code;not null;size:64"`
+	Metric            string     `gorm:"column:metric;not null;size:64;index:idx_saas_usage_event_tenant_metric_status,priority:2"`
+	Quantity          int64      `gorm:"column:quantity;not null"`
+	PeriodKey         string     `gorm:"column:period_key;not null;size:16"`
+	SourceType        string     `gorm:"column:source_type;not null;size:64"`
+	SourceID          string     `gorm:"column:source_id;not null;size:128"`
+	IdempotencyKey    string     `gorm:"column:idempotency_key;not null;size:128;uniqueIndex:idx_saas_usage_event_tenant_idempotency_key,priority:2"`
+	Status            string     `gorm:"column:status;not null;size:16;check:status IN ('reserved','committed','released','reversed');index:idx_saas_usage_event_tenant_metric_status,priority:3"`
+	OccurredAt        time.Time  `gorm:"column:occurred_at;not null"`
+	StorageSnapshot   *int64     `gorm:"column:storage_snapshot"`
+	StorageSnapshotAt *time.Time `gorm:"column:storage_snapshot_at"`
+	ReversalOf        string     `gorm:"column:reversal_of;size:128;uniqueIndex:idx_saas_usage_event_reversal_of,where:reversal_of <> ''"`
+	Metadata          string     `gorm:"column:metadata;type:text"`
+	CreatedAt         time.Time  `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt         time.Time  `gorm:"column:updated_at;autoUpdateTime"`
+}
+
+func (usageEventRow) TableName() string { return "saas_usage_events" }
+
+type usageBucketRow struct {
+	TenantID   string    `gorm:"column:tenant_id;primaryKey;size:128"`
+	ModuleCode string    `gorm:"column:module_code;primaryKey;size:64"`
+	PeriodKey  string    `gorm:"column:period_key;primaryKey;size:16"`
+	Metric     string    `gorm:"column:metric;primaryKey;size:64"`
+	Committed  int64     `gorm:"column:committed;not null;default:0"`
+	Reserved   int64     `gorm:"column:reserved;not null;default:0"`
+	UpdatedAt  time.Time `gorm:"column:updated_at;autoUpdateTime"`
+}
+
+func (usageBucketRow) TableName() string { return "saas_usage_buckets" }
+
+type usageEventOutboxRow struct {
+	ID            int64      `gorm:"column:id;primaryKey;autoIncrement"`
+	EventID       string     `gorm:"column:event_id;not null;size:128;uniqueIndex:idx_saas_usage_event_outbox_event_id"`
+	Destination   string     `gorm:"column:destination;not null;size:64;default:openmeter"`
+	Status        string     `gorm:"column:status;not null;size:32;default:pending;index:idx_saas_usage_event_outbox_status_next_attempt,priority:1"`
+	Attempts      int        `gorm:"column:attempts;not null;default:0"`
+	NextAttemptAt *time.Time `gorm:"column:next_attempt_at;index:idx_saas_usage_event_outbox_status_next_attempt,priority:2"`
+	LastError     string     `gorm:"column:last_error;type:text"`
+	CreatedAt     time.Time  `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt     time.Time  `gorm:"column:updated_at;autoUpdateTime"`
+}
+
+func (usageEventOutboxRow) TableName() string { return "saas_usage_event_outbox" }
+
 type auditLogRow struct {
 	ID         int64     `gorm:"column:id;primaryKey;autoIncrement"`
 	TenantID   string    `gorm:"column:tenant_id;not null;size:128;index"`
@@ -114,6 +162,9 @@ func AutoMigrateRepository(db *gorm.DB) error {
 		&tenantSubscriptionRow{},
 		&tenantEntitlementRow{},
 		&usageCounterRow{},
+		&usageEventRow{},
+		&usageBucketRow{},
+		&usageEventOutboxRow{},
 		&auditLogRow{},
 	)
 }

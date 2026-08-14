@@ -111,6 +111,10 @@ documents unless they say so explicitly:
 - `openmeter-shadow-metering-poc-report.md`
   - time-bounded, evidence-backed local PoC decision; it does not authorize a
     production integration, billing, payment, deployment, or data migration
+- `pay-041-usage-ledger.md`
+  - time-bounded PAY-041 reconciliation evidence and PAY-042 handoff; it does
+    not authorize production data repair, entrypoint cutover, or billing
+    integration
 
 ## Plans, runbooks, and evaluations
 
