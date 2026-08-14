@@ -1,8 +1,10 @@
 package listingadmin
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
@@ -91,7 +93,7 @@ func TestAutoMigrateImportTaskRepositoryMakesCategoryIDNullable(t *testing.T) {
 	}
 }
 
-func TestAutoMigrateImportTaskRepositoryLeavesHistoricalPlatformsAndExistingIndexUntouched(t *testing.T) {
+func TestAutoMigrateImportTaskRepositoryRepairsHistoricalUniqueIndex(t *testing.T) {
 	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
@@ -100,7 +102,7 @@ func TestAutoMigrateImportTaskRepositoryLeavesHistoricalPlatformsAndExistingInde
 		t.Fatalf("migrate legacy import task row: %v", err)
 	}
 	if err := db.Create(&importTaskPlatformIntegrityRow{
-		Platform: "Amazon", SourcePlatform: "Amazon", TargetPlatform: "SHEIN",
+		TenantID: 101, Platform: "Amazon", SourcePlatform: "Amazon", TargetPlatform: "SHEIN",
 		ProductID: "P1", Region: "US", StoreID: 986, Deleted: 0,
 	}).Error; err != nil {
 		t.Fatalf("seed historical row: %v", err)
@@ -121,14 +123,162 @@ func TestAutoMigrateImportTaskRepositoryLeavesHistoricalPlatformsAndExistingInde
 		t.Fatalf("historical platforms = %q/%q/%q, want unchanged", historical.Platform, historical.SourcePlatform, historical.TargetPlatform)
 	}
 	if err := db.Create(&importTaskPlatformIntegrityRow{
-		Platform: "shein", TargetPlatform: "SHEIN", ProductID: "P1", Region: "US", StoreID: 986, Deleted: 1,
+		TenantID: 101, Platform: "shein", TargetPlatform: "SHEIN", ProductID: "P1", Region: "US", StoreID: 986, Deleted: 1,
+	}).Error; err != nil {
+		t.Fatalf("reimport after soft delete = %v, want historical full index repaired to active-only index", err)
+	}
+}
+
+func TestAutoMigrateImportTaskRepositoryEnforcesCanonicalTargetPlatform(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
+		t.Fatalf("migrate import task row: %v", err)
+	}
+	if err := AutoMigrateImportTaskRepository(db); err != nil {
+		t.Fatalf("AutoMigrateImportTaskRepository() error = %v", err)
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{
+		TenantID: 101, Platform: "amazon", TargetPlatform: "SHEIN", ProductID: "P2", Region: "US", StoreID: 987, Deleted: 0,
+	}).Error; err != nil {
+		t.Fatalf("seed canonical target row: %v", err)
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{
+		TenantID: 101, Platform: "amazon", TargetPlatform: "shein", ProductID: "P2", Region: "US", StoreID: 987, Deleted: 0,
 	}).Error; err == nil {
-		t.Fatal("ordinary migration replaced the existing unique index with a partial index")
+		t.Fatal("mixed-case canonical duplicate = nil, want unique index violation")
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{
+		TenantID: 202, Platform: "amazon", TargetPlatform: "shein", ProductID: "P2", Region: "US", StoreID: 987, Deleted: 0,
+	}).Error; err != nil {
+		t.Fatalf("same canonical tuple in another tenant = %v, want allowed", err)
+	}
+}
+
+func TestAutoMigrateImportTaskRepositoryRepairsMalformedNamedIndex(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
+		t.Fatalf("migrate import task row: %v", err)
+	}
+	if err := db.Exec(`CREATE INDEX idx_listing_product_import_task_unique
+		ON listing_product_import_task
+		((LOWER(TRIM(COALESCE(NULLIF(TRIM(target_platform), ''), platform)))), tenant_id, product_id, region)
+		WHERE deleted = 0`).Error; err != nil {
+		t.Fatalf("create malformed named index: %v", err)
+	}
+
+	if err := AutoMigrateImportTaskRepository(db); err != nil {
+		t.Fatalf("AutoMigrateImportTaskRepository() error = %v", err)
+	}
+	rows := []importTaskPlatformIntegrityRow{
+		{TenantID: 101, Platform: "amazon", TargetPlatform: "SHEIN", ProductID: "P4", Region: "US", StoreID: 989, Deleted: 0},
+		{TenantID: 101, Platform: "amazon", TargetPlatform: "shein", ProductID: "P4", Region: "US", StoreID: 989, Deleted: 0},
+	}
+	if err := db.Create(&rows[0]).Error; err != nil {
+		t.Fatalf("seed repaired index row: %v", err)
+	}
+	if err := db.Create(&rows[1]).Error; err == nil {
+		t.Fatal("malformed named index was not replaced by the complete unique index")
+	}
+}
+
+func TestAutoMigrateImportTaskRepositoryReusesCanonicalReplacementIndex(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
+		t.Fatalf("migrate import task row: %v", err)
+	}
+	if err := db.Exec(`CREATE INDEX idx_listing_product_import_task_unique ON listing_product_import_task (target_platform, product_id, region, store_id)`).Error; err != nil {
+		t.Fatalf("create malformed named index: %v", err)
+	}
+	if err := db.Exec(importTaskActiveUniqueIndexStatement("listing_product_import_task", "idx_listing_product_import_task_unique_replacement")).Error; err != nil {
+		t.Fatalf("create canonical replacement index: %v", err)
+	}
+	if err := AutoMigrateImportTaskRepository(db); err != nil {
+		t.Fatalf("AutoMigrateImportTaskRepository() error = %v", err)
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{TenantID: 101, Platform: "amazon", TargetPlatform: "SHEIN", ProductID: "P5", Region: "US", StoreID: 990, Deleted: 0}).Error; err != nil {
+		t.Fatalf("seed repaired index row: %v", err)
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{TenantID: 101, Platform: "amazon", TargetPlatform: "shein", ProductID: "P5", Region: "US", StoreID: 990, Deleted: 0}).Error; err == nil {
+		t.Fatal("surviving replacement did not become canonical uniqueness guard")
+	}
+}
+
+func TestImportTaskActiveUniqueViolationRequiresStructuredIdentity(t *testing.T) {
+	if !isImportTaskActiveUniqueViolation(&pgconn.PgError{Code: "23505", ConstraintName: "idx_listing_product_import_task_unique"}) {
+		t.Fatal("matching PostgreSQL unique constraint was not classified as duplicate")
+	}
+	for _, err := range []error{
+		&pgconn.PgError{Code: "23505", ConstraintName: "other_constraint"},
+		&pgconn.PgError{Code: "22001", ConstraintName: "idx_listing_product_import_task_unique"},
+		errors.New(`ERROR: duplicate key value violates unique constraint "idx_listing_product_import_task_unique" (SQLSTATE 23505)`),
+	} {
+		if isImportTaskActiveUniqueViolation(err) {
+			t.Fatalf("unstructured or mismatched error %T was classified as active-task duplicate", err)
+		}
+	}
+}
+
+func TestImportTaskActiveUniqueViolationMatchesSQLiteExpressionIndexName(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
+		t.Fatalf("migrate import task row: %v", err)
+	}
+	if err := db.Exec(importTaskActiveUniqueIndexStatement("listing_product_import_task", "idx_listing_product_import_task_unique")).Error; err != nil {
+		t.Fatalf("create expression unique index: %v", err)
+	}
+	row := &importTaskPlatformIntegrityRow{TenantID: 404, Platform: "amazon", TargetPlatform: "SHEIN", ProductID: "P4", Region: "US", StoreID: 989, Deleted: 0}
+	if err := db.Create(row).Error; err != nil {
+		t.Fatalf("seed expression index row: %v", err)
+	}
+	err = db.Create(&importTaskPlatformIntegrityRow{TenantID: 404, Platform: "amazon", TargetPlatform: "shein", ProductID: "P4", Region: "US", StoreID: 989, Deleted: 0}).Error
+	if err == nil || !isImportTaskActiveUniqueViolation(err) {
+		t.Fatalf("expression-index violation = %v, want active-task duplicate", err)
+	}
+}
+
+func TestAutoMigrateImportTaskRepositoryDefersIndexWhenCanonicalDuplicatesExist(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
+		t.Fatalf("migrate import task row: %v", err)
+	}
+	for _, target := range []string{"SHEIN", "shein"} {
+		if err := db.Create(&importTaskPlatformIntegrityRow{
+			TenantID: 303, Platform: "amazon", TargetPlatform: target, ProductID: "P3", Region: "US", StoreID: 988, Deleted: 0,
+		}).Error; err != nil {
+			t.Fatalf("seed duplicate target %q: %v", target, err)
+		}
+	}
+	if err := db.Exec(`CREATE INDEX idx_listing_product_import_task_unique
+		ON listing_product_import_task (target_platform, tenant_id, product_id, region, store_id)
+		WHERE deleted = 0`).Error; err != nil {
+		t.Fatalf("create historical non-unique index: %v", err)
+	}
+	if err := AutoMigrateImportTaskRepository(db); err != nil {
+		t.Fatalf("AutoMigrateImportTaskRepository() with canonical duplicates = %v", err)
+	}
+	if !db.Migrator().HasIndex(&listingProductImportTask{}, "idx_listing_product_import_task_unique") {
+		t.Fatal("historical index was removed despite existing canonical duplicates")
 	}
 }
 
 type importTaskPlatformIntegrityRow struct {
 	ID             int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	TenantID       int64  `gorm:"column:tenant_id;not null"`
 	Platform       string `gorm:"column:platform;not null"`
 	SourcePlatform string `gorm:"column:source_platform"`
 	TargetPlatform string `gorm:"column:target_platform"`
@@ -174,3 +324,12 @@ func importTaskCategoryNullable(t *testing.T, db *gorm.DB) bool {
 func intPtr(value int) *int {
 	return &value
 }
+
+func TestNormalizeImportTaskIndexDefinitionAcceptsPostgresTrimBothFrom(t *testing.T) {
+	deparsed := `CREATE UNIQUE INDEX idx_listing_product_import_task_unique ON listing_product_import_task USING btree (tenant_id, lower(trim(both from target_platform)), product_id, lower(trim(both from region)), store_id) WHERE (deleted = false)`
+	canonical := `CREATE UNIQUE INDEX idx_listing_product_import_task_unique ON listing_product_import_task USING btree (tenant_id, lower(trim(target_platform)), product_id, lower(trim(region)), store_id) WHERE deleted = false`
+	if got, want := normalizeImportTaskIndexDefinition(deparsed), normalizeImportTaskIndexDefinition(canonical); got != want {
+		t.Fatalf("normalized deparsed definition = %q, want %q", got, want)
+	}
+}
+

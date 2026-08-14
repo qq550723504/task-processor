@@ -7,7 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
+	moderncsqlite "modernc.org/sqlite"
 	taskdomain "task-processor/internal/domain/task"
 	"task-processor/internal/model"
 )
@@ -34,6 +36,9 @@ func AutoMigrateImportTaskRepository(db *gorm.DB) error {
 		}
 	}
 	if err := ensureNullableImportTaskCategoryID(db, table); err != nil {
+		return err
+	}
+	if _, err := ensureImportTaskActiveUniqueIndex(db, table); err != nil {
 		return err
 	}
 	return db.AutoMigrate(&listingDispatchEvent{})
@@ -70,7 +75,30 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 	if len(rows) == 0 {
 		return []ImportTask{}, nil
 	}
+	if err := EnsureImportTaskWriteReady(r.db); err != nil {
+		return nil, err
+	}
+	productIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		productIDs = append(productIDs, row.ProductID)
+	}
+	var existing []listingProductImportTask
+	if err := r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Where("tenant_id = ?", rows[0].TenantID).
+		Where(fmt.Sprintf("deleted = 0 AND %s = ? AND region = ? AND store_id = ?", importTaskCanonicalTargetPlatformExpression("target_platform", "platform")), rows[0].TargetPlatform, rows[0].Region, rows[0].StoreID).
+		Where("product_id IN ?", productIDs).
+		Limit(1).
+		Find(&existing).Error; err != nil {
+		return nil, err
+	}
+	if len(existing) > 0 {
+		return nil, ErrImportTaskAlreadyExists
+	}
 	if err := r.db.WithContext(ctx).Table("listing_product_import_task").Create(&rows).Error; err != nil {
+		if isImportTaskActiveUniqueViolation(err) {
+			return nil, ErrImportTaskAlreadyExists
+		}
 		return nil, err
 	}
 	out := make([]ImportTask, 0, len(rows))
@@ -78,6 +106,32 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 		out = append(out, row.toImportTask())
 	}
 	return out, nil
+}
+
+func isImportTaskActiveUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	var postgresErr *pgconn.PgError
+	if errors.As(err, &postgresErr) {
+		return postgresErr.Code == "23505" && postgresErr.ConstraintName == "idx_listing_product_import_task_unique"
+	}
+	var sqliteErr *moderncsqlite.Error
+	if errors.As(err, &sqliteErr) {
+		if sqliteErr.Code() != 1555 && sqliteErr.Code() != 2067 {
+			return false
+		}
+		message := strings.ToLower(sqliteErr.Error())
+		if strings.Contains(message, "index 'idx_listing_product_import_task_unique'") {
+			return true
+		}
+		return strings.Contains(message, "listing_product_import_task") &&
+			strings.Contains(message, "target_platform") &&
+			strings.Contains(message, "product_id") &&
+			strings.Contains(message, "region") &&
+			strings.Contains(message, "store_id")
+	}
+	return false
 }
 
 func (r *GormImportTaskRepository) DeleteImportTask(ctx context.Context, tenantID, id int64) error {
@@ -711,3 +765,4 @@ func isImportTaskCompletedStatus(status int16) bool {
 		return false
 	}
 }
+
