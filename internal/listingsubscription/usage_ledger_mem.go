@@ -77,6 +77,7 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 	if input.PeriodKey, err = canonicalUsagePeriodKey(input.Metric, input.PeriodKey, input.OccurredAt); err != nil {
 		return ReserveUsageResult{}, err
 	}
+
 	entitlement, err := resolveMemUsageEntitlement(l.repo, input.TenantID, input.ModuleCode)
 	if err != nil {
 		return ReserveUsageResult{}, err
@@ -89,10 +90,10 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 	bucketKey := memUsageBucketKey(input.TenantID, input.ModuleCode, input.PeriodKey, input.Metric)
 	bucket := l.buckets[bucketKey]
 	reservedForQuota := bucket.reserved
-	if input.Metric == usageMetricStorageBytesCurrent && input.Quantity > 0 {
+	if input.Metric == usageMetricStorageBytesCurrent {
 		reservedForQuota = 0
 		for _, record := range l.eventsByID {
-			if record.event.TenantID == input.TenantID && record.event.ModuleCode == input.ModuleCode && record.event.Metric == input.Metric && record.event.Status == UsageEventReserved && record.event.Quantity > 0 {
+			if record.event.TenantID == input.TenantID && record.event.ModuleCode == input.ModuleCode && record.event.Metric == input.Metric && record.event.Status == UsageEventReserved && ((input.Quantity > 0 && record.event.Quantity > 0) || (input.Quantity < 0 && record.event.Quantity < 0)) {
 				reservedForQuota += record.event.Quantity
 			}
 		}
@@ -266,10 +267,6 @@ func (l *memUsageLedger) ListPendingOutbox(ctx context.Context, limit int) ([]Us
 			if item.NextAttemptAt != nil && item.NextAttemptAt.After(now) {
 				continue
 			}
-			item.Status = "in_flight"
-			item.Attempts++
-			item.UpdatedAt = now
-			l.outboxByEventID[item.EventID] = item
 			items = append(items, cloneMemUsageOutboxItem(item))
 		}
 	}
@@ -289,6 +286,14 @@ func (l *memUsageLedger) ListPendingOutbox(ctx context.Context, limit int) ([]Us
 	})
 	if len(items) > limit {
 		items = items[:limit]
+	}
+	for i := range items {
+		item := l.outboxByEventID[items[i].EventID]
+		item.Status = "in_flight"
+		item.Attempts++
+		item.UpdatedAt = now
+		l.outboxByEventID[item.EventID] = item
+		items[i] = cloneMemUsageOutboxItem(item)
 	}
 	return items, nil
 }
@@ -322,6 +327,9 @@ func (l *memUsageLedger) transitionReservedEvent(ctx context.Context, eventID st
 		committed, ok := addUsage(bucket.committed, record.event.Quantity)
 		if !ok {
 			return UsageEvent{}, &UsageValidationError{Field: "quantity"}
+		}
+		if record.event.Metric == usageMetricStorageBytesCurrent && committed < 0 {
+			return UsageEvent{}, &UsageQuotaError{Metric: record.event.Metric, CommittedUsage: bucket.committed, ReservedUsage: bucket.reserved, Quantity: record.event.Quantity}
 		}
 		bucket.committed = committed
 	}
@@ -470,3 +478,4 @@ func redactedMemUsageMetadata(reason string) map[string]string {
 	}
 	return metadata
 }
+
