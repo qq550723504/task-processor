@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"task-processor/internal/listingkit/core"
+	"task-processor/internal/listingsubscription"
 
 	"github.com/sirupsen/logrus"
 )
@@ -22,10 +23,28 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 		return nil, err
 	}
 	log.Info("marked listing kit task as processing")
+	reservation, usageEnabled, err := f.service.reserveGenerationUsage(ctx, task)
+	if err != nil {
+		if errors.Is(err, listingsubscription.ErrUsageQuotaExceeded) {
+			quotaErr := generationQuotaFailure(task.ID)
+			if persistErr := f.service.repo.MarkFailed(ctx, task.ID, quotaErr.Error()); persistErr != nil {
+				return nil, errors.Join(quotaErr, persistErr)
+			}
+			return nil, err
+		}
+		return nil, err
+	}
+	if usageEnabled && reservation.AlreadyCommitted {
+		return generationUsageCommittedReplayResult(task)
+	}
 
 	result, err := f.service.runWorkflow(ctx, task)
 	if err != nil {
 		log.WithError(err).Error("listing kit workflow failed")
+		if releaseErr := f.service.releaseGenerationUsage(ctx, task, "workflow_failed"); releaseErr != nil {
+			log.WithError(releaseErr).Error("failed to release listing kit generation usage")
+			err = errors.Join(err, releaseErr)
+		}
 		if persistErr := f.service.persistProcessFailure(ctx, task.ID, result, err); persistErr != nil {
 			log.WithError(persistErr).Error("failed to persist listing kit workflow failure")
 			return nil, errors.Join(err, persistErr)
@@ -45,6 +64,9 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 			log.WithError(err).Error("failed to mark listing kit task as needs_review")
 			return nil, err
 		}
+		if err := f.service.commitGenerationUsage(ctx, task); err != nil {
+			return nil, err
+		}
 		log.Info("marked listing kit task as needs_review")
 		return result, nil
 	}
@@ -52,6 +74,9 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 	log.Info("marking listing kit task as completed")
 	if err := f.service.persistProcessSuccess(ctx, task.ID, result); err != nil {
 		log.WithError(err).Error("failed to mark listing kit task as completed")
+		return nil, err
+	}
+	if err := f.service.commitGenerationUsage(ctx, task); err != nil {
 		return nil, err
 	}
 	log.Info("marked listing kit task as completed")

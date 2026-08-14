@@ -1,0 +1,63 @@
+package listingkit
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+)
+
+func (s *service) generationUsageSettlement() GenerationUsageSettlement {
+	if s == nil {
+		return nil
+	}
+	return s.taskDeps.generationUsage
+}
+
+func (s *service) reserveGenerationUsage(ctx context.Context, task *Task) (GenerationUsageReservation, bool, error) {
+	settlement := s.generationUsageSettlement()
+	if settlement == nil || task == nil {
+		return GenerationUsageReservation{}, false, nil
+	}
+	occurredAt := task.CreatedAt
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	}
+	reservation, err := settlement.ReserveGeneration(ctx, task.TenantID, task.ID, occurredAt)
+	if err != nil {
+		return GenerationUsageReservation{}, true, err
+	}
+	return reservation, true, nil
+}
+
+func (s *service) releaseGenerationUsage(ctx context.Context, task *Task, reason string) error {
+	settlement := s.generationUsageSettlement()
+	if settlement == nil || task == nil {
+		return nil
+	}
+	return settlement.ReleaseGeneration(ctx, task.TenantID, task.ID, strings.TrimSpace(reason))
+}
+
+func (s *service) commitGenerationUsage(ctx context.Context, task *Task) error {
+	settlement := s.generationUsageSettlement()
+	if settlement == nil || task == nil {
+		return nil
+	}
+	return settlement.CommitGeneration(ctx, task.TenantID, task.ID)
+}
+
+func generationQuotaFailure(taskID string) error {
+	return fmt.Errorf("listingkit generation quota exceeded for task %s", strings.TrimSpace(taskID))
+}
+
+func generationUsageCommittedReplayResult(task *Task) (*ListingKitResult, error) {
+	if task == nil || task.Result == nil {
+		return nil, errors.New("generation usage is committed but task result is missing")
+	}
+	status := task.Result.Status
+	if status != "completed" && status != "needs_review" {
+		return nil, fmt.Errorf("generation usage is committed but task result is non-terminal: %s", status)
+	}
+	return task.Result, nil
+}
