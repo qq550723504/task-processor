@@ -7,6 +7,7 @@ import (
 )
 
 var ErrImportTaskNotFound = errors.New("import task not found")
+var ErrImportTaskAlreadyExists = errors.New("an active import task already exists for this product, store, region, and target platform")
 
 type ImportTask struct {
 	ID             int64      `json:"id"`

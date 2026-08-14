@@ -91,7 +91,7 @@ func TestAutoMigrateImportTaskRepositoryMakesCategoryIDNullable(t *testing.T) {
 	}
 }
 
-func TestAutoMigrateImportTaskRepositoryLeavesHistoricalPlatformsAndExistingIndexUntouched(t *testing.T) {
+func TestAutoMigrateImportTaskRepositoryRepairsHistoricalUniqueIndex(t *testing.T) {
 	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
@@ -122,8 +122,8 @@ func TestAutoMigrateImportTaskRepositoryLeavesHistoricalPlatformsAndExistingInde
 	}
 	if err := db.Create(&importTaskPlatformIntegrityRow{
 		Platform: "shein", TargetPlatform: "SHEIN", ProductID: "P1", Region: "US", StoreID: 986, Deleted: 1,
-	}).Error; err == nil {
-		t.Fatal("ordinary migration replaced the existing unique index with a partial index")
+	}).Error; err != nil {
+		t.Fatalf("reimport after soft delete = %v, want historical full index repaired to active-only index", err)
 	}
 }
 

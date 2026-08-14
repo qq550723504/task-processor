@@ -226,3 +226,54 @@ func ensureUniqueIndex(db *gorm.DB, table, indexName string, columns ...string) 
 	)
 	return db.Exec(statement).Error
 }
+
+func ensureImportTaskActiveUniqueIndex(db *gorm.DB, table string) error {
+	if db == nil {
+		return fmt.Errorf("database is not configured")
+	}
+	const indexName = "idx_listing_product_import_task_unique"
+	for _, column := range []string{"target_platform", "product_id", "region", "store_id", "deleted"} {
+		if !db.Migrator().HasColumn(table, column) {
+			return nil
+		}
+	}
+	if !db.Migrator().HasIndex(&listingProductImportTask{}, indexName) {
+		return db.Exec(importTaskActiveUniqueIndexStatement(table, indexName)).Error
+	}
+	if importTaskUniqueIndexIsActiveOnly(db, table, indexName) {
+		return nil
+	}
+	if err := db.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, indexName)).Error; err != nil {
+		return err
+	}
+	return db.Exec(importTaskActiveUniqueIndexStatement(table, indexName)).Error
+}
+
+func importTaskActiveUniqueIndexStatement(table, indexName string) string {
+	return fmt.Sprintf(
+		`CREATE UNIQUE INDEX IF NOT EXISTS "%s" ON "%s" (target_platform, product_id, region, store_id) WHERE deleted = 0`,
+		indexName,
+		table,
+	)
+}
+
+func importTaskUniqueIndexIsActiveOnly(db *gorm.DB, table, indexName string) bool {
+	if db == nil || db.Dialector == nil {
+		return false
+	}
+	var definition string
+	switch db.Dialector.Name() {
+	case "postgres":
+		if err := db.Raw(`SELECT indexdef FROM pg_indexes WHERE tablename = ? AND indexname = ?`, table, indexName).Scan(&definition).Error; err != nil {
+			return false
+		}
+	case "sqlite":
+		if err := db.Raw(`SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?`, indexName).Scan(&definition).Error; err != nil {
+			return false
+		}
+	default:
+		return false
+	}
+	definition = strings.ToLower(strings.Join(strings.Fields(definition), " "))
+	return strings.Contains(definition, "where deleted = 0") || strings.Contains(definition, "where (deleted = 0)")
+}

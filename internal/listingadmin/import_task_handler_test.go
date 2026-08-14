@@ -147,6 +147,42 @@ func TestImportTaskHandlerBatchCreatesTasksWithoutCategory(t *testing.T) {
 	}
 }
 
+func TestImportTaskHandlerBatchRejectsExistingActiveTaskWithConflict(t *testing.T) {
+	t.Parallel()
+
+	router := newImportTaskTestRouter(t)
+	seedImportTask(t, router.db, listingProductImportTask{
+		TenantID:       303,
+		StoreID:        11,
+		Platform:       "amazon",
+		SourcePlatform: "amazon",
+		TargetPlatform: "shein",
+		Region:         "US",
+		ProductID:      "B001",
+		Deleted:        0,
+	})
+
+	body := bytes.NewBufferString(`{
+		"storeId": 11,
+		"platform": "Amazon",
+		"targetPlatform": "SHEIN",
+		"region": "US",
+		"productIds": ["B001"]
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/import-tasks/batch", body)
+	req.Header.Set("X-Tenant-ID", "303")
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("POST /import-tasks/batch duplicate = %d, body=%s; want 409", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"import_task_already_exists"`) {
+		t.Fatalf("response body = %s, want import_task_already_exists", resp.Body.String())
+	}
+}
+
 func TestImportTaskHandlerSoftDeletesWithinTenant(t *testing.T) {
 	t.Parallel()
 

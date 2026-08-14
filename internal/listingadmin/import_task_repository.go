@@ -36,6 +36,9 @@ func AutoMigrateImportTaskRepository(db *gorm.DB) error {
 	if err := ensureNullableImportTaskCategoryID(db, table); err != nil {
 		return err
 	}
+	if err := ensureImportTaskActiveUniqueIndex(db, table); err != nil {
+		return err
+	}
 	return db.AutoMigrate(&listingDispatchEvent{})
 }
 
@@ -70,7 +73,26 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 	if len(rows) == 0 {
 		return []ImportTask{}, nil
 	}
+	productIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		productIDs = append(productIDs, row.ProductID)
+	}
+	var existing []listingProductImportTask
+	if err := r.db.WithContext(ctx).
+		Table("listing_product_import_task").
+		Where("deleted = 0 AND target_platform = ? AND region = ? AND store_id = ?", rows[0].TargetPlatform, rows[0].Region, rows[0].StoreID).
+		Where("product_id IN ?", productIDs).
+		Limit(1).
+		Find(&existing).Error; err != nil {
+		return nil, err
+	}
+	if len(existing) > 0 {
+		return nil, ErrImportTaskAlreadyExists
+	}
 	if err := r.db.WithContext(ctx).Table("listing_product_import_task").Create(&rows).Error; err != nil {
+		if strings.Contains(err.Error(), "idx_listing_product_import_task_unique") || strings.Contains(strings.ToLower(err.Error()), "unique constraint failed: listing_product_import_task.") {
+			return nil, ErrImportTaskAlreadyExists
+		}
 		return nil, err
 	}
 	out := make([]ImportTask, 0, len(rows))
