@@ -6,8 +6,6 @@ import (
 )
 
 func TestReserveUsageInputNormalizesIdentifiersAndClonesMetadata(t *testing.T) {
-	metadata := map[string]string{" source ": " studio "}
-
 	got, err := NormalizeAndValidateReserveUsageInput(ReserveUsageInput{
 		TenantID:       " tenant-17 ",
 		ModuleCode:     " studio ",
@@ -17,7 +15,6 @@ func TestReserveUsageInputNormalizesIdentifiersAndClonesMetadata(t *testing.T) {
 		SourceType:     " design_job ",
 		SourceID:       " job-42 ",
 		IdempotencyKey: " request-42 ",
-		Metadata:       metadata,
 	})
 	if err != nil {
 		t.Fatalf("NormalizeAndValidateReserveUsageInput() error = %v", err)
@@ -26,9 +23,15 @@ func TestReserveUsageInputNormalizesIdentifiersAndClonesMetadata(t *testing.T) {
 	if got.TenantID != "tenant-17" || got.ModuleCode != "studio" || got.Metric != "studio_design_jobs_succeeded" || got.PeriodKey != "2026-08" || got.SourceType != "design_job" || got.SourceID != "job-42" || got.IdempotencyKey != "request-42" {
 		t.Fatalf("normalized input = %+v, want trimmed identifiers", got)
 	}
-	metadata[" source "] = "mutated"
-	if got.Metadata[" source "] != " studio " {
-		t.Fatalf("metadata = %#v, want an independent copy", got.Metadata)
+	if got.Metadata != nil {
+		t.Fatalf("metadata = %#v, want nil", got.Metadata)
+	}
+}
+
+func TestReserveUsageInputRejectsProviderUnsafeMetadata(t *testing.T) {
+	input := ReserveUsageInput{TenantID: "tenant-17", ModuleCode: ModuleStudio, Metric: usageMetricStudioDesignJobsSucceeded, Quantity: 1, PeriodKey: "2026-08", SourceType: "design_job", SourceID: "job-42", IdempotencyKey: "request-42", Metadata: map[string]string{"source": "studio"}}
+	if _, err := NormalizeAndValidateReserveUsageInput(input); !errors.Is(err, ErrUsageOutboxUnsafeMetadata) {
+		t.Fatalf("NormalizeAndValidateReserveUsageInput() error = %v, want ErrUsageOutboxUnsafeMetadata", err)
 	}
 }
 
@@ -78,6 +81,26 @@ func TestReserveUsageInputRejectsInvalidValues(t *testing.T) {
 		var validationErr *UsageValidationError
 		if !errors.As(err, &validationErr) || validationErr.Field != "quantity" {
 			t.Fatalf("validation error = %#v, want quantity", err)
+		}
+	})
+	t.Run("unknown metric is rejected", func(t *testing.T) {
+		input := valid
+		input.Metric = "studio_design_job_succeeded"
+		_, err := NormalizeAndValidateReserveUsageInput(input)
+		if !errors.Is(err, ErrUsageInvalidInput) {
+			t.Fatalf("NormalizeAndValidateReserveUsageInput() error = %v, want ErrUsageInvalidInput", err)
+		}
+	})
+	t.Run("metric and module must match", func(t *testing.T) {
+		input := valid
+		input.ModuleCode = ModuleOSSStorage
+		_, err := NormalizeAndValidateReserveUsageInput(input)
+		if !errors.Is(err, ErrUsageInvalidInput) {
+			t.Fatalf("NormalizeAndValidateReserveUsageInput() error = %v, want ErrUsageInvalidInput", err)
+		}
+		var validationErr *UsageValidationError
+		if !errors.As(err, &validationErr) || validationErr.Field != "module_metric" {
+			t.Fatalf("validation error = %#v, want module_metric", err)
 		}
 	})
 }
