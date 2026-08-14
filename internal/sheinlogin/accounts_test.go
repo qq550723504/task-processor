@@ -5,13 +5,18 @@ import (
 	"testing"
 
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingkit"
 )
 
 type stubListingAdminAccountStore struct {
 	items []listingadmin.Store
+	query listingadmin.StoreQuery
+	calls int
 }
 
 func (s *stubListingAdminAccountStore) ListStores(_ context.Context, query listingadmin.StoreQuery) (*listingadmin.StorePage, error) {
+	s.calls++
+	s.query = query
 	items := make([]listingadmin.Store, 0, len(s.items))
 	for _, item := range s.items {
 		if query.TenantID > 0 && item.TenantID != query.TenantID {
@@ -23,6 +28,25 @@ func (s *stubListingAdminAccountStore) ListStores(_ context.Context, query listi
 		items = append(items, item)
 	}
 	return &listingadmin.StorePage{Items: items, Total: int64(len(items)), Page: 1, PageSize: len(items)}, nil
+}
+
+func TestListingAdminAccountProviderDoesNotShareOwnerScopedCacheAcrossUsers(t *testing.T) {
+	repo := &stubListingAdminAccountStore{items: []listingadmin.Store{{
+		ID: 12, TenantID: 7, Platform: "SHEIN", Username: "demo-user", Password: "secret",
+	}}}
+	provider := NewListingAdminAccountProvider(repo)
+	ctxA := listingkit.WithRequestIdentity(context.Background(), listingkit.RequestIdentity{TenantID: "7", UserID: "user-a"})
+	ctxB := listingkit.WithRequestIdentity(context.Background(), listingkit.RequestIdentity{TenantID: "7", UserID: "user-b"})
+
+	if _, err := provider.ListAccounts(ctxA, 7); err != nil {
+		t.Fatalf("ListAccounts(user-a): %v", err)
+	}
+	if _, err := provider.ListAccounts(ctxB, 7); err != nil {
+		t.Fatalf("ListAccounts(user-b): %v", err)
+	}
+	if repo.calls != 2 {
+		t.Fatalf("ListStores calls = %d, want one scoped lookup per user", repo.calls)
+	}
 }
 
 func (s *stubListingAdminAccountStore) GetStore(_ context.Context, tenantID, id int64) (*listingadmin.Store, error) {
@@ -96,5 +120,8 @@ func TestListingAdminAccountProviderLoadsSheinAccountsFromRepository(t *testing.
 	}
 	if accounts[0].LoginURL != "https://sellerhub.shein.com" {
 		t.Fatalf("expected normalized login url, got %q", accounts[0].LoginURL)
+	}
+	if !provider.repo.(*stubListingAdminAccountStore).query.ReadAccess {
+		t.Fatal("ListAccounts query ReadAccess = false, want shared-store read access")
 	}
 }

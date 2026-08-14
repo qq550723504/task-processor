@@ -3,11 +3,13 @@ package sheinlogin
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingkit"
 )
 
 type AccountProvider interface {
@@ -23,7 +25,13 @@ type listingAdminAccountStore interface {
 type ListingAdminAccountProvider struct {
 	repo  listingAdminAccountStore
 	mu    sync.RWMutex
-	cache map[int64]tenantAccountCache
+	cache map[accountCacheKey]tenantAccountCache
+}
+
+type accountCacheKey struct {
+	tenantID int64
+	userID   string
+	roles    string
 }
 
 type tenantAccountCache struct {
@@ -34,7 +42,7 @@ type tenantAccountCache struct {
 func NewListingAdminAccountProvider(repo listingAdminAccountStore) *ListingAdminAccountProvider {
 	return &ListingAdminAccountProvider{
 		repo:  repo,
-		cache: make(map[int64]tenantAccountCache),
+		cache: make(map[accountCacheKey]tenantAccountCache),
 	}
 }
 
@@ -56,9 +64,10 @@ func (p *ListingAdminAccountProvider) ListAccounts(ctx context.Context, tenantID
 	if tenantID <= 0 {
 		return nil, fmt.Errorf("tenant id is required")
 	}
+	cacheKey := accountCacheKeyForContext(ctx, tenantID)
 
 	p.mu.RLock()
-	entry, exists := p.cache[tenantID]
+	entry, exists := p.cache[cacheKey]
 	if exists && time.Now().Before(entry.until) && entry.items != nil {
 		cached := append([]Account(nil), entry.items...)
 		p.mu.RUnlock()
@@ -68,7 +77,7 @@ func (p *ListingAdminAccountProvider) ListAccounts(ctx context.Context, tenantID
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	entry, exists = p.cache[tenantID]
+	entry, exists = p.cache[cacheKey]
 	if exists && time.Now().Before(entry.until) && entry.items != nil {
 		return append([]Account(nil), entry.items...), nil
 	}
@@ -76,11 +85,13 @@ func (p *ListingAdminAccountProvider) ListAccounts(ctx context.Context, tenantID
 		return nil, fmt.Errorf("listing admin store repository is nil")
 	}
 
-	page, err := p.repo.ListStores(ctx, listingadmin.StoreQuery{
-		TenantID: tenantID,
-		Platform: "SHEIN",
-		Page:     1,
-		PageSize: 200,
+	queryCtx := listingadmin.WithRequestRoles(ctx, listingkit.RequestRolesFromContext(ctx))
+	page, err := p.repo.ListStores(queryCtx, listingadmin.StoreQuery{
+		TenantID:   tenantID,
+		Platform:   "SHEIN",
+		ReadAccess: true,
+		Page:       1,
+		PageSize:   200,
 	})
 	if err != nil {
 		return nil, err
@@ -93,11 +104,21 @@ func (p *ListingAdminAccountProvider) ListAccounts(ctx context.Context, tenantID
 		}
 	}
 
-	p.cache[tenantID] = tenantAccountCache{
+	p.cache[cacheKey] = tenantAccountCache{
 		items: append([]Account(nil), items...),
 		until: time.Now().Add(5 * time.Second),
 	}
 	return append([]Account(nil), items...), nil
+}
+
+func accountCacheKeyForContext(ctx context.Context, tenantID int64) accountCacheKey {
+	roles := listingkit.RequestRolesFromContext(ctx)
+	sort.Strings(roles)
+	return accountCacheKey{
+		tenantID: tenantID,
+		userID:   listingkit.RequestUserIDFromContext(ctx),
+		roles:    strings.Join(roles, "\x00"),
+	}
 }
 
 func mapListingAdminStoreToAccount(store *listingadmin.Store) (Account, bool) {

@@ -182,7 +182,11 @@ func (s *taskLifecycleService) applySheinStoreResolutionSnapshot(ctx context.Con
 		return
 	}
 	if selection, err := s.resolveStoreSelection(ctx, task); err == nil && selection != nil {
-		task.SheinStoreResolutionSnapshot = sheinStoreResolutionSnapshotFromSelection(selection, task, nil)
+		snapshot := sheinStoreResolutionSnapshotFromSelection(selection, task, nil)
+		if snapshot != nil {
+			snapshot.TenantAdminAccess = RequestHasTenantAdminAccess(ctx)
+			task.SheinStoreResolutionSnapshot = snapshot
+		}
 	}
 }
 

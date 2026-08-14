@@ -67,7 +67,7 @@ describe("shein studio workbench model", () => {
     });
   });
 
-  it("returns an empty current store label when the selected store is missing", () => {
+  it("requires reselection when the selected store is missing", () => {
     const projection = projectSheinStudioStoreSelectionState({
       currentStoreId: "missing",
       enabledProfiles: [
@@ -81,7 +81,10 @@ describe("shein studio workbench model", () => {
     });
 
     expect(projection.currentStoreLabel).toBe("");
-    expect(projection.storeRequiredMessage).toBe("");
+    expect(projection.effectiveCurrentStoreId).toBe("");
+    expect(projection.storeRequiredMessage).toBe(
+      "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。",
+    );
   });
 
   it("projects a store required message when no store is selected", () => {

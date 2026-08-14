@@ -26,7 +26,7 @@ func (s *service) loadTaskExecutionContext(ctx context.Context, taskID string) (
 		TenantID: task.TenantID,
 		UserID:   userID,
 	})
-	return ctx, task, nil
+	return withSheinTaskStoreAccess(ctx, task), task, nil
 }
 
 func (s *service) markTaskProcessingIfPending(ctx context.Context, task *Task) error {

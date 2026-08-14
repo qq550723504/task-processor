@@ -53,14 +53,15 @@ export function projectSheinStudioStoreSelectionState({
   const matched = enabledProfiles.find(
     (item) => String(item.store_id) === effectiveCurrentStoreId,
   );
+  const validCurrentStoreId = matched ? effectiveCurrentStoreId : "";
   return {
     currentStoreLabel: matched ? formatSheinStoreOptionLabel(matched) : "",
-    effectiveCurrentStoreId,
+    effectiveCurrentStoreId: validCurrentStoreId,
     recentBatchStoreOptions: enabledProfiles.map((profile) => ({
       id: String(profile.store_id),
       label: formatSheinStoreOptionLabel(profile),
     })),
-    storeRequiredMessage: effectiveCurrentStoreId
+    storeRequiredMessage: validCurrentStoreId
       ? ""
       : "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。",
   };

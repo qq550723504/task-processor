@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
@@ -35,6 +36,24 @@ func TestSettingsAdminServiceGetSheinSettingsAttachesAvailableStores(t *testing.
 	}
 	if settings.AvailableStores[0].ID != 870 || settings.AvailableStores[1].ID != 871 {
 		t.Fatalf("available stores = %+v, want catalog-backed options", settings.AvailableStores)
+	}
+}
+
+func TestSettingsAdminServicePropagatesStoreCatalogFailure(t *testing.T) {
+	t.Parallel()
+
+	catalogErr := errors.New("store catalog unavailable")
+	svc := &service{
+		sheinSettings: SheinSettings{Site: "US"},
+		sheinSharedDeps: sheinSharedDependencies{storeCatalog: &stubSheinStoreCatalog{
+			err: catalogErr,
+		}},
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "227", UserID: "user-settings"})
+
+	_, err := svc.GetSheinSettings(ctx)
+	if !errors.Is(err, catalogErr) {
+		t.Fatalf("GetSheinSettings error = %v, want catalog error", err)
 	}
 }
 

@@ -189,7 +189,10 @@ type SheinStoreResolutionSnapshot struct {
 	MatchedProfileID  int64                `json:"matched_profile_id,omitempty"`
 	ManualOverride    bool                 `json:"manual_override,omitempty"`
 	Fallback          bool                 `json:"fallback,omitempty"`
-	ResolvedAt        time.Time            `json:"resolved_at,omitempty"`
+	// TenantAdminAccess records the server-validated tenant-wide store access
+	// needed when this queued task is revalidated outside the original request.
+	TenantAdminAccess bool      `json:"tenant_admin_access,omitempty"`
+	ResolvedAt        time.Time `json:"resolved_at,omitempty"`
 }
 
 type TaskListSummary struct {

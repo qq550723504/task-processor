@@ -12,7 +12,11 @@ func (s *settingsAdminService) GetSheinSettings(ctx context.Context) (*SheinSett
 		return nil, fmt.Errorf("shein settings are not configured")
 	}
 	settings := s.currentSheinSettings()
-	settings.AvailableStores = s.listStoreOptions(ctx)
+	options, err := s.loadStoreOptions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	settings.AvailableStores = options
 	return &settings, nil
 }
 
@@ -22,6 +26,10 @@ func (s *settingsAdminService) UpdateSheinSettings(ctx context.Context, req *She
 	}
 	if s == nil || s.mutateSheinSettings == nil {
 		return nil, fmt.Errorf("shein settings are not configured")
+	}
+	options, err := s.loadStoreOptions(ctx)
+	if err != nil {
+		return nil, err
 	}
 	settings := s.mutateSheinSettings(func(settings *SheinSettings) {
 		if value := strings.ToUpper(strings.TrimSpace(req.Site)); value != "" {
@@ -40,6 +48,6 @@ func (s *settingsAdminService) UpdateSheinSettings(ctx context.Context, req *She
 		now := time.Now()
 		settings.UpdatedAt = &now
 	})
-	settings.AvailableStores = s.listStoreOptions(ctx)
+	settings.AvailableStores = options
 	return &settings, nil
 }
