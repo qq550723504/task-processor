@@ -80,7 +80,7 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 	var existing []listingProductImportTask
 	if err := r.db.WithContext(ctx).
 		Table("listing_product_import_task").
-		Where("deleted = 0 AND target_platform = ? AND region = ? AND store_id = ?", rows[0].TargetPlatform, rows[0].Region, rows[0].StoreID).
+		Where(fmt.Sprintf("deleted = 0 AND %s = ? AND region = ? AND store_id = ?", importTaskCanonicalTargetPlatformExpression("target_platform", "platform")), rows[0].TargetPlatform, rows[0].Region, rows[0].StoreID).
 		Where("product_id IN ?", productIDs).
 		Limit(1).
 		Find(&existing).Error; err != nil {

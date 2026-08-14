@@ -237,10 +237,17 @@ func ensureImportTaskActiveUniqueIndex(db *gorm.DB, table string) error {
 			return nil
 		}
 	}
+	duplicates, err := importTaskCanonicalDuplicatesExist(db, table)
+	if err != nil {
+		return err
+	}
+	if duplicates {
+		return nil
+	}
 	if !db.Migrator().HasIndex(&listingProductImportTask{}, indexName) {
 		return db.Exec(importTaskActiveUniqueIndexStatement(table, indexName)).Error
 	}
-	if importTaskUniqueIndexIsActiveOnly(db, table, indexName) {
+	if importTaskUniqueIndexIsCanonicalActiveOnly(db, table, indexName) {
 		return nil
 	}
 	if err := db.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, indexName)).Error; err != nil {
@@ -249,15 +256,40 @@ func ensureImportTaskActiveUniqueIndex(db *gorm.DB, table string) error {
 	return db.Exec(importTaskActiveUniqueIndexStatement(table, indexName)).Error
 }
 
+func importTaskCanonicalTargetPlatformExpression(targetColumn, platformColumn string) string {
+	return fmt.Sprintf("LOWER(TRIM(COALESCE(NULLIF(TRIM(%s), ''), %s)))", targetColumn, platformColumn)
+}
+
+func importTaskCanonicalDuplicatesExist(db *gorm.DB, table string) (bool, error) {
+	expression := importTaskCanonicalTargetPlatformExpression("target_platform", "platform")
+	query := fmt.Sprintf(`
+		SELECT COUNT(*)
+		FROM (
+			SELECT %s AS canonical_target_platform, product_id, region, store_id
+			FROM "%s"
+			WHERE deleted = 0 AND %s IS NOT NULL
+			GROUP BY %s, product_id, region, store_id
+			HAVING COUNT(*) > 1
+			LIMIT 1
+		) duplicates`, expression, table, expression, expression)
+	var count int64
+	if err := db.Raw(query).Scan(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func importTaskActiveUniqueIndexStatement(table, indexName string) string {
+	expression := importTaskCanonicalTargetPlatformExpression("target_platform", "platform")
 	return fmt.Sprintf(
-		`CREATE UNIQUE INDEX IF NOT EXISTS "%s" ON "%s" (target_platform, product_id, region, store_id) WHERE deleted = 0`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "%s" ON "%s" ((%s), product_id, region, store_id) WHERE deleted = 0`,
 		indexName,
 		table,
+		expression,
 	)
 }
 
-func importTaskUniqueIndexIsActiveOnly(db *gorm.DB, table, indexName string) bool {
+func importTaskUniqueIndexIsCanonicalActiveOnly(db *gorm.DB, table, indexName string) bool {
 	if db == nil || db.Dialector == nil {
 		return false
 	}
@@ -274,6 +306,18 @@ func importTaskUniqueIndexIsActiveOnly(db *gorm.DB, table, indexName string) boo
 	default:
 		return false
 	}
-	definition = strings.ToLower(strings.Join(strings.Fields(definition), " "))
-	return strings.Contains(definition, "where deleted = 0") || strings.Contains(definition, "where (deleted = 0)")
+	definition = normalizeImportTaskIndexDefinition(definition)
+	expression := normalizeImportTaskIndexDefinition(importTaskCanonicalTargetPlatformExpression("target_platform", "platform"))
+	return strings.Contains(definition, "wheredeleted=0") && strings.Contains(definition, expression)
+}
+
+func normalizeImportTaskIndexDefinition(definition string) string {
+	definition = strings.ToLower(strings.Join(strings.Fields(definition), ""))
+	definition = strings.ReplaceAll(definition, `"`, "")
+	definition = strings.ReplaceAll(definition, "::text", "")
+	definition = strings.ReplaceAll(definition, "::character varying", "")
+	definition = strings.ReplaceAll(definition, "btrim", "trim")
+	definition = strings.ReplaceAll(definition, "(", "")
+	definition = strings.ReplaceAll(definition, ")", "")
+	return definition
 }

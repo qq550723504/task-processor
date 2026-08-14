@@ -127,6 +127,52 @@ func TestAutoMigrateImportTaskRepositoryRepairsHistoricalUniqueIndex(t *testing.
 	}
 }
 
+func TestAutoMigrateImportTaskRepositoryEnforcesCanonicalTargetPlatform(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
+		t.Fatalf("migrate import task row: %v", err)
+	}
+	if err := AutoMigrateImportTaskRepository(db); err != nil {
+		t.Fatalf("AutoMigrateImportTaskRepository() error = %v", err)
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{
+		Platform: "amazon", TargetPlatform: "SHEIN", ProductID: "P2", Region: "US", StoreID: 987, Deleted: 0,
+	}).Error; err != nil {
+		t.Fatalf("seed canonical target row: %v", err)
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{
+		Platform: "amazon", TargetPlatform: "shein", ProductID: "P2", Region: "US", StoreID: 987, Deleted: 0,
+	}).Error; err == nil {
+		t.Fatal("mixed-case canonical duplicate = nil, want unique index violation")
+	}
+}
+
+func TestAutoMigrateImportTaskRepositoryDefersIndexWhenCanonicalDuplicatesExist(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
+		t.Fatalf("migrate import task row: %v", err)
+	}
+	for _, target := range []string{"SHEIN", "shein"} {
+		if err := db.Create(&importTaskPlatformIntegrityRow{
+			Platform: "amazon", TargetPlatform: target, ProductID: "P3", Region: "US", StoreID: 988, Deleted: 0,
+		}).Error; err != nil {
+			t.Fatalf("seed duplicate target %q: %v", target, err)
+		}
+	}
+	if err := AutoMigrateImportTaskRepository(db); err != nil {
+		t.Fatalf("AutoMigrateImportTaskRepository() with canonical duplicates = %v", err)
+	}
+	if db.Migrator().HasIndex(&listingProductImportTask{}, "idx_listing_product_import_task_unique") {
+		t.Fatal("unique index installed despite existing canonical duplicates")
+	}
+}
+
 type importTaskPlatformIntegrityRow struct {
 	ID             int64  `gorm:"column:id;primaryKey;autoIncrement"`
 	Platform       string `gorm:"column:platform;not null"`
