@@ -11,17 +11,19 @@ import (
 )
 
 type taskRecoveryServiceConfig struct {
-	repo          Repository
-	taskSubmitter func() TaskSubmitter
-	now           func() time.Time
+	repo            Repository
+	taskSubmitter   func() TaskSubmitter
+	generationUsage GenerationUsageSettlement
+	now             func() time.Time
 }
 
 type taskRecoveryService struct {
-	repo          Repository
-	taskSubmitter func() TaskSubmitter
-	now           func() time.Time
-	recoveryNow   *submissiondomain.RecoveryNowService[Task]
-	recoveryBatch *submissiondomain.RecoveryBatchService[Task]
+	repo            Repository
+	taskSubmitter   func() TaskSubmitter
+	generationUsage GenerationUsageSettlement
+	now             func() time.Time
+	recoveryNow     *submissiondomain.RecoveryNowService[Task]
+	recoveryBatch   *submissiondomain.RecoveryBatchService[Task]
 }
 
 const (
@@ -35,9 +37,10 @@ func newTaskRecoveryService(config taskRecoveryServiceConfig) *taskRecoveryServi
 		nowFn = func() time.Time { return time.Now().UTC() }
 	}
 	svc := &taskRecoveryService{
-		repo:          config.repo,
-		taskSubmitter: config.taskSubmitter,
-		now:           nowFn,
+		repo:            config.repo,
+		taskSubmitter:   config.taskSubmitter,
+		generationUsage: config.generationUsage,
+		now:             nowFn,
 	}
 	wiring := buildTaskRecoveryRunnerWiring(svc)
 	svc.recoveryNow = submissiondomain.NewRecoveryNowService(submissiondomain.RecoveryNowServiceConfig[Task]{
@@ -120,7 +123,33 @@ func (s *taskRecoveryService) RecoverTaskNow(ctx context.Context, taskID string)
 	if s.recoveryNow == nil {
 		return nil, fmt.Errorf("task recovery runner is not configured")
 	}
+	if task, err := s.repo.GetTask(ctx, taskID); err != nil {
+		return nil, err
+	} else if isUsageCommitPending(task) {
+		return s.recoverUsageCommit(ctx, task)
+	}
 	return s.recoveryNow.RecoverNow(ctx, taskID)
+}
+
+func isUsageCommitPending(task *Task) bool {
+	return task != nil && task.RetryableBlock != nil && task.RetryableBlock.ReasonCode == "usage_commit_pending"
+}
+
+func (s *taskRecoveryService) recoverUsageCommit(ctx context.Context, task *Task) (*Task, error) {
+	if s.generationUsage == nil {
+		return nil, fmt.Errorf("generation usage settlement is not configured")
+	}
+	if err := s.generationUsage.CommitGeneration(ctx, task.TenantID, task.ID); err != nil {
+		return nil, err
+	}
+	settlementRepo, ok := s.repo.(UsageSettlementRepository)
+	if !ok {
+		return nil, fmt.Errorf("usage settlement repository is not configured")
+	}
+	if err := settlementRepo.ResolveUsageSettlement(ctx, task.ID); err != nil {
+		return nil, err
+	}
+	return s.repo.GetTask(ctx, task.ID)
 }
 
 func (s *taskRecoveryService) RunRecoverySweep(ctx context.Context, now time.Time, limit int) (int64, error) {
