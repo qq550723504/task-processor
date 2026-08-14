@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"fmt"
 	"task-processor/internal/listingkit/core"
 	"testing"
 	"time"
@@ -173,6 +174,37 @@ func TestTaskLifecycleServicePersistsTenantAdminStoreAccessDecision(t *testing.T
 	}
 	if task.SheinStoreResolutionSnapshot == nil || !task.SheinStoreResolutionSnapshot.TenantAdminAccess {
 		t.Fatalf("store resolution snapshot = %+v, want tenant-admin access decision", task.SheinStoreResolutionSnapshot)
+	}
+}
+
+func TestTaskLifecycleServicePersistsTenantAdminAccessWhenStoreProfileResolutionFails(t *testing.T) {
+	const resolutionErr = "store profile contains invalid pricing rules"
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
+		validateSheinStoreAccess: func(context.Context, int64, int64) error { return nil },
+		resolveStoreSelection: func(context.Context, *Task) (*sheinStoreSelection, error) {
+			return nil, fmt.Errorf("%s", resolutionErr)
+		},
+	})
+	ctx := WithRequestRoles(WithTenantID(context.Background(), "101"), []string{"listingkit_admin"})
+
+	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{
+		TenantID:     "101",
+		UserID:       "user-1",
+		ProductURL:   "https://example.com/product",
+		Platforms:    []string{"shein"},
+		SheinStoreID: 202,
+	})
+	if err != nil {
+		t.Fatalf("prepareGenerateTask() error = %v", err)
+	}
+	if task.SheinStoreResolutionSnapshot == nil {
+		t.Fatal("store resolution snapshot is nil after validated access")
+	}
+	if task.SheinStoreResolutionSnapshot.StoreID != 202 {
+		t.Fatalf("snapshot store id = %d, want 202", task.SheinStoreResolutionSnapshot.StoreID)
+	}
+	if !task.SheinStoreResolutionSnapshot.TenantAdminAccess {
+		t.Fatalf("snapshot = %+v, want tenant-admin access decision", task.SheinStoreResolutionSnapshot)
 	}
 }
 

@@ -469,9 +469,13 @@ export async function createGroupedSheinReviewTasks(
   const createReviewTasks = input.createReviewTasks ?? createSheinReviewTasks;
   const created: SheinStudioCreatedTask[] = [];
   const warnings: GroupedSheinTaskCreationWarning[] = [];
+  const plans: Array<{
+    sheinStoreId: string;
+    selection: SDSProductVariantSelection;
+    designs: SheinStudioGeneratedDesign[];
+  }> = [];
 
   for (const group of input.groups) {
-    requireSheinStoreID(group.sheinStoreId);
     for (const item of group.selections) {
       if (item.eligible === false) {
         continue;
@@ -494,22 +498,35 @@ export async function createGroupedSheinReviewTasks(
         continue;
       }
 
-      const tasks = await createReviewTasks({
-        prompt: input.prompt,
-        promptMode: input.promptMode,
+      // Validate every group that can actually create a task before the
+      // creation loop starts. This prevents a later invalid store from
+      // leaving earlier groups partially created and makes legacy groups
+      // with no eligible work harmless.
+      requireSheinStoreID(group.sheinStoreId);
+      plans.push({
         sheinStoreId: group.sheinStoreId,
-        imageStrategy: input.imageStrategy,
-        selectedSdsImages: input.selectedSdsImages,
-        productImageCount: input.productImageCount,
-        productImagePrompt: input.productImagePrompt,
-        productImagePrompts: input.productImagePrompts,
-        renderSizeImagesWithSds: input.renderSizeImagesWithSds,
         selection: item.selection,
-        approvedDesigns: selectionDesigns.designs,
-        onProgress: input.onProgress,
+        designs: selectionDesigns.designs,
       });
-      created.push(...tasks);
     }
+  }
+
+  for (const plan of plans) {
+    const tasks = await createReviewTasks({
+      prompt: input.prompt,
+      promptMode: input.promptMode,
+      sheinStoreId: plan.sheinStoreId,
+      imageStrategy: input.imageStrategy,
+      selectedSdsImages: input.selectedSdsImages,
+      productImageCount: input.productImageCount,
+      productImagePrompt: input.productImagePrompt,
+      productImagePrompts: input.productImagePrompts,
+      renderSizeImagesWithSds: input.renderSizeImagesWithSds,
+      selection: plan.selection,
+      approvedDesigns: plan.designs,
+      onProgress: input.onProgress,
+    });
+    created.push(...tasks);
   }
 
   return {

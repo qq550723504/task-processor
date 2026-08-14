@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"task-processor/internal/listingadmin"
@@ -82,6 +83,19 @@ type stubSettingsHandlerService struct {
 	aiResult   *listingkit.AIClientSettings
 	shein      *listingkit.SheinSettings
 	probes     listingkit.SettingsHealthProbes
+}
+
+type settingsHealthWithoutCatalogStub struct {
+	*stubSettingsHandlerService
+	healthShein *listingkit.SheinSettings
+}
+
+func (s *settingsHealthWithoutCatalogStub) GetSheinSettings(context.Context) (*listingkit.SheinSettings, error) {
+	return nil, errors.New("store catalog unavailable")
+}
+
+func (s *settingsHealthWithoutCatalogStub) GetSheinSettingsForHealth(context.Context) (*listingkit.SheinSettings, error) {
+	return s.healthShein, nil
 }
 
 func (s *stubSettingsHandlerService) GetSheinSettings(context.Context) (*listingkit.SheinSettings, error) {
@@ -206,6 +220,36 @@ func TestSettingsServiceHealthReadsExistingAIAndSheinSettings(t *testing.T) {
 	}
 	if !hasDefaultAI || !hasImageAI || !hasSheinProbe || !hasSDSProbe || !hasPricing || !hasObjectStorage {
 		t.Fatalf("health items = %#v", health.Items)
+	}
+}
+
+func TestSettingsServiceHealthDoesNotDependOnStoreCatalog(t *testing.T) {
+	t.Parallel()
+
+	settingsStub := &settingsHealthWithoutCatalogStub{
+		stubSettingsHandlerService: &stubSettingsHandlerService{
+			aiResults: map[string]*listingkit.AIClientSettings{
+				"default": {
+					ClientName: "default",
+					Enabled:    true,
+					BaseURL:    "https://api.example.test/v1",
+					Model:      "gpt-test",
+					APIKeySet:  true,
+				},
+				listingkit.ImageAIClientNameGPTImage2: {
+					ClientName: listingkit.ImageAIClientNameGPTImage2,
+					Enabled:    true,
+					BaseURL:    "https://api.example.test/v1",
+					Model:      "image-test",
+					APIKeySet:  true,
+				},
+			},
+		},
+		healthShein: &listingkit.SheinSettings{Site: "US"},
+	}
+
+	if _, err := newSettingsService(settingsStub).Health(context.Background()); err != nil {
+		t.Fatalf("Health returned error = %v, want catalog-free health read", err)
 	}
 }
 

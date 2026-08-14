@@ -67,6 +67,10 @@ type settingsHealthProbeProvider interface {
 	GetSettingsHealthProbes(ctx context.Context) listingkit.SettingsHealthProbes
 }
 
+type settingsHealthSettingsProvider interface {
+	GetSheinSettingsForHealth(ctx context.Context) (*listingkit.SheinSettings, error)
+}
+
 var settingsNamespaceSchemas = []settingsNamespaceSchema{
 	{
 		Namespace:   "shein",
@@ -128,7 +132,7 @@ func (s *settingsService) Health(ctx context.Context) (listingkit.SettingsHealth
 	if err != nil {
 		return listingkit.SettingsHealthPage{}, err
 	}
-	shein, err := s.service.GetSheinSettings(ctx)
+	shein, err := s.sheinSettingsForHealth(ctx)
 	if err != nil {
 		return listingkit.SettingsHealthPage{}, err
 	}
@@ -138,6 +142,14 @@ func (s *settingsService) Health(ctx context.Context) (listingkit.SettingsHealth
 		Shein:     shein,
 		Probes:    s.healthProbes(ctx),
 	}), nil
+}
+
+func (s *settingsService) sheinSettingsForHealth(ctx context.Context) (*listingkit.SheinSettings, error) {
+	provider, ok := s.service.(settingsHealthSettingsProvider)
+	if ok && provider != nil {
+		return provider.GetSheinSettingsForHealth(ctx)
+	}
+	return s.service.GetSheinSettings(ctx)
 }
 
 func (s *settingsService) healthProbes(ctx context.Context) listingkit.SettingsHealthProbes {

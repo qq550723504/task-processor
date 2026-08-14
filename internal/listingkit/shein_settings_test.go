@@ -57,6 +57,28 @@ func TestSettingsAdminServicePropagatesStoreCatalogFailure(t *testing.T) {
 	}
 }
 
+func TestSettingsAdminServiceHealthReadSkipsStoreCatalog(t *testing.T) {
+	t.Parallel()
+
+	svc := &service{
+		sheinSettings: SheinSettings{Site: "US", DefaultSubmitMode: "save_draft"},
+		sheinSharedDeps: sheinSharedDependencies{storeCatalog: &stubSheinStoreCatalog{
+			err: errors.New("store catalog unavailable"),
+		}},
+	}
+
+	settings, err := svc.GetSheinSettingsForHealth(context.Background())
+	if err != nil {
+		t.Fatalf("GetSheinSettingsForHealth error = %v", err)
+	}
+	if settings.Site != "US" || settings.DefaultSubmitMode != "save_draft" {
+		t.Fatalf("health settings = %+v, want current configuration", settings)
+	}
+	if settings.AvailableStores != nil {
+		t.Fatalf("health settings available stores = %+v, want catalog-free result", settings.AvailableStores)
+	}
+}
+
 func TestSettingsAdminServiceUpdateSheinSettingsNormalizesAndPersistsValues(t *testing.T) {
 	t.Parallel()
 

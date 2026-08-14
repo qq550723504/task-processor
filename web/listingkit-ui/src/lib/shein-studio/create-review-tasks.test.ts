@@ -14,7 +14,7 @@ describe("SHEIN studio defaults", () => {
     expect(DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY).toBe("sds_official");
   });
 
-  it("rejects task creation when a group has no explicit SHEIN store", async () => {
+  it("ignores an empty legacy group that would not create a SHEIN task", async () => {
     const createReviewTasks = vi.fn();
 
     await expect(
@@ -29,7 +29,7 @@ describe("SHEIN studio defaults", () => {
         ],
         createReviewTasks,
       }),
-    ).rejects.toThrow("Select a SHEIN store before creating SHEIN tasks.");
+    ).resolves.toEqual({ created: [], warnings: [] });
     expect(createReviewTasks).not.toHaveBeenCalled();
   });
 });
