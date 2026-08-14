@@ -325,3 +325,11 @@ func intPtr(value int) *int {
 	return &value
 }
 
+func TestNormalizeImportTaskIndexDefinitionAcceptsPostgresTrimBothFrom(t *testing.T) {
+	deparsed := `CREATE UNIQUE INDEX idx_listing_product_import_task_unique ON listing_product_import_task USING btree (tenant_id, lower(trim(both from target_platform)), product_id, lower(trim(both from region)), store_id) WHERE (deleted = false)`
+	canonical := `CREATE UNIQUE INDEX idx_listing_product_import_task_unique ON listing_product_import_task USING btree (tenant_id, lower(trim(target_platform)), product_id, lower(trim(region)), store_id) WHERE deleted = false`
+	if got, want := normalizeImportTaskIndexDefinition(deparsed), normalizeImportTaskIndexDefinition(canonical); got != want {
+		t.Fatalf("normalized deparsed definition = %q, want %q", got, want)
+	}
+}
+
