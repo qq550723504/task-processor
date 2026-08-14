@@ -56,27 +56,20 @@
 - Modify: `go.mod`
 - Modify: `go.sum`
 
-**Step 1: Write the failing repository boundary tests**
+**Step 1: Add repository boundary guards**
 
 Add these tests in package `tests`:
 
 ```go
-func TestOpenMeterPoCUsesExactOfficialV3SDK(t *testing.T)
 func TestOpenMeterImportsStayInsideIsolatedAdapter(t *testing.T)
 func TestOpenMeterPoCDoesNotEnterRuntimeConfigurationOrDeployments(t *testing.T)
 ```
 
-The first test reads `../go.mod` and requires the exact direct dependency line:
-
-```text
-github.com/openmeterio/openmeter/api/v3/client v1.0.0-beta.231
-```
-
-It also rejects a direct requirement matching `github.com/openmeterio/openmeter `, which would pull in the legacy server root module.
-
 The import test walks tracked `.go` files and permits the SDK import only below `internal/integration/openmeter`. The runtime test scans `cmd`, `config`, and `deployments` and rejects `OPENMETER_`, OpenMeter package imports, or OpenMeter service/image additions. Keep the scan scoped to those runtime/configuration paths so the PoC script and documentation remain allowed.
 
-**Step 2: Run the boundary tests and confirm RED**
+These are repository-policy guards rather than production behavior tests, so they do not need an artificial RED caused by grepping a dependency version. The exact dependency is verified through the Go module graph after installation.
+
+**Step 2: Run the boundary guards on the clean runtime**
 
 Run:
 
@@ -84,7 +77,7 @@ Run:
 go test ./tests -run OpenMeter -count=1
 ```
 
-Expected: failure because the exact SDK dependency and adapter package do not exist yet.
+Expected: PASS because OpenMeter has not entered a production path.
 
 **Step 3: Add the exact official SDK dependency**
 
@@ -103,11 +96,14 @@ Do not run `go mod tidy` in this task: the first SDK import is introduced by Tas
 Run:
 
 ```powershell
+$module = go list -m -json github.com/openmeterio/openmeter/api/v3/client | ConvertFrom-Json
+if ($module.Version -ne 'v1.0.0-beta.231') { throw "unexpected OpenMeter v3 SDK version: $($module.Version)" }
+if (go list -m all | Select-String '^github.com/openmeterio/openmeter ') { throw 'legacy OpenMeter root module must not enter the dependency graph' }
 go test ./tests -run OpenMeter -count=1
 go test ./internal/integration/openmeter -count=1
 ```
 
-Expected: PASS; no external service is contacted.
+Expected: module graph reports exactly `v1.0.0-beta.231`, legacy root module is absent, tests PASS, and no external service is contacted.
 
 **Step 5: Commit**
 
@@ -227,7 +223,7 @@ The server must reject unexpected methods, paths, authorization headers, or JSON
 Error cases:
 
 - HTTP 408, 429, and 5xx: retryable.
-- connection reset, timeout, and temporary network errors: retryable.
+- connection reset, connection refused, timeout, and temporary network errors: retryable.
 - HTTP 400/404/409/422: permanent event or fixture rejection, preserving status and safe detail.
 - HTTP 401/403: configuration/authentication failure, not a normal retry loop.
 - malformed base URL and missing URL: configuration failure.
@@ -431,7 +427,7 @@ overage = max(usage - limit, 0)
 
 Assert `hasAccess` against the configured hard-limit behavior at zero, partial, exact-limit, and above-limit usage. Clearly label balance/overage as locally derived because the pinned v3 access API exposes only `hasAccess`, feature key, type, and static config.
 
-For storage, ingest 8 MiB then 3 MiB as absolute snapshots and prove access/balance recover after the lower LATEST value becomes current.
+For storage, ingest 12 MiB then 3 MiB as absolute snapshots and prove access/balance recover after the lower LATEST value becomes current. The fixture's approved hard limit remains 10 MiB, so the first snapshot must exhaust access before the second restores it.
 
 For concurrency, leave one unit and release 20 goroutines through a start barrier. Each goroutine queries access before ingesting a unique event. Record how many saw access and the final usage. The test passes only when it produces a reproducible observation and writes it to `t.Log`; it must not assert that OpenMeter provides an atomic business reservation. The report later decides whether local reservation/commit/release is mandatory.
 
@@ -456,6 +452,8 @@ git commit -m "test: define OpenMeter entitlement experiments"
 **Files:**
 
 - Create: `internal/integration/openmeter/replay_contract_test.go`
+- Modify: `internal/integration/openmeter/errors.go`
+- Modify: `internal/integration/openmeter/errors_test.go`
 - Create: `scripts/lib/openmeter-poc.ps1`
 - Create: `scripts/openmeter-poc.Tests.ps1`
 - Create: `scripts/run-openmeter-poc.ps1`
@@ -478,16 +476,17 @@ Use deterministic event IDs derived from run ID plus fixed logical facts:
 
 Each test runs only when its matching `OPENMETER_POC_PHASE` is selected.
 
+Before implementing the unavailable phase, add a regression case for a wrapped `syscall.ECONNREFUSED` error and classify it as retryable. Stopping the local `openmeter` API service commonly produces connection refused rather than a timeout or reset; without this classification, the outage contract would reject a normal recoverable transport failure. Do not weaken the unavailable assertion to accept permanent failures.
+
 **Step 2: Write failing Pester tests for the runner library**
 
 `scripts/openmeter-poc.Tests.ps1` must verify:
 
-- tag constants are exactly service `v1.0.0-beta.232` and SDK `v1.0.0-beta.231`;
-- generated override pins `openmeter`, `sink-worker`, `balance-worker`, `notification-service`, `billing-worker`, and `openmeter-jobs` to the service tag;
+- generated override pins `openmeter`, `sink-worker`, `balance-worker`, `notification-service`, `billing-worker`, and `openmeter-jobs` to `ghcr.io/openmeterio/openmeter:v1.0.0-beta.232`;
 - Compose project name is exactly `task-processor-openmeter-poc`;
 - checkout/evidence paths resolve below `<repo>/.local/openmeter-poc`;
-- cleanup never contains `down -v`, `docker volume rm`, or recursive deletion;
-- command logging redacts `OPENMETER_API_KEY`;
+- a runner execution against controlled command fakes invokes `docker compose down` without `-v` and never invokes volume removal or recursive deletion;
+- captured command/log output redacts the injected `OPENMETER_API_KEY` value;
 - failure of clone, Compose health, digest resolution, a Go phase, or resource capture returns nonzero.
 
 Run and confirm RED:

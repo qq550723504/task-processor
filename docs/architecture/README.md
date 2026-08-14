@@ -108,6 +108,9 @@ documents unless they say so explicitly:
 - `task-event-v2-migration.md`
   - RabbitMQ complete-task event V2 schema, compatibility window, and removal
     gate; Listing Control ID-only dispatch is out of scope
+- `openmeter-shadow-metering-poc-report.md`
+  - time-bounded, evidence-backed local PoC decision; it does not authorize a
+    production integration, billing, payment, deployment, or data migration
 
 ## Plans, runbooks, and evaluations
 
