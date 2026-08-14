@@ -3,9 +3,15 @@ package listingsubscription
 import (
 	"fmt"
 	"strings"
+	"time"
 )
 
 const usageMetricStorageBytesCurrent = "storage_bytes_current"
+const (
+	usageMetricStudioDesignJobsSucceeded = "studio_design_jobs_succeeded"
+	usageMetricProductImageJobsSucceeded = "product_image_jobs_succeeded"
+	usageMetricSheinDraftsSucceeded      = "shein_drafts_succeeded"
+)
 
 const usageStorageBucketPeriodKey = "__current__"
 
@@ -107,7 +113,44 @@ func NormalizeAndValidateReserveUsageInput(input ReserveUsageInput) (ReserveUsag
 	if input.Quantity == 0 || (input.Metric != usageMetricStorageBytesCurrent && input.Quantity < 0) {
 		return ReserveUsageInput{}, &UsageValidationError{Field: "quantity"}
 	}
+	if isUsageCountMetric(input.Metric) && input.Quantity != 1 {
+		return ReserveUsageInput{}, &UsageValidationError{Field: "quantity"}
+	}
 	return input, nil
+}
+
+func isUsageCountMetric(metric string) bool {
+	return metric == usageMetricStudioDesignJobsSucceeded || metric == usageMetricProductImageJobsSucceeded || metric == usageMetricSheinDraftsSucceeded
+}
+
+func canonicalUsagePeriodKey(metric, supplied string, occurredAt time.Time) (string, error) {
+	if metric == usageMetricStorageBytesCurrent {
+		return supplied, nil
+	}
+	canonical := occurredAt.UTC().Format("2006-01")
+	if supplied != canonical {
+		return "", &UsageValidationError{Field: "period_key"}
+	}
+	return canonical, nil
+}
+
+func usageMetricLimitKeys(metric string) []string {
+	switch metric {
+	case usageMetricStorageBytesCurrent:
+		return []string{usageMetricStorageBytesCurrent, "storage_bytes"}
+	case usageMetricStudioDesignJobsSucceeded:
+		return []string{usageMetricStudioDesignJobsSucceeded, "design_jobs"}
+	case usageMetricProductImageJobsSucceeded:
+		return []string{usageMetricProductImageJobsSucceeded, "product_image_jobs"}
+	case usageMetricSheinDraftsSucceeded:
+		return []string{usageMetricSheinDraftsSucceeded, "product_image_jobs"}
+	default:
+		return []string{metric}
+	}
+}
+
+func usageOutboxUndelivered(status string) bool {
+	return status == "reserved" || status == "pending" || status == "failed" || status == "cancelled"
 }
 
 // ValidateProjectedUsage rejects storage deltas that would take usage below zero.

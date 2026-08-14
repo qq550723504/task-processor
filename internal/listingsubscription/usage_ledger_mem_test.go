@@ -63,6 +63,11 @@ func TestUsageLedgerConcurrentReservationsRespectLimit(t *testing.T) {
 	if !replay.Existing || replay.CommittedUsage+replay.ReservedUsage != 10 {
 		t.Fatalf("replay Reserve() = %+v, want existing event and total usage 10", replay)
 	}
+	for eventID := range eventIDs {
+		if _, err := ledger.Commit(ctx, eventID); err != nil {
+			t.Fatalf("Commit(%q) error = %v", eventID, err)
+		}
+	}
 	outbox, err := ledger.ListPendingOutbox(ctx, 20)
 	if err != nil {
 		t.Fatalf("ListPendingOutbox() error = %v", err)
@@ -128,6 +133,9 @@ func TestMemUsageLedgerConcurrentReplayCreatesOneReservation(t *testing.T) {
 	if !replay.Existing || replay.Event.EventID != eventID || replay.CommittedUsage != 0 || replay.ReservedUsage != 1 {
 		t.Fatalf("replay Reserve() = %+v, want existing event and one reserved unit", replay)
 	}
+	if _, err := ledger.Commit(ctx, eventID); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
 	outbox, err := ledger.ListPendingOutbox(ctx, 20)
 	if err != nil {
 		t.Fatalf("ListPendingOutbox() error = %v", err)
@@ -145,13 +153,34 @@ func TestMemUsageLedgerRejectsIdempotencyKeyForDifferentUsageFact(t *testing.T) 
 	if _, err := ledger.Reserve(context.Background(), input); err != nil {
 		t.Fatalf("first Reserve() error = %v", err)
 	}
-	input.Quantity = 2
+	input.SourceID = "different-job"
 	if _, err := ledger.Reserve(context.Background(), input); !errors.Is(err, ErrUsageDuplicateIdentity) {
 		t.Fatalf("Reserve() changed fact error = %v, want ErrUsageDuplicateIdentity", err)
 	}
 }
 
+func TestMemUsageLedgerRejectsNonCanonicalPeriodKey(t *testing.T) {
+	repo := NewMemRepository()
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"design_jobs": 10})
+	input := usageLedgerReserveInput("tenant-17", "period-mismatch", 1)
+	input.PeriodKey = "2026-08-retry"
+	if _, err := NewMemUsageLedger(repo).Reserve(context.Background(), input); !errors.Is(err, ErrUsageInvalidInput) {
+		t.Fatalf("Reserve() error = %v, want ErrUsageInvalidInput", err)
+	}
+}
+
 func TestMemUsageLedgerUsesStorageFallbackAndUnlimitedZeroLimit(t *testing.T) {
+	t.Run("legacy entitlement metric mapping", func(t *testing.T) {
+		repo := NewMemRepository()
+		seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"design_jobs": 1})
+		ledger := NewMemUsageLedger(repo)
+		if _, err := ledger.Reserve(context.Background(), usageLedgerReserveInput("tenant-17", "legacy-limit-1", 1)); err != nil {
+			t.Fatalf("first mapped Reserve() error = %v", err)
+		}
+		if _, err := ledger.Reserve(context.Background(), usageLedgerReserveInput("tenant-17", "legacy-limit-2", 1)); !errors.Is(err, ErrUsageQuotaExceeded) {
+			t.Fatalf("second mapped Reserve() error = %v, want ErrUsageQuotaExceeded", err)
+		}
+	})
 	t.Run("storage fallback", func(t *testing.T) {
 		repo := NewMemRepository()
 		seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, nil)
@@ -195,12 +224,16 @@ func TestMemUsageLedgerStorageSignedTransitionsAndOutboxFiltering(t *testing.T) 
 	if err != nil {
 		t.Fatalf("add Reserve() error = %v", err)
 	}
-	if _, err := ledger.Commit(ctx, addEvent.Event.EventID); err != nil {
+	committedAdd, err := ledger.Commit(ctx, addEvent.Event.EventID)
+	if err != nil {
 		t.Fatalf("add Commit() error = %v", err)
 	}
+	if committedAdd.StorageSnapshot == nil || *committedAdd.StorageSnapshot != 12 {
+		t.Fatalf("add storage snapshot = %v, want committed 12", committedAdd.StorageSnapshot)
+	}
 	items, err := ledger.ListPendingOutbox(ctx, 20)
-	if err != nil || len(items) != 3 {
-		t.Fatalf("pending outbox after signed reservations = %d, %v; want 3 active events", len(items), err)
+	if err != nil || len(items) != 2 {
+		t.Fatalf("pending outbox after signed reservations = %d, %v; want 2 committed events", len(items), err)
 	}
 	deleteEvent, err := ledger.Get(ctx, "tenant-17", "storage-delete")
 	if err != nil {

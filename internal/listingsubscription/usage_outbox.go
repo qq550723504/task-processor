@@ -9,7 +9,10 @@ import (
 // future OpenMeter worker may project asynchronously. It is deliberately pure:
 // validation or later delivery failures cannot change the local ledger event.
 func BuildOpenMeterUsageOutboxPayload(event UsageEvent) (OpenMeterUsageOutboxPayload, error) {
-	if event.Status != UsageEventCommitted {
+	if event.Status == UsageEventReversed && event.Metric != usageMetricStorageBytesCurrent {
+		return OpenMeterUsageOutboxPayload{}, ErrUsageReversalProjectionUnsupported
+	}
+	if event.Status != UsageEventCommitted && !(event.Status == UsageEventReversed && event.Metric == usageMetricStorageBytesCurrent) {
 		return OpenMeterUsageOutboxPayload{}, errors.New("usage outbox event must be committed")
 	}
 	if strings.TrimSpace(event.EventID) == "" || strings.TrimSpace(event.TenantID) == "" ||
@@ -17,7 +20,7 @@ func BuildOpenMeterUsageOutboxPayload(event UsageEvent) (OpenMeterUsageOutboxPay
 		strings.TrimSpace(event.SourceType) == "" || strings.TrimSpace(event.SourceID) == "" || event.OccurredAt.IsZero() {
 		return OpenMeterUsageOutboxPayload{}, errors.New("usage outbox event is incomplete")
 	}
-	if len(event.Metadata) != 0 {
+	if len(event.Metadata) != 0 && !(event.Status == UsageEventReversed && event.Metric == usageMetricStorageBytesCurrent && isRedactedReversalMetadata(event.Metadata)) {
 		return OpenMeterUsageOutboxPayload{}, ErrUsageOutboxUnsafeMetadata
 	}
 	quantity := event.Quantity
@@ -39,4 +42,12 @@ func BuildOpenMeterUsageOutboxPayload(event UsageEvent) (OpenMeterUsageOutboxPay
 			"source_id":   event.SourceID,
 		},
 	}, nil
+}
+
+func isRedactedReversalMetadata(metadata map[string]string) bool {
+	if len(metadata) != 1 {
+		return false
+	}
+	reason, ok := metadata["reason"]
+	return ok && (reason == "" || reason == "redacted")
 }

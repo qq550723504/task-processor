@@ -13,14 +13,14 @@ func TestUsageLedgerReconciliationDoesNotReportValidLifecycleOrIdempotentReplay(
 	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 20})
 	ledger := NewGormUsageLedger(repo)
 
-	committedReservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-committed", 2))
+	committedReservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-committed", 1))
 	if err != nil {
 		t.Fatalf("Reserve(committed) error = %v", err)
 	}
 	if _, err := ledger.Commit(ctx, committedReservation.Event.EventID); err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
-	replay, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-committed", 2))
+	replay, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-committed", 1))
 	if err != nil {
 		t.Fatalf("Reserve(replay) error = %v", err)
 	}
@@ -28,7 +28,7 @@ func TestUsageLedgerReconciliationDoesNotReportValidLifecycleOrIdempotentReplay(
 		t.Fatalf("Reserve(replay) = %#v, want existing committed event %q", replay, committedReservation.Event.EventID)
 	}
 
-	if _, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-reserved", 3)); err != nil {
+	if _, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-reserved", 1)); err != nil {
 		t.Fatalf("Reserve(reserved) error = %v", err)
 	}
 	releasedReservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-released", 1))
@@ -72,14 +72,14 @@ func TestUsageLedgerReconciliationReportsBucketAndOutboxMismatchesWithSafeContex
 	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 20})
 	ledger := NewGormUsageLedger(repo)
 
-	committedReservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-committed", 2))
+	committedReservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-committed", 1))
 	if err != nil {
 		t.Fatalf("Reserve(committed) error = %v", err)
 	}
 	if _, err := ledger.Commit(ctx, committedReservation.Event.EventID); err != nil {
 		t.Fatalf("Commit() error = %v", err)
 	}
-	reservedReservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-reserved", 3))
+	reservedReservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-reserved", 1))
 	if err != nil {
 		t.Fatalf("Reserve(reserved) error = %v", err)
 	}

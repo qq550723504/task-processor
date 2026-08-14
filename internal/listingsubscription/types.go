@@ -29,17 +29,18 @@ const (
 )
 
 var (
-	ErrModuleNotFound            = errors.New("subscription module not found")
-	ErrEntitlementNotFound       = errors.New("subscription entitlement not found")
-	ErrSubscriptionRequired      = errors.New("subscription required")
-	ErrSubscriptionQuotaExceed   = errors.New("subscription quota exceeded")
-	ErrUsageInvalidInput         = errors.New("usage ledger invalid input")
-	ErrUsageDuplicateIdentity    = errors.New("usage ledger duplicate identity")
-	ErrUsageInvalidTransition    = errors.New("usage ledger invalid transition")
-	ErrUsageQuotaExceeded        = errors.New("usage ledger quota exceeded")
-	ErrUsageLedgerNotConfigured  = errors.New("usage ledger is not configured")
-	ErrUsageOutboxUnsafeMetadata = errors.New("usage outbox metadata is unsafe")
+	ErrModuleNotFound                     = errors.New("subscription module not found")
+	ErrEntitlementNotFound                = errors.New("subscription entitlement not found")
+	ErrSubscriptionRequired               = errors.New("subscription required")
+	ErrSubscriptionQuotaExceed            = errors.New("subscription quota exceeded")
+	ErrUsageInvalidInput                  = errors.New("usage ledger invalid input")
+	ErrUsageDuplicateIdentity             = errors.New("usage ledger duplicate identity")
+	ErrUsageInvalidTransition             = errors.New("usage ledger invalid transition")
+	ErrUsageQuotaExceeded                 = errors.New("usage ledger quota exceeded")
+	ErrUsageLedgerNotConfigured           = errors.New("usage ledger is not configured")
+	ErrUsageOutboxUnsafeMetadata          = errors.New("usage outbox metadata is unsafe")
 	ErrUsageOutboxStorageSnapshotRequired = errors.New("usage outbox storage snapshot is required")
+	ErrUsageReversalProjectionUnsupported = errors.New("usage reversal projection is unsupported")
 )
 
 type UsageEventStatus string
@@ -69,8 +70,8 @@ type UsageEvent struct {
 	// storage_bytes_current outbox projection. It is derived from the ledger
 	// bucket and is intentionally not caller-controlled input.
 	StorageSnapshot *int64
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type ReserveUsageInput struct {

@@ -75,7 +75,6 @@ func TestGormUsageLedgerRejectsIdempotencyKeyForDifferentUsageFact(t *testing.T)
 		t.Fatalf("first Reserve() error = %v", err)
 	}
 	changed := input
-	changed.Quantity = 2
 	changed.SourceID = "different-job"
 	if _, err := ledger.Reserve(ctx, changed); !errors.Is(err, ErrUsageDuplicateIdentity) {
 		t.Fatalf("Reserve() changed fact error = %v, want ErrUsageDuplicateIdentity", err)
@@ -145,8 +144,10 @@ func TestUsageLedgerQuotaReservationAndStorageDeltas(t *testing.T) {
 		repo := NewGormRepository(db)
 		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
 		ledger := NewGormUsageLedger(repo)
-		if _, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-one", 2)); err != nil {
-			t.Fatalf("Reserve() up to limit error = %v", err)
+		for _, key := range []string{"request-one", "request-one-b"} {
+			if _, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", key, 1)); err != nil {
+				t.Fatalf("Reserve() up to limit error = %v", err)
+			}
 		}
 		_, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-two", 1))
 		var quotaErr *UsageQuotaError
@@ -212,8 +213,8 @@ func TestUsageLedgerQuotaReservationAndStorageDeltas(t *testing.T) {
 		if err != nil {
 			t.Fatalf("overlapping upload Commit() error = %v", err)
 		}
-		if committedUpload.StorageSnapshot == nil || *committedUpload.StorageSnapshot != 4 {
-			t.Fatalf("storage upload snapshot = %v, want 4", committedUpload.StorageSnapshot)
+		if committedUpload.StorageSnapshot == nil || *committedUpload.StorageSnapshot != 12 {
+			t.Fatalf("storage upload snapshot = %v, want 12 committed bytes", committedUpload.StorageSnapshot)
 		}
 		if _, err := ledger.Commit(ctx, mustUsageEventID(t, db, "storage-remove-old")); err != nil {
 			t.Fatalf("old-period delete Commit() error = %v", err)
@@ -357,12 +358,49 @@ func TestGormUsageLedgerListsPendingOutbox(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reserve() error = %v", err)
 	}
+	if _, err := ledger.Commit(ctx, reservation.Event.EventID); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
 	items, err := ledger.ListPendingOutbox(ctx, 1)
 	if err != nil {
 		t.Fatalf("ListPendingOutbox() error = %v", err)
 	}
 	if len(items) != 1 || items[0].EventID != reservation.Event.EventID || items[0].Destination != "openmeter" || items[0].Status != "pending" {
-		t.Fatalf("ListPendingOutbox() = %+v, want pending OpenMeter item for reservation", items)
+		t.Fatalf("ListPendingOutbox() = %+v, want pending OpenMeter item after commit", items)
+	}
+}
+
+func TestGormUsageLedgerHonorsOutboxRetrySchedule(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"design_jobs": 2})
+	ledger := NewGormUsageLedger(repo)
+	reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-retry-schedule", 1))
+	if err != nil {
+		t.Fatalf("Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, reservation.Event.EventID); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	future := time.Now().UTC().Add(time.Hour)
+	if err := db.Model(&usageEventOutboxRow{}).Where("event_id = ?", reservation.Event.EventID).Update("next_attempt_at", future).Error; err != nil {
+		t.Fatalf("set future retry: %v", err)
+	}
+	items, err := ledger.ListPendingOutbox(ctx, 10)
+	if err != nil {
+		t.Fatalf("ListPendingOutbox() future error = %v", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("future retry items = %+v, want none", items)
+	}
+	past := time.Now().UTC().Add(-time.Minute)
+	if err := db.Model(&usageEventOutboxRow{}).Where("event_id = ?", reservation.Event.EventID).Update("next_attempt_at", past).Error; err != nil {
+		t.Fatalf("set elapsed retry: %v", err)
+	}
+	items, err = ledger.ListPendingOutbox(ctx, 10)
+	if err != nil || len(items) != 1 {
+		t.Fatalf("elapsed retry items = %+v, error=%v, want one", items, err)
 	}
 }
 
@@ -407,8 +445,8 @@ func TestGormUsageLedgerPendingOutboxExcludesReleasedAndReversalRows(t *testing.
 		if err != nil {
 			t.Fatalf("ListPendingOutbox() error = %v", err)
 		}
-		if len(items) != 1 || items[0].EventID != reservation.Event.EventID {
-			t.Fatalf("reversal pending outbox = %+v, want only committed source", items)
+		if len(items) != 0 {
+			t.Fatalf("reversal pending outbox = %+v, want source cancelled before delivery", items)
 		}
 	})
 }
@@ -448,6 +486,57 @@ func TestGormUsageLedgerReverseCreatesImmutableReversal(t *testing.T) {
 		t.Fatalf("original event after reversal = %+v, want immutable committed original", original)
 	}
 	assertUsageLedgerCounts(t, db, reversal.EventID, 2, 0, 0, 2)
+}
+
+func TestGormUsageLedgerProjectsReversalAfterDeliveryAndRejectsCountCorrection(t *testing.T) {
+	ctx := context.Background()
+	t.Run("storage", func(t *testing.T) {
+		db := openUsageLedgerTestDB(t)
+		repo := NewGormRepository(db)
+		seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleOSSStorage, map[string]int{"storage_bytes": 100})
+		ledger := NewGormUsageLedger(repo)
+		reservation, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-17", "storage-delivered", 10))
+		if err != nil {
+			t.Fatalf("Reserve() error = %v", err)
+		}
+		if _, err := ledger.Commit(ctx, reservation.Event.EventID); err != nil {
+			t.Fatalf("Commit() error = %v", err)
+		}
+		if err := db.Model(&usageEventOutboxRow{}).Where("event_id = ?", reservation.Event.EventID).Update("status", "sent").Error; err != nil {
+			t.Fatalf("mark delivered: %v", err)
+		}
+		reversal, err := ledger.Reverse(ctx, reservation.Event.EventID, "storage-delivered-reversal", "correction")
+		if err != nil {
+			t.Fatalf("Reverse() error = %v", err)
+		}
+		items, err := ledger.ListPendingOutbox(ctx, 10)
+		if err != nil || len(items) != 1 || items[0].EventID != reversal.EventID {
+			t.Fatalf("pending reversal = %+v, error=%v", items, err)
+		}
+		payload, err := BuildOpenMeterUsageOutboxPayload(reversal)
+		if err != nil || payload.Quantity != 0 {
+			t.Fatalf("reversal payload = %+v, error=%v, want zero snapshot", payload, err)
+		}
+	})
+	t.Run("count", func(t *testing.T) {
+		db := openUsageLedgerTestDB(t)
+		repo := NewGormRepository(db)
+		seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"design_jobs": 2})
+		ledger := NewGormUsageLedger(repo)
+		reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "count-delivered", 1))
+		if err != nil {
+			t.Fatalf("Reserve() error = %v", err)
+		}
+		if _, err := ledger.Commit(ctx, reservation.Event.EventID); err != nil {
+			t.Fatalf("Commit() error = %v", err)
+		}
+		if err := db.Model(&usageEventOutboxRow{}).Where("event_id = ?", reservation.Event.EventID).Update("status", "sent").Error; err != nil {
+			t.Fatalf("mark delivered: %v", err)
+		}
+		if _, err := ledger.Reverse(ctx, reservation.Event.EventID, "count-delivered-reversal", "correction"); !errors.Is(err, ErrUsageReversalProjectionUnsupported) {
+			t.Fatalf("Reverse() error = %v, want ErrUsageReversalProjectionUnsupported", err)
+		}
+	})
 }
 
 func TestGormUsageLedgerReverseRejectsIdempotencyKeyOwnedByAnotherEvent(t *testing.T) {

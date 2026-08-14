@@ -30,6 +30,9 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 	if input.OccurredAt.IsZero() {
 		input.OccurredAt = time.Now().UTC()
 	}
+	if input.PeriodKey, err = canonicalUsagePeriodKey(input.Metric, input.PeriodKey, input.OccurredAt); err != nil {
+		return ReserveUsageResult{}, err
+	}
 
 	var result ReserveUsageResult
 	for attempt := 0; attempt < 20; attempt++ {
@@ -93,12 +96,12 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 				Updates(map[string]any{"reserved": updatedReserved, "updated_at": time.Now().UTC()}).Error; err != nil {
 				return err
 			}
-			if err := tx.Create(&usageEventOutboxRow{EventID: event.EventID}).Error; err != nil {
+			if err := tx.Create(&usageEventOutboxRow{EventID: event.EventID, Status: "reserved"}).Error; err != nil {
 				return err
 			}
 			e := usageEventFromRow(event)
 			if input.Metric == usageMetricStorageBytesCurrent {
-				snapshot := bucket.Committed + updatedReserved
+				snapshot := bucket.Committed
 				e.StorageSnapshot = &snapshot
 			}
 			result = ReserveUsageResult{Event: e, Limit: limit, CommittedUsage: bucket.Committed, ReservedUsage: updatedReserved}
@@ -166,6 +169,15 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 		if source.Status != string(UsageEventCommitted) {
 			return ValidateUsageEventTransition(UsageEventStatus(source.Status), UsageEventReversed)
 		}
+		var sourceOutbox usageEventOutboxRow
+		sourceOutboxErr := tx.Where("event_id = ?", source.EventID).Take(&sourceOutbox).Error
+		if sourceOutboxErr != nil && !errors.Is(sourceOutboxErr, gorm.ErrRecordNotFound) {
+			return sourceOutboxErr
+		}
+		sourceDelivered := sourceOutboxErr != nil || !usageOutboxUndelivered(sourceOutbox.Status)
+		if source.Metric != usageMetricStorageBytesCurrent && sourceDelivered {
+			return ErrUsageReversalProjectionUnsupported
+		}
 		var priorReversal usageEventRow
 		if err := tx.Where("reversal_of = ?", source.EventID).Take(&priorReversal).Error; err == nil {
 			event = usageEventFromRow(priorReversal)
@@ -212,12 +224,20 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 			Updates(map[string]any{"committed": committed, "updated_at": time.Now().UTC()}).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&usageEventOutboxRow{EventID: reversal.EventID, Status: "cancelled"}).Error; err != nil {
+		reversalOutboxStatus := "cancelled"
+		if sourceDelivered && source.Metric == usageMetricStorageBytesCurrent {
+			reversalOutboxStatus = "pending"
+		} else if sourceOutboxErr == nil {
+			if err := tx.Model(&usageEventOutboxRow{}).Where("event_id = ? AND status IN ?", source.EventID, []string{"reserved", "pending", "failed"}).Update("status", "cancelled").Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.Create(&usageEventOutboxRow{EventID: reversal.EventID, Status: reversalOutboxStatus}).Error; err != nil {
 			return err
 		}
 		event = usageEventFromRow(reversal)
 		if source.Metric == usageMetricStorageBytesCurrent {
-			snapshot := committed + bucket.Reserved
+			snapshot := committed
 			event.StorageSnapshot = &snapshot
 		}
 		return nil
@@ -234,7 +254,7 @@ func (l *gormUsageLedger) Get(ctx context.Context, tenantID, idempotencyKey stri
 	event := usageEventFromRow(row)
 	if row.Metric == usageMetricStorageBytesCurrent {
 		if bucket, bucketErr := loadUsageBucket(l.repo.db.WithContext(ctx), row.TenantID, row.ModuleCode, row.PeriodKey, row.Metric); bucketErr == nil {
-			snapshot := bucket.Committed + bucket.Reserved
+			snapshot := bucket.Committed
 			event.StorageSnapshot = &snapshot
 		}
 	}
@@ -246,7 +266,8 @@ func (l *gormUsageLedger) ListPendingOutbox(ctx context.Context, limit int) ([]U
 		return []UsageOutboxItem{}, nil
 	}
 	var rows []usageEventOutboxRow
-	if err := l.repo.db.WithContext(ctx).Where("status = ?", "pending").Order("created_at ASC, id ASC").Limit(limit).Find(&rows).Error; err != nil {
+	now := time.Now().UTC()
+	if err := l.repo.db.WithContext(ctx).Where("status = ? AND (next_attempt_at IS NULL OR next_attempt_at <= ?)", "pending", now).Order("COALESCE(next_attempt_at, created_at) ASC, id ASC").Limit(limit).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	items := make([]UsageOutboxItem, 0, len(rows))
@@ -312,10 +333,14 @@ func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID s
 			if err := tx.Model(&usageEventOutboxRow{}).Where("event_id = ? AND status = ?", row.EventID, "pending").Update("status", "cancelled").Error; err != nil {
 				return err
 			}
+		} else if target == UsageEventCommitted {
+			if err := tx.Model(&usageEventOutboxRow{}).Where("event_id = ? AND status = ?", row.EventID, "reserved").Update("status", "pending").Error; err != nil {
+				return err
+			}
 		}
 		event = usageEventFromRow(row)
 		if row.Metric == usageMetricStorageBytesCurrent {
-			snapshot := committed + reserved
+			snapshot := committed
 			event.StorageSnapshot = &snapshot
 		}
 		return nil
@@ -338,7 +363,7 @@ func (l *gormUsageLedger) reserveResultForExisting(tx *gorm.DB, event usageEvent
 	}
 	e := usageEventFromRow(event)
 	if event.Metric == usageMetricStorageBytesCurrent {
-		snapshot := bucket.Committed + bucket.Reserved
+		snapshot := bucket.Committed
 		e.StorageSnapshot = &snapshot
 	}
 	*result = ReserveUsageResult{Event: e, Existing: true, CommittedUsage: bucket.Committed, ReservedUsage: bucket.Reserved, Limit: limit}
@@ -394,12 +419,13 @@ func usageLimit(entitlement tenantEntitlementRow, metric string) (*int64, error)
 	if err != nil {
 		return nil, err
 	}
-	value, ok := limits[metric]
-	if !ok {
-		return nil, nil
+	for _, key := range usageMetricLimitKeys(metric) {
+		if value, ok := limits[key]; ok {
+			limit := int64(value)
+			return &limit, nil
+		}
 	}
-	limit := int64(value)
-	return &limit, nil
+	return nil, nil
 }
 
 func validateUsageReservation(input ReserveUsageInput, bucket usageBucketRow, limit *int64) error {

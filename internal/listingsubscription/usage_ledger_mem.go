@@ -58,6 +58,9 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 	if input.OccurredAt.IsZero() {
 		input.OccurredAt = time.Now().UTC()
 	}
+	if input.PeriodKey, err = canonicalUsagePeriodKey(input.Metric, input.PeriodKey, input.OccurredAt); err != nil {
+		return ReserveUsageResult{}, err
+	}
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -100,7 +103,7 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 		OccurredAt: input.OccurredAt, Metadata: cloneUsageMetadata(input.Metadata), CreatedAt: now, UpdatedAt: now,
 	}
 	if input.Metric == usageMetricStorageBytesCurrent {
-		snapshot := bucket.committed + bucket.reserved
+		snapshot := bucket.committed
 		event.StorageSnapshot = &snapshot
 	}
 	l.eventsByID[event.EventID] = memUsageEvent{event: event, periodKey: input.PeriodKey}
@@ -133,6 +136,11 @@ func (l *memUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, r
 	}
 	if source.event.Status != UsageEventCommitted {
 		return UsageEvent{}, ValidateUsageEventTransition(source.event.Status, UsageEventReversed)
+	}
+	sourceOutbox, sourceHasOutbox := l.outboxByEventID[source.event.EventID]
+	sourceDelivered := sourceHasOutbox && !usageOutboxUndelivered(sourceOutbox.Status)
+	if source.event.Metric != usageMetricStorageBytesCurrent && sourceDelivered {
+		return UsageEvent{}, ErrUsageReversalProjectionUnsupported
 	}
 	if reversalID, ok := l.reversalIDBySource[source.event.EventID]; ok {
 		return cloneMemUsageEvent(l.eventsByID[reversalID].event), nil
@@ -170,14 +178,22 @@ func (l *memUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, r
 		SourceID: source.event.SourceID, IdempotencyKey: idempotencyKey, Status: UsageEventReversed,
 		OccurredAt: now, ReversalOf: source.event.EventID, Metadata: redactedMemUsageMetadata(reason), CreatedAt: now, UpdatedAt: now,
 	}
+	reversalOutboxStatus := "cancelled"
+	if sourceDelivered && source.event.Metric == usageMetricStorageBytesCurrent {
+		reversalOutboxStatus = "pending"
+	} else if sourceHasOutbox && sourceOutbox.Status != "cancelled" {
+		sourceOutbox.Status = "cancelled"
+		sourceOutbox.UpdatedAt = now
+		l.outboxByEventID[source.event.EventID] = sourceOutbox
+	}
+	l.addPendingOutboxWithStatus(reversal.EventID, now, reversalOutboxStatus)
+	if source.event.Metric == usageMetricStorageBytesCurrent {
+		snapshot := bucket.committed
+		reversal.StorageSnapshot = &snapshot
+	}
 	l.eventsByID[reversal.EventID] = memUsageEvent{event: reversal, periodKey: source.periodKey}
 	l.eventIDByIdentity[identity] = reversal.EventID
 	l.reversalIDBySource[source.event.EventID] = reversal.EventID
-	l.addPendingOutboxWithStatus(reversal.EventID, now, "cancelled")
-	if source.event.Metric == usageMetricStorageBytesCurrent {
-		snapshot := bucket.committed + bucket.reserved
-		reversal.StorageSnapshot = &snapshot
-	}
 	return cloneMemUsageEvent(reversal), nil
 }
 
@@ -202,13 +218,30 @@ func (l *memUsageLedger) ListPendingOutbox(ctx context.Context, limit int) ([]Us
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	now := time.Now().UTC()
 	items := make([]UsageOutboxItem, 0, len(l.outboxByEventID))
 	for _, item := range l.outboxByEventID {
 		if item.Status == "pending" {
+			if item.NextAttemptAt != nil && item.NextAttemptAt.After(now) {
+				continue
+			}
 			items = append(items, cloneMemUsageOutboxItem(item))
 		}
 	}
-	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
+	sort.Slice(items, func(i, j int) bool {
+		left, right := items[i], items[j]
+		leftAt, rightAt := left.CreatedAt, right.CreatedAt
+		if left.NextAttemptAt != nil {
+			leftAt = *left.NextAttemptAt
+		}
+		if right.NextAttemptAt != nil {
+			rightAt = *right.NextAttemptAt
+		}
+		if leftAt.Equal(rightAt) {
+			return left.ID < right.ID
+		}
+		return leftAt.Before(rightAt)
+	})
 	if len(items) > limit {
 		items = items[:limit]
 	}
@@ -261,9 +294,14 @@ func (l *memUsageLedger) transitionReservedEvent(ctx context.Context, eventID st
 			item.Status = "cancelled"
 			l.outboxByEventID[eventID] = item
 		}
+	} else if target == UsageEventCommitted {
+		if item, ok := l.outboxByEventID[eventID]; ok && item.Status == "reserved" {
+			item.Status = "pending"
+			l.outboxByEventID[eventID] = item
+		}
 	}
 	if record.event.Metric == usageMetricStorageBytesCurrent {
-		snapshot := bucket.committed + bucket.reserved
+		snapshot := bucket.committed
 		record.event.StorageSnapshot = &snapshot
 	}
 	l.eventsByID[eventID] = record
@@ -282,14 +320,14 @@ func (l *memUsageLedger) reserveResultForExisting(eventID string) (ReserveUsageR
 	}
 	event := cloneMemUsageEvent(record.event)
 	if record.event.Metric == usageMetricStorageBytesCurrent {
-		snapshot := bucket.committed + bucket.reserved
+		snapshot := bucket.committed
 		event.StorageSnapshot = &snapshot
 	}
 	return ReserveUsageResult{Event: event, Existing: true, CommittedUsage: bucket.committed, ReservedUsage: bucket.reserved, Limit: memUsageLimit(entitlement, record.event.Metric)}, nil
 }
 
 func (l *memUsageLedger) addPendingOutbox(eventID string, now time.Time) {
-	l.addPendingOutboxWithStatus(eventID, now, "pending")
+	l.addPendingOutboxWithStatus(eventID, now, "reserved")
 }
 
 func (l *memUsageLedger) addPendingOutboxWithStatus(eventID string, now time.Time, status string) {
@@ -298,12 +336,13 @@ func (l *memUsageLedger) addPendingOutboxWithStatus(eventID string, now time.Tim
 }
 
 func memUsageLimit(entitlement *Entitlement, metric string) *int64 {
-	value, ok := entitlement.Limits[metric]
-	if !ok {
-		return nil
+	for _, key := range usageMetricLimitKeys(metric) {
+		if value, ok := entitlement.Limits[key]; ok {
+			limit := int64(value)
+			return &limit
+		}
 	}
-	limit := int64(value)
-	return &limit
+	return nil
 }
 
 func validateMemUsageReservation(input ReserveUsageInput, bucket memUsageBucket, limit *int64) error {

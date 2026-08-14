@@ -68,6 +68,18 @@ func TestReserveUsageInputRejectsInvalidValues(t *testing.T) {
 			}
 		})
 	}
+	t.Run("known count metrics require one", func(t *testing.T) {
+		input := valid
+		input.Quantity = 2
+		_, err := NormalizeAndValidateReserveUsageInput(input)
+		if !errors.Is(err, ErrUsageInvalidInput) {
+			t.Fatalf("NormalizeAndValidateReserveUsageInput() error = %v, want ErrUsageInvalidInput", err)
+		}
+		var validationErr *UsageValidationError
+		if !errors.As(err, &validationErr) || validationErr.Field != "quantity" {
+			t.Fatalf("validation error = %#v, want quantity", err)
+		}
+	})
 }
 
 func TestUsageLedgerRejectsStorageDeltaBelowZero(t *testing.T) {
