@@ -316,3 +316,40 @@ func TestApplyStoreQuerySupportsSharedReadAccess(t *testing.T) {
 		t.Fatalf("rows = %+v, want owned plus shared stores", rows)
 	}
 }
+
+func TestApplyStoreQueryMatchesPlatformCaseInsensitively(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingStore{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	row := listingStore{
+		TenantID: 101,
+		Name:     "lowercase shein",
+		Username: "demo",
+		Password: "secret",
+		Platform: "shein",
+		ShopType: "semi",
+		Deleted:  0,
+		Status:   0,
+	}
+	if err := db.Table("listing_store").Create(&row).Error; err != nil {
+		t.Fatalf("seed row: %v", err)
+	}
+
+	rows, err := findStoreRows(context.Background(), db.WithContext(context.Background()).Table("listing_store"), StoreQuery{
+		TenantID:   101,
+		Platform:   "SHEIN",
+		ReadAccess: true,
+	})
+	if err != nil {
+		t.Fatalf("findStoreRows: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Platform != "shein" {
+		t.Fatalf("rows = %+v, want lowercase shein store", rows)
+	}
+}
