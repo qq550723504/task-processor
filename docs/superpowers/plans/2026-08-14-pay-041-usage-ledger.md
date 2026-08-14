@@ -327,5 +327,3 @@ git commit -m "docs: record PAY-041 usage ledger handoff"
 - PAY-043: manual commercial subscription registry and payment-provider adapter/webhook state machine.
 - PAY-044: scheduled reconciliation, export, manual adjustments, and billing support reports.
 - OpenMeter production deployment, capacity planning, retention, and SLO design.
-
-

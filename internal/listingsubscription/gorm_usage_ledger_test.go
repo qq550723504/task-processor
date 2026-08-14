@@ -3,7 +3,9 @@ package listingsubscription
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -139,6 +141,67 @@ func TestUsageLedgerQuotaReservationAndStorageDeltas(t *testing.T) {
 			t.Fatalf("storage quota error = %+v, want metric/limit/committed/reserved/quantity", quotaErr)
 		}
 	})
+}
+
+func TestGormUsageLedgerConcurrentQuotaReservations(t *testing.T) {
+	ctx := context.Background()
+	db := openConcurrentUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-concurrent", "studio", map[string]int{"studio_design_jobs_succeeded": 10})
+	if err := db.Create(&usageBucketRow{TenantID: "tenant-concurrent", ModuleCode: "studio", PeriodKey: "2026-08", Metric: "studio_design_jobs_succeeded"}).Error; err != nil {
+		t.Fatalf("seed concurrent usage bucket: %v", err)
+	}
+	ledger := NewGormUsageLedger(repo)
+
+	start := make(chan struct{})
+	results := make(chan error, 20)
+	var workers sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		workers.Add(1)
+		go func(worker int) {
+			defer workers.Done()
+			<-start
+			input := usageLedgerReserveInput("tenant-concurrent", fmt.Sprintf("concurrent-%02d", worker), 1)
+			_, err := ledger.Reserve(ctx, input)
+			results <- err
+		}(i)
+	}
+	close(start)
+	workers.Wait()
+	close(results)
+
+	successes := 0
+	quotaFailures := 0
+	for err := range results {
+		if err == nil {
+			successes++
+			continue
+		}
+		var quotaErr *UsageQuotaError
+		if errors.As(err, &quotaErr) {
+			quotaFailures++
+			continue
+		}
+		t.Fatalf("concurrent Reserve() error = %v, want only quota rejection after capacity is exhausted", err)
+	}
+	if successes != 10 || quotaFailures != 10 {
+		t.Fatalf("concurrent reservations = successes:%d quota_failures:%d, want 10/10", successes, quotaFailures)
+	}
+
+	var bucket usageBucketRow
+	if err := db.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", "tenant-concurrent", "studio", "2026-08", "studio_design_jobs_succeeded").Take(&bucket).Error; err != nil {
+		t.Fatalf("load concurrent usage bucket: %v", err)
+	}
+	var events, outbox int64
+	if err := db.Model(&usageEventRow{}).Where("tenant_id = ?", "tenant-concurrent").Count(&events).Error; err != nil {
+		t.Fatalf("count concurrent usage events: %v", err)
+	}
+	if err := db.Model(&usageEventOutboxRow{}).Joins("JOIN saas_usage_events ON saas_usage_events.event_id = saas_usage_event_outbox.event_id").Where("saas_usage_events.tenant_id = ?", "tenant-concurrent").Count(&outbox).Error; err != nil {
+		t.Fatalf("count concurrent outbox items: %v", err)
+	}
+	if bucket.Committed+bucket.Reserved != 10 || events != 10 || outbox != 10 {
+		t.Fatalf("concurrent durable totals = committed:%d reserved:%d events:%d outbox:%d, want 10/10/10/10", bucket.Committed, bucket.Reserved, events, outbox)
+	}
 }
 
 func TestGormUsageLedgerListsPendingOutbox(t *testing.T) {
@@ -420,6 +483,27 @@ func openUsageLedgerTestDB(t *testing.T) *gorm.DB {
 	}
 	if err := AutoMigrateRepository(db); err != nil {
 		t.Fatalf("AutoMigrateRepository() error = %v", err)
+	}
+	return db
+}
+
+func openConcurrentUsageLedgerTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: "file:usage-ledger-concurrent?mode=memory&cache=shared&_pragma=busy_timeout(10000)"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open concurrent db: %v", err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("open concurrent sql db: %v", err)
+	}
+	// SQLite is a single-writer database. Keep one pooled connection so the
+	// goroutines exercise concurrent repository calls without turning SQLite's
+	// deferred-write lock upgrade into nondeterministic "database locked" errors.
+	sqlDB.SetMaxOpenConns(1)
+	sqlDB.SetMaxIdleConns(1)
+	if err := AutoMigrateRepository(db); err != nil {
+		t.Fatalf("AutoMigrateRepository() concurrent error = %v", err)
 	}
 	return db
 }
