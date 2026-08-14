@@ -5,32 +5,48 @@ import (
 )
 
 type settingsAdminServiceConfig struct {
-	storeProfileRepo     StoreProfileRepository
-	aiCredentialStore    AIClientCredentialStore
-	currentSheinSettings func() SheinSettings
-	mutateSheinSettings  func(func(*SheinSettings)) SheinSettings
-	listStoreOptions     func(context.Context) []SheinStoreOption
-	settingsHealthProbes SettingsHealthProbes
+	storeProfileRepo          StoreProfileRepository
+	aiCredentialStore         AIClientCredentialStore
+	currentSheinSettings      func() SheinSettings
+	mutateSheinSettings       func(func(*SheinSettings)) SheinSettings
+	listStoreOptions          func(context.Context) []SheinStoreOption
+	listStoreOptionsWithError func(context.Context) ([]SheinStoreOption, error)
+	settingsHealthProbes      SettingsHealthProbes
 }
 
 type settingsAdminService struct {
-	storeProfileRepo     StoreProfileRepository
-	aiCredentialStore    AIClientCredentialStore
-	currentSheinSettings func() SheinSettings
-	mutateSheinSettings  func(func(*SheinSettings)) SheinSettings
-	listStoreOptions     func(context.Context) []SheinStoreOption
-	settingsHealthProbes SettingsHealthProbes
+	storeProfileRepo          StoreProfileRepository
+	aiCredentialStore         AIClientCredentialStore
+	currentSheinSettings      func() SheinSettings
+	mutateSheinSettings       func(func(*SheinSettings)) SheinSettings
+	listStoreOptions          func(context.Context) []SheinStoreOption
+	listStoreOptionsWithError func(context.Context) ([]SheinStoreOption, error)
+	settingsHealthProbes      SettingsHealthProbes
 }
 
 func newSettingsAdminService(config settingsAdminServiceConfig) *settingsAdminService {
 	return &settingsAdminService{
-		storeProfileRepo:     config.storeProfileRepo,
-		aiCredentialStore:    config.aiCredentialStore,
-		currentSheinSettings: config.currentSheinSettings,
-		mutateSheinSettings:  config.mutateSheinSettings,
-		listStoreOptions:     config.listStoreOptions,
-		settingsHealthProbes: config.settingsHealthProbes,
+		storeProfileRepo:          config.storeProfileRepo,
+		aiCredentialStore:         config.aiCredentialStore,
+		currentSheinSettings:      config.currentSheinSettings,
+		mutateSheinSettings:       config.mutateSheinSettings,
+		listStoreOptions:          config.listStoreOptions,
+		listStoreOptionsWithError: config.listStoreOptionsWithError,
+		settingsHealthProbes:      config.settingsHealthProbes,
 	}
+}
+
+func (s *settingsAdminService) loadStoreOptions(ctx context.Context) ([]SheinStoreOption, error) {
+	if s == nil {
+		return nil, nil
+	}
+	if s.listStoreOptionsWithError != nil {
+		return s.listStoreOptionsWithError(ctx)
+	}
+	if s.listStoreOptions != nil {
+		return s.listStoreOptions(ctx), nil
+	}
+	return nil, nil
 }
 
 func (s *settingsAdminService) GetSettingsHealthProbes(context.Context) SettingsHealthProbes {

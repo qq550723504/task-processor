@@ -100,7 +100,7 @@ func (h *ImportTaskHandler) BatchCreateImportTasks(c *gin.Context) {
 	}
 	items, err := h.repo.BatchCreateImportTasks(requestIdentityContext(c), tasks)
 	if err != nil {
-		writeInternalHandlerError(c, "import_task_create_failed", err)
+		writeImportTaskError(c, err, "import_task_create_failed")
 		return
 	}
 	c.JSON(http.StatusCreated, BatchCreateImportTaskResponse{CreatedCount: len(items), Items: items})
@@ -161,4 +161,6 @@ func optionalPositiveInt64(value *int64) *int64 {
 
 var writeImportTaskError = newMappedHandlerErrorWriter(
 	handlerErrorRule{match: ErrImportTaskNotFound, status: http.StatusNotFound, errorCode: "import_task_not_found"},
+	handlerErrorRule{match: ErrImportTaskAlreadyExists, status: http.StatusConflict, errorCode: "import_task_already_exists"},
+	handlerErrorRule{match: ErrImportTaskIntegrityUnavailable, status: http.StatusServiceUnavailable, errorCode: "import_task_integrity_unavailable"},
 )

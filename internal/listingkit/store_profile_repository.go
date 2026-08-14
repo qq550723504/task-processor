@@ -17,11 +17,12 @@ type gormStoreProfileRepository struct {
 }
 
 type listingKitStoreProfileRecord struct {
-	ID                int64 `gorm:"primaryKey"`
-	TenantID          int64 `gorm:"index:idx_listingkit_store_profile_tenant_priority,priority:1;uniqueIndex:uk_listingkit_store_profile_tenant_store,priority:1"`
-	StoreID           int64 `gorm:"uniqueIndex:uk_listingkit_store_profile_tenant_store,priority:2"`
-	Enabled           bool
-	Priority          int `gorm:"index:idx_listingkit_store_profile_tenant_priority,priority:2"`
+	ID       int64 `gorm:"primaryKey"`
+	TenantID int64 `gorm:"index:idx_listingkit_store_profile_tenant_priority,priority:1;uniqueIndex:uk_listingkit_store_profile_tenant_store,priority:1"`
+	StoreID  int64 `gorm:"uniqueIndex:uk_listingkit_store_profile_tenant_store,priority:2"`
+	Enabled  bool
+	Priority int `gorm:"index:idx_listingkit_store_profile_tenant_priority,priority:2"`
+	// IsFallback retains the historical database column for read compatibility only.
 	IsFallback        bool
 	Site              string
 	WarehouseCode     string
@@ -85,7 +86,6 @@ func (r *gormStoreProfileRepository) Upsert(ctx context.Context, profile *Listin
 				"store_id":            row.StoreID,
 				"enabled":             row.Enabled,
 				"priority":            row.Priority,
-				"is_fallback":         row.IsFallback,
 				"site":                row.Site,
 				"warehouse_code":      row.WarehouseCode,
 				"default_stock":       row.DefaultStock,
@@ -102,12 +102,11 @@ func (r *gormStoreProfileRepository) Upsert(ctx context.Context, profile *Listin
 		}
 		return row.toDomainPtr()
 	}
-	if err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+	if err := r.db.WithContext(ctx).Omit("IsFallback").Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "tenant_id"}, {Name: "store_id"}},
 		DoUpdates: clause.Assignments(map[string]any{
 			"enabled":             row.Enabled,
 			"priority":            row.Priority,
-			"is_fallback":         row.IsFallback,
 			"site":                row.Site,
 			"warehouse_code":      row.WarehouseCode,
 			"default_stock":       row.DefaultStock,
@@ -156,7 +155,6 @@ func newListingKitStoreProfileRecord(profile ListingKitStoreProfile) (listingKit
 		StoreID:           profile.StoreID,
 		Enabled:           profile.Enabled,
 		Priority:          profile.Priority,
-		IsFallback:        profile.IsFallback,
 		Site:              profile.Site,
 		WarehouseCode:     profile.WarehouseCode,
 		DefaultStock:      profile.DefaultStock,
@@ -186,7 +184,6 @@ func (r listingKitStoreProfileRecord) toDomain() (ListingKitStoreProfile, error)
 		StoreID:           r.StoreID,
 		Enabled:           r.Enabled,
 		Priority:          r.Priority,
-		IsFallback:        r.IsFallback,
 		Site:              r.Site,
 		WarehouseCode:     r.WarehouseCode,
 		DefaultStock:      r.DefaultStock,

@@ -3,11 +3,13 @@ package sheinlogin
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingkit"
 )
 
 type AccountProvider interface {
@@ -23,7 +25,13 @@ type listingAdminAccountStore interface {
 type ListingAdminAccountProvider struct {
 	repo  listingAdminAccountStore
 	mu    sync.RWMutex
-	cache map[int64]tenantAccountCache
+	cache map[accountCacheKey]tenantAccountCache
+}
+
+type accountCacheKey struct {
+	tenantID int64
+	userID   string
+	roles    string
 }
 
 type tenantAccountCache struct {
@@ -34,7 +42,7 @@ type tenantAccountCache struct {
 func NewListingAdminAccountProvider(repo listingAdminAccountStore) *ListingAdminAccountProvider {
 	return &ListingAdminAccountProvider{
 		repo:  repo,
-		cache: make(map[int64]tenantAccountCache),
+		cache: make(map[accountCacheKey]tenantAccountCache),
 	}
 }
 
@@ -56,9 +64,10 @@ func (p *ListingAdminAccountProvider) ListAccounts(ctx context.Context, tenantID
 	if tenantID <= 0 {
 		return nil, fmt.Errorf("tenant id is required")
 	}
+	cacheKey := accountCacheKeyForContext(ctx, tenantID)
 
 	p.mu.RLock()
-	entry, exists := p.cache[tenantID]
+	entry, exists := p.cache[cacheKey]
 	if exists && time.Now().Before(entry.until) && entry.items != nil {
 		cached := append([]Account(nil), entry.items...)
 		p.mu.RUnlock()
@@ -68,7 +77,7 @@ func (p *ListingAdminAccountProvider) ListAccounts(ctx context.Context, tenantID
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	entry, exists = p.cache[tenantID]
+	entry, exists = p.cache[cacheKey]
 	if exists && time.Now().Before(entry.until) && entry.items != nil {
 		return append([]Account(nil), entry.items...), nil
 	}
@@ -76,28 +85,71 @@ func (p *ListingAdminAccountProvider) ListAccounts(ctx context.Context, tenantID
 		return nil, fmt.Errorf("listing admin store repository is nil")
 	}
 
-	page, err := p.repo.ListStores(ctx, listingadmin.StoreQuery{
-		TenantID: tenantID,
-		Platform: "SHEIN",
-		Page:     1,
-		PageSize: 200,
-	})
-	if err != nil {
-		return nil, err
-	}
-	items := make([]Account, 0, len(page.Items))
-	for _, store := range page.Items {
-		account, ok := mapListingAdminStoreToAccount(&store)
-		if ok {
-			items = append(items, account)
+	queryCtx := listingAdminAccountRequestContext(ctx)
+	const pageSize = 200
+	items := make([]Account, 0, pageSize)
+	for pageNumber := 1; ; pageNumber++ {
+		page, err := p.repo.ListStores(queryCtx, listingadmin.StoreQuery{
+			TenantID:   tenantID,
+			Platform:   "SHEIN",
+			ReadAccess: true,
+			Page:       pageNumber,
+			PageSize:   pageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if page == nil || len(page.Items) == 0 {
+			break
+		}
+		for _, store := range page.Items {
+			account, ok := mapListingAdminStoreToAccount(&store)
+			if ok {
+				items = append(items, account)
+			}
+		}
+		responsePageSize := page.PageSize
+		if responsePageSize <= 0 {
+			responsePageSize = pageSize
+		}
+		if int64(pageNumber*responsePageSize) >= page.Total || len(page.Items) < responsePageSize {
+			break
 		}
 	}
 
-	p.cache[tenantID] = tenantAccountCache{
+	p.cache[cacheKey] = tenantAccountCache{
 		items: append([]Account(nil), items...),
 		until: time.Now().Add(5 * time.Second),
 	}
 	return append([]Account(nil), items...), nil
+}
+
+func accountCacheKeyForContext(ctx context.Context, tenantID int64) accountCacheKey {
+	roles := listingAdminAccountRoles(ctx)
+	sort.Strings(roles)
+	userID := listingkit.RequestUserIDFromContext(ctx)
+	if userID == "" {
+		if identity, ok := listingkit.AuthenticatedIdentityFromContext(ctx); ok {
+			userID = identity.UserID
+		}
+	}
+	return accountCacheKey{
+		tenantID: tenantID,
+		userID:   userID,
+		roles:    strings.Join(roles, "\x00"),
+	}
+}
+
+func listingAdminAccountRoles(ctx context.Context) []string {
+	roles := listingkit.RequestRolesFromContext(ctx)
+	if identity, ok := listingkit.AuthenticatedIdentityFromContext(ctx); ok {
+		roles = append(roles, identity.Roles...)
+	}
+	return roles
+}
+
+func listingAdminAccountRequestContext(ctx context.Context) context.Context {
+	return listingadmin.WithRequestRoles(ctx, listingAdminAccountRoles(ctx))
 }
 
 func mapListingAdminStoreToAccount(store *listingadmin.Store) (Account, bool) {

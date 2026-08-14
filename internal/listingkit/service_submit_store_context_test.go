@@ -39,7 +39,7 @@ func TestPickSheinWarehouseCodeFallsBackToFirstWarehouse(t *testing.T) {
 	}
 }
 
-func TestResolveSheinSubmitSettingsUsesStoreProfileFields(t *testing.T) {
+func TestResolveSheinSubmitSettingsUsesExplicitTaskStoreAndProfileFields(t *testing.T) {
 	t.Parallel()
 
 	storeProfileRepo := newInMemoryStoreProfileRepository()
@@ -47,7 +47,6 @@ func TestResolveSheinSubmitSettingsUsesStoreProfileFields(t *testing.T) {
 		adminDeps:      adminDependencies{storeProfileRepo: storeProfileRepo},
 		submissionDeps: submissionDependencies{storeProfileRepo: storeProfileRepo},
 		sheinSettings: SheinSettings{
-			DefaultStoreID:    700,
 			Site:              "US",
 			WarehouseCode:     "DEFAULT",
 			DefaultStock:      100,
@@ -63,22 +62,39 @@ func TestResolveSheinSubmitSettingsUsesStoreProfileFields(t *testing.T) {
 		WarehouseCode:     "WH-GB-1",
 		DefaultStock:      66,
 		DefaultSubmitMode: "save_draft",
+		Pricing: sheinpub.PricingRule{
+			SourceCurrency:   "CNY",
+			TargetCurrency:   "GBP",
+			ExchangeRate:     9.1,
+			MarkupMultiplier: 1.4,
+			MinimumPrice:     10,
+			RoundTo:          0.05,
+			PriceEnding:      0.99,
+		},
 	})
 	if err != nil {
 		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
 	}
 
-	settings := svc.resolveSheinSubmitSettings(ctx, &Task{
+	task := &Task{
 		TenantID: "404",
 		Request: &GenerateRequest{
 			SheinStoreID: 902,
 		},
-	})
-	if settings.DefaultStoreID != 902 {
-		t.Fatalf("default store id = %d, want 902", settings.DefaultStoreID)
+	}
+	settings := svc.resolveSheinSubmitSettings(ctx, task)
+	storeID, err := svc.resolveSheinStoreID(ctx, task)
+	if err != nil {
+		t.Fatalf("resolveSheinStoreID error = %v", err)
+	}
+	if storeID != 902 {
+		t.Fatalf("resolved store id = %d, want 902", storeID)
 	}
 	if settings.Site != "GB" || settings.WarehouseCode != "WH-GB-1" || settings.DefaultStock != 66 || settings.DefaultSubmitMode != "save_draft" {
 		t.Fatalf("settings = %+v, want profile-backed settings", settings)
+	}
+	if settings.Pricing != (sheinpub.PricingRule{SourceCurrency: "CNY", TargetCurrency: "GBP", ExchangeRate: 9.1, MarkupMultiplier: 1.4, MinimumPrice: 10, RoundTo: 0.05, PriceEnding: 0.99}) {
+		t.Fatalf("pricing = %+v, want profile pricing", settings.Pricing)
 	}
 }
 
@@ -98,7 +114,6 @@ func TestResolveSheinSubmitSettingsPrefersTaskSnapshotOverCurrentProfiles(t *tes
 		adminDeps:      adminDependencies{storeProfileRepo: storeProfileRepo},
 		submissionDeps: submissionDependencies{storeProfileRepo: storeProfileRepo},
 		sheinSettings: SheinSettings{
-			DefaultStoreID:    700,
 			Site:              "US",
 			WarehouseCode:     "DEFAULT",
 			DefaultStock:      100,
@@ -114,12 +129,20 @@ func TestResolveSheinSubmitSettingsPrefersTaskSnapshotOverCurrentProfiles(t *tes
 		WarehouseCode:     "WH-US-9",
 		DefaultStock:      11,
 		DefaultSubmitMode: "publish",
+		Pricing: sheinpub.PricingRule{
+			SourceCurrency:   "CNY",
+			TargetCurrency:   "USD",
+			ExchangeRate:     7.2,
+			MarkupMultiplier: 1.1,
+			MinimumPrice:     9.99,
+			RoundTo:          0.01,
+		},
 	})
 	if err != nil {
 		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
 	}
 
-	settings := svc.resolveSheinSubmitSettings(ctx, &Task{
+	task := &Task{
 		TenantID: "405",
 		Request:  &GenerateRequest{},
 		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
@@ -128,16 +151,78 @@ func TestResolveSheinSubmitSettingsPrefersTaskSnapshotOverCurrentProfiles(t *tes
 			WarehouseCode:     "WH-GB-7",
 			DefaultStock:      66,
 			DefaultSubmitMode: "save_draft",
-			Strategy:          "country",
-			Reason:            "snapshot persisted at task creation",
-			MatchedProfileID:  12,
+			Pricing: sheinpub.PricingRule{
+				SourceCurrency:   "CNY",
+				TargetCurrency:   "GBP",
+				ExchangeRate:     9.1,
+				MarkupMultiplier: 1.4,
+				MinimumPrice:     10,
+				RoundTo:          0.05,
+				PriceEnding:      0.99,
+			},
+			Strategy:         "country",
+			Reason:           "snapshot persisted at task creation",
+			MatchedProfileID: 12,
 		},
-	})
-	if settings.DefaultStoreID != 902 {
-		t.Fatalf("default store id = %d, want snapshot store 902", settings.DefaultStoreID)
+	}
+	settings := svc.resolveSheinSubmitSettings(ctx, task)
+	storeID, err := svc.resolveSheinStoreID(ctx, task)
+	if err != nil {
+		t.Fatalf("resolveSheinStoreID error = %v", err)
+	}
+	if storeID != 902 {
+		t.Fatalf("resolved store id = %d, want snapshot store 902", storeID)
 	}
 	if settings.Site != "GB" || settings.WarehouseCode != "WH-GB-7" || settings.DefaultStock != 66 || settings.DefaultSubmitMode != "save_draft" {
 		t.Fatalf("settings = %+v, want snapshot-backed settings", settings)
+	}
+	if settings.Pricing != (sheinpub.PricingRule{SourceCurrency: "CNY", TargetCurrency: "GBP", ExchangeRate: 9.1, MarkupMultiplier: 1.4, MinimumPrice: 10, RoundTo: 0.05, PriceEnding: 0.99}) {
+		t.Fatalf("pricing = %+v, want snapshot pricing", settings.Pricing)
+	}
+}
+
+func TestResolveSheinSubmitSettingsRehydratesProfileWhenSnapshotOnlyCarriesAccess(t *testing.T) {
+	t.Parallel()
+
+	storeProfileRepo := newInMemoryStoreProfileRepository()
+	svc := &service{
+		adminDeps:      adminDependencies{storeProfileRepo: storeProfileRepo},
+		submissionDeps: submissionDependencies{storeProfileRepo: storeProfileRepo},
+		sheinSettings: SheinSettings{
+			Site:              "US",
+			WarehouseCode:     "DEFAULT",
+			DefaultStock:      100,
+			DefaultSubmitMode: "publish",
+		},
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "406", UserID: "user-f"})
+	_, err := svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
+		StoreID:           904,
+		Enabled:           true,
+		Priority:          1,
+		Site:              "GB",
+		WarehouseCode:     "WH-GB-4",
+		DefaultStock:      44,
+		DefaultSubmitMode: "save_draft",
+	})
+	if err != nil {
+		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
+	}
+
+	task := &Task{
+		TenantID: "406",
+		Request: &GenerateRequest{
+			SheinStoreID: 999,
+		},
+		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
+			StoreID:           904,
+			TenantAdminAccess: true,
+		},
+	}
+
+	settings := svc.resolveSheinSubmitSettings(ctx, task)
+	if settings.Site != "GB" || settings.WarehouseCode != "WH-GB-4" || settings.DefaultStock != 44 || settings.DefaultSubmitMode != "save_draft" {
+		t.Fatalf("settings = %+v, want repository-backed profile settings", settings)
 	}
 }
 
@@ -145,7 +230,6 @@ func TestApplySubmitSettingsProfileOverlaysProfileFields(t *testing.T) {
 	t.Parallel()
 
 	settings := applySubmitSettingsProfile(SheinSettings{
-		DefaultStoreID:    700,
 		Site:              "US",
 		WarehouseCode:     "WH-US-1",
 		DefaultStock:      100,
@@ -156,13 +240,22 @@ func TestApplySubmitSettingsProfileOverlaysProfileFields(t *testing.T) {
 		WarehouseCode:     "WH-GB-1",
 		DefaultStock:      66,
 		DefaultSubmitMode: "save_draft",
+		Pricing: sheinpub.PricingRule{
+			SourceCurrency:   "CNY",
+			TargetCurrency:   "GBP",
+			ExchangeRate:     9.1,
+			MarkupMultiplier: 1.4,
+			MinimumPrice:     10,
+			RoundTo:          0.05,
+			PriceEnding:      0.99,
+		},
 	})
 
-	if settings.DefaultStoreID != 902 {
-		t.Fatalf("default store id = %d, want 902", settings.DefaultStoreID)
-	}
 	if settings.Site != "GB" || settings.WarehouseCode != "WH-GB-1" || settings.DefaultStock != 66 || settings.DefaultSubmitMode != "save_draft" {
 		t.Fatalf("settings = %+v, want profile-backed settings", settings)
+	}
+	if settings.Pricing != (sheinpub.PricingRule{SourceCurrency: "CNY", TargetCurrency: "GBP", ExchangeRate: 9.1, MarkupMultiplier: 1.4, MinimumPrice: 10, RoundTo: 0.05, PriceEnding: 0.99}) {
+		t.Fatalf("pricing = %+v, want profile pricing", settings.Pricing)
 	}
 }
 

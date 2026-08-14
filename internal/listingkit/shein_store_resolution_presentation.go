@@ -27,7 +27,6 @@ func sheinStoreResolutionSummaryFromSnapshot(snapshot *SheinStoreResolutionSnaps
 		snapshot.MatchedRuleKinds,
 		snapshot.MatchedProfileID,
 		snapshot.ManualOverride,
-		snapshot.Fallback,
 		resolvedAt,
 	)
 }
@@ -49,7 +48,6 @@ func sheinSubmissionStoreResolutionFromSnapshot(snapshot *SheinStoreResolutionSn
 		snapshot.MatchedRuleKinds,
 		snapshot.MatchedProfileID,
 		snapshot.ManualOverride,
-		snapshot.Fallback,
 		resolvedAt,
 	)
 }

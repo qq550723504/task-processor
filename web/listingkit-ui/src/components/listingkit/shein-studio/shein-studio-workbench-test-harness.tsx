@@ -424,7 +424,11 @@ vi.mock("@/lib/utils/shein-studio-batches", () => ({
 
 vi.mock("@/lib/query/use-shein-store-selector", () => ({
   useSheinStoreSelector: () => ({
-    enabledProfiles: [],
+    enabledProfiles: [1, 9, 869].map((store_id) => ({
+      store_id,
+      storeId: String(store_id),
+      name: `Test SHEIN Store ${store_id}`,
+    })),
     profiles: { isError: false },
     routing: { isError: false },
     recommendedStoreId: "",

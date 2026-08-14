@@ -2,6 +2,7 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "entry": [
     "src/lib/api/generated-request-constraints.type-test.ts",
+    "src/**/*.type-test.{ts,tsx}",
     "src/**/*.test.{ts,tsx}",
     // Next App Router files are runtime entry points, not imported by another module.
     "src/app/**/page.{ts,tsx}",

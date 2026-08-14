@@ -57,7 +57,6 @@ type submitSheinDependencies struct {
 	translateAPIBuilder   sheinpub.TranslateAPIBuilder
 	apiClientFactory      listingkit.SheinAPIClientFactory
 	contentOptimizer      openaiclient.ChatCompleter
-	defaultStoreID        int64
 }
 
 type submitStudioDependencies struct {

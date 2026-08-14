@@ -18,7 +18,6 @@ func TestBuildStoreResolutionSummary(t *testing.T) {
 		[]string{"site", "category"},
 		88,
 		true,
-		false,
 		"2026-06-14T12:00:00Z",
 	)
 	if summary == nil {
@@ -44,7 +43,6 @@ func TestBuildSubmissionStoreResolution(t *testing.T) {
 		[]string{"site", "category"},
 		88,
 		true,
-		false,
 		&resolvedAt,
 	)
 	if resolution == nil {

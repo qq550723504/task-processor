@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	sheinpub "task-processor/internal/publishing/shein"
@@ -9,19 +10,24 @@ import (
 )
 
 func (s *service) listSheinStoreOptions(ctx context.Context) []SheinStoreOption {
+	options, _ := s.listSheinStoreOptionsWithError(ctx)
+	return options
+}
+
+func (s *service) listSheinStoreOptionsWithError(ctx context.Context) ([]SheinStoreOption, error) {
 	storeCatalog := resolveSheinStoreCatalog(s)
 	if s == nil || storeCatalog == nil {
-		return nil
+		return nil, nil
 	}
 	tenantID, ok := tenantIDInt64FromContext(ctx)
 	if !ok {
-		return nil
+		return nil, nil
 	}
 	options, err := storeCatalog.ListStoreOptions(ctx, tenantID)
-	if err != nil || len(options) == 0 {
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("list SHEIN store options: %w", err)
 	}
-	return append([]SheinStoreOption(nil), options...)
+	return append([]SheinStoreOption(nil), options...), nil
 }
 
 func tenantIDInt64FromContext(ctx context.Context) (int64, bool) {

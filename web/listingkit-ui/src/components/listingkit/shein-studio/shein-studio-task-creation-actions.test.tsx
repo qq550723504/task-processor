@@ -311,6 +311,22 @@ describe("useSheinStudioTaskCreationAction", () => {
     expect(navigateToStep).toHaveBeenCalledWith("tasks");
   });
 
+  it("blocks task creation when the selected store is no longer in the catalog", async () => {
+    const { result, params } = renderTaskCreationAction({
+      sheinStoreId: "869",
+      storeRequiredMessage: "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。",
+    });
+
+    await act(async () => {
+      await result.current.handleCreateTasks();
+    });
+
+    expect(createSheinStudioBatchTasks).not.toHaveBeenCalled();
+    expect(params.setCreatingError).toHaveBeenCalledWith(
+      "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。",
+    );
+  });
+
   it("hydrates and persists the SDS size table before creating itemized batch tasks", async () => {
     const productSize =
       '[[{"content":"尺码","remark":""},{"content":"胸围(cm/in)","remark":""}],[{"content":"S","remark":""},{"content":"106cm /41.7in","remark":""}]]';

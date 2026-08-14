@@ -571,7 +571,6 @@ export type SheinStoreResolutionSummary = {
   matched_rule_kinds?: string[];
   matched_profile_id?: number;
   manual_override?: boolean;
-  fallback?: boolean;
   resolved_at?: string;
 };
 
@@ -664,12 +663,13 @@ export type AIClientSettings = {
   resolved_scope?: "tenant" | "user" | string;
 };
 
- type ListingKitStoreProfileStoreOption = {
+export type ListingKitStoreCatalogOption = {
   id: number;
   store_id?: string;
   name?: string;
   platform?: string;
   region?: string;
+  status?: number;
 };
 
 export type ListingKitStoreProfile = {
@@ -684,7 +684,17 @@ export type ListingKitStoreProfile = {
   default_submit_mode?: "publish" | "save_draft";
   pricing?: SheinPricingRule;
   updated_at?: string;
-  store?: ListingKitStoreProfileStoreOption;
+  store?: ListingKitStoreCatalogOption;
+};
+
+export type ListingKitSheinSettings = {
+  available_stores?: ListingKitStoreCatalogOption[];
+  site?: string;
+  warehouse_code?: string;
+  default_stock?: number;
+  default_submit_mode?: "publish" | "save_draft";
+  pricing?: SheinPricingRule;
+  updated_at?: string;
 };
 
  type ListingKitSettingsScopeDefinition = {

@@ -86,9 +86,23 @@ describe("buildSheinCustomerIssues", () => {
     expect(issues[0]).toMatchObject({
       category: "提交接口问题",
       title: "SHEIN 店铺需要重新登录",
+      message:
+        "任务显式选择的目标店铺 cookie 不可用，系统无法在线获取 SHEIN 类目、属性和销售属性模板。请重新登录店铺或刷新 cookie 后重新生成/重试。",
       severity: "blocking",
       actionKey: "store_login",
     });
+  });
+
+  it("uses task-target wording for raw cookie failures", () => {
+    const issues = buildSheinCustomerIssues({
+      submission_state: {
+        last_error: "SHEIN 店铺 cookie 不可用",
+      },
+    });
+
+    expect(issues[0]?.message).toBe(
+      "任务显式选择的目标店铺 cookie 不可用，系统无法在线获取 SHEIN 类目、属性和销售属性模板。请重新登录店铺或刷新 cookie 后重新生成/重试。",
+    );
   });
 
   it("maps SHEIN online auth freshness blockers to store login guidance", () => {

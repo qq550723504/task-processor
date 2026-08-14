@@ -147,6 +147,155 @@ func TestImportTaskHandlerBatchCreatesTasksWithoutCategory(t *testing.T) {
 	}
 }
 
+func TestImportTaskHandlerBatchRejectsExistingActiveTaskWithConflict(t *testing.T) {
+	t.Parallel()
+
+	router := newImportTaskTestRouter(t)
+	seedImportTask(t, router.db, listingProductImportTask{
+		TenantID:       303,
+		StoreID:        11,
+		Platform:       "amazon",
+		SourcePlatform: "amazon",
+		TargetPlatform: "shein",
+		Region:         "US",
+		ProductID:      "B001",
+		Deleted:        0,
+	})
+
+	body := bytes.NewBufferString(`{
+		"storeId": 11,
+		"platform": "Amazon",
+		"targetPlatform": "SHEIN",
+		"region": "US",
+		"productIds": ["B001"]
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/import-tasks/batch", body)
+	req.Header.Set("X-Tenant-ID", "303")
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusConflict {
+		t.Fatalf("POST /import-tasks/batch duplicate = %d, body=%s; want 409", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"import_task_already_exists"`) {
+		t.Fatalf("response body = %s, want import_task_already_exists", resp.Body.String())
+	}
+}
+
+func TestImportTaskHandlerBatchRejectsExistingActiveTaskWithCanonicalTargetPlatform(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		existingPlatform string
+		existingTarget   string
+		requestPlatform  string
+		requestTarget    string
+	}{
+		{
+			name:             "mixed case target",
+			existingPlatform: "amazon",
+			existingTarget:   "SHEIN",
+			requestPlatform:  "Amazon",
+			requestTarget:    "shein",
+		},
+		{
+			name:             "blank target falls back to platform",
+			existingPlatform: "Amazon",
+			existingTarget:   "",
+			requestPlatform:  "amazon",
+			requestTarget:    "",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			router := newImportTaskTestRouter(t)
+			seedImportTask(t, router.db, listingProductImportTask{
+				TenantID:       303,
+				StoreID:        11,
+				Platform:       tc.existingPlatform,
+				SourcePlatform: tc.existingPlatform,
+				TargetPlatform: tc.existingTarget,
+				Region:         "US",
+				ProductID:      "B001",
+				Deleted:        0,
+			})
+
+			body := bytes.NewBufferString(`{"storeId":11,"platform":"` + tc.requestPlatform + `","targetPlatform":"` + tc.requestTarget + `","region":"US","productIds":["B001"]}`)
+			req := httptest.NewRequest(http.MethodPost, "/import-tasks/batch", body)
+			req.Header.Set("X-Tenant-ID", "303")
+			req.Header.Set("Content-Type", "application/json")
+			resp := httptest.NewRecorder()
+			router.engine.ServeHTTP(resp, req)
+
+			if resp.Code != http.StatusConflict {
+				t.Fatalf("POST /import-tasks/batch canonical duplicate = %d, body=%s; want 409", resp.Code, resp.Body.String())
+			}
+		})
+	}
+}
+
+func TestImportTaskHandlerAllowsSameImportTaskTupleAcrossTenants(t *testing.T) {
+	t.Parallel()
+
+	router := newImportTaskTestRouter(t)
+	seedImportTask(t, router.db, listingProductImportTask{
+		TenantID:       303,
+		StoreID:        11,
+		Platform:       "amazon",
+		SourcePlatform: "amazon",
+		TargetPlatform: "shein",
+		Region:         "US",
+		ProductID:      "B001",
+		Deleted:        0,
+	})
+
+	body := bytes.NewBufferString(`{"storeId":11,"platform":"Amazon","targetPlatform":"SHEIN","region":"US","productIds":["B001"]}`)
+	req := httptest.NewRequest(http.MethodPost, "/import-tasks/batch", body)
+	req.Header.Set("X-Tenant-ID", "404")
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusCreated {
+		t.Fatalf("POST /import-tasks/batch cross-tenant duplicate = %d, body=%s; want 201", resp.Code, resp.Body.String())
+	}
+}
+
+func TestImportTaskHandlerRejectsWritesWhileCanonicalDuplicatesNeedRemediation(t *testing.T) {
+	router := newImportTaskTestRouter(t)
+	for _, target := range []string{"SHEIN", "shein"} {
+		seedImportTask(t, router.db, listingProductImportTask{
+			TenantID:       303,
+			StoreID:        11,
+			Platform:       "amazon",
+			SourcePlatform: "amazon",
+			TargetPlatform: target,
+			Region:         "US",
+			ProductID:      "B001",
+			Deleted:        0,
+		})
+	}
+	if err := AutoMigrateImportTaskRepository(router.db); err != nil {
+		t.Fatalf("AutoMigrateImportTaskRepository() with canonical duplicates = %v", err)
+	}
+
+	body := bytes.NewBufferString(`{"storeId":11,"platform":"Amazon","targetPlatform":"SHEIN","region":"US","productIds":["B002"]}`)
+	req := httptest.NewRequest(http.MethodPost, "/import-tasks/batch", body)
+	req.Header.Set("X-Tenant-ID", "303")
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.engine.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusServiceUnavailable {
+		t.Fatalf("POST /import-tasks/batch with legacy duplicates = %d, body=%s; want 503", resp.Code, resp.Body.String())
+	}
+	if !strings.Contains(resp.Body.String(), `"error":"import_task_integrity_unavailable"`) {
+		t.Fatalf("response body = %s, want import_task_integrity_unavailable", resp.Body.String())
+	}
+}
+
 func TestImportTaskHandlerSoftDeletesWithinTenant(t *testing.T) {
 	t.Parallel()
 

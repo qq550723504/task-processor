@@ -22,13 +22,16 @@ import (
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/worker"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
+	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	"task-processor/internal/productimage"
 	productimagehttpapi "task-processor/internal/productimage/httpapi"
+	"task-processor/internal/tenantbridge"
 )
 
 func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
@@ -181,6 +184,11 @@ func TestHTTPE2E_ProductImageAndAmazonListingWorkbench(t *testing.T) {
 }
 
 func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
+	const (
+		sheinTenantID = int64(227)
+		sheinStoreID  = int64(869)
+	)
+
 	logger := logrus.New()
 	logger.SetLevel(logrus.FatalLevel)
 
@@ -211,10 +219,35 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 		features: &featureRuntimeState{},
 	}
 
-	features, err := newListingKitFeatureBuilder().build(logger, deps, listingKitFeatureBuildOptions{
+	storeRepo := &e2eListingStoreRepository{store: listingadmin.Store{
+		ID:       sheinStoreID,
+		TenantID: sheinTenantID,
+		StoreID:  "869",
+		Name:     "E2E SHEIN Store",
+		Username: "e2e-shein-store",
+		LoginURL: "https://example.test/shein-login",
+		ShopType: "marketplace",
+		Region:   "US",
+		Platform: "shein",
+		Status:   0,
+	}}
+	featureBuilder := newListingKitFeatureBuilder()
+	buildListingKit := featureBuilder.buildListingKit
+	featureBuilder.buildListingKit = func(input listingkithttpapi.RuntimeBuildInput) (*listingkithttpapi.Module, error) {
+		input.Runtime.Support.Repositories.Admin.Store = func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
+			return storeRepo, nil, nil
+		}
+		return buildListingKit(input)
+	}
+	features, err := featureBuilder.build(logger, deps, listingKitFeatureBuildOptions{
 		includeListingKit: true,
 	})
 	require.NoError(t, err)
+	restoreTenantResolver := tenantbridge.ConfigureLegacyTenantResolver(e2eLegacyTenantResolver{
+		tenantID:       "app-http-test-tenant",
+		legacyTenantID: sheinTenantID,
+	})
+	t.Cleanup(restoreTenantResolver)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -245,10 +278,11 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 	enableListingKitSubscriptionModule(t, client, testServer.URL, "studio")
 
 	taskID := createTaskViaAPI[map[string]any](t, client, testServer.URL+"/api/v1/listing-kits/generate", map[string]any{
-		"product_url": "https://detail.1688.com/offer/123456789.html",
-		"platforms":   []string{"shein"},
-		"country":     "US",
-		"language":    "en",
+		"product_url":    "https://detail.1688.com/offer/123456789.html",
+		"platforms":      []string{"shein"},
+		"country":        "US",
+		"language":       "en",
+		"shein_store_id": sheinStoreID,
 		"options": map[string]any{
 			"process_images": false,
 		},
@@ -273,6 +307,31 @@ func TestHTTPE2E_ListingKit1688ProductURLBuildsSheinPreview(t *testing.T) {
 	require.NotNil(t, task.Result.Shein.RequestDraft.ImageInfo)
 	require.NotEmpty(t, task.Result.Shein.RequestDraft.ImageInfo.Source)
 	require.NotEmpty(t, task.Result.Shein.RequestDraft.SKCList)
+}
+
+type e2eListingStoreRepository struct {
+	listingadmin.StoreRepository
+	store listingadmin.Store
+}
+
+func (r *e2eListingStoreRepository) GetStore(_ context.Context, tenantID, storeID int64) (*listingadmin.Store, error) {
+	if tenantID != r.store.TenantID || storeID != r.store.ID {
+		return nil, listingadmin.ErrStoreNotFound
+	}
+	store := r.store
+	return &store, nil
+}
+
+type e2eLegacyTenantResolver struct {
+	tenantID       string
+	legacyTenantID int64
+}
+
+func (r e2eLegacyTenantResolver) ResolveLegacyTenantID(_ context.Context, tenantID string) (int64, bool, error) {
+	if strings.TrimSpace(tenantID) != r.tenantID {
+		return 0, false, nil
+	}
+	return r.legacyTenantID, true, nil
 }
 
 type e2eWebScraper struct{}

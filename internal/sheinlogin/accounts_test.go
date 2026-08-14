@@ -5,13 +5,31 @@ import (
 	"testing"
 
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/listingkit"
 )
 
 type stubListingAdminAccountStore struct {
 	items []listingadmin.Store
+	pages []*listingadmin.StorePage
+	query listingadmin.StoreQuery
+	roles []string
+	calls int
 }
 
-func (s *stubListingAdminAccountStore) ListStores(_ context.Context, query listingadmin.StoreQuery) (*listingadmin.StorePage, error) {
+func (s *stubListingAdminAccountStore) ListStores(ctx context.Context, query listingadmin.StoreQuery) (*listingadmin.StorePage, error) {
+	s.calls++
+	s.query = query
+	s.roles = listingadmin.RequestRolesFromContext(ctx)
+	if len(s.pages) > 0 {
+		index := query.Page - 1
+		if index < 0 {
+			index = 0
+		}
+		if index >= len(s.pages) {
+			return nil, nil
+		}
+		return s.pages[index], nil
+	}
 	items := make([]listingadmin.Store, 0, len(s.items))
 	for _, item := range s.items {
 		if query.TenantID > 0 && item.TenantID != query.TenantID {
@@ -23,6 +41,48 @@ func (s *stubListingAdminAccountStore) ListStores(_ context.Context, query listi
 		items = append(items, item)
 	}
 	return &listingadmin.StorePage{Items: items, Total: int64(len(items)), Page: 1, PageSize: len(items)}, nil
+}
+
+func TestListingAdminAccountProviderLoadsAccountsAcrossAllStorePages(t *testing.T) {
+	repo := &stubListingAdminAccountStore{pages: []*listingadmin.StorePage{
+		{Items: []listingadmin.Store{{
+			ID: 12, TenantID: 7, Platform: "SHEIN", Username: "first", Password: "secret",
+		}}, Total: 2, Page: 1, PageSize: 1},
+		{Items: []listingadmin.Store{{
+			ID: 13, TenantID: 7, Platform: "SHEIN", Username: "second", Password: "secret",
+		}}, Total: 2, Page: 2, PageSize: 1},
+	}}
+	provider := NewListingAdminAccountProvider(repo)
+
+	account, err := provider.GetAccount(context.Background(), 7, 13)
+	if err != nil {
+		t.Fatalf("GetAccount() error = %v", err)
+	}
+	if account.StoreID != 13 {
+		t.Fatalf("account store id = %d, want store 13", account.StoreID)
+	}
+	if repo.calls != 2 {
+		t.Fatalf("ListStores calls = %d, want both pages", repo.calls)
+	}
+}
+
+func TestListingAdminAccountProviderDoesNotShareOwnerScopedCacheAcrossUsers(t *testing.T) {
+	repo := &stubListingAdminAccountStore{items: []listingadmin.Store{{
+		ID: 12, TenantID: 7, Platform: "SHEIN", Username: "demo-user", Password: "secret",
+	}}}
+	provider := NewListingAdminAccountProvider(repo)
+	ctxA := listingkit.WithRequestIdentity(context.Background(), listingkit.RequestIdentity{TenantID: "7", UserID: "user-a"})
+	ctxB := listingkit.WithRequestIdentity(context.Background(), listingkit.RequestIdentity{TenantID: "7", UserID: "user-b"})
+
+	if _, err := provider.ListAccounts(ctxA, 7); err != nil {
+		t.Fatalf("ListAccounts(user-a): %v", err)
+	}
+	if _, err := provider.ListAccounts(ctxB, 7); err != nil {
+		t.Fatalf("ListAccounts(user-b): %v", err)
+	}
+	if repo.calls != 2 {
+		t.Fatalf("ListStores calls = %d, want one scoped lookup per user", repo.calls)
+	}
 }
 
 func (s *stubListingAdminAccountStore) GetStore(_ context.Context, tenantID, id int64) (*listingadmin.Store, error) {
@@ -96,5 +156,58 @@ func TestListingAdminAccountProviderLoadsSheinAccountsFromRepository(t *testing.
 	}
 	if accounts[0].LoginURL != "https://sellerhub.shein.com" {
 		t.Fatalf("expected normalized login url, got %q", accounts[0].LoginURL)
+	}
+	if !provider.repo.(*stubListingAdminAccountStore).query.ReadAccess {
+		t.Fatal("ListAccounts query ReadAccess = false, want shared-store read access")
+	}
+}
+
+func TestListingAdminAccountProviderBridgesAuthenticatedIdentityRoles(t *testing.T) {
+	repo := &stubListingAdminAccountStore{items: []listingadmin.Store{{
+		ID: 12, TenantID: 7, Platform: "SHEIN", Username: "admin-store", Password: "secret",
+	}}}
+	provider := NewListingAdminAccountProvider(repo)
+	ctx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{
+		TenantID: "7",
+		UserID:   "tenant-admin",
+		Roles:    []string{"listingkit_admin"},
+	})
+
+	accounts, err := provider.ListAccounts(ctx, 7)
+	if err != nil {
+		t.Fatalf("ListAccounts: %v", err)
+	}
+	if len(accounts) != 1 || accounts[0].StoreID != 12 {
+		t.Fatalf("accounts = %+v, want tenant-wide SHEIN account", accounts)
+	}
+	if len(repo.roles) != 1 || repo.roles[0] != "listingkit_admin" {
+		t.Fatalf("repository roles = %v, want authenticated listingkit_admin role", repo.roles)
+	}
+}
+
+func TestListingAdminAccountProviderAuthenticatedIdentityCacheIncludesUserAndRoles(t *testing.T) {
+	repo := &stubListingAdminAccountStore{items: []listingadmin.Store{{
+		ID: 12, TenantID: 7, Platform: "SHEIN", Username: "demo-user", Password: "secret",
+	}}}
+	provider := NewListingAdminAccountProvider(repo)
+	adminCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{
+		TenantID: "7",
+		UserID:   "tenant-admin",
+		Roles:    []string{"listingkit_admin"},
+	})
+	userCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{
+		TenantID: "7",
+		UserID:   "regular-user",
+		Roles:    []string{"listingkit_viewer"},
+	})
+
+	if _, err := provider.ListAccounts(adminCtx, 7); err != nil {
+		t.Fatalf("ListAccounts(admin): %v", err)
+	}
+	if _, err := provider.ListAccounts(userCtx, 7); err != nil {
+		t.Fatalf("ListAccounts(user): %v", err)
+	}
+	if repo.calls != 2 {
+		t.Fatalf("ListStores calls = %d, want separate cache entries", repo.calls)
 	}
 }

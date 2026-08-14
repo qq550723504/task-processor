@@ -42,6 +42,9 @@ export type CustomerIssue = {
 
 type IssueTemplate = Omit<CustomerIssue, "severity" | "rawText">;
 
+const SHEIN_TARGET_STORE_COOKIE_MESSAGE =
+  "任务显式选择的目标店铺 cookie 不可用，系统无法在线获取 SHEIN 类目、属性和销售属性模板。请重新登录店铺或刷新 cookie 后重新生成/重试。";
+
 function textOfReadinessItem(item: SheinReadinessItem) {
   return [
     item.label,
@@ -146,8 +149,7 @@ function byKey(key?: string | null): IssueTemplate | null {
     return {
       category: "提交接口问题",
       title: "SHEIN 店铺需要重新登录",
-      message:
-        "当前店铺 cookie 不可用，系统无法在线获取 SHEIN 类目、属性和销售属性模板。请重新登录店铺或刷新 cookie 后重新生成/重试。",
+      message: SHEIN_TARGET_STORE_COOKIE_MESSAGE,
       actionLabel: "去登录店铺",
       actionKey: "store_login",
     };
@@ -215,8 +217,7 @@ function byText(rawText: string): IssueTemplate {
     return {
       category: "提交接口问题",
       title: "SHEIN 店铺需要重新登录",
-      message:
-        "当前店铺 cookie 不可用，系统无法在线获取 SHEIN 类目、属性和销售属性模板。请重新登录店铺或刷新 cookie 后重新生成/重试。",
+      message: SHEIN_TARGET_STORE_COOKIE_MESSAGE,
       actionLabel: "去登录店铺",
       actionKey: "store_login",
     };

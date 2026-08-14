@@ -119,11 +119,12 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 		req.TenantID = TenantIDFromContext(ctx)
 	}
 	ctx = WithTenantID(ctx, req.TenantID)
-	if s.requestDefaults != nil {
-		applyGenerateRequestDefaults(req, s.requestDefaults())
-	}
+	normalizeGenerateRequest(req)
 	if err := validateRequest(req); err != nil {
 		return ctx, nil, fmt.Errorf("invalid request: %w", err)
+	}
+	if err := validateExplicitSheinStoreSelection(req); err != nil {
+		return ctx, nil, err
 	}
 	if err := s.validateRequestedSheinStoreAccess(ctx, req); err != nil {
 		return ctx, nil, err
@@ -141,6 +142,13 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 	}
 	s.applySheinStoreResolutionSnapshot(ctx, task)
 	return ctx, task, nil
+}
+
+func validateExplicitSheinStoreSelection(req *GenerateRequest) error {
+	if generateRequestTargetsPlatform(req, "shein") && req.SheinStoreID <= 0 {
+		return fmt.Errorf("invalid request: shein_store_id is required for SHEIN tasks")
+	}
+	return nil
 }
 
 func (s *taskLifecycleService) validateRequestedSheinStoreAccess(ctx context.Context, req *GenerateRequest) error {
@@ -170,11 +178,31 @@ func generateRequestTargetsPlatform(req *GenerateRequest, platform string) bool 
 }
 
 func (s *taskLifecycleService) applySheinStoreResolutionSnapshot(ctx context.Context, task *Task) {
-	if task == nil || !taskHasPlatform(task, "shein") || s.resolveStoreSelection == nil {
+	if task == nil || !taskHasPlatform(task, "shein") {
 		return
 	}
-	if selection, err := s.resolveStoreSelection(ctx, task); err == nil && selection != nil {
-		task.SheinStoreResolutionSnapshot = sheinStoreResolutionSnapshotFromSelection(selection, task, nil)
+	if s.resolveStoreSelection != nil {
+		if selection, err := s.resolveStoreSelection(ctx, task); err == nil && selection != nil {
+			snapshot := sheinStoreResolutionSnapshotFromSelection(selection, task, nil)
+			if snapshot != nil {
+				snapshot.TenantAdminAccess = RequestHasTenantAdminAccess(ctx)
+				task.SheinStoreResolutionSnapshot = snapshot
+				return
+			}
+		}
+	}
+
+	// Store access has already been validated before this optional profile
+	// resolution step. Preserve that decision for queued execution even when
+	// profile enrichment fails (for example, because another profile is
+	// malformed), so the task is not reclassified as a stale user selection.
+	if !RequestHasTenantAdminAccess(ctx) || task.Request == nil || task.Request.SheinStoreID <= 0 {
+		return
+	}
+	task.SheinStoreResolutionSnapshot = &SheinStoreResolutionSnapshot{
+		StoreID:           task.Request.SheinStoreID,
+		TenantAdminAccess: true,
+		ResolvedAt:        time.Now(),
 	}
 }
 

@@ -39,13 +39,6 @@ func resolveTaskSubmitter(s *service) TaskSubmitter {
 	return s.taskDeps.taskSubmitter
 }
 
-func resolveTaskRequestDefaults(s *service) generateRequestDefaults {
-	if s == nil {
-		return generateRequestDefaults{}
-	}
-	return s.taskDeps.requestDefaults
-}
-
 func resolveSDSLoginStatusProvider(s *service) SDSLoginStatusProvider {
 	if s == nil {
 		return nil

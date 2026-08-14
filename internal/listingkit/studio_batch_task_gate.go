@@ -300,10 +300,63 @@ func (c studioBatchBaselineCacheReadinessChecker) CheckStudioBatchBaselineReadin
 }
 
 type studioBatchStoreProfileValidator struct {
-	repo StoreProfileRepository
+	repo            StoreProfileRepository
+	accessValidator StoreAccessValidator
 }
 
 func (v studioBatchStoreProfileValidator) ValidateStudioBatchStore(ctx context.Context, tenantID string, storeID int64) (studioBatchStoreValidationResult, error) {
+	if v.accessValidator != nil {
+		tenantNumeric, ok := tenantIDInt64FromContext(ctx)
+		if !ok {
+			value, err := tenantbridge.ResolveLegacyTenantID(ctx, strings.TrimSpace(tenantID))
+			if err == nil && value > 0 {
+				tenantNumeric = value
+				ok = true
+			}
+		}
+		if !ok || tenantNumeric <= 0 {
+			return studioBatchStoreValidationResult{
+				Exists:  false,
+				Valid:   false,
+				Message: fmt.Sprintf("SHEIN store %d is unavailable", storeID),
+			}, nil
+		}
+		access, err := v.accessValidator.ValidateStoreAccess(ctx, tenantNumeric, storeID, "SHEIN")
+		if err != nil {
+			if StoreAccessErrorCode(err) == StoreAccessDisabled {
+				return studioBatchStoreValidationResult{Exists: true, Valid: true, Available: false, Message: err.Error()}, nil
+			}
+			if StoreAccessErrorCode(err) != "" {
+				return studioBatchStoreValidationResult{Exists: false, Valid: false, Message: err.Error()}, nil
+			}
+			return studioBatchStoreValidationResult{}, err
+		}
+		if access.ID != storeID || !strings.EqualFold(strings.TrimSpace(access.Platform), "SHEIN") {
+			return studioBatchStoreValidationResult{
+				Exists:  false,
+				Valid:   false,
+				Message: fmt.Sprintf("SHEIN store %d is unavailable", storeID),
+			}, nil
+		}
+		message := fmt.Sprintf("SHEIN store %d", storeID)
+		// Profiles only enrich labels/settings; catalog access is authoritative.
+		if v.repo != nil {
+			if items, profileErr := v.repo.ListByTenant(ctx, tenantNumeric); profileErr == nil {
+				for _, profile := range items {
+					if profile.StoreID == storeID && strings.TrimSpace(profile.Site) != "" {
+						message = strings.TrimSpace(profile.Site)
+						break
+					}
+				}
+			}
+		}
+		return studioBatchStoreValidationResult{
+			Exists:    true,
+			Valid:     true,
+			Available: access.Enabled,
+			Message:   message,
+		}, nil
+	}
 	if v.repo == nil {
 		return studioBatchStoreValidationResult{}, nil
 	}

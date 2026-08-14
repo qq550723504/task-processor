@@ -89,7 +89,6 @@ type SubmissionStoreResolution struct {
 	MatchedRuleKinds []string   `json:"matched_rule_kinds,omitempty"`
 	MatchedProfileID int64      `json:"matched_profile_id,omitempty"`
 	ManualOverride   bool       `json:"manual_override,omitempty"`
-	Fallback         bool       `json:"fallback,omitempty"`
 	ResolvedAt       *time.Time `json:"resolved_at,omitempty"`
 }
 

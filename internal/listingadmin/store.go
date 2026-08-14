@@ -50,8 +50,11 @@ type Store struct {
 }
 
 type StoreQuery struct {
-	TenantID          int64
-	OwnerUserID       string
+	TenantID    int64
+	OwnerUserID string
+	// ReadAccess applies the same owner-or-shared scope used by GetStore.
+	// It is intended for read-only catalogs that must include tenant-shared stores.
+	ReadAccess        bool
 	Page              int
 	PageSize          int
 	StoreID           string
