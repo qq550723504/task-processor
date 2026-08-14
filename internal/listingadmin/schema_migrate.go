@@ -458,7 +458,12 @@ func normalizeImportTaskIndexDefinition(definition string) string {
 	definition = strings.ReplaceAll(definition, "::text", "")
 	definition = strings.ReplaceAll(definition, "::character varying", "")
 	definition = strings.ReplaceAll(definition, "btrim", "trim")
+	// PostgreSQL pg_get_indexdef renders TRIM(value) as TRIM(BOTH FROM value).
+	// Whitespace is removed above, so normalize the deparser's BOTH FROM token
+	// before comparing the canonical expression.
+	definition = strings.ReplaceAll(definition, "bothfrom", "")
 	definition = strings.ReplaceAll(definition, "(", "")
 	definition = strings.ReplaceAll(definition, ")", "")
 	return definition
 }
+
