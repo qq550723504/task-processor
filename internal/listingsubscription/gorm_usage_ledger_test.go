@@ -127,6 +127,13 @@ func TestGormUsageLedgerCommitAndReleaseAreIdempotent(t *testing.T) {
 			t.Fatalf("Release() results = %+v, %+v; want matching released events", first, second)
 		}
 		assertUsageLedgerCounts(t, db, reservation.Event.EventID, 1, 0, 0, 1)
+		var outbox usageEventOutboxRow
+		if err := db.Where("event_id = ?", reservation.Event.EventID).Take(&outbox).Error; err != nil {
+			t.Fatalf("load released outbox: %v", err)
+		}
+		if outbox.Status != "cancelled" {
+			t.Fatalf("released outbox status = %q, want cancelled", outbox.Status)
+		}
 		var audit auditLogRow
 		if err := db.Where("action = ?", "usage_released").Take(&audit).Error; err != nil {
 			t.Fatalf("load release audit payload: %v", err)
@@ -135,6 +142,52 @@ func TestGormUsageLedgerCommitAndReleaseAreIdempotent(t *testing.T) {
 			t.Fatalf("release audit payload = %q, want a non-empty redacted payload", audit.Payload)
 		}
 	})
+}
+
+func TestGormUsageLedgerPersistsStorageSnapshotAcrossReplayAndGet(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleOSSStorage, map[string]int{"storage_bytes": 100})
+	ledger := NewGormUsageLedger(repo)
+	input := usageLedgerStorageInput("tenant-17", "storage-snapshot-replay", 10)
+	reservation, err := ledger.Reserve(ctx, input)
+	if err != nil {
+		t.Fatalf("Reserve() error = %v", err)
+	}
+	committed, err := ledger.Commit(ctx, reservation.Event.EventID)
+	if err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	if committed.StorageSnapshot == nil || *committed.StorageSnapshot != 10 {
+		t.Fatalf("committed snapshot = %v, want 10", committed.StorageSnapshot)
+	}
+	followup := usageLedgerStorageInput("tenant-17", "storage-snapshot-followup", 5)
+	followupEvent, err := ledger.Reserve(ctx, followup)
+	if err != nil {
+		t.Fatalf("follow-up Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, followupEvent.Event.EventID); err != nil {
+		t.Fatalf("follow-up Commit() error = %v", err)
+	}
+	replay, err := ledger.Reserve(ctx, input)
+	if err != nil {
+		t.Fatalf("idempotent replay Reserve() error = %v", err)
+	}
+	if replay.Event.StorageSnapshot == nil || *replay.Event.StorageSnapshot != 10 {
+		t.Fatalf("replayed snapshot = %v, want immutable 10", replay.Event.StorageSnapshot)
+	}
+	stored, err := ledger.Get(ctx, input.TenantID, input.IdempotencyKey)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if stored.StorageSnapshot == nil || *stored.StorageSnapshot != 10 {
+		t.Fatalf("stored snapshot = %v, want immutable 10", stored.StorageSnapshot)
+	}
+	payload, err := BuildOpenMeterUsageOutboxPayload(*stored)
+	if err != nil || payload.Quantity != 10 {
+		t.Fatalf("stored payload = %+v, error=%v, want quantity 10", payload, err)
+	}
 }
 
 func TestUsageLedgerQuotaReservationAndStorageDeltas(t *testing.T) {
@@ -537,6 +590,27 @@ func TestGormUsageLedgerProjectsReversalAfterDeliveryAndRejectsCountCorrection(t
 			t.Fatalf("Reverse() error = %v, want ErrUsageReversalProjectionUnsupported", err)
 		}
 	})
+}
+
+func TestGormUsageLedgerDoesNotReverseAmbiguousFailedDelivery(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"design_jobs": 2})
+	ledger := NewGormUsageLedger(repo)
+	reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "count-failed-delivery", 1))
+	if err != nil {
+		t.Fatalf("Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, reservation.Event.EventID); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	if err := db.Model(&usageEventOutboxRow{}).Where("event_id = ?", reservation.Event.EventID).Update("status", "failed").Error; err != nil {
+		t.Fatalf("mark failed: %v", err)
+	}
+	if _, err := ledger.Reverse(ctx, reservation.Event.EventID, "count-failed-reversal", "ambiguous"); !errors.Is(err, ErrUsageReversalDeliveryUnresolved) {
+		t.Fatalf("Reverse() error = %v, want ErrUsageReversalDeliveryUnresolved", err)
+	}
 }
 
 func TestGormUsageLedgerReverseRejectsIdempotencyKeyOwnedByAnotherEvent(t *testing.T) {

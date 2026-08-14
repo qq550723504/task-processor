@@ -40,6 +40,7 @@ var (
 	ErrUsageLedgerNotConfigured           = errors.New("usage ledger is not configured")
 	ErrUsageOutboxUnsafeMetadata          = errors.New("usage outbox metadata is unsafe")
 	ErrUsageOutboxStorageSnapshotRequired = errors.New("usage outbox storage snapshot is required")
+	ErrUsageReversalDeliveryUnresolved    = errors.New("usage reversal delivery state is unresolved")
 	ErrUsageReversalProjectionUnsupported = errors.New("usage reversal projection is unsupported")
 )
 

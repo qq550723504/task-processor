@@ -132,6 +132,8 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 			return l.reserveResultForExisting(tx, existing, &result)
 		}); resultErr == nil {
 			return result, nil
+		} else {
+			return ReserveUsageResult{}, resultErr
 		}
 	}
 	return ReserveUsageResult{}, err
@@ -175,6 +177,9 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 			return sourceOutboxErr
 		}
 		sourceDelivered := sourceOutboxErr != nil || !usageOutboxUndelivered(sourceOutbox.Status)
+		if sourceOutboxErr == nil && sourceOutbox.Status == "failed" {
+			return ErrUsageReversalDeliveryUnresolved
+		}
 		if source.Metric != usageMetricStorageBytesCurrent && sourceDelivered {
 			return ErrUsageReversalProjectionUnsupported
 		}
@@ -211,11 +216,15 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 		if err != nil {
 			return err
 		}
+		var storageSnapshot *int64
+		if source.Metric == usageMetricStorageBytesCurrent {
+			storageSnapshot = &committed
+		}
 		reversal := usageEventRow{
 			EventID: uuid.NewString(), TenantID: source.TenantID, ModuleCode: source.ModuleCode,
 			Metric: source.Metric, Quantity: quantity, PeriodKey: source.PeriodKey,
 			SourceType: source.SourceType, SourceID: source.SourceID, IdempotencyKey: idempotencyKey,
-			Status: string(UsageEventReversed), OccurredAt: time.Now().UTC(), ReversalOf: source.EventID, Metadata: metadata,
+			Status: string(UsageEventReversed), OccurredAt: time.Now().UTC(), StorageSnapshot: storageSnapshot, ReversalOf: source.EventID, Metadata: metadata,
 		}
 		if err := tx.Create(&reversal).Error; err != nil {
 			return err
@@ -237,8 +246,7 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 		}
 		event = usageEventFromRow(reversal)
 		if source.Metric == usageMetricStorageBytesCurrent {
-			snapshot := committed
-			event.StorageSnapshot = &snapshot
+			event.StorageSnapshot = cloneUsageInt64Pointer(storageSnapshot)
 		}
 		return nil
 	})
@@ -252,12 +260,6 @@ func (l *gormUsageLedger) Get(ctx context.Context, tenantID, idempotencyKey stri
 		return nil, err
 	}
 	event := usageEventFromRow(row)
-	if row.Metric == usageMetricStorageBytesCurrent {
-		if bucket, bucketErr := loadUsageBucket(l.repo.db.WithContext(ctx), row.TenantID, row.ModuleCode, row.PeriodKey, row.Metric); bucketErr == nil {
-			snapshot := bucket.Committed
-			event.StorageSnapshot = &snapshot
-		}
-	}
 	return &event, nil
 }
 
@@ -300,12 +302,16 @@ func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID s
 			return &UsageValidationError{Field: "usage"}
 		}
 		updates := map[string]any{"reserved": reserved, "updated_at": time.Now().UTC()}
+		var storageSnapshotValue *int64
 		if target == UsageEventCommitted {
 			committed, ok := addUsage(bucket.Committed, row.Quantity)
 			if !ok {
 				return &UsageValidationError{Field: "quantity"}
 			}
 			updates["committed"] = committed
+			if row.Metric == usageMetricStorageBytesCurrent {
+				storageSnapshotValue = &committed
+			}
 		}
 		committed := bucket.Committed
 		if value, ok := updates["committed"].(int64); ok {
@@ -318,8 +324,15 @@ func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID s
 			return err
 		}
 		row.Status = string(target)
+		if storageSnapshotValue != nil {
+			row.StorageSnapshot = cloneUsageInt64Pointer(storageSnapshotValue)
+		}
 		row.UpdatedAt = time.Now().UTC()
-		if err := tx.Model(&usageEventRow{}).Where("event_id = ?", row.EventID).Updates(map[string]any{"status": row.Status, "updated_at": row.UpdatedAt}).Error; err != nil {
+		eventUpdates := map[string]any{"status": row.Status, "updated_at": row.UpdatedAt}
+		if storageSnapshotValue != nil {
+			eventUpdates["storage_snapshot"] = *row.StorageSnapshot
+		}
+		if err := tx.Model(&usageEventRow{}).Where("event_id = ?", row.EventID).Updates(eventUpdates).Error; err != nil {
 			return err
 		}
 		if target == UsageEventReleased {
@@ -330,7 +343,7 @@ func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID s
 			if err := tx.Create(&auditLogRow{TenantID: row.TenantID, ModuleCode: row.ModuleCode, Action: "usage_released", Payload: payload}).Error; err != nil {
 				return err
 			}
-			if err := tx.Model(&usageEventOutboxRow{}).Where("event_id = ? AND status = ?", row.EventID, "pending").Update("status", "cancelled").Error; err != nil {
+			if err := tx.Model(&usageEventOutboxRow{}).Where("event_id = ? AND status IN ?", row.EventID, []string{"reserved", "pending"}).Update("status", "cancelled").Error; err != nil {
 				return err
 			}
 		} else if target == UsageEventCommitted {
@@ -340,8 +353,7 @@ func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID s
 		}
 		event = usageEventFromRow(row)
 		if row.Metric == usageMetricStorageBytesCurrent {
-			snapshot := committed
-			event.StorageSnapshot = &snapshot
+			event.StorageSnapshot = cloneUsageInt64Pointer(row.StorageSnapshot)
 		}
 		return nil
 	})
@@ -363,8 +375,7 @@ func (l *gormUsageLedger) reserveResultForExisting(tx *gorm.DB, event usageEvent
 	}
 	e := usageEventFromRow(event)
 	if event.Metric == usageMetricStorageBytesCurrent {
-		snapshot := bucket.Committed
-		e.StorageSnapshot = &snapshot
+		e.StorageSnapshot = cloneUsageInt64Pointer(event.StorageSnapshot)
 	}
 	*result = ReserveUsageResult{Event: e, Existing: true, CommittedUsage: bucket.Committed, ReservedUsage: bucket.Reserved, Limit: limit}
 	return nil
@@ -457,7 +468,15 @@ func usageEventFromRow(row usageEventRow) UsageEvent {
 	if row.Metadata != "" {
 		_ = json.Unmarshal([]byte(row.Metadata), &metadata)
 	}
-	return UsageEvent{EventID: row.EventID, TenantID: row.TenantID, ModuleCode: row.ModuleCode, Metric: row.Metric, Quantity: row.Quantity, PeriodKey: row.PeriodKey, SourceType: row.SourceType, SourceID: row.SourceID, IdempotencyKey: row.IdempotencyKey, Status: UsageEventStatus(row.Status), OccurredAt: row.OccurredAt, ReversalOf: row.ReversalOf, Metadata: metadata, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+	return UsageEvent{EventID: row.EventID, TenantID: row.TenantID, ModuleCode: row.ModuleCode, Metric: row.Metric, Quantity: row.Quantity, PeriodKey: row.PeriodKey, SourceType: row.SourceType, SourceID: row.SourceID, IdempotencyKey: row.IdempotencyKey, Status: UsageEventStatus(row.Status), OccurredAt: row.OccurredAt, StorageSnapshot: cloneUsageInt64Pointer(row.StorageSnapshot), ReversalOf: row.ReversalOf, Metadata: metadata, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+}
+
+func cloneUsageInt64Pointer(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func redactedUsageMetadata(reason string) (string, error) {

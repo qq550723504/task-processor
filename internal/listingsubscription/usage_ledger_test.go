@@ -127,6 +127,13 @@ func TestUsageLedgerValidatesLifecycleTransitions(t *testing.T) {
 	}
 }
 
+func TestUsageMetricLimitKeysKeepSheinDraftsIndependent(t *testing.T) {
+	keys := usageMetricLimitKeys(usageMetricSheinDraftsSucceeded)
+	if len(keys) != 1 || keys[0] != usageMetricSheinDraftsSucceeded {
+		t.Fatalf("SHEIN draft limit keys = %#v, want only %q", keys, usageMetricSheinDraftsSucceeded)
+	}
+}
+
 func withReserveUsageInput(input ReserveUsageInput, mutate func(*ReserveUsageInput)) ReserveUsageInput {
 	mutate(&input)
 	return input

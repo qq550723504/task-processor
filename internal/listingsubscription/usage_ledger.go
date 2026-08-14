@@ -143,14 +143,14 @@ func usageMetricLimitKeys(metric string) []string {
 	case usageMetricProductImageJobsSucceeded:
 		return []string{usageMetricProductImageJobsSucceeded, "product_image_jobs"}
 	case usageMetricSheinDraftsSucceeded:
-		return []string{usageMetricSheinDraftsSucceeded, "product_image_jobs"}
+		return []string{usageMetricSheinDraftsSucceeded}
 	default:
 		return []string{metric}
 	}
 }
 
 func usageOutboxUndelivered(status string) bool {
-	return status == "reserved" || status == "pending" || status == "failed" || status == "cancelled"
+	return status == "reserved" || status == "pending" || status == "cancelled"
 }
 
 // ValidateProjectedUsage rejects storage deltas that would take usage below zero.

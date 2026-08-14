@@ -83,21 +83,22 @@ type usageCounterRow struct {
 func (usageCounterRow) TableName() string { return "saas_usage_counters" }
 
 type usageEventRow struct {
-	EventID        string    `gorm:"column:event_id;primaryKey;size:128"`
-	TenantID       string    `gorm:"column:tenant_id;not null;size:128;uniqueIndex:idx_saas_usage_event_tenant_idempotency_key,priority:1;index:idx_saas_usage_event_tenant_metric_status,priority:1"`
-	ModuleCode     string    `gorm:"column:module_code;not null;size:64"`
-	Metric         string    `gorm:"column:metric;not null;size:64;index:idx_saas_usage_event_tenant_metric_status,priority:2"`
-	Quantity       int64     `gorm:"column:quantity;not null"`
-	PeriodKey      string    `gorm:"column:period_key;not null;size:16"`
-	SourceType     string    `gorm:"column:source_type;not null;size:64"`
-	SourceID       string    `gorm:"column:source_id;not null;size:128"`
-	IdempotencyKey string    `gorm:"column:idempotency_key;not null;size:128;uniqueIndex:idx_saas_usage_event_tenant_idempotency_key,priority:2"`
-	Status         string    `gorm:"column:status;not null;size:16;check:status IN ('reserved','committed','released','reversed');index:idx_saas_usage_event_tenant_metric_status,priority:3"`
-	OccurredAt     time.Time `gorm:"column:occurred_at;not null"`
-	ReversalOf     string    `gorm:"column:reversal_of;size:128;uniqueIndex:idx_saas_usage_event_reversal_of,where:reversal_of <> ''"`
-	Metadata       string    `gorm:"column:metadata;type:text"`
-	CreatedAt      time.Time `gorm:"column:created_at;autoCreateTime"`
-	UpdatedAt      time.Time `gorm:"column:updated_at;autoUpdateTime"`
+	EventID         string    `gorm:"column:event_id;primaryKey;size:128"`
+	TenantID        string    `gorm:"column:tenant_id;not null;size:128;uniqueIndex:idx_saas_usage_event_tenant_idempotency_key,priority:1;index:idx_saas_usage_event_tenant_metric_status,priority:1"`
+	ModuleCode      string    `gorm:"column:module_code;not null;size:64"`
+	Metric          string    `gorm:"column:metric;not null;size:64;index:idx_saas_usage_event_tenant_metric_status,priority:2"`
+	Quantity        int64     `gorm:"column:quantity;not null"`
+	PeriodKey       string    `gorm:"column:period_key;not null;size:16"`
+	SourceType      string    `gorm:"column:source_type;not null;size:64"`
+	SourceID        string    `gorm:"column:source_id;not null;size:128"`
+	IdempotencyKey  string    `gorm:"column:idempotency_key;not null;size:128;uniqueIndex:idx_saas_usage_event_tenant_idempotency_key,priority:2"`
+	Status          string    `gorm:"column:status;not null;size:16;check:status IN ('reserved','committed','released','reversed');index:idx_saas_usage_event_tenant_metric_status,priority:3"`
+	OccurredAt      time.Time `gorm:"column:occurred_at;not null"`
+	StorageSnapshot *int64    `gorm:"column:storage_snapshot"`
+	ReversalOf      string    `gorm:"column:reversal_of;size:128;uniqueIndex:idx_saas_usage_event_reversal_of,where:reversal_of <> ''"`
+	Metadata        string    `gorm:"column:metadata;type:text"`
+	CreatedAt       time.Time `gorm:"column:created_at;autoCreateTime"`
+	UpdatedAt       time.Time `gorm:"column:updated_at;autoUpdateTime"`
 }
 
 func (usageEventRow) TableName() string { return "saas_usage_events" }

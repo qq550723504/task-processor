@@ -138,7 +138,10 @@ func (l *memUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, r
 		return UsageEvent{}, ValidateUsageEventTransition(source.event.Status, UsageEventReversed)
 	}
 	sourceOutbox, sourceHasOutbox := l.outboxByEventID[source.event.EventID]
-	sourceDelivered := sourceHasOutbox && !usageOutboxUndelivered(sourceOutbox.Status)
+	sourceDelivered := !sourceHasOutbox || !usageOutboxUndelivered(sourceOutbox.Status)
+	if sourceHasOutbox && sourceOutbox.Status == "failed" {
+		return UsageEvent{}, ErrUsageReversalDeliveryUnresolved
+	}
 	if source.event.Metric != usageMetricStorageBytesCurrent && sourceDelivered {
 		return UsageEvent{}, ErrUsageReversalProjectionUnsupported
 	}
@@ -319,7 +322,7 @@ func (l *memUsageLedger) reserveResultForExisting(eventID string) (ReserveUsageR
 		return ReserveUsageResult{}, err
 	}
 	event := cloneMemUsageEvent(record.event)
-	if record.event.Metric == usageMetricStorageBytesCurrent {
+	if record.event.Metric == usageMetricStorageBytesCurrent && event.StorageSnapshot == nil && record.event.Status == UsageEventReserved {
 		snapshot := bucket.committed
 		event.StorageSnapshot = &snapshot
 	}
