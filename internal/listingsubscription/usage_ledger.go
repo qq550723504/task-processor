@@ -11,6 +11,7 @@ const (
 	usageMetricStudioDesignJobsSucceeded = "studio_design_jobs_succeeded"
 	usageMetricProductImageJobsSucceeded = "product_image_jobs_succeeded"
 	usageMetricSheinDraftsSucceeded      = "shein_drafts_succeeded"
+	usageMetricSheinPublishesSucceeded   = "shein_publishes_succeeded"
 )
 
 const usageStorageBucketPeriodKey = "__current__"
@@ -120,7 +121,7 @@ func NormalizeAndValidateReserveUsageInput(input ReserveUsageInput) (ReserveUsag
 }
 
 func isUsageCountMetric(metric string) bool {
-	return metric == usageMetricStudioDesignJobsSucceeded || metric == usageMetricProductImageJobsSucceeded || metric == usageMetricSheinDraftsSucceeded
+	return metric == usageMetricStudioDesignJobsSucceeded || metric == usageMetricProductImageJobsSucceeded || metric == usageMetricSheinDraftsSucceeded || metric == usageMetricSheinPublishesSucceeded
 }
 
 func canonicalUsagePeriodKey(metric, supplied string, occurredAt time.Time) (string, error) {
@@ -144,6 +145,8 @@ func usageMetricLimitKeys(metric string) []string {
 		return []string{usageMetricProductImageJobsSucceeded, "product_image_jobs"}
 	case usageMetricSheinDraftsSucceeded:
 		return []string{usageMetricSheinDraftsSucceeded}
+	case usageMetricSheinPublishesSucceeded:
+		return []string{usageMetricSheinPublishesSucceeded}
 	default:
 		return []string{metric}
 	}
@@ -238,3 +241,4 @@ func addUsage(left, right int64) (int64, bool) {
 	}
 	return left + right, true
 }
+
