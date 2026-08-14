@@ -10,6 +10,7 @@ import (
 
 type stubListingAdminAccountStore struct {
 	items []listingadmin.Store
+	pages []*listingadmin.StorePage
 	query listingadmin.StoreQuery
 	calls int
 }
@@ -17,6 +18,16 @@ type stubListingAdminAccountStore struct {
 func (s *stubListingAdminAccountStore) ListStores(_ context.Context, query listingadmin.StoreQuery) (*listingadmin.StorePage, error) {
 	s.calls++
 	s.query = query
+	if len(s.pages) > 0 {
+		index := query.Page - 1
+		if index < 0 {
+			index = 0
+		}
+		if index >= len(s.pages) {
+			return nil, nil
+		}
+		return s.pages[index], nil
+	}
 	items := make([]listingadmin.Store, 0, len(s.items))
 	for _, item := range s.items {
 		if query.TenantID > 0 && item.TenantID != query.TenantID {
@@ -28,6 +39,29 @@ func (s *stubListingAdminAccountStore) ListStores(_ context.Context, query listi
 		items = append(items, item)
 	}
 	return &listingadmin.StorePage{Items: items, Total: int64(len(items)), Page: 1, PageSize: len(items)}, nil
+}
+
+func TestListingAdminAccountProviderLoadsAccountsAcrossAllStorePages(t *testing.T) {
+	repo := &stubListingAdminAccountStore{pages: []*listingadmin.StorePage{
+		{Items: []listingadmin.Store{{
+			ID: 12, TenantID: 7, Platform: "SHEIN", Username: "first", Password: "secret",
+		}}, Total: 2, Page: 1, PageSize: 1},
+		{Items: []listingadmin.Store{{
+			ID: 13, TenantID: 7, Platform: "SHEIN", Username: "second", Password: "secret",
+		}}, Total: 2, Page: 2, PageSize: 1},
+	}}
+	provider := NewListingAdminAccountProvider(repo)
+
+	account, err := provider.GetAccount(context.Background(), 7, 13)
+	if err != nil {
+		t.Fatalf("GetAccount() error = %v", err)
+	}
+	if account.StoreID != 13 {
+		t.Fatalf("account store id = %d, want store 13", account.StoreID)
+	}
+	if repo.calls != 2 {
+		t.Fatalf("ListStores calls = %d, want both pages", repo.calls)
+	}
 }
 
 func TestListingAdminAccountProviderDoesNotShareOwnerScopedCacheAcrossUsers(t *testing.T) {

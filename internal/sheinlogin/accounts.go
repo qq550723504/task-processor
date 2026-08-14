@@ -86,21 +86,34 @@ func (p *ListingAdminAccountProvider) ListAccounts(ctx context.Context, tenantID
 	}
 
 	queryCtx := listingadmin.WithRequestRoles(ctx, listingkit.RequestRolesFromContext(ctx))
-	page, err := p.repo.ListStores(queryCtx, listingadmin.StoreQuery{
-		TenantID:   tenantID,
-		Platform:   "SHEIN",
-		ReadAccess: true,
-		Page:       1,
-		PageSize:   200,
-	})
-	if err != nil {
-		return nil, err
-	}
-	items := make([]Account, 0, len(page.Items))
-	for _, store := range page.Items {
-		account, ok := mapListingAdminStoreToAccount(&store)
-		if ok {
-			items = append(items, account)
+	const pageSize = 200
+	items := make([]Account, 0, pageSize)
+	for pageNumber := 1; ; pageNumber++ {
+		page, err := p.repo.ListStores(queryCtx, listingadmin.StoreQuery{
+			TenantID:   tenantID,
+			Platform:   "SHEIN",
+			ReadAccess: true,
+			Page:       pageNumber,
+			PageSize:   pageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if page == nil || len(page.Items) == 0 {
+			break
+		}
+		for _, store := range page.Items {
+			account, ok := mapListingAdminStoreToAccount(&store)
+			if ok {
+				items = append(items, account)
+			}
+		}
+		responsePageSize := page.PageSize
+		if responsePageSize <= 0 {
+			responsePageSize = pageSize
+		}
+		if int64(pageNumber*responsePageSize) >= page.Total || len(page.Items) < responsePageSize {
+			break
 		}
 	}
 
