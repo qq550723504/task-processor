@@ -166,6 +166,30 @@ func TestMemUsageLedgerClaimedOutboxBlocksReverseUntilResolved(t *testing.T) {
 	}
 }
 
+func TestMemUsageLedgerClaimOutboxHonorsLimit(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemRepository()
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"studio_design_jobs_succeeded": 10})
+	ledger := NewMemUsageLedger(repo)
+	for _, key := range []string{"request-limit-one", "request-limit-two"} {
+		reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", key, 1))
+		if err != nil {
+			t.Fatalf("Reserve(%s) error = %v", key, err)
+		}
+		if _, err := ledger.Commit(ctx, reservation.Event.EventID); err != nil {
+			t.Fatalf("Commit(%s) error = %v", key, err)
+		}
+	}
+	first, err := ledger.ListPendingOutbox(ctx, 1)
+	if err != nil || len(first) != 1 {
+		t.Fatalf("first ListPendingOutbox() = %+v, error=%v, want one item", first, err)
+	}
+	second, err := ledger.ListPendingOutbox(ctx, 1)
+	if err != nil || len(second) != 1 || second[0].EventID == first[0].EventID {
+		t.Fatalf("second ListPendingOutbox() = %+v, error=%v, want the remaining item", second, err)
+	}
+}
+
 func TestMemUsageLedgerRejectsIdempotencyKeyForDifferentUsageFact(t *testing.T) {
 	repo := NewMemRepository()
 	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 10})
@@ -276,9 +300,31 @@ func TestMemUsageLedgerStorageSignedTransitionsAndOutboxFiltering(t *testing.T) 
 	}
 }
 
+func TestMemUsageLedgerRejectsDeletionCommitBelowZeroAgainstUncommittedUpload(t *testing.T) {
+	repo := NewMemRepository()
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleOSSStorage, map[string]int{"storage_bytes_current": 100})
+	ledger := NewMemUsageLedger(repo)
+	ctx := context.Background()
+	upload, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-17", "storage-upload-first", 10))
+	if err != nil {
+		t.Fatalf("upload Reserve() error = %v", err)
+	}
+	deletion, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-17", "storage-delete-first", -10))
+	if err != nil {
+		t.Fatalf("deletion Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, deletion.Event.EventID); !errors.Is(err, ErrUsageQuotaExceeded) {
+		t.Fatalf("deletion Commit() error = %v, want ErrUsageQuotaExceeded", err)
+	}
+	if _, err := ledger.Commit(ctx, upload.Event.EventID); err != nil {
+		t.Fatalf("upload Commit() error = %v", err)
+	}
+}
+
 func seedMemUsageLedgerEntitlement(t *testing.T, repo *MemRepository, tenantID, moduleCode string, limits map[string]int) {
 	t.Helper()
 	if _, err := repo.UpsertEntitlement(context.Background(), &Entitlement{TenantID: tenantID, ModuleCode: moduleCode, Status: StatusActive, Limits: limits}); err != nil {
 		t.Fatalf("UpsertEntitlement() error = %v", err)
 	}
 }
+
