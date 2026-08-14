@@ -765,3 +765,4 @@ func isImportTaskCompletedStatus(status int16) bool {
 		return false
 	}
 }
+
