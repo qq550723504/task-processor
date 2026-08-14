@@ -468,8 +468,30 @@ func TestGormUsageLedgerListsPendingOutbox(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListPendingOutbox() error = %v", err)
 	}
-	if len(items) != 1 || items[0].EventID != reservation.Event.EventID || items[0].Destination != "openmeter" || items[0].Status != "pending" {
-		t.Fatalf("ListPendingOutbox() = %+v, want pending OpenMeter item after commit", items)
+	if len(items) != 1 || items[0].EventID != reservation.Event.EventID || items[0].Destination != "openmeter" || items[0].Status != "in_flight" || items[0].Attempts != 1 {
+		t.Fatalf("ListPendingOutbox() = %+v, want claimed OpenMeter item after commit", items)
+	}
+}
+
+func TestGormUsageLedgerClaimedOutboxBlocksReverseUntilResolved(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"studio_design_jobs_succeeded": 2})
+	ledger := NewGormUsageLedger(repo)
+	reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-claim-reverse", 1))
+	if err != nil {
+		t.Fatalf("Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, reservation.Event.EventID); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	items, err := ledger.ListPendingOutbox(ctx, 1)
+	if err != nil || len(items) != 1 || items[0].Status != "in_flight" {
+		t.Fatalf("ListPendingOutbox() = %+v, error=%v, want one in-flight item", items, err)
+	}
+	if _, err := ledger.Reverse(ctx, reservation.Event.EventID, "request-claim-reverse-comp", "unknown delivery"); !errors.Is(err, ErrUsageReversalDeliveryUnresolved) {
+		t.Fatalf("Reverse() error = %v, want ErrUsageReversalDeliveryUnresolved", err)
 	}
 }
 
@@ -502,7 +524,7 @@ func TestGormUsageLedgerHonorsOutboxRetrySchedule(t *testing.T) {
 		t.Fatalf("set elapsed retry: %v", err)
 	}
 	items, err = ledger.ListPendingOutbox(ctx, 10)
-	if err != nil || len(items) != 1 {
+	if err != nil || len(items) != 1 || items[0].Status != "in_flight" {
 		t.Fatalf("elapsed retry items = %+v, error=%v, want one", items, err)
 	}
 }

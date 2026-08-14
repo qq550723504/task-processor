@@ -189,12 +189,12 @@ func usageOutboxLifecycleMatches(eventStatus UsageEventStatus, outboxStatus, met
 	case UsageEventReserved:
 		return outboxStatus == "reserved"
 	case UsageEventCommitted:
-		return outboxStatus == "pending" || outboxStatus == "failed" || outboxStatus == "sent" || outboxStatus == "delivered" || outboxStatus == "succeeded"
+		return outboxStatus == "pending" || outboxStatus == "in_flight" || outboxStatus == "failed" || outboxStatus == "sent" || outboxStatus == "delivered" || outboxStatus == "succeeded"
 	case UsageEventReleased:
 		return outboxStatus == "cancelled"
 	case UsageEventReversed:
 		if metric == usageMetricStorageBytesCurrent {
-			return outboxStatus == "cancelled" || outboxStatus == "pending" || outboxStatus == "failed" || outboxStatus == "sent" || outboxStatus == "delivered" || outboxStatus == "succeeded"
+			return outboxStatus == "cancelled" || outboxStatus == "pending" || outboxStatus == "in_flight" || outboxStatus == "failed" || outboxStatus == "sent" || outboxStatus == "delivered" || outboxStatus == "succeeded"
 		}
 		return outboxStatus == "cancelled"
 	default:

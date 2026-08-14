@@ -99,6 +99,12 @@ func NormalizeAndValidateReserveUsageInput(input ReserveUsageInput) (ReserveUsag
 	if input.Metric == "" {
 		return ReserveUsageInput{}, &UsageValidationError{Field: "metric"}
 	}
+	if !isKnownUsageMetric(input.Metric) {
+		return ReserveUsageInput{}, &UsageValidationError{Field: "metric"}
+	}
+	if !usageMetricModuleMatches(input.ModuleCode, input.Metric) {
+		return ReserveUsageInput{}, &UsageValidationError{Field: "module_metric"}
+	}
 	if input.PeriodKey == "" {
 		return ReserveUsageInput{}, &UsageValidationError{Field: "period_key"}
 	}
@@ -111,6 +117,9 @@ func NormalizeAndValidateReserveUsageInput(input ReserveUsageInput) (ReserveUsag
 	if input.IdempotencyKey == "" {
 		return ReserveUsageInput{}, &UsageValidationError{Field: "idempotency_key"}
 	}
+	if len(input.Metadata) != 0 {
+		return ReserveUsageInput{}, ErrUsageOutboxUnsafeMetadata
+	}
 	if input.Quantity == 0 || (input.Metric != usageMetricStorageBytesCurrent && input.Quantity < 0) {
 		return ReserveUsageInput{}, &UsageValidationError{Field: "quantity"}
 	}
@@ -122,6 +131,17 @@ func NormalizeAndValidateReserveUsageInput(input ReserveUsageInput) (ReserveUsag
 
 func isUsageCountMetric(metric string) bool {
 	return metric == usageMetricStudioDesignJobsSucceeded || metric == usageMetricProductImageJobsSucceeded || metric == usageMetricSheinDraftsSucceeded || metric == usageMetricSheinPublishesSucceeded
+}
+
+func isKnownUsageMetric(metric string) bool {
+	return metric == usageMetricStorageBytesCurrent || isUsageCountMetric(metric)
+}
+
+func usageMetricModuleMatches(moduleCode, metric string) bool {
+	if metric == usageMetricStorageBytesCurrent {
+		return moduleCode == ModuleOSSStorage
+	}
+	return moduleCode == ModuleStudio
 }
 
 func canonicalUsagePeriodKey(metric, supplied string, occurredAt time.Time) (string, error) {
