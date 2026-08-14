@@ -1,4 +1,301 @@
-package listingsubscription\n\nimport (\n	"context"\n	"errors"\n	"time"\n)\n\nconst (\n	ModuleStoreManagement   = "store_management"\n	ModuleTaskImport        = "task_import"\n	ModuleRules             = "rules"\n	ModuleOperationStrategy = "operation_strategy"\n	ModuleStudio            = "studio"\n	ModuleOSSStorage        = "oss_storage"\n)\n\nconst (\n	PlanBasic        = "basic"\n	PlanProfessional = "professional"\n	PlanEnterprise   = "enterprise"\n)\n\nconst (\n	StatusActive   = "active"\n	StatusTrialing = "trialing"\n	StatusExpired  = "expired"\n	StatusDisabled = "disabled"\n)\n\nvar (\n	ErrModuleNotFound                     = errors.New("subscription module not found")\n	ErrEntitlementNotFound                = errors.New("subscription entitlement not found")\n	ErrSubscriptionRequired               = errors.New("subscription required")\n	ErrSubscriptionQuotaExceed            = errors.New("subscription quota exceeded")\n	ErrUsageInvalidInput                  = errors.New("usage ledger invalid input")\n	ErrUsageDuplicateIdentity             = errors.New("usage ledger duplicate identity")\n	ErrUsageInvalidTransition             = errors.New("usage ledger invalid transition")\n	ErrUsageQuotaExceeded                 = errors.New("usage ledger quota exceeded")\n	ErrUsageLedgerNotConfigured           = errors.New("usage ledger is not configured")\n	ErrUsageOutboxUnsafeMetadata          = errors.New("usage outbox metadata is unsafe")\n	ErrUsageOutboxStorageSnapshotRequired = errors.New("usage outbox storage snapshot is required")\n	ErrUsageReversalDeliveryUnresolved    = errors.New("usage reversal delivery state is unresolved")\n	ErrUsageReversalProjectionUnsupported = errors.New("usage reversal projection is unsupported")\n)\n\ntype UsageEventStatus string\n\nconst (\n	UsageEventReserved  UsageEventStatus = "reserved"\n	UsageEventCommitted UsageEventStatus = "committed"\n	UsageEventReleased  UsageEventStatus = "released"\n	UsageEventReversed  UsageEventStatus = "reversed"\n)\n\ntype UsageEvent struct {\n	EventID        string\n	TenantID       string\n	ModuleCode     string\n	Metric         string\n	Quantity       int64\n	PeriodKey      string\n	SourceType     string\n	SourceID       string\n	IdempotencyKey string\n	Status         UsageEventStatus\n	OccurredAt     time.Time\n	ReversalOf     string\n	Metadata       map[string]string\n	// StorageSnapshot is the post-commit retained-byte gauge used only for\n	// storage_bytes_current outbox projection. It is derived from the ledger\n	// bucket and is intentionally not caller-controlled input.\n	StorageSnapshot   *int64\n	StorageSnapshotAt *time.Time\n	CreatedAt         time.Time\n	UpdatedAt         time.Time\n}\n\ntype ReserveUsageInput struct {\n	TenantID       string
-	ModuleCode     string\n	Metric         string\n	Quantity       int64\n	PeriodKey      string\n	SourceType     string\n	SourceID       string\n	IdempotencyKey string\n	OccurredAt     time.Time\n	Metadata       map[string]string\n}\n\ntype ReserveUsageResult struct {\n	Event          UsageEvent\n	Existing       bool\n	CommittedUsage int64\n	ReservedUsage  int64\n	Limit          *int64\n}\n\ntype UsageOutboxItem struct {\n	ID            int64\n	EventID       string\n	Destination   string\n	Status        string\n	Attempts      int\n	NextAttemptAt *time.Time\n	LastError     string\n	CreatedAt     time.Time\n	UpdatedAt     time.Time\n}\n\n// OpenMeterUsageOutboxPayload is the redacted payload boundary for an\n// asynchronous OpenMeter projection. It intentionally contains no request\n// bodies, credentials, authorization headers, or provider configuration.\ntype OpenMeterUsageOutboxPayload struct {\n	EventID    string\n	TenantID   string\n	Metric     string\n	Quantity   int64\n	OccurredAt time.Time\n	Metadata   map[string]string\n}\n\ntype Module struct {\n	Code        string    `json:"code"`\n	Name        string    `json:"name"`\n	Description string    `json:"description,omitempty"`\n	SortOrder   int       `json:"sort_order"`\n	Active      bool      `json:"active"`\n	CreatedAt   time.Time `json:"created_at"`\n	UpdatedAt   time.Time `json:"updated_at"`\n}\n\ntype Plan struct {\n	Code        string    `json:"code"`\n	Name        string    `json:"name"`\n	Description string    `json:"description,omitempty"`\n	SortOrder   int       `json:"sort_order"`\n	Active      bool      `json:"active"`\n	CreatedAt   time.Time `json:"created_at"`\n	UpdatedAt   time.Time `json:"updated_at"`\n}\n\ntype PlanModule struct {\n	PlanCode   string         `json:"plan_code"`\n	ModuleCode string         `json:"module_code"`\n	Limits     map[string]int `json:"limits,omitempty"`\n	SortOrder  int            `json:"sort_order"`\n}\n\ntype PlanBundle struct {\n	Plan    Plan         `json:"plan"`\n	Modules []PlanModule `json:"modules"`\n}\n\ntype TenantSubscription struct {\n	ID        int64      `json:"id"`\n	TenantID  string     `json:"tenant_id"`\n	PlanCode  string     `json:"plan_code"`\n	Status    string     `json:"status"`
-	StartsAt  *time.Time `json:"starts_at,omitempty"`\n	ExpiresAt *time.Time `json:"expires_at,omitempty"`\n	CreatedAt time.Time  `json:"created_at"`\n	UpdatedAt time.Time  `json:"updated_at"`\n}\n\ntype Entitlement struct {\n	ID         int64          `json:"id"`\n	TenantID   string         `json:"tenant_id"`\n	ModuleCode string         `json:"module_code"`\n	Status     string         `json:"status"`\n	StartsAt   *time.Time     `json:"starts_at,omitempty"`\n	ExpiresAt  *time.Time     `json:"expires_at,omitempty"`\n	Limits     map[string]int `json:"limits,omitempty"`\n	CreatedAt  time.Time      `json:"created_at"`\n	UpdatedAt  time.Time      `json:"updated_at"`\n}\n\ntype UsageCounter struct {\n	ID         int64     `json:"id"`\n	TenantID   string    `json:"tenant_id"`\n	ModuleCode string    `json:"module_code"`\n	PeriodKey  string    `json:"period_key"`\n	Metric     string    `json:"metric"`\n	Used       int       `json:"used"`\n	UpdatedAt  time.Time `json:"updated_at"`\n}\n\ntype AuditLog struct {\n	ID         int64     `json:"id"`\n	TenantID   string    `json:"tenant_id"`\n	ModuleCode string    `json:"module_code,omitempty"`\n	Action     string    `json:"action"`\n	ActorID    string    `json:"actor_id,omitempty"`\n	Reason     string    `json:"reason,omitempty"`\n	Payload    string    `json:"payload,omitempty"`\n	CreatedAt  time.Time `json:"created_at"`\n}\n\ntype EntitlementInput struct {\n	Status    string         `json:"status"`\n	StartsAt  *time.Time     `json:"starts_at,omitempty"`\n	ExpiresAt *time.Time     `json:"expires_at,omitempty"`\n	Limits    map[string]int `json:"limits,omitempty"`\n}\n\ntype UsageAdjustmentInput struct {\n	PeriodKey string `json:"period_key"`\n	Metric    string `json:"metric"`\n	Used      int    `json:"used"`\n	Reason    string `json:"reason,omitempty"`\n}\n\ntype PlanApplyInput struct {\n	PlanCode  string     `json:"plan_code"`\n	Status    string     `json:"status"`\n	StartsAt  *time.Time `json:"starts_at,omitempty"`\n	ExpiresAt *time.Time `json:"expires_at,omitempty"`\n}\n\ntype PlanInput struct {\n	Code        string            `json:"code"`\n	Name        string            `json:"name"`\n	Description string            `json:"description,omitempty"`\n	SortOrder   int               `json:"sort_order"`\n	Active      bool              `json:"active"`\n	Modules     []PlanModuleInput `json:"modules,omitempty"`\n}\n\ntype PlanModuleInput struct {\n	ModuleCode string         `json:"module_code,omitempty"`\n	Limits     map[string]int `json:"limits,omitempty"`\n	SortOrder  int            `json:"sort_order"`\n}\n\ntype EntitlementView struct {\n	Module      Module         `json:"module"`\n	Entitlement *Entitlement   `json:"entitlement,omitempty"`\n	Usage       []UsageCounter `json:"usage"`\n	Allowed     bool           `json:"allowed"`
-	Reason      string         `json:"reason,omitempty"`\n	Limits      map[string]int `json:"limits,omitempty"`\n	Used        map[string]int `json:"used,omitempty"`\n}\n\ntype Summary struct {\n	TenantID     string              `json:"tenant_id"`\n	Modules      []Module            `json:"modules"`\n	Entitlements []EntitlementView   `json:"entitlements"`\n	Subscription *TenantSubscription `json:"subscription,omitempty"`\n	CurrentPlan  *PlanBundle         `json:"current_plan,omitempty"`\n}\n\ntype TenantOverview struct {\n	TenantID          string     `json:"tenant_id"`\n	TenantDisplayName string     `json:"tenant_display_name,omitempty"`\n	EntitlementCount  int        `json:"entitlement_count"`\n	ActiveCount       int        `json:"active_count"`\n	UpdatedAt         *time.Time `json:"updated_at,omitempty"`\n}\n\ntype GuardResult struct {\n	Allowed    bool\n	Reason     string\n	ModuleCode string\n	Metric     string\n	Limit      int\n	Used       int\n}\n\ntype Repository interface {\n	ListModules(ctx context.Context) ([]Module, error)\n	UpsertDefaultModules(ctx context.Context, modules []Module) error\n	ListPlans(ctx context.Context) ([]PlanBundle, error)\n	UpsertDefaultPlans(ctx context.Context, plans []PlanBundle) error\n	UpsertPlan(ctx context.Context, plan Plan, modules []PlanModule) (*PlanBundle, error)\n	UpsertPlanModule(ctx context.Context, module PlanModule) (*PlanBundle, error)\n	DeletePlanModule(ctx context.Context, planCode, moduleCode string) (*PlanBundle, error)\n	GetTenantSubscription(ctx context.Context, tenantID string) (*TenantSubscription, error)\n	ListTenantSubscriptionsByPlan(ctx context.Context, planCode string) ([]TenantSubscription, error)\n	UpsertTenantSubscription(ctx context.Context, subscription *TenantSubscription) (*TenantSubscription, error)\n	GetEntitlement(ctx context.Context, tenantID, moduleCode string) (*Entitlement, error)\n	ListEntitlements(ctx context.Context, tenantID string) ([]Entitlement, error)\n	ListTenantOverviews(ctx context.Context) ([]TenantOverview, error)\n	UpsertEntitlement(ctx context.Context, entitlement *Entitlement) (*Entitlement, error)\n	ListUsage(ctx context.Context, tenantID string) ([]UsageCounter, error)\n	IncrementUsage(ctx context.Context, tenantID, moduleCode, periodKey, metric string, amount int) (*UsageCounter, error)\n	SetUsage(ctx context.Context, tenantID, moduleCode, periodKey, metric string, used int) (*UsageCounter, error)\n	CreateAuditLog(ctx context.Context, log AuditLog) (*AuditLog, error)\n	ListAuditLogs(ctx context.Context, tenantID string, limit int) ([]AuditLog, error)\n	ListPlanAuditLogs(ctx context.Context, planCode string, limit int) ([]AuditLog, error)\n}\n\ntype UsageLedger interface {\n	Reserve(ctx context.Context, input ReserveUsageInput) (ReserveUsageResult, error)\n	Commit(ctx context.Context, eventID string) (UsageEvent, error)\n	Release(ctx context.Context, eventID, reason string) (UsageEvent, error)\n	Reverse(ctx context.Context, eventID, idempotencyKey, reason string) (UsageEvent, error)\n	Get(ctx context.Context, tenantID, idempotencyKey string) (*UsageEvent, error)\n	ListPendingOutbox(ctx context.Context, limit int) ([]UsageOutboxItem, error)\n}
+package listingsubscription
+
+import (
+	"context"
+	"errors"
+	"time"
+)
+
+const (
+	ModuleStoreManagement   = "store_management"
+	ModuleTaskImport        = "task_import"
+	ModuleRules             = "rules"
+	ModuleOperationStrategy = "operation_strategy"
+	ModuleStudio            = "studio"
+	ModuleOSSStorage        = "oss_storage"
+)
+
+const (
+	PlanBasic        = "basic"
+	PlanProfessional = "professional"
+	PlanEnterprise   = "enterprise"
+)
+
+const (
+	StatusActive   = "active"
+	StatusTrialing = "trialing"
+	StatusExpired  = "expired"
+	StatusDisabled = "disabled"
+)
+
+var (
+	ErrModuleNotFound                     = errors.New("subscription module not found")
+	ErrEntitlementNotFound                = errors.New("subscription entitlement not found")
+	ErrSubscriptionRequired               = errors.New("subscription required")
+	ErrSubscriptionQuotaExceed            = errors.New("subscription quota exceeded")
+	ErrUsageInvalidInput                  = errors.New("usage ledger invalid input")
+	ErrUsageDuplicateIdentity             = errors.New("usage ledger duplicate identity")
+	ErrUsageInvalidTransition             = errors.New("usage ledger invalid transition")
+	ErrUsageQuotaExceeded                 = errors.New("usage ledger quota exceeded")
+	ErrUsageLedgerNotConfigured           = errors.New("usage ledger is not configured")
+	ErrUsageOutboxUnsafeMetadata          = errors.New("usage outbox metadata is unsafe")
+	ErrUsageOutboxStorageSnapshotRequired = errors.New("usage outbox storage snapshot is required")
+	ErrUsageReversalDeliveryUnresolved    = errors.New("usage reversal delivery state is unresolved")
+	ErrUsageReversalProjectionUnsupported = errors.New("usage reversal projection is unsupported")
+)
+
+type UsageEventStatus string
+
+const (
+	UsageEventReserved  UsageEventStatus = "reserved"
+	UsageEventCommitted UsageEventStatus = "committed"
+	UsageEventReleased  UsageEventStatus = "released"
+	UsageEventReversed  UsageEventStatus = "reversed"
+)
+
+type UsageEvent struct {
+	EventID        string
+	TenantID       string
+	ModuleCode     string
+	Metric         string
+	Quantity       int64
+	PeriodKey      string
+	SourceType     string
+	SourceID       string
+	IdempotencyKey string
+	Status         UsageEventStatus
+	OccurredAt     time.Time
+	ReversalOf     string
+	Metadata       map[string]string
+	// StorageSnapshot is the post-commit retained-byte gauge used only for
+	// storage_bytes_current outbox projection. It is derived from the ledger
+	// bucket and is intentionally not caller-controlled input.
+	StorageSnapshot   *int64
+	StorageSnapshotAt *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+type ReserveUsageInput struct {
+	TenantID       string
+	ModuleCode     string
+	Metric         string
+	Quantity       int64
+	PeriodKey      string
+	SourceType     string
+	SourceID       string
+	IdempotencyKey string
+	OccurredAt     time.Time
+	Metadata       map[string]string
+}
+
+type ReserveUsageResult struct {
+	Event          UsageEvent
+	Existing       bool
+	CommittedUsage int64
+	ReservedUsage  int64
+	Limit          *int64
+}
+
+type UsageOutboxItem struct {
+	ID            int64
+	EventID       string
+	Destination   string
+	Status        string
+	Attempts      int
+	NextAttemptAt *time.Time
+	LastError     string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+// OpenMeterUsageOutboxPayload is the redacted payload boundary for an
+// asynchronous OpenMeter projection. It intentionally contains no request
+// bodies, credentials, authorization headers, or provider configuration.
+type OpenMeterUsageOutboxPayload struct {
+	EventID    string
+	TenantID   string
+	Metric     string
+	Quantity   int64
+	OccurredAt time.Time
+	Metadata   map[string]string
+}
+
+type Module struct {
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	SortOrder   int       `json:"sort_order"`
+	Active      bool      `json:"active"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type Plan struct {
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	SortOrder   int       `json:"sort_order"`
+	Active      bool      `json:"active"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type PlanModule struct {
+	PlanCode   string         `json:"plan_code"`
+	ModuleCode string         `json:"module_code"`
+	Limits     map[string]int `json:"limits,omitempty"`
+	SortOrder  int            `json:"sort_order"`
+}
+
+type PlanBundle struct {
+	Plan    Plan         `json:"plan"`
+	Modules []PlanModule `json:"modules"`
+}
+
+type TenantSubscription struct {
+	ID        int64      `json:"id"`
+	TenantID  string     `json:"tenant_id"`
+	PlanCode  string     `json:"plan_code"`
+	Status    string     `json:"status"`
+	StartsAt  *time.Time `json:"starts_at,omitempty"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+}
+
+type Entitlement struct {
+	ID         int64          `json:"id"`
+	TenantID   string         `json:"tenant_id"`
+	ModuleCode string         `json:"module_code"`
+	Status     string         `json:"status"`
+	StartsAt   *time.Time     `json:"starts_at,omitempty"`
+	ExpiresAt  *time.Time     `json:"expires_at,omitempty"`
+	Limits     map[string]int `json:"limits,omitempty"`
+	CreatedAt  time.Time      `json:"created_at"`
+	UpdatedAt  time.Time      `json:"updated_at"`
+}
+
+type UsageCounter struct {
+	ID         int64     `json:"id"`
+	TenantID   string    `json:"tenant_id"`
+	ModuleCode string    `json:"module_code"`
+	PeriodKey  string    `json:"period_key"`
+	Metric     string    `json:"metric"`
+	Used       int       `json:"used"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+type AuditLog struct {
+	ID         int64     `json:"id"`
+	TenantID   string    `json:"tenant_id"`
+	ModuleCode string    `json:"module_code,omitempty"`
+	Action     string    `json:"action"`
+	ActorID    string    `json:"actor_id,omitempty"`
+	Reason     string    `json:"reason,omitempty"`
+	Payload    string    `json:"payload,omitempty"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+type EntitlementInput struct {
+	Status    string         `json:"status"`
+	StartsAt  *time.Time     `json:"starts_at,omitempty"`
+	ExpiresAt *time.Time     `json:"expires_at,omitempty"`
+	Limits    map[string]int `json:"limits,omitempty"`
+}
+
+type UsageAdjustmentInput struct {
+	PeriodKey string `json:"period_key"`
+	Metric    string `json:"metric"`
+	Used      int    `json:"used"`
+	Reason    string `json:"reason,omitempty"`
+}
+
+type PlanApplyInput struct {
+	PlanCode  string     `json:"plan_code"`
+	Status    string     `json:"status"`
+	StartsAt  *time.Time `json:"starts_at,omitempty"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
+
+type PlanInput struct {
+	Code        string            `json:"code"`
+	Name        string            `json:"name"`
+	Description string            `json:"description,omitempty"`
+	SortOrder   int               `json:"sort_order"`
+	Active      bool              `json:"active"`
+	Modules     []PlanModuleInput `json:"modules,omitempty"`
+}
+
+type PlanModuleInput struct {
+	ModuleCode string         `json:"module_code,omitempty"`
+	Limits     map[string]int `json:"limits,omitempty"`
+	SortOrder  int            `json:"sort_order"`
+}
+
+type EntitlementView struct {
+	Module      Module         `json:"module"`
+	Entitlement *Entitlement   `json:"entitlement,omitempty"`
+	Usage       []UsageCounter `json:"usage"`
+	Allowed     bool           `json:"allowed"`
+	Reason      string         `json:"reason,omitempty"`
+	Limits      map[string]int `json:"limits,omitempty"`
+	Used        map[string]int `json:"used,omitempty"`
+}
+
+type Summary struct {
+	TenantID     string              `json:"tenant_id"`
+	Modules      []Module            `json:"modules"`
+	Entitlements []EntitlementView   `json:"entitlements"`
+	Subscription *TenantSubscription `json:"subscription,omitempty"`
+	CurrentPlan  *PlanBundle         `json:"current_plan,omitempty"`
+}
+
+type TenantOverview struct {
+	TenantID          string     `json:"tenant_id"`
+	TenantDisplayName string     `json:"tenant_display_name,omitempty"`
+	EntitlementCount  int        `json:"entitlement_count"`
+	ActiveCount       int        `json:"active_count"`
+	UpdatedAt         *time.Time `json:"updated_at,omitempty"`
+}
+
+type GuardResult struct {
+	Allowed    bool
+	Reason     string
+	ModuleCode string
+	Metric     string
+	Limit      int
+	Used       int
+}
+
+type Repository interface {
+	ListModules(ctx context.Context) ([]Module, error)
+	UpsertDefaultModules(ctx context.Context, modules []Module) error
+	ListPlans(ctx context.Context) ([]PlanBundle, error)
+	UpsertDefaultPlans(ctx context.Context, plans []PlanBundle) error
+	UpsertPlan(ctx context.Context, plan Plan, modules []PlanModule) (*PlanBundle, error)
+	UpsertPlanModule(ctx context.Context, module PlanModule) (*PlanBundle, error)
+	DeletePlanModule(ctx context.Context, planCode, moduleCode string) (*PlanBundle, error)
+	GetTenantSubscription(ctx context.Context, tenantID string) (*TenantSubscription, error)
+	ListTenantSubscriptionsByPlan(ctx context.Context, planCode string) ([]TenantSubscription, error)
+	UpsertTenantSubscription(ctx context.Context, subscription *TenantSubscription) (*TenantSubscription, error)
+	GetEntitlement(ctx context.Context, tenantID, moduleCode string) (*Entitlement, error)
+	ListEntitlements(ctx context.Context, tenantID string) ([]Entitlement, error)
+	ListTenantOverviews(ctx context.Context) ([]TenantOverview, error)
+	UpsertEntitlement(ctx context.Context, entitlement *Entitlement) (*Entitlement, error)
+	ListUsage(ctx context.Context, tenantID string) ([]UsageCounter, error)
+	IncrementUsage(ctx context.Context, tenantID, moduleCode, periodKey, metric string, amount int) (*UsageCounter, error)
+	SetUsage(ctx context.Context, tenantID, moduleCode, periodKey, metric string, used int) (*UsageCounter, error)
+	CreateAuditLog(ctx context.Context, log AuditLog) (*AuditLog, error)
+	ListAuditLogs(ctx context.Context, tenantID string, limit int) ([]AuditLog, error)
+	ListPlanAuditLogs(ctx context.Context, planCode string, limit int) ([]AuditLog, error)
+}
+
+type UsageLedger interface {
+	Reserve(ctx context.Context, input ReserveUsageInput) (ReserveUsageResult, error)
+	Commit(ctx context.Context, eventID string) (UsageEvent, error)
+	Release(ctx context.Context, eventID, reason string) (UsageEvent, error)
+	Reverse(ctx context.Context, eventID, idempotencyKey, reason string) (UsageEvent, error)
+	Get(ctx context.Context, tenantID, idempotencyKey string) (*UsageEvent, error)
+	ListPendingOutbox(ctx context.Context, limit int) ([]UsageOutboxItem, error)
+}
