@@ -85,7 +85,7 @@ func (p *ListingAdminAccountProvider) ListAccounts(ctx context.Context, tenantID
 		return nil, fmt.Errorf("listing admin store repository is nil")
 	}
 
-	queryCtx := listingadmin.WithRequestRoles(ctx, listingkit.RequestRolesFromContext(ctx))
+	queryCtx := listingAdminAccountRequestContext(ctx)
 	const pageSize = 200
 	items := make([]Account, 0, pageSize)
 	for pageNumber := 1; ; pageNumber++ {
@@ -125,13 +125,31 @@ func (p *ListingAdminAccountProvider) ListAccounts(ctx context.Context, tenantID
 }
 
 func accountCacheKeyForContext(ctx context.Context, tenantID int64) accountCacheKey {
-	roles := listingkit.RequestRolesFromContext(ctx)
+	roles := listingAdminAccountRoles(ctx)
 	sort.Strings(roles)
+	userID := listingkit.RequestUserIDFromContext(ctx)
+	if userID == "" {
+		if identity, ok := listingkit.AuthenticatedIdentityFromContext(ctx); ok {
+			userID = identity.UserID
+		}
+	}
 	return accountCacheKey{
 		tenantID: tenantID,
-		userID:   listingkit.RequestUserIDFromContext(ctx),
+		userID:   userID,
 		roles:    strings.Join(roles, "\x00"),
 	}
+}
+
+func listingAdminAccountRoles(ctx context.Context) []string {
+	roles := listingkit.RequestRolesFromContext(ctx)
+	if identity, ok := listingkit.AuthenticatedIdentityFromContext(ctx); ok {
+		roles = append(roles, identity.Roles...)
+	}
+	return roles
+}
+
+func listingAdminAccountRequestContext(ctx context.Context) context.Context {
+	return listingadmin.WithRequestRoles(ctx, listingAdminAccountRoles(ctx))
 }
 
 func mapListingAdminStoreToAccount(store *listingadmin.Store) (Account, bool) {

@@ -12,12 +12,14 @@ type stubListingAdminAccountStore struct {
 	items []listingadmin.Store
 	pages []*listingadmin.StorePage
 	query listingadmin.StoreQuery
+	roles []string
 	calls int
 }
 
-func (s *stubListingAdminAccountStore) ListStores(_ context.Context, query listingadmin.StoreQuery) (*listingadmin.StorePage, error) {
+func (s *stubListingAdminAccountStore) ListStores(ctx context.Context, query listingadmin.StoreQuery) (*listingadmin.StorePage, error) {
 	s.calls++
 	s.query = query
+	s.roles = listingadmin.RequestRolesFromContext(ctx)
 	if len(s.pages) > 0 {
 		index := query.Page - 1
 		if index < 0 {
@@ -157,5 +159,55 @@ func TestListingAdminAccountProviderLoadsSheinAccountsFromRepository(t *testing.
 	}
 	if !provider.repo.(*stubListingAdminAccountStore).query.ReadAccess {
 		t.Fatal("ListAccounts query ReadAccess = false, want shared-store read access")
+	}
+}
+
+func TestListingAdminAccountProviderBridgesAuthenticatedIdentityRoles(t *testing.T) {
+	repo := &stubListingAdminAccountStore{items: []listingadmin.Store{{
+		ID: 12, TenantID: 7, Platform: "SHEIN", Username: "admin-store", Password: "secret",
+	}}}
+	provider := NewListingAdminAccountProvider(repo)
+	ctx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{
+		TenantID: "7",
+		UserID:   "tenant-admin",
+		Roles:    []string{"listingkit_admin"},
+	})
+
+	accounts, err := provider.ListAccounts(ctx, 7)
+	if err != nil {
+		t.Fatalf("ListAccounts: %v", err)
+	}
+	if len(accounts) != 1 || accounts[0].StoreID != 12 {
+		t.Fatalf("accounts = %+v, want tenant-wide SHEIN account", accounts)
+	}
+	if len(repo.roles) != 1 || repo.roles[0] != "listingkit_admin" {
+		t.Fatalf("repository roles = %v, want authenticated listingkit_admin role", repo.roles)
+	}
+}
+
+func TestListingAdminAccountProviderAuthenticatedIdentityCacheIncludesUserAndRoles(t *testing.T) {
+	repo := &stubListingAdminAccountStore{items: []listingadmin.Store{{
+		ID: 12, TenantID: 7, Platform: "SHEIN", Username: "demo-user", Password: "secret",
+	}}}
+	provider := NewListingAdminAccountProvider(repo)
+	adminCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{
+		TenantID: "7",
+		UserID:   "tenant-admin",
+		Roles:    []string{"listingkit_admin"},
+	})
+	userCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{
+		TenantID: "7",
+		UserID:   "regular-user",
+		Roles:    []string{"listingkit_viewer"},
+	})
+
+	if _, err := provider.ListAccounts(adminCtx, 7); err != nil {
+		t.Fatalf("ListAccounts(admin): %v", err)
+	}
+	if _, err := provider.ListAccounts(userCtx, 7); err != nil {
+		t.Fatalf("ListAccounts(user): %v", err)
+	}
+	if repo.calls != 2 {
+		t.Fatalf("ListStores calls = %d, want separate cache entries", repo.calls)
 	}
 }
