@@ -227,6 +227,27 @@ func TestImportTaskActiveUniqueViolationRequiresStructuredIdentity(t *testing.T)
 	}
 }
 
+func TestImportTaskActiveUniqueViolationMatchesSQLiteExpressionIndexName(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
+		t.Fatalf("migrate import task row: %v", err)
+	}
+	if err := db.Exec(importTaskActiveUniqueIndexStatement("listing_product_import_task", "idx_listing_product_import_task_unique")).Error; err != nil {
+		t.Fatalf("create expression unique index: %v", err)
+	}
+	row := &importTaskPlatformIntegrityRow{TenantID: 404, Platform: "amazon", TargetPlatform: "SHEIN", ProductID: "P4", Region: "US", StoreID: 989, Deleted: 0}
+	if err := db.Create(row).Error; err != nil {
+		t.Fatalf("seed expression index row: %v", err)
+	}
+	err = db.Create(&importTaskPlatformIntegrityRow{TenantID: 404, Platform: "amazon", TargetPlatform: "shein", ProductID: "P4", Region: "US", StoreID: 989, Deleted: 0}).Error
+	if err == nil || !isImportTaskActiveUniqueViolation(err) {
+		t.Fatalf("expression-index violation = %v, want active-task duplicate", err)
+	}
+}
+
 func TestAutoMigrateImportTaskRepositoryDefersIndexWhenCanonicalDuplicatesExist(t *testing.T) {
 	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
 	if err != nil {

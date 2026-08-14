@@ -122,6 +122,9 @@ func isImportTaskActiveUniqueViolation(err error) bool {
 			return false
 		}
 		message := strings.ToLower(sqliteErr.Error())
+		if strings.Contains(message, "index 'idx_listing_product_import_task_unique'") {
+			return true
+		}
 		return strings.Contains(message, "listing_product_import_task") &&
 			strings.Contains(message, "target_platform") &&
 			strings.Contains(message, "product_id") &&
