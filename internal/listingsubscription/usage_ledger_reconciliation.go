@@ -219,4 +219,3 @@ func usageLedgerBucketFinding(category UsageLedgerReconciliationCategory, bucket
 func usageLedgerEventFinding(category UsageLedgerReconciliationCategory, event usageEventRow, safeReason string) UsageLedgerReconciliationFinding {
 	return UsageLedgerReconciliationFinding{Category: category, TenantID: event.TenantID, ModuleCode: event.ModuleCode, Metric: event.Metric, PeriodKey: event.PeriodKey, EventID: event.EventID, SafeReason: safeReason}
 }
-
