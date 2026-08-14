@@ -1,0 +1,330 @@
+package listingsubscription
+
+import (
+	"context"
+	"fmt"
+	"sort"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// NewMemUsageLedger creates a deterministic, mutex-protected UsageLedger for
+// service and handler tests. Its state is deliberately separate from legacy
+// aggregate usage counters so it follows the durable ledger's reservation
+// semantics.
+func NewMemUsageLedger(repo *MemRepository) UsageLedger {
+	return &memUsageLedger{
+		repo:               repo,
+		eventsByID:         map[string]memUsageEvent{},
+		eventIDByIdentity:  map[string]string{},
+		buckets:            map[string]memUsageBucket{},
+		outboxByEventID:    map[string]UsageOutboxItem{},
+		reversalIDBySource: map[string]string{},
+		nextOutboxID:       1,
+	}
+}
+
+type memUsageLedger struct {
+	mu                 sync.Mutex
+	repo               *MemRepository
+	eventsByID         map[string]memUsageEvent
+	eventIDByIdentity  map[string]string
+	buckets            map[string]memUsageBucket
+	outboxByEventID    map[string]UsageOutboxItem
+	reversalIDBySource map[string]string
+	nextOutboxID       int64
+}
+
+type memUsageEvent struct {
+	event     UsageEvent
+	periodKey string
+}
+
+type memUsageBucket struct {
+	committed int64
+	reserved  int64
+}
+
+func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (ReserveUsageResult, error) {
+	_ = ctx
+	input, err := NormalizeAndValidateReserveUsageInput(input)
+	if err != nil {
+		return ReserveUsageResult{}, err
+	}
+	if input.OccurredAt.IsZero() {
+		input.OccurredAt = time.Now().UTC()
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	identity := usageEventIdentityKey(input.TenantID, input.IdempotencyKey)
+	if existingID, ok := l.eventIDByIdentity[identity]; ok {
+		return l.reserveResultForExisting(existingID)
+	}
+
+	entitlement, err := l.repo.GetEntitlement(ctx, input.TenantID, input.ModuleCode)
+	if err != nil {
+		return ReserveUsageResult{}, err
+	}
+	allowed, _ := evaluateEntitlement(entitlement, time.Now().UTC())
+	if !allowed {
+		return ReserveUsageResult{}, ErrSubscriptionRequired
+	}
+	limit := memUsageLimit(entitlement, input.Metric)
+	bucketKey := memUsageBucketKey(input.TenantID, input.ModuleCode, input.PeriodKey, input.Metric)
+	bucket := l.buckets[bucketKey]
+	if err := validateMemUsageReservation(input, bucket, limit); err != nil {
+		return ReserveUsageResult{}, err
+	}
+	reserved, ok := addUsage(bucket.reserved, input.Quantity)
+	if !ok {
+		return ReserveUsageResult{}, &UsageValidationError{Field: "quantity"}
+	}
+	bucket.reserved = reserved
+	l.buckets[bucketKey] = bucket
+
+	now := time.Now().UTC()
+	event := UsageEvent{
+		EventID: uuid.NewString(), TenantID: input.TenantID, ModuleCode: input.ModuleCode,
+		Metric: input.Metric, Quantity: input.Quantity, SourceType: input.SourceType,
+		SourceID: input.SourceID, IdempotencyKey: input.IdempotencyKey, Status: UsageEventReserved,
+		OccurredAt: input.OccurredAt, Metadata: cloneUsageMetadata(input.Metadata), CreatedAt: now, UpdatedAt: now,
+	}
+	l.eventsByID[event.EventID] = memUsageEvent{event: event, periodKey: input.PeriodKey}
+	l.eventIDByIdentity[identity] = event.EventID
+	l.addPendingOutbox(event.EventID, now)
+	return ReserveUsageResult{Event: cloneMemUsageEvent(event), Limit: limit, CommittedUsage: bucket.committed, ReservedUsage: bucket.reserved}, nil
+}
+
+func (l *memUsageLedger) Commit(ctx context.Context, eventID string) (UsageEvent, error) {
+	return l.transitionReservedEvent(ctx, eventID, UsageEventCommitted, "")
+}
+
+func (l *memUsageLedger) Release(ctx context.Context, eventID, reason string) (UsageEvent, error) {
+	return l.transitionReservedEvent(ctx, eventID, UsageEventReleased, reason)
+}
+
+func (l *memUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, reason string) (UsageEvent, error) {
+	_ = ctx
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if idempotencyKey == "" {
+		return UsageEvent{}, &UsageValidationError{Field: "idempotency_key"}
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	source, ok := l.eventsByID[eventID]
+	if !ok {
+		return UsageEvent{}, usageEventNotFound(eventID)
+	}
+	if source.event.Status != UsageEventCommitted {
+		return UsageEvent{}, ValidateUsageEventTransition(source.event.Status, UsageEventReversed)
+	}
+	if reversalID, ok := l.reversalIDBySource[source.event.EventID]; ok {
+		return cloneMemUsageEvent(l.eventsByID[reversalID].event), nil
+	}
+
+	identity := usageEventIdentityKey(source.event.TenantID, idempotencyKey)
+	if existingID, ok := l.eventIDByIdentity[identity]; ok {
+		existing := l.eventsByID[existingID].event
+		if existing.ReversalOf == source.event.EventID {
+			return cloneMemUsageEvent(existing), nil
+		}
+		return UsageEvent{}, &UsageDuplicateIdentityError{TenantID: source.event.TenantID, IdempotencyKey: idempotencyKey}
+	}
+
+	quantity, ok := negateUsage(source.event.Quantity)
+	if !ok {
+		return UsageEvent{}, &UsageValidationError{Field: "quantity"}
+	}
+	bucketKey := memUsageBucketKey(source.event.TenantID, source.event.ModuleCode, source.periodKey, source.event.Metric)
+	bucket, ok := l.buckets[bucketKey]
+	if !ok {
+		return UsageEvent{}, &UsageValidationError{Field: "usage"}
+	}
+	committed, ok := addUsage(bucket.committed, quantity)
+	if !ok || committed < 0 {
+		return UsageEvent{}, &UsageValidationError{Field: "usage"}
+	}
+	bucket.committed = committed
+	l.buckets[bucketKey] = bucket
+
+	now := time.Now().UTC()
+	reversal := UsageEvent{
+		EventID: uuid.NewString(), TenantID: source.event.TenantID, ModuleCode: source.event.ModuleCode,
+		Metric: source.event.Metric, Quantity: quantity, SourceType: source.event.SourceType,
+		SourceID: source.event.SourceID, IdempotencyKey: idempotencyKey, Status: UsageEventReversed,
+		OccurredAt: now, ReversalOf: source.event.EventID, Metadata: redactedMemUsageMetadata(reason), CreatedAt: now, UpdatedAt: now,
+	}
+	l.eventsByID[reversal.EventID] = memUsageEvent{event: reversal, periodKey: source.periodKey}
+	l.eventIDByIdentity[identity] = reversal.EventID
+	l.reversalIDBySource[source.event.EventID] = reversal.EventID
+	l.addPendingOutbox(reversal.EventID, now)
+	return cloneMemUsageEvent(reversal), nil
+}
+
+func (l *memUsageLedger) Get(ctx context.Context, tenantID, idempotencyKey string) (*UsageEvent, error) {
+	_ = ctx
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	eventID, ok := l.eventIDByIdentity[usageEventIdentityKey(strings.TrimSpace(tenantID), strings.TrimSpace(idempotencyKey))]
+	if !ok {
+		return nil, usageEventNotFound("")
+	}
+	event := cloneMemUsageEvent(l.eventsByID[eventID].event)
+	return &event, nil
+}
+
+func (l *memUsageLedger) ListPendingOutbox(ctx context.Context, limit int) ([]UsageOutboxItem, error) {
+	_ = ctx
+	if limit <= 0 {
+		return []UsageOutboxItem{}, nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	items := make([]UsageOutboxItem, 0, len(l.outboxByEventID))
+	for _, item := range l.outboxByEventID {
+		if item.Status == "pending" {
+			items = append(items, cloneMemUsageOutboxItem(item))
+		}
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
+	if len(items) > limit {
+		items = items[:limit]
+	}
+	return items, nil
+}
+
+func (l *memUsageLedger) transitionReservedEvent(ctx context.Context, eventID string, target UsageEventStatus, reason string) (UsageEvent, error) {
+	_ = ctx
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	record, ok := l.eventsByID[eventID]
+	if !ok {
+		return UsageEvent{}, usageEventNotFound(eventID)
+	}
+	if record.event.Status == target {
+		return cloneMemUsageEvent(record.event), nil
+	}
+	if record.event.Status != UsageEventReserved {
+		return UsageEvent{}, ValidateUsageEventTransition(record.event.Status, target)
+	}
+	bucketKey := memUsageBucketKey(record.event.TenantID, record.event.ModuleCode, record.periodKey, record.event.Metric)
+	bucket, ok := l.buckets[bucketKey]
+	if !ok {
+		return UsageEvent{}, &UsageValidationError{Field: "usage"}
+	}
+	reserved, ok := addUsage(bucket.reserved, -record.event.Quantity)
+	if !ok || reserved < 0 {
+		return UsageEvent{}, &UsageValidationError{Field: "usage"}
+	}
+	bucket.reserved = reserved
+	if target == UsageEventCommitted {
+		committed, ok := addUsage(bucket.committed, record.event.Quantity)
+		if !ok {
+			return UsageEvent{}, &UsageValidationError{Field: "quantity"}
+		}
+		bucket.committed = committed
+	}
+	l.buckets[bucketKey] = bucket
+
+	record.event.Status = target
+	record.event.UpdatedAt = time.Now().UTC()
+	l.eventsByID[eventID] = record
+	if target == UsageEventReleased {
+		payload := redactedMemUsageMetadata(reason)
+		_, _ = l.repo.CreateAuditLog(ctx, AuditLog{TenantID: record.event.TenantID, ModuleCode: record.event.ModuleCode, Action: "usage_released", Payload: fmt.Sprintf(`{"reason":%q}`, payload["reason"])})
+	}
+	return cloneMemUsageEvent(record.event), nil
+}
+
+func (l *memUsageLedger) reserveResultForExisting(eventID string) (ReserveUsageResult, error) {
+	record, ok := l.eventsByID[eventID]
+	if !ok {
+		return ReserveUsageResult{}, usageEventNotFound(eventID)
+	}
+	bucket := l.buckets[memUsageBucketKey(record.event.TenantID, record.event.ModuleCode, record.periodKey, record.event.Metric)]
+	entitlement, err := l.repo.GetEntitlement(context.Background(), record.event.TenantID, record.event.ModuleCode)
+	if err != nil {
+		return ReserveUsageResult{}, err
+	}
+	return ReserveUsageResult{Event: cloneMemUsageEvent(record.event), Existing: true, CommittedUsage: bucket.committed, ReservedUsage: bucket.reserved, Limit: memUsageLimit(entitlement, record.event.Metric)}, nil
+}
+
+func (l *memUsageLedger) addPendingOutbox(eventID string, now time.Time) {
+	l.outboxByEventID[eventID] = UsageOutboxItem{ID: l.nextOutboxID, EventID: eventID, Destination: "openmeter", Status: "pending", CreatedAt: now, UpdatedAt: now}
+	l.nextOutboxID++
+}
+
+func memUsageLimit(entitlement *Entitlement, metric string) *int64 {
+	value, ok := entitlement.Limits[metric]
+	if !ok {
+		return nil
+	}
+	limit := int64(value)
+	return &limit
+}
+
+func validateMemUsageReservation(input ReserveUsageInput, bucket memUsageBucket, limit *int64) error {
+	if err := ValidateProjectedUsage(input.Metric, bucket.committed, bucket.reserved, input.Quantity); err != nil {
+		if quota, ok := err.(*UsageQuotaError); ok {
+			quota.TenantID = input.TenantID
+			quota.ModuleCode = input.ModuleCode
+			quota.Limit = limit
+		}
+		return err
+	}
+	projected, ok := addUsage(bucket.committed, bucket.reserved)
+	if !ok {
+		return &UsageValidationError{Field: "usage"}
+	}
+	projected, ok = addUsage(projected, input.Quantity)
+	if !ok {
+		return &UsageValidationError{Field: "quantity"}
+	}
+	if limit != nil && input.Quantity > 0 && projected > *limit {
+		return &UsageQuotaError{TenantID: input.TenantID, ModuleCode: input.ModuleCode, Metric: input.Metric, Limit: limit, CommittedUsage: bucket.committed, ReservedUsage: bucket.reserved, Quantity: input.Quantity}
+	}
+	return nil
+}
+
+func memUsageBucketKey(tenantID, moduleCode, periodKey, metric string) string {
+	return tenantID + "\x00" + moduleCode + "\x00" + periodKey + "\x00" + metric
+}
+
+func usageEventIdentityKey(tenantID, idempotencyKey string) string {
+	return tenantID + "\x00" + idempotencyKey
+}
+
+func usageEventNotFound(eventID string) error {
+	return fmt.Errorf("usage event not found: %q", eventID)
+}
+
+func cloneMemUsageEvent(event UsageEvent) UsageEvent {
+	event.Metadata = cloneUsageMetadata(event.Metadata)
+	return event
+}
+
+func cloneMemUsageOutboxItem(item UsageOutboxItem) UsageOutboxItem {
+	if item.NextAttemptAt != nil {
+		nextAttemptAt := *item.NextAttemptAt
+		item.NextAttemptAt = &nextAttemptAt
+	}
+	return item
+}
+
+func redactedMemUsageMetadata(reason string) map[string]string {
+	metadata := map[string]string{"reason": "redacted"}
+	if strings.TrimSpace(reason) == "" {
+		metadata["reason"] = ""
+	}
+	return metadata
+}
