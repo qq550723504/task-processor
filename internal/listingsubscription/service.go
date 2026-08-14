@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"reflect"
 	"sort"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 
 type Service struct {
 	repo                      Repository
+	usageLedger               UsageLedger
 	now                       func() time.Time
 	tenantDisplayNameResolver TenantDisplayNameResolver
 }
@@ -31,6 +33,83 @@ func NewService(repo Repository) (*Service, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// NewServiceWithLedger adds the optional PAY-042 usage-ledger boundary without
+// changing the legacy constructor or paid entrypoints.
+func NewServiceWithLedger(repo Repository, ledger UsageLedger) (*Service, error) {
+	if usageLedgerIsNil(ledger) {
+		return nil, errors.New("usage ledger is required")
+	}
+	s, err := NewService(repo)
+	if err != nil {
+		return nil, err
+	}
+	s.usageLedger = ledger
+	return s, nil
+}
+
+// ReserveUsage delegates an explicit PAY-042 reservation to the optional
+// ledger. Existing CheckUsage, AuthorizeUsage, and RecordUsage remain on the
+// legacy aggregate-counter path.
+func (s *Service) ReserveUsage(ctx context.Context, input ReserveUsageInput) (ReserveUsageResult, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return ReserveUsageResult{}, err
+	}
+	return ledger.Reserve(ctx, input)
+}
+
+// CommitUsage delegates an explicit PAY-042 commit to the optional ledger.
+func (s *Service) CommitUsage(ctx context.Context, eventID string) (UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return UsageEvent{}, err
+	}
+	return ledger.Commit(ctx, eventID)
+}
+
+// ReleaseUsage delegates an explicit PAY-042 release to the optional ledger.
+func (s *Service) ReleaseUsage(ctx context.Context, eventID, reason string) (UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return UsageEvent{}, err
+	}
+	return ledger.Release(ctx, eventID, reason)
+}
+
+// ReverseUsage delegates an explicit PAY-042 reversal to the optional ledger.
+func (s *Service) ReverseUsage(ctx context.Context, eventID, idempotencyKey, reason string) (UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return UsageEvent{}, err
+	}
+	return ledger.Reverse(ctx, eventID, idempotencyKey, reason)
+}
+
+// ListPendingUsageOutbox exposes the asynchronous shadow-metering boundary to
+// a future worker without performing delivery from this service.
+func (s *Service) ListPendingUsageOutbox(ctx context.Context, limit int) ([]UsageOutboxItem, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return nil, err
+	}
+	return ledger.ListPendingOutbox(ctx, limit)
+}
+
+func (s *Service) requireUsageLedger() (UsageLedger, error) {
+	if s == nil || usageLedgerIsNil(s.usageLedger) {
+		return nil, ErrUsageLedgerNotConfigured
+	}
+	return s.usageLedger, nil
+}
+
+func usageLedgerIsNil(ledger UsageLedger) bool {
+	if ledger == nil {
+		return true
+	}
+	value := reflect.ValueOf(ledger)
+	return (value.Kind() == reflect.Chan || value.Kind() == reflect.Func || value.Kind() == reflect.Interface || value.Kind() == reflect.Map || value.Kind() == reflect.Pointer || value.Kind() == reflect.Slice) && value.IsNil()
 }
 
 func (s *Service) SetTenantDisplayNameResolver(resolver TenantDisplayNameResolver) {

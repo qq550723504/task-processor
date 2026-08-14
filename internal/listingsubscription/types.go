@@ -29,14 +29,16 @@ const (
 )
 
 var (
-	ErrModuleNotFound          = errors.New("subscription module not found")
-	ErrEntitlementNotFound     = errors.New("subscription entitlement not found")
-	ErrSubscriptionRequired    = errors.New("subscription required")
-	ErrSubscriptionQuotaExceed = errors.New("subscription quota exceeded")
-	ErrUsageInvalidInput       = errors.New("usage ledger invalid input")
-	ErrUsageDuplicateIdentity  = errors.New("usage ledger duplicate identity")
-	ErrUsageInvalidTransition  = errors.New("usage ledger invalid transition")
-	ErrUsageQuotaExceeded      = errors.New("usage ledger quota exceeded")
+	ErrModuleNotFound            = errors.New("subscription module not found")
+	ErrEntitlementNotFound       = errors.New("subscription entitlement not found")
+	ErrSubscriptionRequired      = errors.New("subscription required")
+	ErrSubscriptionQuotaExceed   = errors.New("subscription quota exceeded")
+	ErrUsageInvalidInput         = errors.New("usage ledger invalid input")
+	ErrUsageDuplicateIdentity    = errors.New("usage ledger duplicate identity")
+	ErrUsageInvalidTransition    = errors.New("usage ledger invalid transition")
+	ErrUsageQuotaExceeded        = errors.New("usage ledger quota exceeded")
+	ErrUsageLedgerNotConfigured  = errors.New("usage ledger is not configured")
+	ErrUsageOutboxUnsafeMetadata = errors.New("usage outbox metadata is unsafe")
 )
 
 type UsageEventStatus string
@@ -96,6 +98,18 @@ type UsageOutboxItem struct {
 	LastError     string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
+}
+
+// OpenMeterUsageOutboxPayload is the redacted payload boundary for an
+// asynchronous OpenMeter projection. It intentionally contains no request
+// bodies, credentials, authorization headers, or provider configuration.
+type OpenMeterUsageOutboxPayload struct {
+	EventID    string
+	TenantID   string
+	Metric     string
+	Quantity   int64
+	OccurredAt time.Time
+	Metadata   map[string]string
 }
 
 type Module struct {
