@@ -13,11 +13,12 @@ type UsageLedgerReconciliationCategory string
 const (
 	usageLedgerUnknownContext = "unknown"
 
-	UsageLedgerCommittedTotalMismatch UsageLedgerReconciliationCategory = "committed_total_mismatch"
-	UsageLedgerReservedTotalMismatch  UsageLedgerReconciliationCategory = "reserved_total_mismatch"
-	UsageLedgerOutboxDeliveryFailed   UsageLedgerReconciliationCategory = "outbox_delivery_failed"
-	UsageLedgerOutboxMissing          UsageLedgerReconciliationCategory = "outbox_missing"
-	UsageLedgerOutboxEventMissing     UsageLedgerReconciliationCategory = "outbox_event_missing"
+	UsageLedgerCommittedTotalMismatch  UsageLedgerReconciliationCategory = "committed_total_mismatch"
+	UsageLedgerReservedTotalMismatch   UsageLedgerReconciliationCategory = "reserved_total_mismatch"
+	UsageLedgerOutboxDeliveryFailed    UsageLedgerReconciliationCategory = "outbox_delivery_failed"
+	UsageLedgerOutboxMissing           UsageLedgerReconciliationCategory = "outbox_missing"
+	UsageLedgerOutboxEventMissing      UsageLedgerReconciliationCategory = "outbox_event_missing"
+	UsageLedgerOutboxLifecycleMismatch UsageLedgerReconciliationCategory = "outbox_lifecycle_mismatch"
 )
 
 // UsageLedgerReconciliationFinding contains only identifiers and a
@@ -151,6 +152,9 @@ func reconcileUsageLedgerRows(events []usageEventRow, buckets []usageBucketRow, 
 		if item.Status == "failed" {
 			report.Findings = append(report.Findings, usageLedgerEventFinding(UsageLedgerOutboxDeliveryFailed, event, "outbox delivery requires retry; error detail is intentionally omitted"))
 		}
+		if !usageOutboxLifecycleMatches(UsageEventStatus(event.Status), item.Status, event.Metric) {
+			report.Findings = append(report.Findings, usageLedgerEventFinding(UsageLedgerOutboxLifecycleMismatch, event, "event and outbox lifecycle states are inconsistent"))
+		}
 	}
 	for _, item := range outbox {
 		if _, ok := eventByID[item.EventID]; !ok {
@@ -178,6 +182,24 @@ func reconcileUsageLedgerRows(events []usageEventRow, buckets []usageBucketRow, 
 		return left.Category < right.Category
 	})
 	return report
+}
+
+func usageOutboxLifecycleMatches(eventStatus UsageEventStatus, outboxStatus, metric string) bool {
+	switch eventStatus {
+	case UsageEventReserved:
+		return outboxStatus == "reserved"
+	case UsageEventCommitted:
+		return outboxStatus == "pending" || outboxStatus == "failed" || outboxStatus == "sent" || outboxStatus == "delivered" || outboxStatus == "succeeded"
+	case UsageEventReleased:
+		return outboxStatus == "cancelled"
+	case UsageEventReversed:
+		if metric == usageMetricStorageBytesCurrent {
+			return outboxStatus == "cancelled" || outboxStatus == "pending" || outboxStatus == "failed" || outboxStatus == "sent" || outboxStatus == "delivered" || outboxStatus == "succeeded"
+		}
+		return outboxStatus == "cancelled"
+	default:
+		return false
+	}
 }
 
 func usageLedgerKey(tenantID, moduleCode, periodKey, metric string) usageLedgerBucketKey {

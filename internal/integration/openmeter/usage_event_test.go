@@ -44,6 +44,7 @@ func TestBuildUsageEventMapsEachMetricToDistinctEventType(t *testing.T) {
 		{"studio design jobs", MetricStudioDesignJobsSucceeded, "listingkit.usage.studio_design_jobs_succeeded"},
 		{"product image jobs", MetricProductImageJobsSucceeded, "listingkit.usage.product_image_jobs_succeeded"},
 		{"shein drafts", MetricSheinDraftsSucceeded, "listingkit.usage.shein_drafts_succeeded"},
+		{"shein publishes", MetricSheinPublishesSucceeded, "listingkit.usage.shein_publishes_succeeded"},
 		{"storage bytes", MetricStorageBytesCurrent, "listingkit.usage.storage_bytes_current"},
 	}
 

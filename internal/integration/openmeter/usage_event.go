@@ -25,6 +25,7 @@ const (
 	MetricStudioDesignJobsSucceeded Metric = "studio_design_jobs_succeeded"
 	MetricProductImageJobsSucceeded Metric = "product_image_jobs_succeeded"
 	MetricSheinDraftsSucceeded      Metric = "shein_drafts_succeeded"
+	MetricSheinPublishesSucceeded   Metric = "shein_publishes_succeeded"
 	MetricStorageBytesCurrent       Metric = "storage_bytes_current"
 )
 
@@ -181,7 +182,7 @@ func validateUsageFact(fact UsageFact) (string, error) {
 }
 
 func validateMetricQuantity(metric Metric, quantity string) (string, error) {
-	if metric == MetricStudioDesignJobsSucceeded || metric == MetricProductImageJobsSucceeded || metric == MetricSheinDraftsSucceeded {
+	if metric == MetricStudioDesignJobsSucceeded || metric == MetricProductImageJobsSucceeded || metric == MetricSheinDraftsSucceeded || metric == MetricSheinPublishesSucceeded {
 		if quantity != "1" {
 			return "", fmt.Errorf("count metric %q requires quantity 1", metric)
 		}
@@ -207,7 +208,7 @@ func eventTypeForMetric(metric Metric) string {
 }
 
 func isKnownMetric(metric Metric) bool {
-	return metric == MetricStudioDesignJobsSucceeded || metric == MetricProductImageJobsSucceeded || metric == MetricSheinDraftsSucceeded || metric == MetricStorageBytesCurrent
+	return metric == MetricStudioDesignJobsSucceeded || metric == MetricProductImageJobsSucceeded || metric == MetricSheinDraftsSucceeded || metric == MetricSheinPublishesSucceeded || metric == MetricStorageBytesCurrent
 }
 
 func usageEventID(fact UsageFact) string {

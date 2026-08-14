@@ -70,9 +70,10 @@ type UsageEvent struct {
 	// StorageSnapshot is the post-commit retained-byte gauge used only for
 	// storage_bytes_current outbox projection. It is derived from the ledger
 	// bucket and is intentionally not caller-controlled input.
-	StorageSnapshot *int64
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	StorageSnapshot   *int64
+	StorageSnapshotAt *time.Time
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 type ReserveUsageInput struct {
