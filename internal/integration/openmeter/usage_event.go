@@ -1,3 +1,222 @@
-package openmeter\n\nimport (\n	"crypto/sha256"\n	"encoding/hex"\n	"fmt"\n	"net/url"\n	"strconv"\n	"strings"\n	"time"\n\n	openmeterapi "github.com/openmeterio/openmeter/api/v3/client"\n)\n\nconst (\n	usageEventSource     = "task-processor/listingkit"\n	usageEventTypePrefix = "listingkit.usage."\n	tenantSubjectPrefix  = "tenant:"\n)\n\n// Metric identifies the catalog meter represented by a usage event.\ntype Metric string\n\nconst (\n	MetricStudioDesignJobsSucceeded Metric = "studio_design_jobs_succeeded"\n	MetricProductImageJobsSucceeded Metric = "product_image_jobs_succeeded"\n	MetricSheinDraftsSucceeded      Metric = "shein_drafts_succeeded"\n	MetricSheinPublishesSucceeded   Metric = "shein_publishes_succeeded"\n	MetricStorageBytesCurrent       Metric = "storage_bytes_current"\n)\n\n// UsageFact contains the business facts from which a metering event is built.\ntype UsageFact struct {\n	TenantID   string\n	Metric     Metric\n	Quantity   string\n	SourceType string\n	SourceID   string\n	Revision   string\n	OccurredAt time.Time\n}\n\n// BuildUsageEvent builds the stable CloudEvent submitted to OpenMeter.\nfunc BuildUsageEvent(fact UsageFact) (openmeterapi.EventInput, error) {\n	quantity, err := validateUsageFact(fact)\n	if err != nil {\n		return openmeterapi.EventInput{}, err\n	}\n\n	subject, err := SubjectForTenant(fact.TenantID)\n	if err != nil {\n		return openmeterapi.EventInput{}, err\n	}\n	specversion := "1.0"\n	return openmeterapi.EventInput{\n		ID:              usageEventID(fact),\n		Source:          usageEventSource,\n		Specversion:     &specversion,\n		Type:            eventTypeForMetric(fact.Metric),\n		Datacontenttype: openmeterapi.NullableValue("application/json"),\n		Subject:         subject,\n		Time:            openmeterapi.NullableValue(fact.OccurredAt),\n		Data: openmeterapi.NullableValue(map[string]any{\n			"metric":      string(fact.Metric),\n			"quantity":    quantity,\n			"source_type": fact.SourceType,\n			"source_id":   fact.SourceID,\n			"revision":    fact.Revision,\n		}),\n	}, nil\n}\n\n// ValidateUsageEvent verifies that an event conforms to the usage-event contract.\nfunc ValidateUsageEvent(event openmeterapi.EventInput) error {\n	if event.Source != usageEventSource {\n		return fmt.Errorf("usage event source must be %q", usageEventSource)\n	}\n	if event.Specversion == nil || *event.Specversion != "1.0" {\n		return fmt.Errorf("usage event specversion must be 1.0")\n	}
-	if event.Datacontenttype.GetOrEmpty() != "application/json" {\n		return fmt.Errorf("usage event datacontenttype must be application/json")\n	}\n	tenantID, err := tenantIDFromSubject(event.Subject)\n	if err != nil {\n		return err\n	}\n	if event.Time.GetOrEmpty().IsZero() || event.Time.GetOrEmpty().Location() != time.UTC {\n		return fmt.Errorf("usage event time must be non-zero UTC")\n	}\n\n	data, err := event.Data.Get()\n	if err != nil {\n		return fmt.Errorf("usage event data is required: %w", err)\n	}\n	metricValue, ok := data["metric"].(string)\n	if !ok {\n		return fmt.Errorf("usage event data.metric must be a string")\n	}\n	metric := Metric(metricValue)\n	if !isKnownMetric(metric) {\n		return fmt.Errorf("unknown usage metric %q", metric)\n	}\n	if event.Type != eventTypeForMetric(metric) {\n		return fmt.Errorf("usage event type %q does not match metric %q", event.Type, metric)\n	}\n\n	for key := range data {\n		if key != "metric" && key != "quantity" && key != "source_type" && key != "source_id" && key != "revision" {\n			return fmt.Errorf("usage event data contains disallowed field %q", key)\n		}\n	}\n	quantity, ok := data["quantity"].(string)\n	if !ok {\n		return fmt.Errorf("usage event data.quantity must be a string")\n	}\n	sourceType, ok := data["source_type"].(string)\n	if !ok || sourceType == "" {\n		return fmt.Errorf("usage event data.source_type must be a non-empty string")\n	}\n	sourceID, ok := data["source_id"].(string)\n	if !ok || sourceID == "" {\n		return fmt.Errorf("usage event data.source_id must be a non-empty string")\n	}\n	revision, ok := data["revision"].(string)\n	if !ok || revision == "" {\n		return fmt.Errorf("usage event data.revision must be a non-empty string")\n	}\n	if _, err := validateMetricQuantity(metric, quantity); err != nil {\n		return err\n	}\n	expectedID := usageEventID(UsageFact{\n		TenantID:   tenantID,\n		Metric:     metric,\n		SourceType: sourceType,\n		SourceID:   sourceID,\n		Revision:   revision,\n	})\n	if event.ID != expectedID {\n		return fmt.Errorf("usage event ID does not match its identity")\n	}\n	return nil\n}\n\n// SubjectForTenant returns the CloudEvent subject for a tenant.\nfunc SubjectForTenant(tenantID string) (string, error) {\n	if tenantID == "" {\n		return "", fmt.Errorf("tenant ID is required")\n	}\n	return tenantSubjectPrefix + url.PathEscape(tenantID), nil\n}\n\nfunc tenantIDFromSubject(subject string) (string, error) {\n	if !strings.HasPrefix(subject, tenantSubjectPrefix) {\n		return "", fmt.Errorf("usage event subject must identify a tenant")\n	}\n	tenantID, err := url.PathUnescape(strings.TrimPrefix(subject, tenantSubjectPrefix))\n	if err != nil || tenantID == "" {\n		return "", fmt.Errorf("usage event subject contains an invalid tenant")\n	}
-	canonicalSubject, err := SubjectForTenant(tenantID)\n	if err != nil || subject != canonicalSubject {\n		return "", fmt.Errorf("usage event subject is not canonical")\n	}\n	return tenantID, nil\n}\n\nfunc validateUsageFact(fact UsageFact) (string, error) {\n	if fact.TenantID == "" {\n		return "", fmt.Errorf("tenant ID is required")\n	}\n	if !isKnownMetric(fact.Metric) {\n		return "", fmt.Errorf("unknown usage metric %q", fact.Metric)\n	}\n	if fact.SourceType == "" || fact.SourceID == "" || fact.Revision == "" {\n		return "", fmt.Errorf("usage fact source type, source ID, and revision are required")\n	}\n	if fact.OccurredAt.IsZero() || fact.OccurredAt.Location() != time.UTC {\n		return "", fmt.Errorf("usage fact occurrence time must be non-zero UTC")\n	}\n	return validateMetricQuantity(fact.Metric, fact.Quantity)\n}\n\nfunc validateMetricQuantity(metric Metric, quantity string) (string, error) {\n	if metric == MetricStudioDesignJobsSucceeded || metric == MetricProductImageJobsSucceeded || metric == MetricSheinDraftsSucceeded || metric == MetricSheinPublishesSucceeded {\n		if quantity != "1" {\n			return "", fmt.Errorf("count metric %q requires quantity 1", metric)\n		}\n		return quantity, nil\n	}\n	if quantity == "" {\n		return "", fmt.Errorf("storage quantity is required")\n	}\n	for _, character := range quantity {\n		if character < '0' || character > '9' {\n			return "", fmt.Errorf("storage quantity %q must be a non-negative base-10 integer", quantity)\n		}\n	}\n	normalized := strings.TrimLeft(quantity, "0")\n	if normalized == "" {\n		normalized = "0"\n	}\n	return normalized, nil\n}\n\nfunc eventTypeForMetric(metric Metric) string {\n	return usageEventTypePrefix + string(metric)\n}\n\nfunc isKnownMetric(metric Metric) bool {\n	return metric == MetricStudioDesignJobsSucceeded || metric == MetricProductImageJobsSucceeded || metric == MetricSheinDraftsSucceeded || metric == MetricSheinPublishesSucceeded || metric == MetricStorageBytesCurrent\n}\n\nfunc usageEventID(fact UsageFact) string {\n	parts := []string{fact.TenantID, string(fact.Metric), fact.SourceType, fact.SourceID, fact.Revision}\n	var identity strings.Builder\n	for _, part := range parts {\n		identity.WriteString(strconv.Itoa(len(part)))\n		identity.WriteByte(':')\n		identity.WriteString(part)\n	}\n	sum := sha256.Sum256([]byte(identity.String()))\n	return "listingkit-usage-" + hex.EncodeToString(sum[:])\n}
+package openmeter
+
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
+
+	openmeterapi "github.com/openmeterio/openmeter/api/v3/client"
+)
+
+const (
+	usageEventSource     = "task-processor/listingkit"
+	usageEventTypePrefix = "listingkit.usage."
+	tenantSubjectPrefix  = "tenant:"
+)
+
+// Metric identifies the catalog meter represented by a usage event.
+type Metric string
+
+const (
+	MetricStudioDesignJobsSucceeded Metric = "studio_design_jobs_succeeded"
+	MetricSheinDraftsSucceeded      Metric = "shein_drafts_succeeded"
+	MetricStorageBytesCurrent       Metric = "storage_bytes_current"
+)
+
+// UsageFact contains the business facts from which a metering event is built.
+type UsageFact struct {
+	TenantID   string
+	Metric     Metric
+	Quantity   string
+	SourceType string
+	SourceID   string
+	Revision   string
+	OccurredAt time.Time
+}
+
+// BuildUsageEvent builds the stable CloudEvent submitted to OpenMeter.
+func BuildUsageEvent(fact UsageFact) (openmeterapi.EventInput, error) {
+	quantity, err := validateUsageFact(fact)
+	if err != nil {
+		return openmeterapi.EventInput{}, err
+	}
+
+	subject, err := SubjectForTenant(fact.TenantID)
+	if err != nil {
+		return openmeterapi.EventInput{}, err
+	}
+	specversion := "1.0"
+	return openmeterapi.EventInput{
+		ID:              usageEventID(fact),
+		Source:          usageEventSource,
+		Specversion:     &specversion,
+		Type:            eventTypeForMetric(fact.Metric),
+		Datacontenttype: openmeterapi.NullableValue("application/json"),
+		Subject:         subject,
+		Time:            openmeterapi.NullableValue(fact.OccurredAt),
+		Data: openmeterapi.NullableValue(map[string]any{
+			"metric":      string(fact.Metric),
+			"quantity":    quantity,
+			"source_type": fact.SourceType,
+			"source_id":   fact.SourceID,
+			"revision":    fact.Revision,
+		}),
+	}, nil
+}
+
+// ValidateUsageEvent verifies that an event conforms to the usage-event contract.
+func ValidateUsageEvent(event openmeterapi.EventInput) error {
+	if event.Source != usageEventSource {
+		return fmt.Errorf("usage event source must be %q", usageEventSource)
+	}
+	if event.Specversion == nil || *event.Specversion != "1.0" {
+		return fmt.Errorf("usage event specversion must be 1.0")
+	}
+	if event.Datacontenttype.GetOrEmpty() != "application/json" {
+		return fmt.Errorf("usage event datacontenttype must be application/json")
+	}
+	tenantID, err := tenantIDFromSubject(event.Subject)
+	if err != nil {
+		return err
+	}
+	if event.Time.GetOrEmpty().IsZero() || event.Time.GetOrEmpty().Location() != time.UTC {
+		return fmt.Errorf("usage event time must be non-zero UTC")
+	}
+
+	data, err := event.Data.Get()
+	if err != nil {
+		return fmt.Errorf("usage event data is required: %w", err)
+	}
+	metricValue, ok := data["metric"].(string)
+	if !ok {
+		return fmt.Errorf("usage event data.metric must be a string")
+	}
+	metric := Metric(metricValue)
+	if !isKnownMetric(metric) {
+		return fmt.Errorf("unknown usage metric %q", metric)
+	}
+	if event.Type != eventTypeForMetric(metric) {
+		return fmt.Errorf("usage event type %q does not match metric %q", event.Type, metric)
+	}
+
+	for key := range data {
+		if key != "metric" && key != "quantity" && key != "source_type" && key != "source_id" && key != "revision" {
+			return fmt.Errorf("usage event data contains disallowed field %q", key)
+		}
+	}
+	quantity, ok := data["quantity"].(string)
+	if !ok {
+		return fmt.Errorf("usage event data.quantity must be a string")
+	}
+	sourceType, ok := data["source_type"].(string)
+	if !ok || sourceType == "" {
+		return fmt.Errorf("usage event data.source_type must be a non-empty string")
+	}
+	sourceID, ok := data["source_id"].(string)
+	if !ok || sourceID == "" {
+		return fmt.Errorf("usage event data.source_id must be a non-empty string")
+	}
+	revision, ok := data["revision"].(string)
+	if !ok || revision == "" {
+		return fmt.Errorf("usage event data.revision must be a non-empty string")
+	}
+	if _, err := validateMetricQuantity(metric, quantity); err != nil {
+		return err
+	}
+	expectedID := usageEventID(UsageFact{
+		TenantID:   tenantID,
+		Metric:     metric,
+		SourceType: sourceType,
+		SourceID:   sourceID,
+		Revision:   revision,
+	})
+	if event.ID != expectedID {
+		return fmt.Errorf("usage event ID does not match its identity")
+	}
+	return nil
+}
+
+// SubjectForTenant returns the CloudEvent subject for a tenant.
+func SubjectForTenant(tenantID string) (string, error) {
+	if tenantID == "" {
+		return "", fmt.Errorf("tenant ID is required")
+	}
+	return tenantSubjectPrefix + url.PathEscape(tenantID), nil
+}
+
+func tenantIDFromSubject(subject string) (string, error) {
+	if !strings.HasPrefix(subject, tenantSubjectPrefix) {
+		return "", fmt.Errorf("usage event subject must identify a tenant")
+	}
+	tenantID, err := url.PathUnescape(strings.TrimPrefix(subject, tenantSubjectPrefix))
+	if err != nil || tenantID == "" {
+		return "", fmt.Errorf("usage event subject contains an invalid tenant")
+	}
+	canonicalSubject, err := SubjectForTenant(tenantID)
+	if err != nil || subject != canonicalSubject {
+		return "", fmt.Errorf("usage event subject is not canonical")
+	}
+	return tenantID, nil
+}
+
+func validateUsageFact(fact UsageFact) (string, error) {
+	if fact.TenantID == "" {
+		return "", fmt.Errorf("tenant ID is required")
+	}
+	if !isKnownMetric(fact.Metric) {
+		return "", fmt.Errorf("unknown usage metric %q", fact.Metric)
+	}
+	if fact.SourceType == "" || fact.SourceID == "" || fact.Revision == "" {
+		return "", fmt.Errorf("usage fact source type, source ID, and revision are required")
+	}
+	if fact.OccurredAt.IsZero() || fact.OccurredAt.Location() != time.UTC {
+		return "", fmt.Errorf("usage fact occurrence time must be non-zero UTC")
+	}
+	return validateMetricQuantity(fact.Metric, fact.Quantity)
+}
+
+func validateMetricQuantity(metric Metric, quantity string) (string, error) {
+	if metric == MetricStudioDesignJobsSucceeded || metric == MetricSheinDraftsSucceeded {
+		if quantity != "1" {
+			return "", fmt.Errorf("count metric %q requires quantity 1", metric)
+		}
+		return quantity, nil
+	}
+	if quantity == "" {
+		return "", fmt.Errorf("storage quantity is required")
+	}
+	for _, character := range quantity {
+		if character < '0' || character > '9' {
+			return "", fmt.Errorf("storage quantity %q must be a non-negative base-10 integer", quantity)
+		}
+	}
+	normalized := strings.TrimLeft(quantity, "0")
+	if normalized == "" {
+		normalized = "0"
+	}
+	return normalized, nil
+}
+
+func eventTypeForMetric(metric Metric) string {
+	return usageEventTypePrefix + string(metric)
+}
+
+func isKnownMetric(metric Metric) bool {
+	return metric == MetricStudioDesignJobsSucceeded || metric == MetricSheinDraftsSucceeded || metric == MetricStorageBytesCurrent
+}
+
+func usageEventID(fact UsageFact) string {
+	parts := []string{fact.TenantID, string(fact.Metric), fact.SourceType, fact.SourceID, fact.Revision}
+	var identity strings.Builder
+	for _, part := range parts {
+		identity.WriteString(strconv.Itoa(len(part)))
+		identity.WriteByte(':')
+		identity.WriteString(part)
+	}
+	sum := sha256.Sum256([]byte(identity.String()))
+	return "listingkit-usage-" + hex.EncodeToString(sum[:])
+}
