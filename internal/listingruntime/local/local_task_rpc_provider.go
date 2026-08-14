@@ -32,7 +32,10 @@ func (p *LocalTaskRPCProvider) SubmitTask(req *api.TaskSubmitReqDTO, urgent bool
 	if err := listingadmin.EnsureImportTaskWriteReady(p.db); err != nil {
 		return nil, true, err
 	}
+	return p.submitTask(req, urgent)
+}
 
+func (p *LocalTaskRPCProvider) submitTask(req *api.TaskSubmitReqDTO, urgent bool) (*api.TaskSubmitRespDTO, bool, error) {
 	priority := req.BusinessPriority
 	if urgent && priority > 1 {
 		priority = 1
@@ -108,6 +111,11 @@ func (p *LocalTaskRPCProvider) SubmitBatchTasks(req *api.TaskBatchSubmitReqDTO) 
 	if p == nil || p.db == nil || req == nil {
 		return nil, false, nil
 	}
+	if len(req.Tasks) > 0 {
+		if err := listingadmin.EnsureImportTaskWriteReady(p.db); err != nil {
+			return nil, true, err
+		}
+	}
 	now := time.Now()
 	resp := &api.TaskBatchSubmitRespDTO{
 		BatchID:         req.BatchID,
@@ -122,7 +130,7 @@ func (p *LocalTaskRPCProvider) SubmitBatchTasks(req *api.TaskBatchSubmitReqDTO) 
 	}
 	resp.TotalCount = len(req.Tasks)
 	for _, taskReq := range req.Tasks {
-		item, _, err := p.SubmitTask(&taskReq, false)
+		item, _, err := p.submitTask(&taskReq, false)
 		if err != nil {
 			resp.FailureCount++
 			resp.FailureTasks = append(resp.FailureTasks, api.TaskSubmitRespDTO{

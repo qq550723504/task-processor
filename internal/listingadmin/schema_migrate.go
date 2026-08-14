@@ -336,7 +336,7 @@ func importTaskUniqueIndexIsCanonicalActiveOnly(db *gorm.DB, table, indexName st
 	var definition string
 	switch db.Dialector.Name() {
 	case "postgres":
-		if err := db.Raw(`SELECT indexdef FROM pg_indexes WHERE tablename = ? AND indexname = ?`, table, indexName).Scan(&definition).Error; err != nil {
+		if err := db.Raw(postgresImportTaskIndexDefinitionQuery(), table, indexName).Scan(&definition).Error; err != nil {
 			return false
 		}
 	case "sqlite":
@@ -371,6 +371,21 @@ func importTaskUniqueIndexIsCanonicalActiveOnly(db *gorm.DB, table, indexName st
 		}
 	}
 	return true
+}
+
+func postgresImportTaskIndexDefinitionQuery() string {
+	return `
+SELECT pg_get_indexdef(index_rel.oid)
+FROM pg_index AS index_meta
+JOIN pg_class AS index_rel ON index_rel.oid = index_meta.indexrelid
+JOIN pg_class AS table_rel ON table_rel.oid = index_meta.indrelid
+JOIN pg_namespace AS table_schema ON table_schema.oid = table_rel.relnamespace
+WHERE table_schema.nspname = current_schema()
+  AND table_rel.relname = ?
+  AND index_rel.relname = ?
+  AND index_meta.indisvalid = TRUE
+  AND index_meta.indisready = TRUE
+LIMIT 1`
 }
 
 func parseImportTaskIndexDefinition(definition string) ([]string, string, bool) {

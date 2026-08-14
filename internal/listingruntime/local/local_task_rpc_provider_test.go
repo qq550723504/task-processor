@@ -87,3 +87,46 @@ func TestLocalTaskRPCSubmitTaskRejectsWritesWhenImportTaskUniquenessIsUnavailabl
 		t.Fatalf("SubmitTask() = handled:%v error:%v, want integrity-unavailable rejection", handled, err)
 	}
 }
+
+func TestLocalTaskRPCSubmitBatchPropagatesIntegrityUnavailable(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.Table("listing_product_import_task").AutoMigrate(&localImportTaskRow{}); err != nil {
+		t.Fatalf("migrate local task row: %v", err)
+	}
+	for i, target := range []string{"SHEIN", "shein"} {
+		if err := db.Table("listing_product_import_task").Create(&localImportTaskRow{
+			ID:             int64(i + 1),
+			TenantID:       246,
+			StoreID:        986,
+			Platform:       "amazon",
+			SourcePlatform: "amazon",
+			TargetPlatform: target,
+			Region:         "US",
+			ProductID:      "LEGACY-BATCH-DUPLICATE",
+			Status:         0,
+			Deleted:        0,
+		}).Error; err != nil {
+			t.Fatalf("seed legacy duplicate %q: %v", target, err)
+		}
+	}
+	if err := listingadmin.AutoMigrateImportTaskRepository(db); err != nil {
+		t.Fatalf("migrate import task repository with duplicates: %v", err)
+	}
+
+	provider := &LocalTaskRPCProvider{db: db}
+	resp, handled, err := provider.SubmitBatchTasks(&api.TaskBatchSubmitReqDTO{Tasks: []api.TaskSubmitReqDTO{{
+		TenantID:       246,
+		StoreID:        986,
+		Platform:       "Amazon",
+		SourcePlatform: "Amazon",
+		TargetPlatform: "SHEIN",
+		Region:         "US",
+		ProductID:      "NEW-BATCH-TASK",
+	}}})
+	if !handled || !errors.Is(err, listingadmin.ErrImportTaskIntegrityUnavailable) || resp != nil {
+		t.Fatalf("SubmitBatchTasks() = response:%+v handled:%v error:%v, want propagated integrity-unavailable error", resp, handled, err)
+	}
+}
