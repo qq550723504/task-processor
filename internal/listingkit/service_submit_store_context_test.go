@@ -181,6 +181,51 @@ func TestResolveSheinSubmitSettingsPrefersTaskSnapshotOverCurrentProfiles(t *tes
 	}
 }
 
+func TestResolveSheinSubmitSettingsRehydratesProfileWhenSnapshotOnlyCarriesAccess(t *testing.T) {
+	t.Parallel()
+
+	storeProfileRepo := newInMemoryStoreProfileRepository()
+	svc := &service{
+		adminDeps:      adminDependencies{storeProfileRepo: storeProfileRepo},
+		submissionDeps: submissionDependencies{storeProfileRepo: storeProfileRepo},
+		sheinSettings: SheinSettings{
+			Site:              "US",
+			WarehouseCode:     "DEFAULT",
+			DefaultStock:      100,
+			DefaultSubmitMode: "publish",
+		},
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "406", UserID: "user-f"})
+	_, err := svc.UpsertSheinStoreProfile(ctx, &ListingKitStoreProfile{
+		StoreID:           904,
+		Enabled:           true,
+		Priority:          1,
+		Site:              "GB",
+		WarehouseCode:     "WH-GB-4",
+		DefaultStock:      44,
+		DefaultSubmitMode: "save_draft",
+	})
+	if err != nil {
+		t.Fatalf("UpsertSheinStoreProfile error = %v", err)
+	}
+
+	task := &Task{
+		TenantID: "406",
+		Request: &GenerateRequest{
+			SheinStoreID: 999,
+		},
+		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
+			StoreID:           904,
+			TenantAdminAccess: true,
+		},
+	}
+
+	settings := svc.resolveSheinSubmitSettings(ctx, task)
+	if settings.Site != "GB" || settings.WarehouseCode != "WH-GB-4" || settings.DefaultStock != 44 || settings.DefaultSubmitMode != "save_draft" {
+		t.Fatalf("settings = %+v, want repository-backed profile settings", settings)
+	}
+}
+
 func TestApplySubmitSettingsProfileOverlaysProfileFields(t *testing.T) {
 	t.Parallel()
 

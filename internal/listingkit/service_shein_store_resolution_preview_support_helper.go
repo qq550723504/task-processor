@@ -86,6 +86,7 @@ func sheinStoreResolutionSnapshotFromSelection(selection *sheinStoreSelection, t
 		MatchedProfileID:  selection.Profile.ID,
 		ManualOverride:    summary.ManualOverride,
 		Fallback:          selection.Fallback,
+		ProfileResolved:   true,
 		ResolvedAt:        time.Now(),
 	}
 }

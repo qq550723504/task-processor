@@ -189,6 +189,9 @@ type SheinStoreResolutionSnapshot struct {
 	MatchedProfileID  int64                `json:"matched_profile_id,omitempty"`
 	ManualOverride    bool                 `json:"manual_override,omitempty"`
 	Fallback          bool                 `json:"fallback,omitempty"`
+	// ProfileResolved distinguishes a complete store snapshot from the
+	// access-only marker persisted when profile enrichment was unavailable.
+	ProfileResolved bool `json:"profile_resolved,omitempty"`
 	// TenantAdminAccess records the server-validated tenant-wide store access
 	// needed when this queued task is revalidated outside the original request.
 	TenantAdminAccess bool      `json:"tenant_admin_access,omitempty"`
