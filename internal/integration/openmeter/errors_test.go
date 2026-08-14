@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -92,6 +93,8 @@ func TestClassifyErrorHandlesNetworkAndConfigurationFailures(t *testing.T) {
 		{name: "wrapped connection refused", err: fmt.Errorf("ingest request failed: %w", &url.Error{Op: "Post", URL: "http://127.0.0.1:48888/api/v3/openmeter/events", Err: syscall.ECONNREFUSED}), want: FailureRetryable},
 		{name: "timeout", err: timeout, want: FailureRetryable},
 		{name: "temporary network", err: temporary, want: FailureRetryable},
+		{name: "unexpected end of response", err: io.ErrUnexpectedEOF, want: FailureRetryable},
+		{name: "wrapped end of response", err: fmt.Errorf("response lost: %w", io.EOF), want: FailureRetryable},
 		{name: "unknown", err: errors.New("unexpected response shape"), want: FailurePermanent},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

@@ -387,6 +387,7 @@ Describe "OpenMeter PoC runner behavior" {
         $downIndex = [array]::IndexOf($composeCalls, $downCalls[0])
         $postDownChecks = @($composeCalls | Select-Object -Skip ($downIndex + 1) | Where-Object { $_.Arguments -contains "ps" -and $_.Arguments -contains "-q" })
         $postDownChecks.Count | Should Be 1
+        $postDownChecks[0].Arguments -contains "--all" | Should Be $true
         $runnerLog = Get-Content -LiteralPath (Join-Path $repositoryRoot ".local/openmeter-poc/evidence/run-cleanup/runner.log") -Raw
         $runnerLog | Should Match "cleanup verified: no Compose containers remain"
         Test-Path -LiteralPath (Join-Path $repositoryRoot ".local/openmeter-poc/upstream/sentinel.txt") | Should Be $true

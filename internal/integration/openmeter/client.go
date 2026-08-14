@@ -24,7 +24,7 @@ type Config struct {
 
 // NewClient constructs the adapter around the official OpenMeter v3 SDK.
 func NewClient(cfg Config) (*Client, error) {
-	opts := []openmeterapi.Option{openmeterapi.WithHTTPClient(cfg.HTTPClient)}
+	opts := clientOptions(cfg)
 	if cfg.APIKey != "" {
 		opts = append(opts, openmeterapi.WithToken(cfg.APIKey))
 	}
@@ -35,6 +35,13 @@ func NewClient(cfg Config) (*Client, error) {
 	}
 
 	return &Client{sdk: sdk}, nil
+}
+
+func clientOptions(cfg Config) []openmeterapi.Option {
+	if cfg.HTTPClient == nil {
+		return nil
+	}
+	return []openmeterapi.Option{openmeterapi.WithHTTPClient(cfg.HTTPClient)}
 }
 
 // Ingest validates and submits one usage event through the official SDK.

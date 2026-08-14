@@ -33,6 +33,38 @@ func TestClientIngestValidatesBeforeCallingSDK(t *testing.T) {
 	}
 }
 
+func TestNewClientOptionsPreserveSDKDefaultHTTPClient(t *testing.T) {
+	if got := len(clientOptions(Config{})); got != 0 {
+		t.Fatalf("clientOptions(Config{}) returned %d options, want no nil HTTP client option", got)
+	}
+
+	if got := len(clientOptions(Config{HTTPClient: &http.Client{}})); got != 1 {
+		t.Fatalf("clientOptions(custom HTTPClient) returned %d options, want one HTTP client option", got)
+	}
+}
+
+func TestClientUsesSDKDefaultHTTPClientForValidBaseURL(t *testing.T) {
+	event, err := BuildUsageEvent(validUsageFact())
+	if err != nil {
+		t.Fatalf("BuildUsageEvent() error = %v", err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/openmeter/events" {
+			t.Errorf("request = %s %s, want POST /openmeter/events", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := NewClient(Config{BaseURL: server.URL})
+	if err != nil {
+		t.Fatalf("NewClient() error = %v", err)
+	}
+	if err := client.Ingest(context.Background(), event); err != nil {
+		t.Fatalf("Ingest() with SDK default HTTP client error = %v", err)
+	}
+}
+
 func TestClientIngestUsesOfficialV3EventEndpoint(t *testing.T) {
 	// Break caught: using a legacy endpoint or non-CloudEvents payload would be rejected.
 	event, err := BuildUsageEvent(validUsageFact())

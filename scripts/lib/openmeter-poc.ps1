@@ -684,7 +684,7 @@ function Invoke-OpenMeterPoC {
         if ($composeConfigured -and -not $KeepEnvironment -and $null -ne $CommandInvoker) {
             try {
                 $null = Invoke-OpenMeterPoCRequiredCommand -CommandInvoker $CommandInvoker -FilePath "docker" -ArgumentList (Get-OpenMeterPoCComposeArguments -Paths $paths -Tail @("down")) -WorkingDirectory (Split-Path -Parent $paths.BaseComposePath) -Paths $paths -ApiKey $ApiKey
-                $remainingOutput = Invoke-OpenMeterPoCRequiredCommand -CommandInvoker $CommandInvoker -FilePath "docker" -ArgumentList (Get-OpenMeterPoCComposeArguments -Paths $paths -Tail @("ps", "-q")) -WorkingDirectory (Split-Path -Parent $paths.BaseComposePath) -Paths $paths -ApiKey $ApiKey
+                $remainingOutput = Invoke-OpenMeterPoCRequiredCommand -CommandInvoker $CommandInvoker -FilePath "docker" -ArgumentList (Get-OpenMeterPoCComposeArguments -Paths $paths -Tail @("ps", "--all", "-q")) -WorkingDirectory (Split-Path -Parent $paths.BaseComposePath) -Paths $paths -ApiKey $ApiKey
                 $remainingContainers = @($remainingOutput -split '\r?\n' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
                 if ($remainingContainers.Count -ne 0) {
                     throw "cleanup verification found $($remainingContainers.Count) Compose container(s) still present"

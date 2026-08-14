@@ -3,6 +3,7 @@ package openmeter
 import (
 	"context"
 	"errors"
+	"io"
 	"net"
 
 	openmeterapi "github.com/openmeterio/openmeter/api/v3/client"
@@ -36,7 +37,7 @@ func ClassifyError(err error) FailureKind {
 		}
 	}
 
-	if errors.Is(err, context.DeadlineExceeded) || isConnectionRefusedOrReset(err) {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || isConnectionRefusedOrReset(err) {
 		return FailureRetryable
 	}
 
