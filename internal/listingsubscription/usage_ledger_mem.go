@@ -154,6 +154,9 @@ func (l *memUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, r
 	if sourceHasOutbox && sourceOutbox.Status == "failed" {
 		return UsageEvent{}, ErrUsageReversalDeliveryUnresolved
 	}
+	if sourceHasOutbox && sourceOutbox.Status == "in_flight" {
+		return UsageEvent{}, ErrUsageReversalDeliveryUnresolved
+	}
 	laterDelivered := l.hasLaterDeliveredStorageSnapshot(source.event)
 	if source.event.Metric != usageMetricStorageBytesCurrent && sourceDelivered {
 		return UsageEvent{}, ErrUsageReversalProjectionUnsupported
@@ -263,6 +266,10 @@ func (l *memUsageLedger) ListPendingOutbox(ctx context.Context, limit int) ([]Us
 			if item.NextAttemptAt != nil && item.NextAttemptAt.After(now) {
 				continue
 			}
+			item.Status = "in_flight"
+			item.Attempts++
+			item.UpdatedAt = now
+			l.outboxByEventID[item.EventID] = item
 			items = append(items, cloneMemUsageOutboxItem(item))
 		}
 	}
