@@ -10,6 +10,8 @@ import (
 type UsageLedgerReconciliationCategory string
 
 const (
+	usageLedgerUnknownContext = "unknown"
+
 	UsageLedgerCommittedTotalMismatch UsageLedgerReconciliationCategory = "committed_total_mismatch"
 	UsageLedgerReservedTotalMismatch  UsageLedgerReconciliationCategory = "reserved_total_mismatch"
 	UsageLedgerOutboxDeliveryFailed   UsageLedgerReconciliationCategory = "outbox_delivery_failed"
@@ -143,7 +145,7 @@ func reconcileUsageLedgerRows(events []usageEventRow, buckets []usageBucketRow, 
 	}
 	for _, item := range outbox {
 		if _, ok := eventByID[item.EventID]; !ok {
-			report.Findings = append(report.Findings, UsageLedgerReconciliationFinding{Category: UsageLedgerOutboxEventMissing, EventID: item.EventID, SafeReason: "outbox item references no ledger event"})
+			report.Findings = append(report.Findings, UsageLedgerReconciliationFinding{Category: UsageLedgerOutboxEventMissing, TenantID: usageLedgerUnknownContext, ModuleCode: usageLedgerUnknownContext, Metric: usageLedgerUnknownContext, PeriodKey: usageLedgerUnknownContext, EventID: item.EventID, SafeReason: "outbox item references no ledger event; ledger context is unavailable"})
 		}
 	}
 

@@ -2,6 +2,7 @@ package listingsubscription
 
 import (
 	"context"
+	"strings"
 	"testing"
 )
 
@@ -118,5 +119,56 @@ func TestUsageLedgerReconciliationReportsBucketAndOutboxMismatchesWithSafeContex
 	}
 	if len(want) != 0 {
 		t.Fatalf("missing reconciliation categories = %#v", want)
+	}
+}
+
+func TestUsageLedgerReconciliationReportsMissingAndOrphanOutboxWithSafeContext(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 20})
+	ledger := NewGormUsageLedger(repo)
+
+	reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-missing-outbox", 1))
+	if err != nil {
+		t.Fatalf("Reserve() error = %v", err)
+	}
+	if err := db.Where("event_id = ?", reservation.Event.EventID).Delete(&usageEventOutboxRow{}).Error; err != nil {
+		t.Fatalf("delete outbox: %v", err)
+	}
+	if err := db.Create(&usageEventOutboxRow{EventID: "event-orphan", Status: "failed", LastError: "customer@example.com provider token: secret"}).Error; err != nil {
+		t.Fatalf("create orphan outbox: %v", err)
+	}
+
+	report, err := ReconcileUsageLedger(ctx, repo)
+	if err != nil {
+		t.Fatalf("ReconcileUsageLedger() error = %v", err)
+	}
+	want := map[UsageLedgerReconciliationCategory]UsageLedgerReconciliationFinding{
+		UsageLedgerOutboxMissing: {
+			Category: UsageLedgerOutboxMissing, TenantID: "tenant-17", Metric: "studio_design_jobs_succeeded", EventID: reservation.Event.EventID,
+		},
+		UsageLedgerOutboxEventMissing: {
+			Category: UsageLedgerOutboxEventMissing, TenantID: "unknown", Metric: "unknown", EventID: "event-orphan",
+		},
+	}
+	if len(report.Findings) != len(want) {
+		t.Fatalf("report findings = %#v, want missing and orphan outbox findings", report.Findings)
+	}
+	for _, finding := range report.Findings {
+		expected, ok := want[finding.Category]
+		if !ok {
+			t.Fatalf("unexpected reconciliation finding = %#v", finding)
+		}
+		if finding.TenantID != expected.TenantID || finding.Metric != expected.Metric || finding.EventID != expected.EventID || finding.SafeReason == "" {
+			t.Fatalf("finding = %#v, want safe tenant/metric/event context", finding)
+		}
+		if strings.Contains(finding.SafeReason, "customer@example.com") || strings.Contains(finding.SafeReason, "secret") || strings.Contains(finding.SafeReason, "metadata") {
+			t.Fatalf("finding SafeReason = %q, must not expose outbox error or event metadata", finding.SafeReason)
+		}
+		delete(want, finding.Category)
+	}
+	if len(want) != 0 {
+		t.Fatalf("missing reconciliation findings = %#v", want)
 	}
 }

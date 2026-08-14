@@ -22,12 +22,13 @@ The report compares:
   identity; and
 - failed outbox delivery state without exposing `last_error` or event metadata.
 
-Each attributable finding has tenant, module, metric, period, event ID, and an
-operator-safe reason. Outbox rows without an event retain only their event ID:
-tenant and metric are intentionally not invented. A valid released reservation
-is not a false positive: the current PAY-041 transaction creates one outbox
-identity while reserving, and reconciliation only reports absent/orphaned or
-failed identities.
+Each finding has tenant, module, metric, period, event ID, and an operator-safe
+reason. An orphan outbox cannot be joined to an event, so the report marks its
+unavailable tenant/module/metric/period as `unknown` rather than inventing a
+customer context. It never exposes `last_error` or event metadata. A valid
+released reservation is not a false positive: the current PAY-041 transaction
+creates one outbox identity while reserving, and reconciliation only reports
+absent/orphaned or failed identities.
 
 ## Operator invocation
 
@@ -63,8 +64,10 @@ workers/recovery paths; adding only a route guard is insufficient.
 
 | Business outcome | Exact current entrypoints to change in PAY-042 | Ledger transition |
 | --- | --- | --- |
+| ListingKit generation | `internal/listingkit/api/handler_tasks.go` (`GenerateListingKit`) | Reserve under the tenant-scoped generation request identity; commit only after the successful billable outcome is durably persisted. |
 | Studio design jobs | `internal/listingkit/api/studio_designs_handler.go`, `internal/listingkit/api/studio_async_jobs_handler_entrypoints.go`, `internal/listingkit/api/studio_async_jobs_handler_runner.go` (`/studio/designs`) | Reserve before accepted work; commit only after persisted success; release on failure/cancellation. |
 | Studio product-image jobs | `internal/listingkit/api/studio_product_images_handler.go`, `internal/listingkit/api/studio_async_jobs_handler_entrypoints.go`, `internal/listingkit/api/studio_async_jobs_handler_runner.go` (`/studio/product-images`) | Same stable job identity and terminal policy as design jobs. |
+| 1688 ListingKit task creation | `internal/product/sourcehandoff/a1688/httpapi/handler.go` (`CreateListingKitTask`) and its registered route in `internal/product/sourcehandoff/a1688/httpapi/routes.go` | Reserve under the authenticated tenant and stable source/task identity; commit only after the defined successful billable outcome, never merely on route acceptance. |
 | SHEIN save draft and publish | `internal/listingkit/api/submit_handler.go` (`SubmitTask`) plus the task submission execution, persistence, and recovery services under `internal/listingkit/` | Reserve per requested action; commit only after the corresponding remote success is durably persisted. |
 | Storage upload/delete | `internal/listingkit/api/upload_handler.go` (`UploadListingKitImages`, `DeleteUploadedListingKitImage`) and `internal/listingkit/api/studio_sessions_handler.go` | Storage current-usage deltas use a stable asset operation ID; upload commits after storage succeeds, delete commits the negative delta only after completed deletion. |
 | Batch and recovery/retry | `internal/listingkit/api/studio_batch_runs_handler.go`, `internal/listingkit/task_studio_batch_run_service.go`, and SHEIN submission recovery paths under `internal/listingkit/` | Each item keeps its original idempotency key; do not reserve or commit once per batch/run envelope. |
