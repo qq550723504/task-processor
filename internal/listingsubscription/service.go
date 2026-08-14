@@ -1,10 +1,696 @@
-package listingsubscription\n\nimport (\n	"context"\n	"encoding/json"\n	"errors"\n	"reflect"\n	"sort"\n	"strings"\n	"time"\n)\n\ntype Service struct {\n	repo                      Repository\n	usageLedger               UsageLedger\n	now                       func() time.Time\n	tenantDisplayNameResolver TenantDisplayNameResolver\n}\n\nfunc NewService(repo Repository) (*Service, error) {\n	if repo == nil {\n		return nil, errors.New("subscription repository is required")\n	}\n	s := &Service{\n		repo:                      repo,\n		now:                       time.Now,\n		tenantDisplayNameResolver: fallbackTenantDisplayNameResolver{},\n	}\n	if err := repo.UpsertDefaultModules(context.Background(), DefaultModules()); err != nil {\n		return nil, err\n	}\n	if err := repo.UpsertDefaultPlans(context.Background(), DefaultPlans()); err != nil {\n		return nil, err\n	}\n	return s, nil\n}\n\n// NewServiceWithLedger adds the optional PAY-042 usage-ledger boundary without\n// changing the legacy constructor or paid entrypoints.\nfunc NewServiceWithLedger(repo Repository, ledger UsageLedger) (*Service, error) {\n	if repositoryIsNil(repo) {\n		return nil, errors.New("subscription repository is required")\n	}\n	if usageLedgerIsNil(ledger) {\n		return nil, errors.New("usage ledger is required")\n	}\n	s, err := NewService(repo)\n	if err != nil {\n		return nil, err\n	}\n	s.usageLedger = ledger\n	return s, nil\n}\n\n// ReserveUsage delegates an explicit PAY-042 reservation to the optional\n// ledger. Existing CheckUsage, AuthorizeUsage, and RecordUsage remain on the\n// legacy aggregate-counter path.\nfunc (s *Service) ReserveUsage(ctx context.Context, input ReserveUsageInput) (ReserveUsageResult, error) {\n	ledger, err := s.requireUsageLedger()\n	if err != nil {\n		return ReserveUsageResult{}, err\n	}\n	return ledger.Reserve(ctx, input)\n}\n\n// CommitUsage delegates an explicit PAY-042 commit to the optional ledger.\nfunc (s *Service) CommitUsage(ctx context.Context, eventID string) (UsageEvent, error) {\n	ledger, err := s.requireUsageLedger()\n	if err != nil {\n		return UsageEvent{}, err\n	}\n	return ledger.Commit(ctx, eventID)\n}\n\n// ReleaseUsage delegates an explicit PAY-042 release to the optional ledger.\nfunc (s *Service) ReleaseUsage(ctx context.Context, eventID, reason string) (UsageEvent, error) {\n	ledger, err := s.requireUsageLedger()\n	if err != nil {\n		return UsageEvent{}, err\n	}
-	return ledger.Release(ctx, eventID, reason)\n}\n\n// ReverseUsage delegates an explicit PAY-042 reversal to the optional ledger.\nfunc (s *Service) ReverseUsage(ctx context.Context, eventID, idempotencyKey, reason string) (UsageEvent, error) {\n	ledger, err := s.requireUsageLedger()\n	if err != nil {\n		return UsageEvent{}, err\n	}\n	return ledger.Reverse(ctx, eventID, idempotencyKey, reason)\n}\n\n// ListPendingUsageOutbox exposes the asynchronous shadow-metering boundary to\n// a future worker without performing delivery from this service.\nfunc (s *Service) ListPendingUsageOutbox(ctx context.Context, limit int) ([]UsageOutboxItem, error) {\n	ledger, err := s.requireUsageLedger()\n	if err != nil {\n		return nil, err\n	}\n	return ledger.ListPendingOutbox(ctx, limit)\n}\n\nfunc (s *Service) requireUsageLedger() (UsageLedger, error) {\n	if s == nil || usageLedgerIsNil(s.usageLedger) {\n		return nil, ErrUsageLedgerNotConfigured\n	}\n	return s.usageLedger, nil\n}\n\nfunc usageLedgerIsNil(ledger UsageLedger) bool {\n	if ledger == nil {\n		return true\n	}\n	value := reflect.ValueOf(ledger)\n	return (value.Kind() == reflect.Chan || value.Kind() == reflect.Func || value.Kind() == reflect.Interface || value.Kind() == reflect.Map || value.Kind() == reflect.Pointer || value.Kind() == reflect.Slice) && value.IsNil()\n}\n\nfunc repositoryIsNil(repo Repository) bool {\n	if repo == nil {\n		return true\n	}\n	value := reflect.ValueOf(repo)\n	return (value.Kind() == reflect.Chan || value.Kind() == reflect.Func || value.Kind() == reflect.Interface || value.Kind() == reflect.Map || value.Kind() == reflect.Pointer || value.Kind() == reflect.Slice) && value.IsNil()\n}\n\nfunc (s *Service) SetTenantDisplayNameResolver(resolver TenantDisplayNameResolver) {\n	if s == nil || resolver == nil {\n		return\n	}\n	s.tenantDisplayNameResolver = resolver\n}\n\nfunc DefaultModules() []Module {\n	now := time.Now().UTC()\n	return []Module{\n		{Code: ModuleStoreManagement, Name: "店铺管理", Description: "店铺 CRUD、统计和高级操作", SortOrder: 10, Active: true, CreatedAt: now, UpdatedAt: now},\n		{Code: ModuleTaskImport, Name: "任务导入", Description: "导入任务和商品导入映射", SortOrder: 20, Active: true, CreatedAt: now, UpdatedAt: now},\n		{Code: ModuleRules, Name: "规则", Description: "筛选、利润、核价规则和敏感词", SortOrder: 30, Active: true, CreatedAt: now, UpdatedAt: now},\n		{Code: ModuleOperationStrategy, Name: "运营策略", Description: "运营策略配置和应用", SortOrder: 40, Active: true, CreatedAt: now, UpdatedAt: now},\n		{Code: ModuleStudio, Name: "Studio", Description: "设计生成、产品图生成和异步任务", SortOrder: 50, Active: true, CreatedAt: now, UpdatedAt: now},\n		{Code: ModuleOSSStorage, Name: "OSS 存储", Description: "对象存储上传容量计费", SortOrder: 60, Active: true, CreatedAt: now, UpdatedAt: now},\n	}\n}\n\nfunc DefaultPlans() []PlanBundle {\n	now := time.Now().UTC()\n	return []PlanBundle{\n		{\n			Plan: Plan{Code: PlanBasic, Name: "基础版", Description: "店铺、任务导入和基础规则", SortOrder: 10, Active: true, CreatedAt: now, UpdatedAt: now},\n			Modules: []PlanModule{\n				{PlanCode: PlanBasic, ModuleCode: ModuleStoreManagement, SortOrder: 10},\n				{PlanCode: PlanBasic, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 100}, SortOrder: 20},\n				{PlanCode: PlanBasic, ModuleCode: ModuleRules, SortOrder: 30},\n				{PlanCode: PlanBasic, ModuleCode: ModuleOSSStorage, Limits: map[string]int{"storage_bytes": 1 * 1024 * 1024 * 1024}, SortOrder: 60},\n			},\n		},\n		{\n			Plan: Plan{Code: PlanProfessional, Name: "专业版", Description: "包含运营策略、Studio 和 10GB OSS 存储", SortOrder: 20, Active: true, CreatedAt: now, UpdatedAt: now},\n			Modules: []PlanModule{\n				{PlanCode: PlanProfessional, ModuleCode: ModuleStoreManagement, SortOrder: 10},
-				{PlanCode: PlanProfessional, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 1000}, SortOrder: 20},\n				{PlanCode: PlanProfessional, ModuleCode: ModuleRules, SortOrder: 30},\n				{PlanCode: PlanProfessional, ModuleCode: ModuleOperationStrategy, SortOrder: 40},\n				{PlanCode: PlanProfessional, ModuleCode: ModuleStudio, Limits: map[string]int{"design_jobs": 100, "product_image_jobs": 100, "shein_drafts_succeeded": 100, "shein_publishes_succeeded": 100}, SortOrder: 50},\n				{PlanCode: PlanProfessional, ModuleCode: ModuleOSSStorage, Limits: map[string]int{"storage_bytes": 10 * 1024 * 1024 * 1024}, SortOrder: 60},\n			},\n		},\n		{\n			Plan: Plan{Code: PlanEnterprise, Name: "企业版", Description: "完整模块和更高额度", SortOrder: 30, Active: true, CreatedAt: now, UpdatedAt: now},\n			Modules: []PlanModule{\n				{PlanCode: PlanEnterprise, ModuleCode: ModuleStoreManagement, SortOrder: 10},\n				{PlanCode: PlanEnterprise, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 10000}, SortOrder: 20},\n				{PlanCode: PlanEnterprise, ModuleCode: ModuleRules, SortOrder: 30},\n				{PlanCode: PlanEnterprise, ModuleCode: ModuleOperationStrategy, SortOrder: 40},\n				{PlanCode: PlanEnterprise, ModuleCode: ModuleStudio, Limits: map[string]int{"design_jobs": 1000, "product_image_jobs": 1000, "shein_drafts_succeeded": 1000, "shein_publishes_succeeded": 1000}, SortOrder: 50},\n				{PlanCode: PlanEnterprise, ModuleCode: ModuleOSSStorage, Limits: map[string]int{"storage_bytes": 100 * 1024 * 1024 * 1024}, SortOrder: 60},\n			},\n		},\n	}\n}\n\nfunc (s *Service) ListModules(ctx context.Context) ([]Module, error) {\n	modules, err := s.repo.ListModules(ctx)\n	if err != nil {\n		return nil, err\n	}\n	sort.Slice(modules, func(i, j int) bool {\n		if modules[i].SortOrder == modules[j].SortOrder {\n			return modules[i].Code < modules[j].Code\n		}\n		return modules[i].SortOrder < modules[j].SortOrder\n	})\n	return modules, nil\n}\n\nfunc (s *Service) ListPlans(ctx context.Context) ([]PlanBundle, error) {\n	plans, err := s.repo.ListPlans(ctx)\n	if err != nil {\n		return nil, err\n	}\n	sort.Slice(plans, func(i, j int) bool {\n		if plans[i].Plan.SortOrder == plans[j].Plan.SortOrder {\n			return plans[i].Plan.Code < plans[j].Plan.Code\n		}\n		return plans[i].Plan.SortOrder < plans[j].Plan.SortOrder\n	})\n	for i := range plans {\n		sort.Slice(plans[i].Modules, func(left, right int) bool {\n			if plans[i].Modules[left].SortOrder == plans[i].Modules[right].SortOrder {\n				return plans[i].Modules[left].ModuleCode < plans[i].Modules[right].ModuleCode\n			}\n			return plans[i].Modules[left].SortOrder < plans[i].Modules[right].SortOrder\n		})\n	}\n	return plans, nil\n}\n\nfunc (s *Service) GetSummary(ctx context.Context, tenantID string) (*Summary, error) {\n	tenantID = strings.TrimSpace(tenantID)\n	modules, err := s.ListModules(ctx)\n	if err != nil {\n		return nil, err\n	}\n	entitlements, err := s.repo.ListEntitlements(ctx, tenantID)\n	if err != nil {\n		return nil, err\n	}\n	usage, err := s.repo.ListUsage(ctx, tenantID)\n	if err != nil {\n		return nil, err\n	}\n\n	entitlementByModule := make(map[string]Entitlement, len(entitlements))\n	for _, entitlement := range entitlements {\n		entitlementByModule[entitlement.ModuleCode] = entitlement\n	}\n	usageByModule := make(map[string][]UsageCounter)\n	for _, counter := range usage {\n		usageByModule[counter.ModuleCode] = append(usageByModule[counter.ModuleCode], counter)\n	}
-\n	views := make([]EntitlementView, 0, len(modules))\n	for _, module := range modules {\n		view := EntitlementView{Module: module, Usage: usageByModule[module.Code], Used: map[string]int{}}\n		if entitlement, ok := s.resolveEffectiveEntitlement(entitlementByModule, module.Code); ok {\n			view.Entitlement = entitlement\n			view.Limits = cloneLimits(entitlement.Limits)\n			for _, counter := range view.Usage {\n				view.Used[counter.Metric] += counter.Used\n			}\n			view.Allowed, view.Reason = evaluateEntitlement(entitlement, s.now())\n		} else {\n			view.Allowed = false\n			view.Reason = "not_configured"\n		}\n		views = append(views, view)\n	}\n	summary := &Summary{TenantID: tenantID, Modules: modules, Entitlements: views}\n	subscription, err := s.repo.GetTenantSubscription(ctx, tenantID)\n	if err != nil && !errors.Is(err, ErrEntitlementNotFound) {\n		return nil, err\n	}\n	if subscription != nil {\n		summary.Subscription = subscription\n		if plan, ok, err := s.getPlan(ctx, subscription.PlanCode); err != nil {\n			return nil, err\n		} else if ok {\n			summary.CurrentPlan = &plan\n		}\n	}\n	return summary, nil\n}\n\nfunc (s *Service) GetTenantSummary(ctx context.Context, tenantID string) (*Summary, error) {\n	return s.GetSummary(ctx, tenantID)\n}\n\nfunc (s *Service) ListTenantOverviews(ctx context.Context) ([]TenantOverview, error) {\n	items, err := s.repo.ListTenantOverviews(ctx)\n	if err != nil {\n		return nil, err\n	}\n	for i := range items {\n		items[i].TenantDisplayName = s.resolveTenantDisplayName(ctx, items[i].TenantID)\n	}\n	sort.Slice(items, func(i, j int) bool {\n		left := items[i].UpdatedAt\n		right := items[j].UpdatedAt\n		if left != nil && right != nil && !left.Equal(*right) {\n			return left.After(*right)\n		}\n		if left != nil && right == nil {\n			return true\n		}\n		if left == nil && right != nil {\n			return false\n		}\n		return items[i].TenantID < items[j].TenantID\n	})\n	return items, nil\n}\n\nfunc (s *Service) resolveTenantDisplayName(ctx context.Context, tenantID string) string {\n	tenantID = strings.TrimSpace(tenantID)\n	if tenantID == "" {\n		return ""\n	}\n	resolver := s.tenantDisplayNameResolver\n	if resolver == nil {\n		return tenantID\n	}\n	displayName, err := resolver.ResolveTenantDisplayName(ctx, tenantID)\n	if err != nil {\n		return tenantID\n	}\n	displayName = strings.TrimSpace(displayName)\n	if displayName == "" {\n		return tenantID\n	}\n	return displayName
-}\n\nfunc (s *Service) UpsertEntitlement(ctx context.Context, tenantID, moduleCode string, input EntitlementInput) (*Entitlement, error) {\n	tenantID = strings.TrimSpace(tenantID)\n	moduleCode = strings.TrimSpace(moduleCode)\n	if tenantID == "" {\n		return nil, errors.New("tenant id is required")\n	}\n	if moduleCode == "" {\n		return nil, errors.New("module code is required")\n	}\n	if !isValidStatus(input.Status) {\n		return nil, errors.New("invalid subscription status")\n	}\n	if !s.moduleExists(ctx, moduleCode) {\n		return nil, ErrModuleNotFound\n	}\n	return s.repo.UpsertEntitlement(ctx, &Entitlement{\n		TenantID:   tenantID,\n		ModuleCode: moduleCode,\n		Status:     input.Status,\n		StartsAt:   input.StartsAt,\n		ExpiresAt:  input.ExpiresAt,\n		Limits:     cloneLimits(input.Limits),\n	})\n}\n\nfunc (s *Service) UpsertEntitlementWithAudit(ctx context.Context, tenantID, moduleCode string, input EntitlementInput, actorID, reason string) (*Entitlement, error) {\n	entitlement, err := s.UpsertEntitlement(ctx, tenantID, moduleCode, input)\n	if err != nil {\n		return nil, err\n	}\n	_ = s.createAudit(ctx, tenantID, moduleCode, "entitlement_upsert", actorID, reason, input)\n	return entitlement, nil\n}\n\nfunc (s *Service) ApplyPlan(ctx context.Context, tenantID string, input PlanApplyInput, actorID string) (*TenantSubscription, error) {\n	tenantID = strings.TrimSpace(tenantID)\n	input.PlanCode = strings.TrimSpace(input.PlanCode)\n	if tenantID == "" {\n		return nil, errors.New("tenant id is required")\n	}\n	if input.PlanCode == "" {\n		return nil, errors.New("plan code is required")\n	}\n	if input.Status == "" {\n		input.Status = StatusActive\n	}\n	if !isValidStatus(input.Status) {\n		return nil, errors.New("invalid subscription status")\n	}\n	plan, ok, err := s.getPlan(ctx, input.PlanCode)\n	if err != nil {\n		return nil, err\n	}\n	if !ok || !plan.Plan.Active {\n		return nil, ErrModuleNotFound\n	}\n	subscription, err := s.repo.UpsertTenantSubscription(ctx, &TenantSubscription{\n		TenantID:  tenantID,\n		PlanCode:  input.PlanCode,\n		Status:    input.Status,\n		StartsAt:  input.StartsAt,\n		ExpiresAt: input.ExpiresAt,\n	})\n	if err != nil {\n		return nil, err\n	}\n	for _, module := range plan.Modules {\n		if _, err := s.UpsertEntitlement(ctx, tenantID, module.ModuleCode, EntitlementInput{\n			Status:    input.Status,\n			StartsAt:  input.StartsAt,\n			ExpiresAt: input.ExpiresAt,\n			Limits:    module.Limits,\n		}); err != nil {\n			return nil, err\n		}\n	}\n	_ = s.createAudit(ctx, tenantID, "", "plan_apply", actorID, input.PlanCode, input)\n	return subscription, nil
-}\n\nfunc (s *Service) UpsertPlan(ctx context.Context, input PlanInput, actorID string) (*PlanBundle, error) {\n	input.Code = strings.TrimSpace(input.Code)\n	input.Name = strings.TrimSpace(input.Name)\n	if input.Code == "" {\n		return nil, errors.New("plan code is required")\n	}\n	if input.Name == "" {\n		return nil, errors.New("plan name is required")\n	}\n	modules := make([]PlanModule, 0, len(input.Modules))\n	for _, moduleInput := range input.Modules {\n		moduleCode := strings.TrimSpace(moduleInput.ModuleCode)\n		if moduleCode == "" {\n			return nil, errors.New("module code is required")\n		}\n		if !s.moduleExists(ctx, moduleCode) {\n			return nil, ErrModuleNotFound\n		}\n		modules = append(modules, PlanModule{\n			PlanCode:   input.Code,\n			ModuleCode: moduleCode,\n			Limits:     cloneLimits(moduleInput.Limits),\n			SortOrder:  moduleInput.SortOrder,\n		})\n	}\n	now := time.Now().UTC()\n	bundle, err := s.repo.UpsertPlan(ctx, Plan{\n		Code:        input.Code,\n		Name:        input.Name,\n		Description: strings.TrimSpace(input.Description),\n		SortOrder:   input.SortOrder,\n		Active:      input.Active,\n		UpdatedAt:   now,\n	}, modules)\n	if err != nil {\n		return nil, err\n	}\n	_ = s.createAudit(ctx, "", "", "plan_upsert", actorID, input.Code, input)\n	return bundle, nil\n}\n\nfunc (s *Service) UpsertPlanModule(ctx context.Context, planCode, moduleCode string, input PlanModuleInput, actorID string) (*PlanBundle, error) {\n	planCode = strings.TrimSpace(planCode)\n	moduleCode = strings.TrimSpace(moduleCode)\n	if planCode == "" {\n		return nil, errors.New("plan code is required")\n	}\n	if moduleCode == "" {\n		return nil, errors.New("module code is required")\n	}\n	if _, ok, err := s.getPlan(ctx, planCode); err != nil {\n		return nil, err\n	} else if !ok {\n		return nil, ErrModuleNotFound\n	}\n	if !s.moduleExists(ctx, moduleCode) {\n		return nil, ErrModuleNotFound\n	}\n	bundle, err := s.repo.UpsertPlanModule(ctx, PlanModule{\n		PlanCode:   planCode,\n		ModuleCode: moduleCode,\n		Limits:     cloneLimits(input.Limits),\n		SortOrder:  input.SortOrder,\n	})\n	if err != nil {\n		return nil, err\n	}\n	_ = s.createAudit(ctx, "", moduleCode, "plan_module_upsert", actorID, planCode, input)\n	return bundle, nil\n}\n\nfunc (s *Service) DeletePlanModule(ctx context.Context, planCode, moduleCode, actorID string) (*PlanBundle, error) {\n	planCode = strings.TrimSpace(planCode)\n	moduleCode = strings.TrimSpace(moduleCode)\n	if planCode == "" {\n		return nil, errors.New("plan code is required")\n	}\n	if moduleCode == "" {
-		return nil, errors.New("module code is required")\n	}\n	bundle, err := s.repo.DeletePlanModule(ctx, planCode, moduleCode)\n	if err != nil {\n		return nil, err\n	}\n	_ = s.createAudit(ctx, "", moduleCode, "plan_module_delete", actorID, planCode, nil)\n	return bundle, nil\n}\n\nfunc (s *Service) SetPlanActive(ctx context.Context, planCode string, active bool, actorID string) (*PlanBundle, error) {\n	plan, ok, err := s.getPlan(ctx, strings.TrimSpace(planCode))\n	if err != nil {\n		return nil, err\n	}\n	if !ok {\n		return nil, ErrModuleNotFound\n	}\n	input := PlanInput{\n		Code:        plan.Plan.Code,\n		Name:        plan.Plan.Name,\n		Description: plan.Plan.Description,\n		SortOrder:   plan.Plan.SortOrder,\n		Active:      active,\n		Modules:     make([]PlanModuleInput, 0, len(plan.Modules)),\n	}\n	for _, module := range plan.Modules {\n		input.Modules = append(input.Modules, PlanModuleInput{\n			ModuleCode: module.ModuleCode,\n			Limits:     module.Limits,\n			SortOrder:  module.SortOrder,\n		})\n	}\n	bundle, err := s.UpsertPlan(ctx, input, actorID)\n	if err != nil {\n		return nil, err\n	}\n	_ = s.createAudit(ctx, "", "", "plan_status_update", actorID, planCode, map[string]bool{"active": active})\n	return bundle, nil\n}\n\nfunc (s *Service) ListPlanTenants(ctx context.Context, planCode string) ([]TenantSubscription, error) {\n	planCode = strings.TrimSpace(planCode)\n	if planCode == "" {\n		return nil, errors.New("plan code is required")\n	}\n	return s.repo.ListTenantSubscriptionsByPlan(ctx, planCode)\n}\n\nfunc (s *Service) ListPlanAuditLogs(ctx context.Context, planCode string, limit int) ([]AuditLog, error) {\n	planCode = strings.TrimSpace(planCode)\n	if planCode == "" {\n		return nil, errors.New("plan code is required")\n	}\n	if limit <= 0 || limit > 100 {\n		limit = 50\n	}\n	return s.repo.ListPlanAuditLogs(ctx, planCode, limit)\n}\n\nfunc (s *Service) SetUsage(ctx context.Context, tenantID, moduleCode string, input UsageAdjustmentInput, actorID string) (*UsageCounter, error) {\n	tenantID = strings.TrimSpace(tenantID)\n	moduleCode = strings.TrimSpace(moduleCode)\n	input.PeriodKey = strings.TrimSpace(input.PeriodKey)\n	input.Metric = strings.TrimSpace(input.Metric)\n	if tenantID == "" {\n		return nil, errors.New("tenant id is required")\n	}\n	if moduleCode == "" {\n		return nil, errors.New("module code is required")\n	}\n	if input.PeriodKey == "" {\n		input.PeriodKey = s.now().UTC().Format("2006-01")\n	}\n	if input.Metric == "" {\n		return nil, errors.New("usage metric is required")\n	}\n	if input.Used < 0 {\n		return nil, errors.New("usage used must be non-negative")\n	}
-	if !s.moduleExists(ctx, moduleCode) {\n		return nil, ErrModuleNotFound\n	}\n	counter, err := s.repo.SetUsage(ctx, tenantID, moduleCode, input.PeriodKey, input.Metric, input.Used)\n	if err != nil {\n		return nil, err\n	}\n	_ = s.createAudit(ctx, tenantID, moduleCode, "usage_set", actorID, input.Reason, input)\n	return counter, nil\n}\n\nfunc (s *Service) ListAuditLogs(ctx context.Context, tenantID string, limit int) ([]AuditLog, error) {\n	if limit <= 0 || limit > 100 {\n		limit = 50\n	}\n	return s.repo.ListAuditLogs(ctx, strings.TrimSpace(tenantID), limit)\n}\n\nfunc (s *Service) Check(ctx context.Context, tenantID, moduleCode string) (GuardResult, error) {\n	return s.CheckUsage(ctx, tenantID, moduleCode, "", 0)\n}\n\nfunc (s *Service) CheckUsage(ctx context.Context, tenantID, moduleCode, metric string, increment int) (GuardResult, error) {\n	result, err := s.AuthorizeUsage(ctx, tenantID, moduleCode, metric, increment)\n	if err != nil {\n		return result, err\n	}\n	if metric == "" || increment <= 0 {\n		return result, nil\n	}\n	counter, err := s.RecordUsage(ctx, tenantID, moduleCode, metric, increment)\n	if err != nil {\n		return result, err\n	}\n	result.Used = counter.Used\n	return result, nil\n}\n\nfunc (s *Service) AuthorizeUsage(ctx context.Context, tenantID, moduleCode, metric string, increment int) (GuardResult, error) {\n	tenantID = strings.TrimSpace(tenantID)\n	moduleCode = strings.TrimSpace(moduleCode)\n	result := GuardResult{ModuleCode: moduleCode, Metric: metric}\n	entitlements, err := s.repo.ListEntitlements(ctx, tenantID)\n	if err != nil {\n		return result, err\n	}\n	entitlementByModule := make(map[string]Entitlement, len(entitlements))\n	for _, entitlement := range entitlements {\n		entitlementByModule[entitlement.ModuleCode] = entitlement\n	}\n	entitlement, ok := s.resolveEffectiveEntitlement(entitlementByModule, moduleCode)\n	if !ok {\n		result.Reason = "not_configured"\n		return result, ErrSubscriptionRequired\n	}\n	allowed, reason := evaluateEntitlement(entitlement, s.now())\n	if !allowed {\n		result.Reason = reason\n		return result, ErrSubscriptionRequired\n	}\n	if metric == "" || increment <= 0 {\n		result.Allowed = true\n		return result, nil\n	}\n	limit := entitlement.Limits[metric]\n	currentUsed, err := s.currentPeriodUsage(ctx, tenantID, moduleCode, metric)\n	if err != nil {\n		return result, err\n	}\n	result.Limit = limit\n	result.Used = currentUsed + increment\n	if limit > 0 && result.Used > limit {\n		result.Reason = "quota_exceeded"\n		return result, ErrSubscriptionQuotaExceed\n	}\n	result.Allowed = true\n	return result, nil\n}\n\nfunc (s *Service) resolveEffectiveEntitlement(entitlementByModule map[string]Entitlement, moduleCode string) (*Entitlement, bool) {
-	if entitlement, ok := entitlementByModule[moduleCode]; ok {\n		entitlementCopy := entitlement\n		return &entitlementCopy, true\n	}\n	if moduleCode != ModuleOSSStorage {\n		return nil, false\n	}\n	studio, ok := entitlementByModule[ModuleStudio]\n	if !ok {\n		return nil, false\n	}\n	// Studio task creation depends on upload storage. When storage is not\n	// configured separately, inherit the studio entitlement as the minimum\n	// capability floor instead of blocking the workflow mid-flight.\n	fallback := studio\n	fallback.ID = 0\n	fallback.ModuleCode = ModuleOSSStorage\n	fallback.Limits = nil\n	return &fallback, true\n}\n\nfunc (s *Service) RecordUsage(ctx context.Context, tenantID, moduleCode, metric string, increment int) (*UsageCounter, error) {\n	tenantID = strings.TrimSpace(tenantID)\n	moduleCode = strings.TrimSpace(moduleCode)\n	metric = strings.TrimSpace(metric)\n	if tenantID == "" {\n		return nil, errors.New("tenant id is required")\n	}\n	if moduleCode == "" {\n		return nil, errors.New("module code is required")\n	}\n	if metric == "" {\n		return nil, errors.New("usage metric is required")\n	}\n	if increment == 0 {\n		return nil, errors.New("usage increment cannot be zero")\n	}\n	if !s.moduleExists(ctx, moduleCode) {\n		return nil, ErrModuleNotFound\n	}\n	if increment < 0 {\n		currentUsed, err := s.currentPeriodUsage(ctx, tenantID, moduleCode, metric)\n		if err != nil {\n			return nil, err\n		}\n		if currentUsed+increment < 0 {\n			increment = -currentUsed\n		}\n	}\n	periodKey := s.now().UTC().Format("2006-01")\n	return s.repo.IncrementUsage(ctx, tenantID, moduleCode, periodKey, metric, increment)\n}\n\nfunc (s *Service) currentPeriodUsage(ctx context.Context, tenantID, moduleCode, metric string) (int, error) {\n	periodKey := s.now().UTC().Format("2006-01")\n	usage, err := s.repo.ListUsage(ctx, tenantID)\n	if err != nil {\n		return 0, err\n	}\n	used := 0\n	for _, counter := range usage {\n		if counter.ModuleCode == moduleCode && counter.PeriodKey == periodKey && counter.Metric == metric {\n			used += counter.Used\n		}\n	}\n	return used, nil\n}\n\nfunc (s *Service) moduleExists(ctx context.Context, moduleCode string) bool {\n	modules, err := s.ListModules(ctx)\n	if err != nil {\n		return false\n	}\n	for _, module := range modules {\n		if module.Code == moduleCode {\n			return true\n		}\n	}\n	return false\n}
-\nfunc (s *Service) getPlan(ctx context.Context, planCode string) (PlanBundle, bool, error) {\n	plans, err := s.ListPlans(ctx)\n	if err != nil {\n		return PlanBundle{}, false, err\n	}\n	for _, plan := range plans {\n		if plan.Plan.Code == planCode {\n			return plan, true, nil\n		}\n	}\n	return PlanBundle{}, false, nil\n}\n\nfunc (s *Service) createAudit(ctx context.Context, tenantID, moduleCode, action, actorID, reason string, payload any) error {\n	data, _ := json.Marshal(payload)\n	_, err := s.repo.CreateAuditLog(ctx, AuditLog{\n		TenantID:   strings.TrimSpace(tenantID),\n		ModuleCode: strings.TrimSpace(moduleCode),\n		Action:     action,\n		ActorID:    strings.TrimSpace(actorID),\n		Reason:     strings.TrimSpace(reason),\n		Payload:    string(data),\n		CreatedAt:  s.now().UTC(),\n	})\n	return err\n}\n\nfunc evaluateEntitlement(entitlement *Entitlement, now time.Time) (bool, string) {\n	if entitlement == nil {\n		return false, "not_configured"\n	}\n	switch entitlement.Status {\n	case StatusActive, StatusTrialing:\n	default:\n		return false, entitlement.Status\n	}\n	if entitlement.StartsAt != nil && now.Before(*entitlement.StartsAt) {\n		return false, "not_started"\n	}\n	if entitlement.ExpiresAt != nil && !now.Before(*entitlement.ExpiresAt) {\n		return false, StatusExpired\n	}\n	return true, ""\n}\n\nfunc isValidStatus(status string) bool {\n	switch status {\n	case StatusActive, StatusTrialing, StatusExpired, StatusDisabled:\n		return true\n	default:\n		return false\n	}\n}\n\nfunc cloneLimits(in map[string]int) map[string]int {\n	if len(in) == 0 {\n		return nil\n	}\n	out := make(map[string]int, len(in))\n	for key, value := range in {\n		if trimmed := strings.TrimSpace(key); trimmed != "" && value >= 0 {\n			out[trimmed] = value\n		}\n	}\n	return out\n}
+package listingsubscription
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"sort"
+	"strings"
+	"time"
+)
+
+type Service struct {
+	repo                      Repository
+	now                       func() time.Time
+	tenantDisplayNameResolver TenantDisplayNameResolver
+}
+
+func NewService(repo Repository) (*Service, error) {
+	if repo == nil {
+		return nil, errors.New("subscription repository is required")
+	}
+	s := &Service{
+		repo:                      repo,
+		now:                       time.Now,
+		tenantDisplayNameResolver: fallbackTenantDisplayNameResolver{},
+	}
+	if err := repo.UpsertDefaultModules(context.Background(), DefaultModules()); err != nil {
+		return nil, err
+	}
+	if err := repo.UpsertDefaultPlans(context.Background(), DefaultPlans()); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *Service) SetTenantDisplayNameResolver(resolver TenantDisplayNameResolver) {
+	if s == nil || resolver == nil {
+		return
+	}
+	s.tenantDisplayNameResolver = resolver
+}
+
+func DefaultModules() []Module {
+	now := time.Now().UTC()
+	return []Module{
+		{Code: ModuleStoreManagement, Name: "店铺管理", Description: "店铺 CRUD、统计和高级操作", SortOrder: 10, Active: true, CreatedAt: now, UpdatedAt: now},
+		{Code: ModuleTaskImport, Name: "任务导入", Description: "导入任务和商品导入映射", SortOrder: 20, Active: true, CreatedAt: now, UpdatedAt: now},
+		{Code: ModuleRules, Name: "规则", Description: "筛选、利润、核价规则和敏感词", SortOrder: 30, Active: true, CreatedAt: now, UpdatedAt: now},
+		{Code: ModuleOperationStrategy, Name: "运营策略", Description: "运营策略配置和应用", SortOrder: 40, Active: true, CreatedAt: now, UpdatedAt: now},
+		{Code: ModuleStudio, Name: "Studio", Description: "设计生成、产品图生成和异步任务", SortOrder: 50, Active: true, CreatedAt: now, UpdatedAt: now},
+		{Code: ModuleOSSStorage, Name: "OSS 存储", Description: "对象存储上传容量计费", SortOrder: 60, Active: true, CreatedAt: now, UpdatedAt: now},
+	}
+}
+
+func DefaultPlans() []PlanBundle {
+	now := time.Now().UTC()
+	return []PlanBundle{
+		{
+			Plan: Plan{Code: PlanBasic, Name: "基础版", Description: "店铺、任务导入和基础规则", SortOrder: 10, Active: true, CreatedAt: now, UpdatedAt: now},
+			Modules: []PlanModule{
+				{PlanCode: PlanBasic, ModuleCode: ModuleStoreManagement, SortOrder: 10},
+				{PlanCode: PlanBasic, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 100}, SortOrder: 20},
+				{PlanCode: PlanBasic, ModuleCode: ModuleRules, SortOrder: 30},
+				{PlanCode: PlanBasic, ModuleCode: ModuleOSSStorage, Limits: map[string]int{"storage_bytes": 1 * 1024 * 1024 * 1024}, SortOrder: 60},
+			},
+		},
+		{
+			Plan: Plan{Code: PlanProfessional, Name: "专业版", Description: "包含运营策略、Studio 和 10GB OSS 存储", SortOrder: 20, Active: true, CreatedAt: now, UpdatedAt: now},
+			Modules: []PlanModule{
+				{PlanCode: PlanProfessional, ModuleCode: ModuleStoreManagement, SortOrder: 10},
+				{PlanCode: PlanProfessional, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 1000}, SortOrder: 20},
+				{PlanCode: PlanProfessional, ModuleCode: ModuleRules, SortOrder: 30},
+				{PlanCode: PlanProfessional, ModuleCode: ModuleOperationStrategy, SortOrder: 40},
+				{PlanCode: PlanProfessional, ModuleCode: ModuleStudio, Limits: map[string]int{"design_jobs": 100, "product_image_jobs": 100}, SortOrder: 50},
+				{PlanCode: PlanProfessional, ModuleCode: ModuleOSSStorage, Limits: map[string]int{"storage_bytes": 10 * 1024 * 1024 * 1024}, SortOrder: 60},
+			},
+		},
+		{
+			Plan: Plan{Code: PlanEnterprise, Name: "企业版", Description: "完整模块和更高额度", SortOrder: 30, Active: true, CreatedAt: now, UpdatedAt: now},
+			Modules: []PlanModule{
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleStoreManagement, SortOrder: 10},
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleTaskImport, Limits: map[string]int{"import_tasks": 10000}, SortOrder: 20},
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleRules, SortOrder: 30},
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleOperationStrategy, SortOrder: 40},
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleStudio, Limits: map[string]int{"design_jobs": 1000, "product_image_jobs": 1000}, SortOrder: 50},
+				{PlanCode: PlanEnterprise, ModuleCode: ModuleOSSStorage, Limits: map[string]int{"storage_bytes": 100 * 1024 * 1024 * 1024}, SortOrder: 60},
+			},
+		},
+	}
+}
+
+func (s *Service) ListModules(ctx context.Context) ([]Module, error) {
+	modules, err := s.repo.ListModules(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(modules, func(i, j int) bool {
+		if modules[i].SortOrder == modules[j].SortOrder {
+			return modules[i].Code < modules[j].Code
+		}
+		return modules[i].SortOrder < modules[j].SortOrder
+	})
+	return modules, nil
+}
+
+func (s *Service) ListPlans(ctx context.Context) ([]PlanBundle, error) {
+	plans, err := s.repo.ListPlans(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(plans, func(i, j int) bool {
+		if plans[i].Plan.SortOrder == plans[j].Plan.SortOrder {
+			return plans[i].Plan.Code < plans[j].Plan.Code
+		}
+		return plans[i].Plan.SortOrder < plans[j].Plan.SortOrder
+	})
+	for i := range plans {
+		sort.Slice(plans[i].Modules, func(left, right int) bool {
+			if plans[i].Modules[left].SortOrder == plans[i].Modules[right].SortOrder {
+				return plans[i].Modules[left].ModuleCode < plans[i].Modules[right].ModuleCode
+			}
+			return plans[i].Modules[left].SortOrder < plans[i].Modules[right].SortOrder
+		})
+	}
+	return plans, nil
+}
+
+func (s *Service) GetSummary(ctx context.Context, tenantID string) (*Summary, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	modules, err := s.ListModules(ctx)
+	if err != nil {
+		return nil, err
+	}
+	entitlements, err := s.repo.ListEntitlements(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	usage, err := s.repo.ListUsage(ctx, tenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	entitlementByModule := make(map[string]Entitlement, len(entitlements))
+	for _, entitlement := range entitlements {
+		entitlementByModule[entitlement.ModuleCode] = entitlement
+	}
+	usageByModule := make(map[string][]UsageCounter)
+	for _, counter := range usage {
+		usageByModule[counter.ModuleCode] = append(usageByModule[counter.ModuleCode], counter)
+	}
+
+	views := make([]EntitlementView, 0, len(modules))
+	for _, module := range modules {
+		view := EntitlementView{Module: module, Usage: usageByModule[module.Code], Used: map[string]int{}}
+		if entitlement, ok := s.resolveEffectiveEntitlement(entitlementByModule, module.Code); ok {
+			view.Entitlement = entitlement
+			view.Limits = cloneLimits(entitlement.Limits)
+			for _, counter := range view.Usage {
+				view.Used[counter.Metric] += counter.Used
+			}
+			view.Allowed, view.Reason = evaluateEntitlement(entitlement, s.now())
+		} else {
+			view.Allowed = false
+			view.Reason = "not_configured"
+		}
+		views = append(views, view)
+	}
+	summary := &Summary{TenantID: tenantID, Modules: modules, Entitlements: views}
+	subscription, err := s.repo.GetTenantSubscription(ctx, tenantID)
+	if err != nil && !errors.Is(err, ErrEntitlementNotFound) {
+		return nil, err
+	}
+	if subscription != nil {
+		summary.Subscription = subscription
+		if plan, ok, err := s.getPlan(ctx, subscription.PlanCode); err != nil {
+			return nil, err
+		} else if ok {
+			summary.CurrentPlan = &plan
+		}
+	}
+	return summary, nil
+}
+
+func (s *Service) GetTenantSummary(ctx context.Context, tenantID string) (*Summary, error) {
+	return s.GetSummary(ctx, tenantID)
+}
+
+func (s *Service) ListTenantOverviews(ctx context.Context) ([]TenantOverview, error) {
+	items, err := s.repo.ListTenantOverviews(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range items {
+		items[i].TenantDisplayName = s.resolveTenantDisplayName(ctx, items[i].TenantID)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		left := items[i].UpdatedAt
+		right := items[j].UpdatedAt
+		if left != nil && right != nil && !left.Equal(*right) {
+			return left.After(*right)
+		}
+		if left != nil && right == nil {
+			return true
+		}
+		if left == nil && right != nil {
+			return false
+		}
+		return items[i].TenantID < items[j].TenantID
+	})
+	return items, nil
+}
+
+func (s *Service) resolveTenantDisplayName(ctx context.Context, tenantID string) string {
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return ""
+	}
+	resolver := s.tenantDisplayNameResolver
+	if resolver == nil {
+		return tenantID
+	}
+	displayName, err := resolver.ResolveTenantDisplayName(ctx, tenantID)
+	if err != nil {
+		return tenantID
+	}
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" {
+		return tenantID
+	}
+	return displayName
+}
+
+func (s *Service) UpsertEntitlement(ctx context.Context, tenantID, moduleCode string, input EntitlementInput) (*Entitlement, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	moduleCode = strings.TrimSpace(moduleCode)
+	if tenantID == "" {
+		return nil, errors.New("tenant id is required")
+	}
+	if moduleCode == "" {
+		return nil, errors.New("module code is required")
+	}
+	if !isValidStatus(input.Status) {
+		return nil, errors.New("invalid subscription status")
+	}
+	if !s.moduleExists(ctx, moduleCode) {
+		return nil, ErrModuleNotFound
+	}
+	return s.repo.UpsertEntitlement(ctx, &Entitlement{
+		TenantID:   tenantID,
+		ModuleCode: moduleCode,
+		Status:     input.Status,
+		StartsAt:   input.StartsAt,
+		ExpiresAt:  input.ExpiresAt,
+		Limits:     cloneLimits(input.Limits),
+	})
+}
+
+func (s *Service) UpsertEntitlementWithAudit(ctx context.Context, tenantID, moduleCode string, input EntitlementInput, actorID, reason string) (*Entitlement, error) {
+	entitlement, err := s.UpsertEntitlement(ctx, tenantID, moduleCode, input)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.createAudit(ctx, tenantID, moduleCode, "entitlement_upsert", actorID, reason, input)
+	return entitlement, nil
+}
+
+func (s *Service) ApplyPlan(ctx context.Context, tenantID string, input PlanApplyInput, actorID string) (*TenantSubscription, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	input.PlanCode = strings.TrimSpace(input.PlanCode)
+	if tenantID == "" {
+		return nil, errors.New("tenant id is required")
+	}
+	if input.PlanCode == "" {
+		return nil, errors.New("plan code is required")
+	}
+	if input.Status == "" {
+		input.Status = StatusActive
+	}
+	if !isValidStatus(input.Status) {
+		return nil, errors.New("invalid subscription status")
+	}
+	plan, ok, err := s.getPlan(ctx, input.PlanCode)
+	if err != nil {
+		return nil, err
+	}
+	if !ok || !plan.Plan.Active {
+		return nil, ErrModuleNotFound
+	}
+	subscription, err := s.repo.UpsertTenantSubscription(ctx, &TenantSubscription{
+		TenantID:  tenantID,
+		PlanCode:  input.PlanCode,
+		Status:    input.Status,
+		StartsAt:  input.StartsAt,
+		ExpiresAt: input.ExpiresAt,
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, module := range plan.Modules {
+		if _, err := s.UpsertEntitlement(ctx, tenantID, module.ModuleCode, EntitlementInput{
+			Status:    input.Status,
+			StartsAt:  input.StartsAt,
+			ExpiresAt: input.ExpiresAt,
+			Limits:    module.Limits,
+		}); err != nil {
+			return nil, err
+		}
+	}
+	_ = s.createAudit(ctx, tenantID, "", "plan_apply", actorID, input.PlanCode, input)
+	return subscription, nil
+}
+
+func (s *Service) UpsertPlan(ctx context.Context, input PlanInput, actorID string) (*PlanBundle, error) {
+	input.Code = strings.TrimSpace(input.Code)
+	input.Name = strings.TrimSpace(input.Name)
+	if input.Code == "" {
+		return nil, errors.New("plan code is required")
+	}
+	if input.Name == "" {
+		return nil, errors.New("plan name is required")
+	}
+	modules := make([]PlanModule, 0, len(input.Modules))
+	for _, moduleInput := range input.Modules {
+		moduleCode := strings.TrimSpace(moduleInput.ModuleCode)
+		if moduleCode == "" {
+			return nil, errors.New("module code is required")
+		}
+		if !s.moduleExists(ctx, moduleCode) {
+			return nil, ErrModuleNotFound
+		}
+		modules = append(modules, PlanModule{
+			PlanCode:   input.Code,
+			ModuleCode: moduleCode,
+			Limits:     cloneLimits(moduleInput.Limits),
+			SortOrder:  moduleInput.SortOrder,
+		})
+	}
+	now := time.Now().UTC()
+	bundle, err := s.repo.UpsertPlan(ctx, Plan{
+		Code:        input.Code,
+		Name:        input.Name,
+		Description: strings.TrimSpace(input.Description),
+		SortOrder:   input.SortOrder,
+		Active:      input.Active,
+		UpdatedAt:   now,
+	}, modules)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.createAudit(ctx, "", "", "plan_upsert", actorID, input.Code, input)
+	return bundle, nil
+}
+
+func (s *Service) UpsertPlanModule(ctx context.Context, planCode, moduleCode string, input PlanModuleInput, actorID string) (*PlanBundle, error) {
+	planCode = strings.TrimSpace(planCode)
+	moduleCode = strings.TrimSpace(moduleCode)
+	if planCode == "" {
+		return nil, errors.New("plan code is required")
+	}
+	if moduleCode == "" {
+		return nil, errors.New("module code is required")
+	}
+	if _, ok, err := s.getPlan(ctx, planCode); err != nil {
+		return nil, err
+	} else if !ok {
+		return nil, ErrModuleNotFound
+	}
+	if !s.moduleExists(ctx, moduleCode) {
+		return nil, ErrModuleNotFound
+	}
+	bundle, err := s.repo.UpsertPlanModule(ctx, PlanModule{
+		PlanCode:   planCode,
+		ModuleCode: moduleCode,
+		Limits:     cloneLimits(input.Limits),
+		SortOrder:  input.SortOrder,
+	})
+	if err != nil {
+		return nil, err
+	}
+	_ = s.createAudit(ctx, "", moduleCode, "plan_module_upsert", actorID, planCode, input)
+	return bundle, nil
+}
+
+func (s *Service) DeletePlanModule(ctx context.Context, planCode, moduleCode, actorID string) (*PlanBundle, error) {
+	planCode = strings.TrimSpace(planCode)
+	moduleCode = strings.TrimSpace(moduleCode)
+	if planCode == "" {
+		return nil, errors.New("plan code is required")
+	}
+	if moduleCode == "" {
+		return nil, errors.New("module code is required")
+	}
+	bundle, err := s.repo.DeletePlanModule(ctx, planCode, moduleCode)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.createAudit(ctx, "", moduleCode, "plan_module_delete", actorID, planCode, nil)
+	return bundle, nil
+}
+func (s *Service) SetPlanActive(ctx context.Context, planCode string, active bool, actorID string) (*PlanBundle, error) {
+	plan, ok, err := s.getPlan(ctx, strings.TrimSpace(planCode))
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, ErrModuleNotFound
+	}
+	input := PlanInput{
+		Code:        plan.Plan.Code,
+		Name:        plan.Plan.Name,
+		Description: plan.Plan.Description,
+		SortOrder:   plan.Plan.SortOrder,
+		Active:      active,
+		Modules:     make([]PlanModuleInput, 0, len(plan.Modules)),
+	}
+	for _, module := range plan.Modules {
+		input.Modules = append(input.Modules, PlanModuleInput{
+			ModuleCode: module.ModuleCode,
+			Limits:     module.Limits,
+			SortOrder:  module.SortOrder,
+		})
+	}
+	bundle, err := s.UpsertPlan(ctx, input, actorID)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.createAudit(ctx, "", "", "plan_status_update", actorID, planCode, map[string]bool{"active": active})
+	return bundle, nil
+}
+
+func (s *Service) ListPlanTenants(ctx context.Context, planCode string) ([]TenantSubscription, error) {
+	planCode = strings.TrimSpace(planCode)
+	if planCode == "" {
+		return nil, errors.New("plan code is required")
+	}
+	return s.repo.ListTenantSubscriptionsByPlan(ctx, planCode)
+}
+
+func (s *Service) ListPlanAuditLogs(ctx context.Context, planCode string, limit int) ([]AuditLog, error) {
+	planCode = strings.TrimSpace(planCode)
+	if planCode == "" {
+		return nil, errors.New("plan code is required")
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	return s.repo.ListPlanAuditLogs(ctx, planCode, limit)
+}
+
+func (s *Service) SetUsage(ctx context.Context, tenantID, moduleCode string, input UsageAdjustmentInput, actorID string) (*UsageCounter, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	moduleCode = strings.TrimSpace(moduleCode)
+	input.PeriodKey = strings.TrimSpace(input.PeriodKey)
+	input.Metric = strings.TrimSpace(input.Metric)
+	if tenantID == "" {
+		return nil, errors.New("tenant id is required")
+	}
+	if moduleCode == "" {
+		return nil, errors.New("module code is required")
+	}
+	if input.PeriodKey == "" {
+		input.PeriodKey = s.now().UTC().Format("2006-01")
+	}
+	if input.Metric == "" {
+		return nil, errors.New("usage metric is required")
+	}
+	if input.Used < 0 {
+		return nil, errors.New("usage used must be non-negative")
+	}
+	if !s.moduleExists(ctx, moduleCode) {
+		return nil, ErrModuleNotFound
+	}
+	counter, err := s.repo.SetUsage(ctx, tenantID, moduleCode, input.PeriodKey, input.Metric, input.Used)
+	if err != nil {
+		return nil, err
+	}
+	_ = s.createAudit(ctx, tenantID, moduleCode, "usage_set", actorID, input.Reason, input)
+	return counter, nil
+}
+
+func (s *Service) ListAuditLogs(ctx context.Context, tenantID string, limit int) ([]AuditLog, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	return s.repo.ListAuditLogs(ctx, strings.TrimSpace(tenantID), limit)
+}
+
+func (s *Service) Check(ctx context.Context, tenantID, moduleCode string) (GuardResult, error) {
+	return s.CheckUsage(ctx, tenantID, moduleCode, "", 0)
+}
+
+func (s *Service) CheckUsage(ctx context.Context, tenantID, moduleCode, metric string, increment int) (GuardResult, error) {
+	result, err := s.AuthorizeUsage(ctx, tenantID, moduleCode, metric, increment)
+	if err != nil {
+		return result, err
+	}
+	if metric == "" || increment <= 0 {
+		return result, nil
+	}
+	counter, err := s.RecordUsage(ctx, tenantID, moduleCode, metric, increment)
+	if err != nil {
+		return result, err
+	}
+	result.Used = counter.Used
+	return result, nil
+}
+
+func (s *Service) AuthorizeUsage(ctx context.Context, tenantID, moduleCode, metric string, increment int) (GuardResult, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	moduleCode = strings.TrimSpace(moduleCode)
+	result := GuardResult{ModuleCode: moduleCode, Metric: metric}
+	entitlements, err := s.repo.ListEntitlements(ctx, tenantID)
+	if err != nil {
+		return result, err
+	}
+	entitlementByModule := make(map[string]Entitlement, len(entitlements))
+	for _, entitlement := range entitlements {
+		entitlementByModule[entitlement.ModuleCode] = entitlement
+	}
+	entitlement, ok := s.resolveEffectiveEntitlement(entitlementByModule, moduleCode)
+	if !ok {
+		result.Reason = "not_configured"
+		return result, ErrSubscriptionRequired
+	}
+	allowed, reason := evaluateEntitlement(entitlement, s.now())
+	if !allowed {
+		result.Reason = reason
+		return result, ErrSubscriptionRequired
+	}
+	if metric == "" || increment <= 0 {
+		result.Allowed = true
+		return result, nil
+	}
+	limit := entitlement.Limits[metric]
+	currentUsed, err := s.currentPeriodUsage(ctx, tenantID, moduleCode, metric)
+	if err != nil {
+		return result, err
+	}
+	result.Limit = limit
+	result.Used = currentUsed + increment
+	if limit > 0 && result.Used > limit {
+		result.Reason = "quota_exceeded"
+		return result, ErrSubscriptionQuotaExceed
+	}
+	result.Allowed = true
+	return result, nil
+}
+
+func (s *Service) resolveEffectiveEntitlement(entitlementByModule map[string]Entitlement, moduleCode string) (*Entitlement, bool) {
+	if entitlement, ok := entitlementByModule[moduleCode]; ok {
+		entitlementCopy := entitlement
+		return &entitlementCopy, true
+	}
+	if moduleCode != ModuleOSSStorage {
+		return nil, false
+	}
+	studio, ok := entitlementByModule[ModuleStudio]
+	if !ok {
+		return nil, false
+	}
+	// Studio task creation depends on upload storage. When storage is not
+	// configured separately, inherit the studio entitlement as the minimum
+	// capability floor instead of blocking the workflow mid-flight.
+	fallback := studio
+	fallback.ID = 0
+	fallback.ModuleCode = ModuleOSSStorage
+	fallback.Limits = nil
+	return &fallback, true
+}
+
+func (s *Service) RecordUsage(ctx context.Context, tenantID, moduleCode, metric string, increment int) (*UsageCounter, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	moduleCode = strings.TrimSpace(moduleCode)
+	metric = strings.TrimSpace(metric)
+	if tenantID == "" {
+		return nil, errors.New("tenant id is required")
+	}
+	if moduleCode == "" {
+		return nil, errors.New("module code is required")
+	}
+	if metric == "" {
+		return nil, errors.New("usage metric is required")
+	}
+	if increment == 0 {
+		return nil, errors.New("usage increment cannot be zero")
+	}
+	if !s.moduleExists(ctx, moduleCode) {
+		return nil, ErrModuleNotFound
+	}
+	if increment < 0 {
+		currentUsed, err := s.currentPeriodUsage(ctx, tenantID, moduleCode, metric)
+		if err != nil {
+			return nil, err
+		}
+		if currentUsed+increment < 0 {
+			increment = -currentUsed
+		}
+	}
+	periodKey := s.now().UTC().Format("2006-01")
+	return s.repo.IncrementUsage(ctx, tenantID, moduleCode, periodKey, metric, increment)
+}
+
+func (s *Service) currentPeriodUsage(ctx context.Context, tenantID, moduleCode, metric string) (int, error) {
+	periodKey := s.now().UTC().Format("2006-01")
+	usage, err := s.repo.ListUsage(ctx, tenantID)
+	if err != nil {
+		return 0, err
+	}
+	used := 0
+	for _, counter := range usage {
+		if counter.ModuleCode == moduleCode && counter.PeriodKey == periodKey && counter.Metric == metric {
+			used += counter.Used
+		}
+	}
+	return used, nil
+}
+
+func (s *Service) moduleExists(ctx context.Context, moduleCode string) bool {
+	modules, err := s.ListModules(ctx)
+	if err != nil {
+		return false
+	}
+	for _, module := range modules {
+		if module.Code == moduleCode {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) getPlan(ctx context.Context, planCode string) (PlanBundle, bool, error) {
+	plans, err := s.ListPlans(ctx)
+	if err != nil {
+		return PlanBundle{}, false, err
+	}
+	for _, plan := range plans {
+		if plan.Plan.Code == planCode {
+			return plan, true, nil
+		}
+	}
+	return PlanBundle{}, false, nil
+}
+
+func (s *Service) createAudit(ctx context.Context, tenantID, moduleCode, action, actorID, reason string, payload any) error {
+	data, _ := json.Marshal(payload)
+	_, err := s.repo.CreateAuditLog(ctx, AuditLog{
+		TenantID:   strings.TrimSpace(tenantID),
+		ModuleCode: strings.TrimSpace(moduleCode),
+		Action:     action,
+		ActorID:    strings.TrimSpace(actorID),
+		Reason:     strings.TrimSpace(reason),
+		Payload:    string(data),
+		CreatedAt:  s.now().UTC(),
+	})
+	return err
+}
+
+func evaluateEntitlement(entitlement *Entitlement, now time.Time) (bool, string) {
+	if entitlement == nil {
+		return false, "not_configured"
+	}
+	switch entitlement.Status {
+	case StatusActive, StatusTrialing:
+	default:
+		return false, entitlement.Status
+	}
+	if entitlement.StartsAt != nil && now.Before(*entitlement.StartsAt) {
+		return false, "not_started"
+	}
+	if entitlement.ExpiresAt != nil && !now.Before(*entitlement.ExpiresAt) {
+		return false, StatusExpired
+	}
+	return true, ""
+}
+
+func isValidStatus(status string) bool {
+	switch status {
+	case StatusActive, StatusTrialing, StatusExpired, StatusDisabled:
+		return true
+	default:
+		return false
+	}
+}
+
+func cloneLimits(in map[string]int) map[string]int {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(in))
+	for key, value := range in {
+		if trimmed := strings.TrimSpace(key); trimmed != "" && value >= 0 {
+			out[trimmed] = value
+		}
+	}
+	return out
+}
