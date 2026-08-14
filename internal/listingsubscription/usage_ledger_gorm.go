@@ -645,4 +645,3 @@ func negateUsage(value int64) (int64, bool) {
 	}
 	return -value, true
 }
-
