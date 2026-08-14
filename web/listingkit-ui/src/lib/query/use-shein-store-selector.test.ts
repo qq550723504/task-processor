@@ -20,6 +20,14 @@ describe("buildSheinStoreOptions", () => {
           platform: "SHEIN",
           region: "GB",
         },
+        {
+          id: 872,
+          store_id: "SHEIN-DE-872",
+          name: "已禁用店铺",
+          platform: "SHEIN",
+          region: "DE",
+          status: 1,
+        },
       ],
       [
         {

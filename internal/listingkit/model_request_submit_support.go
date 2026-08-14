@@ -31,6 +31,7 @@ type SheinStoreOption struct {
 	Name     string `json:"name,omitempty"`
 	Platform string `json:"platform,omitempty"`
 	Region   string `json:"region,omitempty"`
+	Status   int16  `json:"status,omitempty"`
 }
 
 type AIClientSettings struct {

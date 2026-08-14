@@ -345,7 +345,8 @@ export function SheinStudioWorkbench({
     }
     setActiveSheinStudioBatchId(initialBatchId);
   }, [initialBatchId]);
-  const { enabledProfiles } = useSheinStoreSelector();
+  const { enabledProfiles, storeOptions } = useSheinStoreSelector();
+  const selectableStores = (storeOptions?.length ?? 0) > 0 ? storeOptions : enabledProfiles;
   const subscriptionQuery = useQuery({
     queryKey: ["listingkit-subscription"],
     queryFn: getCurrentSubscription,
@@ -384,7 +385,7 @@ export function SheinStudioWorkbench({
     storeRequiredMessage,
   } = useSheinStudioStoreSelection({
     currentStoreId: sheinStoreId,
-    enabledProfiles,
+    enabledProfiles: selectableStores,
   });
   const activeGroupPromptHistory = useSheinStudioActiveGroupPromptHistory({
     activeGroupId,
@@ -1878,7 +1879,7 @@ export function SheinStudioWorkbench({
                 selectedColorCount={selectedColorCount}
                 selectedSizeCount={selectedSizeCount}
                 selectedVariantCount={selectedVariants.length}
-                storeOptions={enabledProfiles}
+                storeOptions={selectableStores}
               />
               <SheinStudioGenerationPanelBoundary
                 input={generationPanelInput}

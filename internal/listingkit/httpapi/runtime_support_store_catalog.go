@@ -17,6 +17,11 @@ type listingAdminStoreAccessValidator struct {
 	repo listingadmin.StoreRepository
 }
 
+func activeStoreStatusFilter() *int16 {
+	status := int16(0)
+	return &status
+}
+
 func (v listingAdminStoreAccessValidator) ValidateStoreAccess(ctx context.Context, tenantID, storeID int64, expectedPlatform string) (listingkit.StoreAccess, error) {
 	if v.repo == nil || tenantID <= 0 || storeID <= 0 {
 		return listingkit.StoreAccess{}, listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
@@ -66,6 +71,7 @@ func (c sheinListingStoreCatalog) ListStoreOptions(ctx context.Context, tenantID
 	page, err := c.repo.ListStores(ctx, listingadmin.StoreQuery{
 		TenantID: tenantID,
 		Platform: "shein",
+		Status:   activeStoreStatusFilter(),
 		Page:     1,
 		PageSize: 200,
 	})
@@ -83,6 +89,7 @@ func (c sheinListingStoreCatalog) ListStoreOptions(ctx context.Context, tenantID
 			Name:     strings.TrimSpace(item.Name),
 			Platform: strings.TrimSpace(item.Platform),
 			Region:   strings.TrimSpace(item.Region),
+			Status:   item.Status,
 		})
 	}
 	return options, nil

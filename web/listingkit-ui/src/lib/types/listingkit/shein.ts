@@ -669,6 +669,7 @@ export type ListingKitStoreCatalogOption = {
   name?: string;
   platform?: string;
   region?: string;
+  status?: number;
 };
 
 export type ListingKitStoreProfile = {

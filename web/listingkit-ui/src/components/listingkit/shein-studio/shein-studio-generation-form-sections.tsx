@@ -509,7 +509,8 @@ export function BatchStoreSettings({
   sheinStoreId: string;
   setSheinStoreId: (value: string) => void;
 }) {
-  const { enabledProfiles, profiles } = useSheinStoreSelector();
+  const { enabledProfiles, profiles, storeOptions } = useSheinStoreSelector();
+  const selectableStores = (storeOptions?.length ?? 0) > 0 ? storeOptions : enabledProfiles;
 
   return (
     <div
@@ -553,11 +554,11 @@ export function BatchStoreSettings({
             value={sheinStoreId}
           >
             <option value="">
-              {enabledProfiles.length > 0
+              {selectableStores.length > 0
                 ? "请选择批次店铺"
-                : "当前没有已启用店铺配置"}
+                : "当前没有可用店铺"}
             </option>
-            {enabledProfiles.map((item) => (
+            {selectableStores.map((item) => (
               <option
                 key={item.id ?? item.store_id}
                 value={String(item.store_id)}

@@ -24,7 +24,7 @@ export function buildSheinStoreOptions(
   );
 
   return (availableStores ?? []).reduce<ListingKitStoreProfile[]>((options, store) => {
-    if (store.id <= 0) {
+    if (store.id <= 0 || (store.status !== undefined && store.status !== 0)) {
       return options;
     }
     const profile = profilesByStoreID.get(store.id);
