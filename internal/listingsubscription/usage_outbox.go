@@ -30,12 +30,16 @@ func BuildOpenMeterUsageOutboxPayload(event UsageEvent) (OpenMeterUsageOutboxPay
 		}
 		quantity = *event.StorageSnapshot
 	}
+	occurredAt := event.OccurredAt.UTC()
+	if event.Metric == usageMetricStorageBytesCurrent && event.StorageSnapshotAt != nil {
+		occurredAt = event.StorageSnapshotAt.UTC()
+	}
 	return OpenMeterUsageOutboxPayload{
 		EventID:    event.EventID,
 		TenantID:   event.TenantID,
 		Metric:     event.Metric,
 		Quantity:   quantity,
-		OccurredAt: event.OccurredAt.UTC(),
+		OccurredAt: occurredAt,
 		Metadata: map[string]string{
 			"module_code": event.ModuleCode,
 			"source_type": event.SourceType,
@@ -51,3 +55,4 @@ func isRedactedReversalMetadata(metadata map[string]string) bool {
 	reason, ok := metadata["reason"]
 	return ok && (reason == "" || reason == "redacted")
 }
+
