@@ -253,13 +253,33 @@ func ensureImportTaskActiveUniqueIndex(db *gorm.DB, table string) (bool, error) 
 		}
 		return true, nil
 	}
-	if err := db.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, indexName)).Error; err != nil {
-		return false, err
-	}
-	if err := db.Exec(importTaskActiveUniqueIndexStatement(table, indexName)).Error; err != nil {
+	if err := replaceImportTaskActiveUniqueIndex(db, table, indexName); err != nil {
 		return false, err
 	}
 	return true, nil
+}
+
+func replaceImportTaskActiveUniqueIndex(db *gorm.DB, table, indexName string) error {
+	replacementName := indexName + "_replacement"
+	if err := db.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, replacementName)).Error; err != nil {
+		return err
+	}
+	if err := db.Exec(importTaskActiveUniqueIndexStatement(table, replacementName)).Error; err != nil {
+		return err
+	}
+	err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, indexName)).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec(importTaskActiveUniqueIndexStatement(table, indexName)).Error; err != nil {
+			return err
+		}
+		return tx.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, replacementName)).Error
+	})
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func importTaskCanonicalTargetPlatformExpression(targetColumn, platformColumn string) string {

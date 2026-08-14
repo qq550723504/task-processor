@@ -200,11 +200,16 @@ func TestAutoMigrateImportTaskRepositoryDefersIndexWhenCanonicalDuplicatesExist(
 			t.Fatalf("seed duplicate target %q: %v", target, err)
 		}
 	}
+	if err := db.Exec(`CREATE INDEX idx_listing_product_import_task_unique
+		ON listing_product_import_task (target_platform, tenant_id, product_id, region, store_id)
+		WHERE deleted = 0`).Error; err != nil {
+		t.Fatalf("create historical non-unique index: %v", err)
+	}
 	if err := AutoMigrateImportTaskRepository(db); err != nil {
 		t.Fatalf("AutoMigrateImportTaskRepository() with canonical duplicates = %v", err)
 	}
-	if db.Migrator().HasIndex(&listingProductImportTask{}, "idx_listing_product_import_task_unique") {
-		t.Fatal("unique index installed despite existing canonical duplicates")
+	if !db.Migrator().HasIndex(&listingProductImportTask{}, "idx_listing_product_import_task_unique") {
+		t.Fatal("historical index was removed despite existing canonical duplicates")
 	}
 }
 
