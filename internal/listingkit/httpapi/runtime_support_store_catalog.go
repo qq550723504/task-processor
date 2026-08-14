@@ -69,11 +69,12 @@ func (c sheinListingStoreCatalog) ListStoreOptions(ctx context.Context, tenantID
 		return nil, fmt.Errorf("listing admin store repository is not configured")
 	}
 	page, err := c.repo.ListStores(ctx, listingadmin.StoreQuery{
-		TenantID: tenantID,
-		Platform: "shein",
-		Status:   activeStoreStatusFilter(),
-		Page:     1,
-		PageSize: 200,
+		TenantID:   tenantID,
+		Platform:   "SHEIN",
+		ReadAccess: true,
+		Status:     activeStoreStatusFilter(),
+		Page:       1,
+		PageSize:   200,
 	})
 	if err != nil || page == nil || len(page.Items) == 0 {
 		return nil, err

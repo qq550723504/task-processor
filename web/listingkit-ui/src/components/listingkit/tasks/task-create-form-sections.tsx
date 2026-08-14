@@ -72,7 +72,7 @@ export function TaskSheinStoreField({
     sheinSettings,
     storeOptions,
   } = useSheinStoreSelector(selectedStoreId);
-  const selectableStores = (storeOptions?.length ?? 0) > 0 ? storeOptions : enabledProfiles;
+  const selectableStores = storeOptions ?? enabledProfiles;
   const sheinSelected = selectedPlatforms?.includes("shein");
   const selectedStoreUnavailable = Boolean(
     sheinSelected &&

@@ -41,6 +41,14 @@ export function buildSheinStoreOptions(
   }, []);
 }
 
+export function resolveSheinStoreOptions(
+  catalogOptions: ListingKitStoreProfile[],
+  enabledProfiles: ListingKitStoreProfile[],
+  catalogLoaded: boolean,
+) {
+  return catalogLoaded ? catalogOptions : enabledProfiles;
+}
+
 export function useSheinStoreSelector(selectedStoreId?: string) {
   const profiles = useStoreProfiles();
   const sheinLoginAccounts = useSheinLoginAccounts();
@@ -55,8 +63,16 @@ export function useSheinStoreSelector(selectedStoreId?: string) {
     [profiles.data],
   );
   const storeOptions = useMemo(
-    () => buildSheinStoreOptions(sheinSettings.data?.available_stores, profiles.data),
-    [profiles.data, sheinSettings.data?.available_stores],
+    () =>
+      resolveSheinStoreOptions(
+        buildSheinStoreOptions(
+          sheinSettings.data?.available_stores,
+          profiles.data,
+        ),
+        enabledProfiles,
+        sheinSettings.isSuccess,
+      ),
+    [enabledProfiles, profiles.data, sheinSettings.data?.available_stores, sheinSettings.isSuccess],
   );
   const sheinLoginStatusMap = useMemo(
     () => buildSheinLoginStatusMap(sheinLoginAccounts.data),
@@ -85,7 +101,7 @@ export function useSheinStoreSelector(selectedStoreId?: string) {
     sheinSettings,
     sheinLoginAccounts,
     enabledProfiles,
-    storeOptions: storeOptions.length > 0 ? storeOptions : enabledProfiles,
+    storeOptions,
     selectedStoreLoginStatus,
     loggedInStoreCount,
     anyLoggedInStore: loggedInStoreCount > 0,

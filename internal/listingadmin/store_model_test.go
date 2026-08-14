@@ -280,3 +280,39 @@ func TestFindStoreRowsSupportsDeletedListingScope(t *testing.T) {
 		t.Fatalf("rows = %+v, want deleted row for user-a only", rows)
 	}
 }
+
+func TestApplyStoreQuerySupportsSharedReadAccess(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingStore{}); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	for _, row := range []listingStore{
+		{TenantID: 101, OwnerUserID: "user-a", Name: "owned", Username: "owned", Password: "secret", Platform: "SHEIN", ShopType: "semi", Deleted: 0, Status: 0},
+		{TenantID: 101, Name: "shared-null", Username: "shared-null", Password: "secret", Platform: "SHEIN", ShopType: "semi", Deleted: 0, Status: 0},
+		{TenantID: 101, OwnerUserID: "", Name: "shared-empty", Username: "shared-empty", Password: "secret", Platform: "SHEIN", ShopType: "semi", Deleted: 0, Status: 0},
+		{TenantID: 101, OwnerUserID: "user-b", Name: "other-owner", Username: "other-owner", Password: "secret", Platform: "SHEIN", ShopType: "semi", Deleted: 0, Status: 0},
+	} {
+		if err := db.Table("listing_store").Create(&row).Error; err != nil {
+			t.Fatalf("seed row: %v", err)
+		}
+	}
+
+	t.Cleanup(SetOwnerScopeRequiredForTesting(true))
+	ctx := withRequestIdentity(context.Background(), "user-a", nil)
+	rows, err := findStoreRows(ctx, db.WithContext(ctx).Table("listing_store"), StoreQuery{
+		TenantID:   101,
+		Platform:   "SHEIN",
+		ReadAccess: true,
+	})
+	if err != nil {
+		t.Fatalf("findStoreRows: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("rows = %+v, want owned plus shared stores", rows)
+	}
+}

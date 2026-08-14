@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { buildSheinStoreOptions } from "@/lib/query/use-shein-store-selector";
+import {
+  buildSheinStoreOptions,
+  resolveSheinStoreOptions,
+} from "@/lib/query/use-shein-store-selector";
 
 describe("buildSheinStoreOptions", () => {
   it("includes authorized stores without profiles and enriches profiled stores", () => {
@@ -59,5 +62,18 @@ describe("buildSheinStoreOptions", () => {
         region: "GB",
       },
     });
+  });
+});
+
+describe("resolveSheinStoreOptions", () => {
+  it("keeps an empty loaded catalog authoritative", () => {
+    const enabledProfiles = [
+      { id: 11, store_id: 870, enabled: true },
+    ];
+
+    expect(resolveSheinStoreOptions([], enabledProfiles, true)).toEqual([]);
+    expect(resolveSheinStoreOptions([], enabledProfiles, false)).toEqual(
+      enabledProfiles,
+    );
   });
 });

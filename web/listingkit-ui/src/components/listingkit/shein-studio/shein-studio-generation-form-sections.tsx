@@ -510,7 +510,7 @@ export function BatchStoreSettings({
   setSheinStoreId: (value: string) => void;
 }) {
   const { enabledProfiles, profiles, storeOptions } = useSheinStoreSelector();
-  const selectableStores = (storeOptions?.length ?? 0) > 0 ? storeOptions : enabledProfiles;
+  const selectableStores = storeOptions ?? enabledProfiles;
 
   return (
     <div

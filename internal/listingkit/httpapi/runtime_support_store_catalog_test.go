@@ -34,6 +34,12 @@ func TestSheinStoreCatalogListsOnlyActiveStores(t *testing.T) {
 	if stub.query.Status == nil || *stub.query.Status != 0 {
 		t.Fatalf("status query = %v, want active status 0", stub.query.Status)
 	}
+	if stub.query.Platform != "SHEIN" {
+		t.Fatalf("platform query = %q, want SHEIN", stub.query.Platform)
+	}
+	if !stub.query.ReadAccess {
+		t.Fatal("read access query = false, want shared-store read access")
+	}
 	if len(options) != 1 || options[0].ID != 870 || options[0].Status != 0 {
 		t.Fatalf("options = %+v, want active store 870", options)
 	}

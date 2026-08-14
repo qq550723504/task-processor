@@ -346,7 +346,7 @@ export function SheinStudioWorkbench({
     setActiveSheinStudioBatchId(initialBatchId);
   }, [initialBatchId]);
   const { enabledProfiles, storeOptions } = useSheinStoreSelector();
-  const selectableStores = (storeOptions?.length ?? 0) > 0 ? storeOptions : enabledProfiles;
+  const selectableStores = storeOptions ?? enabledProfiles;
   const subscriptionQuery = useQuery({
     queryKey: ["listingkit-subscription"],
     queryFn: getCurrentSubscription,
