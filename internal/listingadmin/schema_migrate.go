@@ -259,6 +259,20 @@ func ensureImportTaskActiveUniqueIndex(db *gorm.DB, table string) (bool, error) 
 	return true, nil
 }
 
+// EnsureImportTaskWriteReady verifies that every repository writer is protected
+// by the canonical active-task uniqueness constraint. It fails closed while
+// legacy duplicates prevent that constraint from being installed.
+func EnsureImportTaskWriteReady(db *gorm.DB) error {
+	ready, err := ensureImportTaskActiveUniqueIndex(db, (listingProductImportTask{}).TableName())
+	if err != nil {
+		return err
+	}
+	if !ready {
+		return ErrImportTaskIntegrityUnavailable
+	}
+	return nil
+}
+
 func replaceImportTaskActiveUniqueIndex(db *gorm.DB, table, indexName string) error {
 	replacementName := indexName + "_replacement"
 	if err := db.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, replacementName)).Error; err != nil {

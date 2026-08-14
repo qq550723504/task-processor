@@ -73,12 +73,8 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 	if len(rows) == 0 {
 		return []ImportTask{}, nil
 	}
-	indexReady, err := ensureImportTaskActiveUniqueIndex(r.db, "listing_product_import_task")
-	if err != nil {
+	if err := EnsureImportTaskWriteReady(r.db); err != nil {
 		return nil, err
-	}
-	if !indexReady {
-		return nil, ErrImportTaskIntegrityUnavailable
 	}
 	productIDs := make([]string, 0, len(rows))
 	for _, row := range rows {

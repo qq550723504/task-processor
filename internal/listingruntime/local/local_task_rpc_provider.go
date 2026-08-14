@@ -6,6 +6,7 @@ import (
 	"time"
 
 	taskdomain "task-processor/internal/domain/task"
+	"task-processor/internal/listingadmin"
 	"task-processor/internal/model"
 	"task-processor/internal/pkg/types"
 	api "task-processor/internal/taskrpcapi"
@@ -27,6 +28,9 @@ func NewLocalTaskRPCProvider(provider *LocalDataProvider) *LocalTaskRPCProvider 
 func (p *LocalTaskRPCProvider) SubmitTask(req *api.TaskSubmitReqDTO, urgent bool) (*api.TaskSubmitRespDTO, bool, error) {
 	if p == nil || p.db == nil || req == nil {
 		return nil, false, nil
+	}
+	if err := listingadmin.EnsureImportTaskWriteReady(p.db); err != nil {
+		return nil, true, err
 	}
 
 	priority := req.BusinessPriority

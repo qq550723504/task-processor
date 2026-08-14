@@ -1596,6 +1596,7 @@ type localImportTaskRow struct {
 	Stage          string     `gorm:"column:stage"`
 	RetryCount     int        `gorm:"column:retry_count"`
 	MaxRetryCount  int        `gorm:"column:max_retry_count"`
+	Deleted        int16      `gorm:"column:deleted"`
 	Remark         string     `gorm:"column:remark"`
 	Priority       int        `gorm:"column:priority"`
 	CreateTime     time.Time  `gorm:"column:create_time"`
