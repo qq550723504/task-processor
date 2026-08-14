@@ -91,6 +91,7 @@ func reconcileUsageLedgerRows(events []usageEventRow, buckets []usageBucketRow, 
 	totalsByBucket := make(map[usageLedgerBucketKey]*usageLedgerTotals, len(events))
 	eventByID := make(map[string]usageEventRow, len(events))
 	outboxByEventID := make(map[string]usageEventOutboxRow, len(outbox))
+	reversedSourceIDs := make(map[string]struct{}, len(events))
 
 	for _, event := range events {
 		key := usageLedgerKey(event.TenantID, event.ModuleCode, usageBucketPeriodKey(event.Metric, event.PeriodKey), event.Metric)
@@ -100,6 +101,9 @@ func reconcileUsageLedgerRows(events []usageEventRow, buckets []usageBucketRow, 
 			totalsByBucket[key] = totals
 		}
 		eventByID[event.EventID] = event
+		if event.ReversalOf != "" {
+			reversedSourceIDs[event.ReversalOf] = struct{}{}
+		}
 		switch UsageEventStatus(event.Status) {
 		case UsageEventCommitted, UsageEventReversed:
 			totals.committed += event.Quantity
@@ -152,7 +156,9 @@ func reconcileUsageLedgerRows(events []usageEventRow, buckets []usageBucketRow, 
 		if item.Status == "failed" {
 			report.Findings = append(report.Findings, usageLedgerEventFinding(UsageLedgerOutboxDeliveryFailed, event, "outbox delivery requires retry; error detail is intentionally omitted"))
 		}
-		if !usageOutboxLifecycleMatches(UsageEventStatus(event.Status), item.Status, event.Metric) {
+		_, hasReversal := reversedSourceIDs[event.EventID]
+		cancelledSource := event.Status == string(UsageEventCommitted) && item.Status == "cancelled" && hasReversal
+		if !cancelledSource && !usageOutboxLifecycleMatches(UsageEventStatus(event.Status), item.Status, event.Metric) {
 			report.Findings = append(report.Findings, usageLedgerEventFinding(UsageLedgerOutboxLifecycleMismatch, event, "event and outbox lifecycle states are inconsistent"))
 		}
 	}
@@ -213,3 +219,4 @@ func usageLedgerBucketFinding(category UsageLedgerReconciliationCategory, bucket
 func usageLedgerEventFinding(category UsageLedgerReconciliationCategory, event usageEventRow, safeReason string) UsageLedgerReconciliationFinding {
 	return UsageLedgerReconciliationFinding{Category: category, TenantID: event.TenantID, ModuleCode: event.ModuleCode, Metric: event.Metric, PeriodKey: event.PeriodKey, EventID: event.EventID, SafeReason: safeReason}
 }
+
