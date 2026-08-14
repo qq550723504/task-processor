@@ -36,7 +36,7 @@ func AutoMigrateImportTaskRepository(db *gorm.DB) error {
 	if err := ensureNullableImportTaskCategoryID(db, table); err != nil {
 		return err
 	}
-	if err := ensureImportTaskActiveUniqueIndex(db, table); err != nil {
+	if _, err := ensureImportTaskActiveUniqueIndex(db, table); err != nil {
 		return err
 	}
 	return db.AutoMigrate(&listingDispatchEvent{})
@@ -73,14 +73,11 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 	if len(rows) == 0 {
 		return []ImportTask{}, nil
 	}
-	if err := ensureImportTaskActiveUniqueIndex(r.db, "listing_product_import_task"); err != nil {
-		return nil, err
-	}
-	duplicates, err := importTaskCanonicalDuplicatesExist(r.db, "listing_product_import_task")
+	indexReady, err := ensureImportTaskActiveUniqueIndex(r.db, "listing_product_import_task")
 	if err != nil {
 		return nil, err
 	}
-	if duplicates {
+	if !indexReady {
 		return nil, ErrImportTaskIntegrityUnavailable
 	}
 	productIDs := make([]string, 0, len(rows))

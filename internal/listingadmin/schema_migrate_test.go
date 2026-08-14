@@ -155,6 +155,36 @@ func TestAutoMigrateImportTaskRepositoryEnforcesCanonicalTargetPlatform(t *testi
 	}
 }
 
+func TestAutoMigrateImportTaskRepositoryRepairsMalformedNamedIndex(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
+		t.Fatalf("migrate import task row: %v", err)
+	}
+	if err := db.Exec(`CREATE INDEX idx_listing_product_import_task_unique
+		ON listing_product_import_task
+		((LOWER(TRIM(COALESCE(NULLIF(TRIM(target_platform), ''), platform)))), tenant_id, product_id, region)
+		WHERE deleted = 0`).Error; err != nil {
+		t.Fatalf("create malformed named index: %v", err)
+	}
+
+	if err := AutoMigrateImportTaskRepository(db); err != nil {
+		t.Fatalf("AutoMigrateImportTaskRepository() error = %v", err)
+	}
+	rows := []importTaskPlatformIntegrityRow{
+		{TenantID: 101, Platform: "amazon", TargetPlatform: "SHEIN", ProductID: "P4", Region: "US", StoreID: 989, Deleted: 0},
+		{TenantID: 101, Platform: "amazon", TargetPlatform: "shein", ProductID: "P4", Region: "US", StoreID: 989, Deleted: 0},
+	}
+	if err := db.Create(&rows[0]).Error; err != nil {
+		t.Fatalf("seed repaired index row: %v", err)
+	}
+	if err := db.Create(&rows[1]).Error; err == nil {
+		t.Fatal("malformed named index was not replaced by the complete unique index")
+	}
+}
+
 func TestAutoMigrateImportTaskRepositoryDefersIndexWhenCanonicalDuplicatesExist(t *testing.T) {
 	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
 	if err != nil {

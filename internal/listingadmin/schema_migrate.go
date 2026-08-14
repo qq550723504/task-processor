@@ -227,33 +227,39 @@ func ensureUniqueIndex(db *gorm.DB, table, indexName string, columns ...string) 
 	return db.Exec(statement).Error
 }
 
-func ensureImportTaskActiveUniqueIndex(db *gorm.DB, table string) error {
+func ensureImportTaskActiveUniqueIndex(db *gorm.DB, table string) (bool, error) {
 	if db == nil {
-		return fmt.Errorf("database is not configured")
+		return false, fmt.Errorf("database is not configured")
 	}
 	const indexName = "idx_listing_product_import_task_unique"
 	for _, column := range []string{"tenant_id", "target_platform", "product_id", "region", "store_id", "deleted"} {
 		if !db.Migrator().HasColumn(table, column) {
-			return nil
+			return false, nil
 		}
+	}
+	if db.Migrator().HasIndex(&listingProductImportTask{}, indexName) && importTaskUniqueIndexIsCanonicalActiveOnly(db, table, indexName) {
+		return true, nil
 	}
 	duplicates, err := importTaskCanonicalDuplicatesExist(db, table)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if duplicates {
-		return nil
+		return false, nil
 	}
 	if !db.Migrator().HasIndex(&listingProductImportTask{}, indexName) {
-		return db.Exec(importTaskActiveUniqueIndexStatement(table, indexName)).Error
-	}
-	if importTaskUniqueIndexIsCanonicalActiveOnly(db, table, indexName) {
-		return nil
+		if err := db.Exec(importTaskActiveUniqueIndexStatement(table, indexName)).Error; err != nil {
+			return false, err
+		}
+		return true, nil
 	}
 	if err := db.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, indexName)).Error; err != nil {
-		return err
+		return false, err
 	}
-	return db.Exec(importTaskActiveUniqueIndexStatement(table, indexName)).Error
+	if err := db.Exec(importTaskActiveUniqueIndexStatement(table, indexName)).Error; err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func importTaskCanonicalTargetPlatformExpression(targetColumn, platformColumn string) string {
@@ -306,11 +312,89 @@ func importTaskUniqueIndexIsCanonicalActiveOnly(db *gorm.DB, table, indexName st
 	default:
 		return false
 	}
-	definition = normalizeImportTaskIndexDefinition(definition)
-	expression := normalizeImportTaskIndexDefinition(importTaskCanonicalTargetPlatformExpression("target_platform", "platform"))
-	return strings.Contains(definition, "wheredeleted=0") &&
-		strings.Contains(definition, expression) &&
-		strings.Contains(definition, "tenant_id")
+	definition = strings.ToLower(strings.Join(strings.Fields(definition), " "))
+	definition = strings.ReplaceAll(definition, `"`, "")
+	if !strings.Contains(definition, "create unique index") {
+		return false
+	}
+	keyColumns, predicate, ok := parseImportTaskIndexDefinition(definition)
+	if !ok || normalizeImportTaskIndexDefinition(predicate) != "wheredeleted=0" {
+		return false
+	}
+	expected := []string{
+		normalizeImportTaskIndexDefinition(importTaskCanonicalTargetPlatformExpression("target_platform", "platform")),
+		"tenant_id",
+		"product_id",
+		"region",
+		"store_id",
+	}
+	if len(keyColumns) != len(expected) {
+		return false
+	}
+	for i, column := range keyColumns {
+		if normalizeImportTaskIndexDefinition(column) != expected[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func parseImportTaskIndexDefinition(definition string) ([]string, string, bool) {
+	onPosition := strings.Index(definition, " on ")
+	if onPosition < 0 {
+		return nil, "", false
+	}
+	openPosition := strings.Index(definition[onPosition+4:], "(")
+	if openPosition < 0 {
+		return nil, "", false
+	}
+	openPosition += onPosition + 4
+	depth := 0
+	closePosition := -1
+	for i := openPosition; i < len(definition); i++ {
+		switch definition[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				closePosition = i
+			}
+		}
+		if closePosition >= 0 {
+			break
+		}
+	}
+	if closePosition < 0 {
+		return nil, "", false
+	}
+	keyColumns := splitImportTaskIndexColumns(definition[openPosition+1 : closePosition])
+	predicate := strings.TrimSpace(definition[closePosition+1:])
+	if !strings.HasPrefix(predicate, "where ") {
+		return nil, "", false
+	}
+	return keyColumns, predicate, true
+}
+
+func splitImportTaskIndexColumns(columns string) []string {
+	result := make([]string, 0, 5)
+	start := 0
+	depth := 0
+	for i := 0; i < len(columns); i++ {
+		switch columns[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+		case ',':
+			if depth == 0 {
+				result = append(result, strings.TrimSpace(columns[start:i]))
+				start = i + 1
+			}
+		}
+	}
+	result = append(result, strings.TrimSpace(columns[start:]))
+	return result
 }
 
 func normalizeImportTaskIndexDefinition(definition string) string {
