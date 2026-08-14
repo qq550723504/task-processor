@@ -182,6 +182,25 @@ func TestProcessListingKitCommitsNeedsReviewResult(t *testing.T) {
 	}
 }
 
+func TestProcessListingKitPersistsUsageCommitPendingOnCommitFailure(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{commitErr: errors.New("ledger unavailable")}
+	svc, repo, _, task := newProcessUsageFixture(t, settlement, nil)
+	settlement.repo = repo
+
+	if _, err := svc.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want commit failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != "usage_commit_pending" {
+		t.Fatalf("stored task = %#v, want usage_commit_pending block", stored)
+	}
+}
+
 func TestProcessListingKitDoesNotDoubleReserveOrRunOnCommittedReplay(t *testing.T) {
 	t.Parallel()
 

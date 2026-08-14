@@ -50,6 +50,12 @@ type Repository interface {
 	SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error
 }
 
+// UsageSettlementRepository is an optional task-repository extension used to
+// clear a settlement-only retryable block without re-running generation.
+type UsageSettlementRepository interface {
+	ResolveUsageSettlement(ctx context.Context, taskID string) error
+}
+
 type TaskListSummarySource interface {
 	ListTaskSummaryTasks(ctx context.Context, query *TaskListQuery) ([]Task, error)
 }

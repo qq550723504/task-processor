@@ -65,7 +65,7 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 			return nil, err
 		}
 		if err := f.service.commitGenerationUsage(ctx, task); err != nil {
-			return nil, err
+			return nil, f.service.markGenerationUsageCommitPending(ctx, task, err)
 		}
 		log.Info("marked listing kit task as needs_review")
 		return result, nil
@@ -77,7 +77,7 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 		return nil, err
 	}
 	if err := f.service.commitGenerationUsage(ctx, task); err != nil {
-		return nil, err
+		return nil, f.service.markGenerationUsageCommitPending(ctx, task, err)
 	}
 	log.Info("marked listing kit task as completed")
 	return result, nil

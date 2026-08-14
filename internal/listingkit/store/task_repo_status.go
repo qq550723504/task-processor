@@ -88,6 +88,24 @@ func (r *taskRepository) MarkBlockedRetryable(ctx context.Context, taskID string
 	})
 }
 
+func (r *taskRepository) ResolveUsageSettlement(ctx context.Context, taskID string) error {
+	task, err := r.GetTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if task.RetryableBlock == nil || task.RetryableBlock.ReasonCode != "usage_commit_pending" {
+		return core.ErrTaskNotRecoverable
+	}
+	if task.Result == nil || (task.Result.Status != string(core.TaskStatusCompleted) && task.Result.Status != string(core.TaskStatusNeedsReview)) {
+		return core.ErrTaskNotRecoverable
+	}
+	return r.updateTaskFields(ctx, taskID, map[string]any{
+		"status":          core.TaskStatus(task.Result.Status),
+		"retryable_block": nil,
+		"error":           "",
+	})
+}
+
 func (r *taskRepository) ListRecoverableTasks(ctx context.Context, query *listingkit.RecoverableTaskQuery) ([]listingkit.Task, error) {
 	var tasks []listingkit.Task
 	db := applyTaskAccessScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx)

@@ -207,6 +207,26 @@ func (r *MemTaskRepository) MarkBlockedRetryable(ctx context.Context, taskID str
 	return nil
 }
 
+func (r *MemTaskRepository) ResolveUsageSettlement(ctx context.Context, taskID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return core.ErrTaskNotFound
+	}
+	if task.RetryableBlock == nil || task.RetryableBlock.ReasonCode != "usage_commit_pending" {
+		return core.ErrTaskNotRecoverable
+	}
+	if task.Result == nil || (task.Result.Status != string(core.TaskStatusCompleted) && task.Result.Status != string(core.TaskStatusNeedsReview)) {
+		return core.ErrTaskNotRecoverable
+	}
+	task.Status = core.TaskStatus(task.Result.Status)
+	task.RetryableBlock = nil
+	task.Error = ""
+	task.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
 func (r *MemTaskRepository) ListRecoverableTasks(ctx context.Context, query *listingkit.RecoverableTaskQuery) ([]listingkit.Task, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()

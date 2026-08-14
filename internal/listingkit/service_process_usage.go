@@ -61,3 +61,21 @@ func generationUsageCommittedReplayResult(task *Task) (*ListingKitResult, error)
 	}
 	return task.Result, nil
 }
+
+func (s *service) markGenerationUsageCommitPending(ctx context.Context, task *Task, commitErr error) error {
+	if task == nil {
+		return commitErr
+	}
+	block := &RetryableBlock{
+		ReasonCode:           "usage_commit_pending",
+		ReasonMessage:        "usage settlement is pending",
+		BlockedAt:            time.Now().UTC(),
+		MaxAutoRetryAttempts: 8,
+		RecoveryScope:        "listingkit_usage_settlement",
+		AutoResumeEnabled:    true,
+	}
+	if persistErr := s.repo.MarkBlockedRetryable(ctx, task.ID, block, block.ReasonMessage); persistErr != nil {
+		return errors.Join(commitErr, persistErr)
+	}
+	return commitErr
+}
