@@ -324,3 +324,4 @@ func importTaskCategoryNullable(t *testing.T, db *gorm.DB) bool {
 func intPtr(value int) *int {
 	return &value
 }
+
