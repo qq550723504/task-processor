@@ -102,7 +102,7 @@ func (config *ServiceConfig) ensureSheinDefaults() {
 
 var _ SDSLoginStatusProvider = (*sdslogin.Service)(nil)
 
-func defaultSheinSettings(storeID int64, policy sheinpub.PricingPolicy) SheinSettings {
+func defaultSheinSettings(policy sheinpub.PricingPolicy) SheinSettings {
 	rule := sheinpub.PricingRule{
 		SourceCurrency:   "CNY",
 		TargetCurrency:   "USD",
@@ -125,7 +125,6 @@ func defaultSheinSettings(storeID int64, policy sheinpub.PricingPolicy) SheinSet
 	}
 	now := time.Now()
 	return SheinSettings{
-		DefaultStoreID:    storeID,
 		Site:              "US",
 		WarehouseCode:     "DEFAULT",
 		DefaultStock:      100,

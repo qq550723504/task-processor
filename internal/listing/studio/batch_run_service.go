@@ -15,13 +15,14 @@ type CreateBatchRunRequest struct {
 }
 
 type BatchRunRecord struct {
-	ID              string
-	UserID          string
-	Mode            string
-	FailurePolicy   string
-	Status          string
-	TotalBatches    int
-	CancelRequested bool
+	ID                string
+	UserID            string
+	TenantAdminAccess bool
+	Mode              string
+	FailurePolicy     string
+	Status            string
+	TotalBatches      int
+	CancelRequested   bool
 }
 
 type BatchRunItemRecord struct {

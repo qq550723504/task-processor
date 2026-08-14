@@ -26,7 +26,12 @@ func applyStoreQuery(db *gorm.DB, query StoreQuery) *gorm.DB {
 	} else {
 		db = db.Where("deleted = 0")
 	}
-	if query.Deleted == nil {
+	if query.ReadAccess {
+		if query.TenantID > 0 {
+			db = db.Where("tenant_id = ?", query.TenantID)
+		}
+		db = applyStoreReadOwnerScope(db, db.Statement.Context)
+	} else if query.Deleted == nil {
 		db = applyOwnedTenantQuery(db, query.TenantID, strings.TrimSpace(query.OwnerUserID))
 	} else {
 		if query.TenantID > 0 {
@@ -49,8 +54,8 @@ func applyStoreQuery(db *gorm.DB, query StoreQuery) *gorm.DB {
 	if query.Region != "" {
 		db = db.Where("region = ?", query.Region)
 	}
-	if query.Platform != "" {
-		db = db.Where("platform = ?", query.Platform)
+	if platform := strings.TrimSpace(query.Platform); platform != "" {
+		db = db.Where("LOWER(TRIM(platform)) = ?", strings.ToLower(platform))
 	}
 	if query.SKUGenerate != "" {
 		db = db.Where("sku_generate_strategy = ?", query.SKUGenerate)

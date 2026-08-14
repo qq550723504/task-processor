@@ -10,7 +10,6 @@ type taskLifecycleServiceConfig struct {
 	repo                        Repository
 	sdsBaselineReadinessService sdsBaselineReadinessService
 	validateSheinStoreAccess    func(context.Context, int64, int64) error
-	requestDefaults             func() generateRequestDefaults
 	taskSubmitter               func() TaskSubmitter
 	standardWorkflow            func() (StandardProductWorkflowClient, bool)
 	processListingKit           func(context.Context, *Task) (*ListingKitResult, error)
@@ -22,7 +21,6 @@ type taskLifecycleService struct {
 	repo                        Repository
 	sdsBaselineReadinessService sdsBaselineReadinessService
 	validateSheinStoreAccess    func(context.Context, int64, int64) error
-	requestDefaults             func() generateRequestDefaults
 	taskSubmitter               func() TaskSubmitter
 	standardWorkflow            func() (StandardProductWorkflowClient, bool)
 	processListingKit           func(context.Context, *Task) (*ListingKitResult, error)
@@ -35,7 +33,6 @@ func newTaskLifecycleService(config taskLifecycleServiceConfig) *taskLifecycleSe
 		repo:                        config.repo,
 		sdsBaselineReadinessService: config.sdsBaselineReadinessService,
 		validateSheinStoreAccess:    config.validateSheinStoreAccess,
-		requestDefaults:             config.requestDefaults,
 		taskSubmitter:               config.taskSubmitter,
 		standardWorkflow:            config.standardWorkflow,
 		processListingKit:           config.processListingKit,

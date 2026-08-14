@@ -12,7 +12,23 @@ func (s *settingsAdminService) GetSheinSettings(ctx context.Context) (*SheinSett
 		return nil, fmt.Errorf("shein settings are not configured")
 	}
 	settings := s.currentSheinSettings()
-	settings.AvailableStores = s.listStoreOptions(ctx)
+	options, err := s.loadStoreOptions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	settings.AvailableStores = options
+	return &settings, nil
+}
+
+// GetSheinSettingsForHealth returns the configuration used by health checks
+// without querying the store catalog. Catalog availability is reported by the
+// store selector/settings endpoint, while health must still expose the
+// independent SHEIN configuration and integration probes.
+func (s *settingsAdminService) GetSheinSettingsForHealth(context.Context) (*SheinSettings, error) {
+	if s == nil || s.currentSheinSettings == nil {
+		return nil, fmt.Errorf("shein settings are not configured")
+	}
+	settings := s.currentSheinSettings()
 	return &settings, nil
 }
 
@@ -24,9 +40,6 @@ func (s *settingsAdminService) UpdateSheinSettings(ctx context.Context, req *She
 		return nil, fmt.Errorf("shein settings are not configured")
 	}
 	settings := s.mutateSheinSettings(func(settings *SheinSettings) {
-		if req.DefaultStoreID > 0 {
-			settings.DefaultStoreID = req.DefaultStoreID
-		}
 		if value := strings.ToUpper(strings.TrimSpace(req.Site)); value != "" {
 			settings.Site = value
 		}
@@ -43,6 +56,10 @@ func (s *settingsAdminService) UpdateSheinSettings(ctx context.Context, req *She
 		now := time.Now()
 		settings.UpdatedAt = &now
 	})
-	settings.AvailableStores = s.listStoreOptions(ctx)
+	options, err := s.loadStoreOptions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	settings.AvailableStores = options
 	return &settings, nil
 }

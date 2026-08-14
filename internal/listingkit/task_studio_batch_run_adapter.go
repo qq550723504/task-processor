@@ -71,6 +71,9 @@ func (a studioBatchRunRepositoryAdapter) CreateBatchRun(ctx context.Context, run
 	if a.repo == nil {
 		return errors.New("studio batch run repository is not configured")
 	}
+	if run != nil {
+		run.TenantAdminAccess = run.TenantAdminAccess || RequestHasTenantAdminAccess(ctx)
+	}
 	return a.repo.CreateStudioBatchRun(ctx, adaptDomainStudioBatchRunRecord(run), adaptDomainStudioBatchRunItems(items))
 }
 
@@ -136,13 +139,14 @@ func adaptStudioBatchRunRecord(run *studiodomain.BatchRunRecord) *StudioBatchRun
 		return nil
 	}
 	return &StudioBatchRunRecord{
-		ID:              run.ID,
-		UserID:          run.UserID,
-		Mode:            StudioBatchRunMode(run.Mode),
-		FailurePolicy:   StudioBatchRunFailurePolicy(run.FailurePolicy),
-		Status:          StudioBatchRunStatus(run.Status),
-		TotalBatches:    run.TotalBatches,
-		CancelRequested: run.CancelRequested,
+		ID:                run.ID,
+		UserID:            run.UserID,
+		TenantAdminAccess: run.TenantAdminAccess,
+		Mode:              StudioBatchRunMode(run.Mode),
+		FailurePolicy:     StudioBatchRunFailurePolicy(run.FailurePolicy),
+		Status:            StudioBatchRunStatus(run.Status),
+		TotalBatches:      run.TotalBatches,
+		CancelRequested:   run.CancelRequested,
 	}
 }
 
@@ -165,13 +169,14 @@ func adaptDomainStudioBatchRunRecord(run *studiodomain.BatchRunRecord) *StudioBa
 		return nil
 	}
 	return &StudioBatchRunRecord{
-		ID:              run.ID,
-		UserID:          run.UserID,
-		Mode:            StudioBatchRunMode(run.Mode),
-		FailurePolicy:   StudioBatchRunFailurePolicy(run.FailurePolicy),
-		Status:          StudioBatchRunStatus(run.Status),
-		TotalBatches:    run.TotalBatches,
-		CancelRequested: run.CancelRequested,
+		ID:                run.ID,
+		UserID:            run.UserID,
+		TenantAdminAccess: run.TenantAdminAccess,
+		Mode:              StudioBatchRunMode(run.Mode),
+		FailurePolicy:     StudioBatchRunFailurePolicy(run.FailurePolicy),
+		Status:            StudioBatchRunStatus(run.Status),
+		TotalBatches:      run.TotalBatches,
+		CancelRequested:   run.CancelRequested,
 	}
 }
 
@@ -194,13 +199,14 @@ func adaptStudioBatchRunRecordToDomain(run *StudioBatchRunRecord) *studiodomain.
 		return nil
 	}
 	return &studiodomain.BatchRunRecord{
-		ID:              run.ID,
-		UserID:          run.UserID,
-		Mode:            string(run.Mode),
-		FailurePolicy:   string(run.FailurePolicy),
-		Status:          string(run.Status),
-		TotalBatches:    run.TotalBatches,
-		CancelRequested: run.CancelRequested,
+		ID:                run.ID,
+		UserID:            run.UserID,
+		TenantAdminAccess: run.TenantAdminAccess,
+		Mode:              string(run.Mode),
+		FailurePolicy:     string(run.FailurePolicy),
+		Status:            string(run.Status),
+		TotalBatches:      run.TotalBatches,
+		CancelRequested:   run.CancelRequested,
 	}
 }
 

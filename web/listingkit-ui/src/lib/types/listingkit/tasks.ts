@@ -264,7 +264,6 @@ export type ListingKitTaskListItem = {
   shein_store_reason?: string;
   shein_store_matched_rule_kinds?: string[];
   shein_store_manual_override?: boolean;
-  shein_store_fallback?: boolean;
   shein_status_overview?: SheinStatusOverview;
   shein_latest_submission_status?: string;
   shein_latest_submission_error?: string;

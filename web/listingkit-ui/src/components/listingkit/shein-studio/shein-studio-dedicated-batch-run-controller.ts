@@ -18,6 +18,7 @@ type DedicatedBatchRunControllerParams = {
   setActiveBatchRunId: (runId: string) => void;
   setBatchRunError: (message: string) => void;
   startBatchRun: DedicatedBatchRunStarter;
+  storeRequiredMessage?: string;
 };
 
 export function useSheinStudioDedicatedBatchRunController({
@@ -29,6 +30,7 @@ export function useSheinStudioDedicatedBatchRunController({
   setActiveBatchRunId,
   setBatchRunError,
   startBatchRun,
+  storeRequiredMessage,
 }: DedicatedBatchRunControllerParams) {
   const [isStartingDedicatedBatchRun, setIsStartingDedicatedBatchRun] =
     useState(false);
@@ -56,6 +58,10 @@ export function useSheinStudioDedicatedBatchRunController({
     if (!initialBatchId) {
       return;
     }
+    if (storeRequiredMessage) {
+      setBatchRunError(storeRequiredMessage);
+      return;
+    }
     setBatchRunError("");
     setIsStartingDedicatedBatchRun(true);
     void startBatchRun([initialBatchId], "generate")
@@ -74,6 +80,7 @@ export function useSheinStudioDedicatedBatchRunController({
     setActiveBatchRunId,
     setBatchRunError,
     startBatchRun,
+    storeRequiredMessage,
   ]);
 
   return {

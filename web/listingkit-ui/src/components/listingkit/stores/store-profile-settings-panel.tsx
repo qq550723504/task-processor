@@ -400,7 +400,7 @@ export function StoreProfileSettingsPanel() {
           {!selectedStoreID
             ? "先选择店铺，再加载该店铺登录后的仓库列表。"
             : !canLoadWarehouses
-              ? "当前店铺还未登录，先在店铺列表完成登录后再选择仓库。"
+              ? "已选择的目标店铺还未登录，先在店铺列表完成登录后再选择仓库。"
               : warehouseOptionsQuery.isFetching
                 ? "正在读取店铺仓库列表..."
                 : warehouseOptionsQuery.error instanceof Error

@@ -5,7 +5,7 @@ import {
   DEFAULT_SHEIN_STUDIO_PRODUCT_IMAGE_COUNT,
   DEFAULT_SHEIN_STUDIO_VARIATION_INTENSITY,
 } from "@/lib/shein-studio/storage-shared";
-import { DEFAULT_SHEIN_STORE_ID } from "@/lib/shein-studio/constants";
+import { UNSELECTED_SHEIN_STORE_ID } from "@/lib/shein-studio/constants";
 import type { SDSRatioMatch } from "@/lib/shein-studio/gallery-handoff";
 import {
   pickActiveSheinStudioGroup,
@@ -178,7 +178,7 @@ export function buildInitialSheinStudioWorkbenchState(): SheinStudioWorkbenchSta
     artworkModel: DEFAULT_SHEIN_STUDIO_ARTWORK_MODEL,
     transparentBackground: false,
     transparentBackgroundMode: "none",
-    sheinStoreId: DEFAULT_SHEIN_STORE_ID,
+    sheinStoreId: UNSELECTED_SHEIN_STORE_ID,
     imageStrategy: DEFAULT_SHEIN_STUDIO_IMAGE_STRATEGY,
     groupedImageMode: DEFAULT_SHEIN_STUDIO_GROUPED_IMAGE_MODE,
     selectedSdsImages: [],

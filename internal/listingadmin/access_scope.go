@@ -63,6 +63,24 @@ func withRequestUserID(ctx context.Context, userID string) context.Context {
 	return context.WithValue(ctx, requestUserIDContextKey{}, userID)
 }
 
+// WithRequestRoles bridges verified application roles into the listing-admin
+// access scope used by repository reads.
+func WithRequestRoles(ctx context.Context, roles []string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	normalized := normalizeRequestRoles(roles)
+	if len(normalized) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, requestRolesContextKey{}, normalized)
+}
+
+// RequestRolesFromContext returns the roles available to listing-admin access checks.
+func RequestRolesFromContext(ctx context.Context) []string {
+	return requestRolesFromContext(ctx)
+}
+
 func requestUserIDFromContext(ctx context.Context) string {
 	if ctx == nil {
 		return ""
@@ -82,7 +100,7 @@ func withRequestIdentity(ctx context.Context, userID string, roles []string) con
 	if len(normalized) == 0 {
 		return ctx
 	}
-	return context.WithValue(ctx, requestRolesContextKey{}, normalized)
+	return WithRequestRoles(ctx, normalized)
 }
 
 func requestRolesFromContext(ctx context.Context) []string {

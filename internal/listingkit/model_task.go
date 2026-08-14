@@ -169,7 +169,6 @@ type SheinTaskListStoreFields struct {
 	SheinStoreReason           string     `json:"shein_store_reason,omitempty"`
 	SheinStoreMatchedRuleKinds []string   `json:"shein_store_matched_rule_kinds,omitempty"`
 	SheinStoreManualOverride   bool       `json:"shein_store_manual_override,omitempty"`
-	SheinStoreFallback         bool       `json:"shein_store_fallback,omitempty"`
 }
 
 type SheinTaskListSubmissionFields struct {
@@ -190,7 +189,13 @@ type SheinStoreResolutionSnapshot struct {
 	MatchedProfileID  int64                `json:"matched_profile_id,omitempty"`
 	ManualOverride    bool                 `json:"manual_override,omitempty"`
 	Fallback          bool                 `json:"fallback,omitempty"`
-	ResolvedAt        time.Time            `json:"resolved_at,omitempty"`
+	// ProfileResolved distinguishes a complete store snapshot from the
+	// access-only marker persisted when profile enrichment was unavailable.
+	ProfileResolved bool `json:"profile_resolved,omitempty"`
+	// TenantAdminAccess records the server-validated tenant-wide store access
+	// needed when this queued task is revalidated outside the original request.
+	TenantAdminAccess bool      `json:"tenant_admin_access,omitempty"`
+	ResolvedAt        time.Time `json:"resolved_at,omitempty"`
 }
 
 type TaskListSummary struct {

@@ -217,7 +217,6 @@ func applyTaskListStoreSnapshot(item *TaskListItem, task *Task) {
 	item.SheinStoreReason = strings.TrimSpace(snapshot.Reason)
 	item.SheinStoreMatchedRuleKinds = append([]string(nil), snapshot.MatchedRuleKinds...)
 	item.SheinStoreManualOverride = snapshot.ManualOverride
-	item.SheinStoreFallback = snapshot.Fallback
 }
 
 func applySheinTaskListFields(item *TaskListItem, task *Task, pkg *SheinPackage) {

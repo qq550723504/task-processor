@@ -210,6 +210,9 @@ func withStudioBatchRunIdentity(ctx context.Context, run *StudioBatchRunRecord) 
 	if strings.TrimSpace(identity.UserID) == "" {
 		identity.UserID = strings.TrimSpace(run.UserID)
 	}
+	if run.TenantAdminAccess {
+		ctx = WithRequestRoles(ctx, append(RequestRolesFromContext(ctx), "listingkit_admin"))
+	}
 	if strings.TrimSpace(identity.TenantID) != "" {
 		ctx = WithTenantID(ctx, identity.TenantID)
 	}

@@ -22,6 +22,7 @@ type stubSettingsNamespaceService struct {
 	gotAIClientNames   []string
 	aiSettingsReq      *listingkit.AIClientSettings
 	sheinSettings      *listingkit.SheinSettings
+	sheinSettingsReq   *listingkit.SheinSettings
 	err                error
 }
 
@@ -32,8 +33,13 @@ func (s *stubSettingsNamespaceService) GetSheinSettings(context.Context) (*listi
 	return s.sheinSettings, nil
 }
 
-func (s *stubSettingsNamespaceService) UpdateSheinSettings(context.Context, *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
-	return nil, errors.New("not implemented")
+func (s *stubSettingsNamespaceService) UpdateSheinSettings(_ context.Context, req *listingkit.SheinSettings) (*listingkit.SheinSettings, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	s.sheinSettingsReq = req
+	s.sheinSettings = req
+	return req, nil
 }
 
 func (s *stubSettingsNamespaceService) GetAIClientSettings(_ context.Context, scope string, clientName string) (*listingkit.AIClientSettings, error) {
@@ -85,7 +91,6 @@ func TestGetSettingsHealthReturnsConfigurationImpact(t *testing.T) {
 			},
 		},
 		sheinSettings: &listingkit.SheinSettings{
-			DefaultStoreID:    9,
 			Site:              "US",
 			DefaultStock:      12,
 			DefaultSubmitMode: "publish",
@@ -132,6 +137,43 @@ func TestGetSettingsHealthReturnsConfigurationImpact(t *testing.T) {
 	}
 	if !hasSDSUnknown {
 		t.Fatalf("payload items = %#v", payload.Items)
+	}
+}
+
+func TestGetSheinSettingsSchemaReturnsCurrentFields(t *testing.T) {
+	t.Parallel()
+
+	h, err := NewHandler(&stubHandlerCoreService{}, WithSettingsHandlerService(&stubSettingsNamespaceService{}))
+	if err != nil {
+		t.Fatalf("NewHandler returned error: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/settings/namespaces/:namespace", h.GetSettingsNamespaceSchema)
+
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, httptest.NewRequest(http.MethodGet, "/settings/namespaces/shein", nil))
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("GET SHEIN settings schema = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+	var payload struct {
+		Fields []struct {
+			Key string `json:"key"`
+		} `json:"fields"`
+	}
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
+	want := []string{"site", "warehouse_code", "default_stock", "default_submit_mode", "pricing"}
+	if len(payload.Fields) != len(want) {
+		t.Fatalf("SHEIN schema fields = %#v, want keys %#v", payload.Fields, want)
+	}
+	for i, field := range payload.Fields {
+		if field.Key != want[i] {
+			t.Fatalf("SHEIN schema field %d = %q, want %q", i, field.Key, want[i])
+		}
 	}
 }
 
@@ -251,5 +293,110 @@ func TestUpdateAISettingsDoesNotRequireStudioSubscription(t *testing.T) {
 	}
 	if svc.aiSettingsReq.ClientName != "default" {
 		t.Fatalf("client name = %q, want default", svc.aiSettingsReq.ClientName)
+	}
+}
+
+func TestUpdateSheinSettingsPersistsCurrentFields(t *testing.T) {
+	t.Parallel()
+
+	svc := &stubSettingsNamespaceService{}
+	h, err := NewHandler(
+		&stubHandlerCoreService{},
+		WithSettingsHandlerService(svc),
+		WithSubscriptionService(activeStudioOnlySubscriptionService(t)),
+	)
+	if err != nil {
+		t.Fatalf("NewHandler returned error: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.PUT("/settings/:namespace", h.UpdateSettingsNamespace)
+
+	req := httptest.NewRequest(http.MethodPut, "/settings/shein", strings.NewReader(`{"site":"GB","warehouse_code":"WH-GB-1","default_stock":30,"default_submit_mode":"save_draft"}`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("PUT /settings/shein = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("json.Unmarshal response: %v", err)
+	}
+	if payload["site"] != "GB" {
+		t.Fatalf("response site = %#v, want GB", payload["site"])
+	}
+	if payload["warehouse_code"] != "WH-GB-1" {
+		t.Fatalf("response warehouse_code = %#v, want WH-GB-1", payload["warehouse_code"])
+	}
+	if payload["default_stock"] != float64(30) {
+		t.Fatalf("response default_stock = %#v, want 30", payload["default_stock"])
+	}
+	if payload["default_submit_mode"] != "save_draft" {
+		t.Fatalf("response default_submit_mode = %#v, want save_draft", payload["default_submit_mode"])
+	}
+	if svc.sheinSettingsReq == nil || svc.sheinSettingsReq.Site != "GB" || svc.sheinSettingsReq.WarehouseCode != "WH-GB-1" || svc.sheinSettingsReq.DefaultStock != 30 || svc.sheinSettingsReq.DefaultSubmitMode != "save_draft" {
+		t.Fatalf("updated SHEIN settings = %+v, want current fields persisted", svc.sheinSettingsReq)
+	}
+}
+
+func TestUpdateSheinSettingsIgnoresLegacyUnknownField(t *testing.T) {
+	t.Parallel()
+
+	svc := &stubSettingsNamespaceService{}
+	h, err := NewHandler(
+		&stubHandlerCoreService{},
+		WithSettingsHandlerService(svc),
+		WithSubscriptionService(activeStudioOnlySubscriptionService(t)),
+	)
+	if err != nil {
+		t.Fatalf("NewHandler returned error: %v", err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.PUT("/settings/:namespace", h.UpdateSettingsNamespace)
+
+	legacyKey := strings.Join([]string{"default", "_store_id"}, "")
+	body, err := json.Marshal(map[string]any{
+		legacyKey: 9,
+		"site":    "DE",
+	})
+	if err != nil {
+		t.Fatalf("json.Marshal request: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPut, "/settings/shein", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+
+	if resp.Code != http.StatusOK {
+		t.Fatalf("PUT /settings/shein with legacy field = %d, want 200; body=%s", resp.Code, resp.Body.String())
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(resp.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("json.Unmarshal response: %v", err)
+	}
+	if _, exists := payload[legacyKey]; exists {
+		t.Fatalf("response = %#v, must not expose legacy field %q", payload, legacyKey)
+	}
+	if payload["site"] != "DE" {
+		t.Fatalf("response site = %#v, want DE", payload["site"])
+	}
+	if svc.sheinSettingsReq == nil || svc.sheinSettingsReq.Site != "DE" {
+		t.Fatalf("updated SHEIN settings = %+v, want Site DE", svc.sheinSettingsReq)
+	}
+	if svc.sheinSettings == nil || svc.sheinSettings.Site != "DE" {
+		t.Fatalf("stored SHEIN settings = %+v, want Site DE", svc.sheinSettings)
+	}
+	storedJSON, err := json.Marshal(svc.sheinSettings)
+	if err != nil {
+		t.Fatalf("json.Marshal stored settings: %v", err)
+	}
+	if bytes.Contains(storedJSON, []byte(`"`+legacyKey+`"`)) {
+		t.Fatalf("stored SHEIN settings retained legacy field %q: %s", legacyKey, storedJSON)
 	}
 }

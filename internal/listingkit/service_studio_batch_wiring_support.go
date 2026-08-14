@@ -316,8 +316,10 @@ func resolveStudioBatchBaselineReadinessChecker(s *service) StudioBatchBaselineR
 }
 
 func resolveStudioBatchStoreValidator(s *service) StudioBatchStoreValidator {
-	if repo := resolveAdminStoreProfileRepo(s); repo != nil {
-		return studioBatchStoreProfileValidator{repo: repo}
+	repo := resolveAdminStoreProfileRepo(s)
+	accessValidator := resolveSheinStoreAccessValidator(s)
+	if repo != nil || accessValidator != nil {
+		return studioBatchStoreProfileValidator{repo: repo, accessValidator: accessValidator}
 	}
 	return nil
 }
