@@ -478,4 +478,3 @@ func redactedMemUsageMetadata(reason string) map[string]string {
 	}
 	return metadata
 }
-
