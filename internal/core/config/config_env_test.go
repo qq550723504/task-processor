@@ -297,6 +297,7 @@ func TestLoadFromBytes_AppliesProductImagePublisherEnvironmentOverrides(t *testi
 }
 
 func TestNewViper_BindsListingKitEnvironmentVariables(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_LISTINGKIT_GENERATION_USAGE_LEDGER_ENABLED", "true")
 	t.Setenv("LISTINGKIT_DEBUG_SUBMIT_DUMP_DIR", "D:/tmp/shein-submit-dumps")
 	t.Setenv("LISTINGKIT_PLATFORM_ADMIN_USERS", "user-a,user-b")
 	t.Setenv("LISTINGKIT_PLATFORM_ADMIN_ROLES", "role-a,role-b")
@@ -313,6 +314,7 @@ func TestNewViper_BindsListingKitEnvironmentVariables(t *testing.T) {
 	v := newViper()
 
 	assert.Equal(t, "D:/tmp/shein-submit-dumps", v.GetString("listingkit.sheinSubmitDebugDumpDir"))
+	assert.True(t, v.GetBool("listingkit.generationUsageLedgerEnabled"))
 	assert.Equal(t, []string{"user-a", "user-b"}, getStringSlice(v, "listingkit.platformAdminUsers"))
 	assert.Equal(t, []string{"role-a", "role-b"}, getStringSlice(v, "listingkit.platformAdminRoles"))
 	assert.Equal(t, "https://issuer.example", v.GetString("listingkit.zitadel.issuerURL"))

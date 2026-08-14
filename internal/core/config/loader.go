@@ -240,7 +240,8 @@ func NewDefaultConfig() *Config {
 			ProductImageSceneAllowedTenantIDs: nil,
 		},
 		ListingKit: ListingKitConfig{
-			Zitadel: ListingKitZitadelConfig{},
+			GenerationUsageLedgerEnabled: false,
+			Zitadel:                      ListingKitZitadelConfig{},
 		},
 		ListingControlPlane: ListingControlPlaneConfig{
 			Enabled:                    false,

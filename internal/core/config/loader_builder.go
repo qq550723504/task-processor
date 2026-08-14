@@ -209,9 +209,10 @@ func BuildConfig(v *viper.Viper) *Config {
 			PausedTaskRecoveryInterval: v.GetDuration("listingControlPlane.pausedTaskRecoveryInterval"),
 		},
 		ListingKit: ListingKitConfig{
-			SheinSubmitDebugDumpDir: v.GetString("listingkit.sheinSubmitDebugDumpDir"),
-			PlatformAdminUsers:      getStringSlice(v, "listingkit.platformAdminUsers"),
-			PlatformAdminRoles:      getStringSlice(v, "listingkit.platformAdminRoles"),
+			SheinSubmitDebugDumpDir:      v.GetString("listingkit.sheinSubmitDebugDumpDir"),
+			GenerationUsageLedgerEnabled: v.GetBool("listingkit.generationUsageLedgerEnabled"),
+			PlatformAdminUsers:           getStringSlice(v, "listingkit.platformAdminUsers"),
+			PlatformAdminRoles:           getStringSlice(v, "listingkit.platformAdminRoles"),
 			Zitadel: ListingKitZitadelConfig{
 				IssuerURL:                         v.GetString("listingkit.zitadel.issuerURL"),
 				ClientID:                          v.GetString("listingkit.zitadel.clientID"),

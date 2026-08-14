@@ -105,11 +105,33 @@ func buildSubscriptionService(input BuildServiceInput, closers *closerStack) (*l
 	if err != nil {
 		return nil, err
 	}
+	if input.Config != nil && input.Config.ListingKit.GenerationUsageLedgerEnabled {
+		ledger, err := buildGenerationUsageLedger(subscriptionRepository)
+		if err != nil {
+			return nil, err
+		}
+		subscriptionService, err := listingsubscription.NewServiceWithLedger(subscriptionRepository, ledger)
+		if err != nil {
+			return nil, fmt.Errorf("create listing subscription service with usage ledger: %w", err)
+		}
+		return subscriptionService, nil
+	}
 	subscriptionService, err := listingsubscription.NewService(subscriptionRepository)
 	if err != nil {
 		return nil, fmt.Errorf("create listing subscription service: %w", err)
 	}
 	return subscriptionService, nil
+}
+
+func buildGenerationUsageLedger(repo listingsubscription.Repository) (listingsubscription.UsageLedger, error) {
+	switch typed := repo.(type) {
+	case *listingsubscription.GormRepository:
+		return listingsubscription.NewGormUsageLedger(typed), nil
+	case *listingsubscription.MemRepository:
+		return listingsubscription.NewMemUsageLedger(typed), nil
+	default:
+		return nil, fmt.Errorf("generation usage ledger requires a supported subscription repository, got %T", repo)
+	}
 }
 
 func buildLateCoreRepositoryDependencies(input BuildServiceInput, closers *closerStack) (*lateCoreRepositoryDependencies, error) {

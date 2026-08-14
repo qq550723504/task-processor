@@ -642,6 +642,9 @@ func knownEnvBindings() map[string]envBinding {
 		"listingkit.sheinSubmitDebugDumpDir": {
 			Primary: "LISTINGKIT_DEBUG_SUBMIT_DUMP_DIR",
 		},
+		"listingkit.generationUsageLedgerEnabled": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_GENERATION_USAGE_LEDGER_ENABLED",
+		},
 		"listingkit.platformAdminUsers": {
 			Primary: "LISTINGKIT_PLATFORM_ADMIN_USERS",
 		},

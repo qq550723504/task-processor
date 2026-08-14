@@ -105,6 +105,14 @@ func TestListingControlPlaneConfigDefaults(t *testing.T) {
 	assert.Equal(t, time.Hour, v.GetDuration("listingControlPlane.pausedTaskRecoveryInterval"))
 }
 
+func TestListingKitGenerationUsageLedgerDefaultsDisabled(t *testing.T) {
+	v := viper.New()
+	setDefaults(v)
+
+	assert.False(t, v.GetBool("listingkit.generationUsageLedgerEnabled"))
+	assert.False(t, NewDefaultConfig().ListingKit.GenerationUsageLedgerEnabled)
+}
+
 func TestConfigBuild(t *testing.T) {
 	v := viper.New()
 	v.Set("browser.enabled", true)
