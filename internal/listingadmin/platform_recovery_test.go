@@ -117,6 +117,33 @@ func TestRecoverStore986PlatformCohortRejectsActiveCaseFoldedDuplicate(t *testin
 	assertPlatformRecoveryTask(t, db, id, "Amazon", "Amazon", "SHEIN", model.TaskStatusPending.Int16())
 }
 
+func TestRecoverStore986PlatformCohortScopesConflictsByTenant(t *testing.T) {
+	t.Parallel()
+
+	repo, db := newPlatformRecoveryRepository(t)
+	selectedID := seedPlatformRecoveryTaskForTenant(t, db, 1, 1, 986, "Amazon", "Amazon", "SHEIN", "P-1", model.TaskStatusPending.Int16())
+	otherTenantID := seedPlatformRecoveryTaskForTenant(t, db, 2, 2, 986, "amazon", "amazon", "shein", "P-1", model.TaskStatusPending.Int16())
+	dryRun, err := repo.RecoverStore986PlatformCohort(context.Background(), PlatformRecoveryRequest{StoreID: 986, ExpectedCount: 1})
+	if err != nil {
+		t.Fatalf("dry run error = %v", err)
+	}
+
+	report, err := repo.RecoverStore986PlatformCohort(context.Background(), PlatformRecoveryRequest{
+		StoreID:            986,
+		ExpectedCount:      1,
+		Execute:            true,
+		ConfirmFingerprint: dryRun.CohortFingerprint,
+	})
+	if err != nil {
+		t.Fatalf("cross-tenant recovery error = %v", err)
+	}
+	if !equalInt64s(report.SelectedIDs, []int64{selectedID}) || !equalInt64s(report.UpdatedIDs, []int64{selectedID}) || len(report.ConflictingIDs) != 0 {
+		t.Fatalf("report = %+v, want only tenant 1 row updated without conflict", report)
+	}
+	assertPlatformRecoveryTask(t, db, selectedID, "amazon", "amazon", "shein", model.TaskStatusPending.Int16())
+	assertPlatformRecoveryTask(t, db, otherTenantID, "amazon", "amazon", "shein", model.TaskStatusPending.Int16())
+}
+
 func TestRecoverStore986PlatformCohortNormalizesOnlyEligiblePendingRows(t *testing.T) {
 	t.Parallel()
 
@@ -153,11 +180,15 @@ func newPlatformRecoveryRepository(t *testing.T) (*GormImportTaskRepository, *go
 }
 
 func seedPlatformRecoveryTask(t *testing.T, db *gorm.DB, id, storeID int64, platform, sourcePlatform, targetPlatform, productID string, status int16) int64 {
+	return seedPlatformRecoveryTaskForTenant(t, db, id, 1, storeID, platform, sourcePlatform, targetPlatform, productID, status)
+}
+
+func seedPlatformRecoveryTaskForTenant(t *testing.T, db *gorm.DB, id, tenantID, storeID int64, platform, sourcePlatform, targetPlatform, productID string, status int16) int64 {
 	t.Helper()
 	now := time.Now()
 	row := listingProductImportTask{
 		ID:             id,
-		TenantID:       1,
+		TenantID:       tenantID,
 		StoreID:        storeID,
 		Platform:       platform,
 		SourcePlatform: sourcePlatform,

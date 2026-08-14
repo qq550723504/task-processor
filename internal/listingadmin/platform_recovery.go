@@ -123,13 +123,20 @@ func findPlatformRecoveryConflicts(tx *gorm.DB, storeID int64, selected []listin
 		return nil, nil
 	}
 	selectedKeys := make(map[platformRecoveryKey]struct{}, len(selected))
+	tenantIDs := make([]int64, 0, len(selected))
+	seenTenantIDs := make(map[int64]struct{}, len(selected))
 	for _, row := range selected {
-		selectedKeys[platformRecoveryKey{ProductID: row.ProductID, Region: row.Region, StoreID: row.StoreID}] = struct{}{}
+		selectedKeys[platformRecoveryKey{TenantID: row.TenantID, ProductID: row.ProductID, Region: row.Region, StoreID: row.StoreID}] = struct{}{}
+		if _, seen := seenTenantIDs[row.TenantID]; !seen {
+			seenTenantIDs[row.TenantID] = struct{}{}
+			tenantIDs = append(tenantIDs, row.TenantID)
+		}
 	}
 
 	var active []listingProductImportTask
 	activeQuery := tx.Table((listingProductImportTask{}).TableName()).
 		Where("store_id = ? AND deleted = ?", storeID, 0).
+		Where("tenant_id IN ?", tenantIDs).
 		Where("LOWER(TRIM(COALESCE(NULLIF(TRIM(target_platform), ''), platform))) = ?", "shein").
 		Order("id ASC")
 	if lock {
@@ -141,7 +148,7 @@ func findPlatformRecoveryConflicts(tx *gorm.DB, storeID int64, selected []listin
 
 	byKey := make(map[platformRecoveryKey][]int64, len(selectedKeys))
 	for _, row := range active {
-		key := platformRecoveryKey{ProductID: row.ProductID, Region: row.Region, StoreID: row.StoreID}
+		key := platformRecoveryKey{TenantID: row.TenantID, ProductID: row.ProductID, Region: row.Region, StoreID: row.StoreID}
 		if _, selected := selectedKeys[key]; selected {
 			byKey[key] = append(byKey[key], row.ID)
 		}
@@ -157,6 +164,7 @@ func findPlatformRecoveryConflicts(tx *gorm.DB, storeID int64, selected []listin
 }
 
 type platformRecoveryKey struct {
+	TenantID  int64
 	ProductID string
 	Region    string
 	StoreID   int64
