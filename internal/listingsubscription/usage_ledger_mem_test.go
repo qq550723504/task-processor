@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestUsageLedgerConcurrentReservationsRespectLimit(t *testing.T) {
@@ -133,6 +134,91 @@ func TestMemUsageLedgerConcurrentReplayCreatesOneReservation(t *testing.T) {
 	}
 	if len(outbox) != 1 || outbox[0].EventID != eventID {
 		t.Fatalf("pending outbox items = %+v, want one item for %q", outbox, eventID)
+	}
+}
+
+func TestMemUsageLedgerRejectsIdempotencyKeyForDifferentUsageFact(t *testing.T) {
+	repo := NewMemRepository()
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 10})
+	ledger := NewMemUsageLedger(repo)
+	input := usageLedgerReserveInput("tenant-17", "request-fact", 1)
+	if _, err := ledger.Reserve(context.Background(), input); err != nil {
+		t.Fatalf("first Reserve() error = %v", err)
+	}
+	input.Quantity = 2
+	if _, err := ledger.Reserve(context.Background(), input); !errors.Is(err, ErrUsageDuplicateIdentity) {
+		t.Fatalf("Reserve() changed fact error = %v, want ErrUsageDuplicateIdentity", err)
+	}
+}
+
+func TestMemUsageLedgerUsesStorageFallbackAndUnlimitedZeroLimit(t *testing.T) {
+	t.Run("storage fallback", func(t *testing.T) {
+		repo := NewMemRepository()
+		seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, nil)
+		if _, err := NewMemUsageLedger(repo).Reserve(context.Background(), usageLedgerStorageInput("tenant-17", "storage-fallback", 1)); err != nil {
+			t.Fatalf("storage fallback Reserve() error = %v", err)
+		}
+	})
+	t.Run("zero limit", func(t *testing.T) {
+		repo := NewMemRepository()
+		seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"studio_design_jobs_succeeded": 0})
+		if _, err := NewMemUsageLedger(repo).Reserve(context.Background(), usageLedgerReserveInput("tenant-17", "unlimited", 1)); err != nil {
+			t.Fatalf("zero-limit Reserve() error = %v, want unlimited semantics", err)
+		}
+	})
+}
+
+func TestMemUsageLedgerStorageSignedTransitionsAndOutboxFiltering(t *testing.T) {
+	repo := NewMemRepository()
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleOSSStorage, map[string]int{"storage_bytes_current": 100})
+	ledger := NewMemUsageLedger(repo)
+	ctx := context.Background()
+	base, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-17", "storage-base", 10))
+	if err != nil {
+		t.Fatalf("base Reserve() error = %v", err)
+	}
+	baseCommitted, err := ledger.Commit(ctx, base.Event.EventID)
+	if err != nil {
+		t.Fatalf("base Commit() error = %v", err)
+	}
+	if baseCommitted.StorageSnapshot == nil || *baseCommitted.StorageSnapshot != 10 {
+		t.Fatalf("base storage snapshot = %v, want 10", baseCommitted.StorageSnapshot)
+	}
+	remove := usageLedgerStorageInput("tenant-17", "storage-delete", -8)
+	remove.PeriodKey = "2026-09"
+	if _, err := ledger.Reserve(ctx, remove); err != nil {
+		t.Fatalf("delete Reserve() error = %v", err)
+	}
+	add := usageLedgerStorageInput("tenant-17", "storage-add", 2)
+	add.PeriodKey = "2026-09"
+	addEvent, err := ledger.Reserve(ctx, add)
+	if err != nil {
+		t.Fatalf("add Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, addEvent.Event.EventID); err != nil {
+		t.Fatalf("add Commit() error = %v", err)
+	}
+	items, err := ledger.ListPendingOutbox(ctx, 20)
+	if err != nil || len(items) != 3 {
+		t.Fatalf("pending outbox after signed reservations = %d, %v; want 3 active events", len(items), err)
+	}
+	deleteEvent, err := ledger.Get(ctx, "tenant-17", "storage-delete")
+	if err != nil {
+		t.Fatalf("Get() delete event: %v", err)
+	}
+	if _, err := ledger.Commit(ctx, deleteEvent.EventID); err != nil {
+		t.Fatalf("delete Commit() error = %v", err)
+	}
+	final, err := ledger.Reserve(ctx, ReserveUsageInput{TenantID: "tenant-17", ModuleCode: ModuleOSSStorage, Metric: usageMetricStorageBytesCurrent, Quantity: -4, PeriodKey: "2026-10", SourceType: "storage_snapshot", SourceID: "bucket-42", IdempotencyKey: "storage-final", OccurredAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatalf("period rollover Reserve() error = %v", err)
+	}
+	finalCommitted, err := ledger.Commit(ctx, final.Event.EventID)
+	if err != nil {
+		t.Fatalf("period rollover Commit() error = %v", err)
+	}
+	if finalCommitted.StorageSnapshot == nil || *finalCommitted.StorageSnapshot != 0 {
+		t.Fatalf("period rollover snapshot = %v, want 0", finalCommitted.StorageSnapshot)
 	}
 }
 

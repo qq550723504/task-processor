@@ -64,6 +64,24 @@ func TestGormUsageLedgerReserveIsIdempotent(t *testing.T) {
 	assertUsageLedgerCounts(t, db, first.Event.EventID, 1, 0, 1, 1)
 }
 
+func TestGormUsageLedgerRejectsIdempotencyKeyForDifferentUsageFact(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 10})
+	ledger := NewGormUsageLedger(repo)
+	input := usageLedgerReserveInput("tenant-17", "request-fact", 1)
+	if _, err := ledger.Reserve(ctx, input); err != nil {
+		t.Fatalf("first Reserve() error = %v", err)
+	}
+	changed := input
+	changed.Quantity = 2
+	changed.SourceID = "different-job"
+	if _, err := ledger.Reserve(ctx, changed); !errors.Is(err, ErrUsageDuplicateIdentity) {
+		t.Fatalf("Reserve() changed fact error = %v, want ErrUsageDuplicateIdentity", err)
+	}
+}
+
 func TestGormUsageLedgerCommitAndReleaseAreIdempotent(t *testing.T) {
 	ctx := context.Background()
 	t.Run("commit", func(t *testing.T) {
@@ -165,6 +183,80 @@ func TestUsageLedgerQuotaReservationAndStorageDeltas(t *testing.T) {
 			t.Fatalf("storage quota error = %+v, want metric/limit/committed/reserved/quantity", quotaErr)
 		}
 	})
+
+	t.Run("storage signed reservations and period rollover", func(t *testing.T) {
+		db := openUsageLedgerTestDB(t)
+		repo := NewGormRepository(db)
+		seedUsageLedgerEntitlement(t, repo, "tenant-17", "oss_storage", map[string]int{"storage_bytes_current": 100})
+		ledger := NewGormUsageLedger(repo)
+
+		add, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-17", "storage-add-base", 10))
+		if err != nil {
+			t.Fatalf("base storage Reserve() error = %v", err)
+		}
+		if _, err := ledger.Commit(ctx, add.Event.EventID); err != nil {
+			t.Fatalf("base storage Commit() error = %v", err)
+		}
+		remove := usageLedgerStorageInput("tenant-17", "storage-remove-old", -8)
+		remove.PeriodKey = "2026-09"
+		if _, err := ledger.Reserve(ctx, remove); err != nil {
+			t.Fatalf("old-period delete Reserve() error = %v", err)
+		}
+		addDuringDelete := usageLedgerStorageInput("tenant-17", "storage-add-during-delete", 2)
+		addDuringDelete.PeriodKey = "2026-09"
+		addEvent, err := ledger.Reserve(ctx, addDuringDelete)
+		if err != nil {
+			t.Fatalf("overlapping upload Reserve() error = %v", err)
+		}
+		committedUpload, err := ledger.Commit(ctx, addEvent.Event.EventID)
+		if err != nil {
+			t.Fatalf("overlapping upload Commit() error = %v", err)
+		}
+		if committedUpload.StorageSnapshot == nil || *committedUpload.StorageSnapshot != 4 {
+			t.Fatalf("storage upload snapshot = %v, want 4", committedUpload.StorageSnapshot)
+		}
+		if _, err := ledger.Commit(ctx, mustUsageEventID(t, db, "storage-remove-old")); err != nil {
+			t.Fatalf("old-period delete Commit() error = %v", err)
+		}
+		var buckets []usageBucketRow
+		if err := db.Where("tenant_id = ? AND module_code = ? AND metric = ?", "tenant-17", ModuleOSSStorage, usageMetricStorageBytesCurrent).Find(&buckets).Error; err != nil {
+			t.Fatalf("load storage buckets: %v", err)
+		}
+		if len(buckets) != 1 || buckets[0].PeriodKey != usageStorageBucketPeriodKey || buckets[0].Committed != 4 || buckets[0].Reserved != 0 {
+			t.Fatalf("storage buckets = %+v, want one current bucket committed=4 reserved=0", buckets)
+		}
+		newPeriodDelete := usageLedgerStorageInput("tenant-17", "storage-remove-new-period", -4)
+		newPeriodDelete.PeriodKey = "2026-10"
+		newEvent, err := ledger.Reserve(ctx, newPeriodDelete)
+		if err != nil {
+			t.Fatalf("new-period delete Reserve() error = %v", err)
+		}
+		finalEvent, err := ledger.Commit(ctx, newEvent.Event.EventID)
+		if err != nil {
+			t.Fatalf("new-period delete Commit() error = %v", err)
+		}
+		if finalEvent.StorageSnapshot == nil || *finalEvent.StorageSnapshot != 0 {
+			t.Fatalf("final storage snapshot = %v, want 0", finalEvent.StorageSnapshot)
+		}
+	})
+
+	t.Run("zero limit is unlimited", func(t *testing.T) {
+		db := openUsageLedgerTestDB(t)
+		repo := NewGormRepository(db)
+		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 0})
+		if _, err := NewGormUsageLedger(repo).Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-unlimited", 1)); err != nil {
+			t.Fatalf("zero-limit Reserve() error = %v, want unlimited semantics", err)
+		}
+	})
+}
+
+func TestGormUsageLedgerUsesStudioFallbackForStorage(t *testing.T) {
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, nil)
+	if _, err := NewGormUsageLedger(repo).Reserve(context.Background(), usageLedgerStorageInput("tenant-17", "storage-studio-fallback", 1)); err != nil {
+		t.Fatalf("storage fallback Reserve() error = %v, want studio entitlement fallback", err)
+	}
 }
 
 func TestGormUsageLedgerConcurrentQuotaReservations(t *testing.T) {
@@ -272,6 +364,53 @@ func TestGormUsageLedgerListsPendingOutbox(t *testing.T) {
 	if len(items) != 1 || items[0].EventID != reservation.Event.EventID || items[0].Destination != "openmeter" || items[0].Status != "pending" {
 		t.Fatalf("ListPendingOutbox() = %+v, want pending OpenMeter item for reservation", items)
 	}
+}
+
+func TestGormUsageLedgerPendingOutboxExcludesReleasedAndReversalRows(t *testing.T) {
+	ctx := context.Background()
+	t.Run("released", func(t *testing.T) {
+		db := openUsageLedgerTestDB(t)
+		repo := NewGormRepository(db)
+		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+		ledger := NewGormUsageLedger(repo)
+		reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-release-queue", 1))
+		if err != nil {
+			t.Fatalf("Reserve() error = %v", err)
+		}
+		if _, err := ledger.Release(ctx, reservation.Event.EventID, "cancelled"); err != nil {
+			t.Fatalf("Release() error = %v", err)
+		}
+		items, err := ledger.ListPendingOutbox(ctx, 10)
+		if err != nil {
+			t.Fatalf("ListPendingOutbox() error = %v", err)
+		}
+		if len(items) != 0 {
+			t.Fatalf("released pending outbox = %+v, want empty", items)
+		}
+	})
+	t.Run("reversal", func(t *testing.T) {
+		db := openUsageLedgerTestDB(t)
+		repo := NewGormRepository(db)
+		seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+		ledger := NewGormUsageLedger(repo)
+		reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-reversal-queue", 1))
+		if err != nil {
+			t.Fatalf("Reserve() error = %v", err)
+		}
+		if _, err := ledger.Commit(ctx, reservation.Event.EventID); err != nil {
+			t.Fatalf("Commit() error = %v", err)
+		}
+		if _, err := ledger.Reverse(ctx, reservation.Event.EventID, "request-reversal-queue-reversal", "duplicate"); err != nil {
+			t.Fatalf("Reverse() error = %v", err)
+		}
+		items, err := ledger.ListPendingOutbox(ctx, 10)
+		if err != nil {
+			t.Fatalf("ListPendingOutbox() error = %v", err)
+		}
+		if len(items) != 1 || items[0].EventID != reservation.Event.EventID {
+			t.Fatalf("reversal pending outbox = %+v, want only committed source", items)
+		}
+	})
 }
 
 func TestGormUsageLedgerReverseCreatesImmutableReversal(t *testing.T) {
@@ -382,6 +521,15 @@ func usageLedgerReserveInput(tenantID, idempotencyKey string, quantity int64) Re
 
 func usageLedgerStorageInput(tenantID, idempotencyKey string, quantity int64) ReserveUsageInput {
 	return ReserveUsageInput{TenantID: tenantID, ModuleCode: "oss_storage", Metric: usageMetricStorageBytesCurrent, Quantity: quantity, PeriodKey: "2026-08", SourceType: "storage_snapshot", SourceID: "bucket-42", IdempotencyKey: idempotencyKey, OccurredAt: time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC)}
+}
+
+func mustUsageEventID(t *testing.T, db *gorm.DB, idempotencyKey string) string {
+	t.Helper()
+	var row usageEventRow
+	if err := db.Where("idempotency_key = ?", idempotencyKey).Take(&row).Error; err != nil {
+		t.Fatalf("load usage event %q: %v", idempotencyKey, err)
+	}
+	return row.EventID
 }
 
 func seedUsageLedgerEntitlement(t *testing.T, repo *GormRepository, tenantID, moduleCode string, limits map[string]int) {

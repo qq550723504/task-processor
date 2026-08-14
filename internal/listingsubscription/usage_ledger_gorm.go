@@ -38,13 +38,16 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 			var existing usageEventRow
 			err := tx.Where("tenant_id = ? AND idempotency_key = ?", input.TenantID, input.IdempotencyKey).Take(&existing).Error
 			if err == nil {
+				if !usageEventMatchesReserveInput(usageEventFromRow(existing), input) {
+					return &UsageDuplicateIdentityError{TenantID: input.TenantID, IdempotencyKey: input.IdempotencyKey}
+				}
 				return l.reserveResultForExisting(tx, existing, &result)
 			}
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
 
-			entitlement, err := loadUsageEntitlement(tx, input.TenantID, input.ModuleCode)
+			entitlement, err := loadEffectiveUsageEntitlement(tx, input.TenantID, input.ModuleCode)
 			if err != nil {
 				return err
 			}
@@ -86,14 +89,19 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 				return err
 			}
 			if err := tx.Model(&usageBucketRow{}).
-				Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", input.TenantID, input.ModuleCode, input.PeriodKey, input.Metric).
+				Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", input.TenantID, input.ModuleCode, usageBucketPeriodKey(input.Metric, input.PeriodKey), input.Metric).
 				Updates(map[string]any{"reserved": updatedReserved, "updated_at": time.Now().UTC()}).Error; err != nil {
 				return err
 			}
 			if err := tx.Create(&usageEventOutboxRow{EventID: event.EventID}).Error; err != nil {
 				return err
 			}
-			result = ReserveUsageResult{Event: usageEventFromRow(event), Limit: limit, CommittedUsage: bucket.Committed, ReservedUsage: updatedReserved}
+			e := usageEventFromRow(event)
+			if input.Metric == usageMetricStorageBytesCurrent {
+				snapshot := bucket.Committed + updatedReserved
+				e.StorageSnapshot = &snapshot
+			}
+			result = ReserveUsageResult{Event: e, Limit: limit, CommittedUsage: bucket.Committed, ReservedUsage: updatedReserved}
 			return nil
 		})
 		if err == nil || !isRetryableUsageLedgerError(err) || attempt == 19 {
@@ -115,6 +123,9 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 	var existing usageEventRow
 	if lookupErr := l.repo.db.WithContext(ctx).Where("tenant_id = ? AND idempotency_key = ?", input.TenantID, input.IdempotencyKey).Take(&existing).Error; lookupErr == nil {
 		if resultErr := l.repo.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if !usageEventMatchesReserveInput(usageEventFromRow(existing), input) {
+				return &UsageDuplicateIdentityError{TenantID: input.TenantID, IdempotencyKey: input.IdempotencyKey}
+			}
 			return l.reserveResultForExisting(tx, existing, &result)
 		}); resultErr == nil {
 			return result, nil
@@ -181,7 +192,7 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 			return err
 		}
 		committed, ok := addUsage(bucket.Committed, quantity)
-		if !ok || committed < 0 {
+		if !ok || validateUsageBucketTotals(source.Metric, committed, bucket.Reserved) != nil {
 			return &UsageValidationError{Field: "usage"}
 		}
 		metadata, err := redactedUsageMetadata(reason)
@@ -197,14 +208,18 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 		if err := tx.Create(&reversal).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&usageBucketRow{}).Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", source.TenantID, source.ModuleCode, source.PeriodKey, source.Metric).
+		if err := tx.Model(&usageBucketRow{}).Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", source.TenantID, source.ModuleCode, usageBucketPeriodKey(source.Metric, source.PeriodKey), source.Metric).
 			Updates(map[string]any{"committed": committed, "updated_at": time.Now().UTC()}).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&usageEventOutboxRow{EventID: reversal.EventID}).Error; err != nil {
+		if err := tx.Create(&usageEventOutboxRow{EventID: reversal.EventID, Status: "cancelled"}).Error; err != nil {
 			return err
 		}
 		event = usageEventFromRow(reversal)
+		if source.Metric == usageMetricStorageBytesCurrent {
+			snapshot := committed + bucket.Reserved
+			event.StorageSnapshot = &snapshot
+		}
 		return nil
 	})
 	return event, err
@@ -217,6 +232,12 @@ func (l *gormUsageLedger) Get(ctx context.Context, tenantID, idempotencyKey stri
 		return nil, err
 	}
 	event := usageEventFromRow(row)
+	if row.Metric == usageMetricStorageBytesCurrent {
+		if bucket, bucketErr := loadUsageBucket(l.repo.db.WithContext(ctx), row.TenantID, row.ModuleCode, row.PeriodKey, row.Metric); bucketErr == nil {
+			snapshot := bucket.Committed + bucket.Reserved
+			event.StorageSnapshot = &snapshot
+		}
+	}
 	return &event, nil
 }
 
@@ -254,7 +275,7 @@ func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID s
 			return err
 		}
 		reserved, ok := addUsage(bucket.Reserved, -row.Quantity)
-		if !ok || reserved < 0 {
+		if !ok {
 			return &UsageValidationError{Field: "usage"}
 		}
 		updates := map[string]any{"reserved": reserved, "updated_at": time.Now().UTC()}
@@ -265,7 +286,14 @@ func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID s
 			}
 			updates["committed"] = committed
 		}
-		if err := tx.Model(&usageBucketRow{}).Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", row.TenantID, row.ModuleCode, row.PeriodKey, row.Metric).Updates(updates).Error; err != nil {
+		committed := bucket.Committed
+		if value, ok := updates["committed"].(int64); ok {
+			committed = value
+		}
+		if err := validateUsageBucketTotals(row.Metric, committed, reserved); err != nil {
+			return err
+		}
+		if err := tx.Model(&usageBucketRow{}).Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", row.TenantID, row.ModuleCode, usageBucketPeriodKey(row.Metric, row.PeriodKey), row.Metric).Updates(updates).Error; err != nil {
 			return err
 		}
 		row.Status = string(target)
@@ -281,8 +309,15 @@ func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID s
 			if err := tx.Create(&auditLogRow{TenantID: row.TenantID, ModuleCode: row.ModuleCode, Action: "usage_released", Payload: payload}).Error; err != nil {
 				return err
 			}
+			if err := tx.Model(&usageEventOutboxRow{}).Where("event_id = ? AND status = ?", row.EventID, "pending").Update("status", "cancelled").Error; err != nil {
+				return err
+			}
 		}
 		event = usageEventFromRow(row)
+		if row.Metric == usageMetricStorageBytesCurrent {
+			snapshot := committed + reserved
+			event.StorageSnapshot = &snapshot
+		}
 		return nil
 	})
 	return event, err
@@ -293,7 +328,7 @@ func (l *gormUsageLedger) reserveResultForExisting(tx *gorm.DB, event usageEvent
 	if err != nil {
 		return err
 	}
-	entitlement, err := loadUsageEntitlement(tx, event.TenantID, event.ModuleCode)
+	entitlement, err := loadEffectiveUsageEntitlement(tx, event.TenantID, event.ModuleCode)
 	if err != nil {
 		return err
 	}
@@ -301,7 +336,12 @@ func (l *gormUsageLedger) reserveResultForExisting(tx *gorm.DB, event usageEvent
 	if err != nil {
 		return err
 	}
-	*result = ReserveUsageResult{Event: usageEventFromRow(event), Existing: true, CommittedUsage: bucket.Committed, ReservedUsage: bucket.Reserved, Limit: limit}
+	e := usageEventFromRow(event)
+	if event.Metric == usageMetricStorageBytesCurrent {
+		snapshot := bucket.Committed + bucket.Reserved
+		e.StorageSnapshot = &snapshot
+	}
+	*result = ReserveUsageResult{Event: e, Existing: true, CommittedUsage: bucket.Committed, ReservedUsage: bucket.Reserved, Limit: limit}
 	return nil
 }
 
@@ -314,6 +354,20 @@ func loadUsageEntitlement(tx *gorm.DB, tenantID, moduleCode string) (tenantEntit
 	return entitlement, err
 }
 
+func loadEffectiveUsageEntitlement(tx *gorm.DB, tenantID, moduleCode string) (tenantEntitlementRow, error) {
+	entitlement, err := loadUsageEntitlement(tx, tenantID, moduleCode)
+	if err == nil || moduleCode != ModuleOSSStorage || !errors.Is(err, ErrEntitlementNotFound) {
+		return entitlement, err
+	}
+	studio, err := loadUsageEntitlement(tx, tenantID, ModuleStudio)
+	if err != nil {
+		return tenantEntitlementRow{}, err
+	}
+	studio.ModuleCode = ModuleOSSStorage
+	studio.LimitsJSON = "{}"
+	return studio, nil
+}
+
 func loadOrCreateUsageBucket(tx *gorm.DB, input ReserveUsageInput) (usageBucketRow, error) {
 	bucket, err := loadUsageBucket(tx, input.TenantID, input.ModuleCode, input.PeriodKey, input.Metric)
 	if err == nil {
@@ -322,7 +376,7 @@ func loadOrCreateUsageBucket(tx *gorm.DB, input ReserveUsageInput) (usageBucketR
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return usageBucketRow{}, err
 	}
-	bucket = usageBucketRow{TenantID: input.TenantID, ModuleCode: input.ModuleCode, PeriodKey: input.PeriodKey, Metric: input.Metric}
+	bucket = usageBucketRow{TenantID: input.TenantID, ModuleCode: input.ModuleCode, PeriodKey: usageBucketPeriodKey(input.Metric, input.PeriodKey), Metric: input.Metric}
 	if err := tx.Create(&bucket).Error; err != nil {
 		return usageBucketRow{}, err
 	}
@@ -331,7 +385,7 @@ func loadOrCreateUsageBucket(tx *gorm.DB, input ReserveUsageInput) (usageBucketR
 
 func loadUsageBucket(tx *gorm.DB, tenantID, moduleCode, periodKey, metric string) (usageBucketRow, error) {
 	var bucket usageBucketRow
-	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", tenantID, moduleCode, periodKey, metric).Take(&bucket).Error
+	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", tenantID, moduleCode, usageBucketPeriodKey(metric, periodKey), metric).Take(&bucket).Error
 	return bucket, err
 }
 
@@ -366,7 +420,7 @@ func validateUsageReservation(input ReserveUsageInput, bucket usageBucketRow, li
 	if !ok {
 		return &UsageValidationError{Field: "quantity"}
 	}
-	if limit != nil && input.Quantity > 0 && projected > *limit {
+	if limit != nil && *limit > 0 && input.Quantity > 0 && projected > *limit {
 		return &UsageQuotaError{TenantID: input.TenantID, ModuleCode: input.ModuleCode, Metric: input.Metric, Limit: limit, CommittedUsage: bucket.Committed, ReservedUsage: bucket.Reserved, Quantity: input.Quantity}
 	}
 	return nil
@@ -377,7 +431,7 @@ func usageEventFromRow(row usageEventRow) UsageEvent {
 	if row.Metadata != "" {
 		_ = json.Unmarshal([]byte(row.Metadata), &metadata)
 	}
-	return UsageEvent{EventID: row.EventID, TenantID: row.TenantID, ModuleCode: row.ModuleCode, Metric: row.Metric, Quantity: row.Quantity, SourceType: row.SourceType, SourceID: row.SourceID, IdempotencyKey: row.IdempotencyKey, Status: UsageEventStatus(row.Status), OccurredAt: row.OccurredAt, ReversalOf: row.ReversalOf, Metadata: metadata, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
+	return UsageEvent{EventID: row.EventID, TenantID: row.TenantID, ModuleCode: row.ModuleCode, Metric: row.Metric, Quantity: row.Quantity, PeriodKey: row.PeriodKey, SourceType: row.SourceType, SourceID: row.SourceID, IdempotencyKey: row.IdempotencyKey, Status: UsageEventStatus(row.Status), OccurredAt: row.OccurredAt, ReversalOf: row.ReversalOf, Metadata: metadata, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt}
 }
 
 func redactedUsageMetadata(reason string) (string, error) {

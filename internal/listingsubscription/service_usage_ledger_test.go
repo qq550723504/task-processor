@@ -215,6 +215,28 @@ func TestBuildOpenMeterUsageOutboxPayloadContainsOnlyAdapterSafeFields(t *testin
 	}
 }
 
+func TestBuildOpenMeterUsageOutboxPayloadUsesStorageSnapshot(t *testing.T) {
+	snapshot := int64(6)
+	event := UsageEvent{
+		EventID: "storage-event-42", TenantID: "tenant-17", ModuleCode: ModuleOSSStorage,
+		Metric: usageMetricStorageBytesCurrent, Quantity: -4, StorageSnapshot: &snapshot,
+		SourceType: "storage_snapshot", SourceID: "bucket-42", Status: UsageEventCommitted,
+		OccurredAt: time.Date(2026, 8, 14, 2, 0, 0, 0, time.UTC),
+	}
+	payload, err := BuildOpenMeterUsageOutboxPayload(event)
+	if err != nil {
+		t.Fatalf("BuildOpenMeterUsageOutboxPayload() error = %v", err)
+	}
+	if payload.Quantity != 6 {
+		t.Fatalf("storage payload quantity = %d, want post-commit snapshot 6", payload.Quantity)
+	}
+	withoutSnapshot := event
+	withoutSnapshot.StorageSnapshot = nil
+	if _, err := BuildOpenMeterUsageOutboxPayload(withoutSnapshot); !errors.Is(err, ErrUsageOutboxStorageSnapshotRequired) {
+		t.Fatalf("storage payload without snapshot error = %v, want ErrUsageOutboxStorageSnapshotRequired", err)
+	}
+}
+
 func seedServiceUsageLedgerEntitlement(t *testing.T, svc *Service) {
 	t.Helper()
 	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-17", ModuleStudio, EntitlementInput{

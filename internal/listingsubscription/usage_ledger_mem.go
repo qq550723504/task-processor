@@ -2,6 +2,7 @@ package listingsubscription
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -63,10 +64,14 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 
 	identity := usageEventIdentityKey(input.TenantID, input.IdempotencyKey)
 	if existingID, ok := l.eventIDByIdentity[identity]; ok {
+		existing := l.eventsByID[existingID].event
+		if !usageEventMatchesReserveInput(existing, input) {
+			return ReserveUsageResult{}, &UsageDuplicateIdentityError{TenantID: input.TenantID, IdempotencyKey: input.IdempotencyKey}
+		}
 		return l.reserveResultForExisting(existingID)
 	}
 
-	entitlement, err := l.repo.GetEntitlement(ctx, input.TenantID, input.ModuleCode)
+	entitlement, err := resolveMemUsageEntitlement(l.repo, input.TenantID, input.ModuleCode)
 	if err != nil {
 		return ReserveUsageResult{}, err
 	}
@@ -90,9 +95,13 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 	now := time.Now().UTC()
 	event := UsageEvent{
 		EventID: uuid.NewString(), TenantID: input.TenantID, ModuleCode: input.ModuleCode,
-		Metric: input.Metric, Quantity: input.Quantity, SourceType: input.SourceType,
+		Metric: input.Metric, Quantity: input.Quantity, PeriodKey: input.PeriodKey, SourceType: input.SourceType,
 		SourceID: input.SourceID, IdempotencyKey: input.IdempotencyKey, Status: UsageEventReserved,
 		OccurredAt: input.OccurredAt, Metadata: cloneUsageMetadata(input.Metadata), CreatedAt: now, UpdatedAt: now,
+	}
+	if input.Metric == usageMetricStorageBytesCurrent {
+		snapshot := bucket.committed + bucket.reserved
+		event.StorageSnapshot = &snapshot
 	}
 	l.eventsByID[event.EventID] = memUsageEvent{event: event, periodKey: input.PeriodKey}
 	l.eventIDByIdentity[identity] = event.EventID
@@ -148,7 +157,7 @@ func (l *memUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, r
 		return UsageEvent{}, &UsageValidationError{Field: "usage"}
 	}
 	committed, ok := addUsage(bucket.committed, quantity)
-	if !ok || committed < 0 {
+	if !ok || validateUsageBucketTotals(source.event.Metric, committed, bucket.reserved) != nil {
 		return UsageEvent{}, &UsageValidationError{Field: "usage"}
 	}
 	bucket.committed = committed
@@ -157,14 +166,18 @@ func (l *memUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, r
 	now := time.Now().UTC()
 	reversal := UsageEvent{
 		EventID: uuid.NewString(), TenantID: source.event.TenantID, ModuleCode: source.event.ModuleCode,
-		Metric: source.event.Metric, Quantity: quantity, SourceType: source.event.SourceType,
+		Metric: source.event.Metric, Quantity: quantity, PeriodKey: source.event.PeriodKey, SourceType: source.event.SourceType,
 		SourceID: source.event.SourceID, IdempotencyKey: idempotencyKey, Status: UsageEventReversed,
 		OccurredAt: now, ReversalOf: source.event.EventID, Metadata: redactedMemUsageMetadata(reason), CreatedAt: now, UpdatedAt: now,
 	}
 	l.eventsByID[reversal.EventID] = memUsageEvent{event: reversal, periodKey: source.periodKey}
 	l.eventIDByIdentity[identity] = reversal.EventID
 	l.reversalIDBySource[source.event.EventID] = reversal.EventID
-	l.addPendingOutbox(reversal.EventID, now)
+	l.addPendingOutboxWithStatus(reversal.EventID, now, "cancelled")
+	if source.event.Metric == usageMetricStorageBytesCurrent {
+		snapshot := bucket.committed + bucket.reserved
+		reversal.StorageSnapshot = &snapshot
+	}
 	return cloneMemUsageEvent(reversal), nil
 }
 
@@ -223,7 +236,7 @@ func (l *memUsageLedger) transitionReservedEvent(ctx context.Context, eventID st
 		return UsageEvent{}, &UsageValidationError{Field: "usage"}
 	}
 	reserved, ok := addUsage(bucket.reserved, -record.event.Quantity)
-	if !ok || reserved < 0 {
+	if !ok {
 		return UsageEvent{}, &UsageValidationError{Field: "usage"}
 	}
 	bucket.reserved = reserved
@@ -234,15 +247,26 @@ func (l *memUsageLedger) transitionReservedEvent(ctx context.Context, eventID st
 		}
 		bucket.committed = committed
 	}
+	if err := validateUsageBucketTotals(record.event.Metric, bucket.committed, bucket.reserved); err != nil {
+		return UsageEvent{}, err
+	}
 	l.buckets[bucketKey] = bucket
 
 	record.event.Status = target
 	record.event.UpdatedAt = time.Now().UTC()
-	l.eventsByID[eventID] = record
 	if target == UsageEventReleased {
 		payload := redactedMemUsageMetadata(reason)
 		_, _ = l.repo.CreateAuditLog(ctx, AuditLog{TenantID: record.event.TenantID, ModuleCode: record.event.ModuleCode, Action: "usage_released", Payload: fmt.Sprintf(`{"reason":%q}`, payload["reason"])})
+		if item, ok := l.outboxByEventID[eventID]; ok {
+			item.Status = "cancelled"
+			l.outboxByEventID[eventID] = item
+		}
 	}
+	if record.event.Metric == usageMetricStorageBytesCurrent {
+		snapshot := bucket.committed + bucket.reserved
+		record.event.StorageSnapshot = &snapshot
+	}
+	l.eventsByID[eventID] = record
 	return cloneMemUsageEvent(record.event), nil
 }
 
@@ -252,15 +276,24 @@ func (l *memUsageLedger) reserveResultForExisting(eventID string) (ReserveUsageR
 		return ReserveUsageResult{}, usageEventNotFound(eventID)
 	}
 	bucket := l.buckets[memUsageBucketKey(record.event.TenantID, record.event.ModuleCode, record.periodKey, record.event.Metric)]
-	entitlement, err := l.repo.GetEntitlement(context.Background(), record.event.TenantID, record.event.ModuleCode)
+	entitlement, err := resolveMemUsageEntitlement(l.repo, record.event.TenantID, record.event.ModuleCode)
 	if err != nil {
 		return ReserveUsageResult{}, err
 	}
-	return ReserveUsageResult{Event: cloneMemUsageEvent(record.event), Existing: true, CommittedUsage: bucket.committed, ReservedUsage: bucket.reserved, Limit: memUsageLimit(entitlement, record.event.Metric)}, nil
+	event := cloneMemUsageEvent(record.event)
+	if record.event.Metric == usageMetricStorageBytesCurrent {
+		snapshot := bucket.committed + bucket.reserved
+		event.StorageSnapshot = &snapshot
+	}
+	return ReserveUsageResult{Event: event, Existing: true, CommittedUsage: bucket.committed, ReservedUsage: bucket.reserved, Limit: memUsageLimit(entitlement, record.event.Metric)}, nil
 }
 
 func (l *memUsageLedger) addPendingOutbox(eventID string, now time.Time) {
-	l.outboxByEventID[eventID] = UsageOutboxItem{ID: l.nextOutboxID, EventID: eventID, Destination: "openmeter", Status: "pending", CreatedAt: now, UpdatedAt: now}
+	l.addPendingOutboxWithStatus(eventID, now, "pending")
+}
+
+func (l *memUsageLedger) addPendingOutboxWithStatus(eventID string, now time.Time, status string) {
+	l.outboxByEventID[eventID] = UsageOutboxItem{ID: l.nextOutboxID, EventID: eventID, Destination: "openmeter", Status: status, CreatedAt: now, UpdatedAt: now}
 	l.nextOutboxID++
 }
 
@@ -290,14 +323,29 @@ func validateMemUsageReservation(input ReserveUsageInput, bucket memUsageBucket,
 	if !ok {
 		return &UsageValidationError{Field: "quantity"}
 	}
-	if limit != nil && input.Quantity > 0 && projected > *limit {
+	if limit != nil && *limit > 0 && input.Quantity > 0 && projected > *limit {
 		return &UsageQuotaError{TenantID: input.TenantID, ModuleCode: input.ModuleCode, Metric: input.Metric, Limit: limit, CommittedUsage: bucket.committed, ReservedUsage: bucket.reserved, Quantity: input.Quantity}
 	}
 	return nil
 }
 
 func memUsageBucketKey(tenantID, moduleCode, periodKey, metric string) string {
-	return tenantID + "\x00" + moduleCode + "\x00" + periodKey + "\x00" + metric
+	return tenantID + "\x00" + moduleCode + "\x00" + usageBucketPeriodKey(metric, periodKey) + "\x00" + metric
+}
+
+func resolveMemUsageEntitlement(repo *MemRepository, tenantID, moduleCode string) (*Entitlement, error) {
+	entitlement, err := repo.GetEntitlement(context.Background(), tenantID, moduleCode)
+	if err == nil || moduleCode != ModuleOSSStorage || !errors.Is(err, ErrEntitlementNotFound) {
+		return entitlement, err
+	}
+	studio, err := repo.GetEntitlement(context.Background(), tenantID, ModuleStudio)
+	if err != nil {
+		return nil, err
+	}
+	clone := *studio
+	clone.ModuleCode = ModuleOSSStorage
+	clone.Limits = nil
+	return &clone, nil
 }
 
 func usageEventIdentityKey(tenantID, idempotencyKey string) string {

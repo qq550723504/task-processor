@@ -7,6 +7,15 @@ import (
 
 const usageMetricStorageBytesCurrent = "storage_bytes_current"
 
+const usageStorageBucketPeriodKey = "__current__"
+
+func usageBucketPeriodKey(metric, periodKey string) string {
+	if metric == usageMetricStorageBytesCurrent {
+		return usageStorageBucketPeriodKey
+	}
+	return periodKey
+}
+
 // UsageValidationError identifies an invalid ledger input field.
 type UsageValidationError struct {
 	Field string
@@ -144,6 +153,27 @@ func normalizeReserveUsageInput(input ReserveUsageInput) ReserveUsageInput {
 	input.IdempotencyKey = strings.TrimSpace(input.IdempotencyKey)
 	input.Metadata = cloneUsageMetadata(input.Metadata)
 	return input
+}
+
+func usageEventMatchesReserveInput(event UsageEvent, input ReserveUsageInput) bool {
+	return event.TenantID == input.TenantID &&
+		event.ModuleCode == input.ModuleCode &&
+		event.Metric == input.Metric &&
+		event.Quantity == input.Quantity &&
+		event.PeriodKey == input.PeriodKey &&
+		event.SourceType == input.SourceType &&
+		event.SourceID == input.SourceID
+}
+
+func validateUsageBucketTotals(metric string, committed, reserved int64) error {
+	if metric != usageMetricStorageBytesCurrent && (committed < 0 || reserved < 0) {
+		return &UsageValidationError{Field: "usage"}
+	}
+	total, ok := addUsage(committed, reserved)
+	if !ok || total < 0 {
+		return &UsageValidationError{Field: "usage"}
+	}
+	return nil
 }
 
 func cloneUsageMetadata(metadata map[string]string) map[string]string {

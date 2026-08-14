@@ -39,6 +39,7 @@ var (
 	ErrUsageQuotaExceeded        = errors.New("usage ledger quota exceeded")
 	ErrUsageLedgerNotConfigured  = errors.New("usage ledger is not configured")
 	ErrUsageOutboxUnsafeMetadata = errors.New("usage outbox metadata is unsafe")
+	ErrUsageOutboxStorageSnapshotRequired = errors.New("usage outbox storage snapshot is required")
 )
 
 type UsageEventStatus string
@@ -56,6 +57,7 @@ type UsageEvent struct {
 	ModuleCode     string
 	Metric         string
 	Quantity       int64
+	PeriodKey      string
 	SourceType     string
 	SourceID       string
 	IdempotencyKey string
@@ -63,6 +65,10 @@ type UsageEvent struct {
 	OccurredAt     time.Time
 	ReversalOf     string
 	Metadata       map[string]string
+	// StorageSnapshot is the post-commit retained-byte gauge used only for
+	// storage_bytes_current outbox projection. It is derived from the ledger
+	// bucket and is intentionally not caller-controlled input.
+	StorageSnapshot *int64
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
 }

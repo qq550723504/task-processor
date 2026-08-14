@@ -20,11 +20,18 @@ func BuildOpenMeterUsageOutboxPayload(event UsageEvent) (OpenMeterUsageOutboxPay
 	if len(event.Metadata) != 0 {
 		return OpenMeterUsageOutboxPayload{}, ErrUsageOutboxUnsafeMetadata
 	}
+	quantity := event.Quantity
+	if event.Metric == usageMetricStorageBytesCurrent {
+		if event.StorageSnapshot == nil || *event.StorageSnapshot < 0 {
+			return OpenMeterUsageOutboxPayload{}, ErrUsageOutboxStorageSnapshotRequired
+		}
+		quantity = *event.StorageSnapshot
+	}
 	return OpenMeterUsageOutboxPayload{
 		EventID:    event.EventID,
 		TenantID:   event.TenantID,
 		Metric:     event.Metric,
-		Quantity:   event.Quantity,
+		Quantity:   quantity,
 		OccurredAt: event.OccurredAt.UTC(),
 		Metadata: map[string]string{
 			"module_code": event.ModuleCode,

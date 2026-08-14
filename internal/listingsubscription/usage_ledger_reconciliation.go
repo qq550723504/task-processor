@@ -2,6 +2,7 @@ package listingsubscription
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sort"
 )
@@ -46,16 +47,24 @@ func ReconcileUsageLedger(ctx context.Context, repo *GormRepository) (UsageLedge
 		return UsageLedgerReconciliationReport{}, errors.New("usage ledger repository is required")
 	}
 
+	tx := repo.db.WithContext(ctx).Begin(&sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if tx.Error != nil {
+		return UsageLedgerReconciliationReport{}, tx.Error
+	}
+	defer tx.Rollback()
 	var events []usageEventRow
-	if err := repo.db.WithContext(ctx).Order("tenant_id ASC, module_code ASC, period_key ASC, metric ASC, event_id ASC").Find(&events).Error; err != nil {
+	if err := tx.Order("tenant_id ASC, module_code ASC, period_key ASC, metric ASC, event_id ASC").Find(&events).Error; err != nil {
 		return UsageLedgerReconciliationReport{}, err
 	}
 	var buckets []usageBucketRow
-	if err := repo.db.WithContext(ctx).Order("tenant_id ASC, module_code ASC, period_key ASC, metric ASC").Find(&buckets).Error; err != nil {
+	if err := tx.Order("tenant_id ASC, module_code ASC, period_key ASC, metric ASC").Find(&buckets).Error; err != nil {
 		return UsageLedgerReconciliationReport{}, err
 	}
 	var outbox []usageEventOutboxRow
-	if err := repo.db.WithContext(ctx).Order("event_id ASC, id ASC").Find(&outbox).Error; err != nil {
+	if err := tx.Order("event_id ASC, id ASC").Find(&outbox).Error; err != nil {
+		return UsageLedgerReconciliationReport{}, err
+	}
+	if err := tx.Commit().Error; err != nil {
 		return UsageLedgerReconciliationReport{}, err
 	}
 
@@ -83,7 +92,7 @@ func reconcileUsageLedgerRows(events []usageEventRow, buckets []usageBucketRow, 
 	outboxByEventID := make(map[string]usageEventOutboxRow, len(outbox))
 
 	for _, event := range events {
-		key := usageLedgerKey(event.TenantID, event.ModuleCode, event.PeriodKey, event.Metric)
+		key := usageLedgerKey(event.TenantID, event.ModuleCode, usageBucketPeriodKey(event.Metric, event.PeriodKey), event.Metric)
 		totals := totalsByBucket[key]
 		if totals == nil {
 			totals = &usageLedgerTotals{}
