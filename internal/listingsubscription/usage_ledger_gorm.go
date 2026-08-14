@@ -31,68 +31,79 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 	}
 
 	var result ReserveUsageResult
-	err = l.repo.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var existing usageEventRow
-		err := tx.Where("tenant_id = ? AND idempotency_key = ?", input.TenantID, input.IdempotencyKey).Take(&existing).Error
-		if err == nil {
-			return l.reserveResultForExisting(tx, existing, &result)
-		}
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
+	for attempt := 0; attempt < 20; attempt++ {
+		result = ReserveUsageResult{}
+		err = l.repo.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			var existing usageEventRow
+			err := tx.Where("tenant_id = ? AND idempotency_key = ?", input.TenantID, input.IdempotencyKey).Take(&existing).Error
+			if err == nil {
+				return l.reserveResultForExisting(tx, existing, &result)
+			}
+			if !errors.Is(err, gorm.ErrRecordNotFound) {
+				return err
+			}
 
-		entitlement, err := loadUsageEntitlement(tx, input.TenantID, input.ModuleCode)
-		if err != nil {
-			return err
-		}
-		effectiveEntitlement, err := entitlement.toEntitlement()
-		if err != nil {
-			return err
-		}
-		allowed, _ := evaluateEntitlement(effectiveEntitlement, time.Now().UTC())
-		if !allowed {
-			return ErrSubscriptionRequired
-		}
-		limit, err := usageLimit(entitlement, input.Metric)
-		if err != nil {
-			return err
-		}
-		bucket, err := loadOrCreateUsageBucket(tx, input)
-		if err != nil {
-			return err
-		}
-		if err := validateUsageReservation(input, bucket, limit); err != nil {
-			return err
-		}
-		updatedReserved, ok := addUsage(bucket.Reserved, input.Quantity)
-		if !ok {
-			return &UsageValidationError{Field: "quantity"}
-		}
+			entitlement, err := loadUsageEntitlement(tx, input.TenantID, input.ModuleCode)
+			if err != nil {
+				return err
+			}
+			effectiveEntitlement, err := entitlement.toEntitlement()
+			if err != nil {
+				return err
+			}
+			allowed, _ := evaluateEntitlement(effectiveEntitlement, time.Now().UTC())
+			if !allowed {
+				return ErrSubscriptionRequired
+			}
+			limit, err := usageLimit(entitlement, input.Metric)
+			if err != nil {
+				return err
+			}
+			bucket, err := loadOrCreateUsageBucket(tx, input)
+			if err != nil {
+				return err
+			}
+			if err := validateUsageReservation(input, bucket, limit); err != nil {
+				return err
+			}
+			updatedReserved, ok := addUsage(bucket.Reserved, input.Quantity)
+			if !ok {
+				return &UsageValidationError{Field: "quantity"}
+			}
 
-		metadata, err := json.Marshal(input.Metadata)
-		if err != nil {
-			return err
+			metadata, err := json.Marshal(input.Metadata)
+			if err != nil {
+				return err
+			}
+			event := usageEventRow{
+				EventID: uuid.NewString(), TenantID: input.TenantID, ModuleCode: input.ModuleCode,
+				Metric: input.Metric, Quantity: input.Quantity, PeriodKey: input.PeriodKey,
+				SourceType: input.SourceType, SourceID: input.SourceID, IdempotencyKey: input.IdempotencyKey,
+				Status: string(UsageEventReserved), OccurredAt: input.OccurredAt, Metadata: string(metadata),
+			}
+			if err := tx.Create(&event).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&usageBucketRow{}).
+				Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", input.TenantID, input.ModuleCode, input.PeriodKey, input.Metric).
+				Updates(map[string]any{"reserved": updatedReserved, "updated_at": time.Now().UTC()}).Error; err != nil {
+				return err
+			}
+			if err := tx.Create(&usageEventOutboxRow{EventID: event.EventID}).Error; err != nil {
+				return err
+			}
+			result = ReserveUsageResult{Event: usageEventFromRow(event), Limit: limit, CommittedUsage: bucket.Committed, ReservedUsage: updatedReserved}
+			return nil
+		})
+		if err == nil || !isRetryableUsageLedgerError(err) || attempt == 19 {
+			break
 		}
-		event := usageEventRow{
-			EventID: uuid.NewString(), TenantID: input.TenantID, ModuleCode: input.ModuleCode,
-			Metric: input.Metric, Quantity: input.Quantity, PeriodKey: input.PeriodKey,
-			SourceType: input.SourceType, SourceID: input.SourceID, IdempotencyKey: input.IdempotencyKey,
-			Status: string(UsageEventReserved), OccurredAt: input.OccurredAt, Metadata: string(metadata),
+		select {
+		case <-ctx.Done():
+			return ReserveUsageResult{}, ctx.Err()
+		case <-time.After(time.Duration(attempt+1) * 5 * time.Millisecond):
 		}
-		if err := tx.Create(&event).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&usageBucketRow{}).
-			Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", input.TenantID, input.ModuleCode, input.PeriodKey, input.Metric).
-			Updates(map[string]any{"reserved": updatedReserved, "updated_at": time.Now().UTC()}).Error; err != nil {
-			return err
-		}
-		if err := tx.Create(&usageEventOutboxRow{EventID: event.EventID}).Error; err != nil {
-			return err
-		}
-		result = ReserveUsageResult{Event: usageEventFromRow(event), Limit: limit, CommittedUsage: bucket.Committed, ReservedUsage: updatedReserved}
-		return nil
-	})
+	}
 	if err == nil {
 		return result, nil
 	}
@@ -109,6 +120,16 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 		}
 	}
 	return ReserveUsageResult{}, err
+}
+
+func isRetryableUsageLedgerError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "database is locked") ||
+		strings.Contains(message, "database is deadlocked") ||
+		strings.Contains(message, "sqlite_busy")
 }
 
 func (l *gormUsageLedger) Commit(ctx context.Context, eventID string) (UsageEvent, error) {

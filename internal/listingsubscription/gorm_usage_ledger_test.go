@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -152,6 +154,20 @@ func TestGormUsageLedgerConcurrentQuotaReservations(t *testing.T) {
 		t.Fatalf("seed concurrent usage bucket: %v", err)
 	}
 	ledger := NewGormUsageLedger(repo)
+	var activeCreates atomic.Int32
+	var overlapped atomic.Bool
+	if err := db.Callback().Create().Before("gorm:create").Register("test_usage_event_overlap", func(tx *gorm.DB) {
+		if tx.Statement.Table != "saas_usage_events" {
+			return
+		}
+		if active := activeCreates.Add(1); active > 1 {
+			overlapped.Store(true)
+		}
+		time.Sleep(5 * time.Millisecond)
+		activeCreates.Add(-1)
+	}); err != nil {
+		t.Fatalf("register overlap callback: %v", err)
+	}
 
 	start := make(chan struct{})
 	results := make(chan error, 20)
@@ -187,6 +203,9 @@ func TestGormUsageLedgerConcurrentQuotaReservations(t *testing.T) {
 	if successes != 10 || quotaFailures != 10 {
 		t.Fatalf("concurrent reservations = successes:%d quota_failures:%d, want 10/10", successes, quotaFailures)
 	}
+	if !overlapped.Load() {
+		t.Fatal("concurrent reservations did not overlap event transactions")
+	}
 
 	var bucket usageBucketRow
 	if err := db.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", "tenant-concurrent", "studio", "2026-08", "studio_design_jobs_succeeded").Take(&bucket).Error; err != nil {
@@ -199,8 +218,18 @@ func TestGormUsageLedgerConcurrentQuotaReservations(t *testing.T) {
 	if err := db.Model(&usageEventOutboxRow{}).Joins("JOIN saas_usage_events ON saas_usage_events.event_id = saas_usage_event_outbox.event_id").Where("saas_usage_events.tenant_id = ?", "tenant-concurrent").Count(&outbox).Error; err != nil {
 		t.Fatalf("count concurrent outbox items: %v", err)
 	}
-	if bucket.Committed+bucket.Reserved != 10 || events != 10 || outbox != 10 {
-		t.Fatalf("concurrent durable totals = committed:%d reserved:%d events:%d outbox:%d, want 10/10/10/10", bucket.Committed, bucket.Reserved, events, outbox)
+	if bucket.Committed != 0 || bucket.Reserved != 10 || events != 10 || outbox != 10 {
+		t.Fatalf("concurrent durable totals = committed:%d reserved:%d events:%d outbox:%d, want 0/10/10/10", bucket.Committed, bucket.Reserved, events, outbox)
+	}
+	var distinctEvents, distinctOutbox int64
+	if err := db.Model(&usageEventRow{}).Where("tenant_id = ?", "tenant-concurrent").Distinct("event_id").Count(&distinctEvents).Error; err != nil {
+		t.Fatalf("count distinct concurrent events: %v", err)
+	}
+	if err := db.Model(&usageEventOutboxRow{}).Joins("JOIN saas_usage_events ON saas_usage_events.event_id = saas_usage_event_outbox.event_id").Where("saas_usage_events.tenant_id = ?", "tenant-concurrent").Distinct("saas_usage_event_outbox.event_id").Count(&distinctOutbox).Error; err != nil {
+		t.Fatalf("count distinct concurrent outbox items: %v", err)
+	}
+	if distinctEvents != 10 || distinctOutbox != 10 {
+		t.Fatalf("distinct concurrent IDs = events:%d outbox:%d, want 10/10", distinctEvents, distinctOutbox)
 	}
 }
 
@@ -489,7 +518,8 @@ func openUsageLedgerTestDB(t *testing.T) *gorm.DB {
 
 func openConcurrentUsageLedgerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: "file:usage-ledger-concurrent?mode=memory&cache=shared&_pragma=busy_timeout(10000)"}, &gorm.Config{})
+	dsn := "file:" + filepath.ToSlash(filepath.Join(t.TempDir(), "usage-ledger.db")) + "?mode=rwc&_pragma=busy_timeout(10000)&_pragma=journal_mode(WAL)"
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: dsn}, &gorm.Config{})
 	if err != nil {
 		t.Fatalf("open concurrent db: %v", err)
 	}
@@ -497,11 +527,9 @@ func openConcurrentUsageLedgerTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("open concurrent sql db: %v", err)
 	}
-	// SQLite is a single-writer database. Keep one pooled connection so the
-	// goroutines exercise concurrent repository calls without turning SQLite's
-	// deferred-write lock upgrade into nondeterministic "database locked" errors.
-	sqlDB.SetMaxOpenConns(1)
-	sqlDB.SetMaxIdleConns(1)
+	sqlDB.SetMaxOpenConns(20)
+	sqlDB.SetMaxIdleConns(20)
+	t.Cleanup(func() { _ = sqlDB.Close() })
 	if err := AutoMigrateRepository(db); err != nil {
 		t.Fatalf("AutoMigrateRepository() concurrent error = %v", err)
 	}
