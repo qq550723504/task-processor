@@ -38,6 +38,9 @@ func NewService(repo Repository) (*Service, error) {
 // NewServiceWithLedger adds the optional PAY-042 usage-ledger boundary without
 // changing the legacy constructor or paid entrypoints.
 func NewServiceWithLedger(repo Repository, ledger UsageLedger) (*Service, error) {
+	if repositoryIsNil(repo) {
+		return nil, errors.New("subscription repository is required")
+	}
 	if usageLedgerIsNil(ledger) {
 		return nil, errors.New("usage ledger is required")
 	}
@@ -109,6 +112,14 @@ func usageLedgerIsNil(ledger UsageLedger) bool {
 		return true
 	}
 	value := reflect.ValueOf(ledger)
+	return (value.Kind() == reflect.Chan || value.Kind() == reflect.Func || value.Kind() == reflect.Interface || value.Kind() == reflect.Map || value.Kind() == reflect.Pointer || value.Kind() == reflect.Slice) && value.IsNil()
+}
+
+func repositoryIsNil(repo Repository) bool {
+	if repo == nil {
+		return true
+	}
+	value := reflect.ValueOf(repo)
 	return (value.Kind() == reflect.Chan || value.Kind() == reflect.Func || value.Kind() == reflect.Interface || value.Kind() == reflect.Map || value.Kind() == reflect.Pointer || value.Kind() == reflect.Slice) && value.IsNil()
 }
 

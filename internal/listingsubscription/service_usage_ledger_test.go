@@ -23,6 +23,20 @@ func TestNewServiceWithLedgerRejectsNilDependencies(t *testing.T) {
 	}
 }
 
+func TestNewServiceWithLedgerRejectsTypedNilRepositoryBeforeInitialization(t *testing.T) {
+	var typedNilRepository Repository = (*MemRepository)(nil)
+	ledger := NewMemUsageLedger(NewMemRepository())
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("NewServiceWithLedger() panicked for typed nil repository: %v", recovered)
+		}
+	}()
+	if _, err := NewServiceWithLedger(typedNilRepository, ledger); err == nil {
+		t.Fatal("NewServiceWithLedger(typed nil repository, ledger) error = nil, want repository validation error")
+	}
+}
+
 func TestServiceWithLedgerDelegatesOnlyExplicitUsageLedgerMethods(t *testing.T) {
 	ctx := context.Background()
 	repo := NewMemRepository()
