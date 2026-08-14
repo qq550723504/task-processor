@@ -9,7 +9,7 @@ import (
 func TestPay042GenerationUsageBoundary(t *testing.T) {
 	t.Parallel()
 
-	usageSource := readPay042Source(t, "generation_usage.go")
+	usageSource := readPay042Source(t, "usage_settlement.go")
 	if strings.Contains(strings.ToLower(usageSource), "openmeter") || strings.Contains(strings.ToLower(usageSource), "payment") {
 		t.Fatal("generation usage port must remain provider- and payment-independent")
 	}
@@ -21,7 +21,7 @@ func TestPay042GenerationUsageBoundary(t *testing.T) {
 		"type GenerationUsageSettlement interface",
 	} {
 		if !strings.Contains(usageSource, needle) {
-			t.Fatalf("generation_usage.go must contain %q", needle)
+			t.Fatalf("usage_settlement.go must contain %q", needle)
 		}
 	}
 
