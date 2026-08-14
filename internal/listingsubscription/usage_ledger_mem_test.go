@@ -76,7 +76,7 @@ func TestUsageLedgerConcurrentReservationsRespectLimit(t *testing.T) {
 		t.Fatalf("pending outbox items = %d, want 10", len(outbox))
 	}
 	for _, item := range outbox {
-		if _, ok := eventIDs[item.EventID]; !ok {
+		if _, ok := eventIDs[item.EventID]; !ok || item.Status != "in_flight" {
 			t.Fatalf("outbox event ID %q was not returned by a successful reservation", item.EventID)
 		}
 	}
@@ -140,8 +140,29 @@ func TestMemUsageLedgerConcurrentReplayCreatesOneReservation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListPendingOutbox() error = %v", err)
 	}
-	if len(outbox) != 1 || outbox[0].EventID != eventID {
+	if len(outbox) != 1 || outbox[0].EventID != eventID || outbox[0].Status != "in_flight" {
 		t.Fatalf("pending outbox items = %+v, want one item for %q", outbox, eventID)
+	}
+}
+
+func TestMemUsageLedgerClaimedOutboxBlocksReverseUntilResolved(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemRepository()
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, map[string]int{"studio_design_jobs_succeeded": 2})
+	ledger := NewMemUsageLedger(repo)
+	reservation, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-claim-reverse", 1))
+	if err != nil {
+		t.Fatalf("Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, reservation.Event.EventID); err != nil {
+		t.Fatalf("Commit() error = %v", err)
+	}
+	items, err := ledger.ListPendingOutbox(ctx, 1)
+	if err != nil || len(items) != 1 || items[0].Status != "in_flight" {
+		t.Fatalf("ListPendingOutbox() = %+v, error=%v, want one in-flight item", items, err)
+	}
+	if _, err := ledger.Reverse(ctx, reservation.Event.EventID, "request-claim-reverse-comp", "unknown delivery"); !errors.Is(err, ErrUsageReversalDeliveryUnresolved) {
+		t.Fatalf("Reverse() error = %v, want ErrUsageReversalDeliveryUnresolved", err)
 	}
 }
 
