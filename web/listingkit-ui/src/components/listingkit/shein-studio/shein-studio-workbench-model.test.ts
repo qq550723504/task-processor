@@ -87,6 +87,43 @@ describe("shein studio workbench model", () => {
     );
   });
 
+  it("requires reselection when a grouped product store is no longer selectable", () => {
+    const projection = projectSheinStudioStoreSelectionState({
+      currentStoreId: "42",
+      enabledProfiles: [
+        {
+          name: "Main",
+          store_id: 42,
+          storeId: "42",
+          site: "US",
+        },
+      ],
+      groupedSelections: [
+        {
+          selectionId: "selection-1",
+          selection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 101,
+            prototypeGroupId: 200,
+            layerId: "layer-1",
+            productName: "tee",
+            variantLabel: "M / white",
+          },
+          baselineStatus: "ready",
+          baselineReason: "",
+          sheinStoreId: "99",
+          eligible: true,
+        },
+      ],
+    });
+
+    expect(projection.effectiveCurrentStoreId).toBe("42");
+    expect(projection.storeRequiredMessage).toBe(
+      "请重新选择仍在授权目录中的商品店铺，再生成款式图或创建 SHEIN 资料。",
+    );
+  });
+
   it("projects a store required message when no store is selected", () => {
     expect(
       projectSheinStudioStoreSelectionState({

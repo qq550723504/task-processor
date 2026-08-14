@@ -43,17 +43,26 @@ import type { SheinStudioWorkbenchState } from "@/components/listingkit/shein-st
 type SheinStoreOptionProjectionInput = {
   currentStoreId?: string | null;
   enabledProfiles: Array<Parameters<typeof formatSheinStoreOptionLabel>[0]>;
+  groupedSelections?: GroupedSDSSelectionEligibility[];
 };
 
 export function projectSheinStudioStoreSelectionState({
   currentStoreId,
   enabledProfiles,
+  groupedSelections = [],
 }: SheinStoreOptionProjectionInput) {
   const effectiveCurrentStoreId = (currentStoreId ?? "").trim();
   const matched = enabledProfiles.find(
     (item) => String(item.store_id) === effectiveCurrentStoreId,
   );
   const validCurrentStoreId = matched ? effectiveCurrentStoreId : "";
+  const selectableStoreIDs = new Set(
+    enabledProfiles.map((item) => String(item.store_id)),
+  );
+  const hasInvalidGroupedStore = groupedSelections.some((item) => {
+    const storeID = item.sheinStoreId.trim();
+    return storeID !== "" && !selectableStoreIDs.has(storeID);
+  });
   return {
     currentStoreLabel: matched ? formatSheinStoreOptionLabel(matched) : "",
     effectiveCurrentStoreId: validCurrentStoreId,
@@ -61,9 +70,11 @@ export function projectSheinStudioStoreSelectionState({
       id: String(profile.store_id),
       label: formatSheinStoreOptionLabel(profile),
     })),
-    storeRequiredMessage: validCurrentStoreId
-      ? ""
-      : "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。",
+    storeRequiredMessage: hasInvalidGroupedStore
+      ? "请重新选择仍在授权目录中的商品店铺，再生成款式图或创建 SHEIN 资料。"
+      : validCurrentStoreId
+        ? ""
+        : "请先选择批次店铺，再生成款式图或创建 SHEIN 资料。",
   };
 }
 

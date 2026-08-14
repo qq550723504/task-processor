@@ -386,6 +386,7 @@ export function SheinStudioWorkbench({
   } = useSheinStudioStoreSelection({
     currentStoreId: sheinStoreId,
     enabledProfiles: selectableStores,
+    groupedSelections,
   });
   const activeGroupPromptHistory = useSheinStudioActiveGroupPromptHistory({
     activeGroupId,
