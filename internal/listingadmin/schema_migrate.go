@@ -232,7 +232,7 @@ func ensureImportTaskActiveUniqueIndex(db *gorm.DB, table string) error {
 		return fmt.Errorf("database is not configured")
 	}
 	const indexName = "idx_listing_product_import_task_unique"
-	for _, column := range []string{"target_platform", "product_id", "region", "store_id", "deleted"} {
+	for _, column := range []string{"tenant_id", "target_platform", "product_id", "region", "store_id", "deleted"} {
 		if !db.Migrator().HasColumn(table, column) {
 			return nil
 		}
@@ -265,10 +265,10 @@ func importTaskCanonicalDuplicatesExist(db *gorm.DB, table string) (bool, error)
 	query := fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM (
-			SELECT %s AS canonical_target_platform, product_id, region, store_id
+			SELECT tenant_id, %s AS canonical_target_platform, product_id, region, store_id
 			FROM "%s"
 			WHERE deleted = 0 AND %s IS NOT NULL
-			GROUP BY %s, product_id, region, store_id
+			GROUP BY tenant_id, %s, product_id, region, store_id
 			HAVING COUNT(*) > 1
 			LIMIT 1
 		) duplicates`, expression, table, expression, expression)
@@ -282,7 +282,7 @@ func importTaskCanonicalDuplicatesExist(db *gorm.DB, table string) (bool, error)
 func importTaskActiveUniqueIndexStatement(table, indexName string) string {
 	expression := importTaskCanonicalTargetPlatformExpression("target_platform", "platform")
 	return fmt.Sprintf(
-		`CREATE UNIQUE INDEX IF NOT EXISTS "%s" ON "%s" ((%s), product_id, region, store_id) WHERE deleted = 0`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "%s" ON "%s" ((%s), tenant_id, product_id, region, store_id) WHERE deleted = 0`,
 		indexName,
 		table,
 		expression,
@@ -308,7 +308,9 @@ func importTaskUniqueIndexIsCanonicalActiveOnly(db *gorm.DB, table, indexName st
 	}
 	definition = normalizeImportTaskIndexDefinition(definition)
 	expression := normalizeImportTaskIndexDefinition(importTaskCanonicalTargetPlatformExpression("target_platform", "platform"))
-	return strings.Contains(definition, "wheredeleted=0") && strings.Contains(definition, expression)
+	return strings.Contains(definition, "wheredeleted=0") &&
+		strings.Contains(definition, expression) &&
+		strings.Contains(definition, "tenant_id")
 }
 
 func normalizeImportTaskIndexDefinition(definition string) string {

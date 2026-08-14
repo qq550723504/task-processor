@@ -73,6 +73,16 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 	if len(rows) == 0 {
 		return []ImportTask{}, nil
 	}
+	if err := ensureImportTaskActiveUniqueIndex(r.db, "listing_product_import_task"); err != nil {
+		return nil, err
+	}
+	duplicates, err := importTaskCanonicalDuplicatesExist(r.db, "listing_product_import_task")
+	if err != nil {
+		return nil, err
+	}
+	if duplicates {
+		return nil, ErrImportTaskIntegrityUnavailable
+	}
 	productIDs := make([]string, 0, len(rows))
 	for _, row := range rows {
 		productIDs = append(productIDs, row.ProductID)
@@ -80,6 +90,7 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 	var existing []listingProductImportTask
 	if err := r.db.WithContext(ctx).
 		Table("listing_product_import_task").
+		Where("tenant_id = ?", rows[0].TenantID).
 		Where(fmt.Sprintf("deleted = 0 AND %s = ? AND region = ? AND store_id = ?", importTaskCanonicalTargetPlatformExpression("target_platform", "platform")), rows[0].TargetPlatform, rows[0].Region, rows[0].StoreID).
 		Where("product_id IN ?", productIDs).
 		Limit(1).

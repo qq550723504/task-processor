@@ -100,7 +100,7 @@ func TestAutoMigrateImportTaskRepositoryRepairsHistoricalUniqueIndex(t *testing.
 		t.Fatalf("migrate legacy import task row: %v", err)
 	}
 	if err := db.Create(&importTaskPlatformIntegrityRow{
-		Platform: "Amazon", SourcePlatform: "Amazon", TargetPlatform: "SHEIN",
+		TenantID: 101, Platform: "Amazon", SourcePlatform: "Amazon", TargetPlatform: "SHEIN",
 		ProductID: "P1", Region: "US", StoreID: 986, Deleted: 0,
 	}).Error; err != nil {
 		t.Fatalf("seed historical row: %v", err)
@@ -121,7 +121,7 @@ func TestAutoMigrateImportTaskRepositoryRepairsHistoricalUniqueIndex(t *testing.
 		t.Fatalf("historical platforms = %q/%q/%q, want unchanged", historical.Platform, historical.SourcePlatform, historical.TargetPlatform)
 	}
 	if err := db.Create(&importTaskPlatformIntegrityRow{
-		Platform: "shein", TargetPlatform: "SHEIN", ProductID: "P1", Region: "US", StoreID: 986, Deleted: 1,
+		TenantID: 101, Platform: "shein", TargetPlatform: "SHEIN", ProductID: "P1", Region: "US", StoreID: 986, Deleted: 1,
 	}).Error; err != nil {
 		t.Fatalf("reimport after soft delete = %v, want historical full index repaired to active-only index", err)
 	}
@@ -139,14 +139,19 @@ func TestAutoMigrateImportTaskRepositoryEnforcesCanonicalTargetPlatform(t *testi
 		t.Fatalf("AutoMigrateImportTaskRepository() error = %v", err)
 	}
 	if err := db.Create(&importTaskPlatformIntegrityRow{
-		Platform: "amazon", TargetPlatform: "SHEIN", ProductID: "P2", Region: "US", StoreID: 987, Deleted: 0,
+		TenantID: 101, Platform: "amazon", TargetPlatform: "SHEIN", ProductID: "P2", Region: "US", StoreID: 987, Deleted: 0,
 	}).Error; err != nil {
 		t.Fatalf("seed canonical target row: %v", err)
 	}
 	if err := db.Create(&importTaskPlatformIntegrityRow{
-		Platform: "amazon", TargetPlatform: "shein", ProductID: "P2", Region: "US", StoreID: 987, Deleted: 0,
+		TenantID: 101, Platform: "amazon", TargetPlatform: "shein", ProductID: "P2", Region: "US", StoreID: 987, Deleted: 0,
 	}).Error; err == nil {
 		t.Fatal("mixed-case canonical duplicate = nil, want unique index violation")
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{
+		TenantID: 202, Platform: "amazon", TargetPlatform: "shein", ProductID: "P2", Region: "US", StoreID: 987, Deleted: 0,
+	}).Error; err != nil {
+		t.Fatalf("same canonical tuple in another tenant = %v, want allowed", err)
 	}
 }
 
@@ -160,7 +165,7 @@ func TestAutoMigrateImportTaskRepositoryDefersIndexWhenCanonicalDuplicatesExist(
 	}
 	for _, target := range []string{"SHEIN", "shein"} {
 		if err := db.Create(&importTaskPlatformIntegrityRow{
-			Platform: "amazon", TargetPlatform: target, ProductID: "P3", Region: "US", StoreID: 988, Deleted: 0,
+			TenantID: 303, Platform: "amazon", TargetPlatform: target, ProductID: "P3", Region: "US", StoreID: 988, Deleted: 0,
 		}).Error; err != nil {
 			t.Fatalf("seed duplicate target %q: %v", target, err)
 		}
@@ -175,6 +180,7 @@ func TestAutoMigrateImportTaskRepositoryDefersIndexWhenCanonicalDuplicatesExist(
 
 type importTaskPlatformIntegrityRow struct {
 	ID             int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	TenantID       int64  `gorm:"column:tenant_id;not null"`
 	Platform       string `gorm:"column:platform;not null"`
 	SourcePlatform string `gorm:"column:source_platform"`
 	TargetPlatform string `gorm:"column:target_platform"`

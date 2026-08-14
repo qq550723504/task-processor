@@ -162,4 +162,5 @@ func optionalPositiveInt64(value *int64) *int64 {
 var writeImportTaskError = newMappedHandlerErrorWriter(
 	handlerErrorRule{match: ErrImportTaskNotFound, status: http.StatusNotFound, errorCode: "import_task_not_found"},
 	handlerErrorRule{match: ErrImportTaskAlreadyExists, status: http.StatusConflict, errorCode: "import_task_already_exists"},
+	handlerErrorRule{match: ErrImportTaskIntegrityUnavailable, status: http.StatusServiceUnavailable, errorCode: "import_task_integrity_unavailable"},
 )

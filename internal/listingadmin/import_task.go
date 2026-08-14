@@ -8,6 +8,7 @@ import (
 
 var ErrImportTaskNotFound = errors.New("import task not found")
 var ErrImportTaskAlreadyExists = errors.New("an active import task already exists for this product, store, region, and target platform")
+var ErrImportTaskIntegrityUnavailable = errors.New("active import task uniqueness is unavailable because legacy duplicate rows require remediation")
 
 type ImportTask struct {
 	ID             int64      `json:"id"`
