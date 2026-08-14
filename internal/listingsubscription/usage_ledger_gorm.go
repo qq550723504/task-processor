@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	moderncsqlite "modernc.org/sqlite"
 )
 
 // NewGormUsageLedger creates the durable, transaction-backed usage ledger.
@@ -123,13 +124,13 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 }
 
 func isRetryableUsageLedgerError(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "database is locked") ||
-		strings.Contains(message, "database is deadlocked") ||
-		strings.Contains(message, "sqlite_busy")
+	var sqliteErr *moderncsqlite.Error
+	return errors.As(err, &sqliteErr) && isRetryableSQLiteCode(sqliteErr.Code())
+}
+
+func isRetryableSQLiteCode(code int) bool {
+	baseCode := code & 0xff
+	return baseCode == 5 || baseCode == 6 // SQLITE_BUSY or SQLITE_LOCKED, including extended codes.
 }
 
 func (l *gormUsageLedger) Commit(ctx context.Context, eventID string) (UsageEvent, error) {

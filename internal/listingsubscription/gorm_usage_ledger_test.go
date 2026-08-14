@@ -14,7 +14,29 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
+	sqlite3 "modernc.org/sqlite/lib"
 )
+
+func TestIsRetryableUsageLedgerErrorUsesSQLiteDriverCode(t *testing.T) {
+	for _, code := range []int{
+		sqlite3.SQLITE_LOCKED,
+		sqlite3.SQLITE_LOCKED | (1 << 8),
+		sqlite3.SQLITE_BUSY,
+		sqlite3.SQLITE_BUSY_RECOVERY,
+		sqlite3.SQLITE_BUSY_SNAPSHOT,
+		sqlite3.SQLITE_BUSY_TIMEOUT,
+	} {
+		if !isRetryableSQLiteCode(code) {
+			t.Errorf("SQLite code %d was not classified as retryable", code)
+		}
+	}
+	if isRetryableSQLiteCode(sqlite3.SQLITE_CONSTRAINT) {
+		t.Fatal("SQLite constraint code was classified as retryable")
+	}
+	if isRetryableUsageLedgerError(errors.New("database is locked but not a driver error")) {
+		t.Fatal("text-only lock error was classified as retryable")
+	}
+}
 
 func TestGormUsageLedgerReserveIsIdempotent(t *testing.T) {
 	ctx := context.Background()
