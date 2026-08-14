@@ -69,7 +69,10 @@ export function TaskSheinStoreField({
     enabledProfiles,
     profiles,
     selectedStoreLoginStatus,
+    sheinSettings,
+    storeOptions,
   } = useSheinStoreSelector(selectedStoreId);
+  const selectableStores = (storeOptions?.length ?? 0) > 0 ? storeOptions : enabledProfiles;
   const sheinSelected = selectedPlatforms?.includes("shein");
   const selectedStoreUnavailable = Boolean(
     sheinSelected &&
@@ -95,9 +98,9 @@ export function TaskSheinStoreField({
         {...register("sheinStoreId")}
       >
         <option value="">
-          {enabledProfiles.length > 0 ? "请选择店铺" : "当前没有已启用店铺配置"}
+          {selectableStores.length > 0 ? "请选择店铺" : "当前没有可用店铺"}
         </option>
-        {enabledProfiles.map((item) => (
+        {selectableStores.map((item) => (
           <option key={item.id ?? item.store_id} value={String(item.store_id)}>
             {formatStoreProfileOption(item)}
           </option>
@@ -109,6 +112,9 @@ export function TaskSheinStoreField({
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
       {profiles.isError ? (
         <p className="text-sm text-rose-600">店铺配置读取失败，当前无法在这里明确选择店铺。</p>
+      ) : null}
+      {sheinSettings?.isError ? (
+        <p className="text-sm text-rose-600">授权店铺目录读取失败，当前无法在这里明确选择店铺。</p>
       ) : null}
       {selectedStoreUnavailable ? (
         <Alert className="border-amber-200 bg-amber-50/80">

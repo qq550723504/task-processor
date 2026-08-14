@@ -14,7 +14,6 @@ type StoreResolutionSummary struct {
 	MatchedRuleKinds []string `json:"matched_rule_kinds,omitempty"`
 	MatchedProfileID int64    `json:"matched_profile_id,omitempty"`
 	ManualOverride   bool     `json:"manual_override,omitempty"`
-	Fallback         bool     `json:"fallback,omitempty"`
 	ResolvedAt       string   `json:"resolved_at,omitempty"`
 }
 
@@ -26,7 +25,6 @@ func BuildStoreResolutionSummary(
 	matchedRuleKinds []string,
 	matchedProfileID int64,
 	manualOverride bool,
-	fallback bool,
 	resolvedAt string,
 ) *StoreResolutionSummary {
 	return &StoreResolutionSummary{
@@ -37,7 +35,6 @@ func BuildStoreResolutionSummary(
 		MatchedRuleKinds: append([]string(nil), matchedRuleKinds...),
 		MatchedProfileID: matchedProfileID,
 		ManualOverride:   manualOverride,
-		Fallback:         fallback,
 		ResolvedAt:       resolvedAt,
 	}
 }
@@ -50,7 +47,6 @@ func BuildSubmissionStoreResolution(
 	matchedRuleKinds []string,
 	matchedProfileID int64,
 	manualOverride bool,
-	fallback bool,
 	resolvedAt *time.Time,
 ) *sheinpub.SubmissionStoreResolution {
 	if storeID <= 0 {
@@ -69,7 +65,6 @@ func BuildSubmissionStoreResolution(
 		MatchedRuleKinds: append([]string(nil), matchedRuleKinds...),
 		MatchedProfileID: matchedProfileID,
 		ManualOverride:   manualOverride,
-		Fallback:         fallback,
 		ResolvedAt:       resolvedAtValue,
 	}
 }

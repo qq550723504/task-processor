@@ -61,7 +61,6 @@ func buildSheinStoreResolutionSummary(selection *sheinStoreSelection, task *Task
 		selection.MatchedRuleKinds,
 		matchedProfileID,
 		selection.ManualOverride,
-		selection.Fallback,
 		resolvedAt,
 	)
 }
@@ -86,7 +85,7 @@ func sheinStoreResolutionSnapshotFromSelection(selection *sheinStoreSelection, t
 		MatchedRuleKinds:  append([]string(nil), summary.MatchedRuleKinds...),
 		MatchedProfileID:  selection.Profile.ID,
 		ManualOverride:    summary.ManualOverride,
-		Fallback:          summary.Fallback,
+		Fallback:          selection.Fallback,
 		ResolvedAt:        time.Now(),
 	}
 }

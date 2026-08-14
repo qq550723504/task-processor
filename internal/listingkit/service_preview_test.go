@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"testing"
 	"time"
@@ -96,6 +97,97 @@ func TestGetTaskPreviewIncludesSheinStoreResolution(t *testing.T) {
 	if preview.Shein.SubmissionEvents[0].StoreResolution.StoreID != 903 {
 		t.Fatalf("submission event store id = %d, want 903", preview.Shein.SubmissionEvents[0].StoreResolution.StoreID)
 	}
+}
+
+func TestGetTaskPreviewDoesNotExposeStoreResolutionFallback(t *testing.T) {
+	t.Parallel()
+
+	repo := NewInMemoryRepositoryForTest()
+	now := time.Now()
+	task := &Task{
+		ID:        "task-preview-store-resolution-fallback",
+		TenantID:  "505",
+		Status:    core.TaskStatusCompleted,
+		CreatedAt: now.Add(-time.Minute),
+		UpdatedAt: now,
+		Request: &GenerateRequest{
+			Text:      "demo",
+			Platforms: []string{"shein"},
+			Country:   "GB",
+		},
+		SheinStoreResolutionSnapshot: &SheinStoreResolutionSnapshot{
+			StoreID:  903,
+			Site:     "GB",
+			Fallback: true,
+		},
+		Result: &ListingKitResult{
+			TaskID: "task-preview-store-resolution-fallback",
+			Shein: &SheinPackage{
+				FinalDraft: &sheinpub.FinalDraft{Confirmed: true},
+				SubmissionEvents: []sheinpub.SubmissionEvent{{
+					ID:        "event-fallback",
+					Action:    "publish",
+					Status:    "success",
+					StartedAt: now,
+				}},
+			},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask error = %v", err)
+	}
+	if err := repo.MarkCompleted(context.Background(), task.ID, task.Result); err != nil {
+		t.Fatalf("MarkCompleted error = %v", err)
+	}
+
+	svc := &service{
+		repo: repo,
+		submissionDeps: submissionDependencies{
+			storeProfileRepo: newInMemoryStoreProfileRepository(),
+		},
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "505", UserID: "user-e"})
+
+	preview, err := svc.GetTaskPreview(ctx, task.ID, "shein")
+	if err != nil {
+		t.Fatalf("GetTaskPreview error = %v", err)
+	}
+	raw, err := json.Marshal(preview)
+	if err != nil {
+		t.Fatalf("json.Marshal(preview) error = %v", err)
+	}
+	if string(raw) == "" || jsonContainsKey(raw, "fallback") {
+		t.Fatalf("preview exposes store resolution fallback: %s", raw)
+	}
+}
+
+func jsonContainsKey(raw []byte, key string) bool {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return false
+	}
+	return jsonValueContainsKey(value, key)
+}
+
+func jsonValueContainsKey(value any, key string) bool {
+	switch item := value.(type) {
+	case map[string]any:
+		if _, ok := item[key]; ok {
+			return true
+		}
+		for _, nested := range item {
+			if jsonValueContainsKey(nested, key) {
+				return true
+			}
+		}
+	case []any:
+		for _, nested := range item {
+			if jsonValueContainsKey(nested, key) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 type previewTestCookieProvider struct{}
