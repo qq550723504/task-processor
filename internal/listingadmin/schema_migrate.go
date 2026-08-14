@@ -275,15 +275,21 @@ func EnsureImportTaskWriteReady(db *gorm.DB) error {
 
 func replaceImportTaskActiveUniqueIndex(db *gorm.DB, table, indexName string) error {
 	replacementName := indexName + "_replacement"
-	if err := db.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, replacementName)).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(importTaskActiveUniqueIndexStatement(table, replacementName)).Error; err != nil {
-		return err
+	replacementReady := db.Migrator().HasIndex(&listingProductImportTask{}, replacementName) && importTaskUniqueIndexIsCanonicalActiveOnly(db, table, replacementName)
+	if !replacementReady {
+		if err := db.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, replacementName)).Error; err != nil {
+			return err
+		}
+		if err := db.Exec(importTaskActiveUniqueIndexStatement(table, replacementName)).Error; err != nil {
+			return err
+		}
 	}
 	err := db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, indexName)).Error; err != nil {
 			return err
+		}
+		if tx.Dialector != nil && tx.Dialector.Name() == "postgres" {
+			return tx.Exec(fmt.Sprintf(`ALTER INDEX "%s" RENAME TO "%s"`, replacementName, indexName)).Error
 		}
 		if err := tx.Exec(importTaskActiveUniqueIndexStatement(table, indexName)).Error; err != nil {
 			return err

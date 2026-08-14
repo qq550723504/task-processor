@@ -1,8 +1,10 @@
 package listingadmin
 
 import (
+	"errors"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
@@ -182,6 +184,46 @@ func TestAutoMigrateImportTaskRepositoryRepairsMalformedNamedIndex(t *testing.T)
 	}
 	if err := db.Create(&rows[1]).Error; err == nil {
 		t.Fatal("malformed named index was not replaced by the complete unique index")
+	}
+}
+
+func TestAutoMigrateImportTaskRepositoryReusesCanonicalReplacementIndex(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&importTaskPlatformIntegrityRow{}); err != nil {
+		t.Fatalf("migrate import task row: %v", err)
+	}
+	if err := db.Exec(`CREATE INDEX idx_listing_product_import_task_unique ON listing_product_import_task (target_platform, product_id, region, store_id)`).Error; err != nil {
+		t.Fatalf("create malformed named index: %v", err)
+	}
+	if err := db.Exec(importTaskActiveUniqueIndexStatement("listing_product_import_task", "idx_listing_product_import_task_unique_replacement")).Error; err != nil {
+		t.Fatalf("create canonical replacement index: %v", err)
+	}
+	if err := AutoMigrateImportTaskRepository(db); err != nil {
+		t.Fatalf("AutoMigrateImportTaskRepository() error = %v", err)
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{TenantID: 101, Platform: "amazon", TargetPlatform: "SHEIN", ProductID: "P5", Region: "US", StoreID: 990, Deleted: 0}).Error; err != nil {
+		t.Fatalf("seed repaired index row: %v", err)
+	}
+	if err := db.Create(&importTaskPlatformIntegrityRow{TenantID: 101, Platform: "amazon", TargetPlatform: "shein", ProductID: "P5", Region: "US", StoreID: 990, Deleted: 0}).Error; err == nil {
+		t.Fatal("surviving replacement did not become canonical uniqueness guard")
+	}
+}
+
+func TestImportTaskActiveUniqueViolationRequiresStructuredIdentity(t *testing.T) {
+	if !isImportTaskActiveUniqueViolation(&pgconn.PgError{Code: "23505", ConstraintName: "idx_listing_product_import_task_unique"}) {
+		t.Fatal("matching PostgreSQL unique constraint was not classified as duplicate")
+	}
+	for _, err := range []error{
+		&pgconn.PgError{Code: "23505", ConstraintName: "other_constraint"},
+		&pgconn.PgError{Code: "22001", ConstraintName: "idx_listing_product_import_task_unique"},
+		errors.New(`ERROR: duplicate key value violates unique constraint "idx_listing_product_import_task_unique" (SQLSTATE 23505)`),
+	} {
+		if isImportTaskActiveUniqueViolation(err) {
+			t.Fatalf("unstructured or mismatched error %T was classified as active-task duplicate", err)
+		}
 	}
 }
 

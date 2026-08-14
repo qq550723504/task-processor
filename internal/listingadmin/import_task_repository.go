@@ -7,7 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
+	moderncsqlite "modernc.org/sqlite"
 	taskdomain "task-processor/internal/domain/task"
 	"task-processor/internal/model"
 )
@@ -94,7 +96,7 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 		return nil, ErrImportTaskAlreadyExists
 	}
 	if err := r.db.WithContext(ctx).Table("listing_product_import_task").Create(&rows).Error; err != nil {
-		if strings.Contains(err.Error(), "idx_listing_product_import_task_unique") || strings.Contains(strings.ToLower(err.Error()), "unique constraint failed: listing_product_import_task.") {
+		if isImportTaskActiveUniqueViolation(err) {
 			return nil, ErrImportTaskAlreadyExists
 		}
 		return nil, err
@@ -104,6 +106,29 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 		out = append(out, row.toImportTask())
 	}
 	return out, nil
+}
+
+func isImportTaskActiveUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	var postgresErr *pgconn.PgError
+	if errors.As(err, &postgresErr) {
+		return postgresErr.Code == "23505" && postgresErr.ConstraintName == "idx_listing_product_import_task_unique"
+	}
+	var sqliteErr *moderncsqlite.Error
+	if errors.As(err, &sqliteErr) {
+		if sqliteErr.Code() != 1555 && sqliteErr.Code() != 2067 {
+			return false
+		}
+		message := strings.ToLower(sqliteErr.Error())
+		return strings.Contains(message, "listing_product_import_task") &&
+			strings.Contains(message, "target_platform") &&
+			strings.Contains(message, "product_id") &&
+			strings.Contains(message, "region") &&
+			strings.Contains(message, "store_id")
+	}
+	return false
 }
 
 func (r *GormImportTaskRepository) DeleteImportTask(ctx context.Context, tenantID, id int64) error {
