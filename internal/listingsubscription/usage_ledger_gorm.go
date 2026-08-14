@@ -41,7 +41,15 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 			}
 			var replay ReserveUsageResult
 			err := l.repo.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-				return l.reserveResultForExisting(tx, existing, &replay)
+				var current usageEventRow
+				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND idempotency_key = ?", input.TenantID, input.IdempotencyKey).Take(&current).Error; err != nil {
+					return err
+				}
+				comparison.PeriodKey = current.PeriodKey
+				if !usageEventMatchesReserveInput(usageEventFromRow(current), comparison) {
+					return &UsageDuplicateIdentityError{TenantID: input.TenantID, IdempotencyKey: input.IdempotencyKey}
+				}
+				return l.reserveResultForExisting(tx, current, &replay)
 			})
 			return replay, err
 		}
@@ -59,7 +67,7 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 		result = ReserveUsageResult{}
 		err = l.repo.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			var existing usageEventRow
-			err := tx.Where("tenant_id = ? AND idempotency_key = ?", input.TenantID, input.IdempotencyKey).Take(&existing).Error
+			err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND idempotency_key = ?", input.TenantID, input.IdempotencyKey).Take(&existing).Error
 			if err == nil {
 				if !usageEventMatchesReserveInput(usageEventFromRow(existing), input) {
 					return &UsageDuplicateIdentityError{TenantID: input.TenantID, IdempotencyKey: input.IdempotencyKey}
@@ -69,7 +77,6 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 			if !errors.Is(err, gorm.ErrRecordNotFound) {
 				return err
 			}
-
 			entitlement, err := loadEffectiveUsageEntitlement(tx, input.TenantID, input.ModuleCode)
 			if err != nil {
 				return err
@@ -207,6 +214,9 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 		if sourceOutboxErr == nil && sourceOutbox.Status == "failed" {
 			return ErrUsageReversalDeliveryUnresolved
 		}
+		if sourceOutboxErr == nil && sourceOutbox.Status == "in_flight" {
+			return ErrUsageReversalDeliveryUnresolved
+		}
 		laterDelivered, err := hasLaterDeliveredStorageSnapshot(tx, source)
 		if err != nil {
 			return err
@@ -315,9 +325,29 @@ func (l *gormUsageLedger) ListPendingOutbox(ctx context.Context, limit int) ([]U
 	if limit <= 0 {
 		return []UsageOutboxItem{}, nil
 	}
-	var rows []usageEventOutboxRow
 	now := time.Now().UTC()
-	if err := l.repo.db.WithContext(ctx).Where("status = ? AND (next_attempt_at IS NULL OR next_attempt_at <= ?)", "pending", now).Order("COALESCE(next_attempt_at, created_at) ASC, id ASC").Limit(limit).Find(&rows).Error; err != nil {
+	var rows []usageEventOutboxRow
+	err := l.repo.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("status = ? AND (next_attempt_at IS NULL OR next_attempt_at <= ?)", "pending", now).Order("COALESCE(next_attempt_at, created_at) ASC, id ASC").Limit(limit).Find(&rows).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			return nil
+		}
+		ids := make([]int64, 0, len(rows))
+		for _, row := range rows {
+			ids = append(ids, row.ID)
+		}
+		if err := tx.Model(&usageEventOutboxRow{}).Where("id IN ? AND status = ?", ids, "pending").Updates(map[string]any{"status": "in_flight", "attempts": gorm.Expr("attempts + ?", 1), "updated_at": time.Now().UTC()}).Error; err != nil {
+			return err
+		}
+		for i := range rows {
+			rows[i].Status = "in_flight"
+			rows[i].Attempts++
+		}
+		return nil
+	})
+	if err != nil {
 		return nil, err
 	}
 	items := make([]UsageOutboxItem, 0, len(rows))
@@ -413,11 +443,16 @@ func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID s
 }
 
 func (l *gormUsageLedger) reserveResultForExisting(tx *gorm.DB, event usageEventRow, result *ReserveUsageResult) error {
-	bucket, err := loadUsageBucket(tx, event.TenantID, event.ModuleCode, event.PeriodKey, event.Metric)
+	var current usageEventRow
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("event_id = ?", event.EventID).Take(&current).Error; err != nil {
+		return err
+	}
+	event = current
+	entitlement, err := loadEffectiveUsageEntitlement(tx, event.TenantID, event.ModuleCode)
 	if err != nil {
 		return err
 	}
-	entitlement, err := loadEffectiveUsageEntitlement(tx, event.TenantID, event.ModuleCode)
+	bucket, err := loadUsageBucket(tx, event.TenantID, event.ModuleCode, event.PeriodKey, event.Metric)
 	if err != nil {
 		return err
 	}
@@ -441,7 +476,6 @@ func loadUsageEntitlement(tx *gorm.DB, tenantID, moduleCode string) (tenantEntit
 	}
 	return entitlement, err
 }
-
 func loadEffectiveUsageEntitlement(tx *gorm.DB, tenantID, moduleCode string) (tenantEntitlementRow, error) {
 	entitlement, err := loadUsageEntitlement(tx, tenantID, moduleCode)
 	if err == nil || moduleCode != ModuleOSSStorage || !errors.Is(err, ErrEntitlementNotFound) {
