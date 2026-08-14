@@ -172,3 +172,12 @@ func TestUsageLedgerReconciliationReportsMissingAndOrphanOutboxWithSafeContext(t
 		t.Fatalf("missing reconciliation findings = %#v", want)
 	}
 }
+
+func TestUsageLedgerReconciliationReportsLifecycleMismatch(t *testing.T) {
+	event := usageEventRow{EventID: "event-mismatch", TenantID: "tenant-17", ModuleCode: ModuleStudio, Metric: usageMetricStudioDesignJobsSucceeded, Quantity: 1, PeriodKey: "2026-08", Status: string(UsageEventReserved)}
+	report := reconcileUsageLedgerRows([]usageEventRow{event}, []usageBucketRow{{TenantID: "tenant-17", ModuleCode: ModuleStudio, PeriodKey: "2026-08", Metric: usageMetricStudioDesignJobsSucceeded, Reserved: 1}}, []usageEventOutboxRow{{EventID: event.EventID, Status: "sent"}})
+	if len(report.Findings) != 1 || report.Findings[0].Category != UsageLedgerOutboxLifecycleMismatch {
+		t.Fatalf("findings = %#v, want lifecycle mismatch only", report.Findings)
+	}
+}
+
