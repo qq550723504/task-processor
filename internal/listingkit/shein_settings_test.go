@@ -137,3 +137,32 @@ func TestSettingsAdminServiceUpdateSheinSettingsNormalizesAndPersistsValues(t *t
 		t.Fatalf("persisted updated_at = %v, want non-zero", svc.sheinSettings.UpdatedAt)
 	}
 }
+
+func TestSettingsAdminServiceUpdatePersistsBeforeReportingStoreCatalogFailure(t *testing.T) {
+	t.Parallel()
+
+	catalogErr := errors.New("store catalog unavailable")
+	svc := &service{
+		sheinSettings: SheinSettings{Site: "US"},
+		sheinSharedDeps: sheinSharedDependencies{storeCatalog: &stubSheinStoreCatalog{
+			err: catalogErr,
+		}},
+	}
+	ctx := openaiclient.WithIdentity(context.Background(), openaiclient.Identity{TenantID: "227", UserID: "user-settings"})
+
+	_, err := svc.UpdateSheinSettings(ctx, &SheinSettings{
+		Site:              "GB",
+		WarehouseCode:     "WH-GB-1",
+		DefaultStock:      88,
+		DefaultSubmitMode: "save_draft",
+	})
+	if !errors.Is(err, catalogErr) {
+		t.Fatalf("UpdateSheinSettings error = %v, want catalog error", err)
+	}
+	if svc.sheinSettings.Site != "GB" || svc.sheinSettings.WarehouseCode != "WH-GB-1" || svc.sheinSettings.DefaultStock != 88 || svc.sheinSettings.DefaultSubmitMode != "save_draft" {
+		t.Fatalf("persisted settings = %+v, want updated values despite catalog failure", svc.sheinSettings)
+	}
+	if svc.sheinSettings.UpdatedAt == nil || svc.sheinSettings.UpdatedAt.IsZero() {
+		t.Fatalf("persisted updated_at = %v, want non-zero", svc.sheinSettings.UpdatedAt)
+	}
+}
