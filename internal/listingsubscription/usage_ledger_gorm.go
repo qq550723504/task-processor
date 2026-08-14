@@ -45,7 +45,12 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 		if err != nil {
 			return err
 		}
-		if entitlement.Status != StatusActive && entitlement.Status != StatusTrialing {
+		effectiveEntitlement, err := entitlement.toEntitlement()
+		if err != nil {
+			return err
+		}
+		allowed, _ := evaluateEntitlement(effectiveEntitlement, time.Now().UTC())
+		if !allowed {
 			return ErrSubscriptionRequired
 		}
 		limit, err := usageLimit(entitlement, input.Metric)
@@ -125,10 +130,20 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("event_id = ?", eventID).Take(&source).Error; err != nil {
 			return err
 		}
+		var priorReversal usageEventRow
+		if err := tx.Where("reversal_of = ?", source.EventID).Take(&priorReversal).Error; err == nil {
+			event = usageEventFromRow(priorReversal)
+			return nil
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		var existing usageEventRow
 		if err := tx.Where("tenant_id = ? AND idempotency_key = ?", source.TenantID, idempotencyKey).Take(&existing).Error; err == nil {
-			event = usageEventFromRow(existing)
-			return nil
+			if existing.ReversalOf == source.EventID {
+				event = usageEventFromRow(existing)
+				return nil
+			}
+			return &UsageDuplicateIdentityError{TenantID: source.TenantID, IdempotencyKey: idempotencyKey}
 		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
@@ -170,6 +185,12 @@ func (l *gormUsageLedger) Reverse(ctx context.Context, eventID, idempotencyKey, 
 		event = usageEventFromRow(reversal)
 		return nil
 	})
+	if err != nil {
+		var existing usageEventRow
+		if lookupErr := l.repo.db.WithContext(ctx).Where("reversal_of = ?", eventID).Take(&existing).Error; lookupErr == nil {
+			return usageEventFromRow(existing), nil
+		}
+	}
 	return event, err
 }
 

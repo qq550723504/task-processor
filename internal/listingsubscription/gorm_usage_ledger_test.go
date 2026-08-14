@@ -180,6 +180,13 @@ func TestGormUsageLedgerReverseCreatesImmutableReversal(t *testing.T) {
 	if reversal.Status != UsageEventReversed || reversal.ReversalOf != reservation.Event.EventID || reversal.Quantity != -1 {
 		t.Fatalf("Reverse() = %+v, want reversed event linked to original with negative quantity", reversal)
 	}
+	second, err := ledger.Reverse(ctx, reservation.Event.EventID, "request-reversal-retry", "retry with another idempotency key")
+	if err != nil {
+		t.Fatalf("second Reverse() error = %v", err)
+	}
+	if second.EventID != reversal.EventID || second.ReversalOf != reservation.Event.EventID || second.Quantity != -1 {
+		t.Fatalf("second Reverse() = %+v, want the original reversal without another bucket update", second)
+	}
 	original, err := ledger.Get(ctx, "tenant-17", "request-original")
 	if err != nil {
 		t.Fatalf("Get() original error = %v", err)
@@ -188,6 +195,52 @@ func TestGormUsageLedgerReverseCreatesImmutableReversal(t *testing.T) {
 		t.Fatalf("original event after reversal = %+v, want immutable committed original", original)
 	}
 	assertUsageLedgerCounts(t, db, reversal.EventID, 2, 0, 0, 2)
+}
+
+func TestGormUsageLedgerReverseRejectsIdempotencyKeyOwnedByAnotherEvent(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+	ledger := NewGormUsageLedger(repo)
+	source, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-source", 1))
+	if err != nil {
+		t.Fatalf("Reserve() source error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, source.Event.EventID); err != nil {
+		t.Fatalf("Commit() source error = %v", err)
+	}
+	if _, err := ledger.Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-owned-by-reservation", 1)); err != nil {
+		t.Fatalf("Reserve() other event error = %v", err)
+	}
+	_, err = ledger.Reverse(ctx, source.Event.EventID, "request-owned-by-reservation", "conflicting key")
+	if !errors.Is(err, ErrUsageDuplicateIdentity) {
+		t.Fatalf("Reverse() conflicting idempotency key error = %v, want ErrUsageDuplicateIdentity", err)
+	}
+	assertUsageLedgerCounts(t, db, source.Event.EventID, 2, 1, 1, 2)
+}
+
+func TestGormUsageLedgerReserveRejectsInactiveEntitlementWindow(t *testing.T) {
+	ctx := context.Background()
+	tests := []struct {
+		name      string
+		startsAt  *time.Time
+		expiresAt *time.Time
+	}{
+		{name: "not started", startsAt: timePtr(time.Now().Add(time.Hour))},
+		{name: "expired", expiresAt: timePtr(time.Now().Add(-time.Hour))},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			db := openUsageLedgerTestDB(t)
+			repo := NewGormRepository(db)
+			seedUsageLedgerEntitlementWithWindow(t, repo, "tenant-17", "studio", map[string]int{"studio_design_jobs_succeeded": 2}, tt.startsAt, tt.expiresAt)
+			_, err := NewGormUsageLedger(repo).Reserve(ctx, usageLedgerReserveInput("tenant-17", "request-window-"+tt.name, 1))
+			if !errors.Is(err, ErrSubscriptionRequired) {
+				t.Fatalf("Reserve() entitlement %s error = %v, want ErrSubscriptionRequired", tt.name, err)
+			}
+		})
+	}
 }
 
 func usageLedgerReserveInput(tenantID, idempotencyKey string, quantity int64) ReserveUsageInput {
@@ -199,11 +252,17 @@ func usageLedgerStorageInput(tenantID, idempotencyKey string, quantity int64) Re
 }
 
 func seedUsageLedgerEntitlement(t *testing.T, repo *GormRepository, tenantID, moduleCode string, limits map[string]int) {
+	seedUsageLedgerEntitlementWithWindow(t, repo, tenantID, moduleCode, limits, nil, nil)
+}
+
+func seedUsageLedgerEntitlementWithWindow(t *testing.T, repo *GormRepository, tenantID, moduleCode string, limits map[string]int, startsAt, expiresAt *time.Time) {
 	t.Helper()
-	if _, err := repo.UpsertEntitlement(context.Background(), &Entitlement{TenantID: tenantID, ModuleCode: moduleCode, Status: StatusActive, Limits: limits}); err != nil {
+	if _, err := repo.UpsertEntitlement(context.Background(), &Entitlement{TenantID: tenantID, ModuleCode: moduleCode, Status: StatusActive, Limits: limits, StartsAt: startsAt, ExpiresAt: expiresAt}); err != nil {
 		t.Fatalf("UpsertEntitlement() error = %v", err)
 	}
 }
+
+func timePtr(value time.Time) *time.Time { return &value }
 
 func assertUsageLedgerCounts(t *testing.T, db *gorm.DB, eventID string, events int64, committed, reserved int64, outbox int64) {
 	t.Helper()
@@ -242,6 +301,7 @@ func TestAutoMigrateRepositoryCreatesUsageLedgerSchema(t *testing.T) {
 	for _, index := range []string{
 		"idx_saas_usage_event_tenant_idempotency_key",
 		"idx_saas_usage_event_tenant_metric_status",
+		"idx_saas_usage_event_reversal_of",
 		"idx_saas_usage_event_outbox_event_id",
 		"idx_saas_usage_event_outbox_status_next_attempt",
 	} {
@@ -266,6 +326,19 @@ func TestAutoMigrateRepositoryEnforcesUsageLedgerConstraints(t *testing.T) {
 		}
 		if err := insertUsageEvent(db, "event-duplicate", "tenant-17", "request-42", "reserved"); err == nil {
 			t.Fatal("insert duplicate tenant/idempotency usage event succeeded, want unique constraint failure")
+		}
+	})
+
+	t.Run("single reversal per source event", func(t *testing.T) {
+		db := openUsageLedgerTestDB(t)
+		if err := insertUsageEvent(db, "event-source", "tenant-17", "request-source", "committed"); err != nil {
+			t.Fatalf("insert source usage event: %v", err)
+		}
+		if err := insertUsageReversal(db, "event-reversal-first", "request-reversal-first", "event-source"); err != nil {
+			t.Fatalf("insert first reversal: %v", err)
+		}
+		if err := insertUsageReversal(db, "event-reversal-duplicate", "request-reversal-duplicate", "event-source"); err == nil {
+			t.Fatal("insert second reversal for source event succeeded, want unique constraint failure")
 		}
 	})
 
@@ -337,4 +410,11 @@ func insertUsageEvent(db *gorm.DB, eventID, tenantID, idempotencyKey, status str
 		event_id, tenant_id, module_code, metric, quantity, period_key,
 		source_type, source_id, idempotency_key, status, occurred_at
 	) VALUES (?, ?, 'studio', 'studio_design_jobs_succeeded', 1, '2026-08', 'design_job', 'job-42', ?, ?, CURRENT_TIMESTAMP)`, eventID, tenantID, idempotencyKey, status).Error
+}
+
+func insertUsageReversal(db *gorm.DB, eventID, idempotencyKey, reversalOf string) error {
+	return db.Exec(`INSERT INTO saas_usage_events (
+		event_id, tenant_id, module_code, metric, quantity, period_key,
+		source_type, source_id, idempotency_key, status, occurred_at, reversal_of
+	) VALUES (?, 'tenant-17', 'studio', 'studio_design_jobs_succeeded', -1, '2026-08', 'design_job', 'job-42', ?, 'reversed', CURRENT_TIMESTAMP, ?)`, eventID, idempotencyKey, reversalOf).Error
 }

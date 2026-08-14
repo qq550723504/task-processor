@@ -94,7 +94,7 @@ type usageEventRow struct {
 	IdempotencyKey string    `gorm:"column:idempotency_key;not null;size:128;uniqueIndex:idx_saas_usage_event_tenant_idempotency_key,priority:2"`
 	Status         string    `gorm:"column:status;not null;size:16;check:status IN ('reserved','committed','released','reversed');index:idx_saas_usage_event_tenant_metric_status,priority:3"`
 	OccurredAt     time.Time `gorm:"column:occurred_at;not null"`
-	ReversalOf     string    `gorm:"column:reversal_of;size:128"`
+	ReversalOf     string    `gorm:"column:reversal_of;size:128;uniqueIndex:idx_saas_usage_event_reversal_of,where:reversal_of <> ''"`
 	Metadata       string    `gorm:"column:metadata;type:text"`
 	CreatedAt      time.Time `gorm:"column:created_at;autoCreateTime"`
 	UpdatedAt      time.Time `gorm:"column:updated_at;autoUpdateTime"`
