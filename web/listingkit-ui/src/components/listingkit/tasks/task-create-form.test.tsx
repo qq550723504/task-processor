@@ -348,4 +348,29 @@ describe("TaskCreateForm", () => {
       ),
     ).toBeInTheDocument();
   });
+
+  it("warns for a profileless catalog store without a login account", () => {
+    useSheinStoreSelector.mockReturnValue({
+      anyLoggedInStore: false,
+      enabledProfiles: [],
+      storeOptions: [
+        {
+          store_id: 870,
+          enabled: true,
+          store: { name: "US 目录店", store_id: "SHEIN-US-870", region: "US" },
+        },
+      ],
+      profiles: { isError: false },
+      selectedStoreLoginStatus: null,
+    });
+
+    render(<TaskCreateForm />);
+    fireEvent.click(screen.getByLabelText("SHEIN"));
+
+    expect(
+      screen.getByText(
+        "当前没有可用的 SHEIN 店铺登录态。你仍然可以先创建标准商品和 SDS 图片；但后续 SHEIN 在线解析和提交会在平台阶段受阻，建议先完成店铺登录。",
+      ),
+    ).toBeInTheDocument();
+  });
 });

@@ -81,11 +81,19 @@ export function TaskSheinStoreField({
       !selectedStoreLoginStatus.waiting_for_verify_code &&
       !selectedStoreLoginStatus.has_cookie,
   );
+  const selectedCatalogStoreWithoutLogin = Boolean(
+    selectedStoreId?.trim() &&
+      selectableStores.some(
+        (item) => String(item.store_id) === selectedStoreId.trim(),
+      ) &&
+      !selectedStoreLoginStatus,
+  );
   const noLoggedInStore = Boolean(
     sheinSelected &&
       !selectedStoreLoginStatus &&
-      !anyLoggedInStore &&
-      enabledProfiles.length > 0,
+      selectableStores.length > 0 &&
+      (selectedCatalogStoreWithoutLogin ||
+        (!selectedStoreId?.trim() && !anyLoggedInStore)),
   );
 
   return (
