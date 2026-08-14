@@ -90,7 +90,7 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 			if !allowed {
 				return ErrSubscriptionRequired
 			}
-			limit, err := usageLimit(entitlement, input.Metric)
+			limit, err := usageLimitForGorm(tx, entitlement, input.TenantID, input.ModuleCode, input.Metric)
 			if err != nil {
 				return err
 			}
@@ -99,8 +99,12 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 				return err
 			}
 			reservedForQuota := bucket.Reserved
-			if input.Metric == usageMetricStorageBytesCurrent && input.Quantity > 0 {
-				reservedForQuota, err = sumPositiveStorageReservations(tx, input)
+			if input.Metric == usageMetricStorageBytesCurrent {
+				if input.Quantity > 0 {
+					reservedForQuota, err = sumPositiveStorageReservations(tx, input)
+				} else {
+					reservedForQuota, err = sumNegativeStorageReservations(tx, input)
+				}
 				if err != nil {
 					return err
 				}
@@ -387,6 +391,9 @@ func (l *gormUsageLedger) transitionReservedEvent(ctx context.Context, eventID s
 			if !ok {
 				return &UsageValidationError{Field: "quantity"}
 			}
+			if row.Metric == usageMetricStorageBytesCurrent && committed < 0 {
+				return &UsageQuotaError{Metric: row.Metric, CommittedUsage: bucket.Committed, ReservedUsage: bucket.Reserved, Quantity: row.Quantity}
+			}
 			updates["committed"] = committed
 			if row.Metric == usageMetricStorageBytesCurrent {
 				storageSnapshotValue = &committed
@@ -457,7 +464,7 @@ func (l *gormUsageLedger) reserveResultForExisting(tx *gorm.DB, event usageEvent
 	if err != nil {
 		return err
 	}
-	limit, err := usageLimit(entitlement, event.Metric)
+	limit, err := usageLimitForGorm(tx, entitlement, event.TenantID, event.ModuleCode, event.Metric)
 	if err != nil {
 		return err
 	}
@@ -527,10 +534,50 @@ func usageLimit(entitlement tenantEntitlementRow, metric string) (*int64, error)
 	return nil, nil
 }
 
+func usageLimitForGorm(tx *gorm.DB, entitlement tenantEntitlementRow, tenantID, moduleCode, metric string) (*int64, error) {
+	limit, err := usageLimit(entitlement, metric)
+	if err != nil || limit != nil {
+		return limit, err
+	}
+	var subscription tenantSubscriptionRow
+	if err := tx.Where("tenant_id = ?", tenantID).Take(&subscription).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var planModule subscriptionPlanModuleRow
+	if err := tx.Where("plan_code = ? AND module_code = ?", subscription.PlanCode, moduleCode).Take(&planModule).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	limits, err := unmarshalLimits(planModule.LimitsJSON)
+	if err != nil {
+		return nil, err
+	}
+	for _, key := range usageMetricLimitKeys(metric) {
+		if value, ok := limits[key]; ok {
+			limit := int64(value)
+			return &limit, nil
+		}
+	}
+	return nil, nil
+}
+
 func sumPositiveStorageReservations(tx *gorm.DB, input ReserveUsageInput) (int64, error) {
 	var total int64
 	err := tx.Model(&usageEventRow{}).
 		Where("tenant_id = ? AND module_code = ? AND metric = ? AND status = ? AND quantity > 0", input.TenantID, input.ModuleCode, input.Metric, string(UsageEventReserved)).
+		Select("COALESCE(SUM(quantity), 0)").Scan(&total).Error
+	return total, err
+}
+
+func sumNegativeStorageReservations(tx *gorm.DB, input ReserveUsageInput) (int64, error) {
+	var total int64
+	err := tx.Model(&usageEventRow{}).
+		Where("tenant_id = ? AND module_code = ? AND metric = ? AND status = ? AND quantity < 0", input.TenantID, input.ModuleCode, input.Metric, string(UsageEventReserved)).
 		Select("COALESCE(SUM(quantity), 0)").Scan(&total).Error
 	return total, err
 }

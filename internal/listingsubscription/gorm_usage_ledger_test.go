@@ -344,6 +344,34 @@ func TestUsageLedgerQuotaReservationAndStorageDeltas(t *testing.T) {
 		}
 	})
 
+	t.Run("deletion cannot commit below zero against an uncommitted upload", func(t *testing.T) {
+		db := openUsageLedgerTestDB(t)
+		repo := NewGormRepository(db)
+		seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleOSSStorage, map[string]int{"storage_bytes_current": 100})
+		ledger := NewGormUsageLedger(repo)
+		upload, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-17", "storage-upload-first", 10))
+		if err != nil {
+			t.Fatalf("upload Reserve() error = %v", err)
+		}
+		deletion, err := ledger.Reserve(ctx, usageLedgerStorageInput("tenant-17", "storage-delete-first", -10))
+		if err != nil {
+			t.Fatalf("deletion Reserve() error = %v", err)
+		}
+		if _, err := ledger.Commit(ctx, deletion.Event.EventID); !errors.Is(err, ErrUsageQuotaExceeded) {
+			t.Fatalf("deletion Commit() error = %v, want ErrUsageQuotaExceeded", err)
+		}
+		var bucket usageBucketRow
+		if err := db.Where("tenant_id = ? AND module_code = ? AND metric = ?", "tenant-17", ModuleOSSStorage, usageMetricStorageBytesCurrent).Take(&bucket).Error; err != nil {
+			t.Fatalf("load storage bucket: %v", err)
+		}
+		if bucket.Committed < 0 {
+			t.Fatalf("storage bucket committed = %d after rejected deletion, must not be negative", bucket.Committed)
+		}
+		if _, err := ledger.Commit(ctx, upload.Event.EventID); err != nil {
+			t.Fatalf("upload Commit() error = %v", err)
+		}
+	})
+
 	t.Run("zero limit is unlimited", func(t *testing.T) {
 		db := openUsageLedgerTestDB(t)
 		repo := NewGormRepository(db)
@@ -360,6 +388,32 @@ func TestGormUsageLedgerUsesStudioFallbackForStorage(t *testing.T) {
 	seedUsageLedgerEntitlement(t, repo, "tenant-17", ModuleStudio, nil)
 	if _, err := NewGormUsageLedger(repo).Reserve(context.Background(), usageLedgerStorageInput("tenant-17", "storage-studio-fallback", 1)); err != nil {
 		t.Fatalf("storage fallback Reserve() error = %v, want studio entitlement fallback", err)
+	}
+}
+
+func TestGormUsageLedgerUsesPlanLimitsWhenLegacyEntitlementSnapshotLacksMetric(t *testing.T) {
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-legacy", ModuleStudio, map[string]int{"design_jobs": 1})
+	if err := db.Create(&subscriptionPlanModuleRow{PlanCode: PlanProfessional, ModuleCode: ModuleStudio, LimitsJSON: `{"shein_drafts_succeeded":2}`}).Error; err != nil {
+		t.Fatalf("create plan module: %v", err)
+	}
+	if err := db.Create(&tenantSubscriptionRow{TenantID: "tenant-legacy", PlanCode: PlanProfessional, Status: StatusActive}).Error; err != nil {
+		t.Fatalf("create tenant subscription: %v", err)
+	}
+	ledger := NewGormUsageLedger(repo)
+	first, err := ledger.Reserve(context.Background(), ReserveUsageInput{TenantID: "tenant-legacy", ModuleCode: ModuleStudio, Metric: usageMetricSheinDraftsSucceeded, Quantity: 1, PeriodKey: "2026-08", SourceType: "listing", SourceID: "draft-1", IdempotencyKey: "legacy-shein-1", OccurredAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatalf("Reserve() using plan fallback error = %v", err)
+	}
+	if first.Limit == nil || *first.Limit != 2 {
+		t.Fatalf("Reserve() limit = %v, want plan-module limit 2", first.Limit)
+	}
+	if _, err = ledger.Reserve(context.Background(), ReserveUsageInput{TenantID: "tenant-legacy", ModuleCode: ModuleStudio, Metric: usageMetricSheinDraftsSucceeded, Quantity: 1, PeriodKey: "2026-08", SourceType: "listing", SourceID: "draft-2", IdempotencyKey: "legacy-shein-2", OccurredAt: time.Now().UTC()}); err != nil {
+		t.Fatalf("second Reserve() using plan fallback error = %v", err)
+	}
+	if _, err = ledger.Reserve(context.Background(), ReserveUsageInput{TenantID: "tenant-legacy", ModuleCode: ModuleStudio, Metric: usageMetricSheinDraftsSucceeded, Quantity: 1, PeriodKey: "2026-08", SourceType: "listing", SourceID: "draft-3", IdempotencyKey: "legacy-shein-3", OccurredAt: time.Now().UTC()}); !errors.Is(err, ErrUsageQuotaExceeded) {
+		t.Fatalf("Reserve() beyond plan fallback limit error = %v, want ErrUsageQuotaExceeded", err)
 	}
 }
 

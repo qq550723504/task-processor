@@ -180,3 +180,14 @@ func TestUsageLedgerReconciliationReportsLifecycleMismatch(t *testing.T) {
 		t.Fatalf("findings = %#v, want lifecycle mismatch only", report.Findings)
 	}
 }
+
+func TestUsageLedgerReconciliationAcceptsCancelledSourceAfterReversal(t *testing.T) {
+	source := usageEventRow{EventID: "event-source", TenantID: "tenant-17", ModuleCode: ModuleStudio, Metric: usageMetricStudioDesignJobsSucceeded, Quantity: 1, PeriodKey: "2026-08", Status: string(UsageEventCommitted)}
+	reversal := usageEventRow{EventID: "event-reversal", TenantID: "tenant-17", ModuleCode: ModuleStudio, Metric: usageMetricStudioDesignJobsSucceeded, Quantity: -1, PeriodKey: "2026-08", Status: string(UsageEventReversed), ReversalOf: source.EventID}
+	report := reconcileUsageLedgerRows([]usageEventRow{source, reversal}, nil, []usageEventOutboxRow{{EventID: source.EventID, Status: "cancelled"}, {EventID: reversal.EventID, Status: "cancelled"}})
+	for _, finding := range report.Findings {
+		if finding.Category == UsageLedgerOutboxLifecycleMismatch {
+			t.Fatalf("findings = %#v, want cancelled source with linked reversal to be valid", report.Findings)
+		}
+	}
+}
