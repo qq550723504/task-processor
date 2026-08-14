@@ -124,6 +124,76 @@ describe("shein studio workbench model", () => {
     );
   });
 
+  it("requires reselection when an eligible grouped product has no store", () => {
+    const projection = projectSheinStudioStoreSelectionState({
+      currentStoreId: "42",
+      enabledProfiles: [
+        {
+          name: "Main",
+          store_id: 42,
+          storeId: "42",
+          site: "US",
+        },
+      ],
+      groupedSelections: [
+        {
+          selectionId: "selection-without-store",
+          selection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 101,
+            prototypeGroupId: 200,
+            layerId: "layer-1",
+            productName: "tee",
+            variantLabel: "M / white",
+          },
+          baselineStatus: "ready",
+          baselineReason: "",
+          sheinStoreId: "",
+          eligible: true,
+        },
+      ],
+    });
+
+    expect(projection.storeRequiredMessage).toBe(
+      "请重新选择仍在授权目录中的商品店铺，再生成款式图或创建 SHEIN 资料。",
+    );
+  });
+
+  it("ignores missing stores on ineligible grouped products", () => {
+    const projection = projectSheinStudioStoreSelectionState({
+      currentStoreId: "42",
+      enabledProfiles: [
+        {
+          name: "Main",
+          store_id: 42,
+          storeId: "42",
+          site: "US",
+        },
+      ],
+      groupedSelections: [
+        {
+          selectionId: "ineligible-selection-without-store",
+          selection: {
+            productId: 1,
+            parentProductId: 1,
+            variantId: 101,
+            prototypeGroupId: 200,
+            layerId: "layer-1",
+            productName: "tee",
+            variantLabel: "M / white",
+          },
+          baselineStatus: "ready",
+          baselineReason: "",
+          sheinStoreId: "",
+          eligible: false,
+        },
+      ],
+    });
+
+    expect(projection.storeRequiredMessage).toBe("");
+  });
+
   it("projects a store required message when no store is selected", () => {
     expect(
       projectSheinStudioStoreSelectionState({

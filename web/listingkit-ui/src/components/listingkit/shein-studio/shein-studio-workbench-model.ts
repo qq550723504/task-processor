@@ -61,7 +61,10 @@ export function projectSheinStudioStoreSelectionState({
   );
   const hasInvalidGroupedStore = groupedSelections.some((item) => {
     const storeID = item.sheinStoreId.trim();
-    return storeID !== "" && !selectableStoreIDs.has(storeID);
+    return (
+      item.eligible !== false &&
+      (storeID === "" || !selectableStoreIDs.has(storeID))
+    );
   });
   return {
     currentStoreLabel: matched ? formatSheinStoreOptionLabel(matched) : "",
