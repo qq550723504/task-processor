@@ -84,6 +84,12 @@ error in its in-scope path. It must not cut over legacy counters globally until
 the entrypoint tests, reconciliation evidence, and rollout approval are
 complete.
 
+The first approved PAY-042 slice now covers only ListingKit generation task
+execution. Its settlement contract, disabled-by-default rollout gate, and
+settlement-only recovery boundary are recorded in
+`pay-042-listingkit-generation-usage-cutover.md`. The remaining entrypoints in
+the table stay deferred until their own durable result boundaries are reviewed.
+
 ## Deferred work
 
 - PAY-042 implements the entrypoint integration above; it is not implemented

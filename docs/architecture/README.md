@@ -115,6 +115,9 @@ documents unless they say so explicitly:
   - time-bounded PAY-041 reconciliation evidence and PAY-042 handoff; it does
     not authorize production data repair, entrypoint cutover, or billing
     integration
+- `pay-042-listingkit-generation-usage-cutover.md`
+  - time-bounded first-slice PAY-042 generation settlement boundary; it does
+    not authorize payment-provider changes or enable the rollout flag
 
 ## Plans, runbooks, and evaluations
 
