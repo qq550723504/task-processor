@@ -104,3 +104,36 @@ func TestRecoverTaskNowLeavesUsageSettlementBlockedWhenCommitFails(t *testing.T)
 		t.Fatalf("task after failed settlement = %#v, want unchanged block", got)
 	}
 }
+
+func TestRunRecoverySweepSettlesUsageCommitWithoutSubmittingTask(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	now := time.Now().UTC()
+	ctx := WithTenantID(context.Background(), "tenant-usage-sweep")
+	task := &Task{ID: "task-usage-sweep", TenantID: "tenant-usage-sweep", Status: core.TaskStatusCompleted, Result: &ListingKitResult{Status: string(core.TaskStatusCompleted)}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	due := now.Add(-time.Minute)
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{ReasonCode: "usage_commit_pending", NextRetryAt: &due, AutoResumeEnabled: true}, "usage settlement pending"); err != nil {
+		t.Fatalf("MarkBlockedRetryable() error = %v", err)
+	}
+	settlement := &recordingRecoveryUsageSettlement{}
+	submitted := 0
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{
+		repo:            repo,
+		generationUsage: settlement,
+		taskSubmitter: func() TaskSubmitter {
+			return taskRecoveryTestSubmitter(func(string) error { submitted++; return nil })
+		},
+	})
+
+	recovered, err := svc.RunRecoverySweep(ctx, now, 10)
+	if err != nil {
+		t.Fatalf("RunRecoverySweep() error = %v", err)
+	}
+	if recovered != 1 || settlement.commitCalls != 1 || submitted != 0 {
+		t.Fatalf("recovered/commit/submitted = (%d, %d, %d), want (1, 1, 0)", recovered, settlement.commitCalls, submitted)
+	}
+}

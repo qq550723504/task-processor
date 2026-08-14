@@ -97,6 +97,13 @@ func (w taskRecoveryRunnerWiring) markRecoveredNow(ctx context.Context, taskID s
 }
 
 func (w taskRecoveryRunnerWiring) markRecoveredBatch(ctx context.Context, taskID string, recoverAt time.Time) error {
+	task, err := w.svc.repo.GetTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if isUsageCommitPending(task) {
+		return core.ErrTaskNotRecoverable
+	}
 	return w.svc.repo.RecoverBlockedTaskNow(ctx, taskID, recoverAt)
 }
 
@@ -173,7 +180,33 @@ func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *Recov
 		request.RecoverAt = query.RecoverAt
 		request.Limit = query.Limit
 	}
-	return s.recoveryBatch.RecoverBatch(ctx, request)
+	var settled int64
+	var settleErr error
+	if s.generationUsage != nil {
+		dueBefore := request.DueBefore
+		if dueBefore.IsZero() {
+			dueBefore = s.currentTime()
+		}
+		candidates, err := s.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{DueBefore: dueBefore, Limit: request.Limit})
+		if err != nil {
+			return 0, err
+		}
+		for i := range candidates {
+			if !isUsageCommitPending(&candidates[i]) {
+				continue
+			}
+			if _, err := s.recoverUsageCommit(ctx, &candidates[i]); err != nil {
+				settleErr = errors.Join(settleErr, err)
+				continue
+			}
+			settled++
+		}
+	}
+	if settled == 0 && settleErr == nil {
+		return s.recoveryBatch.RecoverBatch(ctx, request)
+	}
+	recovered, err := s.recoveryBatch.RecoverBatch(ctx, request)
+	return settled + recovered, errors.Join(settleErr, err)
 }
 
 func (s *taskRecoveryService) submitRecoveredTask(ctx context.Context, submit submissiondomain.RecoverySubmitFunc, taskID string, previousBlock *RetryableBlock, recoveredAt time.Time) error {

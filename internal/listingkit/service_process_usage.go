@@ -47,6 +47,23 @@ func (s *service) commitGenerationUsage(ctx context.Context, task *Task) error {
 	return settlement.CommitGeneration(ctx, task.TenantID, task.ID)
 }
 
+func (s *service) handleGenerationTerminalPersistenceFailure(ctx context.Context, task *Task, persistErr error) error {
+	if task == nil {
+		return persistErr
+	}
+	var errs []error
+	if persistErr != nil {
+		errs = append(errs, persistErr)
+	}
+	if releaseErr := s.releaseGenerationUsage(ctx, task, "terminal_persistence_failed"); releaseErr != nil {
+		errs = append(errs, releaseErr)
+	}
+	if markErr := s.repo.MarkFailed(ctx, task.ID, "listing kit generation result persistence failed"); markErr != nil {
+		errs = append(errs, markErr)
+	}
+	return errors.Join(errs...)
+}
+
 func generationQuotaFailure(taskID string) error {
 	return fmt.Errorf("listingkit generation quota exceeded for task %s", strings.TrimSpace(taskID))
 }
@@ -66,10 +83,13 @@ func (s *service) markGenerationUsageCommitPending(ctx context.Context, task *Ta
 	if task == nil {
 		return commitErr
 	}
+	blockedAt := time.Now().UTC()
+	nextRetryAt := blockedAt
 	block := &RetryableBlock{
 		ReasonCode:           "usage_commit_pending",
 		ReasonMessage:        "usage settlement is pending",
-		BlockedAt:            time.Now().UTC(),
+		BlockedAt:            blockedAt,
+		NextRetryAt:          &nextRetryAt,
 		MaxAutoRetryAttempts: 8,
 		RecoveryScope:        "listingkit_usage_settlement",
 		AutoResumeEnabled:    true,

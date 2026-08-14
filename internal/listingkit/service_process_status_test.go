@@ -24,6 +24,7 @@ type stubProcessStatusRepo struct {
 	*stubGenerationRepo
 	completedTaskID string
 	completedCalls  int
+	completedErr    error
 	failedTaskID    string
 	failedError     string
 	failedCalls     int
@@ -41,6 +42,9 @@ func (a *stubProcessStatusAssembler) Assemble(task *Task, canonical *canonical.P
 func (r *stubProcessStatusRepo) MarkCompleted(ctx context.Context, taskID string, result *ListingKitResult) error {
 	r.completedTaskID = taskID
 	r.completedCalls++
+	if r.completedErr != nil {
+		return r.completedErr
+	}
 	if err := r.SaveTaskResult(ctx, taskID, result); err != nil {
 		return err
 	}
