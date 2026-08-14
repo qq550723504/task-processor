@@ -128,15 +128,15 @@ func TestCommittedUsageHasOneRetryableOpenMeterOutboxIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListPendingUsageOutbox() error = %v", err)
 	}
-	if len(first) != 1 || first[0].Destination != "openmeter" || first[0].EventID != committed.EventID {
+	if len(first) != 1 || first[0].Destination != "openmeter" || first[0].EventID != committed.EventID || first[0].Status != "in_flight" || first[0].Attempts != 1 {
 		t.Fatalf("pending outbox = %#v, want one OpenMeter item for %q", first, committed.EventID)
 	}
 	second, err := svc.ListPendingUsageOutbox(ctx, 10)
 	if err != nil {
 		t.Fatalf("retry ListPendingUsageOutbox() error = %v", err)
 	}
-	if len(second) != 1 || second[0].ID != first[0].ID || second[0].EventID != first[0].EventID {
-		t.Fatalf("retry pending outbox = %#v, want same outbox identity %#v", second, first[0])
+	if len(second) != 0 {
+		t.Fatalf("retry pending outbox = %#v, want claimed item excluded until delivery is resolved", second)
 	}
 }
 
@@ -152,31 +152,8 @@ func TestOpenMeterOutboxPayloadRejectsUnsafeMetadataWithoutChangingCommittedEven
 	input := serviceUsageLedgerInput()
 	input.Metadata = map[string]string{"Authorization": "Bearer secret"}
 
-	reservation, err := svc.ReserveUsage(ctx, input)
-	if err != nil {
-		t.Fatalf("ReserveUsage() error = %v", err)
-	}
-	committed, err := svc.CommitUsage(ctx, reservation.Event.EventID)
-	if err != nil {
-		t.Fatalf("CommitUsage() error = %v", err)
-	}
-	if _, err := BuildOpenMeterUsageOutboxPayload(committed); !errors.Is(err, ErrUsageOutboxUnsafeMetadata) {
-		t.Fatalf("BuildOpenMeterUsageOutboxPayload() error = %v, want ErrUsageOutboxUnsafeMetadata", err)
-	}
-
-	stored, err := ledger.Get(ctx, committed.TenantID, committed.IdempotencyKey)
-	if err != nil {
-		t.Fatalf("Get() error = %v", err)
-	}
-	if stored.Status != UsageEventCommitted || stored.EventID != committed.EventID {
-		t.Fatalf("committed event after failed payload build = %#v, want committed %q", stored, committed.EventID)
-	}
-	pending, err := svc.ListPendingUsageOutbox(ctx, 10)
-	if err != nil {
-		t.Fatalf("ListPendingUsageOutbox() error = %v", err)
-	}
-	if len(pending) != 1 || pending[0].EventID != committed.EventID {
-		t.Fatalf("pending outbox after failed payload build = %#v, want %q", pending, committed.EventID)
+	if _, err := svc.ReserveUsage(ctx, input); !errors.Is(err, ErrUsageOutboxUnsafeMetadata) {
+		t.Fatalf("ReserveUsage() error = %v, want ErrUsageOutboxUnsafeMetadata", err)
 	}
 }
 
