@@ -75,6 +75,7 @@ export function useSheinStudioTaskCreationAction({
   setGalleryRatioCheck,
   setIsCreatingTasks,
   sheinStoreId,
+  storeRequiredMessage,
   hasLocalWorkflowStateRef,
   itemizedBatchContext,
 }: {
@@ -104,6 +105,7 @@ export function useSheinStudioTaskCreationAction({
   ) => void;
   setIsCreatingTasks: (value: boolean) => void;
   sheinStoreId: string;
+  storeRequiredMessage?: string;
   hasLocalWorkflowStateRef: MutableRefObject<boolean>;
   itemizedBatchContext?: {
     batchId: string;
@@ -120,6 +122,12 @@ export function useSheinStudioTaskCreationAction({
       setCreatingError(message);
       setCreatingWarning("");
       toast.error("无法创建 SHEIN 资料", message);
+      return;
+    }
+    if (storeRequiredMessage) {
+      setCreatingError(storeRequiredMessage);
+      setCreatingWarning("");
+      toast.error("无法创建 SHEIN 资料", storeRequiredMessage);
       return;
     }
     const approvedDesignIdsForTaskCreation = getApprovedItemizedBatchDesignIDs(
