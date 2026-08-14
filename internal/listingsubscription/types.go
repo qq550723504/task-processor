@@ -33,7 +33,70 @@ var (
 	ErrEntitlementNotFound     = errors.New("subscription entitlement not found")
 	ErrSubscriptionRequired    = errors.New("subscription required")
 	ErrSubscriptionQuotaExceed = errors.New("subscription quota exceeded")
+	ErrUsageInvalidInput       = errors.New("usage ledger invalid input")
+	ErrUsageDuplicateIdentity  = errors.New("usage ledger duplicate identity")
+	ErrUsageInvalidTransition  = errors.New("usage ledger invalid transition")
+	ErrUsageQuotaExceeded      = errors.New("usage ledger quota exceeded")
 )
+
+type UsageEventStatus string
+
+const (
+	UsageEventReserved  UsageEventStatus = "reserved"
+	UsageEventCommitted UsageEventStatus = "committed"
+	UsageEventReleased  UsageEventStatus = "released"
+	UsageEventReversed  UsageEventStatus = "reversed"
+)
+
+type UsageEvent struct {
+	EventID        string
+	TenantID       string
+	ModuleCode     string
+	Metric         string
+	Quantity       int64
+	SourceType     string
+	SourceID       string
+	IdempotencyKey string
+	Status         UsageEventStatus
+	OccurredAt     time.Time
+	ReversalOf     string
+	Metadata       map[string]string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+}
+
+type ReserveUsageInput struct {
+	TenantID       string
+	ModuleCode     string
+	Metric         string
+	Quantity       int64
+	PeriodKey      string
+	SourceType     string
+	SourceID       string
+	IdempotencyKey string
+	OccurredAt     time.Time
+	Metadata       map[string]string
+}
+
+type ReserveUsageResult struct {
+	Event          UsageEvent
+	Existing       bool
+	CommittedUsage int64
+	ReservedUsage  int64
+	Limit          *int64
+}
+
+type UsageOutboxItem struct {
+	ID            int64
+	EventID       string
+	Destination   string
+	Status        string
+	Attempts      int
+	NextAttemptAt *time.Time
+	LastError     string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
 
 type Module struct {
 	Code        string    `json:"code"`
@@ -203,4 +266,13 @@ type Repository interface {
 	CreateAuditLog(ctx context.Context, log AuditLog) (*AuditLog, error)
 	ListAuditLogs(ctx context.Context, tenantID string, limit int) ([]AuditLog, error)
 	ListPlanAuditLogs(ctx context.Context, planCode string, limit int) ([]AuditLog, error)
+}
+
+type UsageLedger interface {
+	Reserve(ctx context.Context, input ReserveUsageInput) (ReserveUsageResult, error)
+	Commit(ctx context.Context, eventID string) (UsageEvent, error)
+	Release(ctx context.Context, eventID, reason string) (UsageEvent, error)
+	Reverse(ctx context.Context, eventID, idempotencyKey, reason string) (UsageEvent, error)
+	Get(ctx context.Context, tenantID, idempotencyKey string) (*UsageEvent, error)
+	ListPendingOutbox(ctx context.Context, limit int) ([]UsageOutboxItem, error)
 }
