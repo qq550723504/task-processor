@@ -104,6 +104,9 @@ func (w taskRecoveryRunnerWiring) markRecoveredBatch(ctx context.Context, taskID
 	if isUsageCommitPending(task) {
 		return core.ErrTaskNotRecoverable
 	}
+	if isUsageReleasePending(task) {
+		return core.ErrTaskNotRecoverable
+	}
 	return w.svc.repo.RecoverBlockedTaskNow(ctx, taskID, recoverAt)
 }
 
@@ -134,12 +137,22 @@ func (s *taskRecoveryService) RecoverTaskNow(ctx context.Context, taskID string)
 		return nil, err
 	} else if isUsageCommitPending(task) {
 		return s.recoverUsageCommit(ctx, task)
+	} else if isUsageReleasePending(task) {
+		return s.recoverUsageRelease(ctx, task)
 	}
 	return s.recoveryNow.RecoverNow(ctx, taskID)
 }
 
 func isUsageCommitPending(task *Task) bool {
-	return task != nil && task.RetryableBlock != nil && task.RetryableBlock.ReasonCode == "usage_commit_pending"
+	return task != nil && task.RetryableBlock != nil && task.RetryableBlock.ReasonCode == usageCommitPendingReason
+}
+
+func isUsageReleasePending(task *Task) bool {
+	return task != nil && task.RetryableBlock != nil && task.RetryableBlock.ReasonCode == usageReleasePendingReason
+}
+
+func isUsageSettlementPending(task *Task) bool {
+	return isUsageCommitPending(task) || isUsageReleasePending(task)
 }
 
 func (s *taskRecoveryService) recoverUsageCommit(ctx context.Context, task *Task) (*Task, error) {
@@ -147,7 +160,7 @@ func (s *taskRecoveryService) recoverUsageCommit(ctx context.Context, task *Task
 		return nil, fmt.Errorf("generation usage settlement is not configured")
 	}
 	if err := s.generationUsage.CommitGeneration(ctx, task.TenantID, task.ID); err != nil {
-		return nil, err
+		return nil, s.reblockUsageSettlement(ctx, task, err)
 	}
 	settlementRepo, ok := s.repo.(UsageSettlementRepository)
 	if !ok {
@@ -157,6 +170,43 @@ func (s *taskRecoveryService) recoverUsageCommit(ctx context.Context, task *Task
 		return nil, err
 	}
 	return s.repo.GetTask(ctx, task.ID)
+}
+
+func (s *taskRecoveryService) recoverUsageRelease(ctx context.Context, task *Task) (*Task, error) {
+	if s.generationUsage == nil {
+		return nil, fmt.Errorf("generation usage settlement is not configured")
+	}
+	if err := s.generationUsage.ReleaseGeneration(ctx, task.TenantID, task.ID, "terminal_persistence_failed"); err != nil {
+		return nil, s.reblockUsageSettlement(ctx, task, err)
+	}
+	if err := s.repo.MarkFailed(ctx, task.ID, task.Error); err != nil {
+		return nil, err
+	}
+	return s.repo.GetTask(ctx, task.ID)
+}
+
+func (s *taskRecoveryService) reblockUsageSettlement(ctx context.Context, task *Task, settlementErr error) error {
+	if task == nil || task.RetryableBlock == nil {
+		return settlementErr
+	}
+	classified, _ := submissiondomain.ClassifyRetryableFailure(settlementErr, usageSettlementRecoveryScope)
+	updated := submissiondomain.BuildReblockedRetryableBlock(
+		adaptRetryableBlockState(task.RetryableBlock),
+		classified,
+		s.currentTime(),
+		usageSettlementRecoveryScope,
+	)
+	// Keep the settlement-only route even when the underlying ledger error is
+	// classified as a generic upstream timeout/unavailable failure. Otherwise
+	// the next sweep could send a terminal generation task back to the provider.
+	updated.ReasonCode = task.RetryableBlock.ReasonCode
+	updated.ReasonMessage = task.RetryableBlock.ReasonMessage
+	updated.RecoveryScope = usageSettlementRecoveryScope
+	updated.AutoResumeEnabled = task.RetryableBlock.AutoResumeEnabled
+	if markErr := markTaskBlockedRetryableState(ctx, s.repo, task.ID, updated, settlementErr.Error()); markErr != nil {
+		return errors.Join(settlementErr, markErr)
+	}
+	return settlementErr
 }
 
 func (s *taskRecoveryService) RunRecoverySweep(ctx context.Context, now time.Time, limit int) (int64, error) {
@@ -192,17 +242,26 @@ func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *Recov
 			return 0, err
 		}
 		for i := range candidates {
-			if !isUsageCommitPending(&candidates[i]) {
+			if !isUsageSettlementPending(&candidates[i]) {
 				continue
 			}
-			if _, err := s.recoverUsageCommit(ctx, &candidates[i]); err != nil {
+			var err error
+			if isUsageReleasePending(&candidates[i]) {
+				_, err = s.recoverUsageRelease(ctx, &candidates[i])
+			} else {
+				_, err = s.recoverUsageCommit(ctx, &candidates[i])
+			}
+			if err != nil {
 				settleErr = errors.Join(settleErr, err)
 				continue
 			}
 			settled++
 		}
 	}
-	if settled == 0 && settleErr == nil {
+	if settleErr != nil {
+		return settled, settleErr
+	}
+	if settled == 0 {
 		return s.recoveryBatch.RecoverBatch(ctx, request)
 	}
 	recovered, err := s.recoveryBatch.RecoverBatch(ctx, request)

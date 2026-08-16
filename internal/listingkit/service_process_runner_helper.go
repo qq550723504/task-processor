@@ -43,6 +43,7 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 
 	result, err := f.service.runWorkflow(ctx, task)
 	if err != nil {
+		workflowErr := err
 		log.WithError(err).Error("listing kit workflow failed")
 		if _, retryable := classifyRetryableTaskFailure(err); !retryable {
 			if releaseErr := f.service.releaseGenerationUsage(ctx, task, "workflow_failed"); releaseErr != nil {
@@ -50,7 +51,7 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 				err = errors.Join(err, releaseErr)
 			}
 		}
-		if persistErr := f.service.persistProcessFailure(ctx, task.ID, result, err); persistErr != nil {
+		if persistErr := f.service.persistProcessFailure(ctx, task.ID, result, workflowErr); persistErr != nil {
 			log.WithError(persistErr).Error("failed to persist listing kit workflow failure")
 			return nil, errors.Join(err, persistErr)
 		}

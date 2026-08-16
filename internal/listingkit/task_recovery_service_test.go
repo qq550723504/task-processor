@@ -632,6 +632,7 @@ func (r *taskRecoveryServiceTestRepo) MarkFailed(_ context.Context, taskID strin
 		return core.ErrTaskNotFound
 	}
 	task.Status = core.TaskStatusFailed
+	task.RetryableBlock = nil
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now().UTC()
 	return nil

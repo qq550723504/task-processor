@@ -63,9 +63,9 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 	if existingID, ok := l.eventIDByIdentity[identity]; ok {
 		existing := l.eventsByID[existingID].event
 		comparison := input
-		if comparison.OccurredAt.IsZero() {
-			comparison.PeriodKey = existing.PeriodKey
-		}
+		// Idempotent replays keep the persisted billing period even when the
+		// caller retries after a period boundary with a fresh occurrence time.
+		comparison.PeriodKey = existing.PeriodKey
 		if !usageEventMatchesReserveInput(existing, comparison) {
 			return ReserveUsageResult{}, &UsageDuplicateIdentityError{TenantID: input.TenantID, IdempotencyKey: input.IdempotencyKey}
 		}

@@ -188,6 +188,7 @@ func (r *MemTaskRepository) MarkFailed(ctx context.Context, taskID string, error
 		return core.ErrTaskNotFound
 	}
 	task.Status = core.TaskStatusFailed
+	task.RetryableBlock = nil
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now()
 	return nil

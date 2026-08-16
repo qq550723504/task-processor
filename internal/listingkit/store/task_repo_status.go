@@ -75,8 +75,9 @@ func (r *taskRepository) MarkNeedsReview(ctx context.Context, taskID string, res
 
 func (r *taskRepository) MarkFailed(ctx context.Context, taskID string, errorMsg string) error {
 	return r.updateTaskFields(ctx, taskID, map[string]any{
-		"status": core.TaskStatusFailed,
-		"error":  errorMsg,
+		"status":          core.TaskStatusFailed,
+		"retryable_block": nil,
+		"error":           errorMsg,
 	})
 }
 

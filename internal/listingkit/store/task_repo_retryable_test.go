@@ -81,6 +81,36 @@ func TestTaskRepositoryMarkBlockedRetryablePersistsMetadata(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryMarkFailedClearsRetryableBlock(t *testing.T) {
+	t.Parallel()
+
+	for _, repoFactory := range retryableTaskRepoFactories(t) {
+		t.Run(repoFactory.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := repoFactory.new(t)
+			ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
+			task := retryableTaskFixture("task-failed-clears-block", time.Date(2026, 6, 6, 10, 0, 0, 0, time.UTC))
+			if err := repo.CreateTask(ctx, task); err != nil {
+				t.Fatalf("CreateTask() error = %v", err)
+			}
+			if err := repo.MarkBlockedRetryable(ctx, task.ID, &listingkit.RetryableBlock{ReasonCode: "usage_release_pending", AutoResumeEnabled: true}, "release pending"); err != nil {
+				t.Fatalf("MarkBlockedRetryable() error = %v", err)
+			}
+			if err := repo.MarkFailed(ctx, task.ID, "release completed"); err != nil {
+				t.Fatalf("MarkFailed() error = %v", err)
+			}
+			got, err := repo.GetTask(ctx, task.ID)
+			if err != nil {
+				t.Fatalf("GetTask() error = %v", err)
+			}
+			if got.Status != core.TaskStatusFailed || got.RetryableBlock != nil {
+				t.Fatalf("task = %#v, want failed task without retryable block", got)
+			}
+		})
+	}
+}
+
 func TestTaskRepositoryListRecoverableTasksReturnsDueItemsOnly(t *testing.T) {
 	t.Parallel()
 

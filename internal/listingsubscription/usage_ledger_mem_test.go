@@ -204,6 +204,29 @@ func TestMemUsageLedgerRejectsIdempotencyKeyForDifferentUsageFact(t *testing.T) 
 	}
 }
 
+func TestMemUsageLedgerReplayKeepsPersistedPeriodAcrossBoundary(t *testing.T) {
+	repo := NewMemRepository()
+	seedMemUsageLedgerEntitlement(t, repo, "tenant-period-replay", ModuleStudio, map[string]int{"studio_design_jobs_succeeded": 2})
+	ledger := NewMemUsageLedger(repo)
+	firstInput := usageLedgerReserveInput("tenant-period-replay", "period-boundary", 1)
+	firstInput.PeriodKey = "2026-07"
+	firstInput.OccurredAt = time.Date(2026, 7, 31, 23, 59, 0, 0, time.UTC)
+	first, err := ledger.Reserve(context.Background(), firstInput)
+	if err != nil {
+		t.Fatalf("first Reserve() error = %v", err)
+	}
+	replayInput := firstInput
+	replayInput.PeriodKey = "2026-08"
+	replayInput.OccurredAt = time.Date(2026, 8, 1, 0, 1, 0, 0, time.UTC)
+	replay, err := ledger.Reserve(context.Background(), replayInput)
+	if err != nil {
+		t.Fatalf("boundary replay Reserve() error = %v", err)
+	}
+	if !replay.Existing || replay.Event.EventID != first.Event.EventID || replay.Event.PeriodKey != "2026-07" {
+		t.Fatalf("boundary replay = %+v, want existing July event %q", replay, first.Event.EventID)
+	}
+}
+
 func TestMemUsageLedgerRejectsNonCanonicalPeriodKey(t *testing.T) {
 	repo := NewMemRepository()
 	seedMemUsageLedgerEntitlement(t, repo, "tenant-17", "studio", map[string]int{"design_jobs": 10})

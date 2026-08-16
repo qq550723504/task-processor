@@ -15,17 +15,20 @@ type recordingGenerationUsageSettlement struct {
 	calls            []string
 	reserveErr       error
 	commitErr        error
+	releaseErr       error
 	reserveCommitted bool
 	repo             *stubProcessStatusRepo
 	reservedTaskID   string
 	committedTaskID  string
 	releasedTaskID   string
 	releasedReason   string
+	reservedAt       time.Time
 }
 
-func (s *recordingGenerationUsageSettlement) ReserveGeneration(_ context.Context, _ string, taskID string, _ time.Time) (GenerationUsageReservation, error) {
+func (s *recordingGenerationUsageSettlement) ReserveGeneration(_ context.Context, _ string, taskID string, occurredAt time.Time) (GenerationUsageReservation, error) {
 	s.calls = append(s.calls, "reserve")
 	s.reservedTaskID = taskID
+	s.reservedAt = occurredAt
 	if s.reserveErr != nil {
 		return GenerationUsageReservation{}, s.reserveErr
 	}
@@ -45,7 +48,7 @@ func (s *recordingGenerationUsageSettlement) ReleaseGeneration(_ context.Context
 	s.calls = append(s.calls, "release")
 	s.releasedTaskID = taskID
 	s.releasedReason = reason
-	return nil
+	return s.releaseErr
 }
 
 type processUsageProductService struct {
@@ -168,6 +171,41 @@ func TestProcessListingKitPreservesReservationOnRetryableWorkflowFailure(t *test
 	}
 }
 
+func TestProcessListingKitUsesReservationTimeForNewUsageEvents(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{}
+	svc, _, _, task := newProcessUsageFixture(t, settlement, nil)
+	task.CreatedAt = time.Now().UTC().Add(-45 * 24 * time.Hour)
+	before := time.Now().UTC()
+	if _, err := svc.ProcessListingKit(context.Background(), task); err != nil {
+		t.Fatalf("ProcessListingKit() error = %v", err)
+	}
+	if !settlement.reservedAt.After(task.CreatedAt) || settlement.reservedAt.Before(before.Add(-time.Second)) {
+		t.Fatalf("reserved_at = %v, want current reservation time after task creation %v", settlement.reservedAt, task.CreatedAt)
+	}
+}
+
+func TestProcessListingKitDoesNotClassifyReleaseFailureAsRetryableWorkflowFailure(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{releaseErr: errors.New("ledger context deadline exceeded")}
+	svc, repo, _, task := newProcessUsageFixture(t, settlement, errors.New("provider rejected request"))
+	if _, err := svc.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want workflow/release failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusFailed {
+		t.Fatalf("stored status = %s, want failed for terminal workflow error", stored.Status)
+	}
+	if stored.RetryableBlock != nil {
+		t.Fatalf("stored RetryableBlock = %+v, want nil when only release is retryable", stored.RetryableBlock)
+	}
+}
+
 func TestProcessListingKitPersistsFailureAndReleasesWhenTerminalPersistenceFails(t *testing.T) {
 	t.Parallel()
 
@@ -199,6 +237,40 @@ func TestProcessListingKitPersistsFailureAndReleasesWhenTerminalPersistenceFails
 	}
 	if repo.task.Status != core.TaskStatusFailed {
 		t.Fatalf("task status = %s, want failed after terminal persistence failure", repo.task.Status)
+	}
+}
+
+func TestProcessListingKitKeepsReleaseFailureRecoverableAfterTerminalPersistenceFailure(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}, completedErr: errors.New("task store unavailable")}
+	settlement := &recordingGenerationUsageSettlement{releaseErr: errors.New("ledger context deadline exceeded")}
+	productService := &processUsageProductService{
+		task:    &productenrich.Task{ID: "product-task-release-persist", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
+		product: &productenrich.ProductJSON{Title: "Travel Bag", Category: []string{"bags"}},
+	}
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
+		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
+	))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	task := &Task{ID: "listingkit-release-persist", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	if _, err := svc.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want terminal persistence/release failure")
+	}
+	if repo.task.Status != core.TaskStatusBlockedRetryable || repo.task.RetryableBlock == nil || repo.task.RetryableBlock.ReasonCode != "usage_release_pending" {
+		t.Fatalf("task after release failure = %#v, want usage_release_pending block", repo.task)
+	}
+	if repo.failedCalls != 0 {
+		t.Fatalf("MarkFailed calls = %d, want 0 while release remains recoverable", repo.failedCalls)
 	}
 }
 
@@ -274,6 +346,29 @@ func TestProcessListingKitPersistsUsageCommitPendingOnCommitFailure(t *testing.T
 	}
 	if stored.RetryableBlock.NextRetryAt == nil {
 		t.Fatal("usage_commit_pending NextRetryAt = nil, want scheduled recovery")
+	}
+}
+
+func TestProcessListingKitRetriesUsageCommitPendingPersistence(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{commitErr: errors.New("ledger unavailable")}
+	svc, repo, _, task := newProcessUsageFixture(t, settlement, nil)
+	settlement.repo = repo
+	repo.blockedErrs = []error{errors.New("task store unavailable once")}
+
+	if _, err := svc.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want commit failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if repo.blockedCalls != 2 {
+		t.Fatalf("MarkBlockedRetryable calls = %d, want retry after transient persistence error", repo.blockedCalls)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != "usage_commit_pending" {
+		t.Fatalf("stored task = %#v, want durable usage_commit_pending block", stored)
 	}
 }
 

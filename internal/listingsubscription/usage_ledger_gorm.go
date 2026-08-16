@@ -27,35 +27,35 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 	if err != nil {
 		return ReserveUsageResult{}, err
 	}
-	if input.OccurredAt.IsZero() {
-		// Resolve an idempotent replay before deriving a time-sensitive billing
-		// period. A retry can cross a month boundary; the persisted event owns
-		// the canonical period and occurrence timestamp.
-		var existing usageEventRow
-		lookupErr := l.repo.db.WithContext(ctx).Where("tenant_id = ? AND idempotency_key = ?", input.TenantID, input.IdempotencyKey).Take(&existing).Error
-		if lookupErr == nil {
-			comparison := input
-			comparison.PeriodKey = existing.PeriodKey
-			if !usageEventMatchesReserveInput(usageEventFromRow(existing), comparison) {
-				return ReserveUsageResult{}, &UsageDuplicateIdentityError{TenantID: input.TenantID, IdempotencyKey: input.IdempotencyKey}
+	// Resolve an idempotent replay before deriving a time-sensitive billing
+	// period. A retry can cross a month boundary; the persisted event owns the
+	// canonical period and occurrence timestamp.
+	var initialExisting usageEventRow
+	lookupErr := l.repo.db.WithContext(ctx).Where("tenant_id = ? AND idempotency_key = ?", input.TenantID, input.IdempotencyKey).Take(&initialExisting).Error
+	if lookupErr == nil {
+		comparison := input
+		comparison.PeriodKey = initialExisting.PeriodKey
+		if !usageEventMatchesReserveInput(usageEventFromRow(initialExisting), comparison) {
+			return ReserveUsageResult{}, &UsageDuplicateIdentityError{TenantID: input.TenantID, IdempotencyKey: input.IdempotencyKey}
+		}
+		var replay ReserveUsageResult
+		err := l.repo.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			var current usageEventRow
+			if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND idempotency_key = ?", input.TenantID, input.IdempotencyKey).Take(&current).Error; err != nil {
+				return err
 			}
-			var replay ReserveUsageResult
-			err := l.repo.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-				var current usageEventRow
-				if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND idempotency_key = ?", input.TenantID, input.IdempotencyKey).Take(&current).Error; err != nil {
-					return err
-				}
-				comparison.PeriodKey = current.PeriodKey
-				if !usageEventMatchesReserveInput(usageEventFromRow(current), comparison) {
-					return &UsageDuplicateIdentityError{TenantID: input.TenantID, IdempotencyKey: input.IdempotencyKey}
-				}
-				return l.reserveResultForExisting(tx, current, &replay)
-			})
-			return replay, err
-		}
-		if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
-			return ReserveUsageResult{}, lookupErr
-		}
+			comparison.PeriodKey = current.PeriodKey
+			if !usageEventMatchesReserveInput(usageEventFromRow(current), comparison) {
+				return &UsageDuplicateIdentityError{TenantID: input.TenantID, IdempotencyKey: input.IdempotencyKey}
+			}
+			return l.reserveResultForExisting(tx, current, &replay)
+		})
+		return replay, err
+	}
+	if !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+		return ReserveUsageResult{}, lookupErr
+	}
+	if input.OccurredAt.IsZero() {
 		input.OccurredAt = time.Now().UTC()
 	}
 	if input.PeriodKey, err = canonicalUsagePeriodKey(input.Metric, input.PeriodKey, input.OccurredAt); err != nil {
@@ -69,7 +69,9 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 			var existing usageEventRow
 			err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("tenant_id = ? AND idempotency_key = ?", input.TenantID, input.IdempotencyKey).Take(&existing).Error
 			if err == nil {
-				if !usageEventMatchesReserveInput(usageEventFromRow(existing), input) {
+				comparison := input
+				comparison.PeriodKey = existing.PeriodKey
+				if !usageEventMatchesReserveInput(usageEventFromRow(existing), comparison) {
 					return &UsageDuplicateIdentityError{TenantID: input.TenantID, IdempotencyKey: input.IdempotencyKey}
 				}
 				return l.reserveResultForExisting(tx, existing, &result)
@@ -162,13 +164,15 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 	// A concurrent insert can win after the initial lookup. The unique identity
 	// is authoritative, so load it after the failed transaction without changing
 	// bucket state a second time.
-	var existing usageEventRow
-	if lookupErr := l.repo.db.WithContext(ctx).Where("tenant_id = ? AND idempotency_key = ?", input.TenantID, input.IdempotencyKey).Take(&existing).Error; lookupErr == nil {
+	var existingAfter usageEventRow
+	if lookupErr := l.repo.db.WithContext(ctx).Where("tenant_id = ? AND idempotency_key = ?", input.TenantID, input.IdempotencyKey).Take(&existingAfter).Error; lookupErr == nil {
 		if resultErr := l.repo.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			if !usageEventMatchesReserveInput(usageEventFromRow(existing), input) {
+			comparison := input
+			comparison.PeriodKey = existingAfter.PeriodKey
+			if !usageEventMatchesReserveInput(usageEventFromRow(existingAfter), comparison) {
 				return &UsageDuplicateIdentityError{TenantID: input.TenantID, IdempotencyKey: input.IdempotencyKey}
 			}
-			return l.reserveResultForExisting(tx, existing, &result)
+			return l.reserveResultForExisting(tx, existingAfter, &result)
 		}); resultErr == nil {
 			return result, nil
 		} else {

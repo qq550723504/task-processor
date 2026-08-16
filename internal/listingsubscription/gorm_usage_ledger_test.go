@@ -64,6 +64,31 @@ func TestGormUsageLedgerReserveIsIdempotent(t *testing.T) {
 	assertUsageLedgerCounts(t, db, first.Event.EventID, 1, 0, 1, 1)
 }
 
+func TestGormUsageLedgerReplayKeepsPersistedPeriodAcrossBoundary(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-period-replay", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+	ledger := NewGormUsageLedger(repo)
+	firstInput := usageLedgerReserveInput("tenant-period-replay", "period-boundary", 1)
+	firstInput.PeriodKey = "2026-07"
+	firstInput.OccurredAt = time.Date(2026, 7, 31, 23, 59, 0, 0, time.UTC)
+	first, err := ledger.Reserve(ctx, firstInput)
+	if err != nil {
+		t.Fatalf("first Reserve() error = %v", err)
+	}
+	replayInput := firstInput
+	replayInput.PeriodKey = "2026-08"
+	replayInput.OccurredAt = time.Date(2026, 8, 1, 0, 1, 0, 0, time.UTC)
+	replay, err := ledger.Reserve(ctx, replayInput)
+	if err != nil {
+		t.Fatalf("boundary replay Reserve() error = %v", err)
+	}
+	if !replay.Existing || replay.Event.EventID != first.Event.EventID || replay.Event.PeriodKey != "2026-07" {
+		t.Fatalf("boundary replay = %+v, want existing July event %q", replay, first.Event.EventID)
+	}
+}
+
 func TestGormUsageLedgerRejectsIdempotencyKeyForDifferentUsageFact(t *testing.T) {
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)

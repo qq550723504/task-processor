@@ -29,6 +29,8 @@ type stubProcessStatusRepo struct {
 	failedError     string
 	failedCalls     int
 	savedResults    []*ListingKitResult
+	blockedCalls    int
+	blockedErrs     []error
 }
 
 func (a *stubProcessStatusAssembler) Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult {
@@ -58,9 +60,22 @@ func (r *stubProcessStatusRepo) MarkFailed(_ context.Context, taskID string, err
 	r.failedCalls++
 	if r.task != nil && r.task.ID == taskID {
 		r.task.Status = core.TaskStatusFailed
+		r.task.RetryableBlock = nil
 		r.task.Error = errorMsg
 	}
 	return nil
+}
+
+func (r *stubProcessStatusRepo) MarkBlockedRetryable(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
+	r.blockedCalls++
+	if len(r.blockedErrs) > 0 {
+		err := r.blockedErrs[0]
+		r.blockedErrs = r.blockedErrs[1:]
+		if err != nil {
+			return err
+		}
+	}
+	return r.stubGenerationRepo.MarkBlockedRetryable(ctx, taskID, block, errorMsg)
 }
 
 func (r *stubProcessStatusRepo) SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {
