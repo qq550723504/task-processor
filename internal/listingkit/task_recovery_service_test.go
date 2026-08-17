@@ -563,6 +563,7 @@ type taskRecoveryServiceTestRepo struct {
 	requireLiveBlockContext       bool
 	markFailedErrors              []error
 	resolveUsageSettlementErrors  []error
+	resolveUsageSettlementHook    func(*Task)
 	afterListExpired              func()
 }
 

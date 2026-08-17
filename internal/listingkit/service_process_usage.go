@@ -219,7 +219,7 @@ func (s *service) handleGenerationTerminalPersistenceFailure(ctx context.Context
 	}
 	if releaseErr := s.releaseGenerationUsage(ctx, task, "terminal_persistence_failed"); releaseErr != nil {
 		errs = append(errs, releaseErr)
-		blockErr := s.markGenerationUsageReleasePending(ctx, task, persistErr, releaseErr)
+		blockErr := s.markGenerationUsageReleasePending(ctx, task, "terminal_persistence_failed", persistErr, releaseErr)
 		if blockErr != nil {
 			errs = append(errs, blockErr)
 		}
@@ -248,7 +248,7 @@ func settlementPersistenceContext(ctx context.Context) (context.Context, context
 	return context.WithTimeout(context.WithoutCancel(ctx), settlementPersistenceTimeout)
 }
 
-func (s *service) markGenerationUsageReleasePending(ctx context.Context, task *Task, persistErr, releaseErr error) error {
+func (s *service) markGenerationUsageReleasePending(ctx context.Context, task *Task, releaseReason string, persistErr, releaseErr error) error {
 	if task == nil {
 		return releaseErr
 	}
@@ -257,6 +257,7 @@ func (s *service) markGenerationUsageReleasePending(ctx context.Context, task *T
 	block := &RetryableBlock{
 		ReasonCode:           usageReleasePendingReason,
 		ReasonMessage:        "usage release is pending",
+		UsageReleaseReason:   strings.TrimSpace(releaseReason),
 		BlockedAt:            now,
 		NextRetryAt:          &notBefore,
 		MaxAutoRetryAttempts: usageSettlementMaxAutoRetryAttempts,
@@ -369,7 +370,7 @@ func (s *service) persistScheduledRetryableFailure(ctx context.Context, task *Ta
 	if err := markRetryableTaskState(persistCtx, s.repo, task.ID, block, errorMsg); err != nil {
 		if reservationHeld {
 			recoveryErr := errors.Join(persistErr, err)
-			return errors.Join(recoveryErr, s.markGenerationUsageReleasePending(ctx, task, failureErr, recoveryErr))
+			return errors.Join(recoveryErr, s.markGenerationUsageReleasePending(ctx, task, "retryable_persistence_failed", failureErr, recoveryErr))
 		}
 		return errors.Join(persistErr, err, markTerminalPersistencePending(ctx, s.repo, task.ID, err))
 	}

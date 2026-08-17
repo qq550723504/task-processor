@@ -101,9 +101,11 @@ func (r *taskRepository) ResolveUsageSettlement(ctx context.Context, taskID stri
 		return core.ErrTaskNotRecoverable
 	}
 	return r.updateTaskFields(ctx, taskID, map[string]any{
-		"status":          core.TaskStatus(task.Result.Status),
-		"retryable_block": nil,
-		"error":           "",
+		"status":                             core.TaskStatus(task.Result.Status),
+		"retryable_block":                    nil,
+		"error":                              "",
+		"generation_usage_reservation_state": "",
+		"generation_usage_reservation_lease_until": nil,
 	})
 }
 

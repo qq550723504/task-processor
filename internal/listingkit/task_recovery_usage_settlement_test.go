@@ -16,6 +16,7 @@ type recordingRecoveryUsageSettlement struct {
 	releaseCalls  int
 	releaseErr    error
 	releaseTenant string
+	releaseReason string
 	lookupState   GenerationUsageEventState
 	lookupFound   bool
 	lookupErr     error
@@ -31,9 +32,10 @@ func (s *recordingRecoveryUsageSettlement) CommitGeneration(_ context.Context, t
 	return s.commitErr
 }
 
-func (s *recordingRecoveryUsageSettlement) ReleaseGeneration(_ context.Context, tenantID, _, _ string) error {
+func (s *recordingRecoveryUsageSettlement) ReleaseGeneration(_ context.Context, tenantID, _, reason string) error {
 	s.releaseCalls++
 	s.releaseTenant = tenantID
+	s.releaseReason = reason
 	return s.releaseErr
 }
 
@@ -45,6 +47,9 @@ func (r *taskRecoveryServiceTestRepo) ResolveUsageSettlement(_ context.Context, 
 	task, ok := r.tasks[taskID]
 	if !ok {
 		return core.ErrTaskNotFound
+	}
+	if r.resolveUsageSettlementHook != nil {
+		r.resolveUsageSettlementHook(task)
 	}
 	if len(r.resolveUsageSettlementErrors) > 0 {
 		err := r.resolveUsageSettlementErrors[0]
@@ -59,6 +64,8 @@ func (r *taskRecoveryServiceTestRepo) ResolveUsageSettlement(_ context.Context, 
 	task.Status = core.TaskStatus(task.Result.Status)
 	task.RetryableBlock = nil
 	task.Error = ""
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
 	return nil
 }
 
@@ -96,6 +103,42 @@ func TestRecoverTaskNowSettlesUsageCommitWithoutSubmittingTask(t *testing.T) {
 	}
 	if submitted != 0 {
 		t.Fatalf("submit calls = %d, want 0 for settlement-only recovery", submitted)
+	}
+}
+
+func TestRecoverTaskNowDoesNotReblockAlreadyResolvedUsageSettlement(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	ctx := WithTenantID(context.Background(), "tenant-usage-race")
+	leaseUntil := time.Now().UTC().Add(time.Hour)
+	task := &Task{ID: "task-usage-race", TenantID: "tenant-usage-race", Status: core.TaskStatusCompleted, Result: &ListingKitResult{Status: string(core.TaskStatusCompleted)}, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{ReasonCode: usageCommitPendingReason}, "usage settlement pending"); err != nil {
+		t.Fatalf("MarkBlockedRetryable() error = %v", err)
+	}
+	repo.resolveUsageSettlementHook = func(task *Task) {
+		task.Status = core.TaskStatusCompleted
+		task.RetryableBlock = nil
+		task.Error = ""
+		task.GenerationUsageReservationState = ""
+		task.GenerationUsageReservationLeaseUntil = nil
+	}
+	repo.resolveUsageSettlementErrors = []error{core.ErrTaskNotRecoverable}
+	settlement := &recordingRecoveryUsageSettlement{}
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{repo: repo, generationUsage: settlement})
+
+	recovered, err := svc.RecoverTaskNow(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("RecoverTaskNow() error = %v", err)
+	}
+	if recovered.Status != core.TaskStatusCompleted || recovered.RetryableBlock != nil || recovered.GenerationUsageReservationState != "" || recovered.GenerationUsageReservationLeaseUntil != nil {
+		t.Fatalf("recovered task = %#v, want resolved terminal task", recovered)
+	}
+	if repo.markBlockedRetryableCallCount != 1 {
+		t.Fatalf("MarkBlockedRetryable calls = %d, want only the initial block", repo.markBlockedRetryableCallCount)
 	}
 }
 
@@ -504,6 +547,7 @@ func TestRunRecoverySweepReleasesUsageWithoutSubmittingTask(t *testing.T) {
 	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{
 		ReasonCode:           "usage_release_pending",
 		ReasonMessage:        "usage release is pending",
+		UsageReleaseReason:   "workflow_failed",
 		BlockedAt:            now.Add(-10 * time.Minute),
 		NextRetryAt:          &due,
 		RetryAttempts:        1,
@@ -528,6 +572,9 @@ func TestRunRecoverySweepReleasesUsageWithoutSubmittingTask(t *testing.T) {
 	}
 	if recovered != 1 || settlement.releaseCalls != 1 || submitted != 0 {
 		t.Fatalf("recovered/release/submitted = (%d, %d, %d), want (1, 1, 0)", recovered, settlement.releaseCalls, submitted)
+	}
+	if settlement.releaseReason != "workflow_failed" {
+		t.Fatalf("release reason = %q, want workflow_failed", settlement.releaseReason)
 	}
 	got, err := repo.GetTask(ctx, task.ID)
 	if err != nil {

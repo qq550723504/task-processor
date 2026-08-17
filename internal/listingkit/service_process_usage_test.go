@@ -575,6 +575,9 @@ func TestProcessListingKitKeepsReleaseFailureRecoverableAfterTerminalWorkflowFai
 	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != usageReleasePendingReason {
 		t.Fatalf("stored task = %#v, want usage_release_pending block", stored)
 	}
+	if stored.RetryableBlock.UsageReleaseReason != "workflow_failed" {
+		t.Fatalf("release reason = %q, want workflow_failed", stored.RetryableBlock.UsageReleaseReason)
+	}
 }
 
 func TestProcessListingKitPersistsReleasePendingAfterWorkflowReleaseFailure(t *testing.T) {

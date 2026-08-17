@@ -224,6 +224,8 @@ func (r *MemTaskRepository) ResolveUsageSettlement(ctx context.Context, taskID s
 	task.Status = core.TaskStatus(task.Result.Status)
 	task.RetryableBlock = nil
 	task.Error = ""
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
 	task.UpdatedAt = time.Now().UTC()
 	return nil
 }

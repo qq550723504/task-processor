@@ -231,6 +231,18 @@ func usageEventMatchesReserveInput(event UsageEvent, input ReserveUsageInput) bo
 		event.SourceID == input.SourceID
 }
 
+// usageReplayComparison preserves the persisted period only for legacy retries
+// without an occurrence time. A caller that supplies an occurrence time has
+// explicitly selected a billing period, which must match the event already
+// claimed by its idempotency key.
+func usageReplayComparison(input ReserveUsageInput, event UsageEvent) ReserveUsageInput {
+	comparison := input
+	if comparison.OccurredAt.IsZero() {
+		comparison.PeriodKey = event.PeriodKey
+	}
+	return comparison
+}
+
 func validateUsageBucketTotals(metric string, committed, reserved int64) error {
 	if metric != usageMetricStorageBytesCurrent && (committed < 0 || reserved < 0) {
 		return &UsageValidationError{Field: "usage"}

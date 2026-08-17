@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	submissiondomain "task-processor/internal/listing/submission"
@@ -208,6 +209,11 @@ func (s *taskRecoveryService) recoverUsageCommit(ctx context.Context, task *Task
 		return nil, fmt.Errorf("usage settlement repository is not configured")
 	}
 	if err := settlementRepo.ResolveUsageSettlement(ctx, task.ID); err != nil {
+		if errors.Is(err, core.ErrTaskNotRecoverable) {
+			if current, loadErr := s.repo.GetTask(ctx, task.ID); loadErr == nil && isResolvedUsageCommit(current) {
+				return current, nil
+			}
+		}
 		return nil, s.reblockUsageSettlement(ctx, task, err)
 	}
 	return s.repo.GetTask(ctx, task.ID)
@@ -217,13 +223,29 @@ func (s *taskRecoveryService) recoverUsageRelease(ctx context.Context, task *Tas
 	if s.generationUsage == nil {
 		return nil, fmt.Errorf("generation usage settlement is not configured")
 	}
-	if err := s.generationUsage.ReleaseGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, "terminal_persistence_failed"); err != nil {
+	if err := s.generationUsage.ReleaseGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, usageReleaseRecoveryReason(task)); err != nil {
 		return nil, s.reblockUsageSettlement(ctx, task, err)
 	}
 	if err := markFailedTaskState(ctx, s.repo, task.ID, task.Error); err != nil {
 		return nil, s.reblockUsageSettlement(ctx, task, err)
 	}
 	return s.repo.GetTask(ctx, task.ID)
+}
+
+func isResolvedUsageCommit(task *Task) bool {
+	if task == nil || task.RetryableBlock != nil || task.Result == nil {
+		return false
+	}
+	return (task.Status == core.TaskStatusCompleted || task.Status == core.TaskStatusNeedsReview) && task.Result.Status == string(task.Status)
+}
+
+func usageReleaseRecoveryReason(task *Task) string {
+	if task != nil && task.RetryableBlock != nil {
+		if reason := strings.TrimSpace(task.RetryableBlock.UsageReleaseReason); reason != "" {
+			return reason
+		}
+	}
+	return "terminal_persistence_failed"
 }
 
 func (s *taskRecoveryService) recoverTerminalPersistence(ctx context.Context, task *Task) (*Task, error) {

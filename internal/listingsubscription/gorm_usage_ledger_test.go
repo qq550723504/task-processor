@@ -64,7 +64,7 @@ func TestGormUsageLedgerReserveIsIdempotent(t *testing.T) {
 	assertUsageLedgerCounts(t, db, first.Event.EventID, 1, 0, 1, 1)
 }
 
-func TestGormUsageLedgerReplayKeepsPersistedPeriodAcrossBoundary(t *testing.T) {
+func TestGormUsageLedgerReplayRejectsExplicitPeriodChangeAcrossBoundary(t *testing.T) {
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)
 	repo := NewGormRepository(db)
@@ -73,19 +73,14 @@ func TestGormUsageLedgerReplayKeepsPersistedPeriodAcrossBoundary(t *testing.T) {
 	firstInput := usageLedgerReserveInput("tenant-period-replay", "period-boundary", 1)
 	firstInput.PeriodKey = "2026-07"
 	firstInput.OccurredAt = time.Date(2026, 7, 31, 23, 59, 0, 0, time.UTC)
-	first, err := ledger.Reserve(ctx, firstInput)
-	if err != nil {
+	if _, err := ledger.Reserve(ctx, firstInput); err != nil {
 		t.Fatalf("first Reserve() error = %v", err)
 	}
 	replayInput := firstInput
 	replayInput.PeriodKey = "2026-08"
 	replayInput.OccurredAt = time.Date(2026, 8, 1, 0, 1, 0, 0, time.UTC)
-	replay, err := ledger.Reserve(ctx, replayInput)
-	if err != nil {
-		t.Fatalf("boundary replay Reserve() error = %v", err)
-	}
-	if !replay.Existing || replay.Event.EventID != first.Event.EventID || replay.Event.PeriodKey != "2026-07" {
-		t.Fatalf("boundary replay = %+v, want existing July event %q", replay, first.Event.EventID)
+	if _, err := ledger.Reserve(ctx, replayInput); !errors.Is(err, ErrUsageDuplicateIdentity) {
+		t.Fatalf("boundary replay Reserve() error = %v, want ErrUsageDuplicateIdentity", err)
 	}
 }
 

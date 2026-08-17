@@ -103,7 +103,7 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 					}
 				}
 				cancel()
-				if blockErr := f.service.markGenerationUsageReleasePending(ctx, task, workflowErr, releaseErr); blockErr != nil {
+				if blockErr := f.service.markGenerationUsageReleasePending(ctx, task, "workflow_failed", workflowErr, releaseErr); blockErr != nil {
 					err = errors.Join(err, blockErr)
 				}
 				return nil, err
