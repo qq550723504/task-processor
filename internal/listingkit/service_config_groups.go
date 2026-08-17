@@ -10,6 +10,7 @@ func buildTaskDependencies(config *ServiceConfig) taskDependencies {
 		sdsLoginStatusProvider:       config.Core.SDSLoginStatusProvider,
 		taskSubmitter:                config.Core.TaskSubmitter,
 		generationUsage:              config.Core.GenerationUsageLedger,
+		generationUsageAdmission:     config.Core.GenerationUsageAdmission,
 		standardWorkflowClient:       config.Workflow.StandardProductWorkflowClient,
 		standardWorkflowEnabled:      config.Workflow.StandardProductWorkflowEnabled,
 		platformAdaptWorkflowClient:  config.Workflow.PlatformAdaptWorkflowClient,

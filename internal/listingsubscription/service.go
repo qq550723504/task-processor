@@ -117,6 +117,13 @@ func (s *Service) requireUsageLedger() (UsageLedger, error) {
 	return s.usageLedger, nil
 }
 
+// HasUsageLedger reports whether this service can settle durable PAY-042 usage
+// events. Bootstrap uses it to retain the recovery adapter independently from
+// whether new admissions are currently enabled.
+func (s *Service) HasUsageLedger() bool {
+	return s != nil && !usageLedgerIsNil(s.usageLedger)
+}
+
 func usageLedgerIsNil(ledger UsageLedger) bool {
 	if ledger == nil {
 		return true

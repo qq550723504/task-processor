@@ -26,9 +26,16 @@ state fails closed for reconciliation.
 
 ## Wiring and rollout
 
-ListingKit receives an optional settlement port. The bootstrap adapter is
-constructed only when `TASK_PROCESSOR_LISTINGKIT_GENERATION_USAGE_LEDGER_ENABLED`
-is `true`; the flag defaults to `false`. Enabling the flag requires the
+ListingKit receives an optional settlement port. The bootstrap retains that
+adapter whenever a durable subscription ledger is available so previously
+persisted `usage_commit_pending` and `usage_release_pending` blocks can drain.
+New reservations require both
+`TASK_PROCESSOR_LISTINGKIT_GENERATION_USAGE_LEDGER_ENABLED=true` and an explicit
+`TASK_PROCESSOR_LISTINGKIT_GENERATION_USAGE_LEDGER_TENANT_IDS` billing-tenant
+cohort match. An empty cohort is fail-safe: it admits no new ledger events while
+recovery still settles historical blocks. The task keeps its canonical owner
+tenant for access scope and stores the legacy subscription tenant separately as
+internal billing identity for the ledger. Enabling the flag requires the
 existing Mem or GORM subscription repository, otherwise bootstrap fails closed.
 OpenMeter remains behind the PAY-041 outbox; no provider, payment, or direct
 OpenMeter call is introduced here.

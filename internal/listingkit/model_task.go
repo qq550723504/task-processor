@@ -12,8 +12,11 @@ import (
 )
 
 type Task struct {
-	ID                           string                        `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	TenantID                     string                        `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
+	ID       string `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	TenantID string `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
+	// BillingTenantID is the entitlement and usage-ledger identity. TenantID
+	// remains the canonical task owner used for API access scopes.
+	BillingTenantID              string                        `json:"-" gorm:"type:varchar(64);index"`
 	UserID                       string                        `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
 	Request                      *GenerateRequest              `json:"request" gorm:"type:text"`
 	SheinStoreResolutionSnapshot *SheinStoreResolutionSnapshot `json:"shein_store_resolution_snapshot,omitempty" gorm:"type:text"`

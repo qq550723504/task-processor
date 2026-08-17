@@ -645,6 +645,9 @@ func knownEnvBindings() map[string]envBinding {
 		"listingkit.generationUsageLedgerEnabled": {
 			Primary: "TASK_PROCESSOR_LISTINGKIT_GENERATION_USAGE_LEDGER_ENABLED",
 		},
+		"listingkit.generationUsageLedgerTenantIDs": {
+			Primary: "TASK_PROCESSOR_LISTINGKIT_GENERATION_USAGE_LEDGER_TENANT_IDS",
+		},
 		"listingkit.platformAdminUsers": {
 			Primary: "LISTINGKIT_PLATFORM_ADMIN_USERS",
 		},

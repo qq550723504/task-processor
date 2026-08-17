@@ -105,16 +105,16 @@ func buildSubscriptionService(input BuildServiceInput, closers *closerStack) (*l
 	if err != nil {
 		return nil, err
 	}
-	if input.Config != nil && input.Config.ListingKit.GenerationUsageLedgerEnabled {
-		ledger, err := buildGenerationUsageLedger(subscriptionRepository)
-		if err != nil {
-			return nil, err
-		}
+	ledger, ledgerErr := buildGenerationUsageLedger(subscriptionRepository)
+	if ledgerErr == nil {
 		subscriptionService, err := listingsubscription.NewServiceWithLedger(subscriptionRepository, ledger)
 		if err != nil {
 			return nil, fmt.Errorf("create listing subscription service with usage ledger: %w", err)
 		}
 		return subscriptionService, nil
+	}
+	if input.Config != nil && input.Config.ListingKit.GenerationUsageLedgerEnabled {
+		return nil, ledgerErr
 	}
 	subscriptionService, err := listingsubscription.NewService(subscriptionRepository)
 	if err != nil {

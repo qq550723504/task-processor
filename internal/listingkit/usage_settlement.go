@@ -35,6 +35,13 @@ type GenerationUsageSettlement interface {
 	ReleaseGeneration(context.Context, string, string, string) error
 }
 
+// GenerationUsageAdmission controls new ledger reservations. It deliberately
+// does not gate commit or release, so a disabled or narrowed rollout can still
+// drain settlement work created by an earlier cohort configuration.
+type GenerationUsageAdmission interface {
+	AllowsGenerationUsage(tenantID string) bool
+}
+
 func generationUsageIdentity(taskID, tenantID string, occurredAt time.Time) generationUsageFact {
 	taskID = strings.TrimSpace(taskID)
 	tenantID = strings.TrimSpace(tenantID)

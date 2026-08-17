@@ -58,13 +58,13 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 		workflowErr := err
 		log.WithError(err).Error("listing kit workflow failed")
 		if _, retryable := classifyRetryableTaskFailure(workflowErr); retryable {
-			if persistErr := f.service.persistProcessRetryableFailure(ctx, task, result, workflowErr); persistErr != nil {
+			if persistErr := f.service.persistProcessRetryableFailure(ctx, task, result, workflowErr, usageEnabled); persistErr != nil {
 				log.WithError(persistErr).Error("failed to persist scheduled listing kit workflow failure")
 				return nil, errors.Join(err, persistErr)
 			}
 			return nil, err
 		}
-		if _, retryable := classifyRetryableTaskFailure(err); !retryable {
+		if usageEnabled {
 			if releaseErr := f.service.releaseGenerationUsage(ctx, task, "workflow_failed"); releaseErr != nil {
 				log.WithError(releaseErr).Error("failed to release listing kit generation usage")
 				err = errors.Join(err, releaseErr)
@@ -98,10 +98,15 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 		log.WithField("review_reason_count", len(result.ReviewReasons)).Info("marking listing kit task as needs_review")
 		if err := f.service.persistProcessSuccess(ctx, task.ID, result); err != nil {
 			log.WithError(err).Error("failed to mark listing kit task as needs_review")
+			if !usageEnabled {
+				return nil, err
+			}
 			return nil, f.service.handleGenerationTerminalPersistenceFailure(ctx, task, err)
 		}
-		if err := f.service.commitGenerationUsage(ctx, task); err != nil {
-			return nil, f.service.markGenerationUsageCommitPending(ctx, task, err)
+		if usageEnabled {
+			if err := f.service.commitGenerationUsage(ctx, task); err != nil {
+				return nil, f.service.markGenerationUsageCommitPending(ctx, task, err)
+			}
 		}
 		log.Info("marked listing kit task as needs_review")
 		return result, nil
@@ -110,10 +115,15 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 	log.Info("marking listing kit task as completed")
 	if err := f.service.persistProcessSuccess(ctx, task.ID, result); err != nil {
 		log.WithError(err).Error("failed to mark listing kit task as completed")
+		if !usageEnabled {
+			return nil, err
+		}
 		return nil, f.service.handleGenerationTerminalPersistenceFailure(ctx, task, err)
 	}
-	if err := f.service.commitGenerationUsage(ctx, task); err != nil {
-		return nil, f.service.markGenerationUsageCommitPending(ctx, task, err)
+	if usageEnabled {
+		if err := f.service.commitGenerationUsage(ctx, task); err != nil {
+			return nil, f.service.markGenerationUsageCommitPending(ctx, task, err)
+		}
 	}
 	log.Info("marked listing kit task as completed")
 	return result, nil

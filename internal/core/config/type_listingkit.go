@@ -1,11 +1,12 @@
 package config
 
 type ListingKitConfig struct {
-	SheinSubmitDebugDumpDir      string                  `mapstructure:"sheinSubmitDebugDumpDir" yaml:"sheinSubmitDebugDumpDir"`
-	GenerationUsageLedgerEnabled bool                    `mapstructure:"generationUsageLedgerEnabled" yaml:"generationUsageLedgerEnabled"`
-	PlatformAdminUsers           []string                `mapstructure:"platformAdminUsers" yaml:"platformAdminUsers"`
-	PlatformAdminRoles           []string                `mapstructure:"platformAdminRoles" yaml:"platformAdminRoles"`
-	Zitadel                      ListingKitZitadelConfig `mapstructure:"zitadel" yaml:"zitadel"`
+	SheinSubmitDebugDumpDir        string                  `mapstructure:"sheinSubmitDebugDumpDir" yaml:"sheinSubmitDebugDumpDir"`
+	GenerationUsageLedgerEnabled   bool                    `mapstructure:"generationUsageLedgerEnabled" yaml:"generationUsageLedgerEnabled"`
+	GenerationUsageLedgerTenantIDs []string                `mapstructure:"generationUsageLedgerTenantIDs" yaml:"generationUsageLedgerTenantIDs"`
+	PlatformAdminUsers             []string                `mapstructure:"platformAdminUsers" yaml:"platformAdminUsers"`
+	PlatformAdminRoles             []string                `mapstructure:"platformAdminRoles" yaml:"platformAdminRoles"`
+	Zitadel                        ListingKitZitadelConfig `mapstructure:"zitadel" yaml:"zitadel"`
 }
 
 type ListingKitZitadelConfig struct {

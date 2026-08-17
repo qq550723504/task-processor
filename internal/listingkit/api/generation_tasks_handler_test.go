@@ -101,7 +101,7 @@ func TestGenerateListingKitAbsolutizesUploadedImageURLs(t *testing.T) {
 	}
 }
 
-func TestGenerateListingKitPersistsLegacySubscriptionTenantOnTask(t *testing.T) {
+func TestGenerateListingKitPreservesCanonicalTaskTenantAndSetsLegacyBillingTenant(t *testing.T) {
 	restore := tenantbridge.ConfigureLegacyTenantResolver(staticStudioLegacyTenantResolver{values: map[string]int64{"zitadel-tenant": 227}})
 	t.Cleanup(restore)
 	subscriptionService, err := listingsubscription.NewService(listingsubscription.NewMemRepository())
@@ -111,7 +111,7 @@ func TestGenerateListingKitPersistsLegacySubscriptionTenantOnTask(t *testing.T) 
 	if _, err := subscriptionService.UpsertEntitlement(t.Context(), "227", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{Status: listingsubscription.StatusActive, Limits: map[string]int{"design_jobs": 10}}); err != nil {
 		t.Fatalf("upsert entitlement: %v", err)
 	}
-	svc := &stubCreateGenerateTaskHandlerService{createdTask: &listingkit.Task{ID: "task-legacy-tenant", TenantID: "227", Status: core.TaskStatusPending}}
+	svc := &stubCreateGenerateTaskHandlerService{createdTask: &listingkit.Task{ID: "task-legacy-tenant", TenantID: "zitadel-tenant", Status: core.TaskStatusPending}}
 	h, err := NewHandler(&stubHandlerCoreService{}, WithTaskLifecycleService(svc), WithSubscriptionService(subscriptionService))
 	if err != nil {
 		t.Fatalf("new handler: %v", err)
@@ -126,8 +126,8 @@ func TestGenerateListingKitPersistsLegacySubscriptionTenantOnTask(t *testing.T) 
 	if resp.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200: %s", resp.Code, resp.Body.String())
 	}
-	if svc.createReq == nil || svc.createReq.TenantID != "227" {
-		t.Fatalf("created request tenant = %#v, want legacy subscription tenant 227", svc.createReq)
+	if svc.createReq == nil || svc.createReq.TenantID != "zitadel-tenant" || svc.createReq.BillingTenantID != "227" {
+		t.Fatalf("created request = %#v, want canonical tenant zitadel-tenant and billing tenant 227", svc.createReq)
 	}
 }
 

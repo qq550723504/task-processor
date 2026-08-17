@@ -40,11 +40,12 @@ func buildListingKitCoreDependencies(in buildListingKitServiceConfigInput) listi
 		StoreProfileRepository:        in.repositories.storeProfileRepository,
 		AIClientCredentialStore:       adaptListingKitAICredentialStore(in.input.AICredentialStore),
 		GenerationUsageLedger:         generationUsageSettlementDependency(in),
+		GenerationUsageAdmission:      generationUsageAdmissionForConfig(in.input.Config),
 	}
 }
 
 func generationUsageSettlementDependency(in buildListingKitServiceConfigInput) listingkit.GenerationUsageSettlement {
-	if in.input.Config == nil || !in.input.Config.ListingKit.GenerationUsageLedgerEnabled || in.repositories == nil || in.repositories.subscriptionService == nil {
+	if in.repositories == nil || in.repositories.subscriptionService == nil || !in.repositories.subscriptionService.HasUsageLedger() {
 		return nil
 	}
 	return newSubscriptionGenerationUsage(in.repositories.subscriptionService)

@@ -20,6 +20,9 @@ func (s *service) reserveGenerationUsage(ctx context.Context, task *Task) (Gener
 	if settlement == nil || task == nil {
 		return GenerationUsageReservation{}, false, nil
 	}
+	if admission := s.taskDeps.generationUsageAdmission; admission != nil && !admission.AllowsGenerationUsage(generationUsageTenantID(ctx, task)) {
+		return GenerationUsageReservation{}, false, nil
+	}
 	// A new reservation belongs to the period in which generation is actually
 	// claimed. The ledger resolves an existing idempotency key first and keeps
 	// its persisted period/occurrence for replays, so delayed tasks cannot be
@@ -50,6 +53,9 @@ func (s *service) commitGenerationUsage(ctx context.Context, task *Task) error {
 
 func generationUsageTenantID(ctx context.Context, task *Task) string {
 	if task != nil {
+		if billingTenantID := strings.TrimSpace(task.BillingTenantID); billingTenantID != "" {
+			return billingTenantID
+		}
 		if tenantID := strings.TrimSpace(task.TenantID); tenantID != "" {
 			return tenantID
 		}
@@ -169,10 +175,10 @@ func markPersistencePending(ctx context.Context, repo Repository, taskID, reason
 }
 
 func (s *service) persistReservationFailure(ctx context.Context, task *Task, reserveErr error) error {
-	return s.persistScheduledRetryableFailure(ctx, task, reserveErr, nil)
+	return s.persistScheduledRetryableFailure(ctx, task, reserveErr, nil, false)
 }
 
-func (s *service) persistProcessRetryableFailure(ctx context.Context, task *Task, result *ListingKitResult, workflowErr error) error {
+func (s *service) persistProcessRetryableFailure(ctx context.Context, task *Task, result *ListingKitResult, workflowErr error, reservationHeld bool) error {
 	if task == nil {
 		return workflowErr
 	}
@@ -184,13 +190,13 @@ func (s *service) persistProcessRetryableFailure(ctx context.Context, task *Task
 			persistErrs = append(persistErrs, fmt.Errorf("save partial result: %w", err))
 		}
 	}
-	if err := s.persistScheduledRetryableFailure(persistCtx, task, workflowErr, errors.Join(persistErrs...)); err != nil {
+	if err := s.persistScheduledRetryableFailure(persistCtx, task, workflowErr, errors.Join(persistErrs...), reservationHeld); err != nil {
 		persistErrs = append(persistErrs, err)
 	}
 	return errors.Join(persistErrs...)
 }
 
-func (s *service) persistScheduledRetryableFailure(ctx context.Context, task *Task, failureErr, persistErr error) error {
+func (s *service) persistScheduledRetryableFailure(ctx context.Context, task *Task, failureErr, persistErr error, reservationHeld bool) error {
 	if task == nil {
 		return persistErr
 	}
@@ -215,6 +221,10 @@ func (s *service) persistScheduledRetryableFailure(ctx context.Context, task *Ta
 	persistCtx, cancel := settlementPersistenceContext(ctx)
 	defer cancel()
 	if err := markRetryableTaskState(persistCtx, s.repo, task.ID, block, errorMsg); err != nil {
+		if reservationHeld {
+			recoveryErr := errors.Join(persistErr, err)
+			return errors.Join(recoveryErr, s.markGenerationUsageReleasePending(ctx, task, failureErr, recoveryErr))
+		}
 		return errors.Join(persistErr, err, markTerminalPersistencePending(ctx, s.repo, task.ID, err))
 	}
 	return persistErr

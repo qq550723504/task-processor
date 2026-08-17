@@ -28,6 +28,15 @@ type recordingGenerationUsageSettlement struct {
 	reservedAt        time.Time
 }
 
+type generationUsageTestAdmission struct {
+	tenantIDs map[string]struct{}
+}
+
+func (a generationUsageTestAdmission) AllowsGenerationUsage(tenantID string) bool {
+	_, ok := a.tenantIDs[tenantID]
+	return ok
+}
+
 func (s *recordingGenerationUsageSettlement) ReserveGeneration(_ context.Context, tenantID string, taskID string, occurredAt time.Time) (GenerationUsageReservation, error) {
 	s.calls = append(s.calls, "reserve")
 	s.reservedTaskID = taskID
@@ -202,6 +211,49 @@ func TestProcessListingKitNormalizesBlankTenantForUsageSettlement(t *testing.T) 
 	}
 }
 
+func TestProcessListingKitUsesBillingTenantForUsageSettlement(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{}
+	svc, _, _, task := newProcessUsageFixture(t, settlement, nil)
+	task.TenantID = "zitadel-tenant"
+	task.BillingTenantID = "227"
+	if _, err := svc.ProcessListingKit(context.Background(), task); err != nil {
+		t.Fatalf("ProcessListingKit() error = %v", err)
+	}
+	if settlement.reservedTenantID != "227" || settlement.committedTenantID != "227" {
+		t.Fatalf("usage tenant IDs = (%q, %q), want billing tenant 227", settlement.reservedTenantID, settlement.committedTenantID)
+	}
+}
+
+func TestProcessListingKitKeepsLegacyUsageOutsideGenerationLedgerCohort(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{}
+	_, repo, productService, task := newProcessUsageFixture(t, settlement, nil)
+	configured, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Core.GenerationUsageLedger = settlement
+			cfg.Core.GenerationUsageAdmission = generationUsageTestAdmission{tenantIDs: map[string]struct{}{"tenant-selected": {}}}
+		}),
+	))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	if _, err := configured.ProcessListingKit(context.Background(), task); err != nil {
+		t.Fatalf("ProcessListingKit() error = %v", err)
+	}
+	if productService.processCalls != 1 {
+		t.Fatalf("ProcessProduct calls = %d, want legacy workflow execution", productService.processCalls)
+	}
+	if len(settlement.calls) != 0 {
+		t.Fatalf("settlement calls = %#v, want none outside the configured cohort", settlement.calls)
+	}
+}
+
 func TestProcessListingKitReleasesReservationOnWorkflowFailure(t *testing.T) {
 	t.Parallel()
 
@@ -237,6 +289,51 @@ func TestProcessListingKitPreservesReservationOnRetryableWorkflowFailure(t *test
 	}
 	if stored.RetryableBlock.NextRetryAt == nil {
 		t.Fatal("retryable workflow block NextRetryAt = nil, want scheduled recovery")
+	}
+}
+
+func TestProcessListingKitPreservesReleaseRecoveryWhenRetryableBlockPersistenceFails(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubProcessStatusRepo{
+		stubGenerationRepo: &stubGenerationRepo{},
+		blockedErrs: []error{
+			errors.New("task store unavailable"),
+			errors.New("task store unavailable"),
+			errors.New("task store unavailable"),
+		},
+	}
+	settlement := &recordingGenerationUsageSettlement{}
+	productService := &processUsageProductService{
+		task:       &productenrich.Task{ID: "product-task-retryable-persist", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
+		processErr: errors.New("OpenAI API error: insufficient credits in account balance"),
+	}
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
+		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
+	))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	task := &Task{ID: "listingkit-retryable-persist", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	if _, err := svc.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want retryable workflow failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != usageReleasePendingReason {
+		t.Fatalf("stored task = %#v, want usage_release_pending so the held reservation can drain", stored)
+	}
+	if settlement.releasedTaskID != "" {
+		t.Fatalf("released task = %q, want durable release recovery instead of an unrecorded release", settlement.releasedTaskID)
 	}
 }
 
