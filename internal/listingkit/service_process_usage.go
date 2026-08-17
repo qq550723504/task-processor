@@ -150,6 +150,28 @@ func markTerminalPersistencePending(ctx context.Context, repo Repository, taskID
 	return markRetryableTaskState(persistCtx, repo, taskID, block, errorMsg)
 }
 
+func (s *service) persistWorkflowRetryableFailureFallback(ctx context.Context, task *Task, workflowErr, persistErr error) error {
+	if task == nil {
+		return persistErr
+	}
+	block, ok := classifyRetryableTaskFailure(workflowErr)
+	if !ok {
+		return markTerminalPersistencePending(ctx, s.repo, task.ID, persistErr)
+	}
+	now := time.Now().UTC()
+	block.BlockedAt = now
+	block.NextRetryAt = &now
+	block.MaxAutoRetryAttempts = usageSettlementMaxAutoRetryAttempts
+	block.AutoResumeEnabled = true
+	errorMsg := block.ReasonMessage
+	if persistErr != nil {
+		errorMsg = fmt.Sprintf("%s: task failure persistence failed: %v", errorMsg, persistErr)
+	}
+	persistCtx, cancel := settlementPersistenceContext(ctx)
+	defer cancel()
+	return markRetryableTaskState(persistCtx, s.repo, task.ID, block, errorMsg)
+}
+
 func generationQuotaFailure(taskID string) error {
 	return fmt.Errorf("listingkit generation quota exceeded for task %s", strings.TrimSpace(taskID))
 }

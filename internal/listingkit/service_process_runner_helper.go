@@ -74,6 +74,11 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 		}
 		if persistErr := f.service.persistProcessFailure(ctx, task.ID, result, workflowErr); persistErr != nil {
 			log.WithError(persistErr).Error("failed to persist listing kit workflow failure")
+			if _, retryable := classifyRetryableTaskFailure(workflowErr); retryable {
+				if fallbackErr := f.service.persistWorkflowRetryableFailureFallback(ctx, task, workflowErr, persistErr); fallbackErr != nil {
+					persistErr = errors.Join(persistErr, fallbackErr)
+				}
+			}
 			return nil, errors.Join(err, persistErr)
 		}
 		return nil, err

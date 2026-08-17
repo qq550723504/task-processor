@@ -78,10 +78,25 @@ func (w taskRecoveryRunnerWiring) loadTask(ctx context.Context, taskID string) (
 }
 
 func (w taskRecoveryRunnerWiring) listCandidates(ctx context.Context, dueBefore time.Time, limit int) ([]Task, error) {
-	return w.svc.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{
-		DueBefore: dueBefore,
-		Limit:     limit,
-	})
+	// Load the full due set before filtering settlement-only and
+	// persistence-only tasks. Applying the provider batch limit at the
+	// repository boundary first would let failed settlement rows consume the
+	// page and starve unrelated provider retries.
+	tasks, err := w.svc.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{DueBefore: dueBefore})
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]Task, 0, len(tasks))
+	for i := 0; i < len(tasks); i++ {
+		if isUsageSettlementPending(&tasks[i]) || isTerminalPersistencePending(&tasks[i]) {
+			continue
+		}
+		filtered = append(filtered, tasks[i])
+	}
+	if limit > 0 && len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+	return filtered, nil
 }
 
 func (w taskRecoveryRunnerWiring) currentSubmitter() submissiondomain.RecoverySubmitFunc {
@@ -105,6 +120,9 @@ func (w taskRecoveryRunnerWiring) markRecoveredBatch(ctx context.Context, taskID
 		return core.ErrTaskNotRecoverable
 	}
 	if isUsageReleasePending(task) {
+		return core.ErrTaskNotRecoverable
+	}
+	if isTerminalPersistencePending(task) {
 		return core.ErrTaskNotRecoverable
 	}
 	return w.svc.repo.RecoverBlockedTaskNow(ctx, taskID, recoverAt)
@@ -139,6 +157,8 @@ func (s *taskRecoveryService) RecoverTaskNow(ctx context.Context, taskID string)
 		return s.recoverUsageCommit(ctx, task)
 	} else if isUsageReleasePending(task) {
 		return s.recoverUsageRelease(ctx, task)
+	} else if isTerminalPersistencePending(task) {
+		return s.recoverTerminalPersistence(ctx, task)
 	}
 	return s.recoveryNow.RecoverNow(ctx, taskID)
 }
@@ -155,6 +175,10 @@ func isUsageSettlementPending(task *Task) bool {
 	return isUsageCommitPending(task) || isUsageReleasePending(task)
 }
 
+func isTerminalPersistencePending(task *Task) bool {
+	return task != nil && task.RetryableBlock != nil && task.RetryableBlock.ReasonCode == terminalPersistencePendingReason
+}
+
 func (s *taskRecoveryService) recoverUsageCommit(ctx context.Context, task *Task) (*Task, error) {
 	if s.generationUsage == nil {
 		return nil, fmt.Errorf("generation usage settlement is not configured")
@@ -167,7 +191,7 @@ func (s *taskRecoveryService) recoverUsageCommit(ctx context.Context, task *Task
 		return nil, fmt.Errorf("usage settlement repository is not configured")
 	}
 	if err := settlementRepo.ResolveUsageSettlement(ctx, task.ID); err != nil {
-		return nil, err
+		return nil, s.reblockUsageSettlement(ctx, task, err)
 	}
 	return s.repo.GetTask(ctx, task.ID)
 }
@@ -179,34 +203,52 @@ func (s *taskRecoveryService) recoverUsageRelease(ctx context.Context, task *Tas
 	if err := s.generationUsage.ReleaseGeneration(ctx, task.TenantID, task.ID, "terminal_persistence_failed"); err != nil {
 		return nil, s.reblockUsageSettlement(ctx, task, err)
 	}
-	if err := s.repo.MarkFailed(ctx, task.ID, task.Error); err != nil {
-		return nil, err
+	if err := markFailedTaskState(ctx, s.repo, task.ID, task.Error); err != nil {
+		return nil, s.reblockUsageSettlement(ctx, task, err)
+	}
+	return s.repo.GetTask(ctx, task.ID)
+}
+
+func (s *taskRecoveryService) recoverTerminalPersistence(ctx context.Context, task *Task) (*Task, error) {
+	if task == nil {
+		return nil, core.ErrTaskNotFound
+	}
+	if err := markFailedTaskState(ctx, s.repo, task.ID, task.Error); err != nil {
+		return nil, s.reblockTerminalPersistence(ctx, task, err)
 	}
 	return s.repo.GetTask(ctx, task.ID)
 }
 
 func (s *taskRecoveryService) reblockUsageSettlement(ctx context.Context, task *Task, settlementErr error) error {
+	return s.reblockTask(ctx, task, settlementErr, usageSettlementRecoveryScope)
+}
+
+func (s *taskRecoveryService) reblockTerminalPersistence(ctx context.Context, task *Task, persistErr error) error {
+	return s.reblockTask(ctx, task, persistErr, usageSettlementRecoveryScope)
+}
+
+func (s *taskRecoveryService) reblockTask(ctx context.Context, task *Task, recoveryErr error, defaultRecoveryScope string) error {
 	if task == nil || task.RetryableBlock == nil {
-		return settlementErr
+		return recoveryErr
 	}
-	classified, _ := submissiondomain.ClassifyRetryableFailure(settlementErr, usageSettlementRecoveryScope)
+	classified, _ := submissiondomain.ClassifyRetryableFailure(recoveryErr, defaultRecoveryScope)
 	updated := submissiondomain.BuildReblockedRetryableBlock(
 		adaptRetryableBlockState(task.RetryableBlock),
 		classified,
 		s.currentTime(),
-		usageSettlementRecoveryScope,
+		defaultRecoveryScope,
 	)
 	// Keep the settlement-only route even when the underlying ledger error is
 	// classified as a generic upstream timeout/unavailable failure. Otherwise
 	// the next sweep could send a terminal generation task back to the provider.
 	updated.ReasonCode = task.RetryableBlock.ReasonCode
 	updated.ReasonMessage = task.RetryableBlock.ReasonMessage
-	updated.RecoveryScope = usageSettlementRecoveryScope
+	updated.RecoveryScope = defaultRecoveryScope
 	updated.AutoResumeEnabled = task.RetryableBlock.AutoResumeEnabled
-	if markErr := markTaskBlockedRetryableState(ctx, s.repo, task.ID, updated, settlementErr.Error()); markErr != nil {
-		return errors.Join(settlementErr, markErr)
+	if markErr := markTaskBlockedRetryableState(ctx, s.repo, task.ID, updated, recoveryErr.Error()); markErr != nil {
+		return errors.Join(recoveryErr, markErr)
 	}
-	return settlementErr
+	return recoveryErr
 }
 
 func (s *taskRecoveryService) RunRecoverySweep(ctx context.Context, now time.Time, limit int) (int64, error) {
@@ -232,31 +274,39 @@ func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *Recov
 	}
 	var settled int64
 	var settleErr error
-	if s.generationUsage != nil {
-		dueBefore := request.DueBefore
-		if dueBefore.IsZero() {
-			dueBefore = s.currentTime()
-		}
-		candidates, err := s.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{DueBefore: dueBefore, Limit: request.Limit})
-		if err != nil {
-			return 0, err
-		}
-		for i := range candidates {
-			if !isUsageSettlementPending(&candidates[i]) {
-				continue
-			}
+	dueBefore := request.DueBefore
+	if dueBefore.IsZero() {
+		dueBefore = s.currentTime()
+	}
+	candidates, err := s.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{DueBefore: dueBefore, Limit: request.Limit})
+	if err != nil {
+		return 0, err
+	}
+	for i := 0; i < len(candidates); i++ {
+		if isTerminalPersistencePending(&candidates[i]) {
 			var err error
-			if isUsageReleasePending(&candidates[i]) {
-				_, err = s.recoverUsageRelease(ctx, &candidates[i])
-			} else {
-				_, err = s.recoverUsageCommit(ctx, &candidates[i])
-			}
+			_, err = s.recoverTerminalPersistence(ctx, &candidates[i])
 			if err != nil {
 				settleErr = errors.Join(settleErr, err)
 				continue
 			}
 			settled++
+			continue
 		}
+		if s.generationUsage == nil || !isUsageSettlementPending(&candidates[i]) {
+			continue
+		}
+		var err error
+		if isUsageReleasePending(&candidates[i]) {
+			_, err = s.recoverUsageRelease(ctx, &candidates[i])
+		} else {
+			_, err = s.recoverUsageCommit(ctx, &candidates[i])
+		}
+		if err != nil {
+			settleErr = errors.Join(settleErr, err)
+			continue
+		}
+		settled++
 	}
 	if settled == 0 && settleErr == nil {
 		return s.recoveryBatch.RecoverBatch(ctx, request)

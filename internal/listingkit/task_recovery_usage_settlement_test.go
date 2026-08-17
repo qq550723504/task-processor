@@ -35,6 +35,13 @@ func (r *taskRecoveryServiceTestRepo) ResolveUsageSettlement(_ context.Context, 
 	if !ok {
 		return core.ErrTaskNotFound
 	}
+	if len(r.resolveUsageSettlementErrors) > 0 {
+		err := r.resolveUsageSettlementErrors[0]
+		r.resolveUsageSettlementErrors = r.resolveUsageSettlementErrors[1:]
+		if err != nil {
+			return err
+		}
+	}
 	if task.RetryableBlock == nil || task.RetryableBlock.ReasonCode != "usage_commit_pending" || task.Result == nil {
 		return core.ErrTaskNotRecoverable
 	}
@@ -105,6 +112,90 @@ func TestRecoverTaskNowLeavesUsageSettlementBlockedWhenCommitFails(t *testing.T)
 	}
 	if got.Status != core.TaskStatusBlockedRetryable || got.RetryableBlock == nil || got.RetryableBlock.ReasonCode != "usage_commit_pending" {
 		t.Fatalf("task after failed settlement = %#v, want unchanged block", got)
+	}
+}
+
+func TestRecoverTaskNowReblocksCommitWhenFinalizationPersistenceFails(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	ctx := WithTenantID(context.Background(), "tenant-usage-finalize-commit")
+	task := &Task{ID: "task-usage-finalize-commit", TenantID: "tenant-usage-finalize-commit", Status: core.TaskStatusCompleted, Result: &ListingKitResult{Status: string(core.TaskStatusCompleted)}, CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{ReasonCode: usageCommitPendingReason, NextRetryAt: timestampTaskRecoveryServiceTest(time.Now().Add(-time.Minute)), AutoResumeEnabled: true}, "usage settlement pending"); err != nil {
+		t.Fatalf("MarkBlockedRetryable() error = %v", err)
+	}
+	repo.resolveUsageSettlementErrors = []error{errors.New("task store unavailable")}
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{repo: repo, generationUsage: &recordingRecoveryUsageSettlement{}})
+	if _, err := svc.RecoverTaskNow(ctx, task.ID); err == nil {
+		t.Fatal("RecoverTaskNow() error = nil, want finalization persistence error")
+	}
+	got, err := repo.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if got.RetryableBlock == nil || got.RetryableBlock.ReasonCode != usageCommitPendingReason || got.RetryableBlock.RetryAttempts != 1 || got.RetryableBlock.NextRetryAt == nil {
+		t.Fatalf("task after finalization failure = %#v, want reblocked usage_commit_pending", got)
+	}
+}
+
+func TestRecoverTaskNowReblocksReleaseWhenFinalizationPersistenceFails(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	ctx := WithTenantID(context.Background(), "tenant-usage-finalize-release")
+	task := &Task{ID: "task-usage-finalize-release", TenantID: "tenant-usage-finalize-release", Status: core.TaskStatusProcessing, Error: "listing kit generation result persistence failed", CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{ReasonCode: usageReleasePendingReason, NextRetryAt: timestampTaskRecoveryServiceTest(time.Now().Add(-time.Minute)), AutoResumeEnabled: true}, "usage release pending"); err != nil {
+		t.Fatalf("MarkBlockedRetryable() error = %v", err)
+	}
+	repo.markFailedErrors = []error{errors.New("task store unavailable"), errors.New("task store unavailable"), errors.New("task store unavailable")}
+	settlement := &recordingRecoveryUsageSettlement{}
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{repo: repo, generationUsage: settlement})
+	if _, err := svc.RecoverTaskNow(ctx, task.ID); err == nil {
+		t.Fatal("RecoverTaskNow() error = nil, want finalization persistence error")
+	}
+	got, err := repo.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if got.RetryableBlock == nil || got.RetryableBlock.ReasonCode != usageReleasePendingReason || got.RetryableBlock.RetryAttempts != 1 || got.RetryableBlock.NextRetryAt == nil {
+		t.Fatalf("task after finalization failure = %#v, want reblocked usage_release_pending", got)
+	}
+	if settlement.releaseCalls != 1 {
+		t.Fatalf("release calls = %d, want 1", settlement.releaseCalls)
+	}
+}
+
+func TestRecoverTaskNowHandlesTerminalPersistenceWithoutProviderSubmit(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	ctx := WithTenantID(context.Background(), "tenant-terminal-persistence")
+	task := &Task{ID: "task-terminal-persistence", TenantID: "tenant-terminal-persistence", Status: core.TaskStatusProcessing, Error: "listing kit terminal state persistence is pending", CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{ReasonCode: terminalPersistencePendingReason, NextRetryAt: timestampTaskRecoveryServiceTest(time.Now().Add(-time.Minute)), AutoResumeEnabled: true}, task.Error); err != nil {
+		t.Fatalf("MarkBlockedRetryable() error = %v", err)
+	}
+	submitted := 0
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{
+		repo: repo,
+		taskSubmitter: func() TaskSubmitter {
+			return taskRecoveryTestSubmitter(func(string) error { submitted++; return nil })
+		},
+	})
+	recovered, err := svc.RecoverTaskNow(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("RecoverTaskNow() error = %v", err)
+	}
+	if recovered.Status != core.TaskStatusFailed || recovered.RetryableBlock != nil || submitted != 0 {
+		t.Fatalf("recovered task = %#v, submitted = %d, want failed persistence-only recovery", recovered, submitted)
 	}
 }
 
@@ -222,13 +313,55 @@ func TestRunRecoverySweepContinuesUnrelatedRecoveryAfterSettlementFailure(t *tes
 	}
 }
 
+func TestRunRecoverySweepFiltersFailedSettlementPagesBeforeProviderBatch(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	now := time.Now().UTC()
+	ctx := WithTenantID(context.Background(), "tenant-usage-sweep-pages")
+	settlementDue := now.Add(-2 * time.Minute)
+	regularDue := now.Add(-time.Minute)
+	for _, id := range []string{"task-usage-sweep-page-settle-1", "task-usage-sweep-page-settle-2"} {
+		task := &Task{ID: id, TenantID: "tenant-usage-sweep-pages", Status: core.TaskStatusCompleted, Result: &ListingKitResult{Status: string(core.TaskStatusCompleted)}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
+		if err := repo.CreateTask(ctx, task); err != nil {
+			t.Fatalf("CreateTask(%s) error = %v", id, err)
+		}
+		if err := repo.MarkBlockedRetryable(ctx, id, &RetryableBlock{ReasonCode: usageCommitPendingReason, NextRetryAt: &settlementDue, AutoResumeEnabled: true}, "usage settlement pending"); err != nil {
+			t.Fatalf("MarkBlockedRetryable(%s) error = %v", id, err)
+		}
+	}
+	regular := &Task{ID: "task-usage-sweep-page-regular", TenantID: "tenant-usage-sweep-pages", Status: core.TaskStatusPending, Request: &GenerateRequest{TenantID: "tenant-usage-sweep-pages", Platforms: []string{"amazon"}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
+	if err := repo.CreateTask(ctx, regular); err != nil {
+		t.Fatalf("CreateTask(regular) error = %v", err)
+	}
+	if err := repo.MarkBlockedRetryable(ctx, regular.ID, &RetryableBlock{ReasonCode: "queue_backpressure", NextRetryAt: &regularDue, AutoResumeEnabled: true}, "queue full"); err != nil {
+		t.Fatalf("MarkBlockedRetryable(regular) error = %v", err)
+	}
+	submitted := make([]string, 0, 1)
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{
+		repo:            repo,
+		generationUsage: &recordingRecoveryUsageSettlement{commitErr: errors.New("ledger unavailable")},
+		taskSubmitter: func() TaskSubmitter {
+			return taskRecoveryTestSubmitter(func(taskID string) error { submitted = append(submitted, taskID); return nil })
+		},
+	})
+	recovered, err := svc.RunRecoverySweep(ctx, now, 1)
+	if recovered != 1 || err == nil {
+		t.Fatalf("RunRecoverySweep() = (%d, %v), want regular recovery plus settlement error", recovered, err)
+	}
+	if len(submitted) != 1 || submitted[0] != regular.ID {
+		t.Fatalf("submitted = %v, want [%s]", submitted, regular.ID)
+	}
+}
+
 func TestRunRecoverySweepHonorsLimitAfterUsageSettlement(t *testing.T) {
 	t.Parallel()
 
 	repo := newTaskRecoveryServiceTestRepo()
 	now := time.Now().UTC()
 	ctx := WithTenantID(context.Background(), "tenant-usage-sweep-limit")
-	due := now.Add(-time.Minute)
+	settlementDue := now.Add(-2 * time.Minute)
+	regularDue := now.Add(-time.Minute)
 	for _, task := range []*Task{
 		{ID: "task-usage-sweep-limit-settle", TenantID: "tenant-usage-sweep-limit", Status: core.TaskStatusCompleted, Result: &ListingKitResult{Status: string(core.TaskStatusCompleted)}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now},
 		{ID: "task-usage-sweep-limit-regular", TenantID: "tenant-usage-sweep-limit", Status: core.TaskStatusPending, Request: &GenerateRequest{TenantID: "tenant-usage-sweep-limit", Platforms: []string{"amazon"}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now},
@@ -237,10 +370,10 @@ func TestRunRecoverySweepHonorsLimitAfterUsageSettlement(t *testing.T) {
 			t.Fatalf("CreateTask(%s) error = %v", task.ID, err)
 		}
 	}
-	if err := repo.MarkBlockedRetryable(ctx, "task-usage-sweep-limit-settle", &RetryableBlock{ReasonCode: "usage_commit_pending", NextRetryAt: &due, AutoResumeEnabled: true}, "usage settlement pending"); err != nil {
+	if err := repo.MarkBlockedRetryable(ctx, "task-usage-sweep-limit-settle", &RetryableBlock{ReasonCode: "usage_commit_pending", NextRetryAt: &settlementDue, AutoResumeEnabled: true}, "usage settlement pending"); err != nil {
 		t.Fatalf("MarkBlockedRetryable(settlement) error = %v", err)
 	}
-	if err := repo.MarkBlockedRetryable(ctx, "task-usage-sweep-limit-regular", &RetryableBlock{ReasonCode: "queue_backpressure", NextRetryAt: &due, AutoResumeEnabled: true}, "queue full"); err != nil {
+	if err := repo.MarkBlockedRetryable(ctx, "task-usage-sweep-limit-regular", &RetryableBlock{ReasonCode: "queue_backpressure", NextRetryAt: &regularDue, AutoResumeEnabled: true}, "queue full"); err != nil {
 		t.Fatalf("MarkBlockedRetryable(regular) error = %v", err)
 	}
 

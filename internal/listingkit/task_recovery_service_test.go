@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"sort"
 	"testing"
 	"time"
 
@@ -559,6 +560,8 @@ type taskRecoveryServiceTestRepo struct {
 	tasks                         map[string]*Task
 	markBlockedRetryableErrors    []error
 	markBlockedRetryableCallCount int
+	markFailedErrors              []error
+	resolveUsageSettlementErrors  []error
 }
 
 func newTaskRecoveryServiceTestRepo() *taskRecoveryServiceTestRepo {
@@ -631,6 +634,13 @@ func (r *taskRecoveryServiceTestRepo) MarkFailed(_ context.Context, taskID strin
 	if !ok {
 		return core.ErrTaskNotFound
 	}
+	if len(r.markFailedErrors) > 0 {
+		err := r.markFailedErrors[0]
+		r.markFailedErrors = r.markFailedErrors[1:]
+		if err != nil {
+			return err
+		}
+	}
 	task.Status = core.TaskStatusFailed
 	task.RetryableBlock = nil
 	task.Error = errorMsg
@@ -672,6 +682,19 @@ func (r *taskRecoveryServiceTestRepo) ListRecoverableTasks(_ context.Context, qu
 		copied.RetryableBlock = cloneRetryableBlock(task.RetryableBlock)
 		items = append(items, copied)
 	}
+	sort.SliceStable(items, func(i, j int) bool {
+		left, right := items[i].RetryableBlock.NextRetryAt, items[j].RetryableBlock.NextRetryAt
+		if left != nil && right != nil && !left.Equal(*right) {
+			return left.Before(*right)
+		}
+		if left != nil && right == nil {
+			return true
+		}
+		if left == nil && right != nil {
+			return false
+		}
+		return items[i].ID < items[j].ID
+	})
 	if query != nil && query.Limit > 0 && len(items) > query.Limit {
 		items = items[:query.Limit]
 	}

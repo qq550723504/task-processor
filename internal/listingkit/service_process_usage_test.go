@@ -419,6 +419,30 @@ func TestProcessListingKitPersistsRetryableStateWhenReservationFails(t *testing.
 	}
 }
 
+func TestProcessListingKitRestoresRetryableBlockWhenFailurePersistenceFails(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{}
+	svc, repo, _, task := newProcessUsageFixture(t, settlement, errors.New("OpenAI API error: insufficient credits in account balance"))
+	// The fixture creates its own repository; inject the transient block failure
+	// after construction so the fallback has to persist the retryable state.
+	repo.blockedErrs = []error{errors.New("task store unavailable once")}
+
+	if _, err := svc.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want retryable workflow failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != "openai_insufficient_credits" {
+		t.Fatalf("stored task = %#v, want durable retryable block", stored)
+	}
+	if settlement.releasedTaskID != "" {
+		t.Fatalf("released task = %q, want reservation preserved for retry", settlement.releasedTaskID)
+	}
+}
+
 func TestProcessListingKitCommitsNeedsReviewResult(t *testing.T) {
 	t.Parallel()
 
