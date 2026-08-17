@@ -50,6 +50,9 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 			fallbackErr := markCommittedReplayPersistencePending(ctx, f.service.repo, task.ID, persistErr)
 			return nil, errors.Join(persistErr, fallbackErr)
 		}
+		if clearErr := f.service.clearGenerationUsageReservation(ctx, task); clearErr != nil {
+			return nil, clearErr
+		}
 		return result, nil
 	}
 

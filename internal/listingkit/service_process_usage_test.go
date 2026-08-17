@@ -897,6 +897,9 @@ func TestProcessListingKitDoesNotDoubleReserveOrRunOnCommittedReplay(t *testing.
 	if stored.Status != core.TaskStatusCompleted {
 		t.Fatalf("stored status = %q, want completed after committed replay", stored.Status)
 	}
+	if stored.GenerationUsageReservationState != "" || stored.GenerationUsageReservationLeaseUntil != nil {
+		t.Fatalf("stored reservation = (%q, %v), want cleared after committed replay", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
+	}
 	if len(settlement.calls) != 1 || settlement.calls[0] != "reserve" {
 		t.Fatalf("settlement calls = %#v, want one idempotent reserve", settlement.calls)
 	}
