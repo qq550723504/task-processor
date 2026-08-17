@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/amazonlisting"
 	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
@@ -68,7 +69,7 @@ type GenerationUsageReservationRepository interface {
 	ListExpiredGenerationUsageReservations(ctx context.Context, dueBefore time.Time, limit int) ([]Task, error)
 	// ResolveExpiredGenerationUsageReservation atomically claims an intent only
 	// while its durable lease is still expired at dueBefore.
-	ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, dueBefore time.Time, block *RetryableBlock, errorMsg string, clearReservation bool) error
+	ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, expectedStatus core.TaskStatus, dueBefore time.Time, block *RetryableBlock, errorMsg string, clearReservation bool) error
 }
 
 type GenerationUsageEventState string

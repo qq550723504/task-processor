@@ -152,8 +152,8 @@ func (r *stubGenerationRepo) ListExpiredGenerationUsageReservations(_ context.Co
 	return []Task{copied}, nil
 }
 
-func (r *stubGenerationRepo) ResolveExpiredGenerationUsageReservation(_ context.Context, taskID string, dueBefore time.Time, block *RetryableBlock, errorMsg string, clearReservation bool) error {
-	if r.task == nil || r.task.ID != taskID || r.task.GenerationUsageReservationState == "" || r.task.GenerationUsageReservationLeaseUntil == nil || r.task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
+func (r *stubGenerationRepo) ResolveExpiredGenerationUsageReservation(_ context.Context, taskID string, expectedStatus core.TaskStatus, dueBefore time.Time, block *RetryableBlock, errorMsg string, clearReservation bool) error {
+	if r.task == nil || r.task.ID != taskID || r.task.Status != expectedStatus || r.task.GenerationUsageReservationState == "" || r.task.GenerationUsageReservationLeaseUntil == nil || r.task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
 		return core.ErrTaskNotRecoverable
 	}
 	r.task.Status = core.TaskStatusBlockedRetryable

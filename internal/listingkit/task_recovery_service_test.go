@@ -824,7 +824,7 @@ func (r *taskRecoveryServiceTestRepo) ClearGenerationUsageReservation(_ context.
 func (r *taskRecoveryServiceTestRepo) ListExpiredGenerationUsageReservations(_ context.Context, dueBefore time.Time, limit int) ([]Task, error) {
 	items := make([]Task, 0)
 	for _, task := range r.tasks {
-		if (task.Status != core.TaskStatusProcessing && task.Status != core.TaskStatusCompleted && task.Status != core.TaskStatusNeedsReview) || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
+		if (task.Status != core.TaskStatusPending && task.Status != core.TaskStatusProcessing && task.Status != core.TaskStatusCompleted && task.Status != core.TaskStatusNeedsReview) || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
 			continue
 		}
 		copied := *task
@@ -839,9 +839,9 @@ func (r *taskRecoveryServiceTestRepo) ListExpiredGenerationUsageReservations(_ c
 	return items, nil
 }
 
-func (r *taskRecoveryServiceTestRepo) ResolveExpiredGenerationUsageReservation(_ context.Context, taskID string, dueBefore time.Time, block *RetryableBlock, errorMsg string, clearReservation bool) error {
+func (r *taskRecoveryServiceTestRepo) ResolveExpiredGenerationUsageReservation(_ context.Context, taskID string, expectedStatus core.TaskStatus, dueBefore time.Time, block *RetryableBlock, errorMsg string, clearReservation bool) error {
 	task, ok := r.tasks[taskID]
-	if !ok || task.Status != core.TaskStatusProcessing || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
+	if !ok || task.Status != expectedStatus || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
 		return core.ErrTaskNotRecoverable
 	}
 	task.Status = core.TaskStatusBlockedRetryable

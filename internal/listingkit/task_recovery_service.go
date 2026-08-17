@@ -357,7 +357,7 @@ func (s *taskRecoveryService) recoverExpiredGenerationUsageReservations(ctx cont
 			recovered++
 			continue
 		}
-		if err := reservations.ResolveExpiredGenerationUsageReservation(ctx, task.ID, dueBefore, generationUsageReconciliationBlock(dueBefore), "generation usage lease expired and requires reconciliation", false); err != nil {
+		if err := reservations.ResolveExpiredGenerationUsageReservation(ctx, task.ID, task.Status, dueBefore, generationUsageReconciliationBlock(dueBefore), "generation usage lease expired and requires reconciliation", false); err != nil {
 			if errors.Is(err, core.ErrTaskNotRecoverable) {
 				continue
 			}

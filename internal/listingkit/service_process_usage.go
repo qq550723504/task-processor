@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	submissiondomain "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit/core"
 )
 
@@ -51,6 +52,7 @@ func (s *service) reserveGenerationUsage(ctx context.Context, task *Task) (Gener
 	if !ok {
 		return GenerationUsageReservation{}, true, errors.New("generation usage reservation repository is not configured")
 	}
+	hasReservationIntent := task.GenerationUsageReservationState != ""
 	leaseUntil := generationUsageReservationLeaseUntil()
 	if err := reservationRepo.BeginGenerationUsageReservation(ctx, task.ID, leaseUntil); err != nil {
 		return GenerationUsageReservation{}, true, err
@@ -58,10 +60,13 @@ func (s *service) reserveGenerationUsage(ctx context.Context, task *Task) (Gener
 	task.GenerationUsageReservationState = GenerationUsageReservationStatePending
 	task.GenerationUsageReservationLeaseUntil = &leaseUntil
 	// A new reservation belongs to the period in which generation is actually
-	// claimed. The ledger resolves an existing idempotency key first and keeps
-	// its persisted period/occurrence for replays, so delayed tasks cannot be
-	// charged to their creation month while retries remain idempotent.
+	// claimed. An existing task-side intent deliberately supplies a zero time:
+	// its deterministic event already owns the billing period, and the ledger
+	// replays that event without accepting a new explicit period.
 	occurredAt := time.Now().UTC()
+	if hasReservationIntent {
+		occurredAt = time.Time{}
+	}
 	reservation, err := settlement.ReserveGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, occurredAt)
 	if err != nil {
 		return GenerationUsageReservation{}, true, err
@@ -347,7 +352,7 @@ func (s *service) persistScheduledRetryableFailure(ctx context.Context, task *Ta
 	if task == nil {
 		return persistErr
 	}
-	block, ok := classifyRetryableTaskFailure(failureErr)
+	classified, ok := classifyRetryableTaskFailure(failureErr)
 	if !ok {
 		persistCtx, cancel := settlementPersistenceContext(ctx)
 		defer cancel()
@@ -357,10 +362,23 @@ func (s *service) persistScheduledRetryableFailure(ctx context.Context, task *Ta
 		return persistErr
 	}
 	now := time.Now().UTC()
-	block.BlockedAt = now
-	block.NextRetryAt = &now
-	block.MaxAutoRetryAttempts = usageSettlementMaxAutoRetryAttempts
-	block.AutoResumeEnabled = true
+	block := classified
+	if task.RetryableBlock == nil {
+		block.BlockedAt = now
+		block.NextRetryAt = &now
+		block.MaxAutoRetryAttempts = usageSettlementMaxAutoRetryAttempts
+		block.AutoResumeEnabled = true
+	} else {
+		block = adaptSubmissionRetryableBlock(submissiondomain.BuildReblockedRetryableBlock(
+			adaptRetryableBlockState(task.RetryableBlock),
+			adaptRetryableBlockState(classified),
+			now,
+			submissiondomain.RetryableRecoveryScopeTask,
+		))
+		if block.MaxAutoRetryAttempts == 0 {
+			block.MaxAutoRetryAttempts = usageSettlementMaxAutoRetryAttempts
+		}
+	}
 	errorMsg := block.ReasonMessage
 	if persistErr != nil {
 		errorMsg = fmt.Sprintf("%s: task failure persistence failed: %v", errorMsg, persistErr)

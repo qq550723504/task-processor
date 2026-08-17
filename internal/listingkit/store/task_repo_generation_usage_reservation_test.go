@@ -81,6 +81,13 @@ func TestListExpiredGenerationUsageReservationsIncludesTerminalLeases(t *testing
 				t.Fatalf("MarkCompleted() error = %v", err)
 			}
 			createProcessingGenerationUsageReservation(t, repo, ctx, "generation-usage-future", now.Add(time.Minute))
+			pending := retryableTaskFixture("generation-usage-pending", now.Add(-time.Hour))
+			pendingLease := now.Add(-time.Minute)
+			pending.GenerationUsageReservationState = listingkit.GenerationUsageReservationStateReserved
+			pending.GenerationUsageReservationLeaseUntil = &pendingLease
+			if err := repo.CreateTask(ctx, pending); err != nil {
+				t.Fatalf("CreateTask(pending) error = %v", err)
+			}
 			blocked := createProcessingGenerationUsageReservation(t, repo, ctx, "generation-usage-blocked", now.Add(-time.Minute))
 			if err := repo.MarkBlockedRetryable(ctx, blocked.ID, &listingkit.RetryableBlock{ReasonCode: "test", AutoResumeEnabled: true}, "blocked"); err != nil {
 				t.Fatalf("MarkBlockedRetryable() error = %v", err)
@@ -95,7 +102,7 @@ func TestListExpiredGenerationUsageReservationsIncludesTerminalLeases(t *testing
 				gotIDs = append(gotIDs, item.ID)
 			}
 			sort.Strings(gotIDs)
-			if want := []string{expired.ID, terminal.ID}; len(gotIDs) != len(want) || gotIDs[0] != want[0] || gotIDs[1] != want[1] {
+			if want := []string{expired.ID, pending.ID, terminal.ID}; len(gotIDs) != len(want) || gotIDs[0] != want[0] || gotIDs[1] != want[1] || gotIDs[2] != want[2] {
 				t.Fatalf("expired reservation IDs = %v, want %v", gotIDs, want)
 			}
 		})
@@ -123,7 +130,7 @@ func TestResolveExpiredGenerationUsageReservationAtomicallyBlocksAndClears(t *te
 				RecoveryScope:        "task",
 				AutoResumeEnabled:    true,
 			}
-			if err := repo.ResolveExpiredGenerationUsageReservation(ctx, task.ID, now, block, "worker interrupted", true); err != nil {
+			if err := repo.ResolveExpiredGenerationUsageReservation(ctx, task.ID, core.TaskStatusProcessing, now, block, "worker interrupted", true); err != nil {
 				t.Fatalf("ResolveExpiredGenerationUsageReservation() error = %v", err)
 			}
 
@@ -156,7 +163,7 @@ func TestResolveExpiredGenerationUsageReservationRejectsRenewedLease(t *testing.
 				t.Fatalf("RenewGenerationUsageReservation() error = %v", err)
 			}
 
-			err := repo.ResolveExpiredGenerationUsageReservation(ctx, task.ID, now, &listingkit.RetryableBlock{ReasonCode: "generation_usage_reconciliation_pending", AutoResumeEnabled: false}, "requires reconciliation", false)
+			err := repo.ResolveExpiredGenerationUsageReservation(ctx, task.ID, core.TaskStatusProcessing, now, &listingkit.RetryableBlock{ReasonCode: "generation_usage_reconciliation_pending", AutoResumeEnabled: false}, "requires reconciliation", false)
 			if !errors.Is(err, core.ErrTaskNotRecoverable) {
 				t.Fatalf("ResolveExpiredGenerationUsageReservation() error = %v, want ErrTaskNotRecoverable", err)
 			}
@@ -187,7 +194,7 @@ type listingskitGenerationUsageReservationRepository interface {
 	RenewGenerationUsageReservation(context.Context, string, time.Time) error
 	ClearGenerationUsageReservation(context.Context, string) error
 	ListExpiredGenerationUsageReservations(context.Context, time.Time, int) ([]listingkit.Task, error)
-	ResolveExpiredGenerationUsageReservation(context.Context, string, time.Time, *listingkit.RetryableBlock, string, bool) error
+	ResolveExpiredGenerationUsageReservation(context.Context, string, core.TaskStatus, time.Time, *listingkit.RetryableBlock, string, bool) error
 }
 
 func generationUsageReservationRepoFactories(t *testing.T) []generationUsageReservationRepoFactory {

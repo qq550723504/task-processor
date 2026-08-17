@@ -635,6 +635,42 @@ func TestRunRecoverySweepClaimsExpiredGenerationReservationForReconciliation(t *
 	}
 }
 
+func TestRunRecoverySweepClaimsExpiredPendingGenerationReservationForReconciliation(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	now := time.Date(2026, 8, 17, 5, 5, 0, 0, time.UTC)
+	ctx := WithTenantID(context.Background(), "tenant-expired-pending-generation")
+	leaseUntil := now.Add(-time.Minute)
+	task := &Task{ID: "task-expired-pending-generation", TenantID: "tenant-expired-pending-generation", BillingTenantID: "billing-expired-pending-generation", Status: core.TaskStatusPending, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour)}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	submitted := 0
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{
+		repo: repo,
+		taskSubmitter: func() TaskSubmitter {
+			return taskRecoveryTestSubmitter(func(string) error { submitted++; return nil })
+		},
+		now: func() time.Time { return now },
+	})
+
+	recovered, err := svc.RunRecoverySweep(ctx, now, 10)
+	if err != nil {
+		t.Fatalf("RunRecoverySweep() error = %v", err)
+	}
+	if recovered != 1 || submitted != 0 {
+		t.Fatalf("recovered/submitted = (%d, %d), want (1, 0)", recovered, submitted)
+	}
+	got, err := repo.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if got.Status != core.TaskStatusBlockedRetryable || got.RetryableBlock == nil || got.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || got.RetryableBlock.AutoResumeEnabled || got.GenerationUsageReservationState == "" || got.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("recovered task = %#v, want retained reconciliation block", got)
+	}
+}
+
 func TestRunRecoverySweepCommitsTerminalTaskWithExpiredGenerationReservation(t *testing.T) {
 	t.Parallel()
 

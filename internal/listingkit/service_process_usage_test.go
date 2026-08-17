@@ -450,6 +450,51 @@ func TestProcessListingKitPreservesReservationOnRetryableWorkflowFailure(t *test
 	if stored.RetryableBlock.NextRetryAt == nil {
 		t.Fatal("retryable workflow block NextRetryAt = nil, want scheduled recovery")
 	}
+	if stored.RetryableBlock.RetryAttempts != 0 {
+		t.Fatalf("initial retry attempts = %d, want 0 before a recovered attempt", stored.RetryableBlock.RetryAttempts)
+	}
+}
+
+func TestReserveGenerationUsageUsesImplicitOccurrenceForExistingIntent(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{}
+	svc, repo, _, task := newProcessUsageFixture(t, settlement, nil)
+	leaseUntil := time.Now().UTC().Add(time.Minute)
+	task.Status = core.TaskStatusProcessing
+	task.GenerationUsageReservationState = GenerationUsageReservationStateReserved
+	task.GenerationUsageReservationLeaseUntil = &leaseUntil
+	repo.task.Status = core.TaskStatusProcessing
+	repo.task.GenerationUsageReservationState = GenerationUsageReservationStateReserved
+	repo.task.GenerationUsageReservationLeaseUntil = &leaseUntil
+
+	if _, enabled, err := svc.(*service).reserveGenerationUsage(context.Background(), task); err != nil || !enabled {
+		t.Fatalf("reserveGenerationUsage() = (_, %t, %v), want enabled replay", enabled, err)
+	}
+	if !settlement.reservedAt.IsZero() {
+		t.Fatalf("replay occurrence = %v, want zero so the ledger reuses its persisted period", settlement.reservedAt)
+	}
+}
+
+func TestProcessListingKitCarriesRetryAttemptsAcrossRecoveredWorkflowFailure(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{}
+	svc, repo, _, task := newProcessUsageFixture(t, settlement, errors.New("OpenAI API error: insufficient credits in account balance"))
+	previous := &RetryableBlock{ReasonCode: "openai_insufficient_credits", ReasonMessage: "insufficient credits", RetryAttempts: 7, MaxAutoRetryAttempts: 8, AutoResumeEnabled: true}
+	task.RetryableBlock = cloneRetryableBlock(previous)
+	repo.task.RetryableBlock = cloneRetryableBlock(previous)
+
+	if _, err := svc.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want retryable workflow failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.RetryableBlock == nil || stored.RetryableBlock.RetryAttempts != 8 || !stored.RetryableBlock.AutoRetryPaused || stored.RetryableBlock.NextRetryAt != nil {
+		t.Fatalf("retryable block = %#v, want the carried max-attempt block", stored.RetryableBlock)
+	}
 }
 
 func TestProcessListingKitPreservesReleaseRecoveryWhenRetryableBlockPersistenceFails(t *testing.T) {
