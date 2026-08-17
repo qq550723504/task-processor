@@ -38,7 +38,17 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 		return nil, err
 	}
 	if usageEnabled && reservation.AlreadyCommitted {
-		return generationUsageCommittedReplayResult(task)
+		result, replayErr := generationUsageCommittedReplayResult(task)
+		if replayErr != nil {
+			return nil, replayErr
+		}
+		// claimTask moves the row to processing before the idempotent usage
+		// lookup. Re-persist the already terminal result so a committed replay
+		// cannot strand the task in processing.
+		if persistErr := f.service.persistProcessSuccess(ctx, task.ID, result); persistErr != nil {
+			return nil, persistErr
+		}
+		return result, nil
 	}
 
 	result, err := f.service.runWorkflow(ctx, task)

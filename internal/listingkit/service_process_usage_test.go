@@ -395,6 +395,13 @@ func TestProcessListingKitDoesNotDoubleReserveOrRunOnCommittedReplay(t *testing.
 	if result == nil || result.Status != string(core.TaskStatusCompleted) {
 		t.Fatalf("result = %#v, want persisted completed result", result)
 	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusCompleted {
+		t.Fatalf("stored status = %q, want completed after committed replay", stored.Status)
+	}
 	if len(settlement.calls) != 1 || settlement.calls[0] != "reserve" {
 		t.Fatalf("settlement calls = %#v, want one idempotent reserve", settlement.calls)
 	}

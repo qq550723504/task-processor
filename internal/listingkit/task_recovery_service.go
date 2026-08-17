@@ -258,13 +258,23 @@ func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *Recov
 			settled++
 		}
 	}
-	if settleErr != nil {
-		return settled, settleErr
-	}
-	if settled == 0 {
+	if settled == 0 && settleErr == nil {
 		return s.recoveryBatch.RecoverBatch(ctx, request)
 	}
-	recovered, err := s.recoveryBatch.RecoverBatch(ctx, request)
+	remaining := request.Limit
+	if remaining > 0 {
+		remaining -= int(settled)
+	}
+	if remaining <= 0 && request.Limit > 0 {
+		return settled, settleErr
+	}
+	batchRequest := request
+	if request.Limit > 0 {
+		copyRequest := *request
+		copyRequest.Limit = remaining
+		batchRequest = &copyRequest
+	}
+	recovered, err := s.recoveryBatch.RecoverBatch(ctx, batchRequest)
 	return settled + recovered, errors.Join(settleErr, err)
 }
 
