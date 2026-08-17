@@ -25,7 +25,7 @@ func (s *service) reserveGenerationUsage(ctx context.Context, task *Task) (Gener
 	// its persisted period/occurrence for replays, so delayed tasks cannot be
 	// charged to their creation month while retries remain idempotent.
 	occurredAt := time.Now().UTC()
-	reservation, err := settlement.ReserveGeneration(ctx, task.TenantID, task.ID, occurredAt)
+	reservation, err := settlement.ReserveGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, occurredAt)
 	if err != nil {
 		return GenerationUsageReservation{}, true, err
 	}
@@ -37,7 +37,7 @@ func (s *service) releaseGenerationUsage(ctx context.Context, task *Task, reason
 	if settlement == nil || task == nil {
 		return nil
 	}
-	return settlement.ReleaseGeneration(ctx, task.TenantID, task.ID, strings.TrimSpace(reason))
+	return settlement.ReleaseGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, strings.TrimSpace(reason))
 }
 
 func (s *service) commitGenerationUsage(ctx context.Context, task *Task) error {
@@ -45,7 +45,16 @@ func (s *service) commitGenerationUsage(ctx context.Context, task *Task) error {
 	if settlement == nil || task == nil {
 		return nil
 	}
-	return settlement.CommitGeneration(ctx, task.TenantID, task.ID)
+	return settlement.CommitGeneration(ctx, generationUsageTenantID(ctx, task), task.ID)
+}
+
+func generationUsageTenantID(ctx context.Context, task *Task) string {
+	if task != nil {
+		if tenantID := strings.TrimSpace(task.TenantID); tenantID != "" {
+			return tenantID
+		}
+	}
+	return TenantIDFromContext(ctx)
 }
 
 func (s *service) handleGenerationTerminalPersistenceFailure(ctx context.Context, task *Task, persistErr error) error {
@@ -74,12 +83,13 @@ func (s *service) handleGenerationTerminalPersistenceFailure(ctx context.Context
 }
 
 const (
-	usageCommitPendingReason            = "usage_commit_pending"
-	usageReleasePendingReason           = "usage_release_pending"
-	usageSettlementRecoveryScope        = "listingkit_usage_settlement"
-	usageSettlementMaxAutoRetryAttempts = 8
-	terminalPersistencePendingReason    = "terminal_persistence_pending"
-	settlementPersistenceTimeout        = 5 * time.Second
+	usageCommitPendingReason                = "usage_commit_pending"
+	usageReleasePendingReason               = "usage_release_pending"
+	usageSettlementRecoveryScope            = "listingkit_usage_settlement"
+	usageSettlementMaxAutoRetryAttempts     = 8
+	terminalPersistencePendingReason        = "terminal_persistence_pending"
+	committedReplayPersistencePendingReason = "committed_replay_persistence_pending"
+	settlementPersistenceTimeout            = 5 * time.Second
 )
 
 func settlementPersistenceContext(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -130,11 +140,19 @@ func markFailedTaskState(ctx context.Context, repo Repository, taskID, errorMsg 
 }
 
 func markTerminalPersistencePending(ctx context.Context, repo Repository, taskID string, persistErr error) error {
+	return markPersistencePending(ctx, repo, taskID, terminalPersistencePendingReason, "listing kit terminal state persistence is pending", persistErr)
+}
+
+func markCommittedReplayPersistencePending(ctx context.Context, repo Repository, taskID string, persistErr error) error {
+	return markPersistencePending(ctx, repo, taskID, committedReplayPersistencePendingReason, "listing kit committed replay result persistence is pending", persistErr)
+}
+
+func markPersistencePending(ctx context.Context, repo Repository, taskID, reasonCode, reasonMessage string, persistErr error) error {
 	now := time.Now().UTC()
 	nextRetryAt := now
 	block := &RetryableBlock{
-		ReasonCode:           terminalPersistencePendingReason,
-		ReasonMessage:        "listing kit terminal state persistence is pending",
+		ReasonCode:           reasonCode,
+		ReasonMessage:        reasonMessage,
 		BlockedAt:            now,
 		NextRetryAt:          &nextRetryAt,
 		MaxAutoRetryAttempts: usageSettlementMaxAutoRetryAttempts,

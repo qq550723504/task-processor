@@ -88,7 +88,7 @@ func (w taskRecoveryRunnerWiring) listCandidates(ctx context.Context, dueBefore 
 	}
 	filtered := make([]Task, 0, len(tasks))
 	for i := 0; i < len(tasks); i++ {
-		if isUsageSettlementPending(&tasks[i]) || isTerminalPersistencePending(&tasks[i]) {
+		if isUsageSettlementPending(&tasks[i]) || isPersistenceOnlyPending(&tasks[i]) {
 			continue
 		}
 		filtered = append(filtered, tasks[i])
@@ -122,7 +122,7 @@ func (w taskRecoveryRunnerWiring) markRecoveredBatch(ctx context.Context, taskID
 	if isUsageReleasePending(task) {
 		return core.ErrTaskNotRecoverable
 	}
-	if isTerminalPersistencePending(task) {
+	if isPersistenceOnlyPending(task) {
 		return core.ErrTaskNotRecoverable
 	}
 	return w.svc.repo.RecoverBlockedTaskNow(ctx, taskID, recoverAt)
@@ -157,6 +157,8 @@ func (s *taskRecoveryService) RecoverTaskNow(ctx context.Context, taskID string)
 		return s.recoverUsageCommit(ctx, task)
 	} else if isUsageReleasePending(task) {
 		return s.recoverUsageRelease(ctx, task)
+	} else if isCommittedReplayPersistencePending(task) {
+		return s.recoverCommittedReplayPersistence(ctx, task)
 	} else if isTerminalPersistencePending(task) {
 		return s.recoverTerminalPersistence(ctx, task)
 	}
@@ -179,11 +181,19 @@ func isTerminalPersistencePending(task *Task) bool {
 	return task != nil && task.RetryableBlock != nil && task.RetryableBlock.ReasonCode == terminalPersistencePendingReason
 }
 
+func isCommittedReplayPersistencePending(task *Task) bool {
+	return task != nil && task.RetryableBlock != nil && task.RetryableBlock.ReasonCode == committedReplayPersistencePendingReason
+}
+
+func isPersistenceOnlyPending(task *Task) bool {
+	return isTerminalPersistencePending(task) || isCommittedReplayPersistencePending(task)
+}
+
 func (s *taskRecoveryService) recoverUsageCommit(ctx context.Context, task *Task) (*Task, error) {
 	if s.generationUsage == nil {
 		return nil, fmt.Errorf("generation usage settlement is not configured")
 	}
-	if err := s.generationUsage.CommitGeneration(ctx, task.TenantID, task.ID); err != nil {
+	if err := s.generationUsage.CommitGeneration(ctx, generationUsageTenantID(ctx, task), task.ID); err != nil {
 		return nil, s.reblockUsageSettlement(ctx, task, err)
 	}
 	settlementRepo, ok := s.repo.(UsageSettlementRepository)
@@ -200,7 +210,7 @@ func (s *taskRecoveryService) recoverUsageRelease(ctx context.Context, task *Tas
 	if s.generationUsage == nil {
 		return nil, fmt.Errorf("generation usage settlement is not configured")
 	}
-	if err := s.generationUsage.ReleaseGeneration(ctx, task.TenantID, task.ID, "terminal_persistence_failed"); err != nil {
+	if err := s.generationUsage.ReleaseGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, "terminal_persistence_failed"); err != nil {
 		return nil, s.reblockUsageSettlement(ctx, task, err)
 	}
 	if err := markFailedTaskState(ctx, s.repo, task.ID, task.Error); err != nil {
@@ -217,6 +227,39 @@ func (s *taskRecoveryService) recoverTerminalPersistence(ctx context.Context, ta
 		return nil, s.reblockTerminalPersistence(ctx, task, err)
 	}
 	return s.repo.GetTask(ctx, task.ID)
+}
+
+func (s *taskRecoveryService) recoverCommittedReplayPersistence(ctx context.Context, task *Task) (*Task, error) {
+	if task == nil {
+		return nil, core.ErrTaskNotFound
+	}
+	if err := persistCommittedReplayResult(ctx, s.repo, task); err != nil {
+		return nil, s.reblockTask(ctx, task, err, usageSettlementRecoveryScope)
+	}
+	return s.repo.GetTask(ctx, task.ID)
+}
+
+func persistCommittedReplayResult(ctx context.Context, repo Repository, task *Task) error {
+	if repo == nil || task == nil || task.Result == nil {
+		return core.ErrTaskNotRecoverable
+	}
+	persistCtx, cancel := settlementPersistenceContext(ctx)
+	defer cancel()
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if task.Result.Status == string(core.TaskStatusNeedsReview) {
+			lastErr = repo.MarkNeedsReview(persistCtx, task.ID, task.Result, taskNeedsReviewReason(task.Result))
+		} else {
+			lastErr = repo.MarkCompleted(persistCtx, task.ID, task.Result)
+		}
+		if lastErr == nil {
+			return nil
+		}
+		if persistCtx.Err() != nil {
+			break
+		}
+	}
+	return lastErr
 }
 
 func (s *taskRecoveryService) reblockUsageSettlement(ctx context.Context, task *Task, settlementErr error) error {
@@ -245,7 +288,9 @@ func (s *taskRecoveryService) reblockTask(ctx context.Context, task *Task, recov
 	updated.ReasonMessage = task.RetryableBlock.ReasonMessage
 	updated.RecoveryScope = defaultRecoveryScope
 	updated.AutoResumeEnabled = task.RetryableBlock.AutoResumeEnabled
-	if markErr := markTaskBlockedRetryableState(ctx, s.repo, task.ID, updated, recoveryErr.Error()); markErr != nil {
+	persistCtx, cancel := settlementPersistenceContext(ctx)
+	defer cancel()
+	if markErr := markTaskBlockedRetryableState(persistCtx, s.repo, task.ID, updated, recoveryErr.Error()); markErr != nil {
 		return errors.Join(recoveryErr, markErr)
 	}
 	return recoveryErr
@@ -283,6 +328,16 @@ func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *Recov
 		return 0, err
 	}
 	for i := 0; i < len(candidates); i++ {
+		if isCommittedReplayPersistencePending(&candidates[i]) {
+			var err error
+			_, err = s.recoverCommittedReplayPersistence(ctx, &candidates[i])
+			if err != nil {
+				settleErr = errors.Join(settleErr, err)
+				continue
+			}
+			settled++
+			continue
+		}
 		if isTerminalPersistencePending(&candidates[i]) {
 			var err error
 			_, err = s.recoverTerminalPersistence(ctx, &candidates[i])

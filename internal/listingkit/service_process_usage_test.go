@@ -12,22 +12,26 @@ import (
 )
 
 type recordingGenerationUsageSettlement struct {
-	calls            []string
-	reserveErr       error
-	commitErr        error
-	releaseErr       error
-	reserveCommitted bool
-	repo             *stubProcessStatusRepo
-	reservedTaskID   string
-	committedTaskID  string
-	releasedTaskID   string
-	releasedReason   string
-	reservedAt       time.Time
+	calls             []string
+	reserveErr        error
+	commitErr         error
+	releaseErr        error
+	reserveCommitted  bool
+	repo              *stubProcessStatusRepo
+	reservedTaskID    string
+	reservedTenantID  string
+	committedTaskID   string
+	committedTenantID string
+	releasedTaskID    string
+	releasedTenantID  string
+	releasedReason    string
+	reservedAt        time.Time
 }
 
-func (s *recordingGenerationUsageSettlement) ReserveGeneration(_ context.Context, _ string, taskID string, occurredAt time.Time) (GenerationUsageReservation, error) {
+func (s *recordingGenerationUsageSettlement) ReserveGeneration(_ context.Context, tenantID string, taskID string, occurredAt time.Time) (GenerationUsageReservation, error) {
 	s.calls = append(s.calls, "reserve")
 	s.reservedTaskID = taskID
+	s.reservedTenantID = tenantID
 	s.reservedAt = occurredAt
 	if s.reserveErr != nil {
 		return GenerationUsageReservation{}, s.reserveErr
@@ -35,18 +39,20 @@ func (s *recordingGenerationUsageSettlement) ReserveGeneration(_ context.Context
 	return GenerationUsageReservation{EventID: "usage-" + taskID, AlreadyCommitted: s.reserveCommitted}, nil
 }
 
-func (s *recordingGenerationUsageSettlement) CommitGeneration(_ context.Context, _ string, taskID string) error {
+func (s *recordingGenerationUsageSettlement) CommitGeneration(_ context.Context, tenantID string, taskID string) error {
 	s.calls = append(s.calls, "commit")
 	s.committedTaskID = taskID
+	s.committedTenantID = tenantID
 	if s.repo != nil && s.repo.task.Status != core.TaskStatusCompleted && s.repo.task.Status != core.TaskStatusNeedsReview {
 		return errors.New("commit called before terminal task persistence")
 	}
 	return s.commitErr
 }
 
-func (s *recordingGenerationUsageSettlement) ReleaseGeneration(_ context.Context, _ string, taskID, reason string) error {
+func (s *recordingGenerationUsageSettlement) ReleaseGeneration(_ context.Context, tenantID string, taskID, reason string) error {
 	s.calls = append(s.calls, "release")
 	s.releasedTaskID = taskID
+	s.releasedTenantID = tenantID
 	s.releasedReason = reason
 	return s.releaseErr
 }
@@ -133,6 +139,66 @@ func TestProcessListingKitQuotaRejectionSkipsWorkflow(t *testing.T) {
 	}
 	if len(settlement.calls) != 1 || settlement.calls[0] != "reserve" {
 		t.Fatalf("settlement calls = %#v, want reserve only", settlement.calls)
+	}
+}
+
+func TestProcessListingKitQuotaRejectionFallbackRemainsRecoverable(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}, failedErrs: []error{errors.New("store unavailable"), errors.New("store unavailable"), errors.New("store unavailable")}}
+	settlement := &recordingGenerationUsageSettlement{reserveErr: listingsubscription.ErrUsageQuotaExceeded}
+	productService := &processUsageProductService{task: &productenrich.Task{ID: "product-task-quota-fallback", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}}}
+	svc, err := NewService(newTestServiceConfig(repo, withTestProductService(productService), withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}), withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement })))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	task := &Task{ID: "listingkit-quota-fallback", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if _, err := svc.ProcessListingKit(context.Background(), task); !errors.Is(err, listingsubscription.ErrUsageQuotaExceeded) {
+		t.Fatalf("ProcessListingKit() error = %v, want quota error", err)
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != terminalPersistencePendingReason {
+		t.Fatalf("stored task = %#v, want terminal persistence fallback block", stored)
+	}
+}
+
+func TestProcessListingKitCommittedReplayFallbackRemainsRecoverable(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{reserveCommitted: true}
+	svc, repo, _, task := newProcessUsageFixture(t, settlement, nil)
+	repo.completedErr = errors.New("task store unavailable")
+	task.Result = &ListingKitResult{Status: string(core.TaskStatusCompleted), Summary: &GenerationSummary{}}
+	repo.task.Result = task.Result
+	if _, err := svc.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want committed replay persistence error")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != committedReplayPersistencePendingReason {
+		t.Fatalf("stored task = %#v, want committed replay persistence fallback block", stored)
+	}
+}
+
+func TestProcessListingKitNormalizesBlankTenantForUsageSettlement(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{}
+	svc, _, _, task := newProcessUsageFixture(t, settlement, nil)
+	task.TenantID = ""
+	if _, err := svc.ProcessListingKit(context.Background(), task); err != nil {
+		t.Fatalf("ProcessListingKit() error = %v", err)
+	}
+	if settlement.reservedTenantID != DefaultTenantID || settlement.committedTenantID != DefaultTenantID {
+		t.Fatalf("usage tenant IDs = (%q, %q), want default %q", settlement.reservedTenantID, settlement.committedTenantID, DefaultTenantID)
 	}
 }
 

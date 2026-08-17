@@ -27,8 +27,9 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 	if err != nil {
 		if errors.Is(err, listingsubscription.ErrUsageQuotaExceeded) {
 			quotaErr := generationQuotaFailure(task.ID)
-			if persistErr := f.service.repo.MarkFailed(ctx, task.ID, quotaErr.Error()); persistErr != nil {
-				return nil, errors.Join(quotaErr, persistErr)
+			if persistErr := markFailedTaskState(ctx, f.service.repo, task.ID, quotaErr.Error()); persistErr != nil {
+				fallbackErr := markTerminalPersistencePending(ctx, f.service.repo, task.ID, persistErr)
+				return nil, errors.Join(err, quotaErr, persistErr, fallbackErr)
 			}
 			return nil, err
 		}
@@ -46,7 +47,8 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 		// lookup. Re-persist the already terminal result so a committed replay
 		// cannot strand the task in processing.
 		if persistErr := f.service.persistProcessSuccess(ctx, task.ID, result); persistErr != nil {
-			return nil, persistErr
+			fallbackErr := markCommittedReplayPersistencePending(ctx, f.service.repo, task.ID, persistErr)
+			return nil, errors.Join(persistErr, fallbackErr)
 		}
 		return result, nil
 	}

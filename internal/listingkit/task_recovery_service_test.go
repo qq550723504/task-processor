@@ -560,6 +560,7 @@ type taskRecoveryServiceTestRepo struct {
 	tasks                         map[string]*Task
 	markBlockedRetryableErrors    []error
 	markBlockedRetryableCallCount int
+	requireLiveBlockContext       bool
 	markFailedErrors              []error
 	resolveUsageSettlementErrors  []error
 }
@@ -621,11 +622,27 @@ func (r *taskRecoveryServiceTestRepo) MarkProcessing(context.Context, string) er
 	return nil
 }
 
-func (r *taskRecoveryServiceTestRepo) MarkCompleted(context.Context, string, *ListingKitResult) error {
+func (r *taskRecoveryServiceTestRepo) MarkCompleted(_ context.Context, taskID string, result *ListingKitResult) error {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return core.ErrTaskNotFound
+	}
+	task.Status = core.TaskStatusCompleted
+	task.Result = result
+	task.RetryableBlock = nil
+	task.Error = ""
 	return nil
 }
 
-func (r *taskRecoveryServiceTestRepo) MarkNeedsReview(context.Context, string, *ListingKitResult, string) error {
+func (r *taskRecoveryServiceTestRepo) MarkNeedsReview(_ context.Context, taskID string, result *ListingKitResult, reason string) error {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return core.ErrTaskNotFound
+	}
+	task.Status = core.TaskStatusNeedsReview
+	task.Result = result
+	task.RetryableBlock = nil
+	task.Error = reason
 	return nil
 }
 
@@ -648,12 +665,15 @@ func (r *taskRecoveryServiceTestRepo) MarkFailed(_ context.Context, taskID strin
 	return nil
 }
 
-func (r *taskRecoveryServiceTestRepo) MarkBlockedRetryable(_ context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
+func (r *taskRecoveryServiceTestRepo) MarkBlockedRetryable(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
 	task, ok := r.tasks[taskID]
 	if !ok {
 		return core.ErrTaskNotFound
 	}
 	r.markBlockedRetryableCallCount++
+	if r.requireLiveBlockContext && ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if len(r.markBlockedRetryableErrors) > 0 {
 		err := r.markBlockedRetryableErrors[0]
 		r.markBlockedRetryableErrors = r.markBlockedRetryableErrors[1:]
