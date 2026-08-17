@@ -41,3 +41,21 @@ func TestSubscriptionGenerationUsageAdapterMapsCanonicalFact(t *testing.T) {
 		t.Fatalf("event = %#v, want canonical generation fact", event)
 	}
 }
+
+func TestSubscriptionGenerationUsageAdapterLookupTreatsMissingEventAsAbsent(t *testing.T) {
+	t.Parallel()
+
+	repo := listingsubscription.NewMemRepository()
+	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(repo))
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	adapter := newSubscriptionGenerationUsage(svc)
+	state, found, err := adapter.LookupGeneration(context.Background(), "tenant-17", "missing-task")
+	if err != nil {
+		t.Fatalf("LookupGeneration() error = %v", err)
+	}
+	if found || state != "" {
+		t.Fatalf("LookupGeneration() = (%q, %t), want absent", state, found)
+	}
+}

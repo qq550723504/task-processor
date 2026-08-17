@@ -14,11 +14,36 @@ type subscriptionGenerationUsage struct {
 	service *listingsubscription.Service
 }
 
-func newSubscriptionGenerationUsage(service *listingsubscription.Service) listingkit.GenerationUsageSettlement {
+func newSubscriptionGenerationUsage(service *listingsubscription.Service) *subscriptionGenerationUsage {
 	if service == nil {
 		return nil
 	}
 	return &subscriptionGenerationUsage{service: service}
+}
+
+func (a *subscriptionGenerationUsage) LookupGeneration(ctx context.Context, tenantID, taskID string) (listingkit.GenerationUsageEventState, bool, error) {
+	event, err := a.lookup(ctx, tenantID, taskID)
+	if errors.Is(err, listingsubscription.ErrUsageEventNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if event == nil {
+		return "", false, errors.New("generation usage lookup returned nil event")
+	}
+	switch event.Status {
+	case listingsubscription.UsageEventReserved:
+		return listingkit.GenerationUsageEventReserved, true, nil
+	case listingsubscription.UsageEventCommitted:
+		return listingkit.GenerationUsageEventCommitted, true, nil
+	case listingsubscription.UsageEventReleased:
+		return listingkit.GenerationUsageEventReleased, true, nil
+	case listingsubscription.UsageEventReversed:
+		return listingkit.GenerationUsageEventReversed, true, nil
+	default:
+		return "", false, errors.New("generation usage lookup returned an unknown event status")
+	}
 }
 
 func (a *subscriptionGenerationUsage) ReserveGeneration(ctx context.Context, tenantID, taskID string, occurredAt time.Time) (listingkit.GenerationUsageReservation, error) {

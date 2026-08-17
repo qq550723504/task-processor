@@ -447,7 +447,7 @@ func usageEventIdentityKey(tenantID, idempotencyKey string) string {
 }
 
 func usageEventNotFound(eventID string) error {
-	return fmt.Errorf("usage event not found: %q", eventID)
+	return fmt.Errorf("%w: %q", ErrUsageEventNotFound, eventID)
 }
 
 func cloneMemUsageEvent(event UsageEvent) UsageEvent {

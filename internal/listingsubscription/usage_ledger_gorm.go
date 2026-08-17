@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -324,6 +325,9 @@ func (l *gormUsageLedger) Get(ctx context.Context, tenantID, idempotencyKey stri
 	var row usageEventRow
 	err := l.repo.db.WithContext(ctx).Where("tenant_id = ? AND idempotency_key = ?", strings.TrimSpace(tenantID), strings.TrimSpace(idempotencyKey)).Take(&row).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("%w: %s", ErrUsageEventNotFound, strings.TrimSpace(idempotencyKey))
+		}
 		return nil, err
 	}
 	event := usageEventFromRow(row)

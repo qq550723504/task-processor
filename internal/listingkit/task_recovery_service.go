@@ -27,8 +27,11 @@ type taskRecoveryService struct {
 }
 
 const (
-	taskRecoveryBackfillPageSize            = 100
-	taskRecoveryBackfillMaxAutoRetryAttempt = 8
+	taskRecoveryBackfillPageSize               = 100
+	taskRecoveryBackfillMaxAutoRetryAttempt    = 8
+	generationUsageWorkerInterruptedReason     = "generation_usage_worker_interrupted"
+	generationUsageReconciliationPendingReason = "generation_usage_reconciliation_pending"
+	generationUsageRecoveryRetryDelay          = time.Minute
 )
 
 func newTaskRecoveryService(config taskRecoveryServiceConfig) *taskRecoveryService {
@@ -304,6 +307,90 @@ func (s *taskRecoveryService) RunRecoverySweep(ctx context.Context, now time.Tim
 	})
 }
 
+func (s *taskRecoveryService) recoverExpiredGenerationUsageReservations(ctx context.Context, dueBefore time.Time, limit int) (int64, error) {
+	if s == nil || s.repo == nil || s.generationUsage == nil {
+		return 0, nil
+	}
+	reservations, ok := s.repo.(GenerationUsageReservationRepository)
+	if !ok {
+		return 0, nil
+	}
+	lookup, ok := s.generationUsage.(GenerationUsageLedgerLookup)
+	if !ok {
+		return 0, nil
+	}
+	items, err := reservations.ListExpiredGenerationUsageReservations(ctx, dueBefore, limit)
+	if err != nil {
+		return 0, err
+	}
+	var recovered int64
+	var recoveryErr error
+	for i := range items {
+		task := &items[i]
+		state, found, lookupErr := lookup.LookupGeneration(ctx, generationUsageTenantID(ctx, task), task.ID)
+		if lookupErr != nil || (found && state != GenerationUsageEventReserved) {
+			err := reservations.ResolveExpiredGenerationUsageReservation(ctx, task.ID, generationUsageReconciliationBlock(dueBefore), generationUsageReconciliationMessage(lookupErr, state, found), false)
+			if err != nil {
+				recoveryErr = errors.Join(recoveryErr, err)
+				continue
+			}
+			recovered++
+			continue
+		}
+		if found {
+			if err := s.generationUsage.ReleaseGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, generationUsageWorkerInterruptedReason); err != nil {
+				err = reservations.ResolveExpiredGenerationUsageReservation(ctx, task.ID, generationUsageReconciliationBlock(dueBefore), generationUsageReconciliationMessage(err, state, found), false)
+				if err != nil {
+					recoveryErr = errors.Join(recoveryErr, err)
+					continue
+				}
+				recovered++
+				continue
+			}
+		}
+		if err := reservations.ResolveExpiredGenerationUsageReservation(ctx, task.ID, generationUsageWorkerInterruptedBlock(dueBefore), "generation worker interrupted before terminal persistence", true); err != nil {
+			recoveryErr = errors.Join(recoveryErr, err)
+			continue
+		}
+		recovered++
+	}
+	return recovered, recoveryErr
+}
+
+func generationUsageWorkerInterruptedBlock(now time.Time) *RetryableBlock {
+	blockedAt := now.UTC()
+	nextRetryAt := blockedAt.Add(generationUsageRecoveryRetryDelay)
+	return &RetryableBlock{
+		ReasonCode:           generationUsageWorkerInterruptedReason,
+		ReasonMessage:        "generation worker interruption recovered",
+		BlockedAt:            blockedAt,
+		NextRetryAt:          &nextRetryAt,
+		MaxAutoRetryAttempts: taskRecoveryBackfillMaxAutoRetryAttempt,
+		RecoveryScope:        "task",
+		AutoResumeEnabled:    true,
+	}
+}
+
+func generationUsageReconciliationBlock(now time.Time) *RetryableBlock {
+	return &RetryableBlock{
+		ReasonCode:        generationUsageReconciliationPendingReason,
+		ReasonMessage:     "generation usage requires reconciliation",
+		BlockedAt:         now.UTC(),
+		RecoveryScope:     usageSettlementRecoveryScope,
+		AutoResumeEnabled: false,
+	}
+}
+
+func generationUsageReconciliationMessage(cause error, state GenerationUsageEventState, found bool) string {
+	if cause != nil {
+		return fmt.Sprintf("generation usage requires reconciliation: %v", cause)
+	}
+	if found {
+		return fmt.Sprintf("generation usage requires reconciliation: ledger event is %s", state)
+	}
+	return "generation usage requires reconciliation"
+}
+
 func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *RecoverBlockedTasksQuery) (int64, error) {
 	if s == nil || s.repo == nil {
 		return 0, fmt.Errorf("task recovery repository is not configured")
@@ -317,13 +404,19 @@ func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *Recov
 		request.RecoverAt = query.RecoverAt
 		request.Limit = query.Limit
 	}
-	var settled int64
-	var settleErr error
 	dueBefore := request.DueBefore
 	if dueBefore.IsZero() {
 		dueBefore = s.currentTime()
 	}
-	candidates, err := s.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{DueBefore: dueBefore, Limit: request.Limit})
+	settled, settleErr := s.recoverExpiredGenerationUsageReservations(ctx, dueBefore, request.Limit)
+	if request.Limit > 0 && settled >= int64(request.Limit) {
+		return settled, settleErr
+	}
+	remainingLimit := request.Limit
+	if remainingLimit > 0 {
+		remainingLimit -= int(settled)
+	}
+	candidates, err := s.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{DueBefore: dueBefore, Limit: remainingLimit})
 	if err != nil {
 		return 0, err
 	}

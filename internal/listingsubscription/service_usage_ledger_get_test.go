@@ -41,3 +41,16 @@ func TestServiceGetUsageRequiresConfiguredLedger(t *testing.T) {
 		t.Fatalf("GetUsage() error = %v, want ErrUsageLedgerNotConfigured", err)
 	}
 }
+
+func TestServiceGetUsageClassifiesMissingEvent(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemRepository()
+	svc, err := NewServiceWithLedger(repo, NewMemUsageLedger(repo))
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	if _, err := svc.GetUsage(context.Background(), "tenant-17", "missing-event"); !errors.Is(err, ErrUsageEventNotFound) {
+		t.Fatalf("GetUsage() error = %v, want ErrUsageEventNotFound", err)
+	}
+}

@@ -778,6 +778,77 @@ func (r *taskRecoveryServiceTestRepo) SaveTaskResult(context.Context, string, *L
 	return nil
 }
 
+func (r *taskRecoveryServiceTestRepo) BeginGenerationUsageReservation(_ context.Context, taskID string, leaseUntil time.Time) error {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return core.ErrTaskNotFound
+	}
+	if task.GenerationUsageReservationState == "" {
+		task.GenerationUsageReservationState = GenerationUsageReservationStatePending
+	}
+	task.GenerationUsageReservationLeaseUntil = timestampTaskRecoveryServiceTest(leaseUntil)
+	return nil
+}
+
+func (r *taskRecoveryServiceTestRepo) MarkGenerationUsageReserved(_ context.Context, taskID string, leaseUntil time.Time) error {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return core.ErrTaskNotFound
+	}
+	task.GenerationUsageReservationState = GenerationUsageReservationStateReserved
+	task.GenerationUsageReservationLeaseUntil = timestampTaskRecoveryServiceTest(leaseUntil)
+	return nil
+}
+
+func (r *taskRecoveryServiceTestRepo) RenewGenerationUsageReservation(_ context.Context, taskID string, leaseUntil time.Time) error {
+	task, ok := r.tasks[taskID]
+	if !ok || task.GenerationUsageReservationState == "" {
+		return core.ErrTaskNotRecoverable
+	}
+	task.GenerationUsageReservationLeaseUntil = timestampTaskRecoveryServiceTest(leaseUntil)
+	return nil
+}
+
+func (r *taskRecoveryServiceTestRepo) ClearGenerationUsageReservation(_ context.Context, taskID string) error {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return core.ErrTaskNotFound
+	}
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
+	return nil
+}
+
+func (r *taskRecoveryServiceTestRepo) ListExpiredGenerationUsageReservations(_ context.Context, dueBefore time.Time, limit int) ([]Task, error) {
+	items := make([]Task, 0)
+	for _, task := range r.tasks {
+		if task.Status != core.TaskStatusProcessing || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
+			continue
+		}
+		copied := *task
+		items = append(items, copied)
+	}
+	if limit > 0 && len(items) > limit {
+		items = items[:limit]
+	}
+	return items, nil
+}
+
+func (r *taskRecoveryServiceTestRepo) ResolveExpiredGenerationUsageReservation(_ context.Context, taskID string, block *RetryableBlock, errorMsg string, clearReservation bool) error {
+	task, ok := r.tasks[taskID]
+	if !ok || task.Status != core.TaskStatusProcessing || task.GenerationUsageReservationState == "" {
+		return core.ErrTaskNotRecoverable
+	}
+	task.Status = core.TaskStatusBlockedRetryable
+	task.RetryableBlock = cloneRetryableBlock(block)
+	task.Error = errorMsg
+	if clearReservation {
+		task.GenerationUsageReservationState = ""
+		task.GenerationUsageReservationLeaseUntil = nil
+	}
+	return nil
+}
+
 func taskRecoveryServiceTaskIsRecoverable(task *Task, dueBefore time.Time, force bool) bool {
 	if task == nil || task.Status != core.TaskStatusBlockedRetryable {
 		return false

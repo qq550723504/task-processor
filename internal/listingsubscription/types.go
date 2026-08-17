@@ -38,6 +38,7 @@ var (
 	ErrUsageInvalidTransition             = errors.New("usage ledger invalid transition")
 	ErrUsageQuotaExceeded                 = errors.New("usage ledger quota exceeded")
 	ErrUsageLedgerNotConfigured           = errors.New("usage ledger is not configured")
+	ErrUsageEventNotFound                 = errors.New("usage ledger event not found")
 	ErrUsageOutboxUnsafeMetadata          = errors.New("usage outbox metadata is unsafe")
 	ErrUsageOutboxStorageSnapshotRequired = errors.New("usage outbox storage snapshot is required")
 	ErrUsageReversalDeliveryUnresolved    = errors.New("usage reversal delivery state is unresolved")
