@@ -51,6 +51,20 @@ func (a *subscriptionGenerationUsage) ReserveGeneration(ctx context.Context, ten
 		return listingkit.GenerationUsageReservation{}, listingsubscription.ErrUsageLedgerNotConfigured
 	}
 	fact := generationUsageFactForAdapter(tenantID, taskID, occurredAt)
+	if fact.occurredAt.IsZero() {
+		// A zero occurrence is the service's replay sentinel. It is valid only
+		// when the deterministic event already exists; otherwise a previous
+		// reserve failed before inserting and this fresh reservation must claim
+		// the current period rather than send the invalid 0001-01 period.
+		event, lookupErr := a.lookup(ctx, fact.tenantID, fact.sourceID)
+		if errors.Is(lookupErr, listingsubscription.ErrUsageEventNotFound) {
+			fact = generationUsageFactForAdapter(tenantID, taskID, time.Now().UTC())
+		} else if lookupErr != nil {
+			return listingkit.GenerationUsageReservation{}, lookupErr
+		} else if event == nil {
+			return listingkit.GenerationUsageReservation{}, errors.New("generation usage lookup returned nil event")
+		}
+	}
 	result, err := a.service.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
 		TenantID:       fact.tenantID,
 		ModuleCode:     fact.moduleCode,

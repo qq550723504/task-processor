@@ -226,6 +226,13 @@ func (s *taskRecoveryService) recoverUsageRelease(ctx context.Context, task *Tas
 	if err := s.generationUsage.ReleaseGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, usageReleaseRecoveryReason(task)); err != nil {
 		return nil, s.reblockUsageSettlement(ctx, task, err)
 	}
+	reservations, ok := s.repo.(GenerationUsageReservationRepository)
+	if !ok {
+		return nil, s.reblockUsageSettlement(ctx, task, errors.New("generation usage reservation repository is not configured"))
+	}
+	if err := reservations.ClearGenerationUsageReservation(ctx, task.ID); err != nil {
+		return nil, s.reblockUsageSettlement(ctx, task, err)
+	}
 	if err := markFailedTaskState(ctx, s.repo, task.ID, task.Error); err != nil {
 		return nil, s.reblockUsageSettlement(ctx, task, err)
 	}

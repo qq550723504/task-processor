@@ -539,7 +539,8 @@ func TestRunRecoverySweepReleasesUsageWithoutSubmittingTask(t *testing.T) {
 	repo := newTaskRecoveryServiceTestRepo()
 	now := time.Now().UTC()
 	ctx := WithTenantID(context.Background(), "tenant-usage-release-sweep")
-	task := &Task{ID: "task-usage-release-sweep", TenantID: "tenant-usage-release-sweep", Status: core.TaskStatusProcessing, Error: "listing kit generation result persistence failed", CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
+	leaseUntil := now.Add(time.Hour)
+	task := &Task{ID: "task-usage-release-sweep", TenantID: "tenant-usage-release-sweep", Status: core.TaskStatusProcessing, Error: "listing kit generation result persistence failed", GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
 	if err := repo.CreateTask(ctx, task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
@@ -580,8 +581,8 @@ func TestRunRecoverySweepReleasesUsageWithoutSubmittingTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if got.Status != core.TaskStatusFailed || got.RetryableBlock != nil {
-		t.Fatalf("released task = %#v, want failed task without settlement block", got)
+	if got.Status != core.TaskStatusFailed || got.RetryableBlock != nil || got.GenerationUsageReservationState != "" || got.GenerationUsageReservationLeaseUntil != nil {
+		t.Fatalf("released task = %#v, want failed task with cleared reservation intent", got)
 	}
 }
 

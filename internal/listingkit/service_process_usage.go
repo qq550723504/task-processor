@@ -379,6 +379,13 @@ func (s *service) persistScheduledRetryableFailure(ctx context.Context, task *Ta
 			block.MaxAutoRetryAttempts = usageSettlementMaxAutoRetryAttempts
 		}
 	}
+	// A reservation remains held while retries are safe. At the retry cap we
+	// cannot prove that the provider did not finish after returning an error, so
+	// retain it under an operator-only reconciliation block instead of leaving a
+	// paused automatic retry that permanently consumes quota without an owner.
+	if reservationHeld && block.AutoRetryPaused {
+		return errors.Join(persistErr, s.persistGenerationUsageReconciliation(ctx, task, failureErr))
+	}
 	errorMsg := block.ReasonMessage
 	if persistErr != nil {
 		errorMsg = fmt.Sprintf("%s: task failure persistence failed: %v", errorMsg, persistErr)

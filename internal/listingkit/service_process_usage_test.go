@@ -476,7 +476,7 @@ func TestReserveGenerationUsageUsesImplicitOccurrenceForExistingIntent(t *testin
 	}
 }
 
-func TestProcessListingKitCarriesRetryAttemptsAcrossRecoveredWorkflowFailure(t *testing.T) {
+func TestProcessListingKitMovesHeldReservationToReconciliationAtRetryLimit(t *testing.T) {
 	t.Parallel()
 
 	settlement := &recordingGenerationUsageSettlement{}
@@ -492,8 +492,14 @@ func TestProcessListingKitCarriesRetryAttemptsAcrossRecoveredWorkflowFailure(t *
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if stored.RetryableBlock == nil || stored.RetryableBlock.RetryAttempts != 8 || !stored.RetryableBlock.AutoRetryPaused || stored.RetryableBlock.NextRetryAt != nil {
-		t.Fatalf("retryable block = %#v, want the carried max-attempt block", stored.RetryableBlock)
+	if stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || stored.RetryableBlock.AutoResumeEnabled || stored.RetryableBlock.NextRetryAt != nil {
+		t.Fatalf("retry-limit task = %#v, want reconciliation-only block", stored)
+	}
+	if stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("reservation = (%q, %v), want retained for reconciliation", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
+	}
+	if settlement.releasedTaskID != "" {
+		t.Fatalf("released task = %q, want held reservation retained for explicit reconciliation", settlement.releasedTaskID)
 	}
 }
 
