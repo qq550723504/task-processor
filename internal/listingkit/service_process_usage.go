@@ -168,13 +168,40 @@ func markPersistencePending(ctx context.Context, repo Repository, taskID, reason
 	return markRetryableTaskState(persistCtx, repo, taskID, block, errorMsg)
 }
 
-func (s *service) persistWorkflowRetryableFailureFallback(ctx context.Context, task *Task, workflowErr, persistErr error) error {
+func (s *service) persistReservationFailure(ctx context.Context, task *Task, reserveErr error) error {
+	return s.persistScheduledRetryableFailure(ctx, task, reserveErr, nil)
+}
+
+func (s *service) persistProcessRetryableFailure(ctx context.Context, task *Task, result *ListingKitResult, workflowErr error) error {
+	if task == nil {
+		return workflowErr
+	}
+	persistCtx, cancel := settlementPersistenceContext(ctx)
+	defer cancel()
+	var persistErrs []error
+	if result != nil {
+		if err := s.repo.SaveTaskResult(persistCtx, task.ID, result); err != nil {
+			persistErrs = append(persistErrs, fmt.Errorf("save partial result: %w", err))
+		}
+	}
+	if err := s.persistScheduledRetryableFailure(persistCtx, task, workflowErr, errors.Join(persistErrs...)); err != nil {
+		persistErrs = append(persistErrs, err)
+	}
+	return errors.Join(persistErrs...)
+}
+
+func (s *service) persistScheduledRetryableFailure(ctx context.Context, task *Task, failureErr, persistErr error) error {
 	if task == nil {
 		return persistErr
 	}
-	block, ok := classifyRetryableTaskFailure(workflowErr)
+	block, ok := classifyRetryableTaskFailure(failureErr)
 	if !ok {
-		return markTerminalPersistencePending(ctx, s.repo, task.ID, persistErr)
+		persistCtx, cancel := settlementPersistenceContext(ctx)
+		defer cancel()
+		if err := persistClassifiedTaskFailure(persistCtx, s.repo, task.ID, failureErr.Error(), failureErr); err != nil {
+			return errors.Join(err, markTerminalPersistencePending(ctx, s.repo, task.ID, err))
+		}
+		return persistErr
 	}
 	now := time.Now().UTC()
 	block.BlockedAt = now
@@ -187,7 +214,10 @@ func (s *service) persistWorkflowRetryableFailureFallback(ctx context.Context, t
 	}
 	persistCtx, cancel := settlementPersistenceContext(ctx)
 	defer cancel()
-	return markRetryableTaskState(persistCtx, s.repo, task.ID, block, errorMsg)
+	if err := markRetryableTaskState(persistCtx, s.repo, task.ID, block, errorMsg); err != nil {
+		return errors.Join(persistErr, err, markTerminalPersistencePending(ctx, s.repo, task.ID, err))
+	}
+	return persistErr
 }
 
 func generationQuotaFailure(taskID string) error {

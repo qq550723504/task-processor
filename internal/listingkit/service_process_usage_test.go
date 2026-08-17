@@ -235,6 +235,57 @@ func TestProcessListingKitPreservesReservationOnRetryableWorkflowFailure(t *test
 	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil {
 		t.Fatalf("stored task = %#v, want retryable block", stored)
 	}
+	if stored.RetryableBlock.NextRetryAt == nil {
+		t.Fatal("retryable workflow block NextRetryAt = nil, want scheduled recovery")
+	}
+}
+
+func TestProcessListingKitSchedulesRetryableReservationFailure(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{reserveErr: errors.New("context deadline exceeded")}
+	svc, repo, productService, task := newProcessUsageFixture(t, settlement, nil)
+	if _, err := svc.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want reservation failure")
+	}
+	if productService.processCalls != 0 {
+		t.Fatalf("ProcessProduct calls = %d, want 0 after reservation failure", productService.processCalls)
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.NextRetryAt == nil {
+		t.Fatalf("stored task = %#v, want scheduled retryable reservation block", stored)
+	}
+}
+
+func TestProcessListingKitPersistsReservationFailureWithCleanupContext(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}, requireLiveBlockContext: true}
+	settlement := &recordingGenerationUsageSettlement{reserveErr: context.DeadlineExceeded}
+	productService := &processUsageProductService{task: &productenrich.Task{ID: "product-task-reservation-canceled", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}}}
+	svc, err := NewService(newTestServiceConfig(repo, withTestProductService(productService), withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}), withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement })))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	task := &Task{ID: "listingkit-reservation-canceled", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := svc.ProcessListingKit(ctx, task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want canceled reservation failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.NextRetryAt == nil {
+		t.Fatalf("stored task = %#v, want cleanup-persisted scheduled block", stored)
+	}
 }
 
 func TestProcessListingKitUsesReservationTimeForNewUsageEvents(t *testing.T) {

@@ -25,7 +25,10 @@ func (h *handler) GenerateListingKit(c *gin.Context) {
 	// not a field callers may forge through the legacy public endpoint.
 	req.Source = nil
 	req.ImageURLs = absolutizeUploadedImageURLs(c, req.ImageURLs)
-	req.TenantID = requestTenantID(c, req.TenantID)
+	// The subscription guard may have used the legacy numeric tenant fallback.
+	// Persist that exact billing tenant on the task so the worker's usage ledger
+	// identity matches the tenant that passed the guard.
+	req.TenantID = subscriptionTenantID(c)
 	if req.UserID == "" {
 		req.UserID = requestUserID(c)
 	}
