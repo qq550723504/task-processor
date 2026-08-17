@@ -22,15 +22,17 @@ type stubProcessStatusAssembler struct {
 
 type stubProcessStatusRepo struct {
 	*stubGenerationRepo
-	completedTaskID string
-	completedCalls  int
-	completedErr    error
-	failedTaskID    string
-	failedError     string
-	failedCalls     int
-	savedResults    []*ListingKitResult
-	blockedCalls    int
-	blockedErrs     []error
+	completedTaskID         string
+	completedCalls          int
+	completedErr            error
+	failedTaskID            string
+	failedError             string
+	failedCalls             int
+	savedResults            []*ListingKitResult
+	blockedCalls            int
+	blockedErrs             []error
+	failedErrs              []error
+	requireLiveBlockContext bool
 }
 
 func (a *stubProcessStatusAssembler) Assemble(task *Task, canonical *canonical.Product, image *productimage.ImageProcessResult) *ListingKitResult {
@@ -58,6 +60,13 @@ func (r *stubProcessStatusRepo) MarkFailed(_ context.Context, taskID string, err
 	r.failedTaskID = taskID
 	r.failedError = errorMsg
 	r.failedCalls++
+	if len(r.failedErrs) > 0 {
+		err := r.failedErrs[0]
+		r.failedErrs = r.failedErrs[1:]
+		if err != nil {
+			return err
+		}
+	}
 	if r.task != nil && r.task.ID == taskID {
 		r.task.Status = core.TaskStatusFailed
 		r.task.RetryableBlock = nil
@@ -68,6 +77,9 @@ func (r *stubProcessStatusRepo) MarkFailed(_ context.Context, taskID string, err
 
 func (r *stubProcessStatusRepo) MarkBlockedRetryable(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string) error {
 	r.blockedCalls++
+	if r.requireLiveBlockContext && ctx.Err() != nil {
+		return ctx.Err()
+	}
 	if len(r.blockedErrs) > 0 {
 		err := r.blockedErrs[0]
 		r.blockedErrs = r.blockedErrs[1:]

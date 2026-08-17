@@ -186,7 +186,7 @@ func TestProcessListingKitUsesReservationTimeForNewUsageEvents(t *testing.T) {
 	}
 }
 
-func TestProcessListingKitDoesNotClassifyReleaseFailureAsRetryableWorkflowFailure(t *testing.T) {
+func TestProcessListingKitKeepsReleaseFailureRecoverableAfterTerminalWorkflowFailure(t *testing.T) {
 	t.Parallel()
 
 	settlement := &recordingGenerationUsageSettlement{releaseErr: errors.New("ledger context deadline exceeded")}
@@ -198,11 +198,138 @@ func TestProcessListingKitDoesNotClassifyReleaseFailureAsRetryableWorkflowFailur
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if stored.Status != core.TaskStatusFailed {
-		t.Fatalf("stored status = %s, want failed for terminal workflow error", stored.Status)
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != usageReleasePendingReason {
+		t.Fatalf("stored task = %#v, want usage_release_pending block", stored)
 	}
-	if stored.RetryableBlock != nil {
-		t.Fatalf("stored RetryableBlock = %+v, want nil when only release is retryable", stored.RetryableBlock)
+}
+
+func TestProcessListingKitPersistsReleasePendingAfterWorkflowReleaseFailure(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{releaseErr: errors.New("ledger unavailable")}
+	svc, repo, _, task := newProcessUsageFixture(t, settlement, errors.New("provider rejected request"))
+	if _, err := svc.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want workflow/release failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != usageReleasePendingReason {
+		t.Fatalf("stored task = %#v, want usage_release_pending block", stored)
+	}
+	if repo.failedCalls != 0 {
+		t.Fatalf("MarkFailed calls = %d, want 0 while release remains recoverable", repo.failedCalls)
+	}
+}
+
+func TestProcessListingKitPersistsCommitPendingAfterCanceledContext(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}, requireLiveBlockContext: true}
+	settlement := &recordingGenerationUsageSettlement{commitErr: context.DeadlineExceeded}
+	productService := &processUsageProductService{
+		task:    &productenrich.Task{ID: "product-task-canceled-commit", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
+		product: &productenrich.ProductJSON{Title: "Travel Bag"},
+	}
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
+		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
+	))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	task := &Task{ID: "listingkit-canceled-commit", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := svc.ProcessListingKit(ctx, task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want commit failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != usageCommitPendingReason {
+		t.Fatalf("stored task = %#v, want usage_commit_pending block", stored)
+	}
+}
+
+func TestProcessListingKitPersistsReleasePendingAfterCanceledContext(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}, completedErr: errors.New("task store unavailable"), requireLiveBlockContext: true}
+	settlement := &recordingGenerationUsageSettlement{releaseErr: context.DeadlineExceeded}
+	productService := &processUsageProductService{
+		task:    &productenrich.Task{ID: "product-task-canceled-release", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
+		product: &productenrich.ProductJSON{Title: "Travel Bag"},
+	}
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
+		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
+	))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	task := &Task{ID: "listingkit-canceled-release", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := svc.ProcessListingKit(ctx, task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want release failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != usageReleasePendingReason {
+		t.Fatalf("stored task = %#v, want usage_release_pending block", stored)
+	}
+}
+
+func TestProcessListingKitRetriesTerminalFailureStateAfterRelease(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubProcessStatusRepo{
+		stubGenerationRepo: &stubGenerationRepo{},
+		completedErr:       errors.New("task store unavailable"),
+		failedErrs:         []error{errors.New("task store unavailable"), errors.New("task store unavailable"), errors.New("task store unavailable")},
+	}
+	settlement := &recordingGenerationUsageSettlement{}
+	productService := &processUsageProductService{
+		task:    &productenrich.Task{ID: "product-task-terminal-failed-state", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
+		product: &productenrich.ProductJSON{Title: "Travel Bag"},
+	}
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
+		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
+	))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	task := &Task{ID: "listingkit-terminal-failed-state", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if _, err := svc.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want terminal persistence failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != terminalPersistencePendingReason {
+		t.Fatalf("stored task = %#v, want terminal persistence retry block", stored)
 	}
 }
 

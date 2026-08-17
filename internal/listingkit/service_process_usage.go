@@ -64,8 +64,11 @@ func (s *service) handleGenerationTerminalPersistenceFailure(ctx context.Context
 		}
 		return errors.Join(errs...)
 	}
-	if markErr := s.repo.MarkFailed(ctx, task.ID, "listing kit generation result persistence failed"); markErr != nil {
+	if markErr := markFailedTaskState(ctx, s.repo, task.ID, "listing kit generation result persistence failed"); markErr != nil {
 		errs = append(errs, markErr)
+		if blockErr := markTerminalPersistencePending(ctx, s.repo, task.ID, markErr); blockErr != nil {
+			errs = append(errs, blockErr)
+		}
 	}
 	return errors.Join(errs...)
 }
@@ -75,7 +78,13 @@ const (
 	usageReleasePendingReason           = "usage_release_pending"
 	usageSettlementRecoveryScope        = "listingkit_usage_settlement"
 	usageSettlementMaxAutoRetryAttempts = 8
+	terminalPersistencePendingReason    = "terminal_persistence_pending"
+	settlementPersistenceTimeout        = 5 * time.Second
 )
+
+func settlementPersistenceContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), settlementPersistenceTimeout)
+}
 
 func (s *service) markGenerationUsageReleasePending(ctx context.Context, task *Task, persistErr, releaseErr error) error {
 	if task == nil {
@@ -96,10 +105,49 @@ func (s *service) markGenerationUsageReleasePending(ctx context.Context, task *T
 	if persistErr != nil {
 		errorMsg = fmt.Sprintf("%s: %v", errorMsg, persistErr)
 	}
-	if err := markRetryableTaskState(ctx, s.repo, task.ID, block, errorMsg); err != nil {
+	persistCtx, cancel := settlementPersistenceContext(ctx)
+	defer cancel()
+	if err := markRetryableTaskState(persistCtx, s.repo, task.ID, block, errorMsg); err != nil {
 		return errors.Join(releaseErr, err)
 	}
 	return nil
+}
+
+func markFailedTaskState(ctx context.Context, repo Repository, taskID, errorMsg string) error {
+	persistCtx, cancel := settlementPersistenceContext(ctx)
+	defer cancel()
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		lastErr = repo.MarkFailed(persistCtx, taskID, errorMsg)
+		if lastErr == nil {
+			return nil
+		}
+		if persistCtx.Err() != nil {
+			break
+		}
+	}
+	return lastErr
+}
+
+func markTerminalPersistencePending(ctx context.Context, repo Repository, taskID string, persistErr error) error {
+	now := time.Now().UTC()
+	nextRetryAt := now
+	block := &RetryableBlock{
+		ReasonCode:           terminalPersistencePendingReason,
+		ReasonMessage:        "listing kit terminal state persistence is pending",
+		BlockedAt:            now,
+		NextRetryAt:          &nextRetryAt,
+		MaxAutoRetryAttempts: usageSettlementMaxAutoRetryAttempts,
+		RecoveryScope:        usageSettlementRecoveryScope,
+		AutoResumeEnabled:    true,
+	}
+	errorMsg := block.ReasonMessage
+	if persistErr != nil {
+		errorMsg = fmt.Sprintf("%s: %v", errorMsg, persistErr)
+	}
+	persistCtx, cancel := settlementPersistenceContext(ctx)
+	defer cancel()
+	return markRetryableTaskState(persistCtx, repo, taskID, block, errorMsg)
 }
 
 func generationQuotaFailure(taskID string) error {
@@ -132,7 +180,9 @@ func (s *service) markGenerationUsageCommitPending(ctx context.Context, task *Ta
 		RecoveryScope:        usageSettlementRecoveryScope,
 		AutoResumeEnabled:    true,
 	}
-	if persistErr := markRetryableTaskState(ctx, s.repo, task.ID, block, block.ReasonMessage); persistErr != nil {
+	persistCtx, cancel := settlementPersistenceContext(ctx)
+	defer cancel()
+	if persistErr := markRetryableTaskState(persistCtx, s.repo, task.ID, block, block.ReasonMessage); persistErr != nil {
 		return errors.Join(commitErr, persistErr)
 	}
 	return commitErr

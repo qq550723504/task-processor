@@ -59,6 +59,17 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 			if releaseErr := f.service.releaseGenerationUsage(ctx, task, "workflow_failed"); releaseErr != nil {
 				log.WithError(releaseErr).Error("failed to release listing kit generation usage")
 				err = errors.Join(err, releaseErr)
+				persistCtx, cancel := settlementPersistenceContext(ctx)
+				if result != nil {
+					if saveErr := f.service.repo.SaveTaskResult(persistCtx, task.ID, result); saveErr != nil {
+						err = errors.Join(err, saveErr)
+					}
+				}
+				cancel()
+				if blockErr := f.service.markGenerationUsageReleasePending(ctx, task, workflowErr, releaseErr); blockErr != nil {
+					err = errors.Join(err, blockErr)
+				}
+				return nil, err
 			}
 		}
 		if persistErr := f.service.persistProcessFailure(ctx, task.ID, result, workflowErr); persistErr != nil {
