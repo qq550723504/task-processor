@@ -317,6 +317,16 @@ func (s *taskRecoveryService) reblockTask(ctx context.Context, task *Task, recov
 		s.currentTime(),
 		defaultRecoveryScope,
 	)
+	if updated.AutoRetryPaused && isUsageSettlementPending(task) {
+		// A held settlement cannot be retried automatically once its bounded
+		// attempts are exhausted. Preserve the intent under an operator-owned
+		// reconciliation block instead of leaving a paused block with no sweep
+		// owner while quota remains reserved.
+		if markErr := s.markExpiredGenerationUsageReconciliation(ctx, task, fmt.Sprintf("generation usage settlement retry limit reached: %v", recoveryErr)); markErr != nil {
+			return errors.Join(recoveryErr, markErr)
+		}
+		return recoveryErr
+	}
 	// Keep the settlement-only route even when the underlying ledger error is
 	// classified as a generic upstream timeout/unavailable failure. Otherwise
 	// the next sweep could send a terminal generation task back to the provider.
@@ -462,7 +472,7 @@ func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *Recov
 	}
 	candidates, err := s.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{DueBefore: dueBefore, Limit: remainingLimit})
 	if err != nil {
-		return 0, err
+		return settled, errors.Join(settleErr, err)
 	}
 	for i := 0; i < len(candidates); i++ {
 		if isCommittedReplayPersistencePending(&candidates[i]) {

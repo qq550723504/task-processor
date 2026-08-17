@@ -32,6 +32,13 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 			}
 			return nil, err
 		}
+		var replayReservationErr *generationUsageReplayReservationError
+		if errors.As(err, &replayReservationErr) {
+			if persistErr := f.service.persistGenerationUsageReconciliation(ctx, task, err); persistErr != nil {
+				return nil, errors.Join(err, persistErr)
+			}
+			return nil, err
+		}
 		if errors.Is(err, listingsubscription.ErrUsageQuotaExceeded) {
 			quotaErr := generationQuotaFailure(task.ID)
 			if persistErr := markFailedTaskState(ctx, f.service.repo, task.ID, quotaErr.Error()); persistErr != nil {

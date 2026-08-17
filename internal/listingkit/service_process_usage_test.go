@@ -891,6 +891,35 @@ func TestProcessListingKitPersistsRetryableStateWhenReservationFails(t *testing.
 	}
 }
 
+func TestProcessListingKitReconcilesExistingReservationWhenReplayFails(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{reserveErr: errors.New("ledger replay failed")}
+	svc, repo, productService, task := newProcessUsageFixture(t, settlement, nil)
+	leaseUntil := time.Now().UTC().Add(time.Minute)
+	task.GenerationUsageReservationState = GenerationUsageReservationStateReserved
+	task.GenerationUsageReservationLeaseUntil = &leaseUntil
+	repo.task.GenerationUsageReservationState = GenerationUsageReservationStateReserved
+	repo.task.GenerationUsageReservationLeaseUntil = &leaseUntil
+
+	if _, err := svc.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want replay failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || stored.RetryableBlock.AutoResumeEnabled {
+		t.Fatalf("stored task = %#v, want replay reconciliation block", stored)
+	}
+	if stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("reservation = (%q, %v), want retained replay intent", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
+	}
+	if productService.processCalls != 0 || settlement.releasedTaskID != "" {
+		t.Fatalf("workflow/release = (%d, %q), want no provider work or release", productService.processCalls, settlement.releasedTaskID)
+	}
+}
+
 func TestProcessListingKitRestoresRetryableBlockWhenFailurePersistenceFails(t *testing.T) {
 	t.Parallel()
 

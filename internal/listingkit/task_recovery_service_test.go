@@ -565,6 +565,7 @@ type taskRecoveryServiceTestRepo struct {
 	resolveUsageSettlementErrors  []error
 	resolveUsageSettlementHook    func(*Task)
 	afterListExpired              func()
+	listRecoverableErr            error
 }
 
 func newTaskRecoveryServiceTestRepo() *taskRecoveryServiceTestRepo {
@@ -691,6 +692,9 @@ func (r *taskRecoveryServiceTestRepo) MarkBlockedRetryable(ctx context.Context, 
 }
 
 func (r *taskRecoveryServiceTestRepo) ListRecoverableTasks(_ context.Context, query *RecoverableTaskQuery) ([]Task, error) {
+	if r.listRecoverableErr != nil {
+		return nil, r.listRecoverableErr
+	}
 	dueBefore := time.Time{}
 	if query != nil {
 		dueBefore = query.DueBefore

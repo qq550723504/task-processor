@@ -16,6 +16,28 @@ type generationUsagePostReservePersistenceError struct {
 	err error
 }
 
+// generationUsageReplayReservationError marks a failure after a task-side
+// intent already existed. The deterministic ledger event may therefore be
+// reserved even though the replay operation returned an error, so normal
+// failure classification cannot safely finalize the task.
+type generationUsageReplayReservationError struct {
+	err error
+}
+
+func (e *generationUsageReplayReservationError) Error() string {
+	if e == nil || e.err == nil {
+		return "generation usage reservation replay failed"
+	}
+	return e.err.Error()
+}
+
+func (e *generationUsageReplayReservationError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
 func (e *generationUsagePostReservePersistenceError) Error() string {
 	if e == nil || e.err == nil {
 		return "generation usage post-reserve persistence failed"
@@ -69,6 +91,9 @@ func (s *service) reserveGenerationUsage(ctx context.Context, task *Task) (Gener
 	}
 	reservation, err := settlement.ReserveGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, occurredAt)
 	if err != nil {
+		if hasReservationIntent {
+			return GenerationUsageReservation{}, true, &generationUsageReplayReservationError{err: err}
+		}
 		return GenerationUsageReservation{}, true, err
 	}
 	if err := reservationRepo.MarkGenerationUsageReserved(ctx, task.ID, leaseUntil); err != nil {

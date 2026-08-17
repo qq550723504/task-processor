@@ -403,6 +403,58 @@ func TestRunRecoverySweepBacksOffFailedUsageCommitSettlement(t *testing.T) {
 	}
 }
 
+func TestRunRecoverySweepMovesExhaustedUsageSettlementToReconciliation(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	now := time.Now().UTC()
+	ctx := WithTenantID(context.Background(), "tenant-usage-sweep-exhausted")
+	leaseUntil := now.Add(time.Hour)
+	task := &Task{ID: "task-usage-sweep-exhausted", TenantID: "tenant-usage-sweep-exhausted", Status: core.TaskStatusCompleted, Result: &ListingKitResult{Status: string(core.TaskStatusCompleted)}, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	due := now.Add(-time.Minute)
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{ReasonCode: usageCommitPendingReason, ReasonMessage: "usage settlement is pending", BlockedAt: now.Add(-10 * time.Minute), NextRetryAt: &due, RetryAttempts: 7, MaxAutoRetryAttempts: 8, AutoResumeEnabled: true}, "usage settlement pending"); err != nil {
+		t.Fatalf("MarkBlockedRetryable() error = %v", err)
+	}
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{repo: repo, generationUsage: &recordingRecoveryUsageSettlement{commitErr: errors.New("ledger unavailable")}})
+
+	if recovered, err := svc.RunRecoverySweep(ctx, now, 10); recovered != 0 || err == nil {
+		t.Fatalf("RunRecoverySweep() = (%d, %v), want settlement error without automatic recovery", recovered, err)
+	}
+	got, err := repo.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if got.RetryableBlock == nil || got.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || got.RetryableBlock.AutoResumeEnabled || got.RetryableBlock.NextRetryAt != nil {
+		t.Fatalf("exhausted settlement task = %#v, want reconciliation-only block", got)
+	}
+	if got.GenerationUsageReservationState == "" || got.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("reservation = (%q, %v), want retained for reconciliation", got.GenerationUsageReservationState, got.GenerationUsageReservationLeaseUntil)
+	}
+}
+
+func TestRunRecoverySweepRetainsExpiredSettlementCountWhenCandidateListingFails(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	repo.listRecoverableErr = errors.New("task listing unavailable")
+	now := time.Now().UTC()
+	ctx := WithTenantID(context.Background(), "tenant-usage-sweep-list-error")
+	leaseUntil := now.Add(-time.Minute)
+	task := &Task{ID: "task-usage-sweep-list-error", TenantID: "tenant-usage-sweep-list-error", Status: core.TaskStatusCompleted, Result: &ListingKitResult{Status: string(core.TaskStatusCompleted)}, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{repo: repo, generationUsage: &recordingRecoveryUsageSettlement{}})
+
+	recovered, err := svc.RunRecoverySweep(ctx, now, 10)
+	if recovered != 1 || !errors.Is(err, repo.listRecoverableErr) {
+		t.Fatalf("RunRecoverySweep() = (%d, %v), want settled count and listing error", recovered, err)
+	}
+}
+
 func TestRunRecoverySweepContinuesUnrelatedRecoveryAfterSettlementFailure(t *testing.T) {
 	t.Parallel()
 
