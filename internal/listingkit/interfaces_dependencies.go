@@ -66,7 +66,9 @@ type GenerationUsageReservationRepository interface {
 	RenewGenerationUsageReservation(ctx context.Context, taskID string, leaseUntil time.Time) error
 	ClearGenerationUsageReservation(ctx context.Context, taskID string) error
 	ListExpiredGenerationUsageReservations(ctx context.Context, dueBefore time.Time, limit int) ([]Task, error)
-	ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string, clearReservation bool) error
+	// ResolveExpiredGenerationUsageReservation atomically claims an intent only
+	// while its durable lease is still expired at dueBefore.
+	ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, dueBefore time.Time, block *RetryableBlock, errorMsg string, clearReservation bool) error
 }
 
 type GenerationUsageEventState string

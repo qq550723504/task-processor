@@ -29,14 +29,14 @@ with a ten-minute lease; after the ledger reserve it changes that intent to
 `reserved`. A live worker renews the lease every three minutes. Terminal
 commit or release clears the intent only after the ledger operation succeeds.
 If a worker dies while the task remains `processing`, recovery scans an expired
-intent before ordinary blocked-task recovery. It looks up the deterministic
-ledger event: a known `reserved` event is released and the task becomes the
-auto-retryable `generation_usage_worker_interrupted` block with a delayed next
-attempt; no event means the same safe retry without a release. Lookup failure,
-an already committed/released/reversed event, or a failed release produces the
+intent before ordinary blocked-task recovery. It atomically claims the intent
+only when its lease is still expired at the scan time, then writes the
 non-auto-resuming `generation_usage_reconciliation_pending` block and retains
-the intent for operator reconciliation. That sweep never submits the provider
-task in the same pass.
+the intent. The sweep deliberately does not inspect, release, or replay the
+deterministic ledger event: after a worker interruption, provider execution and
+ledger settlement may have crossed independently, so a release or provider
+retry would not be safe. `RecoverTaskNow` also rejects this reason. It requires
+an explicit operator reconciliation procedure before any later state change.
 
 ## Wiring and rollout
 

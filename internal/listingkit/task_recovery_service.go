@@ -29,9 +29,7 @@ type taskRecoveryService struct {
 const (
 	taskRecoveryBackfillPageSize               = 100
 	taskRecoveryBackfillMaxAutoRetryAttempt    = 8
-	generationUsageWorkerInterruptedReason     = "generation_usage_worker_interrupted"
 	generationUsageReconciliationPendingReason = "generation_usage_reconciliation_pending"
-	generationUsageRecoveryRetryDelay          = time.Minute
 )
 
 func newTaskRecoveryService(config taskRecoveryServiceConfig) *taskRecoveryService {
@@ -156,6 +154,8 @@ func (s *taskRecoveryService) RecoverTaskNow(ctx context.Context, taskID string)
 	}
 	if task, err := s.repo.GetTask(ctx, taskID); err != nil {
 		return nil, err
+	} else if isGenerationUsageReconciliationPending(task) {
+		return nil, core.ErrTaskNotRecoverable
 	} else if isUsageCommitPending(task) {
 		return s.recoverUsageCommit(ctx, task)
 	} else if isUsageReleasePending(task) {
@@ -178,6 +178,10 @@ func isUsageReleasePending(task *Task) bool {
 
 func isUsageSettlementPending(task *Task) bool {
 	return isUsageCommitPending(task) || isUsageReleasePending(task)
+}
+
+func isGenerationUsageReconciliationPending(task *Task) bool {
+	return task != nil && task.RetryableBlock != nil && task.RetryableBlock.ReasonCode == generationUsageReconciliationPendingReason
 }
 
 func isTerminalPersistencePending(task *Task) bool {
@@ -308,14 +312,10 @@ func (s *taskRecoveryService) RunRecoverySweep(ctx context.Context, now time.Tim
 }
 
 func (s *taskRecoveryService) recoverExpiredGenerationUsageReservations(ctx context.Context, dueBefore time.Time, limit int) (int64, error) {
-	if s == nil || s.repo == nil || s.generationUsage == nil {
+	if s == nil || s.repo == nil {
 		return 0, nil
 	}
 	reservations, ok := s.repo.(GenerationUsageReservationRepository)
-	if !ok {
-		return 0, nil
-	}
-	lookup, ok := s.generationUsage.(GenerationUsageLedgerLookup)
 	if !ok {
 		return 0, nil
 	}
@@ -327,48 +327,16 @@ func (s *taskRecoveryService) recoverExpiredGenerationUsageReservations(ctx cont
 	var recoveryErr error
 	for i := range items {
 		task := &items[i]
-		state, found, lookupErr := lookup.LookupGeneration(ctx, generationUsageTenantID(ctx, task), task.ID)
-		if lookupErr != nil || (found && state != GenerationUsageEventReserved) {
-			err := reservations.ResolveExpiredGenerationUsageReservation(ctx, task.ID, generationUsageReconciliationBlock(dueBefore), generationUsageReconciliationMessage(lookupErr, state, found), false)
-			if err != nil {
-				recoveryErr = errors.Join(recoveryErr, err)
+		if err := reservations.ResolveExpiredGenerationUsageReservation(ctx, task.ID, dueBefore, generationUsageReconciliationBlock(dueBefore), "generation usage lease expired and requires reconciliation", false); err != nil {
+			if errors.Is(err, core.ErrTaskNotRecoverable) {
 				continue
 			}
-			recovered++
-			continue
-		}
-		if found {
-			if err := s.generationUsage.ReleaseGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, generationUsageWorkerInterruptedReason); err != nil {
-				err = reservations.ResolveExpiredGenerationUsageReservation(ctx, task.ID, generationUsageReconciliationBlock(dueBefore), generationUsageReconciliationMessage(err, state, found), false)
-				if err != nil {
-					recoveryErr = errors.Join(recoveryErr, err)
-					continue
-				}
-				recovered++
-				continue
-			}
-		}
-		if err := reservations.ResolveExpiredGenerationUsageReservation(ctx, task.ID, generationUsageWorkerInterruptedBlock(dueBefore), "generation worker interrupted before terminal persistence", true); err != nil {
 			recoveryErr = errors.Join(recoveryErr, err)
 			continue
 		}
 		recovered++
 	}
 	return recovered, recoveryErr
-}
-
-func generationUsageWorkerInterruptedBlock(now time.Time) *RetryableBlock {
-	blockedAt := now.UTC()
-	nextRetryAt := blockedAt.Add(generationUsageRecoveryRetryDelay)
-	return &RetryableBlock{
-		ReasonCode:           generationUsageWorkerInterruptedReason,
-		ReasonMessage:        "generation worker interruption recovered",
-		BlockedAt:            blockedAt,
-		NextRetryAt:          &nextRetryAt,
-		MaxAutoRetryAttempts: taskRecoveryBackfillMaxAutoRetryAttempt,
-		RecoveryScope:        "task",
-		AutoResumeEnabled:    true,
-	}
 }
 
 func generationUsageReconciliationBlock(now time.Time) *RetryableBlock {
@@ -379,16 +347,6 @@ func generationUsageReconciliationBlock(now time.Time) *RetryableBlock {
 		RecoveryScope:     usageSettlementRecoveryScope,
 		AutoResumeEnabled: false,
 	}
-}
-
-func generationUsageReconciliationMessage(cause error, state GenerationUsageEventState, found bool) string {
-	if cause != nil {
-		return fmt.Sprintf("generation usage requires reconciliation: %v", cause)
-	}
-	if found {
-		return fmt.Sprintf("generation usage requires reconciliation: ledger event is %s", state)
-	}
-	return "generation usage requires reconciliation"
 }
 
 func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *RecoverBlockedTasksQuery) (int64, error) {

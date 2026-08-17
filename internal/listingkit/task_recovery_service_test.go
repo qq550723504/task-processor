@@ -563,6 +563,7 @@ type taskRecoveryServiceTestRepo struct {
 	requireLiveBlockContext       bool
 	markFailedErrors              []error
 	resolveUsageSettlementErrors  []error
+	afterListExpired              func()
 }
 
 func newTaskRecoveryServiceTestRepo() *taskRecoveryServiceTestRepo {
@@ -831,12 +832,15 @@ func (r *taskRecoveryServiceTestRepo) ListExpiredGenerationUsageReservations(_ c
 	if limit > 0 && len(items) > limit {
 		items = items[:limit]
 	}
+	if r.afterListExpired != nil {
+		r.afterListExpired()
+	}
 	return items, nil
 }
 
-func (r *taskRecoveryServiceTestRepo) ResolveExpiredGenerationUsageReservation(_ context.Context, taskID string, block *RetryableBlock, errorMsg string, clearReservation bool) error {
+func (r *taskRecoveryServiceTestRepo) ResolveExpiredGenerationUsageReservation(_ context.Context, taskID string, dueBefore time.Time, block *RetryableBlock, errorMsg string, clearReservation bool) error {
 	task, ok := r.tasks[taskID]
-	if !ok || task.Status != core.TaskStatusProcessing || task.GenerationUsageReservationState == "" {
+	if !ok || task.Status != core.TaskStatusProcessing || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
 		return core.ErrTaskNotRecoverable
 	}
 	task.Status = core.TaskStatusBlockedRetryable

@@ -295,8 +295,8 @@ func (r *MemTaskRepository) ListExpiredGenerationUsageReservations(ctx context.C
 	return items, nil
 }
 
-func (r *MemTaskRepository) ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, block *listingkit.RetryableBlock, errorMsg string, clearReservation bool) error {
-	if block == nil {
+func (r *MemTaskRepository) ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, dueBefore time.Time, block *listingkit.RetryableBlock, errorMsg string, clearReservation bool) error {
+	if block == nil || dueBefore.IsZero() {
 		return core.ErrTaskNotRecoverable
 	}
 	r.mu.Lock()
@@ -305,7 +305,7 @@ func (r *MemTaskRepository) ResolveExpiredGenerationUsageReservation(ctx context
 	if !ok || !matchesTenantScope(ctx, task.TenantID) {
 		return core.ErrTaskNotFound
 	}
-	if task.Status != core.TaskStatusProcessing || task.GenerationUsageReservationState == "" {
+	if task.Status != core.TaskStatusProcessing || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
 		return core.ErrTaskNotRecoverable
 	}
 	task.Status = core.TaskStatusBlockedRetryable

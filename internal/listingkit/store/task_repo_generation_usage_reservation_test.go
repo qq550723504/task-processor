@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"testing"
 	"time"
@@ -118,7 +119,7 @@ func TestResolveExpiredGenerationUsageReservationAtomicallyBlocksAndClears(t *te
 				RecoveryScope:        "task",
 				AutoResumeEnabled:    true,
 			}
-			if err := repo.ResolveExpiredGenerationUsageReservation(ctx, task.ID, block, "worker interrupted", true); err != nil {
+			if err := repo.ResolveExpiredGenerationUsageReservation(ctx, task.ID, now, block, "worker interrupted", true); err != nil {
 				t.Fatalf("ResolveExpiredGenerationUsageReservation() error = %v", err)
 			}
 
@@ -131,6 +132,36 @@ func TestResolveExpiredGenerationUsageReservationAtomicallyBlocksAndClears(t *te
 			}
 			if got.GenerationUsageReservationState != "" || got.GenerationUsageReservationLeaseUntil != nil {
 				t.Fatalf("reservation after resolve = (%q, %v), want empty", got.GenerationUsageReservationState, got.GenerationUsageReservationLeaseUntil)
+			}
+		})
+	}
+}
+
+func TestResolveExpiredGenerationUsageReservationRejectsRenewedLease(t *testing.T) {
+	t.Parallel()
+
+	for _, factory := range generationUsageReservationRepoFactories(t) {
+		t.Run(factory.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := factory.new(t)
+			ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
+			now := time.Date(2026, 8, 17, 9, 0, 0, 0, time.UTC)
+			task := createProcessingGenerationUsageReservation(t, repo, ctx, "generation-usage-renewed-before-claim", now.Add(-time.Minute))
+			if err := repo.RenewGenerationUsageReservation(ctx, task.ID, now.Add(time.Minute)); err != nil {
+				t.Fatalf("RenewGenerationUsageReservation() error = %v", err)
+			}
+
+			err := repo.ResolveExpiredGenerationUsageReservation(ctx, task.ID, now, &listingkit.RetryableBlock{ReasonCode: "generation_usage_reconciliation_pending", AutoResumeEnabled: false}, "requires reconciliation", false)
+			if !errors.Is(err, core.ErrTaskNotRecoverable) {
+				t.Fatalf("ResolveExpiredGenerationUsageReservation() error = %v, want ErrTaskNotRecoverable", err)
+			}
+			got, err := repo.GetTask(ctx, task.ID)
+			if err != nil {
+				t.Fatalf("GetTask() error = %v", err)
+			}
+			if got.Status != core.TaskStatusProcessing || got.GenerationUsageReservationLeaseUntil == nil || !got.GenerationUsageReservationLeaseUntil.After(now) {
+				t.Fatalf("task after rejected claim = %#v, want still-processing renewed lease", got)
 			}
 		})
 	}
@@ -152,7 +183,7 @@ type listingskitGenerationUsageReservationRepository interface {
 	RenewGenerationUsageReservation(context.Context, string, time.Time) error
 	ClearGenerationUsageReservation(context.Context, string) error
 	ListExpiredGenerationUsageReservations(context.Context, time.Time, int) ([]listingkit.Task, error)
-	ResolveExpiredGenerationUsageReservation(context.Context, string, *listingkit.RetryableBlock, string, bool) error
+	ResolveExpiredGenerationUsageReservation(context.Context, string, time.Time, *listingkit.RetryableBlock, string, bool) error
 }
 
 func generationUsageReservationRepoFactories(t *testing.T) []generationUsageReservationRepoFactory {

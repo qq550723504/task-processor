@@ -4,7 +4,7 @@
 
 **Goal:** Recover a ListingKit generation worker interruption without stranding quota or automatically replaying a provider call.
 
-**Architecture:** Add a task-owned reservation intent plus lease before PAY-041 `ReserveGeneration`. An expiry sweep checks the deterministic ledger event, releases only a known reserved event, and atomically blocks the task for retry; unknown or settled states become reconciliation blocks. Admission is applied only to a new intent, so a pre-existing intent can unwind after a cohort flag change.
+**Architecture:** Add a task-owned reservation intent plus lease before PAY-041 `ReserveGeneration`. An expiry sweep atomically claims only an intent whose lease remains expired, then blocks it for operator reconciliation without inspecting, releasing, or replaying its deterministic ledger event. Admission is applied only to a new intent, so a pre-existing intent can unwind after a cohort flag change.
 
 **Tech Stack:** Go, GORM, SQLite tests, ListingKit task repository, PAY-041 ledger.
 

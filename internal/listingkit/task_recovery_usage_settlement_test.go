@@ -538,7 +538,7 @@ func TestRunRecoverySweepReleasesUsageWithoutSubmittingTask(t *testing.T) {
 	}
 }
 
-func TestRunRecoverySweepReleasesExpiredGenerationReservationBeforeProviderRecovery(t *testing.T) {
+func TestRunRecoverySweepClaimsExpiredGenerationReservationForReconciliation(t *testing.T) {
 	t.Parallel()
 
 	repo := newTaskRecoveryServiceTestRepo()
@@ -573,18 +573,89 @@ func TestRunRecoverySweepReleasesExpiredGenerationReservationBeforeProviderRecov
 	if err != nil {
 		t.Fatalf("RunRecoverySweep() error = %v", err)
 	}
-	if recovered != 1 || settlement.releaseCalls != 1 || submitted != 0 {
-		t.Fatalf("recovered/release/submitted = (%d, %d, %d), want (1, 1, 0)", recovered, settlement.releaseCalls, submitted)
+	if recovered != 1 || settlement.releaseCalls != 0 || submitted != 0 {
+		t.Fatalf("recovered/release/submitted = (%d, %d, %d), want (1, 0, 0)", recovered, settlement.releaseCalls, submitted)
 	}
 	got, err := repo.GetTask(ctx, task.ID)
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if got.Status != core.TaskStatusBlockedRetryable || got.RetryableBlock == nil || got.RetryableBlock.ReasonCode != generationUsageWorkerInterruptedReason {
-		t.Fatalf("recovered task = %#v, want worker-interrupted retry block", got)
+	if got.Status != core.TaskStatusBlockedRetryable || got.RetryableBlock == nil || got.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || got.RetryableBlock.AutoResumeEnabled {
+		t.Fatalf("recovered task = %#v, want reconciliation-only block", got)
 	}
-	if got.GenerationUsageReservationState != "" || got.GenerationUsageReservationLeaseUntil != nil {
-		t.Fatalf("recovered reservation = (%q, %v), want cleared", got.GenerationUsageReservationState, got.GenerationUsageReservationLeaseUntil)
+	if got.GenerationUsageReservationState == "" || got.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("recovered reservation = (%q, %v), want retained for reconciliation", got.GenerationUsageReservationState, got.GenerationUsageReservationLeaseUntil)
+	}
+}
+
+func TestRecoverTaskNowRejectsGenerationUsageReconciliationWithoutProviderSubmit(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	ctx := WithTenantID(context.Background(), "tenant-reconciliation-manual")
+	now := time.Date(2026, 8, 17, 6, 0, 0, 0, time.UTC)
+	task := &Task{ID: "task-reconciliation-manual", TenantID: "tenant-reconciliation-manual", Status: core.TaskStatusProcessing, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, generationUsageReconciliationBlock(now), "requires reconciliation"); err != nil {
+		t.Fatalf("MarkBlockedRetryable() error = %v", err)
+	}
+	submitted := 0
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{
+		repo: repo,
+		taskSubmitter: func() TaskSubmitter {
+			return taskRecoveryTestSubmitter(func(string) error { submitted++; return nil })
+		},
+	})
+
+	if _, err := svc.RecoverTaskNow(ctx, task.ID); !errors.Is(err, core.ErrTaskNotRecoverable) {
+		t.Fatalf("RecoverTaskNow() error = %v, want ErrTaskNotRecoverable", err)
+	}
+	if submitted != 0 {
+		t.Fatalf("provider submissions = %d, want 0", submitted)
+	}
+}
+
+func TestRunRecoverySweepSkipsReservationRenewedAfterExpiryScan(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	now := time.Date(2026, 8, 17, 5, 30, 0, 0, time.UTC)
+	ctx := WithTenantID(context.Background(), "tenant-renewed-generation")
+	leaseUntil := now.Add(-time.Minute)
+	task := &Task{ID: "task-renewed-generation", TenantID: "tenant-renewed-generation", Status: core.TaskStatusProcessing, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour)}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	repo.afterListExpired = func() {
+		renewed := now.Add(time.Minute)
+		repo.tasks[task.ID].GenerationUsageReservationLeaseUntil = &renewed
+	}
+	settlement := &recordingRecoveryUsageSettlement{}
+	submitted := 0
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{
+		repo:            repo,
+		generationUsage: settlement,
+		taskSubmitter: func() TaskSubmitter {
+			return taskRecoveryTestSubmitter(func(string) error { submitted++; return nil })
+		},
+		now: func() time.Time { return now },
+	})
+
+	recovered, err := svc.RunRecoverySweep(ctx, now, 10)
+	if err != nil {
+		t.Fatalf("RunRecoverySweep() error = %v", err)
+	}
+	if recovered != 0 || settlement.releaseCalls != 0 || submitted != 0 {
+		t.Fatalf("recovered/release/submitted = (%d, %d, %d), want (0, 0, 0)", recovered, settlement.releaseCalls, submitted)
+	}
+	got, err := repo.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if got.Status != core.TaskStatusProcessing || got.GenerationUsageReservationLeaseUntil == nil || !got.GenerationUsageReservationLeaseUntil.After(now) {
+		t.Fatalf("task after renewed lease = %#v, want live processing reservation", got)
 	}
 }
 

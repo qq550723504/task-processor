@@ -160,8 +160,8 @@ func (r *taskRepository) ListExpiredGenerationUsageReservations(ctx context.Cont
 	return tasks, nil
 }
 
-func (r *taskRepository) ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, block *listingkit.RetryableBlock, errorMsg string, clearReservation bool) error {
-	if block == nil {
+func (r *taskRepository) ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, dueBefore time.Time, block *listingkit.RetryableBlock, errorMsg string, clearReservation bool) error {
+	if block == nil || dueBefore.IsZero() {
 		return core.ErrTaskNotRecoverable
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -172,7 +172,7 @@ func (r *taskRepository) ResolveExpiredGenerationUsageReservation(ctx context.Co
 			}
 			return err
 		}
-		if task.Status != core.TaskStatusProcessing || task.GenerationUsageReservationState == "" {
+		if task.Status != core.TaskStatusProcessing || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
 			return core.ErrTaskNotRecoverable
 		}
 		updates := map[string]any{
@@ -185,7 +185,7 @@ func (r *taskRepository) ResolveExpiredGenerationUsageReservation(ctx context.Co
 			updates["generation_usage_reservation_state"] = ""
 			updates["generation_usage_reservation_lease_until"] = nil
 		}
-		result := tx.Model(&listingkit.Task{}).Scopes(taskAccessScope(ctx)).Where("id = ? AND status = ?", taskID, core.TaskStatusProcessing).Updates(updates)
+		result := tx.Model(&listingkit.Task{}).Scopes(taskAccessScope(ctx)).Where("id = ? AND status = ? AND generation_usage_reservation_state <> '' AND generation_usage_reservation_lease_until <= ?", taskID, core.TaskStatusProcessing, dueBefore).Updates(updates)
 		if result.Error != nil {
 			return fmt.Errorf("resolve expired generation usage reservation: %w", result.Error)
 		}
