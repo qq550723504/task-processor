@@ -795,6 +795,50 @@ func TestProcessListingKitPersistsFailureAndReleasesWhenTerminalPersistenceFails
 	}
 }
 
+func TestProcessListingKitPersistsTerminalFallbackAfterReleasedWorkflowFailure(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubProcessStatusRepo{
+		stubGenerationRepo: &stubGenerationRepo{},
+		failedErrs:         []error{errors.New("task store unavailable")},
+	}
+	settlement := &recordingGenerationUsageSettlement{}
+	productService := &processUsageProductService{
+		task:       &productenrich.Task{ID: "product-task-released-workflow-failure", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}},
+		processErr: errors.New("product payload is invalid"),
+	}
+	svc, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
+		withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement }),
+	))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	task := &Task{ID: "listingkit-released-workflow-failure", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	if _, err := svc.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want workflow failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if settlement.releasedTaskID != task.ID || settlement.releasedReason != "workflow_failed" {
+		t.Fatalf("release = (%q, %q), want released workflow reservation", settlement.releasedTaskID, settlement.releasedReason)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != terminalPersistencePendingReason {
+		t.Fatalf("stored task = %#v, want terminal persistence fallback", stored)
+	}
+	if stored.GenerationUsageReservationState != "" || stored.GenerationUsageReservationLeaseUntil != nil {
+		t.Fatalf("reservation = (%q, %v), want cleared after release", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
+	}
+}
+
 func TestProcessListingKitKeepsReleaseFailureRecoverableAfterTerminalPersistenceFailure(t *testing.T) {
 	t.Parallel()
 

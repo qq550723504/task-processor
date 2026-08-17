@@ -111,7 +111,11 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 		}
 		if persistErr := f.service.persistProcessFailure(ctx, task.ID, result, workflowErr); persistErr != nil {
 			log.WithError(persistErr).Error("failed to persist listing kit workflow failure")
-			return nil, errors.Join(err, persistErr)
+			// The ledger release has already succeeded and cleared the task-side
+			// intent. If durable failure persistence then fails, retain an explicit
+			// recovery block rather than leaving the claimed task in processing.
+			fallbackErr := markTerminalPersistencePending(ctx, f.service.repo, task.ID, persistErr)
+			return nil, errors.Join(err, persistErr, fallbackErr)
 		}
 		return nil, err
 	}
