@@ -56,6 +56,34 @@ type UsageSettlementRepository interface {
 	ResolveUsageSettlement(ctx context.Context, taskID string) error
 }
 
+// GenerationUsageReservationRepository persists the task-side reservation
+// intent independently from the PAY-041 ledger. It is intentionally an
+// optional extension so unrelated task repositories do not need billing
+// behavior, while metered generation can require it at runtime.
+type GenerationUsageReservationRepository interface {
+	BeginGenerationUsageReservation(ctx context.Context, taskID string, leaseUntil time.Time) error
+	MarkGenerationUsageReserved(ctx context.Context, taskID string, leaseUntil time.Time) error
+	RenewGenerationUsageReservation(ctx context.Context, taskID string, leaseUntil time.Time) error
+	ClearGenerationUsageReservation(ctx context.Context, taskID string) error
+	ListExpiredGenerationUsageReservations(ctx context.Context, dueBefore time.Time, limit int) ([]Task, error)
+	ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string, clearReservation bool) error
+}
+
+type GenerationUsageEventState string
+
+const (
+	GenerationUsageEventReserved  GenerationUsageEventState = "reserved"
+	GenerationUsageEventCommitted GenerationUsageEventState = "committed"
+	GenerationUsageEventReleased  GenerationUsageEventState = "released"
+	GenerationUsageEventReversed  GenerationUsageEventState = "reversed"
+)
+
+// GenerationUsageLedgerLookup reads only the deterministic event identity
+// used by generation recovery. found=false means that no event was created.
+type GenerationUsageLedgerLookup interface {
+	LookupGeneration(ctx context.Context, tenantID, taskID string) (state GenerationUsageEventState, found bool, err error)
+}
+
 type TaskListSummarySource interface {
 	ListTaskSummaryTasks(ctx context.Context, query *TaskListQuery) ([]Task, error)
 }

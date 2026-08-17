@@ -107,6 +107,125 @@ func (r *taskRepository) ResolveUsageSettlement(ctx context.Context, taskID stri
 	})
 }
 
+func (r *taskRepository) BeginGenerationUsageReservation(ctx context.Context, taskID string, leaseUntil time.Time) error {
+	return r.updateGenerationUsageReservation(ctx, taskID, leaseUntil, func(task *listingkit.Task) error {
+		if task.GenerationUsageReservationState == "" {
+			task.GenerationUsageReservationState = listingkit.GenerationUsageReservationStatePending
+		}
+		return nil
+	})
+}
+
+func (r *taskRepository) MarkGenerationUsageReserved(ctx context.Context, taskID string, leaseUntil time.Time) error {
+	return r.updateGenerationUsageReservation(ctx, taskID, leaseUntil, func(task *listingkit.Task) error {
+		if task.GenerationUsageReservationState == "" {
+			return core.ErrTaskNotRecoverable
+		}
+		task.GenerationUsageReservationState = listingkit.GenerationUsageReservationStateReserved
+		return nil
+	})
+}
+
+func (r *taskRepository) RenewGenerationUsageReservation(ctx context.Context, taskID string, leaseUntil time.Time) error {
+	return r.updateGenerationUsageReservation(ctx, taskID, leaseUntil, func(task *listingkit.Task) error {
+		if task.GenerationUsageReservationState == "" {
+			return core.ErrTaskNotRecoverable
+		}
+		return nil
+	})
+}
+
+func (r *taskRepository) ClearGenerationUsageReservation(ctx context.Context, taskID string) error {
+	return r.updateTaskFields(ctx, taskID, map[string]any{
+		"generation_usage_reservation_state":       "",
+		"generation_usage_reservation_lease_until": nil,
+	})
+}
+
+func (r *taskRepository) ListExpiredGenerationUsageReservations(ctx context.Context, dueBefore time.Time, limit int) ([]listingkit.Task, error) {
+	if dueBefore.IsZero() {
+		dueBefore = time.Now().UTC()
+	}
+	var tasks []listingkit.Task
+	db := applyTaskAccessScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx).
+		Where("status = ? AND generation_usage_reservation_state <> '' AND generation_usage_reservation_lease_until IS NOT NULL AND generation_usage_reservation_lease_until <= ?", core.TaskStatusProcessing, dueBefore).
+		Order("generation_usage_reservation_lease_until ASC").
+		Order("id ASC")
+	if limit > 0 {
+		db = db.Limit(normalizeRecoverableTaskLimitFromValue(limit))
+	}
+	if err := db.Find(&tasks).Error; err != nil {
+		return nil, fmt.Errorf("list expired generation usage reservations: %w", err)
+	}
+	return tasks, nil
+}
+
+func (r *taskRepository) ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, block *listingkit.RetryableBlock, errorMsg string, clearReservation bool) error {
+	if block == nil {
+		return core.ErrTaskNotRecoverable
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var task listingkit.Task
+		if err := applyTaskAccessScope(tx.Clauses(clause.Locking{Strength: "UPDATE"}), ctx).Where("id = ?", taskID).First(&task).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return core.ErrTaskNotFound
+			}
+			return err
+		}
+		if task.Status != core.TaskStatusProcessing || task.GenerationUsageReservationState == "" {
+			return core.ErrTaskNotRecoverable
+		}
+		updates := map[string]any{
+			"status":          core.TaskStatusBlockedRetryable,
+			"retryable_block": copyRetryableBlock(block),
+			"error":           errorMsg,
+			"updated_at":      currentTimestampValue(tx),
+		}
+		if clearReservation {
+			updates["generation_usage_reservation_state"] = ""
+			updates["generation_usage_reservation_lease_until"] = nil
+		}
+		result := tx.Model(&listingkit.Task{}).Scopes(taskAccessScope(ctx)).Where("id = ? AND status = ?", taskID, core.TaskStatusProcessing).Updates(updates)
+		if result.Error != nil {
+			return fmt.Errorf("resolve expired generation usage reservation: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return core.ErrTaskNotRecoverable
+		}
+		finalTask, err := loadTaskForSheinPODImageLookupIndex(ctx, tx, taskID)
+		if err != nil {
+			return err
+		}
+		return syncSheinPODImageLookupIndex(ctx, tx, finalTask)
+	})
+}
+
+func (r *taskRepository) updateGenerationUsageReservation(ctx context.Context, taskID string, leaseUntil time.Time, mutate func(*listingkit.Task) error) error {
+	if leaseUntil.IsZero() {
+		return core.ErrTaskNotRecoverable
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var task listingkit.Task
+		if err := applyTaskAccessScope(tx.Clauses(clause.Locking{Strength: "UPDATE"}), ctx).Where("id = ?", taskID).First(&task).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return core.ErrTaskNotFound
+			}
+			return err
+		}
+		if task.Status != core.TaskStatusProcessing {
+			return core.ErrTaskNotRecoverable
+		}
+		if err := mutate(&task); err != nil {
+			return err
+		}
+		return tx.Model(&listingkit.Task{}).Scopes(taskAccessScope(ctx)).Where("id = ?", taskID).Updates(map[string]any{
+			"generation_usage_reservation_state":       task.GenerationUsageReservationState,
+			"generation_usage_reservation_lease_until": leaseUntil,
+			"updated_at": currentTimestampValue(tx),
+		}).Error
+	})
+}
+
 func (r *taskRepository) ListRecoverableTasks(ctx context.Context, query *listingkit.RecoverableTaskQuery) ([]listingkit.Task, error) {
 	var tasks []listingkit.Task
 	db := applyTaskAccessScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx)

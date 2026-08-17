@@ -16,18 +16,30 @@ type Task struct {
 	TenantID string `json:"tenant_id,omitempty" gorm:"type:varchar(64);index"`
 	// BillingTenantID is the entitlement and usage-ledger identity. TenantID
 	// remains the canonical task owner used for API access scopes.
-	BillingTenantID              string                        `json:"-" gorm:"type:varchar(64);index"`
-	UserID                       string                        `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
-	Request                      *GenerateRequest              `json:"request" gorm:"type:text"`
-	SheinStoreResolutionSnapshot *SheinStoreResolutionSnapshot `json:"shein_store_resolution_snapshot,omitempty" gorm:"type:text"`
-	Status                       core.TaskStatus               `json:"status" gorm:"type:varchar(20);index"`
-	Result                       *ListingKitResult             `json:"result,omitempty" gorm:"type:text"`
-	RetryableBlock               *RetryableBlock               `json:"retryable_block,omitempty" gorm:"type:text"`
-	Error                        string                        `json:"error,omitempty" gorm:"type:text"`
-	CreatedAt                    time.Time                     `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt                    time.Time                     `json:"updated_at" gorm:"autoUpdateTime"`
-	RetryCount                   int                           `json:"retry_count" gorm:"default:0"`
+	BillingTenantID string `json:"-" gorm:"type:varchar(64);index"`
+	// GenerationUsageReservationState and GenerationUsageReservationLeaseUntil
+	// are worker-internal durability markers. They are deliberately hidden from
+	// task API responses and contain no billing payload or provider data.
+	GenerationUsageReservationState      GenerationUsageReservationState `json:"-" gorm:"type:varchar(16);index"`
+	GenerationUsageReservationLeaseUntil *time.Time                      `json:"-" gorm:"index"`
+	UserID                               string                          `json:"user_id,omitempty" gorm:"type:varchar(128);index"`
+	Request                              *GenerateRequest                `json:"request" gorm:"type:text"`
+	SheinStoreResolutionSnapshot         *SheinStoreResolutionSnapshot   `json:"shein_store_resolution_snapshot,omitempty" gorm:"type:text"`
+	Status                               core.TaskStatus                 `json:"status" gorm:"type:varchar(20);index"`
+	Result                               *ListingKitResult               `json:"result,omitempty" gorm:"type:text"`
+	RetryableBlock                       *RetryableBlock                 `json:"retryable_block,omitempty" gorm:"type:text"`
+	Error                                string                          `json:"error,omitempty" gorm:"type:text"`
+	CreatedAt                            time.Time                       `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt                            time.Time                       `json:"updated_at" gorm:"autoUpdateTime"`
+	RetryCount                           int                             `json:"retry_count" gorm:"default:0"`
 }
+
+type GenerationUsageReservationState string
+
+const (
+	GenerationUsageReservationStatePending  GenerationUsageReservationState = "pending"
+	GenerationUsageReservationStateReserved GenerationUsageReservationState = "reserved"
+)
 
 type TaskResult struct {
 	TaskIdentityFields
