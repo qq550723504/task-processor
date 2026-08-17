@@ -24,6 +24,20 @@ settlement-only path: it retries commit and clears the block without invoking
 the generation workflow or task submitter again. Ambiguous or missing ledger
 state fails closed for reconciliation.
 
+Before a new reservation, the worker persists a task-side `pending` intent
+with a ten-minute lease; after the ledger reserve it changes that intent to
+`reserved`. A live worker renews the lease every three minutes. Terminal
+commit or release clears the intent only after the ledger operation succeeds.
+If a worker dies while the task remains `processing`, recovery scans an expired
+intent before ordinary blocked-task recovery. It looks up the deterministic
+ledger event: a known `reserved` event is released and the task becomes the
+auto-retryable `generation_usage_worker_interrupted` block with a delayed next
+attempt; no event means the same safe retry without a release. Lookup failure,
+an already committed/released/reversed event, or a failed release produces the
+non-auto-resuming `generation_usage_reconciliation_pending` block and retains
+the intent for operator reconciliation. That sweep never submits the provider
+task in the same pass.
+
 ## Wiring and rollout
 
 ListingKit receives an optional settlement port. The bootstrap retains that
@@ -39,6 +53,14 @@ internal billing identity for the ledger. Enabling the flag requires the
 existing Mem or GORM subscription repository, otherwise bootstrap fails closed.
 OpenMeter remains behind the PAY-041 outbox; no provider, payment, or direct
 OpenMeter call is introduced here.
+
+The cohort gate applies only when creating a new intent. A task that already
+has an intent resumes its reserve/commit/release path even if the flag or
+cohort is later narrowed, preventing a stranded reservation. Tasks created
+before this cutover have an empty `BillingTenantID`; when a cohort is configured
+they deliberately remain on the legacy path rather than being charged against
+their canonical owner tenant. Backfilling a durable billing identity is a
+separate, explicitly approved migration and is not performed by worker retry.
 
 The implementation deliberately does not meter Studio design/product-image
 jobs, SHEIN submit/publish, 1688 task creation, storage deltas, batches, or
