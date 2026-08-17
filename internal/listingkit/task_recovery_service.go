@@ -234,7 +234,13 @@ func (s *taskRecoveryService) recoverUsageRelease(ctx context.Context, task *Tas
 		return nil, s.reblockUsageSettlement(ctx, task, err)
 	}
 	if err := markFailedTaskState(ctx, s.repo, task.ID, task.Error); err != nil {
-		return nil, s.reblockUsageSettlement(ctx, task, err)
+		// The ledger release and local reservation cleanup have already
+		// succeeded. Retrying only the terminal-state write prevents a later
+		// sweep from invoking ReleaseGeneration again.
+		if persistErr := markTerminalPersistencePending(ctx, s.repo, task.ID, err); persistErr != nil {
+			return nil, errors.Join(err, persistErr)
+		}
+		return nil, err
 	}
 	return s.repo.GetTask(ctx, task.ID)
 }

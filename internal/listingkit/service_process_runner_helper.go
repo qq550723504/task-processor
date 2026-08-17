@@ -11,11 +11,15 @@ import (
 )
 
 type listingKitProcessFlow struct {
-	service *service
+	service                *service
+	startUsageLeaseRenewal func(context.Context, *Task) (context.Context, func() error)
 }
 
 func buildListingKitProcessFlow(s *service) *listingKitProcessFlow {
-	return &listingKitProcessFlow{service: s}
+	return &listingKitProcessFlow{
+		service:                s,
+		startUsageLeaseRenewal: s.startGenerationUsageReservationLeaseRenewal,
+	}
 }
 
 func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus.Entry) (*ListingKitResult, error) {
@@ -73,19 +77,26 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 	workflowCtx := ctx
 	stopLeaseRenewal := func() error { return nil }
 	if usageEnabled {
-		workflowCtx, stopLeaseRenewal = f.service.startGenerationUsageReservationLeaseRenewal(ctx, task)
-	}
-	result, err := f.service.runWorkflow(workflowCtx, task)
-	if renewalErr := stopLeaseRenewal(); renewalErr != nil {
-		if err == nil {
-			err = renewalErr
-		} else {
-			err = errors.Join(err, renewalErr)
+		startLeaseRenewal := f.startUsageLeaseRenewal
+		if startLeaseRenewal == nil {
+			startLeaseRenewal = f.service.startGenerationUsageReservationLeaseRenewal
 		}
+		workflowCtx, stopLeaseRenewal = startLeaseRenewal(ctx, task)
 	}
-	if err != nil {
-		workflowErr := err
-		log.WithError(err).Error("listing kit workflow failed")
+	result, workflowErr := f.service.runWorkflow(workflowCtx, task)
+	if renewalErr := stopLeaseRenewal(); renewalErr != nil {
+		// A failed lease renewal makes the provider outcome ambiguous: it may
+		// have completed after its task-side lease stopped being durable. Keep
+		// the reservation for operator reconciliation instead of releasing it
+		// or scheduling another provider invocation.
+		cause := errors.Join(workflowErr, renewalErr)
+		if persistErr := f.service.persistGenerationUsageReconciliation(ctx, task, cause); persistErr != nil {
+			return nil, errors.Join(cause, persistErr)
+		}
+		return nil, cause
+	}
+	if workflowErr != nil {
+		log.WithError(workflowErr).Error("listing kit workflow failed")
 		if _, retryable := classifyRetryableTaskFailure(workflowErr); retryable {
 			var persistErr error
 			if usageEnabled {
@@ -95,25 +106,25 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 			}
 			if persistErr != nil {
 				log.WithError(persistErr).Error("failed to persist scheduled listing kit workflow failure")
-				return nil, errors.Join(err, persistErr)
+				return nil, errors.Join(workflowErr, persistErr)
 			}
-			return nil, err
+			return nil, workflowErr
 		}
 		if usageEnabled {
 			if releaseErr := f.service.releaseGenerationUsage(ctx, task, "workflow_failed"); releaseErr != nil {
 				log.WithError(releaseErr).Error("failed to release listing kit generation usage")
-				err = errors.Join(err, releaseErr)
+				workflowErr = errors.Join(workflowErr, releaseErr)
 				persistCtx, cancel := settlementPersistenceContext(ctx)
 				if result != nil {
 					if saveErr := f.service.repo.SaveTaskResult(persistCtx, task.ID, result); saveErr != nil {
-						err = errors.Join(err, saveErr)
+						workflowErr = errors.Join(workflowErr, saveErr)
 					}
 				}
 				cancel()
 				if blockErr := f.service.markGenerationUsageReleasePending(ctx, task, "workflow_failed", workflowErr, releaseErr); blockErr != nil {
-					err = errors.Join(err, blockErr)
+					workflowErr = errors.Join(workflowErr, blockErr)
 				}
-				return nil, err
+				return nil, workflowErr
 			}
 		}
 		if persistErr := f.service.persistProcessFailure(ctx, task.ID, result, workflowErr); persistErr != nil {
@@ -122,9 +133,9 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 			// intent. If durable failure persistence then fails, retain an explicit
 			// recovery block rather than leaving the claimed task in processing.
 			fallbackErr := markTerminalPersistencePending(ctx, f.service.repo, task.ID, persistErr)
-			return nil, errors.Join(err, persistErr, fallbackErr)
+			return nil, errors.Join(workflowErr, persistErr, fallbackErr)
 		}
-		return nil, err
+		return nil, workflowErr
 	}
 	log.WithFields(logrus.Fields{
 		"needs_review":  result != nil && result.Summary != nil && result.Summary.NeedsReview,

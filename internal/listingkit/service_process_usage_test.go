@@ -9,6 +9,8 @@ import (
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/listingsubscription"
 	"task-processor/internal/productenrich"
+
+	"github.com/sirupsen/logrus"
 )
 
 type recordingGenerationUsageSettlement struct {
@@ -407,6 +409,43 @@ func TestGenerationUsageReservationLeaseRenewerExtendsDurableLease(t *testing.T)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for durable generation usage lease renewal")
+	}
+}
+
+func TestListingKitProcessFlowReconcilesSuccessfulWorkflowAfterLeaseRenewalFailure(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{}
+	svc, repo, _, task := newProcessUsageFixture(t, settlement, nil)
+	concrete, ok := svc.(*service)
+	if !ok {
+		t.Fatalf("service = %T, want *service", svc)
+	}
+	renewalErr := errors.New("task store unavailable while renewing generation usage lease")
+	flow := buildListingKitProcessFlow(concrete)
+	flow.startUsageLeaseRenewal = func(ctx context.Context, _ *Task) (context.Context, func() error) {
+		return ctx, func() error { return renewalErr }
+	}
+
+	result, err := flow.run(context.Background(), task, logrus.NewEntry(logrus.New()))
+	if !errors.Is(err, renewalErr) {
+		t.Fatalf("run() error = %v, want renewal failure", err)
+	}
+	if result != nil {
+		t.Fatalf("run() result = %#v, want nil while reconciliation is required", result)
+	}
+	if settlement.releasedTaskID != "" || settlement.committedTaskID != "" {
+		t.Fatalf("settlement = %#v, want neither release nor commit after an ambiguous successful workflow", settlement)
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || stored.RetryableBlock.AutoResumeEnabled {
+		t.Fatalf("stored task = %#v, want non-automatic generation usage reconciliation", stored)
+	}
+	if stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("stored reservation = (%q, %v), want retained reconciliation intent", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
 	}
 }
 
