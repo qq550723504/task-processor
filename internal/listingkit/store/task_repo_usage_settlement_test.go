@@ -57,3 +57,107 @@ func TestTaskRepositoryUsageSettlementResolutionRetainsTerminalResult(t *testing
 		})
 	}
 }
+
+func TestTaskRepositoryTerminalTransitionsClearRecoveredRetryableBlock(t *testing.T) {
+	for _, factory := range []struct {
+		name string
+		new  func(*testing.T) listingkit.Repository
+	}{
+		{name: "memory", new: func(*testing.T) listingkit.Repository { return NewMemTaskRepository() }},
+		{name: "gorm", new: func(t *testing.T) listingkit.Repository {
+			t.Helper()
+			db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+			if err != nil {
+				t.Fatalf("open db: %v", err)
+			}
+			if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+				t.Fatalf("auto migrate: %v", err)
+			}
+			return NewTaskRepository(db)
+		}},
+	} {
+		t.Run(factory.name, func(t *testing.T) {
+			repo := factory.new(t)
+			ctx := context.Background()
+			for _, terminal := range []struct {
+				name  string
+				apply func(listingkit.Repository, string) error
+			}{
+				{name: "completed", apply: func(repo listingkit.Repository, taskID string) error {
+					return repo.MarkCompleted(ctx, taskID, &listingkit.ListingKitResult{Status: string(core.TaskStatusCompleted)})
+				}},
+				{name: "needs_review", apply: func(repo listingkit.Repository, taskID string) error {
+					return repo.MarkNeedsReview(ctx, taskID, &listingkit.ListingKitResult{Status: string(core.TaskStatusNeedsReview)}, "manual review")
+				}},
+			} {
+				t.Run(terminal.name, func(t *testing.T) {
+					task := &listingkit.Task{ID: "task-terminal-clears-" + terminal.name, TenantID: "tenant-17", Status: core.TaskStatusPending, CreatedAt: time.Now().UTC()}
+					if err := repo.CreateTask(ctx, task); err != nil {
+						t.Fatalf("CreateTask() error = %v", err)
+					}
+					if err := repo.MarkBlockedRetryable(ctx, task.ID, &listingkit.RetryableBlock{ReasonCode: "provider_retry", AutoResumeEnabled: true}, "retry provider"); err != nil {
+						t.Fatalf("MarkBlockedRetryable() error = %v", err)
+					}
+					if err := terminal.apply(repo, task.ID); err != nil {
+						t.Fatalf("terminal transition error = %v", err)
+					}
+					got, err := repo.GetTask(ctx, task.ID)
+					if err != nil {
+						t.Fatalf("GetTask() error = %v", err)
+					}
+					if got.RetryableBlock != nil {
+						t.Fatalf("terminal task = %#v, want cleared retryable block", got)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestTaskRepositoryGenerationUsageReleaseResolutionIsAtomic(t *testing.T) {
+	for _, factory := range []struct {
+		name string
+		new  func(*testing.T) listingkit.Repository
+	}{
+		{name: "memory", new: func(*testing.T) listingkit.Repository { return NewMemTaskRepository() }},
+		{name: "gorm", new: func(t *testing.T) listingkit.Repository {
+			t.Helper()
+			db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+			if err != nil {
+				t.Fatalf("open db: %v", err)
+			}
+			if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+				t.Fatalf("auto migrate: %v", err)
+			}
+			return NewTaskRepository(db)
+		}},
+	} {
+		t.Run(factory.name, func(t *testing.T) {
+			repo := factory.new(t)
+			ctx := context.Background()
+			leaseUntil := time.Now().UTC().Add(time.Hour)
+			task := &listingkit.Task{ID: "task-release-resolution", TenantID: "tenant-17", Status: core.TaskStatusProcessing, GenerationUsageReservationState: listingkit.GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: time.Now().UTC()}
+			if err := repo.CreateTask(ctx, task); err != nil {
+				t.Fatalf("CreateTask() error = %v", err)
+			}
+			recovery, ok := repo.(listingkit.GenerationUsageReleaseRecoveryRepository)
+			if !ok {
+				t.Fatal("repository does not implement GenerationUsageReleaseRecoveryRepository")
+			}
+			block := &listingkit.RetryableBlock{ReasonCode: "usage_release_pending", ReasonMessage: "usage release is pending", TerminalError: "provider rejected listing generation"}
+			if err := recovery.PrepareGenerationUsageRelease(ctx, task.ID, block, block.ReasonMessage, &listingkit.ListingKitResult{Status: string(core.TaskStatusFailed)}); err != nil {
+				t.Fatalf("PrepareGenerationUsageRelease() error = %v", err)
+			}
+			if err := recovery.ResolveGenerationUsageRelease(ctx, task.ID, block.TerminalError); err != nil {
+				t.Fatalf("ResolveGenerationUsageRelease() error = %v", err)
+			}
+			got, err := repo.GetTask(ctx, task.ID)
+			if err != nil {
+				t.Fatalf("GetTask() error = %v", err)
+			}
+			if got.Status != core.TaskStatusFailed || got.Error != block.TerminalError || got.RetryableBlock != nil || got.GenerationUsageReservationState != "" || got.GenerationUsageReservationLeaseUntil != nil || got.Result == nil {
+				t.Fatalf("resolved task = %#v, want atomically finalized release saga", got)
+			}
+		})
+	}
+}

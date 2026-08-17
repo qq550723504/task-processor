@@ -162,6 +162,7 @@ func (r *MemTaskRepository) MarkCompleted(ctx context.Context, taskID string, re
 	defer r.mu.Unlock()
 	task := r.tasks[taskID]
 	task.Status = core.TaskStatusCompleted
+	task.RetryableBlock = nil
 	task.Error = ""
 	task.UpdatedAt = time.Now()
 	return nil
@@ -175,6 +176,7 @@ func (r *MemTaskRepository) MarkNeedsReview(ctx context.Context, taskID string, 
 	defer r.mu.Unlock()
 	task := r.tasks[taskID]
 	task.Status = core.TaskStatusNeedsReview
+	task.RetryableBlock = nil
 	task.Error = reason
 	task.UpdatedAt = time.Now()
 	return nil
@@ -265,6 +267,45 @@ func (r *MemTaskRepository) ClearGenerationUsageReservation(ctx context.Context,
 	if !ok || !matchesTenantScope(ctx, task.TenantID) {
 		return core.ErrTaskNotFound
 	}
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
+	task.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *MemTaskRepository) PrepareGenerationUsageRelease(ctx context.Context, taskID string, block *listingkit.RetryableBlock, errorMsg string, result *listingkit.ListingKitResult) error {
+	if block == nil || block.ReasonCode != "usage_release_pending" {
+		return core.ErrTaskNotRecoverable
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return core.ErrTaskNotFound
+	}
+	task.Status = core.TaskStatusBlockedRetryable
+	task.RetryableBlock = copyRetryableBlock(block)
+	task.Error = errorMsg
+	if result != nil {
+		task.Result = result
+	}
+	task.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *MemTaskRepository) ResolveGenerationUsageRelease(ctx context.Context, taskID, terminalError string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return core.ErrTaskNotFound
+	}
+	if task.RetryableBlock == nil || task.RetryableBlock.ReasonCode != "usage_release_pending" {
+		return core.ErrTaskNotRecoverable
+	}
+	task.Status = core.TaskStatusFailed
+	task.RetryableBlock = nil
+	task.Error = terminalError
 	task.GenerationUsageReservationState = ""
 	task.GenerationUsageReservationLeaseUntil = nil
 	task.UpdatedAt = time.Now().UTC()

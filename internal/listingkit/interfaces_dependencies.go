@@ -72,6 +72,15 @@ type GenerationUsageReservationRepository interface {
 	ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, expectedStatus core.TaskStatus, dueBefore time.Time, block *RetryableBlock, errorMsg string, clearReservation bool) error
 }
 
+// GenerationUsageReleaseRecoveryRepository persists the release saga around
+// the external PAY-041 release. Preparing the recovery state before the
+// external call keeps an idempotent replay intent durable; resolving it clears
+// that intent, the task-side reservation, and the terminal block atomically.
+type GenerationUsageReleaseRecoveryRepository interface {
+	PrepareGenerationUsageRelease(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string, result *ListingKitResult) error
+	ResolveGenerationUsageRelease(ctx context.Context, taskID, terminalError string) error
+}
+
 type GenerationUsageEventState string
 
 const (

@@ -50,6 +50,7 @@ func (r *stubGenerationRepo) MarkNeedsReview(ctx context.Context, taskID string,
 		return err
 	}
 	r.task.Status = core.TaskStatusNeedsReview
+	r.task.RetryableBlock = nil
 	r.task.Error = reason
 	return nil
 }
@@ -136,6 +137,31 @@ func (r *stubGenerationRepo) ClearGenerationUsageReservation(_ context.Context, 
 	if r.task == nil || r.task.ID != taskID {
 		return core.ErrTaskNotFound
 	}
+	r.task.GenerationUsageReservationState = ""
+	r.task.GenerationUsageReservationLeaseUntil = nil
+	return nil
+}
+
+func (r *stubGenerationRepo) PrepareGenerationUsageRelease(_ context.Context, taskID string, block *RetryableBlock, errorMsg string, result *ListingKitResult) error {
+	if r.task == nil || r.task.ID != taskID || block == nil || block.ReasonCode != usageReleasePendingReason {
+		return core.ErrTaskNotRecoverable
+	}
+	r.task.Status = core.TaskStatusBlockedRetryable
+	r.task.RetryableBlock = cloneRetryableBlock(block)
+	r.task.Error = errorMsg
+	if result != nil {
+		r.task.Result = result
+	}
+	return nil
+}
+
+func (r *stubGenerationRepo) ResolveGenerationUsageRelease(_ context.Context, taskID, terminalError string) error {
+	if r.task == nil || r.task.ID != taskID || r.task.RetryableBlock == nil || r.task.RetryableBlock.ReasonCode != usageReleasePendingReason {
+		return core.ErrTaskNotRecoverable
+	}
+	r.task.Status = core.TaskStatusFailed
+	r.task.RetryableBlock = nil
+	r.task.Error = terminalError
 	r.task.GenerationUsageReservationState = ""
 	r.task.GenerationUsageReservationLeaseUntil = nil
 	return nil

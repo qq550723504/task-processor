@@ -226,21 +226,12 @@ func (s *taskRecoveryService) recoverUsageRelease(ctx context.Context, task *Tas
 	if err := s.generationUsage.ReleaseGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, usageReleaseRecoveryReason(task)); err != nil {
 		return nil, s.reblockUsageSettlement(ctx, task, err)
 	}
-	reservations, ok := s.repo.(GenerationUsageReservationRepository)
+	recovery, ok := s.repo.(GenerationUsageReleaseRecoveryRepository)
 	if !ok {
-		return nil, s.reblockUsageSettlement(ctx, task, errors.New("generation usage reservation repository is not configured"))
+		return nil, s.reblockUsageSettlement(ctx, task, errors.New("generation usage release recovery repository is not configured"))
 	}
-	if err := reservations.ClearGenerationUsageReservation(ctx, task.ID); err != nil {
+	if err := recovery.ResolveGenerationUsageRelease(ctx, task.ID, terminalRecoveryError(task)); err != nil {
 		return nil, s.reblockUsageSettlement(ctx, task, err)
-	}
-	if err := markFailedTaskState(ctx, s.repo, task.ID, task.Error); err != nil {
-		// The ledger release and local reservation cleanup have already
-		// succeeded. Retrying only the terminal-state write prevents a later
-		// sweep from invoking ReleaseGeneration again.
-		if persistErr := markTerminalPersistencePending(ctx, s.repo, task.ID, err); persistErr != nil {
-			return nil, errors.Join(err, persistErr)
-		}
-		return nil, err
 	}
 	return s.repo.GetTask(ctx, task.ID)
 }
@@ -265,10 +256,22 @@ func (s *taskRecoveryService) recoverTerminalPersistence(ctx context.Context, ta
 	if task == nil {
 		return nil, core.ErrTaskNotFound
 	}
-	if err := markFailedTaskState(ctx, s.repo, task.ID, task.Error); err != nil {
+	if err := markFailedTaskState(ctx, s.repo, task.ID, terminalRecoveryError(task)); err != nil {
 		return nil, s.reblockTerminalPersistence(ctx, task, err)
 	}
 	return s.repo.GetTask(ctx, task.ID)
+}
+
+func terminalRecoveryError(task *Task) string {
+	if task != nil && task.RetryableBlock != nil {
+		if terminalError := strings.TrimSpace(task.RetryableBlock.TerminalError); terminalError != "" {
+			return terminalError
+		}
+	}
+	if task == nil {
+		return ""
+	}
+	return task.Error
 }
 
 func (s *taskRecoveryService) recoverCommittedReplayPersistence(ctx context.Context, task *Task) (*Task, error) {
@@ -317,12 +320,12 @@ func (s *taskRecoveryService) reblockTask(ctx context.Context, task *Task, recov
 		return recoveryErr
 	}
 	classified, _ := submissiondomain.ClassifyRetryableFailure(recoveryErr, defaultRecoveryScope)
-	updated := submissiondomain.BuildReblockedRetryableBlock(
+	updated := adaptSubmissionRetryableBlock(submissiondomain.BuildReblockedRetryableBlock(
 		adaptRetryableBlockState(task.RetryableBlock),
 		classified,
 		s.currentTime(),
 		defaultRecoveryScope,
-	)
+	))
 	if updated.AutoRetryPaused && isUsageSettlementPending(task) {
 		// A held settlement cannot be retried automatically once its bounded
 		// attempts are exhausted. Preserve the intent under an operator-owned
@@ -338,11 +341,13 @@ func (s *taskRecoveryService) reblockTask(ctx context.Context, task *Task, recov
 	// the next sweep could send a terminal generation task back to the provider.
 	updated.ReasonCode = task.RetryableBlock.ReasonCode
 	updated.ReasonMessage = task.RetryableBlock.ReasonMessage
+	updated.UsageReleaseReason = task.RetryableBlock.UsageReleaseReason
+	updated.TerminalError = task.RetryableBlock.TerminalError
 	updated.RecoveryScope = defaultRecoveryScope
 	updated.AutoResumeEnabled = task.RetryableBlock.AutoResumeEnabled
 	persistCtx, cancel := settlementPersistenceContext(ctx)
 	defer cancel()
-	if markErr := markTaskBlockedRetryableState(persistCtx, s.repo, task.ID, updated, recoveryErr.Error()); markErr != nil {
+	if markErr := markRetryableTaskState(persistCtx, s.repo, task.ID, updated, recoveryErr.Error()); markErr != nil {
 		return errors.Join(recoveryErr, markErr)
 	}
 	return recoveryErr

@@ -204,10 +204,10 @@ func TestRecoverTaskNowUsesPersistenceOnlyRecoveryWhenReleaseFinalizationFails(t
 	if err := repo.CreateTask(ctx, task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
-	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{ReasonCode: usageReleasePendingReason, NextRetryAt: timestampTaskRecoveryServiceTest(time.Now().Add(-time.Minute)), AutoResumeEnabled: true}, "usage release pending"); err != nil {
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{ReasonCode: usageReleasePendingReason, TerminalError: task.Error, NextRetryAt: timestampTaskRecoveryServiceTest(time.Now().Add(-time.Minute)), AutoResumeEnabled: true}, "usage release pending"); err != nil {
 		t.Fatalf("MarkBlockedRetryable() error = %v", err)
 	}
-	repo.markFailedErrors = []error{errors.New("task store unavailable"), errors.New("task store unavailable"), errors.New("task store unavailable")}
+	repo.resolveUsageReleaseErrors = []error{errors.New("task store unavailable")}
 	settlement := &recordingRecoveryUsageSettlement{}
 	svc := newTaskRecoveryService(taskRecoveryServiceConfig{repo: repo, generationUsage: settlement})
 	if _, err := svc.RecoverTaskNow(ctx, task.ID); err == nil {
@@ -217,8 +217,11 @@ func TestRecoverTaskNowUsesPersistenceOnlyRecoveryWhenReleaseFinalizationFails(t
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if got.RetryableBlock == nil || got.RetryableBlock.ReasonCode != terminalPersistencePendingReason || got.RetryableBlock.NextRetryAt == nil {
-		t.Fatalf("task after finalization failure = %#v, want terminal persistence-only recovery", got)
+	if got.RetryableBlock == nil || got.RetryableBlock.ReasonCode != usageReleasePendingReason || got.RetryableBlock.NextRetryAt == nil {
+		t.Fatalf("task after finalization failure = %#v, want retained release recovery", got)
+	}
+	if got.RetryableBlock.TerminalError != "listing kit generation result persistence failed" {
+		t.Fatalf("release recovery terminal error = %q, want original terminal failure", got.RetryableBlock.TerminalError)
 	}
 	if settlement.releaseCalls != 1 {
 		t.Fatalf("release calls = %d, want 1", settlement.releaseCalls)
@@ -250,6 +253,36 @@ func TestRecoverTaskNowHandlesTerminalPersistenceWithoutProviderSubmit(t *testin
 	}
 	if recovered.Status != core.TaskStatusFailed || recovered.RetryableBlock != nil || submitted != 0 {
 		t.Fatalf("recovered task = %#v, submitted = %d, want failed persistence-only recovery", recovered, submitted)
+	}
+}
+
+func TestRecoverTaskNowPreservesOriginalTerminalFailureAcrossPersistenceRecovery(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	ctx := WithTenantID(context.Background(), "tenant-terminal-persistence-error")
+	originalFailure := "listing kit generation quota exceeded"
+	task := &Task{ID: "task-terminal-persistence-error", TenantID: "tenant-terminal-persistence-error", Status: core.TaskStatusProcessing, Error: "listing kit terminal state persistence is pending: task store unavailable", CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{
+		ReasonCode:           terminalPersistencePendingReason,
+		TerminalError:        originalFailure,
+		NextRetryAt:          timestampTaskRecoveryServiceTest(time.Now().Add(-time.Minute)),
+		AutoResumeEnabled:    true,
+		MaxAutoRetryAttempts: usageSettlementMaxAutoRetryAttempts,
+	}, task.Error); err != nil {
+		t.Fatalf("MarkBlockedRetryable() error = %v", err)
+	}
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{repo: repo})
+
+	recovered, err := svc.RecoverTaskNow(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("RecoverTaskNow() error = %v", err)
+	}
+	if recovered.Status != core.TaskStatusFailed || recovered.Error != originalFailure || recovered.RetryableBlock != nil {
+		t.Fatalf("recovered task = %#v, want original terminal failure", recovered)
 	}
 }
 
@@ -662,7 +695,7 @@ func TestRunRecoverySweepUsesPersistenceOnlyRecoveryAfterReleasedUsage(t *testin
 	}, "usage release is pending"); err != nil {
 		t.Fatalf("MarkBlockedRetryable() error = %v", err)
 	}
-	repo.markFailedErrors = []error{errors.New("task store unavailable"), errors.New("task store unavailable"), errors.New("task store unavailable")}
+	repo.resolveUsageReleaseErrors = []error{errors.New("task store unavailable")}
 	settlement := &recordingRecoveryUsageSettlement{}
 	svc := newTaskRecoveryService(taskRecoveryServiceConfig{
 		repo:            repo,
@@ -675,23 +708,26 @@ func TestRunRecoverySweepUsesPersistenceOnlyRecoveryAfterReleasedUsage(t *testin
 
 	recovered, err := svc.RunRecoverySweep(ctx, now, 10)
 	if recovered != 0 || err == nil {
-		t.Fatalf("first RunRecoverySweep() = (%d, %v), want failed terminal persistence after release", recovered, err)
+		t.Fatalf("first RunRecoverySweep() = (%d, %v), want retained release recovery", recovered, err)
 	}
 	stored, err := repo.GetTask(ctx, task.ID)
 	if err != nil {
 		t.Fatalf("GetTask() after first sweep error = %v", err)
 	}
-	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != terminalPersistencePendingReason {
-		t.Fatalf("stored task = %#v, want terminal persistence-only recovery", stored)
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != usageReleasePendingReason {
+		t.Fatalf("stored task = %#v, want retained release recovery", stored)
 	}
-	if stored.GenerationUsageReservationState != "" || stored.GenerationUsageReservationLeaseUntil != nil {
-		t.Fatalf("stored reservation = (%q, %v), want cleared after successful release", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
+	if stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("stored reservation = (%q, %v), want retained until local terminal resolution", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
 	}
 	if settlement.releaseCalls != 1 {
 		t.Fatalf("release calls = %d, want 1", settlement.releaseCalls)
 	}
 
-	recovered, err = svc.RunRecoverySweep(ctx, now, 10)
+	if stored.RetryableBlock.NextRetryAt == nil {
+		t.Fatal("release recovery block has no next retry time")
+	}
+	recovered, err = svc.RunRecoverySweep(ctx, *stored.RetryableBlock.NextRetryAt, 10)
 	if err != nil || recovered != 1 {
 		t.Fatalf("second RunRecoverySweep() = (%d, %v), want terminal persistence recovery", recovered, err)
 	}
@@ -702,8 +738,8 @@ func TestRunRecoverySweepUsesPersistenceOnlyRecoveryAfterReleasedUsage(t *testin
 	if stored.Status != core.TaskStatusFailed || stored.RetryableBlock != nil {
 		t.Fatalf("stored task = %#v, want failed terminal task", stored)
 	}
-	if settlement.releaseCalls != 1 {
-		t.Fatalf("release calls = %d, want no duplicate release", settlement.releaseCalls)
+	if settlement.releaseCalls != 2 {
+		t.Fatalf("release calls = %d, want idempotent replay after unresolved local finalization", settlement.releaseCalls)
 	}
 }
 

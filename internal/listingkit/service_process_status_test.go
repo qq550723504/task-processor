@@ -32,6 +32,7 @@ type stubProcessStatusRepo struct {
 	blockedCalls            int
 	blockedErrs             []error
 	failedErrs              []error
+	resolveUsageReleaseErrs []error
 	requireLiveBlockContext bool
 }
 
@@ -53,6 +54,7 @@ func (r *stubProcessStatusRepo) MarkCompleted(ctx context.Context, taskID string
 		return err
 	}
 	r.task.Status = core.TaskStatusCompleted
+	r.task.RetryableBlock = nil
 	return nil
 }
 
@@ -93,6 +95,17 @@ func (r *stubProcessStatusRepo) MarkBlockedRetryable(ctx context.Context, taskID
 func (r *stubProcessStatusRepo) SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error {
 	r.savedResults = append(r.savedResults, result)
 	return r.stubGenerationRepo.SaveTaskResult(ctx, taskID, result)
+}
+
+func (r *stubProcessStatusRepo) ResolveGenerationUsageRelease(ctx context.Context, taskID, terminalError string) error {
+	if len(r.resolveUsageReleaseErrs) > 0 {
+		err := r.resolveUsageReleaseErrs[0]
+		r.resolveUsageReleaseErrs = r.resolveUsageReleaseErrs[1:]
+		if err != nil {
+			return err
+		}
+	}
+	return r.stubGenerationRepo.ResolveGenerationUsageRelease(ctx, taskID, terminalError)
 }
 
 func TestProcessListingKitMarksNeedsReviewWhenSummaryRequiresReview(t *testing.T) {

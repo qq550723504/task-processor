@@ -563,6 +563,7 @@ type taskRecoveryServiceTestRepo struct {
 	requireLiveBlockContext       bool
 	markFailedErrors              []error
 	resolveUsageSettlementErrors  []error
+	resolveUsageReleaseErrors     []error
 	resolveUsageSettlementHook    func(*Task)
 	afterListExpired              func()
 	listRecoverableErr            error
@@ -820,6 +821,40 @@ func (r *taskRecoveryServiceTestRepo) ClearGenerationUsageReservation(_ context.
 	if !ok {
 		return core.ErrTaskNotFound
 	}
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
+	return nil
+}
+
+func (r *taskRecoveryServiceTestRepo) PrepareGenerationUsageRelease(_ context.Context, taskID string, block *RetryableBlock, errorMsg string, result *ListingKitResult) error {
+	task, ok := r.tasks[taskID]
+	if !ok || block == nil || block.ReasonCode != usageReleasePendingReason {
+		return core.ErrTaskNotRecoverable
+	}
+	task.Status = core.TaskStatusBlockedRetryable
+	task.RetryableBlock = cloneRetryableBlock(block)
+	task.Error = errorMsg
+	if result != nil {
+		task.Result = result
+	}
+	return nil
+}
+
+func (r *taskRecoveryServiceTestRepo) ResolveGenerationUsageRelease(_ context.Context, taskID, terminalError string) error {
+	if len(r.resolveUsageReleaseErrors) > 0 {
+		err := r.resolveUsageReleaseErrors[0]
+		r.resolveUsageReleaseErrors = r.resolveUsageReleaseErrors[1:]
+		if err != nil {
+			return err
+		}
+	}
+	task, ok := r.tasks[taskID]
+	if !ok || task.RetryableBlock == nil || task.RetryableBlock.ReasonCode != usageReleasePendingReason {
+		return core.ErrTaskNotRecoverable
+	}
+	task.Status = core.TaskStatusFailed
+	task.RetryableBlock = nil
+	task.Error = terminalError
 	task.GenerationUsageReservationState = ""
 	task.GenerationUsageReservationLeaseUntil = nil
 	return nil

@@ -189,15 +189,65 @@ func (s *service) allowsNewGenerationUsageReservation(task *Task) bool {
 	return billingTenantID != "" && admission.AllowsGenerationUsage(billingTenantID)
 }
 
-func (s *service) releaseGenerationUsage(ctx context.Context, task *Task, reason string) error {
+func (s *service) releaseGenerationUsageAndFail(ctx context.Context, task *Task, result *ListingKitResult, reason, terminalError string) error {
+	if task == nil {
+		return core.ErrTaskNotFound
+	}
 	settlement := s.generationUsageSettlement()
-	if settlement == nil || task == nil {
-		return nil
+	if settlement == nil {
+		return errors.New("generation usage settlement is not configured")
 	}
-	if err := settlement.ReleaseGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, strings.TrimSpace(reason)); err != nil {
-		return err
+	recovery, ok := s.repo.(GenerationUsageReleaseRecoveryRepository)
+	if !ok {
+		return errors.New("generation usage release recovery repository is not configured")
 	}
-	return s.clearGenerationUsageReservation(ctx, task)
+	block := newGenerationUsageReleasePendingBlock(reason, terminalError)
+	persistCtx, cancel := settlementPersistenceContext(ctx)
+	prepareErr := recovery.PrepareGenerationUsageRelease(persistCtx, task.ID, block, block.ReasonMessage, result)
+	cancel()
+	if prepareErr != nil {
+		return prepareErr
+	}
+	if err := settlement.ReleaseGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, block.UsageReleaseReason); err != nil {
+		return s.reblockGenerationUsageRelease(ctx, task, block, err)
+	}
+	persistCtx, cancel = settlementPersistenceContext(ctx)
+	resolveErr := recovery.ResolveGenerationUsageRelease(persistCtx, task.ID, block.TerminalError)
+	cancel()
+	if resolveErr != nil {
+		return s.reblockGenerationUsageRelease(ctx, task, block, resolveErr)
+	}
+	task.Status = core.TaskStatusFailed
+	task.RetryableBlock = nil
+	task.Error = block.TerminalError
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
+	return nil
+}
+
+func (s *service) reblockGenerationUsageRelease(ctx context.Context, task *Task, block *RetryableBlock, recoveryErr error) error {
+	if task == nil || block == nil {
+		return recoveryErr
+	}
+	classified, _ := submissiondomain.ClassifyRetryableFailure(recoveryErr, usageSettlementRecoveryScope)
+	updated := adaptSubmissionRetryableBlock(submissiondomain.BuildReblockedRetryableBlock(
+		adaptRetryableBlockState(block),
+		classified,
+		time.Now().UTC(),
+		usageSettlementRecoveryScope,
+	))
+	updated.ReasonCode = block.ReasonCode
+	updated.ReasonMessage = block.ReasonMessage
+	updated.UsageReleaseReason = block.UsageReleaseReason
+	updated.TerminalError = block.TerminalError
+	updated.RecoveryScope = block.RecoveryScope
+	updated.AutoResumeEnabled = block.AutoResumeEnabled
+	persistCtx, cancel := settlementPersistenceContext(ctx)
+	defer cancel()
+	if err := markRetryableTaskState(persistCtx, s.repo, task.ID, updated, recoveryErr.Error()); err != nil {
+		return errors.Join(recoveryErr, err)
+	}
+	return recoveryErr
 }
 
 func (s *service) commitGenerationUsage(ctx context.Context, task *Task) error {
@@ -239,29 +289,12 @@ func generationUsageTenantID(ctx context.Context, task *Task) string {
 	return TenantIDFromContext(ctx)
 }
 
-func (s *service) handleGenerationTerminalPersistenceFailure(ctx context.Context, task *Task, persistErr error) error {
+func (s *service) handleGenerationTerminalPersistenceFailure(ctx context.Context, task *Task, result *ListingKitResult, persistErr error) error {
 	if task == nil {
 		return persistErr
 	}
-	var errs []error
-	if persistErr != nil {
-		errs = append(errs, persistErr)
-	}
-	if releaseErr := s.releaseGenerationUsage(ctx, task, "terminal_persistence_failed"); releaseErr != nil {
-		errs = append(errs, releaseErr)
-		blockErr := s.markGenerationUsageReleasePending(ctx, task, "terminal_persistence_failed", persistErr, releaseErr)
-		if blockErr != nil {
-			errs = append(errs, blockErr)
-		}
-		return errors.Join(errs...)
-	}
-	if markErr := markFailedTaskState(ctx, s.repo, task.ID, "listing kit generation result persistence failed"); markErr != nil {
-		errs = append(errs, markErr)
-		if blockErr := markTerminalPersistencePending(ctx, s.repo, task.ID, markErr); blockErr != nil {
-			errs = append(errs, blockErr)
-		}
-	}
-	return errors.Join(errs...)
+	terminalError := "listing kit generation result persistence failed"
+	return errors.Join(persistErr, s.releaseGenerationUsageAndFail(ctx, task, result, "terminal_persistence_failed", terminalError))
 }
 
 const (
@@ -278,29 +311,38 @@ func settlementPersistenceContext(ctx context.Context) (context.Context, context
 	return context.WithTimeout(context.WithoutCancel(ctx), settlementPersistenceTimeout)
 }
 
-func (s *service) markGenerationUsageReleasePending(ctx context.Context, task *Task, releaseReason string, persistErr, releaseErr error) error {
-	if task == nil {
-		return releaseErr
-	}
+func newGenerationUsageReleasePendingBlock(releaseReason, terminalError string) *RetryableBlock {
 	now := time.Now().UTC()
 	notBefore := now
-	block := &RetryableBlock{
+	return &RetryableBlock{
 		ReasonCode:           usageReleasePendingReason,
 		ReasonMessage:        "usage release is pending",
 		UsageReleaseReason:   strings.TrimSpace(releaseReason),
+		TerminalError:        strings.TrimSpace(terminalError),
 		BlockedAt:            now,
 		NextRetryAt:          &notBefore,
 		MaxAutoRetryAttempts: usageSettlementMaxAutoRetryAttempts,
 		RecoveryScope:        usageSettlementRecoveryScope,
 		AutoResumeEnabled:    true,
 	}
-	errorMsg := block.ReasonMessage
-	if persistErr != nil {
-		errorMsg = fmt.Sprintf("%s: %v", errorMsg, persistErr)
+}
+
+func (s *service) markGenerationUsageReleasePending(ctx context.Context, task *Task, releaseReason string, terminalErr, releaseErr error) error {
+	if task == nil {
+		return releaseErr
+	}
+	terminalError := ""
+	if terminalErr != nil {
+		terminalError = terminalErr.Error()
+	}
+	block := newGenerationUsageReleasePendingBlock(releaseReason, terminalError)
+	recovery, ok := s.repo.(GenerationUsageReleaseRecoveryRepository)
+	if !ok {
+		return errors.Join(releaseErr, errors.New("generation usage release recovery repository is not configured"))
 	}
 	persistCtx, cancel := settlementPersistenceContext(ctx)
 	defer cancel()
-	if err := markRetryableTaskState(persistCtx, s.repo, task.ID, block, errorMsg); err != nil {
+	if err := recovery.PrepareGenerationUsageRelease(persistCtx, task.ID, block, block.ReasonMessage, nil); err != nil {
 		return errors.Join(releaseErr, err)
 	}
 	return nil
@@ -322,20 +364,21 @@ func markFailedTaskState(ctx context.Context, repo Repository, taskID, errorMsg 
 	return lastErr
 }
 
-func markTerminalPersistencePending(ctx context.Context, repo Repository, taskID string, persistErr error) error {
-	return markPersistencePending(ctx, repo, taskID, terminalPersistencePendingReason, "listing kit terminal state persistence is pending", persistErr)
+func markTerminalPersistencePending(ctx context.Context, repo Repository, taskID, terminalError string, persistErr error) error {
+	return markPersistencePending(ctx, repo, taskID, terminalPersistencePendingReason, "listing kit terminal state persistence is pending", terminalError, persistErr)
 }
 
 func markCommittedReplayPersistencePending(ctx context.Context, repo Repository, taskID string, persistErr error) error {
-	return markPersistencePending(ctx, repo, taskID, committedReplayPersistencePendingReason, "listing kit committed replay result persistence is pending", persistErr)
+	return markPersistencePending(ctx, repo, taskID, committedReplayPersistencePendingReason, "listing kit committed replay result persistence is pending", "", persistErr)
 }
 
-func markPersistencePending(ctx context.Context, repo Repository, taskID, reasonCode, reasonMessage string, persistErr error) error {
+func markPersistencePending(ctx context.Context, repo Repository, taskID, reasonCode, reasonMessage, terminalError string, persistErr error) error {
 	now := time.Now().UTC()
 	nextRetryAt := now
 	block := &RetryableBlock{
 		ReasonCode:           reasonCode,
 		ReasonMessage:        reasonMessage,
+		TerminalError:        strings.TrimSpace(terminalError),
 		BlockedAt:            now,
 		NextRetryAt:          &nextRetryAt,
 		MaxAutoRetryAttempts: usageSettlementMaxAutoRetryAttempts,
@@ -382,7 +425,7 @@ func (s *service) persistScheduledRetryableFailure(ctx context.Context, task *Ta
 		persistCtx, cancel := settlementPersistenceContext(ctx)
 		defer cancel()
 		if err := persistClassifiedTaskFailure(persistCtx, s.repo, task.ID, failureErr.Error(), failureErr); err != nil {
-			return errors.Join(err, markTerminalPersistencePending(ctx, s.repo, task.ID, err))
+			return errors.Join(err, markTerminalPersistencePending(ctx, s.repo, task.ID, failureErr.Error(), err))
 		}
 		return persistErr
 	}
@@ -422,7 +465,7 @@ func (s *service) persistScheduledRetryableFailure(ctx context.Context, task *Ta
 			recoveryErr := errors.Join(persistErr, err)
 			return errors.Join(recoveryErr, s.markGenerationUsageReleasePending(ctx, task, "retryable_persistence_failed", failureErr, recoveryErr))
 		}
-		return errors.Join(persistErr, err, markTerminalPersistencePending(ctx, s.repo, task.ID, err))
+		return errors.Join(persistErr, err, markTerminalPersistencePending(ctx, s.repo, task.ID, failureErr.Error(), err))
 	}
 	return persistErr
 }

@@ -59,17 +59,19 @@ func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) erro
 
 func (r *taskRepository) MarkCompleted(ctx context.Context, taskID string, result *listingkit.ListingKitResult) error {
 	return r.updateTaskFields(ctx, taskID, map[string]any{
-		"result": result,
-		"status": core.TaskStatusCompleted,
-		"error":  "",
+		"result":          result,
+		"status":          core.TaskStatusCompleted,
+		"retryable_block": nil,
+		"error":           "",
 	})
 }
 
 func (r *taskRepository) MarkNeedsReview(ctx context.Context, taskID string, result *listingkit.ListingKitResult, reason string) error {
 	return r.updateTaskFields(ctx, taskID, map[string]any{
-		"result": result,
-		"status": core.TaskStatusNeedsReview,
-		"error":  reason,
+		"result":          result,
+		"status":          core.TaskStatusNeedsReview,
+		"retryable_block": nil,
+		"error":           reason,
 	})
 }
 
@@ -141,6 +143,58 @@ func (r *taskRepository) ClearGenerationUsageReservation(ctx context.Context, ta
 	return r.updateTaskFields(ctx, taskID, map[string]any{
 		"generation_usage_reservation_state":       "",
 		"generation_usage_reservation_lease_until": nil,
+	})
+}
+
+func (r *taskRepository) PrepareGenerationUsageRelease(ctx context.Context, taskID string, block *listingkit.RetryableBlock, errorMsg string, taskResult *listingkit.ListingKitResult) error {
+	if block == nil || block.ReasonCode != "usage_release_pending" {
+		return core.ErrTaskNotRecoverable
+	}
+	updates := map[string]any{
+		"status":          core.TaskStatusBlockedRetryable,
+		"retryable_block": copyRetryableBlock(block),
+		"error":           errorMsg,
+	}
+	if taskResult != nil {
+		updates["result"] = taskResult
+	}
+	return r.updateTaskFields(ctx, taskID, updates)
+}
+
+func (r *taskRepository) ResolveGenerationUsageRelease(ctx context.Context, taskID, terminalError string) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var task listingkit.Task
+		if err := applyTaskAccessScope(tx.Clauses(clause.Locking{Strength: "UPDATE"}), ctx).Where("id = ?", taskID).First(&task).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return core.ErrTaskNotFound
+			}
+			return err
+		}
+		if task.Status != core.TaskStatusBlockedRetryable || task.RetryableBlock == nil || task.RetryableBlock.ReasonCode != "usage_release_pending" {
+			return core.ErrTaskNotRecoverable
+		}
+		result := tx.Model(&listingkit.Task{}).
+			Scopes(taskAccessScope(ctx)).
+			Where("id = ? AND status = ?", taskID, core.TaskStatusBlockedRetryable).
+			Updates(map[string]any{
+				"status":                             core.TaskStatusFailed,
+				"retryable_block":                    nil,
+				"error":                              terminalError,
+				"generation_usage_reservation_state": "",
+				"generation_usage_reservation_lease_until": nil,
+				"updated_at": currentTimestampValue(tx),
+			})
+		if result.Error != nil {
+			return fmt.Errorf("resolve generation usage release: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return core.ErrTaskNotRecoverable
+		}
+		finalTask, err := loadTaskForSheinPODImageLookupIndex(ctx, tx, taskID)
+		if err != nil {
+			return err
+		}
+		return syncSheinPODImageLookupIndex(ctx, tx, finalTask)
 	})
 }
 

@@ -14,6 +14,7 @@ type RetryableBlock struct {
 	ReasonCode           string     `json:"reason_code,omitempty"`
 	ReasonMessage        string     `json:"reason_message,omitempty"`
 	UsageReleaseReason   string     `json:"usage_release_reason,omitempty"`
+	TerminalError        string     `json:"terminal_error,omitempty"`
 	BlockedAt            time.Time  `json:"blocked_at,omitempty"`
 	LastRetryAt          *time.Time `json:"last_retry_at,omitempty"`
 	NextRetryAt          *time.Time `json:"next_retry_at,omitempty"`
@@ -59,6 +60,7 @@ func cloneRetryableBlock(src *RetryableBlock) *RetryableBlock {
 	cloned.ReasonCode = strings.TrimSpace(src.ReasonCode)
 	cloned.ReasonMessage = strings.TrimSpace(src.ReasonMessage)
 	cloned.UsageReleaseReason = strings.TrimSpace(src.UsageReleaseReason)
+	cloned.TerminalError = strings.TrimSpace(src.TerminalError)
 	cloned.RecoveryScope = strings.TrimSpace(src.RecoveryScope)
 	return &cloned
 }

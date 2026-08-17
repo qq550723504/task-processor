@@ -28,6 +28,7 @@ type recordingGenerationUsageSettlement struct {
 	releasedTenantID  string
 	releasedReason    string
 	reservedAt        time.Time
+	onRelease         func()
 }
 
 type generationUsageTestAdmission struct {
@@ -61,11 +62,53 @@ func (s *recordingGenerationUsageSettlement) CommitGeneration(_ context.Context,
 }
 
 func (s *recordingGenerationUsageSettlement) ReleaseGeneration(_ context.Context, tenantID string, taskID, reason string) error {
+	if s.onRelease != nil {
+		s.onRelease()
+	}
 	s.calls = append(s.calls, "release")
 	s.releasedTaskID = taskID
 	s.releasedTenantID = tenantID
 	s.releasedReason = reason
 	return s.releaseErr
+}
+
+func TestProcessListingKitPersistsReleaseRecoveryBeforeExternalRelease(t *testing.T) {
+	t.Parallel()
+
+	workflowErr := errors.New("provider rejected listing generation")
+	settlement := &recordingGenerationUsageSettlement{}
+	svc, repo, _, task := newProcessUsageFixture(t, settlement, workflowErr)
+	observedReleaseRecovery := false
+	settlement.onRelease = func() {
+		stored, err := repo.GetTask(context.Background(), task.ID)
+		if err != nil {
+			t.Errorf("GetTask() during release error = %v", err)
+			return
+		}
+		if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != usageReleasePendingReason {
+			t.Errorf("task during release = %#v, want durable usage_release_pending", stored)
+			return
+		}
+		if stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
+			t.Errorf("reservation during release = (%q, %v), want retained intent", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
+			return
+		}
+		observedReleaseRecovery = true
+	}
+
+	if _, err := svc.ProcessListingKit(context.Background(), task); !errors.Is(err, workflowErr) {
+		t.Fatalf("ProcessListingKit() error = %v, want workflow error", err)
+	}
+	if !observedReleaseRecovery {
+		t.Fatal("ReleaseGeneration() did not observe a durable release recovery state")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusFailed || stored.RetryableBlock != nil || stored.GenerationUsageReservationState != "" || stored.GenerationUsageReservationLeaseUntil != nil {
+		t.Fatalf("final task = %#v, want failed task with cleared recovery state", stored)
+	}
 }
 
 type processUsageProductService struct {
@@ -766,9 +809,9 @@ func TestProcessListingKitRetriesTerminalFailureStateAfterRelease(t *testing.T) 
 	t.Parallel()
 
 	repo := &stubProcessStatusRepo{
-		stubGenerationRepo: &stubGenerationRepo{},
-		completedErr:       errors.New("task store unavailable"),
-		failedErrs:         []error{errors.New("task store unavailable"), errors.New("task store unavailable"), errors.New("task store unavailable")},
+		stubGenerationRepo:      &stubGenerationRepo{},
+		completedErr:            errors.New("task store unavailable"),
+		resolveUsageReleaseErrs: []error{errors.New("task store unavailable")},
 	}
 	settlement := &recordingGenerationUsageSettlement{}
 	productService := &processUsageProductService{
@@ -795,8 +838,11 @@ func TestProcessListingKitRetriesTerminalFailureStateAfterRelease(t *testing.T) 
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != terminalPersistencePendingReason {
-		t.Fatalf("stored task = %#v, want terminal persistence retry block", stored)
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != usageReleasePendingReason {
+		t.Fatalf("stored task = %#v, want usage release retry block", stored)
+	}
+	if got, want := stored.RetryableBlock.TerminalError, "listing kit generation result persistence failed"; got != want {
+		t.Fatalf("release recovery terminal error = %q, want %q", got, want)
 	}
 }
 
@@ -838,8 +884,8 @@ func TestProcessListingKitPersistsTerminalFallbackAfterReleasedWorkflowFailure(t
 	t.Parallel()
 
 	repo := &stubProcessStatusRepo{
-		stubGenerationRepo: &stubGenerationRepo{},
-		failedErrs:         []error{errors.New("task store unavailable")},
+		stubGenerationRepo:      &stubGenerationRepo{},
+		resolveUsageReleaseErrs: []error{errors.New("task store unavailable")},
 	}
 	settlement := &recordingGenerationUsageSettlement{}
 	productService := &processUsageProductService{
@@ -870,11 +916,14 @@ func TestProcessListingKitPersistsTerminalFallbackAfterReleasedWorkflowFailure(t
 	if settlement.releasedTaskID != task.ID || settlement.releasedReason != "workflow_failed" {
 		t.Fatalf("release = (%q, %q), want released workflow reservation", settlement.releasedTaskID, settlement.releasedReason)
 	}
-	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != terminalPersistencePendingReason {
-		t.Fatalf("stored task = %#v, want terminal persistence fallback", stored)
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != usageReleasePendingReason {
+		t.Fatalf("stored task = %#v, want usage release recovery", stored)
 	}
-	if stored.GenerationUsageReservationState != "" || stored.GenerationUsageReservationLeaseUntil != nil {
-		t.Fatalf("reservation = (%q, %v), want cleared after release", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
+	if got, want := stored.RetryableBlock.TerminalError, "product enrichment failed: product payload is invalid"; got != want {
+		t.Fatalf("release recovery terminal error = %q, want %q", got, want)
+	}
+	if stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("reservation = (%q, %v), want retained release recovery intent", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
 	}
 }
 

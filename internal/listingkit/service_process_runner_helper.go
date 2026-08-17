@@ -46,7 +46,7 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 		if errors.Is(err, listingsubscription.ErrUsageQuotaExceeded) {
 			quotaErr := generationQuotaFailure(task.ID)
 			if persistErr := markFailedTaskState(ctx, f.service.repo, task.ID, quotaErr.Error()); persistErr != nil {
-				fallbackErr := markTerminalPersistencePending(ctx, f.service.repo, task.ID, persistErr)
+				fallbackErr := markTerminalPersistencePending(ctx, f.service.repo, task.ID, quotaErr.Error(), persistErr)
 				return nil, errors.Join(err, quotaErr, persistErr, fallbackErr)
 			}
 			return nil, err
@@ -111,28 +111,18 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 			return nil, workflowErr
 		}
 		if usageEnabled {
-			if releaseErr := f.service.releaseGenerationUsage(ctx, task, "workflow_failed"); releaseErr != nil {
+			if releaseErr := f.service.releaseGenerationUsageAndFail(ctx, task, result, "workflow_failed", workflowErr.Error()); releaseErr != nil {
 				log.WithError(releaseErr).Error("failed to release listing kit generation usage")
-				workflowErr = errors.Join(workflowErr, releaseErr)
-				persistCtx, cancel := settlementPersistenceContext(ctx)
-				if result != nil {
-					if saveErr := f.service.repo.SaveTaskResult(persistCtx, task.ID, result); saveErr != nil {
-						workflowErr = errors.Join(workflowErr, saveErr)
-					}
-				}
-				cancel()
-				if blockErr := f.service.markGenerationUsageReleasePending(ctx, task, "workflow_failed", workflowErr, releaseErr); blockErr != nil {
-					workflowErr = errors.Join(workflowErr, blockErr)
-				}
-				return nil, workflowErr
+				return nil, errors.Join(workflowErr, releaseErr)
 			}
+			return nil, workflowErr
 		}
 		if persistErr := f.service.persistProcessFailure(ctx, task.ID, result, workflowErr); persistErr != nil {
 			log.WithError(persistErr).Error("failed to persist listing kit workflow failure")
 			// The ledger release has already succeeded and cleared the task-side
 			// intent. If durable failure persistence then fails, retain an explicit
 			// recovery block rather than leaving the claimed task in processing.
-			fallbackErr := markTerminalPersistencePending(ctx, f.service.repo, task.ID, persistErr)
+			fallbackErr := markTerminalPersistencePending(ctx, f.service.repo, task.ID, workflowErr.Error(), persistErr)
 			return nil, errors.Join(workflowErr, persistErr, fallbackErr)
 		}
 		return nil, workflowErr
@@ -151,7 +141,7 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 			if !usageEnabled {
 				return nil, err
 			}
-			return nil, f.service.handleGenerationTerminalPersistenceFailure(ctx, task, err)
+			return nil, f.service.handleGenerationTerminalPersistenceFailure(ctx, task, result, err)
 		}
 		if usageEnabled {
 			if err := f.service.commitGenerationUsage(ctx, task); err != nil {
@@ -168,7 +158,7 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 		if !usageEnabled {
 			return nil, err
 		}
-		return nil, f.service.handleGenerationTerminalPersistenceFailure(ctx, task, err)
+		return nil, f.service.handleGenerationTerminalPersistenceFailure(ctx, task, result, err)
 	}
 	if usageEnabled {
 		if err := f.service.commitGenerationUsage(ctx, task); err != nil {
