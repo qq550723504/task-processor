@@ -145,13 +145,13 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 	return ctx, task, nil
 }
 
-func billingTenantIDForTask(req *GenerateRequest, ownerTenantID string) string {
+func billingTenantIDForTask(req *GenerateRequest, _ string) string {
 	if req != nil {
 		if billingTenantID := strings.TrimSpace(req.BillingTenantID); billingTenantID != "" {
 			return billingTenantID
 		}
 	}
-	return strings.TrimSpace(ownerTenantID)
+	return ""
 }
 
 func validateExplicitSheinStoreSelection(req *GenerateRequest) error {

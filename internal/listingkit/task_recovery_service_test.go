@@ -823,7 +823,7 @@ func (r *taskRecoveryServiceTestRepo) ClearGenerationUsageReservation(_ context.
 func (r *taskRecoveryServiceTestRepo) ListExpiredGenerationUsageReservations(_ context.Context, dueBefore time.Time, limit int) ([]Task, error) {
 	items := make([]Task, 0)
 	for _, task := range r.tasks {
-		if task.Status != core.TaskStatusProcessing || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
+		if (task.Status != core.TaskStatusProcessing && task.Status != core.TaskStatusCompleted && task.Status != core.TaskStatusNeedsReview) || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
 			continue
 		}
 		copied := *task

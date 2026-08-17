@@ -199,6 +199,19 @@ func TestTaskLifecycleServiceKeepsCanonicalOwnerSeparateFromBillingTenant(t *tes
 	}
 }
 
+func TestTaskLifecycleServiceLeavesBillingTenantBlankWithoutExplicitAdmission(t *testing.T) {
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{})
+	ctx := WithTenantID(context.Background(), "canonical-tenant")
+
+	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{TenantID: "canonical-tenant", ProductURL: "https://example.com/product", Platforms: []string{"amazon"}})
+	if err != nil {
+		t.Fatalf("prepareGenerateTask() error = %v", err)
+	}
+	if task.BillingTenantID != "" {
+		t.Fatalf("task billing tenant = %q, want empty outside explicit HTTP admission", task.BillingTenantID)
+	}
+}
+
 func TestTaskLifecycleServicePersistsTenantAdminAccessWhenStoreProfileResolutionFails(t *testing.T) {
 	const resolutionErr = "store profile contains invalid pricing rules"
 	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{

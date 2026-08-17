@@ -37,6 +37,10 @@ deterministic ledger event: after a worker interruption, provider execution and
 ledger settlement may have crossed independently, so a release or provider
 retry would not be safe. `RecoverTaskNow` also rejects this reason. It requires
 an explicit operator reconciliation procedure before any later state change.
+An expired intent on an already `completed` or `needs_review` task is different:
+the provider result is durable, so recovery performs only idempotent ledger
+commit and intent cleanup, without submitting the provider. If that commit or
+cleanup cannot persist, it uses `usage_commit_pending` settlement recovery.
 
 ## Wiring and rollout
 
@@ -57,10 +61,12 @@ OpenMeter call is introduced here.
 The cohort gate applies only when creating a new intent. A task that already
 has an intent resumes its reserve/commit/release path even if the flag or
 cohort is later narrowed, preventing a stranded reservation. Tasks created
-before this cutover have an empty `BillingTenantID`; when a cohort is configured
-they deliberately remain on the legacy path rather than being charged against
-their canonical owner tenant. Backfilling a durable billing identity is a
-separate, explicitly approved migration and is not performed by worker retry.
+outside `POST /api/v1/listing-kits/generate` have an empty `BillingTenantID`
+unless their caller explicitly supplies an approved billing identity. When a
+cohort is configured, those tasks deliberately remain on the legacy path rather
+than being charged against their canonical owner tenant. Backfilling a durable
+billing identity is a separate, explicitly approved migration and is not
+performed by worker retry.
 
 The implementation deliberately does not meter Studio design/product-image
 jobs, SHEIN submit/publish, 1688 task creation, storage deltas, batches, or

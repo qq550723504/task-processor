@@ -65,7 +65,7 @@ func TestGenerationUsageReservationLeaseLifecycle(t *testing.T) {
 	}
 }
 
-func TestListExpiredGenerationUsageReservationsOnlyReturnsProcessingLeases(t *testing.T) {
+func TestListExpiredGenerationUsageReservationsIncludesTerminalLeases(t *testing.T) {
 	t.Parallel()
 
 	for _, factory := range generationUsageReservationRepoFactories(t) {
@@ -76,6 +76,10 @@ func TestListExpiredGenerationUsageReservationsOnlyReturnsProcessingLeases(t *te
 			ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
 			now := time.Date(2026, 8, 17, 9, 0, 0, 0, time.UTC)
 			expired := createProcessingGenerationUsageReservation(t, repo, ctx, "generation-usage-expired", now.Add(-time.Minute))
+			terminal := createProcessingGenerationUsageReservation(t, repo, ctx, "generation-usage-terminal", now.Add(-time.Minute))
+			if err := repo.MarkCompleted(ctx, terminal.ID, &listingkit.ListingKitResult{Status: string(core.TaskStatusCompleted)}); err != nil {
+				t.Fatalf("MarkCompleted() error = %v", err)
+			}
 			createProcessingGenerationUsageReservation(t, repo, ctx, "generation-usage-future", now.Add(time.Minute))
 			blocked := createProcessingGenerationUsageReservation(t, repo, ctx, "generation-usage-blocked", now.Add(-time.Minute))
 			if err := repo.MarkBlockedRetryable(ctx, blocked.ID, &listingkit.RetryableBlock{ReasonCode: "test", AutoResumeEnabled: true}, "blocked"); err != nil {
@@ -91,7 +95,7 @@ func TestListExpiredGenerationUsageReservationsOnlyReturnsProcessingLeases(t *te
 				gotIDs = append(gotIDs, item.ID)
 			}
 			sort.Strings(gotIDs)
-			if want := []string{expired.ID}; len(gotIDs) != len(want) || gotIDs[0] != want[0] {
+			if want := []string{expired.ID, terminal.ID}; len(gotIDs) != len(want) || gotIDs[0] != want[0] || gotIDs[1] != want[1] {
 				t.Fatalf("expired reservation IDs = %v, want %v", gotIDs, want)
 			}
 		})

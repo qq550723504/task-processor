@@ -277,7 +277,7 @@ func (r *MemTaskRepository) ListExpiredGenerationUsageReservations(ctx context.C
 	}
 	items := make([]listingkit.Task, 0)
 	for _, task := range r.tasks {
-		if !matchesTenantScope(ctx, task.TenantID) || task.Status != core.TaskStatusProcessing || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
+		if !matchesTenantScope(ctx, task.TenantID) || !generationUsageReservationMayNeedSettlement(task.Status) || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
 			continue
 		}
 		copied := *task
@@ -293,6 +293,10 @@ func (r *MemTaskRepository) ListExpiredGenerationUsageReservations(ctx context.C
 		items = items[:normalizeRecoverableTaskLimitFromValue(limit)]
 	}
 	return items, nil
+}
+
+func generationUsageReservationMayNeedSettlement(status core.TaskStatus) bool {
+	return status == core.TaskStatusProcessing || status == core.TaskStatusCompleted || status == core.TaskStatusNeedsReview
 }
 
 func (r *MemTaskRepository) ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, dueBefore time.Time, block *listingkit.RetryableBlock, errorMsg string, clearReservation bool) error {

@@ -7,7 +7,27 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"task-processor/internal/listingkit/core"
 )
+
+type generationUsagePostReservePersistenceError struct {
+	err error
+}
+
+func (e *generationUsagePostReservePersistenceError) Error() string {
+	if e == nil || e.err == nil {
+		return "generation usage post-reserve persistence failed"
+	}
+	return e.err.Error()
+}
+
+func (e *generationUsagePostReservePersistenceError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
 
 func (s *service) generationUsageSettlement() GenerationUsageSettlement {
 	if s == nil {
@@ -47,11 +67,20 @@ func (s *service) reserveGenerationUsage(ctx context.Context, task *Task) (Gener
 		return GenerationUsageReservation{}, true, err
 	}
 	if err := reservationRepo.MarkGenerationUsageReserved(ctx, task.ID, leaseUntil); err != nil {
-		return GenerationUsageReservation{}, true, err
+		return GenerationUsageReservation{}, true, &generationUsagePostReservePersistenceError{err: err}
 	}
 	task.GenerationUsageReservationState = GenerationUsageReservationStateReserved
 	task.GenerationUsageReservationLeaseUntil = &leaseUntil
 	return reservation, true, nil
+}
+
+func (s *service) persistGenerationUsageReconciliation(ctx context.Context, task *Task, cause error) error {
+	if task == nil {
+		return core.ErrTaskNotRecoverable
+	}
+	persistCtx, cancel := settlementPersistenceContext(ctx)
+	defer cancel()
+	return markRetryableTaskState(persistCtx, s.repo, task.ID, generationUsageReconciliationBlock(time.Now().UTC()), fmt.Sprintf("generation usage requires reconciliation after reserve: %v", cause))
 }
 
 const (

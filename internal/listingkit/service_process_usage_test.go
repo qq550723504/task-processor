@@ -158,6 +158,36 @@ func TestProcessListingKitQuotaRejectionSkipsWorkflow(t *testing.T) {
 	}
 }
 
+func TestProcessListingKitReconcilesReservationWhenPostReservePersistenceFails(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{markGenerationUsageErr: errors.New("task store unavailable")}}
+	settlement := &recordingGenerationUsageSettlement{}
+	productService := &processUsageProductService{task: &productenrich.Task{ID: "product-task-post-reserve", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}}, product: &productenrich.ProductJSON{Title: "Travel Bag", Category: []string{"bags"}}}
+	svc, err := NewService(newTestServiceConfig(repo, withTestProductService(productService), withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}), withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement })))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	task := &Task{ID: "listingkit-post-reserve", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+
+	if _, err := svc.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want post-reserve persistence failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || stored.GenerationUsageReservationState == "" {
+		t.Fatalf("stored task = %#v, want retained reconciliation block", stored)
+	}
+	if productService.processCalls != 0 || len(settlement.calls) != 1 || settlement.calls[0] != "reserve" {
+		t.Fatalf("workflow/settlement = (%d, %#v), want (0, [reserve])", productService.processCalls, settlement.calls)
+	}
+}
+
 func TestProcessListingKitQuotaRejectionFallbackRemainsRecoverable(t *testing.T) {
 	t.Parallel()
 

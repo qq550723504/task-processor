@@ -16,6 +16,7 @@ type stubServiceDeferredRenderer struct {
 type stubGenerationRepo struct {
 	task                   *Task
 	generationUsageRenewed chan struct{}
+	markGenerationUsageErr error
 }
 
 func (r *stubGenerationRepo) CreateTask(ctx context.Context, task *Task) error {
@@ -106,6 +107,9 @@ func (r *stubGenerationRepo) BeginGenerationUsageReservation(_ context.Context, 
 }
 
 func (r *stubGenerationRepo) MarkGenerationUsageReserved(_ context.Context, taskID string, leaseUntil time.Time) error {
+	if r.markGenerationUsageErr != nil {
+		return r.markGenerationUsageErr
+	}
 	if r.task == nil || r.task.ID != taskID || r.task.GenerationUsageReservationState == "" {
 		return core.ErrTaskNotRecoverable
 	}

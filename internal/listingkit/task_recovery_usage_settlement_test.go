@@ -588,6 +588,44 @@ func TestRunRecoverySweepClaimsExpiredGenerationReservationForReconciliation(t *
 	}
 }
 
+func TestRunRecoverySweepCommitsTerminalTaskWithExpiredGenerationReservation(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	now := time.Date(2026, 8, 17, 5, 15, 0, 0, time.UTC)
+	ctx := WithTenantID(context.Background(), "tenant-terminal-generation")
+	leaseUntil := now.Add(-time.Minute)
+	task := &Task{ID: "task-terminal-generation", TenantID: "tenant-terminal-generation", BillingTenantID: "billing-terminal-generation", Status: core.TaskStatusCompleted, Result: &ListingKitResult{Status: string(core.TaskStatusCompleted)}, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour)}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	settlement := &recordingRecoveryUsageSettlement{}
+	submitted := 0
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{
+		repo:            repo,
+		generationUsage: settlement,
+		taskSubmitter: func() TaskSubmitter {
+			return taskRecoveryTestSubmitter(func(string) error { submitted++; return nil })
+		},
+		now: func() time.Time { return now },
+	})
+
+	recovered, err := svc.RunRecoverySweep(ctx, now, 10)
+	if err != nil {
+		t.Fatalf("RunRecoverySweep() error = %v", err)
+	}
+	if recovered != 1 || settlement.commitCalls != 1 || submitted != 0 {
+		t.Fatalf("recovered/commit/submitted = (%d, %d, %d), want (1, 1, 0)", recovered, settlement.commitCalls, submitted)
+	}
+	got, err := repo.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if got.Status != core.TaskStatusCompleted || got.GenerationUsageReservationState != "" || got.GenerationUsageReservationLeaseUntil != nil {
+		t.Fatalf("terminal task after settlement = %#v, want completed with cleared reservation", got)
+	}
+}
+
 func TestRecoverTaskNowRejectsGenerationUsageReconciliationWithoutProviderSubmit(t *testing.T) {
 	t.Parallel()
 

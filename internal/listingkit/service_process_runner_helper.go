@@ -25,6 +25,13 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 	log.Info("marked listing kit task as processing")
 	reservation, usageEnabled, err := f.service.reserveGenerationUsage(ctx, task)
 	if err != nil {
+		var postReserveErr *generationUsagePostReservePersistenceError
+		if errors.As(err, &postReserveErr) {
+			if persistErr := f.service.persistGenerationUsageReconciliation(ctx, task, err); persistErr != nil {
+				return nil, errors.Join(err, persistErr)
+			}
+			return nil, err
+		}
 		if errors.Is(err, listingsubscription.ErrUsageQuotaExceeded) {
 			quotaErr := generationQuotaFailure(task.ID)
 			if persistErr := markFailedTaskState(ctx, f.service.repo, task.ID, quotaErr.Error()); persistErr != nil {

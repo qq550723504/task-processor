@@ -148,7 +148,7 @@ func (r *taskRepository) ListExpiredGenerationUsageReservations(ctx context.Cont
 	}
 	var tasks []listingkit.Task
 	db := applyTaskAccessScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx).
-		Where("status = ? AND generation_usage_reservation_state <> '' AND generation_usage_reservation_lease_until IS NOT NULL AND generation_usage_reservation_lease_until <= ?", core.TaskStatusProcessing, dueBefore).
+		Where("status IN ? AND generation_usage_reservation_state <> '' AND generation_usage_reservation_lease_until IS NOT NULL AND generation_usage_reservation_lease_until <= ?", []core.TaskStatus{core.TaskStatusProcessing, core.TaskStatusCompleted, core.TaskStatusNeedsReview}, dueBefore).
 		Order("generation_usage_reservation_lease_until ASC").
 		Order("id ASC")
 	if limit > 0 {
