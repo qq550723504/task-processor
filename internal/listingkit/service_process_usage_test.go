@@ -132,6 +132,13 @@ func TestProcessListingKitReservesBeforeWorkflow(t *testing.T) {
 	if settlement.reservedTaskID != task.ID || settlement.committedTaskID != task.ID {
 		t.Fatalf("settlement task IDs = (%q, %q), want %q", settlement.reservedTaskID, settlement.committedTaskID, task.ID)
 	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.GenerationUsageReservationState != "" || stored.GenerationUsageReservationLeaseUntil != nil {
+		t.Fatalf("settled task reservation = (%q, %v), want cleared", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
+	}
 }
 
 func TestProcessListingKitQuotaRejectionSkipsWorkflow(t *testing.T) {
@@ -252,6 +259,129 @@ func TestProcessListingKitKeepsLegacyUsageOutsideGenerationLedgerCohort(t *testi
 	if len(settlement.calls) != 0 {
 		t.Fatalf("settlement calls = %#v, want none outside the configured cohort", settlement.calls)
 	}
+}
+
+func TestProcessListingKitReplaysExistingGenerationReservationAfterCohortNarrows(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{}
+	_, repo, productService, task := newProcessUsageFixture(t, settlement, nil)
+	task.BillingTenantID = "billing-selected"
+	task.GenerationUsageReservationState = GenerationUsageReservationStatePending
+	configured, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Core.GenerationUsageLedger = settlement
+			cfg.Core.GenerationUsageAdmission = generationUsageTestAdmission{tenantIDs: map[string]struct{}{}}
+		}),
+	))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	if _, err := configured.ProcessListingKit(context.Background(), task); err != nil {
+		t.Fatalf("ProcessListingKit() error = %v", err)
+	}
+	if len(settlement.calls) == 0 || settlement.calls[0] != "reserve" {
+		t.Fatalf("settlement calls = %#v, want existing reservation replayed", settlement.calls)
+	}
+}
+
+func TestProcessListingKitKeepsBlankBillingTenantOnLegacyPath(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{}
+	_, repo, productService, task := newProcessUsageFixture(t, settlement, nil)
+	configured, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Core.GenerationUsageLedger = settlement
+			cfg.Core.GenerationUsageAdmission = generationUsageTestAdmission{tenantIDs: map[string]struct{}{"tenant-17": {}}}
+		}),
+	))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	if _, err := configured.ProcessListingKit(context.Background(), task); err != nil {
+		t.Fatalf("ProcessListingKit() error = %v", err)
+	}
+	if len(settlement.calls) != 0 {
+		t.Fatalf("settlement calls = %#v, want no new usage for blank billing tenant", settlement.calls)
+	}
+}
+
+func TestProcessListingKitKeepsLegacyRetryPersistenceOutsideGenerationUsageCohort(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{}
+	_, repo, productService, task := newProcessUsageFixture(t, settlement, errors.New("OpenAI API error: insufficient credits in account balance"))
+	configured, err := NewService(newTestServiceConfig(
+		repo,
+		withTestProductService(productService),
+		withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}),
+		withTestConfig(func(cfg *ServiceConfig) {
+			cfg.Core.GenerationUsageLedger = settlement
+			cfg.Core.GenerationUsageAdmission = generationUsageTestAdmission{tenantIDs: map[string]struct{}{}}
+		}),
+	))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	if _, err := configured.ProcessListingKit(context.Background(), task); err == nil {
+		t.Fatal("ProcessListingKit() error = nil, want retryable provider failure")
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.RetryableBlock == nil || stored.RetryableBlock.NextRetryAt != nil {
+		t.Fatalf("retryable block = %#v, want legacy unscheduled retry block", stored.RetryableBlock)
+	}
+}
+
+func TestGenerationUsageReservationLeaseRenewerExtendsDurableLease(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{generationUsageRenewed: make(chan struct{}, 1)}}
+	task := &Task{
+		ID:                                   "generation-usage-lease-renewal",
+		TenantID:                             "tenant-17",
+		Status:                               core.TaskStatusProcessing,
+		GenerationUsageReservationState:      GenerationUsageReservationStateReserved,
+		GenerationUsageReservationLeaseUntil: timePointer(time.Now().UTC().Add(time.Minute)),
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	before := *repo.task.GenerationUsageReservationLeaseUntil
+	_, stop := startGenerationUsageReservationLeaseRenewer(context.Background(), task, repo, time.Millisecond)
+	t.Cleanup(func() {
+		if err := stop(); err != nil {
+			t.Fatalf("stop lease renewer error = %v", err)
+		}
+	})
+
+	select {
+	case <-repo.generationUsageRenewed:
+		if err := stop(); err != nil {
+			t.Fatalf("stop lease renewer error = %v", err)
+		}
+		if !repo.task.GenerationUsageReservationLeaseUntil.After(before) {
+			t.Fatalf("lease = %v, want a renewal after %v", repo.task.GenerationUsageReservationLeaseUntil, before)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for durable generation usage lease renewal")
+	}
+}
+
+func timePointer(value time.Time) *time.Time {
+	return &value
 }
 
 func TestProcessListingKitReleasesReservationOnWorkflowFailure(t *testing.T) {

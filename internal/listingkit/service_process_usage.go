@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,9 +21,22 @@ func (s *service) reserveGenerationUsage(ctx context.Context, task *Task) (Gener
 	if settlement == nil || task == nil {
 		return GenerationUsageReservation{}, false, nil
 	}
-	if admission := s.taskDeps.generationUsageAdmission; admission != nil && !admission.AllowsGenerationUsage(generationUsageTenantID(ctx, task)) {
+	if task.GenerationUsageReservationState == "" && !s.allowsNewGenerationUsageReservation(task) {
 		return GenerationUsageReservation{}, false, nil
 	}
+	if task.GenerationUsageReservationState != "" && s.taskDeps.generationUsageAdmission != nil && strings.TrimSpace(task.BillingTenantID) == "" {
+		return GenerationUsageReservation{}, true, errors.New("generation usage reservation is missing its billing tenant")
+	}
+	reservationRepo, ok := s.repo.(GenerationUsageReservationRepository)
+	if !ok {
+		return GenerationUsageReservation{}, true, errors.New("generation usage reservation repository is not configured")
+	}
+	leaseUntil := generationUsageReservationLeaseUntil()
+	if err := reservationRepo.BeginGenerationUsageReservation(ctx, task.ID, leaseUntil); err != nil {
+		return GenerationUsageReservation{}, true, err
+	}
+	task.GenerationUsageReservationState = GenerationUsageReservationStatePending
+	task.GenerationUsageReservationLeaseUntil = &leaseUntil
 	// A new reservation belongs to the period in which generation is actually
 	// claimed. The ledger resolves an existing idempotency key first and keeps
 	// its persisted period/occurrence for replays, so delayed tasks cannot be
@@ -32,7 +46,88 @@ func (s *service) reserveGenerationUsage(ctx context.Context, task *Task) (Gener
 	if err != nil {
 		return GenerationUsageReservation{}, true, err
 	}
+	if err := reservationRepo.MarkGenerationUsageReserved(ctx, task.ID, leaseUntil); err != nil {
+		return GenerationUsageReservation{}, true, err
+	}
+	task.GenerationUsageReservationState = GenerationUsageReservationStateReserved
+	task.GenerationUsageReservationLeaseUntil = &leaseUntil
 	return reservation, true, nil
+}
+
+const (
+	generationUsageReservationLeaseDuration   = 10 * time.Minute
+	generationUsageReservationRenewalInterval = 3 * time.Minute
+)
+
+func generationUsageReservationLeaseUntil() time.Time {
+	return time.Now().UTC().Add(generationUsageReservationLeaseDuration)
+}
+
+func (s *service) startGenerationUsageReservationLeaseRenewal(ctx context.Context, task *Task) (context.Context, func() error) {
+	reservationRepo, ok := s.repo.(GenerationUsageReservationRepository)
+	if !ok || task == nil || task.GenerationUsageReservationState == "" {
+		return ctx, func() error { return nil }
+	}
+	return startGenerationUsageReservationLeaseRenewer(ctx, task, reservationRepo, generationUsageReservationRenewalInterval)
+}
+
+func startGenerationUsageReservationLeaseRenewer(ctx context.Context, task *Task, reservationRepo GenerationUsageReservationRepository, interval time.Duration) (context.Context, func() error) {
+	if task == nil || reservationRepo == nil || interval <= 0 {
+		return ctx, func() error { return nil }
+	}
+	workflowCtx, cancelWorkflow := context.WithCancel(ctx)
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	var stopOnce sync.Once
+	var errMu sync.Mutex
+	var renewalErr error
+
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				persistCtx, persistCancel := settlementPersistenceContext(ctx)
+				err := reservationRepo.RenewGenerationUsageReservation(persistCtx, task.ID, generationUsageReservationLeaseUntil())
+				persistCancel()
+				if err == nil {
+					continue
+				}
+				errMu.Lock()
+				renewalErr = fmt.Errorf("renew generation usage reservation lease: %w", err)
+				errMu.Unlock()
+				cancelWorkflow()
+				return
+			}
+		}
+	}()
+
+	return workflowCtx, func() error {
+		stopOnce.Do(func() {
+			close(stop)
+			cancelWorkflow()
+			<-done
+		})
+		errMu.Lock()
+		defer errMu.Unlock()
+		return renewalErr
+	}
+}
+
+func (s *service) allowsNewGenerationUsageReservation(task *Task) bool {
+	if s == nil || task == nil {
+		return false
+	}
+	admission := s.taskDeps.generationUsageAdmission
+	if admission == nil {
+		return true
+	}
+	billingTenantID := strings.TrimSpace(task.BillingTenantID)
+	return billingTenantID != "" && admission.AllowsGenerationUsage(billingTenantID)
 }
 
 func (s *service) releaseGenerationUsage(ctx context.Context, task *Task, reason string) error {
@@ -40,7 +135,10 @@ func (s *service) releaseGenerationUsage(ctx context.Context, task *Task, reason
 	if settlement == nil || task == nil {
 		return nil
 	}
-	return settlement.ReleaseGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, strings.TrimSpace(reason))
+	if err := settlement.ReleaseGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, strings.TrimSpace(reason)); err != nil {
+		return err
+	}
+	return s.clearGenerationUsageReservation(ctx, task)
 }
 
 func (s *service) commitGenerationUsage(ctx context.Context, task *Task) error {
@@ -48,7 +146,26 @@ func (s *service) commitGenerationUsage(ctx context.Context, task *Task) error {
 	if settlement == nil || task == nil {
 		return nil
 	}
-	return settlement.CommitGeneration(ctx, generationUsageTenantID(ctx, task), task.ID)
+	if err := settlement.CommitGeneration(ctx, generationUsageTenantID(ctx, task), task.ID); err != nil {
+		return err
+	}
+	return s.clearGenerationUsageReservation(ctx, task)
+}
+
+func (s *service) clearGenerationUsageReservation(ctx context.Context, task *Task) error {
+	if task == nil {
+		return nil
+	}
+	reservationRepo, ok := s.repo.(GenerationUsageReservationRepository)
+	if !ok {
+		return errors.New("generation usage reservation repository is not configured")
+	}
+	if err := reservationRepo.ClearGenerationUsageReservation(ctx, task.ID); err != nil {
+		return err
+	}
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
+	return nil
 }
 
 func generationUsageTenantID(ctx context.Context, task *Task) string {

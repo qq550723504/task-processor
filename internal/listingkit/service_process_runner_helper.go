@@ -53,12 +53,30 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 		return result, nil
 	}
 
-	result, err := f.service.runWorkflow(ctx, task)
+	workflowCtx := ctx
+	stopLeaseRenewal := func() error { return nil }
+	if usageEnabled {
+		workflowCtx, stopLeaseRenewal = f.service.startGenerationUsageReservationLeaseRenewal(ctx, task)
+	}
+	result, err := f.service.runWorkflow(workflowCtx, task)
+	if renewalErr := stopLeaseRenewal(); renewalErr != nil {
+		if err == nil {
+			err = renewalErr
+		} else {
+			err = errors.Join(err, renewalErr)
+		}
+	}
 	if err != nil {
 		workflowErr := err
 		log.WithError(err).Error("listing kit workflow failed")
 		if _, retryable := classifyRetryableTaskFailure(workflowErr); retryable {
-			if persistErr := f.service.persistProcessRetryableFailure(ctx, task, result, workflowErr, usageEnabled); persistErr != nil {
+			var persistErr error
+			if usageEnabled {
+				persistErr = f.service.persistProcessRetryableFailure(ctx, task, result, workflowErr, true)
+			} else {
+				persistErr = f.service.persistProcessFailure(ctx, task.ID, result, workflowErr)
+			}
+			if persistErr != nil {
 				log.WithError(persistErr).Error("failed to persist scheduled listing kit workflow failure")
 				return nil, errors.Join(err, persistErr)
 			}
