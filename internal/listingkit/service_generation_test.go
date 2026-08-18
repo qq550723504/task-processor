@@ -142,6 +142,18 @@ func (r *stubGenerationRepo) ClearGenerationUsageReservation(_ context.Context, 
 	return nil
 }
 
+func (r *stubGenerationRepo) FinalizeGenerationUsageAdmission(_ context.Context, taskID string, status core.TaskStatus, block *RetryableBlock, errorMsg string) error {
+	if r.task == nil || r.task.ID != taskID || (status != core.TaskStatusFailed && (status != core.TaskStatusBlockedRetryable || block == nil)) {
+		return core.ErrTaskNotRecoverable
+	}
+	r.task.Status = status
+	r.task.RetryableBlock = cloneRetryableBlock(block)
+	r.task.Error = errorMsg
+	r.task.GenerationUsageReservationState = ""
+	r.task.GenerationUsageReservationLeaseUntil = nil
+	return nil
+}
+
 func (r *stubGenerationRepo) PrepareGenerationUsageRelease(_ context.Context, taskID string, block *RetryableBlock, errorMsg string, result *ListingKitResult) error {
 	if r.task == nil || r.task.ID != taskID || block == nil || block.ReasonCode != usageReleasePendingReason {
 		return core.ErrTaskNotRecoverable

@@ -352,8 +352,13 @@ func markFailedTaskState(ctx context.Context, repo Repository, taskID, errorMsg 
 	persistCtx, cancel := settlementPersistenceContext(ctx)
 	defer cancel()
 	var lastErr error
+	admissionRepo, clearsAdmission := repo.(GenerationUsageAdmissionRepository)
 	for attempt := 0; attempt < 3; attempt++ {
-		lastErr = repo.MarkFailed(persistCtx, taskID, errorMsg)
+		if clearsAdmission {
+			lastErr = admissionRepo.FinalizeGenerationUsageAdmission(persistCtx, taskID, core.TaskStatusFailed, nil, errorMsg)
+		} else {
+			lastErr = repo.MarkFailed(persistCtx, taskID, errorMsg)
+		}
 		if lastErr == nil {
 			return nil
 		}
@@ -391,6 +396,18 @@ func markPersistencePending(ctx context.Context, repo Repository, taskID, reason
 	}
 	persistCtx, cancel := settlementPersistenceContext(ctx)
 	defer cancel()
+	if reasonCode == terminalPersistencePendingReason {
+		if admissionRepo, ok := repo.(GenerationUsageAdmissionRepository); ok {
+			var lastErr error
+			for attempt := 0; attempt < 3; attempt++ {
+				lastErr = admissionRepo.FinalizeGenerationUsageAdmission(persistCtx, taskID, core.TaskStatusBlockedRetryable, block, errorMsg)
+				if lastErr == nil || persistCtx.Err() != nil {
+					return lastErr
+				}
+			}
+			return lastErr
+		}
+	}
 	return markRetryableTaskState(persistCtx, repo, taskID, block, errorMsg)
 }
 

@@ -72,6 +72,13 @@ type GenerationUsageReservationRepository interface {
 	ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, expectedStatus core.TaskStatus, dueBefore time.Time, block *RetryableBlock, errorMsg string, clearReservation bool) error
 }
 
+// GenerationUsageAdmissionRepository atomically finishes a task-side usage
+// admission intent after the ledger has definitively rejected it. Unlike a
+// release saga, quota rejection creates no ledger event to replay.
+type GenerationUsageAdmissionRepository interface {
+	FinalizeGenerationUsageAdmission(ctx context.Context, taskID string, status core.TaskStatus, block *RetryableBlock, errorMsg string) error
+}
+
 // GenerationUsageReleaseRecoveryRepository persists the release saga around
 // the external PAY-041 release. Preparing the recovery state before the
 // external call keeps an idempotent replay intent durable; resolving it clears

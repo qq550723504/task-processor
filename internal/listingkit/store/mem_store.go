@@ -273,6 +273,25 @@ func (r *MemTaskRepository) ClearGenerationUsageReservation(ctx context.Context,
 	return nil
 }
 
+func (r *MemTaskRepository) FinalizeGenerationUsageAdmission(ctx context.Context, taskID string, status core.TaskStatus, block *listingkit.RetryableBlock, errorMsg string) error {
+	if status != core.TaskStatusFailed && (status != core.TaskStatusBlockedRetryable || block == nil) {
+		return core.ErrTaskNotRecoverable
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return core.ErrTaskNotFound
+	}
+	task.Status = status
+	task.RetryableBlock = copyRetryableBlock(block)
+	task.Error = errorMsg
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
+	task.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
 func (r *MemTaskRepository) PrepareGenerationUsageRelease(ctx context.Context, taskID string, block *listingkit.RetryableBlock, errorMsg string, result *listingkit.ListingKitResult) error {
 	if block == nil || block.ReasonCode != "usage_release_pending" {
 		return core.ErrTaskNotRecoverable

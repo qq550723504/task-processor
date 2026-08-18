@@ -146,6 +146,19 @@ func (r *taskRepository) ClearGenerationUsageReservation(ctx context.Context, ta
 	})
 }
 
+func (r *taskRepository) FinalizeGenerationUsageAdmission(ctx context.Context, taskID string, status core.TaskStatus, block *listingkit.RetryableBlock, errorMsg string) error {
+	if status != core.TaskStatusFailed && (status != core.TaskStatusBlockedRetryable || block == nil) {
+		return core.ErrTaskNotRecoverable
+	}
+	return r.updateTaskFields(ctx, taskID, map[string]any{
+		"status":                             status,
+		"retryable_block":                    copyRetryableBlock(block),
+		"error":                              errorMsg,
+		"generation_usage_reservation_state": "",
+		"generation_usage_reservation_lease_until": nil,
+	})
+}
+
 func (r *taskRepository) PrepareGenerationUsageRelease(ctx context.Context, taskID string, block *listingkit.RetryableBlock, errorMsg string, taskResult *listingkit.ListingKitResult) error {
 	if block == nil || block.ReasonCode != "usage_release_pending" {
 		return core.ErrTaskNotRecoverable

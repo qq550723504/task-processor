@@ -108,6 +108,17 @@ func (r *stubProcessStatusRepo) ResolveGenerationUsageRelease(ctx context.Contex
 	return r.stubGenerationRepo.ResolveGenerationUsageRelease(ctx, taskID, terminalError)
 }
 
+func (r *stubProcessStatusRepo) FinalizeGenerationUsageAdmission(ctx context.Context, taskID string, status core.TaskStatus, block *RetryableBlock, errorMsg string) error {
+	if len(r.failedErrs) > 0 {
+		err := r.failedErrs[0]
+		r.failedErrs = r.failedErrs[1:]
+		if err != nil {
+			return err
+		}
+	}
+	return r.stubGenerationRepo.FinalizeGenerationUsageAdmission(ctx, taskID, status, block, errorMsg)
+}
+
 func TestProcessListingKitMarksNeedsReviewWhenSummaryRequiresReview(t *testing.T) {
 	t.Parallel()
 

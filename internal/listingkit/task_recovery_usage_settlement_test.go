@@ -228,6 +228,40 @@ func TestRecoverTaskNowUsesPersistenceOnlyRecoveryWhenReleaseFinalizationFails(t
 	}
 }
 
+func TestRecoverTaskNowDoesNotReblockAlreadyResolvedUsageRelease(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	ctx := WithTenantID(context.Background(), "tenant-usage-release-race")
+	leaseUntil := time.Now().UTC().Add(time.Hour)
+	task := &Task{ID: "task-usage-release-race", TenantID: "tenant-usage-release-race", Status: core.TaskStatusProcessing, Error: "provider rejected listing generation", GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{ReasonCode: usageReleasePendingReason, TerminalError: task.Error, NextRetryAt: timestampTaskRecoveryServiceTest(time.Now().Add(-time.Minute)), AutoResumeEnabled: true}, "usage release pending"); err != nil {
+		t.Fatalf("MarkBlockedRetryable() error = %v", err)
+	}
+	repo.resolveUsageReleaseHook = func(task *Task) {
+		task.Status = core.TaskStatusFailed
+		task.RetryableBlock = nil
+		task.GenerationUsageReservationState = ""
+		task.GenerationUsageReservationLeaseUntil = nil
+	}
+	repo.resolveUsageReleaseErrors = []error{core.ErrTaskNotRecoverable}
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{repo: repo, generationUsage: &recordingRecoveryUsageSettlement{}})
+
+	recovered, err := svc.RecoverTaskNow(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("RecoverTaskNow() error = %v", err)
+	}
+	if recovered.Status != core.TaskStatusFailed || recovered.RetryableBlock != nil || recovered.GenerationUsageReservationState != "" || recovered.GenerationUsageReservationLeaseUntil != nil {
+		t.Fatalf("recovered task = %#v, want already-resolved failed task", recovered)
+	}
+	if repo.markBlockedRetryableCallCount != 1 {
+		t.Fatalf("MarkBlockedRetryable calls = %d, want only the initial block", repo.markBlockedRetryableCallCount)
+	}
+}
+
 func TestRecoverTaskNowHandlesTerminalPersistenceWithoutProviderSubmit(t *testing.T) {
 	t.Parallel()
 

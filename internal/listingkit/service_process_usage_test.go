@@ -257,6 +257,26 @@ func TestProcessListingKitQuotaRejectionFallbackRemainsRecoverable(t *testing.T)
 	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != terminalPersistencePendingReason {
 		t.Fatalf("stored task = %#v, want terminal persistence fallback block", stored)
 	}
+	if stored.GenerationUsageReservationState != "" || stored.GenerationUsageReservationLeaseUntil != nil {
+		t.Fatalf("quota fallback reservation = (%q, %v), want cleared definitive rejection intent", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
+	}
+}
+
+func TestProcessListingKitQuotaRejectionClearsReservationIntent(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{reserveErr: listingsubscription.ErrUsageQuotaExceeded}
+	svc, repo, _, task := newProcessUsageFixture(t, settlement, nil)
+	if _, err := svc.ProcessListingKit(context.Background(), task); !errors.Is(err, listingsubscription.ErrUsageQuotaExceeded) {
+		t.Fatalf("ProcessListingKit() error = %v, want quota rejection", err)
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusFailed || stored.GenerationUsageReservationState != "" || stored.GenerationUsageReservationLeaseUntil != nil {
+		t.Fatalf("quota-rejected task = %#v, want failed task with cleared admission intent", stored)
+	}
 }
 
 func TestProcessListingKitCommittedReplayFallbackRemainsRecoverable(t *testing.T) {

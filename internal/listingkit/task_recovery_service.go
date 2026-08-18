@@ -231,6 +231,11 @@ func (s *taskRecoveryService) recoverUsageRelease(ctx context.Context, task *Tas
 		return nil, s.reblockUsageSettlement(ctx, task, errors.New("generation usage release recovery repository is not configured"))
 	}
 	if err := recovery.ResolveGenerationUsageRelease(ctx, task.ID, terminalRecoveryError(task)); err != nil {
+		if errors.Is(err, core.ErrTaskNotRecoverable) {
+			if current, loadErr := s.repo.GetTask(ctx, task.ID); loadErr == nil && isResolvedUsageRelease(current) {
+				return current, nil
+			}
+		}
 		return nil, s.reblockUsageSettlement(ctx, task, err)
 	}
 	return s.repo.GetTask(ctx, task.ID)
@@ -241,6 +246,10 @@ func isResolvedUsageCommit(task *Task) bool {
 		return false
 	}
 	return (task.Status == core.TaskStatusCompleted || task.Status == core.TaskStatusNeedsReview) && task.Result.Status == string(task.Status)
+}
+
+func isResolvedUsageRelease(task *Task) bool {
+	return task != nil && task.Status == core.TaskStatusFailed && task.RetryableBlock == nil && task.GenerationUsageReservationState == "" && task.GenerationUsageReservationLeaseUntil == nil
 }
 
 func usageReleaseRecoveryReason(task *Task) string {
