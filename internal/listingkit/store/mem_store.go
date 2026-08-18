@@ -244,6 +244,9 @@ func (r *MemTaskRepository) ResolveUsageSettlement(ctx context.Context, taskID s
 	task.Status = core.TaskStatus(task.Result.Status)
 	task.RetryableBlock = nil
 	task.Error = ""
+	if task.Result.Status == string(core.TaskStatusNeedsReview) {
+		task.Error = listingkit.TaskNeedsReviewReason(task.Result)
+	}
 	task.GenerationUsageReservationState = ""
 	task.GenerationUsageReservationLeaseUntil = nil
 	task.UpdatedAt = time.Now().UTC()
@@ -380,7 +383,7 @@ func generationUsageReservationMayNeedSettlement(status core.TaskStatus) bool {
 }
 
 func (r *MemTaskRepository) ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, expectedStatus core.TaskStatus, dueBefore time.Time, block *listingkit.RetryableBlock, errorMsg string, clearReservation bool) error {
-	if block == nil || dueBefore.IsZero() || (expectedStatus != core.TaskStatusPending && expectedStatus != core.TaskStatusProcessing) {
+	if block == nil || dueBefore.IsZero() || !generationUsageReservationMayNeedSettlement(expectedStatus) {
 		return core.ErrTaskNotRecoverable
 	}
 	r.mu.Lock()

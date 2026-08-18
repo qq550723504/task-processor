@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"reflect"
 	"time"
 
 	"task-processor/internal/asset"
@@ -67,6 +68,19 @@ func (r *stubGenerationRepo) MarkBlockedRetryable(ctx context.Context, taskID st
 	r.task.Error = errorMsg
 	r.task.UpdatedAt = time.Now()
 	return nil
+}
+
+func (r *stubGenerationRepo) MarkBlockedRetryableIfCurrent(ctx context.Context, taskID string, expected, next *RetryableBlock, errorMsg string) (bool, error) {
+	if r.task == nil || r.task.ID != taskID {
+		return false, core.ErrTaskNotFound
+	}
+	if r.task.Status != core.TaskStatusBlockedRetryable || !reflect.DeepEqual(r.task.RetryableBlock, expected) {
+		return false, nil
+	}
+	if err := r.MarkBlockedRetryable(ctx, taskID, next, errorMsg); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 func (r *stubGenerationRepo) ListRecoverableTasks(context.Context, *RecoverableTaskQuery) ([]Task, error) {
 	return []Task{}, nil

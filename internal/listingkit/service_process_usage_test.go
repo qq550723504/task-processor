@@ -115,7 +115,8 @@ func TestProcessListingKitDoesNotReblockConcurrentlyResolvedUsageRelease(t *test
 	t.Parallel()
 
 	workflowErr := errors.New("provider rejected listing generation")
-	settlement := &recordingGenerationUsageSettlement{}
+	releaseErr := errors.New("usage ledger unavailable")
+	settlement := &recordingGenerationUsageSettlement{releaseErr: releaseErr}
 	svc, repo, _, task := newProcessUsageFixture(t, settlement, workflowErr)
 	settlement.onRelease = func() {
 		if err := repo.ResolveGenerationUsageRelease(context.Background(), task.ID, workflowErr.Error()); err != nil {
@@ -135,6 +136,44 @@ func TestProcessListingKitDoesNotReblockConcurrentlyResolvedUsageRelease(t *test
 	}
 	if repo.blockedCalls != 0 {
 		t.Fatalf("MarkBlockedRetryable calls = %d, want no stale reblock", repo.blockedCalls)
+	}
+}
+
+func TestListingKitProcessFlowReconcilesCanceledProviderCallBeforeUsageRelease(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{}
+	svc, repo, _, task := newProcessUsageFixture(t, settlement, context.Canceled)
+	concrete, ok := svc.(*service)
+	if !ok {
+		t.Fatalf("service = %T, want *service", svc)
+	}
+	flow := buildListingKitProcessFlow(concrete)
+	flow.startUsageLeaseRenewal = func(context.Context, *Task) (context.Context, func() error) {
+		canceled, cancel := context.WithCancel(context.Background())
+		cancel()
+		return canceled, func() error { return nil }
+	}
+
+	result, err := flow.run(context.Background(), task, logrus.NewEntry(logrus.New()))
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("run() error = %v, want context.Canceled", err)
+	}
+	if result != nil {
+		t.Fatalf("run() result = %#v, want nil while reconciliation is required", result)
+	}
+	if settlement.releasedTaskID != "" {
+		t.Fatalf("released task = %q, want held reservation for reconciliation", settlement.releasedTaskID)
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || stored.RetryableBlock.AutoResumeEnabled {
+		t.Fatalf("stored task = %#v, want non-automatic reconciliation block", stored)
+	}
+	if stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("stored reservation = (%q, %v), want retained intent", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
 	}
 }
 

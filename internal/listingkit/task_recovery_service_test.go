@@ -999,6 +999,9 @@ func (r *taskRecoveryServiceTestRepo) ListExpiredGenerationUsageReservations(_ c
 }
 
 func (r *taskRecoveryServiceTestRepo) ResolveExpiredGenerationUsageReservation(_ context.Context, taskID string, expectedStatus core.TaskStatus, dueBefore time.Time, block *RetryableBlock, errorMsg string, clearReservation bool) error {
+	if block == nil || (expectedStatus != core.TaskStatusPending && expectedStatus != core.TaskStatusProcessing && expectedStatus != core.TaskStatusCompleted && expectedStatus != core.TaskStatusNeedsReview) {
+		return core.ErrTaskNotRecoverable
+	}
 	task, ok := r.tasks[taskID]
 	if !ok || task.Status != expectedStatus || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
 		return core.ErrTaskNotRecoverable

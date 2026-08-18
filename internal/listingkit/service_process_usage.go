@@ -237,12 +237,6 @@ func (s *service) reblockGenerationUsageRelease(ctx context.Context, task *Task,
 	if task == nil || block == nil {
 		return recoveryErr
 	}
-	if errors.Is(recoveryErr, core.ErrTaskNotRecoverable) {
-		if current, loadErr := s.repo.GetTask(ctx, task.ID); loadErr == nil && isResolvedUsageRelease(current) {
-			*task = *current
-			return nil
-		}
-	}
 	classified, _ := submissiondomain.ClassifyRetryableFailure(recoveryErr, usageSettlementRecoveryScope)
 	updated := adaptSubmissionRetryableBlock(submissiondomain.BuildReblockedRetryableBlock(
 		adaptRetryableBlockState(block),
@@ -258,8 +252,20 @@ func (s *service) reblockGenerationUsageRelease(ctx context.Context, task *Task,
 	updated.AutoResumeEnabled = block.AutoResumeEnabled
 	persistCtx, cancel := settlementPersistenceContext(ctx)
 	defer cancel()
-	if err := markRetryableTaskState(persistCtx, s.repo, task.ID, updated, recoveryErr.Error()); err != nil {
+	repository, ok := s.repo.(ConditionalRetryableBlockRepository)
+	if !ok {
+		return errors.Join(recoveryErr, errors.New("conditional retryable block repository is not configured"))
+	}
+	applied, err := repository.MarkBlockedRetryableIfCurrent(persistCtx, task.ID, block, updated, recoveryErr.Error())
+	if err != nil {
 		return errors.Join(recoveryErr, err)
+	}
+	if !applied {
+		if current, loadErr := s.repo.GetTask(ctx, task.ID); loadErr == nil && isResolvedUsageRelease(current) {
+			*task = *current
+			return nil
+		}
+		return errors.Join(recoveryErr, core.ErrTaskNotRecoverable)
 	}
 	return recoveryErr
 }

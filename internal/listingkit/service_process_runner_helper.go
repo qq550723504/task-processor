@@ -97,6 +97,16 @@ func (f *listingKitProcessFlow) run(ctx context.Context, task *Task, log *logrus
 	}
 	if workflowErr != nil {
 		log.WithError(workflowErr).Error("listing kit workflow failed")
+		// A canceled provider call is ambiguous: the remote provider can accept
+		// work before the local worker observes cancellation. Keep the reservation
+		// under explicit reconciliation rather than releasing quota and risking a
+		// second provider invocation for the same task.
+		if usageEnabled && errors.Is(workflowErr, context.Canceled) {
+			if persistErr := f.service.persistGenerationUsageReconciliation(ctx, task, workflowErr); persistErr != nil {
+				return nil, errors.Join(workflowErr, persistErr)
+			}
+			return nil, workflowErr
+		}
 		if _, retryable := classifyRetryableTaskFailure(workflowErr); retryable {
 			var persistErr error
 			if usageEnabled {

@@ -1026,6 +1026,48 @@ func TestRunRecoverySweepCommitsTerminalTaskWithExpiredGenerationReservation(t *
 	}
 }
 
+func TestRunRecoverySweepDoesNotReblockTerminalReservationSettledByConcurrentWorker(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	now := time.Date(2026, 8, 17, 5, 20, 0, 0, time.UTC)
+	ctx := WithTenantID(context.Background(), "tenant-terminal-generation-race")
+	leaseUntil := now.Add(-time.Minute)
+	task := &Task{ID: "task-terminal-generation-race", TenantID: "tenant-terminal-generation-race", Status: core.TaskStatusCompleted, Result: &ListingKitResult{Status: string(core.TaskStatusCompleted)}, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: now.Add(-time.Hour), UpdatedAt: now.Add(-time.Hour)}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	commitErr := errors.New("ledger unavailable after concurrent commit")
+	settlement := &recordingRecoveryUsageSettlement{commitErr: commitErr, commitHook: func() {
+		concurrent := repo.tasks[task.ID]
+		concurrent.GenerationUsageReservationState = ""
+		concurrent.GenerationUsageReservationLeaseUntil = nil
+	}}
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{
+		repo:            repo,
+		generationUsage: settlement,
+		taskSubmitter: func() TaskSubmitter {
+			return taskRecoveryTestSubmitter(func(string) error { return nil })
+		},
+		now: func() time.Time { return now },
+	})
+
+	recovered, err := svc.RunRecoverySweep(ctx, now, 10)
+	if err != nil {
+		t.Fatalf("RunRecoverySweep() error = %v, want concurrent terminal resolution accepted", err)
+	}
+	if recovered != 1 || settlement.commitCalls != 1 {
+		t.Fatalf("recovered/commit = (%d, %d), want (1, 1)", recovered, settlement.commitCalls)
+	}
+	got, err := repo.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if got.Status != core.TaskStatusCompleted || got.RetryableBlock != nil || got.GenerationUsageReservationState != "" || got.GenerationUsageReservationLeaseUntil != nil {
+		t.Fatalf("concurrently settled task = %#v, want terminal task without a stale commit block", got)
+	}
+}
+
 func TestRecoverTaskNowRejectsGenerationUsageReconciliationWithoutProviderSubmit(t *testing.T) {
 	t.Parallel()
 

@@ -137,10 +137,14 @@ func (r *taskRepository) ResolveUsageSettlement(ctx context.Context, taskID stri
 	if task.Result == nil || (task.Result.Status != string(core.TaskStatusCompleted) && task.Result.Status != string(core.TaskStatusNeedsReview)) {
 		return core.ErrTaskNotRecoverable
 	}
+	errorMsg := ""
+	if task.Result.Status == string(core.TaskStatusNeedsReview) {
+		errorMsg = listingkit.TaskNeedsReviewReason(task.Result)
+	}
 	return r.updateTaskFields(ctx, taskID, map[string]any{
 		"status":                             core.TaskStatus(task.Result.Status),
 		"retryable_block":                    nil,
-		"error":                              "",
+		"error":                              errorMsg,
 		"generation_usage_reservation_state": "",
 		"generation_usage_reservation_lease_until": nil,
 	})
@@ -265,7 +269,7 @@ func (r *taskRepository) ListExpiredGenerationUsageReservations(ctx context.Cont
 }
 
 func (r *taskRepository) ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, expectedStatus core.TaskStatus, dueBefore time.Time, block *listingkit.RetryableBlock, errorMsg string, clearReservation bool) error {
-	if block == nil || dueBefore.IsZero() || (expectedStatus != core.TaskStatusPending && expectedStatus != core.TaskStatusProcessing) {
+	if block == nil || dueBefore.IsZero() || !generationUsageReservationMayNeedSettlement(expectedStatus) {
 		return core.ErrTaskNotRecoverable
 	}
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {

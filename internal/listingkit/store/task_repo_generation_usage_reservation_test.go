@@ -178,6 +178,44 @@ func TestResolveExpiredGenerationUsageReservationRejectsRenewedLease(t *testing.
 	}
 }
 
+func TestResolveExpiredTerminalGenerationUsageReservationFencesConcurrentSettlement(t *testing.T) {
+	t.Parallel()
+
+	for _, factory := range generationUsageReservationRepoFactories(t) {
+		t.Run(factory.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := factory.new(t)
+			ctx := context.Background()
+			now := time.Date(2026, 8, 18, 8, 0, 0, 0, time.UTC)
+			leaseUntil := now.Add(-time.Minute)
+			task := retryableTaskFixture("expired-terminal-generation-usage", now.Add(-time.Hour))
+			task.Status = core.TaskStatusCompleted
+			task.Result = &listingkit.ListingKitResult{Status: string(core.TaskStatusCompleted)}
+			task.GenerationUsageReservationState = listingkit.GenerationUsageReservationStateReserved
+			task.GenerationUsageReservationLeaseUntil = &leaseUntil
+			if err := repo.CreateTask(ctx, task); err != nil {
+				t.Fatalf("CreateTask() error = %v", err)
+			}
+
+			if err := repo.ClearGenerationUsageReservation(ctx, task.ID); err != nil {
+				t.Fatalf("concurrent ClearGenerationUsageReservation() error = %v", err)
+			}
+			err := repo.ResolveExpiredGenerationUsageReservation(ctx, task.ID, core.TaskStatusCompleted, now, &listingkit.RetryableBlock{ReasonCode: "usage_commit_pending"}, "usage settlement pending", false)
+			if !errors.Is(err, core.ErrTaskNotRecoverable) {
+				t.Fatalf("ResolveExpiredGenerationUsageReservation() error = %v, want ErrTaskNotRecoverable after concurrent settlement", err)
+			}
+			got, err := repo.GetTask(ctx, task.ID)
+			if err != nil {
+				t.Fatalf("GetTask() error = %v", err)
+			}
+			if got.Status != core.TaskStatusCompleted || got.RetryableBlock != nil || got.GenerationUsageReservationState != "" || got.GenerationUsageReservationLeaseUntil != nil {
+				t.Fatalf("concurrently settled task = %#v, want terminal task without a stale commit block", got)
+			}
+		})
+	}
+}
+
 type generationUsageReservationRepoFactory struct {
 	name string
 	new  func(t *testing.T) generationUsageReservationTestRepository

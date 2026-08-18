@@ -430,7 +430,7 @@ func (s *taskRecoveryService) recoverExpiredGenerationUsageReservations(ctx cont
 	for i := range items {
 		task := &items[i]
 		if task.Status == core.TaskStatusCompleted || task.Status == core.TaskStatusNeedsReview {
-			if err := s.settleExpiredTerminalGenerationUsageReservation(ctx, task); err != nil {
+			if err := s.settleExpiredTerminalGenerationUsageReservation(ctx, task, dueBefore); err != nil {
 				recoveryErr = errors.Join(recoveryErr, err)
 				continue
 			}
@@ -449,24 +449,24 @@ func (s *taskRecoveryService) recoverExpiredGenerationUsageReservations(ctx cont
 	return recovered, recoveryErr
 }
 
-func (s *taskRecoveryService) settleExpiredTerminalGenerationUsageReservation(ctx context.Context, task *Task) error {
+func (s *taskRecoveryService) settleExpiredTerminalGenerationUsageReservation(ctx context.Context, task *Task, dueBefore time.Time) error {
 	if s == nil || s.generationUsage == nil || task == nil || task.Result == nil {
 		return s.markGenerationUsageReconciliation(ctx, task, "terminal generation usage reservation cannot be settled")
 	}
 	if err := s.generationUsage.CommitGeneration(ctx, generationUsageTenantID(ctx, task), task.ID); err != nil {
-		return s.markExpiredGenerationUsageCommitPending(ctx, task, err)
+		return s.markExpiredGenerationUsageCommitPending(ctx, task, dueBefore, err)
 	}
 	reservations, ok := s.repo.(GenerationUsageReservationRepository)
 	if !ok {
-		return s.markExpiredGenerationUsageCommitPending(ctx, task, errors.New("generation usage reservation repository is not configured"))
+		return s.markExpiredGenerationUsageCommitPending(ctx, task, dueBefore, errors.New("generation usage reservation repository is not configured"))
 	}
 	if err := reservations.ClearGenerationUsageReservation(ctx, task.ID); err != nil {
-		return s.markExpiredGenerationUsageCommitPending(ctx, task, err)
+		return s.markExpiredGenerationUsageCommitPending(ctx, task, dueBefore, err)
 	}
 	return nil
 }
 
-func (s *taskRecoveryService) markExpiredGenerationUsageCommitPending(ctx context.Context, task *Task, commitErr error) error {
+func (s *taskRecoveryService) markExpiredGenerationUsageCommitPending(ctx context.Context, task *Task, dueBefore time.Time, commitErr error) error {
 	if task == nil {
 		return commitErr
 	}
@@ -481,12 +481,29 @@ func (s *taskRecoveryService) markExpiredGenerationUsageCommitPending(ctx contex
 		RecoveryScope:        usageSettlementRecoveryScope,
 		AutoResumeEnabled:    true,
 	}
+	reservations, ok := s.repo.(GenerationUsageReservationRepository)
+	if !ok {
+		return errors.Join(commitErr, errors.New("generation usage reservation repository is not configured"))
+	}
 	persistCtx, cancel := settlementPersistenceContext(ctx)
 	defer cancel()
-	if err := markRetryableTaskState(persistCtx, s.repo, task.ID, block, block.ReasonMessage); err != nil {
+	if err := reservations.ResolveExpiredGenerationUsageReservation(persistCtx, task.ID, task.Status, dueBefore, block, block.ReasonMessage, false); err != nil {
+		if errors.Is(err, core.ErrTaskNotRecoverable) {
+			if current, loadErr := s.repo.GetTask(ctx, task.ID); loadErr == nil && isSettledTerminalGenerationUsageReservation(current) {
+				return nil
+			}
+		}
 		return errors.Join(commitErr, err)
 	}
 	return commitErr
+}
+
+func isSettledTerminalGenerationUsageReservation(task *Task) bool {
+	return task != nil &&
+		(task.Status == core.TaskStatusCompleted || task.Status == core.TaskStatusNeedsReview) &&
+		task.RetryableBlock == nil &&
+		task.GenerationUsageReservationState == "" &&
+		task.GenerationUsageReservationLeaseUntil == nil
 }
 
 func (s *taskRecoveryService) markGenerationUsageReconciliation(ctx context.Context, task *Task, errorMsg string) error {

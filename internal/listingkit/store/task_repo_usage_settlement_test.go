@@ -58,6 +58,50 @@ func TestTaskRepositoryUsageSettlementResolutionRetainsTerminalResult(t *testing
 	}
 }
 
+func TestTaskRepositoryUsageSettlementResolutionRestoresNeedsReviewReason(t *testing.T) {
+	for _, factory := range []struct {
+		name string
+		new  func(*testing.T) listingkit.Repository
+	}{
+		{name: "memory", new: func(*testing.T) listingkit.Repository { return NewMemTaskRepository() }},
+		{name: "gorm", new: func(t *testing.T) listingkit.Repository {
+			t.Helper()
+			db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+			if err != nil {
+				t.Fatalf("open db: %v", err)
+			}
+			if err := db.AutoMigrate(&listingkit.Task{}); err != nil {
+				t.Fatalf("auto migrate: %v", err)
+			}
+			return NewTaskRepository(db)
+		}},
+	} {
+		t.Run(factory.name, func(t *testing.T) {
+			repo := factory.new(t)
+			leaseUntil := time.Now().UTC().Add(time.Hour)
+			result := &listingkit.ListingKitResult{Status: string(core.TaskStatusNeedsReview), ReviewReasons: []string{"title requires review"}}
+			task := &listingkit.Task{ID: "task-usage-settlement-review", TenantID: "tenant-17", Status: core.TaskStatusNeedsReview, Result: result, GenerationUsageReservationState: listingkit.GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: time.Now().UTC()}
+			if err := repo.CreateTask(context.Background(), task); err != nil {
+				t.Fatalf("CreateTask() error = %v", err)
+			}
+			if err := repo.MarkBlockedRetryable(context.Background(), task.ID, &listingkit.RetryableBlock{ReasonCode: "usage_commit_pending"}, "usage settlement pending"); err != nil {
+				t.Fatalf("MarkBlockedRetryable() error = %v", err)
+			}
+			settlementRepo := repo.(listingkit.UsageSettlementRepository)
+			if err := settlementRepo.ResolveUsageSettlement(context.Background(), task.ID); err != nil {
+				t.Fatalf("ResolveUsageSettlement() error = %v", err)
+			}
+			got, err := repo.GetTask(context.Background(), task.ID)
+			if err != nil {
+				t.Fatalf("GetTask() error = %v", err)
+			}
+			if got.Status != core.TaskStatusNeedsReview || got.Error != "title requires review" || got.RetryableBlock != nil || got.GenerationUsageReservationState != "" || got.GenerationUsageReservationLeaseUntil != nil {
+				t.Fatalf("resolved task = %#v, want restored review reason and cleared settlement state", got)
+			}
+		})
+	}
+}
+
 func TestTaskRepositoryTerminalTransitionsClearRecoveredRetryableBlock(t *testing.T) {
 	for _, factory := range []struct {
 		name string
