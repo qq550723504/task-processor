@@ -80,11 +80,14 @@ func (w taskRecoveryRunnerWiring) loadTask(ctx context.Context, taskID string) (
 }
 
 func (w taskRecoveryRunnerWiring) listCandidates(ctx context.Context, dueBefore time.Time, limit int) ([]Task, error) {
-	// Load the full due set before filtering settlement-only and
-	// persistence-only tasks. Applying the provider batch limit at the
-	// repository boundary first would let failed settlement rows consume the
-	// page and starve unrelated provider retries.
-	tasks, err := w.svc.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{DueBefore: dueBefore})
+	// Classify in the repository before applying the provider limit. This keeps
+	// both provider and settlement scans bounded without letting either class
+	// consume the other's recovery page.
+	tasks, err := w.svc.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{
+		DueBefore:          dueBefore,
+		Limit:              limit,
+		ExcludeReasonCodes: recoverySettlementReasonCodes(),
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +205,7 @@ func (s *taskRecoveryService) recoverUsageCommit(ctx context.Context, task *Task
 		return nil, fmt.Errorf("generation usage settlement is not configured")
 	}
 	if err := s.generationUsage.CommitGeneration(ctx, generationUsageTenantID(ctx, task), task.ID); err != nil {
-		return nil, s.reblockUsageSettlement(ctx, task, err)
+		return s.reblockOrAcceptResolvedUsageCommit(ctx, task, err)
 	}
 	settlementRepo, ok := s.repo.(UsageSettlementRepository)
 	if !ok {
@@ -214,7 +217,7 @@ func (s *taskRecoveryService) recoverUsageCommit(ctx context.Context, task *Task
 				return current, nil
 			}
 		}
-		return nil, s.reblockUsageSettlement(ctx, task, err)
+		return s.reblockOrAcceptResolvedUsageCommit(ctx, task, err)
 	}
 	return s.repo.GetTask(ctx, task.ID)
 }
@@ -224,11 +227,11 @@ func (s *taskRecoveryService) recoverUsageRelease(ctx context.Context, task *Tas
 		return nil, fmt.Errorf("generation usage settlement is not configured")
 	}
 	if err := s.generationUsage.ReleaseGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, usageReleaseRecoveryReason(task)); err != nil {
-		return nil, s.reblockUsageSettlement(ctx, task, err)
+		return s.reblockOrAcceptResolvedUsageRelease(ctx, task, err)
 	}
 	recovery, ok := s.repo.(GenerationUsageReleaseRecoveryRepository)
 	if !ok {
-		return nil, s.reblockUsageSettlement(ctx, task, errors.New("generation usage release recovery repository is not configured"))
+		return s.reblockOrAcceptResolvedUsageRelease(ctx, task, errors.New("generation usage release recovery repository is not configured"))
 	}
 	if err := recovery.ResolveGenerationUsageRelease(ctx, task.ID, terminalRecoveryError(task)); err != nil {
 		if errors.Is(err, core.ErrTaskNotRecoverable) {
@@ -236,9 +239,33 @@ func (s *taskRecoveryService) recoverUsageRelease(ctx context.Context, task *Tas
 				return current, nil
 			}
 		}
-		return nil, s.reblockUsageSettlement(ctx, task, err)
+		return s.reblockOrAcceptResolvedUsageRelease(ctx, task, err)
 	}
 	return s.repo.GetTask(ctx, task.ID)
+}
+
+func (s *taskRecoveryService) reblockOrAcceptResolvedUsageCommit(ctx context.Context, task *Task, recoveryErr error) (*Task, error) {
+	if err := s.reblockUsageSettlement(ctx, task, recoveryErr); err != nil {
+		if errors.Is(err, core.ErrTaskNotRecoverable) {
+			if current, loadErr := s.repo.GetTask(ctx, task.ID); loadErr == nil && isResolvedUsageCommit(current) {
+				return current, nil
+			}
+		}
+		return nil, err
+	}
+	return nil, recoveryErr
+}
+
+func (s *taskRecoveryService) reblockOrAcceptResolvedUsageRelease(ctx context.Context, task *Task, recoveryErr error) (*Task, error) {
+	if err := s.reblockUsageSettlement(ctx, task, recoveryErr); err != nil {
+		if errors.Is(err, core.ErrTaskNotRecoverable) {
+			if current, loadErr := s.repo.GetTask(ctx, task.ID); loadErr == nil && isResolvedUsageRelease(current) {
+				return current, nil
+			}
+		}
+		return nil, err
+	}
+	return nil, recoveryErr
 }
 
 func isResolvedUsageCommit(task *Task) bool {
@@ -340,8 +367,11 @@ func (s *taskRecoveryService) reblockTask(ctx context.Context, task *Task, recov
 		// attempts are exhausted. Preserve the intent under an operator-owned
 		// reconciliation block instead of leaving a paused block with no sweep
 		// owner while quota remains reserved.
-		if markErr := s.markGenerationUsageReconciliation(ctx, task, fmt.Sprintf("generation usage settlement retry limit reached: %v", recoveryErr)); markErr != nil {
+		reconciliation := generationUsageReconciliationBlock(s.currentTime(), task.RetryableBlock)
+		if applied, markErr := s.markRetryableBlockIfCurrent(ctx, task, reconciliation, generationUsageReconciliationError(task, recoveryErr)); markErr != nil {
 			return errors.Join(recoveryErr, markErr)
+		} else if !applied {
+			return errors.Join(recoveryErr, core.ErrTaskNotRecoverable)
 		}
 		return recoveryErr
 	}
@@ -354,12 +384,25 @@ func (s *taskRecoveryService) reblockTask(ctx context.Context, task *Task, recov
 	updated.TerminalError = task.RetryableBlock.TerminalError
 	updated.RecoveryScope = defaultRecoveryScope
 	updated.AutoResumeEnabled = task.RetryableBlock.AutoResumeEnabled
-	persistCtx, cancel := settlementPersistenceContext(ctx)
-	defer cancel()
-	if markErr := markRetryableTaskState(persistCtx, s.repo, task.ID, updated, recoveryErr.Error()); markErr != nil {
+	if applied, markErr := s.markRetryableBlockIfCurrent(ctx, task, updated, recoveryErr.Error()); markErr != nil {
 		return errors.Join(recoveryErr, markErr)
+	} else if !applied {
+		return errors.Join(recoveryErr, core.ErrTaskNotRecoverable)
 	}
 	return recoveryErr
+}
+
+func (s *taskRecoveryService) markRetryableBlockIfCurrent(ctx context.Context, task *Task, next *RetryableBlock, errorMsg string) (bool, error) {
+	if task == nil || task.RetryableBlock == nil {
+		return false, core.ErrTaskNotRecoverable
+	}
+	repository, ok := s.repo.(ConditionalRetryableBlockRepository)
+	if !ok {
+		return false, errors.New("conditional retryable block repository is not configured")
+	}
+	persistCtx, cancel := settlementPersistenceContext(ctx)
+	defer cancel()
+	return repository.MarkBlockedRetryableIfCurrent(persistCtx, task.ID, task.RetryableBlock, next, errorMsg)
 }
 
 func (s *taskRecoveryService) RunRecoverySweep(ctx context.Context, now time.Time, limit int) (int64, error) {
@@ -394,7 +437,7 @@ func (s *taskRecoveryService) recoverExpiredGenerationUsageReservations(ctx cont
 			recovered++
 			continue
 		}
-		if err := reservations.ResolveExpiredGenerationUsageReservation(ctx, task.ID, task.Status, dueBefore, generationUsageReconciliationBlock(dueBefore), "generation usage lease expired and requires reconciliation", false); err != nil {
+		if err := reservations.ResolveExpiredGenerationUsageReservation(ctx, task.ID, task.Status, dueBefore, generationUsageReconciliationBlock(dueBefore, task.RetryableBlock), "generation usage lease expired and requires reconciliation", false); err != nil {
 			if errors.Is(err, core.ErrTaskNotRecoverable) {
 				continue
 			}
@@ -452,16 +495,39 @@ func (s *taskRecoveryService) markGenerationUsageReconciliation(ctx context.Cont
 	}
 	persistCtx, cancel := settlementPersistenceContext(ctx)
 	defer cancel()
-	return markRetryableTaskState(persistCtx, s.repo, task.ID, generationUsageReconciliationBlock(s.currentTime()), errorMsg)
+	return markRetryableTaskState(persistCtx, s.repo, task.ID, generationUsageReconciliationBlock(s.currentTime(), task.RetryableBlock), errorMsg)
 }
 
-func generationUsageReconciliationBlock(now time.Time) *RetryableBlock {
-	return &RetryableBlock{
+func generationUsageReconciliationBlock(now time.Time, previous *RetryableBlock) *RetryableBlock {
+	block := &RetryableBlock{
 		ReasonCode:        generationUsageReconciliationPendingReason,
 		ReasonMessage:     "generation usage requires reconciliation",
 		BlockedAt:         now.UTC(),
 		RecoveryScope:     usageSettlementRecoveryScope,
 		AutoResumeEnabled: false,
+	}
+	if previous != nil {
+		block.UsageReleaseReason = previous.UsageReleaseReason
+		block.TerminalError = previous.TerminalError
+	}
+	return block
+}
+
+func generationUsageReconciliationError(task *Task, recoveryErr error) string {
+	if task != nil && isUsageReleasePending(task) {
+		if terminalError := terminalRecoveryError(task); terminalError != "" {
+			return terminalError
+		}
+	}
+	return fmt.Sprintf("generation usage settlement retry limit reached: %v", recoveryErr)
+}
+
+func recoverySettlementReasonCodes() []string {
+	return []string{
+		usageCommitPendingReason,
+		usageReleasePendingReason,
+		terminalPersistencePendingReason,
+		committedReplayPersistencePendingReason,
 	}
 }
 
@@ -490,11 +556,14 @@ func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *Recov
 	if remainingLimit > 0 {
 		remainingLimit -= int(settled)
 	}
-	// Load before filtering settlement-only and persistence-only tasks. Applying
-	// the recovery limit at the repository boundary first would let a sustained
-	// provider backlog starve tasks whose ledger settlement must run without a
-	// provider submission.
-	candidates, err := s.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{DueBefore: dueBefore})
+	// Filter settlement work in the repository before applying the remaining
+	// limit, so a provider backlog cannot starve quota settlement and neither
+	// scan deserializes an unbounded blocked-task backlog.
+	candidates, err := s.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{
+		DueBefore:   dueBefore,
+		Limit:       remainingLimit,
+		ReasonCodes: recoverySettlementReasonCodes(),
+	})
 	if err != nil {
 		return settled, errors.Join(settleErr, err)
 	}

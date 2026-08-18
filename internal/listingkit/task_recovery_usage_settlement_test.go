@@ -12,6 +12,7 @@ import (
 type recordingRecoveryUsageSettlement struct {
 	commitCalls   int
 	commitErr     error
+	commitHook    func()
 	commitTenant  string
 	releaseCalls  int
 	releaseErr    error
@@ -29,6 +30,9 @@ func (s *recordingRecoveryUsageSettlement) ReserveGeneration(context.Context, st
 func (s *recordingRecoveryUsageSettlement) CommitGeneration(_ context.Context, tenantID, _ string) error {
 	s.commitCalls++
 	s.commitTenant = tenantID
+	if s.commitHook != nil {
+		s.commitHook()
+	}
 	return s.commitErr
 }
 
@@ -166,6 +170,76 @@ func TestRecoverTaskNowLeavesUsageSettlementBlockedWhenCommitFails(t *testing.T)
 	}
 	if got.Status != core.TaskStatusBlockedRetryable || got.RetryableBlock == nil || got.RetryableBlock.ReasonCode != "usage_commit_pending" {
 		t.Fatalf("task after failed settlement = %#v, want unchanged block", got)
+	}
+}
+
+func TestRecoverTaskNowDoesNotResurrectSettlementResolvedAfterCommitFailure(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	ctx := WithTenantID(context.Background(), "tenant-usage-commit-failure-race")
+	leaseUntil := time.Now().UTC().Add(time.Hour)
+	task := &Task{ID: "task-usage-commit-failure-race", TenantID: "tenant-usage-commit-failure-race", Status: core.TaskStatusCompleted, Result: &ListingKitResult{Status: string(core.TaskStatusCompleted)}, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{ReasonCode: usageCommitPendingReason, NextRetryAt: timestampTaskRecoveryServiceTest(time.Now().Add(-time.Minute)), AutoResumeEnabled: true}, "usage settlement pending"); err != nil {
+		t.Fatalf("MarkBlockedRetryable() error = %v", err)
+	}
+	settlement := &recordingRecoveryUsageSettlement{commitErr: errors.New("ledger temporarily unavailable")}
+	settlement.commitHook = func() {
+		stored := repo.tasks[task.ID]
+		stored.Status = core.TaskStatusCompleted
+		stored.RetryableBlock = nil
+		stored.Error = ""
+		stored.GenerationUsageReservationState = ""
+		stored.GenerationUsageReservationLeaseUntil = nil
+	}
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{repo: repo, generationUsage: settlement})
+
+	recovered, err := svc.RecoverTaskNow(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("RecoverTaskNow() error = %v", err)
+	}
+	if recovered.Status != core.TaskStatusCompleted || recovered.RetryableBlock != nil || recovered.GenerationUsageReservationState != "" || recovered.GenerationUsageReservationLeaseUntil != nil {
+		t.Fatalf("recovered task = %#v, want concurrently resolved terminal task", recovered)
+	}
+}
+
+func TestRecoverTaskNowRetainsReleaseMetadataWhenRetryExhaustionRequiresReconciliation(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	ctx := WithTenantID(context.Background(), "tenant-usage-release-reconciliation")
+	now := time.Date(2026, 8, 18, 10, 0, 0, 0, time.UTC)
+	leaseUntil := now.Add(time.Hour)
+	terminalError := "listing kit result persistence failed"
+	task := &Task{ID: "task-usage-release-reconciliation", TenantID: "tenant-usage-release-reconciliation", Status: core.TaskStatusProcessing, Error: terminalError, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: now}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	due := now.Add(-time.Minute)
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{ReasonCode: usageReleasePendingReason, UsageReleaseReason: "workflow_failed", TerminalError: terminalError, NextRetryAt: &due, RetryAttempts: usageSettlementMaxAutoRetryAttempts - 1, MaxAutoRetryAttempts: usageSettlementMaxAutoRetryAttempts, AutoResumeEnabled: true}, "usage release pending"); err != nil {
+		t.Fatalf("MarkBlockedRetryable() error = %v", err)
+	}
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{
+		repo:            repo,
+		generationUsage: &recordingRecoveryUsageSettlement{releaseErr: errors.New("ledger temporarily unavailable")},
+		now:             func() time.Time { return now },
+	})
+
+	if _, err := svc.RecoverTaskNow(ctx, task.ID); err == nil {
+		t.Fatal("RecoverTaskNow() error = nil, want release failure")
+	}
+	stored, err := repo.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason {
+		t.Fatalf("retryable block = %#v, want reconciliation block", stored.RetryableBlock)
+	}
+	if stored.RetryableBlock.UsageReleaseReason != "workflow_failed" || stored.RetryableBlock.TerminalError != terminalError || stored.Error != terminalError {
+		t.Fatalf("reconciliation metadata = (%q, %q, %q), want preserved release action and terminal error", stored.RetryableBlock.UsageReleaseReason, stored.RetryableBlock.TerminalError, stored.Error)
 	}
 }
 
@@ -962,7 +1036,7 @@ func TestRecoverTaskNowRejectsGenerationUsageReconciliationWithoutProviderSubmit
 	if err := repo.CreateTask(ctx, task); err != nil {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
-	if err := repo.MarkBlockedRetryable(ctx, task.ID, generationUsageReconciliationBlock(now), "requires reconciliation"); err != nil {
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, generationUsageReconciliationBlock(now, nil), "requires reconciliation"); err != nil {
 		t.Fatalf("MarkBlockedRetryable() error = %v", err)
 	}
 	submitted := 0

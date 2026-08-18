@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sort"
 	"testing"
 	"time"
@@ -732,6 +733,32 @@ func (r *taskRecoveryServiceTestRepo) MarkBlockedRetryable(ctx context.Context, 
 	return nil
 }
 
+func (r *taskRecoveryServiceTestRepo) MarkBlockedRetryableIfCurrent(ctx context.Context, taskID string, expected, next *RetryableBlock, errorMsg string) (bool, error) {
+	task, ok := r.tasks[taskID]
+	if !ok {
+		return false, core.ErrTaskNotFound
+	}
+	if r.requireLiveBlockContext && ctx.Err() != nil {
+		return false, ctx.Err()
+	}
+	if task.Status != core.TaskStatusBlockedRetryable || !reflect.DeepEqual(task.RetryableBlock, expected) {
+		return false, nil
+	}
+	if len(r.markBlockedRetryableErrors) > 0 {
+		err := r.markBlockedRetryableErrors[0]
+		r.markBlockedRetryableErrors = r.markBlockedRetryableErrors[1:]
+		if err != nil {
+			return false, err
+		}
+	}
+	r.markBlockedRetryableCallCount++
+	task.Status = core.TaskStatusBlockedRetryable
+	task.Error = errorMsg
+	task.RetryableBlock = cloneRetryableBlock(next)
+	task.UpdatedAt = time.Now().UTC()
+	return true, nil
+}
+
 func (r *taskRecoveryServiceTestRepo) ListRecoverableTasks(_ context.Context, query *RecoverableTaskQuery) ([]Task, error) {
 	if r.listRecoverableErr != nil {
 		return nil, r.listRecoverableErr
@@ -743,6 +770,9 @@ func (r *taskRecoveryServiceTestRepo) ListRecoverableTasks(_ context.Context, qu
 	items := make([]Task, 0, len(r.tasks))
 	for _, task := range r.tasks {
 		if !taskRecoveryServiceTaskIsRecoverable(task, dueBefore, false) {
+			continue
+		}
+		if !taskRecoveryServiceMatchesReasonCodes(task.RetryableBlock, query) {
 			continue
 		}
 		copied := *task
@@ -766,6 +796,30 @@ func (r *taskRecoveryServiceTestRepo) ListRecoverableTasks(_ context.Context, qu
 		items = items[:query.Limit]
 	}
 	return items, nil
+}
+
+func taskRecoveryServiceMatchesReasonCodes(block *RetryableBlock, query *RecoverableTaskQuery) bool {
+	if block == nil || query == nil {
+		return block != nil
+	}
+	if len(query.ReasonCodes) > 0 {
+		matched := false
+		for _, code := range query.ReasonCodes {
+			if block.ReasonCode == code {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	for _, code := range query.ExcludeReasonCodes {
+		if block.ReasonCode == code {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *taskRecoveryServiceTestRepo) RecoverBlockedTaskNow(_ context.Context, taskID string, recoveredAt time.Time) error {

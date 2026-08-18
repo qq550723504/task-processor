@@ -118,7 +118,7 @@ func (s *service) persistGenerationUsageReconciliation(ctx context.Context, task
 	}
 	persistCtx, cancel := settlementPersistenceContext(ctx)
 	defer cancel()
-	return markRetryableTaskState(persistCtx, s.repo, task.ID, generationUsageReconciliationBlock(time.Now().UTC()), fmt.Sprintf("generation usage requires reconciliation after reserve: %v", cause))
+	return markRetryableTaskState(persistCtx, s.repo, task.ID, generationUsageReconciliationBlock(time.Now().UTC(), task.RetryableBlock), fmt.Sprintf("generation usage requires reconciliation after reserve: %v", cause))
 }
 
 const (

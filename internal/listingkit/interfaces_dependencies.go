@@ -57,6 +57,14 @@ type UsageSettlementRepository interface {
 	ResolveUsageSettlement(ctx context.Context, taskID string) error
 }
 
+// ConditionalRetryableBlockRepository atomically replaces a retryable block
+// only while the task still carries the expected recovery state. Recovery
+// workers use it to avoid overwriting a terminal resolution completed by a
+// concurrent worker after an upstream settlement call returns an error.
+type ConditionalRetryableBlockRepository interface {
+	MarkBlockedRetryableIfCurrent(ctx context.Context, taskID string, expected, next *RetryableBlock, errorMsg string) (bool, error)
+}
+
 // GenerationUsageReservationRepository persists the task-side reservation
 // intent independently from the PAY-041 ledger. It is intentionally an
 // optional extension so unrelated task repositories do not need billing

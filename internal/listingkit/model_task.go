@@ -71,8 +71,10 @@ type TaskListQuery struct {
 }
 
 type RecoverableTaskQuery struct {
-	DueBefore time.Time `form:"due_before" json:"due_before"`
-	Limit     int       `form:"limit" json:"limit,omitempty"`
+	DueBefore          time.Time `form:"due_before" json:"due_before"`
+	Limit              int       `form:"limit" json:"limit,omitempty"`
+	ReasonCodes        []string  `form:"-" json:"-"`
+	ExcludeReasonCodes []string  `form:"-" json:"-"`
 }
 
 type RecoverBlockedTasksQuery struct {

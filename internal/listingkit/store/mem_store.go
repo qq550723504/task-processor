@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"reflect"
 	"sort"
 	"sync"
 	"time"
@@ -208,6 +209,23 @@ func (r *MemTaskRepository) MarkBlockedRetryable(ctx context.Context, taskID str
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now()
 	return nil
+}
+
+func (r *MemTaskRepository) MarkBlockedRetryableIfCurrent(ctx context.Context, taskID string, expected, next *listingkit.RetryableBlock, errorMsg string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return false, core.ErrTaskNotFound
+	}
+	if task.Status != core.TaskStatusBlockedRetryable || !reflect.DeepEqual(task.RetryableBlock, expected) {
+		return false, nil
+	}
+	task.Status = core.TaskStatusBlockedRetryable
+	task.RetryableBlock = copyRetryableBlock(next)
+	task.Error = errorMsg
+	task.UpdatedAt = time.Now()
+	return true, nil
 }
 
 func (r *MemTaskRepository) ResolveUsageSettlement(ctx context.Context, taskID string) error {
@@ -423,6 +441,9 @@ func (r *MemTaskRepository) ListRecoverableTasks(ctx context.Context, query *lis
 		if !taskIsRecoverable(task, dueBefore, false) {
 			continue
 		}
+		if !matchesRecoverableReasonCodes(task.RetryableBlock, query) {
+			continue
+		}
 		copied := *task
 		items = append(items, copied)
 	}
@@ -449,6 +470,30 @@ func (r *MemTaskRepository) ListRecoverableTasks(ctx context.Context, query *lis
 		items = items[:limit]
 	}
 	return items, nil
+}
+
+func matchesRecoverableReasonCodes(block *listingkit.RetryableBlock, query *listingkit.RecoverableTaskQuery) bool {
+	if block == nil || query == nil {
+		return block != nil
+	}
+	if len(query.ReasonCodes) > 0 {
+		matched := false
+		for _, code := range query.ReasonCodes {
+			if block.ReasonCode == code {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	for _, code := range query.ExcludeReasonCodes {
+		if block.ReasonCode == code {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *MemTaskRepository) RecoverBlockedTaskNow(ctx context.Context, taskID string, recoveredAt time.Time) error {

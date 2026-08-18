@@ -91,6 +91,41 @@ func (r *taskRepository) MarkBlockedRetryable(ctx context.Context, taskID string
 	})
 }
 
+func (r *taskRepository) MarkBlockedRetryableIfCurrent(ctx context.Context, taskID string, expected, next *listingkit.RetryableBlock, errorMsg string) (bool, error) {
+	if expected == nil || next == nil {
+		return false, core.ErrTaskNotRecoverable
+	}
+	expectedValue, err := expected.Value()
+	if err != nil {
+		return false, err
+	}
+	expectedJSON, ok := expectedValue.([]byte)
+	if !ok {
+		return false, fmt.Errorf("retryable block value has unexpected type %T", expectedValue)
+	}
+	condition := "retryable_block = ?"
+	switch r.db.Dialector.Name() {
+	case "postgres":
+		condition = "retryable_block::jsonb = ?::jsonb"
+	case "sqlite":
+		condition = "json(retryable_block) = json(?)"
+	}
+	result := r.db.WithContext(ctx).
+		Model(&listingkit.Task{}).
+		Scopes(taskAccessScope(ctx)).
+		Where("id = ? AND status = ? AND "+condition, taskID, core.TaskStatusBlockedRetryable, string(expectedJSON)).
+		Updates(map[string]any{
+			"status":          core.TaskStatusBlockedRetryable,
+			"retryable_block": copyRetryableBlock(next),
+			"error":           errorMsg,
+			"updated_at":      currentTimestampValue(r.db),
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
+}
+
 func (r *taskRepository) ResolveUsageSettlement(ctx context.Context, taskID string) error {
 	task, err := r.GetTask(ctx, taskID)
 	if err != nil {
@@ -298,7 +333,13 @@ func (r *taskRepository) updateGenerationUsageReservation(ctx context.Context, t
 func (r *taskRepository) ListRecoverableTasks(ctx context.Context, query *listingkit.RecoverableTaskQuery) ([]listingkit.Task, error) {
 	var tasks []listingkit.Task
 	db := applyTaskAccessScope(r.db.WithContext(ctx).Model(&listingkit.Task{}), ctx)
-	if err := db.Where("status = ?", core.TaskStatusBlockedRetryable).Find(&tasks).Error; err != nil {
+	db = db.Where("status = ?", core.TaskStatusBlockedRetryable)
+	db, bounded := applyBoundedRecoverableTaskScope(db, query)
+	limit := normalizeRecoverableTaskLimit(query)
+	if bounded && limit > 0 {
+		db = db.Limit(limit)
+	}
+	if err := db.Find(&tasks).Error; err != nil {
 		return nil, err
 	}
 
@@ -307,11 +348,84 @@ func (r *taskRepository) ListRecoverableTasks(ctx context.Context, query *listin
 		dueBefore = query.DueBefore
 	}
 	items := collectRecoverableTasks(tasks, dueBefore)
-	limit := normalizeRecoverableTaskLimit(query)
+	items = filterRecoverableTaskReasonCodes(items, query)
 	if limit > 0 && len(items) > limit {
 		items = items[:limit]
 	}
 	return items, nil
+}
+
+func applyBoundedRecoverableTaskScope(db *gorm.DB, query *listingkit.RecoverableTaskQuery) (*gorm.DB, bool) {
+	if query == nil || query.DueBefore.IsZero() {
+		return db, false
+	}
+	var reasonExpr string
+	switch db.Dialector.Name() {
+	case "postgres":
+		reasonExpr = "COALESCE(retryable_block::jsonb ->> 'reason_code', '')"
+		db = db.
+			Where("retryable_block IS NOT NULL").
+			Where("COALESCE((retryable_block::jsonb ->> 'auto_resume_enabled')::boolean, FALSE) = TRUE").
+			Where("COALESCE((retryable_block::jsonb ->> 'auto_retry_paused')::boolean, FALSE) = FALSE").
+			Where("(retryable_block::jsonb ->> 'next_retry_at') IS NOT NULL").
+			Where("(retryable_block::jsonb ->> 'next_retry_at')::timestamptz <= ?", query.DueBefore.UTC()).
+			Order("(retryable_block::jsonb ->> 'next_retry_at')::timestamptz ASC, created_at ASC, id ASC")
+	case "sqlite":
+		reasonExpr = "COALESCE(json_extract(retryable_block, '$.reason_code'), '')"
+		db = db.
+			Where("retryable_block IS NOT NULL").
+			Where("COALESCE(json_extract(retryable_block, '$.auto_resume_enabled'), 0) = 1").
+			Where("COALESCE(json_extract(retryable_block, '$.auto_retry_paused'), 0) = 0").
+			Where("json_extract(retryable_block, '$.next_retry_at') IS NOT NULL").
+			Where("datetime(json_extract(retryable_block, '$.next_retry_at')) <= datetime(?)", query.DueBefore.UTC().Format(time.RFC3339Nano)).
+			Order("datetime(json_extract(retryable_block, '$.next_retry_at')) ASC, created_at ASC, id ASC")
+	default:
+		return db, false
+	}
+	if len(query.ReasonCodes) > 0 {
+		db = db.Where(reasonExpr+" IN ?", query.ReasonCodes)
+	}
+	if len(query.ExcludeReasonCodes) > 0 {
+		db = db.Where(reasonExpr+" NOT IN ?", query.ExcludeReasonCodes)
+	}
+	return db, true
+}
+
+func filterRecoverableTaskReasonCodes(tasks []listingkit.Task, query *listingkit.RecoverableTaskQuery) []listingkit.Task {
+	if query == nil || (len(query.ReasonCodes) == 0 && len(query.ExcludeReasonCodes) == 0) {
+		return tasks
+	}
+	items := make([]listingkit.Task, 0, len(tasks))
+	for i := range tasks {
+		if taskMatchesRecoverableReasonCodes(&tasks[i], query) {
+			items = append(items, tasks[i])
+		}
+	}
+	return items
+}
+
+func taskMatchesRecoverableReasonCodes(task *listingkit.Task, query *listingkit.RecoverableTaskQuery) bool {
+	if task == nil || task.RetryableBlock == nil {
+		return false
+	}
+	if len(query.ReasonCodes) > 0 {
+		matched := false
+		for _, code := range query.ReasonCodes {
+			if task.RetryableBlock.ReasonCode == code {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	for _, code := range query.ExcludeReasonCodes {
+		if task.RetryableBlock.ReasonCode == code {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *taskRepository) RecoverBlockedTaskNow(ctx context.Context, taskID string, recoveredAt time.Time) error {
