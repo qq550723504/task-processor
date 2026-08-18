@@ -607,6 +607,57 @@ func TestRunRecoverySweepFiltersFailedSettlementPagesBeforeProviderBatch(t *test
 	}
 }
 
+func TestRunRecoverySweepFindsSettlementBehindProviderBacklog(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	now := time.Now().UTC()
+	ctx := WithTenantID(context.Background(), "tenant-usage-sweep-provider-backlog")
+	regularDue := now.Add(-2 * time.Minute)
+	settlementDue := now.Add(-time.Minute)
+	for _, id := range []string{"task-usage-sweep-provider-1", "task-usage-sweep-provider-2"} {
+		task := &Task{ID: id, TenantID: "tenant-usage-sweep-provider-backlog", Status: core.TaskStatusPending, Request: &GenerateRequest{TenantID: "tenant-usage-sweep-provider-backlog", Platforms: []string{"amazon"}}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
+		if err := repo.CreateTask(ctx, task); err != nil {
+			t.Fatalf("CreateTask(%s) error = %v", id, err)
+		}
+		if err := repo.MarkBlockedRetryable(ctx, id, &RetryableBlock{ReasonCode: "queue_backpressure", NextRetryAt: &regularDue, AutoResumeEnabled: true}, "queue full"); err != nil {
+			t.Fatalf("MarkBlockedRetryable(%s) error = %v", id, err)
+		}
+	}
+	settlementTask := &Task{ID: "task-usage-sweep-provider-backlog-settle", TenantID: "tenant-usage-sweep-provider-backlog", Status: core.TaskStatusCompleted, Result: &ListingKitResult{Status: string(core.TaskStatusCompleted)}, CreatedAt: now.Add(-time.Hour), UpdatedAt: now}
+	if err := repo.CreateTask(ctx, settlementTask); err != nil {
+		t.Fatalf("CreateTask(settlement) error = %v", err)
+	}
+	if err := repo.MarkBlockedRetryable(ctx, settlementTask.ID, &RetryableBlock{ReasonCode: usageCommitPendingReason, NextRetryAt: &settlementDue, AutoResumeEnabled: true}, "usage settlement pending"); err != nil {
+		t.Fatalf("MarkBlockedRetryable(settlement) error = %v", err)
+	}
+
+	settlement := &recordingRecoveryUsageSettlement{}
+	submitted := make([]string, 0, 1)
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{
+		repo:            repo,
+		generationUsage: settlement,
+		taskSubmitter: func() TaskSubmitter {
+			return taskRecoveryTestSubmitter(func(taskID string) error { submitted = append(submitted, taskID); return nil })
+		},
+	})
+
+	recovered, err := svc.RunRecoverySweep(ctx, now, 2)
+	if err != nil {
+		t.Fatalf("RunRecoverySweep() error = %v", err)
+	}
+	if recovered != 2 || settlement.commitCalls != 1 || len(submitted) != 1 {
+		t.Fatalf("recovered/commit/submitted = (%d, %d, %d), want (2, 1, 1)", recovered, settlement.commitCalls, len(submitted))
+	}
+	settled, err := repo.GetTask(ctx, settlementTask.ID)
+	if err != nil {
+		t.Fatalf("GetTask(settlement) error = %v", err)
+	}
+	if settled.Status != core.TaskStatusCompleted || settled.RetryableBlock != nil {
+		t.Fatalf("settled task = %#v, want completed settled task", settled)
+	}
+}
+
 func TestRunRecoverySweepHonorsLimitAfterUsageSettlement(t *testing.T) {
 	t.Parallel()
 

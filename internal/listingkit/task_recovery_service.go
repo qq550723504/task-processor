@@ -131,11 +131,11 @@ func (w taskRecoveryRunnerWiring) markRecoveredBatch(ctx context.Context, taskID
 }
 
 func (w taskRecoveryRunnerWiring) submitRecoveredNow(ctx context.Context, submit submissiondomain.RecoverySubmitFunc, taskID string, current *Task) error {
-	return w.svc.submitRecoveredTask(ctx, submit, taskID, current.RetryableBlock, w.svc.currentTime())
+	return w.svc.submitRecoveredTask(ctx, submit, current, w.svc.currentTime())
 }
 
 func (w taskRecoveryRunnerWiring) submitRecoveredBatch(ctx context.Context, submit submissiondomain.RecoverySubmitFunc, task Task, recoverAt time.Time) error {
-	return w.svc.submitRecoveredTask(ctx, submit, task.ID, task.RetryableBlock, recoverAt)
+	return w.svc.submitRecoveredTask(ctx, submit, &task, recoverAt)
 }
 
 func (w taskRecoveryRunnerWiring) taskID(task Task) string {
@@ -340,7 +340,7 @@ func (s *taskRecoveryService) reblockTask(ctx context.Context, task *Task, recov
 		// attempts are exhausted. Preserve the intent under an operator-owned
 		// reconciliation block instead of leaving a paused block with no sweep
 		// owner while quota remains reserved.
-		if markErr := s.markExpiredGenerationUsageReconciliation(ctx, task, fmt.Sprintf("generation usage settlement retry limit reached: %v", recoveryErr)); markErr != nil {
+		if markErr := s.markGenerationUsageReconciliation(ctx, task, fmt.Sprintf("generation usage settlement retry limit reached: %v", recoveryErr)); markErr != nil {
 			return errors.Join(recoveryErr, markErr)
 		}
 		return recoveryErr
@@ -408,7 +408,7 @@ func (s *taskRecoveryService) recoverExpiredGenerationUsageReservations(ctx cont
 
 func (s *taskRecoveryService) settleExpiredTerminalGenerationUsageReservation(ctx context.Context, task *Task) error {
 	if s == nil || s.generationUsage == nil || task == nil || task.Result == nil {
-		return s.markExpiredGenerationUsageReconciliation(ctx, task, "terminal generation usage reservation cannot be settled")
+		return s.markGenerationUsageReconciliation(ctx, task, "terminal generation usage reservation cannot be settled")
 	}
 	if err := s.generationUsage.CommitGeneration(ctx, generationUsageTenantID(ctx, task), task.ID); err != nil {
 		return s.markExpiredGenerationUsageCommitPending(ctx, task, err)
@@ -446,7 +446,7 @@ func (s *taskRecoveryService) markExpiredGenerationUsageCommitPending(ctx contex
 	return commitErr
 }
 
-func (s *taskRecoveryService) markExpiredGenerationUsageReconciliation(ctx context.Context, task *Task, errorMsg string) error {
+func (s *taskRecoveryService) markGenerationUsageReconciliation(ctx context.Context, task *Task, errorMsg string) error {
 	if task == nil {
 		return core.ErrTaskNotRecoverable
 	}
@@ -490,14 +490,27 @@ func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *Recov
 	if remainingLimit > 0 {
 		remainingLimit -= int(settled)
 	}
-	candidates, err := s.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{DueBefore: dueBefore, Limit: remainingLimit})
+	// Load before filtering settlement-only and persistence-only tasks. Applying
+	// the recovery limit at the repository boundary first would let a sustained
+	// provider backlog starve tasks whose ledger settlement must run without a
+	// provider submission.
+	candidates, err := s.repo.ListRecoverableTasks(ctx, &RecoverableTaskQuery{DueBefore: dueBefore})
 	if err != nil {
 		return settled, errors.Join(settleErr, err)
 	}
+	settlementCandidates := make([]Task, 0, len(candidates))
 	for i := 0; i < len(candidates); i++ {
-		if isCommittedReplayPersistencePending(&candidates[i]) {
+		if isCommittedReplayPersistencePending(&candidates[i]) || isTerminalPersistencePending(&candidates[i]) || (s.generationUsage != nil && isUsageSettlementPending(&candidates[i])) {
+			settlementCandidates = append(settlementCandidates, candidates[i])
+		}
+	}
+	if remainingLimit > 0 && len(settlementCandidates) > remainingLimit {
+		settlementCandidates = settlementCandidates[:remainingLimit]
+	}
+	for i := 0; i < len(settlementCandidates); i++ {
+		if isCommittedReplayPersistencePending(&settlementCandidates[i]) {
 			var err error
-			_, err = s.recoverCommittedReplayPersistence(ctx, &candidates[i])
+			_, err = s.recoverCommittedReplayPersistence(ctx, &settlementCandidates[i])
 			if err != nil {
 				settleErr = errors.Join(settleErr, err)
 				continue
@@ -505,9 +518,9 @@ func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *Recov
 			settled++
 			continue
 		}
-		if isTerminalPersistencePending(&candidates[i]) {
+		if isTerminalPersistencePending(&settlementCandidates[i]) {
 			var err error
-			_, err = s.recoverTerminalPersistence(ctx, &candidates[i])
+			_, err = s.recoverTerminalPersistence(ctx, &settlementCandidates[i])
 			if err != nil {
 				settleErr = errors.Join(settleErr, err)
 				continue
@@ -515,14 +528,14 @@ func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *Recov
 			settled++
 			continue
 		}
-		if s.generationUsage == nil || !isUsageSettlementPending(&candidates[i]) {
+		if s.generationUsage == nil || !isUsageSettlementPending(&settlementCandidates[i]) {
 			continue
 		}
 		var err error
-		if isUsageReleasePending(&candidates[i]) {
-			_, err = s.recoverUsageRelease(ctx, &candidates[i])
+		if isUsageReleasePending(&settlementCandidates[i]) {
+			_, err = s.recoverUsageRelease(ctx, &settlementCandidates[i])
 		} else {
-			_, err = s.recoverUsageCommit(ctx, &candidates[i])
+			_, err = s.recoverUsageCommit(ctx, &settlementCandidates[i])
 		}
 		if err != nil {
 			settleErr = errors.Join(settleErr, err)
@@ -550,24 +563,30 @@ func (s *taskRecoveryService) BulkRecoverTasks(ctx context.Context, query *Recov
 	return settled + recovered, errors.Join(settleErr, err)
 }
 
-func (s *taskRecoveryService) submitRecoveredTask(ctx context.Context, submit submissiondomain.RecoverySubmitFunc, taskID string, previousBlock *RetryableBlock, recoveredAt time.Time) error {
+func (s *taskRecoveryService) submitRecoveredTask(ctx context.Context, submit submissiondomain.RecoverySubmitFunc, task *Task, recoveredAt time.Time) error {
 	if submit == nil {
 		return core.ErrTaskRecoveryUnavailable
 	}
+	if task == nil {
+		return core.ErrTaskNotFound
+	}
 	return submissiondomain.SubmitRecoveredWithRetryablePersistence(submissiondomain.RecoveredSubmitPersistenceRequest{
-		TaskID:               taskID,
-		PreviousBlock:        adaptRetryableBlockState(previousBlock),
+		TaskID:               task.ID,
+		PreviousBlock:        adaptRetryableBlockState(task.RetryableBlock),
 		RecoveredAt:          recoveredAt,
 		DefaultRecoveryScope: submissiondomain.RetryableRecoveryScopeTask,
 		Submit:               submit,
 		MarkBlockedRetryable: func(block *submissiondomain.RetryableBlockState, errorMsg string) error {
-			return markTaskBlockedRetryableState(ctx, s.repo, taskID, block, errorMsg)
+			if block != nil && block.AutoRetryPaused && task.GenerationUsageReservationState != "" {
+				return s.markGenerationUsageReconciliation(ctx, task, fmt.Sprintf("generation usage reservation retry limit reached: %s", errorMsg))
+			}
+			return markTaskBlockedRetryableState(ctx, s.repo, task.ID, block, errorMsg)
 		},
 		PersistFailure: func(errorMsg string, submitErr error) error {
-			return persistClassifiedTaskFailure(ctx, s.repo, taskID, errorMsg, submitErr)
+			return persistClassifiedTaskFailure(ctx, s.repo, task.ID, errorMsg, submitErr)
 		},
 		RestoreDurability: func(errorMsg string, submitErr error, persistErr error) error {
-			return s.restoreRecoveryDurability(ctx, taskID, previousBlock, errorMsg, submitErr, persistErr)
+			return s.restoreRecoveryDurability(ctx, task.ID, task.RetryableBlock, errorMsg, submitErr, persistErr)
 		},
 	})
 }

@@ -467,6 +467,45 @@ func TestRecoverTaskNowReblocksRetryableSubmitFailuresAtMaxAutoRetryAttempts(t *
 	}
 }
 
+func TestRecoverTaskNowMovesExhaustedIntentBearingSubmissionToReconciliation(t *testing.T) {
+	t.Parallel()
+
+	repo := newTaskRecoveryServiceTestRepo()
+	ctx := WithTenantID(context.Background(), "tenant-intent-exhausted")
+	now := time.Date(2026, 6, 6, 17, 35, 0, 0, time.UTC)
+	nextRetryAt := now.Add(-time.Minute)
+	leaseUntil := now.Add(time.Hour)
+	task := &Task{ID: "task-intent-exhausted", TenantID: "tenant-intent-exhausted", Status: core.TaskStatusPending, Request: &GenerateRequest{TenantID: "tenant-intent-exhausted", Platforms: []string{"amazon"}, Text: "recover"}, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: now.Add(-10 * time.Minute), UpdatedAt: now.Add(-10 * time.Minute)}
+	if err := repo.CreateTask(ctx, task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if err := repo.MarkBlockedRetryable(ctx, task.ID, &RetryableBlock{ReasonCode: listingsubmission.RetryableReasonCodeWorkerQueueBackpressure, ReasonMessage: "queue full", BlockedAt: now.Add(-5 * time.Minute), NextRetryAt: &nextRetryAt, RetryAttempts: 2, MaxAutoRetryAttempts: 3, RecoveryScope: listingsubmission.RetryableRecoveryScopeTask, AutoResumeEnabled: true}, "queue full"); err != nil {
+		t.Fatalf("MarkBlockedRetryable() error = %v", err)
+	}
+
+	svc := newTaskRecoveryService(taskRecoveryServiceConfig{
+		repo: repo,
+		taskSubmitter: func() TaskSubmitter {
+			return taskRecoveryTestSubmitter(func(string) error { return errors.New("queue full") })
+		},
+		now: func() time.Time { return now },
+	})
+
+	if _, err := svc.RecoverTaskNow(ctx, task.ID); err == nil {
+		t.Fatal("RecoverTaskNow() error = nil, want retryable submit failure")
+	}
+	stored, err := repo.GetTask(ctx, task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || stored.RetryableBlock.AutoResumeEnabled || stored.RetryableBlock.NextRetryAt != nil {
+		t.Fatalf("exhausted intent-bearing task = %#v, want reconciliation-only block", stored)
+	}
+	if stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("reservation = (%q, %v), want retained reconciliation intent", stored.GenerationUsageReservationState, stored.GenerationUsageReservationLeaseUntil)
+	}
+}
+
 func TestRecoverTaskNowRestoresBlockedStateWhenReblockPersistenceFails(t *testing.T) {
 	t.Parallel()
 
