@@ -279,6 +279,53 @@ func TestProcessListingKitQuotaRejectionClearsReservationIntent(t *testing.T) {
 	}
 }
 
+func TestProcessListingKitSubscriptionRejectionClearsReservationIntent(t *testing.T) {
+	t.Parallel()
+
+	settlement := &recordingGenerationUsageSettlement{reserveErr: listingsubscription.ErrSubscriptionRequired}
+	svc, repo, _, task := newProcessUsageFixture(t, settlement, nil)
+	if _, err := svc.ProcessListingKit(context.Background(), task); !errors.Is(err, listingsubscription.ErrSubscriptionRequired) {
+		t.Fatalf("ProcessListingKit() error = %v, want subscription rejection", err)
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusFailed || stored.GenerationUsageReservationState != "" || stored.GenerationUsageReservationLeaseUntil != nil {
+		t.Fatalf("subscription-rejected task = %#v, want failed task with cleared admission intent", stored)
+	}
+}
+
+func TestProcessListingKitReconcilesExistingIntentWhenBeginFails(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{beginGenerationUsageErr: core.ErrTaskNotRecoverable}}
+	settlement := &recordingGenerationUsageSettlement{}
+	productService := &processUsageProductService{task: &productenrich.Task{ID: "product-task-begin-replay", Request: &productenrich.GenerateRequest{ProductURL: "https://example.com/product"}}, product: &productenrich.ProductJSON{Title: "Travel Bag"}}
+	svc, err := NewService(newTestServiceConfig(repo, withTestProductService(productService), withTestAssembler(&stubProcessStatusAssembler{result: &ListingKitResult{Shein: &SheinPackage{}, Summary: &GenerationSummary{}}}), withTestConfig(func(cfg *ServiceConfig) { cfg.Core.GenerationUsageLedger = settlement })))
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	leaseUntil := time.Now().UTC().Add(-time.Minute)
+	task := &Task{ID: "listingkit-begin-replay", TenantID: "tenant-17", Status: core.TaskStatusPending, Request: &GenerateRequest{ProductURL: "https://example.com/product", Platforms: []string{"shein"}}, GenerationUsageReservationState: GenerationUsageReservationStateReserved, GenerationUsageReservationLeaseUntil: &leaseUntil, CreatedAt: time.Now().UTC()}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	if _, err := svc.ProcessListingKit(context.Background(), task); !errors.Is(err, core.ErrTaskNotRecoverable) {
+		t.Fatalf("ProcessListingKit() error = %v, want begin replay error", err)
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("begin-replay task = %#v, want retained reconciliation intent", stored)
+	}
+	if productService.processCalls != 0 || len(settlement.calls) != 0 {
+		t.Fatalf("workflow/settlement = (%d, %#v), want no provider work", productService.processCalls, settlement.calls)
+	}
+}
+
 func TestProcessListingKitCommittedReplayFallbackRemainsRecoverable(t *testing.T) {
 	t.Parallel()
 

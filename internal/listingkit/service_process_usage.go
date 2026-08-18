@@ -10,6 +10,7 @@ import (
 
 	submissiondomain "task-processor/internal/listing/submission"
 	"task-processor/internal/listingkit/core"
+	"task-processor/internal/listingsubscription"
 )
 
 type generationUsagePostReservePersistenceError struct {
@@ -77,6 +78,9 @@ func (s *service) reserveGenerationUsage(ctx context.Context, task *Task) (Gener
 	hasReservationIntent := task.GenerationUsageReservationState != ""
 	leaseUntil := generationUsageReservationLeaseUntil()
 	if err := reservationRepo.BeginGenerationUsageReservation(ctx, task.ID, leaseUntil); err != nil {
+		if hasReservationIntent {
+			return GenerationUsageReservation{}, true, &generationUsageReplayReservationError{err: err}
+		}
 		return GenerationUsageReservation{}, true, err
 	}
 	task.GenerationUsageReservationState = GenerationUsageReservationStatePending
@@ -439,6 +443,12 @@ func (s *service) persistScheduledRetryableFailure(ctx context.Context, task *Ta
 	}
 	classified, ok := classifyRetryableTaskFailure(failureErr)
 	if !ok {
+		if errors.Is(failureErr, listingsubscription.ErrSubscriptionRequired) {
+			if err := markFailedTaskState(ctx, s.repo, task.ID, failureErr.Error()); err != nil {
+				return errors.Join(err, markTerminalPersistencePending(ctx, s.repo, task.ID, failureErr.Error(), err))
+			}
+			return persistErr
+		}
 		persistCtx, cancel := settlementPersistenceContext(ctx)
 		defer cancel()
 		if err := persistClassifiedTaskFailure(persistCtx, s.repo, task.ID, failureErr.Error(), failureErr); err != nil {

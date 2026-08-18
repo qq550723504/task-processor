@@ -14,9 +14,10 @@ type stubServiceDeferredRenderer struct {
 }
 
 type stubGenerationRepo struct {
-	task                   *Task
-	generationUsageRenewed chan struct{}
-	markGenerationUsageErr error
+	task                    *Task
+	generationUsageRenewed  chan struct{}
+	beginGenerationUsageErr error
+	markGenerationUsageErr  error
 }
 
 func (r *stubGenerationRepo) CreateTask(ctx context.Context, task *Task) error {
@@ -97,6 +98,9 @@ func (r *stubGenerationRepo) SaveTaskResult(ctx context.Context, taskID string, 
 }
 
 func (r *stubGenerationRepo) BeginGenerationUsageReservation(_ context.Context, taskID string, leaseUntil time.Time) error {
+	if r.beginGenerationUsageErr != nil {
+		return r.beginGenerationUsageErr
+	}
 	if r.task == nil || r.task.ID != taskID {
 		return core.ErrTaskNotFound
 	}
