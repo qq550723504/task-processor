@@ -10,6 +10,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
+	"task-processor/internal/model"
 )
 
 func TestStoreStatisticsRepositoryRejectsInvalidDate(t *testing.T) {
@@ -93,12 +94,12 @@ func TestStoreStatisticsRepositoryReturnsPaginatedPageWithFullSummary(t *testing
 	})
 
 	date := "2026-05-15"
-	seedStoreStatisticsTask(t, db, listingProductImportTask{TenantID: 101, StoreID: 1, ProductID: "A-completed", Status: 2, CreateTime: timePtrStoreStatistics(time.Date(2026, 5, 15, 8, 0, 0, 0, time.UTC))})
+	seedStoreStatisticsTask(t, db, listingProductImportTask{TenantID: 101, StoreID: 1, ProductID: "A-completed", Status: model.TaskStatusPublished.Int16(), CreateTime: timePtrStoreStatistics(time.Date(2026, 5, 15, 8, 0, 0, 0, time.UTC))})
 	seedStoreStatisticsTask(t, db, listingProductImportTask{TenantID: 101, StoreID: 1, ProductID: "A-pending", Status: 0, CreateTime: timePtrStoreStatistics(time.Date(2026, 5, 15, 8, 30, 0, 0, time.UTC))})
 	seedStoreStatisticsTask(t, db, listingProductImportTask{TenantID: 101, StoreID: 1, ProductID: "A-queued", Status: 5, CreateTime: timePtrStoreStatistics(time.Date(2026, 5, 15, 9, 0, 0, 0, time.UTC))})
-	seedStoreStatisticsTask(t, db, listingProductImportTask{TenantID: 202, StoreID: 2, ProductID: "B-completed", Status: 2, CreateTime: timePtrStoreStatistics(time.Date(2026, 5, 15, 10, 0, 0, 0, time.UTC))})
+	seedStoreStatisticsTask(t, db, listingProductImportTask{TenantID: 202, StoreID: 2, ProductID: "B-completed", Status: model.TaskStatusPublished.Int16(), CreateTime: timePtrStoreStatistics(time.Date(2026, 5, 15, 10, 0, 0, 0, time.UTC))})
 	seedStoreStatisticsTask(t, db, listingProductImportTask{TenantID: 202, StoreID: 2, ProductID: "B-hold", Status: 10, CreateTime: timePtrStoreStatistics(time.Date(2026, 5, 15, 10, 30, 0, 0, time.UTC))})
-	seedStoreStatisticsTask(t, db, listingProductImportTask{TenantID: 303, StoreID: 3, ProductID: "disabled-completed", Status: 2, CreateTime: timePtrStoreStatistics(time.Date(2026, 5, 15, 11, 0, 0, 0, time.UTC))})
+	seedStoreStatisticsTask(t, db, listingProductImportTask{TenantID: 303, StoreID: 3, ProductID: "disabled-completed", Status: model.TaskStatusPublished.Int16(), CreateTime: timePtrStoreStatistics(time.Date(2026, 5, 15, 11, 0, 0, 0, time.UTC))})
 
 	repo := NewGormStoreStatisticsRepository(db)
 	page, err := repo.ListStoreStatistics(context.Background(), StoreStatisticsQuery{
@@ -123,6 +124,62 @@ func TestStoreStatisticsRepositoryReturnsPaginatedPageWithFullSummary(t *testing
 	}
 	if page.Summary.CompletedCount != 2 || page.Summary.DailyLimit != 12 || page.Summary.RemainingCount != 1 || page.Summary.QueuedCount != 1 || page.Summary.HoldCount != 1 {
 		t.Fatalf("summary = %+v, want counts across both eligible stores only", page.Summary)
+	}
+}
+
+func TestStoreStatisticsRepositoryCountsCanonicalPublishedAndDraftStatuses(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&listingStore{}, &listingProductImportTask{}); err != nil {
+		t.Fatalf("migrate statistics tables: %v", err)
+	}
+
+	trueValue := true
+	seedStoreStatisticsStore(t, db, listingStore{
+		ID:                867,
+		TenantID:          246,
+		Name:              "ND02",
+		Username:          "nd02",
+		Password:          "secret",
+		Platform:          "SHEIN",
+		ShopType:          "semi",
+		EnableAutoListing: &trueValue,
+		EnableAutoLogin:   &trueValue,
+		Status:            0,
+	})
+
+	date := "2026-08-18"
+	for _, task := range []listingProductImportTask{
+		{TenantID: 246, StoreID: 867, ProductID: "published", Status: model.TaskStatusPublished.Int16()},
+		{TenantID: 246, StoreID: 867, ProductID: "draft", Status: model.TaskStatusDraft.Int16()},
+		{TenantID: 246, StoreID: 867, ProductID: "pending", Status: model.TaskStatusPending.Int16()},
+		{TenantID: 246, StoreID: 867, ProductID: "queued", Status: model.TaskStatusQueued.Int16()},
+		{TenantID: 246, StoreID: 867, ProductID: "paused", Status: model.TaskStatusPaused.Int16()},
+		{TenantID: 246, StoreID: 867, ProductID: "terminated", Status: model.TaskStatusTerminated.Int16()},
+	} {
+		task.CreateTime = timePtrStoreStatistics(time.Date(2026, 8, 18, 8, 0, 0, 0, time.UTC))
+		seedStoreStatisticsTask(t, db, task)
+	}
+
+	page, err := NewGormStoreStatisticsRepository(db).ListStoreStatistics(context.Background(), StoreStatisticsQuery{
+		TenantID: 246,
+		Date:     date,
+		Page:     1,
+		PageSize: 20,
+	})
+	if err != nil {
+		t.Fatalf("ListStoreStatistics: %v", err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("items = %+v, want one store", page.Items)
+	}
+	got := page.Items[0]
+	if got.CompletedCount != 2 || got.RemainingCount != 1 || got.QueuedCount != 1 || got.HoldCount != 1 {
+		t.Fatalf("statistics = %+v, want published/draft=2 pending=1 queued=1 hold=1", got)
 	}
 }
 
