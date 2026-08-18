@@ -18,9 +18,9 @@ type generationUsagePostReservePersistenceError struct {
 }
 
 // generationUsageReplayReservationError marks a failure after a task-side
-// intent already existed. The deterministic ledger event may therefore be
-// reserved even though the replay operation returned an error, so normal
-// failure classification cannot safely finalize the task.
+// intent exists. The deterministic ledger event may therefore be reserved even
+// though the reservation operation returned an error, so normal failure
+// classification cannot safely finalize the task.
 type generationUsageReplayReservationError struct {
 	err error
 }
@@ -95,7 +95,7 @@ func (s *service) reserveGenerationUsage(ctx context.Context, task *Task) (Gener
 	}
 	reservation, err := settlement.ReserveGeneration(ctx, generationUsageTenantID(ctx, task), task.ID, occurredAt)
 	if err != nil {
-		if hasReservationIntent {
+		if hasReservationIntent || !isDefinitiveGenerationUsageAdmissionRejection(err) {
 			return GenerationUsageReservation{}, true, &generationUsageReplayReservationError{err: err}
 		}
 		return GenerationUsageReservation{}, true, err
@@ -106,6 +106,10 @@ func (s *service) reserveGenerationUsage(ctx context.Context, task *Task) (Gener
 	task.GenerationUsageReservationState = GenerationUsageReservationStateReserved
 	task.GenerationUsageReservationLeaseUntil = &leaseUntil
 	return reservation, true, nil
+}
+
+func isDefinitiveGenerationUsageAdmissionRejection(err error) bool {
+	return errors.Is(err, listingsubscription.ErrUsageQuotaExceeded) || errors.Is(err, listingsubscription.ErrSubscriptionRequired)
 }
 
 func (s *service) persistGenerationUsageReconciliation(ctx context.Context, task *Task, cause error) error {
@@ -232,6 +236,12 @@ func (s *service) releaseGenerationUsageAndFail(ctx context.Context, task *Task,
 func (s *service) reblockGenerationUsageRelease(ctx context.Context, task *Task, block *RetryableBlock, recoveryErr error) error {
 	if task == nil || block == nil {
 		return recoveryErr
+	}
+	if errors.Is(recoveryErr, core.ErrTaskNotRecoverable) {
+		if current, loadErr := s.repo.GetTask(ctx, task.ID); loadErr == nil && isResolvedUsageRelease(current) {
+			*task = *current
+			return nil
+		}
 	}
 	classified, _ := submissiondomain.ClassifyRetryableFailure(recoveryErr, usageSettlementRecoveryScope)
 	updated := adaptSubmissionRetryableBlock(submissiondomain.BuildReblockedRetryableBlock(

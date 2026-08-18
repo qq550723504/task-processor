@@ -111,6 +111,33 @@ func TestProcessListingKitPersistsReleaseRecoveryBeforeExternalRelease(t *testin
 	}
 }
 
+func TestProcessListingKitDoesNotReblockConcurrentlyResolvedUsageRelease(t *testing.T) {
+	t.Parallel()
+
+	workflowErr := errors.New("provider rejected listing generation")
+	settlement := &recordingGenerationUsageSettlement{}
+	svc, repo, _, task := newProcessUsageFixture(t, settlement, workflowErr)
+	settlement.onRelease = func() {
+		if err := repo.ResolveGenerationUsageRelease(context.Background(), task.ID, workflowErr.Error()); err != nil {
+			t.Errorf("concurrent ResolveGenerationUsageRelease() error = %v", err)
+		}
+	}
+
+	if _, err := svc.ProcessListingKit(context.Background(), task); !errors.Is(err, workflowErr) {
+		t.Fatalf("ProcessListingKit() error = %v, want workflow error", err)
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusFailed || stored.RetryableBlock != nil || stored.GenerationUsageReservationState != "" || stored.GenerationUsageReservationLeaseUntil != nil {
+		t.Fatalf("concurrently resolved task = %#v, want resolved failed task", stored)
+	}
+	if repo.blockedCalls != 0 {
+		t.Fatalf("MarkBlockedRetryable calls = %d, want no stale reblock", repo.blockedCalls)
+	}
+}
+
 type processUsageProductService struct {
 	task         *productenrich.Task
 	product      *productenrich.ProductJSON
@@ -293,6 +320,27 @@ func TestProcessListingKitSubscriptionRejectionClearsReservationIntent(t *testin
 	}
 	if stored.Status != core.TaskStatusFailed || stored.GenerationUsageReservationState != "" || stored.GenerationUsageReservationLeaseUntil != nil {
 		t.Fatalf("subscription-rejected task = %#v, want failed task with cleared admission intent", stored)
+	}
+}
+
+func TestProcessListingKitReconcilesAmbiguousInitialReservationFailure(t *testing.T) {
+	t.Parallel()
+
+	reserveErr := errors.New("usage ledger transaction outcome is unknown")
+	settlement := &recordingGenerationUsageSettlement{reserveErr: reserveErr}
+	svc, repo, productService, task := newProcessUsageFixture(t, settlement, nil)
+	if _, err := svc.ProcessListingKit(context.Background(), task); !errors.Is(err, reserveErr) {
+		t.Fatalf("ProcessListingKit() error = %v, want ambiguous reservation error", err)
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("ambiguous initial reservation task = %#v, want retained reconciliation intent", stored)
+	}
+	if productService.processCalls != 0 || len(settlement.calls) != 1 || settlement.calls[0] != "reserve" {
+		t.Fatalf("workflow/settlement = (%d, %#v), want (0, [reserve])", productService.processCalls, settlement.calls)
 	}
 }
 
@@ -697,7 +745,7 @@ func TestProcessListingKitPreservesReleaseRecoveryWhenRetryableBlockPersistenceF
 	}
 }
 
-func TestProcessListingKitSchedulesRetryableReservationFailure(t *testing.T) {
+func TestProcessListingKitReconcilesAmbiguousRetryableReservationFailure(t *testing.T) {
 	t.Parallel()
 
 	settlement := &recordingGenerationUsageSettlement{reserveErr: errors.New("context deadline exceeded")}
@@ -712,12 +760,12 @@ func TestProcessListingKitSchedulesRetryableReservationFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.NextRetryAt == nil {
-		t.Fatalf("stored task = %#v, want scheduled retryable reservation block", stored)
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("stored task = %#v, want retained reconciliation intent", stored)
 	}
 }
 
-func TestProcessListingKitPersistsReservationFailureWithCleanupContext(t *testing.T) {
+func TestProcessListingKitReconcilesReservationFailureWithCleanupContext(t *testing.T) {
 	t.Parallel()
 
 	repo := &stubProcessStatusRepo{stubGenerationRepo: &stubGenerationRepo{}, requireLiveBlockContext: true}
@@ -740,8 +788,8 @@ func TestProcessListingKitPersistsReservationFailureWithCleanupContext(t *testin
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.NextRetryAt == nil {
-		t.Fatalf("stored task = %#v, want cleanup-persisted scheduled block", stored)
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("stored task = %#v, want cleanup-persisted reconciliation intent", stored)
 	}
 }
 
@@ -1028,7 +1076,7 @@ func TestProcessListingKitKeepsReleaseFailureRecoverableAfterTerminalPersistence
 	}
 }
 
-func TestProcessListingKitPersistsRetryableStateWhenReservationFails(t *testing.T) {
+func TestProcessListingKitReconcilesAmbiguousTimeoutReservationFailure(t *testing.T) {
 	t.Parallel()
 
 	settlement := &recordingGenerationUsageSettlement{reserveErr: errors.New("upstream request failed: context deadline exceeded")}
@@ -1041,8 +1089,8 @@ func TestProcessListingKitPersistsRetryableStateWhenReservationFails(t *testing.
 	if err != nil {
 		t.Fatalf("GetTask() error = %v", err)
 	}
-	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil {
-		t.Fatalf("stored task = %#v, want retryable reservation block", stored)
+	if stored.Status != core.TaskStatusBlockedRetryable || stored.RetryableBlock == nil || stored.RetryableBlock.ReasonCode != generationUsageReconciliationPendingReason || stored.GenerationUsageReservationState == "" || stored.GenerationUsageReservationLeaseUntil == nil {
+		t.Fatalf("stored task = %#v, want retained reconciliation intent", stored)
 	}
 }
 
