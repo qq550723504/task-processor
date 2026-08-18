@@ -65,6 +65,13 @@ func (s *service) persistProcessSuccess(ctx context.Context, taskID string, resu
 }
 
 func taskNeedsReviewReason(result *ListingKitResult) string {
+	return TaskNeedsReviewReason(result)
+}
+
+// TaskNeedsReviewReason derives the durable operator-facing reason from a
+// terminal result. Storage and service code share this function so settlement
+// recovery restores exactly the same reason as the original terminal write.
+func TaskNeedsReviewReason(result *ListingKitResult) string {
 	warnings := reviewReasonsFromResult(result)
 	return summarizeReviewReasons(warnings, "listing kit requires review")
 }

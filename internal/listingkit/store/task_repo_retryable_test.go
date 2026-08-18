@@ -81,6 +81,90 @@ func TestTaskRepositoryMarkBlockedRetryablePersistsMetadata(t *testing.T) {
 	}
 }
 
+func TestTaskRepositoryMarkFailedClearsRetryableBlock(t *testing.T) {
+	t.Parallel()
+
+	for _, repoFactory := range retryableTaskRepoFactories(t) {
+		t.Run(repoFactory.name, func(t *testing.T) {
+			t.Parallel()
+
+			repo := repoFactory.new(t)
+			ctx := listingkit.WithTenantID(context.Background(), "tenant-a")
+			task := retryableTaskFixture("task-failed-clears-block", time.Date(2026, 6, 6, 10, 0, 0, 0, time.UTC))
+			if err := repo.CreateTask(ctx, task); err != nil {
+				t.Fatalf("CreateTask() error = %v", err)
+			}
+			if err := repo.MarkBlockedRetryable(ctx, task.ID, &listingkit.RetryableBlock{ReasonCode: "usage_release_pending", AutoResumeEnabled: true}, "release pending"); err != nil {
+				t.Fatalf("MarkBlockedRetryable() error = %v", err)
+			}
+			if err := repo.MarkFailed(ctx, task.ID, "release completed"); err != nil {
+				t.Fatalf("MarkFailed() error = %v", err)
+			}
+			got, err := repo.GetTask(ctx, task.ID)
+			if err != nil {
+				t.Fatalf("GetTask() error = %v", err)
+			}
+			if got.Status != core.TaskStatusFailed || got.RetryableBlock != nil {
+				t.Fatalf("task = %#v, want failed task without retryable block", got)
+			}
+		})
+	}
+}
+
+func TestTaskRepositoryMarkBlockedRetryableIfCurrentDoesNotOverwriteResolvedTask(t *testing.T) {
+	for _, repoFactory := range retryableTaskRepoFactories(t) {
+		t.Run(repoFactory.name, func(t *testing.T) {
+			repo := repoFactory.new(t)
+			conditional, ok := repo.(listingkit.ConditionalRetryableBlockRepository)
+			if !ok {
+				t.Fatal("repository does not implement ConditionalRetryableBlockRepository")
+			}
+			ctx := listingkit.WithTenantID(context.Background(), "tenant-conditional-reblock")
+			now := time.Date(2026, 8, 18, 10, 30, 0, 0, time.UTC)
+			task := retryableTaskFixture("task-conditional-reblock", now)
+			task.TenantID = "tenant-conditional-reblock"
+			if err := repo.CreateTask(ctx, task); err != nil {
+				t.Fatalf("CreateTask() error = %v", err)
+			}
+			expected := recoverableBlock(now, now.Add(-time.Minute))
+			expected.ReasonCode = "usage_commit_pending"
+			if err := repo.MarkBlockedRetryable(ctx, task.ID, expected, "usage settlement pending"); err != nil {
+				t.Fatalf("MarkBlockedRetryable() error = %v", err)
+			}
+			loaded, err := repo.GetTask(ctx, task.ID)
+			if err != nil {
+				t.Fatalf("GetTask() before conditional update error = %v", err)
+			}
+			next := &listingkit.RetryableBlock{ReasonCode: "usage_commit_pending", RetryAttempts: 3, AutoResumeEnabled: true}
+			applied, err := conditional.MarkBlockedRetryableIfCurrent(ctx, task.ID, loaded.RetryableBlock, next, "ledger unavailable")
+			if err != nil {
+				t.Fatalf("MarkBlockedRetryableIfCurrent(matching) error = %v", err)
+			}
+			if !applied {
+				t.Fatal("MarkBlockedRetryableIfCurrent(matching) applied = false, want true")
+			}
+			if err := repo.MarkCompleted(ctx, task.ID, &listingkit.ListingKitResult{Status: string(core.TaskStatusCompleted)}); err != nil {
+				t.Fatalf("MarkCompleted() error = %v", err)
+			}
+
+			applied, err = conditional.MarkBlockedRetryableIfCurrent(ctx, task.ID, next, &listingkit.RetryableBlock{ReasonCode: "usage_commit_pending", AutoResumeEnabled: true}, "ledger unavailable")
+			if err != nil {
+				t.Fatalf("MarkBlockedRetryableIfCurrent() error = %v", err)
+			}
+			if applied {
+				t.Fatal("MarkBlockedRetryableIfCurrent() applied = true, want false after terminal resolution")
+			}
+			stored, err := repo.GetTask(ctx, task.ID)
+			if err != nil {
+				t.Fatalf("GetTask() error = %v", err)
+			}
+			if stored.Status != core.TaskStatusCompleted || stored.RetryableBlock != nil {
+				t.Fatalf("stored task = %#v, want unchanged completed task", stored)
+			}
+		})
+	}
+}
+
 func TestTaskRepositoryListRecoverableTasksReturnsDueItemsOnly(t *testing.T) {
 	t.Parallel()
 
@@ -157,6 +241,57 @@ func TestTaskRepositoryListRecoverableTasksReturnsDueItemsOnly(t *testing.T) {
 			}
 			if items[0].ID != due.ID {
 				t.Fatalf("items[0].ID = %q, want %q", items[0].ID, due.ID)
+			}
+		})
+	}
+}
+
+func TestTaskRepositoryListRecoverableTasksFiltersReasonCodesBeforeLimit(t *testing.T) {
+	for _, repoFactory := range retryableTaskRepoFactories(t) {
+		t.Run(repoFactory.name, func(t *testing.T) {
+			repo := repoFactory.new(t)
+			ctx := listingkit.WithTenantID(context.Background(), "tenant-recovery-reason-filter")
+			now := time.Date(2026, 8, 18, 11, 0, 0, 0, time.UTC)
+			for _, fixture := range []struct {
+				id     string
+				reason string
+			}{
+				{id: "task-recovery-provider-1", reason: "worker_queue_backpressure"},
+				{id: "task-recovery-provider-2", reason: "worker_queue_backpressure"},
+				{id: "task-recovery-settlement", reason: "usage_commit_pending"},
+			} {
+				task := retryableTaskFixture(fixture.id, now)
+				task.TenantID = "tenant-recovery-reason-filter"
+				if err := repo.CreateTask(ctx, task); err != nil {
+					t.Fatalf("CreateTask(%s) error = %v", fixture.id, err)
+				}
+				block := recoverableBlock(now, now.Add(-time.Minute))
+				block.ReasonCode = fixture.reason
+				mustMarkBlockedRetryable(t, repo, ctx, task.ID, block, fixture.reason)
+			}
+
+			settlement, err := repo.ListRecoverableTasks(ctx, &listingkit.RecoverableTaskQuery{
+				DueBefore:   now,
+				ReasonCodes: []string{"usage_commit_pending"},
+				Limit:       1,
+			})
+			if err != nil {
+				t.Fatalf("ListRecoverableTasks(settlement) error = %v", err)
+			}
+			if len(settlement) != 1 || settlement[0].ID != "task-recovery-settlement" {
+				t.Fatalf("settlement candidates = %#v, want bounded settlement task", settlement)
+			}
+
+			providers, err := repo.ListRecoverableTasks(ctx, &listingkit.RecoverableTaskQuery{
+				DueBefore:          now,
+				ExcludeReasonCodes: []string{"usage_commit_pending"},
+				Limit:              1,
+			})
+			if err != nil {
+				t.Fatalf("ListRecoverableTasks(providers) error = %v", err)
+			}
+			if len(providers) != 1 || providers[0].RetryableBlock == nil || providers[0].RetryableBlock.ReasonCode != "worker_queue_backpressure" {
+				t.Fatalf("provider candidates = %#v, want bounded provider task", providers)
 			}
 		})
 	}

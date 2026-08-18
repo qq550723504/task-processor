@@ -1102,7 +1102,7 @@ func TestTaskRecoverySubmitRecoveredDelegatesRetryablePersistenceSkeleton(t *tes
 
 	assertSourceContainsAll(t, source, []string{
 		"return submissiondomain.SubmitRecoveredWithRetryablePersistence(",
-		"PreviousBlock:        adaptRetryableBlockState(previousBlock)",
+		"PreviousBlock:        adaptRetryableBlockState(task.RetryableBlock)",
 		"MarkBlockedRetryable: func(block *submissiondomain.RetryableBlockState, errorMsg string) error {",
 		"PersistFailure: func(errorMsg string, submitErr error) error {",
 		"RestoreDurability: func(errorMsg string, submitErr error, persistErr error) error {",

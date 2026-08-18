@@ -39,7 +39,16 @@ func buildListingKitCoreDependencies(in buildListingKitServiceConfigInput) listi
 		UploadedImageRepository:       in.repositories.uploadedImageRepository,
 		StoreProfileRepository:        in.repositories.storeProfileRepository,
 		AIClientCredentialStore:       adaptListingKitAICredentialStore(in.input.AICredentialStore),
+		GenerationUsageLedger:         generationUsageSettlementDependency(in),
+		GenerationUsageAdmission:      generationUsageAdmissionForConfig(in.input.Config),
 	}
+}
+
+func generationUsageSettlementDependency(in buildListingKitServiceConfigInput) listingkit.GenerationUsageSettlement {
+	if in.repositories == nil || in.repositories.subscriptionService == nil || !in.repositories.subscriptionService.HasUsageLedger() {
+		return nil
+	}
+	return newSubscriptionGenerationUsage(in.repositories.subscriptionService)
 }
 
 func buildListingKitAssetDependencies(in buildListingKitServiceConfigInput) listingkit.ServiceAssetDependencies {

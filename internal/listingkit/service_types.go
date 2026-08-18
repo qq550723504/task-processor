@@ -47,6 +47,8 @@ type ServiceCoreDependencies struct {
 	StoreProfileRepository        StoreProfileRepository
 	TaskSubmitter                 TaskSubmitter
 	AIClientCredentialStore       AIClientCredentialStore
+	GenerationUsageLedger         GenerationUsageSettlement
+	GenerationUsageAdmission      GenerationUsageAdmission
 }
 
 type ServiceAssetDependencies struct {

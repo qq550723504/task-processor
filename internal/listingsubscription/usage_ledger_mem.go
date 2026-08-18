@@ -62,10 +62,7 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 	identity := usageEventIdentityKey(input.TenantID, input.IdempotencyKey)
 	if existingID, ok := l.eventIDByIdentity[identity]; ok {
 		existing := l.eventsByID[existingID].event
-		comparison := input
-		if comparison.OccurredAt.IsZero() {
-			comparison.PeriodKey = existing.PeriodKey
-		}
+		comparison := usageReplayComparison(input, existing)
 		if !usageEventMatchesReserveInput(existing, comparison) {
 			return ReserveUsageResult{}, &UsageDuplicateIdentityError{TenantID: input.TenantID, IdempotencyKey: input.IdempotencyKey}
 		}
@@ -447,7 +444,7 @@ func usageEventIdentityKey(tenantID, idempotencyKey string) string {
 }
 
 func usageEventNotFound(eventID string) error {
-	return fmt.Errorf("usage event not found: %q", eventID)
+	return fmt.Errorf("%w: %q", ErrUsageEventNotFound, eventID)
 }
 
 func cloneMemUsageEvent(event UsageEvent) UsageEvent {

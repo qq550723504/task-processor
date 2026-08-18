@@ -177,6 +177,41 @@ func TestTaskLifecycleServicePersistsTenantAdminStoreAccessDecision(t *testing.T
 	}
 }
 
+func TestTaskLifecycleServiceKeepsCanonicalOwnerSeparateFromBillingTenant(t *testing.T) {
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{})
+	ctx := WithTenantID(context.Background(), "canonical-tenant")
+
+	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{
+		TenantID:        "canonical-tenant",
+		BillingTenantID: "227",
+		UserID:          "user-1",
+		ProductURL:      "https://example.com/product",
+		Platforms:       []string{"amazon"},
+	})
+	if err != nil {
+		t.Fatalf("prepareGenerateTask() error = %v", err)
+	}
+	if task.TenantID != "canonical-tenant" {
+		t.Fatalf("task owner tenant = %q, want canonical tenant", task.TenantID)
+	}
+	if task.BillingTenantID != "227" {
+		t.Fatalf("task billing tenant = %q, want legacy subscription tenant", task.BillingTenantID)
+	}
+}
+
+func TestTaskLifecycleServiceLeavesBillingTenantBlankWithoutExplicitAdmission(t *testing.T) {
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{})
+	ctx := WithTenantID(context.Background(), "canonical-tenant")
+
+	_, task, err := lifecycle.prepareGenerateTask(ctx, &GenerateRequest{TenantID: "canonical-tenant", ProductURL: "https://example.com/product", Platforms: []string{"amazon"}})
+	if err != nil {
+		t.Fatalf("prepareGenerateTask() error = %v", err)
+	}
+	if task.BillingTenantID != "" {
+		t.Fatalf("task billing tenant = %q, want empty outside explicit HTTP admission", task.BillingTenantID)
+	}
+}
+
 func TestTaskLifecycleServicePersistsTenantAdminAccessWhenStoreProfileResolutionFails(t *testing.T) {
 	const resolutionErr = "store profile contains invalid pricing rules"
 	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{

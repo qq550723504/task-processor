@@ -34,6 +34,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("aiCapability.productImageSceneEnabled", defaults.AICapability.ProductImageSceneEnabled)
 	v.SetDefault("aiCapability.productImageSceneAllowedTenantIDs", defaults.AICapability.ProductImageSceneAllowedTenantIDs)
 	v.SetDefault("listingkit.sheinSubmitDebugDumpDir", defaults.ListingKit.SheinSubmitDebugDumpDir)
+	v.SetDefault("listingkit.generationUsageLedgerEnabled", defaults.ListingKit.GenerationUsageLedgerEnabled)
+	v.SetDefault("listingkit.generationUsageLedgerTenantIDs", defaults.ListingKit.GenerationUsageLedgerTenantIDs)
 	v.SetDefault("listingkit.platformAdminUsers", defaults.ListingKit.PlatformAdminUsers)
 	v.SetDefault("listingkit.platformAdminRoles", defaults.ListingKit.PlatformAdminRoles)
 	v.SetDefault("listingkit.zitadel.issuerURL", defaults.ListingKit.Zitadel.IssuerURL)

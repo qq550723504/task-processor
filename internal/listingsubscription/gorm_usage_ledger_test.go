@@ -64,6 +64,26 @@ func TestGormUsageLedgerReserveIsIdempotent(t *testing.T) {
 	assertUsageLedgerCounts(t, db, first.Event.EventID, 1, 0, 1, 1)
 }
 
+func TestGormUsageLedgerReplayRejectsExplicitPeriodChangeAcrossBoundary(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-period-replay", "studio", map[string]int{"studio_design_jobs_succeeded": 2})
+	ledger := NewGormUsageLedger(repo)
+	firstInput := usageLedgerReserveInput("tenant-period-replay", "period-boundary", 1)
+	firstInput.PeriodKey = "2026-07"
+	firstInput.OccurredAt = time.Date(2026, 7, 31, 23, 59, 0, 0, time.UTC)
+	if _, err := ledger.Reserve(ctx, firstInput); err != nil {
+		t.Fatalf("first Reserve() error = %v", err)
+	}
+	replayInput := firstInput
+	replayInput.PeriodKey = "2026-08"
+	replayInput.OccurredAt = time.Date(2026, 8, 1, 0, 1, 0, 0, time.UTC)
+	if _, err := ledger.Reserve(ctx, replayInput); !errors.Is(err, ErrUsageDuplicateIdentity) {
+		t.Fatalf("boundary replay Reserve() error = %v, want ErrUsageDuplicateIdentity", err)
+	}
+}
+
 func TestGormUsageLedgerRejectsIdempotencyKeyForDifferentUsageFact(t *testing.T) {
 	ctx := context.Background()
 	db := openUsageLedgerTestDB(t)

@@ -105,6 +105,16 @@ func TestListingControlPlaneConfigDefaults(t *testing.T) {
 	assert.Equal(t, time.Hour, v.GetDuration("listingControlPlane.pausedTaskRecoveryInterval"))
 }
 
+func TestListingKitGenerationUsageLedgerDefaultsDisabled(t *testing.T) {
+	v := viper.New()
+	setDefaults(v)
+
+	assert.False(t, v.GetBool("listingkit.generationUsageLedgerEnabled"))
+	assert.Empty(t, getStringSlice(v, "listingkit.generationUsageLedgerTenantIDs"))
+	assert.False(t, NewDefaultConfig().ListingKit.GenerationUsageLedgerEnabled)
+	assert.Empty(t, NewDefaultConfig().ListingKit.GenerationUsageLedgerTenantIDs)
+}
+
 func TestConfigBuild(t *testing.T) {
 	v := viper.New()
 	v.Set("browser.enabled", true)
@@ -221,6 +231,8 @@ func TestConfigBuildIncludesDebugConfig(t *testing.T) {
 func TestConfigBuildIncludesListingKitConfig(t *testing.T) {
 	v := viper.New()
 	v.Set("listingkit.sheinSubmitDebugDumpDir", "./.local/tmp/shein-submit-dumps")
+	v.Set("listingkit.generationUsageLedgerEnabled", true)
+	v.Set("listingkit.generationUsageLedgerTenantIDs", []string{"tenant-17", "tenant-18"})
 	v.Set("listingkit.platformAdminUsers", []string{"user-a", "user-b"})
 	v.Set("listingkit.platformAdminRoles", []string{"role-a", "role-b"})
 	v.Set("listingkit.zitadel.issuerURL", "https://issuer.example")
@@ -235,6 +247,8 @@ func TestConfigBuildIncludesListingKitConfig(t *testing.T) {
 	cfg := BuildConfig(v)
 
 	assert.Equal(t, "./.local/tmp/shein-submit-dumps", cfg.ListingKit.SheinSubmitDebugDumpDir)
+	assert.True(t, cfg.ListingKit.GenerationUsageLedgerEnabled)
+	assert.Equal(t, []string{"tenant-17", "tenant-18"}, cfg.ListingKit.GenerationUsageLedgerTenantIDs)
 	assert.Equal(t, []string{"user-a", "user-b"}, cfg.ListingKit.PlatformAdminUsers)
 	assert.Equal(t, []string{"role-a", "role-b"}, cfg.ListingKit.PlatformAdminRoles)
 	assert.Equal(t, "https://issuer.example", cfg.ListingKit.Zitadel.IssuerURL)

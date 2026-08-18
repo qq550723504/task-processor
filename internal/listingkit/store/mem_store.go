@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"reflect"
 	"sort"
 	"sync"
 	"time"
@@ -162,6 +163,7 @@ func (r *MemTaskRepository) MarkCompleted(ctx context.Context, taskID string, re
 	defer r.mu.Unlock()
 	task := r.tasks[taskID]
 	task.Status = core.TaskStatusCompleted
+	task.RetryableBlock = nil
 	task.Error = ""
 	task.UpdatedAt = time.Now()
 	return nil
@@ -175,6 +177,7 @@ func (r *MemTaskRepository) MarkNeedsReview(ctx context.Context, taskID string, 
 	defer r.mu.Unlock()
 	task := r.tasks[taskID]
 	task.Status = core.TaskStatusNeedsReview
+	task.RetryableBlock = nil
 	task.Error = reason
 	task.UpdatedAt = time.Now()
 	return nil
@@ -188,6 +191,7 @@ func (r *MemTaskRepository) MarkFailed(ctx context.Context, taskID string, error
 		return core.ErrTaskNotFound
 	}
 	task.Status = core.TaskStatusFailed
+	task.RetryableBlock = nil
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now()
 	return nil
@@ -207,6 +211,223 @@ func (r *MemTaskRepository) MarkBlockedRetryable(ctx context.Context, taskID str
 	return nil
 }
 
+func (r *MemTaskRepository) MarkBlockedRetryableIfCurrent(ctx context.Context, taskID string, expected, next *listingkit.RetryableBlock, errorMsg string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return false, core.ErrTaskNotFound
+	}
+	if task.Status != core.TaskStatusBlockedRetryable || !reflect.DeepEqual(task.RetryableBlock, expected) {
+		return false, nil
+	}
+	task.Status = core.TaskStatusBlockedRetryable
+	task.RetryableBlock = copyRetryableBlock(next)
+	task.Error = errorMsg
+	task.UpdatedAt = time.Now()
+	return true, nil
+}
+
+func (r *MemTaskRepository) ResolveUsageSettlement(ctx context.Context, taskID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return core.ErrTaskNotFound
+	}
+	if task.RetryableBlock == nil || task.RetryableBlock.ReasonCode != "usage_commit_pending" {
+		return core.ErrTaskNotRecoverable
+	}
+	if task.Result == nil || (task.Result.Status != string(core.TaskStatusCompleted) && task.Result.Status != string(core.TaskStatusNeedsReview)) {
+		return core.ErrTaskNotRecoverable
+	}
+	task.Status = core.TaskStatus(task.Result.Status)
+	task.RetryableBlock = nil
+	task.Error = ""
+	if task.Result.Status == string(core.TaskStatusNeedsReview) {
+		task.Error = listingkit.TaskNeedsReviewReason(task.Result)
+	}
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
+	task.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *MemTaskRepository) BeginGenerationUsageReservation(ctx context.Context, taskID string, leaseUntil time.Time) error {
+	return r.updateGenerationUsageReservation(ctx, taskID, leaseUntil, func(task *listingkit.Task) error {
+		if task.GenerationUsageReservationState == "" {
+			task.GenerationUsageReservationState = listingkit.GenerationUsageReservationStatePending
+		}
+		return nil
+	})
+}
+
+func (r *MemTaskRepository) MarkGenerationUsageReserved(ctx context.Context, taskID string, leaseUntil time.Time) error {
+	return r.updateGenerationUsageReservation(ctx, taskID, leaseUntil, func(task *listingkit.Task) error {
+		if task.GenerationUsageReservationState == "" {
+			return core.ErrTaskNotRecoverable
+		}
+		task.GenerationUsageReservationState = listingkit.GenerationUsageReservationStateReserved
+		return nil
+	})
+}
+
+func (r *MemTaskRepository) RenewGenerationUsageReservation(ctx context.Context, taskID string, leaseUntil time.Time) error {
+	return r.updateGenerationUsageReservation(ctx, taskID, leaseUntil, func(task *listingkit.Task) error {
+		if task.GenerationUsageReservationState == "" {
+			return core.ErrTaskNotRecoverable
+		}
+		return nil
+	})
+}
+
+func (r *MemTaskRepository) ClearGenerationUsageReservation(ctx context.Context, taskID string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return core.ErrTaskNotFound
+	}
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
+	task.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *MemTaskRepository) FinalizeGenerationUsageAdmission(ctx context.Context, taskID string, status core.TaskStatus, block *listingkit.RetryableBlock, errorMsg string) error {
+	if status != core.TaskStatusFailed && (status != core.TaskStatusBlockedRetryable || block == nil) {
+		return core.ErrTaskNotRecoverable
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return core.ErrTaskNotFound
+	}
+	task.Status = status
+	task.RetryableBlock = copyRetryableBlock(block)
+	task.Error = errorMsg
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
+	task.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *MemTaskRepository) PrepareGenerationUsageRelease(ctx context.Context, taskID string, block *listingkit.RetryableBlock, errorMsg string, result *listingkit.ListingKitResult) error {
+	if block == nil || block.ReasonCode != "usage_release_pending" {
+		return core.ErrTaskNotRecoverable
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return core.ErrTaskNotFound
+	}
+	task.Status = core.TaskStatusBlockedRetryable
+	task.RetryableBlock = copyRetryableBlock(block)
+	task.Error = errorMsg
+	if result != nil {
+		task.Result = result
+	}
+	task.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *MemTaskRepository) ResolveGenerationUsageRelease(ctx context.Context, taskID, terminalError string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return core.ErrTaskNotFound
+	}
+	if task.RetryableBlock == nil || task.RetryableBlock.ReasonCode != "usage_release_pending" {
+		return core.ErrTaskNotRecoverable
+	}
+	task.Status = core.TaskStatusFailed
+	task.RetryableBlock = nil
+	task.Error = terminalError
+	task.GenerationUsageReservationState = ""
+	task.GenerationUsageReservationLeaseUntil = nil
+	task.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *MemTaskRepository) ListExpiredGenerationUsageReservations(ctx context.Context, dueBefore time.Time, limit int) ([]listingkit.Task, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if dueBefore.IsZero() {
+		dueBefore = time.Now().UTC()
+	}
+	items := make([]listingkit.Task, 0)
+	for _, task := range r.tasks {
+		if !matchesTenantScope(ctx, task.TenantID) || !generationUsageReservationMayNeedSettlement(task.Status) || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
+			continue
+		}
+		copied := *task
+		items = append(items, copied)
+	}
+	sort.SliceStable(items, func(i, j int) bool {
+		if !items[i].GenerationUsageReservationLeaseUntil.Equal(*items[j].GenerationUsageReservationLeaseUntil) {
+			return items[i].GenerationUsageReservationLeaseUntil.Before(*items[j].GenerationUsageReservationLeaseUntil)
+		}
+		return items[i].ID < items[j].ID
+	})
+	if limit > 0 && len(items) > normalizeRecoverableTaskLimitFromValue(limit) {
+		items = items[:normalizeRecoverableTaskLimitFromValue(limit)]
+	}
+	return items, nil
+}
+
+func generationUsageReservationMayNeedSettlement(status core.TaskStatus) bool {
+	return status == core.TaskStatusPending || status == core.TaskStatusProcessing || status == core.TaskStatusCompleted || status == core.TaskStatusNeedsReview
+}
+
+func (r *MemTaskRepository) ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, expectedStatus core.TaskStatus, dueBefore time.Time, block *listingkit.RetryableBlock, errorMsg string, clearReservation bool) error {
+	if block == nil || dueBefore.IsZero() || !generationUsageReservationMayNeedSettlement(expectedStatus) {
+		return core.ErrTaskNotRecoverable
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return core.ErrTaskNotFound
+	}
+	if task.Status != expectedStatus || task.GenerationUsageReservationState == "" || task.GenerationUsageReservationLeaseUntil == nil || task.GenerationUsageReservationLeaseUntil.After(dueBefore) {
+		return core.ErrTaskNotRecoverable
+	}
+	task.Status = core.TaskStatusBlockedRetryable
+	task.RetryableBlock = copyRetryableBlock(block)
+	task.Error = errorMsg
+	if clearReservation {
+		task.GenerationUsageReservationState = ""
+		task.GenerationUsageReservationLeaseUntil = nil
+	}
+	task.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
+func (r *MemTaskRepository) updateGenerationUsageReservation(ctx context.Context, taskID string, leaseUntil time.Time, mutate func(*listingkit.Task) error) error {
+	if leaseUntil.IsZero() {
+		return core.ErrTaskNotRecoverable
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	task, ok := r.tasks[taskID]
+	if !ok || !matchesTenantScope(ctx, task.TenantID) {
+		return core.ErrTaskNotFound
+	}
+	if task.Status != core.TaskStatusProcessing {
+		return core.ErrTaskNotRecoverable
+	}
+	if err := mutate(task); err != nil {
+		return err
+	}
+	lease := leaseUntil
+	task.GenerationUsageReservationLeaseUntil = &lease
+	task.UpdatedAt = time.Now().UTC()
+	return nil
+}
+
 func (r *MemTaskRepository) ListRecoverableTasks(ctx context.Context, query *listingkit.RecoverableTaskQuery) ([]listingkit.Task, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -221,6 +442,9 @@ func (r *MemTaskRepository) ListRecoverableTasks(ctx context.Context, query *lis
 			continue
 		}
 		if !taskIsRecoverable(task, dueBefore, false) {
+			continue
+		}
+		if !matchesRecoverableReasonCodes(task.RetryableBlock, query) {
 			continue
 		}
 		copied := *task
@@ -249,6 +473,30 @@ func (r *MemTaskRepository) ListRecoverableTasks(ctx context.Context, query *lis
 		items = items[:limit]
 	}
 	return items, nil
+}
+
+func matchesRecoverableReasonCodes(block *listingkit.RetryableBlock, query *listingkit.RecoverableTaskQuery) bool {
+	if block == nil || query == nil {
+		return block != nil
+	}
+	if len(query.ReasonCodes) > 0 {
+		matched := false
+		for _, code := range query.ReasonCodes {
+			if block.ReasonCode == code {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	for _, code := range query.ExcludeReasonCodes {
+		if block.ReasonCode == code {
+			return false
+		}
+	}
+	return true
 }
 
 func (r *MemTaskRepository) RecoverBlockedTaskNow(ctx context.Context, taskID string, recoveredAt time.Time) error {

@@ -100,11 +100,28 @@ func (s *Service) ListPendingUsageOutbox(ctx context.Context, limit int) ([]Usag
 	return ledger.ListPendingOutbox(ctx, limit)
 }
 
+// GetUsage resolves a durable usage event by tenant and idempotency key for
+// adapter-level lifecycle replay.
+func (s *Service) GetUsage(ctx context.Context, tenantID, idempotencyKey string) (*UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return nil, err
+	}
+	return ledger.Get(ctx, tenantID, idempotencyKey)
+}
+
 func (s *Service) requireUsageLedger() (UsageLedger, error) {
 	if s == nil || usageLedgerIsNil(s.usageLedger) {
 		return nil, ErrUsageLedgerNotConfigured
 	}
 	return s.usageLedger, nil
+}
+
+// HasUsageLedger reports whether this service can settle durable PAY-042 usage
+// events. Bootstrap uses it to retain the recovery adapter independently from
+// whether new admissions are currently enabled.
+func (s *Service) HasUsageLedger() bool {
+	return s != nil && !usageLedgerIsNil(s.usageLedger)
 }
 
 func usageLedgerIsNil(ledger UsageLedger) bool {

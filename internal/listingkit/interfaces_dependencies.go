@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/amazonlisting"
 	"task-processor/internal/catalog/canonical"
+	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 )
@@ -48,6 +49,66 @@ type Repository interface {
 	PrepareRetry(ctx context.Context, taskID string) error
 	IncrementRetryCount(ctx context.Context, taskID string) error
 	SaveTaskResult(ctx context.Context, taskID string, result *ListingKitResult) error
+}
+
+// UsageSettlementRepository is an optional task-repository extension used to
+// clear a settlement-only retryable block without re-running generation.
+type UsageSettlementRepository interface {
+	ResolveUsageSettlement(ctx context.Context, taskID string) error
+}
+
+// ConditionalRetryableBlockRepository atomically replaces a retryable block
+// only while the task still carries the expected recovery state. Recovery
+// workers use it to avoid overwriting a terminal resolution completed by a
+// concurrent worker after an upstream settlement call returns an error.
+type ConditionalRetryableBlockRepository interface {
+	MarkBlockedRetryableIfCurrent(ctx context.Context, taskID string, expected, next *RetryableBlock, errorMsg string) (bool, error)
+}
+
+// GenerationUsageReservationRepository persists the task-side reservation
+// intent independently from the PAY-041 ledger. It is intentionally an
+// optional extension so unrelated task repositories do not need billing
+// behavior, while metered generation can require it at runtime.
+type GenerationUsageReservationRepository interface {
+	BeginGenerationUsageReservation(ctx context.Context, taskID string, leaseUntil time.Time) error
+	MarkGenerationUsageReserved(ctx context.Context, taskID string, leaseUntil time.Time) error
+	RenewGenerationUsageReservation(ctx context.Context, taskID string, leaseUntil time.Time) error
+	ClearGenerationUsageReservation(ctx context.Context, taskID string) error
+	ListExpiredGenerationUsageReservations(ctx context.Context, dueBefore time.Time, limit int) ([]Task, error)
+	// ResolveExpiredGenerationUsageReservation atomically claims an intent only
+	// while its durable lease is still expired at dueBefore.
+	ResolveExpiredGenerationUsageReservation(ctx context.Context, taskID string, expectedStatus core.TaskStatus, dueBefore time.Time, block *RetryableBlock, errorMsg string, clearReservation bool) error
+}
+
+// GenerationUsageAdmissionRepository atomically finishes a task-side usage
+// admission intent after the ledger has definitively rejected it. Unlike a
+// release saga, quota rejection creates no ledger event to replay.
+type GenerationUsageAdmissionRepository interface {
+	FinalizeGenerationUsageAdmission(ctx context.Context, taskID string, status core.TaskStatus, block *RetryableBlock, errorMsg string) error
+}
+
+// GenerationUsageReleaseRecoveryRepository persists the release saga around
+// the external PAY-041 release. Preparing the recovery state before the
+// external call keeps an idempotent replay intent durable; resolving it clears
+// that intent, the task-side reservation, and the terminal block atomically.
+type GenerationUsageReleaseRecoveryRepository interface {
+	PrepareGenerationUsageRelease(ctx context.Context, taskID string, block *RetryableBlock, errorMsg string, result *ListingKitResult) error
+	ResolveGenerationUsageRelease(ctx context.Context, taskID, terminalError string) error
+}
+
+type GenerationUsageEventState string
+
+const (
+	GenerationUsageEventReserved  GenerationUsageEventState = "reserved"
+	GenerationUsageEventCommitted GenerationUsageEventState = "committed"
+	GenerationUsageEventReleased  GenerationUsageEventState = "released"
+	GenerationUsageEventReversed  GenerationUsageEventState = "reversed"
+)
+
+// GenerationUsageLedgerLookup reads only the deterministic event identity
+// used by generation recovery. found=false means that no event was created.
+type GenerationUsageLedgerLookup interface {
+	LookupGeneration(ctx context.Context, tenantID, taskID string) (state GenerationUsageEventState, found bool, err error)
 }
 
 type TaskListSummarySource interface {

@@ -131,17 +131,27 @@ func (s *taskLifecycleService) prepareGenerateTask(ctx context.Context, req *Gen
 	}
 
 	task := &Task{
-		ID:         uuid.New().String(),
-		TenantID:   TenantIDFromContext(ctx),
-		UserID:     strings.TrimSpace(req.UserID),
-		Request:    req,
-		Status:     core.TaskStatusPending,
-		CreatedAt:  time.Now(),
-		UpdatedAt:  time.Now(),
-		RetryCount: 0,
+		ID:              uuid.New().String(),
+		TenantID:        TenantIDFromContext(ctx),
+		BillingTenantID: billingTenantIDForTask(req, TenantIDFromContext(ctx)),
+		UserID:          strings.TrimSpace(req.UserID),
+		Request:         req,
+		Status:          core.TaskStatusPending,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+		RetryCount:      0,
 	}
 	s.applySheinStoreResolutionSnapshot(ctx, task)
 	return ctx, task, nil
+}
+
+func billingTenantIDForTask(req *GenerateRequest, _ string) string {
+	if req != nil {
+		if billingTenantID := strings.TrimSpace(req.BillingTenantID); billingTenantID != "" {
+			return billingTenantID
+		}
+	}
+	return ""
 }
 
 func validateExplicitSheinStoreSelection(req *GenerateRequest) error {
