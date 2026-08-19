@@ -30,7 +30,7 @@
 | internal/listingkit/api/auth_context_handler.go | Return verified canonical tenant, subject, and roles. |
 | internal/listingkit/api/auth_context_handler_test.go | Prove exact response and missing-identity denial. |
 | internal/listingkit/httpapi/routes_auth_context.go | Define protected GET descriptor and interface. |
-| internal/listingkit/httpapi/routes_handler.go | Compose the auth-context interface. |
+| internal/listingkit/httpapi/routes_descriptor_entrypoints.go | Register the optional auth-context interface without widening existing route stubs. |
 | internal/listingkit/httpapi/http_module_test.go | Guard route registration. |
 | internal/app/httpapi/server_test.go | Prove real middleware protection. |
 | scripts/lib/listingkit-device-auth.ps1 | OIDC validation, device request, polling, redaction. |
@@ -43,7 +43,6 @@
 - Create: internal/listingkit/api/auth_context_handler.go
 - Create: internal/listingkit/api/auth_context_handler_test.go
 - Create: internal/listingkit/httpapi/routes_auth_context.go
-- Modify: internal/listingkit/httpapi/routes_handler.go
 - Modify: internal/listingkit/httpapi/routes_descriptor_entrypoints.go
 - Modify: internal/listingkit/httpapi/http_module_test.go
 - Modify: internal/app/httpapi/server_test.go
@@ -52,6 +51,7 @@
 - Consumes: listingkit.AuthenticatedIdentityFromContext(context.Context) (listingkit.AuthenticatedIdentity, bool).
 - Produces: func (h *handler) GetAuthContext(c *gin.Context).
 - Produces: type AuthContextRouteHandler interface { GetAuthContext(*gin.Context) }.
+- Registration: AppendRouteDescriptors uses an optional AuthContextRouteHandler type assertion so existing RouteHandler test stubs stay source-compatible.
 - HTTP: GET /api/v1/listing-kits/auth-context returns exactly tenant_id, user_id, and roles.
 
 - [ ] **Step 1: Write failing handler tests**
@@ -98,7 +98,7 @@ Do not resolve a billing tenant or expose the raw introspection response.
 
 - [ ] **Step 4: Register the route and test actual middleware**
 
-Add a listing-kit GET descriptor for /api/v1/listing-kits/auth-context, compose AuthContextRouteHandler into RouteHandler, and assert the descriptor in http_module_test.go. In server_test.go, assert no bearer token is rejected by the real middleware and the existing test bearer receives the exact three-field payload.
+Define the descriptor in routes_auth_context.go. In AppendRouteDescriptors, use `handler.(AuthContextRouteHandler)` and append it only when the assertion succeeds; do not widen RouteHandler. Assert the descriptor in http_module_test.go. In server_test.go, assert no bearer token is rejected by the real middleware and the existing test bearer receives the exact three-field payload.
 
 - [ ] **Step 5: Run GREEN and commit**
 
@@ -107,7 +107,7 @@ Run: go test ./internal/listingkit/api ./internal/listingkit/httpapi ./internal/
 Expected: PASS; unauthenticated requests never reveal identity data.
 
 ~~~
-git add -- internal/listingkit/api/auth_context_handler.go internal/listingkit/api/auth_context_handler_test.go internal/listingkit/httpapi/routes_auth_context.go internal/listingkit/httpapi/routes_handler.go internal/listingkit/httpapi/routes_descriptor_entrypoints.go internal/listingkit/httpapi/http_module_test.go internal/app/httpapi/server_test.go
+git add -- internal/listingkit/api/auth_context_handler.go internal/listingkit/api/auth_context_handler_test.go internal/listingkit/httpapi/routes_auth_context.go internal/listingkit/httpapi/routes_descriptor_entrypoints.go internal/listingkit/httpapi/http_module_test.go internal/app/httpapi/server_test.go
 git commit -m "feat: expose verified ListingKit auth context"
 ~~~
 
