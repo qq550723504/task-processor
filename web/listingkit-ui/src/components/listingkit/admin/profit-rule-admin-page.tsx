@@ -33,6 +33,11 @@ import {
   formatAdminStoreName,
   useAdminSimpleStores,
 } from "@/components/listingkit/admin/admin-store-select";
+import {
+  isListingRuleEnabled,
+  LISTING_RULE_STATUS_ENABLED,
+  nextListingRuleStatus,
+} from "@/lib/listingkit/rule-status";
 
 const DEFAULT_FORM: ListingProfitRuleInput = {
   name: "",
@@ -42,7 +47,7 @@ const DEFAULT_FORM: ListingProfitRuleInput = {
   categoryId: undefined,
   salePriceMultiplier: 3,
   discountPriceMultiplier: 1,
-  status: 1,
+  status: LISTING_RULE_STATUS_ENABLED,
   remark: "",
 };
 
@@ -98,7 +103,7 @@ export function ProfitRuleAdminPage() {
   async function handleToggle(rule: ListingProfitRule) {
     setError("");
     try {
-      await updateListingProfitRuleStatus(rule.id, rule.status === 1 ? 0 : 1);
+      await updateListingProfitRuleStatus(rule.id, nextListingRuleStatus(rule.status));
       await profitRuleQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
@@ -141,8 +146,8 @@ export function ProfitRuleAdminPage() {
               onChange={setStatus}
               options={[
                 ["", "全部"],
-                ["1", "启用"],
-                ["0", "禁用"],
+                ["0", "启用"],
+                ["1", "禁用"],
               ]}
             />
             <Button
@@ -221,8 +226,8 @@ export function ProfitRuleAdminPage() {
                           variant="ghost"
                           className="h-auto p-0 hover:bg-transparent"
                         >
-                          <Badge variant={rule.status === 1 ? "success" : "neutral"}>
-                            {rule.status === 1 ? "启用" : "禁用"}
+                          <Badge variant={isListingRuleEnabled(rule.status) ? "success" : "neutral"}>
+                            {isListingRuleEnabled(rule.status) ? "启用" : "禁用"}
                           </Badge>
                         </Button>
                       </TableCell>

@@ -33,6 +33,11 @@ import {
   formatAdminStoreName,
   useAdminSimpleStores,
 } from "@/components/listingkit/admin/admin-store-select";
+import {
+  isListingRuleEnabled,
+  LISTING_RULE_STATUS_ENABLED,
+  nextListingRuleStatus,
+} from "@/lib/listingkit/rule-status";
 
 const DEFAULT_FORM: ListingFilterRuleInput = {
   name: "",
@@ -48,7 +53,7 @@ const DEFAULT_FORM: ListingFilterRuleInput = {
   reviewCountMin: 0,
   deliveryTimeMax: undefined,
   fulfillmentType: "ALL",
-  status: 1,
+  status: LISTING_RULE_STATUS_ENABLED,
   remark: "",
 };
 
@@ -104,7 +109,7 @@ export function FilterRuleAdminPage() {
   async function handleToggle(rule: ListingFilterRule) {
     setError("");
     try {
-      await updateListingFilterRuleStatus(rule.id, rule.status === 1 ? 0 : 1);
+      await updateListingFilterRuleStatus(rule.id, nextListingRuleStatus(rule.status));
       await filterRuleQuery.refetch();
     } catch (err) {
       setError(formatSubscriptionApiError(err));
@@ -147,8 +152,8 @@ export function FilterRuleAdminPage() {
               onChange={setStatus}
               options={[
                 ["", "全部"],
-                ["1", "启用"],
-                ["0", "禁用"],
+                ["0", "启用"],
+                ["1", "禁用"],
               ]}
             />
             <Button
@@ -235,8 +240,8 @@ export function FilterRuleAdminPage() {
                           variant="ghost"
                           className="h-auto p-0 hover:bg-transparent"
                         >
-                          <Badge variant={rule.status === 1 ? "success" : "neutral"}>
-                            {rule.status === 1 ? "启用" : "禁用"}
+                          <Badge variant={isListingRuleEnabled(rule.status) ? "success" : "neutral"}>
+                            {isListingRuleEnabled(rule.status) ? "启用" : "禁用"}
                           </Badge>
                         </Button>
                       </TableCell>

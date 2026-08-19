@@ -29,16 +29,16 @@ func (t *TaskValidatorHandler) Handle(ctx *shein.TaskContext) error {
 	if err != nil {
 		return err
 	}
-	if filterRule.Status != 0 {
-		return fmt.Errorf("filter rule is not enabled: %s", filterRule.Name)
+	if !listingadmin.IsRuleStatusEnabled(filterRule.Status) {
+		return shein.NewNonRetryableError(fmt.Sprintf("filter rule is not enabled: %s", filterRule.Name), nil)
 	}
 
 	profitRule, err := t.loadProfitRule(ctx)
 	if err != nil {
 		return err
 	}
-	if profitRule.Status != 0 {
-		return fmt.Errorf("profit rule is not enabled: %s", profitRule.Name)
+	if !listingadmin.IsRuleStatusEnabled(profitRule.Status) {
+		return shein.NewNonRetryableError(fmt.Sprintf("profit rule is not enabled: %s", profitRule.Name), nil)
 	}
 
 	ctx.SetValidationRules(filterRule, profitRule)

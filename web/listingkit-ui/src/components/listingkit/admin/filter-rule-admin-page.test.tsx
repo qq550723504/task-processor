@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FilterRuleAdminPage } from "@/components/listingkit/admin/filter-rule-admin-page";
@@ -29,7 +29,7 @@ describe("FilterRuleAdminPage", () => {
           ratingMin: 4.2,
           reviewCountMin: 20,
           fulfillmentType: "FBA",
-          status: 1,
+          status: 0,
         },
       ],
       total: 1,
@@ -52,5 +52,52 @@ describe("FilterRuleAdminPage", () => {
     });
     expect(screen.getByText("FR-AMZ")).toBeInTheDocument();
     expect(screen.getAllByText("SHEIN US (#11)").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("启用").length).toBeGreaterThan(1);
+  });
+
+  it("creates new filter rules as enabled", async () => {
+    vi.spyOn(adminStoresApi, "getSimpleListingStores").mockResolvedValue([]);
+    vi.spyOn(adminFilterRulesApi, "getListingFilterRules").mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+    });
+    const createRule = vi
+      .spyOn(adminFilterRulesApi, "createListingFilterRule")
+      .mockResolvedValue({
+        id: 1,
+        name: "ND",
+        ruleCode: "FR-ND",
+        priceMin: 0,
+        priceMax: 99999,
+        stockMin: 10,
+        ratingMin: 0,
+        reviewCountMin: 0,
+        status: 0,
+      });
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <FilterRuleAdminPage />
+      </QueryClientProvider>,
+    );
+
+    fireEvent.change(screen.getByLabelText("规则名称"), {
+      target: { value: "ND" },
+    });
+    fireEvent.change(screen.getAllByLabelText("规则编码")[1], {
+      target: { value: "FR-ND" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /保存规则/ }));
+
+    await waitFor(() => {
+      expect(createRule).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "ND", ruleCode: "FR-ND", status: 0 }),
+      );
+    });
   });
 });

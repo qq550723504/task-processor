@@ -9,19 +9,20 @@ import (
 var ErrProfitRuleNotFound = errors.New("profit rule not found")
 
 type ProfitRule struct {
-	ID                      int64      `json:"id"`
-	TenantID                int64      `json:"tenantId"`
-	Name                    string     `json:"name"`
-	RuleCode                string     `json:"ruleCode"`
-	Description             string     `json:"description,omitempty"`
-	StoreID                 *int64     `json:"storeId,omitempty"`
-	CategoryID              *int64     `json:"categoryId,omitempty"`
-	SalePriceMultiplier     float64    `json:"salePriceMultiplier"`
-	DiscountPriceMultiplier float64    `json:"discountPriceMultiplier"`
-	Status                  int16      `json:"status"`
-	Remark                  string     `json:"remark,omitempty"`
-	CreateTime              *time.Time `json:"createTime,omitempty"`
-	UpdateTime              *time.Time `json:"updateTime,omitempty"`
+	ID                      int64   `json:"id"`
+	TenantID                int64   `json:"tenantId"`
+	Name                    string  `json:"name"`
+	RuleCode                string  `json:"ruleCode"`
+	Description             string  `json:"description,omitempty"`
+	StoreID                 *int64  `json:"storeId,omitempty"`
+	CategoryID              *int64  `json:"categoryId,omitempty"`
+	SalePriceMultiplier     float64 `json:"salePriceMultiplier"`
+	DiscountPriceMultiplier float64 `json:"discountPriceMultiplier"`
+	// Status uses RuleStatusEnabled/RuleStatusDisabled; enabled is persisted as 0.
+	Status     int16      `json:"status"`
+	Remark     string     `json:"remark,omitempty"`
+	CreateTime *time.Time `json:"createTime,omitempty"`
+	UpdateTime *time.Time `json:"updateTime,omitempty"`
 }
 
 type ProfitRuleQuery struct {
