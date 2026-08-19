@@ -489,7 +489,7 @@ func TestGetSheinActivityStrategyReturnsConfiguredPromotionStrategy(t *testing.T
 	repo := newSheinActivityStrategyTestRepository(t)
 	discountRate := 0.22
 	stockRatio := 0.45
-	_, err := repo.CreateOperationStrategy(context.Background(), &listingadmin.OperationStrategy{
+	_, err := repo.CreateOperationStrategy(listingadmin.WithOwnerUserID(context.Background(), "shein-ops"), &listingadmin.OperationStrategy{
 		TenantID:             18,
 		StoreID:              2001,
 		Name:                 "SHEIN 活动报名",
