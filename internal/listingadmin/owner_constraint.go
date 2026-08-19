@@ -14,12 +14,14 @@ BEGIN
         SELECT 1
         FROM pg_constraint AS constraint_row
         JOIN pg_class AS table_row ON table_row.oid = constraint_row.conrelid
+        JOIN pg_namespace AS schema_row ON schema_row.oid = table_row.relnamespace
         WHERE constraint_row.conname = '%s'
           AND table_row.relname = '%s'
+          AND schema_row.nspname = current_schema()
     ) THEN
         ALTER TABLE "%s"
             ADD CONSTRAINT "%s"
-            CHECK (NULLIF(BTRIM(owner_user_id::text), '') IS NOT NULL) NOT VALID;
+            CHECK (NULLIF(regexp_replace(owner_user_id::text, '[[:space:]]', '', 'g'), '') IS NOT NULL) NOT VALID;
     END IF;
 END
 $owner_constraint$;`, constraintName, table, table, constraintName)

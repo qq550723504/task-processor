@@ -149,6 +149,7 @@ func (r *GormOperationStrategyRepository) SaveActivityStrategy(ctx context.Conte
 	}
 	values := map[string]any{
 		"tenant_id":                        row.TenantID,
+		"owner_user_id":                    ownerUserID,
 		"store_id":                         row.StoreID,
 		"name":                             row.Name,
 		"platform":                         row.Platform,
@@ -166,7 +167,6 @@ func (r *GormOperationStrategyRepository) SaveActivityStrategy(ctx context.Conte
 	}
 	if row.ID <= 0 {
 		values["deleted"] = 0
-		values["owner_user_id"] = ownerUserID
 		if err := r.db.WithContext(ctx).Table("listing_operation_strategy").Create(values).Error; err != nil {
 			return nil, err
 		}
