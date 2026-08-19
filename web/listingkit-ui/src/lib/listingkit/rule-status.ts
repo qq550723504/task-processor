@@ -1,5 +1,5 @@
 export const LISTING_RULE_STATUS_ENABLED = 0;
-export const LISTING_RULE_STATUS_DISABLED = 1;
+const LISTING_RULE_STATUS_DISABLED = 1;
 
 export function isListingRuleEnabled(status: number): boolean {
   return status === LISTING_RULE_STATUS_ENABLED;
