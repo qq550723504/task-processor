@@ -1,7 +1,9 @@
 package local
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -87,9 +89,36 @@ func (p *LocalTaskRPCProvider) submitTask(req *api.TaskSubmitReqDTO, urgent bool
 	if row.ID == 0 {
 		row.ID = time.Now().UnixNano()
 	}
-	if err := p.db.Table("listing_product_import_task").Create(&row).Error; err != nil {
+	storeID := row.StoreID
+	created, err := listingadmin.NewGormImportTaskRepository(p.db).BatchCreateImportTasksForStore(
+		context.Background(),
+		[]listingadmin.ImportTask{{
+			ID:             row.ID,
+			TenantID:       row.TenantID,
+			StoreID:        &storeID,
+			Platform:       row.Platform,
+			SourcePlatform: row.SourcePlatform,
+			TargetPlatform: row.TargetPlatform,
+			Region:         row.Region,
+			CategoryID:     row.CategoryID,
+			ProductID:      row.ProductID,
+			Status:         row.Status,
+			Stage:          row.Stage,
+			RetryCount:     row.RetryCount,
+			MaxRetryCount:  row.MaxRetryCount,
+			Remark:         row.Remark,
+			Priority:       row.Priority,
+			Creator:        row.Creator,
+			Updater:        row.Updater,
+		}},
+	)
+	if err != nil {
 		return nil, true, err
 	}
+	if len(created) != 1 {
+		return nil, true, errors.New("local task rpc repository created no import task")
+	}
+	row.ID = created[0].ID
 
 	meta := localTaskStatusMetadata(row.Status)
 	resp := &api.TaskSubmitRespDTO{

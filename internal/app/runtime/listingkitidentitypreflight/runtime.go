@@ -160,7 +160,7 @@ func runWithDependencies(ctx context.Context, opts Options, deps runtimeDependen
 			if err := report.SetFingerprint(); err != nil {
 				return errors.New("owner reconciliation preflight failed")
 			}
-			if _, err := fmt.Fprintf(deps.Output, "status=blocked owner_reconciliation=unresolved rows=%d auto_rows=%d system_owned_rows=%d report=%s\n", report.Summary.UnresolvedRows, report.Summary.AutoRows, report.Summary.SystemOwnedRows, report.ReportFingerprint); err != nil {
+			if _, err := fmt.Fprintf(deps.Output, "status=blocked unresolved_rows=%d auto_rows=%d system_owned_rows=%d report=%s\n", report.Summary.UnresolvedRows, report.Summary.AutoRows, report.Summary.SystemOwnedRows, report.ReportFingerprint); err != nil {
 				return errors.New("write owner reconciliation summary failed")
 			}
 			return errors.New("owner reconciliation preflight blocked")
@@ -270,4 +270,3 @@ func legacyTenantMetadataTableExists(db *gorm.DB) (bool, error) {
 	}
 	return true, nil
 }
-

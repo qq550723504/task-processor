@@ -157,6 +157,9 @@ func newPricingRuleTestRouter(t *testing.T) storeTestRouter {
 
 func seedPricingRule(t *testing.T, db *gorm.DB, rule listingPricingRule) listingPricingRule {
 	t.Helper()
+	if rule.OwnerUserID == "" {
+		rule.OwnerUserID = "test-owner"
+	}
 	if err := db.Table("listing_pricing_rule").Create(&rule).Error; err != nil {
 		t.Fatalf("seed pricing rule: %v", err)
 	}

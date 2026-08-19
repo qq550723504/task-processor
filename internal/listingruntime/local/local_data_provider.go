@@ -321,6 +321,7 @@ type localListingStore struct {
 	PriceType                string     `gorm:"column:price_type"`
 	Remark                   string     `gorm:"column:remark"`
 	Status                   int16      `gorm:"column:status"`
+	Deleted                  int16      `gorm:"column:deleted"`
 	ValidFrom                *time.Time `gorm:"column:valid_from"`
 	ValidUntil               *time.Time `gorm:"column:valid_until"`
 	CreateTime               *time.Time `gorm:"column:create_time"`
@@ -1416,7 +1417,7 @@ func (p *LocalDataProvider) CreateProductImportMapping(req *listingadmin.Product
 	if repo == nil || req == nil {
 		return 0, nil
 	}
-	created, err := repo.CreateProductImportMapping(context.Background(), productImportMappingFromCreateReq(req))
+	created, err := repo.CreateProductImportMappingForStore(context.Background(), productImportMappingFromCreateReq(req))
 	if err != nil || created == nil {
 		return 0, err
 	}
@@ -1432,7 +1433,7 @@ func (p *LocalDataProvider) UpdateProductImportMapping(req *listingadmin.Product
 	if mapping == nil || mapping.ID == 0 {
 		return false, nil
 	}
-	updated, err := repo.UpdateProductImportMapping(context.Background(), mapping)
+	updated, err := repo.UpdateProductImportMappingForStore(context.Background(), mapping)
 	return updated != nil, err
 }
 
@@ -1583,6 +1584,7 @@ func (p *LocalDataProvider) GetLatestInventoryRecord(platform, productID, region
 type localImportTaskRow struct {
 	ID             int64      `gorm:"column:id"`
 	TenantID       int64      `gorm:"column:tenant_id"`
+	OwnerUserID    string     `gorm:"column:owner_user_id"`
 	StoreID        int64      `gorm:"column:store_id"`
 	Platform       string     `gorm:"column:platform"`
 	SourcePlatform string     `gorm:"column:source_platform"`

@@ -171,6 +171,9 @@ func newProductDataTestRouter(t *testing.T) storeTestRouter {
 
 func seedProductData(t *testing.T, db *gorm.DB, product listingProductData) listingProductData {
 	t.Helper()
+	if product.OwnerUserID == "" {
+		product.OwnerUserID = "test-owner"
+	}
 	if err := db.Table("listing_product_data").Create(&product).Error; err != nil {
 		t.Fatalf("seed product data: %v", err)
 	}

@@ -45,7 +45,7 @@ func ensureOwnerAuditColumns(db *gorm.DB, table string) error {
 			return err
 		}
 	}
-	return nil
+	return ensureOwnerUserIDConstraint(db, table)
 }
 
 func ensureTextColumn(db *gorm.DB, table, column, definition string) error {
@@ -466,4 +466,3 @@ func normalizeImportTaskIndexDefinition(definition string) string {
 	definition = strings.ReplaceAll(definition, ")", "")
 	return definition
 }
-

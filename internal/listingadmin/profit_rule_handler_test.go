@@ -145,6 +145,9 @@ func newProfitRuleTestRouter(t *testing.T) storeTestRouter {
 
 func seedProfitRule(t *testing.T, db *gorm.DB, rule listingProfitRule) listingProfitRule {
 	t.Helper()
+	if rule.OwnerUserID == "" {
+		rule.OwnerUserID = "test-owner"
+	}
 	if err := db.Table("listing_profit_rule").Create(&rule).Error; err != nil {
 		t.Fatalf("seed profit rule: %v", err)
 	}

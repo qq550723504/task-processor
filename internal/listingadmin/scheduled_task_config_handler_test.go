@@ -123,5 +123,5 @@ func newScheduledTaskConfigTestRouter(t *testing.T) storeTestRouter {
 }
 
 func contextWithTenantForScheduledTaskTest() context.Context {
-	return context.Background()
+	return WithOwnerUserID(context.Background(), "test-owner")
 }

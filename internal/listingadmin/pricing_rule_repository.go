@@ -49,9 +49,11 @@ func (r *GormPricingRuleRepository) GetPricingRule(ctx context.Context, tenantID
 func (r *GormPricingRuleRepository) CreatePricingRule(ctx context.Context, rule *PricingRule) (*PricingRule, error) {
 	row := listingPricingRuleFromPricingRule(rule)
 	applyPricingRuleDefaults(&row)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyPricingRuleAuditFields(&row, ownerUserID, true)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyPricingRuleAuditFields(&row, ownerUserID, true)
 	if err := r.db.WithContext(ctx).Table("listing_pricing_rule").Create(&row).Error; err != nil {
 		return nil, err
 	}
@@ -62,9 +64,11 @@ func (r *GormPricingRuleRepository) CreatePricingRule(ctx context.Context, rule 
 func (r *GormPricingRuleRepository) UpdatePricingRule(ctx context.Context, rule *PricingRule) (*PricingRule, error) {
 	row := listingPricingRuleFromPricingRule(rule)
 	applyPricingRuleDefaults(&row)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyPricingRuleAuditFields(&row, ownerUserID, false)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyPricingRuleAuditFields(&row, ownerUserID, false)
 	updates := map[string]any{
 		"owner_user_id":    row.OwnerUserID,
 		"name":             row.Name,
