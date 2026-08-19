@@ -316,6 +316,18 @@ Describe "ListingKit device authorization safety" {
         { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -TimeoutSec 30 } | Should Throw "token endpoint must use the same-origin as the issuer"
     }
 
+    It "rejects a verification URI outside the issuer origin" {
+        Mock Invoke-RestMethod {
+            param($Uri)
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://attacker.example/verify"; expires_in = 60 }
+        }
+
+        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -TimeoutSec 30 } | Should Throw "verification URI must use the same-origin as the issuer"
+    }
+
     It "polls pending authorization and returns the access token without displaying secrets" {
         $script:tokenPolls = 0
         $script:devicePrompt = ""

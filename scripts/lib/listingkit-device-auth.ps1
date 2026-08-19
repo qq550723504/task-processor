@@ -122,7 +122,7 @@ function Resolve-ListingKitDeviceToken {
     }
     $deviceCode = Get-ListingKitDeviceString -Response $device -Name "device_code"
     $userCode = Get-ListingKitDeviceString -Response $device -Name "user_code"
-    $verificationUri = ConvertTo-ListingKitDeviceUri -Value (Get-ListingKitDeviceString -Response $device -Name "verification_uri") -Name "verification URI"
+    $verificationUri = Assert-ListingKitDeviceURI -Uri (Get-ListingKitDeviceString -Response $device -Name "verification_uri") -Issuer $issuer -Name "verification URI"
     $expiresIn = 0
     [void][int]::TryParse((Get-ListingKitDeviceString -Response $device -Name "expires_in"), [ref]$expiresIn)
     if ([string]::IsNullOrWhiteSpace($deviceCode) -or [string]::IsNullOrWhiteSpace($userCode) -or $expiresIn -le 0) {
