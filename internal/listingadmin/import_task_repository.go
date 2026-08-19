@@ -59,9 +59,13 @@ func (r *GormImportTaskRepository) ListImportTasks(ctx context.Context, query Im
 	return &ImportTaskPage{Items: items, Total: total, Page: page, PageSize: pageSize}, nil
 }
 
-func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, tasks []ImportTask) ([]ImportTask, error) {
+func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, tasks []ImportTask) (BatchCreateImportTasksResult, error) {
+	result := BatchCreateImportTasksResult{
+		Items:             []ImportTask{},
+		SkippedProductIDs: []string{},
+	}
 	if r == nil || r.db == nil {
-		return nil, errors.New("import task repository database is not configured")
+		return result, errors.New("import task repository database is not configured")
 	}
 	rows := make([]listingProductImportTask, 0, len(tasks))
 	for _, task := range tasks {
@@ -73,10 +77,10 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 		rows = append(rows, row)
 	}
 	if len(rows) == 0 {
-		return []ImportTask{}, nil
+		return result, nil
 	}
 	if err := EnsureImportTaskWriteReady(r.db); err != nil {
-		return nil, err
+		return result, err
 	}
 	productIDs := make([]string, 0, len(rows))
 	for _, row := range rows {
@@ -88,24 +92,43 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 		Where("tenant_id = ?", rows[0].TenantID).
 		Where(fmt.Sprintf("deleted = 0 AND %s = ? AND region = ? AND store_id = ?", importTaskCanonicalTargetPlatformExpression("target_platform", "platform")), rows[0].TargetPlatform, rows[0].Region, rows[0].StoreID).
 		Where("product_id IN ?", productIDs).
-		Limit(1).
 		Find(&existing).Error; err != nil {
-		return nil, err
+		return result, err
 	}
-	if len(existing) > 0 {
-		return nil, ErrImportTaskAlreadyExists
-	}
-	if err := r.db.WithContext(ctx).Table("listing_product_import_task").Create(&rows).Error; err != nil {
-		if isImportTaskActiveUniqueViolation(err) {
-			return nil, ErrImportTaskAlreadyExists
+	skipped := make(map[string]struct{})
+	for _, row := range existing {
+		if isImportTaskCompletedStatus(row.Status) {
+			skipped[row.ProductID] = struct{}{}
+			continue
 		}
-		return nil, err
+		return result, ErrImportTaskAlreadyExists
 	}
-	out := make([]ImportTask, 0, len(rows))
+	rowsToCreate := make([]listingProductImportTask, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, row.toImportTask())
+		if _, ok := skipped[row.ProductID]; ok {
+			continue
+		}
+		rowsToCreate = append(rowsToCreate, row)
 	}
-	return out, nil
+	for _, row := range rows {
+		if _, ok := skipped[row.ProductID]; ok {
+			result.SkippedProductIDs = append(result.SkippedProductIDs, row.ProductID)
+		}
+	}
+	if len(rowsToCreate) == 0 {
+		return result, nil
+	}
+	if err := r.db.WithContext(ctx).Table("listing_product_import_task").Create(&rowsToCreate).Error; err != nil {
+		if isImportTaskActiveUniqueViolation(err) {
+			return result, ErrImportTaskAlreadyExists
+		}
+		return result, err
+	}
+	result.Items = make([]ImportTask, 0, len(rowsToCreate))
+	for _, row := range rowsToCreate {
+		result.Items = append(result.Items, row.toImportTask())
+	}
+	return result, nil
 }
 
 func isImportTaskActiveUniqueViolation(err error) bool {

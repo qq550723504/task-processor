@@ -43,6 +43,8 @@ const importTaskPageSchema = z
 const batchCreateImportTaskResponseSchema = z
   .object({
     createdCount: z.number(),
+    skippedCount: z.number().optional().default(0),
+    skippedProductIds: z.array(z.string()).optional().default([]),
     items: z.array(listingImportTaskSchema),
   })
   .passthrough();

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"gorm.io/gorm"
+	"task-processor/internal/model"
 )
 
 type postgresColumnDefinition struct {
@@ -248,7 +249,7 @@ func ensureImportTaskActiveUniqueIndex(db *gorm.DB, table string) (bool, error) 
 		return false, nil
 	}
 	if !db.Migrator().HasIndex(&listingProductImportTask{}, indexName) {
-		if err := db.Exec(importTaskActiveUniqueIndexStatement(table, indexName)).Error; err != nil {
+		if err := db.Exec(importTaskActiveUniqueIndexStatementForSchema(db, table, indexName)).Error; err != nil {
 			return false, err
 		}
 		return true, nil
@@ -280,7 +281,7 @@ func replaceImportTaskActiveUniqueIndex(db *gorm.DB, table, indexName string) er
 		if err := db.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, replacementName)).Error; err != nil {
 			return err
 		}
-		if err := db.Exec(importTaskActiveUniqueIndexStatement(table, replacementName)).Error; err != nil {
+		if err := db.Exec(importTaskActiveUniqueIndexStatementForSchema(db, table, replacementName)).Error; err != nil {
 			return err
 		}
 	}
@@ -291,7 +292,7 @@ func replaceImportTaskActiveUniqueIndex(db *gorm.DB, table, indexName string) er
 		if tx.Dialector != nil && tx.Dialector.Name() == "postgres" {
 			return tx.Exec(fmt.Sprintf(`ALTER INDEX "%s" RENAME TO "%s"`, replacementName, indexName)).Error
 		}
-		if err := tx.Exec(importTaskActiveUniqueIndexStatement(table, indexName)).Error; err != nil {
+		if err := tx.Exec(importTaskActiveUniqueIndexStatementForSchema(tx, table, indexName)).Error; err != nil {
 			return err
 		}
 		return tx.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS "%s"`, replacementName)).Error
@@ -308,16 +309,20 @@ func importTaskCanonicalTargetPlatformExpression(targetColumn, platformColumn st
 
 func importTaskCanonicalDuplicatesExist(db *gorm.DB, table string) (bool, error) {
 	expression := importTaskCanonicalTargetPlatformExpression("target_platform", "platform")
+	activePredicate := "deleted = 0"
+	if db.Migrator().HasColumn(table, "status") {
+		activePredicate = importTaskCanonicalActivePredicate()
+	}
 	query := fmt.Sprintf(`
 		SELECT COUNT(*)
 		FROM (
 			SELECT tenant_id, %s AS canonical_target_platform, product_id, region, store_id
 			FROM "%s"
-			WHERE deleted = 0 AND %s IS NOT NULL
+			WHERE %s AND %s IS NOT NULL
 			GROUP BY tenant_id, %s, product_id, region, store_id
 			HAVING COUNT(*) > 1
 			LIMIT 1
-		) duplicates`, expression, table, expression, expression)
+		) duplicates`, expression, table, activePredicate, expression, expression)
 	var count int64
 	if err := db.Raw(query).Scan(&count).Error; err != nil {
 		return false, err
@@ -326,13 +331,30 @@ func importTaskCanonicalDuplicatesExist(db *gorm.DB, table string) (bool, error)
 }
 
 func importTaskActiveUniqueIndexStatement(table, indexName string) string {
+	return importTaskUniqueIndexStatement(table, indexName, "deleted = 0")
+}
+
+func importTaskActiveUniqueIndexStatementForSchema(db *gorm.DB, table, indexName string) string {
+	predicate := "deleted = 0"
+	if db != nil && db.Migrator().HasColumn(table, "status") {
+		predicate = importTaskCanonicalActivePredicate()
+	}
+	return importTaskUniqueIndexStatement(table, indexName, predicate)
+}
+
+func importTaskUniqueIndexStatement(table, indexName, predicate string) string {
 	expression := importTaskCanonicalTargetPlatformExpression("target_platform", "platform")
 	return fmt.Sprintf(
-		`CREATE UNIQUE INDEX IF NOT EXISTS "%s" ON "%s" ((%s), tenant_id, product_id, region, store_id) WHERE deleted = 0`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS "%s" ON "%s" ((%s), tenant_id, product_id, region, store_id) WHERE %s`,
 		indexName,
 		table,
 		expression,
+		predicate,
 	)
+}
+
+func importTaskCanonicalActivePredicate() string {
+	return fmt.Sprintf("deleted = 0 AND status NOT IN (%d, %d)", model.TaskStatusPublished.Int16(), model.TaskStatusDraft.Int16())
 }
 
 func importTaskUniqueIndexIsCanonicalActiveOnly(db *gorm.DB, table, indexName string) bool {
@@ -358,7 +380,15 @@ func importTaskUniqueIndexIsCanonicalActiveOnly(db *gorm.DB, table, indexName st
 		return false
 	}
 	keyColumns, predicate, ok := parseImportTaskIndexDefinition(definition)
-	if !ok || normalizeImportTaskIndexDefinition(predicate) != "wheredeleted=0" {
+	if !ok {
+		return false
+	}
+	normalizedPredicate := normalizeImportTaskIndexDefinition(predicate)
+	if db.Migrator().HasColumn(table, "status") {
+		if !importTaskCanonicalActivePredicateMatches(normalizedPredicate) {
+			return false
+		}
+	} else if normalizedPredicate != "wheredeleted=0" {
 		return false
 	}
 	expected := []string{
@@ -377,6 +407,14 @@ func importTaskUniqueIndexIsCanonicalActiveOnly(db *gorm.DB, table, indexName st
 		}
 	}
 	return true
+}
+
+func importTaskCanonicalActivePredicateMatches(predicate string) bool {
+	if !strings.Contains(predicate, "deleted=0") {
+		return false
+	}
+	return strings.Contains(predicate, "statusnotin(6,8)") ||
+		(strings.Contains(predicate, "status<>6") && strings.Contains(predicate, "status<>8"))
 }
 
 func postgresImportTaskIndexDefinitionQuery() string {

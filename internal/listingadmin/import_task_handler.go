@@ -25,8 +25,10 @@ type BatchCreateImportTaskRequest struct {
 }
 
 type BatchCreateImportTaskResponse struct {
-	CreatedCount int          `json:"createdCount"`
-	Items        []ImportTask `json:"items"`
+	CreatedCount      int          `json:"createdCount"`
+	SkippedCount      int          `json:"skippedCount"`
+	SkippedProductIDs []string     `json:"skippedProductIds"`
+	Items             []ImportTask `json:"items"`
 }
 
 func NewImportTaskHandler(repo ImportTaskRepository) *ImportTaskHandler {
@@ -98,12 +100,17 @@ func (h *ImportTaskHandler) BatchCreateImportTasks(c *gin.Context) {
 			Priority:       req.Priority,
 		})
 	}
-	items, err := h.repo.BatchCreateImportTasks(requestIdentityContext(c), tasks)
+	result, err := h.repo.BatchCreateImportTasks(requestIdentityContext(c), tasks)
 	if err != nil {
 		writeImportTaskError(c, err, "import_task_create_failed")
 		return
 	}
-	c.JSON(http.StatusCreated, BatchCreateImportTaskResponse{CreatedCount: len(items), Items: items})
+	c.JSON(http.StatusCreated, BatchCreateImportTaskResponse{
+		CreatedCount:      len(result.Items),
+		SkippedCount:      len(result.SkippedProductIDs),
+		SkippedProductIDs: result.SkippedProductIDs,
+		Items:             result.Items,
+	})
 }
 
 func (h *ImportTaskHandler) DeleteImportTask(c *gin.Context) {

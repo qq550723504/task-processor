@@ -56,6 +56,11 @@ type ImportTaskPage struct {
 	PageSize int          `json:"page_size"`
 }
 
+type BatchCreateImportTasksResult struct {
+	Items             []ImportTask
+	SkippedProductIDs []string
+}
+
 type ImportTaskStatusUpdate struct {
 	ID                    int64
 	Status                int16
@@ -115,7 +120,7 @@ type DispatchEvent struct {
 
 type ImportTaskRepository interface {
 	ListImportTasks(ctx context.Context, query ImportTaskQuery) (*ImportTaskPage, error)
-	BatchCreateImportTasks(ctx context.Context, tasks []ImportTask) ([]ImportTask, error)
+	BatchCreateImportTasks(ctx context.Context, tasks []ImportTask) (BatchCreateImportTasksResult, error)
 	GetImportTaskByID(ctx context.Context, id int64) (*ImportTask, error)
 	ListPendingAndRetryTasks(ctx context.Context, limit int, tenantID int64, storeIDs []int64) ([]ImportTask, error)
 	ListDispatchCandidatesFair(ctx context.Context, req DispatchCandidateRequest) ([]ImportTask, error)
