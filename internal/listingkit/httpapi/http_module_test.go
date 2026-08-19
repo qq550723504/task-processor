@@ -58,6 +58,14 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 	require.NotContains(t, keys, "GET /api/v1/listing-kits/studio/sessions/gallery")
 }
 
+func TestAppendRouteDescriptorsIncludesAuthContextForSupportingHandler(t *testing.T) {
+	t.Parallel()
+
+	routes := AppendRouteDescriptors(nil, stubRouteHandlerWithAuthContext{})
+
+	require.Contains(t, routeKeys(routes), "GET /api/v1/listing-kits/auth-context")
+}
+
 func TestNewStudioHTTPModuleRegistersStudioRoutes(t *testing.T) {
 	t.Parallel()
 
@@ -146,6 +154,10 @@ func (stubStudioSessionRouteHandler) UpsertStudioBatch(*gin.Context)            
 func (stubStudioSessionRouteHandler) DeleteStudioBatch(*gin.Context)             {}
 
 type stubRouteHandler struct{}
+
+type stubRouteHandlerWithAuthContext struct{ stubRouteHandler }
+
+func (stubRouteHandlerWithAuthContext) GetAuthContext(*gin.Context) {}
 
 func (stubRouteHandler) GenerateListingKit(*gin.Context)                          {}
 func (stubRouteHandler) GetTaskSDSRepair(*gin.Context)                            {}

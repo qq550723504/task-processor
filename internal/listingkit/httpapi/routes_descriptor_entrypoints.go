@@ -15,6 +15,7 @@ func AppendRouteDescriptors(routes []httproute.Descriptor, handler RouteHandler)
 	routes = append(routes,
 		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/listing-kits/generate", Module: "listing-kit", Handler: handler.GenerateListingKit},
 	)
+	routes = appendAuthContextRouteDescriptor(routes, handler)
 	routes = appendSettingsRouteDescriptors(routes, handler)
 	routes = appendStoreRouteDescriptors(routes, handler)
 	routes = appendSubscriptionRouteDescriptors(routes, handler)
