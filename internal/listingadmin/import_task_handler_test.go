@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"gorm.io/gorm"
+	"task-processor/internal/model"
 )
 
 func TestImportTaskHandlerListsTasksWithinRequestTenant(t *testing.T) {
@@ -180,6 +181,55 @@ func TestImportTaskHandlerBatchRejectsExistingActiveTaskWithConflict(t *testing.
 	}
 	if !strings.Contains(resp.Body.String(), `"error":"import_task_already_exists"`) {
 		t.Fatalf("response body = %s, want import_task_already_exists", resp.Body.String())
+	}
+}
+
+func TestImportTaskHandlerBatchAllowsResubmissionAfterTerminalTask(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int16
+	}{
+		{name: "cancelled", status: model.TaskStatusCancelled.Int16()},
+		{name: "terminated", status: model.TaskStatusTerminated.Int16()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			router := newImportTaskTestRouter(t)
+			seedImportTask(t, router.db, listingProductImportTask{
+				TenantID:       303,
+				StoreID:        11,
+				Platform:       "amazon",
+				SourcePlatform: "amazon",
+				TargetPlatform: "shein",
+				Region:         "US",
+				ProductID:      "B001",
+				Status:         tc.status,
+				Deleted:        0,
+			})
+
+			body := bytes.NewBufferString(`{
+				"storeId": 11,
+				"platform": "Amazon",
+				"targetPlatform": "SHEIN",
+				"region": "US",
+				"productIds": ["B001"]
+			}`)
+			req := httptest.NewRequest(http.MethodPost, "/import-tasks/batch", body)
+			req.Header.Set("X-Tenant-ID", "303")
+			req.Header.Set("Content-Type", "application/json")
+			resp := httptest.NewRecorder()
+			router.engine.ServeHTTP(resp, req)
+
+			if resp.Code != http.StatusCreated {
+				t.Fatalf("POST /import-tasks/batch after %s task = %d, body=%s; want 201", tc.name, resp.Code, resp.Body.String())
+			}
+			var created BatchCreateImportTaskResponse
+			if err := json.Unmarshal(resp.Body.Bytes(), &created); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			if created.CreatedCount != 1 || len(created.Items) != 1 {
+				t.Fatalf("created = %+v, want one replacement task", created)
+			}
+		})
 	}
 }
 

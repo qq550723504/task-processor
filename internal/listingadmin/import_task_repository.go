@@ -129,6 +129,9 @@ func (r *GormImportTaskRepository) batchCreateImportTasks(ctx context.Context, t
 			skipped[row.ProductID] = struct{}{}
 			continue
 		}
+		if model.TaskStatus(row.Status).IsTerminal() {
+			continue
+		}
 		return result, ErrImportTaskAlreadyExists
 	}
 	if deriveStoreOwner && len(skipped) > 0 {
