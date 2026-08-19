@@ -134,6 +134,7 @@ export function ImportTaskAdminPage() {
     event.preventDefault();
     setSaving(true);
     setError("");
+    setBatchImportResult(null);
     try {
       const productIds = uniqueProductIdsFromText(productText).values;
       const result = await batchCreateListingImportTasks({ ...form, productIds });

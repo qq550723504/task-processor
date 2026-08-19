@@ -232,6 +232,54 @@ describe("ImportTaskAdminPage", () => {
     expect(screen.getByRole("status")).toHaveTextContent("B002");
   });
 
+  it("clears the previous batch result when a later import fails", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminStoresApi, "getSimpleListingStores").mockResolvedValue([
+      { id: 11, name: "SHEIN US", platform: "SHEIN", region: "US" },
+    ]);
+    vi.spyOn(adminImportTasksApi, "getListingImportTasks").mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+    });
+    const batchCreateSpy = vi
+      .spyOn(adminImportTasksApi, "batchCreateListingImportTasks")
+      .mockResolvedValueOnce({
+        createdCount: 1,
+        skippedProductIds: ["B002"],
+        items: [],
+      })
+      .mockRejectedValueOnce(new Error("active duplicate"));
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ImportTaskAdminPage />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("SHEIN US (#11)").length).toBeGreaterThan(0);
+    });
+    await user.selectOptions(screen.getByLabelText("店铺"), "11");
+    await user.type(screen.getByPlaceholderText("每行一个商品 ID"), "B001 B002");
+    await user.click(screen.getByRole("button", { name: "导入任务" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent("B002");
+    });
+    await user.type(screen.getByPlaceholderText("每行一个商品 ID"), "B003");
+    await user.click(screen.getByRole("button", { name: "导入任务" }));
+
+    await waitFor(() => {
+      expect(batchCreateSpy).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText("B002")).not.toBeInTheDocument();
+    });
+  });
+
   it("requests the next page and resets pagination when page size changes", async () => {
     const user = userEvent.setup();
     vi.spyOn(adminStoresApi, "getSimpleListingStores").mockResolvedValue([]);
