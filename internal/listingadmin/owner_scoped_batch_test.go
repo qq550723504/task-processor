@@ -121,6 +121,65 @@ func TestProductImportMappingForStoreDerivesOwnerInWriteTransaction(t *testing.T
 	}
 }
 
+func TestProductImportMappingForStorePreservesStoreLookupErrors(t *testing.T) {
+	db := openOwnerScopedBatchSQLite(t)
+	if err := db.AutoMigrate(&listingStore{}, &listingProductImportMapping{}); err != nil {
+		t.Fatalf("migrate owner and mapping tables: %v", err)
+	}
+	repo := NewGormProductImportMappingRepository(db)
+	mapping := &ProductImportMapping{
+		TenantID:     246,
+		ImportTaskID: 1,
+		StoreID:      986,
+		Platform:     "shein",
+		Region:       "US",
+		ProductID:    "P-1",
+	}
+	if _, err := repo.CreateProductImportMappingForStore(context.Background(), mapping); !errors.Is(err, ErrStoreNotFound) {
+		t.Fatalf("missing store create error = %v, want ErrStoreNotFound", err)
+	}
+
+	if err := db.Create(&listingStore{ID: 986, TenantID: 246}).Error; err != nil {
+		t.Fatalf("seed ownerless store: %v", err)
+	}
+	if _, err := repo.CreateProductImportMappingForStore(context.Background(), mapping); !errors.Is(err, ErrProductImportMappingOwnerRequired) {
+		t.Fatalf("ownerless store create error = %v, want ErrProductImportMappingOwnerRequired", err)
+	}
+
+	if err := db.Model(&listingStore{}).Where("id = ?", 986).Update("owner_user_id", "store-owner").Error; err != nil {
+		t.Fatalf("set store owner: %v", err)
+	}
+	created, err := repo.CreateProductImportMappingForStore(context.Background(), mapping)
+	if err != nil {
+		t.Fatalf("create mapping for update: %v", err)
+	}
+	if err := db.Model(&listingStore{}).Where("id = ?", 986).Update("deleted", 1).Error; err != nil {
+		t.Fatalf("delete store: %v", err)
+	}
+	if _, err := repo.UpdateProductImportMappingForStore(context.Background(), created); !errors.Is(err, ErrStoreNotFound) {
+		t.Fatalf("missing store update error = %v, want ErrStoreNotFound", err)
+	}
+}
+
+func TestProductImportMappingForStorePreservesDatabaseErrors(t *testing.T) {
+	db := openOwnerScopedBatchSQLite(t)
+	repo := NewGormProductImportMappingRepository(db)
+	_, err := repo.CreateProductImportMappingForStore(context.Background(), &ProductImportMapping{
+		TenantID:     246,
+		ImportTaskID: 1,
+		StoreID:      986,
+		Platform:     "shein",
+		Region:       "US",
+		ProductID:    "P-1",
+	})
+	if err == nil {
+		t.Fatal("CreateProductImportMappingForStore() error = nil, want database error")
+	}
+	if errors.Is(err, ErrProductImportMappingOwnerRequired) {
+		t.Fatalf("database error = %v, must not become ErrProductImportMappingOwnerRequired", err)
+	}
+}
+
 func TestProductImportMappingRequestIdentityCannotBeOverriddenByPayload(t *testing.T) {
 	db := openOwnerScopedBatchSQLite(t)
 	if err := db.AutoMigrate(&listingProductImportMapping{}); err != nil {

@@ -75,7 +75,10 @@ func (r *GormProductImportMappingRepository) createProductImportMapping(ctx cont
 		ownerUserID, err = requireOwnerUserID(ctx, row.OwnerUserID)
 	}
 	if err != nil {
-		return nil, ErrProductImportMappingOwnerRequired
+		if errors.Is(err, ErrOwnerUserIDRequired) {
+			return nil, ErrProductImportMappingOwnerRequired
+		}
+		return nil, err
 	}
 	applyProductImportMappingAuditFields(&row, ownerUserID, true)
 	if err := db.Table("listing_product_import_mapping").Create(&row).Error; err != nil {
@@ -117,7 +120,10 @@ func (r *GormProductImportMappingRepository) updateProductImportMapping(ctx cont
 		ownerUserID, err = requireOwnerUserID(ctx, row.OwnerUserID)
 	}
 	if err != nil {
-		return nil, ErrProductImportMappingOwnerRequired
+		if errors.Is(err, ErrOwnerUserIDRequired) {
+			return nil, ErrProductImportMappingOwnerRequired
+		}
+		return nil, err
 	}
 	applyProductImportMappingAuditFields(&row, ownerUserID, false)
 	updates := map[string]any{
