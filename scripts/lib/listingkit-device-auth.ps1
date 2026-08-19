@@ -116,6 +116,10 @@ function Get-ListingKitDeviceOAuthScopes {
         $configured = ([string]$env:ZITADEL_SCOPES).Trim()
     }
     if (-not [string]::IsNullOrWhiteSpace($configured)) {
+        $scopeTokens = @($configured -split '\s+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        if ($scopeTokens -contains "offline_access") {
+            throw "offline_access is not allowed for ListingKit device authorization"
+        }
         return $configured
     }
 
@@ -138,6 +142,19 @@ function Get-ListingKitDeviceOAuthScopes {
         "urn:zitadel:iam:org:project:role:listingkit_admin",
         "urn:zitadel:iam:org:project:role:platform_admin"
     ) -join " "
+}
+
+function Get-ListingKitDevicePollSleepSec {
+    param(
+        [int]$PollIntervalSec,
+        [DateTime]$Deadline
+    )
+
+    $remaining = ($Deadline - [DateTime]::UtcNow).TotalSeconds
+    if ($remaining -le 0) {
+        return 0
+    }
+    return [Math]::Min([Math]::Max(0, [double]$PollIntervalSec), $remaining)
 }
 
 function Get-ListingKitDeviceString {
@@ -200,24 +217,38 @@ function Resolve-ListingKitDeviceToken {
     if ($deviceDeadline -lt $deadline) {
         $deadline = $deviceDeadline
     }
+    $initialPollSleepSec = Get-ListingKitDevicePollSleepSec -PollIntervalSec $pollIntervalSec -Deadline $deadline
+    if ($initialPollSleepSec -gt 0) {
+        Start-Sleep -Seconds $initialPollSleepSec
+    }
     while ([DateTime]::UtcNow -lt $deadline) {
         $tokenResponse = Invoke-ListingKitDeviceOAuthRequest -Method Post -Uri $tokenEndpoint.AbsoluteUri -Form @{
             grant_type  = "urn:ietf:params:oauth:grant-type:device_code"
             device_code = $deviceCode
             client_id   = $ClientID.Trim()
         } -TimeoutSec (Get-ListingKitDeviceRemainingTimeoutSec -Deadline $deadline)
+        $refreshToken = Get-ListingKitDeviceString -Response $tokenResponse -Name "refresh_token"
+        if (-not [string]::IsNullOrWhiteSpace($refreshToken)) {
+            throw "Device authorization returned a refresh token"
+        }
         $accessToken = Get-ListingKitDeviceString -Response $tokenResponse -Name "access_token"
         if (-not [string]::IsNullOrWhiteSpace($accessToken)) {
             return $accessToken
         }
         switch (Get-ListingKitDeviceString -Response $tokenResponse -Name "error") {
             "authorization_pending" {
-                Start-Sleep -Seconds $pollIntervalSec
+                $sleepSec = Get-ListingKitDevicePollSleepSec -PollIntervalSec $pollIntervalSec -Deadline $deadline
+                if ($sleepSec -gt 0) {
+                    Start-Sleep -Seconds $sleepSec
+                }
                 continue
             }
             "slow_down" {
                 $pollIntervalSec += 5
-                Start-Sleep -Seconds $pollIntervalSec
+                $sleepSec = Get-ListingKitDevicePollSleepSec -PollIntervalSec $pollIntervalSec -Deadline $deadline
+                if ($sleepSec -gt 0) {
+                    Start-Sleep -Seconds $sleepSec
+                }
                 continue
             }
             "access_denied" { throw "Device authorization was denied" }

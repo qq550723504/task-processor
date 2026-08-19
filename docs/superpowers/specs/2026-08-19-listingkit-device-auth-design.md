@@ -145,8 +145,11 @@ pwsh ./scripts/1688-runtime-acceptance.ps1 `
   -UseDeviceAuthorization `
   -IssuerURL 'https://issuer.example' `
   -ClientID 'public-device-client-id' `
+  -ProjectID 'listingkit-project-id' `
   -ExpectedTenantID '373211199677923496'
 ```
+
+`-ProjectID` is the public ZITADEL ListingKit project ID used to construct the tenant and role scopes. Alternatively, provide the complete public scope string with `-Scopes` or `ZITADEL_SCOPES`.
 
 The command displays a verification URI and one-time user code, then checks
 the authenticated canonical tenant before it performs the existing health

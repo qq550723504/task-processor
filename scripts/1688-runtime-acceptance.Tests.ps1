@@ -350,10 +350,32 @@ Describe "ListingKit device authorization safety" {
             return @{ access_token = "access-token" }
         }
         Mock Write-Host {}
+        Mock Start-Sleep {}
 
         $configuredScopes = "openid profile email urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:listingkit-project:aud urn:zitadel:iam:org:project:role:listingkit_operator"
         Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -Scopes $configuredScopes -TimeoutSec 30 | Should Be "access-token"
         $script:requestedScope | Should Be $configuredScopes
+    }
+
+    It "rejects offline access in configured ListingKit scopes" {
+        { Get-ListingKitDeviceOAuthScopes -Scopes "openid offline_access" } | Should Throw "offline_access is not allowed"
+    }
+
+    It "rejects a refresh token returned by the device token endpoint" {
+        Mock Invoke-RestMethod {
+            param($Uri)
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            if ($Uri -match "/device$") {
+                return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://issuer.example/verify"; expires_in = 60 }
+            }
+            return @{ access_token = "access-token"; refresh_token = "refresh-token-sentinel" }
+        }
+        Mock Write-Host {}
+        Mock Start-Sleep {}
+
+        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 } | Should Throw "refresh token"
     }
 
     It "bounds every OAuth request and disables redirects" {
@@ -374,6 +396,7 @@ Describe "ListingKit device authorization safety" {
             return @{ access_token = "access-token" }
         }
         Mock Write-Host {}
+        Mock Start-Sleep {}
 
         Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 | Should Be "access-token"
         @($script:oauthRequests).Count | Should Be 3
@@ -389,6 +412,7 @@ Describe "ListingKit device authorization safety" {
     It "polls pending authorization and returns the access token without displaying secrets" {
         $script:tokenPolls = 0
         $script:devicePrompt = ""
+        $script:pollSleeps = @()
         Mock Invoke-RestMethod {
             param($Uri)
             if ($Uri -match "openid-configuration") {
@@ -402,7 +426,7 @@ Describe "ListingKit device authorization safety" {
             }
             return @{ access_token = "access-token-sentinel" }
         }
-        Mock Start-Sleep {}
+        Mock Start-Sleep { param($Seconds) $script:pollSleeps += $Seconds }
         Mock Write-Host { param($Object) $script:devicePrompt = [string]$Object }
 
         $token = Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30
@@ -410,12 +434,13 @@ Describe "ListingKit device authorization safety" {
         $token | Should Be "access-token-sentinel"
         $script:devicePrompt | Should Match "https://issuer.example/verify"
         $script:devicePrompt | Should Not Match "device-code-sentinel|access-token-sentinel"
-        Assert-MockCalled Start-Sleep -ParameterFilter { $Seconds -eq 1 } -Times 1 -Exactly
+        ($script:pollSleeps -join ",") | Should Be "1,1"
     }
 
     It "backs off after slow_down" {
         $script:tokenPolls = 0
         $script:lastSleep = 0
+        $script:pollSleeps = @()
         Mock Invoke-RestMethod {
             param($Uri)
             if ($Uri -match "openid-configuration") {
@@ -427,11 +452,17 @@ Describe "ListingKit device authorization safety" {
             if ($script:tokenPolls++ -eq 0) { return @{ error = "slow_down" } }
             return @{ access_token = "access-token" }
         }
-        Mock Start-Sleep { param($Seconds) $script:lastSleep = $Seconds }
+        Mock Start-Sleep { param($Seconds) $script:lastSleep = $Seconds; $script:pollSleeps += $Seconds }
         Mock Write-Host {}
 
         (Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30) | Should Be "access-token"
-        $script:lastSleep | Should Be 7
+        ($script:pollSleeps -join ",") | Should Be "2,7"
+    }
+
+    It "caps device polling sleep at the authorization deadline" {
+        $sleep = Get-ListingKitDevicePollSleepSec -PollIntervalSec 300 -Deadline ([DateTime]::UtcNow.AddSeconds(2))
+
+        ($sleep -ge 0 -and $sleep -le 2) | Should Be $true
     }
 
     It "fails closed when the provider expires device authorization" {
