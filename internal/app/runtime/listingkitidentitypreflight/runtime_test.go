@@ -212,7 +212,7 @@ func TestRunBlocksOnUnresolvedOwnerReconciliationBeforeDirectory(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "owner reconciliation") {
 		t.Fatalf("run error = %v, want owner reconciliation blocker", err)
 	}
-	if !strings.Contains(output.String(), "status=blocked owner_reconciliation") {
+	if !strings.Contains(output.String(), "status=blocked unresolved_rows=3 auto_rows=0 system_owned_rows=0") {
 		t.Fatalf("output = %q, want redacted owner reconciliation blocker", output.String())
 	}
 }
@@ -278,8 +278,8 @@ func TestRunBlocksOnAutoResolvableOwnerRowsBeforeDirectory(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "owner reconciliation") {
 		t.Fatalf("run error = %v, want owner reconciliation blocker", err)
 	}
-	if !strings.Contains(output.String(), "auto_rows=4") {
-		t.Fatalf("output = %q, want auto-row blocker", output.String())
+	if !strings.Contains(output.String(), "status=blocked unresolved_rows=0 auto_rows=4 system_owned_rows=0") {
+		t.Fatalf("output = %q, want distinct owner reconciliation counts", output.String())
 	}
 }
 
@@ -502,4 +502,3 @@ type stubLegacyTenantResolver struct{}
 func (stubLegacyTenantResolver) ResolveOrganizationID(context.Context, int64) (string, bool, error) {
 	return "", false, nil
 }
-
