@@ -354,7 +354,12 @@ func importTaskUniqueIndexStatement(table, indexName, predicate string) string {
 }
 
 func importTaskCanonicalActivePredicate() string {
-	return fmt.Sprintf("deleted = 0 AND status NOT IN (%d, %d)", model.TaskStatusPublished.Int16(), model.TaskStatusDraft.Int16())
+	return fmt.Sprintf("deleted = 0 AND status NOT IN (%d, %d, %d, %d)",
+		model.TaskStatusPublished.Int16(),
+		model.TaskStatusDraft.Int16(),
+		model.TaskStatusCancelled.Int16(),
+		model.TaskStatusTerminated.Int16(),
+	)
 }
 
 func importTaskUniqueIndexIsCanonicalActiveOnly(db *gorm.DB, table, indexName string) bool {
@@ -410,12 +415,15 @@ func importTaskUniqueIndexIsCanonicalActiveOnly(db *gorm.DB, table, indexName st
 }
 
 func importTaskCanonicalActivePredicateMatches(predicate string) bool {
-	if !strings.Contains(predicate, "deleted=0") {
-		return false
-	}
-	return strings.Contains(predicate, "statusnotin(6,8)") ||
-		(strings.Contains(predicate, "status<>6") && strings.Contains(predicate, "status<>8")) ||
-		strings.Contains(predicate, "status<>allarray[6,8]")
+	canonical := normalizeImportTaskIndexDefinition("WHERE " + importTaskCanonicalActivePredicate())
+	postgres := normalizeImportTaskIndexDefinition(fmt.Sprintf(
+		"WHERE deleted = 0 AND status <> ALL (ARRAY[%d, %d, %d, %d])",
+		model.TaskStatusPublished.Int16(),
+		model.TaskStatusDraft.Int16(),
+		model.TaskStatusCancelled.Int16(),
+		model.TaskStatusTerminated.Int16(),
+	))
+	return predicate == canonical || predicate == postgres
 }
 
 func postgresImportTaskIndexDefinitionQuery() string {

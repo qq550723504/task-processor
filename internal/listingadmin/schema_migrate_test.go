@@ -353,8 +353,23 @@ func TestNormalizeImportTaskIndexDefinitionAcceptsPostgresTrimBothFrom(t *testin
 }
 
 func TestImportTaskCanonicalActivePredicateMatchesPostgresNotAllPredicate(t *testing.T) {
-	predicate := normalizeImportTaskIndexDefinition("WHERE deleted = 0 AND status <> ALL (ARRAY[6, 8])")
+	predicate := normalizeImportTaskIndexDefinition("WHERE deleted = 0 AND status <> ALL (ARRAY[6, 8, 9, 13])")
 	if !importTaskCanonicalActivePredicateMatches(predicate) {
 		t.Fatalf("PostgreSQL <> ALL predicate %q was not recognized as canonical", predicate)
+	}
+}
+
+func TestImportTaskCanonicalActivePredicateExcludesAllTerminalStatuses(t *testing.T) {
+	if got, want := importTaskCanonicalActivePredicate(), "deleted = 0 AND status NOT IN (6, 8, 9, 13)"; got != want {
+		t.Fatalf("canonical active predicate = %q, want %q", got, want)
+	}
+
+	for _, predicate := range []string{
+		"WHERE deleted = 0 AND status NOT IN (6, 8)",
+		"WHERE deleted = 0 AND status NOT IN (6, 8, 9, 13) AND tenant_id > 0",
+	} {
+		if importTaskCanonicalActivePredicateMatches(normalizeImportTaskIndexDefinition(predicate)) {
+			t.Fatalf("non-canonical active predicate %q was accepted", predicate)
+		}
 	}
 }
