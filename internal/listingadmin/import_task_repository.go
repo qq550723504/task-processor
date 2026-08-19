@@ -63,13 +63,15 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 	if r == nil || r.db == nil {
 		return nil, errors.New("import task repository database is not configured")
 	}
+	ownerUserID, err := requireOwnerUserID(ctx, "")
+	if err != nil {
+		return nil, err
+	}
 	rows := make([]listingProductImportTask, 0, len(tasks))
 	for _, task := range tasks {
 		row := listingProductImportTaskFromImportTask(task)
 		applyImportTaskDefaults(&row)
-		if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-			applyImportTaskAuditFields(&row, ownerUserID, true)
-		}
+		applyImportTaskAuditFields(&row, ownerUserID, true)
 		rows = append(rows, row)
 	}
 	if len(rows) == 0 {
@@ -765,4 +767,3 @@ func isImportTaskCompletedStatus(status int16) bool {
 		return false
 	}
 }
-
