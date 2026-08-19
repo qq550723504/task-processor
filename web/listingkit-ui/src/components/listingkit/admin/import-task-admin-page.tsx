@@ -65,6 +65,11 @@ type ProductIdImportSummary = {
   duplicateCount: number;
 };
 
+type BatchImportResultSummary = {
+  createdCount: number;
+  skippedProductIds: string[];
+};
+
 export function ImportTaskAdminPage() {
   const [platform, setPlatform] = useState("");
   const [productId, setProductId] = useState("");
@@ -75,6 +80,8 @@ export function ImportTaskAdminPage() {
   const [productText, setProductText] = useState("");
   const [productImportSummary, setProductImportSummary] =
     useState<ProductIdImportSummary | null>(null);
+  const [batchImportResult, setBatchImportResult] =
+    useState<BatchImportResultSummary | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -129,7 +136,11 @@ export function ImportTaskAdminPage() {
     setError("");
     try {
       const productIds = uniqueProductIdsFromText(productText).values;
-      await batchCreateListingImportTasks({ ...form, productIds });
+      const result = await batchCreateListingImportTasks({ ...form, productIds });
+      setBatchImportResult({
+        createdCount: result.createdCount,
+        skippedProductIds: result.skippedProductIds ?? [],
+      });
       setForm({ ...DEFAULT_FORM, storeId: form.storeId });
       setProductText("");
       setProductImportSummary(null);
@@ -249,6 +260,20 @@ export function ImportTaskAdminPage() {
           </Alert>
         ) : null}
       </section>
+
+      {batchImportResult ? (
+        <Alert className="border-amber-200 bg-amber-50 text-amber-950">
+          <AlertDescription>
+            已创建 {batchImportResult.createdCount} 个导入任务
+            {batchImportResult.skippedProductIds.length > 0 ? (
+              <>
+                ，已跳过 {batchImportResult.skippedProductIds.length} 个已完成商品：
+                {batchImportResult.skippedProductIds.join("、")}
+              </>
+            ) : null}
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <section className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_380px]">
         <div className="overflow-hidden rounded-lg border border-zinc-200 bg-white shadow-sm">

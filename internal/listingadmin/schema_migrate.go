@@ -414,7 +414,8 @@ func importTaskCanonicalActivePredicateMatches(predicate string) bool {
 		return false
 	}
 	return strings.Contains(predicate, "statusnotin(6,8)") ||
-		(strings.Contains(predicate, "status<>6") && strings.Contains(predicate, "status<>8"))
+		(strings.Contains(predicate, "status<>6") && strings.Contains(predicate, "status<>8")) ||
+		strings.Contains(predicate, "status<>allarray[6,8]")
 }
 
 func postgresImportTaskIndexDefinitionQuery() string {

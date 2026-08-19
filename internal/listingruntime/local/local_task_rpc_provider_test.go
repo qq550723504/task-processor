@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"task-processor/internal/listingadmin"
+	"task-processor/internal/model"
 	api "task-processor/internal/taskrpcapi"
 
 	"gorm.io/driver/sqlite"
@@ -88,6 +89,47 @@ func TestLocalTaskRPCSubmitTaskDerivesOwnerFromStoreAndUsesRepository(t *testing
 	}
 	if owner != "store-owner" {
 		t.Fatalf("persisted owner = %q, want store-owner", owner)
+	}
+}
+
+func TestLocalTaskRPCSubmitTaskPreservesCompletedDuplicateClassification(t *testing.T) {
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	seedLocalTaskStore(t, db, 246, 986, "store-owner")
+	if err := db.Table("listing_product_import_task").AutoMigrate(&localImportTaskRow{}); err != nil {
+		t.Fatalf("migrate local task row: %v", err)
+	}
+	if err := listingadmin.AutoMigrateImportTaskRepository(db); err != nil {
+		t.Fatalf("migrate import task repository: %v", err)
+	}
+	if err := db.Table("listing_product_import_task").Create(&localImportTaskRow{
+		ID:             991,
+		TenantID:       246,
+		StoreID:        986,
+		Platform:       "amazon",
+		SourcePlatform: "amazon",
+		TargetPlatform: "shein",
+		Region:         "US",
+		ProductID:      "ALREADY-PUBLISHED",
+		Status:         model.TaskStatusPublished.Int16(),
+		Deleted:        0,
+	}).Error; err != nil {
+		t.Fatalf("seed completed import task: %v", err)
+	}
+
+	provider := &LocalTaskRPCProvider{db: db}
+	if _, handled, err := provider.SubmitTask(&api.TaskSubmitReqDTO{
+		TenantID:       246,
+		StoreID:        986,
+		Platform:       "Amazon",
+		SourcePlatform: "Amazon",
+		TargetPlatform: "SHEIN",
+		Region:         "US",
+		ProductID:      "ALREADY-PUBLISHED",
+	}, false); !handled || !errors.Is(err, listingadmin.ErrImportTaskAlreadyExists) {
+		t.Fatalf("SubmitTask() = handled:%v error:%v, want completed-duplicate classification", handled, err)
 	}
 }
 

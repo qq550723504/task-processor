@@ -187,6 +187,51 @@ describe("ImportTaskAdminPage", () => {
     expect(batchCreateSpy.mock.calls[0]?.[0].categoryId).toBeUndefined();
   });
 
+  it("shows completed products skipped by a batch import", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(adminStoresApi, "getSimpleListingStores").mockResolvedValue([
+      { id: 11, name: "SHEIN US", platform: "SHEIN", region: "US" },
+    ]);
+    vi.spyOn(adminImportTasksApi, "getListingImportTasks").mockResolvedValue({
+      items: [],
+      total: 0,
+      page: 1,
+      page_size: 20,
+    });
+    const batchCreateSpy = vi
+      .spyOn(adminImportTasksApi, "batchCreateListingImportTasks")
+      .mockResolvedValue({
+        createdCount: 1,
+        skippedCount: 1,
+        skippedProductIds: ["B002"],
+        items: [],
+      });
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ImportTaskAdminPage />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getAllByText("SHEIN US (#11)").length).toBeGreaterThan(0);
+    });
+    await user.selectOptions(screen.getByLabelText("店铺"), "11");
+    await user.type(screen.getByPlaceholderText("每行一个商品 ID"), "B001 B002");
+    await user.click(screen.getByRole("button", { name: "导入任务" }));
+
+    await waitFor(() => {
+      expect(batchCreateSpy).toHaveBeenCalled();
+    });
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "已跳过 1 个已完成商品",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("B002");
+  });
+
   it("requests the next page and resets pagination when page size changes", async () => {
     const user = userEvent.setup();
     vi.spyOn(adminStoresApi, "getSimpleListingStores").mockResolvedValue([]);

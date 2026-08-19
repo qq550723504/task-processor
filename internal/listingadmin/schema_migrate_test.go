@@ -351,3 +351,10 @@ func TestNormalizeImportTaskIndexDefinitionAcceptsPostgresTrimBothFrom(t *testin
 		t.Fatalf("normalized deparsed definition = %q, want %q", got, want)
 	}
 }
+
+func TestImportTaskCanonicalActivePredicateMatchesPostgresNotAllPredicate(t *testing.T) {
+	predicate := normalizeImportTaskIndexDefinition("WHERE deleted = 0 AND status <> ALL (ARRAY[6, 8])")
+	if !importTaskCanonicalActivePredicateMatches(predicate) {
+		t.Fatalf("PostgreSQL <> ALL predicate %q was not recognized as canonical", predicate)
+	}
+}

@@ -131,6 +131,9 @@ func (r *GormImportTaskRepository) batchCreateImportTasks(ctx context.Context, t
 		}
 		return result, ErrImportTaskAlreadyExists
 	}
+	if deriveStoreOwner && len(skipped) > 0 {
+		return result, ErrImportTaskAlreadyExists
+	}
 	rowsToCreate := make([]listingProductImportTask, 0, len(rows))
 	for _, row := range rows {
 		if _, ok := skipped[row.ProductID]; ok {
