@@ -12,6 +12,8 @@ param(
     [switch]$UseDeviceAuthorization,
     [string]$IssuerURL = "",
     [string]$ClientID = "",
+    [string]$Scopes = "",
+    [string]$ProjectID = "",
     [string]$ExpectedTenantID = "",
     [switch]$OpenBrowser,
     [switch]$TestOnly
@@ -70,7 +72,7 @@ function Resolve-AcceptanceToken {
         throw "-IssuerURL, -ClientID, and -ExpectedTenantID are required with -UseDeviceAuthorization"
     }
     Assert-ListingKitDeviceAPIBaseUrl -ApiBaseUrl $script:AcceptanceApiBaseUrl
-    return Resolve-ListingKitDeviceToken -IssuerURL $IssuerURL -ClientID $ClientID -TimeoutSec $script:AcceptanceTimeoutSec -OpenBrowser:$OpenBrowser
+    return Resolve-ListingKitDeviceToken -IssuerURL $IssuerURL -ClientID $ClientID -Scopes $Scopes -ProjectID $ProjectID -TimeoutSec $script:AcceptanceTimeoutSec -OpenBrowser:$OpenBrowser
 }
 
 function Get-EndpointPath {
@@ -195,6 +197,11 @@ function Assert-AuthenticatedTenant {
     }
     if ([string]::IsNullOrWhiteSpace([string]$context.user_id)) {
         throw "authenticated identity is incomplete"
+    }
+    $taskCreatingRoles = @("listingkit_operator", "listingkit_admin", "platform_admin")
+    $roles = @($context.roles | ForEach-Object { [string]$_ })
+    if (-not @($roles | Where-Object { $_ -in $taskCreatingRoles })) {
+        throw "authenticated identity does not have a task-creating role"
     }
 }
 

@@ -66,6 +66,14 @@ Describe "1688 runtime acceptance safety" {
         ($script:requestPaths -join ",") | Should Be "Get /api/v1/listing-kits/auth-context"
     }
 
+    It "rejects an authenticated identity without a task-creating role" {
+        Mock Invoke-AcceptanceRequest {
+            return @{ tenant_id = "373211199677923496"; user_id = "subject"; roles = @("listingkit_viewer") }
+        }
+
+        { Assert-AuthenticatedTenant -Token "access-token-sentinel" -ExpectedTenantID "373211199677923496" -BaseUrl "https://example.test" } | Should Throw "does not have a task-creating role"
+    }
+
     It "validates the API URL before starting device authorization" {
         $previousUseDeviceAuthorization = $script:UseDeviceAuthorization
         $previousIssuerURL = $script:IssuerURL
@@ -325,7 +333,57 @@ Describe "ListingKit device authorization safety" {
             return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://attacker.example/verify"; expires_in = 60 }
         }
 
-        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -TimeoutSec 30 } | Should Throw "verification URI must use the same-origin as the issuer"
+        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 } | Should Throw "verification URI must use the same-origin as the issuer"
+    }
+
+    It "passes configured ListingKit scopes to device authorization" {
+        $script:requestedScope = ""
+        Mock Invoke-RestMethod {
+            param($Uri, $Body)
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            if ($Uri -match "/device$") {
+                $script:requestedScope = [string]$Body.scope
+                return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://issuer.example/verify"; expires_in = 60 }
+            }
+            return @{ access_token = "access-token" }
+        }
+        Mock Write-Host {}
+
+        $configuredScopes = "openid profile email urn:zitadel:iam:user:resourceowner urn:zitadel:iam:org:project:id:listingkit-project:aud urn:zitadel:iam:org:project:role:listingkit_operator"
+        Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -Scopes $configuredScopes -TimeoutSec 30 | Should Be "access-token"
+        $script:requestedScope | Should Be $configuredScopes
+    }
+
+    It "bounds every OAuth request and disables redirects" {
+        $script:oauthRequests = @()
+        Mock Invoke-RestMethod {
+            param($Uri, $TimeoutSec, $OperationTimeoutSeconds, $MaximumRedirection)
+            $script:oauthRequests += [pscustomobject]@{
+                TimeoutSec = $TimeoutSec
+                OperationTimeoutSeconds = $OperationTimeoutSeconds
+                MaximumRedirection = $MaximumRedirection
+            }
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            if ($Uri -match "/device$") {
+                return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://issuer.example/verify"; expires_in = 60 }
+            }
+            return @{ access_token = "access-token" }
+        }
+        Mock Write-Host {}
+
+        Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 | Should Be "access-token"
+        @($script:oauthRequests).Count | Should Be 3
+        foreach ($request in @($script:oauthRequests)) {
+            $effectiveTimeout = if ($null -ne $request.OperationTimeoutSeconds) { $request.OperationTimeoutSeconds } else { $request.TimeoutSec }
+            if (-not ($effectiveTimeout -ge 1 -and $effectiveTimeout -le 30)) {
+                throw "unexpected OAuth timeout $effectiveTimeout"
+            }
+            $request.MaximumRedirection | Should Be 0
+        }
     }
 
     It "polls pending authorization and returns the access token without displaying secrets" {
@@ -347,7 +405,7 @@ Describe "ListingKit device authorization safety" {
         Mock Start-Sleep {}
         Mock Write-Host { param($Object) $script:devicePrompt = [string]$Object }
 
-        $token = Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -TimeoutSec 30
+        $token = Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30
 
         $token | Should Be "access-token-sentinel"
         $script:devicePrompt | Should Match "https://issuer.example/verify"
@@ -372,7 +430,7 @@ Describe "ListingKit device authorization safety" {
         Mock Start-Sleep { param($Seconds) $script:lastSleep = $Seconds }
         Mock Write-Host {}
 
-        (Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -TimeoutSec 30) | Should Be "access-token"
+        (Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30) | Should Be "access-token"
         $script:lastSleep | Should Be 7
     }
 
@@ -389,7 +447,7 @@ Describe "ListingKit device authorization safety" {
         }
         Mock Write-Host {}
 
-        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -TimeoutSec 30 } | Should Throw "Device authorization expired"
+        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 } | Should Throw "Device authorization expired"
     }
 
     It "fails closed for denial, malformed device responses, and timeout" {
@@ -403,7 +461,7 @@ Describe "ListingKit device authorization safety" {
             }
         }
         Mock Write-Host {}
-        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -TimeoutSec 30 } | Should Throw "Device authorization response is incomplete"
+        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 } | Should Throw "Device authorization response is incomplete"
 
         $script:denialPolls = 0
         Mock Invoke-RestMethod {
@@ -416,7 +474,7 @@ Describe "ListingKit device authorization safety" {
             }
             return @{ error = "access_denied" }
         }
-        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -TimeoutSec 30 } | Should Throw "Device authorization was denied"
+        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 } | Should Throw "Device authorization was denied"
 
         Mock Invoke-RestMethod {
             param($Uri)
@@ -429,6 +487,6 @@ Describe "ListingKit device authorization safety" {
             return @{ error = "authorization_pending" }
         }
         Mock Start-Sleep { [System.Threading.Thread]::Sleep(1100) }
-        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -TimeoutSec 1 } | Should Throw "Device authorization timed out"
+        { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 1 } | Should Throw "Device authorization timed out"
     }
 }
