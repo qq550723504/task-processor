@@ -132,6 +132,28 @@ must record the generated task ID and canonical tenant without recording the
 token, then use the existing PAY-042 evidence path to verify that the task is
 admitted only through billing tenant `1038`.
 
+## Operator preflight
+
+After a ZITADEL administrator has registered a public device client and given
+the operator an accepted ListingKit role, run the read-only preflight from the
+repository root. Substitute only public issuer and client values; do not place
+a token in the command, environment, or a file.
+
+```powershell
+pwsh ./scripts/1688-runtime-acceptance.ps1 `
+  -Mode Preflight `
+  -UseDeviceAuthorization `
+  -IssuerURL 'https://issuer.example' `
+  -ClientID 'public-device-client-id' `
+  -ExpectedTenantID '373211199677923496'
+```
+
+The command displays a verification URI and one-time user code, then checks
+the authenticated canonical tenant before it performs the existing health
+checks. It creates no task. `Crawl` and `EndToEnd` remain separately guarded
+by the existing source/store requirements and
+`-ConfirmCreateTask CREATE-1688-TASK`.
+
 ## Non-goals
 
 - No service account, client-credentials grant, refresh-token storage, CI

@@ -265,6 +265,17 @@ pwsh ./scripts/1688-runtime-acceptance.ps1 `
 
 State that task creation still requires source/store input and -ConfirmCreateTask CREATE-1688-TASK. Do not add real tokens or product URLs.
 
+Implemented in the design specification with the public-placeholder command:
+
+~~~powershell
+pwsh ./scripts/1688-runtime-acceptance.ps1 `
+  -Mode Preflight `
+  -UseDeviceAuthorization `
+  -IssuerURL 'https://issuer.example' `
+  -ClientID 'public-device-client-id' `
+  -ExpectedTenantID '373211199677923496'
+~~~
+
 - [ ] **Step 2: Run final checks from the final commit**
 
 Run: go test ./internal/listingkit/api ./internal/listingkit/httpapi ./internal/app/httpapi -count=1
