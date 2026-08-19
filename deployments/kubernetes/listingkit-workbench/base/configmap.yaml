@@ -17,6 +17,11 @@ data:
   # ProductImage scene governance canary: only the verified zone tenant is allowed.
   TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED: "true"
   TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ALLOWED_TENANT_IDS: "373211199677923496"
+  # PAY-042 canary: only legacy subscription tenant 1038 is admitted to the
+  # durable generation usage ledger. The canonical ZITADEL owner tenant is
+  # intentionally not the billing identity for this cohort.
+  TASK_PROCESSOR_LISTINGKIT_GENERATION_USAGE_LEDGER_ENABLED: "true"
+  TASK_PROCESSOR_LISTINGKIT_GENERATION_USAGE_LEDGER_TENANT_IDS: "1038"
   # Kubernetes Pods do not have an X server. SDS browser login must run
   # headlessly unless a dedicated interactive browser environment is provided.
   TASK_PROCESSOR_SDS_LOGIN_SERVICE_DEFAULT_HEADLESS: "true"
