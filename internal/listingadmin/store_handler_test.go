@@ -533,6 +533,7 @@ func newStoreTestRouter(t *testing.T) storeTestRouter {
 	repo := NewGormStoreRepository(db)
 	handler := NewStoreHandler(repo)
 	engine := gin.New()
+	installTestOwnerMiddleware(engine)
 	engine.GET("/stores", handler.ListStores)
 	engine.GET("/stores/deleted", handler.ListDeletedStores)
 	engine.POST("/stores", handler.CreateStore)
@@ -545,6 +546,9 @@ func newStoreTestRouter(t *testing.T) storeTestRouter {
 
 func seedStore(t *testing.T, db *gorm.DB, store listingStore) listingStore {
 	t.Helper()
+	if store.OwnerUserID == "" {
+		store.OwnerUserID = "test-owner"
+	}
 	if store.OwnerUserID != "" && store.CreatedBy == "" {
 		store.CreatedBy = store.OwnerUserID
 	}

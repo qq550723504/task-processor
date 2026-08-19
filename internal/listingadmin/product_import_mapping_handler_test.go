@@ -162,6 +162,9 @@ func newProductImportMappingTestRouter(t *testing.T) storeTestRouter {
 
 func seedProductImportMapping(t *testing.T, db *gorm.DB, mapping listingProductImportMapping) listingProductImportMapping {
 	t.Helper()
+	if mapping.OwnerUserID == "" {
+		mapping.OwnerUserID = "test-owner"
+	}
 	if err := db.Table("listing_product_import_mapping").Create(&mapping).Error; err != nil {
 		t.Fatalf("seed product import mapping: %v", err)
 	}

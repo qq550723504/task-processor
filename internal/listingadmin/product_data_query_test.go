@@ -102,7 +102,8 @@ func TestGormProductDataRepositoryBatchOperations(t *testing.T) {
 
 	repo := NewGormProductDataRepository(db)
 	storeID := int64(11)
-	count, err := repo.UpsertProductDataBatch(context.Background(), []ProductData{
+	ownerCtx := WithOwnerUserID(context.Background(), "test-owner")
+	count, err := repo.UpsertProductDataBatch(ownerCtx, []ProductData{
 		{
 			TenantID:          101,
 			StoreID:           &storeID,
@@ -121,7 +122,7 @@ func TestGormProductDataRepositoryBatchOperations(t *testing.T) {
 		t.Fatalf("UpsertProductDataBatch() count = %d, want 1", count)
 	}
 
-	count, err = repo.UpsertProductDataBatch(context.Background(), []ProductData{
+	count, err = repo.UpsertProductDataBatch(ownerCtx, []ProductData{
 		{
 			TenantID:          101,
 			StoreID:           &storeID,
