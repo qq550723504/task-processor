@@ -198,7 +198,6 @@ func TestGormOperationStrategyRepositorySaveActivityStrategyUpdatesSharedStoreSt
 	}
 	row := listingOperationStrategy{
 		TenantID:             101,
-		OwnerUserID:          "strategy-owner",
 		StoreID:              21,
 		Name:                 "shared promotion",
 		Platform:             "SHEIN",
@@ -241,8 +240,8 @@ func TestGormOperationStrategyRepositorySaveActivityStrategyUpdatesSharedStoreSt
 	if err := db.Table("listing_operation_strategy").Where("id = ?", row.ID).Take(&persisted).Error; err != nil {
 		t.Fatalf("load persisted strategy: %v", err)
 	}
-	if persisted.OwnerUserID != "strategy-owner" {
-		t.Fatalf("owner = %q, want preserved strategy owner", persisted.OwnerUserID)
+	if persisted.OwnerUserID != "store-operator" {
+		t.Fatalf("owner = %q, want store-operator", persisted.OwnerUserID)
 	}
 }
 

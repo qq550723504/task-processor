@@ -157,6 +157,9 @@ func newCategoryTestRouter(t *testing.T) storeTestRouter {
 
 func seedCategory(t *testing.T, db *gorm.DB, category listingCategory) listingCategory {
 	t.Helper()
+	if category.OwnerUserID == "" {
+		category.OwnerUserID = "test-owner"
+	}
 	if err := db.Table("listing_category").Create(&category).Error; err != nil {
 		t.Fatalf("seed category: %v", err)
 	}

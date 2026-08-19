@@ -60,6 +60,17 @@ func (r *GormImportTaskRepository) ListImportTasks(ctx context.Context, query Im
 }
 
 func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, tasks []ImportTask) (BatchCreateImportTasksResult, error) {
+	return r.batchCreateImportTasks(ctx, tasks, false)
+}
+
+// BatchCreateImportTasksForStore derives the owner from the parent store while
+// holding that store row in the same transaction as the child insert.
+func (r *GormImportTaskRepository) BatchCreateImportTasksForStore(ctx context.Context, tasks []ImportTask) ([]ImportTask, error) {
+	result, err := r.batchCreateImportTasks(ctx, tasks, true)
+	return result.Items, err
+}
+
+func (r *GormImportTaskRepository) batchCreateImportTasks(ctx context.Context, tasks []ImportTask, deriveStoreOwner bool) (BatchCreateImportTasksResult, error) {
 	result := BatchCreateImportTasksResult{
 		Items:             []ImportTask{},
 		SkippedProductIDs: []string{},
@@ -67,27 +78,44 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 	if r == nil || r.db == nil {
 		return result, errors.New("import task repository database is not configured")
 	}
-	rows := make([]listingProductImportTask, 0, len(tasks))
-	for _, task := range tasks {
-		row := listingProductImportTaskFromImportTask(task)
-		applyImportTaskDefaults(&row)
-		if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-			applyImportTaskAuditFields(&row, ownerUserID, true)
-		}
-		rows = append(rows, row)
-	}
-	if len(rows) == 0 {
+	if len(tasks) == 0 {
 		return result, nil
 	}
 	if err := EnsureImportTaskWriteReady(r.db); err != nil {
 		return result, err
+	}
+	tx := r.db.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		return result, tx.Error
+	}
+	defer tx.Rollback()
+
+	var ownerUserID string
+	var err error
+	if !deriveStoreOwner {
+		ownerUserID, err = requireOwnerUserID(ctx, "")
+	}
+	rows := make([]listingProductImportTask, 0, len(tasks))
+	for _, task := range tasks {
+		row := listingProductImportTaskFromImportTask(task)
+		applyImportTaskDefaults(&row)
+		if deriveStoreOwner {
+			ownerUserID, err = resolveStoreOwnerUserIDForUpdate(ctx, tx, row.TenantID, row.StoreID)
+			if err != nil {
+				return result, err
+			}
+		} else if err != nil {
+			return result, err
+		}
+		applyImportTaskAuditFields(&row, ownerUserID, true)
+		rows = append(rows, row)
 	}
 	productIDs := make([]string, 0, len(rows))
 	for _, row := range rows {
 		productIDs = append(productIDs, row.ProductID)
 	}
 	var existing []listingProductImportTask
-	if err := r.db.WithContext(ctx).
+	if err := tx.
 		Table("listing_product_import_task").
 		Where("tenant_id = ?", rows[0].TenantID).
 		Where(fmt.Sprintf("deleted = 0 AND %s = ? AND region = ? AND store_id = ?", importTaskCanonicalTargetPlatformExpression("target_platform", "platform")), rows[0].TargetPlatform, rows[0].Region, rows[0].StoreID).
@@ -116,12 +144,18 @@ func (r *GormImportTaskRepository) BatchCreateImportTasks(ctx context.Context, t
 		}
 	}
 	if len(rowsToCreate) == 0 {
+		if err := tx.Commit().Error; err != nil {
+			return result, err
+		}
 		return result, nil
 	}
-	if err := r.db.WithContext(ctx).Table("listing_product_import_task").Create(&rowsToCreate).Error; err != nil {
+	if err := tx.Table("listing_product_import_task").Create(&rowsToCreate).Error; err != nil {
 		if isImportTaskActiveUniqueViolation(err) {
 			return result, ErrImportTaskAlreadyExists
 		}
+		return result, err
+	}
+	if err := tx.Commit().Error; err != nil {
 		return result, err
 	}
 	result.Items = make([]ImportTask, 0, len(rowsToCreate))
@@ -788,4 +822,3 @@ func isImportTaskCompletedStatus(status int16) bool {
 		return false
 	}
 }
-

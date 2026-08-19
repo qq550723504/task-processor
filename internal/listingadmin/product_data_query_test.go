@@ -96,13 +96,17 @@ func TestGormProductDataRepositoryBatchOperations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&listingProductData{}); err != nil {
+	if err := db.AutoMigrate(&listingStore{}, &listingProductData{}); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 
 	repo := NewGormProductDataRepository(db)
 	storeID := int64(11)
-	count, err := repo.UpsertProductDataBatch(context.Background(), []ProductData{
+	if err := db.Create(&listingStore{ID: storeID, TenantID: 101, OwnerUserID: "test-owner"}).Error; err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	ownerCtx := WithOwnerUserID(context.Background(), "test-owner")
+	count, err := repo.UpsertProductDataBatch(ownerCtx, []ProductData{
 		{
 			TenantID:          101,
 			StoreID:           &storeID,
@@ -121,7 +125,7 @@ func TestGormProductDataRepositoryBatchOperations(t *testing.T) {
 		t.Fatalf("UpsertProductDataBatch() count = %d, want 1", count)
 	}
 
-	count, err = repo.UpsertProductDataBatch(context.Background(), []ProductData{
+	count, err = repo.UpsertProductDataBatch(ownerCtx, []ProductData{
 		{
 			TenantID:          101,
 			StoreID:           &storeID,

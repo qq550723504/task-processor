@@ -343,6 +343,9 @@ func newImportTaskTestRouter(t *testing.T) storeTestRouter {
 
 func seedImportTask(t *testing.T, db *gorm.DB, task listingProductImportTask) listingProductImportTask {
 	t.Helper()
+	if task.OwnerUserID == "" {
+		task.OwnerUserID = "test-owner"
+	}
 	if err := db.Table("listing_product_import_task").Create(&task).Error; err != nil {
 		t.Fatalf("seed import task: %v", err)
 	}

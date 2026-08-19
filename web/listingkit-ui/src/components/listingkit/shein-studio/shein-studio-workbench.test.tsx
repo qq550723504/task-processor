@@ -180,7 +180,7 @@ describe("SheinStudioWorkbench", () => {
     render(<SheinStudioWorkbench activeStep="generate" />);
 
     expect(await screen.findByText("Group 2")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("prompt b")).toBeInTheDocument();
+    expect(await screen.findByDisplayValue("prompt b")).toBeInTheDocument();
   });
 
   it("shows recent batch cards before any explicit product reselection", async () => {

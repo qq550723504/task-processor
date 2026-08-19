@@ -139,6 +139,9 @@ func newGenerationTopicPolicyTestRouter(t *testing.T) storeTestRouter {
 
 func seedGenerationTopicPolicy(t *testing.T, db *gorm.DB, policy listingGenerationTopicPolicy) listingGenerationTopicPolicy {
 	t.Helper()
+	if policy.OwnerUserID == "" {
+		policy.OwnerUserID = "test-owner"
+	}
 	if err := db.Table("listing_generation_topic_policy").Create(&policy).Error; err != nil {
 		t.Fatalf("seed generation topic policy: %v", err)
 	}

@@ -148,6 +148,9 @@ func findDuplicateStore(ctx context.Context, storeClient listingadmin.StoreAPI, 
 			if item == nil || item.ID == account.StoreID {
 				continue
 			}
+			if item.Status != 0 {
+				continue
+			}
 			if strings.EqualFold(strings.TrimSpace(item.Platform), "shein") && strings.TrimSpace(item.StoreID) == actualStoreID {
 				return item, nil
 			}
