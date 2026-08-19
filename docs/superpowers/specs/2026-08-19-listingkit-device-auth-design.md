@@ -89,8 +89,8 @@ directory or invitation secret.
 
 - Allow only `https` issuer and API URLs in production. Permit `http` only for
   literal loopback hosts in tests.
-- Reject discovery endpoints that are not HTTPS (or permitted loopback) and
-  not same-origin with the configured issuer.
+- Reject discovery, device, token, and browser verification URIs that are not
+  HTTPS (or permitted loopback) or not same-origin with the configured issuer.
 - Keep the access token only in a local variable; never set a process-wide
   environment variable, write a token file, return it as script output, or
   include it in errors, evidence, or PowerShell transcript output.
