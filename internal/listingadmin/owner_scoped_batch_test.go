@@ -56,6 +56,71 @@ func TestUpsertProductDataBatchRejectsOwnerlessItemWithoutPartialWrite(t *testin
 	}
 }
 
+func TestUpsertProductDataBatchDerivesOwnerFromStoreInWriteTransaction(t *testing.T) {
+	db := openOwnerScopedBatchSQLite(t)
+	if err := db.AutoMigrate(&listingStore{}, &listingProductData{}); err != nil {
+		t.Fatalf("migrate owner and product data tables: %v", err)
+	}
+	if err := db.Create(&listingStore{ID: 986, TenantID: 246, OwnerUserID: "store-owner"}).Error; err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	storeID := int64(986)
+
+	count, err := NewGormProductDataRepository(db).UpsertProductDataBatch(context.Background(), []ProductData{{
+		TenantID:          246,
+		StoreID:           &storeID,
+		Platform:          "shein",
+		PlatformProductID: "SP-1",
+		ProductID:         "P-1",
+	}})
+	if err != nil || count != 1 {
+		t.Fatalf("UpsertProductDataBatch() = count:%d error:%v, want one persisted row", count, err)
+	}
+	var owner string
+	if err := db.Table("listing_product_data").Pluck("owner_user_id", &owner).Error; err != nil {
+		t.Fatalf("load product owner: %v", err)
+	}
+	if owner != "store-owner" {
+		t.Fatalf("persisted owner = %q, want store-owner", owner)
+	}
+}
+
+func TestProductImportMappingForStoreDerivesOwnerInWriteTransaction(t *testing.T) {
+	db := openOwnerScopedBatchSQLite(t)
+	if err := db.AutoMigrate(&listingStore{}, &listingProductImportMapping{}); err != nil {
+		t.Fatalf("migrate owner and mapping tables: %v", err)
+	}
+	if err := db.Create(&listingStore{ID: 986, TenantID: 246, OwnerUserID: "store-owner"}).Error; err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+
+	created, err := NewGormProductImportMappingRepository(db).CreateProductImportMappingForStore(context.Background(), &ProductImportMapping{
+		TenantID:     246,
+		ImportTaskID: 1,
+		StoreID:      986,
+		Platform:     "shein",
+		Region:       "US",
+		ProductID:    "P-1",
+		OwnerUserID:  "stale-owner",
+	})
+	if err != nil || created == nil {
+		t.Fatalf("CreateProductImportMappingForStore() = %+v, error:%v", created, err)
+	}
+	if created.OwnerUserID != "store-owner" {
+		t.Fatalf("created owner = %q, want store-owner", created.OwnerUserID)
+	}
+
+	created.Remark = "updated"
+	created.OwnerUserID = "another-stale-owner"
+	updated, err := NewGormProductImportMappingRepository(db).UpdateProductImportMappingForStore(context.Background(), created)
+	if err != nil || updated == nil {
+		t.Fatalf("UpdateProductImportMappingForStore() = %+v, error:%v", updated, err)
+	}
+	if updated.OwnerUserID != "store-owner" {
+		t.Fatalf("updated owner = %q, want store-owner", updated.OwnerUserID)
+	}
+}
+
 func TestProductImportMappingRequestIdentityCannotBeOverriddenByPayload(t *testing.T) {
 	db := openOwnerScopedBatchSQLite(t)
 	if err := db.AutoMigrate(&listingProductImportMapping{}); err != nil {

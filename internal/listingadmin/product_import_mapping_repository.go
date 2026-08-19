@@ -49,24 +49,73 @@ func (r *GormProductImportMappingRepository) GetProductImportMapping(ctx context
 }
 
 func (r *GormProductImportMappingRepository) CreateProductImportMapping(ctx context.Context, mapping *ProductImportMapping) (*ProductImportMapping, error) {
+	return r.createProductImportMapping(ctx, mapping, false)
+}
+
+// CreateProductImportMappingForStore derives the owner from the parent store
+// in the same transaction as the mapping insert.
+func (r *GormProductImportMappingRepository) CreateProductImportMappingForStore(ctx context.Context, mapping *ProductImportMapping) (*ProductImportMapping, error) {
+	return r.createProductImportMapping(ctx, mapping, true)
+}
+
+func (r *GormProductImportMappingRepository) createProductImportMapping(ctx context.Context, mapping *ProductImportMapping, deriveStoreOwner bool) (*ProductImportMapping, error) {
 	row := listingProductImportMappingFromProductImportMapping(mapping)
 	applyProductImportMappingDefaults(&row)
-	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	db := r.db.WithContext(ctx)
+	var err error
+	ownerUserID := ""
+	if deriveStoreOwner {
+		db = db.Begin()
+		if db.Error != nil {
+			return nil, db.Error
+		}
+		defer db.Rollback()
+		ownerUserID, err = resolveStoreOwnerUserIDForUpdate(ctx, db, row.TenantID, row.StoreID)
+	} else {
+		ownerUserID, err = requireOwnerUserID(ctx, row.OwnerUserID)
+	}
 	if err != nil {
 		return nil, ErrProductImportMappingOwnerRequired
 	}
 	applyProductImportMappingAuditFields(&row, ownerUserID, true)
-	if err := r.db.WithContext(ctx).Table("listing_product_import_mapping").Create(&row).Error; err != nil {
+	if err := db.Table("listing_product_import_mapping").Create(&row).Error; err != nil {
 		return nil, err
+	}
+	if deriveStoreOwner {
+		if err := db.Commit().Error; err != nil {
+			return nil, err
+		}
 	}
 	created := row.toProductImportMapping()
 	return &created, nil
 }
 
 func (r *GormProductImportMappingRepository) UpdateProductImportMapping(ctx context.Context, mapping *ProductImportMapping) (*ProductImportMapping, error) {
+	return r.updateProductImportMapping(ctx, mapping, false)
+}
+
+// UpdateProductImportMappingForStore derives the owner from the parent store
+// in the same transaction as the mapping update.
+func (r *GormProductImportMappingRepository) UpdateProductImportMappingForStore(ctx context.Context, mapping *ProductImportMapping) (*ProductImportMapping, error) {
+	return r.updateProductImportMapping(ctx, mapping, true)
+}
+
+func (r *GormProductImportMappingRepository) updateProductImportMapping(ctx context.Context, mapping *ProductImportMapping, deriveStoreOwner bool) (*ProductImportMapping, error) {
 	row := listingProductImportMappingFromProductImportMapping(mapping)
 	applyProductImportMappingDefaults(&row)
-	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	db := r.db.WithContext(ctx)
+	var err error
+	ownerUserID := ""
+	if deriveStoreOwner {
+		db = db.Begin()
+		if db.Error != nil {
+			return nil, db.Error
+		}
+		defer db.Rollback()
+		ownerUserID, err = resolveStoreOwnerUserIDForUpdate(ctx, db, row.TenantID, row.StoreID)
+	} else {
+		ownerUserID, err = requireOwnerUserID(ctx, row.OwnerUserID)
+	}
 	if err != nil {
 		return nil, ErrProductImportMappingOwnerRequired
 	}
@@ -95,8 +144,13 @@ func (r *GormProductImportMappingRepository) UpdateProductImportMapping(ctx cont
 		updates["updater"] = updatedBy
 		updates["updated_by"] = updatedBy
 	}
-	if err := updateOwnedTenantRow(ctx, r.db.WithContext(ctx).Table("listing_product_import_mapping"), row.TenantID, row.ID, "owner_user_id", updates, ErrProductImportMappingNotFound); err != nil {
+	if err := updateOwnedTenantRow(ctx, db.Table("listing_product_import_mapping"), row.TenantID, row.ID, "owner_user_id", updates, ErrProductImportMappingNotFound); err != nil {
 		return nil, err
+	}
+	if deriveStoreOwner {
+		if err := db.Commit().Error; err != nil {
+			return nil, err
+		}
 	}
 	return r.GetProductImportMapping(ctx, row.TenantID, row.ID)
 }

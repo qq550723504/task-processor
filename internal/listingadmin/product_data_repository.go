@@ -3,6 +3,7 @@ package listingadmin
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -134,9 +135,8 @@ func (r *GormProductDataRepository) UpsertProductDataBatch(ctx context.Context, 
 	if r == nil || r.db == nil {
 		return 0, errors.New("product data repository database is not configured")
 	}
-	ownerUserID, err := requireOwnerUserID(ctx, "")
-	if err != nil {
-		return 0, err
+	if len(items) == 0 {
+		return 0, nil
 	}
 	tx := r.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
@@ -144,8 +144,18 @@ func (r *GormProductDataRepository) UpsertProductDataBatch(ctx context.Context, 
 	}
 	defer tx.Rollback()
 	updated := 0
+	var err error
 	for _, item := range items {
 		row := listingProductDataFromProductData(&item)
+		ownerUserID := strings.TrimSpace(row.OwnerUserID)
+		if row.StoreID > 0 {
+			ownerUserID, err = resolveStoreOwnerUserIDForUpdate(ctx, tx, row.TenantID, row.StoreID)
+		} else {
+			ownerUserID, err = requireOwnerUserID(ctx, ownerUserID)
+		}
+		if err != nil {
+			return 0, err
+		}
 		row.OwnerUserID = ownerUserID
 		now := time.Now()
 		if row.UpdateTime == nil {

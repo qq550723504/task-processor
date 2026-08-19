@@ -38,10 +38,6 @@ func (p *LocalTaskRPCProvider) SubmitTask(req *api.TaskSubmitReqDTO, urgent bool
 }
 
 func (p *LocalTaskRPCProvider) submitTask(req *api.TaskSubmitReqDTO, urgent bool) (*api.TaskSubmitRespDTO, bool, error) {
-	ownerUserID, err := listingadmin.ResolveStoreOwnerUserID(context.Background(), p.db, req.TenantID, req.StoreID)
-	if err != nil {
-		return nil, true, err
-	}
 	priority := req.BusinessPriority
 	if urgent && priority > 1 {
 		priority = 1
@@ -93,10 +89,9 @@ func (p *LocalTaskRPCProvider) submitTask(req *api.TaskSubmitReqDTO, urgent bool
 	if row.ID == 0 {
 		row.ID = time.Now().UnixNano()
 	}
-	row.OwnerUserID = ownerUserID
 	storeID := row.StoreID
-	created, err := listingadmin.NewGormImportTaskRepository(p.db).BatchCreateImportTasks(
-		listingadmin.WithOwnerUserID(context.Background(), ownerUserID),
+	created, err := listingadmin.NewGormImportTaskRepository(p.db).BatchCreateImportTasksForStore(
+		context.Background(),
 		[]listingadmin.ImportTask{{
 			ID:             row.ID,
 			TenantID:       row.TenantID,

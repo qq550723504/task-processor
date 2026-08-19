@@ -1323,15 +1323,11 @@ func (p *LocalDataProvider) BatchCreateOrUpdateProductData(req *listingadmin.Pro
 	if repo == nil || req == nil {
 		return 0, nil
 	}
-	ownerUserID, err := listingadmin.ResolveStoreOwnerUserID(context.Background(), p.db, req.TenantID, req.StoreID)
-	if err != nil {
-		return 0, err
-	}
 	items := make([]listingadmin.ProductData, 0, len(req.Products))
 	for _, product := range req.Products {
 		items = append(items, productDataFromBatchItem(req, product))
 	}
-	return repo.UpsertProductDataBatch(listingadmin.WithOwnerUserID(context.Background(), ownerUserID), items)
+	return repo.UpsertProductDataBatch(context.Background(), items)
 }
 
 func (p *LocalDataProvider) BatchUpdateProductAttributes(req *listingadmin.ProductDataBatchUpdateAttributesReqDTO) (int, error) {
@@ -1421,11 +1417,7 @@ func (p *LocalDataProvider) CreateProductImportMapping(req *listingadmin.Product
 	if repo == nil || req == nil {
 		return 0, nil
 	}
-	ownerUserID, err := listingadmin.ResolveStoreOwnerUserID(context.Background(), p.db, req.TenantID, req.StoreId)
-	if err != nil {
-		return 0, err
-	}
-	created, err := repo.CreateProductImportMapping(listingadmin.WithOwnerUserID(context.Background(), ownerUserID), productImportMappingFromCreateReq(req))
+	created, err := repo.CreateProductImportMappingForStore(context.Background(), productImportMappingFromCreateReq(req))
 	if err != nil || created == nil {
 		return 0, err
 	}
@@ -1441,11 +1433,7 @@ func (p *LocalDataProvider) UpdateProductImportMapping(req *listingadmin.Product
 	if mapping == nil || mapping.ID == 0 {
 		return false, nil
 	}
-	ownerUserID, err := listingadmin.ResolveStoreOwnerUserID(context.Background(), p.db, req.TenantID, req.StoreId)
-	if err != nil {
-		return false, err
-	}
-	updated, err := repo.UpdateProductImportMapping(listingadmin.WithOwnerUserID(context.Background(), ownerUserID), mapping)
+	updated, err := repo.UpdateProductImportMappingForStore(context.Background(), mapping)
 	return updated != nil, err
 }
 

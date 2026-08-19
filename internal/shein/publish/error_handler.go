@@ -12,8 +12,8 @@ import (
 	"task-processor/internal/shein"
 	product "task-processor/internal/shein/api/product"
 	"task-processor/internal/shein/content"
-	"task-processor/internal/shein/submitprep"
 	skuutils "task-processor/internal/shein/product/sku"
+	"task-processor/internal/shein/submitprep"
 )
 
 // PublishProductErrorHandler 产品发布错误处理器
@@ -131,7 +131,7 @@ func (h *PublishProductErrorHandler) autoReplaceSensitiveWordsAndResubmit(ctx *s
 	}
 
 	logger.GetGlobalLogger("shein/publish").Info("开始检查敏感词错误并尝试自动替换重试...")
-	if !submitprep.RetrySensitiveWordCleanup(ctx.ProductData, flattenValidationNotes(results)) {
+	if !submitprep.RetrySensitiveWordCleanupWithContext(ctx.Context, ctx.ProductData, flattenValidationNotes(results)) {
 		return false
 	}
 
