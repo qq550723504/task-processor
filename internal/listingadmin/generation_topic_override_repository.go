@@ -106,9 +106,11 @@ func (r *GormGenerationTopicOverrideRepository) CreateGenerationTopicOverride(ct
 		return nil, errors.New("generation topic override repository database is not configured")
 	}
 	row := listingGenerationTopicOverrideFromGenerationTopicOverride(item)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyGenerationTopicOverrideAuditFields(&row, ownerUserID, true)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyGenerationTopicOverrideAuditFields(&row, ownerUserID, true)
 	if err := r.db.WithContext(ctx).Table((listingGenerationTopicOverride{}).TableName()).Create(&row).Error; err != nil {
 		return nil, err
 	}
@@ -121,9 +123,11 @@ func (r *GormGenerationTopicOverrideRepository) UpdateGenerationTopicOverride(ct
 		return nil, errors.New("generation topic override repository database is not configured")
 	}
 	row := listingGenerationTopicOverrideFromGenerationTopicOverride(item)
-	if ownerUserID := requestUserIDFromContext(ctx); ownerUserID != "" {
-		applyGenerationTopicOverrideAuditFields(&row, ownerUserID, false)
+	ownerUserID, err := requireOwnerUserID(ctx, row.OwnerUserID)
+	if err != nil {
+		return nil, err
 	}
+	applyGenerationTopicOverrideAuditFields(&row, ownerUserID, false)
 	updates := map[string]any{
 		"owner_user_id":                     row.OwnerUserID,
 		"platform":                          row.Platform,
