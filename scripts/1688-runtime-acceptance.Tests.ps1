@@ -45,6 +45,27 @@ Describe "1688 runtime acceptance safety" {
         }
     }
 
+    It "keeps legacy token resolution when device authorization is absent" {
+        Mock Resolve-ListingKitToken { "legacy-token" }
+
+        (Resolve-AcceptanceToken) | Should Be "legacy-token"
+    }
+
+    It "stops device authorization before settings health when the authenticated tenant differs" {
+        $script:requestPaths = @()
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            $script:requestPaths += "$Method $Path"
+            if ($Path -eq "/api/v1/listing-kits/auth-context") {
+                return @{ tenant_id = "wrong-tenant"; user_id = "subject"; roles = @("listingkit_operator") }
+            }
+            throw "settings health must not run"
+        }
+
+        { Invoke-Preflight -Token "access-token-sentinel" -BaseUrl "https://example.test" -ExpectedTenantID "373211199677923496" } | Should Throw "authenticated tenant does not match -ExpectedTenantID"
+        ($script:requestPaths -join ",") | Should Be "Get /api/v1/listing-kits/auth-context"
+    }
+
     It "keeps the default preflight request sequence GET-only" {
         $script:requestMethods = @()
         Mock Invoke-AcceptanceRequest {

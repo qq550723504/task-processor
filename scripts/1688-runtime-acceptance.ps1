@@ -9,6 +9,11 @@ param(
     [string]$ConfirmCreateTask = "",
     [int]$TimeoutSec = 300,
     [int]$PollIntervalSec = 5,
+    [switch]$UseDeviceAuthorization,
+    [string]$IssuerURL = "",
+    [string]$ClientID = "",
+    [string]$ExpectedTenantID = "",
+    [switch]$OpenBrowser,
     [switch]$TestOnly
 )
 
@@ -26,6 +31,7 @@ $script:AcceptanceTokenFile = if ([string]::IsNullOrWhiteSpace($TokenFile)) {
 }
 $script:AcceptanceTimeoutSec = $TimeoutSec
 $script:AcceptancePollIntervalSec = $PollIntervalSec
+. (Join-Path $PSScriptRoot "lib\listingkit-device-auth.ps1")
 
 function Normalize-ListingKitToken {
     param([string]$Value)
@@ -52,6 +58,18 @@ function Resolve-ListingKitToken {
         throw "No ListingKit API token found; set LISTINGKIT_API_TOKEN or provide the standard token file."
     }
     return $value
+}
+
+function Resolve-AcceptanceToken {
+    if (-not $UseDeviceAuthorization) {
+        return Resolve-ListingKitToken
+    }
+    if ([string]::IsNullOrWhiteSpace($IssuerURL) -or
+        [string]::IsNullOrWhiteSpace($ClientID) -or
+        [string]::IsNullOrWhiteSpace($ExpectedTenantID)) {
+        throw "-IssuerURL, -ClientID, and -ExpectedTenantID are required with -UseDeviceAuthorization"
+    }
+    return Resolve-ListingKitDeviceToken -IssuerURL $IssuerURL -ClientID $ClientID -TimeoutSec $script:AcceptanceTimeoutSec -OpenBrowser:$OpenBrowser
 }
 
 function Get-EndpointPath {
@@ -161,6 +179,22 @@ function Get-ResponseData {
         return $Response.data
     }
     return $Response
+}
+
+function Assert-AuthenticatedTenant {
+    param(
+        [string]$Token,
+        [string]$ExpectedTenantID,
+        [string]$BaseUrl = $script:AcceptanceApiBaseUrl
+    )
+
+    $context = Get-ResponseData -Response (Invoke-AcceptanceRequest -Method Get -Path "/api/v1/listing-kits/auth-context" -Token $Token -BaseUrl $BaseUrl)
+    if ([string]$context.tenant_id -cne $ExpectedTenantID) {
+        throw "authenticated tenant does not match -ExpectedTenantID"
+    }
+    if ([string]::IsNullOrWhiteSpace([string]$context.user_id)) {
+        throw "authenticated identity is incomplete"
+    }
 }
 
 function Get-SourceIdentityEvidence {
@@ -275,9 +309,13 @@ function Invoke-AuthenticatedPreflight {
 function Invoke-Preflight {
     param(
         [string]$Token,
-        [string]$BaseUrl = $script:AcceptanceApiBaseUrl
+        [string]$BaseUrl = $script:AcceptanceApiBaseUrl,
+        [string]$ExpectedTenantID = ""
     )
 
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedTenantID)) {
+        Assert-AuthenticatedTenant -Token $Token -ExpectedTenantID $ExpectedTenantID -BaseUrl $BaseUrl
+    }
     Invoke-PublicPreflight -BaseUrl $BaseUrl
     if ([string]::IsNullOrWhiteSpace($Token)) {
         throw "No ListingKit API token found; set LISTINGKIT_API_TOKEN or provide the standard token file."
@@ -366,12 +404,20 @@ function Invoke-EndToEnd {
 
 function Invoke-Main {
     if ($Mode -eq "Preflight") {
+        if ($UseDeviceAuthorization) {
+            $token = Resolve-AcceptanceToken
+            Invoke-Preflight -Token $token -ExpectedTenantID $ExpectedTenantID
+            return
+        }
         Invoke-PublicPreflight
-        $token = Resolve-ListingKitToken
+        $token = Resolve-AcceptanceToken
         Invoke-AuthenticatedPreflight -Token $token
         return
     }
-    $token = Resolve-ListingKitToken
+    $token = Resolve-AcceptanceToken
+    if ($UseDeviceAuthorization) {
+        Assert-AuthenticatedTenant -Token $token -ExpectedTenantID $ExpectedTenantID
+    }
     if ($Mode -eq "Crawl") {
         $result = Invoke-Crawl -Url $Url -SourceAccountID $SourceAccountID -Confirmation $ConfirmCreateTask -Token $token
         Write-Output ("PASS CRAWL task_id={0} status={1}" -f $result.TaskID, $result.Status)
