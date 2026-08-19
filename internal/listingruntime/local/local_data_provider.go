@@ -321,6 +321,7 @@ type localListingStore struct {
 	PriceType                string     `gorm:"column:price_type"`
 	Remark                   string     `gorm:"column:remark"`
 	Status                   int16      `gorm:"column:status"`
+	Deleted                  int16      `gorm:"column:deleted"`
 	ValidFrom                *time.Time `gorm:"column:valid_from"`
 	ValidUntil               *time.Time `gorm:"column:valid_until"`
 	CreateTime               *time.Time `gorm:"column:create_time"`
@@ -1322,11 +1323,15 @@ func (p *LocalDataProvider) BatchCreateOrUpdateProductData(req *listingadmin.Pro
 	if repo == nil || req == nil {
 		return 0, nil
 	}
+	ownerUserID, err := listingadmin.ResolveStoreOwnerUserID(context.Background(), p.db, req.TenantID, req.StoreID)
+	if err != nil {
+		return 0, err
+	}
 	items := make([]listingadmin.ProductData, 0, len(req.Products))
 	for _, product := range req.Products {
 		items = append(items, productDataFromBatchItem(req, product))
 	}
-	return repo.UpsertProductDataBatch(context.Background(), items)
+	return repo.UpsertProductDataBatch(listingadmin.WithOwnerUserID(context.Background(), ownerUserID), items)
 }
 
 func (p *LocalDataProvider) BatchUpdateProductAttributes(req *listingadmin.ProductDataBatchUpdateAttributesReqDTO) (int, error) {
@@ -1416,7 +1421,11 @@ func (p *LocalDataProvider) CreateProductImportMapping(req *listingadmin.Product
 	if repo == nil || req == nil {
 		return 0, nil
 	}
-	created, err := repo.CreateProductImportMapping(context.Background(), productImportMappingFromCreateReq(req))
+	ownerUserID, err := listingadmin.ResolveStoreOwnerUserID(context.Background(), p.db, req.TenantID, req.StoreId)
+	if err != nil {
+		return 0, err
+	}
+	created, err := repo.CreateProductImportMapping(listingadmin.WithOwnerUserID(context.Background(), ownerUserID), productImportMappingFromCreateReq(req))
 	if err != nil || created == nil {
 		return 0, err
 	}
@@ -1432,7 +1441,11 @@ func (p *LocalDataProvider) UpdateProductImportMapping(req *listingadmin.Product
 	if mapping == nil || mapping.ID == 0 {
 		return false, nil
 	}
-	updated, err := repo.UpdateProductImportMapping(context.Background(), mapping)
+	ownerUserID, err := listingadmin.ResolveStoreOwnerUserID(context.Background(), p.db, req.TenantID, req.StoreId)
+	if err != nil {
+		return false, err
+	}
+	updated, err := repo.UpdateProductImportMapping(listingadmin.WithOwnerUserID(context.Background(), ownerUserID), mapping)
 	return updated != nil, err
 }
 
@@ -1583,6 +1596,7 @@ func (p *LocalDataProvider) GetLatestInventoryRecord(platform, productID, region
 type localImportTaskRow struct {
 	ID             int64      `gorm:"column:id"`
 	TenantID       int64      `gorm:"column:tenant_id"`
+	OwnerUserID    string     `gorm:"column:owner_user_id"`
 	StoreID        int64      `gorm:"column:store_id"`
 	Platform       string     `gorm:"column:platform"`
 	SourcePlatform string     `gorm:"column:source_platform"`
