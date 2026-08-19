@@ -357,6 +357,12 @@ Describe "ListingKit device authorization safety" {
         $script:requestedScope | Should Be $configuredScopes
     }
 
+    It "delimits the project ID when constructing the audience scope" {
+        $scopes = Get-ListingKitDeviceOAuthScopes -ProjectID "listingkit-project"
+
+        $scopes | Should Match "urn:zitadel:iam:org:project:id:listingkit-project:aud"
+    }
+
     It "rejects offline access in configured ListingKit scopes" {
         { Get-ListingKitDeviceOAuthScopes -Scopes "openid offline_access" } | Should Throw "offline_access is not allowed"
     }

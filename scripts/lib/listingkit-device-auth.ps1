@@ -136,7 +136,7 @@ function Get-ListingKitDeviceOAuthScopes {
         "profile",
         "email",
         "urn:zitadel:iam:user:resourceowner",
-        "urn:zitadel:iam:org:project:id:$project:aud",
+        "urn:zitadel:iam:org:project:id:${project}:aud",
         "urn:zitadel:iam:org:project:role:listingkit_viewer",
         "urn:zitadel:iam:org:project:role:listingkit_operator",
         "urn:zitadel:iam:org:project:role:listingkit_admin",
