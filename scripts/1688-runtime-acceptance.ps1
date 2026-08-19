@@ -69,6 +69,7 @@ function Resolve-AcceptanceToken {
         [string]::IsNullOrWhiteSpace($ExpectedTenantID)) {
         throw "-IssuerURL, -ClientID, and -ExpectedTenantID are required with -UseDeviceAuthorization"
     }
+    Assert-ListingKitDeviceAPIBaseUrl -ApiBaseUrl $script:AcceptanceApiBaseUrl
     return Resolve-ListingKitDeviceToken -IssuerURL $IssuerURL -ClientID $ClientID -TimeoutSec $script:AcceptanceTimeoutSec -OpenBrowser:$OpenBrowser
 }
 

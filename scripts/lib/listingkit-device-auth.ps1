@@ -48,6 +48,12 @@ function Assert-ListingKitDeviceURI {
     return $candidate
 }
 
+function Assert-ListingKitDeviceAPIBaseUrl {
+    param([string]$ApiBaseUrl)
+
+    [void](ConvertTo-ListingKitDeviceUri -Value $ApiBaseUrl -Name "-ApiBaseUrl")
+}
+
 function Get-ListingKitDeviceDiscoveryUri {
     param([Uri]$Issuer)
 

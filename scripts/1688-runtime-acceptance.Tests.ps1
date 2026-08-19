@@ -66,6 +66,31 @@ Describe "1688 runtime acceptance safety" {
         ($script:requestPaths -join ",") | Should Be "Get /api/v1/listing-kits/auth-context"
     }
 
+    It "validates the API URL before starting device authorization" {
+        $previousUseDeviceAuthorization = $script:UseDeviceAuthorization
+        $previousIssuerURL = $script:IssuerURL
+        $previousClientID = $script:ClientID
+        $previousExpectedTenantID = $script:ExpectedTenantID
+        $previousApiBaseUrl = $script:AcceptanceApiBaseUrl
+        try {
+            $script:UseDeviceAuthorization = $true
+            $script:IssuerURL = "https://issuer.example"
+            $script:ClientID = "device-client"
+            $script:ExpectedTenantID = "373211199677923496"
+            $script:AcceptanceApiBaseUrl = "http://api.example"
+            Mock Resolve-ListingKitDeviceToken { throw "device authorization must not run" }
+
+            { Resolve-AcceptanceToken } | Should Throw "-ApiBaseUrl must use HTTPS unless it is a literal loopback test endpoint"
+            Assert-MockCalled Resolve-ListingKitDeviceToken -Times 0 -Exactly
+        } finally {
+            $script:UseDeviceAuthorization = $previousUseDeviceAuthorization
+            $script:IssuerURL = $previousIssuerURL
+            $script:ClientID = $previousClientID
+            $script:ExpectedTenantID = $previousExpectedTenantID
+            $script:AcceptanceApiBaseUrl = $previousApiBaseUrl
+        }
+    }
+
     It "keeps the default preflight request sequence GET-only" {
         $script:requestMethods = @()
         Mock Invoke-AcceptanceRequest {
@@ -277,6 +302,10 @@ Describe "ListingKit device authorization safety" {
         { Resolve-ListingKitDeviceToken -IssuerURL "http://issuer.example" -ClientID "device-client" -TimeoutSec 30 } | Should Throw "-IssuerURL must use HTTPS unless it is a literal loopback test endpoint"
 
         Assert-MockCalled Invoke-RestMethod -Times 0 -Exactly
+    }
+
+    It "rejects a non-HTTPS non-loopback API URL before a device-authorized request" {
+        { Assert-ListingKitDeviceAPIBaseUrl -ApiBaseUrl "http://api.example" } | Should Throw "-ApiBaseUrl must use HTTPS unless it is a literal loopback test endpoint"
     }
 
     It "rejects a discovered token endpoint outside the issuer origin" {
