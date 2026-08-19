@@ -417,6 +417,45 @@ candidates. Use a small `-BatchSize` first and preserve the report and command
 output in the change record. A mismatch, missing confirmation, metadata error,
 or unresolved candidate fails closed before any `UPDATE`.
 
+The application migration installs a PostgreSQL `owner_user_id` check as
+`NOT VALID`. That protects new inserts and updates without making the schema
+migration fail on the historical ownerless set. Do not validate these
+constraints until the reviewed reconciliation report shows both
+`unresolved_rows=0` and `auto_rows=0`. After the controlled backfill, validate
+each legacy owner-scoped table explicitly:
+
+```sql
+ALTER TABLE "listing_store"
+  VALIDATE CONSTRAINT "ck_listing_store_owner_user_id_nonblank";
+ALTER TABLE "listing_category"
+  VALIDATE CONSTRAINT "ck_listing_category_owner_user_id_nonblank";
+ALTER TABLE "listing_filter_rule"
+  VALIDATE CONSTRAINT "ck_listing_filter_rule_owner_user_id_nonblank";
+ALTER TABLE "listing_generation_topic_override"
+  VALIDATE CONSTRAINT "ck_listing_generation_topic_override_owner_user_id_nonblank";
+ALTER TABLE "listing_generation_topic_policy"
+  VALIDATE CONSTRAINT "ck_listing_generation_topic_policy_owner_user_id_nonblank";
+ALTER TABLE "listing_operation_strategy"
+  VALIDATE CONSTRAINT "ck_listing_operation_strategy_owner_user_id_nonblank";
+ALTER TABLE "listing_pricing_rule"
+  VALIDATE CONSTRAINT "ck_listing_pricing_rule_owner_user_id_nonblank";
+ALTER TABLE "listing_profit_rule"
+  VALIDATE CONSTRAINT "ck_listing_profit_rule_owner_user_id_nonblank";
+ALTER TABLE "listing_scheduled_task_config"
+  VALIDATE CONSTRAINT "ck_listing_scheduled_task_config_owner_user_id_nonblank";
+ALTER TABLE "listing_sensitive_word"
+  VALIDATE CONSTRAINT "ck_listing_sensitive_word_owner_user_id_nonblank";
+ALTER TABLE "listing_product_import_task"
+  VALIDATE CONSTRAINT "ck_listing_product_import_task_owner_user_id_nonblank";
+ALTER TABLE "listing_product_import_mapping"
+  VALIDATE CONSTRAINT "ck_listing_product_import_mapping_owner_user_id_nonblank";
+ALTER TABLE "listing_product_data"
+  VALIDATE CONSTRAINT "ck_listing_product_data_owner_user_id_nonblank";
+```
+
+This validation is a separate operational change. It is not run by the
+deployment workflow and must not be used to bypass the identity preflight.
+
 For a new cluster, render the existing production overlay from a temporary
 copy, pin both image names to the same immutable tag, and apply that rendered
 manifest only after the Job succeeds. This prevents the overlay's development

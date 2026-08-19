@@ -2,6 +2,7 @@ package listingadmin
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgconn"
@@ -9,6 +10,22 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 )
+
+func TestOwnerUserIDConstraintSQLRejectsBlankValuesAndIsIdempotent(t *testing.T) {
+	name, statement := ownerUserIDConstraintSQL("listing_store")
+	if name != "ck_listing_store_owner_user_id_nonblank" {
+		t.Fatalf("constraint name = %q, want ck_listing_store_owner_user_id_nonblank", name)
+	}
+	for _, fragment := range []string{
+		"pg_constraint",
+		"ADD CONSTRAINT \"ck_listing_store_owner_user_id_nonblank\"",
+		"CHECK (NULLIF(BTRIM(owner_user_id::text), '') IS NOT NULL) NOT VALID",
+	} {
+		if !strings.Contains(statement, fragment) {
+			t.Fatalf("constraint SQL missing %q: %s", fragment, statement)
+		}
+	}
+}
 
 func TestSensitiveWordLegacyColumnMigrationsCoverLegacyStatusAndAuditColumns(t *testing.T) {
 	t.Parallel()
@@ -332,4 +349,3 @@ func TestNormalizeImportTaskIndexDefinitionAcceptsPostgresTrimBothFrom(t *testin
 		t.Fatalf("normalized deparsed definition = %q, want %q", got, want)
 	}
 }
-
