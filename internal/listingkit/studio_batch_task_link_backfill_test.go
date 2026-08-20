@@ -46,6 +46,60 @@ func TestStudioBatchTaskLinkBackfillCreatesDurableLinksFromLegacyCreatedTasks(t 
 	}
 }
 
+func TestStudioBatchTaskLinkBackfillUsesLinkedTaskImageStrategy(t *testing.T) {
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	fixture := newStudioBatchTaskLinkBackfillFixture(t, ctx)
+	fixture.sessions.sessions[0].ImageStrategy = sheinImageStrategyAIGenerated
+
+	summary, err := BackfillLegacyStudioBatchTaskLinks(ctx, StudioBatchTaskLinkBackfillConfig{
+		SessionRepository: fixture.sessions,
+		BatchRepository:   fixture.batches,
+		TaskGetter:        fixture.tasks,
+		LinkRepository:    fixture.links,
+	})
+	if err != nil {
+		t.Fatalf("BackfillLegacyStudioBatchTaskLinks() error = %v", err)
+	}
+	if summary.LinksCreated != 1 {
+		t.Fatalf("summary = %+v, want one created link", summary)
+	}
+	links, err := fixture.links.ListStudioBatchTaskLinksByBatchID(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("ListStudioBatchTaskLinksByBatchID() error = %v", err)
+	}
+	if len(links) != 1 {
+		t.Fatalf("links = %+v, want one backfilled link", links)
+	}
+	link := &links[0]
+	if got, want := link.ImageStrategy, sheinImageStrategySDSOfficial; got != want {
+		t.Fatalf("backfilled image strategy = %q, want linked task strategy %q", got, want)
+	}
+}
+
+func TestStudioBatchTaskLinkBackfillResolvesCandidateUsingLinkedTaskStrategy(t *testing.T) {
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	fixture := newStudioBatchTaskLinkBackfillFixture(t, ctx)
+	fixture.sessions.sessions[0].ImageStrategy = sheinImageStrategyAIGenerated
+	fixture.sessions.sessions[0].CreatedTasks[0] = SheinStudioCreatedTask{ID: "task-1", DesignID: "design-1"}
+
+	summary, err := BackfillLegacyStudioBatchTaskLinks(ctx, StudioBatchTaskLinkBackfillConfig{
+		SessionRepository: fixture.sessions,
+		BatchRepository:   fixture.batches,
+		TaskGetter:        fixture.tasks,
+		LinkRepository:    fixture.links,
+	})
+	if err != nil {
+		t.Fatalf("BackfillLegacyStudioBatchTaskLinks() error = %v", err)
+	}
+	if summary.LinksCreated != 1 || len(summary.UnresolvedSelectionOwnership) != 0 {
+		t.Fatalf("summary = %+v, want one link and no unresolved candidate", summary)
+	}
+	link := fixture.mustGetLink(t, ctx, fixture.candidateKey)
+	if link.ImageStrategy != sheinImageStrategySDSOfficial {
+		t.Fatalf("backfilled image strategy = %q, want linked task strategy %q", link.ImageStrategy, sheinImageStrategySDSOfficial)
+	}
+}
+
 func TestStudioBatchTaskLinkBackfillRecordsMissingTasksWithoutInvalidDuplicate(t *testing.T) {
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	fixture := newStudioBatchTaskLinkBackfillFixture(t, ctx)
@@ -104,6 +158,48 @@ func TestStudioBatchTaskLinkBackfillRecordsExistingLinkAlreadyPresent(t *testing
 	}
 	if len(links) != 1 {
 		t.Fatalf("len(links) = %d, want 1", len(links))
+	}
+}
+
+func TestStudioBatchTaskLinkBackfillDisambiguatesStrategyCollision(t *testing.T) {
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	fixture := newStudioBatchTaskLinkBackfillFixture(t, ctx)
+	mustCreateStudioBatchTaskLinkForTest(t, fixture.links, ctx, &StudioBatchTaskLinkRecord{
+		ID:                       "legacy-ai-link",
+		BatchID:                  "batch-1",
+		ItemID:                   "item-1",
+		DesignID:                 "design-1",
+		SelectionID:              "selection-1",
+		CompatibilityFingerprint: fixture.candidate.CompatibilityFingerprint,
+		ImageStrategy:            sheinImageStrategyAIGenerated,
+		SheinStoreID:             fixture.candidate.SheinStoreID,
+		ListingKitTaskID:         "ai-task",
+		CandidateKey:             fixture.candidateKey,
+		Status:                   studioBatchTaskLinkStatusCreated,
+		CreatedAt:                time.Now().UTC(),
+		UpdatedAt:                time.Now().UTC(),
+	})
+
+	summary, err := BackfillLegacyStudioBatchTaskLinks(ctx, StudioBatchTaskLinkBackfillConfig{
+		SessionRepository: fixture.sessions,
+		BatchRepository:   fixture.batches,
+		TaskGetter:        fixture.tasks,
+		LinkRepository:    fixture.links,
+	})
+	if err != nil {
+		t.Fatalf("BackfillLegacyStudioBatchTaskLinks() error = %v", err)
+	}
+	if summary.LinksCreated != 1 || summary.LinksAlreadyPresent != 0 {
+		t.Fatalf("summary = %+v, want one disambiguated SDS link", summary)
+	}
+	disambiguatedKey := buildDisambiguatedStudioBatchTaskCandidateKey(fixture.candidate)
+	link := fixture.mustGetLink(t, ctx, disambiguatedKey)
+	if link.ListingKitTaskID != "task-1" || link.ImageStrategy != sheinImageStrategySDSOfficial {
+		t.Fatalf("disambiguated link = %+v, want SDS task-1 link", link)
+	}
+	legacy := fixture.mustGetLink(t, ctx, fixture.candidateKey)
+	if legacy.ListingKitTaskID != "ai-task" || legacy.ImageStrategy != sheinImageStrategyAIGenerated {
+		t.Fatalf("legacy link = %+v, want preserved AI link", legacy)
 	}
 }
 

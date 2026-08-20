@@ -12,7 +12,11 @@ func resolveSheinImageStrategy(req *GenerateRequest) string {
 	if req == nil || req.Options == nil {
 		return sheinImageStrategySDSOfficial
 	}
-	switch strings.ToLower(strings.TrimSpace(req.Options.ImageStrategy)) {
+	return normalizeSheinImageStrategy(req.Options.ImageStrategy)
+}
+
+func normalizeSheinImageStrategy(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case sheinImageStrategyAIGenerated:
 		return sheinImageStrategyAIGenerated
 	case sheinImageStrategyHybrid:

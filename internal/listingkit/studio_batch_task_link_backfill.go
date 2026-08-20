@@ -126,7 +126,7 @@ func backfillLegacyStudioBatchTaskLinksForSession(
 	}
 	candidatesByDesign := buildStudioBatchBackfillCandidatesByDesign(ctx, &session, detail)
 	for _, created := range session.CreatedTasks {
-		backfillLegacyStudioBatchCreatedTask(ctx, cfg, now, summary, session, candidatesByDesign, created)
+		backfillLegacyStudioBatchCreatedTask(ctx, cfg, now, summary, session, detail.Batch, candidatesByDesign, created)
 	}
 	return nil
 }
@@ -137,6 +137,7 @@ func backfillLegacyStudioBatchCreatedTask(
 	now func() time.Time,
 	summary *StudioBatchTaskLinkBackfillSummary,
 	session SheinStudioSession,
+	batch *StudioBatchRecord,
 	candidatesByDesign map[string][]studioBatchTaskCandidate,
 	created SheinStudioCreatedTask,
 ) {
@@ -154,12 +155,17 @@ func backfillLegacyStudioBatchCreatedTask(
 		summary.UnresolvedSelectionOwnership = append(summary.UnresolvedSelectionOwnership, backfillIssue(session, created, "candidate_unresolved", "legacy task could not be matched to a batch item/selection candidate"))
 		return
 	}
-	existing, err := cfg.LinkRepository.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		summary.Errors = append(summary.Errors, backfillError(session, created, "link_lookup_failed", err))
+	if task != nil {
+		candidate.ImageStrategy = resolveSheinImageStrategy(task.Request)
+		candidate.CandidateKey = buildStudioBatchTaskCandidateKey(ctx, batch, candidate)
+	}
+	candidateKey, alreadyPresent, keyErr := resolveStudioBatchBackfillCandidateKey(ctx, cfg, candidate)
+	if keyErr != nil {
+		summary.Errors = append(summary.Errors, backfillError(session, created, "link_lookup_failed", keyErr))
 		return
 	}
-	if existing != nil && err == nil {
+	candidate.CandidateKey = candidateKey
+	if alreadyPresent {
 		summary.LinksAlreadyPresent++
 		return
 	}
@@ -175,10 +181,10 @@ func backfillLegacyStudioBatchCreatedTask(
 		summary.MissingTasks = append(summary.MissingTasks, backfillIssue(session, created, "task_failed", "legacy created task is failed and will not be linked"))
 		return
 	}
-	link := buildStudioBatchBackfillLink(candidate, created, taskID, now().UTC())
+	link := buildStudioBatchBackfillLink(candidate, created, task, taskID, now().UTC())
 	if err := cfg.LinkRepository.CreateStudioBatchTaskLink(ctx, link); err != nil {
-		existing, getErr := cfg.LinkRepository.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
-		if getErr == nil && existing != nil {
+		_, alreadyPresent, getErr := resolveStudioBatchBackfillCandidateKey(ctx, cfg, candidate)
+		if getErr == nil && alreadyPresent {
 			summary.LinksAlreadyPresent++
 			return
 		}
@@ -186,6 +192,62 @@ func backfillLegacyStudioBatchCreatedTask(
 		return
 	}
 	summary.LinksCreated++
+}
+
+func resolveStudioBatchBackfillCandidateKey(
+	ctx context.Context,
+	cfg StudioBatchTaskLinkBackfillConfig,
+	candidate studioBatchTaskCandidate,
+) (string, bool, error) {
+	candidateKey := strings.TrimSpace(candidate.CandidateKey)
+	if candidateKey == "" {
+		return "", false, fmt.Errorf("backfill candidate has an empty candidate key")
+	}
+	existing, err := cfg.LinkRepository.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return candidateKey, false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if studioBatchBackfillExistingLinkMatchesStrategy(ctx, cfg, existing, candidate) {
+		return candidateKey, true, nil
+	}
+
+	disambiguatedKey := buildDisambiguatedStudioBatchTaskCandidateKey(candidate)
+	if disambiguatedKey == "" {
+		return "", false, fmt.Errorf("cannot disambiguate candidate key %s", candidateKey)
+	}
+	disambiguated, err := cfg.LinkRepository.GetStudioBatchTaskLinkByCandidateKey(ctx, disambiguatedKey)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return disambiguatedKey, false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if studioBatchBackfillExistingLinkMatchesStrategy(ctx, cfg, disambiguated, candidate) {
+		return disambiguatedKey, true, nil
+	}
+	return "", false, fmt.Errorf("candidate key %s is occupied by a different image strategy", disambiguatedKey)
+}
+
+func studioBatchBackfillExistingLinkMatchesStrategy(
+	ctx context.Context,
+	cfg StudioBatchTaskLinkBackfillConfig,
+	link *StudioBatchTaskLinkRecord,
+	candidate studioBatchTaskCandidate,
+) bool {
+	if link == nil {
+		return false
+	}
+	if strings.TrimSpace(link.ImageStrategy) != "" {
+		return studioBatchTaskLinkMatchesImageStrategy(link, nil, candidate)
+	}
+	if cfg.TaskGetter == nil || strings.TrimSpace(link.ListingKitTaskID) == "" {
+		return studioBatchTaskLinkMatchesImageStrategy(link, nil, candidate)
+	}
+	task, err := cfg.TaskGetter.GetTask(ctx, link.ListingKitTaskID)
+	return err == nil && studioBatchTaskLinkMatchesImageStrategy(link, task, candidate)
 }
 
 func buildStudioBatchBackfillCandidatesByDesign(
@@ -244,8 +306,10 @@ func resolveStudioBatchBackfillCandidate(
 	}
 	if task != nil {
 		for _, candidate := range candidates {
-			if studioBatchTaskMatchesSelection(task, candidate) {
-				return candidate, true
+			candidateForTask := candidate
+			candidateForTask.ImageStrategy = resolveSheinImageStrategy(task.Request)
+			if studioBatchTaskMatchesSelection(task, candidateForTask) {
+				return candidateForTask, true
 			}
 		}
 	}
@@ -277,7 +341,11 @@ func studioBatchBackfillCreatedTaskMatchesCandidate(created SheinStudioCreatedTa
 	return true
 }
 
-func buildStudioBatchBackfillLink(candidate studioBatchTaskCandidate, created SheinStudioCreatedTask, taskID string, now time.Time) *StudioBatchTaskLinkRecord {
+func buildStudioBatchBackfillLink(candidate studioBatchTaskCandidate, created SheinStudioCreatedTask, task *Task, taskID string, now time.Time) *StudioBatchTaskLinkRecord {
+	strategy := candidate.ImageStrategy
+	if task != nil {
+		strategy = resolveSheinImageStrategy(task.Request)
+	}
 	link := &StudioBatchTaskLinkRecord{
 		ID:                       buildStudioBatchTaskLinkID(candidate),
 		BatchID:                  strings.TrimSpace(candidate.Design.BatchID),
@@ -285,6 +353,7 @@ func buildStudioBatchBackfillLink(candidate studioBatchTaskCandidate, created Sh
 		DesignID:                 strings.TrimSpace(candidate.Design.ID),
 		SelectionID:              strings.TrimSpace(candidate.SelectionID),
 		CompatibilityFingerprint: strings.TrimSpace(candidate.CompatibilityFingerprint),
+		ImageStrategy:            normalizeSheinImageStrategy(strategy),
 		SheinStoreID:             candidate.SheinStoreID,
 		ListingKitTaskID:         strings.TrimSpace(taskID),
 		CandidateKey:             strings.TrimSpace(candidate.CandidateKey),

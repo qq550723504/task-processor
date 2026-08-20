@@ -32,6 +32,8 @@ type studioBatchTaskCandidate struct {
 	SelectionID              string
 	CompatibilityFingerprint string
 	CandidateKey             string
+	HistoricalCandidateKey   string
+	ImageStrategy            string
 	SheinStoreID             int64
 	StyleID                  string
 	Title                    string
@@ -337,18 +339,23 @@ func buildStudioBatchTaskCandidatesForDesign(
 		}
 		grouped := selections[index]
 		grouped.Selection.DesignType = candidate.SelectionSnapshot.DesignType
-		candidates = append(candidates, studioBatchTaskCandidate{
+		projected := studioBatchTaskCandidate{
 			Design:                   design,
 			Item:                     item,
 			Selection:                grouped,
 			SelectionSnapshot:        grouped.Selection,
 			SelectionID:              candidate.SelectionID,
 			CompatibilityFingerprint: candidate.CompatibilityFingerprint,
-			CandidateKey:             candidate.CandidateKey,
+			ImageStrategy:            normalizeSheinImageStrategy(sessionImageStrategy(session)),
 			SheinStoreID:             candidate.StoreID,
 			StyleID:                  candidate.StyleID,
 			Title:                    candidate.Title,
-		})
+		}
+		projected.CandidateKey = buildStudioBatchTaskCandidateKey(ctx, batch, projected)
+		historical := projected
+		historical.ImageStrategy = sheinImageStrategySDSOfficial
+		projected.HistoricalCandidateKey = buildStudioBatchTaskCandidateKey(ctx, batch, historical)
+		candidates = append(candidates, projected)
 	}
 	return candidates, nil
 }
@@ -440,8 +447,28 @@ func buildStudioBatchTaskCandidateKey(ctx context.Context, batch *StudioBatchRec
 		studioBatchTaskCandidateCompatibilityFingerprint(candidate),
 		strconv.FormatInt(storeID, 10),
 	}, "|")
+	if strategy := normalizeSheinImageStrategy(candidate.ImageStrategy); strategy != sheinImageStrategySDSOfficial {
+		normalized += "|image_strategy=" + strategy
+	}
 	sum := sha256.Sum256([]byte(normalized))
 	return hex.EncodeToString(sum[:])
+}
+
+func buildDisambiguatedStudioBatchTaskCandidateKey(candidate studioBatchTaskCandidate) string {
+	base := strings.TrimSpace(candidate.CandidateKey)
+	if base == "" {
+		return ""
+	}
+	strategy := normalizeSheinImageStrategy(candidate.ImageStrategy)
+	sum := sha256.Sum256([]byte(base + "|image_strategy=" + strategy))
+	return hex.EncodeToString(sum[:])
+}
+
+func sessionImageStrategy(session *SheinStudioSession) string {
+	if session == nil {
+		return sheinImageStrategySDSOfficial
+	}
+	return session.ImageStrategy
 }
 
 func studioBatchTaskCandidateCompatibilityFingerprint(candidate studioBatchTaskCandidate) string {

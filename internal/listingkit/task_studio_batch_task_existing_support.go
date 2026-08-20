@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"task-processor/internal/listingkit/core"
 	"time"
@@ -85,33 +86,52 @@ func (s *taskStudioBatchService) findDurableStudioBatchTask(ctx context.Context,
 	if candidateKey == "" {
 		return SheinStudioCreatedTask{}, false
 	}
+	candidateKeys := []string{candidateKey}
+	if historicalKey := strings.TrimSpace(candidate.HistoricalCandidateKey); historicalKey != "" && historicalKey != candidateKey {
+		candidateKeys = append(candidateKeys, historicalKey)
+	}
 	deadline := time.Now().Add(studioBatchTaskCreatingWait)
 	for {
-		link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey)
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return SheinStudioCreatedTask{}, false
+		creating := false
+		for _, lookupKey := range candidateKeys {
+			link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, lookupKey)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			if err != nil || link == nil {
+				return SheinStudioCreatedTask{}, false
+			}
+			if task, ok := s.createdTaskFromDurableLink(ctx, link, candidate); ok {
+				return task, true
+			}
+			if link.Status == studioBatchTaskLinkStatusCreating && !s.studioBatchTaskLinkIsStale(link) &&
+				(lookupKey == candidateKey || studioBatchTaskLinkHasStoredImageStrategy(link, candidate)) {
+				creating = true
+			}
 		}
-		if err != nil || link == nil {
-			return SheinStudioCreatedTask{}, false
-		}
-		if task, ok := s.createdTaskFromDurableLink(ctx, link, candidate); ok {
-			return task, true
-		}
-		if link.Status != studioBatchTaskLinkStatusCreating {
-			return SheinStudioCreatedTask{}, false
-		}
-		if s.studioBatchTaskLinkIsStale(link) {
-			return SheinStudioCreatedTask{}, false
-		}
-		if time.Now().After(deadline) {
+		if !creating || time.Now().After(deadline) {
 			return SheinStudioCreatedTask{}, false
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 }
 
+func studioBatchTaskLinkHasStoredImageStrategy(link *StudioBatchTaskLinkRecord, candidate studioBatchTaskCandidate) bool {
+	if link == nil || strings.TrimSpace(link.ImageStrategy) == "" {
+		return false
+	}
+	return normalizeSheinImageStrategy(link.ImageStrategy) == normalizeSheinImageStrategy(candidate.ImageStrategy)
+}
+
 func (s *taskStudioBatchService) createdTaskFromDurableLink(ctx context.Context, link *StudioBatchTaskLinkRecord, candidate studioBatchTaskCandidate) (SheinStudioCreatedTask, bool) {
 	if link == nil || strings.TrimSpace(link.ListingKitTaskID) == "" {
+		return SheinStudioCreatedTask{}, false
+	}
+	// A persisted strategy is authoritative for the historical link. Reject a
+	// mismatched candidate before fetching the linked task so a transient task
+	// read error cannot invalidate an unrelated durable link.
+	if storedStrategy := strings.TrimSpace(link.ImageStrategy); storedStrategy != "" &&
+		normalizeSheinImageStrategy(storedStrategy) != normalizeSheinImageStrategy(candidate.ImageStrategy) {
 		return SheinStudioCreatedTask{}, false
 	}
 	var task *Task
@@ -128,6 +148,9 @@ func (s *taskStudioBatchService) createdTaskFromDurableLink(ctx context.Context,
 			}
 			return SheinStudioCreatedTask{}, false
 		}
+	}
+	if !studioBatchTaskLinkMatchesImageStrategy(link, task, candidate) {
+		return SheinStudioCreatedTask{}, false
 	}
 	if link.Status != studioBatchTaskLinkStatusCreated {
 		link.Status = studioBatchTaskLinkStatusCreated
@@ -224,6 +247,7 @@ func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context,
 		DesignID:                 strings.TrimSpace(candidate.Design.ID),
 		SelectionID:              strings.TrimSpace(candidate.SelectionID),
 		CompatibilityFingerprint: strings.TrimSpace(candidate.CompatibilityFingerprint),
+		ImageStrategy:            normalizeSheinImageStrategy(candidate.ImageStrategy),
 		SheinStoreID:             candidate.SheinStoreID,
 		ListingKitTaskID:         strings.TrimSpace(taskID),
 		CandidateKey:             strings.TrimSpace(candidate.CandidateKey),
@@ -243,6 +267,29 @@ func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context,
 	existing, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
 	if err != nil {
 		return err
+	}
+	var linkedTask *Task
+	if s.getTask != nil && strings.TrimSpace(existing.ListingKitTaskID) != "" {
+		linkedTask, _ = s.getTask(ctx, existing.ListingKitTaskID)
+	}
+	if !studioBatchTaskLinkMatchesImageStrategy(existing, linkedTask, candidate) {
+		candidate.CandidateKey = buildDisambiguatedStudioBatchTaskCandidateKey(candidate)
+		link.ID = buildStudioBatchTaskLinkID(candidate)
+		link.CandidateKey = candidate.CandidateKey
+		if createErr := s.batchTaskLinkRepo.CreateStudioBatchTaskLink(ctx, link); createErr == nil {
+			return nil
+		}
+		existing, err = s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
+		if err != nil {
+			return err
+		}
+		linkedTask = nil
+		if s.getTask != nil && strings.TrimSpace(existing.ListingKitTaskID) != "" {
+			linkedTask, _ = s.getTask(ctx, existing.ListingKitTaskID)
+		}
+		if !studioBatchTaskLinkMatchesImageStrategy(existing, linkedTask, candidate) {
+			return fmt.Errorf("studio batch task link strategy mismatch for candidate %s", candidate.CandidateKey)
+		}
 	}
 	existing.ListingKitTaskID = link.ListingKitTaskID
 	existing.Status = link.Status
@@ -275,6 +322,9 @@ func studioBatchTaskMatchesSelection(
 	if studio == nil || sds == nil {
 		return false
 	}
+	if normalizeSheinImageStrategy(resolveSheinImageStrategy(task.Request)) != normalizeSheinImageStrategy(candidate.ImageStrategy) {
+		return false
+	}
 	styleID := strings.TrimSpace(studio.StyleID)
 	if styleID != candidate.StyleID && styleID != buildStudioBatchTaskStyleID(candidate.Design.ID) {
 		return false
@@ -286,6 +336,20 @@ func studioBatchTaskMatchesSelection(
 		sds.ParentProductID == candidate.SelectionSnapshot.ParentProductID &&
 		sds.PrototypeGroupID == candidate.SelectionSnapshot.PrototypeGroupID &&
 		strings.TrimSpace(sds.LayerID) == strings.TrimSpace(candidate.SelectionSnapshot.LayerID)
+}
+
+func studioBatchTaskLinkMatchesImageStrategy(link *StudioBatchTaskLinkRecord, task *Task, candidate studioBatchTaskCandidate) bool {
+	if link == nil {
+		return false
+	}
+	candidateStrategy := normalizeSheinImageStrategy(candidate.ImageStrategy)
+	if storedStrategy := strings.TrimSpace(link.ImageStrategy); storedStrategy != "" {
+		return normalizeSheinImageStrategy(storedStrategy) == candidateStrategy
+	}
+	if task == nil || task.Request == nil {
+		return strings.TrimSpace(link.ListingKitTaskID) == "" && link.Status != studioBatchTaskLinkStatusCreated && candidateStrategy == sheinImageStrategySDSOfficial
+	}
+	return resolveSheinImageStrategy(task.Request) == candidateStrategy
 }
 
 func mergeStudioCreatedTasks(

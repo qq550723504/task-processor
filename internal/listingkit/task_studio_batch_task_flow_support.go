@@ -45,18 +45,19 @@ func (s *taskStudioBatchService) loadStudioBatchTaskPreparationResult(ctx contex
 	}, nil
 }
 
-func (s *taskStudioBatchService) reserveStudioBatchTaskCandidate(ctx context.Context, candidate studioBatchTaskCandidate) error {
-	if s == nil || s.batchTaskLinkRepo == nil {
+func (s *taskStudioBatchService) reserveStudioBatchTaskCandidate(ctx context.Context, candidate *studioBatchTaskCandidate) error {
+	if s == nil || s.batchTaskLinkRepo == nil || candidate == nil {
 		return nil
 	}
 	now := s.currentTime().UTC()
 	link := &StudioBatchTaskLinkRecord{
-		ID:                       buildStudioBatchTaskLinkID(candidate),
+		ID:                       buildStudioBatchTaskLinkID(*candidate),
 		BatchID:                  strings.TrimSpace(candidate.Design.BatchID),
 		ItemID:                   strings.TrimSpace(candidate.Item.ID),
 		DesignID:                 strings.TrimSpace(candidate.Design.ID),
 		SelectionID:              strings.TrimSpace(candidate.SelectionID),
 		CompatibilityFingerprint: strings.TrimSpace(candidate.CompatibilityFingerprint),
+		ImageStrategy:            normalizeSheinImageStrategy(candidate.ImageStrategy),
 		SheinStoreID:             candidate.SheinStoreID,
 		CandidateKey:             strings.TrimSpace(candidate.CandidateKey),
 		Status:                   studioBatchTaskLinkStatusReserved,
@@ -67,7 +68,24 @@ func (s *taskStudioBatchService) reserveStudioBatchTaskCandidate(ctx context.Con
 		link.BatchID = strings.TrimSpace(candidate.Item.BatchID)
 	}
 	if err := s.batchTaskLinkRepo.CreateStudioBatchTaskLink(ctx, link); err != nil {
-		if _, getErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey); getErr == nil {
+		existing, getErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
+		if getErr == nil && existing != nil {
+			var linkedTask *Task
+			if s.getTask != nil && strings.TrimSpace(existing.ListingKitTaskID) != "" {
+				linkedTask, _ = s.getTask(ctx, existing.ListingKitTaskID)
+			}
+			if studioBatchTaskLinkMatchesImageStrategy(existing, linkedTask, *candidate) {
+				return nil
+			}
+			candidate.CandidateKey = buildDisambiguatedStudioBatchTaskCandidateKey(*candidate)
+			link.ID = buildStudioBatchTaskLinkID(*candidate)
+			link.CandidateKey = candidate.CandidateKey
+			if retryErr := s.batchTaskLinkRepo.CreateStudioBatchTaskLink(ctx, link); retryErr != nil {
+				if _, retryGetErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey); retryGetErr == nil {
+					return nil
+				}
+				return retryErr
+			}
 			return nil
 		}
 		return err

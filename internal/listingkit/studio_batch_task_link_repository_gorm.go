@@ -24,6 +24,9 @@ func AutoMigrateStudioBatchTaskLinkRepository(db *gorm.DB) error {
 	if err := ensureStudioBatchTaskLinkSourceColumn(db); err != nil {
 		return err
 	}
+	if err := ensureStudioBatchTaskLinkImageStrategyColumn(db); err != nil {
+		return err
+	}
 	return ensureStudioBatchTaskLinkTupleIndex(db)
 }
 
@@ -49,10 +52,16 @@ func (r *GormStudioBatchTaskLinkRepository) CreateStudioBatchTaskLink(ctx contex
 		return fmt.Errorf("studio batch task link id is required")
 	}
 	err := r.db.WithContext(ctx).Create(&row).Error
-	if !isStudioBatchTaskLinkMissingSourceColumnError(err) {
+	if !isStudioBatchTaskLinkMissingSourceColumnError(err) && !isStudioBatchTaskLinkMissingImageStrategyColumnError(err) {
 		return err
 	}
 	if migrateErr := ensureStudioBatchTaskLinkSourceColumn(r.db); migrateErr != nil {
+		return migrateErr
+	}
+	if migrateErr := ensureStudioBatchTaskLinkImageStrategyColumn(r.db); migrateErr != nil {
+		return migrateErr
+	}
+	if migrateErr := ensureStudioBatchTaskLinkTupleIndex(r.db); migrateErr != nil {
 		return migrateErr
 	}
 	return r.db.WithContext(ctx).Create(&row).Error
@@ -183,7 +192,8 @@ func isStudioBatchTaskLinkMissingSourceColumnError(err error) bool {
 
 func ensureStudioBatchTaskLinkTupleIndex(db *gorm.DB) error {
 	const indexName = "idx_listingkit_studio_batch_task_links_tuple"
-	if db == nil || studioBatchTaskLinkTupleIndexIncludesCompatibilityFingerprint(db, indexName) {
+	if db == nil || (studioBatchTaskLinkTupleIndexIncludesCompatibilityFingerprint(db, indexName) &&
+		studioBatchTaskLinkTupleIndexIncludesImageStrategy(db, indexName)) {
 		return nil
 	}
 	if db.Migrator().HasIndex(&StudioBatchTaskLinkRecord{}, indexName) {
@@ -192,6 +202,58 @@ func ensureStudioBatchTaskLinkTupleIndex(db *gorm.DB) error {
 		}
 	}
 	return db.Migrator().CreateIndex(&StudioBatchTaskLinkRecord{}, indexName)
+}
+
+func ensureStudioBatchTaskLinkImageStrategyColumn(db *gorm.DB) error {
+	if db == nil {
+		return nil
+	}
+	if !db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "ImageStrategy") {
+		return db.Migrator().AddColumn(&StudioBatchTaskLinkRecord{}, "ImageStrategy")
+	}
+	return nil
+}
+
+func isStudioBatchTaskLinkMissingImageStrategyColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "image_strategy") &&
+		(strings.Contains(message, "no column") ||
+			strings.Contains(message, "does not exist") ||
+			strings.Contains(message, "unknown column"))
+}
+
+func studioBatchTaskLinkTupleIndexIncludesImageStrategy(db *gorm.DB, indexName string) bool {
+	switch db.Dialector.Name() {
+	case "postgres":
+		var indexDef string
+		if err := db.Raw(`SELECT indexdef FROM pg_indexes WHERE tablename = ? AND indexname = ?`, StudioBatchTaskLinkRecord{}.TableName(), indexName).Scan(&indexDef).Error; err != nil {
+			return false
+		}
+		return strings.Contains(indexDef, "image_strategy")
+	case "sqlite":
+		rows, err := db.Raw(`PRAGMA index_info(idx_listingkit_studio_batch_task_links_tuple)`).Rows()
+		if err != nil {
+			return false
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var seqno int
+			var cid int
+			var name string
+			if err := rows.Scan(&seqno, &cid, &name); err != nil {
+				return false
+			}
+			if name == "image_strategy" {
+				return true
+			}
+		}
+		return false
+	default:
+		return true
+	}
 }
 
 func studioBatchTaskLinkTupleIndexIncludesCompatibilityFingerprint(db *gorm.DB, indexName string) bool {

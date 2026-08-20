@@ -92,7 +92,7 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				return SheinStudioCreatedTask{}, fmt.Errorf("studio design %s background removal is still in progress", taskCandidate.Design.ID)
 			}
 			taskCandidate.Design = latestDesigns[0]
-			if err := s.reserveStudioBatchTaskCandidate(ctx, taskCandidate); err != nil {
+			if err := s.reserveStudioBatchTaskCandidate(ctx, &taskCandidate); err != nil {
 				return SheinStudioCreatedTask{}, err
 			}
 			claimed, err := s.claimStudioBatchTaskCandidate(ctx, taskCandidate)
@@ -101,7 +101,7 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			}
 			if !claimed {
 				if existing, ok := s.findDurableStudioBatchTask(ctx, taskCandidate); ok {
-					return existing, nil
+					return markStudioBatchReusedTask(existing), nil
 				}
 				return SheinStudioCreatedTask{}, fmt.Errorf("studio batch task candidate is already owned")
 			}
