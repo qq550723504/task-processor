@@ -187,9 +187,13 @@ func TestStudioProductImageCategoryPathUsesSDSCategoryNames(t *testing.T) {
 
 func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
 	var calls []string
+	var firstReferences []string
 	service := &taskStudioBatchService{
 		generateProductImages: func(_ context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {
 			calls = append(calls, req.StyleName)
+			if len(calls) == 1 {
+				firstReferences = append([]string(nil), req.ProductReferenceImageURLs...)
+			}
 			return &StudioProductImageResponse{Images: []StudioGeneratedImage{{ImageURL: "https://cdn.example.com/" + req.StyleName + ".png"}}}, nil
 		},
 	}
@@ -216,6 +220,9 @@ func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
 	}
 	if len(calls) != 2 {
 		t.Fatalf("generator calls = %d (%v), want one per color representative", len(calls), calls)
+	}
+	if len(firstReferences) == 0 || firstReferences[0] != "https://example.com/red.png" {
+		t.Fatalf("first color references = %v, want first representative references", firstReferences)
 	}
 	if got := len(request.Options.SheinStudio.VariantProductImages); got != 2 {
 		t.Fatalf("variant product image sets = %d, want 2", got)
@@ -344,9 +351,14 @@ func TestFallbackStudioBatchTaskSessionKeepsBatchIdentityAndSelection(t *testing
 	session := fallbackStudioBatchTaskSession(
 		"batch-1",
 		&StudioBatchRecord{
-			ID:           "batch-1",
-			SheinStoreID: 869,
-			Selection:    SheinStudioSelectionSnapshot{ProductID: 1001, ParentProductID: 2002},
+			ID:                  "batch-1",
+			SheinStoreID:        869,
+			Prompt:              "batch prompt",
+			PromptMode:          "raw",
+			ProductImageCount:   "7",
+			ProductImagePrompt:  "use a clean studio background",
+			ProductImagePrompts: SheinStudioProductImagePromptList{{Role: "hero", Prompt: "front view"}},
+			Selection:           SheinStudioSelectionSnapshot{ProductID: 1001, ParentProductID: 2002},
 		},
 		[]string{"design-1"},
 		sheinImageStrategyAIGenerated,
@@ -359,6 +371,29 @@ func TestFallbackStudioBatchTaskSessionKeepsBatchIdentityAndSelection(t *testing
 	}
 	if session.Selection.ProductID != 1001 || session.SheinStoreID != "869" {
 		t.Fatalf("session fallback data = %+v, want batch selection/store", session)
+	}
+	if session.Prompt != "batch prompt" || session.PromptMode != "raw" || session.ProductImageCount != "7" || session.ProductImagePrompt != "use a clean studio background" {
+		t.Fatalf("session fallback product image settings = %+v, want persisted batch settings", session)
+	}
+	if len(session.ProductImagePrompts) != 1 || session.ProductImagePrompts[0].Prompt != "front view" {
+		t.Fatalf("session fallback product image prompts = %+v, want persisted batch prompts", session.ProductImagePrompts)
+	}
+}
+
+func TestBuildStudioBatchRecordFromSessionDraftCopiesProductImageSettings(t *testing.T) {
+	t.Parallel()
+
+	batch := buildStudioBatchRecordFromSessionDraft(&SheinStudioSession{
+		ID:                  "batch-1",
+		ProductImageCount:   "6",
+		ProductImagePrompt:  "keep the print centered",
+		ProductImagePrompts: SheinStudioProductImagePromptList{{Role: "detail", Prompt: "show stitching"}},
+	}, time.Now())
+	if batch.ProductImageCount != "6" || batch.ProductImagePrompt != "keep the print centered" {
+		t.Fatalf("batch product image settings = %+v, want copied session settings", batch)
+	}
+	if len(batch.ProductImagePrompts) != 1 || batch.ProductImagePrompts[0].Prompt != "show stitching" {
+		t.Fatalf("batch product image prompts = %+v, want copied session prompts", batch.ProductImagePrompts)
 	}
 }
 
@@ -386,6 +421,32 @@ func TestStudioBatchTaskMatchesSelectionRejectsDifferentImageStrategy(t *testing
 
 	if studioBatchTaskMatchesSelection(task, candidate) {
 		t.Fatal("SDS task unexpectedly matched AI candidate")
+	}
+}
+
+func TestStudioBatchTaskMatchesSelectionRejectsAIWithoutGeneratedProductImages(t *testing.T) {
+	t.Parallel()
+
+	task := &Task{
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://example.com/design.png"},
+			Options: &GenerateOptions{
+				ImageStrategy: sheinImageStrategyAIGenerated,
+				SheinStudio:   &SheinStudioOptions{StyleID: "style-1"},
+				SDS:           &SDSSyncOptions{VariantID: 1, ParentProductID: 2, PrototypeGroupID: 3, LayerID: "layer-1"},
+			},
+		},
+	}
+	candidate := studioBatchTaskCandidate{
+		Design:        StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
+		StyleID:       "style-1",
+		ImageStrategy: sheinImageStrategyAIGenerated,
+		SelectionSnapshot: SheinStudioSelection{
+			VariantID: 1, ParentProductID: 2, PrototypeGroupID: 3, LayerID: "layer-1",
+		},
+	}
+	if studioBatchTaskMatchesSelection(task, candidate) {
+		t.Fatal("AI task without generated product images unexpectedly matched")
 	}
 }
 
@@ -529,7 +590,10 @@ func TestFindDurableStudioBatchTaskChecksHistoricalCandidateKey(t *testing.T) {
 		batchTaskLinkRepo: links,
 		currentTime:       time.Now,
 		getTask: func(context.Context, string) (*Task, error) {
-			return &Task{ID: "old-ai-task", Request: &GenerateRequest{Options: &GenerateOptions{ImageStrategy: sheinImageStrategyAIGenerated}}}, nil
+			return &Task{ID: "old-ai-task", Request: &GenerateRequest{Options: &GenerateOptions{
+				ImageStrategy: sheinImageStrategyAIGenerated,
+				SheinStudio:   &SheinStudioOptions{ProductImageURLs: []string{"https://example.com/generated.png"}},
+			}}}, nil
 		},
 	}
 	candidate := studioBatchTaskCandidate{

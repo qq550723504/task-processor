@@ -491,6 +491,11 @@ func fallbackStudioBatchTaskSession(batchID string, batch *StudioBatchRecord, de
 		PendingTaskDesignIDs: append(SheinStudioStringList(nil), designIDs...),
 	}
 	if batch != nil {
+		session.Prompt = strings.TrimSpace(batch.Prompt)
+		session.PromptMode = strings.TrimSpace(batch.PromptMode)
+		session.ProductImageCount = strings.TrimSpace(batch.ProductImageCount)
+		session.ProductImagePrompt = strings.TrimSpace(batch.ProductImagePrompt)
+		session.ProductImagePrompts = append(SheinStudioProductImagePromptList(nil), batch.ProductImagePrompts...)
 		session.Selection = SheinStudioSelectionSnapshot(batch.Selection)
 		if batch.SheinStoreID > 0 {
 			session.SheinStoreID = strconv.FormatInt(batch.SheinStoreID, 10)

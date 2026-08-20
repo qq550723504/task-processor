@@ -27,11 +27,16 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 	if s == nil || s.generateProductImages == nil {
 		return fmt.Errorf("studio product image generator is not configured")
 	}
+	heartbeatStop := s.startStudioBatchTaskLinkHeartbeat(ctx, candidate, studioBatchTaskLinkHeartbeatInterval)
 	productImageRequest, err := s.buildStudioBatchTaskProductImageRequest(ctx, session, batch, candidate, design)
 	if err != nil {
+		_ = heartbeatStop()
 		return err
 	}
-	heartbeatStop := s.startStudioBatchTaskLinkHeartbeat(ctx, candidate, studioBatchTaskLinkHeartbeatInterval)
+	colorRepresentatives := studioBatchTaskColorRepresentatives(candidate.SelectionSnapshot)
+	if len(colorRepresentatives) > 1 {
+		productImageRequest.ProductReferenceImageURLs = studioBatchTaskProductReferenceImageURLsForVariant(candidate.SelectionSnapshot, colorRepresentatives[0])
+	}
 	response, err := s.generateProductImages(ctx, productImageRequest)
 	if err != nil {
 		_ = heartbeatStop()
@@ -43,7 +48,6 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 		return fmt.Errorf("studio product image generator returned no images")
 	}
 	request.Options.SheinStudio.ProductImageURLs = productImageURLs
-	colorRepresentatives := studioBatchTaskColorRepresentatives(candidate.SelectionSnapshot)
 	if len(colorRepresentatives) > 1 {
 		request.Options.SheinStudio.VariantProductImages = append(request.Options.SheinStudio.VariantProductImages, SheinStudioVariantImageSet{
 			VariantSKU: colorRepresentatives[0].VariantSKU,
