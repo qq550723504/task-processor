@@ -82,10 +82,10 @@ func (p *Crawler1688Processor) fetchProduct(ctx context.Context, task *shared.Cr
 	unlock := p.service.lockAccountProfile(profile)
 	defer unlock()
 	product, err = p.service.processor1688.ProcessWithAccountProfile(task.URL, profile)
+	p.service.recordSourceAccess("account_assisted")
 	if err != nil {
 		return nil, sourceAccessModeAccountAssisted, sourceFallbackReason(publicErr), err
 	}
-	p.service.recordSourceAccess("account_assisted")
 	return product, sourceAccessModeAccountAssisted, sourceFallbackReason(publicErr), nil
 }
 

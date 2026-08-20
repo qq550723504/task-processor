@@ -234,6 +234,9 @@ func TestCrawler1688ProcessorPreservesSourceMetadataWhenAccountCrawlFails(t *tes
 	if result.SourceAccessMode != string(sourceAccessModeAccountAssisted) || result.SourceFallbackReason != "public_challenge" {
 		t.Fatalf("failed result source metadata = (%q, %q), want account-assisted/public_challenge", result.SourceAccessMode, result.SourceFallbackReason)
 	}
+	if got := service.sourceAccessStats()[string(sourceAccessModeAccountAssisted)]; got != 1 {
+		t.Fatalf("account-assisted access count = %d, want 1 after failed account crawl", got)
+	}
 }
 
 func TestCrawler1688ProcessorDoesNotResolveAccountForNonRecoverablePublicFailure(t *testing.T) {
