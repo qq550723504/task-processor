@@ -808,7 +808,7 @@ export function projectDefaultSelectedSDSImages({
   imageStrategy: SheinStudioImageStrategy;
   renderSizeImagesWithSds: boolean;
 }): SheinStudioSelectedSDSImage[] | null {
-  if (imageStrategy !== "hybrid" && imageStrategy !== "sds_official") {
+  if (imageStrategy !== "sds_official") {
     return null;
   }
   if (hasCustomizedSdsSelection) {

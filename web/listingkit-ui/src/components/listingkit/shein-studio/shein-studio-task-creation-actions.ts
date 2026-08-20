@@ -204,6 +204,7 @@ export function useSheinStudioTaskCreationAction({
         approvedDesignIds: approvedDesignIdsForTaskCreation,
         batchId: itemizedBatchContext.batchId,
         createBatchTasks: createSheinStudioBatchTasks,
+        imageStrategy,
         onCreated: itemizedBatchContext.onCreated,
         tenantId: itemizedBatchContext.tenantId,
       });

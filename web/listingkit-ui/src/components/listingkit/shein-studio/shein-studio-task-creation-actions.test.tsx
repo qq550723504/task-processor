@@ -295,7 +295,7 @@ describe("useSheinStudioTaskCreationAction", () => {
     expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
       "design-1",
       "design-2",
-    ]);
+    ], { imageStrategy: "sds_official" });
     expect(setCreatedTasks).toHaveBeenCalledWith([
       { id: "task-1", title: "Task 1", designId: "design-1" },
       { id: "task-2", title: "Task 2", designId: "design-2" },
@@ -406,7 +406,7 @@ describe("useSheinStudioTaskCreationAction", () => {
     expect(persistDraft).not.toHaveBeenCalled();
     expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
       "design-1",
-    ]);
+    ], { imageStrategy: "sds_official" });
   });
 
   it("confirms before creating tasks while the itemized batch is still generating", async () => {
@@ -455,7 +455,7 @@ describe("useSheinStudioTaskCreationAction", () => {
     expect(createSheinStudioBatchTasks).toHaveBeenCalledWith(
       "batch-1",
       ["design-1"],
-      { allowPartialWhileGenerating: true },
+      { allowPartialWhileGenerating: true, imageStrategy: "sds_official" },
     );
   });
 
@@ -542,7 +542,7 @@ describe("useSheinStudioTaskCreationAction", () => {
 
     expect(createSheinStudioBatchTasks).toHaveBeenCalledWith("batch-1", [
       "design-1",
-    ]);
+    ], { imageStrategy: "sds_official" });
     expect(navigateToStep).toHaveBeenCalledWith("tasks");
   });
 

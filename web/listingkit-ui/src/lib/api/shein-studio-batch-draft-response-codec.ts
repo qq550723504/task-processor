@@ -822,14 +822,10 @@ function normalizeGroupsResponse(
               ? group.sheinStoreId
               : "",
         imageStrategy:
-          group.image_strategy === "ai_generated" ||
-          group.image_strategy === "sds_official" ||
-          group.image_strategy === "hybrid"
-            ? group.image_strategy
-            : group.imageStrategy === "ai_generated" ||
-                group.imageStrategy === "sds_official" ||
-                group.imageStrategy === "hybrid"
-              ? group.imageStrategy
+          group.image_strategy === "ai_generated"
+            ? "ai_generated"
+            : group.imageStrategy === "ai_generated"
+              ? "ai_generated"
               : "sds_official",
         groupedImageMode:
           group.grouped_image_mode === "per_product" ||

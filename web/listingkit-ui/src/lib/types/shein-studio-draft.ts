@@ -10,6 +10,10 @@ import type {
 } from "@/lib/types/shein-studio-generation";
 import type { SheinStudioCreatedTask } from "@/lib/types/shein-studio-task";
 
+/**
+ * `hybrid` remains a legacy wire/storage value only; the UI exposes the two
+ * supported strategies and normalizes legacy drafts to SDS.
+ */
 export type SheinStudioImageStrategy =
   "ai_generated" | "sds_official" | "hybrid";
 

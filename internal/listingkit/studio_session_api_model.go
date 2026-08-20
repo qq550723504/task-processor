@@ -43,6 +43,7 @@ type RetryStudioBatchItemsRequest struct {
 type CreateStudioBatchTasksRequest struct {
 	DesignIDs                   []string `json:"design_ids,omitempty"`
 	AllowPartialWhileGenerating bool     `json:"allow_partial_while_generating,omitempty"`
+	ImageStrategy               *string  `json:"image_strategy,omitempty"`
 }
 
 type SheinStudioFailedTask struct {

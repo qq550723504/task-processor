@@ -77,11 +77,16 @@ func (s *taskStudioBatchService) buildStudioBatchTaskState(
 	batchID string,
 	designIDs []string,
 ) (*StudioBatchTaskState, error) {
-	stateDesignIDs, session, batchDetail, err := s.prepareStudioBatchTaskCreation(ctx, batchID, &CreateStudioBatchTasksRequest{
-		DesignIDs: append([]string(nil), designIDs...),
-	})
+	req := &CreateStudioBatchTasksRequest{DesignIDs: append([]string(nil), designIDs...)}
+	if strategy := studioBatchTaskImageStrategyFromContext(ctx); strategy != nil {
+		req.ImageStrategy = strategy
+	}
+	stateDesignIDs, session, batchDetail, err := s.prepareStudioBatchTaskCreation(ctx, batchID, req)
 	if err != nil {
 		return nil, err
+	}
+	if session == nil {
+		session = fallbackStudioBatchTaskSession(batchID, batchDetail.Batch, stateDesignIDs, resolveStudioBatchTaskImageStrategy(req, nil))
 	}
 	designs, err := s.repo.ListStudioMaterializedDesignsByIDs(ctx, batchID, stateDesignIDs)
 	if err != nil {
@@ -103,6 +108,14 @@ func (s *taskStudioBatchService) buildStudioBatchTaskState(
 		RejectedTasks:        rejectedTasks,
 		FailedTasks:          failedTasks,
 	}, nil
+}
+
+func studioBatchTaskCreationRequest(ctx context.Context, designIDs []string) *CreateStudioBatchTasksRequest {
+	req := &CreateStudioBatchTasksRequest{DesignIDs: append([]string(nil), designIDs...)}
+	if strategy := studioBatchTaskImageStrategyFromContext(ctx); strategy != nil {
+		req.ImageStrategy = strategy
+	}
+	return req
 }
 
 func allApprovedStudioBatchDesignIDs(detail *StudioBatchDetailGraph) []string {
@@ -346,7 +359,7 @@ func buildStudioBatchTaskCandidatesForDesign(
 			SelectionSnapshot:        grouped.Selection,
 			SelectionID:              candidate.SelectionID,
 			CompatibilityFingerprint: candidate.CompatibilityFingerprint,
-			ImageStrategy:            normalizeSheinImageStrategy(sessionImageStrategy(session)),
+			ImageStrategy:            normalizeStudioBatchTaskCreationImageStrategy(sessionImageStrategy(session)),
 			SheinStoreID:             candidate.StoreID,
 			StyleID:                  candidate.StyleID,
 			Title:                    candidate.Title,
@@ -469,6 +482,37 @@ func sessionImageStrategy(session *SheinStudioSession) string {
 		return sheinImageStrategySDSOfficial
 	}
 	return session.ImageStrategy
+}
+
+func fallbackStudioBatchTaskSession(batchID string, batch *StudioBatchRecord, designIDs []string, strategy string) *SheinStudioSession {
+	session := &SheinStudioSession{
+		ID:                   strings.TrimSpace(batchID),
+		ImageStrategy:        normalizeStudioBatchTaskCreationImageStrategy(strategy),
+		PendingTaskDesignIDs: append(SheinStudioStringList(nil), designIDs...),
+	}
+	if batch != nil {
+		session.Selection = SheinStudioSelectionSnapshot(batch.Selection)
+		if batch.SheinStoreID > 0 {
+			session.SheinStoreID = strconv.FormatInt(batch.SheinStoreID, 10)
+		}
+	}
+	return session
+}
+
+func resolveStudioBatchTaskImageStrategy(req *CreateStudioBatchTasksRequest, session *SheinStudioSession) string {
+	if req != nil && req.ImageStrategy != nil && strings.TrimSpace(*req.ImageStrategy) != "" {
+		return normalizeStudioBatchTaskCreationImageStrategy(*req.ImageStrategy)
+	}
+	return normalizeStudioBatchTaskCreationImageStrategy(sessionImageStrategy(session))
+}
+
+func normalizeStudioBatchTaskCreationImageStrategy(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case sheinImageStrategyAIGenerated:
+		return sheinImageStrategyAIGenerated
+	default:
+		return sheinImageStrategySDSOfficial
+	}
 }
 
 func studioBatchTaskCandidateCompatibilityFingerprint(candidate studioBatchTaskCandidate) string {

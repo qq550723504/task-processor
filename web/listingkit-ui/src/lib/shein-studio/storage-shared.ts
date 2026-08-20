@@ -102,10 +102,13 @@ export const SHEIN_STUDIO_PRODUCT_IMAGE_ROLES = [
   },
 ] as const;
 
- function normalizeImageStrategy(value: unknown): SheinStudioImageStrategy {
-  return value === "sds_official" || value === "hybrid" || value === "ai_generated"
-    ? value
-    : "sds_official";
+function normalizeImageStrategy(value: unknown): SheinStudioImageStrategy {
+  if (value === "ai_generated") {
+    return value;
+  }
+  // `hybrid` was removed from the UI. Treat old persisted drafts as SDS so
+  // reopening them cannot silently re-enable the removed mode.
+  return "sds_official";
 }
 
  function normalizeArtworkModel(value: unknown): SheinStudioArtworkModel {

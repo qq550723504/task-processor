@@ -426,6 +426,7 @@ func (s *taskStudioBatchService) CreateStudioBatchTasks(ctx context.Context, bat
 	if req != nil && req.AllowPartialWhileGenerating {
 		ctx = withStudioBatchPartialTaskCreationAllowed(ctx)
 	}
+	ctx = withStudioBatchTaskImageStrategy(ctx, req)
 	return s.serviceRunner.CreateTasks(ctx, batchID, req)
 }
 
@@ -437,5 +438,6 @@ func (s *taskStudioBatchService) PrepareCreateStudioBatchTasks(ctx context.Conte
 	if req != nil && req.AllowPartialWhileGenerating {
 		ctx = withStudioBatchPartialTaskCreationAllowed(ctx)
 	}
+	ctx = withStudioBatchTaskImageStrategy(ctx, req)
 	return s.serviceRunner.PrepareCreateTasks(ctx, batchID, req)
 }

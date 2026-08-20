@@ -522,7 +522,7 @@ describe("SheinDesignPreviewGrid", () => {
       <SheinDesignPreviewGrid
         createActionDisabledReason={undefined}
         designs={[{ id: "design-1", imageUrl: "https://example.com/design-1.png" }]}
-        imageStrategy="hybrid"
+        imageStrategy="ai_generated"
         onBackToGenerate={onBackToGenerate}
         onCreateReviewTasks={vi.fn()}
         onRegenerate={onRegenerate}
@@ -537,7 +537,7 @@ describe("SheinDesignPreviewGrid", () => {
     expect(onToggle).toHaveBeenCalledWith("design-1");
 
     expect(screen.getByText("当前商品图设置")).toBeInTheDocument();
-    expect(screen.getByText("商品图方式：混合生成")).toBeInTheDocument();
+    expect(screen.getByText("商品图方式：AI 生成商品图")).toBeInTheDocument();
     expect(screen.getByText("商品图数量：3 张")).toBeInTheDocument();
     expect(screen.getByText("尺寸图：使用 SDS 渲染")).toBeInTheDocument();
 
