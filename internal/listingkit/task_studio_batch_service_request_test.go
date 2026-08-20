@@ -86,6 +86,18 @@ func TestStudioBatchTaskImageStrategyPrefersExplicitRequest(t *testing.T) {
 	}
 }
 
+func TestStudioBatchTaskImageStrategyMapsLegacySessionHybridToSDS(t *testing.T) {
+	t.Parallel()
+
+	got := resolveStudioBatchTaskImageStrategy(
+		&CreateStudioBatchTasksRequest{},
+		&SheinStudioSession{ImageStrategy: sheinImageStrategyHybrid},
+	)
+	if got != sheinImageStrategySDSOfficial {
+		t.Fatalf("strategy = %q, want %q", got, sheinImageStrategySDSOfficial)
+	}
+}
+
 func TestStudioBatchTaskImageStrategyMapsRemovedHybridModeToSDS(t *testing.T) {
 	t.Parallel()
 
@@ -113,6 +125,30 @@ func TestStudioBatchTaskCreationRequestCarriesStrategyAcrossResumeContext(t *tes
 	}
 	if got, want := *req.ImageStrategy, sheinImageStrategyAIGenerated; got != want {
 		t.Fatalf("request strategy = %q, want %q", got, want)
+	}
+}
+
+func TestFallbackStudioBatchTaskSessionKeepsBatchIdentityAndSelection(t *testing.T) {
+	t.Parallel()
+
+	session := fallbackStudioBatchTaskSession(
+		"batch-1",
+		&StudioBatchRecord{
+			ID:           "batch-1",
+			SheinStoreID: 869,
+			Selection:    SheinStudioSelectionSnapshot{ProductID: 1001, ParentProductID: 2002},
+		},
+		[]string{"design-1"},
+		sheinImageStrategyAIGenerated,
+	)
+	if session.ID != "batch-1" {
+		t.Fatalf("session ID = %q, want batch-1", session.ID)
+	}
+	if session.ImageStrategy != sheinImageStrategyAIGenerated {
+		t.Fatalf("session strategy = %q, want %q", session.ImageStrategy, sheinImageStrategyAIGenerated)
+	}
+	if session.Selection.ProductID != 1001 || session.SheinStoreID != "869" {
+		t.Fatalf("session fallback data = %+v, want batch selection/store", session)
 	}
 }
 

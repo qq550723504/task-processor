@@ -85,6 +85,9 @@ func (s *taskStudioBatchService) buildStudioBatchTaskState(
 	if err != nil {
 		return nil, err
 	}
+	if session == nil {
+		session = fallbackStudioBatchTaskSession(batchID, batchDetail.Batch, stateDesignIDs, resolveStudioBatchTaskImageStrategy(req, nil))
+	}
 	designs, err := s.repo.ListStudioMaterializedDesignsByIDs(ctx, batchID, stateDesignIDs)
 	if err != nil {
 		return nil, err
@@ -356,7 +359,7 @@ func buildStudioBatchTaskCandidatesForDesign(
 			SelectionSnapshot:        grouped.Selection,
 			SelectionID:              candidate.SelectionID,
 			CompatibilityFingerprint: candidate.CompatibilityFingerprint,
-			ImageStrategy:            normalizeSheinImageStrategy(sessionImageStrategy(session)),
+			ImageStrategy:            normalizeStudioBatchTaskCreationImageStrategy(sessionImageStrategy(session)),
 			SheinStoreID:             candidate.StoreID,
 			StyleID:                  candidate.StyleID,
 			Title:                    candidate.Title,
@@ -481,11 +484,26 @@ func sessionImageStrategy(session *SheinStudioSession) string {
 	return session.ImageStrategy
 }
 
+func fallbackStudioBatchTaskSession(batchID string, batch *StudioBatchRecord, designIDs []string, strategy string) *SheinStudioSession {
+	session := &SheinStudioSession{
+		ID:                   strings.TrimSpace(batchID),
+		ImageStrategy:        normalizeStudioBatchTaskCreationImageStrategy(strategy),
+		PendingTaskDesignIDs: append(SheinStudioStringList(nil), designIDs...),
+	}
+	if batch != nil {
+		session.Selection = SheinStudioSelectionSnapshot(batch.Selection)
+		if batch.SheinStoreID > 0 {
+			session.SheinStoreID = strconv.FormatInt(batch.SheinStoreID, 10)
+		}
+	}
+	return session
+}
+
 func resolveStudioBatchTaskImageStrategy(req *CreateStudioBatchTasksRequest, session *SheinStudioSession) string {
 	if req != nil && req.ImageStrategy != nil && strings.TrimSpace(*req.ImageStrategy) != "" {
 		return normalizeStudioBatchTaskCreationImageStrategy(*req.ImageStrategy)
 	}
-	return normalizeSheinImageStrategy(sessionImageStrategy(session))
+	return normalizeStudioBatchTaskCreationImageStrategy(sessionImageStrategy(session))
 }
 
 func normalizeStudioBatchTaskCreationImageStrategy(raw string) string {

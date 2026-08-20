@@ -300,10 +300,9 @@ func (s *taskStudioBatchService) prepareStudioBatchTaskCreation(
 		return nil, nil, nil, err
 	}
 	strategy := resolveStudioBatchTaskImageStrategy(req, session)
-	if session == nil {
-		session = &SheinStudioSession{}
+	if session != nil {
+		session.ImageStrategy = strategy
 	}
-	session.ImageStrategy = strategy
 	return designIDs, session, batchDetail, nil
 }
 
