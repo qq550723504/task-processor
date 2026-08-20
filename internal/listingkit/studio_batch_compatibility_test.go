@@ -93,3 +93,41 @@ func TestStudioBatchTaskCandidateKey_DiffersWhenProductSizeDiffers(t *testing.T)
 		t.Fatalf("product-size-change candidate keys unexpectedly matched: %q", got)
 	}
 }
+
+func TestStudioBatchTaskCandidateKey_DiffersWhenImageStrategyDiffers(t *testing.T) {
+	batch := &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-1"}
+	base := studioBatchTaskCandidate{
+		Item:          StudioBatchItemRecord{ID: "item-1"},
+		Design:        StudioMaterializedDesignRecord{ID: "design-1"},
+		SelectionID:   "selection-1",
+		SheinStoreID:  1043,
+		ImageStrategy: sheinImageStrategySDSOfficial,
+		SelectionSnapshot: SheinStudioSelection{
+			ProductSize: `[[{"content":"尺码"},{"content":"衣长(cm/in)"}],[{"content":"S"},{"content":"87.5cm/34.45in"}]]`,
+		},
+	}
+	changed := base
+	changed.ImageStrategy = sheinImageStrategyAIGenerated
+
+	if got, want := buildStudioBatchTaskCandidateKey(nil, batch, base), buildStudioBatchTaskCandidateKey(nil, batch, changed); got == want {
+		t.Fatalf("image-strategy-change candidate keys unexpectedly matched: %q", got)
+	}
+}
+
+func TestStudioBatchTaskCandidateKey_PreservesHistoricalSDSKeyForBlankStrategy(t *testing.T) {
+	batch := &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-1"}
+	base := studioBatchTaskCandidate{
+		Item:         StudioBatchItemRecord{ID: "item-1"},
+		Design:       StudioMaterializedDesignRecord{ID: "design-1"},
+		SelectionID:  "selection-1",
+		SheinStoreID: 1043,
+		SelectionSnapshot: SheinStudioSelection{
+			ProductSize: `[[{"content":"尺码"}],[{"content":"S"}]]`,
+		},
+	}
+	sds := base
+	sds.ImageStrategy = sheinImageStrategySDSOfficial
+	if got, want := buildStudioBatchTaskCandidateKey(nil, batch, base), buildStudioBatchTaskCandidateKey(nil, batch, sds); got != want {
+		t.Fatalf("blank and SDS image strategies changed historical candidate key: %q != %q", got, want)
+	}
+}

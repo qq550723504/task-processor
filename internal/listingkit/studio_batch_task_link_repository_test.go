@@ -47,6 +47,12 @@ func TestGormStudioBatchTaskLinkRepositorySelfHealsMissingSourceColumn(t *testin
 	if !db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "Source") {
 		t.Fatal("repository did not add missing source column")
 	}
+	if !db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "ImageStrategy") {
+		t.Fatal("repository did not add missing image strategy column")
+	}
+	if !studioBatchTaskLinkTupleIndexIncludesImageStrategy(db, "idx_listingkit_studio_batch_task_links_tuple") {
+		t.Fatal("repository did not rebuild tuple index with image strategy")
+	}
 	loaded, err := repo.GetStudioBatchTaskLinkByCandidateKey(ctx, "candidate-1")
 	if err != nil {
 		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() error = %v", err)
@@ -136,6 +142,21 @@ func TestGormStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentCompatibili
 	t.Parallel()
 
 	testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentCompatibilityFingerprints(t, newGormStudioBatchTaskLinkRepositoryForTest)
+}
+
+func TestMemStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentImageStrategies(t *testing.T) {
+	t.Parallel()
+
+	testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentImageStrategies(t, func(t *testing.T) StudioBatchTaskLinkRepository {
+		t.Helper()
+		return NewMemStudioBatchTaskLinkRepository()
+	})
+}
+
+func TestGormStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentImageStrategies(t *testing.T) {
+	t.Parallel()
+
+	testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentImageStrategies(t, newGormStudioBatchTaskLinkRepositoryForTest)
 }
 
 func TestMemStudioBatchTaskLinkRepositoryUpdateProjectionStatus(t *testing.T) {
@@ -343,6 +364,22 @@ func testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentCompatibilityFi
 	changed.CompatibilityFingerprint = "fingerprint-selection-1-with-product-size"
 	if err := repo.CreateStudioBatchTaskLink(ctx, changed); err != nil {
 		t.Fatalf("CreateStudioBatchTaskLink(different compatibility fingerprint) error = %v, want allowed regenerated candidate", err)
+	}
+}
+
+func testStudioBatchTaskLinkRepositoryAllowsSameTupleForDifferentImageStrategies(t *testing.T, newRepo func(*testing.T) StudioBatchTaskLinkRepository) {
+	t.Helper()
+
+	repo := newRepo(t)
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	base := studioBatchTaskLinkRecordForTest("link-1", "batch-1", "item-1", "design-1", "selection-1", "candidate-1")
+	base.ImageStrategy = sheinImageStrategySDSOfficial
+	mustCreateStudioBatchTaskLinkForTest(t, repo, ctx, base)
+
+	changed := studioBatchTaskLinkRecordForTest("link-2", "batch-1", "item-1", "design-1", "selection-1", "candidate-2")
+	changed.ImageStrategy = sheinImageStrategyAIGenerated
+	if err := repo.CreateStudioBatchTaskLink(ctx, changed); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink(different image strategy) error = %v, want allowed strategy-specific task", err)
 	}
 }
 

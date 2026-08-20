@@ -57,6 +57,7 @@ func (s *taskStudioBatchService) reserveStudioBatchTaskCandidate(ctx context.Con
 		DesignID:                 strings.TrimSpace(candidate.Design.ID),
 		SelectionID:              strings.TrimSpace(candidate.SelectionID),
 		CompatibilityFingerprint: strings.TrimSpace(candidate.CompatibilityFingerprint),
+		ImageStrategy:            normalizeSheinImageStrategy(candidate.ImageStrategy),
 		SheinStoreID:             candidate.SheinStoreID,
 		CandidateKey:             strings.TrimSpace(candidate.CandidateKey),
 		Status:                   studioBatchTaskLinkStatusReserved,
