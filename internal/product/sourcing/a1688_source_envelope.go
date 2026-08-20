@@ -3,8 +3,6 @@ package sourcing
 import (
 	"strconv"
 	"strings"
-
-	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 )
 
 const (
@@ -23,7 +21,7 @@ const (
 // ListingKit or marketplace packages consume raw crawler payloads.
 type Alibaba1688SourceEnvelopeInput struct {
 	Request     Alibaba1688CrawlRequestInput
-	Product     *alibaba1688model.Product1688
+	Product     *Alibaba1688ProductSnapshot
 	RawSnapshot string
 	SourceRunID string
 	RequestID   string
@@ -58,7 +56,7 @@ func Alibaba1688SourceEnvelope(input Alibaba1688SourceEnvelopeInput) SourceEnvel
 	return envelope.Normalize()
 }
 
-func alibaba1688SourceIdentity(input Alibaba1688CrawlRequestInput, product *alibaba1688model.Product1688) SourceIdentity {
+func alibaba1688SourceIdentity(input Alibaba1688CrawlRequestInput, product *Alibaba1688ProductSnapshot) SourceIdentity {
 	requestURL := NormalizeAlibaba1688URL(input.URL)
 	productID := ExtractAlibaba1688ProductID(requestURL)
 	sourceURL := requestURL
@@ -88,7 +86,7 @@ func alibaba1688SourceIdentity(input Alibaba1688CrawlRequestInput, product *alib
 	})
 }
 
-func alibaba1688RawReference(input Alibaba1688CrawlRequestInput, product *alibaba1688model.Product1688, snapshot string) RawSourceReference {
+func alibaba1688RawReference(input Alibaba1688CrawlRequestInput, product *Alibaba1688ProductSnapshot, snapshot string) RawSourceReference {
 	ref := RawSourceReference{
 		ReferenceType: alibaba1688SourceReferenceType,
 		SnapshotID:    strings.TrimSpace(snapshot),
@@ -106,15 +104,15 @@ func alibaba1688RawReference(input Alibaba1688CrawlRequestInput, product *alibab
 	return ref
 }
 
-func alibaba1688ProductCandidate(product *alibaba1688model.Product1688) ProductCandidate {
+func alibaba1688ProductCandidate(product *Alibaba1688ProductSnapshot) ProductCandidate {
 	attributes := map[string]string{}
 	addStringAttribute(attributes, "source_product_id", product.ID)
 	addStringAttribute(attributes, "category", product.Category)
 	addStringAttribute(attributes, "brand", product.Brand)
 	addStringAttribute(attributes, "currency", default1688Currency(product.Currency))
 	addStringAttribute(attributes, "unit", product.Unit)
-	addStringAttribute(attributes, "shipping_from", product.ShippingInfo.ShippingFrom)
-	addStringAttribute(attributes, "processing_time", product.ShippingInfo.ProcessingTime)
+	addStringAttribute(attributes, "shipping_from", product.Shipping.ShippingFrom)
+	addStringAttribute(attributes, "processing_time", product.Shipping.ProcessingTime)
 	addBoolAttribute(attributes, "is_customized", product.IsCustomized)
 	addIntAttribute(attributes, "min_order_quantity", product.MinOrderQuantity)
 	addIntAttribute(attributes, "sales_volume", product.SalesVolume)
@@ -148,7 +146,7 @@ func alibaba1688ProductCandidate(product *alibaba1688model.Product1688) ProductC
 	}
 }
 
-func alibaba1688VariantCandidates(variants []alibaba1688model.Variant) []ProductVariantCandidate {
+func alibaba1688VariantCandidates(variants []Alibaba1688VariantSnapshot) []ProductVariantCandidate {
 	if len(variants) == 0 {
 		return nil
 	}
@@ -175,7 +173,7 @@ func alibaba1688VariantCandidates(variants []alibaba1688model.Variant) []Product
 	return candidates
 }
 
-func alibaba1688AssetCandidates(product *alibaba1688model.Product1688) []AssetCandidate {
+func alibaba1688AssetCandidates(product *Alibaba1688ProductSnapshot) []AssetCandidate {
 	seen := map[string]struct{}{}
 	assets := make([]AssetCandidate, 0, len(product.Images)+len(product.ProductDetails)+len(product.Variants)+len(product.Videos)+2)
 	appendAsset := func(url, role, mediaType string) {
@@ -213,7 +211,7 @@ func alibaba1688AssetCandidates(product *alibaba1688model.Product1688) []AssetCa
 	return assets
 }
 
-func alibaba1688SupplierOrCostFacts(product *alibaba1688model.Product1688) SupplierOrCostFacts {
+func alibaba1688SupplierOrCostFacts(product *Alibaba1688ProductSnapshot) SupplierOrCostFacts {
 	facts := map[string]string{}
 	addStringAttribute(facts, "company_name", product.Supplier.CompanyName)
 	addStringAttribute(facts, "location", product.Supplier.Location)
@@ -226,8 +224,8 @@ func alibaba1688SupplierOrCostFacts(product *alibaba1688model.Product1688) Suppl
 	addBoolAttribute(facts, "is_verified", product.Supplier.IsVerified)
 	addIntAttribute(facts, "min_order_quantity", product.MinOrderQuantity)
 	addStringAttribute(facts, "unit", product.Unit)
-	if len(product.PriceRanges) > 0 {
-		facts["price_range_count"] = strconv.Itoa(len(product.PriceRanges))
+	if product.PriceRangeCount > 0 {
+		facts["price_range_count"] = strconv.Itoa(product.PriceRangeCount)
 	}
 	return SupplierOrCostFacts{
 		SupplierID:   strings.TrimSpace(product.Supplier.ID),
@@ -239,7 +237,7 @@ func alibaba1688SupplierOrCostFacts(product *alibaba1688model.Product1688) Suppl
 	}
 }
 
-func alibaba1688SourceWarnings(identity SourceIdentity, product *alibaba1688model.Product1688, envelope SourceEnvelope, err error) []SourceWarning {
+func alibaba1688SourceWarnings(identity SourceIdentity, product *Alibaba1688ProductSnapshot, envelope SourceEnvelope, err error) []SourceWarning {
 	warnings := []SourceWarning{}
 	if err != nil {
 		warnings = append(warnings, SourceWarning{Code: "source_error", Message: err.Error()})

@@ -2,21 +2,19 @@ package sourcing
 
 import (
 	"testing"
-
-	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 )
 
 func TestConvert1688ProductToScrapedDataMapsVariantDimensionsAndVariants(t *testing.T) {
-	product := &alibaba1688model.Product1688{
+	product := &Alibaba1688ProductSnapshot{
 		Title:    "Sneaker",
 		Images:   []string{" https://example.com/main.jpg ", "", "https://example.com/main.jpg"},
 		MinPrice: 29.9,
 		Currency: "CNY",
-		VariationsValues: []alibaba1688model.VariationValue{
-			{VariantName: "颜色", Values: []string{"红色", "蓝色", "红色"}},
-			{VariantName: "尺码", Values: []string{"42", "43"}},
+		VariationValues: []Alibaba1688VariationValueSnapshot{
+			{Name: "颜色", Values: []string{"红色", "蓝色", "红色"}},
+			{Name: "尺码", Values: []string{"42", "43"}},
 		},
-		Variants: []alibaba1688model.Variant{
+		Variants: []Alibaba1688VariantSnapshot{
 			{
 				Attributes: map[string]any{"颜色": "红色", "尺码": "42"},
 				Image:      "https://example.com/red-42.jpg",
@@ -62,14 +60,14 @@ func TestConvert1688ProductToScrapedDataMapsVariantDimensionsAndVariants(t *test
 }
 
 func TestConvert1688ProductToScrapedDataCleansSpecsAndDescription(t *testing.T) {
-	product := &alibaba1688model.Product1688{
+	product := &Alibaba1688ProductSnapshot{
 		Title: "Fallback title",
-		Specifications: []alibaba1688model.Specification{
+		Specifications: []Alibaba1688SpecificationSnapshot{
 			{Name: " Material ", Value: " Cotton "},
 			{Name: " Empty ", Value: " "},
 			{Name: " ", Value: "ignored"},
 		},
-		ProductDetails: []alibaba1688model.ProductDetail{
+		ProductDetails: []Alibaba1688ProductDetailSnapshot{
 			{Content: "  "},
 			{Content: " First line "},
 			{Content: "\nSecond line\n"},
@@ -92,9 +90,9 @@ func TestConvert1688ProductToScrapedDataCleansSpecsAndDescription(t *testing.T) 
 }
 
 func TestConvert1688ProductToScrapedDataDescriptionFallsBackToTitleForBlankDetails(t *testing.T) {
-	product := &alibaba1688model.Product1688{
+	product := &Alibaba1688ProductSnapshot{
 		Title:          "Fallback title",
-		ProductDetails: []alibaba1688model.ProductDetail{{Content: "  "}},
+		ProductDetails: []Alibaba1688ProductDetailSnapshot{{Content: "  "}},
 	}
 
 	scraped := Convert1688ProductToScrapedData(product)

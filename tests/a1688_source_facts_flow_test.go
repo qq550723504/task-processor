@@ -4,7 +4,6 @@ import (
 	"strings"
 	"testing"
 
-	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/product/sourcing"
 )
@@ -12,7 +11,7 @@ import (
 func TestAlibaba1688SourceFactsFlowProducesListingKitRequest(t *testing.T) {
 	envelope := sourcing.Alibaba1688SourceEnvelope(sourcing.Alibaba1688SourceEnvelopeInput{
 		Request: sourcing.Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/321.html?spm=flow", StoreID: 11},
-		Product: &alibaba1688model.Product1688{
+		Product: &sourcing.Alibaba1688ProductSnapshot{
 			ID:               "321",
 			Title:            "Insulated Lunch Bag",
 			URL:              "https://detail.1688.com/offer/321.html?foo=bar",
@@ -24,16 +23,16 @@ func TestAlibaba1688SourceFactsFlowProducesListingKitRequest(t *testing.T) {
 			Unit:             "个",
 			Category:         "Bags>Lunch Bags",
 			Brand:            "Factory Lunch",
-			Supplier: alibaba1688model.SupplierInfo{
+			Supplier: sourcing.Alibaba1688SupplierSnapshot{
 				ID:   "supplier-321",
 				Name: "Lunch Factory",
 			},
-			Specifications: []alibaba1688model.Specification{{Name: "Material", Value: "Oxford cloth"}},
-			ProductDetails: []alibaba1688model.ProductDetail{{
+			Specifications: []sourcing.Alibaba1688SpecificationSnapshot{{Name: "Material", Value: "Oxford cloth"}},
+			ProductDetails: []sourcing.Alibaba1688ProductDetailSnapshot{{
 				Content: "Thermal lunch bag with zipper.",
 				Images:  []string{"https://img.example/321-detail.jpg"},
 			}},
-			Variants: []alibaba1688model.Variant{{
+			Variants: []sourcing.Alibaba1688VariantSnapshot{{
 				Name:       "Black",
 				Image:      "https://img.example/321-black.jpg",
 				Stock:      50,
