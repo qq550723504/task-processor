@@ -11,13 +11,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	a1688 "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688"
+	productsourcea1688httpapi "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688/httpapi"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	"task-processor/internal/infra/worker"
 	kernelmodule "task-processor/internal/kernel/module"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-	a1688 "task-processor/internal/product/sourcehandoff/a1688"
-	productsourcea1688httpapi "task-processor/internal/product/sourcehandoff/a1688/httpapi"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	promptmgmtapi "task-processor/internal/promptmgmt/api"
 	sdshttpapi "task-processor/internal/sds/httpapi"
@@ -230,7 +230,7 @@ func TestBuildHTTPServerBundleFromModulesSkipsDisabledModules(t *testing.T) {
 
 	server, routes, err := buildHTTPServerBundleFromModules(18080, &config.Config{}, []kernelmodule.Module{
 		httpModule{
-			name: "enabled",
+			name:     "enabled",
 			register: func(reg *kernelmodule.Registry) error { reg.AddRoutes(enabledRoute); return nil },
 		},
 		httpModule{

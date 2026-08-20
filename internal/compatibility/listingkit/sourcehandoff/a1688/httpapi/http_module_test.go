@@ -6,10 +6,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	a1688 "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688"
 	"task-processor/internal/core/config"
 	"task-processor/internal/httproute"
 	"task-processor/internal/kernel/module"
-	a1688 "task-processor/internal/product/sourcehandoff/a1688"
 )
 
 func TestHTTPModuleRegistersCreateListingKitTaskRoute(t *testing.T) {

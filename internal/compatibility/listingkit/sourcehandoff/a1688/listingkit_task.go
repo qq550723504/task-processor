@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"task-processor/internal/compatibility/listingkit/sourcehandoff"
 	"task-processor/internal/listingkit"
-	"task-processor/internal/product/sourcehandoff"
 	"task-processor/internal/product/sourcing"
 )
 

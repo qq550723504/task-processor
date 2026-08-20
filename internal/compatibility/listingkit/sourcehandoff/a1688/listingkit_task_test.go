@@ -5,19 +5,18 @@ import (
 	"errors"
 	"testing"
 
-	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/product/sourcing"
 )
 
 func TestPrepareListingKitTaskHandoffBuildsRequest(t *testing.T) {
 	handoff, err := PrepareListingKitTaskHandoff(ListingKitTaskInput{
-		Source:      testAlibaba1688SourceEnvelopeInput(),
-		TenantID:    " tenant-1688 ",
-		UserID:      " user-1688 ",
-		Platforms:   []string{" SHEIN ", "shein"},
-		Country:     " US ",
-		Language:    " en_US ",
+		Source:       testAlibaba1688SourceEnvelopeInput(),
+		TenantID:     " tenant-1688 ",
+		UserID:       " user-1688 ",
+		Platforms:    []string{" SHEIN ", "shein"},
+		Country:      " US ",
+		Language:     " en_US ",
 		SheinStoreID: 168811,
 	})
 	if err != nil {
@@ -49,12 +48,12 @@ func TestPrepareListingKitTaskHandoffBuildsRequest(t *testing.T) {
 func TestCreateListingKitTaskDelegatesToCreator(t *testing.T) {
 	creator := &fakeGenerateTaskCreator{}
 	task, handoff, err := CreateListingKitTask(context.Background(), creator, ListingKitTaskInput{
-		Source:      testAlibaba1688SourceEnvelopeInput(),
-		TenantID:    "tenant-1688",
-		UserID:      "user-1688",
-		Platforms:   []string{"shein"},
-		Country:     "US",
-		Language:    "en_US",
+		Source:       testAlibaba1688SourceEnvelopeInput(),
+		TenantID:     "tenant-1688",
+		UserID:       "user-1688",
+		Platforms:    []string{"shein"},
+		Country:      "US",
+		Language:     "en_US",
 		SheinStoreID: 168811,
 	})
 	if err != nil {
@@ -107,7 +106,7 @@ func TestCreateListingKitTaskBlocksMissingProduct(t *testing.T) {
 func testAlibaba1688SourceEnvelopeInput() sourcing.Alibaba1688SourceEnvelopeInput {
 	return sourcing.Alibaba1688SourceEnvelopeInput{
 		Request: sourcing.Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/777.html?spm=adapter", StoreID: 11},
-		Product: &alibaba1688model.Product1688{
+		Product: &sourcing.Alibaba1688ProductSnapshot{
 			ID:       "777",
 			Title:    "Insulated Lunch Bag",
 			URL:      "https://detail.1688.com/offer/777.html?foo=bar",
@@ -116,14 +115,14 @@ func testAlibaba1688SourceEnvelopeInput() sourcing.Alibaba1688SourceEnvelopeInpu
 			Currency: "CNY",
 			Category: "Bags>Lunch Bags",
 			Brand:    "Factory Lunch",
-			Supplier: alibaba1688model.SupplierInfo{ID: "supplier-777", Name: "Lunch Factory"},
-			Variants: []alibaba1688model.Variant{{
+			Supplier: sourcing.Alibaba1688SupplierSnapshot{ID: "supplier-777", Name: "Lunch Factory"},
+			Variants: []sourcing.Alibaba1688VariantSnapshot{{
 				Name:       "Black",
 				Image:      "https://img.example/777-black.jpg",
 				Price:      19.9,
 				Attributes: map[string]any{"Color": "Black"},
 			}},
-			ProductDetails: []alibaba1688model.ProductDetail{{Content: "Thermal lunch bag with zipper."}},
+			ProductDetails: []sourcing.Alibaba1688ProductDetailSnapshot{{Content: "Thermal lunch bag with zipper."}},
 		},
 		SourceRunID: "run-1688",
 		RequestID:   "request-1688",

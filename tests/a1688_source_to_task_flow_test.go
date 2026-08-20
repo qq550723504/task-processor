@@ -12,11 +12,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	a1688 "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688"
+	sourcea1688 "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688/httpapi"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
-	a1688 "task-processor/internal/product/sourcehandoff/a1688"
-	sourcea1688 "task-processor/internal/product/sourcehandoff/a1688/httpapi"
 )
 
 func TestAlibaba1688HTTPReplayCreatesTaskAndPreservesSourceFacts(t *testing.T) {

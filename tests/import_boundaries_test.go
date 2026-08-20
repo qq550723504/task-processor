@@ -3135,6 +3135,17 @@ func TestProjectBoundaryDomainsDoNotImportListingKitFacade(t *testing.T) {
 	}
 }
 
+func TestProductDomainDoesNotDependOnOuterAdapters(t *testing.T) {
+	t.Parallel()
+
+	assertNoBannedImportPrefixes(t, filepath.Join("..", "internal", "product"), []string{
+		"task-processor/internal/listingkit",
+		"task-processor/internal/compatibility",
+		"task-processor/internal/crawler",
+		"task-processor/internal/integration",
+	}, nil)
+}
+
 func TestInfrastructurePackagesDoNotImportBusinessDomains(t *testing.T) {
 	for _, infraRoot := range []string{
 		filepath.Join("..", "internal", "infra"),
@@ -3236,7 +3247,7 @@ func TestBusinessImplementationPackagesDoNotImportGinDirectly(t *testing.T) {
 		filepath.Clean(filepath.Join(root, "listingsubscription", "handler.go")):                    {},
 		filepath.Clean(filepath.Join(root, "productenrich", "handler.go")):                          {},
 	}
-	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "product", "sourcehandoff", "a1688", "httpapi"))+string(os.PathSeparator)] = struct{}{}
+	allowedHTTPPackages[filepath.Clean(filepath.Join(root, "compatibility", "listingkit", "sourcehandoff", "a1688", "httpapi"))+string(os.PathSeparator)] = struct{}{}
 
 	index, err := loadGoFileIndex(root, "")
 	if err != nil {

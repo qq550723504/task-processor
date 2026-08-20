@@ -12,10 +12,11 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"task-processor/internal/authz"
+	a1688 "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688"
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
+	crawler1688 "task-processor/internal/integration/crawler/a1688"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
-	a1688 "task-processor/internal/product/sourcehandoff/a1688"
 	"task-processor/internal/product/sourcing"
 )
 
@@ -279,7 +280,7 @@ func (f *fakeTaskCommandService) CreateTask(_ context.Context, command a1688.Cre
 	}
 	envelope := sourcing.Alibaba1688SourceEnvelope(sourcing.Alibaba1688SourceEnvelopeInput{
 		Request: sourcing.Alibaba1688CrawlRequestInput{URL: command.URL, AccountID: command.SourceAccountID},
-		Product: command.Product,
+		Product: crawler1688.SnapshotFromLegacyProduct(command.Product),
 	})
 	return &a1688.CreateTaskResult{
 		Task: &listingkit.Task{ID: "task-http", TenantID: command.TenantID, Status: core.TaskStatusPending},

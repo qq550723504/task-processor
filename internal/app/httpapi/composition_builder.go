@@ -3,8 +3,8 @@ package httpapi
 import (
 	"github.com/sirupsen/logrus"
 
-	a1688handoff "task-processor/internal/product/sourcehandoff/a1688"
-	a1688httpapi "task-processor/internal/product/sourcehandoff/a1688/httpapi"
+	a1688handoff "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688"
+	a1688httpapi "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688/httpapi"
 )
 
 type httpFeatureCompositionBuilder struct {
