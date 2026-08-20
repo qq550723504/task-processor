@@ -168,6 +168,28 @@ func (r *GormStudioBatchTaskLinkRepository) RefreshStudioBatchTaskLink(ctx conte
 	return result.RowsAffected > 0, nil
 }
 
+func (r *GormStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLinkWithClaimToken(ctx context.Context, link *StudioBatchTaskLinkRecord, claimToken string) (bool, error) {
+	if link == nil {
+		return false, nil
+	}
+	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
+		Model(&StudioBatchTaskLinkRecord{}).
+		Where("id = ? AND status = ? AND claim_token = ?", link.ID, studioBatchTaskLinkStatusCreating, strings.TrimSpace(claimToken)).
+		Updates(map[string]any{
+			"listingkit_task_id": link.ListingKitTaskID,
+			"claim_token":        link.ClaimToken,
+			"status":             link.Status,
+			"source":             link.Source,
+			"reason_code":        link.ReasonCode,
+			"message":            link.Message,
+			"updated_at":         link.UpdatedAt,
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
 func (r *GormStudioBatchTaskLinkRepository) ListStudioBatchTaskLinksByBatchID(ctx context.Context, batchID string) ([]StudioBatchTaskLinkRecord, error) {
 	var links []StudioBatchTaskLinkRecord
 	if err := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).

@@ -362,7 +362,7 @@ func buildStudioBatchTaskCandidatesForDesign(
 			SelectionSnapshot:               grouped.Selection,
 			SelectionID:                     candidate.SelectionID,
 			CompatibilityFingerprint:        candidate.CompatibilityFingerprint,
-			ProductImageSettingsFingerprint: studioBatchTaskProductImageSettingsFingerprint(batch),
+			ProductImageSettingsFingerprint: studioBatchTaskEffectiveProductImageSettingsFingerprint(session, batch),
 			ImageStrategy:                   normalizeStudioBatchTaskCreationImageStrategy(sessionImageStrategy(session)),
 			SheinStoreID:                    candidate.StoreID,
 			StyleID:                         candidate.StyleID,
@@ -466,7 +466,11 @@ func buildStudioBatchTaskCandidateKey(ctx context.Context, batch *StudioBatchRec
 	}, "|")
 	if strategy := normalizeSheinImageStrategy(candidate.ImageStrategy); strategy != sheinImageStrategySDSOfficial {
 		normalized += "|image_strategy=" + strategy
-		if settingsFingerprint := studioBatchTaskProductImageSettingsFingerprint(batch); settingsFingerprint != "" {
+		settingsFingerprint := strings.TrimSpace(candidate.ProductImageSettingsFingerprint)
+		if settingsFingerprint == "" {
+			settingsFingerprint = studioBatchTaskProductImageSettingsFingerprint(batch)
+		}
+		if settingsFingerprint != "" {
 			normalized += "|product_image_settings=" + settingsFingerprint
 		}
 	}
@@ -478,16 +482,54 @@ func studioBatchTaskProductImageSettingsFingerprint(batch *StudioBatchRecord) st
 	if batch == nil {
 		return ""
 	}
+	return studioBatchTaskEffectiveProductImageSettingsFingerprint(nil, batch)
+}
+
+func studioBatchTaskEffectiveProductImageSettingsFingerprint(session *SheinStudioSession, batch *StudioBatchRecord) string {
+	promptMode := ""
+	count := defaultStudioBatchProductImageCount
+	customPrompt := ""
+	prompts := SheinStudioProductImagePromptList(nil)
+	appendPrompts := func(items SheinStudioProductImagePromptList) {
+		for _, item := range items {
+			prompts = append(prompts, SheinStudioProductImagePrompt{
+				Role:   strings.TrimSpace(item.Role),
+				Prompt: strings.TrimSpace(item.Prompt),
+			})
+		}
+	}
+	if batch != nil {
+		promptMode = strings.TrimSpace(batch.PromptMode)
+	}
+	if session != nil {
+		if value := strings.TrimSpace(session.PromptMode); value != "" {
+			promptMode = value
+		}
+		customPrompt = strings.TrimSpace(session.ProductImagePrompt)
+		if parsed, err := strconv.Atoi(strings.TrimSpace(session.ProductImageCount)); err == nil && parsed > 0 {
+			count = parsed
+		}
+		appendPrompts(session.ProductImagePrompts)
+	} else if batch != nil {
+		customPrompt = strings.TrimSpace(batch.ProductImagePrompt)
+		if parsed, err := strconv.Atoi(strings.TrimSpace(batch.ProductImageCount)); err == nil && parsed > 0 {
+			count = parsed
+		}
+		appendPrompts(batch.ProductImagePrompts)
+	}
+	if count > maxStudioProductImageCount {
+		count = maxStudioProductImageCount
+	}
 	payload, err := json.Marshal(struct {
 		PromptMode          string                            `json:"prompt_mode"`
-		ProductImageCount   string                            `json:"product_image_count"`
+		ProductImageCount   int                               `json:"product_image_count"`
 		ProductImagePrompt  string                            `json:"product_image_prompt"`
 		ProductImagePrompts SheinStudioProductImagePromptList `json:"product_image_prompts"`
 	}{
-		PromptMode:          strings.TrimSpace(batch.PromptMode),
-		ProductImageCount:   strings.TrimSpace(batch.ProductImageCount),
-		ProductImagePrompt:  strings.TrimSpace(batch.ProductImagePrompt),
-		ProductImagePrompts: batch.ProductImagePrompts,
+		PromptMode:          promptMode,
+		ProductImageCount:   count,
+		ProductImagePrompt:  customPrompt,
+		ProductImagePrompts: prompts,
 	})
 	if err != nil {
 		return ""

@@ -4914,6 +4914,13 @@ func (r *failingStudioBatchTaskLinkRepository) RefreshStudioBatchTaskLink(ctx co
 	return r.delegate.(studioBatchTaskLinkLeaseRepository).RefreshStudioBatchTaskLink(ctx, candidateKey, claimToken, updatedAt)
 }
 
+func (r *failingStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLinkWithClaimToken(ctx context.Context, link *StudioBatchTaskLinkRecord, claimToken string) (bool, error) {
+	if r.failUpdate {
+		return false, fmt.Errorf("forced link update failure")
+	}
+	return r.delegate.(studioBatchTaskLinkLeaseRepository).UpdateStudioBatchTaskLinkWithClaimToken(ctx, link, claimToken)
+}
+
 type synchronizedStaleCreatingLinkRepository struct {
 	delegate     StudioBatchTaskLinkRepository
 	candidateKey string
@@ -4989,6 +4996,10 @@ func (r *synchronizedStaleCreatingLinkRepository) ClaimStudioBatchTaskCandidateU
 
 func (r *synchronizedStaleCreatingLinkRepository) RefreshStudioBatchTaskLink(ctx context.Context, candidateKey string, claimToken string, updatedAt time.Time) (bool, error) {
 	return r.delegate.(studioBatchTaskLinkLeaseRepository).RefreshStudioBatchTaskLink(ctx, candidateKey, claimToken, updatedAt)
+}
+
+func (r *synchronizedStaleCreatingLinkRepository) UpdateStudioBatchTaskLinkWithClaimToken(ctx context.Context, link *StudioBatchTaskLinkRecord, claimToken string) (bool, error) {
+	return r.delegate.(studioBatchTaskLinkLeaseRepository).UpdateStudioBatchTaskLinkWithClaimToken(ctx, link, claimToken)
 }
 
 type studioBatchTaskSubmitterStub struct {

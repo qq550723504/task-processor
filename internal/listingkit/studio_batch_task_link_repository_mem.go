@@ -148,6 +148,31 @@ func (r *MemStudioBatchTaskLinkRepository) RefreshStudioBatchTaskLink(ctx contex
 	return false, gorm.ErrRecordNotFound
 }
 
+func (r *MemStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLinkWithClaimToken(ctx context.Context, link *StudioBatchTaskLinkRecord, claimToken string) (bool, error) {
+	if link == nil {
+		return false, nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	existing, ok := r.links[link.ID]
+	if !ok || !matchesStudioBatchScope(ctx, existing.TenantID, existing.UserID) {
+		return false, gorm.ErrRecordNotFound
+	}
+	if existing.Status != studioBatchTaskLinkStatusCreating || strings.TrimSpace(existing.ClaimToken) != strings.TrimSpace(claimToken) {
+		return false, nil
+	}
+	row := existing
+	row.ListingKitTaskID = link.ListingKitTaskID
+	row.ClaimToken = strings.TrimSpace(link.ClaimToken)
+	row.Status = link.Status
+	row.Source = link.Source
+	row.ReasonCode = link.ReasonCode
+	row.Message = link.Message
+	row.UpdatedAt = link.UpdatedAt
+	r.links[row.ID] = row
+	return true, nil
+}
+
 func (r *MemStudioBatchTaskLinkRepository) ListStudioBatchTaskLinksByBatchID(ctx context.Context, batchID string) ([]StudioBatchTaskLinkRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

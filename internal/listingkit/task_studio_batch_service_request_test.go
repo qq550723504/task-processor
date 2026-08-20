@@ -491,6 +491,47 @@ func TestFindLegacyStudioBatchTaskDoesNotReuseAIWithoutPersistedSettingsIdentity
 	}
 }
 
+func TestPersistStudioBatchTaskLinkRejectsReclaimedClaimToken(t *testing.T) {
+	t.Parallel()
+
+	links := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-1")
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID:            "link-1",
+		BatchID:       "batch-1",
+		ItemID:        "item-1",
+		DesignID:      "design-1",
+		SelectionID:   "selection-1",
+		CandidateKey:  "candidate-1",
+		ImageStrategy: sheinImageStrategyAIGenerated,
+		Status:        studioBatchTaskLinkStatusCreating,
+		ClaimToken:    "new-owner",
+		CreatedAt:     time.Now().UTC(),
+		UpdatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create creating link: %v", err)
+	}
+	s := &taskStudioBatchService{batchTaskLinkRepo: links, currentTime: time.Now}
+	candidate := studioBatchTaskCandidate{
+		Design:        StudioMaterializedDesignRecord{BatchID: "batch-1", ID: "design-1"},
+		Item:          StudioBatchItemRecord{BatchID: "batch-1", ID: "item-1"},
+		SelectionID:   "selection-1",
+		CandidateKey:  "candidate-1",
+		ImageStrategy: sheinImageStrategyAIGenerated,
+		ClaimToken:    "old-owner",
+	}
+	if err := s.persistStudioBatchTaskLink(ctx, candidate, "stale-task", studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, "provider_error", "stale"); err == nil {
+		t.Fatal("persistStudioBatchTaskLink() unexpectedly updated a reclaimed claim")
+	}
+	got, err := links.GetStudioBatchTaskLinkByCandidateKey(ctx, "candidate-1")
+	if err != nil {
+		t.Fatalf("get creating link: %v", err)
+	}
+	if got.Status != studioBatchTaskLinkStatusCreating || got.ClaimToken != "new-owner" || got.ListingKitTaskID != "" {
+		t.Fatalf("reclaimed link mutated by stale worker: %+v", got)
+	}
+}
+
 func TestStudioBatchTaskLinkMatchesImageStrategyRejectsHistoricalAIMismatch(t *testing.T) {
 	t.Parallel()
 

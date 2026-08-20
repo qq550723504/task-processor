@@ -258,6 +258,7 @@ func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context,
 		SheinStoreID:             candidate.SheinStoreID,
 		ListingKitTaskID:         strings.TrimSpace(taskID),
 		CandidateKey:             strings.TrimSpace(candidate.CandidateKey),
+		ClaimToken:               "",
 		Status:                   strings.TrimSpace(status),
 		Source:                   strings.TrimSpace(source),
 		ReasonCode:               strings.TrimSpace(reasonCode),
@@ -305,7 +306,22 @@ func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context,
 	}
 	existing.ReasonCode = link.ReasonCode
 	existing.Message = link.Message
+	existing.ClaimToken = link.ClaimToken
 	existing.UpdatedAt = now
+	if claimToken := strings.TrimSpace(candidate.ClaimToken); claimToken != "" {
+		leaseRepo, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkLeaseRepository)
+		if !ok {
+			return fmt.Errorf("studio batch task link repository does not support lease-token updates")
+		}
+		updated, updateErr := leaseRepo.UpdateStudioBatchTaskLinkWithClaimToken(ctx, existing, claimToken)
+		if updateErr != nil {
+			return updateErr
+		}
+		if !updated {
+			return fmt.Errorf("studio batch task claim is no longer owned")
+		}
+		return nil
+	}
 	return s.batchTaskLinkRepo.UpdateStudioBatchTaskLink(ctx, existing)
 }
 
