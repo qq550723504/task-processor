@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/sirupsen/logrus"
+	"gorm.io/gorm"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/sourceaccount"
@@ -14,9 +15,16 @@ func newDBSourceAccountRepository(cfg *config.DatabaseConfig, logger *logrus.Log
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := sourceaccount.AutoMigrateRepository(db); err != nil {
+	if err := autoMigrateSourceAccountRepository(db); err != nil {
 		_ = closer()
 		return nil, nil, fmt.Errorf("source account schema bootstrap failed: %w", err)
 	}
 	return sourceaccount.NewGormRepository(db), closer, nil
+}
+
+func autoMigrateSourceAccountRepository(db *gorm.DB) error {
+	if !shouldAutoMigrateListingKitRuntime() {
+		return nil
+	}
+	return sourceaccount.AutoMigrateRepository(db)
 }
