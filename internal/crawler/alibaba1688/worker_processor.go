@@ -32,17 +32,22 @@ func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.Worke
 		return fmt.Errorf("解析任务数据失败: %w", err)
 	}
 
-	product, accessMode, fallbackReason, err := p.fetchProduct(ctx, &crawlerTask)
-	if err != nil {
-		return err
-	}
-
 	updateResult := p.service.UpdateResult
 	if crawlerTask.TenantID > 0 {
 		updateResult = func(taskID string, fn func(*shared.CrawlerResult)) error {
 			return p.service.UpdateResultForTenant(crawlerTask.TenantID, taskID, fn)
 		}
 	}
+
+	product, accessMode, fallbackReason, err := p.fetchProduct(ctx, &crawlerTask)
+	if err != nil {
+		_ = updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
+			result.SourceAccessMode = string(accessMode)
+			result.SourceFallbackReason = fallbackReason
+		})
+		return err
+	}
+
 	_ = updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.ProductData = shared.ProductToMap(product)
 		result.SourceAccessMode = string(accessMode)

@@ -24,6 +24,16 @@ func NewPageOperator() *PageOperator {
 
 // NavigateToProduct 导航到产品页面
 func (po *PageOperator) NavigateToProduct(page playwright.Page, url string) error {
+	return po.navigateToProduct(page, url, true)
+}
+
+// NavigateToProductWithoutManualCaptcha navigates a public-first attempt
+// without waiting for an interactive CAPTCHA operator.
+func (po *PageOperator) NavigateToProductWithoutManualCaptcha(page playwright.Page, url string) error {
+	return po.navigateToProduct(page, url, false)
+}
+
+func (po *PageOperator) navigateToProduct(page playwright.Page, url string, allowManualCaptcha bool) error {
 	logger.GetGlobalLogger("crawler/alibaba1688").Debugf("导航到1688产品页面: %s", url)
 
 	// 导航到页面
@@ -32,7 +42,7 @@ func (po *PageOperator) NavigateToProduct(page playwright.Page, url string) erro
 	}
 
 	// 处理验证码
-	if err := po.handleCaptcha(page); err != nil {
+	if err := po.handleCaptcha(page, allowManualCaptcha); err != nil {
 		return captchaStageError("验证码处理", err)
 	}
 
@@ -42,7 +52,7 @@ func (po *PageOperator) NavigateToProduct(page playwright.Page, url string) erro
 	}
 
 	// 再次处理可能出现的验证码
-	if err := po.handleCaptcha(page); err != nil {
+	if err := po.handleCaptcha(page, allowManualCaptcha); err != nil {
 		return captchaStageError("二次验证码处理", err)
 	}
 
@@ -76,8 +86,11 @@ func (po *PageOperator) navigate(page playwright.Page, url string) error {
 }
 
 // handleCaptcha 处理验证码
-func (po *PageOperator) handleCaptcha(page playwright.Page) error {
-	return po.captchaHandler.HandlePageCaptcha(page)
+func (po *PageOperator) handleCaptcha(page playwright.Page, allowManual bool) error {
+	if allowManual {
+		return po.captchaHandler.HandlePageCaptcha(page)
+	}
+	return po.captchaHandler.HandlePageCaptchaWithoutManual(page)
 }
 
 // waitForPageReady 等待页面就绪

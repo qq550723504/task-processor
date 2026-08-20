@@ -139,6 +139,13 @@ func TestCrawler1688ProcessorStopsBeforeProcessingWhenAccountResolutionFails(t *
 	if !processor.globalCalled {
 		t.Fatal("public processor was not called before account resolution")
 	}
+	result, getErr := service.GetTask("task-3001")
+	if getErr != nil {
+		t.Fatalf("GetTask() error = %v", getErr)
+	}
+	if result.SourceAccessMode != string(sourceAccessModeAccountAssisted) || result.SourceFallbackReason != "public_challenge" {
+		t.Fatalf("failed result source metadata = (%q, %q), want account-assisted/public_challenge", result.SourceAccessMode, result.SourceFallbackReason)
+	}
 }
 
 func TestCrawler1688ProcessorPreservesDisabledAccountError(t *testing.T) {
@@ -206,6 +213,26 @@ func TestCrawler1688ProcessorFallsBackToAccountOnlyAfterRecoverablePublicFailure
 	}
 	if result.SourceAccessMode != "account_assisted" || result.SourceFallbackReason != "public_challenge" {
 		t.Fatalf("source metadata = (%q, %q), want account-assisted/public_challenge", result.SourceAccessMode, result.SourceFallbackReason)
+	}
+}
+
+func TestCrawler1688ProcessorPreservesSourceMetadataWhenAccountCrawlFails(t *testing.T) {
+	processor := &fakeAlibaba1688TaskProcessor{
+		globalErr:  NewPublicAccessError(PublicAccessFailureChallenge, errors.New("captcha")),
+		profileErr: errors.New("account crawl failed"),
+	}
+	resolver := &fakeAccountProfileResolver{profile: AccountProfile{ID: 3001, TenantID: 101, ProfileDir: "C:/profiles/101/3001"}}
+	service := newTestAlibaba1688Service(processor, resolver)
+
+	if err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, 3001)); err == nil {
+		t.Fatal("ProcessTask() error = nil, want account crawl failure")
+	}
+	result, getErr := service.GetTask("task-3001")
+	if getErr != nil {
+		t.Fatalf("GetTask() error = %v", getErr)
+	}
+	if result.SourceAccessMode != string(sourceAccessModeAccountAssisted) || result.SourceFallbackReason != "public_challenge" {
+		t.Fatalf("failed result source metadata = (%q, %q), want account-assisted/public_challenge", result.SourceAccessMode, result.SourceFallbackReason)
 	}
 }
 

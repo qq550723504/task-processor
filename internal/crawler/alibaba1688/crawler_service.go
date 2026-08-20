@@ -39,6 +39,22 @@ type alibaba1688TaskProcessor interface {
 	Shutdown()
 }
 
+var sourceAccessMetricKeys = [...]string{
+	"public",
+	"account_assisted",
+	"source_public_unavailable",
+	"source_account_unavailable",
+	"source_account_disabled",
+}
+
+func newSourceAccessCounts() map[string]int64 {
+	counts := make(map[string]int64, len(sourceAccessMetricKeys))
+	for _, key := range sourceAccessMetricKeys {
+		counts[key] = 0
+	}
+	return counts
+}
+
 // NewService 创建1688爬虫应用服务
 func NewService(cfg *config.Config, logger *logrus.Logger, resolvers ...AccountProfileResolver) *Service {
 	processor1688 := NewAlibaba1688Processor(cfg)
@@ -53,7 +69,7 @@ func NewService(cfg *config.Config, logger *logrus.Logger, resolvers ...AccountP
 		processor1688:          processor1688,
 		accountProfileResolver: resolver,
 		profileLocks:           make(map[string]*sync.Mutex),
-		sourceAccessCounts:     make(map[string]int64),
+		sourceAccessCounts:     newSourceAccessCounts(),
 	}
 
 	poolConfig := worker.DefaultPoolConfig()
@@ -85,7 +101,7 @@ func (s *Service) recordSourceAccess(key string) {
 	s.sourceAccessMu.Lock()
 	defer s.sourceAccessMu.Unlock()
 	if s.sourceAccessCounts == nil {
-		s.sourceAccessCounts = make(map[string]int64)
+		s.sourceAccessCounts = newSourceAccessCounts()
 	}
 	s.sourceAccessCounts[key]++
 }

@@ -13,6 +13,10 @@ import (
 
 // handleSliderCaptchaWithResult 处理滑动验证码并返回结果
 func (ch *CaptchaHandler) handleSliderCaptchaWithResult(page playwright.Page) CaptchaResult {
+	return ch.handleSliderCaptchaWithManualOption(page, true)
+}
+
+func (ch *CaptchaHandler) handleSliderCaptchaWithManualOption(page playwright.Page, allowManual bool) CaptchaResult {
 	startTime := time.Now()
 	attempts := 0
 	maxRetries := ch.maxRetries
@@ -55,11 +59,11 @@ func (ch *CaptchaHandler) handleSliderCaptchaWithResult(page playwright.Page) Ca
 				time.Sleep(2 * time.Second)
 				if ch.checkSliderSuccess(page) {
 					logger.GetGlobalLogger("crawler/alibaba1688").Info("人类行为策略滑动验证码成功")
-					
+
 					if err := ch.waitForPageRedirect(page); err != nil {
 						logger.GetGlobalLogger("crawler/alibaba1688").Warnf("等待页面跳转失败: %v", err)
 					}
-					
+
 					return CaptchaResult{
 						Type:       CaptchaTypeSlider,
 						Status:     CaptchaStatusSuccess,
@@ -76,7 +80,7 @@ func (ch *CaptchaHandler) handleSliderCaptchaWithResult(page playwright.Page) Ca
 					logger.GetGlobalLogger("crawler/alibaba1688").Warnf("刷新页面失败: %v", err)
 				} else {
 					time.Sleep(3 * time.Second)
-					
+
 					newSliderBtn, err := page.QuerySelector(selector)
 					if err != nil || newSliderBtn == nil {
 						logger.GetGlobalLogger("crawler/alibaba1688").Warn("刷新后未找到滑动按钮")
@@ -97,8 +101,10 @@ func (ch *CaptchaHandler) handleSliderCaptchaWithResult(page playwright.Page) Ca
 			time.Sleep(time.Duration(1000+ch.randomDelay(1000)) * time.Millisecond)
 		}
 
-		logger.GetGlobalLogger("crawler/alibaba1688").Warn("人类行为滑动重试失败，等待用户手动操作")
-		result := ch.waitForManualSliderWithResult(page)
+		if allowManual {
+			logger.GetGlobalLogger("crawler/alibaba1688").Warn("人类行为滑动重试失败，等待用户手动操作")
+		}
+		result := ch.fallbackSliderCaptchaResult(page, allowManual)
 		result.Attempts = attempts
 		result.Type = CaptchaTypeSlider
 		result.Duration = time.Since(startTime)
@@ -112,6 +118,18 @@ func (ch *CaptchaHandler) handleSliderCaptchaWithResult(page playwright.Page) Ca
 		UsedMethod: "none",
 		Duration:   time.Since(startTime),
 	}
+}
+
+func (ch *CaptchaHandler) fallbackSliderCaptchaResult(page playwright.Page, allowManual bool) CaptchaResult {
+	if !allowManual {
+		return CaptchaResult{
+			Type:       CaptchaTypeSlider,
+			Status:     CaptchaStatusFailed,
+			Error:      fmt.Errorf("自动处理滑动验证码失败"),
+			UsedMethod: "automatic_only",
+		}
+	}
+	return ch.waitForManualSliderWithResult(page)
 }
 
 // performSliderAction 执行滑动操作
@@ -260,8 +278,8 @@ func (ch *CaptchaHandler) waitForManualSliderWithResult(page playwright.Page) Ca
 		if ch.checkSliderSuccess(page) {
 			logger.GetGlobalLogger("crawler/alibaba1688").Info("检测到验证码已完成，继续处理")
 			return CaptchaResult{
-				Type:   CaptchaTypeSlider,
-				Status: CaptchaStatusSuccess,
+				Type:       CaptchaTypeSlider,
+				Status:     CaptchaStatusSuccess,
 				UsedMethod: "manual",
 			}
 		}
@@ -269,9 +287,9 @@ func (ch *CaptchaHandler) waitForManualSliderWithResult(page playwright.Page) Ca
 	}
 
 	return CaptchaResult{
-		Type:   CaptchaTypeSlider,
-		Status: CaptchaStatusManualRequired,
-		Error:  fmt.Errorf("等待用户手动操作超时"),
+		Type:       CaptchaTypeSlider,
+		Status:     CaptchaStatusManualRequired,
+		Error:      fmt.Errorf("等待用户手动操作超时"),
 		UsedMethod: "manual_timeout",
 	}
 }
@@ -366,30 +384,30 @@ func (ch *CaptchaHandler) optimizedSlideWithHumanBehavior(page playwright.Page, 
 // generateQuickDragPoints 生成快速滑动轨迹
 func (ch *CaptchaHandler) generateQuickDragPoints(startX, startY, distance float64, numPoints int) []point {
 	points := make([]point, numPoints)
-	
+
 	for i := 0; i < numPoints; i++ {
-		t := float64(i) / float64(numPoints - 1)
-		
+		t := float64(i) / float64(numPoints-1)
+
 		// 快速但自然的缓动曲线
 		xProgress := ch.quickEaseFunction(t)
-		
+
 		// 添加少量随机性
 		if t > 0.1 && t < 0.9 {
 			xProgress += (float64(ch.randomDelay(60) - 30)) / 1000.0
 		}
 		xProgress = math.Max(0, math.Min(1, xProgress))
-		
-		x := startX + distance * xProgress
-		
+
+		x := startX + distance*xProgress
+
 		// 垂直方向有小幅度抖动
-		yWobble := math.Sin(t * math.Pi * 3) * float64(2 + ch.randomDelay(2))
+		yWobble := math.Sin(t*math.Pi*3) * float64(2+ch.randomDelay(2))
 		yWobble += float64(ch.randomDelay(6) - 3)
-		
+
 		y := startY + yWobble
-		
+
 		points[i] = point{x, y}
 	}
-	
+
 	return points
 }
 
@@ -399,47 +417,47 @@ func (ch *CaptchaHandler) quickEaseFunction(t float64) float64 {
 	if t < 0.1 {
 		return 3 * t * t * t
 	} else if t < 0.85 {
-		return 0.03 + 0.94 * ((t - 0.1) / 0.75)
+		return 0.03 + 0.94*((t-0.1)/0.75)
 	} else {
 		remaining := 1 - t
-		return 1 - remaining * remaining * remaining
+		return 1 - remaining*remaining*remaining
 	}
 }
 
 // generateHumanDragPoints 生成更真实的人类拖拽路径
 func (ch *CaptchaHandler) generateHumanDragPoints(startX, startY, distance float64, numPoints int) []point {
 	points := make([]point, numPoints)
-	
+
 	for i := 0; i < numPoints; i++ {
-		t := float64(i) / float64(numPoints - 1)
-		
+		t := float64(i) / float64(numPoints-1)
+
 		// 使用改进的缓动曲线
 		xProgress := ch.humanEaseFunction(t)
-		
+
 		// 加入轨迹随机性
 		randomness := (float64(ch.randomDelay(200)) - 100) / 1000.0
 		if t > 0.1 && t < 0.9 {
 			xProgress += randomness
 		}
 		xProgress = math.Max(0, math.Min(1, xProgress))
-		
-		x := startX + distance * xProgress
-		
+
+		x := startX + distance*xProgress
+
 		// 垂直方向的随机移动，模拟人手在滑动时的上下抖动
-		verticalWobble := math.Sin(t * math.Pi * 2) * 3.0    // 主要正弦波动
-		verticalWobble += math.Sin(t * math.Pi * 5) * 1.5   // 高频小波动
-		verticalWobble += float64(ch.randomDelay(8) - 4)     // 纯随机
-		
+		verticalWobble := math.Sin(t*math.Pi*2) * 3.0    // 主要正弦波动
+		verticalWobble += math.Sin(t*math.Pi*5) * 1.5    // 高频小波动
+		verticalWobble += float64(ch.randomDelay(8) - 4) // 纯随机
+
 		// 在滑动前半段加入更大的随机变化
 		if t < 0.4 {
 			verticalWobble *= 1.5
 		}
-		
+
 		y := startY + verticalWobble
-		
+
 		points[i] = point{x, y}
 	}
-	
+
 	return points
 }
 
@@ -448,20 +466,20 @@ func (ch *CaptchaHandler) humanEaseFunction(t float64) float64 {
 	// 人类滑动特点：开始慢，中间加速，结尾减速
 	if t < 0.15 {
 		// 起始阶段：慢启动
-		return 0.3 * t * t * t + 0.7 * t * t
+		return 0.3*t*t*t + 0.7*t*t
 	} else if t < 0.7 {
 		// 中间阶段：快速移动
-		return 0.5 * math.Pow(2*t - 0.3, 2) + 0.12
+		return 0.5*math.Pow(2*t-0.3, 2) + 0.12
 	} else {
 		// 结束阶段：减速接近终点
-		return 1 - 0.5 * math.Pow(2*(1-t)-0.3, 2)
+		return 1 - 0.5*math.Pow(2*(1-t)-0.3, 2)
 	}
 }
 
 // calculateHumanStepDelay 计算更符合人类操作的每步延迟
 func (ch *CaptchaHandler) calculateHumanStepDelay(progress float64, totalDuration float64, steps int) int {
 	baseDelay := totalDuration / float64(steps)
-	
+
 	// 根据进度调整延迟
 	var multiplier float64
 	if progress < 0.15 {
@@ -480,7 +498,7 @@ func (ch *CaptchaHandler) calculateHumanStepDelay(progress float64, totalDuratio
 		// 接近终点：再次放慢
 		multiplier = 1.8 + float64(ch.randomDelay(100))/100.0
 	}
-	
+
 	// 添加额外的随机
 	return int(baseDelay * multiplier)
 }
@@ -495,7 +513,7 @@ func (ch *CaptchaHandler) calculateVerticalWobble(progress, i, steps float64) fl
 // calculateStepDuration 计算每步的延迟
 func (ch *CaptchaHandler) calculateStepDuration(progress float64, totalDuration, steps float64) int {
 	baseDelay := totalDuration / steps
-	
+
 	if progress < 0.1 {
 		return int(baseDelay * (1.5 + float64(ch.randomDelay(100))/100))
 	} else if progress < 0.2 {
