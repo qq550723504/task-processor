@@ -14,6 +14,7 @@ import (
 	listingkitstore "task-processor/internal/listingkit/store"
 	"task-processor/internal/listingsubscription"
 	sheinpub "task-processor/internal/publishing/shein"
+	"task-processor/internal/sourceaccount"
 )
 
 // AutoMigrateRuntime creates and updates every table required by ListingKit.
@@ -65,6 +66,9 @@ func AutoMigrateRuntime(db *gorm.DB) error {
 	}
 	if err := listingadmin.AutoMigrateStoreRepository(db); err != nil {
 		return fmt.Errorf("migrate listingadmin store repository: %w", err)
+	}
+	if err := sourceaccount.AutoMigrateRepository(db); err != nil {
+		return fmt.Errorf("migrate source account repository: %w", err)
 	}
 	if err := listingadmin.AutoMigrateStoreStatisticsRepository(db); err != nil {
 		return fmt.Errorf("migrate listingadmin store statistics repository: %w", err)
