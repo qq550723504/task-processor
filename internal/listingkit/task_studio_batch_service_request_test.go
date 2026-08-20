@@ -72,6 +72,90 @@ func TestBuildStudioBatchTaskGenerateRequestIncludesImageStrategy(t *testing.T) 
 	}
 }
 
+func TestBuildStudioBatchTaskProductImageRequestCarriesBatchContext(t *testing.T) {
+	t.Parallel()
+
+	session := &SheinStudioSession{
+		Prompt:             "minimal geometric abstract design",
+		PromptMode:         "managed",
+		ProductImagePrompt: "show the approved artwork on a clean studio mockup",
+		ProductImageCount:  "5",
+		ProductImagePrompts: SheinStudioProductImagePromptList{
+			{Role: "hero", Label: "front", Prompt: "front-facing product photo"},
+		},
+	}
+	batch := &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-1", UserID: "user-1"}
+	candidate := studioBatchTaskCandidate{
+		SelectionSnapshot: SheinStudioSelection{
+			ProductName:            "V-neck T-shirt",
+			SizeReferenceImageURLs: []string{"https://example.com/size.png"},
+		},
+		Title: "geometric tee",
+	}
+	design := StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"}
+
+	req := buildStudioBatchTaskProductImageRequest(session, batch, candidate, design)
+	if req == nil {
+		t.Fatal("product image request is nil")
+	}
+	if req.Prompt != "minimal geometric abstract design" || req.PromptMode != "managed" {
+		t.Fatalf("prompt context = (%q, %q), want batch prompt context", req.Prompt, req.PromptMode)
+	}
+	if req.ProductName != "V-neck T-shirt" || req.StyleName != "geometric tee" {
+		t.Fatalf("product/style = (%q, %q), want selection/style", req.ProductName, req.StyleName)
+	}
+	if req.SourceDesignURL != "https://example.com/design.png" {
+		t.Fatalf("SourceDesignURL = %q, want materialized design URL", req.SourceDesignURL)
+	}
+	if req.CustomPrompt != "show the approved artwork on a clean studio mockup" || req.Count != 5 {
+		t.Fatalf("custom prompt/count = (%q, %d), want persisted product-image settings", req.CustomPrompt, req.Count)
+	}
+	if len(req.ImagePrompts) != 1 || req.ImagePrompts[0].Role != "hero" {
+		t.Fatalf("ImagePrompts = %+v, want session prompts", req.ImagePrompts)
+	}
+	if len(req.ProductReferenceImageURLs) != 1 || req.ProductReferenceImageURLs[0] != "https://example.com/size.png" {
+		t.Fatalf("ProductReferenceImageURLs = %+v, want selection references", req.ProductReferenceImageURLs)
+	}
+}
+
+func TestTaskStudioBatchServiceAttachesGeneratedProductImagesForAI(t *testing.T) {
+	t.Parallel()
+
+	var gotRequest *StudioProductImageRequest
+	service := &taskStudioBatchService{
+		generateProductImages: func(_ context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {
+			gotRequest = req
+			return &StudioProductImageResponse{Images: []StudioGeneratedImage{
+				{ImageURL: "https://cdn.example.com/ai-product.png"},
+			}}, nil
+		},
+	}
+	session := &SheinStudioSession{Prompt: "retro cherries", ImageStrategy: sheinImageStrategyAIGenerated}
+	batch := &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-1", UserID: "user-1"}
+	candidate := studioBatchTaskCandidate{
+		ImageStrategy:     sheinImageStrategyAIGenerated,
+		SelectionSnapshot: SheinStudioSelection{ProductName: "Canvas Tote"},
+		Title:             "Style 1",
+	}
+	request := buildStudioBatchTaskGenerateRequest(session, batch, candidate, StudioMaterializedDesignRecord{
+		ID:       "design-1",
+		ImageURL: "https://cdn.example.com/design.png",
+	})
+
+	if err := service.attachStudioBatchProductImages(context.Background(), request, session, batch, candidate, StudioMaterializedDesignRecord{
+		ID:       "design-1",
+		ImageURL: "https://cdn.example.com/design.png",
+	}); err != nil {
+		t.Fatalf("attachStudioBatchProductImages() error = %v", err)
+	}
+	if gotRequest == nil || gotRequest.SourceDesignURL != "https://cdn.example.com/design.png" {
+		t.Fatalf("generator request = %+v, want source design URL", gotRequest)
+	}
+	if got, want := request.Options.SheinStudio.ProductImageURLs, []string{"https://cdn.example.com/ai-product.png"}; len(got) != 1 || got[0] != want[0] {
+		t.Fatalf("ProductImageURLs = %+v, want %v", got, want)
+	}
+}
+
 func TestStudioBatchTaskImageStrategyPrefersExplicitRequest(t *testing.T) {
 	t.Parallel()
 

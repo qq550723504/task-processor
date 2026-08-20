@@ -18,6 +18,7 @@ type taskStudioBatchService struct {
 	storeValidator           StudioBatchStoreValidator
 	generator                studioBatchGenerator
 	createGenerateTask       func(context.Context, *GenerateRequest) (*Task, error)
+	generateProductImages    func(context.Context, *StudioProductImageRequest) (*StudioProductImageResponse, error)
 	getTask                  func(context.Context, string) (*Task, error)
 	retryBackgroundRemoval   func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error)
 	currentTime              func() time.Time
@@ -43,6 +44,7 @@ func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioB
 		storeValidator:           config.storeValidator,
 		generator:                config.generator,
 		createGenerateTask:       config.createGenerateTask,
+		generateProductImages:    config.generateProductImages,
 		getTask:                  config.getTask,
 		retryBackgroundRemoval:   config.retryBackgroundRemoval,
 		currentTime:              time.Now,

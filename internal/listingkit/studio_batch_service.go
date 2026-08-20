@@ -92,6 +92,7 @@ type taskStudioBatchServiceConfig struct {
 	storeValidator           StudioBatchStoreValidator
 	generator                studioBatchGenerator
 	createGenerateTask       func(ctx context.Context, req *GenerateRequest) (*Task, error)
+	generateProductImages    func(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error)
 	getTask                  func(ctx context.Context, taskID string) (*Task, error)
 	retryBackgroundRemoval   func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error)
 	serviceRunner            *listingStudioBatchServiceRunner

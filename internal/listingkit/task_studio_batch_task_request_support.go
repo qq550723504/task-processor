@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const defaultStudioBatchProductImageCount = 5
+
 func buildStudioBatchTaskGenerateRequest(
 	session *SheinStudioSession,
 	batch *StudioBatchRecord,
@@ -42,6 +44,107 @@ func buildStudioBatchTaskGenerateRequest(
 		},
 	}
 	return req
+}
+
+func buildStudioBatchTaskProductImageRequest(
+	session *SheinStudioSession,
+	batch *StudioBatchRecord,
+	candidate studioBatchTaskCandidate,
+	design StudioMaterializedDesignRecord,
+) *StudioProductImageRequest {
+	selection := candidate.SelectionSnapshot
+	styleName := firstNonEmpty(strings.TrimSpace(candidate.Title), strings.TrimSpace(design.ID))
+	count := defaultStudioBatchProductImageCount
+	customPrompt := ""
+	promptMode := ""
+	productPrompts := []StudioProductImagePrompt(nil)
+	if session != nil {
+		promptMode = strings.TrimSpace(session.PromptMode)
+		customPrompt = strings.TrimSpace(session.ProductImagePrompt)
+		if parsed, err := strconv.Atoi(strings.TrimSpace(session.ProductImageCount)); err == nil && parsed > 0 {
+			count = parsed
+		}
+		if count > maxStudioProductImageCount {
+			count = maxStudioProductImageCount
+		}
+		for _, item := range session.ProductImagePrompts {
+			productPrompts = append(productPrompts, StudioProductImagePrompt{
+				Role:   strings.TrimSpace(item.Role),
+				Prompt: strings.TrimSpace(item.Prompt),
+			})
+		}
+	}
+	return &StudioProductImageRequest{
+		Prompt:                    studioBatchTaskPrompt(session, batch),
+		PromptMode:                promptMode,
+		ProductName:               strings.TrimSpace(selection.ProductName),
+		StyleName:                 styleName,
+		SourceDesignURL:           strings.TrimSpace(design.ImageURL),
+		ProductReferenceImageURLs: studioBatchTaskProductReferenceImageURLs(selection),
+		CustomPrompt:              customPrompt,
+		ImagePrompts:              productPrompts,
+		Count:                     count,
+	}
+}
+
+func studioBatchTaskProductReferenceImageURLs(selection SheinStudioSelection) []string {
+	result := make([]string, 0, 5)
+	seen := make(map[string]struct{}, 5)
+	add := func(raw string) {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	for _, value := range selection.SizeReferenceImageURLs {
+		add(value)
+	}
+	for _, value := range selection.MockupImageURLs {
+		add(value)
+	}
+	add(selection.MockupImageURL)
+	add(selection.BlankDesignURL)
+	add(selection.TemplateImageURL)
+	for _, variant := range selection.Variants {
+		for _, value := range variant.SizeReferenceImageURLs {
+			add(value)
+		}
+		for _, value := range variant.MockupImageURLs {
+			add(value)
+		}
+		add(variant.MockupImageURL)
+		add(variant.BlankDesignURL)
+		add(variant.TemplateImageURL)
+	}
+	if len(result) > 5 {
+		return result[:5]
+	}
+	return result
+}
+
+func studioGeneratedProductImageURLs(response *StudioProductImageResponse) []string {
+	if response == nil {
+		return nil
+	}
+	result := make([]string, 0, len(response.Images))
+	seen := make(map[string]struct{}, len(response.Images))
+	for _, image := range response.Images {
+		value := strings.TrimSpace(image.ImageURL)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result
 }
 
 func studioBatchTaskPrompt(session *SheinStudioSession, batch *StudioBatchRecord) string {

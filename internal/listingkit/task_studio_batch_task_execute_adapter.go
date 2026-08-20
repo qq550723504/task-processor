@@ -112,14 +112,28 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 					return existing, nil
 				}
 			}
+			generateRequest := buildStudioBatchTaskGenerateRequest(
+				candidate.state.Session,
+				candidate.state.Batch,
+				taskCandidate,
+				taskCandidate.Design,
+			)
+			if generateRequest == nil {
+				return SheinStudioCreatedTask{}, fmt.Errorf("studio batch task request is not configured")
+			}
+			if err := s.attachStudioBatchProductImages(ctx, generateRequest, candidate.state.Session, candidate.state.Batch, taskCandidate, taskCandidate.Design); err != nil {
+				reasonCode := "product_image_generation_failed"
+				if s.generateProductImages == nil {
+					reasonCode = "product_image_generation_unavailable"
+				} else if strings.Contains(err.Error(), "returned no images") {
+					reasonCode = "product_image_generation_empty"
+				}
+				_ = s.persistStudioBatchTaskLink(ctx, taskCandidate, "", studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, reasonCode, err.Error())
+				return SheinStudioCreatedTask{}, err
+			}
 			task, err := s.createGenerateTask(
 				ctx,
-				buildStudioBatchTaskGenerateRequest(
-					candidate.state.Session,
-					candidate.state.Batch,
-					taskCandidate,
-					taskCandidate.Design,
-				),
+				generateRequest,
 			)
 			if err != nil {
 				taskID := ""

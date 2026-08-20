@@ -19,6 +19,7 @@ type taskStudioBatchServiceWiring struct {
 	storeValidator           StudioBatchStoreValidator
 	generator                *studioBatchGenerationService
 	createGenerateTask       func(context.Context, *GenerateRequest) (*Task, error)
+	generateProductImages    func(context.Context, *StudioProductImageRequest) (*StudioProductImageResponse, error)
 	getTask                  func(context.Context, string) (*Task, error)
 	retryBackgroundRemoval   func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error)
 	ensureGraph              func(context.Context, string) error
@@ -69,7 +70,14 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 		storeValidator:           resolveStudioBatchStoreValidator(s),
 		generator:                generator,
 		createGenerateTask:       s.CreateGenerateTask,
-		getTask:                  repository.getTask,
+		generateProductImages: func(ctx context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {
+			media := s.taskStudioMediaOrDefault()
+			if media == nil {
+				return nil, fmt.Errorf("studio media service is not configured")
+			}
+			return media.GenerateStudioProductImages(ctx, req)
+		},
+		getTask: repository.getTask,
 		retryBackgroundRemoval: func(ctx context.Context, sourceURL string, filename string) (*studioBackgroundRemovalMaterialization, error) {
 			media := s.taskStudioMediaOrDefault()
 			if media == nil {
@@ -291,6 +299,7 @@ func buildTaskStudioBatchServiceConfigWithCollaborators(
 		storeValidator:           config.batch.storeValidator,
 		generator:                config.batch.generator,
 		createGenerateTask:       config.batch.createGenerateTask,
+		generateProductImages:    config.batch.generateProductImages,
 		getTask:                  config.batch.getTask,
 		retryBackgroundRemoval:   config.batch.retryBackgroundRemoval,
 		detailRunner:             config.detailRunner,
