@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Preflight", "Crawl", "EndToEnd")]
+    [ValidateSet("Preflight", "SourcePreflight", "Crawl", "EndToEnd")]
     [string]$Mode = "Preflight",
     [string]$ApiBaseUrl = "",
     [string]$TokenFile = "",
@@ -331,6 +331,23 @@ function Invoke-Preflight {
     Invoke-AuthenticatedPreflight -Token $Token -BaseUrl $BaseUrl
 }
 
+function Invoke-SourcePreflight {
+    param(
+        [string]$Token,
+        [string]$BaseUrl = $script:AcceptanceApiBaseUrl,
+        [string]$ExpectedTenantID = ""
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedTenantID)) {
+        Assert-AuthenticatedTenant -Token $Token -ExpectedTenantID $ExpectedTenantID -BaseUrl $BaseUrl
+    }
+    Invoke-PublicPreflight -BaseUrl $BaseUrl
+    if ([string]::IsNullOrWhiteSpace($Token)) {
+        throw "No ListingKit API token found; set LISTINGKIT_API_TOKEN or provide the standard token file."
+    }
+    Write-Output "PASS SOURCE PREFLIGHT"
+}
+
 function Invoke-Crawl {
     param(
         [string]$Url,
@@ -423,14 +440,17 @@ function Invoke-Main {
         return
     }
     $token = Resolve-AcceptanceToken
-    if ($UseDeviceAuthorization) {
-        Assert-AuthenticatedTenant -Token $token -ExpectedTenantID $ExpectedTenantID
+    if ($Mode -eq "SourcePreflight") {
+        Invoke-SourcePreflight -Token $token -ExpectedTenantID $ExpectedTenantID
+        return
     }
     if ($Mode -eq "Crawl") {
+        Invoke-SourcePreflight -Token $token -ExpectedTenantID $ExpectedTenantID
         $result = Invoke-Crawl -Url $Url -SourceAccountID $SourceAccountID -Confirmation $ConfirmCreateTask -Token $token
         Write-Output ("PASS CRAWL task_id={0} status={1}" -f $result.TaskID, $result.Status)
         return
     }
+    Invoke-Preflight -Token $token -ExpectedTenantID $ExpectedTenantID
     $result = Invoke-EndToEnd -Url $Url -SourceAccountID $SourceAccountID -SheinStoreID $SheinStoreID -Confirmation $ConfirmCreateTask -Token $token
     $handoffData = Get-ResponseData -Response $result.Handoff
     $sourceEvidence = Get-SourceIdentityEvidence -SourceIdentity $handoffData.source_identity
