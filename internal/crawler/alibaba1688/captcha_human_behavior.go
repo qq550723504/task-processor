@@ -90,7 +90,7 @@ func (ch *CaptchaHandler) optimizedSlideWithRealTrack(page playwright.Page, slid
 	time.Sleep(50 + time.Duration(ch.randomDelay(50))*time.Millisecond)
 
 	// 真实轨迹显示有~250ms的启动犹豫
-	time.Sleep(200 + time.Duration(ch.randomDelay(150))*time.Millisecond)
+	time.Sleep(200 + time.Duration(ch.randomDelay(150)) * time.Millisecond)
 
 	// 生成基于真实轨迹的滑动点
 	points := ch.generateRealHumanTrackPoints(startX, startY, endX, endY, 60)
@@ -114,7 +114,7 @@ func (ch *CaptchaHandler) optimizedSlideWithRealTrack(page playwright.Page, slid
 
 	// === 第四阶段：结束行为 ===
 	// 终点停留（真实轨迹显示松开前有~500ms停留）
-	time.Sleep(400 + time.Duration(ch.randomDelay(200))*time.Millisecond)
+	time.Sleep(400 + time.Duration(ch.randomDelay(200)) * time.Millisecond)
 
 	// 松开鼠标
 	page.Mouse().Up()
@@ -311,7 +311,7 @@ func (ch *CaptchaHandler) simulateRandomMouseWiggling(page playwright.Page, cent
 // simulateTypingMistakes 模拟打字错误和修正
 func (ch *CaptchaHandler) simulateTypingMistakes(page playwright.Page, input playwright.ElementHandle, text string, mistakeProbability float64) error {
 	for _, char := range text {
-		if math.Float64frombits(uint64(ch.randomDelay(1000)))/1000.0 < mistakeProbability {
+		if math.Float64frombits(uint64(ch.randomDelay(1000))) / 1000.0 < mistakeProbability {
 			mistakeChar := rune('a' + ch.randomDelay(26))
 			if err := input.Type(string(mistakeChar)); err != nil {
 				return err

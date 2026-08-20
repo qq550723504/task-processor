@@ -70,7 +70,7 @@ func (ch *CaptchaHandler) handleClickCaptchaWithResult(page playwright.Page) Cap
 // handleImageCaptchaWithResult 处理图片验证码并返回结果
 func (ch *CaptchaHandler) handleImageCaptchaWithResult(page playwright.Page) CaptchaResult {
 	startTime := time.Now()
-
+	
 	if result := ch.tryOCRCaptcha(page); result.Status == CaptchaStatusSuccess {
 		result.Duration = time.Since(startTime)
 		return result
@@ -83,7 +83,7 @@ func (ch *CaptchaHandler) handleImageCaptchaWithResult(page playwright.Page) Cap
 // handleTextCaptchaWithResult 处理文字验证码并返回结果
 func (ch *CaptchaHandler) handleTextCaptchaWithResult(page playwright.Page) CaptchaResult {
 	startTime := time.Now()
-
+	
 	if result := ch.tryTextCaptcha(page); result.Status == CaptchaStatusSuccess {
 		result.Duration = time.Since(startTime)
 		return result
@@ -96,7 +96,7 @@ func (ch *CaptchaHandler) handleTextCaptchaWithResult(page playwright.Page) Capt
 // handleMathCaptchaWithResult 处理数学验证码并返回结果
 func (ch *CaptchaHandler) handleMathCaptchaWithResult(page playwright.Page) CaptchaResult {
 	startTime := time.Now()
-
+	
 	if result := ch.solveMathCaptcha(page); result.Status == CaptchaStatusSuccess {
 		result.Duration = time.Since(startTime)
 		return result
@@ -134,7 +134,7 @@ func (ch *CaptchaHandler) tryOCRCaptcha(page playwright.Page) CaptchaResult {
 		}
 
 		logger.GetGlobalLogger("crawler/alibaba1688").Infof("找到验证码图片: %s", src)
-
+		
 		if strings.HasPrefix(src, "data:") {
 			logger.GetGlobalLogger("crawler/alibaba1688").Info("检测到base64验证码图片")
 		}
@@ -160,7 +160,7 @@ func (ch *CaptchaHandler) tryOCRCaptcha(page playwright.Page) CaptchaResult {
 
 			if recognizedCode := ch.recognizeCaptchaCode(page, element); recognizedCode != "" {
 				logger.GetGlobalLogger("crawler/alibaba1688").Infof("OCR识别结果: %s", recognizedCode)
-
+				
 				if err := input.Fill(recognizedCode); err != nil {
 					logger.GetGlobalLogger("crawler/alibaba1688").Warnf("填写验证码失败: %v", err)
 					continue
