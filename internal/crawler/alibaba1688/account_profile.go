@@ -55,7 +55,16 @@ func (r *repositoryAccountProfileResolver) ResolveAlibaba1688Account(ctx context
 		}
 		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
 	}
-	if account == nil || account.ID != accountID || account.TenantID != tenantID || !strings.EqualFold(strings.TrimSpace(account.Platform), sourceaccount.PlatformAlibaba1688) || strings.TrimSpace(account.ProfileRef) == "" {
+	if account == nil || account.ID != accountID || account.TenantID != tenantID || !strings.EqualFold(strings.TrimSpace(account.Platform), sourceaccount.PlatformAlibaba1688) {
+		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+	}
+	if account.Deleted != 0 {
+		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+	}
+	if account.Status != sourceaccount.StatusEnabled {
+		return AccountProfile{}, newAccountProfileError(AccountProfileDisabled, "source account is disabled")
+	}
+	if strings.TrimSpace(account.ProfileRef) == "" {
 		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
 	}
 

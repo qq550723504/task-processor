@@ -78,6 +78,28 @@ func TestAccountProfileResolverResolveAlibaba1688Account(t *testing.T) {
 			wantGetCalls: 1,
 		},
 		{
+			name:      "disabled record is rejected before profile launch",
+			tenantID:  101,
+			accountID: 3001,
+			account: &sourceaccount.SourceAccount{
+				ID: 3001, TenantID: 101, Platform: sourceaccount.PlatformAlibaba1688,
+				ProfileRef: "profile-ref", Status: sourceaccount.StatusDisabled,
+			},
+			wantCode:     AccountProfileDisabled,
+			wantGetCalls: 1,
+		},
+		{
+			name:      "deleted record is unavailable before profile launch",
+			tenantID:  101,
+			accountID: 3001,
+			account: &sourceaccount.SourceAccount{
+				ID: 3001, TenantID: 101, Platform: sourceaccount.PlatformAlibaba1688,
+				ProfileRef: "profile-ref", Deleted: 1,
+			},
+			wantCode:     AccountProfileUnavailable,
+			wantGetCalls: 1,
+		},
+		{
 			name:         "non positive identifiers fail before repository access",
 			tenantID:     0,
 			accountID:    3001,

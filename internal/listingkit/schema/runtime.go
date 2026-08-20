@@ -19,6 +19,17 @@ import (
 
 // AutoMigrateRuntime creates and updates every table required by ListingKit.
 func AutoMigrateRuntime(db *gorm.DB) error {
+	return autoMigrateRuntime(db, true)
+}
+
+// AutoMigrateRepositoryRuntime creates and updates the tables required by the
+// core ListingKit repositories. The optional source-account schema is owned by
+// the source-account repository and is migrated by that repository's builder.
+func AutoMigrateRepositoryRuntime(db *gorm.DB) error {
+	return autoMigrateRuntime(db, false)
+}
+
+func autoMigrateRuntime(db *gorm.DB, includeSourceAccount bool) error {
 	if db == nil {
 		return fmt.Errorf("database is nil")
 	}
@@ -67,8 +78,10 @@ func AutoMigrateRuntime(db *gorm.DB) error {
 	if err := listingadmin.AutoMigrateStoreRepository(db); err != nil {
 		return fmt.Errorf("migrate listingadmin store repository: %w", err)
 	}
-	if err := sourceaccount.AutoMigrateRepository(db); err != nil {
-		return fmt.Errorf("migrate source account repository: %w", err)
+	if includeSourceAccount {
+		if err := sourceaccount.AutoMigrateRepository(db); err != nil {
+			return fmt.Errorf("migrate source account repository: %w", err)
+		}
 	}
 	if err := listingadmin.AutoMigrateStoreStatisticsRepository(db); err != nil {
 		return fmt.Errorf("migrate listingadmin store statistics repository: %w", err)

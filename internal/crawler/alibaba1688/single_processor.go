@@ -29,7 +29,7 @@ func NewSingleProcessor(cfg *config.Config, urlHelper *URLHelper, productChecker
 		urlHelper:      urlHelper,
 		productChecker: productChecker,
 		extractor:      extractor.NewProductExtractor(),
-		browserManager: NewBrowserManager(cfg),
+		browserManager: NewPublicBrowserManager(cfg),
 		pageOperator:   NewPageOperator(),
 	}
 }

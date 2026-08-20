@@ -28,13 +28,23 @@ func NewBrowserManager(cfg *config.Config) *BrowserManager {
 	return newAlibaba1688BrowserManager(cfg, nil)
 }
 
+// NewPublicBrowserManager creates a clean, non-persistent browser manager for
+// public 1688 crawling. It intentionally does not reuse the process-wide
+// browser profile, whose cookies could make a public attempt account-backed.
+func NewPublicBrowserManager(cfg *config.Config) *BrowserManager {
+	return newAlibaba1688BrowserManagerWithRuntimeConfig(cfg, newAlibaba1688PublicBrowserRuntimeConfig(cfg))
+}
+
 // NewBrowserManagerForAccountProfile creates an isolated browser manager for one account profile.
 func NewBrowserManagerForAccountProfile(cfg *config.Config, profile AccountProfile) *BrowserManager {
 	return newAlibaba1688BrowserManager(cfg, &profile)
 }
 
 func newAlibaba1688BrowserManager(cfg *config.Config, profile *AccountProfile) *BrowserManager {
-	runtimeConfig := newAlibaba1688BrowserRuntimeConfig(cfg, profile)
+	return newAlibaba1688BrowserManagerWithRuntimeConfig(cfg, newAlibaba1688BrowserRuntimeConfig(cfg, profile))
+}
+
+func newAlibaba1688BrowserManagerWithRuntimeConfig(cfg *config.Config, runtimeConfig alibaba1688BrowserRuntimeConfig) *BrowserManager {
 	manager := sharedbrowser.NewManager(runtimeConfig.browser)
 	manager.SetUserDataDir(runtimeConfig.userDataDir)
 
@@ -65,6 +75,12 @@ func newAlibaba1688BrowserRuntimeConfig(cfg *config.Config, profile *AccountProf
 		}
 	}
 	return alibaba1688BrowserRuntimeConfig{browser: browserConfig, userDataDir: userDataDir}
+}
+
+func newAlibaba1688PublicBrowserRuntimeConfig(cfg *config.Config) alibaba1688BrowserRuntimeConfig {
+	runtimeConfig := newAlibaba1688BrowserRuntimeConfig(cfg, nil)
+	runtimeConfig.userDataDir = ""
+	return runtimeConfig
 }
 
 func resolveAlibaba1688UserDataDir(cfg *config.Config) string {

@@ -65,6 +65,17 @@ func TestAutoMigrateRuntimeIncludesUsageLedgerSchema(t *testing.T) {
 	}
 }
 
+func TestAutoMigrateRepositoryRuntimeSkipsOptionalSourceAccountSchema(t *testing.T) {
+	db := openSchemaTestDB(t)
+
+	if err := AutoMigrateRepositoryRuntime(db); err != nil {
+		t.Fatalf("AutoMigrateRepositoryRuntime() error = %v", err)
+	}
+	if db.Migrator().HasTable("source_account") {
+		t.Fatal("repository bootstrap must not make optional source-account migration mandatory")
+	}
+}
+
 type memberinviteAuditTable struct{}
 
 func (memberinviteAuditTable) TableName() string {

@@ -76,6 +76,21 @@ func TestAlibaba1688BrowserRuntimeConfigUsesGlobalFallbackWithoutAccount(t *test
 	}
 }
 
+func TestAlibaba1688PublicBrowserRuntimeConfigDoesNotUsePersistentProfile(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	cfg.Browser.UserDataDir = "C:/global-profile"
+	cfg.Browser.ProxyServer = "http://global-proxy:8080"
+
+	runtimeConfig := newAlibaba1688PublicBrowserRuntimeConfig(cfg)
+
+	if runtimeConfig.userDataDir != "" {
+		t.Fatalf("public user data dir = %q, want empty non-persistent context", runtimeConfig.userDataDir)
+	}
+	if runtimeConfig.browser.ProxyServer != cfg.Browser.ProxyServer {
+		t.Fatalf("proxy = %q, want global proxy %q", runtimeConfig.browser.ProxyServer, cfg.Browser.ProxyServer)
+	}
+}
+
 func TestAlibaba1688BrowserRuntimeConfigRetainsGlobalProxyWhenAccountProxyUnavailable(t *testing.T) {
 	cfg := config.NewDefaultConfig()
 	cfg.Browser.ProxyServer = "http://global-proxy:8080"
