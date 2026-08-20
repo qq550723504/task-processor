@@ -10,6 +10,7 @@ import (
 	crawler1688 "task-processor/internal/integration/crawler/a1688"
 	"task-processor/internal/listingkit"
 	"task-processor/internal/product/sourcing"
+	"task-processor/internal/sourceaccount"
 	"task-processor/internal/tenantbridge"
 )
 
@@ -46,14 +47,20 @@ type CreateTaskResult struct {
 // task creation. It depends only on the existing ListingKit task creator
 // boundary and does not fetch, crawl, or submit marketplace payloads.
 type TaskCommandService struct {
-	creator              sourcehandoff.GenerateTaskCreator
-	storeAccessValidator listingkit.StoreAccessValidator
+	creator                      sourcehandoff.GenerateTaskCreator
+	storeAccessValidator         listingkit.StoreAccessValidator
+	sourceAccountAccessValidator sourceaccount.AccessValidator
 }
 
-func NewTaskCommandService(creator sourcehandoff.GenerateTaskCreator, validators ...listingkit.StoreAccessValidator) *TaskCommandService {
+func NewTaskCommandService(creator sourcehandoff.GenerateTaskCreator, dependencies ...any) *TaskCommandService {
 	service := &TaskCommandService{creator: creator}
-	if len(validators) > 0 {
-		service.storeAccessValidator = validators[0]
+	for _, dependency := range dependencies {
+		if value, ok := dependency.(listingkit.StoreAccessValidator); ok {
+			service.storeAccessValidator = value
+		}
+		if value, ok := dependency.(sourceaccount.AccessValidator); ok {
+			service.sourceAccountAccessValidator = value
+		}
 	}
 	return service
 }
@@ -112,14 +119,27 @@ func (s *TaskCommandService) validateStores(ctx context.Context, command CreateT
 	if err != nil || legacyTenantID <= 0 {
 		return listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
 	}
-	for _, item := range []struct {
-		id       int64
-		platform string
-	}{{command.SourceAccountID, "1688"}, {command.SheinStoreID, "SHEIN"}} {
-		if item.id <= 0 {
-			return listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
+	if command.SheinStoreID <= 0 {
+		return listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "store is unavailable")
+	}
+	if _, err := s.storeAccessValidator.ValidateStoreAccess(ctx, legacyTenantID, command.SheinStoreID, "SHEIN"); err != nil {
+		return err
+	}
+	if command.SourceAccountID < 0 {
+		return listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "source account is unavailable")
+	}
+	if command.SourceAccountID > 0 {
+		if s.sourceAccountAccessValidator == nil {
+			return listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "source account is unavailable")
 		}
-		if _, err := s.storeAccessValidator.ValidateStoreAccess(ctx, legacyTenantID, item.id, item.platform); err != nil {
+		if _, err := s.sourceAccountAccessValidator.ValidateSourceAccountAccess(ctx, legacyTenantID, command.SourceAccountID); err != nil {
+			if code := sourceaccount.ErrorCode(err); code != "" {
+				message := "source account is unavailable"
+				if code == sourceaccount.SourceAccountDisabled {
+					message = "source account is disabled"
+				}
+				return listingkit.NewStoreAccessError(code, message)
+			}
 			return err
 		}
 	}

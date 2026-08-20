@@ -7,6 +7,7 @@ import (
 
 	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/sourceaccount"
 )
 
 func TestTaskCommandServiceCreateTaskDelegatesToListingKitCreator(t *testing.T) {
@@ -87,8 +88,8 @@ func TestTaskCommandServiceNormalizesSourceAccountAndValidatesSheinTargetStore(t
 	if result.Handoff.Envelope.Identity.StoreID != 0 {
 		t.Fatalf("source identity store id = %d, want neutral store id omitted", result.Handoff.Envelope.Identity.StoreID)
 	}
-	if len(validator.calls) != 2 || validator.calls[0].storeID != 3001 || validator.calls[0].platform != "1688" || validator.calls[1].storeID != 168811 || validator.calls[1].platform != "SHEIN" {
-		t.Fatalf("validator calls = %+v, want source account and SHEIN target validation", validator.calls)
+	if len(validator.calls) != 1 || validator.calls[0].storeID != 168811 || validator.calls[0].platform != "SHEIN" {
+		t.Fatalf("validator calls = %+v, want only SHEIN target validation", validator.calls)
 	}
 }
 
@@ -140,8 +141,8 @@ func TestTaskCommandServiceRejectsUnavailableSourceAccountBeforeTaskCreation(t *
 	if creator.request != nil {
 		t.Fatalf("creator request = %+v, want nil", creator.request)
 	}
-	if len(validator.calls) != 1 || validator.calls[0].platform != "1688" {
-		t.Fatalf("validator calls = %+v, want source account only", validator.calls)
+	if len(validator.calls) != 1 || validator.calls[0].platform != "SHEIN" {
+		t.Fatalf("validator calls = %+v, want SHEIN validation before source account rejection", validator.calls)
 	}
 }
 
@@ -162,6 +163,13 @@ func (v *storeAccessValidatorFake) ValidateStoreAccess(_ context.Context, tenant
 		return listingkit.StoreAccess{}, err
 	}
 	return listingkit.StoreAccess{ID: storeID, TenantID: tenantID, Platform: platform, Enabled: true}, nil
+}
+
+func (v *storeAccessValidatorFake) ValidateSourceAccountAccess(_ context.Context, tenantID, accountID int64) (sourceaccount.Access, error) {
+	if err := v.errs[accountID]; err != nil {
+		return sourceaccount.Access{}, err
+	}
+	return sourceaccount.Access{ID: accountID, TenantID: tenantID, Platform: sourceaccount.PlatformAlibaba1688, Enabled: true}, nil
 }
 
 func TestTaskCommandServiceRejectsMismatchedContextTenant(t *testing.T) {

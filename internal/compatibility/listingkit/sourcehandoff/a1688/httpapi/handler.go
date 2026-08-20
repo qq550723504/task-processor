@@ -16,6 +16,7 @@ import (
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/product/sourcing"
+	"task-processor/internal/sourceaccount"
 )
 
 type TaskCommandService interface {
@@ -119,9 +120,16 @@ func writeStoreAccessError(c *gin.Context, err error) bool {
 	if code == "" {
 		return false
 	}
-	message := "Choose an enabled 1688 login account and SHEIN target store available to your tenant and try again."
-	if code == listingkit.StoreAccessDisabled {
-		message = "Enable the selected 1688 login account or SHEIN target store, or choose another available option and try again."
+	message := "Choose an enabled SHEIN target store available to your tenant and try again."
+	switch code {
+	case sourceaccount.SourceAccountUnavailable:
+		message = "The selected 1688 source account is unavailable. Use public source access or choose another account."
+	case sourceaccount.SourceAccountDisabled:
+		message = "Enable the selected 1688 source account or use public source access or another account."
+	case listingkit.StoreAccessUnavailable:
+		message = "Choose an enabled SHEIN target store available to your tenant and try again."
+	case listingkit.StoreAccessDisabled:
+		message = "Enable the selected SHEIN target store or choose another available option and try again."
 	}
 	c.JSON(http.StatusForbidden, gin.H{"error": code, "message": message})
 	return true
