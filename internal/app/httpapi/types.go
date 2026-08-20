@@ -2,10 +2,10 @@ package httpapi
 
 import (
 	amazonlistinghttpapi "task-processor/internal/amazonlisting/httpapi"
+	a1688httpapi "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688/httpapi"
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
-	a1688httpapi "task-processor/internal/product/sourcehandoff/a1688/httpapi"
 	productenrich "task-processor/internal/productenrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	productimage "task-processor/internal/productimage"

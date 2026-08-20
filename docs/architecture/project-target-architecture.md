@@ -53,6 +53,10 @@ internal/
       amazon/
       a1688/
 
+  compatibility/
+    listingkit/
+      sourcehandoff/
+
   product/
     catalog/
     asset/
@@ -320,6 +324,8 @@ Important consequences:
 - `marketplace/*` must not depend on `compatibility/listingkit`.
 - `app/*` must remain wiring-focused.
 - `compatibility/*` may depend inward on the new domains, but the new domains should not depend back on compatibility.
+
+For the 1688 source loop, internal/integration/crawler/a1688 converts legacy crawler DTOs into internal/product/sourcing snapshots. The product boundary is enforced by the rule that internal/product must not import internal/listingkit, internal/compatibility, internal/crawler, or internal/integration. The existing ListingKit command and HTTP compatibility path is owned by internal/compatibility/listingkit/sourcehandoff.
 
 ## 6. What This Architecture Enables
 

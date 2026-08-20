@@ -3,14 +3,12 @@ package sourcing
 import (
 	"errors"
 	"testing"
-
-	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 )
 
 func TestAlibaba1688SourceEnvelopeMapsProductFacts(t *testing.T) {
 	envelope := Alibaba1688SourceEnvelope(Alibaba1688SourceEnvelopeInput{
 		Request: Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/123.html?spm=test", StoreID: 9},
-		Product: &alibaba1688model.Product1688{
+		Product: &Alibaba1688ProductSnapshot{
 			ID:               "123",
 			Title:            "Canvas Tote Bag",
 			URL:              "https://detail.1688.com/offer/123.html?foo=bar",
@@ -28,7 +26,7 @@ func TestAlibaba1688SourceEnvelopeMapsProductFacts(t *testing.T) {
 			SalesVolume:      100,
 			ReviewCount:      8,
 			Rating:           4.8,
-			Supplier: alibaba1688model.SupplierInfo{
+			Supplier: Alibaba1688SupplierSnapshot{
 				ID:              "supplier-1",
 				Name:            "Supplier One",
 				CompanyName:     "Supplier Co",
@@ -41,23 +39,22 @@ func TestAlibaba1688SourceEnvelopeMapsProductFacts(t *testing.T) {
 				IsGoldSupplier:  true,
 				IsVerified:      true,
 			},
-			Specifications: []alibaba1688model.Specification{{Name: "Material", Value: "Canvas"}},
-			ProductDetails: []alibaba1688model.ProductDetail{{Content: "Durable bag", Images: []string{"https://img.example/detail.jpg"}}},
-			PackInfo: &alibaba1688model.PackInfo{
-				PackageType:     "box",
-				Weight:          500,
-				PackageImages:   []string{"https://img.example/pack.jpg"},
-				PackageContents: []string{"bag"},
+			Specifications: []Alibaba1688SpecificationSnapshot{{Name: "Material", Value: "Canvas"}},
+			ProductDetails: []Alibaba1688ProductDetailSnapshot{{Content: "Durable bag", Images: []string{"https://img.example/detail.jpg"}}},
+			PackInfo: &Alibaba1688PackInfoSnapshot{
+				PackageType:   "box",
+				Weight:        500,
+				PackageImages: []string{"https://img.example/pack.jpg"},
 			},
-			Variants: []alibaba1688model.Variant{{
+			Variants: []Alibaba1688VariantSnapshot{{
 				Name:       "Blue / M",
 				Image:      "https://img.example/variant.jpg",
 				Stock:      20,
 				Price:      9.9,
 				Attributes: map[string]any{"Color": "Blue", "Size": "M"},
 			}},
-			Videos: []alibaba1688model.Video{{VideoURL: "https://video.example/1.mp4", CoverURL: "https://img.example/video-cover.jpg"}},
-			ShippingInfo: alibaba1688model.ShippingInfo{ShippingFrom: "Guangdong", ProcessingTime: "3 days"},
+			Videos:   []Alibaba1688VideoSnapshot{{VideoURL: "https://video.example/1.mp4", CoverURL: "https://img.example/video-cover.jpg"}},
+			Shipping: Alibaba1688ShippingSnapshot{ShippingFrom: "Guangdong", ProcessingTime: "3 days"},
 		},
 		RawSnapshot: "raw-1688-1",
 		SourceRunID: "run-1",
@@ -124,7 +121,7 @@ func TestAlibaba1688SourceEnvelopeMapsProductFacts(t *testing.T) {
 func TestAlibaba1688SourceEnvelopeFallsBackToRequestIdentityAndWarnings(t *testing.T) {
 	envelope := Alibaba1688SourceEnvelope(Alibaba1688SourceEnvelopeInput{
 		Request: Alibaba1688CrawlRequestInput{URL: "detail.1688.com/offer/456.html"},
-		Product: &alibaba1688model.Product1688{},
+		Product: &Alibaba1688ProductSnapshot{},
 	})
 
 	if envelope.Identity.SourceID != "456" {

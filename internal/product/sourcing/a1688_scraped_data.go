@@ -7,13 +7,12 @@ import (
 	"strings"
 
 	"task-processor/internal/catalog/canonical"
-	alibaba1688model "task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/productenrich"
 )
 
 // Convert1688ProductToScrapedData normalizes a raw 1688 crawler product into
 // the product enrichment scraped-data contract.
-func Convert1688ProductToScrapedData(product *alibaba1688model.Product1688) *productenrich.ScrapedData {
+func Convert1688ProductToScrapedData(product *Alibaba1688ProductSnapshot) *productenrich.ScrapedData {
 	if product == nil {
 		return nil
 	}
@@ -36,12 +35,12 @@ func Convert1688ProductToScrapedData(product *alibaba1688model.Product1688) *pro
 		Images:            images,
 		Price:             product.MinPrice,
 		Specs:             specs,
-		VariantDimensions: build1688VariantDimensions(product.VariationsValues),
+		VariantDimensions: build1688VariantDimensions(product.VariationValues),
 		Variants:          build1688ScrapedVariants(product, images),
 	}
 }
 
-func build1688Description(product *alibaba1688model.Product1688) string {
+func build1688Description(product *Alibaba1688ProductSnapshot) string {
 	if len(product.ProductDetails) == 0 {
 		return product.Title
 	}
@@ -62,14 +61,14 @@ func build1688Description(product *alibaba1688model.Product1688) string {
 	return sb.String()
 }
 
-func build1688VariantDimensions(values []alibaba1688model.VariationValue) []canonical.ScrapedVariantDimension {
+func build1688VariantDimensions(values []Alibaba1688VariationValueSnapshot) []canonical.ScrapedVariantDimension {
 	if len(values) == 0 {
 		return nil
 	}
 
 	dimensions := make([]canonical.ScrapedVariantDimension, 0, len(values))
 	for _, item := range values {
-		name := strings.TrimSpace(item.VariantName)
+		name := strings.TrimSpace(item.Name)
 		if name == "" {
 			continue
 		}
@@ -99,7 +98,7 @@ func build1688VariantDimensions(values []alibaba1688model.VariationValue) []cano
 	return dimensions
 }
 
-func build1688ScrapedVariants(product *alibaba1688model.Product1688, fallbackImages []string) []productenrich.ProductVariant {
+func build1688ScrapedVariants(product *Alibaba1688ProductSnapshot, fallbackImages []string) []productenrich.ProductVariant {
 	if product == nil || len(product.Variants) == 0 {
 		return nil
 	}
@@ -208,7 +207,7 @@ func stringify1688VariantValue(value any) string {
 	}
 }
 
-func collect1688VariantImages(variant alibaba1688model.Variant, fallback []string) []string {
+func collect1688VariantImages(variant Alibaba1688VariantSnapshot, fallback []string) []string {
 	images := make([]string, 0, 2)
 	if image := strings.TrimSpace(variant.Image); image != "" {
 		images = append(images, image)

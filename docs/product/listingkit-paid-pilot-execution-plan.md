@@ -212,7 +212,7 @@ M0 固定基线和发布证据
 
 - `internal/listingkit/httpapi/zitadel_auth_route_authorization.go`
 - `internal/productenrich/httpapi/sourcea1688/*`
-- `internal/product/sourcehandoff/a1688/httpapi/*`
+- `internal/compatibility/listingkit/sourcehandoff/a1688/httpapi/*`
 - 路由 descriptor 和权限测试
 
 **实现要求**
@@ -288,7 +288,7 @@ M0 固定基线和发布证据
 
 **验证证据（2026-07-16，Asia/Singapore）**
 
-- `$env:GOWORK='off'; go test ./internal/listingkit ./internal/listingkit/api ./internal/listingkit/httpapi ./internal/product/sourcehandoff/a1688 ./internal/productenrich/httpapi/sourcea1688 ./internal/app/httpapi -count=1`：通过。
+- `$env:GOWORK='off'; go test ./internal/listingkit ./internal/listingkit/api ./internal/listingkit/httpapi ./internal/compatibility/listingkit/sourcehandoff/a1688 ./internal/productenrich/httpapi/sourcea1688 ./internal/app/httpapi -count=1`：通过。
 - `$env:GOWORK='off'; go test ./tests/... -count=1`：通过。
 - `web/listingkit-ui` 中的 `npm run lint`（0 error，14 个既有 warning）、`npm run typecheck` 和 `npm test`：通过；Vitest 为 243 个文件、1351 个测试。
 
@@ -1014,7 +1014,7 @@ go test ./internal/listingkit/api/... -count=1
 go test ./internal/listingkit/httpapi/... -count=1
 go test ./internal/listingkit/store/... -count=1
 go test ./internal/listingsubscription/... -count=1
-go test ./internal/product/sourcehandoff/... -count=1
+go test ./internal/compatibility/listingkit/sourcehandoff/... -count=1
 go test ./internal/productenrich/httpapi/sourcea1688/... -count=1
 go test ./tests/... -count=1
 ```

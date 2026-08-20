@@ -31,6 +31,8 @@ Owns:
 - enrichment-ready intermediate models
 - 1688 scraped-data normalization for specs, descriptions, and image lists
 - handoff into catalog, asset, and image domains
+- the product-owned `Alibaba1688ProductSnapshot` contract used by source
+  normalization and enrichment conversion
 
 Does not own:
 
@@ -41,7 +43,9 @@ Does not own:
 Boundary guard:
 
 - this package may normalize crawler outputs, but must not depend on `internal/listingkit`, marketplace packages, or runtime/platform wiring.
-- this package may consume raw crawler DTO/model packages when they are the handoff format, but must not import legacy crawler runtime packages directly.
+- this package must not import `internal/listingkit`, `internal/compatibility`, `internal/crawler`, or `internal/integration`.
+- `internal/integration/crawler/a1688` converts legacy crawler DTOs into the
+  snapshot before they enter this package.
 
 Current stop line:
 
