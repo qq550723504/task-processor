@@ -8,6 +8,8 @@ Owns:
 - source-specific extraction and parsing
 - raw result shaping for downstream sourcing
 - the adapter that hides the legacy `internal/crawler/alibaba1688` processor
+- `SnapshotFromLegacyProduct`, which converts the legacy crawler DTO into the
+  product-owned `internal/product/sourcing.Alibaba1688ProductSnapshot`
 
 Does not own:
 
@@ -15,7 +17,9 @@ Does not own:
 - listing-task orchestration
 - reusable product normalization
 
-The normalized handoff belongs in `internal/product/sourcing`.
+The normalized handoff belongs in `internal/product/sourcing`. This adapter
+may depend inward on that narrow snapshot contract; product sourcing must not
+depend back on this integration package or on the legacy crawler model.
 
 Current adapter:
 

@@ -79,8 +79,8 @@ The Product Sourcing MVP foundation is implemented on the calibrated baseline:
 1. `internal/product/sourcing` owns `SourceIdentity`, fingerprinting, validation, and `SourceEnvelope`.
 2. Amazon and 1688 source results map into the neutral envelope.
 3. Source envelopes hand off to `internal/catalog.ProductFacts` and `internal/asset.Facts`.
-4. `internal/product/sourcehandoff` adapts neutral facts into the existing ListingKit `GenerateRequest`.
-5. The 1688 handoff has a narrow command and HTTP adapter path to the existing task-creation boundary.
+4. `internal/compatibility/listingkit/sourcehandoff` adapts neutral facts into the existing ListingKit `GenerateRequest`.
+5. The 1688 handoff has a narrow compatibility command and HTTP adapter path to the existing task-creation boundary; the integration adapter converts the legacy crawler DTO into a product-owned snapshot first.
 6. Product-source, crawler, catalog, asset, and ListingKit bridge dependency directions have guard tests.
 
 PR #141 also adds the maintained guarded runtime-acceptance script. Its default

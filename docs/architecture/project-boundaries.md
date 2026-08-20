@@ -124,6 +124,10 @@ Must not depend on:
 - HTTP handlers.
 - Marketplace workspace facade code.
 
+For the 1688 source boundary, internal/product must not import internal/listingkit, internal/compatibility, internal/crawler, or internal/integration. The product-owned `internal/product/sourcing` package consumes the neutral 1688 snapshot and owns source normalization; it does not consume the legacy crawler DTO.
+
+The adapter direction is explicit: internal/integration/crawler/a1688 converts legacy crawler DTOs into internal/product/sourcing snapshots. This is a narrow adapter-to-domain exception, not permission for integration packages to call product services or own product workflows.
+
 ### 3.5 Marketplace modules
 
 Current examples:
@@ -176,7 +180,15 @@ Must not depend on:
 - Marketplace business rules.
 - HTTP handlers.
 
-### 3.7 `internal/aicapability`
+### 3.7 `internal/compatibility/listingkit`
+
+Owns backward-compatible ListingKit entrypoints and cross-boundary DTO
+translation while the real business owners move into product, listing, and
+marketplace packages.
+
+For the 1688 task path, internal/compatibility/listingkit/sourcehandoff owns the 1688 to ListingKit application handoff. It keeps the existing command, store-access, identity, request-shape, and HTTP compatibility behavior while delegating source facts to product sourcing.
+
+### 3.8 `internal/aicapability`
 
 Current role: neutral platform and integration module for AI capability
 selection.
@@ -285,6 +297,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestDomainHTTPPackagesDoNotImportAppHTTPAPI`
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
+- `TestProductDomainDoesNotDependOnOuterAdapters`
 - `TestListingKitSubdomainsDoNotImportRootFacade`
 - `TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly`
 - `TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly`

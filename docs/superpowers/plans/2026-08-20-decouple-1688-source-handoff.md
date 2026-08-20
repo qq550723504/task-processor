@@ -480,6 +480,7 @@ git commit -m "refactor: move 1688 handoff to listingkit compatibility"
 - Modify: `docs/refactoring/current-refactoring-status.md`
 - Modify: `docs/architecture/pay-041-usage-ledger.md`
 - Modify: `docs/product/product-sourcing-mvp-plan.md`
+- Modify: `docs/product/listingkit-paid-pilot-execution-plan.md`
 - Modify: `docs/architecture/architecture-review-checklist.md`
 - Modify: `tests/architecture_docs_test.go`
 
@@ -550,7 +551,7 @@ go test ./tests -run 'Test(.*Architecture.*Doc|ProjectBoundaryDocumentDefines168
 rg -n 'internal/product/sourcehandoff' docs/architecture docs/product docs/refactoring internal/product/sourcing/README.md internal/integration/crawler/a1688/README.md internal/compatibility/listingkit/README.md
 ```
 
-Expected: the documentation test exits 0. Inspect any `rg` matches and remove stale current-state ownership references; historical migration wording may mention the old path only when explicitly labeled as former.
+Expected: the documentation test exits 0. Inspect any `rg` matches and remove stale current-state ownership references; the remaining matches must be limited to documents explicitly marked as historical implementation records or dated validation evidence.
 
 - [ ] **Step 4: Self-review and commit Task 4**
 
@@ -558,7 +559,7 @@ Run:
 
 ```powershell
 git diff --check
-git add docs/architecture/project-target-architecture.md docs/architecture/project-boundaries.md internal/integration/crawler/a1688/README.md internal/product/sourcing/README.md internal/compatibility/listingkit/README.md docs/refactoring/current-refactoring-status.md docs/architecture/pay-041-usage-ledger.md docs/product/product-sourcing-mvp-plan.md docs/architecture/architecture-review-checklist.md tests/architecture_docs_test.go
+git add docs/architecture/project-target-architecture.md docs/architecture/project-boundaries.md internal/integration/crawler/a1688/README.md internal/product/sourcing/README.md internal/compatibility/listingkit/README.md docs/refactoring/current-refactoring-status.md docs/architecture/pay-041-usage-ledger.md docs/product/product-sourcing-mvp-plan.md docs/product/listingkit-paid-pilot-execution-plan.md docs/architecture/architecture-review-checklist.md tests/architecture_docs_test.go docs/superpowers/plans/2026-08-20-decouple-1688-source-handoff.md
 git diff --cached --name-only
 git commit -m "docs: align 1688 source handoff ownership"
 ```

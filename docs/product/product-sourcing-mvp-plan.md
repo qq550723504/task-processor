@@ -69,7 +69,9 @@ The contracts keep target-marketplace categories, publishing payloads, browser c
 Amazon product result
   -> internal/product/sourcing.AmazonSourceEnvelope
 
-1688 crawler product result
+legacy 1688 crawler product result
+  -> internal/integration/crawler/a1688.SnapshotFromLegacyProduct
+  -> internal/product/sourcing.Alibaba1688ProductSnapshot
   -> internal/product/sourcing.Alibaba1688SourceEnvelope
 ```
 
@@ -94,7 +96,7 @@ internal/catalog.ProductFacts + internal/asset.Facts
   -> internal/listingkit.SourceFactsGenerateRequestInput
   -> internal/listingkit.GenerateRequest
 
-internal/product/sourcehandoff.ListingKitRequestInput
+internal/compatibility/listingkit/sourcehandoff.ListingKitRequestInput
   -> existing CreateGenerateTask boundary
 ```
 
@@ -103,9 +105,9 @@ The bridge is DTO adaptation and orchestration only. It does not submit marketpl
 ### 3.5 1688 task-creation adapter
 
 ```text
-internal/product/sourcehandoff/a1688.CreateTaskCommand
-  -> internal/product/sourcehandoff/a1688.ListingKitTaskInput
-  -> internal/product/sourcehandoff.ListingKitRequestInput
+internal/compatibility/listingkit/sourcehandoff/a1688.CreateTaskCommand
+  -> internal/compatibility/listingkit/sourcehandoff/a1688.ListingKitTaskInput
+  -> internal/compatibility/listingkit/sourcehandoff.ListingKitRequestInput
   -> existing ListingKit CreateGenerateTask boundary
 
 internal/productenrich/httpapi/sourcea1688
@@ -159,7 +161,7 @@ Run from the repository root:
 go test ./internal/product/sourcing/... -count=1
 go test ./internal/catalog/... -count=1
 go test ./internal/asset/... -count=1
-go test ./internal/product/sourcehandoff/... -count=1
+go test ./internal/compatibility/listingkit/sourcehandoff/... -count=1
 go test ./internal/productenrich/httpapi/sourcea1688/... -count=1
 go test ./internal/listingkit/... -count=1
 go test ./tests/... -count=1

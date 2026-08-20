@@ -67,6 +67,24 @@ func TestProjectBoundaryDocumentKeepsPreviewPlacementAlignedWithStablePreviewBou
 	}
 }
 
+func TestProjectBoundaryDocumentDefines1688SourceHandoffOwnership(t *testing.T) {
+	path := filepath.Join("..", "docs", "architecture", "project-boundaries.md")
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+
+	for _, phrase := range []string{
+		"internal/product must not import internal/listingkit, internal/compatibility, internal/crawler, or internal/integration",
+		"internal/integration/crawler/a1688 converts legacy crawler DTOs into internal/product/sourcing snapshots",
+		"internal/compatibility/listingkit/sourcehandoff owns the 1688 to ListingKit application handoff",
+	} {
+		if !strings.Contains(string(content), phrase) {
+			t.Errorf("%s must mention %q", path, phrase)
+		}
+	}
+}
+
 func TestProjectBoundaryDocumentTracksCurrentEnforcementTests(t *testing.T) {
 	path := filepath.Join("..", "docs", "architecture", "project-boundaries.md")
 	content, err := os.ReadFile(path)
