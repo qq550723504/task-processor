@@ -29,6 +29,7 @@ func buildStudioBatchTaskGenerateRequest(
 		Platforms:    []string{"shein"},
 		SheinStoreID: storeID,
 		Options: &GenerateOptions{
+			ImageStrategy: normalizeSheinImageStrategy(candidate.ImageStrategy),
 			ProcessImages: false,
 			SheinStudio: &SheinStudioOptions{
 				StyleID:                styleID,

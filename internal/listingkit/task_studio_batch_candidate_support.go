@@ -450,6 +450,16 @@ func buildStudioBatchTaskCandidateKey(ctx context.Context, batch *StudioBatchRec
 	return hex.EncodeToString(sum[:])
 }
 
+func buildDisambiguatedStudioBatchTaskCandidateKey(candidate studioBatchTaskCandidate) string {
+	base := strings.TrimSpace(candidate.CandidateKey)
+	if base == "" {
+		return ""
+	}
+	strategy := normalizeSheinImageStrategy(candidate.ImageStrategy)
+	sum := sha256.Sum256([]byte(base + "|image_strategy=" + strategy))
+	return hex.EncodeToString(sum[:])
+}
+
 func sessionImageStrategy(session *SheinStudioSession) string {
 	if session == nil {
 		return sheinImageStrategySDSOfficial

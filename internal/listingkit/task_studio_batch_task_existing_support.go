@@ -129,6 +129,9 @@ func (s *taskStudioBatchService) createdTaskFromDurableLink(ctx context.Context,
 			return SheinStudioCreatedTask{}, false
 		}
 	}
+	if !studioBatchTaskLinkMatchesImageStrategy(link, task, candidate) {
+		return SheinStudioCreatedTask{}, false
+	}
 	if link.Status != studioBatchTaskLinkStatusCreated {
 		link.Status = studioBatchTaskLinkStatusCreated
 		link.ReasonCode = ""
@@ -276,6 +279,9 @@ func studioBatchTaskMatchesSelection(
 	if studio == nil || sds == nil {
 		return false
 	}
+	if normalizeSheinImageStrategy(resolveSheinImageStrategy(task.Request)) != normalizeSheinImageStrategy(candidate.ImageStrategy) {
+		return false
+	}
 	styleID := strings.TrimSpace(studio.StyleID)
 	if styleID != candidate.StyleID && styleID != buildStudioBatchTaskStyleID(candidate.Design.ID) {
 		return false
@@ -287,6 +293,20 @@ func studioBatchTaskMatchesSelection(
 		sds.ParentProductID == candidate.SelectionSnapshot.ParentProductID &&
 		sds.PrototypeGroupID == candidate.SelectionSnapshot.PrototypeGroupID &&
 		strings.TrimSpace(sds.LayerID) == strings.TrimSpace(candidate.SelectionSnapshot.LayerID)
+}
+
+func studioBatchTaskLinkMatchesImageStrategy(link *StudioBatchTaskLinkRecord, task *Task, candidate studioBatchTaskCandidate) bool {
+	if link == nil {
+		return false
+	}
+	candidateStrategy := normalizeSheinImageStrategy(candidate.ImageStrategy)
+	if storedStrategy := strings.TrimSpace(link.ImageStrategy); storedStrategy != "" {
+		return normalizeSheinImageStrategy(storedStrategy) == candidateStrategy
+	}
+	if task == nil || task.Request == nil {
+		return candidateStrategy == sheinImageStrategySDSOfficial
+	}
+	return resolveSheinImageStrategy(task.Request) == candidateStrategy
 }
 
 func mergeStudioCreatedTasks(

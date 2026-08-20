@@ -1,6 +1,10 @@
 package listingkit
 
-import "testing"
+import (
+	"context"
+	"testing"
+	"time"
+)
 
 func TestBuildStudioBatchTaskGenerateRequestIncludesOwnerContext(t *testing.T) {
 	t.Parallel()
@@ -41,6 +45,110 @@ func TestBuildStudioBatchTaskGenerateRequestIncludesOwnerContext(t *testing.T) {
 	}
 	if req.UserID != "user-1" {
 		t.Fatalf("UserID = %q, want user-1", req.UserID)
+	}
+}
+
+func TestBuildStudioBatchTaskGenerateRequestIncludesImageStrategy(t *testing.T) {
+	t.Parallel()
+
+	req := buildStudioBatchTaskGenerateRequest(
+		nil,
+		&StudioBatchRecord{TenantID: "tenant-1", UserID: "user-1", SheinStoreID: 870},
+		studioBatchTaskCandidate{
+			Item:          StudioBatchItemRecord{ID: "item-1"},
+			SelectionID:   "selection-1",
+			ImageStrategy: " AI_GENERATED ",
+			Selection:     SheinStudioGroupedSelection{SheinStoreID: "870"},
+		},
+		StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
+	)
+
+	if req == nil || req.Options == nil {
+		t.Fatal("request options are nil")
+	}
+	if got, want := req.Options.ImageStrategy, sheinImageStrategyAIGenerated; got != want {
+		t.Fatalf("ImageStrategy = %q, want normalized %q", got, want)
+	}
+}
+
+func TestStudioBatchTaskMatchesSelectionRejectsDifferentImageStrategy(t *testing.T) {
+	t.Parallel()
+
+	task := &Task{
+		Request: &GenerateRequest{
+			ImageURLs: []string{"https://example.com/design.png"},
+			Options: &GenerateOptions{
+				ImageStrategy: sheinImageStrategySDSOfficial,
+				SheinStudio:   &SheinStudioOptions{StyleID: "style-1"},
+				SDS:           &SDSSyncOptions{VariantID: 1, ParentProductID: 2, PrototypeGroupID: 3, LayerID: "layer-1"},
+			},
+		},
+	}
+	candidate := studioBatchTaskCandidate{
+		Design:        StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
+		StyleID:       "style-1",
+		ImageStrategy: sheinImageStrategyAIGenerated,
+		SelectionSnapshot: SheinStudioSelection{
+			VariantID: 1, ParentProductID: 2, PrototypeGroupID: 3, LayerID: "layer-1",
+		},
+	}
+
+	if studioBatchTaskMatchesSelection(task, candidate) {
+		t.Fatal("SDS task unexpectedly matched AI candidate")
+	}
+}
+
+func TestStudioBatchTaskLinkMatchesImageStrategyRejectsHistoricalAIMismatch(t *testing.T) {
+	t.Parallel()
+
+	link := &StudioBatchTaskLinkRecord{ImageStrategy: ""}
+	task := &Task{Request: &GenerateRequest{Options: &GenerateOptions{ImageStrategy: sheinImageStrategyAIGenerated}}}
+	candidate := studioBatchTaskCandidate{ImageStrategy: sheinImageStrategySDSOfficial}
+	if studioBatchTaskLinkMatchesImageStrategy(link, task, candidate) {
+		t.Fatal("historical AI task unexpectedly matched SDS candidate")
+	}
+}
+
+func TestReserveStudioBatchTaskCandidateDisambiguatesHistoricalStrategyCollision(t *testing.T) {
+	t.Parallel()
+
+	links := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-1")
+	legacy := &StudioBatchTaskLinkRecord{
+		ID:               "legacy-link",
+		BatchID:          "batch-1",
+		ItemID:           "item-1",
+		DesignID:         "design-1",
+		SelectionID:      "selection-1",
+		CandidateKey:     "legacy-key",
+		ListingKitTaskID: "old-ai-task",
+		Status:           studioBatchTaskLinkStatusCreated,
+	}
+	if err := links.CreateStudioBatchTaskLink(ctx, legacy); err != nil {
+		t.Fatalf("create legacy link: %v", err)
+	}
+	s := &taskStudioBatchService{
+		batchTaskLinkRepo: links,
+		currentTime:       time.Now,
+		getTask: func(context.Context, string) (*Task, error) {
+			return &Task{Request: &GenerateRequest{Options: &GenerateOptions{ImageStrategy: sheinImageStrategyAIGenerated}}}, nil
+		},
+	}
+	candidate := studioBatchTaskCandidate{
+		Design:        StudioMaterializedDesignRecord{BatchID: "batch-1", ID: "design-1"},
+		Item:          StudioBatchItemRecord{ID: "item-1", BatchID: "batch-1"},
+		SelectionID:   "selection-1",
+		CandidateKey:  "legacy-key",
+		ImageStrategy: sheinImageStrategySDSOfficial,
+	}
+	if err := s.reserveStudioBatchTaskCandidate(ctx, &candidate); err != nil {
+		t.Fatalf("reserve strategy-colliding candidate: %v", err)
+	}
+	if candidate.CandidateKey == "legacy-key" {
+		t.Fatal("candidate key was not disambiguated from historical strategy collision")
+	}
+	if _, err := links.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey); err != nil {
+		t.Fatalf("get disambiguated link: %v", err)
 	}
 }
 
