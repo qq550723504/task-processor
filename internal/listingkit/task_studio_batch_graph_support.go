@@ -41,6 +41,7 @@ func (s *taskStudioBatchService) syncStudioBatchRetryExecutionConfigFromDraft(ct
 	}
 
 	batch.Prompt = session.Prompt
+	batch.PromptMode = session.PromptMode
 	batch.ProductImageCount = session.ProductImageCount
 	batch.ProductImagePrompt = session.ProductImagePrompt
 	batch.ProductImagePrompts = append(SheinStudioProductImagePromptList(nil), session.ProductImagePrompts...)

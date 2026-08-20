@@ -511,11 +511,12 @@ func TestBuildStudioBatchRecordFromSessionDraftCopiesProductImageSettings(t *tes
 
 	batch := buildStudioBatchRecordFromSessionDraft(&SheinStudioSession{
 		ID:                  "batch-1",
+		PromptMode:          "raw",
 		ProductImageCount:   "6",
 		ProductImagePrompt:  "keep the print centered",
 		ProductImagePrompts: SheinStudioProductImagePromptList{{Role: "detail", Prompt: "show stitching"}},
 	}, time.Now())
-	if batch.ProductImageCount != "6" || batch.ProductImagePrompt != "keep the print centered" {
+	if batch.PromptMode != "raw" || batch.ProductImageCount != "6" || batch.ProductImagePrompt != "keep the print centered" {
 		t.Fatalf("batch product image settings = %+v, want copied session settings", batch)
 	}
 	if len(batch.ProductImagePrompts) != 1 || batch.ProductImagePrompts[0].Prompt != "show stitching" {

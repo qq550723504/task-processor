@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -147,6 +148,13 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				taskID := ""
 				if task != nil {
 					taskID = task.ID
+				}
+				if errors.Is(err, context.Canceled) {
+					// createGenerateTask may have inserted a queued row before
+					// lease cancellation reached dispatch. Do not retain its ID:
+					// linking it as a failed batch task would make the never-
+					// dispatched row eligible for durable-task reuse on retry.
+					taskID = ""
 				}
 				persistErr := s.persistStudioBatchTaskLink(ctx, taskCandidate, taskID, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, "task_create_failed", err.Error())
 				_ = dispatchHeartbeatStop()
