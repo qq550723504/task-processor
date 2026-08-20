@@ -295,6 +295,7 @@ func TestLoadStudioBatchRejectedTasksFromLinksFiltersInactiveStrategy(t *testing
 	for _, link := range []*StudioBatchTaskLinkRecord{
 		{ID: "sds-rejection", BatchID: "batch-1", DesignID: "design-1", ItemID: "item-1", SelectionID: "sds", CandidateKey: "sds-rejection", ImageStrategy: sheinImageStrategySDSOfficial, Status: studioBatchTaskLinkStatusFailed, ReasonCode: "baseline_missing", Message: "sds"},
 		{ID: "ai-rejection", BatchID: "batch-1", DesignID: "design-1", ItemID: "item-1", SelectionID: "ai", CandidateKey: "ai-rejection", ImageStrategy: sheinImageStrategyAIGenerated, Status: studioBatchTaskLinkStatusFailed, ReasonCode: "baseline_missing", Message: "ai"},
+		{ID: "legacy-rejection", BatchID: "batch-1", DesignID: "design-1", ItemID: "item-1", SelectionID: "legacy", CandidateKey: "legacy-rejection", Status: studioBatchTaskLinkStatusFailed, ReasonCode: "baseline_missing", Message: "legacy"},
 	} {
 		if err := links.CreateStudioBatchTaskLink(ctx, link); err != nil {
 			t.Fatalf("create rejection link %s: %v", link.ID, err)
@@ -304,8 +305,15 @@ func TestLoadStudioBatchRejectedTasksFromLinksFiltersInactiveStrategy(t *testing
 	if err != nil {
 		t.Fatalf("loadStudioBatchRejectedTasksFromLinks() error = %v", err)
 	}
-	if len(rejected) != 1 || rejected[0].SelectionID != "ai" {
-		t.Fatalf("rejected = %+v, want only active AI rejection", rejected)
+	if len(rejected) != 2 {
+		t.Fatalf("rejected = %+v, want active AI and blank-strategy legacy rejections", rejected)
+	}
+	seen := map[string]bool{}
+	for _, task := range rejected {
+		seen[task.SelectionID] = true
+	}
+	if !seen["ai"] || !seen["legacy"] || seen["sds"] {
+		t.Fatalf("rejected selections = %#v, want ai+legacy only", seen)
 	}
 }
 

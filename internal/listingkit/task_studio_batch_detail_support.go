@@ -186,12 +186,12 @@ func loadStudioBatchRejectedTasksFromLinks(
 			strings.TrimSpace(link.ReasonCode) == "task_create_failed" {
 			continue
 		}
-		linkStrategy := normalizeSheinImageStrategy(link.ImageStrategy)
-		if linkStrategy == "" {
-			linkStrategy = sheinImageStrategySDSOfficial
-		}
-		if linkStrategy != activeStrategy {
-			continue
+		// A blank strategy predates this field and is therefore applicable to
+		// the active strategy; only an explicitly different strategy is stale.
+		if rawStrategy := strings.TrimSpace(link.ImageStrategy); rawStrategy != "" {
+			if linkStrategy := normalizeSheinImageStrategy(rawStrategy); linkStrategy != activeStrategy {
+				continue
+			}
 		}
 		key := strings.Join([]string{
 			strings.TrimSpace(link.DesignID),
