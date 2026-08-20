@@ -76,6 +76,30 @@ func TestStudioBatchTaskLinkBackfillUsesLinkedTaskImageStrategy(t *testing.T) {
 	}
 }
 
+func TestStudioBatchTaskLinkBackfillResolvesCandidateUsingLinkedTaskStrategy(t *testing.T) {
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	fixture := newStudioBatchTaskLinkBackfillFixture(t, ctx)
+	fixture.sessions.sessions[0].ImageStrategy = sheinImageStrategyAIGenerated
+	fixture.sessions.sessions[0].CreatedTasks[0] = SheinStudioCreatedTask{ID: "task-1", DesignID: "design-1"}
+
+	summary, err := BackfillLegacyStudioBatchTaskLinks(ctx, StudioBatchTaskLinkBackfillConfig{
+		SessionRepository: fixture.sessions,
+		BatchRepository:   fixture.batches,
+		TaskGetter:        fixture.tasks,
+		LinkRepository:    fixture.links,
+	})
+	if err != nil {
+		t.Fatalf("BackfillLegacyStudioBatchTaskLinks() error = %v", err)
+	}
+	if summary.LinksCreated != 1 || len(summary.UnresolvedSelectionOwnership) != 0 {
+		t.Fatalf("summary = %+v, want one link and no unresolved candidate", summary)
+	}
+	link := fixture.mustGetLink(t, ctx, fixture.candidateKey)
+	if link.ImageStrategy != sheinImageStrategySDSOfficial {
+		t.Fatalf("backfilled image strategy = %q, want linked task strategy %q", link.ImageStrategy, sheinImageStrategySDSOfficial)
+	}
+}
+
 func TestStudioBatchTaskLinkBackfillRecordsMissingTasksWithoutInvalidDuplicate(t *testing.T) {
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	fixture := newStudioBatchTaskLinkBackfillFixture(t, ctx)

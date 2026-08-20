@@ -304,7 +304,7 @@ func studioBatchTaskLinkMatchesImageStrategy(link *StudioBatchTaskLinkRecord, ta
 		return normalizeSheinImageStrategy(storedStrategy) == candidateStrategy
 	}
 	if task == nil || task.Request == nil {
-		return candidateStrategy == sheinImageStrategySDSOfficial
+		return strings.TrimSpace(link.ListingKitTaskID) == "" && link.Status != studioBatchTaskLinkStatusCreated && candidateStrategy == sheinImageStrategySDSOfficial
 	}
 	return resolveSheinImageStrategy(task.Request) == candidateStrategy
 }

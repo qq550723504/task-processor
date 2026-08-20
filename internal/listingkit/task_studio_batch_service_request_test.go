@@ -109,6 +109,16 @@ func TestStudioBatchTaskLinkMatchesImageStrategyRejectsHistoricalAIMismatch(t *t
 	}
 }
 
+func TestStudioBatchTaskLinkMatchesImageStrategyRejectsUnknownHistoricalStrategy(t *testing.T) {
+	t.Parallel()
+
+	link := &StudioBatchTaskLinkRecord{Status: studioBatchTaskLinkStatusCreated, ListingKitTaskID: "historical-task"}
+	candidate := studioBatchTaskCandidate{ImageStrategy: sheinImageStrategySDSOfficial}
+	if studioBatchTaskLinkMatchesImageStrategy(link, nil, candidate) {
+		t.Fatal("unknown historical strategy unexpectedly matched SDS candidate")
+	}
+}
+
 func TestReserveStudioBatchTaskCandidateDisambiguatesHistoricalStrategyCollision(t *testing.T) {
 	t.Parallel()
 

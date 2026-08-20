@@ -249,8 +249,10 @@ func resolveStudioBatchBackfillCandidate(
 	}
 	if task != nil {
 		for _, candidate := range candidates {
-			if studioBatchTaskMatchesSelection(task, candidate) {
-				return candidate, true
+			candidateForTask := candidate
+			candidateForTask.ImageStrategy = resolveSheinImageStrategy(task.Request)
+			if studioBatchTaskMatchesSelection(task, candidateForTask) {
+				return candidateForTask, true
 			}
 		}
 	}
