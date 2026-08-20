@@ -1383,7 +1383,7 @@ describe("shein studio workbench model", () => {
     ).toBeNull();
   });
 
-  it("projects default SDS image selection for hybrid generation", () => {
+  it("projects default SDS image selection for SDS rendering", () => {
     expect(
       projectDefaultSelectedSDSImages({
         availableSdsImages: [
@@ -1400,7 +1400,7 @@ describe("shein studio workbench model", () => {
         ],
         currentSelectedSdsImages: [],
         hasCustomizedSdsSelection: false,
-        imageStrategy: "hybrid",
+        imageStrategy: "sds_official",
         renderSizeImagesWithSds: true,
       }),
     ).toEqual([

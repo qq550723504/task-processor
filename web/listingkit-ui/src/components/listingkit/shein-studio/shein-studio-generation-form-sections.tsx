@@ -435,15 +435,13 @@ export function ProductImageGenerationSettings({
         >
           <option value="ai_generated">AI 生成商品图</option>
           <option value="sds_official">SDS 官方渲染</option>
-          <option value="hybrid">混合：SDS 主图 + AI 图库</option>
         </Select>
         <p className="text-xs leading-6 text-muted-foreground">
-          AI 生成模式不调用 SDS 设计器；SDS 官方渲染会使用模板图； 混合模式先用
-          SDS 图，再追加 AI 商品图。
+          AI 生成模式不调用 SDS 设计器；SDS 官方渲染会使用模板图。
         </p>
       </Label>
 
-      {imageStrategy === "hybrid" || imageStrategy === "sds_official" ? (
+      {imageStrategy === "sds_official" ? (
         <SDSImagePicker
           availableImages={availableSdsImages}
           selectedImages={selectedSdsImages}

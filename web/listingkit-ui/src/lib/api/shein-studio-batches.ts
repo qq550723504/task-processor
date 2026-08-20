@@ -16,6 +16,7 @@ import type {
   SheinStudioCreatedTask,
   SheinStudioFailedTask,
   SheinStudioItemizedBatchItem,
+  SheinStudioImageStrategy,
   SheinStudioMaterializedDesign,
   SheinStudioRejectedTask,
   SheinStudioTaskLifecycleStatus,
@@ -342,6 +343,7 @@ function mapStudioBatch(
 export type SheinStudioBatchRequestOptions = {
   allowPartialWhileGenerating?: boolean;
   tenantId?: string;
+  imageStrategy?: SheinStudioImageStrategy;
 };
 
 function buildStudioBatchQuery(options?: SheinStudioBatchRequestOptions) {
@@ -731,9 +733,13 @@ export async function createSheinStudioBatchTasks(
   const body: {
     allow_partial_while_generating?: boolean;
     design_ids: string[];
+    image_strategy?: SheinStudioImageStrategy;
   } = { design_ids: designIds };
   if (options?.allowPartialWhileGenerating) {
     body.allow_partial_while_generating = true;
+  }
+  if (options?.imageStrategy) {
+    body.image_strategy = options.imageStrategy;
   }
   const payload = await apiRequest<unknown>(
     `/studio/batches/${batchId}/tasks`,

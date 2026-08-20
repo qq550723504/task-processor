@@ -118,9 +118,7 @@ func newListingStudioBatchServiceRunner(s *taskStudioBatchService) *listingStudi
 			if err != nil {
 				return nil, err
 			}
-			_, session, _, err := s.prepareStudioBatchTaskCreation(ctx, batchID, &CreateStudioBatchTasksRequest{
-				DesignIDs: state.DesignIDs,
-			})
+			_, session, _, err := s.prepareStudioBatchTaskCreation(ctx, batchID, studioBatchTaskCreationRequest(ctx, state.DesignIDs))
 			if err != nil {
 				return nil, err
 			}

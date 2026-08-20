@@ -72,6 +72,50 @@ func TestBuildStudioBatchTaskGenerateRequestIncludesImageStrategy(t *testing.T) 
 	}
 }
 
+func TestStudioBatchTaskImageStrategyPrefersExplicitRequest(t *testing.T) {
+	t.Parallel()
+
+	strategy := " AI_GENERATED "
+	got := resolveStudioBatchTaskImageStrategy(
+		&CreateStudioBatchTasksRequest{ImageStrategy: &strategy},
+		&SheinStudioSession{ImageStrategy: sheinImageStrategySDSOfficial},
+	)
+
+	if got != sheinImageStrategyAIGenerated {
+		t.Fatalf("strategy = %q, want %q", got, sheinImageStrategyAIGenerated)
+	}
+}
+
+func TestStudioBatchTaskImageStrategyMapsRemovedHybridModeToSDS(t *testing.T) {
+	t.Parallel()
+
+	strategy := "hybrid"
+	got := resolveStudioBatchTaskImageStrategy(
+		&CreateStudioBatchTasksRequest{ImageStrategy: &strategy},
+		&SheinStudioSession{ImageStrategy: sheinImageStrategyAIGenerated},
+	)
+
+	if got != sheinImageStrategySDSOfficial {
+		t.Fatalf("strategy = %q, want %q", got, sheinImageStrategySDSOfficial)
+	}
+}
+
+func TestStudioBatchTaskCreationRequestCarriesStrategyAcrossResumeContext(t *testing.T) {
+	t.Parallel()
+
+	strategy := sheinImageStrategyAIGenerated
+	ctx := withStudioBatchTaskImageStrategy(context.Background(), &CreateStudioBatchTasksRequest{
+		ImageStrategy: &strategy,
+	})
+	req := studioBatchTaskCreationRequest(ctx, []string{"design-1"})
+	if req == nil || req.ImageStrategy == nil {
+		t.Fatal("request strategy is nil")
+	}
+	if got, want := *req.ImageStrategy, sheinImageStrategyAIGenerated; got != want {
+		t.Fatalf("request strategy = %q, want %q", got, want)
+	}
+}
+
 func TestStudioBatchTaskMatchesSelectionRejectsDifferentImageStrategy(t *testing.T) {
 	t.Parallel()
 

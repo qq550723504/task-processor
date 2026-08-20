@@ -508,7 +508,7 @@ function formatImageStrategyLabel(strategy: SheinStudioImageStrategy) {
     case "sds_official":
       return "SDS 官方渲染";
     case "hybrid":
-      return "混合生成";
+      return "SDS 官方渲染";
     case "ai_generated":
     default:
       return "AI 生成商品图";

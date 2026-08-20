@@ -32,9 +32,7 @@ func newListingStudioBatchTaskCreationService(s *taskStudioBatchService) *listin
 			if err != nil {
 				return studiodomain.BatchTaskPrepareState[SheinStudioSession, StudioBatchRecord]{}, err
 			}
-			_, session, _, err := s.prepareStudioBatchTaskCreation(ctx, batchID, &CreateStudioBatchTasksRequest{
-				DesignIDs: append([]string(nil), designIDs...),
-			})
+			_, session, _, err := s.prepareStudioBatchTaskCreation(ctx, batchID, studioBatchTaskCreationRequest(ctx, designIDs))
 			if err != nil {
 				return studiodomain.BatchTaskPrepareState[SheinStudioSession, StudioBatchRecord]{}, err
 			}
@@ -83,9 +81,7 @@ func newListingStudioBatchTaskCreationService(s *taskStudioBatchService) *listin
 			if s == nil {
 				return nil, fmt.Errorf("studio batch task creation service is not configured")
 			}
-			return s.CreateStudioBatchTasks(ctx, batchID, &CreateStudioBatchTasksRequest{
-				DesignIDs: append([]string(nil), designIDs...),
-			})
+			return s.CreateStudioBatchTasks(ctx, batchID, studioBatchTaskCreationRequest(ctx, designIDs))
 		},
 		LoadBatch: func(ctx context.Context, batchID string) (*StudioBatchRecord, error) {
 			if s == nil || s.repo == nil {

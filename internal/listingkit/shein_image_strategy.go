@@ -5,7 +5,9 @@ import "strings"
 const (
 	sheinImageStrategyAIGenerated = "ai_generated"
 	sheinImageStrategySDSOfficial = "sds_official"
-	sheinImageStrategyHybrid      = "hybrid"
+	// hybrid is retained only to read historical tasks; new Studio task
+	// creation normalizes it to SDS and never exposes it as a selectable mode.
+	sheinImageStrategyHybrid = "hybrid"
 )
 
 func resolveSheinImageStrategy(req *GenerateRequest) string {

@@ -77,9 +77,11 @@ func (s *taskStudioBatchService) buildStudioBatchTaskState(
 	batchID string,
 	designIDs []string,
 ) (*StudioBatchTaskState, error) {
-	stateDesignIDs, session, batchDetail, err := s.prepareStudioBatchTaskCreation(ctx, batchID, &CreateStudioBatchTasksRequest{
-		DesignIDs: append([]string(nil), designIDs...),
-	})
+	req := &CreateStudioBatchTasksRequest{DesignIDs: append([]string(nil), designIDs...)}
+	if strategy := studioBatchTaskImageStrategyFromContext(ctx); strategy != nil {
+		req.ImageStrategy = strategy
+	}
+	stateDesignIDs, session, batchDetail, err := s.prepareStudioBatchTaskCreation(ctx, batchID, req)
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +105,14 @@ func (s *taskStudioBatchService) buildStudioBatchTaskState(
 		RejectedTasks:        rejectedTasks,
 		FailedTasks:          failedTasks,
 	}, nil
+}
+
+func studioBatchTaskCreationRequest(ctx context.Context, designIDs []string) *CreateStudioBatchTasksRequest {
+	req := &CreateStudioBatchTasksRequest{DesignIDs: append([]string(nil), designIDs...)}
+	if strategy := studioBatchTaskImageStrategyFromContext(ctx); strategy != nil {
+		req.ImageStrategy = strategy
+	}
+	return req
 }
 
 func allApprovedStudioBatchDesignIDs(detail *StudioBatchDetailGraph) []string {
@@ -469,6 +479,22 @@ func sessionImageStrategy(session *SheinStudioSession) string {
 		return sheinImageStrategySDSOfficial
 	}
 	return session.ImageStrategy
+}
+
+func resolveStudioBatchTaskImageStrategy(req *CreateStudioBatchTasksRequest, session *SheinStudioSession) string {
+	if req != nil && req.ImageStrategy != nil && strings.TrimSpace(*req.ImageStrategy) != "" {
+		return normalizeStudioBatchTaskCreationImageStrategy(*req.ImageStrategy)
+	}
+	return normalizeSheinImageStrategy(sessionImageStrategy(session))
+}
+
+func normalizeStudioBatchTaskCreationImageStrategy(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case sheinImageStrategyAIGenerated:
+		return sheinImageStrategyAIGenerated
+	default:
+		return sheinImageStrategySDSOfficial
+	}
 }
 
 func studioBatchTaskCandidateCompatibilityFingerprint(candidate studioBatchTaskCandidate) string {

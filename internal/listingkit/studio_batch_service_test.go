@@ -2279,10 +2279,15 @@ func TestServiceResumeStudioBatchTaskCreationDoesNotFinalizePartialRequest(t *te
 	svc.repo = newStudioBatchTaskRepositoryStub()
 	svc.taskDeps.taskSubmitter = &studioBatchTaskSubmitterStub{}
 
+	strategy := sheinImageStrategyAIGenerated
 	if _, err := svc.PrepareCreateStudioBatchTasks(ctx, "batch-1", &CreateStudioBatchTasksRequest{
-		DesignIDs: []string{"design-1"},
+		DesignIDs:     []string{"design-1"},
+		ImageStrategy: &strategy,
 	}); err != nil {
 		t.Fatalf("PrepareCreateStudioBatchTasks() error = %v", err)
+	}
+	if sessionRepo.session.ImageStrategy != sheinImageStrategyAIGenerated {
+		t.Fatalf("prepared session image strategy = %q, want %q", sessionRepo.session.ImageStrategy, sheinImageStrategyAIGenerated)
 	}
 	if sessionRepo.session.Status != SheinStudioSessionStatusTasksCreating {
 		t.Fatalf("prepared session status = %q, want tasks_creating", sessionRepo.session.Status)

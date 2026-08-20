@@ -323,7 +323,7 @@ export function resolveApprovedSheinStudioReviewDesigns(
       imageStrategy,
     );
     let variantProductImages: SheinStudioVariantProductImageSet[] = [];
-    if (imageStrategy === "ai_generated" || imageStrategy === "hybrid") {
+    if (imageStrategy === "ai_generated") {
       onProgress?.(
         `Generating AI product images for style ${index + 1} of ${approved.length}...`,
       );

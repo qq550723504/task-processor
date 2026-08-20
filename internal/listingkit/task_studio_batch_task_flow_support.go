@@ -11,6 +11,8 @@ import (
 
 type studioBatchPartialTaskCreationContextKey struct{}
 
+type studioBatchTaskImageStrategyContextKey struct{}
+
 func withStudioBatchPartialTaskCreationAllowed(ctx context.Context) context.Context {
 	return context.WithValue(ctx, studioBatchPartialTaskCreationContextKey{}, true)
 }
@@ -297,7 +299,29 @@ func (s *taskStudioBatchService) prepareStudioBatchTaskCreation(
 	if err := validateStudioBatchTaskCreationDesignReadiness(designs, batchDetail); err != nil {
 		return nil, nil, nil, err
 	}
+	strategy := resolveStudioBatchTaskImageStrategy(req, session)
+	if session == nil {
+		session = &SheinStudioSession{}
+	}
+	session.ImageStrategy = strategy
 	return designIDs, session, batchDetail, nil
+}
+
+func withStudioBatchTaskImageStrategy(ctx context.Context, req *CreateStudioBatchTasksRequest) context.Context {
+	if req == nil || req.ImageStrategy == nil || strings.TrimSpace(*req.ImageStrategy) == "" {
+		return ctx
+	}
+	strategy := normalizeStudioBatchTaskCreationImageStrategy(*req.ImageStrategy)
+	return context.WithValue(ctx, studioBatchTaskImageStrategyContextKey{}, strategy)
+}
+
+func studioBatchTaskImageStrategyFromContext(ctx context.Context) *string {
+	strategy, _ := ctx.Value(studioBatchTaskImageStrategyContextKey{}).(string)
+	strategy = strings.TrimSpace(strategy)
+	if strategy == "" {
+		return nil
+	}
+	return &strategy
 }
 
 func validateStudioBatchTaskCreationDesignReadiness(
