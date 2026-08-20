@@ -27,6 +27,15 @@ Describe "1688 runtime acceptance safety" {
         ($payload.Keys -contains "source_store_id") | Should Be $false
     }
 
+    It "omits the source account selector for public handoff payloads" {
+        $payload = New-ListingKitHandoffPayload `
+            -ProductData ([pscustomobject]@{ id = "322"; title = "Public product"; url = "https://detail.1688.com/offer/322.html" }) `
+            -SourceAccountID 0 -SheinStoreID 168811 -CrawlerTaskID "crawler-task-public"
+
+        ($payload.Keys -contains "source_account_id") | Should Be $false
+        $payload.url | Should Be "https://detail.1688.com/offer/322.html"
+    }
+
     It "does not expose token or profile values in redacted errors" {
         $message = Get-RedactedRuntimeError -StatusCode 401 -Endpoint "https://example.test" -RawBody "token=secret; user_data_dir=C:\profiles\tenant-1"
         $message | Should Match "HTTP 401"
@@ -196,6 +205,24 @@ Describe "1688 runtime acceptance safety" {
         $result.TaskID | Should Be "crawler-task-1"
         $result.Status | Should Be "success"
         $result.ProductData.id | Should Be "321"
+    }
+
+    It "allows public Crawl and omits the source account selector" {
+        $script:lastCrawlBody = $null
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path, $Body)
+            if ($Path -eq "/api/v1/crawl") {
+                $script:lastCrawlBody = $Body
+                return @{ data = @{ task_id = "crawler-task-public" } }
+            }
+            return @{ data = @{ task_id = "crawler-task-public"; status = "success"; product_data = [pscustomobject]@{ id = "322"; title = "Public product"; url = "https://detail.1688.com/offer/322.html" } } }
+        }
+
+        $result = Invoke-Crawl -Url "https://detail.1688.com/offer/322.html" -SourceAccountID 0 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0
+
+        $result.Status | Should Be "success"
+        ($script:lastCrawlBody.Keys -contains "source_account_id") | Should Be $false
+        $script:lastCrawlBody.url | Should Be "https://detail.1688.com/offer/322.html"
     }
 
     It "accepts the live ProductData response casing from the crawler task" {

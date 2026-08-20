@@ -278,15 +278,18 @@ function New-ListingKitHandoffPayload {
         throw "crawler product_data.url is required"
     }
 
-    return [ordered]@{
+    $payload = [ordered]@{
         url               = [string]$ProductData.url
         product           = $ProductData
         source_run_id     = $CrawlerTaskID
         request_id        = "1688-runtime-$CrawlerTaskID"
-        source_account_id = $SourceAccountID
         platforms         = @("shein")
         shein_store_id    = $SheinStoreID
     }
+    if ($SourceAccountID -gt 0) {
+        $payload.source_account_id = $SourceAccountID
+    }
+    return $payload
 }
 
 function Invoke-PublicPreflight {
@@ -361,14 +364,15 @@ function Invoke-Crawl {
     Assert-TaskCreationConfirmation -Mode "Crawl" -Confirmation $Confirmation
     Assert-1688OfferUrl -Url $Url
     if ([string]::IsNullOrWhiteSpace($Url)) { throw "-Url is required" }
-    if ($SourceAccountID -le 0) { throw "-SourceAccountID must be positive" }
+    if ($SourceAccountID -lt 0) { throw "-SourceAccountID must not be negative" }
     if ($RequestTimeoutSec -le 0) { throw "-TimeoutSec must be positive" }
     if ($PollIntervalSec -lt 0) { throw "-PollIntervalSec must not be negative" }
 
-    $submitted = Invoke-AcceptanceRequest -Method Post -Path "/api/v1/crawl" -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $RequestTimeoutSec -Body @{
-        url               = $Url
-        source_account_id = $SourceAccountID
+    $crawlBody = [ordered]@{ url = $Url }
+    if ($SourceAccountID -gt 0) {
+        $crawlBody.source_account_id = $SourceAccountID
     }
+    $submitted = Invoke-AcceptanceRequest -Method Post -Path "/api/v1/crawl" -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $RequestTimeoutSec -Body $crawlBody
     $submittedData = Get-ResponseData -Response $submitted
     $taskID = [string]$submittedData.task_id
     if ([string]::IsNullOrWhiteSpace($taskID)) { throw "crawler response did not contain a task id" }
