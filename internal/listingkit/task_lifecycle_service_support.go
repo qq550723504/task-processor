@@ -244,13 +244,20 @@ func (s *taskLifecycleService) dispatchStudioTask(ctx context.Context, task *Tas
 
 func (s *taskLifecycleService) runGenerateTaskInline(ctx context.Context, task *Task) (*Task, error) {
 	runCtx := context.WithoutCancel(ctx)
-	if taskDispatchCancellationPreserved(ctx) {
+	preserveCancellation := taskDispatchCancellationPreserved(ctx)
+	if preserveCancellation {
 		runCtx = ctx
 	}
 	if s.processListingKit != nil {
 		if _, err := s.processListingKit(runCtx, task); err != nil {
+			if preserveCancellation && runCtx.Err() != nil {
+				return task, runCtx.Err()
+			}
 			return s.refreshGenerateTask(runCtx, task)
 		}
+	}
+	if preserveCancellation && runCtx.Err() != nil {
+		return task, runCtx.Err()
 	}
 	return s.refreshGenerateTask(runCtx, task)
 }
