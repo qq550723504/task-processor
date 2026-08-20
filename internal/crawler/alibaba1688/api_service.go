@@ -11,13 +11,13 @@ import (
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/infra/httpx"
-	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	"task-processor/internal/sourceaccount"
 	"task-processor/internal/tenantbridge"
 )
 
-var buildListingAdminStoreRepository = listingkithttpapi.BuildListingAdminStoreRepository
+var buildSourceAccountRepository = listingkithttpapi.BuildSourceAccountRepository
 
 // APIService 1688 爬虫 HTTP API 服务
 type APIService struct {
@@ -35,7 +35,7 @@ func NewAPIService(cfg *config.Config, logger *logrus.Logger, port int) *APIServ
 	if !hasConfiguredDatabase(cfg) {
 		return newAPIService(cfg, logger, port, nil, legacyClosers)
 	}
-	repository, closers, err := buildListingAdminStoreRepository(cfg, logger)
+	repository, closers, err := buildSourceAccountRepository(cfg, logger)
 	if err != nil {
 		if logger != nil {
 			logger.Warn("1688 account profile repository unavailable")
@@ -48,8 +48,8 @@ func NewAPIService(cfg *config.Config, logger *logrus.Logger, port int) *APIServ
 	return newAPIService(cfg, logger, port, NewAccountProfileResolver(repository, cfg.Platforms.Alibaba1688.ProfileRootDir), append(legacyClosers, closers...))
 }
 
-// NewAPIServiceWithStoreRepository creates an API service that can resolve tenant-owned 1688 account profiles.
-func NewAPIServiceWithStoreRepository(cfg *config.Config, logger *logrus.Logger, port int, repository listingadmin.StoreRepository) *APIService {
+// NewAPIServiceWithSourceAccountRepository creates an API service that can resolve tenant-owned 1688 account profiles.
+func NewAPIServiceWithSourceAccountRepository(cfg *config.Config, logger *logrus.Logger, port int, repository sourceaccount.Repository) *APIService {
 	resolver := NewAccountProfileResolver(repository, cfg.Platforms.Alibaba1688.ProfileRootDir)
 	return newAPIService(cfg, logger, port, resolver, configureLegacyTenantBridge(cfg, logger))
 }

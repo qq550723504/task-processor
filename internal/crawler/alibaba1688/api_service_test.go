@@ -11,16 +11,16 @@ import (
 	"github.com/sirupsen/logrus"
 
 	"task-processor/internal/core/config"
-	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
+	"task-processor/internal/sourceaccount"
 	"task-processor/internal/tenantbridge"
 )
 
-func TestNewAPIServiceWithStoreRepositoryWiresAccountProfileResolver(t *testing.T) {
+func TestNewAPIServiceWithSourceAccountRepositoryWiresAccountProfileResolver(t *testing.T) {
 	cfg := config.NewDefaultConfig()
-	repository := &accountProfileStoreRepository{}
+	repository := &accountProfileSourceRepository{}
 
-	service := NewAPIServiceWithStoreRepository(cfg, nil, 8080, repository)
+	service := NewAPIServiceWithSourceAccountRepository(cfg, nil, 8080, repository)
 
 	if service == nil || service.crawlerService == nil {
 		t.Fatal("expected API service and crawler service")
@@ -49,12 +49,12 @@ func TestNewAPIServiceRemainsResolverFreeWithoutRepository(t *testing.T) {
 }
 
 func TestNewAPIServiceBuildsAndClosesAccountRepositoryWhenDatabaseConfigured(t *testing.T) {
-	previousBuilder := buildListingAdminStoreRepository
-	t.Cleanup(func() { buildListingAdminStoreRepository = previousBuilder })
+	previousBuilder := buildSourceAccountRepository
+	t.Cleanup(func() { buildSourceAccountRepository = previousBuilder })
 
-	repository := &accountProfileStoreRepository{}
+	repository := &accountProfileSourceRepository{}
 	closerCalls := 0
-	buildListingAdminStoreRepository = func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
+	buildSourceAccountRepository = func(*config.Config, *logrus.Logger) (sourceaccount.Repository, []func() error, error) {
 		return repository, []func() error{func() error {
 			closerCalls++
 			return nil
@@ -77,10 +77,10 @@ func TestNewAPIServiceBuildsAndClosesAccountRepositoryWhenDatabaseConfigured(t *
 }
 
 func TestNewAPIServiceDoesNotLogRepositoryBuilderErrorDetails(t *testing.T) {
-	previousBuilder := buildListingAdminStoreRepository
-	t.Cleanup(func() { buildListingAdminStoreRepository = previousBuilder })
+	previousBuilder := buildSourceAccountRepository
+	t.Cleanup(func() { buildSourceAccountRepository = previousBuilder })
 	const secret = "database-password-must-not-leak"
-	buildListingAdminStoreRepository = func(*config.Config, *logrus.Logger) (listingadmin.StoreRepository, []func() error, error) {
+	buildSourceAccountRepository = func(*config.Config, *logrus.Logger) (sourceaccount.Repository, []func() error, error) {
 		return nil, nil, errors.New(secret)
 	}
 	var logs bytes.Buffer

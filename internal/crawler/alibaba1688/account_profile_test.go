@@ -2,12 +2,11 @@ package alibaba1688
 
 import (
 	"context"
-	"errors"
 	"path/filepath"
 	"reflect"
 	"testing"
 
-	"task-processor/internal/listingadmin"
+	"task-processor/internal/sourceaccount"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,72 +15,54 @@ import (
 const accountProfileTestRoot = `C:\task-processor-test\1688-profiles`
 
 func TestAccountProfileResolverResolveAlibaba1688Account(t *testing.T) {
-	secret := "fixture-password-must-not-leak"
-	baseStore := listingadmin.Store{
-		ID:       3001,
-		TenantID: 101,
-		Name:     "  1688 sourcing account  ",
-		Platform: "1688",
-		Status:   0,
-		Proxy:    "  http://proxy.example:8080  ",
-		LoginURL: "  https://login.1688.example  ",
-		Password: secret,
+	baseAccount := sourceaccount.SourceAccount{
+		ID:         3001,
+		TenantID:   101,
+		Label:      "  1688 sourcing account  ",
+		Platform:   sourceaccount.PlatformAlibaba1688,
+		ProfileRef: "profile-ref",
+		ProxyRef:   "proxy-ref",
+		LoginURL:   "  https://login.1688.example  ",
+		Status:     sourceaccount.StatusEnabled,
 	}
 
 	tests := []struct {
 		name         string
 		tenantID     int64
 		accountID    int64
-		store        *listingadmin.Store
-		getStoreErr  error
+		account      *sourceaccount.SourceAccount
+		getErr       error
 		wantCode     string
 		wantGetCalls int
 		wantProfile  AccountProfile
 	}{
 		{
-			name:         "enabled same tenant 1688 account resolves safe runtime profile",
+			name:         "enabled same tenant account resolves safe runtime profile",
 			tenantID:     101,
 			accountID:    3001,
-			store:        &baseStore,
+			account:      &baseAccount,
 			wantGetCalls: 1,
 			wantProfile: AccountProfile{
-				ID:          3001,
-				TenantID:    101,
-				Label:       "1688 sourcing account",
-				ProfileDir:  filepath.Join(accountProfileTestRoot, "101", "3001"),
-				ProxyServer: "http://proxy.example:8080",
-				LoginURL:    "https://login.1688.example",
+				ID:         3001,
+				TenantID:   101,
+				Label:      "1688 sourcing account",
+				ProfileDir: filepath.Join(accountProfileTestRoot, "101", "3001"),
+				LoginURL:   "https://login.1688.example",
 			},
 		},
 		{
 			name:         "foreign tenant is unavailable",
 			tenantID:     101,
 			accountID:    3001,
-			getStoreErr:  listingadmin.ErrStoreNotFound,
+			getErr:       sourceaccount.NewUnavailableError("foreign tenant"),
 			wantCode:     AccountProfileUnavailable,
 			wantGetCalls: 1,
 		},
 		{
-			name:      "proxy userinfo is unavailable without exposing credentials",
-			tenantID:  101,
-			accountID: 3001,
-			store: func() *listingadmin.Store {
-				store := baseStore
-				store.Proxy = "http://proxy-user:proxy-secret@proxy.example:8080"
-				return &store
-			}(),
-			wantCode:     AccountProfileUnavailable,
-			wantGetCalls: 1,
-		},
-		{
-			name:      "disabled account reports disabled",
-			tenantID:  101,
-			accountID: 3001,
-			store: func() *listingadmin.Store {
-				store := baseStore
-				store.Status = 1
-				return &store
-			}(),
+			name:         "disabled account reports disabled",
+			tenantID:     101,
+			accountID:    3001,
+			getErr:       sourceaccount.NewDisabledError(),
 			wantCode:     AccountProfileDisabled,
 			wantGetCalls: 1,
 		},
@@ -89,11 +70,10 @@ func TestAccountProfileResolverResolveAlibaba1688Account(t *testing.T) {
 			name:      "other platform is unavailable",
 			tenantID:  101,
 			accountID: 3001,
-			store: func() *listingadmin.Store {
-				store := baseStore
-				store.Platform = "SHEIN"
-				return &store
-			}(),
+			account: &sourceaccount.SourceAccount{
+				ID: 3001, TenantID: 101, Platform: "SHEIN", ProfileRef: "target-store-row",
+				Status: sourceaccount.StatusEnabled,
+			},
 			wantCode:     AccountProfileUnavailable,
 			wantGetCalls: 1,
 		},
@@ -115,17 +95,16 @@ func TestAccountProfileResolverResolveAlibaba1688Account(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			repository := &accountProfileStoreRepository{store: tt.store, getStoreErr: tt.getStoreErr}
+			repository := &accountProfileSourceRepository{account: tt.account, getErr: tt.getErr}
 			resolver := NewAccountProfileResolver(repository, accountProfileTestRoot)
 
 			profile, err := resolver.ResolveAlibaba1688Account(context.Background(), tt.tenantID, tt.accountID)
 
-			assert.Equal(t, tt.wantGetCalls, repository.getStoreCalls)
+			assert.Equal(t, tt.wantGetCalls, repository.getCalls)
 			if tt.wantCode != "" {
 				require.Error(t, err)
 				assert.Equal(t, tt.wantCode, AccountProfileErrorCode(err))
-				assert.NotContains(t, err.Error(), secret)
-				assert.NotContains(t, err.Error(), "proxy-secret")
+				assert.NotContains(t, err.Error(), "profile-ref")
 				return
 			}
 			require.NoError(t, err)
@@ -140,57 +119,28 @@ func TestAccountProfileContainsNoPasswordField(t *testing.T) {
 }
 
 func TestAccountProfileResolverRejectsEmptyProfileRoot(t *testing.T) {
-	repository := &accountProfileStoreRepository{}
+	repository := &accountProfileSourceRepository{}
 	resolver := NewAccountProfileResolver(repository, "  ")
 
 	_, err := resolver.ResolveAlibaba1688Account(context.Background(), 101, 3001)
 
 	require.Error(t, err)
 	assert.Equal(t, AccountProfileUnavailable, AccountProfileErrorCode(err))
-	assert.Equal(t, 0, repository.getStoreCalls)
+	assert.Equal(t, 0, repository.getCalls)
 }
 
-type accountProfileStoreRepository struct {
-	store         *listingadmin.Store
-	getStoreErr   error
-	getStoreCalls int
+type accountProfileSourceRepository struct {
+	account  *sourceaccount.SourceAccount
+	getErr   error
+	getCalls int
 }
 
-func (r *accountProfileStoreRepository) GetStore(_ context.Context, _ int64, _ int64) (*listingadmin.Store, error) {
-	r.getStoreCalls++
-	if r.getStoreErr != nil {
-		return nil, r.getStoreErr
+func (r *accountProfileSourceRepository) Get(_ context.Context, _, _ int64) (*sourceaccount.SourceAccount, error) {
+	r.getCalls++
+	if r.getErr != nil {
+		return nil, r.getErr
 	}
-	return r.store, nil
+	return r.account, nil
 }
 
-func (r *accountProfileStoreRepository) ListStores(context.Context, listingadmin.StoreQuery) (*listingadmin.StorePage, error) {
-	return nil, errors.New("not implemented")
-}
-func (r *accountProfileStoreRepository) CreateStore(context.Context, *listingadmin.Store) (*listingadmin.Store, error) {
-	return nil, errors.New("not implemented")
-}
-func (r *accountProfileStoreRepository) UpdateStore(context.Context, *listingadmin.Store) (*listingadmin.Store, error) {
-	return nil, errors.New("not implemented")
-}
-func (r *accountProfileStoreRepository) UpdateStoreID(context.Context, int64, string) (*listingadmin.Store, error) {
-	return nil, errors.New("not implemented")
-}
-func (r *accountProfileStoreRepository) UpdateStoreStatus(context.Context, int64, int64, int16, string) (*listingadmin.Store, error) {
-	return nil, errors.New("not implemented")
-}
-func (r *accountProfileStoreRepository) DeleteStore(context.Context, int64, int64) error {
-	return errors.New("not implemented")
-}
-func (r *accountProfileStoreRepository) ListDeletedStores(context.Context, int64) ([]listingadmin.Store, error) {
-	return nil, errors.New("not implemented")
-}
-func (r *accountProfileStoreRepository) RestoreStore(context.Context, int64, int64) (*listingadmin.Store, error) {
-	return nil, errors.New("not implemented")
-}
-func (r *accountProfileStoreRepository) PermanentlyDeleteStore(context.Context, int64, int64) error {
-	return errors.New("not implemented")
-}
-func (r *accountProfileStoreRepository) ExtendStoreValidity(context.Context, int64, int64, int) (*listingadmin.Store, error) {
-	return nil, errors.New("not implemented")
-}
+var _ sourceaccount.Repository = (*accountProfileSourceRepository)(nil)

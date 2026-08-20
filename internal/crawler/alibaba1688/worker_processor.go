@@ -32,28 +32,9 @@ func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.Worke
 		return fmt.Errorf("解析任务数据失败: %w", err)
 	}
 
-	if crawlerTask.SourceAccountID < 0 {
-		return newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
-	}
-
-	var product *model.Product1688
-	if crawlerTask.SourceAccountID > 0 {
-		profile, err := p.service.resolveAccountProfile(ctx, crawlerTask.TenantID, crawlerTask.SourceAccountID)
-		if err != nil {
-			return err
-		}
-		unlock := p.service.lockAccountProfile(profile)
-		defer unlock()
-		product, err = p.service.processor1688.ProcessWithAccountProfile(crawlerTask.URL, profile)
-		if err != nil {
-			return err
-		}
-	} else {
-		resolvedProduct, err := p.service.processor1688.Process(crawlerTask.URL)
-		if err != nil {
-			return err
-		}
-		product = resolvedProduct
+	product, accessMode, fallbackReason, err := p.fetchProduct(ctx, &crawlerTask)
+	if err != nil {
+		return err
 	}
 
 	updateResult := p.service.UpdateResult
@@ -64,10 +45,51 @@ func (p *Crawler1688Processor) ProcessTask(ctx context.Context, job worker.Worke
 	}
 	_ = updateResult(crawlerTask.TaskID, func(result *shared.CrawlerResult) {
 		result.ProductData = shared.ProductToMap(product)
+		result.SourceAccessMode = string(accessMode)
+		result.SourceFallbackReason = fallbackReason
 	})
 
 	return nil
 }
+
+func (p *Crawler1688Processor) fetchProduct(ctx context.Context, task *shared.CrawlerTask) (*model.Product1688, sourceAccessMode, string, error) {
+	if p == nil || p.service == nil || task == nil || task.SourceAccountID < 0 {
+		return nil, sourceAccessModePublic, "", newAccountUnavailableError()
+	}
+	product, publicErr := p.service.processor1688.Process(task.URL)
+	if publicErr == nil {
+		p.service.recordSourceAccess("public")
+		return product, sourceAccessModePublic, "", nil
+	}
+	if task.SourceAccountID == 0 || !IsAccountFallbackEligible(publicErr) {
+		p.service.recordSourceAccess("source_public_unavailable")
+		return nil, sourceAccessModePublic, "", newPublicUnavailableError()
+	}
+	profile, err := p.service.resolveAccountProfile(ctx, task.TenantID, task.SourceAccountID)
+	if err != nil {
+		if AccountProfileErrorCode(err) == AccountProfileDisabled {
+			p.service.recordSourceAccess("source_account_disabled")
+		} else {
+			p.service.recordSourceAccess("source_account_unavailable")
+		}
+		return nil, sourceAccessModeAccountAssisted, sourceFallbackReason(publicErr), err
+	}
+	unlock := p.service.lockAccountProfile(profile)
+	defer unlock()
+	product, err = p.service.processor1688.ProcessWithAccountProfile(task.URL, profile)
+	if err != nil {
+		return nil, sourceAccessModeAccountAssisted, sourceFallbackReason(publicErr), err
+	}
+	p.service.recordSourceAccess("account_assisted")
+	return product, sourceAccessModeAccountAssisted, sourceFallbackReason(publicErr), nil
+}
+
+type sourceAccessMode string
+
+const (
+	sourceAccessModePublic          sourceAccessMode = "public"
+	sourceAccessModeAccountAssisted sourceAccessMode = "account_assisted"
+)
 
 func (s *Service) lockAccountProfile(profile AccountProfile) func() {
 	key := strconv.FormatInt(profile.TenantID, 10) + ":" + strconv.FormatInt(profile.ID, 10)
@@ -87,18 +109,18 @@ func (s *Service) lockAccountProfile(profile AccountProfile) func() {
 
 func (s *Service) resolveAccountProfile(ctx context.Context, tenantID, accountID int64) (AccountProfile, error) {
 	if s == nil || tenantID <= 0 || accountID <= 0 || s.accountProfileResolver == nil {
-		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+		return AccountProfile{}, newAccountUnavailableError()
 	}
 
 	profile, err := s.accountProfileResolver.ResolveAlibaba1688Account(ctx, tenantID, accountID)
 	if err != nil {
 		if AccountProfileErrorCode(err) == AccountProfileDisabled {
-			return AccountProfile{}, newAccountProfileError(AccountProfileDisabled, "1688 account is disabled")
+			return AccountProfile{}, newAccountDisabledError()
 		}
-		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+		return AccountProfile{}, newAccountUnavailableError()
 	}
 	if profile.ID != accountID || profile.TenantID != tenantID || strings.TrimSpace(profile.ProfileDir) == "" {
-		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
+		return AccountProfile{}, newAccountUnavailableError()
 	}
 	return profile, nil
 }

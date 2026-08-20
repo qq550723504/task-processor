@@ -24,22 +24,22 @@ func (hs *humanSlider) HumanSlide(page playwright.Page, box *playwright.Rect, di
 	startY := box.Y + box.Height/2
 	endX := startX + distance
 
-	hs.logger.Infof("开始人类滑动: 起点(%.1f,%.1f) -> 终点(%.1f,%.1f), 距离: %.1fpx", 
+	hs.logger.Infof("开始人类滑动: 起点(%.1f,%.1f) -> 终点(%.1f,%.1f), 距离: %.1fpx",
 		startX, startY, endX, startY, distance)
 
 	// 1. 快速移动到起点附近
 	currentX := 100 + float64(randomInt(400))
 	currentY := 100 + float64(randomInt(300))
-	
+
 	steps := 5 + randomInt(5)
 	for i := 0; i < steps; i++ {
 		t := float64(i) / float64(steps-1)
 		x := currentX + (startX-currentX)*t + float64(randomInt(10)-5)
 		y := currentY + (startY-currentY)*t + float64(randomInt(10)-5)
 		page.Mouse().Move(x, y)
-		time.Sleep(time.Duration(20 + randomInt(40)) * time.Millisecond)
+		time.Sleep(time.Duration(20+randomInt(40)) * time.Millisecond)
 	}
-	
+
 	// 精确定位到起点
 	page.Mouse().Move(startX, startY)
 
@@ -55,46 +55,46 @@ func (hs *humanSlider) HumanSlide(page playwright.Page, box *playwright.Rect, di
 		wobbleX := startX + float64(randomInt(4)-2)
 		wobbleY := startY + float64(randomInt(4)-2)
 		page.Mouse().Move(wobbleX, wobbleY)
-		time.Sleep(time.Duration(5 + randomInt(10)) * time.Millisecond)
+		time.Sleep(time.Duration(5+randomInt(10)) * time.Millisecond)
 	}
 	page.Mouse().Move(startX, startY)
 
 	// 5. 核心滑动 - 快速但自然
 	totalDuration := 400 + randomInt(200) // 400-600ms
 	steps = 20 + randomInt(15)
-	
+
 	for i := 1; i <= steps; i++ {
 		t := float64(i) / float64(steps)
-		
+
 		// 人类缓动曲线
 		var progress float64
 		if t < 0.15 {
 			progress = 4 * t * t // 缓慢启动
 		} else if t < 0.75 {
-			progress = 0.09 + 0.82 * ((t - 0.15) / 0.6) // 快速移动
+			progress = 0.09 + 0.82*((t-0.15)/0.6) // 快速移动
 		} else {
 			remaining := 1 - t
-			progress = 1 - remaining * remaining // 缓慢停止
+			progress = 1 - remaining*remaining // 缓慢停止
 		}
-		
+
 		// 计算位置
 		x := startX + distance*progress
-		
+
 		// 添加自然扰动
 		x += math.Sin(t*math.Pi*3) * float64(1.5+randomFloat())
 		x += float64(randomInt(6)-3) * 0.5
-		
-		y := startY + math.Sin(t*math.Pi*4) * float64(1+randomFloat())
-		y += float64(randomInt(4)-2)
-		
+
+		y := startY + math.Sin(t*math.Pi*4)*float64(1+randomFloat())
+		y += float64(randomInt(4) - 2)
+
 		// 随机回退
 		if i > steps/4 && i < steps*3/4 && randomInt(100) < 8 {
-			x -= float64(randomInt(8)+3)
-			y += float64(randomInt(4)-2)
+			x -= float64(randomInt(8) + 3)
+			y += float64(randomInt(4) - 2)
 		}
-		
+
 		page.Mouse().Move(x, y)
-		
+
 		// 动态延迟
 		baseDelay := float64(totalDuration) / float64(steps)
 		var multiplier float64
@@ -114,21 +114,21 @@ func (hs *humanSlider) HumanSlide(page playwright.Page, box *playwright.Rect, di
 		adjustX := endX + float64(randomInt(6)-3)
 		adjustY := startY + float64(randomInt(4)-2)
 		page.Mouse().Move(adjustX, adjustY)
-		time.Sleep(time.Duration(20 + randomInt(30)) * time.Millisecond)
+		time.Sleep(time.Duration(20+randomInt(30)) * time.Millisecond)
 	}
-	
+
 	// 确保在终点
 	page.Mouse().Move(endX, startY)
 
 	// 7. 短暂保持
-	time.Sleep(time.Duration(20 + randomInt(30)) * time.Millisecond)
+	time.Sleep(time.Duration(20+randomInt(30)) * time.Millisecond)
 
 	// 8. 松开鼠标
 	page.Mouse().Up()
 
 	// 等待验证结果
 	time.Sleep(2 * time.Second)
-	
+
 	hs.logger.Info("滑动完成")
 	return nil
 }
@@ -152,7 +152,7 @@ func (hs *humanSlider) moveToStart(page playwright.Page, targetX, targetY float6
 		y += float64(randomInt(15) - 7)
 
 		page.Mouse().Move(x, y)
-		time.Sleep(time.Duration(30 + randomInt(50)) * time.Millisecond)
+		time.Sleep(time.Duration(30+randomInt(50)) * time.Millisecond)
 	}
 
 	// 最后精确定位
@@ -166,7 +166,7 @@ func (hs *humanSlider) microWobble(page playwright.Page, centerX, centerY float6
 		x := centerX + float64(randomInt(6)-3)
 		y := centerY + float64(randomInt(6)-3)
 		page.Mouse().Move(x, y)
-		time.Sleep(time.Duration(5 + randomInt(10)) * time.Millisecond)
+		time.Sleep(time.Duration(5+randomInt(10)) * time.Millisecond)
 	}
 	page.Mouse().Move(centerX, centerY)
 }
@@ -177,9 +177,9 @@ func (hs *humanSlider) physicalSlide(page playwright.Page, startX, startY, endX 
 	startTime := time.Now()
 
 	// 人类滑动的关键参数
-	accelerationTime := int(float64(totalTimeMs) * (0.15 + float64(randomInt(10))/100))  // 15-25%
-	constantTime := totalTimeMs * 2 / 3                                                   // ~66%
-	_ = totalTimeMs - accelerationTime - constantTime  // 减速阶段时间
+	accelerationTime := int(float64(totalTimeMs) * (0.15 + float64(randomInt(10))/100)) // 15-25%
+	constantTime := totalTimeMs * 2 / 3                                                 // ~66%
+	_ = totalTimeMs - accelerationTime - constantTime                                   // 减速阶段时间
 
 	// 最大速度
 	maxSpeed := distance / float64(totalTimeMs) * 1.5
@@ -211,7 +211,7 @@ func (hs *humanSlider) physicalSlide(page playwright.Page, startX, startY, endX 
 		page.Mouse().Move(x, y)
 
 		// 微小随机延迟
-		time.Sleep(time.Duration(2 + randomInt(5)) * time.Millisecond)
+		time.Sleep(time.Duration(2+randomInt(5)) * time.Millisecond)
 	}
 
 	// 确保到达终点
@@ -249,7 +249,7 @@ func (hs *humanSlider) calculateVerticalWobble(progress, elapsedMs float64) floa
 	wobble += math.Sin(elapsedMs*0.03) * (1 + randomFloat())
 
 	// 随机偏移
-	wobble += float64(randomInt(8) - 4) * 0.5
+	wobble += float64(randomInt(8)-4) * 0.5
 
 	return wobble
 }
@@ -261,7 +261,7 @@ func (hs *humanSlider) finalAdjustments(page playwright.Page, endX, endY float64
 		x := endX + float64(randomInt(6)-3)
 		y := endY + float64(randomInt(4)-2)
 		page.Mouse().Move(x, y)
-		time.Sleep(time.Duration(30 + randomInt(50)) * time.Millisecond)
+		time.Sleep(time.Duration(30+randomInt(50)) * time.Millisecond)
 	}
 	page.Mouse().Move(endX, endY)
 }

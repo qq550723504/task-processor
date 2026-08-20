@@ -97,7 +97,7 @@ func TestComplexEasingWithVariation(t *testing.T) {
 
 func TestStatisticsReset(t *testing.T) {
 	handler := NewCaptchaHandler()
-	
+
 	handler.recordSuccess(CaptchaTypeSlider)
 	handler.recordFailure(CaptchaTypeImage)
 	handler.recordManual(CaptchaTypeText)
@@ -109,7 +109,7 @@ func TestStatisticsReset(t *testing.T) {
 
 	handler.ResetStatistics()
 	stats = handler.GetStatistics()
-	
+
 	if stats.TotalCount != 0 || stats.SuccessCount != 0 || stats.FailedCount != 0 || stats.ManualCount != 0 {
 		t.Error("Expected all statistics to be reset to 0")
 	}

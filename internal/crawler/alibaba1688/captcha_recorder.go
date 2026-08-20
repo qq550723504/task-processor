@@ -21,21 +21,21 @@ type mousePoint struct {
 }
 
 type trackData struct {
-	Track      []mousePoint `json:"track"`
-	Distance   float64      `json:"distance"`
-	TrackStartX float64     `json:"trackStartX"`
-	TrackStartY float64     `json:"trackStartY"`
-	StartX     float64      `json:"startX"`
-	StartY     float64      `json:"startY"`
-	EndX       float64      `json:"endX"`
-	EndY       float64      `json:"endY"`
+	Track       []mousePoint `json:"track"`
+	Distance    float64      `json:"distance"`
+	TrackStartX float64      `json:"trackStartX"`
+	TrackStartY float64      `json:"trackStartY"`
+	StartX      float64      `json:"startX"`
+	StartY      float64      `json:"startY"`
+	EndX        float64      `json:"endX"`
+	EndY        float64      `json:"endY"`
 }
 
 type trackRecorder struct {
-	logger       *logrus.Entry
-	savedTrack   *trackData
-	mu           sync.Mutex
-	recordCount  int
+	logger      *logrus.Entry
+	savedTrack  *trackData
+	mu          sync.Mutex
+	recordCount int
 }
 
 var globalRecorder *trackRecorder

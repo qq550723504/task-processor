@@ -58,7 +58,7 @@ func captchaStageError(stage string, err error) error {
 	if err == nil {
 		return nil
 	}
-	return fmt.Errorf("%s失败: %w", stage, err)
+	return NewPublicAccessError(PublicAccessFailureChallenge, fmt.Errorf("%s失败: %w", stage, err))
 }
 
 // navigate 执行页面导航

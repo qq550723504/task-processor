@@ -3,17 +3,16 @@ package alibaba1688
 import (
 	"context"
 	"errors"
-	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	"task-processor/internal/listingadmin"
+	"task-processor/internal/sourceaccount"
 )
 
 const (
-	AccountProfileUnavailable = "alibaba1688_account_unavailable"
-	AccountProfileDisabled    = "alibaba1688_account_disabled"
+	AccountProfileUnavailable = sourceaccount.SourceAccountUnavailable
+	AccountProfileDisabled    = sourceaccount.SourceAccountDisabled
 )
 
 // AccountProfile is the safe browser runtime configuration for one 1688 login account.
@@ -32,12 +31,12 @@ type AccountProfileResolver interface {
 }
 
 type repositoryAccountProfileResolver struct {
-	repository     listingadmin.StoreRepository
+	repository     sourceaccount.Repository
 	profileRootDir string
 }
 
-// NewAccountProfileResolver builds a resolver backed by the tenant-scoped listing store repository.
-func NewAccountProfileResolver(repository listingadmin.StoreRepository, profileRootDir string) AccountProfileResolver {
+// NewAccountProfileResolver builds a resolver backed by the dedicated source-account repository.
+func NewAccountProfileResolver(repository sourceaccount.Repository, profileRootDir string) AccountProfileResolver {
 	return &repositoryAccountProfileResolver{
 		repository:     repository,
 		profileRootDir: strings.TrimSpace(profileRootDir),
@@ -49,29 +48,28 @@ func (r *repositoryAccountProfileResolver) ResolveAlibaba1688Account(ctx context
 		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
 	}
 
-	store, err := r.repository.GetStore(ctx, tenantID, accountID)
-	if err != nil || store == nil || store.ID != accountID || store.TenantID != tenantID || !strings.EqualFold(strings.TrimSpace(store.Platform), "1688") {
+	account, err := r.repository.Get(ctx, tenantID, accountID)
+	if err != nil {
+		if sourceaccount.ErrorCode(err) == sourceaccount.SourceAccountDisabled {
+			return AccountProfile{}, newAccountProfileError(AccountProfileDisabled, "source account is disabled")
+		}
 		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
 	}
-	if store.Status != 0 {
-		return AccountProfile{}, newAccountProfileError(AccountProfileDisabled, "1688 account is disabled")
-	}
-	proxyServer := strings.TrimSpace(store.Proxy)
-	if proxyServer != "" {
-		proxyURL, err := url.Parse(proxyServer)
-		if err != nil || proxyURL.User != nil {
-			return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
-		}
+	if account == nil || account.ID != accountID || account.TenantID != tenantID || !strings.EqualFold(strings.TrimSpace(account.Platform), sourceaccount.PlatformAlibaba1688) || strings.TrimSpace(account.ProfileRef) == "" {
+		return AccountProfile{}, newAccountProfileError(AccountProfileUnavailable, "1688 account is unavailable")
 	}
 
 	return AccountProfile{
-		ID:          store.ID,
-		TenantID:    store.TenantID,
-		Label:       strings.TrimSpace(store.Name),
-		ProfileDir:  filepath.Join(r.profileRootDir, strconv.FormatInt(store.TenantID, 10), strconv.FormatInt(store.ID, 10)),
-		ProxyServer: proxyServer,
-		LoginURL:    strings.TrimSpace(store.LoginURL),
+		ID:         account.ID,
+		TenantID:   account.TenantID,
+		Label:      strings.TrimSpace(account.Label),
+		ProfileDir: filepath.Join(r.profileRootDir, formatAccountPath(account.TenantID), formatAccountPath(account.ID)),
+		LoginURL:   strings.TrimSpace(account.LoginURL),
 	}, nil
+}
+
+func formatAccountPath(id int64) string {
+	return strconv.FormatInt(id, 10)
 }
 
 type accountProfileError struct {
@@ -93,8 +91,8 @@ func newAccountProfileError(code, message string) error {
 // AccountProfileErrorCode returns a stable account-profile resolution error code.
 func AccountProfileErrorCode(err error) string {
 	var profileErr *accountProfileError
-	if !errors.As(err, &profileErr) || profileErr == nil {
-		return ""
+	if errors.As(err, &profileErr) && profileErr != nil {
+		return profileErr.code
 	}
-	return profileErr.code
+	return sourceAccessErrorCode(err)
 }
