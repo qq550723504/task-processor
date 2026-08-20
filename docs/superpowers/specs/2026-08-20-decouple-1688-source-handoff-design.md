@@ -1,6 +1,6 @@
 # Decouple the 1688 Source Handoff
 
-**Status:** Approved direction; written specification pending final user review
+**Status:** Approved
 
 **Date:** 2026-08-20
 
