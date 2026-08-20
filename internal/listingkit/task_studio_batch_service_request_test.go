@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -169,6 +170,30 @@ func TestBuildStudioBatchTaskProductImageRequestFallsBackToBatchPromptMode(t *te
 	)
 	if req.PromptMode != "raw" {
 		t.Fatalf("PromptMode = %q, want batch fallback mode raw", req.PromptMode)
+	}
+}
+
+func TestStudioBatchTaskColorRepresentativesGroupsColorlessVariants(t *testing.T) {
+	selection := SheinStudioSelection{Variants: []SheinStudioSelectionVariant{
+		{VariantSKU: "size-s"},
+		{VariantSKU: "size-m"},
+	}}
+	representatives := studioBatchTaskColorRepresentatives(selection)
+	if len(representatives) != 1 || representatives[0].VariantSKU != "size-s" {
+		t.Fatalf("colorless representatives = %+v, want one default representative", representatives)
+	}
+}
+
+func TestAppendStudioProductImageColorDirectiveAugmentsRawRolePrompt(t *testing.T) {
+	request := &StudioProductImageRequest{
+		PromptMode:   "raw",
+		CustomPrompt: "global raw prompt",
+		ImagePrompts: []StudioProductImagePrompt{{Role: "main", Prompt: "main role prompt"}},
+	}
+	appendStudioProductImageColorDirective(request, "Red")
+	prompt := buildRawStudioProductImagePrompt(request, defaultStudioProductImageRoles[0])
+	if !strings.Contains(prompt, "main role prompt") || !strings.Contains(prompt, "Red") {
+		t.Fatalf("raw role prompt = %q, want role text plus color directive", prompt)
 	}
 }
 

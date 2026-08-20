@@ -67,6 +67,7 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 				strings.TrimSpace(productImageRequest.CustomPrompt),
 				fmt.Sprintf("Generate the product image for the SDS color variant %q. Keep the approved artwork identical, but match the base product color and material from this variant's SDS reference image.", firstNonEmpty(strings.TrimSpace(variant.Color), "this color variant")),
 			}, "\n"))
+			appendStudioProductImageColorDirective(variantRequest, variant.Color)
 			variantResponse, variantErr := s.generateProductImages(ctx, variantRequest)
 			if variantErr != nil {
 				_ = heartbeatStop()
@@ -88,6 +89,19 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 		return err
 	}
 	return nil
+}
+
+func appendStudioProductImageColorDirective(request *StudioProductImageRequest, color string) {
+	if request == nil {
+		return
+	}
+	directive := fmt.Sprintf("Generate the product image for the SDS color variant %q. Keep the approved artwork identical, but match the base product color and material from this variant's SDS reference image.", firstNonEmpty(strings.TrimSpace(color), "this color variant"))
+	for index := range request.ImagePrompts {
+		request.ImagePrompts[index].Prompt = strings.TrimSpace(strings.Join([]string{
+			strings.TrimSpace(request.ImagePrompts[index].Prompt),
+			directive,
+		}, "\n"))
+	}
 }
 
 func (s *taskStudioBatchService) buildStudioBatchTaskProductImageRequest(

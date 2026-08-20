@@ -176,6 +176,24 @@ func TestStudioBatchTaskCandidateKeyUsesEffectiveSessionProductImageSettings(t *
 	}
 }
 
+func TestStudioBatchTaskCandidateKeyDiffersWhenEffectivePromptChanges(t *testing.T) {
+	batch := &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-1", Prompt: "spring theme"}
+	baseSession := &SheinStudioSession{Prompt: "spring theme"}
+	changedSession := &SheinStudioSession{Prompt: "summer theme"}
+	base := studioBatchTaskCandidate{
+		Item:                            StudioBatchItemRecord{ID: "item-1"},
+		Design:                          StudioMaterializedDesignRecord{ID: "design-1"},
+		SelectionID:                     "selection-1",
+		ImageStrategy:                   sheinImageStrategyAIGenerated,
+		ProductImageSettingsFingerprint: studioBatchTaskEffectiveProductImageSettingsFingerprint(baseSession, batch),
+	}
+	changed := base
+	changed.ProductImageSettingsFingerprint = studioBatchTaskEffectiveProductImageSettingsFingerprint(changedSession, batch)
+	if got, want := buildStudioBatchTaskCandidateKey(nil, batch, base), buildStudioBatchTaskCandidateKey(nil, batch, changed); got == want {
+		t.Fatalf("effective-prompt candidate keys unexpectedly matched: %q", got)
+	}
+}
+
 func TestStudioBatchTaskCandidateKey_PreservesHistoricalSDSKeyForBlankStrategy(t *testing.T) {
 	batch := &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-1"}
 	base := studioBatchTaskCandidate{

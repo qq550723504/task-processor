@@ -185,10 +185,7 @@ func studioBatchTaskColorRepresentatives(selection SheinStudioSelection) []Shein
 	for _, variant := range selection.Variants {
 		colorKey := strings.ToLower(strings.TrimSpace(variant.Color))
 		if colorKey == "" {
-			colorKey = "sku:" + strings.ToLower(strings.TrimSpace(variant.VariantSKU))
-		}
-		if colorKey == "" {
-			continue
+			colorKey = "default"
 		}
 		if _, ok := seen[colorKey]; ok {
 			continue

@@ -521,11 +521,13 @@ func studioBatchTaskEffectiveProductImageSettingsFingerprint(session *SheinStudi
 		count = maxStudioProductImageCount
 	}
 	payload, err := json.Marshal(struct {
+		Prompt              string                            `json:"prompt"`
 		PromptMode          string                            `json:"prompt_mode"`
 		ProductImageCount   int                               `json:"product_image_count"`
 		ProductImagePrompt  string                            `json:"product_image_prompt"`
 		ProductImagePrompts SheinStudioProductImagePromptList `json:"product_image_prompts"`
 	}{
+		Prompt:              studioBatchTaskPrompt(session, batch),
 		PromptMode:          promptMode,
 		ProductImageCount:   count,
 		ProductImagePrompt:  customPrompt,
