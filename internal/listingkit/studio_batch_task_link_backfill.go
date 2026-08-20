@@ -126,7 +126,7 @@ func backfillLegacyStudioBatchTaskLinksForSession(
 	}
 	candidatesByDesign := buildStudioBatchBackfillCandidatesByDesign(ctx, &session, detail)
 	for _, created := range session.CreatedTasks {
-		backfillLegacyStudioBatchCreatedTask(ctx, cfg, now, summary, session, candidatesByDesign, created)
+		backfillLegacyStudioBatchCreatedTask(ctx, cfg, now, summary, session, detail.Batch, candidatesByDesign, created)
 	}
 	return nil
 }
@@ -137,6 +137,7 @@ func backfillLegacyStudioBatchCreatedTask(
 	now func() time.Time,
 	summary *StudioBatchTaskLinkBackfillSummary,
 	session SheinStudioSession,
+	batch *StudioBatchRecord,
 	candidatesByDesign map[string][]studioBatchTaskCandidate,
 	created SheinStudioCreatedTask,
 ) {
@@ -153,6 +154,10 @@ func backfillLegacyStudioBatchCreatedTask(
 	if !ok {
 		summary.UnresolvedSelectionOwnership = append(summary.UnresolvedSelectionOwnership, backfillIssue(session, created, "candidate_unresolved", "legacy task could not be matched to a batch item/selection candidate"))
 		return
+	}
+	if task != nil {
+		candidate.ImageStrategy = resolveSheinImageStrategy(task.Request)
+		candidate.CandidateKey = buildStudioBatchTaskCandidateKey(ctx, batch, candidate)
 	}
 	existing, err := cfg.LinkRepository.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -175,7 +180,7 @@ func backfillLegacyStudioBatchCreatedTask(
 		summary.MissingTasks = append(summary.MissingTasks, backfillIssue(session, created, "task_failed", "legacy created task is failed and will not be linked"))
 		return
 	}
-	link := buildStudioBatchBackfillLink(candidate, created, taskID, now().UTC())
+	link := buildStudioBatchBackfillLink(candidate, created, task, taskID, now().UTC())
 	if err := cfg.LinkRepository.CreateStudioBatchTaskLink(ctx, link); err != nil {
 		existing, getErr := cfg.LinkRepository.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
 		if getErr == nil && existing != nil {
@@ -277,7 +282,11 @@ func studioBatchBackfillCreatedTaskMatchesCandidate(created SheinStudioCreatedTa
 	return true
 }
 
-func buildStudioBatchBackfillLink(candidate studioBatchTaskCandidate, created SheinStudioCreatedTask, taskID string, now time.Time) *StudioBatchTaskLinkRecord {
+func buildStudioBatchBackfillLink(candidate studioBatchTaskCandidate, created SheinStudioCreatedTask, task *Task, taskID string, now time.Time) *StudioBatchTaskLinkRecord {
+	strategy := candidate.ImageStrategy
+	if task != nil {
+		strategy = resolveSheinImageStrategy(task.Request)
+	}
 	link := &StudioBatchTaskLinkRecord{
 		ID:                       buildStudioBatchTaskLinkID(candidate),
 		BatchID:                  strings.TrimSpace(candidate.Design.BatchID),
@@ -285,7 +294,7 @@ func buildStudioBatchBackfillLink(candidate studioBatchTaskCandidate, created Sh
 		DesignID:                 strings.TrimSpace(candidate.Design.ID),
 		SelectionID:              strings.TrimSpace(candidate.SelectionID),
 		CompatibilityFingerprint: strings.TrimSpace(candidate.CompatibilityFingerprint),
-		ImageStrategy:            normalizeSheinImageStrategy(candidate.ImageStrategy),
+		ImageStrategy:            normalizeSheinImageStrategy(strategy),
 		SheinStoreID:             candidate.SheinStoreID,
 		ListingKitTaskID:         strings.TrimSpace(taskID),
 		CandidateKey:             strings.TrimSpace(candidate.CandidateKey),

@@ -150,6 +150,16 @@ func TestReserveStudioBatchTaskCandidateDisambiguatesHistoricalStrategyCollision
 	if _, err := links.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey); err != nil {
 		t.Fatalf("get disambiguated link: %v", err)
 	}
+	second := studioBatchTaskCandidate{
+		Design:        candidate.Design,
+		Item:          candidate.Item,
+		SelectionID:   candidate.SelectionID,
+		CandidateKey:  "legacy-key",
+		ImageStrategy: sheinImageStrategySDSOfficial,
+	}
+	if err := s.reserveStudioBatchTaskCandidate(ctx, &second); err != nil {
+		t.Fatalf("repeat reserve of disambiguated candidate: %v", err)
+	}
 }
 
 func TestBuildStudioBatchTaskGenerateRequestIncludesSDSProductTables(t *testing.T) {

@@ -80,7 +80,13 @@ func (s *taskStudioBatchService) reserveStudioBatchTaskCandidate(ctx context.Con
 			candidate.CandidateKey = buildDisambiguatedStudioBatchTaskCandidateKey(*candidate)
 			link.ID = buildStudioBatchTaskLinkID(*candidate)
 			link.CandidateKey = candidate.CandidateKey
-			return s.batchTaskLinkRepo.CreateStudioBatchTaskLink(ctx, link)
+			if retryErr := s.batchTaskLinkRepo.CreateStudioBatchTaskLink(ctx, link); retryErr != nil {
+				if _, retryGetErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey); retryGetErr == nil {
+					return nil
+				}
+				return retryErr
+			}
+			return nil
 		}
 		return err
 	}
