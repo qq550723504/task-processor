@@ -59,6 +59,15 @@ func buildStudioBatchTaskProductImageRequest(
 	count := defaultStudioBatchProductImageCount
 	customPrompt := ""
 	promptMode := ""
+	promptText := studioBatchTaskPrompt(session, batch)
+	hotReferenceURLs := studioBatchTaskHotReferenceImageURLs(session, batch)
+	if len(hotReferenceURLs) == 1 {
+		promptText = buildStudioHotReferenceArtworkPrompt(
+			studioBatchTaskHotReferencePrompt(session, batch),
+			studioBatchTaskHotReferenceBrief(session, batch),
+			promptText,
+		)
+	}
 	if batch != nil {
 		promptMode = strings.TrimSpace(batch.PromptMode)
 	}
@@ -82,7 +91,7 @@ func buildStudioBatchTaskProductImageRequest(
 		}
 	}
 	return &StudioProductImageRequest{
-		Prompt:                    studioBatchTaskPrompt(session, batch),
+		Prompt:                    promptText,
 		PromptMode:                promptMode,
 		ProductName:               strings.TrimSpace(selection.ProductName),
 		StyleName:                 styleName,
@@ -92,6 +101,38 @@ func buildStudioBatchTaskProductImageRequest(
 		ImagePrompts:              productPrompts,
 		Count:                     count,
 	}
+}
+
+func studioBatchTaskHotReferenceImageURLs(session *SheinStudioSession, batch *StudioBatchRecord) []string {
+	if session != nil {
+		if references := mergeStudioHotStyleReferenceImageURLs(nil, session.HotStyleReferenceImageURLs); len(references) > 0 {
+			return references
+		}
+	}
+	if batch != nil {
+		return mergeStudioHotStyleReferenceImageURLs(nil, batch.HotStyleReferenceImageURLs)
+	}
+	return nil
+}
+
+func studioBatchTaskHotReferencePrompt(session *SheinStudioSession, batch *StudioBatchRecord) string {
+	if session != nil && strings.TrimSpace(session.HotStyleReferencePrompt) != "" {
+		return strings.TrimSpace(session.HotStyleReferencePrompt)
+	}
+	if batch != nil {
+		return strings.TrimSpace(batch.HotStyleReferencePrompt)
+	}
+	return ""
+}
+
+func studioBatchTaskHotReferenceBrief(session *SheinStudioSession, batch *StudioBatchRecord) string {
+	if session != nil && strings.TrimSpace(session.HotStyleReferenceBrief) != "" {
+		return strings.TrimSpace(session.HotStyleReferenceBrief)
+	}
+	if batch != nil {
+		return strings.TrimSpace(batch.HotStyleReferenceBrief)
+	}
+	return ""
 }
 
 func studioProductImageCategoryPath(detail *sdstemplate.ProductDetail) []string {
@@ -181,17 +222,64 @@ func studioBatchTaskProductReferenceImageURLsForVariant(selection SheinStudioSel
 
 func studioBatchTaskColorRepresentatives(selection SheinStudioSelection) []SheinStudioSelectionVariant {
 	result := make([]SheinStudioSelectionVariant, 0, len(selection.Variants))
-	seen := make(map[string]struct{}, len(selection.Variants))
+	indexes := make(map[string]int, len(selection.Variants))
 	for _, variant := range selection.Variants {
 		colorKey := strings.ToLower(strings.TrimSpace(variant.Color))
 		if colorKey == "" {
 			colorKey = "default"
 		}
-		if _, ok := seen[colorKey]; ok {
+		if index, ok := indexes[colorKey]; ok {
+			mergeStudioBatchTaskColorVariantReferences(&result[index], variant)
 			continue
 		}
-		seen[colorKey] = struct{}{}
-		result = append(result, variant)
+		indexes[colorKey] = len(result)
+		result = append(result, cloneStudioBatchTaskColorVariant(variant))
+	}
+	return result
+}
+
+func cloneStudioBatchTaskColorVariant(input SheinStudioSelectionVariant) SheinStudioSelectionVariant {
+	input.SizeReferenceImageURLs = append([]string(nil), input.SizeReferenceImageURLs...)
+	input.MockupImageURLs = append([]string(nil), input.MockupImageURLs...)
+	return input
+}
+
+func mergeStudioBatchTaskColorVariantReferences(target *SheinStudioSelectionVariant, source SheinStudioSelectionVariant) {
+	if target == nil {
+		return
+	}
+	target.SizeReferenceImageURLs = appendUniqueStudioBatchTaskImageURLs(target.SizeReferenceImageURLs, source.SizeReferenceImageURLs...)
+	target.MockupImageURLs = appendUniqueStudioBatchTaskImageURLs(target.MockupImageURLs, source.MockupImageURLs...)
+	if strings.TrimSpace(target.MockupImageURL) == "" {
+		target.MockupImageURL = strings.TrimSpace(source.MockupImageURL)
+	}
+	if strings.TrimSpace(target.BlankDesignURL) == "" {
+		target.BlankDesignURL = strings.TrimSpace(source.BlankDesignURL)
+	}
+	if strings.TrimSpace(target.TemplateImageURL) == "" {
+		target.TemplateImageURL = strings.TrimSpace(source.TemplateImageURL)
+	}
+}
+
+func appendUniqueStudioBatchTaskImageURLs(target []string, values ...string) []string {
+	seen := make(map[string]struct{}, len(target)+len(values))
+	for _, value := range target {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			seen[value] = struct{}{}
+		}
+	}
+	result := append([]string(nil), target...)
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
 	}
 	return result
 }

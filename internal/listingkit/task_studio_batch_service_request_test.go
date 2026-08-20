@@ -184,6 +184,39 @@ func TestStudioBatchTaskColorRepresentativesGroupsColorlessVariants(t *testing.T
 	}
 }
 
+func TestStudioBatchTaskColorRepresentativesMergeReferencesAcrossSizes(t *testing.T) {
+	selection := SheinStudioSelection{Variants: []SheinStudioSelectionVariant{
+		{VariantSKU: "red-s", Color: "Red"},
+		{VariantSKU: "red-m", Color: " red ", SizeReferenceImageURLs: []string{"https://example.com/red-size.png"}, MockupImageURL: "https://example.com/red-mockup.png"},
+		{VariantSKU: "blue-s", Color: "Blue", MockupImageURL: "https://example.com/blue.png"},
+	}}
+	representatives := studioBatchTaskColorRepresentatives(selection)
+	if len(representatives) != 2 {
+		t.Fatalf("color representatives = %+v, want two colors", representatives)
+	}
+	if representatives[0].VariantSKU != "red-s" || len(representatives[0].SizeReferenceImageURLs) != 1 || representatives[0].SizeReferenceImageURLs[0] != "https://example.com/red-size.png" {
+		t.Fatalf("merged red references = %+v, want references from all red sizes", representatives[0])
+	}
+	if representatives[0].MockupImageURL != "https://example.com/red-mockup.png" {
+		t.Fatalf("merged red mockup = %q, want later size mockup", representatives[0].MockupImageURL)
+	}
+}
+
+func TestBuildStudioBatchTaskProductImageRequestUsesHotReferencePrompt(t *testing.T) {
+	req := buildStudioBatchTaskProductImageRequest(
+		&SheinStudioSession{
+			HotStyleReferenceImageURLs: []string{"https://example.com/hot-reference.png"},
+			HotStyleReferenceBrief:     "embroidered cherry badge",
+		},
+		&StudioBatchRecord{Prompt: "", HotStyleReferenceImageURLs: SheinStudioStringList{"https://example.com/hot-reference.png"}},
+		studioBatchTaskCandidate{SelectionSnapshot: SheinStudioSelection{ProductName: "T-shirt"}, Title: "Style 1"},
+		StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
+	)
+	if req == nil || req.Prompt != "embroidered cherry badge" {
+		t.Fatalf("hot-reference product image prompt = %q, want persisted hot-reference brief", req.Prompt)
+	}
+}
+
 func TestAppendStudioProductImageColorDirectiveAugmentsRawRolePrompt(t *testing.T) {
 	request := &StudioProductImageRequest{
 		PromptMode:   "raw",
