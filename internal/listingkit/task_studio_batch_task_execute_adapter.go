@@ -131,6 +131,12 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				_ = s.persistStudioBatchTaskLink(ctx, taskCandidate, "", studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, reasonCode, err.Error())
 				return SheinStudioCreatedTask{}, err
 			}
+			// Product-image generation owns a heartbeat only for the duration of
+			// attachStudioBatchProductImages. Keep the claim alive through the
+			// potentially slow task dispatch and the terminal link update too;
+			// otherwise another worker can reclaim the creating link while the
+			// original worker is still able to create a duplicate task.
+			dispatchHeartbeatStop := s.startStudioBatchTaskLinkHeartbeat(ctx, taskCandidate, studioBatchTaskLinkHeartbeatInterval)
 			task, err := s.createGenerateTask(
 				ctx,
 				generateRequest,
@@ -140,7 +146,11 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				if task != nil {
 					taskID = task.ID
 				}
-				_ = s.persistStudioBatchTaskLink(ctx, taskCandidate, taskID, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, "task_create_failed", err.Error())
+				persistErr := s.persistStudioBatchTaskLink(ctx, taskCandidate, taskID, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, "task_create_failed", err.Error())
+				_ = dispatchHeartbeatStop()
+				if persistErr != nil {
+					return SheinStudioCreatedTask{}, persistErr
+				}
 				return SheinStudioCreatedTask{}, err
 			}
 			created := SheinStudioCreatedTask{
@@ -154,6 +164,10 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				Source:                   studioBatchTaskLinkSourceBatchCreated,
 			}
 			if err := s.persistStudioBatchTaskLink(ctx, taskCandidate, task.ID, studioBatchTaskLinkStatusCreated, studioBatchTaskLinkSourceBatchCreated, "", ""); err != nil {
+				_ = dispatchHeartbeatStop()
+				return SheinStudioCreatedTask{}, err
+			}
+			if err := dispatchHeartbeatStop(); err != nil {
 				return SheinStudioCreatedTask{}, err
 			}
 			return created, nil

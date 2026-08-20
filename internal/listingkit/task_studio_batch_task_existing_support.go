@@ -141,6 +141,14 @@ func (s *taskStudioBatchService) createdTaskFromDurableLink(ctx context.Context,
 		normalizeSheinImageStrategy(storedStrategy) != normalizeSheinImageStrategy(candidate.ImageStrategy) {
 		return SheinStudioCreatedTask{}, false
 	}
+	// Historical AI links can be found through the SDS candidate key. Their
+	// legacy tuple predates the product-image settings fingerprint, so strategy
+	// and generated-image checks alone cannot prove prompt/mode/count/theme
+	// compatibility. Require the extended identity before reusing any AI link.
+	if normalizeSheinImageStrategy(candidate.ImageStrategy) == sheinImageStrategyAIGenerated &&
+		!studioBatchTaskLinkMatchesProductImageSettings(link, candidate) {
+		return SheinStudioCreatedTask{}, false
+	}
 	var task *Task
 	if s != nil && s.getTask != nil {
 		var err error
@@ -181,6 +189,17 @@ func (s *taskStudioBatchService) createdTaskFromDurableLink(ctx context.Context,
 	}, candidate)
 	created = projectStudioBatchCreatedTaskFromListingTask(created, task)
 	return created, true
+}
+
+func studioBatchTaskLinkMatchesProductImageSettings(link *StudioBatchTaskLinkRecord, candidate studioBatchTaskCandidate) bool {
+	if link == nil || normalizeSheinImageStrategy(candidate.ImageStrategy) != sheinImageStrategyAIGenerated {
+		return true
+	}
+	settings := strings.TrimSpace(candidate.ProductImageSettingsFingerprint)
+	if settings == "" {
+		return false
+	}
+	return strings.TrimSpace(link.CompatibilityFingerprint) == studioBatchTaskLinkCompatibilityFingerprint(candidate)
 }
 
 func resolveStudioBatchTaskLinkSource(link *StudioBatchTaskLinkRecord, task *Task) string {

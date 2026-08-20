@@ -332,6 +332,50 @@ func TestStudioBatchTaskLinkHeartbeatRejectsReclaimedClaimToken(t *testing.T) {
 	}
 }
 
+func TestCreatedTaskFromDurableLinkRejectsHistoricalAIWithoutSettingsIdentity(t *testing.T) {
+	candidate := studioBatchTaskCandidate{
+		ImageStrategy:                   sheinImageStrategyAIGenerated,
+		CompatibilityFingerprint:        "selection-fingerprint",
+		ProductImageSettingsFingerprint: "current-settings",
+	}
+	service := &taskStudioBatchService{}
+	legacyLink := &StudioBatchTaskLinkRecord{
+		ListingKitTaskID:         "task-legacy-ai",
+		ImageStrategy:            sheinImageStrategyAIGenerated,
+		CompatibilityFingerprint: "selection-fingerprint",
+		Status:                   studioBatchTaskLinkStatusCreated,
+	}
+
+	if _, ok := service.createdTaskFromDurableLink(context.Background(), legacyLink, candidate); ok {
+		t.Fatal("createdTaskFromDurableLink() reused an AI link without the settings identity")
+	}
+}
+
+func TestCreatedTaskFromDurableLinkAcceptsMatchingAISettingsIdentity(t *testing.T) {
+	candidate := studioBatchTaskCandidate{
+		ImageStrategy:                   sheinImageStrategyAIGenerated,
+		CompatibilityFingerprint:        "selection-fingerprint",
+		ProductImageSettingsFingerprint: "current-settings",
+	}
+	service := &taskStudioBatchService{
+		getTask: func(context.Context, string) (*Task, error) {
+			return &Task{Request: &GenerateRequest{Options: &GenerateOptions{
+				SheinStudio: &SheinStudioOptions{ProductImageURLs: []string{"https://example.com/generated.png"}},
+			}}}, nil
+		},
+	}
+	link := &StudioBatchTaskLinkRecord{
+		ListingKitTaskID:         "task-ai",
+		ImageStrategy:            sheinImageStrategyAIGenerated,
+		CompatibilityFingerprint: studioBatchTaskLinkCompatibilityFingerprint(candidate),
+		Status:                   studioBatchTaskLinkStatusCreated,
+	}
+
+	if _, ok := service.createdTaskFromDurableLink(context.Background(), link, candidate); !ok {
+		t.Fatal("createdTaskFromDurableLink() rejected a matching AI settings identity")
+	}
+}
+
 func TestStudioBatchTaskImageStrategyPrefersExplicitRequest(t *testing.T) {
 	t.Parallel()
 
