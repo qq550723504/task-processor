@@ -14,21 +14,28 @@ The current runtime uses `source_account_id` to select a tenant-owned 1688 login
 
 Add one operator-facing script, `scripts/1688-runtime-acceptance.ps1`, with explicit modes:
 
-- `Preflight` (default): GET-only checks for `/health`, `/readyz`, and authenticated `/api/v1/listing-kits/settings-health`.
-- `Crawl`: after explicit confirmation, POST `/api/v1/crawl` with a URL and `source_account_id`, then poll `/api/v1/tasks/{task_id}` until success or failure. It proves account-profile binding and durable crawler-result visibility without creating a ListingKit task.
-- `EndToEnd`: performs the confirmed crawler run, then submits the returned product to `/api/v1/product-sourcing/1688/listingkit/tasks` with the authenticated source account and explicit SHEIN target store. It prints only task IDs, statuses, source identity, and redacted error codes.
+- `Preflight` (default): GET-only checks for `/health`, `/readyz`, and authenticated `/api/v1/listing-kits/settings-health`. This is the full ListingKit readiness gate.
+- `SourcePreflight`: GET-only checks for `/health`, `/readyz`, and the authenticated canonical tenant/role. It intentionally does not require the full SHEIN/SDS/object-storage settings health because it gates only crawler acceptance.
+- `Crawl`: runs `SourcePreflight`, then after explicit confirmation, POST `/api/v1/crawl` with a URL and `source_account_id`, then poll `/api/v1/tasks/{task_id}` until success or failure. It proves account-profile binding and durable crawler-result visibility without creating a ListingKit task.
+- `EndToEnd`: runs the full `Preflight`, then performs the confirmed crawler run and submits the returned product to `/api/v1/product-sourcing/1688/listingkit/tasks` with the authenticated source account and explicit SHEIN target store. It prints only task IDs, statuses, source identity, and redacted error codes.
 
 The script uses the existing `LISTINGKIT_API_BASE_URL`, `LISTINGKIT_API_TOKEN`, and `.local/listingkit-api-token.txt` conventions. Token values are never printed, persisted by the script, or included in error output. The default mode never sends a POST request. `Crawl` and `EndToEnd` require both `-ConfirmCreateTask CREATE-1688-TASK` and the required IDs/URL, preventing accidental task creation from a health check.
 
 ## Data flow
 
 ```text
-Preflight
+Preflight (full ListingKit gate)
   GET /health
   GET /readyz
   GET /api/v1/listing-kits/settings-health
 
+SourcePreflight (crawler gate)
+  GET /api/v1/listing-kits/auth-context
+  GET /health
+  GET /readyz
+
 Crawl
+  SourcePreflight
   POST /api/v1/crawl { url, source_account_id }
       |
       v
@@ -38,6 +45,7 @@ Crawl
   ProductData from successful crawler result
 
 EndToEnd
+  Preflight
   ProductData + source_account_id + shein_store_id
       |
       v
@@ -61,12 +69,14 @@ The script will not call marketplace submission, preview, readiness, deletion, o
 
 Use Pester text/parser tests and a local fake HTTP server or request seam so tests never contact a cluster and never create a task. The tests must cover:
 
-1. default `Preflight` performs only GET requests;
-2. POST modes reject missing or incorrect confirmation before any request;
-3. token resolution prefers `LISTINGKIT_API_TOKEN` and falls back to the standard token file without printing the token;
-4. crawler polling handles processing, success, failure, and timeout responses;
-5. `EndToEnd` maps crawler `product_data` into the handoff request while adding only `source_account_id` and `shein_store_id` as runtime selectors;
-6. output redaction never emits `Authorization`, token contents, cookie values, proxy credentials, `user_data_dir`, or profile paths.
+1. default `Preflight` performs only GET requests and blocks when settings health is not `ready`;
+2. `SourcePreflight` performs only the source-safe GET sequence and never calls settings health;
+3. `Crawl` invokes the source gate before its POST, while `EndToEnd` invokes the full gate;
+4. POST modes reject missing or incorrect confirmation before any task request;
+5. token resolution prefers `LISTINGKIT_API_TOKEN` and falls back to the standard token file without printing the token;
+6. crawler polling handles processing, success, failure, and timeout responses;
+7. `EndToEnd` maps crawler `product_data` into the handoff request while adding only `source_account_id` and `shein_store_id` as runtime selectors;
+8. output redaction never emits `Authorization`, token contents, cookie values, proxy credentials, `user_data_dir`, or profile paths.
 
 No production Go endpoint or database schema change is part of this design. If the acceptance run exposes a real runtime defect, that defect gets a separate regression change with its own test-first cycle.
 

@@ -161,11 +161,12 @@ contents, or live task IDs are recorded here.
 ## Runtime acceptance tool — 2026-08-12
 
 The maintained operator tool is `scripts/1688-runtime-acceptance.ps1`. It is
-based on the latest `master` checkout and has three explicit modes:
+based on the latest `master` checkout and has four explicit modes:
 
 ```powershell
 Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -EnableExit
 .\scripts\1688-runtime-acceptance.ps1 -Mode Preflight
+.\scripts\1688-runtime-acceptance.ps1 -Mode SourcePreflight
 .\scripts\1688-runtime-acceptance.ps1 -Mode Crawl -Url "https://detail.1688.com/offer/<offer-id>.html" -SourceAccountID <account-id> -ConfirmCreateTask CREATE-1688-TASK
 .\scripts\1688-runtime-acceptance.ps1 -Mode EndToEnd -Url "https://detail.1688.com/offer/<offer-id>.html" -SourceAccountID <account-id> -SheinStoreID <shein-store-id> -ConfirmCreateTask CREATE-1688-TASK
 ```
@@ -173,8 +174,12 @@ Invoke-Pester -Path scripts/1688-runtime-acceptance.Tests.ps1 -EnableExit
 `Preflight` is the default and only performs GET requests for `/health`,
 `/readyz`, and authenticated `/api/v1/listing-kits/settings-health`. `Crawl`
 and `EndToEnd` refuse to send any POST until the exact confirmation string is
-provided. The crawler request uses `source_account_id`; the rejected legacy
-`source_store_id` field is never generated.
+provided. `SourcePreflight` performs only `/health`, `/readyz`, and the
+authenticated tenant/role check; it is the gate used by `Crawl` because a
+crawler acceptance does not require the full SHEIN/SDS/object-storage
+readiness. `EndToEnd` always runs the full `Preflight` gate first. The crawler
+request uses `source_account_id`; the rejected legacy `source_store_id` field
+is never generated.
 
 The tool reads the bearer token from `LISTINGKIT_API_TOKEN` first and then
 `.local/listingkit-api-token.txt`. It never prints token contents, cookies,

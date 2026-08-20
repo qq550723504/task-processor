@@ -155,7 +155,9 @@ The command displays a verification URI and one-time user code, then checks
 the authenticated canonical tenant before it performs the existing health
 checks. It creates no task. `Crawl` and `EndToEnd` remain separately guarded
 by the existing source/store requirements and
-`-ConfirmCreateTask CREATE-1688-TASK`.
+`-ConfirmCreateTask CREATE-1688-TASK`. For crawler-only acceptance where the
+full ListingKit settings gate is intentionally out of scope, use
+`-Mode SourcePreflight`; `EndToEnd` always requires the full `Preflight` gate.
 
 ## Non-goals
 

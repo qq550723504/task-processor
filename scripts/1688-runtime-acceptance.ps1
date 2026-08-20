@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("Preflight", "Crawl", "EndToEnd")]
+    [ValidateSet("Preflight", "SourcePreflight", "Crawl", "EndToEnd")]
     [string]$Mode = "Preflight",
     [string]$ApiBaseUrl = "",
     [string]$TokenFile = "",
@@ -192,7 +192,8 @@ function Assert-AuthenticatedTenant {
     )
 
     $context = Get-ResponseData -Response (Invoke-AcceptanceRequest -Method Get -Path "/api/v1/listing-kits/auth-context" -Token $Token -BaseUrl $BaseUrl)
-    if ([string]$context.tenant_id -cne $ExpectedTenantID) {
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedTenantID) -and
+        [string]$context.tenant_id -cne $ExpectedTenantID) {
         throw "authenticated tenant does not match -ExpectedTenantID"
     }
     if ([string]::IsNullOrWhiteSpace([string]$context.user_id)) {
@@ -321,14 +322,29 @@ function Invoke-Preflight {
         [string]$ExpectedTenantID = ""
     )
 
-    if (-not [string]::IsNullOrWhiteSpace($ExpectedTenantID)) {
-        Assert-AuthenticatedTenant -Token $Token -ExpectedTenantID $ExpectedTenantID -BaseUrl $BaseUrl
-    }
-    Invoke-PublicPreflight -BaseUrl $BaseUrl
     if ([string]::IsNullOrWhiteSpace($Token)) {
+        Invoke-PublicPreflight -BaseUrl $BaseUrl
         throw "No ListingKit API token found; set LISTINGKIT_API_TOKEN or provide the standard token file."
     }
+    Assert-AuthenticatedTenant -Token $Token -ExpectedTenantID $ExpectedTenantID -BaseUrl $BaseUrl
+    Invoke-PublicPreflight -BaseUrl $BaseUrl
     Invoke-AuthenticatedPreflight -Token $Token -BaseUrl $BaseUrl
+}
+
+function Invoke-SourcePreflight {
+    param(
+        [string]$Token,
+        [string]$BaseUrl = $script:AcceptanceApiBaseUrl,
+        [string]$ExpectedTenantID = ""
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Token)) {
+        Invoke-PublicPreflight -BaseUrl $BaseUrl
+        throw "No ListingKit API token found; set LISTINGKIT_API_TOKEN or provide the standard token file."
+    }
+    Assert-AuthenticatedTenant -Token $Token -ExpectedTenantID $ExpectedTenantID -BaseUrl $BaseUrl
+    Invoke-PublicPreflight -BaseUrl $BaseUrl
+    Write-Output "PASS SOURCE PREFLIGHT"
 }
 
 function Invoke-Crawl {
@@ -419,18 +435,22 @@ function Invoke-Main {
         }
         Invoke-PublicPreflight
         $token = Resolve-AcceptanceToken
+        Assert-AuthenticatedTenant -Token $token -ExpectedTenantID $ExpectedTenantID
         Invoke-AuthenticatedPreflight -Token $token
         return
     }
     $token = Resolve-AcceptanceToken
-    if ($UseDeviceAuthorization) {
-        Assert-AuthenticatedTenant -Token $token -ExpectedTenantID $ExpectedTenantID
+    if ($Mode -eq "SourcePreflight") {
+        Invoke-SourcePreflight -Token $token -ExpectedTenantID $ExpectedTenantID
+        return
     }
     if ($Mode -eq "Crawl") {
+        Invoke-SourcePreflight -Token $token -ExpectedTenantID $ExpectedTenantID
         $result = Invoke-Crawl -Url $Url -SourceAccountID $SourceAccountID -Confirmation $ConfirmCreateTask -Token $token
         Write-Output ("PASS CRAWL task_id={0} status={1}" -f $result.TaskID, $result.Status)
         return
     }
+    Invoke-Preflight -Token $token -ExpectedTenantID $ExpectedTenantID
     $result = Invoke-EndToEnd -Url $Url -SourceAccountID $SourceAccountID -SheinStoreID $SheinStoreID -Confirmation $ConfirmCreateTask -Token $token
     $handoffData = Get-ResponseData -Response $result.Handoff
     $sourceEvidence = Get-SourceIdentityEvidence -SourceIdentity $handoffData.source_identity

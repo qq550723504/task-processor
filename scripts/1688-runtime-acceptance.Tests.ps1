@@ -104,6 +104,9 @@ Describe "1688 runtime acceptance safety" {
         Mock Invoke-AcceptanceRequest {
             param($Method, $Path)
             $script:requestMethods += "$Method $Path"
+            if ($Path -eq "/api/v1/listing-kits/auth-context") {
+                return @{ tenant_id = "373211199677923496"; user_id = "subject"; roles = @("listingkit_operator") }
+            }
             if ($Path -eq "/api/v1/listing-kits/settings-health") {
                 return @{ status = "ready" }
             }
@@ -112,7 +115,7 @@ Describe "1688 runtime acceptance safety" {
 
         Invoke-Preflight -Token "test-token" -BaseUrl "https://example.test" | Out-Null
 
-        ($script:requestMethods -join ",") | Should Be "Get /health,Get /readyz,Get /api/v1/listing-kits/settings-health"
+        ($script:requestMethods -join ",") | Should Be "Get /api/v1/listing-kits/auth-context,Get /health,Get /readyz,Get /api/v1/listing-kits/settings-health"
     }
 
     It "runs public preflight checks then stops before settings health when the token is missing" {
@@ -132,6 +135,9 @@ Describe "1688 runtime acceptance safety" {
     It "blocks preflight when settings health is not ready" {
         Mock Invoke-AcceptanceRequest {
             param($Method, $Path)
+            if ($Path -eq "/api/v1/listing-kits/auth-context") {
+                return @{ tenant_id = "373211199677923496"; user_id = "subject"; roles = @("listingkit_operator") }
+            }
             if ($Path -eq "/api/v1/listing-kits/settings-health") {
                 return @{ status = "blocked" }
             }
@@ -296,6 +302,80 @@ Describe "1688 runtime acceptance safety" {
 
         $evidence.SourceID | Should Be "327"
         $evidence.SourceKey | Should Be "crawler:1688:327:version:v1"
+    }
+
+    It "runs a source-only preflight without requiring settings health" {
+        $script:requestMethods = @()
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path)
+            $script:requestMethods += "$Method $Path"
+            if ($Path -eq "/api/v1/listing-kits/auth-context") {
+                return @{ tenant_id = "373211199677923496"; user_id = "subject"; roles = @("listingkit_operator") }
+            }
+            return @{ status = "ok" }
+        }
+
+        { Invoke-SourcePreflight -Token "test-token" -BaseUrl "https://example.test" } | Should Not Throw
+
+        ($script:requestMethods -join ",") | Should Be "Get /api/v1/listing-kits/auth-context,Get /health,Get /readyz"
+    }
+
+    It "runs the source-only gate before Crawl" {
+        $previousMode = $script:Mode
+        $previousUrl = $script:Url
+        $previousSourceAccountID = $script:SourceAccountID
+        $previousConfirm = $script:ConfirmCreateTask
+        $previousUseDeviceAuthorization = $script:UseDeviceAuthorization
+        try {
+            $script:Mode = "Crawl"
+            $script:Url = "https://detail.1688.com/offer/321.html"
+            $script:SourceAccountID = 3001
+            $script:ConfirmCreateTask = "CREATE-1688-TASK"
+            $script:UseDeviceAuthorization = $false
+            $script:sourceGateCalls = 0
+            $script:crawlCalls = 0
+            Mock Resolve-AcceptanceToken { "test-token" }
+            Mock Invoke-SourcePreflight { $script:sourceGateCalls++ }
+            Mock Invoke-Crawl { $script:crawlCalls++; return @{ TaskID = "crawler-task-1"; Status = "success" } }
+
+            Invoke-Main | Out-Null
+
+            $script:sourceGateCalls | Should Be 1
+            $script:crawlCalls | Should Be 1
+        } finally {
+            $script:Mode = $previousMode
+            $script:Url = $previousUrl
+            $script:SourceAccountID = $previousSourceAccountID
+            $script:ConfirmCreateTask = $previousConfirm
+            $script:UseDeviceAuthorization = $previousUseDeviceAuthorization
+        }
+    }
+
+    It "runs the full gate before EndToEnd" {
+        $previousMode = $script:Mode
+        $previousUseDeviceAuthorization = $script:UseDeviceAuthorization
+        try {
+            $script:Mode = "EndToEnd"
+            $script:UseDeviceAuthorization = $false
+            $script:endToEndCalls = 0
+            Mock Resolve-AcceptanceToken { "test-token" }
+            Mock Invoke-Preflight { throw "full settings gate blocked" }
+            Mock Invoke-EndToEnd { $script:endToEndCalls++ }
+
+            { Invoke-Main } | Should Throw "full settings gate blocked"
+            $script:endToEndCalls | Should Be 0
+        } finally {
+            $script:Mode = $previousMode
+            $script:UseDeviceAuthorization = $previousUseDeviceAuthorization
+        }
+    }
+
+    It "always validates authenticated identity when the expected tenant is omitted" {
+        Mock Invoke-AcceptanceRequest {
+            return @{ tenant_id = "runtime-tenant"; user_id = "subject"; roles = @("listingkit_operator") }
+        }
+
+        { Assert-AuthenticatedTenant -Token "test-token" -BaseUrl "https://example.test" } | Should Not Throw
     }
 }
 

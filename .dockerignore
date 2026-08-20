@@ -4,6 +4,7 @@
 .local
 .tmp
 .codex-backups
+.worktrees
 .kiro
 .qoder
 .vscode
@@ -23,6 +24,8 @@ test-results
 chrome
 data
 node_modules
+**/node_modules
+**/.next
 
 *.log
 *.exe
