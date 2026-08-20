@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	sdstemplate "task-processor/internal/sds/template"
 )
 
 func TestBuildStudioBatchTaskGenerateRequestIncludesOwnerContext(t *testing.T) {
@@ -153,6 +155,130 @@ func TestTaskStudioBatchServiceAttachesGeneratedProductImagesForAI(t *testing.T)
 	}
 	if got, want := request.Options.SheinStudio.ProductImageURLs, []string{"https://cdn.example.com/ai-product.png"}; len(got) != 1 || got[0] != want[0] {
 		t.Fatalf("ProductImageURLs = %+v, want %v", got, want)
+	}
+}
+
+func TestBuildStudioBatchTaskProductImageRequestFallsBackToBatchPromptMode(t *testing.T) {
+	t.Parallel()
+
+	req := buildStudioBatchTaskProductImageRequest(
+		&SheinStudioSession{Prompt: "raw prompt"},
+		&StudioBatchRecord{Prompt: "raw prompt", PromptMode: "raw"},
+		studioBatchTaskCandidate{SelectionSnapshot: SheinStudioSelection{ProductName: "T-shirt"}, Title: "Style 1"},
+		StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
+	)
+	if req.PromptMode != "raw" {
+		t.Fatalf("PromptMode = %q, want batch fallback mode raw", req.PromptMode)
+	}
+}
+
+func TestStudioProductImageCategoryPathUsesSDSCategoryNames(t *testing.T) {
+	t.Parallel()
+
+	path := studioProductImageCategoryPath(&sdstemplate.ProductDetail{
+		ProductSummary: sdstemplate.ProductSummary{
+			Categories: []sdstemplate.Category{{Name: "Apparel"}, {Name: "Tops"}},
+		},
+	})
+	if got, want := path, []string{"Apparel", "Tops"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("category path = %+v, want %+v", got, want)
+	}
+}
+
+func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
+	var calls []string
+	service := &taskStudioBatchService{
+		generateProductImages: func(_ context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {
+			calls = append(calls, req.StyleName)
+			return &StudioProductImageResponse{Images: []StudioGeneratedImage{{ImageURL: "https://cdn.example.com/" + req.StyleName + ".png"}}}, nil
+		},
+	}
+	selection := SheinStudioSelection{
+		ProductName: "Canvas Tote",
+		Variants: []SheinStudioSelectionVariant{
+			{VariantSKU: "RED", Color: "Red", MockupImageURL: "https://example.com/red.png"},
+			{VariantSKU: "BLUE", Color: "Blue", MockupImageURL: "https://example.com/blue.png"},
+		},
+	}
+	candidate := studioBatchTaskCandidate{
+		ImageStrategy:     sheinImageStrategyAIGenerated,
+		SelectionSnapshot: selection,
+		Title:             "Style 1",
+	}
+	request := buildStudioBatchTaskGenerateRequest(
+		&SheinStudioSession{Prompt: "retro"},
+		&StudioBatchRecord{ID: "batch-1"},
+		candidate,
+		StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
+	)
+	if err := service.attachStudioBatchProductImages(context.Background(), request, &SheinStudioSession{Prompt: "retro"}, &StudioBatchRecord{ID: "batch-1"}, candidate, StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"}); err != nil {
+		t.Fatalf("attachStudioBatchProductImages() error = %v", err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("generator calls = %d (%v), want one per color representative", len(calls), calls)
+	}
+	if got := len(request.Options.SheinStudio.VariantProductImages); got != 2 {
+		t.Fatalf("variant product image sets = %d, want 2", got)
+	}
+	if got := request.Options.SheinStudio.VariantProductImages[1].Color; got != "Blue" {
+		t.Fatalf("second variant color = %q, want Blue", got)
+	}
+}
+
+func TestTaskStudioBatchServiceProductImageRequestLoadsSDSCategoryPath(t *testing.T) {
+	var gotCategoryPath []string
+	service := &taskStudioBatchService{
+		sdsProductDetailProvider: stubSDSBaselineRemoteProvider{productDetail: &sdstemplate.ProductDetail{
+			ProductSummary: sdstemplate.ProductSummary{
+				Categories: []sdstemplate.Category{{Name: "Apparel"}, {Name: "Tops"}},
+			},
+		}},
+		generateProductImages: func(_ context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {
+			gotCategoryPath = append([]string(nil), req.CategoryPath...)
+			return &StudioProductImageResponse{Images: []StudioGeneratedImage{{ImageURL: "https://example.com/product.png"}}}, nil
+		},
+	}
+	candidate := studioBatchTaskCandidate{
+		ImageStrategy:     sheinImageStrategyAIGenerated,
+		SelectionSnapshot: SheinStudioSelection{ParentProductID: 42, ProductName: "T-shirt"},
+		Title:             "Style 1",
+	}
+	request := buildStudioBatchTaskGenerateRequest(
+		&SheinStudioSession{Prompt: "retro"},
+		&StudioBatchRecord{ID: "batch-1"},
+		candidate,
+		StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
+	)
+	if err := service.attachStudioBatchProductImages(context.Background(), request, nil, &StudioBatchRecord{ID: "batch-1"}, candidate, StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"}); err != nil {
+		t.Fatalf("attachStudioBatchProductImages() error = %v", err)
+	}
+	if got, want := gotCategoryPath, []string{"Apparel", "Tops"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("category path = %+v, want %+v", got, want)
+	}
+}
+
+func TestTaskStudioBatchServiceLinkHeartbeatRefreshesCreatingClaim(t *testing.T) {
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	links := NewMemStudioBatchTaskLinkRepository()
+	initial := time.Now().UTC().Add(-time.Minute)
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-1", BatchID: "batch-1", ItemID: "item-1", DesignID: "design-1", SelectionID: "selection-1",
+		CandidateKey: "candidate-1", Status: studioBatchTaskLinkStatusCreating, UpdatedAt: initial,
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	service := &taskStudioBatchService{batchTaskLinkRepo: links, currentTime: time.Now}
+	stop := service.startStudioBatchTaskLinkHeartbeat(ctx, studioBatchTaskCandidate{CandidateKey: "candidate-1"}, time.Millisecond)
+	time.Sleep(10 * time.Millisecond)
+	if err := stop(); err != nil {
+		t.Fatalf("heartbeat stop error = %v", err)
+	}
+	link, err := links.GetStudioBatchTaskLinkByCandidateKey(ctx, "candidate-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() error = %v", err)
+	}
+	if !link.UpdatedAt.After(initial) {
+		t.Fatalf("UpdatedAt = %s, want refreshed after %s", link.UpdatedAt, initial)
 	}
 }
 

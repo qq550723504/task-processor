@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"strconv"
 	"strings"
+
+	sdstemplate "task-processor/internal/sds/template"
 )
 
 const defaultStudioBatchProductImageCount = 5
@@ -57,9 +59,14 @@ func buildStudioBatchTaskProductImageRequest(
 	count := defaultStudioBatchProductImageCount
 	customPrompt := ""
 	promptMode := ""
+	if batch != nil {
+		promptMode = strings.TrimSpace(batch.PromptMode)
+	}
 	productPrompts := []StudioProductImagePrompt(nil)
 	if session != nil {
-		promptMode = strings.TrimSpace(session.PromptMode)
+		if strings.TrimSpace(session.PromptMode) != "" {
+			promptMode = strings.TrimSpace(session.PromptMode)
+		}
 		customPrompt = strings.TrimSpace(session.ProductImagePrompt)
 		if parsed, err := strconv.Atoi(strings.TrimSpace(session.ProductImageCount)); err == nil && parsed > 0 {
 			count = parsed
@@ -85,6 +92,19 @@ func buildStudioBatchTaskProductImageRequest(
 		ImagePrompts:              productPrompts,
 		Count:                     count,
 	}
+}
+
+func studioProductImageCategoryPath(detail *sdstemplate.ProductDetail) []string {
+	if detail == nil || len(detail.Categories) == 0 {
+		return nil
+	}
+	result := make([]string, 0, len(detail.Categories))
+	for _, category := range detail.Categories {
+		if name := strings.TrimSpace(category.Name); name != "" {
+			result = append(result, name)
+		}
+	}
+	return result
 }
 
 func studioBatchTaskProductReferenceImageURLs(selection SheinStudioSelection) []string {
@@ -123,6 +143,58 @@ func studioBatchTaskProductReferenceImageURLs(selection SheinStudioSelection) []
 	}
 	if len(result) > 5 {
 		return result[:5]
+	}
+	return result
+}
+
+func studioBatchTaskProductReferenceImageURLsForVariant(selection SheinStudioSelection, variant SheinStudioSelectionVariant) []string {
+	result := make([]string, 0, 5)
+	seen := make(map[string]struct{}, 5)
+	add := func(raw string) {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	for _, value := range variant.SizeReferenceImageURLs {
+		add(value)
+	}
+	for _, value := range variant.MockupImageURLs {
+		add(value)
+	}
+	add(variant.MockupImageURL)
+	add(variant.BlankDesignURL)
+	add(variant.TemplateImageURL)
+	for _, value := range studioBatchTaskProductReferenceImageURLs(selection) {
+		add(value)
+	}
+	if len(result) > 5 {
+		return result[:5]
+	}
+	return result
+}
+
+func studioBatchTaskColorRepresentatives(selection SheinStudioSelection) []SheinStudioSelectionVariant {
+	result := make([]SheinStudioSelectionVariant, 0, len(selection.Variants))
+	seen := make(map[string]struct{}, len(selection.Variants))
+	for _, variant := range selection.Variants {
+		colorKey := strings.ToLower(strings.TrimSpace(variant.Color))
+		if colorKey == "" {
+			colorKey = "sku:" + strings.ToLower(strings.TrimSpace(variant.VariantSKU))
+		}
+		if colorKey == "" {
+			continue
+		}
+		if _, ok := seen[colorKey]; ok {
+			continue
+		}
+		seen[colorKey] = struct{}{}
+		result = append(result, variant)
 	}
 	return result
 }
