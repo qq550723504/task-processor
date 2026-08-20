@@ -13,7 +13,7 @@ import (
 	"task-processor/internal/infra/httpx"
 	"task-processor/internal/infra/worker"
 	kernelmodule "task-processor/internal/kernel/module"
-	"task-processor/internal/listingadmin"
+	"task-processor/internal/sourceaccount"
 )
 
 const crawler1688HTTPModuleName = "crawler-1688"
@@ -23,7 +23,7 @@ type crawler1688HTTPModule struct {
 	handler http.Handler
 }
 
-func newCrawler1688HTTPModule(cfg *config.Config, logger *logrus.Logger, repository listingadmin.StoreRepository) *crawler1688HTTPModule {
+func newCrawler1688HTTPModule(cfg *config.Config, logger *logrus.Logger, repository sourceaccount.Repository) *crawler1688HTTPModule {
 	var resolver crawler1688.AccountProfileResolver
 	if repository != nil {
 		resolver = crawler1688.NewAccountProfileResolver(repository, cfg.Platforms.Alibaba1688.ProfileRootDir)

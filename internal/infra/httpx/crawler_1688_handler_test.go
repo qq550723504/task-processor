@@ -33,6 +33,9 @@ func TestCrawler1688HandlerUsesInjectedTenantResolverForSourceAccountID(t *testi
 	if service.task == nil || service.task.SourceAccountID != 3001 || service.task.TenantID != 101 {
 		t.Fatalf("task = %+v, want SourceAccountID 3001 and TenantID 101", service.task)
 	}
+	if service.task.SourceAccessMode != "account_assisted" {
+		t.Fatalf("task source access mode = %q, want account_assisted", service.task.SourceAccessMode)
+	}
 }
 
 func TestCrawler1688HandlerRejectsSourceAccountIDWithoutTrustedTenantContext(t *testing.T) {
@@ -125,6 +128,9 @@ func TestCrawler1688HandlerKeepsLegacyPublicBehaviorWithoutSourceAccountID(t *te
 	}
 	if service.task == nil || service.task.SourceAccountID != 0 || service.task.TenantID != 0 {
 		t.Fatalf("task = %+v, want legacy unbound task", service.task)
+	}
+	if service.task.SourceAccessMode != "public" {
+		t.Fatalf("task source access mode = %q, want public", service.task.SourceAccessMode)
 	}
 }
 
