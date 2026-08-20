@@ -104,7 +104,8 @@ func (s *taskStudioBatchService) findDurableStudioBatchTask(ctx context.Context,
 			if task, ok := s.createdTaskFromDurableLink(ctx, link, candidate); ok {
 				return task, true
 			}
-			if link.Status == studioBatchTaskLinkStatusCreating && !s.studioBatchTaskLinkIsStale(link) {
+			if link.Status == studioBatchTaskLinkStatusCreating && !s.studioBatchTaskLinkIsStale(link) &&
+				(lookupKey == candidateKey || studioBatchTaskLinkHasStoredImageStrategy(link, candidate)) {
 				creating = true
 			}
 		}
@@ -113,6 +114,13 @@ func (s *taskStudioBatchService) findDurableStudioBatchTask(ctx context.Context,
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+}
+
+func studioBatchTaskLinkHasStoredImageStrategy(link *StudioBatchTaskLinkRecord, candidate studioBatchTaskCandidate) bool {
+	if link == nil || strings.TrimSpace(link.ImageStrategy) == "" {
+		return false
+	}
+	return normalizeSheinImageStrategy(link.ImageStrategy) == normalizeSheinImageStrategy(candidate.ImageStrategy)
 }
 
 func (s *taskStudioBatchService) createdTaskFromDurableLink(ctx context.Context, link *StudioBatchTaskLinkRecord, candidate studioBatchTaskCandidate) (SheinStudioCreatedTask, bool) {

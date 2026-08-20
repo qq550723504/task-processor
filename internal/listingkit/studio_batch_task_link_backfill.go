@@ -159,12 +159,13 @@ func backfillLegacyStudioBatchCreatedTask(
 		candidate.ImageStrategy = resolveSheinImageStrategy(task.Request)
 		candidate.CandidateKey = buildStudioBatchTaskCandidateKey(ctx, batch, candidate)
 	}
-	existing, err := cfg.LinkRepository.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
-	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		summary.Errors = append(summary.Errors, backfillError(session, created, "link_lookup_failed", err))
+	candidateKey, alreadyPresent, keyErr := resolveStudioBatchBackfillCandidateKey(ctx, cfg, candidate)
+	if keyErr != nil {
+		summary.Errors = append(summary.Errors, backfillError(session, created, "link_lookup_failed", keyErr))
 		return
 	}
-	if existing != nil && err == nil {
+	candidate.CandidateKey = candidateKey
+	if alreadyPresent {
 		summary.LinksAlreadyPresent++
 		return
 	}
@@ -182,8 +183,8 @@ func backfillLegacyStudioBatchCreatedTask(
 	}
 	link := buildStudioBatchBackfillLink(candidate, created, task, taskID, now().UTC())
 	if err := cfg.LinkRepository.CreateStudioBatchTaskLink(ctx, link); err != nil {
-		existing, getErr := cfg.LinkRepository.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
-		if getErr == nil && existing != nil {
+		_, alreadyPresent, getErr := resolveStudioBatchBackfillCandidateKey(ctx, cfg, candidate)
+		if getErr == nil && alreadyPresent {
 			summary.LinksAlreadyPresent++
 			return
 		}
@@ -191,6 +192,62 @@ func backfillLegacyStudioBatchCreatedTask(
 		return
 	}
 	summary.LinksCreated++
+}
+
+func resolveStudioBatchBackfillCandidateKey(
+	ctx context.Context,
+	cfg StudioBatchTaskLinkBackfillConfig,
+	candidate studioBatchTaskCandidate,
+) (string, bool, error) {
+	candidateKey := strings.TrimSpace(candidate.CandidateKey)
+	if candidateKey == "" {
+		return "", false, fmt.Errorf("backfill candidate has an empty candidate key")
+	}
+	existing, err := cfg.LinkRepository.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return candidateKey, false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if studioBatchBackfillExistingLinkMatchesStrategy(ctx, cfg, existing, candidate) {
+		return candidateKey, true, nil
+	}
+
+	disambiguatedKey := buildDisambiguatedStudioBatchTaskCandidateKey(candidate)
+	if disambiguatedKey == "" {
+		return "", false, fmt.Errorf("cannot disambiguate candidate key %s", candidateKey)
+	}
+	disambiguated, err := cfg.LinkRepository.GetStudioBatchTaskLinkByCandidateKey(ctx, disambiguatedKey)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return disambiguatedKey, false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if studioBatchBackfillExistingLinkMatchesStrategy(ctx, cfg, disambiguated, candidate) {
+		return disambiguatedKey, true, nil
+	}
+	return "", false, fmt.Errorf("candidate key %s is occupied by a different image strategy", disambiguatedKey)
+}
+
+func studioBatchBackfillExistingLinkMatchesStrategy(
+	ctx context.Context,
+	cfg StudioBatchTaskLinkBackfillConfig,
+	link *StudioBatchTaskLinkRecord,
+	candidate studioBatchTaskCandidate,
+) bool {
+	if link == nil {
+		return false
+	}
+	if strings.TrimSpace(link.ImageStrategy) != "" {
+		return studioBatchTaskLinkMatchesImageStrategy(link, nil, candidate)
+	}
+	if cfg.TaskGetter == nil || strings.TrimSpace(link.ListingKitTaskID) == "" {
+		return studioBatchTaskLinkMatchesImageStrategy(link, nil, candidate)
+	}
+	task, err := cfg.TaskGetter.GetTask(ctx, link.ListingKitTaskID)
+	return err == nil && studioBatchTaskLinkMatchesImageStrategy(link, task, candidate)
 }
 
 func buildStudioBatchBackfillCandidatesByDesign(

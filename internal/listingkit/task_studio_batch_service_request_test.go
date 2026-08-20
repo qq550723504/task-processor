@@ -257,6 +257,58 @@ func TestFindDurableStudioBatchTaskChecksHistoricalCandidateKey(t *testing.T) {
 	}
 }
 
+func TestFindDurableStudioBatchTaskDoesNotWaitOnMismatchedHistoricalCreatingLink(t *testing.T) {
+	t.Parallel()
+
+	links := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-1")
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID:            "historical-sds-link",
+		CandidateKey:  "historical-key",
+		ImageStrategy: sheinImageStrategySDSOfficial,
+		Status:        studioBatchTaskLinkStatusCreating,
+		UpdatedAt:     time.Now().UTC(),
+		CreatedAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("create historical creating link: %v", err)
+	}
+	s := &taskStudioBatchService{batchTaskLinkRepo: links, currentTime: time.Now}
+	started := time.Now()
+	_, ok := s.findDurableStudioBatchTask(ctx, studioBatchTaskCandidate{
+		CandidateKey:           "current-ai-key",
+		HistoricalCandidateKey: "historical-key",
+		ImageStrategy:          sheinImageStrategyAIGenerated,
+	})
+	if ok {
+		t.Fatal("findDurableStudioBatchTask() = true, want no reuse from mismatched historical link")
+	}
+	if elapsed := time.Since(started); elapsed > 500*time.Millisecond {
+		t.Fatalf("historical strategy mismatch waited %s, want immediate rejection", elapsed)
+	}
+}
+
+func TestLoadStudioBatchRejectedTasksFromLinksFiltersInactiveStrategy(t *testing.T) {
+	t.Parallel()
+
+	links := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-1")
+	for _, link := range []*StudioBatchTaskLinkRecord{
+		{ID: "sds-rejection", BatchID: "batch-1", DesignID: "design-1", ItemID: "item-1", SelectionID: "sds", CandidateKey: "sds-rejection", ImageStrategy: sheinImageStrategySDSOfficial, Status: studioBatchTaskLinkStatusFailed, ReasonCode: "baseline_missing", Message: "sds"},
+		{ID: "ai-rejection", BatchID: "batch-1", DesignID: "design-1", ItemID: "item-1", SelectionID: "ai", CandidateKey: "ai-rejection", ImageStrategy: sheinImageStrategyAIGenerated, Status: studioBatchTaskLinkStatusFailed, ReasonCode: "baseline_missing", Message: "ai"},
+	} {
+		if err := links.CreateStudioBatchTaskLink(ctx, link); err != nil {
+			t.Fatalf("create rejection link %s: %v", link.ID, err)
+		}
+	}
+	rejected, err := loadStudioBatchRejectedTasksFromLinks(ctx, links, "batch-1", sheinImageStrategyAIGenerated)
+	if err != nil {
+		t.Fatalf("loadStudioBatchRejectedTasksFromLinks() error = %v", err)
+	}
+	if len(rejected) != 1 || rejected[0].SelectionID != "ai" {
+		t.Fatalf("rejected = %+v, want only active AI rejection", rejected)
+	}
+}
+
 func TestCreatedTaskFromDurableLinkRejectsStoredStrategyBeforeTaskLookup(t *testing.T) {
 	t.Parallel()
 
