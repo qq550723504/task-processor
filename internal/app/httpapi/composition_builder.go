@@ -5,14 +5,8 @@ import (
 
 	a1688handoff "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688"
 	a1688httpapi "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688/httpapi"
-	"task-processor/internal/core/config"
-	listingkithttpapi "task-processor/internal/listingkit/httpapi"
 	"task-processor/internal/sourceaccount"
 )
-
-type sourceAccountRepositoryBuilder func(*config.Config, *logrus.Logger) (sourceaccount.Repository, []func() error, error)
-
-var buildSourceAccountRepository = listingkithttpapi.BuildSourceAccountRepository
 
 type httpFeatureCompositionBuilder struct {
 	buildProduct       productModuleBuilder
