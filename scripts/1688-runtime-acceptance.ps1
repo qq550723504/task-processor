@@ -192,7 +192,8 @@ function Assert-AuthenticatedTenant {
     )
 
     $context = Get-ResponseData -Response (Invoke-AcceptanceRequest -Method Get -Path "/api/v1/listing-kits/auth-context" -Token $Token -BaseUrl $BaseUrl)
-    if ([string]$context.tenant_id -cne $ExpectedTenantID) {
+    if (-not [string]::IsNullOrWhiteSpace($ExpectedTenantID) -and
+        [string]$context.tenant_id -cne $ExpectedTenantID) {
         throw "authenticated tenant does not match -ExpectedTenantID"
     }
     if ([string]::IsNullOrWhiteSpace([string]$context.user_id)) {
@@ -321,13 +322,12 @@ function Invoke-Preflight {
         [string]$ExpectedTenantID = ""
     )
 
-    if (-not [string]::IsNullOrWhiteSpace($ExpectedTenantID)) {
-        Assert-AuthenticatedTenant -Token $Token -ExpectedTenantID $ExpectedTenantID -BaseUrl $BaseUrl
-    }
-    Invoke-PublicPreflight -BaseUrl $BaseUrl
     if ([string]::IsNullOrWhiteSpace($Token)) {
+        Invoke-PublicPreflight -BaseUrl $BaseUrl
         throw "No ListingKit API token found; set LISTINGKIT_API_TOKEN or provide the standard token file."
     }
+    Assert-AuthenticatedTenant -Token $Token -ExpectedTenantID $ExpectedTenantID -BaseUrl $BaseUrl
+    Invoke-PublicPreflight -BaseUrl $BaseUrl
     Invoke-AuthenticatedPreflight -Token $Token -BaseUrl $BaseUrl
 }
 
@@ -338,13 +338,12 @@ function Invoke-SourcePreflight {
         [string]$ExpectedTenantID = ""
     )
 
-    if (-not [string]::IsNullOrWhiteSpace($ExpectedTenantID)) {
-        Assert-AuthenticatedTenant -Token $Token -ExpectedTenantID $ExpectedTenantID -BaseUrl $BaseUrl
-    }
-    Invoke-PublicPreflight -BaseUrl $BaseUrl
     if ([string]::IsNullOrWhiteSpace($Token)) {
+        Invoke-PublicPreflight -BaseUrl $BaseUrl
         throw "No ListingKit API token found; set LISTINGKIT_API_TOKEN or provide the standard token file."
     }
+    Assert-AuthenticatedTenant -Token $Token -ExpectedTenantID $ExpectedTenantID -BaseUrl $BaseUrl
+    Invoke-PublicPreflight -BaseUrl $BaseUrl
     Write-Output "PASS SOURCE PREFLIGHT"
 }
 
@@ -436,6 +435,7 @@ function Invoke-Main {
         }
         Invoke-PublicPreflight
         $token = Resolve-AcceptanceToken
+        Assert-AuthenticatedTenant -Token $token -ExpectedTenantID $ExpectedTenantID
         Invoke-AuthenticatedPreflight -Token $token
         return
     }

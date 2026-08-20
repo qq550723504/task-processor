@@ -104,6 +104,9 @@ Describe "1688 runtime acceptance safety" {
         Mock Invoke-AcceptanceRequest {
             param($Method, $Path)
             $script:requestMethods += "$Method $Path"
+            if ($Path -eq "/api/v1/listing-kits/auth-context") {
+                return @{ tenant_id = "373211199677923496"; user_id = "subject"; roles = @("listingkit_operator") }
+            }
             if ($Path -eq "/api/v1/listing-kits/settings-health") {
                 return @{ status = "ready" }
             }
@@ -112,7 +115,7 @@ Describe "1688 runtime acceptance safety" {
 
         Invoke-Preflight -Token "test-token" -BaseUrl "https://example.test" | Out-Null
 
-        ($script:requestMethods -join ",") | Should Be "Get /health,Get /readyz,Get /api/v1/listing-kits/settings-health"
+        ($script:requestMethods -join ",") | Should Be "Get /api/v1/listing-kits/auth-context,Get /health,Get /readyz,Get /api/v1/listing-kits/settings-health"
     }
 
     It "runs public preflight checks then stops before settings health when the token is missing" {
@@ -132,6 +135,9 @@ Describe "1688 runtime acceptance safety" {
     It "blocks preflight when settings health is not ready" {
         Mock Invoke-AcceptanceRequest {
             param($Method, $Path)
+            if ($Path -eq "/api/v1/listing-kits/auth-context") {
+                return @{ tenant_id = "373211199677923496"; user_id = "subject"; roles = @("listingkit_operator") }
+            }
             if ($Path -eq "/api/v1/listing-kits/settings-health") {
                 return @{ status = "blocked" }
             }
@@ -309,7 +315,7 @@ Describe "1688 runtime acceptance safety" {
             return @{ status = "ok" }
         }
 
-        { Invoke-SourcePreflight -Token "test-token" -BaseUrl "https://example.test" -ExpectedTenantID "373211199677923496" } | Should Not Throw
+        { Invoke-SourcePreflight -Token "test-token" -BaseUrl "https://example.test" } | Should Not Throw
 
         ($script:requestMethods -join ",") | Should Be "Get /api/v1/listing-kits/auth-context,Get /health,Get /readyz"
     }
@@ -362,6 +368,14 @@ Describe "1688 runtime acceptance safety" {
             $script:Mode = $previousMode
             $script:UseDeviceAuthorization = $previousUseDeviceAuthorization
         }
+    }
+
+    It "always validates authenticated identity when the expected tenant is omitted" {
+        Mock Invoke-AcceptanceRequest {
+            return @{ tenant_id = "runtime-tenant"; user_id = "subject"; roles = @("listingkit_operator") }
+        }
+
+        { Assert-AuthenticatedTenant -Token "test-token" -BaseUrl "https://example.test" } | Should Not Throw
     }
 }
 
