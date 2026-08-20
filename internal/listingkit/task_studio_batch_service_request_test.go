@@ -726,14 +726,16 @@ func TestFindDurableStudioBatchTaskChecksHistoricalCandidateKey(t *testing.T) {
 	links := NewMemStudioBatchTaskLinkRepository()
 	ctx := WithTenantID(context.Background(), "tenant-1")
 	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
-		ID:               "legacy-link",
-		BatchID:          "batch-1",
-		ItemID:           "item-1",
-		DesignID:         "design-1",
-		SelectionID:      "selection-1",
-		CandidateKey:     "legacy-key",
-		ListingKitTaskID: "old-ai-task",
-		Status:           studioBatchTaskLinkStatusCreated,
+		ID:                       "legacy-link",
+		BatchID:                  "batch-1",
+		ItemID:                   "item-1",
+		DesignID:                 "design-1",
+		SelectionID:              "selection-1",
+		CandidateKey:             "legacy-key",
+		ListingKitTaskID:         "old-ai-task",
+		ImageStrategy:            sheinImageStrategyAIGenerated,
+		CompatibilityFingerprint: "selection-fingerprint|product_image_settings=settings-fingerprint",
+		Status:                   studioBatchTaskLinkStatusCreated,
 	}); err != nil {
 		t.Fatalf("create historical link: %v", err)
 	}
@@ -748,13 +750,14 @@ func TestFindDurableStudioBatchTaskChecksHistoricalCandidateKey(t *testing.T) {
 		},
 	}
 	candidate := studioBatchTaskCandidate{
-		Design:                   StudioMaterializedDesignRecord{ID: "design-1"},
-		Item:                     StudioBatchItemRecord{ID: "item-1"},
-		SelectionID:              "selection-1",
-		CandidateKey:             "new-ai-key",
-		HistoricalCandidateKey:   "legacy-key",
-		ImageStrategy:            sheinImageStrategyAIGenerated,
-		CompatibilityFingerprint: "",
+		Design:                          StudioMaterializedDesignRecord{ID: "design-1"},
+		Item:                            StudioBatchItemRecord{ID: "item-1"},
+		SelectionID:                     "selection-1",
+		CandidateKey:                    "new-ai-key",
+		HistoricalCandidateKey:          "legacy-key",
+		ImageStrategy:                   sheinImageStrategyAIGenerated,
+		CompatibilityFingerprint:        "selection-fingerprint",
+		ProductImageSettingsFingerprint: "settings-fingerprint",
 	}
 	got, ok := s.findDurableStudioBatchTask(ctx, candidate)
 	if !ok || got.ID != "old-ai-task" {
