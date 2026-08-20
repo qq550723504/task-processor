@@ -7,15 +7,31 @@ import (
 
 // CrawlerTask 爬虫任务
 type CrawlerTask struct {
-	TaskID          string    // 任务唯一标识
-	URL             string    // 目标 URL
-	ASIN            string    // Amazon 产品 ASIN（可选）
-	Region          string    // 地区代码（如 us, uk, jp）
-	Zipcode         string    // 邮编（可选）
-	Priority        int       // 优先级
-	TenantID        int64     // trusted internal tenant context for worker execution
-	SourceAccountID int64     // 1688 source login account/profile identifier (optional)
-	CreatedAt       time.Time // 创建时间
+	TaskID           string    // 任务唯一标识
+	URL              string    // 目标 URL
+	ASIN             string    // Amazon 产品 ASIN（可选）
+	Region           string    // 地区代码（如 us, uk, jp）
+	Zipcode          string    // 邮编（可选）
+	Priority         int       // 优先级
+	TenantID         int64     // trusted internal tenant context for worker execution
+	SourceAccountID  int64     // 1688 source login account/profile identifier (optional)
+	SourceAccessMode string    `json:"source_access_mode,omitempty"` // public or account_assisted; inferred for legacy payloads
+	CreatedAt        time.Time // 创建时间
+}
+
+// EffectiveSourceAccessMode preserves compatibility with tasks serialized
+// before SourceAccessMode existed.
+func (t *CrawlerTask) EffectiveSourceAccessMode() string {
+	if t == nil {
+		return "public"
+	}
+	if t.SourceAccessMode != "" {
+		return t.SourceAccessMode
+	}
+	if t.SourceAccountID > 0 {
+		return "account_assisted"
+	}
+	return "public"
 }
 
 // NewCrawlerTask 创建爬虫任务
