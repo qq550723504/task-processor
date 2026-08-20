@@ -101,7 +101,7 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			}
 			if !claimed {
 				if existing, ok := s.findDurableStudioBatchTask(ctx, taskCandidate); ok {
-					return existing, nil
+					return markStudioBatchReusedTask(existing), nil
 				}
 				return SheinStudioCreatedTask{}, fmt.Errorf("studio batch task candidate is already owned")
 			}

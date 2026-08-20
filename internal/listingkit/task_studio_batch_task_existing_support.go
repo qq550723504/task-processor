@@ -119,6 +119,13 @@ func (s *taskStudioBatchService) createdTaskFromDurableLink(ctx context.Context,
 	if link == nil || strings.TrimSpace(link.ListingKitTaskID) == "" {
 		return SheinStudioCreatedTask{}, false
 	}
+	// A persisted strategy is authoritative for the historical link. Reject a
+	// mismatched candidate before fetching the linked task so a transient task
+	// read error cannot invalidate an unrelated durable link.
+	if storedStrategy := strings.TrimSpace(link.ImageStrategy); storedStrategy != "" &&
+		normalizeSheinImageStrategy(storedStrategy) != normalizeSheinImageStrategy(candidate.ImageStrategy) {
+		return SheinStudioCreatedTask{}, false
+	}
 	var task *Task
 	if s != nil && s.getTask != nil {
 		var err error

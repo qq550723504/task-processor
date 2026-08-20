@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -253,6 +254,47 @@ func TestFindDurableStudioBatchTaskChecksHistoricalCandidateKey(t *testing.T) {
 	got, ok := s.findDurableStudioBatchTask(ctx, candidate)
 	if !ok || got.ID != "old-ai-task" {
 		t.Fatalf("durable lookup = (%+v, %v), want historical AI task", got, ok)
+	}
+}
+
+func TestCreatedTaskFromDurableLinkRejectsStoredStrategyBeforeTaskLookup(t *testing.T) {
+	t.Parallel()
+
+	lookupCalled := false
+	s := &taskStudioBatchService{
+		currentTime: time.Now,
+		getTask: func(context.Context, string) (*Task, error) {
+			lookupCalled = true
+			return nil, errors.New("transient task lookup failure")
+		},
+	}
+	link := &StudioBatchTaskLinkRecord{
+		ListingKitTaskID: "sds-task",
+		ImageStrategy:    sheinImageStrategySDSOfficial,
+		Status:           studioBatchTaskLinkStatusCreated,
+	}
+	_, ok := s.createdTaskFromDurableLink(context.Background(), link, studioBatchTaskCandidate{
+		ImageStrategy: sheinImageStrategyAIGenerated,
+	})
+	if ok {
+		t.Fatal("createdTaskFromDurableLink() = true, want stored strategy mismatch rejection")
+	}
+	if lookupCalled {
+		t.Fatal("getTask called for a stored strategy mismatch")
+	}
+	if link.Status != studioBatchTaskLinkStatusCreated {
+		t.Fatalf("link status = %q, want unchanged created status", link.Status)
+	}
+}
+
+func TestMarkStudioBatchReusedTaskClassifiesDurableTaskAsReused(t *testing.T) {
+	t.Parallel()
+
+	got := markStudioBatchReusedTask(SheinStudioCreatedTask{
+		ID: "task-1",
+	})
+	if got.ReasonCode != studioBatchReusedTaskReasonCode {
+		t.Fatalf("reason code = %q, want %q", got.ReasonCode, studioBatchReusedTaskReasonCode)
 	}
 }
 

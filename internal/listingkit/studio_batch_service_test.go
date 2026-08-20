@@ -4024,12 +4024,14 @@ func TestServiceCreateStudioBatchTasks_ConcurrentStaleCreatingRecoveryCreatesOne
 		if err != nil {
 			t.Fatalf("CreateStudioBatchTasks(%d) error = %v", index, err)
 		}
-		if results[index] == nil || len(results[index].CreatedTasks) != 1 {
-			t.Fatalf("CreateStudioBatchTasks(%d) result = %+v, want one task", index, results[index])
+		if results[index] == nil || len(results[index].CreatedTasks)+len(results[index].ReusedTasks) != 1 {
+			t.Fatalf("CreateStudioBatchTasks(%d) result = %+v, want one created or reused task", index, results[index])
 		}
 	}
-	if results[0].CreatedTasks[0].ID != results[1].CreatedTasks[0].ID {
-		t.Fatalf("stale recovery task ids = %q and %q, want same task", results[0].CreatedTasks[0].ID, results[1].CreatedTasks[0].ID)
+	leftIDs := studioBatchResultTaskIDs(results[0])
+	rightIDs := studioBatchResultTaskIDs(results[1])
+	if len(leftIDs) != 1 || len(rightIDs) != 1 || leftIDs[0] != rightIDs[0] {
+		t.Fatalf("stale recovery task ids = %q and %q, want same task", leftIDs, rightIDs)
 	}
 	if got := taskRepo.taskCount(); got != 1 {
 		t.Fatalf("persisted task count = %d, want exactly one task", got)
