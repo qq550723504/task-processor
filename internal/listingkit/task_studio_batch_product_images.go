@@ -27,6 +27,11 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 	if s == nil || s.generateProductImages == nil {
 		return fmt.Errorf("studio product image generator is not configured")
 	}
+	if s.batchTaskLinkRepo != nil {
+		if _, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkLeaseRepository); !ok || strings.TrimSpace(candidate.ClaimToken) == "" {
+			return fmt.Errorf("studio batch task claim lease token is unavailable")
+		}
+	}
 	heartbeatStop := s.startStudioBatchTaskLinkHeartbeat(ctx, candidate, studioBatchTaskLinkHeartbeatInterval)
 	productImageRequest, err := s.buildStudioBatchTaskProductImageRequest(ctx, session, batch, candidate, design)
 	if err != nil {
@@ -123,23 +128,34 @@ func (s *taskStudioBatchService) startStudioBatchTaskLinkHeartbeat(
 	if s == nil || s.batchTaskLinkRepo == nil || interval <= 0 {
 		return func() error { return nil }
 	}
+	leaseRepo, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkLeaseRepository)
+	if !ok || strings.TrimSpace(candidate.ClaimToken) == "" {
+		return func() error { return fmt.Errorf("studio batch task claim lease token is unavailable") }
+	}
 	heartbeatCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
 	errCh := make(chan error, 1)
 	refresh := func() error {
-		link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(heartbeatCtx, candidate.CandidateKey)
-		if err != nil {
-			return err
-		}
-		if link == nil || link.Status != studioBatchTaskLinkStatusCreating || strings.TrimSpace(link.ListingKitTaskID) != "" {
-			return fmt.Errorf("studio batch task claim is no longer owned")
-		}
 		if s.currentTime != nil {
-			link.UpdatedAt = s.currentTime().UTC()
+			updatedAt := s.currentTime().UTC()
+			refreshed, err := leaseRepo.RefreshStudioBatchTaskLink(heartbeatCtx, candidate.CandidateKey, candidate.ClaimToken, updatedAt)
+			if err != nil {
+				return err
+			}
+			if !refreshed {
+				return fmt.Errorf("studio batch task claim is no longer owned")
+			}
+			return nil
 		} else {
-			link.UpdatedAt = time.Now().UTC()
+			refreshed, err := leaseRepo.RefreshStudioBatchTaskLink(heartbeatCtx, candidate.CandidateKey, candidate.ClaimToken, time.Now().UTC())
+			if err != nil {
+				return err
+			}
+			if !refreshed {
+				return fmt.Errorf("studio batch task claim is no longer owned")
+			}
+			return nil
 		}
-		return s.batchTaskLinkRepo.UpdateStudioBatchTaskLink(heartbeatCtx, link)
 	}
 	go func() {
 		defer close(done)

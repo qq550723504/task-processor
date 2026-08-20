@@ -58,6 +58,13 @@ func (s *taskStudioBatchService) findLegacyStudioBatchTask(
 		if strings.TrimSpace(created.DesignID) != designID || strings.TrimSpace(created.ID) == "" {
 			continue
 		}
+		// Legacy session records do not persist the effective product-image
+		// configuration. Do not reuse an AI task through this fallback because
+		// its prompt/mode/count/role prompts cannot be proven compatible.
+		if normalizeSheinImageStrategy(candidate.ImageStrategy) == sheinImageStrategyAIGenerated &&
+			strings.TrimSpace(candidate.ProductImageSettingsFingerprint) != "" {
+			continue
+		}
 		task, err := s.getTask(ctx, created.ID)
 		if err != nil || task == nil || task.Status == core.TaskStatusFailed {
 			continue
@@ -246,7 +253,7 @@ func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context,
 		ItemID:                   strings.TrimSpace(candidate.Item.ID),
 		DesignID:                 strings.TrimSpace(candidate.Design.ID),
 		SelectionID:              strings.TrimSpace(candidate.SelectionID),
-		CompatibilityFingerprint: strings.TrimSpace(candidate.CompatibilityFingerprint),
+		CompatibilityFingerprint: studioBatchTaskLinkCompatibilityFingerprint(candidate),
 		ImageStrategy:            normalizeSheinImageStrategy(candidate.ImageStrategy),
 		SheinStoreID:             candidate.SheinStoreID,
 		ListingKitTaskID:         strings.TrimSpace(taskID),
@@ -346,7 +353,7 @@ func studioBatchTaskLinkMatchesImageStrategy(link *StudioBatchTaskLinkRecord, ta
 		return false
 	}
 	candidateStrategy := normalizeSheinImageStrategy(candidate.ImageStrategy)
-	if candidateStrategy == sheinImageStrategyAIGenerated && !studioBatchTaskHasGeneratedProductImages(task) {
+	if candidateStrategy == sheinImageStrategyAIGenerated && strings.TrimSpace(link.ListingKitTaskID) != "" && !studioBatchTaskHasGeneratedProductImages(task) {
 		return false
 	}
 	if storedStrategy := strings.TrimSpace(link.ImageStrategy); storedStrategy != "" {

@@ -52,8 +52,11 @@ func (r *GormStudioBatchTaskLinkRepository) CreateStudioBatchTaskLink(ctx contex
 		return fmt.Errorf("studio batch task link id is required")
 	}
 	err := r.db.WithContext(ctx).Create(&row).Error
-	if !isStudioBatchTaskLinkMissingSourceColumnError(err) && !isStudioBatchTaskLinkMissingImageStrategyColumnError(err) {
+	if !isStudioBatchTaskLinkMissingSourceColumnError(err) && !isStudioBatchTaskLinkMissingImageStrategyColumnError(err) && !isStudioBatchTaskLinkMissingClaimTokenColumnError(err) {
 		return err
+	}
+	if migrateErr := ensureStudioBatchTaskLinkClaimTokenColumn(r.db); migrateErr != nil {
+		return migrateErr
 	}
 	if migrateErr := ensureStudioBatchTaskLinkSourceColumn(r.db); migrateErr != nil {
 		return migrateErr
@@ -77,6 +80,7 @@ func (r *GormStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx contex
 		Where("id = ?", link.ID).
 		Updates(map[string]any{
 			"listingkit_task_id": link.ListingKitTaskID,
+			"claim_token":        link.ClaimToken,
 			"status":             link.Status,
 			"source":             link.Source,
 			"reason_code":        link.ReasonCode,
@@ -113,6 +117,55 @@ func (r *GormStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx contex
 		return gorm.ErrRecordNotFound
 	}
 	return nil
+}
+
+func (r *GormStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateWithToken(ctx context.Context, candidateKey string, fromStatus string, toStatus string, claimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
+		Model(&StudioBatchTaskLinkRecord{}).
+		Where("candidate_key = ? AND status = ?", candidateKey, fromStatus).
+		Updates(map[string]any{
+			"status":      toStatus,
+			"claim_token": strings.TrimSpace(claimToken),
+			"updated_at":  updatedAt,
+		})
+	if result.Error != nil {
+		return nil, false, result.Error
+	}
+	link, err := r.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey)
+	if err != nil {
+		return nil, false, err
+	}
+	return link, result.RowsAffected > 0, nil
+}
+
+func (r *GormStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpdatedAtWithToken(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, claimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
+		Model(&StudioBatchTaskLinkRecord{}).
+		Where("candidate_key = ? AND status = ? AND updated_at = ?", candidateKey, fromStatus, observedUpdatedAt).
+		Updates(map[string]any{
+			"status":      toStatus,
+			"claim_token": strings.TrimSpace(claimToken),
+			"updated_at":  updatedAt,
+		})
+	if result.Error != nil {
+		return nil, false, result.Error
+	}
+	link, err := r.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey)
+	if err != nil {
+		return nil, false, err
+	}
+	return link, result.RowsAffected > 0, nil
+}
+
+func (r *GormStudioBatchTaskLinkRepository) RefreshStudioBatchTaskLink(ctx context.Context, candidateKey string, claimToken string, updatedAt time.Time) (bool, error) {
+	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
+		Model(&StudioBatchTaskLinkRecord{}).
+		Where("candidate_key = ? AND status = ? AND claim_token = ? AND (listingkit_task_id IS NULL OR listingkit_task_id = '')", candidateKey, studioBatchTaskLinkStatusCreating, strings.TrimSpace(claimToken)).
+		Updates(map[string]any{"updated_at": updatedAt})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
 }
 
 func (r *GormStudioBatchTaskLinkRepository) ListStudioBatchTaskLinksByBatchID(ctx context.Context, batchID string) ([]StudioBatchTaskLinkRecord, error) {
@@ -220,6 +273,24 @@ func isStudioBatchTaskLinkMissingImageStrategyColumnError(err error) bool {
 	}
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "image_strategy") &&
+		(strings.Contains(message, "no column") ||
+			strings.Contains(message, "does not exist") ||
+			strings.Contains(message, "unknown column"))
+}
+
+func ensureStudioBatchTaskLinkClaimTokenColumn(db *gorm.DB) error {
+	if db == nil || db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "ClaimToken") {
+		return nil
+	}
+	return db.Migrator().AddColumn(&StudioBatchTaskLinkRecord{}, "ClaimToken")
+}
+
+func isStudioBatchTaskLinkMissingClaimTokenColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "claim_token") &&
 		(strings.Contains(message, "no column") ||
 			strings.Contains(message, "does not exist") ||
 			strings.Contains(message, "unknown column"))

@@ -95,7 +95,7 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			if err := s.reserveStudioBatchTaskCandidate(ctx, &taskCandidate); err != nil {
 				return SheinStudioCreatedTask{}, err
 			}
-			claimed, err := s.claimStudioBatchTaskCandidate(ctx, taskCandidate)
+			claimed, err := s.claimStudioBatchTaskCandidate(ctx, &taskCandidate)
 			if err != nil {
 				return SheinStudioCreatedTask{}, err
 			}

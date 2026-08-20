@@ -114,6 +114,49 @@ func TestStudioBatchTaskCandidateKey_DiffersWhenImageStrategyDiffers(t *testing.
 	}
 }
 
+func TestStudioBatchTaskCandidateKeyDiffersWhenProductImageSettingsChange(t *testing.T) {
+	batch := &StudioBatchRecord{
+		ID:                 "batch-1",
+		TenantID:           "tenant-1",
+		PromptMode:         "managed",
+		ProductImageCount:  "5",
+		ProductImagePrompt: "clean studio background",
+	}
+	base := studioBatchTaskCandidate{
+		Item:          StudioBatchItemRecord{ID: "item-1"},
+		Design:        StudioMaterializedDesignRecord{ID: "design-1"},
+		SelectionID:   "selection-1",
+		ImageStrategy: sheinImageStrategyAIGenerated,
+	}
+	changed := *batch
+	changed.ProductImageCount = "6"
+	changedBatch := &changed
+	if got, want := buildStudioBatchTaskCandidateKey(nil, batch, base), buildStudioBatchTaskCandidateKey(nil, changedBatch, base); got == want {
+		t.Fatalf("product-image-settings candidate keys unexpectedly matched: %q", got)
+	}
+}
+
+func TestStudioBatchTaskLinkCompatibilityFingerprintDiffersWhenProductImageSettingsChange(t *testing.T) {
+	baseBatch := &StudioBatchRecord{
+		PromptMode:         "managed",
+		ProductImageCount:  "5",
+		ProductImagePrompt: "clean studio background",
+	}
+	changedBatch := *baseBatch
+	changedBatch.ProductImageCount = "6"
+
+	base := studioBatchTaskCandidate{
+		CompatibilityFingerprint:        "selection-fingerprint",
+		ImageStrategy:                   sheinImageStrategyAIGenerated,
+		ProductImageSettingsFingerprint: studioBatchTaskProductImageSettingsFingerprint(baseBatch),
+	}
+	changed := base
+	changed.ProductImageSettingsFingerprint = studioBatchTaskProductImageSettingsFingerprint(&changedBatch)
+	if got, want := studioBatchTaskLinkCompatibilityFingerprint(base), studioBatchTaskLinkCompatibilityFingerprint(changed); got == want {
+		t.Fatalf("product-image-settings link compatibility fingerprints unexpectedly matched: %q", got)
+	}
+}
+
 func TestStudioBatchTaskCandidateKey_PreservesHistoricalSDSKeyForBlankStrategy(t *testing.T) {
 	batch := &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-1"}
 	base := studioBatchTaskCandidate{

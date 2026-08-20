@@ -270,12 +270,12 @@ func TestTaskStudioBatchServiceLinkHeartbeatRefreshesCreatingClaim(t *testing.T)
 	initial := time.Now().UTC().Add(-time.Minute)
 	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
 		ID: "link-1", BatchID: "batch-1", ItemID: "item-1", DesignID: "design-1", SelectionID: "selection-1",
-		CandidateKey: "candidate-1", Status: studioBatchTaskLinkStatusCreating, UpdatedAt: initial,
+		CandidateKey: "candidate-1", ClaimToken: "claim-1", Status: studioBatchTaskLinkStatusCreating, UpdatedAt: initial,
 	}); err != nil {
 		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
 	}
 	service := &taskStudioBatchService{batchTaskLinkRepo: links, currentTime: time.Now}
-	stop := service.startStudioBatchTaskLinkHeartbeat(ctx, studioBatchTaskCandidate{CandidateKey: "candidate-1"}, time.Millisecond)
+	stop := service.startStudioBatchTaskLinkHeartbeat(ctx, studioBatchTaskCandidate{CandidateKey: "candidate-1", ClaimToken: "claim-1"}, time.Millisecond)
 	time.Sleep(10 * time.Millisecond)
 	if err := stop(); err != nil {
 		t.Fatalf("heartbeat stop error = %v", err)
@@ -286,6 +286,24 @@ func TestTaskStudioBatchServiceLinkHeartbeatRefreshesCreatingClaim(t *testing.T)
 	}
 	if !link.UpdatedAt.After(initial) {
 		t.Fatalf("UpdatedAt = %s, want refreshed after %s", link.UpdatedAt, initial)
+	}
+}
+
+func TestStudioBatchTaskLinkHeartbeatRejectsReclaimedClaimToken(t *testing.T) {
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	links := NewMemStudioBatchTaskLinkRepository()
+	now := time.Now().UTC()
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-1", CandidateKey: "candidate-1", ClaimToken: "new-owner", Status: studioBatchTaskLinkStatusCreating, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	refreshed, err := links.RefreshStudioBatchTaskLink(ctx, "candidate-1", "old-owner", now.Add(time.Second))
+	if err != nil {
+		t.Fatalf("RefreshStudioBatchTaskLink() error = %v", err)
+	}
+	if refreshed {
+		t.Fatal("old claim token unexpectedly refreshed a reclaimed link")
 	}
 }
 
@@ -447,6 +465,29 @@ func TestStudioBatchTaskMatchesSelectionRejectsAIWithoutGeneratedProductImages(t
 	}
 	if studioBatchTaskMatchesSelection(task, candidate) {
 		t.Fatal("AI task without generated product images unexpectedly matched")
+	}
+}
+
+func TestFindLegacyStudioBatchTaskDoesNotReuseAIWithoutPersistedSettingsIdentity(t *testing.T) {
+	t.Parallel()
+
+	s := &taskStudioBatchService{
+		getTask: func(context.Context, string) (*Task, error) {
+			t.Fatal("legacy AI task was looked up without a persisted settings identity")
+			return nil, nil
+		},
+	}
+	candidate := studioBatchTaskCandidate{
+		Design:                          StudioMaterializedDesignRecord{ID: "design-1"},
+		ImageStrategy:                   sheinImageStrategyAIGenerated,
+		ProductImageSettingsFingerprint: "settings-fingerprint",
+	}
+	created, ok, err := s.findLegacyStudioBatchTask(context.Background(), SheinStudioCreatedTaskList{{ID: "legacy-ai", DesignID: "design-1"}}, candidate)
+	if err != nil {
+		t.Fatalf("findLegacyStudioBatchTask() error = %v", err)
+	}
+	if ok || created.ID != "" {
+		t.Fatalf("findLegacyStudioBatchTask() = (%+v, %t), want no reuse", created, ok)
 	}
 }
 

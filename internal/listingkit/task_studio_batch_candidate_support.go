@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -25,18 +26,20 @@ type StudioBatchTaskState struct {
 }
 
 type studioBatchTaskCandidate struct {
-	Design                   StudioMaterializedDesignRecord
-	Item                     StudioBatchItemRecord
-	Selection                SheinStudioGroupedSelection
-	SelectionSnapshot        SheinStudioSelection
-	SelectionID              string
-	CompatibilityFingerprint string
-	CandidateKey             string
-	HistoricalCandidateKey   string
-	ImageStrategy            string
-	SheinStoreID             int64
-	StyleID                  string
-	Title                    string
+	Design                          StudioMaterializedDesignRecord
+	Item                            StudioBatchItemRecord
+	Selection                       SheinStudioGroupedSelection
+	SelectionSnapshot               SheinStudioSelection
+	SelectionID                     string
+	CompatibilityFingerprint        string
+	ProductImageSettingsFingerprint string
+	CandidateKey                    string
+	HistoricalCandidateKey          string
+	ClaimToken                      string
+	ImageStrategy                   string
+	SheinStoreID                    int64
+	StyleID                         string
+	Title                           string
 }
 
 type studioBatchTaskStateContextKey struct{}
@@ -353,16 +356,17 @@ func buildStudioBatchTaskCandidatesForDesign(
 		grouped := selections[index]
 		grouped.Selection.DesignType = candidate.SelectionSnapshot.DesignType
 		projected := studioBatchTaskCandidate{
-			Design:                   design,
-			Item:                     item,
-			Selection:                grouped,
-			SelectionSnapshot:        grouped.Selection,
-			SelectionID:              candidate.SelectionID,
-			CompatibilityFingerprint: candidate.CompatibilityFingerprint,
-			ImageStrategy:            normalizeStudioBatchTaskCreationImageStrategy(sessionImageStrategy(session)),
-			SheinStoreID:             candidate.StoreID,
-			StyleID:                  candidate.StyleID,
-			Title:                    candidate.Title,
+			Design:                          design,
+			Item:                            item,
+			Selection:                       grouped,
+			SelectionSnapshot:               grouped.Selection,
+			SelectionID:                     candidate.SelectionID,
+			CompatibilityFingerprint:        candidate.CompatibilityFingerprint,
+			ProductImageSettingsFingerprint: studioBatchTaskProductImageSettingsFingerprint(batch),
+			ImageStrategy:                   normalizeStudioBatchTaskCreationImageStrategy(sessionImageStrategy(session)),
+			SheinStoreID:                    candidate.StoreID,
+			StyleID:                         candidate.StyleID,
+			Title:                           candidate.Title,
 		}
 		projected.CandidateKey = buildStudioBatchTaskCandidateKey(ctx, batch, projected)
 		historical := projected
@@ -462,8 +466,33 @@ func buildStudioBatchTaskCandidateKey(ctx context.Context, batch *StudioBatchRec
 	}, "|")
 	if strategy := normalizeSheinImageStrategy(candidate.ImageStrategy); strategy != sheinImageStrategySDSOfficial {
 		normalized += "|image_strategy=" + strategy
+		if settingsFingerprint := studioBatchTaskProductImageSettingsFingerprint(batch); settingsFingerprint != "" {
+			normalized += "|product_image_settings=" + settingsFingerprint
+		}
 	}
 	sum := sha256.Sum256([]byte(normalized))
+	return hex.EncodeToString(sum[:])
+}
+
+func studioBatchTaskProductImageSettingsFingerprint(batch *StudioBatchRecord) string {
+	if batch == nil {
+		return ""
+	}
+	payload, err := json.Marshal(struct {
+		PromptMode          string                            `json:"prompt_mode"`
+		ProductImageCount   string                            `json:"product_image_count"`
+		ProductImagePrompt  string                            `json:"product_image_prompt"`
+		ProductImagePrompts SheinStudioProductImagePromptList `json:"product_image_prompts"`
+	}{
+		PromptMode:          strings.TrimSpace(batch.PromptMode),
+		ProductImageCount:   strings.TrimSpace(batch.ProductImageCount),
+		ProductImagePrompt:  strings.TrimSpace(batch.ProductImagePrompt),
+		ProductImagePrompts: batch.ProductImagePrompts,
+	})
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
 }
 
@@ -525,6 +554,22 @@ func studioBatchTaskCandidateCompatibilityFingerprint(candidate studioBatchTaskC
 		return value
 	}
 	return buildStudioBatchCompatibilityFingerprint(candidate.SelectionSnapshot)
+}
+
+// studioBatchTaskLinkCompatibilityFingerprint extends the selection identity
+// for AI-generated candidates with the effective product-image settings. This
+// keeps the durable link tuple in sync with CandidateKey so a prompt/count/mode
+// change cannot collide with or reuse the previous AI task.
+func studioBatchTaskLinkCompatibilityFingerprint(candidate studioBatchTaskCandidate) string {
+	base := studioBatchTaskCandidateCompatibilityFingerprint(candidate)
+	if normalizeSheinImageStrategy(candidate.ImageStrategy) != sheinImageStrategyAIGenerated {
+		return base
+	}
+	settings := strings.TrimSpace(candidate.ProductImageSettingsFingerprint)
+	if settings == "" {
+		return base
+	}
+	return base + "|product_image_settings=" + settings
 }
 
 func orderStudioBatchTaskDesignsByRequest(

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"gorm.io/gorm"
 )
 
@@ -58,10 +60,11 @@ func (s *taskStudioBatchService) reserveStudioBatchTaskCandidate(ctx context.Con
 		ItemID:                   strings.TrimSpace(candidate.Item.ID),
 		DesignID:                 strings.TrimSpace(candidate.Design.ID),
 		SelectionID:              strings.TrimSpace(candidate.SelectionID),
-		CompatibilityFingerprint: strings.TrimSpace(candidate.CompatibilityFingerprint),
+		CompatibilityFingerprint: studioBatchTaskLinkCompatibilityFingerprint(*candidate),
 		ImageStrategy:            normalizeSheinImageStrategy(candidate.ImageStrategy),
 		SheinStoreID:             candidate.SheinStoreID,
 		CandidateKey:             strings.TrimSpace(candidate.CandidateKey),
+		ClaimToken:               strings.TrimSpace(candidate.ClaimToken),
 		Status:                   studioBatchTaskLinkStatusReserved,
 		CreatedAt:                now,
 		UpdatedAt:                now,
@@ -95,10 +98,18 @@ func (s *taskStudioBatchService) reserveStudioBatchTaskCandidate(ctx context.Con
 	return nil
 }
 
-func (s *taskStudioBatchService) claimStudioBatchTaskCandidate(ctx context.Context, candidate studioBatchTaskCandidate) (bool, error) {
+func (s *taskStudioBatchService) claimStudioBatchTaskCandidate(ctx context.Context, candidate *studioBatchTaskCandidate) (bool, error) {
 	if s == nil || s.batchTaskLinkRepo == nil {
 		return true, nil
 	}
+	if candidate == nil {
+		return false, fmt.Errorf("studio batch task candidate is required")
+	}
+	leaseRepo, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkLeaseRepository)
+	if !ok {
+		return false, fmt.Errorf("studio batch task link repository does not support lease tokens")
+	}
+	claimToken := uuid.NewString()
 	now := s.currentTime().UTC()
 	existing, existingErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
 	if existingErr != nil && !errors.Is(existingErr, gorm.ErrRecordNotFound) {
@@ -109,25 +120,28 @@ func (s *taskStudioBatchService) claimStudioBatchTaskCandidate(ctx context.Conte
 			return false, nil
 		}
 		if s.studioBatchTaskLinkIsStale(existing) {
-			if _, claimed, err := s.batchTaskLinkRepo.ClaimStudioBatchTaskCandidateUpdatedAt(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusCreating, existing.UpdatedAt, studioBatchTaskLinkStatusCreating, now); err != nil {
+			if _, claimed, err := leaseRepo.ClaimStudioBatchTaskCandidateUpdatedAtWithToken(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusCreating, existing.UpdatedAt, studioBatchTaskLinkStatusCreating, claimToken, now); err != nil {
 				return false, err
 			} else if claimed {
+				candidate.ClaimToken = claimToken
 				return true, nil
 			}
 		}
 	}
-	if _, claimed, err := s.batchTaskLinkRepo.ClaimStudioBatchTaskCandidate(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusReserved, studioBatchTaskLinkStatusCreating, now); err != nil {
+	if _, claimed, err := leaseRepo.ClaimStudioBatchTaskCandidateWithToken(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusReserved, studioBatchTaskLinkStatusCreating, claimToken, now); err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return false, err
 		}
 	} else if claimed {
+		candidate.ClaimToken = claimToken
 		return true, nil
 	}
-	if _, claimed, err := s.batchTaskLinkRepo.ClaimStudioBatchTaskCandidate(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkStatusCreating, now); err != nil {
+	if _, claimed, err := leaseRepo.ClaimStudioBatchTaskCandidateWithToken(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkStatusCreating, claimToken, now); err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return false, err
 		}
 	} else if claimed {
+		candidate.ClaimToken = claimToken
 		return true, nil
 	}
 	return false, nil

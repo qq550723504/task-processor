@@ -74,6 +74,9 @@ func (r *MemStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx context
 
 	row := existing
 	row.ListingKitTaskID = link.ListingKitTaskID
+	if strings.TrimSpace(link.ClaimToken) != "" {
+		row.ClaimToken = link.ClaimToken
+	}
 	row.Status = link.Status
 	row.Source = link.Source
 	row.ReasonCode = link.ReasonCode
@@ -81,6 +84,68 @@ func (r *MemStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx context
 	row.UpdatedAt = link.UpdatedAt
 	r.links[row.ID] = row
 	return nil
+}
+
+func (r *MemStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateWithToken(ctx context.Context, candidateKey string, fromStatus string, toStatus string, claimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.Status != fromStatus {
+			cloned := link
+			return &cloned, false, nil
+		}
+		link.Status = toStatus
+		link.ClaimToken = strings.TrimSpace(claimToken)
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		cloned := link
+		return &cloned, true, nil
+	}
+	return nil, false, gorm.ErrRecordNotFound
+}
+
+func (r *MemStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpdatedAtWithToken(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, claimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.Status != fromStatus || !link.UpdatedAt.Equal(observedUpdatedAt) {
+			cloned := link
+			return &cloned, false, nil
+		}
+		link.Status = toStatus
+		link.ClaimToken = strings.TrimSpace(claimToken)
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		cloned := link
+		return &cloned, true, nil
+	}
+	return nil, false, gorm.ErrRecordNotFound
+}
+
+func (r *MemStudioBatchTaskLinkRepository) RefreshStudioBatchTaskLink(ctx context.Context, candidateKey string, claimToken string, updatedAt time.Time) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.Status != studioBatchTaskLinkStatusCreating || strings.TrimSpace(link.ClaimToken) != strings.TrimSpace(claimToken) || strings.TrimSpace(link.ListingKitTaskID) != "" {
+			return false, nil
+		}
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		return true, nil
+	}
+	return false, gorm.ErrRecordNotFound
 }
 
 func (r *MemStudioBatchTaskLinkRepository) ListStudioBatchTaskLinksByBatchID(ctx context.Context, batchID string) ([]StudioBatchTaskLinkRecord, error) {
