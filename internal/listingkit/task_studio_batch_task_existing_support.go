@@ -285,6 +285,12 @@ func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context,
 		CreatedAt:                now,
 		UpdatedAt:                now,
 	}
+	if strings.TrimSpace(candidate.ClaimToken) != "" {
+		// Retain the completed transition's ownership token internally so a
+		// heartbeat that was already in flight can distinguish this worker's
+		// terminal update from a replacement worker's update.
+		link.ClaimToken = strings.TrimSpace(candidate.ClaimToken)
+	}
 	if link.BatchID == "" && candidate.Item.BatchID != "" {
 		link.BatchID = strings.TrimSpace(candidate.Item.BatchID)
 	}
@@ -325,7 +331,11 @@ func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context,
 	}
 	existing.ReasonCode = link.ReasonCode
 	existing.Message = link.Message
-	existing.ClaimToken = link.ClaimToken
+	if strings.TrimSpace(candidate.ClaimToken) != "" {
+		existing.ClaimToken = strings.TrimSpace(candidate.ClaimToken)
+	} else {
+		existing.ClaimToken = link.ClaimToken
+	}
 	existing.UpdatedAt = now
 	if claimToken := strings.TrimSpace(candidate.ClaimToken); claimToken != "" {
 		leaseRepo, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkLeaseRepository)

@@ -121,22 +121,24 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			if generateRequest == nil {
 				return SheinStudioCreatedTask{}, fmt.Errorf("studio batch task request is not configured")
 			}
-			if err := s.attachStudioBatchProductImages(ctx, generateRequest, candidate.state.Session, candidate.state.Batch, taskCandidate, taskCandidate.Design); err != nil {
+			dispatchCtx, dispatchHeartbeatStop := s.startStudioBatchTaskLinkHeartbeatContext(ctx, taskCandidate, studioBatchTaskLinkHeartbeatInterval)
+			if strings.TrimSpace(taskCandidate.ClaimToken) != "" {
+				dispatchCtx = withTaskDispatchCancellation(withStudioBatchTaskLinkHeartbeat(dispatchCtx))
+			}
+			if err := s.attachStudioBatchProductImages(dispatchCtx, generateRequest, candidate.state.Session, candidate.state.Batch, taskCandidate, taskCandidate.Design); err != nil {
 				reasonCode := "product_image_generation_failed"
 				if s.generateProductImages == nil {
 					reasonCode = "product_image_generation_unavailable"
 				} else if strings.Contains(err.Error(), "returned no images") {
 					reasonCode = "product_image_generation_empty"
 				}
-				_ = s.persistStudioBatchTaskLink(ctx, taskCandidate, "", studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, reasonCode, err.Error())
+				persistErr := s.persistStudioBatchTaskLink(ctx, taskCandidate, "", studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, reasonCode, err.Error())
+				_ = dispatchHeartbeatStop()
+				if persistErr != nil {
+					return SheinStudioCreatedTask{}, persistErr
+				}
 				return SheinStudioCreatedTask{}, err
 			}
-			// Product-image generation owns a heartbeat only for the duration of
-			// attachStudioBatchProductImages. Keep the claim alive through the
-			// potentially slow task dispatch and the terminal link update too;
-			// otherwise another worker can reclaim the creating link while the
-			// original worker is still able to create a duplicate task.
-			dispatchCtx, dispatchHeartbeatStop := s.startStudioBatchTaskLinkHeartbeatContext(ctx, taskCandidate, studioBatchTaskLinkHeartbeatInterval)
 			task, err := s.createGenerateTask(
 				dispatchCtx,
 				generateRequest,

@@ -10,6 +10,28 @@ import (
 
 const studioBatchTaskLinkHeartbeatInterval = 30 * time.Second
 
+type studioBatchTaskLinkHeartbeatContextKey struct{}
+
+type taskDispatchCancellationContextKey struct{}
+
+func withStudioBatchTaskLinkHeartbeat(ctx context.Context) context.Context {
+	return context.WithValue(ctx, studioBatchTaskLinkHeartbeatContextKey{}, true)
+}
+
+func hasStudioBatchTaskLinkHeartbeat(ctx context.Context) bool {
+	active, _ := ctx.Value(studioBatchTaskLinkHeartbeatContextKey{}).(bool)
+	return active
+}
+
+func taskDispatchCancellationPreserved(ctx context.Context) bool {
+	preserve, _ := ctx.Value(taskDispatchCancellationContextKey{}).(bool)
+	return preserve
+}
+
+func withTaskDispatchCancellation(ctx context.Context) context.Context {
+	return context.WithValue(ctx, taskDispatchCancellationContextKey{}, true)
+}
+
 func (s *taskStudioBatchService) attachStudioBatchProductImages(
 	ctx context.Context,
 	request *GenerateRequest,
@@ -32,7 +54,10 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 			return fmt.Errorf("studio batch task claim lease token is unavailable")
 		}
 	}
-	heartbeatStop := s.startStudioBatchTaskLinkHeartbeat(ctx, candidate, studioBatchTaskLinkHeartbeatInterval)
+	heartbeatStop := func() error { return nil }
+	if !hasStudioBatchTaskLinkHeartbeat(ctx) {
+		heartbeatStop = s.startStudioBatchTaskLinkHeartbeat(ctx, candidate, studioBatchTaskLinkHeartbeatInterval)
+	}
 	productImageRequest, err := s.buildStudioBatchTaskProductImageRequest(ctx, session, batch, candidate, design)
 	if err != nil {
 		_ = heartbeatStop()
@@ -232,5 +257,9 @@ func (s *taskStudioBatchService) studioBatchTaskHeartbeatEndedInTerminalState(ct
 	if err != nil || link == nil {
 		return false
 	}
-	return strings.TrimSpace(link.Status) != studioBatchTaskLinkStatusCreating
+	if strings.TrimSpace(link.Status) == studioBatchTaskLinkStatusCreating {
+		return false
+	}
+	claimToken := strings.TrimSpace(candidate.ClaimToken)
+	return claimToken != "" && strings.TrimSpace(link.ClaimToken) == claimToken
 }

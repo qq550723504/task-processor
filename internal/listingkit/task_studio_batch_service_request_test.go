@@ -354,6 +354,23 @@ func TestStudioBatchTaskLinkHeartbeatCancelsDispatchContextOnLeaseLoss(t *testin
 	}
 }
 
+func TestStudioBatchTaskHeartbeatTerminalStateRequiresMatchingClaim(t *testing.T) {
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	links := NewMemStudioBatchTaskLinkRepository()
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-1", CandidateKey: "candidate-1", ClaimToken: "owner-a", Status: studioBatchTaskLinkStatusCreated,
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	service := &taskStudioBatchService{batchTaskLinkRepo: links}
+	if !service.studioBatchTaskHeartbeatEndedInTerminalState(ctx, studioBatchTaskCandidate{CandidateKey: "candidate-1", ClaimToken: "owner-a"}) {
+		t.Fatal("matching terminal claim was not recognized")
+	}
+	if service.studioBatchTaskHeartbeatEndedInTerminalState(ctx, studioBatchTaskCandidate{CandidateKey: "candidate-1", ClaimToken: "owner-b"}) {
+		t.Fatal("replacement terminal claim was accepted as the original owner")
+	}
+}
+
 func TestCreatedTaskFromDurableLinkRejectsHistoricalAIWithoutSettingsIdentity(t *testing.T) {
 	candidate := studioBatchTaskCandidate{
 		ImageStrategy:                   sheinImageStrategyAIGenerated,
