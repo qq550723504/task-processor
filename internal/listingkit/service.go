@@ -1,6 +1,7 @@
 package listingkit
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"strings"
@@ -63,6 +64,10 @@ func (s *service) settingsHealthProbes() SettingsHealthProbes {
 		return SettingsHealthProbes{}
 	}
 	return s.healthProbes
+}
+
+func (s *service) GetSettingsHealthProbes(context.Context) SettingsHealthProbes {
+	return s.settingsHealthProbes()
 }
 
 func normalizeGenerateRequest(req *GenerateRequest) {
