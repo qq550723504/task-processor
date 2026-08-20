@@ -439,6 +439,8 @@ Every match in current Go code must be changed to the compatibility path; dated 
 
 Update all moved handoff test fixtures that populate `sourcing.Alibaba1688SourceEnvelopeInput.Product` to use `sourcing.Alibaba1688ProductSnapshot` values. The moved tests must retain their existing identity, warning, task request, HTTP status, response-shape, and store-access assertions; they must not reintroduce the legacy crawler model merely to construct a test input.
 
+Update `TestBusinessImplementationPackagesDoNotImportGinDirectly` in `tests/import_boundaries_test.go` so its explicit HTTP-package allowlist recognizes `internal/compatibility/listingkit/sourcehandoff/a1688/httpapi` instead of the retired product path.
+
 - [ ] **Step 5: Format and run focused handoff, composition, and boundary tests**
 
 Run:
@@ -448,7 +450,7 @@ gofmt -w (Get-ChildItem internal/compatibility/listingkit/sourcehandoff -Recurse
 $env:GOWORK='off'
 go test ./internal/compatibility/listingkit/sourcehandoff/... ./internal/app/httpapi ./tests -run 'Test(ProductDomainDoesNotDependOnOuterAdapters|Alibaba1688|TaskCommandService|CreateListingKitTask|HTTPModule)' -count=1
 go test ./internal/product/sourcing/... ./internal/integration/crawler/a1688/... ./internal/compatibility/listingkit/sourcehandoff/... ./internal/app/httpapi ./tests -count=1
-if (Test-Path internal/product/sourcehandoff) { throw 'old product sourcehandoff path still exists' }
+if (Get-ChildItem internal/product/sourcehandoff -Recurse -Filter *.go -File -ErrorAction SilentlyContinue) { throw 'old product sourcehandoff still contains Go files' }
 if (rg -n '"task-processor/internal/(listingkit|compatibility|crawler|integration)' internal/product -g '*.go' -g '!*_test.go') { throw 'product domain still imports an outer adapter' }
 ```
 
@@ -478,6 +480,7 @@ git commit -m "refactor: move 1688 handoff to listingkit compatibility"
 - Modify: `docs/refactoring/current-refactoring-status.md`
 - Modify: `docs/architecture/pay-041-usage-ledger.md`
 - Modify: `docs/product/product-sourcing-mvp-plan.md`
+- Modify: `docs/architecture/architecture-review-checklist.md`
 - Modify: `tests/architecture_docs_test.go`
 
 - [ ] **Step 1: Strengthen documentation assertions before changing documentation**
@@ -533,6 +536,8 @@ Update the eight listed documents consistently:
 
 Add `TestProductDomainDoesNotDependOnOuterAdapters` to the `Current Enforcement` list in `project-boundaries.md`, because `TestArchitectureReviewChecklistTracksEveryImportBoundaryGuard` requires every active import guard to be documented.
 
+Add `TestProductDomainDoesNotDependOnOuterAdapters` to the `Guard Baseline` list in `docs/architecture/architecture-review-checklist.md`, because the same test also checks that this review entrypoint tracks every active import-boundary guard.
+
 Correct references to the former `internal/product/sourcehandoff` path in current/authoritative docs. Do not rewrite dated records under `docs/superpowers/plans`, old specs, or validation evidence; those documents describe historical repository states.
 
 - [ ] **Step 3: Verify documentation consistency**
@@ -553,7 +558,7 @@ Run:
 
 ```powershell
 git diff --check
-git add docs/architecture/project-target-architecture.md docs/architecture/project-boundaries.md internal/integration/crawler/a1688/README.md internal/product/sourcing/README.md internal/compatibility/listingkit/README.md docs/refactoring/current-refactoring-status.md docs/architecture/pay-041-usage-ledger.md docs/product/product-sourcing-mvp-plan.md tests/architecture_docs_test.go
+git add docs/architecture/project-target-architecture.md docs/architecture/project-boundaries.md internal/integration/crawler/a1688/README.md internal/product/sourcing/README.md internal/compatibility/listingkit/README.md docs/refactoring/current-refactoring-status.md docs/architecture/pay-041-usage-ledger.md docs/product/product-sourcing-mvp-plan.md docs/architecture/architecture-review-checklist.md tests/architecture_docs_test.go
 git diff --cached --name-only
 git commit -m "docs: align 1688 source handoff ownership"
 ```
@@ -595,7 +600,7 @@ Run:
 
 ```powershell
 if (rg -n '"task-processor/internal/(listingkit|compatibility|crawler|integration)' internal/product -g '*.go' -g '!*_test.go') { throw 'product domain still imports an outer adapter' }
-if (Test-Path internal/product/sourcehandoff) { throw 'old product sourcehandoff path still exists' }
+if (Get-ChildItem internal/product/sourcehandoff -Recurse -Filter *.go -File -ErrorAction SilentlyContinue) { throw 'old product sourcehandoff still contains Go files' }
 rg -n 'task-processor/internal/product/sourcehandoff' . -g '*.go'
 ```
 
