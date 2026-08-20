@@ -29,6 +29,7 @@ func TestAutoMigrateRuntimeCreatesRepresentativeTables(t *testing.T) {
 	for _, table := range []any{
 		"ai_invocations",
 		"ai_async_jobs",
+		"source_account",
 		"listing_kit_sds_baseline_cache",
 		"listingkit_owner_scope_system_owned_exceptions",
 		&memberinviteAuditTable{},
@@ -61,6 +62,17 @@ func TestAutoMigrateRuntimeIncludesUsageLedgerSchema(t *testing.T) {
 		if !db.Migrator().HasTable(table) {
 			t.Fatalf("AutoMigrateRuntime() did not create %s", table)
 		}
+	}
+}
+
+func TestAutoMigrateRepositoryRuntimeSkipsOptionalSourceAccountSchema(t *testing.T) {
+	db := openSchemaTestDB(t)
+
+	if err := AutoMigrateRepositoryRuntime(db); err != nil {
+		t.Fatalf("AutoMigrateRepositoryRuntime() error = %v", err)
+	}
+	if db.Migrator().HasTable("source_account") {
+		t.Fatal("repository bootstrap must not make optional source-account migration mandatory")
 	}
 }
 

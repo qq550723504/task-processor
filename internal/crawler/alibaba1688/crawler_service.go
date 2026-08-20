@@ -29,12 +29,30 @@ type Service struct {
 	accountProfileResolver AccountProfileResolver
 	profileLocksMu         sync.Mutex
 	profileLocks           map[string]*sync.Mutex
+	sourceAccessMu         sync.Mutex
+	sourceAccessCounts     map[string]int64
 }
 
 type alibaba1688TaskProcessor interface {
 	Process(string) (*model.Product1688, error)
 	ProcessWithAccountProfile(string, AccountProfile) (*model.Product1688, error)
 	Shutdown()
+}
+
+var sourceAccessMetricKeys = [...]string{
+	"public",
+	"account_assisted",
+	"source_public_unavailable",
+	"source_account_unavailable",
+	"source_account_disabled",
+}
+
+func newSourceAccessCounts() map[string]int64 {
+	counts := make(map[string]int64, len(sourceAccessMetricKeys))
+	for _, key := range sourceAccessMetricKeys {
+		counts[key] = 0
+	}
+	return counts
 }
 
 // NewService 创建1688爬虫应用服务
@@ -51,6 +69,7 @@ func NewService(cfg *config.Config, logger *logrus.Logger, resolvers ...AccountP
 		processor1688:          processor1688,
 		accountProfileResolver: resolver,
 		profileLocks:           make(map[string]*sync.Mutex),
+		sourceAccessCounts:     newSourceAccessCounts(),
 	}
 
 	poolConfig := worker.DefaultPoolConfig()
@@ -73,6 +92,37 @@ func NewService(cfg *config.Config, logger *logrus.Logger, resolvers ...AccountP
 	}
 
 	return svc
+}
+
+func (s *Service) recordSourceAccess(key string) {
+	if s == nil || key == "" {
+		return
+	}
+	s.sourceAccessMu.Lock()
+	defer s.sourceAccessMu.Unlock()
+	if s.sourceAccessCounts == nil {
+		s.sourceAccessCounts = newSourceAccessCounts()
+	}
+	s.sourceAccessCounts[key]++
+}
+
+func (s *Service) sourceAccessStats() map[string]int64 {
+	if s == nil {
+		return nil
+	}
+	s.sourceAccessMu.Lock()
+	defer s.sourceAccessMu.Unlock()
+	stats := make(map[string]int64, len(s.sourceAccessCounts))
+	for key, value := range s.sourceAccessCounts {
+		stats[key] = value
+	}
+	return stats
+}
+
+func (s *Service) GetStats() map[string]any {
+	stats := s.BaseService.GetStats()
+	stats["source_access_total"] = s.sourceAccessStats()
+	return stats
 }
 
 // Start 启动服务

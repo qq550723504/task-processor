@@ -193,3 +193,19 @@ manually complete 1688 login in the tenant/account browser profile. A
 successful `EndToEnd` response proves crawler-result retrieval and ListingKit
 task creation only; SHEIN preview, readiness, and submission remain separate
 acceptance gates.
+
+## Source-account boundary update — 2026-08-20
+
+The source path now treats 1688 pages as public by default. `SourceAccountID=0`
+means public crawl and is omitted from both the crawler and ListingKit handoff
+JSON; a positive ID explicitly selects a tenant-owned 1688 browser account.
+Negative IDs are rejected. The SHEIN target store remains a separate required
+selection for ListingKit task creation and is never used as a 1688 account
+selector.
+
+The runtime acceptance tests cover both payload shapes and the public Crawl
+request. A source account is validated only for account-assisted mode, while
+the SHEIN store is validated through the existing target-store boundary. Public
+crawling therefore remains available when no 1688 account repository or account
+row is configured; account-assisted replay still requires an enabled,
+tenant-owned source account.

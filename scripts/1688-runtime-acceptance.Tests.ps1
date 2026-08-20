@@ -27,6 +27,15 @@ Describe "1688 runtime acceptance safety" {
         ($payload.Keys -contains "source_store_id") | Should Be $false
     }
 
+    It "omits the source account selector for public handoff payloads" {
+        $payload = New-ListingKitHandoffPayload `
+            -ProductData ([pscustomobject]@{ id = "322"; title = "Public product"; url = "https://detail.1688.com/offer/322.html" }) `
+            -SourceAccountID 0 -SheinStoreID 168811 -CrawlerTaskID "crawler-task-public"
+
+        ($payload.Keys -contains "source_account_id") | Should Be $false
+        $payload.url | Should Be "https://detail.1688.com/offer/322.html"
+    }
+
     It "does not expose token or profile values in redacted errors" {
         $message = Get-RedactedRuntimeError -StatusCode 401 -Endpoint "https://example.test" -RawBody "token=secret; user_data_dir=C:\profiles\tenant-1"
         $message | Should Match "HTTP 401"
@@ -198,6 +207,24 @@ Describe "1688 runtime acceptance safety" {
         $result.ProductData.id | Should Be "321"
     }
 
+    It "allows public Crawl and omits the source account selector" {
+        $script:lastCrawlBody = $null
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path, $Body)
+            if ($Path -eq "/api/v1/crawl") {
+                $script:lastCrawlBody = $Body
+                return @{ data = @{ task_id = "crawler-task-public" } }
+            }
+            return @{ data = @{ task_id = "crawler-task-public"; status = "success"; product_data = [pscustomobject]@{ id = "322"; title = "Public product"; url = "https://detail.1688.com/offer/322.html" } } }
+        }
+
+        $result = Invoke-Crawl -Url "https://detail.1688.com/offer/322.html" -SourceAccountID 0 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0
+
+        $result.Status | Should Be "success"
+        ($script:lastCrawlBody.Keys -contains "source_account_id") | Should Be $false
+        $script:lastCrawlBody.url | Should Be "https://detail.1688.com/offer/322.html"
+    }
+
     It "accepts the live ProductData response casing from the crawler task" {
         Mock Invoke-AcceptanceRequest {
             param($Method, $Path)
@@ -275,6 +302,26 @@ Describe "1688 runtime acceptance safety" {
         $script:lastHandoffBody.source_account_id | Should Be 3002
         $script:lastHandoffBody.shein_store_id | Should Be 168812
         ($script:lastHandoffBody.Keys -contains "source_store_id") | Should Be $false
+    }
+
+    It "omits an unused account selector when public crawl succeeds" {
+        $script:lastHandoffBody = $null
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path, $Body)
+            if ($Path -eq "/api/v1/crawl") {
+                return @{ data = @{ task_id = "crawler-task-public-handoff" } }
+            }
+            if ($Path -eq "/api/v1/tasks/crawler-task-public-handoff") {
+                return @{ data = @{ task_id = "crawler-task-public-handoff"; status = "success"; source_access_mode = "public"; product_data = [pscustomobject]@{ id = "329"; title = "Public handoff product"; url = "https://detail.1688.com/offer/329.html" } } }
+            }
+            $script:lastHandoffBody = $Body
+            return @{ data = @{ task_id = "listing-task-public-handoff"; status = "pending" } }
+        }
+
+        Invoke-EndToEnd -Url "https://detail.1688.com/offer/329.html" -SourceAccountID 3009 -SheinStoreID 168819 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0 | Out-Null
+
+        ($script:lastHandoffBody.Keys -contains "source_account_id") | Should Be $false
+        $script:lastHandoffBody.shein_store_id | Should Be 168819
     }
 
     It "rejects an EndToEnd handoff response without a task id" {

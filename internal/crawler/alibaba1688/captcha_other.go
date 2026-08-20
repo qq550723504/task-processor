@@ -63,47 +63,63 @@ func (ch *CaptchaHandler) handleLoginPrompt(page playwright.Page) error {
 
 // handleClickCaptchaWithResult 处理点击验证码并返回结果
 func (ch *CaptchaHandler) handleClickCaptchaWithResult(page playwright.Page) CaptchaResult {
+	return ch.handleClickCaptchaWithManualOption(page, true)
+}
+
+func (ch *CaptchaHandler) handleClickCaptchaWithManualOption(page playwright.Page, allowManual bool) CaptchaResult {
 	logger.GetGlobalLogger("crawler/alibaba1688").Warn("检测到点击验证码，需要手动处理")
-	return ch.waitForManualCaptchaWithResult(page, CaptchaTypeClick, "点击验证码")
+	return ch.fallbackCaptchaResult(page, CaptchaTypeClick, "点击验证码", allowManual)
 }
 
 // handleImageCaptchaWithResult 处理图片验证码并返回结果
 func (ch *CaptchaHandler) handleImageCaptchaWithResult(page playwright.Page) CaptchaResult {
+	return ch.handleImageCaptchaWithManualOption(page, true)
+}
+
+func (ch *CaptchaHandler) handleImageCaptchaWithManualOption(page playwright.Page, allowManual bool) CaptchaResult {
 	startTime := time.Now()
-	
+
 	if result := ch.tryOCRCaptcha(page); result.Status == CaptchaStatusSuccess {
 		result.Duration = time.Since(startTime)
 		return result
 	}
 
 	logger.GetGlobalLogger("crawler/alibaba1688").Warn("图片验证码OCR识别失败，需要手动处理")
-	return ch.waitForManualCaptchaWithResult(page, CaptchaTypeImage, "图片验证码")
+	return ch.fallbackCaptchaResult(page, CaptchaTypeImage, "图片验证码", allowManual)
 }
 
 // handleTextCaptchaWithResult 处理文字验证码并返回结果
 func (ch *CaptchaHandler) handleTextCaptchaWithResult(page playwright.Page) CaptchaResult {
+	return ch.handleTextCaptchaWithManualOption(page, true)
+}
+
+func (ch *CaptchaHandler) handleTextCaptchaWithManualOption(page playwright.Page, allowManual bool) CaptchaResult {
 	startTime := time.Now()
-	
+
 	if result := ch.tryTextCaptcha(page); result.Status == CaptchaStatusSuccess {
 		result.Duration = time.Since(startTime)
 		return result
 	}
 
 	logger.GetGlobalLogger("crawler/alibaba1688").Warn("文字验证码自动填写失败，需要手动处理")
-	return ch.waitForManualCaptchaWithResult(page, CaptchaTypeText, "文字验证码")
+	return ch.fallbackCaptchaResult(page, CaptchaTypeText, "文字验证码", allowManual)
 }
 
 // handleMathCaptchaWithResult 处理数学验证码并返回结果
 func (ch *CaptchaHandler) handleMathCaptchaWithResult(page playwright.Page) CaptchaResult {
+	return ch.handleMathCaptchaWithManualOption(page, true)
+}
+
+func (ch *CaptchaHandler) handleMathCaptchaWithManualOption(page playwright.Page, allowManual bool) CaptchaResult {
 	startTime := time.Now()
-	
+
 	if result := ch.solveMathCaptcha(page); result.Status == CaptchaStatusSuccess {
 		result.Duration = time.Since(startTime)
 		return result
 	}
 
 	logger.GetGlobalLogger("crawler/alibaba1688").Warn("数学验证码求解失败，需要手动处理")
-	return ch.waitForManualCaptchaWithResult(page, CaptchaTypeMath, "数学验证码")
+	return ch.fallbackCaptchaResult(page, CaptchaTypeMath, "数学验证码", allowManual)
 }
 
 // tryOCRCaptcha 尝试使用OCR识别图片验证码
@@ -134,7 +150,7 @@ func (ch *CaptchaHandler) tryOCRCaptcha(page playwright.Page) CaptchaResult {
 		}
 
 		logger.GetGlobalLogger("crawler/alibaba1688").Infof("找到验证码图片: %s", src)
-		
+
 		if strings.HasPrefix(src, "data:") {
 			logger.GetGlobalLogger("crawler/alibaba1688").Info("检测到base64验证码图片")
 		}
@@ -160,7 +176,7 @@ func (ch *CaptchaHandler) tryOCRCaptcha(page playwright.Page) CaptchaResult {
 
 			if recognizedCode := ch.recognizeCaptchaCode(page, element); recognizedCode != "" {
 				logger.GetGlobalLogger("crawler/alibaba1688").Infof("OCR识别结果: %s", recognizedCode)
-				
+
 				if err := input.Fill(recognizedCode); err != nil {
 					logger.GetGlobalLogger("crawler/alibaba1688").Warnf("填写验证码失败: %v", err)
 					continue

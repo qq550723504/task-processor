@@ -40,3 +40,31 @@ func TestValidatePricingRejectsDuplicateMinQuantity(t *testing.T) {
 		t.Fatal("expected duplicate min quantity to fail validation")
 	}
 }
+
+func TestValidateProductRejectsMissingRequiredFields(t *testing.T) {
+	checker := NewProductChecker()
+	product := &model.Product1688{
+		URL:       "https://detail.1688.com/offer/1.html",
+		MainImage: "https://img.example/product.jpg",
+	}
+
+	if err := checker.ValidateProduct(product); err == nil {
+		t.Fatal("ValidateProduct() error = nil, want missing required fields error")
+	}
+}
+
+func TestValidateProductAcceptsCompleteRequiredFields(t *testing.T) {
+	checker := NewProductChecker()
+	product := &model.Product1688{
+		URL:              "https://detail.1688.com/offer/1.html",
+		Title:            "Insulated lunch bag",
+		MinPrice:         18.8,
+		MinOrderQuantity: 1,
+		Supplier:         model.SupplierInfo{Name: "Lunch Factory"},
+		MainImage:        "https://img.example/product.jpg",
+	}
+
+	if err := checker.ValidateProduct(product); err != nil {
+		t.Fatalf("ValidateProduct() error = %v, want complete product accepted", err)
+	}
+}

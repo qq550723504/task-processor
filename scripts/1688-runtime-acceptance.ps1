@@ -268,7 +268,8 @@ function New-ListingKitHandoffPayload {
         [object]$ProductData,
         [long]$SourceAccountID,
         [long]$SheinStoreID,
-        [string]$CrawlerTaskID
+        [string]$CrawlerTaskID,
+        [string]$SourceAccessMode = ""
     )
 
     if ($null -eq $ProductData) {
@@ -278,15 +279,19 @@ function New-ListingKitHandoffPayload {
         throw "crawler product_data.url is required"
     }
 
-    return [ordered]@{
+    $payload = [ordered]@{
         url               = [string]$ProductData.url
         product           = $ProductData
         source_run_id     = $CrawlerTaskID
         request_id        = "1688-runtime-$CrawlerTaskID"
-        source_account_id = $SourceAccountID
         platforms         = @("shein")
         shein_store_id    = $SheinStoreID
     }
+    $includeSourceAccount = $SourceAccountID -gt 0 -and ([string]::IsNullOrWhiteSpace($SourceAccessMode) -or $SourceAccessMode -eq "account_assisted")
+    if ($includeSourceAccount) {
+        $payload.source_account_id = $SourceAccountID
+    }
+    return $payload
 }
 
 function Invoke-PublicPreflight {
@@ -361,14 +366,15 @@ function Invoke-Crawl {
     Assert-TaskCreationConfirmation -Mode "Crawl" -Confirmation $Confirmation
     Assert-1688OfferUrl -Url $Url
     if ([string]::IsNullOrWhiteSpace($Url)) { throw "-Url is required" }
-    if ($SourceAccountID -le 0) { throw "-SourceAccountID must be positive" }
+    if ($SourceAccountID -lt 0) { throw "-SourceAccountID must not be negative" }
     if ($RequestTimeoutSec -le 0) { throw "-TimeoutSec must be positive" }
     if ($PollIntervalSec -lt 0) { throw "-PollIntervalSec must not be negative" }
 
-    $submitted = Invoke-AcceptanceRequest -Method Post -Path "/api/v1/crawl" -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $RequestTimeoutSec -Body @{
-        url               = $Url
-        source_account_id = $SourceAccountID
+    $crawlBody = [ordered]@{ url = $Url }
+    if ($SourceAccountID -gt 0) {
+        $crawlBody.source_account_id = $SourceAccountID
     }
+    $submitted = Invoke-AcceptanceRequest -Method Post -Path "/api/v1/crawl" -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $RequestTimeoutSec -Body $crawlBody
     $submittedData = Get-ResponseData -Response $submitted
     $taskID = [string]$submittedData.task_id
     if ([string]::IsNullOrWhiteSpace($taskID)) { throw "crawler response did not contain a task id" }
@@ -391,7 +397,9 @@ function Invoke-Crawl {
             $productData = $data.product_data
             if ($null -eq $productData) { $productData = $data.ProductData }
             if ($null -eq $productData) { throw "crawler task $taskID succeeded without product_data" }
-            return [pscustomobject]@{ TaskID = $taskID; Status = $status; ProductData = $productData }
+            $sourceAccessMode = [string]$data.source_access_mode
+            if ([string]::IsNullOrWhiteSpace($sourceAccessMode)) { $sourceAccessMode = [string]$data.SourceAccessMode }
+            return [pscustomobject]@{ TaskID = $taskID; Status = $status; ProductData = $productData; SourceAccessMode = $sourceAccessMode }
         }
         if ($status -eq "failed") {
             throw "crawler task $taskID failed"
@@ -419,7 +427,7 @@ function Invoke-EndToEnd {
     Assert-TaskCreationConfirmation -Mode "EndToEnd" -Confirmation $Confirmation
     if ($SheinStoreID -le 0) { throw "-SheinStoreID must be positive for EndToEnd mode" }
     $crawler = Invoke-Crawl -Url $Url -SourceAccountID $SourceAccountID -Confirmation $Confirmation -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $RequestTimeoutSec -PollIntervalSec $PollIntervalSec
-    $payload = New-ListingKitHandoffPayload -ProductData $crawler.ProductData -SourceAccountID $SourceAccountID -SheinStoreID $SheinStoreID -CrawlerTaskID $crawler.TaskID
+    $payload = New-ListingKitHandoffPayload -ProductData $crawler.ProductData -SourceAccountID $SourceAccountID -SourceAccessMode $crawler.SourceAccessMode -SheinStoreID $SheinStoreID -CrawlerTaskID $crawler.TaskID
     $response = Invoke-AcceptanceRequest -Method Post -Path "/api/v1/product-sourcing/1688/listingkit/tasks" -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $RequestTimeoutSec -Body $payload
     $handoffData = Get-ResponseData -Response $response
     if ([string]::IsNullOrWhiteSpace([string]$handoffData.task_id)) { throw "handoff response did not contain a task id" }

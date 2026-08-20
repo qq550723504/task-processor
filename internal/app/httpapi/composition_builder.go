@@ -5,6 +5,7 @@ import (
 
 	a1688handoff "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688"
 	a1688httpapi "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688/httpapi"
+	"task-processor/internal/sourceaccount"
 )
 
 type httpFeatureCompositionBuilder struct {
@@ -17,6 +18,7 @@ type httpFeatureCompositionBuilder struct {
 	buildPrompt        promptModuleBuilder
 	buildTaskRPC       taskRPCModuleBuilder
 	buildSDS           sdsModuleBuilder
+	buildSourceAccount sourceAccountRepositoryBuilder
 }
 
 func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
@@ -30,6 +32,7 @@ func newHTTPFeatureCompositionBuilder() httpFeatureCompositionBuilder {
 		buildPrompt:        buildPromptModuleResult,
 		buildTaskRPC:       buildTaskRPCModuleResult,
 		buildSDS:           buildSDSModuleResult,
+		buildSourceAccount: buildSourceAccountRepository,
 	}
 }
 
@@ -86,14 +89,30 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 		return composition, err
 	}
 	composition.listingKitModule = listingKitFeatures.listingKitModule
+	var sourceRepository sourceaccount.Repository
+	var sourceValidator sourceaccount.AccessValidator
+	if composition.listingKitModule != nil {
+		var sourceErr error
+		var sourceClosers []func() error
+		if b.buildSourceAccount != nil {
+			sourceRepository, sourceClosers, sourceErr = b.buildSourceAccount(deps.shared.cfg, logger)
+		}
+		if sourceErr != nil {
+			logger.Warn("1688 source-account repository unavailable; public crawling remains enabled")
+		}
+		deps.addClosers(sourceClosers...)
+		if validator, ok := sourceRepository.(sourceaccount.AccessValidator); ok {
+			sourceValidator = validator
+		}
+	}
 	if composition.listingKitModule != nil && deps.shared.cfg != nil && deps.shared.cfg.Platforms.Alibaba1688.Enabled {
-		crawlerModule := newCrawler1688HTTPModule(deps.shared.cfg, logger, composition.listingKitModule.StoreRepository)
+		crawlerModule := newCrawler1688HTTPModule(deps.shared.cfg, logger, sourceRepository)
 		composition.crawler1688Module = crawlerModule
 		deps.addClosers(crawlerModule.Close)
 	}
 	if composition.listingKitModule != nil && composition.listingKitModule.TaskLifecycleService != nil && composition.listingKitModule.StoreAccessValidator != nil {
 		composition.productSourcingModule = a1688httpapi.BuildModule(
-			a1688handoff.NewTaskCommandService(composition.listingKitModule.TaskLifecycleService, composition.listingKitModule.StoreAccessValidator),
+			a1688handoff.NewTaskCommandService(composition.listingKitModule.TaskLifecycleService, composition.listingKitModule.StoreAccessValidator, sourceValidator),
 		)
 	}
 

@@ -63,15 +63,21 @@ func (pc *ProductChecker) ValidateProduct(product *model.Product1688) error {
 
 // checkRequiredFields 检查必需字段
 func (pc *ProductChecker) checkRequiredFields(product *model.Product1688) error {
-	// 检查标题
-
-	// 检查价格
-
-	// 检查起订量
-
-	// 检查供应商信息
-
-	// 检查URL
+	if strings.TrimSpace(product.Title) == "" {
+		return fmt.Errorf("标题不能为空")
+	}
+	if product.MinPrice <= 0 {
+		return fmt.Errorf("最低价格必须大于0")
+	}
+	if product.MinOrderQuantity <= 0 {
+		return fmt.Errorf("起订量必须大于0")
+	}
+	if strings.TrimSpace(product.Supplier.Name) == "" {
+		return fmt.Errorf("供应商名称不能为空")
+	}
+	if strings.TrimSpace(product.URL) == "" {
+		return fmt.Errorf("商品URL不能为空")
+	}
 
 	return nil
 }

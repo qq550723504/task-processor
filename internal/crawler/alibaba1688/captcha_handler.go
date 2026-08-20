@@ -165,6 +165,18 @@ func (ch *CaptchaHandler) hasMathCaptcha(page playwright.Page) bool {
 
 // HandlePageCaptcha 处理页面中的各种验证码
 func (ch *CaptchaHandler) HandlePageCaptcha(page playwright.Page) error {
+	return ch.handlePageCaptcha(page, true)
+}
+
+// HandlePageCaptchaWithoutManual handles a CAPTCHA using only automatic
+// strategies. It returns promptly when those strategies cannot clear it,
+// which is required for headless public-first crawling to reach account
+// fallback instead of waiting for an unavailable operator.
+func (ch *CaptchaHandler) HandlePageCaptchaWithoutManual(page playwright.Page) error {
+	return ch.handlePageCaptcha(page, false)
+}
+
+func (ch *CaptchaHandler) handlePageCaptcha(page playwright.Page, allowManual bool) error {
 	startTime := time.Now()
 	logger.GetGlobalLogger("crawler/alibaba1688").Debugf("开始处理页面验证码")
 
@@ -192,15 +204,15 @@ func (ch *CaptchaHandler) HandlePageCaptcha(page playwright.Page) error {
 
 	switch captchaType {
 	case CaptchaTypeSlider:
-		result = ch.handleSliderCaptchaWithResult(page)
+		result = ch.handleSliderCaptchaWithManualOption(page, allowManual)
 	case CaptchaTypeClick:
-		result = ch.handleClickCaptchaWithResult(page)
+		result = ch.handleClickCaptchaWithManualOption(page, allowManual)
 	case CaptchaTypeImage:
-		result = ch.handleImageCaptchaWithResult(page)
+		result = ch.handleImageCaptchaWithManualOption(page, allowManual)
 	case CaptchaTypeText:
-		result = ch.handleTextCaptchaWithResult(page)
+		result = ch.handleTextCaptchaWithManualOption(page, allowManual)
 	case CaptchaTypeMath:
-		result = ch.handleMathCaptchaWithResult(page)
+		result = ch.handleMathCaptchaWithManualOption(page, allowManual)
 	case CaptchaTypeUnknown:
 		logger.GetGlobalLogger("crawler/alibaba1688").Info("未检测到验证码")
 		return nil
@@ -219,6 +231,18 @@ func (ch *CaptchaHandler) HandlePageCaptcha(page playwright.Page) error {
 	}
 
 	return result.Error
+}
+
+func (ch *CaptchaHandler) fallbackCaptchaResult(page playwright.Page, captchaType CaptchaType, captchaName string, allowManual bool) CaptchaResult {
+	if !allowManual {
+		return CaptchaResult{
+			Type:       captchaType,
+			Status:     CaptchaStatusFailed,
+			Error:      fmt.Errorf("自动处理%s失败", captchaName),
+			UsedMethod: "automatic_only",
+		}
+	}
+	return ch.waitForManualCaptchaWithResult(page, captchaType, captchaName)
 }
 
 // checkAndHandleCaptcha 检查并处理验证码，包括鼠标轨迹录制

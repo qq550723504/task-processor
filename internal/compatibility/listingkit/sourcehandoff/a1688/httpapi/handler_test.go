@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -18,6 +19,7 @@ import (
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/product/sourcing"
+	"task-processor/internal/sourceaccount"
 )
 
 func TestCreateListingKitTaskReturnsCreatedTask(t *testing.T) {
@@ -110,6 +112,35 @@ func TestCreateListingKitTaskReturnsStableStoreAccessError(t *testing.T) {
 	}
 	if body["error"] != listingkit.StoreAccessUnavailable {
 		t.Fatalf("error = %#v, want %q", body["error"], listingkit.StoreAccessUnavailable)
+	}
+}
+
+func TestCreateListingKitTaskReturnsStableSourceAccountAccessError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	service := &fakeTaskCommandService{err: listingkit.NewStoreAccessError(sourceaccount.SourceAccountDisabled, "source account is disabled")}
+	router := gin.New()
+	router.POST("/tasks", NewHandler(service).CreateListingKitTask)
+
+	rec := performJSONRequestWithAuthenticatedIdentity(t, router, http.MethodPost, "/tasks", CreateListingKitTaskRequest{
+		URL:             "https://detail.1688.com/offer/1006.html",
+		SourceAccountID: 3001,
+		SheinStoreID:    168811,
+		Platforms:       []string{"shein"},
+	}, nil, listingkit.AuthenticatedIdentity{TenantID: "101", UserID: "user-http"})
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if body["error"] != sourceaccount.SourceAccountDisabled {
+		t.Fatalf("error = %#v, want %q", body["error"], sourceaccount.SourceAccountDisabled)
+	}
+	message, _ := body["message"].(string)
+	if strings.Contains(message, "SHEIN target store") || !strings.Contains(message, "1688 source account") {
+		t.Fatalf("message = %q, want source-account-specific guidance", message)
 	}
 }
 
