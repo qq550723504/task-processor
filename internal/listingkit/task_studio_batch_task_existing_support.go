@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"task-processor/internal/listingkit/core"
 	"time"
@@ -85,25 +86,29 @@ func (s *taskStudioBatchService) findDurableStudioBatchTask(ctx context.Context,
 	if candidateKey == "" {
 		return SheinStudioCreatedTask{}, false
 	}
+	candidateKeys := []string{candidateKey}
+	if historicalKey := strings.TrimSpace(candidate.HistoricalCandidateKey); historicalKey != "" && historicalKey != candidateKey {
+		candidateKeys = append(candidateKeys, historicalKey)
+	}
 	deadline := time.Now().Add(studioBatchTaskCreatingWait)
 	for {
-		link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey)
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return SheinStudioCreatedTask{}, false
+		creating := false
+		for _, lookupKey := range candidateKeys {
+			link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, lookupKey)
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			if err != nil || link == nil {
+				return SheinStudioCreatedTask{}, false
+			}
+			if task, ok := s.createdTaskFromDurableLink(ctx, link, candidate); ok {
+				return task, true
+			}
+			if link.Status == studioBatchTaskLinkStatusCreating && !s.studioBatchTaskLinkIsStale(link) {
+				creating = true
+			}
 		}
-		if err != nil || link == nil {
-			return SheinStudioCreatedTask{}, false
-		}
-		if task, ok := s.createdTaskFromDurableLink(ctx, link, candidate); ok {
-			return task, true
-		}
-		if link.Status != studioBatchTaskLinkStatusCreating {
-			return SheinStudioCreatedTask{}, false
-		}
-		if s.studioBatchTaskLinkIsStale(link) {
-			return SheinStudioCreatedTask{}, false
-		}
-		if time.Now().After(deadline) {
+		if !creating || time.Now().After(deadline) {
 			return SheinStudioCreatedTask{}, false
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -247,6 +252,29 @@ func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context,
 	existing, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
 	if err != nil {
 		return err
+	}
+	var linkedTask *Task
+	if s.getTask != nil && strings.TrimSpace(existing.ListingKitTaskID) != "" {
+		linkedTask, _ = s.getTask(ctx, existing.ListingKitTaskID)
+	}
+	if !studioBatchTaskLinkMatchesImageStrategy(existing, linkedTask, candidate) {
+		candidate.CandidateKey = buildDisambiguatedStudioBatchTaskCandidateKey(candidate)
+		link.ID = buildStudioBatchTaskLinkID(candidate)
+		link.CandidateKey = candidate.CandidateKey
+		if createErr := s.batchTaskLinkRepo.CreateStudioBatchTaskLink(ctx, link); createErr == nil {
+			return nil
+		}
+		existing, err = s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
+		if err != nil {
+			return err
+		}
+		linkedTask = nil
+		if s.getTask != nil && strings.TrimSpace(existing.ListingKitTaskID) != "" {
+			linkedTask, _ = s.getTask(ctx, existing.ListingKitTaskID)
+		}
+		if !studioBatchTaskLinkMatchesImageStrategy(existing, linkedTask, candidate) {
+			return fmt.Errorf("studio batch task link strategy mismatch for candidate %s", candidate.CandidateKey)
+		}
 	}
 	existing.ListingKitTaskID = link.ListingKitTaskID
 	existing.Status = link.Status

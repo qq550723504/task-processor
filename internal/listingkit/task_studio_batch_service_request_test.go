@@ -172,6 +172,90 @@ func TestReserveStudioBatchTaskCandidateDisambiguatesHistoricalStrategyCollision
 	}
 }
 
+func TestPersistStudioBatchTaskLinkDisambiguatesStrategyCollision(t *testing.T) {
+	t.Parallel()
+
+	links := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-1")
+	legacy := &StudioBatchTaskLinkRecord{
+		ID:               "legacy-link",
+		BatchID:          "batch-1",
+		ItemID:           "item-1",
+		DesignID:         "design-1",
+		SelectionID:      "selection-1",
+		CandidateKey:     "legacy-key",
+		ListingKitTaskID: "old-ai-task",
+		Status:           studioBatchTaskLinkStatusCreated,
+	}
+	if err := links.CreateStudioBatchTaskLink(ctx, legacy); err != nil {
+		t.Fatalf("create legacy link: %v", err)
+	}
+	s := &taskStudioBatchService{
+		batchTaskLinkRepo: links,
+		currentTime:       time.Now,
+		getTask: func(context.Context, string) (*Task, error) {
+			return &Task{Request: &GenerateRequest{Options: &GenerateOptions{ImageStrategy: sheinImageStrategyAIGenerated}}}, nil
+		},
+	}
+	candidate := studioBatchTaskCandidate{
+		Design:        StudioMaterializedDesignRecord{BatchID: "batch-1", ID: "design-1"},
+		Item:          StudioBatchItemRecord{ID: "item-1", BatchID: "batch-1"},
+		SelectionID:   "selection-1",
+		CandidateKey:  "legacy-key",
+		ImageStrategy: sheinImageStrategySDSOfficial,
+	}
+	if err := s.persistStudioBatchTaskLink(ctx, candidate, "new-sds-task", studioBatchTaskLinkStatusCreated, studioBatchTaskLinkSourceBatchCreated, "", ""); err != nil {
+		t.Fatalf("persist strategy-colliding candidate: %v", err)
+	}
+	old, err := links.GetStudioBatchTaskLinkByCandidateKey(ctx, "legacy-key")
+	if err != nil || old.ListingKitTaskID != "old-ai-task" {
+		t.Fatalf("legacy link = %+v, err=%v; want preserved old AI task", old, err)
+	}
+	newLinks, err := links.ListStudioBatchTaskLinksByBatchID(ctx, "batch-1")
+	if err != nil || len(newLinks) != 2 {
+		t.Fatalf("links = %+v, err=%v; want disambiguated SDS link", newLinks, err)
+	}
+}
+
+func TestFindDurableStudioBatchTaskChecksHistoricalCandidateKey(t *testing.T) {
+	t.Parallel()
+
+	links := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-1")
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID:               "legacy-link",
+		BatchID:          "batch-1",
+		ItemID:           "item-1",
+		DesignID:         "design-1",
+		SelectionID:      "selection-1",
+		CandidateKey:     "legacy-key",
+		ListingKitTaskID: "old-ai-task",
+		Status:           studioBatchTaskLinkStatusCreated,
+	}); err != nil {
+		t.Fatalf("create historical link: %v", err)
+	}
+	s := &taskStudioBatchService{
+		batchTaskLinkRepo: links,
+		currentTime:       time.Now,
+		getTask: func(context.Context, string) (*Task, error) {
+			return &Task{ID: "old-ai-task", Request: &GenerateRequest{Options: &GenerateOptions{ImageStrategy: sheinImageStrategyAIGenerated}}}, nil
+		},
+	}
+	candidate := studioBatchTaskCandidate{
+		Design:                   StudioMaterializedDesignRecord{ID: "design-1"},
+		Item:                     StudioBatchItemRecord{ID: "item-1"},
+		SelectionID:              "selection-1",
+		CandidateKey:             "new-ai-key",
+		HistoricalCandidateKey:   "legacy-key",
+		ImageStrategy:            sheinImageStrategyAIGenerated,
+		CompatibilityFingerprint: "",
+	}
+	got, ok := s.findDurableStudioBatchTask(ctx, candidate)
+	if !ok || got.ID != "old-ai-task" {
+		t.Fatalf("durable lookup = (%+v, %v), want historical AI task", got, ok)
+	}
+}
+
 func TestBuildStudioBatchTaskGenerateRequestIncludesSDSProductTables(t *testing.T) {
 	t.Parallel()
 

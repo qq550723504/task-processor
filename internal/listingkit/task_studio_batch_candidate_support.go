@@ -32,6 +32,7 @@ type studioBatchTaskCandidate struct {
 	SelectionID              string
 	CompatibilityFingerprint string
 	CandidateKey             string
+	HistoricalCandidateKey   string
 	ImageStrategy            string
 	SheinStoreID             int64
 	StyleID                  string
@@ -351,6 +352,9 @@ func buildStudioBatchTaskCandidatesForDesign(
 			Title:                    candidate.Title,
 		}
 		projected.CandidateKey = buildStudioBatchTaskCandidateKey(ctx, batch, projected)
+		historical := projected
+		historical.ImageStrategy = sheinImageStrategySDSOfficial
+		projected.HistoricalCandidateKey = buildStudioBatchTaskCandidateKey(ctx, batch, historical)
 		candidates = append(candidates, projected)
 	}
 	return candidates, nil
