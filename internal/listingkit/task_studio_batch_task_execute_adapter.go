@@ -136,9 +136,9 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			// potentially slow task dispatch and the terminal link update too;
 			// otherwise another worker can reclaim the creating link while the
 			// original worker is still able to create a duplicate task.
-			dispatchHeartbeatStop := s.startStudioBatchTaskLinkHeartbeat(ctx, taskCandidate, studioBatchTaskLinkHeartbeatInterval)
+			dispatchCtx, dispatchHeartbeatStop := s.startStudioBatchTaskLinkHeartbeatContext(ctx, taskCandidate, studioBatchTaskLinkHeartbeatInterval)
 			task, err := s.createGenerateTask(
-				ctx,
+				dispatchCtx,
 				generateRequest,
 			)
 			if err != nil {

@@ -139,12 +139,21 @@ func (s *taskStudioBatchService) startStudioBatchTaskLinkHeartbeat(
 	candidate studioBatchTaskCandidate,
 	interval time.Duration,
 ) func() error {
+	_, stop := s.startStudioBatchTaskLinkHeartbeatContext(ctx, candidate, interval)
+	return stop
+}
+
+func (s *taskStudioBatchService) startStudioBatchTaskLinkHeartbeatContext(
+	ctx context.Context,
+	candidate studioBatchTaskCandidate,
+	interval time.Duration,
+) (context.Context, func() error) {
 	if s == nil || s.batchTaskLinkRepo == nil || interval <= 0 {
-		return func() error { return nil }
+		return ctx, func() error { return nil }
 	}
 	leaseRepo, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkLeaseRepository)
 	if !ok || strings.TrimSpace(candidate.ClaimToken) == "" {
-		return func() error { return fmt.Errorf("studio batch task claim lease token is unavailable") }
+		return ctx, func() error { return fmt.Errorf("studio batch task claim lease token is unavailable") }
 	}
 	heartbeatCtx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
@@ -185,12 +194,16 @@ func (s *taskStudioBatchService) startStudioBatchTaskLinkHeartbeat(
 					case errCh <- err:
 					default:
 					}
+					// A lost lease must stop the in-flight task dispatch. Without
+					// cancellation the stale worker can still create a duplicate
+					// before the guarded terminal update notices the loss.
+					cancel()
 					return
 				}
 			}
 		}
 	}()
-	return func() error {
+	return heartbeatCtx, func() error {
 		cancel()
 		<-done
 		select {
@@ -198,9 +211,26 @@ func (s *taskStudioBatchService) startStudioBatchTaskLinkHeartbeat(
 			if errors.Is(err, context.Canceled) {
 				return nil
 			}
+			// The worker may have completed the terminal compare-and-update
+			// while a refresh was in flight. That transition intentionally
+			// makes the creating predicate false; it is not a lost lease.
+			if s.studioBatchTaskHeartbeatEndedInTerminalState(ctx, candidate) {
+				return nil
+			}
 			return fmt.Errorf("refresh studio batch task claim: %w", err)
 		default:
 			return nil
 		}
 	}
+}
+
+func (s *taskStudioBatchService) studioBatchTaskHeartbeatEndedInTerminalState(ctx context.Context, candidate studioBatchTaskCandidate) bool {
+	if s == nil || s.batchTaskLinkRepo == nil {
+		return false
+	}
+	link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
+	if err != nil || link == nil {
+		return false
+	}
+	return strings.TrimSpace(link.Status) != studioBatchTaskLinkStatusCreating
 }

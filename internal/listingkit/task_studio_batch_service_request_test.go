@@ -332,6 +332,28 @@ func TestStudioBatchTaskLinkHeartbeatRejectsReclaimedClaimToken(t *testing.T) {
 	}
 }
 
+func TestStudioBatchTaskLinkHeartbeatCancelsDispatchContextOnLeaseLoss(t *testing.T) {
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	links := NewMemStudioBatchTaskLinkRepository()
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-1", CandidateKey: "candidate-1", ClaimToken: "new-owner", Status: studioBatchTaskLinkStatusCreating,
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	service := &taskStudioBatchService{batchTaskLinkRepo: links, currentTime: time.Now}
+	heartbeatCtx, stop := service.startStudioBatchTaskLinkHeartbeatContext(ctx, studioBatchTaskCandidate{
+		CandidateKey: "candidate-1", ClaimToken: "old-owner",
+	}, time.Millisecond)
+	select {
+	case <-heartbeatCtx.Done():
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("heartbeat did not cancel dispatch context after lease loss")
+	}
+	if err := stop(); err == nil {
+		t.Fatal("heartbeat stop unexpectedly hid the active lease-loss error")
+	}
+}
+
 func TestCreatedTaskFromDurableLinkRejectsHistoricalAIWithoutSettingsIdentity(t *testing.T) {
 	candidate := studioBatchTaskCandidate{
 		ImageStrategy:                   sheinImageStrategyAIGenerated,
