@@ -75,3 +75,15 @@ func TestAlibaba1688BrowserRuntimeConfigUsesGlobalFallbackWithoutAccount(t *test
 		t.Fatalf("proxy = %q, want global fallback %q", runtimeConfig.browser.ProxyServer, cfg.Browser.ProxyServer)
 	}
 }
+
+func TestAlibaba1688BrowserRuntimeConfigRetainsGlobalProxyWhenAccountProxyUnavailable(t *testing.T) {
+	cfg := config.NewDefaultConfig()
+	cfg.Browser.ProxyServer = "http://global-proxy:8080"
+	profile := &AccountProfile{ID: 3001, TenantID: 101, ProfileDir: "C:/account-profiles/101/3001"}
+
+	runtimeConfig := newAlibaba1688BrowserRuntimeConfig(cfg, profile)
+
+	if runtimeConfig.browser.ProxyServer != cfg.Browser.ProxyServer {
+		t.Fatalf("proxy = %q, want global fallback %q", runtimeConfig.browser.ProxyServer, cfg.Browser.ProxyServer)
+	}
+}

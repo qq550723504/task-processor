@@ -304,6 +304,26 @@ Describe "1688 runtime acceptance safety" {
         ($script:lastHandoffBody.Keys -contains "source_store_id") | Should Be $false
     }
 
+    It "omits an unused account selector when public crawl succeeds" {
+        $script:lastHandoffBody = $null
+        Mock Invoke-AcceptanceRequest {
+            param($Method, $Path, $Body)
+            if ($Path -eq "/api/v1/crawl") {
+                return @{ data = @{ task_id = "crawler-task-public-handoff" } }
+            }
+            if ($Path -eq "/api/v1/tasks/crawler-task-public-handoff") {
+                return @{ data = @{ task_id = "crawler-task-public-handoff"; status = "success"; source_access_mode = "public"; product_data = [pscustomobject]@{ id = "329"; title = "Public handoff product"; url = "https://detail.1688.com/offer/329.html" } } }
+            }
+            $script:lastHandoffBody = $Body
+            return @{ data = @{ task_id = "listing-task-public-handoff"; status = "pending" } }
+        }
+
+        Invoke-EndToEnd -Url "https://detail.1688.com/offer/329.html" -SourceAccountID 3009 -SheinStoreID 168819 -Confirmation "CREATE-1688-TASK" -PollIntervalSec 0 | Out-Null
+
+        ($script:lastHandoffBody.Keys -contains "source_account_id") | Should Be $false
+        $script:lastHandoffBody.shein_store_id | Should Be 168819
+    }
+
     It "rejects an EndToEnd handoff response without a task id" {
         Mock Invoke-AcceptanceRequest {
             param($Method, $Path)

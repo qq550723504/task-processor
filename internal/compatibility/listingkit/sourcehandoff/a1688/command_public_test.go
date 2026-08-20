@@ -2,6 +2,7 @@ package a1688
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"task-processor/internal/listingkit"
@@ -76,3 +77,37 @@ func (v *sourceAccountAccessValidatorFake) ValidateSourceAccountAccess(_ context
 }
 
 var _ sourceaccount.AccessValidator = (*sourceAccountAccessValidatorFake)(nil)
+
+func TestTaskCommandServiceRejectsNegativeSourceAccountAsInvalidRequest(t *testing.T) {
+	creator := &fakeGenerateTaskCreator{}
+	storeValidator := validStoreAccessValidator()
+
+	_, err := NewTaskCommandService(creator, storeValidator).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{
+		URL: "https://detail.1688.com/offer/904.html", Product: commandProduct1688("904"),
+		TenantID: "101", UserID: "user-1", SourceAccountID: -1, SheinStoreID: 168811, Platforms: []string{"shein"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid source_account_id") {
+		t.Fatalf("error = %v, want invalid source_account_id request error", err)
+	}
+	if len(storeValidator.calls) != 0 {
+		t.Fatalf("store validator calls = %+v, want no store validation for invalid source account", storeValidator.calls)
+	}
+}
+
+func TestTaskCommandServiceReturnsSourceUnavailableWhenValidatorMissing(t *testing.T) {
+	creator := &fakeGenerateTaskCreator{}
+	storeValidator := validStoreAccessValidator()
+	_, err := NewTaskCommandService(creator, storeOnlyAccessValidator{delegate: storeValidator}).CreateTask(authenticatedCommandContext("101", "user-1"), CreateTaskCommand{
+		URL: "https://detail.1688.com/offer/905.html", Product: commandProduct1688("905"),
+		TenantID: "101", UserID: "user-1", SourceAccountID: 3001, SheinStoreID: 168811, Platforms: []string{"shein"},
+	})
+	if got := listingkit.StoreAccessErrorCode(err); got != sourceaccount.SourceAccountUnavailable {
+		t.Fatalf("StoreAccessErrorCode() = %q, want %q", got, sourceaccount.SourceAccountUnavailable)
+	}
+}
+
+type storeOnlyAccessValidator struct{ delegate *storeAccessValidatorFake }
+
+func (v storeOnlyAccessValidator) ValidateStoreAccess(ctx context.Context, tenantID, storeID int64, platform string) (listingkit.StoreAccess, error) {
+	return v.delegate.ValidateStoreAccess(ctx, tenantID, storeID, platform)
+}

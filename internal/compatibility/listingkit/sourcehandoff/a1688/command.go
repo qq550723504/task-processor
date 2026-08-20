@@ -75,6 +75,9 @@ func (s *TaskCommandService) CreateTask(ctx context.Context, command CreateTaskC
 	if err := validateRequestIdentity(ctx, command); err != nil {
 		return nil, err
 	}
+	if command.SourceAccountID < 0 {
+		return nil, fmt.Errorf("invalid source_account_id: must not be negative")
+	}
 	if err := s.validateStores(ctx, command); err != nil {
 		return nil, err
 	}
@@ -126,11 +129,11 @@ func (s *TaskCommandService) validateStores(ctx context.Context, command CreateT
 		return err
 	}
 	if command.SourceAccountID < 0 {
-		return listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "source account is unavailable")
+		return fmt.Errorf("invalid source_account_id: must not be negative")
 	}
 	if command.SourceAccountID > 0 {
 		if s.sourceAccountAccessValidator == nil {
-			return listingkit.NewStoreAccessError(listingkit.StoreAccessUnavailable, "source account is unavailable")
+			return listingkit.NewStoreAccessError(sourceaccount.SourceAccountUnavailable, "source account is unavailable")
 		}
 		if _, err := s.sourceAccountAccessValidator.ValidateSourceAccountAccess(ctx, legacyTenantID, command.SourceAccountID); err != nil {
 			if code := sourceaccount.ErrorCode(err); code != "" {

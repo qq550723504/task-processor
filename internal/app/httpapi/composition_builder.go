@@ -98,7 +98,7 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 			sourceRepository, sourceClosers, sourceErr = b.buildSourceAccount(deps.shared.cfg, logger)
 		}
 		if sourceErr != nil {
-			logger.WithError(sourceErr).Warn("1688 source-account repository unavailable; public crawling remains enabled")
+			logger.Warn("1688 source-account repository unavailable; public crawling remains enabled")
 		}
 		deps.addClosers(sourceClosers...)
 		if validator, ok := sourceRepository.(sourceaccount.AccessValidator); ok {

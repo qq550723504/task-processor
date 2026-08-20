@@ -60,7 +60,9 @@ func newAlibaba1688BrowserRuntimeConfig(cfg *config.Config, profile *AccountProf
 	}
 	if profile != nil {
 		userDataDir = profile.ProfileDir
-		browserConfig.ProxyServer = profile.ProxyServer
+		if proxy := strings.TrimSpace(profile.ProxyServer); proxy != "" {
+			browserConfig.ProxyServer = proxy
+		}
 	}
 	return alibaba1688BrowserRuntimeConfig{browser: browserConfig, userDataDir: userDataDir}
 }

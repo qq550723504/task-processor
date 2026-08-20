@@ -268,7 +268,8 @@ function New-ListingKitHandoffPayload {
         [object]$ProductData,
         [long]$SourceAccountID,
         [long]$SheinStoreID,
-        [string]$CrawlerTaskID
+        [string]$CrawlerTaskID,
+        [string]$SourceAccessMode = ""
     )
 
     if ($null -eq $ProductData) {
@@ -286,7 +287,8 @@ function New-ListingKitHandoffPayload {
         platforms         = @("shein")
         shein_store_id    = $SheinStoreID
     }
-    if ($SourceAccountID -gt 0) {
+    $includeSourceAccount = $SourceAccountID -gt 0 -and ([string]::IsNullOrWhiteSpace($SourceAccessMode) -or $SourceAccessMode -eq "account_assisted")
+    if ($includeSourceAccount) {
         $payload.source_account_id = $SourceAccountID
     }
     return $payload
@@ -395,7 +397,9 @@ function Invoke-Crawl {
             $productData = $data.product_data
             if ($null -eq $productData) { $productData = $data.ProductData }
             if ($null -eq $productData) { throw "crawler task $taskID succeeded without product_data" }
-            return [pscustomobject]@{ TaskID = $taskID; Status = $status; ProductData = $productData }
+            $sourceAccessMode = [string]$data.source_access_mode
+            if ([string]::IsNullOrWhiteSpace($sourceAccessMode)) { $sourceAccessMode = [string]$data.SourceAccessMode }
+            return [pscustomobject]@{ TaskID = $taskID; Status = $status; ProductData = $productData; SourceAccessMode = $sourceAccessMode }
         }
         if ($status -eq "failed") {
             throw "crawler task $taskID failed"
@@ -423,7 +427,7 @@ function Invoke-EndToEnd {
     Assert-TaskCreationConfirmation -Mode "EndToEnd" -Confirmation $Confirmation
     if ($SheinStoreID -le 0) { throw "-SheinStoreID must be positive for EndToEnd mode" }
     $crawler = Invoke-Crawl -Url $Url -SourceAccountID $SourceAccountID -Confirmation $Confirmation -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $RequestTimeoutSec -PollIntervalSec $PollIntervalSec
-    $payload = New-ListingKitHandoffPayload -ProductData $crawler.ProductData -SourceAccountID $SourceAccountID -SheinStoreID $SheinStoreID -CrawlerTaskID $crawler.TaskID
+    $payload = New-ListingKitHandoffPayload -ProductData $crawler.ProductData -SourceAccountID $SourceAccountID -SourceAccessMode $crawler.SourceAccessMode -SheinStoreID $SheinStoreID -CrawlerTaskID $crawler.TaskID
     $response = Invoke-AcceptanceRequest -Method Post -Path "/api/v1/product-sourcing/1688/listingkit/tasks" -Token $Token -BaseUrl $BaseUrl -RequestTimeoutSec $RequestTimeoutSec -Body $payload
     $handoffData = Get-ResponseData -Response $response
     if ([string]::IsNullOrWhiteSpace([string]$handoffData.task_id)) { throw "handoff response did not contain a task id" }
