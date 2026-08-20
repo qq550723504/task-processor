@@ -18,7 +18,6 @@ type SingleProcessor struct {
 	urlHelper      *URLHelper
 	productChecker *ProductChecker
 	extractor      *extractor.ProductExtractor
-	browserManager *BrowserManager
 	pageOperator   *PageOperator
 }
 
@@ -29,19 +28,22 @@ func NewSingleProcessor(cfg *config.Config, urlHelper *URLHelper, productChecker
 		urlHelper:      urlHelper,
 		productChecker: productChecker,
 		extractor:      extractor.NewProductExtractor(),
-		browserManager: NewPublicBrowserManager(cfg),
 		pageOperator:   NewPageOperator(),
 	}
 }
 
 // ProcessWithSingleBrowser 使用单个浏览器处理产品
 func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, startTime time.Time) (*model.Product1688, error) {
-	return sp.processWithBrowserManager(url, startTime, sp.browserManager)
+	return sp.processWithBrowserManager(url, startTime, sp.newPublicBrowserManager())
 }
 
 // ProcessWithAccountProfile uses a short-lived browser manager configured for one 1688 login account.
 func (sp *SingleProcessor) ProcessWithAccountProfile(url string, startTime time.Time, profile AccountProfile) (*model.Product1688, error) {
 	return sp.processWithBrowserManager(url, startTime, NewBrowserManagerForAccountProfile(sp.config, profile))
+}
+
+func (sp *SingleProcessor) newPublicBrowserManager() *BrowserManager {
+	return NewPublicBrowserManager(sp.config)
 }
 
 func (sp *SingleProcessor) processWithBrowserManager(url string, startTime time.Time, browserManager *BrowserManager) (*model.Product1688, error) {
