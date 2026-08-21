@@ -42,6 +42,36 @@ func newStudioProductImageAdmissionService(t *testing.T, tenantID string, limit 
 	return svc
 }
 
+type denyingStudioProductImageGenerationAdmission struct{}
+
+func (denyingStudioProductImageGenerationAdmission) AllowsGenerationUsage(string) bool { return false }
+
+func TestReserveStudioProductImageUsageHonorsGenerationUsageRolloutGate(t *testing.T) {
+	svc := newStudioProductImageAdmissionService(t, "tenant-rollout-denied", 2)
+	h := &handler{subscriptionDependencies: subscriptionDependencies{
+		subscriptionService:      svc,
+		generationUsageAdmission: denyingStudioProductImageGenerationAdmission{},
+	}}
+	_, err := h.reserveStudioProductImageUsage(newStudioProductImageAdmissionContext("tenant-rollout-denied"), "request-denied")
+	if !errors.Is(err, listingsubscription.ErrUsageLedgerNotConfigured) {
+		t.Fatalf("reserve error = %v, want rollout gate rejection", err)
+	}
+}
+
+func TestStudioProductImageUsageRolloutGateDoesNotFallBackToLegacyAuthorization(t *testing.T) {
+	svc := newStudioProductImageAdmissionService(t, "tenant-rollout-denied", 2)
+	h := &handler{subscriptionDependencies: subscriptionDependencies{
+		subscriptionService:      svc,
+		generationUsageAdmission: denyingStudioProductImageGenerationAdmission{},
+	}}
+	if studioProductImageUsageRolloutAllowed(h, "tenant-rollout-denied") {
+		t.Fatal("rollout gate allowed a denied tenant")
+	}
+	if studioProductImageUsageLedgerEnabled(h, "tenant-rollout-denied") {
+		t.Fatal("ledger admission allowed a denied tenant")
+	}
+}
+
 func TestReserveStudioProductImageUsageIncludesLegacyAggregateUsage(t *testing.T) {
 	svc := newStudioProductImageAdmissionService(t, "tenant-pre-ledger", 2)
 	if _, err := svc.RecordUsage(context.Background(), "tenant-pre-ledger", listingsubscription.ModuleStudio, "product_image_jobs", 2); err != nil {

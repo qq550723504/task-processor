@@ -24,14 +24,19 @@ const (
 )
 
 type subscriptionStudioProductImageUsage struct {
-	service *listingsubscription.Service
+	service   *listingsubscription.Service
+	admission listingkit.GenerationUsageAdmission
 }
 
-func studioProductImageUsageDependency(service *listingsubscription.Service) *subscriptionStudioProductImageUsage {
+func studioProductImageUsageDependency(service *listingsubscription.Service, admissions ...listingkit.GenerationUsageAdmission) *subscriptionStudioProductImageUsage {
 	if service == nil {
 		return nil
 	}
-	return &subscriptionStudioProductImageUsage{service: service}
+	var admission listingkit.GenerationUsageAdmission
+	if len(admissions) > 0 {
+		admission = admissions[0]
+	}
+	return &subscriptionStudioProductImageUsage{service: service, admission: admission}
 }
 
 func (a *subscriptionStudioProductImageUsage) AuthorizeProductImageUsage(ctx context.Context, tenantID string, quantity int) error {
@@ -69,6 +74,9 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 		return listingsubscription.ErrUsageLedgerNotConfigured
 	}
 	tenantID = strings.TrimSpace(tenantID)
+	if a.admission != nil && !a.admission.AllowsGenerationUsage(tenantID) {
+		return listingsubscription.ErrSubscriptionRequired
+	}
 	reservationID = strings.TrimSpace(reservationID)
 	if tenantID == "" || reservationID == "" || quantity <= 0 {
 		return fmt.Errorf("product image usage reservation requires tenant, reservation, and positive quantity")

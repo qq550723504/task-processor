@@ -20,6 +20,8 @@ var executeStudioDesignBatch = listingkit.ExecuteStudioDesignBatch
 
 var studioAsyncJobHeartbeatInterval = time.Minute
 
+var studioAsyncJobHeartbeatFailureRecoveryAfter = 30 * time.Minute
+
 var errStudioAsyncJobHeartbeatLost = errors.New("studio async job heartbeat lost")
 
 func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path string, body json.RawMessage, sessionID string, baseURL string, usageMetric string, usageReservationID string) {
@@ -46,14 +48,22 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 			defer close(heartbeatDone)
 			ticker := time.NewTicker(studioAsyncJobHeartbeatInterval)
 			defer ticker.Stop()
+			var heartbeatUnavailableSince time.Time
 			for {
 				select {
 				case <-ticker.C:
 					if err := h.studioAsyncJobs.heartbeat(ctx, jobID); err != nil {
 						studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{"job_id": jobID})).WithError(err).Warn("studio async job heartbeat failed")
-						cancelJob(errStudioAsyncJobHeartbeatLost)
-						return
+						if heartbeatUnavailableSince.IsZero() {
+							heartbeatUnavailableSince = time.Now()
+						}
+						if time.Since(heartbeatUnavailableSince) >= studioAsyncJobHeartbeatFailureRecoveryAfter {
+							cancelJob(errStudioAsyncJobHeartbeatLost)
+							return
+						}
+						continue
 					}
+					heartbeatUnavailableSince = time.Time{}
 				case <-stopHeartbeat:
 					return
 				}

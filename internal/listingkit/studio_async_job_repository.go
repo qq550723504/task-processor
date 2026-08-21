@@ -230,6 +230,7 @@ func (r *GormStudioAsyncJobRepository) GetStudioAsyncJobForTenant(ctx context.Co
 
 func (r *GormStudioAsyncJobRepository) HeartbeatStudioAsyncJob(ctx context.Context, jobID string, updatedAt time.Time) error {
 	result := applyStudioAsyncJobAccessScope(r.db.WithContext(ctx), ctx).
+		Model(&StudioAsyncJobRecord{}).
 		Where("id = ? AND status = ?", jobID, StudioAsyncJobStatusRunning).
 		Updates(map[string]any{"updated_at": updatedAt})
 	if result.Error != nil {

@@ -69,13 +69,14 @@ type adminHandlers struct {
 }
 
 type subscriptionDependencies struct {
-	subscriptionService     *listingsubscription.Service
-	subscriptionHandler     *listingsubscription.Handler
-	platformAdminUsers      []string
-	platformAdminRoles      []string
-	tenantDirectory         tenantdirectory.Directory
-	memberInvitationService *memberinvite.Service
-	memberInvitationAudit   memberinvite.AuditRepository
+	subscriptionService      *listingsubscription.Service
+	subscriptionHandler      *listingsubscription.Handler
+	generationUsageAdmission listingkit.GenerationUsageAdmission
+	platformAdminUsers       []string
+	platformAdminRoles       []string
+	tenantDirectory          tenantdirectory.Directory
+	memberInvitationService  *memberinvite.Service
+	memberInvitationAudit    memberinvite.AuditRepository
 }
 
 type handlerCoreService interface {
@@ -146,6 +147,7 @@ type AdminHandlerDependencies struct {
 
 type SubscriptionDependencies struct {
 	Service                         *listingsubscription.Service
+	GenerationUsageAdmission        listingkit.GenerationUsageAdmission
 	PlatformAdminUsers              []string
 	PlatformAdminRoles              []string
 	TenantDirectory                 tenantdirectory.Directory

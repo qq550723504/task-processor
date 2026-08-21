@@ -266,6 +266,9 @@ func (s *taskStudioBatchService) authorizeStudioBatchProductImageUsage(ctx conte
 	if strings.TrimSpace(tenantID) == "" {
 		return fmt.Errorf("tenant id is required")
 	}
+	if s.generationUsageAdmission != nil && !s.generationUsageAdmission.AllowsGenerationUsage(tenantID) {
+		return listingsubscription.ErrSubscriptionRequired
+	}
 	if reservation, ok := s.productImageUsageReservation(); ok {
 		reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
 		if reservationID == "" {

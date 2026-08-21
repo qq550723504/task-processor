@@ -45,6 +45,40 @@ func TestGormStudioAsyncJobRepositoryScopesByTenant(t *testing.T) {
 	}
 }
 
+func TestGormStudioAsyncJobRepositoryHeartbeatUpdatesRunningJob(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := AutoMigrateStudioAsyncJobRepository(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	repo := NewGormStudioAsyncJobRepository(db)
+	ctx := WithTenantID(context.Background(), "tenant-heartbeat")
+	createdAt := time.Now().UTC().Add(-time.Minute)
+	if err := repo.CreateStudioAsyncJob(ctx, &StudioAsyncJobRecord{
+		ID: "heartbeat-job", TenantID: "tenant-heartbeat", Path: "/studio/product-images",
+		Status: StudioAsyncJobStatusRunning, CreatedAt: createdAt, UpdatedAt: createdAt,
+	}); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	updatedAt := time.Now().UTC()
+	if err := repo.HeartbeatStudioAsyncJob(ctx, "heartbeat-job", updatedAt); err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+	job, err := repo.GetStudioAsyncJob(ctx, "heartbeat-job")
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	if !job.UpdatedAt.Equal(updatedAt) {
+		t.Fatalf("UpdatedAt = %s, want %s", job.UpdatedAt, updatedAt)
+	}
+}
+
 func TestGormStudioAsyncJobRepositoryScopesByUserWhenOwnerScopeEnabled(t *testing.T) {
 	t.Parallel()
 

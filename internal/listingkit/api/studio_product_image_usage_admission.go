@@ -29,8 +29,12 @@ const (
 	studioProductImageAsyncJobRecoveryAfter                 = 30 * time.Minute
 )
 
-func studioProductImageUsageLedgerEnabled(h *handler) bool {
-	return h != nil && h.subscriptionService != nil && h.subscriptionService.HasUsageLedger()
+func studioProductImageUsageRolloutAllowed(h *handler, tenantID string) bool {
+	return h != nil && (h.generationUsageAdmission == nil || h.generationUsageAdmission.AllowsGenerationUsage(strings.TrimSpace(tenantID)))
+}
+
+func studioProductImageUsageLedgerEnabled(h *handler, tenantID string) bool {
+	return h != nil && h.subscriptionService != nil && h.subscriptionService.HasUsageLedger() && studioProductImageUsageRolloutAllowed(h, tenantID)
 }
 
 func studioProductImageUsageReleaseContext(c *gin.Context) context.Context {
@@ -46,9 +50,6 @@ func (h *handler) reserveStudioProductImageUsageForAsyncJob(c *gin.Context, rese
 }
 
 func (h *handler) reserveStudioProductImageUsageWithSourceType(c *gin.Context, reservationID, sourceType string) (string, error) {
-	if !studioProductImageUsageLedgerEnabled(h) {
-		return "", listingsubscription.ErrUsageLedgerNotConfigured
-	}
 	reservationID = strings.TrimSpace(reservationID)
 	if reservationID == "" {
 		reservationID = uuid.NewString()
@@ -56,6 +57,12 @@ func (h *handler) reserveStudioProductImageUsageWithSourceType(c *gin.Context, r
 	requestTenant := strings.TrimSpace(requestTenantID(c))
 	if requestTenant == "" {
 		return "", fmt.Errorf("tenant id is required")
+	}
+	if !studioProductImageUsageRolloutAllowed(h, requestTenant) {
+		return "", listingsubscription.ErrUsageLedgerNotConfigured
+	}
+	if h.subscriptionService == nil || !h.subscriptionService.HasUsageLedger() {
+		return "", listingsubscription.ErrUsageLedgerNotConfigured
 	}
 	reserve := func(tenantID string) (listingsubscription.ReserveUsageResult, error) {
 		now := time.Now().UTC()

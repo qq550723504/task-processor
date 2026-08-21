@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -26,11 +27,83 @@ type Config struct {
 	Timeout      time.Duration
 	MaxAttempts  int
 	HTTPClient   *http.Client
+	// MaxReferenceMaterializedBytes bounds the estimated base64-expanded bytes
+	// retained by concurrent edit requests while their provider submissions are
+	// in flight.
+	MaxReferenceMaterializedBytes int64
+	// MaxReferenceMaterializationConcurrency bounds concurrent remote reference
+	// downloads and materializations across this client.
+	MaxReferenceMaterializationConcurrency int
 }
 
 type Client struct {
-	cfg        Config
-	httpClient *http.Client
+	cfg                      Config
+	httpClient               *http.Client
+	referenceMaterialization *referenceMaterializationBudget
+}
+
+const (
+	maxImageReferenceBytes                     int64 = 32 << 20
+	maxMaterializedReferenceBytes              int64 = (maxImageReferenceBytes*4 + 2) / 3
+	defaultReferenceMaterializedBytes          int64 = 512 << 20
+	defaultReferenceMaterializationConcurrency       = 8
+	referenceBudgetUnitBytes                   int64 = 1 << 20
+)
+
+type referenceMaterializationBudget struct {
+	slots chan struct{}
+	bytes chan struct{}
+}
+
+func newReferenceMaterializationBudget(maxBytes int64, maxConcurrent int) *referenceMaterializationBudget {
+	if maxBytes < maxMaterializedReferenceBytes {
+		maxBytes = maxMaterializedReferenceBytes
+	}
+	if maxConcurrent <= 0 {
+		maxConcurrent = defaultReferenceMaterializationConcurrency
+	}
+	units := int((maxBytes + referenceBudgetUnitBytes - 1) / referenceBudgetUnitBytes)
+	return &referenceMaterializationBudget{
+		slots: make(chan struct{}, maxConcurrent),
+		bytes: make(chan struct{}, units),
+	}
+}
+
+func (b *referenceMaterializationBudget) acquire(ctx context.Context, bytes int64) (func(), error) {
+	if b == nil {
+		return func() {}, nil
+	}
+	units := int((bytes + referenceBudgetUnitBytes - 1) / referenceBudgetUnitBytes)
+	if units <= 0 || units > cap(b.bytes) {
+		return nil, fmt.Errorf("grsai reference materialization budget is too small")
+	}
+	select {
+	case b.slots <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	acquired := 0
+	for acquired < units {
+		select {
+		case b.bytes <- struct{}{}:
+			acquired++
+		case <-ctx.Done():
+			for i := 0; i < acquired; i++ {
+				<-b.bytes
+			}
+			<-b.slots
+			return nil, ctx.Err()
+		}
+	}
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			for i := 0; i < units; i++ {
+				<-b.bytes
+			}
+			<-b.slots
+		})
+	}, nil
 }
 
 type submitRequest struct {
@@ -84,7 +157,17 @@ func NewClient(cfg Config) *Client {
 	if cfg.MaxAttempts <= 0 {
 		cfg.MaxAttempts = 3
 	}
-	return &Client{cfg: cfg, httpClient: httpClient}
+	if cfg.MaxReferenceMaterializedBytes <= 0 {
+		cfg.MaxReferenceMaterializedBytes = defaultReferenceMaterializedBytes
+	}
+	if cfg.MaxReferenceMaterializationConcurrency <= 0 {
+		cfg.MaxReferenceMaterializationConcurrency = defaultReferenceMaterializationConcurrency
+	}
+	return &Client{
+		cfg:                      cfg,
+		httpClient:               httpClient,
+		referenceMaterialization: newReferenceMaterializationBudget(cfg.MaxReferenceMaterializedBytes, cfg.MaxReferenceMaterializationConcurrency),
+	}
 }
 
 func (c *Client) GetDefaultModel() string {
@@ -155,10 +238,11 @@ func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEdi
 	if req == nil {
 		return nil, fmt.Errorf("image edit request cannot be nil")
 	}
-	images, err := c.imageInputsForRequest(ctx, req)
+	images, releaseReferences, err := c.imageInputsForRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
+	defer releaseReferences()
 	submitReq := submitRequest{
 		Model:          defaultString(req.Model, c.cfg.Model),
 		Prompt:         req.Prompt,
@@ -278,10 +362,11 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 	if req == nil {
 		return nil, fmt.Errorf("image edit request cannot be nil")
 	}
-	images, err := c.imageInputsForRequest(ctx, req)
+	images, releaseReferences, err := c.imageInputsForRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
+	defer releaseReferences()
 	return c.submitImagesGeneration(ctx, submitRequest{
 		Model:          defaultString(req.Model, c.cfg.Model),
 		Prompt:         req.Prompt,
@@ -291,9 +376,23 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 	})
 }
 
-func (c *Client) imageInputsForRequest(ctx context.Context, req *openaiclient.ImageEditRequest) ([]string, error) {
+func (c *Client) imageInputsForRequest(ctx context.Context, req *openaiclient.ImageEditRequest) (materialized []string, release func(), err error) {
+	releases := make([]func(), 0, 1)
+	release = func() {
+		for i := len(releases) - 1; i >= 0; i-- {
+			releases[i]()
+		}
+	}
+	defer func() {
+		if err != nil {
+			if release != nil {
+				release()
+			}
+			release = func() {}
+		}
+	}()
 	if req == nil {
-		return nil, fmt.Errorf("grsai image edit request cannot be nil")
+		return nil, nil, fmt.Errorf("grsai image edit request cannot be nil")
 	}
 	inputs := cleanImageURLs(req.ImageURLs, 8)
 	if imageURL := strings.TrimSpace(req.ImageURL); imageURL != "" && len(inputs) == 0 {
@@ -305,7 +404,7 @@ func (c *Client) imageInputsForRequest(ctx context.Context, req *openaiclient.Im
 			contentType = http.DetectContentType(req.Image)
 		}
 		if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
-			return nil, fmt.Errorf("grsai image edit requires image url or valid image data")
+			return nil, nil, fmt.Errorf("grsai image edit requires image url or valid image data")
 		}
 		primary := "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(req.Image)
 		filtered := make([]string, 0, len(inputs)+1)
@@ -318,9 +417,9 @@ func (c *Client) imageInputsForRequest(ctx context.Context, req *openaiclient.Im
 		inputs = append([]string{primary}, filtered...)
 	}
 	if len(inputs) == 0 {
-		return nil, fmt.Errorf("grsai image edit requires image url or image data")
+		return nil, nil, fmt.Errorf("grsai image edit requires image url or image data")
 	}
-	materialized := make([]string, 0, len(inputs))
+	materialized = make([]string, 0, len(inputs))
 	for _, input := range inputs {
 		input = strings.TrimSpace(input)
 		if strings.HasPrefix(strings.ToLower(input), "data:image/") {
@@ -329,8 +428,13 @@ func (c *Client) imageInputsForRequest(ctx context.Context, req *openaiclient.Im
 		}
 		validated, err := safeimagehttp.ValidatePublicHTTPSURL(input)
 		if err != nil {
-			return nil, fmt.Errorf("grsai image reference is not a public https url: %w", err)
+			return nil, nil, fmt.Errorf("grsai image reference is not a public https url: %w", err)
 		}
+		lease, acquireErr := c.referenceMaterialization.acquire(ctx, maxMaterializedReferenceBytes)
+		if acquireErr != nil {
+			return nil, nil, fmt.Errorf("reserve grsai image reference materialization budget: %w", acquireErr)
+		}
+		releases = append(releases, lease)
 		downloadCtx := ctx
 		var cancel context.CancelFunc
 		if c != nil && c.cfg.Timeout > 0 {
@@ -342,39 +446,39 @@ func (c *Client) imageInputsForRequest(ctx context.Context, req *openaiclient.Im
 			if cancel != nil {
 				cancel()
 			}
-			return nil, fmt.Errorf("build grsai image reference request: %w", err)
+			return nil, release, fmt.Errorf("build grsai image reference request: %w", err)
 		}
 		response, err := client.Do(request)
 		if err != nil {
 			if cancel != nil {
 				cancel()
 			}
-			return nil, fmt.Errorf("download grsai image reference: %w", err)
+			return nil, release, fmt.Errorf("download grsai image reference: %w", err)
 		}
-		body, readErr := io.ReadAll(io.LimitReader(response.Body, 32<<20+1))
+		body, readErr := io.ReadAll(io.LimitReader(response.Body, maxImageReferenceBytes+1))
 		response.Body.Close()
 		if cancel != nil {
 			cancel()
 		}
 		if readErr != nil {
-			return nil, fmt.Errorf("read grsai image reference: %w", readErr)
+			return nil, release, fmt.Errorf("read grsai image reference: %w", readErr)
 		}
 		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			return nil, fmt.Errorf("download grsai image reference returned status %d", response.StatusCode)
+			return nil, release, fmt.Errorf("download grsai image reference returned status %d", response.StatusCode)
 		}
-		if len(body) > 32<<20 {
-			return nil, fmt.Errorf("grsai image reference exceeds 32 MiB")
+		if int64(len(body)) > maxImageReferenceBytes {
+			return nil, release, fmt.Errorf("grsai image reference exceeds 32 MiB")
 		}
 		contentType := strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0])
 		if contentType == "" {
 			contentType = http.DetectContentType(body)
 		}
 		if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
-			return nil, fmt.Errorf("grsai image reference is not an image")
+			return nil, release, fmt.Errorf("grsai image reference is not an image")
 		}
 		materialized = append(materialized, "data:"+contentType+";base64,"+base64.StdEncoding.EncodeToString(body))
 	}
-	return materialized, nil
+	return materialized, release, nil
 }
 
 func cleanImageURLs(urls []string, max int) []string {

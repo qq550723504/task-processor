@@ -15,6 +15,35 @@ import (
 	openaiclient "task-processor/internal/ai"
 )
 
+func TestReferenceMaterializationBudgetCapsConcurrentReferences(t *testing.T) {
+	budget := newReferenceMaterializationBudget(maxMaterializedReferenceBytes, 1)
+	releaseFirst, err := budget.acquire(context.Background(), maxMaterializedReferenceBytes)
+	if err != nil {
+		t.Fatalf("first acquire: %v", err)
+	}
+
+	secondAcquired := make(chan func(), 1)
+	go func() {
+		release, acquireErr := budget.acquire(context.Background(), maxMaterializedReferenceBytes)
+		if acquireErr == nil {
+			secondAcquired <- release
+		}
+	}()
+	select {
+	case <-secondAcquired:
+		t.Fatal("second reference acquired before the first lease was released")
+	case <-time.After(25 * time.Millisecond):
+	}
+
+	releaseFirst()
+	select {
+	case releaseSecond := <-secondAcquired:
+		releaseSecond()
+	case <-time.After(time.Second):
+		t.Fatal("second reference did not acquire after the first lease was released")
+	}
+}
+
 func TestClientEditImageUsesGenerateEndpointForNanoBanana(t *testing.T) {
 	imageBytes := []byte("generated-image")
 	var serverURL string

@@ -29,6 +29,7 @@ type taskStudioBatchServiceWiring struct {
 	currentTime              func() time.Time
 
 	productImageUsage             StudioProductImageUsage
+	generationUsageAdmission      GenerationUsageAdmission
 	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
@@ -82,6 +83,7 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 			return media.GenerateStudioProductImages(ctx, req)
 		},
 		productImageUsage:             s.studioDeps.productImageUsage,
+		generationUsageAdmission:      s.studioDeps.generationUsageAdmission,
 		resolveUploadedImagePublicURL: buildResolveUploadedImagePublicURLFunc(s),
 		getTask:                       repository.getTask,
 		markTaskFailed:                repository.markTaskFailed,
@@ -105,6 +107,7 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 				currentTime:                   time.Now,
 				sdsProductDetailProvider:      resolveSDSBaselineRemoteProvider(s),
 				productImageUsage:             s.studioDeps.productImageUsage,
+				generationUsageAdmission:      s.studioDeps.generationUsageAdmission,
 				resolveUploadedImagePublicURL: buildResolveUploadedImagePublicURLFunc(s),
 			}
 			return batchService.resetStudioBatchRetryItems(ctx, items)
@@ -319,6 +322,7 @@ func buildTaskStudioBatchServiceConfigWithCollaborators(
 		taskResumeRunner:         config.taskResume,
 
 		productImageUsage:             config.batch.productImageUsage,
+		generationUsageAdmission:      config.batch.generationUsageAdmission,
 		resolveUploadedImagePublicURL: config.batch.resolveUploadedImagePublicURL,
 	}
 }

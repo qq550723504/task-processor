@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/listingsubscription"
 	sdstemplate "task-processor/internal/sds/template"
 )
 
@@ -442,6 +443,26 @@ func TestTaskStudioBatchServiceReservesProductImageUsageBeforeGeneration(t *test
 	}
 	if len(usage.reserved) != 1 || usage.reserved[0] != "tenant-a:candidate-reservation:1" {
 		t.Fatalf("reservations = %v, want one atomic reservation before generation", usage.reserved)
+	}
+}
+
+func TestTaskStudioBatchServiceHonorsGenerationUsageRolloutGate(t *testing.T) {
+	usage := &reservingStudioProductImageUsage{}
+	service := &taskStudioBatchService{
+		productImageUsage:        usage,
+		generationUsageAdmission: generationUsageTestAdmission{tenantIDs: map[string]struct{}{}},
+	}
+	err := service.authorizeStudioBatchProductImageUsage(
+		context.Background(),
+		&StudioBatchRecord{ID: "batch-rollout-denied", TenantID: "tenant-rollout-denied"},
+		studioBatchTaskCandidate{CandidateKey: "candidate-rollout-denied", ImageStrategy: sheinImageStrategyAIGenerated},
+		1,
+	)
+	if !errors.Is(err, listingsubscription.ErrSubscriptionRequired) {
+		t.Fatalf("authorize error = %v, want rollout gate rejection", err)
+	}
+	if len(usage.authorized) != 0 || len(usage.reserved) != 0 {
+		t.Fatalf("usage calls = authorized:%v reserved:%v, want no new admission", usage.authorized, usage.reserved)
 	}
 }
 

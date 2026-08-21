@@ -19,7 +19,12 @@ func (h *handler) GenerateStudioProductImages(c *gin.Context) {
 		return
 	}
 	releaseCtx := studioProductImageUsageReleaseContext(c)
-	ledgerAdmission := studioProductImageUsageLedgerEnabled(h)
+	requestTenant := requestTenantID(c)
+	if !studioProductImageUsageRolloutAllowed(h, requestTenant) {
+		writeStudioProductImageUsageAdmissionError(c, listingsubscription.ErrUsageLedgerNotConfigured)
+		return
+	}
+	ledgerAdmission := studioProductImageUsageLedgerEnabled(h, requestTenant)
 	reservationID := ""
 	if ledgerAdmission {
 		var reserveErr error

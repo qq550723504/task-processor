@@ -107,5 +107,6 @@ type taskStudioBatchServiceConfig struct {
 	taskResumeRunner         *listingStudioBatchTaskResumeRunner
 
 	productImageUsage             StudioProductImageUsage
+	generationUsageAdmission      GenerationUsageAdmission
 	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }

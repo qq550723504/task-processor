@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -160,14 +161,72 @@ func TestRunStudioAsyncJobHeartbeatsBeforeLongProductImageGeneration(t *testing.
 
 type failingHeartbeatStudioAsyncJobRepository struct {
 	listingkit.StudioAsyncJobRepository
-	failHeartbeat bool
+	failHeartbeat    bool
+	periodicFailures atomic.Int32
 }
 
 func (r *failingHeartbeatStudioAsyncJobRepository) HeartbeatStudioAsyncJob(ctx context.Context, jobID string, updatedAt time.Time) error {
 	if r.failHeartbeat {
 		return errors.New("heartbeat temporarily unavailable")
 	}
+	for {
+		remaining := r.periodicFailures.Load()
+		if remaining <= 0 || !r.periodicFailures.CompareAndSwap(remaining, remaining-1) {
+			break
+		}
+		return errors.New("heartbeat temporarily unavailable")
+	}
 	return r.StudioAsyncJobRepository.HeartbeatStudioAsyncJob(ctx, jobID, updatedAt)
+}
+
+func TestRunStudioAsyncJobRetriesTransientHeartbeatFailure(t *testing.T) {
+	oldInterval := studioAsyncJobHeartbeatInterval
+	studioAsyncJobHeartbeatInterval = 5 * time.Millisecond
+	defer func() { studioAsyncJobHeartbeatInterval = oldInterval }()
+
+	ctx := listingkit.WithRequestIdentity(listingkit.WithTenantID(context.Background(), "tenant-heartbeat-retry"), listingkit.RequestIdentity{TenantID: "tenant-heartbeat-retry", UserID: "user-heartbeat-retry"})
+	baseRepo := listingkit.NewMemStudioAsyncJobRepository()
+	if err := baseRepo.CreateStudioAsyncJob(ctx, &listingkit.StudioAsyncJobRecord{
+		ID: "heartbeat-retry-job", TenantID: "tenant-heartbeat-retry", UserID: "user-heartbeat-retry", Path: "/studio/product-images",
+		Status: listingkit.StudioAsyncJobStatusRunning, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateStudioAsyncJob() error = %v", err)
+	}
+	repo := &failingHeartbeatStudioAsyncJobRepository{StudioAsyncJobRepository: baseRepo}
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	media := &blockingStudioAsyncMediaService{stubStudioMediaHandlerService: &stubStudioMediaHandlerService{}, started: started, release: release}
+	h := &handler{studioAsyncJobs: &studioAsyncJobStore{repo: repo}, studioMediaService: media}
+	done := make(chan struct{})
+	go func() {
+		h.runStudioAsyncJob(ctx, "heartbeat-retry-job", "/studio/product-images", json.RawMessage(`{}`), "", "", "", "")
+		close(done)
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("product-image generation did not start")
+	}
+	repo.periodicFailures.Store(1)
+	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-done:
+		t.Fatal("runStudioAsyncJob stopped after a transient heartbeat failure")
+	default:
+	}
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("runStudioAsyncJob did not finish after provider completion")
+	}
+	job, err := baseRepo.GetStudioAsyncJob(ctx, "heartbeat-retry-job")
+	if err != nil {
+		t.Fatalf("GetStudioAsyncJob() error = %v", err)
+	}
+	if job.Status != listingkit.StudioAsyncJobStatusSucceeded {
+		t.Fatalf("job status = %q, want succeeded after transient heartbeat failure", job.Status)
+	}
 }
 
 func TestRunStudioAsyncJobStopsWhenInitialHeartbeatFails(t *testing.T) {

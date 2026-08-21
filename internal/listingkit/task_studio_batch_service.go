@@ -34,6 +34,7 @@ type taskStudioBatchService struct {
 	taskResumeRunner         *listingStudioBatchTaskResumeRunner
 
 	productImageUsage             StudioProductImageUsage
+	generationUsageAdmission      GenerationUsageAdmission
 	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
@@ -50,6 +51,7 @@ func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioB
 		createGenerateTask:            config.createGenerateTask,
 		generateProductImages:         config.generateProductImages,
 		productImageUsage:             config.productImageUsage,
+		generationUsageAdmission:      config.generationUsageAdmission,
 		resolveUploadedImagePublicURL: config.resolveUploadedImagePublicURL,
 		getTask:                       config.getTask,
 		markTaskFailed:                config.markTaskFailed,
