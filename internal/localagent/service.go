@@ -259,10 +259,22 @@ func validateCrawlerSnapshot(product *sourcing.Alibaba1688ProductSnapshot) error
 		MinPrice:         product.MinPrice,
 		MaxPrice:         product.MaxPrice,
 		MinOrderQuantity: product.MinOrderQuantity,
-		Supplier:         model.SupplierInfo{Name: product.Supplier.Name},
-		ProductDetails:   details,
-		PackInfo:         packInfo,
-		Variants:         variants,
+		Supplier: model.SupplierInfo{
+			ID:              product.Supplier.ID,
+			Name:            product.Supplier.Name,
+			CompanyName:     product.Supplier.CompanyName,
+			Location:        product.Supplier.Location,
+			ShopURL:         product.Supplier.ShopURL,
+			CardType:        product.Supplier.CardType,
+			YearsInBusiness: product.Supplier.YearsInBusiness,
+			Rating:          product.Supplier.Rating,
+			ResponseRate:    product.Supplier.ResponseRate,
+			IsGoldSupplier:  product.Supplier.IsGoldSupplier,
+			IsVerified:      product.Supplier.IsVerified,
+		},
+		ProductDetails: details,
+		PackInfo:       packInfo,
+		Variants:       variants,
 	})
 }
 

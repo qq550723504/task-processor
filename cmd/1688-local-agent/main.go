@@ -38,6 +38,8 @@ type crawlerPreparer interface {
 	Prepare(context.Context) error
 }
 
+type authorizeDeviceFunc func(context.Context, deviceauth.Config, deviceauth.Presenter) (string, error)
+
 func main() {
 	if err := run(context.Background(), os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -54,14 +56,6 @@ func run(ctx context.Context, args []string) error {
 	if scopes == "" {
 		scopes = strings.TrimSpace(os.Getenv("ZITADEL_SCOPES"))
 	}
-	token, err := deviceauth.Authorize(ctx, deviceauth.Config{IssuerURL: cfg.IssuerURL, ClientID: cfg.ClientID, ProjectID: cfg.ProjectID, Scopes: scopes}, terminalPresenter{openBrowser: cfg.OpenBrowser})
-	if err != nil {
-		return err
-	}
-	jobs, err := client.New(cfg.APIBaseURL, token, nil)
-	if err != nil {
-		return err
-	}
 	crawlerConfig := config.NewDefaultConfig()
 	if strings.TrimSpace(cfg.BrowserPath) != "" {
 		crawlerConfig.Browser.BrowserPath = strings.TrimSpace(cfg.BrowserPath)
@@ -69,10 +63,18 @@ func run(ctx context.Context, args []string) error {
 		crawlerConfig.Browser.BrowserPath = installed
 	}
 	crawler := a1688.NewLegacyProcessor(crawlerConfig)
+	token, err := prepareAndAuthorize(ctx, crawler, deviceauth.Authorize, deviceauth.Config{IssuerURL: cfg.IssuerURL, ClientID: cfg.ClientID, ProjectID: cfg.ProjectID, Scopes: scopes}, terminalPresenter{openBrowser: cfg.OpenBrowser})
+	if err != nil {
+		return err
+	}
+	jobs, err := client.New(cfg.APIBaseURL, token, nil)
+	if err != nil {
+		return err
+	}
 	var createdJobID string
-	crawlerPrepared := false
+	crawlerPrepared := true
 	if cfg.CreateURL != "" {
-		createdJobID, err = createPreparedJob(ctx, jobs, crawler, cfg.CreateURL)
+		createdJobID, err = createJob(ctx, jobs, cfg.CreateURL)
 		if err != nil {
 			return err
 		}
@@ -170,11 +172,22 @@ func createPreparedJob(ctx context.Context, jobs jobCreator, crawler crawlerPrep
 	if err := crawler.Prepare(ctx); err != nil {
 		return "", fmt.Errorf("prepare crawler before creating job: %w", err)
 	}
+	return createJob(ctx, jobs, rawURL)
+}
+
+func createJob(ctx context.Context, jobs jobCreator, rawURL string) (string, error) {
 	created, err := jobs.CreateJob(ctx, rawURL)
 	if err != nil {
 		return "", err
 	}
 	return created.ID, nil
+}
+
+func prepareAndAuthorize(ctx context.Context, crawler crawlerPreparer, authorize authorizeDeviceFunc, cfg deviceauth.Config, presenter deviceauth.Presenter) (string, error) {
+	if err := crawler.Prepare(ctx); err != nil {
+		return "", fmt.Errorf("prepare crawler before authorization: %w", err)
+	}
+	return authorize(ctx, cfg, presenter)
 }
 
 func validateCLIOfferURL(raw string) (string, error) {

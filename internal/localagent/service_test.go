@@ -154,6 +154,9 @@ func TestServiceRejectsMalformedOptionalAssetURLs(t *testing.T) {
 		{name: "gallery image", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
 			snapshot.Images = []string{"not-a-url"}
 		}},
+		{name: "hostless optional image", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.Variants = []sourcing.Alibaba1688VariantSnapshot{{Image: "https:///.jpg"}}
+		}},
 		{name: "video URL", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
 			snapshot.Videos = []sourcing.Alibaba1688VideoSnapshot{{VideoURL: "not-a-url"}}
 		}},
@@ -168,6 +171,39 @@ func TestServiceRejectsMalformedOptionalAssetURLs(t *testing.T) {
 		}},
 		{name: "package image", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
 			snapshot.PackInfo = &sourcing.Alibaba1688PackInfoSnapshot{PackageImages: []string{"not-a-url"}}
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+			actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+			job, err := service.Create(actor, offerURL)
+			require.NoError(t, err)
+			claim, err := service.Claim(actor)
+			require.NoError(t, err)
+
+			snapshot := validSnapshot()
+			tt.mutate(snapshot)
+			_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, snapshot)
+			require.ErrorIs(t, err, ErrSnapshotInvalid)
+		})
+	}
+}
+
+func TestServiceRejectsImpossibleOptionalSupplierNumbers(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*sourcing.Alibaba1688ProductSnapshot)
+	}{
+		{name: "negative years in business", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.Supplier.YearsInBusiness = -1
+		}},
+		{name: "supplier rating above maximum", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.Supplier.Rating = 5.1
+		}},
+		{name: "response rate above maximum", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.Supplier.ResponseRate = 100.1
 		}},
 	}
 

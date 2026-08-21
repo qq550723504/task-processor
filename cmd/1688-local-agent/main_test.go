@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"task-processor/internal/localagent"
+	"task-processor/internal/localagent/deviceauth"
 )
 
 func TestVerificationURLCommandDoesNotInvokeCommandInterpreter(t *testing.T) {
@@ -57,6 +58,20 @@ func TestCreatePreparedJobPreparesBeforeCreation(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "job-1", jobID)
 	require.Equal(t, []string{"prepare", "create"}, order)
+}
+
+func TestPrepareAndAuthorizePreparesBeforeAuthorization(t *testing.T) {
+	order := []string{}
+	crawler := &fakeJobCrawlerPreparer{order: &order}
+	authorize := func(context.Context, deviceauth.Config, deviceauth.Presenter) (string, error) {
+		order = append(order, "authorize")
+		return "token", nil
+	}
+
+	token, err := prepareAndAuthorize(context.Background(), crawler, authorize, deviceauth.Config{}, nil)
+	require.NoError(t, err)
+	require.Equal(t, "token", token)
+	require.Equal(t, []string{"prepare", "authorize"}, order)
 }
 
 type fakeJobCreator struct {

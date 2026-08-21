@@ -3,6 +3,7 @@ package alibaba1688
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"strings"
 	"task-processor/internal/core/logger"
@@ -64,6 +65,9 @@ func (pc *ProductChecker) ValidateProduct(product *model.Product1688) error {
 	if err := pc.checkRequiredFields(product); err != nil {
 		return fmt.Errorf("必需字段检查失败: %w", err)
 	}
+	if err := pc.validateSupplier(product); err != nil {
+		return fmt.Errorf("供应商信息验证失败: %w", err)
+	}
 
 	// 检查敏感词
 	if err := pc.checkSensitiveWords(product); err != nil {
@@ -82,6 +86,24 @@ func (pc *ProductChecker) ValidateProduct(product *model.Product1688) error {
 
 	logger.GetGlobalLogger("crawler/alibaba1688").Debugf("产品验证通过: %s", product.Title)
 	return nil
+}
+
+func (pc *ProductChecker) validateSupplier(product *model.Product1688) error {
+	supplier := product.Supplier
+	if supplier.YearsInBusiness < 0 {
+		return fmt.Errorf("经营年限不能为负数")
+	}
+	if !isFiniteInRange(supplier.Rating, 0, 5) {
+		return fmt.Errorf("供应商评分必须在0到5之间")
+	}
+	if !isFiniteInRange(supplier.ResponseRate, 0, 100) {
+		return fmt.Errorf("供应商响应率必须在0到100之间")
+	}
+	return nil
+}
+
+func isFiniteInRange(value, min, max float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= min && value <= max
 }
 
 // checkRequiredFields 检查必需字段
@@ -214,12 +236,7 @@ func isValidMediaURL(raw string) bool {
 
 // isValidImageURL 检查图片URL是否有效
 func (pc *ProductChecker) isValidImageURL(imageURL string) bool {
-	if imageURL == "" {
-		return false
-	}
-
-	// 检查是否以http或https开头
-	if !strings.HasPrefix(imageURL, "http://") && !strings.HasPrefix(imageURL, "https://") {
+	if !isValidMediaURL(imageURL) {
 		return false
 	}
 
