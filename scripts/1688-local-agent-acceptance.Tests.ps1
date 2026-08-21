@@ -1,0 +1,19 @@
+Describe "1688 local-agent acceptance guardrails" {
+    BeforeAll {
+        $scriptPath = Join-Path $PSScriptRoot "1688-local-agent-acceptance.ps1"
+        $scriptText = Get-Content -LiteralPath $scriptPath -Raw
+    }
+
+    It "requires explicit job creation confirmation" {
+        $scriptText | Should Match "CREATE-LOCAL-AGENT-JOB"
+    }
+
+    It "does not expose account or target-store inputs" {
+        $scriptText | Should Not Match "source_account_id|listing_store|source-account-id|listing-store"
+    }
+
+    It "validates the public offer host and numeric path" {
+        $scriptText | Should Match "detail\.1688\.com"
+        $scriptText | Should Match "offer/\[0-9\]"
+    }
+}
