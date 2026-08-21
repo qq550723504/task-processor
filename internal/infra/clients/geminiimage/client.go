@@ -11,8 +11,10 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"golang.org/x/sync/semaphore"
 	openaiclient "task-processor/internal/ai"
 	"task-processor/internal/pkg/safeimagehttp"
 )
@@ -29,14 +31,78 @@ type Config struct {
 	// controlled in-process callers. Production defaults to the SSRF-safe
 	// transport used for secondary image references.
 	ImageReferenceHTTPClient *http.Client
+	// MaxReferenceMaterializedBytes bounds the estimated base64-expanded bytes
+	// retained by concurrent edit requests until their Gemini submission ends.
+	MaxReferenceMaterializedBytes int64
+	// MaxReferenceMaterializationConcurrency bounds concurrent remote reference
+	// downloads and materializations across this client.
+	MaxReferenceMaterializationConcurrency int
 }
 
 type Client struct {
-	cfg        Config
-	httpClient *http.Client
+	cfg                      Config
+	httpClient               *http.Client
+	referenceMaterialization *referenceMaterializationBudget
 }
 
-const maxImageReferenceBytes = 32 << 20
+const (
+	maxImageReferenceBytes                     int64 = 32 << 20
+	maxMaterializedReferenceBytes              int64 = (maxImageReferenceBytes*4 + 2) / 3
+	defaultReferenceMaterializedBytes          int64 = 512 << 20
+	defaultReferenceMaterializationConcurrency       = 8
+	referenceBudgetUnitBytes                   int64 = 1 << 20
+)
+
+type referenceMaterializationBudget struct {
+	downloadSlots *semaphore.Weighted
+	bytes         *semaphore.Weighted
+	byteUnits     int64
+}
+
+func newReferenceMaterializationBudget(maxBytes int64, maxConcurrent int) *referenceMaterializationBudget {
+	if maxBytes < maxMaterializedReferenceBytes {
+		maxBytes = maxMaterializedReferenceBytes
+	}
+	if maxConcurrent <= 0 {
+		maxConcurrent = defaultReferenceMaterializationConcurrency
+	}
+	units := (maxBytes + referenceBudgetUnitBytes - 1) / referenceBudgetUnitBytes
+	return &referenceMaterializationBudget{
+		downloadSlots: semaphore.NewWeighted(int64(maxConcurrent)),
+		bytes:         semaphore.NewWeighted(units),
+		byteUnits:     units,
+	}
+}
+
+func (b *referenceMaterializationBudget) acquire(ctx context.Context, bytes int64) (func(), error) {
+	if b == nil {
+		return func() {}, nil
+	}
+	units := (bytes + referenceBudgetUnitBytes - 1) / referenceBudgetUnitBytes
+	if units <= 0 || units > b.byteUnits {
+		return nil, fmt.Errorf("gemini reference materialization budget is too small")
+	}
+	if err := b.bytes.Acquire(ctx, units); err != nil {
+		return nil, err
+	}
+	var once sync.Once
+	return func() {
+		once.Do(func() { b.bytes.Release(units) })
+	}, nil
+}
+
+func (b *referenceMaterializationBudget) acquireDownload(ctx context.Context) (func(), error) {
+	if b == nil {
+		return func() {}, nil
+	}
+	if err := b.downloadSlots.Acquire(ctx, 1); err != nil {
+		return nil, err
+	}
+	var once sync.Once
+	return func() {
+		once.Do(func() { b.downloadSlots.Release(1) })
+	}, nil
+}
 
 type generateContentRequest struct {
 	Contents         []geminiContent        `json:"contents"`
@@ -86,11 +152,21 @@ func NewClient(cfg Config) *Client {
 	if cfg.RetryDelay <= 0 {
 		cfg.RetryDelay = time.Second
 	}
+	if cfg.MaxReferenceMaterializedBytes <= 0 {
+		cfg.MaxReferenceMaterializedBytes = defaultReferenceMaterializedBytes
+	}
+	if cfg.MaxReferenceMaterializationConcurrency <= 0 {
+		cfg.MaxReferenceMaterializationConcurrency = defaultReferenceMaterializationConcurrency
+	}
 	httpClient := cfg.HTTPClient
 	if httpClient == nil {
 		httpClient = &http.Client{Timeout: cfg.Timeout}
 	}
-	return &Client{cfg: cfg, httpClient: httpClient}
+	return &Client{
+		cfg:                      cfg,
+		httpClient:               httpClient,
+		referenceMaterialization: newReferenceMaterializationBudget(cfg.MaxReferenceMaterializedBytes, cfg.MaxReferenceMaterializationConcurrency),
+	}
 }
 
 func (c *Client) GetDefaultModel() string {
@@ -138,10 +214,11 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 	if strings.TrimSpace(req.Prompt) == "" {
 		return nil, fmt.Errorf("gemini image prompt cannot be empty")
 	}
-	imageParts, err := c.buildImageInputParts(ctx, req)
+	imageParts, releaseReferences, err := c.buildImageInputParts(ctx, req)
 	if err != nil {
 		return nil, err
 	}
+	defer releaseReferences()
 	if len(imageParts) == 0 {
 		return nil, fmt.Errorf("gemini image edit requires image bytes or downloadable image urls")
 	}
@@ -220,12 +297,13 @@ func (c *Client) doGenerateContent(ctx context.Context, endpoint string, payload
 	return &parsed, nil
 }
 
-func (c *Client) buildImageInputParts(ctx context.Context, req *openaiclient.ImageEditRequest) ([]geminiPart, error) {
+func (c *Client) buildImageInputParts(ctx context.Context, req *openaiclient.ImageEditRequest) (parts []geminiPart, release func(), err error) {
+	release = func() {}
 	partCap := len(req.ImageURLs) + 1
 	if partCap < 1 {
 		partCap = 1
 	}
-	parts := make([]geminiPart, 0, partCap)
+	parts = make([]geminiPart, 0, partCap)
 	if len(req.Image) > 0 {
 		mimeType := strings.TrimSpace(req.ImageContentType)
 		if mimeType == "" {
@@ -236,6 +314,8 @@ func (c *Client) buildImageInputParts(ctx context.Context, req *openaiclient.Ima
 			Data:     base64.StdEncoding.EncodeToString(req.Image),
 		}})
 	}
+	validatedURLs := make([]string, 0, len(req.ImageURLs)+1)
+	seenURLs := make(map[string]struct{}, len(req.ImageURLs)+1)
 	for _, rawURL := range append([]string{req.ImageURL}, req.ImageURLs...) {
 		imageURL := strings.TrimSpace(rawURL)
 		if imageURL == "" {
@@ -244,16 +324,36 @@ func (c *Client) buildImageInputParts(ctx context.Context, req *openaiclient.Ima
 		if len(req.Image) > 0 && strings.TrimSpace(req.ImageURL) != "" && imageURL == strings.TrimSpace(req.ImageURL) {
 			continue
 		}
-		data, mimeType, err := c.downloadSourceImage(ctx, imageURL)
-		if err != nil {
-			return nil, err
+		validatedURL, validateErr := safeimagehttp.ValidatePublicHTTPSURL(imageURL)
+		if validateErr != nil {
+			return nil, release, fmt.Errorf("validate source image URL: %w", validateErr)
+		}
+		if _, ok := seenURLs[validatedURL]; ok {
+			continue
+		}
+		seenURLs[validatedURL] = struct{}{}
+		validatedURLs = append(validatedURLs, validatedURL)
+	}
+	if len(validatedURLs) > 0 {
+		lease, acquireErr := c.referenceMaterialization.acquire(ctx, int64(len(validatedURLs))*maxMaterializedReferenceBytes)
+		if acquireErr != nil {
+			return nil, release, fmt.Errorf("reserve Gemini image reference materialization budget: %w", acquireErr)
+		}
+		release = lease
+	}
+	for _, validatedURL := range validatedURLs {
+		data, mimeType, downloadErr := c.downloadSourceImageValidated(ctx, validatedURL)
+		if downloadErr != nil {
+			release()
+			release = func() {}
+			return nil, release, downloadErr
 		}
 		parts = append(parts, geminiPart{InlineData: &geminiInlineData{
 			MIMEType: mimeType,
 			Data:     base64.StdEncoding.EncodeToString(data),
 		}})
 	}
-	return dedupeInlineParts(parts), nil
+	return dedupeInlineParts(parts), release, nil
 }
 
 func (c *Client) downloadSourceImage(ctx context.Context, imageURL string) ([]byte, string, error) {
@@ -261,6 +361,16 @@ func (c *Client) downloadSourceImage(ctx context.Context, imageURL string) ([]by
 	if err != nil {
 		return nil, "", fmt.Errorf("validate source image URL: %w", err)
 	}
+	return c.downloadSourceImageValidated(ctx, validatedURL)
+}
+
+func (c *Client) downloadSourceImageValidated(ctx context.Context, validatedURL string) ([]byte, string, error) {
+	downloadRelease, err := c.referenceMaterialization.acquireDownload(ctx)
+	if err != nil {
+		return nil, "", fmt.Errorf("reserve Gemini image reference download slot: %w", err)
+	}
+	defer downloadRelease()
+
 	client := safeimagehttp.NewPublicImageHTTPClient()
 	if c != nil && c.cfg.ImageReferenceHTTPClient != nil {
 		// Keep the URL validation mandatory even for a controlled transport
@@ -285,7 +395,7 @@ func (c *Client) downloadSourceImage(ctx context.Context, imageURL string) ([]by
 	if err != nil {
 		return nil, "", fmt.Errorf("read source image: %w", err)
 	}
-	if len(body) > maxImageReferenceBytes {
+	if int64(len(body)) > maxImageReferenceBytes {
 		return nil, "", fmt.Errorf("source image exceeds 32 MiB")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {

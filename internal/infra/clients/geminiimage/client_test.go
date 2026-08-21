@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +20,12 @@ import (
 type rewriteImageReferenceTransport struct {
 	base   http.RoundTripper
 	target *url.URL
+}
+
+type geminiRoundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f geminiRoundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func (t rewriteImageReferenceTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -306,7 +314,7 @@ func TestClientEditImageRejectsOversizedSecondaryReference(t *testing.T) {
 			t.Fatalf("unexpected path = %q", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write(bytes.Repeat([]byte("x"), maxImageReferenceBytes+1))
+		_, _ = w.Write(bytes.Repeat([]byte("x"), int(maxImageReferenceBytes+1)))
 	}))
 	defer server.Close()
 
@@ -320,5 +328,72 @@ func TestClientEditImageRejectsOversizedSecondaryReference(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "source image exceeds 32 MiB") {
 		t.Fatalf("EditImage() error = %v, want oversized reference error", err)
+	}
+}
+
+func TestClientCapsConcurrentReferenceMaterialization(t *testing.T) {
+	entered := make(chan struct{}, 32)
+	release := make(chan struct{})
+	transport := geminiRoundTripFunc(func(req *http.Request) (*http.Response, error) {
+		select {
+		case entered <- struct{}{}:
+		case <-req.Context().Done():
+			return nil, req.Context().Err()
+		}
+		select {
+		case <-release:
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"image/png"}},
+				Body:       io.NopCloser(strings.NewReader("reference-image")),
+				Request:    req,
+			}, nil
+		case <-req.Context().Done():
+			return nil, req.Context().Err()
+		}
+	})
+	client := NewClient(Config{
+		Model:                         "gemini-2.5-flash-image",
+		Timeout:                       time.Second,
+		MaxReferenceMaterializedBytes: 1024 << 20,
+		ImageReferenceHTTPClient:      &http.Client{Transport: transport},
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var wait sync.WaitGroup
+	errs := make(chan error, 9)
+	for i := 0; i < 9; i++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			_, releaseReferences, err := client.buildImageInputParts(ctx, &openaiclient.ImageEditRequest{
+				ImageURLs: []string{"https://example.com/reference-a.png", "https://example.com/reference-b.png"},
+			})
+			if err == nil {
+				releaseReferences()
+			}
+			errs <- err
+		}()
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for len(entered) < 8 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if len(entered) < 8 {
+		t.Fatalf("concurrent references entered = %d, want at least 8", len(entered))
+	}
+	time.Sleep(50 * time.Millisecond)
+	if got := len(entered); got > 8 {
+		t.Fatalf("concurrent references entered = %d, want shared cap of 8", got)
+	}
+	close(release)
+	wait.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("buildImageInputParts() error = %v", err)
+		}
 	}
 }

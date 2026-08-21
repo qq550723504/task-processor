@@ -234,6 +234,7 @@ func (a *subscriptionStudioProductImageUsage) reconcilePendingLegacyMirrorReleas
 	for {
 		events, err := a.service.ListUsageEventPageForReconciliationWithFilter(ctx, listingsubscription.UsageLedgerReconciliationFilter{
 			TenantID: billingTenant, SourceType: "listingkit_product_image", Metric: studioProductImageLedgerMetric,
+			ReservedMetadataPredicates: []listingsubscription.UsageLedgerMetadataPredicate{{Key: legacyMirrorMetadataKey, Value: legacyMirrorPending}},
 			ReleasedMetadataPredicates: []listingsubscription.UsageLedgerMetadataPredicate{{Key: listingkit.StudioProductImageLegacyMirrorReleasePendingMetadataKey, Value: "1"}},
 		}, pageSize, offset)
 		if err != nil {
@@ -247,6 +248,13 @@ func (a *subscriptionStudioProductImageUsage) reconcilePendingLegacyMirrorReleas
 		}
 		progress := 0
 		for _, event := range events {
+			if event.Status == listingsubscription.UsageEventReserved && event.Metadata[legacyMirrorMetadataKey] == legacyMirrorPending {
+				if err := a.reconcileLegacyMirror(ctx, event, event.TenantID); err != nil {
+					return err
+				}
+				progress++
+				continue
+			}
 			if event.Status != listingsubscription.UsageEventReleased || event.Metadata[listingkit.StudioProductImageLegacyMirrorReleasePendingMetadataKey] != "1" {
 				continue
 			}

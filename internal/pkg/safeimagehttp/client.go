@@ -16,6 +16,39 @@ const DefaultMaxBodyBytes int64 = 32 << 20
 
 const maxRedirectHops = 10
 
+var nonPublicSpecialUseNetworks = mustParseCIDRs([]string{
+	"0.0.0.0/8",
+	"100.64.0.0/10",
+	"127.0.0.0/8",
+	"169.254.0.0/16",
+	"192.0.0.0/24",
+	"192.0.2.0/24",
+	"192.88.99.0/24",
+	"198.18.0.0/15",
+	"198.51.100.0/24",
+	"203.0.113.0/24",
+	"224.0.0.0/4",
+	"240.0.0.0/4",
+	"100::/64",
+	"2001:2::/48",
+	"2001:10::/28",
+	"2001:db8::/32",
+	"3fff::/20",
+	"fec0::/10",
+})
+
+func mustParseCIDRs(rawCIDRs []string) []*net.IPNet {
+	networks := make([]*net.IPNet, 0, len(rawCIDRs))
+	for _, rawCIDR := range rawCIDRs {
+		_, network, err := net.ParseCIDR(rawCIDR)
+		if err != nil {
+			panic(fmt.Sprintf("parse non-public special-use CIDR %q: %v", rawCIDR, err))
+		}
+		networks = append(networks, network)
+	}
+	return networks
+}
+
 // ValidatePublicHTTPSURL accepts only absolute HTTPS URLs whose literal host
 // is not localhost or a private/link-local address. Redirects are validated by
 // the client returned from NewPublicImageHTTPClient as well.
@@ -141,12 +174,13 @@ func IsPrivateIP(ip net.IP) bool {
 	if ip == nil {
 		return true
 	}
+	for _, network := range nonPublicSpecialUseNetworks {
+		if network.Contains(ip) {
+			return true
+		}
+	}
 	if ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast() {
 		return true
-	}
-	if ipv4 := ip.To4(); ipv4 != nil {
-		return (ipv4[0] == 100 && ipv4[1] >= 64 && ipv4[1] <= 127) ||
-			(ipv4[0] == 198 && ipv4[1] >= 18 && ipv4[1] <= 19)
 	}
 	return false
 }

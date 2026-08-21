@@ -4,10 +4,20 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
 )
+
+func TestIsPrivateIPRejectsIPv6SiteLocalAndSpecialUseRanges(t *testing.T) {
+	for _, raw := range []string{"fec0::1", "2001:db8::1"} {
+		ip := net.ParseIP(raw)
+		if !IsPrivateIP(ip) {
+			t.Fatalf("IsPrivateIP(%q) = false, want special-use IPv6 address rejected", raw)
+		}
+	}
+}
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 

@@ -430,6 +430,46 @@ func TestSubscriptionStudioProductImageUsageRetriesPendingLegacyMirrorOnExisting
 	}
 }
 
+func TestSubscriptionStudioProductImageUsageReconcilesPendingReservationMirror(t *testing.T) {
+	repo := listingsubscription.NewMemRepository()
+	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(repo))
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	ctx := context.Background()
+	if _, err := svc.UpsertEntitlement(ctx, "tenant-pending-reservation", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"product_image_jobs": 2},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	adapter := studioProductImageUsageDependency(svc)
+	if err := adapter.ReserveProductImageUsage(ctx, "tenant-pending-reservation", "candidate-1", 1); err != nil {
+		t.Fatalf("ReserveProductImageUsage() error = %v", err)
+	}
+	event, err := svc.GetUsage(ctx, "tenant-pending-reservation", studioProductImageUsageIdempotencyKey("candidate-1"))
+	if err != nil {
+		t.Fatalf("GetUsage() error = %v", err)
+	}
+	if _, err := svc.UpdateUsageMetadata(ctx, event.EventID, map[string]string{legacyMirrorMetadataKey: legacyMirrorPending}); err != nil {
+		t.Fatalf("UpdateUsageMetadata() error = %v", err)
+	}
+
+	if err := adapter.reconcilePendingLegacyMirrorReleases(ctx, "tenant-pending-reservation"); err != nil {
+		t.Fatalf("reconcilePendingLegacyMirrorReleases() error = %v", err)
+	}
+	event, err = svc.GetUsage(ctx, "tenant-pending-reservation", studioProductImageUsageIdempotencyKey("candidate-1"))
+	if err != nil {
+		t.Fatalf("GetUsage() after reconciliation error = %v", err)
+	}
+	if event.Metadata[legacyMirrorMetadataKey] != legacyMirrorSettled {
+		t.Fatalf("legacy mirror metadata = %q, want settled", event.Metadata[legacyMirrorMetadataKey])
+	}
+	if err := adapter.ReserveProductImageUsage(ctx, "tenant-pending-reservation", "candidate-2", 1); err != nil {
+		t.Fatalf("ReserveProductImageUsage(candidate-2) error = %v, want second unit admitted after repair", err)
+	}
+}
+
 func TestSubscriptionStudioProductImageUsageAuthorizationPropagatesLegacyTenantResolutionFailure(t *testing.T) {
 	repo := listingsubscription.NewMemRepository()
 	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(repo))
