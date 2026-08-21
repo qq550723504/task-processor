@@ -17,6 +17,11 @@ func TestParseConfigRejectsOfferPort(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestParseConfigRejectsOfferEmptyQuery(t *testing.T) {
+	_, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project", "-url", "https://detail.1688.com/offer/1052008074197.html?"})
+	require.Error(t, err)
+}
+
 func TestParseConfigAcceptsBrowserPath(t *testing.T) {
 	cfg, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project", "-browser-path", "C:/Program Files/Google/Chrome/Application/chrome.exe"})
 	require.NoError(t, err)

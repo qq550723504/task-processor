@@ -251,6 +251,11 @@ func (h *Handler) SubmitResult(c *gin.Context) {
 	var req submitResultRequest
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxResultBodyBytes)
 	if err := c.ShouldBindJSON(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			writeError(c, http.StatusBadRequest, "snapshot_too_large", localagent.ErrSnapshotTooLarge.Error())
+			return
+		}
 		writeError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}

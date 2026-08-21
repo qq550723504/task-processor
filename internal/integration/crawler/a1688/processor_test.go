@@ -9,14 +9,32 @@ import (
 )
 
 type stubSource1688 struct {
-	product *model.Product1688
-	err     error
-	url     string
+	product  *model.Product1688
+	err      error
+	url      string
+	prepared bool
+}
+
+func (s *stubSource1688) Prepare(context.Context) error {
+	s.prepared = true
+	return nil
 }
 
 func (s *stubSource1688) Process(url string) (*model.Product1688, error) {
 	s.url = url
 	return s.product, s.err
+}
+
+func TestProcessorPrepareDelegatesToSource(t *testing.T) {
+	source := &stubSource1688{}
+	processor := NewProcessor(source)
+
+	if err := processor.Prepare(context.Background()); err != nil {
+		t.Fatalf("Prepare returned error: %v", err)
+	}
+	if !source.prepared {
+		t.Fatal("Prepare did not reach the source")
+	}
 }
 
 func TestProcessorProcessDelegatesToSource(t *testing.T) {

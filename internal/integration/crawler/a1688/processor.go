@@ -24,6 +24,10 @@ type Processor struct {
 	source Source
 }
 
+type sourcePreparer interface {
+	Prepare(context.Context) error
+}
+
 // NewProcessor wraps a 1688 crawler source.
 func NewProcessor(source Source) *Processor {
 	return &Processor{source: source}
@@ -32,6 +36,21 @@ func NewProcessor(source Source) *Processor {
 // NewLegacyProcessor builds an adapter backed by the legacy 1688 crawler.
 func NewLegacyProcessor(cfg *config.Config) *Processor {
 	return NewProcessor(legacy.NewAlibaba1688Processor(cfg))
+}
+
+// Prepare provisions the legacy crawler's browser dependencies before a job
+// is claimed. Sources that do not need preparation remain compatible.
+func (p *Processor) Prepare(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if p == nil || p.source == nil {
+		return ErrSourceUnavailable
+	}
+	if preparer, ok := p.source.(sourcePreparer); ok {
+		return preparer.Prepare(ctx)
+	}
+	return nil
 }
 
 // Process crawls a 1688 product URL.

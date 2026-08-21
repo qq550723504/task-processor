@@ -120,4 +120,7 @@ func TestSubmitResultRejectsOversizedRequestBodyBeforeBinding(t *testing.T) {
 	body := `{"execution_token":"token","product_snapshot":{"id":"1052008074197","url":"https://detail.1688.com/offer/1052008074197.html","title":"` + strings.Repeat("x", 2<<20) + `"}}`
 	r.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/local-agent/1688-jobs/job-1/result", strings.NewReader(body)).WithContext(actorCtx))
 	require.Equal(t, http.StatusBadRequest, response.Code)
+	var responseBody map[string]any
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &responseBody))
+	require.Equal(t, "snapshot_too_large", responseBody["error"])
 }

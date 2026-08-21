@@ -2,6 +2,7 @@
 package alibaba1688
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -30,6 +31,22 @@ func NewSingleProcessor(cfg *config.Config, urlHelper *URLHelper, productChecker
 		extractor:      extractor.NewProductExtractor(),
 		pageOperator:   NewPageOperator(),
 	}
+}
+
+// Prepare provisions the browser runtime without navigating to a product.
+func (sp *SingleProcessor) Prepare(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if sp == nil || sp.config == nil {
+		return errors.New("1688 single processor is not configured")
+	}
+	manager := sp.newPublicBrowserManager()
+	defer manager.Close()
+	if _, _, _, _, err := manager.CreateBrowser(); err != nil {
+		return err
+	}
+	return ctx.Err()
 }
 
 // ProcessWithSingleBrowser 使用单个浏览器处理产品

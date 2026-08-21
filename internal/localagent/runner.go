@@ -3,6 +3,7 @@ package localagent
 import (
 	"context"
 	"errors"
+	"time"
 
 	alibaba1688 "task-processor/internal/crawler/alibaba1688"
 	"task-processor/internal/crawler/alibaba1688/model"
@@ -18,6 +19,10 @@ type Jobs interface {
 
 type targetedJobs interface {
 	ClaimJob(context.Context, string) (*Claim, error)
+}
+
+type crawlerPreparer interface {
+	Prepare(context.Context) error
 }
 
 type Crawler interface {
@@ -38,6 +43,8 @@ const (
 	OutcomeFailed    OutcomeState = "failed"
 )
 
+const failureSubmitTimeout = 10 * time.Second
+
 type Outcome struct {
 	State OutcomeState
 	JobID string
@@ -46,6 +53,14 @@ type Outcome struct {
 func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
 	if r.Jobs == nil || r.Crawler == nil {
 		return Outcome{}, errors.New("local-agent runner is not configured")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if preparer, ok := r.Crawler.(crawlerPreparer); ok {
+		if err := preparer.Prepare(ctx); err != nil {
+			return Outcome{}, err
+		}
 	}
 	var claim *Claim
 	var err error
@@ -66,7 +81,7 @@ func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
 	}
 	product, err := r.Crawler.Process(ctx, claim.Job.URL)
 	if err != nil {
-		_, submitErr := r.Jobs.SubmitFailure(ctx, claim.Job.ID, claim.ExecutionToken, classifyFailure(err))
+		_, submitErr := r.submitFailure(ctx, claim.Job.ID, claim.ExecutionToken, classifyFailure(err))
 		if submitErr != nil {
 			return Outcome{}, submitErr
 		}
@@ -75,7 +90,7 @@ func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
 	_, err = r.Jobs.SubmitSuccess(ctx, claim.Job.ID, claim.ExecutionToken, a1688.SnapshotFromLegacyProduct(product))
 	if err != nil {
 		if errors.Is(err, ErrSnapshotTooLarge) {
-			_, submitErr := r.Jobs.SubmitFailure(ctx, claim.Job.ID, claim.ExecutionToken, Failure{Kind: FailureExtraction, Message: "1688 product snapshot exceeds submission size limit"})
+			_, submitErr := r.submitFailure(ctx, claim.Job.ID, claim.ExecutionToken, Failure{Kind: FailureExtraction, Message: "1688 product snapshot exceeds submission size limit"})
 			if submitErr != nil {
 				return Outcome{}, submitErr
 			}
@@ -84,6 +99,12 @@ func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
 		return Outcome{}, err
 	}
 	return Outcome{State: OutcomeSucceeded, JobID: claim.Job.ID}, nil
+}
+
+func (r Runner) submitFailure(ctx context.Context, jobID, executionToken string, failure Failure) (Job, error) {
+	failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), failureSubmitTimeout)
+	defer cancel()
+	return r.Jobs.SubmitFailure(failureCtx, jobID, executionToken, failure)
 }
 
 func classifyFailure(err error) Failure {
