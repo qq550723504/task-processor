@@ -498,6 +498,45 @@ func TestTaskStudioBatchServiceLegacySettlementIsIdempotentForDurableReuse(t *te
 	}
 }
 
+func TestTaskStudioBatchServiceLegacySettlementRetriesIdempotentOperationBeforeMarker(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	links := NewMemStudioBatchTaskLinkRepository()
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-idempotent-settle", BatchID: "batch-1", CandidateKey: "candidate-idempotent-settle",
+		ImageStrategy: sheinImageStrategyAIGenerated, Status: studioBatchTaskLinkStatusCreated,
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	usage := &idempotentRecordingStudioProductImageUsage{}
+	service := &taskStudioBatchService{productImageUsage: usage, batchTaskLinkRepo: links, currentTime: time.Now}
+	candidate := studioBatchTaskCandidate{
+		CandidateKey:  "candidate-idempotent-settle",
+		ImageStrategy: sheinImageStrategyAIGenerated,
+		SelectionSnapshot: SheinStudioSelection{Variants: []SheinStudioSelectionVariant{
+			{VariantSKU: "red-s", Color: "Red"},
+		}},
+	}
+	if err := service.settleStudioBatchProductImageUsage(ctx, &StudioBatchRecord{TenantID: "tenant-a"}, candidate); err != nil {
+		t.Fatalf("first settlement error = %v", err)
+	}
+	link, err := links.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
+	if err != nil {
+		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() error = %v", err)
+	}
+	link.ProductImageUsageSettled = false
+	if err := links.UpdateStudioBatchTaskLink(ctx, link); err != nil {
+		t.Fatalf("reset settlement marker error = %v", err)
+	}
+	if err := service.settleStudioBatchProductImageUsage(ctx, &StudioBatchRecord{TenantID: "tenant-a"}, candidate); err != nil {
+		t.Fatalf("retry settlement error = %v", err)
+	}
+	if got := len(usage.operations); got != 1 {
+		t.Fatalf("idempotent legacy operations = %d, want one", got)
+	}
+}
+
 func TestTaskStudioBatchServiceCommitsDurableProductImageReservation(t *testing.T) {
 	t.Parallel()
 
@@ -629,6 +668,23 @@ type recordingStudioProductImageUsage struct {
 	authorized []string
 	recorded   []string
 	recordErr  error
+}
+
+type idempotentRecordingStudioProductImageUsage struct {
+	recordingStudioProductImageUsage
+	operations map[string]struct{}
+}
+
+func (u *idempotentRecordingStudioProductImageUsage) RecordProductImageUsageOnce(_ context.Context, tenantID string, quantity int, operationKey string) error {
+	if u.operations == nil {
+		u.operations = make(map[string]struct{})
+	}
+	if _, exists := u.operations[operationKey]; exists {
+		return nil
+	}
+	u.operations[operationKey] = struct{}{}
+	u.recorded = append(u.recorded, tenantID+":"+strconv.Itoa(quantity))
+	return nil
 }
 
 type reservingStudioProductImageUsage struct {

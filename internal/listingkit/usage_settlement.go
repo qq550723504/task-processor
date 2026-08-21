@@ -50,6 +50,13 @@ type StudioProductImageUsage interface {
 	RecordProductImageUsage(context.Context, string, int) error
 }
 
+// StudioProductImageUsageIdempotent is the crash-recoverable legacy counter
+// path used when the durable usage ledger is disabled. The operation key is
+// tied to the generated task identity so retries cannot double-charge.
+type StudioProductImageUsageIdempotent interface {
+	RecordProductImageUsageOnce(context.Context, string, int, string) error
+}
+
 // StudioProductImageUsageReservation is the durable quota path for batch
 // product-image generation. Implementations reserve by a deterministic
 // candidate identity before provider work, then commit or release that same

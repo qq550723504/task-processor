@@ -102,14 +102,7 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 		return fmt.Errorf("product image usage reservation is no longer active")
 	}
 	if result.Existing {
-		if result.Event.Metadata[legacyMirrorMetadataKey] == legacyMirrorSettled {
-			return nil
-		}
-		if _, _, err := a.service.RecordUsageForPeriodOnce(ctx, billingTenant, studioProductImageModule, studioProductImageMetric, result.Event.PeriodKey, quantity, legacyMirrorOperationKey(result.Event.EventID, "reserve")); err != nil {
-			return err
-		}
-		_, err = a.service.UpdateUsageMetadata(ctx, result.Event.EventID, map[string]string{legacyMirrorMetadataKey: legacyMirrorSettled})
-		return err
+		return a.reconcileLegacyMirror(ctx, result.Event, billingTenant)
 	}
 	if _, metadataErr := a.service.UpdateUsageMetadata(ctx, result.Event.EventID, map[string]string{legacyMirrorMetadataKey: legacyMirrorPending}); metadataErr != nil {
 		return metadataErr
@@ -162,6 +155,13 @@ func (a *subscriptionStudioProductImageUsage) ReleaseProductImageUsage(ctx conte
 	if event == nil {
 		return nil
 	}
+	billingTenant := strings.TrimSpace(event.TenantID)
+	if event.Quantity > 0 && event.Metadata[legacyMirrorMetadataKey] != legacyMirrorSettled {
+		if err := a.reconcileLegacyMirror(ctx, *event, billingTenant); err != nil {
+			return err
+		}
+		event.Metadata = map[string]string{legacyMirrorMetadataKey: legacyMirrorSettled}
+	}
 	legacyMirrorSettledForEvent := event.Quantity > 0 && event.Metadata[legacyMirrorMetadataKey] == legacyMirrorSettled
 	if event.Status == listingsubscription.UsageEventReleased {
 		if !legacyMirrorSettledForEvent {
@@ -187,6 +187,32 @@ func legacyMirrorOperationKey(eventID, operation string) string {
 	return "listingkit:legacy_product_image_mirror:" + strings.TrimSpace(eventID) + ":" + strings.TrimSpace(operation)
 }
 
+func (a *subscriptionStudioProductImageUsage) reconcileLegacyMirror(ctx context.Context, event listingsubscription.UsageEvent, billingTenant string) error {
+	if event.Quantity <= 0 || event.Metadata[legacyMirrorMetadataKey] == legacyMirrorSettled {
+		return nil
+	}
+	if _, _, err := a.service.RecordUsageForPeriodOnce(ctx, strings.TrimSpace(billingTenant), studioProductImageModule, studioProductImageMetric, event.PeriodKey, int(event.Quantity), legacyMirrorOperationKey(event.EventID, "reserve")); err != nil {
+		return err
+	}
+	_, err := a.service.UpdateUsageMetadata(ctx, event.EventID, map[string]string{legacyMirrorMetadataKey: legacyMirrorSettled})
+	return err
+}
+
+func (a *subscriptionStudioProductImageUsage) RecordProductImageUsageOnce(ctx context.Context, tenantID string, quantity int, operationKey string) error {
+	if a == nil || a.service == nil {
+		return listingsubscription.ErrSubscriptionRequired
+	}
+	if strings.TrimSpace(tenantID) == "" || quantity <= 0 || strings.TrimSpace(operationKey) == "" {
+		return fmt.Errorf("idempotent product image usage recording requires tenant, positive quantity, and operation key")
+	}
+	billingTenant, err := a.authorizeUsageTenant(ctx, tenantID, quantity)
+	if err != nil {
+		return err
+	}
+	_, _, err = a.service.RecordUsageForPeriodOnce(ctx, billingTenant, studioProductImageModule, studioProductImageMetric, time.Now().UTC().Format("2006-01"), quantity, strings.TrimSpace(operationKey))
+	return err
+}
+
 func studioProductImageUsageIdempotencyKey(reservationID string) string {
 	reservationID = strings.TrimSpace(reservationID)
 	key := "listingkit:studio_product_image:" + reservationID
@@ -210,8 +236,14 @@ func (a *subscriptionStudioProductImageUsage) authorizeUsageTenant(ctx context.C
 		return "", listingsubscription.ErrSubscriptionRequired
 	}
 	legacyTenantID, resolveErr := tenantbridge.ResolveLegacyTenantID(ctx, canonical)
-	if resolveErr != nil || legacyTenantID <= 0 || strconv.FormatInt(legacyTenantID, 10) == canonical {
-		return "", err
+	if resolveErr != nil {
+		if errors.Is(resolveErr, tenantbridge.ErrLegacyTenantNotFound) {
+			return "", listingsubscription.ErrSubscriptionRequired
+		}
+		return "", resolveErr
+	}
+	if legacyTenantID <= 0 || strconv.FormatInt(legacyTenantID, 10) == canonical {
+		return "", listingsubscription.ErrSubscriptionRequired
 	}
 	legacyTenant := strconv.FormatInt(legacyTenantID, 10)
 	fallback, fallbackErr := a.service.AuthorizeUsage(ctx, legacyTenant, studioProductImageModule, studioProductImageMetric, quantity)

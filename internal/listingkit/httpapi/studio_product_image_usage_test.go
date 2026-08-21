@@ -30,6 +30,23 @@ type failingNegativeProductImageUsageRepository struct {
 	failNegative bool
 }
 
+type failingSettledUsageLedger struct {
+	listingsubscription.UsageLedger
+	failSettled bool
+}
+
+func (l *failingSettledUsageLedger) UpdateMetadata(ctx context.Context, eventID string, metadata map[string]string) (listingsubscription.UsageEvent, error) {
+	if l.failSettled && metadata[legacyMirrorMetadataKey] == legacyMirrorSettled {
+		l.failSettled = false
+		return listingsubscription.UsageEvent{}, errors.New("metadata persistence temporarily unavailable")
+	}
+	updater, ok := l.UsageLedger.(listingsubscription.UsageLedgerMetadataUpdater)
+	if !ok {
+		return listingsubscription.UsageEvent{}, listingsubscription.ErrUsageLedgerMetadataUnsupported
+	}
+	return updater.UpdateMetadata(ctx, eventID, metadata)
+}
+
 func (r *failingNegativeProductImageUsageRepository) IncrementUsage(ctx context.Context, tenantID, moduleCode, periodKey, metric string, amount int) (*listingsubscription.UsageCounter, error) {
 	if r.failNegative && amount < 0 {
 		return nil, errors.New("legacy usage mirror temporarily unavailable")
@@ -286,6 +303,61 @@ func TestSubscriptionStudioProductImageUsageRetriesPendingLegacyMirrorOnExisting
 	for _, counter := range usage {
 		if counter.Metric == studioProductImageMetric && counter.Used != 1 {
 			t.Fatalf("legacy mirror usage = %d, want one after pending retry", counter.Used)
+		}
+	}
+}
+
+func TestSubscriptionStudioProductImageUsageAuthorizationPropagatesLegacyTenantResolutionFailure(t *testing.T) {
+	repo := listingsubscription.NewMemRepository()
+	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(repo))
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	restore := tenantbridge.ConfigureLegacyTenantResolver(failingStudioProductImageUsageLegacyTenantResolver{})
+	t.Cleanup(restore)
+	adapter := studioProductImageUsageDependency(svc)
+	err = adapter.AuthorizeProductImageUsage(context.Background(), "org-tenant", 1)
+	if err == nil || !strings.Contains(err.Error(), "legacy tenant bridge temporarily unavailable") {
+		t.Fatalf("AuthorizeProductImageUsage() error = %v, want tenant bridge failure", err)
+	}
+}
+
+func TestSubscriptionStudioProductImageUsageReconcilesPendingMirrorBeforeRelease(t *testing.T) {
+	repo := listingsubscription.NewMemRepository()
+	baseLedger := listingsubscription.NewMemUsageLedger(repo)
+	ledger := &failingSettledUsageLedger{UsageLedger: baseLedger, failSettled: true}
+	svc, err := listingsubscription.NewServiceWithLedger(repo, ledger)
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-pending-release", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"product_image_jobs": 2},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	adapter := studioProductImageUsageDependency(svc)
+	ctx := context.Background()
+	if err := adapter.ReserveProductImageUsage(ctx, "tenant-pending-release", "candidate-1", 1); err == nil {
+		t.Fatal("ReserveProductImageUsage() unexpectedly succeeded while metadata persistence failed")
+	}
+	if err := adapter.ReleaseProductImageUsage(ctx, "tenant-pending-release", "candidate-1", "generation_failed"); err != nil {
+		t.Fatalf("ReleaseProductImageUsage() error = %v", err)
+	}
+	event, err := svc.GetUsage(ctx, "tenant-pending-release", studioProductImageUsageIdempotencyKey("candidate-1"))
+	if err != nil {
+		t.Fatalf("GetUsage() error = %v", err)
+	}
+	if event.Status != listingsubscription.UsageEventReleased {
+		t.Fatalf("event status = %q, want released", event.Status)
+	}
+	usage, err := repo.ListUsage(ctx, "tenant-pending-release")
+	if err != nil {
+		t.Fatalf("ListUsage() error = %v", err)
+	}
+	for _, counter := range usage {
+		if counter.Metric == studioProductImageMetric && counter.Used != 0 {
+			t.Fatalf("legacy mirror usage = %d, want zero after reconciled release", counter.Used)
 		}
 	}
 }

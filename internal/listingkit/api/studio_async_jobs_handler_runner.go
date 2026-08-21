@@ -16,7 +16,7 @@ import (
 
 var executeStudioDesignBatch = listingkit.ExecuteStudioDesignBatch
 
-func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path string, body json.RawMessage, sessionID string, baseURL string, usageMetric string) {
+func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path string, body json.RawMessage, sessionID string, baseURL string, usageMetric string, usageReservationID string) {
 	startedAt := time.Now()
 	studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
 		"job_id":       jobID,
@@ -81,6 +81,9 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 	}
 
 	if err != nil {
+		if strings.TrimSpace(usageReservationID) != "" {
+			_ = releaseStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID, "generation_failed")
+		}
 		if strings.Contains(err.Error(), "invalid request") {
 			status = http.StatusBadRequest
 		}
@@ -98,7 +101,16 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		h.studioAsyncJobs.fail(ctx, jobID, err, status)
 		return
 	}
-	if h.subscriptionService != nil && strings.TrimSpace(usageMetric) != "" {
+	if strings.TrimSpace(usageReservationID) != "" {
+		if commitErr := commitStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID); commitErr != nil {
+			_ = releaseStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID, "commit_failed")
+			h.studioAsyncJobs.fail(ctx, jobID, commitErr, http.StatusInternalServerError)
+			studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
+				"job_id": jobID, "path": path, "usage_metric": usageMetric,
+			})).WithError(commitErr).Warn("studio async usage commit failed")
+			return
+		}
+	} else if h.subscriptionService != nil && strings.TrimSpace(usageMetric) != "" {
 		_, _ = h.subscriptionService.RecordUsage(ctx, listingkit.TenantIDFromContext(ctx), listingsubscription.ModuleStudio, usageMetric, 1)
 	}
 	h.studioAsyncJobs.succeed(ctx, jobID, result)

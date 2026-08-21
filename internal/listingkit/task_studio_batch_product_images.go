@@ -176,19 +176,24 @@ func (s *taskStudioBatchService) settleStudioBatchProductImageUsage(ctx context.
 		}
 		err = reservation.CommitProductImageUsage(ctx, tenantID, reservationID)
 	} else {
-		// Claim the durable legacy settlement before touching the non-idempotent
-		// aggregate counter. This removes the crash window after recording and
-		// before the marker write; a failed counter write clears the claim so a
-		// later retry can make the charge.
-		if s.batchTaskLinkRepo != nil {
-			if err = s.markStudioBatchProductImageUsageSettled(ctx, candidate); err != nil {
-				return err
+		quantity := studioBatchTaskProductImageGenerationCount(candidate.SelectionSnapshot)
+		if _, idempotent := s.productImageUsage.(StudioProductImageUsageIdempotent); idempotent {
+			// The operation identity is durable in the legacy counter repository,
+			// so a crash before the link marker is persisted can be retried safely.
+			err = s.recordStudioBatchProductImageUsageOnce(ctx, batch, quantity, candidate)
+		} else {
+			// Keep the atomic claim fallback for older adapters that do not expose
+			// an idempotent counter operation.
+			if s.batchTaskLinkRepo != nil {
+				if err = s.markStudioBatchProductImageUsageSettled(ctx, candidate); err != nil {
+					return err
+				}
 			}
-		}
-		err = s.recordStudioBatchProductImageUsage(ctx, batch, studioBatchTaskProductImageGenerationCount(candidate.SelectionSnapshot))
-		if err != nil && s.batchTaskLinkRepo != nil {
-			if clearErr := s.clearStudioBatchProductImageUsageSettled(ctx, candidate); clearErr != nil {
-				err = errors.Join(err, fmt.Errorf("clear legacy settlement claim: %w", clearErr))
+			err = s.recordStudioBatchProductImageUsage(ctx, batch, quantity)
+			if err != nil && s.batchTaskLinkRepo != nil {
+				if clearErr := s.clearStudioBatchProductImageUsageSettled(ctx, candidate); clearErr != nil {
+					err = errors.Join(err, fmt.Errorf("clear legacy settlement claim: %w", clearErr))
+				}
 			}
 		}
 	}
@@ -397,6 +402,22 @@ func (s *taskStudioBatchService) recordStudioBatchProductImageUsage(ctx context.
 		return fmt.Errorf("tenant id is required")
 	}
 	return s.productImageUsage.RecordProductImageUsage(ctx, tenantID, quantity)
+}
+
+func (s *taskStudioBatchService) recordStudioBatchProductImageUsageOnce(ctx context.Context, batch *StudioBatchRecord, quantity int, candidate studioBatchTaskCandidate) error {
+	if s == nil || s.productImageUsage == nil {
+		return nil
+	}
+	usage, ok := s.productImageUsage.(StudioProductImageUsageIdempotent)
+	if !ok {
+		return s.recordStudioBatchProductImageUsage(ctx, batch, quantity)
+	}
+	tenantID := studioBatchTaskGateTenantID(ctx, batch)
+	if strings.TrimSpace(tenantID) == "" {
+		return fmt.Errorf("tenant id is required")
+	}
+	operationKey := "listingkit:legacy_product_image_settlement:" + strings.TrimSpace(candidate.CandidateKey)
+	return usage.RecordProductImageUsageOnce(ctx, tenantID, quantity, operationKey)
 }
 
 func (s *taskStudioBatchService) publicizeStudioBatchProductImageURLs(ctx context.Context, urls []string) ([]string, error) {

@@ -15,6 +15,7 @@ import (
 	"github.com/sirupsen/logrus"
 
 	openaiclient "task-processor/internal/ai"
+	"task-processor/internal/pkg/safeimagehttp"
 )
 
 type Config struct {
@@ -154,7 +155,7 @@ func (c *Client) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEdi
 	if req == nil {
 		return nil, fmt.Errorf("image edit request cannot be nil")
 	}
-	images, err := imageInputsForRequest(req)
+	images, err := c.imageInputsForRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +278,7 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 	if req == nil {
 		return nil, fmt.Errorf("image edit request cannot be nil")
 	}
-	images, err := imageInputsForRequest(req)
+	images, err := c.imageInputsForRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -290,27 +291,90 @@ func (c *Client) EditImage(ctx context.Context, req *openaiclient.ImageEditReque
 	})
 }
 
-func imageInputsForRequest(req *openaiclient.ImageEditRequest) ([]string, error) {
+func (c *Client) imageInputsForRequest(ctx context.Context, req *openaiclient.ImageEditRequest) ([]string, error) {
 	if req == nil {
 		return nil, fmt.Errorf("grsai image edit request cannot be nil")
 	}
-	if images := cleanImageURLs(req.ImageURLs, 8); len(images) > 0 {
-		return images, nil
+	inputs := cleanImageURLs(req.ImageURLs, 8)
+	if imageURL := strings.TrimSpace(req.ImageURL); imageURL != "" && len(inputs) == 0 {
+		inputs = []string{imageURL}
 	}
-	if images := cleanImageURLs([]string{req.ImageURL}, 1); len(images) > 0 {
-		return images, nil
+	if len(req.Image) > 0 {
+		contentType := strings.TrimSpace(req.ImageContentType)
+		if contentType == "" {
+			contentType = http.DetectContentType(req.Image)
+		}
+		if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+			return nil, fmt.Errorf("grsai image edit requires image url or valid image data")
+		}
+		primary := "data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(req.Image)
+		filtered := make([]string, 0, len(inputs)+1)
+		for _, input := range inputs {
+			if strings.TrimSpace(req.ImageURL) != "" && strings.TrimSpace(input) == strings.TrimSpace(req.ImageURL) {
+				continue
+			}
+			filtered = append(filtered, input)
+		}
+		inputs = append([]string{primary}, filtered...)
 	}
-	if len(req.Image) == 0 {
+	if len(inputs) == 0 {
 		return nil, fmt.Errorf("grsai image edit requires image url or image data")
 	}
-	contentType := strings.TrimSpace(req.ImageContentType)
-	if contentType == "" {
-		contentType = http.DetectContentType(req.Image)
+	materialized := make([]string, 0, len(inputs))
+	for _, input := range inputs {
+		input = strings.TrimSpace(input)
+		if strings.HasPrefix(strings.ToLower(input), "data:image/") {
+			materialized = append(materialized, input)
+			continue
+		}
+		validated, err := safeimagehttp.ValidatePublicHTTPSURL(input)
+		if err != nil {
+			return nil, fmt.Errorf("grsai image reference is not a public https url: %w", err)
+		}
+		downloadCtx := ctx
+		var cancel context.CancelFunc
+		if c != nil && c.cfg.Timeout > 0 {
+			downloadCtx, cancel = context.WithTimeout(ctx, c.cfg.Timeout)
+		}
+		client := safeimagehttp.NewPublicImageHTTPClient()
+		request, err := http.NewRequestWithContext(downloadCtx, http.MethodGet, validated, nil)
+		if err != nil {
+			if cancel != nil {
+				cancel()
+			}
+			return nil, fmt.Errorf("build grsai image reference request: %w", err)
+		}
+		response, err := client.Do(request)
+		if err != nil {
+			if cancel != nil {
+				cancel()
+			}
+			return nil, fmt.Errorf("download grsai image reference: %w", err)
+		}
+		body, readErr := io.ReadAll(io.LimitReader(response.Body, 32<<20+1))
+		response.Body.Close()
+		if cancel != nil {
+			cancel()
+		}
+		if readErr != nil {
+			return nil, fmt.Errorf("read grsai image reference: %w", readErr)
+		}
+		if response.StatusCode < 200 || response.StatusCode >= 300 {
+			return nil, fmt.Errorf("download grsai image reference returned status %d", response.StatusCode)
+		}
+		if len(body) > 32<<20 {
+			return nil, fmt.Errorf("grsai image reference exceeds 32 MiB")
+		}
+		contentType := strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0])
+		if contentType == "" {
+			contentType = http.DetectContentType(body)
+		}
+		if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+			return nil, fmt.Errorf("grsai image reference is not an image")
+		}
+		materialized = append(materialized, "data:"+contentType+";base64,"+base64.StdEncoding.EncodeToString(body))
 	}
-	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
-		return nil, fmt.Errorf("grsai image edit requires image url or valid image data")
-	}
-	return []string{"data:" + contentType + ";base64," + base64.StdEncoding.EncodeToString(req.Image)}, nil
+	return materialized, nil
 }
 
 func cleanImageURLs(urls []string, max int) []string {
