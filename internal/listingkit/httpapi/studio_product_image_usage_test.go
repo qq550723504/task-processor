@@ -6,7 +6,28 @@ import (
 	"testing"
 
 	"task-processor/internal/listingsubscription"
+	"task-processor/internal/tenantbridge"
 )
+
+type studioProductImageUsageLegacyTenantResolver struct {
+	legacyTenantID int64
+}
+
+func (r studioProductImageUsageLegacyTenantResolver) ResolveLegacyTenantID(context.Context, string) (int64, bool, error) {
+	return r.legacyTenantID, true, nil
+}
+
+type failingNegativeProductImageUsageRepository struct {
+	listingsubscription.Repository
+	failNegative bool
+}
+
+func (r *failingNegativeProductImageUsageRepository) IncrementUsage(ctx context.Context, tenantID, moduleCode, periodKey, metric string, amount int) (*listingsubscription.UsageCounter, error) {
+	if r.failNegative && amount < 0 {
+		return nil, errors.New("legacy usage mirror temporarily unavailable")
+	}
+	return r.Repository.IncrementUsage(ctx, tenantID, moduleCode, periodKey, metric, amount)
+}
 
 func TestSubscriptionStudioProductImageUsageReservationUsesDurableLedger(t *testing.T) {
 	t.Parallel()
@@ -114,5 +135,85 @@ func TestSubscriptionStudioProductImageUsageReservationMirrorsLegacyCounter(t *t
 	}
 	if err := adapter.AuthorizeProductImageUsage(context.Background(), "tenant-mirror", 2); err != nil {
 		t.Fatalf("AuthorizeProductImageUsage() after release error = %v, want released mirror", err)
+	}
+}
+
+func TestSubscriptionStudioProductImageUsageUsesLegacyBillingTenantConsistently(t *testing.T) {
+	repo := listingsubscription.NewMemRepository()
+	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(repo))
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(context.Background(), "246", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"product_image_jobs": 3},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	restore := tenantbridge.ConfigureLegacyTenantResolver(studioProductImageUsageLegacyTenantResolver{legacyTenantID: 246})
+	t.Cleanup(restore)
+
+	adapter := studioProductImageUsageDependency(svc)
+	ctx := context.Background()
+	if err := adapter.AuthorizeProductImageUsage(ctx, "org-tenant", 1); err != nil {
+		t.Fatalf("AuthorizeProductImageUsage() error = %v", err)
+	}
+	if err := adapter.ReserveProductImageUsage(ctx, "org-tenant", "candidate-legacy", 1); err != nil {
+		t.Fatalf("ReserveProductImageUsage() error = %v", err)
+	}
+	event, err := svc.GetUsage(ctx, "246", "listingkit:studio_product_image:candidate-legacy")
+	if err != nil {
+		t.Fatalf("GetUsage(legacy tenant) error = %v", err)
+	}
+	if event.TenantID != "246" {
+		t.Fatalf("event tenant = %q, want legacy billing tenant 246", event.TenantID)
+	}
+	if err := adapter.CommitProductImageUsage(ctx, "org-tenant", "candidate-legacy"); err != nil {
+		t.Fatalf("CommitProductImageUsage() error = %v", err)
+	}
+	if err := adapter.RecordProductImageUsage(ctx, "org-tenant", 1); err != nil {
+		t.Fatalf("RecordProductImageUsage() error = %v", err)
+	}
+}
+
+func TestSubscriptionStudioProductImageUsageReleaseRetriesLegacyMirrorBeforeLedgerRelease(t *testing.T) {
+	baseRepo := listingsubscription.NewMemRepository()
+	repo := &failingNegativeProductImageUsageRepository{Repository: baseRepo}
+	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(baseRepo))
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-mirror-retry", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"product_image_jobs": 2},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	adapter := studioProductImageUsageDependency(svc)
+	ctx := context.Background()
+	if err := adapter.ReserveProductImageUsage(ctx, "tenant-mirror-retry", "candidate-1", 1); err != nil {
+		t.Fatalf("ReserveProductImageUsage() error = %v", err)
+	}
+	repo.failNegative = true
+	if err := adapter.ReleaseProductImageUsage(ctx, "tenant-mirror-retry", "candidate-1", "test"); err == nil {
+		t.Fatal("ReleaseProductImageUsage() unexpectedly succeeded while mirror failed")
+	}
+	event, err := svc.GetUsage(ctx, "tenant-mirror-retry", "listingkit:studio_product_image:candidate-1")
+	if err != nil {
+		t.Fatalf("GetUsage() after failed release error = %v", err)
+	}
+	if event.Status != listingsubscription.UsageEventReserved {
+		t.Fatalf("event status = %q after failed mirror, want reserved for retry", event.Status)
+	}
+	repo.failNegative = false
+	if err := adapter.ReleaseProductImageUsage(ctx, "tenant-mirror-retry", "candidate-1", "retry"); err != nil {
+		t.Fatalf("ReleaseProductImageUsage() retry error = %v", err)
+	}
+	event, err = svc.GetUsage(ctx, "tenant-mirror-retry", "listingkit:studio_product_image:candidate-1")
+	if err != nil {
+		t.Fatalf("GetUsage() after release retry error = %v", err)
+	}
+	if event.Status != listingsubscription.UsageEventReleased {
+		t.Fatalf("event status = %q after release retry, want released", event.Status)
 	}
 }

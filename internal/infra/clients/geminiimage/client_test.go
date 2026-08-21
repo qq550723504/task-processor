@@ -6,14 +6,35 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
+type rewriteImageReferenceTransport struct {
+	base   http.RoundTripper
+	target *url.URL
+}
+
+func (t rewriteImageReferenceTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	clone := req.Clone(req.Context())
+	requestURL := *clone.URL
+	requestURL.Scheme = t.target.Scheme
+	requestURL.Host = t.target.Host
+	clone.URL = &requestURL
+	return t.base.RoundTrip(clone)
+}
+
+func imageReferenceClient(server *httptest.Server) *http.Client {
+	target, _ := url.Parse(server.URL)
+	return &http.Client{Transport: rewriteImageReferenceTransport{base: server.Client().Transport, target: target}}
+}
+
 func TestClientGenerateImageUsesGeminiGenerateContentEndpoint(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1beta/models/gemini-2.5-flash-image:generateContent" {
 			t.Fatalf("path = %q", r.URL.Path)
 		}
@@ -56,12 +77,13 @@ func TestClientGenerateImageUsesGeminiGenerateContentEndpoint(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(Config{
-		APIKey:      "test-key",
-		Model:       "gemini-2.5-flash-image",
-		BaseURL:     server.URL + "/v1beta",
-		Timeout:     time.Second,
-		MaxAttempts: 1,
-		HTTPClient:  server.Client(),
+		APIKey:                   "test-key",
+		Model:                    "gemini-2.5-flash-image",
+		BaseURL:                  server.URL + "/v1beta",
+		Timeout:                  time.Second,
+		MaxAttempts:              1,
+		HTTPClient:               server.Client(),
+		ImageReferenceHTTPClient: imageReferenceClient(server),
 	})
 
 	resp, err := client.GenerateImage(context.Background(), &openaiclient.ImageGenerateRequest{
@@ -79,8 +101,21 @@ func TestClientGenerateImageUsesGeminiGenerateContentEndpoint(t *testing.T) {
 	}
 }
 
+func TestClientEditImageRejectsUnsafeSecondaryURL(t *testing.T) {
+	client := NewClient(Config{Model: "gemini-2.5-flash-image", Timeout: time.Second})
+	_, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
+		Prompt:           "edit faithfully",
+		Image:            []byte("inline-primary"),
+		ImageContentType: "image/png",
+		ImageURLs:        []string{"http://127.0.0.1/internal.png"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "validate source image URL") {
+		t.Fatalf("EditImage() error = %v, want unsafe URL validation error", err)
+	}
+}
+
 func TestClientEditImageDownloadsSourceURLsAndSendsInlineData(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/source.png":
 			w.Header().Set("Content-Type", "image/png")
@@ -134,17 +169,18 @@ func TestClientEditImageDownloadsSourceURLsAndSendsInlineData(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(Config{
-		APIKey:      "test-key",
-		Model:       "gemini-2.5-flash-image",
-		BaseURL:     server.URL + "/v1beta",
-		Timeout:     time.Second,
-		MaxAttempts: 1,
-		HTTPClient:  server.Client(),
+		APIKey:                   "test-key",
+		Model:                    "gemini-2.5-flash-image",
+		BaseURL:                  server.URL + "/v1beta",
+		Timeout:                  time.Second,
+		MaxAttempts:              1,
+		HTTPClient:               server.Client(),
+		ImageReferenceHTTPClient: imageReferenceClient(server),
 	})
 
 	resp, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
 		Prompt:   "make the background pure white",
-		ImageURL: server.URL + "/source.png",
+		ImageURL: "https://image.example.test/source.png",
 	})
 	if err != nil {
 		t.Fatalf("EditImage() error = %v", err)
@@ -158,7 +194,7 @@ func TestClientEditImageDownloadsSourceURLsAndSendsInlineData(t *testing.T) {
 }
 
 func TestClientEditImageUsesInlineBytesWithoutDownloadingDuplicateURL(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/should-not-download.png" {
 			t.Fatalf("duplicate source URL was downloaded")
 		}
@@ -188,20 +224,21 @@ func TestClientEditImageUsesInlineBytesWithoutDownloadingDuplicateURL(t *testing
 	defer server.Close()
 
 	client := NewClient(Config{
-		APIKey:      "test-key",
-		Model:       "gemini-2.5-flash-image",
-		BaseURL:     server.URL + "/v1beta",
-		Timeout:     time.Second,
-		MaxAttempts: 1,
-		HTTPClient:  server.Client(),
+		APIKey:                   "test-key",
+		Model:                    "gemini-2.5-flash-image",
+		BaseURL:                  server.URL + "/v1beta",
+		Timeout:                  time.Second,
+		MaxAttempts:              1,
+		HTTPClient:               server.Client(),
+		ImageReferenceHTTPClient: imageReferenceClient(server),
 	})
 
 	resp, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
 		Prompt:           "edit faithfully",
 		Image:            []byte("inline-image"),
 		ImageContentType: "image/png",
-		ImageURL:         server.URL + "/should-not-download.png",
-		ImageURLs:        []string{server.URL + "/should-not-download.png"},
+		ImageURL:         "https://image.example.test/should-not-download.png",
+		ImageURLs:        []string{"https://image.example.test/should-not-download.png"},
 	})
 	if err != nil {
 		t.Fatalf("EditImage() error = %v", err)
@@ -212,7 +249,7 @@ func TestClientEditImageUsesInlineBytesWithoutDownloadingDuplicateURL(t *testing
 }
 
 func TestClientEditImageIncludesSecondaryURLsAlongsideInlinePrimary(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/secondary.png":
 			w.Header().Set("Content-Type", "image/png")
@@ -244,18 +281,19 @@ func TestClientEditImageIncludesSecondaryURLsAlongsideInlinePrimary(t *testing.T
 	defer server.Close()
 
 	client := NewClient(Config{
-		APIKey:      "test-key",
-		Model:       "gemini-2.5-flash-image",
-		BaseURL:     server.URL + "/v1beta",
-		Timeout:     time.Second,
-		MaxAttempts: 1,
-		HTTPClient:  server.Client(),
+		APIKey:                   "test-key",
+		Model:                    "gemini-2.5-flash-image",
+		BaseURL:                  server.URL + "/v1beta",
+		Timeout:                  time.Second,
+		MaxAttempts:              1,
+		HTTPClient:               server.Client(),
+		ImageReferenceHTTPClient: imageReferenceClient(server),
 	})
 	if _, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
 		Prompt:           "edit faithfully",
 		Image:            []byte("inline-primary"),
 		ImageContentType: "image/png",
-		ImageURLs:        []string{server.URL + "/secondary.png"},
+		ImageURLs:        []string{"https://image.example.test/secondary.png"},
 	}); err != nil {
 		t.Fatalf("EditImage() error = %v", err)
 	}

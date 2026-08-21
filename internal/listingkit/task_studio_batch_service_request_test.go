@@ -460,6 +460,44 @@ func TestTaskStudioBatchServiceSettlesProductImageUsageForCommittedCandidate(t *
 	}
 }
 
+func TestTaskStudioBatchServiceLegacySettlementIsIdempotentForDurableReuse(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	links := NewMemStudioBatchTaskLinkRepository()
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-legacy-settle", BatchID: "batch-1", CandidateKey: "candidate-legacy-settle",
+		ImageStrategy: sheinImageStrategyAIGenerated, Status: studioBatchTaskLinkStatusCreated,
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	usage := &recordingStudioProductImageUsage{}
+	service := &taskStudioBatchService{productImageUsage: usage, batchTaskLinkRepo: links, currentTime: time.Now}
+	candidate := studioBatchTaskCandidate{
+		CandidateKey:  "candidate-legacy-settle",
+		ImageStrategy: sheinImageStrategyAIGenerated,
+		SelectionSnapshot: SheinStudioSelection{Variants: []SheinStudioSelectionVariant{
+			{VariantSKU: "red-s", Color: "Red"},
+			{VariantSKU: "blue-s", Color: "Blue"},
+		}},
+	}
+	for i := 0; i < 2; i++ {
+		if err := service.settleStudioBatchProductImageUsage(ctx, &StudioBatchRecord{TenantID: "tenant-a"}, candidate); err != nil {
+			t.Fatalf("settleStudioBatchProductImageUsage(%d) error = %v", i, err)
+		}
+	}
+	if got, want := usage.recorded, []string{"tenant-a:2"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("legacy settlements = %v, want %v", got, want)
+	}
+	link, err := links.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
+	if err != nil {
+		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() error = %v", err)
+	}
+	if !link.ProductImageUsageSettled {
+		t.Fatal("durable link usage marker = false, want true")
+	}
+}
+
 func TestTaskStudioBatchServiceCommitsDurableProductImageReservation(t *testing.T) {
 	t.Parallel()
 
@@ -595,9 +633,10 @@ type recordingStudioProductImageUsage struct {
 
 type reservingStudioProductImageUsage struct {
 	recordingStudioProductImageUsage
-	reserved  []string
-	committed []string
-	released  []string
+	reserved      []string
+	committed     []string
+	released      []string
+	releaseErrors []error
 }
 
 type disabledReservingStudioProductImageUsage struct {
@@ -620,6 +659,11 @@ func (u *reservingStudioProductImageUsage) CommitProductImageUsage(_ context.Con
 
 func (u *reservingStudioProductImageUsage) ReleaseProductImageUsage(_ context.Context, tenantID, reservationID, reason string) error {
 	u.released = append(u.released, tenantID+":"+reservationID+":"+reason)
+	if len(u.releaseErrors) > 0 {
+		err := u.releaseErrors[0]
+		u.releaseErrors = u.releaseErrors[1:]
+		return err
+	}
 	return nil
 }
 
@@ -748,6 +792,59 @@ func TestTaskStudioBatchServiceReleasesStaleProductImageReservationAfterReclaim(
 		t.Fatalf("releaseStudioBatchProductImageUsage() error = %v", err)
 	}
 	if got, want := usage.released, []string{"tenant-a:candidate-stale|old-claim:stale_reclaimed"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("released reservations = %v, want %v", got, want)
+	}
+}
+
+func TestTaskStudioBatchServicePersistsPendingStaleReservationRelease(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	links := NewMemStudioBatchTaskLinkRepository()
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-pending-release", BatchID: "batch-1", CandidateKey: "candidate-pending-release",
+		ClaimToken: "old-claim", ImageStrategy: sheinImageStrategyAIGenerated,
+		Status: studioBatchTaskLinkStatusCreating, UpdatedAt: time.Now().UTC().Add(-3 * time.Minute),
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	usage := &reservingStudioProductImageUsage{releaseErrors: []error{errors.New("release temporarily unavailable"), nil}}
+	service := &taskStudioBatchService{batchTaskLinkRepo: links, productImageUsage: usage, currentTime: time.Now}
+	candidate := studioBatchTaskCandidate{
+		CandidateKey:  "candidate-pending-release",
+		ClaimToken:    "new-claim",
+		ImageStrategy: sheinImageStrategyAIGenerated,
+	}
+	claimed, previousClaimToken, err := service.claimStudioBatchTaskCandidate(ctx, &candidate)
+	if err != nil || !claimed {
+		t.Fatalf("claimStudioBatchTaskCandidate() = (%v, %q, %v), want stale claim", claimed, previousClaimToken, err)
+	}
+	previous := candidate
+	previous.ClaimToken = previousClaimToken
+	if err := service.releaseStudioBatchProductImageUsage(ctx, &StudioBatchRecord{TenantID: "tenant-a"}, previous, "stale_reclaimed"); err == nil {
+		t.Fatal("releaseStudioBatchProductImageUsage() unexpectedly succeeded")
+	}
+	if err := service.persistPendingStudioBatchProductImageUsageRelease(ctx, candidate, previousClaimToken); err != nil {
+		t.Fatalf("persistPendingStudioBatchProductImageUsageRelease() error = %v", err)
+	}
+	link, err := links.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
+	if err != nil {
+		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() error = %v", err)
+	}
+	if link.PendingProductImageUsageReleaseClaimToken != previousClaimToken {
+		t.Fatalf("pending release token = %q, want %q", link.PendingProductImageUsageReleaseClaimToken, previousClaimToken)
+	}
+	if err := service.releasePendingStudioBatchProductImageUsage(ctx, &StudioBatchRecord{TenantID: "tenant-a"}, candidate); err != nil {
+		t.Fatalf("releasePendingStudioBatchProductImageUsage() error = %v", err)
+	}
+	link, err = links.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
+	if err != nil {
+		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() after retry error = %v", err)
+	}
+	if link.PendingProductImageUsageReleaseClaimToken != "" {
+		t.Fatalf("pending release token = %q after retry, want empty", link.PendingProductImageUsageReleaseClaimToken)
+	}
+	if got, want := usage.released, []string{"tenant-a:candidate-pending-release|old-claim:stale_reclaimed", "tenant-a:candidate-pending-release|old-claim:pending_release_retry"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("released reservations = %v, want %v", got, want)
 	}
 }

@@ -5,10 +5,12 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"task-processor/internal/listingsubscription"
+	"task-processor/internal/tenantbridge"
 )
 
 const (
@@ -35,14 +37,8 @@ func (a *subscriptionStudioProductImageUsage) AuthorizeProductImageUsage(ctx con
 	if strings.TrimSpace(tenantID) == "" || quantity <= 0 {
 		return fmt.Errorf("product image usage authorization requires tenant and positive quantity")
 	}
-	result, err := a.service.AuthorizeUsage(ctx, strings.TrimSpace(tenantID), studioProductImageModule, studioProductImageMetric, quantity)
-	if err != nil {
-		return err
-	}
-	if !result.Allowed {
-		return listingsubscription.ErrSubscriptionRequired
-	}
-	return nil
+	_, err := a.authorizeUsageTenant(ctx, tenantID, quantity)
+	return err
 }
 
 func (a *subscriptionStudioProductImageUsage) RecordProductImageUsage(ctx context.Context, tenantID string, quantity int) error {
@@ -52,7 +48,11 @@ func (a *subscriptionStudioProductImageUsage) RecordProductImageUsage(ctx contex
 	if strings.TrimSpace(tenantID) == "" || quantity <= 0 {
 		return fmt.Errorf("product image usage recording requires tenant and positive quantity")
 	}
-	_, err := a.service.RecordUsage(ctx, strings.TrimSpace(tenantID), studioProductImageModule, studioProductImageMetric, quantity)
+	billingTenant, err := a.authorizeUsageTenant(ctx, tenantID, quantity)
+	if err != nil {
+		return err
+	}
+	_, err = a.service.RecordUsage(ctx, billingTenant, studioProductImageModule, studioProductImageMetric, quantity)
 	return err
 }
 
@@ -70,20 +70,19 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 		return fmt.Errorf("product image usage reservation requires tenant, reservation, and positive quantity")
 	}
 	reservationKey := studioProductImageUsageIdempotencyKey(reservationID)
-	if _, lookupErr := a.service.GetUsage(ctx, tenantID, reservationKey); lookupErr != nil && !errors.Is(lookupErr, listingsubscription.ErrUsageEventNotFound) {
-		return lookupErr
-	} else if errors.Is(lookupErr, listingsubscription.ErrUsageEventNotFound) {
-		legacyGuard, err := a.service.AuthorizeUsage(ctx, tenantID, studioProductImageModule, studioProductImageMetric, quantity)
+	billingTenant, existingEvent, err := a.lookupProductImageUsageEvent(ctx, tenantID, reservationKey)
+	if err != nil {
+		return err
+	}
+	if existingEvent == nil {
+		billingTenant, err = a.authorizeUsageTenant(ctx, tenantID, quantity)
 		if err != nil {
 			return err
-		}
-		if !legacyGuard.Allowed {
-			return listingsubscription.ErrSubscriptionQuotaExceed
 		}
 	}
 	now := time.Now().UTC()
 	result, err := a.service.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
-		TenantID:       tenantID,
+		TenantID:       billingTenant,
 		ModuleCode:     studioProductImageModule,
 		Metric:         studioProductImageLedgerMetric,
 		Quantity:       int64(quantity),
@@ -100,7 +99,7 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 		return fmt.Errorf("product image usage reservation is no longer active")
 	}
 	if !result.Existing {
-		if _, err := a.service.RecordUsage(ctx, tenantID, studioProductImageModule, studioProductImageMetric, quantity); err != nil {
+		if _, err := a.service.RecordUsage(ctx, billingTenant, studioProductImageModule, studioProductImageMetric, quantity); err != nil {
 			_, _ = a.service.ReleaseUsage(ctx, result.Event.EventID, "legacy_counter_mirror_failed")
 			return err
 		}
@@ -112,7 +111,7 @@ func (a *subscriptionStudioProductImageUsage) CommitProductImageUsage(ctx contex
 	if a == nil || a.service == nil || !a.service.HasUsageLedger() {
 		return listingsubscription.ErrUsageLedgerNotConfigured
 	}
-	event, err := a.service.GetUsage(ctx, strings.TrimSpace(tenantID), studioProductImageUsageIdempotencyKey(strings.TrimSpace(reservationID)))
+	_, event, err := a.lookupProductImageUsageEvent(ctx, tenantID, studioProductImageUsageIdempotencyKey(strings.TrimSpace(reservationID)))
 	if errors.Is(err, listingsubscription.ErrUsageEventNotFound) {
 		return nil
 	}
@@ -133,7 +132,7 @@ func (a *subscriptionStudioProductImageUsage) ReleaseProductImageUsage(ctx conte
 	if a == nil || a.service == nil || !a.service.HasUsageLedger() {
 		return listingsubscription.ErrUsageLedgerNotConfigured
 	}
-	event, err := a.service.GetUsage(ctx, strings.TrimSpace(tenantID), studioProductImageUsageIdempotencyKey(strings.TrimSpace(reservationID)))
+	_, event, err := a.lookupProductImageUsageEvent(ctx, tenantID, studioProductImageUsageIdempotencyKey(strings.TrimSpace(reservationID)))
 	if errors.Is(err, listingsubscription.ErrUsageEventNotFound) {
 		return nil
 	}
@@ -146,13 +145,21 @@ func (a *subscriptionStudioProductImageUsage) ReleaseProductImageUsage(ctx conte
 	if event.Status != listingsubscription.UsageEventReserved {
 		return fmt.Errorf("product image usage release requires a reserved event")
 	}
+	if event.Quantity > 0 {
+		if _, err = a.service.RecordUsage(ctx, strings.TrimSpace(event.TenantID), studioProductImageModule, studioProductImageMetric, -int(event.Quantity)); err != nil {
+			return err
+		}
+	}
 	if _, err = a.service.ReleaseUsage(ctx, event.EventID, strings.TrimSpace(reason)); err != nil {
+		if event.Quantity > 0 {
+			_, rollbackErr := a.service.RecordUsage(ctx, strings.TrimSpace(event.TenantID), studioProductImageModule, studioProductImageMetric, int(event.Quantity))
+			if rollbackErr != nil {
+				return errors.Join(err, fmt.Errorf("restore legacy product image usage mirror: %w", rollbackErr))
+			}
+		}
 		return err
 	}
-	if event.Quantity > 0 {
-		_, err = a.service.RecordUsage(ctx, strings.TrimSpace(tenantID), studioProductImageModule, studioProductImageMetric, -int(event.Quantity))
-	}
-	return err
+	return nil
 }
 
 func studioProductImageUsageIdempotencyKey(reservationID string) string {
@@ -163,4 +170,55 @@ func studioProductImageUsageIdempotencyKey(reservationID string) string {
 	}
 	sum := sha256.Sum256([]byte(key))
 	return "listingkit:studio_product_image:" + fmt.Sprintf("%x", sum[:])
+}
+
+func (a *subscriptionStudioProductImageUsage) authorizeUsageTenant(ctx context.Context, tenantID string, quantity int) (string, error) {
+	canonical := strings.TrimSpace(tenantID)
+	result, err := a.service.AuthorizeUsage(ctx, canonical, studioProductImageModule, studioProductImageMetric, quantity)
+	if err == nil && result.Allowed {
+		return canonical, nil
+	}
+	if err == nil || result.Reason != "not_configured" {
+		if err != nil {
+			return "", err
+		}
+		return "", listingsubscription.ErrSubscriptionRequired
+	}
+	legacyTenantID, resolveErr := tenantbridge.ResolveLegacyTenantID(ctx, canonical)
+	if resolveErr != nil || legacyTenantID <= 0 || strconv.FormatInt(legacyTenantID, 10) == canonical {
+		return "", err
+	}
+	legacyTenant := strconv.FormatInt(legacyTenantID, 10)
+	fallback, fallbackErr := a.service.AuthorizeUsage(ctx, legacyTenant, studioProductImageModule, studioProductImageMetric, quantity)
+	if fallbackErr != nil {
+		return "", fallbackErr
+	}
+	if !fallback.Allowed {
+		return "", listingsubscription.ErrSubscriptionRequired
+	}
+	return legacyTenant, nil
+}
+
+func (a *subscriptionStudioProductImageUsage) lookupProductImageUsageEvent(ctx context.Context, tenantID, idempotencyKey string) (string, *listingsubscription.UsageEvent, error) {
+	canonical := strings.TrimSpace(tenantID)
+	event, err := a.service.GetUsage(ctx, canonical, idempotencyKey)
+	if err == nil {
+		return canonical, event, nil
+	}
+	if !errors.Is(err, listingsubscription.ErrUsageEventNotFound) {
+		return "", nil, err
+	}
+	legacyTenantID, resolveErr := tenantbridge.ResolveLegacyTenantID(ctx, canonical)
+	if resolveErr != nil || legacyTenantID <= 0 || strconv.FormatInt(legacyTenantID, 10) == canonical {
+		return canonical, nil, nil
+	}
+	legacyTenant := strconv.FormatInt(legacyTenantID, 10)
+	event, err = a.service.GetUsage(ctx, legacyTenant, idempotencyKey)
+	if errors.Is(err, listingsubscription.ErrUsageEventNotFound) {
+		return canonical, nil, nil
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	return legacyTenant, event, nil
 }

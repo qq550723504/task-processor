@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	studiodomain "task-processor/internal/listing/studio"
+	"task-processor/internal/listingkit/core"
 )
 
 type listingStudioBatchTaskExecuteCandidate struct {
@@ -120,6 +121,9 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				return SheinStudioCreatedTask{}, fmt.Errorf("studio design %s background removal is still in progress", taskCandidate.Design.ID)
 			}
 			taskCandidate.Design = latestDesigns[0]
+			if err := s.releasePendingStudioBatchProductImageUsage(ctx, candidate.state.Batch, taskCandidate); err != nil {
+				return SheinStudioCreatedTask{}, fmt.Errorf("release pending product image usage reservation: %w", err)
+			}
 			if err := s.releaseFailedStudioBatchProductImageReservationBeforeReclaim(ctx, candidate.state.Batch, taskCandidate); err != nil {
 				return SheinStudioCreatedTask{}, fmt.Errorf("release failed product image usage reservation before reclaim: %w", err)
 			}
@@ -134,6 +138,10 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				previousCandidate := taskCandidate
 				previousCandidate.ClaimToken = previousClaimToken
 				if err := s.releaseStudioBatchProductImageUsage(context.WithoutCancel(ctx), candidate.state.Batch, previousCandidate, "stale_reclaimed"); err != nil {
+					persistErr := s.persistPendingStudioBatchProductImageUsageRelease(context.WithoutCancel(ctx), taskCandidate, previousClaimToken)
+					if persistErr != nil {
+						return SheinStudioCreatedTask{}, errors.Join(fmt.Errorf("release reclaimed product image usage: %w", err), fmt.Errorf("persist pending product image usage release: %w", persistErr))
+					}
 					return SheinStudioCreatedTask{}, fmt.Errorf("release reclaimed product image usage reservation: %w", err)
 				}
 			}
@@ -208,10 +216,22 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 					taskID = task.ID
 				}
 				if errors.Is(err, context.Canceled) {
-					// createGenerateTask may have inserted a queued row before
-					// lease cancellation reached dispatch. Do not retain its ID:
-					// linking it as a failed batch task would make the never-
-					// dispatched row eligible for durable-task reuse on retry.
+					terminalTask := task
+					if s.getTask != nil && taskID != "" {
+						if loaded, loadErr := s.getTask(context.WithoutCancel(dispatchCtx), taskID); loadErr == nil && loaded != nil {
+							terminalTask = loaded
+						}
+					}
+					if terminalTask != nil && isTerminalStudioBatchGeneratedTask(terminalTask) {
+						durableCtx := context.WithoutCancel(dispatchCtx)
+						if persistErr := s.persistStudioBatchTaskLink(durableCtx, taskCandidate, terminalTask.ID, studioBatchTaskLinkStatusCreated, studioBatchTaskLinkSourceBatchCreated, "", ""); persistErr == nil {
+							if settleErr := s.settleStudioBatchProductImageUsage(durableCtx, candidate.state.Batch, taskCandidate); settleErr == nil {
+								_ = dispatchHeartbeatStop()
+								return SheinStudioCreatedTask{ID: terminalTask.ID, Title: taskCandidate.Title, DesignID: taskCandidate.Design.ID, ItemID: taskCandidate.Item.ID, SelectionID: taskCandidate.SelectionID, CompatibilityFingerprint: taskCandidate.CompatibilityFingerprint, Status: studioBatchCreatedTaskStatus, Source: studioBatchTaskLinkSourceBatchCreated}, nil
+							}
+						}
+					}
+					// A queued or processing row is not safe to reuse after cancellation.
 					taskID = ""
 				}
 				persistErr := s.persistStudioBatchTaskLink(dispatchCtx, taskCandidate, taskID, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, "task_create_failed", err.Error())
@@ -281,6 +301,13 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			return s.completeStudioBatchTaskExecution(ctx, batchID, session, state.Batch, created, state.RejectedTasks, allFailed, shouldMarkTasksCreated)
 		},
 	})
+}
+
+func isTerminalStudioBatchGeneratedTask(task *Task) bool {
+	if task == nil {
+		return false
+	}
+	return task.Status == core.TaskStatusCompleted || task.Status == core.TaskStatusNeedsReview
 }
 
 func designIDsFromCreatedAndFailedTasks(created []SheinStudioCreatedTask, failed []SheinStudioFailedTask) []string {

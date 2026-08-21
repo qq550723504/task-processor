@@ -81,6 +81,8 @@ func (r *MemStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx context
 	row.Source = link.Source
 	row.ReasonCode = link.ReasonCode
 	row.Message = link.Message
+	row.ProductImageUsageSettled = link.ProductImageUsageSettled
+	row.PendingProductImageUsageReleaseClaimToken = link.PendingProductImageUsageReleaseClaimToken
 	row.UpdatedAt = link.UpdatedAt
 	r.links[row.ID] = row
 	return nil
@@ -168,6 +170,8 @@ func (r *MemStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLinkWithClaimTok
 	row.Source = link.Source
 	row.ReasonCode = link.ReasonCode
 	row.Message = link.Message
+	row.ProductImageUsageSettled = link.ProductImageUsageSettled
+	row.PendingProductImageUsageReleaseClaimToken = link.PendingProductImageUsageReleaseClaimToken
 	row.UpdatedAt = link.UpdatedAt
 	r.links[row.ID] = row
 	return true, nil

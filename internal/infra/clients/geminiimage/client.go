@@ -14,6 +14,7 @@ import (
 	"time"
 
 	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/pkg/safeimagehttp"
 )
 
 type Config struct {
@@ -24,6 +25,10 @@ type Config struct {
 	MaxAttempts int
 	RetryDelay  time.Duration
 	HTTPClient  *http.Client
+	// ImageReferenceHTTPClient is a trusted transport override for tests and
+	// controlled in-process callers. Production defaults to the SSRF-safe
+	// transport used for secondary image references.
+	ImageReferenceHTTPClient *http.Client
 }
 
 type Client struct {
@@ -250,11 +255,22 @@ func (c *Client) buildImageInputParts(ctx context.Context, req *openaiclient.Ima
 }
 
 func (c *Client) downloadSourceImage(ctx context.Context, imageURL string) ([]byte, string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+	validatedURL, err := safeimagehttp.ValidatePublicHTTPSURL(imageURL)
+	if err != nil {
+		return nil, "", fmt.Errorf("validate source image URL: %w", err)
+	}
+	client := safeimagehttp.NewPublicImageHTTPClient()
+	if c != nil && c.cfg.ImageReferenceHTTPClient != nil {
+		// Keep the URL validation mandatory even for a controlled transport
+		// override; the override only replaces dialing for tests or callers
+		// that provide their own trusted transport.
+		client = c.cfg.ImageReferenceHTTPClient
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, validatedURL, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("build source image request: %w", err)
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("download source image: %w", err)
 	}

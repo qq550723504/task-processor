@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 const studioBatchTaskLinkHeartbeatInterval = 30 * time.Second
@@ -161,6 +163,12 @@ func (s *taskStudioBatchService) settleStudioBatchProductImageUsage(ctx context.
 	if normalizeSheinImageStrategy(candidate.ImageStrategy) != sheinImageStrategyAIGenerated {
 		return nil
 	}
+	if settled, err := s.studioBatchProductImageUsageAlreadySettled(ctx, candidate); err != nil {
+		return err
+	} else if settled {
+		return nil
+	}
+	var err error
 	if reservation, ok := s.productImageUsageReservation(); ok {
 		tenantID := studioBatchTaskGateTenantID(ctx, batch)
 		if strings.TrimSpace(tenantID) == "" {
@@ -170,9 +178,47 @@ func (s *taskStudioBatchService) settleStudioBatchProductImageUsage(ctx context.
 		if reservationID == "" {
 			return fmt.Errorf("product image usage reservation id is required")
 		}
-		return reservation.CommitProductImageUsage(ctx, tenantID, reservationID)
+		err = reservation.CommitProductImageUsage(ctx, tenantID, reservationID)
+	} else {
+		err = s.recordStudioBatchProductImageUsage(ctx, batch, studioBatchTaskProductImageGenerationCount(candidate.SelectionSnapshot))
 	}
-	return s.recordStudioBatchProductImageUsage(ctx, batch, studioBatchTaskProductImageGenerationCount(candidate.SelectionSnapshot))
+	if err != nil {
+		return err
+	}
+	return s.markStudioBatchProductImageUsageSettled(ctx, candidate)
+}
+
+func (s *taskStudioBatchService) studioBatchProductImageUsageAlreadySettled(ctx context.Context, candidate studioBatchTaskCandidate) (bool, error) {
+	if s == nil || s.batchTaskLinkRepo == nil {
+		return false, nil
+	}
+	link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, strings.TrimSpace(candidate.CandidateKey))
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return link != nil && link.ProductImageUsageSettled, nil
+}
+
+func (s *taskStudioBatchService) markStudioBatchProductImageUsageSettled(ctx context.Context, candidate studioBatchTaskCandidate) error {
+	if s == nil || s.batchTaskLinkRepo == nil {
+		return nil
+	}
+	link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, strings.TrimSpace(candidate.CandidateKey))
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if link == nil || link.ProductImageUsageSettled {
+		return nil
+	}
+	link.ProductImageUsageSettled = true
+	link.UpdatedAt = s.currentTime().UTC()
+	return s.batchTaskLinkRepo.UpdateStudioBatchTaskLink(ctx, link)
 }
 
 func (s *taskStudioBatchService) authorizeStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate, quantity int) error {
@@ -218,6 +264,64 @@ func (s *taskStudioBatchService) releaseStudioBatchProductImageUsage(ctx context
 		return fmt.Errorf("product image usage reservation id is required")
 	}
 	return reservation.ReleaseProductImageUsage(ctx, tenantID, reservationID, reason)
+}
+
+func (s *taskStudioBatchService) releasePendingStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate) error {
+	if s == nil || s.batchTaskLinkRepo == nil {
+		return nil
+	}
+	link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, strings.TrimSpace(candidate.CandidateKey))
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if link == nil || strings.TrimSpace(link.PendingProductImageUsageReleaseClaimToken) == "" {
+		return nil
+	}
+	pending := candidate
+	pending.ClaimToken = link.PendingProductImageUsageReleaseClaimToken
+	if err := s.releaseStudioBatchProductImageUsage(ctx, batch, pending, "pending_release_retry"); err != nil {
+		return err
+	}
+	link.PendingProductImageUsageReleaseClaimToken = ""
+	link.UpdatedAt = s.currentTime().UTC()
+	if leaseRepo, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkLeaseRepository); ok && link.Status == studioBatchTaskLinkStatusCreating && strings.TrimSpace(link.ClaimToken) != "" {
+		updated, updateErr := leaseRepo.UpdateStudioBatchTaskLinkWithClaimToken(ctx, link, link.ClaimToken)
+		if updateErr != nil {
+			return updateErr
+		}
+		if !updated {
+			return fmt.Errorf("studio batch task claim is no longer owned while clearing pending release")
+		}
+		return nil
+	}
+	return s.batchTaskLinkRepo.UpdateStudioBatchTaskLink(ctx, link)
+}
+
+func (s *taskStudioBatchService) persistPendingStudioBatchProductImageUsageRelease(ctx context.Context, candidate studioBatchTaskCandidate, previousClaimToken string) error {
+	if s == nil || s.batchTaskLinkRepo == nil || strings.TrimSpace(previousClaimToken) == "" {
+		return nil
+	}
+	link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, strings.TrimSpace(candidate.CandidateKey))
+	if err != nil {
+		return err
+	}
+	link.PendingProductImageUsageReleaseClaimToken = strings.TrimSpace(previousClaimToken)
+	link.UpdatedAt = s.currentTime().UTC()
+	if leaseRepo, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkLeaseRepository); ok && link.Status == studioBatchTaskLinkStatusCreating && strings.TrimSpace(candidate.ClaimToken) != "" {
+		link.ClaimToken = strings.TrimSpace(candidate.ClaimToken)
+		updated, updateErr := leaseRepo.UpdateStudioBatchTaskLinkWithClaimToken(ctx, link, candidate.ClaimToken)
+		if updateErr != nil {
+			return updateErr
+		}
+		if !updated {
+			return fmt.Errorf("studio batch task claim is no longer owned while persisting pending release")
+		}
+		return nil
+	}
+	return s.batchTaskLinkRepo.UpdateStudioBatchTaskLink(ctx, link)
 }
 
 func (s *taskStudioBatchService) recordStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, quantity int) error {

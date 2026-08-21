@@ -27,6 +27,12 @@ func AutoMigrateStudioBatchTaskLinkRepository(db *gorm.DB) error {
 	if err := ensureStudioBatchTaskLinkImageStrategyColumn(db); err != nil {
 		return err
 	}
+	if err := ensureStudioBatchTaskLinkProductImageUsageSettledColumn(db); err != nil {
+		return err
+	}
+	if err := ensureStudioBatchTaskLinkPendingProductImageUsageReleaseClaimTokenColumn(db); err != nil {
+		return err
+	}
 	return ensureStudioBatchTaskLinkTupleIndex(db)
 }
 
@@ -52,7 +58,7 @@ func (r *GormStudioBatchTaskLinkRepository) CreateStudioBatchTaskLink(ctx contex
 		return fmt.Errorf("studio batch task link id is required")
 	}
 	err := r.db.WithContext(ctx).Create(&row).Error
-	if !isStudioBatchTaskLinkMissingSourceColumnError(err) && !isStudioBatchTaskLinkMissingImageStrategyColumnError(err) && !isStudioBatchTaskLinkMissingClaimTokenColumnError(err) {
+	if !isStudioBatchTaskLinkMissingSourceColumnError(err) && !isStudioBatchTaskLinkMissingImageStrategyColumnError(err) && !isStudioBatchTaskLinkMissingClaimTokenColumnError(err) && !isStudioBatchTaskLinkMissingProductImageUsageSettledColumnError(err) && !isStudioBatchTaskLinkMissingPendingProductImageUsageReleaseClaimTokenColumnError(err) {
 		return err
 	}
 	if migrateErr := ensureStudioBatchTaskLinkClaimTokenColumn(r.db); migrateErr != nil {
@@ -62,6 +68,12 @@ func (r *GormStudioBatchTaskLinkRepository) CreateStudioBatchTaskLink(ctx contex
 		return migrateErr
 	}
 	if migrateErr := ensureStudioBatchTaskLinkImageStrategyColumn(r.db); migrateErr != nil {
+		return migrateErr
+	}
+	if migrateErr := ensureStudioBatchTaskLinkProductImageUsageSettledColumn(r.db); migrateErr != nil {
+		return migrateErr
+	}
+	if migrateErr := ensureStudioBatchTaskLinkPendingProductImageUsageReleaseClaimTokenColumn(r.db); migrateErr != nil {
 		return migrateErr
 	}
 	if migrateErr := ensureStudioBatchTaskLinkTupleIndex(r.db); migrateErr != nil {
@@ -74,19 +86,32 @@ func (r *GormStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx contex
 	if link == nil {
 		return nil
 	}
+	for _, ensure := range []func(*gorm.DB) error{
+		ensureStudioBatchTaskLinkClaimTokenColumn,
+		ensureStudioBatchTaskLinkSourceColumn,
+		ensureStudioBatchTaskLinkImageStrategyColumn,
+		ensureStudioBatchTaskLinkProductImageUsageSettledColumn,
+		ensureStudioBatchTaskLinkPendingProductImageUsageReleaseClaimTokenColumn,
+	} {
+		if err := ensure(r.db); err != nil {
+			return err
+		}
+	}
 
 	update := func() *gorm.DB {
 		return applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
 			Model(&StudioBatchTaskLinkRecord{}).
 			Where("id = ?", link.ID).
 			Updates(map[string]any{
-				"listingkit_task_id": link.ListingKitTaskID,
-				"claim_token":        link.ClaimToken,
-				"status":             link.Status,
-				"source":             link.Source,
-				"reason_code":        link.ReasonCode,
-				"message":            link.Message,
-				"updated_at":         link.UpdatedAt,
+				"listingkit_task_id":          link.ListingKitTaskID,
+				"claim_token":                 link.ClaimToken,
+				"status":                      link.Status,
+				"source":                      link.Source,
+				"reason_code":                 link.ReasonCode,
+				"message":                     link.Message,
+				"product_image_usage_settled": link.ProductImageUsageSettled,
+				"pending_product_image_usage_release_claim_token": link.PendingProductImageUsageReleaseClaimToken,
+				"updated_at": link.UpdatedAt,
 			})
 	}
 
@@ -99,6 +124,14 @@ func (r *GormStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx contex
 			}
 		case isStudioBatchTaskLinkMissingSourceColumnError(result.Error):
 			if err := ensureStudioBatchTaskLinkSourceColumn(r.db); err != nil {
+				return err
+			}
+		case isStudioBatchTaskLinkMissingProductImageUsageSettledColumnError(result.Error):
+			if err := ensureStudioBatchTaskLinkProductImageUsageSettledColumn(r.db); err != nil {
+				return err
+			}
+		case isStudioBatchTaskLinkMissingPendingProductImageUsageReleaseClaimTokenColumnError(result.Error):
+			if err := ensureStudioBatchTaskLinkPendingProductImageUsageReleaseClaimTokenColumn(r.db); err != nil {
 				return err
 			}
 		default:
@@ -168,18 +201,56 @@ func (r *GormStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLinkWithClaimTo
 	if link == nil {
 		return false, nil
 	}
-	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
-		Model(&StudioBatchTaskLinkRecord{}).
-		Where("id = ? AND status = ? AND claim_token = ?", link.ID, studioBatchTaskLinkStatusCreating, strings.TrimSpace(claimToken)).
-		Updates(map[string]any{
-			"listingkit_task_id": link.ListingKitTaskID,
-			"claim_token":        link.ClaimToken,
-			"status":             link.Status,
-			"source":             link.Source,
-			"reason_code":        link.ReasonCode,
-			"message":            link.Message,
-			"updated_at":         link.UpdatedAt,
-		})
+	for _, ensure := range []func(*gorm.DB) error{
+		ensureStudioBatchTaskLinkClaimTokenColumn,
+		ensureStudioBatchTaskLinkSourceColumn,
+		ensureStudioBatchTaskLinkProductImageUsageSettledColumn,
+		ensureStudioBatchTaskLinkPendingProductImageUsageReleaseClaimTokenColumn,
+	} {
+		if err := ensure(r.db); err != nil {
+			return false, err
+		}
+	}
+	update := func() *gorm.DB {
+		return applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
+			Model(&StudioBatchTaskLinkRecord{}).
+			Where("id = ? AND status = ? AND claim_token = ?", link.ID, studioBatchTaskLinkStatusCreating, strings.TrimSpace(claimToken)).
+			Updates(map[string]any{
+				"listingkit_task_id":          link.ListingKitTaskID,
+				"claim_token":                 link.ClaimToken,
+				"status":                      link.Status,
+				"source":                      link.Source,
+				"reason_code":                 link.ReasonCode,
+				"message":                     link.Message,
+				"product_image_usage_settled": link.ProductImageUsageSettled,
+				"pending_product_image_usage_release_claim_token": link.PendingProductImageUsageReleaseClaimToken,
+				"updated_at": link.UpdatedAt,
+			})
+	}
+	result := update()
+	for attempts := 0; result.Error != nil && attempts < 3; attempts++ {
+		switch {
+		case isStudioBatchTaskLinkMissingClaimTokenColumnError(result.Error):
+			if err := ensureStudioBatchTaskLinkClaimTokenColumn(r.db); err != nil {
+				return false, err
+			}
+		case isStudioBatchTaskLinkMissingSourceColumnError(result.Error):
+			if err := ensureStudioBatchTaskLinkSourceColumn(r.db); err != nil {
+				return false, err
+			}
+		case isStudioBatchTaskLinkMissingProductImageUsageSettledColumnError(result.Error):
+			if err := ensureStudioBatchTaskLinkProductImageUsageSettledColumn(r.db); err != nil {
+				return false, err
+			}
+		case isStudioBatchTaskLinkMissingPendingProductImageUsageReleaseClaimTokenColumnError(result.Error):
+			if err := ensureStudioBatchTaskLinkPendingProductImageUsageReleaseClaimTokenColumn(r.db); err != nil {
+				return false, err
+			}
+		default:
+			return false, result.Error
+		}
+		result = update()
+	}
 	if result.Error != nil {
 		return false, result.Error
 	}
@@ -313,6 +384,38 @@ func isStudioBatchTaskLinkMissingClaimTokenColumnError(err error) bool {
 			strings.Contains(message, "no such column") ||
 			strings.Contains(message, "does not exist") ||
 			strings.Contains(message, "unknown column"))
+}
+
+func ensureStudioBatchTaskLinkProductImageUsageSettledColumn(db *gorm.DB) error {
+	if db == nil || db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "ProductImageUsageSettled") {
+		return nil
+	}
+	return db.Migrator().AddColumn(&StudioBatchTaskLinkRecord{}, "ProductImageUsageSettled")
+}
+
+func isStudioBatchTaskLinkMissingProductImageUsageSettledColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "product_image_usage_settled") &&
+		(strings.Contains(message, "no column") || strings.Contains(message, "no such column") || strings.Contains(message, "does not exist") || strings.Contains(message, "unknown column"))
+}
+
+func ensureStudioBatchTaskLinkPendingProductImageUsageReleaseClaimTokenColumn(db *gorm.DB) error {
+	if db == nil || db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "PendingProductImageUsageReleaseClaimToken") {
+		return nil
+	}
+	return db.Migrator().AddColumn(&StudioBatchTaskLinkRecord{}, "PendingProductImageUsageReleaseClaimToken")
+}
+
+func isStudioBatchTaskLinkMissingPendingProductImageUsageReleaseClaimTokenColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "pending_product_image_usage_release_claim_token") &&
+		(strings.Contains(message, "no column") || strings.Contains(message, "no such column") || strings.Contains(message, "does not exist") || strings.Contains(message, "unknown column"))
 }
 
 func studioBatchTaskLinkTupleIndexIncludesImageStrategy(db *gorm.DB, indexName string) bool {
