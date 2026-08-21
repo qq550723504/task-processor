@@ -119,14 +119,12 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 	if size, err := json.Marshal(product); err != nil || len(size) > maxSnapshotBytes {
 		return Job{}, ErrSnapshotTooLarge
 	}
-	productURL := strings.TrimSpace(product.URL)
-	if productURL != "" {
-		if _, err := validateOfferURL(productURL); err != nil {
-			return Job{}, err
-		}
+	productURL, err := validateOfferURL(product.URL)
+	if err != nil || productURL != rec.job.URL {
+		return Job{}, ErrInvalidURL
 	}
-	if strings.TrimSpace(product.ID) == "" && sourcing.ExtractAlibaba1688ProductID(rec.job.URL) == "" {
-		return Job{}, fmt.Errorf("%w: product id is required", ErrInvalidClaim)
+	if strings.TrimSpace(product.ID) == "" || product.ID != sourcing.ExtractAlibaba1688ProductID(rec.job.URL) {
+		return Job{}, fmt.Errorf("%w: product id does not match claimed offer", ErrInvalidClaim)
 	}
 	envelope := sourcing.Alibaba1688SourceEnvelope(sourcing.Alibaba1688SourceEnvelopeInput{
 		Request:     sourcing.Alibaba1688CrawlRequestInput{URL: rec.job.URL},

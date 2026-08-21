@@ -74,6 +74,21 @@ func TestServiceRejectsOversizedSnapshotAndKeepsClaimActive(t *testing.T) {
 	require.Equal(t, JobFailed, second.State)
 }
 
+func TestServiceAcceptsOnlySnapshotForClaimedURL(t *testing.T) {
+	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+	job, err := service.Create(actor, offerURL)
+	require.NoError(t, err)
+	claim, err := service.Claim(actor)
+	require.NoError(t, err)
+	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", Title: "shirt"})
+	require.ErrorIs(t, err, ErrInvalidURL)
+	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", Title: "shirt", URL: "https://detail.1688.com/offer/999.html"})
+	require.ErrorIs(t, err, ErrInvalidURL)
+	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcing.Alibaba1688ProductSnapshot{ID: "999", Title: "shirt", URL: offerURL})
+	require.ErrorIs(t, err, ErrInvalidClaim)
+}
+
 func TestServiceRejectsOversizedFailureDiagnostic(t *testing.T) {
 	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
 	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
