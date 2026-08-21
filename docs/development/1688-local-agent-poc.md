@@ -30,5 +30,9 @@ The CLI automatically uses an installed Chrome executable when one is found on
 Windows. Pass `-BrowserPath` to the acceptance script (or `-browser-path` to
 the CLI) to select a specific executable.
 
+The default device-auth scopes include the supported ListingKit roles and the
+`admin` alias. For a deployment with custom platform-admin roles, pass the
+complete scope string with `-Scopes`/`-scopes` or set `ZITADEL_SCOPES`.
+
 Omit `-Url` only when a pending job was created separately through the API.
 The POC stores jobs in API process memory; restarting the API drops them.

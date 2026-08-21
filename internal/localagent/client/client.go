@@ -21,6 +21,117 @@ type Client struct {
 	HTTPClient  *http.Client
 }
 
+const defaultHTTPTimeout = 30 * time.Second
+
+type productSnapshotPayload struct {
+	ID               string                  `json:"id"`
+	Title            string                  `json:"title"`
+	URL              string                  `json:"url"`
+	Images           []string                `json:"images"`
+	MainImage        string                  `json:"main_image"`
+	Videos           []videoPayload          `json:"videos"`
+	PriceRangeCount  int                     `json:"price_range_count"`
+	MinPrice         float64                 `json:"min_price"`
+	MaxPrice         float64                 `json:"max_price"`
+	Currency         string                  `json:"currency"`
+	MinOrderQuantity int                     `json:"min_order_quantity"`
+	Unit             string                  `json:"unit"`
+	Supplier         supplierPayload         `json:"supplier"`
+	Specifications   []specificationPayload  `json:"specifications"`
+	ProductDetails   []productDetailPayload  `json:"product_details"`
+	PackInfo         *packInfoPayload        `json:"pack_info"`
+	VariationValues  []variationValuePayload `json:"variation_values"`
+	Variants         []variantPayload        `json:"variants"`
+	SalesVolume      int                     `json:"sales_volume"`
+	ReviewCount      int                     `json:"review_count"`
+	Rating           float64                 `json:"rating"`
+	Shipping         shippingPayload         `json:"shipping"`
+	Category         string                  `json:"category"`
+	Brand            string                  `json:"brand"`
+	Keywords         []string                `json:"keywords"`
+	IsCustomized     bool                    `json:"is_customized"`
+}
+type videoPayload struct {
+	VideoURL string `json:"video_url"`
+	CoverURL string `json:"cover_url"`
+}
+type supplierPayload struct {
+	ID              string  `json:"id"`
+	Name            string  `json:"name"`
+	CompanyName     string  `json:"company_name"`
+	Location        string  `json:"location"`
+	ShopURL         string  `json:"shop_url"`
+	CardType        string  `json:"card_type"`
+	YearsInBusiness int     `json:"years_in_business"`
+	Rating          float64 `json:"rating"`
+	ResponseRate    float64 `json:"response_rate"`
+	IsGoldSupplier  bool    `json:"is_gold_supplier"`
+	IsVerified      bool    `json:"is_verified"`
+}
+type specificationPayload struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+type productDetailPayload struct {
+	Content string   `json:"content"`
+	Images  []string `json:"images"`
+}
+type packInfoPayload struct {
+	PackageType   string   `json:"package_type"`
+	Weight        float64  `json:"weight"`
+	PackageImages []string `json:"package_images"`
+	Instructions  string   `json:"instructions"`
+}
+type variationValuePayload struct {
+	Name   string   `json:"name"`
+	Values []string `json:"values"`
+}
+type variantPayload struct {
+	Attributes map[string]any `json:"attributes"`
+	Name       string         `json:"name"`
+	Image      string         `json:"image"`
+	Stock      int            `json:"stock"`
+	Price      float64        `json:"price"`
+}
+type shippingPayload struct {
+	ShippingFrom   string `json:"shipping_from"`
+	ProcessingTime string `json:"processing_time"`
+}
+
+func snapshotPayload(snapshot *sourcing.Alibaba1688ProductSnapshot) *productSnapshotPayload {
+	if snapshot == nil {
+		return nil
+	}
+	payload := &productSnapshotPayload{
+		ID: snapshot.ID, Title: snapshot.Title, URL: snapshot.URL, Images: snapshot.Images, MainImage: snapshot.MainImage,
+		PriceRangeCount: snapshot.PriceRangeCount, MinPrice: snapshot.MinPrice, MaxPrice: snapshot.MaxPrice,
+		Currency: snapshot.Currency, MinOrderQuantity: snapshot.MinOrderQuantity, Unit: snapshot.Unit,
+		SalesVolume: snapshot.SalesVolume, ReviewCount: snapshot.ReviewCount, Rating: snapshot.Rating,
+		Category: snapshot.Category, Brand: snapshot.Brand, Keywords: snapshot.Keywords, IsCustomized: snapshot.IsCustomized,
+		Supplier: supplierPayload{ID: snapshot.Supplier.ID, Name: snapshot.Supplier.Name, CompanyName: snapshot.Supplier.CompanyName, Location: snapshot.Supplier.Location, ShopURL: snapshot.Supplier.ShopURL, CardType: snapshot.Supplier.CardType, YearsInBusiness: snapshot.Supplier.YearsInBusiness, Rating: snapshot.Supplier.Rating, ResponseRate: snapshot.Supplier.ResponseRate, IsGoldSupplier: snapshot.Supplier.IsGoldSupplier, IsVerified: snapshot.Supplier.IsVerified},
+		Shipping: shippingPayload{ShippingFrom: snapshot.Shipping.ShippingFrom, ProcessingTime: snapshot.Shipping.ProcessingTime},
+	}
+	for _, video := range snapshot.Videos {
+		payload.Videos = append(payload.Videos, videoPayload{VideoURL: video.VideoURL, CoverURL: video.CoverURL})
+	}
+	for _, spec := range snapshot.Specifications {
+		payload.Specifications = append(payload.Specifications, specificationPayload{Name: spec.Name, Value: spec.Value})
+	}
+	for _, detail := range snapshot.ProductDetails {
+		payload.ProductDetails = append(payload.ProductDetails, productDetailPayload{Content: detail.Content, Images: detail.Images})
+	}
+	for _, variation := range snapshot.VariationValues {
+		payload.VariationValues = append(payload.VariationValues, variationValuePayload{Name: variation.Name, Values: variation.Values})
+	}
+	for _, variant := range snapshot.Variants {
+		payload.Variants = append(payload.Variants, variantPayload{Attributes: variant.Attributes, Name: variant.Name, Image: variant.Image, Stock: variant.Stock, Price: variant.Price})
+	}
+	if snapshot.PackInfo != nil {
+		payload.PackInfo = &packInfoPayload{PackageType: snapshot.PackInfo.PackageType, Weight: snapshot.PackInfo.Weight, PackageImages: snapshot.PackInfo.PackageImages, Instructions: snapshot.PackInfo.Instructions}
+	}
+	return payload
+}
+
 func New(baseURL, accessToken string, httpClient *http.Client) (*Client, error) {
 	base, err := validateBaseURL(baseURL)
 	if err != nil {
@@ -66,7 +177,7 @@ func (c *Client) SubmitSuccess(ctx context.Context, jobID, token string, snapsho
 	var response terminalResponse
 	err := c.doJSON(ctx, http.MethodPost, "/api/v1/local-agent/1688-jobs/"+url.PathEscape(jobID)+"/result", map[string]any{
 		"execution_token":  token,
-		"product_snapshot": snapshot,
+		"product_snapshot": snapshotPayload(snapshot),
 	}, http.StatusOK, &response)
 	return response.toJob(), err
 }
@@ -175,6 +286,9 @@ func safeHTTPClient(client *http.Client) *http.Client {
 		client = &http.Client{}
 	}
 	clone := *client
+	if clone.Timeout <= 0 {
+		clone.Timeout = defaultHTTPTimeout
+	}
 	clone.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &clone
 }

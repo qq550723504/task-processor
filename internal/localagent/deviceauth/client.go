@@ -164,6 +164,7 @@ func oauthScopes(raw, projectID string) (string, error) {
 		"urn:zitadel:iam:org:project:role:listingkit_operator",
 		"urn:zitadel:iam:org:project:role:listingkit_admin",
 		"urn:zitadel:iam:org:project:role:platform_admin",
+		"urn:zitadel:iam:org:project:role:admin",
 	}, " "), nil
 }
 

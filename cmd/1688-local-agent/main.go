@@ -23,6 +23,7 @@ type cliConfig struct {
 	IssuerURL   string
 	ClientID    string
 	ProjectID   string
+	Scopes      string
 	CreateURL   string
 	BrowserPath string
 	OpenBrowser bool
@@ -40,7 +41,11 @@ func run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	token, err := deviceauth.Authorize(ctx, deviceauth.Config{IssuerURL: cfg.IssuerURL, ClientID: cfg.ClientID, ProjectID: cfg.ProjectID}, terminalPresenter{openBrowser: cfg.OpenBrowser})
+	scopes := strings.TrimSpace(cfg.Scopes)
+	if scopes == "" {
+		scopes = strings.TrimSpace(os.Getenv("ZITADEL_SCOPES"))
+	}
+	token, err := deviceauth.Authorize(ctx, deviceauth.Config{IssuerURL: cfg.IssuerURL, ClientID: cfg.ClientID, ProjectID: cfg.ProjectID, Scopes: scopes}, terminalPresenter{openBrowser: cfg.OpenBrowser})
 	if err != nil {
 		return err
 	}
@@ -86,6 +91,7 @@ func parseConfig(args []string) (cliConfig, error) {
 	flags.StringVar(&cfg.IssuerURL, "issuer-url", "", "same-origin OIDC issuer URL")
 	flags.StringVar(&cfg.ClientID, "client-id", "", "OIDC device client ID")
 	flags.StringVar(&cfg.ProjectID, "project-id", "", "ZITADEL project ID")
+	flags.StringVar(&cfg.Scopes, "scopes", "", "OIDC scopes override (defaults to ListingKit roles; ZITADEL_SCOPES is also supported)")
 	flags.StringVar(&cfg.CreateURL, "url", "", "one public 1688 offer URL to create before claiming")
 	flags.StringVar(&cfg.BrowserPath, "browser-path", "", "local Chrome executable path (auto-detected when omitted)")
 	flags.BoolVar(&cfg.OpenBrowser, "open-browser", false, "open the device verification page")

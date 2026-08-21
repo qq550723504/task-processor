@@ -38,6 +38,12 @@ func TestAuthorizeRejectsOfflineAccessScope(t *testing.T) {
 	require.ErrorContains(t, err, "offline_access")
 }
 
+func TestOAuthScopesIncludeAdminAlias(t *testing.T) {
+	scopes, err := oauthScopes("", "project")
+	require.NoError(t, err)
+	require.Contains(t, scopes, "urn:zitadel:iam:org:project:role:admin")
+}
+
 func TestAuthorizeHandlesPendingHTTPErrorThenApproved(t *testing.T) {
 	tokenCalls := 0
 	server := httptest.NewTLSServer(nil)

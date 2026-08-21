@@ -2,12 +2,14 @@ package client
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"task-processor/internal/product/sourcing"
 )
 
 func TestNewRejectsNonLoopbackHTTP(t *testing.T) {
@@ -40,6 +42,28 @@ func TestClientClaimJobTargetsCreatedJob(t *testing.T) {
 	claim, err := client.ClaimJob(context.Background(), "job-1")
 	require.NoError(t, err)
 	require.Equal(t, "job-1", claim.Job.ID)
+}
+
+func TestClientSubmitSuccessUsesSnakeCaseSnapshotPayload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request map[string]json.RawMessage
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
+		require.Contains(t, string(request["product_snapshot"]), `"main_image"`)
+		require.Contains(t, string(request["product_snapshot"]), `"min_price"`)
+		require.NotContains(t, string(request["product_snapshot"]), `"MainImage"`)
+		_, _ = w.Write([]byte(`{"job_id":"job-1","state":"succeeded"}`))
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "token", server.Client())
+	require.NoError(t, err)
+	_, err = client.SubmitSuccess(context.Background(), "job-1", "execution", &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", URL: "https://detail.1688.com/offer/1052008074197.html", MainImage: "https://img/main.jpg", MinPrice: 12.5})
+	require.NoError(t, err)
+}
+
+func TestNewAppliesDefaultHTTPTimeout(t *testing.T) {
+	client, err := New("http://127.0.0.1:18086", "token", nil)
+	require.NoError(t, err)
+	require.Equal(t, defaultHTTPTimeout, client.HTTPClient.Timeout)
 }
 
 func TestClientRejectsRedirects(t *testing.T) {
