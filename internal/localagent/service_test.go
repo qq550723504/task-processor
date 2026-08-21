@@ -52,8 +52,7 @@ func TestServiceBuildsEnvelopeFromAcceptedSnapshot(t *testing.T) {
 	claim, err := service.Claim(actor)
 	require.NoError(t, err)
 
-	done, err := service.SubmitSuccess(actor, job.ID, claim.ExecutionToken,
-		&sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", Title: "shirt", URL: offerURL})
+	done, err := service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, validSnapshot())
 	require.NoError(t, err)
 	require.Equal(t, JobSucceeded, done.State)
 	require.Equal(t, "crawler:1688:1052008074197", done.Envelope.Identity.SourceKey())
@@ -73,12 +72,11 @@ func TestServiceBoundsRetainedEnvelopeSummary(t *testing.T) {
 	claim, err := service.Claim(actor)
 	require.NoError(t, err)
 
-	done, err := service.SubmitSuccess(actor, job.ID, claim.ExecutionToken,
-		&sourcing.Alibaba1688ProductSnapshot{
-			ID: "1052008074197", URL: offerURL,
-			Title:    strings.Repeat("title", 1024),
-			Supplier: sourcing.Alibaba1688SupplierSnapshot{CompanyName: strings.Repeat("supplier", 1024)},
-		})
+	snapshot := validSnapshot()
+	snapshot.Title = strings.Repeat("title", 1024)
+	snapshot.Supplier.Name = strings.Repeat("supplier", 1024)
+	snapshot.Supplier.CompanyName = snapshot.Supplier.Name
+	done, err := service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, snapshot)
 	require.NoError(t, err)
 	require.LessOrEqual(t, len(done.EnvelopeSummary.Title), maxEnvelopeSummaryTitleBytes)
 	require.LessOrEqual(t, len(done.EnvelopeSummary.SupplierName), maxEnvelopeSummarySupplierBytes)
@@ -132,6 +130,20 @@ func TestServiceRejectsEmptySnapshotAsNonRetryable(t *testing.T) {
 	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, nil)
 	require.ErrorIs(t, err, ErrSnapshotInvalid)
 	require.ErrorIs(t, err, ErrInvalidClaim)
+}
+
+func TestServiceRejectsSnapshotMissingCrawlerRequiredFacts(t *testing.T) {
+	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+	job, err := service.Create(actor, offerURL)
+	require.NoError(t, err)
+	claim, err := service.Claim(actor)
+	require.NoError(t, err)
+
+	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcing.Alibaba1688ProductSnapshot{
+		ID: "1052008074197", Title: "shirt", URL: offerURL,
+	})
+	require.ErrorIs(t, err, ErrSnapshotInvalid)
 }
 
 func TestServiceAcceptsOnlySnapshotForClaimedURL(t *testing.T) {
@@ -267,6 +279,24 @@ func TestServiceRequeuesExpiredClaimWhileJobIsAlive(t *testing.T) {
 	require.NotEqual(t, first.ExecutionToken, second.ExecutionToken)
 }
 
+func TestServiceEvictsJobAfterThreeExpiredClaims(t *testing.T) {
+	clock := newMutableClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC))
+	service := NewService(clock.Now)
+	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+	_, err := service.Create(actor, offerURL)
+	require.NoError(t, err)
+
+	for attempt := 0; attempt < 3; attempt++ {
+		claim, err := service.Claim(actor)
+		require.NoError(t, err)
+		require.NotNil(t, claim)
+		clock.Advance(claimTTL + time.Nanosecond)
+	}
+	claim, err := service.Claim(actor)
+	require.NoError(t, err)
+	require.Nil(t, claim)
+}
+
 func fixedClock(value time.Time) func() time.Time {
 	return func() time.Time { return value }
 }
@@ -276,3 +306,15 @@ type mutableClock struct{ value time.Time }
 func newMutableClock(value time.Time) *mutableClock { return &mutableClock{value: value} }
 func (c *mutableClock) Now() time.Time              { return c.value }
 func (c *mutableClock) Advance(delta time.Duration) { c.value = c.value.Add(delta) }
+
+func validSnapshot() *sourcing.Alibaba1688ProductSnapshot {
+	return &sourcing.Alibaba1688ProductSnapshot{
+		ID:               "1052008074197",
+		Title:            "shirt",
+		URL:              offerURL,
+		MainImage:        "https://img.1688.com/product.jpg",
+		MinPrice:         12.5,
+		MinOrderQuantity: 1,
+		Supplier:         sourcing.Alibaba1688SupplierSnapshot{Name: "Acme"},
+	}
+}

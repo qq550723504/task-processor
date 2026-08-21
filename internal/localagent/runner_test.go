@@ -75,6 +75,15 @@ func TestRunnerTerminatesEmptySnapshotAsExtractionFailure(t *testing.T) {
 	require.Equal(t, FailureExtraction, api.submittedFailure.Kind)
 }
 
+func TestRunnerTerminatesNilCrawlerResultAsExtractionFailure(t *testing.T) {
+	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}}
+	crawler := &fakeCrawler{}
+	outcome, err := (Runner{Jobs: api, Crawler: crawler}).RunOnce(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, OutcomeFailed, outcome.State)
+	require.Equal(t, FailureExtraction, api.submittedFailure.Kind)
+}
+
 func TestRunnerPreparesCrawlerBeforeClaim(t *testing.T) {
 	order := []string{}
 	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}, order: &order}

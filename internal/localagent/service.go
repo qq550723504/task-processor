@@ -14,6 +14,8 @@ import (
 	"unicode/utf8"
 
 	coreLogger "task-processor/internal/core/logger"
+	alibaba1688 "task-processor/internal/crawler/alibaba1688"
+	"task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/product/sourcing"
 
 	"github.com/sirupsen/logrus"
@@ -29,6 +31,7 @@ const (
 	terminalRetention  = 10 * time.Minute
 	maxStoredJobs      = 1024
 	maxJobsPerTenant   = 256
+	maxClaimAttempts   = 3
 	// Keep every retained summary field bounded. Together these caps keep the
 	// JSON representation well below 2 KiB even when a crawler returns hostile
 	// strings, while preserving useful terminal evidence for the CLI.
@@ -63,6 +66,7 @@ type record struct {
 	job            Job
 	executionToken string
 	retainedUntil  time.Time
+	claimAttempts  int
 }
 
 func NewService(now func() time.Time) *Service {
@@ -167,6 +171,7 @@ func (s *Service) claimRecordForPendingLocked(selected *record, now time.Time) (
 	selected.job.LeaseExpiresAt = now.Add(claimTTL)
 	selected.job.ExpiresAt = now.Add(jobTTL)
 	selected.executionToken = token
+	selected.claimAttempts++
 	return &Claim{Job: selected.job, ExecutionToken: selected.executionToken}, nil
 }
 
@@ -192,6 +197,9 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 	}
 	if strings.TrimSpace(product.ID) == "" || product.ID != sourcing.ExtractAlibaba1688ProductID(rec.job.URL) {
 		return Job{}, fmt.Errorf("%w: %w: product id does not match claimed offer", ErrSnapshotInvalid, ErrInvalidClaim)
+	}
+	if err := validateCrawlerSnapshot(product); err != nil {
+		return Job{}, ErrSnapshotInvalid
 	}
 	envelope := sourcing.Alibaba1688SourceEnvelope(sourcing.Alibaba1688SourceEnvelopeInput{
 		Request:     sourcing.Alibaba1688CrawlRequestInput{URL: rec.job.URL},
@@ -223,6 +231,19 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 	completed := rec.job
 	completed.Envelope = &envelope
 	return completed, nil
+}
+
+func validateCrawlerSnapshot(product *sourcing.Alibaba1688ProductSnapshot) error {
+	return alibaba1688.NewProductChecker().ValidateProduct(&model.Product1688{
+		Title:            product.Title,
+		URL:              product.URL,
+		Images:           product.Images,
+		MainImage:        product.MainImage,
+		MinPrice:         product.MinPrice,
+		MaxPrice:         product.MaxPrice,
+		MinOrderQuantity: product.MinOrderQuantity,
+		Supplier:         model.SupplierInfo{Name: product.Supplier.Name},
+	})
 }
 
 func boundEnvelopeSummary(summary EnvelopeSummary) EnvelopeSummary {
@@ -282,6 +303,10 @@ func (s *Service) cleanupLocked(now time.Time) {
 				continue
 			}
 			if !now.Before(rec.job.LeaseExpiresAt) {
+				if rec.claimAttempts >= maxClaimAttempts {
+					delete(s.jobs, id)
+					continue
+				}
 				rec.job.State = JobPending
 				rec.job.LeaseExpiresAt = time.Time{}
 				rec.executionToken = ""

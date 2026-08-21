@@ -45,7 +45,11 @@ func (j serviceJobs) SubmitFailure(_ context.Context, id, token string, failure 
 type e2eCrawler struct{}
 
 func (e2eCrawler) Process(context.Context, string) (*model.Product1688, error) {
-	return &model.Product1688{ID: "1052008074197", Title: "shirt", URL: offerURL}, nil
+	return &model.Product1688{
+		ID: "1052008074197", Title: "shirt", URL: offerURL,
+		MainImage: "https://img.1688.com/product.jpg", MinPrice: 12.5, MinOrderQuantity: 1,
+		Supplier: model.SupplierInfo{Name: "Acme"},
+	}, nil
 }
 
 func fixedClockForE2E() func() time.Time {

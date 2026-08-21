@@ -60,7 +60,7 @@ func TestSubmitResultAcknowledgesTerminalJobAndDoesNotAcceptSourceAccount(t *tes
 
 	resultRouter := gin.New()
 	resultRouter.POST("/api/v1/local-agent/1688-jobs/:job_id/result", handler.SubmitResult)
-	bodyBytes, err := json.Marshal(map[string]any{"execution_token": claimed.ExecutionToken, "source_account_id": 42, "product_snapshot": map[string]string{"id": "1052008074197", "title": "shirt", "url": "https://detail.1688.com/offer/1052008074197.html"}})
+	bodyBytes, err := json.Marshal(map[string]any{"execution_token": claimed.ExecutionToken, "source_account_id": 42, "product_snapshot": map[string]any{"id": "1052008074197", "title": "shirt", "url": "https://detail.1688.com/offer/1052008074197.html", "main_image": "https://img.1688.com/product.jpg", "min_price": 12.5, "min_order_quantity": 1, "supplier": map[string]string{"name": "Acme"}}})
 	require.NoError(t, err)
 	result := httptest.NewRecorder()
 	resultRouter.ServeHTTP(result, httptest.NewRequest(http.MethodPost, "/api/v1/local-agent/1688-jobs/"+created.JobID+"/result", strings.NewReader(string(bodyBytes))).WithContext(actorCtx))

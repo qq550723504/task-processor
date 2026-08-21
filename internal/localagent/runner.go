@@ -91,6 +91,13 @@ func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
 		}
 		return Outcome{State: OutcomeFailed, JobID: claim.Job.ID}, nil
 	}
+	if product == nil {
+		_, submitErr := r.submitFailure(ctx, claim.Job.ID, claim.ExecutionToken, Failure{Kind: FailureExtraction, Message: "1688 crawler returned no product"})
+		if submitErr != nil {
+			return Outcome{}, submitErr
+		}
+		return Outcome{State: OutcomeFailed, JobID: claim.Job.ID}, nil
+	}
 	var submitted Job
 	submitted, err = r.Jobs.SubmitSuccess(ctx, claim.Job.ID, claim.ExecutionToken, a1688.SnapshotFromLegacyProduct(product))
 	if err != nil {

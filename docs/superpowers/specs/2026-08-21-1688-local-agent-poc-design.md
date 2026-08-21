@@ -77,7 +77,7 @@ Request:
 
 The server normalizes and validates the URL, records a pending job for the
 authenticated tenant, and returns `job_id` and `expires_at`. The job has a
-five-minute lifetime. The POC stores jobs in process memory; restarting the
+twenty-minute lifetime. The POC stores jobs in process memory; restarting the
 API discards pending jobs. Durable persistence is explicitly a follow-up
 after the client execution contract is proven.
 
@@ -99,8 +99,8 @@ job:
 
 Claiming atomically changes the job to `claimed` and gives it a 15-minute
 lease. The execution token is opaque, is never logged, and is valid only for
-that job and lease. Expired claims return to `pending` while the job itself is
-still valid.
+that job and lease. A job is deleted after its third expired claim lease;
+earlier expired claims return to `pending` while the job itself is still valid.
 
 ### Submit a result
 
