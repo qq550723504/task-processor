@@ -73,6 +73,26 @@ func TestAuthorizeRejectsOfflineAccessScopeAcrossWhitespace(t *testing.T) {
 	}
 }
 
+func TestAuthorizeRejectsControlCharactersInUserCodeBeforePresentation(t *testing.T) {
+	server := httptest.NewTLSServer(nil)
+	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_ = json.NewEncoder(w).Encode(map[string]string{"device_authorization_endpoint": server.URL + "/device", "token_endpoint": server.URL + "/token"})
+		case "/device":
+			_ = json.NewEncoder(w).Encode(map[string]any{"device_code": "device", "user_code": "AB\x1b[31mCD", "verification_uri": server.URL + "/verify", "expires_in": 30})
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	defer server.Close()
+
+	presenter := &trackingPresenter{}
+	_, err := Authorize(context.Background(), Config{IssuerURL: server.URL, ClientID: "client", ProjectID: "project", Timeout: time.Second, HTTPClient: server.Client()}, presenter)
+	require.Error(t, err)
+	require.Zero(t, presenter.calls)
+}
+
 func TestOAuthScopesIncludeAdminAlias(t *testing.T) {
 	scopes, err := oauthScopes("", "project")
 	require.NoError(t, err)
@@ -154,5 +174,12 @@ func TestAuthorizeRejectsRefreshToken(t *testing.T) {
 type recordingPresenter struct{}
 
 func (recordingPresenter) Show(string, string) error { return nil }
+
+type trackingPresenter struct{ calls int }
+
+func (p *trackingPresenter) Show(string, string) error {
+	p.calls++
+	return nil
+}
 
 const issuerURLPlaceholder = "https://issuer.invalid"

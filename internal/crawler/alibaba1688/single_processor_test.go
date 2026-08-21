@@ -46,6 +46,30 @@ func TestClassifyProductValidationFailurePreservesAccountFallbackForMissingField
 			},
 			want: PublicAccessFailureValidation,
 		},
+		{
+			name: "negative price",
+			product: &model.Product1688{
+				URL:              "https://detail.1688.com/offer/1.html",
+				Title:            "shirt",
+				MinPrice:         -1,
+				MinOrderQuantity: 1,
+				Supplier:         model.SupplierInfo{Name: "Supplier"},
+				MainImage:        "https://img.example/product.jpg",
+			},
+			want: PublicAccessFailureValidation,
+		},
+		{
+			name: "negative minimum order quantity",
+			product: &model.Product1688{
+				URL:              "https://detail.1688.com/offer/1.html",
+				Title:            "shirt",
+				MinPrice:         18.8,
+				MinOrderQuantity: -1,
+				Supplier:         model.SupplierInfo{Name: "Supplier"},
+				MainImage:        "https://img.example/product.jpg",
+			},
+			want: PublicAccessFailureValidation,
+		},
 	}
 
 	for _, tt := range tests {

@@ -146,6 +146,48 @@ func TestServiceRejectsSnapshotMissingCrawlerRequiredFacts(t *testing.T) {
 	require.ErrorIs(t, err, ErrSnapshotInvalid)
 }
 
+func TestServiceRejectsMalformedOptionalAssetURLs(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*sourcing.Alibaba1688ProductSnapshot)
+	}{
+		{name: "gallery image", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.Images = []string{"not-a-url"}
+		}},
+		{name: "video URL", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.Videos = []sourcing.Alibaba1688VideoSnapshot{{VideoURL: "not-a-url"}}
+		}},
+		{name: "video cover", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.Videos = []sourcing.Alibaba1688VideoSnapshot{{CoverURL: "not-a-url"}}
+		}},
+		{name: "detail image", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.ProductDetails = []sourcing.Alibaba1688ProductDetailSnapshot{{Images: []string{"not-a-url"}}}
+		}},
+		{name: "variant image", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.Variants = []sourcing.Alibaba1688VariantSnapshot{{Image: "not-a-url"}}
+		}},
+		{name: "package image", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.PackInfo = &sourcing.Alibaba1688PackInfoSnapshot{PackageImages: []string{"not-a-url"}}
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+			actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+			job, err := service.Create(actor, offerURL)
+			require.NoError(t, err)
+			claim, err := service.Claim(actor)
+			require.NoError(t, err)
+
+			snapshot := validSnapshot()
+			tt.mutate(snapshot)
+			_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, snapshot)
+			require.ErrorIs(t, err, ErrSnapshotInvalid)
+		})
+	}
+}
+
 func TestServiceAcceptsOnlySnapshotForClaimedURL(t *testing.T) {
 	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
 	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}

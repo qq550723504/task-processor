@@ -3,6 +3,7 @@ package alibaba1688
 
 import (
 	"fmt"
+	"net/url"
 	"strings"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/model"
@@ -88,11 +89,17 @@ func (pc *ProductChecker) checkRequiredFields(product *model.Product1688) error 
 	if strings.TrimSpace(product.Title) == "" {
 		return newRequiredFieldsError("标题不能为空")
 	}
-	if product.MinPrice <= 0 {
+	if product.MinPrice == 0 {
 		return newRequiredFieldsError("最低价格必须大于0")
 	}
-	if product.MinOrderQuantity <= 0 {
+	if product.MinPrice < 0 {
+		return fmt.Errorf("最低价格不能为负数")
+	}
+	if product.MinOrderQuantity == 0 {
 		return newRequiredFieldsError("起订量必须大于0")
+	}
+	if product.MinOrderQuantity < 0 {
+		return fmt.Errorf("起订量不能为负数")
 	}
 	if strings.TrimSpace(product.Supplier.Name) == "" {
 		return newRequiredFieldsError("供应商名称不能为空")
@@ -169,8 +176,40 @@ func (pc *ProductChecker) validateImages(product *model.Product1688) error {
 			return fmt.Errorf("图片[%d]URL格式无效: %s", i, imageURL)
 		}
 	}
+	for i, video := range product.Videos {
+		if strings.TrimSpace(video.VideoURL) != "" && !isValidMediaURL(video.VideoURL) {
+			return fmt.Errorf("视频[%d]URL格式无效: %s", i, video.VideoURL)
+		}
+		if strings.TrimSpace(video.CoverURL) != "" && !pc.isValidImageURL(video.CoverURL) {
+			return fmt.Errorf("视频[%d]封面URL格式无效: %s", i, video.CoverURL)
+		}
+	}
+	for i, detail := range product.ProductDetails {
+		for j, imageURL := range detail.Images {
+			if !pc.isValidImageURL(imageURL) {
+				return fmt.Errorf("详情[%d]图片[%d]URL格式无效: %s", i, j, imageURL)
+			}
+		}
+	}
+	for i, variant := range product.Variants {
+		if strings.TrimSpace(variant.Image) != "" && !pc.isValidImageURL(variant.Image) {
+			return fmt.Errorf("变体[%d]图片URL格式无效: %s", i, variant.Image)
+		}
+	}
+	if product.PackInfo != nil {
+		for i, imageURL := range product.PackInfo.PackageImages {
+			if !pc.isValidImageURL(imageURL) {
+				return fmt.Errorf("包装图片[%d]URL格式无效: %s", i, imageURL)
+			}
+		}
+	}
 
 	return nil
+}
+
+func isValidMediaURL(raw string) bool {
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(raw))
+	return err == nil && parsed.Host != "" && (parsed.Scheme == "http" || parsed.Scheme == "https")
 }
 
 // isValidImageURL 检查图片URL是否有效

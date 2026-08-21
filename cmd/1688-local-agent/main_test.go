@@ -33,6 +33,11 @@ func TestParseConfigRejectsOfferEmptyPort(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestParseConfigRejectsExtensionlessOffer(t *testing.T) {
+	_, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project", "-url", "https://detail.1688.com/offer/1052008074197"})
+	require.Error(t, err)
+}
+
 func TestParseConfigRejectsOfferEmptyQuery(t *testing.T) {
 	_, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project", "-url", "https://detail.1688.com/offer/1052008074197.html?"})
 	require.Error(t, err)

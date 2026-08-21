@@ -234,15 +234,35 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 }
 
 func validateCrawlerSnapshot(product *sourcing.Alibaba1688ProductSnapshot) error {
+	videos := make([]model.Video, 0, len(product.Videos))
+	for _, video := range product.Videos {
+		videos = append(videos, model.Video{VideoURL: video.VideoURL, CoverURL: video.CoverURL})
+	}
+	details := make([]model.ProductDetail, 0, len(product.ProductDetails))
+	for _, detail := range product.ProductDetails {
+		details = append(details, model.ProductDetail{Content: detail.Content, Images: detail.Images})
+	}
+	variants := make([]model.Variant, 0, len(product.Variants))
+	for _, variant := range product.Variants {
+		variants = append(variants, model.Variant{Attributes: variant.Attributes, Name: variant.Name, Image: variant.Image, Stock: variant.Stock, Price: variant.Price})
+	}
+	var packInfo *model.PackInfo
+	if product.PackInfo != nil {
+		packInfo = &model.PackInfo{PackageType: product.PackInfo.PackageType, Weight: product.PackInfo.Weight, PackageImages: product.PackInfo.PackageImages, Instructions: product.PackInfo.Instructions}
+	}
 	return alibaba1688.NewProductChecker().ValidateProduct(&model.Product1688{
 		Title:            product.Title,
 		URL:              product.URL,
 		Images:           product.Images,
 		MainImage:        product.MainImage,
+		Videos:           videos,
 		MinPrice:         product.MinPrice,
 		MaxPrice:         product.MaxPrice,
 		MinOrderQuantity: product.MinOrderQuantity,
 		Supplier:         model.SupplierInfo{Name: product.Supplier.Name},
+		ProductDetails:   details,
+		PackInfo:         packInfo,
+		Variants:         variants,
 	})
 }
 

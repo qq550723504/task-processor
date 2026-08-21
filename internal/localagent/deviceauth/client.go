@@ -11,7 +11,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
+
+const maxUserCodeBytes = 128
 
 type Config struct {
 	IssuerURL  string
@@ -87,7 +91,8 @@ func Authorize(ctx context.Context, cfg Config, presenter Presenter) (string, er
 	if err := doJSON(requestContext, client, http.MethodPost, deviceURI, form, "device authorization", &device); err != nil {
 		return "", err
 	}
-	if strings.TrimSpace(device.DeviceCode) == "" || strings.TrimSpace(device.UserCode) == "" || device.ExpiresIn <= 0 {
+	userCode := strings.TrimSpace(device.UserCode)
+	if strings.TrimSpace(device.DeviceCode) == "" || !validUserCode(userCode) || device.ExpiresIn <= 0 {
 		return "", errors.New("device authorization response is incomplete")
 	}
 	verificationURI, err := sameOriginEndpoint(issuer, device.VerificationURI, "verification URI")
@@ -95,7 +100,7 @@ func Authorize(ctx context.Context, cfg Config, presenter Presenter) (string, er
 		return "", err
 	}
 	if presenter != nil {
-		if err := presenter.Show(verificationURI.String(), device.UserCode); err != nil {
+		if err := presenter.Show(verificationURI.String(), userCode); err != nil {
 			return "", err
 		}
 	}
@@ -144,6 +149,18 @@ func Authorize(ctx context.Context, cfg Config, presenter Presenter) (string, er
 			return "", errors.New("device authorization token exchange failed")
 		}
 	}
+}
+
+func validUserCode(value string) bool {
+	if value == "" || len([]byte(value)) > maxUserCodeBytes || !utf8.ValidString(value) {
+		return false
+	}
+	for _, r := range value {
+		if !unicode.IsPrint(r) {
+			return false
+		}
+	}
+	return true
 }
 
 func oauthScopes(raw, projectID string) (string, error) {

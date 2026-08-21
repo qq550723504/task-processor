@@ -180,7 +180,7 @@ func createPreparedJob(ctx context.Context, jobs jobCreator, crawler crawlerPrep
 func validateCLIOfferURL(raw string) (string, error) {
 	clean := strings.TrimSpace(raw)
 	parsed, err := url.Parse(clean)
-	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Host, "detail.1688.com") || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.RawPath != "" || !strings.HasPrefix(parsed.Path, "/offer/") || strings.TrimSpace(localagentURLID(parsed.Path)) == "" {
+	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Host, "detail.1688.com") || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.RawPath != "" || !strings.HasPrefix(parsed.Path, "/offer/") || !strings.HasSuffix(parsed.Path, ".html") || strings.TrimSpace(localagentURLID(parsed.Path)) == "" {
 		return "", errors.New("-url must be a public HTTPS detail.1688.com offer URL")
 	}
 	return clean, nil
