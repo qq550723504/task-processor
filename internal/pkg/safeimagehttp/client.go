@@ -4,11 +4,15 @@ package safeimagehttp
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 )
+
+const DefaultMaxBodyBytes int64 = 32 << 20
 
 // ValidatePublicHTTPSURL accepts only absolute HTTPS URLs whose literal host
 // is not localhost or a private/link-local address. Redirects are validated by
@@ -81,6 +85,45 @@ func NewPublicImageHTTPClient() *http.Client {
 			return err
 		},
 	}
+}
+
+// Download fetches a public image URL and rejects responses larger than
+// maxBytes. The extra byte read is intentional: it distinguishes an exact
+// limit-sized body from a body that was silently truncated at the limit.
+func Download(ctx context.Context, client *http.Client, rawURL string, maxBytes int64) ([]byte, error) {
+	validatedURL, err := ValidatePublicHTTPSURL(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if maxBytes <= 0 {
+		return nil, fmt.Errorf("image body limit must be positive")
+	}
+	if client == nil {
+		client = NewPublicImageHTTPClient()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, validatedURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return nil, fmt.Errorf("download image %s: status %d", validatedURL, resp.StatusCode)
+	}
+	if resp.ContentLength > maxBytes {
+		return nil, fmt.Errorf("image body exceeds limit: %d bytes (max %d)", resp.ContentLength, maxBytes)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("image body exceeds limit: more than %d bytes", maxBytes)
+	}
+	return data, nil
 }
 
 type publicAddressUnavailableError struct{}
