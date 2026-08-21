@@ -179,6 +179,71 @@ func TestClientEditImageIncludesSecondaryURLsAsMultipartImages(t *testing.T) {
 	}
 }
 
+func TestClientEditImageMaterializesPrimaryURLWhenBytesAreAbsent(t *testing.T) {
+	primaryRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/primary.png":
+			primaryRequests++
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("primary-image"))
+			return
+		case "/secondary.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("secondary-image"))
+			return
+		case "/images/edits":
+			reader, err := r.MultipartReader()
+			if err != nil {
+				t.Fatalf("MultipartReader: %v", err)
+			}
+			var images [][]byte
+			for {
+				part, err := reader.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatalf("NextPart: %v", err)
+				}
+				if part.FormName() == "image[]" {
+					data, err := io.ReadAll(part)
+					if err != nil {
+						t.Fatalf("read image part: %v", err)
+					}
+					images = append(images, data)
+				}
+			}
+			if len(images) != 2 || string(images[0]) != "primary-image" || string(images[1]) != "secondary-image" {
+				t.Fatalf("multipart images = %q, want [primary-image secondary-image]", images)
+			}
+			_ = json.NewEncoder(w).Encode(ImageResponse{Data: []ImageData{{B64JSON: base64.StdEncoding.EncodeToString([]byte("edited"))}}})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(&ClientConfig{
+		APIKey:                   "test-key",
+		Model:                    "gpt-image-1",
+		BaseURL:                  server.URL,
+		Timeout:                  time.Second,
+		MaxRetries:               0,
+		ImageReferenceHTTPClient: server.Client(),
+	})
+	primaryURL := server.URL + "/primary.png"
+	if _, err := client.EditImage(context.Background(), &ImageEditRequest{
+		ImageURL:  primaryURL,
+		ImageURLs: []string{primaryURL, server.URL + "/secondary.png"},
+	}); err != nil {
+		t.Fatalf("EditImage() error = %v", err)
+	}
+	if primaryRequests != 1 {
+		t.Fatalf("primary URL requests = %d, want 1", primaryRequests)
+	}
+}
+
 func TestClientEditImageBoundsSecondaryReferenceDownloadByClientTimeout(t *testing.T) {
 	started := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

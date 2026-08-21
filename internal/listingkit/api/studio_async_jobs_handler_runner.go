@@ -137,13 +137,15 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 	}
 	if strings.TrimSpace(usageReservationID) != "" {
 		if successErr := h.studioAsyncJobs.succeedWithError(ctx, jobID, result); successErr != nil {
-			if releaseErr := releaseStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID, "success_persistence_failed"); releaseErr != nil {
-				successErr = errors.Join(successErr, fmt.Errorf("release product image usage: %w", releaseErr))
+			failureErr := successErr
+			if persistErr := h.studioAsyncJobs.failWithError(ctx, jobID, successErr, http.StatusInternalServerError); persistErr != nil {
+				failureErr = errors.Join(failureErr, fmt.Errorf("persist async job failure: %w", persistErr))
+			} else if releaseErr := releaseStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID, "success_persistence_failed"); releaseErr != nil {
+				failureErr = errors.Join(failureErr, fmt.Errorf("release product image usage: %w", releaseErr))
 			}
-			h.studioAsyncJobs.fail(ctx, jobID, successErr, http.StatusInternalServerError)
 			studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
 				"job_id": jobID, "path": path, "usage_metric": usageMetric,
-			})).WithError(successErr).Warn("studio async success persistence failed")
+			})).WithError(failureErr).Warn("studio async success persistence failed")
 			return
 		}
 		if commitErr := commitStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID); commitErr != nil {

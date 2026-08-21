@@ -98,8 +98,19 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 	if req == nil {
 		return nil, fmt.Errorf("image edit request cannot be nil")
 	}
-	if len(req.Image) == 0 {
-		return nil, fmt.Errorf("image edit request requires image bytes")
+	primaryURL := strings.TrimSpace(req.ImageURL)
+	if len(req.Image) == 0 && primaryURL == "" {
+		return nil, fmt.Errorf("image edit request requires image bytes or image URL")
+	}
+	primaryImage := req.Image
+	primaryContentType := req.ImageContentType
+	if len(primaryImage) == 0 {
+		data, contentType, err := bc.downloadImageEditReference(ctx, primaryURL)
+		if err != nil {
+			return nil, err
+		}
+		primaryImage = data
+		primaryContentType = contentType
 	}
 	model := req.Model
 	if model == "" {
@@ -123,15 +134,15 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 	if req.N > 0 {
 		_ = writer.WriteField("n", fmt.Sprintf("%d", req.N))
 	}
-	imagePart, err := writer.CreateFormFile("image[]", imageEditFilename(req.ImageContentType))
+	imagePart, err := writer.CreateFormFile("image[]", imageEditFilename(primaryContentType))
 	if err != nil {
 		return nil, fmt.Errorf("create image form file: %w", err)
 	}
-	if _, err := imagePart.Write(req.Image); err != nil {
+	if _, err := imagePart.Write(primaryImage); err != nil {
 		return nil, fmt.Errorf("write image form file: %w", err)
 	}
 	seenURLs := map[string]struct{}{}
-	if primaryURL := strings.TrimSpace(req.ImageURL); primaryURL != "" {
+	if primaryURL != "" {
 		seenURLs[primaryURL] = struct{}{}
 	}
 	for _, rawURL := range req.ImageURLs {
@@ -143,17 +154,7 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 			continue
 		}
 		seenURLs[imageURL] = struct{}{}
-		downloadCtx := ctx
-		cancel := func() {}
-		if bc.config != nil && bc.config.Timeout > 0 {
-			downloadCtx, cancel = context.WithTimeout(ctx, bc.config.Timeout)
-		}
-		var referenceClient *http.Client
-		if bc.config != nil {
-			referenceClient = bc.config.ImageReferenceHTTPClient
-		}
-		data, contentType, err := downloadImageEditReference(downloadCtx, imageURL, referenceClient)
-		cancel()
+		data, contentType, err := bc.downloadImageEditReference(ctx, imageURL)
 		if err != nil {
 			return nil, err
 		}
@@ -178,6 +179,20 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 	return bc.doMultipartImageRequest(ctx, "/images/edits", body, writer.FormDataContentType())
+}
+
+func (bc *BaseClient) downloadImageEditReference(ctx context.Context, imageURL string) ([]byte, string, error) {
+	downloadCtx := ctx
+	cancel := func() {}
+	if bc.config != nil && bc.config.Timeout > 0 {
+		downloadCtx, cancel = context.WithTimeout(ctx, bc.config.Timeout)
+	}
+	defer cancel()
+	var referenceClient *http.Client
+	if bc.config != nil {
+		referenceClient = bc.config.ImageReferenceHTTPClient
+	}
+	return downloadImageEditReference(downloadCtx, imageURL, referenceClient)
 }
 
 func downloadImageEditReference(ctx context.Context, imageURL string, override *http.Client) ([]byte, string, error) {
