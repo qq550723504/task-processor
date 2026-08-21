@@ -8,7 +8,4 @@
 //   - github.com/sony/gobreaker
 //   - github.com/cenkalti/backoff/v5
 //
-// The similarly named internal/pkg/resilience package is legacy compatibility
-// that remains in use by older call paths. It is intentionally out of scope for
-// this task and should not be treated as the package being extended here.
 package resilience

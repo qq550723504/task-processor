@@ -74,6 +74,15 @@ func TestGlobalPortsFacadePackageStaysRetired(t *testing.T) {
 	}
 }
 
+func TestLegacyResiliencePackageStaysRetired(t *testing.T) {
+	path := filepath.Join("..", "internal", "pkg", "resilience")
+	if _, err := os.Stat(path); err == nil {
+		t.Fatalf("%s still exists; use internal/infra/resilience for resilience behavior", path)
+	} else if !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+}
+
 func TestListingAdminCompatibilityDoesNotExposeTaskStatusAdapters(t *testing.T) {
 	path := filepath.Join("..", "internal", "listingadmin", "management_api_types.go")
 	content, err := os.ReadFile(path)
