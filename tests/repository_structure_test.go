@@ -17,6 +17,7 @@ func TestCmdContainsOnlyOfficialEntrypoints(t *testing.T) {
 		"temu-listing":          {},
 	}
 	operationalCommands := map[string]struct{}{
+		"1688-local-agent":                   {},
 		"fingerprint-browser-installer":      {},
 		"listing-scheduler":                  {},
 		"listingkit-identity-preflight":      {},
