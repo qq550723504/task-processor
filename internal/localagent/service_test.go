@@ -57,6 +57,9 @@ func TestServiceBuildsEnvelopeFromAcceptedSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, JobSucceeded, done.State)
 	require.Equal(t, "crawler:1688:1052008074197", done.Envelope.Identity.SourceKey())
+	service.mu.Lock()
+	require.Nil(t, service.jobs[job.ID].job.Envelope)
+	service.mu.Unlock()
 }
 
 func TestServiceRejectsExpiredClaim(t *testing.T) {

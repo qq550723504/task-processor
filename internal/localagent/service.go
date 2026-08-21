@@ -187,13 +187,19 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 		Product:     product,
 		SourceRunID: rec.job.ID,
 	})
-	rec.job.Envelope = &envelope
+	// Terminal records are retained only for lifecycle/idempotency checks. The
+	// current API has no terminal read route, so keep the reconstructed envelope
+	// on the immediate return value without retaining its potentially large
+	// payload in the in-memory job record.
+	rec.job.Envelope = nil
 	rec.job.State = JobSucceeded
 	rec.job.LeaseExpiresAt = time.Time{}
 	rec.executionToken = ""
 	rec.retainedUntil = s.now().UTC().Add(terminalRetention)
 	logTransition(rec.job, "succeeded", "")
-	return rec.job, nil
+	completed := rec.job
+	completed.Envelope = &envelope
+	return completed, nil
 }
 
 func (s *Service) SubmitFailure(actor Actor, jobID, token string, failure Failure) (Job, error) {
