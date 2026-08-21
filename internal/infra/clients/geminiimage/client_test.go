@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/ai"
 )
 
 type rewriteImageReferenceTransport struct {

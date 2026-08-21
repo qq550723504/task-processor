@@ -29,7 +29,7 @@ func TestAIClientsFileStaysFocusedOnClientBuilderAndResolverAssembly(t *testing.
 	require.NotContains(t, content, "func buildStrictListingKitNanobananaImageClient(")
 	require.NotContains(t, content, "func buildListingKitRoutedImageClient(")
 
-	require.Contains(t, content, "func BuildStudioImageGenerator(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {")
+	require.Contains(t, content, "func BuildStudioImageGenerator(cfg *config.Config, resolver openaiclient.ClientConfigResolver) ai.ImageGenerator {")
 }
 
 func TestAIClientImageRoutingHelpersFileOwnsRoutedImageLogic(t *testing.T) {
@@ -40,7 +40,7 @@ func TestAIClientImageRoutingHelpersFileOwnsRoutedImageLogic(t *testing.T) {
 	content := string(src)
 
 	require.Contains(t, content, "type listingKitRoutedImageClient struct {")
-	require.Contains(t, content, "func buildListingKitRoutedImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) openaiclient.ImageGenerator {")
+	require.Contains(t, content, "func buildListingKitRoutedImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver) ai.ImageGenerator {")
 	require.Contains(t, content, "func normalizeListingKitImageSelector(selector string) string {")
 	require.Contains(t, content, "func enforceListingKitImageClientTimeout(clientName string, cfg *openaiclient.ClientConfig) *openaiclient.ClientConfig {")
 }
@@ -86,8 +86,8 @@ func TestAIClientBuildersFileOwnsStrictClientConstruction(t *testing.T) {
 	require.NoError(t, err)
 	content := string(src)
 
-	require.Contains(t, content, "func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ChatCompleter {")
-	require.Contains(t, content, "func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ImageGenerator {")
-	require.Contains(t, content, "func buildStrictListingKitNanobananaImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) openaiclient.ImageGenerator {")
+	require.Contains(t, content, "func buildStrictListingKitChatClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) ai.ChatCompleter {")
+	require.Contains(t, content, "func buildStrictListingKitImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) ai.ImageGenerator {")
+	require.Contains(t, content, "func buildStrictListingKitNanobananaImageClient(cfg *config.Config, resolver openaiclient.ClientConfigResolver, clientName string) ai.ImageGenerator {")
 	require.Contains(t, content, "grsai.NewClient(")
 }

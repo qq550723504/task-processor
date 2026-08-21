@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	"task-processor/internal/ai"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/listingkit"
 )
@@ -16,10 +17,10 @@ import (
 const studioBackgroundRemovalPrompt = "Remove the image background precisely. Preserve the complete foreground artwork, text, thin lines, holes, and internal white areas. Return a PNG with a real alpha channel and no checkerboard, white, or colored replacement background."
 
 type listingKitBackgroundRemover struct {
-	client openaiclient.ImageGenerator
+	client ai.ImageGenerator
 }
 
-func adaptListingKitBackgroundRemover(client openaiclient.ImageGenerator) listingkit.StudioBackgroundRemover {
+func adaptListingKitBackgroundRemover(client ai.ImageGenerator) listingkit.StudioBackgroundRemover {
 	if client == nil {
 		return nil
 	}
@@ -33,7 +34,7 @@ func (r listingKitBackgroundRemover) Remove(ctx context.Context, input []byte, c
 	if len(input) == 0 {
 		return nil, fmt.Errorf("background removal input is empty")
 	}
-	return r.remove(ctx, &openaiclient.ImageEditRequest{
+	return r.remove(ctx, &ai.ImageEditRequest{
 		Prompt:           studioBackgroundRemovalPrompt,
 		Image:            input,
 		ImageContentType: strings.TrimSpace(contentType),
@@ -49,7 +50,7 @@ func (r listingKitBackgroundRemover) RemoveFromURL(ctx context.Context, imageURL
 	if strings.TrimSpace(imageURL) == "" {
 		return nil, fmt.Errorf("background removal image url is empty")
 	}
-	return r.remove(ctx, &openaiclient.ImageEditRequest{
+	return r.remove(ctx, &ai.ImageEditRequest{
 		Prompt:         studioBackgroundRemovalPrompt,
 		ImageURL:       strings.TrimSpace(imageURL),
 		ImageURLs:      []string{strings.TrimSpace(imageURL)},
@@ -58,7 +59,7 @@ func (r listingKitBackgroundRemover) RemoveFromURL(ctx context.Context, imageURL
 	})
 }
 
-func (r listingKitBackgroundRemover) remove(ctx context.Context, req *openaiclient.ImageEditRequest) (*listingkit.StudioBackgroundRemovalResult, error) {
+func (r listingKitBackgroundRemover) remove(ctx context.Context, req *ai.ImageEditRequest) (*listingkit.StudioBackgroundRemovalResult, error) {
 	response, err := r.client.EditImage(ctx, req)
 	if err != nil {
 		return nil, err
@@ -81,7 +82,7 @@ func (r listingKitBackgroundRemover) remove(ctx context.Context, req *openaiclie
 	}, nil
 }
 
-func loadBackgroundRemovalImage(ctx context.Context, image openaiclient.ImageData) ([]byte, string, error) {
+func loadBackgroundRemovalImage(ctx context.Context, image ai.ImageData) ([]byte, string, error) {
 	if strings.TrimSpace(image.B64JSON) != "" {
 		data, err := base64.StdEncoding.DecodeString(image.B64JSON)
 		if err != nil {
@@ -120,11 +121,11 @@ type strictListingKitConfiguredImageClient struct {
 	resolver   openaiclient.ClientConfigResolver
 	fallback   *openaiclient.ClientConfig
 	mu         sync.Mutex
-	cache      map[string]openaiclient.ImageGenerator
-	build      func(cfg *openaiclient.ClientConfig) (openaiclient.ImageGenerator, error)
+	cache      map[string]ai.ImageGenerator
+	build      func(cfg *openaiclient.ClientConfig) (ai.ImageGenerator, error)
 }
 
-func (c *strictListingKitConfiguredImageClient) GenerateImage(ctx context.Context, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageResponse, error) {
+func (c *strictListingKitConfiguredImageClient) GenerateImage(ctx context.Context, req *ai.ImageGenerateRequest) (*ai.ImageResponse, error) {
 	client, err := c.resolve(ctx)
 	if err != nil {
 		return nil, err
@@ -132,7 +133,7 @@ func (c *strictListingKitConfiguredImageClient) GenerateImage(ctx context.Contex
 	return client.GenerateImage(ctx, req)
 }
 
-func (c *strictListingKitConfiguredImageClient) EditImage(ctx context.Context, req *openaiclient.ImageEditRequest) (*openaiclient.ImageResponse, error) {
+func (c *strictListingKitConfiguredImageClient) EditImage(ctx context.Context, req *ai.ImageEditRequest) (*ai.ImageResponse, error) {
 	client, err := c.resolve(ctx)
 	if err != nil {
 		return nil, err
@@ -152,7 +153,7 @@ func (c *strictListingKitConfiguredImageClient) SupportsAsyncImageGeneration() b
 	return client.SupportsAsyncImageGeneration()
 }
 
-func (c *strictListingKitConfiguredImageClient) SubmitImageGeneration(ctx context.Context, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+func (c *strictListingKitConfiguredImageClient) SubmitImageGeneration(ctx context.Context, req *ai.ImageGenerateRequest) (*ai.ImageAsyncSubmitResponse, error) {
 	client, err := c.resolve(ctx)
 	if err != nil {
 		return nil, err
@@ -160,7 +161,7 @@ func (c *strictListingKitConfiguredImageClient) SubmitImageGeneration(ctx contex
 	return client.SubmitImageGeneration(ctx, req)
 }
 
-func (c *strictListingKitConfiguredImageClient) SubmitImageEdit(ctx context.Context, req *openaiclient.ImageEditRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+func (c *strictListingKitConfiguredImageClient) SubmitImageEdit(ctx context.Context, req *ai.ImageEditRequest) (*ai.ImageAsyncSubmitResponse, error) {
 	client, err := c.resolve(ctx)
 	if err != nil {
 		return nil, err
@@ -168,7 +169,7 @@ func (c *strictListingKitConfiguredImageClient) SubmitImageEdit(ctx context.Cont
 	return client.SubmitImageEdit(ctx, req)
 }
 
-func (c *strictListingKitConfiguredImageClient) SubmitImageGenerationForConfigurationVersion(ctx context.Context, configurationVersion string, req *openaiclient.ImageGenerateRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+func (c *strictListingKitConfiguredImageClient) SubmitImageGenerationForConfigurationVersion(ctx context.Context, configurationVersion string, req *ai.ImageGenerateRequest) (*ai.ImageAsyncSubmitResponse, error) {
 	client, err := c.resolveAtConfigurationVersion(ctx, configurationVersion)
 	if err != nil {
 		return nil, err
@@ -176,7 +177,7 @@ func (c *strictListingKitConfiguredImageClient) SubmitImageGenerationForConfigur
 	return client.SubmitImageGeneration(ctx, req)
 }
 
-func (c *strictListingKitConfiguredImageClient) SubmitImageEditForConfigurationVersion(ctx context.Context, configurationVersion string, req *openaiclient.ImageEditRequest) (*openaiclient.ImageAsyncSubmitResponse, error) {
+func (c *strictListingKitConfiguredImageClient) SubmitImageEditForConfigurationVersion(ctx context.Context, configurationVersion string, req *ai.ImageEditRequest) (*ai.ImageAsyncSubmitResponse, error) {
 	client, err := c.resolveAtConfigurationVersion(ctx, configurationVersion)
 	if err != nil {
 		return nil, err
@@ -184,7 +185,7 @@ func (c *strictListingKitConfiguredImageClient) SubmitImageEditForConfigurationV
 	return client.SubmitImageEdit(ctx, req)
 }
 
-func (c *strictListingKitConfiguredImageClient) QueryImageGeneration(ctx context.Context, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
+func (c *strictListingKitConfiguredImageClient) QueryImageGeneration(ctx context.Context, jobID string) (*ai.ImageAsyncQueryResponse, error) {
 	client, err := c.resolve(ctx)
 	if err != nil {
 		return nil, err
@@ -192,7 +193,7 @@ func (c *strictListingKitConfiguredImageClient) QueryImageGeneration(ctx context
 	return client.QueryImageGeneration(ctx, jobID)
 }
 
-func (c *strictListingKitConfiguredImageClient) QueryImageGenerationForConfigurationVersion(ctx context.Context, configurationVersion, jobID string) (*openaiclient.ImageAsyncQueryResponse, error) {
+func (c *strictListingKitConfiguredImageClient) QueryImageGenerationForConfigurationVersion(ctx context.Context, configurationVersion, jobID string) (*ai.ImageAsyncQueryResponse, error) {
 	client, err := c.resolveAtConfigurationVersion(ctx, configurationVersion)
 	if err != nil {
 		return nil, err
@@ -200,11 +201,11 @@ func (c *strictListingKitConfiguredImageClient) QueryImageGenerationForConfigura
 	return client.QueryImageGeneration(ctx, jobID)
 }
 
-func (c *strictListingKitConfiguredImageClient) resolve(ctx context.Context) (openaiclient.ImageGenerator, error) {
+func (c *strictListingKitConfiguredImageClient) resolve(ctx context.Context) (ai.ImageGenerator, error) {
 	return resolveStrictListingKitImageClient(ctx, c.clientName, c.resolver, c.fallback, &c.mu, c.cache, c.build)
 }
 
-func (c *strictListingKitConfiguredImageClient) resolveAtConfigurationVersion(ctx context.Context, configurationVersion string) (openaiclient.ImageGenerator, error) {
+func (c *strictListingKitConfiguredImageClient) resolveAtConfigurationVersion(ctx context.Context, configurationVersion string) (ai.ImageGenerator, error) {
 	configurationVersion = strings.TrimSpace(configurationVersion)
 	if configurationVersion == "" {
 		return c.resolve(ctx)
@@ -249,9 +250,9 @@ func resolveStrictListingKitImageClient(
 	resolver openaiclient.ClientConfigResolver,
 	fallback *openaiclient.ClientConfig,
 	mu *sync.Mutex,
-	cache map[string]openaiclient.ImageGenerator,
-	build func(cfg *openaiclient.ClientConfig) (openaiclient.ImageGenerator, error),
-) (openaiclient.ImageGenerator, error) {
+	cache map[string]ai.ImageGenerator,
+	build func(cfg *openaiclient.ClientConfig) (ai.ImageGenerator, error),
+) (ai.ImageGenerator, error) {
 	if resolver == nil {
 		return nil, errListingKitAIClientNotConfigured(clientName)
 	}

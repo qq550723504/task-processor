@@ -4,15 +4,15 @@ import (
 	"context"
 	"fmt"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/ai"
 	"task-processor/internal/listingkit"
 )
 
 type listingKitAIImageGenerator struct {
-	generator openaiclient.ImageGenerator
+	generator ai.ImageGenerator
 }
 
-func adaptListingKitAIImageGenerator(generator openaiclient.ImageGenerator) listingkit.AIImageGenerator {
+func adaptListingKitAIImageGenerator(generator ai.ImageGenerator) listingkit.AIImageGenerator {
 	if generator == nil {
 		return nil
 	}
@@ -20,7 +20,7 @@ func adaptListingKitAIImageGenerator(generator openaiclient.ImageGenerator) list
 }
 
 func (g listingKitAIImageGenerator) GenerateImage(ctx context.Context, req *listingkit.AIImageGenerateRequest) (*listingkit.AIImageResponse, error) {
-	response, err := g.generator.GenerateImage(ctx, &openaiclient.ImageGenerateRequest{
+	response, err := g.generator.GenerateImage(ctx, &ai.ImageGenerateRequest{
 		Model:          req.Model,
 		Prompt:         req.Prompt,
 		Size:           req.Size,
@@ -34,7 +34,7 @@ func (g listingKitAIImageGenerator) GenerateImage(ctx context.Context, req *list
 }
 
 func (g listingKitAIImageGenerator) EditImage(ctx context.Context, req *listingkit.AIImageEditRequest) (*listingkit.AIImageResponse, error) {
-	response, err := g.generator.EditImage(ctx, &openaiclient.ImageEditRequest{
+	response, err := g.generator.EditImage(ctx, &ai.ImageEditRequest{
 		Model:            req.Model,
 		Prompt:           req.Prompt,
 		Image:            req.ImageData,
@@ -60,7 +60,7 @@ func (g listingKitAIImageGenerator) SupportsAsyncImageGeneration() bool {
 }
 
 func (g listingKitAIImageGenerator) SubmitImageGeneration(ctx context.Context, req *listingkit.AIImageGenerateRequest) (*listingkit.AIImageAsyncSubmit, error) {
-	response, err := g.generator.SubmitImageGeneration(ctx, &openaiclient.ImageGenerateRequest{
+	response, err := g.generator.SubmitImageGeneration(ctx, &ai.ImageGenerateRequest{
 		Model:          req.Model,
 		Prompt:         req.Prompt,
 		Size:           req.Size,
@@ -85,7 +85,7 @@ func (g listingKitAIImageGenerator) SubmitImageGeneration(ctx context.Context, r
 }
 
 func (g listingKitAIImageGenerator) SubmitImageEdit(ctx context.Context, req *listingkit.AIImageEditRequest) (*listingkit.AIImageAsyncSubmit, error) {
-	response, err := g.generator.SubmitImageEdit(ctx, &openaiclient.ImageEditRequest{
+	response, err := g.generator.SubmitImageEdit(ctx, &ai.ImageEditRequest{
 		Model:          req.Model,
 		Prompt:         req.Prompt,
 		ImageURL:       req.ImageURL,
@@ -127,13 +127,13 @@ func (g listingKitAIImageGenerator) QueryImageGeneration(ctx context.Context, jo
 		RawResultResponse: response.RawResultResponse,
 		Error:             response.Error,
 		Usage:             listingkit.AIUsage(response.Usage),
-		Response:          adaptListingKitAIImageResponse(&openaiclient.ImageResponse{Data: response.Data, Usage: response.Usage, RequestID: response.RequestID}),
+		Response:          adaptListingKitAIImageResponse(&ai.ImageResponse{Data: response.Data, Usage: response.Usage, RequestID: response.RequestID}),
 	}, nil
 }
 
 func (g listingKitAIImageGenerator) QueryImageGenerationForRoutingKey(ctx context.Context, routingKey, jobID string) (*listingkit.AIImageAsyncResult, error) {
 	queryer, ok := g.generator.(interface {
-		QueryImageGenerationForRoutingKey(context.Context, string, string) (*openaiclient.ImageAsyncQueryResponse, error)
+		QueryImageGenerationForRoutingKey(context.Context, string, string) (*ai.ImageAsyncQueryResponse, error)
 	})
 	if !ok {
 		return nil, fmt.Errorf("route-aware async image query is not supported")
@@ -153,11 +153,11 @@ func (g listingKitAIImageGenerator) QueryImageGenerationForRoutingKey(ctx contex
 		RawResultResponse: response.RawResultResponse,
 		Error:             response.Error,
 		Usage:             listingkit.AIUsage(response.Usage),
-		Response:          adaptListingKitAIImageResponse(&openaiclient.ImageResponse{Data: response.Data, Usage: response.Usage, RequestID: response.RequestID}),
+		Response:          adaptListingKitAIImageResponse(&ai.ImageResponse{Data: response.Data, Usage: response.Usage, RequestID: response.RequestID}),
 	}, nil
 }
 
-func adaptListingKitAIImageResponse(response *openaiclient.ImageResponse) *listingkit.AIImageResponse {
+func adaptListingKitAIImageResponse(response *ai.ImageResponse) *listingkit.AIImageResponse {
 	if response == nil {
 		return nil
 	}
