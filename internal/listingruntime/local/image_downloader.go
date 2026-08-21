@@ -1,27 +1,23 @@
 package local
 
 import (
-	"crypto/tls"
+	"context"
 	"fmt"
-	"io"
 	"net/http"
 	"time"
+
+	"task-processor/internal/pkg/safeimagehttp"
 )
 
 type ImageDownloader struct {
 	client *http.Client
 }
 
-func NewImageDownloader(timeout time.Duration, insecureSkipVerify bool) *ImageDownloader {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	if insecureSkipVerify {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec
-	}
+func NewImageDownloader(timeout time.Duration) *ImageDownloader {
+	client := safeimagehttp.NewPublicImageHTTPClient()
+	client.Timeout = timeout
 	return &ImageDownloader{
-		client: &http.Client{
-			Timeout:   timeout,
-			Transport: transport,
-		},
+		client: client,
 	}
 }
 
@@ -29,13 +25,9 @@ func (d *ImageDownloader) DownloadImage(url string) ([]byte, error) {
 	if d == nil || d.client == nil {
 		return nil, fmt.Errorf("image downloader is not configured")
 	}
-	resp, err := d.client.Get(url)
+	data, err := safeimagehttp.Download(context.Background(), d.client, url, safeimagehttp.DefaultMaxBodyBytes)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("download image %s: %w", url, err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("download image %s: status %d", url, resp.StatusCode)
-	}
-	return io.ReadAll(resp.Body)
+	return data, nil
 }
