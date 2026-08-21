@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 const studioBatchTaskLinkHeartbeatInterval = 30 * time.Second
@@ -197,6 +199,9 @@ func (s *taskStudioBatchService) productImageUsageReservation() (StudioProductIm
 	if s == nil || s.productImageUsage == nil {
 		return nil, false
 	}
+	if availability, ok := s.productImageUsage.(StudioProductImageUsageReservationAvailability); ok && !availability.StudioProductImageUsageReservationEnabled() {
+		return nil, false
+	}
 	reservation, ok := s.productImageUsage.(StudioProductImageUsageReservation)
 	return reservation, ok && reservation != nil
 }
@@ -215,6 +220,32 @@ func (s *taskStudioBatchService) releaseStudioBatchProductImageUsage(ctx context
 		return fmt.Errorf("product image usage reservation id is required")
 	}
 	return reservation.ReleaseProductImageUsage(ctx, tenantID, reservationID, reason)
+}
+
+// releaseStudioBatchProductImageReservationBeforeReclaim clears the previous
+// worker's durable reservation before a stale creating lease is claimed with a
+// new token. Without this handoff, every crashed attempt would leave an active
+// ledger event behind while the replacement creates a second reservation.
+func (s *taskStudioBatchService) releaseStudioBatchProductImageReservationBeforeReclaim(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate) error {
+	if s == nil || s.batchTaskLinkRepo == nil {
+		return nil
+	}
+	if _, ok := s.productImageUsageReservation(); !ok || normalizeSheinImageStrategy(candidate.ImageStrategy) != sheinImageStrategyAIGenerated {
+		return nil
+	}
+	existing, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, strings.TrimSpace(candidate.CandidateKey))
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if existing == nil || !s.studioBatchTaskLinkIsStale(existing) || strings.TrimSpace(existing.ClaimToken) == "" {
+		return nil
+	}
+	previous := candidate
+	previous.ClaimToken = strings.TrimSpace(existing.ClaimToken)
+	return s.releaseStudioBatchProductImageUsage(ctx, batch, previous, "stale_reclaimed")
 }
 
 func (s *taskStudioBatchService) recordStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, quantity int) error {

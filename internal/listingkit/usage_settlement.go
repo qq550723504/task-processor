@@ -60,6 +60,14 @@ type StudioProductImageUsageReservation interface {
 	ReleaseProductImageUsage(context.Context, string, string, string) error
 }
 
+// StudioProductImageUsageReservationAvailability lets an adapter keep the
+// legacy authorize/record path when its durable ledger is disabled. The
+// reservation methods may still exist for a configured deployment, but they
+// must not be selected when the backing ledger is unavailable.
+type StudioProductImageUsageReservationAvailability interface {
+	StudioProductImageUsageReservationEnabled() bool
+}
+
 func generationUsageIdentity(taskID, tenantID string, occurredAt time.Time) generationUsageFact {
 	taskID = strings.TrimSpace(taskID)
 	tenantID = strings.TrimSpace(tenantID)

@@ -96,6 +96,9 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			if err := s.reserveStudioBatchTaskCandidate(ctx, &taskCandidate); err != nil {
 				return SheinStudioCreatedTask{}, err
 			}
+			if err := s.releaseStudioBatchProductImageReservationBeforeReclaim(ctx, candidate.state.Batch, taskCandidate); err != nil {
+				return SheinStudioCreatedTask{}, fmt.Errorf("release stale product image usage reservation: %w", err)
+			}
 			claimed, err := s.claimStudioBatchTaskCandidate(ctx, &taskCandidate)
 			if err != nil {
 				return SheinStudioCreatedTask{}, err

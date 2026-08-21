@@ -56,6 +56,10 @@ func (a *subscriptionStudioProductImageUsage) RecordProductImageUsage(ctx contex
 	return err
 }
 
+func (a *subscriptionStudioProductImageUsage) StudioProductImageUsageReservationEnabled() bool {
+	return a != nil && a.service != nil && a.service.HasUsageLedger()
+}
+
 func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx context.Context, tenantID, reservationID string, quantity int) error {
 	if a == nil || a.service == nil || !a.service.HasUsageLedger() {
 		return listingsubscription.ErrUsageLedgerNotConfigured

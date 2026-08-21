@@ -50,3 +50,16 @@ func TestSubscriptionStudioProductImageUsageReservationUsesDurableLedger(t *test
 		t.Fatalf("idempotent ReserveProductImageUsage() error = %v", err)
 	}
 }
+
+func TestSubscriptionStudioProductImageUsageDisablesReservationWithoutLedger(t *testing.T) {
+	t.Parallel()
+
+	svc, err := listingsubscription.NewService(listingsubscription.NewMemRepository())
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	adapter := studioProductImageUsageDependency(svc)
+	if adapter.StudioProductImageUsageReservationEnabled() {
+		t.Fatal("StudioProductImageUsageReservationEnabled() = true, want false")
+	}
+}
