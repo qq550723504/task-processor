@@ -228,11 +228,13 @@ func (c *Client) buildImageInputParts(ctx context.Context, req *openaiclient.Ima
 			MIMEType: mimeType,
 			Data:     base64.StdEncoding.EncodeToString(req.Image),
 		}})
-		return dedupeInlineParts(parts), nil
 	}
 	for _, rawURL := range append([]string{req.ImageURL}, req.ImageURLs...) {
 		imageURL := strings.TrimSpace(rawURL)
 		if imageURL == "" {
+			continue
+		}
+		if len(req.Image) > 0 && strings.TrimSpace(req.ImageURL) != "" && imageURL == strings.TrimSpace(req.ImageURL) {
 			continue
 		}
 		data, mimeType, err := c.downloadSourceImage(ctx, imageURL)

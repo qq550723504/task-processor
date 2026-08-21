@@ -128,6 +128,31 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 	if _, err := imagePart.Write(req.Image); err != nil {
 		return nil, fmt.Errorf("write image form file: %w", err)
 	}
+	seenURLs := map[string]struct{}{}
+	if primaryURL := strings.TrimSpace(req.ImageURL); primaryURL != "" {
+		seenURLs[primaryURL] = struct{}{}
+	}
+	for _, rawURL := range req.ImageURLs {
+		imageURL := strings.TrimSpace(rawURL)
+		if imageURL == "" {
+			continue
+		}
+		if _, seen := seenURLs[imageURL]; seen {
+			continue
+		}
+		seenURLs[imageURL] = struct{}{}
+		data, contentType, err := downloadImageEditReference(ctx, imageURL)
+		if err != nil {
+			return nil, err
+		}
+		secondaryPart, err := writer.CreateFormFile("image", imageEditFilename(contentType))
+		if err != nil {
+			return nil, fmt.Errorf("create secondary image form file: %w", err)
+		}
+		if _, err := secondaryPart.Write(data); err != nil {
+			return nil, fmt.Errorf("write secondary image form file: %w", err)
+		}
+	}
 	if len(req.Mask) > 0 {
 		maskPart, err := writer.CreateFormFile("mask", "mask.png")
 		if err != nil {
@@ -141,6 +166,36 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 		return nil, fmt.Errorf("close multipart writer: %w", err)
 	}
 	return bc.doMultipartImageRequest(ctx, "/images/edits", body, writer.FormDataContentType())
+}
+
+func downloadImageEditReference(ctx context.Context, imageURL string) ([]byte, string, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("build secondary image request: %w", err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return nil, "", fmt.Errorf("download secondary image: %w", err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return nil, "", fmt.Errorf("download secondary image returned status %d", response.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, 32<<20))
+	if err != nil {
+		return nil, "", fmt.Errorf("read secondary image: %w", err)
+	}
+	if len(data) == 0 {
+		return nil, "", fmt.Errorf("secondary image is empty")
+	}
+	contentType := strings.TrimSpace(response.Header.Get("Content-Type"))
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
+	}
+	if !strings.HasPrefix(strings.ToLower(contentType), "image/") {
+		return nil, "", fmt.Errorf("secondary image content type %q is not an image", contentType)
+	}
+	return data, contentType, nil
 }
 
 func imageEditFilename(contentType string) string {

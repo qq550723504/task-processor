@@ -64,10 +64,7 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 		return err
 	}
 	colorRepresentatives := studioBatchTaskColorRepresentatives(candidate.SelectionSnapshot)
-	productImageGenerationCount := len(colorRepresentatives)
-	if productImageGenerationCount == 0 {
-		productImageGenerationCount = 1
-	}
+	productImageGenerationCount := studioBatchTaskProductImageGenerationCount(candidate.SelectionSnapshot)
 	if len(colorRepresentatives) > 1 {
 		productImageRequest.ProductReferenceImageURLs = studioBatchTaskProductReferenceImageURLsForVariant(candidate.SelectionSnapshot, colorRepresentatives[0])
 	}
@@ -139,17 +136,24 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 	if err := heartbeatStop(); err != nil {
 		return err
 	}
-	// Settle usage only after every color has generated and publicized a
-	// complete image set. A later color failure must not charge earlier output
-	// that is discarded with the failed task attempt.
-	for index := 0; index < productImageGenerationCount; index++ {
-		// The generated output is already available. Do not discard it when the
-		// best-effort usage ledger write is temporarily unavailable; the durable
-		// task/link can still retain the successful product images for retry or
-		// reconciliation.
-		_ = s.recordStudioBatchProductImageUsage(ctx, batch, 1)
-	}
 	return nil
+}
+
+func studioBatchTaskProductImageGenerationCount(selection SheinStudioSelection) int {
+	if count := len(studioBatchTaskColorRepresentatives(selection)); count > 0 {
+		return count
+	}
+	return 1
+}
+
+// settleStudioBatchProductImageUsage is called only after the generated task
+// and its terminal durable link have committed. Generation and authorization
+// happen earlier, but a failed task/link must not consume the quota.
+func (s *taskStudioBatchService) settleStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate) {
+	if normalizeSheinImageStrategy(candidate.ImageStrategy) != sheinImageStrategyAIGenerated {
+		return
+	}
+	_ = s.recordStudioBatchProductImageUsage(ctx, batch, studioBatchTaskProductImageGenerationCount(candidate.SelectionSnapshot))
 }
 
 func (s *taskStudioBatchService) authorizeStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, quantity int) error {

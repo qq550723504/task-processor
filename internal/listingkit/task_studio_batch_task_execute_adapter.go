@@ -181,6 +181,10 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				_ = dispatchHeartbeatStop()
 				return SheinStudioCreatedTask{}, err
 			}
+			// Settle only after both the ListingKit task and durable created link
+			// exist. Keep the ledger write alive if the caller/lease context ends
+			// immediately after the terminal commit.
+			s.settleStudioBatchProductImageUsage(context.WithoutCancel(dispatchCtx), candidate.state.Batch, taskCandidate)
 			if err := dispatchHeartbeatStop(); err != nil {
 				return SheinStudioCreatedTask{}, err
 			}

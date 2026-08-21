@@ -210,3 +210,53 @@ func TestClientEditImageUsesInlineBytesWithoutDownloadingDuplicateURL(t *testing
 		t.Fatalf("data len = %d", len(resp.Data))
 	}
 }
+
+func TestClientEditImageIncludesSecondaryURLsAlongsideInlinePrimary(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/secondary.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("secondary-image"))
+			return
+		case "/v1beta/models/gemini-2.5-flash-image:generateContent":
+			var req map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				t.Fatalf("decode request: %v", err)
+			}
+			contents, _ := req["contents"].([]any)
+			parts, _ := contents[0].(map[string]any)["parts"].([]any)
+			if len(parts) != 3 {
+				t.Fatalf("parts = %#v, want inline primary, secondary reference, and text", parts)
+			}
+			secondary, _ := parts[1].(map[string]any)["inlineData"].(map[string]any)
+			if got := secondary["data"]; got != base64.StdEncoding.EncodeToString([]byte("secondary-image")) {
+				t.Fatalf("secondary inline data = %#v", got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"candidates": []map[string]any{{"content": map[string]any{"parts": []map[string]any{{
+					"inlineData": map[string]any{"mimeType": "image/png", "data": base64.StdEncoding.EncodeToString([]byte("edited-image"))},
+				}}}}},
+			})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		APIKey:      "test-key",
+		Model:       "gemini-2.5-flash-image",
+		BaseURL:     server.URL + "/v1beta",
+		Timeout:     time.Second,
+		MaxAttempts: 1,
+		HTTPClient:  server.Client(),
+	})
+	if _, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
+		Prompt:           "edit faithfully",
+		Image:            []byte("inline-primary"),
+		ImageContentType: "image/png",
+		ImageURLs:        []string{server.URL + "/secondary.png"},
+	}); err != nil {
+		t.Fatalf("EditImage() error = %v", err)
+	}
+}

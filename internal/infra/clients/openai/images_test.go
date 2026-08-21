@@ -120,6 +120,61 @@ func TestClientEditImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 	}
 }
 
+func TestClientEditImageIncludesSecondaryURLsAsMultipartImages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/secondary.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("secondary-image"))
+			return
+		case "/images/edits":
+			reader, err := r.MultipartReader()
+			if err != nil {
+				t.Fatalf("MultipartReader: %v", err)
+			}
+			imageParts := 0
+			for {
+				part, err := reader.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatalf("NextPart: %v", err)
+				}
+				data, _ := io.ReadAll(part)
+				if part.FormName() == "image" {
+					imageParts++
+					if len(data) == 0 {
+						t.Fatal("empty image part")
+					}
+				}
+			}
+			if imageParts != 2 {
+				t.Fatalf("image parts = %d, want primary and secondary", imageParts)
+			}
+			_ = json.NewEncoder(w).Encode(ImageResponse{Data: []ImageData{{B64JSON: base64.StdEncoding.EncodeToString([]byte("edited"))}}})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(&ClientConfig{
+		APIKey:     "test-key",
+		Model:      "gpt-image-1",
+		BaseURL:    server.URL,
+		Timeout:    time.Second,
+		MaxRetries: 0,
+	})
+	if _, err := client.EditImage(context.Background(), &ImageEditRequest{
+		Image:            []byte("primary-image"),
+		ImageContentType: "image/png",
+		ImageURLs:        []string{server.URL + "/secondary.png"},
+	}); err != nil {
+		t.Fatalf("EditImage() error = %v", err)
+	}
+}
+
 func TestBuildAPIURL(t *testing.T) {
 	got := buildAPIURL("https://example.com/v1/", "/images/generations")
 	if got != "https://example.com/v1/images/generations" {

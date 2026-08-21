@@ -347,8 +347,8 @@ func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
 	if len(requests) != 2 {
 		t.Fatalf("captured product image requests = %d, want 2", len(requests))
 	}
-	if len(usage.authorized) != 1 || usage.authorized[0] != "tenant-a:2" || len(usage.recorded) != 2 {
-		t.Fatalf("product image usage = authorized:%v recorded:%v, want one authorization for both colors and one record per color", usage.authorized, usage.recorded)
+	if len(usage.authorized) != 1 || usage.authorized[0] != "tenant-a:2" || len(usage.recorded) != 0 {
+		t.Fatalf("product image usage = authorized:%v recorded:%v, want authorization during attachment and no settlement before task commit", usage.authorized, usage.recorded)
 	}
 	firstPrompt := buildRawStudioProductImagePrompt(requests[0], defaultStudioProductImageRoles[0])
 	secondPrompt := buildRawStudioProductImagePrompt(requests[1], defaultStudioProductImageRoles[0])
@@ -363,6 +363,22 @@ func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
 	}
 	if got := request.Options.SheinStudio.VariantProductImages[1].Color; got != "Blue" {
 		t.Fatalf("second variant color = %q, want Blue", got)
+	}
+}
+
+func TestTaskStudioBatchServiceSettlesProductImageUsageForCommittedCandidate(t *testing.T) {
+	usage := &recordingStudioProductImageUsage{}
+	service := &taskStudioBatchService{productImageUsage: usage}
+	candidate := studioBatchTaskCandidate{
+		ImageStrategy: sheinImageStrategyAIGenerated,
+		SelectionSnapshot: SheinStudioSelection{Variants: []SheinStudioSelectionVariant{
+			{VariantSKU: "red-s", Color: "Red"},
+			{VariantSKU: "blue-s", Color: "Blue"},
+		}},
+	}
+	service.settleStudioBatchProductImageUsage(context.Background(), &StudioBatchRecord{TenantID: "tenant-a"}, candidate)
+	if len(usage.recorded) != 1 || usage.recorded[0] != "tenant-a:2" {
+		t.Fatalf("settled usage = %v, want one post-commit settlement for both colors", usage.recorded)
 	}
 }
 
