@@ -57,7 +57,7 @@ func TestBuildSettingsHealthProbesFromConfigReportsReadyConfiguredRuntime(t *tes
 	}
 }
 
-func TestBuildSettingsHealthProbesFromConfigDoesNotRequireTenantScopedLoginIdentity(t *testing.T) {
+func TestBuildSettingsHealthProbesFromConfigScopesLoginIdentityRequirements(t *testing.T) {
 	t.Parallel()
 
 	probes := buildSettingsHealthProbesFromConfig(&config.Config{
@@ -75,9 +75,11 @@ func TestBuildSettingsHealthProbesFromConfigDoesNotRequireTenantScopedLoginIdent
 	if !probes.SheinIntegration.Configured || len(probes.SheinIntegration.Missing) > 0 {
 		t.Fatalf("shein integration probe = %+v, want ready without global tenant identity", probes.SheinIntegration)
 	}
-	if !probes.SDSLogin.Configured || len(probes.SDSLogin.Missing) > 0 {
-		t.Fatalf("sds login probe = %+v, want ready without global tenant identity", probes.SDSLogin)
+	if probes.SDSLogin.Configured {
+		t.Fatalf("sds login probe = %+v, want identity requirements until runtime is tenant-scoped", probes.SDSLogin)
 	}
+	assertProbeMissing(t, probes.SDSLogin, "sds.loginService.tenantID 缺失")
+	assertProbeMissing(t, probes.SDSLogin, "sds.loginService.identifier 缺失")
 }
 
 func TestBuildSettingsHealthProbesFromConfigReportsMissingRuntimeFields(t *testing.T) {
@@ -94,6 +96,8 @@ func TestBuildSettingsHealthProbesFromConfigReportsMissingRuntimeFields(t *testi
 	assertProbeMissing(t, probes.SheinIntegration, "shein.loginService.baseURL 缺失")
 	assertProbeMissing(t, probes.SheinIntegration, "shein.cookieRedis.host 缺失")
 	assertProbeMissing(t, probes.SDSLogin, "sds.loginService.baseURL 缺失")
+	assertProbeMissing(t, probes.SDSLogin, "sds.loginService.tenantID 缺失")
+	assertProbeMissing(t, probes.SDSLogin, "sds.loginService.identifier 缺失")
 	assertProbeMissing(t, probes.ObjectStorage, "productimage.publisher.s3.bucket 缺失")
 	assertProbeMissing(t, probes.ObjectStorage, "productimage.publisher.s3.endpoint 缺失")
 }

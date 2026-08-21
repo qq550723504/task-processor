@@ -11,7 +11,7 @@ func buildSettingsHealthProbesFromConfig(cfg *config.Config) listingkit.Settings
 	if cfg == nil {
 		return listingkit.SettingsHealthProbes{
 			SheinIntegration: missingProbe("shein.loginService.baseURL 缺失"),
-			SDSLogin:         missingProbe("sds.loginService.baseURL 缺失"),
+			SDSLogin:         missingProbe("sds.loginService.baseURL 缺失", "sds.loginService.tenantID 缺失", "sds.loginService.identifier 缺失"),
 			ObjectStorage:    missingProbe("productimage.publisher.provider 缺失"),
 		}
 	}
@@ -52,7 +52,9 @@ func sheinIntegrationProbe(cfg *config.Config) listingkit.SettingsHealthProbe {
 func sdsLoginProbe(cfg *config.Config) listingkit.SettingsHealthProbe {
 	login := cfg.Platforms.SDS.LoginService
 	missing := requiredStringFields("sds.loginService", map[string]string{
-		"baseURL": login.BaseURL,
+		"baseURL":    login.BaseURL,
+		"tenantID":   login.TenantID,
+		"identifier": login.Identifier,
 	})
 	return probeFromMissing(missing)
 }
