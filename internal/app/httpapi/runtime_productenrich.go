@@ -5,10 +5,12 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
+	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 )
 
 type productEnrichRuntimeDeps struct {
@@ -17,7 +19,7 @@ type productEnrichRuntimeDeps struct {
 	understanding productenrich.ProductUnderstanding
 }
 
-func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, openaiMgr *openaiclient.Manager) (productEnrichRuntimeDeps, error) {
+func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, openaiMgr *openaiclient.Manager, credentialResolver openaiclient.ClientConfigResolver, recorder aicapability.InvocationRecorder) (productEnrichRuntimeDeps, error) {
 	llmMgr, err := productenrich.NewLLMManagerAdapterFromManager(openaiMgr)
 	if err != nil {
 		return productEnrichRuntimeDeps{}, fmt.Errorf("create LLM manager: %w", err)
@@ -30,7 +32,22 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		return productEnrichRuntimeDeps{}, fmt.Errorf("validate LLM manager: %w", err)
 	}
 
-	productUnderstanding, err := productenrichenrich.NewProductUnderstanding(llmMgr)
+	var productUnderstanding productenrich.ProductUnderstanding
+	if cfg.AICapability.ProductEnrichTextEnabled {
+		if credentialResolver == nil {
+			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich text capability: credential resolver is required")
+		}
+		textGenerator, textErr := productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
+			Router:   productenrichhttpapi.BuildProductEnrichTextCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichTextAllowedTenantIDs),
+			Recorder: recorder,
+		})
+		if textErr != nil {
+			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich text capability: %w", textErr)
+		}
+		productUnderstanding, err = productenrichenrich.NewProductUnderstandingWithTextGenerator(llmMgr, textGenerator)
+	} else {
+		productUnderstanding, err = productenrichenrich.NewProductUnderstanding(llmMgr)
+	}
 	if err != nil {
 		return productEnrichRuntimeDeps{}, fmt.Errorf("create product understanding: %w", err)
 	}

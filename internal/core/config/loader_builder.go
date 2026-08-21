@@ -192,6 +192,8 @@ func BuildConfig(v *viper.Viper) *Config {
 			StudioImageRoutingMode:            v.GetString("aiCapability.studioImageRoutingMode"),
 			ProductImageSceneEnabled:          v.GetBool("aiCapability.productImageSceneEnabled"),
 			ProductImageSceneAllowedTenantIDs: getStringSlice(v, "aiCapability.productImageSceneAllowedTenantIDs"),
+			ProductEnrichTextEnabled:          v.GetBool("aiCapability.productEnrichTextEnabled"),
+			ProductEnrichTextAllowedTenantIDs: getStringSlice(v, "aiCapability.productEnrichTextAllowedTenantIDs"),
 		},
 		ListingControlPlane: ListingControlPlaneConfig{
 			Enabled:                    v.GetBool("listingControlPlane.enabled"),

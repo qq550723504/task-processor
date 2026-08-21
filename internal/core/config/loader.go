@@ -238,6 +238,8 @@ func NewDefaultConfig() *Config {
 			StudioImageRoutingMode:            "legacy",
 			ProductImageSceneEnabled:          false,
 			ProductImageSceneAllowedTenantIDs: nil,
+			ProductEnrichTextEnabled:          false,
+			ProductEnrichTextAllowedTenantIDs: nil,
 		},
 		ListingKit: ListingKitConfig{
 			GenerationUsageLedgerEnabled: false,

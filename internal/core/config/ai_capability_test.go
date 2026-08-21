@@ -54,6 +54,25 @@ func TestProductImageSceneGovernanceRejectsEnabledWithoutTenantAllowlist(t *test
 	assert.Contains(t, err.Error(), "productImageSceneAllowedTenantIDs")
 }
 
+func TestProductEnrichTextGovernanceUsesEnvironmentOverride(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_TEXT_ENABLED", "true")
+	t.Setenv("TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_TEXT_ALLOWED_TENANT_IDS", "tenant-a, tenant-b")
+
+	cfg, err := LoadFromBytes(validMinimalConfigYAML())
+	require.NoError(t, err)
+	assert.True(t, cfg.AICapability.ProductEnrichTextEnabled)
+	assert.Equal(t, []string{"tenant-a", "tenant-b"}, cfg.AICapability.ProductEnrichTextAllowedTenantIDs)
+}
+
+func TestProductEnrichTextGovernanceRejectsEnabledWithoutTenantAllowlist(t *testing.T) {
+	t.Setenv("TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_TEXT_ENABLED", "true")
+	t.Setenv("TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_TEXT_ALLOWED_TENANT_IDS", "")
+
+	_, err := LoadFromBytes(validMinimalConfigYAML())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "productEnrichTextAllowedTenantIDs")
+}
+
 func TestProductImageSceneGovernanceRejectsInvalidEnvironmentValue(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_IMAGE_SCENE_ENABLED", "maybe")
 

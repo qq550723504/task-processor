@@ -33,6 +33,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("aiCapability.studioImageRoutingMode", defaults.AICapability.StudioImageRoutingMode)
 	v.SetDefault("aiCapability.productImageSceneEnabled", defaults.AICapability.ProductImageSceneEnabled)
 	v.SetDefault("aiCapability.productImageSceneAllowedTenantIDs", defaults.AICapability.ProductImageSceneAllowedTenantIDs)
+	v.SetDefault("aiCapability.productEnrichTextEnabled", defaults.AICapability.ProductEnrichTextEnabled)
+	v.SetDefault("aiCapability.productEnrichTextAllowedTenantIDs", defaults.AICapability.ProductEnrichTextAllowedTenantIDs)
 	v.SetDefault("listingkit.sheinSubmitDebugDumpDir", defaults.ListingKit.SheinSubmitDebugDumpDir)
 	v.SetDefault("listingkit.generationUsageLedgerEnabled", defaults.ListingKit.GenerationUsageLedgerEnabled)
 	v.SetDefault("listingkit.generationUsageLedgerTenantIDs", defaults.ListingKit.GenerationUsageLedgerTenantIDs)

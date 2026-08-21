@@ -16,15 +16,23 @@ import (
 )
 
 type productUnderstanding struct {
-	llmManager productenrich.LLMManager
+	llmManager    productenrich.LLMManager
+	textGenerator TextGenerator
 }
 
 func NewProductUnderstanding(llmManager productenrich.LLMManager) (productenrich.ProductUnderstanding, error) {
+	return NewProductUnderstandingWithTextGenerator(llmManager, nil)
+}
+
+// NewProductUnderstandingWithTextGenerator keeps the existing ProductEnrich
+// pipeline intact while allowing only text attribute extraction to use a
+// governed provider-neutral capability.
+func NewProductUnderstandingWithTextGenerator(llmManager productenrich.LLMManager, textGenerator TextGenerator) (productenrich.ProductUnderstanding, error) {
 	if llmManager == nil {
 		return nil, fmt.Errorf("llm manager cannot be nil")
 	}
 
-	return &productUnderstanding{llmManager: llmManager}, nil
+	return &productUnderstanding{llmManager: llmManager, textGenerator: textGenerator}, nil
 }
 
 func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *productenrich.ParsedInput) (*productenrich.ProductAnalysis, error) {
@@ -324,16 +332,21 @@ Product description:
 Only return the JSON object, no additional text.`, text)
 	}
 
-	fastClient, err := p.llmManager.GetClient("fast")
-	if err != nil {
-		var fallbackErr error
-		fastClient, fallbackErr = p.llmManager.GetClient("default")
-		if fallbackErr != nil || fastClient == nil {
-			return nil, fmt.Errorf("failed to get fast or default client: %w", err)
+	var response string
+	var err error
+	if p.textGenerator == nil {
+		fastClient, clientErr := p.llmManager.GetClient("fast")
+		if clientErr != nil {
+			var fallbackErr error
+			fastClient, fallbackErr = p.llmManager.GetClient("default")
+			if fallbackErr != nil || fastClient == nil {
+				return nil, fmt.Errorf("failed to get fast or default client: %w", clientErr)
+			}
 		}
+		response, err = fastClient.Generate(ctx, promptText)
+	} else {
+		response, err = p.textGenerator.Generate(ctx, promptText)
 	}
-
-	response, err := fastClient.Generate(ctx, promptText)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract text attributes: %w", err)
 	}
