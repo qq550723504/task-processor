@@ -45,7 +45,12 @@ if (-not [string]::IsNullOrWhiteSpace($Url)) {
     throw "-Confirm is only valid when -Url creates a local-agent job."
 }
 
-& go @arguments
+$output = @(& go @arguments 2>&1)
+$output | ForEach-Object { Write-Output $_ }
 if ($LASTEXITCODE -ne 0) {
     throw "1688 local agent failed"
+}
+$joinedOutput = $output -join "`n"
+if ($joinedOutput -notmatch 'envelope_summary=\{"source_key":"crawler:1688:[0-9]+","source_url":"https://detail\.1688\.com/offer/[0-9]+\.html","product_id":"[0-9]+",') {
+    throw "1688 local agent did not expose a valid reconstructed envelope summary"
 }

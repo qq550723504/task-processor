@@ -38,6 +38,16 @@ func TestRunnerSubmitsSnapshotAndReportsSuccess(t *testing.T) {
 	require.Equal(t, "1052008074197", api.submittedProduct.ID)
 }
 
+func TestRunnerReportsReconstructedEnvelopeSummary(t *testing.T) {
+	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}}
+	crawler := &fakeCrawler{product: &model.Product1688{ID: "1052008074197", URL: offerURL}}
+
+	outcome, err := (Runner{Jobs: api, Crawler: crawler}).RunOnce(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, outcome.EnvelopeSummary)
+	require.Equal(t, "crawler:1688:1052008074197", outcome.EnvelopeSummary.SourceKey)
+}
+
 func TestRunnerTerminatesOversizedSnapshotAsExtractionFailure(t *testing.T) {
 	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}, submitSuccessErr: ErrSnapshotTooLarge}
 	crawler := &fakeCrawler{product: &model.Product1688{ID: "1052008074197", URL: offerURL}}
@@ -101,7 +111,7 @@ func (f *fakeJobsAPI) SubmitSuccess(_ context.Context, _ string, _ string, produ
 	if f.submitSuccessErr != nil {
 		return Job{}, f.submitSuccessErr
 	}
-	return Job{State: JobSucceeded}, nil
+	return Job{State: JobSucceeded, EnvelopeSummary: &EnvelopeSummary{SourceKey: "crawler:1688:1052008074197", ProductID: "1052008074197"}}, nil
 }
 func (f *fakeJobsAPI) SubmitFailure(ctx context.Context, _ string, _ string, failure Failure) (Job, error) {
 	f.submittedFailureContextErr = ctx.Err()

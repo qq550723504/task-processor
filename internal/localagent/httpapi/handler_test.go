@@ -69,8 +69,10 @@ func TestSubmitResultAcknowledgesTerminalJobAndDoesNotAcceptSourceAccount(t *tes
 	require.NoError(t, json.Unmarshal(result.Body.Bytes(), &done))
 	require.Equal(t, localagent.JobSucceeded, done.State)
 	require.Equal(t, created.JobID, done.JobID)
+	require.NotNil(t, done.EnvelopeSummary)
+	require.Equal(t, "crawler:1688:1052008074197", done.EnvelopeSummary.SourceKey)
 	require.NotContains(t, result.Body.String(), "source_account_id")
-	require.NotContains(t, result.Body.String(), "envelope")
+	require.NotContains(t, result.Body.String(), `"envelope":`)
 }
 
 func TestProductSnapshotRequestMapsSnakeCaseFields(t *testing.T) {

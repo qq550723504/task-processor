@@ -187,11 +187,22 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 		Product:     product,
 		SourceRunID: rec.job.ID,
 	})
+	summary := EnvelopeSummary{
+		SourceKey:    envelope.Identity.SourceKey(),
+		SourceURL:    envelope.Identity.SourceURL,
+		ProductID:    envelope.Identity.ProductID,
+		Title:        envelope.ProductCandidate.Title,
+		AssetCount:   len(envelope.AssetCandidates),
+		VariantCount: len(envelope.ProductCandidate.Variants),
+		SupplierName: envelope.SupplierOrCostFacts.SupplierName,
+		Price:        envelope.SupplierOrCostFacts.Price,
+	}
 	// Terminal records are retained only for lifecycle/idempotency checks. The
 	// current API has no terminal read route, so keep the reconstructed envelope
 	// on the immediate return value without retaining its potentially large
 	// payload in the in-memory job record.
 	rec.job.Envelope = nil
+	rec.job.EnvelopeSummary = &summary
 	rec.job.State = JobSucceeded
 	rec.job.LeaseExpiresAt = time.Time{}
 	rec.executionToken = ""

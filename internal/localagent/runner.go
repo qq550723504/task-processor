@@ -47,8 +47,9 @@ const (
 const failureSubmitTimeout = 10 * time.Second
 
 type Outcome struct {
-	State OutcomeState
-	JobID string
+	State           OutcomeState
+	JobID           string
+	EnvelopeSummary *EnvelopeSummary
 }
 
 func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
@@ -90,7 +91,8 @@ func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
 		}
 		return Outcome{State: OutcomeFailed, JobID: claim.Job.ID}, nil
 	}
-	_, err = r.Jobs.SubmitSuccess(ctx, claim.Job.ID, claim.ExecutionToken, a1688.SnapshotFromLegacyProduct(product))
+	var submitted Job
+	submitted, err = r.Jobs.SubmitSuccess(ctx, claim.Job.ID, claim.ExecutionToken, a1688.SnapshotFromLegacyProduct(product))
 	if err != nil {
 		if errors.Is(err, ErrSnapshotTooLarge) {
 			_, submitErr := r.submitFailure(ctx, claim.Job.ID, claim.ExecutionToken, Failure{Kind: FailureExtraction, Message: "1688 product snapshot exceeds submission size limit"})
@@ -101,7 +103,7 @@ func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
 		}
 		return Outcome{}, err
 	}
-	return Outcome{State: OutcomeSucceeded, JobID: claim.Job.ID}, nil
+	return Outcome{State: OutcomeSucceeded, JobID: claim.Job.ID, EnvelopeSummary: submitted.EnvelopeSummary}, nil
 }
 
 func (r Runner) submitFailure(ctx context.Context, jobID, executionToken string, failure Failure) (Job, error) {

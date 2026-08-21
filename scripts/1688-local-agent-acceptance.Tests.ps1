@@ -21,4 +21,9 @@ Describe "1688 local-agent acceptance guardrails" {
         $scriptText | Should Match "detail\.1688\.com"
         $scriptText | Should Match "offer/\[0-9\]"
     }
+
+    It "asserts the bounded reconstructed envelope summary" {
+        $scriptText | Should Match "envelope_summary"
+        $scriptText | Should Match "source_key"
+    }
 }

@@ -165,9 +165,10 @@ type claimResponse struct {
 }
 
 type terminalResponse struct {
-	JobID   string              `json:"job_id"`
-	State   localagent.JobState `json:"state"`
-	Failure *localagent.Failure `json:"failure,omitempty"`
+	JobID           string                      `json:"job_id"`
+	State           localagent.JobState         `json:"state"`
+	EnvelopeSummary *localagent.EnvelopeSummary `json:"envelope_summary,omitempty"`
+	Failure         *localagent.Failure         `json:"failure,omitempty"`
 }
 
 func (h *Handler) Create(c *gin.Context) {
@@ -286,7 +287,7 @@ func (h *Handler) SubmitResult(c *gin.Context) {
 		writeServiceError(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, terminalResponse{JobID: job.ID, State: job.State, Failure: job.Failure})
+	c.JSON(http.StatusOK, terminalResponse{JobID: job.ID, State: job.State, EnvelopeSummary: job.EnvelopeSummary, Failure: job.Failure})
 }
 
 func responseFromJob(job localagent.Job) jobResponse {

@@ -205,9 +205,10 @@ type jobResponse struct {
 }
 
 type terminalResponse struct {
-	JobID   string              `json:"job_id"`
-	State   localagent.JobState `json:"state"`
-	Failure *localagent.Failure `json:"failure"`
+	JobID           string                      `json:"job_id"`
+	State           localagent.JobState         `json:"state"`
+	EnvelopeSummary *localagent.EnvelopeSummary `json:"envelope_summary"`
+	Failure         *localagent.Failure         `json:"failure"`
 }
 
 type errorResponse struct {
@@ -228,7 +229,7 @@ func (r jobResponse) toJob() localagent.Job {
 }
 
 func (r terminalResponse) toJob() localagent.Job {
-	return localagent.Job{ID: r.JobID, State: r.State, Failure: r.Failure}
+	return localagent.Job{ID: r.JobID, State: r.State, EnvelopeSummary: r.EnvelopeSummary, Failure: r.Failure}
 }
 
 func (r claimResponse) toJob() localagent.Job {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -85,9 +86,19 @@ func run(ctx context.Context, args []string) error {
 	if outcome.JobID != "" {
 		fmt.Printf(" job=%s", outcome.JobID)
 	}
+	if outcome.EnvelopeSummary != nil {
+		encodedSummary, marshalErr := json.Marshal(outcome.EnvelopeSummary)
+		if marshalErr != nil {
+			return fmt.Errorf("encode envelope summary: %w", marshalErr)
+		}
+		fmt.Printf(" envelope_summary=%s", encodedSummary)
+	}
 	fmt.Println()
 	if outcome.State != localagent.OutcomeSucceeded {
 		return fmt.Errorf("local-agent outcome was %s", outcome.State)
+	}
+	if outcome.EnvelopeSummary == nil {
+		return errors.New("local-agent success response did not include an envelope summary")
 	}
 	return nil
 }
