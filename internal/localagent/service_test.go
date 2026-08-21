@@ -185,6 +185,8 @@ func TestServiceRejectsNonPublicOfferURL(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidURL)
 	_, err = service.Create(Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com:443/offer/1052008074197.html")
 	require.ErrorIs(t, err, ErrInvalidURL)
+	_, err = service.Create(Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com:/offer/1052008074197.html")
+	require.ErrorIs(t, err, ErrInvalidURL)
 	_, err = service.Create(Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com/offer/%31%30%35%32%30%30%38%30%37%34%31%39%37.html")
 	require.ErrorIs(t, err, ErrInvalidURL)
 	_, err = service.Create(Actor{TenantID: "tenant-a", UserID: "user-a"}, offerURL+"?")

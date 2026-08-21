@@ -62,21 +62,22 @@ func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
 	if !r.CrawlerPrepared {
 		if preparer, ok := r.Crawler.(crawlerPreparer); ok {
 			if err := preparer.Prepare(ctx); err != nil {
+				claim, claimErr := r.claim(ctx)
+				if claimErr != nil {
+					return Outcome{}, err
+				}
+				if claim != nil {
+					_, submitErr := r.submitFailure(ctx, claim.Job.ID, claim.ExecutionToken, Failure{Kind: FailureBrowser, Message: "1688 browser could not be started"})
+					if submitErr != nil {
+						return Outcome{}, submitErr
+					}
+					return Outcome{State: OutcomeFailed, JobID: claim.Job.ID}, nil
+				}
 				return Outcome{}, err
 			}
 		}
 	}
-	var claim *Claim
-	var err error
-	if r.JobID != "" {
-		if targeted, ok := r.Jobs.(targetedJobs); ok {
-			claim, err = targeted.ClaimJob(ctx, r.JobID)
-		} else {
-			return Outcome{}, errors.New("local-agent jobs client does not support targeted claims")
-		}
-	} else {
-		claim, err = r.Jobs.Claim(ctx)
-	}
+	claim, err := r.claim(ctx)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -117,6 +118,16 @@ func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
 	return Outcome{State: OutcomeSucceeded, JobID: claim.Job.ID, EnvelopeSummary: submitted.EnvelopeSummary}, nil
 }
 
+func (r Runner) claim(ctx context.Context) (*Claim, error) {
+	if r.JobID != "" {
+		if targeted, ok := r.Jobs.(targetedJobs); ok {
+			return targeted.ClaimJob(ctx, r.JobID)
+		}
+		return nil, errors.New("local-agent jobs client does not support targeted claims")
+	}
+	return r.Jobs.Claim(ctx)
+}
+
 func (r Runner) submitFailure(ctx context.Context, jobID, executionToken string, failure Failure) (Job, error) {
 	failureCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), failureSubmitTimeout)
 	defer cancel()
@@ -133,6 +144,8 @@ func classifyFailure(err error) Failure {
 			return Failure{Kind: FailureChallenge, Message: "1688 challenge detected"}
 		case alibaba1688.PublicAccessFailureMissingFields:
 			return Failure{Kind: FailureExtraction, Message: "1688 product fields could not be extracted"}
+		case alibaba1688.PublicAccessFailureValidation:
+			return Failure{Kind: FailureExtraction, Message: "1688 product validation failed"}
 		case alibaba1688.PublicAccessFailureInvalidURL:
 			return Failure{Kind: FailureNavigation, Message: "1688 offer URL could not be opened"}
 		case alibaba1688.PublicAccessFailureTransport:

@@ -29,6 +29,24 @@ func TestRunnerClassifiesBrowserStartupFailure(t *testing.T) {
 	require.Equal(t, FailureBrowser, api.submittedFailure.Kind)
 }
 
+func TestRunnerClassifiesProductValidationFailureAsExtraction(t *testing.T) {
+	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}}
+	crawler := &fakeCrawler{err: alibaba1688.NewPublicAccessError(alibaba1688.PublicAccessFailureValidation, errors.New("invalid image"))}
+	outcome, err := (Runner{Jobs: api, Crawler: crawler}).RunOnce(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, OutcomeFailed, outcome.State)
+	require.Equal(t, FailureExtraction, api.submittedFailure.Kind)
+}
+
+func TestRunnerRecordsPreparationFailureAgainstPendingJob(t *testing.T) {
+	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}}
+	crawler := &fakeCrawler{prepareErr: errors.New("playwright install failed")}
+	outcome, err := (Runner{Jobs: api, Crawler: crawler}).RunOnce(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, OutcomeFailed, outcome.State)
+	require.Equal(t, FailureBrowser, api.submittedFailure.Kind)
+}
+
 func TestRunnerSubmitsSnapshotAndReportsSuccess(t *testing.T) {
 	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}}
 	crawler := &fakeCrawler{product: &model.Product1688{ID: "1052008074197", URL: offerURL}}
@@ -149,6 +167,7 @@ func (f *fakeJobsAPI) SubmitFailure(ctx context.Context, _ string, _ string, fai
 type fakeCrawler struct {
 	product         *model.Product1688
 	err             error
+	prepareErr      error
 	order           *[]string
 	cancelOnProcess context.CancelFunc
 }
@@ -157,7 +176,7 @@ func (f *fakeCrawler) Prepare(context.Context) error {
 	if f.order != nil {
 		*f.order = append(*f.order, "prepare")
 	}
-	return nil
+	return f.prepareErr
 }
 
 func (f *fakeCrawler) Process(context.Context, string) (*model.Product1688, error) {

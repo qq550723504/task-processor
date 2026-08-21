@@ -11,6 +11,7 @@ const (
 	PublicAccessFailureBrowser       PublicAccessFailureKind = "browser"
 	PublicAccessFailureChallenge     PublicAccessFailureKind = "challenge"
 	PublicAccessFailureMissingFields PublicAccessFailureKind = "missing_fields"
+	PublicAccessFailureValidation    PublicAccessFailureKind = "validation"
 	PublicAccessFailureInvalidURL    PublicAccessFailureKind = "invalid_url"
 	PublicAccessFailureTransport     PublicAccessFailureKind = "transport"
 )

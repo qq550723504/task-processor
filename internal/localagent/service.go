@@ -347,7 +347,7 @@ func validateActor(actor Actor) error {
 func validateOfferURL(raw string) (string, error) {
 	clean := sourcing.NormalizeAlibaba1688URL(raw)
 	parsed, err := url.Parse(clean)
-	if err != nil || parsed.Scheme != "https" || parsed.Hostname() != "detail.1688.com" || parsed.Port() != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.RawPath != "" {
+	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Host, "detail.1688.com") || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.RawPath != "" {
 		return "", ErrInvalidURL
 	}
 	if !offerPathPattern.MatchString(parsed.Path) {

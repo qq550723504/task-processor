@@ -102,7 +102,7 @@ func (sp *SingleProcessor) processWithBrowserManager(url string, startTime time.
 
 	// 验证产品信息
 	if validateErr := sp.productChecker.ValidateProduct(product); validateErr != nil {
-		return nil, NewPublicAccessError(PublicAccessFailureMissingFields, fmt.Errorf("产品信息验证失败: %w", validateErr))
+		return nil, NewPublicAccessError(PublicAccessFailureValidation, fmt.Errorf("产品信息验证失败: %w", validateErr))
 	}
 
 	duration := time.Since(startTime)
