@@ -38,6 +38,7 @@ var (
 	ErrUsageInvalidTransition             = errors.New("usage ledger invalid transition")
 	ErrUsageQuotaExceeded                 = errors.New("usage ledger quota exceeded")
 	ErrUsageLedgerNotConfigured           = errors.New("usage ledger is not configured")
+	ErrUsageLedgerMetadataUnsupported     = errors.New("usage ledger metadata updates are unsupported")
 	ErrUsageEventNotFound                 = errors.New("usage ledger event not found")
 	ErrUsageOutboxUnsafeMetadata          = errors.New("usage outbox metadata is unsafe")
 	ErrUsageOutboxStorageSnapshotRequired = errors.New("usage outbox storage snapshot is required")
@@ -299,4 +300,10 @@ type UsageLedger interface {
 	Reverse(ctx context.Context, eventID, idempotencyKey, reason string) (UsageEvent, error)
 	Get(ctx context.Context, tenantID, idempotencyKey string) (*UsageEvent, error)
 	ListPendingOutbox(ctx context.Context, limit int) ([]UsageOutboxItem, error)
+}
+
+// UsageLedgerMetadataUpdater is an optional extension used by adapters that
+// need to durably record completion of an external mirror side effect.
+type UsageLedgerMetadataUpdater interface {
+	UpdateMetadata(ctx context.Context, eventID string, metadata map[string]string) (UsageEvent, error)
 }

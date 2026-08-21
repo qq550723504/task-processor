@@ -819,6 +819,13 @@ func TestTaskStudioBatchServicePersistsPendingStaleReservationRelease(t *testing
 	if err != nil || !claimed {
 		t.Fatalf("claimStudioBatchTaskCandidate() = (%v, %q, %v), want stale claim", claimed, previousClaimToken, err)
 	}
+	claimedLink, err := links.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
+	if err != nil {
+		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() after reclaim error = %v", err)
+	}
+	if claimedLink.PendingProductImageUsageReleaseClaimToken != previousClaimToken {
+		t.Fatalf("atomic pending release token = %q, want %q", claimedLink.PendingProductImageUsageReleaseClaimToken, previousClaimToken)
+	}
 	previous := candidate
 	previous.ClaimToken = previousClaimToken
 	if err := service.releaseStudioBatchProductImageUsage(ctx, &StudioBatchRecord{TenantID: "tenant-a"}, previous, "stale_reclaimed"); err == nil {

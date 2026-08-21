@@ -186,6 +186,29 @@ func (r *GormStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpdated
 	return link, result.RowsAffected > 0, nil
 }
 
+func (r *GormStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpdatedAtWithTokenAndPendingRelease(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, claimToken string, pendingReleaseClaimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	if err := ensureStudioBatchTaskLinkPendingProductImageUsageReleaseClaimTokenColumn(r.db); err != nil {
+		return nil, false, err
+	}
+	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
+		Model(&StudioBatchTaskLinkRecord{}).
+		Where("candidate_key = ? AND status = ? AND updated_at = ?", candidateKey, fromStatus, observedUpdatedAt).
+		Updates(map[string]any{
+			"status":      toStatus,
+			"claim_token": strings.TrimSpace(claimToken),
+			"pending_product_image_usage_release_claim_token": strings.TrimSpace(pendingReleaseClaimToken),
+			"updated_at": updatedAt,
+		})
+	if result.Error != nil {
+		return nil, false, result.Error
+	}
+	link, err := r.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey)
+	if err != nil {
+		return nil, false, err
+	}
+	return link, result.RowsAffected > 0, nil
+}
+
 func (r *GormStudioBatchTaskLinkRepository) RefreshStudioBatchTaskLink(ctx context.Context, candidateKey string, claimToken string, updatedAt time.Time) (bool, error) {
 	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
 		Model(&StudioBatchTaskLinkRecord{}).

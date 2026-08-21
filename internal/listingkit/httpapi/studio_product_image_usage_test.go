@@ -217,3 +217,44 @@ func TestSubscriptionStudioProductImageUsageReleaseRetriesLegacyMirrorBeforeLedg
 		t.Fatalf("event status = %q after release retry, want released", event.Status)
 	}
 }
+
+func TestSubscriptionStudioProductImageUsageRetriesPendingLegacyMirrorOnExistingReservation(t *testing.T) {
+	repo := listingsubscription.NewMemRepository()
+	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(repo))
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-pending-mirror", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"product_image_jobs": 2},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	adapter := studioProductImageUsageDependency(svc)
+	ctx := context.Background()
+	if err := adapter.ReserveProductImageUsage(ctx, "tenant-pending-mirror", "candidate-1", 1); err != nil {
+		t.Fatalf("ReserveProductImageUsage() error = %v", err)
+	}
+	event, err := svc.GetUsage(ctx, "tenant-pending-mirror", "listingkit:studio_product_image:candidate-1")
+	if err != nil {
+		t.Fatalf("GetUsage() error = %v", err)
+	}
+	if _, err := svc.RecordUsageForPeriod(ctx, event.TenantID, studioProductImageModule, studioProductImageMetric, event.PeriodKey, -1); err != nil {
+		t.Fatalf("RecordUsageForPeriod() reset error = %v", err)
+	}
+	if _, err := svc.UpdateUsageMetadata(ctx, event.EventID, map[string]string{legacyMirrorMetadataKey: legacyMirrorPending}); err != nil {
+		t.Fatalf("UpdateUsageMetadata() error = %v", err)
+	}
+	if err := adapter.ReserveProductImageUsage(ctx, "tenant-pending-mirror", "candidate-1", 1); err != nil {
+		t.Fatalf("ReserveProductImageUsage() pending retry error = %v", err)
+	}
+	usage, err := repo.ListUsage(ctx, "tenant-pending-mirror")
+	if err != nil {
+		t.Fatalf("ListUsage() error = %v", err)
+	}
+	for _, counter := range usage {
+		if counter.Metric == studioProductImageMetric && counter.Used != 1 {
+			t.Fatalf("legacy mirror usage = %d, want one after pending retry", counter.Used)
+		}
+	}
+}

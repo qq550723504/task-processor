@@ -110,6 +110,20 @@ func (s *Service) GetUsage(ctx context.Context, tenantID, idempotencyKey string)
 	return ledger.Get(ctx, tenantID, idempotencyKey)
 }
 
+// UpdateUsageMetadata persists adapter-owned reconciliation state on a usage
+// event when the configured ledger supports that optional extension.
+func (s *Service) UpdateUsageMetadata(ctx context.Context, eventID string, metadata map[string]string) (UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return UsageEvent{}, err
+	}
+	updater, ok := ledger.(UsageLedgerMetadataUpdater)
+	if !ok {
+		return UsageEvent{}, ErrUsageLedgerMetadataUnsupported
+	}
+	return updater.UpdateMetadata(ctx, eventID, metadata)
+}
+
 func (s *Service) requireUsageLedger() (UsageLedger, error) {
 	if s == nil || usageLedgerIsNil(s.usageLedger) {
 		return nil, ErrUsageLedgerNotConfigured
@@ -705,6 +719,43 @@ func (s *Service) RecordUsage(ctx context.Context, tenantID, moduleCode, metric 
 		}
 	}
 	periodKey := s.now().UTC().Format("2006-01")
+	return s.repo.IncrementUsage(ctx, tenantID, moduleCode, periodKey, metric, increment)
+}
+
+// RecordUsageForPeriod applies a legacy aggregate-counter adjustment to the
+// billing period that owns a durable usage event. It is used for reservation
+// rollback, which may happen after the calendar period has changed.
+func (s *Service) RecordUsageForPeriod(ctx context.Context, tenantID, moduleCode, metric, periodKey string, increment int) (*UsageCounter, error) {
+	if s == nil || s.repo == nil {
+		return nil, ErrSubscriptionRequired
+	}
+	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(moduleCode) == "" || strings.TrimSpace(metric) == "" {
+		return nil, ErrUsageInvalidInput
+	}
+	if strings.TrimSpace(periodKey) == "" {
+		return nil, ErrUsageInvalidInput
+	}
+	if increment == 0 {
+		return nil, errors.New("usage increment cannot be zero")
+	}
+	if !s.moduleExists(ctx, moduleCode) {
+		return nil, ErrModuleNotFound
+	}
+	if increment < 0 {
+		current, err := s.repo.ListUsage(ctx, tenantID)
+		if err != nil {
+			return nil, err
+		}
+		used := 0
+		for _, counter := range current {
+			if counter.ModuleCode == moduleCode && counter.PeriodKey == periodKey && counter.Metric == metric {
+				used += counter.Used
+			}
+		}
+		if used+increment < 0 {
+			increment = -used
+		}
+	}
 	return s.repo.IncrementUsage(ctx, tenantID, moduleCode, periodKey, metric, increment)
 }
 

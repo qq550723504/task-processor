@@ -335,6 +335,27 @@ func (l *gormUsageLedger) Get(ctx context.Context, tenantID, idempotencyKey stri
 	return &event, nil
 }
 
+func (l *gormUsageLedger) UpdateMetadata(ctx context.Context, eventID string, metadata map[string]string) (UsageEvent, error) {
+	data, err := json.Marshal(metadata)
+	if err != nil {
+		return UsageEvent{}, err
+	}
+	var row usageEventRow
+	result := l.repo.db.WithContext(ctx).Model(&usageEventRow{}).
+		Where("event_id = ?", strings.TrimSpace(eventID)).
+		Updates(map[string]any{"metadata": string(data), "updated_at": time.Now().UTC()})
+	if result.Error != nil {
+		return UsageEvent{}, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return UsageEvent{}, fmt.Errorf("%w: %s", ErrUsageEventNotFound, strings.TrimSpace(eventID))
+	}
+	if err := l.repo.db.WithContext(ctx).Where("event_id = ?", strings.TrimSpace(eventID)).Take(&row).Error; err != nil {
+		return UsageEvent{}, err
+	}
+	return usageEventFromRow(row), nil
+}
+
 func (l *gormUsageLedger) ListPendingOutbox(ctx context.Context, limit int) ([]UsageOutboxItem, error) {
 	if limit <= 0 {
 		return []UsageOutboxItem{}, nil

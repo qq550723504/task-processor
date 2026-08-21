@@ -28,6 +28,13 @@ type studioBatchTaskLinkLeaseRepository interface {
 	UpdateStudioBatchTaskLinkWithClaimToken(ctx context.Context, link *StudioBatchTaskLinkRecord, claimToken string) (bool, error)
 }
 
+// studioBatchTaskLinkReclaimRepository atomically records the replacement
+// claim and the previous reservation token. This closes the crash window
+// between a successful stale reclaim and a follow-up cleanup write.
+type studioBatchTaskLinkReclaimRepository interface {
+	ClaimStudioBatchTaskCandidateUpdatedAtWithTokenAndPendingRelease(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, claimToken string, pendingReleaseClaimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error)
+}
+
 func applyStudioBatchTaskLinkCreateScope(ctx context.Context, link *StudioBatchTaskLinkRecord) {
 	if link == nil {
 		return

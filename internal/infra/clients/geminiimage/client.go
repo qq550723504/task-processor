@@ -264,7 +264,11 @@ func (c *Client) downloadSourceImage(ctx context.Context, imageURL string) ([]by
 		// Keep the URL validation mandatory even for a controlled transport
 		// override; the override only replaces dialing for tests or callers
 		// that provide their own trusted transport.
-		client = c.cfg.ImageReferenceHTTPClient
+		configured := *c.cfg.ImageReferenceHTTPClient
+		client = &configured
+	}
+	if c != nil && c.cfg.Timeout > 0 && client.Timeout <= 0 {
+		client.Timeout = c.cfg.Timeout
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, validatedURL, nil)
 	if err != nil {

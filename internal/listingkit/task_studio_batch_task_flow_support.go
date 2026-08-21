@@ -120,11 +120,19 @@ func (s *taskStudioBatchService) claimStudioBatchTaskCandidate(ctx context.Conte
 			return false, "", nil
 		}
 		if s.studioBatchTaskLinkIsStale(existing) {
-			if _, claimed, err := leaseRepo.ClaimStudioBatchTaskCandidateUpdatedAtWithToken(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusCreating, existing.UpdatedAt, studioBatchTaskLinkStatusCreating, claimToken, now); err != nil {
+			previousClaimToken := strings.TrimSpace(existing.ClaimToken)
+			var claimed bool
+			var err error
+			if reclaimRepo, supportsPending := s.batchTaskLinkRepo.(studioBatchTaskLinkReclaimRepository); supportsPending && previousClaimToken != "" {
+				_, claimed, err = reclaimRepo.ClaimStudioBatchTaskCandidateUpdatedAtWithTokenAndPendingRelease(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusCreating, existing.UpdatedAt, studioBatchTaskLinkStatusCreating, claimToken, previousClaimToken, now)
+			} else {
+				_, claimed, err = leaseRepo.ClaimStudioBatchTaskCandidateUpdatedAtWithToken(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusCreating, existing.UpdatedAt, studioBatchTaskLinkStatusCreating, claimToken, now)
+			}
+			if err != nil {
 				return false, "", err
 			} else if claimed {
 				candidate.ClaimToken = claimToken
-				return true, strings.TrimSpace(existing.ClaimToken), nil
+				return true, previousClaimToken, nil
 			}
 		}
 		if existing.Status == studioBatchTaskLinkStatusFailed && strings.TrimSpace(existing.ClaimToken) != "" {

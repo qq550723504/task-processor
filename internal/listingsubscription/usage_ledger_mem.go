@@ -249,6 +249,20 @@ func (l *memUsageLedger) Get(ctx context.Context, tenantID, idempotencyKey strin
 	return &event, nil
 }
 
+func (l *memUsageLedger) UpdateMetadata(ctx context.Context, eventID string, metadata map[string]string) (UsageEvent, error) {
+	_ = ctx
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	record, ok := l.eventsByID[strings.TrimSpace(eventID)]
+	if !ok {
+		return UsageEvent{}, usageEventNotFound(eventID)
+	}
+	record.event.Metadata = cloneUsageMetadata(metadata)
+	record.event.UpdatedAt = time.Now().UTC()
+	l.eventsByID[strings.TrimSpace(eventID)] = record
+	return cloneMemUsageEvent(record.event), nil
+}
+
 func (l *memUsageLedger) ListPendingOutbox(ctx context.Context, limit int) ([]UsageOutboxItem, error) {
 	_ = ctx
 	if limit <= 0 {

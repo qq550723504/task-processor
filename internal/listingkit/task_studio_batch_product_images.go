@@ -108,10 +108,6 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 			variantRequest := cloneStudioBatchProductImageRequest(productImageRequest)
 			variantRequest.StyleName = firstNonEmpty(productImageRequest.StyleName, "Style") + " " + firstNonEmpty(strings.TrimSpace(variant.Color), "this color variant")
 			variantRequest.ProductReferenceImageURLs = studioBatchTaskProductReferenceImageURLsForVariant(candidate.SelectionSnapshot, variant)
-			variantRequest.CustomPrompt = strings.TrimSpace(strings.Join([]string{
-				strings.TrimSpace(productImageRequest.CustomPrompt),
-				fmt.Sprintf("Generate the product image for the SDS color variant %q. Keep the approved artwork identical, but match the base product color and material from this variant's SDS reference image.", firstNonEmpty(strings.TrimSpace(variant.Color), "this color variant")),
-			}, "\n"))
 			appendStudioProductImageColorDirective(variantRequest, variant.Color)
 			variantResponse, variantErr := s.generateProductImages(ctx, variantRequest)
 			if variantErr != nil {
@@ -180,7 +176,19 @@ func (s *taskStudioBatchService) settleStudioBatchProductImageUsage(ctx context.
 		}
 		err = reservation.CommitProductImageUsage(ctx, tenantID, reservationID)
 	} else {
+		// Claim the durable legacy settlement before touching the non-idempotent
+		// aggregate counter. This removes the crash window after recording and
+		// before the marker write; a failed counter write clears the claim so a
+		// later retry can make the charge.
+		if s.batchTaskLinkRepo != nil {
+			if err = s.markStudioBatchProductImageUsageSettled(ctx, candidate); err != nil {
+				return err
+			}
+		}
 		err = s.recordStudioBatchProductImageUsage(ctx, batch, studioBatchTaskProductImageGenerationCount(candidate.SelectionSnapshot))
+		if err != nil && s.batchTaskLinkRepo != nil {
+			_ = s.clearStudioBatchProductImageUsageSettled(ctx, candidate)
+		}
 	}
 	if err != nil {
 		return err
@@ -284,6 +292,54 @@ func (s *taskStudioBatchService) releasePendingStudioBatchProductImageUsage(ctx 
 	pending.ClaimToken = link.PendingProductImageUsageReleaseClaimToken
 	if err := s.releaseStudioBatchProductImageUsage(ctx, batch, pending, "pending_release_retry"); err != nil {
 		return err
+	}
+	link.PendingProductImageUsageReleaseClaimToken = ""
+	link.UpdatedAt = s.currentTime().UTC()
+	if leaseRepo, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkLeaseRepository); ok && link.Status == studioBatchTaskLinkStatusCreating && strings.TrimSpace(link.ClaimToken) != "" {
+		updated, updateErr := leaseRepo.UpdateStudioBatchTaskLinkWithClaimToken(ctx, link, link.ClaimToken)
+		if updateErr != nil {
+			return updateErr
+		}
+		if !updated {
+			return fmt.Errorf("studio batch task claim is no longer owned while clearing pending release")
+		}
+		return nil
+	}
+	return s.batchTaskLinkRepo.UpdateStudioBatchTaskLink(ctx, link)
+}
+
+func (s *taskStudioBatchService) clearStudioBatchProductImageUsageSettled(ctx context.Context, candidate studioBatchTaskCandidate) error {
+	if s == nil || s.batchTaskLinkRepo == nil {
+		return nil
+	}
+	link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, strings.TrimSpace(candidate.CandidateKey))
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if link == nil || !link.ProductImageUsageSettled {
+		return nil
+	}
+	link.ProductImageUsageSettled = false
+	link.UpdatedAt = s.currentTime().UTC()
+	return s.batchTaskLinkRepo.UpdateStudioBatchTaskLink(ctx, link)
+}
+
+func (s *taskStudioBatchService) clearPendingStudioBatchProductImageUsageRelease(ctx context.Context, candidate studioBatchTaskCandidate) error {
+	if s == nil || s.batchTaskLinkRepo == nil {
+		return nil
+	}
+	link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, strings.TrimSpace(candidate.CandidateKey))
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if link == nil || strings.TrimSpace(link.PendingProductImageUsageReleaseClaimToken) == "" {
+		return nil
 	}
 	link.PendingProductImageUsageReleaseClaimToken = ""
 	link.UpdatedAt = s.currentTime().UTC()

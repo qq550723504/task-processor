@@ -132,6 +132,29 @@ func (r *MemStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpdatedA
 	return nil, false, gorm.ErrRecordNotFound
 }
 
+func (r *MemStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateUpdatedAtWithTokenAndPendingRelease(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, claimToken string, pendingReleaseClaimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.Status != fromStatus || !link.UpdatedAt.Equal(observedUpdatedAt) {
+			cloned := link
+			return &cloned, false, nil
+		}
+		link.Status = toStatus
+		link.ClaimToken = strings.TrimSpace(claimToken)
+		link.PendingProductImageUsageReleaseClaimToken = strings.TrimSpace(pendingReleaseClaimToken)
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		cloned := link
+		return &cloned, true, nil
+	}
+	return nil, false, gorm.ErrRecordNotFound
+}
+
 func (r *MemStudioBatchTaskLinkRepository) RefreshStudioBatchTaskLink(ctx context.Context, candidateKey string, claimToken string, updatedAt time.Time) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

@@ -144,6 +144,9 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 					}
 					return SheinStudioCreatedTask{}, fmt.Errorf("release reclaimed product image usage reservation: %w", err)
 				}
+				if err := s.clearPendingStudioBatchProductImageUsageRelease(context.WithoutCancel(ctx), taskCandidate); err != nil {
+					return SheinStudioCreatedTask{}, fmt.Errorf("clear reclaimed product image usage release marker: %w", err)
+				}
 			}
 			if !claimed {
 				if existing, ok := s.findDurableStudioBatchTask(ctx, taskCandidate); ok {
@@ -225,10 +228,14 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 					if terminalTask != nil && isTerminalStudioBatchGeneratedTask(terminalTask) {
 						durableCtx := context.WithoutCancel(dispatchCtx)
 						if persistErr := s.persistStudioBatchTaskLink(durableCtx, taskCandidate, terminalTask.ID, studioBatchTaskLinkStatusCreated, studioBatchTaskLinkSourceBatchCreated, "", ""); persistErr == nil {
-							if settleErr := s.settleStudioBatchProductImageUsage(durableCtx, candidate.state.Batch, taskCandidate); settleErr == nil {
-								_ = dispatchHeartbeatStop()
-								return SheinStudioCreatedTask{ID: terminalTask.ID, Title: taskCandidate.Title, DesignID: taskCandidate.Design.ID, ItemID: taskCandidate.Item.ID, SelectionID: taskCandidate.SelectionID, CompatibilityFingerprint: taskCandidate.CompatibilityFingerprint, Status: studioBatchCreatedTaskStatus, Source: studioBatchTaskLinkSourceBatchCreated}, nil
-							}
+							created := SheinStudioCreatedTask{ID: terminalTask.ID, Title: taskCandidate.Title, DesignID: taskCandidate.Design.ID, ItemID: taskCandidate.Item.ID, SelectionID: taskCandidate.SelectionID, CompatibilityFingerprint: taskCandidate.CompatibilityFingerprint, Status: studioBatchCreatedTaskStatus, Source: studioBatchTaskLinkSourceBatchCreated}
+							// The durable task/link already exist. If settlement is
+							// temporarily unavailable, return the terminal task and let
+							// the durable reuse path retry settlement; never release its
+							// reservation as if task creation had failed.
+							_ = s.settleStudioBatchProductImageUsage(durableCtx, candidate.state.Batch, taskCandidate)
+							_ = dispatchHeartbeatStop()
+							return created, nil
 						}
 					}
 					// A queued or processing row is not safe to reuse after cancellation.

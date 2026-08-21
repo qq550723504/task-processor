@@ -17,6 +17,9 @@ const (
 	studioProductImageModule       = listingsubscription.ModuleStudio
 	studioProductImageMetric       = "product_image_jobs"
 	studioProductImageLedgerMetric = "product_image_jobs_succeeded"
+	legacyMirrorMetadataKey        = "listingkit_legacy_counter_mirror"
+	legacyMirrorPending            = "pending"
+	legacyMirrorSettled            = "settled"
 )
 
 type subscriptionStudioProductImageUsage struct {
@@ -98,11 +101,31 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 	if result.Event.Status == listingsubscription.UsageEventReleased || result.Event.Status == listingsubscription.UsageEventReversed {
 		return fmt.Errorf("product image usage reservation is no longer active")
 	}
-	if !result.Existing {
-		if _, err := a.service.RecordUsage(ctx, billingTenant, studioProductImageModule, studioProductImageMetric, quantity); err != nil {
-			_, _ = a.service.ReleaseUsage(ctx, result.Event.EventID, "legacy_counter_mirror_failed")
+	if result.Existing {
+		if result.Event.Metadata[legacyMirrorMetadataKey] != legacyMirrorPending {
+			return nil
+		}
+		if _, err := a.service.RecordUsageForPeriod(ctx, billingTenant, studioProductImageModule, studioProductImageMetric, result.Event.PeriodKey, quantity); err != nil {
 			return err
 		}
+		_, err = a.service.UpdateUsageMetadata(ctx, result.Event.EventID, map[string]string{legacyMirrorMetadataKey: legacyMirrorSettled})
+		return err
+	}
+	if _, metadataErr := a.service.UpdateUsageMetadata(ctx, result.Event.EventID, map[string]string{legacyMirrorMetadataKey: legacyMirrorPending}); metadataErr == nil {
+		if _, err := a.service.RecordUsageForPeriod(ctx, billingTenant, studioProductImageModule, studioProductImageMetric, result.Event.PeriodKey, quantity); err != nil {
+			if _, releaseErr := a.service.ReleaseUsage(ctx, result.Event.EventID, "legacy_counter_mirror_failed"); releaseErr != nil {
+				return errors.Join(err, fmt.Errorf("release product image usage after legacy mirror failure: %w", releaseErr))
+			}
+			return err
+		}
+		_, err = a.service.UpdateUsageMetadata(ctx, result.Event.EventID, map[string]string{legacyMirrorMetadataKey: legacyMirrorSettled})
+		return err
+	}
+	if _, err := a.service.RecordUsageForPeriod(ctx, billingTenant, studioProductImageModule, studioProductImageMetric, result.Event.PeriodKey, quantity); err != nil {
+		if _, releaseErr := a.service.ReleaseUsage(ctx, result.Event.EventID, "legacy_counter_mirror_failed"); releaseErr != nil {
+			return errors.Join(err, fmt.Errorf("release product image usage after legacy mirror failure: %w", releaseErr))
+		}
+		return err
 	}
 	return nil
 }
@@ -117,6 +140,9 @@ func (a *subscriptionStudioProductImageUsage) CommitProductImageUsage(ctx contex
 	}
 	if err != nil {
 		return err
+	}
+	if event == nil {
+		return nil
 	}
 	if event.Status == listingsubscription.UsageEventCommitted {
 		return nil
@@ -139,20 +165,24 @@ func (a *subscriptionStudioProductImageUsage) ReleaseProductImageUsage(ctx conte
 	if err != nil {
 		return err
 	}
+	if event == nil {
+		return nil
+	}
 	if event.Status == listingsubscription.UsageEventReleased {
 		return nil
 	}
 	if event.Status != listingsubscription.UsageEventReserved {
 		return fmt.Errorf("product image usage release requires a reserved event")
 	}
-	if event.Quantity > 0 {
-		if _, err = a.service.RecordUsage(ctx, strings.TrimSpace(event.TenantID), studioProductImageModule, studioProductImageMetric, -int(event.Quantity)); err != nil {
+	legacyMirrorSettledForEvent := event.Quantity > 0 && event.Metadata[legacyMirrorMetadataKey] != legacyMirrorPending
+	if legacyMirrorSettledForEvent {
+		if _, err = a.service.RecordUsageForPeriod(ctx, strings.TrimSpace(event.TenantID), studioProductImageModule, studioProductImageMetric, event.PeriodKey, -int(event.Quantity)); err != nil {
 			return err
 		}
 	}
 	if _, err = a.service.ReleaseUsage(ctx, event.EventID, strings.TrimSpace(reason)); err != nil {
-		if event.Quantity > 0 {
-			_, rollbackErr := a.service.RecordUsage(ctx, strings.TrimSpace(event.TenantID), studioProductImageModule, studioProductImageMetric, int(event.Quantity))
+		if legacyMirrorSettledForEvent {
+			_, rollbackErr := a.service.RecordUsageForPeriod(ctx, strings.TrimSpace(event.TenantID), studioProductImageModule, studioProductImageMetric, event.PeriodKey, int(event.Quantity))
 			if rollbackErr != nil {
 				return errors.Join(err, fmt.Errorf("restore legacy product image usage mirror: %w", rollbackErr))
 			}
