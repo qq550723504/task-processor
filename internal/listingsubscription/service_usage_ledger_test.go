@@ -37,6 +37,32 @@ func TestNewServiceWithLedgerRejectsTypedNilRepositoryBeforeInitialization(t *te
 	}
 }
 
+func TestRecordUsageForPeriodOnceAppliesAnOperationOnlyOnce(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemRepository()
+	svc, err := NewService(repo)
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	if err := repo.UpsertDefaultModules(ctx, DefaultModules()); err != nil {
+		t.Fatalf("UpsertDefaultModules() error = %v", err)
+	}
+	first, applied, err := svc.RecordUsageForPeriodOnce(ctx, "tenant-17", ModuleStudio, "product_image_jobs", "2026-08", 1, "usage-event-1:reserve")
+	if err != nil {
+		t.Fatalf("first RecordUsageForPeriodOnce() error = %v", err)
+	}
+	if !applied || first.Used != 1 {
+		t.Fatalf("first result = (%#v, %v), want applied usage 1", first, applied)
+	}
+	second, applied, err := svc.RecordUsageForPeriodOnce(ctx, "tenant-17", ModuleStudio, "product_image_jobs", "2026-08", 1, "usage-event-1:reserve")
+	if err != nil {
+		t.Fatalf("replay RecordUsageForPeriodOnce() error = %v", err)
+	}
+	if applied || second.Used != 1 {
+		t.Fatalf("replay result = (%#v, %v), want unchanged usage 1", second, applied)
+	}
+}
+
 func TestServiceWithLedgerDelegatesOnlyExplicitUsageLedgerMethods(t *testing.T) {
 	ctx := context.Background()
 	repo := NewMemRepository()

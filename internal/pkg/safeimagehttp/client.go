@@ -45,6 +45,10 @@ func NewPublicImageHTTPClient() *http.Client {
 	} else {
 		transport = &http.Transport{}
 	}
+	// Public image downloads must connect directly to the validated target.
+	// An environment proxy can terminate CONNECT and resolve a private target
+	// itself, bypassing the target-DNS checks in DialContext.
+	transport.Proxy = nil
 	dialer := &net.Dialer{}
 	transport.DialContext = func(ctx context.Context, network string, address string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(address)

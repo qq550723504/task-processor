@@ -297,6 +297,46 @@ func TestGormStudioBatchTaskLinkRepositoryClaimCandidateUpdatedAt(t *testing.T) 
 	testStudioBatchTaskLinkRepositoryClaimCandidateUpdatedAt(t, newGormStudioBatchTaskLinkRepositoryForTest)
 }
 
+func TestMemStudioBatchTaskLinkRepositoryClaimsProductImageUsageSettlementAtomically(t *testing.T) {
+	testStudioBatchTaskLinkRepositoryClaimsProductImageUsageSettlementAtomically(t, func(*testing.T) StudioBatchTaskLinkRepository {
+		return NewMemStudioBatchTaskLinkRepository()
+	})
+}
+
+func TestGormStudioBatchTaskLinkRepositoryClaimsProductImageUsageSettlementAtomically(t *testing.T) {
+	testStudioBatchTaskLinkRepositoryClaimsProductImageUsageSettlementAtomically(t, newGormStudioBatchTaskLinkRepositoryForTest)
+}
+
+func testStudioBatchTaskLinkRepositoryClaimsProductImageUsageSettlementAtomically(t *testing.T, newRepo func(*testing.T) StudioBatchTaskLinkRepository) {
+	t.Helper()
+	repo := newRepo(t)
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	link := studioBatchTaskLinkRecordForTest("link-settlement", "batch-1", "item-1", "design-1", "selection-1", "candidate-settlement")
+	link.ProductImageUsageSettled = false
+	mustCreateStudioBatchTaskLinkForTest(t, repo, ctx, link)
+	claimer, ok := repo.(interface {
+		ClaimStudioBatchProductImageUsageSettled(context.Context, string, time.Time) (bool, error)
+	})
+	if !ok {
+		t.Fatalf("repository %T does not implement atomic settlement claim", repo)
+	}
+	first, err := claimer.ClaimStudioBatchProductImageUsageSettled(ctx, link.CandidateKey, link.UpdatedAt.Add(time.Minute))
+	if err != nil || !first {
+		t.Fatalf("first settlement claim = (%v, %v), want true", first, err)
+	}
+	second, err := claimer.ClaimStudioBatchProductImageUsageSettled(ctx, link.CandidateKey, link.UpdatedAt.Add(2*time.Minute))
+	if err != nil || second {
+		t.Fatalf("second settlement claim = (%v, %v), want false", second, err)
+	}
+	stored, err := repo.GetStudioBatchTaskLinkByCandidateKey(ctx, link.CandidateKey)
+	if err != nil {
+		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() error = %v", err)
+	}
+	if !stored.ProductImageUsageSettled {
+		t.Fatal("ProductImageUsageSettled = false, want true")
+	}
+}
+
 func testStudioBatchTaskLinkRepositoryCreateAndLoadByCandidateKey(t *testing.T, newRepo func(*testing.T) StudioBatchTaskLinkRepository) {
 	t.Helper()
 

@@ -759,6 +759,28 @@ func (s *Service) RecordUsageForPeriod(ctx context.Context, tenantID, moduleCode
 	return s.repo.IncrementUsage(ctx, tenantID, moduleCode, periodKey, metric, increment)
 }
 
+// RecordUsageForPeriodOnce applies a legacy counter adjustment under a
+// durable operation identity. It is used for mirrors of usage-ledger events;
+// retries after a process crash return the existing counter without applying
+// the adjustment again.
+func (s *Service) RecordUsageForPeriodOnce(ctx context.Context, tenantID, moduleCode, metric, periodKey string, increment int, operationKey string) (*UsageCounter, bool, error) {
+	if s == nil || s.repo == nil {
+		return nil, false, ErrSubscriptionRequired
+	}
+	if strings.TrimSpace(tenantID) == "" || strings.TrimSpace(moduleCode) == "" || strings.TrimSpace(metric) == "" || strings.TrimSpace(periodKey) == "" || strings.TrimSpace(operationKey) == "" || increment == 0 {
+		return nil, false, ErrUsageInvalidInput
+	}
+	if !s.moduleExists(ctx, moduleCode) {
+		return nil, false, ErrModuleNotFound
+	}
+	repo, ok := s.repo.(UsageCounterIdempotencyRepository)
+	if !ok {
+		return nil, false, ErrUsageCounterIdempotencyUnsupported
+	}
+	counter, applied, err := repo.IncrementUsageOnce(ctx, tenantID, moduleCode, periodKey, metric, increment, operationKey)
+	return counter, applied, err
+}
+
 func (s *Service) currentPeriodUsage(ctx context.Context, tenantID, moduleCode, metric string) (int, error) {
 	periodKey := s.now().UTC().Format("2006-01")
 	usage, err := s.repo.ListUsage(ctx, tenantID)

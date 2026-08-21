@@ -148,6 +148,20 @@ func (r *GormStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx contex
 	return nil
 }
 
+func (r *GormStudioBatchTaskLinkRepository) ClaimStudioBatchProductImageUsageSettled(ctx context.Context, candidateKey string, updatedAt time.Time) (bool, error) {
+	if err := ensureStudioBatchTaskLinkProductImageUsageSettledColumn(r.db); err != nil {
+		return false, err
+	}
+	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
+		Model(&StudioBatchTaskLinkRecord{}).
+		Where("candidate_key = ? AND product_image_usage_settled = ?", candidateKey, false).
+		Updates(map[string]any{"product_image_usage_settled": true, "updated_at": updatedAt})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
 func (r *GormStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateWithToken(ctx context.Context, candidateKey string, fromStatus string, toStatus string, claimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
 	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
 		Model(&StudioBatchTaskLinkRecord{}).

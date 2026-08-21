@@ -2,6 +2,7 @@ package tenantbridge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -12,6 +13,8 @@ import (
 
 const defaultMetadataTable = "projections.org_metadata2"
 const defaultMetadataKey = "yudao_tenant_id"
+
+var ErrLegacyTenantNotFound = errors.New("legacy tenant mapping not found")
 
 // Resolver bridges ZITADEL tenant IDs back to legacy Yudao tenant IDs for
 // tables that are still shared with the old system. This is an explicit
@@ -178,7 +181,7 @@ func ResolveLegacyTenantID(ctx context.Context, tenantID string) (int64, error) 
 		}
 	}
 	if parseErr != nil || parsed <= 0 {
-		return 0, fmt.Errorf("tenant id is required")
+		return 0, fmt.Errorf("%w: tenant id is required", ErrLegacyTenantNotFound)
 	}
 	return parsed, nil
 }

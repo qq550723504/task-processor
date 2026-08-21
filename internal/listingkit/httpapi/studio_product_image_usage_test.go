@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"task-processor/internal/listingsubscription"
@@ -17,6 +18,12 @@ func (r studioProductImageUsageLegacyTenantResolver) ResolveLegacyTenantID(conte
 	return r.legacyTenantID, true, nil
 }
 
+type failingStudioProductImageUsageLegacyTenantResolver struct{}
+
+func (failingStudioProductImageUsageLegacyTenantResolver) ResolveLegacyTenantID(context.Context, string) (int64, bool, error) {
+	return 0, false, errors.New("legacy tenant bridge temporarily unavailable")
+}
+
 type failingNegativeProductImageUsageRepository struct {
 	listingsubscription.Repository
 	failNegative bool
@@ -27,6 +34,17 @@ func (r *failingNegativeProductImageUsageRepository) IncrementUsage(ctx context.
 		return nil, errors.New("legacy usage mirror temporarily unavailable")
 	}
 	return r.Repository.IncrementUsage(ctx, tenantID, moduleCode, periodKey, metric, amount)
+}
+
+func (r *failingNegativeProductImageUsageRepository) IncrementUsageOnce(ctx context.Context, tenantID, moduleCode, periodKey, metric string, amount int, operationKey string) (*listingsubscription.UsageCounter, bool, error) {
+	if r.failNegative && amount < 0 {
+		return nil, false, errors.New("legacy usage mirror temporarily unavailable")
+	}
+	repo, ok := r.Repository.(listingsubscription.UsageCounterIdempotencyRepository)
+	if !ok {
+		return nil, false, listingsubscription.ErrUsageCounterIdempotencyUnsupported
+	}
+	return repo.IncrementUsageOnce(ctx, tenantID, moduleCode, periodKey, metric, amount, operationKey)
 }
 
 func TestSubscriptionStudioProductImageUsageReservationUsesDurableLedger(t *testing.T) {
@@ -176,6 +194,21 @@ func TestSubscriptionStudioProductImageUsageUsesLegacyBillingTenantConsistently(
 	}
 }
 
+func TestSubscriptionStudioProductImageUsagePropagatesLegacyTenantResolutionFailure(t *testing.T) {
+	repo := listingsubscription.NewMemRepository()
+	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(repo))
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	restore := tenantbridge.ConfigureLegacyTenantResolver(failingStudioProductImageUsageLegacyTenantResolver{})
+	t.Cleanup(restore)
+	adapter := studioProductImageUsageDependency(svc)
+	err = adapter.CommitProductImageUsage(context.Background(), "org-tenant", "missing-reservation")
+	if err == nil || !strings.Contains(err.Error(), "legacy tenant bridge temporarily unavailable") {
+		t.Fatalf("CommitProductImageUsage() error = %v, want tenant bridge failure", err)
+	}
+}
+
 func TestSubscriptionStudioProductImageUsageReleaseRetriesLegacyMirrorBeforeLedgerRelease(t *testing.T) {
 	baseRepo := listingsubscription.NewMemRepository()
 	repo := &failingNegativeProductImageUsageRepository{Repository: baseRepo}
@@ -202,8 +235,8 @@ func TestSubscriptionStudioProductImageUsageReleaseRetriesLegacyMirrorBeforeLedg
 	if err != nil {
 		t.Fatalf("GetUsage() after failed release error = %v", err)
 	}
-	if event.Status != listingsubscription.UsageEventReserved {
-		t.Fatalf("event status = %q after failed mirror, want reserved for retry", event.Status)
+	if event.Status != listingsubscription.UsageEventReleased {
+		t.Fatalf("event status = %q after failed mirror, want released with retryable mirror", event.Status)
 	}
 	repo.failNegative = false
 	if err := adapter.ReleaseProductImageUsage(ctx, "tenant-mirror-retry", "candidate-1", "retry"); err != nil {
@@ -238,9 +271,6 @@ func TestSubscriptionStudioProductImageUsageRetriesPendingLegacyMirrorOnExisting
 	event, err := svc.GetUsage(ctx, "tenant-pending-mirror", "listingkit:studio_product_image:candidate-1")
 	if err != nil {
 		t.Fatalf("GetUsage() error = %v", err)
-	}
-	if _, err := svc.RecordUsageForPeriod(ctx, event.TenantID, studioProductImageModule, studioProductImageMetric, event.PeriodKey, -1); err != nil {
-		t.Fatalf("RecordUsageForPeriod() reset error = %v", err)
 	}
 	if _, err := svc.UpdateUsageMetadata(ctx, event.EventID, map[string]string{legacyMirrorMetadataKey: legacyMirrorPending}); err != nil {
 		t.Fatalf("UpdateUsageMetadata() error = %v", err)

@@ -187,7 +187,9 @@ func (s *taskStudioBatchService) settleStudioBatchProductImageUsage(ctx context.
 		}
 		err = s.recordStudioBatchProductImageUsage(ctx, batch, studioBatchTaskProductImageGenerationCount(candidate.SelectionSnapshot))
 		if err != nil && s.batchTaskLinkRepo != nil {
-			_ = s.clearStudioBatchProductImageUsageSettled(ctx, candidate)
+			if clearErr := s.clearStudioBatchProductImageUsageSettled(ctx, candidate); clearErr != nil {
+				err = errors.Join(err, fmt.Errorf("clear legacy settlement claim: %w", clearErr))
+			}
 		}
 	}
 	if err != nil {
@@ -214,19 +216,25 @@ func (s *taskStudioBatchService) markStudioBatchProductImageUsageSettled(ctx con
 	if s == nil || s.batchTaskLinkRepo == nil {
 		return nil
 	}
-	link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, strings.TrimSpace(candidate.CandidateKey))
+	claimer, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkUsageSettlementRepository)
+	if !ok {
+		return fmt.Errorf("studio batch task link repository lacks atomic usage settlement claim")
+	}
+	claimed, err := claimer.ClaimStudioBatchProductImageUsageSettled(ctx, strings.TrimSpace(candidate.CandidateKey), s.currentTime().UTC())
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil || claimed {
+		return err
+	}
+	link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, strings.TrimSpace(candidate.CandidateKey))
+	if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && link != nil && link.ProductImageUsageSettled) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
-	if link == nil || link.ProductImageUsageSettled {
-		return nil
-	}
-	link.ProductImageUsageSettled = true
-	link.UpdatedAt = s.currentTime().UTC()
-	return s.batchTaskLinkRepo.UpdateStudioBatchTaskLink(ctx, link)
+	return fmt.Errorf("studio batch task link settlement claim was lost")
 }
 
 func (s *taskStudioBatchService) authorizeStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate, quantity int) error {

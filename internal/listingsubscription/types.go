@@ -39,6 +39,7 @@ var (
 	ErrUsageQuotaExceeded                 = errors.New("usage ledger quota exceeded")
 	ErrUsageLedgerNotConfigured           = errors.New("usage ledger is not configured")
 	ErrUsageLedgerMetadataUnsupported     = errors.New("usage ledger metadata updates are unsupported")
+	ErrUsageCounterIdempotencyUnsupported = errors.New("usage counter idempotency is unsupported")
 	ErrUsageEventNotFound                 = errors.New("usage ledger event not found")
 	ErrUsageOutboxUnsafeMetadata          = errors.New("usage outbox metadata is unsafe")
 	ErrUsageOutboxStorageSnapshotRequired = errors.New("usage outbox storage snapshot is required")
@@ -291,6 +292,14 @@ type Repository interface {
 	CreateAuditLog(ctx context.Context, log AuditLog) (*AuditLog, error)
 	ListAuditLogs(ctx context.Context, tenantID string, limit int) ([]AuditLog, error)
 	ListPlanAuditLogs(ctx context.Context, planCode string, limit int) ([]AuditLog, error)
+}
+
+// UsageCounterIdempotencyRepository is an optional repository extension for
+// adapter-owned counter mirrors. Implementations persist the operation key and
+// counter increment atomically, so a retry after a process crash cannot apply
+// the same adjustment twice.
+type UsageCounterIdempotencyRepository interface {
+	IncrementUsageOnce(ctx context.Context, tenantID, moduleCode, periodKey, metric string, amount int, operationKey string) (*UsageCounter, bool, error)
 }
 
 type UsageLedger interface {

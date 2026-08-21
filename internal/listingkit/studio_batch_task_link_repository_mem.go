@@ -88,6 +88,24 @@ func (r *MemStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx context
 	return nil
 }
 
+func (r *MemStudioBatchTaskLinkRepository) ClaimStudioBatchProductImageUsageSettled(ctx context.Context, candidateKey string, updatedAt time.Time) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.ProductImageUsageSettled {
+			return false, nil
+		}
+		link.ProductImageUsageSettled = true
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		return true, nil
+	}
+	return false, gorm.ErrRecordNotFound
+}
+
 func (r *MemStudioBatchTaskLinkRepository) ClaimStudioBatchTaskCandidateWithToken(ctx context.Context, candidateKey string, fromStatus string, toStatus string, claimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

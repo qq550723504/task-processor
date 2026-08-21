@@ -958,6 +958,7 @@ func TestAutoMigrateRepositoryCreatesUsageLedgerSchema(t *testing.T) {
 		"saas_usage_events",
 		"saas_usage_buckets",
 		"saas_usage_event_outbox",
+		"saas_usage_counter_adjustments",
 	} {
 		if !db.Migrator().HasTable(table) {
 			t.Fatalf("AutoMigrateRepository() did not create %s", table)
@@ -973,6 +974,23 @@ func TestAutoMigrateRepositoryCreatesUsageLedgerSchema(t *testing.T) {
 		if !db.Migrator().HasIndex(indexTableForUsageLedgerIndex(index), index) {
 			t.Fatalf("AutoMigrateRepository() did not create %s", index)
 		}
+	}
+}
+
+func TestGormRepositoryIncrementUsageOnceIsIdempotent(t *testing.T) {
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	ctx := context.Background()
+	if err := repo.UpsertDefaultModules(ctx, DefaultModules()); err != nil {
+		t.Fatalf("UpsertDefaultModules() error = %v", err)
+	}
+	first, applied, err := repo.IncrementUsageOnce(ctx, "tenant-17", ModuleStudio, "2026-08", "product_image_jobs", 1, "usage-event-1:reserve")
+	if err != nil || !applied || first.Used != 1 {
+		t.Fatalf("first IncrementUsageOnce() = (%#v, %v, %v), want applied usage 1", first, applied, err)
+	}
+	second, applied, err := repo.IncrementUsageOnce(ctx, "tenant-17", ModuleStudio, "2026-08", "product_image_jobs", 1, "usage-event-1:reserve")
+	if err != nil || applied || second.Used != 1 {
+		t.Fatalf("replay IncrementUsageOnce() = (%#v, %v, %v), want unchanged usage 1", second, applied, err)
 	}
 }
 

@@ -35,6 +35,12 @@ type studioBatchTaskLinkReclaimRepository interface {
 	ClaimStudioBatchTaskCandidateUpdatedAtWithTokenAndPendingRelease(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, claimToken string, pendingReleaseClaimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error)
 }
 
+// studioBatchTaskLinkUsageSettlementRepository atomically elects the one
+// caller allowed to perform the non-idempotent legacy usage settlement.
+type studioBatchTaskLinkUsageSettlementRepository interface {
+	ClaimStudioBatchProductImageUsageSettled(ctx context.Context, candidateKey string, updatedAt time.Time) (bool, error)
+}
+
 func applyStudioBatchTaskLinkCreateScope(ctx context.Context, link *StudioBatchTaskLinkRecord) {
 	if link == nil {
 		return

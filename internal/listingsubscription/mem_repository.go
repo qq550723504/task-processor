@@ -2,30 +2,34 @@ package listingsubscription
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"sync"
 	"time"
 )
 
 type MemRepository struct {
-	mu            sync.Mutex
-	nextID        int64
-	modules       map[string]Module
-	plans         map[string]PlanBundle
-	subscriptions map[string]TenantSubscription
-	entitlements  map[string]Entitlement
-	usage         map[string]UsageCounter
-	auditLogs     []AuditLog
+	mu               sync.Mutex
+	nextID           int64
+	modules          map[string]Module
+	plans            map[string]PlanBundle
+	subscriptions    map[string]TenantSubscription
+	entitlements     map[string]Entitlement
+	usage            map[string]UsageCounter
+	usageAdjustments map[string]struct{}
+	auditLogs        []AuditLog
 }
 
 func NewMemRepository() *MemRepository {
 	return &MemRepository{
-		nextID:        1,
-		modules:       map[string]Module{},
-		plans:         map[string]PlanBundle{},
-		subscriptions: map[string]TenantSubscription{},
-		entitlements:  map[string]Entitlement{},
-		usage:         map[string]UsageCounter{},
-		auditLogs:     []AuditLog{},
+		nextID:           1,
+		modules:          map[string]Module{},
+		plans:            map[string]PlanBundle{},
+		subscriptions:    map[string]TenantSubscription{},
+		entitlements:     map[string]Entitlement{},
+		usage:            map[string]UsageCounter{},
+		usageAdjustments: map[string]struct{}{},
+		auditLogs:        []AuditLog{},
 	}
 }
 
@@ -300,6 +304,36 @@ func (r *MemRepository) IncrementUsage(_ context.Context, tenantID, moduleCode, 
 	counter.UpdatedAt = time.Now().UTC()
 	r.usage[key] = counter
 	return &counter, nil
+}
+
+func (r *MemRepository) IncrementUsageOnce(_ context.Context, tenantID, moduleCode, periodKey, metric string, amount int, operationKey string) (*UsageCounter, bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if strings.TrimSpace(operationKey) == "" {
+		return nil, false, errors.New("usage operation key is required")
+	}
+	if _, exists := r.usageAdjustments[operationKey]; exists {
+		counter := r.usage[usageKey(tenantID, moduleCode, periodKey, metric)]
+		return &counter, false, nil
+	}
+	key := usageKey(tenantID, moduleCode, periodKey, metric)
+	counter := r.usage[key]
+	if amount < 0 && counter.Used+amount < 0 {
+		amount = -counter.Used
+	}
+	if counter.ID == 0 {
+		counter.ID = r.nextID
+		r.nextID++
+		counter.TenantID = tenantID
+		counter.ModuleCode = moduleCode
+		counter.PeriodKey = periodKey
+		counter.Metric = metric
+	}
+	counter.Used += amount
+	counter.UpdatedAt = time.Now().UTC()
+	r.usage[key] = counter
+	r.usageAdjustments[operationKey] = struct{}{}
+	return &counter, true, nil
 }
 
 func (r *MemRepository) SetUsage(_ context.Context, tenantID, moduleCode, periodKey, metric string, used int) (*UsageCounter, error) {
