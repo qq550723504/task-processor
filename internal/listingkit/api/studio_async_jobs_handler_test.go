@@ -129,7 +129,7 @@ func TestRunStudioAsyncJobHeartbeatsBeforeLongProductImageGeneration(t *testing.
 	}); err != nil {
 		t.Fatalf("CreateStudioAsyncJob() error = %v", err)
 	}
-	started := make(chan struct{})
+	started := make(chan struct{}, 1)
 	release := make(chan struct{})
 	media := &blockingStudioAsyncMediaService{stubStudioMediaHandlerService: &stubStudioMediaHandlerService{}, started: started, release: release}
 	h := &handler{studioAsyncJobs: &studioAsyncJobStore{repo: repo}, studioMediaService: media}
