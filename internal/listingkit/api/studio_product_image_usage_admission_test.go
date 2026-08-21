@@ -54,6 +54,43 @@ func TestReserveStudioProductImageUsageIncludesLegacyAggregateUsage(t *testing.T
 	}
 }
 
+func TestReserveStudioProductImageUsageRepairsBatchReleaseMarkerBeforeAuthorization(t *testing.T) {
+	ctx := context.Background()
+	svc := newStudioProductImageAdmissionService(t, "tenant-batch-release-repair", 1)
+	if _, err := svc.RecordUsage(ctx, "tenant-batch-release-repair", listingsubscription.ModuleStudio, "product_image_jobs", 1); err != nil {
+		t.Fatalf("RecordUsage() error = %v", err)
+	}
+	reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID: "tenant-batch-release-repair", ModuleCode: listingsubscription.ModuleStudio,
+		Metric: studioProductImageLedgerMetric, Quantity: 1, PeriodKey: time.Now().UTC().Format("2006-01"),
+		SourceType: studioProductImageSourceType, SourceID: "batch-release", IdempotencyKey: "listingkit:studio_product_image:batch-release",
+		OccurredAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	if _, err := svc.UpdateUsageMetadata(ctx, reserved.Event.EventID, map[string]string{
+		studioProductImageLegacyMirrorMetadataKey:               "settled",
+		studioProductImageLegacyMirrorReleasePendingMetadataKey: "1",
+	}); err != nil {
+		t.Fatalf("UpdateUsageMetadata() error = %v", err)
+	}
+	if _, err := svc.ReleaseUsage(ctx, reserved.Event.EventID, "batch_release"); err != nil {
+		t.Fatalf("ReleaseUsage() error = %v", err)
+	}
+	h := &handler{subscriptionDependencies: subscriptionDependencies{subscriptionService: svc}}
+	if _, err := h.reserveStudioProductImageUsage(newStudioProductImageAdmissionContext("tenant-batch-release-repair"), "direct-request"); err != nil {
+		t.Fatalf("reserve error = %v, want batch release repaired before quota authorization", err)
+	}
+	event, err := svc.GetUsageEventByID(ctx, reserved.Event.EventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	if event.Metadata[studioProductImageLegacyMirrorReleasePendingMetadataKey] != "" {
+		t.Fatalf("release repair marker = %q, want cleared after reconciliation", event.Metadata[studioProductImageLegacyMirrorReleasePendingMetadataKey])
+	}
+}
+
 func TestWriteStudioProductImageUsageAdmissionErrorMapsLegacyQuotaToPaymentRequired(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)

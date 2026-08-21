@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/listingkit"
 	"task-processor/internal/listingsubscription"
 	"task-processor/internal/tenantbridge"
 )
@@ -33,6 +34,34 @@ type failingNegativeProductImageUsageRepository struct {
 type failingSettledUsageLedger struct {
 	listingsubscription.UsageLedger
 	failSettled bool
+}
+
+type failingReleaseUsageLedger struct {
+	listingsubscription.UsageLedger
+	failRelease bool
+}
+
+func (l *failingReleaseUsageLedger) Release(ctx context.Context, eventID, reason string) (listingsubscription.UsageEvent, error) {
+	if l.failRelease {
+		return listingsubscription.UsageEvent{}, errors.New("ledger release temporarily unavailable")
+	}
+	return l.UsageLedger.Release(ctx, eventID, reason)
+}
+
+func (l *failingReleaseUsageLedger) UpdateMetadata(ctx context.Context, eventID string, metadata map[string]string) (listingsubscription.UsageEvent, error) {
+	updater, ok := l.UsageLedger.(listingsubscription.UsageLedgerMetadataUpdater)
+	if !ok {
+		return listingsubscription.UsageEvent{}, listingsubscription.ErrUsageLedgerMetadataUnsupported
+	}
+	return updater.UpdateMetadata(ctx, eventID, metadata)
+}
+
+func (l *failingReleaseUsageLedger) GetByID(ctx context.Context, eventID string) (listingsubscription.UsageEvent, error) {
+	lookup, ok := l.UsageLedger.(listingsubscription.UsageLedgerEventLookup)
+	if !ok {
+		return listingsubscription.UsageEvent{}, listingsubscription.ErrUsageLedgerEventLookupUnsupported
+	}
+	return lookup.GetByID(ctx, eventID)
 }
 
 func (l *failingSettledUsageLedger) UpdateMetadata(ctx context.Context, eventID string, metadata map[string]string) (listingsubscription.UsageEvent, error) {
@@ -289,6 +318,40 @@ func TestSubscriptionStudioProductImageUsageReleaseRetriesLegacyMirrorBeforeLedg
 	}
 	if event.Status != listingsubscription.UsageEventReleased {
 		t.Fatalf("event status = %q after release retry, want released", event.Status)
+	}
+}
+
+func TestSubscriptionStudioProductImageUsagePersistsReleaseRepairMarkerBeforeLedgerRelease(t *testing.T) {
+	repo := listingsubscription.NewMemRepository()
+	baseLedger := listingsubscription.NewMemUsageLedger(repo)
+	ledger := &failingReleaseUsageLedger{UsageLedger: baseLedger, failRelease: true}
+	svc, err := listingsubscription.NewServiceWithLedger(repo, ledger)
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	ctx := context.Background()
+	if _, err := svc.UpsertEntitlement(ctx, "tenant-release-marker", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"product_image_jobs": 1},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	adapter := studioProductImageUsageDependency(svc)
+	if err := adapter.ReserveProductImageUsage(ctx, "tenant-release-marker", "candidate-1", 1); err != nil {
+		t.Fatalf("ReserveProductImageUsage() error = %v", err)
+	}
+	if err := adapter.ReleaseProductImageUsage(ctx, "tenant-release-marker", "candidate-1", "generation_failed"); err == nil {
+		t.Fatal("ReleaseProductImageUsage() error = nil, want release failure")
+	}
+	event, err := svc.GetUsage(ctx, "tenant-release-marker", studioProductImageUsageIdempotencyKey("candidate-1"))
+	if err != nil {
+		t.Fatalf("GetUsage() error = %v", err)
+	}
+	if event.Status != listingsubscription.UsageEventReserved {
+		t.Fatalf("event status = %q, want reserved after failed release", event.Status)
+	}
+	if event.Metadata[listingkit.StudioProductImageLegacyMirrorReleasePendingMetadataKey] != "1" {
+		t.Fatalf("release repair marker = %q, want persisted marker", event.Metadata[listingkit.StudioProductImageLegacyMirrorReleasePendingMetadataKey])
 	}
 }
 

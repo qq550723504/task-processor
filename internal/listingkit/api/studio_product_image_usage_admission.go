@@ -17,15 +17,16 @@ import (
 )
 
 const (
-	studioProductImageLedgerMetric              = "product_image_jobs_succeeded"
-	studioProductImageReleasePendingMetadataKey = "listingkit_api_release_pending"
-	studioProductImageLegacyMirrorMetadataKey   = "listingkit_legacy_counter_mirror"
-	studioProductImageLegacyMirrorSettled       = "settled"
-	studioProductImageSourceType                = "listingkit_product_image"
-	studioProductImageAsyncSourceType           = "listingkit_async_product_image"
-	studioProductImageAsyncJobMetadataKey       = "listingkit_async_job"
-	studioProductImageAsyncJobMetadataValue     = "1"
-	studioProductImageAsyncJobRecoveryAfter     = 30 * time.Minute
+	studioProductImageLedgerMetric                          = "product_image_jobs_succeeded"
+	studioProductImageReleasePendingMetadataKey             = "listingkit_api_release_pending"
+	studioProductImageLegacyMirrorMetadataKey               = "listingkit_legacy_counter_mirror"
+	studioProductImageLegacyMirrorSettled                   = "settled"
+	studioProductImageLegacyMirrorReleasePendingMetadataKey = listingkit.StudioProductImageLegacyMirrorReleasePendingMetadataKey
+	studioProductImageSourceType                            = "listingkit_product_image"
+	studioProductImageAsyncSourceType                       = "listingkit_async_product_image"
+	studioProductImageAsyncJobMetadataKey                   = "listingkit_async_job"
+	studioProductImageAsyncJobMetadataValue                 = "1"
+	studioProductImageAsyncJobRecoveryAfter                 = 30 * time.Minute
 )
 
 func studioProductImageUsageLedgerEnabled(h *handler) bool {
@@ -73,11 +74,11 @@ func (h *handler) reserveStudioProductImageUsageWithSourceType(c *gin.Context, r
 			LegacyUsageMirrorSettledValue: studioProductImageLegacyMirrorSettled,
 		})
 	}
-	billingTenant, err := h.authorizeStudioProductImageLedgerTenant(c, requestTenant)
-	if err != nil {
+	if err := h.reconcileStudioProductImageUsageReleases(c.Request.Context(), requestTenant); err != nil {
 		return "", err
 	}
-	if err := h.reconcileStudioProductImageUsageReleases(c.Request.Context(), billingTenant); err != nil {
+	billingTenant, err := h.authorizeStudioProductImageLedgerTenant(c, requestTenant)
+	if err != nil {
 		return "", err
 	}
 	result, err := reserve(billingTenant)
@@ -119,6 +120,9 @@ func (h *handler) authorizeStudioProductImageLedgerTenant(c *gin.Context, tenant
 	if !ok {
 		return "", listingsubscription.ErrSubscriptionRequired
 	}
+	if err := h.reconcileStudioProductImageUsageReleases(c.Request.Context(), legacyTenant); err != nil {
+		return "", err
+	}
 	fallback, fallbackErr := h.subscriptionService.AuthorizeUsage(c.Request.Context(), legacyTenant, listingsubscription.ModuleStudio, "product_image_jobs", 1)
 	if fallbackErr != nil {
 		return "", fallbackErr
@@ -143,7 +147,8 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 				{Key: studioProductImageReleasePendingMetadataKey, Value: "1"},
 				{Key: studioProductImageAsyncJobMetadataKey, Value: studioProductImageAsyncJobMetadataValue},
 			},
-			CommittedMetadataKey: studioProductImageLegacyMirrorMetadataKey, CommittedSettledValue: studioProductImageLegacyMirrorSettled,
+			ReleasedMetadataPredicates: []listingsubscription.UsageLedgerMetadataPredicate{{Key: studioProductImageLegacyMirrorReleasePendingMetadataKey, Value: "1"}},
+			CommittedMetadataKey:       studioProductImageLegacyMirrorMetadataKey, CommittedSettledValue: studioProductImageLegacyMirrorSettled,
 		}, pageSize, offset)
 		if err != nil {
 			return err
@@ -153,6 +158,13 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 		}
 		progress := 0
 		for _, event := range events {
+			if event.Status == listingsubscription.UsageEventReleased && event.Metadata[studioProductImageLegacyMirrorReleasePendingMetadataKey] == "1" {
+				if err := h.finishStudioProductImageLegacyMirrorRelease(ctx, event); err != nil {
+					return err
+				}
+				progress++
+				continue
+			}
 			if event.Status == listingsubscription.UsageEventReserved && event.Metadata[studioProductImageReleasePendingMetadataKey] == "1" {
 				if _, releaseErr := h.subscriptionService.ReleaseUsage(ctx, event.EventID, "retry_pending_api_release"); releaseErr != nil {
 					return releaseErr
@@ -188,6 +200,22 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 			return nil
 		}
 	}
+}
+
+func (h *handler) finishStudioProductImageLegacyMirrorRelease(ctx context.Context, event listingsubscription.UsageEvent) error {
+	if event.Quantity <= 0 {
+		return nil
+	}
+	if _, _, err := h.subscriptionService.RecordUsageForPeriodOnce(ctx, event.TenantID, listingsubscription.ModuleStudio, "product_image_jobs", event.PeriodKey, -int(event.Quantity), listingkit.StudioProductImageLegacyMirrorOperationKey(event.EventID, "release")); err != nil {
+		return err
+	}
+	metadata := make(map[string]string, len(event.Metadata))
+	for key, value := range event.Metadata {
+		metadata[key] = value
+	}
+	delete(metadata, studioProductImageLegacyMirrorReleasePendingMetadataKey)
+	_, err := h.subscriptionService.UpdateUsageMetadata(ctx, event.EventID, metadata)
+	return err
 }
 
 func (h *handler) reconcileAbandonedStudioAsyncProductImageUsage(ctx context.Context, tenantID string, event listingsubscription.UsageEvent) (bool, error) {
