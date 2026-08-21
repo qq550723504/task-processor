@@ -39,6 +39,7 @@ var (
 	ErrUsageQuotaExceeded                 = errors.New("usage ledger quota exceeded")
 	ErrUsageLedgerNotConfigured           = errors.New("usage ledger is not configured")
 	ErrUsageLedgerMetadataUnsupported     = errors.New("usage ledger metadata updates are unsupported")
+	ErrUsageLedgerEventLookupUnsupported  = errors.New("usage ledger event lookup is unsupported")
 	ErrUsageCounterIdempotencyUnsupported = errors.New("usage counter idempotency is unsupported")
 	ErrUsageEventNotFound                 = errors.New("usage ledger event not found")
 	ErrUsageOutboxUnsafeMetadata          = errors.New("usage outbox metadata is unsafe")
@@ -315,4 +316,16 @@ type UsageLedger interface {
 // need to durably record completion of an external mirror side effect.
 type UsageLedgerMetadataUpdater interface {
 	UpdateMetadata(ctx context.Context, eventID string, metadata map[string]string) (UsageEvent, error)
+}
+
+// UsageLedgerEventLookup is an optional reconciliation extension for workers
+// that receive only a durable outbox event ID.
+type UsageLedgerEventLookup interface {
+	GetByID(ctx context.Context, eventID string) (UsageEvent, error)
+}
+
+// UsageLedgerEventLister is an optional reconciliation extension for adapters
+// that need to scan durable events carrying adapter-owned retry metadata.
+type UsageLedgerEventLister interface {
+	ListEvents(ctx context.Context, limit int) ([]UsageEvent, error)
 }

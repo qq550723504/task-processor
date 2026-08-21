@@ -531,14 +531,7 @@ func (s *taskStudioMediaService) tryGenerateStudioProductImage(ctx context.Conte
 	if s.loadUploadedImage != nil && hasOwnedListingKitUploadReference(inputImages[1:]) {
 		return nil, fmt.Errorf("invalid request: uploaded listingkit image must be the primary image")
 	}
-	generated, err := s.editStudioDesignImageWithReferences(ctx, s.imageGenerator.GetDefaultModel(), promptText, "auto", inputImages)
-	if err != nil {
-		generated, err = s.editStudioDesignImageWithReferences(ctx, s.imageGenerator.GetDefaultModel(), promptText, "auto", inputImages[:1])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return generated, nil
+	return s.editStudioDesignImageWithReferences(ctx, s.imageGenerator.GetDefaultModel(), promptText, "auto", inputImages)
 }
 
 func (s *taskStudioMediaService) sanitizeStudioImageInputURLs(ctx context.Context, inputURLs []string) ([]string, error) {

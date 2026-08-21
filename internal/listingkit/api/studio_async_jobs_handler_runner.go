@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -82,7 +84,9 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 
 	if err != nil {
 		if strings.TrimSpace(usageReservationID) != "" {
-			_ = releaseStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID, "generation_failed")
+			if releaseErr := releaseStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID, "generation_failed"); releaseErr != nil {
+				err = errors.Join(err, fmt.Errorf("release product image usage: %w", releaseErr))
+			}
 		}
 		if strings.Contains(err.Error(), "invalid request") {
 			status = http.StatusBadRequest
@@ -103,7 +107,9 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 	}
 	if strings.TrimSpace(usageReservationID) != "" {
 		if commitErr := commitStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID); commitErr != nil {
-			_ = releaseStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID, "commit_failed")
+			if releaseErr := releaseStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID, "commit_failed"); releaseErr != nil {
+				commitErr = errors.Join(commitErr, fmt.Errorf("release product image usage: %w", releaseErr))
+			}
 			h.studioAsyncJobs.fail(ctx, jobID, commitErr, http.StatusInternalServerError)
 			studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
 				"job_id": jobID, "path": path, "usage_metric": usageMetric,

@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -216,6 +217,33 @@ func TestClientEditImageBoundsSecondaryReferenceDownloadByClientTimeout(t *testi
 	}
 	if elapsed := time.Since(startedAt); elapsed > time.Second {
 		t.Fatalf("secondary download took %s, want client timeout", elapsed)
+	}
+}
+
+func TestClientEditImageRejectsOversizedSecondaryReference(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/secondary.png" {
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(bytes.Repeat([]byte("x"), 32<<20+1))
+			return
+		}
+		t.Fatalf("unexpected path = %q", r.URL.Path)
+	}))
+	defer server.Close()
+	client := NewClient(&ClientConfig{
+		APIKey:                   "test-key",
+		Model:                    "gpt-image-1",
+		BaseURL:                  server.URL,
+		Timeout:                  time.Second,
+		MaxRetries:               0,
+		ImageReferenceHTTPClient: server.Client(),
+	})
+	_, err := client.EditImage(context.Background(), &ImageEditRequest{
+		Image:     []byte("primary-image"),
+		ImageURLs: []string{server.URL + "/secondary.png"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "exceeds 32 MiB") {
+		t.Fatalf("EditImage() error = %v, want oversized reference error", err)
 	}
 }
 

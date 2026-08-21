@@ -110,6 +110,37 @@ func (s *Service) GetUsage(ctx context.Context, tenantID, idempotencyKey string)
 	return ledger.Get(ctx, tenantID, idempotencyKey)
 }
 
+// GetUsageEventByID resolves a durable usage event for reconciliation workers.
+func (s *Service) GetUsageEventByID(ctx context.Context, eventID string) (*UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return nil, err
+	}
+	lookup, ok := ledger.(UsageLedgerEventLookup)
+	if !ok {
+		return nil, ErrUsageLedgerEventLookupUnsupported
+	}
+	event, err := lookup.GetByID(ctx, eventID)
+	if err != nil {
+		return nil, err
+	}
+	return &event, nil
+}
+
+// ListUsageEvents returns a bounded durable event snapshot for reconciliation
+// workers when the configured ledger supports that optional extension.
+func (s *Service) ListUsageEvents(ctx context.Context, limit int) ([]UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return nil, err
+	}
+	lister, ok := ledger.(UsageLedgerEventLister)
+	if !ok {
+		return nil, ErrUsageLedgerEventLookupUnsupported
+	}
+	return lister.ListEvents(ctx, limit)
+}
+
 // UpdateUsageMetadata persists adapter-owned reconciliation state on a usage
 // event when the configured ledger supports that optional extension.
 func (s *Service) UpdateUsageMetadata(ctx context.Context, eventID string, metadata map[string]string) (UsageEvent, error) {

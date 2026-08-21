@@ -203,9 +203,12 @@ func downloadImageEditReference(ctx context.Context, imageURL string, override *
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		return nil, "", fmt.Errorf("download secondary image returned status %d", response.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, 32<<20))
+	data, err := io.ReadAll(io.LimitReader(response.Body, 32<<20+1))
 	if err != nil {
 		return nil, "", fmt.Errorf("read secondary image: %w", err)
+	}
+	if len(data) > 32<<20 {
+		return nil, "", fmt.Errorf("secondary image exceeds 32 MiB")
 	}
 	if len(data) == 0 {
 		return nil, "", fmt.Errorf("secondary image is empty")

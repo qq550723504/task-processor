@@ -335,6 +335,33 @@ func (l *gormUsageLedger) Get(ctx context.Context, tenantID, idempotencyKey stri
 	return &event, nil
 }
 
+func (l *gormUsageLedger) GetByID(ctx context.Context, eventID string) (UsageEvent, error) {
+	var row usageEventRow
+	err := l.repo.db.WithContext(ctx).Where("event_id = ?", strings.TrimSpace(eventID)).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return UsageEvent{}, fmt.Errorf("%w: %s", ErrUsageEventNotFound, strings.TrimSpace(eventID))
+	}
+	if err != nil {
+		return UsageEvent{}, err
+	}
+	return usageEventFromRow(row), nil
+}
+
+func (l *gormUsageLedger) ListEvents(ctx context.Context, limit int) ([]UsageEvent, error) {
+	if limit <= 0 {
+		return []UsageEvent{}, nil
+	}
+	var rows []usageEventRow
+	if err := l.repo.db.WithContext(ctx).Order("created_at ASC, event_id ASC").Limit(limit).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	events := make([]UsageEvent, 0, len(rows))
+	for _, row := range rows {
+		events = append(events, usageEventFromRow(row))
+	}
+	return events, nil
+}
+
 func (l *gormUsageLedger) UpdateMetadata(ctx context.Context, eventID string, metadata map[string]string) (UsageEvent, error) {
 	data, err := json.Marshal(metadata)
 	if err != nil {

@@ -249,6 +249,40 @@ func (l *memUsageLedger) Get(ctx context.Context, tenantID, idempotencyKey strin
 	return &event, nil
 }
 
+func (l *memUsageLedger) GetByID(ctx context.Context, eventID string) (UsageEvent, error) {
+	_ = ctx
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	record, ok := l.eventsByID[strings.TrimSpace(eventID)]
+	if !ok {
+		return UsageEvent{}, usageEventNotFound(eventID)
+	}
+	return cloneMemUsageEvent(record.event), nil
+}
+
+func (l *memUsageLedger) ListEvents(ctx context.Context, limit int) ([]UsageEvent, error) {
+	_ = ctx
+	if limit <= 0 {
+		return []UsageEvent{}, nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	events := make([]UsageEvent, 0, len(l.eventsByID))
+	for _, record := range l.eventsByID {
+		events = append(events, cloneMemUsageEvent(record.event))
+	}
+	sort.Slice(events, func(i, j int) bool {
+		if events[i].CreatedAt.Equal(events[j].CreatedAt) {
+			return events[i].EventID < events[j].EventID
+		}
+		return events[i].CreatedAt.Before(events[j].CreatedAt)
+	})
+	if len(events) > limit {
+		events = events[:limit]
+	}
+	return events, nil
+}
+
 func (l *memUsageLedger) UpdateMetadata(ctx context.Context, eventID string, metadata map[string]string) (UsageEvent, error) {
 	_ = ctx
 	l.mu.Lock()

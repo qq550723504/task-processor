@@ -13,7 +13,10 @@ import (
 	"task-processor/internal/listingsubscription"
 )
 
-const studioProductImageLedgerMetric = "product_image_jobs_succeeded"
+const (
+	studioProductImageLedgerMetric              = "product_image_jobs_succeeded"
+	studioProductImageReleasePendingMetadataKey = "listingkit_api_release_pending"
+)
 
 func studioProductImageUsageLedgerEnabled(h *handler) bool {
 	return h != nil && h.subscriptionService != nil && h.subscriptionService.HasUsageLedger()
@@ -26,6 +29,9 @@ func (h *handler) reserveStudioProductImageUsage(c *gin.Context, reservationID s
 	reservationID = strings.TrimSpace(reservationID)
 	if reservationID == "" {
 		reservationID = uuid.NewString()
+	}
+	if err := h.reconcileStudioProductImageUsageReleases(c.Request.Context()); err != nil {
+		return "", err
 	}
 	requestTenant := strings.TrimSpace(requestTenantID(c))
 	if requestTenant == "" {
@@ -45,9 +51,15 @@ func (h *handler) reserveStudioProductImageUsage(c *gin.Context, reservationID s
 			OccurredAt:     now,
 		})
 	}
-	result, err := reserve(requestTenant)
+	billingTenant, err := h.authorizeStudioProductImageLedgerTenant(c, requestTenant)
+	if err != nil {
+		return "", err
+	}
+	result, err := reserve(billingTenant)
 	if errors.Is(err, listingsubscription.ErrSubscriptionRequired) {
-		if legacyTenant, ok := resolveLegacySubscriptionTenantID(c, requestTenant); ok {
+		if legacyTenant, ok, resolveErr := resolveLegacySubscriptionTenantIDWithError(c, requestTenant); resolveErr != nil {
+			return "", resolveErr
+		} else if ok {
 			result, err = reserve(legacyTenant)
 			if err == nil {
 				c.Set(subscriptionTenantContextKey, legacyTenant)
@@ -61,11 +73,73 @@ func (h *handler) reserveStudioProductImageUsage(c *gin.Context, reservationID s
 	return result.Event.EventID, nil
 }
 
+func (h *handler) authorizeStudioProductImageLedgerTenant(c *gin.Context, tenantID string) (string, error) {
+	result, err := h.subscriptionService.AuthorizeUsage(c.Request.Context(), tenantID, listingsubscription.ModuleStudio, "product_image_jobs", 1)
+	if err == nil && result.Allowed {
+		return tenantID, nil
+	}
+	if err != nil && !errors.Is(err, listingsubscription.ErrSubscriptionRequired) {
+		return "", err
+	}
+	if err == nil || result.Reason != "not_configured" {
+		if err != nil {
+			return "", err
+		}
+		return "", listingsubscription.ErrSubscriptionRequired
+	}
+	legacyTenant, ok, resolveErr := resolveLegacySubscriptionTenantIDWithError(c, tenantID)
+	if resolveErr != nil {
+		return "", resolveErr
+	}
+	if !ok {
+		return "", listingsubscription.ErrSubscriptionRequired
+	}
+	fallback, fallbackErr := h.subscriptionService.AuthorizeUsage(c.Request.Context(), legacyTenant, listingsubscription.ModuleStudio, "product_image_jobs", 1)
+	if fallbackErr != nil {
+		return "", fallbackErr
+	}
+	if !fallback.Allowed {
+		return "", listingsubscription.ErrSubscriptionRequired
+	}
+	return legacyTenant, nil
+}
+
+func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context) error {
+	events, err := h.subscriptionService.ListUsageEvents(ctx, 100)
+	if err != nil {
+		return err
+	}
+	for _, event := range events {
+		if event.Status != listingsubscription.UsageEventReserved || event.SourceType != "listingkit_product_image" || event.Metric != studioProductImageLedgerMetric || event.Metadata[studioProductImageReleasePendingMetadataKey] != "1" {
+			continue
+		}
+		if _, releaseErr := h.subscriptionService.ReleaseUsage(ctx, event.EventID, "retry_pending_api_release"); releaseErr != nil {
+			return releaseErr
+		}
+	}
+	return nil
+}
+
 func releaseStudioProductImageUsage(ctx context.Context, service *listingsubscription.Service, eventID, reason string) error {
 	if strings.TrimSpace(eventID) == "" || service == nil {
 		return nil
 	}
-	_, err := service.ReleaseUsage(ctx, strings.TrimSpace(eventID), strings.TrimSpace(reason))
+	event, err := service.GetUsageEventByID(ctx, strings.TrimSpace(eventID))
+	if err != nil {
+		return err
+	}
+	if event == nil || event.Status != listingsubscription.UsageEventReserved {
+		return nil
+	}
+	metadata := make(map[string]string, len(event.Metadata)+1)
+	for key, value := range event.Metadata {
+		metadata[key] = value
+	}
+	metadata[studioProductImageReleasePendingMetadataKey] = "1"
+	if _, err := service.UpdateUsageMetadata(ctx, event.EventID, metadata); err != nil {
+		return err
+	}
+	_, err = service.ReleaseUsage(ctx, event.EventID, strings.TrimSpace(reason))
 	return err
 }
 

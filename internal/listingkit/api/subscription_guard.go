@@ -118,15 +118,26 @@ func shouldTryLegacySubscriptionFallback(err error, result listingsubscription.G
 }
 
 func resolveLegacySubscriptionTenantID(c *gin.Context, tenantID string) (string, bool) {
+	resolved, ok, _ := resolveLegacySubscriptionTenantIDWithError(c, tenantID)
+	return resolved, ok
+}
+
+func resolveLegacySubscriptionTenantIDWithError(c *gin.Context, tenantID string) (string, bool, error) {
 	legacyTenantID, err := tenantbridge.ResolveLegacyTenantID(c.Request.Context(), tenantID)
-	if err != nil || legacyTenantID <= 0 {
-		return "", false
+	if errors.Is(err, tenantbridge.ErrLegacyTenantNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if legacyTenantID <= 0 {
+		return "", false, nil
 	}
 	resolved := strconv.FormatInt(legacyTenantID, 10)
 	if resolved == strings.TrimSpace(tenantID) {
-		return "", false
+		return "", false, nil
 	}
-	return resolved, true
+	return resolved, true, nil
 }
 
 func subscriptionTenantID(c *gin.Context) string {

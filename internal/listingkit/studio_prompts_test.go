@@ -1245,7 +1245,6 @@ func TestGenerateOneStudioProductImageRetriesWithSanitizedInputsOnFormatError(t 
 	generator := &stubStudioImageGenerator{
 		editErrs: []error{
 			errors.New("grsai job failed: error (The image format is incorrect. Please check if there are any issues with the image format)"),
-			errors.New("grsai job failed: error (The image format is incorrect. Please check if there are any issues with the image format)"),
 			nil,
 		},
 		generateResponse: &AIImageResponse{
@@ -1261,8 +1260,8 @@ func TestGenerateOneStudioProductImageRetriesWithSanitizedInputsOnFormatError(t 
 	if err != nil {
 		t.Fatalf("generateOneStudioProductImage() error = %v", err)
 	}
-	if generator.editCalls != 3 {
-		t.Fatalf("editCalls = %d, want 3", generator.editCalls)
+	if generator.editCalls != 2 {
+		t.Fatalf("editCalls = %d, want 2", generator.editCalls)
 	}
 	if len(store.saved) < 2 {
 		t.Fatalf("saved images = %d, want at least 2", len(store.saved))
@@ -1270,7 +1269,7 @@ func TestGenerateOneStudioProductImageRetriesWithSanitizedInputsOnFormatError(t 
 	if got := store.saved[0].ContentType; got != "image/jpeg" {
 		t.Fatalf("content type = %q, want image/jpeg", got)
 	}
-	if len(generator.editRequests) < 3 || generator.editRequests[2].ImageURLs[0] != "https://example.com/compat/sanitized.jpg" {
+	if len(generator.editRequests) < 2 || generator.editRequests[1].ImageURLs[0] != "https://example.com/compat/sanitized.jpg" {
 		t.Fatalf("sanitized retry did not use uploaded jpeg URL: %#v", generator.editRequests)
 	}
 }

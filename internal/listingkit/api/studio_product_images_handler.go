@@ -1,6 +1,8 @@
 package api
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -31,7 +33,9 @@ func (h *handler) GenerateStudioProductImages(c *gin.Context) {
 
 	response, err := h.studioMediaService.GenerateStudioProductImages(requestContext(c), &req)
 	if err != nil {
-		_ = releaseStudioProductImageUsage(requestContext(c), h.subscriptionService, reservationID, "generation_failed")
+		if releaseErr := releaseStudioProductImageUsage(requestContext(c), h.subscriptionService, reservationID, "generation_failed"); releaseErr != nil {
+			err = errors.Join(err, fmt.Errorf("release product image usage: %w", releaseErr))
+		}
 		status := http.StatusInternalServerError
 		if strings.Contains(err.Error(), "invalid request") {
 			status = http.StatusBadRequest
@@ -44,7 +48,9 @@ func (h *handler) GenerateStudioProductImages(c *gin.Context) {
 	}
 	if ledgerAdmission {
 		if commitErr := commitStudioProductImageUsage(requestContext(c), h.subscriptionService, reservationID); commitErr != nil {
-			_ = releaseStudioProductImageUsage(requestContext(c), h.subscriptionService, reservationID, "commit_failed")
+			if releaseErr := releaseStudioProductImageUsage(requestContext(c), h.subscriptionService, reservationID, "commit_failed"); releaseErr != nil {
+				commitErr = errors.Join(commitErr, fmt.Errorf("release product image usage: %w", releaseErr))
+			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "studio_product_images_failed", "message": commitErr.Error()})
 			return
 		}
