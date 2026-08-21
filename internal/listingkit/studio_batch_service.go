@@ -104,4 +104,7 @@ type taskStudioBatchServiceConfig struct {
 	taskExecuteRunner        *listingStudioBatchTaskExecuteRunner
 	taskPrepareRunner        *listingStudioBatchTaskPrepareRunner
 	taskResumeRunner         *listingStudioBatchTaskResumeRunner
+
+	productImageUsage             StudioProductImageUsage
+	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }

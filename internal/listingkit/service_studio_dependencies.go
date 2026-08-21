@@ -9,4 +9,5 @@ type studioDependencies struct {
 	imageGenerator    AIImageGenerator
 	backgroundRemover StudioBackgroundRemover
 	uploadStore       ImageUploadStore
+	productImageUsage StudioProductImageUsage
 }

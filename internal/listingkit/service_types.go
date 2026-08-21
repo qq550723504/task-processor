@@ -49,6 +49,7 @@ type ServiceCoreDependencies struct {
 	AIClientCredentialStore       AIClientCredentialStore
 	GenerationUsageLedger         GenerationUsageSettlement
 	GenerationUsageAdmission      GenerationUsageAdmission
+	StudioProductImageUsage       StudioProductImageUsage
 }
 
 type ServiceAssetDependencies struct {

@@ -31,32 +31,37 @@ type taskStudioBatchService struct {
 	taskExecuteRunner        *listingStudioBatchTaskExecuteRunner
 	taskPrepareRunner        *listingStudioBatchTaskPrepareRunner
 	taskResumeRunner         *listingStudioBatchTaskResumeRunner
+
+	productImageUsage             StudioProductImageUsage
+	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
 func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioBatchService {
 	service := &taskStudioBatchService{
-		repo:                     config.repo,
-		batchRunRepo:             config.batchRunRepo,
-		batchTaskLinkRepo:        config.batchTaskLinkRepo,
-		studioSessionRepo:        config.studioSessionRepo,
-		baselineChecker:          config.baselineChecker,
-		sdsProductDetailProvider: config.sdsProductDetailProvider,
-		storeValidator:           config.storeValidator,
-		generator:                config.generator,
-		createGenerateTask:       config.createGenerateTask,
-		generateProductImages:    config.generateProductImages,
-		getTask:                  config.getTask,
-		retryBackgroundRemoval:   config.retryBackgroundRemoval,
-		currentTime:              time.Now,
-		serviceRunner:            config.serviceRunner,
-		batchRunner:              config.batchRunner,
-		detailRunner:             config.detailRunner,
-		reviewRunner:             config.reviewRunner,
-		retryRunner:              config.retryRunner,
-		taskCreationRunner:       config.taskCreationRunner,
-		taskExecuteRunner:        config.taskExecuteRunner,
-		taskPrepareRunner:        config.taskPrepareRunner,
-		taskResumeRunner:         config.taskResumeRunner,
+		repo:                          config.repo,
+		batchRunRepo:                  config.batchRunRepo,
+		batchTaskLinkRepo:             config.batchTaskLinkRepo,
+		studioSessionRepo:             config.studioSessionRepo,
+		baselineChecker:               config.baselineChecker,
+		sdsProductDetailProvider:      config.sdsProductDetailProvider,
+		storeValidator:                config.storeValidator,
+		generator:                     config.generator,
+		createGenerateTask:            config.createGenerateTask,
+		generateProductImages:         config.generateProductImages,
+		productImageUsage:             config.productImageUsage,
+		resolveUploadedImagePublicURL: config.resolveUploadedImagePublicURL,
+		getTask:                       config.getTask,
+		retryBackgroundRemoval:        config.retryBackgroundRemoval,
+		currentTime:                   time.Now,
+		serviceRunner:                 config.serviceRunner,
+		batchRunner:                   config.batchRunner,
+		detailRunner:                  config.detailRunner,
+		reviewRunner:                  config.reviewRunner,
+		retryRunner:                   config.retryRunner,
+		taskCreationRunner:            config.taskCreationRunner,
+		taskExecuteRunner:             config.taskExecuteRunner,
+		taskPrepareRunner:             config.taskPrepareRunner,
+		taskResumeRunner:              config.taskResumeRunner,
 	}
 	service.ensureBatchRunner()
 	service.ensureDetailRunner()

@@ -75,6 +75,10 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 		firstProductImageRequest = cloneStudioBatchProductImageRequest(productImageRequest)
 		appendStudioProductImageColorDirective(firstProductImageRequest, colorRepresentatives[0].Color)
 	}
+	if err := s.authorizeStudioBatchProductImageUsage(ctx, batch, 1); err != nil {
+		_ = heartbeatStop()
+		return fmt.Errorf("authorize studio product image usage: %w", err)
+	}
 	response, err := s.generateProductImages(ctx, firstProductImageRequest)
 	if err != nil {
 		_ = heartbeatStop()
@@ -84,6 +88,15 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 	if len(productImageURLs) == 0 {
 		_ = heartbeatStop()
 		return fmt.Errorf("studio product image generator returned no images")
+	}
+	productImageURLs, err = s.publicizeStudioBatchProductImageURLs(ctx, productImageURLs)
+	if err != nil {
+		_ = heartbeatStop()
+		return err
+	}
+	if err := s.recordStudioBatchProductImageUsage(ctx, batch, 1); err != nil {
+		_ = heartbeatStop()
+		return fmt.Errorf("record studio product image usage: %w", err)
 	}
 	request.Options.SheinStudio.ProductImageURLs = productImageURLs
 	if len(colorRepresentatives) > 1 {
@@ -101,6 +114,10 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 				fmt.Sprintf("Generate the product image for the SDS color variant %q. Keep the approved artwork identical, but match the base product color and material from this variant's SDS reference image.", firstNonEmpty(strings.TrimSpace(variant.Color), "this color variant")),
 			}, "\n"))
 			appendStudioProductImageColorDirective(variantRequest, variant.Color)
+			if err := s.authorizeStudioBatchProductImageUsage(ctx, batch, 1); err != nil {
+				_ = heartbeatStop()
+				return fmt.Errorf("authorize studio product image usage for color %q: %w", variant.Color, err)
+			}
 			variantResponse, variantErr := s.generateProductImages(ctx, variantRequest)
 			if variantErr != nil {
 				_ = heartbeatStop()
@@ -110,6 +127,15 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 			if len(variantURLs) == 0 {
 				_ = heartbeatStop()
 				return fmt.Errorf("studio product image generator returned no images for color %q", variant.Color)
+			}
+			variantURLs, variantErr = s.publicizeStudioBatchProductImageURLs(ctx, variantURLs)
+			if variantErr != nil {
+				_ = heartbeatStop()
+				return fmt.Errorf("publicize studio product images for color %q: %w", variant.Color, variantErr)
+			}
+			if variantErr = s.recordStudioBatchProductImageUsage(ctx, batch, 1); variantErr != nil {
+				_ = heartbeatStop()
+				return fmt.Errorf("record studio product image usage for color %q: %w", variant.Color, variantErr)
 			}
 			request.Options.SheinStudio.VariantProductImages = append(request.Options.SheinStudio.VariantProductImages, SheinStudioVariantImageSet{
 				VariantSKU: variant.VariantSKU,
@@ -122,6 +148,54 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 		return err
 	}
 	return nil
+}
+
+func (s *taskStudioBatchService) authorizeStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, quantity int) error {
+	if s == nil || s.productImageUsage == nil {
+		return nil
+	}
+	tenantID := studioBatchTaskGateTenantID(ctx, batch)
+	if strings.TrimSpace(tenantID) == "" {
+		return fmt.Errorf("tenant id is required")
+	}
+	return s.productImageUsage.AuthorizeProductImageUsage(ctx, tenantID, quantity)
+}
+
+func (s *taskStudioBatchService) recordStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, quantity int) error {
+	if s == nil || s.productImageUsage == nil {
+		return nil
+	}
+	tenantID := studioBatchTaskGateTenantID(ctx, batch)
+	if strings.TrimSpace(tenantID) == "" {
+		return fmt.Errorf("tenant id is required")
+	}
+	return s.productImageUsage.RecordProductImageUsage(ctx, tenantID, quantity)
+}
+
+func (s *taskStudioBatchService) publicizeStudioBatchProductImageURLs(ctx context.Context, urls []string) ([]string, error) {
+	publicURLs := append([]string(nil), urls...)
+	if s == nil {
+		return publicURLs, nil
+	}
+	for index, rawURL := range publicURLs {
+		key, ok := studioReferenceUploadedImageKeyFromURL(rawURL)
+		if !ok {
+			continue
+		}
+		if s.resolveUploadedImagePublicURL == nil {
+			return nil, fmt.Errorf("resolve generated upload %q: uploaded image public url resolver is not configured", key)
+		}
+		resolved, err := s.resolveUploadedImagePublicURL(ctx, key)
+		if err != nil {
+			return nil, fmt.Errorf("resolve generated upload %q: %w", key, err)
+		}
+		resolved = strings.TrimSpace(resolved)
+		if resolved == "" {
+			return nil, fmt.Errorf("resolve generated upload %q: public url is empty", key)
+		}
+		publicURLs[index] = resolved
+	}
+	return publicURLs, nil
 }
 
 func appendStudioProductImageColorDirective(request *StudioProductImageRequest, color string) {

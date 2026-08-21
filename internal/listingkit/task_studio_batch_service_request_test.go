@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -247,7 +248,9 @@ func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
 	var calls []string
 	var firstReferences []string
 	var requests []*StudioProductImageRequest
+	usage := &recordingStudioProductImageUsage{}
 	service := &taskStudioBatchService{
+		productImageUsage: usage,
 		generateProductImages: func(_ context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {
 			calls = append(calls, req.StyleName)
 			requests = append(requests, cloneStudioBatchProductImageRequest(req))
@@ -271,11 +274,11 @@ func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
 	}
 	request := buildStudioBatchTaskGenerateRequest(
 		&SheinStudioSession{Prompt: "retro", PromptMode: "raw", ProductImagePrompts: SheinStudioProductImagePromptList{{Role: "main", Prompt: "approved artwork"}}},
-		&StudioBatchRecord{ID: "batch-1"},
+		&StudioBatchRecord{ID: "batch-1", TenantID: "tenant-a"},
 		candidate,
 		StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
 	)
-	if err := service.attachStudioBatchProductImages(context.Background(), request, &SheinStudioSession{Prompt: "retro", PromptMode: "raw", ProductImagePrompts: SheinStudioProductImagePromptList{{Role: "main", Prompt: "approved artwork"}}}, &StudioBatchRecord{ID: "batch-1"}, candidate, StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"}); err != nil {
+	if err := service.attachStudioBatchProductImages(context.Background(), request, &SheinStudioSession{Prompt: "retro", PromptMode: "raw", ProductImagePrompts: SheinStudioProductImagePromptList{{Role: "main", Prompt: "approved artwork"}}}, &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-a"}, candidate, StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"}); err != nil {
 		t.Fatalf("attachStudioBatchProductImages() error = %v", err)
 	}
 	if len(calls) != 2 {
@@ -286,6 +289,9 @@ func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
 	}
 	if len(requests) != 2 {
 		t.Fatalf("captured product image requests = %d, want 2", len(requests))
+	}
+	if len(usage.authorized) != 2 || len(usage.recorded) != 2 {
+		t.Fatalf("product image usage = authorized:%v recorded:%v, want one authorization and record per color", usage.authorized, usage.recorded)
 	}
 	firstPrompt := buildRawStudioProductImagePrompt(requests[0], defaultStudioProductImageRoles[0])
 	secondPrompt := buildRawStudioProductImagePrompt(requests[1], defaultStudioProductImageRoles[0])
@@ -301,6 +307,54 @@ func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
 	if got := request.Options.SheinStudio.VariantProductImages[1].Color; got != "Blue" {
 		t.Fatalf("second variant color = %q, want Blue", got)
 	}
+}
+
+func TestTaskStudioBatchServicePublicizesGeneratedUploadPaths(t *testing.T) {
+	usage := &recordingStudioProductImageUsage{}
+	service := &taskStudioBatchService{
+		productImageUsage: usage,
+		resolveUploadedImagePublicURL: func(_ context.Context, key string) (string, error) {
+			if key != "upload-1" {
+				t.Fatalf("resolved upload key = %q, want upload-1", key)
+			}
+			return "https://cdn.example.com/upload-1.png", nil
+		},
+		generateProductImages: func(_ context.Context, _ *StudioProductImageRequest) (*StudioProductImageResponse, error) {
+			return &StudioProductImageResponse{Images: []StudioGeneratedImage{{ImageURL: "/api/v1/listing-kits/uploads/files/upload-1"}}}, nil
+		},
+	}
+	candidate := studioBatchTaskCandidate{
+		ImageStrategy:     sheinImageStrategyAIGenerated,
+		SelectionSnapshot: SheinStudioSelection{ProductName: "Canvas Tote"},
+		Title:             "Style 1",
+	}
+	request := buildStudioBatchTaskGenerateRequest(
+		&SheinStudioSession{Prompt: "retro"},
+		&StudioBatchRecord{ID: "batch-1"},
+		candidate,
+		StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
+	)
+	if err := service.attachStudioBatchProductImages(context.Background(), request, &SheinStudioSession{Prompt: "retro"}, &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-a"}, candidate, StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"}); err != nil {
+		t.Fatalf("attachStudioBatchProductImages() error = %v", err)
+	}
+	if got := request.Options.SheinStudio.ProductImageURLs; len(got) != 1 || got[0] != "https://cdn.example.com/upload-1.png" {
+		t.Fatalf("product image URLs = %v, want public CDN URL", got)
+	}
+}
+
+type recordingStudioProductImageUsage struct {
+	authorized []string
+	recorded   []string
+}
+
+func (u *recordingStudioProductImageUsage) AuthorizeProductImageUsage(_ context.Context, tenantID string, quantity int) error {
+	u.authorized = append(u.authorized, tenantID+":"+strconv.Itoa(quantity))
+	return nil
+}
+
+func (u *recordingStudioProductImageUsage) RecordProductImageUsage(_ context.Context, tenantID string, quantity int) error {
+	u.recorded = append(u.recorded, tenantID+":"+strconv.Itoa(quantity))
+	return nil
 }
 
 func TestTaskStudioBatchServiceProductImageRequestLoadsSDSCategoryPath(t *testing.T) {

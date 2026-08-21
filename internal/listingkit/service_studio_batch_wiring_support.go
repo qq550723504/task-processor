@@ -26,6 +26,9 @@ type taskStudioBatchServiceWiring struct {
 	loadDetail               func(context.Context, string) (*StudioBatchDetail, error)
 	resetRetryItems          func(context.Context, []StudioBatchItemRecord) error
 	currentTime              func() time.Time
+
+	productImageUsage             StudioProductImageUsage
+	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
 type taskStudioBatchServiceConfigWiring struct {
@@ -77,7 +80,9 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 			}
 			return media.GenerateStudioProductImages(ctx, req)
 		},
-		getTask: repository.getTask,
+		productImageUsage:             s.studioDeps.productImageUsage,
+		resolveUploadedImagePublicURL: buildResolveUploadedImagePublicURLFunc(s),
+		getTask:                       repository.getTask,
 		retryBackgroundRemoval: func(ctx context.Context, sourceURL string, filename string) (*studioBackgroundRemovalMaterialization, error) {
 			media := s.taskStudioMediaOrDefault()
 			if media == nil {
@@ -93,10 +98,12 @@ func buildTaskStudioBatchServiceWiringWithGenerator(s *service, generator *studi
 		},
 		resetRetryItems: func(ctx context.Context, items []StudioBatchItemRecord) error {
 			batchService := &taskStudioBatchService{
-				repo:                     repo,
-				batchRunRepo:             resolveStudioBatchRunRepo(s),
-				currentTime:              time.Now,
-				sdsProductDetailProvider: resolveSDSBaselineRemoteProvider(s),
+				repo:                          repo,
+				batchRunRepo:                  resolveStudioBatchRunRepo(s),
+				currentTime:                   time.Now,
+				sdsProductDetailProvider:      resolveSDSBaselineRemoteProvider(s),
+				productImageUsage:             s.studioDeps.productImageUsage,
+				resolveUploadedImagePublicURL: buildResolveUploadedImagePublicURLFunc(s),
 			}
 			return batchService.resetStudioBatchRetryItems(ctx, items)
 		},
@@ -307,6 +314,9 @@ func buildTaskStudioBatchServiceConfigWithCollaborators(
 		retryRunner:              config.retryRunner,
 		taskPrepareRunner:        config.taskPrepare,
 		taskResumeRunner:         config.taskResume,
+
+		productImageUsage:             config.batch.productImageUsage,
+		resolveUploadedImagePublicURL: config.batch.resolveUploadedImagePublicURL,
 	}
 }
 

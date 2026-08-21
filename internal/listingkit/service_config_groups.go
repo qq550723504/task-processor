@@ -31,6 +31,7 @@ func buildStudioDependencies(config *ServiceConfig) studioDependencies {
 		imageGenerator:    config.Shein.StudioImageGenerator,
 		backgroundRemover: config.Shein.StudioBackgroundRemover,
 		uploadStore:       config.Core.ImageUploadStore,
+		productImageUsage: config.Core.StudioProductImageUsage,
 	}
 }
 

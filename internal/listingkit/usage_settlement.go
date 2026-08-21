@@ -42,6 +42,14 @@ type GenerationUsageAdmission interface {
 	AllowsGenerationUsage(tenantID string) bool
 }
 
+// StudioProductImageUsage meters direct product-image generation invoked by
+// Studio batch task creation through the same subscription boundary as the
+// product-image APIs.
+type StudioProductImageUsage interface {
+	AuthorizeProductImageUsage(context.Context, string, int) error
+	RecordProductImageUsage(context.Context, string, int) error
+}
+
 func generationUsageIdentity(taskID, tenantID string, occurredAt time.Time) generationUsageFact {
 	taskID = strings.TrimSpace(taskID)
 	tenantID = strings.TrimSpace(tenantID)
