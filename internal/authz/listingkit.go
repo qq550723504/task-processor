@@ -14,6 +14,7 @@ const (
 	PermissionListingKitPromptWrite = "listingkit.prompt.write"
 	PermissionListingKitPlatformAdm = "listingkit.platform_admin"
 	PermissionProductSourcingWrite  = "product_sourcing.write"
+	PermissionLocalAgentWrite       = "local_agent.write"
 )
 
 const listingKitModel = `
@@ -56,15 +57,18 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		{"listingkit_operator", PermissionListingKitAdminRead},
 		{"listingkit_operator", PermissionListingKitAdminWrite},
 		{"listingkit_operator", PermissionProductSourcingWrite},
+		{"listingkit_operator", PermissionLocalAgentWrite},
 		{"listingkit_admin", PermissionListingKitAdminRead},
 		{"listingkit_admin", PermissionListingKitAdminWrite},
 		{"listingkit_admin", PermissionListingKitPromptWrite},
 		{"listingkit_admin", PermissionProductSourcingWrite},
+		{"listingkit_admin", PermissionLocalAgentWrite},
 		{"platform_admin", PermissionListingKitAdminRead},
 		{"platform_admin", PermissionListingKitAdminWrite},
 		{"platform_admin", PermissionListingKitPromptWrite},
 		{"platform_admin", PermissionListingKitPlatformAdm},
 		{"platform_admin", PermissionProductSourcingWrite},
+		{"platform_admin", PermissionLocalAgentWrite},
 		{"admin", PermissionListingKitPlatformAdm},
 		{"admin", PermissionListingKitPromptWrite},
 	} {

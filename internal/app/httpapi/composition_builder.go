@@ -5,6 +5,8 @@ import (
 
 	a1688handoff "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688"
 	a1688httpapi "task-processor/internal/compatibility/listingkit/sourcehandoff/a1688/httpapi"
+	localagent "task-processor/internal/localagent"
+	localagenthttpapi "task-processor/internal/localagent/httpapi"
 	"task-processor/internal/sourceaccount"
 )
 
@@ -114,6 +116,9 @@ func (b httpFeatureCompositionBuilder) build(logger *logrus.Logger, deps *runtim
 		composition.productSourcingModule = a1688httpapi.BuildModule(
 			a1688handoff.NewTaskCommandService(composition.listingKitModule.TaskLifecycleService, composition.listingKitModule.StoreAccessValidator, sourceValidator),
 		)
+	}
+	if composition.listingKitModule != nil {
+		composition.localAgentModule = localagenthttpapi.BuildModule(localagent.NewService(nil))
 	}
 
 	done = timer.phase("buildSupportModules")

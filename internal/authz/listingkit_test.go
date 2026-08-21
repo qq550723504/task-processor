@@ -11,7 +11,9 @@ func TestListingKitAuthorizerAllowsOperationalRolesToWriteProductSourcing(t *tes
 	require.NoError(t, err)
 
 	require.True(t, authorizer.Authorize("", []string{"listingkit_operator"}, PermissionProductSourcingWrite))
+	require.True(t, authorizer.Authorize("", []string{"listingkit_operator"}, PermissionLocalAgentWrite))
 	require.True(t, authorizer.Authorize("", []string{"listingkit_admin"}, PermissionProductSourcingWrite))
+	require.True(t, authorizer.Authorize("", []string{"listingkit_admin"}, PermissionLocalAgentWrite))
 	require.True(t, authorizer.Authorize("", []string{"platform_admin"}, PermissionProductSourcingWrite))
 	require.False(t, authorizer.Authorize("", []string{"viewer"}, PermissionProductSourcingWrite))
 }

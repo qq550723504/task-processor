@@ -6,6 +6,7 @@ import (
 	kernelmodule "task-processor/internal/kernel/module"
 	"task-processor/internal/listingkit"
 	listingkithttpapi "task-processor/internal/listingkit/httpapi"
+	localagenthttpapi "task-processor/internal/localagent/httpapi"
 	productenrich "task-processor/internal/productenrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	productimage "task-processor/internal/productimage"
@@ -50,4 +51,5 @@ type httpFeatureComposition struct {
 	sheinLoginResult      *sheinloginbootstrap.BuildResult
 	sdsLoginResult        *sdsloginbootstrap.BuildResult
 	crawler1688Module     kernelmodule.Module
+	localAgentModule      *localagenthttpapi.BuildResult
 }
