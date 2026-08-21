@@ -76,8 +76,8 @@ type SDSAuthBootstrapConfig struct {
 type LoginServiceConfig struct {
 	BaseURL             string `mapstructure:"baseURL" yaml:"baseURL"`           // login 服务地址，例如 http://login:8000
 	SharedKey           string `mapstructure:"sharedKey" yaml:"sharedKey"`       // 与 login 服务 LOGIN_INTERNAL_SHARED_KEY 对齐
-	TenantID            string `mapstructure:"tenantID" yaml:"tenantID"`         // 平台账号租户
-	Identifier          string `mapstructure:"identifier" yaml:"identifier"`     // 平台账号标识，通常是 listing_store.id
+	TenantID            string `mapstructure:"tenantID" yaml:"tenantID"`         // 可选兼容回退；运行时按目标租户和店铺解析
+	Identifier          string `mapstructure:"identifier" yaml:"identifier"`     // 可选兼容回退；运行时按目标店铺解析，通常对应 listing_store.id
 	MerchantName        string `mapstructure:"merchantName" yaml:"merchantName"` // SDS 商户号
 	Username            string `mapstructure:"username" yaml:"username"`         // SDS 登录用户名
 	Password            string `mapstructure:"password" yaml:"password"`         // SDS 登录密码

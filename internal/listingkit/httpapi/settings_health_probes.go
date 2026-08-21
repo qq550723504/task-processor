@@ -10,7 +10,7 @@ import (
 func buildSettingsHealthProbesFromConfig(cfg *config.Config) listingkit.SettingsHealthProbes {
 	if cfg == nil {
 		return listingkit.SettingsHealthProbes{
-			SheinIntegration: missingProbe("shein.loginService.baseURL 缺失", "shein.loginService.tenantID 缺失", "shein.loginService.identifier 缺失"),
+			SheinIntegration: missingProbe("shein.loginService.baseURL 缺失"),
 			SDSLogin:         missingProbe("sds.loginService.baseURL 缺失", "sds.loginService.tenantID 缺失", "sds.loginService.identifier 缺失"),
 			ObjectStorage:    missingProbe("productimage.publisher.provider 缺失"),
 		}
@@ -40,9 +40,7 @@ func completeSettingsHealthProbesWithSubmitRuntime(probes listingkit.SettingsHea
 func sheinIntegrationProbe(cfg *config.Config) listingkit.SettingsHealthProbe {
 	login := cfg.Platforms.Shein.LoginService
 	missing := requiredStringFields("shein.loginService", map[string]string{
-		"baseURL":    login.BaseURL,
-		"tenantID":   login.TenantID,
-		"identifier": login.Identifier,
+		"baseURL": login.BaseURL,
 	})
 	cookieRedis := cfg.EffectiveSheinCookieRedis()
 	if strings.TrimSpace(cookieRedis.Host) == "" {
