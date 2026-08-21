@@ -194,6 +194,29 @@ func TestStudioBatchTaskCandidateKeyDiffersWhenEffectivePromptChanges(t *testing
 	}
 }
 
+func TestStudioBatchTaskCandidateKeyDiffersWhenHotReferencePromptChanges(t *testing.T) {
+	baseBatch := &StudioBatchRecord{
+		ID:                         "batch-1",
+		TenantID:                   "tenant-1",
+		HotStyleReferenceImageURLs: SheinStudioStringList{"https://example.com/hot-reference.png"},
+		HotStyleReferencePrompt:    "extract the cherry badge",
+	}
+	changedBatch := *baseBatch
+	changedBatch.HotStyleReferencePrompt = "extract the floral badge"
+	base := studioBatchTaskCandidate{
+		Item:                            StudioBatchItemRecord{ID: "item-1"},
+		Design:                          StudioMaterializedDesignRecord{ID: "design-1"},
+		SelectionID:                     "selection-1",
+		ImageStrategy:                   sheinImageStrategyAIGenerated,
+		ProductImageSettingsFingerprint: studioBatchTaskEffectiveProductImageSettingsFingerprint(nil, baseBatch),
+	}
+	changed := base
+	changed.ProductImageSettingsFingerprint = studioBatchTaskEffectiveProductImageSettingsFingerprint(nil, &changedBatch)
+	if got, want := buildStudioBatchTaskCandidateKey(nil, baseBatch, base), buildStudioBatchTaskCandidateKey(nil, &changedBatch, changed); got == want {
+		t.Fatalf("hot-reference prompt candidate keys unexpectedly matched: %q", got)
+	}
+}
+
 func TestStudioBatchTaskCandidateKey_PreservesHistoricalSDSKeyForBlankStrategy(t *testing.T) {
 	batch := &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-1"}
 	base := studioBatchTaskCandidate{

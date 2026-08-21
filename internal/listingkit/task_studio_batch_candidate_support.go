@@ -527,7 +527,7 @@ func studioBatchTaskEffectiveProductImageSettingsFingerprint(session *SheinStudi
 		ProductImagePrompt  string                            `json:"product_image_prompt"`
 		ProductImagePrompts SheinStudioProductImagePromptList `json:"product_image_prompts"`
 	}{
-		Prompt:              studioBatchTaskPrompt(session, batch),
+		Prompt:              studioBatchTaskEffectiveProductImagePrompt(session, batch),
 		PromptMode:          promptMode,
 		ProductImageCount:   count,
 		ProductImagePrompt:  customPrompt,

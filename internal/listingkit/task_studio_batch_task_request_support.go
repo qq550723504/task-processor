@@ -59,15 +59,6 @@ func buildStudioBatchTaskProductImageRequest(
 	count := defaultStudioBatchProductImageCount
 	customPrompt := ""
 	promptMode := ""
-	promptText := studioBatchTaskPrompt(session, batch)
-	hotReferenceURLs := studioBatchTaskHotReferenceImageURLs(session, batch)
-	if len(hotReferenceURLs) == 1 {
-		promptText = buildStudioHotReferenceArtworkPrompt(
-			studioBatchTaskHotReferencePrompt(session, batch),
-			studioBatchTaskHotReferenceBrief(session, batch),
-			promptText,
-		)
-	}
 	if batch != nil {
 		promptMode = strings.TrimSpace(batch.PromptMode)
 	}
@@ -91,7 +82,7 @@ func buildStudioBatchTaskProductImageRequest(
 		}
 	}
 	return &StudioProductImageRequest{
-		Prompt:                    promptText,
+		Prompt:                    studioBatchTaskEffectiveProductImagePrompt(session, batch),
 		PromptMode:                promptMode,
 		ProductName:               strings.TrimSpace(selection.ProductName),
 		StyleName:                 styleName,
@@ -101,6 +92,18 @@ func buildStudioBatchTaskProductImageRequest(
 		ImagePrompts:              productPrompts,
 		Count:                     count,
 	}
+}
+
+func studioBatchTaskEffectiveProductImagePrompt(session *SheinStudioSession, batch *StudioBatchRecord) string {
+	promptText := studioBatchTaskPrompt(session, batch)
+	if len(studioBatchTaskHotReferenceImageURLs(session, batch)) != 1 {
+		return promptText
+	}
+	return buildStudioHotReferenceArtworkPrompt(
+		studioBatchTaskHotReferencePrompt(session, batch),
+		studioBatchTaskHotReferenceBrief(session, batch),
+		promptText,
+	)
 }
 
 func studioBatchTaskHotReferenceImageURLs(session *SheinStudioSession, batch *StudioBatchRecord) []string {
