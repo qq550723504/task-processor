@@ -21,12 +21,10 @@ type LocalRuntime struct {
 	provider        *LocalDataProvider
 	cookieProvider  SheinCookieProvider
 	imageDownloader *ImageDownloader
-	insecureImages  bool
 }
 
 type LocalRuntimeOptions struct {
-	SheinCookieProvider      SheinCookieProvider
-	ImageDownloadInsecureTLS bool
+	SheinCookieProvider SheinCookieProvider
 }
 
 func NewLocalRuntime(provider *LocalDataProvider, options LocalRuntimeOptions) *LocalRuntime {
@@ -36,7 +34,6 @@ func NewLocalRuntime(provider *LocalDataProvider, options LocalRuntimeOptions) *
 	return &LocalRuntime{
 		provider:       provider,
 		cookieProvider: options.SheinCookieProvider,
-		insecureImages: options.ImageDownloadInsecureTLS,
 	}
 }
 
@@ -373,7 +370,7 @@ func (r *LocalRuntime) GetImageDownloader() interface {
 		return nil
 	}
 	if r.imageDownloader == nil {
-		r.imageDownloader = NewImageDownloader(120*time.Second, r.insecureImages)
+		r.imageDownloader = NewImageDownloader(120 * time.Second)
 	}
 	return r.imageDownloader
 }
