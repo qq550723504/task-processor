@@ -18,5 +18,5 @@ func TestHTTPModuleRegistersLocalAgentRoutes(t *testing.T) {
 
 	registry := module.NewRegistry()
 	require.NoError(t, result.Module.Register(registry))
-	require.Len(t, registry.Routes(), 3)
+	require.Len(t, registry.Routes(), 4)
 }

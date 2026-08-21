@@ -84,6 +84,21 @@ func (s *Service) Create(actor Actor, rawURL string) (Job, error) {
 }
 
 func (s *Service) Claim(actor Actor) (*Claim, error) {
+	return s.claimMatching(actor, "")
+}
+
+// ClaimJob claims a specific pending job for the actor's tenant. It is used by
+// the local client when a job was just created, so another pending job cannot
+// be selected accidentally.
+func (s *Service) ClaimJob(actor Actor, jobID string) (*Claim, error) {
+	jobID = strings.TrimSpace(jobID)
+	if jobID == "" {
+		return nil, ErrInvalidClaim
+	}
+	return s.claimMatching(actor, jobID)
+}
+
+func (s *Service) claimMatching(actor Actor, jobID string) (*Claim, error) {
 	if err := validateActor(actor); err != nil {
 		return nil, err
 	}
@@ -91,6 +106,16 @@ func (s *Service) Claim(actor Actor) (*Claim, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.cleanupLocked(now)
+	if jobID != "" {
+		selected, ok := s.jobs[jobID]
+		if !ok || selected.job.TenantID != strings.TrimSpace(actor.TenantID) {
+			return nil, ErrInvalidClaim
+		}
+		if selected.job.State != JobPending || !now.Before(selected.job.ExpiresAt) {
+			return nil, ErrInvalidClaim
+		}
+		return s.claimRecordForPendingLocked(selected, now)
+	}
 	var selected *record
 	for _, candidate := range s.jobs {
 		if candidate.job.TenantID != strings.TrimSpace(actor.TenantID) {
@@ -106,6 +131,10 @@ func (s *Service) Claim(actor Actor) (*Claim, error) {
 	if selected == nil {
 		return nil, nil
 	}
+	return s.claimRecordForPendingLocked(selected, now)
+}
+
+func (s *Service) claimRecordForPendingLocked(selected *record, now time.Time) (*Claim, error) {
 	token, err := newID()
 	if err != nil {
 		return nil, err

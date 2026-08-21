@@ -3,6 +3,7 @@ param(
     [string]$IssuerURL = $env:LISTINGKIT_ZITADEL_ISSUER_URL,
     [string]$ClientID = $env:LISTINGKIT_ZITADEL_CLIENT_ID,
     [string]$ProjectID = $env:TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID,
+    [string]$BrowserPath,
     [string]$Url,
     [string]$Confirm = ""
 )
@@ -24,6 +25,9 @@ $arguments = @(
     "-client-id", $ClientID,
     "-project-id", $ProjectID
 )
+if (-not [string]::IsNullOrWhiteSpace($BrowserPath)) {
+    $arguments += @("-browser-path", $BrowserPath)
+}
 if (-not [string]::IsNullOrWhiteSpace($Url)) {
     if ($Confirm -cne "CREATE-LOCAL-AGENT-JOB") {
         throw "Set -Confirm CREATE-LOCAL-AGENT-JOB to create a local-agent job."

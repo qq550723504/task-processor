@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"task-processor/internal/core/config"
@@ -23,6 +24,7 @@ type cliConfig struct {
 	ClientID    string
 	ProjectID   string
 	CreateURL   string
+	BrowserPath string
 	OpenBrowser bool
 }
 
@@ -46,13 +48,22 @@ func run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	var createdJobID string
 	if cfg.CreateURL != "" {
-		if _, err := jobs.CreateJob(ctx, cfg.CreateURL); err != nil {
+		created, err := jobs.CreateJob(ctx, cfg.CreateURL)
+		if err != nil {
 			return err
 		}
+		createdJobID = created.ID
 	}
-	crawler := a1688.NewLegacyProcessor(config.NewDefaultConfig())
-	outcome, err := (localagent.Runner{Jobs: jobs, Crawler: crawler}).RunOnce(ctx)
+	crawlerConfig := config.NewDefaultConfig()
+	if strings.TrimSpace(cfg.BrowserPath) != "" {
+		crawlerConfig.Browser.BrowserPath = strings.TrimSpace(cfg.BrowserPath)
+	} else if installed := detectInstalledChrome(); installed != "" {
+		crawlerConfig.Browser.BrowserPath = installed
+	}
+	crawler := a1688.NewLegacyProcessor(crawlerConfig)
+	outcome, err := (localagent.Runner{Jobs: jobs, Crawler: crawler, JobID: createdJobID}).RunOnce(ctx)
 	if err != nil {
 		return err
 	}
@@ -76,6 +87,7 @@ func parseConfig(args []string) (cliConfig, error) {
 	flags.StringVar(&cfg.ClientID, "client-id", "", "OIDC device client ID")
 	flags.StringVar(&cfg.ProjectID, "project-id", "", "ZITADEL project ID")
 	flags.StringVar(&cfg.CreateURL, "url", "", "one public 1688 offer URL to create before claiming")
+	flags.StringVar(&cfg.BrowserPath, "browser-path", "", "local Chrome executable path (auto-detected when omitted)")
 	flags.BoolVar(&cfg.OpenBrowser, "open-browser", false, "open the device verification page")
 	if err := flags.Parse(args); err != nil {
 		return cliConfig{}, err
@@ -95,6 +107,23 @@ func parseConfig(args []string) (cliConfig, error) {
 		}
 	}
 	return cfg, nil
+}
+
+func detectInstalledChrome() string {
+	candidates := []string{
+		filepath.Join(os.Getenv("LOCALAPPDATA"), "Google", "Chrome", "Application", "chrome.exe"),
+		filepath.Join(os.Getenv("PROGRAMFILES"), "Google", "Chrome", "Application", "chrome.exe"),
+		filepath.Join(os.Getenv("PROGRAMFILES(X86)"), "Google", "Chrome", "Application", "chrome.exe"),
+	}
+	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate) == "" {
+			continue
+		}
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func validateCLIEndpoint(raw, name string) error {

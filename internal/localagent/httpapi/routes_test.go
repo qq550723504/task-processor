@@ -14,7 +14,7 @@ import (
 
 func TestLocalAgentRoutesRequireZitadelAndPermission(t *testing.T) {
 	routes := AppendRouteDescriptors(nil, NewHandler(localagent.NewService(nil)))
-	require.Len(t, routes, 3)
+	require.Len(t, routes, 4)
 	for _, route := range routes {
 		require.Equal(t, ModuleName, route.Module)
 		require.Equal(t, authz.PermissionLocalAgentWrite, route.Permission)
@@ -24,6 +24,7 @@ func TestLocalAgentRoutesRequireZitadelAndPermission(t *testing.T) {
 	require.Equal(t, []string{
 		http.MethodPost + " /api/v1/local-agent/1688-jobs",
 		http.MethodPost + " /api/v1/local-agent/1688-jobs/claim",
+		http.MethodPost + " /api/v1/local-agent/1688-jobs/:job_id/claim",
 		http.MethodPost + " /api/v1/local-agent/1688-jobs/:job_id/result",
 	}, routeKeys(routes))
 }

@@ -29,6 +29,21 @@ func TestServiceClaimIsTenantScopedAndSingleUse(t *testing.T) {
 	require.Nil(t, again)
 }
 
+func TestServiceClaimJobTargetsCreatedJob(t *testing.T) {
+	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+	first, err := service.Create(actor, offerURL)
+	require.NoError(t, err)
+	second, err := service.Create(actor, "https://detail.1688.com/offer/1052008074198.html")
+	require.NoError(t, err)
+	claim, err := service.ClaimJob(actor, second.ID)
+	require.NoError(t, err)
+	require.Equal(t, second.ID, claim.Job.ID)
+	claim, err = service.ClaimJob(actor, first.ID)
+	require.NoError(t, err)
+	require.Equal(t, first.ID, claim.Job.ID)
+}
+
 func TestServiceBuildsEnvelopeFromAcceptedSnapshot(t *testing.T) {
 	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
 	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}

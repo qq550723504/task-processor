@@ -16,6 +16,10 @@ type Jobs interface {
 	SubmitFailure(context.Context, string, string, Failure) (Job, error)
 }
 
+type targetedJobs interface {
+	ClaimJob(context.Context, string) (*Claim, error)
+}
+
 type Crawler interface {
 	Process(context.Context, string) (*model.Product1688, error)
 }
@@ -23,6 +27,7 @@ type Crawler interface {
 type Runner struct {
 	Jobs    Jobs
 	Crawler Crawler
+	JobID   string
 }
 
 type OutcomeState string
@@ -42,7 +47,17 @@ func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
 	if r.Jobs == nil || r.Crawler == nil {
 		return Outcome{}, errors.New("local-agent runner is not configured")
 	}
-	claim, err := r.Jobs.Claim(ctx)
+	var claim *Claim
+	var err error
+	if r.JobID != "" {
+		if targeted, ok := r.Jobs.(targetedJobs); ok {
+			claim, err = targeted.ClaimJob(ctx, r.JobID)
+		} else {
+			return Outcome{}, errors.New("local-agent jobs client does not support targeted claims")
+		}
+	} else {
+		claim, err = r.Jobs.Claim(ctx)
+	}
 	if err != nil {
 		return Outcome{}, err
 	}

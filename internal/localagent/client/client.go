@@ -50,8 +50,20 @@ func (c *Client) Claim(ctx context.Context) (*localagent.Claim, error) {
 	return &localagent.Claim{Job: response.toJob(), ExecutionToken: response.ExecutionToken}, nil
 }
 
+func (c *Client) ClaimJob(ctx context.Context, jobID string) (*localagent.Claim, error) {
+	var response claimResponse
+	err := c.doJSON(ctx, http.MethodPost, "/api/v1/local-agent/1688-jobs/"+url.PathEscape(jobID)+"/claim", nil, http.StatusOK, &response)
+	if errors.Is(err, errNoJob) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &localagent.Claim{Job: response.toJob(), ExecutionToken: response.ExecutionToken}, nil
+}
+
 func (c *Client) SubmitSuccess(ctx context.Context, jobID, token string, snapshot *sourcing.Alibaba1688ProductSnapshot) (localagent.Job, error) {
-	var response jobResponse
+	var response terminalResponse
 	err := c.doJSON(ctx, http.MethodPost, "/api/v1/local-agent/1688-jobs/"+url.PathEscape(jobID)+"/result", map[string]any{
 		"execution_token":  token,
 		"product_snapshot": snapshot,
@@ -60,7 +72,7 @@ func (c *Client) SubmitSuccess(ctx context.Context, jobID, token string, snapsho
 }
 
 func (c *Client) SubmitFailure(ctx context.Context, jobID, token string, failure localagent.Failure) (localagent.Job, error) {
-	var response jobResponse
+	var response terminalResponse
 	err := c.doJSON(ctx, http.MethodPost, "/api/v1/local-agent/1688-jobs/"+url.PathEscape(jobID)+"/result", map[string]any{
 		"execution_token": token,
 		"failure":         failure,
@@ -81,6 +93,12 @@ type jobResponse struct {
 	Failure        *localagent.Failure      `json:"failure"`
 }
 
+type terminalResponse struct {
+	JobID   string              `json:"job_id"`
+	State   localagent.JobState `json:"state"`
+	Failure *localagent.Failure `json:"failure"`
+}
+
 type claimResponse struct {
 	JobID          string    `json:"job_id"`
 	ExecutionToken string    `json:"execution_token"`
@@ -91,6 +109,10 @@ type claimResponse struct {
 
 func (r jobResponse) toJob() localagent.Job {
 	return localagent.Job{ID: r.JobID, TenantID: r.TenantID, URL: r.URL, State: r.State, ExpiresAt: r.ExpiresAt, LeaseExpiresAt: r.LeaseExpiresAt, Envelope: r.Envelope, Failure: r.Failure}
+}
+
+func (r terminalResponse) toJob() localagent.Job {
+	return localagent.Job{ID: r.JobID, State: r.State, Failure: r.Failure}
 }
 
 func (r claimResponse) toJob() localagent.Job {

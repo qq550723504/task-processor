@@ -26,5 +26,9 @@ kept in process memory only. No cookies, source-account IDs, browser profiles,
 proxy credentials, target stores, ListingKit drafts, or publish calls are part
 of this flow.
 
+The CLI automatically uses an installed Chrome executable when one is found on
+Windows. Pass `-BrowserPath` to the acceptance script (or `-browser-path` to
+the CLI) to select a specific executable.
+
 Omit `-Url` only when a pending job was created separately through the API.
 The POC stores jobs in API process memory; restarting the API drops them.
