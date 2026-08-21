@@ -148,8 +148,10 @@ func Authorize(ctx context.Context, cfg Config, presenter Presenter) (string, er
 
 func oauthScopes(raw, projectID string) (string, error) {
 	scopes := strings.TrimSpace(raw)
-	if strings.Contains(" "+scopes+" ", " offline_access ") {
-		return "", errors.New("offline_access is not allowed for device authorization")
+	for _, scope := range strings.Fields(scopes) {
+		if scope == "offline_access" {
+			return "", errors.New("offline_access is not allowed for device authorization")
+		}
 	}
 	if scopes != "" {
 		return scopes, nil

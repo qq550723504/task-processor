@@ -66,6 +66,13 @@ func TestAuthorizeRejectsOfflineAccessScope(t *testing.T) {
 	require.ErrorContains(t, err, "offline_access")
 }
 
+func TestAuthorizeRejectsOfflineAccessScopeAcrossWhitespace(t *testing.T) {
+	for _, scopes := range []string{"openid\toffline_access", "openid\noffline_access", "openid\r\noffline_access"} {
+		_, err := Authorize(context.Background(), Config{IssuerURL: "https://issuer.example", ClientID: "client", ProjectID: "project", Scopes: scopes}, recordingPresenter{})
+		require.ErrorContains(t, err, "offline_access")
+	}
+}
+
 func TestOAuthScopesIncludeAdminAlias(t *testing.T) {
 	scopes, err := oauthScopes("", "project")
 	require.NoError(t, err)

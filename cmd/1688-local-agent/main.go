@@ -199,9 +199,13 @@ type terminalPresenter struct{ openBrowser bool }
 func (p terminalPresenter) Show(verificationURI, userCode string) error {
 	fmt.Printf("Open %s and enter code %s\n", verificationURI, userCode)
 	if p.openBrowser {
-		if err := exec.Command("cmd", "/c", "start", "", verificationURI).Start(); err != nil {
+		if err := newVerificationURLCommand(verificationURI).Start(); err != nil {
 			return errors.New("could not open device verification page")
 		}
 	}
 	return nil
+}
+
+func newVerificationURLCommand(verificationURI string) *exec.Cmd {
+	return exec.Command("rundll32.exe", "url.dll,FileProtocolHandler", verificationURI)
 }

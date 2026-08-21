@@ -2,11 +2,20 @@ package main
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"task-processor/internal/localagent"
 )
+
+func TestVerificationURLCommandDoesNotInvokeCommandInterpreter(t *testing.T) {
+	verificationURI := "https://issuer.example/verify?x=1&calc.exe"
+	command := newVerificationURLCommand(verificationURI)
+	require.Equal(t, "rundll32.exe", filepath.Base(command.Path))
+	require.Equal(t, "url.dll,FileProtocolHandler", command.Args[1])
+	require.Equal(t, verificationURI, command.Args[2])
+}
 
 func TestParseConfigAcceptsOneShotOfferURL(t *testing.T) {
 	cfg, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project", "-url", "https://detail.1688.com/offer/1052008074197.html"})
