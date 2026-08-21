@@ -58,7 +58,7 @@ func (sp *SingleProcessor) processWithBrowserManager(url string, startTime time.
 	// 创建浏览器实例
 	_, _, page, cleanup, err := browserManager.CreateBrowser()
 	if err != nil {
-		return nil, NewPublicAccessError(PublicAccessFailureTransport, err)
+		return nil, NewPublicAccessError(PublicAccessFailureBrowser, err)
 	}
 	defer cleanup()
 

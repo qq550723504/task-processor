@@ -81,3 +81,15 @@ func TestHandlersRequireVerifiedIdentity(t *testing.T) {
 	r.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/local-agent/1688-jobs", strings.NewReader(`{"url":"https://detail.1688.com/offer/1052008074197.html"}`)))
 	require.Equal(t, http.StatusUnauthorized, response.Code)
 }
+
+func TestSubmitResultRejectsOversizedRequestBodyBeforeBinding(t *testing.T) {
+	service := localagent.NewService(nil)
+	handler := NewHandler(service)
+	actorCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
+	r := gin.New()
+	r.POST("/api/v1/local-agent/1688-jobs/:job_id/result", handler.SubmitResult)
+	response := httptest.NewRecorder()
+	body := `{"execution_token":"token","product_snapshot":{"id":"1052008074197","url":"https://detail.1688.com/offer/1052008074197.html","title":"` + strings.Repeat("x", 2<<20) + `"}}`
+	r.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/local-agent/1688-jobs/job-1/result", strings.NewReader(body)).WithContext(actorCtx))
+	require.Equal(t, http.StatusBadRequest, response.Code)
+}

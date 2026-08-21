@@ -71,6 +71,7 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		{"platform_admin", PermissionLocalAgentWrite},
 		{"admin", PermissionListingKitPlatformAdm},
 		{"admin", PermissionListingKitPromptWrite},
+		{"admin", PermissionLocalAgentWrite},
 	} {
 		if _, err := enforcer.AddPolicy(policy); err != nil {
 			return nil, err
@@ -84,6 +85,9 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 		if _, err := enforcer.AddPolicy(role, PermissionListingKitPromptWrite); err != nil {
 			return nil, err
 		}
+		if _, err := enforcer.AddPolicy(role, PermissionLocalAgentWrite); err != nil {
+			return nil, err
+		}
 	}
 	for _, userID := range normalizeUnique(platformAdminUsers) {
 		subject := userSubject(userID)
@@ -91,6 +95,9 @@ func NewListingKitAuthorizer(platformAdminUsers []string, platformAdminRoles []s
 			return nil, err
 		}
 		if _, err := enforcer.AddPolicy(subject, PermissionListingKitPromptWrite); err != nil {
+			return nil, err
+		}
+		if _, err := enforcer.AddPolicy(subject, PermissionLocalAgentWrite); err != nil {
 			return nil, err
 		}
 	}

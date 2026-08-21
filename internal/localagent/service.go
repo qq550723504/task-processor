@@ -7,11 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
+	coreLogger "task-processor/internal/core/logger"
 	"task-processor/internal/product/sourcing"
+
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -19,6 +23,8 @@ const (
 	claimTTL           = 3 * time.Minute
 	maxSnapshotBytes   = 1 << 20
 	maxDiagnosticBytes = 512
+	terminalRetention  = 10 * time.Minute
+	maxStoredJobs      = 1024
 )
 
 var (
@@ -29,6 +35,8 @@ var (
 	ErrTerminalJob      = errors.New("local-agent job is already terminal")
 	ErrSnapshotTooLarge = errors.New("1688 snapshot exceeds size limit")
 	ErrFailureInvalid   = errors.New("invalid local-agent failure diagnostic")
+	ErrCapacity         = errors.New("local-agent job capacity reached")
+	ErrSecureRandom     = errors.New("secure random generation failed")
 )
 
 type Service struct {
@@ -40,6 +48,7 @@ type Service struct {
 type record struct {
 	job            Job
 	executionToken string
+	retainedUntil  time.Time
 }
 
 func NewService(now func() time.Time) *Service {
@@ -57,9 +66,18 @@ func (s *Service) Create(actor Actor, rawURL string) (Job, error) {
 	if err != nil {
 		return Job{}, err
 	}
+	id, err := newID()
+	if err != nil {
+		return Job{}, err
+	}
 	now := s.now().UTC()
-	job := Job{ID: newID(), TenantID: strings.TrimSpace(actor.TenantID), URL: cleanURL, State: JobPending, ExpiresAt: now.Add(jobTTL)}
+	job := Job{ID: id, TenantID: strings.TrimSpace(actor.TenantID), URL: cleanURL, State: JobPending, ExpiresAt: now.Add(jobTTL)}
 	s.mu.Lock()
+	s.cleanupLocked(now)
+	if len(s.jobs) >= maxStoredJobs {
+		s.mu.Unlock()
+		return Job{}, ErrCapacity
+	}
 	s.jobs[job.ID] = &record{job: job}
 	s.mu.Unlock()
 	return job, nil
@@ -72,20 +90,11 @@ func (s *Service) Claim(actor Actor) (*Claim, error) {
 	now := s.now().UTC()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.cleanupLocked(now)
 	var selected *record
 	for _, candidate := range s.jobs {
 		if candidate.job.TenantID != strings.TrimSpace(actor.TenantID) {
 			continue
-		}
-		if candidate.job.State == JobClaimed && !now.Before(candidate.job.LeaseExpiresAt) {
-			if now.Before(candidate.job.ExpiresAt) {
-				candidate.job.State = JobPending
-				candidate.job.LeaseExpiresAt = time.Time{}
-				candidate.executionToken = ""
-			} else {
-				candidate.job.State = JobFailed
-				candidate.job.Failure = &Failure{Kind: FailureUnknown, Message: "job expired before local agent completed"}
-			}
 		}
 		if candidate.job.State != JobPending || !now.Before(candidate.job.ExpiresAt) {
 			continue
@@ -97,9 +106,13 @@ func (s *Service) Claim(actor Actor) (*Claim, error) {
 	if selected == nil {
 		return nil, nil
 	}
+	token, err := newID()
+	if err != nil {
+		return nil, err
+	}
 	selected.job.State = JobClaimed
 	selected.job.LeaseExpiresAt = now.Add(claimTTL)
-	selected.executionToken = newID()
+	selected.executionToken = token
 	return &Claim{Job: selected.job, ExecutionToken: selected.executionToken}, nil
 }
 
@@ -135,6 +148,8 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 	rec.job.State = JobSucceeded
 	rec.job.LeaseExpiresAt = time.Time{}
 	rec.executionToken = ""
+	rec.retainedUntil = s.now().UTC().Add(terminalRetention)
+	logTransition(rec.job, "succeeded", "")
 	return rec.job, nil
 }
 
@@ -156,7 +171,34 @@ func (s *Service) SubmitFailure(actor Actor, jobID, token string, failure Failur
 	rec.job.State = JobFailed
 	rec.job.LeaseExpiresAt = time.Time{}
 	rec.executionToken = ""
+	rec.retainedUntil = s.now().UTC().Add(terminalRetention)
+	logTransition(rec.job, "failed", failure.Kind)
 	return rec.job, nil
+}
+
+func (s *Service) cleanupLocked(now time.Time) {
+	for id, rec := range s.jobs {
+		switch rec.job.State {
+		case JobPending:
+			if !now.Before(rec.job.ExpiresAt) {
+				delete(s.jobs, id)
+			}
+		case JobClaimed:
+			if !now.Before(rec.job.ExpiresAt) {
+				delete(s.jobs, id)
+				continue
+			}
+			if !now.Before(rec.job.LeaseExpiresAt) {
+				rec.job.State = JobPending
+				rec.job.LeaseExpiresAt = time.Time{}
+				rec.executionToken = ""
+			}
+		case JobSucceeded, JobFailed:
+			if !now.Before(rec.retainedUntil) {
+				delete(s.jobs, id)
+			}
+		}
+	}
 }
 
 func (s *Service) claimRecordLocked(actor Actor, jobID, token string) (*record, error) {
@@ -190,11 +232,13 @@ func validateOfferURL(raw string) (string, error) {
 	if err != nil || parsed.Scheme != "https" || parsed.Hostname() != "detail.1688.com" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", ErrInvalidURL
 	}
-	if !strings.HasPrefix(parsed.Path, "/offer/") || sourcing.ExtractAlibaba1688ProductID(parsed.Path) == "" {
+	if !offerPathPattern.MatchString(parsed.Path) {
 		return "", ErrInvalidURL
 	}
 	return clean, nil
 }
+
+var offerPathPattern = regexp.MustCompile(`^/offer/[0-9]+\.html$`)
 
 func validFailureKind(kind FailureKind) bool {
 	switch kind {
@@ -205,10 +249,22 @@ func validFailureKind(kind FailureKind) bool {
 	}
 }
 
-func newID() string {
+func newID() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		return fmt.Sprintf("local-agent-%d", time.Now().UnixNano())
+		return "", ErrSecureRandom
 	}
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(b), nil
+}
+
+func logTransition(job Job, state string, failureKind FailureKind) {
+	fields := logrus.Fields{
+		"job_id":    job.ID,
+		"tenant_id": job.TenantID,
+		"state":     state,
+	}
+	if failureKind != "" {
+		fields["failure_kind"] = failureKind
+	}
+	coreLogger.GetGlobalLogger("local-agent").WithFields(fields).Info("local-agent job transition")
 }

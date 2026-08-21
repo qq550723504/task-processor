@@ -68,6 +68,8 @@ func classifyFailure(err error) Failure {
 	var accessErr *alibaba1688.PublicAccessError
 	if errors.As(err, &accessErr) {
 		switch accessErr.Kind {
+		case alibaba1688.PublicAccessFailureBrowser:
+			return Failure{Kind: FailureBrowser, Message: "1688 browser could not be started"}
 		case alibaba1688.PublicAccessFailureChallenge:
 			return Failure{Kind: FailureChallenge, Message: "1688 challenge detected"}
 		case alibaba1688.PublicAccessFailureMissingFields:

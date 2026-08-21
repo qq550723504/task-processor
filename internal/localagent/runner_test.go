@@ -21,6 +21,14 @@ func TestRunnerSubmitsSanitizedChallenge(t *testing.T) {
 	require.NotContains(t, api.submittedFailure.Message, "secret")
 }
 
+func TestRunnerClassifiesBrowserStartupFailure(t *testing.T) {
+	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}}
+	crawler := &fakeCrawler{err: alibaba1688.NewPublicAccessError(alibaba1688.PublicAccessFailureBrowser, errors.New("playwright install failed"))}
+	_, err := (Runner{Jobs: api, Crawler: crawler}).RunOnce(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, FailureBrowser, api.submittedFailure.Kind)
+}
+
 func TestRunnerSubmitsSnapshotAndReportsSuccess(t *testing.T) {
 	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}}
 	crawler := &fakeCrawler{product: &model.Product1688{ID: "1052008074197", URL: offerURL}}

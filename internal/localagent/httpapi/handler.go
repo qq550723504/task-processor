@@ -18,6 +18,8 @@ type Handler struct {
 	service *localagent.Service
 }
 
+const maxResultBodyBytes = (1 << 20) + 64*1024
+
 func NewHandler(service *localagent.Service) *Handler { return &Handler{service: service} }
 
 type createJobRequest struct {
@@ -105,6 +107,7 @@ func (h *Handler) SubmitResult(c *gin.Context) {
 		return
 	}
 	var req submitResultRequest
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxResultBodyBytes)
 	if err := c.ShouldBindJSON(&req); err != nil {
 		writeError(c, http.StatusBadRequest, "invalid_request", err.Error())
 		return
@@ -159,6 +162,8 @@ func writeServiceError(c *gin.Context, err error) {
 		writeError(c, http.StatusBadRequest, "invalid_request", err.Error())
 	case errors.Is(err, localagent.ErrClaimExpired), errors.Is(err, localagent.ErrTerminalJob):
 		writeError(c, http.StatusConflict, "job_not_active", err.Error())
+	case errors.Is(err, localagent.ErrCapacity):
+		writeError(c, http.StatusServiceUnavailable, "local_agent_capacity", err.Error())
 	case errors.Is(err, localagent.ErrInvalidClaim):
 		writeError(c, http.StatusForbidden, "claim_denied", err.Error())
 	default:

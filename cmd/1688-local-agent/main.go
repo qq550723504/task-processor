@@ -61,6 +61,9 @@ func run(ctx context.Context, args []string) error {
 		fmt.Printf(" job=%s", outcome.JobID)
 	}
 	fmt.Println()
+	if outcome.State != localagent.OutcomeSucceeded {
+		return fmt.Errorf("local-agent outcome was %s", outcome.State)
+	}
 	return nil
 }
 

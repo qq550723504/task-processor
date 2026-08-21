@@ -104,6 +104,35 @@ func TestServiceRejectsNonPublicOfferURL(t *testing.T) {
 	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
 	_, err := service.Create(Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://www.1688.com/offer/1052008074197.html")
 	require.ErrorIs(t, err, ErrInvalidURL)
+	_, err = service.Create(Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com/offer/1052008074197")
+	require.ErrorIs(t, err, ErrInvalidURL)
+	_, err = service.Create(Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com/offer/1052008074197.html/extra")
+	require.ErrorIs(t, err, ErrInvalidURL)
+}
+
+func TestServiceCleansExpiredAndRetainedTerminalJobs(t *testing.T) {
+	clock := newMutableClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC))
+	service := NewService(clock.Now)
+	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+	_, err := service.Create(actor, offerURL)
+	require.NoError(t, err)
+	clock.Advance(jobTTL + time.Nanosecond)
+	_, err = service.Create(actor, offerURL)
+	require.NoError(t, err)
+	service.mu.Lock()
+	require.Len(t, service.jobs, 1)
+	service.mu.Unlock()
+
+	claim, err := service.Claim(actor)
+	require.NoError(t, err)
+	_, err = service.SubmitFailure(actor, claim.Job.ID, claim.ExecutionToken, Failure{Kind: FailureChallenge, Message: "challenge"})
+	require.NoError(t, err)
+	clock.Advance(terminalRetention + time.Nanosecond)
+	_, err = service.Create(actor, offerURL)
+	require.NoError(t, err)
+	service.mu.Lock()
+	require.Len(t, service.jobs, 1)
+	service.mu.Unlock()
 }
 
 func TestServiceRejectsWrongTokenAndDuplicateTerminalResult(t *testing.T) {
