@@ -516,7 +516,11 @@ func (r *GormRepository) IncrementUsageOnce(ctx context.Context, tenantID, modul
 			return result.Error
 		}
 		if result.RowsAffected == 0 {
-			return tx.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", tenantID, moduleCode, periodKey, metric).Take(&out).Error
+			var existingMarker usageCounterAdjustmentRow
+			if err := tx.Where("operation_key = ?", operationKey).Take(&existingMarker).Error; err != nil {
+				return err
+			}
+			return tx.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", existingMarker.TenantID, existingMarker.ModuleCode, existingMarker.PeriodKey, existingMarker.Metric).Take(&out).Error
 		}
 		var current usageCounterRow
 		lookupErr := tx.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", tenantID, moduleCode, periodKey, metric).Take(&current).Error
@@ -545,6 +549,18 @@ func (r *GormRepository) IncrementUsageOnce(ctx context.Context, tenantID, modul
 		return nil, false, err
 	}
 	return &UsageCounter{ID: out.ID, TenantID: out.TenantID, ModuleCode: out.ModuleCode, PeriodKey: out.PeriodKey, Metric: out.Metric, Used: out.Used, UpdatedAt: out.UpdatedAt}, applied, nil
+}
+
+func (r *GormRepository) UsageOperationExists(ctx context.Context, operationKey string) (bool, error) {
+	operationKey = strings.TrimSpace(operationKey)
+	if operationKey == "" {
+		return false, nil
+	}
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&usageCounterAdjustmentRow{}).Where("operation_key = ?", operationKey).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (r *GormRepository) SetUsage(ctx context.Context, tenantID, moduleCode, periodKey, metric string, used int) (*UsageCounter, error) {

@@ -322,6 +322,33 @@ func TestSubscriptionStudioProductImageUsageAuthorizationPropagatesLegacyTenantR
 	}
 }
 
+func TestSubscriptionStudioProductImageUsageReplaysExistingIdempotentSettlementWithoutAuthorization(t *testing.T) {
+	repo := listingsubscription.NewMemRepository()
+	svc, err := listingsubscription.NewService(repo)
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	ctx := context.Background()
+	if _, err := svc.UpsertEntitlement(ctx, "246", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"product_image_jobs": 1},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	restore := tenantbridge.ConfigureLegacyTenantResolver(studioProductImageUsageLegacyTenantResolver{legacyTenantID: 246})
+	t.Cleanup(restore)
+	adapter := studioProductImageUsageDependency(svc)
+	if err := adapter.RecordProductImageUsageOnce(ctx, "org-tenant", 1, "operation-replay"); err != nil {
+		t.Fatalf("initial RecordProductImageUsageOnce() error = %v", err)
+	}
+	restore()
+	failureRestore := tenantbridge.ConfigureLegacyTenantResolver(failingStudioProductImageUsageLegacyTenantResolver{})
+	t.Cleanup(failureRestore)
+	if err := adapter.RecordProductImageUsageOnce(ctx, "org-tenant", 1, "operation-replay"); err != nil {
+		t.Fatalf("replayed RecordProductImageUsageOnce() error = %v, want existing operation replay", err)
+	}
+}
+
 func TestSubscriptionStudioProductImageUsageReconcilesPendingMirrorBeforeRelease(t *testing.T) {
 	repo := listingsubscription.NewMemRepository()
 	baseLedger := listingsubscription.NewMemUsageLedger(repo)

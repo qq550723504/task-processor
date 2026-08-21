@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"task-processor/internal/listingsubscription"
 )
 
 const studioBatchTaskLinkHeartbeatInterval = 30 * time.Second
@@ -50,6 +51,9 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 	}
 	if s == nil || s.generateProductImages == nil {
 		return fmt.Errorf("studio product image generator is not configured")
+	}
+	if s.productImageUsage == nil {
+		return listingsubscription.ErrSubscriptionRequired
 	}
 	if s.batchTaskLinkRepo != nil {
 		if _, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkLeaseRepository); !ok || strings.TrimSpace(candidate.ClaimToken) == "" {
@@ -165,6 +169,7 @@ func (s *taskStudioBatchService) settleStudioBatchProductImageUsage(ctx context.
 		return nil
 	}
 	var err error
+	settlementClaimed := false
 	if reservation, ok := s.productImageUsageReservation(); ok {
 		tenantID := studioBatchTaskGateTenantID(ctx, batch)
 		if strings.TrimSpace(tenantID) == "" {
@@ -185,8 +190,12 @@ func (s *taskStudioBatchService) settleStudioBatchProductImageUsage(ctx context.
 			// Keep the atomic claim fallback for older adapters that do not expose
 			// an idempotent counter operation.
 			if s.batchTaskLinkRepo != nil {
-				if err = s.markStudioBatchProductImageUsageSettled(ctx, candidate); err != nil {
+				settlementClaimed, err = s.markStudioBatchProductImageUsageSettled(ctx, candidate)
+				if err != nil {
 					return err
+				}
+				if !settlementClaimed {
+					return nil
 				}
 			}
 			err = s.recordStudioBatchProductImageUsage(ctx, batch, quantity)
@@ -200,7 +209,11 @@ func (s *taskStudioBatchService) settleStudioBatchProductImageUsage(ctx context.
 	if err != nil {
 		return err
 	}
-	return s.markStudioBatchProductImageUsageSettled(ctx, candidate)
+	if settlementClaimed {
+		return nil
+	}
+	_, err = s.markStudioBatchProductImageUsageSettled(ctx, candidate)
+	return err
 }
 
 func (s *taskStudioBatchService) studioBatchProductImageUsageAlreadySettled(ctx context.Context, candidate studioBatchTaskCandidate) (bool, error) {
@@ -217,34 +230,37 @@ func (s *taskStudioBatchService) studioBatchProductImageUsageAlreadySettled(ctx 
 	return link != nil && link.ProductImageUsageSettled, nil
 }
 
-func (s *taskStudioBatchService) markStudioBatchProductImageUsageSettled(ctx context.Context, candidate studioBatchTaskCandidate) error {
+func (s *taskStudioBatchService) markStudioBatchProductImageUsageSettled(ctx context.Context, candidate studioBatchTaskCandidate) (bool, error) {
 	if s == nil || s.batchTaskLinkRepo == nil {
-		return nil
+		return true, nil
 	}
 	claimer, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkUsageSettlementRepository)
 	if !ok {
-		return fmt.Errorf("studio batch task link repository lacks atomic usage settlement claim")
+		return false, fmt.Errorf("studio batch task link repository lacks atomic usage settlement claim")
 	}
 	claimed, err := claimer.ClaimStudioBatchProductImageUsageSettled(ctx, strings.TrimSpace(candidate.CandidateKey), s.currentTime().UTC())
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil
+		return false, nil
 	}
-	if err != nil || claimed {
-		return err
+	if err != nil {
+		return false, err
+	}
+	if claimed {
+		return true, nil
 	}
 	link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, strings.TrimSpace(candidate.CandidateKey))
 	if errors.Is(err, gorm.ErrRecordNotFound) || (err == nil && link != nil && link.ProductImageUsageSettled) {
-		return nil
+		return false, nil
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
-	return fmt.Errorf("studio batch task link settlement claim was lost")
+	return false, fmt.Errorf("studio batch task link settlement claim was lost")
 }
 
 func (s *taskStudioBatchService) authorizeStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate, quantity int) error {
 	if s == nil || s.productImageUsage == nil {
-		return nil
+		return listingsubscription.ErrSubscriptionRequired
 	}
 	tenantID := studioBatchTaskGateTenantID(ctx, batch)
 	if strings.TrimSpace(tenantID) == "" {

@@ -81,16 +81,21 @@ type UsageEvent struct {
 }
 
 type ReserveUsageInput struct {
-	TenantID       string
-	ModuleCode     string
-	Metric         string
-	Quantity       int64
-	PeriodKey      string
-	SourceType     string
-	SourceID       string
-	IdempotencyKey string
-	OccurredAt     time.Time
-	Metadata       map[string]string
+	TenantID   string
+	ModuleCode string
+	Metric     string
+	// LegacyUsageMetric is an optional aggregate counter that participates in
+	// the same quota decision as this reservation. Durable implementations read
+	// it inside the reservation transaction; it is not copied into the ledger
+	// bucket.
+	LegacyUsageMetric string
+	Quantity          int64
+	PeriodKey         string
+	SourceType        string
+	SourceID          string
+	IdempotencyKey    string
+	OccurredAt        time.Time
+	Metadata          map[string]string
 }
 
 type ReserveUsageResult struct {
@@ -301,6 +306,12 @@ type Repository interface {
 // the same adjustment twice.
 type UsageCounterIdempotencyRepository interface {
 	IncrementUsageOnce(ctx context.Context, tenantID, moduleCode, periodKey, metric string, amount int, operationKey string) (*UsageCounter, bool, error)
+}
+
+// UsageCounterOperationLookup lets adapters recognize a durable idempotent
+// operation before performing a fresh authorization check.
+type UsageCounterOperationLookup interface {
+	UsageOperationExists(ctx context.Context, operationKey string) (bool, error)
 }
 
 type UsageLedger interface {

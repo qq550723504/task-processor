@@ -213,6 +213,7 @@ func normalizeReserveUsageInput(input ReserveUsageInput) ReserveUsageInput {
 	input.TenantID = strings.TrimSpace(input.TenantID)
 	input.ModuleCode = strings.TrimSpace(input.ModuleCode)
 	input.Metric = strings.TrimSpace(input.Metric)
+	input.LegacyUsageMetric = strings.TrimSpace(input.LegacyUsageMetric)
 	input.PeriodKey = strings.TrimSpace(input.PeriodKey)
 	input.SourceType = strings.TrimSpace(input.SourceType)
 	input.SourceID = strings.TrimSpace(input.SourceID)

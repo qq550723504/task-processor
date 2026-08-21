@@ -140,6 +140,7 @@ func TestTaskStudioBatchServiceAttachesGeneratedProductImagesForAI(t *testing.T)
 
 	var gotRequest *StudioProductImageRequest
 	service := &taskStudioBatchService{
+		productImageUsage: &recordingStudioProductImageUsage{},
 		generateProductImages: func(_ context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {
 			gotRequest = req
 			return &StudioProductImageResponse{Images: []StudioGeneratedImage{
@@ -756,6 +757,7 @@ func TestTaskStudioBatchServiceFallsBackToLegacyProductImageUsageWithoutLedger(t
 func TestTaskStudioBatchServiceProductImageRequestLoadsSDSCategoryPath(t *testing.T) {
 	var gotCategoryPath []string
 	service := &taskStudioBatchService{
+		productImageUsage: &recordingStudioProductImageUsage{},
 		sdsProductDetailProvider: stubSDSBaselineRemoteProvider{productDetail: &sdstemplate.ProductDetail{
 			ProductSummary: sdstemplate.ProductSummary{
 				Categories: []sdstemplate.Category{{Name: "Apparel"}, {Name: "Tops"}},

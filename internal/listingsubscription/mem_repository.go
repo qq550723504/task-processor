@@ -16,8 +16,15 @@ type MemRepository struct {
 	subscriptions    map[string]TenantSubscription
 	entitlements     map[string]Entitlement
 	usage            map[string]UsageCounter
-	usageAdjustments map[string]struct{}
+	usageAdjustments map[string]usageAdjustmentIdentity
 	auditLogs        []AuditLog
+}
+
+type usageAdjustmentIdentity struct {
+	tenantID   string
+	moduleCode string
+	periodKey  string
+	metric     string
 }
 
 func NewMemRepository() *MemRepository {
@@ -28,7 +35,7 @@ func NewMemRepository() *MemRepository {
 		subscriptions:    map[string]TenantSubscription{},
 		entitlements:     map[string]Entitlement{},
 		usage:            map[string]UsageCounter{},
-		usageAdjustments: map[string]struct{}{},
+		usageAdjustments: map[string]usageAdjustmentIdentity{},
 		auditLogs:        []AuditLog{},
 	}
 }
@@ -312,8 +319,8 @@ func (r *MemRepository) IncrementUsageOnce(_ context.Context, tenantID, moduleCo
 	if strings.TrimSpace(operationKey) == "" {
 		return nil, false, errors.New("usage operation key is required")
 	}
-	if _, exists := r.usageAdjustments[operationKey]; exists {
-		counter := r.usage[usageKey(tenantID, moduleCode, periodKey, metric)]
+	if identity, exists := r.usageAdjustments[operationKey]; exists {
+		counter := r.usage[usageKey(identity.tenantID, identity.moduleCode, identity.periodKey, identity.metric)]
 		return &counter, false, nil
 	}
 	key := usageKey(tenantID, moduleCode, periodKey, metric)
@@ -332,8 +339,15 @@ func (r *MemRepository) IncrementUsageOnce(_ context.Context, tenantID, moduleCo
 	counter.Used += amount
 	counter.UpdatedAt = time.Now().UTC()
 	r.usage[key] = counter
-	r.usageAdjustments[operationKey] = struct{}{}
+	r.usageAdjustments[operationKey] = usageAdjustmentIdentity{tenantID: tenantID, moduleCode: moduleCode, periodKey: periodKey, metric: metric}
 	return &counter, true, nil
+}
+
+func (r *MemRepository) UsageOperationExists(_ context.Context, operationKey string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, exists := r.usageAdjustments[strings.TrimSpace(operationKey)]
+	return exists, nil
 }
 
 func (r *MemRepository) SetUsage(_ context.Context, tenantID, moduleCode, periodKey, metric string, used int) (*UsageCounter, error) {

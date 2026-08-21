@@ -95,7 +95,11 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 			}
 		}
 	}
-	if err := validateMemUsageReservation(input, bucket, limit, reservedForQuota); err != nil {
+	legacyUsage, err := legacyUsageForMemReservation(input, l.repo)
+	if err != nil {
+		return ReserveUsageResult{}, err
+	}
+	if err := validateMemUsageReservation(input, bucket, limit, reservedForQuota, legacyUsage); err != nil {
 		return ReserveUsageResult{}, err
 	}
 	reserved, ok := addUsage(bucket.reserved, input.Quantity)
@@ -119,7 +123,7 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 	l.eventsByID[event.EventID] = memUsageEvent{event: event, periodKey: input.PeriodKey}
 	l.eventIDByIdentity[identity] = event.EventID
 	l.addPendingOutbox(event.EventID, now)
-	return ReserveUsageResult{Event: cloneMemUsageEvent(event), Limit: limit, CommittedUsage: bucket.committed, ReservedUsage: bucket.reserved}, nil
+	return ReserveUsageResult{Event: cloneMemUsageEvent(event), Limit: limit, CommittedUsage: bucket.committed + legacyUsage, ReservedUsage: bucket.reserved}, nil
 }
 
 func (l *memUsageLedger) Commit(ctx context.Context, eventID string) (UsageEvent, error) {
@@ -456,7 +460,24 @@ func memUsageLimit(entitlement *Entitlement, metric string) *int64 {
 	return nil
 }
 
-func validateMemUsageReservation(input ReserveUsageInput, bucket memUsageBucket, limit *int64, reservedForQuota int64) error {
+func legacyUsageForMemReservation(input ReserveUsageInput, repo *MemRepository) (int64, error) {
+	if input.LegacyUsageMetric == "" || repo == nil {
+		return 0, nil
+	}
+	usage, err := repo.ListUsage(context.Background(), input.TenantID)
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, counter := range usage {
+		if counter.ModuleCode == input.ModuleCode && counter.PeriodKey == input.PeriodKey && counter.Metric == input.LegacyUsageMetric {
+			total += int64(counter.Used)
+		}
+	}
+	return total, nil
+}
+
+func validateMemUsageReservation(input ReserveUsageInput, bucket memUsageBucket, limit *int64, reservedForQuota, legacyUsage int64) error {
 	if err := ValidateProjectedUsage(input.Metric, bucket.committed, bucket.reserved, input.Quantity); err != nil {
 		if quota, ok := err.(*UsageQuotaError); ok {
 			quota.TenantID = input.TenantID
@@ -465,7 +486,11 @@ func validateMemUsageReservation(input ReserveUsageInput, bucket memUsageBucket,
 		}
 		return err
 	}
-	projected, ok := addUsage(bucket.committed, reservedForQuota)
+	committedForQuota, ok := addUsage(bucket.committed, legacyUsage)
+	if !ok {
+		return &UsageValidationError{Field: "usage"}
+	}
+	projected, ok := addUsage(committedForQuota, reservedForQuota)
 	if !ok {
 		return &UsageValidationError{Field: "usage"}
 	}
@@ -474,7 +499,7 @@ func validateMemUsageReservation(input ReserveUsageInput, bucket memUsageBucket,
 		return &UsageValidationError{Field: "quantity"}
 	}
 	if limit != nil && *limit > 0 && input.Quantity > 0 && projected > *limit {
-		return &UsageQuotaError{TenantID: input.TenantID, ModuleCode: input.ModuleCode, Metric: input.Metric, Limit: limit, CommittedUsage: bucket.committed, ReservedUsage: reservedForQuota, Quantity: input.Quantity}
+		return &UsageQuotaError{TenantID: input.TenantID, ModuleCode: input.ModuleCode, Metric: input.Metric, Limit: limit, CommittedUsage: committedForQuota, ReservedUsage: reservedForQuota, Quantity: input.Quantity}
 	}
 	return nil
 }

@@ -113,7 +113,11 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 					return err
 				}
 			}
-			if err := validateUsageReservation(input, bucket, limit, reservedForQuota); err != nil {
+			legacyUsage, err := legacyUsageForReservation(tx, input)
+			if err != nil {
+				return err
+			}
+			if err := validateUsageReservation(input, bucket, limit, reservedForQuota, legacyUsage); err != nil {
 				return err
 			}
 			updatedReserved, ok := addUsage(bucket.Reserved, input.Quantity)
@@ -147,7 +151,7 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 				snapshot := bucket.Committed
 				e.StorageSnapshot = &snapshot
 			}
-			result = ReserveUsageResult{Event: e, Limit: limit, CommittedUsage: bucket.Committed, ReservedUsage: updatedReserved}
+			result = ReserveUsageResult{Event: e, Limit: limit, CommittedUsage: bucket.Committed + legacyUsage, ReservedUsage: updatedReserved}
 			return nil
 		})
 		if err == nil || !isRetryableUsageLedgerError(err) || attempt == 19 {
@@ -646,7 +650,19 @@ func sumNegativeStorageReservations(tx *gorm.DB, input ReserveUsageInput) (int64
 	return total, err
 }
 
-func validateUsageReservation(input ReserveUsageInput, bucket usageBucketRow, limit *int64, reservedForQuota int64) error {
+func legacyUsageForReservation(tx *gorm.DB, input ReserveUsageInput) (int64, error) {
+	if input.LegacyUsageMetric == "" {
+		return 0, nil
+	}
+	var counter usageCounterRow
+	err := tx.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", input.TenantID, input.ModuleCode, input.PeriodKey, input.LegacyUsageMetric).Take(&counter).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, nil
+	}
+	return int64(counter.Used), err
+}
+
+func validateUsageReservation(input ReserveUsageInput, bucket usageBucketRow, limit *int64, reservedForQuota, legacyUsage int64) error {
 	if err := ValidateProjectedUsage(input.Metric, bucket.Committed, bucket.Reserved, input.Quantity); err != nil {
 		var quota *UsageQuotaError
 		if errors.As(err, &quota) {
@@ -656,7 +672,11 @@ func validateUsageReservation(input ReserveUsageInput, bucket usageBucketRow, li
 		}
 		return err
 	}
-	projected, ok := addUsage(bucket.Committed, reservedForQuota)
+	committedForQuota, ok := addUsage(bucket.Committed, legacyUsage)
+	if !ok {
+		return &UsageValidationError{Field: "usage"}
+	}
+	projected, ok := addUsage(committedForQuota, reservedForQuota)
 	if !ok {
 		return &UsageValidationError{Field: "usage"}
 	}
@@ -665,7 +685,7 @@ func validateUsageReservation(input ReserveUsageInput, bucket usageBucketRow, li
 		return &UsageValidationError{Field: "quantity"}
 	}
 	if limit != nil && *limit > 0 && input.Quantity > 0 && projected > *limit {
-		return &UsageQuotaError{TenantID: input.TenantID, ModuleCode: input.ModuleCode, Metric: input.Metric, Limit: limit, CommittedUsage: bucket.Committed, ReservedUsage: reservedForQuota, Quantity: input.Quantity}
+		return &UsageQuotaError{TenantID: input.TenantID, ModuleCode: input.ModuleCode, Metric: input.Metric, Limit: limit, CommittedUsage: committedForQuota, ReservedUsage: reservedForQuota, Quantity: input.Quantity}
 	}
 	return nil
 }

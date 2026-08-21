@@ -165,15 +165,9 @@ func studioBatchTaskProductReferenceImageURLs(selection SheinStudioSelection) []
 		seen[value] = struct{}{}
 		result = append(result, value)
 	}
-	for _, value := range selection.SizeReferenceImageURLs {
+	for _, value := range studioBatchTaskSelectionSharedProductReferenceImageURLs(selection) {
 		add(value)
 	}
-	for _, value := range selection.MockupImageURLs {
-		add(value)
-	}
-	add(selection.MockupImageURL)
-	add(selection.BlankDesignURL)
-	add(selection.TemplateImageURL)
 	for _, variant := range selection.Variants {
 		for _, value := range variant.SizeReferenceImageURLs {
 			add(value)
@@ -185,6 +179,35 @@ func studioBatchTaskProductReferenceImageURLs(selection SheinStudioSelection) []
 		add(variant.BlankDesignURL)
 		add(variant.TemplateImageURL)
 	}
+	if len(result) > 5 {
+		return result[:5]
+	}
+	return result
+}
+
+func studioBatchTaskSelectionSharedProductReferenceImageURLs(selection SheinStudioSelection) []string {
+	result := make([]string, 0, 5)
+	seen := make(map[string]struct{}, 5)
+	add := func(raw string) {
+		value := strings.TrimSpace(raw)
+		if value == "" {
+			return
+		}
+		if _, ok := seen[value]; ok {
+			return
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	for _, value := range selection.SizeReferenceImageURLs {
+		add(value)
+	}
+	for _, value := range selection.MockupImageURLs {
+		add(value)
+	}
+	add(selection.MockupImageURL)
+	add(selection.BlankDesignURL)
+	add(selection.TemplateImageURL)
 	if len(result) > 5 {
 		return result[:5]
 	}
@@ -214,7 +237,7 @@ func studioBatchTaskProductReferenceImageURLsForVariant(selection SheinStudioSel
 	add(variant.MockupImageURL)
 	add(variant.BlankDesignURL)
 	add(variant.TemplateImageURL)
-	for _, value := range studioBatchTaskProductReferenceImageURLs(selection) {
+	for _, value := range studioBatchTaskSelectionSharedProductReferenceImageURLs(selection) {
 		add(value)
 	}
 	if len(result) > 5 {

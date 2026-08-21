@@ -36,9 +36,6 @@ func (h *handler) reserveStudioProductImageUsage(c *gin.Context, reservationID s
 	if reservationID == "" {
 		reservationID = uuid.NewString()
 	}
-	if err := h.reconcileStudioProductImageUsageReleases(c.Request.Context()); err != nil {
-		return "", err
-	}
 	requestTenant := strings.TrimSpace(requestTenantID(c))
 	if requestTenant == "" {
 		return "", fmt.Errorf("tenant id is required")
@@ -46,19 +43,23 @@ func (h *handler) reserveStudioProductImageUsage(c *gin.Context, reservationID s
 	reserve := func(tenantID string) (listingsubscription.ReserveUsageResult, error) {
 		now := time.Now().UTC()
 		return h.subscriptionService.ReserveUsage(c.Request.Context(), listingsubscription.ReserveUsageInput{
-			TenantID:       strings.TrimSpace(tenantID),
-			ModuleCode:     listingsubscription.ModuleStudio,
-			Metric:         studioProductImageLedgerMetric,
-			Quantity:       1,
-			PeriodKey:      now.Format("2006-01"),
-			SourceType:     "listingkit_product_image",
-			SourceID:       reservationID,
-			IdempotencyKey: "listingkit:api:studio_product_image:" + reservationID,
-			OccurredAt:     now,
+			TenantID:          strings.TrimSpace(tenantID),
+			ModuleCode:        listingsubscription.ModuleStudio,
+			Metric:            studioProductImageLedgerMetric,
+			LegacyUsageMetric: "product_image_jobs",
+			Quantity:          1,
+			PeriodKey:         now.Format("2006-01"),
+			SourceType:        "listingkit_product_image",
+			SourceID:          reservationID,
+			IdempotencyKey:    "listingkit:api:studio_product_image:" + reservationID,
+			OccurredAt:        now,
 		})
 	}
 	billingTenant, err := h.authorizeStudioProductImageLedgerTenant(c, requestTenant)
 	if err != nil {
+		return "", err
+	}
+	if err := h.reconcileStudioProductImageUsageReleases(c.Request.Context(), billingTenant); err != nil {
 		return "", err
 	}
 	result, err := reserve(billingTenant)
@@ -110,15 +111,19 @@ func (h *handler) authorizeStudioProductImageLedgerTenant(c *gin.Context, tenant
 	return legacyTenant, nil
 }
 
-func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context) error {
+func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, tenantID string) error {
 	const pageSize = 100
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return fmt.Errorf("tenant id is required for product image usage reconciliation")
+	}
 	for offset := 0; ; offset += pageSize {
 		events, err := h.subscriptionService.ListUsageEventPage(ctx, pageSize, offset)
 		if err != nil {
 			return err
 		}
 		for _, event := range events {
-			if event.SourceType != "listingkit_product_image" || event.Metric != studioProductImageLedgerMetric {
+			if event.TenantID != tenantID || event.SourceType != "listingkit_product_image" || event.Metric != studioProductImageLedgerMetric {
 				continue
 			}
 			if event.Status == listingsubscription.UsageEventReserved && event.Metadata[studioProductImageReleasePendingMetadataKey] == "1" {
@@ -174,21 +179,22 @@ func commitStudioProductImageUsage(ctx context.Context, service *listingsubscrip
 		return nil
 	}
 	if event.Status == listingsubscription.UsageEventReserved {
-		if _, err := service.CommitUsage(ctx, event.EventID); err != nil {
+		committed, err := service.CommitUsage(ctx, event.EventID)
+		if err != nil {
 			return err
 		}
+		event = &committed
 	}
 	if event.Status != listingsubscription.UsageEventReserved && event.Status != listingsubscription.UsageEventCommitted {
 		return nil
 	}
-	if event.Status == listingsubscription.UsageEventReserved {
-		updated, err := service.GetUsageEventByID(ctx, event.EventID)
-		if err != nil {
-			return err
-		}
-		event = updated
+	if err := mirrorStudioProductImageUsage(ctx, service, *event); err != nil {
+		// The ledger commit is durable. Legacy summary mirroring is retried by
+		// tenant-scoped reconciliation and must not turn a successful generation
+		// into a failed request.
+		return nil
 	}
-	return mirrorStudioProductImageUsage(ctx, service, *event)
+	return nil
 }
 
 func mirrorStudioProductImageUsage(ctx context.Context, service *listingsubscription.Service, event listingsubscription.UsageEvent) error {

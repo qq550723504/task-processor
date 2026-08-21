@@ -85,15 +85,16 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 	}
 	now := time.Now().UTC()
 	result, err := a.service.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
-		TenantID:       billingTenant,
-		ModuleCode:     studioProductImageModule,
-		Metric:         studioProductImageLedgerMetric,
-		Quantity:       int64(quantity),
-		PeriodKey:      now.Format("2006-01"),
-		SourceType:     "listingkit_product_image",
-		SourceID:       reservationID,
-		IdempotencyKey: reservationKey,
-		OccurredAt:     now,
+		TenantID:          billingTenant,
+		ModuleCode:        studioProductImageModule,
+		Metric:            studioProductImageLedgerMetric,
+		LegacyUsageMetric: studioProductImageMetric,
+		Quantity:          int64(quantity),
+		PeriodKey:         now.Format("2006-01"),
+		SourceType:        "listingkit_product_image",
+		SourceID:          reservationID,
+		IdempotencyKey:    reservationKey,
+		OccurredAt:        now,
 	})
 	if err != nil {
 		return err
@@ -205,11 +206,18 @@ func (a *subscriptionStudioProductImageUsage) RecordProductImageUsageOnce(ctx co
 	if strings.TrimSpace(tenantID) == "" || quantity <= 0 || strings.TrimSpace(operationKey) == "" {
 		return fmt.Errorf("idempotent product image usage recording requires tenant, positive quantity, and operation key")
 	}
+	operationKey = strings.TrimSpace(operationKey)
+	if exists, lookupErr := a.service.UsageOperationExists(ctx, operationKey); lookupErr != nil {
+		return lookupErr
+	} else if exists {
+		_, _, err := a.service.RecordUsageForPeriodOnce(ctx, strings.TrimSpace(tenantID), studioProductImageModule, studioProductImageMetric, time.Now().UTC().Format("2006-01"), quantity, operationKey)
+		return err
+	}
 	billingTenant, err := a.authorizeUsageTenant(ctx, tenantID, quantity)
 	if err != nil {
 		return err
 	}
-	_, _, err = a.service.RecordUsageForPeriodOnce(ctx, billingTenant, studioProductImageModule, studioProductImageMetric, time.Now().UTC().Format("2006-01"), quantity, strings.TrimSpace(operationKey))
+	_, _, err = a.service.RecordUsageForPeriodOnce(ctx, billingTenant, studioProductImageModule, studioProductImageMetric, time.Now().UTC().Format("2006-01"), quantity, operationKey)
 	return err
 }
 

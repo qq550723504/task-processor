@@ -1121,3 +1121,28 @@ func insertUsageReversal(db *gorm.DB, eventID, idempotencyKey, reversalOf string
 		source_type, source_id, idempotency_key, status, occurred_at, reversal_of
 	) VALUES (?, 'tenant-17', 'studio', 'studio_design_jobs_succeeded', -1, '2026-08', 'design_job', 'job-42', ?, 'reversed', CURRENT_TIMESTAMP, ?)`, eventID, idempotencyKey, reversalOf).Error
 }
+
+func TestGormUsageLedgerReserveIncludesLegacyCounterInQuota(t *testing.T) {
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-legacy-atomic", ModuleStudio, map[string]int{"product_image_jobs": 2})
+	if _, err := repo.IncrementUsage(context.Background(), "tenant-legacy-atomic", ModuleStudio, "2026-08", "product_image_jobs", 1); err != nil {
+		t.Fatalf("IncrementUsage() error = %v", err)
+	}
+	ledger := NewGormUsageLedger(repo)
+	_, err := ledger.Reserve(context.Background(), ReserveUsageInput{
+		TenantID:          "tenant-legacy-atomic",
+		ModuleCode:        ModuleStudio,
+		Metric:            usageMetricProductImageJobsSucceeded,
+		LegacyUsageMetric: "product_image_jobs",
+		Quantity:          2,
+		PeriodKey:         "2026-08",
+		SourceType:        "listingkit_product_image",
+		SourceID:          "legacy-atomic",
+		IdempotencyKey:    "legacy-atomic",
+		OccurredAt:        time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC),
+	})
+	if !errors.Is(err, ErrUsageQuotaExceeded) {
+		t.Fatalf("Reserve() error = %v, want ErrUsageQuotaExceeded", err)
+	}
+}

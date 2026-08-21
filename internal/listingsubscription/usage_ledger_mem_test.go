@@ -9,6 +9,40 @@ import (
 	"time"
 )
 
+func TestMemUsageLedgerReserveIncludesLegacyCounterInQuota(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemRepository()
+	svc, err := NewService(repo)
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(ctx, "tenant-legacy-atomic", ModuleStudio, EntitlementInput{
+		Status: StatusActive,
+		Limits: map[string]int{"product_image_jobs": 2},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	if _, err := svc.RecordUsage(ctx, "tenant-legacy-atomic", ModuleStudio, "product_image_jobs", 1); err != nil {
+		t.Fatalf("RecordUsage() error = %v", err)
+	}
+	ledger := NewMemUsageLedger(repo)
+	_, err = ledger.Reserve(ctx, ReserveUsageInput{
+		TenantID:          "tenant-legacy-atomic",
+		ModuleCode:        ModuleStudio,
+		Metric:            usageMetricProductImageJobsSucceeded,
+		LegacyUsageMetric: "product_image_jobs",
+		Quantity:          2,
+		PeriodKey:         time.Now().UTC().Format("2006-01"),
+		SourceType:        "listingkit_product_image",
+		SourceID:          "legacy-atomic",
+		IdempotencyKey:    "legacy-atomic",
+		OccurredAt:        time.Now().UTC(),
+	})
+	if !errors.Is(err, ErrUsageQuotaExceeded) {
+		t.Fatalf("Reserve() error = %v, want ErrUsageQuotaExceeded", err)
+	}
+}
+
 func TestUsageLedgerConcurrentReservationsRespectLimit(t *testing.T) {
 	ctx := context.Background()
 	repo := NewMemRepository()

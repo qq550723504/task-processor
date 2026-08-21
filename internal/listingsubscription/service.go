@@ -826,6 +826,17 @@ func (s *Service) RecordUsageForPeriodOnce(ctx context.Context, tenantID, module
 	return counter, applied, err
 }
 
+func (s *Service) UsageOperationExists(ctx context.Context, operationKey string) (bool, error) {
+	if s == nil || s.repo == nil {
+		return false, ErrSubscriptionRequired
+	}
+	repo, ok := s.repo.(UsageCounterOperationLookup)
+	if !ok {
+		return false, ErrUsageCounterIdempotencyUnsupported
+	}
+	return repo.UsageOperationExists(ctx, strings.TrimSpace(operationKey))
+}
+
 func (s *Service) currentPeriodUsage(ctx context.Context, tenantID, moduleCode, metric string) (int, error) {
 	periodKey := s.now().UTC().Format("2006-01")
 	usage, err := s.repo.ListUsage(ctx, tenantID)
