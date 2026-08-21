@@ -14,7 +14,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/ai"
 )
 
 type Config struct {

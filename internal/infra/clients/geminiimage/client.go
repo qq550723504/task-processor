@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/ai"
 	"task-processor/internal/pkg/safeimagehttp"
 )
 
