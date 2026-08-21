@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"task-processor/internal/listingkit"
 	"task-processor/internal/listingsubscription"
 	"task-processor/internal/tenantbridge"
 )
@@ -110,6 +111,47 @@ func TestReconcileStudioProductImageUsageReleasesPendingEvent(t *testing.T) {
 	}
 	if event.Status != listingsubscription.UsageEventReleased {
 		t.Fatalf("event status = %q, want released", event.Status)
+	}
+}
+
+func TestReconcileStudioProductImageUsageRecoversAbandonedAsyncJob(t *testing.T) {
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-async-recovery")
+	svc := newStudioProductImageAdmissionService(t, "tenant-async-recovery", 2)
+	repo := listingkit.NewMemStudioAsyncJobRepository()
+	jobID := "async-recovery-job"
+	old := time.Now().UTC().Add(-2 * time.Hour)
+	if err := repo.CreateStudioAsyncJob(ctx, &listingkit.StudioAsyncJobRecord{
+		ID: jobID, TenantID: "tenant-async-recovery", Path: "/studio/product-images",
+		Status: listingkit.StudioAsyncJobStatusRunning, CreatedAt: old, UpdatedAt: old,
+	}); err != nil {
+		t.Fatalf("CreateStudioAsyncJob() error = %v", err)
+	}
+	reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID: "tenant-async-recovery", ModuleCode: listingsubscription.ModuleStudio,
+		Metric: studioProductImageLedgerMetric, Quantity: 1, PeriodKey: time.Now().UTC().Format("2006-01"),
+		SourceType: studioProductImageAsyncSourceType, SourceID: jobID, IdempotencyKey: "listingkit:api:studio_product_image:" + jobID,
+		OccurredAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	h := &handler{
+		subscriptionDependencies: subscriptionDependencies{subscriptionService: svc},
+		studioAsyncJobs:          &studioAsyncJobStore{repo: repo},
+	}
+	if err := h.reconcileStudioProductImageUsageReleases(ctx, "tenant-async-recovery"); err != nil {
+		t.Fatalf("reconcile error = %v", err)
+	}
+	event, err := svc.GetUsageEventByID(ctx, reserved.Event.EventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	if event.Status != listingsubscription.UsageEventReleased {
+		t.Fatalf("event status = %q, want released", event.Status)
+	}
+	job, ok := h.studioAsyncJobs.get(ctx, jobID)
+	if !ok || job.Status != listingkit.StudioAsyncJobStatusFailed {
+		t.Fatalf("job = %+v, ok=%v, want failed abandoned job", job, ok)
 	}
 }
 

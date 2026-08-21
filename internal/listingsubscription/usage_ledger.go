@@ -6,6 +6,13 @@ import (
 	"time"
 )
 
+const (
+	usageReconciliationReleasePendingKey = "listingkit_api_release_pending"
+	usageReconciliationAsyncJobKey       = "listingkit_async_job"
+	usageReconciliationMirrorKey         = "listingkit_legacy_counter_mirror"
+	usageReconciliationMirrorSettled     = "settled"
+)
+
 const usageMetricStorageBytesCurrent = "storage_bytes_current"
 const (
 	usageMetricStudioDesignJobsSucceeded = "studio_design_jobs_succeeded"
@@ -145,21 +152,64 @@ func usageMetricModuleMatches(moduleCode, metric string) bool {
 }
 
 // unrepresentedLegacyUsage returns only legacy counter usage that is not
-// already represented by committed durable ledger events. Reservations are
-// not mirrored into the legacy counter until they commit, so they must remain
-// part of the projected ledger usage rather than reducing the legacy usage.
-func unrepresentedLegacyUsage(legacyUsage, committed int64) int64 {
+// already represented by explicitly mirrored durable ledger events.
+func unrepresentedLegacyUsage(legacyUsage, mirrored int64) int64 {
 	if legacyUsage <= 0 {
 		return 0
 	}
-	if committed < 0 {
-		committed = 0
+	if mirrored < 0 {
+		mirrored = 0
 	}
-	represented, ok := addUsage(committed, 0)
-	if !ok || represented >= legacyUsage {
+	if mirrored >= legacyUsage {
 		return 0
 	}
-	return legacyUsage - represented
+	return legacyUsage - mirrored
+}
+
+func defaultUsageLedgerReconciliationFilter(tenantID, sourceType, metric string) UsageLedgerReconciliationFilter {
+	return UsageLedgerReconciliationFilter{
+		TenantID: tenantID, SourceType: sourceType, Metric: metric,
+		ReservedMetadataPredicates: []UsageLedgerMetadataPredicate{
+			{Key: usageReconciliationReleasePendingKey, Value: "1"},
+			{Key: usageReconciliationAsyncJobKey, Value: "1"},
+		},
+		CommittedMetadataKey: usageReconciliationMirrorKey, CommittedSettledValue: usageReconciliationMirrorSettled,
+	}
+}
+
+func usageEventMatchesReconciliationFilter(event UsageEvent, filter UsageLedgerReconciliationFilter) bool {
+	if event.TenantID != strings.TrimSpace(filter.TenantID) || event.Metric != strings.TrimSpace(filter.Metric) || !containsUsageReconciliationValue(filter.SourceTypes, filter.SourceType, event.SourceType) {
+		return false
+	}
+	if event.Status == UsageEventReserved {
+		if containsUsageReconciliationValue(filter.ReservedSourceTypes, "", event.SourceType) {
+			return true
+		}
+		for _, predicate := range filter.ReservedMetadataPredicates {
+			if event.Metadata[strings.TrimSpace(predicate.Key)] == predicate.Value {
+				return true
+			}
+		}
+		return false
+	}
+	if event.Status == UsageEventCommitted {
+		key := strings.TrimSpace(filter.CommittedMetadataKey)
+		return key != "" && event.Metadata[key] != strings.TrimSpace(filter.CommittedSettledValue)
+	}
+	return false
+}
+
+func containsUsageReconciliationValue(values []string, fallback, target string) bool {
+	target = strings.TrimSpace(target)
+	if len(values) == 0 {
+		return target == strings.TrimSpace(fallback)
+	}
+	for _, value := range values {
+		if target == strings.TrimSpace(value) {
+			return true
+		}
+	}
+	return false
 }
 
 func canonicalUsagePeriodKey(metric, supplied string, occurredAt time.Time) (string, error) {

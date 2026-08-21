@@ -99,7 +99,7 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 	if err != nil {
 		return ReserveUsageResult{}, err
 	}
-	legacyUsage = unrepresentedLegacyUsage(legacyUsage, bucket.committed)
+	legacyUsage = unrepresentedLegacyUsage(legacyUsage, mirroredLegacyUsageForMemReservation(input, l.eventsByID))
 	if err := validateMemUsageReservation(input, bucket, limit, reservedForQuota, legacyUsage); err != nil {
 		return ReserveUsageResult{}, err
 	}
@@ -304,6 +304,10 @@ func (l *memUsageLedger) ListEventsPage(ctx context.Context, limit, offset int) 
 }
 
 func (l *memUsageLedger) ListEventsPageForReconciliation(ctx context.Context, tenantID, sourceType, metric string, limit, offset int) ([]UsageEvent, error) {
+	return l.ListEventsPageForReconciliationWithFilter(ctx, defaultUsageLedgerReconciliationFilter(tenantID, sourceType, metric), limit, offset)
+}
+
+func (l *memUsageLedger) ListEventsPageForReconciliationWithFilter(ctx context.Context, filter UsageLedgerReconciliationFilter, limit, offset int) ([]UsageEvent, error) {
 	_ = ctx
 	if limit <= 0 {
 		return []UsageEvent{}, nil
@@ -315,7 +319,7 @@ func (l *memUsageLedger) ListEventsPageForReconciliation(ctx context.Context, te
 	defer l.mu.Unlock()
 	events := make([]UsageEvent, 0, len(l.eventsByID))
 	for _, record := range l.eventsByID {
-		if record.event.TenantID != strings.TrimSpace(tenantID) || record.event.SourceType != strings.TrimSpace(sourceType) || record.event.Metric != strings.TrimSpace(metric) {
+		if !usageEventMatchesReconciliationFilter(record.event, filter) {
 			continue
 		}
 		events = append(events, cloneMemUsageEvent(record.event))
@@ -513,6 +517,33 @@ func legacyUsageForMemReservation(input ReserveUsageInput, repo *MemRepository) 
 		}
 	}
 	return total, nil
+}
+
+func mirroredLegacyUsageForMemReservation(input ReserveUsageInput, events map[string]memUsageEvent) int64 {
+	key := strings.TrimSpace(input.LegacyUsageMirrorMetadataKey)
+	settledValue := strings.TrimSpace(input.LegacyUsageMirrorSettledValue)
+	if key == "" || settledValue == "" {
+		return 0
+	}
+	var total int64
+	for _, record := range events {
+		event := record.event
+		if event.TenantID != input.TenantID || event.ModuleCode != input.ModuleCode || event.Metric != input.Metric || event.PeriodKey != input.PeriodKey {
+			continue
+		}
+		if event.Status != UsageEventReserved && event.Status != UsageEventCommitted {
+			continue
+		}
+		if event.Metadata[key] != settledValue || event.Quantity <= 0 {
+			continue
+		}
+		updated, ok := addUsage(total, event.Quantity)
+		if !ok {
+			return total
+		}
+		total = updated
+	}
+	return total
 }
 
 func validateMemUsageReservation(input ReserveUsageInput, bucket memUsageBucket, limit *int64, reservedForQuota, legacyUsage int64) error {

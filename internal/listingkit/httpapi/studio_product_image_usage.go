@@ -85,16 +85,18 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 	}
 	now := time.Now().UTC()
 	result, err := a.service.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
-		TenantID:          billingTenant,
-		ModuleCode:        studioProductImageModule,
-		Metric:            studioProductImageLedgerMetric,
-		LegacyUsageMetric: studioProductImageMetric,
-		Quantity:          int64(quantity),
-		PeriodKey:         now.Format("2006-01"),
-		SourceType:        "listingkit_product_image",
-		SourceID:          reservationID,
-		IdempotencyKey:    reservationKey,
-		OccurredAt:        now,
+		TenantID:                      billingTenant,
+		ModuleCode:                    studioProductImageModule,
+		Metric:                        studioProductImageLedgerMetric,
+		LegacyUsageMetric:             studioProductImageMetric,
+		Quantity:                      int64(quantity),
+		PeriodKey:                     now.Format("2006-01"),
+		SourceType:                    "listingkit_product_image",
+		SourceID:                      reservationID,
+		IdempotencyKey:                reservationKey,
+		OccurredAt:                    now,
+		LegacyUsageMirrorMetadataKey:  legacyMirrorMetadataKey,
+		LegacyUsageMirrorSettledValue: legacyMirrorSettled,
 	})
 	if err != nil {
 		return err

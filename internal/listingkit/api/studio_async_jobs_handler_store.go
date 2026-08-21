@@ -34,7 +34,7 @@ func (s *studioAsyncJobStore) create(ctx context.Context, path string) (studioAs
 }
 
 func (s *studioAsyncJobStore) get(ctx context.Context, id string) (studioAsyncJob, bool) {
-	record, err := s.repo.GetStudioAsyncJob(ctx, id)
+	record, err := s.getRecord(ctx, id)
 	if err != nil || record == nil {
 		return studioAsyncJob{}, false
 	}
@@ -45,16 +45,24 @@ func (s *studioAsyncJobStore) get(ctx context.Context, id string) (studioAsyncJo
 	return job, true
 }
 
+func (s *studioAsyncJobStore) getRecord(ctx context.Context, id string) (*listingkit.StudioAsyncJobRecord, error) {
+	return s.repo.GetStudioAsyncJob(ctx, id)
+}
+
 func (s *studioAsyncJobStore) succeed(ctx context.Context, id string, result any) {
 	_ = s.update(ctx, id, listingkit.StudioAsyncJobStatusSucceeded, result, "", http.StatusOK)
 }
 
 func (s *studioAsyncJobStore) fail(ctx context.Context, id string, err error, status int) {
+	_ = s.failWithError(ctx, id, err, status)
+}
+
+func (s *studioAsyncJobStore) failWithError(ctx context.Context, id string, err error, status int) error {
 	message := "async job failed"
 	if err != nil {
 		message = err.Error()
 	}
-	_ = s.update(ctx, id, listingkit.StudioAsyncJobStatusFailed, nil, message, status)
+	return s.update(ctx, id, listingkit.StudioAsyncJobStatusFailed, nil, message, status)
 }
 
 func (s *studioAsyncJobStore) update(ctx context.Context, id string, status listingkit.StudioAsyncJobStatus, result any, message string, upstreamStatus int) error {

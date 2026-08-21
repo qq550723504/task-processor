@@ -169,6 +169,18 @@ func (s *Service) ListUsageEventPageForReconciliation(ctx context.Context, tenan
 	return pager.ListEventsPageForReconciliation(ctx, tenantID, sourceType, metric, limit, offset)
 }
 
+func (s *Service) ListUsageEventPageForReconciliationWithFilter(ctx context.Context, filter UsageLedgerReconciliationFilter, limit, offset int) ([]UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return nil, err
+	}
+	pager, ok := ledger.(UsageLedgerFilteredReconciliationEventPager)
+	if !ok {
+		return nil, ErrUsageLedgerEventLookupUnsupported
+	}
+	return pager.ListEventsPageForReconciliationWithFilter(ctx, filter, limit, offset)
+}
+
 // UpdateUsageMetadata persists adapter-owned reconciliation state on a usage
 // event when the configured ledger supports that optional extension.
 func (s *Service) UpdateUsageMetadata(ctx context.Context, eventID string, metadata map[string]string) (UsageEvent, error) {

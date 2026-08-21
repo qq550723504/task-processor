@@ -174,6 +174,29 @@ func TestSubscriptionStudioProductImageUsageReservationMirrorsLegacyCounter(t *t
 	}
 }
 
+func TestSubscriptionStudioProductImageUsageAllowsSecondActiveMirroredReservation(t *testing.T) {
+	t.Parallel()
+
+	repo := listingsubscription.NewMemRepository()
+	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(repo))
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-active-mirror", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"product_image_jobs": 2},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	adapter := studioProductImageUsageDependency(svc)
+	if err := adapter.ReserveProductImageUsage(context.Background(), "tenant-active-mirror", "candidate-1", 1); err != nil {
+		t.Fatalf("first ReserveProductImageUsage() error = %v", err)
+	}
+	if err := adapter.ReserveProductImageUsage(context.Background(), "tenant-active-mirror", "candidate-2", 1); err != nil {
+		t.Fatalf("second ReserveProductImageUsage() error = %v, want active mirrored reservation counted once", err)
+	}
+}
+
 func TestSubscriptionStudioProductImageUsageUsesLegacyBillingTenantConsistently(t *testing.T) {
 	repo := listingsubscription.NewMemRepository()
 	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(repo))

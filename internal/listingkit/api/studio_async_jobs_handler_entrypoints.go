@@ -43,7 +43,7 @@ func (h *handler) StartStudioAsyncJob(c *gin.Context) {
 	}
 	reservationID := ""
 	if ledgerAdmission {
-		reservationID, err = h.reserveStudioProductImageUsage(c, job.ID)
+		reservationID, err = h.reserveStudioProductImageUsageForAsyncJob(c, job.ID)
 		if err != nil {
 			h.studioAsyncJobs.fail(reqCtx, job.ID, err, http.StatusPaymentRequired)
 			writeStudioProductImageUsageAdmissionError(c, err)

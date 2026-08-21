@@ -117,7 +117,11 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 			if err != nil {
 				return err
 			}
-			legacyUsage = unrepresentedLegacyUsage(legacyUsage, bucket.Committed)
+			mirroredLegacyUsage, err := mirroredLegacyUsageForReservation(tx, input)
+			if err != nil {
+				return err
+			}
+			legacyUsage = unrepresentedLegacyUsage(legacyUsage, mirroredLegacyUsage)
 			if err := validateUsageReservation(input, bucket, limit, reservedForQuota, legacyUsage); err != nil {
 				return err
 			}
@@ -379,6 +383,10 @@ func (l *gormUsageLedger) ListEventsPage(ctx context.Context, limit, offset int)
 }
 
 func (l *gormUsageLedger) ListEventsPageForReconciliation(ctx context.Context, tenantID, sourceType, metric string, limit, offset int) ([]UsageEvent, error) {
+	return l.ListEventsPageForReconciliationWithFilter(ctx, defaultUsageLedgerReconciliationFilter(tenantID, sourceType, metric), limit, offset)
+}
+
+func (l *gormUsageLedger) ListEventsPageForReconciliationWithFilter(ctx context.Context, filter UsageLedgerReconciliationFilter, limit, offset int) ([]UsageEvent, error) {
 	if limit <= 0 {
 		return []UsageEvent{}, nil
 	}
@@ -386,8 +394,59 @@ func (l *gormUsageLedger) ListEventsPageForReconciliation(ctx context.Context, t
 		offset = 0
 	}
 	var rows []usageEventRow
-	query := l.repo.db.WithContext(ctx).
-		Where("tenant_id = ? AND source_type = ? AND metric = ?", strings.TrimSpace(tenantID), strings.TrimSpace(sourceType), strings.TrimSpace(metric))
+	query := l.repo.db.WithContext(ctx).Where("tenant_id = ? AND metric = ?", strings.TrimSpace(filter.TenantID), strings.TrimSpace(filter.Metric))
+	sourceTypes := make([]string, 0, len(filter.SourceTypes)+1)
+	if len(filter.SourceTypes) > 0 {
+		for _, sourceType := range filter.SourceTypes {
+			if sourceType = strings.TrimSpace(sourceType); sourceType != "" {
+				sourceTypes = append(sourceTypes, sourceType)
+			}
+		}
+	} else if sourceType := strings.TrimSpace(filter.SourceType); sourceType != "" {
+		sourceTypes = append(sourceTypes, sourceType)
+	}
+	if len(sourceTypes) == 0 {
+		return []UsageEvent{}, nil
+	}
+	if len(sourceTypes) == 1 {
+		query = query.Where("source_type = ?", sourceTypes[0])
+	} else {
+		query = query.Where("source_type IN ?", sourceTypes)
+	}
+	conditions := make([]string, 0, 2)
+	args := make([]any, 0, 7)
+	reservedPredicates := make([]string, 0, len(filter.ReservedMetadataPredicates))
+	for _, predicate := range filter.ReservedMetadataPredicates {
+		key := strings.TrimSpace(predicate.Key)
+		value := strings.TrimSpace(predicate.Value)
+		if key == "" || value == "" {
+			continue
+		}
+		reservedPredicates = append(reservedPredicates, "metadata LIKE ?")
+		args = append(args, "%\""+key+"\":\""+value+"\"%")
+	}
+	if len(reservedPredicates) > 0 {
+		conditions = append(conditions, "(status = ? AND ("+strings.Join(reservedPredicates, " OR ")+"))")
+		args = append([]any{string(UsageEventReserved)}, args...)
+	}
+	reservedSourceTypes := make([]string, 0, len(filter.ReservedSourceTypes))
+	for _, sourceType := range filter.ReservedSourceTypes {
+		if sourceType = strings.TrimSpace(sourceType); sourceType != "" {
+			reservedSourceTypes = append(reservedSourceTypes, sourceType)
+		}
+	}
+	if len(reservedSourceTypes) > 0 {
+		conditions = append(conditions, "(status = ? AND source_type IN ?)")
+		args = append(args, string(UsageEventReserved), reservedSourceTypes)
+	}
+	if key := strings.TrimSpace(filter.CommittedMetadataKey); key != "" && strings.TrimSpace(filter.CommittedSettledValue) != "" {
+		conditions = append(conditions, "(status = ? AND (metadata IS NULL OR metadata = '' OR metadata NOT LIKE ?))")
+		args = append(args, string(UsageEventCommitted), "%\""+key+"\":\""+strings.TrimSpace(filter.CommittedSettledValue)+"\"%")
+	}
+	if len(conditions) == 0 {
+		return []UsageEvent{}, nil
+	}
+	query = query.Where("("+strings.Join(conditions, " OR ")+")", args...)
 	if err := query.Order("created_at ASC, event_id ASC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -685,6 +744,36 @@ func legacyUsageForReservation(tx *gorm.DB, input ReserveUsageInput) (int64, err
 		return 0, nil
 	}
 	return int64(counter.Used), err
+}
+
+func mirroredLegacyUsageForReservation(tx *gorm.DB, input ReserveUsageInput) (int64, error) {
+	key := strings.TrimSpace(input.LegacyUsageMirrorMetadataKey)
+	settledValue := strings.TrimSpace(input.LegacyUsageMirrorSettledValue)
+	if key == "" || settledValue == "" {
+		return 0, nil
+	}
+	var rows []usageEventRow
+	if err := tx.Where("tenant_id = ? AND module_code = ? AND metric = ? AND period_key = ? AND status IN ? AND quantity > 0", input.TenantID, input.ModuleCode, input.Metric, input.PeriodKey, []string{string(UsageEventReserved), string(UsageEventCommitted)}).Find(&rows).Error; err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, row := range rows {
+		var metadata map[string]string
+		if strings.TrimSpace(row.Metadata) != "" {
+			if err := json.Unmarshal([]byte(row.Metadata), &metadata); err != nil {
+				return 0, err
+			}
+		}
+		if metadata[key] != settledValue {
+			continue
+		}
+		updated, ok := addUsage(total, row.Quantity)
+		if !ok {
+			return total, nil
+		}
+		total = updated
+	}
+	return total, nil
 }
 
 func validateUsageReservation(input ReserveUsageInput, bucket usageBucketRow, limit *int64, reservedForQuota, legacyUsage int64) error {

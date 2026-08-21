@@ -96,6 +96,11 @@ type ReserveUsageInput struct {
 	IdempotencyKey    string
 	OccurredAt        time.Time
 	Metadata          map[string]string
+	// LegacyUsageMirrorMetadataKey and LegacyUsageMirrorSettledValue identify
+	// ledger events already represented by LegacyUsageMetric. They let quota
+	// admission subtract only actually mirrored committed or reserved events.
+	LegacyUsageMirrorMetadataKey  string
+	LegacyUsageMirrorSettledValue string
 }
 
 type ReserveUsageResult struct {
@@ -348,8 +353,28 @@ type UsageLedgerEventPager interface {
 	ListEventsPage(ctx context.Context, limit, offset int) ([]UsageEvent, error)
 }
 
+type UsageLedgerMetadataPredicate struct {
+	Key   string
+	Value string
+}
+
+type UsageLedgerReconciliationFilter struct {
+	TenantID                   string
+	SourceType                 string
+	SourceTypes                []string
+	ReservedSourceTypes        []string
+	Metric                     string
+	ReservedMetadataPredicates []UsageLedgerMetadataPredicate
+	CommittedMetadataKey       string
+	CommittedSettledValue      string
+}
+
 // UsageLedgerReconciliationEventPager lets reconciliation fetch only the
 // tenant and adapter-owned event slice it can actually repair.
 type UsageLedgerReconciliationEventPager interface {
 	ListEventsPageForReconciliation(ctx context.Context, tenantID, sourceType, metric string, limit, offset int) ([]UsageEvent, error)
+}
+
+type UsageLedgerFilteredReconciliationEventPager interface {
+	ListEventsPageForReconciliationWithFilter(ctx context.Context, filter UsageLedgerReconciliationFilter, limit, offset int) ([]UsageEvent, error)
 }

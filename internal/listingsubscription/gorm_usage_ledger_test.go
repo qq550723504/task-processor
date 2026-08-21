@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -1156,12 +1157,15 @@ func TestGormUsageLedgerReserveDoesNotDoubleCountMirroredLegacyUsage(t *testing.
 		t.Fatalf("seed legacy usage: %v", err)
 	}
 	ledger := NewGormUsageLedger(repo)
+	metadataUpdater := ledger.(UsageLedgerMetadataUpdater)
 	input := func(key string) ReserveUsageInput {
 		return ReserveUsageInput{
 			TenantID: "tenant-legacy-mirror", ModuleCode: ModuleStudio,
 			Metric: usageMetricProductImageJobsSucceeded, LegacyUsageMetric: "product_image_jobs",
 			Quantity: 1, PeriodKey: "2026-08", SourceType: "listingkit_product_image",
 			SourceID: key, IdempotencyKey: key, OccurredAt: time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC),
+			LegacyUsageMirrorMetadataKey:  "listingkit_legacy_counter_mirror",
+			LegacyUsageMirrorSettledValue: "settled",
 		}
 	}
 	first, err := ledger.Reserve(ctx, input("mirror-1"))
@@ -1170,6 +1174,9 @@ func TestGormUsageLedgerReserveDoesNotDoubleCountMirroredLegacyUsage(t *testing.
 	}
 	if _, err := ledger.Commit(ctx, first.Event.EventID); err != nil {
 		t.Fatalf("first Commit() error = %v", err)
+	}
+	if _, err := metadataUpdater.UpdateMetadata(ctx, first.Event.EventID, map[string]string{"listingkit_legacy_counter_mirror": "settled"}); err != nil {
+		t.Fatalf("first mirror metadata: %v", err)
 	}
 	if _, err := repo.IncrementUsage(ctx, "tenant-legacy-mirror", ModuleStudio, "2026-08", "product_image_jobs", 1); err != nil {
 		t.Fatalf("mirror legacy usage: %v", err)
@@ -1210,5 +1217,66 @@ func TestGormUsageLedgerReserveDoesNotSubtractUnmirroredReservationsFromLegacyUs
 	}
 	if _, err := ledger.Reserve(ctx, input("unmirrored-3")); !errors.Is(err, ErrUsageQuotaExceeded) {
 		t.Fatalf("third Reserve() error = %v, want ErrUsageQuotaExceeded", err)
+	}
+}
+
+func TestGormUsageLedgerReconciliationPageReturnsOnlyPendingEvents(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-reconcile-filter", ModuleStudio, map[string]int{"product_image_jobs": 10})
+	ledger := NewGormUsageLedger(repo)
+	metadataUpdater := ledger.(UsageLedgerMetadataUpdater)
+	reserve := func(id string) UsageEvent {
+		t.Helper()
+		result, err := ledger.Reserve(ctx, ReserveUsageInput{
+			TenantID: "tenant-reconcile-filter", ModuleCode: ModuleStudio, Metric: usageMetricProductImageJobsSucceeded,
+			Quantity: 1, PeriodKey: "2026-08", SourceType: "listingkit_product_image", SourceID: id,
+			IdempotencyKey: id, OccurredAt: time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC),
+		})
+		if err != nil {
+			t.Fatalf("ReserveUsage(%s) error = %v", id, err)
+		}
+		return result.Event
+	}
+	released := reserve("released")
+	if _, err := ledger.Release(ctx, released.EventID, "test"); err != nil {
+		t.Fatalf("ReleaseUsage() error = %v", err)
+	}
+	settled := reserve("settled")
+	if _, err := ledger.Commit(ctx, settled.EventID); err != nil {
+		t.Fatalf("CommitUsage(settled) error = %v", err)
+	}
+	if _, err := metadataUpdater.UpdateMetadata(ctx, settled.EventID, map[string]string{"listingkit_legacy_counter_mirror": "settled"}); err != nil {
+		t.Fatalf("UpdateMetadata(settled) error = %v", err)
+	}
+	needsMirror := reserve("needs-mirror")
+	if _, err := ledger.Commit(ctx, needsMirror.EventID); err != nil {
+		t.Fatalf("CommitUsage(needs-mirror) error = %v", err)
+	}
+	pendingRelease := reserve("pending-release")
+	if _, err := metadataUpdater.UpdateMetadata(ctx, pendingRelease.EventID, map[string]string{"listingkit_api_release_pending": "1"}); err != nil {
+		t.Fatalf("UpdateMetadata(pending-release) error = %v", err)
+	}
+	activeBatch := reserve("active-batch")
+	if _, err := metadataUpdater.UpdateMetadata(ctx, activeBatch.EventID, map[string]string{"listingkit_legacy_counter_mirror": "settled"}); err != nil {
+		t.Fatalf("UpdateMetadata(active-batch) error = %v", err)
+	}
+	pager := ledger.(UsageLedgerFilteredReconciliationEventPager)
+	events, err := pager.ListEventsPageForReconciliationWithFilter(ctx, UsageLedgerReconciliationFilter{
+		TenantID: "tenant-reconcile-filter", SourceType: "listingkit_product_image", Metric: usageMetricProductImageJobsSucceeded,
+		ReservedMetadataPredicates: []UsageLedgerMetadataPredicate{{Key: "listingkit_api_release_pending", Value: "1"}},
+		CommittedMetadataKey:       "listingkit_legacy_counter_mirror", CommittedSettledValue: "settled",
+	}, 100, 0)
+	if err != nil {
+		t.Fatalf("ListEventsPageForReconciliationWithFilter() error = %v", err)
+	}
+	got := make(map[string]bool, len(events))
+	for _, event := range events {
+		got[event.SourceID] = true
+	}
+	want := map[string]bool{"needs-mirror": true, "pending-release": true}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ListEventsPageForReconciliationWithFilter() sources = %v, want %v", got, want)
 	}
 }
