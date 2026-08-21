@@ -66,6 +66,7 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 			understanding:        productEnrichDeps.understanding,
 			contentGenerator:     productEnrichDeps.contentGenerator,
 			specsGenerator:       productEnrichDeps.specsGenerator,
+			variantsGenerator:    productEnrichDeps.variantsGenerator,
 			imageWorkDir:         imageWorkDir,
 			storeAPI:             storeAPI,
 		},

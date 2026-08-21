@@ -30,4 +30,7 @@ func TestProductEnrichTextCapabilityContracts(t *testing.T) {
 	if OperationProductEnrichSpecsGenerate != "productenrich_specs_generate" {
 		t.Fatalf("specs operation = %q", OperationProductEnrichSpecsGenerate)
 	}
+	if OperationProductEnrichVariantsGenerate != "productenrich_variants_generate" {
+		t.Fatalf("variants operation = %q", OperationProductEnrichVariantsGenerate)
+	}
 }

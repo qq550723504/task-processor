@@ -14,11 +14,12 @@ import (
 )
 
 type productEnrichRuntimeDeps struct {
-	llmMgr           productenrich.LLMManager
-	inputParser      productenrich.InputParser
-	understanding    productenrich.ProductUnderstanding
-	contentGenerator productenrichenrich.TextGenerator
-	specsGenerator   productenrichenrich.TextGenerator
+	llmMgr            productenrich.LLMManager
+	inputParser       productenrich.InputParser
+	understanding     productenrich.ProductUnderstanding
+	contentGenerator  productenrichenrich.TextGenerator
+	specsGenerator    productenrichenrich.TextGenerator
+	variantsGenerator productenrichenrich.TextGenerator
 }
 
 func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, openaiMgr *openaiclient.Manager, credentialResolver openaiclient.ClientConfigResolver, recorder aicapability.InvocationRecorder) (productEnrichRuntimeDeps, error) {
@@ -39,6 +40,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 	var imageAnalyzer productenrichenrich.ImageAnalyzer
 	var contentGenerator productenrichenrich.TextGenerator
 	var specsGenerator productenrichenrich.TextGenerator
+	var variantsGenerator productenrichenrich.TextGenerator
 	if cfg.AICapability.ProductEnrichTextEnabled || cfg.AICapability.ProductEnrichVisionEnabled || cfg.AICapability.ProductEnrichListingEnabled {
 		if credentialResolver == nil {
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich capability: credential resolver is required")
@@ -89,6 +91,19 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		if err != nil {
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich specs capability: %w", err)
 		}
+		variantsGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
+			Router:          productenrichhttpapi.BuildProductEnrichListingCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichListingAllowedTenantIDs),
+			Recorder:        recorder,
+			Capability:      aicapability.CapabilityProductEnrichListing,
+			Operation:       aicapability.OperationProductEnrichVariantsGenerate,
+			RequiredFeature: aicapability.FeatureTextGenerate,
+			PromptKey:       "productenrich.listing.generate_variants",
+			PromptVersion:   "v1",
+			PromptScope:     "product_enrich",
+		})
+		if err != nil {
+			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich variants capability: %w", err)
+		}
 	}
 	if textGenerator == nil && imageAnalyzer == nil {
 		productUnderstanding, err = productenrichenrich.NewProductUnderstanding(llmMgr)
@@ -106,10 +121,11 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 	}
 
 	return productEnrichRuntimeDeps{
-		llmMgr:           llmMgr,
-		inputParser:      inputParser,
-		understanding:    productUnderstanding,
-		contentGenerator: contentGenerator,
-		specsGenerator:   specsGenerator,
+		llmMgr:            llmMgr,
+		inputParser:       inputParser,
+		understanding:     productUnderstanding,
+		contentGenerator:  contentGenerator,
+		specsGenerator:    specsGenerator,
+		variantsGenerator: variantsGenerator,
 	}, nil
 }

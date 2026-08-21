@@ -14,8 +14,9 @@ import (
 )
 
 type variantGenerator struct {
-	llmManager     productenrich.LLMManager
-	specsGenerator TextGenerator
+	llmManager        productenrich.LLMManager
+	specsGenerator    TextGenerator
+	variantsGenerator TextGenerator
 }
 
 func NewVariantGenerator(llmManager productenrich.LLMManager) (productenrich.VariantGenerator, error) {
@@ -25,11 +26,18 @@ func NewVariantGenerator(llmManager productenrich.LLMManager) (productenrich.Var
 // NewVariantGeneratorWithSpecsGenerator keeps variant assembly in the domain
 // layer while allowing only specification extraction to use a governed model.
 func NewVariantGeneratorWithSpecsGenerator(llmManager productenrich.LLMManager, specsGenerator TextGenerator) (productenrich.VariantGenerator, error) {
+	return NewVariantGeneratorWithGenerators(llmManager, specsGenerator, nil)
+}
+
+// NewVariantGeneratorWithGenerators allows the specification and variant
+// model calls to be governed independently while keeping the domain interface
+// unchanged.
+func NewVariantGeneratorWithGenerators(llmManager productenrich.LLMManager, specsGenerator TextGenerator, variantsGenerator TextGenerator) (productenrich.VariantGenerator, error) {
 	if llmManager == nil {
 		return nil, fmt.Errorf("llm manager cannot be nil")
 	}
 
-	return &variantGenerator{llmManager: llmManager, specsGenerator: specsGenerator}, nil
+	return &variantGenerator{llmManager: llmManager, specsGenerator: specsGenerator, variantsGenerator: variantsGenerator}, nil
 }
 
 func (v *variantGenerator) GenerateSpecs(ctx context.Context, analysis *productenrich.ProductAnalysis) (*canonical.ProductSpecs, error) {
@@ -142,8 +150,14 @@ Rules:
 - Return JSON only.`
 	prompt := buildProductVariantsPrompt(analysis, variantsFallback)
 
-	defaultClient := v.llmManager.GetDefaultClient()
-	response, err := defaultClient.Generate(ctx, prompt)
+	var response string
+	var err error
+	if v.variantsGenerator != nil {
+		response, err = v.variantsGenerator.Generate(ctx, prompt)
+	} else {
+		defaultClient := v.llmManager.GetDefaultClient()
+		response, err = defaultClient.Generate(ctx, prompt)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate variants: %w", err)
 	}
