@@ -75,40 +75,36 @@ func (r *GormStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx contex
 		return nil
 	}
 
-	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
-		Model(&StudioBatchTaskLinkRecord{}).
-		Where("id = ?", link.ID).
-		Updates(map[string]any{
-			"listingkit_task_id": link.ListingKitTaskID,
-			"claim_token":        link.ClaimToken,
-			"status":             link.Status,
-			"source":             link.Source,
-			"reason_code":        link.ReasonCode,
-			"message":            link.Message,
-			"updated_at":         link.UpdatedAt,
-		})
-	if result.Error != nil {
-		if isStudioBatchTaskLinkMissingSourceColumnError(result.Error) {
+	update := func() *gorm.DB {
+		return applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
+			Model(&StudioBatchTaskLinkRecord{}).
+			Where("id = ?", link.ID).
+			Updates(map[string]any{
+				"listingkit_task_id": link.ListingKitTaskID,
+				"claim_token":        link.ClaimToken,
+				"status":             link.Status,
+				"source":             link.Source,
+				"reason_code":        link.ReasonCode,
+				"message":            link.Message,
+				"updated_at":         link.UpdatedAt,
+			})
+	}
+
+	result := update()
+	for attempts := 0; result.Error != nil && attempts < 3; attempts++ {
+		switch {
+		case isStudioBatchTaskLinkMissingClaimTokenColumnError(result.Error):
+			if err := ensureStudioBatchTaskLinkClaimTokenColumn(r.db); err != nil {
+				return err
+			}
+		case isStudioBatchTaskLinkMissingSourceColumnError(result.Error):
 			if err := ensureStudioBatchTaskLinkSourceColumn(r.db); err != nil {
 				return err
 			}
-			result = applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
-				Model(&StudioBatchTaskLinkRecord{}).
-				Where("id = ?", link.ID).
-				Updates(map[string]any{
-					"listingkit_task_id": link.ListingKitTaskID,
-					"status":             link.Status,
-					"source":             link.Source,
-					"reason_code":        link.ReasonCode,
-					"message":            link.Message,
-					"updated_at":         link.UpdatedAt,
-				})
-			if result.Error != nil {
-				return result.Error
-			}
-		} else {
+		default:
 			return result.Error
 		}
+		result = update()
 	}
 	if result.Error != nil {
 		return result.Error
@@ -314,6 +310,7 @@ func isStudioBatchTaskLinkMissingClaimTokenColumnError(err error) bool {
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "claim_token") &&
 		(strings.Contains(message, "no column") ||
+			strings.Contains(message, "no such column") ||
 			strings.Contains(message, "does not exist") ||
 			strings.Contains(message, "unknown column"))
 }

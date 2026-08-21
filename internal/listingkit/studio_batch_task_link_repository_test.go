@@ -62,6 +62,64 @@ func TestGormStudioBatchTaskLinkRepositorySelfHealsMissingSourceColumn(t *testin
 	}
 }
 
+func TestGormStudioBatchTaskLinkRepositorySelfHealsMissingClaimTokenColumnOnUpdate(t *testing.T) {
+	t.Parallel()
+
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := db.AutoMigrate(&legacyStudioBatchTaskLinkRecordWithoutClaimToken{}); err != nil {
+		t.Fatalf("legacy AutoMigrate() error = %v", err)
+	}
+	if db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "ClaimToken") {
+		t.Fatal("legacy table unexpectedly has claim token column before repository update")
+	}
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	legacy := legacyStudioBatchTaskLinkRecordWithoutClaimToken{
+		ID:                       "link-claim-token",
+		TenantID:                 "tenant-a",
+		BatchID:                  "batch-1",
+		ItemID:                   "item-1",
+		DesignID:                 "design-1",
+		SelectionID:              "selection-1",
+		CompatibilityFingerprint: "fingerprint-selection-1",
+		ImageStrategy:            sheinImageStrategySDSOfficial,
+		SheinStoreID:             1001,
+		ListingKitTaskID:         "task-link-claim-token",
+		CandidateKey:             "candidate-claim-token",
+		Status:                   studioBatchTaskLinkStatusCreated,
+		Source:                   studioBatchTaskLinkSourceBatchCreated,
+		CreatedAt:                time.Now().UTC().Add(-time.Minute),
+		UpdatedAt:                time.Now().UTC().Add(-time.Minute),
+	}
+	if err := db.WithContext(ctx).Create(&legacy).Error; err != nil {
+		t.Fatalf("create legacy link: %v", err)
+	}
+
+	repo := NewGormStudioBatchTaskLinkRepository(db)
+	link := studioBatchTaskLinkRecordForTest(legacy.ID, legacy.BatchID, legacy.ItemID, legacy.DesignID, legacy.SelectionID, legacy.CandidateKey)
+	link.ClaimToken = "claim-token-1"
+	link.Source = studioBatchTaskLinkSourceBatchCreated
+	link.ImageStrategy = sheinImageStrategySDSOfficial
+	link.Status = studioBatchTaskLinkStatusFailed
+	link.UpdatedAt = time.Now().UTC()
+	if err := repo.UpdateStudioBatchTaskLink(ctx, link); err != nil {
+		t.Fatalf("UpdateStudioBatchTaskLink() error = %v, want lazy claim token migration and retry", err)
+	}
+	if !db.Migrator().HasColumn(&StudioBatchTaskLinkRecord{}, "ClaimToken") {
+		t.Fatal("repository did not add missing claim token column")
+	}
+	loaded, err := repo.GetStudioBatchTaskLinkByCandidateKey(ctx, legacy.CandidateKey)
+	if err != nil {
+		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() error = %v", err)
+	}
+	if loaded.ClaimToken != link.ClaimToken || loaded.Status != link.Status {
+		t.Fatalf("loaded claim token/status = (%q, %q), want (%q, %q)", loaded.ClaimToken, loaded.Status, link.ClaimToken, link.Status)
+	}
+}
+
 func TestMemStudioBatchTaskLinkRepositoryListByBatch(t *testing.T) {
 	t.Parallel()
 	testStudioBatchTaskLinkRepositoryListByBatch(t, func(t *testing.T) StudioBatchTaskLinkRepository {
@@ -613,6 +671,31 @@ type legacyStudioBatchTaskLinkRecordWithoutSource struct {
 }
 
 func (legacyStudioBatchTaskLinkRecordWithoutSource) TableName() string {
+	return StudioBatchTaskLinkRecord{}.TableName()
+}
+
+type legacyStudioBatchTaskLinkRecordWithoutClaimToken struct {
+	ID                       string `gorm:"primaryKey;type:varchar(96)"`
+	TenantID                 string `gorm:"type:varchar(64);uniqueIndex:idx_listingkit_studio_batch_task_links_candidate,priority:1;uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:1;index"`
+	UserID                   string `gorm:"type:varchar(128);index"`
+	BatchID                  string `gorm:"type:varchar(64);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:2;index"`
+	ItemID                   string `gorm:"type:varchar(96);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:3"`
+	DesignID                 string `gorm:"type:varchar(96);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:4"`
+	SelectionID              string `gorm:"type:varchar(128);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:5"`
+	CompatibilityFingerprint string `gorm:"type:varchar(128);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:6"`
+	ImageStrategy            string `gorm:"type:varchar(32);uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:7"`
+	SheinStoreID             int64  `gorm:"uniqueIndex:idx_listingkit_studio_batch_task_links_tuple,priority:8;index"`
+	ListingKitTaskID         string `gorm:"column:listingkit_task_id;type:varchar(96);index"`
+	CandidateKey             string `gorm:"type:varchar(128);uniqueIndex:idx_listingkit_studio_batch_task_links_candidate,priority:2"`
+	Status                   string `gorm:"type:varchar(32);index"`
+	Source                   string `gorm:"type:varchar(64);index"`
+	ReasonCode               string `gorm:"type:varchar(96)"`
+	Message                  string `gorm:"type:text"`
+	CreatedAt                time.Time
+	UpdatedAt                time.Time
+}
+
+func (legacyStudioBatchTaskLinkRecordWithoutClaimToken) TableName() string {
 	return StudioBatchTaskLinkRecord{}.TableName()
 }
 
