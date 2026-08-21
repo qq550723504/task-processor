@@ -65,6 +65,32 @@ func TestServiceBuildsEnvelopeFromAcceptedSnapshot(t *testing.T) {
 	service.mu.Unlock()
 }
 
+func TestServiceBoundsRetainedEnvelopeSummary(t *testing.T) {
+	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+	job, err := service.Create(actor, offerURL)
+	require.NoError(t, err)
+	claim, err := service.Claim(actor)
+	require.NoError(t, err)
+
+	done, err := service.SubmitSuccess(actor, job.ID, claim.ExecutionToken,
+		&sourcing.Alibaba1688ProductSnapshot{
+			ID: "1052008074197", URL: offerURL,
+			Title:    strings.Repeat("title", 1024),
+			Supplier: sourcing.Alibaba1688SupplierSnapshot{CompanyName: strings.Repeat("supplier", 1024)},
+		})
+	require.NoError(t, err)
+	require.LessOrEqual(t, len(done.EnvelopeSummary.Title), maxEnvelopeSummaryTitleBytes)
+	require.LessOrEqual(t, len(done.EnvelopeSummary.SupplierName), maxEnvelopeSummarySupplierBytes)
+
+	service.mu.Lock()
+	retained := service.jobs[job.ID].job.EnvelopeSummary
+	service.mu.Unlock()
+	require.NotNil(t, retained)
+	require.LessOrEqual(t, len(retained.Title), maxEnvelopeSummaryTitleBytes)
+	require.LessOrEqual(t, len(retained.SupplierName), maxEnvelopeSummarySupplierBytes)
+}
+
 func TestServiceRejectsExpiredClaim(t *testing.T) {
 	clock := newMutableClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC))
 	service := NewService(clock.Now)
@@ -95,6 +121,19 @@ func TestServiceRejectsOversizedSnapshotAndKeepsClaimActive(t *testing.T) {
 	require.Equal(t, JobFailed, second.State)
 }
 
+func TestServiceRejectsEmptySnapshotAsNonRetryable(t *testing.T) {
+	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+	job, err := service.Create(actor, offerURL)
+	require.NoError(t, err)
+	claim, err := service.Claim(actor)
+	require.NoError(t, err)
+
+	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, nil)
+	require.ErrorIs(t, err, ErrSnapshotInvalid)
+	require.ErrorIs(t, err, ErrInvalidClaim)
+}
+
 func TestServiceAcceptsOnlySnapshotForClaimedURL(t *testing.T) {
 	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
 	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
@@ -104,10 +143,13 @@ func TestServiceAcceptsOnlySnapshotForClaimedURL(t *testing.T) {
 	require.NoError(t, err)
 	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", Title: "shirt"})
 	require.ErrorIs(t, err, ErrInvalidURL)
+	require.ErrorIs(t, err, ErrSnapshotInvalid)
 	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", Title: "shirt", URL: "https://detail.1688.com/offer/999.html"})
 	require.ErrorIs(t, err, ErrInvalidURL)
+	require.ErrorIs(t, err, ErrSnapshotInvalid)
 	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, &sourcing.Alibaba1688ProductSnapshot{ID: "999", Title: "shirt", URL: offerURL})
 	require.ErrorIs(t, err, ErrInvalidClaim)
+	require.ErrorIs(t, err, ErrSnapshotInvalid)
 }
 
 func TestServiceRejectsOversizedFailureDiagnostic(t *testing.T) {

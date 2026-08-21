@@ -157,7 +157,7 @@ func oauthScopes(raw, projectID string) (string, error) {
 		return scopes, nil
 	}
 	projectID = strings.TrimSpace(projectID)
-	if projectID == "" {
+	if projectID == "" || len(strings.Fields(projectID)) != 1 {
 		return "", errors.New("project ID is required for device authorization")
 	}
 	return strings.Join([]string{

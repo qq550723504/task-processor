@@ -79,6 +79,12 @@ func TestOAuthScopesIncludeAdminAlias(t *testing.T) {
 	require.Contains(t, scopes, "urn:zitadel:iam:org:project:role:admin")
 }
 
+func TestOAuthScopesRejectsWhitespaceProjectID(t *testing.T) {
+	_, err := oauthScopes("", "project offline_access injected")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "project ID")
+}
+
 func TestAuthorizeHandlesPendingHTTPErrorThenApproved(t *testing.T) {
 	tokenCalls := 0
 	server := httptest.NewTLSServer(nil)

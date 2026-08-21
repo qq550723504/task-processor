@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	coreLogger "task-processor/internal/core/logger"
 	"task-processor/internal/product/sourcing"
@@ -28,6 +29,15 @@ const (
 	terminalRetention  = 10 * time.Minute
 	maxStoredJobs      = 1024
 	maxJobsPerTenant   = 256
+	// Keep every retained summary field bounded. Together these caps keep the
+	// JSON representation well below 2 KiB even when a crawler returns hostile
+	// strings, while preserving useful terminal evidence for the CLI.
+	maxEnvelopeSummarySourceKeyBytes = 256
+	maxEnvelopeSummarySourceURLBytes = 512
+	maxEnvelopeSummaryProductIDBytes = 128
+	maxEnvelopeSummaryTitleBytes     = 256
+	maxEnvelopeSummarySupplierBytes  = 256
+	maxEnvelopeSummaryPriceBytes     = 128
 )
 
 var (
@@ -37,6 +47,7 @@ var (
 	ErrInvalidClaim     = errors.New("invalid local-agent claim")
 	ErrTerminalJob      = errors.New("local-agent job is already terminal")
 	ErrSnapshotTooLarge = errors.New("1688 snapshot exceeds size limit")
+	ErrSnapshotInvalid  = errors.New("1688 product snapshot failed server validation")
 	ErrFailureInvalid   = errors.New("invalid local-agent failure diagnostic")
 	ErrCapacity         = errors.New("local-agent job capacity reached")
 	ErrSecureRandom     = errors.New("secure random generation failed")
@@ -164,7 +175,7 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 		return Job{}, err
 	}
 	if product == nil {
-		return Job{}, fmt.Errorf("%w: product is required", ErrInvalidClaim)
+		return Job{}, fmt.Errorf("%w: %w: product is required", ErrSnapshotInvalid, ErrInvalidClaim)
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -177,10 +188,10 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 	}
 	productURL, err := validateOfferURL(product.URL)
 	if err != nil || productURL != rec.job.URL {
-		return Job{}, ErrInvalidURL
+		return Job{}, fmt.Errorf("%w: %w: product URL does not match claimed offer", ErrSnapshotInvalid, ErrInvalidURL)
 	}
 	if strings.TrimSpace(product.ID) == "" || product.ID != sourcing.ExtractAlibaba1688ProductID(rec.job.URL) {
-		return Job{}, fmt.Errorf("%w: product id does not match claimed offer", ErrInvalidClaim)
+		return Job{}, fmt.Errorf("%w: %w: product id does not match claimed offer", ErrSnapshotInvalid, ErrInvalidClaim)
 	}
 	envelope := sourcing.Alibaba1688SourceEnvelope(sourcing.Alibaba1688SourceEnvelopeInput{
 		Request:     sourcing.Alibaba1688CrawlRequestInput{URL: rec.job.URL},
@@ -197,6 +208,7 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 		SupplierName: envelope.SupplierOrCostFacts.SupplierName,
 		Price:        envelope.SupplierOrCostFacts.Price,
 	}
+	summary = boundEnvelopeSummary(summary)
 	// Terminal records are retained only for lifecycle/idempotency checks. The
 	// current API has no terminal read route, so keep the reconstructed envelope
 	// on the immediate return value without retaining its potentially large
@@ -211,6 +223,27 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 	completed := rec.job
 	completed.Envelope = &envelope
 	return completed, nil
+}
+
+func boundEnvelopeSummary(summary EnvelopeSummary) EnvelopeSummary {
+	summary.SourceKey = truncateUTF8Bytes(summary.SourceKey, maxEnvelopeSummarySourceKeyBytes)
+	summary.SourceURL = truncateUTF8Bytes(summary.SourceURL, maxEnvelopeSummarySourceURLBytes)
+	summary.ProductID = truncateUTF8Bytes(summary.ProductID, maxEnvelopeSummaryProductIDBytes)
+	summary.Title = truncateUTF8Bytes(summary.Title, maxEnvelopeSummaryTitleBytes)
+	summary.SupplierName = truncateUTF8Bytes(summary.SupplierName, maxEnvelopeSummarySupplierBytes)
+	summary.Price = truncateUTF8Bytes(summary.Price, maxEnvelopeSummaryPriceBytes)
+	return summary
+}
+
+func truncateUTF8Bytes(value string, maxBytes int) string {
+	if len(value) <= maxBytes {
+		return value
+	}
+	value = value[:maxBytes]
+	for !utf8.ValidString(value) {
+		value = value[:len(value)-1]
+	}
+	return value
 }
 
 func (s *Service) SubmitFailure(actor Actor, jobID, token string, failure Failure) (Job, error) {

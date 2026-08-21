@@ -309,7 +309,7 @@ func writeServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, localagent.ErrSnapshotTooLarge):
 		writeError(c, http.StatusBadRequest, "snapshot_too_large", err.Error())
-	case errors.Is(err, localagent.ErrIdentityRequired), errors.Is(err, localagent.ErrInvalidURL), errors.Is(err, localagent.ErrFailureInvalid):
+	case errors.Is(err, localagent.ErrIdentityRequired), errors.Is(err, localagent.ErrSnapshotInvalid), errors.Is(err, localagent.ErrInvalidURL), errors.Is(err, localagent.ErrFailureInvalid):
 		writeError(c, http.StatusBadRequest, "invalid_request", err.Error())
 	case errors.Is(err, localagent.ErrClaimExpired), errors.Is(err, localagent.ErrTerminalJob):
 		writeError(c, http.StatusConflict, "job_not_active", err.Error())

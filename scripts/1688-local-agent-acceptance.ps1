@@ -54,3 +54,11 @@ $joinedOutput = $output -join "`n"
 if ($joinedOutput -notmatch 'envelope_summary=\{"source_key":"crawler:1688:[0-9]+","source_url":"https://detail\.1688\.com/offer/[0-9]+\.html","product_id":"[0-9]+",') {
     throw "1688 local agent did not expose a valid reconstructed envelope summary"
 }
+$summaryMatch = [regex]::Match($joinedOutput, 'envelope_summary=(\{.*\})')
+if (-not $summaryMatch.Success) {
+    throw "1688 local agent did not expose a parseable envelope summary"
+}
+$summary = $summaryMatch.Groups[1].Value | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace([string]$summary.title) -or [int]$summary.asset_count -le 0 -or [string]::IsNullOrWhiteSpace([string]$summary.supplier_name) -or [string]::IsNullOrWhiteSpace([string]$summary.price)) {
+    throw "1688 local agent envelope summary is missing crawler-mandated mapped facts"
+}

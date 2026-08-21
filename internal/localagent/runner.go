@@ -94,8 +94,12 @@ func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
 	var submitted Job
 	submitted, err = r.Jobs.SubmitSuccess(ctx, claim.Job.ID, claim.ExecutionToken, a1688.SnapshotFromLegacyProduct(product))
 	if err != nil {
-		if errors.Is(err, ErrSnapshotTooLarge) {
-			_, submitErr := r.submitFailure(ctx, claim.Job.ID, claim.ExecutionToken, Failure{Kind: FailureExtraction, Message: "1688 product snapshot exceeds submission size limit"})
+		if errors.Is(err, ErrSnapshotTooLarge) || errors.Is(err, ErrSnapshotInvalid) {
+			message := "1688 product snapshot failed server validation"
+			if errors.Is(err, ErrSnapshotTooLarge) {
+				message = "1688 product snapshot exceeds submission size limit"
+			}
+			_, submitErr := r.submitFailure(ctx, claim.Job.ID, claim.ExecutionToken, Failure{Kind: FailureExtraction, Message: message})
 			if submitErr != nil {
 				return Outcome{}, submitErr
 			}

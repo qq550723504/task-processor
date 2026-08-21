@@ -25,5 +25,9 @@ Describe "1688 local-agent acceptance guardrails" {
     It "asserts the bounded reconstructed envelope summary" {
         $scriptText | Should Match "envelope_summary"
         $scriptText | Should Match "source_key"
+        $scriptText | Should Match "ConvertFrom-Json"
+        $scriptText | Should Match "asset_count"
+        $scriptText | Should Match "supplier_name"
+        $scriptText | Should Match "price"
     }
 }

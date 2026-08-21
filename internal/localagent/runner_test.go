@@ -57,6 +57,24 @@ func TestRunnerTerminatesOversizedSnapshotAsExtractionFailure(t *testing.T) {
 	require.Equal(t, FailureExtraction, api.submittedFailure.Kind)
 }
 
+func TestRunnerTerminatesInvalidSnapshotAsExtractionFailure(t *testing.T) {
+	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}, submitSuccessErr: ErrSnapshotInvalid}
+	crawler := &fakeCrawler{product: &model.Product1688{ID: "1052008074197", URL: offerURL}}
+	outcome, err := (Runner{Jobs: api, Crawler: crawler}).RunOnce(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, OutcomeFailed, outcome.State)
+	require.Equal(t, FailureExtraction, api.submittedFailure.Kind)
+}
+
+func TestRunnerTerminatesEmptySnapshotAsExtractionFailure(t *testing.T) {
+	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}, submitSuccessErr: ErrSnapshotInvalid}
+	crawler := &fakeCrawler{}
+	outcome, err := (Runner{Jobs: api, Crawler: crawler}).RunOnce(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, OutcomeFailed, outcome.State)
+	require.Equal(t, FailureExtraction, api.submittedFailure.Kind)
+}
+
 func TestRunnerPreparesCrawlerBeforeClaim(t *testing.T) {
 	order := []string{}
 	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}, order: &order}
