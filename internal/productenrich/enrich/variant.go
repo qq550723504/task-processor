@@ -14,15 +14,22 @@ import (
 )
 
 type variantGenerator struct {
-	llmManager productenrich.LLMManager
+	llmManager     productenrich.LLMManager
+	specsGenerator TextGenerator
 }
 
 func NewVariantGenerator(llmManager productenrich.LLMManager) (productenrich.VariantGenerator, error) {
+	return NewVariantGeneratorWithSpecsGenerator(llmManager, nil)
+}
+
+// NewVariantGeneratorWithSpecsGenerator keeps variant assembly in the domain
+// layer while allowing only specification extraction to use a governed model.
+func NewVariantGeneratorWithSpecsGenerator(llmManager productenrich.LLMManager, specsGenerator TextGenerator) (productenrich.VariantGenerator, error) {
 	if llmManager == nil {
 		return nil, fmt.Errorf("llm manager cannot be nil")
 	}
 
-	return &variantGenerator{llmManager: llmManager}, nil
+	return &variantGenerator{llmManager: llmManager, specsGenerator: specsGenerator}, nil
 }
 
 func (v *variantGenerator) GenerateSpecs(ctx context.Context, analysis *productenrich.ProductAnalysis) (*canonical.ProductSpecs, error) {
@@ -60,12 +67,17 @@ Return JSON:
 Prefer values from scraped 1688 specs when available. Return JSON only.`
 	prompt := buildProductSpecsPrompt(analysis, specsFallback)
 
-	fastClient, err := v.llmManager.GetClient("fast")
-	if err != nil {
-		fastClient = v.llmManager.GetDefaultClient()
+	var response string
+	var err error
+	if v.specsGenerator != nil {
+		response, err = v.specsGenerator.Generate(ctx, prompt)
+	} else {
+		fastClient, clientErr := v.llmManager.GetClient("fast")
+		if clientErr != nil {
+			fastClient = v.llmManager.GetDefaultClient()
+		}
+		response, err = fastClient.Generate(ctx, prompt)
 	}
-
-	response, err := fastClient.Generate(ctx, prompt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate specs: %w", err)
 	}

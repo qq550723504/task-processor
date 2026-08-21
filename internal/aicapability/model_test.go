@@ -27,4 +27,7 @@ func TestProductEnrichTextCapabilityContracts(t *testing.T) {
 	if OperationProductEnrichJSONGenerate != "productenrich_json_generate" {
 		t.Fatalf("json operation = %q", OperationProductEnrichJSONGenerate)
 	}
+	if OperationProductEnrichSpecsGenerate != "productenrich_specs_generate" {
+		t.Fatalf("specs operation = %q", OperationProductEnrichSpecsGenerate)
+	}
 }

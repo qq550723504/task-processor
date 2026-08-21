@@ -30,6 +30,7 @@ type BuildModuleInput struct {
 	Logger         *logrus.Logger
 	LLMManager     productenrich.LLMManager
 	TextGenerator  productenrichenrich.TextGenerator
+	SpecsGenerator productenrichenrich.TextGenerator
 	InputParser    productenrich.InputParser
 	Understanding  productenrich.ProductUnderstanding
 	LLMScorerCache productenrich.MetricsCollector
@@ -41,7 +42,7 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 		return nil, fmt.Errorf("create JSON generator: %w", err)
 	}
 
-	variantGenerator, err := productenrichenrich.NewVariantGenerator(input.LLMManager)
+	variantGenerator, err := productenrichenrich.NewVariantGeneratorWithSpecsGenerator(input.LLMManager, input.SpecsGenerator)
 	if err != nil {
 		return nil, fmt.Errorf("create variant generator: %w", err)
 	}

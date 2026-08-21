@@ -40,12 +40,13 @@ func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps
 
 	if !options.skipProduct {
 		productModule, err := b.buildProduct(productenrichhttpapi.RuntimeBuildInput{
-			Logger:        logger,
-			Config:        deps.shared.cfg,
-			LLMManager:    deps.shared.llmMgr,
-			TextGenerator: deps.shared.contentGenerator,
-			InputParser:   deps.shared.inputParser,
-			Understanding: deps.shared.understanding,
+			Logger:         logger,
+			Config:         deps.shared.cfg,
+			LLMManager:     deps.shared.llmMgr,
+			TextGenerator:  deps.shared.contentGenerator,
+			SpecsGenerator: deps.shared.specsGenerator,
+			InputParser:    deps.shared.inputParser,
+			Understanding:  deps.shared.understanding,
 		})
 		if err != nil {
 			return features, err

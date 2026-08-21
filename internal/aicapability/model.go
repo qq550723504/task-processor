@@ -28,6 +28,7 @@ const (
 	OperationProductEnrichTextExtract    Operation = "productenrich_text_extract_attributes"
 	OperationProductEnrichImageAnalyze   Operation = "productenrich_image_analyze"
 	OperationProductEnrichJSONGenerate   Operation = "productenrich_json_generate"
+	OperationProductEnrichSpecsGenerate  Operation = "productenrich_specs_generate"
 )
 
 type ModelFeature string
