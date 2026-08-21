@@ -34,11 +34,12 @@ func TestClientGenerateImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(&ClientConfig{
-		APIKey:     "test-key",
-		Model:      "nanobanana",
-		BaseURL:    server.URL,
-		Timeout:    time.Second,
-		MaxRetries: 0,
+		APIKey:                   "test-key",
+		Model:                    "nanobanana",
+		BaseURL:                  server.URL,
+		Timeout:                  time.Second,
+		MaxRetries:               0,
+		ImageReferenceHTTPClient: server.Client(),
 	})
 	resp, err := client.GenerateImage(context.Background(), &ImageGenerateRequest{
 		Prompt: "generate scene",
@@ -101,11 +102,12 @@ func TestClientEditImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(&ClientConfig{
-		APIKey:     "test-key",
-		Model:      "nanobanana",
-		BaseURL:    server.URL,
-		Timeout:    time.Second,
-		MaxRetries: 0,
+		APIKey:                   "test-key",
+		Model:                    "nanobanana",
+		BaseURL:                  server.URL,
+		Timeout:                  time.Second,
+		MaxRetries:               0,
+		ImageReferenceHTTPClient: server.Client(),
 	})
 	resp, err := client.EditImage(context.Background(), &ImageEditRequest{
 		Prompt:           "edit faithfully",
@@ -160,11 +162,12 @@ func TestClientEditImageIncludesSecondaryURLsAsMultipartImages(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(&ClientConfig{
-		APIKey:     "test-key",
-		Model:      "gpt-image-1",
-		BaseURL:    server.URL,
-		Timeout:    time.Second,
-		MaxRetries: 0,
+		APIKey:                   "test-key",
+		Model:                    "gpt-image-1",
+		BaseURL:                  server.URL,
+		Timeout:                  time.Second,
+		MaxRetries:               0,
+		ImageReferenceHTTPClient: server.Client(),
 	})
 	if _, err := client.EditImage(context.Background(), &ImageEditRequest{
 		Image:            []byte("primary-image"),
@@ -191,11 +194,12 @@ func TestClientEditImageBoundsSecondaryReferenceDownloadByClientTimeout(t *testi
 	defer server.Close()
 
 	client := NewClient(&ClientConfig{
-		APIKey:     "test-key",
-		Model:      "gpt-image-1",
-		BaseURL:    server.URL,
-		Timeout:    25 * time.Millisecond,
-		MaxRetries: 0,
+		APIKey:                   "test-key",
+		Model:                    "gpt-image-1",
+		BaseURL:                  server.URL,
+		Timeout:                  25 * time.Millisecond,
+		MaxRetries:               0,
+		ImageReferenceHTTPClient: server.Client(),
 	})
 	startedAt := time.Now()
 	_, err := client.EditImage(context.Background(), &ImageEditRequest{
@@ -212,6 +216,23 @@ func TestClientEditImageBoundsSecondaryReferenceDownloadByClientTimeout(t *testi
 	}
 	if elapsed := time.Since(startedAt); elapsed > time.Second {
 		t.Fatalf("secondary download took %s, want client timeout", elapsed)
+	}
+}
+
+func TestClientEditImageRejectsUnsafeSecondaryURL(t *testing.T) {
+	client := NewClient(&ClientConfig{
+		APIKey:     "test-key",
+		Model:      "gpt-image-1",
+		BaseURL:    "https://api.example.test/v1",
+		Timeout:    time.Second,
+		MaxRetries: 0,
+	})
+	_, err := client.EditImage(context.Background(), &ImageEditRequest{
+		Image:     []byte("primary-image"),
+		ImageURLs: []string{"http://127.0.0.1/internal.png"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "validate secondary image URL") {
+		t.Fatalf("EditImage() error = %v, want unsafe URL validation error", err)
 	}
 }
 

@@ -709,7 +709,7 @@ func TestTaskStudioBatchServiceProductImageRequestUsesCandidateCategorySnapshot(
 	}
 }
 
-func TestTaskStudioBatchServiceReleasesStaleProductImageReservationBeforeReclaim(t *testing.T) {
+func TestTaskStudioBatchServiceReleasesStaleProductImageReservationAfterReclaim(t *testing.T) {
 	t.Parallel()
 
 	ctx := WithTenantID(context.Background(), "tenant-a")
@@ -735,11 +735,46 @@ func TestTaskStudioBatchServiceReleasesStaleProductImageReservationBeforeReclaim
 			ProductName: "Canvas tote",
 		},
 	}
-	if err := service.releaseStudioBatchProductImageReservationBeforeReclaim(ctx, &StudioBatchRecord{TenantID: "tenant-a"}, candidate); err != nil {
-		t.Fatalf("releaseStudioBatchProductImageReservationBeforeReclaim() error = %v", err)
+	claimed, previousClaimToken, err := service.claimStudioBatchTaskCandidate(ctx, &candidate)
+	if err != nil || !claimed {
+		t.Fatalf("claimStudioBatchTaskCandidate() = (%v, %q, %v), want claimed stale lease", claimed, previousClaimToken, err)
+	}
+	if previousClaimToken != "old-claim" {
+		t.Fatalf("previous claim token = %q, want old-claim", previousClaimToken)
+	}
+	previous := candidate
+	previous.ClaimToken = previousClaimToken
+	if err := service.releaseStudioBatchProductImageUsage(ctx, &StudioBatchRecord{TenantID: "tenant-a"}, previous, "stale_reclaimed"); err != nil {
+		t.Fatalf("releaseStudioBatchProductImageUsage() error = %v", err)
 	}
 	if got, want := usage.released, []string{"tenant-a:candidate-stale|old-claim:stale_reclaimed"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("released reservations = %v, want %v", got, want)
+	}
+}
+
+func TestTaskStudioBatchServiceReturnsFailedReservationTokenAfterReclaim(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	links := NewMemStudioBatchTaskLinkRepository()
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-failed", BatchID: "batch-1", CandidateKey: "candidate-failed",
+		ClaimToken: "old-claim", ImageStrategy: sheinImageStrategyAIGenerated,
+		Status: studioBatchTaskLinkStatusFailed,
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	service := &taskStudioBatchService{batchTaskLinkRepo: links, currentTime: time.Now}
+	candidate := studioBatchTaskCandidate{CandidateKey: "candidate-failed", ImageStrategy: sheinImageStrategyAIGenerated}
+	claimed, previousClaimToken, err := service.claimStudioBatchTaskCandidate(ctx, &candidate)
+	if err != nil || !claimed {
+		t.Fatalf("claimStudioBatchTaskCandidate() = (%v, %q, %v), want claimed failed reservation", claimed, previousClaimToken, err)
+	}
+	if previousClaimToken != "old-claim" {
+		t.Fatalf("previous claim token = %q, want old-claim", previousClaimToken)
+	}
+	if candidate.ClaimToken == "old-claim" || strings.TrimSpace(candidate.ClaimToken) == "" {
+		t.Fatalf("new claim token = %q, want a fresh token", candidate.ClaimToken)
 	}
 }
 

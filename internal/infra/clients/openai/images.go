@@ -11,6 +11,8 @@ import (
 	"path"
 	"strings"
 	"time"
+
+	"task-processor/internal/pkg/safeimagehttp"
 )
 
 func extractImageRequestID(header http.Header) string {
@@ -146,7 +148,11 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 		if bc.config != nil && bc.config.Timeout > 0 {
 			downloadCtx, cancel = context.WithTimeout(ctx, bc.config.Timeout)
 		}
-		data, contentType, err := downloadImageEditReference(downloadCtx, imageURL)
+		var referenceClient *http.Client
+		if bc.config != nil {
+			referenceClient = bc.config.ImageReferenceHTTPClient
+		}
+		data, contentType, err := downloadImageEditReference(downloadCtx, imageURL, referenceClient)
 		cancel()
 		if err != nil {
 			return nil, err
@@ -174,12 +180,22 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 	return bc.doMultipartImageRequest(ctx, "/images/edits", body, writer.FormDataContentType())
 }
 
-func downloadImageEditReference(ctx context.Context, imageURL string) ([]byte, string, error) {
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
+func downloadImageEditReference(ctx context.Context, imageURL string, override *http.Client) ([]byte, string, error) {
+	validatedURL := strings.TrimSpace(imageURL)
+	client := override
+	if client == nil {
+		var err error
+		validatedURL, err = safeimagehttp.ValidatePublicHTTPSURL(validatedURL)
+		if err != nil {
+			return nil, "", fmt.Errorf("validate secondary image URL: %w", err)
+		}
+		client = safeimagehttp.NewPublicImageHTTPClient()
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, validatedURL, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("build secondary image request: %w", err)
 	}
-	response, err := http.DefaultClient.Do(request)
+	response, err := client.Do(request)
 	if err != nil {
 		return nil, "", fmt.Errorf("download secondary image: %w", err)
 	}

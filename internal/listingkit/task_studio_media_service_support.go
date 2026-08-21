@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+
+	"task-processor/internal/pkg/safeimagehttp"
 )
 
 type studioDesignAsyncQueryResponse struct {
@@ -431,42 +432,7 @@ func (s *taskStudioMediaService) resolveStudioBackgroundRemovalURL(ctx context.C
 var studioPublicImageHTTPClient = newStudioPublicImageHTTPClient()
 
 func newStudioPublicImageHTTPClient() *http.Client {
-	transport, ok := http.DefaultTransport.(*http.Transport)
-	if ok {
-		transport = transport.Clone()
-	} else {
-		transport = &http.Transport{}
-	}
-	dialer := &net.Dialer{}
-	transport.DialContext = func(ctx context.Context, network string, address string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(address)
-		if err != nil {
-			return nil, err
-		}
-		ips, err := net.LookupIP(host)
-		if err != nil {
-			return nil, err
-		}
-		for _, ip := range ips {
-			if isStudioReferencePrivateIP(ip) {
-				continue
-			}
-			conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
-			if dialErr == nil {
-				return conn, nil
-			}
-		}
-		return nil, fmt.Errorf("image host resolves only to private or unreachable addresses")
-	}
-	return &http.Client{
-		Transport: transport,
-		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
-			if _, err := validateStudioReferencePublicHTTPSURL(req.URL.String()); err != nil {
-				return err
-			}
-			return nil
-		},
-	}
+	return safeimagehttp.NewPublicImageHTTPClient()
 }
 
 func (s *taskStudioMediaService) materializeAsyncStudioDesignResult(ctx context.Context, req *StudioDesignRequest, result *AIImageAsyncResult) (*StudioDesignResponse, error) {

@@ -69,6 +69,18 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 	if tenantID == "" || reservationID == "" || quantity <= 0 {
 		return fmt.Errorf("product image usage reservation requires tenant, reservation, and positive quantity")
 	}
+	reservationKey := studioProductImageUsageIdempotencyKey(reservationID)
+	if _, lookupErr := a.service.GetUsage(ctx, tenantID, reservationKey); lookupErr != nil && !errors.Is(lookupErr, listingsubscription.ErrUsageEventNotFound) {
+		return lookupErr
+	} else if errors.Is(lookupErr, listingsubscription.ErrUsageEventNotFound) {
+		legacyGuard, err := a.service.AuthorizeUsage(ctx, tenantID, studioProductImageModule, studioProductImageMetric, quantity)
+		if err != nil {
+			return err
+		}
+		if !legacyGuard.Allowed {
+			return listingsubscription.ErrSubscriptionQuotaExceed
+		}
+	}
 	now := time.Now().UTC()
 	result, err := a.service.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
 		TenantID:       tenantID,
@@ -78,7 +90,7 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 		PeriodKey:      now.Format("2006-01"),
 		SourceType:     "listingkit_product_image",
 		SourceID:       reservationID,
-		IdempotencyKey: studioProductImageUsageIdempotencyKey(reservationID),
+		IdempotencyKey: reservationKey,
 		OccurredAt:     now,
 	})
 	if err != nil {
@@ -86,6 +98,12 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 	}
 	if result.Event.Status == listingsubscription.UsageEventReleased || result.Event.Status == listingsubscription.UsageEventReversed {
 		return fmt.Errorf("product image usage reservation is no longer active")
+	}
+	if !result.Existing {
+		if _, err := a.service.RecordUsage(ctx, tenantID, studioProductImageModule, studioProductImageMetric, quantity); err != nil {
+			_, _ = a.service.ReleaseUsage(ctx, result.Event.EventID, "legacy_counter_mirror_failed")
+			return err
+		}
 	}
 	return nil
 }
@@ -128,7 +146,12 @@ func (a *subscriptionStudioProductImageUsage) ReleaseProductImageUsage(ctx conte
 	if event.Status != listingsubscription.UsageEventReserved {
 		return fmt.Errorf("product image usage release requires a reserved event")
 	}
-	_, err = a.service.ReleaseUsage(ctx, event.EventID, strings.TrimSpace(reason))
+	if _, err = a.service.ReleaseUsage(ctx, event.EventID, strings.TrimSpace(reason)); err != nil {
+		return err
+	}
+	if event.Quantity > 0 {
+		_, err = a.service.RecordUsage(ctx, strings.TrimSpace(tenantID), studioProductImageModule, studioProductImageMetric, -int(event.Quantity))
+	}
 	return err
 }
 

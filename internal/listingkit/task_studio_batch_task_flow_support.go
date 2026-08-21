@@ -98,53 +98,89 @@ func (s *taskStudioBatchService) reserveStudioBatchTaskCandidate(ctx context.Con
 	return nil
 }
 
-func (s *taskStudioBatchService) claimStudioBatchTaskCandidate(ctx context.Context, candidate *studioBatchTaskCandidate) (bool, error) {
+func (s *taskStudioBatchService) claimStudioBatchTaskCandidate(ctx context.Context, candidate *studioBatchTaskCandidate) (bool, string, error) {
 	if s == nil || s.batchTaskLinkRepo == nil {
-		return true, nil
+		return true, "", nil
 	}
 	if candidate == nil {
-		return false, fmt.Errorf("studio batch task candidate is required")
+		return false, "", fmt.Errorf("studio batch task candidate is required")
 	}
 	leaseRepo, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkLeaseRepository)
 	if !ok {
-		return false, fmt.Errorf("studio batch task link repository does not support lease tokens")
+		return false, "", fmt.Errorf("studio batch task link repository does not support lease tokens")
 	}
 	claimToken := uuid.NewString()
 	now := s.currentTime().UTC()
 	existing, existingErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
 	if existingErr != nil && !errors.Is(existingErr, gorm.ErrRecordNotFound) {
-		return false, existingErr
+		return false, "", existingErr
 	}
 	if existingErr == nil && existing != nil {
 		if existing.Status == studioBatchTaskLinkStatusFailed && strings.TrimSpace(existing.ListingKitTaskID) != "" {
-			return false, nil
+			return false, "", nil
 		}
 		if s.studioBatchTaskLinkIsStale(existing) {
 			if _, claimed, err := leaseRepo.ClaimStudioBatchTaskCandidateUpdatedAtWithToken(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusCreating, existing.UpdatedAt, studioBatchTaskLinkStatusCreating, claimToken, now); err != nil {
-				return false, err
+				return false, "", err
 			} else if claimed {
 				candidate.ClaimToken = claimToken
-				return true, nil
+				return true, strings.TrimSpace(existing.ClaimToken), nil
+			}
+		}
+		if existing.Status == studioBatchTaskLinkStatusFailed && strings.TrimSpace(existing.ClaimToken) != "" {
+			if _, claimed, err := leaseRepo.ClaimStudioBatchTaskCandidateWithToken(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkStatusCreating, claimToken, now); err != nil {
+				if !errors.Is(err, gorm.ErrRecordNotFound) {
+					return false, "", err
+				}
+			} else if claimed {
+				candidate.ClaimToken = claimToken
+				return true, strings.TrimSpace(existing.ClaimToken), nil
 			}
 		}
 	}
 	if _, claimed, err := leaseRepo.ClaimStudioBatchTaskCandidateWithToken(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusReserved, studioBatchTaskLinkStatusCreating, claimToken, now); err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, err
+			return false, "", err
 		}
 	} else if claimed {
 		candidate.ClaimToken = claimToken
-		return true, nil
+		return true, "", nil
 	}
 	if _, claimed, err := leaseRepo.ClaimStudioBatchTaskCandidateWithToken(ctx, candidate.CandidateKey, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkStatusCreating, claimToken, now); err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, err
+			return false, "", err
 		}
 	} else if claimed {
 		candidate.ClaimToken = claimToken
-		return true, nil
+		return true, "", nil
 	}
-	return false, nil
+	return false, "", nil
+}
+
+// releaseFailedStudioBatchProductImageReservationBeforeReclaim clears a
+// terminal failed attempt before its link is reopened. A failed link has no
+// active heartbeat owner, so releasing before the compare-and-update avoids
+// creating a replacement reservation while the previous event is still held.
+func (s *taskStudioBatchService) releaseFailedStudioBatchProductImageReservationBeforeReclaim(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate) error {
+	if s == nil || s.batchTaskLinkRepo == nil || normalizeSheinImageStrategy(candidate.ImageStrategy) != sheinImageStrategyAIGenerated {
+		return nil
+	}
+	if _, ok := s.productImageUsageReservation(); !ok {
+		return nil
+	}
+	existing, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, strings.TrimSpace(candidate.CandidateKey))
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if existing == nil || existing.Status != studioBatchTaskLinkStatusFailed || strings.TrimSpace(existing.ListingKitTaskID) != "" || strings.TrimSpace(existing.ClaimToken) == "" {
+		return nil
+	}
+	previous := candidate
+	previous.ClaimToken = strings.TrimSpace(existing.ClaimToken)
+	return s.releaseStudioBatchProductImageUsage(ctx, batch, previous, "failed_reclaim")
 }
 
 func (s *taskStudioBatchService) completeStudioBatchTaskExecution(

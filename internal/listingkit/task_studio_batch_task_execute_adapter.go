@@ -71,11 +71,38 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			if s == nil || len(candidate.state.Candidates) == 0 {
 				return SheinStudioCreatedTask{}, false
 			}
+			batchCandidate := candidate.state.Candidates[0]
 			var recorded SheinStudioCreatedTaskList
 			if session != nil {
 				recorded = session.CreatedTasks
 			}
-			return s.findExistingStudioBatchTask(ctx, recorded, candidate.state.Candidates[0])
+			if existing, ok := s.findDurableStudioBatchTask(ctx, batchCandidate); ok {
+				reusedCandidate := batchCandidate
+				if s.batchTaskLinkRepo != nil {
+					candidateKeys := []string{batchCandidate.CandidateKey}
+					if historicalKey := strings.TrimSpace(batchCandidate.HistoricalCandidateKey); historicalKey != "" && historicalKey != strings.TrimSpace(batchCandidate.CandidateKey) {
+						candidateKeys = append(candidateKeys, historicalKey)
+					}
+					for _, candidateKey := range candidateKeys {
+						if existingLink, linkErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey); linkErr == nil && existingLink != nil {
+							reusedCandidate.ClaimToken = existingLink.ClaimToken
+							break
+						}
+					}
+				}
+				if err := s.settleStudioBatchProductImageUsage(context.WithoutCancel(ctx), candidate.state.Batch, reusedCandidate); err != nil {
+					return SheinStudioCreatedTask{}, false
+				}
+				return markStudioBatchReusedTask(existing), true
+			}
+			if session == nil || len(recorded) == 0 {
+				return SheinStudioCreatedTask{}, false
+			}
+			existing, ok, err := s.findLegacyStudioBatchTask(ctx, recorded, batchCandidate)
+			if err != nil || !ok {
+				return SheinStudioCreatedTask{}, false
+			}
+			return markStudioBatchReusedTask(existing), true
 		},
 		CreateTask: func(ctx context.Context, candidate listingStudioBatchTaskExecuteCandidate) (SheinStudioCreatedTask, error) {
 			if s == nil || s.createGenerateTask == nil {
@@ -93,15 +120,22 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				return SheinStudioCreatedTask{}, fmt.Errorf("studio design %s background removal is still in progress", taskCandidate.Design.ID)
 			}
 			taskCandidate.Design = latestDesigns[0]
+			if err := s.releaseFailedStudioBatchProductImageReservationBeforeReclaim(ctx, candidate.state.Batch, taskCandidate); err != nil {
+				return SheinStudioCreatedTask{}, fmt.Errorf("release failed product image usage reservation before reclaim: %w", err)
+			}
 			if err := s.reserveStudioBatchTaskCandidate(ctx, &taskCandidate); err != nil {
 				return SheinStudioCreatedTask{}, err
 			}
-			if err := s.releaseStudioBatchProductImageReservationBeforeReclaim(ctx, candidate.state.Batch, taskCandidate); err != nil {
-				return SheinStudioCreatedTask{}, fmt.Errorf("release stale product image usage reservation: %w", err)
-			}
-			claimed, err := s.claimStudioBatchTaskCandidate(ctx, &taskCandidate)
+			claimed, previousClaimToken, err := s.claimStudioBatchTaskCandidate(ctx, &taskCandidate)
 			if err != nil {
 				return SheinStudioCreatedTask{}, err
+			}
+			if claimed && strings.TrimSpace(previousClaimToken) != "" {
+				previousCandidate := taskCandidate
+				previousCandidate.ClaimToken = previousClaimToken
+				if err := s.releaseStudioBatchProductImageUsage(context.WithoutCancel(ctx), candidate.state.Batch, previousCandidate, "stale_reclaimed"); err != nil {
+					return SheinStudioCreatedTask{}, fmt.Errorf("release reclaimed product image usage reservation: %w", err)
+				}
 			}
 			if !claimed {
 				if existing, ok := s.findDurableStudioBatchTask(ctx, taskCandidate); ok {

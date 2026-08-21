@@ -4,6 +4,7 @@ package openai
 import (
 	"context"
 	"errors"
+	"net/http"
 	"time"
 )
 
@@ -72,6 +73,10 @@ type ClientConfig struct {
 	Timeout    time.Duration `json:"timeout"`
 	MaxRetries int           `json:"max_retries"`
 	RetryDelay time.Duration `json:"retry_delay"`
+	// ImageReferenceHTTPClient is an explicit trusted transport override for
+	// tests and controlled in-process callers. Production defaults to the
+	// SSRF-safe transport in images.go.
+	ImageReferenceHTTPClient *http.Client `json:"-"`
 }
 
 // NewClientConfig 创建新的OpenAI客户端配置
