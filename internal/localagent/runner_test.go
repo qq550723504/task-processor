@@ -57,6 +57,16 @@ func TestRunnerPreparesCrawlerBeforeClaim(t *testing.T) {
 	require.Equal(t, []string{"prepare", "claim", "process", "success"}, order)
 }
 
+func TestRunnerSkipsPreparationWhenCrawlerWasPreparedBeforeJobCreation(t *testing.T) {
+	order := []string{}
+	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}, order: &order}
+	crawler := &fakeCrawler{product: &model.Product1688{ID: "1052008074197", URL: offerURL}, order: &order}
+
+	_, err := (Runner{Jobs: api, Crawler: crawler, CrawlerPrepared: true}).RunOnce(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, []string{"claim", "process", "success"}, order)
+}
+
 func TestRunnerSubmitsCancellationFailureWithLiveContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}}

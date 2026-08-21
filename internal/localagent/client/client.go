@@ -281,7 +281,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, payload any, e
 
 func validateBaseURL(raw string) (*url.URL, error) {
 	base, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || base.Scheme == "" || base.Host == "" || base.User != nil || base.RawQuery != "" || base.Fragment != "" {
+	if err != nil || base.Scheme == "" || base.Host == "" || base.User != nil || base.RawQuery != "" || base.ForceQuery || base.Fragment != "" {
 		return nil, errors.New("api base URL must be an absolute HTTPS URI")
 	}
 	if base.Scheme != "https" && !(base.Scheme == "http" && isLoopback(base.Hostname())) {

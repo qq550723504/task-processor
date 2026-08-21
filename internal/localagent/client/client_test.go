@@ -18,6 +18,11 @@ func TestNewRejectsNonLoopbackHTTP(t *testing.T) {
 	require.ErrorContains(t, err, "HTTPS")
 }
 
+func TestNewRejectsBaseURLWithEmptyQuery(t *testing.T) {
+	_, err := New("http://127.0.0.1:18086?", "token", nil)
+	require.Error(t, err)
+}
+
 func TestClientClaimSendsBearerAndMapsNoJob(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "Bearer token", r.Header.Get("Authorization"))

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"task-processor/internal/localagent"
 )
 
 func TestParseConfigAcceptsOneShotOfferURL(t *testing.T) {
@@ -20,6 +22,40 @@ func TestParseConfigRejectsOfferPort(t *testing.T) {
 func TestParseConfigRejectsOfferEmptyQuery(t *testing.T) {
 	_, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project", "-url", "https://detail.1688.com/offer/1052008074197.html?"})
 	require.Error(t, err)
+}
+
+func TestParseConfigRejectsAPIBaseEmptyQuery(t *testing.T) {
+	_, err := parseConfig([]string{"-api-base-url", "http://127.0.0.1:18086?", "-issuer-url", "http://127.0.0.1:19000", "-client-id", "client", "-project-id", "project"})
+	require.Error(t, err)
+}
+
+func TestCreatePreparedJobPreparesBeforeCreation(t *testing.T) {
+	order := []string{}
+	jobs := &fakeJobCreator{order: &order}
+	crawler := &fakeJobCrawlerPreparer{order: &order}
+
+	jobID, err := createPreparedJob(context.Background(), jobs, crawler, "https://detail.1688.com/offer/1052008074197.html")
+	require.NoError(t, err)
+	require.Equal(t, "job-1", jobID)
+	require.Equal(t, []string{"prepare", "create"}, order)
+}
+
+type fakeJobCreator struct {
+	order *[]string
+}
+
+func (f *fakeJobCreator) CreateJob(context.Context, string) (localagent.Job, error) {
+	*f.order = append(*f.order, "create")
+	return localagent.Job{ID: "job-1"}, nil
+}
+
+type fakeJobCrawlerPreparer struct {
+	order *[]string
+}
+
+func (f *fakeJobCrawlerPreparer) Prepare(context.Context) error {
+	*f.order = append(*f.order, "prepare")
+	return nil
 }
 
 func TestParseConfigAcceptsBrowserPath(t *testing.T) {

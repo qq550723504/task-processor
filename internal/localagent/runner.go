@@ -30,9 +30,10 @@ type Crawler interface {
 }
 
 type Runner struct {
-	Jobs    Jobs
-	Crawler Crawler
-	JobID   string
+	Jobs            Jobs
+	Crawler         Crawler
+	JobID           string
+	CrawlerPrepared bool
 }
 
 type OutcomeState string
@@ -57,9 +58,11 @@ func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if preparer, ok := r.Crawler.(crawlerPreparer); ok {
-		if err := preparer.Prepare(ctx); err != nil {
-			return Outcome{}, err
+	if !r.CrawlerPrepared {
+		if preparer, ok := r.Crawler.(crawlerPreparer); ok {
+			if err := preparer.Prepare(ctx); err != nil {
+				return Outcome{}, err
+			}
 		}
 	}
 	var claim *Claim

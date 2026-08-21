@@ -29,6 +29,14 @@ type cliConfig struct {
 	OpenBrowser bool
 }
 
+type jobCreator interface {
+	CreateJob(context.Context, string) (localagent.Job, error)
+}
+
+type crawlerPreparer interface {
+	Prepare(context.Context) error
+}
+
 func main() {
 	if err := run(context.Background(), os.Args[1:]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -53,14 +61,6 @@ func run(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	var createdJobID string
-	if cfg.CreateURL != "" {
-		created, err := jobs.CreateJob(ctx, cfg.CreateURL)
-		if err != nil {
-			return err
-		}
-		createdJobID = created.ID
-	}
 	crawlerConfig := config.NewDefaultConfig()
 	if strings.TrimSpace(cfg.BrowserPath) != "" {
 		crawlerConfig.Browser.BrowserPath = strings.TrimSpace(cfg.BrowserPath)
@@ -68,7 +68,16 @@ func run(ctx context.Context, args []string) error {
 		crawlerConfig.Browser.BrowserPath = installed
 	}
 	crawler := a1688.NewLegacyProcessor(crawlerConfig)
-	outcome, err := (localagent.Runner{Jobs: jobs, Crawler: crawler, JobID: createdJobID}).RunOnce(ctx)
+	var createdJobID string
+	crawlerPrepared := false
+	if cfg.CreateURL != "" {
+		createdJobID, err = createPreparedJob(ctx, jobs, crawler, cfg.CreateURL)
+		if err != nil {
+			return err
+		}
+		crawlerPrepared = true
+	}
+	outcome, err := (localagent.Runner{Jobs: jobs, Crawler: crawler, JobID: createdJobID, CrawlerPrepared: crawlerPrepared}).RunOnce(ctx)
 	if err != nil {
 		return err
 	}
@@ -134,7 +143,7 @@ func detectInstalledChrome() string {
 
 func validateCLIEndpoint(raw, name string) error {
 	parsed, err := url.Parse(strings.TrimSpace(raw))
-	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
 		return fmt.Errorf("%s must be an absolute HTTPS URI", name)
 	}
 	if parsed.Scheme == "https" {
@@ -144,6 +153,17 @@ func validateCLIEndpoint(raw, name string) error {
 		return nil
 	}
 	return fmt.Errorf("%s must use HTTPS unless it is a literal loopback test endpoint", name)
+}
+
+func createPreparedJob(ctx context.Context, jobs jobCreator, crawler crawlerPreparer, rawURL string) (string, error) {
+	if err := crawler.Prepare(ctx); err != nil {
+		return "", fmt.Errorf("prepare crawler before creating job: %w", err)
+	}
+	created, err := jobs.CreateJob(ctx, rawURL)
+	if err != nil {
+		return "", err
+	}
+	return created.ID, nil
 }
 
 func validateCLIOfferURL(raw string) (string, error) {
