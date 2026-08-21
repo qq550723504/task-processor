@@ -13,6 +13,7 @@ import (
 
 	"task-processor/internal/listingkit"
 	"task-processor/internal/listingsubscription"
+	"task-processor/internal/tenantbridge"
 )
 
 const (
@@ -134,6 +135,7 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 	if tenantID == "" {
 		return fmt.Errorf("tenant id is required for product image usage reconciliation")
 	}
+	offset := 0
 	for {
 		events, err := h.subscriptionService.ListUsageEventPageForReconciliationWithFilter(ctx, listingsubscription.UsageLedgerReconciliationFilter{
 			TenantID: tenantID, SourceType: studioProductImageSourceType, SourceTypes: []string{studioProductImageSourceType, studioProductImageAsyncSourceType}, ReservedSourceTypes: []string{studioProductImageAsyncSourceType}, Metric: studioProductImageLedgerMetric,
@@ -142,9 +144,12 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 				{Key: studioProductImageAsyncJobMetadataKey, Value: studioProductImageAsyncJobMetadataValue},
 			},
 			CommittedMetadataKey: studioProductImageLegacyMirrorMetadataKey, CommittedSettledValue: studioProductImageLegacyMirrorSettled,
-		}, pageSize, 0)
+		}, pageSize, offset)
 		if err != nil {
 			return err
+		}
+		if len(events) == 0 {
+			return nil
 		}
 		progress := 0
 		for _, event := range events {
@@ -172,7 +177,14 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 				progress++
 			}
 		}
-		if len(events) < pageSize || progress == 0 {
+		if progress > 0 {
+			// Mutations change the filtered result set. Restart from the stable
+			// beginning, then advance over unchanged active rows again.
+			offset = 0
+			continue
+		}
+		offset += len(events)
+		if len(events) < pageSize {
 			return nil
 		}
 	}
@@ -185,7 +197,7 @@ func (h *handler) reconcileAbandonedStudioAsyncProductImageUsage(ctx context.Con
 	if h.studioAsyncJobs == nil {
 		return true, releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_store_unavailable")
 	}
-	job, err := h.studioAsyncJobs.getRecordForTenant(ctx, tenantID, event.SourceID)
+	job, jobTenantID, err := h.getStudioAsyncJobForBillingTenant(ctx, tenantID, event.SourceID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return true, releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_missing")
 	}
@@ -209,10 +221,26 @@ func (h *handler) reconcileAbandonedStudioAsyncProductImageUsage(ctx context.Con
 		return false, nil
 	}
 	recoveryErr := fmt.Errorf("async product-image job %q exceeded recovery lease", job.ID)
-	if err := h.studioAsyncJobs.failWithErrorForTenant(ctx, tenantID, job.ID, recoveryErr, 500); err != nil {
+	if err := h.studioAsyncJobs.failWithErrorForTenant(ctx, jobTenantID, job.ID, recoveryErr, 500); err != nil {
 		return false, err
 	}
 	return true, releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_expired")
+}
+
+func (h *handler) getStudioAsyncJobForBillingTenant(ctx context.Context, billingTenantID, jobID string) (*listingkit.StudioAsyncJobRecord, string, error) {
+	job, err := h.studioAsyncJobs.getRecordForTenant(ctx, billingTenantID, jobID)
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return job, billingTenantID, err
+	}
+	canonicalTenantID, ok, resolveErr := tenantbridge.ResolveOrganizationID(ctx, billingTenantID)
+	if resolveErr != nil {
+		return nil, "", resolveErr
+	}
+	if !ok || strings.TrimSpace(canonicalTenantID) == "" {
+		return nil, billingTenantID, err
+	}
+	job, err = h.studioAsyncJobs.getRecordForTenant(ctx, canonicalTenantID, jobID)
+	return job, canonicalTenantID, err
 }
 
 func releaseStudioProductImageUsage(ctx context.Context, service *listingsubscription.Service, eventID, reason string) error {

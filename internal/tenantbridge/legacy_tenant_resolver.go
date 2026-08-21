@@ -24,6 +24,13 @@ type Resolver interface {
 	ResolveLegacyTenantID(ctx context.Context, tenantID string) (int64, bool, error)
 }
 
+// OrganizationResolver is the optional inverse of Resolver. It lets callers
+// that start from a legacy numeric tenant recover the canonical organization
+// used by tenant-scoped records.
+type OrganizationResolver interface {
+	ResolveOrganizationID(ctx context.Context, legacyTenantID int64) (string, bool, error)
+}
+
 type MetadataResolver struct {
 	db           *gorm.DB
 	tableName    string
@@ -184,4 +191,23 @@ func ResolveLegacyTenantID(ctx context.Context, tenantID string) (int64, error) 
 		return 0, fmt.Errorf("%w: tenant id is required", ErrLegacyTenantNotFound)
 	}
 	return parsed, nil
+}
+
+// ResolveOrganizationID performs the optional inverse bridge lookup. A
+// resolver that only supports canonical-to-legacy mapping is deliberately
+// treated as a miss so callers can choose a safe fallback.
+func ResolveOrganizationID(ctx context.Context, tenantID string) (string, bool, error) {
+	trimmed := strings.TrimSpace(tenantID)
+	legacyTenantID, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil || legacyTenantID <= 0 {
+		return "", false, nil
+	}
+	resolverState.mu.RLock()
+	current := resolverState.resolver
+	resolverState.mu.RUnlock()
+	resolver, ok := current.(OrganizationResolver)
+	if !ok {
+		return "", false, nil
+	}
+	return resolver.ResolveOrganizationID(ctx, legacyTenantID)
 }

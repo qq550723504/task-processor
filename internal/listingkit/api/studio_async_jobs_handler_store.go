@@ -57,8 +57,8 @@ func (s *studioAsyncJobStore) heartbeat(ctx context.Context, id string) error {
 	return s.repo.HeartbeatStudioAsyncJob(ctx, id, time.Now().UTC())
 }
 
-func (s *studioAsyncJobStore) succeed(ctx context.Context, id string, result any) {
-	_ = s.update(ctx, id, listingkit.StudioAsyncJobStatusSucceeded, result, "", http.StatusOK)
+func (s *studioAsyncJobStore) succeedWithError(ctx context.Context, id string, result any) error {
+	return s.update(ctx, id, listingkit.StudioAsyncJobStatusSucceeded, result, "", http.StatusOK)
 }
 
 func (s *studioAsyncJobStore) fail(ctx context.Context, id string, err error, status int) {

@@ -134,20 +134,36 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		return
 	}
 	if strings.TrimSpace(usageReservationID) != "" {
-		if commitErr := commitStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID); commitErr != nil {
-			if releaseErr := releaseStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID, "commit_failed"); releaseErr != nil {
-				commitErr = errors.Join(commitErr, fmt.Errorf("release product image usage: %w", releaseErr))
+		if successErr := h.studioAsyncJobs.succeedWithError(ctx, jobID, result); successErr != nil {
+			if releaseErr := releaseStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID, "success_persistence_failed"); releaseErr != nil {
+				successErr = errors.Join(successErr, fmt.Errorf("release product image usage: %w", releaseErr))
 			}
-			h.studioAsyncJobs.fail(ctx, jobID, commitErr, http.StatusInternalServerError)
+			h.studioAsyncJobs.fail(ctx, jobID, successErr, http.StatusInternalServerError)
 			studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
 				"job_id": jobID, "path": path, "usage_metric": usageMetric,
-			})).WithError(commitErr).Warn("studio async usage commit failed")
+			})).WithError(successErr).Warn("studio async success persistence failed")
+			return
+		}
+		if commitErr := commitStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID); commitErr != nil {
+			studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
+				"job_id": jobID, "path": path, "usage_metric": usageMetric,
+			})).WithError(commitErr).Warn("studio async usage commit pending reconciliation")
 			return
 		}
 	} else if h.subscriptionService != nil && strings.TrimSpace(usageMetric) != "" {
 		_, _ = h.subscriptionService.RecordUsage(ctx, listingkit.TenantIDFromContext(ctx), listingsubscription.ModuleStudio, usageMetric, 1)
+		if successErr := h.studioAsyncJobs.succeedWithError(ctx, jobID, result); successErr != nil {
+			studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
+				"job_id": jobID, "path": path, "usage_metric": usageMetric,
+			})).WithError(successErr).Warn("studio async success persistence failed")
+			return
+		}
+	} else if successErr := h.studioAsyncJobs.succeedWithError(ctx, jobID, result); successErr != nil {
+		studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
+			"job_id": jobID, "path": path, "usage_metric": usageMetric,
+		})).WithError(successErr).Warn("studio async success persistence failed")
+		return
 	}
-	h.studioAsyncJobs.succeed(ctx, jobID, result)
 	studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
 		"job_id":       jobID,
 		"path":         path,

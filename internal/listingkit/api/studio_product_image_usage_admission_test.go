@@ -155,7 +155,7 @@ func TestReconcileStudioProductImageUsageRecoversAbandonedAsyncJob(t *testing.T)
 	}
 }
 
-func TestReconcileStudioProductImageUsageStopsOnFullPageOfActiveAsyncReservations(t *testing.T) {
+func TestReconcileStudioProductImageUsagePagesPastFullPageOfActiveAsyncReservations(t *testing.T) {
 	repo := listingsubscription.NewMemRepository()
 	baseLedger := listingsubscription.NewMemUsageLedger(repo)
 	pageLedger := &activeAsyncReconciliationPageLedger{
@@ -183,6 +183,28 @@ func TestReconcileStudioProductImageUsageStopsOnFullPageOfActiveAsyncReservation
 	}); err != nil {
 		t.Fatalf("CreateStudioAsyncJob() error = %v", err)
 	}
+	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-active-page", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive, Limits: map[string]int{"product_image_jobs": 2},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	reserved, err := svc.ReserveUsage(context.Background(), listingsubscription.ReserveUsageInput{
+		TenantID: "tenant-active-page", ModuleCode: listingsubscription.ModuleStudio,
+		Metric: studioProductImageLedgerMetric, Quantity: 1, PeriodKey: now.Format("2006-01"),
+		SourceType: studioProductImageSourceType, SourceID: "pending-after-active-page",
+		IdempotencyKey: "pending-after-active-page", OccurredAt: now,
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	if _, err := svc.UpdateUsageMetadata(context.Background(), reserved.Event.EventID, map[string]string{studioProductImageReleasePendingMetadataKey: "1"}); err != nil {
+		t.Fatalf("UpdateUsageMetadata() error = %v", err)
+	}
+	actionable, err := svc.GetUsageEventByID(context.Background(), reserved.Event.EventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	pageLedger.actionable = *actionable
 	h := &handler{
 		subscriptionDependencies: subscriptionDependencies{subscriptionService: svc},
 		studioAsyncJobs:          &studioAsyncJobStore{repo: jobRepo},
@@ -190,8 +212,15 @@ func TestReconcileStudioProductImageUsageStopsOnFullPageOfActiveAsyncReservation
 	if err := h.reconcileStudioProductImageUsageReleases(listingkit.WithTenantID(context.Background(), "tenant-active-page"), "tenant-active-page"); err != nil {
 		t.Fatalf("reconcile error = %v", err)
 	}
-	if pageLedger.calls != 1 {
-		t.Fatalf("reconciliation page calls = %d, want 1 for an unchanged full active page", pageLedger.calls)
+	event, err := svc.GetUsageEventByID(context.Background(), reserved.Event.EventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	if event.Status != listingsubscription.UsageEventReleased {
+		t.Fatalf("pending event status = %q, want released after the active page", event.Status)
+	}
+	if len(pageLedger.offsets) < 2 || pageLedger.offsets[0] != 0 || pageLedger.offsets[1] != 100 {
+		t.Fatalf("reconciliation offsets = %v, want to advance past the unchanged full page", pageLedger.offsets)
 	}
 }
 
@@ -291,16 +320,88 @@ func TestStudioProductImageUsageReleaseContextIsDetached(t *testing.T) {
 
 type activeAsyncReconciliationPageLedger struct {
 	listingsubscription.UsageLedger
-	events []listingsubscription.UsageEvent
-	calls  int
+	events     []listingsubscription.UsageEvent
+	actionable listingsubscription.UsageEvent
+	returned   bool
+	offsets    []int
 }
 
-func (l *activeAsyncReconciliationPageLedger) ListEventsPageForReconciliationWithFilter(_ context.Context, _ listingsubscription.UsageLedgerReconciliationFilter, _, _ int) ([]listingsubscription.UsageEvent, error) {
-	l.calls++
-	if l.calls > 1 {
-		return nil, fmt.Errorf("unexpected reconciliation page %d", l.calls)
+func (l *activeAsyncReconciliationPageLedger) GetByID(ctx context.Context, eventID string) (listingsubscription.UsageEvent, error) {
+	return l.UsageLedger.(listingsubscription.UsageLedgerEventLookup).GetByID(ctx, eventID)
+}
+
+func (l *activeAsyncReconciliationPageLedger) UpdateMetadata(ctx context.Context, eventID string, metadata map[string]string) (listingsubscription.UsageEvent, error) {
+	return l.UsageLedger.(listingsubscription.UsageLedgerMetadataUpdater).UpdateMetadata(ctx, eventID, metadata)
+}
+
+func (l *activeAsyncReconciliationPageLedger) ListEventsPageForReconciliationWithFilter(_ context.Context, _ listingsubscription.UsageLedgerReconciliationFilter, _, offset int) ([]listingsubscription.UsageEvent, error) {
+	l.offsets = append(l.offsets, offset)
+	switch offset {
+	case 0:
+		return append([]listingsubscription.UsageEvent(nil), l.events...), nil
+	case len(l.events):
+		if l.returned {
+			return nil, nil
+		}
+		l.returned = true
+		return []listingsubscription.UsageEvent{l.actionable}, nil
+	default:
+		return nil, fmt.Errorf("unexpected reconciliation offset %d", offset)
 	}
-	return append([]listingsubscription.UsageEvent(nil), l.events...), nil
+}
+
+type canonicalBillingTenantResolverForAdmission struct{}
+
+func (canonicalBillingTenantResolverForAdmission) ResolveLegacyTenantID(_ context.Context, tenantID string) (int64, bool, error) {
+	if tenantID == "tenant-canonical" {
+		return 246, true, nil
+	}
+	return 0, false, nil
+}
+
+func (canonicalBillingTenantResolverForAdmission) ResolveOrganizationID(_ context.Context, legacyTenantID int64) (string, bool, error) {
+	if legacyTenantID == 246 {
+		return "tenant-canonical", true, nil
+	}
+	return "", false, nil
+}
+
+func TestReconcileStudioProductImageUsageRecoversCanonicalAsyncJobTenant(t *testing.T) {
+	restore := tenantbridge.ConfigureLegacyTenantResolver(canonicalBillingTenantResolverForAdmission{})
+	t.Cleanup(restore)
+	ctx := context.Background()
+	svc := newStudioProductImageAdmissionService(t, "246", 2)
+	jobRepo := listingkit.NewMemStudioAsyncJobRepository()
+	now := time.Now().UTC()
+	if err := jobRepo.CreateStudioAsyncJob(listingkit.WithTenantID(ctx, "tenant-canonical"), &listingkit.StudioAsyncJobRecord{
+		ID: "canonical-tenant-job", TenantID: "tenant-canonical", Path: "/studio/product-images",
+		Status: listingkit.StudioAsyncJobStatusRunning, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("CreateStudioAsyncJob() error = %v", err)
+	}
+	reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID: "246", ModuleCode: listingsubscription.ModuleStudio,
+		Metric: studioProductImageLedgerMetric, Quantity: 1, PeriodKey: now.Format("2006-01"),
+		SourceType: studioProductImageAsyncSourceType, SourceID: "canonical-tenant-job",
+		IdempotencyKey: "canonical-tenant-job", OccurredAt: now,
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	h := &handler{
+		subscriptionDependencies: subscriptionDependencies{subscriptionService: svc},
+		studioAsyncJobs:          &studioAsyncJobStore{repo: jobRepo},
+	}
+	if err := h.reconcileStudioProductImageUsageReleases(ctx, "246"); err != nil {
+		t.Fatalf("reconcile error = %v", err)
+	}
+	event, err := svc.GetUsageEventByID(ctx, reserved.Event.EventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	if event.Status != listingsubscription.UsageEventReserved {
+		t.Fatalf("event status = %q, want reserved for fresh canonical-tenant job", event.Status)
+	}
 }
 
 func TestReconcileStudioProductImageUsagePagesPendingEvents(t *testing.T) {

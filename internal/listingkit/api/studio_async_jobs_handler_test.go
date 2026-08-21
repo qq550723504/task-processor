@@ -157,6 +157,80 @@ func TestRunStudioAsyncJobHeartbeatsBeforeLongProductImageGeneration(t *testing.
 	}
 }
 
+type orderedStudioAsyncJobRepository struct {
+	listingkit.StudioAsyncJobRepository
+	order *[]string
+}
+
+func (r *orderedStudioAsyncJobRepository) UpdateStudioAsyncJob(ctx context.Context, record *listingkit.StudioAsyncJobRecord) error {
+	if record != nil && record.Status == listingkit.StudioAsyncJobStatusSucceeded {
+		*r.order = append(*r.order, "job_succeeded")
+	}
+	return r.StudioAsyncJobRepository.UpdateStudioAsyncJob(ctx, record)
+}
+
+type orderedStudioUsageLedger struct {
+	listingsubscription.UsageLedger
+	order *[]string
+}
+
+func (l *orderedStudioUsageLedger) GetByID(ctx context.Context, eventID string) (listingsubscription.UsageEvent, error) {
+	return l.UsageLedger.(listingsubscription.UsageLedgerEventLookup).GetByID(ctx, eventID)
+}
+
+func (l *orderedStudioUsageLedger) UpdateMetadata(ctx context.Context, eventID string, metadata map[string]string) (listingsubscription.UsageEvent, error) {
+	return l.UsageLedger.(listingsubscription.UsageLedgerMetadataUpdater).UpdateMetadata(ctx, eventID, metadata)
+}
+
+func (l *orderedStudioUsageLedger) Commit(ctx context.Context, eventID string) (listingsubscription.UsageEvent, error) {
+	*l.order = append(*l.order, "usage_committed")
+	return l.UsageLedger.Commit(ctx, eventID)
+}
+
+func TestRunStudioAsyncJobPersistsSuccessBeforeCommittingUsage(t *testing.T) {
+	ctx := listingkit.WithRequestIdentity(listingkit.WithTenantID(context.Background(), "tenant-success-order"), listingkit.RequestIdentity{TenantID: "tenant-success-order", UserID: "user-success-order"})
+	repo := listingsubscription.NewMemRepository()
+	baseLedger := listingsubscription.NewMemUsageLedger(repo)
+	order := make([]string, 0, 2)
+	ledger := &orderedStudioUsageLedger{UsageLedger: baseLedger, order: &order}
+	svc, err := listingsubscription.NewServiceWithLedger(repo, ledger)
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(ctx, "tenant-success-order", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive, Limits: map[string]int{"product_image_jobs": 2},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID: "tenant-success-order", ModuleCode: listingsubscription.ModuleStudio,
+		Metric: "product_image_jobs_succeeded", Quantity: 1, PeriodKey: time.Now().UTC().Format("2006-01"),
+		SourceType: "listingkit_async_product_image", SourceID: "success-order-job",
+		IdempotencyKey: "success-order-job", OccurredAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	baseJobRepo := listingkit.NewMemStudioAsyncJobRepository()
+	jobRepo := &orderedStudioAsyncJobRepository{StudioAsyncJobRepository: baseJobRepo, order: &order}
+	if err := jobRepo.CreateStudioAsyncJob(ctx, &listingkit.StudioAsyncJobRecord{
+		ID: "success-order-job", TenantID: "tenant-success-order", UserID: "user-success-order",
+		Path: "/studio/product-images", Status: listingkit.StudioAsyncJobStatusRunning,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateStudioAsyncJob() error = %v", err)
+	}
+	h := &handler{
+		subscriptionDependencies: subscriptionDependencies{subscriptionService: svc},
+		studioAsyncJobs:          &studioAsyncJobStore{repo: jobRepo},
+		studioMediaService:       &stubStudioMediaHandlerService{studioProductImages: &listingkit.StudioProductImageResponse{}},
+	}
+	h.runStudioAsyncJob(ctx, "success-order-job", "/studio/product-images", json.RawMessage(`{}`), "", "", "", reserved.Event.EventID)
+	if len(order) != 2 || order[0] != "job_succeeded" || order[1] != "usage_committed" {
+		t.Fatalf("durable success order = %v, want [job_succeeded usage_committed]", order)
+	}
+}
+
 func TestStartStudioAsyncJobUsesSharedStudioBatchExecution(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &stubStudioMediaHandlerService{
