@@ -16,10 +16,16 @@ import (
 const (
 	studioProductImageLedgerMetric              = "product_image_jobs_succeeded"
 	studioProductImageReleasePendingMetadataKey = "listingkit_api_release_pending"
+	studioProductImageLegacyMirrorMetadataKey   = "listingkit_legacy_counter_mirror"
+	studioProductImageLegacyMirrorSettled       = "settled"
 )
 
 func studioProductImageUsageLedgerEnabled(h *handler) bool {
 	return h != nil && h.subscriptionService != nil && h.subscriptionService.HasUsageLedger()
+}
+
+func studioProductImageUsageReleaseContext(c *gin.Context) context.Context {
+	return detachedRequestContext(c)
 }
 
 func (h *handler) reserveStudioProductImageUsage(c *gin.Context, reservationID string) (string, error) {
@@ -105,19 +111,32 @@ func (h *handler) authorizeStudioProductImageLedgerTenant(c *gin.Context, tenant
 }
 
 func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context) error {
-	events, err := h.subscriptionService.ListUsageEvents(ctx, 100)
-	if err != nil {
-		return err
-	}
-	for _, event := range events {
-		if event.Status != listingsubscription.UsageEventReserved || event.SourceType != "listingkit_product_image" || event.Metric != studioProductImageLedgerMetric || event.Metadata[studioProductImageReleasePendingMetadataKey] != "1" {
-			continue
+	const pageSize = 100
+	for offset := 0; ; offset += pageSize {
+		events, err := h.subscriptionService.ListUsageEventPage(ctx, pageSize, offset)
+		if err != nil {
+			return err
 		}
-		if _, releaseErr := h.subscriptionService.ReleaseUsage(ctx, event.EventID, "retry_pending_api_release"); releaseErr != nil {
-			return releaseErr
+		for _, event := range events {
+			if event.SourceType != "listingkit_product_image" || event.Metric != studioProductImageLedgerMetric {
+				continue
+			}
+			if event.Status == listingsubscription.UsageEventReserved && event.Metadata[studioProductImageReleasePendingMetadataKey] == "1" {
+				if _, releaseErr := h.subscriptionService.ReleaseUsage(ctx, event.EventID, "retry_pending_api_release"); releaseErr != nil {
+					return releaseErr
+				}
+				continue
+			}
+			if event.Status == listingsubscription.UsageEventCommitted && event.Metadata[studioProductImageLegacyMirrorMetadataKey] != studioProductImageLegacyMirrorSettled {
+				if err := mirrorStudioProductImageUsage(ctx, h.subscriptionService, event); err != nil {
+					return err
+				}
+			}
+		}
+		if len(events) < pageSize {
+			return nil
 		}
 	}
-	return nil
 }
 
 func releaseStudioProductImageUsage(ctx context.Context, service *listingsubscription.Service, eventID, reason string) error {
@@ -147,7 +166,44 @@ func commitStudioProductImageUsage(ctx context.Context, service *listingsubscrip
 	if strings.TrimSpace(eventID) == "" || service == nil {
 		return nil
 	}
-	_, err := service.CommitUsage(ctx, strings.TrimSpace(eventID))
+	event, err := service.GetUsageEventByID(ctx, strings.TrimSpace(eventID))
+	if err != nil {
+		return err
+	}
+	if event == nil {
+		return nil
+	}
+	if event.Status == listingsubscription.UsageEventReserved {
+		if _, err := service.CommitUsage(ctx, event.EventID); err != nil {
+			return err
+		}
+	}
+	if event.Status != listingsubscription.UsageEventReserved && event.Status != listingsubscription.UsageEventCommitted {
+		return nil
+	}
+	if event.Status == listingsubscription.UsageEventReserved {
+		updated, err := service.GetUsageEventByID(ctx, event.EventID)
+		if err != nil {
+			return err
+		}
+		event = updated
+	}
+	return mirrorStudioProductImageUsage(ctx, service, *event)
+}
+
+func mirrorStudioProductImageUsage(ctx context.Context, service *listingsubscription.Service, event listingsubscription.UsageEvent) error {
+	if service == nil || event.Quantity <= 0 || event.Metadata[studioProductImageLegacyMirrorMetadataKey] == studioProductImageLegacyMirrorSettled {
+		return nil
+	}
+	if _, _, err := service.RecordUsageForPeriodOnce(ctx, event.TenantID, listingsubscription.ModuleStudio, "product_image_jobs", event.PeriodKey, int(event.Quantity), "listingkit:api:legacy_product_image_mirror:"+event.EventID); err != nil {
+		return err
+	}
+	metadata := make(map[string]string, len(event.Metadata)+1)
+	for key, value := range event.Metadata {
+		metadata[key] = value
+	}
+	metadata[studioProductImageLegacyMirrorMetadataKey] = studioProductImageLegacyMirrorSettled
+	_, err := service.UpdateUsageMetadata(ctx, event.EventID, metadata)
 	return err
 }
 

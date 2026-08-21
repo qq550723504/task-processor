@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -97,6 +98,92 @@ func TestReconcileStudioProductImageUsageReleasesPendingEvent(t *testing.T) {
 	if event.Status != listingsubscription.UsageEventReleased {
 		t.Fatalf("event status = %q, want released", event.Status)
 	}
+}
+
+func TestStudioProductImageUsageReleaseContextIsDetached(t *testing.T) {
+	c := newStudioProductImageAdmissionContext("tenant-detached-release")
+	requestCtx, cancel := context.WithCancel(c.Request.Context())
+	c.Request = c.Request.WithContext(requestCtx)
+	detached := studioProductImageUsageReleaseContext(c)
+	cancel()
+	select {
+	case <-detached.Done():
+		t.Fatal("release context inherited request cancellation")
+	default:
+	}
+}
+
+func TestReconcileStudioProductImageUsagePagesPendingEvents(t *testing.T) {
+	svc := newStudioProductImageAdmissionService(t, "tenant-release-pages", 200)
+	ctx := context.Background()
+	for i := 0; i < 101; i++ {
+		id := fmt.Sprintf("request-%03d", i)
+		reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+			TenantID:       "tenant-release-pages",
+			ModuleCode:     listingsubscription.ModuleStudio,
+			Metric:         studioProductImageLedgerMetric,
+			Quantity:       1,
+			PeriodKey:      time.Now().UTC().Format("2006-01"),
+			SourceType:     "listingkit_product_image",
+			SourceID:       id,
+			IdempotencyKey: "listingkit:api:studio_product_image:" + id,
+			OccurredAt:     time.Now().UTC(),
+		})
+		if err != nil {
+			t.Fatalf("ReserveUsage(%s) error = %v", id, err)
+		}
+		if _, err := svc.UpdateUsageMetadata(ctx, reserved.Event.EventID, map[string]string{studioProductImageReleasePendingMetadataKey: "1"}); err != nil {
+			t.Fatalf("UpdateUsageMetadata(%s) error = %v", id, err)
+		}
+	}
+	h := &handler{subscriptionDependencies: subscriptionDependencies{subscriptionService: svc}}
+	if err := h.reconcileStudioProductImageUsageReleases(ctx); err != nil {
+		t.Fatalf("reconcile error = %v", err)
+	}
+	events, err := svc.ListUsageEvents(ctx, 200)
+	if err != nil {
+		t.Fatalf("ListUsageEvents() error = %v", err)
+	}
+	for _, event := range events {
+		if event.SourceType == "listingkit_product_image" && event.Metric == studioProductImageLedgerMetric && event.Status != listingsubscription.UsageEventReleased {
+			t.Fatalf("event %s status = %q, want released", event.EventID, event.Status)
+		}
+	}
+}
+
+func TestCommitStudioProductImageUsageMirrorsLegacyCounter(t *testing.T) {
+	svc := newStudioProductImageAdmissionService(t, "tenant-legacy-mirror", 2)
+	ctx := context.Background()
+	reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID:       "tenant-legacy-mirror",
+		ModuleCode:     listingsubscription.ModuleStudio,
+		Metric:         studioProductImageLedgerMetric,
+		Quantity:       1,
+		PeriodKey:      "2026-08",
+		SourceType:     "listingkit_product_image",
+		SourceID:       "request-1",
+		IdempotencyKey: "listingkit:api:studio_product_image:request-1",
+		OccurredAt:     time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC),
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	if err := commitStudioProductImageUsage(ctx, svc, reserved.Event.EventID); err != nil {
+		t.Fatalf("commitStudioProductImageUsage() error = %v", err)
+	}
+	summary, err := svc.GetSummary(ctx, "tenant-legacy-mirror")
+	if err != nil {
+		t.Fatalf("GetSummary() error = %v", err)
+	}
+	for _, entitlement := range summary.Entitlements {
+		if entitlement.Module.Code == listingsubscription.ModuleStudio {
+			if got := entitlement.Used["product_image_jobs"]; got != 1 {
+				t.Fatalf("legacy product_image_jobs usage = %d, want 1", got)
+			}
+			return
+		}
+	}
+	t.Fatal("studio entitlement missing from summary")
 }
 
 type failingStudioProductImageUsageLegacyTenantResolverForAdmission struct{}

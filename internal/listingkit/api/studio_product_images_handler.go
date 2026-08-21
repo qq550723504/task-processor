@@ -18,6 +18,7 @@ func (h *handler) GenerateStudioProductImages(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_request", "message": err.Error()})
 		return
 	}
+	releaseCtx := studioProductImageUsageReleaseContext(c)
 	ledgerAdmission := studioProductImageUsageLedgerEnabled(h)
 	reservationID := ""
 	if ledgerAdmission {
@@ -33,7 +34,7 @@ func (h *handler) GenerateStudioProductImages(c *gin.Context) {
 
 	response, err := h.studioMediaService.GenerateStudioProductImages(requestContext(c), &req)
 	if err != nil {
-		if releaseErr := releaseStudioProductImageUsage(requestContext(c), h.subscriptionService, reservationID, "generation_failed"); releaseErr != nil {
+		if releaseErr := releaseStudioProductImageUsage(releaseCtx, h.subscriptionService, reservationID, "generation_failed"); releaseErr != nil {
 			err = errors.Join(err, fmt.Errorf("release product image usage: %w", releaseErr))
 		}
 		status := http.StatusInternalServerError
@@ -48,7 +49,7 @@ func (h *handler) GenerateStudioProductImages(c *gin.Context) {
 	}
 	if ledgerAdmission {
 		if commitErr := commitStudioProductImageUsage(requestContext(c), h.subscriptionService, reservationID); commitErr != nil {
-			if releaseErr := releaseStudioProductImageUsage(requestContext(c), h.subscriptionService, reservationID, "commit_failed"); releaseErr != nil {
+			if releaseErr := releaseStudioProductImageUsage(releaseCtx, h.subscriptionService, reservationID, "commit_failed"); releaseErr != nil {
 				commitErr = errors.Join(commitErr, fmt.Errorf("release product image usage: %w", releaseErr))
 			}
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "studio_product_images_failed", "message": commitErr.Error()})

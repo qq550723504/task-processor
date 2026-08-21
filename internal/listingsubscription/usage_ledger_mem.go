@@ -261,9 +261,16 @@ func (l *memUsageLedger) GetByID(ctx context.Context, eventID string) (UsageEven
 }
 
 func (l *memUsageLedger) ListEvents(ctx context.Context, limit int) ([]UsageEvent, error) {
+	return l.ListEventsPage(ctx, limit, 0)
+}
+
+func (l *memUsageLedger) ListEventsPage(ctx context.Context, limit, offset int) ([]UsageEvent, error) {
 	_ = ctx
 	if limit <= 0 {
 		return []UsageEvent{}, nil
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -277,6 +284,10 @@ func (l *memUsageLedger) ListEvents(ctx context.Context, limit int) ([]UsageEven
 		}
 		return events[i].CreatedAt.Before(events[j].CreatedAt)
 	})
+	if offset >= len(events) {
+		return []UsageEvent{}, nil
+	}
+	events = events[offset:]
 	if len(events) > limit {
 		events = events[:limit]
 	}

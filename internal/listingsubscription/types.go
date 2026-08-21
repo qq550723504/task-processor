@@ -329,3 +329,10 @@ type UsageLedgerEventLookup interface {
 type UsageLedgerEventLister interface {
 	ListEvents(ctx context.Context, limit int) ([]UsageEvent, error)
 }
+
+// UsageLedgerEventPager extends event listing with a stable offset so
+// reconciliation can inspect the complete immutable event set instead of a
+// permanently fixed prefix.
+type UsageLedgerEventPager interface {
+	ListEventsPage(ctx context.Context, limit, offset int) ([]UsageEvent, error)
+}

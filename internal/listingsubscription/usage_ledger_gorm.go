@@ -348,11 +348,18 @@ func (l *gormUsageLedger) GetByID(ctx context.Context, eventID string) (UsageEve
 }
 
 func (l *gormUsageLedger) ListEvents(ctx context.Context, limit int) ([]UsageEvent, error) {
+	return l.ListEventsPage(ctx, limit, 0)
+}
+
+func (l *gormUsageLedger) ListEventsPage(ctx context.Context, limit, offset int) ([]UsageEvent, error) {
 	if limit <= 0 {
 		return []UsageEvent{}, nil
 	}
+	if offset < 0 {
+		offset = 0
+	}
 	var rows []usageEventRow
-	if err := l.repo.db.WithContext(ctx).Order("created_at ASC, event_id ASC").Limit(limit).Find(&rows).Error; err != nil {
+	if err := l.repo.db.WithContext(ctx).Order("created_at ASC, event_id ASC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	events := make([]UsageEvent, 0, len(rows))

@@ -141,6 +141,20 @@ func (s *Service) ListUsageEvents(ctx context.Context, limit int) ([]UsageEvent,
 	return lister.ListEvents(ctx, limit)
 }
 
+// ListUsageEventPage returns one bounded page of durable events for
+// reconciliation workers when the configured ledger supports pagination.
+func (s *Service) ListUsageEventPage(ctx context.Context, limit, offset int) ([]UsageEvent, error) {
+	ledger, err := s.requireUsageLedger()
+	if err != nil {
+		return nil, err
+	}
+	pager, ok := ledger.(UsageLedgerEventPager)
+	if !ok {
+		return nil, ErrUsageLedgerEventLookupUnsupported
+	}
+	return pager.ListEventsPage(ctx, limit, offset)
+}
+
 // UpdateUsageMetadata persists adapter-owned reconciliation state on a usage
 // event when the configured ledger supports that optional extension.
 func (s *Service) UpdateUsageMetadata(ctx context.Context, eventID string, metadata map[string]string) (UsageEvent, error) {
