@@ -133,7 +133,7 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				} else if strings.Contains(err.Error(), "returned no images") {
 					reasonCode = "product_image_generation_empty"
 				}
-				persistErr := s.persistStudioBatchTaskLink(ctx, taskCandidate, "", studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, reasonCode, err.Error())
+				persistErr := s.persistStudioBatchTaskLink(dispatchCtx, taskCandidate, "", studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, reasonCode, err.Error())
 				_ = dispatchHeartbeatStop()
 				if persistErr != nil {
 					return SheinStudioCreatedTask{}, persistErr
@@ -156,7 +156,7 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 					// dispatched row eligible for durable-task reuse on retry.
 					taskID = ""
 				}
-				persistErr := s.persistStudioBatchTaskLink(ctx, taskCandidate, taskID, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, "task_create_failed", err.Error())
+				persistErr := s.persistStudioBatchTaskLink(dispatchCtx, taskCandidate, taskID, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, "task_create_failed", err.Error())
 				_ = dispatchHeartbeatStop()
 				if persistErr != nil {
 					return SheinStudioCreatedTask{}, persistErr
@@ -173,7 +173,7 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				Status:                   studioBatchCreatedTaskStatus,
 				Source:                   studioBatchTaskLinkSourceBatchCreated,
 			}
-			if err := s.persistStudioBatchTaskLink(ctx, taskCandidate, task.ID, studioBatchTaskLinkStatusCreated, studioBatchTaskLinkSourceBatchCreated, "", ""); err != nil {
+			if err := s.persistStudioBatchTaskLink(dispatchCtx, taskCandidate, task.ID, studioBatchTaskLinkStatusCreated, studioBatchTaskLinkSourceBatchCreated, "", ""); err != nil {
 				_ = dispatchHeartbeatStop()
 				return SheinStudioCreatedTask{}, err
 			}

@@ -246,9 +246,11 @@ func TestStudioProductImageCategoryPathUsesSDSCategoryNames(t *testing.T) {
 func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
 	var calls []string
 	var firstReferences []string
+	var requests []*StudioProductImageRequest
 	service := &taskStudioBatchService{
 		generateProductImages: func(_ context.Context, req *StudioProductImageRequest) (*StudioProductImageResponse, error) {
 			calls = append(calls, req.StyleName)
+			requests = append(requests, cloneStudioBatchProductImageRequest(req))
 			if len(calls) == 1 {
 				firstReferences = append([]string(nil), req.ProductReferenceImageURLs...)
 			}
@@ -268,12 +270,12 @@ func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
 		Title:             "Style 1",
 	}
 	request := buildStudioBatchTaskGenerateRequest(
-		&SheinStudioSession{Prompt: "retro"},
+		&SheinStudioSession{Prompt: "retro", PromptMode: "raw", ProductImagePrompts: SheinStudioProductImagePromptList{{Role: "main", Prompt: "approved artwork"}}},
 		&StudioBatchRecord{ID: "batch-1"},
 		candidate,
 		StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
 	)
-	if err := service.attachStudioBatchProductImages(context.Background(), request, &SheinStudioSession{Prompt: "retro"}, &StudioBatchRecord{ID: "batch-1"}, candidate, StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"}); err != nil {
+	if err := service.attachStudioBatchProductImages(context.Background(), request, &SheinStudioSession{Prompt: "retro", PromptMode: "raw", ProductImagePrompts: SheinStudioProductImagePromptList{{Role: "main", Prompt: "approved artwork"}}}, &StudioBatchRecord{ID: "batch-1"}, candidate, StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"}); err != nil {
 		t.Fatalf("attachStudioBatchProductImages() error = %v", err)
 	}
 	if len(calls) != 2 {
@@ -281,6 +283,17 @@ func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
 	}
 	if len(firstReferences) == 0 || firstReferences[0] != "https://example.com/red.png" {
 		t.Fatalf("first color references = %v, want first representative references", firstReferences)
+	}
+	if len(requests) != 2 {
+		t.Fatalf("captured product image requests = %d, want 2", len(requests))
+	}
+	firstPrompt := buildRawStudioProductImagePrompt(requests[0], defaultStudioProductImageRoles[0])
+	secondPrompt := buildRawStudioProductImagePrompt(requests[1], defaultStudioProductImageRoles[0])
+	if !strings.Contains(firstPrompt, "Red") || strings.Contains(firstPrompt, "Blue") {
+		t.Fatalf("first raw prompt = %q, want Red directive only", firstPrompt)
+	}
+	if !strings.Contains(secondPrompt, "Blue") || strings.Contains(secondPrompt, "Red") {
+		t.Fatalf("second raw prompt = %q, want Blue directive only", secondPrompt)
 	}
 	if got := len(request.Options.SheinStudio.VariantProductImages); got != 2 {
 		t.Fatalf("variant product image sets = %d, want 2", got)

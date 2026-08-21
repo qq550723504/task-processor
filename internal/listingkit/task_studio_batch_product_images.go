@@ -67,7 +67,15 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 	if len(colorRepresentatives) > 1 {
 		productImageRequest.ProductReferenceImageURLs = studioBatchTaskProductReferenceImageURLsForVariant(candidate.SelectionSnapshot, colorRepresentatives[0])
 	}
-	response, err := s.generateProductImages(ctx, productImageRequest)
+	firstProductImageRequest := productImageRequest
+	if len(colorRepresentatives) > 1 {
+		// Keep the shared request pristine so each later color clone receives
+		// only its own directive. The first representative needs the same
+		// color-specific instruction as the later requests.
+		firstProductImageRequest = cloneStudioBatchProductImageRequest(productImageRequest)
+		appendStudioProductImageColorDirective(firstProductImageRequest, colorRepresentatives[0].Color)
+	}
+	response, err := s.generateProductImages(ctx, firstProductImageRequest)
 	if err != nil {
 		_ = heartbeatStop()
 		return fmt.Errorf("generate studio product images: %w", err)
@@ -127,6 +135,19 @@ func appendStudioProductImageColorDirective(request *StudioProductImageRequest, 
 			directive,
 		}, "\n"))
 	}
+	if len(request.ImagePrompts) == 0 {
+		if strings.TrimSpace(request.CustomPrompt) != "" {
+			request.CustomPrompt = strings.TrimSpace(strings.Join([]string{
+				strings.TrimSpace(request.CustomPrompt),
+				directive,
+			}, "\n"))
+		} else {
+			request.Prompt = strings.TrimSpace(strings.Join([]string{
+				strings.TrimSpace(request.Prompt),
+				directive,
+			}, "\n"))
+		}
+	}
 }
 
 func (s *taskStudioBatchService) buildStudioBatchTaskProductImageRequest(
@@ -185,6 +206,7 @@ func (s *taskStudioBatchService) startStudioBatchTaskLinkHeartbeatContext(
 	// that request context; refresh failure remains the explicit cancellation
 	// signal for a lost claim.
 	heartbeatCtx, cancel := context.WithCancel(DetachedRequestContext(ctx))
+	terminalStateCtx := DetachedRequestContext(ctx)
 	done := make(chan struct{})
 	errCh := make(chan error, 1)
 	refresh := func() error {
@@ -243,7 +265,7 @@ func (s *taskStudioBatchService) startStudioBatchTaskLinkHeartbeatContext(
 			// The worker may have completed the terminal compare-and-update
 			// while a refresh was in flight. That transition intentionally
 			// makes the creating predicate false; it is not a lost lease.
-			if s.studioBatchTaskHeartbeatEndedInTerminalState(ctx, candidate) {
+			if s.studioBatchTaskHeartbeatEndedInTerminalState(terminalStateCtx, candidate) {
 				return nil
 			}
 			return fmt.Errorf("refresh studio batch task claim: %w", err)
