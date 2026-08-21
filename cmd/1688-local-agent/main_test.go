@@ -74,6 +74,24 @@ func TestPrepareAndAuthorizePreparesBeforeAuthorization(t *testing.T) {
 	require.Equal(t, []string{"prepare", "authorize"}, order)
 }
 
+func TestInvalidDeviceAuthConfigFailsBeforeCrawlerPreparation(t *testing.T) {
+	order := []string{}
+	crawler := &fakeJobCrawlerPreparer{order: &order}
+	authorize := func(context.Context, deviceauth.Config, deviceauth.Presenter) (string, error) {
+		order = append(order, "authorize")
+		return "token", nil
+	}
+
+	_, err := validateAndPrepareAndAuthorize(context.Background(), crawler, authorize, deviceauth.Config{
+		IssuerURL: "https://issuer.example",
+		ClientID:  "client",
+		ProjectID: "project",
+		Scopes:    "openid offline_access",
+	}, nil)
+	require.ErrorContains(t, err, "offline_access")
+	require.Empty(t, order)
+}
+
 type fakeJobCreator struct {
 	order *[]string
 }

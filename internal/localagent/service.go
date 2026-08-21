@@ -380,7 +380,12 @@ func validateActor(actor Actor) error {
 }
 
 func validateOfferURL(raw string) (string, error) {
-	clean := sourcing.NormalizeAlibaba1688URL(raw)
+	original := strings.TrimSpace(raw)
+	originalParsed, err := url.Parse(original)
+	if err != nil || originalParsed.RawQuery != "" || originalParsed.ForceQuery || originalParsed.Fragment != "" {
+		return "", ErrInvalidURL
+	}
+	clean := sourcing.NormalizeAlibaba1688URL(original)
 	parsed, err := url.Parse(clean)
 	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Host, "detail.1688.com") || parsed.User != nil || parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" || parsed.RawPath != "" {
 		return "", ErrInvalidURL

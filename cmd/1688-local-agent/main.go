@@ -63,7 +63,8 @@ func run(ctx context.Context, args []string) error {
 		crawlerConfig.Browser.BrowserPath = installed
 	}
 	crawler := a1688.NewLegacyProcessor(crawlerConfig)
-	token, err := prepareAndAuthorize(ctx, crawler, deviceauth.Authorize, deviceauth.Config{IssuerURL: cfg.IssuerURL, ClientID: cfg.ClientID, ProjectID: cfg.ProjectID, Scopes: scopes}, terminalPresenter{openBrowser: cfg.OpenBrowser})
+	authConfig := deviceauth.Config{IssuerURL: cfg.IssuerURL, ClientID: cfg.ClientID, ProjectID: cfg.ProjectID, Scopes: scopes}
+	token, err := validateAndPrepareAndAuthorize(ctx, crawler, deviceauth.Authorize, authConfig, terminalPresenter{openBrowser: cfg.OpenBrowser})
 	if err != nil {
 		return err
 	}
@@ -188,6 +189,13 @@ func prepareAndAuthorize(ctx context.Context, crawler crawlerPreparer, authorize
 		return "", fmt.Errorf("prepare crawler before authorization: %w", err)
 	}
 	return authorize(ctx, cfg, presenter)
+}
+
+func validateAndPrepareAndAuthorize(ctx context.Context, crawler crawlerPreparer, authorize authorizeDeviceFunc, cfg deviceauth.Config, presenter deviceauth.Presenter) (string, error) {
+	if err := deviceauth.ValidateConfig(cfg); err != nil {
+		return "", err
+	}
+	return prepareAndAuthorize(ctx, crawler, authorize, cfg, presenter)
 }
 
 func validateCLIOfferURL(raw string) (string, error) {

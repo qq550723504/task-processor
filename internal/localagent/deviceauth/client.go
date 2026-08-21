@@ -55,8 +55,8 @@ func Authorize(ctx context.Context, cfg Config, presenter Presenter) (string, er
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if strings.TrimSpace(cfg.ClientID) == "" {
-		return "", errors.New("client ID is required")
+	if err := ValidateConfig(cfg); err != nil {
+		return "", err
 	}
 	issuer, err := validateEndpoint(cfg.IssuerURL, "issuer")
 	if err != nil {
@@ -161,6 +161,18 @@ func validUserCode(value string) bool {
 		}
 	}
 	return true
+}
+
+// ValidateConfig validates device authorization settings without network or browser side effects.
+func ValidateConfig(cfg Config) error {
+	if strings.TrimSpace(cfg.ClientID) == "" {
+		return errors.New("client ID is required")
+	}
+	if _, err := validateEndpoint(cfg.IssuerURL, "issuer"); err != nil {
+		return err
+	}
+	_, err := oauthScopes(cfg.Scopes, cfg.ProjectID)
+	return err
 }
 
 func oauthScopes(raw, projectID string) (string, error) {

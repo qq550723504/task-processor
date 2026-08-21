@@ -71,6 +71,9 @@ func (pc *ProductChecker) ValidateProduct(product *model.Product1688) error {
 	if err := pc.validateProductMetrics(product); err != nil {
 		return fmt.Errorf("商品数值信息验证失败: %w", err)
 	}
+	if err := pc.validateVariants(product); err != nil {
+		return fmt.Errorf("商品变体信息验证失败: %w", err)
+	}
 
 	// 检查敏感词
 	if err := pc.checkSensitiveWords(product); err != nil {
@@ -114,6 +117,18 @@ func (pc *ProductChecker) validateProductMetrics(product *model.Product1688) err
 	}
 	if !isFiniteInRange(product.Rating, 0, 5) {
 		return fmt.Errorf("商品评分必须在0到5之间")
+	}
+	return nil
+}
+
+func (pc *ProductChecker) validateVariants(product *model.Product1688) error {
+	for i, variant := range product.Variants {
+		if variant.Stock < 0 {
+			return fmt.Errorf("变体[%d]库存不能为负数", i)
+		}
+		if math.IsNaN(variant.Price) || math.IsInf(variant.Price, 0) || variant.Price < 0 {
+			return fmt.Errorf("变体[%d]价格不能为负数或非有限值", i)
+		}
 	}
 	return nil
 }

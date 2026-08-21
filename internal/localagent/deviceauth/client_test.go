@@ -66,6 +66,11 @@ func TestAuthorizeRejectsOfflineAccessScope(t *testing.T) {
 	require.ErrorContains(t, err, "offline_access")
 }
 
+func TestValidateConfigRejectsOfflineAccessScope(t *testing.T) {
+	err := ValidateConfig(Config{IssuerURL: "https://issuer.example", ClientID: "client", ProjectID: "project", Scopes: "openid offline_access"})
+	require.ErrorContains(t, err, "offline_access")
+}
+
 func TestAuthorizeRejectsOfflineAccessScopeAcrossWhitespace(t *testing.T) {
 	for _, scopes := range []string{"openid\toffline_access", "openid\noffline_access", "openid\r\noffline_access"} {
 		_, err := Authorize(context.Background(), Config{IssuerURL: "https://issuer.example", ClientID: "client", ProjectID: "project", Scopes: scopes}, recordingPresenter{})
