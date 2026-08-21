@@ -36,6 +36,8 @@ type Client struct {
 	httpClient *http.Client
 }
 
+const maxImageReferenceBytes = 32 << 20
+
 type generateContentRequest struct {
 	Contents         []geminiContent        `json:"contents"`
 	GenerationConfig geminiGenerationConfig `json:"generationConfig,omitempty"`
@@ -279,9 +281,12 @@ func (c *Client) downloadSourceImage(ctx context.Context, imageURL string) ([]by
 		return nil, "", fmt.Errorf("download source image: %w", err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxImageReferenceBytes+1))
 	if err != nil {
 		return nil, "", fmt.Errorf("read source image: %w", err)
+	}
+	if len(body) > maxImageReferenceBytes {
+		return nil, "", fmt.Errorf("source image exceeds 32 MiB")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, "", fmt.Errorf("download source image returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))

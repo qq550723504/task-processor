@@ -275,7 +275,17 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				Source:                   studioBatchTaskLinkSourceBatchCreated,
 			}
 			if err := s.persistStudioBatchTaskLink(dispatchCtx, taskCandidate, task.ID, studioBatchTaskLinkStatusCreated, studioBatchTaskLinkSourceBatchCreated, "", ""); err != nil {
+				recoveryErr := s.recoverStudioBatchTaskAfterLinkPersistenceFailure(
+					context.WithoutCancel(dispatchCtx),
+					candidate.state.Batch,
+					taskCandidate,
+					task,
+					err,
+				)
 				_ = dispatchHeartbeatStop()
+				if recoveryErr != nil {
+					return SheinStudioCreatedTask{}, errors.Join(err, recoveryErr)
+				}
 				return SheinStudioCreatedTask{}, err
 			}
 			// Settle only after both the ListingKit task and durable created link

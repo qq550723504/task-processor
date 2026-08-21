@@ -144,6 +144,27 @@ func usageMetricModuleMatches(moduleCode, metric string) bool {
 	return moduleCode == ModuleStudio
 }
 
+// unrepresentedLegacyUsage returns only legacy counter usage that is not
+// already represented by the durable ledger bucket. Legacy counters mirror
+// ledger-backed product-image events during the migration window, so adding
+// the full counter to the bucket would double-count those events.
+func unrepresentedLegacyUsage(legacyUsage, committed, reserved int64) int64 {
+	if legacyUsage <= 0 {
+		return 0
+	}
+	if committed < 0 {
+		committed = 0
+	}
+	if reserved < 0 {
+		reserved = 0
+	}
+	represented, ok := addUsage(committed, reserved)
+	if !ok || represented >= legacyUsage {
+		return 0
+	}
+	return legacyUsage - represented
+}
+
 func canonicalUsagePeriodKey(metric, supplied string, occurredAt time.Time) (string, error) {
 	if metric == usageMetricStorageBytesCurrent {
 		return supplied, nil

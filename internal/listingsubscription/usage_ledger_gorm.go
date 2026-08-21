@@ -117,6 +117,7 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 			if err != nil {
 				return err
 			}
+			legacyUsage = unrepresentedLegacyUsage(legacyUsage, bucket.Committed, bucket.Reserved)
 			if err := validateUsageReservation(input, bucket, limit, reservedForQuota, legacyUsage); err != nil {
 				return err
 			}
@@ -151,7 +152,11 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 				snapshot := bucket.Committed
 				e.StorageSnapshot = &snapshot
 			}
-			result = ReserveUsageResult{Event: e, Limit: limit, CommittedUsage: bucket.Committed + legacyUsage, ReservedUsage: updatedReserved}
+			committedUsage, ok := addUsage(bucket.Committed, legacyUsage)
+			if !ok {
+				return &UsageValidationError{Field: "usage"}
+			}
+			result = ReserveUsageResult{Event: e, Limit: limit, CommittedUsage: committedUsage, ReservedUsage: updatedReserved}
 			return nil
 		})
 		if err == nil || !isRetryableUsageLedgerError(err) || attempt == 19 {

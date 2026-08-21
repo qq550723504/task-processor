@@ -99,6 +99,7 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 	if err != nil {
 		return ReserveUsageResult{}, err
 	}
+	legacyUsage = unrepresentedLegacyUsage(legacyUsage, bucket.committed, bucket.reserved)
 	if err := validateMemUsageReservation(input, bucket, limit, reservedForQuota, legacyUsage); err != nil {
 		return ReserveUsageResult{}, err
 	}
@@ -123,7 +124,11 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 	l.eventsByID[event.EventID] = memUsageEvent{event: event, periodKey: input.PeriodKey}
 	l.eventIDByIdentity[identity] = event.EventID
 	l.addPendingOutbox(event.EventID, now)
-	return ReserveUsageResult{Event: cloneMemUsageEvent(event), Limit: limit, CommittedUsage: bucket.committed + legacyUsage, ReservedUsage: bucket.reserved}, nil
+	committedUsage, ok := addUsage(bucket.committed, legacyUsage)
+	if !ok {
+		return ReserveUsageResult{}, &UsageValidationError{Field: "usage"}
+	}
+	return ReserveUsageResult{Event: cloneMemUsageEvent(event), Limit: limit, CommittedUsage: committedUsage, ReservedUsage: bucket.reserved}, nil
 }
 
 func (l *memUsageLedger) Commit(ctx context.Context, eventID string) (UsageEvent, error) {

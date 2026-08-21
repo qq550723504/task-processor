@@ -941,6 +941,69 @@ func TestTaskStudioBatchServicePersistsPendingStaleReservationRelease(t *testing
 	}
 }
 
+func TestTaskStudioBatchServiceRecoversCreatedTaskWhenLinkPersistenceFails(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	links := NewMemStudioBatchTaskLinkRepository()
+	candidate := studioBatchTaskCandidate{
+		CandidateKey:  "candidate-link-recovery",
+		ClaimToken:    "claim-link-recovery",
+		ImageStrategy: sheinImageStrategyAIGenerated,
+		Design: StudioMaterializedDesignRecord{
+			ID: "design-1", BatchID: "batch-1", ItemID: "item-1",
+		},
+		Item:        StudioBatchItemRecord{ID: "item-1", BatchID: "batch-1"},
+		SelectionID: "selection-1",
+	}
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-recovery", BatchID: "batch-1", ItemID: "item-1", DesignID: "design-1",
+		SelectionID: "selection-1", CandidateKey: candidate.CandidateKey,
+		ClaimToken: candidate.ClaimToken, ImageStrategy: sheinImageStrategyAIGenerated,
+		Status: studioBatchTaskLinkStatusCreating, UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	usage := &reservingStudioProductImageUsage{}
+	markFailed := false
+	service := &taskStudioBatchService{
+		batchTaskLinkRepo: links,
+		productImageUsage: usage,
+		currentTime:       time.Now,
+		markTaskFailed: func(_ context.Context, taskID, message string) error {
+			if taskID != "task-created-after-link-error" || !strings.Contains(message, "link persistence") {
+				t.Fatalf("MarkFailed() = (%q, %q)", taskID, message)
+			}
+			markFailed = true
+			return nil
+		},
+	}
+
+	linkErr := errors.New("link persistence temporarily unavailable")
+	if err := service.recoverStudioBatchTaskAfterLinkPersistenceFailure(
+		ctx,
+		&StudioBatchRecord{TenantID: "tenant-a"},
+		candidate,
+		&Task{ID: "task-created-after-link-error"},
+		linkErr,
+	); err != nil {
+		t.Fatalf("recoverStudioBatchTaskAfterLinkPersistenceFailure() error = %v", err)
+	}
+	if !markFailed {
+		t.Fatal("created task was not marked failed")
+	}
+	link, err := links.GetStudioBatchTaskLinkByCandidateKey(ctx, candidate.CandidateKey)
+	if err != nil {
+		t.Fatalf("GetStudioBatchTaskLinkByCandidateKey() error = %v", err)
+	}
+	if link.Status != studioBatchTaskLinkStatusFailed || link.ListingKitTaskID != "task-created-after-link-error" {
+		t.Fatalf("recovered link = %+v, want failed link retaining task identity", link)
+	}
+	if got, want := usage.released, []string{"tenant-a:candidate-link-recovery|claim-link-recovery:task_link_persistence_failed"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("released reservations = %v, want %v", got, want)
+	}
+}
+
 func TestTaskStudioBatchServiceReturnsFailedReservationTokenAfterReclaim(t *testing.T) {
 	t.Parallel()
 

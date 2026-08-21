@@ -1,6 +1,7 @@
 package geminiimage
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -296,5 +297,28 @@ func TestClientEditImageIncludesSecondaryURLsAlongsideInlinePrimary(t *testing.T
 		ImageURLs:        []string{"https://image.example.test/secondary.png"},
 	}); err != nil {
 		t.Fatalf("EditImage() error = %v", err)
+	}
+}
+
+func TestClientEditImageRejectsOversizedSecondaryReference(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/oversized.png" {
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "image/png")
+		_, _ = w.Write(bytes.Repeat([]byte("x"), maxImageReferenceBytes+1))
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		APIKey: "test-key", Model: "gemini-2.5-flash-image", BaseURL: server.URL + "/v1beta",
+		Timeout: time.Second, MaxAttempts: 1, HTTPClient: server.Client(),
+		ImageReferenceHTTPClient: imageReferenceClient(server),
+	})
+	_, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
+		Prompt: "edit faithfully", ImageURLs: []string{"https://image.example.test/oversized.png"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "source image exceeds 32 MiB") {
+		t.Fatalf("EditImage() error = %v, want oversized reference error", err)
 	}
 }

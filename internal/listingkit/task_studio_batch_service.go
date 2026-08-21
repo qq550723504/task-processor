@@ -20,6 +20,7 @@ type taskStudioBatchService struct {
 	createGenerateTask       func(context.Context, *GenerateRequest) (*Task, error)
 	generateProductImages    func(context.Context, *StudioProductImageRequest) (*StudioProductImageResponse, error)
 	getTask                  func(context.Context, string) (*Task, error)
+	markTaskFailed           func(context.Context, string, string) error
 	retryBackgroundRemoval   func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error)
 	currentTime              func() time.Time
 	serviceRunner            *listingStudioBatchServiceRunner
@@ -51,6 +52,7 @@ func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioB
 		productImageUsage:             config.productImageUsage,
 		resolveUploadedImagePublicURL: config.resolveUploadedImagePublicURL,
 		getTask:                       config.getTask,
+		markTaskFailed:                config.markTaskFailed,
 		retryBackgroundRemoval:        config.retryBackgroundRemoval,
 		currentTime:                   time.Now,
 		serviceRunner:                 config.serviceRunner,
