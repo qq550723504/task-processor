@@ -35,6 +35,14 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 	})).Info("studio async job started")
 	jobCtx, cancelJob := context.WithCancelCause(ctx)
 	defer cancelJob(nil)
+	heartbeatInterval := h.studioAsyncJobHeartbeatInterval
+	if heartbeatInterval <= 0 {
+		heartbeatInterval = studioAsyncJobHeartbeatInterval
+	}
+	heartbeatNow := h.studioAsyncJobHeartbeatNow
+	if heartbeatNow == nil {
+		heartbeatNow = time.Now
+	}
 	stopHeartbeat := make(chan struct{})
 	heartbeatDone := make(chan struct{})
 	if h.studioAsyncJobs == nil {
@@ -46,24 +54,21 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 	} else {
 		go func() {
 			defer close(heartbeatDone)
-			ticker := time.NewTicker(studioAsyncJobHeartbeatInterval)
+			ticker := time.NewTicker(heartbeatInterval)
 			defer ticker.Stop()
-			var heartbeatUnavailableSince time.Time
+			lastSuccessfulHeartbeatAt := heartbeatNow()
 			for {
 				select {
 				case <-ticker.C:
 					if err := h.studioAsyncJobs.heartbeat(ctx, jobID); err != nil {
 						studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{"job_id": jobID})).WithError(err).Warn("studio async job heartbeat failed")
-						if heartbeatUnavailableSince.IsZero() {
-							heartbeatUnavailableSince = time.Now()
-						}
-						if time.Since(heartbeatUnavailableSince) >= studioAsyncJobHeartbeatFailureRecoveryAfter {
+						if heartbeatNow().Sub(lastSuccessfulHeartbeatAt) >= studioAsyncJobHeartbeatFailureRecoveryAfter {
 							cancelJob(errStudioAsyncJobHeartbeatLost)
 							return
 						}
 						continue
 					}
-					heartbeatUnavailableSince = time.Time{}
+					lastSuccessfulHeartbeatAt = heartbeatNow()
 				case <-stopHeartbeat:
 					return
 				}

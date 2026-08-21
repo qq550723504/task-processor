@@ -58,17 +58,39 @@ func TestReserveStudioProductImageUsageHonorsGenerationUsageRolloutGate(t *testi
 	}
 }
 
-func TestStudioProductImageUsageRolloutGateDoesNotFallBackToLegacyAuthorization(t *testing.T) {
+func TestGenerateStudioProductImagesPreservesLegacyAccessOutsideLedgerRollout(t *testing.T) {
 	svc := newStudioProductImageAdmissionService(t, "tenant-rollout-denied", 2)
-	h := &handler{subscriptionDependencies: subscriptionDependencies{
-		subscriptionService:      svc,
-		generationUsageAdmission: denyingStudioProductImageGenerationAdmission{},
-	}}
-	if studioProductImageUsageRolloutAllowed(h, "tenant-rollout-denied") {
-		t.Fatal("rollout gate allowed a denied tenant")
+	media := &stubStudioMediaHandlerService{
+		studioProductImages: &listingkit.StudioProductImageResponse{},
 	}
-	if studioProductImageUsageLedgerEnabled(h, "tenant-rollout-denied") {
-		t.Fatal("ledger admission allowed a denied tenant")
+	h, err := NewHandler(&stubHandlerCoreService{},
+		WithStudioMediaService(media),
+		WithDependencies(HandlerDependencies{Subscription: SubscriptionDependencies{
+			Service:                  svc,
+			GenerationUsageAdmission: denyingStudioProductImageGenerationAdmission{},
+		}}),
+	)
+	if err != nil {
+		t.Fatalf("NewHandler() error = %v", err)
+	}
+	router := gin.New()
+	router.POST("/studio/product-images", h.GenerateStudioProductImages)
+	req := httptest.NewRequest(http.MethodPost, "/studio/product-images", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tenant-ID", "tenant-rollout-denied")
+	resp := httptest.NewRecorder()
+	router.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("status = %d, want legacy request to succeed; body=%s", resp.Code, resp.Body.String())
+	}
+	summary, err := svc.GetSummary(context.Background(), "tenant-rollout-denied")
+	if err != nil {
+		t.Fatalf("GetSummary() error = %v", err)
+	}
+	for _, entitlement := range summary.Entitlements {
+		if entitlement.Module.Code == listingsubscription.ModuleStudio && entitlement.Used["product_image_jobs"] != 1 {
+			t.Fatalf("legacy product_image_jobs usage = %d, want 1", entitlement.Used["product_image_jobs"])
+		}
 	}
 }
 

@@ -31,10 +31,6 @@ func (h *handler) StartStudioAsyncJob(c *gin.Context) {
 		metric = "product_image_jobs"
 	}
 	requestTenant := requestTenantID(c)
-	if req.Path == "/studio/product-images" && !studioProductImageUsageRolloutAllowed(h, requestTenant) {
-		writeStudioProductImageUsageAdmissionError(c, listingsubscription.ErrUsageLedgerNotConfigured)
-		return
-	}
 	ledgerAdmission := req.Path == "/studio/product-images" && studioProductImageUsageLedgerEnabled(h, requestTenant)
 	if !ledgerAdmission && !h.authorizeSubscriptionUsage(c, listingsubscription.ModuleStudio, metric, 1) {
 		return

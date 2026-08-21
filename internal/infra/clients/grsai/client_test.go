@@ -44,6 +44,39 @@ func TestReferenceMaterializationBudgetCapsConcurrentReferences(t *testing.T) {
 	}
 }
 
+func TestReferenceMaterializationBudgetReleasesDownloadSlotPerReference(t *testing.T) {
+	budget := newReferenceMaterializationBudget(2*maxMaterializedReferenceBytes, 1)
+	releaseBytes, err := budget.acquire(context.Background(), 2*maxMaterializedReferenceBytes)
+	if err != nil {
+		t.Fatalf("byte acquire: %v", err)
+	}
+	defer releaseBytes()
+
+	releaseFirstDownload, err := budget.acquireDownload(context.Background())
+	if err != nil {
+		t.Fatalf("first download acquire: %v", err)
+	}
+	secondAcquired := make(chan func(), 1)
+	go func() {
+		release, acquireErr := budget.acquireDownload(context.Background())
+		if acquireErr == nil {
+			secondAcquired <- release
+		}
+	}()
+	select {
+	case <-secondAcquired:
+		t.Fatal("second download acquired before the first reference completed")
+	case <-time.After(25 * time.Millisecond):
+	}
+	releaseFirstDownload()
+	select {
+	case releaseSecond := <-secondAcquired:
+		releaseSecond()
+	case <-time.After(time.Second):
+		t.Fatal("second download did not acquire after the first reference completed")
+	}
+}
+
 func TestClientEditImageUsesGenerateEndpointForNanoBanana(t *testing.T) {
 	imageBytes := []byte("generated-image")
 	var serverURL string

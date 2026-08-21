@@ -266,15 +266,15 @@ func (s *taskStudioBatchService) authorizeStudioBatchProductImageUsage(ctx conte
 	if strings.TrimSpace(tenantID) == "" {
 		return fmt.Errorf("tenant id is required")
 	}
-	if s.generationUsageAdmission != nil && !s.generationUsageAdmission.AllowsGenerationUsage(tenantID) {
-		return listingsubscription.ErrSubscriptionRequired
-	}
-	if reservation, ok := s.productImageUsageReservation(); ok {
-		reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
-		if reservationID == "" {
-			return fmt.Errorf("product image usage reservation id is required")
+	ledgerAdmission := s.generationUsageAdmission == nil || s.generationUsageAdmission.AllowsGenerationUsage(tenantID)
+	if ledgerAdmission {
+		if reservation, ok := s.productImageUsageReservation(); ok {
+			reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
+			if reservationID == "" {
+				return fmt.Errorf("product image usage reservation id is required")
+			}
+			return reservation.ReserveProductImageUsage(ctx, tenantID, reservationID, quantity)
 		}
-		return reservation.ReserveProductImageUsage(ctx, tenantID, reservationID, quantity)
 	}
 	return s.productImageUsage.AuthorizeProductImageUsage(ctx, tenantID, quantity)
 }

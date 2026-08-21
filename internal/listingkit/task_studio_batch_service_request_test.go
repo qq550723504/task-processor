@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"task-processor/internal/listingsubscription"
 	sdstemplate "task-processor/internal/sds/template"
 )
 
@@ -458,11 +457,11 @@ func TestTaskStudioBatchServiceHonorsGenerationUsageRolloutGate(t *testing.T) {
 		studioBatchTaskCandidate{CandidateKey: "candidate-rollout-denied", ImageStrategy: sheinImageStrategyAIGenerated},
 		1,
 	)
-	if !errors.Is(err, listingsubscription.ErrSubscriptionRequired) {
-		t.Fatalf("authorize error = %v, want rollout gate rejection", err)
+	if err != nil {
+		t.Fatalf("authorize error = %v, want legacy authorization outside rollout", err)
 	}
-	if len(usage.authorized) != 0 || len(usage.reserved) != 0 {
-		t.Fatalf("usage calls = authorized:%v reserved:%v, want no new admission", usage.authorized, usage.reserved)
+	if len(usage.authorized) != 1 || usage.authorized[0] != "tenant-rollout-denied:1" || len(usage.reserved) != 0 {
+		t.Fatalf("usage calls = authorized:%v reserved:%v, want legacy authorization only", usage.authorized, usage.reserved)
 	}
 }
 

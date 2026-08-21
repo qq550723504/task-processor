@@ -20,10 +20,6 @@ func (h *handler) GenerateStudioProductImages(c *gin.Context) {
 	}
 	releaseCtx := studioProductImageUsageReleaseContext(c)
 	requestTenant := requestTenantID(c)
-	if !studioProductImageUsageRolloutAllowed(h, requestTenant) {
-		writeStudioProductImageUsageAdmissionError(c, listingsubscription.ErrUsageLedgerNotConfigured)
-		return
-	}
 	ledgerAdmission := studioProductImageUsageLedgerEnabled(h, requestTenant)
 	reservationID := ""
 	if ledgerAdmission {
