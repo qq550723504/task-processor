@@ -20,6 +20,8 @@ var executeStudioDesignBatch = listingkit.ExecuteStudioDesignBatch
 
 var studioAsyncJobHeartbeatInterval = time.Minute
 
+var errStudioAsyncJobHeartbeatLost = errors.New("studio async job heartbeat lost")
+
 func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path string, body json.RawMessage, sessionID string, baseURL string, usageMetric string, usageReservationID string) {
 	startedAt := time.Now()
 	studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
@@ -29,10 +31,17 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		"body_bytes":   len(body),
 		"usage_metric": usageMetric,
 	})).Info("studio async job started")
+	jobCtx, cancelJob := context.WithCancelCause(ctx)
+	defer cancelJob(nil)
 	stopHeartbeat := make(chan struct{})
 	heartbeatDone := make(chan struct{})
-	if h.studioAsyncJobs != nil {
-		_ = h.studioAsyncJobs.heartbeat(ctx, jobID)
+	if h.studioAsyncJobs == nil {
+		close(heartbeatDone)
+	} else if heartbeatErr := h.studioAsyncJobs.heartbeat(ctx, jobID); heartbeatErr != nil {
+		studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{"job_id": jobID})).WithError(heartbeatErr).Warn("studio async job initial heartbeat failed")
+		cancelJob(errStudioAsyncJobHeartbeatLost)
+		close(heartbeatDone)
+	} else {
 		go func() {
 			defer close(heartbeatDone)
 			ticker := time.NewTicker(studioAsyncJobHeartbeatInterval)
@@ -42,6 +51,8 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 				case <-ticker.C:
 					if err := h.studioAsyncJobs.heartbeat(ctx, jobID); err != nil {
 						studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{"job_id": jobID})).WithError(err).Warn("studio async job heartbeat failed")
+						cancelJob(errStudioAsyncJobHeartbeatLost)
+						return
 					}
 				case <-stopHeartbeat:
 					return
@@ -51,9 +62,7 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 	}
 	defer func() {
 		close(stopHeartbeat)
-		if h.studioAsyncJobs != nil {
-			<-heartbeatDone
-		}
+		<-heartbeatDone
 	}()
 	var result any
 	var err error
@@ -67,7 +76,7 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 			status = http.StatusBadRequest
 			break
 		}
-		execution, callErr := executeStudioDesignBatch(ctx, h.studioMediaService, listingkit.StudioBatchGenerateExecutionInput{
+		execution, callErr := executeStudioDesignBatch(jobCtx, h.studioMediaService, listingkit.StudioBatchGenerateExecutionInput{
 			Request:   &req,
 			SessionID: sessionID,
 		})
@@ -94,7 +103,7 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 			status = http.StatusBadRequest
 			break
 		}
-		response, callErr := h.studioMediaService.GenerateStudioProductImages(ctx, &req)
+		response, callErr := h.studioMediaService.GenerateStudioProductImages(jobCtx, &req)
 		if callErr != nil {
 			err = callErr
 			break
@@ -108,6 +117,13 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 	default:
 		err = core.ErrTaskNotFound
 		status = http.StatusBadRequest
+	}
+	if err == nil && jobCtx.Err() != nil {
+		err = context.Cause(jobCtx)
+		if err == nil {
+			err = jobCtx.Err()
+		}
+		status = http.StatusInternalServerError
 	}
 
 	if err != nil {

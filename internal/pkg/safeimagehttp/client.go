@@ -35,6 +35,10 @@ type invalidPublicURLError struct{}
 
 func (*invalidPublicURLError) Error() string { return "public https url is required" }
 
+var resolvePublicImageHostIPs = func(ctx context.Context, host string) ([]net.IP, error) {
+	return net.DefaultResolver.LookupIP(ctx, "ip", host)
+}
+
 // NewPublicImageHTTPClient returns an HTTP client that validates both the
 // initial URL and every redirect, and dials only public IP addresses resolved
 // for the requested host.
@@ -55,7 +59,7 @@ func NewPublicImageHTTPClient() *http.Client {
 		if err != nil {
 			return nil, err
 		}
-		ips, err := net.LookupIP(host)
+		ips, err := resolvePublicImageHostIPs(ctx, host)
 		if err != nil {
 			return nil, err
 		}

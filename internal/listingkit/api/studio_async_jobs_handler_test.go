@@ -158,6 +158,58 @@ func TestRunStudioAsyncJobHeartbeatsBeforeLongProductImageGeneration(t *testing.
 	}
 }
 
+type failingHeartbeatStudioAsyncJobRepository struct {
+	listingkit.StudioAsyncJobRepository
+	failHeartbeat bool
+}
+
+func (r *failingHeartbeatStudioAsyncJobRepository) HeartbeatStudioAsyncJob(ctx context.Context, jobID string, updatedAt time.Time) error {
+	if r.failHeartbeat {
+		return errors.New("heartbeat temporarily unavailable")
+	}
+	return r.StudioAsyncJobRepository.HeartbeatStudioAsyncJob(ctx, jobID, updatedAt)
+}
+
+func TestRunStudioAsyncJobStopsWhenInitialHeartbeatFails(t *testing.T) {
+	ctx := listingkit.WithRequestIdentity(listingkit.WithTenantID(context.Background(), "tenant-heartbeat-failure"), listingkit.RequestIdentity{TenantID: "tenant-heartbeat-failure", UserID: "user-heartbeat-failure"})
+	baseRepo := listingkit.NewMemStudioAsyncJobRepository()
+	if err := baseRepo.CreateStudioAsyncJob(ctx, &listingkit.StudioAsyncJobRecord{
+		ID: "heartbeat-failure-job", TenantID: "tenant-heartbeat-failure", UserID: "user-heartbeat-failure", Path: "/studio/product-images",
+		Status: listingkit.StudioAsyncJobStatusRunning, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateStudioAsyncJob() error = %v", err)
+	}
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	media := &blockingStudioAsyncMediaService{stubStudioMediaHandlerService: &stubStudioMediaHandlerService{}, started: started, release: release}
+	h := &handler{
+		studioAsyncJobs:    &studioAsyncJobStore{repo: &failingHeartbeatStudioAsyncJobRepository{StudioAsyncJobRepository: baseRepo, failHeartbeat: true}},
+		studioMediaService: media,
+	}
+	done := make(chan struct{})
+	go func() {
+		h.runStudioAsyncJob(ctx, "heartbeat-failure-job", "/studio/product-images", json.RawMessage(`{}`), "", "", "", "")
+		close(done)
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("product-image generation did not start")
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("runStudioAsyncJob continued after heartbeat failure")
+	}
+	job, err := baseRepo.GetStudioAsyncJob(ctx, "heartbeat-failure-job")
+	if err != nil {
+		t.Fatalf("GetStudioAsyncJob() error = %v", err)
+	}
+	if job.Status != listingkit.StudioAsyncJobStatusFailed {
+		t.Fatalf("job status = %q, want failed after heartbeat loss", job.Status)
+	}
+}
+
 type orderedStudioAsyncJobRepository struct {
 	listingkit.StudioAsyncJobRepository
 	order *[]string
