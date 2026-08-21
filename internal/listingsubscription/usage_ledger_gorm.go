@@ -117,7 +117,7 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 			if err != nil {
 				return err
 			}
-			legacyUsage = unrepresentedLegacyUsage(legacyUsage, bucket.Committed, bucket.Reserved)
+			legacyUsage = unrepresentedLegacyUsage(legacyUsage, bucket.Committed)
 			if err := validateUsageReservation(input, bucket, limit, reservedForQuota, legacyUsage); err != nil {
 				return err
 			}
@@ -369,6 +369,26 @@ func (l *gormUsageLedger) ListEventsPage(ctx context.Context, limit, offset int)
 	}
 	var rows []usageEventRow
 	if err := l.repo.db.WithContext(ctx).Order("created_at ASC, event_id ASC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	events := make([]UsageEvent, 0, len(rows))
+	for _, row := range rows {
+		events = append(events, usageEventFromRow(row))
+	}
+	return events, nil
+}
+
+func (l *gormUsageLedger) ListEventsPageForReconciliation(ctx context.Context, tenantID, sourceType, metric string, limit, offset int) ([]UsageEvent, error) {
+	if limit <= 0 {
+		return []UsageEvent{}, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	var rows []usageEventRow
+	query := l.repo.db.WithContext(ctx).
+		Where("tenant_id = ? AND source_type = ? AND metric = ?", strings.TrimSpace(tenantID), strings.TrimSpace(sourceType), strings.TrimSpace(metric))
+	if err := query.Order("created_at ASC, event_id ASC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	events := make([]UsageEvent, 0, len(rows))

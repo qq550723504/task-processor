@@ -1184,3 +1184,31 @@ func TestGormUsageLedgerReserveDoesNotDoubleCountMirroredLegacyUsage(t *testing.
 		t.Fatalf("third Reserve() error = %v, want ErrUsageQuotaExceeded", err)
 	}
 }
+
+func TestGormUsageLedgerReserveDoesNotSubtractUnmirroredReservationsFromLegacyUsage(t *testing.T) {
+	ctx := context.Background()
+	db := openUsageLedgerTestDB(t)
+	repo := NewGormRepository(db)
+	seedUsageLedgerEntitlement(t, repo, "tenant-legacy-unmirrored", ModuleStudio, map[string]int{"product_image_jobs": 7})
+	if _, err := repo.IncrementUsage(ctx, "tenant-legacy-unmirrored", ModuleStudio, "2026-08", "product_image_jobs", 5); err != nil {
+		t.Fatalf("seed legacy usage: %v", err)
+	}
+	ledger := NewGormUsageLedger(repo)
+	input := func(key string) ReserveUsageInput {
+		return ReserveUsageInput{
+			TenantID: "tenant-legacy-unmirrored", ModuleCode: ModuleStudio,
+			Metric: usageMetricProductImageJobsSucceeded, LegacyUsageMetric: "product_image_jobs",
+			Quantity: 1, PeriodKey: "2026-08", SourceType: "listingkit_product_image",
+			SourceID: key, IdempotencyKey: key, OccurredAt: time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC),
+		}
+	}
+	if _, err := ledger.Reserve(ctx, input("unmirrored-1")); err != nil {
+		t.Fatalf("first Reserve() error = %v", err)
+	}
+	if _, err := ledger.Reserve(ctx, input("unmirrored-2")); err != nil {
+		t.Fatalf("second Reserve() error = %v", err)
+	}
+	if _, err := ledger.Reserve(ctx, input("unmirrored-3")); !errors.Is(err, ErrUsageQuotaExceeded) {
+		t.Fatalf("third Reserve() error = %v, want ErrUsageQuotaExceeded", err)
+	}
+}

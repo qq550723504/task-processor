@@ -356,24 +356,31 @@ func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context,
 
 // recoverStudioBatchTaskAfterLinkPersistenceFailure prevents a successfully
 // created task from running without a durable candidate link. The task is
-// terminally failed first, then its product-image reservation is released.
-// A best-effort failed link update leaves the candidate reclaimable if the
-// link repository becomes available later.
+// terminally failed before its product-image reservation is released. If task
+// termination is unavailable, retain the reservation and persist a durable
+// created link so a later retry can reconcile the still-live task.
 func (s *taskStudioBatchService) recoverStudioBatchTaskAfterLinkPersistenceFailure(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate, task *Task, linkErr error) error {
 	if s == nil || task == nil || strings.TrimSpace(task.ID) == "" {
 		return fmt.Errorf("created task link persistence failed without a task identity: %w", linkErr)
 	}
 	recoveryErrs := make([]error, 0, 3)
+	terminalized := false
 	if s.markTaskFailed == nil {
 		recoveryErrs = append(recoveryErrs, fmt.Errorf("mark created task failed: task repository is not configured"))
 	} else if err := s.markTaskFailed(ctx, task.ID, "studio batch task link persistence failed: "+linkErr.Error()); err != nil {
 		recoveryErrs = append(recoveryErrs, fmt.Errorf("mark created task %q failed: %w", task.ID, err))
+	} else {
+		terminalized = true
 	}
-	if err := s.persistStudioBatchTaskLink(ctx, candidate, task.ID, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, "task_link_persistence_failed", linkErr.Error()); err != nil {
-		recoveryErrs = append(recoveryErrs, fmt.Errorf("persist failed task link: %w", err))
-	}
-	if err := s.releaseStudioBatchProductImageUsage(ctx, batch, candidate, "task_link_persistence_failed"); err != nil {
-		recoveryErrs = append(recoveryErrs, fmt.Errorf("release product image usage: %w", err))
+	if terminalized {
+		if err := s.persistStudioBatchTaskLink(ctx, candidate, task.ID, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, "task_link_persistence_failed", linkErr.Error()); err != nil {
+			recoveryErrs = append(recoveryErrs, fmt.Errorf("persist failed task link: %w", err))
+		}
+		if err := s.releaseStudioBatchProductImageUsage(ctx, batch, candidate, "task_link_persistence_failed"); err != nil {
+			recoveryErrs = append(recoveryErrs, fmt.Errorf("release product image usage: %w", err))
+		}
+	} else if err := s.persistStudioBatchTaskLink(ctx, candidate, task.ID, studioBatchTaskLinkStatusCreated, studioBatchTaskLinkSourceBatchCreated, "task_link_persistence_retryable", linkErr.Error()); err != nil {
+		recoveryErrs = append(recoveryErrs, fmt.Errorf("persist retryable task link: %w", err))
 	}
 	return errors.Join(recoveryErrs...)
 }

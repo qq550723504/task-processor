@@ -118,14 +118,11 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 		return fmt.Errorf("tenant id is required for product image usage reconciliation")
 	}
 	for offset := 0; ; offset += pageSize {
-		events, err := h.subscriptionService.ListUsageEventPage(ctx, pageSize, offset)
+		events, err := h.subscriptionService.ListUsageEventPageForReconciliation(ctx, tenantID, "listingkit_product_image", studioProductImageLedgerMetric, pageSize, offset)
 		if err != nil {
 			return err
 		}
 		for _, event := range events {
-			if event.TenantID != tenantID || event.SourceType != "listingkit_product_image" || event.Metric != studioProductImageLedgerMetric {
-				continue
-			}
 			if event.Status == listingsubscription.UsageEventReserved && event.Metadata[studioProductImageReleasePendingMetadataKey] == "1" {
 				if _, releaseErr := h.subscriptionService.ReleaseUsage(ctx, event.EventID, "retry_pending_api_release"); releaseErr != nil {
 					return releaseErr
@@ -226,6 +223,10 @@ func writeStudioProductImageUsageAdmissionError(c *gin.Context, err error) {
 			Used:       int(quotaErr.CommittedUsage + quotaErr.ReservedUsage + quotaErr.Quantity),
 			Reason:     "quota_exceeded",
 		})
+		return
+	}
+	if errors.Is(err, listingsubscription.ErrSubscriptionQuotaExceed) {
+		writeQuotaExceeded(c, listingsubscription.GuardResult{ModuleCode: listingsubscription.ModuleStudio, Metric: studioProductImageLedgerMetric, Reason: "quota_exceeded"})
 		return
 	}
 	if errors.Is(err, listingsubscription.ErrUsageQuotaExceeded) {

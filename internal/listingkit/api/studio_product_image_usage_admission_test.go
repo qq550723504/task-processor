@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -49,6 +50,18 @@ func TestReserveStudioProductImageUsageIncludesLegacyAggregateUsage(t *testing.T
 	_, err := h.reserveStudioProductImageUsage(newStudioProductImageAdmissionContext("tenant-pre-ledger"), "request-1")
 	if !errors.Is(err, listingsubscription.ErrSubscriptionQuotaExceed) {
 		t.Fatalf("reserve error = %v, want legacy quota exceeded", err)
+	}
+}
+
+func TestWriteStudioProductImageUsageAdmissionErrorMapsLegacyQuotaToPaymentRequired(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	writeStudioProductImageUsageAdmissionError(c, listingsubscription.ErrSubscriptionQuotaExceed)
+	if recorder.Code != http.StatusPaymentRequired {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusPaymentRequired)
+	}
+	if !strings.Contains(recorder.Body.String(), `"error":"quota_exceeded"`) {
+		t.Fatalf("body = %s, want quota_exceeded", recorder.Body.String())
 	}
 }
 

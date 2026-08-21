@@ -99,7 +99,7 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 	if err != nil {
 		return ReserveUsageResult{}, err
 	}
-	legacyUsage = unrepresentedLegacyUsage(legacyUsage, bucket.committed, bucket.reserved)
+	legacyUsage = unrepresentedLegacyUsage(legacyUsage, bucket.committed)
 	if err := validateMemUsageReservation(input, bucket, limit, reservedForQuota, legacyUsage); err != nil {
 		return ReserveUsageResult{}, err
 	}
@@ -285,6 +285,39 @@ func (l *memUsageLedger) ListEventsPage(ctx context.Context, limit, offset int) 
 	defer l.mu.Unlock()
 	events := make([]UsageEvent, 0, len(l.eventsByID))
 	for _, record := range l.eventsByID {
+		events = append(events, cloneMemUsageEvent(record.event))
+	}
+	sort.Slice(events, func(i, j int) bool {
+		if events[i].CreatedAt.Equal(events[j].CreatedAt) {
+			return events[i].EventID < events[j].EventID
+		}
+		return events[i].CreatedAt.Before(events[j].CreatedAt)
+	})
+	if offset >= len(events) {
+		return []UsageEvent{}, nil
+	}
+	events = events[offset:]
+	if len(events) > limit {
+		events = events[:limit]
+	}
+	return events, nil
+}
+
+func (l *memUsageLedger) ListEventsPageForReconciliation(ctx context.Context, tenantID, sourceType, metric string, limit, offset int) ([]UsageEvent, error) {
+	_ = ctx
+	if limit <= 0 {
+		return []UsageEvent{}, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	events := make([]UsageEvent, 0, len(l.eventsByID))
+	for _, record := range l.eventsByID {
+		if record.event.TenantID != strings.TrimSpace(tenantID) || record.event.SourceType != strings.TrimSpace(sourceType) || record.event.Metric != strings.TrimSpace(metric) {
+			continue
+		}
 		events = append(events, cloneMemUsageEvent(record.event))
 	}
 	sort.Slice(events, func(i, j int) bool {

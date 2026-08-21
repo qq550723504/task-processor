@@ -347,3 +347,9 @@ type UsageLedgerEventLister interface {
 type UsageLedgerEventPager interface {
 	ListEventsPage(ctx context.Context, limit, offset int) ([]UsageEvent, error)
 }
+
+// UsageLedgerReconciliationEventPager lets reconciliation fetch only the
+// tenant and adapter-owned event slice it can actually repair.
+type UsageLedgerReconciliationEventPager interface {
+	ListEventsPageForReconciliation(ctx context.Context, tenantID, sourceType, metric string, limit, offset int) ([]UsageEvent, error)
+}
