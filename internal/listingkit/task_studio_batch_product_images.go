@@ -64,6 +64,10 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 		return err
 	}
 	colorRepresentatives := studioBatchTaskColorRepresentatives(candidate.SelectionSnapshot)
+	productImageGenerationCount := len(colorRepresentatives)
+	if productImageGenerationCount == 0 {
+		productImageGenerationCount = 1
+	}
 	if len(colorRepresentatives) > 1 {
 		productImageRequest.ProductReferenceImageURLs = studioBatchTaskProductReferenceImageURLsForVariant(candidate.SelectionSnapshot, colorRepresentatives[0])
 	}
@@ -75,9 +79,9 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 		firstProductImageRequest = cloneStudioBatchProductImageRequest(productImageRequest)
 		appendStudioProductImageColorDirective(firstProductImageRequest, colorRepresentatives[0].Color)
 	}
-	if err := s.authorizeStudioBatchProductImageUsage(ctx, batch, 1); err != nil {
+	if err := s.authorizeStudioBatchProductImageUsage(ctx, batch, productImageGenerationCount); err != nil {
 		_ = heartbeatStop()
-		return fmt.Errorf("authorize studio product image usage: %w", err)
+		return fmt.Errorf("authorize studio product image usage for %d generation jobs: %w", productImageGenerationCount, err)
 	}
 	response, err := s.generateProductImages(ctx, firstProductImageRequest)
 	if err != nil {
@@ -94,10 +98,11 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 		_ = heartbeatStop()
 		return err
 	}
-	if err := s.recordStudioBatchProductImageUsage(ctx, batch, 1); err != nil {
-		_ = heartbeatStop()
-		return fmt.Errorf("record studio product image usage: %w", err)
-	}
+	// The generated output is already available. Do not discard it when the
+	// best-effort usage ledger write is temporarily unavailable; the durable
+	// task/link can still retain the successful product images for retry or
+	// reconciliation.
+	_ = s.recordStudioBatchProductImageUsage(ctx, batch, 1)
 	request.Options.SheinStudio.ProductImageURLs = productImageURLs
 	if len(colorRepresentatives) > 1 {
 		request.Options.SheinStudio.VariantProductImages = append(request.Options.SheinStudio.VariantProductImages, SheinStudioVariantImageSet{
@@ -114,10 +119,6 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 				fmt.Sprintf("Generate the product image for the SDS color variant %q. Keep the approved artwork identical, but match the base product color and material from this variant's SDS reference image.", firstNonEmpty(strings.TrimSpace(variant.Color), "this color variant")),
 			}, "\n"))
 			appendStudioProductImageColorDirective(variantRequest, variant.Color)
-			if err := s.authorizeStudioBatchProductImageUsage(ctx, batch, 1); err != nil {
-				_ = heartbeatStop()
-				return fmt.Errorf("authorize studio product image usage for color %q: %w", variant.Color, err)
-			}
 			variantResponse, variantErr := s.generateProductImages(ctx, variantRequest)
 			if variantErr != nil {
 				_ = heartbeatStop()
@@ -133,10 +134,7 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 				_ = heartbeatStop()
 				return fmt.Errorf("publicize studio product images for color %q: %w", variant.Color, variantErr)
 			}
-			if variantErr = s.recordStudioBatchProductImageUsage(ctx, batch, 1); variantErr != nil {
-				_ = heartbeatStop()
-				return fmt.Errorf("record studio product image usage for color %q: %w", variant.Color, variantErr)
-			}
+			_ = s.recordStudioBatchProductImageUsage(ctx, batch, 1)
 			request.Options.SheinStudio.VariantProductImages = append(request.Options.SheinStudio.VariantProductImages, SheinStudioVariantImageSet{
 				VariantSKU: variant.VariantSKU,
 				Color:      variant.Color,
@@ -209,18 +207,16 @@ func appendStudioProductImageColorDirective(request *StudioProductImageRequest, 
 			directive,
 		}, "\n"))
 	}
-	if len(request.ImagePrompts) == 0 {
-		if strings.TrimSpace(request.CustomPrompt) != "" {
-			request.CustomPrompt = strings.TrimSpace(strings.Join([]string{
-				strings.TrimSpace(request.CustomPrompt),
-				directive,
-			}, "\n"))
-		} else {
-			request.Prompt = strings.TrimSpace(strings.Join([]string{
-				strings.TrimSpace(request.Prompt),
-				directive,
-			}, "\n"))
-		}
+	if strings.TrimSpace(request.CustomPrompt) != "" {
+		request.CustomPrompt = strings.TrimSpace(strings.Join([]string{
+			strings.TrimSpace(request.CustomPrompt),
+			directive,
+		}, "\n"))
+	} else {
+		request.Prompt = strings.TrimSpace(strings.Join([]string{
+			strings.TrimSpace(request.Prompt),
+			directive,
+		}, "\n"))
 	}
 }
 
@@ -261,6 +257,35 @@ func (s *taskStudioBatchService) startStudioBatchTaskLinkHeartbeat(
 ) func() error {
 	_, stop := s.startStudioBatchTaskLinkHeartbeatContext(ctx, candidate, interval)
 	return stop
+}
+
+func (s *taskStudioBatchService) revalidateStudioBatchTaskLinkLease(ctx context.Context, candidate studioBatchTaskCandidate) error {
+	claimToken := strings.TrimSpace(candidate.ClaimToken)
+	if claimToken == "" {
+		// Legacy candidates created before lease tokens were introduced do not
+		// have an ownership predicate to revalidate. Keep their existing path;
+		// token-bearing candidates below are always checked synchronously.
+		return nil
+	}
+	if s == nil || s.batchTaskLinkRepo == nil {
+		return fmt.Errorf("studio batch task link repository is not configured")
+	}
+	leaseRepo, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkLeaseRepository)
+	if !ok {
+		return fmt.Errorf("studio batch task link repository does not support lease refresh")
+	}
+	updatedAt := time.Now().UTC()
+	if s.currentTime != nil {
+		updatedAt = s.currentTime().UTC()
+	}
+	refreshed, err := leaseRepo.RefreshStudioBatchTaskLink(DetachedRequestContext(ctx), candidate.CandidateKey, claimToken, updatedAt)
+	if err != nil {
+		return fmt.Errorf("refresh studio batch task claim before create: %w", err)
+	}
+	if !refreshed {
+		return fmt.Errorf("studio batch task claim is no longer owned")
+	}
+	return nil
 }
 
 func (s *taskStudioBatchService) startStudioBatchTaskLinkHeartbeatContext(

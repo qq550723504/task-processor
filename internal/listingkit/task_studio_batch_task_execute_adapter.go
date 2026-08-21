@@ -140,6 +140,10 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				}
 				return SheinStudioCreatedTask{}, err
 			}
+			if err := s.revalidateStudioBatchTaskLinkLease(dispatchCtx, taskCandidate); err != nil {
+				_ = dispatchHeartbeatStop()
+				return SheinStudioCreatedTask{}, err
+			}
 			task, err := s.createGenerateTask(
 				dispatchCtx,
 				generateRequest,

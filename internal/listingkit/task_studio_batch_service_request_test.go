@@ -231,6 +231,51 @@ func TestAppendStudioProductImageColorDirectiveAugmentsRawRolePrompt(t *testing.
 	}
 }
 
+func TestAppendStudioProductImageColorDirectiveAugmentsUnconfiguredRawRoleFallback(t *testing.T) {
+	t.Parallel()
+
+	request := &StudioProductImageRequest{
+		PromptMode:   "raw",
+		Prompt:       "fallback raw prompt",
+		CustomPrompt: "global raw prompt",
+		ImagePrompts: []StudioProductImagePrompt{{Role: "main", Prompt: "main role prompt"}},
+	}
+	appendStudioProductImageColorDirective(request, "Red")
+	fallbackPrompt := buildRawStudioProductImagePrompt(request, studioProductImageRole{Key: "detail"})
+	if !strings.Contains(fallbackPrompt, "fallback raw prompt") && !strings.Contains(fallbackPrompt, "global raw prompt") {
+		t.Fatalf("fallback raw role prompt = %q, want configured fallback prompt", fallbackPrompt)
+	}
+	if !strings.Contains(fallbackPrompt, "Red") {
+		t.Fatalf("fallback raw role prompt = %q, want Red directive", fallbackPrompt)
+	}
+}
+
+func TestBuildStudioBatchTaskCandidateKeyIncludesAIGeneratedSelectionInputs(t *testing.T) {
+	t.Parallel()
+
+	candidate := studioBatchTaskCandidate{
+		Item:          StudioBatchItemRecord{ID: "item-1"},
+		Design:        StudioMaterializedDesignRecord{ID: "design-1"},
+		SelectionID:   "selection-1",
+		ImageStrategy: sheinImageStrategyAIGenerated,
+		SelectionSnapshot: SheinStudioSelection{
+			ProductName: "Canvas Tote",
+			Variants: []SheinStudioSelectionVariant{{
+				VariantSKU:             "red-s",
+				Color:                  "Red",
+				MockupImageURL:         "https://example.com/red.png",
+				SizeReferenceImageURLs: []string{"https://example.com/red-size.png"},
+			}},
+		},
+	}
+	first := buildStudioBatchTaskCandidateKey(WithTenantID(context.Background(), "tenant-1"), &StudioBatchRecord{ID: "batch-1"}, candidate)
+	candidate.SelectionSnapshot.ProductName = "Updated Canvas Tote"
+	second := buildStudioBatchTaskCandidateKey(WithTenantID(context.Background(), "tenant-1"), &StudioBatchRecord{ID: "batch-1"}, candidate)
+	if first == second {
+		t.Fatalf("candidate keys unexpectedly match after product-image input changed: %q", first)
+	}
+}
+
 func TestStudioProductImageCategoryPathUsesSDSCategoryNames(t *testing.T) {
 	t.Parallel()
 
@@ -290,8 +335,8 @@ func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
 	if len(requests) != 2 {
 		t.Fatalf("captured product image requests = %d, want 2", len(requests))
 	}
-	if len(usage.authorized) != 2 || len(usage.recorded) != 2 {
-		t.Fatalf("product image usage = authorized:%v recorded:%v, want one authorization and record per color", usage.authorized, usage.recorded)
+	if len(usage.authorized) != 1 || usage.authorized[0] != "tenant-a:2" || len(usage.recorded) != 2 {
+		t.Fatalf("product image usage = authorized:%v recorded:%v, want one authorization for both colors and one record per color", usage.authorized, usage.recorded)
 	}
 	firstPrompt := buildRawStudioProductImagePrompt(requests[0], defaultStudioProductImageRoles[0])
 	secondPrompt := buildRawStudioProductImagePrompt(requests[1], defaultStudioProductImageRoles[0])
@@ -306,6 +351,30 @@ func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
 	}
 	if got := request.Options.SheinStudio.VariantProductImages[1].Color; got != "Blue" {
 		t.Fatalf("second variant color = %q, want Blue", got)
+	}
+}
+
+func TestTaskStudioBatchServiceKeepsGeneratedImagesWhenUsageRecordFails(t *testing.T) {
+	t.Parallel()
+
+	usage := &recordingStudioProductImageUsage{recordErr: errors.New("usage ledger unavailable")}
+	service := &taskStudioBatchService{
+		productImageUsage: usage,
+		generateProductImages: func(context.Context, *StudioProductImageRequest) (*StudioProductImageResponse, error) {
+			return &StudioProductImageResponse{Images: []StudioGeneratedImage{{ImageURL: "https://cdn.example.com/generated.png"}}}, nil
+		},
+	}
+	request := buildStudioBatchTaskGenerateRequest(
+		&SheinStudioSession{Prompt: "retro", ImageStrategy: sheinImageStrategyAIGenerated},
+		&StudioBatchRecord{ID: "batch-usage-record-failure", TenantID: "tenant-a"},
+		studioBatchTaskCandidate{ImageStrategy: sheinImageStrategyAIGenerated, SelectionSnapshot: SheinStudioSelection{ProductName: "Canvas Tote"}},
+		StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
+	)
+	if err := service.attachStudioBatchProductImages(context.Background(), request, nil, &StudioBatchRecord{ID: "batch-usage-record-failure", TenantID: "tenant-a"}, studioBatchTaskCandidate{ImageStrategy: sheinImageStrategyAIGenerated, SelectionSnapshot: SheinStudioSelection{ProductName: "Canvas Tote"}}, StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"}); err != nil {
+		t.Fatalf("attachStudioBatchProductImages() error = %v, want generated output retained", err)
+	}
+	if got := request.Options.SheinStudio.ProductImageURLs; len(got) != 1 || got[0] != "https://cdn.example.com/generated.png" {
+		t.Fatalf("product image URLs = %v, want generated output despite usage record failure", got)
 	}
 }
 
@@ -345,6 +414,7 @@ func TestTaskStudioBatchServicePublicizesGeneratedUploadPaths(t *testing.T) {
 type recordingStudioProductImageUsage struct {
 	authorized []string
 	recorded   []string
+	recordErr  error
 }
 
 func (u *recordingStudioProductImageUsage) AuthorizeProductImageUsage(_ context.Context, tenantID string, quantity int) error {
@@ -354,7 +424,7 @@ func (u *recordingStudioProductImageUsage) AuthorizeProductImageUsage(_ context.
 
 func (u *recordingStudioProductImageUsage) RecordProductImageUsage(_ context.Context, tenantID string, quantity int) error {
 	u.recorded = append(u.recorded, tenantID+":"+strconv.Itoa(quantity))
-	return nil
+	return u.recordErr
 }
 
 func TestTaskStudioBatchServiceProductImageRequestLoadsSDSCategoryPath(t *testing.T) {
@@ -429,6 +499,25 @@ func TestStudioBatchTaskLinkHeartbeatRejectsReclaimedClaimToken(t *testing.T) {
 	}
 	if refreshed {
 		t.Fatal("old claim token unexpectedly refreshed a reclaimed link")
+	}
+}
+
+func TestStudioBatchTaskLeaseRevalidationRejectsReclaimedClaimToken(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	links := NewMemStudioBatchTaskLinkRepository()
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-1", CandidateKey: "candidate-1", ClaimToken: "new-owner", Status: studioBatchTaskLinkStatusCreating,
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	service := &taskStudioBatchService{batchTaskLinkRepo: links, currentTime: func() time.Time { return time.Unix(100, 0).UTC() }}
+	err := service.revalidateStudioBatchTaskLinkLease(ctx, studioBatchTaskCandidate{
+		CandidateKey: "candidate-1", ClaimToken: "old-owner",
+	})
+	if err == nil || !strings.Contains(err.Error(), "no longer owned") {
+		t.Fatalf("revalidateStudioBatchTaskLinkLease() error = %v, want lease-loss error", err)
 	}
 }
 

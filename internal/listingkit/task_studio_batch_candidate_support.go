@@ -473,8 +473,42 @@ func buildStudioBatchTaskCandidateKey(ctx context.Context, batch *StudioBatchRec
 		if settingsFingerprint != "" {
 			normalized += "|product_image_settings=" + settingsFingerprint
 		}
+		if productImageInputsFingerprint := studioBatchTaskProductImageInputsFingerprint(candidate.SelectionSnapshot); productImageInputsFingerprint != "" {
+			normalized += "|product_image_inputs=" + productImageInputsFingerprint
+		}
 	}
 	sum := sha256.Sum256([]byte(normalized))
+	return hex.EncodeToString(sum[:])
+}
+
+func studioBatchTaskProductImageInputsFingerprint(selection SheinStudioSelection) string {
+	type variantInput struct {
+		VariantSKU    string   `json:"variant_sku,omitempty"`
+		Color         string   `json:"color,omitempty"`
+		ReferenceURLs []string `json:"reference_urls,omitempty"`
+	}
+	representatives := studioBatchTaskColorRepresentatives(selection)
+	variants := make([]variantInput, 0, len(representatives))
+	for _, variant := range representatives {
+		variants = append(variants, variantInput{
+			VariantSKU:    strings.TrimSpace(variant.VariantSKU),
+			Color:         strings.TrimSpace(variant.Color),
+			ReferenceURLs: studioBatchTaskProductReferenceImageURLsForVariant(selection, variant),
+		})
+	}
+	payload, err := json.Marshal(struct {
+		ProductName   string         `json:"product_name,omitempty"`
+		ReferenceURLs []string       `json:"reference_urls,omitempty"`
+		Variants      []variantInput `json:"variants,omitempty"`
+	}{
+		ProductName:   strings.TrimSpace(selection.ProductName),
+		ReferenceURLs: studioBatchTaskProductReferenceImageURLs(selection),
+		Variants:      variants,
+	})
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
 }
 
