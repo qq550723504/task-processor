@@ -387,6 +387,29 @@ func TestStudioBatchTaskLinkHeartbeatCancelsDispatchContextOnLeaseLoss(t *testin
 	}
 }
 
+func TestStudioBatchTaskLinkHeartbeatSurvivesCallerCancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(WithTenantID(context.Background(), "tenant-a"))
+	links := NewMemStudioBatchTaskLinkRepository()
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-1", CandidateKey: "candidate-1", ClaimToken: "owner-a", Status: studioBatchTaskLinkStatusCreating,
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	service := &taskStudioBatchService{batchTaskLinkRepo: links, currentTime: time.Now}
+	heartbeatCtx, stop := service.startStudioBatchTaskLinkHeartbeatContext(ctx, studioBatchTaskCandidate{
+		CandidateKey: "candidate-1", ClaimToken: "owner-a",
+	}, 50*time.Millisecond)
+	cancel()
+	select {
+	case <-heartbeatCtx.Done():
+		t.Fatal("heartbeat context canceled with caller context")
+	case <-time.After(10 * time.Millisecond):
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("heartbeat stop error = %v", err)
+	}
+}
+
 func TestStudioBatchTaskHeartbeatTerminalStateRequiresMatchingClaim(t *testing.T) {
 	ctx := WithTenantID(context.Background(), "tenant-a")
 	links := NewMemStudioBatchTaskLinkRepository()

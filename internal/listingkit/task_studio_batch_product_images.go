@@ -180,7 +180,11 @@ func (s *taskStudioBatchService) startStudioBatchTaskLinkHeartbeatContext(
 	if !ok || strings.TrimSpace(candidate.ClaimToken) == "" {
 		return ctx, func() error { return fmt.Errorf("studio batch task claim lease token is unavailable") }
 	}
-	heartbeatCtx, cancel := context.WithCancel(ctx)
+	// The caller may disconnect while inline task execution is still expected
+	// to finish. Keep the lease heartbeat and dispatch alive independently of
+	// that request context; refresh failure remains the explicit cancellation
+	// signal for a lost claim.
+	heartbeatCtx, cancel := context.WithCancel(DetachedRequestContext(ctx))
 	done := make(chan struct{})
 	errCh := make(chan error, 1)
 	refresh := func() error {

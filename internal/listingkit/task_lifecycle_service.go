@@ -2,6 +2,7 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -51,6 +52,11 @@ func (s *taskLifecycleService) CreateGenerateTask(ctx context.Context, req *Gene
 	}
 	dispatched, err := s.dispatchGenerateTask(ctx, task)
 	if err != nil {
+		if task != nil && errors.Is(err, context.Canceled) {
+			if persistErr := markFailedTaskState(DetachedRequestContext(ctx), s.repo, task.ID, err.Error()); persistErr != nil {
+				return task, errors.Join(err, fmt.Errorf("failed to persist canceled task failure: %w", persistErr))
+			}
+		}
 		return task, err
 	}
 	return dispatched, nil

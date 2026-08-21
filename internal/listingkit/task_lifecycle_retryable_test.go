@@ -332,6 +332,42 @@ func TestCreateGenerateTaskMarksNonRetryableSubmitFailureAsFailed(t *testing.T) 
 	}
 }
 
+func TestCreateGenerateTaskMarksLeaseCanceledInlineTaskFailed(t *testing.T) {
+	t.Parallel()
+
+	repo := newRetryableLifecycleTestRepo()
+	ctx, cancel := context.WithCancel(context.Background())
+	lifecycle := newTaskLifecycleService(taskLifecycleServiceConfig{
+		repo: repo,
+		processListingKit: func(runCtx context.Context, _ *Task) (*ListingKitResult, error) {
+			cancel()
+			return nil, runCtx.Err()
+		},
+	})
+
+	_, err := lifecycle.CreateGenerateTask(withTaskDispatchCancellation(ctx), &GenerateRequest{
+		Text:      "lease-canceled inline task",
+		Platforms: []string{"amazon"},
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("CreateGenerateTask() error = %v, want context.Canceled", err)
+	}
+	taskID := repo.onlyTaskID(t)
+	if repo.failedTaskID != taskID {
+		t.Fatalf("MarkFailed task ID = %q, want %q", repo.failedTaskID, taskID)
+	}
+	if repo.failedCtx == nil || repo.failedCtxErr != nil {
+		t.Fatalf("MarkFailed context = %v (err at call=%v), want live detached context", repo.failedCtx, repo.failedCtxErr)
+	}
+	stored, getErr := repo.GetTask(context.Background(), taskID)
+	if getErr != nil {
+		t.Fatalf("GetTask() error = %v", getErr)
+	}
+	if stored.Status != core.TaskStatusFailed {
+		t.Fatalf("stored status = %q, want %q", stored.Status, core.TaskStatusFailed)
+	}
+}
+
 func TestCreateGenerateTaskReturnsPersistenceErrorWhenSubmitFailureCannotBeStored(t *testing.T) {
 	t.Parallel()
 
@@ -361,6 +397,7 @@ type retryableLifecycleTestRepo struct {
 	failedTaskID  string
 	failedError   string
 	failedCtx     context.Context
+	failedCtxErr  error
 	failedErr     error
 	blockedTaskID string
 	blockedError  string
@@ -449,6 +486,7 @@ func (r *retryableLifecycleTestRepo) MarkFailed(ctx context.Context, taskID stri
 	r.failedTaskID = taskID
 	r.failedError = errorMsg
 	r.failedCtx = ctx
+	r.failedCtxErr = ctx.Err()
 	if r.failedErr != nil {
 		return r.failedErr
 	}
