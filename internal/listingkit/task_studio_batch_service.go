@@ -406,7 +406,8 @@ func (s *taskStudioBatchService) rejectStudioBackgroundRemovalForOwnedTasks(ctx 
 		targetDesignIDs[strings.TrimSpace(designID)] = struct{}{}
 	}
 	for _, link := range links {
-		if strings.TrimSpace(link.ListingKitTaskID) == "" {
+		if strings.TrimSpace(link.ListingKitTaskID) == "" &&
+			(link.Status != studioBatchTaskLinkStatusCreating || s.studioBatchTaskLinkIsStale(&link)) {
 			continue
 		}
 		designID := strings.TrimSpace(link.DesignID)

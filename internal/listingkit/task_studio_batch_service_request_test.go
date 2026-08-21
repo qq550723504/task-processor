@@ -753,6 +753,33 @@ func TestTaskStudioBatchServiceProductImageRequestUsesCandidateCategorySnapshot(
 	}
 }
 
+func TestTaskStudioBatchServiceRevalidatesDesignAfterProductImageGeneration(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	repo := NewMemStudioBatchRepository()
+	now := time.Now().UTC()
+	if err := repo.CreateStudioBatchGraph(ctx, &StudioBatchRecord{ID: "batch-revalidate", CreatedAt: now, UpdatedAt: now}, []StudioBatchItemRecord{{ID: "item-revalidate", BatchID: "batch-revalidate", CreatedAt: now, UpdatedAt: now}}, nil, []StudioMaterializedDesignRecord{{
+		ID: "design-revalidate", BatchID: "batch-revalidate", ItemID: "item-revalidate", ImageURL: "https://cdn.example.test/old.png", UpdatedAt: now,
+	}}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+	service := &taskStudioBatchService{repo: repo}
+	candidate := studioBatchTaskCandidate{Design: StudioMaterializedDesignRecord{ID: "design-revalidate", BatchID: "batch-revalidate", ImageURL: "https://cdn.example.test/old.png", UpdatedAt: now}}
+	if err := service.revalidateStudioBatchTaskDesign(ctx, candidate); err != nil {
+		t.Fatalf("revalidateStudioBatchTaskDesign() unchanged error = %v", err)
+	}
+	changed := candidate.Design
+	changed.ImageURL = "https://cdn.example.test/new.png"
+	changed.UpdatedAt = now.Add(time.Second)
+	if err := repo.UpdateStudioMaterializedDesign(ctx, &changed); err != nil {
+		t.Fatalf("UpdateStudioMaterializedDesign() error = %v", err)
+	}
+	if err := service.revalidateStudioBatchTaskDesign(ctx, candidate); err == nil {
+		t.Fatal("revalidateStudioBatchTaskDesign() error = nil, want changed-design error")
+	}
+}
+
 func TestTaskStudioBatchServiceReleasesStaleProductImageReservationAfterReclaim(t *testing.T) {
 	t.Parallel()
 

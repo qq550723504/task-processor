@@ -102,7 +102,7 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 		return fmt.Errorf("product image usage reservation is no longer active")
 	}
 	if result.Existing {
-		if result.Event.Metadata[legacyMirrorMetadataKey] != legacyMirrorPending {
+		if result.Event.Metadata[legacyMirrorMetadataKey] == legacyMirrorSettled {
 			return nil
 		}
 		if _, _, err := a.service.RecordUsageForPeriodOnce(ctx, billingTenant, studioProductImageModule, studioProductImageMetric, result.Event.PeriodKey, quantity, legacyMirrorOperationKey(result.Event.EventID, "reserve")); err != nil {
@@ -162,7 +162,7 @@ func (a *subscriptionStudioProductImageUsage) ReleaseProductImageUsage(ctx conte
 	if event == nil {
 		return nil
 	}
-	legacyMirrorSettledForEvent := event.Quantity > 0 && event.Metadata[legacyMirrorMetadataKey] != legacyMirrorPending
+	legacyMirrorSettledForEvent := event.Quantity > 0 && event.Metadata[legacyMirrorMetadataKey] == legacyMirrorSettled
 	if event.Status == listingsubscription.UsageEventReleased {
 		if !legacyMirrorSettledForEvent {
 			return nil

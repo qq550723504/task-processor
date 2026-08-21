@@ -201,6 +201,18 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				}
 				return SheinStudioCreatedTask{}, err
 			}
+			if err := s.revalidateStudioBatchTaskDesign(dispatchCtx, taskCandidate); err != nil {
+				persistErr := s.persistStudioBatchTaskLink(dispatchCtx, taskCandidate, "", studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, "design_changed_during_generation", err.Error())
+				releaseErr := s.releaseStudioBatchProductImageUsage(context.WithoutCancel(dispatchCtx), candidate.state.Batch, taskCandidate, "design_changed_during_generation")
+				_ = dispatchHeartbeatStop()
+				if releaseErr != nil {
+					err = errors.Join(err, fmt.Errorf("release product image usage: %w", releaseErr))
+				}
+				if persistErr != nil {
+					return SheinStudioCreatedTask{}, errors.Join(persistErr, err)
+				}
+				return SheinStudioCreatedTask{}, err
+			}
 			if err := s.revalidateStudioBatchTaskLinkLease(dispatchCtx, taskCandidate); err != nil {
 				releaseErr := s.releaseStudioBatchProductImageUsage(context.WithoutCancel(dispatchCtx), candidate.state.Batch, taskCandidate, "lease_lost")
 				_ = dispatchHeartbeatStop()
@@ -308,6 +320,32 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			return s.completeStudioBatchTaskExecution(ctx, batchID, session, state.Batch, created, state.RejectedTasks, allFailed, shouldMarkTasksCreated)
 		},
 	})
+}
+
+// revalidateStudioBatchTaskDesign closes the race between reading the approved
+// design and completing the potentially long product-image generation call.
+// A background-removal retry may replace the image while generation is in
+// flight; generated output for that superseded design must never be linked to
+// a newly created ListingKit task.
+func (s *taskStudioBatchService) revalidateStudioBatchTaskDesign(ctx context.Context, candidate studioBatchTaskCandidate) error {
+	if s == nil || s.repo == nil {
+		return fmt.Errorf("studio batch repository is not configured")
+	}
+	designs, err := s.repo.ListStudioMaterializedDesignsByIDs(ctx, candidate.Design.BatchID, []string{candidate.Design.ID})
+	if err != nil {
+		return fmt.Errorf("revalidate studio design %s: %w", strings.TrimSpace(candidate.Design.ID), err)
+	}
+	if len(designs) != 1 {
+		return fmt.Errorf("studio design %s is no longer available", strings.TrimSpace(candidate.Design.ID))
+	}
+	latest := designs[0]
+	if strings.TrimSpace(latest.ImageURL) != strings.TrimSpace(candidate.Design.ImageURL) ||
+		strings.TrimSpace(latest.OriginalImageURL) != strings.TrimSpace(candidate.Design.OriginalImageURL) ||
+		latest.BackgroundRemovalStatus != candidate.Design.BackgroundRemovalStatus ||
+		(!candidate.Design.UpdatedAt.IsZero() && !latest.UpdatedAt.Equal(candidate.Design.UpdatedAt)) {
+		return fmt.Errorf("studio design %s changed while product images were generating", strings.TrimSpace(candidate.Design.ID))
+	}
+	return nil
 }
 
 func isTerminalStudioBatchGeneratedTask(task *Task) bool {

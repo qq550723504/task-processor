@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"task-processor/internal/listingsubscription"
 	"task-processor/internal/tenantbridge"
@@ -285,6 +286,95 @@ func TestSubscriptionStudioProductImageUsageRetriesPendingLegacyMirrorOnExisting
 	for _, counter := range usage {
 		if counter.Metric == studioProductImageMetric && counter.Used != 1 {
 			t.Fatalf("legacy mirror usage = %d, want one after pending retry", counter.Used)
+		}
+	}
+}
+
+func TestSubscriptionStudioProductImageUsageRetriesLegacyMirrorWhenMetadataIsAbsent(t *testing.T) {
+	repo := listingsubscription.NewMemRepository()
+	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(repo))
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-absent-mirror", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"product_image_jobs": 2},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	ctx := context.Background()
+	if _, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID:       "tenant-absent-mirror",
+		ModuleCode:     listingsubscription.ModuleStudio,
+		Metric:         studioProductImageLedgerMetric,
+		Quantity:       1,
+		PeriodKey:      time.Now().UTC().Format("2006-01"),
+		SourceType:     "listingkit_product_image",
+		SourceID:       "candidate-absent",
+		IdempotencyKey: studioProductImageUsageIdempotencyKey("candidate-absent"),
+		OccurredAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	adapter := studioProductImageUsageDependency(svc)
+	if err := adapter.ReserveProductImageUsage(ctx, "tenant-absent-mirror", "candidate-absent", 1); err != nil {
+		t.Fatalf("ReserveProductImageUsage() error = %v", err)
+	}
+	usage, err := repo.ListUsage(ctx, "tenant-absent-mirror")
+	if err != nil {
+		t.Fatalf("ListUsage() error = %v", err)
+	}
+	found := false
+	for _, counter := range usage {
+		if counter.Metric == studioProductImageMetric && counter.Used != 1 {
+			t.Fatalf("legacy mirror usage = %d, want one after absent metadata retry", counter.Used)
+		}
+		if counter.Metric == studioProductImageMetric {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("legacy mirror counter missing after absent metadata retry")
+	}
+}
+
+func TestSubscriptionStudioProductImageUsageDoesNotReleaseAbsentLegacyMirror(t *testing.T) {
+	repo := listingsubscription.NewMemRepository()
+	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(repo))
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-absent-release", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"product_image_jobs": 2},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	ctx := context.Background()
+	if _, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID:       "tenant-absent-release",
+		ModuleCode:     listingsubscription.ModuleStudio,
+		Metric:         studioProductImageLedgerMetric,
+		Quantity:       1,
+		PeriodKey:      time.Now().UTC().Format("2006-01"),
+		SourceType:     "listingkit_product_image",
+		SourceID:       "candidate-absent-release",
+		IdempotencyKey: studioProductImageUsageIdempotencyKey("candidate-absent-release"),
+		OccurredAt:     time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	adapter := studioProductImageUsageDependency(svc)
+	if err := adapter.ReleaseProductImageUsage(ctx, "tenant-absent-release", "candidate-absent-release", "test"); err != nil {
+		t.Fatalf("ReleaseProductImageUsage() error = %v", err)
+	}
+	usage, err := repo.ListUsage(ctx, "tenant-absent-release")
+	if err != nil {
+		t.Fatalf("ListUsage() error = %v", err)
+	}
+	for _, counter := range usage {
+		if counter.Metric == studioProductImageMetric && counter.Used != 0 {
+			t.Fatalf("legacy mirror usage = %d, want zero when mirror metadata is absent", counter.Used)
 		}
 	}
 }
