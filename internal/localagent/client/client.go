@@ -210,6 +210,11 @@ type terminalResponse struct {
 	Failure *localagent.Failure `json:"failure"`
 }
 
+type errorResponse struct {
+	Error   string `json:"error"`
+	Message string `json:"message"`
+}
+
 type claimResponse struct {
 	JobID          string    `json:"job_id"`
 	ExecutionToken string    `json:"execution_token"`
@@ -259,6 +264,10 @@ func (c *Client) doJSON(ctx context.Context, method, path string, payload any, e
 		return errNoJob
 	}
 	if resp.StatusCode != expected {
+		var apiError errorResponse
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&apiError); err == nil && apiError.Error == "snapshot_too_large" {
+			return localagent.ErrSnapshotTooLarge
+		}
 		return fmt.Errorf("local-agent request returned status %d", resp.StatusCode)
 	}
 	if target == nil {

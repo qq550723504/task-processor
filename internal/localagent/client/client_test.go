@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"task-processor/internal/localagent"
 	"task-processor/internal/product/sourcing"
 )
 
@@ -64,6 +65,18 @@ func TestNewAppliesDefaultHTTPTimeout(t *testing.T) {
 	client, err := New("http://127.0.0.1:18086", "token", nil)
 	require.NoError(t, err)
 	require.Equal(t, defaultHTTPTimeout, client.HTTPClient.Timeout)
+}
+
+func TestClientPreservesOversizedSnapshotError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"snapshot_too_large","message":"1688 snapshot exceeds size limit"}`))
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "token", server.Client())
+	require.NoError(t, err)
+	_, err = client.SubmitSuccess(context.Background(), "job-1", "execution", &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", URL: "https://detail.1688.com/offer/1052008074197.html"})
+	require.ErrorIs(t, err, localagent.ErrSnapshotTooLarge)
 }
 
 func TestClientRejectsRedirects(t *testing.T) {
