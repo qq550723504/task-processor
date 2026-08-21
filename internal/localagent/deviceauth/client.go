@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -184,10 +185,28 @@ func sameOriginEndpoint(issuer *url.URL, raw, name string) (*url.URL, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !strings.EqualFold(candidate.Scheme, issuer.Scheme) || !strings.EqualFold(candidate.Host, issuer.Host) {
+	if !strings.EqualFold(candidate.Scheme, issuer.Scheme) ||
+		!strings.EqualFold(candidate.Hostname(), issuer.Hostname()) ||
+		effectivePort(candidate) != effectivePort(issuer) {
 		return nil, fmt.Errorf("%s must use the same origin as the issuer", name)
 	}
 	return candidate, nil
+}
+
+func effectivePort(endpoint *url.URL) int {
+	if port := endpoint.Port(); port != "" {
+		value, err := strconv.Atoi(port)
+		if err == nil {
+			return value
+		}
+	}
+	if strings.EqualFold(endpoint.Scheme, "http") {
+		return 80
+	}
+	if strings.EqualFold(endpoint.Scheme, "https") {
+		return 443
+	}
+	return 0
 }
 
 func doJSON(ctx context.Context, client *http.Client, method string, endpoint *url.URL, form url.Values, operation string, target any) error {

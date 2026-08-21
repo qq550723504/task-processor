@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -31,6 +32,33 @@ func TestAuthorizeRejectsCrossOriginTokenEndpoint(t *testing.T) {
 
 	_, err := Authorize(context.Background(), Config{IssuerURL: issuer.URL, ClientID: "client", ProjectID: "project", Timeout: time.Second, HTTPClient: issuer.Client()}, recordingPresenter{})
 	require.ErrorContains(t, err, "same origin")
+}
+
+func TestSameOriginEndpointUsesEffectiveDefaultPort(t *testing.T) {
+	tests := []struct {
+		name   string
+		issuer string
+		uri    string
+		wantOK bool
+	}{
+		{name: "issuer omits https default port", issuer: "https://issuer.example", uri: "https://issuer.example:443/token", wantOK: true},
+		{name: "endpoint omits https default port", issuer: "https://issuer.example:443", uri: "https://issuer.example/token", wantOK: true},
+		{name: "non-default port remains distinct", issuer: "https://issuer.example:8443", uri: "https://issuer.example/token", wantOK: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			issuer, err := url.Parse(test.issuer)
+			require.NoError(t, err)
+
+			_, err = sameOriginEndpoint(issuer, test.uri, "token endpoint")
+			if test.wantOK {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, "same origin")
+			}
+		})
+	}
 }
 
 func TestAuthorizeRejectsOfflineAccessScope(t *testing.T) {
