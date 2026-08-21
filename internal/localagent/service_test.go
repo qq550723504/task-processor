@@ -67,7 +67,7 @@ func TestServiceRejectsExpiredClaim(t *testing.T) {
 	require.NoError(t, err)
 	claim, err := service.Claim(actor)
 	require.NoError(t, err)
-	clock.Advance(3*time.Minute + time.Nanosecond)
+	clock.Advance(claimTTL + time.Nanosecond)
 
 	_, err = service.SubmitFailure(actor, job.ID, claim.ExecutionToken, Failure{Kind: FailureNavigation, Message: "timeout"})
 	require.ErrorIs(t, err, ErrClaimExpired)
@@ -123,6 +123,27 @@ func TestServiceRejectsNonPublicOfferURL(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidURL)
 	_, err = service.Create(Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com/offer/1052008074197.html/extra")
 	require.ErrorIs(t, err, ErrInvalidURL)
+	_, err = service.Create(Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com:443/offer/1052008074197.html")
+	require.ErrorIs(t, err, ErrInvalidURL)
+}
+
+func TestServiceCapacityIsIsolatedPerTenant(t *testing.T) {
+	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+	noisy := Actor{TenantID: "tenant-noisy", UserID: "user-a"}
+	other := Actor{TenantID: "tenant-other", UserID: "user-b"}
+	for i := 0; i < maxJobsPerTenant; i++ {
+		_, err := service.Create(noisy, offerURL)
+		require.NoError(t, err)
+	}
+	_, err := service.Create(noisy, offerURL)
+	require.ErrorIs(t, err, ErrCapacity)
+	_, err = service.Create(other, offerURL)
+	require.NoError(t, err)
+}
+
+func TestClaimLeaseOutlivesManagedBrowserDownload(t *testing.T) {
+	require.Greater(t, claimTTL, 10*time.Minute)
+	require.Greater(t, jobTTL, claimTTL)
 }
 
 func TestServiceCleansExpiredAndRetainedTerminalJobs(t *testing.T) {

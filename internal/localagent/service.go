@@ -19,12 +19,15 @@ import (
 )
 
 const (
-	jobTTL             = 5 * time.Minute
-	claimTTL           = 3 * time.Minute
+	// Browser provisioning may download a managed Chrome for up to ten
+	// minutes, so the lease must outlive that operation.
+	claimTTL           = 15 * time.Minute
+	jobTTL             = 20 * time.Minute
 	maxSnapshotBytes   = 1 << 20
 	maxDiagnosticBytes = 512
 	terminalRetention  = 10 * time.Minute
 	maxStoredJobs      = 1024
+	maxJobsPerTenant   = 256
 )
 
 var (
@@ -74,13 +77,23 @@ func (s *Service) Create(actor Actor, rawURL string) (Job, error) {
 	job := Job{ID: id, TenantID: strings.TrimSpace(actor.TenantID), URL: cleanURL, State: JobPending, ExpiresAt: now.Add(jobTTL)}
 	s.mu.Lock()
 	s.cleanupLocked(now)
-	if len(s.jobs) >= maxStoredJobs {
+	if len(s.jobs) >= maxStoredJobs || s.tenantJobCountLocked(job.TenantID) >= maxJobsPerTenant {
 		s.mu.Unlock()
 		return Job{}, ErrCapacity
 	}
 	s.jobs[job.ID] = &record{job: job}
 	s.mu.Unlock()
 	return job, nil
+}
+
+func (s *Service) tenantJobCountLocked(tenantID string) int {
+	count := 0
+	for _, rec := range s.jobs {
+		if rec.job.TenantID == tenantID {
+			count++
+		}
+	}
+	return count
 }
 
 func (s *Service) Claim(actor Actor) (*Claim, error) {
@@ -258,7 +271,7 @@ func validateActor(actor Actor) error {
 func validateOfferURL(raw string) (string, error) {
 	clean := sourcing.NormalizeAlibaba1688URL(raw)
 	parsed, err := url.Parse(clean)
-	if err != nil || parsed.Scheme != "https" || parsed.Hostname() != "detail.1688.com" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() != "detail.1688.com" || parsed.Port() != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
 		return "", ErrInvalidURL
 	}
 	if !offerPathPattern.MatchString(parsed.Path) {
