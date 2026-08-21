@@ -26,6 +26,19 @@ func TestNewPublicImageHTTPClientDisablesProxy(t *testing.T) {
 	}
 }
 
+func TestNewPublicImageHTTPClientStopsLongRedirectChains(t *testing.T) {
+	client := NewPublicImageHTTPClient()
+	request, err := http.NewRequest(http.MethodGet, "https://example.com/image", nil)
+	if err != nil {
+		t.Fatalf("http.NewRequest() error = %v", err)
+	}
+
+	via := make([]*http.Request, 10)
+	if err := client.CheckRedirect(request, via); err == nil || !strings.Contains(err.Error(), "stopped after 10 redirects") {
+		t.Fatalf("CheckRedirect() error = %v, want ten-redirect limit error", err)
+	}
+}
+
 func TestResolvePublicImageHostIPsHonorsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

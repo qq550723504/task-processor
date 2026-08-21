@@ -14,6 +14,8 @@ import (
 
 const DefaultMaxBodyBytes int64 = 32 << 20
 
+const maxRedirectHops = 10
+
 // ValidatePublicHTTPSURL accepts only absolute HTTPS URLs whose literal host
 // is not localhost or a private/link-local address. Redirects are validated by
 // the client returned from NewPublicImageHTTPClient as well.
@@ -80,7 +82,10 @@ func NewPublicImageHTTPClient() *http.Client {
 	}
 	return &http.Client{
 		Transport: transport,
-		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= maxRedirectHops {
+				return fmt.Errorf("stopped after %d redirects", maxRedirectHops)
+			}
 			_, err := ValidatePublicHTTPSURL(req.URL.String())
 			return err
 		},
