@@ -87,6 +87,40 @@ func TestProductEnrichVisionCatalogDeniesTenantBeforeCredentialLookup(t *testing
 	}
 }
 
+func TestProductEnrichListingCatalogResolvesDefaultCredential(t *testing.T) {
+	resolver := &productEnrichTextResolver{resolved: &openaiclient.ResolvedClientConfig{
+		CacheKey: "default-config-v1",
+		Config:   &openaiclient.ClientConfig{APIKey: "secret", BaseURL: "https://example.test/v1", Model: "listing-model", APIStyle: "openai"},
+	}}
+	decision, err := BuildProductEnrichListingCapabilityRouter(resolver, []string{"tenant-a"}).Decide(context.Background(), aicapability.RouteRequest{
+		TenantID: "tenant-a", UserID: "user-a", Capability: aicapability.CapabilityProductEnrichListing,
+		Operation: aicapability.OperationProductEnrichJSONGenerate, RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureTextGenerate},
+	})
+	if err != nil {
+		t.Fatalf("Decide: %v", err)
+	}
+	if decision.ModelID != "listing-model" || decision.CredentialReference != productEnrichListingClientName || decision.ConfigurationVersion != "default-config-v1" {
+		t.Fatalf("decision = %+v", decision)
+	}
+	if resolver.requestedClientName != productEnrichListingClientName {
+		t.Fatalf("resolver client = %q, want %q", resolver.requestedClientName, productEnrichListingClientName)
+	}
+}
+
+func TestProductEnrichListingCatalogDeniesTenantBeforeCredentialLookup(t *testing.T) {
+	resolver := &productEnrichTextResolver{}
+	_, err := BuildProductEnrichListingCapabilityRouter(resolver, []string{"tenant-a"}).Decide(context.Background(), aicapability.RouteRequest{
+		TenantID: "tenant-b", UserID: "user-b", Capability: aicapability.CapabilityProductEnrichListing,
+		Operation: aicapability.OperationProductEnrichJSONGenerate,
+	})
+	if aicapability.CategoryOf(err) != aicapability.ErrorPolicyDenied {
+		t.Fatalf("category = %q, want policy_denied", aicapability.CategoryOf(err))
+	}
+	if resolver.requestedClientName != "" {
+		t.Fatalf("resolver called for denied tenant: %q", resolver.requestedClientName)
+	}
+}
+
 type productEnrichTextResolver struct {
 	resolved            *openaiclient.ResolvedClientConfig
 	err                 error

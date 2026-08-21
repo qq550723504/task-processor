@@ -50,10 +50,15 @@ func (g *jsonGenerator) GenerateJSON(ctx context.Context, analysis *productenric
 }
 
 func (g *jsonGenerator) generateWithLLM(ctx context.Context, analysis *productenrich.ProductAnalysis) (*productenrich.ProductJSON, error) {
-	client := g.llmManager.GetDefaultClient()
-
 	prompt := g.buildPrompt(analysis)
-	response, err := client.Generate(ctx, prompt)
+	var response string
+	var err error
+	if g.textGenerator != nil {
+		response, err = g.textGenerator.Generate(ctx, prompt)
+	} else {
+		client := g.llmManager.GetDefaultClient()
+		response, err = client.Generate(ctx, prompt)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("LLM call failed: %w", err)
 	}

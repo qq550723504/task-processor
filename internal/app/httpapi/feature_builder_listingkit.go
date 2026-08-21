@@ -43,6 +43,7 @@ func (b listingKitFeatureBuilder) build(logger *logrus.Logger, deps *runtimeDeps
 			Logger:        logger,
 			Config:        deps.shared.cfg,
 			LLMManager:    deps.shared.llmMgr,
+			TextGenerator: deps.shared.contentGenerator,
 			InputParser:   deps.shared.inputParser,
 			Understanding: deps.shared.understanding,
 		})

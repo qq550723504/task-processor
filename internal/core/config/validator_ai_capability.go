@@ -31,6 +31,13 @@ func ValidateAICapabilityConfig(aiCapability *AICapabilityConfig) []error {
 				Hint:    "set TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_VISION_ALLOWED_TENANT_IDS",
 			}}
 		}
+		if aiCapability.ProductEnrichListingEnabled && len(normalizedTenantIDs(aiCapability.ProductEnrichListingAllowedTenantIDs)) == 0 {
+			return []error{&ValidationError{
+				Field:   "aiCapability.productEnrichListingAllowedTenantIDs",
+				Message: "must contain at least one tenant ID when product enrich listing governance is enabled",
+				Hint:    "set TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_LISTING_ALLOWED_TENANT_IDS",
+			}}
+		}
 		return nil
 	default:
 		return []error{&ValidationError{

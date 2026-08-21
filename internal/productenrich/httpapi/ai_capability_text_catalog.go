@@ -9,10 +9,12 @@ import (
 )
 
 const (
-	productEnrichTextRoutingKey   = "productenrich-text"
-	productEnrichTextClientName   = "fast"
-	productEnrichVisionRoutingKey = "productenrich-vision"
-	productEnrichVisionClientName = "vision"
+	productEnrichTextRoutingKey    = "productenrich-text"
+	productEnrichTextClientName    = "fast"
+	productEnrichVisionRoutingKey  = "productenrich-vision"
+	productEnrichVisionClientName  = "vision"
+	productEnrichListingRoutingKey = "productenrich-listing"
+	productEnrichListingClientName = "default"
 )
 
 // BuildProductEnrichTextCapabilityRouter maps the existing tenant-aware fast
@@ -30,6 +32,15 @@ func BuildProductEnrichVisionCapabilityRouter(resolver openaiclient.ClientConfig
 	return aicapability.NewPolicyRouter(
 		&productEnrichVisionModelCatalog{resolver: resolver},
 		productEnrichVisionPolicyResolver{allowedTenantIDs: productEnrichTextTenantIDSet(allowedTenantIDs)},
+	)
+}
+
+// BuildProductEnrichListingCapabilityRouter maps the existing default client
+// to the provider-neutral primary listing JSON generation capability.
+func BuildProductEnrichListingCapabilityRouter(resolver openaiclient.ClientConfigResolver, allowedTenantIDs []string) aicapability.Router {
+	return aicapability.NewPolicyRouter(
+		&productEnrichListingModelCatalog{resolver: resolver},
+		productEnrichListingPolicyResolver{allowedTenantIDs: productEnrichTextTenantIDSet(allowedTenantIDs)},
 	)
 }
 
@@ -107,6 +118,50 @@ func (c *productEnrichVisionModelCatalog) ResolveModel(ctx context.Context, rout
 
 type productEnrichVisionPolicyResolver struct {
 	allowedTenantIDs map[string]struct{}
+}
+
+type productEnrichListingModelCatalog struct {
+	resolver openaiclient.ClientConfigResolver
+}
+
+func (c *productEnrichListingModelCatalog) ResolveModel(ctx context.Context, routingKey string) (aicapability.ModelDefinition, error) {
+	if c == nil || c.resolver == nil || strings.TrimSpace(routingKey) != productEnrichListingRoutingKey {
+		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
+	}
+	resolved, err := c.resolver.ResolveClientConfig(ctx, productEnrichListingClientName, nil)
+	if err != nil || resolved == nil || resolved.Config == nil || strings.TrimSpace(resolved.CacheKey) == "" {
+		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", err)
+	}
+	configured := resolved.Config
+	if strings.TrimSpace(configured.APIKey) == "" || strings.TrimSpace(configured.BaseURL) == "" || strings.TrimSpace(configured.Model) == "" {
+		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
+	}
+	providerID := strings.ToLower(strings.TrimSpace(configured.APIStyle))
+	if providerID == "" || providerID == "openai" || providerID == "openai-compatible" {
+		providerID = "openai"
+	} else {
+		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCapabilityUnavailable, "", nil)
+	}
+	return aicapability.ModelDefinition{
+		ProviderID: providerID, ModelID: strings.TrimSpace(configured.Model), RoutingKey: productEnrichListingRoutingKey,
+		CredentialReference: productEnrichListingClientName, Features: []aicapability.ModelFeature{aicapability.FeatureTextGenerate},
+		Enabled: true, ConfigurationVersion: strings.TrimSpace(resolved.CacheKey),
+	}, nil
+}
+
+type productEnrichListingPolicyResolver struct {
+	allowedTenantIDs map[string]struct{}
+}
+
+func (r productEnrichListingPolicyResolver) ResolvePolicy(_ context.Context, request aicapability.RouteRequest) (aicapability.TenantModelPolicy, error) {
+	if _, ok := r.allowedTenantIDs[strings.TrimSpace(request.TenantID)]; !ok {
+		return aicapability.TenantModelPolicy{}, aicapability.NewError(aicapability.ErrorPolicyDenied, string(request.Operation), nil)
+	}
+	return aicapability.TenantModelPolicy{
+		TenantID: strings.TrimSpace(request.TenantID), Capability: aicapability.CapabilityProductEnrichListing,
+		PreferredRoutingKeys: []string{productEnrichListingRoutingKey}, AllowCrossProviderFallback: false,
+		Version: "productenrich-listing-v1",
+	}, nil
 }
 
 func (r productEnrichVisionPolicyResolver) ResolvePolicy(_ context.Context, request aicapability.RouteRequest) (aicapability.TenantModelPolicy, error) {

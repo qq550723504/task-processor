@@ -29,13 +29,14 @@ type BuildModuleInput struct {
 	Config         *config.Config
 	Logger         *logrus.Logger
 	LLMManager     productenrich.LLMManager
+	TextGenerator  productenrichenrich.TextGenerator
 	InputParser    productenrich.InputParser
 	Understanding  productenrich.ProductUnderstanding
 	LLMScorerCache productenrich.MetricsCollector
 }
 
 func BuildModule(input BuildModuleInput) (*Module, error) {
-	jsonGenerator, err := productenrichenrich.NewJSONGenerator(input.Logger, input.LLMManager)
+	jsonGenerator, err := productenrichenrich.NewJSONGeneratorWithTextGenerator(input.Logger, input.LLMManager, input.TextGenerator)
 	if err != nil {
 		return nil, fmt.Errorf("create JSON generator: %w", err)
 	}

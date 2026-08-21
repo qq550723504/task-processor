@@ -10,6 +10,7 @@ const (
 	CapabilityProductImageScene     Capability = "productimage.scene_generation"
 	CapabilityProductEnrichText     Capability = "productenrich.text_understanding"
 	CapabilityProductEnrichVision   Capability = "productenrich.vision_understanding"
+	CapabilityProductEnrichListing  Capability = "productenrich.listing_generation"
 )
 
 type Operation string
@@ -26,6 +27,7 @@ const (
 	OperationProductImageReview          Operation = "productimage_review"
 	OperationProductEnrichTextExtract    Operation = "productenrich_text_extract_attributes"
 	OperationProductEnrichImageAnalyze   Operation = "productenrich_image_analyze"
+	OperationProductEnrichJSONGenerate   Operation = "productenrich_json_generate"
 )
 
 type ModelFeature string
