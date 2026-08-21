@@ -12,4 +12,13 @@ func TestProductEnrichTextCapabilityContracts(t *testing.T) {
 	if FeatureTextGenerate != "text_generate" {
 		t.Fatalf("feature = %q", FeatureTextGenerate)
 	}
+	if CapabilityProductEnrichVision != "productenrich.vision_understanding" {
+		t.Fatalf("vision capability = %q", CapabilityProductEnrichVision)
+	}
+	if OperationProductEnrichImageAnalyze != "productenrich_image_analyze" {
+		t.Fatalf("image operation = %q", OperationProductEnrichImageAnalyze)
+	}
+	if FeatureVisionAnalyze != "vision_analyze" {
+		t.Fatalf("vision feature = %q", FeatureVisionAnalyze)
+	}
 }

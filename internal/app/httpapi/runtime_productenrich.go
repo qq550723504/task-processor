@@ -33,20 +33,35 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 	}
 
 	var productUnderstanding productenrich.ProductUnderstanding
-	if cfg.AICapability.ProductEnrichTextEnabled {
+	var textGenerator productenrichenrich.TextGenerator
+	var imageAnalyzer productenrichenrich.ImageAnalyzer
+	if cfg.AICapability.ProductEnrichTextEnabled || cfg.AICapability.ProductEnrichVisionEnabled {
 		if credentialResolver == nil {
-			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich text capability: credential resolver is required")
+			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich capability: credential resolver is required")
 		}
-		textGenerator, textErr := productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
+	}
+	if cfg.AICapability.ProductEnrichTextEnabled {
+		textGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Router:   productenrichhttpapi.BuildProductEnrichTextCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichTextAllowedTenantIDs),
 			Recorder: recorder,
 		})
-		if textErr != nil {
-			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich text capability: %w", textErr)
+		if err != nil {
+			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich text capability: %w", err)
 		}
-		productUnderstanding, err = productenrichenrich.NewProductUnderstandingWithTextGenerator(llmMgr, textGenerator)
-	} else {
+	}
+	if cfg.AICapability.ProductEnrichVisionEnabled {
+		imageAnalyzer, err = productenrichenrich.NewGovernedImageAnalyzer(llmMgr, productenrichenrich.GovernedImageAnalyzerConfig{
+			Router:   productenrichhttpapi.BuildProductEnrichVisionCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichVisionAllowedTenantIDs),
+			Recorder: recorder,
+		})
+		if err != nil {
+			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich vision capability: %w", err)
+		}
+	}
+	if textGenerator == nil && imageAnalyzer == nil {
 		productUnderstanding, err = productenrichenrich.NewProductUnderstanding(llmMgr)
+	} else {
+		productUnderstanding, err = productenrichenrich.NewProductUnderstandingWithCapabilities(llmMgr, textGenerator, imageAnalyzer)
 	}
 	if err != nil {
 		return productEnrichRuntimeDeps{}, fmt.Errorf("create product understanding: %w", err)

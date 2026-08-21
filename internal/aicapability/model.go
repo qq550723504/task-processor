@@ -9,6 +9,7 @@ const (
 	CapabilityListingKitStudioImage Capability = "listingkit.studio.image"
 	CapabilityProductImageScene     Capability = "productimage.scene_generation"
 	CapabilityProductEnrichText     Capability = "productenrich.text_understanding"
+	CapabilityProductEnrichVision   Capability = "productenrich.vision_understanding"
 )
 
 type Operation string
@@ -24,6 +25,7 @@ const (
 	OperationProductImageWhiteBackground Operation = "productimage_white_background"
 	OperationProductImageReview          Operation = "productimage_review"
 	OperationProductEnrichTextExtract    Operation = "productenrich_text_extract_attributes"
+	OperationProductEnrichImageAnalyze   Operation = "productenrich_image_analyze"
 )
 
 type ModelFeature string
@@ -33,6 +35,7 @@ const (
 	FeatureImageEdit     ModelFeature = "image_edit"
 	FeatureAsyncImageJob ModelFeature = "async_image_job"
 	FeatureTextGenerate  ModelFeature = "text_generate"
+	FeatureVisionAnalyze ModelFeature = "vision_analyze"
 )
 
 type ModelPricing struct {

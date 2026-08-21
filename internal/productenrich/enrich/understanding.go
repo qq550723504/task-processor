@@ -18,6 +18,7 @@ import (
 type productUnderstanding struct {
 	llmManager    productenrich.LLMManager
 	textGenerator TextGenerator
+	imageAnalyzer ImageAnalyzer
 }
 
 func NewProductUnderstanding(llmManager productenrich.LLMManager) (productenrich.ProductUnderstanding, error) {
@@ -28,11 +29,17 @@ func NewProductUnderstanding(llmManager productenrich.LLMManager) (productenrich
 // pipeline intact while allowing only text attribute extraction to use a
 // governed provider-neutral capability.
 func NewProductUnderstandingWithTextGenerator(llmManager productenrich.LLMManager, textGenerator TextGenerator) (productenrich.ProductUnderstanding, error) {
+	return NewProductUnderstandingWithCapabilities(llmManager, textGenerator, nil)
+}
+
+// NewProductUnderstandingWithCapabilities keeps the domain pipeline stable
+// while allowing individual model stages to opt into governed capabilities.
+func NewProductUnderstandingWithCapabilities(llmManager productenrich.LLMManager, textGenerator TextGenerator, imageAnalyzer ImageAnalyzer) (productenrich.ProductUnderstanding, error) {
 	if llmManager == nil {
 		return nil, fmt.Errorf("llm manager cannot be nil")
 	}
 
-	return &productUnderstanding{llmManager: llmManager, textGenerator: textGenerator}, nil
+	return &productUnderstanding{llmManager: llmManager, textGenerator: textGenerator, imageAnalyzer: imageAnalyzer}, nil
 }
 
 func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *productenrich.ParsedInput) (*productenrich.ProductAnalysis, error) {
@@ -252,16 +259,21 @@ Only return the JSON object, no additional text.`
 		promptText += "\n\nProduct title/context:\n" + titleHint
 	}
 
-	visionClient, err := p.llmManager.GetClient("vision")
-	if err != nil {
-		var fallbackErr error
-		visionClient, fallbackErr = p.llmManager.GetClient("default")
-		if fallbackErr != nil || visionClient == nil {
-			return nil, fmt.Errorf("failed to get vision or default client: %w", err)
+	var response string
+	var err error
+	if p.imageAnalyzer != nil {
+		response, err = p.imageAnalyzer.AnalyzeImage(ctx, imagePath, promptText)
+	} else {
+		visionClient, clientErr := p.llmManager.GetClient("vision")
+		if clientErr != nil {
+			var fallbackErr error
+			visionClient, fallbackErr = p.llmManager.GetClient("default")
+			if fallbackErr != nil || visionClient == nil {
+				return nil, fmt.Errorf("failed to get vision or default client: %w", clientErr)
+			}
 		}
+		response, err = visionClient.AnalyzeImage(ctx, imagePath, promptText)
 	}
-
-	response, err := visionClient.AnalyzeImage(ctx, imagePath, promptText)
 	if err != nil {
 		return nil, fmt.Errorf("failed to analyze image: %w", err)
 	}

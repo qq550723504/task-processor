@@ -53,6 +53,40 @@ func TestProductEnrichTextCatalogPropagatesCredentialFailure(t *testing.T) {
 	}
 }
 
+func TestProductEnrichVisionCatalogResolvesVisionCredential(t *testing.T) {
+	resolver := &productEnrichTextResolver{resolved: &openaiclient.ResolvedClientConfig{
+		CacheKey: "vision-config-v1",
+		Config:   &openaiclient.ClientConfig{APIKey: "secret", BaseURL: "https://example.test/v1", Model: "vision-model", APIStyle: "openai"},
+	}}
+	decision, err := BuildProductEnrichVisionCapabilityRouter(resolver, []string{"tenant-a"}).Decide(context.Background(), aicapability.RouteRequest{
+		TenantID: "tenant-a", UserID: "user-a", Capability: aicapability.CapabilityProductEnrichVision,
+		Operation: aicapability.OperationProductEnrichImageAnalyze, RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureVisionAnalyze},
+	})
+	if err != nil {
+		t.Fatalf("Decide: %v", err)
+	}
+	if decision.ModelID != "vision-model" || decision.CredentialReference != productEnrichVisionClientName || decision.ConfigurationVersion != "vision-config-v1" {
+		t.Fatalf("decision = %+v", decision)
+	}
+	if resolver.requestedClientName != productEnrichVisionClientName {
+		t.Fatalf("resolver client = %q, want %q", resolver.requestedClientName, productEnrichVisionClientName)
+	}
+}
+
+func TestProductEnrichVisionCatalogDeniesTenantBeforeCredentialLookup(t *testing.T) {
+	resolver := &productEnrichTextResolver{}
+	_, err := BuildProductEnrichVisionCapabilityRouter(resolver, []string{"tenant-a"}).Decide(context.Background(), aicapability.RouteRequest{
+		TenantID: "tenant-b", UserID: "user-b", Capability: aicapability.CapabilityProductEnrichVision,
+		Operation: aicapability.OperationProductEnrichImageAnalyze,
+	})
+	if aicapability.CategoryOf(err) != aicapability.ErrorPolicyDenied {
+		t.Fatalf("category = %q, want policy_denied", aicapability.CategoryOf(err))
+	}
+	if resolver.requestedClientName != "" {
+		t.Fatalf("resolver called for denied tenant: %q", resolver.requestedClientName)
+	}
+}
+
 type productEnrichTextResolver struct {
 	resolved            *openaiclient.ResolvedClientConfig
 	err                 error

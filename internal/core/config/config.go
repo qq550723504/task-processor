@@ -234,6 +234,12 @@ func knownEnvBindings() map[string]envBinding {
 		"aiCapability.productEnrichTextAllowedTenantIDs": {
 			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_TEXT_ALLOWED_TENANT_IDS",
 		},
+		"aiCapability.productEnrichVisionEnabled": {
+			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_VISION_ENABLED",
+		},
+		"aiCapability.productEnrichVisionAllowedTenantIDs": {
+			Primary: "TASK_PROCESSOR_AI_CAPABILITY_PRODUCT_ENRICH_VISION_ALLOWED_TENANT_IDS",
+		},
 		"openai.apiKey": {
 			Primary:    "TASK_PROCESSOR_OPENAI_API_KEY",
 			Deprecated: []string{"OPENAI_API_KEY"},

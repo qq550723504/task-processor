@@ -189,11 +189,13 @@ func BuildConfig(v *viper.Viper) *Config {
 			ProductEnrichMockLLM: v.GetBool("debug.productEnrichMockLLM"),
 		},
 		AICapability: AICapabilityConfig{
-			StudioImageRoutingMode:            v.GetString("aiCapability.studioImageRoutingMode"),
-			ProductImageSceneEnabled:          v.GetBool("aiCapability.productImageSceneEnabled"),
-			ProductImageSceneAllowedTenantIDs: getStringSlice(v, "aiCapability.productImageSceneAllowedTenantIDs"),
-			ProductEnrichTextEnabled:          v.GetBool("aiCapability.productEnrichTextEnabled"),
-			ProductEnrichTextAllowedTenantIDs: getStringSlice(v, "aiCapability.productEnrichTextAllowedTenantIDs"),
+			StudioImageRoutingMode:              v.GetString("aiCapability.studioImageRoutingMode"),
+			ProductImageSceneEnabled:            v.GetBool("aiCapability.productImageSceneEnabled"),
+			ProductImageSceneAllowedTenantIDs:   getStringSlice(v, "aiCapability.productImageSceneAllowedTenantIDs"),
+			ProductEnrichTextEnabled:            v.GetBool("aiCapability.productEnrichTextEnabled"),
+			ProductEnrichTextAllowedTenantIDs:   getStringSlice(v, "aiCapability.productEnrichTextAllowedTenantIDs"),
+			ProductEnrichVisionEnabled:          v.GetBool("aiCapability.productEnrichVisionEnabled"),
+			ProductEnrichVisionAllowedTenantIDs: getStringSlice(v, "aiCapability.productEnrichVisionAllowedTenantIDs"),
 		},
 		ListingControlPlane: ListingControlPlaneConfig{
 			Enabled:                    v.GetBool("listingControlPlane.enabled"),

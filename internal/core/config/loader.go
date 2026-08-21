@@ -235,11 +235,13 @@ func NewDefaultConfig() *Config {
 			ProductEnrichMockLLM: false,
 		},
 		AICapability: AICapabilityConfig{
-			StudioImageRoutingMode:            "legacy",
-			ProductImageSceneEnabled:          false,
-			ProductImageSceneAllowedTenantIDs: nil,
-			ProductEnrichTextEnabled:          false,
-			ProductEnrichTextAllowedTenantIDs: nil,
+			StudioImageRoutingMode:              "legacy",
+			ProductImageSceneEnabled:            false,
+			ProductImageSceneAllowedTenantIDs:   nil,
+			ProductEnrichTextEnabled:            false,
+			ProductEnrichTextAllowedTenantIDs:   nil,
+			ProductEnrichVisionEnabled:          false,
+			ProductEnrichVisionAllowedTenantIDs: nil,
 		},
 		ListingKit: ListingKitConfig{
 			GenerationUsageLedgerEnabled: false,

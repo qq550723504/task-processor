@@ -35,6 +35,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("aiCapability.productImageSceneAllowedTenantIDs", defaults.AICapability.ProductImageSceneAllowedTenantIDs)
 	v.SetDefault("aiCapability.productEnrichTextEnabled", defaults.AICapability.ProductEnrichTextEnabled)
 	v.SetDefault("aiCapability.productEnrichTextAllowedTenantIDs", defaults.AICapability.ProductEnrichTextAllowedTenantIDs)
+	v.SetDefault("aiCapability.productEnrichVisionEnabled", defaults.AICapability.ProductEnrichVisionEnabled)
+	v.SetDefault("aiCapability.productEnrichVisionAllowedTenantIDs", defaults.AICapability.ProductEnrichVisionAllowedTenantIDs)
 	v.SetDefault("listingkit.sheinSubmitDebugDumpDir", defaults.ListingKit.SheinSubmitDebugDumpDir)
 	v.SetDefault("listingkit.generationUsageLedgerEnabled", defaults.ListingKit.GenerationUsageLedgerEnabled)
 	v.SetDefault("listingkit.generationUsageLedgerTenantIDs", defaults.ListingKit.GenerationUsageLedgerTenantIDs)
