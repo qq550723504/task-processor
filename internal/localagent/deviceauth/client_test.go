@@ -108,6 +108,25 @@ func TestAuthorizeHandlesPendingHTTPErrorThenApproved(t *testing.T) {
 	require.Equal(t, 2, tokenCalls)
 }
 
+func TestAuthorizeRejectsAccessTokenFromNon2xxTokenResponse(t *testing.T) {
+	server := httptest.NewTLSServer(nil)
+	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/openid-configuration":
+			_ = json.NewEncoder(w).Encode(map[string]string{"device_authorization_endpoint": server.URL + "/device", "token_endpoint": server.URL + "/token"})
+		case "/device":
+			_ = json.NewEncoder(w).Encode(map[string]any{"device_code": "device", "user_code": "ABCD", "verification_uri": server.URL + "/verify", "expires_in": 30})
+		case "/token":
+			w.WriteHeader(http.StatusFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "redirect-token"})
+		}
+	})
+	defer server.Close()
+
+	_, err := Authorize(context.Background(), Config{IssuerURL: server.URL, ClientID: "client", ProjectID: "project", Timeout: time.Second, HTTPClient: server.Client(), Sleep: func(context.Context, time.Duration) error { return nil }}, recordingPresenter{})
+	require.Error(t, err)
+}
+
 func TestAuthorizeRejectsRefreshToken(t *testing.T) {
 	server := httptest.NewTLSServer(nil)
 	server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

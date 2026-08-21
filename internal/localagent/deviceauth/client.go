@@ -232,7 +232,12 @@ func doJSON(ctx context.Context, client *http.Client, method string, endpoint *u
 	if err := decoder.Decode(target); err != nil {
 		return fmt.Errorf("%s response was invalid", operation)
 	}
-	if (resp.StatusCode < 200 || resp.StatusCode >= 300) && operation != "token exchange" {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		if operation == "token exchange" {
+			if token, ok := target.(*tokenResponse); ok && strings.TrimSpace(token.AccessToken) == "" && strings.TrimSpace(token.RefreshToken) == "" {
+				return nil
+			}
+		}
 		return fmt.Errorf("%s request failed with status %d", operation, resp.StatusCode)
 	}
 	return nil
