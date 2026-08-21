@@ -76,7 +76,7 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 		firstProductImageRequest = cloneStudioBatchProductImageRequest(productImageRequest)
 		appendStudioProductImageColorDirective(firstProductImageRequest, colorRepresentatives[0].Color)
 	}
-	if err := s.authorizeStudioBatchProductImageUsage(ctx, batch, productImageGenerationCount); err != nil {
+	if err := s.authorizeStudioBatchProductImageUsage(ctx, batch, candidate, productImageGenerationCount); err != nil {
 		_ = heartbeatStop()
 		return fmt.Errorf("authorize studio product image usage for %d generation jobs: %w", productImageGenerationCount, err)
 	}
@@ -146,17 +146,36 @@ func studioBatchTaskProductImageGenerationCount(selection SheinStudioSelection) 
 	return 1
 }
 
+func studioBatchTaskProductImageUsageReservationID(candidate studioBatchTaskCandidate) string {
+	reservationID := strings.TrimSpace(candidate.CandidateKey)
+	if token := strings.TrimSpace(candidate.ClaimToken); token != "" {
+		reservationID += "|" + token
+	}
+	return reservationID
+}
+
 // settleStudioBatchProductImageUsage is called only after the generated task
 // and its terminal durable link have committed. Generation and authorization
 // happen earlier, but a failed task/link must not consume the quota.
-func (s *taskStudioBatchService) settleStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate) {
+func (s *taskStudioBatchService) settleStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate) error {
 	if normalizeSheinImageStrategy(candidate.ImageStrategy) != sheinImageStrategyAIGenerated {
-		return
+		return nil
 	}
-	_ = s.recordStudioBatchProductImageUsage(ctx, batch, studioBatchTaskProductImageGenerationCount(candidate.SelectionSnapshot))
+	if reservation, ok := s.productImageUsageReservation(); ok {
+		tenantID := studioBatchTaskGateTenantID(ctx, batch)
+		if strings.TrimSpace(tenantID) == "" {
+			return fmt.Errorf("tenant id is required")
+		}
+		reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
+		if reservationID == "" {
+			return fmt.Errorf("product image usage reservation id is required")
+		}
+		return reservation.CommitProductImageUsage(ctx, tenantID, reservationID)
+	}
+	return s.recordStudioBatchProductImageUsage(ctx, batch, studioBatchTaskProductImageGenerationCount(candidate.SelectionSnapshot))
 }
 
-func (s *taskStudioBatchService) authorizeStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, quantity int) error {
+func (s *taskStudioBatchService) authorizeStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate, quantity int) error {
 	if s == nil || s.productImageUsage == nil {
 		return nil
 	}
@@ -164,7 +183,38 @@ func (s *taskStudioBatchService) authorizeStudioBatchProductImageUsage(ctx conte
 	if strings.TrimSpace(tenantID) == "" {
 		return fmt.Errorf("tenant id is required")
 	}
+	if reservation, ok := s.productImageUsageReservation(); ok {
+		reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
+		if reservationID == "" {
+			return fmt.Errorf("product image usage reservation id is required")
+		}
+		return reservation.ReserveProductImageUsage(ctx, tenantID, reservationID, quantity)
+	}
 	return s.productImageUsage.AuthorizeProductImageUsage(ctx, tenantID, quantity)
+}
+
+func (s *taskStudioBatchService) productImageUsageReservation() (StudioProductImageUsageReservation, bool) {
+	if s == nil || s.productImageUsage == nil {
+		return nil, false
+	}
+	reservation, ok := s.productImageUsage.(StudioProductImageUsageReservation)
+	return reservation, ok && reservation != nil
+}
+
+func (s *taskStudioBatchService) releaseStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate, reason string) error {
+	reservation, ok := s.productImageUsageReservation()
+	if !ok || normalizeSheinImageStrategy(candidate.ImageStrategy) != sheinImageStrategyAIGenerated {
+		return nil
+	}
+	tenantID := studioBatchTaskGateTenantID(ctx, batch)
+	if strings.TrimSpace(tenantID) == "" {
+		return fmt.Errorf("tenant id is required")
+	}
+	reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
+	if reservationID == "" {
+		return fmt.Errorf("product image usage reservation id is required")
+	}
+	return reservation.ReleaseProductImageUsage(ctx, tenantID, reservationID, reason)
 }
 
 func (s *taskStudioBatchService) recordStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, quantity int) error {
@@ -236,6 +286,10 @@ func (s *taskStudioBatchService) buildStudioBatchTaskProductImageRequest(
 	design StudioMaterializedDesignRecord,
 ) (*StudioProductImageRequest, error) {
 	request := buildStudioBatchTaskProductImageRequest(session, batch, candidate, design)
+	if len(candidate.ProductImageCategoryPath) > 0 {
+		request.CategoryPath = append([]string(nil), candidate.ProductImageCategoryPath...)
+		return request, nil
+	}
 	if s == nil || s.sdsProductDetailProvider == nil || candidate.SelectionSnapshot.ParentProductID <= 0 {
 		return request, nil
 	}

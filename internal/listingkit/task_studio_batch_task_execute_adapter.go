@@ -102,6 +102,15 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			}
 			if !claimed {
 				if existing, ok := s.findDurableStudioBatchTask(ctx, taskCandidate); ok {
+					reusedCandidate := taskCandidate
+					if s.batchTaskLinkRepo != nil {
+						if existingLink, linkErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, taskCandidate.CandidateKey); linkErr == nil && existingLink != nil {
+							reusedCandidate.ClaimToken = existingLink.ClaimToken
+						}
+					}
+					if err := s.settleStudioBatchProductImageUsage(context.WithoutCancel(ctx), candidate.state.Batch, reusedCandidate); err != nil {
+						return SheinStudioCreatedTask{}, err
+					}
 					return markStudioBatchReusedTask(existing), nil
 				}
 				return SheinStudioCreatedTask{}, fmt.Errorf("studio batch task candidate is already owned")
@@ -134,14 +143,22 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 					reasonCode = "product_image_generation_empty"
 				}
 				persistErr := s.persistStudioBatchTaskLink(dispatchCtx, taskCandidate, "", studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, reasonCode, err.Error())
+				releaseErr := s.releaseStudioBatchProductImageUsage(context.WithoutCancel(dispatchCtx), candidate.state.Batch, taskCandidate, reasonCode)
 				_ = dispatchHeartbeatStop()
+				if releaseErr != nil {
+					err = errors.Join(err, fmt.Errorf("release product image usage: %w", releaseErr))
+				}
 				if persistErr != nil {
-					return SheinStudioCreatedTask{}, persistErr
+					return SheinStudioCreatedTask{}, errors.Join(persistErr, err)
 				}
 				return SheinStudioCreatedTask{}, err
 			}
 			if err := s.revalidateStudioBatchTaskLinkLease(dispatchCtx, taskCandidate); err != nil {
+				releaseErr := s.releaseStudioBatchProductImageUsage(context.WithoutCancel(dispatchCtx), candidate.state.Batch, taskCandidate, "lease_lost")
 				_ = dispatchHeartbeatStop()
+				if releaseErr != nil {
+					return SheinStudioCreatedTask{}, errors.Join(err, fmt.Errorf("release product image usage: %w", releaseErr))
+				}
 				return SheinStudioCreatedTask{}, err
 			}
 			task, err := s.createGenerateTask(
@@ -161,9 +178,13 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 					taskID = ""
 				}
 				persistErr := s.persistStudioBatchTaskLink(dispatchCtx, taskCandidate, taskID, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, "task_create_failed", err.Error())
+				releaseErr := s.releaseStudioBatchProductImageUsage(context.WithoutCancel(dispatchCtx), candidate.state.Batch, taskCandidate, "task_create_failed")
 				_ = dispatchHeartbeatStop()
+				if releaseErr != nil {
+					err = errors.Join(err, fmt.Errorf("release product image usage: %w", releaseErr))
+				}
 				if persistErr != nil {
-					return SheinStudioCreatedTask{}, persistErr
+					return SheinStudioCreatedTask{}, errors.Join(persistErr, err)
 				}
 				return SheinStudioCreatedTask{}, err
 			}
@@ -184,7 +205,10 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			// Settle only after both the ListingKit task and durable created link
 			// exist. Keep the ledger write alive if the caller/lease context ends
 			// immediately after the terminal commit.
-			s.settleStudioBatchProductImageUsage(context.WithoutCancel(dispatchCtx), candidate.state.Batch, taskCandidate)
+			if err := s.settleStudioBatchProductImageUsage(context.WithoutCancel(dispatchCtx), candidate.state.Batch, taskCandidate); err != nil {
+				_ = dispatchHeartbeatStop()
+				return SheinStudioCreatedTask{}, fmt.Errorf("settle product image usage: %w", err)
+			}
 			if err := dispatchHeartbeatStop(); err != nil {
 				return SheinStudioCreatedTask{}, err
 			}

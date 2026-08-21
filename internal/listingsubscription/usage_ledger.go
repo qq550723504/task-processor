@@ -123,7 +123,7 @@ func NormalizeAndValidateReserveUsageInput(input ReserveUsageInput) (ReserveUsag
 	if input.Quantity == 0 || (input.Metric != usageMetricStorageBytesCurrent && input.Quantity < 0) {
 		return ReserveUsageInput{}, &UsageValidationError{Field: "quantity"}
 	}
-	if isUsageCountMetric(input.Metric) && input.Quantity != 1 {
+	if isUsageCountMetric(input.Metric) && input.Metric != usageMetricProductImageJobsSucceeded && input.Quantity != 1 {
 		return ReserveUsageInput{}, &UsageValidationError{Field: "quantity"}
 	}
 	return input, nil

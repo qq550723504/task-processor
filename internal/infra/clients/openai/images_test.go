@@ -87,7 +87,7 @@ func TestClientEditImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 			switch part.FormName() {
 			case "prompt":
 				sawPrompt = string(data) == "edit faithfully"
-			case "image":
+			case "image[]":
 				sawImage = len(data) > 0 && part.FileName() == "image.webp"
 			}
 		}
@@ -142,7 +142,7 @@ func TestClientEditImageIncludesSecondaryURLsAsMultipartImages(t *testing.T) {
 					t.Fatalf("NextPart: %v", err)
 				}
 				data, _ := io.ReadAll(part)
-				if part.FormName() == "image" {
+				if part.FormName() == "image[]" {
 					imageParts++
 					if len(data) == 0 {
 						t.Fatal("empty image part")
@@ -172,6 +172,46 @@ func TestClientEditImageIncludesSecondaryURLsAsMultipartImages(t *testing.T) {
 		ImageURLs:        []string{server.URL + "/secondary.png"},
 	}); err != nil {
 		t.Fatalf("EditImage() error = %v", err)
+	}
+}
+
+func TestClientEditImageBoundsSecondaryReferenceDownloadByClientTimeout(t *testing.T) {
+	started := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/secondary.png":
+			close(started)
+			<-r.Context().Done()
+		case "/images/edits":
+			t.Fatal("edit endpoint reached after secondary download timeout")
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(&ClientConfig{
+		APIKey:     "test-key",
+		Model:      "gpt-image-1",
+		BaseURL:    server.URL,
+		Timeout:    25 * time.Millisecond,
+		MaxRetries: 0,
+	})
+	startedAt := time.Now()
+	_, err := client.EditImage(context.Background(), &ImageEditRequest{
+		Image:     []byte("primary-image"),
+		ImageURLs: []string{server.URL + "/secondary.png"},
+	})
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "context deadline exceeded") {
+		t.Fatalf("EditImage() error = %v, want context deadline exceeded", err)
+	}
+	select {
+	case <-started:
+	default:
+		t.Fatal("secondary reference was not requested")
+	}
+	if elapsed := time.Since(startedAt); elapsed > time.Second {
+		t.Fatalf("secondary download took %s, want client timeout", elapsed)
 	}
 }
 

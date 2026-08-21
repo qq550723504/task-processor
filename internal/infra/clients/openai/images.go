@@ -121,7 +121,7 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 	if req.N > 0 {
 		_ = writer.WriteField("n", fmt.Sprintf("%d", req.N))
 	}
-	imagePart, err := writer.CreateFormFile("image", imageEditFilename(req.ImageContentType))
+	imagePart, err := writer.CreateFormFile("image[]", imageEditFilename(req.ImageContentType))
 	if err != nil {
 		return nil, fmt.Errorf("create image form file: %w", err)
 	}
@@ -141,11 +141,17 @@ func (bc *BaseClient) editImage(ctx context.Context, req *ImageEditRequest) (*Im
 			continue
 		}
 		seenURLs[imageURL] = struct{}{}
-		data, contentType, err := downloadImageEditReference(ctx, imageURL)
+		downloadCtx := ctx
+		cancel := func() {}
+		if bc.config != nil && bc.config.Timeout > 0 {
+			downloadCtx, cancel = context.WithTimeout(ctx, bc.config.Timeout)
+		}
+		data, contentType, err := downloadImageEditReference(downloadCtx, imageURL)
+		cancel()
 		if err != nil {
 			return nil, err
 		}
-		secondaryPart, err := writer.CreateFormFile("image", imageEditFilename(contentType))
+		secondaryPart, err := writer.CreateFormFile("image[]", imageEditFilename(contentType))
 		if err != nil {
 			return nil, fmt.Errorf("create secondary image form file: %w", err)
 		}

@@ -50,6 +50,16 @@ type StudioProductImageUsage interface {
 	RecordProductImageUsage(context.Context, string, int) error
 }
 
+// StudioProductImageUsageReservation is the durable quota path for batch
+// product-image generation. Implementations reserve by a deterministic
+// candidate identity before provider work, then commit or release that same
+// reservation after the task outcome is known.
+type StudioProductImageUsageReservation interface {
+	ReserveProductImageUsage(context.Context, string, string, int) error
+	CommitProductImageUsage(context.Context, string, string) error
+	ReleaseProductImageUsage(context.Context, string, string, string) error
+}
+
 func generationUsageIdentity(taskID, tenantID string, occurredAt time.Time) generationUsageFact {
 	taskID = strings.TrimSpace(taskID)
 	tenantID = strings.TrimSpace(tenantID)

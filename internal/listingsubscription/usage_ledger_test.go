@@ -83,6 +83,14 @@ func TestReserveUsageInputRejectsInvalidValues(t *testing.T) {
 			t.Fatalf("validation error = %#v, want quantity", err)
 		}
 	})
+	t.Run("product image jobs accept a batch quantity", func(t *testing.T) {
+		input := valid
+		input.Metric = usageMetricProductImageJobsSucceeded
+		input.Quantity = 2
+		if _, err := NormalizeAndValidateReserveUsageInput(input); err != nil {
+			t.Fatalf("NormalizeAndValidateReserveUsageInput() error = %v, want batch quantity accepted", err)
+		}
+	})
 	t.Run("unknown metric is rejected", func(t *testing.T) {
 		input := valid
 		input.Metric = "studio_design_job_succeeded"

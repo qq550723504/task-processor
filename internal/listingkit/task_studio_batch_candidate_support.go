@@ -33,6 +33,7 @@ type studioBatchTaskCandidate struct {
 	SelectionID                     string
 	CompatibilityFingerprint        string
 	ProductImageSettingsFingerprint string
+	ProductImageCategoryPath        []string
 	CandidateKey                    string
 	HistoricalCandidateKey          string
 	ClaimToken                      string
@@ -89,7 +90,7 @@ func (s *taskStudioBatchService) buildStudioBatchTaskState(
 		return nil, err
 	}
 	if session == nil {
-		session = fallbackStudioBatchTaskSession(batchID, batchDetail.Batch, stateDesignIDs, resolveStudioBatchTaskImageStrategy(req, nil))
+		session = fallbackStudioBatchTaskSession(batchID, batchDetail.Batch, stateDesignIDs, resolveStudioBatchTaskImageStrategy(req, nil, batchDetail.Batch))
 	}
 	designs, err := s.repo.ListStudioMaterializedDesignsByIDs(ctx, batchID, stateDesignIDs)
 	if err != nil {
@@ -245,6 +246,8 @@ func (s *taskStudioBatchService) buildStudioBatchTaskCandidates(
 
 	candidates := make([]studioBatchTaskCandidate, 0, len(designs))
 	rejectedTasks := make([]SheinStudioRejectedTask, 0)
+	categoryPathByParentID := make(map[int64][]string)
+	categoryPathLoaded := make(map[int64]bool)
 	for _, design := range designs {
 		item, ok := itemByID[design.ItemID]
 		if !ok {
@@ -272,6 +275,28 @@ func (s *taskStudioBatchService) buildStudioBatchTaskCandidates(
 		designCandidates, rejected := buildStudioBatchTaskCandidatesForDesign(ctx, session, batch, item, design, selections)
 		if rejected != nil {
 			rejectedTasks = append(rejectedTasks, *rejected)
+		}
+		for index := range designCandidates {
+			if normalizeSheinImageStrategy(designCandidates[index].ImageStrategy) != sheinImageStrategyAIGenerated || s == nil || s.sdsProductDetailProvider == nil {
+				continue
+			}
+			parentProductID := designCandidates[index].SelectionSnapshot.ParentProductID
+			if parentProductID <= 0 {
+				continue
+			}
+			if !categoryPathLoaded[parentProductID] {
+				detail, detailErr := s.sdsProductDetailProvider.GetProductDetail(ctx, parentProductID)
+				if detailErr != nil {
+					return nil, nil, fmt.Errorf("hydrate SDS product category %d: %w", parentProductID, detailErr)
+				}
+				categoryPathByParentID[parentProductID] = studioProductImageCategoryPath(detail)
+				categoryPathLoaded[parentProductID] = true
+			}
+			designCandidates[index].ProductImageCategoryPath = append([]string(nil), categoryPathByParentID[parentProductID]...)
+			designCandidates[index].CandidateKey = buildStudioBatchTaskCandidateKey(ctx, batch, designCandidates[index])
+			historical := designCandidates[index]
+			historical.ImageStrategy = sheinImageStrategySDSOfficial
+			designCandidates[index].HistoricalCandidateKey = buildStudioBatchTaskCandidateKey(ctx, batch, historical)
 		}
 		candidates = append(candidates, designCandidates...)
 	}
@@ -473,7 +498,7 @@ func buildStudioBatchTaskCandidateKey(ctx context.Context, batch *StudioBatchRec
 		if settingsFingerprint != "" {
 			normalized += "|product_image_settings=" + settingsFingerprint
 		}
-		if productImageInputsFingerprint := studioBatchTaskProductImageInputsFingerprint(candidate.SelectionSnapshot); productImageInputsFingerprint != "" {
+		if productImageInputsFingerprint := studioBatchTaskProductImageInputsFingerprint(candidate.SelectionSnapshot, candidate.ProductImageCategoryPath); productImageInputsFingerprint != "" {
 			normalized += "|product_image_inputs=" + productImageInputsFingerprint
 		}
 	}
@@ -481,7 +506,7 @@ func buildStudioBatchTaskCandidateKey(ctx context.Context, batch *StudioBatchRec
 	return hex.EncodeToString(sum[:])
 }
 
-func studioBatchTaskProductImageInputsFingerprint(selection SheinStudioSelection) string {
+func studioBatchTaskProductImageInputsFingerprint(selection SheinStudioSelection, categoryPath []string) string {
 	type variantInput struct {
 		VariantSKU    string   `json:"variant_sku,omitempty"`
 		Color         string   `json:"color,omitempty"`
@@ -489,7 +514,7 @@ func studioBatchTaskProductImageInputsFingerprint(selection SheinStudioSelection
 	}
 	representatives := studioBatchTaskColorRepresentatives(selection)
 	referenceURLs := studioBatchTaskProductReferenceImageURLs(selection)
-	if strings.TrimSpace(selection.ProductName) == "" && len(referenceURLs) == 0 && len(representatives) == 0 {
+	if strings.TrimSpace(selection.ProductName) == "" && len(categoryPath) == 0 && len(referenceURLs) == 0 && len(representatives) == 0 {
 		return ""
 	}
 	variants := make([]variantInput, 0, len(representatives))
@@ -502,10 +527,12 @@ func studioBatchTaskProductImageInputsFingerprint(selection SheinStudioSelection
 	}
 	payload, err := json.Marshal(struct {
 		ProductName   string         `json:"product_name,omitempty"`
+		CategoryPath  []string       `json:"category_path,omitempty"`
 		ReferenceURLs []string       `json:"reference_urls,omitempty"`
 		Variants      []variantInput `json:"variants,omitempty"`
 	}{
 		ProductName:   strings.TrimSpace(selection.ProductName),
+		CategoryPath:  append([]string(nil), categoryPath...),
 		ReferenceURLs: referenceURLs,
 		Variants:      variants,
 	})
@@ -619,9 +646,12 @@ func fallbackStudioBatchTaskSession(batchID string, batch *StudioBatchRecord, de
 	return session
 }
 
-func resolveStudioBatchTaskImageStrategy(req *CreateStudioBatchTasksRequest, session *SheinStudioSession) string {
+func resolveStudioBatchTaskImageStrategy(req *CreateStudioBatchTasksRequest, session *SheinStudioSession, batch *StudioBatchRecord) string {
 	if req != nil && req.ImageStrategy != nil && strings.TrimSpace(*req.ImageStrategy) != "" {
 		return normalizeStudioBatchTaskCreationImageStrategy(*req.ImageStrategy)
+	}
+	if (session == nil || strings.TrimSpace(session.ImageStrategy) == "") && batch != nil {
+		return normalizeStudioBatchTaskCreationImageStrategy(batch.ImageStrategy)
 	}
 	return normalizeStudioBatchTaskCreationImageStrategy(sessionImageStrategy(session))
 }
@@ -652,7 +682,7 @@ func studioBatchTaskLinkCompatibilityFingerprint(candidate studioBatchTaskCandid
 		return base
 	}
 	settings := strings.TrimSpace(candidate.ProductImageSettingsFingerprint)
-	inputs := studioBatchTaskProductImageInputsFingerprint(candidate.SelectionSnapshot)
+	inputs := studioBatchTaskProductImageInputsFingerprint(candidate.SelectionSnapshot, candidate.ProductImageCategoryPath)
 	if settings == "" && inputs == "" {
 		return base
 	}

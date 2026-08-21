@@ -288,6 +288,22 @@ func TestBuildStudioBatchTaskCandidateKeyIncludesAIGeneratedSelectionInputs(t *t
 	}
 }
 
+func TestStudioBatchTaskCandidateKeyDiffersWhenProductImageCategoryChanges(t *testing.T) {
+	t.Parallel()
+
+	candidate := studioBatchTaskCandidate{
+		ImageStrategy:            sheinImageStrategyAIGenerated,
+		ProductImageCategoryPath: []string{"Apparel", "Tops"},
+		SelectionSnapshot:        SheinStudioSelection{ProductName: "Canvas Tote"},
+	}
+	first := buildStudioBatchTaskCandidateKey(WithTenantID(context.Background(), "tenant-1"), &StudioBatchRecord{ID: "batch-1"}, candidate)
+	candidate.ProductImageCategoryPath = []string{"Home", "Decor"}
+	second := buildStudioBatchTaskCandidateKey(WithTenantID(context.Background(), "tenant-1"), &StudioBatchRecord{ID: "batch-1"}, candidate)
+	if first == second {
+		t.Fatalf("candidate keys unexpectedly match after product-image category changed: %q", first)
+	}
+}
+
 func TestStudioProductImageCategoryPathUsesSDSCategoryNames(t *testing.T) {
 	t.Parallel()
 
@@ -298,6 +314,38 @@ func TestStudioProductImageCategoryPathUsesSDSCategoryNames(t *testing.T) {
 	})
 	if got, want := path, []string{"Apparel", "Tops"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("category path = %+v, want %+v", got, want)
+	}
+}
+
+func TestBuildStudioBatchTaskCandidatesSnapshotsProductImageCategoryPath(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().UTC()
+	batch := newStudioBatchRecordForTest("batch-category", now)
+	batch.ImageStrategy = sheinImageStrategyAIGenerated
+	batch.GroupedImageMode = "per_product"
+	batch.GroupedSelections = SheinStudioGroupedSelectionList{
+		studioBatchFanOutSelection("selection-1", 3001, "Red", "870", "https://cdn.example.com/template.png", "https://cdn.example.com/mask.png"),
+	}
+	item := StudioBatchItemRecord{ID: "item-1", BatchID: batch.ID, SelectionIDs: SheinStudioStringList{"selection-1"}, GroupMode: "per_product"}
+	design := StudioMaterializedDesignRecord{ID: "design-1", BatchID: batch.ID, ItemID: item.ID, ImageURL: "https://cdn.example.com/design.png", ReviewStatus: StudioMaterializedDesignReviewStatusApproved}
+	service := &taskStudioBatchService{
+		sdsProductDetailProvider: stubSDSBaselineRemoteProvider{productDetail: &sdstemplate.ProductDetail{ProductSummary: sdstemplate.ProductSummary{
+			Categories: []sdstemplate.Category{{Name: "Apparel"}, {Name: "Tops"}},
+		}}},
+	}
+	candidates, _, err := service.buildStudioBatchTaskCandidates(context.Background(), &SheinStudioSession{ImageStrategy: sheinImageStrategyAIGenerated}, batch, &StudioBatchDetailGraph{
+		Batch: batch,
+		Items: []StudioBatchItemRecord{item},
+	}, []StudioMaterializedDesignRecord{design})
+	if err != nil {
+		t.Fatalf("buildStudioBatchTaskCandidates() error = %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("candidates = %+v, want one candidate", candidates)
+	}
+	if got, want := candidates[0].ProductImageCategoryPath, []string{"Apparel", "Tops"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("candidate category path = %+v, want %+v", got, want)
 	}
 }
 
@@ -366,6 +414,35 @@ func TestTaskStudioBatchServiceAttachesPerColorProductImages(t *testing.T) {
 	}
 }
 
+func TestTaskStudioBatchServiceReservesProductImageUsageBeforeGeneration(t *testing.T) {
+	t.Parallel()
+
+	usage := &reservingStudioProductImageUsage{}
+	service := &taskStudioBatchService{
+		productImageUsage: usage,
+		generateProductImages: func(_ context.Context, _ *StudioProductImageRequest) (*StudioProductImageResponse, error) {
+			return &StudioProductImageResponse{Images: []StudioGeneratedImage{{ImageURL: "https://cdn.example.com/generated.png"}}}, nil
+		},
+	}
+	candidate := studioBatchTaskCandidate{
+		CandidateKey:      "candidate-reservation",
+		ImageStrategy:     sheinImageStrategyAIGenerated,
+		SelectionSnapshot: SheinStudioSelection{ProductName: "Canvas Tote"},
+	}
+	request := buildStudioBatchTaskGenerateRequest(
+		&SheinStudioSession{Prompt: "retro", ImageStrategy: sheinImageStrategyAIGenerated},
+		&StudioBatchRecord{ID: "batch-reservation", TenantID: "tenant-a"},
+		candidate,
+		StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
+	)
+	if err := service.attachStudioBatchProductImages(context.Background(), request, nil, &StudioBatchRecord{ID: "batch-reservation", TenantID: "tenant-a"}, candidate, StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"}); err != nil {
+		t.Fatalf("attachStudioBatchProductImages() error = %v", err)
+	}
+	if len(usage.reserved) != 1 || usage.reserved[0] != "tenant-a:candidate-reservation:1" {
+		t.Fatalf("reservations = %v, want one atomic reservation before generation", usage.reserved)
+	}
+}
+
 func TestTaskStudioBatchServiceSettlesProductImageUsageForCommittedCandidate(t *testing.T) {
 	usage := &recordingStudioProductImageUsage{}
 	service := &taskStudioBatchService{productImageUsage: usage}
@@ -379,6 +456,42 @@ func TestTaskStudioBatchServiceSettlesProductImageUsageForCommittedCandidate(t *
 	service.settleStudioBatchProductImageUsage(context.Background(), &StudioBatchRecord{TenantID: "tenant-a"}, candidate)
 	if len(usage.recorded) != 1 || usage.recorded[0] != "tenant-a:2" {
 		t.Fatalf("settled usage = %v, want one post-commit settlement for both colors", usage.recorded)
+	}
+}
+
+func TestTaskStudioBatchServiceCommitsDurableProductImageReservation(t *testing.T) {
+	t.Parallel()
+
+	usage := &reservingStudioProductImageUsage{}
+	service := &taskStudioBatchService{productImageUsage: usage}
+	candidate := studioBatchTaskCandidate{
+		CandidateKey:      "candidate-commit",
+		ImageStrategy:     sheinImageStrategyAIGenerated,
+		SelectionSnapshot: SheinStudioSelection{ProductName: "Canvas Tote"},
+	}
+	if err := service.settleStudioBatchProductImageUsage(context.Background(), &StudioBatchRecord{TenantID: "tenant-a"}, candidate); err != nil {
+		t.Fatalf("settleStudioBatchProductImageUsage() error = %v", err)
+	}
+	if len(usage.committed) != 1 || usage.committed[0] != "tenant-a:candidate-commit" {
+		t.Fatalf("committed reservations = %v, want durable reservation commit", usage.committed)
+	}
+}
+
+func TestTaskStudioBatchServiceReleasesDurableProductImageReservation(t *testing.T) {
+	t.Parallel()
+
+	usage := &reservingStudioProductImageUsage{}
+	service := &taskStudioBatchService{productImageUsage: usage}
+	candidate := studioBatchTaskCandidate{
+		CandidateKey:      "candidate-release",
+		ImageStrategy:     sheinImageStrategyAIGenerated,
+		SelectionSnapshot: SheinStudioSelection{ProductName: "Canvas Tote"},
+	}
+	if err := service.releaseStudioBatchProductImageUsage(context.Background(), &StudioBatchRecord{TenantID: "tenant-a"}, candidate, "generation_failed"); err != nil {
+		t.Fatalf("releaseStudioBatchProductImageUsage() error = %v", err)
+	}
+	if len(usage.released) != 1 || usage.released[0] != "tenant-a:candidate-release:generation_failed" {
+		t.Fatalf("released reservations = %v, want durable reservation release", usage.released)
 	}
 }
 
@@ -479,6 +592,28 @@ type recordingStudioProductImageUsage struct {
 	recordErr  error
 }
 
+type reservingStudioProductImageUsage struct {
+	recordingStudioProductImageUsage
+	reserved  []string
+	committed []string
+	released  []string
+}
+
+func (u *reservingStudioProductImageUsage) ReserveProductImageUsage(_ context.Context, tenantID, reservationID string, quantity int) error {
+	u.reserved = append(u.reserved, tenantID+":"+reservationID+":"+strconv.Itoa(quantity))
+	return nil
+}
+
+func (u *reservingStudioProductImageUsage) CommitProductImageUsage(_ context.Context, tenantID, reservationID string) error {
+	u.committed = append(u.committed, tenantID+":"+reservationID)
+	return nil
+}
+
+func (u *reservingStudioProductImageUsage) ReleaseProductImageUsage(_ context.Context, tenantID, reservationID, reason string) error {
+	u.released = append(u.released, tenantID+":"+reservationID+":"+reason)
+	return nil
+}
+
 func (u *recordingStudioProductImageUsage) AuthorizeProductImageUsage(_ context.Context, tenantID string, quantity int) error {
 	u.authorized = append(u.authorized, tenantID+":"+strconv.Itoa(quantity))
 	return nil
@@ -517,6 +652,30 @@ func TestTaskStudioBatchServiceProductImageRequestLoadsSDSCategoryPath(t *testin
 		t.Fatalf("attachStudioBatchProductImages() error = %v", err)
 	}
 	if got, want := gotCategoryPath, []string{"Apparel", "Tops"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("category path = %+v, want %+v", got, want)
+	}
+}
+
+func TestTaskStudioBatchServiceProductImageRequestUsesCandidateCategorySnapshot(t *testing.T) {
+	t.Parallel()
+
+	candidate := studioBatchTaskCandidate{
+		ImageStrategy:            sheinImageStrategyAIGenerated,
+		ProductImageCategoryPath: []string{"Apparel", "Tops"},
+		SelectionSnapshot:        SheinStudioSelection{ProductName: "T-shirt"},
+	}
+	service := &taskStudioBatchService{}
+	request, err := service.buildStudioBatchTaskProductImageRequest(
+		context.Background(),
+		&SheinStudioSession{Prompt: "retro"},
+		&StudioBatchRecord{ID: "batch-1"},
+		candidate,
+		StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
+	)
+	if err != nil {
+		t.Fatalf("buildStudioBatchTaskProductImageRequest() error = %v", err)
+	}
+	if got, want := request.CategoryPath, []string{"Apparel", "Tops"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("category path = %+v, want %+v", got, want)
 	}
 }
@@ -696,10 +855,24 @@ func TestStudioBatchTaskImageStrategyPrefersExplicitRequest(t *testing.T) {
 	got := resolveStudioBatchTaskImageStrategy(
 		&CreateStudioBatchTasksRequest{ImageStrategy: &strategy},
 		&SheinStudioSession{ImageStrategy: sheinImageStrategySDSOfficial},
+		nil,
 	)
 
 	if got != sheinImageStrategyAIGenerated {
 		t.Fatalf("strategy = %q, want %q", got, sheinImageStrategyAIGenerated)
+	}
+}
+
+func TestStudioBatchTaskImageStrategyFallsBackToPersistedBatch(t *testing.T) {
+	t.Parallel()
+
+	got := resolveStudioBatchTaskImageStrategy(
+		&CreateStudioBatchTasksRequest{},
+		nil,
+		&StudioBatchRecord{ImageStrategy: sheinImageStrategyAIGenerated},
+	)
+	if got != sheinImageStrategyAIGenerated {
+		t.Fatalf("strategy = %q, want persisted %q", got, sheinImageStrategyAIGenerated)
 	}
 }
 
@@ -709,6 +882,7 @@ func TestStudioBatchTaskImageStrategyMapsLegacySessionHybridToSDS(t *testing.T) 
 	got := resolveStudioBatchTaskImageStrategy(
 		&CreateStudioBatchTasksRequest{},
 		&SheinStudioSession{ImageStrategy: sheinImageStrategyHybrid},
+		nil,
 	)
 	if got != sheinImageStrategySDSOfficial {
 		t.Fatalf("strategy = %q, want %q", got, sheinImageStrategySDSOfficial)
@@ -722,6 +896,7 @@ func TestStudioBatchTaskImageStrategyMapsRemovedHybridModeToSDS(t *testing.T) {
 	got := resolveStudioBatchTaskImageStrategy(
 		&CreateStudioBatchTasksRequest{ImageStrategy: &strategy},
 		&SheinStudioSession{ImageStrategy: sheinImageStrategyAIGenerated},
+		nil,
 	)
 
 	if got != sheinImageStrategySDSOfficial {

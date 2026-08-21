@@ -313,7 +313,7 @@ func (s *taskStudioBatchService) prepareStudioBatchTaskCreation(
 	if err := validateStudioBatchTaskCreationDesignReadiness(designs, batchDetail); err != nil {
 		return nil, nil, nil, err
 	}
-	strategy := resolveStudioBatchTaskImageStrategy(req, session)
+	strategy := resolveStudioBatchTaskImageStrategy(req, session, batchDetail.Batch)
 	if session != nil {
 		session.ImageStrategy = strategy
 	}
