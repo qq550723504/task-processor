@@ -224,6 +224,39 @@ func TestServiceRejectsImpossibleOptionalSupplierNumbers(t *testing.T) {
 	}
 }
 
+func TestServiceRejectsImpossibleProductNumbers(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*sourcing.Alibaba1688ProductSnapshot)
+	}{
+		{name: "negative sales volume", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.SalesVolume = -1
+		}},
+		{name: "negative review count", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.ReviewCount = -1
+		}},
+		{name: "product rating above maximum", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.Rating = 99
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+			actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+			job, err := service.Create(actor, offerURL)
+			require.NoError(t, err)
+			claim, err := service.Claim(actor)
+			require.NoError(t, err)
+
+			snapshot := validSnapshot()
+			tt.mutate(snapshot)
+			_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, snapshot)
+			require.ErrorIs(t, err, ErrSnapshotInvalid)
+		})
+	}
+}
+
 func TestServiceAcceptsOnlySnapshotForClaimedURL(t *testing.T) {
 	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
 	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}

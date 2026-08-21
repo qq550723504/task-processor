@@ -68,6 +68,9 @@ func (pc *ProductChecker) ValidateProduct(product *model.Product1688) error {
 	if err := pc.validateSupplier(product); err != nil {
 		return fmt.Errorf("供应商信息验证失败: %w", err)
 	}
+	if err := pc.validateProductMetrics(product); err != nil {
+		return fmt.Errorf("商品数值信息验证失败: %w", err)
+	}
 
 	// 检查敏感词
 	if err := pc.checkSensitiveWords(product); err != nil {
@@ -98,6 +101,19 @@ func (pc *ProductChecker) validateSupplier(product *model.Product1688) error {
 	}
 	if !isFiniteInRange(supplier.ResponseRate, 0, 100) {
 		return fmt.Errorf("供应商响应率必须在0到100之间")
+	}
+	return nil
+}
+
+func (pc *ProductChecker) validateProductMetrics(product *model.Product1688) error {
+	if product.SalesVolume < 0 {
+		return fmt.Errorf("销量不能为负数")
+	}
+	if product.ReviewCount < 0 {
+		return fmt.Errorf("评价数不能为负数")
+	}
+	if !isFiniteInRange(product.Rating, 0, 5) {
+		return fmt.Errorf("商品评分必须在0到5之间")
 	}
 	return nil
 }

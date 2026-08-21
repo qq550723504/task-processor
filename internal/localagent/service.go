@@ -259,6 +259,9 @@ func validateCrawlerSnapshot(product *sourcing.Alibaba1688ProductSnapshot) error
 		MinPrice:         product.MinPrice,
 		MaxPrice:         product.MaxPrice,
 		MinOrderQuantity: product.MinOrderQuantity,
+		SalesVolume:      product.SalesVolume,
+		ReviewCount:      product.ReviewCount,
+		Rating:           product.Rating,
 		Supplier: model.SupplierInfo{
 			ID:              product.Supplier.ID,
 			Name:            product.Supplier.Name,
