@@ -196,6 +196,13 @@ func usageEventMatchesReconciliationFilter(event UsageEvent, filter UsageLedgerR
 		key := strings.TrimSpace(filter.CommittedMetadataKey)
 		return key != "" && event.Metadata[key] != strings.TrimSpace(filter.CommittedSettledValue)
 	}
+	if event.Status == UsageEventReleased {
+		for _, predicate := range filter.ReleasedMetadataPredicates {
+			if event.Metadata[strings.TrimSpace(predicate.Key)] == predicate.Value {
+				return true
+			}
+		}
+	}
 	return false
 }
 

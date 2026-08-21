@@ -20,6 +20,7 @@ const (
 	legacyMirrorMetadataKey        = "listingkit_legacy_counter_mirror"
 	legacyMirrorPending            = "pending"
 	legacyMirrorSettled            = "settled"
+	legacyMirrorReleasePending     = "release_pending"
 )
 
 type subscriptionStudioProductImageUsage struct {
@@ -71,6 +72,9 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 	reservationID = strings.TrimSpace(reservationID)
 	if tenantID == "" || reservationID == "" || quantity <= 0 {
 		return fmt.Errorf("product image usage reservation requires tenant, reservation, and positive quantity")
+	}
+	if err := a.reconcilePendingLegacyMirrorReleases(ctx, tenantID); err != nil {
+		return err
 	}
 	reservationKey := studioProductImageUsageIdempotencyKey(reservationID)
 	billingTenant, existingEvent, err := a.lookupProductImageUsageEvent(ctx, tenantID, reservationKey)
@@ -170,8 +174,13 @@ func (a *subscriptionStudioProductImageUsage) ReleaseProductImageUsage(ctx conte
 		if !legacyMirrorSettledForEvent {
 			return nil
 		}
-		_, _, err = a.service.RecordUsageForPeriodOnce(ctx, strings.TrimSpace(event.TenantID), studioProductImageModule, studioProductImageMetric, event.PeriodKey, -int(event.Quantity), legacyMirrorOperationKey(event.EventID, "release"))
-		return err
+		if err := a.markLegacyMirrorReleasePending(ctx, *event); err != nil {
+			return err
+		}
+		if _, _, err = a.service.RecordUsageForPeriodOnce(ctx, strings.TrimSpace(event.TenantID), studioProductImageModule, studioProductImageMetric, event.PeriodKey, -int(event.Quantity), legacyMirrorOperationKey(event.EventID, "release")); err != nil {
+			return err
+		}
+		return a.clearLegacyMirrorReleasePending(ctx, *event)
 	}
 	if event.Status != listingsubscription.UsageEventReserved {
 		return fmt.Errorf("product image usage release requires a reserved event")
@@ -180,10 +189,100 @@ func (a *subscriptionStudioProductImageUsage) ReleaseProductImageUsage(ctx conte
 		return err
 	}
 	if legacyMirrorSettledForEvent {
-		_, _, err = a.service.RecordUsageForPeriodOnce(ctx, strings.TrimSpace(event.TenantID), studioProductImageModule, studioProductImageMetric, event.PeriodKey, -int(event.Quantity), legacyMirrorOperationKey(event.EventID, "release"))
-		return err
+		if err := a.markLegacyMirrorReleasePending(ctx, *event); err != nil {
+			return err
+		}
+		if _, _, err = a.service.RecordUsageForPeriodOnce(ctx, strings.TrimSpace(event.TenantID), studioProductImageModule, studioProductImageMetric, event.PeriodKey, -int(event.Quantity), legacyMirrorOperationKey(event.EventID, "release")); err != nil {
+			return err
+		}
+		return a.clearLegacyMirrorReleasePending(ctx, *event)
 	}
 	return nil
+}
+
+func (a *subscriptionStudioProductImageUsage) reconcilePendingLegacyMirrorReleases(ctx context.Context, tenantID string) error {
+	candidates := []string{strings.TrimSpace(tenantID)}
+	if legacyTenantID, err := tenantbridge.ResolveLegacyTenantID(ctx, tenantID); err == nil {
+		legacyTenant := strconv.FormatInt(legacyTenantID, 10)
+		if legacyTenant != "" && legacyTenant != candidates[0] {
+			candidates = append(candidates, legacyTenant)
+		}
+	} else if !errors.Is(err, tenantbridge.ErrLegacyTenantNotFound) {
+		return err
+	}
+	for _, billingTenant := range candidates {
+		if err := a.reconcilePendingLegacyMirrorReleasesForBillingTenant(ctx, billingTenant); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (a *subscriptionStudioProductImageUsage) reconcilePendingLegacyMirrorReleasesForBillingTenant(ctx context.Context, billingTenant string) error {
+	const pageSize = 100
+	offset := 0
+	for {
+		events, err := a.service.ListUsageEventPageForReconciliationWithFilter(ctx, listingsubscription.UsageLedgerReconciliationFilter{
+			TenantID: billingTenant, SourceType: "listingkit_product_image", Metric: studioProductImageLedgerMetric,
+			ReleasedMetadataPredicates: []listingsubscription.UsageLedgerMetadataPredicate{{Key: legacyMirrorReleasePending, Value: "1"}},
+		}, pageSize, offset)
+		if err != nil {
+			if errors.Is(err, listingsubscription.ErrUsageLedgerEventLookupUnsupported) {
+				return nil
+			}
+			return err
+		}
+		if len(events) == 0 {
+			return nil
+		}
+		progress := 0
+		for _, event := range events {
+			if event.Status != listingsubscription.UsageEventReleased || event.Metadata[legacyMirrorReleasePending] != "1" {
+				continue
+			}
+			if err := a.finishLegacyMirrorRelease(ctx, event); err != nil {
+				return err
+			}
+			progress++
+		}
+		if progress > 0 {
+			offset = 0
+			continue
+		}
+		offset += len(events)
+		if len(events) < pageSize {
+			return nil
+		}
+	}
+}
+
+func (a *subscriptionStudioProductImageUsage) finishLegacyMirrorRelease(ctx context.Context, event listingsubscription.UsageEvent) error {
+	if _, _, err := a.service.RecordUsageForPeriodOnce(ctx, event.TenantID, studioProductImageModule, studioProductImageMetric, event.PeriodKey, -int(event.Quantity), legacyMirrorOperationKey(event.EventID, "release")); err != nil {
+		return err
+	}
+	return a.clearLegacyMirrorReleasePending(ctx, event)
+}
+
+func (a *subscriptionStudioProductImageUsage) markLegacyMirrorReleasePending(ctx context.Context, event listingsubscription.UsageEvent) error {
+	metadata := cloneStudioProductImageMetadata(event.Metadata)
+	metadata[legacyMirrorReleasePending] = "1"
+	_, err := a.service.UpdateUsageMetadata(ctx, event.EventID, metadata)
+	return err
+}
+
+func (a *subscriptionStudioProductImageUsage) clearLegacyMirrorReleasePending(ctx context.Context, event listingsubscription.UsageEvent) error {
+	metadata := cloneStudioProductImageMetadata(event.Metadata)
+	delete(metadata, legacyMirrorReleasePending)
+	_, err := a.service.UpdateUsageMetadata(ctx, event.EventID, metadata)
+	return err
+}
+
+func cloneStudioProductImageMetadata(metadata map[string]string) map[string]string {
+	copyOfMetadata := make(map[string]string, len(metadata)+1)
+	for key, value := range metadata {
+		copyOfMetadata[key] = value
+	}
+	return copyOfMetadata
 }
 
 func legacyMirrorOperationKey(eventID, operation string) string {

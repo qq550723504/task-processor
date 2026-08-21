@@ -292,6 +292,43 @@ func TestSubscriptionStudioProductImageUsageReleaseRetriesLegacyMirrorBeforeLedg
 	}
 }
 
+func TestSubscriptionStudioProductImageUsageRepairsPendingReleaseBeforeUnrelatedReservation(t *testing.T) {
+	baseRepo := listingsubscription.NewMemRepository()
+	repo := &failingNegativeProductImageUsageRepository{Repository: baseRepo}
+	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(baseRepo))
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-mirror-reconcile", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"product_image_jobs": 1},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	adapter := studioProductImageUsageDependency(svc)
+	ctx := context.Background()
+	if err := adapter.ReserveProductImageUsage(ctx, "tenant-mirror-reconcile", "candidate-1", 1); err != nil {
+		t.Fatalf("ReserveProductImageUsage(candidate-1) error = %v", err)
+	}
+	repo.failNegative = true
+	if err := adapter.ReleaseProductImageUsage(ctx, "tenant-mirror-reconcile", "candidate-1", "generation_failed"); err == nil {
+		t.Fatal("ReleaseProductImageUsage() unexpectedly succeeded while mirror decrement failed")
+	}
+	repo.failNegative = false
+	if err := adapter.ReserveProductImageUsage(ctx, "tenant-mirror-reconcile", "candidate-2", 1); err != nil {
+		t.Fatalf("ReserveProductImageUsage(candidate-2) error = %v, want pending release repaired first", err)
+	}
+	usage, err := baseRepo.ListUsage(ctx, "tenant-mirror-reconcile")
+	if err != nil {
+		t.Fatalf("ListUsage() error = %v", err)
+	}
+	for _, counter := range usage {
+		if counter.Metric == studioProductImageMetric && counter.Used != 1 {
+			t.Fatalf("legacy mirror usage = %d, want one active reservation after repair", counter.Used)
+		}
+	}
+}
+
 func TestSubscriptionStudioProductImageUsageRetriesPendingLegacyMirrorOnExistingReservation(t *testing.T) {
 	repo := listingsubscription.NewMemRepository()
 	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(repo))

@@ -439,6 +439,22 @@ func (l *gormUsageLedger) ListEventsPageForReconciliationWithFilter(ctx context.
 		conditions = append(conditions, "(status = ? AND source_type IN ?)")
 		args = append(args, string(UsageEventReserved), reservedSourceTypes)
 	}
+	releasedPredicates := make([]string, 0, len(filter.ReleasedMetadataPredicates))
+	releasedArgs := make([]any, 0, len(filter.ReleasedMetadataPredicates))
+	for _, predicate := range filter.ReleasedMetadataPredicates {
+		key := strings.TrimSpace(predicate.Key)
+		value := strings.TrimSpace(predicate.Value)
+		if key == "" || value == "" {
+			continue
+		}
+		releasedPredicates = append(releasedPredicates, "metadata LIKE ?")
+		releasedArgs = append(releasedArgs, "%\""+key+"\":\""+value+"\"%")
+	}
+	if len(releasedPredicates) > 0 {
+		conditions = append(conditions, "(status = ? AND ("+strings.Join(releasedPredicates, " OR ")+"))")
+		args = append(args, string(UsageEventReleased))
+		args = append(args, releasedArgs...)
+	}
 	if key := strings.TrimSpace(filter.CommittedMetadataKey); key != "" && strings.TrimSpace(filter.CommittedSettledValue) != "" {
 		conditions = append(conditions, "(status = ? AND (metadata IS NULL OR metadata = '' OR metadata NOT LIKE ?))")
 		args = append(args, string(UsageEventCommitted), "%\""+key+"\":\""+strings.TrimSpace(filter.CommittedSettledValue)+"\"%")

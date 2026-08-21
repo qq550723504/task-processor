@@ -365,6 +365,7 @@ type UsageLedgerReconciliationFilter struct {
 	ReservedSourceTypes        []string
 	Metric                     string
 	ReservedMetadataPredicates []UsageLedgerMetadataPredicate
+	ReleasedMetadataPredicates []UsageLedgerMetadataPredicate
 	CommittedMetadataKey       string
 	CommittedSettledValue      string
 }

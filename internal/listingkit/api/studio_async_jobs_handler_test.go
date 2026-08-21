@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -163,8 +164,13 @@ type orderedStudioAsyncJobRepository struct {
 }
 
 func (r *orderedStudioAsyncJobRepository) UpdateStudioAsyncJob(ctx context.Context, record *listingkit.StudioAsyncJobRecord) error {
-	if record != nil && record.Status == listingkit.StudioAsyncJobStatusSucceeded {
-		*r.order = append(*r.order, "job_succeeded")
+	if record != nil {
+		switch record.Status {
+		case listingkit.StudioAsyncJobStatusSucceeded:
+			*r.order = append(*r.order, "job_succeeded")
+		case listingkit.StudioAsyncJobStatusFailed:
+			*r.order = append(*r.order, "job_failed")
+		}
 	}
 	return r.StudioAsyncJobRepository.UpdateStudioAsyncJob(ctx, record)
 }
@@ -185,6 +191,11 @@ func (l *orderedStudioUsageLedger) UpdateMetadata(ctx context.Context, eventID s
 func (l *orderedStudioUsageLedger) Commit(ctx context.Context, eventID string) (listingsubscription.UsageEvent, error) {
 	*l.order = append(*l.order, "usage_committed")
 	return l.UsageLedger.Commit(ctx, eventID)
+}
+
+func (l *orderedStudioUsageLedger) Release(ctx context.Context, eventID, reason string) (listingsubscription.UsageEvent, error) {
+	*l.order = append(*l.order, "usage_released")
+	return l.UsageLedger.Release(ctx, eventID, reason)
 }
 
 func TestRunStudioAsyncJobPersistsSuccessBeforeCommittingUsage(t *testing.T) {
@@ -228,6 +239,50 @@ func TestRunStudioAsyncJobPersistsSuccessBeforeCommittingUsage(t *testing.T) {
 	h.runStudioAsyncJob(ctx, "success-order-job", "/studio/product-images", json.RawMessage(`{}`), "", "", "", reserved.Event.EventID)
 	if len(order) != 2 || order[0] != "job_succeeded" || order[1] != "usage_committed" {
 		t.Fatalf("durable success order = %v, want [job_succeeded usage_committed]", order)
+	}
+}
+
+func TestRunStudioAsyncJobPersistsFailureBeforeReleasingUsage(t *testing.T) {
+	ctx := listingkit.WithRequestIdentity(listingkit.WithTenantID(context.Background(), "tenant-failure-order"), listingkit.RequestIdentity{TenantID: "tenant-failure-order", UserID: "user-failure-order"})
+	repo := listingsubscription.NewMemRepository()
+	baseLedger := listingsubscription.NewMemUsageLedger(repo)
+	order := make([]string, 0, 2)
+	ledger := &orderedStudioUsageLedger{UsageLedger: baseLedger, order: &order}
+	svc, err := listingsubscription.NewServiceWithLedger(repo, ledger)
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(ctx, "tenant-failure-order", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive, Limits: map[string]int{"product_image_jobs": 2},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID: "tenant-failure-order", ModuleCode: listingsubscription.ModuleStudio,
+		Metric: studioProductImageLedgerMetric, Quantity: 1, PeriodKey: time.Now().UTC().Format("2006-01"),
+		SourceType: studioProductImageAsyncSourceType, SourceID: "failure-order-job",
+		IdempotencyKey: "failure-order-job", OccurredAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	baseJobRepo := listingkit.NewMemStudioAsyncJobRepository()
+	jobRepo := &orderedStudioAsyncJobRepository{StudioAsyncJobRepository: baseJobRepo, order: &order}
+	if err := jobRepo.CreateStudioAsyncJob(ctx, &listingkit.StudioAsyncJobRecord{
+		ID: "failure-order-job", TenantID: "tenant-failure-order", UserID: "user-failure-order",
+		Path: "/studio/product-images", Status: listingkit.StudioAsyncJobStatusRunning,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateStudioAsyncJob() error = %v", err)
+	}
+	h := &handler{
+		subscriptionDependencies: subscriptionDependencies{subscriptionService: svc},
+		studioAsyncJobs:          &studioAsyncJobStore{repo: jobRepo},
+		studioMediaService:       &stubStudioMediaHandlerService{err: errors.New("generation failed")},
+	}
+	h.runStudioAsyncJob(ctx, "failure-order-job", "/studio/product-images", json.RawMessage(`{}`), "", "", "", reserved.Event.EventID)
+	if len(order) != 2 || order[0] != "job_failed" || order[1] != "usage_released" {
+		t.Fatalf("durable failure order = %v, want [job_failed usage_released]", order)
 	}
 }
 

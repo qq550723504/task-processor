@@ -111,16 +111,19 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 	}
 
 	if err != nil {
-		if strings.TrimSpace(usageReservationID) != "" {
-			if releaseErr := releaseStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID, "generation_failed"); releaseErr != nil {
-				err = errors.Join(err, fmt.Errorf("release product image usage: %w", releaseErr))
-			}
-		}
 		if strings.Contains(err.Error(), "invalid request") {
 			status = http.StatusBadRequest
 		}
+		failureErr := err
+		if persistErr := h.studioAsyncJobs.failWithError(ctx, jobID, err, status); persistErr != nil {
+			failureErr = errors.Join(failureErr, fmt.Errorf("persist async job failure: %w", persistErr))
+		} else if strings.TrimSpace(usageReservationID) != "" {
+			if releaseErr := releaseStudioProductImageUsage(ctx, h.subscriptionService, usageReservationID, "generation_failed"); releaseErr != nil {
+				failureErr = errors.Join(failureErr, fmt.Errorf("release product image usage: %w", releaseErr))
+			}
+		}
 		if path == "/studio/designs" {
-			h.syncStudioDesignAsyncJobSession(ctx, sessionID, listingkit.StudioAsyncJobStatusFailed, jobID, err.Error())
+			h.syncStudioDesignAsyncJobSession(ctx, sessionID, listingkit.StudioAsyncJobStatusFailed, jobID, failureErr.Error())
 		}
 		studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
 			"job_id":       jobID,
@@ -129,8 +132,7 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 			"duration_ms":  time.Since(startedAt).Milliseconds(),
 			"status_code":  status,
 			"usage_metric": usageMetric,
-		})).WithError(err).Warn("studio async job failed")
-		h.studioAsyncJobs.fail(ctx, jobID, err, status)
+		})).WithError(failureErr).Warn("studio async job failed")
 		return
 	}
 	if strings.TrimSpace(usageReservationID) != "" {
