@@ -154,6 +154,7 @@ func (s *Service) claimRecordForPendingLocked(selected *record, now time.Time) (
 	}
 	selected.job.State = JobClaimed
 	selected.job.LeaseExpiresAt = now.Add(claimTTL)
+	selected.job.ExpiresAt = now.Add(jobTTL)
 	selected.executionToken = token
 	return &Claim{Job: selected.job, ExecutionToken: selected.executionToken}, nil
 }
@@ -271,7 +272,7 @@ func validateActor(actor Actor) error {
 func validateOfferURL(raw string) (string, error) {
 	clean := sourcing.NormalizeAlibaba1688URL(raw)
 	parsed, err := url.Parse(clean)
-	if err != nil || parsed.Scheme != "https" || parsed.Hostname() != "detail.1688.com" || parsed.Port() != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+	if err != nil || parsed.Scheme != "https" || parsed.Hostname() != "detail.1688.com" || parsed.Port() != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.RawPath != "" {
 		return "", ErrInvalidURL
 	}
 	if !offerPathPattern.MatchString(parsed.Path) {

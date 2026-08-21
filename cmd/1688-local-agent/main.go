@@ -149,7 +149,7 @@ func validateCLIEndpoint(raw, name string) error {
 func validateCLIOfferURL(raw string) (string, error) {
 	clean := strings.TrimSpace(raw)
 	parsed, err := url.Parse(clean)
-	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Hostname(), "detail.1688.com") || parsed.Port() != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || !strings.HasPrefix(parsed.Path, "/offer/") || strings.TrimSpace(localagentURLID(parsed.Path)) == "" {
+	if err != nil || parsed.Scheme != "https" || !strings.EqualFold(parsed.Hostname(), "detail.1688.com") || parsed.Port() != "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.RawPath != "" || !strings.HasPrefix(parsed.Path, "/offer/") || strings.TrimSpace(localagentURLID(parsed.Path)) == "" {
 		return "", errors.New("-url must be a public HTTPS detail.1688.com offer URL")
 	}
 	return clean, nil

@@ -125,6 +125,8 @@ func TestServiceRejectsNonPublicOfferURL(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidURL)
 	_, err = service.Create(Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com:443/offer/1052008074197.html")
 	require.ErrorIs(t, err, ErrInvalidURL)
+	_, err = service.Create(Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com/offer/%31%30%35%32%30%30%38%30%37%34%31%39%37.html")
+	require.ErrorIs(t, err, ErrInvalidURL)
 }
 
 func TestServiceCapacityIsIsolatedPerTenant(t *testing.T) {
@@ -144,6 +146,19 @@ func TestServiceCapacityIsIsolatedPerTenant(t *testing.T) {
 func TestClaimLeaseOutlivesManagedBrowserDownload(t *testing.T) {
 	require.Greater(t, claimTTL, 10*time.Minute)
 	require.Greater(t, jobTTL, claimTTL)
+}
+
+func TestServiceClaimExtendsJobExpiryForFullLease(t *testing.T) {
+	clock := newMutableClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC))
+	service := NewService(clock.Now)
+	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+	job, err := service.Create(actor, offerURL)
+	require.NoError(t, err)
+	clock.Advance(jobTTL - time.Minute)
+	claim, err := service.Claim(actor)
+	require.NoError(t, err)
+	require.Equal(t, clock.Now().Add(jobTTL), claim.Job.ExpiresAt)
+	require.Greater(t, claim.Job.ExpiresAt, job.ExpiresAt)
 }
 
 func TestServiceCleansExpiredAndRetainedTerminalJobs(t *testing.T) {
