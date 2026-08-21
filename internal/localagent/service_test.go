@@ -91,6 +91,37 @@ func TestServiceRejectsNonPublicOfferURL(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidURL)
 }
 
+func TestServiceRejectsWrongTokenAndDuplicateTerminalResult(t *testing.T) {
+	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+	job, err := service.Create(actor, offerURL)
+	require.NoError(t, err)
+	claim, err := service.Claim(actor)
+	require.NoError(t, err)
+	_, err = service.SubmitFailure(actor, job.ID, "wrong-token", Failure{Kind: FailureChallenge, Message: "captcha"})
+	require.ErrorIs(t, err, ErrInvalidClaim)
+	done, err := service.SubmitFailure(actor, job.ID, claim.ExecutionToken, Failure{Kind: FailureChallenge, Message: "captcha"})
+	require.NoError(t, err)
+	_, err = service.SubmitFailure(actor, job.ID, claim.ExecutionToken, Failure{Kind: FailureChallenge, Message: "again"})
+	require.ErrorIs(t, err, ErrInvalidClaim)
+	require.Equal(t, JobFailed, done.State)
+}
+
+func TestServiceRequeuesExpiredClaimWhileJobIsAlive(t *testing.T) {
+	clock := newMutableClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC))
+	service := NewService(clock.Now)
+	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+	_, err := service.Create(actor, offerURL)
+	require.NoError(t, err)
+	first, err := service.Claim(actor)
+	require.NoError(t, err)
+	clock.Advance(claimTTL + time.Nanosecond)
+	second, err := service.Claim(actor)
+	require.NoError(t, err)
+	require.NotNil(t, second)
+	require.NotEqual(t, first.ExecutionToken, second.ExecutionToken)
+}
+
 func fixedClock(value time.Time) func() time.Time {
 	return func() time.Time { return value }
 }
