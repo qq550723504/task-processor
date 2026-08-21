@@ -31,20 +31,32 @@ type TextGenerator interface {
 }
 
 type GovernedTextGeneratorConfig struct {
-	Router        aicapability.Router
-	Recorder      aicapability.InvocationRecorder
-	OnRecordError func(aicapability.InvocationRecord, error)
-	Now           func() time.Time
-	NewID         func() string
+	Router          aicapability.Router
+	Recorder        aicapability.InvocationRecorder
+	Capability      aicapability.Capability
+	Operation       aicapability.Operation
+	RequiredFeature aicapability.ModelFeature
+	PromptKey       string
+	PromptVersion   string
+	PromptScope     string
+	OnRecordError   func(aicapability.InvocationRecord, error)
+	Now             func() time.Time
+	NewID           func() string
 }
 
 type governedTextGenerator struct {
-	manager       productenrich.LLMManager
-	router        aicapability.Router
-	recorder      aicapability.InvocationRecorder
-	onRecordError func(aicapability.InvocationRecord, error)
-	now           func() time.Time
-	newID         func() string
+	manager         productenrich.LLMManager
+	router          aicapability.Router
+	recorder        aicapability.InvocationRecorder
+	onRecordError   func(aicapability.InvocationRecord, error)
+	now             func() time.Time
+	newID           func() string
+	capability      aicapability.Capability
+	operation       aicapability.Operation
+	requiredFeature aicapability.ModelFeature
+	promptKey       string
+	promptVersion   string
+	promptScope     string
 }
 
 func NewGovernedTextGenerator(manager productenrich.LLMManager, config GovernedTextGeneratorConfig) (TextGenerator, error) {
@@ -60,9 +72,29 @@ func NewGovernedTextGenerator(manager productenrich.LLMManager, config GovernedT
 	if config.NewID == nil {
 		config.NewID = uuid.NewString
 	}
+	if config.Capability == "" {
+		config.Capability = aicapability.CapabilityProductEnrichText
+	}
+	if config.Operation == "" {
+		config.Operation = aicapability.OperationProductEnrichTextExtract
+	}
+	if config.RequiredFeature == "" {
+		config.RequiredFeature = aicapability.FeatureTextGenerate
+	}
+	if config.PromptKey == "" {
+		config.PromptKey = productEnrichTextPromptKey
+	}
+	if config.PromptVersion == "" {
+		config.PromptVersion = productEnrichTextPromptVersion
+	}
+	if config.PromptScope == "" {
+		config.PromptScope = productEnrichTextPromptScope
+	}
 	return &governedTextGenerator{
 		manager: manager, router: config.Router, recorder: config.Recorder,
 		onRecordError: config.OnRecordError, now: config.Now, newID: config.NewID,
+		capability: config.Capability, operation: config.Operation, requiredFeature: config.RequiredFeature,
+		promptKey: config.PromptKey, promptVersion: config.PromptVersion, promptScope: config.PromptScope,
 	}, nil
 }
 
@@ -70,36 +102,39 @@ func (g *governedTextGenerator) Generate(ctx context.Context, prompt string) (st
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if g == nil || g.manager == nil || strings.TrimSpace(prompt) == "" {
+	if g == nil {
 		return "", aicapability.NewError(aicapability.ErrorInvalidInput, string(aicapability.OperationProductEnrichTextExtract), nil)
+	}
+	if g.manager == nil || strings.TrimSpace(prompt) == "" {
+		return "", aicapability.NewError(aicapability.ErrorInvalidInput, string(g.operation), nil)
 	}
 	startedAt := g.now()
 	identity := aiidentity.FromContext(ctx)
 	if identity.TenantID == "" || identity.UserID == "" {
-		err := aicapability.NewError(aicapability.ErrorInvalidInput, string(aicapability.OperationProductEnrichTextExtract), nil)
+		err := aicapability.NewError(aicapability.ErrorInvalidInput, string(g.operation), nil)
 		g.record(ctx, identity, startedAt, prompt, "", aicapability.RouteDecision{}, err, true)
 		return "", err
 	}
 
 	decision, err := g.router.Decide(ctx, aicapability.RouteRequest{
 		TenantID: identity.TenantID, UserID: identity.UserID,
-		Capability:       aicapability.CapabilityProductEnrichText,
-		Operation:        aicapability.OperationProductEnrichTextExtract,
-		RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureTextGenerate},
+		Capability:       g.capability,
+		Operation:        g.operation,
+		RequiredFeatures: []aicapability.ModelFeature{g.requiredFeature},
 		TraceID:          identity.TraceID,
 	})
 	if err != nil {
 		g.record(ctx, identity, startedAt, prompt, "", decision, err, true)
 		return "", err
 	}
-	if !validTextDecision(decision) {
-		err = aicapability.NewError(aicapability.ErrorCapabilityUnavailable, string(aicapability.OperationProductEnrichTextExtract), nil)
+	if !validTextDecision(decision, g.capability, g.operation) {
+		err = aicapability.NewError(aicapability.ErrorCapabilityUnavailable, string(g.operation), nil)
 		g.record(ctx, identity, startedAt, prompt, "", decision, err, true)
 		return "", err
 	}
 	routedManager, ok := g.manager.(productenrich.RoutedLLMManager)
 	if !ok {
-		err = aicapability.NewError(aicapability.ErrorCapabilityUnavailable, string(aicapability.OperationProductEnrichTextExtract), nil)
+		err = aicapability.NewError(aicapability.ErrorCapabilityUnavailable, string(g.operation), nil)
 		g.record(ctx, identity, startedAt, prompt, "", decision, err, true)
 		return "", err
 	}
@@ -110,13 +145,13 @@ func (g *governedTextGenerator) Generate(ctx context.Context, prompt string) (st
 		if err == nil {
 			err = fmt.Errorf("routed text client is nil")
 		}
-		wrapped := aicapability.NewError(aicapability.ErrorCredentialUnavailable, string(aicapability.OperationProductEnrichTextExtract), err)
+		wrapped := aicapability.NewError(aicapability.ErrorCredentialUnavailable, string(g.operation), err)
 		g.record(ctx, identity, startedAt, prompt, "", decision, wrapped, false)
 		return "", wrapped
 	}
 	response, err := client.Generate(ctx, prompt)
 	if err != nil {
-		wrapped := aicapability.NewError(classifyTextError(err), string(aicapability.OperationProductEnrichTextExtract), err)
+		wrapped := aicapability.NewError(classifyTextError(err), string(g.operation), err)
 		g.record(ctx, identity, startedAt, prompt, response, decision, wrapped, false)
 		return "", wrapped
 	}
@@ -124,9 +159,8 @@ func (g *governedTextGenerator) Generate(ctx context.Context, prompt string) (st
 	return response, nil
 }
 
-func validTextDecision(decision aicapability.RouteDecision) bool {
-	return decision.Capability == aicapability.CapabilityProductEnrichText &&
-		decision.Operation == aicapability.OperationProductEnrichTextExtract &&
+func validTextDecision(decision aicapability.RouteDecision, capability aicapability.Capability, operation aicapability.Operation) bool {
+	return decision.Capability == capability && decision.Operation == operation &&
 		strings.TrimSpace(decision.ProviderID) != "" && strings.TrimSpace(decision.ModelID) != "" &&
 		strings.TrimSpace(decision.RoutingKey) != "" && strings.TrimSpace(decision.CredentialReference) != ""
 }
@@ -149,12 +183,12 @@ func (g *governedTextGenerator) record(ctx context.Context, identity aiidentity.
 	record := aicapability.InvocationRecord{
 		InvocationID: g.newID(), TenantID: identity.TenantID, UserID: identity.UserID,
 		BusinessTaskID: identity.BusinessTaskID, TraceID: identity.TraceID,
-		Capability: aicapability.CapabilityProductEnrichText, Operation: aicapability.OperationProductEnrichTextExtract,
+		Capability: g.capability, Operation: g.operation,
 		RouteMode: aicapability.RoutingModeActive, RouteOutcome: aicapability.RouteOutcomeActive,
 		ProviderID: decision.ProviderID, ModelID: decision.ModelID, RoutingKey: decision.RoutingKey,
 		CredentialReference: decision.CredentialReference, PolicyVersion: decision.PolicyVersion,
-		ConfigurationVersion: decision.ConfigurationVersion, PromptKey: productEnrichTextPromptKey,
-		PromptVersion: productEnrichTextPromptVersion, PromptScope: productEnrichTextPromptScope,
+		ConfigurationVersion: decision.ConfigurationVersion, PromptKey: g.promptKey,
+		PromptVersion: g.promptVersion, PromptScope: g.promptScope,
 		PromptHash: hashText(prompt), InputHash: hashText(prompt), OutputHash: hashText(response),
 		StartedAt: startedAt, FinishedAt: finishedAt, LatencyMilliseconds: finishedAt.Sub(startedAt).Milliseconds(),
 		Attempt: 1, FallbackIndex: decision.FallbackIndex, Outcome: aicapability.InvocationSucceeded,
