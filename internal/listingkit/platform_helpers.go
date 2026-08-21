@@ -173,20 +173,6 @@ func lastCategory(path []string) string {
 	return path[len(path)-1]
 }
 
-func defaultPlatformSites(req *GenerateRequest) []PlatformSite {
-	if req == nil {
-		return nil
-	}
-	country := strings.ToUpper(strings.TrimSpace(req.Country))
-	if country == "" {
-		country = "US"
-	}
-	return []PlatformSite{{
-		MainSite: country,
-		SubSites: []string{country},
-	}}
-}
-
 func formatFloat(value float64) string {
 	if value == 0 {
 		return ""
