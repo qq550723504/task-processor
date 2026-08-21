@@ -97,7 +97,7 @@ job:
 }
 ```
 
-Claiming atomically changes the job to `claimed` and gives it a three-minute
+Claiming atomically changes the job to `claimed` and gives it a 15-minute
 lease. The execution token is opaque, is never logged, and is valid only for
 that job and lease. Expired claims return to `pending` while the job itself is
 still valid.

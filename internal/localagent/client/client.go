@@ -266,8 +266,13 @@ func (c *Client) doJSON(ctx context.Context, method, path string, payload any, e
 	}
 	if resp.StatusCode != expected {
 		var apiError errorResponse
-		if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&apiError); err == nil && apiError.Error == "snapshot_too_large" {
-			return localagent.ErrSnapshotTooLarge
+		if err := json.NewDecoder(io.LimitReader(resp.Body, 64<<10)).Decode(&apiError); err == nil {
+			switch apiError.Error {
+			case "snapshot_too_large":
+				return localagent.ErrSnapshotTooLarge
+			case "snapshot_invalid":
+				return localagent.ErrSnapshotInvalid
+			}
 		}
 		return fmt.Errorf("local-agent request returned status %d", resp.StatusCode)
 	}

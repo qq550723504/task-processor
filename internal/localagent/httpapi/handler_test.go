@@ -75,6 +75,29 @@ func TestSubmitResultAcknowledgesTerminalJobAndDoesNotAcceptSourceAccount(t *tes
 	require.NotContains(t, result.Body.String(), `"envelope":`)
 }
 
+func TestSubmitResultExposesInvalidSnapshotError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	clock := func() time.Time { return time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC) }
+	service := localagent.NewService(clock)
+	handler := NewHandler(service)
+	actorCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
+	job, err := service.Create(localagent.Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com/offer/1052008074197.html")
+	require.NoError(t, err)
+	claim, err := service.Claim(localagent.Actor{TenantID: "tenant-a", UserID: "user-a"})
+	require.NoError(t, err)
+
+	r := gin.New()
+	r.POST("/api/v1/local-agent/1688-jobs/:job_id/result", handler.SubmitResult)
+	response := httptest.NewRecorder()
+	body := `{"execution_token":"` + claim.ExecutionToken + `","product_snapshot":{"id":"999","title":"shirt","url":"https://detail.1688.com/offer/1052008074197.html"}}`
+	r.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/local-agent/1688-jobs/"+job.ID+"/result", strings.NewReader(body)).WithContext(actorCtx))
+
+	require.Equal(t, http.StatusBadRequest, response.Code)
+	var responseBody map[string]any
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &responseBody))
+	require.Equal(t, "snapshot_invalid", responseBody["error"])
+}
+
 func TestProductSnapshotRequestMapsSnakeCaseFields(t *testing.T) {
 	var req productSnapshotRequest
 	err := json.Unmarshal([]byte(`{"id":"1052008074197","main_image":"https://img/main.jpg","min_price":12.5,"price_range_count":2,"supplier":{"company_name":"Acme","years_in_business":8},"pack_info":{"package_type":"box","package_images":["https://img/pack.jpg"]},"variants":[{"attributes":{"Color":"red"},"stock":7,"price":13.25}],"shipping":{"shipping_from":"Hangzhou","processing_time":"3 days"},"is_customized":true}`), &req)

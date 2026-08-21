@@ -84,6 +84,18 @@ func TestClientPreservesOversizedSnapshotError(t *testing.T) {
 	require.ErrorIs(t, err, localagent.ErrSnapshotTooLarge)
 }
 
+func TestClientPreservesInvalidSnapshotError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"snapshot_invalid","message":"1688 product snapshot failed server validation"}`))
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "token", server.Client())
+	require.NoError(t, err)
+	_, err = client.SubmitSuccess(context.Background(), "job-1", "execution", &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", URL: "https://detail.1688.com/offer/1052008074197.html"})
+	require.ErrorIs(t, err, localagent.ErrSnapshotInvalid)
+}
+
 func TestClientRejectsRedirects(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "https://elsewhere.example", http.StatusFound)
