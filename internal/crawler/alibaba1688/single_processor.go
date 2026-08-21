@@ -102,13 +102,22 @@ func (sp *SingleProcessor) processWithBrowserManager(url string, startTime time.
 
 	// 验证产品信息
 	if validateErr := sp.productChecker.ValidateProduct(product); validateErr != nil {
-		return nil, NewPublicAccessError(PublicAccessFailureValidation, fmt.Errorf("产品信息验证失败: %w", validateErr))
+		kind := classifyProductValidationFailure(validateErr)
+		return nil, NewPublicAccessError(kind, fmt.Errorf("产品信息验证失败: %w", validateErr))
 	}
 
 	duration := time.Since(startTime)
 	logger.GetGlobalLogger("crawler/alibaba1688").Infof("单浏览器模式处理完成: %s, 耗时: %v", product.Title, duration)
 
 	return product, nil
+}
+
+func classifyProductValidationFailure(err error) PublicAccessFailureKind {
+	var requiredErr *requiredFieldsError
+	if errors.As(err, &requiredErr) && requiredErr != nil {
+		return PublicAccessFailureMissingFields
+	}
+	return PublicAccessFailureValidation
 }
 
 func isChallengeError(err error) bool {

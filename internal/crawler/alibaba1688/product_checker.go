@@ -8,6 +8,28 @@ import (
 	"task-processor/internal/crawler/alibaba1688/model"
 )
 
+type requiredFieldsError struct {
+	err error
+}
+
+func (e *requiredFieldsError) Error() string {
+	if e == nil || e.err == nil {
+		return "必需字段缺失"
+	}
+	return e.err.Error()
+}
+
+func (e *requiredFieldsError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+func newRequiredFieldsError(format string, args ...any) error {
+	return &requiredFieldsError{err: fmt.Errorf(format, args...)}
+}
+
 // ProductChecker 1688产品检查器
 type ProductChecker struct {
 	// 敏感词列表
@@ -34,7 +56,7 @@ func NewProductChecker() *ProductChecker {
 // ValidateProduct 验证产品信息的完整性和合规性
 func (pc *ProductChecker) ValidateProduct(product *model.Product1688) error {
 	if product == nil {
-		return fmt.Errorf("产品信息不能为空")
+		return newRequiredFieldsError("产品信息不能为空")
 	}
 
 	// 检查必需字段
@@ -64,19 +86,19 @@ func (pc *ProductChecker) ValidateProduct(product *model.Product1688) error {
 // checkRequiredFields 检查必需字段
 func (pc *ProductChecker) checkRequiredFields(product *model.Product1688) error {
 	if strings.TrimSpace(product.Title) == "" {
-		return fmt.Errorf("标题不能为空")
+		return newRequiredFieldsError("标题不能为空")
 	}
 	if product.MinPrice <= 0 {
-		return fmt.Errorf("最低价格必须大于0")
+		return newRequiredFieldsError("最低价格必须大于0")
 	}
 	if product.MinOrderQuantity <= 0 {
-		return fmt.Errorf("起订量必须大于0")
+		return newRequiredFieldsError("起订量必须大于0")
 	}
 	if strings.TrimSpace(product.Supplier.Name) == "" {
-		return fmt.Errorf("供应商名称不能为空")
+		return newRequiredFieldsError("供应商名称不能为空")
 	}
 	if strings.TrimSpace(product.URL) == "" {
-		return fmt.Errorf("商品URL不能为空")
+		return newRequiredFieldsError("商品URL不能为空")
 	}
 
 	return nil
