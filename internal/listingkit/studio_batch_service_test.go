@@ -2289,6 +2289,13 @@ func TestServiceResumeStudioBatchTaskCreationDoesNotFinalizePartialRequest(t *te
 	if sessionRepo.session.ImageStrategy != sheinImageStrategyAIGenerated {
 		t.Fatalf("prepared session image strategy = %q, want %q", sessionRepo.session.ImageStrategy, sheinImageStrategyAIGenerated)
 	}
+	persistedBatch, err := repo.GetStudioBatch(ctx, "batch-1")
+	if err != nil {
+		t.Fatalf("GetStudioBatch() after prepare error = %v", err)
+	}
+	if persistedBatch.ImageStrategy != sheinImageStrategyAIGenerated {
+		t.Fatalf("persisted batch image strategy = %q, want %q", persistedBatch.ImageStrategy, sheinImageStrategyAIGenerated)
+	}
 	if sessionRepo.session.Status != SheinStudioSessionStatusTasksCreating {
 		t.Fatalf("prepared session status = %q, want tasks_creating", sessionRepo.session.Status)
 	}

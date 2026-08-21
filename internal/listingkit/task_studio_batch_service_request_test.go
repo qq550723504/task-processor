@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 	"testing"
@@ -73,6 +74,17 @@ func TestBuildStudioBatchTaskGenerateRequestIncludesImageStrategy(t *testing.T) 
 	}
 	if got, want := req.Options.ImageStrategy, sheinImageStrategyAIGenerated; got != want {
 		t.Fatalf("ImageStrategy = %q, want normalized %q", got, want)
+	}
+}
+
+func TestFallbackStudioBatchTaskSessionRestoresPersistedImageStrategy(t *testing.T) {
+	t.Parallel()
+
+	session := fallbackStudioBatchTaskSession("batch-1", &StudioBatchRecord{
+		ImageStrategy: sheinImageStrategyAIGenerated,
+	}, []string{"design-1"}, "")
+	if session.ImageStrategy != sheinImageStrategyAIGenerated {
+		t.Fatalf("fallback image strategy = %q, want %q", session.ImageStrategy, sheinImageStrategyAIGenerated)
 	}
 }
 
@@ -375,6 +387,40 @@ func TestTaskStudioBatchServiceKeepsGeneratedImagesWhenUsageRecordFails(t *testi
 	}
 	if got := request.Options.SheinStudio.ProductImageURLs; len(got) != 1 || got[0] != "https://cdn.example.com/generated.png" {
 		t.Fatalf("product image URLs = %v, want generated output despite usage record failure", got)
+	}
+}
+
+func TestTaskStudioBatchServiceDefersUsageRecordingUntilAllColorImagesSucceed(t *testing.T) {
+	t.Parallel()
+
+	usage := &recordingStudioProductImageUsage{}
+	callCount := 0
+	service := &taskStudioBatchService{
+		productImageUsage: usage,
+		generateProductImages: func(context.Context, *StudioProductImageRequest) (*StudioProductImageResponse, error) {
+			callCount++
+			if callCount == 2 {
+				return nil, errors.New("second color generation failed")
+			}
+			return &StudioProductImageResponse{Images: []StudioGeneratedImage{{ImageURL: fmt.Sprintf("https://cdn.example.com/generated-%d.png", callCount)}}}, nil
+		},
+	}
+	selection := SheinStudioSelection{ProductName: "Canvas Tote", Variants: []SheinStudioSelectionVariant{
+		{VariantSKU: "red-s", Color: "Red"},
+		{VariantSKU: "blue-s", Color: "Blue"},
+	}}
+	request := buildStudioBatchTaskGenerateRequest(
+		&SheinStudioSession{Prompt: "retro", ImageStrategy: sheinImageStrategyAIGenerated},
+		&StudioBatchRecord{ID: "batch-usage-defer", TenantID: "tenant-a"},
+		studioBatchTaskCandidate{ImageStrategy: sheinImageStrategyAIGenerated, SelectionSnapshot: selection},
+		StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"},
+	)
+	err := service.attachStudioBatchProductImages(context.Background(), request, nil, &StudioBatchRecord{ID: "batch-usage-defer", TenantID: "tenant-a"}, studioBatchTaskCandidate{ImageStrategy: sheinImageStrategyAIGenerated, SelectionSnapshot: selection}, StudioMaterializedDesignRecord{ID: "design-1", ImageURL: "https://example.com/design.png"})
+	if err == nil || !strings.Contains(err.Error(), "second color generation failed") {
+		t.Fatalf("attachStudioBatchProductImages() error = %v, want second-color failure", err)
+	}
+	if len(usage.recorded) != 0 {
+		t.Fatalf("recorded usage = %v, want no settlement after partial generation", usage.recorded)
 	}
 }
 

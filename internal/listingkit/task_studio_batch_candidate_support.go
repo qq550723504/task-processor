@@ -488,6 +488,10 @@ func studioBatchTaskProductImageInputsFingerprint(selection SheinStudioSelection
 		ReferenceURLs []string `json:"reference_urls,omitempty"`
 	}
 	representatives := studioBatchTaskColorRepresentatives(selection)
+	referenceURLs := studioBatchTaskProductReferenceImageURLs(selection)
+	if strings.TrimSpace(selection.ProductName) == "" && len(referenceURLs) == 0 && len(representatives) == 0 {
+		return ""
+	}
 	variants := make([]variantInput, 0, len(representatives))
 	for _, variant := range representatives {
 		variants = append(variants, variantInput{
@@ -502,7 +506,7 @@ func studioBatchTaskProductImageInputsFingerprint(selection SheinStudioSelection
 		Variants      []variantInput `json:"variants,omitempty"`
 	}{
 		ProductName:   strings.TrimSpace(selection.ProductName),
-		ReferenceURLs: studioBatchTaskProductReferenceImageURLs(selection),
+		ReferenceURLs: referenceURLs,
 		Variants:      variants,
 	})
 	if err != nil {
@@ -592,9 +596,13 @@ func sessionImageStrategy(session *SheinStudioSession) string {
 }
 
 func fallbackStudioBatchTaskSession(batchID string, batch *StudioBatchRecord, designIDs []string, strategy string) *SheinStudioSession {
+	resolvedStrategy := normalizeStudioBatchTaskCreationImageStrategy(strategy)
+	if strings.TrimSpace(strategy) == "" && batch != nil {
+		resolvedStrategy = normalizeStudioBatchTaskCreationImageStrategy(batch.ImageStrategy)
+	}
 	session := &SheinStudioSession{
 		ID:                   strings.TrimSpace(batchID),
-		ImageStrategy:        normalizeStudioBatchTaskCreationImageStrategy(strategy),
+		ImageStrategy:        resolvedStrategy,
 		PendingTaskDesignIDs: append(SheinStudioStringList(nil), designIDs...),
 	}
 	if batch != nil {
@@ -644,10 +652,17 @@ func studioBatchTaskLinkCompatibilityFingerprint(candidate studioBatchTaskCandid
 		return base
 	}
 	settings := strings.TrimSpace(candidate.ProductImageSettingsFingerprint)
-	if settings == "" {
+	inputs := studioBatchTaskProductImageInputsFingerprint(candidate.SelectionSnapshot)
+	if settings == "" && inputs == "" {
 		return base
 	}
-	return base + "|product_image_settings=" + settings
+	if settings != "" {
+		base += "|product_image_settings=" + settings
+	}
+	if inputs != "" {
+		base += "|product_image_inputs=" + inputs
+	}
+	return base
 }
 
 func orderStudioBatchTaskDesignsByRequest(

@@ -98,11 +98,6 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 		_ = heartbeatStop()
 		return err
 	}
-	// The generated output is already available. Do not discard it when the
-	// best-effort usage ledger write is temporarily unavailable; the durable
-	// task/link can still retain the successful product images for retry or
-	// reconciliation.
-	_ = s.recordStudioBatchProductImageUsage(ctx, batch, 1)
 	request.Options.SheinStudio.ProductImageURLs = productImageURLs
 	if len(colorRepresentatives) > 1 {
 		request.Options.SheinStudio.VariantProductImages = append(request.Options.SheinStudio.VariantProductImages, SheinStudioVariantImageSet{
@@ -134,7 +129,6 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 				_ = heartbeatStop()
 				return fmt.Errorf("publicize studio product images for color %q: %w", variant.Color, variantErr)
 			}
-			_ = s.recordStudioBatchProductImageUsage(ctx, batch, 1)
 			request.Options.SheinStudio.VariantProductImages = append(request.Options.SheinStudio.VariantProductImages, SheinStudioVariantImageSet{
 				VariantSKU: variant.VariantSKU,
 				Color:      variant.Color,
@@ -144,6 +138,16 @@ func (s *taskStudioBatchService) attachStudioBatchProductImages(
 	}
 	if err := heartbeatStop(); err != nil {
 		return err
+	}
+	// Settle usage only after every color has generated and publicized a
+	// complete image set. A later color failure must not charge earlier output
+	// that is discarded with the failed task attempt.
+	for index := 0; index < productImageGenerationCount; index++ {
+		// The generated output is already available. Do not discard it when the
+		// best-effort usage ledger write is temporarily unavailable; the durable
+		// task/link can still retain the successful product images for retry or
+		// reconciliation.
+		_ = s.recordStudioBatchProductImageUsage(ctx, batch, 1)
 	}
 	return nil
 }

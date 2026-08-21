@@ -157,6 +157,23 @@ func TestStudioBatchTaskLinkCompatibilityFingerprintDiffersWhenProductImageSetti
 	}
 }
 
+func TestStudioBatchTaskLinkCompatibilityFingerprintDiffersWhenProductImageInputsChange(t *testing.T) {
+	base := studioBatchTaskCandidate{
+		CompatibilityFingerprint:        "selection-fingerprint",
+		ImageStrategy:                   sheinImageStrategyAIGenerated,
+		ProductImageSettingsFingerprint: "settings-fingerprint",
+		SelectionSnapshot: SheinStudioSelection{
+			ProductName:    "Canvas Tote",
+			MockupImageURL: "https://example.com/canvas.png",
+		},
+	}
+	changed := base
+	changed.SelectionSnapshot.ProductName = "Updated Canvas Tote"
+	if got, want := studioBatchTaskLinkCompatibilityFingerprint(base), studioBatchTaskLinkCompatibilityFingerprint(changed); got == want {
+		t.Fatalf("product-image-input link compatibility fingerprints unexpectedly matched: %q", got)
+	}
+}
+
 func TestStudioBatchTaskCandidateKeyUsesEffectiveSessionProductImageSettings(t *testing.T) {
 	batch := &StudioBatchRecord{ID: "batch-1", TenantID: "tenant-1", ProductImageCount: "5"}
 	session := &SheinStudioSession{ProductImageCount: "6"}

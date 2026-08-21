@@ -42,6 +42,7 @@ func (s *taskStudioBatchService) syncStudioBatchRetryExecutionConfigFromDraft(ct
 
 	batch.Prompt = session.Prompt
 	batch.PromptMode = session.PromptMode
+	batch.ImageStrategy = normalizeStudioBatchTaskCreationImageStrategy(session.ImageStrategy)
 	batch.ProductImageCount = session.ProductImageCount
 	batch.ProductImagePrompt = session.ProductImagePrompt
 	batch.ProductImagePrompts = append(SheinStudioProductImagePromptList(nil), session.ProductImagePrompts...)
@@ -148,6 +149,7 @@ func buildStudioBatchRecordFromSessionDraft(session *SheinStudioSession, now tim
 		Status:                     StudioBatchStatusGenerating,
 		Prompt:                     session.Prompt,
 		PromptMode:                 strings.TrimSpace(session.PromptMode),
+		ImageStrategy:              normalizeStudioBatchTaskCreationImageStrategy(session.ImageStrategy),
 		ProductImageCount:          session.ProductImageCount,
 		ProductImagePrompt:         session.ProductImagePrompt,
 		ProductImagePrompts:        append(SheinStudioProductImagePromptList(nil), session.ProductImagePrompts...),

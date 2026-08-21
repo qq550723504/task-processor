@@ -317,6 +317,13 @@ func (s *taskStudioBatchService) prepareStudioBatchTaskCreation(
 	if session != nil {
 		session.ImageStrategy = strategy
 	}
+	if batchDetail.Batch.ImageStrategy != strategy {
+		batchDetail.Batch.ImageStrategy = strategy
+		batchDetail.Batch.UpdatedAt = s.currentTime().UTC()
+		if err := s.repo.UpdateStudioBatch(ctx, batchDetail.Batch); err != nil {
+			return nil, nil, nil, err
+		}
+	}
 	return designIDs, session, batchDetail, nil
 }
 

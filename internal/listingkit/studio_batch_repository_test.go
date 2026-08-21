@@ -146,6 +146,7 @@ func TestMemStudioBatchRepositoryGetBatchAndItemAndListDesignsAndUpdate(t *testi
 	}
 
 	batch.Status = StudioBatchStatusGenerating
+	batch.ImageStrategy = sheinImageStrategyAIGenerated
 	batch.UpdatedAt = now.Add(5 * time.Second)
 	if err := repo.UpdateStudioBatch(ctx, batch); err != nil {
 		t.Fatalf("UpdateStudioBatch() error = %v", err)
@@ -157,6 +158,9 @@ func TestMemStudioBatchRepositoryGetBatchAndItemAndListDesignsAndUpdate(t *testi
 	}
 	if updatedBatch.Status != StudioBatchStatusGenerating {
 		t.Fatalf("updated batch status = %q, want generating", updatedBatch.Status)
+	}
+	if updatedBatch.ImageStrategy != sheinImageStrategyAIGenerated {
+		t.Fatalf("updated batch image strategy = %q, want %q", updatedBatch.ImageStrategy, sheinImageStrategyAIGenerated)
 	}
 }
 
@@ -482,6 +486,7 @@ func TestGormStudioBatchRepositoryOwnerScopeAndPublicAccessorsAndUpdate(t *testi
 	}
 
 	batch.Status = StudioBatchStatusGenerating
+	batch.ImageStrategy = sheinImageStrategyAIGenerated
 	batch.UpdatedAt = now.Add(5 * time.Second)
 	if err := repo.UpdateStudioBatch(ctxUserA, batch); err != nil {
 		t.Fatalf("UpdateStudioBatch() error = %v", err)
@@ -493,6 +498,9 @@ func TestGormStudioBatchRepositoryOwnerScopeAndPublicAccessorsAndUpdate(t *testi
 	}
 	if updatedBatch.Status != StudioBatchStatusGenerating {
 		t.Fatalf("updated batch status = %q, want generating", updatedBatch.Status)
+	}
+	if updatedBatch.ImageStrategy != sheinImageStrategyAIGenerated {
+		t.Fatalf("updated batch image strategy = %q, want %q", updatedBatch.ImageStrategy, sheinImageStrategyAIGenerated)
 	}
 
 	if _, err := repo.GetStudioBatch(ctxUserB, "batch-1"); !errors.Is(err, gorm.ErrRecordNotFound) {

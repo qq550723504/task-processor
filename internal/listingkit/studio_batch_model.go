@@ -53,6 +53,7 @@ type StudioBatchRecord struct {
 	Status                     StudioBatchStatus                 `json:"status" gorm:"type:varchar(32);index;not null"`
 	Prompt                     string                            `json:"prompt,omitempty" gorm:"type:text"`
 	PromptMode                 string                            `json:"prompt_mode,omitempty" gorm:"type:varchar(16)"`
+	ImageStrategy              string                            `json:"image_strategy,omitempty" gorm:"type:varchar(16)"`
 	ProductImageCount          string                            `json:"product_image_count,omitempty" gorm:"type:varchar(32)"`
 	ProductImagePrompt         string                            `json:"product_image_prompt,omitempty" gorm:"type:text"`
 	ProductImagePrompts        SheinStudioProductImagePromptList `json:"product_image_prompts,omitempty" gorm:"type:text"`
