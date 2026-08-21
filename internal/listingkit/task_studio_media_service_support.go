@@ -201,6 +201,12 @@ func (s *taskStudioMediaService) editStudioDesignImageWithReferences(ctx context
 		}
 	}
 	if key, ok := studioReferenceUploadedImageKeyFromURL(referenceURLs[0]); ok && s.loadUploadedImage != nil {
+		secondaryURLs := make([]string, 0, len(referenceURLs)-1)
+		for _, referenceURL := range referenceURLs[1:] {
+			if trimmed := strings.TrimSpace(referenceURL); trimmed != "" {
+				secondaryURLs = append(secondaryURLs, trimmed)
+			}
+		}
 		file, err := s.loadUploadedImage(ctx, key)
 		if err != nil {
 			return nil, err
@@ -225,8 +231,12 @@ func (s *taskStudioMediaService) editStudioDesignImageWithReferences(ctx context
 					return nil, fmt.Errorf("invalid uploaded reference public url: %w", validateErr)
 				}
 				request.ImageURL = validatedURL
-				request.ImageURLs = []string{validatedURL}
+				request.ImageURLs = append([]string{validatedURL}, secondaryURLs...)
+			} else {
+				request.ImageURLs = secondaryURLs
 			}
+		} else {
+			request.ImageURLs = secondaryURLs
 		}
 		return s.imageGenerator.EditImage(ctx, request)
 	}

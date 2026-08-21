@@ -656,13 +656,20 @@ func studioBatchTaskLinkCompatibilityFingerprint(candidate studioBatchTaskCandid
 	if settings == "" && inputs == "" {
 		return base
 	}
+	identity := base
 	if settings != "" {
-		base += "|product_image_settings=" + settings
+		identity += "|product_image_settings=" + settings
 	}
 	if inputs != "" {
-		base += "|product_image_inputs=" + inputs
+		identity += "|product_image_inputs=" + inputs
 	}
-	return base
+	if len(identity) <= 128 {
+		return identity
+	}
+	// CompatibilityFingerprint is persisted as varchar(128). Hash the complete
+	// extended identity instead of truncating either product-image component.
+	sum := sha256.Sum256([]byte(identity))
+	return "ai_product_image_identity=" + hex.EncodeToString(sum[:])
 }
 
 func orderStudioBatchTaskDesignsByRequest(

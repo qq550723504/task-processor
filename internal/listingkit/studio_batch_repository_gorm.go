@@ -86,6 +86,7 @@ func (r *GormStudioBatchRepository) ReplaceStudioBatchGenerationGraph(ctx contex
 					"status":                         batchRow.Status,
 					"prompt":                         batchRow.Prompt,
 					"prompt_mode":                    batchRow.PromptMode,
+					"image_strategy":                 batchRow.ImageStrategy,
 					"product_image_count":            batchRow.ProductImageCount,
 					"product_image_prompt":           batchRow.ProductImagePrompt,
 					"product_image_prompts":          batchRow.ProductImagePrompts,

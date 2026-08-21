@@ -322,6 +322,7 @@ func TestGormStudioBatchRepositoryReplaceGraphUpdatesHotStyleReferenceFields(t *
 	}
 
 	replacement := newStudioBatchRecordForTest("batch-1", now.Add(time.Minute))
+	replacement.ImageStrategy = sheinImageStrategyAIGenerated
 	replacement.TransparentBackgroundMode = StudioTransparencyModeRemoval
 	replacement.HotStyleReferenceImageURLs = SheinStudioStringList{"https://cdn.example.com/new-ref.png"}
 	replacement.HotStyleReferenceBrief = "new reference brief"
@@ -345,6 +346,9 @@ func TestGormStudioBatchRepositoryReplaceGraphUpdatesHotStyleReferenceFields(t *
 	}
 	if got, want := updated.TransparentBackgroundMode, StudioTransparencyModeRemoval; got != want {
 		t.Fatalf("transparent background mode = %q, want %q", got, want)
+	}
+	if got, want := updated.ImageStrategy, sheinImageStrategyAIGenerated; got != want {
+		t.Fatalf("image strategy = %q, want %q", got, want)
 	}
 }
 
