@@ -34,7 +34,10 @@ type studioAsyncJobStoreService interface {
 	create(ctx context.Context, path string) (studioAsyncJob, error)
 	get(ctx context.Context, id string) (studioAsyncJob, bool)
 	getRecord(ctx context.Context, id string) (*listingkit.StudioAsyncJobRecord, error)
+	getRecordForTenant(ctx context.Context, tenantID, id string) (*listingkit.StudioAsyncJobRecord, error)
+	heartbeat(ctx context.Context, id string) error
 	succeed(ctx context.Context, id string, result any)
 	fail(ctx context.Context, id string, err error, status int)
 	failWithError(ctx context.Context, id string, err error, status int) error
+	failWithErrorForTenant(ctx context.Context, tenantID, id string, err error, status int) error
 }

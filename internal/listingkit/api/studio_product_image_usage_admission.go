@@ -146,16 +146,22 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 		if err != nil {
 			return err
 		}
+		progress := 0
 		for _, event := range events {
 			if event.Status == listingsubscription.UsageEventReserved && event.Metadata[studioProductImageReleasePendingMetadataKey] == "1" {
 				if _, releaseErr := h.subscriptionService.ReleaseUsage(ctx, event.EventID, "retry_pending_api_release"); releaseErr != nil {
 					return releaseErr
 				}
+				progress++
 				continue
 			}
 			if event.Status == listingsubscription.UsageEventReserved && event.SourceType == studioProductImageAsyncSourceType {
-				if err := h.reconcileAbandonedStudioAsyncProductImageUsage(ctx, event); err != nil {
+				changed, err := h.reconcileAbandonedStudioAsyncProductImageUsage(ctx, tenantID, event)
+				if err != nil {
 					return err
+				}
+				if changed {
+					progress++
 				}
 				continue
 			}
@@ -163,49 +169,50 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 				if err := mirrorStudioProductImageUsage(ctx, h.subscriptionService, event); err != nil {
 					return err
 				}
+				progress++
 			}
 		}
-		if len(events) < pageSize {
+		if len(events) < pageSize || progress == 0 {
 			return nil
 		}
 	}
 }
 
-func (h *handler) reconcileAbandonedStudioAsyncProductImageUsage(ctx context.Context, event listingsubscription.UsageEvent) error {
+func (h *handler) reconcileAbandonedStudioAsyncProductImageUsage(ctx context.Context, tenantID string, event listingsubscription.UsageEvent) (bool, error) {
 	if h == nil {
-		return fmt.Errorf("studio async job handler is not configured")
+		return false, fmt.Errorf("studio async job handler is not configured")
 	}
 	if h.studioAsyncJobs == nil {
-		return releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_store_unavailable")
+		return true, releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_store_unavailable")
 	}
-	job, err := h.studioAsyncJobs.getRecord(ctx, event.SourceID)
+	job, err := h.studioAsyncJobs.getRecordForTenant(ctx, tenantID, event.SourceID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_missing")
+		return true, releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_missing")
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	if job == nil {
-		return releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_missing")
+		return true, releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_missing")
 	}
 	if job.Status == listingkit.StudioAsyncJobStatusSucceeded {
-		return commitStudioProductImageUsage(ctx, h.subscriptionService, event.EventID)
+		return true, commitStudioProductImageUsage(ctx, h.subscriptionService, event.EventID)
 	}
 	if job.Status == listingkit.StudioAsyncJobStatusFailed {
-		return releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_failed")
+		return true, releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_failed")
 	}
 	lastUpdated := job.UpdatedAt
 	if lastUpdated.IsZero() {
 		lastUpdated = job.CreatedAt
 	}
 	if time.Since(lastUpdated) < studioProductImageAsyncJobRecoveryAfter {
-		return nil
+		return false, nil
 	}
 	recoveryErr := fmt.Errorf("async product-image job %q exceeded recovery lease", job.ID)
-	if err := h.studioAsyncJobs.failWithError(ctx, job.ID, recoveryErr, 500); err != nil {
-		return err
+	if err := h.studioAsyncJobs.failWithErrorForTenant(ctx, tenantID, job.ID, recoveryErr, 500); err != nil {
+		return false, err
 	}
-	return releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_expired")
+	return true, releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_expired")
 }
 
 func releaseStudioProductImageUsage(ctx context.Context, service *listingsubscription.Service, eventID, reason string) error {

@@ -18,6 +18,8 @@ import (
 
 var executeStudioDesignBatch = listingkit.ExecuteStudioDesignBatch
 
+var studioAsyncJobHeartbeatInterval = time.Minute
+
 func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path string, body json.RawMessage, sessionID string, baseURL string, usageMetric string, usageReservationID string) {
 	startedAt := time.Now()
 	studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{
@@ -27,6 +29,32 @@ func (h *handler) runStudioAsyncJob(ctx context.Context, jobID string, path stri
 		"body_bytes":   len(body),
 		"usage_metric": usageMetric,
 	})).Info("studio async job started")
+	stopHeartbeat := make(chan struct{})
+	heartbeatDone := make(chan struct{})
+	if h.studioAsyncJobs != nil {
+		_ = h.studioAsyncJobs.heartbeat(ctx, jobID)
+		go func() {
+			defer close(heartbeatDone)
+			ticker := time.NewTicker(studioAsyncJobHeartbeatInterval)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-ticker.C:
+					if err := h.studioAsyncJobs.heartbeat(ctx, jobID); err != nil {
+						studioAsyncJobLogger.WithFields(studioAsyncLogFields(ctx, logrus.Fields{"job_id": jobID})).WithError(err).Warn("studio async job heartbeat failed")
+					}
+				case <-stopHeartbeat:
+					return
+				}
+			}
+		}()
+	}
+	defer func() {
+		close(stopHeartbeat)
+		if h.studioAsyncJobs != nil {
+			<-heartbeatDone
+		}
+	}()
 	var result any
 	var err error
 	status := http.StatusInternalServerError

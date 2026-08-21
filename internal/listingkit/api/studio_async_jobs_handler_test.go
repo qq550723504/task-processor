@@ -98,6 +98,65 @@ func TestStudioAsyncJobStartsAndReturnsSucceededDesignJob(t *testing.T) {
 	}
 }
 
+type blockingStudioAsyncMediaService struct {
+	*stubStudioMediaHandlerService
+	started chan<- struct{}
+	release <-chan struct{}
+}
+
+func (s *blockingStudioAsyncMediaService) GenerateStudioProductImages(ctx context.Context, req *listingkit.StudioProductImageRequest) (*listingkit.StudioProductImageResponse, error) {
+	select {
+	case s.started <- struct{}{}:
+	default:
+	}
+	select {
+	case <-s.release:
+		return nil, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func TestRunStudioAsyncJobHeartbeatsBeforeLongProductImageGeneration(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	ctx := listingkit.WithRequestIdentity(listingkit.WithTenantID(context.Background(), "tenant-heartbeat"), listingkit.RequestIdentity{TenantID: "tenant-heartbeat", UserID: "user-heartbeat"})
+	repo := listingkit.NewMemStudioAsyncJobRepository()
+	old := time.Now().UTC().Add(-2 * time.Minute)
+	if err := repo.CreateStudioAsyncJob(ctx, &listingkit.StudioAsyncJobRecord{
+		ID: "heartbeat-job", TenantID: "tenant-heartbeat", UserID: "user-heartbeat", Path: "/studio/product-images",
+		Status: listingkit.StudioAsyncJobStatusRunning, CreatedAt: old, UpdatedAt: old,
+	}); err != nil {
+		t.Fatalf("CreateStudioAsyncJob() error = %v", err)
+	}
+	started := make(chan struct{})
+	release := make(chan struct{})
+	media := &blockingStudioAsyncMediaService{stubStudioMediaHandlerService: &stubStudioMediaHandlerService{}, started: started, release: release}
+	h := &handler{studioAsyncJobs: &studioAsyncJobStore{repo: repo}, studioMediaService: media}
+	done := make(chan struct{})
+	go func() {
+		h.runStudioAsyncJob(ctx, "heartbeat-job", "/studio/product-images", json.RawMessage(`{}`), "", "", "", "")
+		close(done)
+	}()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("product-image generation did not start")
+	}
+	job, err := repo.GetStudioAsyncJob(ctx, "heartbeat-job")
+	if err != nil {
+		t.Fatalf("GetStudioAsyncJob() error = %v", err)
+	}
+	if !job.UpdatedAt.After(old) {
+		t.Fatalf("job UpdatedAt = %s, want heartbeat after %s", job.UpdatedAt, old)
+	}
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("runStudioAsyncJob did not finish")
+	}
+}
+
 func TestStartStudioAsyncJobUsesSharedStudioBatchExecution(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := &stubStudioMediaHandlerService{

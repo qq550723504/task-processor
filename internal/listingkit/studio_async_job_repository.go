@@ -67,7 +67,10 @@ func (r *StudioAsyncJobRecord) EncodeResult(result any) error {
 type StudioAsyncJobRepository interface {
 	CreateStudioAsyncJob(ctx context.Context, record *StudioAsyncJobRecord) error
 	GetStudioAsyncJob(ctx context.Context, jobID string) (*StudioAsyncJobRecord, error)
+	GetStudioAsyncJobForTenant(ctx context.Context, tenantID, jobID string) (*StudioAsyncJobRecord, error)
+	HeartbeatStudioAsyncJob(ctx context.Context, jobID string, updatedAt time.Time) error
 	UpdateStudioAsyncJob(ctx context.Context, record *StudioAsyncJobRecord) error
+	UpdateStudioAsyncJobForTenant(ctx context.Context, tenantID string, record *StudioAsyncJobRecord) error
 }
 
 type MemStudioAsyncJobRepository struct {
@@ -107,6 +110,31 @@ func (r *MemStudioAsyncJobRepository) GetStudioAsyncJob(ctx context.Context, job
 	return &cloned, nil
 }
 
+func (r *MemStudioAsyncJobRepository) GetStudioAsyncJobForTenant(ctx context.Context, tenantID, jobID string) (*StudioAsyncJobRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	record, ok := r.records[jobID]
+	if !ok || !tenantctx.MatchesTenant(record.TenantID, tenantID) {
+		return nil, gorm.ErrRecordNotFound
+	}
+	cloned := record
+	return &cloned, nil
+}
+
+func (r *MemStudioAsyncJobRepository) HeartbeatStudioAsyncJob(ctx context.Context, jobID string, updatedAt time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	record, ok := r.records[jobID]
+	if !ok || !matchesStudioAsyncJobScope(ctx, record.TenantID, record.UserID) {
+		return gorm.ErrRecordNotFound
+	}
+	if record.Status == StudioAsyncJobStatusRunning {
+		record.UpdatedAt = updatedAt
+		r.records[jobID] = record
+	}
+	return nil
+}
+
 func (r *MemStudioAsyncJobRepository) UpdateStudioAsyncJob(ctx context.Context, record *StudioAsyncJobRecord) error {
 	if record == nil {
 		return nil
@@ -115,6 +143,27 @@ func (r *MemStudioAsyncJobRepository) UpdateStudioAsyncJob(ctx context.Context, 
 	defer r.mu.Unlock()
 	existing, ok := r.records[record.ID]
 	if !ok || !matchesStudioAsyncJobScope(ctx, existing.TenantID, existing.UserID) {
+		return gorm.ErrRecordNotFound
+	}
+	cloned := *record
+	if cloned.TenantID == "" {
+		cloned.TenantID = existing.TenantID
+	}
+	if cloned.UserID == "" {
+		cloned.UserID = existing.UserID
+	}
+	r.records[cloned.ID] = cloned
+	return nil
+}
+
+func (r *MemStudioAsyncJobRepository) UpdateStudioAsyncJobForTenant(ctx context.Context, tenantID string, record *StudioAsyncJobRecord) error {
+	if record == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	existing, ok := r.records[record.ID]
+	if !ok || !tenantctx.MatchesTenant(existing.TenantID, tenantID) {
 		return gorm.ErrRecordNotFound
 	}
 	cloned := *record
@@ -165,6 +214,33 @@ func (r *GormStudioAsyncJobRepository) GetStudioAsyncJob(ctx context.Context, jo
 	return &record, nil
 }
 
+func (r *GormStudioAsyncJobRepository) GetStudioAsyncJobForTenant(ctx context.Context, tenantID, jobID string) (*StudioAsyncJobRecord, error) {
+	var record StudioAsyncJobRecord
+	db := r.db.WithContext(ctx)
+	if tenantctx.NormalizeTenantID(tenantID) == tenantctx.DefaultTenantID {
+		db = db.Where("(tenant_id = ? OR tenant_id = '' OR tenant_id IS NULL)", tenantctx.DefaultTenantID)
+	} else {
+		db = db.Where("tenant_id = ?", tenantctx.NormalizeTenantID(tenantID))
+	}
+	if err := db.Where("id = ?", jobID).First(&record).Error; err != nil {
+		return nil, err
+	}
+	return &record, nil
+}
+
+func (r *GormStudioAsyncJobRepository) HeartbeatStudioAsyncJob(ctx context.Context, jobID string, updatedAt time.Time) error {
+	result := applyStudioAsyncJobAccessScope(r.db.WithContext(ctx), ctx).
+		Where("id = ? AND status = ?", jobID, StudioAsyncJobStatusRunning).
+		Updates(map[string]any{"updated_at": updatedAt})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
 func (r *GormStudioAsyncJobRepository) UpdateStudioAsyncJob(ctx context.Context, record *StudioAsyncJobRecord) error {
 	if record == nil {
 		return nil
@@ -188,6 +264,42 @@ func (r *GormStudioAsyncJobRepository) UpdateStudioAsyncJob(ctx context.Context,
 			"finished_at":     row.FinishedAt,
 			"updated_at":      row.UpdatedAt,
 		}).Error
+}
+
+func (r *GormStudioAsyncJobRepository) UpdateStudioAsyncJobForTenant(ctx context.Context, tenantID string, record *StudioAsyncJobRecord) error {
+	if record == nil {
+		return nil
+	}
+	row := *record
+	if row.TenantID == "" {
+		row.TenantID = tenantctx.NormalizeTenantID(tenantID)
+	}
+	db := applyStudioAsyncJobTenantScope(r.db.WithContext(ctx), tenantID)
+	result := db.Model(&StudioAsyncJobRecord{}).
+		Where("id = ?", row.ID).
+		Updates(map[string]any{
+			"path":            row.Path,
+			"status":          row.Status,
+			"result_json":     row.ResultJSON,
+			"error":           row.Error,
+			"upstream_status": row.UpstreamStatus,
+			"finished_at":     row.FinishedAt,
+			"updated_at":      row.UpdatedAt,
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+func applyStudioAsyncJobTenantScope(db *gorm.DB, tenantID string) *gorm.DB {
+	if tenantctx.NormalizeTenantID(tenantID) == tenantctx.DefaultTenantID {
+		return db.Where("(tenant_id = ? OR tenant_id = '' OR tenant_id IS NULL)", tenantctx.DefaultTenantID)
+	}
+	return db.Where("tenant_id = ?", tenantctx.NormalizeTenantID(tenantID))
 }
 
 func applyStudioAsyncJobAccessScope(db *gorm.DB, ctx context.Context) *gorm.DB {

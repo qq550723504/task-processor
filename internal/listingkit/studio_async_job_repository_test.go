@@ -82,3 +82,46 @@ func TestGormStudioAsyncJobRepositoryScopesByUserWhenOwnerScopeEnabled(t *testin
 		t.Fatal("expected cross-user lookup to fail")
 	}
 }
+
+func TestGormStudioAsyncJobRepositoryTenantRecoveryBypassesUserScope(t *testing.T) {
+	t.Parallel()
+
+	restore := SetOwnerScopeRequiredForTesting(true)
+	defer restore()
+	db, err := gorm.Open(sqlite.Dialector{DriverName: "sqlite", DSN: ":memory:"}, &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	if err := AutoMigrateStudioAsyncJobRepository(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	repo := NewGormStudioAsyncJobRepository(db)
+	ctxA := WithRequestIdentity(WithTenantID(context.Background(), "tenant-a"), RequestIdentity{TenantID: "tenant-a", UserID: "user-a"})
+	ctxB := WithRequestIdentity(WithTenantID(context.Background(), "tenant-a"), RequestIdentity{TenantID: "tenant-a", UserID: "user-b"})
+	old := time.Now().UTC().Add(-time.Hour)
+	if err := repo.CreateStudioAsyncJob(ctxA, &StudioAsyncJobRecord{
+		ID: "job-recovery", TenantID: "tenant-a", UserID: "user-a", Path: "/studio/product-images",
+		Status: StudioAsyncJobStatusRunning, CreatedAt: old, UpdatedAt: old,
+	}); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if _, err := repo.GetStudioAsyncJob(ctxB, "job-recovery"); err == nil {
+		t.Fatal("expected owner-scoped lookup to fail for another user")
+	}
+	recovered, err := repo.GetStudioAsyncJobForTenant(ctxB, "tenant-a", "job-recovery")
+	if err != nil {
+		t.Fatalf("tenant recovery lookup: %v", err)
+	}
+	recovered.Status = StudioAsyncJobStatusFailed
+	recovered.UpdatedAt = time.Now().UTC()
+	if err := repo.UpdateStudioAsyncJobForTenant(ctxB, "tenant-a", recovered); err != nil {
+		t.Fatalf("tenant recovery update: %v", err)
+	}
+	check, err := repo.GetStudioAsyncJobForTenant(ctxB, "tenant-a", "job-recovery")
+	if err != nil {
+		t.Fatalf("tenant recovery reread: %v", err)
+	}
+	if check.Status != StudioAsyncJobStatusFailed {
+		t.Fatalf("recovered status = %q, want failed", check.Status)
+	}
+}
