@@ -120,6 +120,9 @@ func TestSubscriptionStudioProductImageUsageReservationUsesDurableLedger(t *test
 	if event.Status != listingsubscription.UsageEventReserved || event.Quantity != 2 || event.Metric != "product_image_jobs_succeeded" {
 		t.Fatalf("event = %#v, want reserved product-image event", event)
 	}
+	if event.SourceType != "listingkit_batch_product_image" {
+		t.Fatalf("event source type = %q, want batch-owned reservation", event.SourceType)
+	}
 	if err := adapter.ReserveProductImageUsage(context.Background(), "tenant-17", "candidate-over-limit", 1); err == nil {
 		t.Fatal("ReserveProductImageUsage() unexpectedly allowed a concurrent reservation beyond the limit")
 	}

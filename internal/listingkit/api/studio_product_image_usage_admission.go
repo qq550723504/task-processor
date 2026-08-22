@@ -22,7 +22,8 @@ const (
 	studioProductImageLegacyMirrorMetadataKey               = "listingkit_legacy_counter_mirror"
 	studioProductImageLegacyMirrorSettled                   = "settled"
 	studioProductImageLegacyMirrorReleasePendingMetadataKey = listingkit.StudioProductImageLegacyMirrorReleasePendingMetadataKey
-	studioProductImageSourceType                            = "listingkit_product_image"
+	studioProductImageLegacySourceType                      = "listingkit_product_image"
+	studioProductImageSourceType                            = "listingkit_sync_product_image"
 	studioProductImageAsyncSourceType                       = "listingkit_async_product_image"
 	studioProductImageAsyncJobMetadataKey                   = "listingkit_async_job"
 	studioProductImageAsyncJobMetadataValue                 = "1"
@@ -150,12 +151,12 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 	offset := 0
 	for {
 		events, err := h.subscriptionService.ListUsageEventPageForReconciliationWithFilter(ctx, listingsubscription.UsageLedgerReconciliationFilter{
-			TenantID: tenantID, SourceType: studioProductImageSourceType, SourceTypes: []string{studioProductImageSourceType, studioProductImageAsyncSourceType}, Metric: studioProductImageLedgerMetric,
+			TenantID: tenantID, SourceType: studioProductImageSourceType, SourceTypes: []string{studioProductImageSourceType, studioProductImageAsyncSourceType, studioProductImageLegacySourceType}, Metric: studioProductImageLedgerMetric,
 			ReservedMetadataPredicates: []listingsubscription.UsageLedgerMetadataPredicate{
 				{Key: studioProductImageReleasePendingMetadataKey, Value: "1"},
 				{Key: studioProductImageAsyncJobMetadataKey, Value: studioProductImageAsyncJobMetadataValue},
 			},
-			ReservedSourceTypes:        []string{studioProductImageAsyncSourceType, studioProductImageSourceType},
+			ReservedSourceTypes:        []string{studioProductImageAsyncSourceType, studioProductImageSourceType, studioProductImageLegacySourceType},
 			ReleasedMetadataPredicates: []listingsubscription.UsageLedgerMetadataPredicate{{Key: studioProductImageLegacyMirrorReleasePendingMetadataKey, Value: "1"}},
 			CommittedMetadataKey:       studioProductImageLegacyMirrorMetadataKey, CommittedSettledValue: studioProductImageLegacyMirrorSettled,
 		}, pageSize, offset)
@@ -191,7 +192,7 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 				}
 				continue
 			}
-			if event.Status == listingsubscription.UsageEventReserved && event.SourceType == studioProductImageSourceType {
+			if event.Status == listingsubscription.UsageEventReserved && studioProductImageSyncReservationIsRecoverable(event) {
 				if !studioProductImageSyncReservationExpired(event) {
 					continue
 				}
@@ -219,6 +220,13 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 			return nil
 		}
 	}
+}
+
+func studioProductImageSyncReservationIsRecoverable(event listingsubscription.UsageEvent) bool {
+	if event.SourceType == studioProductImageSourceType {
+		return true
+	}
+	return event.SourceType == studioProductImageLegacySourceType && strings.HasPrefix(event.IdempotencyKey, "listingkit:api:studio_product_image:")
 }
 
 func (h *handler) finishStudioProductImageLegacyMirrorRelease(ctx context.Context, event listingsubscription.UsageEvent) error {

@@ -168,24 +168,30 @@ func (s *taskStudioBatchService) settleStudioBatchProductImageUsage(ctx context.
 	} else if settled {
 		return nil
 	}
-	var err error
+	route, err := s.studioBatchProductImageUsageRoute(ctx, batch, candidate)
+	if err != nil {
+		return err
+	}
 	settlementClaimed := false
-	if s.studioBatchProductImageUsageLedgerAdmission(ctx, batch) {
-		if reservation, ok := s.productImageUsageReservation(); ok {
-			tenantID := studioBatchTaskGateTenantID(ctx, batch)
-			if strings.TrimSpace(tenantID) == "" {
-				return fmt.Errorf("tenant id is required")
-			}
-			reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
-			if reservationID == "" {
-				return fmt.Errorf("product image usage reservation id is required")
-			}
-			err = reservation.CommitProductImageUsage(ctx, tenantID, reservationID)
-		} else {
-			settlementClaimed, err = s.settleLegacyStudioBatchProductImageUsage(ctx, batch, candidate)
+	switch route {
+	case studioBatchProductImageUsageRouteLedger:
+		reservation, ok := s.productImageUsageReservationForLifecycle()
+		if !ok {
+			return fmt.Errorf("product image usage ledger reservation is unavailable")
 		}
-	} else {
+		tenantID := studioBatchTaskGateTenantID(ctx, batch)
+		if strings.TrimSpace(tenantID) == "" {
+			return fmt.Errorf("tenant id is required")
+		}
+		reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
+		if reservationID == "" {
+			return fmt.Errorf("product image usage reservation id is required")
+		}
+		err = reservation.CommitProductImageUsage(ctx, tenantID, reservationID)
+	case studioBatchProductImageUsageRouteLegacy:
 		settlementClaimed, err = s.settleLegacyStudioBatchProductImageUsage(ctx, batch, candidate)
+	default:
+		return fmt.Errorf("unsupported product image usage route %q", route)
 	}
 	if err != nil {
 		return err
@@ -275,15 +281,23 @@ func (s *taskStudioBatchService) authorizeStudioBatchProductImageUsage(ctx conte
 	if strings.TrimSpace(tenantID) == "" {
 		return fmt.Errorf("tenant id is required")
 	}
-	ledgerAdmission := s.studioBatchProductImageUsageLedgerAdmission(ctx, batch)
-	if ledgerAdmission {
-		if reservation, ok := s.productImageUsageReservation(); ok {
-			reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
-			if reservationID == "" {
-				return fmt.Errorf("product image usage reservation id is required")
-			}
-			return reservation.ReserveProductImageUsage(ctx, tenantID, reservationID, quantity)
+	route, err := s.studioBatchProductImageUsageRoute(ctx, batch, candidate)
+	if err != nil {
+		return err
+	}
+	if route == studioBatchProductImageUsageRouteLedger {
+		reservation, ok := s.productImageUsageReservation()
+		if !ok {
+			return fmt.Errorf("product image usage ledger reservation is unavailable")
 		}
+		reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
+		if reservationID == "" {
+			return fmt.Errorf("product image usage reservation id is required")
+		}
+		return reservation.ReserveProductImageUsage(ctx, tenantID, reservationID, quantity)
+	}
+	if route != studioBatchProductImageUsageRouteLegacy {
+		return fmt.Errorf("unsupported product image usage route %q", route)
 	}
 	return s.productImageUsage.AuthorizeProductImageUsage(ctx, tenantID, quantity)
 }
@@ -306,10 +320,100 @@ func (s *taskStudioBatchService) productImageUsageReservation() (StudioProductIm
 	return reservation, ok && reservation != nil
 }
 
+func (s *taskStudioBatchService) productImageUsageReservationForLifecycle() (StudioProductImageUsageReservation, bool) {
+	if s == nil || s.productImageUsage == nil {
+		return nil, false
+	}
+	reservation, ok := s.productImageUsage.(StudioProductImageUsageReservation)
+	return reservation, ok && reservation != nil
+}
+
+func (s *taskStudioBatchService) studioBatchProductImageUsageRoute(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate) (studioBatchProductImageUsageRoute, error) {
+	if s == nil || s.batchTaskLinkRepo == nil {
+		return s.newStudioBatchProductImageUsageRoute(ctx, batch), nil
+	}
+	link, err := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, strings.TrimSpace(candidate.CandidateKey))
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return s.newStudioBatchProductImageUsageRoute(ctx, batch), nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if link == nil {
+		return s.newStudioBatchProductImageUsageRoute(ctx, batch), nil
+	}
+	switch link.ProductImageUsageRoute {
+	case studioBatchProductImageUsageRouteLedger, studioBatchProductImageUsageRouteLegacy:
+		return link.ProductImageUsageRoute, nil
+	case studioBatchProductImageUsageRoutePending:
+		if strings.TrimSpace(link.ClaimToken) != strings.TrimSpace(candidate.ClaimToken) {
+			// A replacement worker must not release a reservation that the
+			// previous worker never reached. Route finalization happens before
+			// reservation, so an unfinalized pending link has no ledger debit.
+			return studioBatchProductImageUsageRouteLegacy, nil
+		}
+		resolver, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkProductImageUsageRouteRepository)
+		if !ok {
+			return "", fmt.Errorf("studio batch task link repository lacks atomic usage route resolution")
+		}
+		desired := s.newStudioBatchProductImageUsageRoute(ctx, batch)
+		now := time.Now().UTC()
+		if s.currentTime != nil {
+			now = s.currentTime().UTC()
+		}
+		stored, _, resolveErr := resolver.ResolveStudioBatchProductImageUsageRoute(ctx, strings.TrimSpace(candidate.CandidateKey), strings.TrimSpace(candidate.ClaimToken), desired, now)
+		if resolveErr != nil {
+			return "", resolveErr
+		}
+		if stored == studioBatchProductImageUsageRouteLedger || stored == studioBatchProductImageUsageRouteLegacy {
+			return stored, nil
+		}
+		return "", fmt.Errorf("studio batch product image usage route is not finalized")
+	case "":
+		if lookup, ok := s.productImageUsage.(StudioProductImageUsageReservationLookup); ok {
+			reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
+			if reservationID != "" {
+				hasReservation, lookupErr := lookup.HasProductImageUsageReservation(ctx, studioBatchTaskGateTenantID(ctx, batch), reservationID)
+				if lookupErr != nil {
+					return "", lookupErr
+				}
+				if hasReservation {
+					return studioBatchProductImageUsageRouteLedger, nil
+				}
+			}
+		}
+		return studioBatchProductImageUsageRouteLegacy, nil
+	default:
+		return "", fmt.Errorf("unknown studio batch product image usage route %q", link.ProductImageUsageRoute)
+	}
+}
+
+func (s *taskStudioBatchService) newStudioBatchProductImageUsageRoute(ctx context.Context, batch *StudioBatchRecord) studioBatchProductImageUsageRoute {
+	if s.studioBatchProductImageUsageLedgerAdmission(ctx, batch) {
+		if _, ok := s.productImageUsageReservation(); ok {
+			return studioBatchProductImageUsageRouteLedger
+		}
+	}
+	return studioBatchProductImageUsageRouteLegacy
+}
+
 func (s *taskStudioBatchService) releaseStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate, reason string) error {
-	reservation, ok := s.productImageUsageReservation()
-	if !ok || normalizeSheinImageStrategy(candidate.ImageStrategy) != sheinImageStrategyAIGenerated {
+	if normalizeSheinImageStrategy(candidate.ImageStrategy) != sheinImageStrategyAIGenerated {
 		return nil
+	}
+	route, err := s.studioBatchProductImageUsageRoute(ctx, batch, candidate)
+	if err != nil {
+		return err
+	}
+	if route == studioBatchProductImageUsageRouteLegacy {
+		return nil
+	}
+	if route != studioBatchProductImageUsageRouteLedger {
+		return fmt.Errorf("unsupported product image usage route %q", route)
+	}
+	reservation, ok := s.productImageUsageReservationForLifecycle()
+	if !ok {
+		return fmt.Errorf("product image usage ledger reservation is unavailable")
 	}
 	tenantID := studioBatchTaskGateTenantID(ctx, batch)
 	if strings.TrimSpace(tenantID) == "" {

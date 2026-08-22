@@ -600,6 +600,89 @@ func TestTaskStudioBatchServiceSettlesLegacyUsageWhenLedgerAdmissionIsDenied(t *
 	}
 }
 
+func TestTaskStudioBatchServiceSettlesPersistedLegacyRouteAfterTenantEntersLedger(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	links := NewMemStudioBatchTaskLinkRepository()
+	candidate := studioBatchTaskCandidate{CandidateKey: "candidate-persisted-legacy", ImageStrategy: sheinImageStrategyAIGenerated, SelectionSnapshot: SheinStudioSelection{ProductName: "Canvas Tote"}}
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-persisted-legacy", BatchID: "batch-1", CandidateKey: candidate.CandidateKey,
+		ImageStrategy: sheinImageStrategyAIGenerated, Status: studioBatchTaskLinkStatusCreated,
+		ProductImageUsageRoute: studioBatchProductImageUsageRouteLegacy, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	usage := &reservingStudioProductImageUsage{}
+	service := &taskStudioBatchService{batchTaskLinkRepo: links, productImageUsage: usage, currentTime: time.Now}
+	if err := service.settleStudioBatchProductImageUsage(ctx, &StudioBatchRecord{TenantID: "tenant-a"}, candidate); err != nil {
+		t.Fatalf("settleStudioBatchProductImageUsage() error = %v", err)
+	}
+	if got, want := usage.recorded, []string{"tenant-a:1"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("legacy usage = %v, want %v", got, want)
+	}
+	if len(usage.committed) != 0 {
+		t.Fatalf("committed reservations = %v, want none", usage.committed)
+	}
+}
+
+func TestTaskStudioBatchServiceSettlesPersistedLedgerRouteAfterTenantLeavesLedger(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	links := NewMemStudioBatchTaskLinkRepository()
+	candidate := studioBatchTaskCandidate{CandidateKey: "candidate-persisted-ledger", ImageStrategy: sheinImageStrategyAIGenerated, SelectionSnapshot: SheinStudioSelection{ProductName: "Canvas Tote"}}
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-persisted-ledger", BatchID: "batch-1", CandidateKey: candidate.CandidateKey,
+		ImageStrategy: sheinImageStrategyAIGenerated, Status: studioBatchTaskLinkStatusCreated,
+		ProductImageUsageRoute: studioBatchProductImageUsageRouteLedger, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	usage := &reservingStudioProductImageUsage{}
+	service := &taskStudioBatchService{
+		batchTaskLinkRepo:        links,
+		productImageUsage:        usage,
+		generationUsageAdmission: denyingStudioBatchGenerationUsageAdmission{},
+		currentTime:              time.Now,
+	}
+	if err := service.settleStudioBatchProductImageUsage(ctx, &StudioBatchRecord{TenantID: "tenant-a"}, candidate); err != nil {
+		t.Fatalf("settleStudioBatchProductImageUsage() error = %v", err)
+	}
+	if got, want := usage.committed, []string{"tenant-a:candidate-persisted-ledger"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("committed reservations = %v, want %v", got, want)
+	}
+	if len(usage.recorded) != 0 {
+		t.Fatalf("legacy usage = %v, want none", usage.recorded)
+	}
+}
+
+func TestTaskStudioBatchServiceUsesLegacyRouteForPreChangeLinkWithoutReservation(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	links := NewMemStudioBatchTaskLinkRepository()
+	candidate := studioBatchTaskCandidate{CandidateKey: "candidate-prechange", ImageStrategy: sheinImageStrategyAIGenerated, SelectionSnapshot: SheinStudioSelection{ProductName: "Canvas Tote"}}
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-prechange", BatchID: "batch-1", CandidateKey: candidate.CandidateKey,
+		ImageStrategy: sheinImageStrategyAIGenerated, Status: studioBatchTaskLinkStatusCreated,
+		CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	usage := &reservingStudioProductImageUsage{}
+	service := &taskStudioBatchService{batchTaskLinkRepo: links, productImageUsage: usage, currentTime: time.Now}
+	if err := service.settleStudioBatchProductImageUsage(ctx, &StudioBatchRecord{TenantID: "tenant-a"}, candidate); err != nil {
+		t.Fatalf("settleStudioBatchProductImageUsage() error = %v", err)
+	}
+	if got, want := usage.recorded, []string{"tenant-a:1"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("legacy usage = %v, want %v", got, want)
+	}
+	if len(usage.committed) != 0 {
+		t.Fatalf("committed reservations = %v, want none", usage.committed)
+	}
+}
+
 func TestTaskStudioBatchServiceReleasesDurableProductImageReservation(t *testing.T) {
 	t.Parallel()
 
@@ -894,7 +977,7 @@ func TestTaskStudioBatchServiceReleasesStaleProductImageReservationAfterReclaim(
 	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
 		ID: "link-stale", BatchID: "batch-1", CandidateKey: "candidate-stale",
 		ClaimToken: "old-claim", ImageStrategy: sheinImageStrategyAIGenerated,
-		Status: studioBatchTaskLinkStatusCreating, UpdatedAt: time.Now().UTC().Add(-3 * time.Minute),
+		Status: studioBatchTaskLinkStatusCreating, ProductImageUsageRoute: studioBatchProductImageUsageRouteLedger, UpdatedAt: time.Now().UTC().Add(-3 * time.Minute),
 	}); err != nil {
 		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
 	}
@@ -937,7 +1020,7 @@ func TestTaskStudioBatchServicePersistsPendingStaleReservationRelease(t *testing
 	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
 		ID: "link-pending-release", BatchID: "batch-1", CandidateKey: "candidate-pending-release",
 		ClaimToken: "old-claim", ImageStrategy: sheinImageStrategyAIGenerated,
-		Status: studioBatchTaskLinkStatusCreating, UpdatedAt: time.Now().UTC().Add(-3 * time.Minute),
+		Status: studioBatchTaskLinkStatusCreating, ProductImageUsageRoute: studioBatchProductImageUsageRouteLedger, UpdatedAt: time.Now().UTC().Add(-3 * time.Minute),
 	}); err != nil {
 		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
 	}
@@ -1008,7 +1091,7 @@ func TestTaskStudioBatchServiceRecoversCreatedTaskWhenLinkPersistenceFails(t *te
 		ID: "link-recovery", BatchID: "batch-1", ItemID: "item-1", DesignID: "design-1",
 		SelectionID: "selection-1", CandidateKey: candidate.CandidateKey,
 		ClaimToken: candidate.ClaimToken, ImageStrategy: sheinImageStrategyAIGenerated,
-		Status: studioBatchTaskLinkStatusCreating, UpdatedAt: time.Now().UTC(),
+		Status: studioBatchTaskLinkStatusCreating, ProductImageUsageRoute: studioBatchProductImageUsageRouteLedger, UpdatedAt: time.Now().UTC(),
 	}); err != nil {
 		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
 	}

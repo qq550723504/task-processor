@@ -69,6 +69,9 @@ func (s *taskStudioBatchService) reserveStudioBatchTaskCandidate(ctx context.Con
 		CreatedAt:                now,
 		UpdatedAt:                now,
 	}
+	if link.ImageStrategy == sheinImageStrategyAIGenerated {
+		link.ProductImageUsageRoute = studioBatchProductImageUsageRoutePending
+	}
 	if link.BatchID == "" {
 		link.BatchID = strings.TrimSpace(candidate.Item.BatchID)
 	}
