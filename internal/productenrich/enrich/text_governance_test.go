@@ -64,6 +64,26 @@ func TestGovernedTextGeneratorRecordsRouteFailureWithoutProviderCall(t *testing.
 	}
 }
 
+func TestGovernedTextGeneratorFallsBackToLegacyClientWhenTenantIsOutsideRollout(t *testing.T) {
+	provider := &routedTextManager{legacyResponse: `{"title":"Legacy"}`}
+	generator, err := productenrichenrich.NewGovernedTextGenerator(provider, productenrichenrich.GovernedTextGeneratorConfig{
+		Router:   failingTextRouter{err: aicapability.NewError(aicapability.ErrorPolicyDenied, string(aicapability.OperationProductEnrichTextExtract), nil)},
+		Recorder: &textInvocationRecorder{}, FallbackClient: "fast",
+	})
+	if err != nil {
+		t.Fatalf("NewGovernedTextGenerator: %v", err)
+	}
+
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-not-enabled", UserID: "user-a"})
+	got, err := generator.Generate(ctx, "extract attributes")
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if got != `{"title":"Legacy"}` || !provider.legacyCalled {
+		t.Fatalf("legacy fallback response/call = %q/%v", got, provider.legacyCalled)
+	}
+}
+
 func TestProductUnderstandingUsesGovernedTextGeneratorWithoutLegacyClientLookup(t *testing.T) {
 	provider := &routedTextManager{response: `{"title":"Lamp","attributes":{"wattage":"10W"}}`}
 	generator, err := productenrichenrich.NewGovernedTextGenerator(provider, productenrichenrich.GovernedTextGeneratorConfig{
@@ -112,13 +132,18 @@ func (r failingTextRouter) Decide(context.Context, aicapability.RouteRequest) (a
 }
 
 type routedTextManager struct {
-	response string
-	route    productenrich.LLMClientRoute
-	called   bool
+	response       string
+	legacyResponse string
+	route          productenrich.LLMClientRoute
+	called         bool
+	legacyCalled   bool
 }
 
 func (m *routedTextManager) GetClient(string) (productenrich.LLMClient, error) {
-	return nil, errors.New("legacy path not expected")
+	if m.legacyResponse == "" {
+		return nil, errors.New("legacy path not expected")
+	}
+	return &legacyTextClient{manager: m}, nil
 }
 func (m *routedTextManager) GetDefaultClient() productenrich.LLMClient { return nil }
 func (m *routedTextManager) GetClientWithRoute(_ context.Context, _ string, route productenrich.LLMClientRoute) (productenrich.LLMClient, error) {
@@ -128,11 +153,20 @@ func (m *routedTextManager) GetClientWithRoute(_ context.Context, _ string, rout
 
 type routedTextClient struct{ manager *routedTextManager }
 
+type legacyTextClient struct{ manager *routedTextManager }
+
 func (c *routedTextClient) Generate(context.Context, string) (string, error) {
 	c.manager.called = true
 	return c.manager.response, nil
 }
 func (c *routedTextClient) AnalyzeImage(context.Context, string, string) (string, error) {
+	return "", nil
+}
+func (c *legacyTextClient) Generate(context.Context, string) (string, error) {
+	c.manager.legacyCalled = true
+	return c.manager.legacyResponse, nil
+}
+func (c *legacyTextClient) AnalyzeImage(context.Context, string, string) (string, error) {
 	return "", nil
 }
 

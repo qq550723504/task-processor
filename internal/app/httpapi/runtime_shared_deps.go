@@ -24,6 +24,9 @@ type sharedRuntimeDeps struct {
 	contentGenerator     productenrichenrich.TextGenerator
 	specsGenerator       productenrichenrich.TextGenerator
 	variantsGenerator    productenrichenrich.TextGenerator
+	fusionGenerator      productenrichenrich.TextGenerator
+	scoringTextGenerator productenrichenrich.TextGenerator
+	scoringImageAnalyzer productenrichenrich.ImageAnalyzer
 	imageWorkDir         string
 	storeAPI             listingadmin.StoreAPI
 }

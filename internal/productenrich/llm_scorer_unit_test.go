@@ -27,6 +27,44 @@ func newTestLLMScorer(llmResp string, llmErr error) *llmScorer {
 	}
 }
 
+func TestLLMScorerUsesInjectedGovernedCapabilities(t *testing.T) {
+	text := &testScoringTextGenerator{response: `{"score":91}`}
+	image := &testScoringImageAnalyzer{response: `{"score":87}`}
+	scorer := NewLLMScorer(&LLMScorerConfig{TextGenerator: text, ImageAnalyzer: image})
+
+	textScore, err := scorer.ScoreText(context.Background(), "product", 50)
+	if err != nil {
+		t.Fatalf("ScoreText: %v", err)
+	}
+	imageScore, err := scorer.ScoreImage(context.Background(), "image.jpg", 50)
+	if err != nil {
+		t.Fatalf("ScoreImage: %v", err)
+	}
+	if textScore <= 50 || imageScore <= 50 || !text.called || !image.called {
+		t.Fatalf("scores/calls = %.1f/%.1f/%v/%v", textScore, imageScore, text.called, image.called)
+	}
+}
+
+type testScoringTextGenerator struct {
+	response string
+	called   bool
+}
+
+func (g *testScoringTextGenerator) Generate(context.Context, string) (string, error) {
+	g.called = true
+	return g.response, nil
+}
+
+type testScoringImageAnalyzer struct {
+	response string
+	called   bool
+}
+
+func (g *testScoringImageAnalyzer) AnalyzeImage(context.Context, string, string) (string, error) {
+	g.called = true
+	return g.response, nil
+}
+
 // --- parseLLMScore ---
 
 func TestParseLLMScore_ValidJSON(t *testing.T) {

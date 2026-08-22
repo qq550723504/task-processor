@@ -121,6 +121,23 @@ func TestProductEnrichListingCatalogDeniesTenantBeforeCredentialLookup(t *testin
 	}
 }
 
+func TestProductEnrichFusionCatalogResolvesDefaultCredential(t *testing.T) {
+	resolver := &productEnrichTextResolver{resolved: &openaiclient.ResolvedClientConfig{
+		CacheKey: "fusion-config-v1",
+		Config:   &openaiclient.ClientConfig{APIKey: "secret", BaseURL: "https://example.test/v1", Model: "fusion-model", APIStyle: "openai"},
+	}}
+	decision, err := BuildProductEnrichFusionCapabilityRouter(resolver, []string{"tenant-a"}).Decide(context.Background(), aicapability.RouteRequest{
+		TenantID: "tenant-a", UserID: "user-a", Capability: aicapability.CapabilityProductEnrichFusion,
+		Operation: aicapability.OperationProductEnrichMultimodalFuse, RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureTextGenerate},
+	})
+	if err != nil {
+		t.Fatalf("Decide: %v", err)
+	}
+	if decision.ModelID != "fusion-model" || decision.CredentialReference != productEnrichListingClientName || decision.ConfigurationVersion != "fusion-config-v1" {
+		t.Fatalf("decision = %+v", decision)
+	}
+}
+
 type productEnrichTextResolver struct {
 	resolved            *openaiclient.ResolvedClientConfig
 	err                 error

@@ -25,5 +25,12 @@ func buildLLMScorerConfig(cfg *config.Config, llmMgr productenrich.LLMManager, s
 }
 
 func buildLLMScorerWithCache(cfg *config.Config, llmMgr productenrich.LLMManager, scoreCache productenrich.LLMScoreCache) productenrich.LLMScorer {
-	return productenrich.NewLLMScorer(buildLLMScorerConfig(cfg, llmMgr, scoreCache))
+	return buildLLMScorerWithCapabilities(cfg, llmMgr, scoreCache, nil, nil)
+}
+
+func buildLLMScorerWithCapabilities(cfg *config.Config, llmMgr productenrich.LLMManager, scoreCache productenrich.LLMScoreCache, textGenerator productenrich.ScoringTextGenerator, imageAnalyzer productenrich.ScoringImageAnalyzer) productenrich.LLMScorer {
+	config := buildLLMScorerConfig(cfg, llmMgr, scoreCache)
+	config.TextGenerator = textGenerator
+	config.ImageAnalyzer = imageAnalyzer
+	return productenrich.NewLLMScorer(config)
 }

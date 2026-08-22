@@ -16,9 +16,10 @@ import (
 )
 
 type productUnderstanding struct {
-	llmManager    productenrich.LLMManager
-	textGenerator TextGenerator
-	imageAnalyzer ImageAnalyzer
+	llmManager      productenrich.LLMManager
+	textGenerator   TextGenerator
+	imageAnalyzer   ImageAnalyzer
+	fusionGenerator TextGenerator
 }
 
 func NewProductUnderstanding(llmManager productenrich.LLMManager) (productenrich.ProductUnderstanding, error) {
@@ -35,11 +36,17 @@ func NewProductUnderstandingWithTextGenerator(llmManager productenrich.LLMManage
 // NewProductUnderstandingWithCapabilities keeps the domain pipeline stable
 // while allowing individual model stages to opt into governed capabilities.
 func NewProductUnderstandingWithCapabilities(llmManager productenrich.LLMManager, textGenerator TextGenerator, imageAnalyzer ImageAnalyzer) (productenrich.ProductUnderstanding, error) {
+	return NewProductUnderstandingWithAllCapabilities(llmManager, textGenerator, imageAnalyzer, nil)
+}
+
+// NewProductUnderstandingWithAllCapabilities allows each model stage to use
+// its own governed capability while preserving the legacy constructor shape.
+func NewProductUnderstandingWithAllCapabilities(llmManager productenrich.LLMManager, textGenerator TextGenerator, imageAnalyzer ImageAnalyzer, fusionGenerator TextGenerator) (productenrich.ProductUnderstanding, error) {
 	if llmManager == nil {
 		return nil, fmt.Errorf("llm manager cannot be nil")
 	}
 
-	return &productUnderstanding{llmManager: llmManager, textGenerator: textGenerator, imageAnalyzer: imageAnalyzer}, nil
+	return &productUnderstanding{llmManager: llmManager, textGenerator: textGenerator, imageAnalyzer: imageAnalyzer, fusionGenerator: fusionGenerator}, nil
 }
 
 func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *productenrich.ParsedInput) (*productenrich.ProductAnalysis, error) {
@@ -418,11 +425,17 @@ func (p *productUnderstanding) FuseMultimodal(ctx context.Context, imageAttr *pr
 
 Only return the JSON object, no additional text.`
 
-	defaultClient, err := p.llmManager.GetClient("default")
-	if err != nil || defaultClient == nil {
-		return nil, fmt.Errorf("failed to get default client: %w", err)
+	var response string
+	var err error
+	if p.fusionGenerator != nil {
+		response, err = p.fusionGenerator.Generate(ctx, promptText)
+	} else {
+		defaultClient, clientErr := p.llmManager.GetClient("default")
+		if clientErr != nil || defaultClient == nil {
+			return nil, fmt.Errorf("failed to get default client: %w", clientErr)
+		}
+		response, err = defaultClient.Generate(ctx, promptText)
 	}
-	response, err := defaultClient.Generate(ctx, promptText)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fuse multimodal information: %w", err)
 	}

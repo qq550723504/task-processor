@@ -58,6 +58,26 @@ func TestGovernedImageAnalyzerRecordsRouteFailureWithoutProviderCall(t *testing.
 	}
 }
 
+func TestGovernedImageAnalyzerFallsBackToLegacyClientWhenTenantIsOutsideRollout(t *testing.T) {
+	provider := &routedImageManager{legacyResponse: `{"color":"legacy"}`}
+	analyzer, err := productenrichenrich.NewGovernedImageAnalyzer(provider, productenrichenrich.GovernedImageAnalyzerConfig{
+		Router:   failingImageRouter{err: aicapability.NewError(aicapability.ErrorPolicyDenied, string(aicapability.OperationProductEnrichImageAnalyze), nil)},
+		Recorder: &imageInvocationRecorder{}, FallbackClient: "vision",
+	})
+	if err != nil {
+		t.Fatalf("NewGovernedImageAnalyzer: %v", err)
+	}
+
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-not-enabled", UserID: "user-a"})
+	got, err := analyzer.AnalyzeImage(ctx, "image.jpg", "prompt")
+	if err != nil {
+		t.Fatalf("AnalyzeImage: %v", err)
+	}
+	if got != `{"color":"legacy"}` || !provider.legacyCalled {
+		t.Fatalf("legacy fallback response/call = %q/%v", got, provider.legacyCalled)
+	}
+}
+
 func TestProductUnderstandingUsesGovernedImageAnalyzerWithoutLegacyClientLookup(t *testing.T) {
 	provider := &routedImageManager{response: `{"color":"red","material":"cotton","scene":"studio","usage":"daily"}`}
 	analyzer, err := productenrichenrich.NewGovernedImageAnalyzer(provider, productenrichenrich.GovernedImageAnalyzerConfig{
@@ -97,13 +117,18 @@ func (r failingImageRouter) Decide(context.Context, aicapability.RouteRequest) (
 }
 
 type routedImageManager struct {
-	response string
-	route    productenrich.LLMClientRoute
-	called   bool
+	response       string
+	legacyResponse string
+	route          productenrich.LLMClientRoute
+	called         bool
+	legacyCalled   bool
 }
 
 func (m *routedImageManager) GetClient(string) (productenrich.LLMClient, error) {
-	return nil, errors.New("legacy path not expected")
+	if m.legacyResponse == "" {
+		return nil, errors.New("legacy path not expected")
+	}
+	return &legacyImageClient{manager: m}, nil
 }
 func (m *routedImageManager) GetDefaultClient() productenrich.LLMClient { return nil }
 func (m *routedImageManager) GetClientWithRoute(_ context.Context, _ string, route productenrich.LLMClientRoute) (productenrich.LLMClient, error) {
@@ -113,10 +138,17 @@ func (m *routedImageManager) GetClientWithRoute(_ context.Context, _ string, rou
 
 type routedImageClient struct{ manager *routedImageManager }
 
+type legacyImageClient struct{ manager *routedImageManager }
+
 func (c *routedImageClient) Generate(context.Context, string) (string, error) { return "", nil }
 func (c *routedImageClient) AnalyzeImage(context.Context, string, string) (string, error) {
 	c.manager.called = true
 	return c.manager.response, nil
+}
+func (c *legacyImageClient) Generate(context.Context, string) (string, error) { return "", nil }
+func (c *legacyImageClient) AnalyzeImage(context.Context, string, string) (string, error) {
+	c.manager.legacyCalled = true
+	return c.manager.legacyResponse, nil
 }
 
 type imageInvocationRecorder struct{ record aicapability.InvocationRecord }

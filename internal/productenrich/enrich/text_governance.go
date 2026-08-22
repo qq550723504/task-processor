@@ -39,6 +39,7 @@ type GovernedTextGeneratorConfig struct {
 	PromptKey       string
 	PromptVersion   string
 	PromptScope     string
+	FallbackClient  string
 	OnRecordError   func(aicapability.InvocationRecord, error)
 	Now             func() time.Time
 	NewID           func() string
@@ -57,6 +58,7 @@ type governedTextGenerator struct {
 	promptKey       string
 	promptVersion   string
 	promptScope     string
+	fallbackClient  string
 }
 
 func NewGovernedTextGenerator(manager productenrich.LLMManager, config GovernedTextGeneratorConfig) (TextGenerator, error) {
@@ -95,6 +97,7 @@ func NewGovernedTextGenerator(manager productenrich.LLMManager, config GovernedT
 		onRecordError: config.OnRecordError, now: config.Now, newID: config.NewID,
 		capability: config.Capability, operation: config.Operation, requiredFeature: config.RequiredFeature,
 		promptKey: config.PromptKey, promptVersion: config.PromptVersion, promptScope: config.PromptScope,
+		fallbackClient: strings.TrimSpace(config.FallbackClient),
 	}, nil
 }
 
@@ -125,6 +128,16 @@ func (g *governedTextGenerator) Generate(ctx context.Context, prompt string) (st
 	})
 	if err != nil {
 		g.record(ctx, identity, startedAt, prompt, "", decision, err, true)
+		if aicapability.CategoryOf(err) == aicapability.ErrorPolicyDenied && g.fallbackClient != "" {
+			legacyClient, fallbackErr := g.manager.GetClient(g.fallbackClient)
+			if fallbackErr != nil || legacyClient == nil {
+				if fallbackErr == nil {
+					fallbackErr = fmt.Errorf("legacy text client is nil")
+				}
+				return "", fallbackErr
+			}
+			return legacyClient.Generate(ctx, prompt)
+		}
 		return "", err
 	}
 	if !validTextDecision(decision, g.capability, g.operation) {
