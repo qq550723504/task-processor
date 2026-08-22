@@ -22,7 +22,7 @@ func (s *service) persistGenerationReviewDecision(ctx context.Context, taskID st
 			Slot:            strings.TrimSpace(target.QueueQuery.Slot),
 			Capability:      strings.TrimSpace(target.QueueQuery.PreviewCapability),
 			Decision:        generationReviewDecisionFromAction(actionKey),
-			Status:          generationReviewStatusFromDecision(generationReviewDecisionFromAction(actionKey)),
+			Status:          listinggeneration.ReviewStatusFromDecision(string(generationReviewDecisionFromAction(actionKey))),
 			Message:         generationReviewWorkflowMessage(actionKey, target.QueueQuery.Platform, target.QueueQuery.Slot, target.QueueQuery.PreviewCapability),
 			ReviewedAt:      time.Now().UTC(),
 			ReviewedBy:      "listingkit",
@@ -85,7 +85,7 @@ func buildGenerationReviewRecord(taskID string, actionKey string, session *Gener
 		Slot:            slot,
 		Capability:      capability,
 		Decision:        decision,
-		Status:          generationReviewStatusFromDecision(decision),
+		Status:          listinggeneration.ReviewStatusFromDecision(string(decision)),
 		Message:         generationReviewWorkflowMessage(actionKey, platform, slot, capability),
 		ReviewedAt:      now,
 		ReviewedBy:      "listingkit",
@@ -130,10 +130,6 @@ func isPersistedGenerationReviewAction(actionKey string) bool {
 
 func generationReviewDecisionFromAction(actionKey string) GenerationReviewDecision {
 	return GenerationReviewDecision(listinggeneration.ReviewDecisionFromAction(actionKey))
-}
-
-func generationReviewStatusFromDecision(decision GenerationReviewDecision) string {
-	return listinggeneration.ReviewStatusFromDecision(string(decision))
 }
 
 func generationReviewWorkflowMessage(actionKey, platform, slot, capability string) string {
