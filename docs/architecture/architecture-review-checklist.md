@@ -152,7 +152,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestPlatformModulesHistoricalImplementationImportsStayAllowlisted`
 - `TestPlatformRegistrationPackagesStayThin`
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
-- `TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit`
+- `depguard: publishing_shein_legacy_runtime`
 - `TestPublishingSheinNonAPISheinImportsStayAllowlisted`
 - `TestPublishingSheinManagedAPIImportsStayAllowlisted`
 - `TestPublishingSheinManagedRetiredManagementImportsStayBlocked`
