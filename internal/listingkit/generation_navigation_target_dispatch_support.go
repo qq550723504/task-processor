@@ -60,7 +60,10 @@ func buildGenerationNavigationDispatchPlan(target *GenerationReviewNavigationTar
 		Steps:              make([]GenerationNavigationDispatchStep, 0, len(reads)),
 	}
 	for _, item := range reads {
-		cachePreference := buildGenerationNavigationDispatchStepCachePreference(target, item.Kind)
+		cachePreference := listinggeneration.NavigationDispatchStepCachePreference(
+			generationNavigationTargetRevalidateAfterAction(target),
+			item.Kind,
+		)
 		plan.Steps = append(plan.Steps, GenerationNavigationDispatchStep{
 			Kind:               item.Kind,
 			ResponseMode:       item.ResponseMode,
@@ -70,10 +73,6 @@ func buildGenerationNavigationDispatchPlan(target *GenerationReviewNavigationTar
 		})
 	}
 	return plan
-}
-
-func buildGenerationNavigationDispatchStepCachePreference(target *GenerationReviewNavigationTarget, stepKind string) string {
-	return listinggeneration.NavigationDispatchStepCachePreference(generationNavigationTargetRevalidateAfterAction(target), stepKind)
 }
 
 func generationNavigationDispatchBaseQuery(target *GenerationReviewNavigationTarget) *GenerationQueueQuery {
