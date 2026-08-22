@@ -11,7 +11,10 @@ import (
 	"task-processor/internal/aicapability"
 )
 
-const ScoreCacheIdentityVersion = 1
+const (
+	ScoreCacheIdentityVersion          = 2
+	governedScoreCacheNamespaceVersion = 2
+)
 
 type ScorePromptIdentity struct {
 	PromptKey     string
@@ -49,6 +52,7 @@ type ScoreCacheIdentity struct {
 	PromptKey            string
 	PromptVersion        string
 	PromptScope          string
+	PromptHash           string
 	BaseScore            string
 	InputHash            string
 }
@@ -72,6 +76,7 @@ func (identity ScoreCacheIdentity) Key() string {
 		PromptKey            string `json:"prompt_key"`
 		PromptVersion        string `json:"prompt_version"`
 		PromptScope          string `json:"prompt_scope"`
+		PromptHash           string `json:"prompt_hash"`
 		BaseScore            string `json:"base_score"`
 		InputHash            string `json:"input_hash"`
 	}{
@@ -81,12 +86,13 @@ func (identity ScoreCacheIdentity) Key() string {
 		ModelID: strings.TrimSpace(identity.ModelID), RoutingKey: strings.TrimSpace(identity.RoutingKey),
 		PolicyVersion: strings.TrimSpace(identity.PolicyVersion), ConfigurationVersion: strings.TrimSpace(identity.ConfigurationVersion),
 		PromptKey: strings.TrimSpace(identity.PromptKey), PromptVersion: strings.TrimSpace(identity.PromptVersion),
-		PromptScope: strings.TrimSpace(identity.PromptScope), BaseScore: strings.TrimSpace(identity.BaseScore), InputHash: strings.TrimSpace(identity.InputHash),
+		PromptScope: strings.TrimSpace(identity.PromptScope), PromptHash: strings.TrimSpace(identity.PromptHash),
+		BaseScore: strings.TrimSpace(identity.BaseScore), InputHash: strings.TrimSpace(identity.InputHash),
 	}
 	serialized, err := json.Marshal(payload)
 	if err != nil {
 		return ""
 	}
 	digest := sha256.Sum256(serialized)
-	return fmt.Sprintf("llm_score:governed:v%d:%s", identity.Version, hex.EncodeToString(digest[:]))
+	return fmt.Sprintf("llm_score:governed:v%d:%s", governedScoreCacheNamespaceVersion, hex.EncodeToString(digest[:]))
 }

@@ -9,6 +9,7 @@ import (
 
 	"task-processor/internal/aicapability"
 	productenrich "task-processor/internal/productenrich"
+	"task-processor/internal/prompt"
 	"task-processor/internal/shared/aiidentity"
 )
 
@@ -131,8 +132,113 @@ func TestGovernedScorerLifecycleRetriesValidatesAndRecordsExactlyOnce(t *testing
 				if len(records) != beforeRecords+1 || records[len(records)-1].CacheStatus != aicapability.CacheStatusHit {
 					t.Fatalf("records after cache hit = %+v", records)
 				}
+				hitRecord := records[len(records)-1]
+				readIdentities := h.cache.readIdentitySnapshot()
+				if len(readIdentities) < 2 {
+					t.Fatalf("cache reads = %d, want miss then hit", len(readIdentities))
+				}
+				identityPromptHash := readIdentities[len(readIdentities)-1].PromptHash
+				if hitRecord.PromptHash != identityPromptHash {
+					t.Fatalf("cache-hit record prompt hash = %q, selected identity prompt hash = %q", hitRecord.PromptHash, identityPromptHash)
+				}
+				hitRecords := 0
+				for _, record := range records {
+					if record.CacheStatus == aicapability.CacheStatusHit {
+						hitRecords++
+					}
+				}
+				if hitRecords != 1 {
+					t.Fatalf("cache-hit records = %d, want exactly 1", hitRecords)
+				}
 			})
 		})
+	}
+}
+
+func TestGovernedScoringCachePartitionsRegistryPromptHotReload(t *testing.T) {
+	for _, kind := range []string{"text", "image"} {
+		t.Run(kind, func(t *testing.T) {
+			registry := installGovernedScorePromptRegistry(t)
+			registry.set(governedScorePromptKey(kind), "registry prompt revision one")
+			h := newGovernedScoreLifecycleHarness(t, kind, []governedScoreProviderResult{
+				{response: `{"score":80}`},
+				{response: `{"score":90}`},
+			})
+
+			if _, err := h.score(context.Background()); err != nil {
+				t.Fatalf("first score: %v", err)
+			}
+			registry.set(governedScorePromptKey(kind), "registry prompt revision two")
+			if _, err := h.score(context.Background()); err != nil {
+				t.Fatalf("score after prompt hot reload: %v", err)
+			}
+
+			h.assertProviderCalls(t, 2)
+			if h.cache.writeCount != 2 {
+				t.Fatalf("cache writes = %d, want 2 misses", h.cache.writeCount)
+			}
+			records := h.recorder.snapshot()
+			if len(records) != 2 || records[0].CacheStatus != aicapability.CacheStatusMiss || records[1].CacheStatus != aicapability.CacheStatusMiss {
+				t.Fatalf("records after hot reload = %+v, want two misses", records)
+			}
+			writes := h.cache.writeIdentitySnapshot()
+			if len(writes) != 2 || writes[0].Key() == writes[1].Key() {
+				t.Fatalf("cache identities after hot reload = %+v, want distinct keys", writes)
+			}
+			if records[0].PromptHash == records[1].PromptHash {
+				t.Fatalf("prompt hashes remained equal across rendered prompt hot reload: %+v", records)
+			}
+		})
+	}
+}
+
+func TestGovernedScoringCachePartitionsFallbackAndRegistryAtDefaultVersion(t *testing.T) {
+	transitions := []struct {
+		name          string
+		registryFirst bool
+	}{
+		{name: "fallback to registry", registryFirst: false},
+		{name: "registry to fallback", registryFirst: true},
+	}
+	for _, kind := range []string{"text", "image"} {
+		for _, transition := range transitions {
+			t.Run(kind+"/"+transition.name, func(t *testing.T) {
+				registry := installGovernedScorePromptRegistry(t)
+				key := governedScorePromptKey(kind)
+				if transition.registryFirst {
+					registry.set(key, "registry prompt at default version")
+				}
+				h := newGovernedScoreLifecycleHarness(t, kind, []governedScoreProviderResult{
+					{response: `{"score":80}`},
+					{response: `{"score":90}`},
+				})
+
+				if _, err := h.score(context.Background()); err != nil {
+					t.Fatalf("first score: %v", err)
+				}
+				if transition.registryFirst {
+					registry.delete(key)
+				} else {
+					registry.set(key, "registry prompt at default version")
+				}
+				if _, err := h.score(context.Background()); err != nil {
+					t.Fatalf("score after prompt source transition: %v", err)
+				}
+
+				h.assertProviderCalls(t, 2)
+				records := h.recorder.snapshot()
+				if len(records) != 2 || records[0].CacheStatus != aicapability.CacheStatusMiss || records[1].CacheStatus != aicapability.CacheStatusMiss {
+					t.Fatalf("records after prompt source transition = %+v, want two misses", records)
+				}
+				if records[0].PromptVersion != "default" || records[1].PromptVersion != "default" {
+					t.Fatalf("prompt versions = %q/%q, want default/default", records[0].PromptVersion, records[1].PromptVersion)
+				}
+				writes := h.cache.writeIdentitySnapshot()
+				if len(writes) != 2 || writes[0].Key() == writes[1].Key() {
+					t.Fatalf("cache identities after prompt source transition = %+v, want distinct keys", writes)
+				}
+			})
+		}
 	}
 }
 
@@ -294,19 +400,31 @@ func (r *governedScoreLifecycleRecorder) snapshot() []aicapability.InvocationRec
 }
 
 type governedScoreLifecycleCache struct {
-	governed   map[string]*productenrich.CachedLLMScore
-	writeCount int
+	governed        map[string]*productenrich.CachedLLMScore
+	writeCount      int
+	readIdentities  []productenrich.ScoreCacheIdentity
+	writeIdentities []productenrich.ScoreCacheIdentity
 }
 
 func (c *governedScoreLifecycleCache) GetGovernedScoreResult(_ context.Context, identity productenrich.ScoreCacheIdentity) (*productenrich.CachedLLMScore, bool) {
+	c.readIdentities = append(c.readIdentities, identity)
 	result, ok := c.governed[identity.Key()]
 	return result, ok
 }
 
 func (c *governedScoreLifecycleCache) SetGovernedScoreResult(_ context.Context, identity productenrich.ScoreCacheIdentity, result *productenrich.CachedLLMScore, _ time.Duration) error {
 	c.writeCount++
+	c.writeIdentities = append(c.writeIdentities, identity)
 	c.governed[identity.Key()] = result
 	return nil
+}
+
+func (c *governedScoreLifecycleCache) readIdentitySnapshot() []productenrich.ScoreCacheIdentity {
+	return append([]productenrich.ScoreCacheIdentity(nil), c.readIdentities...)
+}
+
+func (c *governedScoreLifecycleCache) writeIdentitySnapshot() []productenrich.ScoreCacheIdentity {
+	return append([]productenrich.ScoreCacheIdentity(nil), c.writeIdentities...)
 }
 
 func (*governedScoreLifecycleCache) GetTextScore(context.Context, string) (float64, bool) {
@@ -336,3 +454,53 @@ func (*governedScoreLifecycleCache) SetImageScoreResult(context.Context, string,
 
 var _ productenrich.RoutedLLMManager = (*governedScoreSequenceManager)(nil)
 var _ productenrich.LLMScoreCache = (*governedScoreLifecycleCache)(nil)
+
+type governedScorePromptRegistry struct {
+	templates map[string]string
+}
+
+func installGovernedScorePromptRegistry(t *testing.T) *governedScorePromptRegistry {
+	t.Helper()
+	previous := prompt.GlobalRegistry
+	registry := &governedScorePromptRegistry{templates: map[string]string{}}
+	prompt.GlobalRegistry = registry
+	t.Cleanup(func() { prompt.GlobalRegistry = previous })
+	return registry
+}
+
+func (r *governedScorePromptRegistry) set(key, value string) { r.templates[key] = value }
+func (r *governedScorePromptRegistry) delete(key string)     { delete(r.templates, key) }
+
+func (r *governedScorePromptRegistry) Get(key, fallback string) string {
+	if value, ok := r.templates[key]; ok {
+		return value
+	}
+	return fallback
+}
+
+func (r *governedScorePromptRegistry) Render(key string, _ map[string]any, fallback string) (string, error) {
+	return r.Get(key, fallback), nil
+}
+
+func (r *governedScorePromptRegistry) GetTenant(_ string, key string) (string, error) {
+	return r.Get(key, ""), nil
+}
+
+func (r *governedScorePromptRegistry) RenderTenant(_ string, key string, vars map[string]any) (string, error) {
+	return r.Render(key, vars, "")
+}
+
+func (r *governedScorePromptRegistry) Keys() []string {
+	keys := make([]string, 0, len(r.templates))
+	for key := range r.templates {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func governedScorePromptKey(kind string) string {
+	if kind == "text" {
+		return prompt.KProductEnrichLlmScorerTextScoring
+	}
+	return prompt.KProductEnrichLlmScorerImageScoring
+}

@@ -2,7 +2,9 @@ package enrich
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"task-processor/internal/aicapability"
@@ -74,6 +76,7 @@ func TestPreparedExecutionRecorderFailureKeepsProviderResultAndCallsCallback(t *
 }
 
 func TestPreparedExecutionUsesDynamicScoringPromptIdentityForCacheAndAudit(t *testing.T) {
+	const renderedPrompt = "rendered prompt with raw marker API_KEY=sk-test-secret credential-material=secret-value"
 	recorder := &preparedExecutionRecorder{}
 	manager := &preparedScoringManager{}
 	generator := &governedTextGenerator{
@@ -83,7 +86,7 @@ func TestPreparedExecutionUsesDynamicScoringPromptIdentityForCacheAndAudit(t *te
 		promptKey:       "stale-key", promptVersion: "v1", promptScope: "stale-scope",
 	}
 	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
-	execution, err := generator.PrepareText(ctx, "rendered prompt", productenrich.ScorePromptIdentity{
+	execution, err := generator.PrepareText(ctx, renderedPrompt, productenrich.ScorePromptIdentity{
 		PromptKey: "productenrich.llm_scorer.text_scoring", PromptVersion: "prompt-v17", PromptScope: "product_enrich",
 	})
 	if err != nil {
@@ -93,6 +96,18 @@ func TestPreparedExecutionUsesDynamicScoringPromptIdentityForCacheAndAudit(t *te
 	identity := execution.ScoreCacheIdentity("80", "raw-input-hash")
 	if identity.PromptKey != "productenrich.llm_scorer.text_scoring" || identity.PromptVersion != "prompt-v17" || identity.PromptScope != "product_enrich" {
 		t.Fatalf("cache prompt identity = %+v", identity)
+	}
+	identityPromptHash := identity.PromptHash
+	if identityPromptHash != hashText(renderedPrompt) {
+		t.Fatalf("cache prompt hash = %q, want exact rendered prompt hash", identityPromptHash)
+	}
+	if !strings.HasPrefix(identity.Key(), "llm_score:governed:v2:") {
+		t.Fatalf("cache key = %q, want v2 namespace", identity.Key())
+	}
+	for _, forbidden := range []string{renderedPrompt, "sk-test-secret", "secret-value"} {
+		if strings.Contains(identity.Key(), forbidden) {
+			t.Fatalf("cache key leaked forbidden content %q: %q", forbidden, identity.Key())
+		}
 	}
 	if _, err := execution.Invoke(ctx, aicapability.CacheStatusMiss); err != nil {
 		t.Fatalf("Invoke: %v", err)
@@ -109,6 +124,18 @@ func TestPreparedExecutionUsesDynamicScoringPromptIdentityForCacheAndAudit(t *te
 	}
 	if miss.PromptVersion != "prompt-v17" || hit.PromptVersion != "prompt-v17" || hit.PromptKey != "productenrich.llm_scorer.text_scoring" || hit.PromptScope != "product_enrich" {
 		t.Fatalf("miss/hit prompt metadata = %+v / %+v", miss, hit)
+	}
+	if miss.PromptHash != identityPromptHash || hit.PromptHash != identityPromptHash {
+		t.Fatalf("cache identity / ledger prompt hashes diverged: identity=%q miss=%q hit=%q", identityPromptHash, miss.PromptHash, hit.PromptHash)
+	}
+	encodedRecords, err := json.Marshal(recorder.records)
+	if err != nil {
+		t.Fatalf("marshal invocation records: %v", err)
+	}
+	for _, forbidden := range []string{renderedPrompt, "sk-test-secret", "secret-value"} {
+		if strings.Contains(string(encodedRecords), forbidden) {
+			t.Fatalf("invocation record leaked forbidden content %q: %s", forbidden, encodedRecords)
+		}
 	}
 	if hit.RouteMode != aicapability.RoutingModeActive || hit.RouteOutcome != aicapability.RouteOutcomeActive || hit.ProviderID != "openai" || hit.ModelID != "score-model" || hit.RoutingKey != "fast" {
 		t.Fatalf("cache-hit route metadata = %+v", hit)

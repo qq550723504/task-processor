@@ -270,8 +270,15 @@ func (e *preparedExecution) ScoreCacheIdentity(baseScore, inputHash string) prod
 		ProviderID: e.decision.ProviderID, ModelID: e.decision.ModelID, RoutingKey: e.decision.RoutingKey,
 		PolicyVersion: e.decision.PolicyVersion, ConfigurationVersion: e.decision.ConfigurationVersion,
 		PromptKey: e.promptKey, PromptVersion: e.promptVersion, PromptScope: e.promptScope,
-		BaseScore: baseScore, InputHash: inputHash,
+		PromptHash: e.promptHash(), BaseScore: baseScore, InputHash: inputHash,
 	}
+}
+
+func (e *preparedExecution) promptHash() string {
+	if e == nil {
+		return ""
+	}
+	return hashText(e.prompt)
 }
 
 func (e *preparedExecution) setScorePromptIdentity(identity productenrich.ScorePromptIdentity) {
@@ -331,7 +338,7 @@ func (e *preparedExecution) recordAttempt(ctx context.Context, startedAt time.Ti
 		CredentialReference: e.decision.CredentialReference, PolicyVersion: e.decision.PolicyVersion,
 		ConfigurationVersion: e.decision.ConfigurationVersion, PromptKey: e.promptKey,
 		PromptVersion: e.promptVersion, PromptScope: e.promptScope,
-		PromptHash: hashText(e.prompt), InputHash: hashText(e.input), OutputHash: hashText(response),
+		PromptHash: e.promptHash(), InputHash: hashText(e.input), OutputHash: hashText(response),
 		StartedAt: startedAt, FinishedAt: finishedAt, LatencyMilliseconds: finishedAt.Sub(startedAt).Milliseconds(),
 		Attempt: attempt, FallbackIndex: e.decision.FallbackIndex, Outcome: aicapability.InvocationSucceeded,
 	}

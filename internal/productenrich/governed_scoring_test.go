@@ -11,7 +11,7 @@ import (
 
 func TestScoreCacheIdentityPartitionsGovernedExecutions(t *testing.T) {
 	base := ScoreCacheIdentity{
-		Version: 1, TenantID: "tenant-a",
+		Version: ScoreCacheIdentityVersion, TenantID: "tenant-a",
 		Capability: aicapability.CapabilityProductEnrichText,
 		Operation:  aicapability.OperationProductEnrichTextQualityScore,
 		RouteMode:  aicapability.RoutingModeActive, RouteOutcome: aicapability.RouteOutcomeActive,
@@ -24,7 +24,7 @@ func TestScoreCacheIdentityPartitionsGovernedExecutions(t *testing.T) {
 		name   string
 		mutate func(*ScoreCacheIdentity)
 	}{
-		{"schema version", func(v *ScoreCacheIdentity) { v.Version = 2 }},
+		{"schema version", func(v *ScoreCacheIdentity) { v.Version = ScoreCacheIdentityVersion + 1 }},
 		{"tenant", func(v *ScoreCacheIdentity) { v.TenantID = "tenant-b" }},
 		{"capability", func(v *ScoreCacheIdentity) { v.Capability = aicapability.CapabilityProductEnrichVision }},
 		{"operation", func(v *ScoreCacheIdentity) { v.Operation = aicapability.OperationProductEnrichVisionQualityScore }},
@@ -52,7 +52,7 @@ func TestScoreCacheIdentityPartitionsGovernedExecutions(t *testing.T) {
 
 func TestScoreCacheIdentityRequiresVersionAndNormalizesStrings(t *testing.T) {
 	identity := ScoreCacheIdentity{
-		Version: 1, TenantID: "tenant-a",
+		Version: ScoreCacheIdentityVersion, TenantID: "tenant-a",
 		Capability: aicapability.CapabilityProductEnrichText,
 		Operation:  aicapability.OperationProductEnrichTextQualityScore,
 		RouteMode:  aicapability.RoutingModeActive, RouteOutcome: aicapability.RouteOutcomeActive,
@@ -62,7 +62,7 @@ func TestScoreCacheIdentityRequiresVersionAndNormalizesStrings(t *testing.T) {
 		BaseScore: "80", InputHash: "input-hash",
 	}
 
-	require.True(t, strings.HasPrefix(identity.Key(), "llm_score:governed:v1:"))
+	require.True(t, strings.HasPrefix(identity.Key(), "llm_score:governed:v2:"))
 	spaced := identity
 	spaced.TenantID = " tenant-a "
 	spaced.PromptVersion = " prompt-v1 "

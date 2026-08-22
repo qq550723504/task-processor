@@ -2,6 +2,7 @@ package productenrich
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,9 +38,24 @@ func TestLLMScoreCacheStoresGovernedResultsOnlyUnderVersionedIdentity(t *testing
 	require.Len(t, redis.store, 1)
 }
 
+func TestLLMScoreCacheGovernedV2DoesNotReadV1NamespaceEntry(t *testing.T) {
+	redis := newMockRedisForCache()
+	cache := NewLLMScoreCache(redis, nil)
+	identity := governedCacheTestIdentity()
+	currentKey := identity.Key()
+	legacyKey := strings.Replace(currentKey, "llm_score:governed:v2:", "llm_score:governed:v1:", 1)
+	redis.store[legacyKey] = `{"score":99}`
+
+	_, found := cache.GetGovernedScoreResult(context.Background(), identity)
+
+	require.False(t, found)
+	require.NotEqual(t, legacyKey, currentKey)
+	require.True(t, strings.HasPrefix(currentKey, "llm_score:governed:v2:"))
+}
+
 func governedCacheTestIdentity() ScoreCacheIdentity {
 	return ScoreCacheIdentity{
-		Version: 1, TenantID: "tenant-a",
+		Version: ScoreCacheIdentityVersion, TenantID: "tenant-a",
 		Capability: aicapability.CapabilityProductEnrichText,
 		Operation:  aicapability.OperationProductEnrichTextQualityScore,
 		RouteMode:  aicapability.RoutingModeActive, RouteOutcome: aicapability.RouteOutcomeActive,
