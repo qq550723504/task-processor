@@ -24,7 +24,7 @@ func applyAssetGenerationIdealReviewFilters(filters *AssetGenerationRecommendedF
 		return
 	}
 	filters.QualityGrade = "ideal"
-	filters.QualityGradeLabel = generationQualityGradeLabel("ideal")
+	filters.QualityGradeLabel = listinggeneration.QualityGradeLabel("ideal")
 }
 
 func applyAssetGenerationReviewReadyFilterMutation(actionKey string, filters *AssetGenerationRecommendedFilters) bool {
@@ -48,7 +48,7 @@ func applyAssetGenerationFailedRetryFilterMutation(actionKey string, filters *As
 	switch actionKey {
 	case "retry_failed_generation", "inspect_failed_renderer_tasks":
 		filters.QualityGrade = "provisional"
-		filters.QualityGradeLabel = generationQualityGradeLabel("provisional")
+		filters.QualityGradeLabel = listinggeneration.QualityGradeLabel("provisional")
 		filters.ExecutionQuality = "failed"
 		filters.RetryableOnly = true
 		return true
@@ -61,12 +61,12 @@ func applyAssetGenerationProvisionalRetryFilterMutation(actionKey string, filter
 	switch actionKey {
 	case "retry_section_generation":
 		filters.QualityGrade = "provisional"
-		filters.QualityGradeLabel = generationQualityGradeLabel("provisional")
+		filters.QualityGradeLabel = listinggeneration.QualityGradeLabel("provisional")
 		filters.RetryableOnly = true
 		return true
 	case "upgrade_fallback_assets", "retry_provisional_slots":
 		filters.QualityGrade = "provisional"
-		filters.QualityGradeLabel = generationQualityGradeLabel("provisional")
+		filters.QualityGradeLabel = listinggeneration.QualityGradeLabel("provisional")
 		filters.ExecutionQuality = ""
 		filters.RetryableOnly = true
 		return true

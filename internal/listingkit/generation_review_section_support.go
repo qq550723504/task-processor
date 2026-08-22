@@ -1,5 +1,7 @@
 package listingkit
 
+import listinggeneration "task-processor/internal/listingkit/generation"
+
 type generationReviewSectionSpec struct {
 	SectionKey  string
 	Title       string
@@ -130,8 +132,8 @@ func buildGenerationReviewSections(queue *GenerationWorkQueue, selectedPlatform,
 	for _, capability := range order {
 		section := sections[capability]
 		section.Platforms = uniqueStrings(section.Platforms)
-		section.PrimaryAction = reviewActionLabelForCapability(section.Capability)
-		section.PrimaryActionKey = reviewActionKeyForCapability(section.Capability)
+		section.PrimaryAction = listinggeneration.ReviewActionLabelForCapability(section.Capability)
+		section.PrimaryActionKey = listinggeneration.ReviewActionKeyForCapability(section.Capability)
 		section.PrimaryActionTarget = buildGenerationReviewTarget(selectedPlatform, detectSectionSlot(section.Slots), section.Capability)
 		section.ReviewTarget = buildGenerationReviewTarget(selectedPlatform, detectSectionSlot(section.Slots), section.Capability)
 		section.ToolbarActions = buildGenerationReviewSectionToolbarActions(queue, selectedPlatform, section.Slots, section.Capability)

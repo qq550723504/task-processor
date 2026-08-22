@@ -3,6 +3,8 @@ package listingkit
 import (
 	"strings"
 	"testing"
+
+	listinggeneration "task-processor/internal/listingkit/generation"
 )
 
 func TestBuildAssetGenerationOverviewPrefersMissingAction(t *testing.T) {
@@ -207,7 +209,7 @@ func TestActionFiltersForKeyPreviewCapabilityPrefersIdealReviewMutation(t *testi
 	if filters.RetryableOnly {
 		t.Fatalf("retryable only = %v, want false", filters.RetryableOnly)
 	}
-	if filters.QualityGrade != "ideal" || filters.QualityGradeLabel != generationQualityGradeLabel("ideal") {
+	if filters.QualityGrade != "ideal" || filters.QualityGradeLabel != listinggeneration.QualityGradeLabel("ideal") {
 		t.Fatalf("quality grade = %q/%q, want ideal label", filters.QualityGrade, filters.QualityGradeLabel)
 	}
 	if base.ExecutionQuality != "failed" || !base.RetryableOnly || base.PreviewCapability != "" {
@@ -220,7 +222,7 @@ func TestActionFiltersForKeyReviewReadyPreservesExistingQualityGrade(t *testing.
 
 	base := &AssetGenerationRecommendedFilters{
 		QualityGrade:      "provisional",
-		QualityGradeLabel: generationQualityGradeLabel("provisional"),
+		QualityGradeLabel: listinggeneration.QualityGradeLabel("provisional"),
 		RetryableOnly:     true,
 		ExecutionQuality:  "failed",
 	}
@@ -229,7 +231,7 @@ func TestActionFiltersForKeyReviewReadyPreservesExistingQualityGrade(t *testing.
 	if filters == nil {
 		t.Fatal("filters = nil, want cloned filters")
 	}
-	if filters.QualityGrade != "provisional" || filters.QualityGradeLabel != generationQualityGradeLabel("provisional") {
+	if filters.QualityGrade != "provisional" || filters.QualityGradeLabel != listinggeneration.QualityGradeLabel("provisional") {
 		t.Fatalf("quality grade = %q/%q, want provisional label preserved", filters.QualityGrade, filters.QualityGradeLabel)
 	}
 	if filters.ExecutionQuality != "" {
@@ -255,7 +257,7 @@ func TestActionFiltersForKeyContinuePublishReviewDefaultsIdealAndClearsRetryable
 	if filters == nil {
 		t.Fatal("filters = nil, want cloned filters")
 	}
-	if filters.QualityGrade != "ideal" || filters.QualityGradeLabel != generationQualityGradeLabel("ideal") {
+	if filters.QualityGrade != "ideal" || filters.QualityGradeLabel != listinggeneration.QualityGradeLabel("ideal") {
 		t.Fatalf("quality grade = %q/%q, want ideal label", filters.QualityGrade, filters.QualityGradeLabel)
 	}
 	if filters.ExecutionQuality != "" {
@@ -274,7 +276,7 @@ func TestActionFiltersForKeyMissingActionOverridesGradeAndClearsExecutionQuality
 
 	base := &AssetGenerationRecommendedFilters{
 		QualityGrade:      "ideal",
-		QualityGradeLabel: generationQualityGradeLabel("ideal"),
+		QualityGradeLabel: listinggeneration.QualityGradeLabel("ideal"),
 		RetryableOnly:     false,
 		ExecutionQuality:  "failed",
 	}
@@ -283,7 +285,7 @@ func TestActionFiltersForKeyMissingActionOverridesGradeAndClearsExecutionQuality
 	if filters == nil {
 		t.Fatal("filters = nil, want cloned filters")
 	}
-	if filters.QualityGrade != "missing" || filters.QualityGradeLabel != generationQualityGradeLabel("missing") {
+	if filters.QualityGrade != "missing" || filters.QualityGradeLabel != listinggeneration.QualityGradeLabel("missing") {
 		t.Fatalf("quality grade = %q/%q, want missing label", filters.QualityGrade, filters.QualityGradeLabel)
 	}
 	if filters.ExecutionQuality != "" {
@@ -302,7 +304,7 @@ func TestActionFiltersForKeyFailedRetryUsesProvisionalFailedRetryableMutation(t 
 
 	base := &AssetGenerationRecommendedFilters{
 		QualityGrade:      "ideal",
-		QualityGradeLabel: generationQualityGradeLabel("ideal"),
+		QualityGradeLabel: listinggeneration.QualityGradeLabel("ideal"),
 		RetryableOnly:     false,
 		ExecutionQuality:  "",
 	}
@@ -311,7 +313,7 @@ func TestActionFiltersForKeyFailedRetryUsesProvisionalFailedRetryableMutation(t 
 	if filters == nil {
 		t.Fatal("filters = nil, want cloned filters")
 	}
-	if filters.QualityGrade != "provisional" || filters.QualityGradeLabel != generationQualityGradeLabel("provisional") {
+	if filters.QualityGrade != "provisional" || filters.QualityGradeLabel != listinggeneration.QualityGradeLabel("provisional") {
 		t.Fatalf("quality grade = %q/%q, want provisional label", filters.QualityGrade, filters.QualityGradeLabel)
 	}
 	if filters.ExecutionQuality != "failed" {
@@ -330,7 +332,7 @@ func TestActionFiltersForKeyRetrySectionUsesProvisionalRetryableMutationWithoutF
 
 	base := &AssetGenerationRecommendedFilters{
 		QualityGrade:      "ideal",
-		QualityGradeLabel: generationQualityGradeLabel("ideal"),
+		QualityGradeLabel: listinggeneration.QualityGradeLabel("ideal"),
 		RetryableOnly:     false,
 		ExecutionQuality:  "failed",
 	}
@@ -339,7 +341,7 @@ func TestActionFiltersForKeyRetrySectionUsesProvisionalRetryableMutationWithoutF
 	if filters == nil {
 		t.Fatal("filters = nil, want cloned filters")
 	}
-	if filters.QualityGrade != "provisional" || filters.QualityGradeLabel != generationQualityGradeLabel("provisional") {
+	if filters.QualityGrade != "provisional" || filters.QualityGradeLabel != listinggeneration.QualityGradeLabel("provisional") {
 		t.Fatalf("quality grade = %q/%q, want provisional label", filters.QualityGrade, filters.QualityGradeLabel)
 	}
 	if filters.ExecutionQuality != "failed" {
@@ -358,7 +360,7 @@ func TestActionFiltersForKeyUpgradeFallbackUsesProvisionalRetryableMutationAndCl
 
 	base := &AssetGenerationRecommendedFilters{
 		QualityGrade:      "ideal",
-		QualityGradeLabel: generationQualityGradeLabel("ideal"),
+		QualityGradeLabel: listinggeneration.QualityGradeLabel("ideal"),
 		RetryableOnly:     false,
 		ExecutionQuality:  "failed",
 	}
@@ -367,7 +369,7 @@ func TestActionFiltersForKeyUpgradeFallbackUsesProvisionalRetryableMutationAndCl
 	if filters == nil {
 		t.Fatal("filters = nil, want cloned filters")
 	}
-	if filters.QualityGrade != "provisional" || filters.QualityGradeLabel != generationQualityGradeLabel("provisional") {
+	if filters.QualityGrade != "provisional" || filters.QualityGradeLabel != listinggeneration.QualityGradeLabel("provisional") {
 		t.Fatalf("quality grade = %q/%q, want provisional label", filters.QualityGrade, filters.QualityGradeLabel)
 	}
 	if filters.ExecutionQuality != "" {
