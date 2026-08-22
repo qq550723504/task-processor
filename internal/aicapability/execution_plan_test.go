@@ -12,7 +12,7 @@ func TestExecutionPlanValidateAcceptsActiveAndLegacyPlans(t *testing.T) {
 		Decision: RouteDecision{
 			Capability: CapabilityProductEnrichText,
 			Operation:  OperationProductEnrichTextExtract,
-			ProviderID: "openai", ModelID: "gpt", RoutingKey: "fast", CredentialReference: "fast",
+			ProviderID: "openai", ModelID: "gpt", RoutingKey: "fast", CredentialReference: "fast", ConfigurationVersion: "config-v1",
 		},
 	}
 	require.NoError(t, active.Validate())
@@ -33,6 +33,14 @@ func TestExecutionPlanValidateRejectsDeniedOrUnboundExecutablePlan(t *testing.T)
 			Capability: CapabilityProductEnrichText,
 			Operation:  OperationProductEnrichTextExtract,
 			ProviderID: "openai", ModelID: "gpt", RoutingKey: "fast",
+		},
+	}).Validate())
+	require.Error(t, (ExecutionPlan{
+		Mode: RoutingModeActive, RouteOutcome: RouteOutcomeActive,
+		Decision: RouteDecision{
+			Capability: CapabilityProductEnrichText,
+			Operation:  OperationProductEnrichTextExtract,
+			ProviderID: "openai", ModelID: "gpt", RoutingKey: "fast", CredentialReference: "fast",
 		},
 	}).Validate())
 	require.Error(t, (ExecutionPlan{

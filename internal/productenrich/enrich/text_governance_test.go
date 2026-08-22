@@ -45,7 +45,7 @@ func TestGovernedTextGeneratorRoutesAndRecordsInvocation(t *testing.T) {
 	}
 }
 
-func TestGovernedTextActivePlanUsesTaskOneBoundDecisionWithoutConfigurationVersion(t *testing.T) {
+func TestGovernedTextActivePlanRejectsBlankConfigurationVersionBeforeProviderCall(t *testing.T) {
 	plan := activeTextExecutionPlan()
 	plan.Decision.ConfigurationVersion = ""
 	provider := &routedTextManager{response: "active response"}
@@ -57,12 +57,11 @@ func TestGovernedTextActivePlanUsesTaskOneBoundDecisionWithoutConfigurationVersi
 	}
 
 	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
-	got, err := generator.Generate(ctx, "prompt")
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
+	if _, err := generator.Generate(ctx, "prompt"); aicapability.CategoryOf(err) != aicapability.ErrorCapabilityUnavailable {
+		t.Fatalf("error category = %q, want capability_unavailable", aicapability.CategoryOf(err))
 	}
-	if got != "active response" || !provider.called {
-		t.Fatalf("response/provider call = %q/%v", got, provider.called)
+	if provider.called {
+		t.Fatal("provider called for active plan with blank configuration version")
 	}
 }
 

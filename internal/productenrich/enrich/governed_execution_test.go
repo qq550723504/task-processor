@@ -12,6 +12,17 @@ import (
 	"task-processor/internal/shared/aiidentity"
 )
 
+func TestValidExecutionDecisionRejectsBlankConfigurationVersion(t *testing.T) {
+	decision := aicapability.RouteDecision{
+		Capability: aicapability.CapabilityProductEnrichText,
+		Operation:  aicapability.OperationProductEnrichTextExtract,
+		ProviderID: "openai", ModelID: "model", RoutingKey: "fast", CredentialReference: "fast",
+	}
+	if validExecutionDecision(decision, decision.Capability, decision.Operation) {
+		t.Fatal("active decision with blank configuration version is executable")
+	}
+}
+
 func TestPreparedExecutionInvokeRecordsRequestedCacheStatusExactlyOnce(t *testing.T) {
 	recorder := &preparedExecutionRecorder{}
 	execution := &preparedExecution{

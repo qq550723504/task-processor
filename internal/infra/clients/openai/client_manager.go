@@ -195,8 +195,12 @@ func (m *Manager) resolveClientWithSelection(ctx context.Context, name string, s
 		return nil, err
 	}
 	selectedVersion := strings.TrimSpace(selectionVersion(selection))
-	if selection != nil && selectedVersion != resolved.route.ConfigurationVersion && selectedVersion != resolved.resolverVersion {
-		return nil, fmt.Errorf("%w: selected version does not match current effective version", ErrClientConfigurationChanged)
+	if selection != nil {
+		matchesEffectiveVersion := selectedVersion != "" && selectedVersion == resolved.route.ConfigurationVersion
+		matchesLegacyResolverVersion := resolved.resolverVersion != "" && selectedVersion == resolved.resolverVersion
+		if !matchesEffectiveVersion && !matchesLegacyResolverVersion {
+			return nil, fmt.Errorf("%w: selected version does not match current effective version", ErrClientConfigurationChanged)
+		}
 	}
 	if resolved.staticClient != nil {
 		return resolved.staticClient, nil

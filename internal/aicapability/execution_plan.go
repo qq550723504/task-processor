@@ -47,5 +47,6 @@ func isBoundDecision(decision RouteDecision) bool {
 		strings.TrimSpace(decision.ProviderID) != "" &&
 		strings.TrimSpace(decision.ModelID) != "" &&
 		strings.TrimSpace(decision.RoutingKey) != "" &&
-		strings.TrimSpace(decision.CredentialReference) != ""
+		strings.TrimSpace(decision.CredentialReference) != "" &&
+		strings.TrimSpace(decision.ConfigurationVersion) != ""
 }

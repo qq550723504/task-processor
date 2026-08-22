@@ -90,6 +90,31 @@ func TestManagerEffectiveConfigurationUsesDBOverrideAndBindsExactVersion(t *test
 	}
 }
 
+func TestManagerStaticClientRejectsBlankSelectedConfigurationVersion(t *testing.T) {
+	var mu sync.Mutex
+	var requests []capturedOpenAIRequest
+	server := newCaptureChatServer(t, &requests, &mu)
+	defer server.Close()
+	manager, err := NewManager(&ManagerConfig{
+		Clients:       map[string]*ClientConfig{"default": testClientConfig("static-secret", "static-model", server.URL)},
+		DefaultClient: "default",
+	})
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	t.Cleanup(func() { _ = manager.Close() })
+
+	_, err = manager.GetClientWithRoute(context.Background(), "default", ImageRouteSelection{
+		CredentialReference: "default",
+	})
+	if !errors.Is(err, ErrClientConfigurationChanged) {
+		t.Fatalf("blank selected version error = %v, want ErrClientConfigurationChanged", err)
+	}
+	if len(requests) != 0 {
+		t.Fatalf("provider requests after blank selected version = %d, want 0", len(requests))
+	}
+}
+
 func TestManagerBoundClientFailsClosedWhenEffectiveVersionRotates(t *testing.T) {
 	var mu sync.Mutex
 	var requests []capturedOpenAIRequest

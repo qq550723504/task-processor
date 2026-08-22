@@ -168,7 +168,8 @@ func validExecutionDecision(decision aicapability.RouteDecision, capability aica
 		strings.TrimSpace(decision.ProviderID) != "" &&
 		strings.TrimSpace(decision.ModelID) != "" &&
 		strings.TrimSpace(decision.RoutingKey) != "" &&
-		strings.TrimSpace(decision.CredentialReference) != ""
+		strings.TrimSpace(decision.CredentialReference) != "" &&
+		strings.TrimSpace(decision.ConfigurationVersion) != ""
 }
 
 func validLegacyDecision(decision aicapability.RouteDecision) bool {
