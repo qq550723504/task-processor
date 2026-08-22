@@ -19,7 +19,10 @@ func NewMemTaskRepository() amazonlisting.Repository {
 	return &MemTaskRepository{tasks: make(map[string]*amazonlisting.Task)}
 }
 
-func (r *MemTaskRepository) CreateTask(_ context.Context, task *amazonlisting.Task) error {
+func (r *MemTaskRepository) CreateTask(ctx context.Context, task *amazonlisting.Task) error {
+	if task != nil && !aiidentity.TenantCanCreateTask(ctx, task.PersistedExecutionEnvelope) {
+		return amazonlisting.ErrTaskNotFound
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	copied := *task
@@ -31,7 +34,7 @@ func (r *MemTaskRepository) GetTask(ctx context.Context, taskID string) (*amazon
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, "") {
+	if !ok || !aiidentity.TenantMatchesContext(ctx, task.ExecutionTenantID) {
 		return nil, amazonlisting.ErrTaskNotFound
 	}
 	copied := *task
@@ -47,7 +50,7 @@ func (r *MemTaskRepository) ListTasks(ctx context.Context, statuses []amazonlist
 	}
 	items := make([]*amazonlisting.Task, 0, len(r.tasks))
 	for _, task := range r.tasks {
-		if !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, "") {
+		if !aiidentity.TenantMatchesContext(ctx, task.ExecutionTenantID) {
 			continue
 		}
 		if len(allowed) > 0 {
@@ -70,9 +73,9 @@ func (r *MemTaskRepository) ListTasks(ctx context.Context, statuses []amazonlist
 func (r *MemTaskRepository) MarkProcessing(ctx context.Context, taskID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, "") {
-		return amazonlisting.ErrTaskNotFound
+	task, err := r.taskForUpdate(ctx, taskID)
+	if err != nil {
+		return err
 	}
 	if task.Status != amazonlisting.TaskStatusPending {
 		return amazonlisting.ErrTaskNotPending
@@ -117,9 +120,9 @@ func (r *MemTaskRepository) PrepareRetry(ctx context.Context, taskID string) err
 func (r *MemTaskRepository) IncrementRetryCount(ctx context.Context, taskID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, "") {
-		return amazonlisting.ErrTaskNotFound
+	task, err := r.taskForUpdate(ctx, taskID)
+	if err != nil {
+		return err
 	}
 	task.RetryCount++
 	task.UpdatedAt = time.Now()
@@ -129,9 +132,9 @@ func (r *MemTaskRepository) IncrementRetryCount(ctx context.Context, taskID stri
 func (r *MemTaskRepository) UpdateTaskStatus(ctx context.Context, taskID string, status amazonlisting.TaskStatus) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, "") {
-		return amazonlisting.ErrTaskNotFound
+	task, err := r.taskForUpdate(ctx, taskID)
+	if err != nil {
+		return err
 	}
 	task.Status = status
 	task.UpdatedAt = time.Now()
@@ -141,9 +144,9 @@ func (r *MemTaskRepository) UpdateTaskStatus(ctx context.Context, taskID string,
 func (r *MemTaskRepository) UpdateTaskError(ctx context.Context, taskID string, errorMsg string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, "") {
-		return amazonlisting.ErrTaskNotFound
+	task, err := r.taskForUpdate(ctx, taskID)
+	if err != nil {
+		return err
 	}
 	task.Error = errorMsg
 	task.UpdatedAt = time.Now()
@@ -153,9 +156,9 @@ func (r *MemTaskRepository) UpdateTaskError(ctx context.Context, taskID string, 
 func (r *MemTaskRepository) SaveTaskResult(ctx context.Context, taskID string, result *amazonlisting.AmazonListingDraft) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, "") {
-		return amazonlisting.ErrTaskNotFound
+	task, err := r.taskForUpdate(ctx, taskID)
+	if err != nil {
+		return err
 	}
 	task.Result = result
 	task.UpdatedAt = time.Now()
@@ -165,12 +168,21 @@ func (r *MemTaskRepository) SaveTaskResult(ctx context.Context, taskID string, r
 func (r *MemTaskRepository) ResetForRetry(ctx context.Context, taskID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, "") {
-		return amazonlisting.ErrTaskNotFound
+	task, err := r.taskForUpdate(ctx, taskID)
+	if err != nil {
+		return err
 	}
 	task.Status = amazonlisting.TaskStatusPending
 	task.Error = ""
 	task.UpdatedAt = time.Now()
 	return nil
+}
+
+// taskForUpdate must be called while r.mu is write-locked.
+func (r *MemTaskRepository) taskForUpdate(ctx context.Context, taskID string) (*amazonlisting.Task, error) {
+	task, ok := r.tasks[taskID]
+	if !ok || !aiidentity.TenantMatchesContext(ctx, task.ExecutionTenantID) {
+		return nil, amazonlisting.ErrTaskNotFound
+	}
+	return task, nil
 }

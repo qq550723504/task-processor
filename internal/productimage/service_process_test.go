@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"task-processor/internal/shared/aiidentity"
 )
 
 type contextAwareTaskRepo struct {
@@ -155,9 +157,11 @@ func (e *cancelingSubjectExtractor) Extract(_ context.Context, _ string, _ *Prod
 
 type staticSourceParser struct {
 	source *SourceBundle
+	calls  int
 }
 
 func (p *staticSourceParser) Parse(_ context.Context, _ *ImageProcessRequest) (*SourceBundle, error) {
+	p.calls++
 	return p.source, nil
 }
 
@@ -207,5 +211,31 @@ func TestServiceProcessMarksTaskFailedWhenRequestContextCanceled(t *testing.T) {
 	}
 	if stored.Error == "" {
 		t.Fatal("expected stored error message")
+	}
+}
+
+func TestProcessImagesRejectsTraceOnlyPersistedEnvelopeBeforePipeline(t *testing.T) {
+	task := &Task{
+		ID:                         "trace-only",
+		Request:                    &ImageProcessRequest{ImageURLs: []string{"https://example.com/a.jpg"}, Marketplace: "shein"},
+		Status:                     TaskStatusPending,
+		PersistedExecutionEnvelope: aiidentity.PersistedExecutionEnvelope{ExecutionTraceID: "trace-a"},
+	}
+	repo := &contextAwareTaskRepo{task: task}
+	parser := &staticSourceParser{source: &SourceBundle{Images: []string{"https://example.com/a.jpg"}}}
+	svc, err := NewService(&ServiceConfig{TaskRepo: repo, SourceParser: parser})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+
+	_, err = svc.ProcessImages(context.Background(), task)
+	if !errors.Is(err, aiidentity.ErrIdentityIntegrity) {
+		t.Fatalf("error = %v, want ErrIdentityIntegrity", err)
+	}
+	if parser.calls != 0 {
+		t.Fatalf("source parser calls = %d, want 0 before pipeline execution", parser.calls)
+	}
+	if task.Status != TaskStatusPending {
+		t.Fatalf("status = %q, want pending because processing must not start", task.Status)
 	}
 }

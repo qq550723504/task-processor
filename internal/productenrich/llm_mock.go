@@ -9,13 +9,18 @@ import (
 const ProductEnrichMockLLMEnv = "TASK_PROCESSOR_PRODUCTENRICH_MOCK_LLM"
 
 type localMockLLMManager struct {
-	client LLMClient
+	client         LLMClient
+	routeValidator RoutedLLMManager
 }
 
 type localMockLLMClient struct{}
 
-func NewLocalMockLLMManager() LLMManager {
-	return &localMockLLMManager{client: &localMockLLMClient{}}
+func NewLocalMockLLMManager(routeValidator ...RoutedLLMManager) LLMManager {
+	manager := &localMockLLMManager{client: &localMockLLMClient{}}
+	if len(routeValidator) > 0 {
+		manager.routeValidator = routeValidator[0]
+	}
+	return manager
 }
 
 func (m *localMockLLMManager) GetClient(_ string) (LLMClient, error) {
@@ -24,6 +29,22 @@ func (m *localMockLLMManager) GetClient(_ string) (LLMClient, error) {
 
 func (m *localMockLLMManager) GetDefaultClient() LLMClient {
 	return m.client
+}
+
+func (m *localMockLLMManager) GetClientWithRoute(ctx context.Context, clientName string, route LLMClientRoute) (LLMClient, error) {
+	clientName = strings.TrimSpace(clientName)
+	reference := strings.TrimSpace(route.CredentialReference)
+	version := strings.TrimSpace(route.ConfigurationVersion)
+	if clientName == "" || reference == "" || version == "" || clientName != reference {
+		return nil, fmt.Errorf("invalid bound mock route")
+	}
+	if m == nil || m.routeValidator == nil {
+		return nil, fmt.Errorf("%w: mock route validator is unavailable", ErrLLMClientUnavailable)
+	}
+	if _, err := m.routeValidator.GetClientWithRoute(ctx, clientName, route); err != nil {
+		return nil, err
+	}
+	return m.client, nil
 }
 
 func (c *localMockLLMClient) Generate(_ context.Context, prompt string) (string, error) {
@@ -62,11 +83,22 @@ func IsMockLLMEnabled(value string) bool {
 }
 
 func ValidateMockLLMManager(mgr LLMManager) error {
+	return ValidateGovernedLLMManager(mgr, false)
+}
+
+func ValidateGovernedLLMManager(mgr LLMManager, governed bool) error {
 	if mgr == nil {
 		return fmt.Errorf("llm manager cannot be nil")
 	}
 	if _, err := mgr.GetClient("default"); err != nil {
 		return err
 	}
+	if governed {
+		if _, ok := mgr.(RoutedLLMManager); !ok {
+			return fmt.Errorf("governed llm manager must support routed clients")
+		}
+	}
 	return nil
 }
+
+var _ RoutedLLMManager = (*localMockLLMManager)(nil)

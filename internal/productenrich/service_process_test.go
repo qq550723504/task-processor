@@ -14,9 +14,11 @@ import (
 type mockInputParser struct {
 	result *ParsedInput
 	err    error
+	calls  int
 }
 
 func (m *mockInputParser) ParseInput(_ context.Context, _ *GenerateRequest) (*ParsedInput, error) {
+	m.calls++
 	return m.result, m.err
 }
 func (m *mockInputParser) CollectImages(_ context.Context, _ []string) ([]string, error) {
@@ -180,6 +182,34 @@ func TestProcessProductRejectsPersistedIdentityWithoutContext(t *testing.T) {
 	}
 	if task.Status != TaskStatusPending {
 		t.Fatalf("status = %q, want pending because provider pipeline must not start", task.Status)
+	}
+}
+
+func TestProcessProductRejectsTraceOnlyPersistedEnvelopeBeforePipeline(t *testing.T) {
+	task := &Task{
+		ID:                         "trace-only",
+		Request:                    &GenerateRequest{Text: "product"},
+		Status:                     TaskStatusPending,
+		PersistedExecutionEnvelope: aiidentity.PersistedExecutionEnvelope{ExecutionTraceID: "trace-a"},
+	}
+	repo := newMockTaskRepo(task)
+	parser := &mockInputParser{result: &ParsedInput{Text: "must not parse"}}
+	svc, err := NewProductService(&ProductServiceConfig{
+		QueueName: "test", TaskRepo: repo, RedisClient: &mockRedisClient{}, InputParser: parser,
+	})
+	if err != nil {
+		t.Fatalf("NewProductService: %v", err)
+	}
+
+	_, err = svc.ProcessProduct(context.Background(), task)
+	if !errors.Is(err, aiidentity.ErrIdentityIntegrity) {
+		t.Fatalf("error = %v, want ErrIdentityIntegrity", err)
+	}
+	if parser.calls != 0 {
+		t.Fatalf("parser calls = %d, want 0 before pipeline execution", parser.calls)
+	}
+	if task.Status != TaskStatusPending {
+		t.Fatalf("status = %q, want pending because processing must not start", task.Status)
 	}
 }
 

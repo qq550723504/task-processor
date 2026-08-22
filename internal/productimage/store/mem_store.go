@@ -18,7 +18,10 @@ func NewMemTaskRepository() productimage.TaskRepository {
 	return &MemTaskRepository{tasks: make(map[string]*productimage.Task)}
 }
 
-func (r *MemTaskRepository) CreateTask(_ context.Context, task *productimage.Task) error {
+func (r *MemTaskRepository) CreateTask(ctx context.Context, task *productimage.Task) error {
+	if task != nil && !aiidentity.TenantCanCreateTask(ctx, task.PersistedExecutionEnvelope) {
+		return productimage.ErrTaskNotFound
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	copied := *task
@@ -30,7 +33,7 @@ func (r *MemTaskRepository) GetTask(ctx context.Context, taskID string) (*produc
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
+	if !ok || !aiidentity.TenantMatchesContext(ctx, task.ExecutionTenantID) {
 		return nil, productimage.ErrTaskNotFound
 	}
 	copied := *task
@@ -40,9 +43,9 @@ func (r *MemTaskRepository) GetTask(ctx context.Context, taskID string) (*produc
 func (r *MemTaskRepository) MarkProcessing(ctx context.Context, taskID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
-		return productimage.ErrTaskNotFound
+	task, err := r.taskForUpdate(ctx, taskID)
+	if err != nil {
+		return err
 	}
 	if task.Status != productimage.TaskStatusPending {
 		return productimage.ErrTaskNotPending
@@ -91,9 +94,9 @@ func (r *MemTaskRepository) PrepareRetry(ctx context.Context, taskID string) err
 func (r *MemTaskRepository) UpdateTaskStatus(ctx context.Context, taskID string, status productimage.TaskStatus) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
-		return productimage.ErrTaskNotFound
+	task, err := r.taskForUpdate(ctx, taskID)
+	if err != nil {
+		return err
 	}
 	task.Status = status
 	task.UpdatedAt = time.Now()
@@ -103,9 +106,9 @@ func (r *MemTaskRepository) UpdateTaskStatus(ctx context.Context, taskID string,
 func (r *MemTaskRepository) UpdateTaskError(ctx context.Context, taskID string, errorMsg string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
-		return productimage.ErrTaskNotFound
+	task, err := r.taskForUpdate(ctx, taskID)
+	if err != nil {
+		return err
 	}
 	task.Status = productimage.TaskStatusFailed
 	task.Error = errorMsg
@@ -116,9 +119,9 @@ func (r *MemTaskRepository) UpdateTaskError(ctx context.Context, taskID string, 
 func (r *MemTaskRepository) UpdateTaskMessage(ctx context.Context, taskID string, reason string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
-		return productimage.ErrTaskNotFound
+	task, err := r.taskForUpdate(ctx, taskID)
+	if err != nil {
+		return err
 	}
 	task.Error = reason
 	task.UpdatedAt = time.Now()
@@ -128,9 +131,9 @@ func (r *MemTaskRepository) UpdateTaskMessage(ctx context.Context, taskID string
 func (r *MemTaskRepository) SaveTaskResult(ctx context.Context, taskID string, result *productimage.ImageProcessResult) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
-		return productimage.ErrTaskNotFound
+	task, err := r.taskForUpdate(ctx, taskID)
+	if err != nil {
+		return err
 	}
 	task.Result = result
 	task.UpdatedAt = time.Now()
@@ -140,9 +143,9 @@ func (r *MemTaskRepository) SaveTaskResult(ctx context.Context, taskID string, r
 func (r *MemTaskRepository) IncrementRetryCount(ctx context.Context, taskID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
-		return productimage.ErrTaskNotFound
+	task, err := r.taskForUpdate(ctx, taskID)
+	if err != nil {
+		return err
 	}
 	task.RetryCount++
 	task.UpdatedAt = time.Now()
@@ -152,12 +155,21 @@ func (r *MemTaskRepository) IncrementRetryCount(ctx context.Context, taskID stri
 func (r *MemTaskRepository) ResetForRetry(ctx context.Context, taskID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	task, ok := r.tasks[taskID]
-	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
-		return productimage.ErrTaskNotFound
+	task, err := r.taskForUpdate(ctx, taskID)
+	if err != nil {
+		return err
 	}
 	task.Status = productimage.TaskStatusPending
 	task.Error = ""
 	task.UpdatedAt = time.Now()
 	return nil
+}
+
+// taskForUpdate must be called while r.mu is write-locked.
+func (r *MemTaskRepository) taskForUpdate(ctx context.Context, taskID string) (*productimage.Task, error) {
+	task, ok := r.tasks[taskID]
+	if !ok || !aiidentity.TenantMatchesContext(ctx, task.ExecutionTenantID) {
+		return nil, productimage.ErrTaskNotFound
+	}
+	return task, nil
 }

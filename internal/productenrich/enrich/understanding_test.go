@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 
 	productenrich "task-processor/internal/productenrich"
@@ -362,6 +363,7 @@ func TestFuseMultimodalUsesInjectedGenerator(t *testing.T) {
 
 type rotatingMockClient struct {
 	responses []string
+	mu        sync.Mutex
 	idx       int
 }
 
@@ -384,6 +386,9 @@ func (r *rotatingMockClient) GetDefaultClient() productenrich.LLMClient {
 }
 
 func (r *rotatingMockClient) Generate(_ context.Context, _ string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if r.idx >= len(r.responses) {
 		return "{}", nil
 	}
@@ -393,6 +398,9 @@ func (r *rotatingMockClient) Generate(_ context.Context, _ string) (string, erro
 }
 
 func (r *rotatingMockClient) AnalyzeImage(_ context.Context, _ string, _ string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
 	if r.idx >= len(r.responses) {
 		return "{}", nil
 	}

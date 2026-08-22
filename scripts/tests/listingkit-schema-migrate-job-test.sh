@@ -24,6 +24,10 @@ grep -q 'image: REPLACE_WITH_API_IMAGE' "$product_manifest" || {
   printf 'product-listing API migration manifest must use the immutable API image placeholder\n' >&2
   exit 1
 }
+grep -q 'activeDeadlineSeconds: 900' "$product_manifest" || {
+  printf 'product-listing API migration manifest must bound execution to the driver wait\n' >&2
+  exit 1
+}
 grep -q 'product-listing-api-schema-migrate-job.yaml' "$workflow" || {
   printf 'deployment workflow does not run the product-listing API migration Job\n' >&2
   exit 1

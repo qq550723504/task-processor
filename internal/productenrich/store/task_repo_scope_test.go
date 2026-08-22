@@ -38,8 +38,8 @@ func TestTaskRepositoryScopesReadsToExecutionTenant(t *testing.T) {
 	if _, err := repo.GetTask(ctxA, "task-authoritative"); !errors.Is(err, productenrich.ErrTaskNotFound) {
 		t.Fatalf("legacy tenant accessed envelope-owned task: error = %v, want ErrTaskNotFound", err)
 	}
-	if task, err := repo.GetTask(ctxA, "task-legacy"); err != nil || task.ID != "task-legacy" {
-		t.Fatalf("legacy tenant fallback GetTask = (%+v, %v), want task-legacy", task, err)
+	if _, err := repo.GetTask(ctxA, "task-legacy"); !errors.Is(err, productenrich.ErrTaskNotFound) {
+		t.Fatalf("absent-envelope GetTask error = %v, want ErrTaskNotFound", err)
 	}
 	if err := repo.IncrementRetryCount(ctxA, "task-authoritative"); err == nil {
 		t.Fatal("legacy tenant mutation succeeded for envelope-owned task")
@@ -57,7 +57,7 @@ func TestTaskRepositoryScopesReadsToExecutionTenant(t *testing.T) {
 	}
 }
 
-func TestMemTaskRepositoryUsesEnvelopeTenantWithLegacyFallback(t *testing.T) {
+func TestMemTaskRepositoryRequiresEnvelopeTenant(t *testing.T) {
 	repo := NewMemTaskRepository()
 	for _, task := range []*productenrich.Task{
 		{ID: "task-a", Status: productenrich.TaskStatusPending, TenantID: "tenant-a", UserID: "user-a", PersistedExecutionEnvelope: aiidentity.PersistedExecutionEnvelope{ExecutionIdentityVersion: 1, ExecutionTenantID: "tenant-a", ExecutionUserID: "user-a", ExecutionSourcePlatform: "productenrich", ExecutionSourceTaskType: "product"}},
@@ -75,8 +75,8 @@ func TestMemTaskRepositoryUsesEnvelopeTenantWithLegacyFallback(t *testing.T) {
 			t.Fatalf("cross-tenant GetTask(%s) error = %v, want ErrTaskNotFound", taskID, err)
 		}
 	}
-	if task, err := repo.GetTask(ctxA, "task-legacy"); err != nil || task.ID != "task-legacy" {
-		t.Fatalf("legacy tenant fallback GetTask = (%+v, %v), want task-legacy", task, err)
+	if _, err := repo.GetTask(ctxA, "task-legacy"); !errors.Is(err, productenrich.ErrTaskNotFound) {
+		t.Fatalf("absent-envelope GetTask error = %v, want ErrTaskNotFound", err)
 	}
 	if err := repo.UpdateTaskError(ctxA, "task-authoritative", "denied"); err == nil {
 		t.Fatal("legacy tenant mutation succeeded for envelope-owned task")

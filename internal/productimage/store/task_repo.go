@@ -23,6 +23,9 @@ func (r *taskRepository) CreateTask(ctx context.Context, task *productimage.Task
 	if task == nil {
 		return fmt.Errorf("task cannot be nil")
 	}
+	if !aiidentity.TenantCanCreateTask(ctx, task.PersistedExecutionEnvelope) {
+		return productimage.ErrTaskNotFound
+	}
 	result := r.db.WithContext(ctx).Create(task)
 	if result.Error != nil {
 		return fmt.Errorf("failed to create task: %w", result.Error)
@@ -142,7 +145,7 @@ func (r *taskRepository) IncrementRetryCount(ctx context.Context, taskID string)
 		return fmt.Errorf("failed to increment retry count: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("task not found: %s", taskID)
+		return productimage.ErrTaskNotFound
 	}
 	return nil
 }
@@ -167,23 +170,14 @@ func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, up
 		return fmt.Errorf("failed to update task: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("task not found: %s", taskID)
+		return productimage.ErrTaskNotFound
 	}
 	return nil
 }
 
 func (r *taskRepository) scoped(ctx context.Context, query *gorm.DB) *gorm.DB {
-	if tenantID := aiidentity.FromContext(ctx).TenantID; tenantID != "" {
-		return query.Where(`(
-			execution_tenant_id = ? OR (
-				COALESCE(execution_identity_version, 0) = 0 AND
-				COALESCE(execution_tenant_id, '') = '' AND
-				COALESCE(execution_user_id, '') = '' AND
-				COALESCE(execution_source_platform, '') = '' AND
-				COALESCE(execution_source_task_type, '') = '' AND
-				tenant_id = ?
-			)
-		)`, tenantID, tenantID)
+	if tenantID := aiidentity.TenantIDFromContext(ctx); tenantID != "" {
+		return query.Where("(execution_tenant_id = ? OR TRIM(execution_tenant_id) = ?)", tenantID, tenantID)
 	}
 	return query
 }

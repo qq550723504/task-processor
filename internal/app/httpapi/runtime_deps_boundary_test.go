@@ -199,7 +199,7 @@ func TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated(t *testing.T) 
 	for _, marker := range []string{
 		"productenrich.NewLLMManagerAdapterFromManager(",
 		"productenrich.NewLocalMockLLMManager(",
-		"productenrich.ValidateMockLLMManager(",
+		"productenrich.ValidateGovernedLLMManager(",
 		"productenrichenrich.NewProductUnderstanding(",
 		"productenrichenrich.NewInputParser(",
 	} {
@@ -213,7 +213,7 @@ func TestHTTPAPIRuntimeKeepsProductEnrichRuntimeAssemblyDedicated(t *testing.T) 
 		"func buildProductEnrichRuntimeDeps(",
 		"productenrich.NewLLMManagerAdapterFromManager(",
 		"productenrich.NewLocalMockLLMManager(",
-		"productenrich.ValidateMockLLMManager(",
+		"productenrich.ValidateGovernedLLMManager(",
 		"productenrichenrich.NewProductUnderstanding(",
 		"productenrichenrich.NewInputParser(",
 	} {

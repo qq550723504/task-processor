@@ -33,6 +33,7 @@ type InvocationRecord struct {
 	Operation            Operation
 	RouteMode            RoutingMode
 	RouteOutcome         RouteOutcome
+	CacheStatus          CacheStatus
 	ProviderID           string
 	ModelID              string
 	RequestedRoutingKey  string

@@ -66,6 +66,7 @@ type invocationRow struct {
 	Operation            string    `gorm:"column:operation;size:128"`
 	RouteMode            string    `gorm:"column:route_mode;size:32"`
 	RouteOutcome         string    `gorm:"column:route_outcome;size:64"`
+	CacheStatus          string    `gorm:"column:cache_status;size:32"`
 	ProviderID           string    `gorm:"column:provider_id;size:128;index:idx_ai_invocations_provider_model_started,priority:1"`
 	ModelID              string    `gorm:"column:model_id;size:256;index:idx_ai_invocations_provider_model_started,priority:2"`
 	RequestedRoutingKey  string    `gorm:"column:requested_routing_key;size:256"`
@@ -107,11 +108,14 @@ func invocationRowFromRecord(record aicapability.InvocationRecord) invocationRow
 	if latencyMilliseconds == 0 && !record.StartedAt.IsZero() && !record.FinishedAt.IsZero() {
 		latencyMilliseconds = record.FinishedAt.Sub(record.StartedAt).Milliseconds()
 	}
-
+	cacheStatus := aicapability.CacheStatus(trim(string(record.CacheStatus)))
+	if cacheStatus == "" {
+		cacheStatus = aicapability.CacheStatusNotApplicable
+	}
 	return invocationRow{
 		InvocationID: trim(record.InvocationID), ParentInvocationID: trim(record.ParentInvocationID), AgentRunID: trim(record.AgentRunID),
 		TenantID: trim(record.TenantID), UserID: trim(record.UserID), BusinessTaskID: trim(record.BusinessTaskID), TraceID: trim(record.TraceID),
-		Capability: trim(string(record.Capability)), Operation: trim(string(record.Operation)), RouteMode: trim(string(record.RouteMode)), RouteOutcome: trim(string(record.RouteOutcome)),
+		Capability: trim(string(record.Capability)), Operation: trim(string(record.Operation)), RouteMode: trim(string(record.RouteMode)), RouteOutcome: trim(string(record.RouteOutcome)), CacheStatus: string(cacheStatus),
 		ProviderID: trim(record.ProviderID), ModelID: trim(record.ModelID), RequestedRoutingKey: trim(record.RequestedRoutingKey), RoutingKey: trim(record.RoutingKey), CredentialReference: trim(record.CredentialReference),
 		PolicyVersion: trim(record.PolicyVersion), ConfigurationVersion: trim(record.ConfigurationVersion),
 		PromptKey: trim(record.PromptKey), PromptVersion: trim(record.PromptVersion), PromptScope: trim(record.PromptScope), PromptHash: trim(record.PromptHash),

@@ -7,5 +7,4 @@
 //   - golang.org/x/time/rate
 //   - github.com/sony/gobreaker
 //   - github.com/cenkalti/backoff/v5
-//
 package resilience

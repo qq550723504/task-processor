@@ -17,7 +17,10 @@ func (s *service) ProcessImages(ctx context.Context, task *Task) (*ImageProcessR
 	if task == nil {
 		return nil, fmt.Errorf("task cannot be nil")
 	}
-	if task.ExecutionIdentityVersion != 0 || task.ExecutionTenantID != "" || task.ExecutionUserID != "" || task.ExecutionSourcePlatform != "" || task.ExecutionSourceTaskType != "" {
+	switch task.PersistedExecutionEnvelope.State() {
+	case aiidentity.PersistedEnvelopePartial:
+		return nil, aiidentity.ErrIdentityIntegrity
+	case aiidentity.PersistedEnvelopePresent:
 		envelope, err := task.ExecutionEnvelope()
 		if err != nil {
 			return nil, err
