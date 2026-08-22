@@ -48,12 +48,12 @@ func buildGenerationNavigationDispatchPlan(target *GenerationReviewNavigationTar
 		return nil
 	}
 	plan := &GenerationNavigationDispatchPlan{
-		Strategy:           buildGenerationNavigationDispatchStrategy(target, len(reads)),
+		Strategy:           listinggeneration.NavigationDispatchStrategy(buildGenerationNavigationTargetResourceKind(target), len(reads)),
 		StopOnNotModified:  buildGenerationNavigationDispatchStopOnNotModified(target, len(reads)),
 		StopOnFirstSuccess: listinggeneration.NavigationDispatchStopOnFirstSuccess(buildGenerationNavigationTargetResourceKind(target), len(reads)),
 		StopOnError:        listinggeneration.NavigationDispatchStopOnError(len(reads)),
 		FallbackStrategy:   listinggeneration.NavigationDispatchFallbackStrategy(buildGenerationNavigationTargetResourceKind(target), len(reads)),
-		MaxParallelism:     listinggeneration.NavigationDispatchMaxParallelism(buildGenerationNavigationDispatchStrategy(target, len(reads))),
+		MaxParallelism:     listinggeneration.NavigationDispatchMaxParallelism(listinggeneration.NavigationDispatchStrategy(buildGenerationNavigationTargetResourceKind(target), len(reads))),
 		DedupePolicy:       "by_step_identity",
 		WinnerPolicy:       "prefer_preview_then_session_then_queue",
 		RequiresRevalidate: generationNavigationTargetRevalidateAfterAction(target),
@@ -70,10 +70,6 @@ func buildGenerationNavigationDispatchPlan(target *GenerationReviewNavigationTar
 		})
 	}
 	return plan
-}
-
-func buildGenerationNavigationDispatchStrategy(target *GenerationReviewNavigationTarget, readCount int) string {
-	return listinggeneration.NavigationDispatchStrategy(buildGenerationNavigationTargetResourceKind(target), readCount)
 }
 
 func buildGenerationNavigationDispatchStopOnNotModified(target *GenerationReviewNavigationTarget, readCount int) bool {
