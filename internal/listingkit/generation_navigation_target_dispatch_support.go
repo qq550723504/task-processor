@@ -53,7 +53,7 @@ func buildGenerationNavigationDispatchPlan(target *GenerationReviewNavigationTar
 		StopOnFirstSuccess: listinggeneration.NavigationDispatchStopOnFirstSuccess(buildGenerationNavigationTargetResourceKind(target), len(reads)),
 		StopOnError:        listinggeneration.NavigationDispatchStopOnError(len(reads)),
 		FallbackStrategy:   listinggeneration.NavigationDispatchFallbackStrategy(buildGenerationNavigationTargetResourceKind(target), len(reads)),
-		MaxParallelism:     buildGenerationNavigationDispatchMaxParallelism(target, len(reads)),
+		MaxParallelism:     listinggeneration.NavigationDispatchMaxParallelism(buildGenerationNavigationDispatchStrategy(target, len(reads))),
 		DedupePolicy:       "by_step_identity",
 		WinnerPolicy:       "prefer_preview_then_session_then_queue",
 		RequiresRevalidate: generationNavigationTargetRevalidateAfterAction(target),
@@ -78,10 +78,6 @@ func buildGenerationNavigationDispatchStrategy(target *GenerationReviewNavigatio
 
 func buildGenerationNavigationDispatchStopOnNotModified(target *GenerationReviewNavigationTarget, readCount int) bool {
 	return listinggeneration.NavigationDispatchStopOnNotModified(buildGenerationNavigationTargetResourceKind(target), readCount)
-}
-
-func buildGenerationNavigationDispatchMaxParallelism(target *GenerationReviewNavigationTarget, readCount int) int {
-	return listinggeneration.NavigationDispatchMaxParallelism(buildGenerationNavigationDispatchStrategy(target, readCount))
 }
 
 func buildGenerationNavigationDispatchStepCachePreference(target *GenerationReviewNavigationTarget, stepKind string) string {
