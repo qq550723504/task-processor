@@ -66,10 +66,15 @@ Describe "build-push-deploy-listingkit-workbench release gate" {
         & $scriptPath -Tag "release-20260810" -SkipTests
 
         $preflightIndex = $commandLog.FindIndex([Predicate[string]]{ param($command) $command -match "listingkit-identity-preflight-job\.sh" })
+        $productSchemaIndex = $commandLog.FindIndex([Predicate[string]]{ param($command) $command -match "product-listing-api-schema-migrate-job\.yaml" })
+        $listingKitSchemaIndex = $commandLog.FindIndex([Predicate[string]]{ param($command) $command -match "listingkit-schema-migrate-job\.yaml" })
         $apiApplyIndex = $commandLog.FindIndex([Predicate[string]]{ param($command) $command -match "listingkit-apply-api-deployment\.sh" })
         $uiApplyIndex = $commandLog.FindIndex([Predicate[string]]{ param($command) $command -match "listingkit-apply-ui-deployment\.sh" })
 
+        $productSchemaIndex | Should BeGreaterThan -1
+        $listingKitSchemaIndex | Should BeGreaterThan $productSchemaIndex
         $preflightIndex | Should BeGreaterThan -1
+        $preflightIndex | Should BeGreaterThan $listingKitSchemaIndex
         $apiApplyIndex | Should BeGreaterThan $preflightIndex
         $uiApplyIndex | Should BeGreaterThan $apiApplyIndex
         $commandLog[$preflightIndex] | Should Match "--image xuwei190/task-processor-product-listing-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

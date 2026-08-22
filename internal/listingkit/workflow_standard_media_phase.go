@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productimage"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type standardWorkflowMediaPhase struct {
@@ -28,7 +29,7 @@ func (p *standardWorkflowMediaPhase) run(
 	canonicalProduct *canonical.Product,
 	recorder *workflowRecorder,
 	log *logrus.Entry,
-) (*productimage.ImageProcessResult, *SDSSyncOptions) {
+) (*productimage.ImageProcessResult, *SDSSyncOptions, error) {
 	var imageResult *productimage.ImageProcessResult
 	imageSvc := resolveWorkflowImageService(p.service)
 	if shouldProcessImages(task.Request) && imageSvc != nil {
@@ -46,15 +47,40 @@ func (p *standardWorkflowMediaPhase) run(
 				imageTask, imageErr := imageSvc.CreateProcessTask(productimage.WithInlineTaskExecution(ctx), imageRequest)
 				if imageErr != nil {
 					markChildTask(result, kind, "", string(core.TaskStatusFailed), imageErr.Error())
+					if productimage.IsIdentityIntegrityError(imageErr) {
+						stage.Fail("image_identity_integrity", "Image processing identity integrity failed", imageErr.Error())
+						recorder.FinalizeSummary()
+						return nil, nil, imageErr
+					}
 					appendWarning(result, "image processing skipped for "+target+": "+imageErr.Error())
 					stage.Degrade("image_processing_skipped", "Image processing skipped", imageErr.Error())
 					continue
 				}
 				stage.SetTaskID(imageTask.ID)
 				markChildTask(result, kind, imageTask.ID, string(productimage.TaskStatusPending), "")
-				targetResult, imageErr := imageSvc.ProcessImages(ctx, imageTask)
+				imageCtx := ctx
+				if envelope, envelopeErr := imageTask.ExecutionEnvelope(); envelopeErr != nil {
+					markChildTask(result, kind, imageTask.ID, string(core.TaskStatusFailed), envelopeErr.Error())
+					stage.Fail("image_identity_integrity", "Image processing identity integrity failed", envelopeErr.Error())
+					recorder.FinalizeSummary()
+					return nil, nil, envelopeErr
+				} else if envelope.Version != 0 {
+					imageCtx, envelopeErr = aiidentity.RestoreExecutionEnvelope(ctx, envelope, imageTask.ID)
+					if envelopeErr != nil {
+						markChildTask(result, kind, imageTask.ID, string(core.TaskStatusFailed), envelopeErr.Error())
+						stage.Fail("image_identity_integrity", "Image processing identity integrity failed", envelopeErr.Error())
+						recorder.FinalizeSummary()
+						return nil, nil, envelopeErr
+					}
+				}
+				targetResult, imageErr := imageSvc.ProcessImages(imageCtx, imageTask)
 				if imageErr != nil {
 					markChildTask(result, kind, imageTask.ID, string(core.TaskStatusFailed), imageErr.Error())
+					if productimage.IsIdentityIntegrityError(imageErr) {
+						stage.Fail("image_identity_integrity", "Image processing identity integrity failed", imageErr.Error())
+						recorder.FinalizeSummary()
+						return nil, nil, imageErr
+					}
 					appendWarning(result, "image processing failed for "+target+": "+imageErr.Error())
 					stage.Degrade("image_processing_failed", "Image processing failed", imageErr.Error())
 					continue
@@ -101,7 +127,7 @@ func (p *standardWorkflowMediaPhase) run(
 		log.Info("applied SDS sync metadata to canonical product")
 	}
 	result.applyCompatibilityAssetProjectionForRequest(task.Request)
-	return imageResult, sdsOptions
+	return imageResult, sdsOptions, nil
 }
 
 func deterministicSDSImageResult(result *ListingKitResult) *productimage.ImageProcessResult {

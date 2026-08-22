@@ -7,6 +7,7 @@ import (
 
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type stubWorkflowProductService struct {
@@ -15,16 +16,26 @@ type stubWorkflowProductService struct {
 	taskResult  *productenrich.TaskResult
 	createErr   error
 	processErr  error
+	createCtx   context.Context
+	processCtx  context.Context
 }
 
-func (s *stubWorkflowProductService) CreateGenerateTask(_ context.Context, req *productenrich.GenerateRequest) (*productenrich.Task, error) {
+func (s *stubWorkflowProductService) CreateGenerateTask(ctx context.Context, req *productenrich.GenerateRequest) (*productenrich.Task, error) {
+	s.createCtx = ctx
 	if s.createErr != nil {
 		return nil, s.createErr
 	}
 	if s.productTask != nil {
 		return s.productTask, nil
 	}
-	return &productenrich.Task{ID: "product-task-1", Request: req}, nil
+	task := &productenrich.Task{ID: "product-task-1", Request: req}
+	if parent, ok := aiidentity.ExecutionEnvelopeFromContext(ctx); ok {
+		parent.BusinessTaskID = task.ID
+		parent.SourcePlatform = "productenrich"
+		parent.SourceTaskType = "product"
+		task.SetExecutionEnvelope(parent)
+	}
+	return task, nil
 }
 
 func (s *stubWorkflowProductService) GetTaskResult(_ context.Context, taskID string) (*productenrich.TaskResult, error) {
@@ -34,7 +45,8 @@ func (s *stubWorkflowProductService) GetTaskResult(_ context.Context, taskID str
 	return nil, errors.New("not found")
 }
 
-func (s *stubWorkflowProductService) ProcessProduct(_ context.Context, _ *productenrich.Task) (*productenrich.ProductJSON, error) {
+func (s *stubWorkflowProductService) ProcessProduct(ctx context.Context, _ *productenrich.Task) (*productenrich.ProductJSON, error) {
+	s.processCtx = ctx
 	if s.processErr != nil {
 		return nil, s.processErr
 	}
@@ -54,16 +66,26 @@ type stubWorkflowImageService struct {
 	taskResult  *productimage.TaskResult
 	createErr   error
 	processErr  error
+	createCtx   context.Context
+	processCtx  context.Context
 }
 
-func (s *stubWorkflowImageService) CreateProcessTask(_ context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error) {
+func (s *stubWorkflowImageService) CreateProcessTask(ctx context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error) {
+	s.createCtx = ctx
 	if s.createErr != nil {
 		return nil, s.createErr
 	}
 	if s.imageTask != nil {
 		return s.imageTask, nil
 	}
-	return &productimage.Task{ID: "image-task-1", Request: req}, nil
+	task := &productimage.Task{ID: "image-task-1", Request: req}
+	if parent, ok := aiidentity.ExecutionEnvelopeFromContext(ctx); ok {
+		parent.BusinessTaskID = task.ID
+		parent.SourcePlatform = "productimage"
+		parent.SourceTaskType = "image"
+		task.SetExecutionEnvelope(parent)
+	}
+	return task, nil
 }
 
 func (s *stubWorkflowImageService) GetTaskResult(_ context.Context, taskID string) (*productimage.TaskResult, error) {
@@ -73,7 +95,8 @@ func (s *stubWorkflowImageService) GetTaskResult(_ context.Context, taskID strin
 	return nil, errors.New("not found")
 }
 
-func (s *stubWorkflowImageService) ProcessImages(_ context.Context, _ *productimage.Task) (*productimage.ImageProcessResult, error) {
+func (s *stubWorkflowImageService) ProcessImages(ctx context.Context, _ *productimage.Task) (*productimage.ImageProcessResult, error) {
+	s.processCtx = ctx
 	if s.processErr != nil {
 		return nil, s.processErr
 	}
@@ -129,6 +152,37 @@ func TestListingWorkflow_RunBuildsDraftAndTaskReferences(t *testing.T) {
 	}
 	if artifacts.CanonicalProduct == nil || artifacts.CanonicalProduct.Brand != "Acme" {
 		t.Fatalf("expected canonical product brand Acme, got %+v", artifacts.CanonicalProduct)
+	}
+}
+
+func TestListingWorkflow_PreservesIdentityForInlineChildren(t *testing.T) {
+	productSvc := &stubWorkflowProductService{}
+	imageSvc := &stubWorkflowImageService{}
+	workflow := NewListingWorkflow(productSvc, imageSvc, NewAssembler(), NewAutoFixer(), NewExportBuilder())
+	ctx := aiidentity.WithExecutionEnvelope(context.Background(), aiidentity.ExecutionEnvelope{
+		Version:        aiidentity.CurrentEnvelopeVersion,
+		TenantID:       "tenant-a",
+		UserID:         "user-a",
+		BusinessTaskID: "amazon-task-1",
+		SourcePlatform: "amazon",
+		SourceTaskType: "listing",
+	})
+
+	_, err := workflow.Run(ctx, &Task{ID: "amazon-task-1", Request: &GenerateRequest{
+		Marketplace: "amazon",
+		ProductURL:  "https://detail.1688.com/offer/123.html",
+		Options:     &GenerateOptions{ProcessImages: true},
+	}})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	productIdentity, ok := aiidentity.ExecutionEnvelopeFromContext(productSvc.processCtx)
+	if !ok || productIdentity.TenantID != "tenant-a" || productIdentity.UserID != "user-a" || productIdentity.BusinessTaskID != "product-task-1" {
+		t.Fatalf("product identity = %+v ok=%v", productIdentity, ok)
+	}
+	imageIdentity, ok := aiidentity.ExecutionEnvelopeFromContext(imageSvc.processCtx)
+	if !ok || imageIdentity.TenantID != "tenant-a" || imageIdentity.UserID != "user-a" || imageIdentity.BusinessTaskID != "image-task-1" {
+		t.Fatalf("image identity = %+v ok=%v", imageIdentity, ok)
 	}
 }
 

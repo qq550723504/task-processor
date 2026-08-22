@@ -71,13 +71,15 @@ func (g *governedSceneGenerator) GenerateScene(ctx context.Context, req *SceneGe
 	identity := g.identity(ctx)
 	identity.TenantID = strings.TrimSpace(identity.TenantID)
 	identity.UserID = strings.TrimSpace(identity.UserID)
-	if identity.TenantID == "" || identity.UserID == "" {
-		return nil, aicapability.NewError(aicapability.ErrorInvalidInput, string(aicapability.OperationProductImageSceneGenerate), nil)
-	}
-
 	startedAt := g.now()
 	inputHash := hashSceneRequest(req)
 	promptHash := hashText(buildSceneGenerationResolvedPrompt(req).Text)
+	if identity.TenantID == "" || identity.UserID == "" {
+		wrapped := aicapability.NewError(aicapability.ErrorIdentityIntegrity, string(aicapability.OperationProductImageSceneGenerate), nil)
+		g.record(ctx, g.newRecord(identity, startedAt, inputHash, promptHash, aicapability.RouteDecision{}, nil, wrapped, true))
+		return nil, wrapped
+	}
+
 	decision, err := g.router.Decide(ctx, aicapability.RouteRequest{
 		TenantID:         identity.TenantID,
 		UserID:           identity.UserID,

@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/productimage"
 	"task-processor/internal/sds/workflow"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type stubImageService struct {
@@ -17,6 +18,7 @@ type stubImageService struct {
 	taskErr       error
 	lastRequest   *productimage.ImageProcessRequest
 	lastTask      *productimage.Task
+	processCtx    context.Context
 }
 
 func (s *stubImageService) CreateProcessTask(_ context.Context, req *productimage.ImageProcessRequest) (*productimage.Task, error) {
@@ -28,9 +30,37 @@ func (s *stubImageService) GetTaskResult(_ context.Context, _ string) (*producti
 	return s.taskResult, s.taskErr
 }
 
-func (s *stubImageService) ProcessImages(_ context.Context, task *productimage.Task) (*productimage.ImageProcessResult, error) {
+func (s *stubImageService) ProcessImages(ctx context.Context, task *productimage.Task) (*productimage.ImageProcessResult, error) {
+	s.processCtx = ctx
 	s.lastTask = task
 	return s.processResult, s.processErr
+}
+
+func TestSyncFromImageRequestRestoresChildExecutionEnvelope(t *testing.T) {
+	t.Parallel()
+
+	child := &productimage.Task{ID: "img-task-envelope"}
+	child.SetExecutionEnvelope(aiidentity.ExecutionEnvelope{
+		Version:        aiidentity.CurrentEnvelopeVersion,
+		TenantID:       "tenant-a",
+		UserID:         "user-a",
+		BusinessTaskID: child.ID,
+		TraceID:        "trace-a",
+		SourcePlatform: "productimage",
+		SourceTaskType: "image",
+	})
+	imgSvc := &stubImageService{createTask: child, processResult: &productimage.ImageProcessResult{}}
+	svc := newServiceWithDeps(imgSvc, &stubWorkflowService{result: &workflow.SyncResult{}})
+	parent := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a", BusinessTaskID: "parent-task"})
+
+	_, err := svc.SyncFromImageRequest(parent, SyncFromImageRequestInput{ImageRequest: &productimage.ImageProcessRequest{ImageURLs: []string{"https://example.com/a.jpg"}}})
+	if err != nil {
+		t.Fatalf("SyncFromImageRequest() error = %v", err)
+	}
+	identity := aiidentity.FromContext(imgSvc.processCtx)
+	if identity.TenantID != "tenant-a" || identity.UserID != "user-a" || identity.BusinessTaskID != child.ID {
+		t.Fatalf("processed child identity = %+v, want tenant/user/child task", identity)
+	}
 }
 
 type stubWorkflowService struct {

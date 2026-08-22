@@ -106,20 +106,27 @@ func TestListingKitSchemaMigrationRunsBeforeIdentityPreflight(t *testing.T) {
 		t.Fatalf("parse ListingKit deploy workflow: %v", err)
 	}
 	deployJob := workflow.Jobs["deploy-api"]
-	schemaIndex, preflightIndex := -1, -1
+	schemaIndex, productSchemaIndex, preflightIndex := -1, -1, -1
 	for index, step := range deployJob.Steps {
 		if strings.Contains(step.Run, "scripts/listingkit-schema-migrate-job.sh") {
-			schemaIndex = index
-			if !strings.Contains(step.Run, "listingkit-schema-migrate-job.yaml") || !strings.Contains(step.Run, "--image \"$API_CANDIDATE_IMAGE\"") {
-				t.Errorf("schema migration step must use the immutable API candidate and ListingKit schema manifest")
+			if strings.Contains(step.Run, "product-listing-api-schema-migrate-job.yaml") {
+				productSchemaIndex = index
+				if !strings.Contains(step.Run, "--image \"$API_CANDIDATE_IMAGE\"") {
+					t.Errorf("product-listing schema migration must use the immutable API candidate")
+				}
+			} else if strings.Contains(step.Run, "listingkit-schema-migrate-job.yaml") {
+				schemaIndex = index
+				if !strings.Contains(step.Run, "--image \"$API_CANDIDATE_IMAGE\"") {
+					t.Errorf("ListingKit schema migration must use the immutable API candidate")
+				}
 			}
 		}
 		if strings.Contains(step.Run, "scripts/listingkit-identity-preflight-job.sh") {
 			preflightIndex = index
 		}
 	}
-	if schemaIndex < 0 || preflightIndex < 0 || schemaIndex >= preflightIndex {
-		t.Fatalf("schema migration must run before identity preflight, schema=%d preflight=%d", schemaIndex, preflightIndex)
+	if schemaIndex < 0 || productSchemaIndex < 0 || preflightIndex < 0 || schemaIndex >= preflightIndex || productSchemaIndex >= preflightIndex {
+		t.Fatalf("schema migrations must run before identity preflight, product=%d listingkit=%d preflight=%d", productSchemaIndex, schemaIndex, preflightIndex)
 	}
 }
 
@@ -324,6 +331,27 @@ func TestListingKitSchemaMigrationJobDeadlineMatchesDriverWait(t *testing.T) {
 
 	if job.Spec.ActiveDeadlineSeconds != 15*60 {
 		t.Fatalf("schema migration Job deadline must match the driver's 15-minute wait, got %d seconds", job.Spec.ActiveDeadlineSeconds)
+	}
+}
+
+func TestProductListingAPISchemaMigrationJobDeadlineMatchesDriverWait(t *testing.T) {
+	manifestPath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "jobs", "product-listing-api-schema-migrate-job.yaml")
+	content, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatalf("read product-listing API schema migration Job manifest: %v", err)
+	}
+
+	var job struct {
+		Spec struct {
+			ActiveDeadlineSeconds int `yaml:"activeDeadlineSeconds"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal(content, &job); err != nil {
+		t.Fatalf("parse product-listing API schema migration Job: %v", err)
+	}
+
+	if job.Spec.ActiveDeadlineSeconds != 15*60 {
+		t.Fatalf("product-listing API schema migration Job deadline must match the driver's 15-minute wait, got %d seconds", job.Spec.ActiveDeadlineSeconds)
 	}
 }
 

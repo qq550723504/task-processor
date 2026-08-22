@@ -91,7 +91,7 @@ func isNoRetryMessage(err error) bool {
 }
 
 func ClassifyProcessFailure(err error) FailureDisposition {
-	if IsNoRetryError(err) || isNoRetryCapabilityError(err) || isNoRetryProviderError(err) || isNoRetryMessage(err) {
+	if IsIdentityIntegrityError(err) || IsNoRetryError(err) || isNoRetryCapabilityError(err) || isNoRetryProviderError(err) || isNoRetryMessage(err) {
 		return FailureDispositionNoRetry
 	}
 	return FailureDispositionRetryable

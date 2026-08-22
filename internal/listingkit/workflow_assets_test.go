@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrepo "task-processor/internal/asset/repository"
@@ -22,6 +23,7 @@ import (
 	sdsdesign "task-processor/internal/sds/design"
 	sdsusecase "task-processor/internal/sds/usecase"
 	sdsworkflow "task-processor/internal/sds/workflow"
+	"task-processor/internal/shared/aiidentity"
 	"task-processor/internal/shared/tenantctx"
 	sheinattribute "task-processor/internal/shein/api/attribute"
 	sheincategory "task-processor/internal/shein/api/category"
@@ -317,6 +319,94 @@ func TestStandardWorkflowKeepsSuccessfulTargetAfterOtherTargetFails(t *testing.T
 	if stages["product_image:temu"].Status != WorkflowStageStatusDegraded || stages["product_image:shein"].Status != WorkflowStageStatusCompleted {
 		t.Fatalf("target image stages = %#v, want degraded temu and completed shein", stages)
 	}
+}
+
+func TestStandardWorkflowFailsClosedOnMalformedProductImageEnvelope(t *testing.T) {
+	productSvc := &stubWorkflowProductService{
+		task:    &productenrich.Task{ID: "product-task"},
+		product: &productenrich.ProductJSON{Title: "Identity guarded product", Images: []string{"https://example.test/image.jpg"}},
+	}
+	imageSvc := &stubWorkflowImageService{task: &productimage.Task{
+		ID: "image-task-malformed-envelope",
+		PersistedExecutionEnvelope: aiidentity.PersistedExecutionEnvelope{
+			ExecutionIdentityVersion: aiidentity.CurrentEnvelopeVersion,
+			ExecutionTenantID:        "tenant-a",
+			ExecutionSourcePlatform:  "productimage",
+			ExecutionSourceTaskType:  "image",
+		},
+	}}
+	svc := seedWorkflowServices(seedWorkflowAssets(
+		seedSupportDeps(&service{}, supportDependencySeed{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})}),
+		assetrepo.NewMemRepository(),
+		newDefaultAssetRecipeResolver(),
+		newDefaultAssetBundleBuilder(),
+		newDefaultAssetGenerationService(),
+	), productSvc, imageSvc)
+	task := &Task{ID: "listing-task", Request: &GenerateRequest{
+		ImageURLs: []string{"https://example.test/image.jpg"},
+		Platforms: []string{"shein"},
+		Options:   &GenerateOptions{ProcessImages: true},
+	}}
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if !errors.Is(err, aiidentity.ErrIdentityIntegrity) {
+		t.Fatalf("runStandardProductWorkflow() error = %v, want ErrIdentityIntegrity", err)
+	}
+	if state == nil || state.result == nil {
+		t.Fatal("workflow state/result missing after identity failure")
+	}
+	stage, ok := workflowStageByKind(state.result, "product_image:shein")
+	if !ok || stage.Status != WorkflowStageStatusFailed {
+		t.Fatalf("product image stage = %+v, want failed", stage)
+	}
+}
+
+func TestStandardWorkflowFailsClosedOnGovernedProductImageIdentityFailure(t *testing.T) {
+	productSvc := &stubWorkflowProductService{
+		task:    &productenrich.Task{ID: "product-task"},
+		product: &productenrich.ProductJSON{Title: "Identity guarded product", Images: []string{"https://example.test/image.jpg"}},
+	}
+	imageSvc := &stubWorkflowImageService{
+		task: &productimage.Task{ID: "image-task-governed-identity"},
+		processErr: aicapability.NewError(
+			aicapability.ErrorIdentityIntegrity,
+			string(aicapability.OperationProductImageSceneGenerate),
+			nil,
+		),
+	}
+	svc := seedWorkflowServices(seedWorkflowAssets(
+		seedSupportDeps(&service{}, supportDependencySeed{assembler: NewAssemblerWithConfig(AssemblerConfig{AmazonBuilder: stubAmazonDraftBuilder{}})}),
+		assetrepo.NewMemRepository(),
+		newDefaultAssetRecipeResolver(),
+		newDefaultAssetBundleBuilder(),
+		newDefaultAssetGenerationService(),
+	), productSvc, imageSvc)
+	task := &Task{ID: "listing-task", Request: &GenerateRequest{
+		ImageURLs: []string{"https://example.test/image.jpg"},
+		Platforms: []string{"shein"},
+		Options:   &GenerateOptions{ProcessImages: true},
+	}}
+
+	state, err := svc.runStandardProductWorkflow(context.Background(), task)
+	if aicapability.CategoryOf(err) != aicapability.ErrorIdentityIntegrity {
+		t.Fatalf("runStandardProductWorkflow() error = %v, want identity_integrity", err)
+	}
+	stage, ok := workflowStageByKind(state.result, "product_image:shein")
+	if !ok || stage.Status != WorkflowStageStatusFailed {
+		t.Fatalf("product image stage = %+v, want failed", stage)
+	}
+}
+
+func workflowStageByKind(result *ListingKitResult, kind string) (WorkflowStage, bool) {
+	if result == nil {
+		return WorkflowStage{}, false
+	}
+	for _, stage := range result.WorkflowStages {
+		if stage.Kind == kind {
+			return stage, true
+		}
+	}
+	return WorkflowStage{}, false
 }
 
 func TestRunWorkflowKeepsPlatformImageBundlesIsolatedAcrossTargetOrder(t *testing.T) {

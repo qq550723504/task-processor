@@ -12,6 +12,12 @@ import (
 )
 
 func RouteRequiresZitadelAuth(route httproute.Descriptor) bool {
+	switch route.AuthPolicy {
+	case httproute.AuthPolicyVerifiedIdentity:
+		return true
+	case httproute.AuthPolicyPublic:
+		return false
+	}
 	if route.Method == http.MethodGet && (route.Path == "/api/v1/shein-login/health" || route.Path == "/api/v1/sds-login/health") {
 		return false
 	}

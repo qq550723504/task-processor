@@ -86,12 +86,18 @@ func (s *qualityScorer) CalculateScore(ctx context.Context, validation *Validati
 			firstURL := validation.ImageValidation.ValidImages[0].URL
 			if observedScorer != nil {
 				if llmResult, err := observedScorer.scoreImageResult(ctx, firstURL, imageScore); err != nil {
+					if isIdentityIntegrityError(err) {
+						return 0, err
+					}
 					logrus.WithError(err).Warn("LLM image scoring failed, using base score")
 				} else {
 					imageScore = llmResult.Score
 					validation.ImageScorePrompt = llmResult.Prompt.Clone()
 				}
 			} else if llmScore, err := s.llmScorer.ScoreImage(ctx, firstURL, imageScore); err != nil {
+				if isIdentityIntegrityError(err) {
+					return 0, err
+				}
 				logrus.WithError(err).Warn("LLM image scoring failed, using base score")
 			} else {
 				imageScore = llmScore
@@ -106,12 +112,18 @@ func (s *qualityScorer) CalculateScore(ctx context.Context, validation *Validati
 			if text != "" {
 				if observedScorer != nil {
 					if llmResult, err := observedScorer.scoreTextResult(ctx, text, textScore); err != nil {
+						if isIdentityIntegrityError(err) {
+							return 0, err
+						}
 						logrus.WithError(err).Warn("LLM text scoring failed, using base score")
 					} else {
 						textScore = llmResult.Score
 						validation.TextScorePrompt = llmResult.Prompt.Clone()
 					}
 				} else if llmScore, err := s.llmScorer.ScoreText(ctx, text, textScore); err != nil {
+					if isIdentityIntegrityError(err) {
+						return 0, err
+					}
 					logrus.WithError(err).Warn("LLM text scoring failed, using base score")
 				} else {
 					textScore = llmScore

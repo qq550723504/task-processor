@@ -5,8 +5,10 @@ import (
 	"errors"
 	"testing"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/infra/worker"
 	productimage "task-processor/internal/productimage"
+	"task-processor/internal/shared/aiidentity"
 
 	"github.com/sirupsen/logrus"
 )
@@ -73,6 +75,17 @@ type stubSubmitter struct {
 	err             error
 }
 
+func setTestExecutionEnvelope(task *productimage.Task) {
+	task.SetExecutionEnvelope(aiidentity.ExecutionEnvelope{
+		Version:        aiidentity.CurrentEnvelopeVersion,
+		TenantID:       "tenant-a",
+		UserID:         "user-a",
+		BusinessTaskID: task.ID,
+		SourcePlatform: "productimage",
+		SourceTaskType: "image",
+	})
+}
+
 func (s *stubSubmitter) Submit(taskID string) error {
 	s.submittedTaskID = taskID
 	return s.err
@@ -87,6 +100,7 @@ func TestProcessorProcessTaskReturnsNilWhenRetryWasScheduled(t *testing.T) {
 		RetryCount: 0,
 		Request:    &productimage.ImageProcessRequest{Marketplace: "shein"},
 	}
+	setTestExecutionEnvelope(task)
 	repo := &stubTaskRepo{task: task}
 	service := &stubImageService{err: errors.New("transient provider timeout")}
 	submitter := &stubSubmitter{}
@@ -124,6 +138,7 @@ func TestProcessorProcessTaskReturnsErrorWhenRetrySubmitFails(t *testing.T) {
 		RetryCount: 0,
 		Request:    &productimage.ImageProcessRequest{Marketplace: "shein"},
 	}
+	setTestExecutionEnvelope(task)
 	repo := &stubTaskRepo{task: task}
 	service := &stubImageService{err: errors.New("transient provider timeout")}
 	submitter := &stubSubmitter{err: errors.New("queue unavailable")}
@@ -151,6 +166,7 @@ func TestProcessorRestoresTaskAIIdentityIntoWorkerContext(t *testing.T) {
 		Status:   productimage.TaskStatusPending,
 		Request:  &productimage.ImageProcessRequest{Marketplace: "shein"},
 	}
+	setTestExecutionEnvelope(task)
 	repo := &stubTaskRepo{task: task}
 	service := &stubImageService{}
 	processor, err := NewProcessor(service, repo, logrus.New(), 0)
@@ -164,5 +180,59 @@ func TestProcessorRestoresTaskAIIdentityIntoWorkerContext(t *testing.T) {
 	identity := productimage.AIIdentityFromContext(service.lastCtx)
 	if identity.TenantID != "tenant-a" || identity.UserID != "user-a" || identity.BusinessTaskID != "task-identity" {
 		t.Fatalf("worker identity = %+v", identity)
+	}
+}
+
+func TestProcessorMissingExecutionEnvelopeFailsClosed(t *testing.T) {
+	task := &productimage.Task{ID: "missing-envelope", Status: productimage.TaskStatusPending, Request: &productimage.ImageProcessRequest{Marketplace: "shein"}}
+	repo := &stubTaskRepo{task: task}
+	service := &stubImageService{}
+	processor, err := NewProcessor(service, repo, logrus.New(), 3)
+	if err != nil {
+		t.Fatalf("NewProcessor() error = %v", err)
+	}
+
+	err = processor.ProcessTask(context.Background(), worker.WorkerJob{TaskData: task.ID})
+	if !errors.Is(err, aiidentity.ErrMissingIdentity) {
+		t.Fatalf("error = %v, want ErrMissingIdentity", err)
+	}
+	if service.lastCtx != nil {
+		t.Fatal("ProcessImages was called for a missing envelope")
+	}
+	if !repo.markFailedCalled {
+		t.Fatal("expected task to be marked failed")
+	}
+}
+
+func TestProcessorGovernedIdentityFailureFailsWithoutRetry(t *testing.T) {
+	task := &productimage.Task{
+		ID:         "governed-identity-failure",
+		Status:     productimage.TaskStatusPending,
+		RetryCount: 0,
+		Request:    &productimage.ImageProcessRequest{Marketplace: "shein"},
+	}
+	setTestExecutionEnvelope(task)
+	repo := &stubTaskRepo{task: task}
+	service := &stubImageService{err: aicapability.NewError(
+		aicapability.ErrorIdentityIntegrity,
+		string(aicapability.OperationProductImageSceneGenerate),
+		nil,
+	)}
+	submitter := &stubSubmitter{}
+	processor, err := NewProcessor(service, repo, logrus.New(), 3)
+	if err != nil {
+		t.Fatalf("NewProcessor() error = %v", err)
+	}
+	processor.SetTaskSubmitter(submitter)
+
+	err = processor.ProcessTask(context.Background(), worker.WorkerJob{TaskData: task.ID})
+	if aicapability.CategoryOf(err) != aicapability.ErrorIdentityIntegrity {
+		t.Fatalf("ProcessTask() error = %v, want identity_integrity", err)
+	}
+	if !repo.markFailedCalled || len(repo.lastFailedMessage) < len("identity_integrity: ") || repo.lastFailedMessage[:len("identity_integrity: ")] != "identity_integrity: " {
+		t.Fatalf("failed message = %q, want identity_integrity prefix", repo.lastFailedMessage)
+	}
+	if repo.incrementRetryCalled || repo.prepareRetryCalled || submitter.submittedTaskID != "" {
+		t.Fatalf("identity failure retried: increment=%v prepare=%v submitted=%q", repo.incrementRetryCalled, repo.prepareRetryCalled, submitter.submittedTaskID)
 	}
 }

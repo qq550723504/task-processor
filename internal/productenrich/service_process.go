@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/logger"
+	"task-processor/internal/shared/aiidentity"
 
 	"github.com/sirupsen/logrus"
 )
@@ -14,6 +15,15 @@ import (
 func (s *productService) ProcessProduct(ctx context.Context, task *Task) (*ProductJSON, error) {
 	if task == nil {
 		return nil, fmt.Errorf("task cannot be nil")
+	}
+	if task.ExecutionIdentityVersion != 0 || task.ExecutionTenantID != "" || task.ExecutionUserID != "" || task.ExecutionSourcePlatform != "" || task.ExecutionSourceTaskType != "" {
+		envelope, err := task.ExecutionEnvelope()
+		if err != nil {
+			return nil, err
+		}
+		if err := aiidentity.EnsureExecutionEnvelopeContext(ctx, envelope); err != nil {
+			return nil, err
+		}
 	}
 
 	log := loggerForServiceProcess(task.ID)

@@ -235,6 +235,7 @@ jobs:
             scripts/lib/listingkit-immutable-image.sh
             deployments/kubernetes/listingkit-workbench/base/configmap.yaml
             deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml
+            deployments/kubernetes/listingkit-workbench/jobs/product-listing-api-schema-migrate-job.yaml
             deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml
             deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml
           sparse-checkout-cone-mode: false
@@ -328,6 +329,15 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Migrate Product Listing API schema before ListingKit rollout
+        shell: bash
+        run: |
+          set -euo pipefail
+          .workflow-tools/scripts/listingkit-schema-migrate-job.sh \
+            --manifest .workflow-tools/deployments/kubernetes/listingkit-workbench/jobs/product-listing-api-schema-migrate-job.yaml \
+            --namespace "$K8S_NAMESPACE" \
+            --image "$API_CANDIDATE_IMAGE"
 
       - name: Migrate ListingKit schema before owner exception seeding and preflight
         shell: bash

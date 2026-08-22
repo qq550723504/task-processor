@@ -2,11 +2,14 @@ package amazonlisting
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+
+	"task-processor/internal/shared/aiidentity"
 )
 
 func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) (*Task, error) {
@@ -24,6 +27,12 @@ func (s *service) CreateGenerateTask(ctx context.Context, req *GenerateRequest) 
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 		RetryCount: 0,
+	}
+	identityEnvelope, envelopeErr := aiidentity.CaptureExecutionEnvelope(ctx, task.ID, "amazon", "listing")
+	if envelopeErr == nil {
+		task.SetExecutionEnvelope(identityEnvelope)
+	} else if !errors.Is(envelopeErr, aiidentity.ErrMissingIdentity) {
+		return nil, fmt.Errorf("capture execution identity: %w", envelopeErr)
 	}
 	if err := s.repo.CreateTask(ctx, task); err != nil {
 		return nil, fmt.Errorf("failed to create task: %w", err)

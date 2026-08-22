@@ -10,9 +10,11 @@ import (
 
 func TestGovernedSceneGeneratorRejectsMissingIdentityWithoutProviderCall(t *testing.T) {
 	provider := &governedSceneProvider{}
+	recorder := &governedSceneRecorder{}
+	router := &governedSceneRouter{decision: governedSceneDecision()}
 	generator, err := NewGovernedSceneGenerator(GovernedSceneGeneratorConfig{
-		Router:   &governedSceneRouter{decision: governedSceneDecision()},
-		Recorder: &governedSceneRecorder{},
+		Router:   router,
+		Recorder: recorder,
 		Provider: provider,
 		Identity: func(context.Context) SceneAIIdentity { return SceneAIIdentity{} },
 	})
@@ -21,11 +23,23 @@ func TestGovernedSceneGeneratorRejectsMissingIdentityWithoutProviderCall(t *test
 	}
 
 	_, err = generator.GenerateScene(context.Background(), &SceneGenerationRequest{})
-	if aicapability.CategoryOf(err) != aicapability.ErrorInvalidInput {
-		t.Fatalf("error category = %q, want %q", aicapability.CategoryOf(err), aicapability.ErrorInvalidInput)
+	if aicapability.CategoryOf(err) != aicapability.ErrorIdentityIntegrity {
+		t.Fatalf("error category = %q, want %q", aicapability.CategoryOf(err), aicapability.ErrorIdentityIntegrity)
 	}
 	if provider.calls != 0 {
 		t.Fatalf("provider calls = %d, want 0", provider.calls)
+	}
+	if router.calls != 0 {
+		t.Fatalf("router calls = %d, want 0", router.calls)
+	}
+	if recorder.calls != 1 {
+		t.Fatalf("recorder calls = %d, want 1 rejected identity attempt", recorder.calls)
+	}
+	if recorder.record.Outcome != aicapability.InvocationFailed || recorder.record.ErrorCategory != aicapability.ErrorIdentityIntegrity {
+		t.Fatalf("record = %+v, want failed identity_integrity attempt", recorder.record)
+	}
+	if recorder.record.InputHash == "" || recorder.record.PromptHash == "" {
+		t.Fatalf("record hashes = %+v, want redacted request fingerprints", recorder.record)
 	}
 }
 
@@ -207,9 +221,11 @@ func (r *governedSceneRouter) Decide(_ context.Context, _ aicapability.RouteRequ
 type governedSceneRecorder struct {
 	record aicapability.InvocationRecord
 	err    error
+	calls  int
 }
 
 func (r *governedSceneRecorder) RecordInvocation(_ context.Context, record aicapability.InvocationRecord) error {
+	r.calls++
 	r.record = record
 	return r.err
 }

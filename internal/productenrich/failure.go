@@ -33,7 +33,7 @@ func NewNoRetryError(err error) error {
 }
 
 func ClassifyProcessFailure(err error) FailureDisposition {
-	if isNoRetryError(err) {
+	if isNoRetryError(err) || IsIdentityIntegrityError(err) {
 		return FailureDispositionNoRetry
 	}
 	return FailureDispositionRetryable
