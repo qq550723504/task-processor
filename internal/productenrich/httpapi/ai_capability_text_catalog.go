@@ -97,10 +97,8 @@ func (c *productEnrichTextModelCatalog) ResolveModel(ctx context.Context, routin
 	if strings.TrimSpace(configured.APIKey) == "" || strings.TrimSpace(configured.BaseURL) == "" || strings.TrimSpace(configured.Model) == "" {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
 	}
-	providerID := strings.ToLower(strings.TrimSpace(configured.APIStyle))
-	if providerID == "" || providerID == "openai" || providerID == "openai-compatible" {
-		providerID = "openai"
-	} else {
+	providerID, ok := productEnrichProviderID(configured.APIStyle)
+	if !ok {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCapabilityUnavailable, "", nil)
 	}
 	return aicapability.ModelDefinition{
@@ -131,10 +129,8 @@ func (c *productEnrichVisionModelCatalog) ResolveModel(ctx context.Context, rout
 	if strings.TrimSpace(configured.APIKey) == "" || strings.TrimSpace(configured.BaseURL) == "" || strings.TrimSpace(configured.Model) == "" {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
 	}
-	providerID := strings.ToLower(strings.TrimSpace(configured.APIStyle))
-	if providerID == "" || providerID == "openai" || providerID == "openai-compatible" {
-		providerID = "openai"
-	} else {
+	providerID, ok := productEnrichProviderID(configured.APIStyle)
+	if !ok {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCapabilityUnavailable, "", nil)
 	}
 	return aicapability.ModelDefinition{
@@ -168,10 +164,8 @@ func (c *productEnrichFusionModelCatalog) ResolveModel(ctx context.Context, rout
 	if strings.TrimSpace(configured.APIKey) == "" || strings.TrimSpace(configured.BaseURL) == "" || strings.TrimSpace(configured.Model) == "" {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
 	}
-	providerID := strings.ToLower(strings.TrimSpace(configured.APIStyle))
-	if providerID == "" || providerID == "openai" || providerID == "openai-compatible" {
-		providerID = "openai"
-	} else {
+	providerID, ok := productEnrichProviderID(configured.APIStyle)
+	if !ok {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCapabilityUnavailable, "", nil)
 	}
 	return aicapability.ModelDefinition{
@@ -193,10 +187,8 @@ func (c *productEnrichListingModelCatalog) ResolveModel(ctx context.Context, rou
 	if strings.TrimSpace(configured.APIKey) == "" || strings.TrimSpace(configured.BaseURL) == "" || strings.TrimSpace(configured.Model) == "" {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
 	}
-	providerID := strings.ToLower(strings.TrimSpace(configured.APIStyle))
-	if providerID == "" || providerID == "openai" || providerID == "openai-compatible" {
-		providerID = "openai"
-	} else {
+	providerID, ok := productEnrichProviderID(configured.APIStyle)
+	if !ok {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCapabilityUnavailable, "", nil)
 	}
 	return aicapability.ModelDefinition{
@@ -204,6 +196,21 @@ func (c *productEnrichListingModelCatalog) ResolveModel(ctx context.Context, rou
 		CredentialReference: productEnrichListingClientName, Features: []aicapability.ModelFeature{aicapability.FeatureTextGenerate},
 		Enabled: true, ConfigurationVersion: strings.TrimSpace(resolved.CacheKey),
 	}, nil
+}
+
+// productEnrichProviderID normalizes credential protocol metadata for the
+// provider-neutral ledger. Gemini credentials are still served by the
+// tenant-aware chat manager, but must retain their provider identity instead
+// of being rejected as an unsupported catalog style.
+func productEnrichProviderID(apiStyle string) (string, bool) {
+	switch style := strings.ToLower(strings.TrimSpace(apiStyle)); style {
+	case "", "openai", "openai-compatible":
+		return "openai", true
+	case "gemini":
+		return "gemini", true
+	default:
+		return "", false
+	}
 }
 
 type productEnrichListingPolicyResolver struct {

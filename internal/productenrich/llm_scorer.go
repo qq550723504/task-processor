@@ -235,9 +235,11 @@ func (s *llmScorer) scoreWithCache(
 func (s *llmScorer) scoreTextWithLLM(ctx context.Context, text string, baseScore float64) (*rawLLMScoreResult, error) {
 	if s.textGenerator != nil {
 		resolvedPrompt := resolveTextScoringPrompt(text, baseScore)
-		response, err := s.textGenerator.Generate(ctx, resolvedPrompt.Text)
+		response, err := s.retryLLMCall(ctx, s.maxRetries, func() (string, error) {
+			return s.textGenerator.Generate(ctx, resolvedPrompt.Text)
+		})
 		if err != nil {
-			return &rawLLMScoreResult{Score: baseScore}, err
+			return &rawLLMScoreResult{Score: baseScore}, fmt.Errorf("governed LLM scoring failed after %d attempts: %w", s.maxRetries, err)
 		}
 		score, err := s.parseLLMScore(response)
 		if err != nil {
@@ -278,9 +280,11 @@ func (s *llmScorer) scoreTextWithLLM(ctx context.Context, text string, baseScore
 func (s *llmScorer) scoreImageWithLLM(ctx context.Context, imageURL string, baseScore float64) (*rawLLMScoreResult, error) {
 	if s.imageAnalyzer != nil {
 		resolvedPrompt := resolveImageScoringPrompt(baseScore)
-		response, err := s.imageAnalyzer.AnalyzeImage(ctx, imageURL, resolvedPrompt.Text)
+		response, err := s.retryLLMCall(ctx, s.maxRetries, func() (string, error) {
+			return s.imageAnalyzer.AnalyzeImage(ctx, imageURL, resolvedPrompt.Text)
+		})
 		if err != nil {
-			return &rawLLMScoreResult{Score: baseScore}, err
+			return &rawLLMScoreResult{Score: baseScore}, fmt.Errorf("governed LLM image scoring failed after %d attempts: %w", s.maxRetries, err)
 		}
 		score, err := s.parseLLMScore(response)
 		if err != nil {

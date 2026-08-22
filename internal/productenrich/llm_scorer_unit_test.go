@@ -45,6 +45,22 @@ func TestLLMScorerUsesInjectedGovernedCapabilities(t *testing.T) {
 	}
 }
 
+func TestLLMScorerRetriesInjectedGovernedCapabilities(t *testing.T) {
+	text := &retryingScoringTextGenerator{responses: []retryResponse{{err: errors.New("temporary")}, {response: `{"score":91}`}}}
+	image := &retryingScoringImageAnalyzer{responses: []retryResponse{{err: errors.New("temporary")}, {response: `{"score":87}`}}}
+	scorer := NewLLMScorer(&LLMScorerConfig{TextGenerator: text, ImageAnalyzer: image, MaxRetries: 2})
+
+	if _, err := scorer.ScoreText(context.Background(), "product", 50); err != nil {
+		t.Fatalf("ScoreText: %v", err)
+	}
+	if _, err := scorer.ScoreImage(context.Background(), "image.jpg", 50); err != nil {
+		t.Fatalf("ScoreImage: %v", err)
+	}
+	if text.calls != 2 || image.calls != 2 {
+		t.Fatalf("governed retry calls = text:%d image:%d, want 2 each", text.calls, image.calls)
+	}
+}
+
 type testScoringTextGenerator struct {
 	response string
 	called   bool
@@ -58,6 +74,33 @@ func (g *testScoringTextGenerator) Generate(context.Context, string) (string, er
 type testScoringImageAnalyzer struct {
 	response string
 	called   bool
+}
+
+type retryResponse struct {
+	response string
+	err      error
+}
+
+type retryingScoringTextGenerator struct {
+	responses []retryResponse
+	calls     int
+}
+
+func (g *retryingScoringTextGenerator) Generate(context.Context, string) (string, error) {
+	response := g.responses[g.calls]
+	g.calls++
+	return response.response, response.err
+}
+
+type retryingScoringImageAnalyzer struct {
+	responses []retryResponse
+	calls     int
+}
+
+func (g *retryingScoringImageAnalyzer) AnalyzeImage(context.Context, string, string) (string, error) {
+	response := g.responses[g.calls]
+	g.calls++
+	return response.response, response.err
 }
 
 func (g *testScoringImageAnalyzer) AnalyzeImage(context.Context, string, string) (string, error) {

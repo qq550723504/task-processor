@@ -29,6 +29,47 @@ func TestProductEnrichTextCatalogResolvesFastCredential(t *testing.T) {
 	}
 }
 
+func TestProductEnrichCatalogsAcceptGeminiCredentials(t *testing.T) {
+	tests := []struct {
+		name     string
+		resolver func(*productEnrichTextResolver) aicapability.Router
+		cap      aicapability.Capability
+		op       aicapability.Operation
+		feature  aicapability.ModelFeature
+	}{
+		{"text", func(r *productEnrichTextResolver) aicapability.Router {
+			return BuildProductEnrichTextCapabilityRouter(r, []string{"tenant-a"})
+		}, aicapability.CapabilityProductEnrichText, aicapability.OperationProductEnrichTextExtract, aicapability.FeatureTextGenerate},
+		{"vision", func(r *productEnrichTextResolver) aicapability.Router {
+			return BuildProductEnrichVisionCapabilityRouter(r, []string{"tenant-a"})
+		}, aicapability.CapabilityProductEnrichVision, aicapability.OperationProductEnrichImageAnalyze, aicapability.FeatureVisionAnalyze},
+		{"listing", func(r *productEnrichTextResolver) aicapability.Router {
+			return BuildProductEnrichListingCapabilityRouter(r, []string{"tenant-a"})
+		}, aicapability.CapabilityProductEnrichListing, aicapability.OperationProductEnrichJSONGenerate, aicapability.FeatureTextGenerate},
+		{"fusion", func(r *productEnrichTextResolver) aicapability.Router {
+			return BuildProductEnrichFusionCapabilityRouter(r, []string{"tenant-a"})
+		}, aicapability.CapabilityProductEnrichFusion, aicapability.OperationProductEnrichMultimodalFuse, aicapability.FeatureTextGenerate},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resolver := &productEnrichTextResolver{resolved: &openaiclient.ResolvedClientConfig{
+				CacheKey: "gemini-config-v1",
+				Config:   &openaiclient.ClientConfig{APIKey: "secret", BaseURL: "https://example.test/v1", Model: "gemini-2.5-flash", APIStyle: "gemini"},
+			}}
+			decision, err := tt.resolver(resolver).Decide(context.Background(), aicapability.RouteRequest{
+				TenantID: "tenant-a", UserID: "user-a", Capability: tt.cap, Operation: tt.op,
+				RequiredFeatures: []aicapability.ModelFeature{tt.feature},
+			})
+			if err != nil {
+				t.Fatalf("Decide: %v", err)
+			}
+			if decision.ProviderID != "gemini" {
+				t.Fatalf("provider = %q, want gemini", decision.ProviderID)
+			}
+		})
+	}
+}
+
 func TestProductEnrichTextCatalogDeniesTenantBeforeCredentialLookup(t *testing.T) {
 	resolver := &productEnrichTextResolver{}
 	_, err := BuildProductEnrichTextCapabilityRouter(resolver, []string{"tenant-a"}).Decide(context.Background(), aicapability.RouteRequest{

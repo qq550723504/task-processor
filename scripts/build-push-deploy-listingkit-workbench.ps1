@@ -22,10 +22,13 @@ $ApiDockerfile = "deployments/docker/Dockerfile.product-listing-api"
 $PreflightDockerfile = "deployments/docker/Dockerfile.listingkit-identity-preflight"
 $UiDockerfile = "deployments/docker/Dockerfile.listingkit-ui"
 $IdentityPreflightDriver = Join-Path $PSScriptRoot "listingkit-identity-preflight-job.sh"
+$SchemaMigrationDriver = Join-Path $PSScriptRoot "listingkit-schema-migrate-job.sh"
 $LegacyIdentitySecretCleanupDriver = Join-Path $PSScriptRoot "listingkit-clean-legacy-identity-secret.sh"
 $ImmutableApiApplyDriver = Join-Path $PSScriptRoot "listingkit-apply-api-deployment.sh"
 $ImmutableUiApplyDriver = Join-Path $PSScriptRoot "listingkit-apply-ui-deployment.sh"
 $IdentityPreflightManifest = "deployments/kubernetes/listingkit-workbench/jobs/listingkit-identity-preflight-job.yaml"
+$ProductSchemaMigrationManifest = "deployments/kubernetes/listingkit-workbench/jobs/product-listing-api-schema-migrate-job.yaml"
+$ListingKitSchemaMigrationManifest = "deployments/kubernetes/listingkit-workbench/jobs/listingkit-schema-migrate-job.yaml"
 $ApiDeploymentManifest = "deployments/kubernetes/listingkit-workbench/base/product-listing-api-deployment.yaml"
 $UiDeploymentManifest = "deployments/kubernetes/listingkit-workbench/base/listingkit-ui-deployment.yaml"
 
@@ -158,7 +161,23 @@ if (-not $SkipApply) {
     $PreflightRunnerImage = Resolve-PushedImageDigest $PreflightImage
     $UiCandidateImage = Resolve-PushedImageDigest $UiImage
 
-    Invoke-Step "[7/10] Running identity preflight release gate..." {
+    Invoke-Step "[7/12] Migrating Product Listing API schema..." {
+        & $BashExecutable $SchemaMigrationDriver `
+            --manifest $ProductSchemaMigrationManifest `
+            --namespace $Namespace `
+            --image $ApiCandidateImage
+        if ($LASTEXITCODE -ne 0) { throw "product-listing API schema migration failed" }
+    }
+
+    Invoke-Step "[8/12] Migrating ListingKit schema..." {
+        & $BashExecutable $SchemaMigrationDriver `
+            --manifest $ListingKitSchemaMigrationManifest `
+            --namespace $Namespace `
+            --image $ApiCandidateImage
+        if ($LASTEXITCODE -ne 0) { throw "ListingKit schema migration failed" }
+    }
+
+    Invoke-Step "[9/12] Running identity preflight release gate..." {
         & $BashExecutable $IdentityPreflightDriver `
             --manifest $IdentityPreflightManifest `
             --namespace $Namespace `
