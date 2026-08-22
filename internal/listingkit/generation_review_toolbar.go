@@ -1,5 +1,7 @@
 package listingkit
 
+import listinggeneration "task-processor/internal/listingkit/generation"
+
 func buildGenerationReviewPreviewViewer(platform, slot, capability string, preview *AssetRenderPreviewSlot) *GenerationReviewPreviewViewer {
 	if preview == nil {
 		return nil
@@ -83,7 +85,7 @@ func buildGenerationReviewToolbarPreviewActions(queue *GenerationWorkQueue, plat
 	viewer := buildGenerationReviewPreviewViewer(platform, slot, capability, preview)
 	retryTarget := buildAssetGenerationActionTarget(queue, "retry_section_generation", &AssetGenerationRecommendedFilters{
 		QualityGrade:           "provisional",
-		QualityGradeLabel:      generationQualityGradeLabel("provisional"),
+		QualityGradeLabel:      listinggeneration.QualityGradeLabel("provisional"),
 		Platforms:              []string{platform},
 		RetryableOnly:          true,
 		RenderPreviewAvailable: true,
@@ -91,7 +93,7 @@ func buildGenerationReviewToolbarPreviewActions(queue *GenerationWorkQueue, plat
 	})
 	approveTarget := buildAssetGenerationActionTarget(queue, "approve_section_review", &AssetGenerationRecommendedFilters{
 		QualityGrade:           "ideal",
-		QualityGradeLabel:      generationQualityGradeLabel("ideal"),
+		QualityGradeLabel:      listinggeneration.QualityGradeLabel("ideal"),
 		Platforms:              []string{platform},
 		RenderPreviewAvailable: true,
 		PreviewCapability:      capability,
@@ -163,7 +165,7 @@ func buildGenerationReviewSectionWorkflowActions(queue *GenerationWorkQueue, pla
 	sectionSlot := detectSectionSlot(slots)
 	filters := &AssetGenerationRecommendedFilters{
 		QualityGrade:           "provisional",
-		QualityGradeLabel:      generationQualityGradeLabel("provisional"),
+		QualityGradeLabel:      listinggeneration.QualityGradeLabel("provisional"),
 		Platforms:              []string{platform},
 		RetryableOnly:          true,
 		RenderPreviewAvailable: true,
