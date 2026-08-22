@@ -18,9 +18,12 @@ func NewMemTaskRepository() productenrich.TaskRepository {
 	return &MemTaskRepository{tasks: make(map[string]*productenrich.Task)}
 }
 
-func (r *MemTaskRepository) CreateTask(_ context.Context, task *productenrich.Task) error {
+func (r *MemTaskRepository) CreateTask(ctx context.Context, task *productenrich.Task) error {
 	if task == nil {
 		return fmt.Errorf("task cannot be nil")
+	}
+	if !aiidentity.TenantCanCreateTask(ctx, task.PersistedExecutionEnvelope) {
+		return productenrich.ErrTaskNotFound
 	}
 
 	r.mu.Lock()

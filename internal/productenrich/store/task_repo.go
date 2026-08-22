@@ -23,6 +23,9 @@ func (r *taskRepository) CreateTask(ctx context.Context, task *productenrich.Tas
 	if task == nil {
 		return fmt.Errorf("task cannot be nil")
 	}
+	if !aiidentity.TenantCanCreateTask(ctx, task.PersistedExecutionEnvelope) {
+		return productenrich.ErrTaskNotFound
+	}
 
 	result := r.db.WithContext(ctx).Create(task)
 	if result.Error != nil {

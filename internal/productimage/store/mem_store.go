@@ -18,7 +18,10 @@ func NewMemTaskRepository() productimage.TaskRepository {
 	return &MemTaskRepository{tasks: make(map[string]*productimage.Task)}
 }
 
-func (r *MemTaskRepository) CreateTask(_ context.Context, task *productimage.Task) error {
+func (r *MemTaskRepository) CreateTask(ctx context.Context, task *productimage.Task) error {
+	if task != nil && !aiidentity.TenantCanCreateTask(ctx, task.PersistedExecutionEnvelope) {
+		return productimage.ErrTaskNotFound
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	copied := *task

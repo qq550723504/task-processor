@@ -23,6 +23,9 @@ func (r *taskRepository) CreateTask(ctx context.Context, task *productimage.Task
 	if task == nil {
 		return fmt.Errorf("task cannot be nil")
 	}
+	if !aiidentity.TenantCanCreateTask(ctx, task.PersistedExecutionEnvelope) {
+		return productimage.ErrTaskNotFound
+	}
 	result := r.db.WithContext(ctx).Create(task)
 	if result.Error != nil {
 		return fmt.Errorf("failed to create task: %w", result.Error)

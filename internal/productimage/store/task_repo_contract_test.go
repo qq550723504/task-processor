@@ -36,6 +36,35 @@ func runProductImageTenantScopeContract(t *testing.T, newRepository func(*testin
 	unscoped := context.Background()
 	tenantA := aiidentity.WithIdentity(unscoped, aiidentity.Identity{TenantID: " tenant-a "})
 
+	t.Run("CreateTask", func(t *testing.T) {
+		t.Run("matching scoped envelope", func(t *testing.T) {
+			repo := newRepository(t)
+			task := &productimage.Task{ID: "create-own", Status: productimage.TaskStatusPending, PersistedExecutionEnvelope: productImageExecutionEnvelope(" tenant-a ")}
+			require.NoError(t, repo.CreateTask(tenantA, task))
+			created, err := repo.GetTask(unscoped, task.ID)
+			require.NoError(t, err)
+			require.Equal(t, task.ID, created.ID)
+		})
+
+		for _, tc := range []struct {
+			name     string
+			envelope aiidentity.PersistedExecutionEnvelope
+			legacyID string
+		}{
+			{name: "cross tenant", envelope: productImageExecutionEnvelope("tenant-b"), legacyID: "tenant-a"},
+			{name: "absent execution envelope", legacyID: "tenant-a"},
+			{name: "partial execution envelope", envelope: aiidentity.PersistedExecutionEnvelope{ExecutionTenantID: "tenant-a"}, legacyID: "tenant-a"},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				repo := newRepository(t)
+				task := &productimage.Task{ID: "create-rejected", TenantID: tc.legacyID, Status: productimage.TaskStatusPending, PersistedExecutionEnvelope: tc.envelope}
+				require.ErrorIs(t, repo.CreateTask(tenantA, task), productimage.ErrTaskNotFound)
+				_, err := repo.GetTask(unscoped, task.ID)
+				require.ErrorIs(t, err, productimage.ErrTaskNotFound, "rejected create persisted a row")
+			})
+		}
+	})
+
 	t.Run("GetTask", func(t *testing.T) {
 		repo := seedProductImageTenantTasks(t, newRepository)
 		own, err := repo.GetTask(tenantA, "task-a")

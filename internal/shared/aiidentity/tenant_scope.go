@@ -24,3 +24,13 @@ func TenantMatchesContext(ctx context.Context, persistedTenantID string) bool {
 	tenantID := TenantIDFromContext(ctx)
 	return tenantID == "" || tenantID == NormalizePersistedTenantID(persistedTenantID)
 }
+
+// TenantCanCreateTask applies the stricter create boundary. Trusted worker and
+// migration contexts remain unscoped, while a tenant-scoped caller may create
+// only a task with a complete authoritative envelope for that tenant.
+func TenantCanCreateTask(ctx context.Context, persisted PersistedExecutionEnvelope) bool {
+	if TenantIDFromContext(ctx) == "" {
+		return true
+	}
+	return persisted.State() == PersistedEnvelopePresent && TenantMatchesContext(ctx, persisted.ExecutionTenantID)
+}

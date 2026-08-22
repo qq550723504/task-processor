@@ -36,6 +36,34 @@ func runAmazonTenantScopeContract(t *testing.T, newRepository func(*testing.T) a
 	unscoped := context.Background()
 	tenantA := aiidentity.WithIdentity(unscoped, aiidentity.Identity{TenantID: " tenant-a "})
 
+	t.Run("CreateTask", func(t *testing.T) {
+		t.Run("matching scoped envelope", func(t *testing.T) {
+			repo := newRepository(t)
+			task := &amazonlisting.Task{ID: "create-own", Status: amazonlisting.TaskStatusPending, PersistedExecutionEnvelope: amazonExecutionEnvelope(" tenant-a ")}
+			require.NoError(t, repo.CreateTask(tenantA, task))
+			created, err := repo.GetTask(unscoped, task.ID)
+			require.NoError(t, err)
+			require.Equal(t, task.ID, created.ID)
+		})
+
+		for _, tc := range []struct {
+			name     string
+			envelope aiidentity.PersistedExecutionEnvelope
+		}{
+			{name: "cross tenant", envelope: amazonExecutionEnvelope("tenant-b")},
+			{name: "absent execution envelope"},
+			{name: "partial execution envelope", envelope: aiidentity.PersistedExecutionEnvelope{ExecutionTenantID: "tenant-a"}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				repo := newRepository(t)
+				task := &amazonlisting.Task{ID: "create-rejected", Status: amazonlisting.TaskStatusPending, PersistedExecutionEnvelope: tc.envelope}
+				require.ErrorIs(t, repo.CreateTask(tenantA, task), amazonlisting.ErrTaskNotFound)
+				_, err := repo.GetTask(unscoped, task.ID)
+				require.ErrorIs(t, err, amazonlisting.ErrTaskNotFound, "rejected create persisted a row")
+			})
+		}
+	})
+
 	t.Run("GetTask", func(t *testing.T) {
 		repo := seedAmazonTenantTasks(t, newRepository)
 		own, err := repo.GetTask(tenantA, "task-a")

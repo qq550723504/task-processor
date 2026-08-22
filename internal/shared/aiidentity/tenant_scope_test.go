@@ -62,3 +62,44 @@ func TestTenantMatchesContext(t *testing.T) {
 		})
 	}
 }
+
+func TestTenantCanCreateTask(t *testing.T) {
+	scoped := WithIdentity(context.Background(), Identity{TenantID: " tenant-a ", UserID: "user-a"})
+	matching := PersistedExecutionEnvelope{
+		ExecutionIdentityVersion: CurrentEnvelopeVersion,
+		ExecutionTenantID:        " tenant-a ",
+		ExecutionUserID:          "user-a",
+		ExecutionSourcePlatform:  "amazon",
+		ExecutionSourceTaskType:  "listing",
+	}
+
+	tests := []struct {
+		name      string
+		ctx       context.Context
+		persisted PersistedExecutionEnvelope
+		want      bool
+	}{
+		{name: "unscoped worker permits legacy row", ctx: context.Background(), want: true},
+		{name: "matching scoped envelope", ctx: scoped, persisted: matching, want: true},
+		{name: "cross tenant scoped envelope", ctx: scoped, persisted: func() PersistedExecutionEnvelope {
+			value := matching
+			value.ExecutionTenantID = "tenant-b"
+			return value
+		}(), want: false},
+		{name: "absent scoped envelope", ctx: scoped, want: false},
+		{name: "partial scoped envelope", ctx: scoped, persisted: PersistedExecutionEnvelope{ExecutionTenantID: "tenant-a"}, want: false},
+		{name: "tab padded scoped envelope", ctx: scoped, persisted: func() PersistedExecutionEnvelope {
+			value := matching
+			value.ExecutionTenantID = "\ttenant-a\t"
+			return value
+		}(), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := TenantCanCreateTask(tt.ctx, tt.persisted); got != tt.want {
+				t.Fatalf("TenantCanCreateTask() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

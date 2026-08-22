@@ -20,6 +20,9 @@ func NewTaskRepository(db *gorm.DB) amazonlisting.Repository {
 }
 
 func (r *taskRepository) CreateTask(ctx context.Context, task *amazonlisting.Task) error {
+	if task != nil && !aiidentity.TenantCanCreateTask(ctx, task.PersistedExecutionEnvelope) {
+		return amazonlisting.ErrTaskNotFound
+	}
 	return r.db.WithContext(ctx).Create(task).Error
 }
 

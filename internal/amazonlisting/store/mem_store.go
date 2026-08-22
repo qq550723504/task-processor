@@ -19,7 +19,10 @@ func NewMemTaskRepository() amazonlisting.Repository {
 	return &MemTaskRepository{tasks: make(map[string]*amazonlisting.Task)}
 }
 
-func (r *MemTaskRepository) CreateTask(_ context.Context, task *amazonlisting.Task) error {
+func (r *MemTaskRepository) CreateTask(ctx context.Context, task *amazonlisting.Task) error {
+	if task != nil && !aiidentity.TenantCanCreateTask(ctx, task.PersistedExecutionEnvelope) {
+		return amazonlisting.ErrTaskNotFound
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	copied := *task
