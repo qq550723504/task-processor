@@ -155,13 +155,6 @@ func uniqueStrings(values []string) []string {
 	return result
 }
 
-func lastCategory(path []string) string {
-	if len(path) == 0 {
-		return ""
-	}
-	return path[len(path)-1]
-}
-
 func formatFloat(value float64) string {
 	if value == 0 {
 		return ""

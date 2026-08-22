@@ -29,7 +29,7 @@ func buildTemuPackage(req *GenerateRequest, canonical *canonical.Product, image 
 			"country":         req.Country,
 			"language":        req.Language,
 			"goods_type":      "normal",
-			"category_name":   lastCategory(canonical.CategoryPath),
+			"category_name":   common.LastCategory(canonical.CategoryPath),
 		},
 		CategoryDisclaimer: nil,
 	}

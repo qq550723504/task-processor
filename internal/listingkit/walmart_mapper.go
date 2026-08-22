@@ -12,7 +12,7 @@ func buildWalmartPackage(req *GenerateRequest, canonical *canonical.Product, ima
 	if canonical == nil {
 		return &WalmartPackage{ReviewNotes: []string{"canonical product is empty"}}
 	}
-	productType := lastCategory(canonical.CategoryPath)
+	productType := common.LastCategory(canonical.CategoryPath)
 	pkg := &WalmartPackage{
 		ProductName:      withBrandHint(canonical.Title, req),
 		Brand:            resolveBrand(canonical, req),
