@@ -576,6 +576,30 @@ func TestTaskStudioBatchServiceCommitsDurableProductImageReservation(t *testing.
 	}
 }
 
+func TestTaskStudioBatchServiceSettlesLegacyUsageWhenLedgerAdmissionIsDenied(t *testing.T) {
+	t.Parallel()
+
+	usage := &reservingStudioProductImageUsage{}
+	service := &taskStudioBatchService{
+		productImageUsage:        usage,
+		generationUsageAdmission: denyingStudioBatchGenerationUsageAdmission{},
+	}
+	candidate := studioBatchTaskCandidate{
+		CandidateKey:      "candidate-rollout-denied-settle",
+		ImageStrategy:     sheinImageStrategyAIGenerated,
+		SelectionSnapshot: SheinStudioSelection{ProductName: "Canvas Tote"},
+	}
+	if err := service.settleStudioBatchProductImageUsage(context.Background(), &StudioBatchRecord{TenantID: "tenant-rollout-denied"}, candidate); err != nil {
+		t.Fatalf("settleStudioBatchProductImageUsage() error = %v", err)
+	}
+	if len(usage.committed) != 0 {
+		t.Fatalf("committed reservations = %v, want none for denied rollout", usage.committed)
+	}
+	if !reflect.DeepEqual(usage.recorded, []string{"tenant-rollout-denied:1"}) {
+		t.Fatalf("legacy usage = %v, want one recorded unit", usage.recorded)
+	}
+}
+
 func TestTaskStudioBatchServiceReleasesDurableProductImageReservation(t *testing.T) {
 	t.Parallel()
 
@@ -719,6 +743,10 @@ type reservingStudioProductImageUsage struct {
 type disabledReservingStudioProductImageUsage struct {
 	reservingStudioProductImageUsage
 }
+
+type denyingStudioBatchGenerationUsageAdmission struct{}
+
+func (denyingStudioBatchGenerationUsageAdmission) AllowsGenerationUsage(string) bool { return false }
 
 func (u *disabledReservingStudioProductImageUsage) StudioProductImageUsageReservationEnabled() bool {
 	return false

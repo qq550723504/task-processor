@@ -27,6 +27,7 @@ const (
 	studioProductImageAsyncJobMetadataKey                   = "listingkit_async_job"
 	studioProductImageAsyncJobMetadataValue                 = "1"
 	studioProductImageAsyncJobRecoveryAfter                 = 30 * time.Minute
+	studioProductImageSyncReservationRecoveryAfter          = 30 * time.Minute
 )
 
 func studioProductImageUsageRolloutAllowed(h *handler, tenantID string) bool {
@@ -149,11 +150,12 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 	offset := 0
 	for {
 		events, err := h.subscriptionService.ListUsageEventPageForReconciliationWithFilter(ctx, listingsubscription.UsageLedgerReconciliationFilter{
-			TenantID: tenantID, SourceType: studioProductImageSourceType, SourceTypes: []string{studioProductImageSourceType, studioProductImageAsyncSourceType}, ReservedSourceTypes: []string{studioProductImageAsyncSourceType}, Metric: studioProductImageLedgerMetric,
+			TenantID: tenantID, SourceType: studioProductImageSourceType, SourceTypes: []string{studioProductImageSourceType, studioProductImageAsyncSourceType}, Metric: studioProductImageLedgerMetric,
 			ReservedMetadataPredicates: []listingsubscription.UsageLedgerMetadataPredicate{
 				{Key: studioProductImageReleasePendingMetadataKey, Value: "1"},
 				{Key: studioProductImageAsyncJobMetadataKey, Value: studioProductImageAsyncJobMetadataValue},
 			},
+			ReservedSourceTypes:        []string{studioProductImageAsyncSourceType, studioProductImageSourceType},
 			ReleasedMetadataPredicates: []listingsubscription.UsageLedgerMetadataPredicate{{Key: studioProductImageLegacyMirrorReleasePendingMetadataKey, Value: "1"}},
 			CommittedMetadataKey:       studioProductImageLegacyMirrorMetadataKey, CommittedSettledValue: studioProductImageLegacyMirrorSettled,
 		}, pageSize, offset)
@@ -187,6 +189,16 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 				if changed {
 					progress++
 				}
+				continue
+			}
+			if event.Status == listingsubscription.UsageEventReserved && event.SourceType == studioProductImageSourceType {
+				if !studioProductImageSyncReservationExpired(event) {
+					continue
+				}
+				if err := releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "sync_reservation_expired"); err != nil {
+					return err
+				}
+				progress++
 				continue
 			}
 			if event.Status == listingsubscription.UsageEventCommitted && event.Metadata[studioProductImageLegacyMirrorMetadataKey] != studioProductImageLegacyMirrorSettled {
@@ -298,11 +310,22 @@ func releaseStudioProductImageUsage(ctx context.Context, service *listingsubscri
 		metadata[key] = value
 	}
 	metadata[studioProductImageReleasePendingMetadataKey] = "1"
+	if metadata[studioProductImageLegacyMirrorMetadataKey] == studioProductImageLegacyMirrorSettled {
+		metadata[studioProductImageLegacyMirrorReleasePendingMetadataKey] = "1"
+	}
 	if _, err := service.UpdateUsageMetadata(ctx, event.EventID, metadata); err != nil {
 		return err
 	}
 	_, err = service.ReleaseUsage(ctx, event.EventID, strings.TrimSpace(reason))
 	return err
+}
+
+func studioProductImageSyncReservationExpired(event listingsubscription.UsageEvent) bool {
+	lastActivity := event.OccurredAt
+	if lastActivity.IsZero() {
+		lastActivity = event.CreatedAt
+	}
+	return !lastActivity.IsZero() && time.Since(lastActivity) >= studioProductImageSyncReservationRecoveryAfter
 }
 
 func commitStudioProductImageUsage(ctx context.Context, service *listingsubscription.Service, eventID string) error {

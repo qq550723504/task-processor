@@ -170,41 +170,22 @@ func (s *taskStudioBatchService) settleStudioBatchProductImageUsage(ctx context.
 	}
 	var err error
 	settlementClaimed := false
-	if reservation, ok := s.productImageUsageReservation(); ok {
-		tenantID := studioBatchTaskGateTenantID(ctx, batch)
-		if strings.TrimSpace(tenantID) == "" {
-			return fmt.Errorf("tenant id is required")
-		}
-		reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
-		if reservationID == "" {
-			return fmt.Errorf("product image usage reservation id is required")
-		}
-		err = reservation.CommitProductImageUsage(ctx, tenantID, reservationID)
-	} else {
-		quantity := studioBatchTaskProductImageGenerationCount(candidate.SelectionSnapshot)
-		if _, idempotent := s.productImageUsage.(StudioProductImageUsageIdempotent); idempotent {
-			// The operation identity is durable in the legacy counter repository,
-			// so a crash before the link marker is persisted can be retried safely.
-			err = s.recordStudioBatchProductImageUsageOnce(ctx, batch, quantity, candidate)
+	if s.studioBatchProductImageUsageLedgerAdmission(ctx, batch) {
+		if reservation, ok := s.productImageUsageReservation(); ok {
+			tenantID := studioBatchTaskGateTenantID(ctx, batch)
+			if strings.TrimSpace(tenantID) == "" {
+				return fmt.Errorf("tenant id is required")
+			}
+			reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
+			if reservationID == "" {
+				return fmt.Errorf("product image usage reservation id is required")
+			}
+			err = reservation.CommitProductImageUsage(ctx, tenantID, reservationID)
 		} else {
-			// Keep the atomic claim fallback for older adapters that do not expose
-			// an idempotent counter operation.
-			if s.batchTaskLinkRepo != nil {
-				settlementClaimed, err = s.markStudioBatchProductImageUsageSettled(ctx, candidate)
-				if err != nil {
-					return err
-				}
-				if !settlementClaimed {
-					return nil
-				}
-			}
-			err = s.recordStudioBatchProductImageUsage(ctx, batch, quantity)
-			if err != nil && s.batchTaskLinkRepo != nil {
-				if clearErr := s.clearStudioBatchProductImageUsageSettled(ctx, candidate); clearErr != nil {
-					err = errors.Join(err, fmt.Errorf("clear legacy settlement claim: %w", clearErr))
-				}
-			}
+			settlementClaimed, err = s.settleLegacyStudioBatchProductImageUsage(ctx, batch, candidate)
 		}
+	} else {
+		settlementClaimed, err = s.settleLegacyStudioBatchProductImageUsage(ctx, batch, candidate)
 	}
 	if err != nil {
 		return err
@@ -214,6 +195,34 @@ func (s *taskStudioBatchService) settleStudioBatchProductImageUsage(ctx context.
 	}
 	_, err = s.markStudioBatchProductImageUsageSettled(ctx, candidate)
 	return err
+}
+
+func (s *taskStudioBatchService) settleLegacyStudioBatchProductImageUsage(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate) (bool, error) {
+	quantity := studioBatchTaskProductImageGenerationCount(candidate.SelectionSnapshot)
+	if _, idempotent := s.productImageUsage.(StudioProductImageUsageIdempotent); idempotent {
+		// The operation identity is durable in the legacy counter repository,
+		// so a crash before the link marker is persisted can be retried safely.
+		return false, s.recordStudioBatchProductImageUsageOnce(ctx, batch, quantity, candidate)
+	}
+	// Keep the atomic claim fallback for older adapters that do not expose
+	// an idempotent counter operation.
+	if s.batchTaskLinkRepo != nil {
+		claimed, err := s.markStudioBatchProductImageUsageSettled(ctx, candidate)
+		if err != nil {
+			return false, err
+		}
+		if !claimed {
+			return false, nil
+		}
+		if err := s.recordStudioBatchProductImageUsage(ctx, batch, quantity); err != nil {
+			if clearErr := s.clearStudioBatchProductImageUsageSettled(ctx, candidate); clearErr != nil {
+				err = errors.Join(err, fmt.Errorf("clear legacy settlement claim: %w", clearErr))
+			}
+			return true, err
+		}
+		return true, nil
+	}
+	return false, s.recordStudioBatchProductImageUsage(ctx, batch, quantity)
 }
 
 func (s *taskStudioBatchService) studioBatchProductImageUsageAlreadySettled(ctx context.Context, candidate studioBatchTaskCandidate) (bool, error) {
@@ -266,7 +275,7 @@ func (s *taskStudioBatchService) authorizeStudioBatchProductImageUsage(ctx conte
 	if strings.TrimSpace(tenantID) == "" {
 		return fmt.Errorf("tenant id is required")
 	}
-	ledgerAdmission := s.generationUsageAdmission == nil || s.generationUsageAdmission.AllowsGenerationUsage(tenantID)
+	ledgerAdmission := s.studioBatchProductImageUsageLedgerAdmission(ctx, batch)
 	if ledgerAdmission {
 		if reservation, ok := s.productImageUsageReservation(); ok {
 			reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
@@ -277,6 +286,13 @@ func (s *taskStudioBatchService) authorizeStudioBatchProductImageUsage(ctx conte
 		}
 	}
 	return s.productImageUsage.AuthorizeProductImageUsage(ctx, tenantID, quantity)
+}
+
+func (s *taskStudioBatchService) studioBatchProductImageUsageLedgerAdmission(ctx context.Context, batch *StudioBatchRecord) bool {
+	if s == nil || s.generationUsageAdmission == nil {
+		return true
+	}
+	return s.generationUsageAdmission.AllowsGenerationUsage(studioBatchTaskGateTenantID(ctx, batch))
 }
 
 func (s *taskStudioBatchService) productImageUsageReservation() (StudioProductImageUsageReservation, bool) {

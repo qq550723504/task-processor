@@ -244,6 +244,73 @@ func TestReconcileStudioProductImageUsageRecoversAbandonedAsyncJob(t *testing.T)
 	}
 }
 
+func TestReconcileStudioProductImageUsageReleasesExpiredSynchronousReservation(t *testing.T) {
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-sync-recovery")
+	svc := newStudioProductImageAdmissionService(t, "tenant-sync-recovery", 2)
+	old := time.Now().UTC().Add(-2 * time.Hour)
+	if _, err := svc.RecordUsage(ctx, "tenant-sync-recovery", listingsubscription.ModuleStudio, "product_image_jobs", 1); err != nil {
+		t.Fatalf("RecordUsage() error = %v", err)
+	}
+	reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID: "tenant-sync-recovery", ModuleCode: listingsubscription.ModuleStudio,
+		Metric: studioProductImageLedgerMetric, LegacyUsageMetric: "product_image_jobs", Quantity: 1, PeriodKey: old.Format("2006-01"),
+		SourceType: studioProductImageSourceType, SourceID: "sync-recovery-request",
+		IdempotencyKey: "listingkit:api:studio_product_image:sync-recovery-request", OccurredAt: old,
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	if _, err := svc.UpdateUsageMetadata(ctx, reserved.Event.EventID, map[string]string{studioProductImageLegacyMirrorMetadataKey: studioProductImageLegacyMirrorSettled}); err != nil {
+		t.Fatalf("UpdateUsageMetadata() error = %v", err)
+	}
+	h := &handler{subscriptionDependencies: subscriptionDependencies{subscriptionService: svc}}
+	if err := h.reconcileStudioProductImageUsageReleases(ctx, "tenant-sync-recovery"); err != nil {
+		t.Fatalf("reconcile error = %v", err)
+	}
+	event, err := svc.GetUsageEventByID(ctx, reserved.Event.EventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	if event.Status != listingsubscription.UsageEventReleased {
+		t.Fatalf("event status = %q, want released expired synchronous reservation", event.Status)
+	}
+	summary, err := svc.GetSummary(ctx, "tenant-sync-recovery")
+	if err != nil {
+		t.Fatalf("GetSummary() error = %v", err)
+	}
+	for _, entitlement := range summary.Entitlements {
+		if entitlement.Module.Code == listingsubscription.ModuleStudio && entitlement.Used["product_image_jobs"] != 0 {
+			t.Fatalf("legacy product_image_jobs usage = %d, want released mirror", entitlement.Used["product_image_jobs"])
+		}
+	}
+}
+
+func TestReconcileStudioProductImageUsageKeepsActiveSynchronousReservation(t *testing.T) {
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-active-sync-recovery")
+	svc := newStudioProductImageAdmissionService(t, "tenant-active-sync-recovery", 2)
+	now := time.Now().UTC()
+	reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID: "tenant-active-sync-recovery", ModuleCode: listingsubscription.ModuleStudio,
+		Metric: studioProductImageLedgerMetric, LegacyUsageMetric: "product_image_jobs", Quantity: 1,
+		PeriodKey: now.Format("2006-01"), SourceType: studioProductImageSourceType,
+		SourceID: "active-sync-request", IdempotencyKey: "listingkit:api:studio_product_image:active-sync-request", OccurredAt: now,
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	h := &handler{subscriptionDependencies: subscriptionDependencies{subscriptionService: svc}}
+	if err := h.reconcileStudioProductImageUsageReleases(ctx, "tenant-active-sync-recovery"); err != nil {
+		t.Fatalf("reconcile error = %v", err)
+	}
+	event, err := svc.GetUsageEventByID(ctx, reserved.Event.EventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	if event.Status != listingsubscription.UsageEventReserved {
+		t.Fatalf("event status = %q, want active reservation retained", event.Status)
+	}
+}
+
 func TestReconcileStudioProductImageUsagePagesPastFullPageOfActiveAsyncReservations(t *testing.T) {
 	repo := listingsubscription.NewMemRepository()
 	baseLedger := listingsubscription.NewMemUsageLedger(repo)
