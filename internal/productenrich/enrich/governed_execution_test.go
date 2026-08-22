@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"task-processor/internal/aicapability"
+	productenrich "task-processor/internal/productenrich"
 	"task-processor/internal/shared/aiidentity"
 )
 
@@ -70,6 +71,94 @@ func TestPreparedExecutionRecorderFailureKeepsProviderResultAndCallsCallback(t *
 	if callbackCalls != 1 {
 		t.Fatalf("callback calls = %d, want 1", callbackCalls)
 	}
+}
+
+func TestPreparedExecutionUsesDynamicScoringPromptIdentityForCacheAndAudit(t *testing.T) {
+	recorder := &preparedExecutionRecorder{}
+	manager := &preparedScoringManager{}
+	generator := &governedTextGenerator{
+		manager: manager, planner: preparedScoringPlanner{}, recorder: recorder,
+		capability: aicapability.CapabilityProductEnrichText, operation: aicapability.OperationProductEnrichTextQualityScore,
+		requiredFeature: aicapability.FeatureTextGenerate,
+		promptKey:       "stale-key", promptVersion: "v1", promptScope: "stale-scope",
+	}
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+	execution, err := generator.PrepareText(ctx, "rendered prompt", productenrich.ScorePromptIdentity{
+		PromptKey: "productenrich.llm_scorer.text_scoring", PromptVersion: "prompt-v17", PromptScope: "product_enrich",
+	})
+	if err != nil {
+		t.Fatalf("PrepareText: %v", err)
+	}
+
+	identity := execution.ScoreCacheIdentity("80", "raw-input-hash")
+	if identity.PromptKey != "productenrich.llm_scorer.text_scoring" || identity.PromptVersion != "prompt-v17" || identity.PromptScope != "product_enrich" {
+		t.Fatalf("cache prompt identity = %+v", identity)
+	}
+	if _, err := execution.Invoke(ctx, aicapability.CacheStatusMiss); err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if err := execution.RecordCacheHit(ctx, "91"); err != nil {
+		t.Fatalf("RecordCacheHit: %v", err)
+	}
+	if len(recorder.records) != 2 {
+		t.Fatalf("records = %d, want miss and hit", len(recorder.records))
+	}
+	miss, hit := recorder.records[0], recorder.records[1]
+	if miss.CacheStatus != aicapability.CacheStatusMiss || hit.CacheStatus != aicapability.CacheStatusHit {
+		t.Fatalf("cache statuses = %q/%q", miss.CacheStatus, hit.CacheStatus)
+	}
+	if miss.PromptVersion != "prompt-v17" || hit.PromptVersion != "prompt-v17" || hit.PromptKey != "productenrich.llm_scorer.text_scoring" || hit.PromptScope != "product_enrich" {
+		t.Fatalf("miss/hit prompt metadata = %+v / %+v", miss, hit)
+	}
+	if hit.RouteMode != aicapability.RoutingModeActive || hit.RouteOutcome != aicapability.RouteOutcomeActive || hit.ProviderID != "openai" || hit.ModelID != "score-model" || hit.RoutingKey != "fast" {
+		t.Fatalf("cache-hit route metadata = %+v", hit)
+	}
+	if hit.PromptTokens != 0 || hit.CompletionTokens != 0 || hit.TotalTokens != 0 || hit.EstimatedCostMicros != 0 {
+		t.Fatalf("cache-hit usage must be zero: %+v", hit)
+	}
+	if manager.providerCalls != 1 {
+		t.Fatalf("provider calls = %d, want only the miss invocation", manager.providerCalls)
+	}
+}
+
+type preparedScoringPlanner struct{}
+
+func (preparedScoringPlanner) Plan(context.Context, aicapability.RouteRequest) (aicapability.ExecutionPlan, error) {
+	return aicapability.ExecutionPlan{
+		Mode: aicapability.RoutingModeActive, RouteOutcome: aicapability.RouteOutcomeActive,
+		Decision: aicapability.RouteDecision{
+			Capability: aicapability.CapabilityProductEnrichText, Operation: aicapability.OperationProductEnrichTextQualityScore,
+			ProviderID: "openai", ModelID: "score-model", RoutingKey: "fast", CredentialReference: "fast",
+			PolicyVersion: "policy-v1", ConfigurationVersion: "config-v1",
+		},
+	}, nil
+}
+
+type preparedScoringManager struct {
+	providerCalls int
+}
+
+func (*preparedScoringManager) GetClient(string) (productenrich.LLMClient, error) {
+	return nil, errors.New("legacy lookup not expected")
+}
+
+func (*preparedScoringManager) GetDefaultClient() productenrich.LLMClient { return nil }
+
+func (m *preparedScoringManager) GetClientWithRoute(context.Context, string, productenrich.LLMClientRoute) (productenrich.LLMClient, error) {
+	return preparedScoringClient{manager: m}, nil
+}
+
+type preparedScoringClient struct {
+	manager *preparedScoringManager
+}
+
+func (c preparedScoringClient) Generate(context.Context, string) (string, error) {
+	c.manager.providerCalls++
+	return `{"score":91}`, nil
+}
+
+func (preparedScoringClient) AnalyzeImage(context.Context, string, string) (string, error) {
+	return "", errors.New("image call not expected")
 }
 
 type preparedExecutionRecorder struct {

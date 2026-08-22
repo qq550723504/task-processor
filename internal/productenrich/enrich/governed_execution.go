@@ -189,6 +189,67 @@ func (e *preparedExecution) invoke(ctx context.Context, cacheStatus aicapability
 	return response, nil
 }
 
+func (e *preparedExecution) Invoke(ctx context.Context, cacheStatus aicapability.CacheStatus) (string, error) {
+	return e.invoke(ctx, cacheStatus)
+}
+
+func (e *preparedExecution) RecordCacheHit(ctx context.Context, cachedScore string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if e == nil {
+		return aicapability.NewError(aicapability.ErrorInvalidInput, "", nil)
+	}
+	e.record(ctx, e.clock()(), cachedScore, nil, false, aicapability.CacheStatusHit)
+	return nil
+}
+
+func (e *preparedExecution) ScoreCacheIdentity(baseScore, inputHash string) productenrich.ScoreCacheIdentity {
+	if e == nil {
+		return productenrich.ScoreCacheIdentity{}
+	}
+	capability := e.capability
+	if capability == "" {
+		capability = e.decision.Capability
+	}
+	return productenrich.ScoreCacheIdentity{
+		Version:  productenrich.ScoreCacheIdentityVersion,
+		TenantID: e.identity.TenantID, Capability: capability, Operation: e.operationName(),
+		RouteMode: e.plan.Mode, RouteOutcome: e.plan.RouteOutcome,
+		ProviderID: e.decision.ProviderID, ModelID: e.decision.ModelID, RoutingKey: e.decision.RoutingKey,
+		PolicyVersion: e.decision.PolicyVersion, ConfigurationVersion: e.decision.ConfigurationVersion,
+		PromptKey: e.promptKey, PromptVersion: e.promptVersion, PromptScope: e.promptScope,
+		BaseScore: baseScore, InputHash: inputHash,
+	}
+}
+
+func (e *preparedExecution) setScorePromptIdentity(identity productenrich.ScorePromptIdentity) {
+	if e == nil {
+		return
+	}
+	e.promptKey = strings.TrimSpace(identity.PromptKey)
+	e.promptVersion = strings.TrimSpace(identity.PromptVersion)
+	e.promptScope = strings.TrimSpace(identity.PromptScope)
+}
+
+func (g *governedTextGenerator) PrepareText(ctx context.Context, prompt string, identity productenrich.ScorePromptIdentity) (productenrich.GovernedScoreExecution, error) {
+	execution, err := g.prepare(ctx, prompt)
+	if err != nil {
+		return nil, err
+	}
+	execution.setScorePromptIdentity(identity)
+	return execution, nil
+}
+
+func (a *governedImageAnalyzer) PrepareImage(ctx context.Context, imageURL, prompt string, identity productenrich.ScorePromptIdentity) (productenrich.GovernedScoreExecution, error) {
+	execution, err := a.prepare(ctx, imageURL, prompt)
+	if err != nil {
+		return nil, err
+	}
+	execution.setScorePromptIdentity(identity)
+	return execution, nil
+}
+
 func (e *preparedExecution) recordRejected(ctx context.Context, err error, routeErr bool) {
 	e.record(ctx, e.clock()(), "", err, routeErr, aicapability.CacheStatusNotApplicable)
 }
@@ -251,3 +312,7 @@ func (e *preparedExecution) idFactory() func() string {
 	}
 	return uuid.NewString
 }
+
+var _ productenrich.GovernedScoreExecution = (*preparedExecution)(nil)
+var _ productenrich.TextExecutionPreparer = (*governedTextGenerator)(nil)
+var _ productenrich.ImageExecutionPreparer = (*governedImageAnalyzer)(nil)

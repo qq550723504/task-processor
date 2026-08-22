@@ -3,12 +3,14 @@ package productenrich
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
 	"time"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/jsonx"
 
@@ -129,6 +131,17 @@ func (s *llmScorer) scoreTextResult(ctx context.Context, text string, baseScore 
 	if text == "" {
 		return &llmScoreResult{Score: baseScore}, nil
 	}
+	resolvedPrompt := resolveTextScoringPrompt(text, baseScore)
+	if preparer, ok := s.textGenerator.(TextExecutionPreparer); ok {
+		if err := ctx.Err(); err != nil {
+			return &llmScoreResult{Score: baseScore}, err
+		}
+		prepared, err := preparer.PrepareText(ctx, resolvedPrompt.Text, scorePromptIdentity(resolvedPrompt))
+		if err != nil {
+			return &llmScoreResult{Score: baseScore}, err
+		}
+		return s.scoreGoverned(ctx, baseScore, text, prepared, resolvedPrompt, "text")
+	}
 	var getCached func() (*CachedLLMScore, bool)
 	var setCached func(*CachedLLMScore) error
 	if s.scoreCache != nil {
@@ -156,6 +169,17 @@ func (s *llmScorer) scoreImageResult(ctx context.Context, imageURL string, baseS
 	if imageURL == "" {
 		return &llmScoreResult{Score: baseScore}, nil
 	}
+	resolvedPrompt := resolveImageScoringPrompt(baseScore)
+	if preparer, ok := s.imageAnalyzer.(ImageExecutionPreparer); ok {
+		if err := ctx.Err(); err != nil {
+			return &llmScoreResult{Score: baseScore}, err
+		}
+		prepared, err := preparer.PrepareImage(ctx, imageURL, resolvedPrompt.Text, scorePromptIdentity(resolvedPrompt))
+		if err != nil {
+			return &llmScoreResult{Score: baseScore}, err
+		}
+		return s.scoreGoverned(ctx, baseScore, imageURL, prepared, resolvedPrompt, "image")
+	}
 	var getCached func() (*CachedLLMScore, bool)
 	var setCached func(*CachedLLMScore) error
 	if s.scoreCache != nil {
@@ -168,6 +192,64 @@ func (s *llmScorer) scoreImageResult(ctx context.Context, imageURL string, baseS
 		func() (*rawLLMScoreResult, error) { return s.scoreImageWithLLM(ctx, imageURL, baseScore) },
 		"image",
 	)
+}
+
+func (s *llmScorer) scoreGoverned(
+	ctx context.Context,
+	baseScore float64,
+	rawInput string,
+	prepared GovernedScoreExecution,
+	resolvedPrompt resolvedScorerPrompt,
+	label string,
+) (*llmScoreResult, error) {
+	promptMetadata := scorerPromptObservability(resolvedPrompt)
+	cacheIdentity := prepared.ScoreCacheIdentity(formatScoreCacheBase(baseScore), hashScoreCacheInput(rawInput))
+	if s.scoreCache != nil {
+		if cachedResult, found := s.scoreCache.GetGovernedScoreResult(ctx, cacheIdentity); found && cachedResult != nil {
+			if err := prepared.RecordCacheHit(ctx, strconv.FormatFloat(cachedResult.Score, 'g', -1, 64)); err != nil {
+				logrus.WithError(err).Warnf("failed to record governed %s score cache hit", label)
+			}
+			return &llmScoreResult{Score: s.combineScores(baseScore, cachedResult.Score), Prompt: promptMetadata}, nil
+		}
+	}
+
+	response, err := prepared.Invoke(ctx, aicapability.CacheStatusMiss)
+	if err != nil {
+		logrus.WithError(err).Warnf("governed LLM %s scoring failed, using base score", label)
+		return &llmScoreResult{Score: baseScore}, err
+	}
+	score, err := s.parseLLMScore(response)
+	if err != nil {
+		return &llmScoreResult{Score: baseScore}, err
+	}
+	if s.scoreCache != nil {
+		if err := s.scoreCache.SetGovernedScoreResult(ctx, cacheIdentity, &CachedLLMScore{Score: score, Prompt: promptMetadata}, s.cacheTTL); err != nil {
+			logrus.WithError(err).Warnf("failed to cache governed %s score", label)
+		}
+	}
+	return &llmScoreResult{Score: s.combineScores(baseScore, score), Prompt: promptMetadata}, nil
+}
+
+func scorePromptIdentity(resolvedPrompt resolvedScorerPrompt) ScorePromptIdentity {
+	return ScorePromptIdentity{
+		PromptKey: resolvedPrompt.Key, PromptVersion: resolvedPrompt.Version, PromptScope: "product_enrich",
+	}
+}
+
+func scorerPromptObservability(resolvedPrompt resolvedScorerPrompt) *PromptObservability {
+	return &PromptObservability{
+		PromptRef: resolvedPrompt.Key, PromptKey: resolvedPrompt.Key,
+		PromptSource: resolvedPrompt.Source, PromptVersion: resolvedPrompt.Version,
+	}
+}
+
+func formatScoreCacheBase(baseScore float64) string {
+	return strconv.FormatFloat(baseScore, 'g', -1, 64)
+}
+
+func hashScoreCacheInput(input string) string {
+	digest := sha256.Sum256([]byte(input))
+	return fmt.Sprintf("%x", digest[:])
 }
 
 // scoreWithCache 通用的缓存+LLM评分流程

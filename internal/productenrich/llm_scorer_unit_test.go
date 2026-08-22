@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/prompt"
+	"task-processor/internal/shared/aiidentity"
 )
 
 func newTestLLMScorer(llmResp string, llmErr error) *llmScorer {
@@ -310,19 +312,49 @@ func TestScoreWithCache_NilCache_CallsLLMDirectly(t *testing.T) {
 // --- mockLLMScoreCache 用于测试缓存命中路径 ---
 
 type mockLLMScoreCache struct {
-	textScores   map[string]float64
-	imageScores  map[string]float64
-	textResults  map[string]*CachedLLMScore
-	imageResults map[string]*CachedLLMScore
+	textScores      map[string]float64
+	imageScores     map[string]float64
+	textResults     map[string]*CachedLLMScore
+	imageResults    map[string]*CachedLLMScore
+	governedResults map[string]*CachedLLMScore
+	governedSetErr  error
 }
 
 func newMockLLMScoreCache() *mockLLMScoreCache {
 	return &mockLLMScoreCache{
-		textScores:   make(map[string]float64),
-		imageScores:  make(map[string]float64),
-		textResults:  make(map[string]*CachedLLMScore),
-		imageResults: make(map[string]*CachedLLMScore),
+		textScores:      make(map[string]float64),
+		imageScores:     make(map[string]float64),
+		textResults:     make(map[string]*CachedLLMScore),
+		imageResults:    make(map[string]*CachedLLMScore),
+		governedResults: make(map[string]*CachedLLMScore),
 	}
+}
+
+func (m *mockLLMScoreCache) GetGovernedScoreResult(_ context.Context, identity ScoreCacheIdentity) (*CachedLLMScore, bool) {
+	result, ok := m.governedResults[identity.Key()]
+	if !ok || result == nil {
+		return nil, false
+	}
+	return cloneCachedLLMScore(result), true
+}
+
+func (m *mockLLMScoreCache) SetGovernedScoreResult(_ context.Context, identity ScoreCacheIdentity, result *CachedLLMScore, _ time.Duration) error {
+	if m.governedSetErr != nil {
+		return m.governedSetErr
+	}
+	m.governedResults[identity.Key()] = cloneCachedLLMScore(result)
+	return nil
+}
+
+func cloneCachedLLMScore(result *CachedLLMScore) *CachedLLMScore {
+	if result == nil {
+		return nil
+	}
+	cloned := &CachedLLMScore{Score: result.Score}
+	if result.Prompt != nil {
+		cloned.Prompt = result.Prompt.Clone()
+	}
+	return cloned
 }
 
 func (m *mockLLMScoreCache) GetTextScore(_ context.Context, text string) (float64, bool) {
@@ -440,6 +472,215 @@ func TestScoreText_CacheMiss_StoresResult(t *testing.T) {
 	if result.Score != 75 {
 		t.Fatalf("cached score = %.1f, want 75", result.Score)
 	}
+}
+
+func TestGovernedScoreTextPartitionsSameInputByTenant(t *testing.T) {
+	cache := newMockLLMScoreCache()
+	generator := &governedScoringTextGenerator{responses: map[string]string{
+		"tenant-a": `{"score":90}`,
+		"tenant-b": `{"score":70}`,
+	}}
+	scorer := NewLLMScorer(&LLMScorerConfig{TextGenerator: generator, ScoreCache: cache, FallbackWeight: 0.3})
+	text := "identical raw product text"
+
+	tenantA := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+	tenantB := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-b", UserID: "user-b"})
+	scoreA, err := scorer.ScoreText(tenantA, text, 50)
+	if err != nil {
+		t.Fatalf("tenant A ScoreText: %v", err)
+	}
+	scoreB, err := scorer.ScoreText(tenantB, text, 50)
+	if err != nil {
+		t.Fatalf("tenant B ScoreText: %v", err)
+	}
+
+	if scoreA == scoreB {
+		t.Fatalf("scores = %.1f/%.1f, want tenant-specific provider results", scoreA, scoreB)
+	}
+	if generator.invocations["tenant-a"] != 1 || generator.invocations["tenant-b"] != 1 {
+		t.Fatalf("invocations = %+v, want one per tenant", generator.invocations)
+	}
+	if len(cache.governedResults) != 2 {
+		t.Fatalf("governed cache entries = %d, want 2", len(cache.governedResults))
+	}
+	if generator.rawCalls != 0 {
+		t.Fatalf("raw Generate calls = %d, want 0", generator.rawCalls)
+	}
+}
+
+func TestGovernedScoreTextCacheHitPreparesRouteAndRecordsHit(t *testing.T) {
+	cache := newMockLLMScoreCache()
+	generator := &governedScoringTextGenerator{responses: map[string]string{"tenant-a": `{"score":90}`}}
+	scorer := NewLLMScorer(&LLMScorerConfig{TextGenerator: generator, ScoreCache: cache, FallbackWeight: 0.3})
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+
+	first, err := scorer.ScoreText(ctx, "same input", 50)
+	if err != nil {
+		t.Fatalf("first ScoreText: %v", err)
+	}
+	second, err := scorer.ScoreText(ctx, "same input", 50)
+	if err != nil {
+		t.Fatalf("second ScoreText: %v", err)
+	}
+
+	if first != second || generator.prepareCalls != 2 || generator.invocations["tenant-a"] != 1 {
+		t.Fatalf("scores/prepares/invocations = %.1f/%.1f/%d/%d", first, second, generator.prepareCalls, generator.invocations["tenant-a"])
+	}
+	if len(generator.cacheHits) != 1 || generator.cacheHits[0] != "90" {
+		t.Fatalf("cache hits = %+v, want [90]", generator.cacheHits)
+	}
+	if generator.promptIdentities[0].PromptKey != prompt.KProductEnrichLlmScorerTextScoring ||
+		generator.promptIdentities[0].PromptVersion != "default" ||
+		generator.promptIdentities[0].PromptScope != "product_enrich" {
+		t.Fatalf("resolved prompt identity = %+v", generator.promptIdentities[0])
+	}
+}
+
+func TestGovernedScoreTextCacheWriteFailureKeepsProviderResult(t *testing.T) {
+	cache := newMockLLMScoreCache()
+	cache.governedSetErr = errors.New("cache unavailable")
+	generator := &governedScoringTextGenerator{responses: map[string]string{"tenant-a": `{"score":90}`}}
+	scorer := NewLLMScorer(&LLMScorerConfig{TextGenerator: generator, ScoreCache: cache, FallbackWeight: 0.3})
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+
+	score, err := scorer.ScoreText(ctx, "same input", 50)
+
+	if err != nil || score != 62 {
+		t.Fatalf("ScoreText = %.1f, %v, want successful provider score 62", score, err)
+	}
+	if generator.invocations["tenant-a"] != 1 {
+		t.Fatalf("provider invocations = %d, want 1", generator.invocations["tenant-a"])
+	}
+}
+
+func TestGovernedScoreTextCacheHitRecordFailureKeepsCachedResult(t *testing.T) {
+	cache := newMockLLMScoreCache()
+	generator := &governedScoringTextGenerator{responses: map[string]string{"tenant-a": `{"score":90}`}}
+	scorer := NewLLMScorer(&LLMScorerConfig{TextGenerator: generator, ScoreCache: cache, FallbackWeight: 0.3})
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+	if _, err := scorer.ScoreText(ctx, "same input", 50); err != nil {
+		t.Fatalf("prime cache: %v", err)
+	}
+	generator.cacheHitErr = errors.New("recorder unavailable")
+
+	score, err := scorer.ScoreText(ctx, "same input", 50)
+
+	if err != nil || score != 62 {
+		t.Fatalf("cached ScoreText = %.1f, %v, want cached score 62", score, err)
+	}
+	if generator.invocations["tenant-a"] != 1 {
+		t.Fatalf("provider invocations = %d, want provider skipped on hit", generator.invocations["tenant-a"])
+	}
+}
+
+func TestGovernedScoreImageUsesPreparedVersionedCache(t *testing.T) {
+	cache := newMockLLMScoreCache()
+	analyzer := &governedScoringImageAnalyzer{response: `{"score":88}`}
+	scorer := NewLLMScorer(&LLMScorerConfig{ImageAnalyzer: analyzer, ScoreCache: cache, FallbackWeight: 0.3})
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+
+	first, err := scorer.ScoreImage(ctx, "https://example.test/product.jpg", 60)
+	if err != nil {
+		t.Fatalf("first ScoreImage: %v", err)
+	}
+	second, err := scorer.ScoreImage(ctx, "https://example.test/product.jpg", 60)
+	if err != nil {
+		t.Fatalf("second ScoreImage: %v", err)
+	}
+
+	if first != second || analyzer.prepareCalls != 2 || analyzer.invokeCalls != 1 || analyzer.cacheHitCalls != 1 {
+		t.Fatalf("scores/prepares/invokes/hits = %.1f/%.1f/%d/%d/%d", first, second, analyzer.prepareCalls, analyzer.invokeCalls, analyzer.cacheHitCalls)
+	}
+	if analyzer.promptIdentity.PromptKey != prompt.KProductEnrichLlmScorerImageScoring || analyzer.promptIdentity.PromptVersion != "default" {
+		t.Fatalf("image prompt identity = %+v", analyzer.promptIdentity)
+	}
+}
+
+type governedScoringTextGenerator struct {
+	responses        map[string]string
+	prepareCalls     int
+	rawCalls         int
+	invocations      map[string]int
+	cacheHits        []string
+	cacheHitErr      error
+	promptIdentities []ScorePromptIdentity
+}
+
+func (g *governedScoringTextGenerator) Generate(context.Context, string) (string, error) {
+	g.rawCalls++
+	return "", errors.New("raw Generate must not be used for governed scoring")
+}
+
+func (g *governedScoringTextGenerator) PrepareText(ctx context.Context, _ string, promptIdentity ScorePromptIdentity) (GovernedScoreExecution, error) {
+	g.prepareCalls++
+	g.promptIdentities = append(g.promptIdentities, promptIdentity)
+	if g.invocations == nil {
+		g.invocations = make(map[string]int)
+	}
+	tenantID := aiidentity.FromContext(ctx).TenantID
+	return &governedScoringExecution{
+		tenantID: tenantID, promptIdentity: promptIdentity, response: g.responses[tenantID],
+		onInvoke:    func() { g.invocations[tenantID]++ },
+		onCacheHit:  func(value string) { g.cacheHits = append(g.cacheHits, value) },
+		cacheHitErr: g.cacheHitErr,
+	}, nil
+}
+
+type governedScoringImageAnalyzer struct {
+	response       string
+	prepareCalls   int
+	invokeCalls    int
+	cacheHitCalls  int
+	promptIdentity ScorePromptIdentity
+}
+
+func (a *governedScoringImageAnalyzer) AnalyzeImage(context.Context, string, string) (string, error) {
+	return "", errors.New("raw AnalyzeImage must not be used for governed scoring")
+}
+
+func (a *governedScoringImageAnalyzer) PrepareImage(ctx context.Context, _, _ string, promptIdentity ScorePromptIdentity) (GovernedScoreExecution, error) {
+	a.prepareCalls++
+	a.promptIdentity = promptIdentity
+	return &governedScoringExecution{
+		tenantID: aiidentity.FromContext(ctx).TenantID, promptIdentity: promptIdentity, response: a.response,
+		onInvoke:   func() { a.invokeCalls++ },
+		onCacheHit: func(string) { a.cacheHitCalls++ },
+	}, nil
+}
+
+type governedScoringExecution struct {
+	tenantID       string
+	promptIdentity ScorePromptIdentity
+	response       string
+	onInvoke       func()
+	onCacheHit     func(string)
+	cacheHitErr    error
+}
+
+func (e *governedScoringExecution) ScoreCacheIdentity(baseScore, inputHash string) ScoreCacheIdentity {
+	return ScoreCacheIdentity{
+		Version: 1, TenantID: e.tenantID,
+		Capability: aicapability.CapabilityProductEnrichText,
+		Operation:  aicapability.OperationProductEnrichTextQualityScore,
+		RouteMode:  aicapability.RoutingModeActive, RouteOutcome: aicapability.RouteOutcomeActive,
+		ProviderID: "openai", ModelID: "scorer-model", RoutingKey: "fast",
+		PolicyVersion: "policy-v1", ConfigurationVersion: "config-v1",
+		PromptKey: e.promptIdentity.PromptKey, PromptVersion: e.promptIdentity.PromptVersion, PromptScope: e.promptIdentity.PromptScope,
+		BaseScore: baseScore, InputHash: inputHash,
+	}
+}
+
+func (e *governedScoringExecution) Invoke(_ context.Context, status aicapability.CacheStatus) (string, error) {
+	if status != aicapability.CacheStatusMiss {
+		return "", errors.New("governed provider invocation must be marked cache miss")
+	}
+	e.onInvoke()
+	return e.response, nil
+}
+
+func (e *governedScoringExecution) RecordCacheHit(_ context.Context, value string) error {
+	e.onCacheHit(value)
+	return e.cacheHitErr
 }
 
 type scorerPromptRegistryStub struct {
