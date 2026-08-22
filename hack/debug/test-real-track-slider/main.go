@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"task-processor/internal/core/config"
 	alibaba1688 "task-processor/internal/crawler/alibaba1688"
@@ -35,7 +36,7 @@ func main() {
 	fmt.Println("- 观察是否能通过验证码")
 	fmt.Println()
 
-	processor.Process("https://detail.1688.com/offer/722899324071.html")
+	processor.Process(context.Background(), "https://detail.1688.com/offer/722899324071.html")
 
 	fmt.Println()
 	fmt.Println("测试完成")
