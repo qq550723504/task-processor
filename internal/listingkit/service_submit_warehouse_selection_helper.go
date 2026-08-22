@@ -1,7 +1,7 @@
 package listingkit
 
 import (
-	sheinpub "task-processor/internal/marketplace/shein/publishing"
+	"task-processor/internal/publishing/common"
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
 )
 
@@ -10,12 +10,12 @@ func pickSheinWarehouseCode(warehouses *sheinwarehouse.WarehouseResponse, site s
 		return ""
 	}
 
-	options := make([]sheinpub.WarehouseOption, 0, len(warehouses.Data))
+	options := make([]common.WarehouseOption, 0, len(warehouses.Data))
 	for _, warehouse := range warehouses.Data {
-		options = append(options, sheinpub.WarehouseOption{
+		options = append(options, common.WarehouseOption{
 			Code:          warehouse.WarehouseCode,
 			SaleCountries: warehouse.SaleCountryList,
 		})
 	}
-	return sheinpub.SelectWarehouseCodeForSite(options, site)
+	return common.SelectWarehouseCodeForSite(options, site)
 }
