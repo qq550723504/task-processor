@@ -71,11 +71,19 @@ func (a *subscriptionStudioProductImageUsage) StudioProductImageUsageReservation
 }
 
 func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx context.Context, tenantID, reservationID string, quantity int) error {
+	return a.reserveProductImageUsage(ctx, tenantID, reservationID, quantity, true)
+}
+
+func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsageForLifecycle(ctx context.Context, tenantID, reservationID string, quantity int) error {
+	return a.reserveProductImageUsage(ctx, tenantID, reservationID, quantity, false)
+}
+
+func (a *subscriptionStudioProductImageUsage) reserveProductImageUsage(ctx context.Context, tenantID, reservationID string, quantity int, requireCurrentAdmission bool) error {
 	if a == nil || a.service == nil || !a.service.HasUsageLedger() {
 		return listingsubscription.ErrUsageLedgerNotConfigured
 	}
 	tenantID = strings.TrimSpace(tenantID)
-	if a.admission != nil && !a.admission.AllowsGenerationUsage(tenantID) {
+	if requireCurrentAdmission && a.admission != nil && !a.admission.AllowsGenerationUsage(tenantID) {
 		return listingsubscription.ErrSubscriptionRequired
 	}
 	reservationID = strings.TrimSpace(reservationID)
@@ -142,7 +150,7 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 
 func (a *subscriptionStudioProductImageUsage) HasProductImageUsageReservation(ctx context.Context, tenantID, reservationID string) (bool, error) {
 	if a == nil || a.service == nil || !a.service.HasUsageLedger() {
-		return false, listingsubscription.ErrUsageLedgerNotConfigured
+		return false, nil
 	}
 	_, event, err := a.lookupProductImageUsageEvent(ctx, tenantID, studioProductImageUsageIdempotencyKey(strings.TrimSpace(reservationID)))
 	if errors.Is(err, listingsubscription.ErrUsageEventNotFound) {

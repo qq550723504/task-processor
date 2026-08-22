@@ -26,6 +26,10 @@ func (failingStudioProductImageUsageLegacyTenantResolver) ResolveLegacyTenantID(
 	return 0, false, errors.New("legacy tenant bridge temporarily unavailable")
 }
 
+type denyingStudioProductImageUsageAdmission struct{}
+
+func (denyingStudioProductImageUsageAdmission) AllowsGenerationUsage(string) bool { return false }
+
 type failingNegativeProductImageUsageRepository struct {
 	listingsubscription.Repository
 	failNegative bool
@@ -138,6 +142,43 @@ func TestSubscriptionStudioProductImageUsageReservationUsesDurableLedger(t *test
 	}
 	if err := adapter.ReserveProductImageUsage(context.Background(), "tenant-17", "candidate-42", 2); err != nil {
 		t.Fatalf("idempotent ReserveProductImageUsage() error = %v", err)
+	}
+}
+
+func TestSubscriptionStudioProductImageUsageReservesPersistedRouteAfterRolloutEnds(t *testing.T) {
+	repo := listingsubscription.NewMemRepository()
+	svc, err := listingsubscription.NewServiceWithLedger(repo, listingsubscription.NewMemUsageLedger(repo))
+	if err != nil {
+		t.Fatalf("NewServiceWithLedger() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(context.Background(), "tenant-persisted-route", listingsubscription.ModuleStudio, listingsubscription.EntitlementInput{
+		Status: listingsubscription.StatusActive,
+		Limits: map[string]int{"product_image_jobs": 2},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	adapter := studioProductImageUsageDependency(svc, denyingStudioProductImageUsageAdmission{})
+	if err := adapter.ReserveProductImageUsageForLifecycle(context.Background(), "tenant-persisted-route", "candidate-persisted-route", 1); err != nil {
+		t.Fatalf("ReserveProductImageUsageForLifecycle() error = %v", err)
+	}
+	event, err := svc.GetUsage(context.Background(), "tenant-persisted-route", studioProductImageUsageIdempotencyKey("candidate-persisted-route"))
+	if err != nil {
+		t.Fatalf("GetUsage() error = %v", err)
+	}
+	if event.Status != listingsubscription.UsageEventReserved {
+		t.Fatalf("event status = %q, want reserved", event.Status)
+	}
+}
+
+func TestSubscriptionStudioProductImageUsageTreatsUnavailableLedgerAsMissingReservation(t *testing.T) {
+	svc, err := listingsubscription.NewService(listingsubscription.NewMemRepository())
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	adapter := studioProductImageUsageDependency(svc)
+	hasReservation, err := adapter.HasProductImageUsageReservation(context.Background(), "tenant-legacy-link", "candidate-legacy-link")
+	if err != nil || hasReservation {
+		t.Fatalf("HasProductImageUsageReservation() = (%v, %v), want (false, nil)", hasReservation, err)
 	}
 }
 

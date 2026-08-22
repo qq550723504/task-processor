@@ -657,6 +657,36 @@ func TestTaskStudioBatchServiceSettlesPersistedLedgerRouteAfterTenantLeavesLedge
 	}
 }
 
+func TestTaskStudioBatchServiceUsesLifecycleReservationForPersistedLedgerRoute(t *testing.T) {
+	t.Parallel()
+
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	links := NewMemStudioBatchTaskLinkRepository()
+	candidate := studioBatchTaskCandidate{CandidateKey: "candidate-persisted-ledger-reserve", ImageStrategy: sheinImageStrategyAIGenerated}
+	if err := links.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-persisted-ledger-reserve", BatchID: "batch-1", CandidateKey: candidate.CandidateKey,
+		ImageStrategy: sheinImageStrategyAIGenerated, Status: studioBatchTaskLinkStatusCreating,
+		ProductImageUsageRoute: studioBatchProductImageUsageRouteLedger, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+	usage := &lifecycleReservingStudioProductImageUsage{}
+	service := &taskStudioBatchService{
+		batchTaskLinkRepo:        links,
+		productImageUsage:        usage,
+		generationUsageAdmission: denyingStudioBatchGenerationUsageAdmission{},
+	}
+	if err := service.authorizeStudioBatchProductImageUsage(ctx, &StudioBatchRecord{TenantID: "tenant-a"}, candidate, 1); err != nil {
+		t.Fatalf("authorizeStudioBatchProductImageUsage() error = %v", err)
+	}
+	if got, want := usage.lifecycleReserved, []string{"tenant-a:candidate-persisted-ledger-reserve:1"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("lifecycle reservations = %v, want %v", got, want)
+	}
+	if len(usage.reserved) != 0 {
+		t.Fatalf("standard reservations = %v, want none", usage.reserved)
+	}
+}
+
 func TestTaskStudioBatchServiceUsesLegacyRouteForPreChangeLinkWithoutReservation(t *testing.T) {
 	t.Parallel()
 
@@ -823,6 +853,11 @@ type reservingStudioProductImageUsage struct {
 	releaseErrors []error
 }
 
+type lifecycleReservingStudioProductImageUsage struct {
+	reservingStudioProductImageUsage
+	lifecycleReserved []string
+}
+
 type disabledReservingStudioProductImageUsage struct {
 	reservingStudioProductImageUsage
 }
@@ -837,6 +872,11 @@ func (u *disabledReservingStudioProductImageUsage) StudioProductImageUsageReserv
 
 func (u *reservingStudioProductImageUsage) ReserveProductImageUsage(_ context.Context, tenantID, reservationID string, quantity int) error {
 	u.reserved = append(u.reserved, tenantID+":"+reservationID+":"+strconv.Itoa(quantity))
+	return nil
+}
+
+func (u *lifecycleReservingStudioProductImageUsage) ReserveProductImageUsageForLifecycle(_ context.Context, tenantID, reservationID string, quantity int) error {
+	u.lifecycleReserved = append(u.lifecycleReserved, tenantID+":"+reservationID+":"+strconv.Itoa(quantity))
 	return nil
 }
 

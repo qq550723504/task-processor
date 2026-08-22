@@ -353,6 +353,52 @@ func TestReconcileStudioProductImageUsageKeepsExpiredBatchReservation(t *testing
 	}
 }
 
+func TestReconcileStudioProductImageUsageRepairsReleasedBatchMirror(t *testing.T) {
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-batch-release-repair")
+	svc := newStudioProductImageAdmissionService(t, "tenant-batch-release-repair", 2)
+	if _, err := svc.RecordUsage(ctx, "tenant-batch-release-repair", listingsubscription.ModuleStudio, "product_image_jobs", 1); err != nil {
+		t.Fatalf("RecordUsage() error = %v", err)
+	}
+	reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID: "tenant-batch-release-repair", ModuleCode: listingsubscription.ModuleStudio,
+		Metric: studioProductImageLedgerMetric, Quantity: 1, PeriodKey: time.Now().UTC().Format("2006-01"),
+		SourceType: "listingkit_batch_product_image", SourceID: "batch-release",
+		IdempotencyKey: "listingkit:studio_product_image:batch-release", OccurredAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	if _, err := svc.UpdateUsageMetadata(ctx, reserved.Event.EventID, map[string]string{
+		studioProductImageLegacyMirrorMetadataKey:               studioProductImageLegacyMirrorSettled,
+		studioProductImageLegacyMirrorReleasePendingMetadataKey: "1",
+	}); err != nil {
+		t.Fatalf("UpdateUsageMetadata() error = %v", err)
+	}
+	if _, err := svc.ReleaseUsage(ctx, reserved.Event.EventID, "batch_release"); err != nil {
+		t.Fatalf("ReleaseUsage() error = %v", err)
+	}
+	h := &handler{subscriptionDependencies: subscriptionDependencies{subscriptionService: svc}}
+	if err := h.reconcileStudioProductImageUsageReleases(ctx, "tenant-batch-release-repair"); err != nil {
+		t.Fatalf("reconcile error = %v", err)
+	}
+	event, err := svc.GetUsageEventByID(ctx, reserved.Event.EventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	if event.Metadata[studioProductImageLegacyMirrorReleasePendingMetadataKey] != "" {
+		t.Fatalf("batch release repair marker = %q, want cleared", event.Metadata[studioProductImageLegacyMirrorReleasePendingMetadataKey])
+	}
+	summary, err := svc.GetSummary(ctx, "tenant-batch-release-repair")
+	if err != nil {
+		t.Fatalf("GetSummary() error = %v", err)
+	}
+	for _, entitlement := range summary.Entitlements {
+		if entitlement.Module.Code == listingsubscription.ModuleStudio && entitlement.Used["product_image_jobs"] != 0 {
+			t.Fatalf("legacy product image usage = %d, want repaired release", entitlement.Used["product_image_jobs"])
+		}
+	}
+}
+
 func TestReconcileStudioProductImageUsageReleasesOldGenericDirectReservation(t *testing.T) {
 	ctx := listingkit.WithTenantID(context.Background(), "tenant-old-direct-recovery")
 	svc := newStudioProductImageAdmissionService(t, "tenant-old-direct-recovery", 2)

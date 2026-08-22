@@ -294,6 +294,9 @@ func (s *taskStudioBatchService) authorizeStudioBatchProductImageUsage(ctx conte
 		if reservationID == "" {
 			return fmt.Errorf("product image usage reservation id is required")
 		}
+		if lifecycleReservation, ok := s.productImageUsage.(StudioProductImageUsageReservationLifecycle); ok {
+			return lifecycleReservation.ReserveProductImageUsageForLifecycle(ctx, tenantID, reservationID, quantity)
+		}
 		return reservation.ReserveProductImageUsage(ctx, tenantID, reservationID, quantity)
 	}
 	if route != studioBatchProductImageUsageRouteLegacy {

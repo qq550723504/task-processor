@@ -25,6 +25,7 @@ const (
 	studioProductImageLegacySourceType                      = "listingkit_product_image"
 	studioProductImageSourceType                            = "listingkit_sync_product_image"
 	studioProductImageAsyncSourceType                       = "listingkit_async_product_image"
+	studioProductImageBatchSourceType                       = "listingkit_batch_product_image"
 	studioProductImageAsyncJobMetadataKey                   = "listingkit_async_job"
 	studioProductImageAsyncJobMetadataValue                 = "1"
 	studioProductImageAsyncJobRecoveryAfter                 = 30 * time.Minute
@@ -151,7 +152,7 @@ func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, 
 	offset := 0
 	for {
 		events, err := h.subscriptionService.ListUsageEventPageForReconciliationWithFilter(ctx, listingsubscription.UsageLedgerReconciliationFilter{
-			TenantID: tenantID, SourceType: studioProductImageSourceType, SourceTypes: []string{studioProductImageSourceType, studioProductImageAsyncSourceType, studioProductImageLegacySourceType}, Metric: studioProductImageLedgerMetric,
+			TenantID: tenantID, SourceType: studioProductImageSourceType, SourceTypes: []string{studioProductImageSourceType, studioProductImageAsyncSourceType, studioProductImageBatchSourceType, studioProductImageLegacySourceType}, Metric: studioProductImageLedgerMetric,
 			ReservedMetadataPredicates: []listingsubscription.UsageLedgerMetadataPredicate{
 				{Key: studioProductImageReleasePendingMetadataKey, Value: "1"},
 				{Key: studioProductImageAsyncJobMetadataKey, Value: studioProductImageAsyncJobMetadataValue},
