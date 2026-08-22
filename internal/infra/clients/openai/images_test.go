@@ -1,7 +1,6 @@
 package openai
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -351,30 +350,52 @@ func TestClientEditImageBoundsSecondaryReferenceDownloadByClientTimeout(t *testi
 }
 
 func TestClientEditImageRejectsOversizedSecondaryReference(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/secondary.png" {
-			w.Header().Set("Content-Type", "image/png")
-			_, _ = w.Write(bytes.Repeat([]byte("x"), 32<<20+1))
-			return
-		}
-		t.Fatalf("unexpected path = %q", r.URL.Path)
-	}))
-	defer server.Close()
 	client := NewClient(&ClientConfig{
-		APIKey:                   "test-key",
-		Model:                    "gpt-image-1",
-		BaseURL:                  server.URL,
-		Timeout:                  time.Second,
-		MaxRetries:               0,
-		ImageReferenceHTTPClient: server.Client(),
+		APIKey:     "test-key",
+		Model:      "gpt-image-1",
+		BaseURL:    "https://api.example.test/v1",
+		Timeout:    time.Second,
+		MaxRetries: 0,
+		ImageReferenceHTTPClient: &http.Client{Transport: openAIImageReferenceRoundTripper(func(*http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"image/png"}},
+				Body:       io.NopCloser(&fixedSizeReader{remaining: maxImageReferenceBytes + 1}),
+			}, nil
+		})},
 	})
 	_, err := client.EditImage(context.Background(), &ImageEditRequest{
 		Image:     []byte("primary-image"),
-		ImageURLs: []string{server.URL + "/secondary.png"},
+		ImageURLs: []string{"https://example.test/secondary.png"},
 	})
 	if err == nil || !strings.Contains(err.Error(), "exceeds 32 MiB") {
 		t.Fatalf("EditImage() error = %v, want oversized reference error", err)
 	}
+}
+
+type openAIImageReferenceRoundTripper func(*http.Request) (*http.Response, error)
+
+func (f openAIImageReferenceRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+type fixedSizeReader struct {
+	remaining int64
+}
+
+func (r *fixedSizeReader) Read(p []byte) (int, error) {
+	if r.remaining == 0 {
+		return 0, io.EOF
+	}
+	n := int64(len(p))
+	if n > r.remaining {
+		n = r.remaining
+	}
+	for i := int64(0); i < n; i++ {
+		p[i] = 'x'
+	}
+	r.remaining -= n
+	return int(n), nil
 }
 
 func TestClientEditImageRejectsUnsafeSecondaryURL(t *testing.T) {
