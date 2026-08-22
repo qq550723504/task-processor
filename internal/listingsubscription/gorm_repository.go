@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -81,6 +82,18 @@ type usageCounterRow struct {
 }
 
 func (usageCounterRow) TableName() string { return "saas_usage_counters" }
+
+type usageCounterAdjustmentRow struct {
+	OperationKey string    `gorm:"column:operation_key;primaryKey;size:192"`
+	TenantID     string    `gorm:"column:tenant_id;not null;size:128;index"`
+	ModuleCode   string    `gorm:"column:module_code;not null;size:64"`
+	PeriodKey    string    `gorm:"column:period_key;not null;size:16"`
+	Metric       string    `gorm:"column:metric;not null;size:64"`
+	Amount       int       `gorm:"column:amount;not null"`
+	CreatedAt    time.Time `gorm:"column:created_at;autoCreateTime"`
+}
+
+func (usageCounterAdjustmentRow) TableName() string { return "saas_usage_counter_adjustments" }
 
 type usageEventRow struct {
 	EventID           string     `gorm:"column:event_id;primaryKey;size:128"`
@@ -162,6 +175,7 @@ func AutoMigrateRepository(db *gorm.DB) error {
 		&tenantSubscriptionRow{},
 		&tenantEntitlementRow{},
 		&usageCounterRow{},
+		&usageCounterAdjustmentRow{},
 		&usageEventRow{},
 		&usageBucketRow{},
 		&usageEventOutboxRow{},
@@ -486,6 +500,67 @@ func (r *GormRepository) IncrementUsage(ctx context.Context, tenantID, moduleCod
 		return nil, err
 	}
 	return &UsageCounter{ID: out.ID, TenantID: out.TenantID, ModuleCode: out.ModuleCode, PeriodKey: out.PeriodKey, Metric: out.Metric, Used: out.Used, UpdatedAt: out.UpdatedAt}, nil
+}
+
+func (r *GormRepository) IncrementUsageOnce(ctx context.Context, tenantID, moduleCode, periodKey, metric string, amount int, operationKey string) (*UsageCounter, bool, error) {
+	operationKey = strings.TrimSpace(operationKey)
+	if operationKey == "" {
+		return nil, false, errors.New("usage operation key is required")
+	}
+	var out usageCounterRow
+	applied := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		marker := usageCounterAdjustmentRow{OperationKey: operationKey, TenantID: tenantID, ModuleCode: moduleCode, PeriodKey: periodKey, Metric: metric, Amount: amount}
+		result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&marker)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			var existingMarker usageCounterAdjustmentRow
+			if err := tx.Where("operation_key = ?", operationKey).Take(&existingMarker).Error; err != nil {
+				return err
+			}
+			return tx.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", existingMarker.TenantID, existingMarker.ModuleCode, existingMarker.PeriodKey, existingMarker.Metric).Take(&out).Error
+		}
+		var current usageCounterRow
+		lookupErr := tx.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", tenantID, moduleCode, periodKey, metric).Take(&current).Error
+		if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+			current = usageCounterRow{TenantID: tenantID, ModuleCode: moduleCode, PeriodKey: periodKey, Metric: metric}
+		} else if lookupErr != nil {
+			return lookupErr
+		}
+		if amount < 0 && current.Used+amount < 0 {
+			amount = -current.Used
+		}
+		row := usageCounterRow{TenantID: tenantID, ModuleCode: moduleCode, PeriodKey: periodKey, Metric: metric, Used: amount}
+		if err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "tenant_id"}, {Name: "module_code"}, {Name: "period_key"}, {Name: "metric"}},
+			DoUpdates: clause.Assignments(map[string]any{"used": gorm.Expr("used + ?", amount), "updated_at": time.Now().UTC()}),
+		}).Create(&row).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", tenantID, moduleCode, periodKey, metric).Take(&out).Error; err != nil {
+			return err
+		}
+		applied = true
+		return nil
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	return &UsageCounter{ID: out.ID, TenantID: out.TenantID, ModuleCode: out.ModuleCode, PeriodKey: out.PeriodKey, Metric: out.Metric, Used: out.Used, UpdatedAt: out.UpdatedAt}, applied, nil
+}
+
+func (r *GormRepository) UsageOperationExists(ctx context.Context, operationKey string) (bool, error) {
+	operationKey = strings.TrimSpace(operationKey)
+	if operationKey == "" {
+		return false, nil
+	}
+	var count int64
+	if err := r.db.WithContext(ctx).Model(&usageCounterAdjustmentRow{}).Where("operation_key = ?", operationKey).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 func (r *GormRepository) SetUsage(ctx context.Context, tenantID, moduleCode, periodKey, metric string, used int) (*UsageCounter, error) {

@@ -41,6 +41,7 @@ func buildListingKitCoreDependencies(in buildListingKitServiceConfigInput) listi
 		AIClientCredentialStore:       adaptListingKitAICredentialStore(in.input.AICredentialStore),
 		GenerationUsageLedger:         generationUsageSettlementDependency(in),
 		GenerationUsageAdmission:      generationUsageAdmissionForConfig(in.input.Config),
+		StudioProductImageUsage:       studioProductImageUsageDependency(in.repositories.subscriptionService, generationUsageAdmissionForConfig(in.input.Config)),
 	}
 }
 

@@ -16,6 +16,31 @@ type StudioBatchTaskLinkRepository interface {
 	ClaimStudioBatchTaskCandidateUpdatedAt(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error)
 }
 
+// studioBatchTaskLinkLeaseRepository is implemented by repositories that can
+// atomically claim and refresh a creating link with an ownership token.
+// Keeping it separate preserves compatibility for read/backfill-only callers;
+// task creation fails closed when the production repository lacks this lease
+// contract.
+type studioBatchTaskLinkLeaseRepository interface {
+	ClaimStudioBatchTaskCandidateWithToken(ctx context.Context, candidateKey string, fromStatus string, toStatus string, claimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error)
+	ClaimStudioBatchTaskCandidateUpdatedAtWithToken(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, claimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error)
+	RefreshStudioBatchTaskLink(ctx context.Context, candidateKey string, claimToken string, updatedAt time.Time) (bool, error)
+	UpdateStudioBatchTaskLinkWithClaimToken(ctx context.Context, link *StudioBatchTaskLinkRecord, claimToken string) (bool, error)
+}
+
+// studioBatchTaskLinkReclaimRepository atomically records the replacement
+// claim and the previous reservation token. This closes the crash window
+// between a successful stale reclaim and a follow-up cleanup write.
+type studioBatchTaskLinkReclaimRepository interface {
+	ClaimStudioBatchTaskCandidateUpdatedAtWithTokenAndPendingRelease(ctx context.Context, candidateKey string, fromStatus string, observedUpdatedAt time.Time, toStatus string, claimToken string, pendingReleaseClaimToken string, updatedAt time.Time) (*StudioBatchTaskLinkRecord, bool, error)
+}
+
+// studioBatchTaskLinkUsageSettlementRepository atomically elects the one
+// caller allowed to perform the non-idempotent legacy usage settlement.
+type studioBatchTaskLinkUsageSettlementRepository interface {
+	ClaimStudioBatchProductImageUsageSettled(ctx context.Context, candidateKey string, updatedAt time.Time) (bool, error)
+}
+
 func applyStudioBatchTaskLinkCreateScope(ctx context.Context, link *StudioBatchTaskLinkRecord) {
 	if link == nil {
 		return

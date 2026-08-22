@@ -95,7 +95,12 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 			}
 		}
 	}
-	if err := validateMemUsageReservation(input, bucket, limit, reservedForQuota); err != nil {
+	legacyUsage, err := legacyUsageForMemReservation(input, l.repo)
+	if err != nil {
+		return ReserveUsageResult{}, err
+	}
+	legacyUsage = unrepresentedLegacyUsage(legacyUsage, mirroredLegacyUsageForMemReservation(input, l.eventsByID))
+	if err := validateMemUsageReservation(input, bucket, limit, reservedForQuota, legacyUsage); err != nil {
 		return ReserveUsageResult{}, err
 	}
 	reserved, ok := addUsage(bucket.reserved, input.Quantity)
@@ -119,7 +124,11 @@ func (l *memUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) (
 	l.eventsByID[event.EventID] = memUsageEvent{event: event, periodKey: input.PeriodKey}
 	l.eventIDByIdentity[identity] = event.EventID
 	l.addPendingOutbox(event.EventID, now)
-	return ReserveUsageResult{Event: cloneMemUsageEvent(event), Limit: limit, CommittedUsage: bucket.committed, ReservedUsage: bucket.reserved}, nil
+	committedUsage, ok := addUsage(bucket.committed, legacyUsage)
+	if !ok {
+		return ReserveUsageResult{}, &UsageValidationError{Field: "usage"}
+	}
+	return ReserveUsageResult{Event: cloneMemUsageEvent(event), Limit: limit, CommittedUsage: committedUsage, ReservedUsage: bucket.reserved}, nil
 }
 
 func (l *memUsageLedger) Commit(ctx context.Context, eventID string) (UsageEvent, error) {
@@ -247,6 +256,102 @@ func (l *memUsageLedger) Get(ctx context.Context, tenantID, idempotencyKey strin
 	}
 	event := cloneMemUsageEvent(l.eventsByID[eventID].event)
 	return &event, nil
+}
+
+func (l *memUsageLedger) GetByID(ctx context.Context, eventID string) (UsageEvent, error) {
+	_ = ctx
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	record, ok := l.eventsByID[strings.TrimSpace(eventID)]
+	if !ok {
+		return UsageEvent{}, usageEventNotFound(eventID)
+	}
+	return cloneMemUsageEvent(record.event), nil
+}
+
+func (l *memUsageLedger) ListEvents(ctx context.Context, limit int) ([]UsageEvent, error) {
+	return l.ListEventsPage(ctx, limit, 0)
+}
+
+func (l *memUsageLedger) ListEventsPage(ctx context.Context, limit, offset int) ([]UsageEvent, error) {
+	_ = ctx
+	if limit <= 0 {
+		return []UsageEvent{}, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	events := make([]UsageEvent, 0, len(l.eventsByID))
+	for _, record := range l.eventsByID {
+		events = append(events, cloneMemUsageEvent(record.event))
+	}
+	sort.Slice(events, func(i, j int) bool {
+		if events[i].CreatedAt.Equal(events[j].CreatedAt) {
+			return events[i].EventID < events[j].EventID
+		}
+		return events[i].CreatedAt.Before(events[j].CreatedAt)
+	})
+	if offset >= len(events) {
+		return []UsageEvent{}, nil
+	}
+	events = events[offset:]
+	if len(events) > limit {
+		events = events[:limit]
+	}
+	return events, nil
+}
+
+func (l *memUsageLedger) ListEventsPageForReconciliation(ctx context.Context, tenantID, sourceType, metric string, limit, offset int) ([]UsageEvent, error) {
+	return l.ListEventsPageForReconciliationWithFilter(ctx, defaultUsageLedgerReconciliationFilter(tenantID, sourceType, metric), limit, offset)
+}
+
+func (l *memUsageLedger) ListEventsPageForReconciliationWithFilter(ctx context.Context, filter UsageLedgerReconciliationFilter, limit, offset int) ([]UsageEvent, error) {
+	_ = ctx
+	if limit <= 0 {
+		return []UsageEvent{}, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	events := make([]UsageEvent, 0, len(l.eventsByID))
+	for _, record := range l.eventsByID {
+		if !usageEventMatchesReconciliationFilter(record.event, filter) {
+			continue
+		}
+		events = append(events, cloneMemUsageEvent(record.event))
+	}
+	sort.Slice(events, func(i, j int) bool {
+		if events[i].CreatedAt.Equal(events[j].CreatedAt) {
+			return events[i].EventID < events[j].EventID
+		}
+		return events[i].CreatedAt.Before(events[j].CreatedAt)
+	})
+	if offset >= len(events) {
+		return []UsageEvent{}, nil
+	}
+	events = events[offset:]
+	if len(events) > limit {
+		events = events[:limit]
+	}
+	return events, nil
+}
+
+func (l *memUsageLedger) UpdateMetadata(ctx context.Context, eventID string, metadata map[string]string) (UsageEvent, error) {
+	_ = ctx
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	record, ok := l.eventsByID[strings.TrimSpace(eventID)]
+	if !ok {
+		return UsageEvent{}, usageEventNotFound(eventID)
+	}
+	record.event.Metadata = cloneUsageMetadata(metadata)
+	record.event.UpdatedAt = time.Now().UTC()
+	l.eventsByID[strings.TrimSpace(eventID)] = record
+	return cloneMemUsageEvent(record.event), nil
 }
 
 func (l *memUsageLedger) ListPendingOutbox(ctx context.Context, limit int) ([]UsageOutboxItem, error) {
@@ -397,7 +502,51 @@ func memUsageLimit(entitlement *Entitlement, metric string) *int64 {
 	return nil
 }
 
-func validateMemUsageReservation(input ReserveUsageInput, bucket memUsageBucket, limit *int64, reservedForQuota int64) error {
+func legacyUsageForMemReservation(input ReserveUsageInput, repo *MemRepository) (int64, error) {
+	if input.LegacyUsageMetric == "" || repo == nil {
+		return 0, nil
+	}
+	usage, err := repo.ListUsage(context.Background(), input.TenantID)
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, counter := range usage {
+		if counter.ModuleCode == input.ModuleCode && counter.PeriodKey == input.PeriodKey && counter.Metric == input.LegacyUsageMetric {
+			total += int64(counter.Used)
+		}
+	}
+	return total, nil
+}
+
+func mirroredLegacyUsageForMemReservation(input ReserveUsageInput, events map[string]memUsageEvent) int64 {
+	key := strings.TrimSpace(input.LegacyUsageMirrorMetadataKey)
+	settledValue := strings.TrimSpace(input.LegacyUsageMirrorSettledValue)
+	if key == "" || settledValue == "" {
+		return 0
+	}
+	var total int64
+	for _, record := range events {
+		event := record.event
+		if event.TenantID != input.TenantID || event.ModuleCode != input.ModuleCode || event.Metric != input.Metric || event.PeriodKey != input.PeriodKey {
+			continue
+		}
+		if event.Status != UsageEventReserved && event.Status != UsageEventCommitted {
+			continue
+		}
+		if event.Metadata[key] != settledValue || event.Quantity <= 0 {
+			continue
+		}
+		updated, ok := addUsage(total, event.Quantity)
+		if !ok {
+			return total
+		}
+		total = updated
+	}
+	return total
+}
+
+func validateMemUsageReservation(input ReserveUsageInput, bucket memUsageBucket, limit *int64, reservedForQuota, legacyUsage int64) error {
 	if err := ValidateProjectedUsage(input.Metric, bucket.committed, bucket.reserved, input.Quantity); err != nil {
 		if quota, ok := err.(*UsageQuotaError); ok {
 			quota.TenantID = input.TenantID
@@ -406,7 +555,11 @@ func validateMemUsageReservation(input ReserveUsageInput, bucket memUsageBucket,
 		}
 		return err
 	}
-	projected, ok := addUsage(bucket.committed, reservedForQuota)
+	committedForQuota, ok := addUsage(bucket.committed, legacyUsage)
+	if !ok {
+		return &UsageValidationError{Field: "usage"}
+	}
+	projected, ok := addUsage(committedForQuota, reservedForQuota)
 	if !ok {
 		return &UsageValidationError{Field: "usage"}
 	}
@@ -415,7 +568,7 @@ func validateMemUsageReservation(input ReserveUsageInput, bucket memUsageBucket,
 		return &UsageValidationError{Field: "quantity"}
 	}
 	if limit != nil && *limit > 0 && input.Quantity > 0 && projected > *limit {
-		return &UsageQuotaError{TenantID: input.TenantID, ModuleCode: input.ModuleCode, Metric: input.Metric, Limit: limit, CommittedUsage: bucket.committed, ReservedUsage: reservedForQuota, Quantity: input.Quantity}
+		return &UsageQuotaError{TenantID: input.TenantID, ModuleCode: input.ModuleCode, Metric: input.Metric, Limit: limit, CommittedUsage: committedForQuota, ReservedUsage: reservedForQuota, Quantity: input.Quantity}
 	}
 	return nil
 }

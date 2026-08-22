@@ -5,12 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+
+	"task-processor/internal/pkg/safeimagehttp"
 )
 
 type studioDesignAsyncQueryResponse struct {
@@ -201,6 +202,12 @@ func (s *taskStudioMediaService) editStudioDesignImageWithReferences(ctx context
 		}
 	}
 	if key, ok := studioReferenceUploadedImageKeyFromURL(referenceURLs[0]); ok && s.loadUploadedImage != nil {
+		secondaryURLs := make([]string, 0, len(referenceURLs)-1)
+		for _, referenceURL := range referenceURLs[1:] {
+			if trimmed := strings.TrimSpace(referenceURL); trimmed != "" {
+				secondaryURLs = append(secondaryURLs, trimmed)
+			}
+		}
 		file, err := s.loadUploadedImage(ctx, key)
 		if err != nil {
 			return nil, err
@@ -225,8 +232,12 @@ func (s *taskStudioMediaService) editStudioDesignImageWithReferences(ctx context
 					return nil, fmt.Errorf("invalid uploaded reference public url: %w", validateErr)
 				}
 				request.ImageURL = validatedURL
-				request.ImageURLs = []string{validatedURL}
+				request.ImageURLs = append([]string{validatedURL}, secondaryURLs...)
+			} else {
+				request.ImageURLs = secondaryURLs
 			}
+		} else {
+			request.ImageURLs = secondaryURLs
 		}
 		return s.imageGenerator.EditImage(ctx, request)
 	}
@@ -421,42 +432,7 @@ func (s *taskStudioMediaService) resolveStudioBackgroundRemovalURL(ctx context.C
 var studioPublicImageHTTPClient = newStudioPublicImageHTTPClient()
 
 func newStudioPublicImageHTTPClient() *http.Client {
-	transport, ok := http.DefaultTransport.(*http.Transport)
-	if ok {
-		transport = transport.Clone()
-	} else {
-		transport = &http.Transport{}
-	}
-	dialer := &net.Dialer{}
-	transport.DialContext = func(ctx context.Context, network string, address string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(address)
-		if err != nil {
-			return nil, err
-		}
-		ips, err := net.LookupIP(host)
-		if err != nil {
-			return nil, err
-		}
-		for _, ip := range ips {
-			if isStudioReferencePrivateIP(ip) {
-				continue
-			}
-			conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
-			if dialErr == nil {
-				return conn, nil
-			}
-		}
-		return nil, fmt.Errorf("image host resolves only to private or unreachable addresses")
-	}
-	return &http.Client{
-		Transport: transport,
-		CheckRedirect: func(req *http.Request, _ []*http.Request) error {
-			if _, err := validateStudioReferencePublicHTTPSURL(req.URL.String()); err != nil {
-				return err
-			}
-			return nil
-		},
-	}
+	return safeimagehttp.NewPublicImageHTTPClient()
 }
 
 func (s *taskStudioMediaService) materializeAsyncStudioDesignResult(ctx context.Context, req *StudioDesignRequest, result *AIImageAsyncResult) (*StudioDesignResponse, error) {
@@ -555,14 +531,7 @@ func (s *taskStudioMediaService) tryGenerateStudioProductImage(ctx context.Conte
 	if s.loadUploadedImage != nil && hasOwnedListingKitUploadReference(inputImages[1:]) {
 		return nil, fmt.Errorf("invalid request: uploaded listingkit image must be the primary image")
 	}
-	generated, err := s.editStudioDesignImageWithReferences(ctx, s.imageGenerator.GetDefaultModel(), promptText, "auto", inputImages)
-	if err != nil {
-		generated, err = s.editStudioDesignImageWithReferences(ctx, s.imageGenerator.GetDefaultModel(), promptText, "auto", inputImages[:1])
-		if err != nil {
-			return nil, err
-		}
-	}
-	return generated, nil
+	return s.editStudioDesignImageWithReferences(ctx, s.imageGenerator.GetDefaultModel(), promptText, "auto", inputImages)
 }
 
 func (s *taskStudioMediaService) sanitizeStudioImageInputURLs(ctx context.Context, inputURLs []string) ([]string, error) {

@@ -113,7 +113,16 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 					return err
 				}
 			}
-			if err := validateUsageReservation(input, bucket, limit, reservedForQuota); err != nil {
+			legacyUsage, err := legacyUsageForReservation(tx, input)
+			if err != nil {
+				return err
+			}
+			mirroredLegacyUsage, err := mirroredLegacyUsageForReservation(tx, input)
+			if err != nil {
+				return err
+			}
+			legacyUsage = unrepresentedLegacyUsage(legacyUsage, mirroredLegacyUsage)
+			if err := validateUsageReservation(input, bucket, limit, reservedForQuota, legacyUsage); err != nil {
 				return err
 			}
 			updatedReserved, ok := addUsage(bucket.Reserved, input.Quantity)
@@ -147,7 +156,11 @@ func (l *gormUsageLedger) Reserve(ctx context.Context, input ReserveUsageInput) 
 				snapshot := bucket.Committed
 				e.StorageSnapshot = &snapshot
 			}
-			result = ReserveUsageResult{Event: e, Limit: limit, CommittedUsage: bucket.Committed, ReservedUsage: updatedReserved}
+			committedUsage, ok := addUsage(bucket.Committed, legacyUsage)
+			if !ok {
+				return &UsageValidationError{Field: "usage"}
+			}
+			result = ReserveUsageResult{Event: e, Limit: limit, CommittedUsage: committedUsage, ReservedUsage: updatedReserved}
 			return nil
 		})
 		if err == nil || !isRetryableUsageLedgerError(err) || attempt == 19 {
@@ -333,6 +346,152 @@ func (l *gormUsageLedger) Get(ctx context.Context, tenantID, idempotencyKey stri
 	}
 	event := usageEventFromRow(row)
 	return &event, nil
+}
+
+func (l *gormUsageLedger) GetByID(ctx context.Context, eventID string) (UsageEvent, error) {
+	var row usageEventRow
+	err := l.repo.db.WithContext(ctx).Where("event_id = ?", strings.TrimSpace(eventID)).Take(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return UsageEvent{}, fmt.Errorf("%w: %s", ErrUsageEventNotFound, strings.TrimSpace(eventID))
+	}
+	if err != nil {
+		return UsageEvent{}, err
+	}
+	return usageEventFromRow(row), nil
+}
+
+func (l *gormUsageLedger) ListEvents(ctx context.Context, limit int) ([]UsageEvent, error) {
+	return l.ListEventsPage(ctx, limit, 0)
+}
+
+func (l *gormUsageLedger) ListEventsPage(ctx context.Context, limit, offset int) ([]UsageEvent, error) {
+	if limit <= 0 {
+		return []UsageEvent{}, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	var rows []usageEventRow
+	if err := l.repo.db.WithContext(ctx).Order("created_at ASC, event_id ASC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	events := make([]UsageEvent, 0, len(rows))
+	for _, row := range rows {
+		events = append(events, usageEventFromRow(row))
+	}
+	return events, nil
+}
+
+func (l *gormUsageLedger) ListEventsPageForReconciliation(ctx context.Context, tenantID, sourceType, metric string, limit, offset int) ([]UsageEvent, error) {
+	return l.ListEventsPageForReconciliationWithFilter(ctx, defaultUsageLedgerReconciliationFilter(tenantID, sourceType, metric), limit, offset)
+}
+
+func (l *gormUsageLedger) ListEventsPageForReconciliationWithFilter(ctx context.Context, filter UsageLedgerReconciliationFilter, limit, offset int) ([]UsageEvent, error) {
+	if limit <= 0 {
+		return []UsageEvent{}, nil
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	var rows []usageEventRow
+	query := l.repo.db.WithContext(ctx).Where("tenant_id = ? AND metric = ?", strings.TrimSpace(filter.TenantID), strings.TrimSpace(filter.Metric))
+	sourceTypes := make([]string, 0, len(filter.SourceTypes)+1)
+	if len(filter.SourceTypes) > 0 {
+		for _, sourceType := range filter.SourceTypes {
+			if sourceType = strings.TrimSpace(sourceType); sourceType != "" {
+				sourceTypes = append(sourceTypes, sourceType)
+			}
+		}
+	} else if sourceType := strings.TrimSpace(filter.SourceType); sourceType != "" {
+		sourceTypes = append(sourceTypes, sourceType)
+	}
+	if len(sourceTypes) == 0 {
+		return []UsageEvent{}, nil
+	}
+	if len(sourceTypes) == 1 {
+		query = query.Where("source_type = ?", sourceTypes[0])
+	} else {
+		query = query.Where("source_type IN ?", sourceTypes)
+	}
+	conditions := make([]string, 0, 2)
+	args := make([]any, 0, 7)
+	reservedPredicates := make([]string, 0, len(filter.ReservedMetadataPredicates))
+	for _, predicate := range filter.ReservedMetadataPredicates {
+		key := strings.TrimSpace(predicate.Key)
+		value := strings.TrimSpace(predicate.Value)
+		if key == "" || value == "" {
+			continue
+		}
+		reservedPredicates = append(reservedPredicates, "metadata LIKE ?")
+		args = append(args, "%\""+key+"\":\""+value+"\"%")
+	}
+	if len(reservedPredicates) > 0 {
+		conditions = append(conditions, "(status = ? AND ("+strings.Join(reservedPredicates, " OR ")+"))")
+		args = append([]any{string(UsageEventReserved)}, args...)
+	}
+	reservedSourceTypes := make([]string, 0, len(filter.ReservedSourceTypes))
+	for _, sourceType := range filter.ReservedSourceTypes {
+		if sourceType = strings.TrimSpace(sourceType); sourceType != "" {
+			reservedSourceTypes = append(reservedSourceTypes, sourceType)
+		}
+	}
+	if len(reservedSourceTypes) > 0 {
+		conditions = append(conditions, "(status = ? AND source_type IN ?)")
+		args = append(args, string(UsageEventReserved), reservedSourceTypes)
+	}
+	releasedPredicates := make([]string, 0, len(filter.ReleasedMetadataPredicates))
+	releasedArgs := make([]any, 0, len(filter.ReleasedMetadataPredicates))
+	for _, predicate := range filter.ReleasedMetadataPredicates {
+		key := strings.TrimSpace(predicate.Key)
+		value := strings.TrimSpace(predicate.Value)
+		if key == "" || value == "" {
+			continue
+		}
+		releasedPredicates = append(releasedPredicates, "metadata LIKE ?")
+		releasedArgs = append(releasedArgs, "%\""+key+"\":\""+value+"\"%")
+	}
+	if len(releasedPredicates) > 0 {
+		conditions = append(conditions, "(status = ? AND ("+strings.Join(releasedPredicates, " OR ")+"))")
+		args = append(args, string(UsageEventReleased))
+		args = append(args, releasedArgs...)
+	}
+	if key := strings.TrimSpace(filter.CommittedMetadataKey); key != "" && strings.TrimSpace(filter.CommittedSettledValue) != "" {
+		conditions = append(conditions, "(status = ? AND (metadata IS NULL OR metadata = '' OR metadata NOT LIKE ?))")
+		args = append(args, string(UsageEventCommitted), "%\""+key+"\":\""+strings.TrimSpace(filter.CommittedSettledValue)+"\"%")
+	}
+	if len(conditions) == 0 {
+		return []UsageEvent{}, nil
+	}
+	query = query.Where("("+strings.Join(conditions, " OR ")+")", args...)
+	if err := query.Order("created_at ASC, event_id ASC").Limit(limit).Offset(offset).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	events := make([]UsageEvent, 0, len(rows))
+	for _, row := range rows {
+		events = append(events, usageEventFromRow(row))
+	}
+	return events, nil
+}
+
+func (l *gormUsageLedger) UpdateMetadata(ctx context.Context, eventID string, metadata map[string]string) (UsageEvent, error) {
+	data, err := json.Marshal(metadata)
+	if err != nil {
+		return UsageEvent{}, err
+	}
+	var row usageEventRow
+	result := l.repo.db.WithContext(ctx).Model(&usageEventRow{}).
+		Where("event_id = ?", strings.TrimSpace(eventID)).
+		Updates(map[string]any{"metadata": string(data), "updated_at": time.Now().UTC()})
+	if result.Error != nil {
+		return UsageEvent{}, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return UsageEvent{}, fmt.Errorf("%w: %s", ErrUsageEventNotFound, strings.TrimSpace(eventID))
+	}
+	if err := l.repo.db.WithContext(ctx).Where("event_id = ?", strings.TrimSpace(eventID)).Take(&row).Error; err != nil {
+		return UsageEvent{}, err
+	}
+	return usageEventFromRow(row), nil
 }
 
 func (l *gormUsageLedger) ListPendingOutbox(ctx context.Context, limit int) ([]UsageOutboxItem, error) {
@@ -591,7 +750,49 @@ func sumNegativeStorageReservations(tx *gorm.DB, input ReserveUsageInput) (int64
 	return total, err
 }
 
-func validateUsageReservation(input ReserveUsageInput, bucket usageBucketRow, limit *int64, reservedForQuota int64) error {
+func legacyUsageForReservation(tx *gorm.DB, input ReserveUsageInput) (int64, error) {
+	if input.LegacyUsageMetric == "" {
+		return 0, nil
+	}
+	var counter usageCounterRow
+	err := tx.Where("tenant_id = ? AND module_code = ? AND period_key = ? AND metric = ?", input.TenantID, input.ModuleCode, input.PeriodKey, input.LegacyUsageMetric).Take(&counter).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return 0, nil
+	}
+	return int64(counter.Used), err
+}
+
+func mirroredLegacyUsageForReservation(tx *gorm.DB, input ReserveUsageInput) (int64, error) {
+	key := strings.TrimSpace(input.LegacyUsageMirrorMetadataKey)
+	settledValue := strings.TrimSpace(input.LegacyUsageMirrorSettledValue)
+	if key == "" || settledValue == "" {
+		return 0, nil
+	}
+	var rows []usageEventRow
+	if err := tx.Where("tenant_id = ? AND module_code = ? AND metric = ? AND period_key = ? AND status IN ? AND quantity > 0", input.TenantID, input.ModuleCode, input.Metric, input.PeriodKey, []string{string(UsageEventReserved), string(UsageEventCommitted)}).Find(&rows).Error; err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, row := range rows {
+		var metadata map[string]string
+		if strings.TrimSpace(row.Metadata) != "" {
+			if err := json.Unmarshal([]byte(row.Metadata), &metadata); err != nil {
+				return 0, err
+			}
+		}
+		if metadata[key] != settledValue {
+			continue
+		}
+		updated, ok := addUsage(total, row.Quantity)
+		if !ok {
+			return total, nil
+		}
+		total = updated
+	}
+	return total, nil
+}
+
+func validateUsageReservation(input ReserveUsageInput, bucket usageBucketRow, limit *int64, reservedForQuota, legacyUsage int64) error {
 	if err := ValidateProjectedUsage(input.Metric, bucket.Committed, bucket.Reserved, input.Quantity); err != nil {
 		var quota *UsageQuotaError
 		if errors.As(err, &quota) {
@@ -601,7 +802,11 @@ func validateUsageReservation(input ReserveUsageInput, bucket usageBucketRow, li
 		}
 		return err
 	}
-	projected, ok := addUsage(bucket.Committed, reservedForQuota)
+	committedForQuota, ok := addUsage(bucket.Committed, legacyUsage)
+	if !ok {
+		return &UsageValidationError{Field: "usage"}
+	}
+	projected, ok := addUsage(committedForQuota, reservedForQuota)
 	if !ok {
 		return &UsageValidationError{Field: "usage"}
 	}
@@ -610,7 +815,7 @@ func validateUsageReservation(input ReserveUsageInput, bucket usageBucketRow, li
 		return &UsageValidationError{Field: "quantity"}
 	}
 	if limit != nil && *limit > 0 && input.Quantity > 0 && projected > *limit {
-		return &UsageQuotaError{TenantID: input.TenantID, ModuleCode: input.ModuleCode, Metric: input.Metric, Limit: limit, CommittedUsage: bucket.Committed, ReservedUsage: reservedForQuota, Quantity: input.Quantity}
+		return &UsageQuotaError{TenantID: input.TenantID, ModuleCode: input.ModuleCode, Metric: input.Metric, Limit: limit, CommittedUsage: committedForQuota, ReservedUsage: reservedForQuota, Quantity: input.Quantity}
 	}
 	return nil
 }

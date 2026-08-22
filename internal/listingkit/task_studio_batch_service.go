@@ -18,7 +18,9 @@ type taskStudioBatchService struct {
 	storeValidator           StudioBatchStoreValidator
 	generator                studioBatchGenerator
 	createGenerateTask       func(context.Context, *GenerateRequest) (*Task, error)
+	generateProductImages    func(context.Context, *StudioProductImageRequest) (*StudioProductImageResponse, error)
 	getTask                  func(context.Context, string) (*Task, error)
+	markTaskFailed           func(context.Context, string, string) error
 	retryBackgroundRemoval   func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error)
 	currentTime              func() time.Time
 	serviceRunner            *listingStudioBatchServiceRunner
@@ -30,31 +32,40 @@ type taskStudioBatchService struct {
 	taskExecuteRunner        *listingStudioBatchTaskExecuteRunner
 	taskPrepareRunner        *listingStudioBatchTaskPrepareRunner
 	taskResumeRunner         *listingStudioBatchTaskResumeRunner
+
+	productImageUsage             StudioProductImageUsage
+	generationUsageAdmission      GenerationUsageAdmission
+	resolveUploadedImagePublicURL func(context.Context, string) (string, error)
 }
 
 func newTaskStudioBatchService(config taskStudioBatchServiceConfig) *taskStudioBatchService {
 	service := &taskStudioBatchService{
-		repo:                     config.repo,
-		batchRunRepo:             config.batchRunRepo,
-		batchTaskLinkRepo:        config.batchTaskLinkRepo,
-		studioSessionRepo:        config.studioSessionRepo,
-		baselineChecker:          config.baselineChecker,
-		sdsProductDetailProvider: config.sdsProductDetailProvider,
-		storeValidator:           config.storeValidator,
-		generator:                config.generator,
-		createGenerateTask:       config.createGenerateTask,
-		getTask:                  config.getTask,
-		retryBackgroundRemoval:   config.retryBackgroundRemoval,
-		currentTime:              time.Now,
-		serviceRunner:            config.serviceRunner,
-		batchRunner:              config.batchRunner,
-		detailRunner:             config.detailRunner,
-		reviewRunner:             config.reviewRunner,
-		retryRunner:              config.retryRunner,
-		taskCreationRunner:       config.taskCreationRunner,
-		taskExecuteRunner:        config.taskExecuteRunner,
-		taskPrepareRunner:        config.taskPrepareRunner,
-		taskResumeRunner:         config.taskResumeRunner,
+		repo:                          config.repo,
+		batchRunRepo:                  config.batchRunRepo,
+		batchTaskLinkRepo:             config.batchTaskLinkRepo,
+		studioSessionRepo:             config.studioSessionRepo,
+		baselineChecker:               config.baselineChecker,
+		sdsProductDetailProvider:      config.sdsProductDetailProvider,
+		storeValidator:                config.storeValidator,
+		generator:                     config.generator,
+		createGenerateTask:            config.createGenerateTask,
+		generateProductImages:         config.generateProductImages,
+		productImageUsage:             config.productImageUsage,
+		generationUsageAdmission:      config.generationUsageAdmission,
+		resolveUploadedImagePublicURL: config.resolveUploadedImagePublicURL,
+		getTask:                       config.getTask,
+		markTaskFailed:                config.markTaskFailed,
+		retryBackgroundRemoval:        config.retryBackgroundRemoval,
+		currentTime:                   time.Now,
+		serviceRunner:                 config.serviceRunner,
+		batchRunner:                   config.batchRunner,
+		detailRunner:                  config.detailRunner,
+		reviewRunner:                  config.reviewRunner,
+		retryRunner:                   config.retryRunner,
+		taskCreationRunner:            config.taskCreationRunner,
+		taskExecuteRunner:             config.taskExecuteRunner,
+		taskPrepareRunner:             config.taskPrepareRunner,
+		taskResumeRunner:              config.taskResumeRunner,
 	}
 	service.ensureBatchRunner()
 	service.ensureDetailRunner()
@@ -399,7 +410,8 @@ func (s *taskStudioBatchService) rejectStudioBackgroundRemovalForOwnedTasks(ctx 
 		targetDesignIDs[strings.TrimSpace(designID)] = struct{}{}
 	}
 	for _, link := range links {
-		if strings.TrimSpace(link.ListingKitTaskID) == "" {
+		if strings.TrimSpace(link.ListingKitTaskID) == "" &&
+			(link.Status != studioBatchTaskLinkStatusCreating || s.studioBatchTaskLinkIsStale(&link)) {
 			continue
 		}
 		designID := strings.TrimSpace(link.DesignID)

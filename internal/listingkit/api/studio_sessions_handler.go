@@ -286,6 +286,14 @@ func (h *studioSessionHandler) DeleteStudioBatch(c *gin.Context) {
 }
 
 func writeStudioBatchActionError(c *gin.Context, errorCode string, err error) {
+	if errors.Is(err, listingsubscription.ErrSubscriptionQuotaExceed) || errors.Is(err, listingsubscription.ErrUsageQuotaExceeded) {
+		c.JSON(http.StatusPaymentRequired, gin.H{"error": "quota_exceeded", "message": err.Error()})
+		return
+	}
+	if errors.Is(err, listingsubscription.ErrSubscriptionRequired) {
+		c.JSON(http.StatusPaymentRequired, gin.H{"error": "subscription_required", "message": err.Error()})
+		return
+	}
 	status := http.StatusInternalServerError
 	switch {
 	case errors.Is(err, listingkit.ErrStudioSessionNotFound), errors.Is(err, gorm.ErrRecordNotFound):

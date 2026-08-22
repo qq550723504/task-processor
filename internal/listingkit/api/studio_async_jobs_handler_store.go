@@ -34,7 +34,7 @@ func (s *studioAsyncJobStore) create(ctx context.Context, path string) (studioAs
 }
 
 func (s *studioAsyncJobStore) get(ctx context.Context, id string) (studioAsyncJob, bool) {
-	record, err := s.repo.GetStudioAsyncJob(ctx, id)
+	record, err := s.getRecord(ctx, id)
 	if err != nil || record == nil {
 		return studioAsyncJob{}, false
 	}
@@ -45,16 +45,54 @@ func (s *studioAsyncJobStore) get(ctx context.Context, id string) (studioAsyncJo
 	return job, true
 }
 
-func (s *studioAsyncJobStore) succeed(ctx context.Context, id string, result any) {
-	_ = s.update(ctx, id, listingkit.StudioAsyncJobStatusSucceeded, result, "", http.StatusOK)
+func (s *studioAsyncJobStore) getRecord(ctx context.Context, id string) (*listingkit.StudioAsyncJobRecord, error) {
+	return s.repo.GetStudioAsyncJob(ctx, id)
+}
+
+func (s *studioAsyncJobStore) getRecordForTenant(ctx context.Context, tenantID, id string) (*listingkit.StudioAsyncJobRecord, error) {
+	return s.repo.GetStudioAsyncJobForTenant(ctx, tenantID, id)
+}
+
+func (s *studioAsyncJobStore) heartbeat(ctx context.Context, id string) error {
+	return s.repo.HeartbeatStudioAsyncJob(ctx, id, time.Now().UTC())
+}
+
+func (s *studioAsyncJobStore) succeedWithError(ctx context.Context, id string, result any) error {
+	return s.updateIfRunning(ctx, id, listingkit.StudioAsyncJobStatusSucceeded, result, "", http.StatusOK)
 }
 
 func (s *studioAsyncJobStore) fail(ctx context.Context, id string, err error, status int) {
+	_ = s.failWithError(ctx, id, err, status)
+}
+
+func (s *studioAsyncJobStore) failWithError(ctx context.Context, id string, err error, status int) error {
+	return s.updateIfRunning(ctx, id, listingkit.StudioAsyncJobStatusFailed, nil, errorMessage(err), status)
+}
+
+func (s *studioAsyncJobStore) failWithErrorForTenant(ctx context.Context, tenantID, id string, err error, status int) (bool, error) {
+	record, getErr := s.repo.GetStudioAsyncJobForTenant(ctx, tenantID, id)
+	if getErr != nil || record == nil {
+		return false, getErr
+	}
+	observedUpdatedAt := record.UpdatedAt
+	now := time.Now().UTC()
+	record.Status = listingkit.StudioAsyncJobStatusFailed
+	record.Error = errorMessage(err)
+	record.UpstreamStatus = status
+	record.UpdatedAt = now
+	record.FinishedAt = &now
+	if encodeErr := record.EncodeResult(nil); encodeErr != nil {
+		return false, encodeErr
+	}
+	return s.repo.UpdateStudioAsyncJobIfRunningSinceForTenant(ctx, tenantID, id, observedUpdatedAt, record)
+}
+
+func errorMessage(err error) string {
 	message := "async job failed"
 	if err != nil {
 		message = err.Error()
 	}
-	_ = s.update(ctx, id, listingkit.StudioAsyncJobStatusFailed, nil, message, status)
+	return message
 }
 
 func (s *studioAsyncJobStore) update(ctx context.Context, id string, status listingkit.StudioAsyncJobStatus, result any, message string, upstreamStatus int) error {
@@ -72,6 +110,23 @@ func (s *studioAsyncJobStore) update(ctx context.Context, id string, status list
 		return err
 	}
 	return s.repo.UpdateStudioAsyncJob(ctx, record)
+}
+
+func (s *studioAsyncJobStore) updateIfRunning(ctx context.Context, id string, status listingkit.StudioAsyncJobStatus, result any, message string, upstreamStatus int) error {
+	record, err := s.repo.GetStudioAsyncJob(ctx, id)
+	if err != nil || record == nil {
+		return err
+	}
+	now := time.Now().UTC()
+	record.Status = status
+	record.Error = message
+	record.UpstreamStatus = upstreamStatus
+	record.UpdatedAt = now
+	record.FinishedAt = &now
+	if err := record.EncodeResult(result); err != nil {
+		return err
+	}
+	return s.repo.UpdateStudioAsyncJobIfRunning(ctx, record)
 }
 
 func mapStudioAsyncJobRecord(record *listingkit.StudioAsyncJobRecord) (studioAsyncJob, error) {

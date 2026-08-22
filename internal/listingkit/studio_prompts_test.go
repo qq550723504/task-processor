@@ -1146,6 +1146,40 @@ func TestStudioEditAddsPublicURLForFrontendProxyUploadReference(t *testing.T) {
 	}
 }
 
+func TestStudioEditPreservesSecondaryReferencesForOwnedUploadPrimary(t *testing.T) {
+	generator := &stubStudioImageGenerator{generateResponse: &AIImageResponse{Data: []AIImageData{{B64JSON: "generated"}}}}
+	primaryURL := "/api/v1/listing-kits/uploads/files/0b15bb5e-9f9e-4952-9a06-fd31aab99901"
+	publicURL := "https://cdn.example.com/listingkit/design.png"
+	secondaryURL := "https://cdn.example.com/sds/product.png"
+	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
+		imageGenerator: generator,
+		loadUploadedImage: func(_ context.Context, key string) (*UploadedImageFile, error) {
+			if key != "0b15bb5e-9f9e-4952-9a06-fd31aab99901" {
+				t.Fatalf("unexpected uploaded image key = %q", key)
+			}
+			return &UploadedImageFile{ContentType: "image/webp", Data: validWebPData(t)}, nil
+		},
+		resolveUploadedImagePublicURL: func(_ context.Context, key string) (string, error) {
+			if key != "0b15bb5e-9f9e-4952-9a06-fd31aab99901" {
+				t.Fatalf("unexpected public URL key = %q", key)
+			}
+			return publicURL, nil
+		},
+	})
+
+	_, err := svc.editStudioDesignImageWithReferences(context.Background(), "test-model", "prompt", "1024x1024", []string{primaryURL, secondaryURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(generator.editRequests) != 1 {
+		t.Fatalf("edit requests = %d, want 1", len(generator.editRequests))
+	}
+	req := generator.editRequests[0]
+	if req.ImageURL != publicURL || len(req.ImageURLs) != 2 || req.ImageURLs[0] != publicURL || req.ImageURLs[1] != secondaryURL {
+		t.Fatalf("edit request references = (%q, %#v), want primary public URL plus secondary reference", req.ImageURL, req.ImageURLs)
+	}
+}
+
 func TestStudioEditKeepsInlineBytesWhenPublicURLUnavailable(t *testing.T) {
 	generator := &stubStudioImageGenerator{generateResponse: &AIImageResponse{Data: []AIImageData{{B64JSON: "generated"}}}}
 	svc := newTaskStudioMediaService(taskStudioMediaServiceConfig{
@@ -1211,7 +1245,6 @@ func TestGenerateOneStudioProductImageRetriesWithSanitizedInputsOnFormatError(t 
 	generator := &stubStudioImageGenerator{
 		editErrs: []error{
 			errors.New("grsai job failed: error (The image format is incorrect. Please check if there are any issues with the image format)"),
-			errors.New("grsai job failed: error (The image format is incorrect. Please check if there are any issues with the image format)"),
 			nil,
 		},
 		generateResponse: &AIImageResponse{
@@ -1227,8 +1260,8 @@ func TestGenerateOneStudioProductImageRetriesWithSanitizedInputsOnFormatError(t 
 	if err != nil {
 		t.Fatalf("generateOneStudioProductImage() error = %v", err)
 	}
-	if generator.editCalls != 3 {
-		t.Fatalf("editCalls = %d, want 3", generator.editCalls)
+	if generator.editCalls != 2 {
+		t.Fatalf("editCalls = %d, want 2", generator.editCalls)
 	}
 	if len(store.saved) < 2 {
 		t.Fatalf("saved images = %d, want at least 2", len(store.saved))
@@ -1236,7 +1269,7 @@ func TestGenerateOneStudioProductImageRetriesWithSanitizedInputsOnFormatError(t 
 	if got := store.saved[0].ContentType; got != "image/jpeg" {
 		t.Fatalf("content type = %q, want image/jpeg", got)
 	}
-	if len(generator.editRequests) < 3 || generator.editRequests[2].ImageURLs[0] != "https://example.com/compat/sanitized.jpg" {
+	if len(generator.editRequests) < 2 || generator.editRequests[1].ImageURLs[0] != "https://example.com/compat/sanitized.jpg" {
 		t.Fatalf("sanitized retry did not use uploaded jpeg URL: %#v", generator.editRequests)
 	}
 }

@@ -4,10 +4,199 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
 )
+
+func TestMemUsageLedgerReserveIncludesLegacyCounterInQuota(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemRepository()
+	svc, err := NewService(repo)
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(ctx, "tenant-legacy-atomic", ModuleStudio, EntitlementInput{
+		Status: StatusActive,
+		Limits: map[string]int{"product_image_jobs": 2},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	if _, err := svc.RecordUsage(ctx, "tenant-legacy-atomic", ModuleStudio, "product_image_jobs", 1); err != nil {
+		t.Fatalf("RecordUsage() error = %v", err)
+	}
+	ledger := NewMemUsageLedger(repo)
+	_, err = ledger.Reserve(ctx, ReserveUsageInput{
+		TenantID:          "tenant-legacy-atomic",
+		ModuleCode:        ModuleStudio,
+		Metric:            usageMetricProductImageJobsSucceeded,
+		LegacyUsageMetric: "product_image_jobs",
+		Quantity:          2,
+		PeriodKey:         time.Now().UTC().Format("2006-01"),
+		SourceType:        "listingkit_product_image",
+		SourceID:          "legacy-atomic",
+		IdempotencyKey:    "legacy-atomic",
+		OccurredAt:        time.Now().UTC(),
+	})
+	if !errors.Is(err, ErrUsageQuotaExceeded) {
+		t.Fatalf("Reserve() error = %v, want ErrUsageQuotaExceeded", err)
+	}
+}
+
+func TestMemUsageLedgerReserveDoesNotDoubleCountMirroredLegacyUsage(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemRepository()
+	svc, err := NewService(repo)
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	period := "2026-08"
+	if _, err := svc.UpsertEntitlement(ctx, "tenant-legacy-mirror", ModuleStudio, EntitlementInput{
+		Status: StatusActive,
+		Limits: map[string]int{"product_image_jobs": 7},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	if _, err := svc.RecordUsage(ctx, "tenant-legacy-mirror", ModuleStudio, "product_image_jobs", 5); err != nil {
+		t.Fatalf("seed legacy usage: %v", err)
+	}
+	ledger := NewMemUsageLedger(repo)
+	metadataUpdater := ledger.(UsageLedgerMetadataUpdater)
+	input := func(key string) ReserveUsageInput {
+		return ReserveUsageInput{
+			TenantID: "tenant-legacy-mirror", ModuleCode: ModuleStudio,
+			Metric: usageMetricProductImageJobsSucceeded, LegacyUsageMetric: "product_image_jobs",
+			Quantity: 1, PeriodKey: period, SourceType: "listingkit_product_image",
+			SourceID: key, IdempotencyKey: key, OccurredAt: time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC),
+			LegacyUsageMirrorMetadataKey:  "listingkit_legacy_counter_mirror",
+			LegacyUsageMirrorSettledValue: "settled",
+		}
+	}
+	first, err := ledger.Reserve(ctx, input("mirror-1"))
+	if err != nil {
+		t.Fatalf("first Reserve() error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, first.Event.EventID); err != nil {
+		t.Fatalf("first Commit() error = %v", err)
+	}
+	if _, err := metadataUpdater.UpdateMetadata(ctx, first.Event.EventID, map[string]string{"listingkit_legacy_counter_mirror": "settled"}); err != nil {
+		t.Fatalf("first mirror metadata: %v", err)
+	}
+	if _, err := svc.RecordUsage(ctx, "tenant-legacy-mirror", ModuleStudio, "product_image_jobs", 1); err != nil {
+		t.Fatalf("mirror legacy usage: %v", err)
+	}
+	if _, err := ledger.Reserve(ctx, input("mirror-2")); err != nil {
+		t.Fatalf("second Reserve() error = %v, want mirrored usage to be counted once", err)
+	}
+	if _, err := svc.RecordUsage(ctx, "tenant-legacy-mirror", ModuleStudio, "product_image_jobs", 1); err != nil {
+		t.Fatalf("mirror second legacy usage: %v", err)
+	}
+	if _, err := ledger.Reserve(ctx, input("mirror-3")); !errors.Is(err, ErrUsageQuotaExceeded) {
+		t.Fatalf("third Reserve() error = %v, want ErrUsageQuotaExceeded", err)
+	}
+}
+
+func TestMemUsageLedgerReserveDoesNotSubtractUnmirroredReservationsFromLegacyUsage(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemRepository()
+	svc, err := NewService(repo)
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(ctx, "tenant-legacy-unmirrored", ModuleStudio, EntitlementInput{
+		Status: StatusActive,
+		Limits: map[string]int{"product_image_jobs": 7},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	if _, err := svc.RecordUsage(ctx, "tenant-legacy-unmirrored", ModuleStudio, "product_image_jobs", 5); err != nil {
+		t.Fatalf("seed legacy usage: %v", err)
+	}
+	ledger := NewMemUsageLedger(repo)
+	input := func(key string) ReserveUsageInput {
+		return ReserveUsageInput{
+			TenantID: "tenant-legacy-unmirrored", ModuleCode: ModuleStudio,
+			Metric: usageMetricProductImageJobsSucceeded, LegacyUsageMetric: "product_image_jobs",
+			Quantity: 1, PeriodKey: "2026-08", SourceType: "listingkit_product_image",
+			SourceID: key, IdempotencyKey: key, OccurredAt: time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC),
+		}
+	}
+	if _, err := ledger.Reserve(ctx, input("unmirrored-1")); err != nil {
+		t.Fatalf("first Reserve() error = %v", err)
+	}
+	if _, err := ledger.Reserve(ctx, input("unmirrored-2")); err != nil {
+		t.Fatalf("second Reserve() error = %v", err)
+	}
+	if _, err := ledger.Reserve(ctx, input("unmirrored-3")); !errors.Is(err, ErrUsageQuotaExceeded) {
+		t.Fatalf("third Reserve() error = %v, want ErrUsageQuotaExceeded", err)
+	}
+}
+
+func TestMemUsageLedgerReconciliationPageReturnsOnlyPendingEvents(t *testing.T) {
+	ctx := context.Background()
+	repo := NewMemRepository()
+	ledger := NewMemUsageLedger(repo)
+	svc, err := NewServiceWithLedger(repo, ledger)
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	if _, err := svc.UpsertEntitlement(ctx, "tenant-reconcile-filter", ModuleStudio, EntitlementInput{
+		Status: StatusActive, Limits: map[string]int{"product_image_jobs": 10},
+	}); err != nil {
+		t.Fatalf("UpsertEntitlement() error = %v", err)
+	}
+	metadataUpdater := ledger.(UsageLedgerMetadataUpdater)
+	reserve := func(id string, metadata map[string]string) UsageEvent {
+		t.Helper()
+		result, reserveErr := ledger.Reserve(ctx, ReserveUsageInput{
+			TenantID: "tenant-reconcile-filter", ModuleCode: ModuleStudio, Metric: usageMetricProductImageJobsSucceeded,
+			Quantity: 1, PeriodKey: "2026-08", SourceType: "listingkit_product_image", SourceID: id,
+			IdempotencyKey: id, OccurredAt: time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC), Metadata: metadata,
+		})
+		if reserveErr != nil {
+			t.Fatalf("ReserveUsage(%s) error = %v", id, reserveErr)
+		}
+		return result.Event
+	}
+	released := reserve("released", nil)
+	if _, err := ledger.Release(ctx, released.EventID, "test"); err != nil {
+		t.Fatalf("ReleaseUsage() error = %v", err)
+	}
+	settled := reserve("settled", nil)
+	if _, err := metadataUpdater.UpdateMetadata(ctx, settled.EventID, map[string]string{"listingkit_legacy_counter_mirror": "settled"}); err != nil {
+		t.Fatalf("UpdateMetadata(settled) error = %v", err)
+	}
+	if _, err := ledger.Commit(ctx, settled.EventID); err != nil {
+		t.Fatalf("CommitUsage(settled) error = %v", err)
+	}
+	needsMirror := reserve("needs-mirror", nil)
+	if _, err := ledger.Commit(ctx, needsMirror.EventID); err != nil {
+		t.Fatalf("CommitUsage(needs-mirror) error = %v", err)
+	}
+	pendingRelease := reserve("pending-release", nil)
+	if _, err := metadataUpdater.UpdateMetadata(ctx, pendingRelease.EventID, map[string]string{"listingkit_api_release_pending": "1"}); err != nil {
+		t.Fatalf("UpdateMetadata(pending-release) error = %v", err)
+	}
+	activeBatch := reserve("active-batch", nil)
+	if _, err := metadataUpdater.UpdateMetadata(ctx, activeBatch.EventID, map[string]string{"listingkit_legacy_counter_mirror": "settled"}); err != nil {
+		t.Fatalf("UpdateMetadata(active-batch) error = %v", err)
+	}
+	events, err := svc.ListUsageEventPageForReconciliation(ctx, "tenant-reconcile-filter", "listingkit_product_image", usageMetricProductImageJobsSucceeded, 100, 0)
+	if err != nil {
+		t.Fatalf("ListUsageEventPageForReconciliation() error = %v", err)
+	}
+	_ = pendingRelease
+	_ = activeBatch
+	got := make(map[string]bool, len(events))
+	for _, event := range events {
+		got[event.SourceID] = true
+	}
+	want := map[string]bool{"needs-mirror": true, "pending-release": true}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ListUsageEventPageForReconciliation() sources = %v, want %v", got, want)
+	}
+}
 
 func TestUsageLedgerConcurrentReservationsRespectLimit(t *testing.T) {
 	ctx := context.Background()

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	referenceanalysis "task-processor/internal/listing/studio/referenceanalysis"
+	"task-processor/internal/pkg/safeimagehttp"
 )
 
 const maxStudioReferenceAnalysisImages = 1
@@ -221,21 +222,7 @@ func studioReferenceUploadedImageKeyCandidates(rawURL string) []string {
 }
 
 func validateStudioReferencePublicHTTPSURL(rawURL string) (string, error) {
-	trimmed := strings.TrimSpace(rawURL)
-	if trimmed == "" {
-		return "", fmt.Errorf("public https url is required")
-	}
-	parsed, err := url.ParseRequestURI(trimmed)
-	if err != nil || parsed == nil || !parsed.IsAbs() || !strings.EqualFold(parsed.Scheme, "https") || strings.TrimSpace(parsed.Host) == "" {
-		return "", fmt.Errorf("public https url is required")
-	}
-	if isStudioReferenceLocalHost(parsed.Hostname()) {
-		return "", fmt.Errorf("public https url is required")
-	}
-	if ip := net.ParseIP(parsed.Hostname()); ip != nil && isStudioReferencePrivateIP(ip) {
-		return "", fmt.Errorf("public https url is required")
-	}
-	return parsed.String(), nil
+	return safeimagehttp.ValidatePublicHTTPSURL(rawURL)
 }
 
 func isStudioReferencePrivateIP(ip net.IP) bool {

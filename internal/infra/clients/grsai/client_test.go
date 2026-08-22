@@ -12,8 +12,70 @@ import (
 	"testing"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/ai"
 )
+
+func TestReferenceMaterializationBudgetCapsConcurrentReferences(t *testing.T) {
+	budget := newReferenceMaterializationBudget(maxMaterializedReferenceBytes, 1)
+	releaseFirst, err := budget.acquire(context.Background(), maxMaterializedReferenceBytes)
+	if err != nil {
+		t.Fatalf("first acquire: %v", err)
+	}
+
+	secondAcquired := make(chan func(), 1)
+	go func() {
+		release, acquireErr := budget.acquire(context.Background(), maxMaterializedReferenceBytes)
+		if acquireErr == nil {
+			secondAcquired <- release
+		}
+	}()
+	select {
+	case <-secondAcquired:
+		t.Fatal("second reference acquired before the first lease was released")
+	case <-time.After(25 * time.Millisecond):
+	}
+
+	releaseFirst()
+	select {
+	case releaseSecond := <-secondAcquired:
+		releaseSecond()
+	case <-time.After(time.Second):
+		t.Fatal("second reference did not acquire after the first lease was released")
+	}
+}
+
+func TestReferenceMaterializationBudgetReleasesDownloadSlotPerReference(t *testing.T) {
+	budget := newReferenceMaterializationBudget(2*maxMaterializedReferenceBytes, 1)
+	releaseBytes, err := budget.acquire(context.Background(), 2*maxMaterializedReferenceBytes)
+	if err != nil {
+		t.Fatalf("byte acquire: %v", err)
+	}
+	defer releaseBytes()
+
+	releaseFirstDownload, err := budget.acquireDownload(context.Background())
+	if err != nil {
+		t.Fatalf("first download acquire: %v", err)
+	}
+	secondAcquired := make(chan func(), 1)
+	go func() {
+		release, acquireErr := budget.acquireDownload(context.Background())
+		if acquireErr == nil {
+			secondAcquired <- release
+		}
+	}()
+	select {
+	case <-secondAcquired:
+		t.Fatal("second download acquired before the first reference completed")
+	case <-time.After(25 * time.Millisecond):
+	}
+	releaseFirstDownload()
+	select {
+	case releaseSecond := <-secondAcquired:
+		releaseSecond()
+	case <-time.After(time.Second):
+		t.Fatal("second download did not acquire after the first reference completed")
+	}
+}
 
 func TestClientEditImageUsesGenerateEndpointForNanoBanana(t *testing.T) {
 	imageBytes := []byte("generated-image")
@@ -45,7 +107,7 @@ func TestClientEditImageUsesGenerateEndpointForNanoBanana(t *testing.T) {
 			if !ok || len(images) != 2 {
 				t.Fatalf("images = %#v", req["images"])
 			}
-			if images[0] != "https://example.com/source.png" || images[1] != "https://example.com/side.png" {
+			if images[0] != "data:image/png;base64,c291cmNl" || images[1] != "data:image/png;base64,c2lkZQ==" {
 				t.Fatalf("image urls = %#v", images)
 			}
 			_ = json.NewEncoder(w).Encode(submitResponse{
@@ -77,9 +139,8 @@ func TestClientEditImageUsesGenerateEndpointForNanoBanana(t *testing.T) {
 	resp, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
 		Prompt: "edit faithfully",
 		ImageURLs: []string{
-			" https://example.com/source.png ",
-			"https://example.com/source.png",
-			"https://example.com/side.png",
+			"data:image/png;base64,c291cmNl",
+			"data:image/png;base64,c2lkZQ==",
 		},
 	})
 	if err != nil {
@@ -151,6 +212,48 @@ func TestClientEditImageUsesInlineImageDataWhenURLUnavailable(t *testing.T) {
 	}
 	if len(resp.Data) != 1 {
 		t.Fatalf("data len = %d", len(resp.Data))
+	}
+}
+
+func TestClientEditImageKeepsInlinePrimaryBeforeSecondaryData(t *testing.T) {
+	var gotImages []any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/api/generate" {
+			t.Fatalf("path = %q", r.URL.Path)
+		}
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		gotImages, _ = req["images"].([]any)
+		_ = json.NewEncoder(w).Encode(submitResponse{Status: "succeeded", Results: []resultItem{{Content: "generated"}}})
+	}))
+	defer server.Close()
+	client := NewClient(Config{Model: "nano-banana-fast", SubmitURL: server.URL + "/v1", HTTPClient: server.Client(), Timeout: time.Second})
+	_, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
+		Prompt:           "keep primary",
+		Image:            []byte("primary"),
+		ImageContentType: "image/png",
+		ImageURLs:        []string{"data:image/png;base64,c2Vjb25kYXJ5"},
+	})
+	if err != nil {
+		t.Fatalf("EditImage() error = %v", err)
+	}
+	if len(gotImages) != 2 || gotImages[0] != "data:image/png;base64,cHJpbWFyeQ==" || gotImages[1] != "data:image/png;base64,c2Vjb25kYXJ5" {
+		t.Fatalf("images = %#v, want inline primary followed by secondary", gotImages)
+	}
+}
+
+func TestClientEditImageRejectsPrivateSecondaryReference(t *testing.T) {
+	client := NewClient(Config{Model: "nano-banana-fast", SubmitURL: "https://api.example.com/v1", Timeout: time.Second})
+	_, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
+		Prompt:           "reject private",
+		Image:            []byte("primary"),
+		ImageContentType: "image/png",
+		ImageURLs:        []string{"http://127.0.0.1/private.png"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "public https url") {
+		t.Fatalf("EditImage() error = %v, want public URL validation failure", err)
 	}
 }
 
@@ -243,8 +346,8 @@ func TestClientEditImageUsesGenerateEndpointForGPTImage(t *testing.T) {
 			if !ok || len(images) != 2 {
 				t.Fatalf("images = %#v", req["images"])
 			}
-			wantSource := serverURL + "/source.png"
-			wantSide := serverURL + "/side.png"
+			wantSource := "data:image/png;base64,c291cmNl"
+			wantSide := "data:image/png;base64,c2lkZQ=="
 			if images[0] != wantSource || images[1] != wantSide {
 				t.Fatalf("image urls = %#v", images)
 			}
@@ -278,8 +381,8 @@ func TestClientEditImageUsesGenerateEndpointForGPTImage(t *testing.T) {
 		Model:  "gpt-image-2",
 		Prompt: "edit faithfully",
 		ImageURLs: []string{
-			serverURL + "/source.png",
-			serverURL + "/side.png",
+			"data:image/png;base64,c291cmNl",
+			"data:image/png;base64,c2lkZQ==",
 		},
 		Size: "1024x1024",
 	})
@@ -350,7 +453,7 @@ func TestClientSubmitImageEditReturnsDirectResultWhenGenerateAlreadySucceeded(t 
 			if !ok || len(images) != 1 {
 				t.Fatalf("request images = %#v, want 1 reference image", req["images"])
 			}
-			want := serverURL + "/source.png"
+			want := "data:image/png;base64,c291cmNl"
 			if images[0] != want {
 				t.Fatalf("image[0] = %q, want original URL", images[0])
 			}
@@ -382,7 +485,7 @@ func TestClientSubmitImageEditReturnsDirectResultWhenGenerateAlreadySucceeded(t 
 	resp, err := client.SubmitImageEdit(context.Background(), &openaiclient.ImageEditRequest{
 		Model:     "gpt-image-2",
 		Prompt:    "edit faithfully",
-		ImageURLs: []string{serverURL + "/source.png"},
+		ImageURLs: []string{"data:image/png;base64,c291cmNl"},
 	})
 	if err != nil {
 		t.Fatalf("SubmitImageEdit() error = %v", err)
@@ -402,8 +505,6 @@ func TestClientSubmitImageEditReturnsDirectResultWhenGenerateAlreadySucceeded(t 
 }
 
 func TestClientSubmitImageEditReturnsAsyncJobMetadata(t *testing.T) {
-	var serverURL string
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/api/generate":
@@ -415,8 +516,8 @@ func TestClientSubmitImageEditReturnsAsyncJobMetadata(t *testing.T) {
 			if !ok || len(images) != 2 {
 				t.Fatalf("request images = %#v, want 2 reference images", req["images"])
 			}
-			wantA := serverURL + "/a.png"
-			wantB := serverURL + "/b.png"
+			wantA := "data:image/png;base64,YQ=="
+			wantB := "data:image/png;base64,Yg=="
 			if images[0] != wantA || images[1] != wantB {
 				t.Fatalf("image urls = %#v", images)
 			}
@@ -430,8 +531,6 @@ func TestClientSubmitImageEditReturnsAsyncJobMetadata(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	serverURL = server.URL
-
 	client := NewClient(Config{
 		APIKey:     "test-key",
 		Model:      "gpt-image-2",
@@ -442,7 +541,7 @@ func TestClientSubmitImageEditReturnsAsyncJobMetadata(t *testing.T) {
 
 	result, err := client.SubmitImageEdit(context.Background(), &openaiclient.ImageEditRequest{
 		Prompt:    "flat artwork",
-		ImageURLs: []string{serverURL + "/a.png", serverURL + "/b.png"},
+		ImageURLs: []string{"data:image/png;base64,YQ==", "data:image/png;base64,Yg=="},
 	})
 	if err != nil {
 		t.Fatalf("SubmitImageEdit() error = %v", err)
@@ -456,8 +555,6 @@ func TestClientSubmitImageEditReturnsAsyncJobMetadata(t *testing.T) {
 }
 
 func TestClientSubmitImageEditSendsReferenceImagesAsURLs(t *testing.T) {
-	var serverURL string
-
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v1/api/generate":
@@ -469,7 +566,7 @@ func TestClientSubmitImageEditSendsReferenceImagesAsURLs(t *testing.T) {
 			if !ok || len(images) != 1 {
 				t.Fatalf("request images = %#v, want 1 reference image", req["images"])
 			}
-			want := serverURL + "/source.png"
+			want := "data:image/png;base64,c291cmNl"
 			if images[0] != want {
 				t.Fatalf("image[0] = %q, want original URL", images[0])
 			}
@@ -483,8 +580,6 @@ func TestClientSubmitImageEditSendsReferenceImagesAsURLs(t *testing.T) {
 		}
 	}))
 	defer server.Close()
-	serverURL = server.URL
-
 	client := NewClient(Config{
 		APIKey:     "test-key",
 		Model:      "gpt-image-2",
@@ -495,7 +590,7 @@ func TestClientSubmitImageEditSendsReferenceImagesAsURLs(t *testing.T) {
 
 	result, err := client.SubmitImageEdit(context.Background(), &openaiclient.ImageEditRequest{
 		Prompt:    "flat artwork",
-		ImageURLs: []string{serverURL + "/source.png"},
+		ImageURLs: []string{"data:image/png;base64,c291cmNl"},
 	})
 	if err != nil {
 		t.Fatalf("SubmitImageEdit() error = %v", err)
@@ -695,8 +790,9 @@ func TestClientEditImageReturnsTypedModerationError(t *testing.T) {
 	})
 
 	_, err := client.EditImage(context.Background(), &openaiclient.ImageEditRequest{
-		Prompt:   "edit faithfully",
-		ImageURL: "https://example.com/source.png",
+		Prompt:           "edit faithfully",
+		Image:            []byte("raw-image"),
+		ImageContentType: "image/png",
 	})
 	if err == nil {
 		t.Fatal("expected moderation error")

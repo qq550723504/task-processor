@@ -23,14 +23,16 @@ func buildStudioDependencies(config *ServiceConfig) studioDependencies {
 		return studioDependencies{}
 	}
 	return studioDependencies{
-		sessionRepo:       config.Core.StudioSessionRepository,
-		batchRepo:         config.Core.StudioBatchRepository,
-		batchRunRepo:      config.Core.StudioBatchRunRepository,
-		batchTaskLinkRepo: config.Core.StudioBatchTaskLinkRepository,
-		promptDiversifier: config.Shein.StudioPromptDiversifier,
-		imageGenerator:    config.Shein.StudioImageGenerator,
-		backgroundRemover: config.Shein.StudioBackgroundRemover,
-		uploadStore:       config.Core.ImageUploadStore,
+		sessionRepo:              config.Core.StudioSessionRepository,
+		batchRepo:                config.Core.StudioBatchRepository,
+		batchRunRepo:             config.Core.StudioBatchRunRepository,
+		batchTaskLinkRepo:        config.Core.StudioBatchTaskLinkRepository,
+		promptDiversifier:        config.Shein.StudioPromptDiversifier,
+		imageGenerator:           config.Shein.StudioImageGenerator,
+		backgroundRemover:        config.Shein.StudioBackgroundRemover,
+		uploadStore:              config.Core.ImageUploadStore,
+		productImageUsage:        config.Core.StudioProductImageUsage,
+		generationUsageAdmission: config.Core.GenerationUsageAdmission,
 	}
 }
 

@@ -1,0 +1,412 @@
+package api
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+
+	"task-processor/internal/listingkit"
+	"task-processor/internal/listingsubscription"
+	"task-processor/internal/tenantbridge"
+)
+
+const (
+	studioProductImageLedgerMetric                          = "product_image_jobs_succeeded"
+	studioProductImageReleasePendingMetadataKey             = "listingkit_api_release_pending"
+	studioProductImageLegacyMirrorMetadataKey               = "listingkit_legacy_counter_mirror"
+	studioProductImageLegacyMirrorSettled                   = "settled"
+	studioProductImageLegacyMirrorReleasePendingMetadataKey = listingkit.StudioProductImageLegacyMirrorReleasePendingMetadataKey
+	studioProductImageSourceType                            = "listingkit_product_image"
+	studioProductImageAsyncSourceType                       = "listingkit_async_product_image"
+	studioProductImageAsyncJobMetadataKey                   = "listingkit_async_job"
+	studioProductImageAsyncJobMetadataValue                 = "1"
+	studioProductImageAsyncJobRecoveryAfter                 = 30 * time.Minute
+	studioProductImageSyncReservationRecoveryAfter          = 30 * time.Minute
+)
+
+func studioProductImageUsageRolloutAllowed(h *handler, tenantID string) bool {
+	return h != nil && (h.generationUsageAdmission == nil || h.generationUsageAdmission.AllowsGenerationUsage(strings.TrimSpace(tenantID)))
+}
+
+func studioProductImageUsageLedgerEnabled(h *handler, tenantID string) bool {
+	return h != nil && h.subscriptionService != nil && h.subscriptionService.HasUsageLedger() && studioProductImageUsageRolloutAllowed(h, tenantID)
+}
+
+func studioProductImageUsageReleaseContext(c *gin.Context) context.Context {
+	return detachedRequestContext(c)
+}
+
+func (h *handler) reserveStudioProductImageUsage(c *gin.Context, reservationID string) (string, error) {
+	return h.reserveStudioProductImageUsageWithSourceType(c, reservationID, studioProductImageSourceType)
+}
+
+func (h *handler) reserveStudioProductImageUsageForAsyncJob(c *gin.Context, reservationID string) (string, error) {
+	return h.reserveStudioProductImageUsageWithSourceType(c, reservationID, studioProductImageAsyncSourceType)
+}
+
+func (h *handler) reserveStudioProductImageUsageWithSourceType(c *gin.Context, reservationID, sourceType string) (string, error) {
+	reservationID = strings.TrimSpace(reservationID)
+	if reservationID == "" {
+		reservationID = uuid.NewString()
+	}
+	requestTenant := strings.TrimSpace(requestTenantID(c))
+	if requestTenant == "" {
+		return "", fmt.Errorf("tenant id is required")
+	}
+	if !studioProductImageUsageRolloutAllowed(h, requestTenant) {
+		return "", listingsubscription.ErrUsageLedgerNotConfigured
+	}
+	if h.subscriptionService == nil || !h.subscriptionService.HasUsageLedger() {
+		return "", listingsubscription.ErrUsageLedgerNotConfigured
+	}
+	reserve := func(tenantID string) (listingsubscription.ReserveUsageResult, error) {
+		now := time.Now().UTC()
+		return h.subscriptionService.ReserveUsage(c.Request.Context(), listingsubscription.ReserveUsageInput{
+			TenantID:                      strings.TrimSpace(tenantID),
+			ModuleCode:                    listingsubscription.ModuleStudio,
+			Metric:                        studioProductImageLedgerMetric,
+			LegacyUsageMetric:             "product_image_jobs",
+			Quantity:                      1,
+			PeriodKey:                     now.Format("2006-01"),
+			SourceType:                    sourceType,
+			SourceID:                      reservationID,
+			IdempotencyKey:                "listingkit:api:studio_product_image:" + reservationID,
+			OccurredAt:                    now,
+			LegacyUsageMirrorMetadataKey:  studioProductImageLegacyMirrorMetadataKey,
+			LegacyUsageMirrorSettledValue: studioProductImageLegacyMirrorSettled,
+		})
+	}
+	if err := h.reconcileStudioProductImageUsageReleases(c.Request.Context(), requestTenant); err != nil {
+		return "", err
+	}
+	billingTenant, err := h.authorizeStudioProductImageLedgerTenant(c, requestTenant)
+	if err != nil {
+		return "", err
+	}
+	result, err := reserve(billingTenant)
+	if errors.Is(err, listingsubscription.ErrSubscriptionRequired) {
+		if legacyTenant, ok, resolveErr := resolveLegacySubscriptionTenantIDWithError(c, requestTenant); resolveErr != nil {
+			return "", resolveErr
+		} else if ok {
+			result, err = reserve(legacyTenant)
+			if err == nil {
+				c.Set(subscriptionTenantContextKey, legacyTenant)
+			}
+		}
+	}
+	if err != nil {
+		return "", err
+	}
+	c.Set(subscriptionTenantContextKey, result.Event.TenantID)
+	return result.Event.EventID, nil
+}
+
+func (h *handler) authorizeStudioProductImageLedgerTenant(c *gin.Context, tenantID string) (string, error) {
+	result, err := h.subscriptionService.AuthorizeUsage(c.Request.Context(), tenantID, listingsubscription.ModuleStudio, "product_image_jobs", 1)
+	if err == nil && result.Allowed {
+		return tenantID, nil
+	}
+	if err != nil && !errors.Is(err, listingsubscription.ErrSubscriptionRequired) {
+		return "", err
+	}
+	if err == nil || result.Reason != "not_configured" {
+		if err != nil {
+			return "", err
+		}
+		return "", listingsubscription.ErrSubscriptionRequired
+	}
+	legacyTenant, ok, resolveErr := resolveLegacySubscriptionTenantIDWithError(c, tenantID)
+	if resolveErr != nil {
+		return "", resolveErr
+	}
+	if !ok {
+		return "", listingsubscription.ErrSubscriptionRequired
+	}
+	if err := h.reconcileStudioProductImageUsageReleases(c.Request.Context(), legacyTenant); err != nil {
+		return "", err
+	}
+	fallback, fallbackErr := h.subscriptionService.AuthorizeUsage(c.Request.Context(), legacyTenant, listingsubscription.ModuleStudio, "product_image_jobs", 1)
+	if fallbackErr != nil {
+		return "", fallbackErr
+	}
+	if !fallback.Allowed {
+		return "", listingsubscription.ErrSubscriptionRequired
+	}
+	return legacyTenant, nil
+}
+
+func (h *handler) reconcileStudioProductImageUsageReleases(ctx context.Context, tenantID string) error {
+	const pageSize = 100
+	tenantID = strings.TrimSpace(tenantID)
+	if tenantID == "" {
+		return fmt.Errorf("tenant id is required for product image usage reconciliation")
+	}
+	offset := 0
+	for {
+		events, err := h.subscriptionService.ListUsageEventPageForReconciliationWithFilter(ctx, listingsubscription.UsageLedgerReconciliationFilter{
+			TenantID: tenantID, SourceType: studioProductImageSourceType, SourceTypes: []string{studioProductImageSourceType, studioProductImageAsyncSourceType}, Metric: studioProductImageLedgerMetric,
+			ReservedMetadataPredicates: []listingsubscription.UsageLedgerMetadataPredicate{
+				{Key: studioProductImageReleasePendingMetadataKey, Value: "1"},
+				{Key: studioProductImageAsyncJobMetadataKey, Value: studioProductImageAsyncJobMetadataValue},
+			},
+			ReservedSourceTypes:        []string{studioProductImageAsyncSourceType, studioProductImageSourceType},
+			ReleasedMetadataPredicates: []listingsubscription.UsageLedgerMetadataPredicate{{Key: studioProductImageLegacyMirrorReleasePendingMetadataKey, Value: "1"}},
+			CommittedMetadataKey:       studioProductImageLegacyMirrorMetadataKey, CommittedSettledValue: studioProductImageLegacyMirrorSettled,
+		}, pageSize, offset)
+		if err != nil {
+			return err
+		}
+		if len(events) == 0 {
+			return nil
+		}
+		progress := 0
+		for _, event := range events {
+			if event.Status == listingsubscription.UsageEventReleased && event.Metadata[studioProductImageLegacyMirrorReleasePendingMetadataKey] == "1" {
+				if err := h.finishStudioProductImageLegacyMirrorRelease(ctx, event); err != nil {
+					return err
+				}
+				progress++
+				continue
+			}
+			if event.Status == listingsubscription.UsageEventReserved && event.Metadata[studioProductImageReleasePendingMetadataKey] == "1" {
+				if _, releaseErr := h.subscriptionService.ReleaseUsage(ctx, event.EventID, "retry_pending_api_release"); releaseErr != nil {
+					return releaseErr
+				}
+				progress++
+				continue
+			}
+			if event.Status == listingsubscription.UsageEventReserved && event.SourceType == studioProductImageAsyncSourceType {
+				changed, err := h.reconcileAbandonedStudioAsyncProductImageUsage(ctx, tenantID, event)
+				if err != nil {
+					return err
+				}
+				if changed {
+					progress++
+				}
+				continue
+			}
+			if event.Status == listingsubscription.UsageEventReserved && event.SourceType == studioProductImageSourceType {
+				if !studioProductImageSyncReservationExpired(event) {
+					continue
+				}
+				if err := releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "sync_reservation_expired"); err != nil {
+					return err
+				}
+				progress++
+				continue
+			}
+			if event.Status == listingsubscription.UsageEventCommitted && event.Metadata[studioProductImageLegacyMirrorMetadataKey] != studioProductImageLegacyMirrorSettled {
+				if err := mirrorStudioProductImageUsage(ctx, h.subscriptionService, event); err != nil {
+					return err
+				}
+				progress++
+			}
+		}
+		if progress > 0 {
+			// Mutations change the filtered result set. Restart from the stable
+			// beginning, then advance over unchanged active rows again.
+			offset = 0
+			continue
+		}
+		offset += len(events)
+		if len(events) < pageSize {
+			return nil
+		}
+	}
+}
+
+func (h *handler) finishStudioProductImageLegacyMirrorRelease(ctx context.Context, event listingsubscription.UsageEvent) error {
+	if event.Quantity <= 0 {
+		return nil
+	}
+	if _, _, err := h.subscriptionService.RecordUsageForPeriodOnce(ctx, event.TenantID, listingsubscription.ModuleStudio, "product_image_jobs", event.PeriodKey, -int(event.Quantity), listingkit.StudioProductImageLegacyMirrorOperationKey(event.EventID, "release")); err != nil {
+		return err
+	}
+	metadata := make(map[string]string, len(event.Metadata))
+	for key, value := range event.Metadata {
+		metadata[key] = value
+	}
+	delete(metadata, studioProductImageLegacyMirrorReleasePendingMetadataKey)
+	_, err := h.subscriptionService.UpdateUsageMetadata(ctx, event.EventID, metadata)
+	return err
+}
+
+func (h *handler) reconcileAbandonedStudioAsyncProductImageUsage(ctx context.Context, tenantID string, event listingsubscription.UsageEvent) (bool, error) {
+	if h == nil {
+		return false, fmt.Errorf("studio async job handler is not configured")
+	}
+	if h.studioAsyncJobs == nil {
+		return true, releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_store_unavailable")
+	}
+	job, jobTenantID, err := h.getStudioAsyncJobForBillingTenant(ctx, tenantID, event.SourceID)
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return true, releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_missing")
+	}
+	if err != nil {
+		return false, err
+	}
+	if job == nil {
+		return true, releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_missing")
+	}
+	if job.Status == listingkit.StudioAsyncJobStatusSucceeded {
+		return true, commitStudioProductImageUsage(ctx, h.subscriptionService, event.EventID)
+	}
+	if job.Status == listingkit.StudioAsyncJobStatusFailed {
+		return true, releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_failed")
+	}
+	lastUpdated := job.UpdatedAt
+	if lastUpdated.IsZero() {
+		lastUpdated = job.CreatedAt
+	}
+	if time.Since(lastUpdated) < studioProductImageAsyncJobRecoveryAfter {
+		return false, nil
+	}
+	recoveryErr := fmt.Errorf("async product-image job %q exceeded recovery lease", job.ID)
+	claimed, err := h.studioAsyncJobs.failWithErrorForTenant(ctx, jobTenantID, job.ID, recoveryErr, 500)
+	if err != nil {
+		return false, err
+	}
+	if !claimed {
+		return false, nil
+	}
+	return true, releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_expired")
+}
+
+func (h *handler) getStudioAsyncJobForBillingTenant(ctx context.Context, billingTenantID, jobID string) (*listingkit.StudioAsyncJobRecord, string, error) {
+	job, err := h.studioAsyncJobs.getRecordForTenant(ctx, billingTenantID, jobID)
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return job, billingTenantID, err
+	}
+	canonicalTenantID, ok, resolveErr := tenantbridge.ResolveOrganizationID(ctx, billingTenantID)
+	if resolveErr != nil {
+		return nil, "", resolveErr
+	}
+	if !ok || strings.TrimSpace(canonicalTenantID) == "" {
+		return nil, billingTenantID, err
+	}
+	job, err = h.studioAsyncJobs.getRecordForTenant(ctx, canonicalTenantID, jobID)
+	return job, canonicalTenantID, err
+}
+
+func releaseStudioProductImageUsage(ctx context.Context, service *listingsubscription.Service, eventID, reason string) error {
+	if strings.TrimSpace(eventID) == "" || service == nil {
+		return nil
+	}
+	event, err := service.GetUsageEventByID(ctx, strings.TrimSpace(eventID))
+	if err != nil {
+		return err
+	}
+	if event == nil || event.Status != listingsubscription.UsageEventReserved {
+		return nil
+	}
+	metadata := make(map[string]string, len(event.Metadata)+1)
+	for key, value := range event.Metadata {
+		metadata[key] = value
+	}
+	metadata[studioProductImageReleasePendingMetadataKey] = "1"
+	if metadata[studioProductImageLegacyMirrorMetadataKey] == studioProductImageLegacyMirrorSettled {
+		metadata[studioProductImageLegacyMirrorReleasePendingMetadataKey] = "1"
+	}
+	if _, err := service.UpdateUsageMetadata(ctx, event.EventID, metadata); err != nil {
+		return err
+	}
+	_, err = service.ReleaseUsage(ctx, event.EventID, strings.TrimSpace(reason))
+	return err
+}
+
+func studioProductImageSyncReservationExpired(event listingsubscription.UsageEvent) bool {
+	lastActivity := event.OccurredAt
+	if lastActivity.IsZero() {
+		lastActivity = event.CreatedAt
+	}
+	return !lastActivity.IsZero() && time.Since(lastActivity) >= studioProductImageSyncReservationRecoveryAfter
+}
+
+func commitStudioProductImageUsage(ctx context.Context, service *listingsubscription.Service, eventID string) error {
+	if strings.TrimSpace(eventID) == "" || service == nil {
+		return nil
+	}
+	event, err := service.GetUsageEventByID(ctx, strings.TrimSpace(eventID))
+	if err != nil {
+		return err
+	}
+	if event == nil {
+		return nil
+	}
+	if event.Status == listingsubscription.UsageEventReserved {
+		committed, err := service.CommitUsage(ctx, event.EventID)
+		if err != nil {
+			return err
+		}
+		event = &committed
+	}
+	if event.Status != listingsubscription.UsageEventReserved && event.Status != listingsubscription.UsageEventCommitted {
+		return nil
+	}
+	if err := mirrorStudioProductImageUsage(ctx, service, *event); err != nil {
+		// The ledger commit is durable. Legacy summary mirroring is retried by
+		// tenant-scoped reconciliation and must not turn a successful generation
+		// into a failed request.
+		return nil
+	}
+	return nil
+}
+
+func mirrorStudioProductImageUsage(ctx context.Context, service *listingsubscription.Service, event listingsubscription.UsageEvent) error {
+	if service == nil || event.Quantity <= 0 || event.Metadata[studioProductImageLegacyMirrorMetadataKey] == studioProductImageLegacyMirrorSettled {
+		return nil
+	}
+	if _, _, err := service.RecordUsageForPeriodOnce(ctx, event.TenantID, listingsubscription.ModuleStudio, "product_image_jobs", event.PeriodKey, int(event.Quantity), "listingkit:api:legacy_product_image_mirror:"+event.EventID); err != nil {
+		return err
+	}
+	metadata := make(map[string]string, len(event.Metadata)+1)
+	for key, value := range event.Metadata {
+		metadata[key] = value
+	}
+	metadata[studioProductImageLegacyMirrorMetadataKey] = studioProductImageLegacyMirrorSettled
+	_, err := service.UpdateUsageMetadata(ctx, event.EventID, metadata)
+	return err
+}
+
+func writeStudioProductImageUsageAdmissionError(c *gin.Context, err error) {
+	if err == nil {
+		return
+	}
+	var quotaErr *listingsubscription.UsageQuotaError
+	if errors.As(err, &quotaErr) {
+		writeQuotaExceeded(c, listingsubscription.GuardResult{
+			ModuleCode: quotaErr.ModuleCode,
+			Metric:     quotaErr.Metric,
+			Limit:      usageLimitInt(quotaErr.Limit),
+			Used:       int(quotaErr.CommittedUsage + quotaErr.ReservedUsage + quotaErr.Quantity),
+			Reason:     "quota_exceeded",
+		})
+		return
+	}
+	if errors.Is(err, listingsubscription.ErrSubscriptionQuotaExceed) {
+		writeQuotaExceeded(c, listingsubscription.GuardResult{ModuleCode: listingsubscription.ModuleStudio, Metric: studioProductImageLedgerMetric, Reason: "quota_exceeded"})
+		return
+	}
+	if errors.Is(err, listingsubscription.ErrUsageQuotaExceeded) {
+		writeQuotaExceeded(c, listingsubscription.GuardResult{ModuleCode: listingsubscription.ModuleStudio, Metric: studioProductImageLedgerMetric, Reason: "quota_exceeded"})
+		return
+	}
+	if errors.Is(err, listingsubscription.ErrSubscriptionRequired) {
+		writeSubscriptionRequired(c, listingsubscription.GuardResult{ModuleCode: listingsubscription.ModuleStudio, Metric: studioProductImageLedgerMetric, Reason: "not_configured"})
+		return
+	}
+	c.JSON(500, gin.H{"error": "studio_product_images_admission_failed", "message": err.Error()})
+}
+
+func usageLimitInt(limit *int64) int {
+	if limit == nil {
+		return 0
+	}
+	return int(*limit)
+}

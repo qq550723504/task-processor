@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"time"
 
 	"task-processor/internal/listingadmin"
 	"task-processor/internal/listingkit"
@@ -38,7 +39,9 @@ type handler struct {
 	initErr                       error
 	adminHandlers
 	subscriptionDependencies
-	settingsService settingsNamespaceService
+	settingsService                 settingsNamespaceService
+	studioAsyncJobHeartbeatInterval time.Duration
+	studioAsyncJobHeartbeatNow      func() time.Time
 }
 
 type storeAdminHandlers struct {
@@ -69,13 +72,14 @@ type adminHandlers struct {
 }
 
 type subscriptionDependencies struct {
-	subscriptionService     *listingsubscription.Service
-	subscriptionHandler     *listingsubscription.Handler
-	platformAdminUsers      []string
-	platformAdminRoles      []string
-	tenantDirectory         tenantdirectory.Directory
-	memberInvitationService *memberinvite.Service
-	memberInvitationAudit   memberinvite.AuditRepository
+	subscriptionService      *listingsubscription.Service
+	subscriptionHandler      *listingsubscription.Handler
+	generationUsageAdmission listingkit.GenerationUsageAdmission
+	platformAdminUsers       []string
+	platformAdminRoles       []string
+	tenantDirectory          tenantdirectory.Directory
+	memberInvitationService  *memberinvite.Service
+	memberInvitationAudit    memberinvite.AuditRepository
 }
 
 type handlerCoreService interface {
@@ -146,6 +150,7 @@ type AdminHandlerDependencies struct {
 
 type SubscriptionDependencies struct {
 	Service                         *listingsubscription.Service
+	GenerationUsageAdmission        listingkit.GenerationUsageAdmission
 	PlatformAdminUsers              []string
 	PlatformAdminRoles              []string
 	TenantDirectory                 tenantdirectory.Directory

@@ -2,6 +2,7 @@ package tenantbridge
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,12 +14,21 @@ import (
 const defaultMetadataTable = "projections.org_metadata2"
 const defaultMetadataKey = "yudao_tenant_id"
 
+var ErrLegacyTenantNotFound = errors.New("legacy tenant mapping not found")
+
 // Resolver bridges ZITADEL tenant IDs back to legacy Yudao tenant IDs for
 // tables that are still shared with the old system. This is an explicit
 // compatibility layer and should be removed once the old system no longer reads
 // these legacy tenant-scoped tables.
 type Resolver interface {
 	ResolveLegacyTenantID(ctx context.Context, tenantID string) (int64, bool, error)
+}
+
+// OrganizationResolver is the optional inverse of Resolver. It lets callers
+// that start from a legacy numeric tenant recover the canonical organization
+// used by tenant-scoped records.
+type OrganizationResolver interface {
+	ResolveOrganizationID(ctx context.Context, legacyTenantID int64) (string, bool, error)
 }
 
 type MetadataResolver struct {
@@ -178,7 +188,26 @@ func ResolveLegacyTenantID(ctx context.Context, tenantID string) (int64, error) 
 		}
 	}
 	if parseErr != nil || parsed <= 0 {
-		return 0, fmt.Errorf("tenant id is required")
+		return 0, fmt.Errorf("%w: tenant id is required", ErrLegacyTenantNotFound)
 	}
 	return parsed, nil
+}
+
+// ResolveOrganizationID performs the optional inverse bridge lookup. A
+// resolver that only supports canonical-to-legacy mapping is deliberately
+// treated as a miss so callers can choose a safe fallback.
+func ResolveOrganizationID(ctx context.Context, tenantID string) (string, bool, error) {
+	trimmed := strings.TrimSpace(tenantID)
+	legacyTenantID, err := strconv.ParseInt(trimmed, 10, 64)
+	if err != nil || legacyTenantID <= 0 {
+		return "", false, nil
+	}
+	resolverState.mu.RLock()
+	current := resolverState.resolver
+	resolverState.mu.RUnlock()
+	resolver, ok := current.(OrganizationResolver)
+	if !ok {
+		return "", false, nil
+	}
+	return resolver.ResolveOrganizationID(ctx, legacyTenantID)
 }

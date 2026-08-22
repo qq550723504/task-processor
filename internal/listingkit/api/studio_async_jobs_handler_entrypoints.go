@@ -30,7 +30,9 @@ func (h *handler) StartStudioAsyncJob(c *gin.Context) {
 	if req.Path == "/studio/product-images" {
 		metric = "product_image_jobs"
 	}
-	if !h.authorizeSubscriptionUsage(c, listingsubscription.ModuleStudio, metric, 1) {
+	requestTenant := requestTenantID(c)
+	ledgerAdmission := req.Path == "/studio/product-images" && studioProductImageUsageLedgerEnabled(h, requestTenant)
+	if !ledgerAdmission && !h.authorizeSubscriptionUsage(c, listingsubscription.ModuleStudio, metric, 1) {
 		return
 	}
 
@@ -39,6 +41,15 @@ func (h *handler) StartStudioAsyncJob(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "async_job_create_failed", "message": err.Error()})
 		return
+	}
+	reservationID := ""
+	if ledgerAdmission {
+		reservationID, err = h.reserveStudioProductImageUsageForAsyncJob(c, job.ID)
+		if err != nil {
+			h.studioAsyncJobs.fail(reqCtx, job.ID, err, http.StatusPaymentRequired)
+			writeStudioProductImageUsageAdmissionError(c, err)
+			return
+		}
 	}
 	studioAsyncJobLogger.WithFields(studioAsyncLogFields(reqCtx, logrus.Fields{
 		"job_id":       job.ID,
@@ -53,7 +64,7 @@ func (h *handler) StartStudioAsyncJob(c *gin.Context) {
 	if req.Path == "/studio/designs" {
 		h.syncStudioDesignAsyncJobSession(reqCtx, sessionID, listingkit.StudioAsyncJobStatusRunning, job.ID, "")
 	}
-	go h.runStudioAsyncJob(ctx, job.ID, req.Path, req.Body, sessionID, baseURL, metric)
+	go h.runStudioAsyncJob(ctx, job.ID, req.Path, req.Body, sessionID, baseURL, metric, reservationID)
 
 	c.JSON(http.StatusAccepted, job)
 }

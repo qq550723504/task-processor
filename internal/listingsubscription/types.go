@@ -38,6 +38,9 @@ var (
 	ErrUsageInvalidTransition             = errors.New("usage ledger invalid transition")
 	ErrUsageQuotaExceeded                 = errors.New("usage ledger quota exceeded")
 	ErrUsageLedgerNotConfigured           = errors.New("usage ledger is not configured")
+	ErrUsageLedgerMetadataUnsupported     = errors.New("usage ledger metadata updates are unsupported")
+	ErrUsageLedgerEventLookupUnsupported  = errors.New("usage ledger event lookup is unsupported")
+	ErrUsageCounterIdempotencyUnsupported = errors.New("usage counter idempotency is unsupported")
 	ErrUsageEventNotFound                 = errors.New("usage ledger event not found")
 	ErrUsageOutboxUnsafeMetadata          = errors.New("usage outbox metadata is unsafe")
 	ErrUsageOutboxStorageSnapshotRequired = errors.New("usage outbox storage snapshot is required")
@@ -78,16 +81,26 @@ type UsageEvent struct {
 }
 
 type ReserveUsageInput struct {
-	TenantID       string
-	ModuleCode     string
-	Metric         string
-	Quantity       int64
-	PeriodKey      string
-	SourceType     string
-	SourceID       string
-	IdempotencyKey string
-	OccurredAt     time.Time
-	Metadata       map[string]string
+	TenantID   string
+	ModuleCode string
+	Metric     string
+	// LegacyUsageMetric is an optional aggregate counter that participates in
+	// the same quota decision as this reservation. Durable implementations read
+	// it inside the reservation transaction; it is not copied into the ledger
+	// bucket.
+	LegacyUsageMetric string
+	Quantity          int64
+	PeriodKey         string
+	SourceType        string
+	SourceID          string
+	IdempotencyKey    string
+	OccurredAt        time.Time
+	Metadata          map[string]string
+	// LegacyUsageMirrorMetadataKey and LegacyUsageMirrorSettledValue identify
+	// ledger events already represented by LegacyUsageMetric. They let quota
+	// admission subtract only actually mirrored committed or reserved events.
+	LegacyUsageMirrorMetadataKey  string
+	LegacyUsageMirrorSettledValue string
 }
 
 type ReserveUsageResult struct {
@@ -292,6 +305,20 @@ type Repository interface {
 	ListPlanAuditLogs(ctx context.Context, planCode string, limit int) ([]AuditLog, error)
 }
 
+// UsageCounterIdempotencyRepository is an optional repository extension for
+// adapter-owned counter mirrors. Implementations persist the operation key and
+// counter increment atomically, so a retry after a process crash cannot apply
+// the same adjustment twice.
+type UsageCounterIdempotencyRepository interface {
+	IncrementUsageOnce(ctx context.Context, tenantID, moduleCode, periodKey, metric string, amount int, operationKey string) (*UsageCounter, bool, error)
+}
+
+// UsageCounterOperationLookup lets adapters recognize a durable idempotent
+// operation before performing a fresh authorization check.
+type UsageCounterOperationLookup interface {
+	UsageOperationExists(ctx context.Context, operationKey string) (bool, error)
+}
+
 type UsageLedger interface {
 	Reserve(ctx context.Context, input ReserveUsageInput) (ReserveUsageResult, error)
 	Commit(ctx context.Context, eventID string) (UsageEvent, error)
@@ -299,4 +326,56 @@ type UsageLedger interface {
 	Reverse(ctx context.Context, eventID, idempotencyKey, reason string) (UsageEvent, error)
 	Get(ctx context.Context, tenantID, idempotencyKey string) (*UsageEvent, error)
 	ListPendingOutbox(ctx context.Context, limit int) ([]UsageOutboxItem, error)
+}
+
+// UsageLedgerMetadataUpdater is an optional extension used by adapters that
+// need to durably record completion of an external mirror side effect.
+type UsageLedgerMetadataUpdater interface {
+	UpdateMetadata(ctx context.Context, eventID string, metadata map[string]string) (UsageEvent, error)
+}
+
+// UsageLedgerEventLookup is an optional reconciliation extension for workers
+// that receive only a durable outbox event ID.
+type UsageLedgerEventLookup interface {
+	GetByID(ctx context.Context, eventID string) (UsageEvent, error)
+}
+
+// UsageLedgerEventLister is an optional reconciliation extension for adapters
+// that need to scan durable events carrying adapter-owned retry metadata.
+type UsageLedgerEventLister interface {
+	ListEvents(ctx context.Context, limit int) ([]UsageEvent, error)
+}
+
+// UsageLedgerEventPager extends event listing with a stable offset so
+// reconciliation can inspect the complete immutable event set instead of a
+// permanently fixed prefix.
+type UsageLedgerEventPager interface {
+	ListEventsPage(ctx context.Context, limit, offset int) ([]UsageEvent, error)
+}
+
+type UsageLedgerMetadataPredicate struct {
+	Key   string
+	Value string
+}
+
+type UsageLedgerReconciliationFilter struct {
+	TenantID                   string
+	SourceType                 string
+	SourceTypes                []string
+	ReservedSourceTypes        []string
+	Metric                     string
+	ReservedMetadataPredicates []UsageLedgerMetadataPredicate
+	ReleasedMetadataPredicates []UsageLedgerMetadataPredicate
+	CommittedMetadataKey       string
+	CommittedSettledValue      string
+}
+
+// UsageLedgerReconciliationEventPager lets reconciliation fetch only the
+// tenant and adapter-owned event slice it can actually repair.
+type UsageLedgerReconciliationEventPager interface {
+	ListEventsPageForReconciliation(ctx context.Context, tenantID, sourceType, metric string, limit, offset int) ([]UsageEvent, error)
+}
+
+type UsageLedgerFilteredReconciliationEventPager interface {
+	ListEventsPageForReconciliationWithFilter(ctx context.Context, filter UsageLedgerReconciliationFilter, limit, offset int) ([]UsageEvent, error)
 }

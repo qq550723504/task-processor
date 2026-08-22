@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -25,18 +26,21 @@ type StudioBatchTaskState struct {
 }
 
 type studioBatchTaskCandidate struct {
-	Design                   StudioMaterializedDesignRecord
-	Item                     StudioBatchItemRecord
-	Selection                SheinStudioGroupedSelection
-	SelectionSnapshot        SheinStudioSelection
-	SelectionID              string
-	CompatibilityFingerprint string
-	CandidateKey             string
-	HistoricalCandidateKey   string
-	ImageStrategy            string
-	SheinStoreID             int64
-	StyleID                  string
-	Title                    string
+	Design                          StudioMaterializedDesignRecord
+	Item                            StudioBatchItemRecord
+	Selection                       SheinStudioGroupedSelection
+	SelectionSnapshot               SheinStudioSelection
+	SelectionID                     string
+	CompatibilityFingerprint        string
+	ProductImageSettingsFingerprint string
+	ProductImageCategoryPath        []string
+	CandidateKey                    string
+	HistoricalCandidateKey          string
+	ClaimToken                      string
+	ImageStrategy                   string
+	SheinStoreID                    int64
+	StyleID                         string
+	Title                           string
 }
 
 type studioBatchTaskStateContextKey struct{}
@@ -86,7 +90,7 @@ func (s *taskStudioBatchService) buildStudioBatchTaskState(
 		return nil, err
 	}
 	if session == nil {
-		session = fallbackStudioBatchTaskSession(batchID, batchDetail.Batch, stateDesignIDs, resolveStudioBatchTaskImageStrategy(req, nil))
+		session = fallbackStudioBatchTaskSession(batchID, batchDetail.Batch, stateDesignIDs, resolveStudioBatchTaskImageStrategy(req, nil, batchDetail.Batch))
 	}
 	designs, err := s.repo.ListStudioMaterializedDesignsByIDs(ctx, batchID, stateDesignIDs)
 	if err != nil {
@@ -242,6 +246,8 @@ func (s *taskStudioBatchService) buildStudioBatchTaskCandidates(
 
 	candidates := make([]studioBatchTaskCandidate, 0, len(designs))
 	rejectedTasks := make([]SheinStudioRejectedTask, 0)
+	categoryPathByParentID := make(map[int64][]string)
+	categoryPathLoaded := make(map[int64]bool)
 	for _, design := range designs {
 		item, ok := itemByID[design.ItemID]
 		if !ok {
@@ -269,6 +275,28 @@ func (s *taskStudioBatchService) buildStudioBatchTaskCandidates(
 		designCandidates, rejected := buildStudioBatchTaskCandidatesForDesign(ctx, session, batch, item, design, selections)
 		if rejected != nil {
 			rejectedTasks = append(rejectedTasks, *rejected)
+		}
+		for index := range designCandidates {
+			if normalizeSheinImageStrategy(designCandidates[index].ImageStrategy) != sheinImageStrategyAIGenerated || s == nil || s.sdsProductDetailProvider == nil {
+				continue
+			}
+			parentProductID := designCandidates[index].SelectionSnapshot.ParentProductID
+			if parentProductID <= 0 {
+				continue
+			}
+			if !categoryPathLoaded[parentProductID] {
+				detail, detailErr := s.sdsProductDetailProvider.GetProductDetail(ctx, parentProductID)
+				if detailErr != nil {
+					return nil, nil, fmt.Errorf("hydrate SDS product category %d: %w", parentProductID, detailErr)
+				}
+				categoryPathByParentID[parentProductID] = studioProductImageCategoryPath(detail)
+				categoryPathLoaded[parentProductID] = true
+			}
+			designCandidates[index].ProductImageCategoryPath = append([]string(nil), categoryPathByParentID[parentProductID]...)
+			designCandidates[index].CandidateKey = buildStudioBatchTaskCandidateKey(ctx, batch, designCandidates[index])
+			historical := designCandidates[index]
+			historical.ImageStrategy = sheinImageStrategySDSOfficial
+			designCandidates[index].HistoricalCandidateKey = buildStudioBatchTaskCandidateKey(ctx, batch, historical)
 		}
 		candidates = append(candidates, designCandidates...)
 	}
@@ -353,16 +381,17 @@ func buildStudioBatchTaskCandidatesForDesign(
 		grouped := selections[index]
 		grouped.Selection.DesignType = candidate.SelectionSnapshot.DesignType
 		projected := studioBatchTaskCandidate{
-			Design:                   design,
-			Item:                     item,
-			Selection:                grouped,
-			SelectionSnapshot:        grouped.Selection,
-			SelectionID:              candidate.SelectionID,
-			CompatibilityFingerprint: candidate.CompatibilityFingerprint,
-			ImageStrategy:            normalizeStudioBatchTaskCreationImageStrategy(sessionImageStrategy(session)),
-			SheinStoreID:             candidate.StoreID,
-			StyleID:                  candidate.StyleID,
-			Title:                    candidate.Title,
+			Design:                          design,
+			Item:                            item,
+			Selection:                       grouped,
+			SelectionSnapshot:               grouped.Selection,
+			SelectionID:                     candidate.SelectionID,
+			CompatibilityFingerprint:        candidate.CompatibilityFingerprint,
+			ProductImageSettingsFingerprint: studioBatchTaskEffectiveProductImageSettingsFingerprint(session, batch),
+			ImageStrategy:                   normalizeStudioBatchTaskCreationImageStrategy(sessionImageStrategy(session)),
+			SheinStoreID:                    candidate.StoreID,
+			StyleID:                         candidate.StyleID,
+			Title:                           candidate.Title,
 		}
 		projected.CandidateKey = buildStudioBatchTaskCandidateKey(ctx, batch, projected)
 		historical := projected
@@ -462,8 +491,117 @@ func buildStudioBatchTaskCandidateKey(ctx context.Context, batch *StudioBatchRec
 	}, "|")
 	if strategy := normalizeSheinImageStrategy(candidate.ImageStrategy); strategy != sheinImageStrategySDSOfficial {
 		normalized += "|image_strategy=" + strategy
+		settingsFingerprint := strings.TrimSpace(candidate.ProductImageSettingsFingerprint)
+		if settingsFingerprint == "" {
+			settingsFingerprint = studioBatchTaskProductImageSettingsFingerprint(batch)
+		}
+		if settingsFingerprint != "" {
+			normalized += "|product_image_settings=" + settingsFingerprint
+		}
+		if productImageInputsFingerprint := studioBatchTaskProductImageInputsFingerprint(candidate.SelectionSnapshot, candidate.ProductImageCategoryPath); productImageInputsFingerprint != "" {
+			normalized += "|product_image_inputs=" + productImageInputsFingerprint
+		}
 	}
 	sum := sha256.Sum256([]byte(normalized))
+	return hex.EncodeToString(sum[:])
+}
+
+func studioBatchTaskProductImageInputsFingerprint(selection SheinStudioSelection, categoryPath []string) string {
+	type variantInput struct {
+		VariantSKU    string   `json:"variant_sku,omitempty"`
+		Color         string   `json:"color,omitempty"`
+		ReferenceURLs []string `json:"reference_urls,omitempty"`
+	}
+	representatives := studioBatchTaskColorRepresentatives(selection)
+	referenceURLs := studioBatchTaskProductReferenceImageURLs(selection)
+	if strings.TrimSpace(selection.ProductName) == "" && len(categoryPath) == 0 && len(referenceURLs) == 0 && len(representatives) == 0 {
+		return ""
+	}
+	variants := make([]variantInput, 0, len(representatives))
+	for _, variant := range representatives {
+		variants = append(variants, variantInput{
+			VariantSKU:    strings.TrimSpace(variant.VariantSKU),
+			Color:         strings.TrimSpace(variant.Color),
+			ReferenceURLs: studioBatchTaskProductReferenceImageURLsForVariant(selection, variant),
+		})
+	}
+	payload, err := json.Marshal(struct {
+		ProductName   string         `json:"product_name,omitempty"`
+		CategoryPath  []string       `json:"category_path,omitempty"`
+		ReferenceURLs []string       `json:"reference_urls,omitempty"`
+		Variants      []variantInput `json:"variants,omitempty"`
+	}{
+		ProductName:   strings.TrimSpace(selection.ProductName),
+		CategoryPath:  append([]string(nil), categoryPath...),
+		ReferenceURLs: referenceURLs,
+		Variants:      variants,
+	})
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:])
+}
+
+func studioBatchTaskProductImageSettingsFingerprint(batch *StudioBatchRecord) string {
+	if batch == nil {
+		return ""
+	}
+	return studioBatchTaskEffectiveProductImageSettingsFingerprint(nil, batch)
+}
+
+func studioBatchTaskEffectiveProductImageSettingsFingerprint(session *SheinStudioSession, batch *StudioBatchRecord) string {
+	promptMode := ""
+	count := defaultStudioBatchProductImageCount
+	customPrompt := ""
+	prompts := SheinStudioProductImagePromptList(nil)
+	appendPrompts := func(items SheinStudioProductImagePromptList) {
+		for _, item := range items {
+			prompts = append(prompts, SheinStudioProductImagePrompt{
+				Role:   strings.TrimSpace(item.Role),
+				Prompt: strings.TrimSpace(item.Prompt),
+			})
+		}
+	}
+	if batch != nil {
+		promptMode = strings.TrimSpace(batch.PromptMode)
+	}
+	if session != nil {
+		if value := strings.TrimSpace(session.PromptMode); value != "" {
+			promptMode = value
+		}
+		customPrompt = strings.TrimSpace(session.ProductImagePrompt)
+		if parsed, err := strconv.Atoi(strings.TrimSpace(session.ProductImageCount)); err == nil && parsed > 0 {
+			count = parsed
+		}
+		appendPrompts(session.ProductImagePrompts)
+	} else if batch != nil {
+		customPrompt = strings.TrimSpace(batch.ProductImagePrompt)
+		if parsed, err := strconv.Atoi(strings.TrimSpace(batch.ProductImageCount)); err == nil && parsed > 0 {
+			count = parsed
+		}
+		appendPrompts(batch.ProductImagePrompts)
+	}
+	if count > maxStudioProductImageCount {
+		count = maxStudioProductImageCount
+	}
+	payload, err := json.Marshal(struct {
+		Prompt              string                            `json:"prompt"`
+		PromptMode          string                            `json:"prompt_mode"`
+		ProductImageCount   int                               `json:"product_image_count"`
+		ProductImagePrompt  string                            `json:"product_image_prompt"`
+		ProductImagePrompts SheinStudioProductImagePromptList `json:"product_image_prompts"`
+	}{
+		Prompt:              studioBatchTaskEffectiveProductImagePrompt(session, batch),
+		PromptMode:          promptMode,
+		ProductImageCount:   count,
+		ProductImagePrompt:  customPrompt,
+		ProductImagePrompts: prompts,
+	})
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
 }
 
@@ -485,12 +623,21 @@ func sessionImageStrategy(session *SheinStudioSession) string {
 }
 
 func fallbackStudioBatchTaskSession(batchID string, batch *StudioBatchRecord, designIDs []string, strategy string) *SheinStudioSession {
+	resolvedStrategy := normalizeStudioBatchTaskCreationImageStrategy(strategy)
+	if strings.TrimSpace(strategy) == "" && batch != nil {
+		resolvedStrategy = normalizeStudioBatchTaskCreationImageStrategy(batch.ImageStrategy)
+	}
 	session := &SheinStudioSession{
 		ID:                   strings.TrimSpace(batchID),
-		ImageStrategy:        normalizeStudioBatchTaskCreationImageStrategy(strategy),
+		ImageStrategy:        resolvedStrategy,
 		PendingTaskDesignIDs: append(SheinStudioStringList(nil), designIDs...),
 	}
 	if batch != nil {
+		session.Prompt = strings.TrimSpace(batch.Prompt)
+		session.PromptMode = strings.TrimSpace(batch.PromptMode)
+		session.ProductImageCount = strings.TrimSpace(batch.ProductImageCount)
+		session.ProductImagePrompt = strings.TrimSpace(batch.ProductImagePrompt)
+		session.ProductImagePrompts = append(SheinStudioProductImagePromptList(nil), batch.ProductImagePrompts...)
 		session.Selection = SheinStudioSelectionSnapshot(batch.Selection)
 		if batch.SheinStoreID > 0 {
 			session.SheinStoreID = strconv.FormatInt(batch.SheinStoreID, 10)
@@ -499,9 +646,12 @@ func fallbackStudioBatchTaskSession(batchID string, batch *StudioBatchRecord, de
 	return session
 }
 
-func resolveStudioBatchTaskImageStrategy(req *CreateStudioBatchTasksRequest, session *SheinStudioSession) string {
+func resolveStudioBatchTaskImageStrategy(req *CreateStudioBatchTasksRequest, session *SheinStudioSession, batch *StudioBatchRecord) string {
 	if req != nil && req.ImageStrategy != nil && strings.TrimSpace(*req.ImageStrategy) != "" {
 		return normalizeStudioBatchTaskCreationImageStrategy(*req.ImageStrategy)
+	}
+	if (session == nil || strings.TrimSpace(session.ImageStrategy) == "") && batch != nil {
+		return normalizeStudioBatchTaskCreationImageStrategy(batch.ImageStrategy)
 	}
 	return normalizeStudioBatchTaskCreationImageStrategy(sessionImageStrategy(session))
 }
@@ -520,6 +670,36 @@ func studioBatchTaskCandidateCompatibilityFingerprint(candidate studioBatchTaskC
 		return value
 	}
 	return buildStudioBatchCompatibilityFingerprint(candidate.SelectionSnapshot)
+}
+
+// studioBatchTaskLinkCompatibilityFingerprint extends the selection identity
+// for AI-generated candidates with the effective product-image settings. This
+// keeps the durable link tuple in sync with CandidateKey so a prompt/count/mode
+// change cannot collide with or reuse the previous AI task.
+func studioBatchTaskLinkCompatibilityFingerprint(candidate studioBatchTaskCandidate) string {
+	base := studioBatchTaskCandidateCompatibilityFingerprint(candidate)
+	if normalizeSheinImageStrategy(candidate.ImageStrategy) != sheinImageStrategyAIGenerated {
+		return base
+	}
+	settings := strings.TrimSpace(candidate.ProductImageSettingsFingerprint)
+	inputs := studioBatchTaskProductImageInputsFingerprint(candidate.SelectionSnapshot, candidate.ProductImageCategoryPath)
+	if settings == "" && inputs == "" {
+		return base
+	}
+	identity := base
+	if settings != "" {
+		identity += "|product_image_settings=" + settings
+	}
+	if inputs != "" {
+		identity += "|product_image_inputs=" + inputs
+	}
+	if len(identity) <= 128 {
+		return identity
+	}
+	// CompatibilityFingerprint is persisted as varchar(128). Hash the complete
+	// extended identity instead of truncating either product-image component.
+	sum := sha256.Sum256([]byte(identity))
+	return "ai_product_image_identity=" + hex.EncodeToString(sum[:])
 }
 
 func orderStudioBatchTaskDesignsByRequest(

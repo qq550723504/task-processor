@@ -2,8 +2,12 @@ package listingkit
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
+
+	"task-processor/internal/listingkit/core"
 )
 
 type taskLifecycleServiceConfig struct {
@@ -51,9 +55,28 @@ func (s *taskLifecycleService) CreateGenerateTask(ctx context.Context, req *Gene
 	}
 	dispatched, err := s.dispatchGenerateTask(ctx, task)
 	if err != nil {
+		if task != nil && errors.Is(err, context.Canceled) {
+			if persistErr := markCanceledTaskFailedIfActive(DetachedRequestContext(ctx), s.repo, task.ID, err.Error()); persistErr != nil {
+				return task, errors.Join(err, fmt.Errorf("failed to persist canceled task failure: %w", persistErr))
+			}
+		}
 		return task, err
 	}
 	return dispatched, nil
+}
+
+func markCanceledTaskFailedIfActive(ctx context.Context, repo Repository, taskID, errorMsg string) error {
+	if repo == nil || strings.TrimSpace(taskID) == "" {
+		return nil
+	}
+	current, err := repo.GetTask(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	if current == nil || (current.Status != core.TaskStatusPending && current.Status != core.TaskStatusProcessing) {
+		return nil
+	}
+	return markFailedTaskState(ctx, repo, taskID, errorMsg)
 }
 
 func (s *taskLifecycleService) GetTaskResult(ctx context.Context, taskID string) (*TaskResult, error) {

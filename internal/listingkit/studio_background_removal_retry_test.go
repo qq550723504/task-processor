@@ -384,6 +384,51 @@ func TestRetryStudioBatchDesignBackgroundRemovalRejectsDesignWithOwnedTask(t *te
 	}
 }
 
+func TestRetryStudioBatchDesignBackgroundRemovalRejectsDesignWithActiveCreatingLease(t *testing.T) {
+	t.Parallel()
+
+	repo := NewMemStudioBatchRepository()
+	linkRepo := NewMemStudioBatchTaskLinkRepository()
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	now := time.Now().UTC()
+	if err := repo.CreateStudioBatchGraph(ctx, &StudioBatchRecord{ID: "batch-creating", Status: StudioBatchStatusReviewReady, CreatedAt: now, UpdatedAt: now}, []StudioBatchItemRecord{{ID: "item-creating", BatchID: "batch-creating", Status: StudioBatchItemStatusReviewReady, CreatedAt: now, UpdatedAt: now}}, nil, []StudioMaterializedDesignRecord{{
+		ID:                        "design-creating",
+		BatchID:                   "batch-creating",
+		ItemID:                    "item-creating",
+		ImageURL:                  "https://cdn.example.test/original.png",
+		BackgroundRemovalStatus:   StudioBackgroundRemovalStatusFailed,
+		TransparentBackgroundMode: StudioTransparencyModeRemoval,
+		CreatedAt:                 now,
+		UpdatedAt:                 now,
+	}}); err != nil {
+		t.Fatalf("CreateStudioBatchGraph() error = %v", err)
+	}
+	if err := linkRepo.CreateStudioBatchTaskLink(ctx, &StudioBatchTaskLinkRecord{
+		ID: "link-creating", BatchID: "batch-creating", ItemID: "item-creating", DesignID: "design-creating",
+		SelectionID: "selection-creating", CandidateKey: "candidate-creating", ClaimToken: "claim-creating",
+		Status: studioBatchTaskLinkStatusCreating, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("CreateStudioBatchTaskLink() error = %v", err)
+	}
+
+	providerCalls := 0
+	svc := newTaskStudioBatchService(taskStudioBatchServiceConfig{
+		repo:              repo,
+		batchTaskLinkRepo: linkRepo,
+		retryBackgroundRemoval: func(context.Context, string, string) (*studioBackgroundRemovalMaterialization, error) {
+			providerCalls++
+			return &studioBackgroundRemovalMaterialization{ImageURL: "https://cdn.example.test/removed.png"}, nil
+		},
+	})
+
+	if _, err := svc.RetryStudioBatchDesignBackgroundRemoval(ctx, "batch-creating", &RetryStudioBatchDesignBackgroundRemovalRequest{DesignIDs: []string{"design-creating"}}); err == nil {
+		t.Fatal("RetryStudioBatchDesignBackgroundRemoval() error = nil, want active-lease validation error")
+	}
+	if providerCalls != 0 {
+		t.Fatalf("provider calls = %d, want 0", providerCalls)
+	}
+}
+
 type studioBackgroundRemovalBaseRepository struct {
 	StudioBatchRepository
 	updates int

@@ -58,6 +58,13 @@ func (s *taskStudioBatchService) findLegacyStudioBatchTask(
 		if strings.TrimSpace(created.DesignID) != designID || strings.TrimSpace(created.ID) == "" {
 			continue
 		}
+		// Legacy session records do not persist the effective product-image
+		// configuration. Do not reuse an AI task through this fallback because
+		// its prompt/mode/count/role prompts cannot be proven compatible.
+		if normalizeSheinImageStrategy(candidate.ImageStrategy) == sheinImageStrategyAIGenerated &&
+			strings.TrimSpace(candidate.ProductImageSettingsFingerprint) != "" {
+			continue
+		}
 		task, err := s.getTask(ctx, created.ID)
 		if err != nil || task == nil || task.Status == core.TaskStatusFailed {
 			continue
@@ -134,6 +141,14 @@ func (s *taskStudioBatchService) createdTaskFromDurableLink(ctx context.Context,
 		normalizeSheinImageStrategy(storedStrategy) != normalizeSheinImageStrategy(candidate.ImageStrategy) {
 		return SheinStudioCreatedTask{}, false
 	}
+	// Historical AI links can be found through the SDS candidate key. Their
+	// legacy tuple predates the product-image settings fingerprint, so strategy
+	// and generated-image checks alone cannot prove prompt/mode/count/theme
+	// compatibility. Require the extended identity before reusing any AI link.
+	if normalizeSheinImageStrategy(candidate.ImageStrategy) == sheinImageStrategyAIGenerated &&
+		!studioBatchTaskLinkMatchesProductImageSettings(link, candidate) {
+		return SheinStudioCreatedTask{}, false
+	}
 	var task *Task
 	if s != nil && s.getTask != nil {
 		var err error
@@ -174,6 +189,17 @@ func (s *taskStudioBatchService) createdTaskFromDurableLink(ctx context.Context,
 	}, candidate)
 	created = projectStudioBatchCreatedTaskFromListingTask(created, task)
 	return created, true
+}
+
+func studioBatchTaskLinkMatchesProductImageSettings(link *StudioBatchTaskLinkRecord, candidate studioBatchTaskCandidate) bool {
+	if link == nil || normalizeSheinImageStrategy(candidate.ImageStrategy) != sheinImageStrategyAIGenerated {
+		return true
+	}
+	settings := strings.TrimSpace(candidate.ProductImageSettingsFingerprint)
+	if settings == "" {
+		return false
+	}
+	return strings.TrimSpace(link.CompatibilityFingerprint) == studioBatchTaskLinkCompatibilityFingerprint(candidate)
 }
 
 func resolveStudioBatchTaskLinkSource(link *StudioBatchTaskLinkRecord, task *Task) string {
@@ -246,17 +272,24 @@ func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context,
 		ItemID:                   strings.TrimSpace(candidate.Item.ID),
 		DesignID:                 strings.TrimSpace(candidate.Design.ID),
 		SelectionID:              strings.TrimSpace(candidate.SelectionID),
-		CompatibilityFingerprint: strings.TrimSpace(candidate.CompatibilityFingerprint),
+		CompatibilityFingerprint: studioBatchTaskLinkCompatibilityFingerprint(candidate),
 		ImageStrategy:            normalizeSheinImageStrategy(candidate.ImageStrategy),
 		SheinStoreID:             candidate.SheinStoreID,
 		ListingKitTaskID:         strings.TrimSpace(taskID),
 		CandidateKey:             strings.TrimSpace(candidate.CandidateKey),
+		ClaimToken:               "",
 		Status:                   strings.TrimSpace(status),
 		Source:                   strings.TrimSpace(source),
 		ReasonCode:               strings.TrimSpace(reasonCode),
 		Message:                  strings.TrimSpace(message),
 		CreatedAt:                now,
 		UpdatedAt:                now,
+	}
+	if strings.TrimSpace(candidate.ClaimToken) != "" {
+		// Retain the completed transition's ownership token internally so a
+		// heartbeat that was already in flight can distinguish this worker's
+		// terminal update from a replacement worker's update.
+		link.ClaimToken = strings.TrimSpace(candidate.ClaimToken)
 	}
 	if link.BatchID == "" && candidate.Item.BatchID != "" {
 		link.BatchID = strings.TrimSpace(candidate.Item.BatchID)
@@ -298,8 +331,58 @@ func (s *taskStudioBatchService) persistStudioBatchTaskLink(ctx context.Context,
 	}
 	existing.ReasonCode = link.ReasonCode
 	existing.Message = link.Message
+	if strings.TrimSpace(candidate.ClaimToken) != "" {
+		existing.ClaimToken = strings.TrimSpace(candidate.ClaimToken)
+	} else {
+		existing.ClaimToken = link.ClaimToken
+	}
 	existing.UpdatedAt = now
+	if claimToken := strings.TrimSpace(candidate.ClaimToken); claimToken != "" {
+		leaseRepo, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkLeaseRepository)
+		if !ok {
+			return fmt.Errorf("studio batch task link repository does not support lease-token updates")
+		}
+		updated, updateErr := leaseRepo.UpdateStudioBatchTaskLinkWithClaimToken(ctx, existing, claimToken)
+		if updateErr != nil {
+			return updateErr
+		}
+		if !updated {
+			return fmt.Errorf("studio batch task claim is no longer owned")
+		}
+		return nil
+	}
 	return s.batchTaskLinkRepo.UpdateStudioBatchTaskLink(ctx, existing)
+}
+
+// recoverStudioBatchTaskAfterLinkPersistenceFailure prevents a successfully
+// created task from running without a durable candidate link. The task is
+// terminally failed before its product-image reservation is released. If task
+// termination is unavailable, retain the reservation and persist a durable
+// created link so a later retry can reconcile the still-live task.
+func (s *taskStudioBatchService) recoverStudioBatchTaskAfterLinkPersistenceFailure(ctx context.Context, batch *StudioBatchRecord, candidate studioBatchTaskCandidate, task *Task, linkErr error) error {
+	if s == nil || task == nil || strings.TrimSpace(task.ID) == "" {
+		return fmt.Errorf("created task link persistence failed without a task identity: %w", linkErr)
+	}
+	recoveryErrs := make([]error, 0, 3)
+	terminalized := false
+	if s.markTaskFailed == nil {
+		recoveryErrs = append(recoveryErrs, fmt.Errorf("mark created task failed: task repository is not configured"))
+	} else if err := s.markTaskFailed(ctx, task.ID, "studio batch task link persistence failed: "+linkErr.Error()); err != nil {
+		recoveryErrs = append(recoveryErrs, fmt.Errorf("mark created task %q failed: %w", task.ID, err))
+	} else {
+		terminalized = true
+	}
+	if terminalized {
+		if err := s.persistStudioBatchTaskLink(ctx, candidate, task.ID, studioBatchTaskLinkStatusFailed, studioBatchTaskLinkSourceBatchCreated, "task_link_persistence_failed", linkErr.Error()); err != nil {
+			recoveryErrs = append(recoveryErrs, fmt.Errorf("persist failed task link: %w", err))
+		}
+		if err := s.releaseStudioBatchProductImageUsage(ctx, batch, candidate, "task_link_persistence_failed"); err != nil {
+			recoveryErrs = append(recoveryErrs, fmt.Errorf("release product image usage: %w", err))
+		}
+	} else if err := s.persistStudioBatchTaskLink(ctx, candidate, task.ID, studioBatchTaskLinkStatusCreated, studioBatchTaskLinkSourceBatchCreated, "task_link_persistence_retryable", linkErr.Error()); err != nil {
+		recoveryErrs = append(recoveryErrs, fmt.Errorf("persist retryable task link: %w", err))
+	}
+	return errors.Join(recoveryErrs...)
 }
 
 func buildStudioBatchTaskLinkID(candidate studioBatchTaskCandidate) string {
@@ -325,6 +408,9 @@ func studioBatchTaskMatchesSelection(
 	if normalizeSheinImageStrategy(resolveSheinImageStrategy(task.Request)) != normalizeSheinImageStrategy(candidate.ImageStrategy) {
 		return false
 	}
+	if normalizeSheinImageStrategy(candidate.ImageStrategy) == sheinImageStrategyAIGenerated && !studioBatchTaskHasGeneratedProductImages(task) {
+		return false
+	}
 	styleID := strings.TrimSpace(studio.StyleID)
 	if styleID != candidate.StyleID && styleID != buildStudioBatchTaskStyleID(candidate.Design.ID) {
 		return false
@@ -343,6 +429,9 @@ func studioBatchTaskLinkMatchesImageStrategy(link *StudioBatchTaskLinkRecord, ta
 		return false
 	}
 	candidateStrategy := normalizeSheinImageStrategy(candidate.ImageStrategy)
+	if candidateStrategy == sheinImageStrategyAIGenerated && strings.TrimSpace(link.ListingKitTaskID) != "" && !studioBatchTaskHasGeneratedProductImages(task) {
+		return false
+	}
 	if storedStrategy := strings.TrimSpace(link.ImageStrategy); storedStrategy != "" {
 		return normalizeSheinImageStrategy(storedStrategy) == candidateStrategy
 	}
@@ -350,6 +439,18 @@ func studioBatchTaskLinkMatchesImageStrategy(link *StudioBatchTaskLinkRecord, ta
 		return strings.TrimSpace(link.ListingKitTaskID) == "" && link.Status != studioBatchTaskLinkStatusCreated && candidateStrategy == sheinImageStrategySDSOfficial
 	}
 	return resolveSheinImageStrategy(task.Request) == candidateStrategy
+}
+
+func studioBatchTaskHasGeneratedProductImages(task *Task) bool {
+	if task == nil || task.Request == nil || task.Request.Options == nil || task.Request.Options.SheinStudio == nil {
+		return false
+	}
+	for _, raw := range task.Request.Options.SheinStudio.ProductImageURLs {
+		if strings.TrimSpace(raw) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func mergeStudioCreatedTasks(

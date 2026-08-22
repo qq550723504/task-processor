@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	openaiclient "task-processor/internal/infra/clients/openai"
+	openaiclient "task-processor/internal/ai"
 )
 
 func TestClientGenerateImageConcurrentLive(t *testing.T) {

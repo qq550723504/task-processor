@@ -1,6 +1,7 @@
 package openai
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -34,11 +36,12 @@ func TestClientGenerateImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(&ClientConfig{
-		APIKey:     "test-key",
-		Model:      "nanobanana",
-		BaseURL:    server.URL,
-		Timeout:    time.Second,
-		MaxRetries: 0,
+		APIKey:                   "test-key",
+		Model:                    "nanobanana",
+		BaseURL:                  server.URL,
+		Timeout:                  time.Second,
+		MaxRetries:               0,
+		ImageReferenceHTTPClient: server.Client(),
 	})
 	resp, err := client.GenerateImage(context.Background(), &ImageGenerateRequest{
 		Prompt: "generate scene",
@@ -57,6 +60,70 @@ func TestClientGenerateImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 	}
 	if !strings.Contains(resp.RawResponse, "\"b64_json\"") {
 		t.Fatalf("raw response = %q, want encoded image payload", resp.RawResponse)
+	}
+}
+
+func TestClientCapsAggregateReferenceMaterialization(t *testing.T) {
+	entered := make(chan struct{}, 32)
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/reference.png":
+			entered <- struct{}{}
+			select {
+			case <-release:
+				w.Header().Set("Content-Type", "image/png")
+				_, _ = w.Write([]byte("reference-image"))
+			case <-r.Context().Done():
+			}
+		case "/images/edits":
+			_ = json.NewEncoder(w).Encode(ImageResponse{Data: []ImageData{{B64JSON: base64.StdEncoding.EncodeToString([]byte("edited"))}}})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(&ClientConfig{
+		APIKey: "test-key", Model: "gpt-image-1", BaseURL: server.URL, Timeout: time.Second, MaxRetries: 0,
+		ImageReferenceHTTPClient:      server.Client(),
+		MaxReferenceMaterializedBytes: 1024 << 20, MaxReferenceMaterializationConcurrency: 8,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var wait sync.WaitGroup
+	errs := make(chan error, 9)
+	for i := 0; i < 9; i++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			_, err := client.EditImage(ctx, &ImageEditRequest{
+				Image: []byte("primary-image"), ImageContentType: "image/png",
+				ImageURLs: []string{server.URL + "/reference.png"},
+			})
+			errs <- err
+		}()
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for len(entered) < 8 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if len(entered) < 8 {
+		t.Fatalf("concurrent references entered = %d, want 8", len(entered))
+	}
+	time.Sleep(50 * time.Millisecond)
+	if got := len(entered); got > 8 {
+		t.Fatalf("concurrent references entered = %d, want shared cap of 8", got)
+	}
+	close(release)
+	wait.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("EditImage() error = %v", err)
+		}
 	}
 }
 
@@ -87,7 +154,7 @@ func TestClientEditImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 			switch part.FormName() {
 			case "prompt":
 				sawPrompt = string(data) == "edit faithfully"
-			case "image":
+			case "image[]":
 				sawImage = len(data) > 0 && part.FileName() == "image.webp"
 			}
 		}
@@ -101,11 +168,12 @@ func TestClientEditImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 	defer server.Close()
 
 	client := NewClient(&ClientConfig{
-		APIKey:     "test-key",
-		Model:      "nanobanana",
-		BaseURL:    server.URL,
-		Timeout:    time.Second,
-		MaxRetries: 0,
+		APIKey:                   "test-key",
+		Model:                    "nanobanana",
+		BaseURL:                  server.URL,
+		Timeout:                  time.Second,
+		MaxRetries:               0,
+		ImageReferenceHTTPClient: server.Client(),
 	})
 	resp, err := client.EditImage(context.Background(), &ImageEditRequest{
 		Prompt:           "edit faithfully",
@@ -117,6 +185,212 @@ func TestClientEditImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 	}
 	if len(resp.Data) != 1 || resp.Data[0].B64JSON == "" {
 		t.Fatalf("response = %+v", resp)
+	}
+}
+
+func TestClientEditImageIncludesSecondaryURLsAsMultipartImages(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/secondary.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("secondary-image"))
+			return
+		case "/images/edits":
+			reader, err := r.MultipartReader()
+			if err != nil {
+				t.Fatalf("MultipartReader: %v", err)
+			}
+			imageParts := 0
+			for {
+				part, err := reader.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatalf("NextPart: %v", err)
+				}
+				data, _ := io.ReadAll(part)
+				if part.FormName() == "image[]" {
+					imageParts++
+					if len(data) == 0 {
+						t.Fatal("empty image part")
+					}
+				}
+			}
+			if imageParts != 2 {
+				t.Fatalf("image parts = %d, want primary and secondary", imageParts)
+			}
+			_ = json.NewEncoder(w).Encode(ImageResponse{Data: []ImageData{{B64JSON: base64.StdEncoding.EncodeToString([]byte("edited"))}}})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(&ClientConfig{
+		APIKey:                   "test-key",
+		Model:                    "gpt-image-1",
+		BaseURL:                  server.URL,
+		Timeout:                  time.Second,
+		MaxRetries:               0,
+		ImageReferenceHTTPClient: server.Client(),
+	})
+	if _, err := client.EditImage(context.Background(), &ImageEditRequest{
+		Image:            []byte("primary-image"),
+		ImageContentType: "image/png",
+		ImageURLs:        []string{server.URL + "/secondary.png"},
+	}); err != nil {
+		t.Fatalf("EditImage() error = %v", err)
+	}
+}
+
+func TestClientEditImageMaterializesPrimaryURLWhenBytesAreAbsent(t *testing.T) {
+	primaryRequests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/primary.png":
+			primaryRequests++
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("primary-image"))
+			return
+		case "/secondary.png":
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("secondary-image"))
+			return
+		case "/images/edits":
+			reader, err := r.MultipartReader()
+			if err != nil {
+				t.Fatalf("MultipartReader: %v", err)
+			}
+			var images [][]byte
+			for {
+				part, err := reader.NextPart()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					t.Fatalf("NextPart: %v", err)
+				}
+				if part.FormName() == "image[]" {
+					data, err := io.ReadAll(part)
+					if err != nil {
+						t.Fatalf("read image part: %v", err)
+					}
+					images = append(images, data)
+				}
+			}
+			if len(images) != 2 || string(images[0]) != "primary-image" || string(images[1]) != "secondary-image" {
+				t.Fatalf("multipart images = %q, want [primary-image secondary-image]", images)
+			}
+			_ = json.NewEncoder(w).Encode(ImageResponse{Data: []ImageData{{B64JSON: base64.StdEncoding.EncodeToString([]byte("edited"))}}})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(&ClientConfig{
+		APIKey:                   "test-key",
+		Model:                    "gpt-image-1",
+		BaseURL:                  server.URL,
+		Timeout:                  time.Second,
+		MaxRetries:               0,
+		ImageReferenceHTTPClient: server.Client(),
+	})
+	primaryURL := server.URL + "/primary.png"
+	if _, err := client.EditImage(context.Background(), &ImageEditRequest{
+		ImageURL:  primaryURL,
+		ImageURLs: []string{primaryURL, server.URL + "/secondary.png"},
+	}); err != nil {
+		t.Fatalf("EditImage() error = %v", err)
+	}
+	if primaryRequests != 1 {
+		t.Fatalf("primary URL requests = %d, want 1", primaryRequests)
+	}
+}
+
+func TestClientEditImageBoundsSecondaryReferenceDownloadByClientTimeout(t *testing.T) {
+	started := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/secondary.png":
+			close(started)
+			<-r.Context().Done()
+		case "/images/edits":
+			t.Fatal("edit endpoint reached after secondary download timeout")
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(&ClientConfig{
+		APIKey:                   "test-key",
+		Model:                    "gpt-image-1",
+		BaseURL:                  server.URL,
+		Timeout:                  25 * time.Millisecond,
+		MaxRetries:               0,
+		ImageReferenceHTTPClient: server.Client(),
+	})
+	startedAt := time.Now()
+	_, err := client.EditImage(context.Background(), &ImageEditRequest{
+		Image:     []byte("primary-image"),
+		ImageURLs: []string{server.URL + "/secondary.png"},
+	})
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "context deadline exceeded") {
+		t.Fatalf("EditImage() error = %v, want context deadline exceeded", err)
+	}
+	select {
+	case <-started:
+	default:
+		t.Fatal("secondary reference was not requested")
+	}
+	if elapsed := time.Since(startedAt); elapsed > time.Second {
+		t.Fatalf("secondary download took %s, want client timeout", elapsed)
+	}
+}
+
+func TestClientEditImageRejectsOversizedSecondaryReference(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/secondary.png" {
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write(bytes.Repeat([]byte("x"), 32<<20+1))
+			return
+		}
+		t.Fatalf("unexpected path = %q", r.URL.Path)
+	}))
+	defer server.Close()
+	client := NewClient(&ClientConfig{
+		APIKey:                   "test-key",
+		Model:                    "gpt-image-1",
+		BaseURL:                  server.URL,
+		Timeout:                  time.Second,
+		MaxRetries:               0,
+		ImageReferenceHTTPClient: server.Client(),
+	})
+	_, err := client.EditImage(context.Background(), &ImageEditRequest{
+		Image:     []byte("primary-image"),
+		ImageURLs: []string{server.URL + "/secondary.png"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "exceeds 32 MiB") {
+		t.Fatalf("EditImage() error = %v, want oversized reference error", err)
+	}
+}
+
+func TestClientEditImageRejectsUnsafeSecondaryURL(t *testing.T) {
+	client := NewClient(&ClientConfig{
+		APIKey:     "test-key",
+		Model:      "gpt-image-1",
+		BaseURL:    "https://api.example.test/v1",
+		Timeout:    time.Second,
+		MaxRetries: 0,
+	})
+	_, err := client.EditImage(context.Background(), &ImageEditRequest{
+		Image:     []byte("primary-image"),
+		ImageURLs: []string{"http://127.0.0.1/internal.png"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "validate secondary image URL") {
+		t.Fatalf("EditImage() error = %v, want unsafe URL validation error", err)
 	}
 }
 

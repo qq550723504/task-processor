@@ -24,6 +24,9 @@ func withSubscriptionDependency[Dep comparable](dep Dep, apply func(Dep, *subscr
 
 func withSubscriptionConfig(deps SubscriptionDependencies) HandlerOption {
 	options := []HandlerOption{
+		withSubscriptionDependencies(func(subscription *subscriptionDependencies) {
+			subscription.generationUsageAdmission = deps.GenerationUsageAdmission
+		}),
 		WithPlatformSubscriptionAccess(deps.PlatformAdminUsers, deps.PlatformAdminRoles),
 		WithSubscriptionService(deps.Service),
 		WithTenantDirectory(deps.TenantDirectory),
