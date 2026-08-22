@@ -112,6 +112,11 @@ func TestIsValidSupplierShopURL(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "rejects empty query marker",
+			raw:  "https://shop.example/store?",
+			want: false,
+		},
+		{
 			name: "rejects fragment",
 			raw:  "https://shop.example/store#intro",
 			want: false,

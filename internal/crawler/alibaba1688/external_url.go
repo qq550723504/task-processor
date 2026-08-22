@@ -32,7 +32,7 @@ func isValidExternalURL(raw string, policy externalURLPolicy) bool {
 	if policy.requireHTTPS && parsed.Scheme != "https" {
 		return false
 	}
-	if !policy.allowQuery && parsed.RawQuery != "" {
+	if !policy.allowQuery && (parsed.RawQuery != "" || parsed.ForceQuery) {
 		return false
 	}
 	return true
