@@ -37,6 +37,30 @@ func TestGovernedImageAnalyzerRoutesAndRecordsInvocation(t *testing.T) {
 	}
 }
 
+func TestGovernedImageAnalyzerRecordsConfiguredPromptMetadata(t *testing.T) {
+	recorder := &imageInvocationRecorder{}
+	provider := &routedImageManager{response: `{"score":87}`}
+	config := productenrichenrich.GovernedImageAnalyzerConfig{
+		Router: staticImageQualityRouter{}, Recorder: recorder,
+		Operation:     aicapability.OperationProductEnrichVisionQualityScore,
+		PromptKey:     "productenrich.quality_score.image",
+		PromptVersion: "v1",
+		PromptScope:   "product_enrich",
+	}
+	analyzer, err := productenrichenrich.NewGovernedImageAnalyzer(provider, config)
+	if err != nil {
+		t.Fatalf("NewGovernedImageAnalyzer: %v", err)
+	}
+
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+	if _, err := analyzer.AnalyzeImage(ctx, "https://example.test/product.jpg", "score image quality"); err != nil {
+		t.Fatalf("AnalyzeImage: %v", err)
+	}
+	if recorder.record.PromptKey != "productenrich.quality_score.image" || recorder.record.PromptVersion != "v1" || recorder.record.PromptScope != "product_enrich" {
+		t.Fatalf("prompt metadata = %q/%q/%q", recorder.record.PromptKey, recorder.record.PromptVersion, recorder.record.PromptScope)
+	}
+}
+
 func TestGovernedImageAnalyzerRecordsRouteFailureWithoutProviderCall(t *testing.T) {
 	recorder := &imageInvocationRecorder{}
 	provider := &routedImageManager{}
@@ -106,6 +130,16 @@ func (staticImageRouter) Decide(context.Context, aicapability.RouteRequest) (aic
 	return aicapability.RouteDecision{
 		Capability: aicapability.CapabilityProductEnrichVision, Operation: aicapability.OperationProductEnrichImageAnalyze,
 		ProviderID: "openai", ModelID: "vision-model", RoutingKey: "productenrich-vision",
+		CredentialReference: "vision", PolicyVersion: "policy-v1", ConfigurationVersion: "config-v1",
+	}, nil
+}
+
+type staticImageQualityRouter struct{}
+
+func (staticImageQualityRouter) Decide(context.Context, aicapability.RouteRequest) (aicapability.RouteDecision, error) {
+	return aicapability.RouteDecision{
+		Capability: aicapability.CapabilityProductEnrichVision, Operation: aicapability.OperationProductEnrichVisionQualityScore,
+		ProviderID: "openai", ModelID: "vision-model", RoutingKey: "productenrich-vision-quality",
 		CredentialReference: "vision", PolicyVersion: "policy-v1", ConfigurationVersion: "config-v1",
 	}, nil
 }

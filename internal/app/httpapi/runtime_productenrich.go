@@ -176,6 +176,9 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 			Capability:      aicapability.CapabilityProductEnrichVision,
 			Operation:       aicapability.OperationProductEnrichVisionQualityScore,
 			RequiredFeature: aicapability.FeatureVisionAnalyze,
+			PromptKey:       "productenrich.quality_score.image",
+			PromptVersion:   "v1",
+			PromptScope:     "product_enrich",
 			FallbackClient:  scorerClientName(cfg, "vision"),
 		})
 		if err != nil {

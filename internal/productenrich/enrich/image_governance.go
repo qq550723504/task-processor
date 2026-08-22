@@ -31,6 +31,9 @@ type GovernedImageAnalyzerConfig struct {
 	Capability      aicapability.Capability
 	Operation       aicapability.Operation
 	RequiredFeature aicapability.ModelFeature
+	PromptKey       string
+	PromptVersion   string
+	PromptScope     string
 	FallbackClient  string
 	OnRecordError   func(aicapability.InvocationRecord, error)
 	Now             func() time.Time
@@ -47,6 +50,9 @@ type governedImageAnalyzer struct {
 	capability      aicapability.Capability
 	operation       aicapability.Operation
 	requiredFeature aicapability.ModelFeature
+	promptKey       string
+	promptVersion   string
+	promptScope     string
 	fallbackClient  string
 }
 
@@ -72,10 +78,20 @@ func NewGovernedImageAnalyzer(manager productenrich.LLMManager, config GovernedI
 	if config.RequiredFeature == "" {
 		config.RequiredFeature = aicapability.FeatureVisionAnalyze
 	}
+	if config.PromptKey == "" {
+		config.PromptKey = productEnrichVisionPromptKey
+	}
+	if config.PromptVersion == "" {
+		config.PromptVersion = productEnrichVisionPromptVersion
+	}
+	if config.PromptScope == "" {
+		config.PromptScope = productEnrichVisionPromptScope
+	}
 	return &governedImageAnalyzer{
 		manager: manager, router: config.Router, recorder: config.Recorder,
 		onRecordError: config.OnRecordError, now: config.Now, newID: config.NewID,
 		capability: config.Capability, operation: config.Operation, requiredFeature: config.RequiredFeature,
+		promptKey: config.PromptKey, promptVersion: config.PromptVersion, promptScope: config.PromptScope,
 		fallbackClient: strings.TrimSpace(config.FallbackClient),
 	}, nil
 }
@@ -164,8 +180,8 @@ func (a *governedImageAnalyzer) record(ctx context.Context, identity aiidentity.
 		RouteMode: aicapability.RoutingModeActive, RouteOutcome: aicapability.RouteOutcomeActive,
 		ProviderID: decision.ProviderID, ModelID: decision.ModelID, RoutingKey: decision.RoutingKey,
 		CredentialReference: decision.CredentialReference, PolicyVersion: decision.PolicyVersion,
-		ConfigurationVersion: decision.ConfigurationVersion, PromptKey: productEnrichVisionPromptKey,
-		PromptVersion: productEnrichVisionPromptVersion, PromptScope: productEnrichVisionPromptScope,
+		ConfigurationVersion: decision.ConfigurationVersion, PromptKey: a.promptKey,
+		PromptVersion: a.promptVersion, PromptScope: a.promptScope,
 		PromptHash: hashText(prompt), InputHash: hashText(imageURL), OutputHash: hashText(response),
 		StartedAt: startedAt, FinishedAt: finishedAt, LatencyMilliseconds: finishedAt.Sub(startedAt).Milliseconds(),
 		Attempt: 1, Outcome: aicapability.InvocationSucceeded,
