@@ -161,6 +161,103 @@ func TestSubmitResultRejectsUndeclaredPriceRangeCountInSnapshot(t *testing.T) {
 	require.Contains(t, responseBody["message"], "price_range_count")
 }
 
+func TestSubmitResultDuplicateSubmissionOriginalTokenReturnsConflict(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	clock := func() time.Time { return time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC) }
+	service := localagent.NewService(clock)
+	handler := NewHandler(service)
+	actorCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
+
+	job, err := service.Create(localagent.Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com/offer/1052008074197.html")
+	require.NoError(t, err)
+	claim, err := service.Claim(localagent.Actor{TenantID: "tenant-a", UserID: "user-a"})
+	require.NoError(t, err)
+
+	bodyBytes, err := json.Marshal(map[string]any{
+		"execution_token": claim.ExecutionToken,
+		"product_snapshot": map[string]any{
+			"id":                 "1052008074197",
+			"title":              "shirt",
+			"url":                "https://detail.1688.com/offer/1052008074197.html",
+			"main_image":         "https://img.1688.com/product.jpg",
+			"min_price":          12.5,
+			"min_order_quantity": 1,
+			"supplier":           map[string]string{"name": "Acme"},
+		},
+	})
+	require.NoError(t, err)
+
+	r := gin.New()
+	r.POST("/api/v1/local-agent/1688-jobs/:job_id/result", handler.SubmitResult)
+
+	first := httptest.NewRecorder()
+	r.ServeHTTP(first, httptest.NewRequest(http.MethodPost, "/api/v1/local-agent/1688-jobs/"+job.ID+"/result", strings.NewReader(string(bodyBytes))).WithContext(actorCtx))
+	require.Equal(t, http.StatusOK, first.Code)
+
+	duplicate := httptest.NewRecorder()
+	r.ServeHTTP(duplicate, httptest.NewRequest(http.MethodPost, "/api/v1/local-agent/1688-jobs/"+job.ID+"/result", strings.NewReader(string(bodyBytes))).WithContext(actorCtx))
+	require.Equal(t, http.StatusConflict, duplicate.Code)
+
+	var responseBody map[string]any
+	require.NoError(t, json.Unmarshal(duplicate.Body.Bytes(), &responseBody))
+	require.Equal(t, "job_not_active", responseBody["error"])
+}
+
+func TestSubmitResultDuplicateSubmissionWrongTokenReturnsForbidden(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	clock := func() time.Time { return time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC) }
+	service := localagent.NewService(clock)
+	handler := NewHandler(service)
+	actorCtx := listingkit.WithAuthenticatedIdentity(context.Background(), listingkit.AuthenticatedIdentity{TenantID: "tenant-a", UserID: "user-a"})
+
+	job, err := service.Create(localagent.Actor{TenantID: "tenant-a", UserID: "user-a"}, "https://detail.1688.com/offer/1052008074197.html")
+	require.NoError(t, err)
+	claim, err := service.Claim(localagent.Actor{TenantID: "tenant-a", UserID: "user-a"})
+	require.NoError(t, err)
+
+	firstBodyBytes, err := json.Marshal(map[string]any{
+		"execution_token": claim.ExecutionToken,
+		"product_snapshot": map[string]any{
+			"id":                 "1052008074197",
+			"title":              "shirt",
+			"url":                "https://detail.1688.com/offer/1052008074197.html",
+			"main_image":         "https://img.1688.com/product.jpg",
+			"min_price":          12.5,
+			"min_order_quantity": 1,
+			"supplier":           map[string]string{"name": "Acme"},
+		},
+	})
+	require.NoError(t, err)
+	wrongBodyBytes, err := json.Marshal(map[string]any{
+		"execution_token": "other-token",
+		"product_snapshot": map[string]any{
+			"id":                 "1052008074197",
+			"title":              "shirt",
+			"url":                "https://detail.1688.com/offer/1052008074197.html",
+			"main_image":         "https://img.1688.com/product.jpg",
+			"min_price":          12.5,
+			"min_order_quantity": 1,
+			"supplier":           map[string]string{"name": "Acme"},
+		},
+	})
+	require.NoError(t, err)
+
+	r := gin.New()
+	r.POST("/api/v1/local-agent/1688-jobs/:job_id/result", handler.SubmitResult)
+
+	first := httptest.NewRecorder()
+	r.ServeHTTP(first, httptest.NewRequest(http.MethodPost, "/api/v1/local-agent/1688-jobs/"+job.ID+"/result", strings.NewReader(string(firstBodyBytes))).WithContext(actorCtx))
+	require.Equal(t, http.StatusOK, first.Code)
+
+	duplicate := httptest.NewRecorder()
+	r.ServeHTTP(duplicate, httptest.NewRequest(http.MethodPost, "/api/v1/local-agent/1688-jobs/"+job.ID+"/result", strings.NewReader(string(wrongBodyBytes))).WithContext(actorCtx))
+	require.Equal(t, http.StatusForbidden, duplicate.Code)
+
+	var responseBody map[string]any
+	require.NoError(t, json.Unmarshal(duplicate.Body.Bytes(), &responseBody))
+	require.Equal(t, "claim_denied", responseBody["error"])
+}
+
 func TestDecodeStrictJSONRejectsTrailingValuesForReadersAndRawMessages(t *testing.T) {
 	t.Run("reader", func(t *testing.T) {
 		var req submitResultRequest
