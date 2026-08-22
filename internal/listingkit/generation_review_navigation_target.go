@@ -34,10 +34,6 @@ func reviewActionKeyForCapability(capability string) string {
 	return listinggeneration.ReviewActionKeyForCapability(capability)
 }
 
-func capabilityActionKey(capability string) string {
-	return listinggeneration.CapabilityActionKey(capability)
-}
-
 func reviewActionLabelForCapability(capability string) string {
 	return listinggeneration.ReviewActionLabelForCapability(capability)
 }
