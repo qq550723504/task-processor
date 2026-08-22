@@ -61,7 +61,7 @@ func (p *Crawler1688Processor) fetchProduct(ctx context.Context, task *shared.Cr
 	if p == nil || p.service == nil || task == nil || task.SourceAccountID < 0 {
 		return nil, sourceAccessModePublic, "", newAccountUnavailableError()
 	}
-	product, publicErr := p.service.processor1688.Process(task.URL)
+	product, publicErr := p.service.processor1688.Process(ctx, task.URL)
 	if publicErr == nil {
 		p.service.recordSourceAccess("public")
 		return product, sourceAccessModePublic, "", nil
@@ -81,7 +81,7 @@ func (p *Crawler1688Processor) fetchProduct(ctx context.Context, task *shared.Cr
 	}
 	unlock := p.service.lockAccountProfile(profile)
 	defer unlock()
-	product, err = p.service.processor1688.ProcessWithAccountProfile(task.URL, profile)
+	product, err = p.service.processor1688.ProcessWithAccountProfile(ctx, task.URL, profile)
 	p.service.recordSourceAccess("account_assisted")
 	if err != nil {
 		return nil, sourceAccessModeAccountAssisted, sourceFallbackReason(publicErr), err

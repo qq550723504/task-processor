@@ -34,8 +34,8 @@ type Service struct {
 }
 
 type alibaba1688TaskProcessor interface {
-	Process(string) (*model.Product1688, error)
-	ProcessWithAccountProfile(string, AccountProfile) (*model.Product1688, error)
+	Process(context.Context, string) (*model.Product1688, error)
+	ProcessWithAccountProfile(context.Context, string, AccountProfile) (*model.Product1688, error)
 	Shutdown()
 }
 

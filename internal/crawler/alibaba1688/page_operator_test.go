@@ -1,9 +1,13 @@
 package alibaba1688
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestCaptchaStageErrorPropagates(t *testing.T) {
@@ -23,4 +27,15 @@ func TestCaptchaStageErrorAllowsNil(t *testing.T) {
 	if err := captchaStageError("验证码处理", nil); err != nil {
 		t.Fatalf("nil captcha error = %v, want nil", err)
 	}
+}
+
+func TestWaitForContextReturnsCancellationPromptly(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	start := time.Now()
+	err := waitForContext(ctx, 2*time.Second)
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Less(t, time.Since(start), 200*time.Millisecond)
 }

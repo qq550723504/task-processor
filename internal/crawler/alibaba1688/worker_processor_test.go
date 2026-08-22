@@ -180,6 +180,35 @@ func TestCrawler1688ProcessorUsesGlobalFallbackWithoutAccountID(t *testing.T) {
 	}
 }
 
+func TestCrawler1688ProcessorPassesContextToPublicProcessor(t *testing.T) {
+	processor := &fakeAlibaba1688TaskProcessor{}
+	service := newTestAlibaba1688Service(processor, nil)
+	ctx := context.WithValue(context.Background(), struct{}{}, "public")
+
+	if err := (&Crawler1688Processor{service: service}).ProcessTask(ctx, crawler1688WorkerJob(t, 101, 0)); err != nil {
+		t.Fatalf("ProcessTask() error = %v", err)
+	}
+	if processor.publicCtx != ctx {
+		t.Fatal("public processor did not receive the exact worker context")
+	}
+}
+
+func TestCrawler1688ProcessorPassesContextToAccountProcessor(t *testing.T) {
+	processor := &fakeAlibaba1688TaskProcessor{
+		globalErr: NewPublicAccessError(PublicAccessFailureChallenge, errors.New("captcha")),
+	}
+	resolver := &fakeAccountProfileResolver{profile: AccountProfile{ID: 3001, TenantID: 101, ProfileDir: "C:/profiles/101/3001"}}
+	service := newTestAlibaba1688Service(processor, resolver)
+	ctx := context.WithValue(context.Background(), struct{}{}, "account")
+
+	if err := (&Crawler1688Processor{service: service}).ProcessTask(ctx, crawler1688WorkerJob(t, 101, 3001)); err != nil {
+		t.Fatalf("ProcessTask() error = %v", err)
+	}
+	if processor.accountCtx != ctx {
+		t.Fatal("account processor did not receive the exact worker context")
+	}
+}
+
 func TestCrawler1688ProcessorRecordsPublicAccessMode(t *testing.T) {
 	processor := &fakeAlibaba1688TaskProcessor{}
 	service := newTestAlibaba1688Service(processor, nil)
@@ -330,17 +359,21 @@ func (r *fakeAccountProfileResolver) ResolveAlibaba1688Account(_ context.Context
 type fakeAlibaba1688TaskProcessor struct {
 	globalCalled bool
 	profile      *AccountProfile
+	publicCtx    context.Context
+	accountCtx   context.Context
 	globalErr    error
 	profileErr   error
 }
 
-func (p *fakeAlibaba1688TaskProcessor) Process(string) (*model.Product1688, error) {
+func (p *fakeAlibaba1688TaskProcessor) Process(ctx context.Context, _ string) (*model.Product1688, error) {
 	p.globalCalled = true
+	p.publicCtx = ctx
 	return &model.Product1688{}, p.globalErr
 }
 
-func (p *fakeAlibaba1688TaskProcessor) ProcessWithAccountProfile(_ string, profile AccountProfile) (*model.Product1688, error) {
+func (p *fakeAlibaba1688TaskProcessor) ProcessWithAccountProfile(ctx context.Context, _ string, profile AccountProfile) (*model.Product1688, error) {
 	p.profile = &profile
+	p.accountCtx = ctx
 	return &model.Product1688{}, p.profileErr
 }
 
@@ -359,11 +392,11 @@ type blockingProfileProcessor struct {
 	globalErr error
 }
 
-func (p *blockingProfileProcessor) Process(string) (*model.Product1688, error) {
+func (p *blockingProfileProcessor) Process(context.Context, string) (*model.Product1688, error) {
 	return &model.Product1688{}, p.globalErr
 }
 
-func (p *blockingProfileProcessor) ProcessWithAccountProfile(string, AccountProfile) (*model.Product1688, error) {
+func (p *blockingProfileProcessor) ProcessWithAccountProfile(context.Context, string, AccountProfile) (*model.Product1688, error) {
 	p.mu.Lock()
 	p.active++
 	if p.active > p.maxActive {
