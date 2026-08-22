@@ -11,7 +11,7 @@ import (
 
 func (s *service) persistGenerationReviewDecision(ctx context.Context, taskID string, actionKey string, session *GenerationReviewSession, target *AssetGenerationActionTarget) (*GenerationReviewRecord, error) {
 	reviewRepo := resolveReviewRepository(s)
-	if reviewRepo == nil || !isPersistedGenerationReviewAction(actionKey) {
+	if reviewRepo == nil || !listinggeneration.IsPersistedReviewAction(actionKey) {
 		return nil, nil
 	}
 	record := buildGenerationReviewRecord(taskID, actionKey, session, target)
@@ -123,10 +123,6 @@ func buildGenerationReviewRecord(taskID string, actionKey string, session *Gener
 		}
 	}
 	return record
-}
-
-func isPersistedGenerationReviewAction(actionKey string) bool {
-	return listinggeneration.IsPersistedReviewAction(actionKey)
 }
 
 func generationReviewWorkflowMessage(actionKey, platform, slot, capability string) string {
