@@ -125,7 +125,7 @@ func (r *taskRepository) IncrementRetryCount(ctx context.Context, taskID string)
 		return fmt.Errorf("failed to increment retry count: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("task not found: %s", taskID)
+		return productenrich.ErrTaskNotFound
 	}
 	return nil
 }
@@ -153,14 +153,14 @@ func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, up
 		return fmt.Errorf("failed to update task: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return fmt.Errorf("task not found: %s", taskID)
+		return productenrich.ErrTaskNotFound
 	}
 	return nil
 }
 
 func (r *taskRepository) scoped(ctx context.Context, query *gorm.DB) *gorm.DB {
 	if tenantID := aiidentity.FromContext(ctx).TenantID; tenantID != "" {
-		return query.Where("(execution_tenant_id = ? OR tenant_id = ?)", tenantID, tenantID)
+		return query.Where("execution_tenant_id = ?", tenantID)
 	}
 	return query
 }
