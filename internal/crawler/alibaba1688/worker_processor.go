@@ -4,6 +4,7 @@ package alibaba1688
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -66,12 +67,18 @@ func (p *Crawler1688Processor) fetchProduct(ctx context.Context, task *shared.Cr
 		p.service.recordSourceAccess("public")
 		return product, sourceAccessModePublic, "", nil
 	}
+	if err := cancellationError(ctx, publicErr); err != nil {
+		return nil, sourceAccessModePublic, "", err
+	}
 	if task.SourceAccountID == 0 || !IsAccountFallbackEligible(publicErr) {
 		p.service.recordSourceAccess("source_public_unavailable")
 		return nil, sourceAccessModePublic, "", newPublicUnavailableError()
 	}
 	profile, err := p.service.resolveAccountProfile(ctx, task.TenantID, task.SourceAccountID)
 	if err != nil {
+		if cancellationErr := cancellationError(ctx, err); cancellationErr != nil {
+			return nil, sourceAccessModeAccountAssisted, sourceFallbackReason(publicErr), cancellationErr
+		}
 		if AccountProfileErrorCode(err) == AccountProfileDisabled {
 			p.service.recordSourceAccess("source_account_disabled")
 		} else {
@@ -119,6 +126,9 @@ func (s *Service) resolveAccountProfile(ctx context.Context, tenantID, accountID
 
 	profile, err := s.accountProfileResolver.ResolveAlibaba1688Account(ctx, tenantID, accountID)
 	if err != nil {
+		if cancellationErr := cancellationError(ctx, err); cancellationErr != nil {
+			return AccountProfile{}, cancellationErr
+		}
 		if AccountProfileErrorCode(err) == AccountProfileDisabled {
 			return AccountProfile{}, newAccountDisabledError()
 		}
@@ -128,4 +138,14 @@ func (s *Service) resolveAccountProfile(ctx context.Context, tenantID, accountID
 		return AccountProfile{}, newAccountUnavailableError()
 	}
 	return profile, nil
+}
+
+func cancellationError(ctx context.Context, err error) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return err
+	}
+	return nil
 }

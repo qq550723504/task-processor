@@ -2,6 +2,7 @@
 package alibaba1688
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"strings"
@@ -12,11 +13,11 @@ import (
 )
 
 // handleSliderCaptchaWithResult 处理滑动验证码并返回结果
-func (ch *CaptchaHandler) handleSliderCaptchaWithResult(page playwright.Page) CaptchaResult {
-	return ch.handleSliderCaptchaWithManualOption(page, true)
+func (ch *CaptchaHandler) handleSliderCaptchaWithResult(ctx context.Context, page playwright.Page) CaptchaResult {
+	return ch.handleSliderCaptchaWithManualOption(ctx, page, true)
 }
 
-func (ch *CaptchaHandler) handleSliderCaptchaWithManualOption(page playwright.Page, allowManual bool) CaptchaResult {
+func (ch *CaptchaHandler) handleSliderCaptchaWithManualOption(ctx context.Context, page playwright.Page, allowManual bool) CaptchaResult {
 	startTime := time.Now()
 	attempts := 0
 	maxRetries := ch.maxRetries
@@ -37,6 +38,9 @@ func (ch *CaptchaHandler) handleSliderCaptchaWithManualOption(page playwright.Pa
 	}
 
 	for _, selector := range sliderSelectors {
+		if err := ctx.Err(); err != nil {
+			return canceledCaptchaResult(ctx, CaptchaTypeSlider)
+		}
 		sliderBtn, err := page.QuerySelector(selector)
 		if err != nil || sliderBtn == nil {
 			continue
@@ -53,14 +57,28 @@ func (ch *CaptchaHandler) handleSliderCaptchaWithManualOption(page playwright.Pa
 			attempts++
 			logger.GetGlobalLogger("crawler/alibaba1688").Infof("第 %d 次尝试人类行为滑动", attempt)
 
-			if err := ch.performSliderAction(page, sliderBtn, "human"); err != nil {
+			if err := ch.performSliderAction(ctx, page, sliderBtn, "human"); err != nil {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					result := canceledCaptchaResult(ctx, CaptchaTypeSlider)
+					result.Attempts = attempts
+					return result
+				}
 				logger.GetGlobalLogger("crawler/alibaba1688").Warnf("人类行为滑动失败: %v", err)
 			} else {
-				time.Sleep(2 * time.Second)
+				if err := waitForContext(ctx, 2*time.Second); err != nil {
+					result := canceledCaptchaResult(ctx, CaptchaTypeSlider)
+					result.Attempts = attempts
+					return result
+				}
 				if ch.checkSliderSuccess(page) {
 					logger.GetGlobalLogger("crawler/alibaba1688").Info("人类行为策略滑动验证码成功")
 
-					if err := ch.waitForPageRedirect(page); err != nil {
+					if err := ch.waitForPageRedirect(ctx, page); err != nil {
+						if ctxErr := ctx.Err(); ctxErr != nil {
+							result := canceledCaptchaResult(ctx, CaptchaTypeSlider)
+							result.Attempts = attempts
+							return result
+						}
 						logger.GetGlobalLogger("crawler/alibaba1688").Warnf("等待页面跳转失败: %v", err)
 					}
 
@@ -79,7 +97,11 @@ func (ch *CaptchaHandler) handleSliderCaptchaWithManualOption(page playwright.Pa
 				if _, err := page.Reload(); err != nil {
 					logger.GetGlobalLogger("crawler/alibaba1688").Warnf("刷新页面失败: %v", err)
 				} else {
-					time.Sleep(3 * time.Second)
+					if err := waitForContext(ctx, 3*time.Second); err != nil {
+						result := canceledCaptchaResult(ctx, CaptchaTypeSlider)
+						result.Attempts = attempts
+						return result
+					}
 
 					newSliderBtn, err := page.QuerySelector(selector)
 					if err != nil || newSliderBtn == nil {
@@ -98,13 +120,17 @@ func (ch *CaptchaHandler) handleSliderCaptchaWithManualOption(page playwright.Pa
 				}
 			}
 
-			time.Sleep(time.Duration(1000+ch.randomDelay(1000)) * time.Millisecond)
+			if err := waitForContext(ctx, time.Duration(1000+ch.randomDelay(1000))*time.Millisecond); err != nil {
+				result := canceledCaptchaResult(ctx, CaptchaTypeSlider)
+				result.Attempts = attempts
+				return result
+			}
 		}
 
 		if allowManual {
 			logger.GetGlobalLogger("crawler/alibaba1688").Warn("人类行为滑动重试失败，等待用户手动操作")
 		}
-		result := ch.fallbackSliderCaptchaResult(page, allowManual)
+		result := ch.fallbackSliderCaptchaResult(ctx, page, allowManual)
 		result.Attempts = attempts
 		result.Type = CaptchaTypeSlider
 		result.Duration = time.Since(startTime)
@@ -120,7 +146,7 @@ func (ch *CaptchaHandler) handleSliderCaptchaWithManualOption(page playwright.Pa
 	}
 }
 
-func (ch *CaptchaHandler) fallbackSliderCaptchaResult(page playwright.Page, allowManual bool) CaptchaResult {
+func (ch *CaptchaHandler) fallbackSliderCaptchaResult(ctx context.Context, page playwright.Page, allowManual bool) CaptchaResult {
 	if !allowManual {
 		return CaptchaResult{
 			Type:       CaptchaTypeSlider,
@@ -129,11 +155,11 @@ func (ch *CaptchaHandler) fallbackSliderCaptchaResult(page playwright.Page, allo
 			UsedMethod: "automatic_only",
 		}
 	}
-	return ch.waitForManualSliderWithResult(page)
+	return ch.waitForManualSliderWithResult(ctx, page)
 }
 
 // performSliderAction 执行滑动操作
-func (ch *CaptchaHandler) performSliderAction(page playwright.Page, sliderBtn playwright.ElementHandle, strategy string) error {
+func (ch *CaptchaHandler) performSliderAction(ctx context.Context, page playwright.Page, sliderBtn playwright.ElementHandle, strategy string) error {
 	box, err := sliderBtn.BoundingBox()
 	if err != nil {
 		return fmt.Errorf("获取滑动按钮位置失败: %w", err)
@@ -150,7 +176,7 @@ func (ch *CaptchaHandler) performSliderAction(page playwright.Page, sliderBtn pl
 
 	logger.GetGlobalLogger("crawler/alibaba1688").Infof("开始滑动验证码，策略: %s, 滑动距离: %.2f", strategy, slideDistance)
 
-	return ch.optimizedSlideWithHumanBehavior(page, box, slideDistance)
+	return ch.optimizedSlideWithHumanBehavior(ctx, page, box, slideDistance)
 }
 
 // calculateSlideDistance 计算滑动距离（优化版）
@@ -267,7 +293,7 @@ func isProductPageReadyAfterCaptcha(title string, hasPageData bool) bool {
 }
 
 // waitForManualSliderWithResult 等待用户手动完成滑动验证
-func (ch *CaptchaHandler) waitForManualSliderWithResult(page playwright.Page) CaptchaResult {
+func (ch *CaptchaHandler) waitForManualSliderWithResult(ctx context.Context, page playwright.Page) CaptchaResult {
 	logger.GetGlobalLogger("crawler/alibaba1688").Warn("自动滑动失败，请手动完成滑动验证码")
 	logger.GetGlobalLogger("crawler/alibaba1688").Info("程序将等待您手动操作，请在浏览器中完成滑动验证...")
 
@@ -275,6 +301,9 @@ func (ch *CaptchaHandler) waitForManualSliderWithResult(page playwright.Page) Ca
 	startTime := time.Now()
 
 	for time.Since(startTime) < timeout {
+		if err := ctx.Err(); err != nil {
+			return canceledCaptchaResult(ctx, CaptchaTypeSlider)
+		}
 		if ch.checkSliderSuccess(page) {
 			logger.GetGlobalLogger("crawler/alibaba1688").Info("检测到验证码已完成，继续处理")
 			return CaptchaResult{
@@ -283,7 +312,9 @@ func (ch *CaptchaHandler) waitForManualSliderWithResult(page playwright.Page) Ca
 				UsedMethod: "manual",
 			}
 		}
-		time.Sleep(1 * time.Second)
+		if err := waitForContext(ctx, time.Second); err != nil {
+			return canceledCaptchaResult(ctx, CaptchaTypeSlider)
+		}
 	}
 
 	return CaptchaResult{
@@ -295,18 +326,23 @@ func (ch *CaptchaHandler) waitForManualSliderWithResult(page playwright.Page) Ca
 }
 
 // waitForPageRedirect 等待页面跳转到商品页面
-func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
+func (ch *CaptchaHandler) waitForPageRedirect(ctx context.Context, page playwright.Page) error {
 	logger.GetGlobalLogger("crawler/alibaba1688").Info("等待页面跳转到商品页面...")
 
 	timeout := 30 * time.Second
 	startTime := time.Now()
 
 	for time.Since(startTime) < timeout {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		title, err := page.Title()
 		if err == nil && title != "Captcha Interception" && title != "" {
 			logger.GetGlobalLogger("crawler/alibaba1688").Infof("页面已跳转，新标题: %s", title)
 
-			time.Sleep(3 * time.Second)
+			if err := waitForContext(ctx, 3*time.Second); err != nil {
+				return err
+			}
 
 			productSelectors := []string{
 				"h1",
@@ -334,7 +370,9 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 
 			ready := false
 			for i := 0; i < 10; i++ {
-				time.Sleep(1 * time.Second)
+				if err := waitForContext(ctx, time.Second); err != nil {
+					return err
+				}
 
 				title, _ := page.Title()
 				if isProductPageReadyAfterCaptcha(title, false) {
@@ -356,7 +394,9 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 				if i == 4 {
 					logger.GetGlobalLogger("crawler/alibaba1688").Info("页面数据未加载，尝试刷新页面")
 					page.Reload()
-					time.Sleep(3 * time.Second)
+					if err := waitForContext(ctx, 3*time.Second); err != nil {
+						return err
+					}
 				}
 
 				logger.GetGlobalLogger("crawler/alibaba1688").Debugf("等待页面数据加载... (%d/10)", i+1)
@@ -366,19 +406,23 @@ func (ch *CaptchaHandler) waitForPageRedirect(page playwright.Page) error {
 				return fmt.Errorf("验证码未放行，页面仍停留在拦截状态")
 			}
 
-			time.Sleep(2 * time.Second)
+			if err := waitForContext(ctx, 2*time.Second); err != nil {
+				return err
+			}
 			return nil
 		}
 
-		time.Sleep(1 * time.Second)
+		if err := waitForContext(ctx, time.Second); err != nil {
+			return err
+		}
 	}
 
 	return fmt.Errorf("等待页面跳转超时")
 }
 
 // optimizedSlideWithHumanBehavior 优化的人类行为滑动（使用真实轨迹算法）
-func (ch *CaptchaHandler) optimizedSlideWithHumanBehavior(page playwright.Page, box *playwright.Rect, slideDistance float64) error {
-	return ch.optimizedSlideWithRealTrack(page, box, slideDistance)
+func (ch *CaptchaHandler) optimizedSlideWithHumanBehavior(ctx context.Context, page playwright.Page, box *playwright.Rect, slideDistance float64) error {
+	return ch.optimizedSlideWithRealTrack(ctx, page, box, slideDistance)
 }
 
 // generateQuickDragPoints 生成快速滑动轨迹

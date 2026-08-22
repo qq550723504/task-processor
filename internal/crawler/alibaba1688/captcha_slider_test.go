@@ -1,8 +1,11 @@
 package alibaba1688
 
 import (
+	"context"
+	"errors"
 	"math"
 	"testing"
+	"time"
 )
 
 func TestOfferURLWithCaptchaTitleIsNotReadyAfterCaptcha(t *testing.T) {
@@ -40,6 +43,21 @@ func TestCaptchaTypeString(t *testing.T) {
 		if got := tt.captchaType.String(); got != tt.expected {
 			t.Errorf("CaptchaType.String() for %v = %q, want %q", tt.captchaType, got, tt.expected)
 		}
+	}
+}
+
+func TestWaitForManualSliderReturnsCancellationPromptly(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	started := time.Now()
+	result := NewCaptchaHandler().waitForManualSliderWithResult(ctx, nil)
+
+	if !errors.Is(result.Error, context.Canceled) {
+		t.Fatalf("manual slider error = %v, want context.Canceled", result.Error)
+	}
+	if elapsed := time.Since(started); elapsed >= 200*time.Millisecond {
+		t.Fatalf("manual slider wait took %v after cancellation", elapsed)
 	}
 }
 
@@ -97,7 +115,7 @@ func TestComplexEasingWithVariation(t *testing.T) {
 
 func TestStatisticsReset(t *testing.T) {
 	handler := NewCaptchaHandler()
-	
+
 	handler.recordSuccess(CaptchaTypeSlider)
 	handler.recordFailure(CaptchaTypeImage)
 	handler.recordManual(CaptchaTypeText)
@@ -109,7 +127,7 @@ func TestStatisticsReset(t *testing.T) {
 
 	handler.ResetStatistics()
 	stats = handler.GetStatistics()
-	
+
 	if stats.TotalCount != 0 || stats.SuccessCount != 0 || stats.FailedCount != 0 || stats.ManualCount != 0 {
 		t.Error("Expected all statistics to be reset to 0")
 	}

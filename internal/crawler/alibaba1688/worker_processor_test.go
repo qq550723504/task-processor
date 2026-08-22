@@ -209,6 +209,37 @@ func TestCrawler1688ProcessorPassesContextToAccountProcessor(t *testing.T) {
 	}
 }
 
+func TestCrawler1688ProcessorPreservesPublicCancellationWithoutAvailabilityTranslation(t *testing.T) {
+	processor := &fakeAlibaba1688TaskProcessor{globalErr: context.Canceled}
+	service := newTestAlibaba1688Service(processor, nil)
+
+	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, 0))
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ProcessTask() error = %v, want context.Canceled", err)
+	}
+	if got := service.sourceAccessStats()["source_public_unavailable"]; got != 0 {
+		t.Fatalf("public availability translations = %d, want 0", got)
+	}
+}
+
+func TestCrawler1688ProcessorPreservesAccountResolutionCancellationWithoutAvailabilityTranslation(t *testing.T) {
+	processor := &fakeAlibaba1688TaskProcessor{
+		globalErr: NewPublicAccessError(PublicAccessFailureChallenge, errors.New("captcha")),
+	}
+	resolver := &fakeAccountProfileResolver{err: context.Canceled}
+	service := newTestAlibaba1688Service(processor, resolver)
+
+	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, 3001))
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ProcessTask() error = %v, want context.Canceled", err)
+	}
+	if got := service.sourceAccessStats()["source_account_unavailable"]; got != 0 {
+		t.Fatalf("account availability translations = %d, want 0", got)
+	}
+}
+
 func TestCrawler1688ProcessorRecordsPublicAccessMode(t *testing.T) {
 	processor := &fakeAlibaba1688TaskProcessor{}
 	service := newTestAlibaba1688Service(processor, nil)

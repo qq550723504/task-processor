@@ -2,6 +2,7 @@
 package extractor
 
 import (
+	"context"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/model"
 	"time"
@@ -60,7 +61,7 @@ func NewProductExtractor() *ProductExtractor {
 }
 
 // ExtractProductFromPage 从Playwright页面提取产品信息
-func (pe *ProductExtractor) ExtractProductFromPage(page playwright.Page, url string) (*model.Product1688, error) {
+func (pe *ProductExtractor) ExtractProductFromPage(ctx context.Context, page playwright.Page, url string) (*model.Product1688, error) {
 	logger.GetGlobalLogger("crawler/alibaba1688").Infof("开始提取1688产品信息: %s", url)
 
 	product := &model.Product1688{
@@ -71,7 +72,9 @@ func (pe *ProductExtractor) ExtractProductFromPage(page playwright.Page, url str
 	}
 
 	// 等待页面加载完成
-	pe.waitForPageLoad(page)
+	if err := pe.waitForPageLoad(ctx, page); err != nil {
+		return nil, err
+	}
 
 	// 1. 优先使用优化的提取器（基于结构化数据）
 	optimizedExtractors := []BaseExtractor{
@@ -88,10 +91,8 @@ func (pe *ProductExtractor) ExtractProductFromPage(page playwright.Page, url str
 		pe.imageExtractor,         // 图片信息（已优化）
 	}
 
-	for _, extractor := range optimizedExtractors {
-		if err := extractor.Extract(page, product); err != nil {
-			logger.GetGlobalLogger("crawler/alibaba1688").Warnf("优化提取器执行失败: %v", err)
-		}
+	if err := runExtractors(ctx, page, product, optimizedExtractors); err != nil {
+		return nil, err
 	}
 
 	// 2. 所有提取器现在都支持两种数据结构，不再需要单独的备选提取器
@@ -99,6 +100,9 @@ func (pe *ProductExtractor) ExtractProductFromPage(page playwright.Page, url str
 
 	// 3. 如果仍然缺失信息，使用传统提取器作为最后备选
 	if product.Title == "" {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		logger.GetGlobalLogger("crawler/alibaba1688").Debug("标题仍然缺失，使用传统标题提取器")
 		if err := pe.titleExtractor.Extract(page, product); err != nil {
 			logger.GetGlobalLogger("crawler/alibaba1688").Warnf("传统标题提取器失败: %v", err)
@@ -106,6 +110,9 @@ func (pe *ProductExtractor) ExtractProductFromPage(page playwright.Page, url str
 	}
 
 	if len(product.Variants) == 0 && product.MinPrice == 0 {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		logger.GetGlobalLogger("crawler/alibaba1688").Debug("价格信息缺失，使用传统价格提取器")
 		if err := pe.priceExtractor.Extract(page, product); err != nil {
 			logger.GetGlobalLogger("crawler/alibaba1688").Warnf("传统价格提取器失败: %v", err)
@@ -113,6 +120,9 @@ func (pe *ProductExtractor) ExtractProductFromPage(page playwright.Page, url str
 	}
 
 	if len(product.Specifications) == 0 {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		logger.GetGlobalLogger("crawler/alibaba1688").Debug("属性信息缺失，使用传统规格提取器")
 		if err := pe.specificationExtractor.Extract(page, product); err != nil {
 			logger.GetGlobalLogger("crawler/alibaba1688").Warnf("传统规格提取器失败: %v", err)
@@ -124,7 +134,26 @@ func (pe *ProductExtractor) ExtractProductFromPage(page playwright.Page, url str
 }
 
 // waitForPageLoad 等待页面加载完成
-func (pe *ProductExtractor) waitForPageLoad(page playwright.Page) {
+func runExtractors(ctx context.Context, page playwright.Page, product *model.Product1688, extractors []BaseExtractor) error {
+	for _, extractor := range extractors {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := extractor.Extract(page, product); err != nil {
+			logger.GetGlobalLogger("crawler/alibaba1688").Warnf("优化提取器执行失败: %v", err)
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// waitForPageLoad 等待页面加载完成
+func (pe *ProductExtractor) waitForPageLoad(ctx context.Context, page playwright.Page) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	// 等待关键元素加载
 	selectors := []string{
 		"h1, .title, .product-title",
@@ -137,6 +166,9 @@ func (pe *ProductExtractor) waitForPageLoad(page playwright.Page) {
 			Timeout: playwright.Float(5000), // 5秒超时
 		})
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
 			logger.GetGlobalLogger("crawler/alibaba1688").Debugf("等待元素 %s 超时，继续尝试其他元素", selector)
 			continue
 		}
@@ -144,7 +176,9 @@ func (pe *ProductExtractor) waitForPageLoad(page playwright.Page) {
 	}
 
 	// 等待JavaScript执行完成
-	time.Sleep(5 * time.Second) // 增加等待时间到5秒
+	if err := waitForContext(ctx, 5*time.Second); err != nil {
+		return err
+	}
 
 	// 添加调试信息，检查页面数据是否存在
 	hasInitData, err := page.Evaluate(`() => {
@@ -195,5 +229,20 @@ func (pe *ProductExtractor) waitForPageLoad(page playwright.Page) {
 	}`)
 	if err == nil {
 		logger.GetGlobalLogger("crawler/alibaba1688").Debugf("页面包含商品信息: %v", hasProductInfo)
+	}
+	return ctx.Err()
+}
+
+func waitForContext(ctx context.Context, duration time.Duration) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
 	}
 }

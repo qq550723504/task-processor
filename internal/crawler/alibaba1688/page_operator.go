@@ -46,7 +46,10 @@ func (po *PageOperator) navigateToProduct(ctx context.Context, page playwright.P
 	}
 
 	// 处理验证码
-	if err := po.handleCaptcha(page, allowManualCaptcha); err != nil {
+	if err := po.handleCaptcha(ctx, page, allowManualCaptcha); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		return captchaStageError("验证码处理", err)
 	}
 
@@ -56,7 +59,10 @@ func (po *PageOperator) navigateToProduct(ctx context.Context, page playwright.P
 	}
 
 	// 再次处理可能出现的验证码
-	if err := po.handleCaptcha(page, allowManualCaptcha); err != nil {
+	if err := po.handleCaptcha(ctx, page, allowManualCaptcha); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		return captchaStageError("二次验证码处理", err)
 	}
 
@@ -92,11 +98,11 @@ func (po *PageOperator) navigate(ctx context.Context, page playwright.Page, url 
 }
 
 // handleCaptcha 处理验证码
-func (po *PageOperator) handleCaptcha(page playwright.Page, allowManual bool) error {
+func (po *PageOperator) handleCaptcha(ctx context.Context, page playwright.Page, allowManual bool) error {
 	if allowManual {
-		return po.captchaHandler.HandlePageCaptcha(page)
+		return po.captchaHandler.HandlePageCaptcha(ctx, page)
 	}
-	return po.captchaHandler.HandlePageCaptchaWithoutManual(page)
+	return po.captchaHandler.HandlePageCaptchaWithoutManual(ctx, page)
 }
 
 // waitForPageReady 等待页面就绪

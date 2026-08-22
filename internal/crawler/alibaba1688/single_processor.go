@@ -106,7 +106,7 @@ func (sp *SingleProcessor) processWithBrowserManager(ctx context.Context, url st
 	}
 
 	// 提取产品信息
-	product, err := sp.extractor.ExtractProductFromPage(page, normalizedURL)
+	product, err := sp.extractor.ExtractProductFromPage(ctx, page, normalizedURL)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}

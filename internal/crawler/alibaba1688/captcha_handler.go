@@ -2,6 +2,7 @@
 package alibaba1688
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"task-processor/internal/core/logger"
@@ -164,23 +165,25 @@ func (ch *CaptchaHandler) hasMathCaptcha(page playwright.Page) bool {
 }
 
 // HandlePageCaptcha 处理页面中的各种验证码
-func (ch *CaptchaHandler) HandlePageCaptcha(page playwright.Page) error {
-	return ch.handlePageCaptcha(page, true)
+func (ch *CaptchaHandler) HandlePageCaptcha(ctx context.Context, page playwright.Page) error {
+	return ch.handlePageCaptcha(ctx, page, true)
 }
 
 // HandlePageCaptchaWithoutManual handles a CAPTCHA using only automatic
 // strategies. It returns promptly when those strategies cannot clear it,
 // which is required for headless public-first crawling to reach account
 // fallback instead of waiting for an unavailable operator.
-func (ch *CaptchaHandler) HandlePageCaptchaWithoutManual(page playwright.Page) error {
-	return ch.handlePageCaptcha(page, false)
+func (ch *CaptchaHandler) HandlePageCaptchaWithoutManual(ctx context.Context, page playwright.Page) error {
+	return ch.handlePageCaptcha(ctx, page, false)
 }
 
-func (ch *CaptchaHandler) handlePageCaptcha(page playwright.Page, allowManual bool) error {
+func (ch *CaptchaHandler) handlePageCaptcha(ctx context.Context, page playwright.Page, allowManual bool) error {
 	startTime := time.Now()
 	logger.GetGlobalLogger("crawler/alibaba1688").Debugf("开始处理页面验证码")
 
-	time.Sleep(2 * time.Second)
+	if err := waitForContext(ctx, 2*time.Second); err != nil {
+		return err
+	}
 
 	currentURL := page.URL()
 	title, _ := page.Title()
@@ -193,8 +196,14 @@ func (ch *CaptchaHandler) handlePageCaptcha(page playwright.Page, allowManual bo
 		logger.GetGlobalLogger("crawler/alibaba1688").Info("检测到验证码拦截页面")
 	}
 
-	if err := ch.handleLoginPrompt(page); err != nil {
+	if err := ch.handleLoginPrompt(ctx, page); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
 		logger.GetGlobalLogger("crawler/alibaba1688").Warnf("处理登录提示失败: %v", err)
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	captchaType := ch.DetectCaptchaType(page)
@@ -204,18 +213,21 @@ func (ch *CaptchaHandler) handlePageCaptcha(page playwright.Page, allowManual bo
 
 	switch captchaType {
 	case CaptchaTypeSlider:
-		result = ch.handleSliderCaptchaWithManualOption(page, allowManual)
+		result = ch.handleSliderCaptchaWithManualOption(ctx, page, allowManual)
 	case CaptchaTypeClick:
-		result = ch.handleClickCaptchaWithManualOption(page, allowManual)
+		result = ch.handleClickCaptchaWithManualOption(ctx, page, allowManual)
 	case CaptchaTypeImage:
-		result = ch.handleImageCaptchaWithManualOption(page, allowManual)
+		result = ch.handleImageCaptchaWithManualOption(ctx, page, allowManual)
 	case CaptchaTypeText:
-		result = ch.handleTextCaptchaWithManualOption(page, allowManual)
+		result = ch.handleTextCaptchaWithManualOption(ctx, page, allowManual)
 	case CaptchaTypeMath:
-		result = ch.handleMathCaptchaWithManualOption(page, allowManual)
+		result = ch.handleMathCaptchaWithManualOption(ctx, page, allowManual)
 	case CaptchaTypeUnknown:
 		logger.GetGlobalLogger("crawler/alibaba1688").Info("未检测到验证码")
 		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
 	result.Duration = time.Since(startTime)
@@ -233,7 +245,7 @@ func (ch *CaptchaHandler) handlePageCaptcha(page playwright.Page, allowManual bo
 	return result.Error
 }
 
-func (ch *CaptchaHandler) fallbackCaptchaResult(page playwright.Page, captchaType CaptchaType, captchaName string, allowManual bool) CaptchaResult {
+func (ch *CaptchaHandler) fallbackCaptchaResult(ctx context.Context, page playwright.Page, captchaType CaptchaType, captchaName string, allowManual bool) CaptchaResult {
 	if !allowManual {
 		return CaptchaResult{
 			Type:       captchaType,
@@ -242,7 +254,15 @@ func (ch *CaptchaHandler) fallbackCaptchaResult(page playwright.Page, captchaTyp
 			UsedMethod: "automatic_only",
 		}
 	}
-	return ch.waitForManualCaptchaWithResult(page, captchaType, captchaName)
+	return ch.waitForManualCaptchaWithResult(ctx, page, captchaType, captchaName)
+}
+
+func canceledCaptchaResult(ctx context.Context, captchaType CaptchaType) CaptchaResult {
+	return CaptchaResult{
+		Type:   captchaType,
+		Status: CaptchaStatusFailed,
+		Error:  ctx.Err(),
+	}
 }
 
 // checkAndHandleCaptcha 检查并处理验证码，包括鼠标轨迹录制
@@ -277,11 +297,11 @@ func (ch *CaptchaHandler) checkAndHandleCaptcha(page playwright.Page) error {
 }
 
 // HandleCaptchaWithRetry 带重试的验证码处理
-func (ch *CaptchaHandler) HandleCaptchaWithRetry(page playwright.Page, maxRetries int) error {
+func (ch *CaptchaHandler) HandleCaptchaWithRetry(ctx context.Context, page playwright.Page, maxRetries int) error {
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		logger.GetGlobalLogger("crawler/alibaba1688").Infof("验证码处理尝试 %d/%d", attempt+1, maxRetries)
 
-		err := ch.HandlePageCaptcha(page)
+		err := ch.HandlePageCaptcha(ctx, page)
 		if err == nil {
 			return nil
 		}
@@ -292,7 +312,9 @@ func (ch *CaptchaHandler) HandleCaptchaWithRetry(page playwright.Page, maxRetrie
 			if _, err := page.Reload(); err != nil {
 				logger.GetGlobalLogger("crawler/alibaba1688").Warnf("刷新页面失败: %v", err)
 			} else {
-				time.Sleep(3 * time.Second)
+				if err := waitForContext(ctx, 3*time.Second); err != nil {
+					return err
+				}
 			}
 		}
 	}
