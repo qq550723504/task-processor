@@ -72,6 +72,25 @@ linters-settings:
           - pkg: "task-processor/internal/marketplace/shein/publishing"
             desc: "ListingKit production code must not depend on SHEIN publishing policies"
 
+      publishing_shein_legacy_runtime:
+        # Keep the publishing owner independent from legacy runtime and facade packages.
+        files:
+          - "**/internal/publishing/shein/*.go"
+          - "**/internal/publishing/shein/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit"
+            desc: "SHEIN publishing owner must not depend on ListingKit"
+          - pkg: "task-processor/internal/listingkit/tenantctx"
+            desc: "SHEIN publishing owner must not depend on ListingKit tenant context"
+          - pkg: "task-processor/internal/productenrich"
+            desc: "SHEIN publishing owner must not depend on ProductEnrich compatibility runtime"
+          - pkg: "task-processor/internal/shein/pipeline"
+            desc: "SHEIN publishing owner must not depend on the legacy SHEIN pipeline"
+          - pkg: "task-processor/internal/shein/publish"
+            desc: "SHEIN publishing owner must not depend on the legacy SHEIN publish package"
+          - pkg: "task-processor/internal/shein/product/build"
+            desc: "SHEIN publishing owner must not depend on the legacy SHEIN product builder"
+
   govet:
     disable:
       - fieldalignment

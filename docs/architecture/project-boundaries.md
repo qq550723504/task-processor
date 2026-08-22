@@ -337,7 +337,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestPublishingSheinOpenAIImportsStayAllowlisted`
 - `TestPublishingSheinManagedAPIImportsStayAllowlisted`
 - `TestPublishingSheinManagedRetiredManagementImportsStayBlocked`
-- `TestSheinPublishingDoesNotImportLegacyRuntimeOrListingKit`
+- `depguard: publishing_shein_legacy_runtime`
 - `TestPublishingCommonUsesCanonicalPackage`
 - `TestPublishingCommonDoesNotImportPlatformImplementations`
 - `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`
