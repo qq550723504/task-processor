@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"task-processor/internal/aicapability"
 )
 
 // mockLLMScorer mock LLM 评分器
@@ -166,6 +168,47 @@ func TestQualityScorer_LLMBranch(t *testing.T) {
 			t.Fatalf("TextScorePrompt.PromptSource = %q", validation.TextScorePrompt.PromptSource)
 		}
 	})
+}
+
+func TestQualityScorerPropagatesIdentityIntegrityFailures(t *testing.T) {
+	identityErr := aicapability.NewError(
+		aicapability.ErrorIdentityIntegrity,
+		string(aicapability.OperationProductEnrichTextQualityScore),
+		nil,
+	)
+
+	for _, tc := range []struct {
+		name       string
+		validation *ValidationResult
+	}{
+		{
+			name: "image scoring",
+			validation: &ValidationResult{
+				ImageScore:      60,
+				ImageValidation: &ImageValidation{ValidImages: []ImageInfo{{URL: "https://example.com/img.jpg"}}},
+			},
+		},
+		{
+			name: "text scoring",
+			validation: &ValidationResult{
+				TextScore:      60,
+				TextValidation: &TextValidation{Length: 12, RawText: "product text"},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scorer := NewQualityScorer(&QualityScorerConfig{
+				ImageWeight: 0.5,
+				TextWeight:  0.5,
+				LLMScorer:   &mockLLMScorer{err: identityErr},
+				EnableLLM:   true,
+			})
+
+			if _, err := scorer.CalculateScore(context.Background(), tc.validation); aicapability.CategoryOf(err) != aicapability.ErrorIdentityIntegrity {
+				t.Fatalf("CalculateScore() error = %v, want identity_integrity", err)
+			}
+		})
+	}
 }
 
 func TestJoinKeywords(t *testing.T) {

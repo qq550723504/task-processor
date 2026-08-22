@@ -160,7 +160,16 @@ func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, up
 
 func (r *taskRepository) scoped(ctx context.Context, query *gorm.DB) *gorm.DB {
 	if tenantID := aiidentity.FromContext(ctx).TenantID; tenantID != "" {
-		return query.Where("(execution_tenant_id = ? OR tenant_id = ?)", tenantID, tenantID)
+		return query.Where(`(
+			execution_tenant_id = ? OR (
+				COALESCE(execution_identity_version, 0) = 0 AND
+				COALESCE(execution_tenant_id, '') = '' AND
+				COALESCE(execution_user_id, '') = '' AND
+				COALESCE(execution_source_platform, '') = '' AND
+				COALESCE(execution_source_task_type, '') = '' AND
+				tenant_id = ?
+			)
+		)`, tenantID, tenantID)
 	}
 	return query
 }

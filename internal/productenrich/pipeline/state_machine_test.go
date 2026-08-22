@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productenrich/pipeline"
 )
@@ -44,6 +45,10 @@ func TestTaskStateMachine_ClassifyFailure(t *testing.T) {
 	}
 	if got := sm.ClassifyFailure(productenrich.NewNoRetryError(errors.New("x"))); got != productenrich.FailureDispositionNoRetry {
 		t.Fatalf("errNoRetry classified as %q, want no_retry", got)
+	}
+	identityErr := aicapability.NewError(aicapability.ErrorIdentityIntegrity, string(aicapability.OperationProductEnrichTextQualityScore), nil)
+	if got := sm.ClassifyFailure(identityErr); got != productenrich.FailureDispositionNoRetry {
+		t.Fatalf("identity_integrity classified as %q, want no_retry", got)
 	}
 }
 

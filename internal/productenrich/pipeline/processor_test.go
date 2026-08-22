@@ -7,6 +7,7 @@ import (
 
 	"github.com/sirupsen/logrus"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productenrich/pipeline"
@@ -146,6 +147,7 @@ func (r *mockTaskRepo) ResetForRetry(_ context.Context, id string) error {
 
 type mockTaskSubmitter struct {
 	submitErr error
+	calls     int
 }
 
 func setTestExecutionEnvelope(task *productenrich.Task) {
@@ -160,6 +162,7 @@ func setTestExecutionEnvelope(task *productenrich.Task) {
 }
 
 func (m *mockTaskSubmitter) Submit(_ string) error {
+	m.calls++
 	return m.submitErr
 }
 
@@ -255,6 +258,35 @@ func TestProcessor_ProcessTask_NoRetryOnRejection(t *testing.T) {
 	}
 	if task.RetryCount != 0 {
 		t.Errorf("RetryCount = %d, want 0 (no retry on rejection)", task.RetryCount)
+	}
+}
+
+func TestProcessor_ProcessTask_FailsClosedWithoutRetryOnIdentityCategory(t *testing.T) {
+	task := &productenrich.Task{ID: "identity-category", Request: &productenrich.GenerateRequest{}, Status: productenrich.TaskStatusPending}
+	setTestExecutionEnvelope(task)
+	repo := newMockTaskRepo(task)
+	identityErr := aicapability.NewError(
+		aicapability.ErrorIdentityIntegrity,
+		string(aicapability.OperationProductEnrichTextQualityScore),
+		nil,
+	)
+	svc := &mockService{err: identityErr}
+	submitter := &mockTaskSubmitter{}
+	p, _ := pipeline.NewProcessor(svc, repo, logrus.New(), 3)
+	p.SetTaskSubmitter(submitter)
+
+	err := p.ProcessTask(context.Background(), worker.WorkerJob{TaskData: task.ID})
+	if aicapability.CategoryOf(err) != aicapability.ErrorIdentityIntegrity {
+		t.Fatalf("ProcessTask() error = %v, want identity_integrity", err)
+	}
+	if task.RetryCount != 0 || submitter.calls != 0 {
+		t.Fatalf("identity failure retried: retry_count=%d submit_calls=%d", task.RetryCount, submitter.calls)
+	}
+	if task.Status != productenrich.TaskStatusFailed {
+		t.Fatalf("task status = %q, want failed", task.Status)
+	}
+	if want := "identity_integrity: "; len(task.Error) < len(want) || task.Error[:len(want)] != want {
+		t.Fatalf("task error = %q, want identity_integrity prefix", task.Error)
 	}
 }
 

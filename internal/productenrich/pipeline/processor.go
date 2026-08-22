@@ -97,7 +97,7 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 			}).Info("task already claimed by another worker")
 			return nil
 		}
-		if errors.Is(err, aiidentity.ErrIdentityIntegrity) || errors.Is(err, aiidentity.ErrMissingIdentity) {
+		if productenrich.IsIdentityIntegrityError(err) {
 			_ = p.taskRepo.MarkFailed(ctx, task.ID, "identity_integrity: "+err.Error())
 			return err
 		}

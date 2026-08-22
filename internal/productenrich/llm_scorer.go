@@ -9,8 +9,10 @@ import (
 	"strconv"
 	"time"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/shared/aiidentity"
 
 	"github.com/sirupsen/logrus"
 )
@@ -129,6 +131,11 @@ func (s *llmScorer) scoreTextResult(ctx context.Context, text string, baseScore 
 	if text == "" {
 		return &llmScoreResult{Score: baseScore}, nil
 	}
+	if s.textGenerator != nil {
+		if err := validateGovernedScoringIdentity(ctx, aicapability.OperationProductEnrichTextQualityScore); err != nil {
+			return &llmScoreResult{Score: baseScore}, err
+		}
+	}
 	var getCached func() (*CachedLLMScore, bool)
 	var setCached func(*CachedLLMScore) error
 	if s.scoreCache != nil {
@@ -156,6 +163,11 @@ func (s *llmScorer) scoreImageResult(ctx context.Context, imageURL string, baseS
 	if imageURL == "" {
 		return &llmScoreResult{Score: baseScore}, nil
 	}
+	if s.imageAnalyzer != nil {
+		if err := validateGovernedScoringIdentity(ctx, aicapability.OperationProductEnrichVisionQualityScore); err != nil {
+			return &llmScoreResult{Score: baseScore}, err
+		}
+	}
 	var getCached func() (*CachedLLMScore, bool)
 	var setCached func(*CachedLLMScore) error
 	if s.scoreCache != nil {
@@ -168,6 +180,14 @@ func (s *llmScorer) scoreImageResult(ctx context.Context, imageURL string, baseS
 		func() (*rawLLMScoreResult, error) { return s.scoreImageWithLLM(ctx, imageURL, baseScore) },
 		"image",
 	)
+}
+
+func validateGovernedScoringIdentity(ctx context.Context, operation aicapability.Operation) error {
+	identity := aiidentity.FromContext(ctx)
+	if identity.TenantID == "" || identity.UserID == "" {
+		return aicapability.NewError(aicapability.ErrorIdentityIntegrity, string(operation), nil)
+	}
+	return nil
 }
 
 // scoreWithCache 通用的缓存+LLM评分流程
@@ -328,6 +348,9 @@ func (s *llmScorer) retryLLMCall(ctx context.Context, maxRetries int, call func(
 		response, err := call()
 		if err == nil {
 			return response, nil
+		}
+		if isIdentityIntegrityError(err) {
+			return "", err
 		}
 		lastErr = err
 		logrus.WithError(err).WithField("attempt", i+1).Warn("LLM scoring attempt failed")
