@@ -104,6 +104,33 @@ func TestProductEnrichInvocationErrorHandlerLogsLedgerFailure(t *testing.T) {
 	}
 }
 
+func TestUniqueProductEnrichClientNamesPreservesOrderedRuntimeCandidates(t *testing.T) {
+	tests := []struct {
+		name string
+		in   []string
+		want []string
+	}{
+		{name: "text understanding", in: []string{"fast", "default"}, want: []string{"fast", "default"}},
+		{name: "vision understanding", in: []string{"vision", "default"}, want: []string{"vision", "default"}},
+		{name: "listing and fusion", in: []string{"default"}, want: []string{"default"}},
+		{name: "quality scorer", in: []string{"scorer", "default"}, want: []string{"scorer", "default"}},
+		{name: "quality default is not duplicated", in: []string{" default ", "default", ""}, want: []string{"default"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := uniqueProductEnrichClientNames(tt.in...)
+			if len(got) != len(tt.want) {
+				t.Fatalf("clients = %#v, want %#v", got, tt.want)
+			}
+			for index := range tt.want {
+				if got[index] != tt.want[index] {
+					t.Fatalf("clients = %#v, want %#v", got, tt.want)
+				}
+			}
+		})
+	}
+}
+
 type captureLogHook struct {
 	entries []*logrus.Entry
 }

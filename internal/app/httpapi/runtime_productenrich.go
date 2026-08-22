@@ -66,70 +66,84 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich capability: credential resolver is required")
 		}
 	}
+	legacyRouteMetadata := productenrichhttpapi.BuildProductEnrichLegacyRouteMetadataResolver(credentialResolver)
 	if cfg.AICapability.ProductEnrichTextEnabled {
+		router := productenrichhttpapi.BuildProductEnrichTextCapabilityRouter(credentialResolver)
 		textGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
-			Router:         productenrichhttpapi.BuildProductEnrichTextCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichTextAllowedTenantIDs),
-			Recorder:       recorder,
-			OnRecordError:  productEnrichInvocationErrorHandler(logger),
-			FallbackClient: "fast",
+			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
+				router, cfg.AICapability.ProductEnrichTextAllowedTenantIDs, []string{"fast", "default"},
+			),
+			LegacyRouteMetadata: legacyRouteMetadata,
+			Recorder:            recorder,
+			OnRecordError:       productEnrichInvocationErrorHandler(logger),
 		})
 		if err != nil {
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich text capability: %w", err)
 		}
 	}
 	if cfg.AICapability.ProductEnrichVisionEnabled {
+		router := productenrichhttpapi.BuildProductEnrichVisionCapabilityRouter(credentialResolver)
 		imageAnalyzer, err = productenrichenrich.NewGovernedImageAnalyzer(llmMgr, productenrichenrich.GovernedImageAnalyzerConfig{
-			Router:         productenrichhttpapi.BuildProductEnrichVisionCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichVisionAllowedTenantIDs),
-			Recorder:       recorder,
-			OnRecordError:  productEnrichInvocationErrorHandler(logger),
-			FallbackClient: "vision",
+			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
+				router, cfg.AICapability.ProductEnrichVisionAllowedTenantIDs, []string{"vision", "default"},
+			),
+			LegacyRouteMetadata: legacyRouteMetadata,
+			Recorder:            recorder,
+			OnRecordError:       productEnrichInvocationErrorHandler(logger),
 		})
 		if err != nil {
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich vision capability: %w", err)
 		}
 	}
 	if cfg.AICapability.ProductEnrichListingEnabled {
+		router := productenrichhttpapi.BuildProductEnrichListingCapabilityRouter(credentialResolver)
 		contentGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
-			Router:          productenrichhttpapi.BuildProductEnrichListingCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichListingAllowedTenantIDs),
-			Recorder:        recorder,
-			OnRecordError:   productEnrichInvocationErrorHandler(logger),
-			Capability:      aicapability.CapabilityProductEnrichListing,
-			Operation:       aicapability.OperationProductEnrichJSONGenerate,
-			RequiredFeature: aicapability.FeatureTextGenerate,
-			PromptKey:       "productenrich.listing.generate_json",
-			PromptVersion:   "v1",
-			PromptScope:     "product_enrich",
-			FallbackClient:  "default",
+			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
+				router, cfg.AICapability.ProductEnrichListingAllowedTenantIDs, []string{"default"},
+			),
+			LegacyRouteMetadata: legacyRouteMetadata,
+			Recorder:            recorder,
+			OnRecordError:       productEnrichInvocationErrorHandler(logger),
+			Capability:          aicapability.CapabilityProductEnrichListing,
+			Operation:           aicapability.OperationProductEnrichJSONGenerate,
+			RequiredFeature:     aicapability.FeatureTextGenerate,
+			PromptKey:           "productenrich.listing.generate_json",
+			PromptVersion:       "v1",
+			PromptScope:         "product_enrich",
 		})
 		if err != nil {
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich listing capability: %w", err)
 		}
 		specsGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
-			Router:          productenrichhttpapi.BuildProductEnrichListingCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichListingAllowedTenantIDs),
-			Recorder:        recorder,
-			OnRecordError:   productEnrichInvocationErrorHandler(logger),
-			Capability:      aicapability.CapabilityProductEnrichListing,
-			Operation:       aicapability.OperationProductEnrichSpecsGenerate,
-			RequiredFeature: aicapability.FeatureTextGenerate,
-			PromptKey:       "productenrich.listing.generate_specs",
-			PromptVersion:   "v1",
-			PromptScope:     "product_enrich",
-			FallbackClient:  "default",
+			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
+				router, cfg.AICapability.ProductEnrichListingAllowedTenantIDs, []string{"default"},
+			),
+			LegacyRouteMetadata: legacyRouteMetadata,
+			Recorder:            recorder,
+			OnRecordError:       productEnrichInvocationErrorHandler(logger),
+			Capability:          aicapability.CapabilityProductEnrichListing,
+			Operation:           aicapability.OperationProductEnrichSpecsGenerate,
+			RequiredFeature:     aicapability.FeatureTextGenerate,
+			PromptKey:           "productenrich.listing.generate_specs",
+			PromptVersion:       "v1",
+			PromptScope:         "product_enrich",
 		})
 		if err != nil {
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich specs capability: %w", err)
 		}
 		variantsGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
-			Router:          productenrichhttpapi.BuildProductEnrichListingCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichListingAllowedTenantIDs),
-			Recorder:        recorder,
-			OnRecordError:   productEnrichInvocationErrorHandler(logger),
-			Capability:      aicapability.CapabilityProductEnrichListing,
-			Operation:       aicapability.OperationProductEnrichVariantsGenerate,
-			RequiredFeature: aicapability.FeatureTextGenerate,
-			PromptKey:       "productenrich.listing.generate_variants",
-			PromptVersion:   "v1",
-			PromptScope:     "product_enrich",
-			FallbackClient:  "default",
+			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
+				router, cfg.AICapability.ProductEnrichListingAllowedTenantIDs, []string{"default"},
+			),
+			LegacyRouteMetadata: legacyRouteMetadata,
+			Recorder:            recorder,
+			OnRecordError:       productEnrichInvocationErrorHandler(logger),
+			Capability:          aicapability.CapabilityProductEnrichListing,
+			Operation:           aicapability.OperationProductEnrichVariantsGenerate,
+			RequiredFeature:     aicapability.FeatureTextGenerate,
+			PromptKey:           "productenrich.listing.generate_variants",
+			PromptVersion:       "v1",
+			PromptScope:         "product_enrich",
 		})
 		if err != nil {
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich variants capability: %w", err)
@@ -137,48 +151,59 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 	}
 	if cfg.AICapability.ProductEnrichTextEnabled || cfg.AICapability.ProductEnrichVisionEnabled {
 		allowedTenants := unionTenantIDs(cfg.AICapability.ProductEnrichTextAllowedTenantIDs, cfg.AICapability.ProductEnrichVisionAllowedTenantIDs)
+		router := productenrichhttpapi.BuildProductEnrichFusionCapabilityRouter(credentialResolver)
 		fusionGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
-			Router:          productenrichhttpapi.BuildProductEnrichFusionCapabilityRouter(credentialResolver, allowedTenants),
-			Recorder:        recorder,
-			OnRecordError:   productEnrichInvocationErrorHandler(logger),
-			Capability:      aicapability.CapabilityProductEnrichFusion,
-			Operation:       aicapability.OperationProductEnrichMultimodalFuse,
-			RequiredFeature: aicapability.FeatureTextGenerate,
-			PromptKey:       "productenrich.understanding.fuse_multimodal",
-			PromptVersion:   "v1",
-			PromptScope:     "product_enrich",
-			FallbackClient:  "default",
+			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
+				router, allowedTenants, []string{"default"},
+			),
+			LegacyRouteMetadata: legacyRouteMetadata,
+			Recorder:            recorder,
+			OnRecordError:       productEnrichInvocationErrorHandler(logger),
+			Capability:          aicapability.CapabilityProductEnrichFusion,
+			Operation:           aicapability.OperationProductEnrichMultimodalFuse,
+			RequiredFeature:     aicapability.FeatureTextGenerate,
+			PromptKey:           "productenrich.understanding.fuse_multimodal",
+			PromptVersion:       "v1",
+			PromptScope:         "product_enrich",
 		})
 		if err != nil {
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich fusion capability: %w", err)
 		}
 	}
 	if cfg.AICapability.ProductEnrichTextEnabled {
+		scoringClient := scorerClientName(cfg, "fast")
+		router := productenrichhttpapi.BuildProductEnrichTextQualityCapabilityRouter(credentialResolver, scoringClient)
 		scoringTextGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
-			Router:          productenrichhttpapi.BuildProductEnrichTextQualityCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichTextAllowedTenantIDs, scorerClientName(cfg, "fast")),
-			Recorder:        recorder,
-			OnRecordError:   productEnrichInvocationErrorHandler(logger),
-			Capability:      aicapability.CapabilityProductEnrichText,
-			Operation:       aicapability.OperationProductEnrichTextQualityScore,
-			RequiredFeature: aicapability.FeatureTextGenerate,
-			PromptKey:       "productenrich.quality_score.text",
-			PromptVersion:   "v1",
-			PromptScope:     "product_enrich",
-			FallbackClient:  scorerClientName(cfg, "fast"),
+			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
+				router, cfg.AICapability.ProductEnrichTextAllowedTenantIDs, uniqueProductEnrichClientNames(scoringClient, "default"),
+			),
+			LegacyRouteMetadata: legacyRouteMetadata,
+			Recorder:            recorder,
+			OnRecordError:       productEnrichInvocationErrorHandler(logger),
+			Capability:          aicapability.CapabilityProductEnrichText,
+			Operation:           aicapability.OperationProductEnrichTextQualityScore,
+			RequiredFeature:     aicapability.FeatureTextGenerate,
+			PromptKey:           "productenrich.quality_score.text",
+			PromptVersion:       "v1",
+			PromptScope:         "product_enrich",
 		})
 		if err != nil {
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich text scoring capability: %w", err)
 		}
 	}
 	if cfg.AICapability.ProductEnrichVisionEnabled {
+		scoringClient := scorerClientName(cfg, "vision")
+		router := productenrichhttpapi.BuildProductEnrichVisionQualityCapabilityRouter(credentialResolver, scoringClient)
 		scoringImageAnalyzer, err = productenrichenrich.NewGovernedImageAnalyzer(llmMgr, productenrichenrich.GovernedImageAnalyzerConfig{
-			Router:          productenrichhttpapi.BuildProductEnrichVisionQualityCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichVisionAllowedTenantIDs, scorerClientName(cfg, "vision")),
-			Recorder:        recorder,
-			OnRecordError:   productEnrichInvocationErrorHandler(logger),
-			Capability:      aicapability.CapabilityProductEnrichVision,
-			Operation:       aicapability.OperationProductEnrichVisionQualityScore,
-			RequiredFeature: aicapability.FeatureVisionAnalyze,
-			FallbackClient:  scorerClientName(cfg, "vision"),
+			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
+				router, cfg.AICapability.ProductEnrichVisionAllowedTenantIDs, uniqueProductEnrichClientNames(scoringClient, "default"),
+			),
+			LegacyRouteMetadata: legacyRouteMetadata,
+			Recorder:            recorder,
+			OnRecordError:       productEnrichInvocationErrorHandler(logger),
+			Capability:          aicapability.CapabilityProductEnrichVision,
+			Operation:           aicapability.OperationProductEnrichVisionQualityScore,
+			RequiredFeature:     aicapability.FeatureVisionAnalyze,
 		})
 		if err != nil {
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich image scoring capability: %w", err)
@@ -236,4 +261,21 @@ func scorerClientName(cfg *config.Config, fallback string) string {
 		}
 	}
 	return fallback
+}
+
+func uniqueProductEnrichClientNames(clientNames ...string) []string {
+	seen := make(map[string]struct{}, len(clientNames))
+	result := make([]string, 0, len(clientNames))
+	for _, clientName := range clientNames {
+		clientName = strings.TrimSpace(clientName)
+		if clientName == "" {
+			continue
+		}
+		if _, ok := seen[clientName]; ok {
+			continue
+		}
+		seen[clientName] = struct{}{}
+		result = append(result, clientName)
+	}
+	return result
 }
