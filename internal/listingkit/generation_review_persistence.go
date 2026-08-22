@@ -16,13 +16,14 @@ func (s *service) persistGenerationReviewDecision(ctx context.Context, taskID st
 	}
 	record := buildGenerationReviewRecord(taskID, actionKey, session, target)
 	if record == nil && target != nil && target.QueueQuery != nil {
+		decision := GenerationReviewDecision(listinggeneration.ReviewDecisionFromAction(actionKey))
 		record = &GenerationReviewRecord{
 			TaskID:          taskID,
 			Platform:        strings.TrimSpace(target.QueueQuery.Platform),
 			Slot:            strings.TrimSpace(target.QueueQuery.Slot),
 			Capability:      strings.TrimSpace(target.QueueQuery.PreviewCapability),
-			Decision:        generationReviewDecisionFromAction(actionKey),
-			Status:          listinggeneration.ReviewStatusFromDecision(string(generationReviewDecisionFromAction(actionKey))),
+			Decision:        decision,
+			Status:          listinggeneration.ReviewStatusFromDecision(string(decision)),
 			Message:         generationReviewWorkflowMessage(actionKey, target.QueueQuery.Platform, target.QueueQuery.Slot, target.QueueQuery.PreviewCapability),
 			ReviewedAt:      time.Now().UTC(),
 			ReviewedBy:      "listingkit",
@@ -54,7 +55,7 @@ func (s *service) persistGenerationReviewDecision(ctx context.Context, taskID st
 }
 
 func buildGenerationReviewRecord(taskID string, actionKey string, session *GenerationReviewSession, target *AssetGenerationActionTarget) *GenerationReviewRecord {
-	decision := generationReviewDecisionFromAction(actionKey)
+	decision := GenerationReviewDecision(listinggeneration.ReviewDecisionFromAction(actionKey))
 	if decision == "" {
 		return nil
 	}
@@ -126,10 +127,6 @@ func buildGenerationReviewRecord(taskID string, actionKey string, session *Gener
 
 func isPersistedGenerationReviewAction(actionKey string) bool {
 	return listinggeneration.IsPersistedReviewAction(actionKey)
-}
-
-func generationReviewDecisionFromAction(actionKey string) GenerationReviewDecision {
-	return GenerationReviewDecision(listinggeneration.ReviewDecisionFromAction(actionKey))
 }
 
 func generationReviewWorkflowMessage(actionKey, platform, slot, capability string) string {
