@@ -16,6 +16,9 @@ on:
       - "deployments/kubernetes/listingkit-workbench/overlays/prod/**"
       - "go.mod"
       - "go.sum"
+      - "tools/go.mod"
+      - "tools/go.sum"
+      - ".golangci.yml"
       - "internal/app/httpapi/**"
       - "internal/**"
       - "internal/crawler/alibaba1688/**"
@@ -41,6 +44,9 @@ on:
       - "deployments/kubernetes/listingkit-workbench/overlays/prod/**"
       - "go.mod"
       - "go.sum"
+      - "tools/go.mod"
+      - "tools/go.sum"
+      - ".golangci.yml"
       - "internal/app/httpapi/**"
       - "internal/**"
       - "internal/crawler/alibaba1688/**"
@@ -75,6 +81,14 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Install golangci-lint
+        env:
+          GOBIN: ${{ runner.temp }}/bin
+        run: go -C tools install github.com/golangci/golangci-lint/cmd/golangci-lint
+
+      - name: Run dependency boundary lint
+        run: ${{ runner.temp }}/bin/golangci-lint run --config .golangci.yml --enable-only depguard ./...
 
       - name: Run backend tests
         run: |
