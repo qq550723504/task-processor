@@ -2,6 +2,7 @@
 package alibaba1688
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -32,6 +33,22 @@ func NewSingleProcessor(cfg *config.Config, urlHelper *URLHelper, productChecker
 	}
 }
 
+// Prepare provisions the browser runtime without navigating to a product.
+func (sp *SingleProcessor) Prepare(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if sp == nil || sp.config == nil {
+		return errors.New("1688 single processor is not configured")
+	}
+	manager := sp.newPublicBrowserManager()
+	defer manager.Close()
+	if _, _, _, _, err := manager.CreateBrowser(); err != nil {
+		return err
+	}
+	return ctx.Err()
+}
+
 // ProcessWithSingleBrowser 使用单个浏览器处理产品
 func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, startTime time.Time) (*model.Product1688, error) {
 	return sp.processWithBrowserManager(url, startTime, sp.newPublicBrowserManager(), false)
@@ -58,7 +75,7 @@ func (sp *SingleProcessor) processWithBrowserManager(url string, startTime time.
 	// 创建浏览器实例
 	_, _, page, cleanup, err := browserManager.CreateBrowser()
 	if err != nil {
-		return nil, NewPublicAccessError(PublicAccessFailureTransport, err)
+		return nil, NewPublicAccessError(PublicAccessFailureBrowser, err)
 	}
 	defer cleanup()
 
@@ -85,16 +102,22 @@ func (sp *SingleProcessor) processWithBrowserManager(url string, startTime time.
 
 	// 验证产品信息
 	if validateErr := sp.productChecker.ValidateProduct(product); validateErr != nil {
-		if strings.Contains(validateErr.Error(), "必需字段") || strings.Contains(validateErr.Error(), "产品信息不能为空") {
-			return nil, NewPublicAccessError(PublicAccessFailureMissingFields, fmt.Errorf("产品信息验证失败: %w", validateErr))
-		}
-		return nil, validateErr
+		kind := classifyProductValidationFailure(validateErr)
+		return nil, NewPublicAccessError(kind, fmt.Errorf("产品信息验证失败: %w", validateErr))
 	}
 
 	duration := time.Since(startTime)
 	logger.GetGlobalLogger("crawler/alibaba1688").Infof("单浏览器模式处理完成: %s, 耗时: %v", product.Title, duration)
 
 	return product, nil
+}
+
+func classifyProductValidationFailure(err error) PublicAccessFailureKind {
+	var requiredErr *requiredFieldsError
+	if errors.As(err, &requiredErr) && requiredErr != nil {
+		return PublicAccessFailureMissingFields
+	}
+	return PublicAccessFailureValidation
 }
 
 func isChallengeError(err error) bool {

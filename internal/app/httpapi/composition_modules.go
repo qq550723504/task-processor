@@ -21,7 +21,15 @@ func (c httpFeatureComposition) runtimeModules() []kernelmodule.Module {
 		c.sheinLoginHTTPModule(),
 		c.sdsLoginHTTPModule(),
 		c.crawler1688Module,
+		c.localAgentHTTPModule(),
 	}
+}
+
+func (c httpFeatureComposition) localAgentHTTPModule() kernelmodule.Module {
+	if c.localAgentModule == nil {
+		return nil
+	}
+	return c.localAgentModule.Module
 }
 
 func (c httpFeatureComposition) routeModules() []kernelmodule.Module {

@@ -68,3 +68,20 @@ func TestValidateProductAcceptsCompleteRequiredFields(t *testing.T) {
 		t.Fatalf("ValidateProduct() error = %v, want complete product accepted", err)
 	}
 }
+
+func TestValidateProductRejectsHostlessOptionalImageURL(t *testing.T) {
+	checker := NewProductChecker()
+	product := &model.Product1688{
+		URL:              "https://detail.1688.com/offer/1.html",
+		Title:            "Insulated lunch bag",
+		MinPrice:         18.8,
+		MinOrderQuantity: 1,
+		Supplier:         model.SupplierInfo{Name: "Lunch Factory"},
+		MainImage:        "https://img.example/product.jpg",
+		Variants:         []model.Variant{{Image: "https:///.jpg"}},
+	}
+
+	if err := checker.ValidateProduct(product); err == nil {
+		t.Fatal("ValidateProduct() error = nil, want hostless optional image URL rejected")
+	}
+}

@@ -138,6 +138,26 @@ func TestAlibaba1688SourceEnvelopeFallsBackToRequestIdentityAndWarnings(t *testi
 	}
 }
 
+func TestAlibaba1688SourceEnvelopeDisambiguatesDuplicateVariantAttributes(t *testing.T) {
+	envelope := Alibaba1688SourceEnvelope(Alibaba1688SourceEnvelopeInput{
+		Request: Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/123.html"},
+		Product: &Alibaba1688ProductSnapshot{
+			Variants: []Alibaba1688VariantSnapshot{
+				{Attributes: map[string]any{"Color": "Blue"}},
+				{Attributes: map[string]any{"Color": "Blue"}},
+			},
+		},
+	})
+
+	if len(envelope.ProductCandidate.Variants) != 2 {
+		t.Fatalf("variants = %d, want 2", len(envelope.ProductCandidate.Variants))
+	}
+	first, second := envelope.ProductCandidate.Variants[0], envelope.ProductCandidate.Variants[1]
+	if first.SourceID == second.SourceID || first.SKU == second.SKU {
+		t.Fatalf("duplicate variant identities: first=%+v second=%+v", first, second)
+	}
+}
+
 func TestAlibaba1688SourceEnvelopeHandlesMissingProductAndError(t *testing.T) {
 	envelope := Alibaba1688SourceEnvelope(Alibaba1688SourceEnvelopeInput{
 		Request: Alibaba1688CrawlRequestInput{URL: "https://detail.1688.com/offer/789.html"},
