@@ -14,7 +14,7 @@ func buildTemuPackage(req *GenerateRequest, canonical *canonical.Product, image 
 	}
 
 	images := buildPlatformImages(canonical, image)
-	variants := buildPlatformVariants(canonical)
+	variants := common.BuildVariants(canonical)
 	pkg := &TemuPackage{
 		GoodsName:        withBrandHint(canonical.Title, req),
 		CategoryPath:     append([]string(nil), canonical.CategoryPath...),
