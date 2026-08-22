@@ -46,6 +46,11 @@ image, package image, and supplier shop URL use this policy before envelope
 construction.  `SourceEnvelope` remains a pure transformation and may assume
 an admitted snapshot.
 
+The HTTP boundary decodes both the result wrapper and the nested product
+snapshot with unknown-field rejection.  An unrecognized field is a protocol
+error, not a silently discarded compatibility value; this makes the declared
+wire schema the complete admission allow-list.
+
 ### 2. Remove unverifiable derived data
 
 Delete `PriceRangeCount` from the source snapshot, local-agent HTTP request,
@@ -137,7 +142,8 @@ browser owner must receive the context and close the browser it created.
 - Table-driven service and product-checker tests cover credential-bearing URLs
   at every asset and supplier URL field, plus safe signed media URLs.
 - HTTP/client payload tests prove `price_range_count` is absent, and source
-  envelope tests prove it cannot appear in facts.
+  envelope tests prove it cannot appear in facts; strict-decoding tests prove
+  the removed field and `source_account_id` are rejected rather than ignored.
 - Service and HTTP tests prove the original terminal token gets `409
   job_not_active`, while a wrong token gets `403 claim_denied`.
 - Integration and single-processor tests prove context reaches the source and

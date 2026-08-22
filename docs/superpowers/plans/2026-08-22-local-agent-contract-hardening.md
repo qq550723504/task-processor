@@ -13,6 +13,7 @@
 ## Global Constraints
 
 - This is a breaking pre-release cleanup: do not add a compatibility shim for `price_range_count` or the context-aware crawler interface.
+- Decode the result wrapper and nested product snapshot with `DisallowUnknownFields`; removed or undeclared protocol fields must fail with `400 invalid_request`.
 - Use only the Go standard library for URL parsing, token digests, cancellation, and synchronization; add no dependency.
 - Never place a rejected URL or execution token in an error message, log, response, test failure, or retained job record.
 - Preserve the existing public 1688 offer URL policy and signed media query strings.
@@ -120,13 +121,16 @@ git commit -m "fix: centralize 1688 snapshot URL admission"
 
 **Interfaces:**
 - Removes: `Alibaba1688ProductSnapshot.PriceRangeCount`, the HTTP `price_range_count` request field, the client payload field, and the `SupplierOrCostFacts.Facts["price_range_count"]` output.
-- Produces: a source envelope whose cost facts contain only source data that the submitted snapshot can substantiate.
+- Produces: a source envelope whose cost facts contain only source data that the submitted snapshot can substantiate, and a closed HTTP schema that rejects undeclared wrapper and snapshot fields.
 
 - [ ] **Step 1: Write the failing absence tests**
 
 Change the source-envelope test to assert its facts map lacks
 `price_range_count`. Change the HTTP/client serialization tests to marshal a
 snapshot and assert the raw JSON has no `price_range_count` key.
+Add handler tests that submit `price_range_count` inside `product_snapshot`
+and `source_account_id` in the result wrapper; both must return `400` with
+`invalid_request`.
 
 ```go
 _, found := envelope.SupplierOrCostFacts.Facts["price_range_count"]
@@ -141,20 +145,25 @@ require.NotContains(t, string(encoded), "price_range_count")
 
 Run: `go test ./internal/product/sourcing ./internal/integration/crawler/a1688 ./internal/localagent/httpapi ./internal/localagent/client -run 'PriceRangeCount|SnapshotRequest|SubmitSuccessUsesSnakeCase' -count=1`
 
-Expected: FAIL because the count is still mapped and emitted as an envelope fact.
+Expected: FAIL because the count is still mapped and emitted as an envelope fact,
+and the existing JSON binding silently ignores both undeclared fields.
 
 - [ ] **Step 3: Delete the field at every boundary**
 
 Remove the field and its assignment from the domain snapshot, legacy adapter,
 HTTP request translator, client payload translator, and source envelope. Do
-not substitute a count limit or a default value. Update tests that assert the
-old mapping.
+not substitute a count limit or a default value. Replace permissive Gin JSON
+binding for the result wrapper with a size-preserving standard-library decoder
+that calls `DisallowUnknownFields` and rejects trailing JSON. Decode the nested
+`product_snapshot` through the same strict rule. Update tests that assert the
+old mapping or the formerly ignored `source_account_id` behavior.
 
 - [ ] **Step 4: Run affected package tests to verify green**
 
 Run: `go test ./internal/product/sourcing ./internal/integration/crawler/a1688 ./internal/localagent/httpapi ./internal/localagent/client -count=1`
 
-Expected: PASS; no serialized or canonical fact can contain the removed field.
+Expected: PASS; no serialized or canonical fact can contain the removed field,
+and removed or undeclared wire fields are rejected at admission.
 
 - [ ] **Step 5: Commit protocol narrowing**
 
