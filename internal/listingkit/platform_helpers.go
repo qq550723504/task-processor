@@ -1,8 +1,6 @@
 package listingkit
 
 import (
-	"strings"
-
 	"task-processor/internal/asset"
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
@@ -80,12 +78,7 @@ func findAssetURL(items []asset.Asset, id string) string {
 }
 
 func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
+	return common.FirstNonEmpty(values...)
 }
 
 func uniqueStrings(values []string) []string {
