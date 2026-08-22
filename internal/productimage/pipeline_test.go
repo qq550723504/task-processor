@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/infra/clients/grsai"
 	productimage "task-processor/internal/productimage"
 	"task-processor/internal/productimage/store"
@@ -481,6 +482,46 @@ func TestService_ProcessImages_DowngradesGalleryFailureToNeedsReview(t *testing.
 	}
 	if storedTask.Status != productimage.TaskStatusNeedsReview {
 		t.Fatalf("stored status = %q, want needs_review", storedTask.Status)
+	}
+}
+
+func TestService_ProcessImages_DoesNotDowngradeGalleryIdentityFailure(t *testing.T) {
+	repo := store.NewMemTaskRepository()
+	identityErr := aicapability.NewError(
+		aicapability.ErrorIdentityIntegrity,
+		string(aicapability.OperationProductImageSceneGenerate),
+		nil,
+	)
+	svc, err := productimage.NewService(&productimage.ServiceConfig{
+		TaskRepo:        repo,
+		AssetPublisher:  &stubAssetPublisher{},
+		SceneRenderer:   &failingSceneRenderer{err: identityErr},
+		ReviewAssessor:  productimage.NewDefaultReviewAssessor(),
+		QualityAssessor: productimage.NewDefaultQualityAssessor(),
+	})
+	if err != nil {
+		t.Fatalf("NewService() error = %v", err)
+	}
+	task, err := svc.CreateProcessTask(context.Background(), &productimage.ImageProcessRequest{
+		ImageURLs: []string{"https://example.com/a.jpg"}, Marketplace: "amazon",
+	})
+	if err != nil {
+		t.Fatalf("CreateProcessTask() error = %v", err)
+	}
+
+	result, err := svc.ProcessImages(context.Background(), task)
+	if aicapability.CategoryOf(err) != aicapability.ErrorIdentityIntegrity {
+		t.Fatalf("ProcessImages() error = %v, want identity_integrity", err)
+	}
+	if result != nil {
+		t.Fatalf("ProcessImages() result = %+v, want nil", result)
+	}
+	stored, err := repo.GetTask(context.Background(), task.ID)
+	if err != nil {
+		t.Fatalf("GetTask() error = %v", err)
+	}
+	if stored.Status != productimage.TaskStatusFailed {
+		t.Fatalf("stored status = %q, want failed", stored.Status)
 	}
 }
 

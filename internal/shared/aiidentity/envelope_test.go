@@ -13,6 +13,14 @@ func TestCaptureExecutionEnvelopeRequiresVerifiedIdentity(t *testing.T) {
 	}
 }
 
+func TestExecutionTenantMatchesContextDoesNotFallbackForMalformedEnvelope(t *testing.T) {
+	ctx := WithIdentity(context.Background(), Identity{TenantID: "tenant-a", UserID: "user-a"})
+	persisted := PersistedExecutionEnvelope{ExecutionUserID: " "}
+	if ExecutionTenantMatchesContext(ctx, persisted, "tenant-a") {
+		t.Fatal("malformed non-zero envelope used the legacy tenant fallback")
+	}
+}
+
 func TestCaptureAndRestoreExecutionEnvelope(t *testing.T) {
 	ctx := WithIdentity(context.Background(), Identity{
 		TenantID: " tenant-a ",

@@ -39,6 +39,26 @@ type PersistedExecutionEnvelope struct {
 
 type envelopeContextKey struct{}
 
+// ExecutionTenantMatchesContext applies the same tenant authority rule used by
+// persisted task repositories: a non-zero execution envelope is authoritative,
+// while fully legacy rows may fall back to their legacy tenant column. Contexts
+// without a tenant remain available to trusted internal workers.
+func ExecutionTenantMatchesContext(ctx context.Context, persisted PersistedExecutionEnvelope, legacyTenantID string) bool {
+	tenantID := strings.TrimSpace(FromContext(ctx).TenantID)
+	if tenantID == "" {
+		return true
+	}
+	taskTenantID := persisted.ExecutionTenantID
+	if persisted.ExecutionIdentityVersion == 0 &&
+		taskTenantID == "" &&
+		persisted.ExecutionUserID == "" &&
+		persisted.ExecutionSourcePlatform == "" &&
+		persisted.ExecutionSourceTaskType == "" {
+		taskTenantID = legacyTenantID
+	}
+	return taskTenantID == tenantID
+}
+
 func (e ExecutionEnvelope) Validate() error {
 	e = normalizeEnvelope(e)
 	if e.Version != CurrentEnvelopeVersion {

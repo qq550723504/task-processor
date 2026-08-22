@@ -55,7 +55,7 @@ func (s *service) runPipeline(ctx context.Context, state *PipelineState) error {
 		startedAt := time.Now()
 		if err := stage.Run(ctx, state); err != nil {
 			durationMS := time.Since(startedAt).Milliseconds()
-			if degraded, ok := asNeedsReviewStageFailure(err); ok {
+			if degraded, ok := asNeedsReviewStageFailure(err); ok && !IsIdentityIntegrityError(err) {
 				state.markNeedsReviewStage(degraded.stage, durationMS, degraded.reason)
 				return s.runNeedsReviewRecoveryStages(ctx, state, degraded.stage)
 			}

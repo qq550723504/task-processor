@@ -56,3 +56,36 @@ func TestTaskRepositoryScopesReadsToExecutionTenant(t *testing.T) {
 		t.Fatalf("execution tenant GetTask = (%+v, %v), want task-authoritative", task, err)
 	}
 }
+
+func TestMemTaskRepositoryUsesEnvelopeTenantWithLegacyFallback(t *testing.T) {
+	repo := NewMemTaskRepository()
+	for _, task := range []*productenrich.Task{
+		{ID: "task-a", Status: productenrich.TaskStatusPending, TenantID: "tenant-a", UserID: "user-a", PersistedExecutionEnvelope: aiidentity.PersistedExecutionEnvelope{ExecutionIdentityVersion: 1, ExecutionTenantID: "tenant-a", ExecutionUserID: "user-a", ExecutionSourcePlatform: "productenrich", ExecutionSourceTaskType: "product"}},
+		{ID: "task-b", Status: productenrich.TaskStatusPending, TenantID: "tenant-b", UserID: "user-b", PersistedExecutionEnvelope: aiidentity.PersistedExecutionEnvelope{ExecutionIdentityVersion: 1, ExecutionTenantID: "tenant-b", ExecutionUserID: "user-b", ExecutionSourcePlatform: "productenrich", ExecutionSourceTaskType: "product"}},
+		{ID: "task-authoritative", Status: productenrich.TaskStatusPending, TenantID: "tenant-a", UserID: "legacy-user", PersistedExecutionEnvelope: aiidentity.PersistedExecutionEnvelope{ExecutionIdentityVersion: 1, ExecutionTenantID: "tenant-b", ExecutionUserID: "user-b", ExecutionSourcePlatform: "productenrich", ExecutionSourceTaskType: "product"}},
+		{ID: "task-legacy", Status: productenrich.TaskStatusPending, TenantID: "tenant-a", UserID: "legacy-user"},
+	} {
+		if err := repo.CreateTask(context.Background(), task); err != nil {
+			t.Fatalf("create %s: %v", task.ID, err)
+		}
+	}
+	ctxA := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+	for _, taskID := range []string{"task-b", "task-authoritative"} {
+		if _, err := repo.GetTask(ctxA, taskID); !errors.Is(err, productenrich.ErrTaskNotFound) {
+			t.Fatalf("cross-tenant GetTask(%s) error = %v, want ErrTaskNotFound", taskID, err)
+		}
+	}
+	if task, err := repo.GetTask(ctxA, "task-legacy"); err != nil || task.ID != "task-legacy" {
+		t.Fatalf("legacy tenant fallback GetTask = (%+v, %v), want task-legacy", task, err)
+	}
+	if err := repo.UpdateTaskError(ctxA, "task-authoritative", "denied"); err == nil {
+		t.Fatal("legacy tenant mutation succeeded for envelope-owned task")
+	}
+	stored, err := repo.GetTask(context.Background(), "task-authoritative")
+	if err != nil {
+		t.Fatalf("unscoped GetTask: %v", err)
+	}
+	if stored.Error != "" || stored.Status != productenrich.TaskStatusPending {
+		t.Fatalf("cross-tenant mutation changed task: status=%q error=%q", stored.Status, stored.Error)
+	}
+}

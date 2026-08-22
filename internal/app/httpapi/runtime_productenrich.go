@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
+	"task-processor/internal/prompt"
 )
 
 type productEnrichRuntimeDeps struct {
@@ -95,7 +96,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 			Capability:      aicapability.CapabilityProductEnrichListing,
 			Operation:       aicapability.OperationProductEnrichJSONGenerate,
 			RequiredFeature: aicapability.FeatureTextGenerate,
-			PromptKey:       "productenrich.listing.generate_json",
+			PromptKey:       prompt.KProductEnrichGenerationProductJSON,
 			PromptVersion:   "v1",
 			PromptScope:     "product_enrich",
 			FallbackClient:  "default",
@@ -110,7 +111,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 			Capability:      aicapability.CapabilityProductEnrichListing,
 			Operation:       aicapability.OperationProductEnrichSpecsGenerate,
 			RequiredFeature: aicapability.FeatureTextGenerate,
-			PromptKey:       "productenrich.listing.generate_specs",
+			PromptKey:       prompt.KProductEnrichGenerationSpecs,
 			PromptVersion:   "v1",
 			PromptScope:     "product_enrich",
 			FallbackClient:  "default",
@@ -125,7 +126,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 			Capability:      aicapability.CapabilityProductEnrichListing,
 			Operation:       aicapability.OperationProductEnrichVariantsGenerate,
 			RequiredFeature: aicapability.FeatureTextGenerate,
-			PromptKey:       "productenrich.listing.generate_variants",
+			PromptKey:       prompt.KProductEnrichGenerationVariants,
 			PromptVersion:   "v1",
 			PromptScope:     "product_enrich",
 			FallbackClient:  "default",
@@ -159,7 +160,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 			Capability:      aicapability.CapabilityProductEnrichText,
 			Operation:       aicapability.OperationProductEnrichTextQualityScore,
 			RequiredFeature: aicapability.FeatureTextGenerate,
-			PromptKey:       "productenrich.quality_score.text",
+			PromptKey:       prompt.KProductEnrichLlmScorerTextScoring,
 			PromptVersion:   "v1",
 			PromptScope:     "product_enrich",
 			FallbackClient:  scorerClientName(cfg, "fast"),
@@ -176,7 +177,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 			Capability:      aicapability.CapabilityProductEnrichVision,
 			Operation:       aicapability.OperationProductEnrichVisionQualityScore,
 			RequiredFeature: aicapability.FeatureVisionAnalyze,
-			PromptKey:       "productenrich.quality_score.image",
+			PromptKey:       prompt.KProductEnrichLlmScorerImageScoring,
 			PromptVersion:   "v1",
 			PromptScope:     "product_enrich",
 			FallbackClient:  scorerClientName(cfg, "vision"),

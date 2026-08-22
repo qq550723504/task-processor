@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"task-processor/internal/productenrich"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type MemTaskRepository struct {
@@ -24,16 +25,17 @@ func (r *MemTaskRepository) CreateTask(_ context.Context, task *productenrich.Ta
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.tasks[task.ID] = task
+	copied := *task
+	r.tasks[task.ID] = &copied
 	return nil
 }
 
-func (r *MemTaskRepository) GetTask(_ context.Context, taskID string) (*productenrich.Task, error) {
+func (r *MemTaskRepository) GetTask(ctx context.Context, taskID string) (*productenrich.Task, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	task, ok := r.tasks[taskID]
-	if !ok {
+	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
 		return nil, productenrich.ErrTaskNotFound
 	}
 
@@ -41,13 +43,13 @@ func (r *MemTaskRepository) GetTask(_ context.Context, taskID string) (*producte
 	return &cp, nil
 }
 
-func (r *MemTaskRepository) MarkProcessing(_ context.Context, taskID string) error {
+func (r *MemTaskRepository) MarkProcessing(ctx context.Context, taskID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	task, ok := r.tasks[taskID]
-	if !ok {
-		return fmt.Errorf("task not found: %s", taskID)
+	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
+		return productenrich.ErrTaskNotFound
 	}
 	if task.Status != productenrich.TaskStatusPending {
 		return productenrich.ErrTaskNotPending
@@ -57,13 +59,13 @@ func (r *MemTaskRepository) MarkProcessing(_ context.Context, taskID string) err
 	return nil
 }
 
-func (r *MemTaskRepository) MarkCompleted(_ context.Context, taskID string, result *productenrich.ProductJSON) error {
+func (r *MemTaskRepository) MarkCompleted(ctx context.Context, taskID string, result *productenrich.ProductJSON) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	task, ok := r.tasks[taskID]
-	if !ok {
-		return fmt.Errorf("task not found: %s", taskID)
+	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
+		return productenrich.ErrTaskNotFound
 	}
 	task.Status = productenrich.TaskStatusCompleted
 	task.Error = ""
@@ -71,73 +73,73 @@ func (r *MemTaskRepository) MarkCompleted(_ context.Context, taskID string, resu
 	return nil
 }
 
-func (r *MemTaskRepository) MarkFailed(_ context.Context, taskID string, errorMsg string) error {
+func (r *MemTaskRepository) MarkFailed(ctx context.Context, taskID string, errorMsg string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	task, ok := r.tasks[taskID]
-	if !ok {
-		return fmt.Errorf("task not found: %s", taskID)
+	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
+		return productenrich.ErrTaskNotFound
 	}
 	task.Status = productenrich.TaskStatusFailed
 	task.Error = errorMsg
 	return nil
 }
 
-func (r *MemTaskRepository) PrepareRetry(_ context.Context, taskID string) error {
+func (r *MemTaskRepository) PrepareRetry(ctx context.Context, taskID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	task, ok := r.tasks[taskID]
-	if !ok {
-		return fmt.Errorf("task not found: %s", taskID)
+	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
+		return productenrich.ErrTaskNotFound
 	}
 	task.Status = productenrich.TaskStatusPending
 	task.Error = ""
 	return nil
 }
 
-func (r *MemTaskRepository) UpdateTaskStatus(_ context.Context, taskID string, status productenrich.TaskStatus) error {
+func (r *MemTaskRepository) UpdateTaskStatus(ctx context.Context, taskID string, status productenrich.TaskStatus) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	task, ok := r.tasks[taskID]
-	if !ok {
-		return fmt.Errorf("task not found: %s", taskID)
+	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
+		return productenrich.ErrTaskNotFound
 	}
 	task.Status = status
 	return nil
 }
 
-func (r *MemTaskRepository) UpdateTaskError(_ context.Context, taskID string, errorMsg string) error {
-	return r.MarkFailed(context.Background(), taskID, errorMsg)
+func (r *MemTaskRepository) UpdateTaskError(ctx context.Context, taskID string, errorMsg string) error {
+	return r.MarkFailed(ctx, taskID, errorMsg)
 }
 
-func (r *MemTaskRepository) SaveTaskResult(_ context.Context, taskID string, result *productenrich.ProductJSON) error {
+func (r *MemTaskRepository) SaveTaskResult(ctx context.Context, taskID string, result *productenrich.ProductJSON) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	task, ok := r.tasks[taskID]
-	if !ok {
-		return fmt.Errorf("task not found: %s", taskID)
+	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
+		return productenrich.ErrTaskNotFound
 	}
 	task.Status = productenrich.TaskStatusCompleted
 	task.Result = result
 	return nil
 }
 
-func (r *MemTaskRepository) IncrementRetryCount(_ context.Context, taskID string) error {
+func (r *MemTaskRepository) IncrementRetryCount(ctx context.Context, taskID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	task, ok := r.tasks[taskID]
-	if !ok {
-		return fmt.Errorf("task not found: %s", taskID)
+	if !ok || !aiidentity.ExecutionTenantMatchesContext(ctx, task.PersistedExecutionEnvelope, task.TenantID) {
+		return productenrich.ErrTaskNotFound
 	}
 	task.RetryCount++
 	return nil
 }
 
-func (r *MemTaskRepository) ResetForRetry(_ context.Context, taskID string) error {
-	return r.PrepareRetry(context.Background(), taskID)
+func (r *MemTaskRepository) ResetForRetry(ctx context.Context, taskID string) error {
+	return r.PrepareRetry(ctx, taskID)
 }

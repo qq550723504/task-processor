@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/aicapability"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
+	"task-processor/internal/prompt"
 	"task-processor/internal/shared/aiidentity"
 )
 
@@ -43,7 +44,7 @@ func TestGovernedImageAnalyzerRecordsConfiguredPromptMetadata(t *testing.T) {
 	config := productenrichenrich.GovernedImageAnalyzerConfig{
 		Router: staticImageQualityRouter{}, Recorder: recorder,
 		Operation:     aicapability.OperationProductEnrichVisionQualityScore,
-		PromptKey:     "productenrich.quality_score.image",
+		PromptKey:     prompt.KProductEnrichLlmScorerImageScoring,
 		PromptVersion: "v1",
 		PromptScope:   "product_enrich",
 	}
@@ -56,7 +57,7 @@ func TestGovernedImageAnalyzerRecordsConfiguredPromptMetadata(t *testing.T) {
 	if _, err := analyzer.AnalyzeImage(ctx, "https://example.test/product.jpg", "score image quality"); err != nil {
 		t.Fatalf("AnalyzeImage: %v", err)
 	}
-	if recorder.record.PromptKey != "productenrich.quality_score.image" || recorder.record.PromptVersion != "v1" || recorder.record.PromptScope != "product_enrich" {
+	if recorder.record.PromptKey != prompt.KProductEnrichLlmScorerImageScoring || recorder.record.PromptVersion != "v1" || recorder.record.PromptScope != "product_enrich" {
 		t.Fatalf("prompt metadata = %q/%q/%q", recorder.record.PromptKey, recorder.record.PromptVersion, recorder.record.PromptScope)
 	}
 }
