@@ -7,36 +7,21 @@ import (
 )
 
 func TestPlatformImageProjectionHasDedicatedFile(t *testing.T) {
-	imageSource, err := os.ReadFile("platform_images.go")
-	if err != nil {
-		t.Fatalf("read platform_images.go: %v", err)
-	}
-	imageContent := string(imageSource)
-	for _, signature := range []string{
-		"func buildPlatformImages(",
-		"func buildPlatformImagesFromAssetBundle(",
-	} {
-		if !strings.Contains(imageContent, signature) {
-			t.Fatalf("platform_images.go should own %s", signature)
+	for _, path := range []string{"temu_mapper.go", "walmart_mapper.go"} {
+		source, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		content := string(source)
+		if !strings.Contains(content, "common.BuildImagesWithSelection(") {
+			t.Fatalf("%s should use common.BuildImagesWithSelection", path)
+		}
+		if strings.Contains(content, "buildPlatformImages(") {
+			t.Fatalf("%s should not use the ListingKit image wrapper", path)
 		}
 	}
 
-	helperSource, err := os.ReadFile("platform_helpers.go")
-	if err != nil {
-		t.Fatalf("read platform_helpers.go: %v", err)
-	}
-	for _, signature := range []string{
-		"func buildPlatformImages(",
-		"func buildPlatformImagesFromAssetBundle(",
-	} {
-		if strings.Contains(string(helperSource), signature) {
-			t.Fatalf("platform_helpers.go should not own %s", signature)
-		}
-	}
-	if !strings.Contains(imageContent, "common.BuildImagesFromBundleWithSelection(") {
-		t.Fatal("platform_images.go should delegate bundle projection to common selection-aware builder")
-	}
-	if strings.Contains(imageContent, "func findAssetURL(") {
-		t.Fatal("platform_images.go should not duplicate asset URL lookup")
+	if _, err := os.Stat("platform_images.go"); !os.IsNotExist(err) {
+		t.Fatalf("platform_images.go should be removed, stat error = %v", err)
 	}
 }

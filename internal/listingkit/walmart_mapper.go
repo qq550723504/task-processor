@@ -22,7 +22,7 @@ func buildWalmartPackage(req *GenerateRequest, canonical *canonical.Product, ima
 		KeyFeatures:      append([]string(nil), canonical.SellingPoints...),
 		Attributes:       common.FlattenAttributes(canonical.Attributes),
 		Variants:         common.BuildVariants(canonical),
-		Images:           buildPlatformImages(canonical, image),
+		Images:           common.BuildImagesWithSelection(canonical, image),
 		Metadata: map[string]string{
 			"target_platform": "walmart",
 			"country":         req.Country,

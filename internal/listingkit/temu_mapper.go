@@ -13,7 +13,7 @@ func buildTemuPackage(req *GenerateRequest, canonical *canonical.Product, image 
 		return &TemuPackage{ReviewNotes: []string{"canonical product is empty"}}
 	}
 
-	images := buildPlatformImages(canonical, image)
+	images := common.BuildImagesWithSelection(canonical, image)
 	variants := common.BuildVariants(canonical)
 	pkg := &TemuPackage{
 		GoodsName:        common.WithBrandHint(canonical.Title, req.BrandHint),

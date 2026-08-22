@@ -51,6 +51,12 @@ func BuildImages(product *canonical.Product, image *productimage.ImageProcessRes
 	return BuildImagesFromBundle(asset.BuildBundle(product, image))
 }
 
+// BuildImagesWithSelection projects a product image result while honoring
+// the explicit asset selection captured in its bundle.
+func BuildImagesWithSelection(product *canonical.Product, image *productimage.ImageProcessResult) *ImageSet {
+	return BuildImagesFromBundleWithSelection(asset.BuildBundle(product, image))
+}
+
 func BuildImagesFromBundle(bundle *asset.Bundle) *ImageSet {
 	return buildImagesFromBundle(bundle, false)
 }

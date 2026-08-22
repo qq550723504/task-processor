@@ -8,6 +8,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 	openaiclient "task-processor/internal/infra/clients/openai"
 	"task-processor/internal/productimage"
+	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 	sheinmanaged "task-processor/internal/publishing/sheinmanaged"
 	sheinattribute "task-processor/internal/shein/api/attribute"
@@ -451,7 +452,7 @@ func TestBuildPlatformImagesFallsBackToCanonicalImages(t *testing.T) {
 		},
 	}
 
-	images := buildPlatformImages(canonical, nil)
+	images := common.BuildImagesWithSelection(canonical, nil)
 	if images == nil {
 		t.Fatal("expected images")
 	}
