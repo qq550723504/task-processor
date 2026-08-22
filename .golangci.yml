@@ -63,6 +63,15 @@ linters-settings:
           - pkg: "task-processor/internal/platform"
             desc: "SHEIN publishing policies must not depend on root runtime wiring"
 
+      listingkit_marketplace_publishing:
+        # This package direction is stable and has no compatibility exceptions.
+        files:
+          - "internal/listingkit/*.go"
+          - "internal/listingkit/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/marketplace/shein/publishing"
+            desc: "ListingKit production code must not depend on SHEIN publishing policies"
+
   govet:
     disable:
       - fieldalignment
