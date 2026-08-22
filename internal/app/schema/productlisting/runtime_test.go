@@ -31,4 +31,15 @@ func TestAutoMigrateRuntimeCreatesExecutionEnvelopeColumns(t *testing.T) {
 			}
 		}
 	}
+
+	columns, err := db.Migrator().ColumnTypes("ai_invocations")
+	if err != nil {
+		t.Fatalf("ColumnTypes(ai_invocations): %v", err)
+	}
+	for _, column := range columns {
+		if column.Name() == "cache_status" {
+			return
+		}
+	}
+	t.Fatal("table ai_invocations missing column cache_status")
 }
