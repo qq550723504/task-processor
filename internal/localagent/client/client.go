@@ -32,7 +32,6 @@ type productSnapshotPayload struct {
 	Images           []string                `json:"images"`
 	MainImage        string                  `json:"main_image"`
 	Videos           []videoPayload          `json:"videos"`
-	PriceRangeCount  int                     `json:"price_range_count"`
 	MinPrice         float64                 `json:"min_price"`
 	MaxPrice         float64                 `json:"max_price"`
 	Currency         string                  `json:"currency"`
@@ -106,7 +105,7 @@ func snapshotPayload(snapshot *sourcing.Alibaba1688ProductSnapshot) *productSnap
 	}
 	payload := &productSnapshotPayload{
 		ID: snapshot.ID, Title: snapshot.Title, URL: snapshot.URL, Images: snapshot.Images, MainImage: snapshot.MainImage,
-		PriceRangeCount: snapshot.PriceRangeCount, MinPrice: snapshot.MinPrice, MaxPrice: snapshot.MaxPrice,
+		MinPrice: snapshot.MinPrice, MaxPrice: snapshot.MaxPrice,
 		Currency: snapshot.Currency, MinOrderQuantity: snapshot.MinOrderQuantity, Unit: snapshot.Unit,
 		SalesVolume: snapshot.SalesVolume, ReviewCount: snapshot.ReviewCount, Rating: snapshot.Rating,
 		Category: snapshot.Category, Brand: snapshot.Brand, Keywords: snapshot.Keywords, IsCustomized: snapshot.IsCustomized,

@@ -21,7 +21,7 @@ func TestSnapshotFromLegacyProductMapsConsumedFields(t *testing.T) {
 	}
 
 	if snapshot.ID != legacy.ID || snapshot.Title != legacy.Title || snapshot.URL != legacy.URL ||
-		snapshot.MainImage != legacy.MainImage || snapshot.PriceRangeCount != 2 ||
+		snapshot.MainImage != legacy.MainImage ||
 		snapshot.MinPrice != legacy.MinPrice || snapshot.MaxPrice != legacy.MaxPrice ||
 		snapshot.Currency != legacy.Currency || snapshot.MinOrderQuantity != legacy.MinOrderQuantity ||
 		snapshot.Unit != legacy.Unit || snapshot.SalesVolume != legacy.SalesVolume ||

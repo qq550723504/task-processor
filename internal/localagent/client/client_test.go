@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -57,13 +58,18 @@ func TestClientSubmitSuccessUsesSnakeCaseSnapshotPayload(t *testing.T) {
 		require.NoError(t, json.NewDecoder(r.Body).Decode(&request))
 		require.Contains(t, string(request["product_snapshot"]), `"main_image"`)
 		require.Contains(t, string(request["product_snapshot"]), `"min_price"`)
+		require.NotContains(t, string(request["product_snapshot"]), `"price_range_count"`)
 		require.NotContains(t, string(request["product_snapshot"]), `"MainImage"`)
 		_, _ = w.Write([]byte(`{"job_id":"job-1","state":"succeeded"}`))
 	}))
 	defer server.Close()
 	client, err := New(server.URL, "token", server.Client())
 	require.NoError(t, err)
-	_, err = client.SubmitSuccess(context.Background(), "job-1", "execution", &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", URL: "https://detail.1688.com/offer/1052008074197.html", MainImage: "https://img/main.jpg", MinPrice: 12.5})
+	snapshot := &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", URL: "https://detail.1688.com/offer/1052008074197.html", MainImage: "https://img/main.jpg", MinPrice: 12.5}
+	if field := reflect.ValueOf(snapshot).Elem().FieldByName("PriceRangeCount"); field.IsValid() && field.CanSet() {
+		field.SetInt(2)
+	}
+	_, err = client.SubmitSuccess(context.Background(), "job-1", "execution", snapshot)
 	require.NoError(t, err)
 }
 
