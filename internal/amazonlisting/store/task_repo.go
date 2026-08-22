@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"task-processor/internal/amazonlisting"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type taskRepository struct {
@@ -24,7 +25,7 @@ func (r *taskRepository) CreateTask(ctx context.Context, task *amazonlisting.Tas
 
 func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*amazonlisting.Task, error) {
 	var task amazonlisting.Task
-	if err := r.db.WithContext(ctx).Where("id = ?", taskID).First(&task).Error; err != nil {
+	if err := r.scoped(ctx, r.db.WithContext(ctx)).Where("id = ?", taskID).First(&task).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, amazonlisting.ErrTaskNotFound
 		}
@@ -34,7 +35,7 @@ func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*amazonlis
 }
 
 func (r *taskRepository) ListTasks(ctx context.Context, statuses []amazonlisting.TaskStatus, limit int) ([]*amazonlisting.Task, error) {
-	query := r.db.WithContext(ctx).Model(&amazonlisting.Task{})
+	query := r.scoped(ctx, r.db.WithContext(ctx).Model(&amazonlisting.Task{}))
 	if len(statuses) > 0 {
 		query = query.Where("status IN ?", statuses)
 	}
@@ -49,7 +50,7 @@ func (r *taskRepository) ListTasks(ctx context.Context, statuses []amazonlisting
 }
 
 func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) error {
-	result := r.db.WithContext(ctx).
+	result := r.scoped(ctx, r.db.WithContext(ctx)).
 		Model(&amazonlisting.Task{}).
 		Where("id = ? AND status = ?", taskID, amazonlisting.TaskStatusPending).
 		Updates(map[string]any{
@@ -94,7 +95,14 @@ func (r *taskRepository) PrepareRetry(ctx context.Context, taskID string) error 
 }
 
 func (r *taskRepository) IncrementRetryCount(ctx context.Context, taskID string) error {
-	return r.db.WithContext(ctx).Model(&amazonlisting.Task{}).Where("id = ?", taskID).UpdateColumn("retry_count", gorm.Expr("retry_count + ?", 1)).Error
+	result := r.scoped(ctx, r.db.WithContext(ctx)).Model(&amazonlisting.Task{}).Where("id = ?", taskID).UpdateColumn("retry_count", gorm.Expr("retry_count + ?", 1))
+	if result.Error != nil {
+		return fmt.Errorf("failed to increment retry count: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return amazonlisting.ErrTaskNotFound
+	}
+	return nil
 }
 
 func (r *taskRepository) UpdateTaskStatus(ctx context.Context, taskID string, status amazonlisting.TaskStatus) error {
@@ -115,7 +123,7 @@ func (r *taskRepository) ResetForRetry(ctx context.Context, taskID string) error
 
 func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, updates map[string]any) error {
 	updates["updated_at"] = gorm.Expr("NOW()")
-	result := r.db.WithContext(ctx).Model(&amazonlisting.Task{}).Where("id = ?", taskID).Updates(updates)
+	result := r.scoped(ctx, r.db.WithContext(ctx)).Model(&amazonlisting.Task{}).Where("id = ?", taskID).Updates(updates)
 	if result.Error != nil {
 		return fmt.Errorf("failed to update task: %w", result.Error)
 	}
@@ -123,4 +131,11 @@ func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, up
 		return amazonlisting.ErrTaskNotFound
 	}
 	return nil
+}
+
+func (r *taskRepository) scoped(ctx context.Context, query *gorm.DB) *gorm.DB {
+	if tenantID := aiidentity.FromContext(ctx).TenantID; tenantID != "" {
+		return query.Where("execution_tenant_id = ?", tenantID)
+	}
+	return query
 }

@@ -11,6 +11,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productimage"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type standardWorkflowMediaPhase struct {
@@ -52,7 +53,20 @@ func (p *standardWorkflowMediaPhase) run(
 				}
 				stage.SetTaskID(imageTask.ID)
 				markChildTask(result, kind, imageTask.ID, string(productimage.TaskStatusPending), "")
-				targetResult, imageErr := imageSvc.ProcessImages(ctx, imageTask)
+				imageCtx := ctx
+				if envelope, envelopeErr := imageTask.ExecutionEnvelope(); envelopeErr != nil {
+					markChildTask(result, kind, imageTask.ID, string(core.TaskStatusFailed), envelopeErr.Error())
+					stage.Degrade("image_identity_integrity", "Image processing identity integrity failed", envelopeErr.Error())
+					continue
+				} else if envelope.Version != 0 {
+					imageCtx, envelopeErr = aiidentity.RestoreExecutionEnvelope(ctx, envelope, imageTask.ID)
+					if envelopeErr != nil {
+						markChildTask(result, kind, imageTask.ID, string(core.TaskStatusFailed), envelopeErr.Error())
+						stage.Degrade("image_identity_integrity", "Image processing identity integrity failed", envelopeErr.Error())
+						continue
+					}
+				}
+				targetResult, imageErr := imageSvc.ProcessImages(imageCtx, imageTask)
 				if imageErr != nil {
 					markChildTask(result, kind, imageTask.ID, string(core.TaskStatusFailed), imageErr.Error())
 					appendWarning(result, "image processing failed for "+target+": "+imageErr.Error())

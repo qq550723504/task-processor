@@ -26,21 +26,26 @@ type Module struct {
 }
 
 type BuildModuleInput struct {
-	Config         *config.Config
-	Logger         *logrus.Logger
-	LLMManager     productenrich.LLMManager
-	InputParser    productenrich.InputParser
-	Understanding  productenrich.ProductUnderstanding
-	LLMScorerCache productenrich.MetricsCollector
+	Config               *config.Config
+	Logger               *logrus.Logger
+	LLMManager           productenrich.LLMManager
+	TextGenerator        productenrichenrich.TextGenerator
+	SpecsGenerator       productenrichenrich.TextGenerator
+	VariantsGenerator    productenrichenrich.TextGenerator
+	ScoringTextGenerator productenrichenrich.TextGenerator
+	ScoringImageAnalyzer productenrichenrich.ImageAnalyzer
+	InputParser          productenrich.InputParser
+	Understanding        productenrich.ProductUnderstanding
+	LLMScorerCache       productenrich.MetricsCollector
 }
 
 func BuildModule(input BuildModuleInput) (*Module, error) {
-	jsonGenerator, err := productenrichenrich.NewJSONGenerator(input.Logger, input.LLMManager)
+	jsonGenerator, err := productenrichenrich.NewJSONGeneratorWithTextGenerator(input.Logger, input.LLMManager, input.TextGenerator)
 	if err != nil {
 		return nil, fmt.Errorf("create JSON generator: %w", err)
 	}
 
-	variantGenerator, err := productenrichenrich.NewVariantGenerator(input.LLMManager)
+	variantGenerator, err := productenrichenrich.NewVariantGeneratorWithGenerators(input.LLMManager, input.SpecsGenerator, input.VariantsGenerator)
 	if err != nil {
 		return nil, fmt.Errorf("create variant generator: %w", err)
 	}
@@ -55,7 +60,7 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 		return nil, err
 	}
 	scoreCache := productenrich.NewLLMScoreCache(redisClient, nil)
-	llmScorer := buildLLMScorerWithCache(input.Config, input.LLMManager, scoreCache)
+	llmScorer := buildLLMScorerWithCapabilities(input.Config, input.LLMManager, scoreCache, input.ScoringTextGenerator, input.ScoringImageAnalyzer)
 	qualityScorer := productenrich.NewQualityScorer(&productenrich.QualityScorerConfig{
 		ImageWeight:   0.4,
 		TextWeight:    0.3,

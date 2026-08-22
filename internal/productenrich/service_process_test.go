@@ -5,6 +5,8 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"task-processor/internal/shared/aiidentity"
 )
 
 // --- mock 组件 ---
@@ -147,6 +149,37 @@ func TestProcessProduct_NilTask(t *testing.T) {
 	_, err := svc.ProcessProduct(context.Background(), nil)
 	if err == nil {
 		t.Fatal("expected error for nil task")
+	}
+}
+
+func TestProcessProductRejectsPersistedIdentityWithoutContext(t *testing.T) {
+	task := &Task{ID: "identity-required", Request: &GenerateRequest{Text: "product"}, Status: TaskStatusPending}
+	task.SetExecutionEnvelope(aiidentity.ExecutionEnvelope{
+		Version:        aiidentity.CurrentEnvelopeVersion,
+		TenantID:       "tenant-a",
+		UserID:         "user-a",
+		BusinessTaskID: task.ID,
+		SourcePlatform: "productenrich",
+		SourceTaskType: "product",
+	})
+	repo := newMockTaskRepo(task)
+	parser := &mockInputParser{result: &ParsedInput{Text: "must not parse"}}
+	svc, err := NewProductService(&ProductServiceConfig{
+		QueueName: "test", TaskRepo: repo, RedisClient: &mockRedisClient{}, InputParser: parser,
+	})
+	if err != nil {
+		t.Fatalf("NewProductService: %v", err)
+	}
+
+	_, err = svc.ProcessProduct(context.Background(), task)
+	if !errors.Is(err, aiidentity.ErrIdentityIntegrity) {
+		t.Fatalf("error = %v, want ErrIdentityIntegrity", err)
+	}
+	if parser.result != nil && parser.result.Text != "must not parse" {
+		t.Fatalf("unexpected parser mutation: %+v", parser.result)
+	}
+	if task.Status != TaskStatusPending {
+		t.Fatalf("status = %q, want pending because provider pipeline must not start", task.Status)
 	}
 }
 

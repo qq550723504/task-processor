@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	productimage "task-processor/internal/productimage"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type taskRepository struct {
@@ -34,7 +35,7 @@ func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*productim
 		return nil, fmt.Errorf("task ID cannot be empty")
 	}
 	var task productimage.Task
-	result := r.db.WithContext(ctx).Where("id = ?", taskID).First(&task)
+	result := r.scoped(ctx, r.db.WithContext(ctx)).Where("id = ?", taskID).First(&task)
 	if result.Error != nil {
 		if errors.Is(result.Error, gorm.ErrRecordNotFound) {
 			return nil, productimage.ErrTaskNotFound
@@ -45,7 +46,7 @@ func (r *taskRepository) GetTask(ctx context.Context, taskID string) (*productim
 }
 
 func (r *taskRepository) MarkProcessing(ctx context.Context, taskID string) error {
-	result := r.db.WithContext(ctx).
+	result := r.scoped(ctx, r.db.WithContext(ctx)).
 		Model(&productimage.Task{}).
 		Where("id = ? AND status = ?", taskID, productimage.TaskStatusPending).
 		Updates(map[string]any{
@@ -133,7 +134,7 @@ func (r *taskRepository) IncrementRetryCount(ctx context.Context, taskID string)
 	if taskID == "" {
 		return fmt.Errorf("task ID cannot be empty")
 	}
-	result := r.db.WithContext(ctx).
+	result := r.scoped(ctx, r.db.WithContext(ctx)).
 		Model(&productimage.Task{}).
 		Where("id = ?", taskID).
 		UpdateColumn("retry_count", gorm.Expr("retry_count + ?", 1))
@@ -158,7 +159,7 @@ func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, up
 		return fmt.Errorf("task ID cannot be empty")
 	}
 	updates["updated_at"] = gorm.Expr("NOW()")
-	result := r.db.WithContext(ctx).
+	result := r.scoped(ctx, r.db.WithContext(ctx)).
 		Model(&productimage.Task{}).
 		Where("id = ?", taskID).
 		Updates(updates)
@@ -169,4 +170,11 @@ func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, up
 		return fmt.Errorf("task not found: %s", taskID)
 	}
 	return nil
+}
+
+func (r *taskRepository) scoped(ctx context.Context, query *gorm.DB) *gorm.DB {
+	if tenantID := aiidentity.FromContext(ctx).TenantID; tenantID != "" {
+		return query.Where("(execution_tenant_id = ? OR tenant_id = ?)", tenantID, tenantID)
+	}
+	return query
 }

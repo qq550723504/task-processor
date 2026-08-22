@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type standardWorkflowCanonicalPhase struct {
@@ -68,7 +69,22 @@ func (p *standardWorkflowCanonicalPhase) run(
 	stage.SetTaskID(productTask.ID)
 	markChildTask(result, "product_enrich", productTask.ID, string(productenrich.TaskStatusPending), "")
 
-	productJSON, err := productSvc.ProcessProduct(ctx, productTask)
+	productCtx := ctx
+	if envelope, envelopeErr := productTask.ExecutionEnvelope(); envelopeErr != nil {
+		markChildTask(result, "product_enrich", productTask.ID, string(core.TaskStatusFailed), envelopeErr.Error())
+		stage.Fail("product_identity_integrity", "Product enrichment identity integrity failed", envelopeErr.Error())
+		recorder.FinalizeSummary()
+		return nil, envelopeErr
+	} else if envelope.Version != 0 {
+		productCtx, envelopeErr = aiidentity.RestoreExecutionEnvelope(ctx, envelope, productTask.ID)
+		if envelopeErr != nil {
+			markChildTask(result, "product_enrich", productTask.ID, string(core.TaskStatusFailed), envelopeErr.Error())
+			stage.Fail("product_identity_integrity", "Product enrichment identity integrity failed", envelopeErr.Error())
+			recorder.FinalizeSummary()
+			return nil, envelopeErr
+		}
+	}
+	productJSON, err := productSvc.ProcessProduct(productCtx, productTask)
 	if err != nil {
 		markChildTask(result, "product_enrich", productTask.ID, string(core.TaskStatusFailed), err.Error())
 		if !shouldUseStudioProductFallback(task) {

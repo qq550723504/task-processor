@@ -7,6 +7,7 @@ import (
 	"time"
 
 	productenrich "task-processor/internal/productenrich"
+	"task-processor/internal/shared/aiidentity"
 )
 
 var ErrTaskNotFound = errors.New("task not found")
@@ -51,16 +52,31 @@ type ReviewTaskRequest struct {
 }
 
 type Task struct {
-	ID         string               `json:"id" gorm:"primaryKey;type:varchar(36)"`
-	TenantID   string               `json:"-" gorm:"type:varchar(128);index"`
-	UserID     string               `json:"-" gorm:"type:varchar(128);index"`
-	Request    *ImageProcessRequest `json:"request" gorm:"type:text"`
-	Status     TaskStatus           `json:"status" gorm:"type:varchar(20);index"`
-	Result     *ImageProcessResult  `json:"result,omitempty" gorm:"type:text"`
-	Error      string               `json:"error,omitempty" gorm:"type:text"`
-	CreatedAt  time.Time            `json:"created_at" gorm:"autoCreateTime"`
-	UpdatedAt  time.Time            `json:"updated_at" gorm:"autoUpdateTime"`
-	RetryCount int                  `json:"retry_count" gorm:"default:0"`
+	ID                                    string `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	aiidentity.PersistedExecutionEnvelope `gorm:"embedded"`
+	TenantID                              string               `json:"-" gorm:"type:varchar(128);index"`
+	UserID                                string               `json:"-" gorm:"type:varchar(128);index"`
+	Request                               *ImageProcessRequest `json:"request" gorm:"type:text"`
+	Status                                TaskStatus           `json:"status" gorm:"type:varchar(20);index"`
+	Result                                *ImageProcessResult  `json:"result,omitempty" gorm:"type:text"`
+	Error                                 string               `json:"error,omitempty" gorm:"type:text"`
+	CreatedAt                             time.Time            `json:"created_at" gorm:"autoCreateTime"`
+	UpdatedAt                             time.Time            `json:"updated_at" gorm:"autoUpdateTime"`
+	RetryCount                            int                  `json:"retry_count" gorm:"default:0"`
+}
+
+func (t *Task) ExecutionEnvelope() (aiidentity.ExecutionEnvelope, error) {
+	if t == nil {
+		return aiidentity.ExecutionEnvelope{}, aiidentity.ErrIdentityIntegrity
+	}
+	return t.PersistedExecutionEnvelope.ExecutionEnvelope(t.ID)
+}
+
+func (t *Task) SetExecutionEnvelope(envelope aiidentity.ExecutionEnvelope) {
+	if t == nil {
+		return
+	}
+	t.PersistedExecutionEnvelope = aiidentity.PersistedExecutionEnvelopeFrom(envelope)
 }
 
 func (*Task) TableName() string {

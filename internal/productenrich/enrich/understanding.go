@@ -16,15 +16,37 @@ import (
 )
 
 type productUnderstanding struct {
-	llmManager productenrich.LLMManager
+	llmManager      productenrich.LLMManager
+	textGenerator   TextGenerator
+	imageAnalyzer   ImageAnalyzer
+	fusionGenerator TextGenerator
 }
 
 func NewProductUnderstanding(llmManager productenrich.LLMManager) (productenrich.ProductUnderstanding, error) {
+	return NewProductUnderstandingWithTextGenerator(llmManager, nil)
+}
+
+// NewProductUnderstandingWithTextGenerator keeps the existing ProductEnrich
+// pipeline intact while allowing only text attribute extraction to use a
+// governed provider-neutral capability.
+func NewProductUnderstandingWithTextGenerator(llmManager productenrich.LLMManager, textGenerator TextGenerator) (productenrich.ProductUnderstanding, error) {
+	return NewProductUnderstandingWithCapabilities(llmManager, textGenerator, nil)
+}
+
+// NewProductUnderstandingWithCapabilities keeps the domain pipeline stable
+// while allowing individual model stages to opt into governed capabilities.
+func NewProductUnderstandingWithCapabilities(llmManager productenrich.LLMManager, textGenerator TextGenerator, imageAnalyzer ImageAnalyzer) (productenrich.ProductUnderstanding, error) {
+	return NewProductUnderstandingWithAllCapabilities(llmManager, textGenerator, imageAnalyzer, nil)
+}
+
+// NewProductUnderstandingWithAllCapabilities allows each model stage to use
+// its own governed capability while preserving the legacy constructor shape.
+func NewProductUnderstandingWithAllCapabilities(llmManager productenrich.LLMManager, textGenerator TextGenerator, imageAnalyzer ImageAnalyzer, fusionGenerator TextGenerator) (productenrich.ProductUnderstanding, error) {
 	if llmManager == nil {
 		return nil, fmt.Errorf("llm manager cannot be nil")
 	}
 
-	return &productUnderstanding{llmManager: llmManager}, nil
+	return &productUnderstanding{llmManager: llmManager, textGenerator: textGenerator, imageAnalyzer: imageAnalyzer, fusionGenerator: fusionGenerator}, nil
 }
 
 func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *productenrich.ParsedInput) (*productenrich.ProductAnalysis, error) {
@@ -55,6 +77,9 @@ func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *produc
 
 		for i, r := range results {
 			if r.err != nil {
+				if isIdentityIntegrityError(r.err) {
+					return nil, r.err
+				}
 				logrus.WithError(r.err).WithField("image", input.Images[i]).Warn("failed to analyze image")
 				continue
 			}
@@ -80,6 +105,9 @@ func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *produc
 	if input.Text != "" {
 		textAttr, err := p.ExtractTextAttributes(ctx, input.Text)
 		if err != nil {
+			if isIdentityIntegrityError(err) {
+				return nil, err
+			}
 			logrus.WithError(err).Warn("failed to extract text attributes")
 		} else {
 			analysis.TextAttributes = textAttr
@@ -91,6 +119,9 @@ func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *produc
 		if scrapedText != "" {
 			scrapedAttr, err := p.ExtractTextAttributes(ctx, scrapedText)
 			if err != nil {
+				if isIdentityIntegrityError(err) {
+					return nil, err
+				}
 				logrus.WithError(err).Warn("failed to extract scraped text attributes")
 			} else if analysis.TextAttributes == nil {
 				analysis.TextAttributes = scrapedAttr
@@ -244,16 +275,21 @@ Only return the JSON object, no additional text.`
 		promptText += "\n\nProduct title/context:\n" + titleHint
 	}
 
-	visionClient, err := p.llmManager.GetClient("vision")
-	if err != nil {
-		var fallbackErr error
-		visionClient, fallbackErr = p.llmManager.GetClient("default")
-		if fallbackErr != nil || visionClient == nil {
-			return nil, fmt.Errorf("failed to get vision or default client: %w", err)
+	var response string
+	var err error
+	if p.imageAnalyzer != nil {
+		response, err = p.imageAnalyzer.AnalyzeImage(ctx, imagePath, promptText)
+	} else {
+		visionClient, clientErr := p.llmManager.GetClient("vision")
+		if clientErr != nil {
+			var fallbackErr error
+			visionClient, fallbackErr = p.llmManager.GetClient("default")
+			if fallbackErr != nil || visionClient == nil {
+				return nil, fmt.Errorf("failed to get vision or default client: %w", clientErr)
+			}
 		}
+		response, err = visionClient.AnalyzeImage(ctx, imagePath, promptText)
 	}
-
-	response, err := visionClient.AnalyzeImage(ctx, imagePath, promptText)
 	if err != nil {
 		return nil, fmt.Errorf("failed to analyze image: %w", err)
 	}
@@ -324,16 +360,21 @@ Product description:
 Only return the JSON object, no additional text.`, text)
 	}
 
-	fastClient, err := p.llmManager.GetClient("fast")
-	if err != nil {
-		var fallbackErr error
-		fastClient, fallbackErr = p.llmManager.GetClient("default")
-		if fallbackErr != nil || fastClient == nil {
-			return nil, fmt.Errorf("failed to get fast or default client: %w", err)
+	var response string
+	var err error
+	if p.textGenerator == nil {
+		fastClient, clientErr := p.llmManager.GetClient("fast")
+		if clientErr != nil {
+			var fallbackErr error
+			fastClient, fallbackErr = p.llmManager.GetClient("default")
+			if fallbackErr != nil || fastClient == nil {
+				return nil, fmt.Errorf("failed to get fast or default client: %w", clientErr)
+			}
 		}
+		response, err = fastClient.Generate(ctx, promptText)
+	} else {
+		response, err = p.textGenerator.Generate(ctx, promptText)
 	}
-
-	response, err := fastClient.Generate(ctx, promptText)
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract text attributes: %w", err)
 	}
@@ -384,11 +425,17 @@ func (p *productUnderstanding) FuseMultimodal(ctx context.Context, imageAttr *pr
 
 Only return the JSON object, no additional text.`
 
-	defaultClient, err := p.llmManager.GetClient("default")
-	if err != nil || defaultClient == nil {
-		return nil, fmt.Errorf("failed to get default client: %w", err)
+	var response string
+	var err error
+	if p.fusionGenerator != nil {
+		response, err = p.fusionGenerator.Generate(ctx, promptText)
+	} else {
+		defaultClient, clientErr := p.llmManager.GetClient("default")
+		if clientErr != nil || defaultClient == nil {
+			return nil, fmt.Errorf("failed to get default client: %w", clientErr)
+		}
+		response, err = defaultClient.Generate(ctx, promptText)
 	}
-	response, err := defaultClient.Generate(ctx, promptText)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fuse multimodal information: %w", err)
 	}

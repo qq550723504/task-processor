@@ -29,6 +29,27 @@ func TestRouteRequiresZitadelAuthProtectsProductImageRoutes(t *testing.T) {
 	}
 }
 
+func TestRouteRequiresZitadelAuthProtectsProductAndAmazonRoutes(t *testing.T) {
+	routes := []routeDescriptor{
+		{Method: http.MethodPost, Path: "/api/v1/products/generate", Module: "products", AuthPolicy: httproute.AuthPolicyVerifiedIdentity},
+		{Method: http.MethodGet, Path: "/api/v1/products/tasks/task-1", Module: "products", AuthPolicy: httproute.AuthPolicyVerifiedIdentity},
+		{Method: http.MethodPost, Path: "/api/v1/amazon/listings/generate", Module: "amazon-listing", AuthPolicy: httproute.AuthPolicyVerifiedIdentity},
+		{Method: http.MethodPost, Path: "/api/v1/amazon/listings/tasks/task-1/submit", Module: "amazon-listing", AuthPolicy: httproute.AuthPolicyVerifiedIdentity},
+	}
+	for _, route := range routes {
+		if !RouteRequiresZitadelAuth(route) {
+			t.Fatalf("RouteRequiresZitadelAuth(%s %s) = false, want true", route.Method, route.Path)
+		}
+	}
+}
+
+func TestRouteRequiresZitadelAuthHonorsExplicitPublicPolicy(t *testing.T) {
+	route := routeDescriptor{Method: http.MethodGet, Path: "/api/v1/images/health", Module: "images", AuthPolicy: httproute.AuthPolicyPublic}
+	if RouteRequiresZitadelAuth(route) {
+		t.Fatal("explicit public policy must not require ZITADEL auth")
+	}
+}
+
 func TestRouteRequiresZitadelAuthLeavesLoginHealthProbesPublic(t *testing.T) {
 	for _, route := range []routeDescriptor{
 		{Method: http.MethodGet, Path: "/api/v1/shein-login/health", Module: "shein-login"},
