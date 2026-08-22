@@ -60,6 +60,31 @@ func runAmazonTenantScopeContract(t *testing.T, newRepository func(*testing.T) a
 		require.Len(t, items, 2)
 	})
 
+	t.Run("normalizes persisted execution tenant", func(t *testing.T) {
+		t.Run("GetTask", func(t *testing.T) {
+			repo := seedAmazonSpacedTenantTask(t, newRepository)
+			task, err := repo.GetTask(tenantA, "task-spaced")
+			require.NoError(t, err)
+			require.Equal(t, "task-spaced", task.ID)
+		})
+
+		t.Run("ListTasks", func(t *testing.T) {
+			repo := seedAmazonSpacedTenantTask(t, newRepository)
+			items, err := repo.ListTasks(tenantA, nil, 0)
+			require.NoError(t, err)
+			require.Len(t, items, 1)
+			require.Equal(t, "task-spaced", items[0].ID)
+		})
+
+		t.Run("mutation", func(t *testing.T) {
+			repo := seedAmazonSpacedTenantTask(t, newRepository)
+			require.NoError(t, repo.IncrementRetryCount(tenantA, "task-spaced"))
+			task, err := repo.GetTask(unscoped, "task-spaced")
+			require.NoError(t, err)
+			require.Equal(t, 1, task.RetryCount)
+		})
+	})
+
 	mutations := []struct {
 		name string
 		run  func(amazonlisting.Repository) error
@@ -110,6 +135,17 @@ func seedAmazonTenantTasks(t *testing.T, newRepository func(*testing.T) amazonli
 	} {
 		require.NoError(t, repo.CreateTask(context.Background(), task))
 	}
+	return repo
+}
+
+func seedAmazonSpacedTenantTask(t *testing.T, newRepository func(*testing.T) amazonlisting.Repository) amazonlisting.Repository {
+	t.Helper()
+	repo := newRepository(t)
+	require.NoError(t, repo.CreateTask(context.Background(), &amazonlisting.Task{
+		ID:                         "task-spaced",
+		Status:                     amazonlisting.TaskStatusPending,
+		PersistedExecutionEnvelope: amazonExecutionEnvelope(" tenant-a "),
+	}))
 	return repo
 }
 

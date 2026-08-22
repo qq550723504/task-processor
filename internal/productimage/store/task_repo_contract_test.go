@@ -48,6 +48,23 @@ func runProductImageTenantScopeContract(t *testing.T, newRepository func(*testin
 		require.NoError(t, err)
 	})
 
+	t.Run("normalizes persisted execution tenant", func(t *testing.T) {
+		t.Run("GetTask", func(t *testing.T) {
+			repo := seedProductImageSpacedTenantTask(t, newRepository)
+			task, err := repo.GetTask(tenantA, "task-spaced")
+			require.NoError(t, err)
+			require.Equal(t, "task-spaced", task.ID)
+		})
+
+		t.Run("mutation", func(t *testing.T) {
+			repo := seedProductImageSpacedTenantTask(t, newRepository)
+			require.NoError(t, repo.IncrementRetryCount(tenantA, "task-spaced"))
+			task, err := repo.GetTask(unscoped, "task-spaced")
+			require.NoError(t, err)
+			require.Equal(t, 1, task.RetryCount)
+		})
+	})
+
 	mutations := []struct {
 		name string
 		run  func(productimage.TaskRepository) error
@@ -106,6 +123,18 @@ func seedProductImageTenantTasks(t *testing.T, newRepository func(*testing.T) pr
 	} {
 		require.NoError(t, repo.CreateTask(context.Background(), task))
 	}
+	return repo
+}
+
+func seedProductImageSpacedTenantTask(t *testing.T, newRepository func(*testing.T) productimage.TaskRepository) productimage.TaskRepository {
+	t.Helper()
+	repo := newRepository(t)
+	require.NoError(t, repo.CreateTask(context.Background(), &productimage.Task{
+		ID:                         "task-spaced",
+		Status:                     productimage.TaskStatusPending,
+		TenantID:                   "legacy-tenant",
+		PersistedExecutionEnvelope: productImageExecutionEnvelope(" tenant-a "),
+	}))
 	return repo
 }
 

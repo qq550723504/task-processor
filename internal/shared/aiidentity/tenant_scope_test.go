@@ -5,6 +5,16 @@ import (
 	"testing"
 )
 
+func TestTenantIDFromContext(t *testing.T) {
+	scoped := WithIdentity(context.Background(), Identity{TenantID: " tenant-a "})
+	if got := TenantIDFromContext(scoped); got != "tenant-a" {
+		t.Fatalf("TenantIDFromContext() = %q, want tenant-a", got)
+	}
+	if got := TenantIDFromContext(nil); got != "" {
+		t.Fatalf("TenantIDFromContext(nil) = %q, want empty", got)
+	}
+}
+
 func TestTenantMatchesContext(t *testing.T) {
 	scoped := WithIdentity(context.Background(), Identity{TenantID: " tenant-a "})
 

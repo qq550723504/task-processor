@@ -159,8 +159,8 @@ func (r *taskRepository) updateTaskFields(ctx context.Context, taskID string, up
 }
 
 func (r *taskRepository) scoped(ctx context.Context, query *gorm.DB) *gorm.DB {
-	if tenantID := aiidentity.FromContext(ctx).TenantID; tenantID != "" {
-		return query.Where("execution_tenant_id = ?", tenantID)
+	if tenantID := aiidentity.TenantIDFromContext(ctx); tenantID != "" {
+		return query.Where("(execution_tenant_id = ? OR TRIM(execution_tenant_id) = ?)", tenantID, tenantID)
 	}
 	return query
 }
