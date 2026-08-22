@@ -15,12 +15,13 @@ import (
 )
 
 const (
-	studioProductImageModule       = listingsubscription.ModuleStudio
-	studioProductImageMetric       = "product_image_jobs"
-	studioProductImageLedgerMetric = "product_image_jobs_succeeded"
-	legacyMirrorMetadataKey        = "listingkit_legacy_counter_mirror"
-	legacyMirrorPending            = "pending"
-	legacyMirrorSettled            = "settled"
+	studioProductImageModule          = listingsubscription.ModuleStudio
+	studioProductImageMetric          = "product_image_jobs"
+	studioProductImageLedgerMetric    = "product_image_jobs_succeeded"
+	studioProductImageBatchSourceType = "listingkit_batch_product_image"
+	legacyMirrorMetadataKey           = "listingkit_legacy_counter_mirror"
+	legacyMirrorPending               = "pending"
+	legacyMirrorSettled               = "settled"
 )
 
 type subscriptionStudioProductImageUsage struct {
@@ -70,11 +71,19 @@ func (a *subscriptionStudioProductImageUsage) StudioProductImageUsageReservation
 }
 
 func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx context.Context, tenantID, reservationID string, quantity int) error {
+	return a.reserveProductImageUsage(ctx, tenantID, reservationID, quantity, true)
+}
+
+func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsageForLifecycle(ctx context.Context, tenantID, reservationID string, quantity int) error {
+	return a.reserveProductImageUsage(ctx, tenantID, reservationID, quantity, false)
+}
+
+func (a *subscriptionStudioProductImageUsage) reserveProductImageUsage(ctx context.Context, tenantID, reservationID string, quantity int, requireCurrentAdmission bool) error {
 	if a == nil || a.service == nil || !a.service.HasUsageLedger() {
 		return listingsubscription.ErrUsageLedgerNotConfigured
 	}
 	tenantID = strings.TrimSpace(tenantID)
-	if a.admission != nil && !a.admission.AllowsGenerationUsage(tenantID) {
+	if requireCurrentAdmission && a.admission != nil && !a.admission.AllowsGenerationUsage(tenantID) {
 		return listingsubscription.ErrSubscriptionRequired
 	}
 	reservationID = strings.TrimSpace(reservationID)
@@ -95,6 +104,13 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 			return err
 		}
 	}
+	sourceType := studioProductImageBatchSourceType
+	if existingEvent != nil {
+		// Keep the original source on idempotent retries of pre-migration
+		// reservations; changing it would make the ledger reject the same key
+		// as a conflicting identity.
+		sourceType = existingEvent.SourceType
+	}
 	now := time.Now().UTC()
 	result, err := a.service.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
 		TenantID:                      billingTenant,
@@ -103,7 +119,7 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 		LegacyUsageMetric:             studioProductImageMetric,
 		Quantity:                      int64(quantity),
 		PeriodKey:                     now.Format("2006-01"),
-		SourceType:                    "listingkit_product_image",
+		SourceType:                    sourceType,
 		SourceID:                      reservationID,
 		IdempotencyKey:                reservationKey,
 		OccurredAt:                    now,
@@ -130,6 +146,20 @@ func (a *subscriptionStudioProductImageUsage) ReserveProductImageUsage(ctx conte
 	}
 	_, err = a.service.UpdateUsageMetadata(ctx, result.Event.EventID, map[string]string{legacyMirrorMetadataKey: legacyMirrorSettled})
 	return err
+}
+
+func (a *subscriptionStudioProductImageUsage) HasProductImageUsageReservation(ctx context.Context, tenantID, reservationID string) (bool, error) {
+	if a == nil || a.service == nil || !a.service.HasUsageLedger() {
+		return false, nil
+	}
+	_, event, err := a.lookupProductImageUsageEvent(ctx, tenantID, studioProductImageUsageIdempotencyKey(strings.TrimSpace(reservationID)))
+	if errors.Is(err, listingsubscription.ErrUsageEventNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return event != nil, nil
 }
 
 func (a *subscriptionStudioProductImageUsage) CommitProductImageUsage(ctx context.Context, tenantID, reservationID string) error {
@@ -233,7 +263,7 @@ func (a *subscriptionStudioProductImageUsage) reconcilePendingLegacyMirrorReleas
 	offset := 0
 	for {
 		events, err := a.service.ListUsageEventPageForReconciliationWithFilter(ctx, listingsubscription.UsageLedgerReconciliationFilter{
-			TenantID: billingTenant, SourceType: "listingkit_product_image", Metric: studioProductImageLedgerMetric,
+			TenantID: billingTenant, SourceType: studioProductImageBatchSourceType, SourceTypes: []string{studioProductImageBatchSourceType, "listingkit_product_image"}, Metric: studioProductImageLedgerMetric,
 			ReservedMetadataPredicates: []listingsubscription.UsageLedgerMetadataPredicate{{Key: legacyMirrorMetadataKey, Value: legacyMirrorPending}},
 			ReleasedMetadataPredicates: []listingsubscription.UsageLedgerMetadataPredicate{{Key: listingkit.StudioProductImageLegacyMirrorReleasePendingMetadataKey, Value: "1"}},
 		}, pageSize, offset)

@@ -81,11 +81,54 @@ func (r *MemStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLink(ctx context
 	row.Source = link.Source
 	row.ReasonCode = link.ReasonCode
 	row.Message = link.Message
+	row.ProductImageUsageRoute = link.ProductImageUsageRoute
 	row.ProductImageUsageSettled = link.ProductImageUsageSettled
 	row.PendingProductImageUsageReleaseClaimToken = link.PendingProductImageUsageReleaseClaimToken
 	row.UpdatedAt = link.UpdatedAt
 	r.links[row.ID] = row
 	return nil
+}
+
+func (r *MemStudioBatchTaskLinkRepository) ResolveStudioBatchProductImageUsageRoute(ctx context.Context, candidateKey string, claimToken string, route studioBatchProductImageUsageRoute, updatedAt time.Time) (studioBatchProductImageUsageRoute, bool, error) {
+	if route != studioBatchProductImageUsageRouteLegacy && route != studioBatchProductImageUsageRouteLedger {
+		return "", false, fmt.Errorf("unsupported studio batch product image usage route %q", route)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.Status != studioBatchTaskLinkStatusCreating || strings.TrimSpace(link.ClaimToken) != strings.TrimSpace(claimToken) || link.ProductImageUsageRoute != studioBatchProductImageUsageRoutePending {
+			return link.ProductImageUsageRoute, false, nil
+		}
+		link.ProductImageUsageRoute = route
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		return link.ProductImageUsageRoute, true, nil
+	}
+	return "", false, gorm.ErrRecordNotFound
+}
+
+func (r *MemStudioBatchTaskLinkRepository) ResolveStudioBatchProductImageUsageCompatibilityRoute(ctx context.Context, candidateKey string, route studioBatchProductImageUsageRoute, updatedAt time.Time) (studioBatchProductImageUsageRoute, bool, error) {
+	if route != studioBatchProductImageUsageRouteLegacy && route != studioBatchProductImageUsageRouteLedger {
+		return "", false, fmt.Errorf("unsupported studio batch product image usage route %q", route)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.ProductImageUsageRoute != "" {
+			return link.ProductImageUsageRoute, false, nil
+		}
+		link.ProductImageUsageRoute = route
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		return link.ProductImageUsageRoute, true, nil
+	}
+	return "", false, gorm.ErrRecordNotFound
 }
 
 func (r *MemStudioBatchTaskLinkRepository) ClaimStudioBatchProductImageUsageSettled(ctx context.Context, candidateKey string, updatedAt time.Time) (bool, error) {
@@ -211,6 +254,7 @@ func (r *MemStudioBatchTaskLinkRepository) UpdateStudioBatchTaskLinkWithClaimTok
 	row.Source = link.Source
 	row.ReasonCode = link.ReasonCode
 	row.Message = link.Message
+	row.ProductImageUsageRoute = link.ProductImageUsageRoute
 	row.ProductImageUsageSettled = link.ProductImageUsageSettled
 	row.PendingProductImageUsageReleaseClaimToken = link.PendingProductImageUsageReleaseClaimToken
 	row.UpdatedAt = link.UpdatedAt

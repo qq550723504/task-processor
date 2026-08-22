@@ -67,6 +67,19 @@ type StudioProductImageUsageReservation interface {
 	ReleaseProductImageUsage(context.Context, string, string, string) error
 }
 
+// StudioProductImageUsageReservationLifecycle reserves a route already
+// selected and persisted by the batch-task lifecycle. Unlike admission, this
+// path must not re-evaluate a later rollout change.
+type StudioProductImageUsageReservationLifecycle interface {
+	ReserveProductImageUsageForLifecycle(context.Context, string, string, int) error
+}
+
+// StudioProductImageUsageReservationLookup identifies reservations created by
+// older batch links that predate their persisted accounting route.
+type StudioProductImageUsageReservationLookup interface {
+	HasProductImageUsageReservation(context.Context, string, string) (bool, error)
+}
+
 // StudioProductImageUsageReservationAvailability lets an adapter keep the
 // legacy authorize/record path when its durable ledger is disabled. The
 // reservation methods may still exist for a configured deployment, but they

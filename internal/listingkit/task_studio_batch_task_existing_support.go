@@ -86,12 +86,20 @@ func (s *taskStudioBatchService) findLegacyStudioBatchTask(
 }
 
 func (s *taskStudioBatchService) findDurableStudioBatchTask(ctx context.Context, candidate studioBatchTaskCandidate) (SheinStudioCreatedTask, bool) {
+	task, _, ok := s.findDurableStudioBatchTaskMatch(ctx, candidate)
+	return task, ok
+}
+
+// findDurableStudioBatchTaskMatch returns the candidate identity stored by the
+// durable link. A historical-key match must keep that key and claim token for
+// usage settlement; the current candidate key has no corresponding reservation.
+func (s *taskStudioBatchService) findDurableStudioBatchTaskMatch(ctx context.Context, candidate studioBatchTaskCandidate) (SheinStudioCreatedTask, studioBatchTaskCandidate, bool) {
 	if s == nil || s.batchTaskLinkRepo == nil {
-		return SheinStudioCreatedTask{}, false
+		return SheinStudioCreatedTask{}, candidate, false
 	}
 	candidateKey := strings.TrimSpace(candidate.CandidateKey)
 	if candidateKey == "" {
-		return SheinStudioCreatedTask{}, false
+		return SheinStudioCreatedTask{}, candidate, false
 	}
 	candidateKeys := []string{candidateKey}
 	if historicalKey := strings.TrimSpace(candidate.HistoricalCandidateKey); historicalKey != "" && historicalKey != candidateKey {
@@ -106,10 +114,13 @@ func (s *taskStudioBatchService) findDurableStudioBatchTask(ctx context.Context,
 				continue
 			}
 			if err != nil || link == nil {
-				return SheinStudioCreatedTask{}, false
+				return SheinStudioCreatedTask{}, candidate, false
 			}
 			if task, ok := s.createdTaskFromDurableLink(ctx, link, candidate); ok {
-				return task, true
+				matchedCandidate := candidate
+				matchedCandidate.CandidateKey = strings.TrimSpace(link.CandidateKey)
+				matchedCandidate.ClaimToken = strings.TrimSpace(link.ClaimToken)
+				return task, matchedCandidate, true
 			}
 			if link.Status == studioBatchTaskLinkStatusCreating && !s.studioBatchTaskLinkIsStale(link) &&
 				(lookupKey == candidateKey || studioBatchTaskLinkHasStoredImageStrategy(link, candidate)) {
@@ -117,7 +128,7 @@ func (s *taskStudioBatchService) findDurableStudioBatchTask(ctx context.Context,
 			}
 		}
 		if !creating || time.Now().After(deadline) {
-			return SheinStudioCreatedTask{}, false
+			return SheinStudioCreatedTask{}, candidate, false
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

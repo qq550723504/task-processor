@@ -106,6 +106,55 @@ func TestReserveStudioProductImageUsageIncludesLegacyAggregateUsage(t *testing.T
 	}
 }
 
+func TestReserveStudioProductImageUsageUsesSynchronousSource(t *testing.T) {
+	svc := newStudioProductImageAdmissionService(t, "tenant-sync-source", 2)
+	h := &handler{subscriptionDependencies: subscriptionDependencies{subscriptionService: svc}}
+	eventID, err := h.reserveStudioProductImageUsage(newStudioProductImageAdmissionContext("tenant-sync-source"), "sync-source-request")
+	if err != nil {
+		t.Fatalf("reserveStudioProductImageUsage() error = %v", err)
+	}
+	event, err := svc.GetUsageEventByID(context.Background(), eventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	if event.SourceType != "listingkit_sync_product_image" {
+		t.Fatalf("event source type = %q, want synchronous product-image source", event.SourceType)
+	}
+}
+
+func TestReserveStudioProductImageUsageReplaysLegacySourceReservation(t *testing.T) {
+	ctx := context.Background()
+	const tenantID = "tenant-sync-legacy-replay"
+	const reservationID = "legacy-sync-request"
+	svc := newStudioProductImageAdmissionService(t, tenantID, 2)
+	legacy, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID: tenantID, ModuleCode: listingsubscription.ModuleStudio,
+		Metric: studioProductImageLedgerMetric, LegacyUsageMetric: "product_image_jobs", Quantity: 1,
+		PeriodKey: time.Now().UTC().Format("2006-01"), SourceType: studioProductImageLegacySourceType,
+		SourceID: reservationID, IdempotencyKey: "listingkit:api:studio_product_image:" + reservationID,
+		OccurredAt: time.Now().UTC(), LegacyUsageMirrorMetadataKey: studioProductImageLegacyMirrorMetadataKey,
+		LegacyUsageMirrorSettledValue: studioProductImageLegacyMirrorSettled,
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	h := &handler{subscriptionDependencies: subscriptionDependencies{subscriptionService: svc}}
+	eventID, err := h.reserveStudioProductImageUsage(newStudioProductImageAdmissionContext(tenantID), reservationID)
+	if err != nil {
+		t.Fatalf("reserveStudioProductImageUsage() error = %v", err)
+	}
+	if eventID != legacy.Event.EventID {
+		t.Fatalf("event id = %q, want existing legacy event %q", eventID, legacy.Event.EventID)
+	}
+	event, err := svc.GetUsageEventByID(ctx, eventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	if event.SourceType != studioProductImageLegacySourceType {
+		t.Fatalf("event source type = %q, want preserved legacy source", event.SourceType)
+	}
+}
+
 func TestReserveStudioProductImageUsageRepairsBatchReleaseMarkerBeforeAuthorization(t *testing.T) {
 	ctx := context.Background()
 	svc := newStudioProductImageAdmissionService(t, "tenant-batch-release-repair", 1)
@@ -308,6 +357,130 @@ func TestReconcileStudioProductImageUsageKeepsActiveSynchronousReservation(t *te
 	}
 	if event.Status != listingsubscription.UsageEventReserved {
 		t.Fatalf("event status = %q, want active reservation retained", event.Status)
+	}
+}
+
+func TestReconcileStudioProductImageUsageKeepsExpiredBatchReservation(t *testing.T) {
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-batch-recovery")
+	svc := newStudioProductImageAdmissionService(t, "tenant-batch-recovery", 2)
+	old := time.Now().UTC().Add(-2 * time.Hour)
+	reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID: "tenant-batch-recovery", ModuleCode: listingsubscription.ModuleStudio,
+		Metric: studioProductImageLedgerMetric, Quantity: 1, PeriodKey: old.Format("2006-01"),
+		SourceType: "listingkit_batch_product_image", SourceID: "batch-candidate",
+		IdempotencyKey: "listingkit:studio_product_image:batch-candidate", OccurredAt: old,
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	h := &handler{subscriptionDependencies: subscriptionDependencies{subscriptionService: svc}}
+	if err := h.reconcileStudioProductImageUsageReleases(ctx, "tenant-batch-recovery"); err != nil {
+		t.Fatalf("reconcile error = %v", err)
+	}
+	event, err := svc.GetUsageEventByID(ctx, reserved.Event.EventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	if event.Status != listingsubscription.UsageEventReserved {
+		t.Fatalf("batch event status = %q, want reserved for batch-owned lifecycle", event.Status)
+	}
+}
+
+func TestReconcileStudioProductImageUsageRepairsReleasedBatchMirror(t *testing.T) {
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-batch-release-repair")
+	svc := newStudioProductImageAdmissionService(t, "tenant-batch-release-repair", 2)
+	if _, err := svc.RecordUsage(ctx, "tenant-batch-release-repair", listingsubscription.ModuleStudio, "product_image_jobs", 1); err != nil {
+		t.Fatalf("RecordUsage() error = %v", err)
+	}
+	reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID: "tenant-batch-release-repair", ModuleCode: listingsubscription.ModuleStudio,
+		Metric: studioProductImageLedgerMetric, Quantity: 1, PeriodKey: time.Now().UTC().Format("2006-01"),
+		SourceType: "listingkit_batch_product_image", SourceID: "batch-release",
+		IdempotencyKey: "listingkit:studio_product_image:batch-release", OccurredAt: time.Now().UTC(),
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	if _, err := svc.UpdateUsageMetadata(ctx, reserved.Event.EventID, map[string]string{
+		studioProductImageLegacyMirrorMetadataKey:               studioProductImageLegacyMirrorSettled,
+		studioProductImageLegacyMirrorReleasePendingMetadataKey: "1",
+	}); err != nil {
+		t.Fatalf("UpdateUsageMetadata() error = %v", err)
+	}
+	if _, err := svc.ReleaseUsage(ctx, reserved.Event.EventID, "batch_release"); err != nil {
+		t.Fatalf("ReleaseUsage() error = %v", err)
+	}
+	h := &handler{subscriptionDependencies: subscriptionDependencies{subscriptionService: svc}}
+	if err := h.reconcileStudioProductImageUsageReleases(ctx, "tenant-batch-release-repair"); err != nil {
+		t.Fatalf("reconcile error = %v", err)
+	}
+	event, err := svc.GetUsageEventByID(ctx, reserved.Event.EventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	if event.Metadata[studioProductImageLegacyMirrorReleasePendingMetadataKey] != "" {
+		t.Fatalf("batch release repair marker = %q, want cleared", event.Metadata[studioProductImageLegacyMirrorReleasePendingMetadataKey])
+	}
+	summary, err := svc.GetSummary(ctx, "tenant-batch-release-repair")
+	if err != nil {
+		t.Fatalf("GetSummary() error = %v", err)
+	}
+	for _, entitlement := range summary.Entitlements {
+		if entitlement.Module.Code == listingsubscription.ModuleStudio && entitlement.Used["product_image_jobs"] != 0 {
+			t.Fatalf("legacy product image usage = %d, want repaired release", entitlement.Used["product_image_jobs"])
+		}
+	}
+}
+
+func TestReconcileStudioProductImageUsageReleasesOldGenericDirectReservation(t *testing.T) {
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-old-direct-recovery")
+	svc := newStudioProductImageAdmissionService(t, "tenant-old-direct-recovery", 2)
+	old := time.Now().UTC().Add(-2 * time.Hour)
+	reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID: "tenant-old-direct-recovery", ModuleCode: listingsubscription.ModuleStudio,
+		Metric: studioProductImageLedgerMetric, Quantity: 1, PeriodKey: old.Format("2006-01"),
+		SourceType: "listingkit_product_image", SourceID: "old-direct-request",
+		IdempotencyKey: "listingkit:api:studio_product_image:old-direct-request", OccurredAt: old,
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	h := &handler{subscriptionDependencies: subscriptionDependencies{subscriptionService: svc}}
+	if err := h.reconcileStudioProductImageUsageReleases(ctx, "tenant-old-direct-recovery"); err != nil {
+		t.Fatalf("reconcile error = %v", err)
+	}
+	event, err := svc.GetUsageEventByID(ctx, reserved.Event.EventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	if event.Status != listingsubscription.UsageEventReleased {
+		t.Fatalf("old direct event status = %q, want released", event.Status)
+	}
+}
+
+func TestReconcileStudioProductImageUsageKeepsAmbiguousOldGenericReservation(t *testing.T) {
+	ctx := listingkit.WithTenantID(context.Background(), "tenant-old-ambiguous-recovery")
+	svc := newStudioProductImageAdmissionService(t, "tenant-old-ambiguous-recovery", 2)
+	old := time.Now().UTC().Add(-2 * time.Hour)
+	reserved, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID: "tenant-old-ambiguous-recovery", ModuleCode: listingsubscription.ModuleStudio,
+		Metric: studioProductImageLedgerMetric, Quantity: 1, PeriodKey: old.Format("2006-01"),
+		SourceType: "listingkit_product_image", SourceID: "old-ambiguous-candidate",
+		IdempotencyKey: "listingkit:studio_product_image:old-ambiguous-candidate", OccurredAt: old,
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	h := &handler{subscriptionDependencies: subscriptionDependencies{subscriptionService: svc}}
+	if err := h.reconcileStudioProductImageUsageReleases(ctx, "tenant-old-ambiguous-recovery"); err != nil {
+		t.Fatalf("reconcile error = %v", err)
+	}
+	event, err := svc.GetUsageEventByID(ctx, reserved.Event.EventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	if event.Status != listingsubscription.UsageEventReserved {
+		t.Fatalf("ambiguous old event status = %q, want retained", event.Status)
 	}
 }
 

@@ -77,20 +77,7 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 			if session != nil {
 				recorded = session.CreatedTasks
 			}
-			if existing, ok := s.findDurableStudioBatchTask(ctx, batchCandidate); ok {
-				reusedCandidate := batchCandidate
-				if s.batchTaskLinkRepo != nil {
-					candidateKeys := []string{batchCandidate.CandidateKey}
-					if historicalKey := strings.TrimSpace(batchCandidate.HistoricalCandidateKey); historicalKey != "" && historicalKey != strings.TrimSpace(batchCandidate.CandidateKey) {
-						candidateKeys = append(candidateKeys, historicalKey)
-					}
-					for _, candidateKey := range candidateKeys {
-						if existingLink, linkErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey); linkErr == nil && existingLink != nil {
-							reusedCandidate.ClaimToken = existingLink.ClaimToken
-							break
-						}
-					}
-				}
+			if existing, reusedCandidate, ok := s.findDurableStudioBatchTaskMatch(ctx, batchCandidate); ok {
 				if err := s.settleStudioBatchProductImageUsage(context.WithoutCancel(ctx), candidate.state.Batch, reusedCandidate); err != nil {
 					return SheinStudioCreatedTask{}, false
 				}
@@ -149,13 +136,7 @@ func newListingStudioBatchTaskExecuteService(s *taskStudioBatchService) *listing
 				}
 			}
 			if !claimed {
-				if existing, ok := s.findDurableStudioBatchTask(ctx, taskCandidate); ok {
-					reusedCandidate := taskCandidate
-					if s.batchTaskLinkRepo != nil {
-						if existingLink, linkErr := s.batchTaskLinkRepo.GetStudioBatchTaskLinkByCandidateKey(ctx, taskCandidate.CandidateKey); linkErr == nil && existingLink != nil {
-							reusedCandidate.ClaimToken = existingLink.ClaimToken
-						}
-					}
+				if existing, reusedCandidate, ok := s.findDurableStudioBatchTaskMatch(ctx, taskCandidate); ok {
 					if err := s.settleStudioBatchProductImageUsage(context.WithoutCancel(ctx), candidate.state.Batch, reusedCandidate); err != nil {
 						return SheinStudioCreatedTask{}, err
 					}
