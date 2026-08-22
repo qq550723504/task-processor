@@ -63,7 +63,10 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 		log.WithError(validationErr).Warn("sds baseline validation persistence failed")
 	}
 
-	_, sdsOptions := buildStandardWorkflowMediaPhase(s).run(ctx, task, result, canonicalProduct, recorder, log)
+	_, sdsOptions, mediaErr := buildStandardWorkflowMediaPhase(s).run(ctx, task, result, canonicalProduct, recorder, log)
+	if mediaErr != nil {
+		return &standardWorkflowState{result: result}, mediaErr
+	}
 
 	inventory, recipesByPlatform, generationPlan, persistedGenerationTasks := buildStandardWorkflowAssetPhase(s).run(
 		ctx,
