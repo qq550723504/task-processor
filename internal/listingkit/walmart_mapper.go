@@ -14,8 +14,8 @@ func buildWalmartPackage(req *GenerateRequest, canonical *canonical.Product, ima
 	}
 	productType := common.LastCategory(canonical.CategoryPath)
 	pkg := &WalmartPackage{
-		ProductName:      withBrandHint(canonical.Title, req),
-		Brand:            resolveBrand(canonical, req),
+		ProductName:      common.WithBrandHint(canonical.Title, req.BrandHint),
+		Brand:            common.ResolveBrand(req.BrandHint, canonical),
 		ProductType:      productType,
 		ShortDescription: firstNonEmpty(canonical.Description, strings.Join(canonical.SellingPoints, "; ")),
 		LongDescription:  canonical.Description,

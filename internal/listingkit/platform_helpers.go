@@ -1,7 +1,6 @@
 package listingkit
 
 import (
-	"fmt"
 	"strings"
 
 	"task-processor/internal/asset"
@@ -77,31 +76,6 @@ func findAssetURL(items []asset.Asset, id string) string {
 		}
 	}
 	return ""
-}
-
-func resolveBrand(canonical *canonical.Product, req *GenerateRequest) string {
-	if req != nil && strings.TrimSpace(req.BrandHint) != "" {
-		return strings.TrimSpace(req.BrandHint)
-	}
-	if canonical == nil {
-		return ""
-	}
-	return canonical.Brand
-}
-
-func withBrandHint(title string, req *GenerateRequest) string {
-	title = strings.TrimSpace(title)
-	if req == nil || strings.TrimSpace(req.BrandHint) == "" {
-		return title
-	}
-	brand := strings.TrimSpace(req.BrandHint)
-	if title == "" {
-		return brand
-	}
-	if strings.Contains(strings.ToLower(title), strings.ToLower(brand)) {
-		return title
-	}
-	return fmt.Sprintf("%s %s", brand, title)
 }
 
 func firstNonEmpty(values ...string) string {
