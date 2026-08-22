@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -59,6 +60,70 @@ func TestClientGenerateImageUsesOpenAICompatibleEndpoint(t *testing.T) {
 	}
 	if !strings.Contains(resp.RawResponse, "\"b64_json\"") {
 		t.Fatalf("raw response = %q, want encoded image payload", resp.RawResponse)
+	}
+}
+
+func TestClientCapsAggregateReferenceMaterialization(t *testing.T) {
+	entered := make(chan struct{}, 32)
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/reference.png":
+			entered <- struct{}{}
+			select {
+			case <-release:
+				w.Header().Set("Content-Type", "image/png")
+				_, _ = w.Write([]byte("reference-image"))
+			case <-r.Context().Done():
+			}
+		case "/images/edits":
+			_ = json.NewEncoder(w).Encode(ImageResponse{Data: []ImageData{{B64JSON: base64.StdEncoding.EncodeToString([]byte("edited"))}}})
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	client := NewClient(&ClientConfig{
+		APIKey: "test-key", Model: "gpt-image-1", BaseURL: server.URL, Timeout: time.Second, MaxRetries: 0,
+		ImageReferenceHTTPClient:      server.Client(),
+		MaxReferenceMaterializedBytes: 1024 << 20, MaxReferenceMaterializationConcurrency: 8,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	var wait sync.WaitGroup
+	errs := make(chan error, 9)
+	for i := 0; i < 9; i++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			_, err := client.EditImage(ctx, &ImageEditRequest{
+				Image: []byte("primary-image"), ImageContentType: "image/png",
+				ImageURLs: []string{server.URL + "/reference.png"},
+			})
+			errs <- err
+		}()
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for len(entered) < 8 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if len(entered) < 8 {
+		t.Fatalf("concurrent references entered = %d, want 8", len(entered))
+	}
+	time.Sleep(50 * time.Millisecond)
+	if got := len(entered); got > 8 {
+		t.Fatalf("concurrent references entered = %d, want shared cap of 8", got)
+	}
+	close(release)
+	wait.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("EditImage() error = %v", err)
+		}
 	}
 }
 

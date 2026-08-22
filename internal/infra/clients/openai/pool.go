@@ -18,18 +18,20 @@ import (
 
 // RequestPool OpenAI请求池，负责并发控制、速率限制和负载均衡
 type RequestPool struct {
-	clients    []*BaseClient
-	semaphore  chan struct{}
-	rateLimit  *RateLimiter
-	logger     *logrus.Entry
-	mutex      sync.Mutex
-	roundRobin int
+	clients                  []*BaseClient
+	semaphore                chan struct{}
+	rateLimit                *RateLimiter
+	referenceMaterialization *referenceMaterializationBudget
+	logger                   *logrus.Entry
+	mutex                    sync.Mutex
+	roundRobin               int
 }
 
 // BaseClient 基础OpenAI客户端封装
 type BaseClient struct {
-	client *openai.Client
-	config *ClientConfig
+	client                   *openai.Client
+	config                   *ClientConfig
+	referenceMaterialization *referenceMaterializationBudget
 }
 
 // RateLimiter 速率限制器
@@ -47,10 +49,13 @@ func NewRequestPool(config *PoolConfig) (*RequestPool, error) {
 		return nil, fmt.Errorf("至少需要一个客户端配置")
 	}
 
+	// The budget is shared by every credential in this pool so aggregate
+	// reference materialization remains bounded across concurrent roles.
+	sharedReferenceMaterialization := newReferenceMaterializationBudget(config.ClientConfigs[0].MaxReferenceMaterializedBytes, config.ClientConfigs[0].MaxReferenceMaterializationConcurrency)
 	// 创建多个客户端实例
 	clients := make([]*BaseClient, len(config.ClientConfigs))
 	for i, clientConfig := range config.ClientConfigs {
-		clients[i] = newBaseClient(clientConfig)
+		clients[i] = newBaseClient(clientConfig, sharedReferenceMaterialization)
 	}
 
 	// 创建速率限制器
@@ -62,15 +67,16 @@ func NewRequestPool(config *PoolConfig) (*RequestPool, error) {
 	}
 
 	return &RequestPool{
-		clients:   clients,
-		semaphore: make(chan struct{}, config.MaxConcurrent),
-		rateLimit: rateLimiter,
-		logger:    logger.GetGlobalLogger("OpenAIRequestPool"),
+		clients:                  clients,
+		semaphore:                make(chan struct{}, config.MaxConcurrent),
+		rateLimit:                rateLimiter,
+		referenceMaterialization: sharedReferenceMaterialization,
+		logger:                   logger.GetGlobalLogger("OpenAIRequestPool"),
 	}, nil
 }
 
 // newBaseClient 创建基础客户端
-func newBaseClient(config *ClientConfig) *BaseClient {
+func newBaseClient(config *ClientConfig, referenceMaterialization *referenceMaterializationBudget) *BaseClient {
 	// 创建OpenAI客户端配置
 	clientConfig := openai.DefaultConfig(config.APIKey)
 	if config.BaseURL != "" {
@@ -80,10 +86,7 @@ func newBaseClient(config *ClientConfig) *BaseClient {
 	// 创建OpenAI客户端
 	client := openai.NewClientWithConfig(clientConfig)
 
-	return &BaseClient{
-		client: client,
-		config: config,
-	}
+	return &BaseClient{client: client, config: config, referenceMaterialization: referenceMaterialization}
 }
 
 // CreateChatCompletion 通过请求池创建聊天完成

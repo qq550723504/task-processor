@@ -347,6 +347,18 @@ func (r *orderedStudioAsyncJobRepository) UpdateStudioAsyncJob(ctx context.Conte
 	return r.StudioAsyncJobRepository.UpdateStudioAsyncJob(ctx, record)
 }
 
+func (r *orderedStudioAsyncJobRepository) UpdateStudioAsyncJobIfRunning(ctx context.Context, record *listingkit.StudioAsyncJobRecord) error {
+	if record != nil {
+		switch record.Status {
+		case listingkit.StudioAsyncJobStatusSucceeded:
+			*r.order = append(*r.order, "job_succeeded")
+		case listingkit.StudioAsyncJobStatusFailed:
+			*r.order = append(*r.order, "job_failed")
+		}
+	}
+	return r.StudioAsyncJobRepository.UpdateStudioAsyncJobIfRunning(ctx, record)
+}
+
 type rejectingStudioAsyncSuccessRepository struct {
 	listingkit.StudioAsyncJobRepository
 	order      *[]string
@@ -364,6 +376,19 @@ func (r *rejectingStudioAsyncSuccessRepository) UpdateStudioAsyncJob(ctx context
 		*r.order = append(*r.order, "job_failed")
 	}
 	return r.StudioAsyncJobRepository.UpdateStudioAsyncJob(ctx, record)
+}
+
+func (r *rejectingStudioAsyncSuccessRepository) UpdateStudioAsyncJobIfRunning(ctx context.Context, record *listingkit.StudioAsyncJobRecord) error {
+	if record != nil && record.Status == listingkit.StudioAsyncJobStatusSucceeded {
+		return errors.New("persist succeeded job")
+	}
+	if record != nil && record.Status == listingkit.StudioAsyncJobStatusFailed {
+		if r.rejectFail {
+			return errors.New("persist failed job")
+		}
+		*r.order = append(*r.order, "job_failed")
+	}
+	return r.StudioAsyncJobRepository.UpdateStudioAsyncJobIfRunning(ctx, record)
 }
 
 type orderedStudioUsageLedger struct {

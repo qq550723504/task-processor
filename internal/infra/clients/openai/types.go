@@ -41,6 +41,11 @@ type ClientConfig struct {
 	// tests and controlled in-process callers. Production defaults to the
 	// SSRF-safe transport in images.go.
 	ImageReferenceHTTPClient *http.Client `json:"-"`
+	// MaxReferenceMaterializedBytes bounds reference image bytes retained until
+	// the multipart request completes.
+	MaxReferenceMaterializedBytes int64 `json:"max_reference_materialized_bytes,omitempty"`
+	// MaxReferenceMaterializationConcurrency bounds concurrent reference downloads.
+	MaxReferenceMaterializationConcurrency int `json:"max_reference_materialization_concurrency,omitempty"`
 }
 
 // NewClientConfig 创建新的OpenAI客户端配置

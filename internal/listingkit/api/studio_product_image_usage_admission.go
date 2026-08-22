@@ -256,8 +256,12 @@ func (h *handler) reconcileAbandonedStudioAsyncProductImageUsage(ctx context.Con
 		return false, nil
 	}
 	recoveryErr := fmt.Errorf("async product-image job %q exceeded recovery lease", job.ID)
-	if err := h.studioAsyncJobs.failWithErrorForTenant(ctx, jobTenantID, job.ID, recoveryErr, 500); err != nil {
+	claimed, err := h.studioAsyncJobs.failWithErrorForTenant(ctx, jobTenantID, job.ID, recoveryErr, 500)
+	if err != nil {
 		return false, err
+	}
+	if !claimed {
+		return false, nil
 	}
 	return true, releaseStudioProductImageUsage(ctx, h.subscriptionService, event.EventID, "async_job_expired")
 }

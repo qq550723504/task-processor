@@ -3,6 +3,7 @@ package listingkit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -10,6 +11,8 @@ import (
 
 	"gorm.io/gorm"
 )
+
+var ErrStudioAsyncJobLeaseLost = errors.New("studio async job lease lost")
 
 type StudioAsyncJobStatus string
 
@@ -69,6 +72,8 @@ type StudioAsyncJobRepository interface {
 	GetStudioAsyncJob(ctx context.Context, jobID string) (*StudioAsyncJobRecord, error)
 	GetStudioAsyncJobForTenant(ctx context.Context, tenantID, jobID string) (*StudioAsyncJobRecord, error)
 	HeartbeatStudioAsyncJob(ctx context.Context, jobID string, updatedAt time.Time) error
+	UpdateStudioAsyncJobIfRunning(ctx context.Context, record *StudioAsyncJobRecord) error
+	UpdateStudioAsyncJobIfRunningSinceForTenant(ctx context.Context, tenantID, jobID string, observedUpdatedAt time.Time, record *StudioAsyncJobRecord) (bool, error)
 	UpdateStudioAsyncJob(ctx context.Context, record *StudioAsyncJobRecord) error
 	UpdateStudioAsyncJobForTenant(ctx context.Context, tenantID string, record *StudioAsyncJobRecord) error
 }
@@ -131,8 +136,58 @@ func (r *MemStudioAsyncJobRepository) HeartbeatStudioAsyncJob(ctx context.Contex
 	if record.Status == StudioAsyncJobStatusRunning {
 		record.UpdatedAt = updatedAt
 		r.records[jobID] = record
+		return nil
 	}
+	return ErrStudioAsyncJobLeaseLost
+}
+
+func (r *MemStudioAsyncJobRepository) UpdateStudioAsyncJobIfRunning(ctx context.Context, record *StudioAsyncJobRecord) error {
+	if record == nil {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	existing, ok := r.records[record.ID]
+	if !ok || !matchesStudioAsyncJobScope(ctx, existing.TenantID, existing.UserID) {
+		return gorm.ErrRecordNotFound
+	}
+	if existing.Status != StudioAsyncJobStatusRunning {
+		return ErrStudioAsyncJobLeaseLost
+	}
+	cloned := *record
+	if cloned.TenantID == "" {
+		cloned.TenantID = existing.TenantID
+	}
+	if cloned.UserID == "" {
+		cloned.UserID = existing.UserID
+	}
+	r.records[cloned.ID] = cloned
 	return nil
+}
+
+func (r *MemStudioAsyncJobRepository) UpdateStudioAsyncJobIfRunningSinceForTenant(ctx context.Context, tenantID, jobID string, observedUpdatedAt time.Time, record *StudioAsyncJobRecord) (bool, error) {
+	if record == nil {
+		return false, nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	existing, ok := r.records[jobID]
+	if !ok || !tenantctx.MatchesTenant(existing.TenantID, tenantID) {
+		return false, gorm.ErrRecordNotFound
+	}
+	if existing.Status != StudioAsyncJobStatusRunning || !existing.UpdatedAt.Equal(observedUpdatedAt) {
+		return false, nil
+	}
+	cloned := *record
+	cloned.ID = existing.ID
+	if cloned.TenantID == "" {
+		cloned.TenantID = existing.TenantID
+	}
+	if cloned.UserID == "" {
+		cloned.UserID = existing.UserID
+	}
+	r.records[cloned.ID] = cloned
+	return true, nil
 }
 
 func (r *MemStudioAsyncJobRepository) UpdateStudioAsyncJob(ctx context.Context, record *StudioAsyncJobRecord) error {
@@ -237,9 +292,56 @@ func (r *GormStudioAsyncJobRepository) HeartbeatStudioAsyncJob(ctx context.Conte
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		return gorm.ErrRecordNotFound
+		var record StudioAsyncJobRecord
+		if err := applyStudioAsyncJobAccessScope(r.db.WithContext(ctx), ctx).Where("id = ?", jobID).First(&record).Error; err != nil {
+			return err
+		}
+		return ErrStudioAsyncJobLeaseLost
 	}
 	return nil
+}
+
+func (r *GormStudioAsyncJobRepository) UpdateStudioAsyncJobIfRunning(ctx context.Context, record *StudioAsyncJobRecord) error {
+	if record == nil {
+		return nil
+	}
+	row := *record
+	if row.TenantID == "" {
+		row.TenantID = tenantctx.TenantIDFromContext(ctx)
+	}
+	if row.UserID == "" {
+		row.UserID = RequestUserIDFromContext(ctx)
+	}
+	result := applyStudioAsyncJobAccessScope(r.db.WithContext(ctx), ctx).
+		Model(&StudioAsyncJobRecord{}).
+		Where("id = ? AND status = ?", row.ID, StudioAsyncJobStatusRunning).
+		Updates(studioAsyncJobUpdateFields(&row))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrStudioAsyncJobLeaseLost
+	}
+	return nil
+}
+
+func (r *GormStudioAsyncJobRepository) UpdateStudioAsyncJobIfRunningSinceForTenant(ctx context.Context, tenantID, jobID string, observedUpdatedAt time.Time, record *StudioAsyncJobRecord) (bool, error) {
+	if record == nil {
+		return false, nil
+	}
+	row := *record
+	row.ID = jobID
+	if row.TenantID == "" {
+		row.TenantID = tenantctx.NormalizeTenantID(tenantID)
+	}
+	result := applyStudioAsyncJobTenantScope(r.db.WithContext(ctx), tenantID).
+		Model(&StudioAsyncJobRecord{}).
+		Where("id = ? AND status = ? AND updated_at = ?", jobID, StudioAsyncJobStatusRunning, observedUpdatedAt).
+		Updates(studioAsyncJobUpdateFields(&row))
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
 }
 
 func (r *GormStudioAsyncJobRepository) UpdateStudioAsyncJob(ctx context.Context, record *StudioAsyncJobRecord) error {
@@ -256,15 +358,7 @@ func (r *GormStudioAsyncJobRepository) UpdateStudioAsyncJob(ctx context.Context,
 	return applyStudioAsyncJobAccessScope(r.db.WithContext(ctx), ctx).
 		Model(&StudioAsyncJobRecord{}).
 		Where("id = ?", row.ID).
-		Updates(map[string]any{
-			"path":            row.Path,
-			"status":          row.Status,
-			"result_json":     row.ResultJSON,
-			"error":           row.Error,
-			"upstream_status": row.UpstreamStatus,
-			"finished_at":     row.FinishedAt,
-			"updated_at":      row.UpdatedAt,
-		}).Error
+		Updates(studioAsyncJobUpdateFields(&row)).Error
 }
 
 func (r *GormStudioAsyncJobRepository) UpdateStudioAsyncJobForTenant(ctx context.Context, tenantID string, record *StudioAsyncJobRecord) error {
@@ -278,15 +372,7 @@ func (r *GormStudioAsyncJobRepository) UpdateStudioAsyncJobForTenant(ctx context
 	db := applyStudioAsyncJobTenantScope(r.db.WithContext(ctx), tenantID)
 	result := db.Model(&StudioAsyncJobRecord{}).
 		Where("id = ?", row.ID).
-		Updates(map[string]any{
-			"path":            row.Path,
-			"status":          row.Status,
-			"result_json":     row.ResultJSON,
-			"error":           row.Error,
-			"upstream_status": row.UpstreamStatus,
-			"finished_at":     row.FinishedAt,
-			"updated_at":      row.UpdatedAt,
-		})
+		Updates(studioAsyncJobUpdateFields(&row))
 	if result.Error != nil {
 		return result.Error
 	}
@@ -294,6 +380,18 @@ func (r *GormStudioAsyncJobRepository) UpdateStudioAsyncJobForTenant(ctx context
 		return gorm.ErrRecordNotFound
 	}
 	return nil
+}
+
+func studioAsyncJobUpdateFields(row *StudioAsyncJobRecord) map[string]any {
+	return map[string]any{
+		"path":            row.Path,
+		"status":          row.Status,
+		"result_json":     row.ResultJSON,
+		"error":           row.Error,
+		"upstream_status": row.UpstreamStatus,
+		"finished_at":     row.FinishedAt,
+		"updated_at":      row.UpdatedAt,
+	}
 }
 
 func applyStudioAsyncJobTenantScope(db *gorm.DB, tenantID string) *gorm.DB {

@@ -39,5 +39,5 @@ type studioAsyncJobStoreService interface {
 	succeedWithError(ctx context.Context, id string, result any) error
 	fail(ctx context.Context, id string, err error, status int)
 	failWithError(ctx context.Context, id string, err error, status int) error
-	failWithErrorForTenant(ctx context.Context, tenantID, id string, err error, status int) error
+	failWithErrorForTenant(ctx context.Context, tenantID, id string, err error, status int) (bool, error)
 }
