@@ -26,13 +26,12 @@ func TestPlatformImageProjectionHasDedicatedFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read platform_helpers.go: %v", err)
 	}
-	helperContent := string(helperSource)
 	for _, signature := range []string{
 		"func buildPlatformImages(",
 		"func buildPlatformImagesFromAssetBundle(",
 		"func findAssetURL(",
 	} {
-		if strings.Contains(helperContent, signature) {
+		if strings.Contains(string(helperSource), signature) {
 			t.Fatalf("platform_helpers.go should not own %s", signature)
 		}
 	}

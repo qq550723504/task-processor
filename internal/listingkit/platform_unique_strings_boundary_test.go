@@ -7,9 +7,9 @@ import (
 )
 
 func TestPlatformStringDeduplicationDelegatesToCommon(t *testing.T) {
-	source, err := os.ReadFile("platform_helpers.go")
+	source, err := os.ReadFile("platform_string_helpers.go")
 	if err != nil {
-		t.Fatalf("read platform_helpers.go: %v", err)
+		t.Fatalf("read platform_string_helpers.go: %v", err)
 	}
 	content := string(source)
 	start := strings.Index(content, "func uniqueStrings(")
