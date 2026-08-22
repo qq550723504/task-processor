@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"task-processor/internal/listingkit/core"
+	listinggeneration "task-processor/internal/listingkit/generation"
 )
 
 type taskGenerationActionTargetResolutionPhase struct{}
@@ -48,7 +49,7 @@ func resolveAssetGenerationActionTarget(overview *AssetGenerationOverview, req *
 	if req != nil && req.Target != nil && strings.EqualFold(strings.TrimSpace(req.Target.ActionKey), actionKey) {
 		cloned := cloneAssetGenerationActionTarget(req.Target)
 		if strings.TrimSpace(cloned.InteractionMode) == "" {
-			cloned.InteractionMode = actionInteractionMode(cloned.ActionKey)
+			cloned.InteractionMode = listinggeneration.ActionInteractionMode(cloned.ActionKey)
 		}
 		return cloned, "request_target", nil
 	}
