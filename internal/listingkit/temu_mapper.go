@@ -5,6 +5,7 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
+	common "task-processor/internal/publishing/common"
 )
 
 func buildTemuPackage(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *TemuPackage {
@@ -19,7 +20,7 @@ func buildTemuPackage(req *GenerateRequest, canonical *canonical.Product, image 
 		CategoryPath:     append([]string(nil), canonical.CategoryPath...),
 		ShortDescription: canonical.Description,
 		BulletPoints:     append([]string(nil), canonical.SellingPoints...),
-		Attributes:       flattenAttributes(canonical.Attributes),
+		Attributes:       common.FlattenAttributes(canonical.Attributes),
 		SkcList:          buildTemuSKCs(variants, images),
 		BatchSkuInfo:     buildTemuBatchSKUInfo(variants, canonical),
 		Images:           images,

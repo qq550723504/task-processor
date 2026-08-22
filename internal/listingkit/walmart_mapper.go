@@ -5,6 +5,7 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
+	common "task-processor/internal/publishing/common"
 )
 
 func buildWalmartPackage(req *GenerateRequest, canonical *canonical.Product, image *productimage.ImageProcessResult) *WalmartPackage {
@@ -19,7 +20,7 @@ func buildWalmartPackage(req *GenerateRequest, canonical *canonical.Product, ima
 		ShortDescription: firstNonEmpty(canonical.Description, strings.Join(canonical.SellingPoints, "; ")),
 		LongDescription:  canonical.Description,
 		KeyFeatures:      append([]string(nil), canonical.SellingPoints...),
-		Attributes:       flattenAttributes(canonical.Attributes),
+		Attributes:       common.FlattenAttributes(canonical.Attributes),
 		Variants:         buildPlatformVariants(canonical),
 		Images:           buildPlatformImages(canonical, image),
 		Metadata: map[string]string{

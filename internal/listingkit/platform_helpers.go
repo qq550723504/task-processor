@@ -89,17 +89,6 @@ func findAssetURL(items []asset.Asset, id string) string {
 	return ""
 }
 
-func flattenAttributes(attributes map[string]canonical.Attribute) map[string]string {
-	if len(attributes) == 0 {
-		return nil
-	}
-	result := make(map[string]string, len(attributes))
-	for key, value := range attributes {
-		result[key] = value.Value
-	}
-	return result
-}
-
 func collectReviewNotes(canonical *canonical.Product, image *productimage.ImageProcessResult, extras ...string) []string {
 	notes := make([]string, 0, len(extras)+4)
 	if canonical != nil && canonical.NeedsReview {
