@@ -3,6 +3,7 @@ package enrich_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"task-processor/internal/aicapability"
@@ -323,8 +324,22 @@ func (m *routedTextManager) GetDefaultClient() productenrich.LLMClient {
 	return &legacyTextClient{manager: m, response: m.defaultResponse}
 }
 
-func (m *routedTextManager) GetClientWithRoute(_ context.Context, _ string, route productenrich.LLMClientRoute) (productenrich.LLMClient, error) {
+func (m *routedTextManager) GetClientWithRoute(_ context.Context, clientName string, route productenrich.LLMClientRoute) (productenrich.LLMClient, error) {
 	m.route = route
+	if strings.HasSuffix(route.ConfigurationVersion, "-config-v1") {
+		m.namedLookups = append(m.namedLookups, clientName)
+		if clientName == "default" {
+			m.defaultLookup = true
+			if m.defaultResponse == "" && m.callErr == nil {
+				return nil, productenrich.ErrLLMClientUnavailable
+			}
+			return &legacyTextClient{manager: m, response: m.defaultResponse}, nil
+		}
+		if m.legacyResponse == "" && m.callErr == nil {
+			return nil, productenrich.ErrLLMClientUnavailable
+		}
+		return &legacyTextClient{manager: m, response: m.legacyResponse}, nil
+	}
 	return &routedTextClient{manager: m}, nil
 }
 

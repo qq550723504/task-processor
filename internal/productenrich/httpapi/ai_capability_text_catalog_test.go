@@ -4,10 +4,54 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"task-processor/internal/aicapability"
 	openaiclient "task-processor/internal/infra/clients/openai"
 )
+
+func TestProductEnrichCatalogsUseManagerEffectiveAuthorityForStaticActiveRoutes(t *testing.T) {
+	manager, err := openaiclient.NewManager(&openaiclient.ManagerConfig{
+		Clients: map[string]*openaiclient.ClientConfig{
+			"fast":    {APIKey: "fast-secret", BaseURL: "https://fast.test/v1", Model: "text-model", APIStyle: "openai", Timeout: time.Second},
+			"vision":  {APIKey: "vision-secret", BaseURL: "https://vision.test/v1", Model: "vision-model", APIStyle: "openai", Timeout: time.Second},
+			"default": {APIKey: "default-secret", BaseURL: "https://default.test/v1", Model: "listing-model", APIStyle: "gemini", Timeout: time.Second},
+			"scorer":  {APIKey: "score-secret", BaseURL: "https://score.test/v1", Model: "score-model", APIStyle: "openai", Timeout: time.Second},
+		},
+		DefaultClient: "default",
+	})
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	tests := []struct {
+		name      string
+		router    aicapability.Router
+		request   aicapability.RouteRequest
+		wantRef   string
+		wantModel string
+	}{
+		{name: "text", router: BuildProductEnrichTextCapabilityRouter(manager), request: aicapability.RouteRequest{TenantID: "tenant-a", UserID: "user-a", Capability: aicapability.CapabilityProductEnrichText, Operation: aicapability.OperationProductEnrichTextExtract, RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureTextGenerate}}, wantRef: "fast", wantModel: "text-model"},
+		{name: "vision", router: BuildProductEnrichVisionCapabilityRouter(manager), request: aicapability.RouteRequest{TenantID: "tenant-a", UserID: "user-a", Capability: aicapability.CapabilityProductEnrichVision, Operation: aicapability.OperationProductEnrichImageAnalyze, RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureVisionAnalyze}}, wantRef: "vision", wantModel: "vision-model"},
+		{name: "listing", router: BuildProductEnrichListingCapabilityRouter(manager), request: aicapability.RouteRequest{TenantID: "tenant-a", UserID: "user-a", Capability: aicapability.CapabilityProductEnrichListing, Operation: aicapability.OperationProductEnrichJSONGenerate, RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureTextGenerate}}, wantRef: "default", wantModel: "listing-model"},
+		{name: "fusion", router: BuildProductEnrichFusionCapabilityRouter(manager), request: aicapability.RouteRequest{TenantID: "tenant-a", UserID: "user-a", Capability: aicapability.CapabilityProductEnrichFusion, Operation: aicapability.OperationProductEnrichMultimodalFuse, RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureTextGenerate}}, wantRef: "default", wantModel: "listing-model"},
+		{name: "text scoring", router: BuildProductEnrichTextQualityCapabilityRouter(manager, "scorer"), request: aicapability.RouteRequest{TenantID: "tenant-a", UserID: "user-a", Capability: aicapability.CapabilityProductEnrichText, Operation: aicapability.OperationProductEnrichTextQualityScore, RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureTextGenerate}}, wantRef: "scorer", wantModel: "score-model"},
+		{name: "vision scoring", router: BuildProductEnrichVisionQualityCapabilityRouter(manager, "scorer"), request: aicapability.RouteRequest{TenantID: "tenant-a", UserID: "user-a", Capability: aicapability.CapabilityProductEnrichVision, Operation: aicapability.OperationProductEnrichVisionQualityScore, RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureVisionAnalyze}}, wantRef: "scorer", wantModel: "score-model"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			decision, err := tt.router.Decide(context.Background(), tt.request)
+			if err != nil {
+				t.Fatalf("Decide: %v", err)
+			}
+			if decision.CredentialReference != tt.wantRef || decision.ModelID != tt.wantModel || decision.ConfigurationVersion == "" {
+				t.Fatalf("decision = %+v", decision)
+			}
+			if decision.ConfigurationVersion == "fast-secret" || decision.ConfigurationVersion == "vision-secret" || decision.ConfigurationVersion == "default-secret" || decision.ConfigurationVersion == "score-secret" {
+				t.Fatalf("decision leaked secret: %+v", decision)
+			}
+		})
+	}
+}
 
 func TestProductEnrichTextCatalogResolvesFastCredential(t *testing.T) {
 	resolver := &productEnrichTextResolver{resolved: &openaiclient.ResolvedClientConfig{
@@ -181,7 +225,7 @@ func TestProductEnrichFusionCatalogResolvesDefaultCredential(t *testing.T) {
 func TestProductEnrichActiveRoutersRejectInvalidOperationsBeforeCredentialLookup(t *testing.T) {
 	tests := []struct {
 		name  string
-		build func(openaiclient.ClientConfigResolver) aicapability.Router
+		build func(openaiclient.EffectiveClientRouteResolver) aicapability.Router
 		cap   aicapability.Capability
 		badOp aicapability.Operation
 	}{
@@ -234,6 +278,24 @@ type productEnrichTextResolver struct {
 func (r *productEnrichTextResolver) ResolveClientConfig(_ context.Context, clientName string, _ *openaiclient.ClientConfig) (*openaiclient.ResolvedClientConfig, error) {
 	r.requestedClientName = clientName
 	return r.resolved, r.err
+}
+
+func (r *productEnrichTextResolver) ResolveEffectiveClientRoute(_ context.Context, clientName string) (openaiclient.EffectiveClientRoute, error) {
+	r.requestedClientName = clientName
+	if r.err != nil {
+		return openaiclient.EffectiveClientRoute{}, r.err
+	}
+	if r.resolved == nil || r.resolved.Config == nil {
+		return openaiclient.EffectiveClientRoute{}, nil
+	}
+	providerID := "openai"
+	if r.resolved.Config.APIStyle == "gemini" {
+		providerID = "gemini"
+	}
+	return openaiclient.EffectiveClientRoute{
+		ProviderID: providerID, ModelID: r.resolved.Config.Model, CredentialReference: clientName,
+		ConfigurationVersion: r.resolved.CacheKey,
+	}, nil
 }
 
 type recordingProductEnrichRouter struct {

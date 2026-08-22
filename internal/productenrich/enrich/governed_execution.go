@@ -19,6 +19,8 @@ type LegacyRouteMetadataResolver interface {
 	ResolveLegacyRoute(context.Context, string) (aicapability.RouteDecision, error)
 }
 
+var ErrLegacyRouteUnavailable = errors.New("legacy route is unavailable")
+
 type preparedExecution struct {
 	identity                 aiidentity.Identity
 	plan                     aicapability.ExecutionPlan
@@ -101,35 +103,40 @@ func bindExecutionClient(
 		return client, decision, nil
 	}
 
+	routedManager, ok := manager.(productenrich.RoutedLLMManager)
+	if !ok {
+		return nil, aicapability.RouteDecision{}, aicapability.NewError(aicapability.ErrorCapabilityUnavailable, string(request.Operation), errors.New("legacy ProductEnrich manager does not support bound routes"))
+	}
 	var lastErr error
 	var lastDecision aicapability.RouteDecision
 	for fallbackIndex, clientName := range normalizedLegacyClients(plan.LegacyClients) {
-		client, err := manager.GetClient(clientName)
-		if (err != nil || client == nil) && clientName == "default" {
-			client = manager.GetDefaultClient()
-			if client != nil {
-				err = nil
-			}
-		}
-		if err != nil || client == nil {
-			if err == nil {
-				err = fmt.Errorf("legacy ProductEnrich client %q is nil", clientName)
-			}
-			lastErr = err
-			continue
-		}
-
 		decision, resolveErr := legacyMetadata.ResolveLegacyRoute(ctx, clientName)
 		decision.Capability = request.Capability
 		decision.Operation = request.Operation
 		decision.FallbackIndex = fallbackIndex
 		lastDecision = decision
-		if resolveErr != nil || !validLegacyDecision(decision) {
-			if resolveErr == nil {
-				resolveErr = fmt.Errorf("legacy ProductEnrich client %q has incomplete route metadata", clientName)
-			}
+		if errors.Is(resolveErr, ErrLegacyRouteUnavailable) {
 			lastErr = resolveErr
 			continue
+		}
+		if resolveErr != nil {
+			return nil, decision, aicapability.NewError(aicapability.ErrorCredentialUnavailable, string(request.Operation), resolveErr)
+		}
+		if !validLegacyDecision(decision) {
+			return nil, decision, aicapability.NewError(aicapability.ErrorCredentialUnavailable, string(request.Operation), fmt.Errorf("legacy ProductEnrich client %q has incomplete route metadata", clientName))
+		}
+		client, bindErr := routedManager.GetClientWithRoute(ctx, clientName, productenrich.LLMClientRoute{
+			CredentialReference: decision.CredentialReference, ConfigurationVersion: decision.ConfigurationVersion,
+		})
+		if errors.Is(bindErr, productenrich.ErrLLMClientUnavailable) {
+			lastErr = bindErr
+			continue
+		}
+		if bindErr != nil || client == nil {
+			if bindErr == nil {
+				bindErr = fmt.Errorf("legacy ProductEnrich client %q is nil", clientName)
+			}
+			return nil, decision, aicapability.NewError(aicapability.ErrorCredentialUnavailable, string(request.Operation), bindErr)
 		}
 		return client, decision, nil
 	}

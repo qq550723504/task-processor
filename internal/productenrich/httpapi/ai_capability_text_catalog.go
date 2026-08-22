@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"task-processor/internal/aicapability"
@@ -22,14 +23,14 @@ const (
 
 // BuildProductEnrichTextCapabilityRouter maps the existing tenant-aware fast
 // client to the provider-neutral ProductEnrich text capability.
-func BuildProductEnrichTextCapabilityRouter(resolver openaiclient.ClientConfigResolver) aicapability.Router {
+func BuildProductEnrichTextCapabilityRouter(resolver openaiclient.EffectiveClientRouteResolver) aicapability.Router {
 	return aicapability.NewPolicyRouter(
 		&productEnrichTextModelCatalog{resolver: resolver, clientName: productEnrichTextClientName},
 		productEnrichTextPolicyResolver{},
 	)
 }
 
-func BuildProductEnrichTextQualityCapabilityRouter(resolver openaiclient.ClientConfigResolver, clientName string) aicapability.Router {
+func BuildProductEnrichTextQualityCapabilityRouter(resolver openaiclient.EffectiveClientRouteResolver, clientName string) aicapability.Router {
 	return aicapability.NewPolicyRouter(
 		&productEnrichTextModelCatalog{resolver: resolver, clientName: strings.TrimSpace(clientName)},
 		productEnrichTextPolicyResolver{},
@@ -39,7 +40,7 @@ func BuildProductEnrichTextQualityCapabilityRouter(resolver openaiclient.ClientC
 // BuildProductEnrichFusionCapabilityRouter routes multimodal representation
 // fusion through the same tenant policy and default-client boundary as listing
 // generation, while keeping a distinct capability/operation in the ledger.
-func BuildProductEnrichFusionCapabilityRouter(resolver openaiclient.ClientConfigResolver) aicapability.Router {
+func BuildProductEnrichFusionCapabilityRouter(resolver openaiclient.EffectiveClientRouteResolver) aicapability.Router {
 	return aicapability.NewPolicyRouter(
 		&productEnrichFusionModelCatalog{resolver: resolver},
 		productEnrichFusionPolicyResolver{},
@@ -48,14 +49,14 @@ func BuildProductEnrichFusionCapabilityRouter(resolver openaiclient.ClientConfig
 
 // BuildProductEnrichVisionCapabilityRouter maps the existing tenant-aware
 // vision client to the provider-neutral ProductEnrich vision capability.
-func BuildProductEnrichVisionCapabilityRouter(resolver openaiclient.ClientConfigResolver) aicapability.Router {
+func BuildProductEnrichVisionCapabilityRouter(resolver openaiclient.EffectiveClientRouteResolver) aicapability.Router {
 	return aicapability.NewPolicyRouter(
 		&productEnrichVisionModelCatalog{resolver: resolver, clientName: productEnrichVisionClientName},
 		productEnrichVisionPolicyResolver{},
 	)
 }
 
-func BuildProductEnrichVisionQualityCapabilityRouter(resolver openaiclient.ClientConfigResolver, clientName string) aicapability.Router {
+func BuildProductEnrichVisionQualityCapabilityRouter(resolver openaiclient.EffectiveClientRouteResolver, clientName string) aicapability.Router {
 	return aicapability.NewPolicyRouter(
 		&productEnrichVisionModelCatalog{resolver: resolver, clientName: strings.TrimSpace(clientName)},
 		productEnrichVisionPolicyResolver{},
@@ -64,7 +65,7 @@ func BuildProductEnrichVisionQualityCapabilityRouter(resolver openaiclient.Clien
 
 // BuildProductEnrichListingCapabilityRouter maps the existing default client
 // to the provider-neutral primary listing JSON generation capability.
-func BuildProductEnrichListingCapabilityRouter(resolver openaiclient.ClientConfigResolver) aicapability.Router {
+func BuildProductEnrichListingCapabilityRouter(resolver openaiclient.EffectiveClientRouteResolver) aicapability.Router {
 	return aicapability.NewPolicyRouter(
 		&productEnrichListingModelCatalog{resolver: resolver},
 		productEnrichListingPolicyResolver{},
@@ -78,7 +79,7 @@ func BuildProductEnrichExecutionPlanner(router aicapability.Router, activeTenant
 	}
 }
 
-func BuildProductEnrichLegacyRouteMetadataResolver(resolver openaiclient.ClientConfigResolver) productenrichenrich.LegacyRouteMetadataResolver {
+func BuildProductEnrichLegacyRouteMetadataResolver(resolver openaiclient.EffectiveClientRouteResolver) productenrichenrich.LegacyRouteMetadataResolver {
 	return productEnrichLegacyRouteMetadataResolver{resolver: resolver}
 }
 
@@ -120,7 +121,7 @@ func (p tenantRolloutPlanner) Plan(ctx context.Context, request aicapability.Rou
 }
 
 type productEnrichLegacyRouteMetadataResolver struct {
-	resolver openaiclient.ClientConfigResolver
+	resolver openaiclient.EffectiveClientRouteResolver
 }
 
 func (r productEnrichLegacyRouteMetadataResolver) ResolveLegacyRoute(ctx context.Context, clientName string) (aicapability.RouteDecision, error) {
@@ -128,26 +129,21 @@ func (r productEnrichLegacyRouteMetadataResolver) ResolveLegacyRoute(ctx context
 	if r.resolver == nil || clientName == "" {
 		return aicapability.RouteDecision{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
 	}
-	resolved, err := r.resolver.ResolveClientConfig(ctx, clientName, nil)
-	if err != nil || resolved == nil || resolved.Config == nil || strings.TrimSpace(resolved.CacheKey) == "" {
+	resolved, err := r.resolver.ResolveEffectiveClientRoute(ctx, clientName)
+	if errors.Is(err, openaiclient.ErrClientConfigurationUnavailable) {
+		return aicapability.RouteDecision{}, productenrichenrich.ErrLegacyRouteUnavailable
+	}
+	if err != nil {
 		return aicapability.RouteDecision{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", err)
 	}
-	configured := resolved.Config
-	if strings.TrimSpace(configured.APIKey) == "" || strings.TrimSpace(configured.BaseURL) == "" || strings.TrimSpace(configured.Model) == "" {
-		return aicapability.RouteDecision{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
-	}
-	providerID, ok := productEnrichProviderID(configured.APIStyle)
-	if !ok {
-		return aicapability.RouteDecision{}, aicapability.NewError(aicapability.ErrorCapabilityUnavailable, "", nil)
-	}
 	return aicapability.RouteDecision{
-		ProviderID: providerID, ModelID: strings.TrimSpace(configured.Model), RoutingKey: clientName,
-		CredentialReference: clientName, ConfigurationVersion: strings.TrimSpace(resolved.CacheKey),
+		ProviderID: resolved.ProviderID, ModelID: resolved.ModelID, RoutingKey: clientName,
+		CredentialReference: resolved.CredentialReference, ConfigurationVersion: resolved.ConfigurationVersion,
 	}, nil
 }
 
 type productEnrichTextModelCatalog struct {
-	resolver   openaiclient.ClientConfigResolver
+	resolver   openaiclient.EffectiveClientRouteResolver
 	clientName string
 }
 
@@ -155,29 +151,13 @@ func (c *productEnrichTextModelCatalog) ResolveModel(ctx context.Context, routin
 	if c == nil || c.resolver == nil || strings.TrimSpace(routingKey) != productEnrichTextRoutingKey {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
 	}
-	resolved, err := c.resolver.ResolveClientConfig(ctx, c.clientName, nil)
-	if err != nil || resolved == nil || resolved.Config == nil || strings.TrimSpace(resolved.CacheKey) == "" {
-		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", err)
-	}
-	configured := resolved.Config
-	if strings.TrimSpace(configured.APIKey) == "" || strings.TrimSpace(configured.BaseURL) == "" || strings.TrimSpace(configured.Model) == "" {
-		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
-	}
-	providerID, ok := productEnrichProviderID(configured.APIStyle)
-	if !ok {
-		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCapabilityUnavailable, "", nil)
-	}
-	return aicapability.ModelDefinition{
-		ProviderID: providerID, ModelID: strings.TrimSpace(configured.Model), RoutingKey: productEnrichTextRoutingKey,
-		CredentialReference: c.clientName, Features: []aicapability.ModelFeature{aicapability.FeatureTextGenerate},
-		Enabled: true, ConfigurationVersion: strings.TrimSpace(resolved.CacheKey),
-	}, nil
+	return resolveProductEnrichModel(ctx, c.resolver, c.clientName, productEnrichTextRoutingKey, aicapability.FeatureTextGenerate)
 }
 
 type productEnrichTextPolicyResolver struct{}
 
 type productEnrichVisionModelCatalog struct {
-	resolver   openaiclient.ClientConfigResolver
+	resolver   openaiclient.EffectiveClientRouteResolver
 	clientName string
 }
 
@@ -185,94 +165,50 @@ func (c *productEnrichVisionModelCatalog) ResolveModel(ctx context.Context, rout
 	if c == nil || c.resolver == nil || strings.TrimSpace(routingKey) != productEnrichVisionRoutingKey {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
 	}
-	resolved, err := c.resolver.ResolveClientConfig(ctx, c.clientName, nil)
-	if err != nil || resolved == nil || resolved.Config == nil || strings.TrimSpace(resolved.CacheKey) == "" {
-		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", err)
-	}
-	configured := resolved.Config
-	if strings.TrimSpace(configured.APIKey) == "" || strings.TrimSpace(configured.BaseURL) == "" || strings.TrimSpace(configured.Model) == "" {
-		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
-	}
-	providerID, ok := productEnrichProviderID(configured.APIStyle)
-	if !ok {
-		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCapabilityUnavailable, "", nil)
-	}
-	return aicapability.ModelDefinition{
-		ProviderID: providerID, ModelID: strings.TrimSpace(configured.Model), RoutingKey: productEnrichVisionRoutingKey,
-		CredentialReference: c.clientName, Features: []aicapability.ModelFeature{aicapability.FeatureVisionAnalyze},
-		Enabled: true, ConfigurationVersion: strings.TrimSpace(resolved.CacheKey),
-	}, nil
+	return resolveProductEnrichModel(ctx, c.resolver, c.clientName, productEnrichVisionRoutingKey, aicapability.FeatureVisionAnalyze)
 }
 
 type productEnrichVisionPolicyResolver struct{}
 
 type productEnrichListingModelCatalog struct {
-	resolver openaiclient.ClientConfigResolver
+	resolver openaiclient.EffectiveClientRouteResolver
 }
 
 type productEnrichFusionModelCatalog struct {
-	resolver openaiclient.ClientConfigResolver
+	resolver openaiclient.EffectiveClientRouteResolver
 }
 
 func (c *productEnrichFusionModelCatalog) ResolveModel(ctx context.Context, routingKey string) (aicapability.ModelDefinition, error) {
 	if c == nil || c.resolver == nil || strings.TrimSpace(routingKey) != productEnrichFusionRoutingKey {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
 	}
-	resolved, err := c.resolver.ResolveClientConfig(ctx, productEnrichFusionClientName, nil)
-	if err != nil || resolved == nil || resolved.Config == nil || strings.TrimSpace(resolved.CacheKey) == "" {
-		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", err)
-	}
-	configured := resolved.Config
-	if strings.TrimSpace(configured.APIKey) == "" || strings.TrimSpace(configured.BaseURL) == "" || strings.TrimSpace(configured.Model) == "" {
-		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
-	}
-	providerID, ok := productEnrichProviderID(configured.APIStyle)
-	if !ok {
-		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCapabilityUnavailable, "", nil)
-	}
-	return aicapability.ModelDefinition{
-		ProviderID: providerID, ModelID: strings.TrimSpace(configured.Model), RoutingKey: productEnrichFusionRoutingKey,
-		CredentialReference: productEnrichFusionClientName, Features: []aicapability.ModelFeature{aicapability.FeatureTextGenerate},
-		Enabled: true, ConfigurationVersion: strings.TrimSpace(resolved.CacheKey),
-	}, nil
+	return resolveProductEnrichModel(ctx, c.resolver, productEnrichFusionClientName, productEnrichFusionRoutingKey, aicapability.FeatureTextGenerate)
 }
 
 func (c *productEnrichListingModelCatalog) ResolveModel(ctx context.Context, routingKey string) (aicapability.ModelDefinition, error) {
 	if c == nil || c.resolver == nil || strings.TrimSpace(routingKey) != productEnrichListingRoutingKey {
 		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
 	}
-	resolved, err := c.resolver.ResolveClientConfig(ctx, productEnrichListingClientName, nil)
-	if err != nil || resolved == nil || resolved.Config == nil || strings.TrimSpace(resolved.CacheKey) == "" {
-		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", err)
-	}
-	configured := resolved.Config
-	if strings.TrimSpace(configured.APIKey) == "" || strings.TrimSpace(configured.BaseURL) == "" || strings.TrimSpace(configured.Model) == "" {
-		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
-	}
-	providerID, ok := productEnrichProviderID(configured.APIStyle)
-	if !ok {
-		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCapabilityUnavailable, "", nil)
-	}
-	return aicapability.ModelDefinition{
-		ProviderID: providerID, ModelID: strings.TrimSpace(configured.Model), RoutingKey: productEnrichListingRoutingKey,
-		CredentialReference: productEnrichListingClientName, Features: []aicapability.ModelFeature{aicapability.FeatureTextGenerate},
-		Enabled: true, ConfigurationVersion: strings.TrimSpace(resolved.CacheKey),
-	}, nil
+	return resolveProductEnrichModel(ctx, c.resolver, productEnrichListingClientName, productEnrichListingRoutingKey, aicapability.FeatureTextGenerate)
 }
 
-// productEnrichProviderID normalizes credential protocol metadata for the
-// provider-neutral ledger. Gemini credentials are still served by the
-// tenant-aware chat manager, but must retain their provider identity instead
-// of being rejected as an unsupported catalog style.
-func productEnrichProviderID(apiStyle string) (string, bool) {
-	switch style := strings.ToLower(strings.TrimSpace(apiStyle)); style {
-	case "", "openai", "openai-compatible":
-		return "openai", true
-	case "gemini":
-		return "gemini", true
-	default:
-		return "", false
+func resolveProductEnrichModel(ctx context.Context, resolver openaiclient.EffectiveClientRouteResolver, clientName, routingKey string, feature aicapability.ModelFeature) (aicapability.ModelDefinition, error) {
+	route, err := resolver.ResolveEffectiveClientRoute(ctx, clientName)
+	if err != nil {
+		category := aicapability.ErrorCredentialUnavailable
+		if errors.Is(err, openaiclient.ErrClientConfigurationUnsupported) {
+			category = aicapability.ErrorCapabilityUnavailable
+		}
+		return aicapability.ModelDefinition{}, aicapability.NewError(category, "", err)
 	}
+	if strings.TrimSpace(route.ProviderID) == "" || strings.TrimSpace(route.ModelID) == "" || strings.TrimSpace(route.CredentialReference) == "" || strings.TrimSpace(route.ConfigurationVersion) == "" {
+		return aicapability.ModelDefinition{}, aicapability.NewError(aicapability.ErrorCredentialUnavailable, "", nil)
+	}
+	return aicapability.ModelDefinition{
+		ProviderID: route.ProviderID, ModelID: route.ModelID, RoutingKey: routingKey,
+		CredentialReference: route.CredentialReference, Features: []aicapability.ModelFeature{feature},
+		Enabled: true, ConfigurationVersion: route.ConfigurationVersion,
+	}, nil
 }
 
 type productEnrichListingPolicyResolver struct{}

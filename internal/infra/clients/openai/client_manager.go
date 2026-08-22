@@ -3,6 +3,8 @@ package openai
 
 import (
 	"context"
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -30,6 +32,26 @@ type ResolvedClientConfig struct {
 type ClientConfigResolver interface {
 	ResolveClientConfig(ctx context.Context, clientName string, fallback *ClientConfig) (*ResolvedClientConfig, error)
 }
+
+// EffectiveClientRoute is the non-secret execution identity selected by the
+// manager after applying tenant/user overrides and the registered static
+// fallback. It is safe to use in routing, cache, and invocation metadata.
+type EffectiveClientRoute struct {
+	ProviderID           string
+	ModelID              string
+	CredentialReference  string
+	ConfigurationVersion string
+}
+
+type EffectiveClientRouteResolver interface {
+	ResolveEffectiveClientRoute(ctx context.Context, clientName string) (EffectiveClientRoute, error)
+}
+
+var (
+	ErrClientConfigurationUnavailable = errors.New("client configuration is unavailable")
+	ErrClientConfigurationChanged     = errors.New("client configuration changed")
+	ErrClientConfigurationUnsupported = errors.New("client configuration provider is unsupported")
+)
 
 // ManagerConfig 管理器配置
 type ManagerConfig struct {
@@ -91,14 +113,12 @@ func (m *Manager) GetClient(name string) (ChatCompleter, error) {
 	return &contextualChatClient{manager: m, name: name}, nil
 }
 
-// GetClientWithRoute returns a chat client bound to the selected credential version.
-func (m *Manager) GetClientWithRoute(name string, selection ImageRouteSelection) (ChatCompleter, error) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	if _, exists := m.clients[name]; !exists && m.configResolver == nil {
-		return nil, fmt.Errorf("client %s not found", name)
-	}
-	return &contextualChatClient{manager: m, name: name, selection: &selection}, nil
+// GetClientWithRoute returns the concrete client for the exact effective
+// configuration selected by the caller. Resolution and version validation
+// happen before the provider client is returned, so later rotation cannot run
+// under stale route metadata.
+func (m *Manager) GetClientWithRoute(ctx context.Context, name string, selection ImageRouteSelection) (ChatCompleter, error) {
+	return m.resolveClientWithSelection(ctx, name, &selection)
 }
 
 func (m *Manager) GetImageClient(name string) (ImageGenerator, error) {
@@ -167,51 +187,138 @@ func (m *Manager) resolveClient(ctx context.Context, name string) (*Client, erro
 func (m *Manager) resolveClientWithSelection(ctx context.Context, name string, selection *ImageRouteSelection) (*Client, error) {
 	if selection != nil {
 		if reference := normalizeClientName(selection.CredentialReference); reference != normalizeClientName(name) {
-			return nil, fmt.Errorf("image route credential reference %q does not match client %q", selection.CredentialReference, name)
-		}
-		if m.configResolver == nil {
-			return nil, fmt.Errorf("image route credential resolver is not configured")
+			return nil, fmt.Errorf("%w: route credential reference %q does not match client %q", ErrClientConfigurationChanged, selection.CredentialReference, name)
 		}
 	}
-	fallback, staticErr := m.resolveStaticClient(name)
-	if staticErr != nil && m.configResolver == nil {
-		return nil, staticErr
-	}
-	if m.configResolver == nil {
-		return fallback, nil
-	}
-	var fallbackConfig *ClientConfig
-	if fallback != nil {
-		fallbackConfig = fallback.config
-	}
-	resolved, err := m.configResolver.ResolveClientConfig(ctx, name, fallbackConfig)
+	resolved, err := m.resolveEffectiveClientConfiguration(ctx, name)
 	if err != nil {
 		return nil, err
 	}
-	if resolved == nil || resolved.Config == nil {
-		if selection != nil || fallback == nil {
-			return nil, fmt.Errorf("image credential configuration is unavailable")
-		}
-		return fallback, nil
+	selectedVersion := strings.TrimSpace(selectionVersion(selection))
+	if selection != nil && selectedVersion != resolved.route.ConfigurationVersion && selectedVersion != resolved.resolverVersion {
+		return nil, fmt.Errorf("%w: selected version does not match current effective version", ErrClientConfigurationChanged)
 	}
-	cacheKey := resolved.CacheKey
-	if cacheKey == "" {
-		cacheKey = name + ":" + resolved.Config.APIKey + ":" + resolved.Config.BaseURL + ":" + resolved.Config.Model
-	}
-	if selection != nil && strings.TrimSpace(selection.ConfigurationVersion) != strings.TrimSpace(cacheKey) {
-		return nil, fmt.Errorf("image route credential configuration changed: selected %q, current %q", selection.ConfigurationVersion, cacheKey)
+	if resolved.staticClient != nil {
+		return resolved.staticClient, nil
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if client := m.dynamicClients[cacheKey]; client != nil {
+	if client := m.dynamicClients[resolved.route.ConfigurationVersion]; client != nil {
 		return client, nil
 	}
-	client := NewClient(resolved.Config)
+	client := NewClient(resolved.config)
 	if client == nil {
 		return nil, fmt.Errorf("failed to create resolved client: %s", name)
 	}
-	m.dynamicClients[cacheKey] = client
+	m.dynamicClients[resolved.route.ConfigurationVersion] = client
 	return client, nil
+}
+
+type effectiveClientConfiguration struct {
+	config       *ClientConfig
+	staticClient *Client
+	route        EffectiveClientRoute
+	// resolverVersion is retained only as a compatibility binding for existing
+	// provider consumers that still receive the resolver's non-secret version.
+	// New manager-authority callers use route.ConfigurationVersion.
+	resolverVersion string
+}
+
+// ResolveEffectiveClientRoute is the single manager-owned authority for route
+// metadata. It applies the same resolver/static precedence as execution.
+func (m *Manager) ResolveEffectiveClientRoute(ctx context.Context, name string) (EffectiveClientRoute, error) {
+	resolved, err := m.resolveEffectiveClientConfiguration(ctx, name)
+	if err != nil {
+		return EffectiveClientRoute{}, err
+	}
+	return resolved.route, nil
+}
+
+func (m *Manager) resolveEffectiveClientConfiguration(ctx context.Context, name string) (effectiveClientConfiguration, error) {
+	if m == nil {
+		return effectiveClientConfiguration{}, ErrClientConfigurationUnavailable
+	}
+	name = normalizeClientName(name)
+	m.mu.RLock()
+	staticClient := m.clients[name]
+	resolver := m.configResolver
+	m.mu.RUnlock()
+
+	var staticConfig *ClientConfig
+	if staticClient != nil {
+		staticConfig = cloneClientConfig(staticClient.config)
+	}
+	effectiveConfig := staticConfig
+	credentialVersion := "static:" + name
+	usesStatic := staticConfig != nil
+	if resolver != nil {
+		resolved, err := resolver.ResolveClientConfig(ctx, name, cloneClientConfig(staticConfig))
+		if err != nil {
+			return effectiveClientConfiguration{}, err
+		}
+		if resolved != nil && resolved.Config != nil {
+			if strings.TrimSpace(resolved.CacheKey) == "" {
+				return effectiveClientConfiguration{}, fmt.Errorf("%w: resolved credential version is blank", ErrClientConfigurationUnavailable)
+			}
+			effectiveConfig = cloneClientConfig(resolved.Config)
+			credentialVersion = "resolved:" + strings.TrimSpace(resolved.CacheKey)
+			usesStatic = false
+		}
+	}
+	if !validEffectiveClientConfig(effectiveConfig) {
+		return effectiveClientConfiguration{}, fmt.Errorf("image credential configuration is unavailable: %w: client %q", ErrClientConfigurationUnavailable, name)
+	}
+	providerID, ok := effectiveProviderID(effectiveConfig.APIStyle)
+	if !ok {
+		return effectiveClientConfiguration{}, fmt.Errorf("%w: api style %q", ErrClientConfigurationUnsupported, effectiveConfig.APIStyle)
+	}
+	route := EffectiveClientRoute{
+		ProviderID: providerID, ModelID: strings.TrimSpace(effectiveConfig.Model), CredentialReference: name,
+		ConfigurationVersion: effectiveConfigurationVersion(name, credentialVersion, effectiveConfig),
+	}
+	result := effectiveClientConfiguration{config: effectiveConfig, route: route}
+	if !usesStatic {
+		result.resolverVersion = strings.TrimPrefix(credentialVersion, "resolved:")
+	}
+	if usesStatic {
+		result.staticClient = staticClient
+	}
+	return result, nil
+}
+
+func selectionVersion(selection *ImageRouteSelection) string {
+	if selection == nil {
+		return ""
+	}
+	return selection.ConfigurationVersion
+}
+
+func validEffectiveClientConfig(config *ClientConfig) bool {
+	return config != nil && strings.TrimSpace(config.APIKey) != "" && strings.TrimSpace(config.BaseURL) != "" && strings.TrimSpace(config.Model) != ""
+}
+
+func effectiveProviderID(apiStyle string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(apiStyle)) {
+	case "", "openai", "openai-compatible":
+		return "openai", true
+	case "gemini":
+		return "gemini", true
+	default:
+		return "", false
+	}
+}
+
+func effectiveConfigurationVersion(name, credentialVersion string, config *ClientConfig) string {
+	// APIKey is deliberately absent. credentialVersion is supplied by the
+	// resolver and must identify its credential row/version without containing
+	// the credential secret (the GORM resolver uses ID + UpdatedAt + name).
+	canonical := fmt.Sprintf("v1|%s|%s|%s|%s|%s|%d|%d|%d|%d|%d",
+		normalizeClientName(name), credentialVersion, strings.ToLower(strings.TrimSpace(config.APIStyle)),
+		strings.TrimSpace(config.Model), strings.TrimSpace(config.BaseURL), config.Timeout,
+		config.MaxRetries, config.RetryDelay, config.MaxReferenceMaterializedBytes, config.MaxReferenceMaterializationConcurrency,
+	)
+	digest := sha256.Sum256([]byte(canonical))
+	return fmt.Sprintf("effective:v1:%x", digest[:])
 }
 
 func (m *Manager) resolveStaticClient(name string) (*Client, error) {

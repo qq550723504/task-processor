@@ -19,6 +19,7 @@ type productEnrichRuntimeDeps struct {
 	llmMgr               productenrich.LLMManager
 	inputParser          productenrich.InputParser
 	understanding        productenrich.ProductUnderstanding
+	imageAnalyzer        productenrichenrich.ImageAnalyzer
 	contentGenerator     productenrichenrich.TextGenerator
 	specsGenerator       productenrichenrich.TextGenerator
 	variantsGenerator    productenrichenrich.TextGenerator
@@ -40,16 +41,21 @@ func productEnrichInvocationErrorHandler(logger *logrus.Logger) func(aicapabilit
 	}
 }
 
-func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, openaiMgr *openaiclient.Manager, credentialResolver openaiclient.ClientConfigResolver, recorder aicapability.InvocationRecorder) (productEnrichRuntimeDeps, error) {
+func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, openaiMgr *openaiclient.Manager, _ openaiclient.ClientConfigResolver, recorder aicapability.InvocationRecorder) (productEnrichRuntimeDeps, error) {
 	llmMgr, err := productenrich.NewLLMManagerAdapterFromManager(openaiMgr)
 	if err != nil {
 		return productEnrichRuntimeDeps{}, fmt.Errorf("create LLM manager: %w", err)
 	}
+	governedEnabled := cfg.AICapability.ProductEnrichTextEnabled || cfg.AICapability.ProductEnrichVisionEnabled || cfg.AICapability.ProductEnrichListingEnabled
 	if cfg.Debug.ProductEnrichMockLLM {
 		logger.WithField("config", "debug.productEnrichMockLLM").Warn("productenrich mock LLM enabled for local runtime")
-		llmMgr = productenrich.NewLocalMockLLMManager()
+		routedManager, ok := llmMgr.(productenrich.RoutedLLMManager)
+		if !ok {
+			return productEnrichRuntimeDeps{}, fmt.Errorf("create mock LLM manager: routed manager is required")
+		}
+		llmMgr = productenrich.NewLocalMockLLMManager(routedManager)
 	}
-	if err := productenrich.ValidateMockLLMManager(llmMgr); err != nil {
+	if err := productenrich.ValidateGovernedLLMManager(llmMgr, governedEnabled); err != nil {
 		return productEnrichRuntimeDeps{}, fmt.Errorf("validate LLM manager: %w", err)
 	}
 
@@ -62,14 +68,9 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 	var fusionGenerator productenrichenrich.TextGenerator
 	var scoringTextGenerator productenrichenrich.TextGenerator
 	var scoringImageAnalyzer productenrichenrich.ImageAnalyzer
-	if cfg.AICapability.ProductEnrichTextEnabled || cfg.AICapability.ProductEnrichVisionEnabled || cfg.AICapability.ProductEnrichListingEnabled {
-		if credentialResolver == nil {
-			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich capability: credential resolver is required")
-		}
-	}
-	legacyRouteMetadata := productenrichhttpapi.BuildProductEnrichLegacyRouteMetadataResolver(credentialResolver)
+	legacyRouteMetadata := productenrichhttpapi.BuildProductEnrichLegacyRouteMetadataResolver(openaiMgr)
 	if cfg.AICapability.ProductEnrichTextEnabled {
-		router := productenrichhttpapi.BuildProductEnrichTextCapabilityRouter(credentialResolver)
+		router := productenrichhttpapi.BuildProductEnrichTextCapabilityRouter(openaiMgr)
 		textGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
 				router, cfg.AICapability.ProductEnrichTextAllowedTenantIDs, []string{"fast", "default"},
@@ -83,7 +84,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		}
 	}
 	if cfg.AICapability.ProductEnrichVisionEnabled {
-		router := productenrichhttpapi.BuildProductEnrichVisionCapabilityRouter(credentialResolver)
+		router := productenrichhttpapi.BuildProductEnrichVisionCapabilityRouter(openaiMgr)
 		imageAnalyzer, err = productenrichenrich.NewGovernedImageAnalyzer(llmMgr, productenrichenrich.GovernedImageAnalyzerConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
 				router, cfg.AICapability.ProductEnrichVisionAllowedTenantIDs, []string{"vision", "default"},
@@ -97,7 +98,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		}
 	}
 	if cfg.AICapability.ProductEnrichListingEnabled {
-		router := productenrichhttpapi.BuildProductEnrichListingCapabilityRouter(credentialResolver)
+		router := productenrichhttpapi.BuildProductEnrichListingCapabilityRouter(openaiMgr)
 		contentGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
 				router, cfg.AICapability.ProductEnrichListingAllowedTenantIDs, []string{"default"},
@@ -151,7 +152,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		}
 	}
 	if cfg.AICapability.ProductEnrichListingEnabled {
-		router := productenrichhttpapi.BuildProductEnrichFusionCapabilityRouter(credentialResolver)
+		router := productenrichhttpapi.BuildProductEnrichFusionCapabilityRouter(openaiMgr)
 		fusionGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
 				router, cfg.AICapability.ProductEnrichListingAllowedTenantIDs, []string{"default"},
@@ -172,7 +173,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 	}
 	if cfg.AICapability.ProductEnrichTextEnabled {
 		scoringClient := scorerClientName(cfg, "fast")
-		router := productenrichhttpapi.BuildProductEnrichTextQualityCapabilityRouter(credentialResolver, scoringClient)
+		router := productenrichhttpapi.BuildProductEnrichTextQualityCapabilityRouter(openaiMgr, scoringClient)
 		scoringTextGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
 				router, cfg.AICapability.ProductEnrichTextAllowedTenantIDs, uniqueProductEnrichClientNames(scoringClient, "default"),
@@ -193,7 +194,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 	}
 	if cfg.AICapability.ProductEnrichVisionEnabled {
 		scoringClient := scorerClientName(cfg, "vision")
-		router := productenrichhttpapi.BuildProductEnrichVisionQualityCapabilityRouter(credentialResolver, scoringClient)
+		router := productenrichhttpapi.BuildProductEnrichVisionQualityCapabilityRouter(openaiMgr, scoringClient)
 		scoringImageAnalyzer, err = productenrichenrich.NewGovernedImageAnalyzer(llmMgr, productenrichenrich.GovernedImageAnalyzerConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
 				router, cfg.AICapability.ProductEnrichVisionAllowedTenantIDs, uniqueProductEnrichClientNames(scoringClient, "default"),
@@ -231,6 +232,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		llmMgr:               llmMgr,
 		inputParser:          inputParser,
 		understanding:        productUnderstanding,
+		imageAnalyzer:        imageAnalyzer,
 		contentGenerator:     contentGenerator,
 		specsGenerator:       specsGenerator,
 		variantsGenerator:    variantsGenerator,
