@@ -49,7 +49,7 @@ func buildGenerationNavigationDispatchPlan(target *GenerationReviewNavigationTar
 	}
 	plan := &GenerationNavigationDispatchPlan{
 		Strategy:           listinggeneration.NavigationDispatchStrategy(buildGenerationNavigationTargetResourceKind(target), len(reads)),
-		StopOnNotModified:  buildGenerationNavigationDispatchStopOnNotModified(target, len(reads)),
+		StopOnNotModified:  listinggeneration.NavigationDispatchStopOnNotModified(buildGenerationNavigationTargetResourceKind(target), len(reads)),
 		StopOnFirstSuccess: listinggeneration.NavigationDispatchStopOnFirstSuccess(buildGenerationNavigationTargetResourceKind(target), len(reads)),
 		StopOnError:        listinggeneration.NavigationDispatchStopOnError(len(reads)),
 		FallbackStrategy:   listinggeneration.NavigationDispatchFallbackStrategy(buildGenerationNavigationTargetResourceKind(target), len(reads)),
@@ -70,10 +70,6 @@ func buildGenerationNavigationDispatchPlan(target *GenerationReviewNavigationTar
 		})
 	}
 	return plan
-}
-
-func buildGenerationNavigationDispatchStopOnNotModified(target *GenerationReviewNavigationTarget, readCount int) bool {
-	return listinggeneration.NavigationDispatchStopOnNotModified(buildGenerationNavigationTargetResourceKind(target), readCount)
 }
 
 func buildGenerationNavigationDispatchStepCachePreference(target *GenerationReviewNavigationTarget, stepKind string) string {
