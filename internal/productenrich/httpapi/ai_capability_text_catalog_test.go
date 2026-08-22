@@ -116,11 +116,13 @@ func TestProductEnrichCatalogsAcceptGeminiCredentials(t *testing.T) {
 
 func TestProductEnrichExecutionPlannerReturnsLegacyForInactiveTenantWithoutRouting(t *testing.T) {
 	router := &recordingProductEnrichRouter{}
-	planner := BuildProductEnrichExecutionPlanner(router, []string{"tenant-a"}, []string{"fast", "default"})
+	planner := BuildProductEnrichExecutionPlanner(router, []string{"tenant-a"}, []string{"fast", "default"}, productEnrichTestRequestContract(
+		aicapability.CapabilityProductEnrichText, aicapability.OperationProductEnrichTextExtract, aicapability.FeatureTextGenerate,
+	))
 
 	plan, err := planner.Plan(context.Background(), aicapability.RouteRequest{
 		TenantID: " tenant-b ", UserID: "user-b", Capability: aicapability.CapabilityProductEnrichText,
-		Operation: aicapability.OperationProductEnrichTextExtract,
+		Operation: aicapability.OperationProductEnrichTextExtract, RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureTextGenerate},
 	})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
@@ -136,16 +138,83 @@ func TestProductEnrichExecutionPlannerReturnsLegacyForInactiveTenantWithoutRouti
 	}
 }
 
+func TestProductEnrichExecutionPlannerRejectsInvalidInactiveRequestsBeforeRollout(t *testing.T) {
+	shapes := []struct {
+		name       string
+		capability aicapability.Capability
+		operation  aicapability.Operation
+		feature    aicapability.ModelFeature
+	}{
+		{name: "text", capability: aicapability.CapabilityProductEnrichText, operation: aicapability.OperationProductEnrichTextExtract, feature: aicapability.FeatureTextGenerate},
+		{name: "vision", capability: aicapability.CapabilityProductEnrichVision, operation: aicapability.OperationProductEnrichImageAnalyze, feature: aicapability.FeatureVisionAnalyze},
+		{name: "listing json", capability: aicapability.CapabilityProductEnrichListing, operation: aicapability.OperationProductEnrichJSONGenerate, feature: aicapability.FeatureTextGenerate},
+		{name: "listing specs", capability: aicapability.CapabilityProductEnrichListing, operation: aicapability.OperationProductEnrichSpecsGenerate, feature: aicapability.FeatureTextGenerate},
+		{name: "listing variants", capability: aicapability.CapabilityProductEnrichListing, operation: aicapability.OperationProductEnrichVariantsGenerate, feature: aicapability.FeatureTextGenerate},
+		{name: "fusion", capability: aicapability.CapabilityProductEnrichFusion, operation: aicapability.OperationProductEnrichMultimodalFuse, feature: aicapability.FeatureTextGenerate},
+		{name: "text scoring", capability: aicapability.CapabilityProductEnrichText, operation: aicapability.OperationProductEnrichTextQualityScore, feature: aicapability.FeatureTextGenerate},
+		{name: "vision scoring", capability: aicapability.CapabilityProductEnrichVision, operation: aicapability.OperationProductEnrichVisionQualityScore, feature: aicapability.FeatureVisionAnalyze},
+	}
+	invalidRequests := []struct {
+		name     string
+		mutate   func(*aicapability.RouteRequest)
+		category aicapability.ErrorCategory
+	}{
+		{name: "blank tenant", mutate: func(request *aicapability.RouteRequest) { request.TenantID = " " }, category: aicapability.ErrorInvalidInput},
+		{name: "blank user", mutate: func(request *aicapability.RouteRequest) { request.UserID = " " }, category: aicapability.ErrorInvalidInput},
+		{name: "blank capability", mutate: func(request *aicapability.RouteRequest) { request.Capability = "" }, category: aicapability.ErrorInvalidInput},
+		{name: "wrong capability", mutate: func(request *aicapability.RouteRequest) {
+			request.Capability = aicapability.CapabilityProductImageScene
+		}, category: aicapability.ErrorPolicyDenied},
+		{name: "blank operation", mutate: func(request *aicapability.RouteRequest) { request.Operation = "" }, category: aicapability.ErrorInvalidInput},
+		{name: "wrong operation", mutate: func(request *aicapability.RouteRequest) { request.Operation = aicapability.OperationImageGenerate }, category: aicapability.ErrorPolicyDenied},
+		{name: "missing feature", mutate: func(request *aicapability.RouteRequest) { request.RequiredFeatures = nil }, category: aicapability.ErrorPolicyDenied},
+		{name: "wrong feature", mutate: func(request *aicapability.RouteRequest) {
+			request.RequiredFeatures = []aicapability.ModelFeature{aicapability.FeatureImageGenerate}
+		}, category: aicapability.ErrorPolicyDenied},
+	}
+
+	for _, shape := range shapes {
+		t.Run(shape.name, func(t *testing.T) {
+			for _, invalid := range invalidRequests {
+				t.Run(invalid.name, func(t *testing.T) {
+					router := &recordingProductEnrichRouter{}
+					planner := BuildProductEnrichExecutionPlanner(router, []string{"tenant-active"}, []string{"default"}, productEnrichTestRequestContract(
+						shape.capability, shape.operation, shape.feature,
+					))
+					request := aicapability.RouteRequest{
+						TenantID: "tenant-inactive", UserID: "user-a", Capability: shape.capability, Operation: shape.operation,
+						RequiredFeatures: []aicapability.ModelFeature{shape.feature},
+					}
+					invalid.mutate(&request)
+
+					plan, err := planner.Plan(context.Background(), request)
+					if aicapability.CategoryOf(err) != invalid.category {
+						t.Fatalf("error category = %q, want %q; plan = %+v", aicapability.CategoryOf(err), invalid.category, plan)
+					}
+					if plan.Mode != "" || plan.RouteOutcome != "" || len(plan.LegacyClients) != 0 {
+						t.Fatalf("invalid request returned executable plan: %+v", plan)
+					}
+					if router.called {
+						t.Fatal("active router called for invalid inactive request")
+					}
+				})
+			}
+		})
+	}
+}
+
 func TestProductEnrichExecutionPlannerDelegatesActiveTenant(t *testing.T) {
 	router := &recordingProductEnrichRouter{decision: aicapability.RouteDecision{
 		Capability: aicapability.CapabilityProductEnrichText, Operation: aicapability.OperationProductEnrichTextExtract,
-		ProviderID: "openai", ModelID: "text-model", RoutingKey: "productenrich-text", CredentialReference: "fast",
+		ProviderID: "openai", ModelID: "text-model", RoutingKey: "productenrich-text", CredentialReference: "fast", ConfigurationVersion: "config-v1",
 	}}
-	planner := BuildProductEnrichExecutionPlanner(router, []string{" tenant-a "}, []string{"fast", "default"})
+	planner := BuildProductEnrichExecutionPlanner(router, []string{" tenant-a "}, []string{"fast", "default"}, productEnrichTestRequestContract(
+		aicapability.CapabilityProductEnrichText, aicapability.OperationProductEnrichTextExtract, aicapability.FeatureTextGenerate,
+	))
 
 	plan, err := planner.Plan(context.Background(), aicapability.RouteRequest{
 		TenantID: "tenant-a", UserID: "user-a", Capability: aicapability.CapabilityProductEnrichText,
-		Operation: aicapability.OperationProductEnrichTextExtract,
+		Operation: aicapability.OperationProductEnrichTextExtract, RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureTextGenerate},
 	})
 	if err != nil {
 		t.Fatalf("Plan: %v", err)
@@ -302,6 +371,13 @@ type recordingProductEnrichRouter struct {
 	decision aicapability.RouteDecision
 	err      error
 	called   bool
+}
+
+func productEnrichTestRequestContract(capability aicapability.Capability, operation aicapability.Operation, feature aicapability.ModelFeature) aicapability.RouteRequestContract {
+	return aicapability.RouteRequestContract{
+		RequireTenantID: true, RequireUserID: true, Capability: capability,
+		Operations: []aicapability.Operation{operation}, RequiredFeatures: []aicapability.ModelFeature{feature},
+	}
 }
 
 func (r *recordingProductEnrichRouter) Decide(context.Context, aicapability.RouteRequest) (aicapability.RouteDecision, error) {

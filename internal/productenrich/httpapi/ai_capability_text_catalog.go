@@ -72,10 +72,10 @@ func BuildProductEnrichListingCapabilityRouter(resolver openaiclient.EffectiveCl
 	)
 }
 
-func BuildProductEnrichExecutionPlanner(router aicapability.Router, activeTenantIDs []string, legacyClients []string) aicapability.ExecutionPlanner {
+func BuildProductEnrichExecutionPlanner(router aicapability.Router, activeTenantIDs []string, legacyClients []string, requestContract aicapability.RouteRequestContract) aicapability.ExecutionPlanner {
 	return tenantRolloutPlanner{
 		router: router, activeTenantIDs: productEnrichTextTenantIDSet(activeTenantIDs),
-		legacyClients: append([]string(nil), legacyClients...),
+		legacyClients: append([]string(nil), legacyClients...), requestContract: requestContract,
 	}
 }
 
@@ -97,9 +97,13 @@ type tenantRolloutPlanner struct {
 	router          aicapability.Router
 	activeTenantIDs map[string]struct{}
 	legacyClients   []string
+	requestContract aicapability.RouteRequestContract
 }
 
 func (p tenantRolloutPlanner) Plan(ctx context.Context, request aicapability.RouteRequest) (aicapability.ExecutionPlan, error) {
+	if err := p.requestContract.Validate(request); err != nil {
+		return aicapability.ExecutionPlan{}, err
+	}
 	if _, active := p.activeTenantIDs[strings.TrimSpace(request.TenantID)]; !active {
 		plan := aicapability.ExecutionPlan{
 			Mode: aicapability.RoutingModeLegacy, RouteOutcome: aicapability.RouteOutcomeLegacy,

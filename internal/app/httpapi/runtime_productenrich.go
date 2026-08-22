@@ -74,6 +74,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		textGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
 				router, cfg.AICapability.ProductEnrichTextAllowedTenantIDs, []string{"fast", "default"},
+				productEnrichExecutionRequestContract(aicapability.CapabilityProductEnrichText, aicapability.OperationProductEnrichTextExtract, aicapability.FeatureTextGenerate),
 			),
 			LegacyRouteMetadata: legacyRouteMetadata,
 			Recorder:            recorder,
@@ -88,6 +89,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		imageAnalyzer, err = productenrichenrich.NewGovernedImageAnalyzer(llmMgr, productenrichenrich.GovernedImageAnalyzerConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
 				router, cfg.AICapability.ProductEnrichVisionAllowedTenantIDs, []string{"vision", "default"},
+				productEnrichExecutionRequestContract(aicapability.CapabilityProductEnrichVision, aicapability.OperationProductEnrichImageAnalyze, aicapability.FeatureVisionAnalyze),
 			),
 			LegacyRouteMetadata: legacyRouteMetadata,
 			Recorder:            recorder,
@@ -102,6 +104,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		contentGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
 				router, cfg.AICapability.ProductEnrichListingAllowedTenantIDs, []string{"default"},
+				productEnrichExecutionRequestContract(aicapability.CapabilityProductEnrichListing, aicapability.OperationProductEnrichJSONGenerate, aicapability.FeatureTextGenerate),
 			),
 			LegacyRouteMetadata: legacyRouteMetadata,
 			Recorder:            recorder,
@@ -119,6 +122,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		specsGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
 				router, cfg.AICapability.ProductEnrichListingAllowedTenantIDs, []string{"default"},
+				productEnrichExecutionRequestContract(aicapability.CapabilityProductEnrichListing, aicapability.OperationProductEnrichSpecsGenerate, aicapability.FeatureTextGenerate),
 			),
 			LegacyRouteMetadata: legacyRouteMetadata,
 			Recorder:            recorder,
@@ -136,6 +140,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		variantsGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
 				router, cfg.AICapability.ProductEnrichListingAllowedTenantIDs, []string{"default"},
+				productEnrichExecutionRequestContract(aicapability.CapabilityProductEnrichListing, aicapability.OperationProductEnrichVariantsGenerate, aicapability.FeatureTextGenerate),
 			),
 			LegacyRouteMetadata: legacyRouteMetadata,
 			Recorder:            recorder,
@@ -156,6 +161,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		fusionGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
 				router, cfg.AICapability.ProductEnrichListingAllowedTenantIDs, []string{"default"},
+				productEnrichExecutionRequestContract(aicapability.CapabilityProductEnrichFusion, aicapability.OperationProductEnrichMultimodalFuse, aicapability.FeatureTextGenerate),
 			),
 			LegacyRouteMetadata: legacyRouteMetadata,
 			Recorder:            recorder,
@@ -177,6 +183,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		scoringTextGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
 				router, cfg.AICapability.ProductEnrichTextAllowedTenantIDs, uniqueProductEnrichClientNames(scoringClient, "default"),
+				productEnrichExecutionRequestContract(aicapability.CapabilityProductEnrichText, aicapability.OperationProductEnrichTextQualityScore, aicapability.FeatureTextGenerate),
 			),
 			LegacyRouteMetadata: legacyRouteMetadata,
 			Recorder:            recorder,
@@ -198,6 +205,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		scoringImageAnalyzer, err = productenrichenrich.NewGovernedImageAnalyzer(llmMgr, productenrichenrich.GovernedImageAnalyzerConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
 				router, cfg.AICapability.ProductEnrichVisionAllowedTenantIDs, uniqueProductEnrichClientNames(scoringClient, "default"),
+				productEnrichExecutionRequestContract(aicapability.CapabilityProductEnrichVision, aicapability.OperationProductEnrichVisionQualityScore, aicapability.FeatureVisionAnalyze),
 			),
 			LegacyRouteMetadata: legacyRouteMetadata,
 			Recorder:            recorder,
@@ -240,6 +248,13 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		scoringTextGenerator: scoringTextGenerator,
 		scoringImageAnalyzer: scoringImageAnalyzer,
 	}, nil
+}
+
+func productEnrichExecutionRequestContract(capability aicapability.Capability, operation aicapability.Operation, feature aicapability.ModelFeature) aicapability.RouteRequestContract {
+	return aicapability.RouteRequestContract{
+		RequireTenantID: true, RequireUserID: true, Capability: capability,
+		Operations: []aicapability.Operation{operation}, RequiredFeatures: []aicapability.ModelFeature{feature},
+	}
 }
 
 func scorerClientName(cfg *config.Config, fallback string) string {

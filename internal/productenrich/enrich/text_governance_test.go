@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/aicapability"
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
+	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
 	"task-processor/internal/shared/aiidentity"
 )
 
@@ -62,6 +63,30 @@ func TestGovernedTextActivePlanRejectsBlankConfigurationVersionBeforeProviderCal
 	}
 	if provider.called {
 		t.Fatal("provider called for active plan with blank configuration version")
+	}
+}
+
+func TestGovernedTextRejectsMismatchedRolloutContractBeforeLegacyProviderCall(t *testing.T) {
+	provider := &routedTextManager{defaultResponse: "legacy response"}
+	recorder := &textInvocationRecorder{}
+	planner := productenrichhttpapi.BuildProductEnrichExecutionPlanner(nil, []string{"tenant-active"}, []string{"default"}, aicapability.RouteRequestContract{
+		RequireTenantID: true, RequireUserID: true, Capability: aicapability.CapabilityProductEnrichVision,
+		Operations:       []aicapability.Operation{aicapability.OperationProductEnrichImageAnalyze},
+		RequiredFeatures: []aicapability.ModelFeature{aicapability.FeatureVisionAnalyze},
+	})
+	generator, err := productenrichenrich.NewGovernedTextGenerator(provider, productenrichenrich.GovernedTextGeneratorConfig{
+		Planner: planner, LegacyRouteMetadata: staticLegacyRouteMetadataResolver{}, Recorder: recorder,
+	})
+	if err != nil {
+		t.Fatalf("NewGovernedTextGenerator: %v", err)
+	}
+
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-inactive", UserID: "user-a"})
+	if _, err := generator.Generate(ctx, "prompt"); aicapability.CategoryOf(err) != aicapability.ErrorPolicyDenied {
+		t.Fatalf("error category = %q, want policy_denied", aicapability.CategoryOf(err))
+	}
+	if provider.called || provider.legacyCalled || provider.defaultLookup || len(provider.namedLookups) != 0 {
+		t.Fatalf("provider used for mismatched rollout contract: %+v", provider)
 	}
 }
 
