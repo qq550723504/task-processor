@@ -19,8 +19,8 @@ func appendProductHandlerRoutes(routes []httproute.Descriptor, handler producten
 		return routes
 	}
 	return append(routes,
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/products/generate", Module: "products", Handler: handler.GenerateProduct},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/products/tasks/:task_id", Module: "products", Handler: handler.GetTaskResult},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/products/generate", Module: "products", AuthPolicy: httproute.AuthPolicyVerifiedIdentity, Handler: handler.GenerateProduct},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/products/tasks/:task_id", Module: "products", AuthPolicy: httproute.AuthPolicyVerifiedIdentity, Handler: handler.GetTaskResult},
 	)
 }
 
@@ -29,8 +29,8 @@ func appendImageHandlerRoutes(routes []httproute.Descriptor, handler productimag
 		return routes
 	}
 	return append(routes,
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/images/process", Module: "images", Handler: handler.ProcessImages},
-		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/images/tasks/:task_id", Module: "images", Handler: handler.GetTaskResult},
-		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/images/tasks/:task_id/review", Module: "images", Handler: handler.ReviewTask},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/images/process", Module: "images", AuthPolicy: httproute.AuthPolicyVerifiedIdentity, Handler: handler.ProcessImages},
+		httproute.Descriptor{Method: http.MethodGet, Path: "/api/v1/images/tasks/:task_id", Module: "images", AuthPolicy: httproute.AuthPolicyVerifiedIdentity, Handler: handler.GetTaskResult},
+		httproute.Descriptor{Method: http.MethodPost, Path: "/api/v1/images/tasks/:task_id/review", Module: "images", AuthPolicy: httproute.AuthPolicyVerifiedIdentity, Handler: handler.ReviewTask},
 	)
 }
