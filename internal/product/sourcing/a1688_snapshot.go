@@ -9,7 +9,6 @@ type Alibaba1688ProductSnapshot struct {
 	Images           []string
 	MainImage        string
 	Videos           []Alibaba1688VideoSnapshot
-	PriceRangeCount  int
 	MinPrice         float64
 	MaxPrice         float64
 	Currency         string

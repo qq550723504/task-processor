@@ -63,7 +63,7 @@ func appendBundleQueueItems(items *[]GenerationWorkQueueItem, index map[generati
 func appendBundleSlotQueueItem(items *[]GenerationWorkQueueItem, index map[generationQueueKey]int, renderPreviewIndex map[string]AssetRenderPreview, scenePresetIndex map[string]*GenerationScenePresetSummary, platform string, slot common.BundleSlot) {
 	renderPreview := renderPreviewIndex[strings.TrimSpace(slot.AssetID)]
 	quality := generationQueueSlotExecutionQuality(slot)
-	grade := generationQualityGrade(quality)
+	grade := listinggeneration.QualityGrade(quality)
 	item := GenerationWorkQueueItem{
 		Platform:                 strings.TrimSpace(platform),
 		GenerationTask:           "",
@@ -83,9 +83,9 @@ func appendBundleSlotQueueItem(items *[]GenerationWorkQueueItem, index map[gener
 		SelectedAssetID:          strings.TrimSpace(slot.AssetID),
 		TargetAssetKind:          strings.TrimSpace(slot.IdealKind),
 		ExecutionQuality:         quality,
-		ExecutionQualityLabel:    generationExecutionQualityLabel(quality),
+		ExecutionQualityLabel:    listinggeneration.ExecutionQualityLabel(quality),
 		QualityGrade:             grade,
-		QualityGradeLabel:        generationQualityGradeLabel(grade),
+		QualityGradeLabel:        listinggeneration.QualityGradeLabel(grade),
 		RenderPreviewAvailable:   renderPreview.AssetID != "",
 		RenderPreviewFormat:      renderPreview.PreviewFormat,
 		RenderPreviewVisualMode:  renderPreview.VisualMode,
@@ -101,7 +101,7 @@ func appendBundleSlotQueueItem(items *[]GenerationWorkQueueItem, index map[gener
 }
 
 func appendMissingSlotQueueItem(items *[]GenerationWorkQueueItem, index map[generationQueueKey]int, platform string, slot common.MissingSlot) {
-	grade := generationQualityGrade("missing")
+	grade := listinggeneration.QualityGrade("missing")
 	item := GenerationWorkQueueItem{
 		Platform:              strings.TrimSpace(platform),
 		Slot:                  strings.TrimSpace(slot.Slot),
@@ -113,9 +113,9 @@ func appendMissingSlotQueueItem(items *[]GenerationWorkQueueItem, index map[gene
 		RenderProfile:         strings.TrimSpace(slot.RenderProfile),
 		StateReason:           strings.TrimSpace(slot.Reason),
 		ExecutionQuality:      "missing",
-		ExecutionQualityLabel: generationExecutionQualityLabel("missing"),
+		ExecutionQualityLabel: listinggeneration.ExecutionQualityLabel("missing"),
 		QualityGrade:          grade,
-		QualityGradeLabel:     generationQualityGradeLabel(grade),
+		QualityGradeLabel:     listinggeneration.QualityGradeLabel(grade),
 	}
 	key := generationQueueItemKey(item.Platform, item.RecipeID, item.Slot)
 	if _, exists := index[key]; exists {

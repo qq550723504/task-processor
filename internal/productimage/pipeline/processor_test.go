@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/infra/worker"
 	productimage "task-processor/internal/productimage"
 	"task-processor/internal/shared/aiidentity"
@@ -200,5 +201,38 @@ func TestProcessorMissingExecutionEnvelopeFailsClosed(t *testing.T) {
 	}
 	if !repo.markFailedCalled {
 		t.Fatal("expected task to be marked failed")
+	}
+}
+
+func TestProcessorGovernedIdentityFailureFailsWithoutRetry(t *testing.T) {
+	task := &productimage.Task{
+		ID:         "governed-identity-failure",
+		Status:     productimage.TaskStatusPending,
+		RetryCount: 0,
+		Request:    &productimage.ImageProcessRequest{Marketplace: "shein"},
+	}
+	setTestExecutionEnvelope(task)
+	repo := &stubTaskRepo{task: task}
+	service := &stubImageService{err: aicapability.NewError(
+		aicapability.ErrorIdentityIntegrity,
+		string(aicapability.OperationProductImageSceneGenerate),
+		nil,
+	)}
+	submitter := &stubSubmitter{}
+	processor, err := NewProcessor(service, repo, logrus.New(), 3)
+	if err != nil {
+		t.Fatalf("NewProcessor() error = %v", err)
+	}
+	processor.SetTaskSubmitter(submitter)
+
+	err = processor.ProcessTask(context.Background(), worker.WorkerJob{TaskData: task.ID})
+	if aicapability.CategoryOf(err) != aicapability.ErrorIdentityIntegrity {
+		t.Fatalf("ProcessTask() error = %v, want identity_integrity", err)
+	}
+	if !repo.markFailedCalled || len(repo.lastFailedMessage) < len("identity_integrity: ") || repo.lastFailedMessage[:len("identity_integrity: ")] != "identity_integrity: " {
+		t.Fatalf("failed message = %q, want identity_integrity prefix", repo.lastFailedMessage)
+	}
+	if repo.incrementRetryCalled || repo.prepareRetryCalled || submitter.submittedTaskID != "" {
+		t.Fatalf("identity failure retried: increment=%v prepare=%v submitted=%q", repo.incrementRetryCalled, repo.prepareRetryCalled, submitter.submittedTaskID)
 	}
 }

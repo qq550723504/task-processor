@@ -25,7 +25,8 @@ func (r *MemTaskRepository) CreateTask(_ context.Context, task *productenrich.Ta
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.tasks[task.ID] = task
+	copied := *task
+	r.tasks[task.ID] = &copied
 	return nil
 }
 

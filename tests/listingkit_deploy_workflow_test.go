@@ -334,7 +334,7 @@ func TestListingKitSchemaMigrationJobDeadlineMatchesDriverWait(t *testing.T) {
 	}
 }
 
-func TestProductListingSchemaMigrationJobDeadlineMatchesDriverWait(t *testing.T) {
+func TestProductListingAPISchemaMigrationJobDeadlineMatchesDriverWait(t *testing.T) {
 	manifestPath := filepath.Join("..", "deployments", "kubernetes", "listingkit-workbench", "jobs", "product-listing-api-schema-migrate-job.yaml")
 	content, err := os.ReadFile(manifestPath)
 	if err != nil {

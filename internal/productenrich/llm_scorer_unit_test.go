@@ -33,12 +33,13 @@ func TestLLMScorerUsesInjectedGovernedCapabilities(t *testing.T) {
 	text := &testScoringTextGenerator{response: `{"score":91}`}
 	image := &testScoringImageAnalyzer{response: `{"score":87}`}
 	scorer := NewLLMScorer(&LLMScorerConfig{TextGenerator: text, ImageAnalyzer: image})
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
 
-	textScore, err := scorer.ScoreText(context.Background(), "product", 50)
+	textScore, err := scorer.ScoreText(ctx, "product", 50)
 	if err != nil {
 		t.Fatalf("ScoreText: %v", err)
 	}
-	imageScore, err := scorer.ScoreImage(context.Background(), "image.jpg", 50)
+	imageScore, err := scorer.ScoreImage(ctx, "image.jpg", 50)
 	if err != nil {
 		t.Fatalf("ScoreImage: %v", err)
 	}
@@ -51,15 +52,95 @@ func TestLLMScorerRetriesInjectedGovernedCapabilities(t *testing.T) {
 	text := &retryingScoringTextGenerator{responses: []retryResponse{{err: errors.New("temporary")}, {response: `{"score":91}`}}}
 	image := &retryingScoringImageAnalyzer{responses: []retryResponse{{err: errors.New("temporary")}, {response: `{"score":87}`}}}
 	scorer := NewLLMScorer(&LLMScorerConfig{TextGenerator: text, ImageAnalyzer: image, MaxRetries: 2})
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
 
-	if _, err := scorer.ScoreText(context.Background(), "product", 50); err != nil {
+	if _, err := scorer.ScoreText(ctx, "product", 50); err != nil {
 		t.Fatalf("ScoreText: %v", err)
 	}
-	if _, err := scorer.ScoreImage(context.Background(), "image.jpg", 50); err != nil {
+	if _, err := scorer.ScoreImage(ctx, "image.jpg", 50); err != nil {
 		t.Fatalf("ScoreImage: %v", err)
 	}
 	if text.calls != 2 || image.calls != 2 {
 		t.Fatalf("governed retry calls = text:%d image:%d, want 2 each", text.calls, image.calls)
+	}
+}
+
+func TestLLMScorerDoesNotRetryIdentityIntegrityFailures(t *testing.T) {
+	identityErr := aicapability.NewError(
+		aicapability.ErrorIdentityIntegrity,
+		string(aicapability.OperationProductEnrichTextQualityScore),
+		nil,
+	)
+	text := &retryingScoringTextGenerator{responses: []retryResponse{{err: identityErr}, {response: `{"score":91}`}}}
+	image := &retryingScoringImageAnalyzer{responses: []retryResponse{{err: identityErr}, {response: `{"score":87}`}}}
+	scorer := NewLLMScorer(&LLMScorerConfig{TextGenerator: text, ImageAnalyzer: image, MaxRetries: 2})
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+
+	if _, err := scorer.ScoreText(ctx, "product", 50); aicapability.CategoryOf(err) != aicapability.ErrorIdentityIntegrity {
+		t.Fatalf("ScoreText() error = %v, want identity_integrity", err)
+	}
+	if _, err := scorer.ScoreImage(ctx, "image.jpg", 50); aicapability.CategoryOf(err) != aicapability.ErrorIdentityIntegrity {
+		t.Fatalf("ScoreImage() error = %v, want identity_integrity", err)
+	}
+	if text.calls != 1 || image.calls != 1 {
+		t.Fatalf("identity failure calls = text:%d image:%d, want 1 each", text.calls, image.calls)
+	}
+}
+
+func TestLLMScorerRejectsMissingIdentityBeforeGovernedCacheHit(t *testing.T) {
+	text := &testScoringTextGenerator{response: `{"score":91}`}
+	image := &testScoringImageAnalyzer{response: `{"score":87}`}
+	cache := newMockLLMScoreCache()
+	cache.textResults["cached product"] = &CachedLLMScore{Score: 91}
+	cache.imageResults["cached-image.jpg"] = &CachedLLMScore{Score: 87}
+	scorer := NewLLMScorer(&LLMScorerConfig{
+		ScoreCache:    cache,
+		TextGenerator: text,
+		ImageAnalyzer: image,
+	})
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a"})
+
+	if _, err := scorer.ScoreText(ctx, "cached product", 50); aicapability.CategoryOf(err) != aicapability.ErrorIdentityIntegrity {
+		t.Fatalf("ScoreText() error = %v, want identity_integrity", err)
+	}
+	if _, err := scorer.ScoreImage(ctx, "cached-image.jpg", 50); aicapability.CategoryOf(err) != aicapability.ErrorIdentityIntegrity {
+		t.Fatalf("ScoreImage() error = %v, want identity_integrity", err)
+	}
+	if text.called || image.called {
+		t.Fatalf("governed capabilities called after identity rejection: text=%v image=%v", text.called, image.called)
+	}
+}
+
+func TestLLMScorerGovernedCapabilitiesBypassLegacyContentCache(t *testing.T) {
+	text := &testScoringTextGenerator{response: `{"score":100}`}
+	image := &testScoringImageAnalyzer{response: `{"score":100}`}
+	cache := newMockLLMScoreCache()
+	cache.textResults["shared product"] = &CachedLLMScore{Score: 1}
+	cache.imageResults["https://example.test/shared-image.jpg"] = &CachedLLMScore{Score: 1}
+	scorer := NewLLMScorer(&LLMScorerConfig{
+		ScoreCache:     cache,
+		TextGenerator:  text,
+		ImageAnalyzer:  image,
+		FallbackWeight: 0.3,
+	})
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+
+	textScore, err := scorer.ScoreText(ctx, "shared product", 50)
+	if err != nil {
+		t.Fatalf("ScoreText() error = %v", err)
+	}
+	imageScore, err := scorer.ScoreImage(ctx, "https://example.test/shared-image.jpg", 50)
+	if err != nil {
+		t.Fatalf("ScoreImage() error = %v", err)
+	}
+	if textScore != 65 || imageScore != 65 {
+		t.Fatalf("governed scores = text %.1f/image %.1f, want 65 from governed calls", textScore, imageScore)
+	}
+	if !text.called || !image.called {
+		t.Fatalf("governed calls = text %v/image %v, want both called", text.called, image.called)
+	}
+	if cache.textResults["shared product"].Score != 1 || cache.imageResults["https://example.test/shared-image.jpg"].Score != 1 {
+		t.Fatalf("legacy cache was overwritten in governed mode: text=%+v image=%+v", cache.textResults, cache.imageResults)
 	}
 }
 

@@ -74,7 +74,7 @@ func resolveGenerationReviewPreviewResponse(session *GenerationReviewSession, qu
 	return &GenerationReviewPreviewViewer{
 		Platform: strings.TrimSpace(query.Platform),
 		Slot:     strings.TrimSpace(query.Slot),
-		FocusKey: generationReviewFocusKey(strings.TrimSpace(query.Platform), strings.TrimSpace(query.Slot), strings.TrimSpace(query.PreviewCapability)),
+		FocusKey: listinggeneration.ReviewFocusKey(strings.TrimSpace(query.Platform), strings.TrimSpace(query.Slot), strings.TrimSpace(query.PreviewCapability)),
 	}, nil, nil, nil
 }
 

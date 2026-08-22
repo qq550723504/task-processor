@@ -13,6 +13,7 @@ import (
 	"task-processor/internal/aicapability"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/pkg/jsonx"
+	"task-processor/internal/shared/aiidentity"
 
 	"github.com/sirupsen/logrus"
 )
@@ -131,6 +132,11 @@ func (s *llmScorer) scoreTextResult(ctx context.Context, text string, baseScore 
 	if text == "" {
 		return &llmScoreResult{Score: baseScore}, nil
 	}
+	if s.textGenerator != nil {
+		if err := validateGovernedScoringIdentity(ctx, aicapability.OperationProductEnrichTextQualityScore); err != nil {
+			return &llmScoreResult{Score: baseScore}, err
+		}
+	}
 	resolvedPrompt := resolveTextScoringPrompt(text, baseScore)
 	if preparer, ok := s.textGenerator.(TextExecutionPreparer); ok {
 		if err := ctx.Err(); err != nil {
@@ -144,7 +150,7 @@ func (s *llmScorer) scoreTextResult(ctx context.Context, text string, baseScore 
 	}
 	var getCached func() (*CachedLLMScore, bool)
 	var setCached func(*CachedLLMScore) error
-	if s.scoreCache != nil {
+	if s.scoreCache != nil && s.textGenerator == nil {
 		getCached = func() (*CachedLLMScore, bool) { return s.scoreCache.GetTextScoreResult(ctx, text) }
 		setCached = func(result *CachedLLMScore) error {
 			return s.scoreCache.SetTextScoreResult(ctx, text, result, s.cacheTTL)
@@ -169,6 +175,11 @@ func (s *llmScorer) scoreImageResult(ctx context.Context, imageURL string, baseS
 	if imageURL == "" {
 		return &llmScoreResult{Score: baseScore}, nil
 	}
+	if s.imageAnalyzer != nil {
+		if err := validateGovernedScoringIdentity(ctx, aicapability.OperationProductEnrichVisionQualityScore); err != nil {
+			return &llmScoreResult{Score: baseScore}, err
+		}
+	}
 	resolvedPrompt := resolveImageScoringPrompt(baseScore)
 	if preparer, ok := s.imageAnalyzer.(ImageExecutionPreparer); ok {
 		if err := ctx.Err(); err != nil {
@@ -182,7 +193,7 @@ func (s *llmScorer) scoreImageResult(ctx context.Context, imageURL string, baseS
 	}
 	var getCached func() (*CachedLLMScore, bool)
 	var setCached func(*CachedLLMScore) error
-	if s.scoreCache != nil {
+	if s.scoreCache != nil && s.imageAnalyzer == nil {
 		getCached = func() (*CachedLLMScore, bool) { return s.scoreCache.GetImageScoreResult(ctx, imageURL) }
 		setCached = func(result *CachedLLMScore) error {
 			return s.scoreCache.SetImageScoreResult(ctx, imageURL, result, s.cacheTTL)
@@ -256,6 +267,14 @@ func hashScoreCacheInput(input string) string {
 	return fmt.Sprintf("%x", digest[:])
 }
 
+func validateGovernedScoringIdentity(ctx context.Context, operation aicapability.Operation) error {
+	identity := aiidentity.FromContext(ctx)
+	if identity.TenantID == "" || identity.UserID == "" {
+		return aicapability.NewError(aicapability.ErrorIdentityIntegrity, string(operation), nil)
+	}
+	return nil
+}
+
 // scoreWithCache 通用的缓存+LLM评分流程
 func (s *llmScorer) scoreWithCache(
 	ctx context.Context,
@@ -271,7 +290,7 @@ func (s *llmScorer) scoreWithCache(
 	}
 
 	// 检查缓存
-	if s.scoreCache != nil {
+	if getCached != nil {
 		if cachedResult, found := getCached(); found && cachedResult != nil {
 			finalScore := s.combineScores(baseScore, cachedResult.Score)
 			logger.GetGlobalLogger("productenrich/llm_scorer.go").WithFields(logrus.Fields{
@@ -295,7 +314,7 @@ func (s *llmScorer) scoreWithCache(
 	}
 
 	// 缓存评分结果
-	if s.scoreCache != nil {
+	if setCached != nil {
 		if err := setCached(&CachedLLMScore{
 			Score:  llmResult.Score,
 			Prompt: llmResult.Prompt.Clone(),
@@ -414,6 +433,9 @@ func (s *llmScorer) retryLLMCall(ctx context.Context, maxRetries int, call func(
 		response, err := call()
 		if err == nil {
 			return response, nil
+		}
+		if isIdentityIntegrityError(err) {
+			return "", err
 		}
 		lastErr = err
 		logrus.WithError(err).WithField("attempt", i+1).Warn("LLM scoring attempt failed")

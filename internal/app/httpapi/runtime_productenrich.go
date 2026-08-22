@@ -150,12 +150,11 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich variants capability: %w", err)
 		}
 	}
-	if cfg.AICapability.ProductEnrichTextEnabled || cfg.AICapability.ProductEnrichVisionEnabled {
-		allowedTenants := unionTenantIDs(cfg.AICapability.ProductEnrichTextAllowedTenantIDs, cfg.AICapability.ProductEnrichVisionAllowedTenantIDs)
+	if cfg.AICapability.ProductEnrichListingEnabled {
 		router := productenrichhttpapi.BuildProductEnrichFusionCapabilityRouter(credentialResolver)
 		fusionGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Planner: productenrichhttpapi.BuildProductEnrichExecutionPlanner(
-				router, allowedTenants, []string{"default"},
+				router, cfg.AICapability.ProductEnrichListingAllowedTenantIDs, []string{"default"},
 			),
 			LegacyRouteMetadata: legacyRouteMetadata,
 			Recorder:            recorder,
@@ -184,7 +183,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 			Capability:          aicapability.CapabilityProductEnrichText,
 			Operation:           aicapability.OperationProductEnrichTextQualityScore,
 			RequiredFeature:     aicapability.FeatureTextGenerate,
-			PromptKey:           "productenrich.quality_score.text",
+			PromptKey:           prompt.KProductEnrichLlmScorerTextScoring,
 			PromptVersion:       "v1",
 			PromptScope:         "product_enrich",
 		})
@@ -239,23 +238,6 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		scoringTextGenerator: scoringTextGenerator,
 		scoringImageAnalyzer: scoringImageAnalyzer,
 	}, nil
-}
-
-func unionTenantIDs(groups ...[]string) []string {
-	seen := map[string]struct{}{}
-	var result []string
-	for _, group := range groups {
-		for _, id := range group {
-			id = strings.TrimSpace(id)
-			if id != "" {
-				if _, ok := seen[id]; !ok {
-					seen[id] = struct{}{}
-					result = append(result, id)
-				}
-			}
-		}
-	}
-	return result
 }
 
 func scorerClientName(cfg *config.Config, fallback string) string {

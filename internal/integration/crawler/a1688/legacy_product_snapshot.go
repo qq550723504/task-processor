@@ -21,7 +21,6 @@ func SnapshotFromLegacyProduct(product *model.Product1688) *sourcing.Alibaba1688
 		URL:              product.URL,
 		Images:           slices.Clone(product.Images),
 		MainImage:        product.MainImage,
-		PriceRangeCount:  len(product.PriceRanges),
 		MinPrice:         product.MinPrice,
 		MaxPrice:         product.MaxPrice,
 		Currency:         product.Currency,

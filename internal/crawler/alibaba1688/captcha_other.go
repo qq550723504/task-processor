@@ -2,6 +2,7 @@
 package alibaba1688
 
 import (
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -12,7 +13,7 @@ import (
 )
 
 // handleLoginPrompt 处理登录提示
-func (ch *CaptchaHandler) handleLoginPrompt(page playwright.Page) error {
+func (ch *CaptchaHandler) handleLoginPrompt(ctx context.Context, page playwright.Page) error {
 	loginSelectors := []string{
 		".login-popup",
 		".login-modal",
@@ -44,7 +45,9 @@ func (ch *CaptchaHandler) handleLoginPrompt(page playwright.Page) error {
 				if err == nil && closeBtn != nil {
 					if err := closeBtn.Click(); err == nil {
 						logger.GetGlobalLogger("crawler/alibaba1688").Info("成功关闭登录弹窗")
-						time.Sleep(1 * time.Second)
+						if err := waitForContext(ctx, time.Second); err != nil {
+							return err
+						}
 						return nil
 					}
 				}
@@ -52,7 +55,9 @@ func (ch *CaptchaHandler) handleLoginPrompt(page playwright.Page) error {
 
 			if err := page.Keyboard().Press("Escape"); err == nil {
 				logger.GetGlobalLogger("crawler/alibaba1688").Info("通过ESC键关闭登录弹窗")
-				time.Sleep(1 * time.Second)
+				if err := waitForContext(ctx, time.Second); err != nil {
+					return err
+				}
 				return nil
 			}
 			break
@@ -62,68 +67,68 @@ func (ch *CaptchaHandler) handleLoginPrompt(page playwright.Page) error {
 }
 
 // handleClickCaptchaWithResult 处理点击验证码并返回结果
-func (ch *CaptchaHandler) handleClickCaptchaWithResult(page playwright.Page) CaptchaResult {
-	return ch.handleClickCaptchaWithManualOption(page, true)
+func (ch *CaptchaHandler) handleClickCaptchaWithResult(ctx context.Context, page playwright.Page) CaptchaResult {
+	return ch.handleClickCaptchaWithManualOption(ctx, page, true)
 }
 
-func (ch *CaptchaHandler) handleClickCaptchaWithManualOption(page playwright.Page, allowManual bool) CaptchaResult {
+func (ch *CaptchaHandler) handleClickCaptchaWithManualOption(ctx context.Context, page playwright.Page, allowManual bool) CaptchaResult {
 	logger.GetGlobalLogger("crawler/alibaba1688").Warn("检测到点击验证码，需要手动处理")
-	return ch.fallbackCaptchaResult(page, CaptchaTypeClick, "点击验证码", allowManual)
+	return ch.fallbackCaptchaResult(ctx, page, CaptchaTypeClick, "点击验证码", allowManual)
 }
 
 // handleImageCaptchaWithResult 处理图片验证码并返回结果
-func (ch *CaptchaHandler) handleImageCaptchaWithResult(page playwright.Page) CaptchaResult {
-	return ch.handleImageCaptchaWithManualOption(page, true)
+func (ch *CaptchaHandler) handleImageCaptchaWithResult(ctx context.Context, page playwright.Page) CaptchaResult {
+	return ch.handleImageCaptchaWithManualOption(ctx, page, true)
 }
 
-func (ch *CaptchaHandler) handleImageCaptchaWithManualOption(page playwright.Page, allowManual bool) CaptchaResult {
+func (ch *CaptchaHandler) handleImageCaptchaWithManualOption(ctx context.Context, page playwright.Page, allowManual bool) CaptchaResult {
 	startTime := time.Now()
 
-	if result := ch.tryOCRCaptcha(page); result.Status == CaptchaStatusSuccess {
+	if result := ch.tryOCRCaptcha(ctx, page); result.Status == CaptchaStatusSuccess || ctx.Err() != nil {
 		result.Duration = time.Since(startTime)
 		return result
 	}
 
 	logger.GetGlobalLogger("crawler/alibaba1688").Warn("图片验证码OCR识别失败，需要手动处理")
-	return ch.fallbackCaptchaResult(page, CaptchaTypeImage, "图片验证码", allowManual)
+	return ch.fallbackCaptchaResult(ctx, page, CaptchaTypeImage, "图片验证码", allowManual)
 }
 
 // handleTextCaptchaWithResult 处理文字验证码并返回结果
-func (ch *CaptchaHandler) handleTextCaptchaWithResult(page playwright.Page) CaptchaResult {
-	return ch.handleTextCaptchaWithManualOption(page, true)
+func (ch *CaptchaHandler) handleTextCaptchaWithResult(ctx context.Context, page playwright.Page) CaptchaResult {
+	return ch.handleTextCaptchaWithManualOption(ctx, page, true)
 }
 
-func (ch *CaptchaHandler) handleTextCaptchaWithManualOption(page playwright.Page, allowManual bool) CaptchaResult {
+func (ch *CaptchaHandler) handleTextCaptchaWithManualOption(ctx context.Context, page playwright.Page, allowManual bool) CaptchaResult {
 	startTime := time.Now()
 
-	if result := ch.tryTextCaptcha(page); result.Status == CaptchaStatusSuccess {
+	if result := ch.tryTextCaptcha(ctx, page); result.Status == CaptchaStatusSuccess || ctx.Err() != nil {
 		result.Duration = time.Since(startTime)
 		return result
 	}
 
 	logger.GetGlobalLogger("crawler/alibaba1688").Warn("文字验证码自动填写失败，需要手动处理")
-	return ch.fallbackCaptchaResult(page, CaptchaTypeText, "文字验证码", allowManual)
+	return ch.fallbackCaptchaResult(ctx, page, CaptchaTypeText, "文字验证码", allowManual)
 }
 
 // handleMathCaptchaWithResult 处理数学验证码并返回结果
-func (ch *CaptchaHandler) handleMathCaptchaWithResult(page playwright.Page) CaptchaResult {
-	return ch.handleMathCaptchaWithManualOption(page, true)
+func (ch *CaptchaHandler) handleMathCaptchaWithResult(ctx context.Context, page playwright.Page) CaptchaResult {
+	return ch.handleMathCaptchaWithManualOption(ctx, page, true)
 }
 
-func (ch *CaptchaHandler) handleMathCaptchaWithManualOption(page playwright.Page, allowManual bool) CaptchaResult {
+func (ch *CaptchaHandler) handleMathCaptchaWithManualOption(ctx context.Context, page playwright.Page, allowManual bool) CaptchaResult {
 	startTime := time.Now()
 
-	if result := ch.solveMathCaptcha(page); result.Status == CaptchaStatusSuccess {
+	if result := ch.solveMathCaptcha(ctx, page); result.Status == CaptchaStatusSuccess || ctx.Err() != nil {
 		result.Duration = time.Since(startTime)
 		return result
 	}
 
 	logger.GetGlobalLogger("crawler/alibaba1688").Warn("数学验证码求解失败，需要手动处理")
-	return ch.fallbackCaptchaResult(page, CaptchaTypeMath, "数学验证码", allowManual)
+	return ch.fallbackCaptchaResult(ctx, page, CaptchaTypeMath, "数学验证码", allowManual)
 }
 
 // tryOCRCaptcha 尝试使用OCR识别图片验证码
-func (ch *CaptchaHandler) tryOCRCaptcha(page playwright.Page) CaptchaResult {
+func (ch *CaptchaHandler) tryOCRCaptcha(ctx context.Context, page playwright.Page) CaptchaResult {
 	captchaImageSelectors := []string{
 		"img[src*='captcha']",
 		"img[src*='verify']",
@@ -134,6 +139,9 @@ func (ch *CaptchaHandler) tryOCRCaptcha(page playwright.Page) CaptchaResult {
 	}
 
 	for _, selector := range captchaImageSelectors {
+		if err := ctx.Err(); err != nil {
+			return canceledCaptchaResult(ctx, CaptchaTypeImage)
+		}
 		element, err := page.QuerySelector(selector)
 		if err != nil || element == nil {
 			continue
@@ -182,7 +190,9 @@ func (ch *CaptchaHandler) tryOCRCaptcha(page playwright.Page) CaptchaResult {
 					continue
 				}
 
-				time.Sleep(500 * time.Millisecond)
+				if err := waitForContext(ctx, 500*time.Millisecond); err != nil {
+					return canceledCaptchaResult(ctx, CaptchaTypeImage)
+				}
 
 				submitSelectors := []string{
 					"button[type='submit']",
@@ -197,7 +207,9 @@ func (ch *CaptchaHandler) tryOCRCaptcha(page playwright.Page) CaptchaResult {
 						isVisible, _ := submitBtn.IsVisible()
 						if isVisible {
 							if err := submitBtn.Click(); err == nil {
-								time.Sleep(2 * time.Second)
+								if err := waitForContext(ctx, 2*time.Second); err != nil {
+									return canceledCaptchaResult(ctx, CaptchaTypeImage)
+								}
 								if !ch.hasImageCaptcha(page) {
 									return CaptchaResult{
 										Type:       CaptchaTypeImage,
@@ -228,7 +240,7 @@ func (ch *CaptchaHandler) recognizeCaptchaCode(page playwright.Page, imageElemen
 }
 
 // tryTextCaptcha 尝试处理文字验证码
-func (ch *CaptchaHandler) tryTextCaptcha(page playwright.Page) CaptchaResult {
+func (ch *CaptchaHandler) tryTextCaptcha(ctx context.Context, page playwright.Page) CaptchaResult {
 	inputSelectors := []string{
 		"input[name*='captcha']",
 		"input[name*='verify']",
@@ -238,6 +250,9 @@ func (ch *CaptchaHandler) tryTextCaptcha(page playwright.Page) CaptchaResult {
 	}
 
 	for _, selector := range inputSelectors {
+		if err := ctx.Err(); err != nil {
+			return canceledCaptchaResult(ctx, CaptchaTypeText)
+		}
 		input, err := page.QuerySelector(selector)
 		if err != nil || input == nil {
 			continue
@@ -268,7 +283,7 @@ func (ch *CaptchaHandler) tryTextCaptcha(page playwright.Page) CaptchaResult {
 }
 
 // solveMathCaptcha 尝试解决数学验证码
-func (ch *CaptchaHandler) solveMathCaptcha(page playwright.Page) CaptchaResult {
+func (ch *CaptchaHandler) solveMathCaptcha(ctx context.Context, page playwright.Page) CaptchaResult {
 	mathSelectors := []string{
 		".math-captcha",
 		".calculate-code",
@@ -278,6 +293,9 @@ func (ch *CaptchaHandler) solveMathCaptcha(page playwright.Page) CaptchaResult {
 	}
 
 	for _, selector := range mathSelectors {
+		if err := ctx.Err(); err != nil {
+			return canceledCaptchaResult(ctx, CaptchaTypeMath)
+		}
 		element, err := page.QuerySelector(selector)
 		if err != nil || element == nil {
 			continue
@@ -304,7 +322,9 @@ func (ch *CaptchaHandler) solveMathCaptcha(page playwright.Page) CaptchaResult {
 					isVisible, _ := input.IsVisible()
 					if isVisible {
 						if err := input.Fill(result); err == nil {
-							time.Sleep(500 * time.Millisecond)
+							if err := waitForContext(ctx, 500*time.Millisecond); err != nil {
+								return canceledCaptchaResult(ctx, CaptchaTypeMath)
+							}
 
 							submitSelectors := []string{
 								"button[type='submit']",
@@ -318,7 +338,9 @@ func (ch *CaptchaHandler) solveMathCaptcha(page playwright.Page) CaptchaResult {
 									isVisible, _ := submitBtn.IsVisible()
 									if isVisible {
 										if err := submitBtn.Click(); err == nil {
-											time.Sleep(2 * time.Second)
+											if err := waitForContext(ctx, 2*time.Second); err != nil {
+												return canceledCaptchaResult(ctx, CaptchaTypeMath)
+											}
 											if !ch.hasMathCaptcha(page) {
 												return CaptchaResult{
 													Type:       CaptchaTypeMath,
@@ -387,7 +409,7 @@ func parseInt(s string) int {
 }
 
 // waitForManualCaptchaWithResult 等待用户手动处理验证码并返回结果
-func (ch *CaptchaHandler) waitForManualCaptchaWithResult(page playwright.Page, captchaType CaptchaType, captchaName string) CaptchaResult {
+func (ch *CaptchaHandler) waitForManualCaptchaWithResult(ctx context.Context, page playwright.Page, captchaType CaptchaType, captchaName string) CaptchaResult {
 	logger.GetGlobalLogger("crawler/alibaba1688").Warnf("检测到%s，请手动完成验证", captchaName)
 	logger.GetGlobalLogger("crawler/alibaba1688").Info("等待用户手动操作...")
 
@@ -395,6 +417,9 @@ func (ch *CaptchaHandler) waitForManualCaptchaWithResult(page playwright.Page, c
 	startTime := time.Now()
 
 	for time.Since(startTime) < timeout {
+		if err := ctx.Err(); err != nil {
+			return canceledCaptchaResult(ctx, captchaType)
+		}
 		title, _ := page.Title()
 		if !strings.Contains(strings.ToLower(title), "验证") &&
 			!strings.Contains(strings.ToLower(title), "captcha") &&
@@ -407,7 +432,9 @@ func (ch *CaptchaHandler) waitForManualCaptchaWithResult(page playwright.Page, c
 			}
 		}
 
-		time.Sleep(2 * time.Second)
+		if err := waitForContext(ctx, 2*time.Second); err != nil {
+			return canceledCaptchaResult(ctx, captchaType)
+		}
 	}
 
 	return CaptchaResult{

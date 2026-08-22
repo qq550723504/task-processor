@@ -11,6 +11,7 @@ import (
 type stubSource1688 struct {
 	product  *model.Product1688
 	err      error
+	ctx      context.Context
 	url      string
 	prepared bool
 }
@@ -20,7 +21,8 @@ func (s *stubSource1688) Prepare(context.Context) error {
 	return nil
 }
 
-func (s *stubSource1688) Process(url string) (*model.Product1688, error) {
+func (s *stubSource1688) Process(ctx context.Context, url string) (*model.Product1688, error) {
+	s.ctx = ctx
 	s.url = url
 	return s.product, s.err
 }
@@ -40,8 +42,9 @@ func TestProcessorPrepareDelegatesToSource(t *testing.T) {
 func TestProcessorProcessDelegatesToSource(t *testing.T) {
 	source := &stubSource1688{product: &model.Product1688{Title: "sample"}}
 	processor := NewProcessor(source)
+	ctx := context.WithValue(context.Background(), struct{}{}, "live")
 
-	product, err := processor.Process(context.Background(), "https://detail.1688.com/offer/1.html")
+	product, err := processor.Process(ctx, "https://detail.1688.com/offer/1.html")
 	if err != nil {
 		t.Fatalf("Process returned error: %v", err)
 	}
@@ -50,6 +53,9 @@ func TestProcessorProcessDelegatesToSource(t *testing.T) {
 	}
 	if source.url != "https://detail.1688.com/offer/1.html" {
 		t.Fatalf("source url = %q", source.url)
+	}
+	if source.ctx != ctx {
+		t.Fatal("source did not receive the exact caller context")
 	}
 }
 

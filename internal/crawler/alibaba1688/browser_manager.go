@@ -12,10 +12,18 @@ import (
 	"github.com/mxschmitt/playwright-go"
 )
 
+type browserLifecycleManager interface {
+	Install() error
+	Launch() error
+	GetContext() playwright.BrowserContext
+	NewPage() (playwright.Page, error)
+	Close()
+}
+
 // BrowserManager 1688专用的浏览器管理器，继承shared的功能
 type BrowserManager struct {
-	*sharedbrowser.Manager
-	config *config.Config
+	Manager browserLifecycleManager
+	config  *config.Config
 }
 
 type alibaba1688BrowserRuntimeConfig struct {
@@ -98,6 +106,12 @@ func (bm *BrowserManager) CreateBrowser() (playwright.Browser, playwright.Browse
 	if err := bm.Manager.Install(); err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("初始化Playwright失败: %w", err)
 	}
+	cleanupOnError := true
+	defer func() {
+		if cleanupOnError {
+			bm.Manager.Close()
+		}
+	}()
 
 	// 启动浏览器
 	if err := bm.Manager.Launch(); err != nil {
@@ -105,7 +119,7 @@ func (bm *BrowserManager) CreateBrowser() (playwright.Browser, playwright.Browse
 	}
 
 	// 获取上下文
-	context := bm.GetContext()
+	context := bm.Manager.GetContext()
 	if context == nil {
 		return nil, nil, nil, nil, fmt.Errorf("浏览器上下文未初始化")
 	}
@@ -113,7 +127,6 @@ func (bm *BrowserManager) CreateBrowser() (playwright.Browser, playwright.Browse
 	// 创建页面
 	page, err := bm.Manager.NewPage()
 	if err != nil {
-		bm.Manager.Close()
 		return nil, nil, nil, nil, fmt.Errorf("创建页面失败: %w", err)
 	}
 
@@ -126,6 +139,7 @@ func (bm *BrowserManager) CreateBrowser() (playwright.Browser, playwright.Browse
 	cleanup := func() {
 		bm.Manager.Close()
 	}
+	cleanupOnError = false
 
 	// 注意：这里返回nil作为browser，因为使用持久化上下文时没有单独的browser对象
 	return nil, context, page, cleanup, nil

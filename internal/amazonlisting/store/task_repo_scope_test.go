@@ -55,3 +55,36 @@ func TestTaskRepositoryScopesReadsAndMutationsToExecutionTenant(t *testing.T) {
 		t.Fatalf("cross-tenant mutation changed task: status=%q retries=%d", task.Status, task.RetryCount)
 	}
 }
+
+func TestMemTaskRepositoryScopesReadsAndMutationsToExecutionTenant(t *testing.T) {
+	repo := NewMemTaskRepository()
+	for _, task := range []*amazonlisting.Task{
+		{ID: "task-a", Status: amazonlisting.TaskStatusPending, PersistedExecutionEnvelope: aiidentity.PersistedExecutionEnvelope{ExecutionIdentityVersion: 1, ExecutionTenantID: "tenant-a", ExecutionUserID: "user-a", ExecutionSourcePlatform: "amazon", ExecutionSourceTaskType: "listing"}},
+		{ID: "task-b", Status: amazonlisting.TaskStatusPending, PersistedExecutionEnvelope: aiidentity.PersistedExecutionEnvelope{ExecutionIdentityVersion: 1, ExecutionTenantID: "tenant-b", ExecutionUserID: "user-b", ExecutionSourcePlatform: "amazon", ExecutionSourceTaskType: "listing"}},
+	} {
+		if err := repo.CreateTask(context.Background(), task); err != nil {
+			t.Fatalf("create %s: %v", task.ID, err)
+		}
+	}
+	ctxA := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+	if _, err := repo.GetTask(ctxA, "task-b"); !errors.Is(err, amazonlisting.ErrTaskNotFound) {
+		t.Fatalf("cross-tenant GetTask error = %v, want ErrTaskNotFound", err)
+	}
+	items, err := repo.ListTasks(ctxA, nil, 0)
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != "task-a" {
+		t.Fatalf("tenant-scoped tasks = %+v, want only task-a", items)
+	}
+	if err := repo.IncrementRetryCount(ctxA, "task-b"); !errors.Is(err, amazonlisting.ErrTaskNotFound) {
+		t.Fatalf("cross-tenant mutation error = %v, want ErrTaskNotFound", err)
+	}
+	stored, err := repo.GetTask(context.Background(), "task-b")
+	if err != nil {
+		t.Fatalf("unscoped GetTask: %v", err)
+	}
+	if stored.RetryCount != 0 {
+		t.Fatalf("cross-tenant retry count = %d, want 0", stored.RetryCount)
+	}
+}
