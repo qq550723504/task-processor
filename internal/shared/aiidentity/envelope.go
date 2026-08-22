@@ -37,6 +37,14 @@ type PersistedExecutionEnvelope struct {
 	ExecutionSourceTaskType  string `json:"-" gorm:"column:execution_source_task_type"`
 }
 
+type PersistedEnvelopeState int
+
+const (
+	PersistedEnvelopeAbsent PersistedEnvelopeState = iota
+	PersistedEnvelopePartial
+	PersistedEnvelopePresent
+)
+
 type envelopeContextKey struct{}
 
 func (e ExecutionEnvelope) Validate() error {
@@ -141,9 +149,26 @@ func PersistedExecutionEnvelopeFrom(envelope ExecutionEnvelope) PersistedExecuti
 	}
 }
 
+func (p PersistedExecutionEnvelope) State() PersistedEnvelopeState {
+	state, _, _ := p.executionEnvelope("persisted-envelope")
+	return state
+}
+
 func (p PersistedExecutionEnvelope) ExecutionEnvelope(taskID string) (ExecutionEnvelope, error) {
-	if p.ExecutionIdentityVersion == 0 && strings.TrimSpace(p.ExecutionTenantID) == "" && strings.TrimSpace(p.ExecutionUserID) == "" && strings.TrimSpace(p.ExecutionSourcePlatform) == "" && strings.TrimSpace(p.ExecutionSourceTaskType) == "" {
+	state, envelope, err := p.executionEnvelope(taskID)
+	if state == PersistedEnvelopeAbsent {
 		return ExecutionEnvelope{}, nil
+	}
+	if state == PersistedEnvelopePartial {
+		return ExecutionEnvelope{}, err
+	}
+	return envelope, nil
+}
+
+func (p PersistedExecutionEnvelope) executionEnvelope(taskID string) (PersistedEnvelopeState, ExecutionEnvelope, error) {
+	p = normalizePersistedEnvelope(p)
+	if p.ExecutionIdentityVersion == 0 && p.ExecutionTenantID == "" && p.ExecutionUserID == "" && p.ExecutionTraceID == "" && p.ExecutionSourcePlatform == "" && p.ExecutionSourceTaskType == "" {
+		return PersistedEnvelopeAbsent, ExecutionEnvelope{}, nil
 	}
 	envelope := ExecutionEnvelope{
 		Version:        p.ExecutionIdentityVersion,
@@ -155,9 +180,18 @@ func (p PersistedExecutionEnvelope) ExecutionEnvelope(taskID string) (ExecutionE
 		SourceTaskType: p.ExecutionSourceTaskType,
 	}
 	if err := envelope.Validate(); err != nil {
-		return ExecutionEnvelope{}, err
+		return PersistedEnvelopePartial, ExecutionEnvelope{}, err
 	}
-	return envelope, nil
+	return PersistedEnvelopePresent, envelope, nil
+}
+
+func normalizePersistedEnvelope(p PersistedExecutionEnvelope) PersistedExecutionEnvelope {
+	p.ExecutionTenantID = strings.TrimSpace(p.ExecutionTenantID)
+	p.ExecutionUserID = strings.TrimSpace(p.ExecutionUserID)
+	p.ExecutionTraceID = strings.TrimSpace(p.ExecutionTraceID)
+	p.ExecutionSourcePlatform = strings.ToLower(strings.TrimSpace(p.ExecutionSourcePlatform))
+	p.ExecutionSourceTaskType = strings.ToLower(strings.TrimSpace(p.ExecutionSourceTaskType))
+	return p
 }
 
 func normalizeEnvelope(envelope ExecutionEnvelope) ExecutionEnvelope {

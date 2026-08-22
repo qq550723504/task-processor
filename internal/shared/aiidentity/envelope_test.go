@@ -85,3 +85,53 @@ func TestPersistedExecutionEnvelopeRoundTrip(t *testing.T) {
 		t.Fatalf("got = %+v, want %+v", got, want)
 	}
 }
+
+func TestPersistedEnvelopeStateClassifiesEveryPersistedField(t *testing.T) {
+	present := PersistedExecutionEnvelope{
+		ExecutionIdentityVersion: CurrentEnvelopeVersion,
+		ExecutionTenantID:        "tenant-a",
+		ExecutionUserID:          "user-a",
+		ExecutionTraceID:         "trace-a",
+		ExecutionSourcePlatform:  "productenrich",
+		ExecutionSourceTaskType:  "product",
+	}
+
+	cases := []struct {
+		name      string
+		persisted PersistedExecutionEnvelope
+		want      PersistedEnvelopeState
+		wantErr   bool
+	}{
+		{name: "absent", persisted: PersistedExecutionEnvelope{}, want: PersistedEnvelopeAbsent},
+		{name: "blank fields are absent", persisted: PersistedExecutionEnvelope{ExecutionTenantID: " ", ExecutionUserID: "\t", ExecutionTraceID: "\n", ExecutionSourcePlatform: " ", ExecutionSourceTaskType: "\t"}, want: PersistedEnvelopeAbsent},
+		{name: "version only", persisted: PersistedExecutionEnvelope{ExecutionIdentityVersion: CurrentEnvelopeVersion}, want: PersistedEnvelopePartial, wantErr: true},
+		{name: "tenant only", persisted: PersistedExecutionEnvelope{ExecutionTenantID: "tenant-a"}, want: PersistedEnvelopePartial, wantErr: true},
+		{name: "user only", persisted: PersistedExecutionEnvelope{ExecutionUserID: "user-a"}, want: PersistedEnvelopePartial, wantErr: true},
+		{name: "trace only", persisted: PersistedExecutionEnvelope{ExecutionTraceID: "trace-a"}, want: PersistedEnvelopePartial, wantErr: true},
+		{name: "source platform only", persisted: PersistedExecutionEnvelope{ExecutionSourcePlatform: "productenrich"}, want: PersistedEnvelopePartial, wantErr: true},
+		{name: "source task type only", persisted: PersistedExecutionEnvelope{ExecutionSourceTaskType: "product"}, want: PersistedEnvelopePartial, wantErr: true},
+		{name: "unsupported version", persisted: PersistedExecutionEnvelope{ExecutionIdentityVersion: 2, ExecutionTenantID: "tenant-a", ExecutionUserID: "user-a", ExecutionSourcePlatform: "productenrich", ExecutionSourceTaskType: "product"}, want: PersistedEnvelopePartial, wantErr: true},
+		{name: "present", persisted: present, want: PersistedEnvelopePresent},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.persisted.State(); got != tc.want {
+				t.Fatalf("State() = %v, want %v", got, tc.want)
+			}
+			envelope, err := tc.persisted.ExecutionEnvelope("task-a")
+			if tc.wantErr {
+				if !errors.Is(err, ErrIdentityIntegrity) {
+					t.Fatalf("ExecutionEnvelope() error = %v, want ErrIdentityIntegrity", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ExecutionEnvelope() error = %v", err)
+			}
+			if tc.want == PersistedEnvelopeAbsent && envelope != (ExecutionEnvelope{}) {
+				t.Fatalf("ExecutionEnvelope() = %+v, want empty envelope", envelope)
+			}
+		})
+	}
+}
