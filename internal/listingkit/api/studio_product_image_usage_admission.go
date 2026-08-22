@@ -67,6 +67,14 @@ func (h *handler) reserveStudioProductImageUsageWithSourceType(c *gin.Context, r
 	if h.subscriptionService == nil || !h.subscriptionService.HasUsageLedger() {
 		return "", listingsubscription.ErrUsageLedgerNotConfigured
 	}
+	reservationKey := "listingkit:api:studio_product_image:" + reservationID
+	billingTenant, existingEvent, err := h.lookupStudioProductImageUsageEvent(c, requestTenant, reservationKey)
+	if err != nil {
+		return "", err
+	}
+	if existingEvent != nil {
+		sourceType = existingEvent.SourceType
+	}
 	reserve := func(tenantID string) (listingsubscription.ReserveUsageResult, error) {
 		now := time.Now().UTC()
 		return h.subscriptionService.ReserveUsage(c.Request.Context(), listingsubscription.ReserveUsageInput{
@@ -78,7 +86,7 @@ func (h *handler) reserveStudioProductImageUsageWithSourceType(c *gin.Context, r
 			PeriodKey:                     now.Format("2006-01"),
 			SourceType:                    sourceType,
 			SourceID:                      reservationID,
-			IdempotencyKey:                "listingkit:api:studio_product_image:" + reservationID,
+			IdempotencyKey:                reservationKey,
 			OccurredAt:                    now,
 			LegacyUsageMirrorMetadataKey:  studioProductImageLegacyMirrorMetadataKey,
 			LegacyUsageMirrorSettledValue: studioProductImageLegacyMirrorSettled,
@@ -87,9 +95,11 @@ func (h *handler) reserveStudioProductImageUsageWithSourceType(c *gin.Context, r
 	if err := h.reconcileStudioProductImageUsageReleases(c.Request.Context(), requestTenant); err != nil {
 		return "", err
 	}
-	billingTenant, err := h.authorizeStudioProductImageLedgerTenant(c, requestTenant)
-	if err != nil {
-		return "", err
+	if existingEvent == nil {
+		billingTenant, err = h.authorizeStudioProductImageLedgerTenant(c, requestTenant)
+		if err != nil {
+			return "", err
+		}
 	}
 	result, err := reserve(billingTenant)
 	if errors.Is(err, listingsubscription.ErrSubscriptionRequired) {
@@ -107,6 +117,32 @@ func (h *handler) reserveStudioProductImageUsageWithSourceType(c *gin.Context, r
 	}
 	c.Set(subscriptionTenantContextKey, result.Event.TenantID)
 	return result.Event.EventID, nil
+}
+
+func (h *handler) lookupStudioProductImageUsageEvent(c *gin.Context, tenantID, idempotencyKey string) (string, *listingsubscription.UsageEvent, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	event, err := h.subscriptionService.GetUsage(c.Request.Context(), tenantID, idempotencyKey)
+	if err == nil {
+		return tenantID, event, nil
+	}
+	if !errors.Is(err, listingsubscription.ErrUsageEventNotFound) {
+		return "", nil, err
+	}
+	legacyTenant, ok, resolveErr := resolveLegacySubscriptionTenantIDWithError(c, tenantID)
+	if resolveErr != nil {
+		return "", nil, resolveErr
+	}
+	if !ok || legacyTenant == tenantID {
+		return tenantID, nil, nil
+	}
+	event, err = h.subscriptionService.GetUsage(c.Request.Context(), legacyTenant, idempotencyKey)
+	if errors.Is(err, listingsubscription.ErrUsageEventNotFound) {
+		return tenantID, nil, nil
+	}
+	if err != nil {
+		return "", nil, err
+	}
+	return legacyTenant, event, nil
 }
 
 func (h *handler) authorizeStudioProductImageLedgerTenant(c *gin.Context, tenantID string) (string, error) {

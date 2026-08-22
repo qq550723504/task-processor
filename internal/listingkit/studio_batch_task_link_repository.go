@@ -47,6 +47,13 @@ type studioBatchTaskLinkProductImageUsageRouteRepository interface {
 	ResolveStudioBatchProductImageUsageRoute(ctx context.Context, candidateKey string, claimToken string, route studioBatchProductImageUsageRoute, updatedAt time.Time) (stored studioBatchProductImageUsageRoute, changed bool, err error)
 }
 
+// studioBatchTaskLinkProductImageUsageCompatibilityRouteRepository atomically
+// records the route selected for links created before route persistence was
+// introduced. It never overwrites a route chosen by another lifecycle worker.
+type studioBatchTaskLinkProductImageUsageCompatibilityRouteRepository interface {
+	ResolveStudioBatchProductImageUsageCompatibilityRoute(ctx context.Context, candidateKey string, route studioBatchProductImageUsageRoute, updatedAt time.Time) (stored studioBatchProductImageUsageRoute, changed bool, err error)
+}
+
 func applyStudioBatchTaskLinkCreateScope(ctx context.Context, link *StudioBatchTaskLinkRecord) {
 	if link == nil {
 		return

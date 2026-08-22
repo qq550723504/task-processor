@@ -373,6 +373,7 @@ func (s *taskStudioBatchService) studioBatchProductImageUsageRoute(ctx context.C
 		}
 		return "", fmt.Errorf("studio batch product image usage route is not finalized")
 	case "":
+		desired := studioBatchProductImageUsageRouteLegacy
 		if lookup, ok := s.productImageUsage.(StudioProductImageUsageReservationLookup); ok {
 			reservationID := studioBatchTaskProductImageUsageReservationID(candidate)
 			if reservationID != "" {
@@ -381,14 +382,33 @@ func (s *taskStudioBatchService) studioBatchProductImageUsageRoute(ctx context.C
 					return "", lookupErr
 				}
 				if hasReservation {
-					return studioBatchProductImageUsageRouteLedger, nil
+					desired = studioBatchProductImageUsageRouteLedger
 				}
 			}
 		}
-		return studioBatchProductImageUsageRouteLegacy, nil
+		return s.resolveStudioBatchProductImageUsageCompatibilityRoute(ctx, candidate.CandidateKey, desired)
 	default:
 		return "", fmt.Errorf("unknown studio batch product image usage route %q", link.ProductImageUsageRoute)
 	}
+}
+
+func (s *taskStudioBatchService) resolveStudioBatchProductImageUsageCompatibilityRoute(ctx context.Context, candidateKey string, route studioBatchProductImageUsageRoute) (studioBatchProductImageUsageRoute, error) {
+	resolver, ok := s.batchTaskLinkRepo.(studioBatchTaskLinkProductImageUsageCompatibilityRouteRepository)
+	if !ok {
+		return "", fmt.Errorf("studio batch task link repository lacks atomic compatibility usage route resolution")
+	}
+	now := time.Now().UTC()
+	if s.currentTime != nil {
+		now = s.currentTime().UTC()
+	}
+	stored, _, err := resolver.ResolveStudioBatchProductImageUsageCompatibilityRoute(ctx, strings.TrimSpace(candidateKey), route, now)
+	if err != nil {
+		return "", err
+	}
+	if stored == studioBatchProductImageUsageRouteLedger || stored == studioBatchProductImageUsageRouteLegacy {
+		return stored, nil
+	}
+	return "", fmt.Errorf("studio batch compatibility product image usage route is not finalized")
 }
 
 func (s *taskStudioBatchService) newStudioBatchProductImageUsageRoute(ctx context.Context, batch *StudioBatchRecord) studioBatchProductImageUsageRoute {

@@ -181,6 +181,27 @@ func (r *GormStudioBatchTaskLinkRepository) ResolveStudioBatchProductImageUsageR
 	return link.ProductImageUsageRoute, result.RowsAffected > 0, nil
 }
 
+func (r *GormStudioBatchTaskLinkRepository) ResolveStudioBatchProductImageUsageCompatibilityRoute(ctx context.Context, candidateKey string, route studioBatchProductImageUsageRoute, updatedAt time.Time) (studioBatchProductImageUsageRoute, bool, error) {
+	if route != studioBatchProductImageUsageRouteLegacy && route != studioBatchProductImageUsageRouteLedger {
+		return "", false, fmt.Errorf("unsupported studio batch product image usage route %q", route)
+	}
+	if err := ensureStudioBatchTaskLinkProductImageUsageRouteColumn(r.db); err != nil {
+		return "", false, err
+	}
+	result := applyStudioBatchAccessScope(r.db.WithContext(ctx), ctx).
+		Model(&StudioBatchTaskLinkRecord{}).
+		Where("candidate_key = ? AND product_image_usage_route = ?", candidateKey, "").
+		Updates(map[string]any{"product_image_usage_route": route, "updated_at": updatedAt})
+	if result.Error != nil {
+		return "", false, result.Error
+	}
+	link, err := r.GetStudioBatchTaskLinkByCandidateKey(ctx, candidateKey)
+	if err != nil {
+		return "", false, err
+	}
+	return link.ProductImageUsageRoute, result.RowsAffected > 0, nil
+}
+
 func (r *GormStudioBatchTaskLinkRepository) ClaimStudioBatchProductImageUsageSettled(ctx context.Context, candidateKey string, updatedAt time.Time) (bool, error) {
 	if err := ensureStudioBatchTaskLinkProductImageUsageSettledColumn(r.db); err != nil {
 		return false, err

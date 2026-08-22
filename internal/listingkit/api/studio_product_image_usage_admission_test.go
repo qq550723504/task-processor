@@ -122,6 +122,39 @@ func TestReserveStudioProductImageUsageUsesSynchronousSource(t *testing.T) {
 	}
 }
 
+func TestReserveStudioProductImageUsageReplaysLegacySourceReservation(t *testing.T) {
+	ctx := context.Background()
+	const tenantID = "tenant-sync-legacy-replay"
+	const reservationID = "legacy-sync-request"
+	svc := newStudioProductImageAdmissionService(t, tenantID, 2)
+	legacy, err := svc.ReserveUsage(ctx, listingsubscription.ReserveUsageInput{
+		TenantID: tenantID, ModuleCode: listingsubscription.ModuleStudio,
+		Metric: studioProductImageLedgerMetric, LegacyUsageMetric: "product_image_jobs", Quantity: 1,
+		PeriodKey: time.Now().UTC().Format("2006-01"), SourceType: studioProductImageLegacySourceType,
+		SourceID: reservationID, IdempotencyKey: "listingkit:api:studio_product_image:" + reservationID,
+		OccurredAt: time.Now().UTC(), LegacyUsageMirrorMetadataKey: studioProductImageLegacyMirrorMetadataKey,
+		LegacyUsageMirrorSettledValue: studioProductImageLegacyMirrorSettled,
+	})
+	if err != nil {
+		t.Fatalf("ReserveUsage() error = %v", err)
+	}
+	h := &handler{subscriptionDependencies: subscriptionDependencies{subscriptionService: svc}}
+	eventID, err := h.reserveStudioProductImageUsage(newStudioProductImageAdmissionContext(tenantID), reservationID)
+	if err != nil {
+		t.Fatalf("reserveStudioProductImageUsage() error = %v", err)
+	}
+	if eventID != legacy.Event.EventID {
+		t.Fatalf("event id = %q, want existing legacy event %q", eventID, legacy.Event.EventID)
+	}
+	event, err := svc.GetUsageEventByID(ctx, eventID)
+	if err != nil {
+		t.Fatalf("GetUsageEventByID() error = %v", err)
+	}
+	if event.SourceType != studioProductImageLegacySourceType {
+		t.Fatalf("event source type = %q, want preserved legacy source", event.SourceType)
+	}
+}
+
 func TestReserveStudioProductImageUsageRepairsBatchReleaseMarkerBeforeAuthorization(t *testing.T) {
 	ctx := context.Background()
 	svc := newStudioProductImageAdmissionService(t, "tenant-batch-release-repair", 1)

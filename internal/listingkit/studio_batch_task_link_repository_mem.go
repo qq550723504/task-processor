@@ -110,6 +110,27 @@ func (r *MemStudioBatchTaskLinkRepository) ResolveStudioBatchProductImageUsageRo
 	return "", false, gorm.ErrRecordNotFound
 }
 
+func (r *MemStudioBatchTaskLinkRepository) ResolveStudioBatchProductImageUsageCompatibilityRoute(ctx context.Context, candidateKey string, route studioBatchProductImageUsageRoute, updatedAt time.Time) (studioBatchProductImageUsageRoute, bool, error) {
+	if route != studioBatchProductImageUsageRouteLegacy && route != studioBatchProductImageUsageRouteLedger {
+		return "", false, fmt.Errorf("unsupported studio batch product image usage route %q", route)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, link := range r.links {
+		if link.CandidateKey != candidateKey || !matchesStudioBatchScope(ctx, link.TenantID, link.UserID) {
+			continue
+		}
+		if link.ProductImageUsageRoute != "" {
+			return link.ProductImageUsageRoute, false, nil
+		}
+		link.ProductImageUsageRoute = route
+		link.UpdatedAt = updatedAt
+		r.links[id] = link
+		return link.ProductImageUsageRoute, true, nil
+	}
+	return "", false, gorm.ErrRecordNotFound
+}
+
 func (r *MemStudioBatchTaskLinkRepository) ClaimStudioBatchProductImageUsageSettled(ctx context.Context, candidateKey string, updatedAt time.Time) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
