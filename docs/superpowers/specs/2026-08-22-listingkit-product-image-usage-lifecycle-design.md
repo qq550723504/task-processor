@@ -36,11 +36,13 @@ feature-flag state. They must remain stable after work starts.
 
 ### Durable batch accounting route
 
-Add `ProductImageUsageRoute` to `StudioBatchTaskLinkRecord`, with the closed
-set `legacy` and `ledger`. A new optional repository operation atomically
-claims this field for a candidate while the caller holds its claim token. The
-service derives the route once from the admission policy and reservation
-availability, persists it, then authorizes on that exact route.
+Add `ProductImageUsageRoute` to `StudioBatchTaskLinkRecord`, with final values
+`legacy` and `ledger`. Newly created AI links write an explicit `pending`
+sentinel; empty remains reserved for links created before this change. A new
+optional repository operation atomically replaces `pending` with a final route
+while the caller holds its claim token. The service derives the route once from
+the admission policy and reservation availability, persists it, then
+authorizes on that exact route.
 
 Settlement and release read the stored route; they never evaluate
 `generationUsageAdmission` again. This makes an in-flight candidate immune to
@@ -49,9 +51,10 @@ for retries and lease reclaims.
 
 For pre-change links whose route is empty, the compatibility resolver checks
 for the deterministic ledger reservation first. If it exists, the route is
-persisted as `ledger`; otherwise it is persisted as `legacy`. Choosing legacy
-when no event exists is conservative: it prevents a rollout change from
-turning an already-authorized legacy candidate into an uncharged no-op.
+persisted as `ledger`; otherwise it is persisted as `legacy`. A new link can
+never take this compatibility path because it starts at `pending`. Choosing
+legacy when no old event exists is conservative: it prevents a rollout change
+from turning an already-authorized legacy candidate into an uncharged no-op.
 
 ### Reservation work kinds
 
