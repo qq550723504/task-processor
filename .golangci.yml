@@ -46,7 +46,7 @@ linters-settings:
         # tests/import_boundaries_test.go until their contracts are stable.
         list-mode: lax
         files:
-          - "internal/marketplace/shein/publishing/*.go"
+          - "**/internal/marketplace/shein/publishing/*.go"
         deny:
           - pkg: "task-processor/internal/listingkit"
             desc: "SHEIN publishing policies must not depend on ListingKit"
@@ -66,8 +66,8 @@ linters-settings:
       listingkit_marketplace_publishing:
         # This package direction is stable and has no compatibility exceptions.
         files:
-          - "internal/listingkit/*.go"
-          - "internal/listingkit/**/*.go"
+          - "**/internal/listingkit/*.go"
+          - "**/internal/listingkit/**/*.go"
         deny:
           - pkg: "task-processor/internal/marketplace/shein/publishing"
             desc: "ListingKit production code must not depend on SHEIN publishing policies"

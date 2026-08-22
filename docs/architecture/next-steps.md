@@ -108,6 +108,8 @@ Current guard coverage:
 为准，`next-steps.md` 只保留 baseline 入口和阶段性技术优先级。
 Every next-step reference must resolve to an existing repository document.
 
+稳定的 marketplace import 方向由 `.golangci.yml` 的 `depguard` rules 承担，迁移例外仍由专项语义测试覆盖。
+
 后续重点不是增加很多测试，而是给还没有被守住、且最容易回退的边界补“护栏”。新增护栏前先确认现有测试没有已经覆盖同一个风险。
 
 ### 5. 收口长期有效的装配文档
