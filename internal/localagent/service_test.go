@@ -225,6 +225,83 @@ func TestServiceRejectsImpossibleOptionalSupplierNumbers(t *testing.T) {
 	}
 }
 
+func TestServiceRejectsUnsafeSupplierShopURLs(t *testing.T) {
+	for _, shopURL := range []string{
+		"javascript:alert(1)",
+		"http://shop.example/supplier",
+		"https://",
+		"https://user:pass@shop.example/supplier",
+		"https://shop.example/supplier?redirect=https://evil.example",
+	} {
+		t.Run(shopURL, func(t *testing.T) {
+			service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+			actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+			job, err := service.Create(actor, offerURL)
+			require.NoError(t, err)
+			claim, err := service.Claim(actor)
+			require.NoError(t, err)
+
+			snapshot := validSnapshot()
+			snapshot.Supplier.ShopURL = shopURL
+			_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, snapshot)
+			require.ErrorIs(t, err, ErrSnapshotInvalid)
+		})
+	}
+}
+
+func TestServiceValidatesSnapshotOutsideGlobalLock(t *testing.T) {
+	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+	job, err := service.Create(actor, offerURL)
+	require.NoError(t, err)
+	claim, err := service.Claim(actor)
+	require.NoError(t, err)
+
+	started := make(chan struct{})
+	release := make(chan struct{})
+	snapshot := validSnapshot()
+	snapshot.Variants = []sourcing.Alibaba1688VariantSnapshot{{Attributes: map[string]any{
+		"Color": blockingJSONValue{started: started, release: release},
+	}}}
+	submitDone := make(chan error, 1)
+	go func() {
+		_, submitErr := service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, snapshot)
+		submitDone <- submitErr
+	}()
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("snapshot validation did not reach the blocking encoder")
+	}
+
+	createDone := make(chan error, 1)
+	go func() {
+		_, createErr := service.Create(Actor{TenantID: "tenant-b", UserID: "user-b"}, "https://detail.1688.com/offer/1052008074198.html")
+		createDone <- createErr
+	}()
+	select {
+	case createErr := <-createDone:
+		require.NoError(t, createErr)
+	case <-time.After(time.Second):
+		close(release)
+		t.Fatal("Create remained blocked by snapshot validation")
+	}
+	close(release)
+	require.NoError(t, <-submitDone)
+}
+
+type blockingJSONValue struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func (v blockingJSONValue) MarshalJSON() ([]byte, error) {
+	close(v.started)
+	<-v.release
+	return []byte("\"value\""), nil
+}
+
 func TestServiceRejectsImpossibleProductNumbers(t *testing.T) {
 	tests := []struct {
 		name   string

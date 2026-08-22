@@ -183,11 +183,15 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 		return Job{}, fmt.Errorf("%w: %w: product is required", ErrSnapshotInvalid, ErrInvalidClaim)
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	rec, err := s.claimRecordLocked(actor, jobID, token)
 	if err != nil {
+		s.mu.Unlock()
 		return Job{}, err
 	}
+	claimedURL := rec.job.URL
+	recordID := rec.job.ID
+	s.mu.Unlock()
+
 	size, err := json.Marshal(product)
 	if err != nil {
 		return Job{}, ErrSnapshotInvalid
@@ -196,19 +200,19 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 		return Job{}, ErrSnapshotTooLarge
 	}
 	productURL, err := validateOfferURL(product.URL)
-	if err != nil || productURL != rec.job.URL {
+	if err != nil || productURL != claimedURL {
 		return Job{}, fmt.Errorf("%w: %w: product URL does not match claimed offer", ErrSnapshotInvalid, ErrInvalidURL)
 	}
-	if strings.TrimSpace(product.ID) == "" || product.ID != sourcing.ExtractAlibaba1688ProductID(rec.job.URL) {
+	if strings.TrimSpace(product.ID) == "" || product.ID != sourcing.ExtractAlibaba1688ProductID(claimedURL) {
 		return Job{}, fmt.Errorf("%w: %w: product id does not match claimed offer", ErrSnapshotInvalid, ErrInvalidClaim)
 	}
 	if err := validateCrawlerSnapshot(product); err != nil {
 		return Job{}, ErrSnapshotInvalid
 	}
 	envelope := sourcing.Alibaba1688SourceEnvelope(sourcing.Alibaba1688SourceEnvelopeInput{
-		Request:     sourcing.Alibaba1688CrawlRequestInput{URL: rec.job.URL},
+		Request:     sourcing.Alibaba1688CrawlRequestInput{URL: claimedURL},
 		Product:     product,
-		SourceRunID: rec.job.ID,
+		SourceRunID: recordID,
 	})
 	summary := EnvelopeSummary{
 		SourceKey:    envelope.Identity.SourceKey(),
@@ -221,6 +225,16 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 		Price:        envelope.SupplierOrCostFacts.Price,
 	}
 	summary = boundEnvelopeSummary(summary)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	rec, err = s.claimRecordLocked(actor, jobID, token)
+	if err != nil {
+		return Job{}, err
+	}
+	if rec.job.URL != claimedURL {
+		return Job{}, fmt.Errorf("%w: %w: claimed offer changed during validation", ErrSnapshotInvalid, ErrInvalidClaim)
+	}
 	// Terminal records are retained only for lifecycle/idempotency checks. The
 	// current API has no terminal read route, so keep the reconstructed envelope
 	// on the immediate return value without retaining its potentially large

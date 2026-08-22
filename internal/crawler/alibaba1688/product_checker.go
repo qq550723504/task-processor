@@ -99,6 +99,9 @@ func (pc *ProductChecker) ValidateProduct(product *model.Product1688) error {
 
 func (pc *ProductChecker) validateSupplier(product *model.Product1688) error {
 	supplier := product.Supplier
+	if strings.TrimSpace(supplier.ShopURL) != "" && !isValidSupplierShopURL(supplier.ShopURL) {
+		return fmt.Errorf("供应商店铺URL格式无效")
+	}
 	if supplier.YearsInBusiness < 0 {
 		return fmt.Errorf("经营年限不能为负数")
 	}
@@ -109,6 +112,11 @@ func (pc *ProductChecker) validateSupplier(product *model.Product1688) error {
 		return fmt.Errorf("供应商响应率必须在0到100之间")
 	}
 	return nil
+}
+
+func isValidSupplierShopURL(raw string) bool {
+	parsed, err := url.ParseRequestURI(strings.TrimSpace(raw))
+	return err == nil && parsed.Scheme == "https" && parsed.Hostname() != "" && parsed.User == nil && parsed.RawQuery == "" && parsed.Fragment == ""
 }
 
 func (pc *ProductChecker) validateProductMetrics(product *model.Product1688) error {

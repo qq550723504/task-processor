@@ -255,5 +255,6 @@ func buildScrapedVariantSKU(index int, attributes map[string]string) string {
 	if len(parts) == 1 {
 		return fmt.Sprintf("SCRAPED-%03d", index+1)
 	}
+	parts = append(parts, fmt.Sprintf("%03d", index+1))
 	return strings.Join(parts, "-")
 }
