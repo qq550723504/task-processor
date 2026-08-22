@@ -71,7 +71,7 @@ func (a *governedImageAnalyzer) AnalyzeImage(ctx context.Context, imageURL, prom
 	startedAt := a.now()
 	identity := aiidentity.FromContext(ctx)
 	if identity.TenantID == "" || identity.UserID == "" {
-		err := aicapability.NewError(aicapability.ErrorInvalidInput, string(aicapability.OperationProductEnrichImageAnalyze), nil)
+		err := aicapability.NewError(aicapability.ErrorIdentityIntegrity, string(aicapability.OperationProductEnrichImageAnalyze), nil)
 		a.record(ctx, identity, startedAt, imageURL, prompt, "", aicapability.RouteDecision{}, err, true)
 		return "", err
 	}

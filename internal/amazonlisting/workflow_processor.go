@@ -65,6 +65,10 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 		if errors.Is(err, ErrTaskNotPending) {
 			return nil
 		}
+		if errors.Is(err, aiidentity.ErrIdentityIntegrity) || errors.Is(err, aiidentity.ErrMissingIdentity) {
+			_ = p.repo.MarkFailed(ctx, task.ID, "identity_integrity: "+err.Error())
+			return err
+		}
 		if task.RetryCount < p.maxRetries {
 			_ = p.repo.IncrementRetryCount(ctx, task.ID)
 			_ = p.repo.PrepareRetry(ctx, task.ID)

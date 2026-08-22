@@ -14,6 +14,11 @@ func WithTaskIdentity(ctx context.Context, task *Task) context.Context {
 	if task == nil {
 		return ctx
 	}
+	if envelope, err := task.ExecutionEnvelope(); err == nil && envelope.Version != 0 {
+		if restored, restoreErr := aiidentity.RestoreExecutionEnvelope(ctx, envelope, task.ID); restoreErr == nil {
+			return restored
+		}
+	}
 	identity := aiidentity.FromContext(ctx)
 	identity.TenantID = strings.TrimSpace(task.TenantID)
 	identity.UserID = strings.TrimSpace(task.UserID)

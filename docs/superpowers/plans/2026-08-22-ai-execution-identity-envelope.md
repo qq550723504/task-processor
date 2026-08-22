@@ -150,7 +150,7 @@ Assert AuthPolicyVerifiedIdentity on ProductEnrich generate/result routes, all A
 
 - [ ] Step 3: Add AuthPolicy and route declarations.
 
-Add AuthPolicyPublic and AuthPolicyVerifiedIdentity to httproute.Descriptor. Mark every existing ZITADEL-protected ListingKit, SDS, Shein, crawler, product-sourcing, ProductEnrich, ProductImage, and Amazon descriptor explicitly. Mark health, readiness, system, management, and jobs public. RouteRequiresZitadelAuth returns only the explicit policy value; it no longer decides from module names.
+Add AuthPolicyPublic and AuthPolicyVerifiedIdentity to httproute.Descriptor. Mark ProductEnrich, ProductImage, and Amazon descriptors explicitly. RouteRequiresZitadelAuth honors explicit policy first. Existing non-AI modules keep their legacy authorization mapping during this migration so this change cannot accidentally expose them; a later route-policy migration can remove that compatibility branch once those descriptors are explicit.
 
 - [ ] Step 4: Keep zitadel_auth_middleware.go as the only HTTP projection from verified ZITADEL identity into listingkit.AuthenticatedIdentity and shared aiidentity. Add the middleware projection test.
 
@@ -201,4 +201,3 @@ Expected: all commands exit successfully; missing or mismatched envelopes make z
 - No provider-specific identity contract is introduced; all three platforms adapt the existing shared package.
 - Task ID remains the queue routing key and durable task row remains authoritative.
 - LangGraph/Temporal remain unchanged and unrelated platform tasks are not migrated.
-

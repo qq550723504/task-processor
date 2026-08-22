@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/catalog/canonical"
 	productenrich "task-processor/internal/productenrich"
 
@@ -21,12 +22,18 @@ func (g *jsonGenerator) GenerateJSON(ctx context.Context, analysis *productenric
 
 	productJSON, err := g.generateWithLLM(ctx, analysis)
 	if err != nil {
+		if isIdentityIntegrityError(err) || aicapability.CategoryOf(err) == aicapability.ErrorIdentityIntegrity {
+			return nil, err
+		}
 		g.logger.WithError(err).Warn("LLM generation failed, falling back to analysis data")
 		productJSON = g.fallbackFromAnalysis(analysis)
 	}
 
 	if variantGen != nil {
 		if specs, err := variantGen.GenerateSpecs(ctx, analysis); err != nil {
+			if isIdentityIntegrityError(err) {
+				return nil, err
+			}
 			logrus.WithError(err).Warn("failed to generate specs")
 		} else {
 			productJSON.Specifications = specs
@@ -34,6 +41,9 @@ func (g *jsonGenerator) GenerateJSON(ctx context.Context, analysis *productenric
 
 		if !skipVariants {
 			if variants, err := variantGen.GenerateVariants(ctx, analysis); err != nil {
+				if isIdentityIntegrityError(err) {
+					return nil, err
+				}
 				logrus.WithError(err).Warn("failed to generate variants")
 			} else {
 				productJSON.Variants = variants

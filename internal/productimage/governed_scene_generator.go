@@ -72,7 +72,7 @@ func (g *governedSceneGenerator) GenerateScene(ctx context.Context, req *SceneGe
 	identity.TenantID = strings.TrimSpace(identity.TenantID)
 	identity.UserID = strings.TrimSpace(identity.UserID)
 	if identity.TenantID == "" || identity.UserID == "" {
-		return nil, aicapability.NewError(aicapability.ErrorInvalidInput, string(aicapability.OperationProductImageSceneGenerate), nil)
+		return nil, aicapability.NewError(aicapability.ErrorIdentityIntegrity, string(aicapability.OperationProductImageSceneGenerate), nil)
 	}
 
 	startedAt := g.now()

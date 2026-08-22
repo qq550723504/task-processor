@@ -130,7 +130,7 @@ create a child span), but must not reuse the parent business task ID.
 
 ## Route authorization
 
-Replace the implicit module-name allowlist with explicit route policy metadata:
+Introduce explicit route policy metadata:
 
 ```go
 type AuthPolicy int
@@ -145,8 +145,10 @@ Products generation/result routes, Amazon listing routes, and ProductImage
 generation routes declare `AuthPolicyVerifiedIdentity`. The middleware still
 performs ZITADEL verification and projects `aiidentity`; the policy only makes
 the requirement explicit and testable. Public health/readiness endpoints stay
-public. Authorization remains tenant-scoped for task reads and mutations; the
-envelope does not replace access control.
+public. Existing non-AI routes retain their current authorization behavior
+until their descriptors are migrated in a separate compatibility step; they
+must not be weakened by this change. Authorization remains tenant-scoped for
+task reads and mutations; the envelope does not replace access control.
 
 ## Governance and failure semantics
 

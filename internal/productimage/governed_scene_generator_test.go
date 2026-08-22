@@ -21,8 +21,8 @@ func TestGovernedSceneGeneratorRejectsMissingIdentityWithoutProviderCall(t *test
 	}
 
 	_, err = generator.GenerateScene(context.Background(), &SceneGenerationRequest{})
-	if aicapability.CategoryOf(err) != aicapability.ErrorInvalidInput {
-		t.Fatalf("error category = %q, want %q", aicapability.CategoryOf(err), aicapability.ErrorInvalidInput)
+	if aicapability.CategoryOf(err) != aicapability.ErrorIdentityIntegrity {
+		t.Fatalf("error category = %q, want %q", aicapability.CategoryOf(err), aicapability.ErrorIdentityIntegrity)
 	}
 	if provider.calls != 0 {
 		t.Fatalf("provider calls = %d, want 0", provider.calls)

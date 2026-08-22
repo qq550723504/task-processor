@@ -111,7 +111,7 @@ func (g *governedTextGenerator) Generate(ctx context.Context, prompt string) (st
 	startedAt := g.now()
 	identity := aiidentity.FromContext(ctx)
 	if identity.TenantID == "" || identity.UserID == "" {
-		err := aicapability.NewError(aicapability.ErrorInvalidInput, string(g.operation), nil)
+		err := aicapability.NewError(aicapability.ErrorIdentityIntegrity, string(g.operation), nil)
 		g.record(ctx, identity, startedAt, prompt, "", aicapability.RouteDecision{}, err, true)
 		return "", err
 	}

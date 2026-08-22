@@ -70,6 +70,9 @@ func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *produc
 
 		for i, r := range results {
 			if r.err != nil {
+				if isIdentityIntegrityError(r.err) {
+					return nil, r.err
+				}
 				logrus.WithError(r.err).WithField("image", input.Images[i]).Warn("failed to analyze image")
 				continue
 			}
@@ -95,6 +98,9 @@ func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *produc
 	if input.Text != "" {
 		textAttr, err := p.ExtractTextAttributes(ctx, input.Text)
 		if err != nil {
+			if isIdentityIntegrityError(err) {
+				return nil, err
+			}
 			logrus.WithError(err).Warn("failed to extract text attributes")
 		} else {
 			analysis.TextAttributes = textAttr
@@ -106,6 +112,9 @@ func (p *productUnderstanding) AnalyzeProduct(ctx context.Context, input *produc
 		if scrapedText != "" {
 			scrapedAttr, err := p.ExtractTextAttributes(ctx, scrapedText)
 			if err != nil {
+				if isIdentityIntegrityError(err) {
+					return nil, err
+				}
 				logrus.WithError(err).Warn("failed to extract scraped text attributes")
 			} else if analysis.TextAttributes == nil {
 				analysis.TextAttributes = scrapedAttr
