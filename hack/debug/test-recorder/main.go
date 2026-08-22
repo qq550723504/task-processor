@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"task-processor/internal/core/config"
@@ -44,7 +45,7 @@ func main() {
 	fmt.Println("- 您可以在浏览器中观察录制和回放过程")
 	fmt.Println()
 
-	processor.Process("https://detail.1688.com/offer/722899324071.html")
+	processor.Process(context.Background(), "https://detail.1688.com/offer/722899324071.html")
 
 	fmt.Println()
 	fmt.Println("测试完成")

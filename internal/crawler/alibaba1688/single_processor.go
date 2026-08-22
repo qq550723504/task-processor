@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"task-processor/internal/core/config"
 	"task-processor/internal/core/logger"
 	"task-processor/internal/crawler/alibaba1688/extractor"
@@ -42,28 +43,29 @@ func (sp *SingleProcessor) Prepare(ctx context.Context) error {
 		return errors.New("1688 single processor is not configured")
 	}
 	manager := sp.newPublicBrowserManager()
-	defer manager.Close()
-	if _, _, _, _, err := manager.CreateBrowser(); err != nil {
+	if _, _, _, cleanup, err := manager.CreateBrowser(); err != nil {
 		return err
+	} else {
+		defer closeOnContextDone(ctx, cleanup)()
 	}
 	return ctx.Err()
 }
 
 // ProcessWithSingleBrowser 使用单个浏览器处理产品
-func (sp *SingleProcessor) ProcessWithSingleBrowser(url string, startTime time.Time) (*model.Product1688, error) {
-	return sp.processWithBrowserManager(url, startTime, sp.newPublicBrowserManager(), false)
+func (sp *SingleProcessor) ProcessWithSingleBrowser(ctx context.Context, url string, startTime time.Time) (*model.Product1688, error) {
+	return sp.processWithBrowserManager(ctx, url, startTime, sp.newPublicBrowserManager(), false)
 }
 
 // ProcessWithAccountProfile uses a short-lived browser manager configured for one 1688 login account.
-func (sp *SingleProcessor) ProcessWithAccountProfile(url string, startTime time.Time, profile AccountProfile) (*model.Product1688, error) {
-	return sp.processWithBrowserManager(url, startTime, NewBrowserManagerForAccountProfile(sp.config, profile), true)
+func (sp *SingleProcessor) ProcessWithAccountProfile(ctx context.Context, url string, startTime time.Time, profile AccountProfile) (*model.Product1688, error) {
+	return sp.processWithBrowserManager(ctx, url, startTime, NewBrowserManagerForAccountProfile(sp.config, profile), true)
 }
 
 func (sp *SingleProcessor) newPublicBrowserManager() *BrowserManager {
 	return NewPublicBrowserManager(sp.config)
 }
 
-func (sp *SingleProcessor) processWithBrowserManager(url string, startTime time.Time, browserManager *BrowserManager, allowManualCaptcha bool) (*model.Product1688, error) {
+func (sp *SingleProcessor) processWithBrowserManager(ctx context.Context, url string, startTime time.Time, browserManager *BrowserManager, allowManualCaptcha bool) (*model.Product1688, error) {
 	logger.GetGlobalLogger("crawler/alibaba1688").Infof("使用单浏览器模式处理1688产品: %s", url)
 
 	// 验证和标准化URL
@@ -71,20 +73,29 @@ func (sp *SingleProcessor) processWithBrowserManager(url string, startTime time.
 	if err != nil {
 		return nil, NewPublicAccessError(PublicAccessFailureInvalidURL, fmt.Errorf("URL验证失败: %w", err))
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	// 创建浏览器实例
 	_, _, page, cleanup, err := browserManager.CreateBrowser()
 	if err != nil {
 		return nil, NewPublicAccessError(PublicAccessFailureBrowser, err)
 	}
-	defer cleanup()
+	defer closeOnContextDone(ctx, cleanup)()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	// 导航到产品页面
 	var navErr error
 	if allowManualCaptcha {
-		navErr = sp.pageOperator.NavigateToProduct(page, normalizedURL)
+		navErr = sp.pageOperator.NavigateToProduct(ctx, page, normalizedURL)
 	} else {
-		navErr = sp.pageOperator.NavigateToProductWithoutManualCaptcha(page, normalizedURL)
+		navErr = sp.pageOperator.NavigateToProductWithoutManualCaptcha(ctx, page, normalizedURL)
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	if navErr != nil {
 		kind := PublicAccessFailureTransport
@@ -95,7 +106,10 @@ func (sp *SingleProcessor) processWithBrowserManager(url string, startTime time.
 	}
 
 	// 提取产品信息
-	product, err := sp.extractor.ExtractProductFromPage(page, normalizedURL)
+	product, err := sp.extractor.ExtractProductFromPage(ctx, page, normalizedURL)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if err != nil {
 		return nil, NewPublicAccessError(PublicAccessFailureMissingFields, fmt.Errorf("提取产品信息失败: %w", err))
 	}
@@ -105,11 +119,23 @@ func (sp *SingleProcessor) processWithBrowserManager(url string, startTime time.
 		kind := classifyProductValidationFailure(validateErr)
 		return nil, NewPublicAccessError(kind, fmt.Errorf("产品信息验证失败: %w", validateErr))
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	duration := time.Since(startTime)
 	logger.GetGlobalLogger("crawler/alibaba1688").Infof("单浏览器模式处理完成: %s, 耗时: %v", product.Title, duration)
 
 	return product, nil
+}
+
+func closeOnContextDone(ctx context.Context, close func()) func() {
+	closeOnce := sync.OnceFunc(close)
+	stop := context.AfterFunc(ctx, closeOnce)
+	return func() {
+		stop()
+		closeOnce()
+	}
 }
 
 func classifyProductValidationFailure(err error) PublicAccessFailureKind {

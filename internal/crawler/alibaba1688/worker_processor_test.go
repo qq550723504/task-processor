@@ -73,6 +73,51 @@ func TestCrawler1688ProcessorSerializesSameAccountProfile(t *testing.T) {
 	}
 }
 
+func TestCrawler1688ProcessorCancelsWhileWaitingForSameAccountProfileLock(t *testing.T) {
+	processor := &blockingProfileProcessor{
+		started:   make(chan struct{}, 2),
+		release:   make(chan struct{}),
+		globalErr: NewPublicAccessError(PublicAccessFailureChallenge, errors.New("captcha")),
+	}
+	resolver := &staticAccountProfileResolver{profile: AccountProfile{ID: 3001, TenantID: 101, ProfileDir: "C:/profiles/101/3001"}}
+	service := newTestAlibaba1688Service(processor, resolver)
+	p := &Crawler1688Processor{service: service}
+
+	firstDone := make(chan error, 1)
+	go func() { firstDone <- p.ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, 3001)) }()
+	select {
+	case <-processor.started:
+	case <-time.After(time.Second):
+		t.Fatal("first profile crawl did not start")
+	}
+
+	waitingCtx, cancel := context.WithCancel(context.Background())
+	secondDone := make(chan error, 1)
+	go func() { secondDone <- p.ProcessTask(waitingCtx, crawler1688WorkerJob(t, 101, 3001)) }()
+
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-secondDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("second ProcessTask() error = %v, want context.Canceled", err)
+		}
+	case <-time.After(200 * time.Millisecond):
+		close(processor.release)
+		t.Fatal("second profile crawl did not unblock on context cancellation")
+	}
+
+	close(processor.release)
+
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first ProcessTask() error = %v", err)
+	}
+	if got := processor.callCount(); got != 1 {
+		t.Fatalf("account processor calls = %d, want 1", got)
+	}
+}
+
 func TestCrawler1688ProcessorFailsClosedWithoutResolverForAccountBoundTask(t *testing.T) {
 	processor := &fakeAlibaba1688TaskProcessor{globalErr: NewPublicAccessError(PublicAccessFailureChallenge, errors.New("captcha"))}
 	service := newTestAlibaba1688Service(processor, nil)
@@ -177,6 +222,80 @@ func TestCrawler1688ProcessorUsesGlobalFallbackWithoutAccountID(t *testing.T) {
 	}
 	if !processor.globalCalled || processor.profile != nil {
 		t.Fatal("unbound task did not use the global processor path")
+	}
+}
+
+func TestCrawler1688ProcessorPassesContextToPublicProcessor(t *testing.T) {
+	processor := &fakeAlibaba1688TaskProcessor{}
+	service := newTestAlibaba1688Service(processor, nil)
+	ctx := context.WithValue(context.Background(), struct{}{}, "public")
+
+	if err := (&Crawler1688Processor{service: service}).ProcessTask(ctx, crawler1688WorkerJob(t, 101, 0)); err != nil {
+		t.Fatalf("ProcessTask() error = %v", err)
+	}
+	if processor.publicCtx != ctx {
+		t.Fatal("public processor did not receive the exact worker context")
+	}
+}
+
+func TestCrawler1688ProcessorPassesContextToAccountProcessor(t *testing.T) {
+	processor := &fakeAlibaba1688TaskProcessor{
+		globalErr: NewPublicAccessError(PublicAccessFailureChallenge, errors.New("captcha")),
+	}
+	resolver := &fakeAccountProfileResolver{profile: AccountProfile{ID: 3001, TenantID: 101, ProfileDir: "C:/profiles/101/3001"}}
+	service := newTestAlibaba1688Service(processor, resolver)
+	ctx := context.WithValue(context.Background(), struct{}{}, "account")
+
+	if err := (&Crawler1688Processor{service: service}).ProcessTask(ctx, crawler1688WorkerJob(t, 101, 3001)); err != nil {
+		t.Fatalf("ProcessTask() error = %v", err)
+	}
+	if processor.accountCtx != ctx {
+		t.Fatal("account processor did not receive the exact worker context")
+	}
+}
+
+func TestCrawler1688ProcessorPreservesPublicCancellationWithoutAvailabilityTranslation(t *testing.T) {
+	processor := &fakeAlibaba1688TaskProcessor{globalErr: context.Canceled}
+	service := newTestAlibaba1688Service(processor, nil)
+
+	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, 0))
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ProcessTask() error = %v, want context.Canceled", err)
+	}
+	if got := service.sourceAccessStats()["source_public_unavailable"]; got != 0 {
+		t.Fatalf("public availability translations = %d, want 0", got)
+	}
+}
+
+func TestCrawler1688ProcessorPreservesPublicDeadlineExceededWithoutAvailabilityTranslation(t *testing.T) {
+	processor := &fakeAlibaba1688TaskProcessor{globalErr: context.DeadlineExceeded}
+	service := newTestAlibaba1688Service(processor, nil)
+
+	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, 0))
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("ProcessTask() error = %v, want context.DeadlineExceeded", err)
+	}
+	if got := service.sourceAccessStats()["source_public_unavailable"]; got != 0 {
+		t.Fatalf("public availability translations = %d, want 0", got)
+	}
+}
+
+func TestCrawler1688ProcessorPreservesAccountResolutionCancellationWithoutAvailabilityTranslation(t *testing.T) {
+	processor := &fakeAlibaba1688TaskProcessor{
+		globalErr: NewPublicAccessError(PublicAccessFailureChallenge, errors.New("captcha")),
+	}
+	resolver := &fakeAccountProfileResolver{err: context.Canceled}
+	service := newTestAlibaba1688Service(processor, resolver)
+
+	err := (&Crawler1688Processor{service: service}).ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, 3001))
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("ProcessTask() error = %v, want context.Canceled", err)
+	}
+	if got := service.sourceAccessStats()["source_account_unavailable"]; got != 0 {
+		t.Fatalf("account availability translations = %d, want 0", got)
 	}
 }
 
@@ -330,17 +449,21 @@ func (r *fakeAccountProfileResolver) ResolveAlibaba1688Account(_ context.Context
 type fakeAlibaba1688TaskProcessor struct {
 	globalCalled bool
 	profile      *AccountProfile
+	publicCtx    context.Context
+	accountCtx   context.Context
 	globalErr    error
 	profileErr   error
 }
 
-func (p *fakeAlibaba1688TaskProcessor) Process(string) (*model.Product1688, error) {
+func (p *fakeAlibaba1688TaskProcessor) Process(ctx context.Context, _ string) (*model.Product1688, error) {
 	p.globalCalled = true
+	p.publicCtx = ctx
 	return &model.Product1688{}, p.globalErr
 }
 
-func (p *fakeAlibaba1688TaskProcessor) ProcessWithAccountProfile(_ string, profile AccountProfile) (*model.Product1688, error) {
+func (p *fakeAlibaba1688TaskProcessor) ProcessWithAccountProfile(ctx context.Context, _ string, profile AccountProfile) (*model.Product1688, error) {
 	p.profile = &profile
+	p.accountCtx = ctx
 	return &model.Product1688{}, p.profileErr
 }
 
@@ -354,17 +477,19 @@ type blockingProfileProcessor struct {
 	mu        sync.Mutex
 	active    int
 	maxActive int
+	calls     int
 	started   chan struct{}
 	release   chan struct{}
 	globalErr error
 }
 
-func (p *blockingProfileProcessor) Process(string) (*model.Product1688, error) {
+func (p *blockingProfileProcessor) Process(context.Context, string) (*model.Product1688, error) {
 	return &model.Product1688{}, p.globalErr
 }
 
-func (p *blockingProfileProcessor) ProcessWithAccountProfile(string, AccountProfile) (*model.Product1688, error) {
+func (p *blockingProfileProcessor) ProcessWithAccountProfile(context.Context, string, AccountProfile) (*model.Product1688, error) {
 	p.mu.Lock()
+	p.calls++
 	p.active++
 	if p.active > p.maxActive {
 		p.maxActive = p.active
@@ -379,3 +504,9 @@ func (p *blockingProfileProcessor) ProcessWithAccountProfile(string, AccountProf
 }
 
 func (p *blockingProfileProcessor) Shutdown() {}
+
+func (p *blockingProfileProcessor) callCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.calls
+}

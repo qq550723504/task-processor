@@ -1,10 +1,15 @@
 package alibaba1688
 
 import (
+	"context"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"task-processor/internal/core/config"
 	"task-processor/internal/crawler/alibaba1688/model"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestSingleProcessorCreatesFreshPublicBrowserManagerPerAttempt(t *testing.T) {
@@ -83,4 +88,22 @@ func TestClassifyProductValidationFailurePreservesAccountFallbackForMissingField
 			}
 		})
 	}
+}
+
+func TestCloseOnContextDoneClosesOnce(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var closes atomic.Int32
+	finish := closeOnContextDone(ctx, func() {
+		closes.Add(1)
+	})
+
+	cancel()
+
+	require.Eventually(t, func() bool {
+		return closes.Load() == 1
+	}, time.Second, time.Millisecond)
+
+	finish()
+
+	require.Equal(t, int32(1), closes.Load())
 }

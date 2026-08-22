@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -45,7 +47,6 @@ type productSnapshotRequest struct {
 	Images           []string                        `json:"images"`
 	MainImage        string                          `json:"main_image"`
 	Videos           []videoSnapshotRequest          `json:"videos"`
-	PriceRangeCount  int                             `json:"price_range_count"`
 	MinPrice         float64                         `json:"min_price"`
 	MaxPrice         float64                         `json:"max_price"`
 	Currency         string                          `json:"currency"`
@@ -117,7 +118,7 @@ type shippingSnapshotRequest struct {
 func (r productSnapshotRequest) toSnapshot() sourcing.Alibaba1688ProductSnapshot {
 	snapshot := sourcing.Alibaba1688ProductSnapshot{
 		ID: r.ID, Title: r.Title, URL: r.URL, Images: r.Images, MainImage: r.MainImage,
-		PriceRangeCount: r.PriceRangeCount, MinPrice: r.MinPrice, MaxPrice: r.MaxPrice,
+		MinPrice: r.MinPrice, MaxPrice: r.MaxPrice,
 		Currency: r.Currency, MinOrderQuantity: r.MinOrderQuantity, Unit: r.Unit,
 		SalesVolume: r.SalesVolume, ReviewCount: r.ReviewCount, Rating: r.Rating,
 		Category: r.Category, Brand: r.Brand, Keywords: r.Keywords, IsCustomized: r.IsCustomized,
@@ -251,7 +252,7 @@ func (h *Handler) SubmitResult(c *gin.Context) {
 	}
 	var req submitResultRequest
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxResultBodyBytes)
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := decodeStrictJSON(c.Request.Body, &req); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
 			writeError(c, http.StatusBadRequest, "snapshot_too_large", localagent.ErrSnapshotTooLarge.Error())
@@ -271,7 +272,7 @@ func (h *Handler) SubmitResult(c *gin.Context) {
 	}
 	if len(req.ProductSnapshot) > 0 && string(req.ProductSnapshot) != "null" {
 		var snapshotReq productSnapshotRequest
-		if err := json.Unmarshal(req.ProductSnapshot, &snapshotReq); err != nil {
+		if err := decodeStrictJSON(req.ProductSnapshot, &snapshotReq); err != nil {
 			writeError(c, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}
@@ -326,4 +327,32 @@ func writeServiceError(c *gin.Context, err error) {
 
 func writeError(c *gin.Context, status int, code, message string) {
 	c.JSON(status, gin.H{"error": code, "message": strings.TrimSpace(message)})
+}
+
+func decodeStrictJSON(source any, target any) error {
+	var reader io.Reader
+	switch value := source.(type) {
+	case io.Reader:
+		reader = value
+	case json.RawMessage:
+		reader = bytes.NewReader(value)
+	default:
+		return errors.New("unsupported JSON source")
+	}
+	decoder := json.NewDecoder(reader)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var extra json.RawMessage
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			return errors.New("invalid JSON: trailing data")
+		}
+		if len(extra) > 0 {
+			return errors.New("invalid JSON: trailing data")
+		}
+		return err
+	}
+	return nil
 }

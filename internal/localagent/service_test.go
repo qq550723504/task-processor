@@ -536,8 +536,46 @@ func TestServiceRejectsWrongTokenAndDuplicateTerminalResult(t *testing.T) {
 	done, err := service.SubmitFailure(actor, job.ID, claim.ExecutionToken, Failure{Kind: FailureChallenge, Message: "captcha"})
 	require.NoError(t, err)
 	_, err = service.SubmitFailure(actor, job.ID, claim.ExecutionToken, Failure{Kind: FailureChallenge, Message: "again"})
-	require.ErrorIs(t, err, ErrInvalidClaim)
+	require.ErrorIs(t, err, ErrTerminalJob)
 	require.Equal(t, JobFailed, done.State)
+}
+
+func TestServiceTerminalSuccessRetryClassifiesOriginalAndWrongTokens(t *testing.T) {
+	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+	job, err := service.Create(actor, offerURL)
+	require.NoError(t, err)
+	claim, err := service.Claim(actor)
+	require.NoError(t, err)
+
+	done, err := service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, validSnapshot())
+	require.NoError(t, err)
+	require.Equal(t, JobSucceeded, done.State)
+
+	_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, validSnapshot())
+	require.ErrorIs(t, err, ErrTerminalJob)
+
+	_, err = service.SubmitSuccess(actor, job.ID, "other-token", validSnapshot())
+	require.ErrorIs(t, err, ErrInvalidClaim)
+}
+
+func TestServiceTerminalFailureRetryClassifiesOriginalAndWrongTokens(t *testing.T) {
+	service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+	actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+	job, err := service.Create(actor, offerURL)
+	require.NoError(t, err)
+	claim, err := service.Claim(actor)
+	require.NoError(t, err)
+
+	done, err := service.SubmitFailure(actor, job.ID, claim.ExecutionToken, Failure{Kind: FailureChallenge, Message: "captcha"})
+	require.NoError(t, err)
+	require.Equal(t, JobFailed, done.State)
+
+	_, err = service.SubmitFailure(actor, job.ID, claim.ExecutionToken, Failure{Kind: FailureChallenge, Message: "again"})
+	require.ErrorIs(t, err, ErrTerminalJob)
+
+	_, err = service.SubmitFailure(actor, job.ID, "other-token", Failure{Kind: FailureChallenge, Message: "again"})
+	require.ErrorIs(t, err, ErrInvalidClaim)
 }
 
 func TestServiceRequeuesExpiredClaimWhileJobIsAlive(t *testing.T) {

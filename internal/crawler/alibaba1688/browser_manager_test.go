@@ -1,8 +1,11 @@
 package alibaba1688
 
 import (
-	"task-processor/internal/core/config"
 	"testing"
+
+	"task-processor/internal/core/config"
+
+	"github.com/mxschmitt/playwright-go"
 )
 
 func TestResolveAlibaba1688UserDataDirUsesConfiguredValue(t *testing.T) {
@@ -102,3 +105,80 @@ func TestAlibaba1688BrowserRuntimeConfigRetainsGlobalProxyWhenAccountProxyUnavai
 		t.Fatalf("proxy = %q, want global fallback %q", runtimeConfig.browser.ProxyServer, cfg.Browser.ProxyServer)
 	}
 }
+
+func TestCreateBrowserClosesManagerAfterInstallWhenLaunchFails(t *testing.T) {
+	manager := &fakeBrowserLifecycleManager{launchErr: assertiveError("launch failed")}
+
+	_, _, _, _, err := (&BrowserManager{
+		Manager: manager,
+		config:  config.NewDefaultConfig(),
+	}).CreateBrowser()
+
+	if err == nil {
+		t.Fatal("CreateBrowser() error = nil, want launch failure")
+	}
+	if manager.closeCalls != 1 {
+		t.Fatalf("close calls = %d, want 1", manager.closeCalls)
+	}
+}
+
+func TestCreateBrowserClosesManagerAfterInstallWhenContextMissing(t *testing.T) {
+	manager := &fakeBrowserLifecycleManager{}
+
+	_, _, _, _, err := (&BrowserManager{
+		Manager: manager,
+		config:  config.NewDefaultConfig(),
+	}).CreateBrowser()
+
+	if err == nil {
+		t.Fatal("CreateBrowser() error = nil, want missing context failure")
+	}
+	if manager.closeCalls != 1 {
+		t.Fatalf("close calls = %d, want 1", manager.closeCalls)
+	}
+}
+
+func TestCreateBrowserClosesManagerAfterInstallWhenNewPageFails(t *testing.T) {
+	manager := &fakeBrowserLifecycleManager{
+		context:    &stubBrowserContext{},
+		newPageErr: assertiveError("page failed"),
+	}
+
+	_, _, _, _, err := (&BrowserManager{
+		Manager: manager,
+		config:  config.NewDefaultConfig(),
+	}).CreateBrowser()
+
+	if err == nil {
+		t.Fatal("CreateBrowser() error = nil, want new page failure")
+	}
+	if manager.closeCalls != 1 {
+		t.Fatalf("close calls = %d, want 1", manager.closeCalls)
+	}
+}
+
+type fakeBrowserLifecycleManager struct {
+	installErr error
+	launchErr  error
+	context    playwright.BrowserContext
+	newPageErr error
+	closeCalls int
+}
+
+func (m *fakeBrowserLifecycleManager) Install() error { return m.installErr }
+
+func (m *fakeBrowserLifecycleManager) Launch() error { return m.launchErr }
+
+func (m *fakeBrowserLifecycleManager) GetContext() playwright.BrowserContext { return m.context }
+
+func (m *fakeBrowserLifecycleManager) NewPage() (playwright.Page, error) {
+	return nil, m.newPageErr
+}
+
+func (m *fakeBrowserLifecycleManager) Close() { m.closeCalls++ }
+
+type stubBrowserContext struct{ playwright.BrowserContext }
+
+type assertiveError string
+
+func (e assertiveError) Error() string { return string(e) }

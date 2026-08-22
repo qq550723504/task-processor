@@ -224,9 +224,6 @@ func alibaba1688SupplierOrCostFacts(product *Alibaba1688ProductSnapshot) Supplie
 	addBoolAttribute(facts, "is_verified", product.Supplier.IsVerified)
 	addIntAttribute(facts, "min_order_quantity", product.MinOrderQuantity)
 	addStringAttribute(facts, "unit", product.Unit)
-	if product.PriceRangeCount > 0 {
-		facts["price_range_count"] = strconv.Itoa(product.PriceRangeCount)
-	}
 	return SupplierOrCostFacts{
 		SupplierID:   strings.TrimSpace(product.Supplier.ID),
 		SupplierName: strings.TrimSpace(product.Supplier.Name),

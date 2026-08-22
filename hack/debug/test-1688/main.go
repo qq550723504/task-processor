@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -66,7 +67,7 @@ func main() {
 	fmt.Println("如果自动滑动失败，请手动完成验证码")
 	fmt.Println()
 
-	product, err := processor.Process(testURL)
+	product, err := processor.Process(context.Background(), testURL)
 	if err != nil {
 		log.Printf("处理产品失败: %v", err)
 		return

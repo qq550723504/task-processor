@@ -2,6 +2,8 @@ package localagent
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -63,10 +65,11 @@ type Service struct {
 }
 
 type record struct {
-	job            Job
-	executionToken string
-	retainedUntil  time.Time
-	claimAttempts  int
+	job                          Job
+	executionToken               string
+	terminalExecutionTokenDigest [sha256.Size]byte
+	retainedUntil                time.Time
+	claimAttempts                int
 }
 
 func NewService(now func() time.Time) *Service {
@@ -170,6 +173,7 @@ func (s *Service) claimRecordForPendingLocked(selected *record, now time.Time) (
 	selected.job.State = JobClaimed
 	selected.job.LeaseExpiresAt = now.Add(claimTTL)
 	selected.job.ExpiresAt = now.Add(jobTTL)
+	selected.terminalExecutionTokenDigest = [sha256.Size]byte{}
 	selected.executionToken = token
 	selected.claimAttempts++
 	return &Claim{Job: selected.job, ExecutionToken: selected.executionToken}, nil
@@ -243,6 +247,7 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 	rec.job.EnvelopeSummary = &summary
 	rec.job.State = JobSucceeded
 	rec.job.LeaseExpiresAt = time.Time{}
+	rec.terminalExecutionTokenDigest = executionTokenDigest(rec.executionToken)
 	rec.executionToken = ""
 	rec.retainedUntil = s.now().UTC().Add(terminalRetention)
 	logTransition(rec.job, "succeeded", "")
@@ -337,6 +342,7 @@ func (s *Service) SubmitFailure(actor Actor, jobID, token string, failure Failur
 	rec.job.Failure = &failure
 	rec.job.State = JobFailed
 	rec.job.LeaseExpiresAt = time.Time{}
+	rec.terminalExecutionTokenDigest = executionTokenDigest(rec.executionToken)
 	rec.executionToken = ""
 	rec.retainedUntil = s.now().UTC().Add(terminalRetention)
 	logTransition(rec.job, "failed", failure.Kind)
@@ -362,6 +368,7 @@ func (s *Service) cleanupLocked(now time.Time) {
 				}
 				rec.job.State = JobPending
 				rec.job.LeaseExpiresAt = time.Time{}
+				rec.terminalExecutionTokenDigest = [sha256.Size]byte{}
 				rec.executionToken = ""
 			}
 		case JobSucceeded, JobFailed:
@@ -374,20 +381,32 @@ func (s *Service) cleanupLocked(now time.Time) {
 
 func (s *Service) claimRecordLocked(actor Actor, jobID, token string) (*record, error) {
 	rec, ok := s.jobs[strings.TrimSpace(jobID)]
-	if !ok || rec.job.TenantID != strings.TrimSpace(actor.TenantID) || token == "" || token != rec.executionToken {
+	if !ok || rec.job.TenantID != strings.TrimSpace(actor.TenantID) {
+		return nil, ErrInvalidClaim
+	}
+	if rec.job.State == JobSucceeded || rec.job.State == JobFailed {
+		presentedDigest := executionTokenDigest(token)
+		storedDigest := rec.terminalExecutionTokenDigest
+		if token != "" && subtle.ConstantTimeCompare(presentedDigest[:], storedDigest[:]) == 1 {
+			return nil, ErrTerminalJob
+		}
+		return nil, ErrInvalidClaim
+	}
+	if token == "" || token != rec.executionToken {
 		return nil, ErrInvalidClaim
 	}
 	now := s.now().UTC()
 	if rec.job.State != JobClaimed {
-		if rec.job.State == JobSucceeded || rec.job.State == JobFailed {
-			return nil, ErrTerminalJob
-		}
 		return nil, ErrInvalidClaim
 	}
 	if !now.Before(rec.job.LeaseExpiresAt) || !now.Before(rec.job.ExpiresAt) {
 		return nil, ErrClaimExpired
 	}
 	return rec, nil
+}
+
+func executionTokenDigest(token string) [sha256.Size]byte {
+	return sha256.Sum256([]byte(token))
 }
 
 func validateActor(actor Actor) error {

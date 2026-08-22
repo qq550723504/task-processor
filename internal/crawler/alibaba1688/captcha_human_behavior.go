@@ -2,6 +2,7 @@
 package alibaba1688
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"time"
@@ -53,7 +54,7 @@ func (ch *CaptchaHandler) randomDelay(maxMs int) int {
 // 5. 垂直抖动: ±10px
 // 6. 时间间隔: 7-56ms随机，不均匀
 
-func (ch *CaptchaHandler) optimizedSlideWithRealTrack(page playwright.Page, sliderBox *playwright.Rect, slideDistance float64) error {
+func (ch *CaptchaHandler) optimizedSlideWithRealTrack(ctx context.Context, page playwright.Page, sliderBox *playwright.Rect, slideDistance float64) error {
 	startX := sliderBox.X + sliderBox.Width/2
 	startY := sliderBox.Y + sliderBox.Height/2
 	endX := startX + slideDistance
@@ -62,11 +63,15 @@ func (ch *CaptchaHandler) optimizedSlideWithRealTrack(page playwright.Page, slid
 	// === 第一阶段：预热行为 (模拟人类从远处移动到滑块附近) ===
 	// 真人通常不会突然出现在滑块上，而是从附近慢慢靠近
 	page.Mouse().Move(startX-100+float64(ch.randomDelay(50)), startY-50+float64(ch.randomDelay(30)))
-	time.Sleep(300 + time.Duration(ch.randomDelay(400))*time.Millisecond)
+	if err := waitForContext(ctx, 300+time.Duration(ch.randomDelay(400))*time.Millisecond); err != nil {
+		return err
+	}
 
 	// 移动到滑块上方附近（但不是直接在上面）
 	page.Mouse().Move(startX+float64(ch.randomDelay(40)-20), startY-30+float64(ch.randomDelay(20)))
-	time.Sleep(200 + time.Duration(ch.randomDelay(300))*time.Millisecond)
+	if err := waitForContext(ctx, 200+time.Duration(ch.randomDelay(300))*time.Millisecond); err != nil {
+		return err
+	}
 
 	// === 第二阶段：探索行为 (在滑块附近徘徊，模拟人类确认目标) ===
 	// 真人会在按下去之前确认一下位置
@@ -74,53 +79,74 @@ func (ch *CaptchaHandler) optimizedSlideWithRealTrack(page playwright.Page, slid
 		offsetX := float64(ch.randomDelay(20) - 10)
 		offsetY := float64(ch.randomDelay(20) - 10)
 		page.Mouse().Move(startX+offsetX, startY+offsetY)
-		time.Sleep(100 + time.Duration(ch.randomDelay(150))*time.Millisecond)
+		if err := waitForContext(ctx, 100+time.Duration(ch.randomDelay(150))*time.Millisecond); err != nil {
+			return err
+		}
 	}
 
 	// 犹豫一下（真实人类按下前会有明显犹豫）
-	time.Sleep(300 + time.Duration(ch.randomDelay(400))*time.Millisecond)
+	if err := waitForContext(ctx, 300+time.Duration(ch.randomDelay(400))*time.Millisecond); err != nil {
+		return err
+	}
 
 	// === 第三阶段：按下并滑动 ===
 	// 移动到精确起点位置
 	page.Mouse().Move(startX, startY)
-	time.Sleep(50 + time.Duration(ch.randomDelay(50))*time.Millisecond)
+	if err := waitForContext(ctx, 50+time.Duration(ch.randomDelay(50))*time.Millisecond); err != nil {
+		return err
+	}
 
 	// 按下鼠标
 	page.Mouse().Down()
-	time.Sleep(50 + time.Duration(ch.randomDelay(50))*time.Millisecond)
+	if err := waitForContext(ctx, 50+time.Duration(ch.randomDelay(50))*time.Millisecond); err != nil {
+		return err
+	}
 
 	// 真实轨迹显示有~250ms的启动犹豫
-	time.Sleep(200 + time.Duration(ch.randomDelay(150)) * time.Millisecond)
+	if err := waitForContext(ctx, 200+time.Duration(ch.randomDelay(150))*time.Millisecond); err != nil {
+		return err
+	}
 
 	// 生成基于真实轨迹的滑动点
 	points := ch.generateRealHumanTrackPoints(startX, startY, endX, endY, 60)
 
 	// 回放轨迹
 	for i, pt := range points {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		page.Mouse().Move(pt.x, pt.y)
 
 		// 真实轨迹的时间间隔是不均匀的：7-56ms随机
 		if i < len(points)-1 {
 			delay := 7 + ch.randomDelay(49) // 7-56ms
-			time.Sleep(time.Duration(delay) * time.Millisecond)
+			if err := waitForContext(ctx, time.Duration(delay)*time.Millisecond); err != nil {
+				return err
+			}
 		}
 
 		// 在滑动过程中添加随机停顿（模拟人类"思考"）
 		if ch.randomDelay(100) < 15 { // 15%概率停顿
 			stopDuration := 30 + ch.randomDelay(80)
-			time.Sleep(time.Duration(stopDuration) * time.Millisecond)
+			if err := waitForContext(ctx, time.Duration(stopDuration)*time.Millisecond); err != nil {
+				return err
+			}
 		}
 	}
 
 	// === 第四阶段：结束行为 ===
 	// 终点停留（真实轨迹显示松开前有~500ms停留）
-	time.Sleep(400 + time.Duration(ch.randomDelay(200)) * time.Millisecond)
+	if err := waitForContext(ctx, 400+time.Duration(ch.randomDelay(200))*time.Millisecond); err != nil {
+		return err
+	}
 
 	// 松开鼠标
 	page.Mouse().Up()
 
 	// 滑动后可能有一些微小移动（真实人类特征）
-	time.Sleep(50 + time.Duration(ch.randomDelay(100))*time.Millisecond)
+	if err := waitForContext(ctx, 50+time.Duration(ch.randomDelay(100))*time.Millisecond); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -311,7 +337,7 @@ func (ch *CaptchaHandler) simulateRandomMouseWiggling(page playwright.Page, cent
 // simulateTypingMistakes 模拟打字错误和修正
 func (ch *CaptchaHandler) simulateTypingMistakes(page playwright.Page, input playwright.ElementHandle, text string, mistakeProbability float64) error {
 	for _, char := range text {
-		if math.Float64frombits(uint64(ch.randomDelay(1000))) / 1000.0 < mistakeProbability {
+		if math.Float64frombits(uint64(ch.randomDelay(1000)))/1000.0 < mistakeProbability {
 			mistakeChar := rune('a' + ch.randomDelay(26))
 			if err := input.Type(string(mistakeChar)); err != nil {
 				return err

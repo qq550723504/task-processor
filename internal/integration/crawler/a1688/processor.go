@@ -16,7 +16,7 @@ var ErrSourceUnavailable = errors.New("1688 crawler source unavailable")
 
 // Source is the legacy 1688 crawler surface used by this integration adapter.
 type Source interface {
-	Process(url string) (*model.Product1688, error)
+	Process(context.Context, string) (*model.Product1688, error)
 }
 
 // Processor exposes 1688 crawling through a stable integration boundary.
@@ -61,5 +61,5 @@ func (p *Processor) Process(ctx context.Context, url string) (*model.Product1688
 	if p == nil || p.source == nil {
 		return nil, ErrSourceUnavailable
 	}
-	return p.source.Process(url)
+	return p.source.Process(ctx, url)
 }
