@@ -37,6 +37,13 @@ func (s *productService) CreateGenerateTask(ctx context.Context, req *GenerateRe
 		UpdatedAt:  time.Now(),
 		RetryCount: 0,
 	}
+	if identity.TenantID != "" || identity.UserID != "" {
+		envelope, err := aiidentity.CaptureExecutionEnvelope(ctx, taskID, "productenrich", "product")
+		if err != nil {
+			return nil, fmt.Errorf("capture execution identity: %w", err)
+		}
+		task.SetExecutionEnvelope(envelope)
+	}
 
 	// 保存任务到数据库
 	if err := s.taskRepo.CreateTask(ctx, task); err != nil {

@@ -2,6 +2,7 @@ package productimage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -9,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	listingplatform "task-processor/internal/listing/platform"
+	"task-processor/internal/shared/aiidentity"
 )
 
 func (s *service) CreateProcessTask(ctx context.Context, req *ImageProcessRequest) (*Task, error) {
@@ -32,6 +34,12 @@ func (s *service) CreateProcessTask(ctx context.Context, req *ImageProcessReques
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
 		RetryCount: 0,
+	}
+	identityEnvelope, envelopeErr := aiidentity.CaptureExecutionEnvelope(ctx, task.ID, "productimage", "image")
+	if envelopeErr == nil {
+		task.SetExecutionEnvelope(identityEnvelope)
+	} else if !errors.Is(envelopeErr, aiidentity.ErrMissingIdentity) {
+		return nil, fmt.Errorf("capture execution identity: %w", envelopeErr)
 	}
 
 	if err := s.taskRepo.CreateTask(ctx, task); err != nil {
