@@ -307,6 +307,48 @@ func TestGormStudioBatchTaskLinkRepositoryClaimsProductImageUsageSettlementAtomi
 	testStudioBatchTaskLinkRepositoryClaimsProductImageUsageSettlementAtomically(t, newGormStudioBatchTaskLinkRepositoryForTest)
 }
 
+func TestMemStudioBatchTaskLinkRepositoryResolvesProductImageUsageRouteAtomically(t *testing.T) {
+	testStudioBatchTaskLinkRepositoryResolvesProductImageUsageRouteAtomically(t, func(*testing.T) StudioBatchTaskLinkRepository {
+		return NewMemStudioBatchTaskLinkRepository()
+	})
+}
+
+func TestGormStudioBatchTaskLinkRepositoryResolvesProductImageUsageRouteAtomically(t *testing.T) {
+	testStudioBatchTaskLinkRepositoryResolvesProductImageUsageRouteAtomically(t, newGormStudioBatchTaskLinkRepositoryForTest)
+}
+
+func testStudioBatchTaskLinkRepositoryResolvesProductImageUsageRouteAtomically(t *testing.T, newRepo func(*testing.T) StudioBatchTaskLinkRepository) {
+	t.Helper()
+	repo := newRepo(t)
+	ctx := WithTenantID(context.Background(), "tenant-a")
+	link := studioBatchTaskLinkRecordForTest("link-route", "batch-1", "item-1", "design-1", "selection-1", "candidate-route")
+	link.Status = studioBatchTaskLinkStatusCreating
+	link.ClaimToken = "claim-1"
+	link.ProductImageUsageRoute = studioBatchProductImageUsageRoutePending
+	mustCreateStudioBatchTaskLinkForTest(t, repo, ctx, link)
+
+	resolver, ok := repo.(interface {
+		ResolveStudioBatchProductImageUsageRoute(context.Context, string, string, studioBatchProductImageUsageRoute, time.Time) (studioBatchProductImageUsageRoute, bool, error)
+	})
+	if !ok {
+		t.Fatalf("repository %T does not implement product-image usage route resolution", repo)
+	}
+
+	resolvedAt := link.UpdatedAt.Add(time.Minute)
+	stored, changed, err := resolver.ResolveStudioBatchProductImageUsageRoute(ctx, link.CandidateKey, link.ClaimToken, studioBatchProductImageUsageRouteLedger, resolvedAt)
+	if err != nil || !changed || stored != studioBatchProductImageUsageRouteLedger {
+		t.Fatalf("first route resolution = (%q, %v, %v), want (ledger, true, nil)", stored, changed, err)
+	}
+	stored, changed, err = resolver.ResolveStudioBatchProductImageUsageRoute(ctx, link.CandidateKey, link.ClaimToken, studioBatchProductImageUsageRouteLegacy, resolvedAt.Add(time.Minute))
+	if err != nil || changed || stored != studioBatchProductImageUsageRouteLedger {
+		t.Fatalf("second route resolution = (%q, %v, %v), want (ledger, false, nil)", stored, changed, err)
+	}
+	stored, changed, err = resolver.ResolveStudioBatchProductImageUsageRoute(ctx, link.CandidateKey, "wrong-claim", studioBatchProductImageUsageRouteLegacy, resolvedAt.Add(2*time.Minute))
+	if err != nil || changed || stored != studioBatchProductImageUsageRouteLedger {
+		t.Fatalf("mismatched-claim resolution = (%q, %v, %v), want (ledger, false, nil)", stored, changed, err)
+	}
+}
+
 func testStudioBatchTaskLinkRepositoryClaimsProductImageUsageSettlementAtomically(t *testing.T, newRepo func(*testing.T) StudioBatchTaskLinkRepository) {
 	t.Helper()
 	repo := newRepo(t)

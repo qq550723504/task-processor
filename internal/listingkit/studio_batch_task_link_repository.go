@@ -41,6 +41,12 @@ type studioBatchTaskLinkUsageSettlementRepository interface {
 	ClaimStudioBatchProductImageUsageSettled(ctx context.Context, candidateKey string, updatedAt time.Time) (bool, error)
 }
 
+// studioBatchTaskLinkProductImageUsageRouteRepository atomically finalizes
+// the accounting route while the creating worker owns the candidate lease.
+type studioBatchTaskLinkProductImageUsageRouteRepository interface {
+	ResolveStudioBatchProductImageUsageRoute(ctx context.Context, candidateKey string, claimToken string, route studioBatchProductImageUsageRoute, updatedAt time.Time) (stored studioBatchProductImageUsageRoute, changed bool, err error)
+}
+
 func applyStudioBatchTaskLinkCreateScope(ctx context.Context, link *StudioBatchTaskLinkRecord) {
 	if link == nil {
 		return
