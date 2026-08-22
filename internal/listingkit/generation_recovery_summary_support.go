@@ -3,6 +3,8 @@ package listingkit
 import (
 	"sort"
 	"strings"
+
+	listinggeneration "task-processor/internal/listingkit/generation"
 )
 
 func cloneGenerationRecoverySummary(summary *GenerationRecoverySummary) *GenerationRecoverySummary {
@@ -105,7 +107,7 @@ func buildGenerationPanelResourceRecoveryTarget(item *GenerationPanelResourceDes
 	switch item.RecoveryHint {
 	case "review_fallback":
 		target := buildGenerationReviewNavigationTarget(item.Platform, item.Slot, item.Capability, nil)
-		return target, reviewActionKeyForCapability(item.Capability)
+		return target, listinggeneration.ReviewActionKeyForCapability(item.Capability)
 	case "retry_dispatch":
 		actionKey := assetGenerationActionRetrySectionGeneration
 		actionTarget := &AssetGenerationActionTarget{

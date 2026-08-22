@@ -15,7 +15,7 @@ func buildGenerationReviewPreviewViewer(platform, slot, capability string, previ
 		TaskRevision:     preview.TaskRevision,
 		PreviewFormat:    preview.PreviewFormat,
 		VisualMode:       preview.VisualMode,
-		FocusKey:         generationReviewFocusKey(platform, slot, capability),
+		FocusKey:         listinggeneration.ReviewFocusKey(platform, slot, capability),
 		NavigationTarget: buildGenerationReviewPreviewNavigationTarget(platform, slot, capability, preview),
 		PreviewQuery:     buildGenerationReviewPreviewQuery(platform, slot, capability, preview),
 	}

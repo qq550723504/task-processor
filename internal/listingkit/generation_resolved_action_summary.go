@@ -1,5 +1,7 @@
 package listingkit
 
+import listinggeneration "task-processor/internal/listingkit/generation"
+
 func buildGenerationResolvedActionSummaryFromOverview(overview *AssetGenerationOverview) *GenerationResolvedActionSummary {
 	if overview == nil {
 		return nil
@@ -217,7 +219,7 @@ func buildGenerationResolvedActionSummaryFromReviewTarget(summary *GenerationRec
 	}
 	resolved := &GenerationResolvedActionSummary{
 		SourceKind:       "review_target",
-		Title:            reviewActionLabelForCapability(target.Capability),
+		Title:            listinggeneration.ReviewActionLabelForCapability(target.Capability),
 		Summary:          "Review the current section and preview focus.",
 		CTAKind:          "review",
 		ActionKey:        target.ActionKey,
