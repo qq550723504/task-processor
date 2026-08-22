@@ -35,6 +35,81 @@ func TestGovernedImageAnalyzerRoutesAndRecordsInvocation(t *testing.T) {
 	if len(recorder.records) != 1 || recorder.records[0].Capability != aicapability.CapabilityProductEnrichVision || recorder.records[0].Outcome != aicapability.InvocationSucceeded {
 		t.Fatalf("records = %+v", recorder.records)
 	}
+	if record := recorder.records[0]; record.PromptKey != "productenrich.understanding.analyze_image" || record.PromptVersion != "v1" || record.PromptScope != "product_enrich" {
+		t.Fatalf("understanding prompt metadata = %+v", record)
+	}
+}
+
+func TestGovernedVisionQualityRecordsQualityPromptIdentity(t *testing.T) {
+	recorder := &imageInvocationRecorder{}
+	manager := &routedImageManager{response: `{"score":90}`}
+	analyzer, err := productenrichenrich.NewGovernedImageAnalyzer(manager, productenrichenrich.GovernedImageAnalyzerConfig{
+		Planner: staticExecutionPlanner{plan: aicapability.ExecutionPlan{
+			Mode: aicapability.RoutingModeActive, RouteOutcome: aicapability.RouteOutcomeActive,
+			Decision: aicapability.RouteDecision{
+				Capability: aicapability.CapabilityProductEnrichVision, Operation: aicapability.OperationProductEnrichVisionQualityScore,
+				ProviderID: "openai", ModelID: "vision-model", RoutingKey: "vision", CredentialReference: "vision",
+				PolicyVersion: "policy-v1", ConfigurationVersion: "config-v1",
+			},
+		}},
+		LegacyRouteMetadata: staticLegacyRouteMetadataResolver{},
+		Recorder:            recorder,
+		Capability:          aicapability.CapabilityProductEnrichVision,
+		Operation:           aicapability.OperationProductEnrichVisionQualityScore,
+		RequiredFeature:     aicapability.FeatureVisionAnalyze,
+		PromptKey:           "productenrich.llm_scorer.image_scoring",
+		PromptVersion:       "v1",
+		PromptScope:         "product_enrich",
+	})
+	if err != nil {
+		t.Fatalf("NewGovernedImageAnalyzer: %v", err)
+	}
+
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+	if _, err := analyzer.AnalyzeImage(ctx, "https://image", "score prompt"); err != nil {
+		t.Fatalf("AnalyzeImage: %v", err)
+	}
+	if len(recorder.records) != 1 {
+		t.Fatalf("records = %d, want 1", len(recorder.records))
+	}
+	if record := recorder.records[0]; record.PromptKey != "productenrich.llm_scorer.image_scoring" || record.PromptVersion != "v1" || record.PromptScope != "product_enrich" {
+		t.Fatalf("quality prompt metadata = %+v", record)
+	}
+}
+
+func TestGovernedImagePreparedExecutionPreservesExplicitScoringPromptIdentity(t *testing.T) {
+	recorder := &imageInvocationRecorder{}
+	analyzer, err := productenrichenrich.NewGovernedImageAnalyzer(&routedImageManager{response: `{"score":90}`}, productenrichenrich.GovernedImageAnalyzerConfig{
+		Planner: staticExecutionPlanner{plan: activeImageExecutionPlan()}, LegacyRouteMetadata: staticLegacyRouteMetadataResolver{}, Recorder: recorder,
+	})
+	if err != nil {
+		t.Fatalf("NewGovernedImageAnalyzer: %v", err)
+	}
+	preparer, ok := analyzer.(productenrich.ImageExecutionPreparer)
+	if !ok {
+		t.Fatal("governed image analyzer must prepare scoring executions")
+	}
+
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+	execution, err := preparer.PrepareImage(ctx, "https://image", "score prompt", productenrich.ScorePromptIdentity{
+		PromptKey: "productenrich.llm_scorer.image_scoring", PromptVersion: "prompt-v17", PromptScope: "product_enrich",
+	})
+	if err != nil {
+		t.Fatalf("PrepareImage: %v", err)
+	}
+	identity := execution.ScoreCacheIdentity("80", "raw-input-hash")
+	if identity.PromptKey != "productenrich.llm_scorer.image_scoring" || identity.PromptVersion != "prompt-v17" || identity.PromptScope != "product_enrich" {
+		t.Fatalf("cache prompt identity = %+v", identity)
+	}
+	if _, err := execution.Invoke(ctx, aicapability.CacheStatusMiss); err != nil {
+		t.Fatalf("Invoke: %v", err)
+	}
+	if len(recorder.records) != 1 {
+		t.Fatalf("records = %d, want 1", len(recorder.records))
+	}
+	if record := recorder.records[0]; record.PromptKey != "productenrich.llm_scorer.image_scoring" || record.PromptVersion != "prompt-v17" || record.PromptScope != "product_enrich" {
+		t.Fatalf("record prompt metadata = %+v", record)
+	}
 }
 
 func TestGovernedImageAnalyzerPolicyDeniedDoesNotCallLegacyProvider(t *testing.T) {

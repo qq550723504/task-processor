@@ -31,6 +31,9 @@ type GovernedImageAnalyzerConfig struct {
 	Capability          aicapability.Capability
 	Operation           aicapability.Operation
 	RequiredFeature     aicapability.ModelFeature
+	PromptKey           string
+	PromptVersion       string
+	PromptScope         string
 	OnRecordError       func(aicapability.InvocationRecord, error)
 	Now                 func() time.Time
 	NewID               func() string
@@ -47,6 +50,9 @@ type governedImageAnalyzer struct {
 	capability          aicapability.Capability
 	operation           aicapability.Operation
 	requiredFeature     aicapability.ModelFeature
+	promptKey           string
+	promptVersion       string
+	promptScope         string
 }
 
 func NewGovernedImageAnalyzer(manager productenrich.LLMManager, config GovernedImageAnalyzerConfig) (ImageAnalyzer, error) {
@@ -68,10 +74,20 @@ func NewGovernedImageAnalyzer(manager productenrich.LLMManager, config GovernedI
 	if config.RequiredFeature == "" {
 		config.RequiredFeature = aicapability.FeatureVisionAnalyze
 	}
+	if config.PromptKey == "" {
+		config.PromptKey = productEnrichVisionPromptKey
+	}
+	if config.PromptVersion == "" {
+		config.PromptVersion = productEnrichVisionPromptVersion
+	}
+	if config.PromptScope == "" {
+		config.PromptScope = productEnrichVisionPromptScope
+	}
 	return &governedImageAnalyzer{
 		manager: manager, planner: config.Planner, legacyRouteMetadata: config.LegacyRouteMetadata, recorder: config.Recorder,
 		onRecordError: config.OnRecordError, now: config.Now, newID: config.NewID,
 		capability: config.Capability, operation: config.Operation, requiredFeature: config.RequiredFeature,
+		promptKey: config.PromptKey, promptVersion: config.PromptVersion, promptScope: config.PromptScope,
 	}, nil
 }
 
@@ -97,7 +113,7 @@ func (a *governedImageAnalyzer) prepare(ctx context.Context, imageURL, prompt st
 	identity := aiidentity.FromContext(ctx)
 	execution := &preparedExecution{
 		identity: identity, capability: a.capability, operation: a.operation,
-		promptKey: productEnrichVisionPromptKey, promptVersion: productEnrichVisionPromptVersion, promptScope: productEnrichVisionPromptScope,
+		promptKey: a.promptKey, promptVersion: a.promptVersion, promptScope: a.promptScope,
 		prompt: prompt, input: imageURL, recorder: a.recorder, onRecordError: a.onRecordError,
 		now: a.now, newID: a.newID,
 	}

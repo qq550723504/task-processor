@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -12,6 +13,9 @@ import (
 
 	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
+	openaiclient "task-processor/internal/infra/clients/openai"
+	"task-processor/internal/prompt"
+	"task-processor/internal/shared/aiidentity"
 )
 
 func TestBuildAICapabilityRuntimeDepsKeepsLegacyModeDependencyFree(t *testing.T) {
@@ -104,6 +108,37 @@ func TestProductEnrichInvocationErrorHandlerLogsLedgerFailure(t *testing.T) {
 	}
 }
 
+func TestProductEnrichVisionQualityRuntimeRecordsQualityPromptIdentity(t *testing.T) {
+	clientConfig := &openaiclient.ClientConfig{APIKey: "test-key", Model: "vision-model", BaseURL: "https://example.test/v1", APIStyle: "openai"}
+	openaiMgr, err := openaiclient.NewManager(&openaiclient.ManagerConfig{
+		Clients: map[string]*openaiclient.ClientConfig{"default": clientConfig}, DefaultClient: "default",
+	})
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	recorder := &runtimeInvocationRecorder{}
+	deps, err := buildProductEnrichRuntimeDeps(logrus.New(), &config.Config{
+		Debug: config.DebugConfig{ProductEnrichMockLLM: true},
+		AICapability: config.AICapabilityConfig{
+			ProductEnrichVisionEnabled: true, ProductEnrichVisionAllowedTenantIDs: []string{"tenant-b"},
+		},
+	}, openaiMgr, runtimeStaticClientConfigResolver{config: clientConfig}, recorder)
+	if err != nil {
+		t.Fatalf("buildProductEnrichRuntimeDeps: %v", err)
+	}
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+	if _, err := deps.scoringImageAnalyzer.AnalyzeImage(ctx, "https://image", "score prompt"); err != nil {
+		t.Fatalf("AnalyzeImage: %v", err)
+	}
+	if len(recorder.records) != 1 {
+		t.Fatalf("records = %d, want 1", len(recorder.records))
+	}
+	record := recorder.records[0]
+	if record.Operation != aicapability.OperationProductEnrichVisionQualityScore || record.PromptKey != prompt.KProductEnrichLlmScorerImageScoring || record.PromptVersion != "v1" || record.PromptScope != "product_enrich" {
+		t.Fatalf("quality image invocation record = %+v", record)
+	}
+}
+
 func TestUniqueProductEnrichClientNamesPreservesOrderedRuntimeCandidates(t *testing.T) {
 	tests := []struct {
 		name string
@@ -133,6 +168,23 @@ func TestUniqueProductEnrichClientNamesPreservesOrderedRuntimeCandidates(t *test
 
 type captureLogHook struct {
 	entries []*logrus.Entry
+}
+
+type runtimeStaticClientConfigResolver struct {
+	config *openaiclient.ClientConfig
+}
+
+func (r runtimeStaticClientConfigResolver) ResolveClientConfig(context.Context, string, *openaiclient.ClientConfig) (*openaiclient.ResolvedClientConfig, error) {
+	return &openaiclient.ResolvedClientConfig{CacheKey: "test-config-v1", Config: r.config}, nil
+}
+
+type runtimeInvocationRecorder struct {
+	records []aicapability.InvocationRecord
+}
+
+func (r *runtimeInvocationRecorder) RecordInvocation(_ context.Context, record aicapability.InvocationRecord) error {
+	r.records = append(r.records, record)
+	return nil
 }
 
 func (h *captureLogHook) Levels() []logrus.Level { return logrus.AllLevels }

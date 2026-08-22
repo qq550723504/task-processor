@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/productenrich"
 	productenrichenrich "task-processor/internal/productenrich/enrich"
 	productenrichhttpapi "task-processor/internal/productenrich/httpapi"
+	"task-processor/internal/prompt"
 )
 
 type productEnrichRuntimeDeps struct {
@@ -204,6 +205,9 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 			Capability:          aicapability.CapabilityProductEnrichVision,
 			Operation:           aicapability.OperationProductEnrichVisionQualityScore,
 			RequiredFeature:     aicapability.FeatureVisionAnalyze,
+			PromptKey:           prompt.KProductEnrichLlmScorerImageScoring,
+			PromptVersion:       "v1",
+			PromptScope:         "product_enrich",
 		})
 		if err != nil {
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich image scoring capability: %w", err)
