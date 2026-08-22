@@ -65,6 +65,35 @@ func runProductEnrichTenantScopeContract(t *testing.T, newRepository func(*testi
 		})
 	})
 
+	for _, noncanonical := range []struct {
+		name              string
+		persistedTenantID string
+	}{
+		{name: "tab padding", persistedTenantID: "\ttenant-a\t"},
+		{name: "Unicode space padding", persistedTenantID: "\u00a0tenant-a\u00a0"},
+	} {
+		t.Run("rejects noncanonical persisted tenant/"+noncanonical.name, func(t *testing.T) {
+			t.Run("GetTask", func(t *testing.T) {
+				repo := seedProductEnrichNoncanonicalTenantTask(t, newRepository, noncanonical.persistedTenantID)
+				_, err := repo.GetTask(tenantA, "task-noncanonical")
+				require.ErrorIs(t, err, productenrich.ErrTaskNotFound)
+			})
+
+			t.Run("mutation", func(t *testing.T) {
+				repo := seedProductEnrichNoncanonicalTenantTask(t, newRepository, noncanonical.persistedTenantID)
+				before, err := repo.GetTask(unscoped, "task-noncanonical")
+				require.NoError(t, err)
+
+				err = repo.IncrementRetryCount(tenantA, "task-noncanonical")
+				require.ErrorIs(t, err, productenrich.ErrTaskNotFound)
+
+				after, err := repo.GetTask(unscoped, "task-noncanonical")
+				require.NoError(t, err)
+				require.Equal(t, before, after, "noncanonical tenant mutation changed task")
+			})
+		})
+	}
+
 	mutations := []struct {
 		name string
 		run  func(productenrich.TaskRepository) error
@@ -130,6 +159,18 @@ func seedProductEnrichSpacedTenantTask(t *testing.T, newRepository func(*testing
 		Status:                     productenrich.TaskStatusPending,
 		TenantID:                   "legacy-tenant",
 		PersistedExecutionEnvelope: productEnrichExecutionEnvelope(" tenant-a "),
+	}))
+	return repo
+}
+
+func seedProductEnrichNoncanonicalTenantTask(t *testing.T, newRepository func(*testing.T) productenrich.TaskRepository, tenantID string) productenrich.TaskRepository {
+	t.Helper()
+	repo := newRepository(t)
+	require.NoError(t, repo.CreateTask(context.Background(), &productenrich.Task{
+		ID:                         "task-noncanonical",
+		Status:                     productenrich.TaskStatusPending,
+		TenantID:                   "legacy-tenant",
+		PersistedExecutionEnvelope: productEnrichExecutionEnvelope(tenantID),
 	}))
 	return repo
 }

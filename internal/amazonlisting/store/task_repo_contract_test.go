@@ -85,6 +85,39 @@ func runAmazonTenantScopeContract(t *testing.T, newRepository func(*testing.T) a
 		})
 	})
 
+	for _, noncanonical := range []struct {
+		name              string
+		persistedTenantID string
+	}{
+		{name: "tab padding", persistedTenantID: "\ttenant-a\t"},
+		{name: "Unicode space padding", persistedTenantID: "\u00a0tenant-a\u00a0"},
+	} {
+		t.Run("rejects noncanonical persisted tenant/"+noncanonical.name, func(t *testing.T) {
+			t.Run("reads", func(t *testing.T) {
+				repo := seedAmazonNoncanonicalTenantTask(t, newRepository, noncanonical.persistedTenantID)
+				_, err := repo.GetTask(tenantA, "task-noncanonical")
+				require.ErrorIs(t, err, amazonlisting.ErrTaskNotFound)
+
+				items, err := repo.ListTasks(tenantA, nil, 0)
+				require.NoError(t, err)
+				require.Empty(t, items)
+			})
+
+			t.Run("mutation", func(t *testing.T) {
+				repo := seedAmazonNoncanonicalTenantTask(t, newRepository, noncanonical.persistedTenantID)
+				before, err := repo.GetTask(unscoped, "task-noncanonical")
+				require.NoError(t, err)
+
+				err = repo.IncrementRetryCount(tenantA, "task-noncanonical")
+				require.ErrorIs(t, err, amazonlisting.ErrTaskNotFound)
+
+				after, err := repo.GetTask(unscoped, "task-noncanonical")
+				require.NoError(t, err)
+				require.Equal(t, before, after, "noncanonical tenant mutation changed task")
+			})
+		})
+	}
+
 	mutations := []struct {
 		name string
 		run  func(amazonlisting.Repository) error
@@ -145,6 +178,17 @@ func seedAmazonSpacedTenantTask(t *testing.T, newRepository func(*testing.T) ama
 		ID:                         "task-spaced",
 		Status:                     amazonlisting.TaskStatusPending,
 		PersistedExecutionEnvelope: amazonExecutionEnvelope(" tenant-a "),
+	}))
+	return repo
+}
+
+func seedAmazonNoncanonicalTenantTask(t *testing.T, newRepository func(*testing.T) amazonlisting.Repository, tenantID string) amazonlisting.Repository {
+	t.Helper()
+	repo := newRepository(t)
+	require.NoError(t, repo.CreateTask(context.Background(), &amazonlisting.Task{
+		ID:                         "task-noncanonical",
+		Status:                     amazonlisting.TaskStatusPending,
+		PersistedExecutionEnvelope: amazonExecutionEnvelope(tenantID),
 	}))
 	return repo
 }
