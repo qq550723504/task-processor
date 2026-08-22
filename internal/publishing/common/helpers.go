@@ -52,6 +52,16 @@ func BuildImages(product *canonical.Product, image *productimage.ImageProcessRes
 }
 
 func BuildImagesFromBundle(bundle *asset.Bundle) *ImageSet {
+	return buildImagesFromBundle(bundle, false)
+}
+
+// BuildImagesFromBundleWithSelection projects a bundle while honoring its
+// explicit asset selection before applying source-image fallbacks.
+func BuildImagesFromBundleWithSelection(bundle *asset.Bundle) *ImageSet {
+	return buildImagesFromBundle(bundle, true)
+}
+
+func buildImagesFromBundle(bundle *asset.Bundle, useSelection bool) *ImageSet {
 	set := &ImageSet{}
 	if bundle != nil {
 		for _, item := range bundle.Assets {
@@ -71,11 +81,37 @@ func BuildImagesFromBundle(bundle *asset.Bundle) *ImageSet {
 			}
 		}
 	}
-	if set.MainImage == "" && len(set.Gallery) > 0 {
+	if useSelection && bundle != nil && bundle.Selection != nil {
+		if set.MainImage == "" {
+			if url := assetURLByID(bundle.Assets, bundle.Selection.MainAssetID); url != "" {
+				set.MainImage = url
+			}
+		}
+		if set.WhiteBgImage == "" {
+			if url := assetURLByID(bundle.Assets, bundle.Selection.WhiteBgAssetID); url != "" {
+				set.WhiteBgImage = url
+			}
+		}
+		if len(set.Gallery) == 0 {
+			for _, id := range bundle.Selection.GalleryAssetIDs {
+				if url := assetURLByID(bundle.Assets, id); url != "" {
+					set.Gallery = append(set.Gallery, url)
+				}
+			}
+		}
+	}
+	if useSelection {
+		if set.MainImage == "" && len(set.SourceImages) > 0 {
+			set.MainImage = set.SourceImages[0]
+		}
+	} else if set.MainImage == "" && len(set.Gallery) > 0 {
 		set.MainImage = set.Gallery[0]
 	}
 	if len(set.Gallery) == 0 && len(set.SourceImages) > 1 {
 		set.Gallery = append(set.Gallery, set.SourceImages[1:]...)
+	}
+	if useSelection && set.MainImage == "" && len(set.Gallery) > 0 {
+		set.MainImage = set.Gallery[0]
 	}
 	if set.MainImage == "" && len(set.SourceImages) == 0 && len(set.Gallery) == 0 && set.WhiteBgImage == "" {
 		return nil
@@ -83,6 +119,15 @@ func BuildImagesFromBundle(bundle *asset.Bundle) *ImageSet {
 	set.Gallery = UniqueStrings(set.Gallery)
 	set.SourceImages = UniqueStrings(set.SourceImages)
 	return set
+}
+
+func assetURLByID(items []asset.Asset, id string) string {
+	for _, item := range items {
+		if item.ID == id {
+			return item.URL
+		}
+	}
+	return ""
 }
 
 func FlattenAttributes(attributes map[string]canonical.Attribute) map[string]string {

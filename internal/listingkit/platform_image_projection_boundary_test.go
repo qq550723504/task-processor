@@ -15,7 +15,6 @@ func TestPlatformImageProjectionHasDedicatedFile(t *testing.T) {
 	for _, signature := range []string{
 		"func buildPlatformImages(",
 		"func buildPlatformImagesFromAssetBundle(",
-		"func findAssetURL(",
 	} {
 		if !strings.Contains(imageContent, signature) {
 			t.Fatalf("platform_images.go should own %s", signature)
@@ -29,10 +28,15 @@ func TestPlatformImageProjectionHasDedicatedFile(t *testing.T) {
 	for _, signature := range []string{
 		"func buildPlatformImages(",
 		"func buildPlatformImagesFromAssetBundle(",
-		"func findAssetURL(",
 	} {
 		if strings.Contains(string(helperSource), signature) {
 			t.Fatalf("platform_helpers.go should not own %s", signature)
 		}
+	}
+	if !strings.Contains(imageContent, "common.BuildImagesFromBundleWithSelection(") {
+		t.Fatal("platform_images.go should delegate bundle projection to common selection-aware builder")
+	}
+	if strings.Contains(imageContent, "func findAssetURL(") {
+		t.Fatal("platform_images.go should not duplicate asset URL lookup")
 	}
 }
