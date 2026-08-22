@@ -1,8 +1,7 @@
 package listingkit
 
 import (
-	"strings"
-
+	"task-processor/internal/publishing/common"
 	sheinwarehouse "task-processor/internal/shein/api/warehouse"
 )
 
@@ -10,15 +9,13 @@ func pickSheinWarehouseCode(warehouses *sheinwarehouse.WarehouseResponse, site s
 	if warehouses == nil || len(warehouses.Data) == 0 {
 		return ""
 	}
-	target := strings.ToUpper(strings.TrimSpace(site))
-	if target != "" {
-		for _, warehouse := range warehouses.Data {
-			for _, country := range warehouse.SaleCountryList {
-				if strings.EqualFold(strings.TrimSpace(country), target) {
-					return strings.TrimSpace(warehouse.WarehouseCode)
-				}
-			}
-		}
+
+	options := make([]common.WarehouseOption, 0, len(warehouses.Data))
+	for _, warehouse := range warehouses.Data {
+		options = append(options, common.WarehouseOption{
+			Code:          warehouse.WarehouseCode,
+			SaleCountries: warehouse.SaleCountryList,
+		})
 	}
-	return strings.TrimSpace(warehouses.Data[0].WarehouseCode)
+	return common.SelectWarehouseCodeForSite(options, site)
 }

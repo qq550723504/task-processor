@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	common "task-processor/internal/publishing/common"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -68,7 +69,7 @@ func buildSDSRetirementDefaultSiteSelection(tasks []Task) string {
 		}
 		// Use the same request-country defaults that normal SHEIN payload assembly
 		// uses; the synced product cache currently does not expose per-SKC sites.
-		for _, candidate := range defaultPlatformSites(tasks[i].Request) {
+		for _, candidate := range common.DefaultSites(tasks[i].Request.Country) {
 			if normalized := normalizeSDSRetirementSiteAbbr(candidate.MainSite); normalized != "" {
 				site = normalized
 				break

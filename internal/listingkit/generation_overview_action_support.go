@@ -13,7 +13,7 @@ func buildAssetGenerationActionTarget(queue *GenerationWorkQueue, actionKey stri
 	}
 	target := &AssetGenerationActionTarget{
 		ActionKey:       actionKey,
-		InteractionMode: actionInteractionMode(actionKey),
+		InteractionMode: listinggeneration.ActionInteractionMode(actionKey),
 	}
 	cloned := cloneAssetGenerationFilters(actionFiltersForKey(actionKey, filters))
 	if cloned == nil {
@@ -89,10 +89,6 @@ func buildAssetGenerationActionImpact(queue *GenerationWorkQueue, query *Generat
 		QualityGrades:  impact.QualityGrades,
 		States:         impact.States,
 	}
-}
-
-func actionInteractionMode(actionKey string) string {
-	return listinggeneration.ActionInteractionMode(actionKey)
 }
 
 func buildPreviewCapabilitySecondaryActions(summary *GenerationWorkQueueSummary) ([]string, []string) {

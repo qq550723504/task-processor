@@ -11,18 +11,19 @@ import (
 
 func (s *service) persistGenerationReviewDecision(ctx context.Context, taskID string, actionKey string, session *GenerationReviewSession, target *AssetGenerationActionTarget) (*GenerationReviewRecord, error) {
 	reviewRepo := resolveReviewRepository(s)
-	if reviewRepo == nil || !isPersistedGenerationReviewAction(actionKey) {
+	if reviewRepo == nil || !listinggeneration.IsPersistedReviewAction(actionKey) {
 		return nil, nil
 	}
 	record := buildGenerationReviewRecord(taskID, actionKey, session, target)
 	if record == nil && target != nil && target.QueueQuery != nil {
+		decision := GenerationReviewDecision(listinggeneration.ReviewDecisionFromAction(actionKey))
 		record = &GenerationReviewRecord{
 			TaskID:          taskID,
 			Platform:        strings.TrimSpace(target.QueueQuery.Platform),
 			Slot:            strings.TrimSpace(target.QueueQuery.Slot),
 			Capability:      strings.TrimSpace(target.QueueQuery.PreviewCapability),
-			Decision:        generationReviewDecisionFromAction(actionKey),
-			Status:          generationReviewStatusFromDecision(generationReviewDecisionFromAction(actionKey)),
+			Decision:        decision,
+			Status:          listinggeneration.ReviewStatusFromDecision(string(decision)),
 			Message:         generationReviewWorkflowMessage(actionKey, target.QueueQuery.Platform, target.QueueQuery.Slot, target.QueueQuery.PreviewCapability),
 			ReviewedAt:      time.Now().UTC(),
 			ReviewedBy:      "listingkit",
@@ -54,7 +55,7 @@ func (s *service) persistGenerationReviewDecision(ctx context.Context, taskID st
 }
 
 func buildGenerationReviewRecord(taskID string, actionKey string, session *GenerationReviewSession, target *AssetGenerationActionTarget) *GenerationReviewRecord {
-	decision := generationReviewDecisionFromAction(actionKey)
+	decision := GenerationReviewDecision(listinggeneration.ReviewDecisionFromAction(actionKey))
 	if decision == "" {
 		return nil
 	}
@@ -85,7 +86,7 @@ func buildGenerationReviewRecord(taskID string, actionKey string, session *Gener
 		Slot:            slot,
 		Capability:      capability,
 		Decision:        decision,
-		Status:          generationReviewStatusFromDecision(decision),
+		Status:          listinggeneration.ReviewStatusFromDecision(string(decision)),
 		Message:         generationReviewWorkflowMessage(actionKey, platform, slot, capability),
 		ReviewedAt:      now,
 		ReviewedBy:      "listingkit",
@@ -122,18 +123,6 @@ func buildGenerationReviewRecord(taskID string, actionKey string, session *Gener
 		}
 	}
 	return record
-}
-
-func isPersistedGenerationReviewAction(actionKey string) bool {
-	return listinggeneration.IsPersistedReviewAction(actionKey)
-}
-
-func generationReviewDecisionFromAction(actionKey string) GenerationReviewDecision {
-	return GenerationReviewDecision(listinggeneration.ReviewDecisionFromAction(actionKey))
-}
-
-func generationReviewStatusFromDecision(decision GenerationReviewDecision) string {
-	return listinggeneration.ReviewStatusFromDecision(string(decision))
 }
 
 func generationReviewWorkflowMessage(actionKey, platform, slot, capability string) string {

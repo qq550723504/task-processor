@@ -48,19 +48,22 @@ func buildGenerationNavigationDispatchPlan(target *GenerationReviewNavigationTar
 		return nil
 	}
 	plan := &GenerationNavigationDispatchPlan{
-		Strategy:           buildGenerationNavigationDispatchStrategy(target, len(reads)),
-		StopOnNotModified:  buildGenerationNavigationDispatchStopOnNotModified(target, len(reads)),
-		StopOnFirstSuccess: buildGenerationNavigationDispatchStopOnFirstSuccess(target, len(reads)),
-		StopOnError:        buildGenerationNavigationDispatchStopOnError(target, len(reads)),
-		FallbackStrategy:   buildGenerationNavigationDispatchFallbackStrategy(target, len(reads)),
-		MaxParallelism:     buildGenerationNavigationDispatchMaxParallelism(target, len(reads)),
+		Strategy:           listinggeneration.NavigationDispatchStrategy(buildGenerationNavigationTargetResourceKind(target), len(reads)),
+		StopOnNotModified:  listinggeneration.NavigationDispatchStopOnNotModified(buildGenerationNavigationTargetResourceKind(target), len(reads)),
+		StopOnFirstSuccess: listinggeneration.NavigationDispatchStopOnFirstSuccess(buildGenerationNavigationTargetResourceKind(target), len(reads)),
+		StopOnError:        listinggeneration.NavigationDispatchStopOnError(len(reads)),
+		FallbackStrategy:   listinggeneration.NavigationDispatchFallbackStrategy(buildGenerationNavigationTargetResourceKind(target), len(reads)),
+		MaxParallelism:     listinggeneration.NavigationDispatchMaxParallelism(listinggeneration.NavigationDispatchStrategy(buildGenerationNavigationTargetResourceKind(target), len(reads))),
 		DedupePolicy:       "by_step_identity",
 		WinnerPolicy:       "prefer_preview_then_session_then_queue",
 		RequiresRevalidate: generationNavigationTargetRevalidateAfterAction(target),
 		Steps:              make([]GenerationNavigationDispatchStep, 0, len(reads)),
 	}
 	for _, item := range reads {
-		cachePreference := buildGenerationNavigationDispatchStepCachePreference(target, item.Kind)
+		cachePreference := listinggeneration.NavigationDispatchStepCachePreference(
+			generationNavigationTargetRevalidateAfterAction(target),
+			item.Kind,
+		)
 		plan.Steps = append(plan.Steps, GenerationNavigationDispatchStep{
 			Kind:               item.Kind,
 			ResponseMode:       item.ResponseMode,
@@ -70,34 +73,6 @@ func buildGenerationNavigationDispatchPlan(target *GenerationReviewNavigationTar
 		})
 	}
 	return plan
-}
-
-func buildGenerationNavigationDispatchStrategy(target *GenerationReviewNavigationTarget, readCount int) string {
-	return listinggeneration.NavigationDispatchStrategy(buildGenerationNavigationTargetResourceKind(target), readCount)
-}
-
-func buildGenerationNavigationDispatchStopOnNotModified(target *GenerationReviewNavigationTarget, readCount int) bool {
-	return listinggeneration.NavigationDispatchStopOnNotModified(buildGenerationNavigationTargetResourceKind(target), readCount)
-}
-
-func buildGenerationNavigationDispatchStopOnFirstSuccess(target *GenerationReviewNavigationTarget, readCount int) bool {
-	return listinggeneration.NavigationDispatchStopOnFirstSuccess(buildGenerationNavigationTargetResourceKind(target), readCount)
-}
-
-func buildGenerationNavigationDispatchStopOnError(target *GenerationReviewNavigationTarget, readCount int) bool {
-	return listinggeneration.NavigationDispatchStopOnError(readCount)
-}
-
-func buildGenerationNavigationDispatchFallbackStrategy(target *GenerationReviewNavigationTarget, readCount int) string {
-	return listinggeneration.NavigationDispatchFallbackStrategy(buildGenerationNavigationTargetResourceKind(target), readCount)
-}
-
-func buildGenerationNavigationDispatchMaxParallelism(target *GenerationReviewNavigationTarget, readCount int) int {
-	return listinggeneration.NavigationDispatchMaxParallelism(buildGenerationNavigationDispatchStrategy(target, readCount))
-}
-
-func buildGenerationNavigationDispatchStepCachePreference(target *GenerationReviewNavigationTarget, stepKind string) string {
-	return listinggeneration.NavigationDispatchStepCachePreference(generationNavigationTargetRevalidateAfterAction(target), stepKind)
 }
 
 func generationNavigationDispatchBaseQuery(target *GenerationReviewNavigationTarget) *GenerationQueueQuery {

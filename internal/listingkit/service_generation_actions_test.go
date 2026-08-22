@@ -17,6 +17,7 @@ import (
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/catalog"
 	"task-processor/internal/listingkit/core"
+	listinggeneration "task-processor/internal/listingkit/generation"
 	"task-processor/internal/listingkit/reviewstore"
 	common "task-processor/internal/publishing/common"
 )
@@ -2208,8 +2209,8 @@ func TestResolveAssetGenerationActionTargetClonesRequestTargetAndDefaultsInterac
 	if target == requestTarget {
 		t.Fatal("target pointer reused, want cloned request target")
 	}
-	if target.InteractionMode != actionInteractionMode(assetGenerationActionApproveSectionReview) {
-		t.Fatalf("interaction mode = %q, want %q", target.InteractionMode, actionInteractionMode(assetGenerationActionApproveSectionReview))
+	if target.InteractionMode != listinggeneration.ActionInteractionMode(assetGenerationActionApproveSectionReview) {
+		t.Fatalf("interaction mode = %q, want %q", target.InteractionMode, listinggeneration.ActionInteractionMode(assetGenerationActionApproveSectionReview))
 	}
 	if requestTarget.InteractionMode != "" {
 		t.Fatalf("request target interaction mode = %q, want original request target left unchanged", requestTarget.InteractionMode)

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	assetgeneration "task-processor/internal/asset/generation"
+	listinggeneration "task-processor/internal/listingkit/generation"
 )
 
 type generationReviewStateKey struct {
@@ -146,9 +147,7 @@ func collectCurrentGenerationReviewKeys(queue *GenerationWorkQueue, previews []P
 			item, _ := findGenerationQueueItemByPlatformSlot(queue, group.Platform, slot.Slot)
 			capabilities := item.PreviewCapabilities
 			if len(capabilities) == 0 {
-				capabilities = buildRenderPreviewCapabilities(GenerationWorkQueueItem{
-					RenderPreviewLayerTypes: append([]string(nil), slot.LayerTypes...),
-				})
+				capabilities = listinggeneration.RenderPreviewCapabilities(append([]string(nil), slot.LayerTypes...))
 			}
 			for _, capability := range capabilities {
 				key := generationReviewStateKey{

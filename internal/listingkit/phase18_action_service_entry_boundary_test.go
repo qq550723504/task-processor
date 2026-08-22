@@ -161,7 +161,7 @@ func TestTaskGenerationActionPhaseOwnershipServiceEntryBoundary(t *testing.T) {
 
 		source := readExactMethodSource(t, "task_generation_action_execute.go", "func (p *taskGenerationActionPersistPhase) run(")
 		assertSourceContainsAll(t, source, []string{
-			"isPersistedGenerationReviewAction(target.ActionKey)",
+			"listinggeneration.IsPersistedReviewAction(target.ActionKey)",
 			"execution.persistenceSession",
 			"persistGenerationReviewDecision(ctx, taskID, target.ActionKey, execution.persistenceSession, target)",
 		})

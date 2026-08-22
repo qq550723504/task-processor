@@ -3,6 +3,7 @@ package listingkit
 import (
 	"strings"
 
+	listinggeneration "task-processor/internal/listingkit/generation"
 	common "task-processor/internal/publishing/common"
 )
 
@@ -93,7 +94,7 @@ func appendBundleSlotQueueItem(items *[]GenerationWorkQueueItem, index map[gener
 		RenderPreviewStyleTokens: append([]string(nil), renderPreview.StyleTokens...),
 		ScenePreset:              cloneGenerationScenePresetSummary(scenePresetIndex[strings.TrimSpace(slot.AssetID)]),
 	}
-	item.PreviewCapabilities = buildRenderPreviewCapabilities(item)
+	item.PreviewCapabilities = listinggeneration.RenderPreviewCapabilities(item.RenderPreviewLayerTypes)
 	key := generationQueueItemKey(item.Platform, item.RecipeID, item.Slot)
 	index[key] = len(*items)
 	*items = append(*items, item)
