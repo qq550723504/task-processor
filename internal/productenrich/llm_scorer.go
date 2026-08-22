@@ -25,6 +25,14 @@ type LLMScorer interface {
 	ScoreImage(ctx context.Context, imageURL string, baseScore float64) (float64, error)
 }
 
+type ScoringTextGenerator interface {
+	Generate(context.Context, string) (string, error)
+}
+
+type ScoringImageAnalyzer interface {
+	AnalyzeImage(context.Context, string, string) (string, error)
+}
+
 type llmScorerWithObservability interface {
 	scoreTextResult(ctx context.Context, text string, baseScore float64) (*llmScoreResult, error)
 	scoreImageResult(ctx context.Context, imageURL string, baseScore float64) (*llmScoreResult, error)
@@ -49,6 +57,8 @@ type llmScorer struct {
 	cacheTTL       time.Duration
 	maxRetries     int
 	fallbackWeight float64 // LLM 评分权重（0-1），基础评分权重为 1-fallbackWeight
+	textGenerator  ScoringTextGenerator
+	imageAnalyzer  ScoringImageAnalyzer
 }
 
 // LLMScorerConfig LLM 评分器配置
@@ -60,6 +70,8 @@ type LLMScorerConfig struct {
 	CacheTTL       time.Duration // 缓存过期时间
 	MaxRetries     int           // 最大重试次数
 	FallbackWeight float64       // LLM 评分权重（默认 0.3）
+	TextGenerator  ScoringTextGenerator
+	ImageAnalyzer  ScoringImageAnalyzer
 }
 
 // NewLLMScorer 创建 LLM 智能评分器
@@ -99,6 +111,8 @@ func NewLLMScorer(config *LLMScorerConfig) LLMScorer {
 		cacheTTL:       config.CacheTTL,
 		maxRetries:     config.MaxRetries,
 		fallbackWeight: config.FallbackWeight,
+		textGenerator:  config.TextGenerator,
+		imageAnalyzer:  config.ImageAnalyzer,
 	}
 }
 
@@ -219,6 +233,20 @@ func (s *llmScorer) scoreWithCache(
 
 // scoreTextWithLLM 使用 LLM 对文本进行评分
 func (s *llmScorer) scoreTextWithLLM(ctx context.Context, text string, baseScore float64) (*rawLLMScoreResult, error) {
+	if s.textGenerator != nil {
+		resolvedPrompt := resolveTextScoringPrompt(text, baseScore)
+		response, err := s.retryLLMCall(ctx, s.maxRetries, func() (string, error) {
+			return s.textGenerator.Generate(ctx, resolvedPrompt.Text)
+		})
+		if err != nil {
+			return &rawLLMScoreResult{Score: baseScore}, fmt.Errorf("governed LLM scoring failed after %d attempts: %w", s.maxRetries, err)
+		}
+		score, err := s.parseLLMScore(response)
+		if err != nil {
+			return &rawLLMScoreResult{Score: baseScore}, err
+		}
+		return &rawLLMScoreResult{Score: score, Prompt: &PromptObservability{PromptRef: resolvedPrompt.Key, PromptKey: resolvedPrompt.Key, PromptSource: resolvedPrompt.Source, PromptVersion: resolvedPrompt.Version}}, nil
+	}
 	if s.llmManager == nil {
 		return &rawLLMScoreResult{Score: baseScore}, fmt.Errorf("LLM manager not configured")
 	}
@@ -250,6 +278,20 @@ func (s *llmScorer) scoreTextWithLLM(ctx context.Context, text string, baseScore
 
 // scoreImageWithLLM 使用 LLM 对图片进行评分
 func (s *llmScorer) scoreImageWithLLM(ctx context.Context, imageURL string, baseScore float64) (*rawLLMScoreResult, error) {
+	if s.imageAnalyzer != nil {
+		resolvedPrompt := resolveImageScoringPrompt(baseScore)
+		response, err := s.retryLLMCall(ctx, s.maxRetries, func() (string, error) {
+			return s.imageAnalyzer.AnalyzeImage(ctx, imageURL, resolvedPrompt.Text)
+		})
+		if err != nil {
+			return &rawLLMScoreResult{Score: baseScore}, fmt.Errorf("governed LLM image scoring failed after %d attempts: %w", s.maxRetries, err)
+		}
+		score, err := s.parseLLMScore(response)
+		if err != nil {
+			return &rawLLMScoreResult{Score: baseScore}, err
+		}
+		return &rawLLMScoreResult{Score: score, Prompt: &PromptObservability{PromptRef: resolvedPrompt.Key, PromptKey: resolvedPrompt.Key, PromptSource: resolvedPrompt.Source, PromptVersion: resolvedPrompt.Version}}, nil
+	}
 	if s.llmManager == nil {
 		return &rawLLMScoreResult{Score: baseScore}, fmt.Errorf("LLM manager not configured")
 	}

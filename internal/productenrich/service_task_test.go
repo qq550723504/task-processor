@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"task-processor/internal/shared/aiidentity"
 )
 
 // mockTaskSubmitter 捕获 Submit 调用，实现 TaskSubmitter 接口
@@ -141,6 +143,26 @@ func TestCreateGenerateTask_WithSubmitter_SubmitsJob(t *testing.T) {
 	}
 	if submitter.submitted[0] != task.ID {
 		t.Errorf("submitted taskID = %q, want %q", submitter.submitted[0], task.ID)
+	}
+}
+
+func TestCreateGenerateTask_PersistsSubmittingIdentity(t *testing.T) {
+	svc, repo := newSvcWithSubmitter(t, nil)
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{
+		TenantID: "tenant-a",
+		UserID:   "user-a",
+	})
+
+	task, err := svc.CreateGenerateTask(ctx, &GenerateRequest{Text: "a product"})
+	if err != nil {
+		t.Fatalf("CreateGenerateTask: %v", err)
+	}
+	if task.TenantID != "tenant-a" || task.UserID != "user-a" {
+		t.Fatalf("task identity = %q/%q, want tenant-a/user-a", task.TenantID, task.UserID)
+	}
+	persisted := repo.tasks[task.ID]
+	if persisted.TenantID != "tenant-a" || persisted.UserID != "user-a" {
+		t.Fatalf("persisted identity = %q/%q, want tenant-a/user-a", persisted.TenantID, persisted.UserID)
 	}
 }
 

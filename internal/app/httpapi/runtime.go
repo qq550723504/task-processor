@@ -38,7 +38,7 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 	closers = append(closers, aiCapabilityDeps.closers...)
 	closers = append(closers, promptDeps.closers...)
 	done = timer.phase("buildProductEnrichRuntimeDeps")
-	productEnrichDeps, err := buildProductEnrichRuntimeDeps(logger, cfg, openaiDeps.openaiMgr)
+	productEnrichDeps, err := buildProductEnrichRuntimeDeps(logger, cfg, openaiDeps.openaiMgr, openaiDeps.aiCredentialStore, aiCapabilityDeps.invocationRecorder)
 	done()
 	if err != nil {
 		return nil, err
@@ -64,6 +64,12 @@ func buildRuntimeDeps(logger *logrus.Logger, configPath string) (*runtimeDeps, e
 			llmMgr:               productEnrichDeps.llmMgr,
 			inputParser:          productEnrichDeps.inputParser,
 			understanding:        productEnrichDeps.understanding,
+			contentGenerator:     productEnrichDeps.contentGenerator,
+			specsGenerator:       productEnrichDeps.specsGenerator,
+			variantsGenerator:    productEnrichDeps.variantsGenerator,
+			fusionGenerator:      productEnrichDeps.fusionGenerator,
+			scoringTextGenerator: productEnrichDeps.scoringTextGenerator,
+			scoringImageAnalyzer: productEnrichDeps.scoringImageAnalyzer,
 			imageWorkDir:         imageWorkDir,
 			storeAPI:             storeAPI,
 		},

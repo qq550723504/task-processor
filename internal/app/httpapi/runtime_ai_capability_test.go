@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 	"gorm.io/gorm"
 	_ "modernc.org/sqlite"
 
+	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
 )
 
@@ -62,6 +64,55 @@ func TestBuildAICapabilityRuntimeDepsRequiresDatabaseWhenProductImageSceneEnable
 	if !strings.Contains(err.Error(), "AI capability") {
 		t.Fatalf("error = %q, want AI capability resource context", err)
 	}
+}
+
+func TestBuildAICapabilityRuntimeDepsRequiresDatabaseWhenProductEnrichGovernanceEnabled(t *testing.T) {
+	_, err := buildAICapabilityRuntimeDeps(&config.Config{
+		AICapability: config.AICapabilityConfig{
+			StudioImageRoutingMode:   "legacy",
+			ProductEnrichTextEnabled: true,
+		},
+	}, logrus.New())
+	if err == nil {
+		t.Fatal("expected missing database error")
+	}
+	if !strings.Contains(err.Error(), "AI capability") {
+		t.Fatalf("error = %q, want AI capability resource context", err)
+	}
+}
+
+func TestProductEnrichInvocationErrorHandlerLogsLedgerFailure(t *testing.T) {
+	logger := logrus.New()
+	hook := &captureLogHook{}
+	logger.AddHook(hook)
+
+	productEnrichInvocationErrorHandler(logger)(aicapability.InvocationRecord{
+		InvocationID: "invocation-1",
+		Capability:   aicapability.CapabilityProductEnrichListing,
+		Operation:    aicapability.OperationProductEnrichJSONGenerate,
+	}, errors.New("ledger unavailable"))
+
+	if len(hook.entries) != 1 {
+		t.Fatalf("logged entries = %d, want 1", len(hook.entries))
+	}
+	entry := hook.entries[0]
+	if entry.Message != "ai invocation ledger write failed" {
+		t.Fatalf("message = %q", entry.Message)
+	}
+	if entry.Data["invocation_id"] != "invocation-1" || entry.Data["operation"] != string(aicapability.OperationProductEnrichJSONGenerate) {
+		t.Fatalf("fields = %#v", entry.Data)
+	}
+}
+
+type captureLogHook struct {
+	entries []*logrus.Entry
+}
+
+func (h *captureLogHook) Levels() []logrus.Level { return logrus.AllLevels }
+
+func (h *captureLogHook) Fire(entry *logrus.Entry) error {
+	h.entries = append(h.entries, entry)
+	return nil
 }
 
 func TestAutoMigrateProductListingAPIRuntimeSchemaCreatesAIInvocationsTable(t *testing.T) {
