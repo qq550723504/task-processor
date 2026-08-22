@@ -48,6 +48,21 @@ func runProductEnrichTenantScopeContract(t *testing.T, newRepository func(*testi
 		require.NoError(t, err)
 	})
 
+	t.Run("legacy owner does not authorize an absent execution envelope", func(t *testing.T) {
+		repo := newRepository(t)
+		require.NoError(t, repo.CreateTask(unscoped, &productenrich.Task{
+			ID: "legacy-task", Status: productenrich.TaskStatusPending, TenantID: "tenant-a", UserID: "legacy-user-a",
+		}))
+
+		_, err := repo.GetTask(tenantA, "legacy-task")
+		require.ErrorIs(t, err, productenrich.ErrTaskNotFound)
+		err = repo.IncrementRetryCount(tenantA, "legacy-task")
+		require.ErrorIs(t, err, productenrich.ErrTaskNotFound)
+		legacy, err := repo.GetTask(unscoped, "legacy-task")
+		require.NoError(t, err)
+		require.Equal(t, 0, legacy.RetryCount)
+	})
+
 	t.Run("normalizes persisted execution tenant", func(t *testing.T) {
 		t.Run("GetTask", func(t *testing.T) {
 			repo := seedProductEnrichSpacedTenantTask(t, newRepository)
