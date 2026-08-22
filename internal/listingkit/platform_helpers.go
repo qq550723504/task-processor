@@ -2,7 +2,6 @@ package listingkit
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"task-processor/internal/asset"
@@ -153,13 +152,6 @@ func uniqueStrings(values []string) []string {
 		result = append(result, value)
 	}
 	return result
-}
-
-func formatFloat(value float64) string {
-	if value == 0 {
-		return ""
-	}
-	return strconv.FormatFloat(value, 'f', -1, 64)
 }
 
 func cloneMap(input map[string]string) map[string]string {

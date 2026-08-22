@@ -74,17 +74,17 @@ func buildTemuBatchSKUInfo(variants []PlatformVariant, canonical *canonical.Prod
 		OutSkuSN: base.SKU,
 	}
 	if base.Price != nil {
-		info.Price = formatFloat(base.Price.Amount)
-		info.CostPrice = formatFloat(base.Price.CostPrice)
+		info.Price = common.FormatFloat(base.Price.Amount)
+		info.CostPrice = common.FormatFloat(base.Price.CostPrice)
 	}
 	if canonical != nil && canonical.Specifications != nil {
 		if canonical.Specifications.Weight != nil {
-			info.Weight = formatFloat(canonical.Specifications.Weight.Value)
+			info.Weight = common.FormatFloat(canonical.Specifications.Weight.Value)
 		}
 		if canonical.Specifications.Dimensions != nil {
-			info.Length = formatFloat(canonical.Specifications.Dimensions.Length)
-			info.Width = formatFloat(canonical.Specifications.Dimensions.Width)
-			info.Height = formatFloat(canonical.Specifications.Dimensions.Height)
+			info.Length = common.FormatFloat(canonical.Specifications.Dimensions.Length)
+			info.Width = common.FormatFloat(canonical.Specifications.Dimensions.Width)
+			info.Height = common.FormatFloat(canonical.Specifications.Dimensions.Height)
 		}
 	}
 	return info
