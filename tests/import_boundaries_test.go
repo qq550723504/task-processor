@@ -238,12 +238,6 @@ func TestListingKitRootDoesNotImportManagementAPI(t *testing.T) {
 	}
 }
 
-func TestListingKitProductionDoesNotImportMarketplaceSheinPublishing(t *testing.T) {
-	assertNoProductionBannedImports(t, filepath.Join("..", "internal", "listingkit"), []string{
-		`"task-processor/internal/marketplace/shein/publishing"`,
-	}, nil)
-}
-
 func TestListingKitSheinSyncLegacyPromotionImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit", "sheinsync")
 	allowedFiles := map[string]struct{}{

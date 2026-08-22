@@ -30,6 +30,7 @@ linters:
     - govet         # go vet检查
     - ineffassign   # 检查无效的赋值
     - staticcheck   # 静态分析检查
+    - depguard     # 检查稳定的包依赖方向
     
     # 代码风格
     - gofmt         # 检查代码格式
@@ -38,6 +39,39 @@ linters:
 
 # Linters 设置
 linters-settings:
+  depguard:
+    rules:
+      shein_marketplace_publishing:
+        # Keep this first rule narrow: migration-specific exceptions remain in
+        # tests/import_boundaries_test.go until their contracts are stable.
+        list-mode: lax
+        files:
+          - "**/internal/marketplace/shein/publishing/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit"
+            desc: "SHEIN publishing policies must not depend on ListingKit"
+          - pkg: "task-processor/internal/app"
+            desc: "SHEIN publishing policies must not depend on root runtime wiring"
+          - pkg: "task-processor/internal/httpbootstrap"
+            desc: "SHEIN publishing policies must not depend on root runtime wiring"
+          - pkg: "task-processor/internal/httproute"
+            desc: "SHEIN publishing policies must not depend on root runtime wiring"
+          - pkg: "task-processor/internal/infra"
+            desc: "SHEIN publishing policies must not depend on root runtime wiring"
+          - pkg: "task-processor/internal/integration"
+            desc: "SHEIN publishing policies must not depend on root runtime wiring"
+          - pkg: "task-processor/internal/platform"
+            desc: "SHEIN publishing policies must not depend on root runtime wiring"
+
+      listingkit_marketplace_publishing:
+        # This package direction is stable and has no compatibility exceptions.
+        files:
+          - "**/internal/listingkit/*.go"
+          - "**/internal/listingkit/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/marketplace/shein/publishing"
+            desc: "ListingKit production code must not depend on SHEIN publishing policies"
+
   govet:
     disable:
       - fieldalignment
