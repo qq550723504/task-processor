@@ -73,6 +73,51 @@ func TestCrawler1688ProcessorSerializesSameAccountProfile(t *testing.T) {
 	}
 }
 
+func TestCrawler1688ProcessorCancelsWhileWaitingForSameAccountProfileLock(t *testing.T) {
+	processor := &blockingProfileProcessor{
+		started:   make(chan struct{}, 2),
+		release:   make(chan struct{}),
+		globalErr: NewPublicAccessError(PublicAccessFailureChallenge, errors.New("captcha")),
+	}
+	resolver := &staticAccountProfileResolver{profile: AccountProfile{ID: 3001, TenantID: 101, ProfileDir: "C:/profiles/101/3001"}}
+	service := newTestAlibaba1688Service(processor, resolver)
+	p := &Crawler1688Processor{service: service}
+
+	firstDone := make(chan error, 1)
+	go func() { firstDone <- p.ProcessTask(context.Background(), crawler1688WorkerJob(t, 101, 3001)) }()
+	select {
+	case <-processor.started:
+	case <-time.After(time.Second):
+		t.Fatal("first profile crawl did not start")
+	}
+
+	waitingCtx, cancel := context.WithCancel(context.Background())
+	secondDone := make(chan error, 1)
+	go func() { secondDone <- p.ProcessTask(waitingCtx, crawler1688WorkerJob(t, 101, 3001)) }()
+
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	select {
+	case err := <-secondDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("second ProcessTask() error = %v, want context.Canceled", err)
+		}
+	case <-time.After(200 * time.Millisecond):
+		close(processor.release)
+		t.Fatal("second profile crawl did not unblock on context cancellation")
+	}
+
+	close(processor.release)
+
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first ProcessTask() error = %v", err)
+	}
+	if got := processor.callCount(); got != 1 {
+		t.Fatalf("account processor calls = %d, want 1", got)
+	}
+}
+
 func TestCrawler1688ProcessorFailsClosedWithoutResolverForAccountBoundTask(t *testing.T) {
 	processor := &fakeAlibaba1688TaskProcessor{globalErr: NewPublicAccessError(PublicAccessFailureChallenge, errors.New("captcha"))}
 	service := newTestAlibaba1688Service(processor, nil)
@@ -432,6 +477,7 @@ type blockingProfileProcessor struct {
 	mu        sync.Mutex
 	active    int
 	maxActive int
+	calls     int
 	started   chan struct{}
 	release   chan struct{}
 	globalErr error
@@ -443,6 +489,7 @@ func (p *blockingProfileProcessor) Process(context.Context, string) (*model.Prod
 
 func (p *blockingProfileProcessor) ProcessWithAccountProfile(context.Context, string, AccountProfile) (*model.Product1688, error) {
 	p.mu.Lock()
+	p.calls++
 	p.active++
 	if p.active > p.maxActive {
 		p.maxActive = p.active
@@ -457,3 +504,9 @@ func (p *blockingProfileProcessor) ProcessWithAccountProfile(context.Context, st
 }
 
 func (p *blockingProfileProcessor) Shutdown() {}
+
+func (p *blockingProfileProcessor) callCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.calls
+}

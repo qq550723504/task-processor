@@ -28,9 +28,38 @@ type Service struct {
 	processor1688          alibaba1688TaskProcessor
 	accountProfileResolver AccountProfileResolver
 	profileLocksMu         sync.Mutex
-	profileLocks           map[string]*sync.Mutex
+	profileLocks           map[string]*accountProfileLock
 	sourceAccessMu         sync.Mutex
 	sourceAccessCounts     map[string]int64
+}
+
+type accountProfileLock struct {
+	token chan struct{}
+}
+
+func newAccountProfileLock() *accountProfileLock {
+	token := make(chan struct{}, 1)
+	token <- struct{}{}
+	return &accountProfileLock{token: token}
+}
+
+func (l *accountProfileLock) lock(ctx context.Context) (func(), error) {
+	if l == nil {
+		return nil, fmt.Errorf("account profile lock is nil")
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-l.token:
+	}
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			l.token <- struct{}{}
+		})
+	}, nil
 }
 
 type alibaba1688TaskProcessor interface {
@@ -68,7 +97,7 @@ func NewService(cfg *config.Config, logger *logrus.Logger, resolvers ...AccountP
 		logger:                 logger,
 		processor1688:          processor1688,
 		accountProfileResolver: resolver,
-		profileLocks:           make(map[string]*sync.Mutex),
+		profileLocks:           make(map[string]*accountProfileLock),
 		sourceAccessCounts:     newSourceAccessCounts(),
 	}
 

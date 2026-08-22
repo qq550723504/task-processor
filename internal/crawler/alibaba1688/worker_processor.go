@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 
 	"task-processor/internal/crawler/alibaba1688/model"
 	"task-processor/internal/crawler/shared"
@@ -86,7 +85,10 @@ func (p *Crawler1688Processor) fetchProduct(ctx context.Context, task *shared.Cr
 		}
 		return nil, sourceAccessModeAccountAssisted, sourceFallbackReason(publicErr), err
 	}
-	unlock := p.service.lockAccountProfile(profile)
+	unlock, err := p.service.lockAccountProfile(ctx, profile)
+	if err != nil {
+		return nil, sourceAccessModeAccountAssisted, sourceFallbackReason(publicErr), err
+	}
 	defer unlock()
 	product, err = p.service.processor1688.ProcessWithAccountProfile(ctx, task.URL, profile)
 	p.service.recordSourceAccess("account_assisted")
@@ -103,20 +105,19 @@ const (
 	sourceAccessModeAccountAssisted sourceAccessMode = "account_assisted"
 )
 
-func (s *Service) lockAccountProfile(profile AccountProfile) func() {
+func (s *Service) lockAccountProfile(ctx context.Context, profile AccountProfile) (func(), error) {
 	key := strconv.FormatInt(profile.TenantID, 10) + ":" + strconv.FormatInt(profile.ID, 10)
 	s.profileLocksMu.Lock()
 	if s.profileLocks == nil {
-		s.profileLocks = make(map[string]*sync.Mutex)
+		s.profileLocks = make(map[string]*accountProfileLock)
 	}
 	lock := s.profileLocks[key]
 	if lock == nil {
-		lock = &sync.Mutex{}
+		lock = newAccountProfileLock()
 		s.profileLocks[key] = lock
 	}
 	s.profileLocksMu.Unlock()
-	lock.Lock()
-	return lock.Unlock
+	return lock.lock(ctx)
 }
 
 func (s *Service) resolveAccountProfile(ctx context.Context, tenantID, accountID int64) (AccountProfile, error) {
