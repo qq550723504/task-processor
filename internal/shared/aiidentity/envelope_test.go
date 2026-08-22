@@ -6,10 +6,25 @@ import (
 	"testing"
 )
 
-func TestCaptureExecutionEnvelopeRequiresVerifiedIdentity(t *testing.T) {
-	_, err := CaptureExecutionEnvelope(context.Background(), "task-1", "amazon", "listing")
-	if !errors.Is(err, ErrMissingIdentity) {
-		t.Fatalf("error = %v, want ErrMissingIdentity", err)
+func TestCaptureExecutionEnvelopeClassifiesRequestIdentity(t *testing.T) {
+	cases := []struct {
+		name     string
+		identity Identity
+		wantErr  error
+	}{
+		{name: "fully absent remains legacy anonymous", wantErr: ErrMissingIdentity},
+		{name: "tenant only is partial", identity: Identity{TenantID: "tenant-a"}, wantErr: ErrIdentityIntegrity},
+		{name: "user only is partial", identity: Identity{UserID: "user-a"}, wantErr: ErrIdentityIntegrity},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := WithIdentity(context.Background(), tc.identity)
+			_, err := CaptureExecutionEnvelope(ctx, "task-1", "amazon", "listing")
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("error = %v, want %v", err, tc.wantErr)
+			}
+		})
 	}
 }
 

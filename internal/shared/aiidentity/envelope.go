@@ -63,8 +63,13 @@ func (e ExecutionEnvelope) Validate() error {
 
 func CaptureExecutionEnvelope(ctx context.Context, taskID, sourcePlatform, sourceTaskType string) (ExecutionEnvelope, error) {
 	identity := FromContext(ctx)
-	if strings.TrimSpace(identity.TenantID) == "" || strings.TrimSpace(identity.UserID) == "" {
+	tenantID := strings.TrimSpace(identity.TenantID)
+	userID := strings.TrimSpace(identity.UserID)
+	if tenantID == "" && userID == "" {
 		return ExecutionEnvelope{}, ErrMissingIdentity
+	}
+	if tenantID == "" || userID == "" {
+		return ExecutionEnvelope{}, fmt.Errorf("%w: tenant and user must be provided together", ErrIdentityIntegrity)
 	}
 	envelope := ExecutionEnvelope{
 		Version:        CurrentEnvelopeVersion,
