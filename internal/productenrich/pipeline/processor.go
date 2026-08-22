@@ -10,6 +10,7 @@ import (
 
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type Processor struct {
@@ -77,7 +78,16 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 		}).Info("skipping task due to non-processable status")
 		return nil
 	}
-	ctx = productenrich.WithTaskIdentity(ctx, task)
+	envelope, envelopeErr := task.ExecutionEnvelope()
+	if envelopeErr != nil {
+		_ = p.taskRepo.MarkFailed(ctx, task.ID, "identity_integrity: "+envelopeErr.Error())
+		return envelopeErr
+	}
+	ctx, envelopeErr = aiidentity.RestoreExecutionEnvelope(ctx, envelope, task.ID)
+	if envelopeErr != nil {
+		_ = p.taskRepo.MarkFailed(ctx, task.ID, "identity_integrity: "+envelopeErr.Error())
+		return envelopeErr
+	}
 
 	if _, err := p.service.ProcessProduct(ctx, task); err != nil {
 		if errors.Is(err, productenrich.ErrTaskNotPending) {

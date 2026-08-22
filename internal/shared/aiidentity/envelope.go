@@ -112,6 +112,23 @@ func RestoreExecutionEnvelope(ctx context.Context, envelope ExecutionEnvelope, t
 	return WithExecutionEnvelope(WithIdentity(ctx, identity), envelope), nil
 }
 
+func EnsureExecutionEnvelopeContext(ctx context.Context, expected ExecutionEnvelope) error {
+	if expected.Version == 0 && expected.TenantID == "" && expected.UserID == "" && expected.BusinessTaskID == "" {
+		return ErrMissingIdentity
+	}
+	if err := expected.Validate(); err != nil {
+		return err
+	}
+	actual, ok := ExecutionEnvelopeFromContext(ctx)
+	if !ok {
+		return fmt.Errorf("%w: execution envelope is not present in context", ErrIdentityIntegrity)
+	}
+	if normalizeEnvelope(actual) != normalizeEnvelope(expected) {
+		return fmt.Errorf("%w: context envelope does not match persisted envelope", ErrIdentityIntegrity)
+	}
+	return nil
+}
+
 func PersistedExecutionEnvelopeFrom(envelope ExecutionEnvelope) PersistedExecutionEnvelope {
 	envelope = normalizeEnvelope(envelope)
 	return PersistedExecutionEnvelope{

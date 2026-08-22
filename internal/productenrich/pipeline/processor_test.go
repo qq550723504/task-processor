@@ -148,12 +148,24 @@ type mockTaskSubmitter struct {
 	submitErr error
 }
 
+func setTestExecutionEnvelope(task *productenrich.Task) {
+	task.SetExecutionEnvelope(aiidentity.ExecutionEnvelope{
+		Version:        aiidentity.CurrentEnvelopeVersion,
+		TenantID:       "tenant-a",
+		UserID:         "user-a",
+		BusinessTaskID: task.ID,
+		SourcePlatform: "productenrich",
+		SourceTaskType: "product",
+	})
+}
+
 func (m *mockTaskSubmitter) Submit(_ string) error {
 	return m.submitErr
 }
 
 func TestProcessor_ProcessTask_Success(t *testing.T) {
 	task := &productenrich.Task{ID: "t1", Request: &productenrich.GenerateRequest{}, Status: productenrich.TaskStatusPending}
+	setTestExecutionEnvelope(task)
 	repo := newMockTaskRepo(task)
 	svc := &mockService{result: &productenrich.ProductJSON{Title: "ok"}}
 	p, _ := pipeline.NewProcessor(svc, repo, logrus.New(), 3)
@@ -172,6 +184,7 @@ func TestProcessor_ProcessTask_RestoresPersistedIdentity(t *testing.T) {
 		Request:  &productenrich.GenerateRequest{},
 		Status:   productenrich.TaskStatusPending,
 	}
+	setTestExecutionEnvelope(task)
 	repo := newMockTaskRepo(task)
 	svc := &mockService{result: &productenrich.ProductJSON{Title: "ok"}}
 	p, _ := pipeline.NewProcessor(svc, repo, logrus.New(), 3)
@@ -211,8 +224,27 @@ func TestProcessor_ProcessTask_EmptyTaskID(t *testing.T) {
 	}
 }
 
+func TestProcessor_ProcessTask_MissingExecutionEnvelopeFailsClosed(t *testing.T) {
+	task := &productenrich.Task{ID: "missing-envelope", Request: &productenrich.GenerateRequest{}, Status: productenrich.TaskStatusPending}
+	repo := newMockTaskRepo(task)
+	svc := &mockService{result: &productenrich.ProductJSON{Title: "must not run"}}
+	p, _ := pipeline.NewProcessor(svc, repo, logrus.New(), 3)
+
+	err := p.ProcessTask(context.Background(), worker.WorkerJob{TaskData: task.ID})
+	if !errors.Is(err, aiidentity.ErrMissingIdentity) {
+		t.Fatalf("error = %v, want ErrMissingIdentity", err)
+	}
+	if svc.calls != 0 {
+		t.Fatalf("ProcessProduct calls = %d, want 0", svc.calls)
+	}
+	if task.Status != productenrich.TaskStatusFailed {
+		t.Fatalf("status = %q, want failed", task.Status)
+	}
+}
+
 func TestProcessor_ProcessTask_NoRetryOnRejection(t *testing.T) {
 	task := &productenrich.Task{ID: "t2", Request: &productenrich.GenerateRequest{}, Status: productenrich.TaskStatusPending}
+	setTestExecutionEnvelope(task)
 	repo := newMockTaskRepo(task)
 	svc := &mockService{err: productenrich.NewNoRetryError(errors.New("data quality insufficient"))}
 	p, _ := pipeline.NewProcessor(svc, repo, logrus.New(), 3)
@@ -228,6 +260,7 @@ func TestProcessor_ProcessTask_NoRetryOnRejection(t *testing.T) {
 
 func TestProcessor_ProcessTask_RetryOnTransientError(t *testing.T) {
 	task := &productenrich.Task{ID: "t3", Request: &productenrich.GenerateRequest{}, Status: productenrich.TaskStatusPending, RetryCount: 0, Error: "previous failure"}
+	setTestExecutionEnvelope(task)
 	repo := newMockTaskRepo(task)
 	svc := &mockService{err: errors.New("transient error")}
 	p, _ := pipeline.NewProcessor(svc, repo, logrus.New(), 3)
@@ -261,6 +294,7 @@ func TestProcessor_ProcessTask_ExceedMaxRetries(t *testing.T) {
 
 func TestProcessor_ProcessTask_ResubmitFailure_MarksTaskFailed(t *testing.T) {
 	task := &productenrich.Task{ID: "t5", Request: &productenrich.GenerateRequest{}, Status: productenrich.TaskStatusPending, RetryCount: 0, Error: "old error"}
+	setTestExecutionEnvelope(task)
 	repo := newMockTaskRepo(task)
 	svc := &mockService{err: errors.New("transient error")}
 	p, _ := pipeline.NewProcessor(svc, repo, logrus.New(), 3)

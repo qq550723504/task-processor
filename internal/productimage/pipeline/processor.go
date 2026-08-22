@@ -10,6 +10,7 @@ import (
 
 	"task-processor/internal/infra/worker"
 	productimage "task-processor/internal/productimage"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type imageService interface {
@@ -66,7 +67,16 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 		log.WithError(err).WithField("status", task.Status).Warn("skipping productimage task")
 		return err
 	}
-	ctx = productimage.WithTaskIdentity(ctx, task)
+	envelope, envelopeErr := task.ExecutionEnvelope()
+	if envelopeErr != nil {
+		_ = p.taskRepo.MarkFailed(ctx, task.ID, "identity_integrity: "+envelopeErr.Error())
+		return envelopeErr
+	}
+	ctx, envelopeErr = aiidentity.RestoreExecutionEnvelope(ctx, envelope, task.ID)
+	if envelopeErr != nil {
+		_ = p.taskRepo.MarkFailed(ctx, task.ID, "identity_integrity: "+envelopeErr.Error())
+		return envelopeErr
+	}
 
 	if _, err := p.service.ProcessImages(ctx, task); err != nil {
 		if errors.Is(err, productimage.ErrTaskNotPending) {
