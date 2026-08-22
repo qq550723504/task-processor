@@ -15,7 +15,7 @@ func TestRunDefaultLoaderAcceptsDatabaseOnlyConfig(t *testing.T) {
 	configPath := writeDatabaseOnlyConfig(t)
 	db := &gorm.DB{}
 
-	err := Run(context.Background(), configPath, Dependencies{
+	err := runWithDependencies(context.Background(), configPath, Dependencies{
 		OpenDB: func(cfg *config.DatabaseConfig) (*gorm.DB, error) {
 			if cfg == nil || cfg.Host != "database.internal" {
 				t.Fatalf("database config = %#v", cfg)
