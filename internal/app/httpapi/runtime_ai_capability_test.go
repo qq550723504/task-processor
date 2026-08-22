@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 
 	"task-processor/internal/aicapability"
 	"task-processor/internal/core/config"
+	openaiclient "task-processor/internal/infra/clients/openai"
 )
 
 func TestBuildAICapabilityRuntimeDepsKeepsLegacyModeDependencyFree(t *testing.T) {
@@ -102,6 +104,78 @@ func TestProductEnrichInvocationErrorHandlerLogsLedgerFailure(t *testing.T) {
 	if entry.Data["invocation_id"] != "invocation-1" || entry.Data["operation"] != string(aicapability.OperationProductEnrichJSONGenerate) {
 		t.Fatalf("fields = %#v", entry.Data)
 	}
+}
+
+func TestBuildProductEnrichRuntimeDepsGovernsFusionOnlyWithListingCapability(t *testing.T) {
+	tests := []struct {
+		name       string
+		capability config.AICapabilityConfig
+		wantFusion bool
+	}{
+		{
+			name: "text only keeps legacy default fusion",
+			capability: config.AICapabilityConfig{
+				ProductEnrichTextEnabled:          true,
+				ProductEnrichTextAllowedTenantIDs: []string{"tenant-a"},
+			},
+		},
+		{
+			name: "vision only keeps legacy default fusion",
+			capability: config.AICapabilityConfig{
+				ProductEnrichVisionEnabled:          true,
+				ProductEnrichVisionAllowedTenantIDs: []string{"tenant-a"},
+			},
+		},
+		{
+			name: "listing enables governed default fusion",
+			capability: config.AICapabilityConfig{
+				ProductEnrichListingEnabled:          true,
+				ProductEnrichListingAllowedTenantIDs: []string{"tenant-a"},
+			},
+			wantFusion: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			manager, err := openaiclient.NewManager(&openaiclient.ManagerConfig{
+				Clients: map[string]*openaiclient.ClientConfig{
+					"default": {APIKey: "static-default", BaseURL: "https://example.test", Model: "default-model"},
+					"fast":    {APIKey: "static-fast", BaseURL: "https://example.test", Model: "fast-model"},
+					"vision":  {APIKey: "static-vision", BaseURL: "https://example.test", Model: "vision-model"},
+				},
+				DefaultClient: "default",
+			})
+			if err != nil {
+				t.Fatalf("NewManager() error = %v", err)
+			}
+			t.Cleanup(func() { _ = manager.Close() })
+			cfg := &config.Config{AICapability: tt.capability}
+
+			deps, err := buildProductEnrichRuntimeDeps(logrus.New(), cfg, manager, runtimeProductEnrichResolver{}, runtimeProductEnrichRecorder{})
+			if err != nil {
+				t.Fatalf("buildProductEnrichRuntimeDeps() error = %v", err)
+			}
+			if (deps.fusionGenerator != nil) != tt.wantFusion {
+				t.Fatalf("fusion generator present = %v, want %v", deps.fusionGenerator != nil, tt.wantFusion)
+			}
+		})
+	}
+}
+
+type runtimeProductEnrichResolver struct{}
+
+func (runtimeProductEnrichResolver) ResolveClientConfig(_ context.Context, name string, fallback *openaiclient.ClientConfig) (*openaiclient.ResolvedClientConfig, error) {
+	if fallback == nil {
+		return nil, nil
+	}
+	return &openaiclient.ResolvedClientConfig{CacheKey: "runtime-test:" + name, Config: fallback}, nil
+}
+
+type runtimeProductEnrichRecorder struct{}
+
+func (runtimeProductEnrichRecorder) RecordInvocation(context.Context, aicapability.InvocationRecord) error {
+	return nil
 }
 
 type captureLogHook struct {

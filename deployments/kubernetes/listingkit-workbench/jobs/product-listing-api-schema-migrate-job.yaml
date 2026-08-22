@@ -5,6 +5,7 @@ metadata:
   labels:
     app: product-listing-api-schema-migrate
 spec:
+  activeDeadlineSeconds: 900
   backoffLimit: 0
   ttlSecondsAfterFinished: 86400
   template:

@@ -111,6 +111,39 @@ func TestLLMScorerRejectsMissingIdentityBeforeGovernedCacheHit(t *testing.T) {
 	}
 }
 
+func TestLLMScorerGovernedCapabilitiesBypassLegacyContentCache(t *testing.T) {
+	text := &testScoringTextGenerator{response: `{"score":100}`}
+	image := &testScoringImageAnalyzer{response: `{"score":100}`}
+	cache := newMockLLMScoreCache()
+	cache.textResults["shared product"] = &CachedLLMScore{Score: 1}
+	cache.imageResults["https://example.test/shared-image.jpg"] = &CachedLLMScore{Score: 1}
+	scorer := NewLLMScorer(&LLMScorerConfig{
+		ScoreCache:     cache,
+		TextGenerator:  text,
+		ImageAnalyzer:  image,
+		FallbackWeight: 0.3,
+	})
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+
+	textScore, err := scorer.ScoreText(ctx, "shared product", 50)
+	if err != nil {
+		t.Fatalf("ScoreText() error = %v", err)
+	}
+	imageScore, err := scorer.ScoreImage(ctx, "https://example.test/shared-image.jpg", 50)
+	if err != nil {
+		t.Fatalf("ScoreImage() error = %v", err)
+	}
+	if textScore != 65 || imageScore != 65 {
+		t.Fatalf("governed scores = text %.1f/image %.1f, want 65 from governed calls", textScore, imageScore)
+	}
+	if !text.called || !image.called {
+		t.Fatalf("governed calls = text %v/image %v, want both called", text.called, image.called)
+	}
+	if cache.textResults["shared product"].Score != 1 || cache.imageResults["https://example.test/shared-image.jpg"].Score != 1 {
+		t.Fatalf("legacy cache was overwritten in governed mode: text=%+v image=%+v", cache.textResults, cache.imageResults)
+	}
+}
+
 type testScoringTextGenerator struct {
 	response string
 	called   bool

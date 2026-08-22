@@ -138,7 +138,7 @@ func (s *llmScorer) scoreTextResult(ctx context.Context, text string, baseScore 
 	}
 	var getCached func() (*CachedLLMScore, bool)
 	var setCached func(*CachedLLMScore) error
-	if s.scoreCache != nil {
+	if s.scoreCache != nil && s.textGenerator == nil {
 		getCached = func() (*CachedLLMScore, bool) { return s.scoreCache.GetTextScoreResult(ctx, text) }
 		setCached = func(result *CachedLLMScore) error {
 			return s.scoreCache.SetTextScoreResult(ctx, text, result, s.cacheTTL)
@@ -170,7 +170,7 @@ func (s *llmScorer) scoreImageResult(ctx context.Context, imageURL string, baseS
 	}
 	var getCached func() (*CachedLLMScore, bool)
 	var setCached func(*CachedLLMScore) error
-	if s.scoreCache != nil {
+	if s.scoreCache != nil && s.imageAnalyzer == nil {
 		getCached = func() (*CachedLLMScore, bool) { return s.scoreCache.GetImageScoreResult(ctx, imageURL) }
 		setCached = func(result *CachedLLMScore) error {
 			return s.scoreCache.SetImageScoreResult(ctx, imageURL, result, s.cacheTTL)
@@ -205,7 +205,7 @@ func (s *llmScorer) scoreWithCache(
 	}
 
 	// 检查缓存
-	if s.scoreCache != nil {
+	if getCached != nil {
 		if cachedResult, found := getCached(); found && cachedResult != nil {
 			finalScore := s.combineScores(baseScore, cachedResult.Score)
 			logger.GetGlobalLogger("productenrich/llm_scorer.go").WithFields(logrus.Fields{
@@ -229,7 +229,7 @@ func (s *llmScorer) scoreWithCache(
 	}
 
 	// 缓存评分结果
-	if s.scoreCache != nil {
+	if setCached != nil {
 		if err := setCached(&CachedLLMScore{
 			Score:  llmResult.Score,
 			Prompt: llmResult.Prompt.Clone(),
