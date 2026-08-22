@@ -22,6 +22,19 @@ type productEnrichRuntimeDeps struct {
 	variantsGenerator productenrichenrich.TextGenerator
 }
 
+func productEnrichInvocationErrorHandler(logger *logrus.Logger) func(aicapability.InvocationRecord, error) {
+	return func(record aicapability.InvocationRecord, err error) {
+		if logger == nil {
+			return
+		}
+		logger.WithError(err).WithFields(logrus.Fields{
+			"invocation_id": string(record.InvocationID),
+			"capability":    string(record.Capability),
+			"operation":     string(record.Operation),
+		}).Warn("ai invocation ledger write failed")
+	}
+}
+
 func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, openaiMgr *openaiclient.Manager, credentialResolver openaiclient.ClientConfigResolver, recorder aicapability.InvocationRecorder) (productEnrichRuntimeDeps, error) {
 	llmMgr, err := productenrich.NewLLMManagerAdapterFromManager(openaiMgr)
 	if err != nil {
@@ -48,8 +61,9 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 	}
 	if cfg.AICapability.ProductEnrichTextEnabled {
 		textGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
-			Router:   productenrichhttpapi.BuildProductEnrichTextCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichTextAllowedTenantIDs),
-			Recorder: recorder,
+			Router:        productenrichhttpapi.BuildProductEnrichTextCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichTextAllowedTenantIDs),
+			Recorder:      recorder,
+			OnRecordError: productEnrichInvocationErrorHandler(logger),
 		})
 		if err != nil {
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich text capability: %w", err)
@@ -57,8 +71,9 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 	}
 	if cfg.AICapability.ProductEnrichVisionEnabled {
 		imageAnalyzer, err = productenrichenrich.NewGovernedImageAnalyzer(llmMgr, productenrichenrich.GovernedImageAnalyzerConfig{
-			Router:   productenrichhttpapi.BuildProductEnrichVisionCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichVisionAllowedTenantIDs),
-			Recorder: recorder,
+			Router:        productenrichhttpapi.BuildProductEnrichVisionCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichVisionAllowedTenantIDs),
+			Recorder:      recorder,
+			OnRecordError: productEnrichInvocationErrorHandler(logger),
 		})
 		if err != nil {
 			return productEnrichRuntimeDeps{}, fmt.Errorf("create product enrich vision capability: %w", err)
@@ -68,6 +83,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		contentGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Router:          productenrichhttpapi.BuildProductEnrichListingCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichListingAllowedTenantIDs),
 			Recorder:        recorder,
+			OnRecordError:   productEnrichInvocationErrorHandler(logger),
 			Capability:      aicapability.CapabilityProductEnrichListing,
 			Operation:       aicapability.OperationProductEnrichJSONGenerate,
 			RequiredFeature: aicapability.FeatureTextGenerate,
@@ -81,6 +97,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		specsGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Router:          productenrichhttpapi.BuildProductEnrichListingCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichListingAllowedTenantIDs),
 			Recorder:        recorder,
+			OnRecordError:   productEnrichInvocationErrorHandler(logger),
 			Capability:      aicapability.CapabilityProductEnrichListing,
 			Operation:       aicapability.OperationProductEnrichSpecsGenerate,
 			RequiredFeature: aicapability.FeatureTextGenerate,
@@ -94,6 +111,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 		variantsGenerator, err = productenrichenrich.NewGovernedTextGenerator(llmMgr, productenrichenrich.GovernedTextGeneratorConfig{
 			Router:          productenrichhttpapi.BuildProductEnrichListingCapabilityRouter(credentialResolver, cfg.AICapability.ProductEnrichListingAllowedTenantIDs),
 			Recorder:        recorder,
+			OnRecordError:   productEnrichInvocationErrorHandler(logger),
 			Capability:      aicapability.CapabilityProductEnrichListing,
 			Operation:       aicapability.OperationProductEnrichVariantsGenerate,
 			RequiredFeature: aicapability.FeatureTextGenerate,

@@ -10,12 +10,14 @@ import (
 	"task-processor/internal/infra/worker"
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productenrich/pipeline"
+	"task-processor/internal/shared/aiidentity"
 )
 
 type mockService struct {
-	result *productenrich.ProductJSON
-	err    error
-	calls  int
+	result  *productenrich.ProductJSON
+	err     error
+	calls   int
+	lastCtx context.Context
 }
 
 func (m *mockService) CreateGenerateTask(_ context.Context, _ *productenrich.GenerateRequest) (*productenrich.Task, error) {
@@ -26,8 +28,9 @@ func (m *mockService) GetTaskResult(_ context.Context, _ string) (*productenrich
 	return nil, nil
 }
 
-func (m *mockService) ProcessProduct(_ context.Context, _ *productenrich.Task) (*productenrich.ProductJSON, error) {
+func (m *mockService) ProcessProduct(ctx context.Context, _ *productenrich.Task) (*productenrich.ProductJSON, error) {
 	m.calls++
+	m.lastCtx = ctx
 	return m.result, m.err
 }
 
@@ -158,6 +161,27 @@ func TestProcessor_ProcessTask_Success(t *testing.T) {
 	err := p.ProcessTask(context.Background(), worker.WorkerJob{TaskData: "t1"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestProcessor_ProcessTask_RestoresPersistedIdentity(t *testing.T) {
+	task := &productenrich.Task{
+		ID:       "identity-task",
+		TenantID: "tenant-a",
+		UserID:   "user-a",
+		Request:  &productenrich.GenerateRequest{},
+		Status:   productenrich.TaskStatusPending,
+	}
+	repo := newMockTaskRepo(task)
+	svc := &mockService{result: &productenrich.ProductJSON{Title: "ok"}}
+	p, _ := pipeline.NewProcessor(svc, repo, logrus.New(), 3)
+
+	if err := p.ProcessTask(context.Background(), worker.WorkerJob{TaskData: task.ID}); err != nil {
+		t.Fatalf("ProcessTask: %v", err)
+	}
+	identity := aiidentity.FromContext(svc.lastCtx)
+	if identity.TenantID != "tenant-a" || identity.UserID != "user-a" || identity.BusinessTaskID != task.ID {
+		t.Fatalf("worker identity = %+v", identity)
 	}
 }
 

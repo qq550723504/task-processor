@@ -77,6 +77,7 @@ func (p *Processor) ProcessTask(ctx context.Context, job worker.WorkerJob) error
 		}).Info("skipping task due to non-processable status")
 		return nil
 	}
+	ctx = productenrich.WithTaskIdentity(ctx, task)
 
 	if _, err := p.service.ProcessProduct(ctx, task); err != nil {
 		if errors.Is(err, productenrich.ErrTaskNotPending) {

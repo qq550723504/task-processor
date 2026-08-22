@@ -34,6 +34,8 @@ type GenerateRequest struct {
 // Task 表示一个产品生成任务
 type Task struct {
 	ID         string           `json:"id" gorm:"primaryKey;type:varchar(36)"`
+	TenantID   string           `json:"-" gorm:"type:varchar(128);index"`
+	UserID     string           `json:"-" gorm:"type:varchar(128);index"`
 	Request    *GenerateRequest `json:"request" gorm:"type:text"`
 	Status     TaskStatus       `json:"status" gorm:"type:varchar(20);index"`
 	Result     *ProductJSON     `json:"result,omitempty" gorm:"type:text"`

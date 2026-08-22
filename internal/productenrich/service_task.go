@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"task-processor/internal/core/logger"
+	"task-processor/internal/shared/aiidentity"
 
 	"github.com/google/uuid"
 	"github.com/sirupsen/logrus"
@@ -23,10 +24,13 @@ func (s *productService) CreateGenerateTask(ctx context.Context, req *GenerateRe
 
 	// 生成唯一的任务 ID
 	taskID := s.generateTaskID()
+	identity := aiidentity.FromContext(ctx)
 
 	// 创建任务
 	task := &Task{
 		ID:         taskID,
+		TenantID:   identity.TenantID,
+		UserID:     identity.UserID,
 		Request:    req,
 		Status:     TaskStatusPending,
 		CreatedAt:  time.Now(),
