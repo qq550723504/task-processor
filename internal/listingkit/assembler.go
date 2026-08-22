@@ -6,6 +6,7 @@ import (
 
 	"task-processor/internal/catalog/canonical"
 	"task-processor/internal/productimage"
+	common "task-processor/internal/publishing/common"
 	sheinpub "task-processor/internal/publishing/shein"
 )
 
@@ -82,7 +83,7 @@ func (a *assembler) assemble(task *Task, canonical *canonical.Product, imageForT
 			result.Amazon = &AmazonPackage{Draft: a.amazonBuilder.Build(task.Request, canonical, image)}
 		case "shein":
 			result.Shein = sheinpub.NewAssembler(a.buildSheinAssemblerConfig()).Build(buildSheinPublishRequestForTask(task, task.Request), canonical, image)
-			refreshSheinReviewState(result.Shein, collectReviewNotes(canonical, image)...)
+			refreshSheinReviewState(result.Shein, common.CollectReviewNotes(canonical, image)...)
 		case "temu":
 			result.Temu = buildTemuPackage(task.Request, canonical, image)
 		case "walmart":

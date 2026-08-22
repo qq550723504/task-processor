@@ -79,18 +79,6 @@ func findAssetURL(items []asset.Asset, id string) string {
 	return ""
 }
 
-func collectReviewNotes(canonical *canonical.Product, image *productimage.ImageProcessResult, extras ...string) []string {
-	notes := make([]string, 0, len(extras)+4)
-	if canonical != nil && canonical.NeedsReview {
-		notes = append(notes, "商品结构化结果存在低置信字段，建议人工复核标题、品牌、属性和变体")
-	}
-	if image != nil && image.Review != nil && image.Review.NeedsReview {
-		notes = append(notes, image.Review.Reasons...)
-	}
-	notes = append(notes, extras...)
-	return uniqueStrings(notes)
-}
-
 func resolveBrand(canonical *canonical.Product, req *GenerateRequest) string {
 	if req != nil && strings.TrimSpace(req.BrandHint) != "" {
 		return strings.TrimSpace(req.BrandHint)

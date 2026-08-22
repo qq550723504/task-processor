@@ -36,7 +36,7 @@ func buildTemuPackage(req *GenerateRequest, canonical *canonical.Product, image 
 	if strings.TrimSpace(req.TargetCategoryHint) != "" {
 		pkg.Metadata["target_category_hint"] = req.TargetCategoryHint
 	}
-	pkg.ReviewNotes = collectReviewNotes(canonical, image, "TEMU 资料包已贴近 goods_basic/skc_list 结构，但类目 ID、属性 ID、承诺/扩展字段仍需接 TEMU 模板规则")
+	pkg.ReviewNotes = common.CollectReviewNotes(canonical, image, "TEMU 资料包已贴近 goods_basic/skc_list 结构，但类目 ID、属性 ID、承诺/扩展字段仍需接 TEMU 模板规则")
 	return pkg
 }
 

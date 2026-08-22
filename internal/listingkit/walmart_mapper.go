@@ -31,6 +31,6 @@ func buildWalmartPackage(req *GenerateRequest, canonical *canonical.Product, ima
 			"product_type":    productType,
 		},
 	}
-	pkg.ReviewNotes = collectReviewNotes(canonical, image, "沃尔玛适配器目前是占位草稿，后续需要补类目、属性和 feed 导出规则")
+	pkg.ReviewNotes = common.CollectReviewNotes(canonical, image, "沃尔玛适配器目前是占位草稿，后续需要补类目、属性和 feed 导出规则")
 	return pkg
 }
