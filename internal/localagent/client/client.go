@@ -23,6 +23,8 @@ type Client struct {
 
 const defaultHTTPTimeout = 30 * time.Second
 
+var errRequestEncoding = errors.New("local-agent request could not be encoded")
+
 type productSnapshotPayload struct {
 	ID               string                  `json:"id"`
 	Title            string                  `json:"title"`
@@ -179,6 +181,9 @@ func (c *Client) SubmitSuccess(ctx context.Context, jobID, token string, snapsho
 		"execution_token":  token,
 		"product_snapshot": snapshotPayload(snapshot),
 	}, http.StatusOK, &response)
+	if errors.Is(err, errRequestEncoding) {
+		return response.toJob(), localagent.ErrSnapshotInvalid
+	}
 	return response.toJob(), err
 }
 
@@ -244,7 +249,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, payload any, e
 	if payload != nil {
 		encoded, err := json.Marshal(payload)
 		if err != nil {
-			return errors.New("request could not be encoded")
+			return fmt.Errorf("%w: %v", errRequestEncoding, err)
 		}
 		body = strings.NewReader(string(encoded))
 	}

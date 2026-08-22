@@ -188,7 +188,11 @@ func (s *Service) SubmitSuccess(actor Actor, jobID, token string, product *sourc
 	if err != nil {
 		return Job{}, err
 	}
-	if size, err := json.Marshal(product); err != nil || len(size) > maxSnapshotBytes {
+	size, err := json.Marshal(product)
+	if err != nil {
+		return Job{}, ErrSnapshotInvalid
+	}
+	if len(size) > maxSnapshotBytes {
 		return Job{}, ErrSnapshotTooLarge
 	}
 	productURL, err := validateOfferURL(product.URL)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -92,6 +93,37 @@ func TestInvalidDeviceAuthConfigFailsBeforeCrawlerPreparation(t *testing.T) {
 	require.Empty(t, order)
 }
 
+func TestPreparePendingAndAuthorizeAuthorizesAfterPreparationAttempt(t *testing.T) {
+	order := []string{}
+	crawler := &fakeJobCrawlerPreparer{order: &order, prepareErr: os.ErrNotExist}
+	authorize := func(context.Context, deviceauth.Config, deviceauth.Presenter) (string, error) {
+		order = append(order, "authorize")
+		return "token", nil
+	}
+
+	token, preparationErr, err := preparePendingAndAuthorize(context.Background(), crawler, authorize, deviceauth.Config{
+		IssuerURL: "https://issuer.example",
+		ClientID:  "client",
+		ProjectID: "project",
+	}, nil)
+	require.NoError(t, err)
+	require.Equal(t, "token", token)
+	require.ErrorIs(t, preparationErr, os.ErrNotExist)
+	require.Equal(t, []string{"prepare", "authorize"}, order)
+}
+
+func TestDetectInstalledChromeIgnoresMissingEnvironmentBases(t *testing.T) {
+	t.Setenv("LOCALAPPDATA", "")
+	t.Setenv("PROGRAMFILES", "")
+	t.Setenv("PROGRAMFILES(X86)", "")
+	t.Chdir(t.TempDir())
+	relative := filepath.Join("Google", "Chrome", "Application")
+	require.NoError(t, os.MkdirAll(relative, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(relative, "chrome.exe"), []byte("not a browser"), 0o600))
+
+	require.Empty(t, detectInstalledChrome())
+}
+
 type fakeJobCreator struct {
 	order *[]string
 }
@@ -102,12 +134,13 @@ func (f *fakeJobCreator) CreateJob(context.Context, string) (localagent.Job, err
 }
 
 type fakeJobCrawlerPreparer struct {
-	order *[]string
+	order      *[]string
+	prepareErr error
 }
 
 func (f *fakeJobCrawlerPreparer) Prepare(context.Context) error {
 	*f.order = append(*f.order, "prepare")
-	return nil
+	return f.prepareErr
 }
 
 func TestParseConfigAcceptsBrowserPath(t *testing.T) {

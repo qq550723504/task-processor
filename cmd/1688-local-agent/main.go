@@ -64,7 +64,13 @@ func run(ctx context.Context, args []string) error {
 	}
 	crawler := a1688.NewLegacyProcessor(crawlerConfig)
 	authConfig := deviceauth.Config{IssuerURL: cfg.IssuerURL, ClientID: cfg.ClientID, ProjectID: cfg.ProjectID, Scopes: scopes}
-	token, err := validateAndPrepareAndAuthorize(ctx, crawler, deviceauth.Authorize, authConfig, terminalPresenter{openBrowser: cfg.OpenBrowser})
+	var preparationErr error
+	var token string
+	if cfg.CreateURL != "" {
+		token, err = validateAndPrepareAndAuthorize(ctx, crawler, deviceauth.Authorize, authConfig, terminalPresenter{openBrowser: cfg.OpenBrowser})
+	} else {
+		token, preparationErr, err = preparePendingAndAuthorize(ctx, crawler, deviceauth.Authorize, authConfig, terminalPresenter{openBrowser: cfg.OpenBrowser})
+	}
 	if err != nil {
 		return err
 	}
@@ -73,7 +79,7 @@ func run(ctx context.Context, args []string) error {
 		return err
 	}
 	var createdJobID string
-	crawlerPrepared := true
+	crawlerPrepared := preparationErr == nil
 	if cfg.CreateURL != "" {
 		createdJobID, err = createJob(ctx, jobs, cfg.CreateURL)
 		if err != nil {
@@ -81,7 +87,7 @@ func run(ctx context.Context, args []string) error {
 		}
 		crawlerPrepared = true
 	}
-	outcome, err := (localagent.Runner{Jobs: jobs, Crawler: crawler, JobID: createdJobID, CrawlerPrepared: crawlerPrepared}).RunOnce(ctx)
+	outcome, err := (localagent.Runner{Jobs: jobs, Crawler: crawler, JobID: createdJobID, CrawlerPrepared: crawlerPrepared, PreparationError: preparationErr}).RunOnce(ctx)
 	if err != nil {
 		return err
 	}
@@ -139,15 +145,12 @@ func parseConfig(args []string) (cliConfig, error) {
 }
 
 func detectInstalledChrome() string {
-	candidates := []string{
-		filepath.Join(os.Getenv("LOCALAPPDATA"), "Google", "Chrome", "Application", "chrome.exe"),
-		filepath.Join(os.Getenv("PROGRAMFILES"), "Google", "Chrome", "Application", "chrome.exe"),
-		filepath.Join(os.Getenv("PROGRAMFILES(X86)"), "Google", "Chrome", "Application", "chrome.exe"),
-	}
-	for _, candidate := range candidates {
-		if strings.TrimSpace(candidate) == "" {
+	for _, base := range []string{os.Getenv("LOCALAPPDATA"), os.Getenv("PROGRAMFILES"), os.Getenv("PROGRAMFILES(X86)")} {
+		base = strings.TrimSpace(base)
+		if base == "" || !filepath.IsAbs(base) {
 			continue
 		}
+		candidate := filepath.Join(base, "Google", "Chrome", "Application", "chrome.exe")
 		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
 			return candidate
 		}
@@ -196,6 +199,18 @@ func validateAndPrepareAndAuthorize(ctx context.Context, crawler crawlerPreparer
 		return "", err
 	}
 	return prepareAndAuthorize(ctx, crawler, authorize, cfg, presenter)
+}
+
+func preparePendingAndAuthorize(ctx context.Context, crawler crawlerPreparer, authorize authorizeDeviceFunc, cfg deviceauth.Config, presenter deviceauth.Presenter) (string, error, error) {
+	if err := deviceauth.ValidateConfig(cfg); err != nil {
+		return "", nil, err
+	}
+	preparationErr := crawler.Prepare(ctx)
+	token, err := authorize(ctx, cfg, presenter)
+	if err != nil {
+		return "", preparationErr, err
+	}
+	return token, preparationErr, nil
 }
 
 func validateCLIOfferURL(raw string) (string, error) {

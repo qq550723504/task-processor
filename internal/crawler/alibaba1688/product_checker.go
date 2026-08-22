@@ -74,6 +74,9 @@ func (pc *ProductChecker) ValidateProduct(product *model.Product1688) error {
 	if err := pc.validateVariants(product); err != nil {
 		return fmt.Errorf("商品变体信息验证失败: %w", err)
 	}
+	if err := pc.validatePackInfo(product); err != nil {
+		return fmt.Errorf("商品包装信息验证失败: %w", err)
+	}
 
 	// 检查敏感词
 	if err := pc.checkSensitiveWords(product); err != nil {
@@ -123,12 +126,28 @@ func (pc *ProductChecker) validateProductMetrics(product *model.Product1688) err
 
 func (pc *ProductChecker) validateVariants(product *model.Product1688) error {
 	for i, variant := range product.Variants {
+		for key := range variant.Attributes {
+			switch strings.ToLower(strings.TrimSpace(key)) {
+			case "stock", "price":
+				return fmt.Errorf("变体[%d]属性不能覆盖保留数值字段: %s", i, key)
+			}
+		}
 		if variant.Stock < 0 {
 			return fmt.Errorf("变体[%d]库存不能为负数", i)
 		}
 		if math.IsNaN(variant.Price) || math.IsInf(variant.Price, 0) || variant.Price < 0 {
 			return fmt.Errorf("变体[%d]价格不能为负数或非有限值", i)
 		}
+	}
+	return nil
+}
+
+func (pc *ProductChecker) validatePackInfo(product *model.Product1688) error {
+	if product.PackInfo == nil {
+		return nil
+	}
+	if math.IsNaN(product.PackInfo.Weight) || math.IsInf(product.PackInfo.Weight, 0) || product.PackInfo.Weight < 0 {
+		return fmt.Errorf("包装重量不能为负数或非有限值")
 	}
 	return nil
 }
@@ -141,6 +160,9 @@ func isFiniteInRange(value, min, max float64) bool {
 func (pc *ProductChecker) checkRequiredFields(product *model.Product1688) error {
 	if strings.TrimSpace(product.Title) == "" {
 		return newRequiredFieldsError("标题不能为空")
+	}
+	if math.IsNaN(product.MinPrice) || math.IsInf(product.MinPrice, 0) {
+		return fmt.Errorf("最低价格必须是有限数值")
 	}
 	if product.MinPrice == 0 {
 		return newRequiredFieldsError("最低价格必须大于0")
@@ -179,6 +201,9 @@ func (pc *ProductChecker) checkSensitiveWords(product *model.Product1688) error 
 
 // validatePricing 验证价格信息
 func (pc *ProductChecker) validatePricing(product *model.Product1688) error {
+	if math.IsNaN(product.MaxPrice) || math.IsInf(product.MaxPrice, 0) || product.MaxPrice < 0 {
+		return fmt.Errorf("最高价格不能为负数或非有限值")
+	}
 	// 检查价格范围
 	if product.MinPrice > product.MaxPrice && product.MaxPrice > 0 {
 		return fmt.Errorf("最低价格不能大于最高价格")
@@ -187,7 +212,7 @@ func (pc *ProductChecker) validatePricing(product *model.Product1688) error {
 	// 检查价格阶梯
 	if len(product.PriceRanges) > 0 {
 		for i, priceRange := range product.PriceRanges {
-			if priceRange.Price <= 0 {
+			if math.IsNaN(priceRange.Price) || math.IsInf(priceRange.Price, 0) || priceRange.Price <= 0 {
 				return fmt.Errorf("价格阶梯[%d]价格必须大于0", i)
 			}
 			if priceRange.MinQuantity <= 0 {

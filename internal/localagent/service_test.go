@@ -1,6 +1,7 @@
 package localagent
 
 import (
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -267,6 +268,57 @@ func TestServiceRejectsImpossibleVariantNumbers(t *testing.T) {
 		}},
 		{name: "negative price", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
 			snapshot.Variants = []sourcing.Alibaba1688VariantSnapshot{{Price: -1}}
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+			actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+			job, err := service.Create(actor, offerURL)
+			require.NoError(t, err)
+			claim, err := service.Claim(actor)
+			require.NoError(t, err)
+
+			snapshot := validSnapshot()
+			tt.mutate(snapshot)
+			_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, snapshot)
+			require.ErrorIs(t, err, ErrSnapshotInvalid)
+		})
+	}
+}
+
+func TestServiceRejectsReservedVariantNumericAttributes(t *testing.T) {
+	for _, key := range []string{"stock", "price", " Stock ", "Price"} {
+		t.Run(key, func(t *testing.T) {
+			service := NewService(fixedClock(time.Date(2026, 8, 21, 0, 0, 0, 0, time.UTC)))
+			actor := Actor{TenantID: "tenant-a", UserID: "user-a"}
+			job, err := service.Create(actor, offerURL)
+			require.NoError(t, err)
+			claim, err := service.Claim(actor)
+			require.NoError(t, err)
+
+			snapshot := validSnapshot()
+			snapshot.Variants = []sourcing.Alibaba1688VariantSnapshot{{Attributes: map[string]any{key: "invalid"}}}
+			_, err = service.SubmitSuccess(actor, job.ID, claim.ExecutionToken, snapshot)
+			require.ErrorIs(t, err, ErrSnapshotInvalid)
+		})
+	}
+}
+
+func TestServiceRejectsNonFiniteSnapshotNumbersAsInvalid(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*sourcing.Alibaba1688ProductSnapshot)
+	}{
+		{name: "minimum price", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.MinPrice = math.NaN()
+		}},
+		{name: "maximum price", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.MaxPrice = math.Inf(1)
+		}},
+		{name: "package weight", mutate: func(snapshot *sourcing.Alibaba1688ProductSnapshot) {
+			snapshot.PackInfo = &sourcing.Alibaba1688PackInfoSnapshot{Weight: math.NaN()}
 		}},
 	}
 

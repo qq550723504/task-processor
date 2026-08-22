@@ -30,10 +30,11 @@ type Crawler interface {
 }
 
 type Runner struct {
-	Jobs            Jobs
-	Crawler         Crawler
-	JobID           string
-	CrawlerPrepared bool
+	Jobs             Jobs
+	Crawler          Crawler
+	JobID            string
+	CrawlerPrepared  bool
+	PreparationError error
 }
 
 type OutcomeState string
@@ -59,21 +60,13 @@ func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	if r.PreparationError != nil {
+		return r.reportPreparationFailure(ctx, r.PreparationError)
+	}
 	if !r.CrawlerPrepared {
 		if preparer, ok := r.Crawler.(crawlerPreparer); ok {
 			if err := preparer.Prepare(ctx); err != nil {
-				claim, claimErr := r.claim(ctx)
-				if claimErr != nil {
-					return Outcome{}, err
-				}
-				if claim != nil {
-					_, submitErr := r.submitFailure(ctx, claim.Job.ID, claim.ExecutionToken, Failure{Kind: FailureBrowser, Message: "1688 browser could not be started"})
-					if submitErr != nil {
-						return Outcome{}, submitErr
-					}
-					return Outcome{State: OutcomeFailed, JobID: claim.Job.ID}, nil
-				}
-				return Outcome{}, err
+				return r.reportPreparationFailure(ctx, err)
 			}
 		}
 	}
@@ -116,6 +109,21 @@ func (r Runner) RunOnce(ctx context.Context) (Outcome, error) {
 		return Outcome{}, err
 	}
 	return Outcome{State: OutcomeSucceeded, JobID: claim.Job.ID, EnvelopeSummary: submitted.EnvelopeSummary}, nil
+}
+
+func (r Runner) reportPreparationFailure(ctx context.Context, preparationErr error) (Outcome, error) {
+	claim, claimErr := r.claim(ctx)
+	if claimErr != nil {
+		return Outcome{}, preparationErr
+	}
+	if claim == nil {
+		return Outcome{}, preparationErr
+	}
+	_, submitErr := r.submitFailure(ctx, claim.Job.ID, claim.ExecutionToken, Failure{Kind: FailureBrowser, Message: "1688 browser could not be started"})
+	if submitErr != nil {
+		return Outcome{}, submitErr
+	}
+	return Outcome{State: OutcomeFailed, JobID: claim.Job.ID}, nil
 }
 
 func (r Runner) claim(ctx context.Context) (*Claim, error) {

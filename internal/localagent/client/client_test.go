@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -93,6 +94,19 @@ func TestClientPreservesInvalidSnapshotError(t *testing.T) {
 	client, err := New(server.URL, "token", server.Client())
 	require.NoError(t, err)
 	_, err = client.SubmitSuccess(context.Background(), "job-1", "execution", &sourcing.Alibaba1688ProductSnapshot{ID: "1052008074197", URL: "https://detail.1688.com/offer/1052008074197.html"})
+	require.ErrorIs(t, err, localagent.ErrSnapshotInvalid)
+}
+
+func TestClientMapsUnencodableSnapshotToInvalidSnapshot(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatal("unencodable snapshot must not reach the HTTP server")
+	}))
+	defer server.Close()
+	client, err := New(server.URL, "token", server.Client())
+	require.NoError(t, err)
+	_, err = client.SubmitSuccess(context.Background(), "job-1", "execution", &sourcing.Alibaba1688ProductSnapshot{
+		ID: "1052008074197", URL: "https://detail.1688.com/offer/1052008074197.html", MinPrice: math.NaN(),
+	})
 	require.ErrorIs(t, err, localagent.ErrSnapshotInvalid)
 }
 

@@ -47,6 +47,17 @@ func TestRunnerRecordsPreparationFailureAgainstPendingJob(t *testing.T) {
 	require.Equal(t, FailureBrowser, api.submittedFailure.Kind)
 }
 
+func TestRunnerReportsPreflightPreparationFailureWithoutRetryingPreparation(t *testing.T) {
+	order := []string{}
+	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}, order: &order}
+	crawler := &fakeCrawler{prepareErr: errors.New("playwright install failed"), order: &order}
+	outcome, err := (Runner{Jobs: api, Crawler: crawler, PreparationError: errors.New("preflight failed")}).RunOnce(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, OutcomeFailed, outcome.State)
+	require.Equal(t, FailureBrowser, api.submittedFailure.Kind)
+	require.Equal(t, []string{"claim"}, order)
+}
+
 func TestRunnerSubmitsSnapshotAndReportsSuccess(t *testing.T) {
 	api := &fakeJobsAPI{claim: &Claim{Job: Job{ID: "job-1", URL: offerURL}, ExecutionToken: "token"}}
 	crawler := &fakeCrawler{product: &model.Product1688{ID: "1052008074197", URL: offerURL}}
