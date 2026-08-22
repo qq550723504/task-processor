@@ -678,6 +678,19 @@ func (e *governedScoringExecution) Invoke(_ context.Context, status aicapability
 	return e.response, nil
 }
 
+func (e *governedScoringExecution) InvokeValidated(ctx context.Context, status aicapability.CacheStatus, _ int, validate func(string) error) (string, error) {
+	response, err := e.Invoke(ctx, status)
+	if err != nil {
+		return response, err
+	}
+	if validate != nil {
+		if err := validate(response); err != nil {
+			return response, err
+		}
+	}
+	return response, nil
+}
+
 func (e *governedScoringExecution) RecordCacheHit(_ context.Context, value string) error {
 	e.onCacheHit(value)
 	return e.cacheHitErr

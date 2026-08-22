@@ -213,13 +213,17 @@ func (s *llmScorer) scoreGoverned(
 		}
 	}
 
-	response, err := prepared.Invoke(ctx, aicapability.CacheStatusMiss)
+	var score float64
+	_, err := prepared.InvokeValidated(ctx, aicapability.CacheStatusMiss, s.maxRetries, func(response string) error {
+		parsedScore, parseErr := s.parseLLMScore(response)
+		if parseErr != nil {
+			return aicapability.NewError(aicapability.ErrorInvalidProviderResponse, "score", parseErr)
+		}
+		score = parsedScore
+		return nil
+	})
 	if err != nil {
 		logrus.WithError(err).Warnf("governed LLM %s scoring failed, using base score", label)
-		return &llmScoreResult{Score: baseScore}, err
-	}
-	score, err := s.parseLLMScore(response)
-	if err != nil {
 		return &llmScoreResult{Score: baseScore}, err
 	}
 	if s.scoreCache != nil {
@@ -441,7 +445,7 @@ func (s *llmScorer) parseLLMScore(response string) (float64, error) {
 
 	// 解析 JSON
 	var result struct {
-		Score      float64  `json:"score"`
+		Score      *float64 `json:"score"`
 		Reason     string   `json:"reason"`
 		Strengths  []string `json:"strengths"`
 		Weaknesses []string `json:"weaknesses"`
@@ -460,16 +464,19 @@ func (s *llmScorer) parseLLMScore(response string) (float64, error) {
 	}
 
 	// 验证评分范围
-	if result.Score < 0 || result.Score > 100 {
-		return 0, fmt.Errorf("score out of range: %.2f", result.Score)
+	if result.Score == nil {
+		return 0, fmt.Errorf("score is missing")
+	}
+	if *result.Score < 0 || *result.Score > 100 {
+		return 0, fmt.Errorf("score out of range: %.2f", *result.Score)
 	}
 
 	logger.GetGlobalLogger("productenrich/llm_scorer.go").WithFields(logrus.Fields{
-		"score":  result.Score,
+		"score":  *result.Score,
 		"reason": result.Reason,
 	}).Debug("parsed LLM score")
 
-	return result.Score, nil
+	return *result.Score, nil
 }
 
 func extractScoreFromPartialResponse(response string) (float64, error) {

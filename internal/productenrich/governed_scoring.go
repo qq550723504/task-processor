@@ -22,6 +22,7 @@ type ScorePromptIdentity struct {
 type GovernedScoreExecution interface {
 	ScoreCacheIdentity(baseScore, inputHash string) ScoreCacheIdentity
 	Invoke(context.Context, aicapability.CacheStatus) (string, error)
+	InvokeValidated(context.Context, aicapability.CacheStatus, int, func(string) error) (string, error)
 	RecordCacheHit(context.Context, string) error
 }
 

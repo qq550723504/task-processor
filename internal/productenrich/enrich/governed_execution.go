@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	"task-processor/internal/aicapability"
+	"task-processor/internal/infra/resilience"
 	productenrich "task-processor/internal/productenrich"
 	"task-processor/internal/shared/aiidentity"
 )
@@ -172,25 +173,68 @@ func validLegacyDecision(decision aicapability.RouteDecision) bool {
 }
 
 func (e *preparedExecution) invoke(ctx context.Context, cacheStatus aicapability.CacheStatus) (string, error) {
+	return e.invokeValidated(ctx, cacheStatus, 1, nil)
+}
+
+func (e *preparedExecution) invokeValidated(ctx context.Context, cacheStatus aicapability.CacheStatus, maxAttempts int, validate func(string) error) (string, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if e == nil || e.call == nil {
 		return "", aicapability.NewError(aicapability.ErrorInvalidInput, "", nil)
 	}
-	startedAt := e.clock()()
-	response, err := e.call(ctx)
-	if err != nil {
-		wrapped := aicapability.NewError(classifyTextError(err), string(e.operationName()), err)
-		e.record(ctx, startedAt, response, wrapped, false, cacheStatus)
-		return "", wrapped
+	if maxAttempts <= 0 {
+		maxAttempts = 1
 	}
-	e.record(ctx, startedAt, response, nil, false, cacheStatus)
+	startedAt := e.clock()()
+	attempts := 0
+	var response string
+	err := resilience.Retry(ctx, resilience.RetryConfig{
+		MaxAttempts:         maxAttempts,
+		InitialDelay:        time.Second,
+		MaxDelay:            30 * time.Second,
+		Multiplier:          2,
+		RandomizationFactor: 0,
+		IsRetryable:         retryableScoreProviderError,
+	}, func(callCtx context.Context) error {
+		attempts++
+		attemptResponse, callErr := e.call(callCtx)
+		response = attemptResponse
+		if callErr != nil {
+			if aicapability.CategoryOf(callErr) != aicapability.ErrorUnknown {
+				return callErr
+			}
+			return aicapability.NewError(classifyTextError(callErr), string(e.operationName()), callErr)
+		}
+		if validate == nil {
+			return nil
+		}
+		if validationErr := validate(attemptResponse); validationErr != nil {
+			if aicapability.CategoryOf(validationErr) != aicapability.ErrorUnknown {
+				return validationErr
+			}
+			return aicapability.NewError(aicapability.ErrorInvalidProviderResponse, string(e.operationName()), validationErr)
+		}
+		return nil
+	})
+	if err != nil {
+		terminalErr := err
+		if aicapability.CategoryOf(terminalErr) == aicapability.ErrorUnknown && !errors.Is(terminalErr, context.Canceled) {
+			terminalErr = aicapability.NewError(classifyTextError(terminalErr), string(e.operationName()), terminalErr)
+		}
+		e.recordAttempt(ctx, startedAt, response, terminalErr, false, cacheStatus, attempts)
+		return response, terminalErr
+	}
+	e.recordAttempt(ctx, startedAt, response, nil, false, cacheStatus, attempts)
 	return response, nil
 }
 
 func (e *preparedExecution) Invoke(ctx context.Context, cacheStatus aicapability.CacheStatus) (string, error) {
 	return e.invoke(ctx, cacheStatus)
+}
+
+func (e *preparedExecution) InvokeValidated(ctx context.Context, cacheStatus aicapability.CacheStatus, maxAttempts int, validate func(string) error) (string, error) {
+	return e.invokeValidated(ctx, cacheStatus, maxAttempts, validate)
 }
 
 func (e *preparedExecution) RecordCacheHit(ctx context.Context, cachedScore string) error {
@@ -255,8 +299,15 @@ func (e *preparedExecution) recordRejected(ctx context.Context, err error, route
 }
 
 func (e *preparedExecution) record(ctx context.Context, startedAt time.Time, response string, callErr error, routeErr bool, cacheStatus aicapability.CacheStatus) {
+	e.recordAttempt(ctx, startedAt, response, callErr, routeErr, cacheStatus, 1)
+}
+
+func (e *preparedExecution) recordAttempt(ctx context.Context, startedAt time.Time, response string, callErr error, routeErr bool, cacheStatus aicapability.CacheStatus, attempt int) {
 	if e == nil || e.recorder == nil {
 		return
+	}
+	if attempt <= 0 {
+		attempt = 1
 	}
 	finishedAt := e.clock()()
 	capability := e.capability
@@ -275,7 +326,7 @@ func (e *preparedExecution) record(ctx context.Context, startedAt time.Time, res
 		PromptVersion: e.promptVersion, PromptScope: e.promptScope,
 		PromptHash: hashText(e.prompt), InputHash: hashText(e.input), OutputHash: hashText(response),
 		StartedAt: startedAt, FinishedAt: finishedAt, LatencyMilliseconds: finishedAt.Sub(startedAt).Milliseconds(),
-		Attempt: 1, FallbackIndex: e.decision.FallbackIndex, Outcome: aicapability.InvocationSucceeded,
+		Attempt: attempt, FallbackIndex: e.decision.FallbackIndex, Outcome: aicapability.InvocationSucceeded,
 	}
 	if callErr != nil {
 		record.Outcome = aicapability.InvocationFailed
@@ -289,6 +340,15 @@ func (e *preparedExecution) record(ctx context.Context, startedAt time.Time, res
 	defer cancel()
 	if err := e.recorder.RecordInvocation(recordCtx, record); err != nil && e.onRecordError != nil {
 		e.onRecordError(record, err)
+	}
+}
+
+func retryableScoreProviderError(err error) bool {
+	switch aicapability.CategoryOf(err) {
+	case aicapability.ErrorRateLimited, aicapability.ErrorProviderTimeout, aicapability.ErrorProviderUnavailable:
+		return true
+	default:
+		return false
 	}
 }
 
