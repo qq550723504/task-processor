@@ -139,6 +139,53 @@ func TestProductEnrichVisionQualityRuntimeRecordsQualityPromptIdentity(t *testin
 	}
 }
 
+func TestProductEnrichListingRuntimeRecordsRenderedPromptIdentities(t *testing.T) {
+	clientConfig := &openaiclient.ClientConfig{APIKey: "test-key", Model: "text-model", BaseURL: "https://example.test/v1", APIStyle: "openai"}
+	openaiMgr, err := openaiclient.NewManager(&openaiclient.ManagerConfig{
+		Clients: map[string]*openaiclient.ClientConfig{"default": clientConfig}, DefaultClient: "default",
+	})
+	if err != nil {
+		t.Fatalf("NewManager: %v", err)
+	}
+	recorder := &runtimeInvocationRecorder{}
+	deps, err := buildProductEnrichRuntimeDeps(logrus.New(), &config.Config{
+		Debug: config.DebugConfig{ProductEnrichMockLLM: true},
+		AICapability: config.AICapabilityConfig{
+			ProductEnrichListingEnabled: true, ProductEnrichListingAllowedTenantIDs: []string{"tenant-b"},
+		},
+	}, openaiMgr, runtimeStaticClientConfigResolver{config: clientConfig}, recorder)
+	if err != nil {
+		t.Fatalf("buildProductEnrichRuntimeDeps: %v", err)
+	}
+
+	ctx := aiidentity.WithIdentity(context.Background(), aiidentity.Identity{TenantID: "tenant-a", UserID: "user-a"})
+	tests := []struct {
+		name      string
+		generate  func(context.Context, string) (string, error)
+		operation aicapability.Operation
+		promptKey string
+	}{
+		{name: "product JSON", generate: deps.contentGenerator.Generate, operation: aicapability.OperationProductEnrichJSONGenerate, promptKey: prompt.KProductEnrichGenerationProductJSON},
+		{name: "specs", generate: deps.specsGenerator.Generate, operation: aicapability.OperationProductEnrichSpecsGenerate, promptKey: prompt.KProductEnrichGenerationSpecs},
+		{name: "variants", generate: deps.variantsGenerator.Generate, operation: aicapability.OperationProductEnrichVariantsGenerate, promptKey: prompt.KProductEnrichGenerationVariants},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := len(recorder.records)
+			if _, err := tt.generate(ctx, "rendered prompt"); err != nil {
+				t.Fatalf("Generate: %v", err)
+			}
+			if len(recorder.records) != before+1 {
+				t.Fatalf("records = %d, want %d", len(recorder.records), before+1)
+			}
+			record := recorder.records[before]
+			if record.Operation != tt.operation || record.PromptKey != tt.promptKey || record.PromptVersion != "v1" || record.PromptScope != "product_enrich" {
+				t.Fatalf("listing invocation record = %+v", record)
+			}
+		})
+	}
+}
+
 func TestUniqueProductEnrichClientNamesPreservesOrderedRuntimeCandidates(t *testing.T) {
 	tests := []struct {
 		name string

@@ -108,7 +108,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 			Capability:          aicapability.CapabilityProductEnrichListing,
 			Operation:           aicapability.OperationProductEnrichJSONGenerate,
 			RequiredFeature:     aicapability.FeatureTextGenerate,
-			PromptKey:           "productenrich.listing.generate_json",
+			PromptKey:           prompt.KProductEnrichGenerationProductJSON,
 			PromptVersion:       "v1",
 			PromptScope:         "product_enrich",
 		})
@@ -125,7 +125,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 			Capability:          aicapability.CapabilityProductEnrichListing,
 			Operation:           aicapability.OperationProductEnrichSpecsGenerate,
 			RequiredFeature:     aicapability.FeatureTextGenerate,
-			PromptKey:           "productenrich.listing.generate_specs",
+			PromptKey:           prompt.KProductEnrichGenerationSpecs,
 			PromptVersion:       "v1",
 			PromptScope:         "product_enrich",
 		})
@@ -142,7 +142,7 @@ func buildProductEnrichRuntimeDeps(logger *logrus.Logger, cfg *config.Config, op
 			Capability:          aicapability.CapabilityProductEnrichListing,
 			Operation:           aicapability.OperationProductEnrichVariantsGenerate,
 			RequiredFeature:     aicapability.FeatureTextGenerate,
-			PromptKey:           "productenrich.listing.generate_variants",
+			PromptKey:           prompt.KProductEnrichGenerationVariants,
 			PromptVersion:       "v1",
 			PromptScope:         "product_enrich",
 		})
