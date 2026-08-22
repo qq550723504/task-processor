@@ -153,14 +153,3 @@ func uniqueStrings(values []string) []string {
 	}
 	return result
 }
-
-func cloneMap(input map[string]string) map[string]string {
-	if len(input) == 0 {
-		return nil
-	}
-	result := make(map[string]string, len(input))
-	for key, value := range input {
-		result[key] = value
-	}
-	return result
-}
