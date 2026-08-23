@@ -362,6 +362,21 @@ func TestCommittedListingKitConfigArtifactsDoNotExposeOwnerScopeToggle(t *testin
 	}
 }
 
+func TestCommittedBrowserConfigArtifactsDefaultToHeadless(t *testing.T) {
+	for _, configName := range []string{"config-dev.yaml", "config-prod.yaml", "config-test.yaml"} {
+		t.Run(configName, func(t *testing.T) {
+			contents, err := os.ReadFile(filepath.Join("..", "..", "..", "config", configName))
+			require.NoError(t, err)
+
+			var document map[string]any
+			require.NoError(t, yaml.Unmarshal(contents, &document))
+			browser, ok := document["browser"].(map[string]any)
+			require.True(t, ok, "browser must be a YAML mapping")
+			assert.Equal(t, true, browser["headless"], "committed browser config must default to headless")
+		})
+	}
+}
+
 func TestLoadConfigFromFileDoesNotExposeListingKitOwnerScopeToggle(t *testing.T) {
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_OWNER_SCOPE_REQUIRED", "false")
 	t.Setenv("TASK_PROCESSOR_LISTINGKIT_ZITADEL_OWNER_SCOPE_REQUIRED", "false")

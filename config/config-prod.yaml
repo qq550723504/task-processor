@@ -134,7 +134,7 @@ platforms:
 # 浏览器配置（通用）
 browser:
   enabled: true
-  headless: false  # false=可见模式（便于调试），true=无头模式
+  headless: true   # false=可见模式（便于调试），true=无头模式
   browserPath: "./.local/chrome/chrome.exe"
   userDataDir: "./.local/tmp/browser-profiles/1688"
   poolSize: 5     # 浏览器池大小
