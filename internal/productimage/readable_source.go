@@ -27,6 +27,9 @@ func ResolveReadableAssetURL(currentURL, provenanceURL string, metadata map[stri
 		currentURL,
 		provenanceURL,
 	} {
+		if isLegacyAmazonUploadURL(candidate, metadata) {
+			continue
+		}
 		if isHTTPURL(candidate) {
 			return strings.TrimSpace(candidate)
 		}
@@ -35,6 +38,22 @@ func ResolveReadableAssetURL(currentURL, provenanceURL string, metadata map[stri
 		return strings.TrimSpace(currentURL)
 	}
 	return strings.TrimSpace(provenanceURL)
+}
+
+func isLegacyAmazonUploadURL(candidate string, metadata map[string]string) bool {
+	if !strings.EqualFold(strings.TrimSpace(metadata["published_provider"]), "amazon") {
+		return false
+	}
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" {
+		return false
+	}
+	for _, key := range []string{"uploaded_url", "uploaded_destination_url"} {
+		if candidate == strings.TrimSpace(metadata[key]) {
+			return true
+		}
+	}
+	return false
 }
 
 // ResolveReadableAssetSource returns the best currently readable source for

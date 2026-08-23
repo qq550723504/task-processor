@@ -18,6 +18,25 @@ func TestResolveReadableAssetURLPrefersUploadedURLToProvenance(t *testing.T) {
 	}
 }
 
+func TestResolveReadableAssetURLIgnoresLegacyAmazonUploadDestination(t *testing.T) {
+	t.Parallel()
+
+	uploadDestination := "https://upload.example.com/write-only-destination"
+	provenance := "https://detail.1688.com/offer/1/main.jpg"
+	got := ResolveReadableAssetURL(
+		uploadDestination,
+		provenance,
+		map[string]string{
+			"published_provider": "amazon",
+			"uploaded_url":       uploadDestination,
+			"published_url":      uploadDestination,
+		},
+	)
+	if got != provenance {
+		t.Fatalf("ResolveReadableAssetURL() = %q, want provenance URL after ignoring legacy upload destination", got)
+	}
+}
+
 func TestResolveReadableAssetSourcePrefersPublishedPathToRemoteProvenance(t *testing.T) {
 	t.Parallel()
 
