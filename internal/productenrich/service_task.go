@@ -123,11 +123,6 @@ func (s *productService) validateRequest(req *GenerateRequest) error {
 		return fmt.Errorf("at least one input type is required (image_urls, text, or product_url)")
 	}
 
-	// 验证图片 URL
-	if len(req.ImageURLs) > 10 {
-		return fmt.Errorf("too many image URLs (max 10)")
-	}
-
 	// 验证文本长度
 	if len(req.Text) > 10000 {
 		return fmt.Errorf("text too long (max 10000 characters)")

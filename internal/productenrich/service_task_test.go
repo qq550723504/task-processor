@@ -47,15 +47,15 @@ func TestValidateRequest_NoInput_ReturnsError(t *testing.T) {
 	}
 }
 
-func TestValidateRequest_TooManyImages_ReturnsError(t *testing.T) {
+func TestValidateRequest_ManyImagesAreAccepted(t *testing.T) {
 	svc, _ := newSvcWithSubmitter(t, nil)
 	urls := make([]string, 11)
 	for i := range urls {
-		urls[i] = "http://example.com/img.jpg"
+		urls[i] = "http://example.com/img-" + string(rune('a'+i)) + ".jpg"
 	}
 	err := svc.validateRequest(&GenerateRequest{ImageURLs: urls})
-	if err == nil {
-		t.Fatal("expected error for >10 image URLs")
+	if err != nil {
+		t.Fatalf("validateRequest() error = %v, want nil", err)
 	}
 }
 
