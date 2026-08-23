@@ -158,7 +158,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestPublishingSheinManagedRetiredManagementImportsStayBlocked`
 - `TestPublishingSheinRuntimeBaseAPIClientAliasStaysRetired`
 - `TestPublishingCommonUsesCanonicalPackage`
-- `TestPublishingCommonDoesNotImportPlatformImplementations`
+- `depguard: publishing_common_platforms`
 - `TestCmdContainsOnlyOfficialEntrypoints`
 - `TestCmdProductionEntrypointsDoNotImportDomainOrInfraPackages`
 - `TestHackContainsOnlyManagedSupportAreas`

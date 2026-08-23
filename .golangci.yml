@@ -103,6 +103,20 @@ linters-settings:
           - pkg: "task-processor/internal/listingkit/tenantctx"
             desc: "Legacy SHEIN pipeline must not depend on ListingKit tenant context"
 
+      publishing_common_platforms:
+        # Publishing common code must stay platform-neutral; production-only guard by repository policy.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/publishing/common/*.go"
+          - "**/internal/publishing/common/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/shein"
+            desc: "Publishing common code must not depend on SHEIN implementation packages"
+          - pkg: "task-processor/internal/temu"
+            desc: "Publishing common code must not depend on TEMU implementation packages"
+          - pkg: "task-processor/internal/amazon"
+            desc: "Publishing common code must not depend on Amazon implementation packages"
+
   govet:
     disable:
       - fieldalignment
