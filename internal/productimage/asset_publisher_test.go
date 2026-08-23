@@ -52,13 +52,14 @@ func TestPlatformAssetPublisherRoutesAmazonOnlyToAmazon(t *testing.T) {
 	result := &ImageProcessResult{}
 
 	require.NoError(t, publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "amazon"}, result))
+	require.NoError(t, publisher.Publish(context.Background(), &ImageProcessRequest{Marketplace: "amazon"}, result))
 	require.NoError(t, publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "shein"}, result))
 	require.NoError(t, publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "temu"}, result))
 
 	require.Equal(t, 2, local.calls)
-	require.Equal(t, 1, amazon.calls)
+	require.Equal(t, 2, amazon.calls)
 	require.Equal(t, []string{"shein", "temu"}, local.platforms)
-	require.Equal(t, []string{"amazon"}, amazon.platforms)
+	require.Equal(t, []string{"amazon", ""}, amazon.platforms)
 }
 
 func TestPlatformAssetPublisherSkipsNonAmazonWhenOnlyAmazonConfigured(t *testing.T) {

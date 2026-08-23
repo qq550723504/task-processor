@@ -43,6 +43,9 @@ func (p *platformAssetPublisher) Publish(ctx context.Context, req *ImageProcessR
 	platform := ""
 	if req != nil {
 		platform = strings.ToLower(strings.TrimSpace(req.TargetPlatform))
+		if platform == "" {
+			platform = strings.ToLower(strings.TrimSpace(req.Marketplace))
+		}
 	}
 	if platform == "amazon" {
 		if p.amazon == nil {
