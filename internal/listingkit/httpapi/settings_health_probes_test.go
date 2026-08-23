@@ -102,6 +102,21 @@ func TestBuildSettingsHealthProbesFromConfigReportsMissingRuntimeFields(t *testi
 	assertProbeMissing(t, probes.ObjectStorage, "productimage.publisher.s3.endpoint 缺失")
 }
 
+func TestBuildSettingsHealthProbesReportsLocalPublisherWithoutPublicBase(t *testing.T) {
+	t.Parallel()
+
+	probes := buildSettingsHealthProbesFromConfig(&config.Config{
+		ProductImage: config.ProductImageConfig{
+			Publisher: config.ProductImagePublisherConfig{
+				Enabled:  true,
+				Provider: "local",
+			},
+		},
+	})
+
+	assertProbeMissing(t, probes.ObjectStorage, "productimage.publisher.publicBase 缺失")
+}
+
 func TestCompleteSettingsHealthProbesWithSubmitRuntimeReportsMissingSheinCapabilities(t *testing.T) {
 	t.Parallel()
 

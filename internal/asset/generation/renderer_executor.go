@@ -2,18 +2,19 @@ package generation
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"task-processor/internal/asset"
 )
 
-func (s *service) executeRendererBackedTask(ctx context.Context, req DispatchRequest, task Task) (asset.AssetRecord, bool) {
+func (s *service) executeRendererBackedTask(ctx context.Context, req DispatchRequest, task Task) (asset.AssetRecord, bool, error) {
 	if s.deferredRenderer == nil {
-		return asset.AssetRecord{}, false
+		return asset.AssetRecord{}, false, nil
 	}
 	base, ok := preferredDeferredBaseRecord(req.Inventory, task)
 	if !ok {
-		return asset.AssetRecord{}, false
+		return asset.AssetRecord{}, false, fmt.Errorf("renderer-backed task %q has no eligible base asset", task.ID)
 	}
 	record, err := s.deferredRenderer.Render(ctx, DeferredRenderRequest{
 		TaskID:    req.TaskID,
@@ -21,8 +22,11 @@ func (s *service) executeRendererBackedTask(ctx context.Context, req DispatchReq
 		Task:      task,
 		BaseAsset: base,
 	})
-	if err != nil || record == nil {
-		return asset.AssetRecord{}, false
+	if err != nil {
+		return asset.AssetRecord{}, false, fmt.Errorf("renderer-backed task %q failed: %w", task.ID, err)
+	}
+	if record == nil {
+		return asset.AssetRecord{}, false, fmt.Errorf("renderer-backed task %q returned no asset", task.ID)
 	}
 	if strings.TrimSpace(record.TaskID) == "" {
 		record.TaskID = req.TaskID
@@ -41,5 +45,5 @@ func (s *service) executeRendererBackedTask(ctx context.Context, req DispatchReq
 			Step:           "renderer_backed",
 		}
 	}
-	return *record, true
+	return *record, true, nil
 }

@@ -3,6 +3,7 @@ package generation
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"task-processor/internal/asset"
@@ -34,6 +35,7 @@ func (r *productImageDeferredRenderer) Render(ctx context.Context, req DeferredR
 	if inputAsset.Metadata == nil {
 		inputAsset.Metadata = map[string]string{}
 	}
+	clearPublicationMetadata(inputAsset.Metadata)
 	if value := strings.TrimSpace(req.Task.RenderProfile); value != "" {
 		inputAsset.Metadata["render_profile"] = value
 	}
@@ -56,15 +58,15 @@ func (r *productImageDeferredRenderer) Render(ctx context.Context, req DeferredR
 	if !ok {
 		return nil, fmt.Errorf("scene renderer returned no assets")
 	}
-	if publishedURL := publishedAssetURL(selected); publishedURL != "" {
-		selected.URL = publishedURL
-	}
 	if r.publisher != nil {
 		published, err := r.publish(ctx, req, selected)
 		if err != nil {
 			return nil, fmt.Errorf("publish deferred scene asset: %w", err)
 		}
 		selected = published
+	}
+	if err := requirePublicAssetURL(selected.URL); err != nil {
+		return nil, err
 	}
 
 	record := &asset.AssetRecord{
@@ -157,16 +159,25 @@ func (r *productImageDeferredRenderer) publish(ctx context.Context, req Deferred
 	return selected, nil
 }
 
-func publishedAssetURL(asset productimage.ImageAsset) string {
-	if asset.Metadata == nil {
-		return ""
+func clearPublicationMetadata(metadata map[string]string) {
+	for _, key := range []string{
+		"published_url",
+		"uploaded_url",
+		"published_path",
+		"published_key",
+		"published_provider",
+		"published_size_bytes",
+	} {
+		delete(metadata, key)
 	}
-	for _, key := range []string{"published_url", "uploaded_url"} {
-		if value := strings.TrimSpace(asset.Metadata[key]); value != "" {
-			return value
-		}
+}
+
+func requirePublicAssetURL(value string) error {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return fmt.Errorf("deferred scene asset must have a public http(s) URL, got %q", value)
 	}
-	return ""
+	return nil
 }
 
 func firstRenderableSceneAsset(items []productimage.ImageAsset) (productimage.ImageAsset, bool) {

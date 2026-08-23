@@ -112,14 +112,14 @@ func (s *taskGenerationService) RetryTaskGenerationTasks(ctx context.Context, ta
 		return buildRetryGenerationProjectionPhase(s.assetRecipeResolver, s.assetBundleBuilder).emptySelectionPage(task), nil
 	}
 
-	dispatchResult, err := s.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
+	dispatchResult, dispatchErr := s.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
 		TaskID:    task.ID,
 		Product:   effectiveCatalogProduct(task.Result),
 		Inventory: inventory,
 		Tasks:     selectedTasks,
 	})
-	if err != nil {
-		return nil, err
+	if dispatchResult == nil && dispatchErr != nil {
+		return nil, dispatchErr
 	}
 	mutationResult := dispatchResult
 	if dispatchResult == nil {
@@ -148,6 +148,9 @@ func (s *taskGenerationService) RetryTaskGenerationTasks(ctx context.Context, ta
 	)
 	if err := s.repo.SaveTaskResult(ctx, task.ID, rebuiltResult); err != nil {
 		return nil, err
+	}
+	if dispatchErr != nil {
+		return nil, dispatchErr
 	}
 	return page, nil
 }

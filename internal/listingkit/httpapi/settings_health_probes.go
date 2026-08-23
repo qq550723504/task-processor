@@ -63,6 +63,9 @@ func objectStorageProbe(cfg *config.Config) listingkit.SettingsHealthProbe {
 	publisher := cfg.ProductImage.Publisher
 	provider := strings.TrimSpace(strings.ToLower(publisher.Provider))
 	if provider == "" || provider == "local" || provider == "filesystem" || provider == "file" {
+		if publisher.Enabled && strings.TrimSpace(publisher.PublicBase) == "" {
+			return missingProbe("productimage.publisher.publicBase 缺失")
+		}
 		return listingkit.SettingsHealthProbe{Configured: true}
 	}
 	if provider != "s3" {

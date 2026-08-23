@@ -3725,6 +3725,42 @@ func TestRetryTaskGenerationTasksPersistenceFailureStopsRetry(t *testing.T) {
 	}
 }
 
+func TestRetryTaskGenerationTasksPersistsFailedDispatchBeforeReturningError(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("publisher unavailable")
+	fixture := newRetryPersistenceFailureFixture(t, "task-generation-retry-dispatch-failed-1")
+	fixture.generation.assetGenerator = &stubRetryDispatchGenerator{
+		dispatchResult: &assetgeneration.Result{Tasks: []assetgeneration.Task{{
+			TaskID: fixture.taskID, ID: "amazon:amazon-lifestyle", Platform: "amazon", RecipeID: "amazon-lifestyle",
+			AssetKind: asset.KindSceneImage, Slot: "auxiliary", ExecutionStatus: "failed", ExecutionMode: assetgeneration.ExecutionModeRendererBacked,
+			CanExecute: true, Metadata: map[string]string{"error": wantErr.Error()},
+		}}},
+		dispatchErr: wantErr,
+	}
+	fixture.assetRepository.resetCalls()
+
+	page, err := fixture.generation.RetryTaskGenerationTasks(context.Background(), fixture.taskID, &RetryGenerationTasksRequest{
+		Slots: []string{"auxiliary"},
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("RetryTaskGenerationTasks() error = %v, want %v", err, wantErr)
+	}
+	if page != nil {
+		t.Fatalf("page = %+v, want nil after failed dispatch", page)
+	}
+	if !reflect.DeepEqual(fixture.assetRepository.calls, []string{"save_inventory", "save_generation_tasks"}) {
+		t.Fatalf("persistence calls = %+v, want failed task persistence", fixture.assetRepository.calls)
+	}
+	persisted, err := fixture.assetRepository.ListGenerationTasks(context.Background(), fixture.taskID)
+	if err != nil {
+		t.Fatalf("ListGenerationTasks() error = %v", err)
+	}
+	if len(persisted) != 1 || persisted[0].ExecutionStatus != "failed" || persisted[0].Metadata["error"] != wantErr.Error() {
+		t.Fatalf("persisted tasks = %+v, want failed retryable task", persisted)
+	}
+}
+
 func TestRetryTaskGenerationTasksInventoryPersistenceFailureStopsRetry(t *testing.T) {
 	t.Parallel()
 
