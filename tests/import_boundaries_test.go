@@ -309,13 +309,6 @@ func TestListingPreviewPackageStaysPlatformNeutral(t *testing.T) {
 	}, nil)
 }
 
-func TestSheinPipelineDoesNotImportListingKitFacade(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "shein", "pipeline"), []string{
-		`"task-processor/internal/listingkit"`,
-		`"task-processor/internal/listingkit/tenantctx"`,
-	}, nil)
-}
-
 func TestSheinSubmitPrepDoesNotImportListingKitTenantContext(t *testing.T) {
 	assertNoBannedImports(t, filepath.Join("..", "internal", "shein", "submitprep"), []string{
 		`"task-processor/internal/listingkit/tenantctx"`,

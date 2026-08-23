@@ -75,7 +75,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestListingKitAmazonListingImportsStayAllowlisted`
 - `TestCatalogDoesNotDependOnProductEnrichAliases`
 - `TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases`
-- `TestSheinPipelineDoesNotImportListingKitFacade`
+- `depguard: shein_pipeline_legacy_listingkit`
 - `TestSheinSubmitPrepDoesNotImportListingKitTenantContext`
 - `TestPublishingSheinSubmitPrepUsesOnlySensitiveWordAdapter`
 - `TestListingKitRootSheinHelpersStayAllowlisted`

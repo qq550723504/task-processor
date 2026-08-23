@@ -308,7 +308,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestListingKitAmazonListingImportsStayAllowlisted`
 - `TestCatalogDoesNotDependOnProductEnrichAliases`
 - `TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases`
-- `TestSheinPipelineDoesNotImportListingKitFacade`
+- `depguard: shein_pipeline_legacy_listingkit`
 - `TestSheinSubmitPrepDoesNotImportListingKitTenantContext`
 - `TestListingKitRootSheinHelpersStayAllowlisted`
 - `TestListingKitRootServiceSubmitFilesStayAllowlisted`
