@@ -35,14 +35,6 @@ func TestProductSourcingHTTPStaysUnderSourceHandoff(t *testing.T) {
 	}
 }
 
-func TestListingKitDoesNotImportLegacySheinRuntime(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "listingkit"), []string{
-		`"task-processor/internal/shein/pipeline"`,
-		`"task-processor/internal/shein/publish"`,
-		`"task-processor/internal/shein/product/build"`,
-	}, nil)
-}
-
 func TestPortsManagementAPIPackageIsRetired(t *testing.T) {
 	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
 	if err != nil {

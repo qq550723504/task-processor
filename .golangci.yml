@@ -72,6 +72,20 @@ linters-settings:
           - pkg: "task-processor/internal/marketplace/shein/publishing"
             desc: "ListingKit production code must not depend on SHEIN publishing policies"
 
+      listingkit_legacy_shein_runtime:
+        # Keep ListingKit independent from legacy SHEIN runtime implementation packages.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/listingkit/*.go"
+          - "**/internal/listingkit/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/shein/pipeline"
+            desc: "ListingKit production code must not depend on the legacy SHEIN pipeline"
+          - pkg: "task-processor/internal/shein/publish"
+            desc: "ListingKit production code must not depend on the legacy SHEIN publish package"
+          - pkg: "task-processor/internal/shein/product/build"
+            desc: "ListingKit production code must not depend on the legacy SHEIN product builder"
+
       publishing_shein_legacy_runtime:
         # Keep the publishing owner independent from legacy runtime and facade packages.
         files:

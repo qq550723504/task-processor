@@ -66,7 +66,7 @@ At minimum, structural review should consider representative guards such as:
 - `TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly`
 - `TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly`
 - `TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain`
-- `TestListingKitDoesNotImportLegacySheinRuntime`
+- `depguard: listingkit_legacy_shein_runtime`
 - `TestListingKitDoesNotImportSheinAPIRoot`
 - `TestListingKitNonAPISheinImportsStayAllowlisted`
 - `TestListingKitRootDoesNotImportManagementAPI`
