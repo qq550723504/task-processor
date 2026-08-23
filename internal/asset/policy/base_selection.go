@@ -9,7 +9,7 @@ import "task-processor/internal/asset"
 func DeferredBaseKinds(kind asset.Kind) []asset.Kind {
 	switch kind {
 	case asset.KindModelImage:
-		return []asset.Kind{asset.KindCleanImage, asset.KindMainImage, asset.KindSubjectCutout, asset.KindSourceImage}
+		return []asset.Kind{asset.KindCleanImage, asset.KindMainImage, asset.KindSubjectCutout, asset.KindGalleryImage, asset.KindSourceImage}
 	case asset.KindSellingPointImage, asset.KindSizeSceneImage, asset.KindDetailCrop:
 		return []asset.Kind{asset.KindGalleryImage, asset.KindCleanImage, asset.KindMainImage, asset.KindSubjectCutout, asset.KindSourceImage}
 	case asset.KindSceneImage:

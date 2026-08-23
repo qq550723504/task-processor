@@ -51,7 +51,7 @@ func toProductImageAsset(record asset.AssetRecord) *productimage.ImageAsset {
 	return &productimage.ImageAsset{
 		URL:        record.URL,
 		Type:       assetKindToProductImageType(record.Kind),
-		SourceURL:  readableSourceURL(record),
+		SourceURL:  sourceProvenanceURL(record),
 		Operations: append([]string(nil), record.Operations...),
 		Width:      record.Width,
 		Height:     record.Height,

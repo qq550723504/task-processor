@@ -486,6 +486,29 @@ func TestServiceDispatchUsesSubjectCutoutWhenItIsTheOnlyProcessedBase(t *testing
 	}
 }
 
+func TestServiceDispatchUsesGalleryImageWhenItIsTheOnlyModelBase(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: "task-deferred-gallery-model-base",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{
+			{ID: "gallery-1", Kind: asset.KindGalleryImage, URL: "https://oss.example.test/gallery.png"},
+		}},
+		Tasks: []assetgeneration.Task{{
+			ID: "shein:model", Platform: "shein", RecipeID: "shein-model", AssetKind: asset.KindModelImage,
+			ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "planned", CanExecute: true,
+			SourceAssetIDs: []string{"gallery-1"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 || result.Assets[0].URL != "https://oss.example.test/gallery.png" {
+		t.Fatalf("assets = %+v, want gallery image as model base", result.Assets)
+	}
+}
+
 func TestServiceDispatchDoesNotFallbackAfterRendererFailure(t *testing.T) {
 	t.Parallel()
 
@@ -709,6 +732,47 @@ func TestServiceExecuteUsesPipelineBackedWhiteBgAndCutout(t *testing.T) {
 	}
 	if subjectExtractor.lastContext == nil || subjectExtractor.lastContext.ProductType != "Dresses" {
 		t.Fatalf("extractor context = %+v, want product type from catalog", subjectExtractor.lastContext)
+	}
+}
+
+func TestServiceExecutePreservesSourceProvenanceWhenPublishedURLIsReadable(t *testing.T) {
+	t.Parallel()
+
+	whiteBgRenderer := &stubWhiteBackgroundRenderer{
+		result: &productimage.ImageAsset{
+			URL:       "file:///tmp/white.png",
+			Type:      productimage.AssetTypeWhiteBgImage,
+			SourceURL: "https://cdn.example.test/main.jpg",
+		},
+	}
+	service := assetgeneration.NewService(assetgeneration.Config{WhiteBackgroundRenderer: whiteBgRenderer})
+	provenanceURL := "https://detail.1688.com/offer/1/promo-watermark.jpg"
+	publishedURL := "https://cdn.example.test/main.jpg"
+	_, err := service.Execute(context.Background(), assetgeneration.Request{
+		TaskID: "task-source-provenance",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{{
+			ID: "main-1", Kind: asset.KindMainImage, URL: publishedURL,
+			Metadata: map[string]string{
+				"published_url": publishedURL,
+				"source_url":    provenanceURL,
+			},
+		}}},
+		Recipes: []assetrecipe.AssetRecipe{{
+			ID: "base-white-bg", Platform: "common", AssetKind: asset.KindWhiteBgImage, Generated: true,
+			Template: &assetrecipe.Template{Purpose: "base_white_bg", PreferredKinds: []asset.Kind{asset.KindWhiteBgImage}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if whiteBgRenderer.lastAsset == nil {
+		t.Fatal("white background renderer did not receive a base asset")
+	}
+	if whiteBgRenderer.lastAsset.URL != publishedURL {
+		t.Fatalf("renderer URL = %q, want published URL %q", whiteBgRenderer.lastAsset.URL, publishedURL)
+	}
+	if whiteBgRenderer.lastAsset.SourceURL != provenanceURL {
+		t.Fatalf("renderer SourceURL = %q, want provenance URL %q", whiteBgRenderer.lastAsset.SourceURL, provenanceURL)
 	}
 }
 
@@ -1060,7 +1124,7 @@ func TestProductImageDeferredRendererPromotesPublishedPathBeforeClearingMetadata
 	}
 }
 
-func TestProductImageDeferredRendererUsesUploadedURLBeforeProvenanceURL(t *testing.T) {
+func TestProductImageDeferredRendererSeparatesUploadedURLFromProvenance(t *testing.T) {
 	t.Parallel()
 
 	rendererSpy := &recordingPublishedBaseSceneRenderer{}
@@ -1082,11 +1146,11 @@ func TestProductImageDeferredRendererUsesUploadedURLBeforeProvenanceURL(t *testi
 	if rendererSpy.lastAsset == nil {
 		t.Fatal("scene renderer did not receive a base asset")
 	}
-	if rendererSpy.lastAsset.SourceURL != uploadedURL {
-		t.Fatalf("scene renderer source URL = %q, want uploaded URL %q", rendererSpy.lastAsset.SourceURL, uploadedURL)
+	if rendererSpy.lastAsset.URL != uploadedURL {
+		t.Fatalf("scene renderer readable URL = %q, want uploaded URL %q", rendererSpy.lastAsset.URL, uploadedURL)
 	}
-	if rendererSpy.lastAsset.SourceURL == provenanceURL {
-		t.Fatalf("scene renderer used provenance URL %q as readable input", provenanceURL)
+	if rendererSpy.lastAsset.SourceURL != provenanceURL {
+		t.Fatalf("scene renderer provenance URL = %q, want original URL %q", rendererSpy.lastAsset.SourceURL, provenanceURL)
 	}
 	if record.Metadata["source_url"] != provenanceURL {
 		t.Fatalf("rendered asset provenance = %q, want original URL %q", record.Metadata["source_url"], provenanceURL)
