@@ -18,7 +18,7 @@ func canReuseAsset(asset *ImageAsset) bool {
 				return true
 			}
 		}
-		if uploadedURL := asset.Metadata["uploaded_url"]; uploadedURL != "" {
+		if hasReusablePublishedURL(asset.Metadata) {
 			return true
 		}
 		if localPath := asset.Metadata["local_path"]; localPath != "" {
@@ -47,10 +47,14 @@ func canReusePublishedAsset(asset *ImageAsset) bool {
 			return true
 		}
 	}
-	if asset.Metadata["uploaded_url"] != "" || asset.Metadata["published_url"] != "" {
+	if hasReusablePublishedURL(asset.Metadata) {
 		return true
 	}
 	return false
+}
+
+func hasReusablePublishedURL(metadata map[string]string) bool {
+	return isHTTPURL(ResolveReadableAssetURL("", "", metadata))
 }
 
 func looksRemoteURL(value string) bool {

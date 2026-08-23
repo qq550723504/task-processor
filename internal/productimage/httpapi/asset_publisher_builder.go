@@ -70,7 +70,7 @@ func buildAssetPublisher(options assetPublisherOptions, logger *logrus.Logger) p
 
 	provider := strings.ToLower(strings.TrimSpace(options.provider))
 	switch provider {
-	case "", "local":
+	case "", "local", "file", "filesystem":
 		publisher, err := productimage.NewLocalAssetPublisher(options.outputDir, options.publicBase)
 		if err != nil {
 			logger.WithError(err).Warn("local image asset publisher unavailable")
