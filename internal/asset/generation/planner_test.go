@@ -433,6 +433,35 @@ func TestServiceDispatchPrefersProcessedMainOverSourceForScene(t *testing.T) {
 	}
 }
 
+func TestServiceDispatchKeepsCleanImageEligibleForScene(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: "task-deferred-scene-clean-base",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{
+			{ID: "clean-1", Kind: asset.KindCleanImage, URL: "https://oss.example.test/clean.png"},
+		}},
+		Tasks: []assetgeneration.Task{{
+			ID: "amazon:scene", Platform: "amazon", RecipeID: "amazon-scene", AssetKind: asset.KindSceneImage,
+			ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "planned", CanExecute: true,
+			SourceAssetIDs: []string{"clean-1"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one deferred asset", result.Assets)
+	}
+	if got := result.Assets[0].URL; got != "https://oss.example.test/clean.png" {
+		t.Fatalf("scene deferred asset URL = %q, want clean image URL", got)
+	}
+	if result.Assets[0].Lineage == nil || len(result.Assets[0].Lineage.SourceAssetIDs) != 1 || result.Assets[0].Lineage.SourceAssetIDs[0] != "clean-1" {
+		t.Fatalf("scene deferred asset lineage = %+v, want clean-1", result.Assets[0].Lineage)
+	}
+}
+
 func TestServiceDispatchUsesSubjectCutoutWhenItIsTheOnlyProcessedBase(t *testing.T) {
 	t.Parallel()
 
@@ -1027,6 +1056,39 @@ func TestProductImageDeferredRendererPromotesPublishedPathBeforeClearingMetadata
 	}
 	if _, ok := rendererSpy.lastAsset.Metadata["published_path"]; ok {
 		t.Fatalf("scene renderer input metadata = %+v, want published_path scrubbed", rendererSpy.lastAsset.Metadata)
+	}
+}
+
+func TestProductImageDeferredRendererUsesUploadedURLBeforeProvenanceURL(t *testing.T) {
+	t.Parallel()
+
+	rendererSpy := &recordingPublishedBaseSceneRenderer{}
+	renderer := assetgeneration.NewProductImageDeferredRenderer(rendererSpy)
+	uploadedURL := "https://images.amazon.example/uploaded-main.jpg"
+	provenanceURL := "https://detail.1688.com/offer/1/main.jpg"
+
+	record, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
+		TaskID: "task-renderer-amazon-uploaded-base",
+		Task:   assetgeneration.Task{Platform: "amazon", AssetKind: asset.KindSceneImage, Purpose: "scene"},
+		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: uploadedURL, Metadata: map[string]string{
+			"source_url":   provenanceURL,
+			"uploaded_url": uploadedURL,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if rendererSpy.lastAsset == nil {
+		t.Fatal("scene renderer did not receive a base asset")
+	}
+	if rendererSpy.lastAsset.SourceURL != uploadedURL {
+		t.Fatalf("scene renderer source URL = %q, want uploaded URL %q", rendererSpy.lastAsset.SourceURL, uploadedURL)
+	}
+	if rendererSpy.lastAsset.SourceURL == provenanceURL {
+		t.Fatalf("scene renderer used provenance URL %q as readable input", provenanceURL)
+	}
+	if record.Metadata["source_url"] != provenanceURL {
+		t.Fatalf("rendered asset provenance = %q, want original URL %q", record.Metadata["source_url"], provenanceURL)
 	}
 }
 

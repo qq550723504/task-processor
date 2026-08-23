@@ -74,12 +74,15 @@ func (p *platformAssetDispatchPhase) dispatchAndApply(
 		return final, inventory, persistedGenerationTasks, 0
 	}
 	deferredStage := newWorkflowRecorder(final).Start("asset_generation_platform", "")
-	dispatchResult, dispatchErr := assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
-		TaskID:    task.ID,
-		Product:   final.CatalogProduct,
-		Inventory: inventory,
-		Tasks:     pendingTasks,
-	})
+	dispatchResult, dispatchErr := dispatchGenerationTasksByPlatform(
+		ctx,
+		assetGenerator,
+		task.ID,
+		final.CatalogProduct,
+		final,
+		inventory,
+		pendingTasks,
+	)
 	returnedAssetCount := 0
 	if dispatchErr != nil {
 		deferredStage.Degrade("asset_generation_platform_deferred_dispatch_failed", "Deferred platform asset generation dispatch failed", dispatchErr.Error())

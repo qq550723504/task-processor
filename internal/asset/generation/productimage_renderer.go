@@ -114,12 +114,17 @@ func (r *productImageDeferredRenderer) Render(ctx context.Context, req DeferredR
 	if value := strings.TrimSpace(req.Task.Purpose); value != "" {
 		record.Metadata["purpose"] = value
 	}
-	if value := strings.TrimSpace(selected.SourceURL); value != "" {
-		record.Metadata["source_url"] = value
-	} else if value := readableSourceURL(req.BaseAsset); value != "" {
+	if value := sourceProvenanceURL(req.BaseAsset); value != "" {
 		record.Metadata["source_url"] = value
 	}
 	return record, nil
+}
+
+func sourceProvenanceURL(record asset.AssetRecord) string {
+	if value := strings.TrimSpace(record.Metadata["source_url"]); value != "" {
+		return value
+	}
+	return strings.TrimSpace(record.URL)
 }
 
 func (r *productImageDeferredRenderer) publish(ctx context.Context, req DeferredRenderRequest, selected productimage.ImageAsset) (productimage.ImageAsset, error) {

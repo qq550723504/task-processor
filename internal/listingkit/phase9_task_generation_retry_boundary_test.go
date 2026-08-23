@@ -57,6 +57,22 @@ func TestTaskGenerationServiceFileKeepsRetryOwnershipBoundaries(t *testing.T) {
 	}
 }
 
+func TestPlatformAssetDispatchPhaseUsesPlatformScopedDispatcher(t *testing.T) {
+	t.Parallel()
+
+	content, err := os.ReadFile("workflow_platform_asset_dispatch_phase.go")
+	if err != nil {
+		t.Fatalf("ReadFile(workflow_platform_asset_dispatch_phase.go) error = %v", err)
+	}
+	source := string(content)
+	if !strings.Contains(source, "dispatchGenerationTasksByPlatform(") {
+		t.Fatal("workflow_platform_asset_dispatch_phase.go should use the platform-scoped dispatcher")
+	}
+	if strings.Contains(source, "assetGenerator.Dispatch(") {
+		t.Fatal("workflow_platform_asset_dispatch_phase.go should not bypass platform inventory isolation")
+	}
+}
+
 func TestRetryGenerationSeamFilesOwnTheirResponsibilities(t *testing.T) {
 	t.Parallel()
 

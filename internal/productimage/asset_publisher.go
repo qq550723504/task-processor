@@ -264,6 +264,7 @@ func (p *amazonAssetPublisher) publishAsset(ctx context.Context, asset *ImageAss
 	}
 	asset.Metadata["uploaded_image_id"] = uploadResult.ImageID
 	asset.Metadata["uploaded_url"] = uploadResult.URL
+	asset.Metadata["published_url"] = uploadResult.URL
 	asset.Metadata["upload_format"] = uploadResult.Format
 	asset.Metadata["original_local_path"] = localPath
 	asset.Metadata["published_provider"] = "amazon"
