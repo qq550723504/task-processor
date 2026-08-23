@@ -25,5 +25,9 @@ func (p *platformAssetDispatchBundleReshapePhase) run(
 		return
 	}
 
-	attachPlatformImageBundles(final, inventory, recipesByPlatform, &assetgeneration.Result{Tasks: dispatchTasks}, p.bundleBuilder)
+	var generationPlan *assetgeneration.Result
+	if dispatchTasks != nil {
+		generationPlan = &assetgeneration.Result{Tasks: dispatchTasks}
+	}
+	attachPlatformImageBundles(final, inventory, recipesByPlatform, generationPlan, p.bundleBuilder)
 }

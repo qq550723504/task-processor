@@ -17,7 +17,7 @@ func attachPlatformImageBundles(result *ListingKitResult, inventory *asset.Inven
 		platforms = append(platforms, platform)
 		targetInventory := platformAssetInventory(result, platform, inventory)
 		imageBundle := builder.Build(assetbundleRequest(platform, targetInventory, recipes))
-		if len(platformGenerationTasks(platform, generationPlan)) > 0 {
+		if generationPlan != nil {
 			imageBundle.PendingGeneration = platformGenerationTasks(platform, generationPlan)
 		}
 		switch platform {

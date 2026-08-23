@@ -57,7 +57,7 @@ func deferredBaseKinds(kind asset.Kind) []asset.Kind {
 	case asset.KindSellingPointImage, asset.KindSizeSceneImage, asset.KindDetailCrop:
 		return []asset.Kind{asset.KindGalleryImage, asset.KindCleanImage, asset.KindMainImage, asset.KindSubjectCutout, asset.KindSourceImage}
 	case asset.KindSceneImage:
-		return []asset.Kind{asset.KindSceneImage, asset.KindGalleryImage, asset.KindSourceImage, asset.KindMainImage, asset.KindSubjectCutout}
+		return []asset.Kind{asset.KindSceneImage, asset.KindGalleryImage, asset.KindMainImage, asset.KindSourceImage, asset.KindSubjectCutout}
 	default:
 		return []asset.Kind{asset.KindCleanImage, asset.KindMainImage, asset.KindSubjectCutout, asset.KindSourceImage, asset.KindGalleryImage}
 	}

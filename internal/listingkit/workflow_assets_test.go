@@ -12,6 +12,7 @@ import (
 	"task-processor/internal/aicapability"
 	"task-processor/internal/asset"
 	assetgeneration "task-processor/internal/asset/generation"
+	assetrecipe "task-processor/internal/asset/recipe"
 	assetrepo "task-processor/internal/asset/repository"
 	"task-processor/internal/listingkit/core"
 	"task-processor/internal/productenrich"
@@ -146,6 +147,43 @@ func TestDispatchGenerationTasksByPlatformUsesTargetInventory(t *testing.T) {
 		if req.Inventory.Records[0].URL != wantURL {
 			t.Fatalf("%s inventory URL = %q, want %q", req.Tasks[0].Platform, req.Inventory.Records[0].URL, wantURL)
 		}
+	}
+}
+
+func TestPlatformAssetDispatchBundleReshapeSuppressesFailedRecipePendingTask(t *testing.T) {
+	t.Parallel()
+
+	final := &ListingKitResult{Amazon: &AmazonPackage{}}
+	inventory := &asset.Inventory{Records: []asset.AssetRecord{
+		{ID: "source-1", Kind: asset.KindSourceImage, Origin: asset.OriginSource, URL: "https://example.com/source.jpg"},
+	}}
+	recipesByPlatform := map[string][]assetrecipe.AssetRecipe{
+		"amazon": {{
+			ID:        "amazon-scene",
+			Platform:  "amazon",
+			AssetKind: asset.KindSceneImage,
+			Generated: true,
+			Template: &assetrecipe.Template{
+				BundleSlot:     "auxiliary",
+				Purpose:        "scene",
+				PreferredKinds: []asset.Kind{asset.KindSceneImage},
+				Optional:       true,
+			},
+		}},
+	}
+	dispatchTasks := []assetgeneration.Task{{
+		ID: "amazon:amazon-scene", Platform: "amazon", RecipeID: "amazon-scene", ExecutionStatus: "failed",
+	}}
+
+	buildPlatformAssetDispatchBundleReshapePhase(newDefaultAssetBundleBuilder()).run(
+		final, inventory, recipesByPlatform, dispatchTasks,
+	)
+
+	if final.Amazon.ImageBundle == nil {
+		t.Fatal("amazon image bundle is nil")
+	}
+	if len(final.Amazon.ImageBundle.PendingGeneration) != 0 {
+		t.Fatalf("amazon pending generation = %+v, want failed task suppressed", final.Amazon.ImageBundle.PendingGeneration)
 	}
 }
 

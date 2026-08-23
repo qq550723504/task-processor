@@ -403,6 +403,36 @@ func TestServiceDispatchPrefersProcessedBaseOverFirstSourceAssetID(t *testing.T)
 	}
 }
 
+func TestServiceDispatchPrefersProcessedMainOverSourceForScene(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: "task-deferred-scene-main-priority",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://cbu01.alicdn.com/source.jpg"},
+			{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
+		}},
+		Tasks: []assetgeneration.Task{{
+			ID: "shein:scene", Platform: "shein", RecipeID: "shein-scene", AssetKind: asset.KindSceneImage,
+			ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "planned", CanExecute: true,
+			SourceAssetIDs: []string{"source-1", "main-1"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one deferred asset", result.Assets)
+	}
+	if got := result.Assets[0].URL; got != "https://oss.example.test/main.png" {
+		t.Fatalf("scene deferred asset URL = %q, want processed main image URL", got)
+	}
+	if result.Assets[0].Lineage == nil || len(result.Assets[0].Lineage.SourceAssetIDs) != 1 || result.Assets[0].Lineage.SourceAssetIDs[0] != "main-1" {
+		t.Fatalf("scene deferred asset lineage = %+v, want main-1", result.Assets[0].Lineage)
+	}
+}
+
 func TestServiceDispatchUsesSubjectCutoutWhenItIsTheOnlyProcessedBase(t *testing.T) {
 	t.Parallel()
 
