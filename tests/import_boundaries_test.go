@@ -11,30 +11,6 @@ import (
 	"testing"
 )
 
-func TestProductSourcingHTTPStaysUnderSourceHandoff(t *testing.T) {
-	t.Parallel()
-	root := filepath.Join("..", "internal")
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if strings.Contains(string(content), `"task-processor/internal/productenrich/httpapi/sourcea1688"`) {
-			t.Errorf("%s imports the duplicate 1688 HTTP owner", path)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestPortsManagementAPIPackageIsRetired(t *testing.T) {
 	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
 	if err != nil {
