@@ -302,7 +302,7 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly`
 - `TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly`
 - `TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain`
-- `TestListingKitDoesNotImportLegacySheinRuntime`
+- `depguard: listingkit_legacy_shein_runtime`
 - `TestListingKitDoesNotImportSheinAPIRoot`
 - `TestListingKitNonAPISheinImportsStayAllowlisted`
 - `TestListingKitAmazonListingImportsStayAllowlisted`

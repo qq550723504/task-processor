@@ -101,6 +101,10 @@ SHEIN, TEMU, Amazon, or Walmart platform rules.
 New platform-specific rules should move toward marketplace or publishing
 packages unless the behavior is truly a ListingKit product concept.
 
+ListingKit's production dependency on legacy SHEIN runtime packages is guarded
+by `depguard: listingkit_legacy_shein_runtime`; test-only semantic exceptions
+remain in the project-specific boundary tests.
+
 ### `internal/platforms/*`
 
 `internal/platforms/*` is a thin registration and platform selection layer. It
