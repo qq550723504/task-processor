@@ -18,7 +18,8 @@ unattended deployment credential.
 - Require an interactive sign-in when no valid local access-token cache exists.
   Do not request `offline_access` or cache refresh tokens. On Windows, cache
   the short-lived access token encrypted with the current user's DPAPI until
-  its JWT expiry so repeated acceptance runs do not require repeated sign-in.
+  the provider's OAuth expiry (`expires_in`, or JWT `exp` when available) so
+  repeated acceptance runs do not require repeated sign-in.
 - Reuse the existing `scripts/1688-runtime-acceptance.ps1` workflow and its
   existing `CREATE-1688-TASK` confirmation for any POST operation.
 - Add an authenticated identity read endpoint before task creation. This
