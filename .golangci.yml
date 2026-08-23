@@ -105,6 +105,16 @@ linters-settings:
           - pkg: "task-processor/internal/shein/product/build"
             desc: "SHEIN publishing owner must not depend on the legacy SHEIN product builder"
 
+      shein_submitprep_legacy_tenantctx:
+        # SHEIN submit preparation must not depend on the retired ListingKit tenant context.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/shein/submitprep/*.go"
+          - "**/internal/shein/submitprep/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit/tenantctx"
+            desc: "SHEIN submit preparation must not depend on ListingKit tenant context"
+
       shein_pipeline_legacy_listingkit:
         # The legacy pipeline remains a compatibility seam and production code must not regain ListingKit coupling.
         # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
