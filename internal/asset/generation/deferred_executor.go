@@ -41,25 +41,47 @@ func preferredDeferredBaseRecord(inventory *asset.Inventory, task Task) (asset.A
 	if inventory == nil {
 		return asset.AssetRecord{}, false
 	}
+	preferredKinds := deferredBaseKinds(task.AssetKind)
 	if len(task.SourceAssetIDs) > 0 {
-		for _, sourceID := range task.SourceAssetIDs {
-			for _, record := range inventory.Records {
-				if record.ID == sourceID {
-					return record, true
-				}
+		if record, ok := preferredRecordByIDs(inventory, task.SourceAssetIDs, preferredKinds); ok {
+			return record, true
+		}
+	}
+	return preferredBaseRecord(inventory, preferredKinds...)
+}
+
+func deferredBaseKinds(kind asset.Kind) []asset.Kind {
+	switch kind {
+	case asset.KindModelImage:
+		return []asset.Kind{asset.KindCleanImage, asset.KindMainImage, asset.KindSourceImage}
+	case asset.KindSellingPointImage, asset.KindSizeSceneImage, asset.KindDetailCrop:
+		return []asset.Kind{asset.KindGalleryImage, asset.KindCleanImage, asset.KindMainImage, asset.KindSourceImage}
+	case asset.KindSceneImage:
+		return []asset.Kind{asset.KindSceneImage, asset.KindGalleryImage, asset.KindSourceImage, asset.KindMainImage}
+	default:
+		return []asset.Kind{asset.KindCleanImage, asset.KindMainImage, asset.KindSourceImage, asset.KindGalleryImage}
+	}
+}
+
+func preferredRecordByIDs(inventory *asset.Inventory, ids []string, kinds []asset.Kind) (asset.AssetRecord, bool) {
+	if inventory == nil || len(ids) == 0 || len(kinds) == 0 {
+		return asset.AssetRecord{}, false
+	}
+	allowed := make(map[string]struct{}, len(ids))
+	for _, id := range ids {
+		allowed[id] = struct{}{}
+	}
+	for _, kind := range kinds {
+		for _, record := range inventory.Records {
+			if record.Kind != kind {
+				continue
+			}
+			if _, ok := allowed[record.ID]; ok {
+				return record, true
 			}
 		}
 	}
-	switch task.AssetKind {
-	case asset.KindModelImage:
-		return preferredBaseRecord(inventory, asset.KindCleanImage, asset.KindMainImage, asset.KindSourceImage)
-	case asset.KindSellingPointImage, asset.KindSizeSceneImage, asset.KindDetailCrop:
-		return preferredBaseRecord(inventory, asset.KindGalleryImage, asset.KindCleanImage, asset.KindMainImage, asset.KindSourceImage)
-	case asset.KindSceneImage:
-		return preferredBaseRecord(inventory, asset.KindSceneImage, asset.KindGalleryImage, asset.KindSourceImage, asset.KindMainImage)
-	default:
-		return preferredBaseRecord(inventory, asset.KindCleanImage, asset.KindMainImage, asset.KindSourceImage, asset.KindGalleryImage)
-	}
+	return asset.AssetRecord{}, false
 }
 
 func deferredRole(kind asset.Kind, purpose string) string {

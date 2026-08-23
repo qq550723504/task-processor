@@ -59,6 +59,7 @@ func (d *runtimeDeps) attachImageModule(module *productimagehttpapi.Module) {
 	d.features.imageSubjectExtractor = module.SubjectExtractor
 	d.features.imageWhiteBgRenderer = module.WhiteBackgroundRender
 	d.features.imageSceneRenderer = module.SceneRenderer
+	d.features.imageAssetPublisher = module.AssetPublisher
 }
 
 func (d *runtimeDeps) attachAmazonListingModule(module *amazonlistinghttpapi.Module) {

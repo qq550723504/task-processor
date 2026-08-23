@@ -17,6 +17,7 @@ type Module struct {
 	SubjectExtractor      productimage.SubjectExtractor
 	WhiteBackgroundRender productimage.WhiteBackgroundRenderer
 	SceneRenderer         productimage.SceneRenderer
+	AssetPublisher        productimage.AssetPublisher
 }
 
 func BuildModule(input BuildModuleInput) (*Module, error) {
@@ -107,6 +108,7 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 	sceneRenderer = resolvedComponents.sceneRenderer
 
 	imageCapabilities := productimage.StrictServiceCapabilities()
+	assetPublisher := buildAssetPublisher(input.Options.assetPublisher, input.Logger)
 	imageSvc, err := productimage.NewService(&productimage.ServiceConfig{
 		QueueName:             "product_image_tasks",
 		TaskRepo:              imageRepo,
@@ -120,7 +122,7 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 		ImageCleaner:          imageCleaner,
 		WhiteBgRenderer:       whiteBgRenderer,
 		SceneRenderer:         sceneRenderer,
-		AssetPublisher:        buildAssetPublisher(input.Options.assetPublisher, input.Logger),
+		AssetPublisher:        assetPublisher,
 		CleanupTemporaryFiles: input.Options.cleanupTemporaryFiles,
 		ReuseExistingAssets:   input.Options.reuseExistingAssets,
 		// Identity is enforced by governed model stages for allowlisted tenants.
@@ -160,6 +162,7 @@ func BuildModule(input BuildModuleInput) (*Module, error) {
 		SubjectExtractor:      subjectExtractor,
 		WhiteBackgroundRender: whiteBgRenderer,
 		SceneRenderer:         sceneRenderer,
+		AssetPublisher:        assetPublisher,
 	}, nil
 }
 

@@ -26,6 +26,7 @@ type RuntimeDependencies struct {
 	ImageSubjectExtractor              productimage.SubjectExtractor
 	ImageWhiteBackgroundRender         productimage.WhiteBackgroundRenderer
 	ImageSceneRenderer                 productimage.SceneRenderer
+	ImageAssetPublisher                productimage.AssetPublisher
 	AICredentialStore                  aiCredentialStore
 	AIInvocationRecorder               aicapability.InvocationRecorder
 	AIAsyncJobStore                    aicapability.AsyncJobBindingStore
@@ -55,6 +56,7 @@ func buildRuntimeServiceInput(logger *logrus.Logger, runtime RuntimeDependencies
 		ImageSubjectExtractor:      runtime.ImageSubjectExtractor,
 		ImageWhiteBackgroundRender: runtime.ImageWhiteBackgroundRender,
 		ImageSceneRenderer:         runtime.ImageSceneRenderer,
+		ImageAssetPublisher:        runtime.ImageAssetPublisher,
 		AICredentialStore:          runtime.AICredentialStore,
 		AIInvocationRecorder:       runtime.AIInvocationRecorder,
 		AIAsyncJobStore:            runtime.AIAsyncJobStore,

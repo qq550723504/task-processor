@@ -31,6 +31,7 @@ type featureRuntimeState struct {
 	imageSubjectExtractor  productimage.SubjectExtractor
 	imageWhiteBgRenderer   productimage.WhiteBackgroundRenderer
 	imageSceneRenderer     productimage.SceneRenderer
+	imageAssetPublisher    productimage.AssetPublisher
 	listingKitSupport      *listingKitSupport
 }
 

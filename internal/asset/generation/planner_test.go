@@ -2,6 +2,7 @@ package generation_test
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -363,6 +364,62 @@ func TestServiceDispatchStampsDeferredAssetWithCanonicalPlatformTag(t *testing.T
 	}
 	if got := result.Assets[0].PlatformTags; len(got) != 1 || got[0] != "temu" {
 		t.Fatalf("deferred asset platform tags = %#v, want [temu]", got)
+	}
+}
+
+func TestServiceDispatchPrefersProcessedBaseOverFirstSourceAssetID(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Dispatch(context.Background(), assetgeneration.DispatchRequest{
+		TaskID: "task-deferred-preferred-base",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://cbu01.alicdn.com/source.jpg"},
+			{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
+		}},
+		Tasks: []assetgeneration.Task{{
+			ID: "shein:main", Platform: "shein", RecipeID: "shein-main-model", AssetKind: asset.KindModelImage,
+			ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "planned", CanExecute: true,
+			SourceAssetIDs: []string{"source-1", "main-1"},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
+	}
+	if len(result.Assets) != 1 {
+		t.Fatalf("assets = %+v, want one deferred asset", result.Assets)
+	}
+	if got := result.Assets[0].URL; got != "https://oss.example.test/main.png" {
+		t.Fatalf("deferred asset URL = %q, want processed main image URL", got)
+	}
+	if result.Assets[0].Lineage == nil || len(result.Assets[0].Lineage.SourceAssetIDs) != 1 || result.Assets[0].Lineage.SourceAssetIDs[0] != "main-1" {
+		t.Fatalf("deferred asset lineage = %+v, want main-1", result.Assets[0].Lineage)
+	}
+}
+
+func TestServicePlanIncludesGalleryAsDeferredSourceCandidate(t *testing.T) {
+	t.Parallel()
+
+	service := assetgeneration.NewNoopService()
+	result, err := service.Plan(context.Background(), assetgeneration.Request{
+		TaskID: "task-deferred-gallery-candidate",
+		Inventory: &asset.Inventory{Records: []asset.AssetRecord{
+			{ID: "source-1", Kind: asset.KindSourceImage, URL: "https://example.test/source.jpg"},
+			{ID: "gallery-1", Kind: asset.KindGalleryImage, URL: "https://oss.example.test/gallery.png"},
+		}},
+		Recipes: []assetrecipe.AssetRecipe{{
+			ID: "shein-gallery-scene", Platform: "shein", AssetKind: asset.KindSceneImage, Generated: true,
+			Template: &assetrecipe.Template{BundleSlot: "gallery", Purpose: "gallery", PreferredKinds: []asset.Kind{asset.KindSceneImage}},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Plan() error = %v", err)
+	}
+	if len(result.Tasks) != 1 {
+		t.Fatalf("tasks = %+v, want one planned task", result.Tasks)
+	}
+	if !reflect.DeepEqual(result.Tasks[0].SourceAssetIDs, []string{"source-1", "gallery-1"}) {
+		t.Fatalf("source asset IDs = %#v, want source and gallery candidates", result.Tasks[0].SourceAssetIDs)
 	}
 }
 
@@ -758,6 +815,80 @@ func TestProductImageDeferredRendererMapsSceneAssets(t *testing.T) {
 	}
 	if record.Metadata["max_copy_lines"] == "" || record.Metadata["max_badges"] == "" || record.Metadata["measurement_mode"] == "" || record.Metadata["detail_anchor_mode"] == "" {
 		t.Fatalf("record metadata = %+v, want preset constraint metadata", record.Metadata)
+	}
+}
+
+func TestProductImageDeferredRendererUsesPublishedURLFromSceneAsset(t *testing.T) {
+	t.Parallel()
+
+	sceneRenderer := &stubProductImageSceneRenderer{
+		results: []productimage.ImageAsset{{
+			URL:       "file:///tmp/scene-rendered.jpg",
+			Type:      productimage.AssetTypeGalleryImage,
+			SourceURL: "https://oss.example.test/source.jpg",
+			Metadata: map[string]string{
+				"local_path":    "C:/tmp/scene-rendered.jpg",
+				"published_url": "https://oss.example.test/scene-rendered.jpg",
+			},
+		}},
+	}
+	renderer := assetgeneration.NewProductImageDeferredRenderer(sceneRenderer)
+
+	record, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
+		TaskID:    "task-renderer-published-url",
+		Product:   &catalog.Product{Title: "Portable Speaker"},
+		Task:      assetgeneration.Task{Platform: "shein", AssetKind: asset.KindSceneImage, Purpose: "gallery"},
+		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if record.URL != "https://oss.example.test/scene-rendered.jpg" {
+		t.Fatalf("rendered asset URL = %q, want published URL", record.URL)
+	}
+}
+
+type stubDeferredAssetPublisher struct {
+	called bool
+}
+
+func (p *stubDeferredAssetPublisher) Publish(_ context.Context, req *productimage.ImageProcessRequest, result *productimage.ImageProcessResult) error {
+	p.called = true
+	if req == nil || req.Text != "task-renderer-publisher" {
+		return fmt.Errorf("unexpected publish request: %+v", req)
+	}
+	if len(result.GalleryImages) != 1 {
+		return fmt.Errorf("gallery images = %+v, want one image", result.GalleryImages)
+	}
+	result.GalleryImages[0].URL = "https://oss.example.test/published-scene.jpg"
+	return nil
+}
+
+func TestProductImageDeferredRendererPublishesLocalSceneOutput(t *testing.T) {
+	t.Parallel()
+
+	sceneRenderer := &stubProductImageSceneRenderer{results: []productimage.ImageAsset{{
+		URL:      "file:///tmp/scene-rendered.jpg",
+		Type:     productimage.AssetTypeGalleryImage,
+		Metadata: map[string]string{"local_path": "C:/tmp/scene-rendered.jpg"},
+	}}}
+	publisher := &stubDeferredAssetPublisher{}
+	renderer := assetgeneration.NewProductImageDeferredRendererWithPublisher(sceneRenderer, publisher)
+
+	record, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
+		TaskID:    "task-renderer-publisher",
+		Product:   &catalog.Product{Title: "Portable Speaker"},
+		Task:      assetgeneration.Task{Platform: "shein", AssetKind: asset.KindSceneImage, Purpose: "gallery"},
+		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if !publisher.called {
+		t.Fatal("asset publisher was not called")
+	}
+	if record.URL != "https://oss.example.test/published-scene.jpg" {
+		t.Fatalf("rendered asset URL = %q, want published URL", record.URL)
 	}
 }
 

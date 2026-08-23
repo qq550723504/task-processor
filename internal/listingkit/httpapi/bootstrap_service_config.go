@@ -62,7 +62,7 @@ func buildListingKitAssetDependencies(in buildListingKitServiceConfigInput) list
 		AssetGenerationService: assetgeneration.NewService(assetgeneration.Config{
 			SubjectExtractor:        in.input.ImageSubjectExtractor,
 			WhiteBackgroundRenderer: in.input.ImageWhiteBackgroundRender,
-			DeferredRenderer:        assetgeneration.NewProductImageDeferredRenderer(in.input.ImageSceneRenderer),
+			DeferredRenderer:        assetgeneration.NewProductImageDeferredRendererWithPublisher(in.input.ImageSceneRenderer, in.input.ImageAssetPublisher),
 		}),
 	}
 }

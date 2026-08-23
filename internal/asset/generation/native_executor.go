@@ -106,7 +106,7 @@ func candidateSourceAssetIDs(inventory *asset.Inventory) []string {
 	}
 	out := make([]string, 0, len(inventory.Records))
 	for _, record := range inventory.Records {
-		if record.Kind == asset.KindSourceImage || record.Kind == asset.KindMainImage || record.Kind == asset.KindCleanImage || record.Kind == asset.KindSubjectCutout {
+		if record.Kind == asset.KindSourceImage || record.Kind == asset.KindMainImage || record.Kind == asset.KindCleanImage || record.Kind == asset.KindSubjectCutout || record.Kind == asset.KindGalleryImage {
 			out = append(out, record.ID)
 		}
 	}

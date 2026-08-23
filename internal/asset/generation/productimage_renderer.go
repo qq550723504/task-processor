@@ -10,14 +10,19 @@ import (
 )
 
 type productImageDeferredRenderer struct {
-	renderer productimage.SceneRenderer
+	renderer  productimage.SceneRenderer
+	publisher productimage.AssetPublisher
 }
 
 func NewProductImageDeferredRenderer(renderer productimage.SceneRenderer) DeferredRenderer {
+	return NewProductImageDeferredRendererWithPublisher(renderer, nil)
+}
+
+func NewProductImageDeferredRendererWithPublisher(renderer productimage.SceneRenderer, publisher productimage.AssetPublisher) DeferredRenderer {
 	if renderer == nil {
 		return nil
 	}
-	return &productImageDeferredRenderer{renderer: renderer}
+	return &productImageDeferredRenderer{renderer: renderer, publisher: publisher}
 }
 
 func (r *productImageDeferredRenderer) Render(ctx context.Context, req DeferredRenderRequest) (*asset.AssetRecord, error) {
@@ -50,6 +55,16 @@ func (r *productImageDeferredRenderer) Render(ctx context.Context, req DeferredR
 	selected, ok := firstRenderableSceneAsset(rendered)
 	if !ok {
 		return nil, fmt.Errorf("scene renderer returned no assets")
+	}
+	if publishedURL := publishedAssetURL(selected); publishedURL != "" {
+		selected.URL = publishedURL
+	}
+	if r.publisher != nil {
+		published, err := r.publish(ctx, req, selected)
+		if err != nil {
+			return nil, fmt.Errorf("publish deferred scene asset: %w", err)
+		}
+		selected = published
 	}
 
 	record := &asset.AssetRecord{
@@ -101,6 +116,57 @@ func (r *productImageDeferredRenderer) Render(ctx context.Context, req DeferredR
 		record.Metadata["source_url"] = value
 	}
 	return record, nil
+}
+
+func (r *productImageDeferredRenderer) publish(ctx context.Context, req DeferredRenderRequest, selected productimage.ImageAsset) (productimage.ImageAsset, error) {
+	result := &productimage.ImageProcessResult{}
+	switch selected.Type {
+	case productimage.AssetTypeMainImage:
+		result.MainImage = &selected
+	case productimage.AssetTypeWhiteBgImage:
+		result.WhiteBgImage = &selected
+	case productimage.AssetTypeSubjectCutout:
+		result.SubjectCutout = &selected
+	default:
+		result.GalleryImages = []productimage.ImageAsset{selected}
+	}
+	if err := r.publisher.Publish(ctx, &productimage.ImageProcessRequest{
+		Text:           req.TaskID,
+		TargetPlatform: req.Task.Platform,
+	}, result); err != nil {
+		return productimage.ImageAsset{}, err
+	}
+	switch selected.Type {
+	case productimage.AssetTypeMainImage:
+		if result.MainImage != nil {
+			return *result.MainImage, nil
+		}
+	case productimage.AssetTypeWhiteBgImage:
+		if result.WhiteBgImage != nil {
+			return *result.WhiteBgImage, nil
+		}
+	case productimage.AssetTypeSubjectCutout:
+		if result.SubjectCutout != nil {
+			return *result.SubjectCutout, nil
+		}
+	default:
+		if len(result.GalleryImages) > 0 {
+			return result.GalleryImages[0], nil
+		}
+	}
+	return selected, nil
+}
+
+func publishedAssetURL(asset productimage.ImageAsset) string {
+	if asset.Metadata == nil {
+		return ""
+	}
+	for _, key := range []string{"published_url", "uploaded_url"} {
+		if value := strings.TrimSpace(asset.Metadata[key]); value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func firstRenderableSceneAsset(items []productimage.ImageAsset) (productimage.ImageAsset, bool) {
