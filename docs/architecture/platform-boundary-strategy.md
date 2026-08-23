@@ -79,7 +79,11 @@ Publishing convergence is guarded by:
 - `depguard: shein_pipeline_legacy_listingkit`
 - `TestPublishingSheinNonAPISheinImportsStayAllowlisted`
 - `TestPublishingCommonUsesCanonicalPackage`
-- `TestPublishingCommonDoesNotImportPlatformImplementations`
+- `depguard: publishing_common_platforms`
+
+These depguard guards apply to production files; repository-wide lint policy
+excludes `_test.go`, while test-only semantic and compatibility constraints
+remain in the project-specific boundary tests.
 
 Treat direct dependencies on legacy SHEIN runtime packages, ListingKit facade
 code, or platform implementation packages as migration seams, not precedent
