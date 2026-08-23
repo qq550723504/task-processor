@@ -68,7 +68,8 @@ func TestPlatformAssetPublisherSkipsNonAmazonWhenOnlyAmazonConfigured(t *testing
 	amazon := &recordingAssetPublisher{}
 	publisher := NewPlatformAssetPublisher(nil, amazon)
 
-	require.NoError(t, publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "shein"}, &ImageProcessResult{}))
+	err := publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "shein"}, &ImageProcessResult{})
+	require.EqualError(t, err, `image publisher has no route for target platform "shein"`)
 	require.NoError(t, publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "amazon"}, &ImageProcessResult{}))
 	require.Equal(t, 1, amazon.calls)
 	require.Equal(t, []string{"amazon"}, amazon.platforms)

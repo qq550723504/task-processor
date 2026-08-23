@@ -54,7 +54,7 @@ func (p *platformAssetPublisher) Publish(ctx context.Context, req *ImageProcessR
 		return p.amazon.Publish(ctx, req, result)
 	}
 	if p.nonAmazon == nil {
-		return nil
+		return fmt.Errorf("image publisher has no route for target platform %q", platform)
 	}
 	return p.nonAmazon.Publish(ctx, req, result)
 }

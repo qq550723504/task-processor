@@ -3,6 +3,7 @@ package generation_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -952,6 +953,50 @@ func TestProductImageDeferredRendererClearsInheritedPublicationMetadata(t *testi
 	}
 	if record.URL != "https://oss.example.test/new-scene.jpg" {
 		t.Fatalf("rendered asset URL = %q, want new scene URL", record.URL)
+	}
+}
+
+type recordingPublishedBaseSceneRenderer struct {
+	lastAsset *productimage.ImageAsset
+}
+
+func (r *recordingPublishedBaseSceneRenderer) Render(_ context.Context, input *productimage.ImageAsset, _ *productimage.ProductContext) ([]productimage.ImageAsset, error) {
+	r.lastAsset = input
+	return []productimage.ImageAsset{{
+		URL:      "https://oss.example.test/rendered-from-published-base.jpg",
+		Type:     productimage.AssetTypeGalleryImage,
+		Metadata: map[string]string{},
+	}}, nil
+}
+
+func TestProductImageDeferredRendererPromotesPublishedPathBeforeClearingMetadata(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	publishedPath := dir + "/published-main.jpg"
+	if err := os.WriteFile(publishedPath, []byte("published"), 0o644); err != nil {
+		t.Fatalf("write published asset: %v", err)
+	}
+	rendererSpy := &recordingPublishedBaseSceneRenderer{}
+	renderer := assetgeneration.NewProductImageDeferredRenderer(rendererSpy)
+
+	_, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
+		TaskID: "task-renderer-published-base",
+		Task:   assetgeneration.Task{Platform: "shein", AssetKind: asset.KindSceneImage, Purpose: "gallery"},
+		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: "https://cdn.example.test/main.jpg", Metadata: map[string]string{
+			"published_path": publishedPath,
+			"published_url":  "https://cdn.example.test/main.jpg",
+			"source_url":     "https://detail.1688.com/offer/1/main.jpg",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if rendererSpy.lastAsset == nil || rendererSpy.lastAsset.Metadata["local_path"] != publishedPath {
+		t.Fatalf("scene renderer input = %+v, want published path promoted to local_path", rendererSpy.lastAsset)
+	}
+	if _, ok := rendererSpy.lastAsset.Metadata["published_path"]; ok {
+		t.Fatalf("scene renderer input metadata = %+v, want published_path scrubbed", rendererSpy.lastAsset.Metadata)
 	}
 }
 

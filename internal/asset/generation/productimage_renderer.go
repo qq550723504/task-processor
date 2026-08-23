@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 
 	"task-processor/internal/asset"
@@ -35,6 +36,7 @@ func (r *productImageDeferredRenderer) Render(ctx context.Context, req DeferredR
 	if inputAsset.Metadata == nil {
 		inputAsset.Metadata = map[string]string{}
 	}
+	promotePublishedPath(inputAsset.Metadata)
 	clearPublicationMetadata(inputAsset.Metadata)
 	if value := strings.TrimSpace(req.Task.RenderProfile); value != "" {
 		inputAsset.Metadata["render_profile"] = value
@@ -169,6 +171,19 @@ func clearPublicationMetadata(metadata map[string]string) {
 		"published_size_bytes",
 	} {
 		delete(metadata, key)
+	}
+}
+
+func promotePublishedPath(metadata map[string]string) {
+	if metadata == nil {
+		return
+	}
+	publishedPath := strings.TrimSpace(metadata["published_path"])
+	if publishedPath == "" {
+		return
+	}
+	if _, err := os.Stat(publishedPath); err == nil {
+		metadata["local_path"] = publishedPath
 	}
 }
 

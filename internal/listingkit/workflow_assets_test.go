@@ -53,15 +53,16 @@ func (s *stubWorkflowProductService) ProcessProduct(ctx context.Context, task *p
 }
 
 type stubWorkflowAssetGenerator struct {
-	planResult      *assetgeneration.Result
-	executeErr      error
-	planErr         error
-	dispatchErr     error
-	dispatchResult  *assetgeneration.Result
-	dispatchCalls   int
-	dispatchErrAt   map[int]error
-	lastDispatchReq *assetgeneration.DispatchRequest
-	lastPlanReq     *assetgeneration.Request
+	planResult       *assetgeneration.Result
+	executeErr       error
+	planErr          error
+	dispatchErr      error
+	dispatchResult   *assetgeneration.Result
+	dispatchCalls    int
+	dispatchErrAt    map[int]error
+	lastDispatchReq  *assetgeneration.DispatchRequest
+	dispatchRequests []*assetgeneration.DispatchRequest
+	lastPlanReq      *assetgeneration.Request
 }
 
 type targetURLDeferredRenderer struct{}
@@ -101,6 +102,7 @@ func (s *stubWorkflowAssetGenerator) Dispatch(ctx context.Context, req assetgene
 	clonedReq := req
 	clonedReq.Tasks = assetgeneration.CloneTasks(req.Tasks)
 	s.lastDispatchReq = &clonedReq
+	s.dispatchRequests = append(s.dispatchRequests, &clonedReq)
 	if s.dispatchErrAt != nil {
 		if err := s.dispatchErrAt[s.dispatchCalls]; err != nil {
 			return nil, err
@@ -113,6 +115,38 @@ func (s *stubWorkflowAssetGenerator) Dispatch(ctx context.Context, req assetgene
 		return s.dispatchResult, nil
 	}
 	return &assetgeneration.Result{Tasks: req.Tasks}, nil
+}
+
+func TestDispatchGenerationTasksByPlatformUsesTargetInventory(t *testing.T) {
+	t.Parallel()
+
+	result := &ListingKitResult{AssetBundlesByTarget: map[string]*asset.Bundle{
+		"amazon": {Assets: []asset.Asset{{ID: "main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/amazon-main.jpg"}}},
+		"shein":  {Assets: []asset.Asset{{ID: "main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/shein-main.jpg"}}},
+	}}
+	shared := asset.BuildInventory("task-target-inventory", result.assetBundleForInventory())
+	generator := &stubWorkflowAssetGenerator{}
+	tasks := []assetgeneration.Task{
+		{ID: "amazon-scene", Platform: "amazon", AssetKind: asset.KindSceneImage, ExecutionStatus: "planned", ExecutionMode: assetgeneration.ExecutionModeRendererBacked, CanExecute: true, SourceAssetIDs: []string{"main"}},
+		{ID: "shein-scene", Platform: "shein", AssetKind: asset.KindSceneImage, ExecutionStatus: "planned", ExecutionMode: assetgeneration.ExecutionModeRendererBacked, CanExecute: true, SourceAssetIDs: []string{"main"}},
+	}
+
+	_, err := dispatchGenerationTasksByPlatform(context.Background(), generator, "task-target-inventory", nil, result, shared, tasks)
+	if err != nil {
+		t.Fatalf("dispatchGenerationTasksByPlatform() error = %v", err)
+	}
+	if len(generator.dispatchRequests) != 2 {
+		t.Fatalf("dispatch requests = %d, want one per target", len(generator.dispatchRequests))
+	}
+	for _, req := range generator.dispatchRequests {
+		if len(req.Tasks) != 1 || len(req.Inventory.Records) != 1 {
+			t.Fatalf("dispatch request = %+v, want one task and one target record", req)
+		}
+		wantURL := "https://cdn.example.test/" + req.Tasks[0].Platform + "-main.jpg"
+		if req.Inventory.Records[0].URL != wantURL {
+			t.Fatalf("%s inventory URL = %q, want %q", req.Tasks[0].Platform, req.Inventory.Records[0].URL, wantURL)
+		}
+	}
 }
 
 type stubWorkflowAssetRepository struct {
