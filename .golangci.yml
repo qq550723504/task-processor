@@ -91,6 +91,18 @@ linters-settings:
           - pkg: "task-processor/internal/shein/product/build"
             desc: "SHEIN publishing owner must not depend on the legacy SHEIN product builder"
 
+      shein_pipeline_legacy_listingkit:
+        # The legacy pipeline remains a compatibility seam and production code must not regain ListingKit coupling.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/shein/pipeline/*.go"
+          - "**/internal/shein/pipeline/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit"
+            desc: "Legacy SHEIN pipeline must not depend on ListingKit"
+          - pkg: "task-processor/internal/listingkit/tenantctx"
+            desc: "Legacy SHEIN pipeline must not depend on ListingKit tenant context"
+
   govet:
     disable:
       - fieldalignment

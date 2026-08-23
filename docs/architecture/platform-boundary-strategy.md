@@ -76,6 +76,7 @@ It should not own:
 Publishing convergence is guarded by:
 
 - `depguard: publishing_shein_legacy_runtime`
+- `depguard: shein_pipeline_legacy_listingkit`
 - `TestPublishingSheinNonAPISheinImportsStayAllowlisted`
 - `TestPublishingCommonUsesCanonicalPackage`
 - `TestPublishingCommonDoesNotImportPlatformImplementations`
