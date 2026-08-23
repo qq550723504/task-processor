@@ -15,8 +15,10 @@ unattended deployment credential.
 
 - Use ZITADEL's RFC 8628 Device Authorization Grant, not a copied browser
   session, password grant, personal token, or production client secret.
-- Require an interactive sign-in for every acceptance run. Do not request
-  `offline_access`, cache refresh tokens, or persist an access token.
+- Require an interactive sign-in when no valid local access-token cache exists.
+  Do not request `offline_access` or cache refresh tokens. On Windows, cache
+  the short-lived access token encrypted with the current user's DPAPI until
+  its JWT expiry so repeated acceptance runs do not require repeated sign-in.
 - Reuse the existing `scripts/1688-runtime-acceptance.ps1` workflow and its
   existing `CREATE-1688-TASK` confirmation for any POST operation.
 - Add an authenticated identity read endpoint before task creation. This
@@ -43,9 +45,10 @@ PowerShell acceptance runner --> ListingKit API --> existing introspection
 
 ### Runtime components
 
-1. `scripts/lib/listingkit-device-auth.ps1` owns the OAuth exchange. It is
-   dot-sourced only by the acceptance runner and returns the access token in
-   process memory.
+1. `scripts/lib/listingkit-device-auth.ps1` owns the OAuth exchange and the
+   Windows DPAPI access-token cache. It is dot-sourced only by the acceptance
+   runner; decrypted tokens remain in process memory and the cache file is
+   stored under the ignored `.local/` directory.
 2. `scripts/1688-runtime-acceptance.ps1` gains opt-in device-auth parameters:
    `-UseDeviceAuthorization`, `-IssuerURL`, `-ClientID`, and
    `-ExpectedTenantID`. Existing environment/file-token behavior remains
@@ -91,9 +94,11 @@ directory or invitation secret.
   literal loopback hosts in tests.
 - Reject discovery, device, token, and browser verification URIs that are not
   HTTPS (or permitted loopback) or not same-origin with the configured issuer.
-- Keep the access token only in a local variable; never set a process-wide
-  environment variable, write a token file, return it as script output, or
-  include it in errors, evidence, or PowerShell transcript output.
+- Keep the decrypted access token only in a local variable; never set a
+  process-wide environment variable, write a plaintext token file, return it
+  as script output, or include it in errors, evidence, or PowerShell transcript
+  output. The optional local cache contains only a DPAPI-protected token and
+  its expiry metadata, and is readable only by the Windows user who created it.
 - Redact authorization headers, access tokens, device codes, and URI query
   parameters before reporting an HTTP failure.
 - Do not use `ZITADEL_CLIENT_SECRET`,
@@ -118,7 +123,8 @@ directory or invitation secret.
 Pester tests will mock the device and token endpoints and prove:
 
 1. happy-path token stays in memory and permits the authenticated preflight;
-2. no token is printed or written to the workspace;
+2. no plaintext token is printed or written to the workspace, and the DPAPI
+   cache cannot be reused after expiry;
 3. endpoint scheme/origin injection is rejected;
 4. pending, slow-down, denial, expiry, and malformed provider responses fail
    with redacted messages;
@@ -162,7 +168,8 @@ full ListingKit settings gate is intentionally out of scope, use
 ## Non-goals
 
 - No service account, client-credentials grant, refresh-token storage, CI
-  authentication, or unattended task creation.
+  authentication, or unattended task creation. The local DPAPI cache is only
+  for the short-lived access token used by the interactive operator.
 - No change to production payment, OpenMeter projection, entitlement policy,
   quota semantics, or tenant mapping.
 - No scraping of browser state, Kubernetes Secrets, or production client

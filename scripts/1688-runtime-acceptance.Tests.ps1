@@ -431,6 +431,34 @@ Describe "ListingKit device authorization safety" {
         . (Join-Path $PSScriptRoot "lib\listingkit-device-auth.ps1")
     }
 
+    It "stores a device access token encrypted and reloads it before expiry" {
+        $payload = [ordered]@{
+            exp = [DateTimeOffset]::UtcNow.AddHours(1).ToUnixTimeSeconds()
+        } | ConvertTo-Json -Compress
+        $payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payload)).TrimEnd("=").Replace("+", "-").Replace("/", "_")
+        $token = "header.$payloadBase64.signature"
+        $cachePath = Join-Path $TestDrive "device-token-cache.json"
+
+        Save-ListingKitDeviceTokenCache -Path $cachePath -Token $token
+
+        (Get-ListingKitDeviceTokenCache -Path $cachePath) | Should Be $token
+        $cacheContents = Get-Content -LiteralPath $cachePath -Raw
+        $cacheContents.Contains($token) | Should Be $false
+    }
+
+    It "does not reuse an expired device access token" {
+        $payload = [ordered]@{
+            exp = [DateTimeOffset]::UtcNow.AddMinutes(-1).ToUnixTimeSeconds()
+        } | ConvertTo-Json -Compress
+        $payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payload)).TrimEnd("=").Replace("+", "-").Replace("/", "_")
+        $token = "header.$payloadBase64.signature"
+        $cachePath = Join-Path $TestDrive "expired-device-token-cache.json"
+
+        Save-ListingKitDeviceTokenCache -Path $cachePath -Token $token
+
+        (Get-ListingKitDeviceTokenCache -Path $cachePath) | Should Be ""
+    }
+
     It "rejects a non-HTTPS non-loopback issuer before discovery" {
         Mock Invoke-RestMethod { throw "discovery must not run" }
 
@@ -652,5 +680,41 @@ Describe "ListingKit device authorization safety" {
         }
         Mock Start-Sleep { [System.Threading.Thread]::Sleep(1100) }
         { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 1 } | Should Throw "Device authorization timed out"
+    }
+
+    It "uses a valid device token cache before starting device authorization" {
+        $payload = [ordered]@{
+            exp = [DateTimeOffset]::UtcNow.AddHours(1).ToUnixTimeSeconds()
+        } | ConvertTo-Json -Compress
+        $payloadBase64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payload)).TrimEnd("=").Replace("+", "-").Replace("/", "_")
+        $token = "header.$payloadBase64.signature"
+        $cachePath = Join-Path $TestDrive "reusable-device-token-cache.json"
+        Save-ListingKitDeviceTokenCache -Path $cachePath -Token $token
+
+        $previousUseDeviceAuthorization = $script:UseDeviceAuthorization
+        $previousIssuerURL = $script:IssuerURL
+        $previousClientID = $script:ClientID
+        $previousExpectedTenantID = $script:ExpectedTenantID
+        $previousApiBaseUrl = $script:AcceptanceApiBaseUrl
+        $previousCachePath = $script:AcceptanceDeviceTokenCacheFile
+        try {
+            $script:UseDeviceAuthorization = $true
+            $script:IssuerURL = "https://issuer.example"
+            $script:ClientID = "device-client"
+            $script:ExpectedTenantID = "373211199677923496"
+            $script:AcceptanceApiBaseUrl = "http://127.0.0.1:8085"
+            $script:AcceptanceDeviceTokenCacheFile = $cachePath
+            Mock Resolve-ListingKitDeviceToken { throw "device authorization must not run" }
+
+            (Resolve-AcceptanceToken) | Should Be $token
+            Assert-MockCalled Resolve-ListingKitDeviceToken -Times 0 -Exactly
+        } finally {
+            $script:UseDeviceAuthorization = $previousUseDeviceAuthorization
+            $script:IssuerURL = $previousIssuerURL
+            $script:ClientID = $previousClientID
+            $script:ExpectedTenantID = $previousExpectedTenantID
+            $script:AcceptanceApiBaseUrl = $previousApiBaseUrl
+            $script:AcceptanceDeviceTokenCacheFile = $previousCachePath
+        }
     }
 }

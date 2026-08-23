@@ -3,6 +3,7 @@ param(
     [string]$Mode = "Preflight",
     [string]$ApiBaseUrl = "",
     [string]$TokenFile = "",
+    [string]$DeviceTokenCacheFile = "",
     [string]$Url = "",
     [long]$SourceAccountID = 0,
     [long]$SheinStoreID = 0,
@@ -30,6 +31,11 @@ $script:AcceptanceTokenFile = if ([string]::IsNullOrWhiteSpace($TokenFile)) {
     Join-Path $script:AcceptanceRepoRoot ".local\listingkit-api-token.txt"
 } else {
     $TokenFile
+}
+$script:AcceptanceDeviceTokenCacheFile = if ([string]::IsNullOrWhiteSpace($DeviceTokenCacheFile)) {
+    Join-Path $script:AcceptanceRepoRoot ".local\listingkit-device-token-cache.json"
+} else {
+    $DeviceTokenCacheFile
 }
 $script:AcceptanceTimeoutSec = $TimeoutSec
 $script:AcceptancePollIntervalSec = $PollIntervalSec
@@ -72,7 +78,13 @@ function Resolve-AcceptanceToken {
         throw "-IssuerURL, -ClientID, and -ExpectedTenantID are required with -UseDeviceAuthorization"
     }
     Assert-ListingKitDeviceAPIBaseUrl -ApiBaseUrl $script:AcceptanceApiBaseUrl
-    return Resolve-ListingKitDeviceToken -IssuerURL $IssuerURL -ClientID $ClientID -Scopes $Scopes -ProjectID $ProjectID -TimeoutSec $script:AcceptanceTimeoutSec -OpenBrowser:$OpenBrowser
+    $cachedToken = Get-ListingKitDeviceTokenCache -Path $script:AcceptanceDeviceTokenCacheFile
+    if (-not [string]::IsNullOrWhiteSpace($cachedToken)) {
+        return $cachedToken
+    }
+    $token = Resolve-ListingKitDeviceToken -IssuerURL $IssuerURL -ClientID $ClientID -Scopes $Scopes -ProjectID $ProjectID -TimeoutSec $script:AcceptanceTimeoutSec -OpenBrowser:$OpenBrowser
+    Save-ListingKitDeviceTokenCache -Path $script:AcceptanceDeviceTokenCacheFile -Token $token
+    return $token
 }
 
 function Get-EndpointPath {

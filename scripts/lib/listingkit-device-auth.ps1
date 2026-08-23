@@ -169,6 +169,106 @@ function Get-ListingKitDeviceString {
     return ([string]$Response.$Name).Trim()
 }
 
+function Get-ListingKitDeviceTokenExpiry {
+    param([string]$Token)
+
+    $parts = ([string]$Token).Trim().Split(".")
+    if ($parts.Count -ne 3) {
+        return $null
+    }
+
+    try {
+        $payload = $parts[1].Replace("-", "+").Replace("_", "/")
+        switch ($payload.Length % 4) {
+            2 { $payload += "==" }
+            3 { $payload += "=" }
+            0 { }
+            default { return $null }
+        }
+        $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) | ConvertFrom-Json
+        $unixSeconds = 0L
+        if (-not [long]::TryParse([string]$claims.exp, [ref]$unixSeconds) -or $unixSeconds -le 0) {
+            return $null
+        }
+        return [DateTimeOffset]::FromUnixTimeSeconds($unixSeconds)
+    } catch {
+        return $null
+    }
+}
+
+function Test-ListingKitDeviceTokenCacheSupported {
+    return [Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([Runtime.InteropServices.OSPlatform]::Windows)
+}
+
+function Save-ListingKitDeviceTokenCache {
+    param(
+        [string]$Path,
+        [string]$Token
+    )
+
+    if (-not (Test-ListingKitDeviceTokenCacheSupported)) {
+        return
+    }
+    $expiry = Get-ListingKitDeviceTokenExpiry -Token $Token
+    if ($null -eq $expiry -or $expiry -le [DateTimeOffset]::UtcNow.AddMinutes(1)) {
+        return
+    }
+
+    try {
+        $secureToken = ConvertTo-SecureString -String $Token.Trim() -AsPlainText -Force
+        $protectedToken = ConvertFrom-SecureString -SecureString $secureToken
+        $cache = [ordered]@{
+            version         = 1
+            expires_at      = $expiry.ToUniversalTime().ToString("o")
+            protected_token = $protectedToken
+        }
+        $cachePath = [IO.Path]::GetFullPath($Path)
+        $cacheDirectory = Split-Path -Parent $cachePath
+        if (-not (Test-Path -LiteralPath $cacheDirectory)) {
+            New-Item -ItemType Directory -Path $cacheDirectory -Force | Out-Null
+        }
+        [IO.File]::WriteAllText($cachePath, ($cache | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+    } catch {
+        Write-Verbose "Device token cache could not be saved; continuing without a cache."
+    }
+}
+
+function Get-ListingKitDeviceTokenCache {
+    param([string]$Path)
+
+    if (-not (Test-ListingKitDeviceTokenCacheSupported) -or [string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path)) {
+        return ""
+    }
+
+    try {
+        $cache = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+        $metadataExpiry = [DateTimeOffset]::MinValue
+        if (-not [DateTimeOffset]::TryParse([string]$cache.expires_at, [ref]$metadataExpiry) -or $metadataExpiry -le [DateTimeOffset]::UtcNow.AddMinutes(1)) {
+            return ""
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$cache.protected_token)) {
+            return ""
+        }
+
+        $secureToken = ConvertTo-SecureString -String ([string]$cache.protected_token)
+        $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureToken)
+        try {
+            $token = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+        } finally {
+            if ($bstr -ne [IntPtr]::Zero) {
+                [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+            }
+        }
+        $tokenExpiry = Get-ListingKitDeviceTokenExpiry -Token $token
+        if ($null -eq $tokenExpiry -or $tokenExpiry -le [DateTimeOffset]::UtcNow.AddMinutes(1) -or $tokenExpiry -lt $metadataExpiry.AddMinutes(-1) -or $tokenExpiry -gt $metadataExpiry.AddMinutes(1)) {
+            return ""
+        }
+        return $token
+    } catch {
+        return ""
+    }
+}
+
 function Resolve-ListingKitDeviceToken {
     param(
         [string]$IssuerURL,
