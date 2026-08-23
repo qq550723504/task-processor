@@ -66,6 +66,7 @@ func convertOpenAIImageEditResponse(response *ai.ImageResponse, err error) (*ima
 	for _, item := range response.Data {
 		result.Data = append(result.Data, imageEditData{
 			B64JSON:       item.B64JSON,
+			URL:           item.URL,
 			RevisedPrompt: item.RevisedPrompt,
 		})
 	}

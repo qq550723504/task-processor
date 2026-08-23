@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"task-processor/internal/pkg/safeimagehttp"
 	"task-processor/internal/prompt"
 )
 
@@ -74,7 +75,7 @@ func (e *openAICompatibleFaithfulEditor) edit(ctx context.Context, req *Faithful
 	if err != nil {
 		return nil, err
 	}
-	imageData, revisedPrompt, err := decodeFirstEditedImage(response)
+	imageData, revisedPrompt, err := decodeFirstEditedImage(ctx, response, downloadGeneratedImage)
 	if err != nil {
 		return nil, err
 	}
@@ -217,17 +218,34 @@ func productTitle(context *ProductContext) string {
 	return strings.TrimSpace(context.Title)
 }
 
-func decodeFirstEditedImage(response *imageEditResponse) ([]byte, string, error) {
+func decodeFirstEditedImage(ctx context.Context, response *imageEditResponse, download func(context.Context, string) ([]byte, error)) ([]byte, string, error) {
 	if response == nil || len(response.Data) == 0 {
 		return nil, "", fmt.Errorf("image response contained no data")
 	}
 	first := response.Data[0]
-	if first.B64JSON == "" {
-		return nil, first.RevisedPrompt, fmt.Errorf("image response missing b64_json payload")
+	if strings.TrimSpace(first.B64JSON) != "" {
+		decoded, err := base64.StdEncoding.DecodeString(first.B64JSON)
+		if err != nil {
+			return nil, first.RevisedPrompt, fmt.Errorf("decode image payload: %w", err)
+		}
+		return decoded, first.RevisedPrompt, nil
 	}
-	decoded, err := base64.StdEncoding.DecodeString(first.B64JSON)
+	if strings.TrimSpace(first.URL) == "" {
+		return nil, first.RevisedPrompt, fmt.Errorf("image response contains neither b64_json nor url")
+	}
+	if download == nil {
+		return nil, first.RevisedPrompt, fmt.Errorf("image response URL downloader is not configured")
+	}
+	downloaded, err := download(ctx, strings.TrimSpace(first.URL))
 	if err != nil {
-		return nil, first.RevisedPrompt, fmt.Errorf("decode image payload: %w", err)
+		return nil, first.RevisedPrompt, fmt.Errorf("download image response URL: %w", err)
 	}
-	return decoded, first.RevisedPrompt, nil
+	if len(downloaded) == 0 {
+		return nil, first.RevisedPrompt, fmt.Errorf("downloaded image response URL was empty")
+	}
+	return downloaded, first.RevisedPrompt, nil
+}
+
+func downloadGeneratedImage(ctx context.Context, imageURL string) ([]byte, error) {
+	return safeimagehttp.Download(ctx, safeimagehttp.NewPublicImageHTTPClient(), imageURL, safeimagehttp.DefaultMaxBodyBytes)
 }

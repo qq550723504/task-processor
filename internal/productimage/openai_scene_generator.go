@@ -67,7 +67,7 @@ func (g *openAICompatibleSceneGenerator) GenerateSceneWithRoute(ctx context.Cont
 	if err != nil {
 		return nil, err
 	}
-	imageData, revisedPrompt, err := decodeFirstEditedImage(response)
+	imageData, revisedPrompt, err := decodeFirstEditedImage(ctx, response, downloadGeneratedImage)
 	if err != nil {
 		return nil, err
 	}
