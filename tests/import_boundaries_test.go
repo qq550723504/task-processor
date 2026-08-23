@@ -11,6 +11,23 @@ import (
 	"testing"
 )
 
+func TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets(t *testing.T) {
+	t.Parallel()
+	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		if _, ok := facts.imports[`"task-processor/internal/productenrich/httpapi/sourcea1688"`]; ok {
+			t.Errorf("%s imports retired source-handoff HTTP owner; use the canonical product source-handoff package", path)
+		}
+	}
+}
+
 func TestPortsManagementAPIPackageIsRetired(t *testing.T) {
 	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
 	if err != nil {
