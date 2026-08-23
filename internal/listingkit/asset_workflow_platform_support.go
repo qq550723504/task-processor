@@ -142,7 +142,7 @@ func platformGenerationTasks(platform string, plan *assetgeneration.Result) []as
 	}
 	out := make([]assetgeneration.Task, 0, len(plan.Tasks))
 	for _, task := range plan.Tasks {
-		if task.Platform == platform && task.ExecutionStatus != "completed" {
+		if task.Platform == platform && task.ExecutionStatus != "completed" && task.ExecutionStatus != "failed" {
 			out = append(out, assetgeneration.CloneTask(task))
 		}
 	}

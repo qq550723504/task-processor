@@ -43,6 +43,36 @@ func TestNewMultiAssetPublisher_SkipsNil(t *testing.T) {
 	require.Nil(t, publisher)
 }
 
+func TestPlatformAssetPublisherRoutesAmazonOnlyToAmazon(t *testing.T) {
+	t.Parallel()
+
+	local := &recordingAssetPublisher{}
+	amazon := &recordingAssetPublisher{}
+	publisher := NewPlatformAssetPublisher(local, amazon)
+	result := &ImageProcessResult{}
+
+	require.NoError(t, publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "amazon"}, result))
+	require.NoError(t, publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "shein"}, result))
+	require.NoError(t, publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "temu"}, result))
+
+	require.Equal(t, 2, local.calls)
+	require.Equal(t, 1, amazon.calls)
+	require.Equal(t, []string{"shein", "temu"}, local.platforms)
+	require.Equal(t, []string{"amazon"}, amazon.platforms)
+}
+
+func TestPlatformAssetPublisherSkipsNonAmazonWhenOnlyAmazonConfigured(t *testing.T) {
+	t.Parallel()
+
+	amazon := &recordingAssetPublisher{}
+	publisher := NewPlatformAssetPublisher(nil, amazon)
+
+	require.NoError(t, publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "shein"}, &ImageProcessResult{}))
+	require.NoError(t, publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "amazon"}, &ImageProcessResult{}))
+	require.Equal(t, 1, amazon.calls)
+	require.Equal(t, []string{"amazon"}, amazon.platforms)
+}
+
 func TestNewAmazonAssetPublisherBuildsFromExplicitOptions(t *testing.T) {
 	t.Parallel()
 
@@ -108,4 +138,17 @@ type stubS3AssetUploader struct {
 
 func (s *stubS3AssetUploader) Upload(_ context.Context, _ string, _ []byte, _ string) (string, error) {
 	return s.url, nil
+}
+
+type recordingAssetPublisher struct {
+	calls     int
+	platforms []string
+}
+
+func (p *recordingAssetPublisher) Publish(_ context.Context, req *ImageProcessRequest, _ *ImageProcessResult) error {
+	p.calls++
+	if req != nil {
+		p.platforms = append(p.platforms, req.TargetPlatform)
+	}
+	return nil
 }

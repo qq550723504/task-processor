@@ -17,6 +17,45 @@ type multiAssetPublisher struct {
 	publishers []AssetPublisher
 }
 
+// platformAssetPublisher keeps Amazon SP-API uploads scoped to Amazon image
+// tasks while allowing a local or object-storage publisher to serve the other
+// marketplace tasks. A nil nonAmazon publisher intentionally makes
+// non-Amazon tasks a no-op for Amazon-only configurations.
+type platformAssetPublisher struct {
+	nonAmazon AssetPublisher
+	amazon    AssetPublisher
+}
+
+func NewPlatformAssetPublisher(nonAmazon, amazon AssetPublisher) AssetPublisher {
+	if nonAmazon == nil && amazon == nil {
+		return nil
+	}
+	if amazon == nil {
+		return nonAmazon
+	}
+	return &platformAssetPublisher{nonAmazon: nonAmazon, amazon: amazon}
+}
+
+func (p *platformAssetPublisher) Publish(ctx context.Context, req *ImageProcessRequest, result *ImageProcessResult) error {
+	if p == nil {
+		return nil
+	}
+	platform := ""
+	if req != nil {
+		platform = strings.ToLower(strings.TrimSpace(req.TargetPlatform))
+	}
+	if platform == "amazon" {
+		if p.amazon == nil {
+			return nil
+		}
+		return p.amazon.Publish(ctx, req, result)
+	}
+	if p.nonAmazon == nil {
+		return nil
+	}
+	return p.nonAmazon.Publish(ctx, req, result)
+}
+
 func NewMultiAssetPublisher(publishers ...AssetPublisher) AssetPublisher {
 	chain := make([]AssetPublisher, 0, len(publishers))
 	for _, publisher := range publishers {
