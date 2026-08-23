@@ -23,6 +23,7 @@ func TestTaskGenerationServiceFileKeepsRetryOwnershipBoundaries(t *testing.T) {
 
 	required := []string{
 		"return buildRetryGenerationProjectionPhase(s.assetRecipeResolver, s.assetBundleBuilder).emptySelectionPage(task), nil",
+		"dispatchGenerationTasksByPlatform(",
 		"updatedTasks := buildRetryGenerationMutationPhase().run(",
 		"if err := buildRetryGenerationPersistPhase(s.assetRepo).run(ctx, task.ID, inventory, updatedTasks); err != nil {",
 		"rebuiltResult, page := buildRetryGenerationProjectionPhase(s.assetRecipeResolver, s.assetBundleBuilder).run(",
@@ -35,6 +36,7 @@ func TestTaskGenerationServiceFileKeepsRetryOwnershipBoundaries(t *testing.T) {
 	}
 
 	forbidden := []string{
+		"s.assetGenerator.Dispatch(",
 		"assetgeneration.MergeTasks(existingTasks, dispatchResult.Tasks)",
 		"replaceGeneratedAssetsForTargets(",
 		"asset.RebuildInventorySummary(inventory)",

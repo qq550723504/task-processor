@@ -58,6 +58,12 @@ func platformAssetInventory(result *ListingKitResult, platform string, shared *a
 		return nil
 	}
 	targetBundle := explicitTargetAssetBundle(result, platform)
+	if targetBundle == nil && len(result.AssetBundlesByTarget) == 0 {
+		targets := listingplatform.NormalizeSupportedPlatforms(result.Platforms)
+		if len(targets) == 1 && targets[0] == platform {
+			return cloneAssetInventory(shared)
+		}
+	}
 	if targetBundle == nil {
 		targetBundle = &asset.Bundle{}
 	}
@@ -79,6 +85,15 @@ func platformAssetInventory(result *ListingKitResult, platform string, shared *a
 	}
 	targetInventory.Summary = asset.RebuildInventorySummary(targetInventory)
 	return targetInventory
+}
+
+func cloneAssetInventory(inventory *asset.Inventory) *asset.Inventory {
+	if inventory == nil {
+		return nil
+	}
+	clone := *inventory
+	clone.Records = append([]asset.AssetRecord(nil), inventory.Records...)
+	return &clone
 }
 
 func explicitTargetAssetBundle(result *ListingKitResult, platform string) *asset.Bundle {

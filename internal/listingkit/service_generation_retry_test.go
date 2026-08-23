@@ -1523,6 +1523,78 @@ func TestRetryTaskGenerationTasksMergesReturnedTasksAndRefreshesRetriedAssets(t 
 	}
 }
 
+func TestRetryTaskGenerationTasksDispatchesEachPlatformAgainstTargetInventory(t *testing.T) {
+	t.Parallel()
+
+	repo := &stubGenerationRepo{}
+	assetRepository := assetrepo.NewMemRepository()
+	generator := &stubWorkflowAssetGenerator{}
+	taskID := "task-generation-retry-target-inventory"
+	task := &Task{
+		ID:        taskID,
+		Status:    core.TaskStatusCompleted,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Request:   &GenerateRequest{Platforms: []string{"amazon", "shein"}},
+		Result: &ListingKitResult{
+			TaskID:         taskID,
+			Platforms:      []string{"amazon", "shein"},
+			CatalogProduct: &catalog.Product{Title: "Portable Speaker"},
+			AssetBundlesByTarget: map[string]*asset.Bundle{
+				"amazon": {Assets: []asset.Asset{{ID: "main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/amazon-main.jpg"}}},
+				"shein":  {Assets: []asset.Asset{{ID: "main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/shein-main.jpg"}}},
+			},
+		},
+	}
+	if err := repo.CreateTask(context.Background(), task); err != nil {
+		t.Fatalf("CreateTask() error = %v", err)
+	}
+	inventory := asset.BuildInventory(taskID, task.Result.assetBundleForInventory())
+	if err := assetRepository.SaveInventory(context.Background(), inventory); err != nil {
+		t.Fatalf("SaveInventory() error = %v", err)
+	}
+	existingTasks := []assetgeneration.Task{
+		{TaskID: taskID, ID: "amazon:scene", Platform: "amazon", RecipeID: "amazon-lifestyle", AssetKind: asset.KindSceneImage, Slot: "auxiliary", Purpose: "scene", ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "failed", CanExecute: true, SourceAssetIDs: []string{"main"}},
+		{TaskID: taskID, ID: "shein:scene", Platform: "shein", RecipeID: "shein-gallery-scene", AssetKind: asset.KindSceneImage, Slot: "gallery", Purpose: "gallery", ExecutionMode: assetgeneration.ExecutionModeDeferredPlan, ExecutionStatus: "failed", CanExecute: true, SourceAssetIDs: []string{"main"}},
+	}
+	if err := assetRepository.SaveGenerationTasks(context.Background(), taskID, existingTasks); err != nil {
+		t.Fatalf("SaveGenerationTasks() error = %v", err)
+	}
+
+	svc := newTaskGenerationService(taskGenerationServiceConfig{
+		repo:                repo,
+		assetRepo:           assetRepository,
+		assetRecipeResolver: assetrecipe.NewStaticResolver(),
+		assetBundleBuilder:  assetbundle.NewBuilder(),
+		assetGenerator:      generator,
+		listAssetGenerationTasks: func(ctx context.Context, taskID string) ([]assetgeneration.Task, error) {
+			return assetRepository.ListGenerationTasks(ctx, taskID)
+		},
+		listGenerationReviews: func(context.Context, string) ([]GenerationReviewRecord, error) {
+			return nil, nil
+		},
+		buildRetryGenerationTaskSelection: func(context.Context, *Task, *asset.Inventory, []assetgeneration.Task, *RetryGenerationTasksRequest) ([]assetgeneration.Task, error) {
+			return assetgeneration.CloneTasks(existingTasks), nil
+		},
+	})
+
+	if _, err := svc.RetryTaskGenerationTasks(context.Background(), taskID, &RetryGenerationTasksRequest{}); err != nil {
+		t.Fatalf("RetryTaskGenerationTasks() error = %v", err)
+	}
+	if len(generator.dispatchRequests) != 2 {
+		t.Fatalf("dispatch requests = %d, want one per target platform", len(generator.dispatchRequests))
+	}
+	for _, req := range generator.dispatchRequests {
+		if len(req.Tasks) != 1 || req.Inventory == nil || len(req.Inventory.Records) != 1 {
+			t.Fatalf("dispatch request = %+v, want one task and one target record", req)
+		}
+		wantURL := "https://cdn.example.test/" + req.Tasks[0].Platform + "-main.jpg"
+		if req.Inventory.Records[0].URL != wantURL {
+			t.Fatalf("%s retry inventory URL = %q, want %q", req.Tasks[0].Platform, req.Inventory.Records[0].URL, wantURL)
+		}
+	}
+}
+
 func TestRetryGenerationResultProjectionRebuildsListingKitResult(t *testing.T) {
 	t.Parallel()
 

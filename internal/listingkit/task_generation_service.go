@@ -112,12 +112,15 @@ func (s *taskGenerationService) RetryTaskGenerationTasks(ctx context.Context, ta
 		return buildRetryGenerationProjectionPhase(s.assetRecipeResolver, s.assetBundleBuilder).emptySelectionPage(task), nil
 	}
 
-	dispatchResult, dispatchErr := s.assetGenerator.Dispatch(ctx, assetgeneration.DispatchRequest{
-		TaskID:    task.ID,
-		Product:   effectiveCatalogProduct(task.Result),
-		Inventory: inventory,
-		Tasks:     selectedTasks,
-	})
+	dispatchResult, dispatchErr := dispatchGenerationTasksByPlatform(
+		ctx,
+		s.assetGenerator,
+		task.ID,
+		effectiveCatalogProduct(task.Result),
+		task.Result,
+		inventory,
+		selectedTasks,
+	)
 	if dispatchResult == nil && dispatchErr != nil {
 		return nil, dispatchErr
 	}
