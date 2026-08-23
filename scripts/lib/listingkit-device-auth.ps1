@@ -203,13 +203,17 @@ function Test-ListingKitDeviceTokenCacheSupported {
 function Save-ListingKitDeviceTokenCache {
     param(
         [string]$Path,
-        [string]$Token
+        [string]$Token,
+        [DateTimeOffset]$ExpiresAt = [DateTimeOffset]::MinValue
     )
 
     if (-not (Test-ListingKitDeviceTokenCacheSupported)) {
         return
     }
-    $expiry = Get-ListingKitDeviceTokenExpiry -Token $Token
+    $expiry = $ExpiresAt
+    if ($expiry -eq [DateTimeOffset]::MinValue) {
+        $expiry = Get-ListingKitDeviceTokenExpiry -Token $Token
+    }
     if ($null -eq $expiry -or $expiry -le [DateTimeOffset]::UtcNow.AddMinutes(1)) {
         return
     }
@@ -260,7 +264,7 @@ function Get-ListingKitDeviceTokenCache {
             }
         }
         $tokenExpiry = Get-ListingKitDeviceTokenExpiry -Token $token
-        if ($null -eq $tokenExpiry -or $tokenExpiry -le [DateTimeOffset]::UtcNow.AddMinutes(1) -or $tokenExpiry -lt $metadataExpiry.AddMinutes(-1) -or $tokenExpiry -gt $metadataExpiry.AddMinutes(1)) {
+        if ($null -ne $tokenExpiry -and ($tokenExpiry -le [DateTimeOffset]::UtcNow.AddMinutes(1) -or $tokenExpiry -lt $metadataExpiry.AddMinutes(-1) -or $tokenExpiry -gt $metadataExpiry.AddMinutes(1))) {
             return ""
         }
         return $token
@@ -277,7 +281,8 @@ function Resolve-ListingKitDeviceToken {
         [string]$ProjectID = "",
         [ValidateRange(1, 3600)]
         [int]$TimeoutSec = 300,
-        [switch]$OpenBrowser
+        [switch]$OpenBrowser,
+        [ref]$ExpiresAt
     )
 
     if ([string]::IsNullOrWhiteSpace($ClientID)) {
@@ -333,6 +338,10 @@ function Resolve-ListingKitDeviceToken {
         }
         $accessToken = Get-ListingKitDeviceString -Response $tokenResponse -Name "access_token"
         if (-not [string]::IsNullOrWhiteSpace($accessToken)) {
+            $expiresIn = 0
+            if ($null -ne $ExpiresAt -and [int]::TryParse((Get-ListingKitDeviceString -Response $tokenResponse -Name "expires_in"), [ref]$expiresIn) -and $expiresIn -gt 0) {
+                $ExpiresAt.Value = [DateTimeOffset]::UtcNow.AddSeconds($expiresIn)
+            }
             return $accessToken
         }
         switch (Get-ListingKitDeviceString -Response $tokenResponse -Name "error") {

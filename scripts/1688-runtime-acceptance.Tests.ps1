@@ -459,6 +459,17 @@ Describe "ListingKit device authorization safety" {
         (Get-ListingKitDeviceTokenCache -Path $cachePath) | Should Be ""
     }
 
+    It "stores an opaque device access token when its OAuth expiry is supplied" {
+        $token = "opaque-access-token-sentinel"
+        $cachePath = Join-Path $TestDrive "opaque-device-token-cache.json"
+        $expiry = [DateTimeOffset]::UtcNow.AddHours(1)
+
+        Save-ListingKitDeviceTokenCache -Path $cachePath -Token $token -ExpiresAt $expiry
+
+        (Get-ListingKitDeviceTokenCache -Path $cachePath) | Should Be $token
+        (Get-Content -LiteralPath $cachePath -Raw).Contains($token) | Should Be $false
+    }
+
     It "rejects a non-HTTPS non-loopback issuer before discovery" {
         Mock Invoke-RestMethod { throw "discovery must not run" }
 
@@ -682,6 +693,25 @@ Describe "ListingKit device authorization safety" {
         { Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 1 } | Should Throw "Device authorization timed out"
     }
 
+    It "returns the OAuth expires_in value for opaque device access tokens" {
+        $expiresAt = [DateTimeOffset]::MinValue
+        Mock Invoke-RestMethod {
+            param($Uri)
+            if ($Uri -match "openid-configuration") {
+                return @{ device_authorization_endpoint = "https://issuer.example/device"; token_endpoint = "https://issuer.example/token" }
+            }
+            if ($Uri -match "/device$") {
+                return @{ device_code = "device-code"; user_code = "USER-CODE"; verification_uri = "https://issuer.example/verify"; expires_in = 60 }
+            }
+            return @{ access_token = "opaque-access-token"; expires_in = 3600 }
+        }
+        Mock Write-Host {}
+        Mock Start-Sleep {}
+
+        Resolve-ListingKitDeviceToken -IssuerURL "https://issuer.example" -ClientID "device-client" -ProjectID "listingkit-project" -TimeoutSec 30 -ExpiresAt ([ref]$expiresAt) | Should Be "opaque-access-token"
+        $expiresAt | Should BeGreaterThan ([DateTimeOffset]::UtcNow.AddMinutes(59))
+    }
+
     It "uses a valid device token cache before starting device authorization" {
         $payload = [ordered]@{
             exp = [DateTimeOffset]::UtcNow.AddHours(1).ToUnixTimeSeconds()
@@ -717,4 +747,5 @@ Describe "ListingKit device authorization safety" {
             $script:AcceptanceDeviceTokenCacheFile = $previousCachePath
         }
     }
+
 }

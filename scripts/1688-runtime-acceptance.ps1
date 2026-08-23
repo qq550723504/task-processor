@@ -82,8 +82,9 @@ function Resolve-AcceptanceToken {
     if (-not [string]::IsNullOrWhiteSpace($cachedToken)) {
         return $cachedToken
     }
-    $token = Resolve-ListingKitDeviceToken -IssuerURL $IssuerURL -ClientID $ClientID -Scopes $Scopes -ProjectID $ProjectID -TimeoutSec $script:AcceptanceTimeoutSec -OpenBrowser:$OpenBrowser
-    Save-ListingKitDeviceTokenCache -Path $script:AcceptanceDeviceTokenCacheFile -Token $token
+    $expiresAt = [DateTimeOffset]::MinValue
+    $token = Resolve-ListingKitDeviceToken -IssuerURL $IssuerURL -ClientID $ClientID -Scopes $Scopes -ProjectID $ProjectID -TimeoutSec $script:AcceptanceTimeoutSec -OpenBrowser:$OpenBrowser -ExpiresAt ([ref]$expiresAt)
+    Save-ListingKitDeviceTokenCache -Path $script:AcceptanceDeviceTokenCacheFile -Token $token -ExpiresAt $expiresAt
     return $token
 }
 
