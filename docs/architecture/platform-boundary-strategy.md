@@ -106,6 +106,10 @@ ListingKit's production dependency on legacy SHEIN runtime packages is guarded
 by `depguard: listingkit_legacy_shein_runtime`; test-only semantic exceptions
 remain in the project-specific boundary tests.
 
+ListingKit's direct dependency on the SHEIN API root is guarded by
+`depguard: listingkit_shein_api_root`; subpackage adapter exceptions remain in
+the project-specific boundary tests.
+
 ### `internal/platforms/*`
 
 `internal/platforms/*` is a thin registration and platform selection layer. It
