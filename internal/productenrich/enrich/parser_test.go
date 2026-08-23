@@ -126,6 +126,28 @@ func TestInputParser_ParseInput_ScraperError(t *testing.T) {
 	}
 }
 
+func TestInputParser_ParseInput_ScraperErrorKeepsExplicitInput(t *testing.T) {
+	ctx := context.Background()
+	scraper := &mockWebScraper{err: fmt.Errorf("scrape failed")}
+	p := newTestParser(t, scraper)
+
+	req := &productenrich.GenerateRequest{
+		ImageURLs:  []string{"https://example.com/source.jpg"},
+		Text:       "already extracted product text",
+		ProductURL: "https://detail.1688.com/offer/123.html",
+	}
+	result, err := p.ParseInput(ctx, req)
+	if err != nil {
+		t.Fatalf("unexpected error with explicit input: %v", err)
+	}
+	if len(result.Images) != 1 || result.Images[0] != "https://example.com/source.jpg" {
+		t.Fatalf("images = %#v, want explicit source image", result.Images)
+	}
+	if result.Text != "already extracted product text" {
+		t.Fatalf("text = %q, want explicit source text", result.Text)
+	}
+}
+
 func TestInputParser_ParseInput_NilScraperResult(t *testing.T) {
 	ctx := context.Background()
 	scraper := &mockWebScraper{data: nil}
