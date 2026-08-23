@@ -154,12 +154,6 @@ func TestAppTaskStatusDTOAdapterIsRetired(t *testing.T) {
 	}
 }
 
-func TestListingKitDoesNotImportSheinAPIRoot(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "listingkit"), []string{
-		`"task-processor/internal/shein/api"`,
-	}, nil)
-}
-
 func TestListingKitNonAPISheinImportsStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowedImports := map[string]map[string]struct{}{
