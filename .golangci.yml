@@ -86,6 +86,15 @@ linters-settings:
           - pkg: "task-processor/internal/shein/product/build"
             desc: "ListingKit production code must not depend on the legacy SHEIN product builder"
 
+      source_handoff_legacy_http:
+        # The retired ProductEnrich HTTP owner must not regain production consumers.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/productenrich/httpapi/sourcea1688"
+            desc: "Production code must use the canonical product source-handoff owner"
+
       publishing_shein_legacy_runtime:
         # Keep the publishing owner independent from legacy runtime and facade packages.
         files:

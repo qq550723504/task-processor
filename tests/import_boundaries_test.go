@@ -11,27 +11,20 @@ import (
 	"testing"
 )
 
-func TestProductSourcingHTTPStaysUnderSourceHandoff(t *testing.T) {
+func TestSourceHandoffLegacyHTTPImportsStayRetiredAcrossBuildTargets(t *testing.T) {
 	t.Parallel()
-	root := filepath.Join("..", "internal")
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-		content, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		if strings.Contains(string(content), `"task-processor/internal/productenrich/httpapi/sourcea1688"`) {
-			t.Errorf("%s imports the duplicate 1688 HTTP owner", path)
-		}
-		return nil
-	})
+	index, err := loadGoFileIndex(filepath.Join("..", "internal"), "")
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		if _, ok := facts.imports[`"task-processor/internal/productenrich/httpapi/sourcea1688"`]; ok {
+			t.Errorf("%s imports retired source-handoff HTTP owner; use the canonical product source-handoff package", path)
+		}
 	}
 }
 
