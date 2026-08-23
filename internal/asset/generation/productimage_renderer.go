@@ -66,6 +66,7 @@ func (r *productImageDeferredRenderer) Render(ctx context.Context, req DeferredR
 			return nil, fmt.Errorf("publish deferred scene asset: %w", err)
 		}
 		selected = published
+		productimage.CleanupTemporaryAsset(&selected)
 	}
 	if err := requirePublicAssetURL(selected.URL); err != nil {
 		return nil, err

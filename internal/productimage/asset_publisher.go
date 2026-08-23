@@ -18,9 +18,10 @@ type multiAssetPublisher struct {
 }
 
 // platformAssetPublisher keeps Amazon SP-API uploads scoped to Amazon image
-// tasks while allowing a local or object-storage publisher to serve the other
-// marketplace tasks. A nil nonAmazon publisher intentionally makes
-// non-Amazon tasks a no-op for Amazon-only configurations.
+// tasks while allowing a local or object-storage publisher to provide the
+// readable URL required by ListingKit. For an Amazon task, a configured
+// nonAmazon publisher runs first and the SP-API upload runs second; the latter
+// records the upload destination ID without replacing the readable URL.
 type platformAssetPublisher struct {
 	nonAmazon AssetPublisher
 	amazon    AssetPublisher
@@ -50,6 +51,11 @@ func (p *platformAssetPublisher) Publish(ctx context.Context, req *ImageProcessR
 	if platform == "amazon" {
 		if p.amazon == nil {
 			return nil
+		}
+		if p.nonAmazon != nil {
+			if err := p.nonAmazon.Publish(ctx, req, result); err != nil {
+				return err
+			}
 		}
 		return p.amazon.Publish(ctx, req, result)
 	}
@@ -178,8 +184,12 @@ func (p *localAssetPublisher) applyPublishedMetadata(asset *ImageAsset, targetPa
 }
 
 type amazonAssetPublisher struct {
-	service       *amazonimage.ImageManagementService
+	service       amazonImageUploader
 	marketplaceID string
+}
+
+type amazonImageUploader interface {
+	UploadImage(ctx context.Context, imageData []byte, filename, marketplaceID string) (*amazonimage.ImageUploadResult, error)
 }
 
 type AmazonAssetPublisherOptions struct {
@@ -263,12 +273,10 @@ func (p *amazonAssetPublisher) publishAsset(ctx context.Context, asset *ImageAss
 		asset.Metadata = map[string]string{}
 	}
 	asset.Metadata["uploaded_image_id"] = uploadResult.ImageID
-	asset.Metadata["uploaded_url"] = uploadResult.URL
-	asset.Metadata["published_url"] = uploadResult.URL
+	asset.Metadata["uploaded_destination_url"] = uploadResult.URL
 	asset.Metadata["upload_format"] = uploadResult.Format
 	asset.Metadata["original_local_path"] = localPath
 	asset.Metadata["published_provider"] = "amazon"
-	asset.URL = uploadResult.URL
 	return nil
 }
 

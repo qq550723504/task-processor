@@ -63,6 +63,12 @@ func cleanupTemporaryAssets(result *ImageProcessResult) {
 	}
 }
 
+// CleanupTemporaryAsset applies the same durable-publication cleanup used by
+// the full product-image pipeline to a directly rendered asset.
+func CleanupTemporaryAsset(asset *ImageAsset) {
+	cleanupTemporaryAsset(asset)
+}
+
 func cleanupTemporaryAsset(asset *ImageAsset) {
 	if asset == nil || asset.Metadata == nil {
 		return

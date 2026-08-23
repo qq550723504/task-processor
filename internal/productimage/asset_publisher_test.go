@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	amazonimage "task-processor/internal/amazon/image"
+
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,6 +38,31 @@ func TestLocalAssetPublisher_Publish(t *testing.T) {
 	require.NotEmpty(t, result.MainImage.Metadata["published_key"])
 }
 
+func TestAmazonAssetPublisherDoesNotExposeUploadDestinationAsPublishedURL(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	sourcePath := filepath.Join(workDir, "main.jpg")
+	require.NoError(t, os.WriteFile(sourcePath, []byte("main-image"), 0o644))
+	readableURL := "https://cdn.example.com/rendered-main.jpg"
+	uploadDestinationURL := "https://upload.example.com/write-only-destination"
+	publisher := &amazonAssetPublisher{
+		service:       &stubAmazonImageUploader{result: &amazonimage.ImageUploadResult{ImageID: "upload-id-1", URL: uploadDestinationURL, Format: "jpeg"}},
+		marketplaceID: "ATVPDKIKX0DER",
+	}
+	result := &ImageProcessResult{MainImage: &ImageAsset{
+		URL:      readableURL,
+		Type:     AssetTypeMainImage,
+		Metadata: map[string]string{"local_path": sourcePath},
+	}}
+
+	require.NoError(t, publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "amazon"}, result))
+	require.Equal(t, readableURL, result.MainImage.URL)
+	require.Empty(t, result.MainImage.Metadata["published_url"])
+	require.Equal(t, uploadDestinationURL, result.MainImage.Metadata["uploaded_destination_url"])
+	require.Equal(t, "upload-id-1", result.MainImage.Metadata["uploaded_image_id"])
+}
+
 func TestNewMultiAssetPublisher_SkipsNil(t *testing.T) {
 	t.Parallel()
 
@@ -56,9 +83,9 @@ func TestPlatformAssetPublisherRoutesAmazonOnlyToAmazon(t *testing.T) {
 	require.NoError(t, publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "shein"}, result))
 	require.NoError(t, publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "temu"}, result))
 
-	require.Equal(t, 2, local.calls)
+	require.Equal(t, 4, local.calls)
 	require.Equal(t, 2, amazon.calls)
-	require.Equal(t, []string{"shein", "temu"}, local.platforms)
+	require.Equal(t, []string{"amazon", "", "shein", "temu"}, local.platforms)
 	require.Equal(t, []string{"amazon", ""}, amazon.platforms)
 }
 
@@ -145,6 +172,14 @@ func (s *stubS3AssetUploader) Upload(_ context.Context, _ string, _ []byte, _ st
 type recordingAssetPublisher struct {
 	calls     int
 	platforms []string
+}
+
+type stubAmazonImageUploader struct {
+	result *amazonimage.ImageUploadResult
+}
+
+func (s *stubAmazonImageUploader) UploadImage(context.Context, []byte, string, string) (*amazonimage.ImageUploadResult, error) {
+	return s.result, nil
 }
 
 func (p *recordingAssetPublisher) Publish(_ context.Context, req *ImageProcessRequest, _ *ImageProcessResult) error {

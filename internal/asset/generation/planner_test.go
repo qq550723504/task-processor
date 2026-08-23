@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -1113,6 +1114,20 @@ type stubDeferredAssetPublisher struct {
 	called bool
 }
 
+type durableDeferredAssetPublisher struct {
+	publishedPath string
+}
+
+func (p *durableDeferredAssetPublisher) Publish(_ context.Context, _ *productimage.ImageProcessRequest, result *productimage.ImageProcessResult) error {
+	if len(result.GalleryImages) != 1 {
+		return fmt.Errorf("gallery images = %+v, want one image", result.GalleryImages)
+	}
+	result.GalleryImages[0].Metadata["published_path"] = p.publishedPath
+	result.GalleryImages[0].Metadata["published_url"] = "https://cdn.example.test/published-scene.jpg"
+	result.GalleryImages[0].URL = result.GalleryImages[0].Metadata["published_url"]
+	return nil
+}
+
 func (p *stubDeferredAssetPublisher) Publish(_ context.Context, req *productimage.ImageProcessRequest, result *productimage.ImageProcessResult) error {
 	p.called = true
 	if req == nil || req.Text != "task-renderer-publisher" {
@@ -1150,6 +1165,46 @@ func TestProductImageDeferredRendererPublishesLocalSceneOutput(t *testing.T) {
 	}
 	if record.URL != "https://oss.example.test/published-scene.jpg" {
 		t.Fatalf("rendered asset URL = %q, want published URL", record.URL)
+	}
+}
+
+func TestProductImageDeferredRendererCleansTemporaryAfterDurablePublication(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	localPath := filepath.Join(workDir, "rendered-scene.jpg")
+	publishedPath := filepath.Join(workDir, "published", "rendered-scene.jpg")
+	if err := os.WriteFile(localPath, []byte("rendered"), 0o644); err != nil {
+		t.Fatalf("write rendered asset: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(publishedPath), 0o755); err != nil {
+		t.Fatalf("create published directory: %v", err)
+	}
+	if err := os.WriteFile(publishedPath, []byte("published"), 0o644); err != nil {
+		t.Fatalf("write published asset: %v", err)
+	}
+
+	renderer := assetgeneration.NewProductImageDeferredRendererWithPublisher(
+		&stubProductImageSceneRenderer{results: []productimage.ImageAsset{{
+			URL:      localPath,
+			Type:     productimage.AssetTypeGalleryImage,
+			Metadata: map[string]string{"local_path": localPath},
+		}}},
+		&durableDeferredAssetPublisher{publishedPath: publishedPath},
+	)
+	_, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
+		TaskID:    "task-renderer-cleans-temporary",
+		Task:      assetgeneration.Task{Platform: "shein", AssetKind: asset.KindSceneImage, Purpose: "gallery"},
+		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if _, err := os.Stat(localPath); !os.IsNotExist(err) {
+		t.Fatalf("temporary local asset still exists, stat error = %v", err)
+	}
+	if _, err := os.Stat(publishedPath); err != nil {
+		t.Fatalf("durable published asset missing: %v", err)
 	}
 }
 
