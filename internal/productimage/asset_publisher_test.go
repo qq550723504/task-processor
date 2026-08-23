@@ -179,6 +179,10 @@ func TestS3AssetPublisherPublishSetsPublishedMetadata(t *testing.T) {
 	require.Equal(t, "s3", result.MainImage.Metadata["published_provider"])
 	require.NotEmpty(t, result.MainImage.Metadata["published_key"])
 	require.Contains(t, result.MainImage.URL, "https://cdn.example.com/productimage/")
+	require.Empty(t, result.MainImage.Metadata["published_path"])
+	CleanupTemporaryAsset(result.MainImage)
+	_, statErr := os.Stat(sourcePath)
+	require.ErrorIs(t, statErr, os.ErrNotExist)
 }
 
 type stubS3AssetUploader struct {

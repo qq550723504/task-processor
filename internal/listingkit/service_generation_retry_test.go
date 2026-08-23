@@ -739,6 +739,46 @@ func TestRetryGenerationMutationApplySkipsInventoryMutationWhenDispatchResultNil
 	}
 }
 
+func TestRetryGenerationMutationPreservesAssetsForFailedTasksInPartialDispatch(t *testing.T) {
+	t.Parallel()
+
+	inventory := &asset.Inventory{Records: []asset.AssetRecord{
+		{ID: "successful-old", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, RecipeID: "scene-success", Metadata: map[string]string{"bundle_slot": "main"}},
+		{ID: "failed-old", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated, RecipeID: "scene-failed", Metadata: map[string]string{"bundle_slot": "main"}},
+	}}
+	selectedTasks := []assetgeneration.Task{
+		{ID: "task-success", RecipeID: "scene-success", Slot: "main", ExecutionStatus: "planned"},
+		{ID: "task-failed", RecipeID: "scene-failed", Slot: "main", ExecutionStatus: "planned"},
+	}
+	dispatchResult := &assetgeneration.Result{
+		Tasks: []assetgeneration.Task{
+			{ID: "task-success", RecipeID: "scene-success", Slot: "main", ExecutionStatus: "completed"},
+			{ID: "task-failed", RecipeID: "scene-failed", Slot: "main", ExecutionStatus: "failed"},
+		},
+		Assets: []asset.AssetRecord{{
+			ID: "successful-new", Kind: asset.KindSceneImage, Origin: asset.OriginGenerated,
+			RecipeID: "scene-success", Metadata: map[string]string{"bundle_slot": "main"},
+		}},
+	}
+
+	got := buildRetryGenerationMutationPhase().run(inventory, nil, selectedTasks, dispatchResult)
+	if len(got) != 2 || got[0].ExecutionStatus != "completed" || got[1].ExecutionStatus != "failed" {
+		t.Fatalf("updated tasks = %+v, want successful and failed task states", got)
+	}
+	ids := make(map[string]bool, len(inventory.Records))
+	for _, record := range inventory.Records {
+		ids[record.ID] = true
+	}
+	for _, id := range []string{"successful-new", "failed-old"} {
+		if !ids[id] {
+			t.Fatalf("inventory records = %+v, want %q preserved", inventory.Records, id)
+		}
+	}
+	if ids["successful-old"] {
+		t.Fatalf("inventory records = %+v, want successful old asset replaced", inventory.Records)
+	}
+}
+
 func TestRetryTaskGenerationTasksIncludesMatchedQueueSummary(t *testing.T) {
 	t.Parallel()
 
