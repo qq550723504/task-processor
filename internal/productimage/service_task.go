@@ -157,9 +157,6 @@ func (s *service) validateRequest(req *ImageProcessRequest) error {
 	if len(req.ImageURLs) == 0 && req.ProductURL == "" {
 		return fmt.Errorf("at least one of image_urls or product_url must be provided")
 	}
-	if len(req.ImageURLs) > 20 {
-		return fmt.Errorf("too many image URLs (max 20)")
-	}
 	if err := normalizeRequestTargetPlatform(req); err != nil {
 		return err
 	}

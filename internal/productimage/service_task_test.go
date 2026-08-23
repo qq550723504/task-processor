@@ -2,6 +2,7 @@ package productimage
 
 import (
 	"context"
+	"fmt"
 	"testing"
 )
 
@@ -41,6 +42,23 @@ func TestValidateRequestCanonicalizesLegacyMarketplaceToTargetPlatform(t *testin
 	}
 	if req.TargetPlatform != "shein" {
 		t.Fatalf("TargetPlatform = %q, want shein", req.TargetPlatform)
+	}
+}
+
+func TestValidateRequestPreservesMoreThanTwentyImageURLs(t *testing.T) {
+	t.Parallel()
+
+	imageURLs := make([]string, 21)
+	for idx := range imageURLs {
+		imageURLs[idx] = fmt.Sprintf("https://example.test/image-%d.jpg", idx+1)
+	}
+	req := &ImageProcessRequest{ImageURLs: imageURLs, TargetPlatform: "shein"}
+
+	if err := (&service{}).validateRequest(req); err != nil {
+		t.Fatalf("validateRequest() error = %v, want no artificial image count limit", err)
+	}
+	if len(req.ImageURLs) != len(imageURLs) {
+		t.Fatalf("image URL count = %d, want %d preserved", len(req.ImageURLs), len(imageURLs))
 	}
 }
 
