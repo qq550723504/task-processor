@@ -1208,6 +1208,44 @@ func TestProductImageDeferredRendererCleansTemporaryAfterDurablePublication(t *t
 	}
 }
 
+func TestProductImageDeferredRendererHonorsDisabledTemporaryCleanup(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	localPath := filepath.Join(workDir, "rendered-scene.jpg")
+	publishedPath := filepath.Join(workDir, "published", "rendered-scene.jpg")
+	if err := os.WriteFile(localPath, []byte("rendered"), 0o644); err != nil {
+		t.Fatalf("write rendered asset: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(publishedPath), 0o755); err != nil {
+		t.Fatalf("create published directory: %v", err)
+	}
+	if err := os.WriteFile(publishedPath, []byte("published"), 0o644); err != nil {
+		t.Fatalf("write published asset: %v", err)
+	}
+
+	renderer := assetgeneration.NewProductImageDeferredRendererWithPublisherAndCleanup(
+		&stubProductImageSceneRenderer{results: []productimage.ImageAsset{{
+			URL:      localPath,
+			Type:     productimage.AssetTypeGalleryImage,
+			Metadata: map[string]string{"local_path": localPath},
+		}}},
+		&durableDeferredAssetPublisher{publishedPath: publishedPath},
+		false,
+	)
+	_, err := renderer.Render(context.Background(), assetgeneration.DeferredRenderRequest{
+		TaskID:    "task-renderer-keeps-temporary",
+		Task:      assetgeneration.Task{Platform: "shein", AssetKind: asset.KindSceneImage, Purpose: "gallery"},
+		BaseAsset: asset.AssetRecord{ID: "main-1", Kind: asset.KindMainImage, URL: "https://oss.example.test/main.png"},
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	if _, err := os.Stat(localPath); err != nil {
+		t.Fatalf("temporary local asset was removed despite cleanup disabled: %v", err)
+	}
+}
+
 func TestProductImageDeferredRendererPropagatesSellingPointSlotPlan(t *testing.T) {
 	t.Parallel()
 

@@ -12,8 +12,9 @@ import (
 )
 
 type productImageDeferredRenderer struct {
-	renderer  productimage.SceneRenderer
-	publisher productimage.AssetPublisher
+	renderer              productimage.SceneRenderer
+	publisher             productimage.AssetPublisher
+	cleanupTemporaryFiles bool
 }
 
 func NewProductImageDeferredRenderer(renderer productimage.SceneRenderer) DeferredRenderer {
@@ -21,10 +22,21 @@ func NewProductImageDeferredRenderer(renderer productimage.SceneRenderer) Deferr
 }
 
 func NewProductImageDeferredRendererWithPublisher(renderer productimage.SceneRenderer, publisher productimage.AssetPublisher) DeferredRenderer {
+	return NewProductImageDeferredRendererWithPublisherAndCleanup(renderer, publisher, true)
+}
+
+// NewProductImageDeferredRendererWithPublisherAndCleanup wires the lifecycle
+// policy into the renderer so cleanup cannot bypass the configured service
+// behavior.
+func NewProductImageDeferredRendererWithPublisherAndCleanup(renderer productimage.SceneRenderer, publisher productimage.AssetPublisher, cleanupTemporaryFiles bool) DeferredRenderer {
 	if renderer == nil {
 		return nil
 	}
-	return &productImageDeferredRenderer{renderer: renderer, publisher: publisher}
+	return &productImageDeferredRenderer{
+		renderer:              renderer,
+		publisher:             publisher,
+		cleanupTemporaryFiles: cleanupTemporaryFiles,
+	}
 }
 
 func (r *productImageDeferredRenderer) Render(ctx context.Context, req DeferredRenderRequest) (*asset.AssetRecord, error) {
@@ -66,7 +78,9 @@ func (r *productImageDeferredRenderer) Render(ctx context.Context, req DeferredR
 			return nil, fmt.Errorf("publish deferred scene asset: %w", err)
 		}
 		selected = published
-		productimage.CleanupTemporaryAsset(&selected)
+		if r.cleanupTemporaryFiles {
+			productimage.CleanupTemporaryAsset(&selected)
+		}
 	}
 	if err := requirePublicAssetURL(selected.URL); err != nil {
 		return nil, err

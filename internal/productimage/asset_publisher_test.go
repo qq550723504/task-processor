@@ -63,6 +63,26 @@ func TestAmazonAssetPublisherDoesNotExposeUploadDestinationAsPublishedURL(t *tes
 	require.Equal(t, "upload-id-1", result.MainImage.Metadata["uploaded_image_id"])
 }
 
+func TestAmazonAssetPublisherRejectsWriteOnlyPublicationWithoutReadableURL(t *testing.T) {
+	t.Parallel()
+
+	workDir := t.TempDir()
+	sourcePath := filepath.Join(workDir, "main.jpg")
+	require.NoError(t, os.WriteFile(sourcePath, []byte("main-image"), 0o644))
+	uploader := &stubAmazonImageUploader{result: &amazonimage.ImageUploadResult{ImageID: "upload-id-1", URL: "https://upload.example.com/write-only-destination", Format: "jpeg"}}
+	publisher := &amazonAssetPublisher{service: uploader, marketplaceID: "ATVPDKIKX0DER"}
+	result := &ImageProcessResult{MainImage: &ImageAsset{
+		URL:      sourcePath,
+		Type:     AssetTypeMainImage,
+		Metadata: map[string]string{"local_path": sourcePath},
+	}}
+
+	err := publisher.Publish(context.Background(), &ImageProcessRequest{TargetPlatform: "amazon"}, result)
+	require.EqualError(t, err, "amazon publication requires a readable public asset URL")
+	require.Zero(t, uploader.calls)
+	require.Equal(t, sourcePath, result.MainImage.URL)
+}
+
 func TestNewMultiAssetPublisher_SkipsNil(t *testing.T) {
 	t.Parallel()
 
@@ -176,9 +196,11 @@ type recordingAssetPublisher struct {
 
 type stubAmazonImageUploader struct {
 	result *amazonimage.ImageUploadResult
+	calls  int
 }
 
 func (s *stubAmazonImageUploader) UploadImage(context.Context, []byte, string, string) (*amazonimage.ImageUploadResult, error) {
+	s.calls++
 	return s.result, nil
 }
 

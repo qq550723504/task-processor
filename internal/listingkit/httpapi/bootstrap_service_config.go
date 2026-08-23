@@ -4,6 +4,7 @@ import (
 	assetbundle "task-processor/internal/asset/bundle"
 	assetgeneration "task-processor/internal/asset/generation"
 	assetrecipe "task-processor/internal/asset/recipe"
+	"task-processor/internal/core/config"
 	"task-processor/internal/listingkit"
 )
 
@@ -62,9 +63,20 @@ func buildListingKitAssetDependencies(in buildListingKitServiceConfigInput) list
 		AssetGenerationService: assetgeneration.NewService(assetgeneration.Config{
 			SubjectExtractor:        in.input.ImageSubjectExtractor,
 			WhiteBackgroundRenderer: in.input.ImageWhiteBackgroundRender,
-			DeferredRenderer:        assetgeneration.NewProductImageDeferredRendererWithPublisher(in.input.ImageSceneRenderer, in.input.ImageAssetPublisher),
+			DeferredRenderer: assetgeneration.NewProductImageDeferredRendererWithPublisherAndCleanup(
+				in.input.ImageSceneRenderer,
+				in.input.ImageAssetPublisher,
+				productImageCleanupTemporaryFiles(in.input.Config),
+			),
 		}),
 	}
+}
+
+func productImageCleanupTemporaryFiles(cfg *config.Config) bool {
+	if cfg == nil {
+		return true
+	}
+	return cfg.ProductImage.Lifecycle.CleanupTemporaryFiles
 }
 
 func buildListingKitSheinDependencies(in buildListingKitServiceConfigInput) listingkit.ServiceSheinDependencies {

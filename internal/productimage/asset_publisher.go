@@ -247,6 +247,9 @@ func (p *amazonAssetPublisher) publishAsset(ctx context.Context, asset *ImageAss
 	if asset == nil {
 		return nil
 	}
+	if !isHTTPURL(ResolveReadableAssetURL(asset.URL, "", asset.Metadata)) {
+		return fmt.Errorf("amazon publication requires a readable public asset URL")
+	}
 	localPath := ""
 	if asset.Metadata != nil {
 		localPath = asset.Metadata["published_path"]

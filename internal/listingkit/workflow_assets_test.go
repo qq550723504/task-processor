@@ -684,6 +684,46 @@ func TestPlatformAssetInventoryPreservesOnlySafeSingleTargetLegacyBaseAssets(t *
 	}
 }
 
+func TestPlatformAssetInventoryFallsBackToSharedInventoryForLegacyScalarBundle(t *testing.T) {
+	t.Parallel()
+
+	legacyBase := &asset.Bundle{Assets: []asset.Asset{{
+		ID: "legacy-main", Kind: asset.KindMainImage, URL: "https://cdn.example.test/legacy-main.jpg",
+	}}}
+	shared := asset.BuildInventory("task-legacy-scalar-bundle", legacyBase)
+	shared.Records = append(shared.Records, asset.AssetRecord{
+		ID: "legacy-gallery", Kind: asset.KindGalleryImage, Origin: asset.OriginGenerated,
+		URL: "https://cdn.example.test/legacy-gallery.jpg",
+	})
+
+	got := platformAssetInventory(&ListingKitResult{AssetBundle: legacyBase}, "shein", shared)
+	if got == nil {
+		t.Fatal("platformAssetInventory() returned nil")
+	}
+	if !hasInventoryURL(got, "https://cdn.example.test/legacy-main.jpg") || !hasInventoryURL(got, "https://cdn.example.test/legacy-gallery.jpg") {
+		t.Fatalf("target inventory = %+v, want the complete shared legacy inventory", got)
+	}
+}
+
+func TestPlatformAssetInventoryDoesNotCloneLegacyScalarBundleAcrossTaggedTargets(t *testing.T) {
+	t.Parallel()
+
+	shared := &asset.Inventory{
+		Ref: asset.InventoryRef{TaskID: "task-legacy-scalar-conflict"},
+		Records: []asset.AssetRecord{
+			{ID: "amazon-gallery", Kind: asset.KindGalleryImage, Origin: asset.OriginGenerated, URL: "https://cdn.example.test/amazon-gallery.jpg", PlatformTags: []string{"amazon"}},
+		},
+	}
+
+	got := platformAssetInventory(&ListingKitResult{AssetBundle: &asset.Bundle{}}, "shein", shared)
+	if got == shared {
+		t.Fatal("platformAssetInventory() cloned shared inventory despite a conflicting target tag")
+	}
+	if hasInventoryURL(got, "https://cdn.example.test/amazon-gallery.jpg") {
+		t.Fatalf("target inventory = %+v, want conflicting Amazon record rejected", got)
+	}
+}
+
 func TestRunWorkflowPassesNormalizedRequestedTargetsToPlatformGenerationPlan(t *testing.T) {
 	t.Parallel()
 
