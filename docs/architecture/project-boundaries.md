@@ -307,7 +307,8 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `depguard: listingkit_shein_api_root`
 - `TestListingKitNonAPISheinImportsStayAllowlisted`
 - `TestListingKitAmazonListingImportsStayAllowlisted`
-- `TestCatalogDoesNotDependOnProductEnrichAliases`
+- `depguard: catalog_legacy_productenrich`
+- `TestProductEnrichCanonicalImportsStayRetiredAcrossBuildTargets`
 - `TestCanonicalTypesDoNotUseProductEnrichCompatibilityAliases`
 - `depguard: shein_pipeline_legacy_listingkit`
 - `depguard: shein_submitprep_legacy_tenantctx`
@@ -340,7 +341,8 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestPublishingSheinManagedAPIImportsStayAllowlisted`
 - `TestPublishingSheinManagedRetiredManagementImportsStayBlocked`
 - `depguard: publishing_shein_legacy_runtime`
-- `TestPublishingCommonUsesCanonicalPackage`
+- `depguard: publishing_common_legacy_productenrich`
+- `TestProductEnrichCanonicalImportsStayRetiredAcrossBuildTargets`
 - `depguard: publishing_common_platforms`
 - `TestHTTPAPITypesKeepExternalClientRuntimeDepsDedicated`
 - `TestHTTPAPIAdaptersKeepOpenAIAssemblyDedicated`

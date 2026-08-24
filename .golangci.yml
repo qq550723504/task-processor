@@ -220,6 +220,26 @@ linters-settings:
           - pkg: "task-processor/internal/amazon"
             desc: "Publishing common code must not depend on Amazon implementation packages"
 
+      publishing_common_legacy_productenrich:
+        # Publishing common code must use canonical catalog/product contracts, not ProductEnrich aliases.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/publishing/common/*.go"
+          - "**/internal/publishing/common/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/productenrich$"
+            desc: "Publishing common code must not depend on ProductEnrich compatibility aliases"
+
+      catalog_legacy_productenrich:
+        # Catalog code must own canonical product facts instead of depending on ProductEnrich compatibility aliases.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/catalog/*.go"
+          - "**/internal/catalog/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/productenrich$"
+            desc: "Catalog code must not depend on ProductEnrich compatibility aliases"
+
   govet:
     disable:
       - fieldalignment
