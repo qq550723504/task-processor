@@ -14,6 +14,7 @@ export const runtime = "nodejs";
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
 export const DEFAULT_ALLOWED_HOSTS = [
+  "cbu01.alicdn.com",
   "cdn.sdspod.com",
   "e.sdspod.com",
   "img.sdspod.com",

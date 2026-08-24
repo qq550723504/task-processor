@@ -8,6 +8,7 @@ describe("image proxy default allowlist", () => {
       expect.arrayContaining([
         "cos-1303159911.cos.na-ashburn.myqcloud.com",
         "shuomi-1303159911.cos.ap-hongkong.myqcloud.com",
+        "cbu01.alicdn.com",
       ]),
     );
   });
