@@ -469,23 +469,6 @@ func TestCatalogDoesNotDependOnProductEnrichAliases(t *testing.T) {
 	}, nil)
 }
 
-func TestListingKitSubdomainsDoNotImportRootFacade(t *testing.T) {
-	for _, subdomain := range []string{"generation", "submission", "workflow", "workspace"} {
-		t.Run(subdomain, func(t *testing.T) {
-			dir := filepath.Join("..", "internal", "listingkit", subdomain)
-			if _, err := os.Stat(dir); err != nil {
-				if os.IsNotExist(err) {
-					t.Skipf("listingkit subdomain %s is retired", subdomain)
-				}
-				t.Fatalf("stat %s: %v", dir, err)
-			}
-			assertNoBannedImports(t, dir, []string{
-				`"task-processor/internal/listingkit"`,
-			}, nil)
-		})
-	}
-}
-
 func TestListingKitRootSheinHelpersStayAllowlisted(t *testing.T) {
 	root := filepath.Join("..", "internal", "listingkit")
 	allowed := map[string]struct{}{
@@ -813,27 +796,6 @@ func TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly(t
 			if _, ok := allowedFiles[path]; !ok {
 				t.Errorf("%s imports %s; keep root shein workspace bridges as thin compatibility wrappers and move direct workspace domain wiring into internal/listingkit/workspace/shein", path, bannedImport)
 			}
-		}
-	}
-}
-
-func TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly(t *testing.T) {
-	root := filepath.Join("..", "internal", "listingkit")
-
-	index, err := loadGoFileIndex(root, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for path, facts := range index.files {
-		if filepath.Dir(path) != filepath.Clean(root) {
-			continue
-		}
-		name := filepath.Base(path)
-		if strings.HasSuffix(name, "_test.go") {
-			continue
-		}
-		if _, ok := facts.imports[`"task-processor/internal/workspace/shein"`]; ok {
-			t.Errorf("%s imports task-processor/internal/workspace/shein; keep root ListingKit files on the internal/listingkit/workspace/shein compatibility layer instead", path)
 		}
 	}
 }

@@ -113,6 +113,11 @@ the project-specific boundary tests.
 The ListingKit root facade's direct dependency on management API DTO contracts
 is guarded by `depguard: listingkit_root_management_api`.
 
+ListingKit subdomains are guarded from depending on the root facade by
+`depguard: listingkit_subdomains_root_facade`; root files are separately kept
+off the legacy workspace SHEIN domain by
+`depguard: listingkit_root_workspace_shein`.
+
 ### `internal/platforms/*`
 
 `internal/platforms/*` is a thin registration and platform selection layer. It
