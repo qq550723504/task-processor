@@ -131,6 +131,31 @@ linters-settings:
           - pkg: "task-processor/internal/amazonlisting$"
             desc: "Platform-neutral preview code must not depend on legacy Amazon Listing code"
 
+      listingkit_subdomains_root_facade:
+        # ListingKit subdomains must not depend back on the root facade package.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/listingkit/generation/*.go"
+          - "**/internal/listingkit/generation/**/*.go"
+          - "**/internal/listingkit/submission/*.go"
+          - "**/internal/listingkit/submission/**/*.go"
+          - "**/internal/listingkit/workflow/*.go"
+          - "**/internal/listingkit/workflow/**/*.go"
+          - "**/internal/listingkit/workspace/*.go"
+          - "**/internal/listingkit/workspace/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/listingkit$"
+            desc: "ListingKit subdomains must not depend on the root facade package"
+
+      listingkit_root_workspace_shein:
+        # Root ListingKit files must use the compatibility bridge instead of the legacy workspace domain.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/listingkit/*.go"
+        deny:
+          - pkg: "task-processor/internal/workspace/shein$"
+            desc: "ListingKit root production code must not depend on the legacy workspace SHEIN domain"
+
       source_handoff_legacy_http:
         # The retired ProductEnrich HTTP owner must not regain production consumers.
         # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.

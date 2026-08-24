@@ -298,9 +298,10 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestBusinessDomainsDoNotImportAppHTTPAPI`
 - `TestProjectBoundaryDomainsDoNotImportListingKitFacade`
 - `TestProductDomainDoesNotDependOnOuterAdapters`
-- `TestListingKitSubdomainsDoNotImportRootFacade`
+- `depguard: listingkit_subdomains_root_facade`
+- `TestListingKitImportDirectionStaysRetiredAcrossBuildTargets`
 - `TestListingKitRootSheinWorkspaceBridgesDoNotImportWorkspaceDomainDirectly`
-- `TestListingKitRootNonTestFilesDoNotImportWorkspaceDomainDirectly`
+- `depguard: listingkit_root_workspace_shein`
 - `TestListingKitSheinWorkspaceBridgeDoesNotImportLegacyWorkspaceDomain`
 - `depguard: listingkit_legacy_shein_runtime`
 - `depguard: listingkit_shein_api_root`
