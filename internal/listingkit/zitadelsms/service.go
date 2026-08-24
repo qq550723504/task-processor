@@ -111,9 +111,16 @@ func parseZitadelSMSPayload(body []byte) (zitadelSMSPayload, bool) {
 	return payload, true
 }
 
+var approvedZitadelSMSEvents = map[string]struct{}{
+	"user.human.phone.code.added":         {},
+	"user.human.initialization.code.added": {},
+	"user.human.mfa.otp.sms.code.added":   {},
+	"session.otp.sms.challenged":          {},
+}
+
 func approvedEventType(eventType string) bool {
-	return eventType == "user.human.phone.code.added" ||
-		eventType == "user.human.initialization.code.added"
+	_, ok := approvedZitadelSMSEvents[eventType]
+	return ok
 }
 
 func isE164(phone string) bool {
