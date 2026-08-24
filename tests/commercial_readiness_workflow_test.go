@@ -257,17 +257,27 @@ func TestTencentSMSSecretIsAPIScopedAndWebhookIngressIsExact(t *testing.T) {
 		}
 	}
 
-	apiManifest, err := os.ReadFile(filepath.Join(base, "product-listing-api-deployment.yaml"))
-	if err != nil {
-		t.Fatalf("read ListingKit API deployment: %v", err)
-	}
+	apiContainer := loadOnlyContainer(t, "base/product-listing-api-deployment.yaml")
 	for _, key := range requiredKeys {
-		expected := "- name: " + key + "\n              valueFrom:\n                secretKeyRef:\n                  name: " + secretName + "\n                  key: " + key
-		if !strings.Contains(string(apiManifest), expected) {
-			t.Errorf("ListingKit API deployment must require %s from %s", key, secretName)
+		found := false
+		for _, variable := range apiContainer.Env {
+			if variable.Name != key || variable.ValueFrom == nil || variable.ValueFrom.SecretKeyRef == nil {
+				continue
+			}
+			found = true
+			ref := variable.ValueFrom.SecretKeyRef
+			if ref.Name != secretName {
+				t.Errorf("ListingKit API must require %s from %s, got %s", key, secretName, ref.Name)
+			}
+			if ref.Key != key {
+				t.Errorf("ListingKit API must map %s to its same Secret key, got %s", key, ref.Key)
+			}
+			if ref.Optional != nil && *ref.Optional {
+				t.Errorf("ListingKit API must not make %s optional", key)
+			}
 		}
-		if strings.Contains(string(apiManifest), expected+"\n                  optional: true") {
-			t.Errorf("ListingKit API must not make %s optional", key)
+		if !found {
+			t.Errorf("ListingKit API deployment must require %s from %s", key, secretName)
 		}
 	}
 
