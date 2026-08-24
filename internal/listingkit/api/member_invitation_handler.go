@@ -14,6 +14,8 @@ type inviteTenantMemberRequest struct {
 	GivenName  string `json:"given_name"`
 	FamilyName string `json:"family_name"`
 	Email      string `json:"email"`
+	Phone      string `json:"phone"`
+	Username   string `json:"username"`
 	Role       string `json:"role"`
 }
 
@@ -39,6 +41,8 @@ func (h *handler) InviteTenantMember(c *gin.Context) {
 		GivenName:  strings.TrimSpace(body.GivenName),
 		FamilyName: strings.TrimSpace(body.FamilyName),
 		Email:      strings.TrimSpace(body.Email),
+		Phone:      strings.TrimSpace(body.Phone),
+		Username:   strings.TrimSpace(body.Username),
 		Role:       strings.TrimSpace(body.Role),
 	}
 	if h.memberInvitationService == nil {
@@ -57,13 +61,16 @@ func (h *handler) InviteTenantMember(c *gin.Context) {
 	if !h.recordMemberInvitationOutcome(c, identity.UserID, request, invitation, memberinvite.OutcomeSucceeded, "") {
 		return
 	}
+	delivery := memberinvite.DeliveryMetadataFor(invitation.Email, invitation.Phone)
 	c.JSON(http.StatusCreated, gin.H{
 		"tenant_id":             invitation.TenantID,
 		"user_id":               invitation.UserID,
-		"email":                 invitation.Email,
+		"email":                 delivery.Email,
 		"role":                  invitation.Role,
 		"authorization_id":      invitation.AuthorizationID,
 		"invitation_email_sent": true,
+		"delivery_mode":         delivery.Mode,
+		"contact":               delivery.Contact,
 	})
 }
 
@@ -137,6 +144,7 @@ func (h *handler) recordMemberInvitationOutcome(c *gin.Context, actorUserID stri
 		ActorUserID:     actorUserID,
 		TenantID:        request.TenantID,
 		Email:           request.Email,
+		Phone:           request.Phone,
 		Role:            request.Role,
 		UserID:          invitation.UserID,
 		AuthorizationID: invitation.AuthorizationID,

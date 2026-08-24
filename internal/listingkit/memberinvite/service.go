@@ -6,8 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"regexp"
 	"strings"
 )
+
+var e164PhonePattern = regexp.MustCompile(`^\+[1-9][0-9]{6,14}$`)
 
 var (
 	ErrInvalidRequest = errors.New("invalid ListingKit member invitation request")
@@ -19,6 +22,8 @@ type InviteRequest struct {
 	GivenName  string
 	FamilyName string
 	Email      string
+	Phone      string
+	Username   string
 	Role       string
 }
 
@@ -26,6 +31,7 @@ type Invitation struct {
 	TenantID        string
 	UserID          string
 	Email           string
+	Phone           string
 	Role            string
 	AuthorizationID string
 }
@@ -97,6 +103,7 @@ func (s *Service) Invite(ctx context.Context, request InviteRequest) (Invitation
 	}
 	invitation.TenantID = request.TenantID
 	invitation.Email = request.Email
+	invitation.Phone = request.Phone
 	invitation.Role = request.Role
 	return invitation, nil
 }
@@ -139,12 +146,20 @@ func normalizeRequest(request InviteRequest) (InviteRequest, error) {
 	request.GivenName = strings.TrimSpace(request.GivenName)
 	request.FamilyName = strings.TrimSpace(request.FamilyName)
 	request.Email = strings.TrimSpace(request.Email)
+	request.Phone = strings.TrimSpace(request.Phone)
+	request.Username = strings.TrimSpace(request.Username)
 	request.Role = strings.TrimSpace(request.Role)
 	if request.TenantID == "" || request.GivenName == "" || request.FamilyName == "" || !AllowedRole(request.Role) {
 		return InviteRequest{}, ErrInvalidRequest
 	}
 	address, err := mail.ParseAddress(request.Email)
 	if err != nil || address.Address != request.Email {
+		return InviteRequest{}, ErrInvalidRequest
+	}
+	if (request.Phone == "") != (request.Username == "") {
+		return InviteRequest{}, ErrInvalidRequest
+	}
+	if request.Phone != "" && !e164PhonePattern.MatchString(request.Phone) {
 		return InviteRequest{}, ErrInvalidRequest
 	}
 	return request, nil

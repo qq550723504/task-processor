@@ -3,6 +3,8 @@ package memberinvite
 import (
 	"context"
 	"testing"
+	"time"
+	"unicode/utf8"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -33,8 +35,8 @@ func TestGormAuditRepositoryStoresIncompleteInvitationWithoutSecrets(t *testing.
 	if got.ActorUserID != "admin-1" || got.TenantID != "org-1" || got.UserID != "user-1" || got.Outcome != OutcomeIncomplete {
 		t.Fatalf("audit = %#v", got)
 	}
-	if got.Email != "jane@example.com" {
-		t.Fatalf("email = %q, want normalized email", got.Email)
+	if got.Email != "j***@example.com" {
+		t.Fatalf("email = %q, want masked email", got.Email)
 	}
 	if got.AuthorizationID != "" {
 		t.Fatalf("authorization ID = %q, want empty for incomplete invitation", got.AuthorizationID)
@@ -68,11 +70,152 @@ func TestGormAuditRepositoryStoresOnlyAuditFields(t *testing.T) {
 	}
 	for _, column := range columns {
 		switch column.Name() {
-		case "id", "actor_user_id", "tenant_id", "email", "role", "user_id", "authorization_id", "outcome", "error_code", "created_at":
+		case "id", "actor_user_id", "tenant_id", "email", "phone", "delivery_mode", "contact", "role", "user_id", "authorization_id", "outcome", "error_code", "created_at":
 		default:
 			t.Fatalf("unexpected audit column %q", column.Name())
 		}
 	}
+}
+
+func TestGormAuditRepositoryStoresMaskedDeliveryModeAndContacts(t *testing.T) {
+	db := openAuditTestDB(t)
+	if err := AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("AutoMigrateAuditRepository() error = %v", err)
+	}
+
+	record := AuditRecord{ActorUserID: "admin-1", TenantID: "org-1", Email: "jane@example.com", Role: "listingkit_viewer", Outcome: OutcomeSucceeded}
+	record.Phone = "+8613712345678"
+	if err := NewGormAuditRepository(db).Record(context.Background(), record); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	got := readAuditRecord(t, db)
+	if got.Email == "jane@example.com" {
+		t.Fatalf("email was stored unmasked: %#v", got)
+	}
+	if value := got.Phone; value == "+8613712345678" || value == "" {
+		t.Fatalf("phone audit value = %q", value)
+	}
+	if mode := got.DeliveryMode; mode != "email_phone" {
+		t.Fatalf("delivery mode = %q", mode)
+	}
+}
+
+func TestGormAuditRepositoryMasksUnicodeEmailLocalPartByRune(t *testing.T) {
+	db := openAuditTestDB(t)
+	if err := AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("AutoMigrateAuditRepository() error = %v", err)
+	}
+
+	if err := NewGormAuditRepository(db).Record(context.Background(), AuditRecord{
+		ActorUserID: "admin-1",
+		TenantID:    "org-1",
+		Email:       "é@example.com",
+		Role:        "listingkit_viewer",
+		Outcome:     OutcomeSucceeded,
+	}); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	got := readAuditRecord(t, db)
+	if got.Email != "é***@example.com" {
+		t.Fatalf("masked email = %q, want rune-preserving mask", got.Email)
+	}
+	if !utf8.ValidString(got.Email) {
+		t.Fatalf("masked email is invalid UTF-8: %q", got.Email)
+	}
+}
+
+func TestGormAuditRepositoryMasksUnicodePhoneByRune(t *testing.T) {
+	db := openAuditTestDB(t)
+	if err := AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("AutoMigrateAuditRepository() error = %v", err)
+	}
+
+	if err := NewGormAuditRepository(db).Record(context.Background(), AuditRecord{
+		ActorUserID: "admin-1",
+		TenantID:    "org-1",
+		Email:       "jane@example.com",
+		Phone:       "😀😀",
+		Role:        "listingkit_viewer",
+		Outcome:     OutcomeFailed,
+		ErrorCode:   "invalid_member_invitation",
+	}); err != nil {
+		t.Fatalf("Record() error = %v", err)
+	}
+
+	got := readAuditRecord(t, db)
+	if got.Phone != "***" || got.Contact != "j***@example.com,***" {
+		t.Fatalf("masked delivery values = phone %q, contact %q", got.Phone, got.Contact)
+	}
+	if !utf8.ValidString(got.Phone) || !utf8.ValidString(got.Contact) {
+		t.Fatalf("masked delivery values are invalid UTF-8: phone %q, contact %q", got.Phone, got.Contact)
+	}
+}
+
+func TestAutoMigrateAuditRepositoryPreservesAndRedactsLegacyRecords(t *testing.T) {
+	db := openAuditTestDB(t)
+	if err := db.AutoMigrate(&legacyMemberInvitationAuditRow{}); err != nil {
+		t.Fatalf("migrate legacy audit table: %v", err)
+	}
+	if err := db.Create(&legacyMemberInvitationAuditRow{
+		ActorUserID: "admin-1", TenantID: "org-1", Email: "jane@example.com", Role: "listingkit_viewer", Outcome: OutcomeSucceeded,
+	}).Error; err != nil {
+		t.Fatalf("create legacy audit row: %v", err)
+	}
+
+	if err := AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("AutoMigrateAuditRepository() error = %v", err)
+	}
+	got := readAuditRecord(t, db)
+	if got.Email != "j***@example.com" || got.DeliveryMode != "email" || got.Contact != "j***@example.com" {
+		t.Fatalf("migrated audit row = %#v", got)
+	}
+}
+
+func TestAutoMigrateAuditRepositoryDoesNotRewriteMigratedRecords(t *testing.T) {
+	db := openAuditTestDB(t)
+	if err := db.AutoMigrate(&legacyMemberInvitationAuditRow{}); err != nil {
+		t.Fatalf("migrate legacy audit table: %v", err)
+	}
+	if err := db.Create(&legacyMemberInvitationAuditRow{
+		ActorUserID: "admin-1", TenantID: "org-1", Email: "jane@example.com", Role: "listingkit_viewer", Outcome: OutcomeSucceeded,
+	}).Error; err != nil {
+		t.Fatalf("create legacy audit row: %v", err)
+	}
+	if err := AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("first AutoMigrateAuditRepository() error = %v", err)
+	}
+
+	updates := 0
+	if err := db.Callback().Update().After("gorm:update").Register("test:count-audit-migration-updates", func(*gorm.DB) {
+		updates++
+	}); err != nil {
+		t.Fatalf("register update callback: %v", err)
+	}
+	if err := AutoMigrateAuditRepository(db); err != nil {
+		t.Fatalf("second AutoMigrateAuditRepository() error = %v", err)
+	}
+	if updates != 0 {
+		t.Fatalf("second migration rewrote %d audit records", updates)
+	}
+}
+
+type legacyMemberInvitationAuditRow struct {
+	ID              uint64    `gorm:"primaryKey"`
+	ActorUserID     string    `gorm:"type:varchar(128);not null;index"`
+	TenantID        string    `gorm:"type:varchar(128);not null;index"`
+	Email           string    `gorm:"type:varchar(320);not null;index"`
+	Role            string    `gorm:"type:varchar(64);not null"`
+	UserID          string    `gorm:"type:varchar(128)"`
+	AuthorizationID string    `gorm:"type:varchar(128)"`
+	Outcome         Outcome   `gorm:"type:varchar(32);not null;index"`
+	ErrorCode       string    `gorm:"type:varchar(128)"`
+	CreatedAt       time.Time `gorm:"not null;autoCreateTime"`
+}
+
+func (legacyMemberInvitationAuditRow) TableName() string {
+	return "listingkit_member_invitation_audits"
 }
 
 func openAuditTestDB(t *testing.T) *gorm.DB {

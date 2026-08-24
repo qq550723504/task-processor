@@ -33,6 +33,36 @@ spec:
                 secretKeyRef:
                   name: listingkit-member-invitation-secret
                   key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_PROJECT_ID
+            - name: TASK_PROCESSOR_LISTINGKIT_ZITADEL_SMS_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-tencent-sms-secret
+                  key: TASK_PROCESSOR_LISTINGKIT_ZITADEL_SMS_SIGNING_KEY
+            - name: TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SECRET_ID
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-tencent-sms-secret
+                  key: TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SECRET_ID
+            - name: TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-tencent-sms-secret
+                  key: TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SECRET_KEY
+            - name: TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_APP_ID
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-tencent-sms-secret
+                  key: TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_APP_ID
+            - name: TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SIGN_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-tencent-sms-secret
+                  key: TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_SIGN_NAME
+            - name: TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_TEMPLATE_ID
+              valueFrom:
+                secretKeyRef:
+                  name: listingkit-tencent-sms-secret
+                  key: TASK_PROCESSOR_LISTINGKIT_TENCENT_SMS_TEMPLATE_ID
             - name: TASK_PROCESSOR_SDS_LOGIN_SERVICE_DEFAULT_HEADLESS
               valueFrom:
                 configMapKeyRef:

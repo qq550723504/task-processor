@@ -9,6 +9,7 @@ import (
 	"task-processor/internal/listingkit/memberinvite"
 	"task-processor/internal/listingkit/sheinpodimage"
 	"task-processor/internal/listingkit/tenantdirectory"
+	"task-processor/internal/listingkit/zitadelsms"
 	"task-processor/internal/listingsubscription"
 	sheinpub "task-processor/internal/publishing/shein"
 )
@@ -42,6 +43,7 @@ type handler struct {
 	settingsService                 settingsNamespaceService
 	studioAsyncJobHeartbeatInterval time.Duration
 	studioAsyncJobHeartbeatNow      func() time.Time
+	zitadelSMSService               *zitadelsms.Service
 }
 
 type storeAdminHandlers struct {
@@ -162,6 +164,7 @@ type HandlerDependencies struct {
 	StudioAsyncJobRepository listingkit.StudioAsyncJobRepository
 	Admin                    AdminHandlerDependencies
 	Subscription             SubscriptionDependencies
+	ZitadelSMSService        *zitadelsms.Service
 }
 
 func withHandlerState(apply func(*handler)) HandlerOption {
@@ -195,6 +198,7 @@ func WithDependencies(deps HandlerDependencies) HandlerOption {
 		withStoreAdminDependencies(deps.Admin),
 		withCatalogAdminDependencies(deps.Admin),
 		withSubscriptionConfig(deps.Subscription),
+		WithZitadelSMSService(deps.ZitadelSMSService),
 	}
 	return func(h *handler) {
 		for _, option := range options {
@@ -203,6 +207,12 @@ func WithDependencies(deps HandlerDependencies) HandlerOption {
 			}
 		}
 	}
+}
+
+func WithZitadelSMSService(service *zitadelsms.Service) HandlerOption {
+	return withHandlerState(func(h *handler) {
+		h.zitadelSMSService = service
+	})
 }
 
 func WithStudioAsyncJobRepository(repo listingkit.StudioAsyncJobRepository) HandlerOption {

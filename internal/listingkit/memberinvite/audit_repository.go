@@ -11,9 +11,10 @@ import (
 type Outcome string
 
 const (
-	OutcomeSucceeded  Outcome = "succeeded"
-	OutcomeFailed     Outcome = "failed"
-	OutcomeIncomplete Outcome = "incomplete"
+	OutcomeSucceeded        Outcome = "succeeded"
+	OutcomeFailed           Outcome = "failed"
+	OutcomeIncomplete       Outcome = "incomplete"
+	auditMigrationBatchSize         = 200
 )
 
 // AuditRecord is the non-sensitive, durable record of one member invitation attempt.
@@ -21,6 +22,7 @@ type AuditRecord struct {
 	ActorUserID     string
 	TenantID        string
 	Email           string
+	Phone           string
 	Role            string
 	UserID          string
 	AuthorizationID string
@@ -38,6 +40,9 @@ type memberInvitationAuditRow struct {
 	ActorUserID     string    `gorm:"type:varchar(128);not null;index"`
 	TenantID        string    `gorm:"type:varchar(128);not null;index"`
 	Email           string    `gorm:"type:varchar(320);not null;index"`
+	Phone           string    `gorm:"type:varchar(32)"`
+	DeliveryMode    string    `gorm:"type:varchar(32);not null;default:''"`
+	Contact         string    `gorm:"type:varchar(512);not null;default:''"`
 	Role            string    `gorm:"type:varchar(64);not null"`
 	UserID          string    `gorm:"type:varchar(128)"`
 	AuthorizationID string    `gorm:"type:varchar(128)"`
@@ -59,14 +64,40 @@ func NewGormAuditRepository(db *gorm.DB) AuditRepository {
 }
 
 func AutoMigrateAuditRepository(db *gorm.DB) error {
-	return db.AutoMigrate(&memberInvitationAuditRow{})
+	if err := db.AutoMigrate(&memberInvitationAuditRow{}); err != nil {
+		return err
+	}
+	var rows []memberInvitationAuditRow
+	return db.Where("delivery_mode = ? OR contact = ?", "", "").FindInBatches(&rows, auditMigrationBatchSize, func(tx *gorm.DB, _ int) error {
+		for _, row := range rows {
+			delivery := DeliveryMetadataFor(row.Email, "")
+			if row.DeliveryMode != "" {
+				delivery.Mode = row.DeliveryMode
+			}
+			if row.Contact != "" {
+				delivery.Contact = row.Contact
+			}
+			if err := tx.Model(&memberInvitationAuditRow{}).Where("id = ?", row.ID).Updates(map[string]any{
+				"email":         delivery.Email,
+				"delivery_mode": delivery.Mode,
+				"contact":       delivery.Contact,
+			}).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	}).Error
 }
 
 func (r *gormAuditRepository) Record(ctx context.Context, record AuditRecord) error {
+	delivery := DeliveryMetadataFor(record.Email, record.Phone)
 	row := memberInvitationAuditRow{
 		ActorUserID:     strings.TrimSpace(record.ActorUserID),
 		TenantID:        strings.TrimSpace(record.TenantID),
-		Email:           strings.ToLower(strings.TrimSpace(record.Email)),
+		Email:           delivery.Email,
+		Phone:           delivery.Phone,
+		DeliveryMode:    delivery.Mode,
+		Contact:         delivery.Contact,
 		Role:            strings.TrimSpace(record.Role),
 		UserID:          strings.TrimSpace(record.UserID),
 		AuthorizationID: strings.TrimSpace(record.AuthorizationID),

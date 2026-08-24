@@ -30,6 +30,7 @@ func TestNewHTTPModuleRegistersListingRoutes(t *testing.T) {
 	require.Contains(t, keys, "POST /api/v1/listing-kits/studio/reference-style/analyze")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/tasks/requeue")
 	require.Contains(t, keys, "POST /api/v1/listing-kits/platform/tenants/:tenant_id/members/invitations")
+	require.Contains(t, keys, "POST /api/v1/listing-kits/integrations/zitadel/sms")
 	foundStoreStatisticsRoute := false
 	foundPlatformStoreStatisticsRoute := false
 	foundMemberInvitationRoute := false
@@ -160,6 +161,7 @@ type stubRouteHandlerWithAuthContext struct{ stubRouteHandler }
 func (stubRouteHandlerWithAuthContext) GetAuthContext(*gin.Context) {}
 
 func (stubRouteHandler) GenerateListingKit(*gin.Context)                          {}
+func (stubRouteHandler) DeliverZitadelSMS(*gin.Context)                           {}
 func (stubRouteHandler) GetTaskSDSRepair(*gin.Context)                            {}
 func (stubRouteHandler) RepairAndRetryTaskSDS(*gin.Context)                       {}
 func (stubRouteHandler) ListTasks(*gin.Context)                                   {}

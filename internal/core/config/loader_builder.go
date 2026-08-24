@@ -233,6 +233,14 @@ func BuildConfig(v *viper.Viper) *Config {
 				AllowedUsernames:                  listingKitAllowedUsernames,
 				LegacyUsernameAllowlistConfigured: listingKitLegacyUsernameAllowlistConfigured,
 				AllowedRoles:                      listingKitAllowedRoles,
+				SMS: ListingKitZitadelSMSConfig{
+					SigningKey:        v.GetString("listingkit.zitadel.sms.signingKey"),
+					TencentSecretID:   v.GetString("listingkit.zitadel.sms.tencentSecretID"),
+					TencentSecretKey:  v.GetString("listingkit.zitadel.sms.tencentSecretKey"),
+					TencentAppID:      v.GetString("listingkit.zitadel.sms.tencentAppID"),
+					TencentSignName:   v.GetString("listingkit.zitadel.sms.tencentSignName"),
+					TencentTemplateID: v.GetString("listingkit.zitadel.sms.tencentTemplateID"),
+				},
 			},
 		},
 	}

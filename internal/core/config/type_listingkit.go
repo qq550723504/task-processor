@@ -21,7 +21,17 @@ type ListingKitZitadelConfig struct {
 	AllowedUserIDs        []string `mapstructure:"allowedUserIDs" yaml:"allowedUserIDs"`
 	// AllowedUsernames is retained only to detect and reject obsolete configuration.
 	// It must never participate in authorization decisions.
-	AllowedUsernames                  []string `mapstructure:"allowedUsernames" yaml:"allowedUsernames"`
-	LegacyUsernameAllowlistConfigured bool     `mapstructure:"-" yaml:"-"`
-	AllowedRoles                      []string `mapstructure:"allowedRoles" yaml:"allowedRoles"`
+	AllowedUsernames                  []string                   `mapstructure:"allowedUsernames" yaml:"allowedUsernames"`
+	LegacyUsernameAllowlistConfigured bool                       `mapstructure:"-" yaml:"-"`
+	AllowedRoles                      []string                   `mapstructure:"allowedRoles" yaml:"allowedRoles"`
+	SMS                               ListingKitZitadelSMSConfig `mapstructure:"sms" yaml:"sms"`
+}
+
+type ListingKitZitadelSMSConfig struct {
+	SigningKey        string `mapstructure:"signingKey" yaml:"signingKey"`
+	TencentSecretID   string `mapstructure:"tencentSecretID" yaml:"tencentSecretID"`
+	TencentSecretKey  string `mapstructure:"tencentSecretKey" yaml:"tencentSecretKey"`
+	TencentAppID      string `mapstructure:"tencentAppID" yaml:"tencentAppID"`
+	TencentSignName   string `mapstructure:"tencentSignName" yaml:"tencentSignName"`
+	TencentTemplateID string `mapstructure:"tencentTemplateID" yaml:"tencentTemplateID"`
 }

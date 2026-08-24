@@ -31,6 +31,41 @@ func TestZitadelProviderCreatesUserThenRoleAssignment(t *testing.T) {
 	}
 }
 
+func TestInviteProviderRequestsPhoneVerificationAlongsideEmailInitialization(t *testing.T) {
+	provider, requests := newZitadelProviderTestServer(t, http.StatusOK)
+	request := validInviteRequest()
+	request.Phone = "+8613712345678"
+	request.Username = "jane-phone"
+
+	got, err := provider.Invite(context.Background(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.UserID != "user-1" || got.AuthorizationID != "authorization-1" {
+		t.Fatalf("invitation = %#v", got)
+	}
+	if len(*requests) != 2 {
+		t.Fatalf("requests = %#v", *requests)
+	}
+	create := (*requests)[0]
+	if create.Username != "jane-phone" || create.Phone != "+8613712345678" || !create.PhoneSendCode || !create.SendCode {
+		t.Fatalf("create = %#v", create)
+	}
+}
+
+func TestInviteProviderPreservesUserIDWhenPhoneRoleAssignmentFails(t *testing.T) {
+	provider, _ := newZitadelProviderTestServer(t, http.StatusForbidden)
+	request := validInviteRequest()
+	request.Phone = "+8613712345678"
+	request.Username = "jane-phone"
+
+	_, err := provider.Invite(context.Background(), request)
+	var incomplete *IncompleteError
+	if !errors.As(err, &incomplete) || incomplete.UserID != "user-1" {
+		t.Fatalf("err = %#v", err)
+	}
+}
+
 func TestZitadelProviderMapsUserConflictWithoutReturningProviderBody(t *testing.T) {
 	provider, _ := newZitadelProviderTestServer(t, http.StatusConflict)
 	_, err := provider.Invite(context.Background(), validInviteRequest())
@@ -105,11 +140,14 @@ func TestNewZitadelProviderRejectsIncompleteConfiguration(t *testing.T) {
 type capturedRequest struct {
 	Path           string
 	OrganizationID string
+	Username       string
+	Phone          string
 	ProjectID      string
 	UserID         string
 	Role           string
 	RoleKeys       []string
 	SendCode       bool
+	PhoneSendCode  bool
 }
 
 func newZitadelProviderTestServer(t *testing.T, roleStatus int) (Provider, *[]capturedRequest) {
@@ -125,17 +163,22 @@ func newZitadelProviderTestServer(t *testing.T, roleStatus int) (Provider, *[]ca
 		switch r.URL.Path {
 		case "/v2/users/human":
 			var body struct {
+				Username     string `json:"username"`
 				Organization struct {
 					OrganizationID string `json:"orgId"`
 				} `json:"organization"`
 				Email struct {
 					SendCode *struct{} `json:"sendCode"`
 				} `json:"email"`
+				Phone struct {
+					Phone    string    `json:"phone"`
+					SendCode *struct{} `json:"sendCode"`
+				} `json:"phone"`
 			}
 			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 				t.Fatalf("decode user request: %v", err)
 			}
-			requests = append(requests, capturedRequest{Path: r.URL.Path, OrganizationID: body.Organization.OrganizationID, SendCode: body.Email.SendCode != nil})
+			requests = append(requests, capturedRequest{Path: r.URL.Path, OrganizationID: body.Organization.OrganizationID, Username: body.Username, Phone: body.Phone.Phone, SendCode: body.Email.SendCode != nil, PhoneSendCode: body.Phone.SendCode != nil})
 			writeMemberInviteJSON(t, w, http.StatusOK, map[string]string{"userId": "user-1"})
 		case "/zitadel.authorization.v2.AuthorizationService/CreateAuthorization":
 			var body struct {
