@@ -42,16 +42,14 @@ func buildStudioSelectionKey(selection *SheinStudioSelection) string {
 }
 
 func deriveBatchStatus(req *UpsertStudioBatchRequest) SheinStudioSessionStatus {
-	switch {
-	case len(req.GenerationJobs) > 0:
-		return SheinStudioSessionStatusGenerating
-	case len(req.CreatedTasks) > 0:
-		return SheinStudioSessionStatusTasksCreated
-	case len(req.Designs) > 0:
-		return SheinStudioSessionStatusReviewing
-	default:
+	if req == nil {
 		return SheinStudioSessionStatusSelecting
 	}
+	return SheinStudioSessionStatus(studiodomain.ResolveDraftStatus(studiodomain.DraftStatusInput{
+		GenerationJobCount: len(req.GenerationJobs),
+		CreatedTaskCount:   len(req.CreatedTasks),
+		DesignCount:        len(req.Designs),
+	}))
 }
 
 func mapStudioBatchListItem(session *SheinStudioSession, designCount int) SheinStudioBatchListItem {

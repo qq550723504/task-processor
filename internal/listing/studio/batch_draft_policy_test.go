@@ -14,6 +14,27 @@ func TestNormalizeBatchDesignTypePreservesExplicitValue(t *testing.T) {
 	}
 }
 
+func TestResolveDraftStatusPrioritizesGenerationTasksThenDesigns(t *testing.T) {
+	tests := []struct {
+		name  string
+		input DraftStatusInput
+		want  DraftStatus
+	}{
+		{name: "generation jobs", input: DraftStatusInput{GenerationJobCount: 1}, want: DraftStatusGenerating},
+		{name: "created tasks", input: DraftStatusInput{CreatedTaskCount: 1}, want: DraftStatusTasksCreated},
+		{name: "designs", input: DraftStatusInput{DesignCount: 1}, want: DraftStatusReviewing},
+		{name: "empty", want: DraftStatusSelecting},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ResolveDraftStatus(tt.input); got != tt.want {
+				t.Fatalf("ResolveDraftStatus(%+v) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBuildSelectionKeyUsesStableBatchSelectionFields(t *testing.T) {
 	got := BuildSelectionKey(SelectionKeyInput{
 		ProductID:        124110,
