@@ -89,6 +89,7 @@ func normalizeGenerateRequest(req *GenerateRequest) {
 	}
 	req.Platforms = listingplatform.NormalizeSupportedPlatforms(req.Platforms)
 	req.ImageURLs = normalizeGenerateRequestImageURLs(req.ImageURLs)
+	normalizeGenerateRequestSource(req)
 	if shouldProcessImages(req) && hasImageProcessingInput(req) && len(req.Platforms) == 0 {
 		req.Platforms = nil
 		return

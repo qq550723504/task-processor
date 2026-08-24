@@ -14,6 +14,8 @@ import (
 	"task-processor/internal/productenrich"
 	"task-processor/internal/productimage"
 	sheinpub "task-processor/internal/publishing/shein"
+	sdsdesign "task-processor/internal/sds/design"
+	sdstemplate "task-processor/internal/sds/template"
 	sheinproduct "task-processor/internal/shein/api/product"
 )
 
@@ -83,6 +85,164 @@ func TestNormalizeGenerateRequestEnablesProcessImagesWhenSceneOptionsProvided(t 
 	}
 	if !req.Options.ProcessImages {
 		t.Fatal("expected process_images=true when scene options are provided")
+	}
+}
+
+func TestNormalizeGenerateRequestDoesNotCreateSDSSourceContract(t *testing.T) {
+	t.Parallel()
+
+	req := &GenerateRequest{
+		Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}},
+	}
+	normalizeGenerateRequest(req)
+
+	if req.Source != nil {
+		t.Fatalf("source = %+v, want no SDS source without trusted validation", req.Source)
+	}
+}
+
+func TestNormalizeTrustedGenerateRequestCreatesValidatedSDSSourceContract(t *testing.T) {
+	t.Parallel()
+
+	svc := &service{supportDeps: supportDependencies{
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+			productDetail: &sdstemplate.ProductDetail{
+				ProductSummary: sdstemplate.ProductSummary{
+					ID:          41661,
+					Subproducts: &sdstemplate.Subproducts{Items: []sdstemplate.ProductSummary{{ID: 41662, ParentID: 41661}}},
+				},
+			},
+		},
+	}}
+	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}}}
+	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
+
+	if got := req.Source; got == nil || got.Type != "sds" || got.Platform != "sds" || got.ID != "41661" || got.URL != "https://www.sdsdiy.com/portal/detail/41661" {
+		t.Fatalf("source = %+v, want validated SDS source contract", got)
+	}
+}
+
+func TestNormalizeTrustedGenerateRequestCreatesValidatedVariantOnlySDSSourceContract(t *testing.T) {
+	t.Parallel()
+
+	svc := &service{supportDeps: supportDependencies{
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+			designProduct: &sdsdesign.DesignProductPage{Product: sdsdesign.DesignProduct{ID: 41662}},
+		},
+	}}
+	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{VariantID: 41662}}}
+	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
+
+	if got := req.Source; got == nil || got.Type != "sds" || got.Platform != "sds" || got.ID != "41662" || got.URL != "" || got.Key != "sds:variant:41662" {
+		t.Fatalf("source = %+v, want validated variant-only SDS source contract", got)
+	}
+}
+
+func TestNormalizeTrustedGenerateRequestRejectsUnverifiedSDSParentFromDesignProduct(t *testing.T) {
+	t.Parallel()
+
+	svc := &service{supportDeps: supportDependencies{
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+			designProduct: &sdsdesign.DesignProductPage{Product: sdsdesign.DesignProduct{ID: 41662}},
+		},
+	}}
+	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661, VariantID: 41662}}}
+	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
+
+	if req.Source != nil {
+		t.Fatalf("source = %+v, want no source without verified SDS parent relationship", req.Source)
+	}
+}
+
+func TestNormalizeTrustedGenerateRequestDoesNotCreateUnvalidatedSDSSourceContract(t *testing.T) {
+	t.Parallel()
+
+	svc := &service{supportDeps: supportDependencies{
+		sdsBaselineRemoteProvider: stubSDSBaselineRemoteProvider{
+			productDetail: &sdstemplate.ProductDetail{ProductSummary: sdstemplate.ProductSummary{ID: 41661}},
+		},
+	}}
+	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 99999, VariantID: 99998}}}
+	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
+
+	if req.Source != nil {
+		t.Fatalf("source = %+v, want no source for unvalidated SDS IDs", req.Source)
+	}
+}
+
+func TestNormalizeTrustedGenerateRequestBoundsSDSValidation(t *testing.T) {
+	provider := &blockingSDSBaselineRemoteProvider{
+		started:   make(chan struct{}),
+		cancelled: make(chan struct{}),
+	}
+	svc := &service{supportDeps: supportDependencies{sdsBaselineRemoteProvider: provider}}
+	req := &GenerateRequest{Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661}}}
+
+	startedAt := time.Now()
+	svc.normalizeTrustedGenerateRequestSource(context.Background(), req)
+	elapsed := time.Since(startedAt)
+
+	if req.Source != nil {
+		t.Fatalf("source = %+v, want no source after SDS validation timeout", req.Source)
+	}
+	if elapsed > trustedSDSProvenanceValidationTimeout+time.Second {
+		t.Fatalf("SDS validation took %s, want it bounded by the dedicated timeout", elapsed)
+	}
+	select {
+	case <-provider.started:
+	case <-time.After(time.Second):
+		t.Fatal("SDS validation provider was not called")
+	}
+	select {
+	case <-provider.cancelled:
+	case <-time.After(time.Second):
+		t.Fatal("SDS validation context was not cancelled")
+	}
+}
+
+type blockingSDSBaselineRemoteProvider struct {
+	started   chan struct{}
+	cancelled chan struct{}
+}
+
+func (p *blockingSDSBaselineRemoteProvider) GetProductDetail(ctx context.Context, _ int64) (*sdstemplate.ProductDetail, error) {
+	close(p.started)
+	<-ctx.Done()
+	close(p.cancelled)
+	return nil, ctx.Err()
+}
+
+func (*blockingSDSBaselineRemoteProvider) GetDesignProduct(context.Context, int64) (*sdsdesign.DesignProductPage, error) {
+	return nil, context.Canceled
+}
+
+func (*blockingSDSBaselineRemoteProvider) GetPrototypeGroups(context.Context, int64) ([]sdsdesign.PrototypeGroup, error) {
+	return nil, context.Canceled
+}
+
+func TestNormalizeGenerateRequestPreservesExplicitSourceOverSDSOptions(t *testing.T) {
+	t.Parallel()
+
+	explicit := &SourceReference{Type: "crawler", Platform: "1688", ID: "888", URL: "https://detail.1688.com/offer/888.html"}
+	req := &GenerateRequest{
+		Source:  explicit,
+		Options: &GenerateOptions{SDS: &SDSSyncOptions{ParentProductID: 41661}},
+	}
+	(&service{}).normalizeTrustedGenerateRequestSource(context.Background(), req)
+
+	if req.Source != explicit {
+		t.Fatalf("source = %+v, want explicit source to remain authoritative", req.Source)
+	}
+}
+
+func TestNormalizeGenerateRequestCreatesProductURLSourceContract(t *testing.T) {
+	t.Parallel()
+
+	req := &GenerateRequest{ProductURL: " https://detail.example/item/123 "}
+	normalizeGenerateRequest(req)
+
+	if got := req.Source; got == nil || got.Type != "product_url" || got.URL != "https://detail.example/item/123" {
+		t.Fatalf("source = %+v, want normalized product URL source contract", got)
 	}
 }
 

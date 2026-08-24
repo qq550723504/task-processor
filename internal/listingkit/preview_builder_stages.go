@@ -33,6 +33,6 @@ func populateListingKitPreviewResult(task *Task, preview *ListingKitPreview, sel
 	if err := buildPreviewPlatformSections(task.Result, preview, selectedPlatform); err != nil {
 		return err
 	}
-	backfillSheinPreviewSourceProductIdentity(preview, task)
+	backfillSheinPreviewSourceMetadata(preview, task)
 	return nil
 }

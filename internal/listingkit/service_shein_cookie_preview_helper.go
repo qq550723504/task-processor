@@ -34,5 +34,6 @@ func (s *service) decorateSheinCookieAvailabilityPreview(ctx context.Context, ta
 		return
 	}
 	preview.Shein = rebuilt
+	backfillSheinPreviewSourceMetadata(preview, task)
 	preview.NeedsReview = preview.NeedsReview || rebuilt.NeedsReview
 }
