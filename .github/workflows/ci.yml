@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - master
     paths:
       - ".github/workflows/ci.yml"
       - "cmd/product-listing-api/**"
