@@ -240,6 +240,16 @@ linters-settings:
           - pkg: "task-processor/internal/productenrich$"
             desc: "Catalog code must not depend on ProductEnrich compatibility aliases"
 
+      listingruntime_local_legacy_management:
+        # The neutral local runtime must not regain a dependency on the retired management client.
+        # The repository-wide issues.exclude-files excludes _test.go; test-only imports stay outside this guard.
+        files:
+          - "**/internal/listingruntime/local/*.go"
+          - "**/internal/listingruntime/local/**/*.go"
+        deny:
+          - pkg: "task-processor/internal/infra/clients/management$"
+            desc: "Local runtime must not depend on the retired management client package"
+
   govet:
     disable:
       - fieldalignment

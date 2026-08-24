@@ -2911,10 +2911,20 @@ func TestAppBootstrapRetiredManagementImportsStayBlocked(t *testing.T) {
 	}
 }
 
-func TestListingRuntimeLocalDoesNotImportRetiredManagementPackage(t *testing.T) {
-	assertNoBannedImports(t, filepath.Join("..", "internal", "listingruntime", "local"), []string{
-		`"task-processor/internal/infra/clients/management"`,
-	}, nil)
+func TestListingRuntimeLocalManagementImportsStayRetiredAcrossBuildTargets(t *testing.T) {
+	root := filepath.Join("..", "internal", "listingruntime", "local")
+	index, err := loadGoFileIndex(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for path, facts := range index.files {
+		if strings.HasSuffix(filepath.Base(path), "_test.go") {
+			continue
+		}
+		if _, ok := facts.imports[`"task-processor/internal/infra/clients/management"`]; ok {
+			t.Errorf("%s imports retired management client; keep the neutral local runtime on local runtime contracts", path)
+		}
+	}
 }
 
 func TestListingKitRootOpenAIImportsStayAllowlisted(t *testing.T) {

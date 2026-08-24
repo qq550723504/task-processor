@@ -395,6 +395,8 @@ The active import-boundary tests in `tests/import_boundaries_test.go` and archit
 - `TestPlatformRegistrationPackagesContainNoLocalArtifacts`
 - `TestBusinessDomainsDoNotImportAppRuntimeAssembly`
 - `TestAppBootstrapRetiredManagementImportsStayBlocked`
+- `depguard: listingruntime_local_legacy_management`
+- `TestListingRuntimeLocalManagementImportsStayRetiredAcrossBuildTargets`
 - `TestAppTaskRetiredManagementImportsStayBlocked`
 - `TestAppTaskRuntimeStoreAliasesStayRetired`
 - `TestAppTaskFetcherDoesNotStoreRetiredManagementService`
