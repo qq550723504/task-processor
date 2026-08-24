@@ -24,6 +24,52 @@ describe("ReviewReasonsCard", () => {
     expect(container).toBeEmptyDOMElement();
   });
 
+  it("shows review reasons discovered while the parent task is processing", () => {
+    render(
+      <ReviewReasonsCard
+        task={{
+          status: "processing",
+          result: {
+            workflow_issues: [
+              {
+                severity: "review",
+                stage: "product_image:amazon",
+                message: "IP risk detected: image pipeline uses scraped 1688 source images",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByText("处理中发现待确认项")).toBeInTheDocument();
+    expect(
+      screen.getByText("IP risk detected: image pipeline uses scraped 1688 source images"),
+    ).toBeInTheDocument();
+  });
+
+  it("does not treat processing warnings or fallback errors as review items", () => {
+    const { container } = render(
+      <ReviewReasonsCard
+        task={{
+          status: "processing",
+          error: "Image processing used a recoverable fallback",
+          result: {
+            workflow_issues: [
+              {
+                severity: "warning",
+                stage: "product_image:amazon",
+                message: "Image processing used a recoverable fallback",
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it("renders capped review reasons for needs-review tasks", () => {
     render(
       <ReviewReasonsCard

@@ -77,6 +77,7 @@ func (s *service) runStandardProductWorkflow(ctx context.Context, task *Task) (*
 		enableAssetGeneration,
 	)
 
+	recorder.FinalizeSummary()
 	snapshot := buildStandardProductSnapshot(result)
 	result.StandardProductSnapshot = snapshot
 	return &standardWorkflowState{

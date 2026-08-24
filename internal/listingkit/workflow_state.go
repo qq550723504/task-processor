@@ -104,6 +104,13 @@ func (h *workflowStageHandle) Degrade(code string, message string, detail string
 	}
 }
 
+func (h *workflowStageHandle) Review(code string, message string, detail string) {
+	h.finish(WorkflowStageStatusDegraded, detail)
+	if h.recorder != nil {
+		h.recorder.AddIssue(WorkflowIssueSeverityReview, h.kind(), code, message, detail)
+	}
+}
+
 func (h *workflowStageHandle) Fail(code string, message string, detail string) {
 	h.finish(WorkflowStageStatusFailed, detail)
 	if h.recorder != nil {
