@@ -318,7 +318,8 @@ At minimum, structural review should consider representative guards such as:
 - `TestTEMUOpenAIImportsStayAllowlisted`
 - `TestTemporalSDKImportsStayInRuntimeAndOrchestrationAdapters`
 - `TestTemporalRuntimePackagesDoNotImportHTTPAPI`
-- `TestListingPreviewPackageStaysPlatformNeutral`
+- `depguard: listing_preview_platform_neutral`
+- `TestListingPreviewImportsStayPlatformNeutralAcrossBuildTargets`
 
 If a PR changes the intended boundary, update the owning architecture document
 and its document test in the same change as the code exception.
